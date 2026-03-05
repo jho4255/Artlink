@@ -23,7 +23,12 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // 미들웨어 설정
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? true  // 모놀리스 배포: same-origin 허용
+    : (process.env.FRONTEND_URL || 'http://localhost:5173'),
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -48,7 +53,17 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// 에러 핸들러
+// 프로덕션 환경: 프론트엔드 정적 파일 서빙 (모놀리스 배포용)
+if (process.env.NODE_ENV === 'production') {
+  const frontendDistPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDistPath));
+  // SPA fallback: API 라우트가 아닌 모든 요청을 index.html로
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
+// 에러 핸들러 (반드시 마지막에 등록)
 app.use(errorHandler);
 
 app.listen(PORT, () => {

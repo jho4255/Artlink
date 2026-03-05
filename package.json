@@ -1,0 +1,10 @@
+{
+  "name": "artlink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ArtLink - 갤러리와 아티스트를 잇다",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build",
+    "start": "cd backend && npx prisma migrate deploy && npm start"
+  }
+}
