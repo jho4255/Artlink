@@ -7,7 +7,7 @@ services:
     buildCommand: |
       cd frontend && npm install --include=dev && npm run build &&
       cd ../backend && npm install --include=dev && npx prisma generate && npm run build
-    startCommand: cd backend && npx prisma migrate deploy && npm start
+    startCommand: cd backend && npx prisma migrate deploy && npx tsx prisma/seed.ts && npm start
     envVars:
       - key: DATABASE_URL
         fromDatabase:
