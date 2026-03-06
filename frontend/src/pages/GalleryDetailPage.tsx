@@ -27,13 +27,14 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Image, Camera, X, Edit3, Instagram, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
+import ImageLightbox from '@/components/shared/ImageLightbox';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
 
 // 갤러리 상세 응답 타입 (기본 Gallery + 연관 데이터)
@@ -61,6 +62,9 @@ export default function GalleryDetailPage() {
   const [promoUrl, setPromoUrl] = useState('');
   const [promoCaption, setPromoCaption] = useState('');
 
+  // 이미지 확대 Lightbox 상태
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+
   // 리뷰 작성/수정 폼 상태
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
@@ -75,10 +79,21 @@ export default function GalleryDetailPage() {
     enabled: !!id,
   });
 
-  // 찜하기 토글
+  // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
   const favMutation = useMutation({
     mutationFn: () => api.post('/favorites/toggle', { galleryId: Number(id) }),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['gallery', id] });
+      const prev = queryClient.getQueryData<GalleryDetail>(['gallery', id]);
+      if (prev) {
+        queryClient.setQueryData(['gallery', id], { ...prev, isFavorited: !prev.isFavorited });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) queryClient.setQueryData(['gallery', id], context.prev);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
@@ -218,7 +233,12 @@ export default function GalleryDetailPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto pb-12">
       {/* === 이미지 슬라이더 === */}
       <div className="relative w-full h-64 md:h-96 bg-gray-100">
-        <img src={images[imgIndex]} alt={gallery.name} className="w-full h-full object-cover" />
+        <img
+          src={images[imgIndex]}
+          alt={gallery.name}
+          className="w-full h-full object-cover cursor-pointer"
+          onClick={() => setLightbox({ images, index: imgIndex })}
+        />
 
         {/* 찜하기 버튼 (우상단, Admin 제외) */}
         {isAuthenticated && !isAdmin && (
@@ -395,12 +415,16 @@ export default function GalleryDetailPage() {
                     {/* 홍보 사진 그리드 (모든 유저에게 표시) */}
                     {ex.promoPhotos && ex.promoPhotos.length > 0 && (
                       <div className="grid grid-cols-3 gap-2 mt-3">
-                        {ex.promoPhotos.map((photo: PromoPhoto) => (
+                        {ex.promoPhotos.map((photo: PromoPhoto, photoIdx: number) => (
                           <div key={photo.id} className="relative group">
                             <img
                               src={photo.url}
                               alt={photo.caption || '홍보 사진'}
-                              className="w-full h-24 object-cover rounded-lg"
+                              className="w-full h-24 object-cover rounded-lg cursor-pointer"
+                              onClick={() => setLightbox({
+                                images: ex.promoPhotos!.map((p: PromoPhoto) => p.url),
+                                index: photoIdx,
+                              })}
                             />
                             {photo.caption && (
                               <p className="text-xs text-gray-500 mt-1 truncate">{photo.caption}</p>
@@ -652,7 +676,12 @@ export default function GalleryDetailPage() {
                         </div>
                         <p className="text-sm text-gray-700 mt-2">{review.content}</p>
                         {review.imageUrl && (
-                          <img src={review.imageUrl} alt="" className="mt-2 h-32 rounded-lg object-cover" />
+                          <img
+                            src={review.imageUrl}
+                            alt=""
+                            className="mt-2 h-32 rounded-lg object-cover cursor-pointer"
+                            onClick={() => setLightbox({ images: [review.imageUrl!], index: 0 })}
+                          />
                         )}
                       </>
                     )}
@@ -663,6 +692,17 @@ export default function GalleryDetailPage() {
           )}
         </div>
       </div>
+
+      {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
+      <AnimatePresence>
+        {lightbox && (
+          <ImageLightbox
+            images={lightbox.images}
+            initialIndex={lightbox.index}
+            onClose={() => setLightbox(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

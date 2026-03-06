@@ -18,12 +18,13 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import ImageLightbox from '@/components/shared/ImageLightbox';
 import type { Exhibition, PromoPhoto } from '@/types';
 
 type ExhibitionDetail = Exhibition & {
@@ -47,6 +48,8 @@ export default function ExhibitionDetailPage() {
   // 소개 수정 상태
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState('');
+  // 이미지 확대 Lightbox 상태
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -67,10 +70,21 @@ export default function ExhibitionDetailPage() {
     },
   });
 
-  // 찜하기 토글
+  // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
   const favMutation = useMutation({
     mutationFn: () => api.post('/favorites/toggle', { exhibitionId: parseInt(id!) }),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['exhibition', id] });
+      const prev = queryClient.getQueryData<ExhibitionDetail>(['exhibition', id]);
+      if (prev) {
+        queryClient.setQueryData(['exhibition', id], { ...prev, isFavorited: !prev.isFavorited });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) queryClient.setQueryData(['exhibition', id], context.prev);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
@@ -245,9 +259,17 @@ export default function ExhibitionDetailPage() {
           <div>
             <h2 className="text-lg font-bold mb-3">홍보 사진</h2>
             <div className="grid grid-cols-3 gap-2">
-              {exhibition.promoPhotos.map(photo => (
+              {exhibition.promoPhotos.map((photo, idx) => (
                 <div key={photo.id}>
-                  <img src={photo.url} alt={photo.caption || '홍보 사진'} className="w-full h-24 object-cover rounded-lg" />
+                  <img
+                    src={photo.url}
+                    alt={photo.caption || '홍보 사진'}
+                    className="w-full h-24 object-cover rounded-lg cursor-pointer"
+                    onClick={() => setLightbox({
+                      images: exhibition.promoPhotos!.map(p => p.url),
+                      index: idx,
+                    })}
+                  />
                   {photo.caption && <p className="text-xs text-gray-500 mt-1 truncate">{photo.caption}</p>}
                 </div>
               ))}
@@ -285,6 +307,17 @@ export default function ExhibitionDetailPage() {
           )}
         </div>
       </div>
+
+      {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
+      <AnimatePresence>
+        {lightbox && (
+          <ImageLightbox
+            images={lightbox.images}
+            initialIndex={lightbox.index}
+            onClose={() => setLightbox(null)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
