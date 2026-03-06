@@ -33,7 +33,7 @@ async function main() {
   // 샘플 갤러리 생성
   const gallery1 = await prisma.gallery.upsert({
     where: { id: 1 },
-    update: {},
+    update: { instagramUrl: '@seoul_modern_gallery', email: 'info@seoulmodern.com' },
     create: {
       name: '서울 현대 갤러리',
       address: '서울특별시 강남구 청담동 123-45',
@@ -54,7 +54,7 @@ async function main() {
 
   const gallery2 = await prisma.gallery.upsert({
     where: { id: 2 },
-    update: {},
+    update: { instagramUrl: '@busan_art_center', email: 'contact@busanart.kr' },
     create: {
       name: '부산 해운대 아트센터',
       address: '부산광역시 해운대구 해운대로 456',
@@ -94,7 +94,7 @@ async function main() {
   // 샘플 전시/공모
   await prisma.exhibition.upsert({
     where: { id: 1 },
-    update: {},
+    update: { deadlineStart: new Date('2026-03-01'), exhibitStartDate: new Date('2026-05-01'), exhibitDate: new Date('2026-05-10') },
     create: {
       title: 'Seoul International Art Fair 2026',
       type: 'ART_FAIR',
@@ -112,7 +112,7 @@ async function main() {
 
   await prisma.exhibition.upsert({
     where: { id: 2 },
-    update: {},
+    update: { deadlineStart: new Date('2026-03-01'), exhibitStartDate: new Date('2026-04-15'), exhibitDate: new Date('2026-04-20') },
     create: {
       title: '신진 작가 개인전 모집',
       type: 'SOLO',
