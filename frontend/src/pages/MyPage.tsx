@@ -429,7 +429,7 @@ function ApplicationsSection() {
 function MyGalleriesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '' });
+  const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
 
   const { data: galleries = [] } = useQuery<any[]>({
     queryKey: ['my-galleries'],
@@ -441,7 +441,7 @@ function MyGalleriesSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       setShowForm(false);
-      setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '' });
+      setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
       toast.success('갤러리 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
@@ -468,6 +468,8 @@ function MyGalleriesSection() {
             <input placeholder="주소 *" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
             <input placeholder="대표자명 *" value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
             <input placeholder="전화번호 *" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
+            <input placeholder="인스타그램 주소 (선택)" value={form.instagramUrl} onChange={e => setForm({...form, instagramUrl: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
+            <input placeholder="이메일 주소 (선택)" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
             <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm">
               {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
             </select>
@@ -518,9 +520,10 @@ function MyGalleriesSection() {
 
 // ========== Gallery: 내 공모 ==========
 function MyExhibitionsSection() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ galleryId: 0, title: '', type: 'SOLO', deadline: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '' });
+  const [form, setForm] = useState({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
 
   // 내 갤러리 목록 (승인된 것만 공모 등록 가능)
   const { data: myGalleries = [] } = useQuery<any[]>({
@@ -589,15 +592,27 @@ function MyExhibitionsSection() {
               <div className="grid grid-cols-2 gap-3">
                 <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm">
                   <option value="SOLO">개인전</option>
+                  <option value="GROUP">단체전</option>
                   <option value="ART_FAIR">아트페어</option>
                 </select>
-                <input type="number" placeholder="모집인원" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
                 <div>
-                  <label className="text-xs text-gray-500">공모 마감일</label>
+                  <label className="text-xs text-gray-500">모집 작가 수</label>
+                  <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">공모 시작일</label>
+                  <input type="date" value={form.deadlineStart} onChange={e => setForm({...form, deadlineStart: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">공모 마감일 *</label>
                   <input type="date" value={form.deadline} onChange={e => setForm({...form, deadline: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">전시일</label>
+                  <label className="text-xs text-gray-500">전시 시작일</label>
+                  <input type="date" value={form.exhibitStartDate} onChange={e => setForm({...form, exhibitStartDate: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">전시 종료일 *</label>
                   <input type="date" value={form.exhibitDate} onChange={e => setForm({...form, exhibitDate: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
               </div>
@@ -605,6 +620,7 @@ function MyExhibitionsSection() {
                 {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
               </select>
               <textarea placeholder="간단 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
+              <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
               <div className="flex gap-2">
                 <button
                   onClick={() => {
@@ -627,7 +643,7 @@ function MyExhibitionsSection() {
       ) : (
         <div className="space-y-3">
           {exhibitions.map((ex: any) => (
-            <div key={ex.id} className="p-4 border border-gray-100 rounded-xl">
+            <div key={ex.id} className="p-4 border border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-medium">{ex.title}</h3>
@@ -638,7 +654,7 @@ function MyExhibitionsSection() {
                     {statusLabels[ex.status] || ex.status}
                   </span>
                   <button
-                    onClick={() => handleDeleteExhibition(ex.id)}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteExhibition(ex.id); }}
                     className="p-1 text-gray-400 hover:text-red-500"
                     title="공모 삭제"
                   >
@@ -825,9 +841,26 @@ function ApprovalsSection() {
                 {item._type === 'gallery' ? '갤러리' : '공모'}
               </span>
               <h4 className="font-medium mt-1">{item.name || item.title}</h4>
-              {item._type === 'gallery' && <p className="text-sm text-gray-500">{item.address} · {item.phone} · {item.ownerName}</p>}
-              {item._type === 'exhibition' && <p className="text-sm text-gray-500">{item.gallery?.name} · {exhibitionTypeLabels[item.type]}</p>}
-              {item.description && <p className="text-sm text-gray-600 mt-1">{item.description}</p>}
+              {item._type === 'gallery' && (
+                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
+                  <p>주소: {item.address}</p>
+                  <p>전화: {item.phone} · 대표: {item.ownerName}</p>
+                  <p>지역: {regionLabels[item.region]}</p>
+                  {item.instagramUrl && <p>인스타: {item.instagramUrl}</p>}
+                  {item.email && <p>이메일: {item.email}</p>}
+                  {item.mainImage && <img src={item.mainImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
+                </div>
+              )}
+              {item._type === 'exhibition' && (
+                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
+                  <p>갤러리: {item.gallery?.name} ({regionLabels[item.gallery?.region] || item.region})</p>
+                  <p>유형: {exhibitionTypeLabels[item.type]} · 모집 {item.capacity}명 · 지역: {regionLabels[item.region]}</p>
+                  <p>공모 기간: {item.deadlineStart ? new Date(item.deadlineStart).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.deadline).toLocaleDateString('ko')}</p>
+                  <p>전시 기간: {item.exhibitStartDate ? new Date(item.exhibitStartDate).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.exhibitDate).toLocaleDateString('ko')}</p>
+                  {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
+                </div>
+              )}
+              {item.description && <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{item.description}</p>}
 
               {rejectingId?.type === item._type && rejectingId?.id === item.id ? (
                 <div className="mt-3 space-y-2">

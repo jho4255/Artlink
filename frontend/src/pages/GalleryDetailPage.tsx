@@ -28,7 +28,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Image, Camera, X, Edit3 } from 'lucide-react';
+import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Image, Camera, X, Edit3, Instagram, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -266,6 +266,19 @@ export default function GalleryDetailPage() {
           </div>
           <p className="text-gray-600 mt-2 flex items-center gap-1"><MapPin size={14} /> {gallery.address}</p>
           <p className="text-gray-600 flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
+          {gallery.email && (
+            <p className="text-gray-600 flex items-center gap-1"><Mail size={14} /> {gallery.email}</p>
+          )}
+          {gallery.instagramUrl && (
+            <a
+              href={gallery.instagramUrl.startsWith('http') ? gallery.instagramUrl : `https://instagram.com/${gallery.instagramUrl.replace('@', '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-pink-500 hover:text-pink-600 flex items-center gap-1"
+            >
+              <Instagram size={14} /> {gallery.instagramUrl}
+            </a>
+          )}
           <p className="text-gray-700 mt-2">{gallery.description}</p>
         </div>
 

@@ -8,17 +8,20 @@ const router = Router();
 // 승인 대기 목록 조회 (Admin 전용)
 router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
-    // 갤러리 승인 대기
+    // 갤러리 승인 대기 (상세 정보 포함)
     const pendingGalleries = await prisma.gallery.findMany({
       where: { status: 'PENDING' },
-      include: { owner: { select: { id: true, name: true, email: true } } }
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+        images: { orderBy: { order: 'asc' }, take: 3 }
+      }
     });
 
-    // 공모 승인 대기
+    // 공모 승인 대기 (상세 정보 포함)
     const pendingExhibitions = await prisma.exhibition.findMany({
       where: { status: 'PENDING' },
       include: {
-        gallery: { select: { id: true, name: true } }
+        gallery: { select: { id: true, name: true, region: true } }
       }
     });
 

@@ -46,6 +46,8 @@ async function main() {
       status: 'APPROVED',
       ownerName: '김갤러리',
       mainImage: 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800',
+      instagramUrl: '@seoul_modern_gallery',
+      email: 'info@seoulmodern.com',
       ownerId: galleryUser.id
     }
   });
@@ -65,6 +67,8 @@ async function main() {
       status: 'APPROVED',
       ownerName: '김갤러리',
       mainImage: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
+      instagramUrl: '@busan_art_center',
+      email: 'contact@busanart.kr',
       ownerId: galleryUser.id
     }
   });
@@ -94,8 +98,10 @@ async function main() {
     create: {
       title: 'Seoul International Art Fair 2026',
       type: 'ART_FAIR',
+      deadlineStart: new Date('2026-03-01'),
       deadline: new Date('2026-04-15'),
-      exhibitDate: new Date('2026-05-01'),
+      exhibitStartDate: new Date('2026-05-01'),
+      exhibitDate: new Date('2026-05-10'),
       capacity: 50,
       region: 'SEOUL',
       description: '서울 국제 아트페어에 참여할 아티스트를 모집합니다.',
@@ -110,7 +116,9 @@ async function main() {
     create: {
       title: '신진 작가 개인전 모집',
       type: 'SOLO',
+      deadlineStart: new Date('2026-03-01'),
       deadline: new Date('2026-03-30'),
+      exhibitStartDate: new Date('2026-04-15'),
       exhibitDate: new Date('2026-04-20'),
       capacity: 5,
       region: 'BUSAN',

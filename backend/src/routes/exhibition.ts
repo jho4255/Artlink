@@ -11,11 +11,17 @@ router.get('/', optionalAuth, async (req, res, next) => {
   try {
     const { region, minGalleryRating } = req.query;
 
+    const now = new Date();
     const where: any = {
       status: 'APPROVED',
-      deadline: { gte: new Date() }
+      deadline: { gte: now },
+      OR: [
+        { deadlineStart: null },
+        { deadlineStart: { lte: now } }
+      ]
     };
     if (region) where.region = region;
+    if (req.query.type) where.type = req.query.type;
 
     const exhibitions = await prisma.exhibition.findMany({
       where,
@@ -119,7 +125,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
-    const { title, type, deadline, exhibitDate, capacity, region, description, galleryId } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -129,8 +135,12 @@ router.post('/', authenticate, authorize('GALLERY'), async (req, res, next) => {
 
     const exhibition = await prisma.exhibition.create({
       data: {
-        title, type, deadline: new Date(deadline), exhibitDate: new Date(exhibitDate),
-        capacity, region, description, galleryId, status: 'PENDING'
+        title, type,
+        deadline: new Date(deadline),
+        deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
+        exhibitDate: new Date(exhibitDate),
+        exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        capacity, region, description, galleryId, imageUrl, status: 'PENDING'
       }
     });
     res.status(201).json(exhibition);
@@ -180,6 +190,24 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     }
 
     res.status(201).json(application);
+  } catch (error) { next(error); }
+});
+
+// 공모 소개 수정 (Gallery 오너 전용)
+router.patch('/:id/description', authenticate, async (req, res, next) => {
+  try {
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id: parseInt(req.params.id as string) },
+      include: { gallery: { select: { ownerId: true } } }
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const updated = await prisma.exhibition.update({
+      where: { id: exhibition.id },
+      data: { description: req.body.description }
+    });
+    res.json(updated);
   } catch (error) { next(error); }
 });
 

@@ -84,10 +84,11 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 갤러리 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
-    const { name, address, phone, description, region, ownerName, mainImage } = req.body;
+    const { name, address, phone, description, region, ownerName, mainImage, instagramUrl, email } = req.body;
     const gallery = await prisma.gallery.create({
       data: {
         name, address, phone, description, region, ownerName, mainImage,
+        instagramUrl, email,
         ownerId: req.user!.id,
         status: 'PENDING'
       }
