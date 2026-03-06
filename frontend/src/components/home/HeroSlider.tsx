@@ -2,25 +2,28 @@
  * HeroSlider - 히어로 배너 슬라이더
  *
  * 기능:
- *  - translateX 기반 슬라이딩 (opacity fade → 실제 슬라이드 전환)
- *  - Framer Motion drag="x" 실시간 드래그 추종 (마우스+터치 모두 지원)
+ *  - translateX 기반 슬라이딩
+ *  - Framer Motion drag="x" 실시간 드래그 추종 (마우스+터치)
  *  - spring 물리 애니메이션 (stiffness:300, damping:30)
  *  - 3초 자동 슬라이드, 수동 조작 시 타이머 리셋
  *  - 화살표 버튼, 점 인디케이터, 링크 핸들러
+ *
+ * x 제어 단일화: animate={controls}만 사용, style.x에 별도 motionValue 바인딩 안함
+ * → drag 종료 후 controls.start()로 snap, 자동/화살표/인디케이터도 같은 경로
  *
  * @see CLAUDE.md - Hero Section 스펙
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, useAnimation, useMotionValue, PanInfo } from 'framer-motion';
+import { motion, useAnimation, PanInfo } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import type { HeroSlide } from '@/types';
 
 const SPRING = { type: 'spring' as const, stiffness: 300, damping: 30 };
-const DRAG_THRESHOLD = 0.2; // 20% of container width
-const VELOCITY_THRESHOLD = 500; // px/s
+const DRAG_THRESHOLD = 0.2;
+const VELOCITY_THRESHOLD = 500;
 
 export default function HeroSlider() {
   const navigate = useNavigate();
@@ -28,8 +31,7 @@ export default function HeroSlider() {
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const controls = useAnimation();
-  const dragX = useMotionValue(0);
-  const isDragging = useRef(false); // 드래그 중 링크 클릭 방지
+  const isDragging = useRef(false);
 
   const { data: slides = [] } = useQuery<HeroSlide[]>({
     queryKey: ['hero-slides'],
@@ -46,7 +48,7 @@ export default function HeroSlider() {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // 슬라이드 위치로 애니메이션
+  // 슬라이드 위치로 애니메이션 (단일 x 제어 포인트)
   const animateTo = useCallback((index: number) => {
     if (containerWidth === 0) return;
     controls.start({ x: -index * containerWidth, transition: SPRING });
@@ -57,7 +59,7 @@ export default function HeroSlider() {
     animateTo(current);
   }, [current, animateTo]);
 
-  // 3초 자동 슬라이드 (수동 조작 시 타이머 리셋)
+  // 3초 자동 슬라이드 (수동 조작 시 current 변경 → 타이머 리셋)
   useEffect(() => {
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
@@ -70,12 +72,9 @@ export default function HeroSlider() {
   const goNext = () => goTo((current + 1) % slides.length);
   const goPrev = () => goTo((current - 1 + slides.length) % slides.length);
 
-  // 드래그 시작
   const handleDragStart = () => { isDragging.current = true; };
 
-  // 드래그 종료 판정
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    // 짧은 지연으로 드래그 직후 click 이벤트 억제
     setTimeout(() => { isDragging.current = false; }, 100);
 
     const w = containerWidth || 1;
@@ -88,14 +87,13 @@ export default function HeroSlider() {
       } else if (info.offset.x < 0 && current < slides.length - 1) {
         goTo(current + 1);
       } else {
-        animateTo(current);
+        animateTo(current); // 경계에서 snap back
       }
     } else {
-      animateTo(current);
+      animateTo(current); // 기준 미달 snap back
     }
   };
 
-  // 링크 핸들러 - 드래그 중이면 무시, 외부 URL은 새 창, 내부는 라우팅
   const handleLink = (url?: string) => {
     if (!url || isDragging.current) return;
     if (url.startsWith('http')) {
@@ -118,10 +116,10 @@ export default function HeroSlider() {
       ref={containerRef}
       className="relative w-full h-[50vh] md:h-[60vh] overflow-hidden bg-gray-900"
     >
-      {/* 가로 스트립: 모든 슬라이드 나열 */}
+      {/* 가로 스트립: animate만으로 x 제어 (style.x 미사용) */}
       <motion.div
         className="flex h-full"
-        style={{ width: `${slides.length * 100}%`, x: dragX }}
+        style={{ width: `${slides.length * 100}%` }}
         animate={controls}
         drag={slides.length > 1 ? 'x' : false}
         dragConstraints={containerWidth > 0
@@ -137,17 +135,14 @@ export default function HeroSlider() {
             className="relative h-full flex-none"
             style={{ width: `${100 / slides.length}%` }}
           >
-            {/* 배경 이미지 */}
             <img
               src={slide.imageUrl}
               alt={slide.title}
               className="w-full h-full object-cover pointer-events-none"
               draggable={false}
             />
-            {/* 다크 그라데이션 오버레이 */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-            {/* 텍스트 콘텐츠 - 좌하단 */}
             <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg">
               <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 leading-tight">
                 {slide.title}
@@ -159,7 +154,6 @@ export default function HeroSlider() {
               )}
             </div>
 
-            {/* 바로가기 버튼 - 우하단 */}
             {slide.linkUrl && (
               <button
                 onClick={() => handleLink(slide.linkUrl)}
