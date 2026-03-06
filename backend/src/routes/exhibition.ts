@@ -1,8 +1,24 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { validate } from '../middleware/validate';
 import { sendPortfolioEmail } from '../lib/mailer';
+
+const exhibitionCreateSchema = z.object({
+  title: z.string().min(1, '공모 제목을 입력해주세요.'),
+  type: z.enum(['SOLO', 'GROUP', 'ART_FAIR'], { message: '유효한 전시 유형을 선택해주세요.' }),
+  deadline: z.string().min(1, '마감일을 입력해주세요.'),
+  deadlineStart: z.string().optional().nullable(),
+  exhibitDate: z.string().min(1, '전시 종료일을 입력해주세요.'),
+  exhibitStartDate: z.string().optional().nullable(),
+  capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.'),
+  region: z.string().min(1, '지역을 선택해주세요.'),
+  description: z.string().min(1, '공모 소개를 입력해주세요.'),
+  galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
+  imageUrl: z.string().optional().nullable(),
+});
 
 const router = Router();
 
@@ -123,7 +139,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 });
 
 // 공모 등록 요청 (Gallery 유저 전용)
-router.post('/', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
   try {
     const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl } = req.body;
 

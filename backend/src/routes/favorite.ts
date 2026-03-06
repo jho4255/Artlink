@@ -1,6 +1,15 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+
+const favoriteToggleSchema = z.object({
+  galleryId: z.number().int().positive().optional(),
+  exhibitionId: z.number().int().positive().optional(),
+}).refine(data => data.galleryId || data.exhibitionId, {
+  message: 'galleryId 또는 exhibitionId가 필요합니다.',
+});
 
 const router = Router();
 
@@ -22,32 +31,39 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // 찜 토글
-router.post('/toggle', authenticate, async (req, res, next) => {
+router.post('/toggle', authenticate, validate(favoriteToggleSchema), async (req, res, next) => {
   try {
     const { galleryId, exhibitionId } = req.body;
 
+    // 트랜잭션으로 찜 토글 atomic 보장 (race condition 방지)
     if (galleryId) {
-      const existing = await prisma.favorite.findUnique({
-        where: { userId_galleryId: { userId: req.user!.id, galleryId } }
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.favorite.findUnique({
+          where: { userId_galleryId: { userId: req.user!.id, galleryId } }
+        });
+        if (existing) {
+          await tx.favorite.delete({ where: { id: existing.id } });
+          return { favorited: false };
+        }
+        await tx.favorite.create({ data: { userId: req.user!.id, galleryId } });
+        return { favorited: true };
       });
-      if (existing) {
-        await prisma.favorite.delete({ where: { id: existing.id } });
-        return res.json({ favorited: false });
-      }
-      await prisma.favorite.create({ data: { userId: req.user!.id, galleryId } });
-      return res.json({ favorited: true });
+      return res.json(result);
     }
 
     if (exhibitionId) {
-      const existing = await prisma.favorite.findUnique({
-        where: { userId_exhibitionId: { userId: req.user!.id, exhibitionId } }
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.favorite.findUnique({
+          where: { userId_exhibitionId: { userId: req.user!.id, exhibitionId } }
+        });
+        if (existing) {
+          await tx.favorite.delete({ where: { id: existing.id } });
+          return { favorited: false };
+        }
+        await tx.favorite.create({ data: { userId: req.user!.id, exhibitionId } });
+        return { favorited: true };
       });
-      if (existing) {
-        await prisma.favorite.delete({ where: { id: existing.id } });
-        return res.json({ favorited: false });
-      }
-      await prisma.favorite.create({ data: { userId: req.user!.id, exhibitionId } });
-      return res.json({ favorited: true });
+      return res.json(result);
     }
 
     res.status(400).json({ error: 'galleryId 또는 exhibitionId가 필요합니다.' });

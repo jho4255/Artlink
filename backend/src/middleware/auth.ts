@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { AppError } from './errorHandler';
-
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
 
 // JWT 페이로드 타입
@@ -32,12 +30,15 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, role: true, email: true, name: true }
+    });
     if (!user) {
       throw new AppError('유효하지 않은 사용자입니다.', 401);
     }
 
-    req.user = { id: user.id, role: user.role, email: user.email, name: user.name };
+    req.user = user;
     next();
   } catch (error) {
     if (error instanceof AppError) return next(error);
@@ -54,9 +55,12 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, role: true, email: true, name: true }
+    });
     if (user) {
-      req.user = { id: user.id, role: user.role, email: user.email, name: user.name };
+      req.user = user;
     }
     next();
   } catch {

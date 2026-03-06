@@ -1,7 +1,21 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { validate } from '../middleware/validate';
+
+const galleryCreateSchema = z.object({
+  name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
+  address: z.string().min(1, '주소를 입력해주세요.'),
+  phone: z.string().min(1, '전화번호를 입력해주세요.'),
+  description: z.string().min(1, '소개를 입력해주세요.'),
+  region: z.string().min(1, '지역을 선택해주세요.'),
+  ownerName: z.string().min(1, '대표자명을 입력해주세요.'),
+  mainImage: z.string().optional(),
+  instagramUrl: z.string().optional(),
+  email: z.string().email('유효한 이메일 형식이 아닙니다.').optional().or(z.literal('')),
+});
 
 const router = Router();
 
@@ -82,7 +96,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 });
 
 // 갤러리 등록 요청 (Gallery 유저 전용)
-router.post('/', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.post('/', authenticate, authorize('GALLERY'), validate(galleryCreateSchema), async (req, res, next) => {
   try {
     const { name, address, phone, description, region, ownerName, mainImage, instagramUrl, email } = req.body;
     const gallery = await prisma.gallery.create({

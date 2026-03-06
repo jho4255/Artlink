@@ -7,12 +7,9 @@ const router = Router();
 // 이달의 갤러리 목록 조회 (공개, 만료되지 않은 것만)
 router.get('/', async (_req, res, next) => {
   try {
-    // 만료된 항목 자동 삭제
-    await prisma.galleryOfMonth.deleteMany({
-      where: { expiresAt: { lt: new Date() } }
-    });
-
+    // 만료되지 않은 항목만 조회 (불필요한 DELETE 제거, expiresAt 인덱스 활용)
     const galleries = await prisma.galleryOfMonth.findMany({
+      where: { expiresAt: { gte: new Date() } },
       include: {
         gallery: {
           include: { images: { orderBy: { order: 'asc' }, take: 1 } }
