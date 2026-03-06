@@ -11,7 +11,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, exhibitionTypeLabels, getDday } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
-import type { Favorite, Portfolio } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
@@ -280,10 +280,11 @@ function FavoritesSection() {
     queryFn: () => api.get('/favorites').then(r => r.data),
   });
 
-  // 찜 해제 - 낙관적 업데이트로 즉시 UI 제거 + 교차 쿼리 invalidate
+  // 찜 해제 - 낙관적 업데이트 + 교차 캐시 직접 수정 (stale 깜빡임 방지)
   const removeFav = useMutation({
     mutationFn: (data: { galleryId?: number; exhibitionId?: number }) => api.post('/favorites/toggle', data),
     onMutate: async (data) => {
+      // 1) 찜 목록 캐시에서 즉시 제거
       await queryClient.cancelQueries({ queryKey: ['favorites'] });
       const prev = queryClient.getQueryData<Favorite[]>(['favorites']);
       if (prev) {
@@ -295,14 +296,36 @@ function FavoritesSection() {
           })
         );
       }
+      // 2) 갤러리/공모 목록 캐시에서도 isFavorited 즉시 false로 설정
+      //    (페이지 이동 시 stale 캐시에 하트가 잠깐 보이는 현상 방지)
+      if (data.galleryId) {
+        queryClient.setQueriesData<Gallery[]>(
+          { queryKey: ['galleries'], exact: false },
+          (old) => old?.map(g => g.id === data.galleryId ? { ...g, isFavorited: false } : g)
+        );
+        queryClient.setQueriesData<any>(
+          { queryKey: ['gallery'], exact: false },
+          (old: any) => old?.id === data.galleryId ? { ...old, isFavorited: false } : old
+        );
+      }
+      if (data.exhibitionId) {
+        queryClient.setQueriesData<Exhibition[]>(
+          { queryKey: ['exhibitions'], exact: false },
+          (old) => old?.map(ex => ex.id === data.exhibitionId ? { ...ex, isFavorited: false } : ex)
+        );
+        queryClient.setQueriesData<any>(
+          { queryKey: ['exhibition'], exact: false },
+          (old: any) => old?.id === data.exhibitionId ? { ...old, isFavorited: false } : old
+        );
+      }
       return { prev };
     },
     onError: (_err, _data, context) => {
+      // rollback: 찜 목록만 복원 (다른 캐시는 onSettled에서 refetch)
       if (context?.prev) queryClient.setQueryData(['favorites'], context.prev);
       toast.error('찜 해제에 실패했습니다.');
     },
     onSettled: () => {
-      // 최종 정합성: 찜 목록 + 연관 페이지 캐시 모두 갱신
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
