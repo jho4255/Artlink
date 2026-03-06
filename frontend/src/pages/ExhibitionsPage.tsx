@@ -47,10 +47,27 @@ export default function ExhibitionsPage() {
     },
   });
 
-  // 찜하기 토글
+  // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
+  const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType] as const;
   const favMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post('/favorites/toggle', { exhibitionId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exhibitions'] }),
+    onMutate: async (exhibitionId: number) => {
+      await queryClient.cancelQueries({ queryKey: currentQueryKey });
+      const prev = queryClient.getQueryData<Exhibition[]>([...currentQueryKey]);
+      if (prev) {
+        queryClient.setQueryData([...currentQueryKey],
+          prev.map(ex => ex.id === exhibitionId ? { ...ex, isFavorited: !ex.isFavorited } : ex)
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.prev) queryClient.setQueryData([...currentQueryKey], context.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: currentQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    },
   });
 
   // 필터 칩
