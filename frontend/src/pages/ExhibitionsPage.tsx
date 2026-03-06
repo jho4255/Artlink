@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Star, Heart, Users, MapPin, X, SlidersHorizontal, Send } from 'lucide-react';
+import { Heart, Users, MapPin, X, SlidersHorizontal, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -17,15 +17,19 @@ export default function ExhibitionsPage() {
   const { isAuthenticated, user } = useAuthStore();
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [minGalleryRating, setMinGalleryRating] = useState<number | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
   // 공모 목록 조회
   const { data: exhibitions = [], isLoading } = useQuery<Exhibition[]>({
-    queryKey: ['exhibitions', selectedRegion, minGalleryRating],
+    queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
       if (minGalleryRating) params.set('minGalleryRating', String(minGalleryRating));
+      if (selectedType) params.set('type', selectedType);
       return api.get(`/exhibitions?${params}`).then(r => r.data);
     },
   });
@@ -57,6 +61,9 @@ export default function ExhibitionsPage() {
   if (minGalleryRating) {
     activeFilters.push({ label: `갤러리 ${minGalleryRating}점+`, onRemove: () => setMinGalleryRating(null) });
   }
+  if (selectedType) {
+    activeFilters.push({ label: exhibitionTypeLabels[selectedType], onRemove: () => setSelectedType(null) });
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
@@ -85,6 +92,22 @@ export default function ExhibitionsPage() {
                   }`}
                 >
                   {regionLabels[r]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">공모 유형</p>
+            <div className="flex flex-wrap gap-2">
+              {exhibitionTypes.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setSelectedType(selectedType === t ? null : t)}
+                  className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                    selectedType === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  {exhibitionTypeLabels[t]}
                 </button>
               ))}
             </div>
@@ -147,8 +170,8 @@ export default function ExhibitionsPage() {
                   className="flex gap-4 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                 >
                   <img
-                    src={ex.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=200'}
-                    alt={ex.gallery?.name}
+                    src={ex.imageUrl || ex.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=200'}
+                    alt={ex.title}
                     className="w-24 h-24 object-cover rounded-lg flex-none"
                   />
                   <div className="flex-1 min-w-0">
@@ -164,10 +187,6 @@ export default function ExhibitionsPage() {
                     >
                       {ex.gallery?.name}
                     </button>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Star size={12} className="text-yellow-400 fill-yellow-400" />
-                      <span className="text-xs">{ex.gallery?.rating?.toFixed(1)}</span>
-                    </div>
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
                       <span className="px-2 py-0.5 bg-gray-100 rounded">{exhibitionTypeLabels[ex.type]}</span>
                       <span className="flex items-center gap-0.5"><Users size={11} /> {ex.capacity}명</span>

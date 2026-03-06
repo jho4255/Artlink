@@ -15,10 +15,11 @@
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
  */
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -42,6 +43,10 @@ export default function ExhibitionDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
+
+  // 소개 수정 상태
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const [editDesc, setEditDesc] = useState('');
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -86,6 +91,17 @@ export default function ExhibitionDetailPage() {
     },
   });
 
+  // 소개 수정 mutation (Gallery 오너 전용)
+  const descMutation = useMutation({
+    mutationFn: (desc: string) => api.patch(`/exhibitions/${id}/description`, { description: desc }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
+      setIsEditingDesc(false);
+      toast.success('공모 소개가 수정되었습니다.');
+    },
+    onError: () => toast.error('수정에 실패했습니다.'),
+  });
+
   const handleDelete = () => {
     if (window.confirm('정말 이 공모를 삭제하시겠습니까? 관련 지원 내역도 모두 삭제됩니다.')) {
       deleteMutation.mutate();
@@ -114,8 +130,8 @@ export default function ExhibitionDetailPage() {
       {/* 상단 이미지 */}
       <div className="relative w-full h-48 md:h-64 bg-gray-100">
         <img
-          src={exhibition.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800'}
-          alt={exhibition.gallery?.name}
+          src={exhibition.imageUrl || exhibition.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800'}
+          alt={exhibition.title}
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -174,19 +190,54 @@ export default function ExhibitionDetailPage() {
             <p className="text-sm font-medium flex items-center gap-1"><MapPin size={14} /> {regionLabels[exhibition.region]}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">공모 마감</p>
-            <p className="text-sm font-medium flex items-center gap-1"><Clock size={14} /> {new Date(exhibition.deadline).toLocaleDateString('ko')}</p>
+            <p className="text-xs text-gray-500 mb-1">공모 기간</p>
+            <p className="text-sm font-medium flex items-center gap-1">
+              <Clock size={14} />
+              {exhibition.deadlineStart ? `${new Date(exhibition.deadlineStart).toLocaleDateString('ko')} ~ ` : ''}
+              {new Date(exhibition.deadline).toLocaleDateString('ko')}
+            </p>
           </div>
-          <div className="col-span-2 p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">전시일</p>
-            <p className="text-sm font-medium">{new Date(exhibition.exhibitDate).toLocaleDateString('ko')}</p>
+          <div className="p-3 bg-gray-50 rounded-xl">
+            <p className="text-xs text-gray-500 mb-1">전시 기간</p>
+            <p className="text-sm font-medium">
+              {exhibition.exhibitStartDate ? `${new Date(exhibition.exhibitStartDate).toLocaleDateString('ko')} ~ ` : ''}
+              {new Date(exhibition.exhibitDate).toLocaleDateString('ko')}
+            </p>
           </div>
         </div>
 
-        {/* 설명 */}
+        {/* 설명 (갤러리 오너만 수정 가능) */}
         <div>
-          <h2 className="text-lg font-bold mb-2">공모 소개</h2>
-          <p className="text-gray-700 whitespace-pre-wrap">{exhibition.description}</p>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-lg font-bold">공모 소개</h2>
+            {isGalleryOwner && !isEditingDesc && (
+              <button
+                onClick={() => { setEditDesc(exhibition.description); setIsEditingDesc(true); }}
+                className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+              >
+                <Edit3 size={14} /> 수정
+              </button>
+            )}
+          </div>
+          {isEditingDesc ? (
+            <div className="space-y-2">
+              <textarea
+                value={editDesc}
+                onChange={e => setEditDesc(e.target.value)}
+                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => descMutation.mutate(editDesc)}
+                  disabled={descMutation.isPending}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                >저장</button>
+                <button onClick={() => setIsEditingDesc(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-700 whitespace-pre-wrap">{exhibition.description}</p>
+          )}
         </div>
 
         {/* 홍보 사진 (종료된 전시) */}

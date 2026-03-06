@@ -40,6 +40,8 @@ model Gallery {
   rejectReason String?
   ownerName   String
   mainImage   String?
+  instagramUrl String? // 인스타그램 주소
+  email       String?  // 갤러리 이메일 주소
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -66,12 +68,15 @@ model GalleryImage {
 model Exhibition {
   id          Int      @id @default(autoincrement())
   title       String
-  type        String   // SOLO, ART_FAIR
-  deadline    DateTime
-  exhibitDate DateTime
+  type        String   // SOLO, GROUP, ART_FAIR
+  deadline    DateTime // 공모 마감일
+  deadlineStart DateTime? // 공모 시작일
+  exhibitDate DateTime // 전시 종료일
+  exhibitStartDate DateTime? // 전시 시작일
   capacity    Int
   region      String
   description String
+  imageUrl    String?  // 공모 대표 이미지
   status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
   rejectReason String?
   createdAt   DateTime @default(now())

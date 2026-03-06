@@ -26,5 +26,6 @@ export const regionLabels: Record<string, string> = {
 // 전시 타입 라벨
 export const exhibitionTypeLabels: Record<string, string> = {
   SOLO: '개인전',
+  GROUP: '단체전',
   ART_FAIR: '아트페어',
 };

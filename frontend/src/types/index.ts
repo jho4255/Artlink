@@ -22,6 +22,8 @@ export interface Gallery {
   rejectReason?: string;
   ownerName: string;
   mainImage?: string;
+  instagramUrl?: string;
+  email?: string;
   ownerId: number;
   images: GalleryImage[];
   isFavorited?: boolean;
@@ -36,9 +38,12 @@ export interface GalleryImage {
 export interface Exhibition {
   id: number;
   title: string;
-  type: 'SOLO' | 'ART_FAIR';
+  type: 'SOLO' | 'GROUP' | 'ART_FAIR';
   deadline: string;
+  deadlineStart?: string;
   exhibitDate: string;
+  exhibitStartDate?: string;
+  imageUrl?: string;
   capacity: number;
   region: string;
   description: string;

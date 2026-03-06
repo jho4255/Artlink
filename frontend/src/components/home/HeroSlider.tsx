@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -47,6 +47,18 @@ export default function HeroSlider() {
     }
   };
 
+  // 스와이프 지원 (터치)
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchMove = (e: React.TouchEvent) => { touchEndX.current = e.touches[0].clientX; };
+  const handleTouchEnd = () => {
+    const diff = touchStartX.current - touchEndX.current;
+    if (Math.abs(diff) > 50) {
+      diff > 0 ? goNext() : goPrev();
+    }
+  };
+
   if (slides.length === 0) {
     return (
       <div className="relative w-full h-[50vh] md:h-[60vh] bg-gray-100 flex items-center justify-center">
@@ -56,7 +68,12 @@ export default function HeroSlider() {
   }
 
   return (
-    <div className="relative w-full h-[50vh] md:h-[60vh] overflow-hidden bg-gray-900">
+    <div
+      className="relative w-full h-[50vh] md:h-[60vh] overflow-hidden bg-gray-900"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={slides[current]?.id}
