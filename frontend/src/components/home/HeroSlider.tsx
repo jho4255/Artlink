@@ -1,101 +1,73 @@
 /**
  * HeroSlider - 히어로 배너 슬라이더
  *
- * 기능:
- *  - translateX 기반 슬라이딩
- *  - Framer Motion drag="x" 실시간 드래그 추종 (마우스+터치)
- *  - spring 물리 애니메이션 (stiffness:300, damping:30)
- *  - 3초 자동 슬라이드, 수동 조작 시 타이머 리셋
- *  - 화살표 버튼, 점 인디케이터, 링크 핸들러
- *
- * x 제어 단일화: animate={controls}만 사용, style.x에 별도 motionValue 바인딩 안함
- * → drag 종료 후 controls.start()로 snap, 자동/화살표/인디케이터도 같은 경로
+ * AnimatePresence + direction 기반 translateX 전환
+ * - drag 미사용 (Framer Motion drag+animate 충돌 문제 해결)
+ * - 터치 스와이프는 수동 onTouchStart/End로 처리
+ * - 3초 자동 슬라이드, 수동 조작 시 타이머 리셋
+ * - 화살표, 인디케이터, 바로가기 링크
  *
  * @see CLAUDE.md - Hero Section 스펙
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, useAnimation, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import type { HeroSlide } from '@/types';
 
-const SPRING = { type: 'spring' as const, stiffness: 300, damping: 30 };
-const DRAG_THRESHOLD = 0.2;
-const VELOCITY_THRESHOLD = 500;
+// direction: 1=오른쪽으로 진행(다음), -1=왼쪽으로 진행(이전)
+const slideVariants = {
+  enter: (dir: number) => ({ x: dir > 0 ? '100%' : '-100%', opacity: 0.3 }),
+  center: { x: 0, opacity: 1 },
+  exit: (dir: number) => ({ x: dir > 0 ? '-100%' : '100%', opacity: 0.3 }),
+};
+const TRANSITION = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
 export default function HeroSlider() {
   const navigate = useNavigate();
-  const [current, setCurrent] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const controls = useAnimation();
-  const isDragging = useRef(false);
+  const [[current, direction], setSlide] = useState([0, 0]);
+  const touchStartX = useRef(0);
 
   const { data: slides = [] } = useQuery<HeroSlide[]>({
     queryKey: ['hero-slides'],
     queryFn: () => api.get('/hero-slides').then((r) => r.data),
   });
 
-  // 컨테이너 너비 측정 (마운트 + resize)
-  useEffect(() => {
-    const measure = () => {
-      if (containerRef.current) setContainerWidth(containerRef.current.offsetWidth);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+  const goTo = useCallback((index: number, dir: number) => {
+    setSlide([index, dir]);
   }, []);
 
-  // 슬라이드 위치로 애니메이션 (단일 x 제어 포인트)
-  const animateTo = useCallback((index: number) => {
-    if (containerWidth === 0) return;
-    controls.start({ x: -index * containerWidth, transition: SPRING });
-  }, [controls, containerWidth]);
+  const goNext = useCallback(() => {
+    if (slides.length <= 1) return;
+    setSlide(([prev]) => [(prev + 1) % slides.length, 1]);
+  }, [slides.length]);
 
-  // current 또는 containerWidth 변경 시 애니메이션
-  useEffect(() => {
-    animateTo(current);
-  }, [current, animateTo]);
+  const goPrev = useCallback(() => {
+    if (slides.length <= 1) return;
+    setSlide(([prev]) => [(prev - 1 + slides.length) % slides.length, -1]);
+  }, [slides.length]);
 
-  // 3초 자동 슬라이드 (수동 조작 시 current 변경 → 타이머 리셋)
+  // 3초 자동 슬라이드 (current 변경 시 타이머 리셋)
   useEffect(() => {
     if (slides.length <= 1) return;
-    const timer = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % slides.length);
-    }, 3000);
+    const timer = setInterval(goNext, 3000);
     return () => clearInterval(timer);
-  }, [slides.length, current]);
+  }, [slides.length, current, goNext]);
 
-  const goTo = (index: number) => setCurrent(index);
-  const goNext = () => goTo((current + 1) % slides.length);
-  const goPrev = () => goTo((current - 1 + slides.length) % slides.length);
-
-  const handleDragStart = () => { isDragging.current = true; };
-
-  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    setTimeout(() => { isDragging.current = false; }, 100);
-
-    const w = containerWidth || 1;
-    const offsetRatio = Math.abs(info.offset.x) / w;
-    const velocityAbs = Math.abs(info.velocity.x);
-
-    if (offsetRatio > DRAG_THRESHOLD || velocityAbs > VELOCITY_THRESHOLD) {
-      if (info.offset.x > 0 && current > 0) {
-        goTo(current - 1);
-      } else if (info.offset.x < 0 && current < slides.length - 1) {
-        goTo(current + 1);
-      } else {
-        animateTo(current); // 경계에서 snap back
-      }
-    } else {
-      animateTo(current); // 기준 미달 snap back
+  // 터치 스와이프
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      diff > 0 ? goNext() : goPrev();
     }
   };
 
+  // 링크 핸들러
   const handleLink = (url?: string) => {
-    if (!url || isDragging.current) return;
+    if (!url) return;
     if (url.startsWith('http')) {
       window.open(url, '_blank');
     } else {
@@ -113,58 +85,50 @@ export default function HeroSlider() {
 
   return (
     <div
-      ref={containerRef}
       className="relative w-full h-[50vh] md:h-[60vh] overflow-hidden bg-gray-900"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
-      {/* 가로 스트립: animate만으로 x 제어 (style.x 미사용) */}
-      <motion.div
-        className="flex h-full"
-        style={{ width: `${slides.length * 100}%` }}
-        animate={controls}
-        drag={slides.length > 1 ? 'x' : false}
-        dragConstraints={containerWidth > 0
-          ? { left: -(slides.length - 1) * containerWidth, right: 0 }
-          : undefined}
-        dragElastic={0.1}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        {slides.map((slide) => (
-          <div
-            key={slide.id}
-            className="relative h-full flex-none"
-            style={{ width: `${100 / slides.length}%` }}
-          >
-            <img
-              src={slide.imageUrl}
-              alt={slide.title}
-              className="w-full h-full object-cover pointer-events-none"
-              draggable={false}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+      <AnimatePresence initial={false} custom={direction} mode="popLayout">
+        <motion.div
+          key={current}
+          custom={direction}
+          variants={slideVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={TRANSITION}
+          className="absolute inset-0"
+        >
+          <img
+            src={slides[current]?.imageUrl}
+            alt={slides[current]?.title}
+            className="w-full h-full object-cover"
+            draggable={false}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-            <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg">
-              <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 leading-tight">
-                {slide.title}
-              </h2>
-              {slide.description && (
-                <p className="text-sm md:text-base text-white/80 mb-4">
-                  {slide.description}
-                </p>
-              )}
-            </div>
-
-            {slide.linkUrl && (
-              <button
-                onClick={() => handleLink(slide.linkUrl)}
-                className="absolute bottom-12 right-6 md:right-12 px-6 py-3 bg-white text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                바로가기 →
-              </button>
+          <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg">
+            <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 leading-tight">
+              {slides[current]?.title}
+            </h2>
+            {slides[current]?.description && (
+              <p className="text-sm md:text-base text-white/80 mb-4">
+                {slides[current]?.description}
+              </p>
             )}
           </div>
-        ))}
-      </motion.div>
+
+          {slides[current]?.linkUrl && (
+            <button
+              onClick={() => handleLink(slides[current]?.linkUrl)}
+              className="absolute bottom-12 right-6 md:right-12 px-6 py-3 bg-white text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              바로가기 →
+            </button>
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       {/* 좌우 화살표 */}
       {slides.length > 1 && (
@@ -183,7 +147,7 @@ export default function HeroSlider() {
         {slides.map((_, i) => (
           <button
             key={i}
-            onClick={() => goTo(i)}
+            onClick={() => goTo(i, i > current ? 1 : -1)}
             className={`w-2 h-2 rounded-full transition-all ${
               i === current ? 'bg-white w-6' : 'bg-white/50'
             }`}

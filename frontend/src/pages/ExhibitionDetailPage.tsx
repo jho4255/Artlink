@@ -152,7 +152,7 @@ export default function ExhibitionDetailPage() {
             setLightbox({ images: [img], index: 0 });
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
         <button
           onClick={() => navigate(-1)}
           className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur rounded-full shadow"
