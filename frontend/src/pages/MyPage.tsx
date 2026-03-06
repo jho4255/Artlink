@@ -280,10 +280,34 @@ function FavoritesSection() {
     queryFn: () => api.get('/favorites').then(r => r.data),
   });
 
+  // 찜 해제 - 낙관적 업데이트로 즉시 UI 제거 + 교차 쿼리 invalidate
   const removeFav = useMutation({
     mutationFn: (data: { galleryId?: number; exhibitionId?: number }) => api.post('/favorites/toggle', data),
-    onSuccess: () => {
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: ['favorites'] });
+      const prev = queryClient.getQueryData<Favorite[]>(['favorites']);
+      if (prev) {
+        queryClient.setQueryData(['favorites'],
+          prev.filter(f => {
+            if (data.galleryId) return f.galleryId !== data.galleryId;
+            if (data.exhibitionId) return f.exhibitionId !== data.exhibitionId;
+            return true;
+          })
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, _data, context) => {
+      if (context?.prev) queryClient.setQueryData(['favorites'], context.prev);
+      toast.error('찜 해제에 실패했습니다.');
+    },
+    onSettled: () => {
+      // 최종 정합성: 찜 목록 + 연관 페이지 캐시 모두 갱신
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibition'] });
       toast.success('찜이 해제되었습니다.');
     },
   });
