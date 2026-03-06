@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import path from 'path';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -34,6 +35,10 @@ app.use(morgan('dev'));
 
 // 정적 파일 제공 (업로드된 이미지)
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Rate limiting (보안: 과도한 요청 방지)
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false }));
 
 // API 라우트
 app.use('/api/auth', authRoutes);
