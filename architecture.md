@@ -1,6 +1,6 @@
 # ArtLink 아키텍처 문서
 
-> 최종 업데이트: 2026-03-04 (Phase 1-10 + 기능 수정/버그 수정)
+> 최종 업데이트: 2026-03-07 (Phase 1-10 + 버그 수정 + Render.com 배포 + UX/버그 4건)
 
 ## 시스템 구조
 
@@ -48,9 +48,10 @@ ArtLink/
 | PWA | vite-plugin-pwa | v1.2.0 |
 | 백엔드 | Express + TypeScript | - |
 | ORM | Prisma | v5 (⚠️ v7 사용 금지) |
-| DB | PostgreSQL | 로컬: apt 설치, 배포: RDS/Supabase 등 |
+| DB | PostgreSQL | 로컬: apt 설치, 배포: Render PostgreSQL |
 | 인증 | JWT (개발: 퀵 로그인) | - |
-| 파일 업로드 | Multer | - |
+| 파일 업로드 | Multer + Cloudinary (배포) | v2.1 |
+| 배포 | Render.com (모놀리스) | `deploy/render` 브랜치 |
 
 ## 데이터 모델 (14개 테이블)
 
@@ -179,10 +180,37 @@ cd frontend && npm run dev
 - 전송 실패해도 지원 자체는 성공 처리 (best-effort)
 - 구현: `backend/src/lib/mailer.ts`
 
+## HeroSlider 구현 방식
+
+- **CSS scroll-snap 기반 네이티브 캐러셀** (Framer Motion AnimatePresence 방식에서 변경)
+- `IntersectionObserver` (threshold 0.5)로 현재 슬라이드 감지
+- `scrollTo({ behavior: 'smooth' })`로 슬라이드 이동
+- 3초 자동 슬라이드, `current` 변경 시 타이머 리셋
+- `scrollbar-hide` CSS 유틸리티로 스크롤바 숨김
+- 구현: `frontend/src/components/home/HeroSlider.tsx`
+
 ## Admin 찜하기
 
 - Admin 계정은 갤러리/공모 찜하기 버튼이 표시되지 않음
 - GalleriesPage, GalleryDetailPage, ExhibitionsPage에서 처리
+
+## 배포 구조 (Render.com)
+
+```
+[브라우저] → [Render Web Service (Express)]
+                 ├── /api/* → API 라우트 (Express)
+                 ├── /uploads/* → 로컬 정적 파일 (fallback)
+                 ├── 정적 파일 → frontend/dist/ (express.static)
+                 └── 나머지 → index.html (SPA fallback)
+
+[이미지 업로드] → Multer memoryStorage → Cloudinary SDK → https://res.cloudinary.com/...
+[DB] → Render PostgreSQL (무료 1GB, 90일)
+```
+
+- **브랜치**: `deploy/render` (main 기반, 배포 전용 변경만)
+- **빌드**: `frontend build` → `backend build` → `prisma migrate deploy` → `seed` → `npm start`
+- **환경 전환**: Cloudinary 환경변수 유무로 업로드 방식 자동 전환 (있으면 Cloudinary, 없으면 디스크)
+- **Express v5**: SPA wildcard `/{*path}` 문법 필수 (`*` 단독 사용 불가)
 
 ## 주의사항
 
@@ -190,6 +218,7 @@ cd frontend && npm run dev
 - **Tailwind v4** — `@import "tailwindcss"` 문법 사용 (구 `@tailwind` 디렉티브 아님)
 - **PostgreSQL 사용** — 로컬/배포 동일 DB 엔진. `.env`의 `DATABASE_URL`만 환경별로 변경
 - **PostgreSQL 설치 가이드** — `howtosetPostGreSQL.txt` 참조
+- **Express v5 wildcard** — `app.get('/{*path}', ...)` (path-to-regexp v8 호환)
 
 ## 버그 수정 이력 (submission/2, 2026-03-05)
 

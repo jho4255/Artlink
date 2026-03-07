@@ -525,14 +525,15 @@ function MyGalleriesSection() {
           <ImageUpload value={form.mainImage} onChange={(url) => setForm({...form, mainImage: url})} onRemove={() => setForm({...form, mainImage: ''})} placeholder="대표 이미지 업로드" />
           <div className="flex gap-2">
             <button
+              disabled={createMutation.isPending}
               onClick={() => {
                 if (!form.name || !form.address || !form.phone || !form.description || !form.ownerName) {
                   toast.error('필수 항목을 모두 입력해주세요.'); return;
                 }
                 createMutation.mutate(form);
               }}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
-            >등록 요청</button>
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
@@ -670,14 +671,15 @@ function MyExhibitionsSection() {
               <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
               <div className="flex gap-2">
                 <button
+                  disabled={createMutation.isPending}
                   onClick={() => {
                     if (!form.galleryId || !form.title || !form.deadline || !form.exhibitDate || !form.description) {
                       toast.error('필수 항목을 모두 입력해주세요.'); return;
                     }
                     createMutation.mutate(form);
                   }}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
-                >등록 요청</button>
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
                 <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
               </div>
             </>

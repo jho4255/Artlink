@@ -41,8 +41,6 @@ async function main() {
       description: '현대 미술의 다양한 작품을 만나보세요.',
       detailDesc: '서울 현대 갤러리는 2010년에 설립된 현대 미술 전문 갤러리입니다. 국내외 유명 작가들의 작품을 전시하며, 신진 작가 발굴에도 힘쓰고 있습니다.',
       region: 'SEOUL',
-      rating: 4.5,
-      reviewCount: 12,
       status: 'APPROVED',
       ownerName: '김갤러리',
       mainImage: 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800',
@@ -62,8 +60,6 @@ async function main() {
       description: '바다가 보이는 아름다운 전시 공간입니다.',
       detailDesc: '부산 해운대 아트센터는 해변가에 위치한 복합 문화 공간으로, 회화, 조각, 설치 미술 등 다양한 장르의 전시를 진행합니다.',
       region: 'BUSAN',
-      rating: 4.2,
-      reviewCount: 8,
       status: 'APPROVED',
       ownerName: '김갤러리',
       mainImage: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
@@ -82,8 +78,6 @@ async function main() {
       phone: '042-1111-2222',
       description: '클래식과 현대가 공존하는 예술 공간.',
       region: 'DAEJEON',
-      rating: 3.8,
-      reviewCount: 5,
       status: 'APPROVED',
       ownerName: '박대표',
       mainImage: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800',
@@ -239,6 +233,23 @@ async function main() {
       exhibitionHistory: '2024 서울 아트페어 참가\n2025 갤러리H 개인전'
     }
   });
+
+  // 리뷰 기반 갤러리 rating 재계산
+  const allGalleries = await prisma.gallery.findMany({ select: { id: true } });
+  for (const g of allGalleries) {
+    const agg = await prisma.review.aggregate({
+      where: { galleryId: g.id },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+    await prisma.gallery.update({
+      where: { id: g.id },
+      data: {
+        rating: agg._avg.rating || 0,
+        reviewCount: agg._count.rating,
+      },
+    });
+  }
 
   console.log('✅ 시드 데이터 생성 완료!');
   console.log(`  - 유저: ${artist1.name}, ${artist2.name}, ${galleryUser.name}, ${admin.name}`);
