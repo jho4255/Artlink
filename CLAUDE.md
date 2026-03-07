@@ -72,6 +72,14 @@
 - 단일 기능에 대한 구현 후 검증은 물론이고 여러 기능을 동시 및 순차적으로 실행했을 때에도 문제가 없이 자체검증할 계획을 세우고 검증에 통과할 때까지 개발을 해야함.
 - 기능적인 부분은 물론이고 신뢰성 검증에도 중요성을 둬야함.
 
+## ⚠️ 배포 규칙 (Render.com)
+- **배포 URL**: https://artlink-2esp.onrender.com
+- **배포 브랜치**: `deploy/render` (main에서 작업 → merge → push)
+- **seed.ts upsert 규칙**: 스키마에 새 필드를 추가하면 seed.ts의 `update` 블록에도 반드시 해당 필드를 넣을 것.
+  - Render DB는 유지되므로 기존 레코드는 update 경로를 탐. `update: {}`면 새 필드가 null로 남아 반영 안 됨.
+  - 로컬에서는 `migrate reset`으로 DB를 날리고 create 경로를 타서 이 문제가 드러나지 않음.
+- **PWA 캐시**: 배포 후 변경이 안 보이면 브라우저 DevTools → Application → Clear site data
+
 ## 🚀 주요 명령어 (Commands)
 ```bash
 # Frontend
