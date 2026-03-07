@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -477,6 +477,15 @@ function MyGalleriesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
+  const [galleryTerms, setGalleryTerms] = useState('');
+  const [galleryAgreed, setGalleryAgreed] = useState(false);
+
+  // 약관 텍스트 로드
+  useEffect(() => {
+    if (showForm) {
+      fetch('/terms/gallery-registration.txt').then(r => r.text()).then(setGalleryTerms).catch(() => setGalleryTerms('약관을 불러올 수 없습니다.'));
+    }
+  }, [showForm]);
 
   const { data: galleries = [] } = useQuery<any[]>({
     queryKey: ['my-galleries'],
@@ -489,6 +498,7 @@ function MyGalleriesSection() {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       setShowForm(false);
       setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
+      setGalleryAgreed(false);
       toast.success('갤러리 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
@@ -523,9 +533,17 @@ function MyGalleriesSection() {
             <textarea placeholder="한줄 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
           </div>
           <ImageUpload value={form.mainImage} onChange={(url) => setForm({...form, mainImage: url})} onRemove={() => setForm({...form, mainImage: ''})} placeholder="대표 이미지 업로드" />
+          {/* 약관 동의 */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{galleryTerms || '약관 로딩 중...'}</div>
+            <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
+              <input type="checkbox" checked={galleryAgreed} onChange={e => setGalleryAgreed(e.target.checked)} className="rounded" />
+              위 약관에 동의합니다
+            </label>
+          </div>
           <div className="flex gap-2">
             <button
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || !galleryAgreed}
               onClick={() => {
                 if (!form.name || !form.address || !form.phone || !form.description || !form.ownerName) {
                   toast.error('필수 항목을 모두 입력해주세요.'); return;
@@ -534,7 +552,7 @@ function MyGalleriesSection() {
               }}
               className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+            <button onClick={() => { setShowForm(false); setGalleryAgreed(false); }} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
       )}
@@ -572,6 +590,15 @@ function MyExhibitionsSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
+  const [exhibitionTerms, setExhibitionTerms] = useState('');
+  const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
+
+  // 약관 텍스트 로드
+  useEffect(() => {
+    if (showForm) {
+      fetch('/terms/exhibition-application.txt').then(r => r.text()).then(setExhibitionTerms).catch(() => setExhibitionTerms('약관을 불러올 수 없습니다.'));
+    }
+  }, [showForm]);
 
   // 내 갤러리 목록 (승인된 것만 공모 등록 가능)
   const { data: myGalleries = [] } = useQuery<any[]>({
@@ -592,6 +619,7 @@ function MyExhibitionsSection() {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
       setShowForm(false);
       setForm({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
+      setExhibitionAgreed(false);
       toast.success('공모 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
@@ -670,9 +698,17 @@ function MyExhibitionsSection() {
               </select>
               <textarea placeholder="간단 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
               <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
+              {/* 약관 동의 */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{exhibitionTerms || '약관 로딩 중...'}</div>
+                <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
+                  <input type="checkbox" checked={exhibitionAgreed} onChange={e => setExhibitionAgreed(e.target.checked)} className="rounded" />
+                  위 약관에 동의합니다
+                </label>
+              </div>
               <div className="flex gap-2">
                 <button
-                  disabled={createMutation.isPending}
+                  disabled={createMutation.isPending || !exhibitionAgreed}
                   onClick={() => {
                     if (!form.galleryId || !form.title || !form.deadline || !form.exhibitDate || !form.description) {
                       toast.error('필수 항목을 모두 입력해주세요.'); return;
@@ -681,7 +717,7 @@ function MyExhibitionsSection() {
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-                <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button onClick={() => { setShowForm(false); setExhibitionAgreed(false); }} className="px-4 py-2 text-sm text-gray-500">취소</button>
               </div>
             </>
           )}
