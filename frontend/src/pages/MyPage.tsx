@@ -591,6 +591,7 @@ function MyExhibitionsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
       setShowForm(false);
+      setForm({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
       toast.success('공모 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),

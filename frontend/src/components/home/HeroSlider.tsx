@@ -2,6 +2,7 @@
  * HeroSlider - 히어로 배너 캐러셀
  *
  * CSS scroll-snap 기반 네이티브 캐러셀
+ * - 마우스 드래그 + 터치 스와이프로 좌우 슬라이드
  * - IntersectionObserver로 현재 슬라이드 추적
  * - 3초 자동 슬라이드, current 변경 시 타이머 리셋
  * - 화살표, 인디케이터, 바로가기 링크
@@ -21,6 +22,8 @@ export default function HeroSlider() {
   const containerRef = useRef<HTMLDivElement>(null);
   // 프로그래밍 스크롤 중 observer 이벤트 무시용
   const isScrolling = useRef(false);
+  // 마우스 드래그 상태
+  const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
 
   const { data: slides = [] } = useQuery<HeroSlide[]>({
     queryKey: ['hero-slides'],
@@ -34,7 +37,6 @@ export default function HeroSlider() {
     isScrolling.current = true;
     container.scrollTo({ left: index * container.offsetWidth, behavior: 'smooth' });
     setCurrent(index);
-    // smooth 스크롤 완료 후 observer 재활성화
     setTimeout(() => { isScrolling.current = false; }, 500);
   }, []);
 
@@ -71,9 +73,47 @@ export default function HeroSlider() {
     return () => clearInterval(timer);
   }, [slides.length, current, scrollToSlide]);
 
-  // 링크 핸들러
+  // ── 마우스 드래그 핸들러 (데스크톱) ──
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const container = containerRef.current;
+    if (!container) return;
+    dragState.current = {
+      isDragging: true,
+      startX: e.pageX - container.offsetLeft,
+      scrollLeft: container.scrollLeft,
+      didDrag: false,
+    };
+    container.style.cursor = 'grabbing';
+    container.style.scrollSnapType = 'none'; // 드래그 중 snap 비활성화
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragState.current.isDragging) return;
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const x = e.pageX - container.offsetLeft;
+    const walk = x - dragState.current.startX;
+    if (Math.abs(walk) > 5) dragState.current.didDrag = true;
+    container.scrollLeft = dragState.current.scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    if (!dragState.current.isDragging) return;
+    dragState.current.isDragging = false;
+    const container = containerRef.current;
+    if (!container) return;
+    container.style.cursor = '';
+    container.style.scrollSnapType = 'x mandatory'; // snap 복원 → 가장 가까운 슬라이드로 정렬
+  };
+
+  const handleMouseLeave = () => {
+    if (dragState.current.isDragging) handleMouseUp();
+  };
+
+  // 링크 핸들러 (드래그 후 클릭 방지)
   const handleLink = (url?: string) => {
-    if (!url) return;
+    if (!url || dragState.current.didDrag) return;
     if (url.startsWith('http')) {
       window.open(url, '_blank');
     } else {
@@ -91,10 +131,14 @@ export default function HeroSlider() {
 
   return (
     <div className="relative w-full h-[50vh] md:h-[60vh] bg-gray-900">
-      {/* scroll-snap 컨테이너 */}
+      {/* scroll-snap 컨테이너 + 마우스 드래그 */}
       <div
         ref={containerRef}
-        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {slides.map((slide, i) => (
           <div
@@ -105,14 +149,14 @@ export default function HeroSlider() {
             <img
               src={slide.imageUrl}
               alt={slide.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover pointer-events-none"
               draggable={false}
             />
             {/* 그래디언트 오버레이 */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
 
             {/* 텍스트 */}
-            <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg">
+            <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg pointer-events-none">
               <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 leading-tight">
                 {slide.title}
               </h2>
