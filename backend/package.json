@@ -9,7 +9,9 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -34,8 +36,11 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^25.3.3",
     "@types/nodemailer": "^7.0.11",
+    "@types/supertest": "^7.2.0",
     "prisma": "^5.22.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
