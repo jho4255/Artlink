@@ -285,7 +285,11 @@ export default function GalleryDetailPage() {
             <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
           </div>
           <p className="text-gray-600 mt-2 flex items-center gap-1"><MapPin size={14} /> {gallery.address}</p>
-          <p className="text-gray-600 flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
+          {/* 모바일: tel: 링크로 다이얼러 연결, 데스크톱: 일반 텍스트 */}
+          <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-blue-600">
+            <Phone size={14} /> <span className="underline">{gallery.phone}</span>
+          </a>
+          <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
           {gallery.email && (
             <p className="text-gray-600 flex items-center gap-1"><Mail size={14} /> {gallery.email}</p>
           )}
