@@ -31,14 +31,18 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('dev'));
+}
 
 // 정적 파일 제공 (업로드된 이미지)
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Rate limiting (보안: 과도한 요청 방지)
-app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false }));
+// Rate limiting (보안: 과도한 요청 방지, 테스트 시 비활성화)
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false }));
+}
 
 // API 라우트
 app.use('/api/auth', authRoutes);
@@ -72,8 +76,11 @@ if (process.env.NODE_ENV === 'production') {
 // 에러 핸들러 (반드시 마지막에 등록)
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`🚀 ArtLink 백엔드 서버 실행 중: http://localhost:${PORT}`);
-});
+// 테스트 환경에서는 supertest가 자체 포트 사용하므로 listen 생략
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`🚀 ArtLink 백엔드 서버 실행 중: http://localhost:${PORT}`);
+  });
+}
 
 export default app;
