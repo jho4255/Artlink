@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
-  Camera, Eye, Search, Calendar, Edit3, Trash2
+  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -476,7 +476,7 @@ function ApplicationsSection() {
 function MyGalleriesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
+  const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' });
   const [galleryTerms, setGalleryTerms] = useState('');
   const [galleryAgreed, setGalleryAgreed] = useState(false);
 
@@ -497,11 +497,57 @@ function MyGalleriesSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       setShowForm(false);
-      setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', instagramUrl: '', email: '' });
+      setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' });
       setGalleryAgreed(false);
       toast.success('갤러리 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
+  });
+
+  // Instagram 연동 상태
+  const [instagramModalGalleryId, setInstagramModalGalleryId] = useState<number | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+
+  // Instagram 토큰 저장
+  const saveTokenMutation = useMutation({
+    mutationFn: ({ galleryId, accessToken }: { galleryId: number; accessToken: string }) =>
+      api.post(`/galleries/${galleryId}/instagram-token`, { accessToken }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
+      setInstagramModalGalleryId(null);
+      setTokenInput('');
+      toast.success('Instagram이 연동되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Instagram 연동에 실패했습니다.'),
+  });
+
+  // Instagram 프로필 링크 토글
+  const toggleProfileVisibilityMutation = useMutation({
+    mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
+      api.patch(`/galleries/${galleryId}/instagram-profile-visibility`, { visible }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-galleries'] }),
+    onError: (err: any) => toast.error(err.response?.data?.error || '설정 변경에 실패했습니다.'),
+  });
+
+  // Instagram 피드 공개 토글 (낙관적 업데이트)
+  const toggleVisibilityMutation = useMutation({
+    mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
+      api.patch(`/galleries/${galleryId}/instagram-visibility`, { visible }),
+    onMutate: async ({ galleryId, visible }) => {
+      await queryClient.cancelQueries({ queryKey: ['my-galleries'] });
+      const prev = queryClient.getQueryData<any[]>(['my-galleries']);
+      if (prev) {
+        queryClient.setQueryData(['my-galleries'], prev.map((g: any) =>
+          g.id === galleryId ? { ...g, instagramFeedVisible: visible } : g
+        ));
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) queryClient.setQueryData(['my-galleries'], context.prev);
+      toast.error('설정 변경에 실패했습니다.');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['my-galleries'] }),
   });
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
@@ -525,8 +571,7 @@ function MyGalleriesSection() {
             <input placeholder="주소 *" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
             <input placeholder="대표자명 *" value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
             <input placeholder="전화번호 *" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="인스타그램 주소 (선택)" value={form.instagramUrl} onChange={e => setForm({...form, instagramUrl: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="이메일 주소 (선택)" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
+            <input placeholder="이메일 주소 (선택)" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
             <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm">
               {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
             </select>
@@ -576,8 +621,93 @@ function MyGalleriesSection() {
               {g.status === 'REJECTED' && g.rejectReason && (
                 <p className="text-sm text-red-500 mt-2">거절 사유: {g.rejectReason}</p>
               )}
+              {/* Instagram 설정 블록 (승인 갤러리만) */}
+              {g.status === 'APPROVED' && (
+                <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Instagram size={14} className="text-pink-500" />
+                    <span className="font-medium">Instagram 연동</span>
+                  </div>
+                  {/* 연동 상태 + 버튼 */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                      {g.instagramConnected ? '연결됨' : '미연동'}
+                    </span>
+                    <button
+                      onClick={() => { setInstagramModalGalleryId(g.id); setTokenInput(''); }}
+                      className="text-xs px-2.5 py-1 bg-pink-50 text-pink-600 rounded-lg hover:bg-pink-100"
+                    >
+                      {g.instagramConnected ? '재연동' : '연동하기'}
+                    </button>
+                  </div>
+                  {/* 토글들 (연동된 경우만) */}
+                  {g.instagramConnected && (
+                    <div className="space-y-1.5">
+                      {/* 프로필 링크 토글 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">프로필 링크 표시</span>
+                        <button
+                          onClick={() => toggleProfileVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramUrl })}
+                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramUrl ? 'bg-pink-500' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramUrl ? 'left-5' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                      {/* 피드 표시 토글 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">피드 표시</span>
+                        <button
+                          onClick={() => toggleVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramFeedVisible })}
+                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramFeedVisible ? 'bg-pink-500' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramFeedVisible ? 'left-5' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Instagram 토큰 입력 모달 */}
+      {instagramModalGalleryId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInstagramModalGalleryId(null)}>
+          <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold flex items-center gap-2">
+              <Instagram size={18} className="text-pink-500" /> Instagram 연동
+            </h3>
+            <p className="text-xs text-gray-500">
+              Instagram Graph API 액세스 토큰을 입력해주세요.
+            </p>
+            <input
+              type="text"
+              value={tokenInput}
+              onChange={e => setTokenInput(e.target.value)}
+              placeholder="액세스 토큰"
+              className="w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setInstagramModalGalleryId(null)}
+                className="px-4 py-2 text-sm text-gray-500"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  if (!tokenInput.trim()) { toast.error('토큰을 입력해주세요.'); return; }
+                  saveTokenMutation.mutate({ galleryId: instagramModalGalleryId, accessToken: tokenInput });
+                }}
+                disabled={saveTokenMutation.isPending}
+                className="px-4 py-2 bg-pink-500 text-white text-sm rounded-lg disabled:opacity-50"
+              >
+                {saveTokenMutation.isPending ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
