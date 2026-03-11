@@ -103,13 +103,13 @@ describe('Exhibition visibility (GET /exhibitions)', () => {
     expect(res.body[0].title).toBe('Starts Today');
   });
 
-  it('deadlineStart=내일인 승인 공모는 노출되지 않는다', async () => {
+  it('deadlineStart=3일후인 승인 공모는 노출되지 않는다', async () => {
     await testPrisma.exhibition.create({
       data: {
-        title: 'Starts Tomorrow',
+        title: 'Starts In 3 Days',
         type: 'SOLO',
         deadline: futureDate(30),
-        deadlineStart: futureDate(1),
+        deadlineStart: futureDate(3),
         exhibitDate: futureDate(60),
         capacity: 5,
         region: 'SEOUL',
