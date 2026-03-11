@@ -23,6 +23,8 @@ export interface Gallery {
   ownerName: string;
   mainImage?: string;
   instagramUrl?: string;
+  instagramConnected?: boolean;
+  instagramFeedVisible?: boolean;
   email?: string;
   ownerId: number;
   images: GalleryImage[];
@@ -111,4 +113,13 @@ export interface Portfolio {
   biography?: string;
   exhibitionHistory?: string;
   images: { id: number; url: string; order: number }[];
+}
+
+export interface InstagramPost {
+  id: string;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  mediaUrl: string;
+  thumbnailUrl?: string;
+  permalink: string;
+  timestamp: string;
 }

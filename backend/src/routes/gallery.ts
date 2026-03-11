@@ -13,9 +13,14 @@ const galleryCreateSchema = z.object({
   region: z.string().min(1, '지역을 선택해주세요.'),
   ownerName: z.string().min(1, '대표자명을 입력해주세요.'),
   mainImage: z.string().optional(),
-  instagramUrl: z.string().optional(),
   email: z.string().email('유효한 이메일 형식이 아닙니다.').optional().or(z.literal('')),
 });
+
+/** 토큰을 제거하고 instagramConnected boolean으로 변환 */
+function maskInstagram(g: any) {
+  const { instagramAccessToken, ...rest } = g;
+  return { ...rest, instagramConnected: !!instagramAccessToken };
+}
 
 const router = Router();
 
@@ -53,11 +58,11 @@ router.get('/', optionalAuth, async (req, res, next) => {
         select: { galleryId: true }
       });
       const favSet = new Set(favorites.map(f => f.galleryId));
-      const result = galleries.map((g: any) => ({ ...g, isFavorited: favSet.has(g.id) }));
+      const result = galleries.map((g: any) => maskInstagram({ ...g, isFavorited: favSet.has(g.id) }));
       return res.json(result);
     }
 
-    res.json(galleries.map((g: any) => ({ ...g, isFavorited: false })));
+    res.json(galleries.map((g: any) => maskInstagram({ ...g, isFavorited: false })));
   } catch (error) { next(error); }
 });
 
@@ -91,23 +96,23 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       isFavorited = !!fav;
     }
 
-    res.json({ ...gallery, isFavorited });
+    res.json(maskInstagram({ ...gallery, isFavorited }));
   } catch (error) { next(error); }
 });
 
 // 갤러리 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(galleryCreateSchema), async (req, res, next) => {
   try {
-    const { name, address, phone, description, region, ownerName, mainImage, instagramUrl, email } = req.body;
+    const { name, address, phone, description, region, ownerName, mainImage, email } = req.body;
     const gallery = await prisma.gallery.create({
       data: {
         name, address, phone, description, region, ownerName, mainImage,
-        instagramUrl, email,
+        email,
         ownerId: req.user!.id,
         status: 'PENDING'
       }
     });
-    res.status(201).json(gallery);
+    res.status(201).json(maskInstagram(gallery));
   } catch (error) { next(error); }
 });
 
@@ -149,6 +154,117 @@ router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =
     await prisma.gallery.delete({ where: { id: gallery.id } });
     res.json({ message: '갤러리가 삭제되었습니다.' });
   } catch (error) { next(error); }
+});
+
+// ========== Instagram 연동 API ==========
+
+// Instagram 토큰 저장 (갤러리 오너 전용)
+router.post('/:id/instagram-token', authenticate, async (req, res, next) => {
+  try {
+    const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
+    if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const { accessToken } = req.body;
+    if (!accessToken) throw new AppError('액세스 토큰을 입력해주세요.', 400);
+
+    // Graph API로 토큰 유효성 검증
+    const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+    if (!igRes.ok) throw new AppError('유효하지 않은 Instagram 토큰입니다.', 400);
+
+    const igData = await igRes.json() as { id: string; username: string };
+    await prisma.gallery.update({
+      where: { id: gallery.id },
+      data: { instagramAccessToken: accessToken, instagramUrl: `@${igData.username}` },
+    });
+
+    res.json({ instagramConnected: true, username: igData.username });
+  } catch (error) { next(error); }
+});
+
+// Instagram 프로필 링크 토글 (갤러리 오너 전용)
+router.patch('/:id/instagram-profile-visibility', authenticate, async (req, res, next) => {
+  try {
+    const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
+    if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const { visible } = req.body;
+    if (visible && !gallery.instagramAccessToken) {
+      throw new AppError('Instagram이 연동되지 않았습니다. 먼저 토큰을 등록해주세요.', 400);
+    }
+
+    if (visible) {
+      // Graph API로 username 재조회
+      const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${gallery.instagramAccessToken}`);
+      if (igRes.ok) {
+        const igData = await igRes.json() as { id: string; username: string };
+        await prisma.gallery.update({ where: { id: gallery.id }, data: { instagramUrl: `@${igData.username}` } });
+      }
+    } else {
+      await prisma.gallery.update({ where: { id: gallery.id }, data: { instagramUrl: null } });
+    }
+
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+// Instagram 피드 공개 토글 (갤러리 오너 전용)
+router.patch('/:id/instagram-visibility', authenticate, async (req, res, next) => {
+  try {
+    const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
+    if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const { visible } = req.body;
+    if (visible && !gallery.instagramAccessToken) {
+      throw new AppError('Instagram이 연동되지 않았습니다. 먼저 토큰을 등록해주세요.', 400);
+    }
+
+    await prisma.gallery.update({
+      where: { id: gallery.id },
+      data: { instagramFeedVisible: !!visible },
+    });
+
+    res.json({ success: true, instagramFeedVisible: !!visible });
+  } catch (error) { next(error); }
+});
+
+// Instagram 피드 조회 (공개 API)
+router.get('/:id/instagram-feed', async (req, res, next) => {
+  try {
+    const gallery = await prisma.gallery.findUnique({
+      where: { id: parseInt(req.params.id as string) },
+      select: { instagramAccessToken: true, instagramFeedVisible: true },
+    });
+
+    // 토큰 없거나 피드 비공개 → 빈 배열
+    if (!gallery?.instagramAccessToken || !gallery.instagramFeedVisible) {
+      return res.json([]);
+    }
+
+    // Graph API로 최근 9개 게시물 조회 (오류 시 빈 배열 반환)
+    const igRes = await fetch(
+      `https://graph.instagram.com/me/media?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&limit=9&access_token=${gallery.instagramAccessToken}`
+    );
+
+    if (!igRes.ok) return res.json([]);
+
+    const igData = await igRes.json() as { data?: any[] };
+    const posts = (igData.data || []).map((p: any) => ({
+      id: p.id,
+      mediaType: p.media_type,
+      mediaUrl: p.media_url,
+      thumbnailUrl: p.thumbnail_url || null,
+      permalink: p.permalink,
+      timestamp: p.timestamp,
+    }));
+
+    res.json(posts);
+  } catch (error) {
+    // best-effort: 오류 시 빈 배열 반환 (서비스 중단 방지)
+    res.json([]);
+  }
 });
 
 export default router;

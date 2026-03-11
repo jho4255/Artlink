@@ -40,7 +40,9 @@ model Gallery {
   rejectReason String?
   ownerName   String
   mainImage   String?
-  instagramUrl String? // 인스타그램 주소
+  instagramUrl         String?  // 인스타그램 주소 (@handle) — 연동 시 자동 설정
+  instagramAccessToken String?  // Instagram Graph API 액세스 토큰 (서버 전용)
+  instagramFeedVisible Boolean  @default(false) // 피드 공개 여부
   email       String?  // 갤러리 이메일 주소
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

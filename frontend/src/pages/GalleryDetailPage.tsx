@@ -35,6 +35,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import InstagramFeed from '@/components/gallery/InstagramFeed';
+import InstagramPrivateMessage from '@/components/gallery/InstagramPrivateMessage';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
 
 // 갤러리 상세 응답 타입 (기본 Gallery + 연관 데이터)
@@ -348,6 +350,21 @@ export default function GalleryDetailPage() {
             </p>
           )}
         </div>
+
+        {/* === Instagram 피드 섹션 === */}
+        {gallery.instagramConnected && (
+          <div>
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <Instagram size={18} className="text-pink-500" />
+              Instagram
+            </h2>
+            {gallery.instagramFeedVisible ? (
+              <InstagramFeed galleryId={Number(id)} instagramUrl={gallery.instagramUrl} />
+            ) : (
+              <InstagramPrivateMessage isOwner={isOwner} />
+            )}
+          </div>
+        )}
 
         {/* === 진행중인 공모 섹션 === */}
         {gallery.exhibitions && gallery.exhibitions.length > 0 && (

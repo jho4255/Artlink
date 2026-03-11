@@ -1,6 +1,6 @@
 # ArtLink 아키텍처 문서
 
-> 최종 업데이트: 2026-03-07 (Phase 1-10 + 버그 수정 + Render.com 배포 + UX/버그 4건)
+> 최종 업데이트: 2026-03-11 (Phase 1-10 + 버그 수정 + Render.com 배포 + UX/버그 4건 + Vitest + tel링크 + PWA캐시갱신 + Instagram 피드 연동)
 
 ## 시스템 구조
 
@@ -11,6 +11,7 @@ ArtLink/
 │   │   ├── components/    # UI 컴포넌트
 │   │   │   ├── layout/    # Navbar, Layout (공통 레이아웃)
 │   │   │   ├── home/      # SplashScreen, HeroSlider, QuickActionCards, GalleryOfMonth
+│   │   │   ├── gallery/   # InstagramFeed, InstagramPrivateMessage
 │   │   │   └── shared/    # ProtectedRoute, ImageUpload, MultiImageUpload
 │   │   ├── pages/         # 라우트별 페이지
 │   │   ├── stores/        # Zustand 상태 관리 (authStore)
@@ -45,7 +46,8 @@ ArtLink/
 | 애니메이션 | Framer Motion | - |
 | 아이콘 | Lucide React | - |
 | 알림 | react-hot-toast | - |
-| PWA | vite-plugin-pwa | v1.2.0 |
+| PWA | vite-plugin-pwa (skipWaiting+clientsClaim) | v1.2.0 |
+| 테스트 | Vitest + supertest (67 tests) | v4.0.18 |
 | 백엔드 | Express + TypeScript | - |
 | ORM | Prisma | v5 (⚠️ v7 사용 금지) |
 | DB | PostgreSQL | 로컬: apt 설치, 배포: Render PostgreSQL |
@@ -76,7 +78,7 @@ ArtLink/
 |------|------|----------|
 | auth | /api/auth | 개발 퀵 로그인, 유저 정보, 아바타 변경 |
 | hero | /api/hero-slides | 슬라이드 CRUD (Admin) |
-| gallery | /api/galleries | 갤러리 목록/상세/등록/이미지/상세수정/삭제(Admin) |
+| gallery | /api/galleries | 갤러리 목록/상세/등록/이미지/상세수정/삭제(Admin)/Instagram연동 |
 | exhibition | /api/exhibitions | 공모 목록/상세/등록/지원(+이메일)/내 지원/내 공모/홍보사진/삭제(오너/Admin) |
 | review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명 |
 | favorite | /api/favorites | 찜하기 토글 (갤러리/공모) |
@@ -135,12 +137,41 @@ ArtLink/
 | FavoritesSection | Artist | 갤러리/공모 찜 목록 (탭 분리) |
 | MyReviewsSection | Artist | 작성 리뷰 목록 |
 | ApplicationsSection | Artist | 지원한 공고 목록 |
-| MyGalleriesSection | Gallery | 갤러리 등록 요청, 상태 확인 |
+| MyGalleriesSection | Gallery | 갤러리 등록 요청, 상태 확인, Instagram 연동/토글 |
 | MyExhibitionsSection | Gallery | 공모 등록 요청 (승인된 갤러리 선택), 공모 삭제 |
 | ApprovalsSection | Admin | 승인 큐 (승인/거절+사유), 등록 관리 (갤러리/공모 삭제) |
 | HeroManageSection | Admin | Hero CRUD + 미리보기 |
 | BenefitManageSection | Admin | 혜택 CRUD + 미리보기 |
 | GotmManageSection | Admin | 이달의 갤러리 검색/선정/기한 |
+
+## Instagram 피드 연동
+
+### DB 필드 (Gallery 모델)
+- `instagramAccessToken` — Graph API 토큰 (서버 전용, 응답에 미노출)
+- `instagramFeedVisible` — 피드 공개 여부 (기본 false)
+- `instagramUrl` — @handle (토큰 연동 시 자동 설정, 프로필 링크 토글로 null 가능)
+
+### API 엔드포인트
+| 메서드 | 경로 | 인증 | 기능 |
+|--------|------|------|------|
+| POST | /api/galleries/:id/instagram-token | 오너 | Graph API 토큰 검증 및 저장 |
+| PATCH | /api/galleries/:id/instagram-profile-visibility | 오너 | @handle 프로필 링크 표시 토글 |
+| PATCH | /api/galleries/:id/instagram-visibility | 오너 | 피드 공개/비공개 토글 |
+| GET | /api/galleries/:id/instagram-feed | 공개 | 최근 9개 게시물 조회 (best-effort) |
+
+### 토큰 보안
+- `maskInstagram()` 헬퍼: 모든 갤러리 응답에서 `instagramAccessToken`을 제거하고 `instagramConnected: boolean`으로 변환
+- 토큰은 서버 DB에만 저장, 클라이언트에 노출 안 됨
+
+### 프론트엔드 컴포넌트
+- `InstagramFeed.tsx` — 3x3 그리드 + 앱 내 ImageLightbox 확대 (외부 이탈 없음)
+- `InstagramPrivateMessage.tsx` — 비공개 상태 안내 (오너에게 설정 링크)
+- GalleryDetailPage — Instagram 섹션 (연동 시만 표시)
+- MyPage MyGalleriesSection — 토큰 입력 모달 + 프로필/피드 토글 스위치
+
+### 향후 계획
+- 현재: 수동 토큰 입력 방식 (Instagram Graph API long-lived token)
+- 추후: Instagram OAuth 연동 (Facebook Login 기반)으로 자동 토큰 발급
 
 ## 개발 계정 (Seed 데이터)
 
@@ -188,6 +219,24 @@ cd frontend && npm run dev
 - 3초 자동 슬라이드, `current` 변경 시 타이머 리셋
 - `scrollbar-hide` CSS 유틸리티로 스크롤바 숨김
 - 구현: `frontend/src/components/home/HeroSlider.tsx`
+
+## 모바일 tel: 링크
+
+- 갤러리 상세 페이지 전화번호: 모바일 터치 시 다이얼러 오픈, 데스크톱은 일반 텍스트
+- Tailwind 반응형 분기: `md:hidden` (모바일 `<a>`) / `hidden md:flex` (데스크톱 `<p>`)
+- 구현: `frontend/src/pages/GalleryDetailPage.tsx:288`
+
+## PWA 자동 캐시 갱신
+
+- `vite.config.ts`: workbox `skipWaiting: true` + `clientsClaim: true`
+- `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침
+- 배포 후 수동 Clear site data 불필요
+
+## Vitest 테스트 스위트
+
+- 67 tests: Backend 56 (12 files), Frontend 11 (2 files)
+- Test DB: `artlink_test`, Backend: supertest, Frontend: jsdom
+- Run: `cd backend && npm test` + `cd frontend && npm test`
 
 ## Admin 찜하기
 
