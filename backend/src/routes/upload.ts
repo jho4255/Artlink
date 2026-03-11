@@ -88,4 +88,22 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
   res.json({ urls });
 });
 
+// 파일 업로드 (PDF/DOC/HWP/ZIP, 20MB) — 커스텀 필드 file 타입용
+const fileUpload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /pdf|doc|docx|hwp|hwpx|zip/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
+    if (ext) return cb(null, true);
+    cb(new Error('허용된 파일 형식: PDF, DOC, DOCX, HWP, HWPX, ZIP'));
+  }
+});
+
+router.post('/file', authenticate, fileUpload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
+  const url = `/uploads/${req.file.filename}`;
+  res.json({ url, originalName: req.file.originalname });
+});
+
 export default router;

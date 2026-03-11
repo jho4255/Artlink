@@ -29,3 +29,33 @@ export const exhibitionTypeLabels: Record<string, string> = {
   GROUP: '단체전',
   ART_FAIR: '아트페어',
 };
+
+// 공모/전시 날짜 순서 검증
+// 올바른 순서: 공모시작 ≤ 공모마감 ≤ 전시시작 ≤ 전시종료
+export function validateExhibitionDates(dates: {
+  deadlineStart?: string;
+  deadline: string;
+  exhibitStartDate?: string;
+  exhibitDate: string;
+}): string | null {
+  const { deadlineStart, deadline, exhibitStartDate, exhibitDate } = dates;
+  if (!deadline || !exhibitDate) return null;
+
+  const dl = new Date(deadline);
+  const ed = new Date(exhibitDate);
+
+  if (deadlineStart) {
+    const ds = new Date(deadlineStart);
+    if (ds > dl) return '공모 시작일은 마감일 이전이어야 합니다.';
+  }
+
+  if (exhibitStartDate) {
+    const es = new Date(exhibitStartDate);
+    if (dl > es) return '공모 마감일은 전시 시작일 이전이어야 합니다.';
+    if (es > ed) return '전시 시작일은 종료일 이전이어야 합니다.';
+  } else {
+    if (dl > ed) return '공모 마감일은 전시 종료일 이전이어야 합니다.';
+  }
+
+  return null;
+}

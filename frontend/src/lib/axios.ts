@@ -7,11 +7,15 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// 요청 인터셉터 - JWT 토큰 자동 첨부
+// 요청 인터셉터 - JWT 토큰 자동 첨부 + FormData Content-Type 자동 설정
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // FormData 전송 시 Content-Type 삭제 → 브라우저가 boundary 포함 자동 설정
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });

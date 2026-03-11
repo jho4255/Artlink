@@ -220,10 +220,18 @@ export default function ExhibitionsPage() {
                         <Heart size={16} className={ex.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-300'} />
                       </button>
                     )}
-                    {/* Artist 빠른 지원 버튼 */}
+                    {/* Artist 빠른 지원 버튼 (커스텀 필드 있으면 상세페이지 이동) */}
                     {user?.role === 'ARTIST' && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); applyMutation.mutate(ex.id); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (ex.customFields && ex.customFields.length > 0) {
+                            toast('추가 정보 입력이 필요합니다. 상세페이지로 이동합니다.', { icon: '📝' });
+                            navigate(`/exhibitions/${ex.id}`);
+                          } else {
+                            applyMutation.mutate(ex.id);
+                          }
+                        }}
                         disabled={applyMutation.isPending}
                         className="p-1.5 hover:bg-gray-100 rounded-full"
                         title="지원하기"

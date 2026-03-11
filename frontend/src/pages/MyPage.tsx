@@ -1,17 +1,20 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
-  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram
+  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
-import type { Favorite, Portfolio, Gallery, Exhibition } from '@/types';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import type { Favorite, Portfolio, Gallery, Exhibition, CustomField } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
@@ -477,9 +480,34 @@ function MyGalleriesSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' });
+  const emptyForm = { name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' };
+  const [form, setForm] = useState(emptyForm);
   const [galleryTerms, setGalleryTerms] = useState('');
   const [galleryAgreed, setGalleryAgreed] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
+
+  // 임시저장 훅
+  const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_gallery_form', emptyForm);
+
+  // 폼 변경 감지 (이탈 경고용)
+  const isDirty = showForm && JSON.stringify(form) !== JSON.stringify(emptyForm);
+  useUnsavedChanges(isDirty);
+
+  // 폼 변경 시 자동저장
+  useEffect(() => {
+    if (showForm && isDirty) autoSave(form);
+  }, [form, showForm, isDirty, autoSave]);
+
+  // 폼 열 때 draft 복원 확인
+  const openForm = () => {
+    if (hasDraft) {
+      const draft = restoreDraft();
+      if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
+        setForm(draft);
+      }
+    }
+    setShowForm(true);
+  };
 
   // 약관 텍스트 로드
   useEffect(() => {
@@ -498,8 +526,9 @@ function MyGalleriesSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       setShowForm(false);
-      setForm({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' });
+      setForm(emptyForm);
       setGalleryAgreed(false);
+      clearDraft();
       toast.success('갤러리 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
@@ -568,7 +597,7 @@ function MyGalleriesSection() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <p className="text-sm text-gray-400">Admin 승인 후 검색에 노출됩니다.</p>
-        <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
+        <button onClick={() => showForm ? setShowForm(false) : openForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
           <Plus size={14} /> 갤러리 등록
         </button>
       </div>
@@ -576,7 +605,12 @@ function MyGalleriesSection() {
       {/* 등록 폼 */}
       {showForm && (
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-          <h4 className="font-medium text-sm">갤러리 등록 요청</h4>
+          <div className="flex justify-between items-center">
+            <h4 className="font-medium text-sm">갤러리 등록 요청</h4>
+            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600">
+              <Save size={12} /> 임시저장
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="갤러리명 *" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
             <input placeholder="주소 *" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
@@ -604,14 +638,34 @@ function MyGalleriesSection() {
                 if (!form.name || !form.address || !form.phone || !form.description || !form.ownerName) {
                   toast.error('필수 항목을 모두 입력해주세요.'); return;
                 }
-                createMutation.mutate(form);
+                setConfirmAction('submit');
               }}
               className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-            <button onClick={() => { setShowForm(false); setGalleryAgreed(false); }} className="px-4 py-2 text-sm text-gray-500">취소</button>
+            <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setGalleryAgreed(false); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
       )}
+
+      {/* 등록 확인 모달 */}
+      <ConfirmDialog
+        open={confirmAction === 'submit'}
+        title="갤러리 등록"
+        message="이 내용으로 갤러리 등록을 요청하시겠습니까?"
+        confirmText="등록 요청"
+        onConfirm={() => { setConfirmAction(null); createMutation.mutate(form); }}
+        onCancel={() => setConfirmAction(null)}
+      />
+      {/* 취소 확인 모달 */}
+      <ConfirmDialog
+        open={confirmAction === 'cancel'}
+        title="작성 취소"
+        message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
+        confirmText="취소하기"
+        variant="danger"
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); }}
+        onCancel={() => setConfirmAction(null)}
+      />
 
       {/* 갤러리 목록 */}
       {galleries.length === 0 && !showForm ? (
@@ -739,9 +793,47 @@ function MyExhibitionsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
+  const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
+  const [enableCustomFields, setEnableCustomFields] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
+  // 커스텀 필드 인라인 수정 상태
+  const [editingCfExId, setEditingCfExId] = useState<number | null>(null);
+  const [editingCfFields, setEditingCfFields] = useState<CustomField[]>([]);
+
+  // 임시저장 훅
+  const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_exhibition_form', emptyExForm);
+
+  // 폼 변경 감지
+  const isDirty = showForm && JSON.stringify(form) !== JSON.stringify(emptyExForm);
+  useUnsavedChanges(isDirty);
+
+  // 폼 변경 시 자동저장
+  useEffect(() => {
+    if (showForm && isDirty) autoSave(form);
+  }, [form, showForm, isDirty, autoSave]);
+
+  // 날짜 검증
+  const dateError = useMemo(() => validateExhibitionDates({
+    deadlineStart: form.deadlineStart || undefined,
+    deadline: form.deadline,
+    exhibitStartDate: form.exhibitStartDate || undefined,
+    exhibitDate: form.exhibitDate,
+  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate]);
+
+  // 폼 열기 (draft 복원)
+  const openExForm = () => {
+    if (hasDraft) {
+      const draft = restoreDraft();
+      if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
+        setForm(draft);
+        if (draft.customFields && draft.customFields.length > 0) setEnableCustomFields(true);
+      }
+    }
+    setShowForm(true);
+  };
 
   // 약관 텍스트 로드
   useEffect(() => {
@@ -764,15 +856,33 @@ function MyExhibitionsSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => api.post('/exhibitions', data),
+    mutationFn: (data: any) => api.post('/exhibitions', {
+      ...data,
+      customFields: data.customFields?.length > 0 ? data.customFields : null,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
       setShowForm(false);
-      setForm({ galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' });
+      setForm(emptyExForm);
       setExhibitionAgreed(false);
+      setEnableCustomFields(false);
+      clearDraft();
       toast.success('공모 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
+  });
+
+  // 커스텀 필드 수정 mutation
+  const updateCfMutation = useMutation({
+    mutationFn: ({ id, customFields }: { id: number; customFields: CustomField[] | null }) =>
+      api.patch(`/exhibitions/${id}/custom-fields`, { customFields }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      setEditingCfExId(null);
+      toast.success('요청 정보가 수정되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '수정 실패'),
   });
 
   // 공모 삭제
@@ -792,6 +902,20 @@ function MyExhibitionsSection() {
     }
   };
 
+  // 커스텀 필드 추가
+  const addCustomField = () => {
+    const newField: CustomField = { id: `cf_${Date.now()}`, label: '', type: 'text', required: false };
+    setForm({ ...form, customFields: [...form.customFields, newField] });
+  };
+  const updateCustomField = (idx: number, field: Partial<CustomField>) => {
+    const updated = [...form.customFields];
+    updated[idx] = { ...updated[idx], ...field };
+    setForm({ ...form, customFields: updated });
+  };
+  const removeCustomField = (idx: number) => {
+    setForm({ ...form, customFields: form.customFields.filter((_, i) => i !== idx) });
+  };
+
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
 
@@ -799,14 +923,19 @@ function MyExhibitionsSection() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <p className="text-sm text-gray-400">Admin 승인 후 공고에 노출됩니다.</p>
-        <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
+        <button onClick={() => showForm ? setShowForm(false) : openExForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
           <Plus size={14} /> 공모 등록
         </button>
       </div>
 
       {showForm && (
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-          <h4 className="font-medium text-sm">공모 등록 요청</h4>
+          <div className="flex justify-between items-center">
+            <h4 className="font-medium text-sm">공모 등록 요청</h4>
+            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600">
+              <Save size={12} /> 임시저장
+            </button>
+          </div>
           {approvedGalleries.length === 0 ? (
             <p className="text-sm text-red-500">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
           ) : (
@@ -828,26 +957,84 @@ function MyExhibitionsSection() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">공모 시작일</label>
-                  <input type="date" value={form.deadlineStart} onChange={e => setForm({...form, deadlineStart: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" value={form.deadlineStart} onChange={e => setForm({...form, deadlineStart: e.target.value})} max={form.deadline || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">공모 마감일 *</label>
-                  <input type="date" value={form.deadline} onChange={e => setForm({...form, deadline: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" value={form.deadline} onChange={e => setForm({...form, deadline: e.target.value})} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">전시 시작일</label>
-                  <input type="date" value={form.exhibitStartDate} onChange={e => setForm({...form, exhibitStartDate: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" value={form.exhibitStartDate} onChange={e => setForm({...form, exhibitStartDate: e.target.value})} min={form.deadline || undefined} max={form.exhibitDate || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">전시 종료일 *</label>
-                  <input type="date" value={form.exhibitDate} onChange={e => setForm({...form, exhibitDate: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" value={form.exhibitDate} onChange={e => setForm({...form, exhibitDate: e.target.value})} min={form.exhibitStartDate || form.deadline || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
               </div>
+              {/* 날짜 검증 에러 */}
+              {dateError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertTriangle size={12} /> {dateError}
+                </p>
+              )}
               <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm">
                 {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
               </select>
               <textarea placeholder="간단 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
               <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
+
+              {/* 커스텀 질문 항목 빌더 */}
+              <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={enableCustomFields} onChange={e => {
+                    setEnableCustomFields(e.target.checked);
+                    if (!e.target.checked) setForm({ ...form, customFields: [] });
+                  }} className="rounded" />
+                  지원 시 추가 요청 정보 설정
+                </label>
+                {enableCustomFields && (
+                  <div className="space-y-2 pt-2">
+                    {form.customFields.map((cf, idx) => (
+                      <div key={cf.id} className="flex gap-2 items-start bg-white p-2 rounded border border-gray-100">
+                        <div className="flex-1 space-y-1.5">
+                          <input
+                            placeholder="질문 (예: 작품 소개)"
+                            value={cf.label}
+                            onChange={e => updateCustomField(idx, { label: e.target.value })}
+                            className="w-full p-1.5 border border-gray-200 rounded text-xs"
+                          />
+                          <div className="flex gap-2">
+                            <select value={cf.type} onChange={e => updateCustomField(idx, { type: e.target.value as CustomField['type'] })} className="p-1.5 border border-gray-200 rounded text-xs">
+                              <option value="text">짧은 텍스트</option>
+                              <option value="textarea">긴 텍스트</option>
+                              <option value="select">선택형</option>
+                              <option value="file">파일 업로드</option>
+                            </select>
+                            <label className="flex items-center gap-1 text-xs">
+                              <input type="checkbox" checked={cf.required} onChange={e => updateCustomField(idx, { required: e.target.checked })} className="rounded" />
+                              필수
+                            </label>
+                          </div>
+                          {cf.type === 'select' && (
+                            <input
+                              placeholder="옵션 (콤마로 구분: 옵션1,옵션2,옵션3)"
+                              value={cf.options?.join(',') || ''}
+                              onChange={e => updateCustomField(idx, { options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                              className="w-full p-1.5 border border-gray-200 rounded text-xs"
+                            />
+                          )}
+                        </div>
+                        <button onClick={() => removeCustomField(idx)} className="p-1 text-gray-400 hover:text-red-500"><X size={14} /></button>
+                      </div>
+                    ))}
+                    <button onClick={addCustomField} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                      <Plus size={12} /> 항목 추가
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* 약관 동의 */}
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{exhibitionTerms || '약관 로딩 중...'}</div>
@@ -858,48 +1045,115 @@ function MyExhibitionsSection() {
               </div>
               <div className="flex gap-2">
                 <button
-                  disabled={createMutation.isPending || !exhibitionAgreed}
+                  disabled={createMutation.isPending || !exhibitionAgreed || !!dateError}
                   onClick={() => {
                     if (!form.galleryId || !form.title || !form.deadline || !form.exhibitDate || !form.description) {
                       toast.error('필수 항목을 모두 입력해주세요.'); return;
                     }
-                    createMutation.mutate(form);
+                    setConfirmAction('submit');
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-                <button onClick={() => { setShowForm(false); setExhibitionAgreed(false); }} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setExhibitionAgreed(false); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
               </div>
             </>
           )}
         </div>
       )}
 
+      {/* 등록/취소 확인 모달 */}
+      <ConfirmDialog
+        open={confirmAction === 'submit'}
+        title="공모 등록"
+        message="이 내용으로 공모 등록을 요청하시겠습니까?"
+        confirmText="등록 요청"
+        onConfirm={() => { setConfirmAction(null); createMutation.mutate(form); }}
+        onCancel={() => setConfirmAction(null)}
+      />
+      <ConfirmDialog
+        open={confirmAction === 'cancel'}
+        title="작성 취소"
+        message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
+        confirmText="취소하기"
+        variant="danger"
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setEnableCustomFields(false); }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
       {exhibitions.length === 0 && !showForm ? (
         <p className="text-gray-400 text-center py-8">등록된 공모가 없습니다.</p>
       ) : (
         <div className="space-y-3">
           {exhibitions.map((ex: any) => (
-            <div key={ex.id} className="p-4 border border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-medium">{ex.title}</h3>
-                  <p className="text-sm text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]} · {regionLabels[ex.region]}</p>
+            <div key={ex.id} className="p-4 border border-gray-100 rounded-xl">
+              <div className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-medium">{ex.title}</h3>
+                    <p className="text-sm text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]} · {regionLabels[ex.region]}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[ex.status] || ''}`}>
+                      {statusLabels[ex.status] || ex.status}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteExhibition(ex.id); }}
+                      className="p-1 text-gray-400 hover:text-red-500"
+                      title="공모 삭제"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[ex.status] || ''}`}>
-                    {statusLabels[ex.status] || ex.status}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteExhibition(ex.id); }}
-                    className="p-1 text-gray-400 hover:text-red-500"
-                    title="공모 삭제"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {ex.status === 'REJECTED' && ex.rejectReason && (
+                  <p className="text-sm text-red-500 mt-2">거절 사유: {ex.rejectReason}</p>
+                )}
               </div>
-              {ex.status === 'REJECTED' && ex.rejectReason && (
-                <p className="text-sm text-red-500 mt-2">거절 사유: {ex.rejectReason}</p>
+              {/* 커스텀 필드 표시/수정 */}
+              {ex.customFields && ex.customFields.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-gray-500">요청 정보 ({ex.customFields.length}개 항목)</span>
+                    <button
+                      onClick={() => {
+                        if (editingCfExId === ex.id) { setEditingCfExId(null); }
+                        else { setEditingCfExId(ex.id); setEditingCfFields([...ex.customFields]); }
+                      }}
+                      className="text-xs text-blue-500 hover:text-blue-600"
+                    >
+                      {editingCfExId === ex.id ? '취소' : <><Edit3 size={10} className="inline" /> 수정</>}
+                    </button>
+                  </div>
+                  {editingCfExId === ex.id ? (
+                    <div className="space-y-1.5">
+                      {editingCfFields.map((cf, idx) => (
+                        <div key={cf.id} className="flex gap-1.5 items-center">
+                          <input value={cf.label} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], label: e.target.value }; setEditingCfFields(u); }} className="flex-1 p-1 border border-gray-200 rounded text-xs" />
+                          <select value={cf.type} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], type: e.target.value as CustomField['type'] }; setEditingCfFields(u); }} className="p-1 border border-gray-200 rounded text-xs">
+                            <option value="text">텍스트</option>
+                            <option value="textarea">긴 텍스트</option>
+                            <option value="select">선택형</option>
+                            <option value="file">파일</option>
+                          </select>
+                          <button onClick={() => setEditingCfFields(editingCfFields.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500"><X size={12} /></button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => updateCfMutation.mutate({ id: ex.id, customFields: editingCfFields.length > 0 ? editingCfFields : null })}
+                        disabled={updateCfMutation.isPending}
+                        className="text-xs px-2 py-1 bg-gray-900 text-white rounded disabled:opacity-50"
+                      >저장</button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {ex.customFields.map((cf: CustomField) => (
+                        <span key={cf.id} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
+                          {cf.label} ({cf.type}){cf.required ? ' *' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ))}
