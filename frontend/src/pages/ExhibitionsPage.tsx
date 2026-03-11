@@ -22,7 +22,7 @@ export default function ExhibitionsPage() {
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
-  // 공모 목록 조회
+  // 공모 목록 조회 — 페이지 진입 시 항상 최신 데이터 refetch
   const { data: exhibitions = [], isLoading } = useQuery<Exhibition[]>({
     queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType],
     queryFn: () => {
@@ -32,6 +32,8 @@ export default function ExhibitionsPage() {
       if (selectedType) params.set('type', selectedType);
       return api.get(`/exhibitions?${params}`).then(r => r.data);
     },
+    staleTime: 0,             // 항상 stale → 마운트 시 refetch
+    refetchOnMount: 'always', // 캐시와 무관하게 매번 refetch
   });
 
   // 지원하기

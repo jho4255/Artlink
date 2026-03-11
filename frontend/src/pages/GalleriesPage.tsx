@@ -47,7 +47,7 @@ export default function GalleriesPage() {
   const [sortByRating, setSortByRating] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // 갤러리 목록 조회 - 필터/정렬 파라미터를 queryKey에 포함하여 자동 리페치
+  // 갤러리 목록 조회 — 페이지 진입 시 항상 최신 데이터 refetch
   const { data: galleries = [], isLoading } = useQuery<Gallery[]>({
     queryKey: ['galleries', selectedRegion, minRating, sortByRating],
     queryFn: () => {
@@ -57,6 +57,8 @@ export default function GalleriesPage() {
       if (sortByRating) params.set('sortBy', 'rating');
       return api.get(`/galleries?${params}`).then(r => r.data);
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
