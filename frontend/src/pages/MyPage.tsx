@@ -1190,13 +1190,15 @@ function ApprovalsSection() {
   });
 
   const invalidateAllRelated = () => {
-    queryClient.invalidateQueries({ queryKey: ['approvals'] });
-    queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
-    queryClient.invalidateQueries({ queryKey: ['galleries'] });
-    queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
-    queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
-    queryClient.invalidateQueries({ queryKey: ['admin-all-galleries'] });
-    queryClient.invalidateQueries({ queryKey: ['admin-all-exhibitions'] });
+    // refetchType: 'all' → 비활성(언마운트) 쿼리도 stale 마킹하여 다음 마운트 시 즉시 refetch
+    const opts = { refetchType: 'all' as const };
+    queryClient.invalidateQueries({ queryKey: ['approvals'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['my-galleries'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['galleries'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['my-exhibitions'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['exhibitions'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['admin-all-galleries'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['admin-all-exhibitions'], ...opts });
   };
 
   const approveMutation = useMutation({
