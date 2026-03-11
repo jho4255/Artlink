@@ -474,6 +474,7 @@ function ApplicationsSection() {
 
 // ========== Gallery: 내 갤러리 ==========
 function MyGalleriesSection() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' });
@@ -514,6 +515,8 @@ function MyGalleriesSection() {
       api.post(`/galleries/${galleryId}/instagram-token`, { accessToken }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
       setInstagramModalGalleryId(null);
       setTokenInput('');
       toast.success('Instagram이 연동되었습니다.');
@@ -525,7 +528,11 @@ function MyGalleriesSection() {
   const toggleProfileVisibilityMutation = useMutation({
     mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
       api.patch(`/galleries/${galleryId}/instagram-profile-visibility`, { visible }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-galleries'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+    },
     onError: (err: any) => toast.error(err.response?.data?.error || '설정 변경에 실패했습니다.'),
   });
 
@@ -547,7 +554,11 @@ function MyGalleriesSection() {
       if (context?.prev) queryClient.setQueryData(['my-galleries'], context.prev);
       toast.error('설정 변경에 실패했습니다.');
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['my-galleries'] }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+    },
   });
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
@@ -608,7 +619,11 @@ function MyGalleriesSection() {
       ) : (
         <div className="space-y-3">
           {galleries.map((g: any) => (
-            <div key={g.id} className="p-4 border border-gray-100 rounded-xl">
+            <div
+              key={g.id}
+              onClick={() => g.status === 'APPROVED' && navigate(`/galleries/${g.id}`)}
+              className={`p-4 border border-gray-100 rounded-xl ${g.status === 'APPROVED' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+            >
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-medium">{g.name}</h3>
@@ -623,7 +638,7 @@ function MyGalleriesSection() {
               )}
               {/* Instagram 설정 블록 (승인 갤러리만) */}
               {g.status === 'APPROVED' && (
-                <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                <div className="mt-3 pt-3 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-2 text-sm">
                     <Instagram size={14} className="text-pink-500" />
                     <span className="font-medium">Instagram 연동</span>
