@@ -37,6 +37,21 @@ export interface GalleryImage {
   order: number;
 }
 
+// 커스텀 질문 필드 (공모 등록 시 Gallery가 설정)
+export interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'select' | 'file';
+  required: boolean;
+  options?: string[];
+}
+
+// 커스텀 질문 답변 (Artist 지원 시 입력)
+export interface CustomAnswer {
+  fieldId: string;
+  value: string;
+}
+
 export interface Exhibition {
   id: number;
   title: string;
@@ -46,6 +61,7 @@ export interface Exhibition {
   exhibitDate: string;
   exhibitStartDate?: string;
   imageUrl?: string;
+  customFields?: CustomField[] | null;
   capacity: number;
   region: string;
   description: string;

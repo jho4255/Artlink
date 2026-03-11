@@ -83,6 +83,7 @@ model Exhibition {
   region      String
   description String
   imageUrl    String?  // 공모 대표 이미지
+  customFields String? // 커스텀 질문 항목 (JSON 문자열: [{id, label, type, required, options}])
   status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
   rejectReason String?
   createdAt   DateTime @default(now())
@@ -205,6 +206,7 @@ model Application {
   user         User       @relation(fields: [userId], references: [id])
   exhibitionId Int
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  customAnswers String?   // 커스텀 질문 답변 (JSON 문자열: [{fieldId, value}])
   status       String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
   createdAt    DateTime   @default(now())
 

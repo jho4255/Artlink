@@ -88,7 +88,16 @@ async function main() {
   // 샘플 전시/공모
   await prisma.exhibition.upsert({
     where: { id: 1 },
-    update: { deadlineStart: new Date('2026-03-01'), exhibitStartDate: new Date('2026-05-01'), exhibitDate: new Date('2026-05-10') },
+    update: {
+      deadlineStart: new Date('2026-03-01'),
+      exhibitStartDate: new Date('2026-05-01'),
+      exhibitDate: new Date('2026-05-10'),
+      customFields: JSON.stringify([
+        { id: 'cf1', label: '작품 소개 및 컨셉 설명', type: 'textarea', required: true },
+        { id: 'cf2', label: '참여 경험', type: 'select', required: true, options: ['없음', '1~3회', '4회 이상'] },
+        { id: 'cf3', label: '포트폴리오 파일 (PDF)', type: 'file', required: false },
+      ]),
+    },
     create: {
       title: 'Seoul International Art Fair 2026',
       type: 'ART_FAIR',
@@ -99,6 +108,11 @@ async function main() {
       capacity: 50,
       region: 'SEOUL',
       description: '서울 국제 아트페어에 참여할 아티스트를 모집합니다.',
+      customFields: JSON.stringify([
+        { id: 'cf1', label: '작품 소개 및 컨셉 설명', type: 'textarea', required: true },
+        { id: 'cf2', label: '참여 경험', type: 'select', required: true, options: ['없음', '1~3회', '4회 이상'] },
+        { id: 'cf3', label: '포트폴리오 파일 (PDF)', type: 'file', required: false },
+      ]),
       status: 'APPROVED',
       galleryId: gallery1.id
     }
@@ -106,7 +120,12 @@ async function main() {
 
   await prisma.exhibition.upsert({
     where: { id: 2 },
-    update: { deadlineStart: new Date('2026-03-01'), exhibitStartDate: new Date('2026-04-15'), exhibitDate: new Date('2026-04-20') },
+    update: {
+      deadlineStart: new Date('2026-03-01'),
+      exhibitStartDate: new Date('2026-04-15'),
+      exhibitDate: new Date('2026-04-20'),
+      customFields: null,
+    },
     create: {
       title: '신진 작가 개인전 모집',
       type: 'SOLO',

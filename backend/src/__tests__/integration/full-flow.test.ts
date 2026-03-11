@@ -186,4 +186,127 @@ describe('Full Flow Integration', () => {
 
     global.fetch = originalFetch;
   });
+
+  it('커스텀 필드 포함 공모: 등록 → 승인 → 필드 수정 → 지원(답변) → 필수 누락 차단 전체 흐름', async () => {
+    const galleryToken = `Bearer ${authToken(3, 'GALLERY')}`;
+    const adminToken = `Bearer ${authToken(4, 'ADMIN')}`;
+    const artistToken = `Bearer ${authToken(1, 'ARTIST')}`;
+    const artist2Token = `Bearer ${authToken(2, 'ARTIST')}`;
+
+    // 1. 기존 갤러리 찾기 (승인된)
+    const galleries = await request.get('/api/galleries');
+    const approvedGallery = galleries.body[0];
+    expect(approvedGallery).toBeDefined();
+    const galleryId = approvedGallery.id;
+
+    // 2. 커스텀 필드 포함 공모 등록
+    const customFields = [
+      { id: 'q1', label: '작품 컨셉 설명', type: 'textarea', required: true },
+      { id: 'q2', label: '전시 경험 횟수', type: 'select', required: true, options: ['없음', '1~3회', '4회 이상'] },
+      { id: 'q3', label: '참고 자료', type: 'file', required: false },
+    ];
+    const createRes = await request.post('/api/exhibitions')
+      .set('Authorization', galleryToken)
+      .send({
+        galleryId, title: 'CF Flow Test', type: 'GROUP',
+        deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
+        exhibitDate: new Date(Date.now() + 60 * 86400000).toISOString(),
+        capacity: 10, region: 'SEOUL', description: 'Custom fields flow test',
+        customFields,
+      });
+    expect(createRes.status).toBe(201);
+    const exId = createRes.body.id;
+
+    // 3. Admin 승인
+    const approve = await request.patch(`/api/approvals/exhibition/${exId}`)
+      .set('Authorization', adminToken)
+      .send({ status: 'APPROVED' });
+    expect(approve.status).toBe(200);
+
+    // 4. 공모 목록에서 customFields 파싱된 상태 확인
+    const listRes = await request.get('/api/exhibitions');
+    const found = listRes.body.find((e: any) => e.id === exId);
+    expect(found).toBeDefined();
+    expect(found.customFields).toHaveLength(3);
+    expect(found.customFields[0].label).toBe('작품 컨셉 설명');
+
+    // 5. 상세 조회에서도 파싱 확인
+    const detailRes = await request.get(`/api/exhibitions/${exId}`);
+    expect(detailRes.body.customFields).toHaveLength(3);
+    expect(detailRes.body.customFields[1].options).toEqual(['없음', '1~3회', '4회 이상']);
+
+    // 6. my-exhibitions에서도 파싱 확인
+    const myExRes = await request.get('/api/exhibitions/my-exhibitions')
+      .set('Authorization', galleryToken);
+    const myEx = myExRes.body.find((e: any) => e.id === exId);
+    expect(myEx.customFields).toHaveLength(3);
+
+    // 7. 필수 필드 누락하고 지원 → 400
+    const failApply = await request.post(`/api/exhibitions/${exId}/apply`)
+      .set('Authorization', artistToken)
+      .send({ customAnswers: [{ fieldId: 'q3', value: '/uploads/file.pdf' }] });
+    expect(failApply.status).toBe(400);
+
+    // 8. 필수 필드 포함하여 정상 지원
+    const successApply = await request.post(`/api/exhibitions/${exId}/apply`)
+      .set('Authorization', artistToken)
+      .send({
+        customAnswers: [
+          { fieldId: 'q1', value: '추상적 도시풍경을 재해석한 작품입니다.' },
+          { fieldId: 'q2', value: '1~3회' },
+          { fieldId: 'q3', value: '' }, // optional, 비어있어도 OK
+        ]
+      });
+    expect(successApply.status).toBe(201);
+
+    // 9. DB에 customAnswers 확인
+    const app = await testPrisma.application.findFirst({ where: { exhibitionId: exId, userId: 1 } });
+    expect(app?.customAnswers).toBeTruthy();
+    const answers = JSON.parse(app!.customAnswers!);
+    expect(answers.find((a: any) => a.fieldId === 'q1').value).toContain('추상적');
+
+    // 10. Gallery 오너가 커스텀 필드 수정
+    const updateCf = await request.patch(`/api/exhibitions/${exId}/custom-fields`)
+      .set('Authorization', galleryToken)
+      .send({
+        customFields: [
+          { id: 'q1', label: '작품 컨셉 (상세)', type: 'textarea', required: true },
+          { id: 'q4', label: '추가 질문', type: 'text', required: false },
+        ]
+      });
+    expect(updateCf.status).toBe(200);
+    expect(updateCf.body.customFields).toHaveLength(2);
+    expect(updateCf.body.customFields[0].label).toBe('작품 컨셉 (상세)');
+
+    // 11. 수정 후 상세 조회 반영 확인
+    const detailAfter = await request.get(`/api/exhibitions/${exId}`);
+    expect(detailAfter.body.customFields).toHaveLength(2);
+
+    // 12. Artist 2가 수정된 필드 기준으로 지원
+    const apply2 = await request.post(`/api/exhibitions/${exId}/apply`)
+      .set('Authorization', artist2Token)
+      .send({
+        customAnswers: [
+          { fieldId: 'q1', value: '색채의 대비를 통한 감정 표현' },
+        ]
+      });
+    expect(apply2.status).toBe(201);
+
+    // 13. 커스텀 필드 null로 제거
+    const removeCf = await request.patch(`/api/exhibitions/${exId}/custom-fields`)
+      .set('Authorization', galleryToken)
+      .send({ customFields: null });
+    expect(removeCf.status).toBe(200);
+    expect(removeCf.body.customFields).toBeNull();
+
+    // 14. 제거 후 상세 조회에서 null 확인
+    const detailNull = await request.get(`/api/exhibitions/${exId}`);
+    expect(detailNull.body.customFields).toBeNull();
+
+    // 15. Artist는 custom-fields 수정 불가 (권한 없음)
+    const artistEdit = await request.patch(`/api/exhibitions/${exId}/custom-fields`)
+      .set('Authorization', artistToken)
+      .send({ customFields: [{ id: 'x', label: 'hack', type: 'text', required: false }] });
+    expect(artistEdit.status).toBe(403);
+  });
 });

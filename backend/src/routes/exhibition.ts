@@ -6,6 +6,15 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { sendPortfolioEmail } from '../lib/mailer';
 
+// 커스텀 필드 스키마 (공모 등록 시 질문 항목)
+const customFieldSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  type: z.enum(['text', 'textarea', 'select', 'file']),
+  required: z.boolean(),
+  options: z.array(z.string()).optional(),
+});
+
 const exhibitionCreateSchema = z.object({
   title: z.string().min(1, '공모 제목을 입력해주세요.'),
   type: z.enum(['SOLO', 'GROUP', 'ART_FAIR'], { message: '유효한 전시 유형을 선택해주세요.' }),
@@ -18,9 +27,16 @@ const exhibitionCreateSchema = z.object({
   description: z.string().min(1, '공모 소개를 입력해주세요.'),
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
   imageUrl: z.string().optional().nullable(),
+  customFields: z.array(customFieldSchema).optional().nullable(),
 });
 
 const router = Router();
+
+// customFields JSON 파싱 헬퍼 (DB string → object array)
+function parseCustomFields(raw: string | null): any[] | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
 
 // 진행중인 공모 목록 (마감일이 지나지 않은 것만)
 router.get('/', optionalAuth, async (req, res, next) => {
@@ -55,20 +71,26 @@ router.get('/', optionalAuth, async (req, res, next) => {
       filtered = exhibitions.filter(e => e.gallery.rating >= parseFloat(minGalleryRating as string));
     }
 
+    // customFields 파싱
+    const withParsed = filtered.map((e: any) => ({
+      ...e,
+      customFields: parseCustomFields(e.customFields),
+    }));
+
     // 로그인 유저의 찜 여부 확인
     if (req.user) {
       const favorites = await prisma.favorite.findMany({
         where: {
           userId: req.user.id,
-          exhibitionId: { in: filtered.map((e: any) => e.id) }
+          exhibitionId: { in: withParsed.map((e: any) => e.id) }
         },
         select: { exhibitionId: true }
       });
       const favSet = new Set(favorites.map(f => f.exhibitionId));
-      return res.json(filtered.map((e: any) => ({ ...e, isFavorited: favSet.has(e.id) })));
+      return res.json(withParsed.map((e: any) => ({ ...e, isFavorited: favSet.has(e.id) })));
     }
 
-    res.json(filtered.map((e: any) => ({ ...e, isFavorited: false })));
+    res.json(withParsed.map((e: any) => ({ ...e, isFavorited: false })));
   } catch (error) { next(error); }
 });
 
@@ -105,7 +127,10 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(exhibitions);
+    res.json(exhibitions.map((e: any) => ({
+      ...e,
+      customFields: parseCustomFields(e.customFields),
+    })));
   } catch (error) { next(error); }
 });
 
@@ -134,14 +159,19 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 
     // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록
     const { owner, ...galleryRest } = exhibition.gallery as any;
-    res.json({ ...exhibition, gallery: { ...galleryRest, ownerId: owner?.id }, isFavorited });
+    res.json({
+      ...exhibition,
+      customFields: parseCustomFields(exhibition.customFields),
+      gallery: { ...galleryRest, ownerId: owner?.id },
+      isFavorited,
+    });
   } catch (error) { next(error); }
 });
 
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -156,7 +186,9 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
-        capacity, region, description, galleryId, imageUrl, status: 'PENDING'
+        capacity, region, description, galleryId, imageUrl,
+        customFields: customFields ? JSON.stringify(customFields) : null,
+        status: 'PENDING'
       }
     });
     res.status(201).json(exhibition);
@@ -174,8 +206,29 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     });
     if (existing) throw new AppError('이미 지원한 공모입니다.', 400);
 
+    // 커스텀 필드 required 검증
+    const { customAnswers } = req.body || {};
+    const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
+    if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
+
+    const fields = parseCustomFields(exhibitionData.customFields);
+    if (fields && fields.length > 0) {
+      const requiredIds = fields.filter((f: any) => f.required).map((f: any) => f.id);
+      const answers: any[] = customAnswers || [];
+      for (const reqId of requiredIds) {
+        const answer = answers.find((a: any) => a.fieldId === reqId);
+        if (!answer || !answer.value) {
+          throw new AppError(`필수 항목을 모두 입력해주세요.`, 400);
+        }
+      }
+    }
+
     const application = await prisma.application.create({
-      data: { userId: req.user!.id, exhibitionId }
+      data: {
+        userId: req.user!.id,
+        exhibitionId,
+        customAnswers: customAnswers ? JSON.stringify(customAnswers) : null,
+      }
     });
 
     // 포트폴리오 이메일 전송 (best-effort: 실패해도 지원은 성공)
@@ -224,6 +277,31 @@ router.patch('/:id/description', authenticate, async (req, res, next) => {
       data: { description: req.body.description }
     });
     res.json(updated);
+  } catch (error) { next(error); }
+});
+
+// 커스텀 필드 수정 (Gallery 오너 전용)
+router.patch('/:id/custom-fields', authenticate, async (req, res, next) => {
+  try {
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id: parseInt(req.params.id as string) },
+      include: { gallery: { select: { ownerId: true } } }
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const { customFields } = req.body;
+    // 검증: 배열이거나 null
+    if (customFields !== null && customFields !== undefined) {
+      const parsed = z.array(customFieldSchema).safeParse(customFields);
+      if (!parsed.success) throw new AppError('잘못된 커스텀 필드 형식입니다.', 400);
+    }
+
+    const updated = await prisma.exhibition.update({
+      where: { id: exhibition.id },
+      data: { customFields: customFields ? JSON.stringify(customFields) : null }
+    });
+    res.json({ ...updated, customFields: parseCustomFields(updated.customFields) });
   } catch (error) { next(error); }
 });
 

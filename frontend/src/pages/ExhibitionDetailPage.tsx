@@ -19,13 +19,14 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3 } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
-import type { Exhibition, PromoPhoto } from '@/types';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import type { Exhibition, PromoPhoto, CustomField, CustomAnswer } from '@/types';
 
 type ExhibitionDetail = Exhibition & {
   gallery: {
@@ -37,6 +38,7 @@ type ExhibitionDetail = Exhibition & {
     ownerId?: number;
   };
   promoPhotos?: PromoPhoto[];
+  customFields?: CustomField[] | null;
 };
 
 export default function ExhibitionDetailPage() {
@@ -50,6 +52,13 @@ export default function ExhibitionDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  // 지원 모달 상태 (커스텀 필드 입력)
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([]);
+  const [applyConfirm, setApplyConfirm] = useState(false);
+  // 커스텀 필드 오너 수정 상태
+  const [isEditingCf, setIsEditingCf] = useState(false);
+  const [editCfFields, setEditCfFields] = useState<CustomField[]>([]);
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -57,17 +66,33 @@ export default function ExhibitionDetailPage() {
     enabled: !!id,
   });
 
-  // 지원하기
+  // 지원하기 (customAnswers 포함)
   const applyMutation = useMutation({
-    mutationFn: () => api.post(`/exhibitions/${id}/apply`),
+    mutationFn: (answers?: CustomAnswer[]) => api.post(`/exhibitions/${id}/apply`, {
+      customAnswers: answers && answers.length > 0 ? answers : undefined,
+    }),
     onSuccess: () => {
       toast.success('지원이 완료되었습니다! 포트폴리오가 갤러리에 전송됩니다.');
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['my-applications'] });
+      setShowApplyModal(false);
+      setCustomAnswers([]);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || '지원 중 오류가 발생했습니다.');
     },
+  });
+
+  // 커스텀 필드 수정 mutation (Gallery 오너)
+  const updateCfMutation = useMutation({
+    mutationFn: (fields: CustomField[] | null) => api.patch(`/exhibitions/${id}/custom-fields`, { customFields: fields }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
+      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      setIsEditingCf(false);
+      toast.success('요청 정보가 수정되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '수정 실패'),
   });
 
   // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
@@ -258,6 +283,60 @@ export default function ExhibitionDetailPage() {
           )}
         </div>
 
+        {/* 요청 정보 (커스텀 필드) */}
+        {exhibition.customFields && exhibition.customFields.length > 0 && (
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-bold">요청 정보</h2>
+              {isGalleryOwner && !isEditingCf && (
+                <button
+                  onClick={() => { setEditCfFields([...exhibition.customFields!]); setIsEditingCf(true); }}
+                  className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                >
+                  <Edit3 size={14} /> 수정
+                </button>
+              )}
+            </div>
+            {isEditingCf ? (
+              <div className="space-y-2">
+                {editCfFields.map((cf, idx) => (
+                  <div key={cf.id} className="flex gap-2 items-center bg-gray-50 p-2 rounded">
+                    <input value={cf.label} onChange={e => { const u = [...editCfFields]; u[idx] = { ...u[idx], label: e.target.value }; setEditCfFields(u); }} className="flex-1 p-1.5 border border-gray-200 rounded text-sm" />
+                    <select value={cf.type} onChange={e => { const u = [...editCfFields]; u[idx] = { ...u[idx], type: e.target.value as CustomField['type'] }; setEditCfFields(u); }} className="p-1.5 border border-gray-200 rounded text-sm">
+                      <option value="text">텍스트</option>
+                      <option value="textarea">긴 텍스트</option>
+                      <option value="select">선택형</option>
+                      <option value="file">파일</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                      <input type="checkbox" checked={cf.required} onChange={e => { const u = [...editCfFields]; u[idx] = { ...u[idx], required: e.target.checked }; setEditCfFields(u); }} className="rounded" />
+                      필수
+                    </label>
+                    <button onClick={() => setEditCfFields(editCfFields.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                  </div>
+                ))}
+                <button onClick={() => setEditCfFields([...editCfFields, { id: `cf_${Date.now()}`, label: '', type: 'text', required: false }])} className="text-xs text-blue-500 flex items-center gap-1"><Plus size={12} /> 추가</button>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => updateCfMutation.mutate(editCfFields.length > 0 ? editCfFields : null)} disabled={updateCfMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">저장</button>
+                  <button onClick={() => setIsEditingCf(false)} className="px-3 py-1.5 text-sm text-gray-500">취소</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {exhibition.customFields.map(cf => (
+                  <div key={cf.id} className="flex items-center gap-2 text-sm">
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{
+                      cf.type === 'text' ? '텍스트' : cf.type === 'textarea' ? '긴 텍스트' : cf.type === 'select' ? '선택형' : '파일'
+                    }</span>
+                    <span>{cf.label}</span>
+                    {cf.required && <span className="text-red-500 text-xs">*필수</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 홍보 사진 (종료된 전시) */}
         {exhibition.promoPhotos && exhibition.promoPhotos.length > 0 && (
           <div>
@@ -286,7 +365,15 @@ export default function ExhibitionDetailPage() {
           {/* Artist 지원하기 */}
           {isArtist && !isExpired && (
             <button
-              onClick={() => applyMutation.mutate()}
+              onClick={() => {
+                if (exhibition.customFields && exhibition.customFields.length > 0) {
+                  // 커스텀 필드 있으면 모달 열기
+                  setCustomAnswers(exhibition.customFields.map(f => ({ fieldId: f.id, value: '' })));
+                  setShowApplyModal(true);
+                } else {
+                  setApplyConfirm(true);
+                }
+              }}
               disabled={applyMutation.isPending}
               className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
             >
@@ -311,6 +398,116 @@ export default function ExhibitionDetailPage() {
           )}
         </div>
       </div>
+
+      {/* 지원 확인 모달 (커스텀 필드 없을 때) */}
+      <ConfirmDialog
+        open={applyConfirm}
+        title="지원하기"
+        message="이 공모에 지원하시겠습니까? 포트폴리오가 갤러리에 전송됩니다."
+        confirmText="지원하기"
+        onConfirm={() => { setApplyConfirm(false); applyMutation.mutate(undefined); }}
+        onCancel={() => setApplyConfirm(false)}
+      />
+
+      {/* 지원 모달 (커스텀 필드 입력) */}
+      <AnimatePresence>
+        {showApplyModal && exhibition.customFields && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            onClick={() => setShowApplyModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-xl p-6 mx-4 max-w-md w-full max-h-[80vh] overflow-y-auto shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold mb-4">지원 정보 입력</h3>
+              <div className="space-y-4">
+                {exhibition.customFields.map(cf => {
+                  const answer = customAnswers.find(a => a.fieldId === cf.id);
+                  const value = answer?.value || '';
+                  const updateAnswer = (val: string) => {
+                    setCustomAnswers(prev => prev.map(a => a.fieldId === cf.id ? { ...a, value: val } : a));
+                  };
+                  return (
+                    <div key={cf.id}>
+                      <label className="text-sm font-medium text-gray-700">
+                        {cf.label} {cf.required && <span className="text-red-500">*</span>}
+                      </label>
+                      {cf.type === 'text' && (
+                        <input value={value} onChange={e => updateAnswer(e.target.value)} className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm" placeholder="입력해주세요" />
+                      )}
+                      {cf.type === 'textarea' && (
+                        <textarea value={value} onChange={e => updateAnswer(e.target.value)} className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm h-24 resize-none" placeholder="입력해주세요" />
+                      )}
+                      {cf.type === 'select' && cf.options && (
+                        <select value={value} onChange={e => updateAnswer(e.target.value)} className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm">
+                          <option value="">선택해주세요</option>
+                          {cf.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      )}
+                      {cf.type === 'file' && (
+                        <div className="mt-1">
+                          {value ? (
+                            <div className="flex items-center gap-2 text-sm text-green-600">
+                              <Check size={14} /> 파일 업로드 완료
+                              <button onClick={() => updateAnswer('')} className="text-xs text-red-500 hover:underline">삭제</button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm text-gray-500">
+                              <Upload size={14} /> 파일 선택 (PDF, DOC, HWP, ZIP)
+                              <input type="file" className="hidden" accept=".pdf,.doc,.docx,.hwp,.hwpx,.zip" onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const formData = new FormData();
+                                formData.append('file', file);
+                                try {
+                                  const res = await api.post('/upload/file', formData);
+                                  updateAnswer(res.data.url);
+                                  toast.success('파일이 업로드되었습니다.');
+                                } catch {
+                                  toast.error('파일 업로드에 실패했습니다.');
+                                }
+                              }} />
+                            </label>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 mt-6 justify-end">
+                <button onClick={() => setShowApplyModal(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button
+                  onClick={() => {
+                    // required 검증
+                    for (const cf of exhibition.customFields!) {
+                      if (cf.required) {
+                        const ans = customAnswers.find(a => a.fieldId === cf.id);
+                        if (!ans?.value) {
+                          toast.error(`"${cf.label}" 항목은 필수입니다.`);
+                          return;
+                        }
+                      }
+                    }
+                    applyMutation.mutate(customAnswers);
+                  }}
+                  disabled={applyMutation.isPending}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                >
+                  {applyMutation.isPending ? '지원 중...' : '지원하기'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
       <AnimatePresence>
