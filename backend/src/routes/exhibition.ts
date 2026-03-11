@@ -44,15 +44,17 @@ router.get('/', optionalAuth, async (req, res, next) => {
     const { region, minGalleryRating } = req.query;
 
     const now = new Date();
-    // deadlineStart를 날짜 단위로 비교 (당일 포함 — 시간대 차이로 인한 누락 방지)
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    // deadlineStart를 날짜 단위로 비교 — KST 유저가 오늘 날짜로 설정한 값(UTC 자정)이
+    // UTC 서버 시간보다 미래일 수 있으므로, 내일 끝까지 포함 (최대 +1일 여유)
+    const tomorrowEnd = new Date(now);
+    tomorrowEnd.setUTCDate(tomorrowEnd.getUTCDate() + 1);
+    tomorrowEnd.setUTCHours(23, 59, 59, 999);
     const where: any = {
       status: 'APPROVED',
       deadline: { gte: now },
       OR: [
         { deadlineStart: null },
-        { deadlineStart: { lte: todayEnd } }
+        { deadlineStart: { lte: tomorrowEnd } }
       ]
     };
     if (region) where.region = region;
