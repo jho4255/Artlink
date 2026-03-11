@@ -621,13 +621,18 @@ function MyGalleriesSection() {
           {galleries.map((g: any) => (
             <div
               key={g.id}
-              onClick={() => g.status === 'APPROVED' && navigate(`/galleries/${g.id}`)}
-              className={`p-4 border border-gray-100 rounded-xl ${g.status === 'APPROVED' ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+              className="p-4 border border-gray-100 rounded-xl"
             >
-              <div className="flex justify-between items-start">
+              <div
+                className={`flex justify-between items-start ${g.status === 'APPROVED' ? 'cursor-pointer hover:opacity-70' : ''}`}
+                onClick={() => g.status === 'APPROVED' && navigate(`/galleries/${g.id}`)}
+              >
                 <div>
                   <h3 className="font-medium">{g.name}</h3>
                   <p className="text-sm text-gray-500">{g.address}</p>
+                  {g.status === 'APPROVED' && (
+                    <p className="text-xs text-blue-500 mt-1">상세페이지 보기 →</p>
+                  )}
                 </div>
                 <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[g.status] || ''}`}>
                   {statusLabels[g.status] || g.status}
