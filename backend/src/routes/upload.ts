@@ -100,8 +100,12 @@ const fileUpload = multer({
   }
 });
 
-router.post('/file', authenticate, fileUpload.single('file'), (req, res) => {
+router.post('/file', authenticate, fileUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
+  if (useCloudinary) {
+    const url = await uploadToCloudinary(req.file.buffer, 'files');
+    return res.json({ url, originalName: req.file.originalname });
+  }
   const url = `/uploads/${req.file.filename}`;
   res.json({ url, originalName: req.file.originalname });
 });
