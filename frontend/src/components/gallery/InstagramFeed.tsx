@@ -6,7 +6,7 @@
  * - 모든 이미지 로드 완료 전까지 스켈레톤 표시
  * - "Instagram에서 전체 보기" 외부 링크 (유일한 외부 이동)
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
@@ -21,9 +21,8 @@ interface InstagramFeedProps {
 
 export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeedProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [allImagesLoaded, setAllImagesLoaded] = useState(false);
+  const [imagesReady, setImagesReady] = useState(false);
   const loadedCountRef = useRef(0);
-  const totalRef = useRef(0);
 
   const { data: posts = [], isLoading } = useQuery<InstagramPost[]>({
     queryKey: ['instagram-feed', galleryId],
@@ -32,20 +31,33 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
     retry: 1,
   });
 
-  // 이미지 로드 완료 콜백
-  const handleImageLoad = useCallback(() => {
-    loadedCountRef.current += 1;
-    if (loadedCountRef.current >= totalRef.current) {
-      setAllImagesLoaded(true);
+  // posts 변경 시 이미지 로드 상태 리셋 + Image 객체로 프리로드
+  useEffect(() => {
+    if (posts.length === 0) {
+      setImagesReady(false);
+      loadedCountRef.current = 0;
+      return;
     }
-  }, []);
 
-  // posts가 바뀌면 카운터 리셋
-  if (posts.length > 0 && totalRef.current !== posts.length) {
-    totalRef.current = posts.length;
+    setImagesReady(false);
     loadedCountRef.current = 0;
-    setAllImagesLoaded(false);
-  }
+    const total = posts.length;
+
+    const onComplete = () => {
+      loadedCountRef.current += 1;
+      if (loadedCountRef.current >= total) {
+        setImagesReady(true);
+      }
+    };
+
+    // Image 객체로 브라우저 캐시에 프리로드
+    posts.forEach(p => {
+      const img = new Image();
+      img.onload = onComplete;
+      img.onerror = onComplete;
+      img.src = p.mediaType === 'VIDEO' ? (p.thumbnailUrl || p.mediaUrl) : p.mediaUrl;
+    });
+  }, [posts]);
 
   // Instagram 프로필 URL 생성
   const profileUrl = instagramUrl
@@ -57,11 +69,11 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
     p.mediaType === 'VIDEO' ? (p.thumbnailUrl || p.mediaUrl) : p.mediaUrl
   );
 
-  // 스켈레톤 (API 로딩 또는 이미지 로딩 중)
-  const showSkeleton = isLoading || (posts.length > 0 && !allImagesLoaded);
-
   // 게시물 없음 (API 완료 후)
   if (!isLoading && posts.length === 0) return null;
+
+  // 스켈레톤: API 로딩 중이거나 이미지 아직 프리로드 안 됨
+  const showSkeleton = isLoading || !imagesReady;
 
   return (
     <div>
@@ -79,21 +91,16 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
         </div>
       )}
 
-      {/* 스켈레톤 (API 로딩 + 이미지 로딩 중 표시) */}
-      {showSkeleton && (
+      {showSkeleton ? (
+        /* 스켈레톤 그리드 */
         <div className="grid grid-cols-3 gap-1.5">
           {Array.from({ length: posts.length || 9 }).map((_, i) => (
             <div key={i} className="aspect-square bg-gray-100 rounded-lg animate-pulse" />
           ))}
         </div>
-      )}
-
-      {/* 실제 그리드 (이미지 로드 중엔 숨김, 로드 완료 후 표시) */}
-      {posts.length > 0 && (
-        <div
-          className="grid grid-cols-3 gap-1.5"
-          style={{ display: allImagesLoaded ? undefined : 'none' }}
-        >
+      ) : (
+        /* 실제 3x3 그리드 (이미지 프리로드 완료 후 표시) */
+        <div className="grid grid-cols-3 gap-1.5">
           {posts.map((post, i) => (
             <button
               key={post.id}
@@ -104,8 +111,6 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
                 src={post.mediaType === 'VIDEO' ? (post.thumbnailUrl || post.mediaUrl) : post.mediaUrl}
                 alt=""
                 className="w-full h-full object-cover transition-opacity group-hover:opacity-75"
-                onLoad={handleImageLoad}
-                onError={handleImageLoad}
               />
             </button>
           ))}
