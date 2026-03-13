@@ -4,17 +4,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
-  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle
+  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import type { Favorite, Portfolio, Gallery, Exhibition, CustomField } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, CustomField } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
@@ -46,6 +46,7 @@ export default function MyPage() {
         { id: 'profile', label: '프로필', icon: Camera },
         { id: 'my-galleries', label: '내 갤러리', icon: Building2 },
         { id: 'my-exhibitions', label: '내 공모', icon: FileText },
+        { id: 'my-shows', label: '내 전시', icon: Ticket },
       ]
     : [
         { id: 'profile', label: '프로필', icon: Camera },
@@ -90,6 +91,7 @@ export default function MyPage() {
       {activeTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
       {activeTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
       {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
+      {activeTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
       {activeTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
       {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
       {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
@@ -276,7 +278,7 @@ function PortfolioSection() {
 function FavoritesSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<'all' | 'gallery' | 'exhibition'>('all');
+  const [filter, setFilter] = useState<'all' | 'gallery' | 'exhibition' | 'show'>('all');
 
   const { data: favorites = [] } = useQuery<Favorite[]>({
     queryKey: ['favorites'],
@@ -285,7 +287,7 @@ function FavoritesSection() {
 
   // 찜 해제 - 낙관적 업데이트 + 교차 캐시 직접 수정 (stale 깜빡임 방지)
   const removeFav = useMutation({
-    mutationFn: (data: { galleryId?: number; exhibitionId?: number }) => api.post('/favorites/toggle', data),
+    mutationFn: (data: { galleryId?: number; exhibitionId?: number; showId?: number }) => api.post('/favorites/toggle', data),
     onMutate: async (data) => {
       // 1) 찜 목록 캐시에서 즉시 제거
       await queryClient.cancelQueries({ queryKey: ['favorites'] });
@@ -321,6 +323,16 @@ function FavoritesSection() {
           (old: any) => old?.id === data.exhibitionId ? { ...old, isFavorited: false } : old
         );
       }
+      if (data.showId) {
+        queryClient.setQueriesData<Show[]>(
+          { queryKey: ['shows'], exact: false },
+          (old) => old?.map(s => s.id === data.showId ? { ...s, isFavorited: false } : s)
+        );
+        queryClient.setQueriesData<any>(
+          { queryKey: ['show'], exact: false },
+          (old: any) => old?.id === data.showId ? { ...old, isFavorited: false } : old
+        );
+      }
       return { prev };
     },
     onError: (_err, _data, context) => {
@@ -334,6 +346,8 @@ function FavoritesSection() {
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibition'] });
+      queryClient.invalidateQueries({ queryKey: ['shows'] });
+      queryClient.invalidateQueries({ queryKey: ['show'] });
       toast.success('찜이 해제되었습니다.');
     },
   });
@@ -341,16 +355,17 @@ function FavoritesSection() {
   const filtered = favorites.filter(f => {
     if (filter === 'gallery') return !!f.galleryId;
     if (filter === 'exhibition') return !!f.exhibitionId;
+    if (filter === 'show') return !!f.showId;
     return true;
   });
 
   return (
     <div>
       <div className="flex gap-2 mb-4">
-        {(['all', 'gallery', 'exhibition'] as const).map(f => (
+        {(['all', 'gallery', 'exhibition', 'show'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 text-sm rounded-full ${filter === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
-            {f === 'all' ? '전체' : f === 'gallery' ? '갤러리' : '공모'}
+            {f === 'all' ? '전체' : f === 'gallery' ? '갤러리' : f === 'exhibition' ? '공모' : '전시'}
           </button>
         ))}
       </div>
@@ -365,13 +380,14 @@ function FavoritesSection() {
                 onClick={() => {
                   if (fav.galleryId) navigate(`/galleries/${fav.galleryId}`);
                   else if (fav.exhibitionId) navigate(`/exhibitions/${fav.exhibitionId}`);
+                  else if (fav.showId) navigate(`/shows/${fav.showId}`);
                 }}
                 className="text-sm font-medium text-left hover:text-blue-500"
               >
-                {fav.gallery ? fav.gallery.name : fav.exhibition ? `${fav.exhibition.gallery.name} - ${fav.exhibition.title}` : ''}
+                {fav.gallery ? fav.gallery.name : fav.exhibition ? `${fav.exhibition.gallery.name} - ${fav.exhibition.title}` : fav.show ? `${fav.show.gallery.name} - ${fav.show.title}` : ''}
               </button>
               <button
-                onClick={() => removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined })}
+                onClick={() => removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined })}
                 className="p-1 text-gray-400 hover:text-red-500"
               >
                 <X size={16} />
@@ -1163,6 +1179,187 @@ function MyExhibitionsSection() {
   );
 }
 
+// ========== Gallery: 내 전시(Show) 관리 ==========
+function MyShowsSection() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const [showForm, setShowForm] = useState(false);
+
+  // 내 갤러리 (전시 등록 시 선택용)
+  const { data: myGalleries = [] } = useQuery<Gallery[]>({
+    queryKey: ['my-galleries'],
+    queryFn: () => api.get('/galleries/my').then(r => r.data),
+  });
+  const approvedGalleries = myGalleries.filter(g => g.status === 'APPROVED');
+
+  // 내 전시 목록
+  const { data: myShows = [], isLoading } = useQuery<Show[]>({
+    queryKey: ['my-shows'],
+    queryFn: () => api.get('/shows/my-shows').then(r => r.data),
+  });
+
+  // 전시 등록 폼 상태
+  const [form, setForm] = useState({
+    title: '', description: '', startDate: '', endDate: '',
+    openingHours: '', admissionFee: '', location: '', region: 'SEOUL',
+    artists: '', posterImage: '', galleryId: 0,
+  });
+
+  // 약관 동의
+  const [agreedTerms, setAgreedTerms] = useState(false);
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.post('/shows', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-shows'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      setShowForm(false);
+      setForm({ title: '', description: '', startDate: '', endDate: '', openingHours: '', admissionFee: '', location: '', region: 'SEOUL', artists: '', posterImage: '', galleryId: 0 });
+      setAgreedTerms(false);
+      toast.success('전시 등록 요청이 완료되었습니다. Admin 승인을 기다려주세요.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '등록에 실패했습니다.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/shows/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-shows'] });
+      toast.success('전시가 삭제되었습니다.');
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!form.title || !form.description || !form.startDate || !form.endDate || !form.openingHours || !form.admissionFee || !form.location || !form.posterImage || !form.galleryId) {
+      toast.error('모든 필수 항목을 입력해주세요.');
+      return;
+    }
+    if (new Date(form.startDate) > new Date(form.endDate)) {
+      toast.error('시작일은 종료일 이전이어야 합니다.');
+      return;
+    }
+    createMutation.mutate({
+      ...form,
+      artists: form.artists ? form.artists.split(',').map(a => a.trim()).filter(Boolean) : null,
+    });
+  };
+
+  const statusColors: Record<string, string> = {
+    PENDING: 'bg-yellow-100 text-yellow-700',
+    APPROVED: 'bg-green-100 text-green-700',
+    REJECTED: 'bg-red-100 text-red-700',
+  };
+  const statusLabels: Record<string, string> = {
+    PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절',
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-semibold">내 전시</h3>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg"
+        >
+          <Plus size={14} /> 전시 등록
+        </button>
+      </div>
+
+      {/* 등록 폼 */}
+      {showForm && (
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
+          <select value={form.galleryId} onChange={e => setForm({ ...form, galleryId: Number(e.target.value) })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm">
+            <option value={0}>갤러리 선택</option>
+            {approvedGalleries.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+          <input placeholder="전시 제목" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <textarea placeholder="전시 소개" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm min-h-[80px]" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">시작일</label>
+              <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
+                className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">종료일</label>
+              <input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })}
+                className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+            </div>
+          </div>
+          <input placeholder="관람 시간 (예: 10:00-18:00)" value={form.openingHours} onChange={e => setForm({ ...form, openingHours: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <input placeholder="입장료 (예: 무료, 5,000원)" value={form.admissionFee} onChange={e => setForm({ ...form, admissionFee: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <input placeholder="위치 (주소)" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <select value={form.region} onChange={e => setForm({ ...form, region: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm">
+            {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+          </select>
+          <input placeholder="참여 작가 (쉼표 구분: 김작가, 이작가)" value={form.artists} onChange={e => setForm({ ...form, artists: e.target.value })}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <ImageUpload
+            value={form.posterImage}
+            onChange={(url) => setForm({ ...form, posterImage: url })}
+            placeholder="포스터 이미지"
+          />
+          {/* 약관 동의 */}
+          <label className="flex items-start gap-2 text-sm text-gray-600">
+            <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)}
+              className="mt-1" />
+            <span>전시 등록 약관에 동의합니다.</span>
+          </label>
+          <button
+            onClick={handleSubmit}
+            disabled={createMutation.isPending || !agreedTerms}
+            className="w-full py-2 bg-gray-900 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            {createMutation.isPending ? '등록 중...' : '전시 등록 요청'}
+          </button>
+        </div>
+      )}
+
+      {/* 내 전시 목록 */}
+      {isLoading ? (
+        <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
+      ) : myShows.length === 0 ? (
+        <p className="text-gray-400 text-center py-8">등록한 전시가 없습니다.</p>
+      ) : (
+        <div className="space-y-3">
+          {myShows.map(show => (
+            <div key={show.id} className="p-4 border border-gray-100 rounded-xl">
+              <div className="flex justify-between items-start">
+                <div>
+                  <button onClick={() => navigate(`/shows/${show.id}`)} className="font-medium hover:text-blue-500">{show.title}</button>
+                  <p className="text-xs text-gray-500 mt-1">{show.gallery?.name}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[show.status]}`}>
+                    {statusLabels[show.status]}
+                  </span>
+                  <button onClick={() => { if (confirm('삭제하시겠습니까?')) deleteMutation.mutate(show.id); }}
+                    className="p-1 text-gray-400 hover:text-red-500">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {show.rejectReason && (
+                <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                  <AlertTriangle size={12} /> 거절 사유: {show.rejectReason}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ========== Admin: 승인 관리 ==========
 function ApprovalsSection() {
   const queryClient = useQueryClient();
@@ -1171,7 +1368,7 @@ function ApprovalsSection() {
   const [rejectingId, setRejectingId] = useState<{ type: string; id: number } | null>(null);
   const [adminTab, setAdminTab] = useState<'pending' | 'manage'>('pending');
 
-  const { data, isLoading } = useQuery<{ pendingGalleries: any[]; pendingExhibitions: any[]; pendingRequests: any[] }>({
+  const { data, isLoading } = useQuery<{ pendingGalleries: any[]; pendingExhibitions: any[]; pendingShows: any[]; pendingRequests: any[] }>({
     queryKey: ['approvals'],
     queryFn: () => api.get('/approvals').then(r => r.data),
     staleTime: 0, // 승인 큐는 항상 최신 데이터 사용
@@ -1189,6 +1386,11 @@ function ApprovalsSection() {
     queryFn: () => api.get('/exhibitions').then(r => r.data),
   });
 
+  const { data: allShows = [] } = useQuery<any[]>({
+    queryKey: ['admin-all-shows'],
+    queryFn: () => api.get('/shows').then(r => r.data),
+  });
+
   const invalidateAllRelated = () => {
     // refetchType: 'all' → 비활성(언마운트) 쿼리도 stale 마킹하여 다음 마운트 시 즉시 refetch
     const opts = { refetchType: 'all' as const };
@@ -1199,6 +1401,9 @@ function ApprovalsSection() {
     queryClient.invalidateQueries({ queryKey: ['exhibitions'], ...opts });
     queryClient.invalidateQueries({ queryKey: ['admin-all-galleries'], ...opts });
     queryClient.invalidateQueries({ queryKey: ['admin-all-exhibitions'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['my-shows'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['shows'], ...opts });
+    queryClient.invalidateQueries({ queryKey: ['admin-all-shows'], ...opts });
   };
 
   const approveMutation = useMutation({
@@ -1241,12 +1446,23 @@ function ApprovalsSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
   });
 
+  // Admin: 전시 삭제
+  const deleteShowMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/shows/${id}`),
+    onSuccess: () => {
+      invalidateAllRelated();
+      toast.success('전시가 삭제되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
+  });
+
   // 로딩 상태 (모든 훅 선언 후에 조건부 return)
   if (isLoading) return <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />;
 
   const allPending = [
     ...(data?.pendingGalleries?.map(g => ({ ...g, _type: 'gallery' })) || []),
     ...(data?.pendingExhibitions?.map(e => ({ ...e, _type: 'exhibition' })) || []),
+    ...(data?.pendingShows?.map(s => ({ ...s, _type: 'show' })) || []),
   ];
 
   return (
@@ -1318,6 +1534,33 @@ function ApprovalsSection() {
               </div>
             )}
           </div>
+          <div>
+            <h4 className="font-medium text-sm mb-2 text-gray-700">등록된 전시 ({allShows.length})</h4>
+            {allShows.length === 0 ? (
+              <p className="text-gray-400 text-center py-4 text-sm">등록된 전시가 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {allShows.map((s: any) => (
+                  <div key={s.id} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium">{s.title}</p>
+                      <p className="text-xs text-gray-500">{s.gallery?.name} · {regionLabels[s.region]}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`"${s.title}" 전시를 삭제하시겠습니까?`)) {
+                          deleteShowMutation.mutate(s.id);
+                        }
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-500"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1330,7 +1573,7 @@ function ApprovalsSection() {
           {allPending.map(item => (
             <div key={`${item._type}-${item.id}`} className="p-4 border border-gray-100 rounded-xl">
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                {item._type === 'gallery' ? '갤러리' : '공모'}
+                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : '전시'}
               </span>
               <h4 className="font-medium mt-1">{item.name || item.title}</h4>
               {item._type === 'gallery' && (
@@ -1350,6 +1593,15 @@ function ApprovalsSection() {
                   <p>공모 기간: {item.deadlineStart ? new Date(item.deadlineStart).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.deadline).toLocaleDateString('ko')}</p>
                   <p>전시 기간: {item.exhibitStartDate ? new Date(item.exhibitStartDate).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.exhibitDate).toLocaleDateString('ko')}</p>
                   {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
+                </div>
+              )}
+              {item._type === 'show' && (
+                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
+                  <p>갤러리: {item.gallery?.name} ({regionLabels[item.gallery?.region] || item.region})</p>
+                  <p>전시 기간: {new Date(item.startDate).toLocaleDateString('ko')} ~ {new Date(item.endDate).toLocaleDateString('ko')}</p>
+                  <p>관람: {item.openingHours} · 입장료: {item.admissionFee}</p>
+                  <p>위치: {item.location} · 지역: {regionLabels[item.region]}</p>
+                  {item.posterImage && <img src={item.posterImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
                 </div>
               )}
               {item.description && <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{item.description}</p>}

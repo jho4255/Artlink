@@ -30,6 +30,23 @@ export const exhibitionTypeLabels: Record<string, string> = {
   ART_FAIR: '아트페어',
 };
 
+// 전시(Show) 상태 계산
+export function getShowStatus(startDate: string | Date, endDate: string | Date): 'upcoming' | 'ongoing' | 'ended' {
+  const now = new Date();
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (now < start) return 'upcoming';
+  if (now > end) return 'ended';
+  return 'ongoing';
+}
+
+// 전시 상태 라벨
+export const showStatusLabels: Record<string, string> = {
+  upcoming: '예정',
+  ongoing: '진행중',
+  ended: '종료',
+};
+
 // 공모/전시 날짜 순서 검증
 // 올바른 순서: 공모시작 ≤ 공모마감 ≤ 전시시작 ≤ 전시종료
 export function validateExhibitionDates(dates: {

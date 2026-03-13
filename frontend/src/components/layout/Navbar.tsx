@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 const navLinks = [
   { path: '/', label: '홈' },
   { path: '/galleries', label: '갤러리' },
+  { path: '/shows', label: '전시' },
   { path: '/exhibitions', label: '모집공고' },
   { path: '/benefits', label: '혜택' },
   { path: '/mypage', label: '마이페이지' },

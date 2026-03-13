@@ -7,8 +7,9 @@ import { validate } from '../middleware/validate';
 const favoriteToggleSchema = z.object({
   galleryId: z.number().int().positive().optional(),
   exhibitionId: z.number().int().positive().optional(),
-}).refine(data => data.galleryId || data.exhibitionId, {
-  message: 'galleryId 또는 exhibitionId가 필요합니다.',
+  showId: z.number().int().positive().optional(),
+}).refine(data => data.galleryId || data.exhibitionId || data.showId, {
+  message: 'galleryId, exhibitionId 또는 showId가 필요합니다.',
 });
 
 const router = Router();
@@ -22,6 +23,9 @@ router.get('/', authenticate, async (req, res, next) => {
         gallery: { select: { id: true, name: true, mainImage: true, rating: true } },
         exhibition: {
           select: { id: true, title: true, gallery: { select: { name: true } } }
+        },
+        show: {
+          select: { id: true, title: true, posterImage: true, gallery: { select: { name: true } } }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -33,7 +37,7 @@ router.get('/', authenticate, async (req, res, next) => {
 // 찜 토글
 router.post('/toggle', authenticate, validate(favoriteToggleSchema), async (req, res, next) => {
   try {
-    const { galleryId, exhibitionId } = req.body;
+    const { galleryId, exhibitionId, showId } = req.body;
 
     // 트랜잭션으로 찜 토글 atomic 보장 (race condition 방지)
     if (galleryId) {
@@ -66,7 +70,22 @@ router.post('/toggle', authenticate, validate(favoriteToggleSchema), async (req,
       return res.json(result);
     }
 
-    res.status(400).json({ error: 'galleryId 또는 exhibitionId가 필요합니다.' });
+    if (showId) {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.favorite.findUnique({
+          where: { userId_showId: { userId: req.user!.id, showId } }
+        });
+        if (existing) {
+          await tx.favorite.delete({ where: { id: existing.id } });
+          return { favorited: false };
+        }
+        await tx.favorite.create({ data: { userId: req.user!.id, showId } });
+        return { favorited: true };
+      });
+      return res.json(result);
+    }
+
+    res.status(400).json({ error: 'galleryId, exhibitionId 또는 showId가 필요합니다.' });
   } catch (error) { next(error); }
 });
 
