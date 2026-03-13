@@ -257,6 +257,8 @@ async function main() {
   await prisma.show.upsert({
     where: { id: 1 },
     update: {
+      title: '현대 추상미술의 새로운 흐름',
+      description: '국내외 현대 추상미술 작가 3인의 작품을 한자리에서 만나보실 수 있습니다.',
       startDate: new Date('2026-03-01'),
       endDate: new Date('2026-04-15'),
       openingHours: '10:00-18:00',
@@ -265,6 +267,8 @@ async function main() {
       region: 'SEOUL',
       posterImage: 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800',
       artists: JSON.stringify(['김작가', '이작가', '박작가']),
+      status: 'APPROVED',
+      galleryId: gallery1.id,
     },
     create: {
       title: '현대 추상미술의 새로운 흐름',
@@ -285,6 +289,8 @@ async function main() {
   await prisma.show.upsert({
     where: { id: 2 },
     update: {
+      title: '바다와 예술: 해운대 특별전',
+      description: '해운대의 아름다운 풍경을 담은 작품들을 전시합니다.',
       startDate: new Date('2026-05-01'),
       endDate: new Date('2026-06-30'),
       openingHours: '11:00-19:00',
@@ -293,6 +299,8 @@ async function main() {
       region: 'BUSAN',
       posterImage: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
       artists: JSON.stringify(['최작가', '정작가']),
+      status: 'APPROVED',
+      galleryId: gallery2.id,
     },
     create: {
       title: '바다와 예술: 해운대 특별전',
