@@ -105,8 +105,10 @@ export interface Favorite {
   id: number;
   galleryId?: number;
   exhibitionId?: number;
+  showId?: number;
   gallery?: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'rating'>;
   exhibition?: { id: number; title: string; gallery: { name: string } };
+  show?: { id: number; title: string; posterImage: string; gallery: { name: string } };
 }
 
 export interface Benefit {
@@ -129,6 +131,32 @@ export interface Portfolio {
   biography?: string;
   exhibitionHistory?: string;
   images: { id: number; url: string; order: number }[];
+}
+
+export interface Show {
+  id: number;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  openingHours: string;
+  admissionFee: string;
+  location: string;
+  region: string;
+  artists?: string[] | null;
+  posterImage: string;
+  status: string;
+  rejectReason?: string;
+  galleryId: number;
+  gallery: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'region'> & { ownerId?: number };
+  images?: ShowImage[];
+  isFavorited?: boolean;
+}
+
+export interface ShowImage {
+  id: number;
+  url: string;
+  order: number;
 }
 
 export interface InstagramPost {

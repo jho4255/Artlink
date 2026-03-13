@@ -23,7 +23,7 @@ export function authToken(userId: number, role: string): string {
 export async function cleanDb() {
   const tableNames = [
     'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
-    'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'Exhibition',
+    'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
     'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
   ];
   // PostgreSQL TRUNCATE CASCADE — FK 의존성 자동 처리
@@ -66,6 +66,26 @@ export async function seedGallery(ownerId: number = 3) {
       ownerName: 'Gallery Owner',
       status: 'APPROVED',
       ownerId,
+    },
+  });
+}
+
+// 승인된 전시(Show) 시드 (진행중)
+export async function seedShow(galleryId: number) {
+  return testPrisma.show.create({
+    data: {
+      title: 'Test Show',
+      description: '테스트 전시입니다',
+      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      openingHours: '10:00-18:00',
+      admissionFee: '무료',
+      location: '서울시 종로구',
+      region: 'SEOUL',
+      posterImage: 'https://example.com/poster.jpg',
+      artists: JSON.stringify(['작가1', '작가2']),
+      status: 'APPROVED',
+      galleryId,
     },
   });
 }

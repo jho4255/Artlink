@@ -25,12 +25,20 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
       }
     });
 
+    // 전시 승인 대기
+    const pendingShows = await prisma.show.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        gallery: { select: { id: true, name: true, region: true } }
+      }
+    });
+
     // 수정 요청 대기
     const pendingRequests = await prisma.approvalRequest.findMany({
       where: { status: 'PENDING' }
     });
 
-    res.json({ pendingGalleries, pendingExhibitions, pendingRequests });
+    res.json({ pendingGalleries, pendingExhibitions, pendingShows, pendingRequests });
   } catch (error) { next(error); }
 });
 
@@ -63,6 +71,22 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
       data: { status, rejectReason }
     });
     res.json(exhibition);
+  } catch (error) { next(error); }
+});
+
+// 전시 승인/거절
+router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { status, rejectReason } = req.body;
+    if (status === 'REJECTED' && !rejectReason) {
+      throw new AppError('거절 시 사유를 작성해야 합니다.', 400);
+    }
+
+    const show = await prisma.show.update({
+      where: { id: parseInt(req.params.id as string) },
+      data: { status, rejectReason }
+    });
+    res.json(show);
   } catch (error) { next(error); }
 });
 
