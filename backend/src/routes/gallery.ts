@@ -91,6 +91,14 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     });
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
 
+    // mainImage만 있고 GalleryImage가 없으면 자동 마이그레이션
+    if (gallery.mainImage && gallery.images.length === 0) {
+      const created = await prisma.galleryImage.create({
+        data: { url: gallery.mainImage, order: 0, galleryId: gallery.id },
+      });
+      gallery.images = [created];
+    }
+
     // 찜 여부 확인
     let isFavorited = false;
     if (req.user) {
