@@ -708,7 +708,7 @@ export default function GalleryDetailPage() {
 }
 
 // =============================================
-// 갤러리 이미지 캐러셀 (scroll-snap 기반)
+// 갤러리 이미지 캐러셀 (scroll-snap 기반, 자체 state)
 // =============================================
 interface CarouselProps {
   images: string[];
@@ -727,7 +727,12 @@ function GalleryImageCarousel({
 }: CarouselProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isScrolling = useRef(false);
+  // 내부 인덱스 ref — 리렌더 없이 자동슬라이드/observer에서 참조
+  const currentRef = useRef(imgIndex);
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
+
+  // 외부 imgIndex 변경 시 ref 동기화
+  useEffect(() => { currentRef.current = imgIndex; }, [imgIndex]);
 
   // 특정 슬라이드로 스크롤
   const scrollToSlide = useCallback((index: number) => {
@@ -735,11 +740,12 @@ function GalleryImageCarousel({
     if (!container) return;
     isScrolling.current = true;
     container.scrollTo({ left: index * container.offsetWidth, behavior: 'smooth' });
+    currentRef.current = index;
     setImgIndex(index);
-    setTimeout(() => { isScrolling.current = false; }, 500);
+    setTimeout(() => { isScrolling.current = false; }, 400);
   }, [setImgIndex]);
 
-  // IntersectionObserver로 현재 슬라이드 감지
+  // IntersectionObserver로 현재 슬라이드 감지 (setState 최소화)
   useEffect(() => {
     const container = containerRef.current;
     if (!container || images.length === 0) return;
@@ -750,7 +756,10 @@ function GalleryImageCarousel({
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const index = Number((entry.target as HTMLElement).dataset.index);
-            if (!isNaN(index)) setImgIndex(index);
+            if (!isNaN(index) && index !== currentRef.current) {
+              currentRef.current = index;
+              setImgIndex(index);
+            }
           }
         }
       },
@@ -762,14 +771,15 @@ function GalleryImageCarousel({
     return () => observer.disconnect();
   }, [images.length, setImgIndex]);
 
-  // 3초 자동 슬라이드 (2장 이상, imgIndex 변경 시 타이머 리셋)
+  // 3초 자동 슬라이드 — ref 기반으로 deps 최소화 (리렌더 방지)
   useEffect(() => {
     if (images.length <= 1) return;
     const timer = setInterval(() => {
-      scrollToSlide((imgIndex + 1) % images.length);
+      const next = (currentRef.current + 1) % images.length;
+      scrollToSlide(next);
     }, 3000);
     return () => clearInterval(timer);
-  }, [images.length, imgIndex, scrollToSlide]);
+  }, [images.length, scrollToSlide]);
 
   // 마우스 드래그 핸들러 (데스크톱)
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -801,12 +811,18 @@ function GalleryImageCarousel({
     if (dragState.current.isDragging) handleMouseUp();
   };
 
+  // 슬라이드 클릭 (드래그가 아닌 경우만 lightbox 열기)
+  const handleSlideClick = (index: number) => {
+    if (!dragState.current.didDrag) onImageClick(index);
+  };
+
   return (
-    <div className="relative w-full h-64 md:h-96 bg-gray-100">
-      {/* scroll-snap 컨테이너 */}
+    <div className="relative w-full h-64 md:h-96 bg-gray-100 overflow-hidden">
+      {/* scroll-snap 컨테이너 — GPU 가속, 터치 이벤트 직접 전달 */}
       <div
         ref={containerRef}
         className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+        style={{ WebkitOverflowScrolling: 'touch', willChange: 'scroll-position' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -817,23 +833,19 @@ function GalleryImageCarousel({
             key={`${src}-${i}`}
             data-index={i}
             className="relative w-full h-full flex-shrink-0 snap-start"
+            style={{ willChange: 'transform' }}
+            onClick={() => handleSlideClick(i)}
           >
             <img
               src={src}
               alt={`${galleryName} ${i + 1}`}
-              className="w-full h-full object-cover pointer-events-none"
+              className="w-full h-full object-cover"
               draggable={false}
+              loading={i === 0 ? 'eager' : 'lazy'}
             />
           </div>
         ))}
       </div>
-
-      {/* 클릭 영역 (드래그 후 클릭 방지, lightbox 열기) */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ pointerEvents: 'auto' }}
-        onClick={() => { if (!dragState.current.didDrag) onImageClick(imgIndex); }}
-      />
 
       {/* 찜하기 버튼 */}
       {showFavorite && (
