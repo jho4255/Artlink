@@ -134,6 +134,24 @@ router.post('/:id/images', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// 갤러리 이미지 삭제 (갤러리 오너 전용)
+router.delete('/:id/images/:imageId', authenticate, async (req, res, next) => {
+  try {
+    const galleryId = parseInt(req.params.id as string);
+    const imageId = parseInt(req.params.imageId as string);
+
+    const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
+    if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const image = await prisma.galleryImage.findUnique({ where: { id: imageId } });
+    if (!image || image.galleryId !== galleryId) throw new AppError('이미지를 찾을 수 없습니다.', 404);
+
+    await prisma.galleryImage.delete({ where: { id: imageId } });
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
 // 갤러리 상세소개 수정 (갤러리 오너 전용)
 router.patch('/:id/detail', authenticate, async (req, res, next) => {
   try {

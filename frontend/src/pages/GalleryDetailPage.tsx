@@ -24,11 +24,11 @@
  * @see /src/types/index.ts - Gallery, Review, Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태 및 유저 정보
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Image, Camera, X, Edit3, Instagram, Mail } from 'lucide-react';
+import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Camera, X, Edit3, Instagram, Mail, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -233,49 +233,28 @@ export default function GalleryDetailPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto pb-12">
-      {/* === 이미지 슬라이더 === */}
-      <div className="relative w-full h-64 md:h-96 bg-gray-100">
-        <img
-          src={images[imgIndex]}
-          alt={gallery.name}
-          className="w-full h-full object-cover cursor-pointer"
-          onClick={() => setLightbox({ images, index: imgIndex })}
+      {/* === 이미지 캐러셀 (scroll-snap, HeroSlider 패턴) === */}
+      <GalleryImageCarousel
+        images={images}
+        galleryName={gallery.name}
+        imgIndex={imgIndex}
+        setImgIndex={setImgIndex}
+        onImageClick={(index) => setLightbox({ images, index })}
+        isFavorited={!!gallery.isFavorited}
+        showFavorite={isAuthenticated && !isAdmin}
+        onFavoriteClick={() => favMutation.mutate()}
+      />
+
+      {/* === 오너 전용: 이미지 관리 패널 === */}
+      {isOwner && (
+        <GalleryImageManager
+          galleryId={Number(id)}
+          galleryImages={gallery.images || []}
+          onImgIndexGuard={(maxIdx) => {
+            if (imgIndex > maxIdx) setImgIndex(Math.max(0, maxIdx));
+          }}
         />
-
-        {/* 찜하기 버튼 (우상단, Admin 제외) */}
-        {isAuthenticated && !isAdmin && (
-          <button
-            onClick={() => favMutation.mutate()}
-            className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow"
-          >
-            <Heart size={22} className={gallery.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-400'} />
-          </button>
-        )}
-
-        {/* 이미지 좌우 네비게이션 화살표 (2장 이상일 때만 표시) */}
-        {images.length > 1 && (
-          <>
-            <button
-              onClick={() => setImgIndex((imgIndex - 1 + images.length) % images.length)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button
-              onClick={() => setImgIndex((imgIndex + 1) % images.length)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full"
-            >
-              <ChevronRight size={20} />
-            </button>
-            {/* 인디케이터 점 */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {images.map((_, i) => (
-                <span key={i} className={`w-2 h-2 rounded-full ${i === imgIndex ? 'bg-white' : 'bg-white/50'}`} />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       <div className="px-4 py-6 space-y-8">
         {/* === 기본 정보 섹션 === */}
@@ -725,5 +704,302 @@ export default function GalleryDetailPage() {
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// =============================================
+// 갤러리 이미지 캐러셀 (scroll-snap 기반)
+// =============================================
+interface CarouselProps {
+  images: string[];
+  galleryName: string;
+  imgIndex: number;
+  setImgIndex: (i: number) => void;
+  onImageClick: (index: number) => void;
+  isFavorited: boolean;
+  showFavorite: boolean;
+  onFavoriteClick: () => void;
+}
+
+function GalleryImageCarousel({
+  images, galleryName, imgIndex, setImgIndex, onImageClick,
+  isFavorited, showFavorite, onFavoriteClick,
+}: CarouselProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useRef(false);
+  const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
+
+  // 특정 슬라이드로 스크롤
+  const scrollToSlide = useCallback((index: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    isScrolling.current = true;
+    container.scrollTo({ left: index * container.offsetWidth, behavior: 'smooth' });
+    setImgIndex(index);
+    setTimeout(() => { isScrolling.current = false; }, 500);
+  }, [setImgIndex]);
+
+  // IntersectionObserver로 현재 슬라이드 감지
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || images.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrolling.current) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const index = Number((entry.target as HTMLElement).dataset.index);
+            if (!isNaN(index)) setImgIndex(index);
+          }
+        }
+      },
+      { root: container, threshold: 0.5 }
+    );
+
+    const children = container.querySelectorAll('[data-index]');
+    children.forEach((child) => observer.observe(child));
+    return () => observer.disconnect();
+  }, [images.length, setImgIndex]);
+
+  // 3초 자동 슬라이드 (2장 이상, imgIndex 변경 시 타이머 리셋)
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const timer = setInterval(() => {
+      scrollToSlide((imgIndex + 1) % images.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [images.length, imgIndex, scrollToSlide]);
+
+  // 마우스 드래그 핸들러 (데스크톱)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const container = containerRef.current;
+    if (!container) return;
+    dragState.current = { isDragging: true, startX: e.pageX - container.offsetLeft, scrollLeft: container.scrollLeft, didDrag: false };
+    container.style.cursor = 'grabbing';
+    container.style.scrollSnapType = 'none';
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragState.current.isDragging) return;
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const x = e.pageX - container.offsetLeft;
+    const walk = x - dragState.current.startX;
+    if (Math.abs(walk) > 5) dragState.current.didDrag = true;
+    container.scrollLeft = dragState.current.scrollLeft - walk;
+  };
+  const handleMouseUp = () => {
+    if (!dragState.current.isDragging) return;
+    dragState.current.isDragging = false;
+    const container = containerRef.current;
+    if (!container) return;
+    container.style.cursor = '';
+    container.style.scrollSnapType = 'x mandatory';
+  };
+  const handleMouseLeave = () => {
+    if (dragState.current.isDragging) handleMouseUp();
+  };
+
+  return (
+    <div className="relative w-full h-64 md:h-96 bg-gray-100">
+      {/* scroll-snap 컨테이너 */}
+      <div
+        ref={containerRef}
+        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+      >
+        {images.map((src, i) => (
+          <div
+            key={`${src}-${i}`}
+            data-index={i}
+            className="relative w-full h-full flex-shrink-0 snap-start"
+          >
+            <img
+              src={src}
+              alt={`${galleryName} ${i + 1}`}
+              className="w-full h-full object-cover pointer-events-none"
+              draggable={false}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* 클릭 영역 (드래그 후 클릭 방지, lightbox 열기) */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ pointerEvents: 'auto' }}
+        onClick={() => { if (!dragState.current.didDrag) onImageClick(imgIndex); }}
+      />
+
+      {/* 찜하기 버튼 */}
+      {showFavorite && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onFavoriteClick(); }}
+          className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow z-10"
+        >
+          <Heart size={22} className={isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-400'} />
+        </button>
+      )}
+
+      {/* 좌우 화살표 */}
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={() => scrollToSlide((imgIndex - 1 + images.length) % images.length)}
+            className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={() => scrollToSlide((imgIndex + 1) % images.length)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+          >
+            <ChevronRight size={20} />
+          </button>
+          {/* 인디케이터 점 */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToSlide(i)}
+                className={`w-2 h-2 rounded-full transition-all ${i === imgIndex ? 'bg-white w-5' : 'bg-white/50'}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =============================================
+// 오너 전용: 갤러리 이미지 관리 패널
+// =============================================
+interface ImageManagerProps {
+  galleryId: number;
+  galleryImages: { id: number; url: string; order: number }[];
+  onImgIndexGuard: (maxIndex: number) => void;
+}
+
+function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: ImageManagerProps) {
+  const queryClient = useQueryClient();
+  const [isOpen, setIsOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 이미지 삭제 후 imgIndex 범위 초과 방지
+  useEffect(() => {
+    onImgIndexGuard(Math.max(0, galleryImages.length - 1));
+  }, [galleryImages.length, onImgIndexGuard]);
+
+  // 이미지 추가 mutation (기존 POST /api/galleries/:id/images 사용)
+  const addImageMutation = useMutation({
+    mutationFn: (url: string) =>
+      api.post(`/galleries/${galleryId}/images`, { url, order: galleryImages.length }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery', String(galleryId)] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      toast.success('이미지가 추가되었습니다.');
+    },
+    onError: () => toast.error('이미지 추가에 실패했습니다.'),
+  });
+
+  // 이미지 삭제 mutation
+  const deleteImageMutation = useMutation({
+    mutationFn: (imageId: number) =>
+      api.delete(`/galleries/${galleryId}/images/${imageId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery', String(galleryId)] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      toast.success('이미지가 삭제되었습니다.');
+    },
+    onError: () => toast.error('이미지 삭제에 실패했습니다.'),
+  });
+
+  // 파일 업로드 → 이미지 추가
+  const handleUpload = async (files: FileList) => {
+    setUploading(true);
+    let count = 0;
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await api.post('/upload/image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        await addImageMutation.mutateAsync(res.data.url);
+        count++;
+      } catch {
+        toast.error(`${file.name} 업로드 실패`);
+      }
+    }
+    if (count > 0 && files.length > 1) toast.success(`${count}장 업로드 완료`);
+    setUploading(false);
+  };
+
+  return (
+    <div className="px-4 pt-3">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+      >
+        <Camera size={14} />
+        사진 관리
+        <ChevronRight size={14} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+            {galleryImages.map((img) => (
+              <div key={img.id} className="relative group">
+                <img src={img.url} alt="" className="w-full h-20 object-cover rounded-lg" />
+                <button
+                  onClick={() => {
+                    if (window.confirm('이 사진을 삭제하시겠습니까?')) {
+                      deleteImageMutation.mutate(img.id);
+                    }
+                  }}
+                  className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            {/* 추가 버튼 */}
+            <button
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="h-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+            >
+              {uploading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <Plus size={18} />
+                  <span className="text-xs mt-0.5">추가</span>
+                </>
+              )}
+            </button>
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) handleUpload(files);
+              e.target.value = '';
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
