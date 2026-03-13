@@ -777,7 +777,7 @@ function GalleryImageCarousel({
     const timer = setInterval(() => {
       const next = (currentRef.current + 1) % images.length;
       scrollToSlide(next);
-    }, 3000);
+    }, 5000);
     return () => clearInterval(timer);
   }, [images.length, scrollToSlide]);
 
@@ -933,10 +933,18 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
   });
 
   // 파일 업로드 → 이미지 추가
+  const MAX_IMAGES = 20;
+
   const handleUpload = async (files: FileList) => {
+    const remaining = MAX_IMAGES - galleryImages.length;
+    if (remaining <= 0) {
+      toast.error(`이미지는 최대 ${MAX_IMAGES}장까지 등록 가능합니다.`);
+      return;
+    }
+    const fileArray = Array.from(files).slice(0, remaining);
     setUploading(true);
     let count = 0;
-    for (const file of Array.from(files)) {
+    for (const file of fileArray) {
       try {
         const formData = new FormData();
         formData.append('image', file);
@@ -982,21 +990,23 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
                 </button>
               </div>
             ))}
-            {/* 추가 버튼 */}
-            <button
-              onClick={() => inputRef.current?.click()}
-              disabled={uploading}
-              className="h-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
-            >
-              {uploading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <>
-                  <Plus size={18} />
-                  <span className="text-xs mt-0.5">추가</span>
-                </>
-              )}
-            </button>
+            {/* 추가 버튼 (최대 20장) */}
+            {galleryImages.length < MAX_IMAGES && (
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="h-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+              >
+                {uploading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <Plus size={18} />
+                    <span className="text-xs mt-0.5">{galleryImages.length}/{MAX_IMAGES}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
           <input
             ref={inputRef}
