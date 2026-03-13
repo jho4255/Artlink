@@ -4,6 +4,10 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
+import logger from '../lib/logger';
+
+// Instagram Graph API 호출 시 타임아웃 (5초)
+const INSTAGRAM_TIMEOUT_MS = 5000;
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -168,8 +172,10 @@ router.post('/:id/instagram-token', authenticate, async (req, res, next) => {
     const { accessToken } = req.body;
     if (!accessToken) throw new AppError('액세스 토큰을 입력해주세요.', 400);
 
-    // Graph API로 토큰 유효성 검증
-    const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+    // Graph API로 토큰 유효성 검증 (타임아웃 적용)
+    const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`, {
+      signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS),
+    });
     if (!igRes.ok) throw new AppError('유효하지 않은 Instagram 토큰입니다.', 400);
 
     const igData = await igRes.json() as { id: string; username: string };
@@ -195,8 +201,10 @@ router.patch('/:id/instagram-profile-visibility', authenticate, async (req, res,
     }
 
     if (visible) {
-      // Graph API로 username 재조회
-      const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${gallery.instagramAccessToken}`);
+      // Graph API로 username 재조회 (타임아웃 적용)
+      const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${gallery.instagramAccessToken}`, {
+        signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS),
+      });
       if (igRes.ok) {
         const igData = await igRes.json() as { id: string; username: string };
         await prisma.gallery.update({ where: { id: gallery.id }, data: { instagramUrl: `@${igData.username}` } });
@@ -243,9 +251,10 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
       return res.json([]);
     }
 
-    // Graph API로 최근 9개 게시물 조회 (오류 시 빈 배열 반환)
+    // Graph API로 최근 9개 게시물 조회 (타임아웃 5초, 오류 시 빈 배열 반환)
     const igRes = await fetch(
-      `https://graph.instagram.com/me/media?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&limit=9&access_token=${gallery.instagramAccessToken}`
+      `https://graph.instagram.com/me/media?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&limit=9&access_token=${gallery.instagramAccessToken}`,
+      { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
     );
 
     if (!igRes.ok) return res.json([]);
@@ -261,8 +270,9 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
     }));
 
     res.json(posts);
-  } catch (error) {
+  } catch (error: any) {
     // best-effort: 오류 시 빈 배열 반환 (서비스 중단 방지)
+    logger.warn('Instagram', `피드 조회 실패: ${error.message}`, { galleryId: req.params.id });
     res.json([]);
   }
 });
