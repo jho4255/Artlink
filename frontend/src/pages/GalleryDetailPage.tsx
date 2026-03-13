@@ -55,6 +55,10 @@ export default function GalleryDetailPage() {
   // 이미지 슬라이더 인덱스
   const [imgIndex, setImgIndex] = useState(0);
 
+  // 한줄소개 수정 상태
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const [descText, setDescText] = useState('');
+
   // 상세소개 수정 상태
   const [isEditingDetail, setIsEditingDetail] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
@@ -100,6 +104,18 @@ export default function GalleryDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
+  });
+
+  // 한줄소개 수정 (갤러리 오너 전용)
+  const descMutation = useMutation({
+    mutationFn: (description: string) => api.patch(`/galleries/${id}/detail`, { description }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery', id] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      setIsEditingDesc(false);
+      toast.success('한줄 소개가 수정되었습니다.');
+    },
+    onError: () => toast.error('수정에 실패했습니다.'),
   });
 
   // 상세소개 수정 (갤러리 오너 전용)
@@ -284,7 +300,48 @@ export default function GalleryDetailPage() {
               <Instagram size={14} /> {gallery.instagramUrl}
             </a>
           )}
-          <p className="text-gray-700 mt-2">{gallery.description}</p>
+          {isEditingDesc ? (
+            <div className="mt-2 space-y-2">
+              <input
+                type="text"
+                value={descText}
+                onChange={e => setDescText(e.target.value)}
+                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="한줄 소개를 입력해주세요"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (!descText.trim()) { toast.error('소개를 입력해주세요.'); return; }
+                    descMutation.mutate(descText);
+                  }}
+                  disabled={descMutation.isPending}
+                  className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                >
+                  저장
+                </button>
+                <button
+                  onClick={() => setIsEditingDesc(false)}
+                  className="px-4 py-1.5 text-sm text-gray-500"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 mt-2">
+              <p className="text-gray-700">{gallery.description}</p>
+              {isOwner && (
+                <button
+                  onClick={() => { setDescText(gallery.description || ''); setIsEditingDesc(true); }}
+                  className="flex-none text-gray-400 hover:text-blue-500 mt-0.5"
+                  title="한줄 소개 수정"
+                >
+                  <Edit3 size={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* === 상세 소개 섹션 === */}

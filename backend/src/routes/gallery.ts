@@ -167,9 +167,13 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
     if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
+    const data: any = {};
+    if (req.body.detailDesc !== undefined) data.detailDesc = req.body.detailDesc;
+    if (req.body.description !== undefined) data.description = req.body.description;
+
     const updated = await prisma.gallery.update({
       where: { id: gallery.id },
-      data: { detailDesc: req.body.detailDesc }
+      data,
     });
     res.json(updated);
   } catch (error) { next(error); }
