@@ -1,6 +1,6 @@
 # ArtLink HANDOFF
 
-> 최종 업데이트: 2026-03-10 | Git 태그: `submission/2` | 브랜치: `main`, `deploy/render`
+> 최종 업데이트: 2026-03-14 | Git 태그: `submission/2` | 브랜치: `main`, `deploy/render`
 
 이 문서를 읽으면 프로젝트의 모든 맥락을 파악하고 바로 이어서 개발할 수 있습니다.
 
@@ -58,20 +58,21 @@ ArtLink/
 ├── backend/
 │   ├── .env                      # DB URL, JWT 시크릿 등
 │   ├── prisma/
-│   │   ├── schema.prisma         # 14개 모델 (Single Source of Truth)
+│   │   ├── schema.prisma         # 16개 모델 (Single Source of Truth)
 │   │   ├── seed.ts               # 초기 데이터
 │   │   └── migrations/           # PostgreSQL 마이그레이션
 │   ├── uploads/                  # 업로드 이미지 파일
 │   └── src/
-│       ├── index.ts              # Express 서버 (CORS, 미들웨어, 11개 라우트)
-│       ├── routes/               # 11개 API 모듈 (~1000줄)
+│       ├── index.ts              # Express 서버 (CORS, 미들웨어, 12개 라우트)
+│       ├── routes/               # 12개 API 모듈 (~1400줄)
 │       │   ├── auth.ts           # 로그인, 유저 정보, 아바타
 │       │   ├── gallery.ts        # 갤러리 CRUD, 필터, 찜
 │       │   ├── exhibition.ts     # 공모 CRUD, 지원, 홍보사진, 찜
+│       │   ├── show.ts           # 전시 CRUD, 필터, 이미지, 찜 (2026-03-14 신규)
 │       │   ├── review.ts         # 리뷰 CRUD, 별점 자동계산, 익명
-│       │   ├── favorite.ts       # 찜 토글 (갤러리/공모)
+│       │   ├── favorite.ts       # 찜 토글 (갤러리/공모/전시)
 │       │   ├── portfolio.ts      # 포트폴리오 CRUD (이미지 max 30)
-│       │   ├── approval.ts       # 승인 큐, 수정 요청
+│       │   ├── approval.ts       # 승인 큐 (갤러리/공모/전시), 수정 요청
 │       │   ├── hero.ts           # 히어로 슬라이드 CRUD
 │       │   ├── benefit.ts        # 혜택 CRUD
 │       │   ├── galleryOfMonth.ts # 이달의 갤러리 (자동 만료)
@@ -87,17 +88,19 @@ ArtLink/
     ├── vite.config.ts            # Tailwind v4 플러그인, PWA, /api 프록시
     └── src/
         ├── main.tsx              # QueryClientProvider, BrowserRouter, Toaster
-        ├── App.tsx               # 8개 라우트, SplashScreen 전환
+        ├── App.tsx               # 10개 라우트, SplashScreen 전환
         ├── index.css             # Tailwind v4 import, 커스텀 CSS 변수
-        ├── pages/                # 8개 페이지 (~2930줄)
+        ├── pages/                # 10개 페이지 (~4500줄)
         │   ├── HomePage.tsx      # Hero, 캐치프레이즈, 퀵액션, GotM (43줄)
         │   ├── GalleriesPage.tsx # 목록, 필터, 정렬, 찜 (277줄)
         │   ├── GalleryDetailPage.tsx  # 이미지, 찜, 리뷰, 홍보사진, 수정 (655줄)
         │   ├── ExhibitionsPage.tsx    # D-day 필터, 빠른 지원, 찜 (207줄)
         │   ├── ExhibitionDetailPage.tsx # 상세, 지원, 찜, 삭제 (239줄)
+        │   ├── ShowsPage.tsx     # 전시 목록, 지역/상태 필터, 찜 (213줄, 2026-03-14 신규)
+        │   ├── ShowDetailPage.tsx # 전시 상세, ImageLightbox, 소개수정, 삭제 (239줄, 2026-03-14 신규)
         │   ├── BenefitsPage.tsx  # 혜택 목록 (57줄)
         │   ├── LoginPage.tsx     # 개발용 퀵 로그인 (83줄)
-        │   └── MyPage.tsx        # 역할별 탭 (1207줄, 가장 복잡)
+        │   └── MyPage.tsx        # 역할별 탭 (~1400줄, 가장 복잡)
         ├── components/
         │   ├── layout/           # Layout.tsx (Navbar+Outlet), Navbar.tsx (sticky, 모바일 햄버거)
         │   ├── home/             # SplashScreen, HeroSlider(AnimatePresence+variants), QuickActionCards, GalleryOfMonth
@@ -107,14 +110,14 @@ ArtLink/
         ├── lib/
         │   ├── axios.ts          # baseURL:/api, JWT 인터셉터, 401 로그아웃
         │   ├── queryClient.ts    # staleTime:5분, retry:1
-        │   └── utils.ts          # cn(), getDday(), regionLabels, exhibitionTypeLabels
+        │   └── utils.ts          # cn(), getDday(), regionLabels, exhibitionTypeLabels, getShowStatus, showStatusLabels, validateExhibitionDates
         └── types/
-            └── index.ts          # 11개 인터페이스 (User, Gallery, Exhibition 등)
+            └── index.ts          # 13개 인터페이스 (User, Gallery, Exhibition, Show, ShowImage 등)
 ```
 
 ---
 
-## 4. 데이터 모델 (14개 테이블)
+## 4. 데이터 모델 (16개 테이블)
 
 ```
 User (id, email[unique], name, role, avatar)
@@ -124,6 +127,9 @@ User (id, email[unique], name, role, avatar)
   │    │    ├─ PromoPhoto (url, caption) [cascade]
   │    │    ├─ Application (userId, status) [unique: userId+exhibitionId, cascade]
   │    │    └─ Favorite (userId) [unique: userId+exhibitionId, cascade]
+  │    ├─ Show (title, description, startDate, endDate, openingHours, admissionFee, location, region, artists[JSON], posterImage, status) [2026-03-14 추가]
+  │    │    ├─ ShowImage (url, order) [cascade]
+  │    │    └─ Favorite (userId) [unique: userId+showId, cascade]
   │    ├─ Review (rating, content, imageUrl, anonymous) [cascade]
   │    ├─ Favorite (userId) [unique: userId+galleryId, cascade]
   │    └─ GalleryOfMonth (expiresAt) [unique: galleryId, cascade]
@@ -182,11 +188,23 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 | PATCH | /:id | O | 수정 (author only, 재계산) |
 | DELETE | /:id | O | 삭제 (author/admin, 재계산) |
 
+### 전시 `/api/shows` (2026-03-14 추가)
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | / | opt | APPROVED 목록 (query: region, showStatus) + isFavorited |
+| GET | /my-shows | GALLERY | 내 전시 목록 (전 상태) |
+| GET | /:id | opt | 상세 (gallery, images, artists JSON parse, isFavorited) |
+| POST | / | GALLERY | 등록 → PENDING (galleryId 소유권 확인) |
+| PATCH | /:id | O | description/artists 수정 (owner) |
+| DELETE | /:id | O | 삭제 (owner 또는 admin) |
+| POST | /:id/images | GALLERY | 추가 이미지 등록 (owner) |
+| DELETE | /:id/images/:imageId | GALLERY | 이미지 삭제 (owner) |
+
 ### 찜 `/api/favorites`
 | Method | Path | Auth | 설명 |
 |--------|------|------|------|
-| GET | / | O | 내 찜 목록 (gallery/exhibition 포함) |
-| POST | /toggle | O | `{galleryId}` 또는 `{exhibitionId}` → `{favorited}` |
+| GET | / | O | 내 찜 목록 (gallery/exhibition/show 포함) |
+| POST | /toggle | O | `{galleryId}` 또는 `{exhibitionId}` 또는 `{showId}` → `{favorited}` |
 
 ### 포트폴리오 `/api/portfolio`
 | Method | Path | Auth | 설명 |
@@ -199,9 +217,10 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 ### 승인 `/api/approvals`
 | Method | Path | Auth | 설명 |
 |--------|------|------|------|
-| GET | / | ADMIN | `{pendingGalleries, pendingExhibitions, pendingRequests}` |
+| GET | / | ADMIN | `{pendingGalleries, pendingExhibitions, pendingShows, pendingRequests}` |
 | PATCH | /gallery/:id | ADMIN | 승인/거절 (`rejectReason` 필수 if REJECTED) |
 | PATCH | /exhibition/:id | ADMIN | 승인/거절 |
+| PATCH | /show/:id | ADMIN | 전시 승인/거절 (2026-03-14 추가) |
 | POST | /edit-request | GALLERY | 수정 요청 제출 |
 | PATCH | /edit-request/:id | ADMIN | 수정 요청 승인/거절 |
 
@@ -225,6 +244,9 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 | `['gallery-of-month']` | GalleryOfMonth | 리뷰 CUD, Admin GotM 관리 |
 | `['hero-slides']` | HeroSlider, Admin | Admin Hero CRUD |
 | `['benefits']` | BenefitsPage, Admin | Admin Benefit CRUD |
+| `['shows', region?, status?]` | ShowsPage | 찜 토글 |
+| `['show', id]` | ShowDetailPage | 찜, 소개수정 |
+| `['my-shows']` | MyPage Gallery | 전시 등록/삭제 |
 | `['favorites']` | MyPage, 찜 토글 전체 | 모든 찜 토글 (MyPage는 setQueriesData로 cross-cache 수정도) |
 | `['portfolio']` | MyPage Artist | 포트폴리오 수정 |
 | `['my-reviews']` | MyPage Artist | 리뷰 수정/삭제 |
@@ -268,7 +290,8 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 - PWA manifest + service worker + 자동 캐시 갱신 (skipWaiting/clientsClaim)
 - PostgreSQL 마이그레이션 완료
 - 갤러리 상세 전화번호 모바일 tel: 링크 (데스크톱은 일반 텍스트)
-- Vitest 테스트 스위트 (Backend 56, Frontend 11 = 67개)
+- 전시(Show) 기능: 목록(필터)/상세/등록(PENDING→승인)/수정/삭제/이미지/찜 + MyPage 통합
+- Vitest 테스트 스위트 (Backend 128, Frontend 33 = 161개)
 
 ---
 
@@ -392,7 +415,43 @@ git push
 
 ---
 
-## 12. 약관 동의 기능 (2026-03-08)
+## 12. Show(전시) 기능 (2026-03-14)
+
+갤러리의 실제 전시/행사를 소개하는 기능. 기존 "모집공고"(Exhibition, 아티스트 모집)와 별도.
+
+### 변경 파일 (20개)
+| 파일 | 작업 |
+|------|------|
+| `backend/prisma/schema.prisma` | Show, ShowImage 모델 추가, Favorite/Gallery 확장 |
+| `backend/prisma/migrations/20260314003729_add_show_model/` | 마이그레이션 SQL |
+| `backend/prisma/seed.ts` | 샘플 전시 2건 (진행중 SEOUL + 예정 BUSAN) |
+| `backend/src/index.ts` | show 라우트 등록 |
+| `backend/src/routes/show.ts` | **신규** — 전시 CRUD API (8 endpoints) |
+| `backend/src/routes/favorite.ts` | showId 찜 토글 추가 |
+| `backend/src/routes/approval.ts` | pendingShows + show 승인/거절 |
+| `backend/src/__tests__/helpers.ts` | cleanDb에 Show/ShowImage, seedShow 헬퍼 추가 |
+| `backend/src/__tests__/show.test.ts` | **신규** — 17 tests |
+| `backend/src/__tests__/show-extended.test.ts` | **신규** — 10 tests |
+| `backend/src/__tests__/favorite-show.test.ts` | **신규** — 4 tests |
+| `backend/src/__tests__/approval-show.test.ts` | **신규** — 4 tests |
+| `frontend/src/types/index.ts` | Show, ShowImage 인터페이스 |
+| `frontend/src/lib/utils.ts` | getShowStatus, showStatusLabels |
+| `frontend/src/pages/ShowsPage.tsx` | **신규** — 전시 목록 (지역/상태 필터, optimistic 찜) |
+| `frontend/src/pages/ShowDetailPage.tsx` | **신규** — 전시 상세 (ImageLightbox, 소개수정, 삭제) |
+| `frontend/src/pages/MyPage.tsx` | MyShowsSection(Gallery), pendingShows(Admin), 찜에 전시(Artist) |
+| `frontend/src/components/layout/Navbar.tsx` | '전시' 탭 추가 |
+| `frontend/src/App.tsx` | /shows, /shows/:id 라우트 |
+| `frontend/src/__tests__/show.test.ts` | **신규** — 11 tests |
+
+### 핵심 패턴
+- **artists 필드**: DB에 JSON string 저장 (`JSON.stringify`), API 응답에서 `JSON.parse` → 배열 반환
+- **showStatus 필터**: ongoing(`startDate<=now AND endDate>=now`), upcoming(`startDate>now`), ended(`endDate<now`)
+- **ImageLightbox**: `initialIndex` prop 사용 (NOT `currentIndex`), 부모에서 AnimatePresence 감싸기
+- **seed.ts upsert**: update 블록에 title, description, status, galleryId 등 전체 필드 포함 (Render 배포 호환)
+
+---
+
+## 13. 약관 동의 기능 (2026-03-08)
 
 갤러리/공모 등록 시 약관 동의 체크박스 필수화.
 
@@ -415,19 +474,20 @@ git push
 
 ---
 
-## 13. Vitest 테스트 스위트 (2026-03-10)
+## 14. Vitest 테스트 스위트 (2026-03-10 → 2026-03-14)
 
-- **67 tests total**: Backend 56 (12 files), Frontend 11 (2 files)
+- **161 tests total**: Backend 128 (20 files), Frontend 33 (4 files)
 - Test DB: `artlink_test` (별도 PostgreSQL DB)
 - Backend: supertest + vitest, `fileParallelism: false` (순차 실행), setupFiles로 migrate deploy
 - Frontend: jsdom environment, 순수함수(utils) + zustand store 테스트
-- Helper: `backend/src/__tests__/helpers.ts` — TRUNCATE CASCADE로 cleanDb, seedUsers (id 1-4)
+- Helper: `backend/src/__tests__/helpers.ts` — TRUNCATE CASCADE로 cleanDb, seedUsers (id 1-4), seedGallery, seedShow
 - index.ts: NODE_ENV=test 시 listen/rateLimit/morgan 비활성화
+- **Show 테스트 (2026-03-14)**: show.test.ts(17), show-extended.test.ts(10), favorite-show.test.ts(4), approval-show.test.ts(4), frontend show.test.ts(11)
 - Run: `cd backend && npm test`, `cd frontend && npm test`
 
 ---
 
-## 14. 모바일 tel: 링크 (2026-03-10)
+## 15. 모바일 tel: 링크 (2026-03-10)
 
 - 갤러리 상세 페이지 전화번호: 모바일에서 터치 시 전화 다이얼러 오픈
 - 데스크톱에서는 일반 텍스트 (클릭 불가)
@@ -436,7 +496,7 @@ git push
 
 ---
 
-## 15. PWA 자동 캐시 갱신 (2026-03-10)
+## 16. PWA 자동 캐시 갱신 (2026-03-10)
 
 배포 후 구버전 캐시가 남아 변경이 안 보이는 문제 해결.
 
@@ -451,7 +511,7 @@ git push
 
 ---
 
-## 16. 미완료 항목 (다음 단계) {#remaining}
+## 17. 미완료 항목 (다음 단계) {#remaining}
 
 ### 높은 우선순위
 1. **React-hook-form + Zod** — 설치됨(`v7.71`, `v4.3`)이나 미사용. 갤러리/공모 등록 폼에 적용 필요
@@ -470,7 +530,7 @@ git push
 
 ---
 
-## 17. 환경 실행
+## 18. 환경 실행
 
 ```bash
 # 전체 자동 (PostgreSQL + 백엔드 + 프론트엔드)
@@ -506,7 +566,7 @@ Password: artlink_dev_password
 
 ---
 
-## 18. 과거 배포 장애 기록
+## 19. 과거 배포 장애 기록
 
 ### [2026-03-06] 새 필드 추가 후 Render에 데이터 반영 안 됨
 - **증상**: 코드 배포 성공(Live), 새 컬럼(instagramUrl, deadlineStart 등) 전부 `null`
@@ -517,7 +577,7 @@ Password: artlink_dev_password
 
 ---
 
-## 19. 절대 지켜야 할 제약사항
+## 20. 절대 지켜야 할 제약사항
 
 1. **Prisma v5만 사용** — v7은 `datasource url` 제거로 인한 breaking change
 2. **Tailwind v4** — `@import "tailwindcss"` 문법 (구 `@tailwind` 디렉티브 아님), `@tailwindcss/vite` 플러그인
@@ -531,3 +591,5 @@ Password: artlink_dev_password
 10. **absolute inset-0 오버레이에 pointer-events-none** — 아래 요소의 click 이벤트를 차단하므로 필수
 11. **찜 연동은 invalidate만으로 부족** — cross-cache setQueriesData로 즉시 수정해야 stale 깜빡임 방지
 12. **ImageLightbox는 부모에서 AnimatePresence로 감싸기** — 컴포넌트 자체는 motion.div만, 부모가 unmount하면 exit 애니메이션 안됨
+13. **Show artists 필드** — DB에 JSON string으로 저장 (`JSON.stringify`), API에서 `JSON.parse`로 배열 반환. null 허용
+14. **Admin은 Show 찜 버튼도 미표시** — ShowsPage, ShowDetailPage에서 `!isAdmin` 조건
