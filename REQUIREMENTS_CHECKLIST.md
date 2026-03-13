@@ -10,7 +10,7 @@
 - [ ] Shadcn/ui (일부만 사용 - 커스텀 컴포넌트로 대체)
 - [ ] React-hook-form + Zod (폼은 직접 state로 관리 중)
 - [ ] ESLint + Prettier (설정 파일 없음)
-- [ ] Vitest 테스트
+- [x] Vitest 테스트 (Backend 56, Frontend 11 = 67개)
 - [x] Express 백엔드
 - [x] Prisma ORM (SQLite, PostgreSQL 전환 가능)
 - [x] 개발용 퀵 로그인 (Auth.js 대신 JWT)

@@ -1,6 +1,6 @@
 # ArtLink HANDOFF
 
-> 최종 업데이트: 2026-03-08 | Git 태그: `submission/2` | 브랜치: `main`, `deploy/render`
+> 최종 업데이트: 2026-03-10 | Git 태그: `submission/2` | 브랜치: `main`, `deploy/render`
 
 이 문서를 읽으면 프로젝트의 모든 맥락을 파악하고 바로 이어서 개발할 수 있습니다.
 
@@ -265,8 +265,10 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 - MyPage Gallery (갤러리 등록, 공모 등록, 상태 확인)
 - MyPage Admin (승인 큐 + 거절사유, Hero/Benefit/GotM 관리 + 미리보기)
 - 이미지 업로드 (단일/다중, 10MB 제한)
-- PWA manifest + service worker
+- PWA manifest + service worker + 자동 캐시 갱신 (skipWaiting/clientsClaim)
 - PostgreSQL 마이그레이션 완료
+- 갤러리 상세 전화번호 모바일 tel: 링크 (데스크톱은 일반 텍스트)
+- Vitest 테스트 스위트 (Backend 56, Frontend 11 = 67개)
 
 ---
 
@@ -413,27 +415,62 @@ git push
 
 ---
 
-## 13. 미완료 항목 (다음 단계) {#remaining}
+## 13. Vitest 테스트 스위트 (2026-03-10)
+
+- **67 tests total**: Backend 56 (12 files), Frontend 11 (2 files)
+- Test DB: `artlink_test` (별도 PostgreSQL DB)
+- Backend: supertest + vitest, `fileParallelism: false` (순차 실행), setupFiles로 migrate deploy
+- Frontend: jsdom environment, 순수함수(utils) + zustand store 테스트
+- Helper: `backend/src/__tests__/helpers.ts` — TRUNCATE CASCADE로 cleanDb, seedUsers (id 1-4)
+- index.ts: NODE_ENV=test 시 listen/rateLimit/morgan 비활성화
+- Run: `cd backend && npm test`, `cd frontend && npm test`
+
+---
+
+## 14. 모바일 tel: 링크 (2026-03-10)
+
+- 갤러리 상세 페이지 전화번호: 모바일에서 터치 시 전화 다이얼러 오픈
+- 데스크톱에서는 일반 텍스트 (클릭 불가)
+- Tailwind 반응형: `<a>` + `md:hidden` (모바일) / `<p>` + `hidden md:flex` (데스크톱)
+- 파일: `frontend/src/pages/GalleryDetailPage.tsx:288`
+
+---
+
+## 15. PWA 자동 캐시 갱신 (2026-03-10)
+
+배포 후 구버전 캐시가 남아 변경이 안 보이는 문제 해결.
+
+| 파일 | 변경 |
+|------|------|
+| `frontend/vite.config.ts` | workbox `skipWaiting: true` + `clientsClaim: true` 추가 |
+| `frontend/src/main.tsx` | `controllerchange` 이벤트 감지 → `window.location.reload()` 자동 새로고침 |
+
+- `skipWaiting` — 새 서비스워커가 대기 없이 즉시 활성화
+- `clientsClaim` — 활성화 즉시 모든 탭의 제어권 획득
+- 사용자가 수동으로 Clear site data 할 필요 없음
+
+---
+
+## 16. 미완료 항목 (다음 단계) {#remaining}
 
 ### 높은 우선순위
 1. **React-hook-form + Zod** — 설치됨(`v7.71`, `v4.3`)이나 미사용. 갤러리/공모 등록 폼에 적용 필요
 2. **수정 요청 UI** — 백엔드 API(`POST /api/approvals/edit-request`, `PATCH /edit-request/:id`) 완성. 프론트엔드 MyPage Gallery 섹션에 "수정 요청" 버튼+폼 미구현
-3. **Vitest 테스트** — 수동 테스트만 진행됨. 자동화 테스트 파일 미작성
 
 ### 중간 우선순위
-4. **Nodemailer 실제 전송** — SMTP 설정시 작동. 현재 콘솔 로그만
-5. **코드 스플리팅** — 프론트 번들 558KB. React.lazy + Suspense로 페이지별 분리
-6. **ESLint + Prettier** — eslint.config.js 존재하나 팀 규칙 미설정
-7. **MyPage 분리** — 1207줄 단일 파일. 섹션별 컴포넌트 분리 고려
+3. **Nodemailer 실제 전송** — SMTP 설정시 작동. 현재 콘솔 로그만
+4. **코드 스플리팅** — 프론트 번들 572KB. React.lazy + Suspense로 페이지별 분리
+5. **ESLint + Prettier** — eslint.config.js 존재하나 팀 규칙 미설정
+6. **MyPage 분리** — 1207줄 단일 파일. 섹션별 컴포넌트 분리 고려
 
 ### 낮은 우선순위
-8. **PWA 아이콘** — placeholder 경로만 설정. 실제 png 파일 필요
-9. **Shadcn/ui** — CLAUDE.md 스펙에 있지만 현재 커스텀 Tailwind 사용
-10. **OAuth 인증** — 현재 dev quick login. `authStore.login()` 호출만 교체하면 됨
+7. **PWA 아이콘** — placeholder 경로만 설정. 실제 png 파일 필요
+8. **Shadcn/ui** — CLAUDE.md 스펙에 있지만 현재 커스텀 Tailwind 사용
+9. **OAuth 인증** — 현재 dev quick login. `authStore.login()` 호출만 교체하면 됨
 
 ---
 
-## 14. 환경 실행
+## 17. 환경 실행
 
 ```bash
 # 전체 자동 (PostgreSQL + 백엔드 + 프론트엔드)
@@ -469,7 +506,7 @@ Password: artlink_dev_password
 
 ---
 
-## 15. 과거 배포 장애 기록
+## 18. 과거 배포 장애 기록
 
 ### [2026-03-06] 새 필드 추가 후 Render에 데이터 반영 안 됨
 - **증상**: 코드 배포 성공(Live), 새 컬럼(instagramUrl, deadlineStart 등) 전부 `null`
@@ -480,7 +517,7 @@ Password: artlink_dev_password
 
 ---
 
-## 16. 절대 지켜야 할 제약사항
+## 19. 절대 지켜야 할 제약사항
 
 1. **Prisma v5만 사용** — v7은 `datasource url` 제거로 인한 breaking change
 2. **Tailwind v4** — `@import "tailwindcss"` 문법 (구 `@tailwind` 디렉티브 아님), `@tailwindcss/vite` 플러그인

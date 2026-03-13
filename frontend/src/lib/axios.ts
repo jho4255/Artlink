@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  timeout: 15000, // 15초 타임아웃 (서버 응답 대기 상한)
 });
 
 // 요청 인터셉터 - JWT 토큰 자동 첨부 + FormData Content-Type 자동 설정
@@ -20,12 +21,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 응답 인터셉터 - 401 시 자동 로그아웃
+// 응답 인터셉터 - 401 시 자동 로그아웃 + 에러 로깅
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout();
+    }
+    // 네트워크/타임아웃/서버 에러 로깅 (개발 환경)
+    if (!error.response) {
+      console.error('[API] 네트워크 에러 또는 타임아웃:', error.config?.url, error.message);
+    } else if (error.response.status >= 500) {
+      console.error('[API] 서버 에러:', error.config?.url, error.response.status, error.response.data);
     }
     return Promise.reject(error);
   }

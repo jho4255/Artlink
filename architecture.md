@@ -232,9 +232,44 @@ cd frontend && npm run dev
 - `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침
 - 배포 후 수동 Clear site data 불필요
 
+## 로깅 & 안정성 시스템
+
+### 로거 (`backend/src/lib/logger.ts`)
+- 콘솔 + 파일 동시 기록 (INFO/WARN/ERROR/DEBUG 레벨)
+- 로그 파일 위치: `backend/logs/app.log` (전체), `backend/logs/error.log` (에러 전용)
+- 10MB 초과 시 `.old`로 자동 로테이션
+- 확인 방법: `tail -f backend/logs/error.log` (실시간 에러 모니터링)
+
+### 전역 에러 핸들러
+- `process.on('unhandledRejection')` — 비동기 에러 로그 기록, 프로세스 유지
+- `process.on('uncaughtException')` — 예외 로그 기록, 프로세스 유지
+- Express errorHandler — 구조화된 로그 (method, url, userId, stack)
+- Prisma 커넥션 풀 타임아웃 감지 → 503 응답
+
+### DB 커넥션 풀
+- `connection_limit=20` (기본 10에서 증가) — `.env` DATABASE_URL 파라미터
+- `pool_timeout=10` — 커넥션 대기 타임아웃 10초
+- Prisma 이벤트 로깅: error/warn, slow query(100ms 초과)
+
+### Instagram API 타임아웃
+- 모든 Graph API fetch에 `AbortSignal.timeout(5000)` 적용
+- 타임아웃 시 빈 배열 반환 (서비스 중단 방지)
+
+### Rate Limit
+- 일반 API: 300 req/15min (SPA 특성상 완화, 기존 100)
+- Auth API: 30 req/15min (기존 20)
+
+### Frontend 에러 대응
+- Axios: 15초 타임아웃, 500+/네트워크 에러 console.error
+- TanStack Query: retry 3회 + 지수 백오프 (1s, 2s, 4s)
+
+### Health Check
+- `GET /api/health` — DB 연결 상태 포함 (`{ status, db, timestamp }`)
+- DB 연결 실패 시 503 반환
+
 ## Vitest 테스트 스위트
 
-- 67 tests: Backend 56 (12 files), Frontend 11 (2 files)
+- 109 tests: Backend 87 (15 files), Frontend 22 (3 files)
 - Test DB: `artlink_test`, Backend: supertest, Frontend: jsdom
 - Run: `cd backend && npm test` + `cd frontend && npm test`
 
