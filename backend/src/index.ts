@@ -104,8 +104,8 @@ app.use(errorHandler);
 
 // 테스트 환경에서는 supertest가 자체 포트 사용하므로 listen 생략
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    logger.info('Server', `ArtLink 백엔드 서버 실행 중: http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info('Server', `ArtLink 백엔드 서버 실행 중: http://0.0.0.0:${PORT}`);
   });
 }
 
