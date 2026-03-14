@@ -17,12 +17,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanDb();
-  await testPrisma.$disconnect();
 });
 
 // 각 테스트 전 Exhibition 테이블만 정리
 beforeEach(async () => {
-  await testPrisma.$executeRawUnsafe('TRUNCATE TABLE "Exhibition" CASCADE');
+  await testPrisma.application.deleteMany();
+  await testPrisma.exhibition.deleteMany();
 });
 
 function futureDate(days: number): string {

@@ -15,7 +15,6 @@ describe('Favorite Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // 갤러리 찜 토글 (생성)

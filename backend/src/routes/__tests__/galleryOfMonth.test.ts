@@ -23,7 +23,6 @@ describe('Gallery of Month Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   it('POST /api/gallery-of-month — Admin이 이달의 갤러리 등록', async () => {

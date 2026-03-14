@@ -20,7 +20,6 @@ describe('Gallery Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // 승인된 갤러리 목록

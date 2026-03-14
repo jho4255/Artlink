@@ -38,7 +38,6 @@ describe('Approval Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // 승인 대기 목록 (Admin만) — 응답: { pendingGalleries, pendingExhibitions, pendingRequests }

@@ -25,7 +25,6 @@ describe('Exhibition Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // D-day 남은 공모만 노출

@@ -10,7 +10,6 @@ describe('Benefit Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   it('POST /api/benefits — Admin이 혜택 생성', async () => {

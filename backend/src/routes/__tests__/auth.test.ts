@@ -8,7 +8,6 @@ describe('Auth Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // dev-login으로 JWT 발급

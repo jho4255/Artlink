@@ -23,7 +23,6 @@ describe('Gallery Image Delete API', () => {
 
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   beforeEach(async () => {

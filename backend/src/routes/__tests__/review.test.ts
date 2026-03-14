@@ -13,7 +13,6 @@ describe('Review Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // 리뷰 작성 (Artist만)

@@ -12,7 +12,6 @@ describe('Full Flow Integration', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   it('갤러리 등록 → 승인 → 검색 → 공모 등록 → 승인 → 지원 전체 흐름', async () => {

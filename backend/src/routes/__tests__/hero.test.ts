@@ -10,7 +10,6 @@ describe('Hero Slide Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   it('POST /api/hero-slides — Admin이 슬라이드 생성', async () => {

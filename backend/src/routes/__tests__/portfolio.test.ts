@@ -8,7 +8,6 @@ describe('Portfolio Routes', () => {
   });
   afterAll(async () => {
     await cleanDb();
-    await testPrisma.$disconnect();
   });
 
   // 포트폴리오 자동 생성
