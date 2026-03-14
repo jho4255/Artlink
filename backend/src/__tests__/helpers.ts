@@ -2,14 +2,12 @@
  * 테스트 헬퍼 — supertest 요청, DB 정리, 시드 데이터 유틸리티
  */
 import supertest from 'supertest';
-import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import app from '../index';
+import prisma from '../lib/prisma';
 
-// 테스트 전용 Prisma 클라이언트 (테스트 DB 연결)
-export const testPrisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } },
-});
+// app과 동일한 Prisma 인스턴스 사용 (별도 인스턴스 간 deadlock 방지)
+export const testPrisma = prisma;
 
 // supertest 요청 객체
 export const request = supertest(app);
@@ -19,21 +17,36 @@ export function authToken(userId: number, role: string): string {
   return jwt.sign({ userId, role }, process.env.JWT_SECRET!, { expiresIn: '1h' });
 }
 
-// DB 전체 정리 — TRUNCATE CASCADE로 FK 순서 무관하게 안전 삭제
+const ALL_TABLES = [
+  'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
+  'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
+  'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
+];
+
+// DB 전체 정리 — interactive transaction (단일 커넥션, deadlock 불가)
 export async function cleanDb() {
-  const tableNames = [
-    'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
-    'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
-    'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
-  ];
-  // PostgreSQL TRUNCATE CASCADE — FK 의존성 자동 처리
-  for (const table of tableNames) {
-    await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE "${table}" CASCADE`);
-  }
-  // 시퀀스 리셋 (autoincrement ID 초기화)
-  for (const table of tableNames) {
+  await testPrisma.$transaction(async (tx) => {
+    await tx.application.deleteMany();
+    await tx.approvalRequest.deleteMany();
+    await tx.favorite.deleteMany();
+    await tx.review.deleteMany();
+    await tx.promoPhoto.deleteMany();
+    await tx.portfolioImage.deleteMany();
+    await tx.portfolio.deleteMany();
+    await tx.galleryOfMonth.deleteMany();
+    await tx.showImage.deleteMany();
+    await tx.show.deleteMany();
+    await tx.exhibition.deleteMany();
+    await tx.galleryImage.deleteMany();
+    await tx.gallery.deleteMany();
+    await tx.heroSlide.deleteMany();
+    await tx.benefit.deleteMany();
+    await tx.user.deleteMany();
+  });
+  // 시퀀스 리셋 (트랜잭션 외부 — DDL은 트랜잭션 안에서 불안정)
+  for (const table of ALL_TABLES) {
     await testPrisma.$executeRawUnsafe(
-      `ALTER SEQUENCE IF EXISTS "${table}_id_seq" RESTART WITH 1`
+      `SELECT setval('"${table}_id_seq"', 1, false)`
     );
   }
 }
@@ -46,12 +59,15 @@ export async function seedUsers() {
     { id: 3, email: 'gallery@test.com', name: 'Gallery Owner', role: 'GALLERY' },
     { id: 4, email: 'admin@test.com', name: 'Admin', role: 'ADMIN' },
   ];
-  // 순차 생성 (ID 순서 보장)
   for (const u of users) {
-    await testPrisma.user.create({ data: u });
+    await testPrisma.user.upsert({
+      where: { id: u.id },
+      create: u,
+      update: u,
+    });
   }
-  // autoincrement 시퀀스를 5 이상으로 설정 (다음 create 시 충돌 방지)
-  await testPrisma.$executeRawUnsafe(`ALTER SEQUENCE "User_id_seq" RESTART WITH 100`);
+  // autoincrement 시퀀스를 100으로 설정 (다음 create 시 충돌 방지)
+  await testPrisma.$executeRawUnsafe(`SELECT setval('"User_id_seq"', 100, false)`);
 }
 
 // 승인된 갤러리 시드

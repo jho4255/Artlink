@@ -22,10 +22,10 @@ describe('Custom Fields API', () => {
   });
 
   beforeEach(async () => {
-    // 매 테스트마다 Exhibition/Application 초기화
-    await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE "Application" CASCADE`);
-    await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE "Exhibition" CASCADE`);
-    await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE "Gallery" CASCADE`);
+    // 매 테스트마다 Exhibition/Application 초기화 (deleteMany로 deadlock 방지)
+    await testPrisma.application.deleteMany();
+    await testPrisma.exhibition.deleteMany();
+    await testPrisma.gallery.deleteMany();
     const gallery = await seedGallery();
     galleryId = gallery.id;
   });
