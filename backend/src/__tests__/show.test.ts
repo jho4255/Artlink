@@ -58,7 +58,8 @@ describe('Show API', () => {
       expect(res.status).toBe(200);
       expect(res.body.title).toBe('Test Show');
       expect(res.body.gallery.ownerId).toBe(3);
-      expect(res.body.artists).toEqual(['작가1', '작가2']);
+      // normalizeArtists가 기존 ["string"] 형식을 [{name}] 형식으로 변환
+      expect(res.body.artists).toEqual([{ name: '작가1', userId: null }, { name: '작가2', userId: null }]);
     });
 
     it('존재하지 않는 전시 404', async () => {
@@ -245,6 +246,104 @@ describe('Show API', () => {
       // 삭제
       const delRes = await request.delete(`/api/shows/${show.id}/images/${addRes.body.id}`).set('Authorization', `Bearer ${token}`);
       expect(delRes.status).toBe(200);
+    });
+  });
+
+  // ===== 새 artists 구조 (ArtistEntry) =====
+  describe('ArtistEntry format', () => {
+    it('ArtistEntry 객체 배열로 전시 등록', async () => {
+      const gallery = await seedGallery();
+      const token = authToken(3, 'GALLERY');
+
+      const res = await request.post('/api/shows').set('Authorization', `Bearer ${token}`).send({
+        title: '작가 연동 전시', description: '테스트',
+        startDate: '2026-05-01', endDate: '2026-06-01',
+        openingHours: '10:00-18:00', admissionFee: '무료',
+        location: '서울시', region: 'SEOUL',
+        posterImage: 'https://example.com/poster.jpg',
+        galleryId: gallery.id,
+        artists: [{ name: '김작가', userId: 1 }, { name: '외부 작가' }],
+      });
+      expect(res.status).toBe(201);
+
+      // 상세 조회 시 정규화된 형식 반환
+      const detail = await request.get(`/api/shows/${res.body.id}`);
+      expect(detail.body.artists).toEqual([
+        { name: '김작가', userId: 1 },
+        { name: '외부 작가', userId: null },
+      ]);
+    });
+
+    it('기존 문자열 배열도 하위호환', async () => {
+      const gallery = await seedGallery();
+      const token = authToken(3, 'GALLERY');
+
+      const res = await request.post('/api/shows').set('Authorization', `Bearer ${token}`).send({
+        title: '하위호환 전시', description: '테스트',
+        startDate: '2026-05-01', endDate: '2026-06-01',
+        openingHours: '10:00-18:00', admissionFee: '무료',
+        location: '서울시', region: 'SEOUL',
+        posterImage: 'https://example.com/poster.jpg',
+        galleryId: gallery.id,
+        artists: ['김작가', '이작가'],
+      });
+      expect(res.status).toBe(201);
+
+      const detail = await request.get(`/api/shows/${res.body.id}`);
+      expect(detail.body.artists).toEqual([
+        { name: '김작가', userId: null },
+        { name: '이작가', userId: null },
+      ]);
+    });
+
+    it('PATCH로 artists 수정 시 새 형식 적용', async () => {
+      const gallery = await seedGallery();
+      const show = await seedShow(gallery.id);
+      const token = authToken(3, 'GALLERY');
+
+      const res = await request.patch(`/api/shows/${show.id}`).set('Authorization', `Bearer ${token}`)
+        .send({ artists: [{ name: '새작가', userId: 2 }] });
+      expect(res.status).toBe(200);
+      expect(res.body.artists).toEqual([{ name: '새작가', userId: 2 }]);
+    });
+  });
+
+  // ===== additionalImages (등록 시 추가 이미지) =====
+  describe('additionalImages', () => {
+    it('추가 이미지와 함께 전시 등록', async () => {
+      const gallery = await seedGallery();
+      const token = authToken(3, 'GALLERY');
+
+      const res = await request.post('/api/shows').set('Authorization', `Bearer ${token}`).send({
+        title: '이미지 전시', description: '테스트',
+        startDate: '2026-05-01', endDate: '2026-06-01',
+        openingHours: '10:00-18:00', admissionFee: '무료',
+        location: '서울시', region: 'SEOUL',
+        posterImage: 'https://example.com/poster.jpg',
+        galleryId: gallery.id,
+        additionalImages: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
+      });
+      expect(res.status).toBe(201);
+
+      // 상세 조회 시 이미지 포함
+      const detail = await request.get(`/api/shows/${res.body.id}`);
+      expect(detail.body.images).toHaveLength(2);
+      expect(detail.body.images[0].url).toBe('https://example.com/img1.jpg');
+    });
+
+    it('additionalImages 없이 등록해도 정상 작동', async () => {
+      const gallery = await seedGallery();
+      const token = authToken(3, 'GALLERY');
+
+      const res = await request.post('/api/shows').set('Authorization', `Bearer ${token}`).send({
+        title: '이미지 없는 전시', description: '테스트',
+        startDate: '2026-05-01', endDate: '2026-06-01',
+        openingHours: '10:00-18:00', admissionFee: '무료',
+        location: '서울시', region: 'SEOUL',
+        posterImage: 'https://example.com/poster.jpg',
+        galleryId: gallery.id,
+      });
+      expect(res.status).toBe(201);
     });
   });
 });

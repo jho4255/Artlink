@@ -5,6 +5,12 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 
+// 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
+const artistEntrySchema = z.object({
+  name: z.string().min(1),
+  userId: z.number().int().positive().optional().nullable(),
+});
+
 const showCreateSchema = z.object({
   title: z.string().min(1, '전시 제목을 입력해주세요.'),
   description: z.string().min(1, '전시 소개를 입력해주세요.'),
@@ -14,10 +20,38 @@ const showCreateSchema = z.object({
   admissionFee: z.string().min(1, '입장료를 입력해주세요.'),
   location: z.string().min(1, '위치를 입력해주세요.'),
   region: z.string().min(1, '지역을 선택해주세요.'),
-  artists: z.array(z.string()).optional().nullable(),
+  artists: z.array(z.union([z.string(), artistEntrySchema])).optional().nullable(),
   posterImage: z.string().min(1, '포스터 이미지를 등록해주세요.'),
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
+  additionalImages: z.array(z.string()).max(10).optional().nullable(),
 });
+
+/**
+ * 하위호환: 기존 ["name"] 형식을 [{name: "name"}]으로 변환
+ * DB에 JSON string으로 저장된 artists 필드를 파싱
+ */
+function normalizeArtists(artistsJson: string | null): { name: string; userId: number | null }[] | null {
+  if (!artistsJson) return null;
+  try {
+    const parsed = JSON.parse(artistsJson);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map((a: any) => {
+      if (typeof a === 'string') return { name: a, userId: null };
+      return { name: a.name, userId: a.userId || null };
+    });
+  } catch { return null; }
+}
+
+/**
+ * 입력 배열(string | object 혼합)을 일관된 ArtistEntry[]로 정규화
+ */
+function normalizeArtistsInput(artists: any[] | null | undefined): { name: string; userId: number | null }[] | null {
+  if (!artists || artists.length === 0) return null;
+  return artists.map((a: any) => {
+    if (typeof a === 'string') return { name: a, userId: null };
+    return { name: a.name, userId: a.userId || null };
+  });
+}
 
 const router = Router();
 
@@ -58,14 +92,14 @@ router.get('/', optionalAuth, async (req, res, next) => {
       const favSet = new Set(favorites.map(f => f.showId));
       return res.json(shows.map(s => ({
         ...s,
-        artists: s.artists ? JSON.parse(s.artists) : null,
+        artists: normalizeArtists(s.artists),
         isFavorited: favSet.has(s.id),
       })));
     }
 
     res.json(shows.map(s => ({
       ...s,
-      artists: s.artists ? JSON.parse(s.artists) : null,
+      artists: normalizeArtists(s.artists),
       isFavorited: false,
     })));
   } catch (error) { next(error); }
@@ -86,7 +120,7 @@ router.get('/my-shows', authenticate, authorize('GALLERY'), async (req, res, nex
     });
     res.json(shows.map(s => ({
       ...s,
-      artists: s.artists ? JSON.parse(s.artists) : null,
+      artists: normalizeArtists(s.artists),
     })));
   } catch (error) { next(error); }
 });
@@ -114,7 +148,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     const { owner, ...galleryRest } = show.gallery as any;
     res.json({
       ...show,
-      artists: show.artists ? JSON.parse(show.artists) : null,
+      artists: normalizeArtists(show.artists),
       gallery: { ...galleryRest, ownerId: owner?.id },
       isFavorited,
     });
@@ -124,7 +158,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 전시 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(showCreateSchema), async (req, res, next) => {
   try {
-    const { title, description, startDate, endDate, openingHours, admissionFee, location, region, artists, posterImage, galleryId } = req.body;
+    const { title, description, startDate, endDate, openingHours, admissionFee, location, region, artists, posterImage, galleryId, additionalImages } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -137,17 +171,34 @@ router.post('/', authenticate, authorize('GALLERY'), validate(showCreateSchema),
       throw new AppError('시작일은 종료일 이전이어야 합니다.', 400);
     }
 
-    const show = await prisma.show.create({
-      data: {
-        title, description,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        openingHours, admissionFee, location, region,
-        artists: artists ? JSON.stringify(artists) : null,
-        posterImage, galleryId,
-        status: 'PENDING',
-      },
+    const normalizedArtists = normalizeArtistsInput(artists);
+
+    // Show + 추가 이미지를 트랜잭션으로 묶어서 생성
+    const show = await prisma.$transaction(async (tx) => {
+      const created = await tx.show.create({
+        data: {
+          title, description,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+          openingHours, admissionFee, location, region,
+          artists: normalizedArtists ? JSON.stringify(normalizedArtists) : null,
+          posterImage, galleryId,
+          status: 'PENDING',
+        },
+      });
+
+      // 추가 이미지 일괄 생성
+      if (additionalImages && additionalImages.length > 0) {
+        await tx.showImage.createMany({
+          data: additionalImages.map((url: string, i: number) => ({
+            url, order: i, showId: created.id,
+          })),
+        });
+      }
+
+      return created;
     });
+
     res.status(201).json(show);
   } catch (error) { next(error); }
 });
@@ -165,10 +216,13 @@ router.patch('/:id', authenticate, async (req, res, next) => {
     const { description, artists } = req.body;
     const data: any = {};
     if (description !== undefined) data.description = description;
-    if (artists !== undefined) data.artists = artists ? JSON.stringify(artists) : null;
+    if (artists !== undefined) {
+      const normalized = normalizeArtistsInput(artists);
+      data.artists = normalized ? JSON.stringify(normalized) : null;
+    }
 
     const updated = await prisma.show.update({ where: { id: show.id }, data });
-    res.json({ ...updated, artists: updated.artists ? JSON.parse(updated.artists) : null });
+    res.json({ ...updated, artists: normalizeArtists(updated.artists) });
   } catch (error) { next(error); }
 });
 

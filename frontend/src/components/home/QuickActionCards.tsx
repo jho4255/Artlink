@@ -1,19 +1,20 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Megaphone, Gift } from 'lucide-react';
+import { Search, Megaphone, Image, Gift } from 'lucide-react';
 
 const cards = [
   { icon: Search, label: '갤러리 찾기', desc: '다양한 갤러리를 탐색하세요', path: '/galleries', color: 'bg-blue-50 text-blue-600' },
   { icon: Megaphone, label: '진행중인 공고', desc: '모집 공고를 확인하세요', path: '/exhibitions', color: 'bg-orange-50 text-orange-600' },
+  { icon: Image, label: '전시', desc: '갤러리 전시를 둘러보세요', path: '/shows', color: 'bg-green-50 text-green-600' },
   { icon: Gift, label: '혜택', desc: '아티스트를 위한 혜택', path: '/benefits', color: 'bg-purple-50 text-purple-600' },
 ];
 
-// 퀵 액션 카드 - 3개의 주요 페이지 바로가기
+// 퀵 액션 카드 - 4개의 주요 페이지 바로가기
 export default function QuickActionCards() {
   const navigate = useNavigate();
 
   return (
-    <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+    <div className="grid grid-cols-4 gap-4 max-w-3xl mx-auto">
       {cards.map((card, i) => (
         <motion.button
           key={card.path}

@@ -188,7 +188,17 @@ export default function ShowDetailPage() {
           <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1"><Users size={14} /> 참여 작가</h3>
           <div className="flex flex-wrap gap-2">
             {show.artists.map((artist, i) => (
-              <span key={i} className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full">{artist}</span>
+              artist.userId ? (
+                <button
+                  key={i}
+                  onClick={() => navigate(`/portfolio/${artist.userId}`)}
+                  className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+                >
+                  {artist.name}
+                </button>
+              ) : (
+                <span key={i} className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full">{artist.name}</span>
+              )
             ))}
           </div>
         </div>

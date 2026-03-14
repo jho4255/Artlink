@@ -133,6 +133,21 @@ export interface Portfolio {
   images: { id: number; url: string; order: number }[];
 }
 
+// 전시 참여 작가 (userId 있으면 ArtLink 유저 연동)
+export interface ArtistEntry {
+  name: string;
+  userId?: number | null;
+}
+
+// 공개 포트폴리오 (인증 불필요)
+export interface PublicPortfolio {
+  id: number;
+  biography?: string | null;
+  exhibitionHistory?: string | null;
+  images: { id: number; url: string; order: number }[];
+  user: { id: number; name: string; avatar?: string };
+}
+
 export interface Show {
   id: number;
   title: string;
@@ -143,7 +158,7 @@ export interface Show {
   admissionFee: string;
   location: string;
   region: string;
-  artists?: string[] | null;
+  artists?: ArtistEntry[] | null;
   posterImage: string;
   status: string;
   rejectReason?: string;

@@ -1,6 +1,6 @@
 # ArtLink 아키텍처 문서
 
-> 최종 업데이트: 2026-03-11 (Phase 1-10 + 버그 수정 + Render.com 배포 + UX/버그 4건 + Vitest + tel링크 + PWA캐시갱신 + Instagram 피드 연동)
+> 최종 업데이트: 2026-03-14 (Phase 1-10 + 버그 수정 + Render.com 배포 + UX/버그 4건 + Vitest + tel링크 + PWA캐시갱신 + Instagram 피드 연동 + Show(전시) 기능)
 
 ## 시스템 구조
 
@@ -25,7 +25,7 @@ ArtLink/
 │   ├── uploads/           # 업로드된 이미지 파일
 │   └── src/
 │       ├── index.ts       # 서버 엔트리 포인트
-│       ├── routes/        # API 라우트 (11개 모듈)
+│       ├── routes/        # API 라우트 (12개 모듈)
 │       ├── middleware/     # auth, errorHandler
 │       └── lib/           # prisma 싱글톤, mailer (nodemailer)
 ├── docker-compose.yml     # PostgreSQL (프로덕션용)
@@ -47,7 +47,7 @@ ArtLink/
 | 아이콘 | Lucide React | - |
 | 알림 | react-hot-toast | - |
 | PWA | vite-plugin-pwa (skipWaiting+clientsClaim) | v1.2.0 |
-| 테스트 | Vitest + supertest (67 tests) | v4.0.18 |
+| 테스트 | Vitest + supertest (161 tests) | v4.0.18 |
 | 백엔드 | Express + TypeScript | - |
 | ORM | Prisma | v5 (⚠️ v7 사용 금지) |
 | DB | PostgreSQL | 로컬: apt 설치, 배포: Render PostgreSQL |
@@ -55,24 +55,26 @@ ArtLink/
 | 파일 업로드 | Multer + Cloudinary (배포) | v2.1 |
 | 배포 | Render.com (모놀리스) | `deploy/render` 브랜치 |
 
-## 데이터 모델 (14개 테이블)
+## 데이터 모델 (16개 테이블)
 
 - **User** — 사용자 (ARTIST / GALLERY / ADMIN)
 - **Gallery** — 갤러리 (승인 워크플로우: PENDING → APPROVED / REJECTED)
 - **GalleryImage** — 갤러리 이미지 (1:N)
-- **Exhibition** — 전시/공모 (승인 워크플로우)
+- **Exhibition** — 공모 (승인 워크플로우)
 - **PromoPhoto** — 전시 종료 후 홍보 사진
+- **Show** — 전시 (갤러리의 실제 전시/행사, 승인 워크플로우)
+- **ShowImage** — 전시 추가 이미지 (1:N)
 - **HeroSlide** — 히어로 슬라이드 (Admin 관리)
 - **Benefit** — 혜택 (Admin 관리)
 - **GalleryOfMonth** — 이달의 갤러리 (자동 만료)
 - **Review** — 갤러리 리뷰 (별점, 익명 옵션, 사진)
-- **Favorite** — 찜하기 (갤러리/공모)
+- **Favorite** — 찜하기 (갤러리/공모/전시)
 - **Portfolio** — 아티스트 포트폴리오
 - **PortfolioImage** — 포트폴리오 이미지 (최대 30개)
 - **Application** — 공모 지원
 - **ApprovalRequest** — 수정 승인 요청
 
-## API 엔드포인트 (11개 라우트 모듈)
+## API 엔드포인트 (12개 라우트 모듈)
 
 | 모듈 | 경로 | 주요 기능 |
 |------|------|----------|
@@ -80,10 +82,11 @@ ArtLink/
 | hero | /api/hero-slides | 슬라이드 CRUD (Admin) |
 | gallery | /api/galleries | 갤러리 목록/상세/등록/이미지/상세수정/삭제(Admin)/Instagram연동 |
 | exhibition | /api/exhibitions | 공모 목록/상세/등록/지원(+이메일)/내 지원/내 공모/홍보사진/삭제(오너/Admin) |
+| show | /api/shows | 전시 목록/상세/등록/수정/삭제/이미지관리/내 전시(GALLERY) |
 | review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명 |
-| favorite | /api/favorites | 찜하기 토글 (갤러리/공모) |
+| favorite | /api/favorites | 찜하기 토글 (갤러리/공모/전시) |
 | portfolio | /api/portfolio | 포트폴리오 CRUD, 이미지 관리 |
-| approval | /api/approvals | 승인 큐, 수정 요청 관리 |
+| approval | /api/approvals | 승인 큐 (갤러리/공모/전시), 수정 요청 관리 |
 | benefit | /api/benefits | 혜택 CRUD (Admin) |
 | galleryOfMonth | /api/gallery-of-month | 이달의 갤러리 (자동 만료) |
 | upload | /api/upload | 이미지 업로드 (Multer) |
@@ -110,6 +113,8 @@ ArtLink/
 | /galleries/:id | GalleryDetailPage | X |
 | /exhibitions | ExhibitionsPage | X |
 | /exhibitions/:id | ExhibitionDetailPage | X |
+| /shows | ShowsPage | X |
+| /shows/:id | ShowDetailPage | X |
 | /benefits | BenefitsPage | X |
 | /login | LoginPage | X |
 | /mypage | MyPage | O (ProtectedRoute) |
@@ -125,6 +130,9 @@ ArtLink/
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |
 | ExhibitionDetailPage | 공모 상세, 지원하기(+이메일), 홍보사진, 삭제(오너/Admin) | `pages/ExhibitionDetailPage.tsx` |
+| ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
+| ShowDetailPage | 전시 상세, ImageLightbox, 소개수정(오너), 삭제, 찜, 작가→포트폴리오 | `pages/ShowDetailPage.tsx` |
+| PortfolioPage | 공개 포트폴리오 (약력, 전시이력, 작품 이미지 그리드) | `pages/PortfolioPage.tsx` |
 | BenefitsPage | 혜택 목록 | `pages/BenefitsPage.tsx` |
 | MyPage | 역할별 탭 (아래 상세) | `pages/MyPage.tsx` |
 
@@ -134,12 +142,13 @@ ArtLink/
 |------|------|------|
 | ProfileCard | 공통 | 아바타 업로드, 로그아웃 |
 | PortfolioSection | Artist | 전시이력, 약력, 작품사진(최대30) |
-| FavoritesSection | Artist | 갤러리/공모 찜 목록 (탭 분리) |
+| FavoritesSection | Artist | 갤러리/공모/전시 찜 목록 (탭 분리) |
 | MyReviewsSection | Artist | 작성 리뷰 목록 |
 | ApplicationsSection | Artist | 지원한 공고 목록 |
 | MyGalleriesSection | Gallery | 갤러리 등록 요청, 상태 확인, Instagram 연동/토글 |
 | MyExhibitionsSection | Gallery | 공모 등록 요청 (승인된 갤러리 선택), 공모 삭제 |
-| ApprovalsSection | Admin | 승인 큐 (승인/거절+사유), 등록 관리 (갤러리/공모 삭제) |
+| MyShowsSection | Gallery | 전시 등록 (갤러리 선택, 작가 연동/검색, 다중 이미지), 목록/상태/삭제 |
+| ApprovalsSection | Admin | 승인 큐 (갤러리/공모/전시 승인/거절+사유), 등록 관리 (삭제) |
 | HeroManageSection | Admin | Hero CRUD + 미리보기 |
 | BenefitManageSection | Admin | 혜택 CRUD + 미리보기 |
 | GotmManageSection | Admin | 이달의 갤러리 검색/선정/기한 |
@@ -269,9 +278,47 @@ cd frontend && npm run dev
 
 ## Vitest 테스트 스위트
 
-- 109 tests: Backend 87 (15 files), Frontend 22 (3 files)
+- 161 tests: Backend 128 (20 files), Frontend 33 (4 files)
 - Test DB: `artlink_test`, Backend: supertest, Frontend: jsdom
+- Show 테스트: show.test.ts(17), show-extended.test.ts(10), favorite-show.test.ts(4), approval-show.test.ts(4), frontend show.test.ts(11)
 - Run: `cd backend && npm test` + `cd frontend && npm test`
+
+## Show(전시) 기능 (2026-03-14)
+
+갤러리의 실제 전시/행사를 소개하는 기능. 기존 "모집공고"(Exhibition)와는 별개.
+
+### 데이터 모델
+- **Show** — title, description, startDate/endDate, openingHours, admissionFee, location, region, artists(JSON string), posterImage, status(PENDING/APPROVED/REJECTED), galleryId
+- **ShowImage** — url, order, showId (cascade delete)
+- **Favorite** — showId 추가 (@@unique([userId, showId]))
+
+### API (`backend/src/routes/show.ts`)
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | /shows | optionalAuth | APPROVED 목록, region/showStatus 필터, isFavorited |
+| GET | /shows/my-shows | GALLERY | 내 전시 (전 상태) |
+| GET | /shows/:id | optionalAuth | 상세 (gallery, images, artists JSON parse) |
+| POST | /shows | GALLERY | 등록 → PENDING (소유권 확인) |
+| PATCH | /shows/:id | owner | description/artists 수정 |
+| DELETE | /shows/:id | owner/ADMIN | 삭제 |
+| POST | /shows/:id/images | owner | 추가 이미지 등록 |
+| DELETE | /shows/:id/images/:imageId | owner | 이미지 삭제 |
+
+### 승인 (`backend/src/routes/approval.ts`)
+- GET /approvals → `pendingShows` 추가 반환
+- PATCH /approvals/show/:id → 승인/거절 (거절 시 사유 필수)
+
+### 프론트엔드
+- `ShowsPage.tsx` — 목록, 지역/상태 필터, optimistic 찜 토글
+- `ShowDetailPage.tsx` — 포스터+추가이미지 캐러셀(ImageLightbox), 정보 그리드, 소개수정(오너), 삭제, 찜
+- `MyPage.tsx` — Gallery: MyShowsSection(등록폼+목록), Admin: pendingShows 승인, Artist: 찜에 전시 표시
+- Navbar: '전시' 탭 (갤러리와 모집공고 사이)
+- Utils: `getShowStatus(startDate, endDate)` → 'upcoming' | 'ongoing' | 'ended'
+
+### showStatus 필터 로직 (서버)
+- ongoing: `startDate <= now AND endDate >= now`
+- upcoming: `startDate > now`
+- ended: `endDate < now`
 
 ## Admin 찜하기
 
