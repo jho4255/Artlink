@@ -38,7 +38,7 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
 // 미들웨어 설정
 app.use(cors({
