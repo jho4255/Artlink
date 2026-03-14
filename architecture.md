@@ -131,7 +131,8 @@ ArtLink/
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |
 | ExhibitionDetailPage | 공모 상세, 지원하기(+이메일), 홍보사진, 삭제(오너/Admin) | `pages/ExhibitionDetailPage.tsx` |
 | ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
-| ShowDetailPage | 전시 상세, ImageLightbox, 소개수정(오너), 삭제, 찜 | `pages/ShowDetailPage.tsx` |
+| ShowDetailPage | 전시 상세, ImageLightbox, 소개수정(오너), 삭제, 찜, 작가→포트폴리오 | `pages/ShowDetailPage.tsx` |
+| PortfolioPage | 공개 포트폴리오 (약력, 전시이력, 작품 이미지 그리드) | `pages/PortfolioPage.tsx` |
 | BenefitsPage | 혜택 목록 | `pages/BenefitsPage.tsx` |
 | MyPage | 역할별 탭 (아래 상세) | `pages/MyPage.tsx` |
 
@@ -146,7 +147,7 @@ ArtLink/
 | ApplicationsSection | Artist | 지원한 공고 목록 |
 | MyGalleriesSection | Gallery | 갤러리 등록 요청, 상태 확인, Instagram 연동/토글 |
 | MyExhibitionsSection | Gallery | 공모 등록 요청 (승인된 갤러리 선택), 공모 삭제 |
-| MyShowsSection | Gallery | 전시 등록 요청 (승인된 갤러리 선택), 전시 목록/상태/삭제 |
+| MyShowsSection | Gallery | 전시 등록 (갤러리 선택, 작가 연동/검색, 다중 이미지), 목록/상태/삭제 |
 | ApprovalsSection | Admin | 승인 큐 (갤러리/공모/전시 승인/거절+사유), 등록 관리 (삭제) |
 | HeroManageSection | Admin | Hero CRUD + 미리보기 |
 | BenefitManageSection | Admin | 혜택 CRUD + 미리보기 |

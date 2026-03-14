@@ -124,7 +124,8 @@ describe('Show API (Extended)', () => {
       const res = await request.patch(`/api/shows/${show.id}`).set('Authorization', `Bearer ${token}`)
         .send({ artists: ['새작가1', '새작가2'] });
       expect(res.status).toBe(200);
-      expect(res.body.artists).toEqual(['새작가1', '새작가2']);
+      // 문자열 배열도 ArtistEntry로 정규화됨
+      expect(res.body.artists).toEqual([{ name: '새작가1', userId: null }, { name: '새작가2', userId: null }]);
     });
 
     it('artists를 null로 설정', async () => {

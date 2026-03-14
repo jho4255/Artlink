@@ -71,6 +71,28 @@ describe('validateExhibitionDates', () => {
   });
 });
 
+describe('ArtistEntry type usage', () => {
+  it('ArtistEntry에서 name 추출', () => {
+    const artists = [
+      { name: '김작가', userId: 1 },
+      { name: '외부 작가' },
+      { name: '이작가', userId: null },
+    ];
+    const names = artists.map(a => a.name);
+    expect(names).toEqual(['김작가', '외부 작가', '이작가']);
+  });
+
+  it('userId 있는 작가만 필터링', () => {
+    const artists = [
+      { name: '김작가', userId: 1 },
+      { name: '외부 작가' },
+      { name: '이작가', userId: 2 },
+    ];
+    const linked = artists.filter(a => a.userId);
+    expect(linked).toHaveLength(2);
+  });
+});
+
 describe('getDday', () => {
   it('미래 날짜 → 양수', () => {
     const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);

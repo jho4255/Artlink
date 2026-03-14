@@ -14,7 +14,7 @@ import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, CustomField } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, CustomField, ArtistEntry } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
@@ -1203,8 +1203,14 @@ function MyShowsSection() {
   const [form, setForm] = useState({
     title: '', description: '', startDate: '', endDate: '',
     openingHours: '', admissionFee: '', location: '', region: 'SEOUL',
-    artists: '', posterImage: '', galleryId: 0,
+    posterImage: '', galleryId: 0,
+    additionalImages: [] as { url: string }[],
   });
+
+  // 작가 목록 (동적)
+  const [artists, setArtists] = useState<ArtistEntry[]>([{ name: '' }]);
+  const [searchResults, setSearchResults] = useState<{ id: number; name: string; avatar?: string }[]>([]);
+  const [searchingIdx, setSearchingIdx] = useState<number | null>(null);
 
   // 약관 동의
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -1215,7 +1221,8 @@ function MyShowsSection() {
       queryClient.invalidateQueries({ queryKey: ['my-shows'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
       setShowForm(false);
-      setForm({ title: '', description: '', startDate: '', endDate: '', openingHours: '', admissionFee: '', location: '', region: 'SEOUL', artists: '', posterImage: '', galleryId: 0 });
+      setForm({ title: '', description: '', startDate: '', endDate: '', openingHours: '', admissionFee: '', location: '', region: 'SEOUL', posterImage: '', galleryId: 0, additionalImages: [] });
+      setArtists([{ name: '' }]);
       setAgreedTerms(false);
       toast.success('전시 등록 요청이 완료되었습니다. Admin 승인을 기다려주세요.');
     },
@@ -1230,6 +1237,26 @@ function MyShowsSection() {
     },
   });
 
+  // 작가 검색
+  const searchArtist = async (idx: number) => {
+    const name = artists[idx]?.name?.trim();
+    if (!name) { toast.error('작가 이름을 입력해주세요.'); return; }
+    try {
+      const res = await api.get(`/portfolio/search?q=${encodeURIComponent(name)}`);
+      setSearchResults(res.data);
+      setSearchingIdx(idx);
+    } catch { toast.error('검색에 실패했습니다.'); }
+  };
+
+  // 작가 선택 (연동)
+  const linkArtist = (idx: number, user: { id: number; name: string }) => {
+    const updated = [...artists];
+    updated[idx] = { name: user.name, userId: user.id };
+    setArtists(updated);
+    setSearchingIdx(null);
+    setSearchResults([]);
+  };
+
   const handleSubmit = () => {
     if (!form.title || !form.description || !form.startDate || !form.endDate || !form.openingHours || !form.admissionFee || !form.location || !form.posterImage || !form.galleryId) {
       toast.error('모든 필수 항목을 입력해주세요.');
@@ -1239,9 +1266,11 @@ function MyShowsSection() {
       toast.error('시작일은 종료일 이전이어야 합니다.');
       return;
     }
+    const validArtists = artists.filter(a => a.name.trim());
     createMutation.mutate({
       ...form,
-      artists: form.artists ? form.artists.split(',').map(a => a.trim()).filter(Boolean) : null,
+      artists: validArtists.length > 0 ? validArtists : null,
+      additionalImages: form.additionalImages.map(img => img.url),
     });
   };
 
@@ -1300,12 +1329,74 @@ function MyShowsSection() {
             className="w-full p-2 border border-gray-200 rounded-lg text-sm">
             {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
           </select>
-          <input placeholder="참여 작가 (쉼표 구분: 김작가, 이작가)" value={form.artists} onChange={e => setForm({ ...form, artists: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          {/* 참여 작가 (동적 목록) */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500">참여 작가</label>
+            {artists.map((artist, idx) => (
+              <div key={idx} className="relative">
+                <div className="flex gap-2">
+                  <input
+                    placeholder="작가 이름"
+                    value={artist.name}
+                    onChange={e => {
+                      const updated = [...artists];
+                      updated[idx] = { name: e.target.value };
+                      setArtists(updated);
+                    }}
+                    className={`flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                  />
+                  {artist.userId ? (
+                    <button type="button" onClick={() => { const updated = [...artists]; updated[idx] = { name: artist.name }; setArtists(updated); }}
+                      className="px-2 text-xs text-blue-500 border border-blue-200 rounded-lg flex items-center gap-1">
+                      <Check size={12} /> 연동됨
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => searchArtist(idx)}
+                      className="px-2 text-xs text-gray-500 border border-gray-200 rounded-lg flex items-center gap-1 hover:border-gray-400">
+                      <Search size={12} /> 검색
+                    </button>
+                  )}
+                  {artists.length > 1 && (
+                    <button type="button" onClick={() => setArtists(artists.filter((_, i) => i !== idx))}
+                      className="p-2 text-gray-400 hover:text-red-500">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                {/* 검색 결과 드롭다운 */}
+                {searchingIdx === idx && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                    {searchResults.map(u => (
+                      <button key={u.id} type="button" onClick={() => linkArtist(idx, u)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
+                        {u.avatar ? <img src={u.avatar} className="w-6 h-6 rounded-full object-cover" /> : <div className="w-6 h-6 rounded-full bg-gray-200" />}
+                        {u.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchingIdx === idx && searchResults.length === 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 px-3 py-2 text-sm text-gray-400">
+                    검색 결과가 없습니다.
+                  </div>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => setArtists([...artists, { name: '' }])}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+              <Plus size={12} /> 작가 추가
+            </button>
+          </div>
           <ImageUpload
             value={form.posterImage}
             onChange={(url) => setForm({ ...form, posterImage: url })}
             placeholder="포스터 이미지"
+          />
+          <MultiImageUpload
+            images={form.additionalImages}
+            onChange={(imgs) => setForm({ ...form, additionalImages: imgs })}
+            maxCount={10}
+            placeholder="추가 이미지 (최대 10장)"
           />
           {/* 약관 동의 */}
           <label className="flex items-start gap-2 text-sm text-gray-600">

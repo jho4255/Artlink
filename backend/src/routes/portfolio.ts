@@ -5,6 +5,52 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
 
+// 작가 검색 (Gallery 유저용, 전시 등록 시 작가 연동)
+router.get('/search', authenticate, authorize('GALLERY'), async (req, res, next) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (!q) return res.json([]);
+
+    const users = await prisma.user.findMany({
+      where: { role: 'ARTIST', name: { contains: q, mode: 'insensitive' } },
+      select: { id: true, name: true, avatar: true },
+      take: 10,
+    });
+    res.json(users);
+  } catch (error) { next(error); }
+});
+
+// 공개 포트폴리오 조회 (인증 불필요)
+router.get('/:userId', async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.userId as string);
+    if (isNaN(userId)) throw new AppError('유효하지 않은 유저 ID입니다.', 400);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, avatar: true, role: true },
+    });
+    if (!user || user.role !== 'ARTIST') {
+      throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);
+    }
+
+    let portfolio = await prisma.portfolio.findUnique({
+      where: { userId },
+      include: { images: { orderBy: { order: 'asc' } } },
+    });
+
+    // 포트폴리오가 없으면 빈 데이터 반환
+    const { role, ...userInfo } = user;
+    res.json({
+      id: portfolio?.id || 0,
+      biography: portfolio?.biography || null,
+      exhibitionHistory: portfolio?.exhibitionHistory || null,
+      images: portfolio?.images || [],
+      user: userInfo,
+    });
+  } catch (error) { next(error); }
+});
+
 // 내 포트폴리오 조회
 router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {

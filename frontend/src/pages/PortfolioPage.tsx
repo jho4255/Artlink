@@ -1,0 +1,103 @@
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
+import api from '@/lib/axios';
+import ImageLightbox from '@/components/shared/ImageLightbox';
+import type { PublicPortfolio } from '@/types';
+
+export default function PortfolioPage() {
+  const { userId } = useParams();
+  const navigate = useNavigate();
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const { data: portfolio, isLoading, error } = useQuery<PublicPortfolio>({
+    queryKey: ['portfolio', userId],
+    queryFn: () => api.get(`/portfolio/${userId}`).then(r => r.data),
+  });
+
+  if (isLoading) return <div className="max-w-4xl mx-auto px-4 py-6"><div className="h-64 bg-gray-100 rounded-xl animate-pulse" /></div>;
+  if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
+
+  const imageUrls = portfolio.images.map(img => img.url);
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
+      {/* 뒤로가기 */}
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6">
+        <ArrowLeft size={16} /> 뒤로가기
+      </button>
+
+      {/* 작가 프로필 */}
+      <div className="flex items-center gap-4 mb-8">
+        {portfolio.user.avatar ? (
+          <img src={portfolio.user.avatar} alt={portfolio.user.name} className="w-16 h-16 rounded-full object-cover" />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+            <User size={24} className="text-gray-400" />
+          </div>
+        )}
+        <div>
+          <h1 className="text-2xl font-bold">{portfolio.user.name}</h1>
+          <p className="text-sm text-gray-500">아티스트 포트폴리오</p>
+        </div>
+      </div>
+
+      {/* 약력 */}
+      {portfolio.biography && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+            <FileText size={14} /> 작가 약력
+          </h3>
+          <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-4 rounded-xl">{portfolio.biography}</p>
+        </div>
+      )}
+
+      {/* 전시 이력 */}
+      {portfolio.exhibitionHistory && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+            <Calendar size={14} /> 전시 이력
+          </h3>
+          <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-4 rounded-xl">{portfolio.exhibitionHistory}</p>
+        </div>
+      )}
+
+      {/* 작품 이미지 그리드 */}
+      {imageUrls.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">작품 ({imageUrls.length})</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {imageUrls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt={`작품 ${i + 1}`}
+                className="w-full aspect-square object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => { setLightboxIndex(i); setLightboxOpen(true); }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 빈 포트폴리오 */}
+      {!portfolio.biography && !portfolio.exhibitionHistory && imageUrls.length === 0 && (
+        <div className="text-center py-16 text-gray-400">아직 포트폴리오가 등록되지 않았습니다.</div>
+      )}
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxOpen && (
+          <ImageLightbox
+            images={imageUrls}
+            initialIndex={lightboxIndex}
+            onClose={() => setLightboxOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
