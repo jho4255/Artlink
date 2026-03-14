@@ -1394,9 +1394,9 @@ function MyShowsSection() {
           />
           <MultiImageUpload
             images={form.additionalImages}
-            onChange={(imgs) => setForm({ ...form, additionalImages: imgs })}
+            onAdd={(url: string) => setForm({ ...form, additionalImages: [...form.additionalImages, { url }] })}
+            onRemove={(index: number) => setForm({ ...form, additionalImages: form.additionalImages.filter((_: { url: string }, i: number) => i !== index) })}
             maxCount={10}
-            placeholder="추가 이미지 (최대 10장)"
           />
           {/* 약관 동의 */}
           <label className="flex items-start gap-2 text-sm text-gray-600">
