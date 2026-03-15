@@ -180,10 +180,30 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       expect(favs).toHaveLength(0);
     });
 
-    it('비 Admin은 갤러리 삭제 불가 (403)', async () => {
+    it('Gallery 오너는 본인 갤러리 삭제 가능 (200)', async () => {
       const res = await request
         .delete(`/api/galleries/${galleryId}`)
         .set('Authorization', `Bearer ${galleryToken}`);
+      expect(res.status).toBe(200);
+    });
+
+    it('Artist는 갤러리 삭제 불가 (403)', async () => {
+      const artistToken = authToken(1, 'ARTIST');
+      const res = await request
+        .delete(`/api/galleries/${galleryId}`)
+        .set('Authorization', `Bearer ${artistToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('비 오너 Gallery 유저는 갤러리 삭제 불가 (403)', async () => {
+      // 별도 GALLERY 유저 생성 (ownerId=3인 갤러리에 대해 다른 유저로 삭제 시도)
+      await testPrisma.user.create({
+        data: { id: 100, email: 'gallery2@test.com', name: 'Gallery 2', role: 'GALLERY' },
+      });
+      const otherGalleryToken = authToken(100, 'GALLERY');
+      const res = await request
+        .delete(`/api/galleries/${galleryId}`)
+        .set('Authorization', `Bearer ${otherGalleryToken}`);
       expect(res.status).toBe(403);
     });
   });

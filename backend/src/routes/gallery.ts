@@ -179,11 +179,14 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 갤러리 삭제 (Admin 전용, cascade로 관련 데이터 자동 삭제)
-router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
+// 갤러리 삭제 (Admin 또는 Gallery 오너, cascade로 관련 데이터 자동 삭제)
+router.delete('/:id', authenticate, authorize('ADMIN', 'GALLERY'), async (req, res, next) => {
   try {
     const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    if (req.user!.role === 'GALLERY' && gallery.ownerId !== req.user!.id) {
+      throw new AppError('본인 소유 갤러리만 삭제할 수 있습니다.', 403);
+    }
 
     await prisma.gallery.delete({ where: { id: gallery.id } });
     res.json({ message: '갤러리가 삭제되었습니다.' });

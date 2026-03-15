@@ -197,6 +197,17 @@ export default function GalleryDetailPage() {
     onError: () => toast.error('공모 삭제에 실패했습니다.'),
   });
 
+  // 갤러리 삭제 (Gallery 오너 또는 Admin)
+  const deleteGalleryMutation = useMutation({
+    mutationFn: () => api.delete(`/galleries/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      toast.success('갤러리가 삭제되었습니다.');
+      navigate('/galleries');
+    },
+    onError: () => toast.error('갤러리 삭제에 실패했습니다.'),
+  });
+
   // 홍보 사진 삭제 (Gallery 오너 전용)
   const deletePromoPhotoMutation = useMutation({
     mutationFn: ({ exhibitionId, photoId }: { exhibitionId: number; photoId: number }) =>
@@ -749,6 +760,22 @@ export default function GalleryDetailPage() {
           )}
         </div>
       </div>
+
+      {/* === 갤러리 삭제 버튼 (오너 또는 Admin) === */}
+      {(isOwner || isAdmin) && (
+        <div className="px-4 mt-8">
+          <button
+            onClick={() => {
+              if (window.confirm('정말로 이 갤러리를 삭제하시겠습니까? 관련된 모든 공모, 리뷰, 이미지가 함께 삭제됩니다.'))
+                deleteGalleryMutation.mutate();
+            }}
+            disabled={deleteGalleryMutation.isPending}
+            className="w-full py-3 border-2 border-red-400 text-red-500 rounded-xl font-semibold hover:bg-red-50 transition disabled:opacity-50"
+          >
+            {deleteGalleryMutation.isPending ? '삭제 중...' : '갤러리 삭제'}
+          </button>
+        </div>
+      )}
 
       {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
       <AnimatePresence>
