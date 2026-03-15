@@ -65,9 +65,18 @@ export default function ExhibitionDetailPage() {
   // 지원 약관 텍스트 로드
   useEffect(() => {
     fetch('/terms/artist_apply_real.txt')
-      .then(r => r.text())
-      .then(setApplyTerms)
-      .catch(() => setApplyTerms('지원하시겠습니까?'));
+      .then(r => {
+        if (!r.ok || r.headers.get('content-type')?.includes('text/html')) {
+          throw new Error('not text');
+        }
+        return r.text();
+      })
+      .then(text => {
+        if (!text.trimStart().startsWith('<!') && !text.trimStart().startsWith('<html')) {
+          setApplyTerms(text);
+        }
+      })
+      .catch(() => setApplyTerms('이 공모에 지원하시겠습니까? 포트폴리오가 갤러리에 전송됩니다.'));
   }, []);
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
