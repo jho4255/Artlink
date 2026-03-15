@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import type { Exhibition } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
@@ -19,6 +20,16 @@ export default function ExhibitionsPage() {
   const [minGalleryRating, setMinGalleryRating] = useState<number | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [applyTerms, setApplyTerms] = useState('');
+  const [applyConfirmId, setApplyConfirmId] = useState<number | null>(null);
+
+  // 지원 약관 텍스트 로드
+  useEffect(() => {
+    fetch('/terms/artist_apply_real.txt')
+      .then(r => r.text())
+      .then(setApplyTerms)
+      .catch(() => setApplyTerms('지원하시겠습니까?'));
+  }, []);
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
@@ -231,7 +242,7 @@ export default function ExhibitionsPage() {
                             toast('추가 정보 입력이 필요합니다. 상세페이지로 이동합니다.', { icon: '📝' });
                             navigate(`/exhibitions/${ex.id}`);
                           } else {
-                            applyMutation.mutate(ex.id);
+                            setApplyConfirmId(ex.id);
                           }
                         }}
                         disabled={applyMutation.isPending}
@@ -248,6 +259,15 @@ export default function ExhibitionsPage() {
           })}
         </div>
       )}
+      {/* 지원 확인 팝업 */}
+      <ConfirmDialog
+        open={applyConfirmId !== null}
+        title="지원하기"
+        message={applyTerms || '지원하시겠습니까?'}
+        confirmText="지원하기"
+        onConfirm={() => { applyMutation.mutate(applyConfirmId!); setApplyConfirmId(null); }}
+        onCancel={() => setApplyConfirmId(null)}
+      />
     </motion.div>
   );
 }

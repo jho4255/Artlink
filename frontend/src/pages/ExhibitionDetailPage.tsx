@@ -15,7 +15,7 @@
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -56,9 +56,19 @@ export default function ExhibitionDetailPage() {
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [customAnswers, setCustomAnswers] = useState<CustomAnswer[]>([]);
   const [applyConfirm, setApplyConfirm] = useState(false);
+  const [applyTerms, setApplyTerms] = useState('');
+  const [pendingAnswers, setPendingAnswers] = useState<CustomAnswer[] | undefined>(undefined);
   // 커스텀 필드 오너 수정 상태
   const [isEditingCf, setIsEditingCf] = useState(false);
   const [editCfFields, setEditCfFields] = useState<CustomField[]>([]);
+
+  // 지원 약관 텍스트 로드
+  useEffect(() => {
+    fetch('/terms/artist_apply_real.txt')
+      .then(r => r.text())
+      .then(setApplyTerms)
+      .catch(() => setApplyTerms('지원하시겠습니까?'));
+  }, []);
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -403,10 +413,10 @@ export default function ExhibitionDetailPage() {
       <ConfirmDialog
         open={applyConfirm}
         title="지원하기"
-        message="이 공모에 지원하시겠습니까? 포트폴리오가 갤러리에 전송됩니다."
+        message={applyTerms || '지원하시겠습니까?'}
         confirmText="지원하기"
-        onConfirm={() => { setApplyConfirm(false); applyMutation.mutate(undefined); }}
-        onCancel={() => setApplyConfirm(false)}
+        onConfirm={() => { setApplyConfirm(false); applyMutation.mutate(pendingAnswers); setPendingAnswers(undefined); }}
+        onCancel={() => { setApplyConfirm(false); setPendingAnswers(undefined); }}
       />
 
       {/* 지원 모달 (커스텀 필드 입력) */}
@@ -496,7 +506,9 @@ export default function ExhibitionDetailPage() {
                         }
                       }
                     }
-                    applyMutation.mutate(customAnswers);
+                    setPendingAnswers(customAnswers);
+                    setShowApplyModal(false);
+                    setApplyConfirm(true);
                   }}
                   disabled={applyMutation.isPending}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
