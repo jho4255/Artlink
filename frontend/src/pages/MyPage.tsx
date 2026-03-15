@@ -528,7 +528,10 @@ function MyGalleriesSection() {
   // 약관 텍스트 로드
   useEffect(() => {
     if (showForm) {
-      fetch('/terms/gallery-registration.txt').then(r => r.text()).then(setGalleryTerms).catch(() => setGalleryTerms('약관을 불러올 수 없습니다.'));
+      fetch('/terms/gallery-registration.txt')
+        .then(r => { if (!r.ok || r.headers.get('content-type')?.includes('text/html')) throw new Error(); return r.text(); })
+        .then(t => { if (!t.trimStart().startsWith('<!')) setGalleryTerms(t); })
+        .catch(() => setGalleryTerms('약관을 불러올 수 없습니다.'));
     }
   }, [showForm]);
 
@@ -854,7 +857,10 @@ function MyExhibitionsSection() {
   // 약관 텍스트 로드
   useEffect(() => {
     if (showForm) {
-      fetch('/terms/exhibition-application.txt').then(r => r.text()).then(setExhibitionTerms).catch(() => setExhibitionTerms('약관을 불러올 수 없습니다.'));
+      fetch('/terms/exhibition-application.txt')
+        .then(r => { if (!r.ok || r.headers.get('content-type')?.includes('text/html')) throw new Error(); return r.text(); })
+        .then(t => { if (!t.trimStart().startsWith('<!')) setExhibitionTerms(t); })
+        .catch(() => setExhibitionTerms('약관을 불러올 수 없습니다.'));
     }
   }, [showForm]);
 
