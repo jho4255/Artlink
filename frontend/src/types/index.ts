@@ -25,6 +25,7 @@ export interface Gallery {
   instagramUrl?: string;
   instagramConnected?: boolean;
   instagramFeedVisible?: boolean;
+  instagramProfileVisible?: boolean;
   email?: string;
   ownerId: number;
   images: GalleryImage[];

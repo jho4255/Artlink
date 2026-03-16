@@ -33,7 +33,7 @@ async function main() {
   // 샘플 갤러리 생성
   const gallery1 = await prisma.gallery.upsert({
     where: { id: 1 },
-    update: { instagramUrl: '@seoul_modern_gallery', email: 'info@seoulmodern.com' },
+    update: { instagramUrl: '@seoul_modern_gallery', instagramProfileVisible: true, email: 'info@seoulmodern.com' },
     create: {
       name: '서울 현대 갤러리',
       address: '서울특별시 강남구 청담동 123-45',
@@ -52,7 +52,7 @@ async function main() {
 
   const gallery2 = await prisma.gallery.upsert({
     where: { id: 2 },
-    update: { instagramUrl: '@busan_art_center', email: 'contact@busanart.kr' },
+    update: { instagramUrl: '@busan_art_center', instagramProfileVisible: true, email: 'contact@busanart.kr' },
     create: {
       name: '부산 해운대 아트센터',
       address: '부산광역시 해운대구 해운대로 456',
