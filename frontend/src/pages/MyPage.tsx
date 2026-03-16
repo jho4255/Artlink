@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
-  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket
+  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -459,10 +460,17 @@ function MyReviewsSection() {
 
 // ========== Artist: 지원 내역 ==========
 function ApplicationsSection() {
+  const navigate = useNavigate();
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
   const { data: apps = [], isLoading, isError } = useQuery<any[]>({
     queryKey: ['my-applications'],
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
+
+  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-blue-100 text-blue-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
     return <p className="text-red-400 text-center py-8">지원 내역을 불러오는 중 오류가 발생했습니다.</p>;
@@ -470,23 +478,103 @@ function ApplicationsSection() {
 
   if (isLoading) return <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />;
 
+  // 상태 필터링
+  const filteredApps = statusFilter === 'ALL' ? apps : apps.filter((a: any) => a.status === statusFilter);
+
+  // 상태별 카운트
+  const counts: Record<string, number> = { ALL: apps.length };
+  apps.forEach((a: any) => { counts[a.status] = (counts[a.status] || 0) + 1; });
+
   return apps.length === 0 ? (
     <p className="text-gray-400 text-center py-8">지원한 공고가 없습니다.</p>
   ) : (
     <div className="space-y-3">
-      {apps.map((app: any) => (
-        <div key={app.id} className="p-4 border border-gray-100 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <h4 className="font-medium text-sm">{app.exhibition?.title}</h4>
-              <p className="text-xs text-gray-500 mt-1">{app.exhibition?.gallery?.name}</p>
+      {/* 상태 필터 탭 */}
+      <div className="flex gap-1.5 flex-wrap">
+        {[{ key: 'ALL', label: '전체' }, { key: 'SUBMITTED', label: '접수' }, { key: 'REVIEWED', label: '검토중' }, { key: 'ACCEPTED', label: '수락' }, { key: 'REJECTED', label: '거절' }].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setStatusFilter(f.key)}
+            className={`px-2.5 py-1 text-xs rounded-full transition-colors ${statusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            {f.label} {counts[f.key] ? `(${counts[f.key]})` : ''}
+          </button>
+        ))}
+      </div>
+
+      {filteredApps.length === 0 ? (
+        <p className="text-gray-400 text-center py-4 text-sm">해당 상태의 지원 내역이 없습니다.</p>
+      ) : (
+        filteredApps.map((app: any) => {
+          const isExpanded = expandedId === app.id;
+          // 커스텀 답변 파싱
+          let customAnswers: { fieldId: string; value: string }[] = [];
+          try { customAnswers = app.customAnswers ? JSON.parse(app.customAnswers) : []; } catch { /* pass */ }
+          // exhibition의 customFields 파싱
+          let customFields: CustomField[] = [];
+          try { customFields = app.exhibition?.customFields ? JSON.parse(app.exhibition.customFields) : []; } catch { /* pass */ }
+
+          return (
+            <div key={app.id} className="border border-gray-100 rounded-xl overflow-hidden">
+              {/* 메인 행 */}
+              <div
+                className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedId(isExpanded ? null : app.id)}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm truncate">{app.exhibition?.title}</h4>
+                    <p className="text-xs text-gray-500 mt-1">{app.exhibition?.gallery?.name}</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2 shrink-0">
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
+                      {statusLabelsLocal[app.status] || app.status}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(app.createdAt).toLocaleDateString('ko')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 확장 영역: 내가 입력한 답변 + 공모 상세 이동 */}
+              {isExpanded && (
+                <div className="px-4 pb-4 pt-0 border-t border-gray-50 space-y-3">
+                  {/* 내 지원 답변 */}
+                  {customAnswers.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-gray-500">내 지원 정보</p>
+                      {customAnswers.map((ans, idx) => {
+                        const field = customFields.find(f => f.id === ans.fieldId);
+                        let displayValue = ans.value;
+                        if (((field?.type as string) === 'multiselect' || (field?.type === 'select' && field?.maxSelect !== 1)) && ans.value) {
+                          try { displayValue = JSON.parse(ans.value).join(', '); } catch { /* keep */ }
+                        }
+                        if (field?.type === 'file' && ans.value) {
+                          displayValue = '📎 파일 첨부됨';
+                        }
+                        return (
+                          <div key={idx} className="text-xs">
+                            <span className="text-gray-400">{field?.label || ans.fieldId}:</span>
+                            <p className="text-gray-700 mt-0.5 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1">{displayValue || '-'}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* 공모 상세 이동 버튼 */}
+                  <button
+                    onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
+                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                  >
+                    <Eye size={12} /> 공모 상세 보기
+                  </button>
+                </div>
+              )}
             </div>
-            <span className="text-xs text-gray-400">
-              {new Date(app.createdAt).toLocaleDateString('ko')}
-            </span>
-          </div>
-        </div>
-      ))}
+          );
+        })
+      )}
     </div>
   );
 }
@@ -831,9 +919,13 @@ function MyExhibitionsSection() {
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
   const [enableCustomFields, setEnableCustomFields] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
+  // 미입력 필드 하이라이트 상태
+  const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   // 커스텀 필드 인라인 수정 상태
   const [editingCfExId, setEditingCfExId] = useState<number | null>(null);
   const [editingCfFields, setEditingCfFields] = useState<CustomField[]>([]);
+  // 지원자 관리 상태
+  const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
 
   // 임시저장 훅
   const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_exhibition_form', emptyExForm);
@@ -901,6 +993,7 @@ function MyExhibitionsSection() {
       setForm(emptyExForm);
       setExhibitionAgreed(false);
       setEnableCustomFields(false);
+      setFormErrors(new Set());
       clearDraft();
       toast.success('공모 등록 요청이 제출되었습니다.');
     },
@@ -937,9 +1030,65 @@ function MyExhibitionsSection() {
     }
   };
 
+  // 지원자 목록 조회
+  const { data: applicants = [], isLoading: appsLoading } = useQuery<any[]>({
+    queryKey: ['exhibition-applications', manageAppsExId],
+    queryFn: () => api.get(`/exhibitions/${manageAppsExId}/applications`).then(r => r.data),
+    enabled: !!manageAppsExId,
+  });
+
+  // 지원 상태 변경 mutation
+  const updateAppStatusMutation = useMutation({
+    mutationFn: ({ exId, appId, status }: { exId: number; appId: number; status: string }) =>
+      api.patch(`/exhibitions/${exId}/applications/${appId}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exhibition-applications', manageAppsExId] });
+      toast.success('지원 상태가 변경되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
+  });
+
+  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-blue-100 text-blue-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+
+  // 지원자 목록 엑셀(CSV) 다운로드
+  const exportApplicantsCSV = (exhibition: any, apps: any[]) => {
+    if (!apps.length) return;
+    const fields: CustomField[] = exhibition.customFields || [];
+    const headers = ['이름', '이메일', '지원일', '상태', ...fields.map(f => f.label)];
+    const rows = apps.map(app => {
+      const answers: any[] = app.customAnswers || [];
+      const fieldValues = fields.map(f => {
+        const ans = answers.find((a: any) => a.fieldId === f.id);
+        if (!ans?.value) return '';
+        if ((f.type as string) === 'multiselect' || (f.type === 'select' && f.maxSelect !== 1)) {
+          try { return JSON.parse(ans.value).join(' / '); } catch { return ans.value; }
+        }
+        return ans.value;
+      });
+      return [
+        app.user?.name || '',
+        app.user?.email || '',
+        new Date(app.createdAt).toLocaleDateString('ko'),
+        appStatusLabels[app.status] || app.status,
+        ...fieldValues,
+      ];
+    });
+    const csvContent = '\uFEFF' + [headers, ...rows].map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${exhibition.title}_지원자목록.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // 커스텀 필드 추가
   const addCustomField = () => {
-    const newField: CustomField = { id: `cf_${Date.now()}`, label: '', type: 'text', required: false };
+    const newField: CustomField = { id: `cf_${Date.now()}`, label: '', type: 'text', required: false, maxLength: 0 };
     setForm({ ...form, customFields: [...form.customFields, newField] });
   };
   const updateCustomField = (idx: number, field: Partial<CustomField>) => {
@@ -975,11 +1124,11 @@ function MyExhibitionsSection() {
             <p className="text-sm text-red-500">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
           ) : (
             <>
-              <select value={form.galleryId} onChange={e => setForm({...form, galleryId: Number(e.target.value)})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm">
+              <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('galleryId') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
                 <option value={0}>갤러리 선택 *</option>
                 {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
-              <input placeholder="공모 제목 *" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+              <input placeholder="공모 제목 *" value={form.title} onChange={e => { setForm({...form, title: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('title'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('title') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
               <div className="grid grid-cols-2 gap-3">
                 <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm">
                   <option value="SOLO">개인전</option>
@@ -991,20 +1140,20 @@ function MyExhibitionsSection() {
                   <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">공모 시작일</label>
-                  <input type="date" value={form.deadlineStart} onChange={e => setForm({...form, deadlineStart: e.target.value})} max={form.deadline || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
+                  <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">공모 마감일 *</label>
-                  <input type="date" value={form.deadline} onChange={e => setForm({...form, deadline: e.target.value})} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className={`text-xs ${formErrors.has('deadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
+                  <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">전시 시작일</label>
-                  <input type="date" value={form.exhibitStartDate} onChange={e => setForm({...form, exhibitStartDate: e.target.value})} min={form.deadline || undefined} max={form.exhibitDate || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
+                  <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">전시 종료일 *</label>
-                  <input type="date" value={form.exhibitDate} onChange={e => setForm({...form, exhibitDate: e.target.value})} min={form.exhibitStartDate || form.deadline || undefined} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
+                  <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                 </div>
               </div>
               {/* 날짜 검증 에러 */}
@@ -1016,7 +1165,7 @@ function MyExhibitionsSection() {
               <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm">
                 {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
               </select>
-              <textarea placeholder="간단 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
+              <textarea placeholder="간단 소개 *" value={form.description} onChange={e => { setForm({...form, description: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('description'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm h-20 resize-none ${formErrors.has('description') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
               <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
 
               {/* 커스텀 질문 항목 빌더 */}
@@ -1040,9 +1189,8 @@ function MyExhibitionsSection() {
                             className="w-full p-1.5 border border-gray-200 rounded text-xs"
                           />
                           <div className="flex gap-2">
-                            <select value={cf.type} onChange={e => updateCustomField(idx, { type: e.target.value as CustomField['type'] })} className="p-1.5 border border-gray-200 rounded text-xs">
-                              <option value="text">짧은 텍스트</option>
-                              <option value="textarea">긴 텍스트</option>
+                            <select value={(cf.type as string) === 'multiselect' ? 'select' : cf.type} onChange={e => updateCustomField(idx, { type: e.target.value as CustomField['type'], ...(e.target.value === 'select' && !cf.options?.length ? { options: [], maxSelect: 1 } : {}) })} className="p-1.5 border border-gray-200 rounded text-xs">
+                              <option value="text">텍스트</option>
                               <option value="select">선택형</option>
                               <option value="file">파일 업로드</option>
                             </select>
@@ -1051,13 +1199,70 @@ function MyExhibitionsSection() {
                               필수
                             </label>
                           </div>
-                          {cf.type === 'select' && (
-                            <input
-                              placeholder="옵션 (콤마로 구분: 옵션1,옵션2,옵션3)"
-                              value={cf.options?.join(',') || ''}
-                              onChange={e => updateCustomField(idx, { options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                              className="w-full p-1.5 border border-gray-200 rounded text-xs"
-                            />
+                          {/* 텍스트: 글자수 제한 */}
+                          {cf.type === 'text' && (
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs text-gray-500 whitespace-nowrap">글자수 제한</label>
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="0 = 무제한"
+                                value={cf.maxLength || ''}
+                                onChange={e => updateCustomField(idx, { maxLength: parseInt(e.target.value) || 0 })}
+                                className="w-24 p-1.5 border border-gray-200 rounded text-xs"
+                              />
+                              <span className="text-xs text-gray-400">{cf.maxLength ? `최대 ${cf.maxLength}자` : '무제한'}</span>
+                            </div>
+                          )}
+                          {/* 선택형: 최대 선택 수 */}
+                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs text-gray-500 whitespace-nowrap">최대 선택 수</label>
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="1 = 단일, 0 = 무제한"
+                                value={cf.maxSelect ?? 1}
+                                onChange={e => updateCustomField(idx, { maxSelect: parseInt(e.target.value) || 0 })}
+                                className="w-24 p-1.5 border border-gray-200 rounded text-xs"
+                              />
+                              <span className="text-xs text-gray-400">
+                                {cf.maxSelect === 1 ? '단일선택' : cf.maxSelect ? `최대 ${cf.maxSelect}개` : '무제한'}
+                              </span>
+                            </div>
+                          )}
+                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap gap-1">
+                                {(cf.options || []).map((opt, optIdx) => (
+                                  <span key={optIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-xs rounded">
+                                    {opt}
+                                    <button onClick={() => updateCustomField(idx, { options: cf.options!.filter((_, i) => i !== optIdx) })} className="text-gray-400 hover:text-red-500"><X size={10} /></button>
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex gap-1">
+                                <input
+                                  placeholder="옵션명 입력"
+                                  className="flex-1 p-1.5 border border-gray-200 rounded text-xs"
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      const val = (e.target as HTMLInputElement).value.trim();
+                                      if (val) { updateCustomField(idx, { options: [...(cf.options || []), val] }); (e.target as HTMLInputElement).value = ''; }
+                                    }
+                                  }}
+                                />
+                                <button
+                                  onClick={e => {
+                                    const input = (e.target as HTMLElement).parentElement?.querySelector('input') as HTMLInputElement;
+                                    const val = input?.value.trim();
+                                    if (val) { updateCustomField(idx, { options: [...(cf.options || []), val] }); input.value = ''; }
+                                  }}
+                                  className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
+                                >추가</button>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <button onClick={() => removeCustomField(idx)} className="p-1 text-gray-400 hover:text-red-500"><X size={14} /></button>
@@ -1082,14 +1287,49 @@ function MyExhibitionsSection() {
                 <button
                   disabled={createMutation.isPending || !exhibitionAgreed || !!dateError}
                   onClick={() => {
-                    if (!form.galleryId || !form.title || !form.deadline || !form.exhibitDate || !form.description) {
-                      toast.error('필수 항목을 모두 입력해주세요.'); return;
+                    // 필수 항목 구체적 검증 + 빨간 테두리 하이라이트
+                    const missing: string[] = [];
+                    const errorFields = new Set<string>();
+                    if (!form.galleryId) { missing.push('갤러리'); errorFields.add('galleryId'); }
+                    if (!form.title) { missing.push('제목'); errorFields.add('title'); }
+                    if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
+                    if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
+                    if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+                    if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
+                    if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+                    setFormErrors(errorFields);
+                    if (missing.length > 0) {
+                      toast.error(
+                        (t) => (
+                          <div className="text-sm">
+                            <p className="font-medium mb-1">다음 필수 항목을 입력해주세요:</p>
+                            {missing.map((m, i) => <p key={i} className="text-red-400">• {m}</p>)}
+                          </div>
+                        ),
+                        { duration: 4000 }
+                      );
+                      return;
+                    }
+                    // 선택형 필드 maxSelect vs 옵션 수 경고
+                    if (enableCustomFields && form.customFields) {
+                      const warnings: string[] = [];
+                      for (const cf of form.customFields) {
+                        if (cf.type === 'select' && cf.maxSelect && cf.maxSelect > 1 && cf.options) {
+                          if (cf.options.length < cf.maxSelect) {
+                            warnings.push(`"${cf.label}" — 최대 선택 수(${cf.maxSelect})가 옵션 수(${cf.options.length})보다 많습니다.`);
+                          }
+                        }
+                      }
+                      if (warnings.length > 0) {
+                        warnings.forEach(w => toast.error(w, { duration: 4000 }));
+                        return;
+                      }
                     }
                     setConfirmAction('submit');
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-                <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setExhibitionAgreed(false); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
               </div>
             </>
           )}
@@ -1111,7 +1351,7 @@ function MyExhibitionsSection() {
         message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
         confirmText="취소하기"
         variant="danger"
-        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setEnableCustomFields(false); }}
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setEnableCustomFields(false); setFormErrors(new Set()); }}
         onCancel={() => setConfirmAction(null)}
       />
 
@@ -1162,19 +1402,79 @@ function MyExhibitionsSection() {
                   {editingCfExId === ex.id ? (
                     <div className="space-y-1.5">
                       {editingCfFields.map((cf, idx) => (
-                        <div key={cf.id} className="flex gap-1.5 items-center">
-                          <input value={cf.label} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], label: e.target.value }; setEditingCfFields(u); }} className="flex-1 p-1 border border-gray-200 rounded text-xs" />
-                          <select value={cf.type} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], type: e.target.value as CustomField['type'] }; setEditingCfFields(u); }} className="p-1 border border-gray-200 rounded text-xs">
-                            <option value="text">텍스트</option>
-                            <option value="textarea">긴 텍스트</option>
-                            <option value="select">선택형</option>
-                            <option value="file">파일</option>
-                          </select>
-                          <button onClick={() => setEditingCfFields(editingCfFields.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500"><X size={12} /></button>
+                        <div key={cf.id} className="space-y-1 bg-gray-50 p-2 rounded">
+                          <div className="flex gap-1.5 items-center">
+                            <input value={cf.label} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], label: e.target.value }; setEditingCfFields(u); }} className="flex-1 p-1 border border-gray-200 rounded text-xs" />
+                            <select value={(cf.type as string) === 'multiselect' ? 'select' : cf.type} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], type: e.target.value as CustomField['type'], ...(e.target.value === 'select' && !cf.options?.length ? { options: [], maxSelect: cf.maxSelect ?? 1 } : {}) }; setEditingCfFields(u); }} className="p-1 border border-gray-200 rounded text-xs">
+                              <option value="text">텍스트</option>
+                              <option value="select">선택형</option>
+                              <option value="file">파일</option>
+                            </select>
+                            <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                              <input type="checkbox" checked={cf.required} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], required: e.target.checked }; setEditingCfFields(u); }} className="rounded" />
+                              필수
+                            </label>
+                            <button onClick={() => setEditingCfFields(editingCfFields.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500"><X size={12} /></button>
+                          </div>
+                          {/* 텍스트: 글자수 제한 수정 */}
+                          {cf.type === 'text' && (
+                            <div className="flex items-center gap-2 pl-1">
+                              <label className="text-xs text-gray-500">글자수 제한</label>
+                              <input type="number" min={0} placeholder="0 = 무제한" value={cf.maxLength || ''} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], maxLength: parseInt(e.target.value) || 0 }; setEditingCfFields(u); }} className="w-20 p-1 border border-gray-200 rounded text-xs" />
+                              <span className="text-xs text-gray-400">{cf.maxLength ? `최대 ${cf.maxLength}자` : '무제한'}</span>
+                            </div>
+                          )}
+                          {/* 선택형: 최대 선택 수 수정 */}
+                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
+                            <div className="flex items-center gap-2 pl-1">
+                              <label className="text-xs text-gray-500">최대 선택 수</label>
+                              <input type="number" min={0} placeholder="1 = 단일선택" value={cf.maxSelect ?? ''} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], maxSelect: parseInt(e.target.value) || 0 }; setEditingCfFields(u); }} className="w-20 p-1 border border-gray-200 rounded text-xs" />
+                              <span className="text-xs text-gray-400">{cf.maxSelect === 1 ? '단일선택' : cf.maxSelect && cf.maxSelect > 1 ? `최대 ${cf.maxSelect}개` : '무제한'}</span>
+                            </div>
+                          )}
+                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
+                            <div className="space-y-1 pl-1">
+                              <div className="flex flex-wrap gap-1">
+                                {(cf.options || []).map((opt, optIdx) => (
+                                  <span key={optIdx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white border text-xs rounded">
+                                    {opt}
+                                    <button onClick={() => { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: cf.options!.filter((_, i) => i !== optIdx) }; setEditingCfFields(u); }} className="text-gray-400 hover:text-red-500"><X size={9} /></button>
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex gap-1">
+                                <input placeholder="옵션명 입력" className="flex-1 p-1 border border-gray-200 rounded text-xs"
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      const val = (e.target as HTMLInputElement).value.trim();
+                                      if (val) { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: [...(cf.options || []), val] }; setEditingCfFields(u); (e.target as HTMLInputElement).value = ''; }
+                                    }
+                                  }}
+                                />
+                                <button onClick={e => { const input = (e.target as HTMLElement).parentElement?.querySelector('input') as HTMLInputElement; const val = input?.value.trim(); if (val) { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: [...(cf.options || []), val] }; setEditingCfFields(u); input.value = ''; } }} className="px-1.5 py-0.5 text-xs bg-gray-200 rounded hover:bg-gray-300">추가</button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                       <button
-                        onClick={() => updateCfMutation.mutate({ id: ex.id, customFields: editingCfFields.length > 0 ? editingCfFields : null })}
+                        onClick={() => {
+                          // maxSelect vs 옵션 수 경고
+                          const warnings: string[] = [];
+                          for (const cf of editingCfFields) {
+                            if (cf.type === 'select' && cf.maxSelect && cf.maxSelect > 1 && cf.options) {
+                              if (cf.options.length < cf.maxSelect) {
+                                warnings.push(`"${cf.label}" — 최대 선택 수(${cf.maxSelect})가 옵션 수(${cf.options.length})보다 많습니다.`);
+                              }
+                            }
+                          }
+                          if (warnings.length > 0) {
+                            warnings.forEach(w => toast.error(w, { duration: 4000 }));
+                            return;
+                          }
+                          updateCfMutation.mutate({ id: ex.id, customFields: editingCfFields.length > 0 ? editingCfFields : null });
+                        }}
                         disabled={updateCfMutation.isPending}
                         className="text-xs px-2 py-1 bg-gray-900 text-white rounded disabled:opacity-50"
                       >저장</button>
@@ -1190,6 +1490,73 @@ function MyExhibitionsSection() {
                   )}
                 </div>
               )}
+              {/* 지원자 관리 */}
+              <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setManageAppsExId(manageAppsExId === ex.id ? null : ex.id)}
+                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                  >
+                    <Send size={10} /> {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
+                  </button>
+                  {manageAppsExId === ex.id && applicants.length > 0 && (
+                    <button
+                      onClick={() => exportApplicantsCSV(ex, applicants)}
+                      className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
+                    >
+                      <FileText size={10} /> 엑셀 다운로드
+                    </button>
+                  )}
+                </div>
+                {manageAppsExId === ex.id && (
+                  <div className="mt-2 space-y-2">
+                    {appsLoading ? (
+                      <div className="h-16 bg-gray-100 rounded animate-pulse" />
+                    ) : applicants.length === 0 ? (
+                      <p className="text-xs text-gray-400 py-2">지원자가 없습니다.</p>
+                    ) : (
+                      applicants.map((app: any) => (
+                        <div key={app.id} className="p-2 bg-gray-50 rounded space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-5 h-5 rounded-full" />}
+                              <span className="text-sm font-medium">{app.user?.name}</span>
+                              <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
+                            </div>
+                            <select
+                              value={app.status}
+                              onChange={e => updateAppStatusMutation.mutate({ exId: ex.id, appId: app.id, status: e.target.value })}
+                              className={`text-xs px-2 py-0.5 rounded border-0 ${appStatusColors[app.status] || ''}`}
+                            >
+                              <option value="SUBMITTED">접수</option>
+                              <option value="REVIEWED">검토중</option>
+                              <option value="ACCEPTED">수락</option>
+                              <option value="REJECTED">거절</option>
+                            </select>
+                          </div>
+                          {app.customAnswers && app.customAnswers.length > 0 && (
+                            <div className="pl-7 space-y-0.5">
+                              {app.customAnswers.map((ans: any, aIdx: number) => {
+                                const field = ex.customFields?.find((cf: CustomField) => cf.id === ans.fieldId);
+                                let displayValue = ans.value;
+                                if (((field?.type as string) === 'multiselect' || (field?.type === 'select' && field?.maxSelect !== 1)) && ans.value) {
+                                  try { displayValue = JSON.parse(ans.value).join(', '); } catch { /* keep original */ }
+                                }
+                                return (
+                                  <div key={aIdx} className="text-xs">
+                                    <span className="text-gray-400">{field?.label || ans.fieldId}:</span>
+                                    <p className="text-gray-700 mt-0.5 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1">{displayValue || '-'}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
