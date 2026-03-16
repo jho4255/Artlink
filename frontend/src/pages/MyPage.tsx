@@ -576,12 +576,25 @@ function MyGalleriesSection() {
   const toggleProfileVisibilityMutation = useMutation({
     mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
       api.patch(`/galleries/${galleryId}/instagram-profile-visibility`, { visible }),
-    onSuccess: () => {
+    onMutate: async ({ galleryId, visible }) => {
+      await queryClient.cancelQueries({ queryKey: ['my-galleries'] });
+      const prev = queryClient.getQueryData<any[]>(['my-galleries']);
+      if (prev) {
+        queryClient.setQueryData(['my-galleries'], prev.map((g: any) =>
+          g.id === galleryId ? { ...g, instagramProfileVisible: visible } : g
+        ));
+      }
+      return { prev };
+    },
+    onError: (err: any, _vars: any, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['my-galleries'], ctx.prev);
+      toast.error(err.response?.data?.error || '설정 변경에 실패했습니다.');
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.error || '설정 변경에 실패했습니다.'),
   });
 
   // Instagram 피드 공개 토글 (낙관적 업데이트)
@@ -740,10 +753,10 @@ function MyGalleriesSection() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">프로필 링크 표시</span>
                         <button
-                          onClick={() => toggleProfileVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramUrl })}
-                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramUrl ? 'bg-pink-500' : 'bg-gray-300'}`}
+                          onClick={() => toggleProfileVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramProfileVisible })}
+                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramProfileVisible ? 'bg-pink-500' : 'bg-gray-300'}`}
                         >
-                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramUrl ? 'left-5' : 'left-0.5'}`} />
+                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramProfileVisible ? 'left-5' : 'left-0.5'}`} />
                         </button>
                       </div>
                       {/* 피드 표시 토글 */}

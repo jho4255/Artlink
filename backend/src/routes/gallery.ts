@@ -20,10 +20,14 @@ const galleryCreateSchema = z.object({
   email: z.string().email('유효한 이메일 형식이 아닙니다.').optional().or(z.literal('')),
 });
 
-/** 토큰을 제거하고 instagramConnected boolean으로 변환 */
+/** 토큰을 제거하고 instagramConnected boolean으로 변환, 프로필 비공개 시 instagramUrl 숨김 */
 function maskInstagram(g: any) {
   const { instagramAccessToken, ...rest } = g;
-  return { ...rest, instagramConnected: !!instagramAccessToken };
+  return {
+    ...rest,
+    instagramConnected: !!instagramAccessToken,
+    instagramUrl: g.instagramProfileVisible ? g.instagramUrl : null,
+  };
 }
 
 const router = Router();
@@ -214,7 +218,7 @@ router.post('/:id/instagram-token', authenticate, async (req, res, next) => {
     const igData = await igRes.json() as { id: string; username: string };
     await prisma.gallery.update({
       where: { id: gallery.id },
-      data: { instagramAccessToken: accessToken, instagramUrl: `@${igData.username}` },
+      data: { instagramAccessToken: accessToken, instagramUrl: `@${igData.username}`, instagramProfileVisible: true },
     });
 
     res.json({ instagramConnected: true, username: igData.username });
@@ -233,18 +237,11 @@ router.patch('/:id/instagram-profile-visibility', authenticate, async (req, res,
       throw new AppError('Instagram이 연동되지 않았습니다. 먼저 토큰을 등록해주세요.', 400);
     }
 
-    if (visible) {
-      // Graph API로 username 재조회 (타임아웃 적용)
-      const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${gallery.instagramAccessToken}`, {
-        signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS),
-      });
-      if (igRes.ok) {
-        const igData = await igRes.json() as { id: string; username: string };
-        await prisma.gallery.update({ where: { id: gallery.id }, data: { instagramUrl: `@${igData.username}` } });
-      }
-    } else {
-      await prisma.gallery.update({ where: { id: gallery.id }, data: { instagramUrl: null } });
-    }
+    // DB boolean 업데이트만 수행 — username은 instagramUrl에 이미 보존
+    await prisma.gallery.update({
+      where: { id: gallery.id },
+      data: { instagramProfileVisible: !!visible },
+    });
 
     res.json({ success: true });
   } catch (error) { next(error); }
