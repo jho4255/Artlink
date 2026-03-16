@@ -1,11 +1,9 @@
-# ArtLink Docker Compose - PostgreSQL (프로덕션 용)
-# 현재 개발 환경에서는 SQLite 사용, 프로덕션 전환 시 이 파일 사용
-version: '3.8'
+# ArtLink Docker Compose - 개발 환경 (PostgreSQL + Backend + Frontend)
 
 services:
   db:
     image: postgres:16-alpine
-    container_name: artlink-db
+    container_name: artlink-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: artlink
@@ -15,6 +13,56 @@ services:
       - "5432:5432"
     volumes:
       - artlink_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U artlink"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: node:18-bullseye-slim
+    container_name: artlink-backend
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    environment:
+      DATABASE_URL: postgresql://artlink:artlink_dev_password@db:5432/artlink
+      PORT: "4000"
+      NODE_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "apt-get update -qq && apt-get install -y -qq openssl > /dev/null 2>&1 || true &&
+             npm install &&
+             npx prisma generate &&
+             npx prisma migrate dev --name init 2>/dev/null || true &&
+             npx tsx prisma/seed.ts 2>/dev/null || true &&
+             npx tsx watch src/index.ts"
+
+  frontend:
+    image: node:20-alpine
+    container_name: artlink-frontend
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://backend:4000
+    depends_on:
+      - backend
+    command: >
+      sh -c "npm install && npx vite --host 0.0.0.0 --port 5173"
 
 volumes:
   artlink_pgdata:
+  backend_node_modules:
+  frontend_node_modules:

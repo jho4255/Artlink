@@ -42,9 +42,11 @@ export interface GalleryImage {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'file';
+  type: 'text' | 'select' | 'file';
   required: boolean;
   options?: string[];
+  maxLength?: number;       // 텍스트 글자수 제한 (0 = 무제한)
+  maxSelect?: number;       // 선택형 최대 선택 수 (1 = 단일선택, 2+ = 복수선택, 0 = 무제한)
 }
 
 // 커스텀 질문 답변 (Artist 지원 시 입력)
