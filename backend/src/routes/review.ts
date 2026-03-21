@@ -51,12 +51,18 @@ router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema)
   try {
     const { galleryId, rating, content, imageUrl, anonymous } = req.body;
 
-    // 중복 리뷰 방지: 같은 유저가 같은 갤러리에 이미 리뷰를 남긴 경우
-    const existing = await prisma.review.findFirst({
-      where: { userId: req.user!.id, galleryId },
+    // 중복 제출 방지 (idempotency): 같은 유저+갤러리+내용이 최근 1분 내에 있으면 기존 리뷰 반환
+    // Render 콜드스타트(~30s) 중 timeout → 재클릭 시 동일 리뷰 다수 생성되는 문제 방지
+    const recentDup = await prisma.review.findFirst({
+      where: {
+        userId: req.user!.id,
+        galleryId,
+        content,
+        createdAt: { gte: new Date(Date.now() - 60 * 1000) },
+      },
     });
-    if (existing) {
-      throw new AppError('이미 이 갤러리에 리뷰를 작성하셨습니다. 기존 리뷰를 수정해주세요.', 400);
+    if (recentDup) {
+      return res.status(201).json(recentDup);
     }
 
     // 트랜잭션으로 리뷰 생성 + 평점 재계산 atomic 보장
