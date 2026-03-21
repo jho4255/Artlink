@@ -131,6 +131,7 @@ export default function GalleryDetailPage() {
   const reviewMutation = useMutation({
     mutationFn: (data: { galleryId: number; rating: number; content: string; anonymous: boolean; imageUrl?: string }) =>
       api.post('/reviews', data),
+    retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['gallery-of-month'] });

@@ -64,6 +64,16 @@ describe('Review Routes', () => {
     expect(gallery!.rating).toBe(3.5);
   });
 
+  // 같은 유저가 같은 갤러리에 중복 리뷰 작성 불가
+  it('POST /api/reviews — 중복 리뷰 400', async () => {
+    const token = authToken(1, 'ARTIST');
+    const res = await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
+      galleryId, rating: 4, content: '중복 리뷰 시도',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('이미');
+  });
+
   // Gallery 유저는 리뷰 작성 불가
   it('POST /api/reviews — Gallery 유저 403', async () => {
     const token = authToken(3, 'GALLERY');

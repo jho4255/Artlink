@@ -51,6 +51,14 @@ router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema)
   try {
     const { galleryId, rating, content, imageUrl, anonymous } = req.body;
 
+    // 중복 리뷰 방지: 같은 유저가 같은 갤러리에 이미 리뷰를 남긴 경우
+    const existing = await prisma.review.findFirst({
+      where: { userId: req.user!.id, galleryId },
+    });
+    if (existing) {
+      throw new AppError('이미 이 갤러리에 리뷰를 작성하셨습니다. 기존 리뷰를 수정해주세요.', 400);
+    }
+
     // 트랜잭션으로 리뷰 생성 + 평점 재계산 atomic 보장
     const review = await prisma.$transaction(async (tx) => {
       const review = await tx.review.create({
