@@ -56,7 +56,7 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <h1 className="text-2xl font-bold text-center mb-2">로그인</h1>
+        <h1 className="text-2xl font-bold text-center mb-2 font-serif">로그인</h1>
         <p className="text-sm text-gray-400 text-center mb-8">개발용 퀵 로그인 - 계정을 선택하세요</p>
 
         {/* 로딩 스켈레톤 */}

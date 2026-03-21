@@ -58,9 +58,9 @@ export default function MyPage() {
       ];
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">마이페이지</h1>
+        <h1 className="text-2xl font-bold font-serif">마이페이지</h1>
         <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-600">
           <LogOut size={16} /> 로그아웃
         </button>
@@ -84,19 +84,21 @@ export default function MyPage() {
         ))}
       </div>
 
-      {/* 탭 콘텐츠 */}
-      {activeTab === 'profile' && <ProfileSection />}
-      {activeTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
-      {activeTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
-      {activeTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
-      {activeTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
-      {activeTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
-      {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
-      {activeTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
-      {activeTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
-      {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
-      {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
-      {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
+      {/* 탭 콘텐츠 (S13: 탭 전환 애니메이션) */}
+      <motion.div key={activeTab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
+        {activeTab === 'profile' && <ProfileSection />}
+        {activeTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
+        {activeTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
+        {activeTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
+        {activeTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
+        {activeTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
+        {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
+        {activeTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
+        {activeTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
+        {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
+        {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
+        {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
+      </motion.div>
     </motion.div>
   );
 }
@@ -126,11 +128,17 @@ function ProfileCard() {
     }
   };
 
+  const roleBadgeClass = user?.role === 'ARTIST'
+    ? 'bg-blue-100 text-blue-700'
+    : user?.role === 'GALLERY'
+    ? 'bg-green-100 text-green-700'
+    : 'bg-red-100 text-red-700';
+
   return (
-    <div className="bg-gray-50 rounded-2xl p-6 mb-6">
+    <div className="bg-gray-50 rounded-2xl p-6 mb-6 min-h-[180px] md:min-h-[240px] flex items-center">
       <div className="flex items-center gap-4">
         <div className="relative group">
-          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center text-2xl font-bold text-gray-400 overflow-hidden">
+          <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
             {user?.avatar ? (
               <img src={user.avatar} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -142,7 +150,7 @@ function ProfileCard() {
             disabled={uploading}
             className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           >
-            <Camera size={18} className="text-white" />
+            <Camera size={20} className="text-white" />
           </button>
           <input
             ref={inputRef}
@@ -157,9 +165,9 @@ function ProfileCard() {
           />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">{user?.name}</h2>
+          <h2 className="text-xl font-semibold">{user?.name}</h2>
           <p className="text-sm text-gray-500">{user?.email}</p>
-          <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-600">{user?.role}</span>
+          <span className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${roleBadgeClass}`}>{user?.role}</span>
         </div>
       </div>
     </div>

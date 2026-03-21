@@ -7,8 +7,8 @@ import GalleryOfMonthSection from '@/components/home/GalleryOfMonth';
 export default function HomePage() {
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
       {/* 히어로 슬라이더 */}
@@ -20,7 +20,7 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
-          className="text-lg md:text-2xl font-light text-gray-800 tracking-wide"
+          className="text-lg md:text-2xl font-light text-gray-800 tracking-wide font-serif"
         >
           갤러리와 아티스트를 잇다 : <span className="font-bold">ArtLink</span>
         </motion.p>

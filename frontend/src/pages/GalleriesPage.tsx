@@ -2,26 +2,21 @@
  * GalleriesPage - 갤러리 찾기 페이지
  *
  * 기능:
- *  - 갤러리 목록을 1줄 1개 카드 리스트로 표시
+ *  - 갤러리 목록을 반응형 masonry 그리드로 표시
  *  - 지역 필터 (서울/경기북부/경기남부/대전/부산)
  *  - 별점 필터 (3점 이상 / 4점 이상)
- *  - 현재 적용된 필터를 칩으로 표시, X 클릭으로 제거
+ *  - 가로 스크롤 필터 칩 + 적용된 필터 표시
  *  - 별점순 정렬 토글
  *  - 각 갤러리 카드: 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 별점
  *  - 갤러리 클릭 시 상세 페이지(/galleries/:id) 이동
  *
  * API: GET /api/galleries?region=SEOUL&minRating=3&sortBy=rating
- *
- * @see /src/lib/axios.ts - API 인스턴스
- * @see /src/lib/utils.ts - regionLabels, getDday
- * @see /src/types/index.ts - Gallery 타입
- * @see /src/stores/authStore.ts - 인증 상태
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Star, Heart, Phone, MapPin, X, SlidersHorizontal } from 'lucide-react';
+import { Star, Heart, Phone, MapPin, X } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels } from '@/lib/utils';
@@ -45,9 +40,8 @@ export default function GalleriesPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [sortByRating, setSortByRating] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
 
-  // 갤러리 목록 조회 — 페이지 진입 시 항상 최신 데이터 refetch
+  // 갤러리 목록 조회
   const { data: galleries = [], isLoading } = useQuery<Gallery[]>({
     queryKey: ['galleries', selectedRegion, minRating, sortByRating],
     queryFn: () => {
@@ -61,13 +55,11 @@ export default function GalleriesPage() {
     refetchOnMount: 'always',
   });
 
-  // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
-  // queryKey를 정확히 맞춰야 다른 갤러리 목록에 영향 없음
+  // 찜하기 토글 - 낙관적 업데이트
   const currentQueryKey = ['galleries', selectedRegion, minRating, sortByRating] as const;
   const favMutation = useMutation({
     mutationFn: (galleryId: number) => api.post('/favorites/toggle', { galleryId }),
     onMutate: async (galleryId: number) => {
-      // 현재 필터의 갤러리 목록만 취소/업데이트
       await queryClient.cancelQueries({ queryKey: currentQueryKey });
       const prevGalleries = queryClient.getQueryData<Gallery[]>([...currentQueryKey]);
       if (prevGalleries) {
@@ -84,12 +76,11 @@ export default function GalleriesPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: currentQueryKey });
-      // 찜 목록(MyPage)도 갱신
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
   });
 
-  // 현재 적용된 필터 목록 (칩으로 표시)
+  // 현재 적용된 필터 목록
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
     activeFilters.push({
@@ -105,82 +96,62 @@ export default function GalleriesPage() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
-      {/* 헤더: 페이지 제목 + 필터 토글 버튼 */}
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">갤러리 찾기</h1>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto px-4 py-6">
+      {/* 헤더 */}
+      <h1 className="text-2xl font-bold mb-4 font-serif">갤러리 찾기</h1>
+
+      {/* 가로 스크롤 필터 칩 */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide">
+        {/* 지역 필터 */}
+        <span className="text-xs text-gray-400 flex-none font-medium">지역</span>
+        {regions.map(r => (
+          <button
+            key={r}
+            onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
+            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
+              selectedRegion === r
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {regionLabels[r]}
+          </button>
+        ))}
+
+        <div className="w-px h-6 bg-gray-200 flex-none" />
+
+        {/* 별점 필터 */}
+        <span className="text-xs text-gray-400 flex-none font-medium">별점</span>
+        {ratingFilters.map(rf => (
+          <button
+            key={rf.value}
+            onClick={() => setMinRating(minRating === rf.value ? null : rf.value)}
+            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
+              minRating === rf.value
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {rf.label}
+          </button>
+        ))}
+
+        <div className="w-px h-6 bg-gray-200 flex-none" />
+
+        {/* 별점순 정렬 */}
         <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 px-3 py-2 rounded-lg border border-gray-200"
+          onClick={() => setSortByRating(!sortByRating)}
+          className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
+            sortByRating
+              ? 'bg-yellow-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
         >
-          <SlidersHorizontal size={16} /> 필터
+          ★ 별점순
         </button>
       </div>
 
-      {/* 필터 패널 - 토글로 열림/닫힘 */}
-      {showFilters && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          className="mb-4 p-4 bg-gray-50 rounded-xl space-y-4"
-        >
-          {/* 지역 필터 */}
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">지역</p>
-            <div className="flex flex-wrap gap-2">
-              {regions.map(r => (
-                <button
-                  key={r}
-                  onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
-                  className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                    selectedRegion === r
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                  }`}
-                >
-                  {regionLabels[r]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 별점 필터 */}
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">별점</p>
-            <div className="flex gap-2">
-              {ratingFilters.map(rf => (
-                <button
-                  key={rf.value}
-                  onClick={() => setMinRating(minRating === rf.value ? null : rf.value)}
-                  className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                    minRating === rf.value
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                  }`}
-                >
-                  {rf.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 별점순 정렬 토글 */}
-          <div>
-            <button
-              onClick={() => setSortByRating(!sortByRating)}
-              className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                sortByRating
-                  ? 'bg-yellow-500 text-white border-yellow-500'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-              }`}
-            >
-              ★ 별점순 정렬
-            </button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* 적용된 필터 칩 - X 클릭으로 제거 가능 */}
+      {/* 적용된 필터 칩 */}
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {activeFilters.map((f, i) => (
@@ -197,22 +168,19 @@ export default function GalleriesPage() {
         </div>
       )}
 
-      {/* 갤러리 리스트 */}
+      {/* 갤러리 그리드 (masonry) */}
       {isLoading ? (
-        // 로딩 스켈레톤
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-32 bg-gray-100 rounded-xl animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           ))}
         </div>
       ) : galleries.length === 0 ? (
-        // 빈 상태
         <div className="text-center py-16 text-gray-400">
           <p>조건에 맞는 갤러리가 없습니다.</p>
         </div>
       ) : (
-        // 갤러리 카드 리스트 (1줄 1개)
-        <div className="space-y-4">
+        <div className="columns-1 md:columns-2 lg:columns-3 gap-4 space-y-4">
           {galleries.map((gallery, i) => (
             <motion.div
               key={gallery.id}
@@ -220,28 +188,27 @@ export default function GalleriesPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
-              className="flex gap-4 p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              className="break-inside-avoid bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer hover:-translate-y-1 hover:shadow-md transition-all"
             >
               {/* 갤러리 대표 이미지 */}
               <img
                 src={
                   gallery.mainImage ||
                   gallery.images?.[0]?.url ||
-                  'https://images.unsplash.com/photo-1577720643272-265f09367456?w=200'
+                  'https://images.unsplash.com/photo-1577720643272-265f09367456?w=400'
                 }
                 alt={gallery.name}
-                className="w-28 h-28 object-cover rounded-lg flex-none"
+                className="w-full aspect-[4/3] object-cover"
               />
 
               {/* 갤러리 정보 */}
-              <div className="flex-1 min-w-0">
+              <div className="p-4">
                 <div className="flex justify-between items-start">
                   <h3 className="font-semibold text-gray-900 truncate">{gallery.name}</h3>
-                  {/* 찜하기 버튼 - 로그인 시에만 표시 (Admin 제외) */}
                   {isAuthenticated && user?.role !== 'ADMIN' && (
                     <button
                       onClick={(e) => {
-                        e.stopPropagation(); // 카드 클릭 이벤트 버블링 방지
+                        e.stopPropagation();
                         favMutation.mutate(gallery.id);
                       }}
                       className="p-1.5 hover:bg-gray-100 rounded-full flex-none"
@@ -261,14 +228,14 @@ export default function GalleriesPage() {
                   <span className="text-xs text-gray-400">({gallery.reviewCount})</span>
                 </div>
 
-                {/* 주소, 전화번호, 한줄소개 */}
-                <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                {/* 주소, 전화번호 */}
+                <p className="text-sm text-gray-500 mt-2 flex items-center gap-1">
                   <MapPin size={12} /> {gallery.address}
                 </p>
                 <p className="text-sm text-gray-500 flex items-center gap-1">
                   <Phone size={12} /> {gallery.phone}
                 </p>
-                <p className="text-sm text-gray-600 mt-1 truncate">{gallery.description}</p>
+                <p className="text-sm text-gray-600 mt-1 line-clamp-2">{gallery.description}</p>
               </div>
             </motion.div>
           ))}

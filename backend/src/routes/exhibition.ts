@@ -238,6 +238,24 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       }
     });
 
+    // 새 지원자 → Gallery 오너에게 알림
+    try {
+      const galleryOwner = await prisma.exhibition.findUnique({
+        where: { id: exhibitionId },
+        include: { gallery: { select: { ownerId: true, name: true } } },
+      });
+      if (galleryOwner) {
+        await prisma.notification.create({
+          data: {
+            userId: galleryOwner.gallery.ownerId,
+            type: 'NEW_APPLICANT',
+            message: `"${galleryOwner.gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
+            linkUrl: `/exhibitions/${exhibitionId}`,
+          },
+        });
+      }
+    } catch { /* best-effort */ }
+
     // 포트폴리오 이메일 전송 (best-effort: 실패해도 지원은 성공)
     try {
       const exhibition = await prisma.exhibition.findUnique({
@@ -396,6 +414,20 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
       where: { id: appId },
       data: { status },
     });
+
+    // 지원 상태 변경 → Artist에게 알림
+    const statusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: application.userId,
+          type: 'APPLICATION_STATUS',
+          message: `"${exhibition.title}" 공모 지원 상태가 '${statusLabels[status] || status}'(으)로 변경되었습니다.`,
+          linkUrl: `/exhibitions/${exhibitionId}`,
+        },
+      });
+    } catch { /* best-effort */ }
+
     res.json(updated);
   } catch (error) { next(error); }
 });

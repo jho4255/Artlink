@@ -23,6 +23,7 @@ model User {
   favorites      Favorite[]
   portfolio      Portfolio?
   applications   Application[]
+  notifications  Notification[]
 }
 
 // 갤러리 모델
@@ -252,6 +253,21 @@ model ShowImage {
   order  Int    @default(0)
   showId Int
   show   Show   @relation(fields: [showId], references: [id], onDelete: Cascade)
+}
+
+// 인앱 알림
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT
+  message   String
+  linkUrl   String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
 }
 
 // 승인 요청 (갤러리/공모 수정 요청)

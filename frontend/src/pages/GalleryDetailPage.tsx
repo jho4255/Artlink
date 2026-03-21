@@ -259,7 +259,7 @@ export default function GalleryDetailPage() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto pb-12">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto pb-12">
       {/* === 이미지 캐러셀 (scroll-snap, HeroSlider 패턴) === */}
       <GalleryImageCarousel
         images={images}

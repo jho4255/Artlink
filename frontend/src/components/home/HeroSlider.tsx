@@ -153,11 +153,11 @@ export default function HeroSlider() {
               draggable={false}
             />
             {/* 그래디언트 오버레이 */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/15 to-transparent pointer-events-none" />
 
             {/* 텍스트 */}
             <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg pointer-events-none">
-              <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 leading-tight">
+              <h2 className="text-2xl md:text-5xl font-bold text-white mb-2 leading-tight font-serif">
                 {slide.title}
               </h2>
               {slide.description && (

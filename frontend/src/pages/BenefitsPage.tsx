@@ -12,8 +12,8 @@ export default function BenefitsPage() {
   });
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-6">혜택</h1>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
+      <h1 className="text-2xl font-bold mb-6 font-serif">혜택</h1>
 
       {isLoading ? (
         <div className="space-y-4">
@@ -29,7 +29,7 @@ export default function BenefitsPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden"
+              className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden hover:-translate-y-1 hover:shadow-md transition-all"
             >
               {benefit.imageUrl && (
                 <img src={benefit.imageUrl} alt={benefit.title} className="w-full h-48 object-cover" />

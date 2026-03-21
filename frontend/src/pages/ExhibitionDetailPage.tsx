@@ -257,7 +257,7 @@ export default function ExhibitionDetailPage() {
   const canDelete = isAdmin || isGalleryOwner;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto pb-12">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto pb-12">
       {/* 상단 이미지 */}
       <div className="relative w-full h-48 md:h-64 bg-gray-100">
         <img

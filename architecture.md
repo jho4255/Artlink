@@ -25,7 +25,7 @@ ArtLink/
 │   ├── uploads/           # 업로드된 이미지 파일
 │   └── src/
 │       ├── index.ts       # 서버 엔트리 포인트
-│       ├── routes/        # API 라우트 (12개 모듈)
+│       ├── routes/        # API 라우트 (13개 모듈, notification 포함)
 │       ├── middleware/     # auth, errorHandler
 │       └── lib/           # prisma 싱글톤, mailer (nodemailer)
 ├── docker-compose.yml     # PostgreSQL (프로덕션용)
@@ -72,9 +72,10 @@ ArtLink/
 - **Portfolio** — 아티스트 포트폴리오
 - **PortfolioImage** — 포트폴리오 이미지 (최대 30개)
 - **Application** — 공모 지원
+- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT)
 - **ApprovalRequest** — 수정 승인 요청
 
-## API 엔드포인트 (12개 라우트 모듈)
+## API 엔드포인트 (13개 라우트 모듈)
 
 | 모듈 | 경로 | 주요 기능 |
 |------|------|----------|
@@ -86,10 +87,11 @@ ArtLink/
 | review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명 |
 | favorite | /api/favorites | 찜하기 토글 (갤러리/공모/전시) |
 | portfolio | /api/portfolio | 포트폴리오 CRUD, 이미지 관리 |
-| approval | /api/approvals | 승인 큐 (갤러리/공모/전시), 수정 요청 관리 |
+| approval | /api/approvals | 승인 큐 (갤러리/공모/전시), 수정 요청 관리 + 알림 트리거 |
 | benefit | /api/benefits | 혜택 CRUD (Admin) |
 | galleryOfMonth | /api/gallery-of-month | 이달의 갤러리 (자동 만료) |
 | upload | /api/upload | 이미지 업로드 (Multer) |
+| notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
 
 ## 인증 구조
 

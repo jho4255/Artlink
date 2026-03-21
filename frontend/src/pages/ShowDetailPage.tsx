@@ -80,7 +80,7 @@ export default function ShowDetailPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
       {/* 뒤로가기 */}
       <button onClick={() => navigate('/shows')} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-4">
         <ArrowLeft size={16} /> 전시 목록

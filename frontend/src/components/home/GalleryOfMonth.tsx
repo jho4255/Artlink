@@ -20,7 +20,7 @@ export default function GalleryOfMonthSection() {
     <section className="py-12 px-4 md:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Gallery of the Month</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 font-serif">Gallery of the Month</h2>
           <span className="text-sm text-gray-400">이달의 추천 갤러리</span>
         </div>
 
@@ -32,9 +32,9 @@ export default function GalleryOfMonthSection() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.1 }}
               onClick={() => navigate(`/galleries/${item.gallery.id}`)}
-              className="flex-none w-72 cursor-pointer snap-start group"
+              className="flex-none w-72 cursor-pointer snap-start group hover:-translate-y-1 transition-transform"
             >
-              <div className="relative overflow-hidden rounded-2xl">
+              <div className="relative overflow-hidden rounded-2xl shadow-lg">
                 <img
                   src={item.gallery.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=400'}
                   alt={item.gallery.name}

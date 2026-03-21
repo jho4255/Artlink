@@ -46,10 +46,10 @@ sudo service postgresql start
 - **types/**: 전역 TypeScript 타입
 
 ### Backend (`backend/src/`)
-- **routes/**: 12개 모듈 — auth, gallery, exhibition, show, review, favorite, portfolio, approval, hero, benefit, galleryOfMonth, upload
+- **routes/**: 13개 모듈 — auth, gallery, exhibition, show, review, favorite, portfolio, approval, hero, benefit, galleryOfMonth, upload, notification
 - **middleware/**: `authenticate`(필수 JWT), `optionalAuth`(선택), `authorize(roles)`(역할 검증), `errorHandler`
 - **lib/**: `prisma.ts` (싱글톤), `mailer.ts` (nodemailer), `logger.ts` (파일+콘솔 로깅)
-- **prisma/**: `schema.prisma` (16개 모델, Single Source of Truth), `seed.ts` (4 users, 3 galleries, 2 exhibitions, 2 shows 등)
+- **prisma/**: `schema.prisma` (17개 모델, Single Source of Truth), `seed.ts` (4 users, 3 galleries, 2 exhibitions, 2 shows 등)
 
 ### Key Patterns
 - **Vite proxy**: `/api` → `localhost:4000`, `/uploads` → `localhost:4000`
@@ -110,6 +110,8 @@ sudo service postgresql start
 | `['my-exhibitions']` | MyPage Gallery | 공모 등록/삭제 |
 | `['my-shows']` | MyPage Gallery | 전시 등록/삭제 |
 | `['approvals']` | MyPage Admin | 승인/거절 |
+| `['notifications']` | Navbar 알림 dropdown | 읽음/전체읽음 |
+| `['unread-count']` | Navbar 벨 뱃지 | 30초 polling, 읽음/전체읽음 |
 
 ## Deployment (Render.com)
 
@@ -192,7 +194,7 @@ sudo service postgresql start
 
 ### 3. 서비스 화면별 세부 동작
 - **갤러리 찾기**:
-    - 리스트: 1줄 1개 구성. 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 별점 노출.
+    - 그리드: 반응형 masonry 레이아웃 (모바일 1열, 태블릿 2열, 데스크톱 3열). 세로형 카드: 상단 이미지(4:3), 하단 정보(이름, 주소, 전화번호, 한줄소개, 찜하기, 별점).
     - 필터: 지역(서울, 경기 북/남, 대전, 부산), 별점(3/4점+). **현재 적용된 필터 목록을 화면에 표시.**
     - 정렬: 별점순 나열 기능.
 - **갤러리 상세**:

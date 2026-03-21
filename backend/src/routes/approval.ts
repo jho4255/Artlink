@@ -54,6 +54,20 @@ router.patch('/gallery/:id', authenticate, authorize('ADMIN'), async (req, res, 
       where: { id: parseInt(req.params.id as string) },
       data: { status, rejectReason }
     });
+
+    // 승인/거절 → Gallery 오너에게 알림
+    try {
+      const statusLabel = status === 'APPROVED' ? '승인' : '거절';
+      await prisma.notification.create({
+        data: {
+          userId: gallery.ownerId,
+          type: 'APPROVAL_RESULT',
+          message: `갤러리 "${gallery.name}"이(가) ${statusLabel}되었습니다.${rejectReason ? ` (사유: ${rejectReason})` : ''}`,
+          linkUrl: `/galleries/${gallery.id}`,
+        },
+      });
+    } catch { /* best-effort */ }
+
     res.json(gallery);
   } catch (error) { next(error); }
 });
@@ -68,8 +82,23 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
 
     const exhibition = await prisma.exhibition.update({
       where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason }
+      data: { status, rejectReason },
+      include: { gallery: { select: { ownerId: true, name: true } } },
     });
+
+    // 승인/거절 → Gallery 오너에게 알림
+    try {
+      const statusLabel = status === 'APPROVED' ? '승인' : '거절';
+      await prisma.notification.create({
+        data: {
+          userId: exhibition.gallery.ownerId,
+          type: 'APPROVAL_RESULT',
+          message: `공모 "${exhibition.title}"이(가) ${statusLabel}되었습니다.${rejectReason ? ` (사유: ${rejectReason})` : ''}`,
+          linkUrl: `/exhibitions/${exhibition.id}`,
+        },
+      });
+    } catch { /* best-effort */ }
+
     res.json(exhibition);
   } catch (error) { next(error); }
 });
@@ -84,8 +113,23 @@ router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, nex
 
     const show = await prisma.show.update({
       where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason }
+      data: { status, rejectReason },
+      include: { gallery: { select: { ownerId: true, name: true } } },
     });
+
+    // 승인/거절 → Gallery 오너에게 알림
+    try {
+      const statusLabel = status === 'APPROVED' ? '승인' : '거절';
+      await prisma.notification.create({
+        data: {
+          userId: show.gallery.ownerId,
+          type: 'APPROVAL_RESULT',
+          message: `전시 "${show.title}"이(가) ${statusLabel}되었습니다.${rejectReason ? ` (사유: ${rejectReason})` : ''}`,
+          linkUrl: `/shows/${show.id}`,
+        },
+      });
+    } catch { /* best-effort */ }
+
     res.json(show);
   } catch (error) { next(error); }
 });
