@@ -46,10 +46,10 @@ sudo service postgresql start
 - **types/**: 전역 TypeScript 타입
 
 ### Backend (`backend/src/`)
-- **routes/**: 13개 모듈 — auth, gallery, exhibition, show, review, favorite, portfolio, approval, hero, benefit, galleryOfMonth, upload, notification
+- **routes/**: 14개 모듈 — auth, gallery, exhibition, show, review, favorite, portfolio, approval, hero, benefit, galleryOfMonth, upload, notification, inquiry
 - **middleware/**: `authenticate`(필수 JWT), `optionalAuth`(선택), `authorize(roles)`(역할 검증), `errorHandler`
 - **lib/**: `prisma.ts` (싱글톤), `mailer.ts` (nodemailer), `logger.ts` (파일+콘솔 로깅)
-- **prisma/**: `schema.prisma` (17개 모델, Single Source of Truth), `seed.ts` (4 users, 3 galleries, 2 exhibitions, 2 shows 등)
+- **prisma/**: `schema.prisma` (18개 모델, Single Source of Truth), `seed.ts` (4 users, 3 galleries, 2 exhibitions, 2 shows 등)
 
 ### Key Patterns
 - **Vite proxy**: `/api` → `localhost:4000`, `/uploads` → `localhost:4000`
@@ -112,6 +112,7 @@ sudo service postgresql start
 | `['approvals']` | MyPage Admin | 승인/거절 |
 | `['notifications']` | Navbar 알림 dropdown | 읽음/전체읽음 |
 | `['unread-count']` | Navbar 벨 뱃지 | 30초 polling, 읽음/전체읽음 |
+| `['inquiries']` | SupportPage | 문의 작성/답변 |
 
 ## Deployment (Render.com)
 

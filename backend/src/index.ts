@@ -22,6 +22,7 @@ import galleryOfMonthRoutes from './routes/galleryOfMonth';
 import uploadRoutes from './routes/upload';
 import showRoutes from './routes/show';
 import notificationRoutes from './routes/notification';
+import inquiryRoutes from './routes/inquiry';
 
 // ===== 전역 에러 핸들러: 프로세스 크래시 방지 =====
 process.on('unhandledRejection', (reason: any) => {
@@ -72,6 +73,7 @@ app.use('/api/gallery-of-month', galleryOfMonthRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/shows', showRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/inquiries', inquiryRoutes);
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {

@@ -72,10 +72,11 @@ ArtLink/
 - **Portfolio** — 아티스트 포트폴리오
 - **PortfolioImage** — 포트폴리오 이미지 (최대 30개)
 - **Application** — 공모 지원
-- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT)
+- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_REPLY)
+- **Inquiry** — 1:1 문의 (subject, content, reply, status: OPEN/ANSWERED)
 - **ApprovalRequest** — 수정 승인 요청
 
-## API 엔드포인트 (13개 라우트 모듈)
+## API 엔드포인트 (14개 라우트 모듈)
 
 | 모듈 | 경로 | 주요 기능 |
 |------|------|----------|
@@ -92,6 +93,7 @@ ArtLink/
 | galleryOfMonth | /api/gallery-of-month | 이달의 갤러리 (자동 만료) |
 | upload | /api/upload | 이미지 업로드 (Multer) |
 | notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
+| inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
 
 ## 인증 구조
 

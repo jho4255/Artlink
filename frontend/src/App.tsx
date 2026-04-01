@@ -12,6 +12,7 @@ import BenefitsPage from '@/pages/BenefitsPage';
 import MyPage from '@/pages/MyPage';
 import LoginPage from '@/pages/LoginPage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import SupportPage from '@/pages/SupportPage';
 
 export default function App() {
   return (
@@ -29,6 +30,9 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/mypage" element={
           <ProtectedRoute><MyPage /></ProtectedRoute>
+        } />
+        <Route path="/support" element={
+          <ProtectedRoute><SupportPage /></ProtectedRoute>
         } />
       </Route>
     </Routes>

@@ -185,3 +185,16 @@ export interface InstagramPost {
   permalink: string;
   timestamp: string;
 }
+
+export interface Inquiry {
+  id: number;
+  subject: string;
+  content: string;
+  status: 'OPEN' | 'ANSWERED';
+  reply?: string;
+  repliedAt?: string;
+  userId: number;
+  user?: { id: number; name: string; role: string };
+  createdAt: string;
+  updatedAt: string;
+}

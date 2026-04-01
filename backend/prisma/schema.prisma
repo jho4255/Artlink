@@ -24,6 +24,7 @@ model User {
   portfolio      Portfolio?
   applications   Application[]
   notifications  Notification[]
+  inquiries      Inquiry[]
 }
 
 // 갤러리 모델
@@ -268,6 +269,23 @@ model Notification {
 
   @@index([userId, read])
   @@index([createdAt])
+}
+
+// 1:1 문의
+model Inquiry {
+  id        Int       @id @default(autoincrement())
+  subject   String
+  content   String
+  status    String    @default("OPEN") // OPEN, ANSWERED
+  reply     String?
+  repliedAt DateTime?
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 // 승인 요청 (갤러리/공모 수정 요청)

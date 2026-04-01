@@ -14,6 +14,7 @@ const navLinks = [
   { path: '/exhibitions', label: '모집공고' },
   { path: '/benefits', label: '혜택' },
   { path: '/mypage', label: '마이페이지' },
+  { path: '/support', label: '고객센터' },
 ];
 
 export default function Navbar() {
