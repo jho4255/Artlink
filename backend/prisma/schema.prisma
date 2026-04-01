@@ -271,6 +271,16 @@ model Notification {
   @@index([createdAt])
 }
 
+// 자주 묻는 질문 (Admin 작성, 전체 공개)
+model Faq {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // 1:1 문의
 model Inquiry {
   id        Int       @id @default(autoincrement())

@@ -14,7 +14,65 @@ const replySchema = z.object({
   reply: z.string().min(1, '답변을 입력해주세요.').max(5000, '답변은 5000자 이내로 작성해주세요.'),
 });
 
+const faqSchema = z.object({
+  question: z.string().min(1, '질문을 입력해주세요.').max(500),
+  answer: z.string().min(1, '답변을 입력해주세요.').max(5000),
+  order: z.number().int().optional(),
+});
+
 const router = Router();
+
+// ===== FAQ (/:id 보다 먼저 매칭되어야 함) =====
+
+// GET /inquiries/faq — FAQ 목록 (공개, 인증 불필요)
+router.get('/faq', async (_req, res, next) => {
+  try {
+    const faqs = await prisma.faq.findMany({ orderBy: { order: 'asc' } });
+    res.json(faqs);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /inquiries/faq — FAQ 작성 (Admin)
+router.post('/faq', authenticate, authorize('ADMIN'), validate(faqSchema), async (req, res, next) => {
+  try {
+    const { question, answer, order } = req.body;
+    const faq = await prisma.faq.create({ data: { question, answer, order: order ?? 0 } });
+    res.status(201).json(faq);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /inquiries/faq/:id — FAQ 수정 (Admin)
+router.patch('/faq/:id', authenticate, authorize('ADMIN'), validate(faqSchema), async (req, res, next) => {
+  try {
+    const faq = await prisma.faq.findUnique({ where: { id: Number(req.params.id) } });
+    if (!faq) throw new AppError('FAQ를 찾을 수 없습니다.', 404);
+    const updated = await prisma.faq.update({
+      where: { id: faq.id },
+      data: { question: req.body.question, answer: req.body.answer, order: req.body.order ?? faq.order },
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /inquiries/faq/:id — FAQ 삭제 (Admin)
+router.delete('/faq/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const faq = await prisma.faq.findUnique({ where: { id: Number(req.params.id) } });
+    if (!faq) throw new AppError('FAQ를 찾을 수 없습니다.', 404);
+    await prisma.faq.delete({ where: { id: faq.id } });
+    res.json({ message: 'FAQ가 삭제되었습니다.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===== 1:1 문의 =====
 
 // GET /inquiries — 문의 목록 (Admin: 전체, Artist/Gallery: 내 문의만)
 router.get('/', authenticate, async (req, res, next) => {

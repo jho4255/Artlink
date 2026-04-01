@@ -163,3 +163,62 @@ describe('Inquiry Routes', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('FAQ Routes', () => {
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+  });
+
+  it('GET /api/inquiries/faq — 빈 목록', async () => {
+    const res = await request.get('/api/inquiries/faq');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('POST /api/inquiries/faq — Admin FAQ 작성', async () => {
+    const res = await request.post('/api/inquiries/faq')
+      .set('Authorization', `Bearer ${authToken(4, 'ADMIN')}`)
+      .send({ question: '배송은 얼마나 걸리나요?', answer: '3~5일 소요됩니다.' });
+    expect(res.status).toBe(201);
+    expect(res.body.question).toBe('배송은 얼마나 걸리나요?');
+  });
+
+  it('POST /api/inquiries/faq — 비Admin 403', async () => {
+    const res = await request.post('/api/inquiries/faq')
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ question: '질문', answer: '답변' });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/inquiries/faq — FAQ 목록 조회 (인증 불필요)', async () => {
+    await testPrisma.faq.createMany({
+      data: [
+        { question: 'Q1', answer: 'A1', order: 2 },
+        { question: 'Q2', answer: 'A2', order: 1 },
+      ],
+    });
+    const res = await request.get('/api/inquiries/faq');
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(2);
+    expect(res.body[0].question).toBe('Q2'); // order 오름차순
+  });
+
+  it('PATCH /api/inquiries/faq/:id — Admin FAQ 수정', async () => {
+    const faq = await testPrisma.faq.create({ data: { question: 'Q', answer: 'A' } });
+    const res = await request.patch(`/api/inquiries/faq/${faq.id}`)
+      .set('Authorization', `Bearer ${authToken(4, 'ADMIN')}`)
+      .send({ question: '수정Q', answer: '수정A' });
+    expect(res.status).toBe(200);
+    expect(res.body.question).toBe('수정Q');
+  });
+
+  it('DELETE /api/inquiries/faq/:id — Admin FAQ 삭제', async () => {
+    const faq = await testPrisma.faq.create({ data: { question: 'Q', answer: 'A' } });
+    const res = await request.delete(`/api/inquiries/faq/${faq.id}`)
+      .set('Authorization', `Bearer ${authToken(4, 'ADMIN')}`);
+    expect(res.status).toBe(200);
+    const count = await testPrisma.faq.count();
+    expect(count).toBe(0);
+  });
+});
