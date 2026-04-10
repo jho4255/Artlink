@@ -116,7 +116,7 @@ sudo service postgresql start
 
 ## Deployment (Render.com)
 
-- **URL**: https://artlink-2esp.onrender.com
+- **URL**: https://artlink-stmq.onrender.com
 - **브랜치**: `deploy/render` (main에서 작업 → merge → push)
 - **빌드 순서**: frontend build → backend build → prisma migrate deploy → seed → npm start
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
