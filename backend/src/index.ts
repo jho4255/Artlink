@@ -90,6 +90,15 @@ app.get('/api/health', async (_req, res) => {
 // 에러 핸들러
 app.use(errorHandler);
 
+// 프로덕션: Frontend dist 서빙 (모놀리스 배포)
+if (process.env.NODE_ENV === 'production') {
+  const frontendDistPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDistPath));
+  app.get('/{*path}', (_req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
 // 테스트 환경에서는 supertest가 자체 포트 사용하므로 listen 생략
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
