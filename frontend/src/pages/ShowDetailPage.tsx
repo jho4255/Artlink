@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { Heart, MapPin, Clock, DollarSign, Calendar, Users, ArrowLeft, Trash2, Edit3, Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
@@ -20,6 +21,7 @@ export default function ShowDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [editingDesc, setEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState('');
+  const [bgColor, setBgColor] = useState('#1a1a2e');
 
   const { data: show, isLoading } = useQuery<Show>({
     queryKey: ['show', id],
@@ -62,6 +64,11 @@ export default function ShowDetailPage() {
     },
   });
 
+  // 이미지 dominant color 추출
+  useEffect(() => {
+    if (show?.posterImage) extractColor(show.posterImage).then(setBgColor);
+  }, [show?.posterImage]);
+
   if (isLoading) return <div className="max-w-7xl mx-auto px-6 md:px-12 py-10"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
   if (!show) return <div className="text-center py-20 text-gray-400 text-lg">전시를 찾을 수 없습니다.</div>;
 
@@ -82,35 +89,40 @@ export default function ShowDetailPage() {
         <ArrowLeft size={16} /> 전시 목록
       </button>
 
-      {/* 포스터 + 이미지 */}
-      <div className="relative overflow-hidden mb-8">
-        <img
-          src={show.posterImage}
-          alt={show.title}
-          className="w-full h-72 md:h-96 object-cover cursor-pointer"
-          onClick={() => { setLightboxIndex(0); setLightboxOpen(true); }}
-        />
-
-        {/* 추가 이미지 썸네일 */}
-        {allImages.length > 1 && (
-          <div className="absolute bottom-4 left-4 flex gap-2">
-            {allImages.slice(1, 4).map((img, i) => (
-              <img
-                key={i}
-                src={img}
-                alt={`추가 이미지 ${i + 1}`}
-                className="w-12 h-12 object-cover border-2 border-white cursor-pointer hover:opacity-80"
-                onClick={(e) => { e.stopPropagation(); setLightboxIndex(i + 1); setLightboxOpen(true); }}
-              />
-            ))}
-            {allImages.length > 4 && (
-              <span className="w-12 h-12 bg-black/50 text-white text-xs flex items-center justify-center border-2 border-white cursor-pointer"
-                onClick={() => { setLightboxIndex(4); setLightboxOpen(true); }}>
-                +{allImages.length - 4}
-              </span>
+      {/* 포스터 + 그라데이션 배경 */}
+      <div className="relative bg-white mb-8 -mx-6 md:-mx-12">
+        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
+        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
+          <div className="max-w-4xl mx-auto relative overflow-hidden rounded-lg shadow-2xl">
+            <img
+              src={show.posterImage}
+              alt={show.title}
+              className="w-full h-72 md:h-96 object-cover cursor-pointer"
+              onClick={() => { setLightboxIndex(0); setLightboxOpen(true); }}
+            />
+            {/* 추가 이미지 썸네일 */}
+            {allImages.length > 1 && (
+              <div className="absolute bottom-4 left-4 flex gap-2">
+                {allImages.slice(1, 4).map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    alt={`추가 이미지 ${i + 1}`}
+                    className="w-12 h-12 object-cover border-2 border-white cursor-pointer hover:opacity-80"
+                    onClick={(e) => { e.stopPropagation(); setLightboxIndex(i + 1); setLightboxOpen(true); }}
+                  />
+                ))}
+                {allImages.length > 4 && (
+                  <span className="w-12 h-12 bg-black/50 text-white text-xs flex items-center justify-center border-2 border-white cursor-pointer"
+                    onClick={() => { setLightboxIndex(4); setLightboxOpen(true); }}>
+                    +{allImages.length - 4}
+                  </span>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Lightbox */}
