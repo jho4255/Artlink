@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Star, MapPin } from 'lucide-react';
 import api from '@/lib/axios';
 import type { GalleryOfMonth } from '@/types';
 
-// 이달의 갤러리 섹션 - 가로 스크롤 카드
 export default function GalleryOfMonthSection() {
   const navigate = useNavigate();
 
@@ -17,48 +15,61 @@ export default function GalleryOfMonthSection() {
   if (data.length === 0) return null;
 
   return (
-    <section className="py-12 px-4 md:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900 font-serif">Gallery of the Month</h2>
-          <span className="text-sm text-gray-400">이달의 추천 갤러리</span>
-        </div>
+    <section>
+      {/* 섹션 헤더 — SPACE 스타일 */}
+      <div className="mb-8 md:mb-10">
+        <h2 className="text-4xl md:text-5xl font-serif text-gray-900">
+          Gallery of the Month
+        </h2>
+        <p className="text-base text-gray-400 tracking-wide mt-3">
+          ArtLink 선정 이달의 갤러리
+        </p>
+      </div>
 
-        <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory">
-          {data.map((item, i) => (
-            <motion.div
-              key={item.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-              onClick={() => navigate(`/galleries/${item.gallery.id}`)}
-              className="flex-none w-72 cursor-pointer snap-start group hover:-translate-y-1 transition-transform"
-            >
-              <div className="relative overflow-hidden rounded-2xl shadow-lg">
-                <img
-                  src={item.gallery.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=400'}
-                  alt={item.gallery.name}
-                  className="w-72 h-48 object-cover group-hover:scale-105 transition-transform duration-500"
-                />
+      {/* 그리드 — PC 4열, 모바일 1열 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-5">
+        {data.map((item) => (
+          <article
+            key={item.id}
+            onClick={() => navigate(`/galleries/${item.gallery.id}`)}
+            className="group cursor-pointer"
+          >
+            {/* 이미지 — 직각, 그림자 없음 */}
+            <div className="overflow-hidden">
+              <img
+                src={item.gallery.mainImage || '/images/gallery-sculpture.webp'}
+                alt={item.gallery.name}
+                className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300"
+              />
+            </div>
+
+            {/* 정보 */}
+            <div className="mt-3">
+              {/* 별점 — 유일한 컬러 포인트 */}
+              <div className="flex items-center gap-1.5 mb-2">
+                <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
+                <span className="text-base font-medium text-[#c4302b]">
+                  {item.gallery.rating?.toFixed(1)}
+                </span>
               </div>
-              <div className="mt-3">
-                <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                  {item.gallery.name}
-                </h3>
-                <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <MapPin size={14} />
-                    {item.gallery.address}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Star size={14} className="text-yellow-400 fill-yellow-400" />
-                  <span className="text-sm font-medium">{item.gallery.rating?.toFixed(1)}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+
+              <h3 className="font-serif text-xl text-gray-900 hover:underline underline-offset-2 decoration-1">
+                {item.gallery.name}
+              </h3>
+
+              {item.title && (
+                <p className="text-[13px] text-gray-600 mt-1.5 tracking-wide">
+                  {item.title}
+                </p>
+              )}
+
+              <p className="flex items-center gap-1.5 mt-2 text-base text-gray-400">
+                <MapPin size={15} />
+                {item.gallery.address}
+              </p>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );

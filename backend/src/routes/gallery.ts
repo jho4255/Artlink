@@ -48,7 +48,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (region) where.region = region;
     if (minRating) where.rating = { gte: parseFloat(minRating as string) };
 
-    const orderBy: any = sortBy === 'rating' ? { rating: 'desc' } : { createdAt: 'desc' };
+    const orderBy: any = sortBy === 'rating' ? { rating: 'desc' } : sortBy === 'reviewCount' ? { reviewCount: 'desc' } : { createdAt: 'desc' };
 
     const galleries = await prisma.gallery.findMany({
       where,

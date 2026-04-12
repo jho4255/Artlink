@@ -2354,6 +2354,7 @@ function GotmManageSection() {
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGalleryId, setSelectedGalleryId] = useState<number | null>(null);
+  const [gotmTitle, setGotmTitle] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
 
   const { data: gotm = [] } = useQuery<any[]>({
@@ -2374,11 +2375,12 @@ function GotmManageSection() {
   );
 
   const createMutation = useMutation({
-    mutationFn: () => api.post('/gallery-of-month', { galleryId: selectedGalleryId, expiresAt }),
+    mutationFn: () => api.post('/gallery-of-month', { galleryId: selectedGalleryId, expiresAt, title: gotmTitle || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery-of-month'] });
       setShowForm(false);
       setSelectedGalleryId(null);
+      setGotmTitle('');
       setExpiresAt('');
       toast.success('이달의 갤러리가 등록되었습니다.');
     },
@@ -2431,6 +2433,10 @@ function GotmManageSection() {
           {selectedGalleryId && (
             <p className="text-sm text-green-600">선택됨: {searchResults.find((g: any) => g.id === selectedGalleryId)?.name}</p>
           )}
+          <div>
+            <label className="text-xs text-gray-500">선정 제목 (선택)</label>
+            <input placeholder="예: 세련된 감각의 신규 갤러리" value={gotmTitle} onChange={e => setGotmTitle(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
+          </div>
           <div>
             <label className="text-xs text-gray-500">등록 기한</label>
             <input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />

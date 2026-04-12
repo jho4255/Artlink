@@ -84,6 +84,7 @@ async function main() {
     prisma.gallery,
     { name: '서울 현대 갤러리', ownerId: galleryUser.id },
     {
+      mainImage: '/images/gallery-sculpture.webp',
       instagramUrl: '@seoul_modern_gallery',
       instagramProfileVisible: true,
       email: 'info@seoulmodern.com',
@@ -98,7 +99,7 @@ async function main() {
       region: 'SEOUL',
       status: 'APPROVED',
       ownerName: '김갤러리',
-      mainImage: 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800',
+      mainImage: '/images/gallery-sculpture.webp',
       instagramUrl: '@seoul_modern_gallery',
       instagramProfileVisible: true,
       email: 'info@seoulmodern.com',
@@ -110,6 +111,7 @@ async function main() {
     prisma.gallery,
     { name: '부산 해운대 아트센터', ownerId: galleryUser.id },
     {
+      mainImage: '/images/gallery-painting.webp',
       instagramUrl: '@busan_art_center',
       instagramProfileVisible: true,
       email: 'contact@busanart.kr',
@@ -124,7 +126,7 @@ async function main() {
       region: 'BUSAN',
       status: 'APPROVED',
       ownerName: '김갤러리',
-      mainImage: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
+      mainImage: '/images/gallery-painting.webp',
       instagramUrl: '@busan_art_center',
       instagramProfileVisible: true,
       email: 'contact@busanart.kr',
@@ -135,7 +137,7 @@ async function main() {
   const gallery3 = await upsertByKey(
     prisma.gallery,
     { name: '대전 예술의 전당', ownerId: galleryUser.id },
-    { status: 'APPROVED' },
+    { mainImage: '/images/hero-artfair.jpg', status: 'APPROVED' },
     {
       name: '대전 예술의 전당',
       address: '대전광역시 서구 둔산로 100',
@@ -144,7 +146,7 @@ async function main() {
       region: 'DAEJEON',
       status: 'APPROVED',
       ownerName: '박대표',
-      mainImage: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800',
+      mainImage: '/images/hero-artfair.jpg',
       ownerId: galleryUser.id,
     },
   );
@@ -211,11 +213,11 @@ async function main() {
   await upsertByKey(
     prisma.heroSlide,
     { title: 'Seoul International Art Fair 2026' },
-    { order: 0 },
+    { order: 0, imageUrl: '/images/hero-artfair.jpg' },
     {
       title: 'Seoul International Art Fair 2026',
       description: 'Discover emerging artists and connect with premier galleries',
-      imageUrl: 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=1200',
+      imageUrl: '/images/hero-artfair.jpg',
       linkUrl: '/exhibitions',
       order: 0,
     },
@@ -224,11 +226,11 @@ async function main() {
   await upsertByKey(
     prisma.heroSlide,
     { title: '신진 작가 발굴 프로젝트' },
-    { order: 1 },
+    { order: 1, imageUrl: '/images/gallery-sculpture.webp' },
     {
       title: '신진 작가 발굴 프로젝트',
       description: '새로운 예술의 시작, ArtLink와 함께하세요',
-      imageUrl: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=1200',
+      imageUrl: '/images/gallery-sculpture.webp',
       linkUrl: '/galleries',
       order: 1,
     },
@@ -237,11 +239,11 @@ async function main() {
   await upsertByKey(
     prisma.heroSlide,
     { title: '이달의 갤러리 특별전' },
-    { order: 2 },
+    { order: 2, imageUrl: '/images/gallery-painting.webp' },
     {
       title: '이달의 갤러리 특별전',
       description: '엄선된 갤러리의 특별한 전시를 만나보세요',
-      imageUrl: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=1200',
+      imageUrl: '/images/gallery-painting.webp',
       order: 2,
     },
   );

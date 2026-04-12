@@ -260,7 +260,7 @@ export default function GalleryDetailPage() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto pb-12">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto px-6 md:px-12 pb-12">
       {/* === 이미지 캐러셀 (scroll-snap, HeroSlider 패턴) === */}
       <GalleryImageCarousel
         images={images}
@@ -287,15 +287,15 @@ export default function GalleryDetailPage() {
       <div className="px-4 py-6 space-y-8">
         {/* === 기본 정보 섹션 === */}
         <div>
-          <h1 className="text-2xl font-bold">{gallery.name}</h1>
+          <h1 className="text-3xl md:text-4xl font-medium">{gallery.name}</h1>
           <div className="flex items-center gap-2 mt-2">
-            <Star size={16} className="text-yellow-400 fill-yellow-400" />
+            <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
             <span className="font-medium">{gallery.rating.toFixed(1)}</span>
             <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
           </div>
           <p className="text-gray-600 mt-2 flex items-center gap-1"><MapPin size={14} /> {gallery.address}</p>
           {/* 모바일: tel: 링크로 다이얼러 연결, 데스크톱: 일반 텍스트 */}
-          <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-blue-600">
+          <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-gray-900">
             <Phone size={14} /> <span className="underline">{gallery.phone}</span>
           </a>
           <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
@@ -307,7 +307,7 @@ export default function GalleryDetailPage() {
               href={gallery.instagramUrl.startsWith('http') ? gallery.instagramUrl : `https://instagram.com/${gallery.instagramUrl.replace('@', '')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-pink-500 hover:text-pink-600 flex items-center gap-1"
+              className="text-gray-500 hover:underline flex items-center gap-1"
             >
               <Instagram size={14} /> {gallery.instagramUrl}
             </a>
@@ -318,7 +318,7 @@ export default function GalleryDetailPage() {
                 type="text"
                 value={descText}
                 onChange={e => setDescText(e.target.value)}
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                 placeholder="한줄 소개를 입력해주세요"
               />
               <div className="flex gap-2">
@@ -346,7 +346,7 @@ export default function GalleryDetailPage() {
               {isOwner && (
                 <button
                   onClick={() => { setDescText(gallery.description || ''); setIsEditingDesc(true); }}
-                  className="flex-none text-gray-400 hover:text-blue-500 mt-0.5"
+                  className="flex-none text-gray-400 hover:text-gray-900 mt-0.5"
                   title="한줄 소개 수정"
                 >
                   <Edit3 size={13} />
@@ -359,12 +359,12 @@ export default function GalleryDetailPage() {
         {/* === 상세 소개 섹션 === */}
         <div>
           <div className="flex justify-between items-center mb-2">
-            <h2 className="text-lg font-bold">상세 소개</h2>
+            <h2 className="text-xl font-medium">상세 소개</h2>
             {/* 갤러리 오너만 수정 버튼 표시 */}
             {isOwner && !isEditingDetail && (
               <button
                 onClick={() => { setDetailDesc(gallery.detailDesc || ''); setIsEditingDetail(true); }}
-                className="text-sm text-blue-500 hover:text-blue-600"
+                className="text-sm text-gray-400 hover:text-gray-900"
               >
                 수정
               </button>
@@ -375,7 +375,7 @@ export default function GalleryDetailPage() {
               <textarea
                 value={detailDesc}
                 onChange={e => setDetailDesc(e.target.value)}
-                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
               <div className="flex gap-2">
                 <button
@@ -402,8 +402,8 @@ export default function GalleryDetailPage() {
         {/* === Instagram 피드 섹션 === */}
         {gallery.instagramConnected && (
           <div>
-            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-              <Instagram size={18} className="text-pink-500" />
+            <h2 className="text-xl font-medium mb-3 flex items-center gap-2">
+              <Instagram size={18} className="text-gray-500" />
               Instagram
             </h2>
             {gallery.instagramFeedVisible ? (
@@ -417,7 +417,7 @@ export default function GalleryDetailPage() {
         {/* === 진행중인 공모 섹션 === */}
         {gallery.exhibitions && gallery.exhibitions.length > 0 && (
           <div>
-            <h2 className="text-lg font-bold mb-3">진행중인 모집공고</h2>
+            <h2 className="text-xl font-medium mb-3">진행중인 모집공고</h2>
             <div className="space-y-3">
               {gallery.exhibitions
                 .filter(e => getDday(e.deadline) >= 0) // D-day가 남은 공고만 표시
@@ -465,7 +465,7 @@ export default function GalleryDetailPage() {
         {/* === 종료된 전시 - 홍보 사진 섹션 === */}
         {gallery.exhibitions && gallery.exhibitions.filter(e => new Date(e.exhibitDate) < new Date()).length > 0 && (
           <div>
-            <h2 className="text-lg font-bold mb-3">종료된 전시</h2>
+            <h2 className="text-xl font-medium mb-3">종료된 전시</h2>
             <div className="space-y-4">
               {gallery.exhibitions
                 .filter(e => new Date(e.exhibitDate) < new Date())
@@ -528,7 +528,7 @@ export default function GalleryDetailPage() {
                               value={promoCaption}
                               onChange={e => setPromoCaption(e.target.value)}
                               placeholder="사진 설명 (선택)"
-                              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                             />
                             <div className="flex gap-2">
                               <button
@@ -552,7 +552,7 @@ export default function GalleryDetailPage() {
                         ) : (
                           <button
                             onClick={() => setPromoExhibitionId(ex.id)}
-                            className="mt-3 flex items-center gap-1.5 text-sm text-blue-500 hover:text-blue-600"
+                            className="mt-3 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900"
                           >
                             <Camera size={14} /> 홍보 사진 추가
                           </button>
@@ -567,7 +567,7 @@ export default function GalleryDetailPage() {
 
         {/* === 리뷰 섹션 === */}
         <div>
-          <h2 className="text-lg font-bold mb-3">리뷰</h2>
+          <h2 className="text-xl font-medium mb-3">리뷰</h2>
 
           {/* 리뷰 작성 폼 (Artist 전용) */}
           {isArtist && (
@@ -579,7 +579,7 @@ export default function GalleryDetailPage() {
                   <button key={s} onClick={() => setReviewRating(s)}>
                     <Star
                       size={20}
-                      className={s <= reviewRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}
+                      className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'}
                     />
                   </button>
                 ))}
@@ -589,7 +589,7 @@ export default function GalleryDetailPage() {
                 value={reviewContent}
                 onChange={e => setReviewContent(e.target.value)}
                 placeholder="리뷰를 작성해주세요"
-                className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
               {/* 리뷰 이미지 (선택) */}
               <ImageUpload
@@ -648,14 +648,14 @@ export default function GalleryDetailPage() {
                         <div className="flex gap-1">
                           {[1, 2, 3, 4, 5].map(s => (
                             <button key={s} onClick={() => setReviewRating(s)}>
-                              <Star size={18} className={s <= reviewRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'} />
+                              <Star size={18} className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'} />
                             </button>
                           ))}
                         </div>
                         <textarea
                           value={reviewContent}
                           onChange={e => setReviewContent(e.target.value)}
-                          className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
                         />
                         <ImageUpload value={reviewImageUrl} onChange={(url) => setReviewImageUrl(url)} onRemove={() => setReviewImageUrl('')} placeholder="사진 첨부 (선택)" />
                         <label className="flex items-center gap-2 text-sm text-gray-600">
@@ -695,7 +695,7 @@ export default function GalleryDetailPage() {
                             <p className="font-medium text-sm">{getReviewerName(review)}</p>
                             <div className="flex gap-0.5 mt-1">
                               {[1, 2, 3, 4, 5].map(s => (
-                                <Star key={s} size={12} className={s <= review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />
+                                <Star key={s} size={12} className={s <= review.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />
                               ))}
                             </div>
                           </div>
@@ -714,7 +714,7 @@ export default function GalleryDetailPage() {
                                     setReviewAnonymous(review.anonymous);
                                     setReviewImageUrl(review.imageUrl || '');
                                   }}
-                                  className="p-1 text-gray-400 hover:text-blue-500"
+                                  className="p-1 text-gray-400 hover:text-gray-900"
                                   title="수정"
                                 >
                                   <Edit3 size={14} />
@@ -938,7 +938,7 @@ function GalleryImageCarousel({
           onClick={(e) => { e.stopPropagation(); onFavoriteClick(); }}
           className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow z-10"
         >
-          <Heart size={22} className={isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-400'} />
+          <Heart size={22} className={isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
         </button>
       )}
 

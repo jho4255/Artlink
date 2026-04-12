@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Heart, MapPin, Calendar, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -19,7 +18,6 @@ export default function ShowsPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
-  // 전시 목록 조회
   const { data: shows = [], isLoading } = useQuery<Show[]>({
     queryKey: ['shows', selectedRegion, selectedStatus],
     queryFn: () => {
@@ -32,7 +30,6 @@ export default function ShowsPage() {
     refetchOnMount: 'always',
   });
 
-  // 찜 토글 - optimistic update
   const currentQueryKey = ['shows', selectedRegion, selectedStatus] as const;
   const favMutation = useMutation({
     mutationFn: (showId: number) => api.post('/favorites/toggle', { showId }),
@@ -55,7 +52,6 @@ export default function ShowsPage() {
     },
   });
 
-  // 필터 칩
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
     activeFilters.push({ label: regionLabels[selectedRegion], onRemove: () => setSelectedRegion(null) });
@@ -67,128 +63,155 @@ export default function ShowsPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4 font-serif">전시</h1>
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Exhibitions</h1>
+      <p className="text-base text-gray-400 mt-2 mb-10">지금 만날 수 있는 전시</p>
 
-      {/* 가로 스크롤 필터 칩 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide">
-        <span className="text-xs text-gray-400 flex-none font-medium">지역</span>
-        {regions.map(r => (
-          <button
-            key={r}
-            onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              selectedRegion === r ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {regionLabels[r]}
-          </button>
-        ))}
+      {/* 필터 */}
+      <div className="space-y-3 mb-4 text-base">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">지역</span>
+          {regions.map(r => (
+            <button
+              key={r}
+              onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
+              className={`cursor-pointer transition-colors ${
+                selectedRegion === r
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {regionLabels[r]}
+            </button>
+          ))}
+        </div>
 
-        <div className="w-px h-6 bg-gray-200 flex-none" />
-
-        <span className="text-xs text-gray-400 flex-none font-medium">상태</span>
-        {statusFilters.map(s => (
-          <button
-            key={s}
-            onClick={() => setSelectedStatus(selectedStatus === s ? null : s)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              selectedStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {showStatusLabels[s]}
-          </button>
-        ))}
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">상태</span>
+          {statusFilters.map(s => (
+            <button
+              key={s}
+              onClick={() => setSelectedStatus(selectedStatus === s ? null : s)}
+              className={`cursor-pointer transition-colors ${
+                selectedStatus === s
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {showStatusLabels[s]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 적용된 필터 칩 */}
+      {/* 적용된 필터 */}
       {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-3 mb-4">
           {activeFilters.map((f, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full">
+            <span key={i} className="inline-flex items-center gap-1.5 text-sm text-gray-600">
               {f.label}
-              <button onClick={f.onRemove} className="hover:text-red-500"><X size={14} /></button>
+              <button onClick={f.onRemove} className="text-gray-400 hover:text-gray-900 cursor-pointer"><X size={14} /></button>
             </span>
           ))}
         </div>
       )}
 
+      <div className="border-t border-gray-200 mb-10" />
+
       {/* 전시 리스트 */}
       {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-48 bg-gray-100 rounded-xl animate-pulse" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {[1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 animate-pulse" />)}
         </div>
       ) : shows.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">등록된 전시가 없습니다.</div>
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">등록된 전시가 없습니다.</p>
+        </div>
       ) : (
-        <div className="space-y-4">
-          {shows.map((show, i) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {shows.map((show) => {
             const status = getShowStatus(show.startDate, show.endDate);
             const isAdmin = user?.role === 'ADMIN';
 
             return (
-              <motion.div
+              <article
                 key={show.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="border border-gray-100 rounded-xl shadow-sm overflow-hidden bg-white hover:-translate-y-1 hover:shadow-md transition-all"
+                onClick={() => navigate(`/shows/${show.id}`)}
+                className="group cursor-pointer"
               >
-                <div
-                  onClick={() => navigate(`/shows/${show.id}`)}
-                  className="flex gap-4 p-4 cursor-pointer"
-                >
+                <div className="overflow-hidden">
                   <img
                     src={show.posterImage}
                     alt={show.title}
-                    className="w-24 h-32 object-cover rounded-lg flex-none"
+                    className="w-full aspect-[3/4] object-cover group-hover:opacity-80 transition-opacity duration-300"
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold text-gray-900 line-clamp-1">{show.title}</h3>
-                      <span className={`text-xs font-bold flex-none px-2 py-0.5 rounded-full ${
-                        status === 'ongoing' ? 'bg-green-100 text-green-700' :
-                        status === 'upcoming' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-500'
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1 line-clamp-1">
+                      {show.title}
+                    </h3>
+                    <div className="flex items-center gap-2 flex-none">
+                      <span className={`text-xs font-medium px-2 py-0.5 ${
+                        status === 'ongoing' ? 'text-[#c4302b]' :
+                        status === 'upcoming' ? 'text-gray-900' :
+                        'text-gray-400'
                       }`}>
                         {showStatusLabels[status]}
                       </span>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${show.gallery?.id}`); }}
-                      className="text-sm text-blue-600 hover:underline mt-1"
-                    >
-                      {show.gallery?.name}
-                    </button>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
-                      <Calendar size={11} />
-                      <span>{formatDate(show.startDate)} ~ {formatDate(show.endDate)}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
-                      <span className="flex items-center gap-0.5"><MapPin size={11} /> {regionLabels[show.region]}</span>
-                      <span className="px-2 py-0.5 bg-gray-100 rounded">{show.admissionFee}</span>
+                      {isAuthenticated && !isAdmin && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isAuthenticated) { toast.error('로그인이 필요합니다.'); return; }
+                            favMutation.mutate(show.id);
+                          }}
+                          className="p-1 cursor-pointer"
+                        >
+                          <Heart size={16} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-center gap-2 flex-none">
-                    {isAuthenticated && !isAdmin && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isAuthenticated) { toast.error('로그인이 필요합니다.'); return; }
-                          favMutation.mutate(show.id);
-                        }}
-                        className="p-1.5 hover:bg-gray-100 rounded-full"
-                      >
-                        <Heart size={16} className={show.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-300'} />
-                      </button>
-                    )}
+
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${show.gallery?.id}`); }}
+                    className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
+                  >
+                    {show.gallery?.name}
+                  </button>
+
+                  {show.artists && show.artists.length > 0 && (
+                    <p className="text-sm text-gray-500 mt-1.5">
+                      {(show.artists.length <= 3 ? show.artists : show.artists.slice(0, 3)).map((a, idx) => (
+                        <span key={idx}>
+                          {idx > 0 && ', '}
+                          {a.userId ? (
+                            <span
+                              onClick={(e) => { e.stopPropagation(); navigate(`/portfolio/${a.userId}`); }}
+                              className="hover:underline cursor-pointer"
+                            >{a.name}</span>
+                          ) : a.name}
+                        </span>
+                      ))}
+                      {show.artists.length > 3 && ` 등 ${show.artists.length}명`}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-1.5 mt-2 text-sm text-gray-400">
+                    <Calendar size={13} />
+                    <span>{formatDate(show.startDate)} ~ {formatDate(show.endDate)}</span>
                   </div>
+                  <p className="flex items-center gap-1.5 mt-1 text-sm text-gray-400">
+                    <MapPin size={13} /> {regionLabels[show.region]}
+                  </p>
                 </div>
-              </motion.div>
+              </article>
             );
           })}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

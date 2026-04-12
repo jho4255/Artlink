@@ -5,7 +5,7 @@
  * - 마우스 드래그 + 터치 스와이프로 좌우 슬라이드
  * - IntersectionObserver로 현재 슬라이드 추적
  * - 3초 자동 슬라이드, current 변경 시 타이머 리셋
- * - 화살표, 인디케이터, 바로가기 링크
+ * - 이미지 dominant color 추출 → 배경 그라데이션 적용
  *
  * @see CLAUDE.md - Hero Section 스펙
  */
@@ -16,13 +16,44 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import type { HeroSlide } from '@/types';
 
+// 이미지에서 dominant color 추출 (canvas 샘플링)
+function extractColor(src: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 10;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve('#1a1a2e'); return; }
+      ctx.drawImage(img, 0, 0, size, size);
+      const data = ctx.getImageData(0, 0, size, size).data;
+      let r = 0, g = 0, b = 0, count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      // 약간 어둡게 보정 (배경용)
+      r = Math.round(r * 0.6);
+      g = Math.round(g * 0.6);
+      b = Math.round(b * 0.6);
+      resolve(`rgb(${r},${g},${b})`);
+    };
+    img.onerror = () => resolve('#1a1a2e');
+    img.src = src;
+  });
+}
+
 export default function HeroSlider() {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(0);
+  const [bgColors, setBgColors] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
-  // 프로그래밍 스크롤 중 observer 이벤트 무시용
   const isScrolling = useRef(false);
-  // 마우스 드래그 상태
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
 
   const { data: slides = [] } = useQuery<HeroSlide[]>({
@@ -30,7 +61,12 @@ export default function HeroSlider() {
     queryFn: () => api.get('/hero-slides').then((r) => r.data),
   });
 
-  // 특정 슬라이드로 스크롤
+  // 슬라이드 이미지에서 색상 추출
+  useEffect(() => {
+    if (slides.length === 0) return;
+    Promise.all(slides.map((s) => extractColor(s.imageUrl))).then(setBgColors);
+  }, [slides]);
+
   const scrollToSlide = useCallback((index: number) => {
     const container = containerRef.current;
     if (!container) return;
@@ -40,11 +76,9 @@ export default function HeroSlider() {
     setTimeout(() => { isScrolling.current = false; }, 500);
   }, []);
 
-  // IntersectionObserver로 현재 슬라이드 감지
   useEffect(() => {
     const container = containerRef.current;
     if (!container || slides.length === 0) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (isScrolling.current) return;
@@ -57,14 +91,11 @@ export default function HeroSlider() {
       },
       { root: container, threshold: 0.5 }
     );
-
     const children = container.querySelectorAll('[data-index]');
     children.forEach((child) => observer.observe(child));
-
     return () => observer.disconnect();
   }, [slides.length]);
 
-  // 3초 자동 슬라이드 (current 변경 시 타이머 리셋)
   useEffect(() => {
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
@@ -73,7 +104,6 @@ export default function HeroSlider() {
     return () => clearInterval(timer);
   }, [slides.length, current, scrollToSlide]);
 
-  // ── 마우스 드래그 핸들러 (데스크톱) ──
   const handleMouseDown = (e: React.MouseEvent) => {
     const container = containerRef.current;
     if (!container) return;
@@ -84,7 +114,7 @@ export default function HeroSlider() {
       didDrag: false,
     };
     container.style.cursor = 'grabbing';
-    container.style.scrollSnapType = 'none'; // 드래그 중 snap 비활성화
+    container.style.scrollSnapType = 'none';
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -104,14 +134,13 @@ export default function HeroSlider() {
     const container = containerRef.current;
     if (!container) return;
     container.style.cursor = '';
-    container.style.scrollSnapType = 'x mandatory'; // snap 복원 → 가장 가까운 슬라이드로 정렬
+    container.style.scrollSnapType = 'x mandatory';
   };
 
   const handleMouseLeave = () => {
     if (dragState.current.isDragging) handleMouseUp();
   };
 
-  // 링크 핸들러 (드래그 후 클릭 방지)
   const handleLink = (url?: string) => {
     if (!url || dragState.current.didDrag) return;
     if (url.startsWith('http')) {
@@ -121,94 +150,110 @@ export default function HeroSlider() {
     }
   };
 
+  const currentBg = bgColors[current] || '#1a1a2e';
+
   if (slides.length === 0) {
     return (
-      <div className="relative w-full h-[50vh] md:h-[60vh] bg-gray-100 flex items-center justify-center">
-        <p className="text-gray-400">슬라이드를 불러오는 중...</p>
+      <div className="relative w-full h-[60vh] md:h-[70vh] bg-neutral-900 flex items-center justify-center">
+        <p className="text-gray-400 text-sm tracking-wide">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-[50vh] md:h-[60vh] bg-gray-900">
-      {/* scroll-snap 컨테이너 + 마우스 드래그 */}
+    <div className="relative w-full bg-white">
+      {/* 배경색 레이어 — 상단만 채우고 하단은 흰색으로 fade */}
       <div
-        ref={containerRef}
-        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-      >
-        {slides.map((slide, i) => (
+        className="absolute inset-0 transition-colors duration-700"
+        style={{ backgroundColor: currentBg }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
+
+      {/* 콘텐츠 */}
+      <div className="relative z-10 pt-6 md:pt-10 pb-12 md:pb-16">
+        <div className="max-w-7xl mx-auto px-4 md:px-8">
+          <div className="relative overflow-hidden rounded-lg shadow-2xl">
           <div
-            key={slide.id ?? i}
-            data-index={i}
-            className="relative w-full h-full flex-shrink-0 snap-start"
+            ref={containerRef}
+            className="flex w-full h-[50vh] md:h-[60vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
           >
-            <img
-              src={slide.imageUrl}
-              alt={slide.title}
-              className="w-full h-full object-cover pointer-events-none"
-              draggable={false}
-            />
-            {/* 그래디언트 오버레이 */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/15 to-transparent pointer-events-none" />
-
-            {/* 텍스트 */}
-            <div className="absolute bottom-12 left-6 md:left-12 right-24 md:right-auto max-w-lg pointer-events-none">
-              <h2 className="text-2xl md:text-5xl font-bold text-white mb-2 leading-tight font-serif">
-                {slide.title}
-              </h2>
-              {slide.description && (
-                <p className="text-sm md:text-base text-white/80 mb-4">
-                  {slide.description}
-                </p>
-              )}
-            </div>
-
-            {/* 바로가기 버튼 */}
-            {slide.linkUrl && (
-              <button
-                onClick={() => handleLink(slide.linkUrl)}
-                className="absolute bottom-12 right-6 md:right-12 px-6 py-3 bg-white text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+            {slides.map((slide, i) => (
+              <div
+                key={slide.id ?? i}
+                data-index={i}
+                className="relative w-full h-full flex-shrink-0 snap-start"
               >
-                바로가기 →
-              </button>
-            )}
+                <img
+                  src={slide.imageUrl}
+                  alt={slide.title}
+                  className="w-full h-full object-cover pointer-events-none"
+                  draggable={false}
+                />
+                {/* 하단 그래디언트 */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+
+                {/* 텍스트 */}
+                <div className="absolute bottom-14 md:bottom-16 left-6 md:left-10 right-6 md:right-auto max-w-xl pointer-events-none">
+                  {slide.description && (
+                    <p className="text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/60 mb-2">
+                      {slide.description}
+                    </p>
+                  )}
+                  <h2 className="text-xl md:text-3xl font-semibold text-white leading-snug">
+                    {slide.title}
+                  </h2>
+                </div>
+
+                {/* 바로가기 */}
+                {slide.linkUrl && (
+                  <button
+                    onClick={() => handleLink(slide.linkUrl)}
+                    className="absolute bottom-14 md:bottom-16 right-6 md:right-10 text-white/80 text-sm md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
+                  >
+                    자세히 보기 →
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+
+          {/* 좌우 화살표 */}
+          {slides.length > 1 && (
+            <>
+              <button
+                onClick={() => scrollToSlide((current - 1 + slides.length) % slides.length)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                onClick={() => scrollToSlide((current + 1) % slides.length)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </>
+          )}
+
+          {/* 인디케이터 */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToSlide(i)}
+                className={`h-[2px] rounded-full transition-all cursor-pointer ${
+                  i === current ? 'bg-white w-6' : 'bg-white/40 w-3'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* 좌우 화살표 */}
-      {slides.length > 1 && (
-        <>
-          <button
-            onClick={() => scrollToSlide((current - 1 + slides.length) % slides.length)}
-            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition z-10"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <button
-            onClick={() => scrollToSlide((current + 1) % slides.length)}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition z-10"
-          >
-            <ChevronRight size={24} />
-          </button>
-        </>
-      )}
-
-      {/* 페이지 인디케이터 */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-        {slides.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => scrollToSlide(i)}
-            className={`w-2 h-2 rounded-full transition-all ${
-              i === current ? 'bg-white w-6' : 'bg-white/50'
-            }`}
-          />
-        ))}
       </div>
     </div>
   );
