@@ -309,7 +309,7 @@ export default function ExhibitionDetailPage() {
       <div className="px-6 md:px-12 py-6 space-y-6 max-w-4xl mx-auto">
         {/* 제목 & 갤러리 */}
         <div>
-          <h1 className="text-3xl md:text-4xl font-medium">{exhibition.title}</h1>
+          <h1 className="text-2xl font-medium">{exhibition.title}</h1>
           <button
             onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
             className="text-gray-500 hover:underline text-sm mt-1 flex items-center gap-1"
