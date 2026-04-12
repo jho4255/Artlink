@@ -223,7 +223,7 @@ function PortfolioSection() {
     },
   });
 
-  if (isLoading) return <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />;
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const startEdit = () => {
     setBiography(portfolio?.biography || '');
@@ -499,7 +499,7 @@ function ApplicationsSection() {
     return <p className="text-red-400 text-center py-8">지원 내역을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
-  if (isLoading) return <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />;
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   // 상태 필터링
   const filteredApps = statusFilter === 'ALL' ? apps : apps.filter((a: any) => a.status === statusFilter);
@@ -1825,7 +1825,7 @@ function MyShowsSection() {
 
       {/* 내 전시 목록 */}
       {isLoading ? (
-        <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
+        <div className="h-32 bg-gray-100 animate-pulse" />
       ) : myShows.length === 0 ? (
         <p className="text-gray-400 text-center py-8">등록한 전시가 없습니다.</p>
       ) : (
@@ -1957,7 +1957,7 @@ function ApprovalsSection() {
   });
 
   // 로딩 상태 (모든 훅 선언 후에 조건부 return)
-  if (isLoading) return <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />;
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const allPending = [
     ...(data?.pendingGalleries?.map(g => ({ ...g, _type: 'gallery' })) || []),
