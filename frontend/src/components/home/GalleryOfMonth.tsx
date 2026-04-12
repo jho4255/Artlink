@@ -18,10 +18,10 @@ export default function GalleryOfMonthSection() {
     <section>
       {/* 섹션 헤더 — SPACE 스타일 */}
       <div className="mb-8 md:mb-10">
-        <h2 className="text-4xl md:text-5xl font-serif text-gray-900">
+        <h2 className="text-2xl md:text-3xl font-serif text-gray-900">
           Gallery of the Month
         </h2>
-        <p className="text-base text-gray-400 tracking-wide mt-3">
+        <p className="text-sm text-gray-400 tracking-wide mt-2">
           ArtLink 선정 이달의 갤러리
         </p>
       </div>

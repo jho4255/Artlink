@@ -302,7 +302,7 @@ export default function GalleryDetailPage() {
       <div className="px-4 py-6 space-y-8">
         {/* === 기본 정보 섹션 === */}
         <div>
-          <h1 className="text-3xl md:text-4xl font-medium">{gallery.name}</h1>
+          <h1 className="text-2xl font-medium">{gallery.name}</h1>
           <div className="flex items-center gap-2 mt-2">
             <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
             <span className="font-medium">{gallery.rating.toFixed(1)}</span>
@@ -830,6 +830,7 @@ function GalleryImageCarousel({
   // 내부 인덱스 ref — 리렌더 없이 자동슬라이드/observer에서 참조
   const currentRef = useRef(imgIndex);
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
+  const isHovered = useRef(false);
 
   // 외부 imgIndex 변경 시 ref 동기화
   useEffect(() => { currentRef.current = imgIndex; }, [imgIndex]);
@@ -871,10 +872,11 @@ function GalleryImageCarousel({
     return () => observer.disconnect();
   }, [images.length, setImgIndex]);
 
-  // 3초 자동 슬라이드 — ref 기반으로 deps 최소화 (리렌더 방지)
+  // 5초 자동 슬라이드 — hover 시 정지
   useEffect(() => {
     if (images.length <= 1) return;
     const timer = setInterval(() => {
+      if (isHovered.current) return;
       const next = (currentRef.current + 1) % images.length;
       scrollToSlide(next);
     }, 5000);
@@ -917,7 +919,11 @@ function GalleryImageCarousel({
   };
 
   return (
-    <div className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden">
+    <div
+      className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden"
+      onMouseEnter={() => { isHovered.current = true; }}
+      onMouseLeave={() => { isHovered.current = false; }}
+    >
       {/* scroll-snap 컨테이너 — GPU 가속, 터치 이벤트 직접 전달 */}
       <div
         ref={containerRef}
