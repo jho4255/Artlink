@@ -137,7 +137,7 @@ export default function ShowDetailPage() {
 
       {/* 제목 + 상태 + 찜 */}
       <div className="flex justify-between items-start mb-2">
-        <h1 className="text-3xl md:text-4xl font-medium text-gray-900">{show.title}</h1>
+        <h1 className="text-2xl font-medium text-gray-900">{show.title}</h1>
         <div className="flex items-center gap-3 flex-none">
           <span className={`text-sm font-medium ${
             status === 'ongoing' ? 'text-[#c4302b]' :
