@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Heart, Users, MapPin, X, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -22,7 +21,6 @@ export default function ExhibitionsPage() {
   const [applyTerms, setApplyTerms] = useState('');
   const [applyConfirmId, setApplyConfirmId] = useState<number | null>(null);
 
-  // 지원 약관 텍스트 로드
   useEffect(() => {
     fetch('/terms/artist_apply_real.txt')
       .then(r => {
@@ -41,7 +39,6 @@ export default function ExhibitionsPage() {
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
-  // 공모 목록 조회
   const { data: exhibitions = [], isLoading } = useQuery<Exhibition[]>({
     queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType],
     queryFn: () => {
@@ -55,7 +52,6 @@ export default function ExhibitionsPage() {
     refetchOnMount: 'always',
   });
 
-  // 지원하기
   const applyMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post(`/exhibitions/${exhibitionId}/apply`),
     onSuccess: () => {
@@ -68,7 +64,6 @@ export default function ExhibitionsPage() {
     },
   });
 
-  // 찜하기 토글 - 낙관적 업데이트
   const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType] as const;
   const favMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post('/favorites/toggle', { exhibitionId }),
@@ -91,7 +86,6 @@ export default function ExhibitionsPage() {
     },
   });
 
-  // 필터 칩
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
     activeFilters.push({ label: regionLabels[selectedRegion], onRemove: () => setSelectedRegion(null) });
@@ -104,149 +98,143 @@ export default function ExhibitionsPage() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4 font-serif">모집 공고</h1>
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Open Call</h1>
+      <p className="text-base text-gray-400 mt-2 mb-10">진행 중인 공모를 확인하세요</p>
 
-      {/* 가로 스크롤 필터 칩 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide">
-        <span className="text-xs text-gray-400 flex-none font-medium">지역</span>
-        {regions.map(r => (
-          <button
-            key={r}
-            onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              selectedRegion === r ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {regionLabels[r]}
-          </button>
-        ))}
+      {/* 필터 */}
+      <div className="space-y-3 mb-4 text-base">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">지역</span>
+          {regions.map(r => (
+            <button
+              key={r}
+              onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
+              className={`cursor-pointer transition-colors ${
+                selectedRegion === r
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {regionLabels[r]}
+            </button>
+          ))}
+        </div>
 
-        <div className="w-px h-6 bg-gray-200 flex-none" />
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">유형</span>
+          {exhibitionTypes.map(t => (
+            <button
+              key={t}
+              onClick={() => setSelectedType(selectedType === t ? null : t)}
+              className={`cursor-pointer transition-colors ${
+                selectedType === t
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {exhibitionTypeLabels[t]}
+            </button>
+          ))}
+        </div>
 
-        <span className="text-xs text-gray-400 flex-none font-medium">유형</span>
-        {exhibitionTypes.map(t => (
-          <button
-            key={t}
-            onClick={() => setSelectedType(selectedType === t ? null : t)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              selectedType === t ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {exhibitionTypeLabels[t]}
-          </button>
-        ))}
-
-        <div className="w-px h-6 bg-gray-200 flex-none" />
-
-        <span className="text-xs text-gray-400 flex-none font-medium">별점</span>
-        {[3, 4].map(v => (
-          <button
-            key={v}
-            onClick={() => setMinGalleryRating(minGalleryRating === v ? null : v)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              minGalleryRating === v ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {v}점+
-          </button>
-        ))}
       </div>
 
-      {/* 적용된 필터 칩 */}
+      {/* 적용된 필터 */}
       {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-3 mb-4">
           {activeFilters.map((f, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full">
+            <span key={i} className="inline-flex items-center gap-1.5 text-sm text-gray-600">
               {f.label}
-              <button onClick={f.onRemove} className="hover:text-red-500"><X size={14} /></button>
+              <button onClick={f.onRemove} className="text-gray-400 hover:text-gray-900 cursor-pointer"><X size={14} /></button>
             </span>
           ))}
         </div>
       )}
 
+      <div className="border-t border-gray-200 mb-10" />
+
       {/* 공모 리스트 */}
       {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-40 bg-gray-100 rounded-xl animate-pulse" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {[1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 animate-pulse" />)}
         </div>
       ) : exhibitions.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">진행중인 공고가 없습니다.</div>
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">진행 중인 공고가 없습니다.</p>
+        </div>
       ) : (
-        <div className="space-y-4">
-          {exhibitions.map((ex, i) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {exhibitions.map((ex) => {
             const dday = getDday(ex.deadline);
             const isAdmin = user?.role === 'ADMIN';
 
             return (
-              <motion.div
+              <article
                 key={ex.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="border border-gray-100 rounded-xl shadow-sm overflow-hidden bg-white hover:-translate-y-1 hover:shadow-md transition-all"
+                onClick={() => navigate(`/exhibitions/${ex.id}`)}
+                className="group cursor-pointer"
               >
-                {/* 카드 - 반응형: 모바일 세로, 데스크톱 가로 */}
-                <div
-                  onClick={() => navigate(`/exhibitions/${ex.id}`)}
-                  className="flex flex-col md:flex-row gap-4 p-4 cursor-pointer"
-                >
+                <div className="overflow-hidden">
                   <img
-                    src={ex.imageUrl || ex.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=200'}
+                    src={ex.imageUrl || ex.gallery?.mainImage || '/images/gallery-sculpture.webp'}
                     alt={ex.title}
-                    className="w-full h-48 md:w-24 md:h-24 object-cover rounded-lg flex-none"
+                    className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300"
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold text-gray-900">{ex.title}</h3>
-                      <span className={`text-xs font-bold flex-none px-2 py-0.5 rounded-full ${
-                        dday <= 7 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                      }`}>
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1 line-clamp-1">
+                      {ex.title}
+                    </h3>
+                    <div className="flex items-center gap-2 flex-none">
+                      <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
                         D-{dday}
                       </span>
+                      {isAuthenticated && !isAdmin && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); favMutation.mutate(ex.id); }}
+                          className="p-1 cursor-pointer"
+                        >
+                          <Heart size={16} className={ex.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                        </button>
+                      )}
                     </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
+                    className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
+                  >
+                    {ex.gallery?.name}
+                  </button>
+
+                  <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-400">
+                    <span>{exhibitionTypeLabels[ex.type]}</span>
+                    <span className="flex items-center gap-1"><Users size={13} /> {ex.capacity}명</span>
+                    <span className="flex items-center gap-1"><MapPin size={13} /> {regionLabels[ex.region]}</span>
+                  </div>
+
+                  {user?.role === 'ARTIST' && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
-                      className="text-sm text-blue-600 hover:underline mt-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (ex.customFields && ex.customFields.length > 0) {
+                          toast('추가 정보 입력이 필요합니다. 상세페이지로 이동합니다.', { icon: '📝' });
+                          navigate(`/exhibitions/${ex.id}`);
+                        } else {
+                          setApplyConfirmId(ex.id);
+                        }
+                      }}
+                      disabled={applyMutation.isPending}
+                      className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-[#c4302b] transition-colors cursor-pointer"
                     >
-                      {ex.gallery?.name}
+                      지원하기 →
                     </button>
-                    <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
-                      <span className="px-2 py-0.5 bg-gray-100 rounded">{exhibitionTypeLabels[ex.type]}</span>
-                      <span className="flex items-center gap-0.5"><Users size={11} /> {ex.capacity}명</span>
-                      <span className="flex items-center gap-0.5"><MapPin size={11} /> {regionLabels[ex.region]}</span>
-                    </div>
-                  </div>
-                  <div className="flex md:flex-col items-center gap-2 flex-none">
-                    {isAuthenticated && !isAdmin && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); favMutation.mutate(ex.id); }}
-                        className="p-1.5 hover:bg-gray-100 rounded-full"
-                      >
-                        <Heart size={16} className={ex.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-300'} />
-                      </button>
-                    )}
-                    {user?.role === 'ARTIST' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (ex.customFields && ex.customFields.length > 0) {
-                            toast('추가 정보 입력이 필요합니다. 상세페이지로 이동합니다.', { icon: '📝' });
-                            navigate(`/exhibitions/${ex.id}`);
-                          } else {
-                            setApplyConfirmId(ex.id);
-                          }
-                        }}
-                        disabled={applyMutation.isPending}
-                        className="p-1.5 hover:bg-gray-100 rounded-full"
-                        title="지원하기"
-                      >
-                        <Send size={16} className="text-gray-400" />
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
-              </motion.div>
+              </article>
             );
           })}
         </div>
@@ -259,6 +247,6 @@ export default function ExhibitionsPage() {
         onConfirm={() => { applyMutation.mutate(applyConfirmId!); setApplyConfirmId(null); }}
         onCancel={() => setApplyConfirmId(null)}
       />
-    </motion.div>
+    </div>
   );
 }

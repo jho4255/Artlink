@@ -2,10 +2,9 @@
  * GalleriesPage - 갤러리 찾기 페이지
  *
  * 기능:
- *  - 갤러리 목록을 반응형 masonry 그리드로 표시
+ *  - 갤러리 목록을 반응형 그리드로 표시
  *  - 지역 필터 (서울/경기북부/경기남부/대전/부산)
  *  - 별점 필터 (3점 이상 / 4점 이상)
- *  - 가로 스크롤 필터 칩 + 적용된 필터 표시
  *  - 별점순 정렬 토글
  *  - 각 갤러리 카드: 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 별점
  *  - 갤러리 클릭 시 상세 페이지(/galleries/:id) 이동
@@ -15,7 +14,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Star, Heart, Phone, MapPin, X } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -39,16 +37,16 @@ export default function GalleriesPage() {
   // 필터 상태
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
-  const [sortByRating, setSortByRating] = useState(false);
+  const [sortBy, setSortBy] = useState<string | null>(null);
 
   // 갤러리 목록 조회
   const { data: galleries = [], isLoading } = useQuery<Gallery[]>({
-    queryKey: ['galleries', selectedRegion, minRating, sortByRating],
+    queryKey: ['galleries', selectedRegion, minRating, sortBy],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
       if (minRating) params.set('minRating', String(minRating));
-      if (sortByRating) params.set('sortBy', 'rating');
+      if (sortBy) params.set('sortBy', sortBy);
       return api.get(`/galleries?${params}`).then(r => r.data);
     },
     staleTime: 0,
@@ -56,7 +54,7 @@ export default function GalleriesPage() {
   });
 
   // 찜하기 토글 - 낙관적 업데이트
-  const currentQueryKey = ['galleries', selectedRegion, minRating, sortByRating] as const;
+  const currentQueryKey = ['galleries', selectedRegion, minRating, sortBy] as const;
   const favMutation = useMutation({
     mutationFn: (galleryId: number) => api.post('/favorites/toggle', { galleryId }),
     onMutate: async (galleryId: number) => {
@@ -96,71 +94,61 @@ export default function GalleriesPage() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       {/* 헤더 */}
-      <h1 className="text-2xl font-bold mb-4 font-serif">갤러리 찾기</h1>
+      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Galleries</h1>
+      <p className="text-base text-gray-400 mt-2 mb-10">Find your next partner</p>
 
-      {/* 가로 스크롤 필터 칩 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide">
-        {/* 지역 필터 */}
-        <span className="text-xs text-gray-400 flex-none font-medium">지역</span>
-        {regions.map(r => (
-          <button
-            key={r}
-            onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              selectedRegion === r
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {regionLabels[r]}
-          </button>
-        ))}
+      {/* 필터 — 행 구분 */}
+      <div className="space-y-3 mb-4 text-base">
+        {/* 지역 */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">지역</span>
+          {regions.map(r => (
+            <button
+              key={r}
+              onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
+              className={`cursor-pointer transition-colors ${
+                selectedRegion === r
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {regionLabels[r]}
+            </button>
+          ))}
+        </div>
 
-        <div className="w-px h-6 bg-gray-200 flex-none" />
+        {/* 별점 */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-gray-700 text-sm font-medium w-10">별점</span>
+          {ratingFilters.map(rf => (
+            <button
+              key={rf.value}
+              onClick={() => setMinRating(minRating === rf.value ? null : rf.value)}
+              className={`cursor-pointer transition-colors ${
+                minRating === rf.value
+                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                  : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {rf.label}
+            </button>
+          ))}
+        </div>
 
-        {/* 별점 필터 */}
-        <span className="text-xs text-gray-400 flex-none font-medium">별점</span>
-        {ratingFilters.map(rf => (
-          <button
-            key={rf.value}
-            onClick={() => setMinRating(minRating === rf.value ? null : rf.value)}
-            className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-              minRating === rf.value
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {rf.label}
-          </button>
-        ))}
-
-        <div className="w-px h-6 bg-gray-200 flex-none" />
-
-        {/* 별점순 정렬 */}
-        <button
-          onClick={() => setSortByRating(!sortByRating)}
-          className={`px-3 py-2 text-sm rounded-full flex-none min-h-[44px] transition-colors ${
-            sortByRating
-              ? 'bg-yellow-500 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          ★ 별점순
-        </button>
       </div>
 
-      {/* 적용된 필터 칩 */}
+      {/* 적용된 필터 */}
       {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-3 mb-8">
           {activeFilters.map((f, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full"
+              className="inline-flex items-center gap-1.5 text-sm text-gray-600"
             >
               {f.label}
-              <button onClick={f.onRemove} className="hover:text-red-500">
+              <button onClick={f.onRemove} className="text-gray-400 hover:text-gray-900 cursor-pointer">
                 <X size={14} />
               </button>
             </span>
@@ -168,79 +156,107 @@ export default function GalleriesPage() {
         </div>
       )}
 
-      {/* 갤러리 그리드 (masonry) */}
+      {/* 구분선 */}
+      <div className="border-t border-gray-200 mb-6" />
+
+      {/* 정렬 — 우측 정렬 */}
+      <div className="flex justify-end items-center gap-4 mb-8 text-sm">
+        <button
+          onClick={() => setSortBy(sortBy === 'rating' ? null : 'rating')}
+          className={`cursor-pointer transition-colors ${
+            sortBy === 'rating'
+              ? 'text-gray-900 underline underline-offset-4 decoration-1'
+              : 'text-gray-400 hover:text-gray-900'
+          }`}
+        >
+          별점순
+        </button>
+        <button
+          onClick={() => setSortBy(sortBy === 'reviewCount' ? null : 'reviewCount')}
+          className={`cursor-pointer transition-colors ${
+            sortBy === 'reviewCount'
+              ? 'text-gray-900 underline underline-offset-4 decoration-1'
+              : 'text-gray-400 hover:text-gray-900'
+          }`}
+        >
+          리뷰순
+        </button>
+      </div>
+
+      {/* 갤러리 그리드 */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="h-64 bg-gray-100 rounded-xl animate-pulse" />
+            <div key={i} className="h-64 bg-gray-100 animate-pulse" />
           ))}
         </div>
       ) : galleries.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <p>조건에 맞는 갤러리가 없습니다.</p>
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">조건에 맞는 갤러리가 없습니다.</p>
         </div>
       ) : (
-        <div className="columns-1 md:columns-2 lg:columns-3 gap-4 space-y-4">
-          {galleries.map((gallery, i) => (
-            <motion.div
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {galleries.map((gallery) => (
+            <article
               key={gallery.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
-              className="break-inside-avoid bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer hover:-translate-y-1 hover:shadow-md transition-all"
+              className="group cursor-pointer"
             >
               {/* 갤러리 대표 이미지 */}
-              <img
-                src={
-                  gallery.mainImage ||
-                  gallery.images?.[0]?.url ||
-                  'https://images.unsplash.com/photo-1577720643272-265f09367456?w=400'
-                }
-                alt={gallery.name}
-                className="w-full aspect-[4/3] object-cover"
-              />
+              <div className="overflow-hidden">
+                <img
+                  src={
+                    gallery.mainImage ||
+                    gallery.images?.[0]?.url ||
+                    '/images/gallery-sculpture.webp'
+                  }
+                  alt={gallery.name}
+                  className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300"
+                />
+              </div>
 
               {/* 갤러리 정보 */}
-              <div className="p-4">
+              <div className="mt-3">
                 <div className="flex justify-between items-start">
-                  <h3 className="font-semibold text-gray-900 truncate">{gallery.name}</h3>
+                  <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
+                    {gallery.name}
+                  </h3>
                   {isAuthenticated && user?.role !== 'ADMIN' && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         favMutation.mutate(gallery.id);
                       }}
-                      className="p-1.5 hover:bg-gray-100 rounded-full flex-none"
+                      className="p-1.5 flex-none cursor-pointer"
                     >
                       <Heart
                         size={18}
-                        className={gallery.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-300'}
+                        className={gallery.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
                       />
                     </button>
                   )}
                 </div>
 
                 {/* 별점 */}
-                <div className="flex items-center gap-1 mt-1">
-                  <Star size={14} className="text-yellow-400 fill-yellow-400" />
-                  <span className="text-sm font-medium">{gallery.rating.toFixed(1)}</span>
-                  <span className="text-xs text-gray-400">({gallery.reviewCount})</span>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <Star size={15} className="text-[#c4302b] fill-[#c4302b]" />
+                  <span className="text-base font-medium text-[#c4302b]">{gallery.rating.toFixed(1)}</span>
+                  <span className="text-sm text-gray-400">({gallery.reviewCount})</span>
                 </div>
 
                 {/* 주소, 전화번호 */}
-                <p className="text-sm text-gray-500 mt-2 flex items-center gap-1">
-                  <MapPin size={12} /> {gallery.address}
+                <p className="text-base text-gray-400 mt-2 flex items-center gap-1.5">
+                  <MapPin size={14} /> {gallery.address}
                 </p>
-                <p className="text-sm text-gray-500 flex items-center gap-1">
-                  <Phone size={12} /> {gallery.phone}
+                <p className="text-base text-gray-400 flex items-center gap-1.5">
+                  <Phone size={14} /> {gallery.phone}
                 </p>
-                <p className="text-sm text-gray-600 mt-1 line-clamp-2">{gallery.description}</p>
+                <p className="text-base text-gray-500 mt-1.5 line-clamp-2">{gallery.description}</p>
               </div>
-            </motion.div>
+            </article>
           ))}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

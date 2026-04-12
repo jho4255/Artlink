@@ -282,7 +282,7 @@ export default function ExhibitionDetailPage() {
             onClick={() => favMutation.mutate()}
             className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow"
           >
-            <Heart size={20} className={exhibition.isFavorited ? 'text-red-500 fill-red-500' : 'text-gray-400'} />
+            <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
           </button>
         )}
         <div className="absolute bottom-4 left-4">
@@ -300,11 +300,11 @@ export default function ExhibitionDetailPage() {
           <h1 className="text-2xl font-bold">{exhibition.title}</h1>
           <button
             onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
-            className="text-blue-500 hover:underline text-sm mt-1 flex items-center gap-1"
+            className="text-gray-500 hover:underline text-sm mt-1 flex items-center gap-1"
           >
             {exhibition.gallery?.name}
             <div className="flex items-center gap-0.5 ml-2">
-              <Star size={12} className="text-yellow-400 fill-yellow-400" />
+              <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
               <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
             </div>
           </button>
@@ -344,11 +344,11 @@ export default function ExhibitionDetailPage() {
         {/* 설명 (갤러리 오너만 수정 가능) */}
         <div>
           <div className="flex justify-between items-center mb-2">
-            <h2 className="text-lg font-bold">공모 소개</h2>
+            <h2 className="text-xl font-medium">공모 소개</h2>
             {isGalleryOwner && !isEditingDesc && (
               <button
                 onClick={() => { setEditDesc(exhibition.description); setIsEditingDesc(true); }}
-                className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                className="text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
               >
                 <Edit3 size={14} /> 수정
               </button>
@@ -359,7 +359,7 @@ export default function ExhibitionDetailPage() {
               <textarea
                 value={editDesc}
                 onChange={e => setEditDesc(e.target.value)}
-                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
               <div className="flex gap-2">
                 <button
@@ -379,11 +379,11 @@ export default function ExhibitionDetailPage() {
         {exhibition.customFields && exhibition.customFields.length > 0 && (
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h2 className="text-lg font-bold">요청 정보</h2>
+              <h2 className="text-xl font-medium">요청 정보</h2>
               {isGalleryOwner && !isEditingCf && (
                 <button
                   onClick={() => { setEditCfFields([...exhibition.customFields!]); setIsEditingCf(true); }}
-                  className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                  className="text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
                 >
                   <Edit3 size={14} /> 수정
                 </button>
@@ -448,7 +448,7 @@ export default function ExhibitionDetailPage() {
                     )}
                   </div>
                 ))}
-                <button onClick={() => setEditCfFields([...editCfFields, { id: `cf_${Date.now()}`, label: '', type: 'text', required: false }])} className="text-xs text-blue-500 flex items-center gap-1"><Plus size={12} /> 추가</button>
+                <button onClick={() => setEditCfFields([...editCfFields, { id: `cf_${Date.now()}`, label: '', type: 'text', required: false }])} className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1 cursor-pointer"><Plus size={12} /> 추가</button>
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => {
                     // maxSelect vs 옵션 수 경고
@@ -494,7 +494,7 @@ export default function ExhibitionDetailPage() {
         {/* 홍보 사진 (종료된 전시) */}
         {exhibition.promoPhotos && exhibition.promoPhotos.length > 0 && (
           <div>
-            <h2 className="text-lg font-bold mb-3">홍보 사진</h2>
+            <h2 className="text-xl font-medium mb-3">홍보 사진</h2>
             <div className="grid grid-cols-3 gap-2">
               {exhibition.promoPhotos.map((photo, idx) => (
                 <div key={photo.id}>
@@ -612,7 +612,7 @@ export default function ExhibitionDetailPage() {
                       <div className="flex items-center justify-between flex-wrap gap-2 bg-gray-50 rounded-xl px-3 py-2">
                         <label className="flex items-center gap-2 text-xs cursor-pointer">
                           <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="rounded" />
-                          전체 선택 {selectedAppIds.size > 0 && <span className="text-blue-500 font-medium">({selectedAppIds.size}명 선택)</span>}
+                          전체 선택 {selectedAppIds.size > 0 && <span className="text-gray-900 font-medium">({selectedAppIds.size}명 선택)</span>}
                         </label>
                         <div className="flex items-center gap-2">
                           {selectedAppIds.size > 0 && (
@@ -678,7 +678,7 @@ export default function ExhibitionDetailPage() {
                                   <div className="flex items-center gap-2">
                                     {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />}
                                     <span
-                                      className="text-sm font-medium text-blue-600 hover:underline cursor-pointer"
+                                      className="text-sm font-medium text-gray-900 hover:underline cursor-pointer"
                                       onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
                                     >
                                       {app.user?.name}
@@ -756,7 +756,7 @@ export default function ExhibitionDetailPage() {
                                           return (
                                             <div key={idx} className="flex gap-2 text-xs">
                                               <span className="text-gray-400 shrink-0">{field?.label || ans.fieldId}:</span>
-                                              <a href={ans.value} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">📎 파일 보기</a>
+                                              <a href={ans.value} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:underline">📎 파일 보기</a>
                                             </div>
                                           );
                                         }
@@ -814,7 +814,7 @@ export default function ExhibitionDetailPage() {
               className="bg-white rounded-xl p-6 mx-4 max-w-md w-full max-h-[80vh] overflow-y-auto shadow-xl"
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-lg font-bold mb-4">지원 정보 입력</h3>
+              <h3 className="text-xl font-medium mb-4">지원 정보 입력</h3>
               <div className="space-y-4">
                 {exhibition.customFields.map(cf => {
                   const answer = customAnswers.find(a => a.fieldId === cf.id);

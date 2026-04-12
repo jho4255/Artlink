@@ -125,6 +125,7 @@ export interface Benefit {
 export interface GalleryOfMonth {
   id: number;
   galleryId: number;
+  title?: string;
   expiresAt: string;
   gallery: Gallery;
 }

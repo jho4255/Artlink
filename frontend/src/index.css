@@ -3,12 +3,12 @@
 /* 커스텀 CSS 변수 */
 @theme {
   --color-primary: #1A1A1A;
-  --color-accent: #e94560;
+  --color-accent: #c4302b;
   --color-surface: #ffffff;
   --color-muted: #6b7280;
   --color-border: #e5e7eb;
-  --font-sans: 'Inter', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
-  --font-serif: 'Noto Serif KR', 'Playfair Display', Georgia, serif;
+  --font-sans: 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
+  --font-serif: 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
 }
 
 /* 전역 스타일 */

@@ -24,11 +24,11 @@ router.get('/', async (_req, res, next) => {
 // galleryId가 @unique이므로, 만료된 기존 레코드가 남아있을 수 있어 upsert 사용
 router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
-    const { galleryId, expiresAt } = req.body;
+    const { galleryId, expiresAt, title } = req.body;
     const entry = await prisma.galleryOfMonth.upsert({
       where: { galleryId },
-      update: { expiresAt: new Date(expiresAt) },
-      create: { galleryId, expiresAt: new Date(expiresAt) },
+      update: { expiresAt: new Date(expiresAt), title: title || null },
+      create: { galleryId, expiresAt: new Date(expiresAt), title: title || null },
       include: { gallery: true }
     });
     res.status(201).json(entry);

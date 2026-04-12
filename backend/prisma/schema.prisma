@@ -142,6 +142,7 @@ model GalleryOfMonth {
   id        Int      @id @default(autoincrement())
   galleryId Int      @unique
   gallery   Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  title     String?
   expiresAt DateTime
   createdAt DateTime @default(now())
 

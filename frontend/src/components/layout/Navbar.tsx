@@ -69,18 +69,18 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 md:h-20">
           {/* 로고 (좌) */}
-          <Link to="/" className="flex-none text-xl font-bold tracking-tight text-gray-900 font-serif">
-            ArtLink
+          <Link to="/" className="flex-none text-2xl font-bold tracking-tight text-gray-900 font-serif">
+            Art<span className="text-[#dc3545]">Link</span>
           </Link>
 
           {/* 데스크탑 네비게이션 (중앙) */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-2">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
                 className={cn(
-                  'px-4 py-2 text-sm font-medium transition-all border-b-2',
+                  'px-4 py-2 text-base font-medium transition-all border-b-2',
                   location.pathname === link.path
                     ? 'text-gray-900 border-gray-900'
                     : 'text-gray-500 border-transparent hover:text-gray-900 hover:border-gray-300'
