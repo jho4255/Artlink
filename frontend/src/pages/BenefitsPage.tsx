@@ -17,7 +17,7 @@ export default function BenefitsPage() {
 
       {isLoading ? (
         <div className="space-y-4">
-          {[1, 2].map(i => <div key={i} className="h-40 bg-gray-100 rounded-xl animate-pulse" />)}
+          {[1, 2].map(i => <div key={i} className="h-40 bg-gray-100 animate-pulse" />)}
         </div>
       ) : benefits.length === 0 ? (
         <div className="text-center py-16 text-gray-400">등록된 혜택이 없습니다.</div>

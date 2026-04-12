@@ -231,8 +231,8 @@ export default function GalleryDetailPage() {
   // 로딩 스켈레톤
   if (isLoading || !gallery) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="h-64 bg-gray-100 rounded-xl animate-pulse mb-4" />
+      <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
+        <div className="h-64 bg-gray-100 animate-pulse mb-4" />
         <div className="h-8 bg-gray-100 rounded w-1/3 animate-pulse mb-2" />
         <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
       </div>

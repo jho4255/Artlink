@@ -38,7 +38,7 @@ export default function PortfolioPage() {
     });
   }, [portfolio]);
 
-  if (isLoading) return <div className="max-w-4xl mx-auto px-4 py-6"><div className="h-64 bg-gray-100 rounded-xl animate-pulse" /></div>;
+  if (isLoading) return <div className="max-w-4xl mx-auto px-4 py-6"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
   if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
 
   const imageUrls = portfolio.images.map(img => img.url);

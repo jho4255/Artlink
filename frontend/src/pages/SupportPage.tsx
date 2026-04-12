@@ -186,7 +186,7 @@ function FaqSection() {
       {/* FAQ 목록 */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 animate-pulse" />)}
         </div>
       ) : faqs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
@@ -393,7 +393,7 @@ function InquirySection() {
       {/* 문의 목록 */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-20 bg-gray-100 animate-pulse" />)}
         </div>
       ) : inquiries.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
