@@ -58,10 +58,10 @@ export default function MyPage() {
       ];
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold font-serif">마이페이지</h1>
-        <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-600">
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl md:text-5xl font-serif text-gray-900">My Page</h1>
+        <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 cursor-pointer">
           <LogOut size={16} /> 로그아웃
         </button>
       </div>
@@ -70,22 +70,22 @@ export default function MyPage() {
       <ProfileCard />
 
       {/* 탭 메뉴 */}
-      <div className="flex gap-1 overflow-x-auto pb-2 mb-6 border-b border-gray-100 scrollbar-hide">
+      <div className="flex gap-4 overflow-x-auto pb-2 mb-8 border-b border-gray-200 scrollbar-hide">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap transition-colors ${
-              activeTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600'
+            className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              activeTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
             }`}
           >
-            <tab.icon size={14} /> {tab.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* 탭 콘텐츠 (S13: 탭 전환 애니메이션) */}
-      <motion.div key={activeTab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
+      {/* 탭 콘텐츠 */}
+      <div>
         {activeTab === 'profile' && <ProfileSection />}
         {activeTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
         {activeTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
@@ -98,8 +98,8 @@ export default function MyPage() {
         {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
         {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
         {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 
@@ -129,7 +129,7 @@ function ProfileCard() {
   };
 
   const roleBadgeClass = user?.role === 'ARTIST'
-    ? 'bg-blue-100 text-blue-700'
+    ? 'bg-gray-200 text-gray-700'
     : user?.role === 'GALLERY'
     ? 'bg-green-100 text-green-700'
     : 'bg-red-100 text-red-700';
@@ -235,18 +235,18 @@ function PortfolioSection() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="font-semibold">포트폴리오</h3>
-        {!editing && <button onClick={startEdit} className="text-sm text-blue-500">수정</button>}
+        {!editing && <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>}
       </div>
 
       {editing ? (
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-gray-700">작가 약력</label>
-            <textarea value={biography} onChange={e => setBiography(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea value={biography} onChange={e => setBiography(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">전시 참가 이력</label>
-            <textarea value={exhibitionHistory} onChange={e => setExhibitionHistory(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea value={exhibitionHistory} onChange={e => setExhibitionHistory(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div className="flex gap-2">
             <button onClick={() => mutation.mutate({ biography, exhibitionHistory })} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">저장</button>
@@ -370,10 +370,10 @@ function FavoritesSection() {
 
   return (
     <div>
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-4 mb-6">
         {(['all', 'gallery', 'exhibition', 'show'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 text-sm rounded-full ${filter === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            className={`text-base cursor-pointer transition-colors ${filter === f ? 'text-gray-900 underline underline-offset-4 decoration-1' : 'text-gray-400 hover:text-gray-900'}`}>
             {f === 'all' ? '전체' : f === 'gallery' ? '갤러리' : f === 'exhibition' ? '공모' : '전시'}
           </button>
         ))}
@@ -382,27 +382,42 @@ function FavoritesSection() {
       {filtered.length === 0 ? (
         <p className="text-gray-400 text-center py-8">찜한 항목이 없습니다.</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(fav => (
-            <div key={fav.id} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg">
-              <button
-                onClick={() => {
-                  if (fav.galleryId) navigate(`/galleries/${fav.galleryId}`);
-                  else if (fav.exhibitionId) navigate(`/exhibitions/${fav.exhibitionId}`);
-                  else if (fav.showId) navigate(`/shows/${fav.showId}`);
-                }}
-                className="text-sm font-medium text-left hover:text-blue-500"
-              >
-                {fav.gallery ? fav.gallery.name : fav.exhibition ? `${fav.exhibition.gallery.name} - ${fav.exhibition.title}` : fav.show ? `${fav.show.gallery.name} - ${fav.show.title}` : ''}
-              </button>
-              <button
-                onClick={() => removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined })}
-                className="p-1 text-gray-400 hover:text-red-500"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map(fav => {
+            const img = fav.gallery?.mainImage || fav.show?.posterImage || null;
+            const title = fav.gallery?.name || fav.exhibition?.title || fav.show?.title || '';
+            const sub = fav.exhibition?.gallery?.name || fav.show?.gallery?.name || null;
+            const rating = fav.gallery?.rating;
+            const link = fav.galleryId ? `/galleries/${fav.galleryId}` : fav.exhibitionId ? `/exhibitions/${fav.exhibitionId}` : `/shows/${fav.showId}`;
+
+            return (
+              <div key={fav.id} className="group cursor-pointer" onClick={() => navigate(link)}>
+                {img && (
+                  <div className="overflow-hidden mb-3">
+                    <img src={img} alt={title} className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300" />
+                  </div>
+                )}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="text-base font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">{title}</h4>
+                    {sub && <p className="text-sm text-gray-400 mt-0.5">{sub}</p>}
+                    {rating != null && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Star size={13} className="text-[#c4302b] fill-[#c4302b]" />
+                        <span className="text-sm text-[#c4302b]">{rating.toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined }); }}
+                    className="p-1 text-gray-300 hover:text-[#c4302b] cursor-pointer flex-none"
+                  >
+                    <Heart size={16} className="fill-current" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -435,17 +450,17 @@ function MyReviewsSection() {
         <div key={r.id} className="p-4 border border-gray-100 rounded-xl">
           <div className="flex justify-between items-start">
             <div>
-              <button onClick={() => navigate(`/galleries/${r.galleryId}`)} className="text-sm font-medium text-blue-500 hover:underline">
+              <button onClick={() => navigate(`/galleries/${r.galleryId}`)} className="text-sm font-medium text-gray-500 hover:underline">
                 {r.gallery?.name}
               </button>
               <div className="flex gap-0.5 mt-1">
-                {[1,2,3,4,5].map(s => <Star key={s} size={12} className={s <= r.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />)}
+                {[1,2,3,4,5].map(s => <Star key={s} size={12} className={s <= r.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />)}
               </div>
             </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => navigate(`/galleries/${r.galleryId}`)}
-                className="p-1 text-gray-400 hover:text-blue-500"
+                className="p-1 text-gray-400 hover:text-gray-900"
                 title="갤러리에서 수정"
               >
                 <Edit3 size={14} />
@@ -477,7 +492,7 @@ function ApplicationsSection() {
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
 
-  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-blue-100 text-blue-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
   const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
@@ -573,7 +588,7 @@ function ApplicationsSection() {
                   {/* 공모 상세 이동 버튼 */}
                   <button
                     onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
-                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
                   >
                     <Eye size={12} /> 공모 상세 보기
                   </button>
@@ -735,7 +750,7 @@ function MyGalleriesSection() {
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <div className="flex justify-between items-center">
             <h4 className="font-medium text-sm">갤러리 등록 요청</h4>
-            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600">
+            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
               <Save size={12} /> 임시저장
             </button>
           </div>
@@ -813,7 +828,7 @@ function MyGalleriesSection() {
                   <h3 className="font-medium">{g.name}</h3>
                   <p className="text-sm text-gray-500">{g.address}</p>
                   {g.status === 'APPROVED' && (
-                    <p className="text-xs text-blue-500 mt-1">상세페이지 보기 →</p>
+                    <p className="text-xs text-gray-500 mt-1">상세페이지 보기 →</p>
                   )}
                 </div>
                 <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[g.status] || ''}`}>
@@ -827,7 +842,7 @@ function MyGalleriesSection() {
               {g.status === 'APPROVED' && (
                 <div className="mt-3 pt-3 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-2 text-sm">
-                    <Instagram size={14} className="text-pink-500" />
+                    <Instagram size={14} className="text-gray-500" />
                     <span className="font-medium">Instagram 연동</span>
                   </div>
                   {/* 연동 상태 + 버튼 */}
@@ -837,7 +852,7 @@ function MyGalleriesSection() {
                     </span>
                     <button
                       onClick={() => { setInstagramModalGalleryId(g.id); setTokenInput(''); }}
-                      className="text-xs px-2.5 py-1 bg-pink-50 text-pink-600 rounded-lg hover:bg-pink-100"
+                      className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
                     >
                       {g.instagramConnected ? '재연동' : '연동하기'}
                     </button>
@@ -879,7 +894,7 @@ function MyGalleriesSection() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInstagramModalGalleryId(null)}>
           <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold flex items-center gap-2">
-              <Instagram size={18} className="text-pink-500" /> Instagram 연동
+              <Instagram size={18} className="text-gray-500" /> Instagram 연동
             </h3>
             <p className="text-xs text-gray-500">
               Instagram Graph API 액세스 토큰을 입력해주세요.
@@ -1056,7 +1071,7 @@ function MyExhibitionsSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
   });
 
-  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-blue-100 text-blue-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
   const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
 
   // 지원자 목록 엑셀(CSV) 다운로드
@@ -1124,7 +1139,7 @@ function MyExhibitionsSection() {
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <div className="flex justify-between items-center">
             <h4 className="font-medium text-sm">공모 등록 요청</h4>
-            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600">
+            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
               <Save size={12} /> 임시저장
             </button>
           </div>
@@ -1276,7 +1291,7 @@ function MyExhibitionsSection() {
                         <button onClick={() => removeCustomField(idx)} className="p-1 text-gray-400 hover:text-red-500"><X size={14} /></button>
                       </div>
                     ))}
-                    <button onClick={addCustomField} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                    <button onClick={addCustomField} className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1">
                       <Plus size={12} /> 항목 추가
                     </button>
                   </div>
@@ -1402,7 +1417,7 @@ function MyExhibitionsSection() {
                         if (editingCfExId === ex.id) { setEditingCfExId(null); }
                         else { setEditingCfExId(ex.id); setEditingCfFields([...ex.customFields]); }
                       }}
-                      className="text-xs text-blue-500 hover:text-blue-600"
+                      className="text-xs text-gray-400 hover:text-gray-900"
                     >
                       {editingCfExId === ex.id ? '취소' : <><Edit3 size={10} className="inline" /> 수정</>}
                     </button>
@@ -1490,7 +1505,7 @@ function MyExhibitionsSection() {
                   ) : (
                     <div className="flex flex-wrap gap-1">
                       {ex.customFields.map((cf: CustomField) => (
-                        <span key={cf.id} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
+                        <span key={cf.id} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
                           {cf.label} ({cf.type}){cf.required ? ' *' : ''}
                         </span>
                       ))}
@@ -1503,7 +1518,7 @@ function MyExhibitionsSection() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setManageAppsExId(manageAppsExId === ex.id ? null : ex.id)}
-                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
                   >
                     <Send size={10} /> {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
                   </button>
@@ -1737,11 +1752,11 @@ function MyShowsSection() {
                       updated[idx] = { name: e.target.value };
                       setArtists(updated);
                     }}
-                    className={`flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                    className={`flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-gray-400 bg-gray-50' : 'border-gray-200'}`}
                   />
                   {artist.userId ? (
                     <button type="button" onClick={() => { const updated = [...artists]; updated[idx] = { name: artist.name }; setArtists(updated); }}
-                      className="px-2 text-xs text-blue-500 border border-blue-200 rounded-lg flex items-center gap-1">
+                      className="px-2 text-xs text-gray-500 border border-gray-300 rounded-lg flex items-center gap-1">
                       <Check size={12} /> 연동됨
                     </button>
                   ) : (
@@ -1819,7 +1834,7 @@ function MyShowsSection() {
             <div key={show.id} className="p-4 border border-gray-100 rounded-xl">
               <div className="flex justify-between items-start">
                 <div>
-                  <button onClick={() => navigate(`/shows/${show.id}`)} className="font-medium hover:text-blue-500">{show.title}</button>
+                  <button onClick={() => navigate(`/shows/${show.id}`)} className="font-medium hover:text-gray-900">{show.title}</button>
                   <p className="text-xs text-gray-500 mt-1">{show.gallery?.name}</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2186,7 +2201,7 @@ function HeroManageSection() {
           <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="슬라이드 이미지 업로드" />
 
           {/* 미리보기 */}
-          <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-blue-500">
+          <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
             <Eye size={14} /> {preview ? '미리보기 닫기' : '미리보기'}
           </button>
           {preview && form.imageUrl && (
@@ -2224,7 +2239,7 @@ function HeroManageSection() {
               <p className="text-xs text-gray-500 truncate">{s.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-blue-500"><Edit3 size={14} /></button>
+              <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-900"><Edit3 size={14} /></button>
               <button onClick={() => deleteMutation.mutate(s.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
             </div>
           </div>
@@ -2303,7 +2318,7 @@ function BenefitManageSection() {
           <input placeholder="링크 URL (선택)" value={form.linkUrl} onChange={e => setForm({...form, linkUrl: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
           <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="혜택 이미지 업로드" />
 
-          <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-blue-500">
+          <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
             <Eye size={14} /> {preview ? '미리보기 닫기' : '미리보기'}
           </button>
           {preview && (
@@ -2338,7 +2353,7 @@ function BenefitManageSection() {
               <p className="text-xs text-gray-500 truncate">{b.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-blue-500"><Edit3 size={14} /></button>
+              <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-gray-900"><Edit3 size={14} /></button>
               <button onClick={() => deleteMutation.mutate(b.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
             </div>
           </div>
@@ -2422,7 +2437,7 @@ function GotmManageSection() {
                 <button
                   key={g.id}
                   onClick={() => setSelectedGalleryId(g.id)}
-                  className={`w-full text-left p-2.5 text-sm border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedGalleryId === g.id ? 'bg-blue-50' : ''}`}
+                  className={`w-full text-left p-2.5 text-sm border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedGalleryId === g.id ? 'bg-gray-100' : ''}`}
                 >
                   <span className="font-medium">{g.name}</span>
                   <span className="text-gray-400 ml-2">({regionLabels[g.region]})</span>

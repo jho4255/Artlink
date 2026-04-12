@@ -80,8 +80,9 @@ export default function ExhibitionsPage() {
     onError: (_err, _id, context) => {
       if (context?.prev) queryClient.setQueryData([...currentQueryKey], context.prev);
     },
-    onSettled: () => {
+    onSettled: (_data, _err, exhibitionId) => {
       queryClient.invalidateQueries({ queryKey: currentQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['exhibition', String(exhibitionId)] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
   });
