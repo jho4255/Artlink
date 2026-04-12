@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Camera, X, Edit3, Instagram, Mail, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
@@ -54,6 +55,7 @@ export default function GalleryDetailPage() {
 
   // 이미지 슬라이더 인덱스
   const [imgIndex, setImgIndex] = useState(0);
+  const [bgColor, setBgColor] = useState('#1a1a2e');
 
   // 한줄소개 수정 상태
   const [isEditingDesc, setIsEditingDesc] = useState(false);
@@ -220,6 +222,12 @@ export default function GalleryDetailPage() {
     onError: () => toast.error('홍보 사진 삭제에 실패했습니다.'),
   });
 
+  // 이미지 dominant color 추출
+  useEffect(() => {
+    const src = gallery?.mainImage || gallery?.images?.[0]?.url;
+    if (src) extractColor(src).then(setBgColor);
+  }, [gallery?.mainImage, gallery?.images]);
+
   // 로딩 스켈레톤
   if (isLoading || !gallery) {
     return (
@@ -261,17 +269,25 @@ export default function GalleryDetailPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto px-6 md:px-12 pb-12">
-      {/* === 이미지 캐러셀 (scroll-snap, HeroSlider 패턴) === */}
-      <GalleryImageCarousel
-        images={images}
-        galleryName={gallery.name}
-        imgIndex={imgIndex}
-        setImgIndex={setImgIndex}
-        onImageClick={(index) => setLightbox({ images, index })}
-        isFavorited={!!gallery.isFavorited}
-        showFavorite={isAuthenticated && !isAdmin}
-        onFavoriteClick={() => favMutation.mutate()}
-      />
+      {/* === 이미지 캐러셀 + 그라데이션 배경 === */}
+      <div className="relative bg-white -mx-6 md:-mx-12">
+        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
+        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
+          <div className="max-w-4xl mx-auto overflow-hidden rounded-lg shadow-2xl">
+            <GalleryImageCarousel
+              images={images}
+              galleryName={gallery.name}
+              imgIndex={imgIndex}
+              setImgIndex={setImgIndex}
+              onImageClick={(index) => setLightbox({ images, index })}
+              isFavorited={!!gallery.isFavorited}
+              showFavorite={isAuthenticated && !isAdmin}
+              onFavoriteClick={() => favMutation.mutate()}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* === 오너 전용: 이미지 관리 패널 === */}
       {isOwner && (

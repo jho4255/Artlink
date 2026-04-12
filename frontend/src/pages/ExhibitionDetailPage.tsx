@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
@@ -72,6 +73,7 @@ export default function ExhibitionDetailPage() {
   const [expandedAppId, setExpandedAppId] = useState<number | null>(null);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
   const [batchStatus, setBatchStatus] = useState<string>('');
+  const [bgColor, setBgColor] = useState('#1a1a2e');
 
   // 지원 약관 텍스트 로드
   useEffect(() => {
@@ -95,6 +97,12 @@ export default function ExhibitionDetailPage() {
     queryFn: () => api.get(`/exhibitions/${id}`).then(r => r.data),
     enabled: !!id,
   });
+
+  // 이미지 dominant color 추출
+  useEffect(() => {
+    const imgSrc = exhibition?.imageUrl || exhibition?.gallery?.mainImage;
+    if (imgSrc) extractColor(imgSrc).then(setBgColor);
+  }, [exhibition?.imageUrl, exhibition?.gallery?.mainImage]);
 
   // 지원하기 (customAnswers 포함)
   const applyMutation = useMutation({
@@ -257,47 +265,52 @@ export default function ExhibitionDetailPage() {
   const canDelete = isAdmin || isGalleryOwner;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto pb-12">
-      {/* 상단 이미지 */}
-      <div className="relative w-full h-48 md:h-64 bg-gray-100">
-        <img
-          src={exhibition.imageUrl || exhibition.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800'}
-          alt={exhibition.title}
-          className="w-full h-full object-cover cursor-pointer"
-          onClick={() => {
-            const img = exhibition.imageUrl || exhibition.gallery?.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800';
-            setLightbox({ images: [img], index: 0 });
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur rounded-full shadow"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        {/* 찜 버튼 (Admin 제외 로그인 유저) */}
-        {isAuthenticated && user?.role !== 'ADMIN' && (
-          <button
-            onClick={() => favMutation.mutate()}
-            className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow"
-          >
-            <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
-          </button>
-        )}
-        <div className="absolute bottom-4 left-4">
-          <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-            isExpired ? 'bg-gray-500 text-white' : dday <= 7 ? 'bg-red-500 text-white' : 'bg-white text-gray-900'
-          }`}>
-            {isExpired ? '마감' : `D-${dday}`}
-          </span>
+    <div className="max-w-7xl mx-auto pb-12">
+      {/* 상단 이미지 + 그라데이션 배경 */}
+      <div className="relative bg-white">
+        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
+        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
+          <div className="max-w-4xl mx-auto relative overflow-hidden rounded-lg shadow-2xl">
+            <img
+              src={exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp'}
+              alt={exhibition.title}
+              className="w-full h-56 md:h-72 object-cover cursor-pointer"
+              onClick={() => {
+                const img = exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp';
+                setLightbox({ images: [img], index: 0 });
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+            <button
+              onClick={() => navigate(-1)}
+              className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            {isAuthenticated && user?.role !== 'ADMIN' && (
+              <button
+                onClick={() => favMutation.mutate()}
+                className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+              >
+                <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
+              </button>
+            )}
+            <div className="absolute bottom-4 left-4">
+              <span className={`text-sm font-medium ${
+                isExpired ? 'text-white/60' : dday <= 7 ? 'text-white' : 'text-white'
+              }`}>
+                {isExpired ? '마감' : `D-${dday}`}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="px-4 py-6 space-y-6">
+      <div className="px-6 md:px-12 py-6 space-y-6 max-w-4xl mx-auto">
         {/* 제목 & 갤러리 */}
         <div>
-          <h1 className="text-2xl font-bold">{exhibition.title}</h1>
+          <h1 className="text-3xl md:text-4xl font-medium">{exhibition.title}</h1>
           <button
             onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
             className="text-gray-500 hover:underline text-sm mt-1 flex items-center gap-1"
@@ -1065,6 +1078,6 @@ export default function ExhibitionDetailPage() {
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
