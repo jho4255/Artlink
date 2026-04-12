@@ -24,6 +24,7 @@ export default function HeroSlider() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isScrolling = useRef(false);
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
+  const isHovered = useRef(false);
 
   const { data: slides = [] } = useQuery<HeroSlide[]>({
     queryKey: ['hero-slides'],
@@ -68,8 +69,8 @@ export default function HeroSlider() {
   useEffect(() => {
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
-      scrollToSlide((current + 1) % slides.length);
-    }, 3000);
+      if (!isHovered.current) scrollToSlide((current + 1) % slides.length);
+    }, 5000);
     return () => clearInterval(timer);
   }, [slides.length, current, scrollToSlide]);
 
@@ -123,8 +124,11 @@ export default function HeroSlider() {
 
   if (slides.length === 0) {
     return (
-      <div className="relative w-full h-[60vh] md:h-[70vh] bg-neutral-900 flex items-center justify-center">
-        <p className="text-gray-400 text-sm tracking-wide">Loading...</p>
+      <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
+        <div className="max-w-7xl mx-auto px-4 md:px-8">
+          <div className="h-[50vh] md:h-[60vh] bg-gray-100 rounded-lg animate-pulse">
+          </div>
+        </div>
       </div>
     );
   }
@@ -135,6 +139,8 @@ export default function HeroSlider() {
         <div
           className="relative overflow-hidden rounded-lg transition-shadow duration-700"
           style={{ boxShadow: `0 8px 40px ${currentBg}, 0 2px 12px ${currentBg}` }}
+          onMouseEnter={() => { isHovered.current = true; }}
+          onMouseLeave={() => { isHovered.current = false; }}
         >
           <div
             ref={containerRef}
