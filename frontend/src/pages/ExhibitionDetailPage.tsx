@@ -266,16 +266,16 @@ export default function ExhibitionDetailPage() {
 
   return (
     <div className="max-w-7xl mx-auto pb-12">
-      {/* 상단 이미지 + 그라데이션 배경 */}
-      <div className="relative bg-white">
-        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
-        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
-          <div className="max-w-4xl mx-auto relative overflow-hidden rounded-lg shadow-2xl">
+      {/* 상단 이미지 + glow shadow */}
+      <div className="px-6 md:px-12 pt-6 md:pt-10 pb-12 md:pb-16">
+        <div
+          className="max-w-lg mx-auto relative overflow-hidden rounded-lg transition-shadow duration-700"
+          style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
+        >
             <img
               src={exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp'}
               alt={exhibition.title}
-              className="w-full h-56 md:h-72 object-cover cursor-pointer"
+              className="w-full block cursor-pointer"
               onClick={() => {
                 const img = exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp';
                 setLightbox({ images: [img], index: 0 });
@@ -303,7 +303,6 @@ export default function ExhibitionDetailPage() {
                 {isExpired ? '마감' : `D-${dday}`}
               </span>
             </div>
-          </div>
         </div>
       </div>
 

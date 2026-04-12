@@ -130,18 +130,12 @@ export default function HeroSlider() {
   }
 
   return (
-    <div className="relative w-full bg-white">
-      {/* 배경색 레이어 — 상단만 채우고 하단은 흰색으로 fade */}
-      <div
-        className="absolute inset-0 transition-colors duration-700"
-        style={{ backgroundColor: currentBg }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
-
-      {/* 콘텐츠 */}
-      <div className="relative z-10 pt-6 md:pt-10 pb-12 md:pb-16">
-        <div className="max-w-7xl mx-auto px-4 md:px-8">
-          <div className="relative overflow-hidden rounded-lg shadow-2xl">
+    <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
+      <div className="max-w-7xl mx-auto px-4 md:px-8">
+        <div
+          className="relative overflow-hidden rounded-lg transition-shadow duration-700"
+          style={{ boxShadow: `0 8px 40px ${currentBg}, 0 2px 12px ${currentBg}` }}
+        >
           <div
             ref={containerRef}
             className="flex w-full h-[50vh] md:h-[60vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
@@ -221,8 +215,6 @@ export default function HeroSlider() {
             ))}
           </div>
         </div>
-      </div>
-
       </div>
     </div>
   );

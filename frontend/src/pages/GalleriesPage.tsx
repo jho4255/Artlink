@@ -72,8 +72,9 @@ export default function GalleriesPage() {
         queryClient.setQueryData([...currentQueryKey], context.prevGalleries);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _err, galleryId) => {
       queryClient.invalidateQueries({ queryKey: currentQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['gallery', String(galleryId)] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
   });

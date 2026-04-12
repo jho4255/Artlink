@@ -89,16 +89,16 @@ export default function ShowDetailPage() {
         <ArrowLeft size={16} /> 전시 목록
       </button>
 
-      {/* 포스터 + 그라데이션 배경 */}
-      <div className="relative bg-white mb-8 -mx-6 md:-mx-12">
-        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
-        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
-          <div className="max-w-4xl mx-auto relative overflow-hidden rounded-lg shadow-2xl">
+      {/* 포스터 + glow shadow */}
+      <div className="mb-12 md:mb-16">
+        <div
+          className="max-w-lg mx-auto relative overflow-hidden rounded-lg transition-shadow duration-700"
+          style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
+        >
             <img
               src={show.posterImage}
               alt={show.title}
-              className="w-full h-72 md:h-96 object-cover cursor-pointer"
+              className="w-full block cursor-pointer"
               onClick={() => { setLightboxIndex(0); setLightboxOpen(true); }}
             />
             {/* 추가 이미지 썸네일 */}
@@ -121,7 +121,6 @@ export default function ShowDetailPage() {
                 )}
               </div>
             )}
-          </div>
         </div>
       </div>
 

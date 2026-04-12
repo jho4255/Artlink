@@ -46,8 +46,9 @@ export default function ShowsPage() {
     onError: (_err, _id, context) => {
       if (context?.prev) queryClient.setQueryData([...currentQueryKey], context.prev);
     },
-    onSettled: () => {
+    onSettled: (_data, _err, showId) => {
       queryClient.invalidateQueries({ queryKey: currentQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['show', String(showId)] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
   });

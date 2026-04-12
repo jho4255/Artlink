@@ -269,23 +269,22 @@ export default function GalleryDetailPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto px-6 md:px-12 pb-12">
-      {/* === 이미지 캐러셀 + 그라데이션 배경 === */}
-      <div className="relative bg-white -mx-6 md:-mx-12">
-        <div className="absolute inset-0 transition-colors duration-700" style={{ backgroundColor: bgColor }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white" />
-        <div className="relative z-10 py-6 md:py-10 px-6 md:px-12">
-          <div className="max-w-4xl mx-auto overflow-hidden rounded-lg shadow-2xl">
-            <GalleryImageCarousel
-              images={images}
-              galleryName={gallery.name}
-              imgIndex={imgIndex}
-              setImgIndex={setImgIndex}
-              onImageClick={(index) => setLightbox({ images, index })}
-              isFavorited={!!gallery.isFavorited}
-              showFavorite={isAuthenticated && !isAdmin}
-              onFavoriteClick={() => favMutation.mutate()}
-            />
-          </div>
+      {/* === 이미지 캐러셀 + glow shadow === */}
+      <div className="py-6 md:py-10">
+        <div
+          className="max-w-4xl mx-auto overflow-hidden rounded-lg transition-shadow duration-700"
+          style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
+        >
+          <GalleryImageCarousel
+            images={images}
+            galleryName={gallery.name}
+            imgIndex={imgIndex}
+            setImgIndex={setImgIndex}
+            onImageClick={(index) => setLightbox({ images, index })}
+            isFavorited={!!gallery.isFavorited}
+            showFavorite={isAuthenticated && !isAdmin}
+            onFavoriteClick={() => favMutation.mutate()}
+          />
         </div>
       </div>
 
@@ -918,7 +917,7 @@ function GalleryImageCarousel({
   };
 
   return (
-    <div className="relative w-full h-64 md:h-96 bg-gray-100 overflow-hidden">
+    <div className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden">
       {/* scroll-snap 컨테이너 — GPU 가속, 터치 이벤트 직접 전달 */}
       <div
         ref={containerRef}
