@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import api from '@/lib/axios';
@@ -37,12 +36,6 @@ export default function LoginPage() {
     loginMutation.mutate(userId);
   };
 
-  const roleColors: Record<string, string> = {
-    ARTIST: 'bg-blue-50 border-blue-200 hover:border-blue-400',
-    GALLERY: 'bg-green-50 border-green-200 hover:border-green-400',
-    ADMIN: 'bg-red-50 border-red-200 hover:border-red-400',
-  };
-
   const roleIcons: Record<string, string> = {
     ARTIST: '\uD83C\uDFA8',
     GALLERY: '\uD83D\uDDBC\uFE0F',
@@ -51,12 +44,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <h1 className="text-2xl font-bold text-center mb-2 font-serif">로그인</h1>
+      <div className="w-full max-w-md">
+        <h1 className="text-2xl font-medium text-center mb-2 font-serif">로그인</h1>
         <p className="text-sm text-gray-400 text-center mb-8">개발용 퀵 로그인 - 계정을 선택하세요</p>
 
         {/* 로딩 스켈레톤 */}
@@ -86,7 +75,7 @@ export default function LoginPage() {
                 key={user.id}
                 onClick={() => handleLogin(user.id)}
                 disabled={loading !== null}
-                className={`w-full p-4 rounded-xl border-2 text-left transition-all ${roleColors[user.role] || 'bg-gray-50 border-gray-200'} ${loading === user.id ? 'opacity-50' : ''}`}
+                className={`w-full p-4 rounded-lg border border-gray-200 bg-white hover:border-gray-400 text-left transition-all ${loading === user.id ? 'opacity-50' : ''}`}
               >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{roleIcons[user.role]}</span>
@@ -103,7 +92,7 @@ export default function LoginPage() {
         <p className="text-xs text-gray-400 text-center mt-6">
           추후 OAuth/소셜 로그인으로 전환 예정
         </p>
-      </motion.div>
+      </div>
     </div>
   );
 }

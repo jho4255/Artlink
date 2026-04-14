@@ -148,6 +148,7 @@ function ProfileCard() {
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
+            aria-label="프로필 사진 변경"
             className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           >
             <Camera size={20} className="text-white" />
@@ -410,6 +411,7 @@ function FavoritesSection() {
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined }); }}
+                    aria-label="찜 해제"
                     className="p-1 text-gray-300 hover:text-[#c4302b] cursor-pointer flex-none"
                   >
                     <Heart size={16} className="fill-current" />
@@ -428,6 +430,7 @@ function FavoritesSection() {
 function MyReviewsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<number | null>(null);
   const { data: reviews = [] } = useQuery<any[]>({
     queryKey: ['my-reviews'],
     queryFn: () => api.get('/reviews/my').then(r => r.data),
@@ -462,13 +465,15 @@ function MyReviewsSection() {
                 onClick={() => navigate(`/galleries/${r.galleryId}`)}
                 className="p-1 text-gray-400 hover:text-gray-900"
                 title="갤러리에서 수정"
+                aria-label="수정"
               >
                 <Edit3 size={14} />
               </button>
               <button
-                onClick={() => { if (window.confirm('이 리뷰를 삭제하시겠습니까?')) deleteReviewMutation.mutate(r.id); }}
+                onClick={() => setDeleteReviewConfirmId(r.id)}
                 className="p-1 text-gray-400 hover:text-red-500"
                 title="삭제"
+                aria-label="삭제"
               >
                 <Trash2 size={14} />
               </button>
@@ -477,6 +482,15 @@ function MyReviewsSection() {
           <p className="text-sm text-gray-700 mt-1">{r.content}</p>
         </div>
       ))}
+      <ConfirmDialog
+        open={deleteReviewConfirmId !== null}
+        title="리뷰 삭제"
+        message="이 리뷰를 삭제하시겠습니까?"
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { deleteReviewMutation.mutate(deleteReviewConfirmId!); setDeleteReviewConfirmId(null); }}
+        onCancel={() => setDeleteReviewConfirmId(null)}
+      />
     </div>
   );
 }
@@ -865,7 +879,10 @@ function MyGalleriesSection() {
                         <span className="text-xs text-gray-500">프로필 링크 표시</span>
                         <button
                           onClick={() => toggleProfileVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramProfileVisible })}
-                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramProfileVisible ? 'bg-pink-500' : 'bg-gray-300'}`}
+                          role="switch"
+                          aria-checked={g.instagramProfileVisible}
+                          aria-label="프로필 링크 표시"
+                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramProfileVisible ? 'bg-gray-900' : 'bg-gray-300'}`}
                         >
                           <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramProfileVisible ? 'left-5' : 'left-0.5'}`} />
                         </button>
@@ -875,7 +892,10 @@ function MyGalleriesSection() {
                         <span className="text-xs text-gray-500">피드 표시</span>
                         <button
                           onClick={() => toggleVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramFeedVisible })}
-                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramFeedVisible ? 'bg-pink-500' : 'bg-gray-300'}`}
+                          role="switch"
+                          aria-checked={g.instagramFeedVisible}
+                          aria-label="피드 표시"
+                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramFeedVisible ? 'bg-gray-900' : 'bg-gray-300'}`}
                         >
                           <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramFeedVisible ? 'left-5' : 'left-0.5'}`} />
                         </button>
@@ -891,8 +911,8 @@ function MyGalleriesSection() {
 
       {/* Instagram 토큰 입력 모달 */}
       {instagramModalGalleryId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInstagramModalGalleryId(null)}>
-          <div className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" tabIndex={-1} onClick={() => setInstagramModalGalleryId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setInstagramModalGalleryId(null); }}>
+          <div role="dialog" aria-modal="true" aria-label="Instagram 연동" className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold flex items-center gap-2">
               <Instagram size={18} className="text-gray-500" /> Instagram 연동
             </h3>
@@ -904,7 +924,7 @@ function MyGalleriesSection() {
               value={tokenInput}
               onChange={e => setTokenInput(e.target.value)}
               placeholder="액세스 토큰"
-              className="w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+              className="w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
             <div className="flex gap-2 justify-end">
               <button
@@ -919,7 +939,7 @@ function MyGalleriesSection() {
                   saveTokenMutation.mutate({ galleryId: instagramModalGalleryId, accessToken: tokenInput });
                 }}
                 disabled={saveTokenMutation.isPending}
-                className="px-4 py-2 bg-pink-500 text-white text-sm rounded-lg disabled:opacity-50"
+                className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
               >
                 {saveTokenMutation.isPending ? '저장 중...' : '저장'}
               </button>
@@ -1398,6 +1418,7 @@ function MyExhibitionsSection() {
                       onClick={(e) => { e.stopPropagation(); handleDeleteExhibition(ex.id); }}
                       className="p-1 text-gray-400 hover:text-red-500"
                       title="공모 삭제"
+                      aria-label="삭제"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -1842,7 +1863,8 @@ function MyShowsSection() {
                     {statusLabels[show.status]}
                   </span>
                   <button onClick={() => { if (confirm('삭제하시겠습니까?')) deleteMutation.mutate(show.id); }}
-                    className="p-1 text-gray-400 hover:text-red-500">
+                    className="p-1 text-gray-400 hover:text-red-500"
+                    aria-label="삭제">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -1999,6 +2021,7 @@ function ApprovalsSection() {
                         }
                       }}
                       className="p-1.5 text-gray-400 hover:text-red-500"
+                      aria-label="삭제"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -2026,6 +2049,7 @@ function ApprovalsSection() {
                         }
                       }}
                       className="p-1.5 text-gray-400 hover:text-red-500"
+                      aria-label="삭제"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -2053,6 +2077,7 @@ function ApprovalsSection() {
                         }
                       }}
                       className="p-1.5 text-gray-400 hover:text-red-500"
+                      aria-label="삭제"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -2239,8 +2264,8 @@ function HeroManageSection() {
               <p className="text-xs text-gray-500 truncate">{s.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-900"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(s.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+              <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(s.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -2353,8 +2378,8 @@ function BenefitManageSection() {
               <p className="text-xs text-gray-500 truncate">{b.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-gray-900"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(b.id)} className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+              <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(b.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -2479,7 +2504,7 @@ function GotmManageSection() {
                 <Calendar size={12} /> 만료: {new Date(item.expiresAt).toLocaleDateString('ko')}
               </p>
             </div>
-            <button onClick={() => deleteMutation.mutate(item.id)} className="p-1.5 text-gray-400 hover:text-red-500">
+            <button onClick={() => deleteMutation.mutate(item.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제">
               <Trash2 size={14} />
             </button>
           </div>

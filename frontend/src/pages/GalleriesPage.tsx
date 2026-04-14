@@ -229,6 +229,7 @@ export default function GalleriesPage() {
                         favMutation.mutate(gallery.id);
                       }}
                       className="p-1.5 flex-none cursor-pointer"
+                      aria-label={gallery.isFavorited ? '찜 해제' : '찜하기'}
                     >
                       <Heart
                         size={18}

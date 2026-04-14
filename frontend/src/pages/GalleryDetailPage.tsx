@@ -36,6 +36,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import InstagramFeed from '@/components/gallery/InstagramFeed';
 import InstagramPrivateMessage from '@/components/gallery/InstagramPrivateMessage';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
@@ -79,6 +80,12 @@ export default function GalleryDetailPage() {
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
   const [reviewImageUrl, setReviewImageUrl] = useState('');
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+
+  // ConfirmDialog 상태
+  const [deleteExConfirmId, setDeleteExConfirmId] = useState<number | null>(null);
+  const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<number | null>(null);
+  const [deleteGalleryConfirm, setDeleteGalleryConfirm] = useState(false);
+  const [deleteImageConfirmId, setDeleteImageConfirmId] = useState<number | null>(null);
 
   // 갤러리 상세 조회
   const { data: gallery, isLoading } = useQuery<GalleryDetail>({
@@ -363,6 +370,7 @@ export default function GalleryDetailPage() {
                   onClick={() => { setDescText(gallery.description || ''); setIsEditingDesc(true); }}
                   className="flex-none text-gray-400 hover:text-gray-900 mt-0.5"
                   title="한줄 소개 수정"
+                  aria-label="수정"
                 >
                   <Edit3 size={13} />
                 </button>
@@ -440,7 +448,7 @@ export default function GalleryDetailPage() {
                   <div
                     key={ex.id}
                     onClick={() => navigate(`/exhibitions/${ex.id}`)}
-                    className="p-4 border border-gray-100 rounded-xl hover:bg-gray-50 cursor-pointer"
+                    className="py-4 border-b border-gray-200 hover:opacity-80 cursor-pointer"
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -460,11 +468,10 @@ export default function GalleryDetailPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm('이 공모를 삭제하시겠습니까?')) {
-                                deleteExhibitionMutation.mutate(ex.id);
-                              }
+                              setDeleteExConfirmId(ex.id);
                             }}
                             className="p-1 text-gray-400 hover:text-red-500"
+                            aria-label="삭제"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -485,7 +492,7 @@ export default function GalleryDetailPage() {
               {gallery.exhibitions
                 .filter(e => new Date(e.exhibitDate) < new Date())
                 .map(ex => (
-                  <div key={ex.id} className="p-4 border border-gray-100 rounded-xl">
+                  <div key={ex.id} className="py-4 border-b border-gray-200">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h3 className="font-medium">{ex.title}</h3>
@@ -518,6 +525,7 @@ export default function GalleryDetailPage() {
                               <button
                                 onClick={() => deletePromoPhotoMutation.mutate({ exhibitionId: ex.id, photoId: photo.id })}
                                 className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                aria-label="삭제"
                               >
                                 <X size={12} />
                               </button>
@@ -586,7 +594,7 @@ export default function GalleryDetailPage() {
 
           {/* 리뷰 작성 폼 (Artist 전용) */}
           {isArtist && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+            <div className="mb-6 py-6 border-t border-b border-gray-200">
               <p className="text-sm font-medium mb-2">리뷰 작성</p>
               {/* 별점 선택 (1~5) */}
               <div className="flex gap-1 mb-3">
@@ -655,7 +663,7 @@ export default function GalleryDetailPage() {
                 const isEditing = editingReviewId === review.id;
 
                 return (
-                  <div key={review.id} className="p-4 border border-gray-100 rounded-xl">
+                  <div key={review.id} className="py-4 border-b border-gray-100">
                     {isEditing ? (
                       // 수정 모드
                       <div className="space-y-3">
@@ -731,17 +739,14 @@ export default function GalleryDetailPage() {
                                   }}
                                   className="p-1 text-gray-400 hover:text-gray-900"
                                   title="수정"
+                                  aria-label="수정"
                                 >
                                   <Edit3 size={14} />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    if (window.confirm('이 리뷰를 삭제하시겠습니까?')) {
-                                      deleteReviewMutation.mutate(review.id);
-                                    }
-                                  }}
+                                  onClick={() => setDeleteReviewConfirmId(review.id)}
                                   className="p-1 text-gray-400 hover:text-red-500"
-                                  title="삭제"
+                                  aria-label="삭제"
                                 >
                                   <Trash2 size={14} />
                                 </button>
@@ -750,8 +755,9 @@ export default function GalleryDetailPage() {
                             {/* Admin 삭제 버튼 (본인 리뷰가 아닌 경우만) */}
                             {isAdmin && !isMyReview && (
                               <button
-                                onClick={() => deleteReviewMutation.mutate(review.id)}
+                                onClick={() => setDeleteReviewConfirmId(review.id)}
                                 className="p-1 text-red-400 hover:text-red-600"
+                                aria-label="삭제"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -779,19 +785,45 @@ export default function GalleryDetailPage() {
 
       {/* === 갤러리 삭제 버튼 (오너 또는 Admin) === */}
       {(isOwner || isAdmin) && (
-        <div className="px-4 mt-8">
+        <div className="border-t border-gray-200 mt-12 pt-6 px-4">
           <button
-            onClick={() => {
-              if (window.confirm('정말로 이 갤러리를 삭제하시겠습니까? 관련된 모든 공모, 리뷰, 이미지가 함께 삭제됩니다.'))
-                deleteGalleryMutation.mutate();
-            }}
+            onClick={() => setDeleteGalleryConfirm(true)}
             disabled={deleteGalleryMutation.isPending}
-            className="w-full py-3 border-2 border-red-400 text-red-500 rounded-xl font-semibold hover:bg-red-50 transition disabled:opacity-50"
+            className="text-sm text-gray-400 hover:text-[#c4302b] cursor-pointer"
           >
-            {deleteGalleryMutation.isPending ? '삭제 중...' : '갤러리 삭제'}
+            갤러리 삭제
           </button>
         </div>
       )}
+
+      {/* ConfirmDialog 모음 */}
+      <ConfirmDialog
+        open={deleteExConfirmId !== null}
+        title="공모 삭제"
+        message="이 공모를 삭제하시겠습니까?"
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { deleteExhibitionMutation.mutate(deleteExConfirmId!); setDeleteExConfirmId(null); }}
+        onCancel={() => setDeleteExConfirmId(null)}
+      />
+      <ConfirmDialog
+        open={deleteReviewConfirmId !== null}
+        title="리뷰 삭제"
+        message="이 리뷰를 삭제하시겠습니까?"
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { deleteReviewMutation.mutate(deleteReviewConfirmId!); setDeleteReviewConfirmId(null); }}
+        onCancel={() => setDeleteReviewConfirmId(null)}
+      />
+      <ConfirmDialog
+        open={deleteGalleryConfirm}
+        title="갤러리 삭제"
+        message="정말로 이 갤러리를 삭제하시겠습니까? 관련된 모든 공모, 리뷰, 이미지가 함께 삭제됩니다."
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { deleteGalleryMutation.mutate(); setDeleteGalleryConfirm(false); }}
+        onCancel={() => setDeleteGalleryConfirm(false)}
+      />
 
       {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
       <AnimatePresence>
@@ -958,6 +990,7 @@ function GalleryImageCarousel({
         <button
           onClick={(e) => { e.stopPropagation(); onFavoriteClick(); }}
           className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow z-10"
+          aria-label={isFavorited ? '찜 해제' : '찜하기'}
         >
           <Heart size={22} className={isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
         </button>
@@ -969,12 +1002,14 @@ function GalleryImageCarousel({
           <button
             onClick={() => scrollToSlide((imgIndex - 1 + images.length) % images.length)}
             className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+            aria-label="이전 사진"
           >
             <ChevronLeft size={20} />
           </button>
           <button
             onClick={() => scrollToSlide((imgIndex + 1) % images.length)}
             className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+            aria-label="다음 사진"
           >
             <ChevronRight size={20} />
           </button>
@@ -1072,6 +1107,7 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+        aria-label="사진 관리"
       >
         <Camera size={14} />
         사진 관리
@@ -1091,6 +1127,7 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
                     }
                   }}
                   className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="삭제"
                 >
                   <X size={12} />
                 </button>
@@ -1102,6 +1139,7 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
                 onClick={() => inputRef.current?.click()}
                 disabled={uploading}
                 className="h-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+                aria-label="사진 추가"
               >
                 {uploading ? (
                   <Loader2 size={18} className="animate-spin" />

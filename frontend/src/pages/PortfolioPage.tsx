@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
 import api from '@/lib/axios';
 import ImageLightbox from '@/components/shared/ImageLightbox';
@@ -38,13 +38,13 @@ export default function PortfolioPage() {
     });
   }, [portfolio]);
 
-  if (isLoading) return <div className="max-w-4xl mx-auto px-4 py-6"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
+  if (isLoading) return <div className="max-w-7xl mx-auto px-6 md:px-12 py-10"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
   if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
 
   const imageUrls = portfolio.images.map(img => img.url);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       {/* 뒤로가기 */}
       <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6">
         <ArrowLeft size={16} /> 뒤로가기
@@ -60,7 +60,7 @@ export default function PortfolioPage() {
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-bold">{portfolio.user.name}</h1>
+          <h1 className="text-2xl font-medium">{portfolio.user.name}</h1>
           <p className="text-sm text-gray-500">아티스트 포트폴리오</p>
         </div>
       </div>
@@ -68,31 +68,31 @@ export default function PortfolioPage() {
       {/* 약력 */}
       {portfolio.biography && (
         <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+          <h3 className="text-base font-medium text-gray-700 mb-2 flex items-center gap-1">
             <FileText size={14} /> 작가 약력
           </h3>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-4 rounded-xl">{portfolio.biography}</p>
+          <div className="border-l-2 border-gray-200 pl-4 py-2 text-sm text-gray-600 whitespace-pre-wrap">{portfolio.biography}</div>
         </div>
       )}
 
       {/* 전시 이력 */}
       {portfolio.exhibitionHistory && (
         <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+          <h3 className="text-base font-medium text-gray-700 mb-2 flex items-center gap-1">
             <Calendar size={14} /> 전시 이력
           </h3>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-4 rounded-xl">{portfolio.exhibitionHistory}</p>
+          <div className="border-l-2 border-gray-200 pl-4 py-2 text-sm text-gray-600 whitespace-pre-wrap">{portfolio.exhibitionHistory}</div>
         </div>
       )}
 
       {/* 작품 이미지 그리드 (스켈레톤 → 프리로드 완료 후 표시) */}
       {imageUrls.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">작품 ({imageUrls.length})</h3>
+          <h3 className="text-base font-medium text-gray-700 mb-3">작품 ({imageUrls.length})</h3>
           {!imagesReady ? (
             <div className="grid grid-cols-3 gap-2">
               {imageUrls.map((_, i) => (
-                <div key={i} className="aspect-square bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="aspect-square bg-gray-100 animate-pulse" />
               ))}
             </div>
           ) : (
@@ -102,7 +102,7 @@ export default function PortfolioPage() {
                   key={i}
                   src={url}
                   alt={`작품 ${i + 1}`}
-                  className="w-full aspect-square object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-full aspect-square object-cover cursor-pointer hover:opacity-80 transition-opacity"
                   onClick={() => { setLightboxIndex(i); setLightboxOpen(true); }}
                 />
               ))}
@@ -126,6 +126,6 @@ export default function PortfolioPage() {
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }

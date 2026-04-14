@@ -169,6 +169,7 @@ export default function ShowsPage() {
                             favMutation.mutate(show.id);
                           }}
                           className="p-1 cursor-pointer"
+                          aria-label={show.isFavorited ? '찜 해제' : '찜하기'}
                         >
                           <Heart size={16} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
                         </button>

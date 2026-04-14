@@ -22,8 +22,10 @@ export default function SupportPage() {
   const [activeTab, setActiveTab] = useState<'faq' | 'inquiry'>('faq');
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold font-serif mb-6">고객센터</h1>
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <p className="text-base text-gray-400 mt-2">Support</p>
+      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">도움이 필요하신가요?</h1>
+      <div className="mb-10" />
 
       {/* 탭 전환 */}
       <div className="flex gap-1 border-b border-gray-100 mb-6">
@@ -46,10 +48,10 @@ export default function SupportPage() {
       </div>
 
       {/* 탭 콘텐츠 */}
-      <motion.div key={activeTab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
+      <div>
         {activeTab === 'faq' ? <FaqSection /> : <InquirySection />}
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 
@@ -147,7 +149,7 @@ function FaqSection() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden mb-6"
           >
-            <div className="p-5 bg-gray-50 rounded-xl space-y-3">
+            <div className="p-5 bg-gray-50 rounded-lg space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">질문</label>
                 <input
@@ -155,7 +157,7 @@ function FaqSection() {
                   onChange={e => setQuestion(e.target.value)}
                   maxLength={500}
                   placeholder="자주 묻는 질문을 입력해주세요"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
               </div>
               <div>
@@ -165,7 +167,7 @@ function FaqSection() {
                   onChange={e => setAnswer(e.target.value)}
                   maxLength={5000}
                   placeholder="답변을 입력해주세요"
-                  className="w-full h-28 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-28 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -196,19 +198,16 @@ function FaqSection() {
       ) : (
         <div className="space-y-2">
           {faqs.map((faq, i) => (
-            <motion.div
+            <div
               key={faq.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              className="border border-gray-100 rounded-xl bg-white shadow-sm overflow-hidden"
+              className="border-b border-gray-200 overflow-hidden"
             >
               <button
                 onClick={() => setExpandedId(expandedId === faq.id ? null : faq.id)}
                 className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-blue-500 font-bold text-sm flex-none">Q</span>
+                  <span className="text-gray-900 font-bold text-sm flex-none">Q</span>
                   <span className="font-medium text-gray-900 truncate">{faq.question}</span>
                 </div>
                 {expandedId === faq.id ? <ChevronUp size={18} className="text-gray-400 flex-none" /> : <ChevronDown size={18} className="text-gray-400 flex-none" />}
@@ -222,16 +221,16 @@ function FaqSection() {
                     className="overflow-hidden"
                   >
                     <div className="px-4 pb-4">
-                      <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-4">
-                        <span className="text-green-600 font-bold text-sm flex-none mt-0.5">A</span>
+                      <div className="flex items-start gap-2 border-l-2 border-gray-200 pl-4 py-2">
+                        <span className="text-gray-500 font-bold text-sm flex-none mt-0.5">A</span>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">{faq.answer}</p>
                       </div>
                       {isAdmin && (
                         <div className="flex justify-end gap-2 mt-2">
-                          <button onClick={() => startEdit(faq)} className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-1">
+                          <button onClick={() => startEdit(faq)} className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1">
                             <Edit3 size={12} /> 수정
                           </button>
-                          <button onClick={() => deleteMutation.mutate(faq.id)} className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1">
+                          <button onClick={() => deleteMutation.mutate(faq.id)} className="text-xs text-gray-400 hover:text-[#c4302b] flex items-center gap-1">
                             <Trash2 size={12} /> 삭제
                           </button>
                         </div>
@@ -240,7 +239,7 @@ function FaqSection() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </div>
           ))}
         </div>
       )}
@@ -337,7 +336,7 @@ function InquirySection() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden mb-6"
           >
-            <div className="p-5 bg-gray-50 rounded-xl space-y-3">
+            <div className="p-5 bg-gray-50 rounded-lg space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">제목</label>
                 <input
@@ -345,7 +344,7 @@ function InquirySection() {
                   onChange={e => setSubject(e.target.value)}
                   maxLength={200}
                   placeholder="문의 제목을 입력해주세요"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
                 <p className="text-xs text-gray-400 mt-1 text-right">{subject.length}/200</p>
               </div>
@@ -356,7 +355,7 @@ function InquirySection() {
                   onChange={e => setContent(e.target.value)}
                   maxLength={5000}
                   placeholder="문의 내용을 자세히 작성해주세요"
-                  className="w-full h-32 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-32 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
                 <p className="text-xs text-gray-400 mt-1 text-right">{content.length}/5000</p>
               </div>
@@ -403,12 +402,9 @@ function InquirySection() {
       ) : (
         <div className="space-y-3">
           {inquiries.map((inq, i) => (
-            <motion.div
+            <div
               key={inq.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              className="border border-gray-100 rounded-xl bg-white shadow-sm overflow-hidden"
+              className="border-b border-gray-200 overflow-hidden"
             >
               <button
                 onClick={() => toggleExpand(inq.id)}
@@ -417,8 +413,8 @@ function InquirySection() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-gray-900 truncate">{inq.subject}</h3>
-                    <span className={`flex-none text-xs px-2 py-0.5 rounded-full font-medium ${
-                      inq.status === 'ANSWERED' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                    <span className={`flex-none text-xs font-medium ${
+                      inq.status === 'ANSWERED' ? 'text-gray-500' : 'text-[#c4302b]'
                     }`}>
                       {inq.status === 'ANSWERED' ? '답변완료' : '대기중'}
                     </span>
@@ -446,9 +442,9 @@ function InquirySection() {
                       </div>
 
                       {inq.reply && (
-                        <div className="bg-blue-50 rounded-lg p-4">
+                        <div className="bg-gray-50 rounded-lg p-4">
                           <div className="flex justify-between items-center mb-1">
-                            <p className="text-xs font-medium text-blue-600">관리자 답변</p>
+                            <p className="text-xs font-medium text-gray-500">관리자 답변</p>
                             {inq.repliedAt && <p className="text-xs text-gray-400">{formatDate(inq.repliedAt)}</p>}
                           </div>
                           <p className="text-sm text-gray-800 whitespace-pre-wrap">{inq.reply}</p>
@@ -462,13 +458,13 @@ function InquirySection() {
                             onChange={e => setReplyText(e.target.value)}
                             maxLength={5000}
                             placeholder={inq.status === 'ANSWERED' ? '답변을 수정해주세요' : '답변을 입력해주세요'}
-                            className="w-full h-24 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full h-24 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
                           />
                           <div className="flex justify-end">
                             <button
                               onClick={() => handleReply(inq.id)}
                               disabled={replyMutation.isPending}
-                              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50 hover:bg-blue-700"
+                              className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 hover:bg-gray-800"
                             >
                               <Send size={14} /> {inq.status === 'ANSWERED' ? '답변 수정' : '답변 등록'}
                             </button>
@@ -479,7 +475,7 @@ function InquirySection() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </div>
           ))}
         </div>
       )}

@@ -8,6 +8,7 @@
  *
  * @see Phase 4 - 폼 UX 개선
  */
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -32,6 +33,16 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // ESC 키로 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onCancel]);
+
   const confirmBtnClass = variant === 'danger'
     ? 'bg-red-500 hover:bg-red-600 text-white'
     : 'bg-gray-900 hover:bg-gray-800 text-white';
