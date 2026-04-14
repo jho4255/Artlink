@@ -83,6 +83,7 @@ export default function ImageLightbox({ images, initialIndex, onClose }: ImageLi
       {/* 닫기 버튼 */}
       <button
         onClick={(e) => { e.stopPropagation(); onClose(); }}
+        aria-label="닫기"
         className="absolute top-4 right-4 p-2 text-white/80 hover:text-white z-10"
       >
         <X size={28} />
@@ -112,12 +113,14 @@ export default function ImageLightbox({ images, initialIndex, onClose }: ImageLi
         <>
           <button
             onClick={e => { e.stopPropagation(); setIndex(i => (i - 1 + images.length) % images.length); }}
+            aria-label="이전 이미지"
             className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 z-10"
           >
             <ChevronLeft size={24} />
           </button>
           <button
             onClick={e => { e.stopPropagation(); setIndex(i => (i + 1) % images.length); }}
+            aria-label="다음 이미지"
             className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 z-10"
           >
             <ChevronRight size={24} />

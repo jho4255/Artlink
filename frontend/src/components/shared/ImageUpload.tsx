@@ -41,6 +41,7 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
           {onRemove && (
             <button
               onClick={onRemove}
+              aria-label="이미지 삭제"
               className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <X size={14} />
@@ -121,6 +122,7 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
             <img src={img.url} alt="" className="w-full h-24 object-cover rounded-lg" />
             <button
               onClick={() => onRemove(i)}
+              aria-label="이미지 삭제"
               className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <X size={12} />

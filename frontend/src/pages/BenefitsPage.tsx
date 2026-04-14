@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
 import api from '@/lib/axios';
 import type { Benefit } from '@/types';
@@ -12,8 +11,9 @@ export default function BenefitsPage() {
   });
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-6 font-serif">혜택</h1>
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Benefits</h1>
+      <p className="text-base text-gray-400 mt-2 mb-10">아티스트를 위한 혜택</p>
 
       {isLoading ? (
         <div className="space-y-4">
@@ -23,13 +23,10 @@ export default function BenefitsPage() {
         <div className="text-center py-16 text-gray-400">등록된 혜택이 없습니다.</div>
       ) : (
         <div className="space-y-4">
-          {benefits.map((benefit, i) => (
-            <motion.div
+          {benefits.map((benefit) => (
+            <div
               key={benefit.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden hover:-translate-y-1 hover:shadow-md transition-all"
+              className="bg-white border-b border-gray-200 overflow-hidden hover:opacity-80 transition-opacity"
             >
               {benefit.imageUrl && (
                 <img src={benefit.imageUrl} alt={benefit.title} className="w-full h-48 object-cover" />
@@ -42,16 +39,16 @@ export default function BenefitsPage() {
                     href={benefit.linkUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-3 text-sm text-blue-500 hover:text-blue-600"
+                    className="inline-flex items-center gap-1 mt-3 text-sm text-gray-400 hover:text-gray-900"
                   >
                     자세히 보기 <ExternalLink size={14} />
                   </a>
                 )}
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

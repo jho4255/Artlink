@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Menu, X, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ const navLinks = [
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -58,6 +59,25 @@ export default function Navbar() {
     },
   });
 
+  // 알림 드롭다운: ESC 키 + 바깥 클릭 닫기
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNotifOpen(false);
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notifOpen]);
+
   const handleNotifClick = (notif: any) => {
     if (!notif.read) readMutation.mutate(notif.id);
     if (notif.linkUrl) navigate(notif.linkUrl);
@@ -94,10 +114,11 @@ export default function Navbar() {
           {/* 우측: 알림 + 유저 정보 */}
           <div className="hidden md:flex items-center gap-3 flex-none">
             {isAuthenticated && (
-              <div className="relative">
+              <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setNotifOpen(!notifOpen)}
                   className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  aria-label="알림"
                 >
                   <Bell size={20} className="text-gray-600" />
                   {unreadCount > 0 && (
@@ -120,7 +141,7 @@ export default function Navbar() {
                         {unreadCount > 0 && (
                           <button
                             onClick={() => readAllMutation.mutate()}
-                            className="text-xs text-blue-500 hover:text-blue-600"
+                            className="text-xs text-gray-400 hover:text-gray-900"
                           >
                             전체 읽음
                           </button>
@@ -136,7 +157,7 @@ export default function Navbar() {
                               onClick={() => handleNotifClick(notif)}
                               className={cn(
                                 'w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50',
-                                !notif.read && 'bg-blue-50/50'
+                                !notif.read && 'bg-gray-50'
                               )}
                             >
                               <p className="text-sm text-gray-800 line-clamp-2">{notif.message}</p>
@@ -165,6 +186,7 @@ export default function Navbar() {
               <button
                 onClick={() => setNotifOpen(!notifOpen)}
                 className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="알림"
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
@@ -177,6 +199,7 @@ export default function Navbar() {
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+              aria-label={isOpen ? '메뉴 닫기' : '메뉴 열기'}
             >
               {isOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -207,7 +230,7 @@ export default function Navbar() {
                   <button
                     key={notif.id}
                     onClick={() => handleNotifClick(notif)}
-                    className={cn('w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50', !notif.read && 'bg-blue-50/50')}
+                    className={cn('w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50', !notif.read && 'bg-gray-50')}
                   >
                     <p className="text-sm text-gray-800 line-clamp-2">{notif.message}</p>
                     <p className="text-xs text-gray-400 mt-1">

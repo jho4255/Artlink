@@ -22,7 +22,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -74,6 +74,7 @@ export default function ExhibitionDetailPage() {
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
   const [batchStatus, setBatchStatus] = useState<string>('');
   const [bgColor, setBgColor] = useState('#1a1a2e');
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // 지원 약관 텍스트 로드
   useEffect(() => {
@@ -242,9 +243,7 @@ export default function ExhibitionDetailPage() {
   });
 
   const handleDelete = () => {
-    if (window.confirm('정말 이 공모를 삭제하시겠습니까? 관련 지원 내역도 모두 삭제됩니다.')) {
-      deleteMutation.mutate();
-    }
+    setDeleteConfirm(true);
   };
 
   if (isLoading || !exhibition) {
@@ -285,6 +284,7 @@ export default function ExhibitionDetailPage() {
             <button
               onClick={() => navigate(-1)}
               className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+              aria-label="뒤로가기"
             >
               <ArrowLeft size={20} />
             </button>
@@ -292,6 +292,7 @@ export default function ExhibitionDetailPage() {
               <button
                 onClick={() => favMutation.mutate()}
                 className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+                aria-label="찜하기"
               >
                 <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
               </button>
@@ -323,33 +324,47 @@ export default function ExhibitionDetailPage() {
         </div>
 
         {/* 정보 카드 */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">공모 유형</p>
-            <p className="text-sm font-medium">{exhibitionTypeLabels[exhibition.type]}</p>
+        <div className="space-y-0">
+          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+            <FileText size={16} className="text-gray-400 flex-none" />
+            <div>
+              <p className="text-sm text-gray-400">공모 유형</p>
+              <p className="text-base">{exhibitionTypeLabels[exhibition.type]}</p>
+            </div>
           </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">모집 인원</p>
-            <p className="text-sm font-medium flex items-center gap-1"><Users size={14} /> {exhibition.capacity}명</p>
+          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+            <Users size={16} className="text-gray-400 flex-none" />
+            <div>
+              <p className="text-sm text-gray-400">모집 인원</p>
+              <p className="text-base">{exhibition.capacity}명</p>
+            </div>
           </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">지역</p>
-            <p className="text-sm font-medium flex items-center gap-1"><MapPin size={14} /> {regionLabels[exhibition.region]}</p>
+          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+            <MapPin size={16} className="text-gray-400 flex-none" />
+            <div>
+              <p className="text-sm text-gray-400">지역</p>
+              <p className="text-base">{regionLabels[exhibition.region]}</p>
+            </div>
           </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">공모 기간</p>
-            <p className="text-sm font-medium flex items-center gap-1">
-              <Clock size={14} />
-              {exhibition.deadlineStart ? `${new Date(exhibition.deadlineStart).toLocaleDateString('ko')} ~ ` : ''}
-              {new Date(exhibition.deadline).toLocaleDateString('ko')}
-            </p>
+          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+            <Clock size={16} className="text-gray-400 flex-none" />
+            <div>
+              <p className="text-sm text-gray-400">공모 기간</p>
+              <p className="text-base">
+                {exhibition.deadlineStart ? `${new Date(exhibition.deadlineStart).toLocaleDateString('ko')} ~ ` : ''}
+                {new Date(exhibition.deadline).toLocaleDateString('ko')}
+              </p>
+            </div>
           </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-1">전시 기간</p>
-            <p className="text-sm font-medium">
-              {exhibition.exhibitStartDate ? `${new Date(exhibition.exhibitStartDate).toLocaleDateString('ko')} ~ ` : ''}
-              {new Date(exhibition.exhibitDate).toLocaleDateString('ko')}
-            </p>
+          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+            <Calendar size={16} className="text-gray-400 flex-none" />
+            <div>
+              <p className="text-sm text-gray-400">전시 기간</p>
+              <p className="text-base">
+                {exhibition.exhibitStartDate ? `${new Date(exhibition.exhibitStartDate).toLocaleDateString('ko')} ~ ` : ''}
+                {new Date(exhibition.exhibitDate).toLocaleDateString('ko')}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -361,6 +376,7 @@ export default function ExhibitionDetailPage() {
               <button
                 onClick={() => { setEditDesc(exhibition.description); setIsEditingDesc(true); }}
                 className="text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
+                aria-label="수정"
               >
                 <Edit3 size={14} /> 수정
               </button>
@@ -396,6 +412,7 @@ export default function ExhibitionDetailPage() {
                 <button
                   onClick={() => { setEditCfFields([...exhibition.customFields!]); setIsEditingCf(true); }}
                   className="text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
+                  aria-label="수정"
                 >
                   <Edit3 size={14} /> 수정
                 </button>
@@ -557,6 +574,7 @@ export default function ExhibitionDetailPage() {
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
               className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+              aria-label="삭제"
             >
               <Trash2 size={16} /> 공모 삭제
             </button>
@@ -569,6 +587,7 @@ export default function ExhibitionDetailPage() {
             <button
               onClick={() => setShowApplicants(!showApplicants)}
               className="w-full flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+              aria-label={showApplicants ? '접기' : '펼치기'}
             >
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Users size={16} /> 지원자 관리
@@ -807,6 +826,17 @@ export default function ExhibitionDetailPage() {
         confirmText="지원하기"
         onConfirm={() => { setApplyConfirm(false); applyMutation.mutate(pendingAnswers); setPendingAnswers(undefined); }}
         onCancel={() => { setApplyConfirm(false); setPendingAnswers(undefined); }}
+      />
+
+      {/* 삭제 확인 모달 */}
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="공모 삭제"
+        message="정말 이 공모를 삭제하시겠습니까? 관련 지원 내역도 모두 삭제됩니다."
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { setDeleteConfirm(false); deleteMutation.mutate(); }}
+        onCancel={() => setDeleteConfirm(false)}
       />
 
       {/* 지원 모달 (커스텀 필드 입력) — 검증 강화 */}
