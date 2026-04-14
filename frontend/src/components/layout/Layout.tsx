@@ -26,22 +26,14 @@ export default function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="border-t border-gray-200 bg-white">
-        <div className="max-w-5xl mx-auto px-6 md:px-12 py-8">
+      <footer className="border-t border-gray-100 bg-white">
+        <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
           {companyInfo.length > 0 ? (
-            <div className="space-y-2 text-base text-gray-400 leading-relaxed">
-              <p className="text-lg text-gray-500">{companyInfo[0]}</p>
-              {companyInfo.slice(1, -1).map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
-              {companyInfo.length > 1 && (
-                <p className="mt-3 pt-3 border-t border-gray-200 text-gray-400">
-                  {companyInfo[companyInfo.length - 1]}
-                </p>
-              )}
-            </div>
+            <p className="text-[11px] text-gray-300 leading-relaxed">
+              {companyInfo.join(' | ')}
+            </p>
           ) : (
-            <p className="text-xs text-gray-400">&copy; 2026 ArtLink. All rights reserved.</p>
+            <p className="text-[11px] text-gray-300">&copy; 2026 ArtLink. All rights reserved.</p>
           )}
         </div>
       </footer>
