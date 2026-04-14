@@ -29,9 +29,11 @@ export default function Layout() {
       <footer className="border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
           {companyInfo.length > 0 ? (
-            <p className="text-[11px] text-gray-300 leading-relaxed">
-              {companyInfo.join(' | ')}
-            </p>
+            <div className="space-y-0.5 text-[11px] text-gray-300 leading-relaxed">
+              {companyInfo.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
           ) : (
             <p className="text-[11px] text-gray-300">&copy; 2026 ArtLink. All rights reserved.</p>
           )}
