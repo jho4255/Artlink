@@ -364,7 +364,7 @@ function PortfolioImageGrid({
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {images.map((img) => (
           <div key={img.id} className="relative group">
-            <img src={img.url} alt="" className="w-full h-24 object-cover" />
+            <img src={img.url} alt="" className="w-full aspect-square object-cover" />
             {/* 삭제 버튼 (우상단) */}
             <button
               onClick={() => onRemove(img.id)}
@@ -392,7 +392,7 @@ function PortfolioImageGrid({
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="h-24 border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+            className="aspect-square border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
           >
             {uploading ? (
               <>
