@@ -9,6 +9,7 @@ import api from '@/lib/axios';
 
 const navLinks = [
   { path: '/', label: '홈' },
+  { path: '/explore', label: '둘러보기' },
   { path: '/galleries', label: '갤러리' },
   { path: '/shows', label: '전시' },
   { path: '/exhibitions', label: '모집공고' },
