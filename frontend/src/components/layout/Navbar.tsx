@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Menu, X, Bell } from 'lucide-react';
+import { Menu, X, Bell, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
@@ -32,6 +32,14 @@ export default function Navbar() {
     queryKey: ['unread-count'],
     queryFn: () => api.get('/notifications/unread-count').then(r => r.data.count),
     enabled: isAuthenticated,
+    refetchInterval: 30000,
+  });
+
+  // 미읽음 쪽지 카운트
+  const { data: unreadMsgCount = 0 } = useQuery<number>({
+    queryKey: ['message-unread-count'],
+    queryFn: () => api.get('/messages/unread-count').then(r => r.data.count),
+    enabled: isAuthenticated && user?.role !== 'ADMIN',
     refetchInterval: 30000,
   });
 
@@ -112,8 +120,22 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* 우측: 알림 + 유저 정보 */}
+          {/* 우측: 쪽지 + 알림 + 유저 정보 */}
           <div className="hidden md:flex items-center gap-3 flex-none">
+            {isAuthenticated && user?.role !== 'ADMIN' && (
+              <button
+                onClick={() => navigate('/messages')}
+                className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="쪽지"
+              >
+                <Mail size={20} className="text-gray-600" />
+                {unreadMsgCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#c4302b] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                  </span>
+                )}
+              </button>
+            )}
             {isAuthenticated && (
               <div className="relative" ref={notifRef}>
                 <button
@@ -181,8 +203,22 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* 모바일: 알림 + 햄버거 */}
+          {/* 모바일: 쪽지 + 알림 + 햄버거 */}
           <div className="flex items-center gap-1 md:hidden">
+            {isAuthenticated && user?.role !== 'ADMIN' && (
+              <button
+                onClick={() => navigate('/messages')}
+                className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="쪽지"
+              >
+                <Mail size={20} />
+                {unreadMsgCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-[#c4302b] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                  </span>
+                )}
+              </button>
+            )}
             {isAuthenticated && (
               <button
                 onClick={() => setNotifOpen(!notifOpen)}
