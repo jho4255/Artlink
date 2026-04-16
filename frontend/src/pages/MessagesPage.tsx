@@ -287,12 +287,12 @@ export default function MessagesPage() {
             </div>
           ) : isArtist ? (
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">수신자 (지원한 공모의 갤러리)</label>
-              {recipients.length === 0 ? <p className="text-sm text-gray-400 py-2">지원한 공모가 없습니다.</p> : (
+              <label className="block text-xs font-medium text-gray-400 mb-1">수신자 (갤러리)</label>
+              {recipients.length === 0 ? <p className="text-sm text-gray-400 py-2">등록된 갤러리가 없습니다.</p> : (
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">{recipients.map((r: any) => (
-                  <button key={r.exhibitionId} onClick={() => { setNewReceiverId(r.userId); setPrefillName(`${r.galleryName} (${r.userName})`); setPrefillExhibition(r.exhibitionTitle); setPrefillExhibitionId(r.exhibitionId); if (!newSubject) setNewSubject(`[${r.exhibitionTitle}] `); }}
+                  <button key={r.userId} onClick={() => { setNewReceiverId(r.userId); setPrefillName(`${r.galleryName} (${r.userName})`); setPrefillExhibition(''); setPrefillExhibitionId(undefined); if (!newSubject) setNewSubject(`[${r.galleryName}] `); }}
                     className={`w-full text-left px-3 py-2 text-sm border-b border-gray-200 ${newReceiverId === r.userId ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'}`}>
-                    <p className="font-medium text-gray-900">{r.galleryName}</p><p className="text-xs text-gray-400">{r.exhibitionTitle}</p>
+                    <p className="font-medium text-gray-900">{r.galleryName}</p><p className="text-xs text-gray-400">{r.userName}</p>
                   </button>
                 ))}</div>
               )}
