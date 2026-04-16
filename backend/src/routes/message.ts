@@ -32,24 +32,15 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
     const myRole = req.user!.role;
 
     if (myRole === 'ARTIST') {
-      // Artist: 지원한 공모의 갤러리 오너 목록
-      const applications = await prisma.application.findMany({
-        where: { userId: myId },
-        include: {
-          exhibition: {
-            include: {
-              gallery: {
-                include: { owner: { select: { id: true, name: true, role: true } } },
-              },
-            },
-          },
-        },
+      // Artist: 승인된 모든 갤러리 오너 목록 (지원 전에도 쪽지 가능)
+      const galleries = await prisma.gallery.findMany({
+        where: { status: 'APPROVED' },
+        include: { owner: { select: { id: true, name: true, role: true } } },
       });
-      const recipientMap = new Map<number, { id: number; name: string; role: string; galleryName: string }>();
-      for (const app of applications) {
-        const owner = app.exhibition.gallery.owner;
-        if (!recipientMap.has(owner.id)) {
-          recipientMap.set(owner.id, { ...owner, galleryName: app.exhibition.gallery.name });
+      const recipientMap = new Map<number, { userId: number; userName: string; galleryName: string; galleryId: number }>();
+      for (const g of galleries) {
+        if (g.owner.id !== myId && !recipientMap.has(g.owner.id)) {
+          recipientMap.set(g.owner.id, { userId: g.owner.id, userName: g.owner.name, galleryName: g.name, galleryId: g.id });
         }
       }
       res.json(Array.from(recipientMap.values()));
