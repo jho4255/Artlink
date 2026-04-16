@@ -202,6 +202,30 @@ export interface InstagramPost {
   timestamp: string;
 }
 
+export interface Message {
+  id: number;
+  subject: string;
+  content: string;
+  read: boolean;
+  senderId: number;
+  sender: { id: number; name: string; role: string };
+  receiverId: number;
+  receiver: { id: number; name: string; role: string };
+  exhibitionId?: number | null;
+  exhibition?: { id: number; title: string } | null;
+  attachments?: string | null;
+  createdAt: string;
+  sanctioned?: boolean;
+  reportedByMe?: boolean;
+}
+
+export interface MessageAttachment {
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
 export interface Inquiry {
   id: number;
   subject: string;

@@ -18,6 +18,7 @@ export function authToken(userId: number, role: string): string {
 }
 
 const ALL_TABLES = [
+  'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
   'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
@@ -26,6 +27,8 @@ const ALL_TABLES = [
 // DB 전체 정리 — interactive transaction (단일 커넥션, deadlock 불가)
 export async function cleanDb() {
   await testPrisma.$transaction(async (tx) => {
+    await tx.messageReport.deleteMany();
+    await tx.message.deleteMany();
     await tx.faq.deleteMany();
     await tx.inquiry.deleteMany();
     await tx.notification.deleteMany();

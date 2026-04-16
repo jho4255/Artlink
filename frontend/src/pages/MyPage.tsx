@@ -55,6 +55,7 @@ export default function MyPage() {
         { id: 'hero-manage', label: '히어로 관리', icon: Eye },
         { id: 'benefit-manage', label: '혜택 관리', icon: FileText },
         { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
+        { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
       ];
 
   return (
@@ -98,6 +99,7 @@ export default function MyPage() {
         {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
         {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
         {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
+        {activeTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
       </div>
     </div>
   );
@@ -2650,6 +2652,111 @@ function GotmManageSection() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ========== Admin: 신고 관리 ==========
+function ReportManageSection() {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [adminNote, setAdminNote] = useState('');
+
+  const { data: reports = [], isLoading } = useQuery<any[]>({
+    queryKey: ['admin-reports', statusFilter],
+    queryFn: () => {
+      const params = statusFilter ? `?status=${statusFilter}` : '';
+      return api.get(`/reports${params}`).then(r => r.data);
+    },
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: ({ id, status, adminNote, deleteMessage }: { id: number; status: string; adminNote?: string; deleteMessage?: boolean }) =>
+      api.patch(`/reports/${id}`, { status, adminNote, deleteMessage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reports'] });
+      setExpandedId(null);
+      setAdminNote('');
+      toast.success('신고가 처리되었습니다.');
+    },
+    onError: () => toast.error('처리에 실패했습니다.'),
+  });
+
+  const statusLabels: Record<string, string> = { PENDING: '대기', DISMISSED: '반려', ACTIONED: '제재' };
+  const reasonLabels: Record<string, string> = { PROFANITY: '비속어', SPAM: '스팸', INAPPROPRIATE: '부적절', OTHER: '기타' };
+
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
+
+  return (
+    <div>
+      <div className="flex gap-3 mb-6">
+        {[
+          { label: '전체', value: null },
+          { label: '대기', value: 'PENDING' },
+          { label: '반려', value: 'DISMISSED' },
+          { label: '제재', value: 'ACTIONED' },
+        ].map(f => (
+          <button
+            key={f.label}
+            onClick={() => setStatusFilter(f.value)}
+            className={`text-sm cursor-pointer transition-colors ${
+              statusFilter === f.value
+                ? 'text-gray-900 underline underline-offset-4 decoration-1'
+                : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {reports.length === 0 ? (
+        <p className="text-gray-400 text-center py-8">신고 내역이 없습니다.</p>
+      ) : (
+        <div className="space-y-0">
+          {reports.map((r: any) => (
+            <div key={r.id} className="py-4 border-b border-gray-100">
+              <div className="flex justify-between items-start cursor-pointer" onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-[#c4302b]' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {statusLabels[r.status] || r.status}
+                    </span>
+                    <span className="text-xs text-gray-400">{reasonLabels[r.reason] || r.reason}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 mt-1">{r.reporter?.name}이(가) {r.message?.sender?.name}의 메시지를 신고</p>
+                  {r.detail && <p className="text-xs text-gray-400 mt-0.5">{r.detail}</p>}
+                </div>
+                <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('ko')}</span>
+              </div>
+              {expandedId === r.id && (
+                <div className="mt-3 space-y-3 pl-4 border-l-2 border-gray-200">
+                  {r.message && (
+                    <div className="text-sm">
+                      <p className="text-xs text-gray-400">원본 메시지</p>
+                      <p className="text-gray-600 mt-1">제목: {r.message.subject}</p>
+                      <p className="text-gray-600">내용: {r.message.content}</p>
+                      <p className="text-xs text-gray-400 mt-1">{r.message.sender?.name} → {r.message.receiver?.name}</p>
+                    </div>
+                  )}
+                  {r.status === 'PENDING' && (
+                    <div className="space-y-2">
+                      <textarea value={adminNote} onChange={e => setAdminNote(e.target.value)} placeholder="관리자 메모 (선택)" className="w-full h-16 p-2 border border-gray-200 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-gray-400" />
+                      <div className="flex gap-2">
+                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'DISMISSED', adminNote })} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900">반려</button>
+                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote })} className="px-3 py-1.5 text-sm bg-gray-900 text-white">제재</button>
+                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-[#c4302b] hover:underline">제재 + 삭제</button>
+                      </div>
+                    </div>
+                  )}
+                  {r.status !== 'PENDING' && r.adminNote && <p className="text-xs text-gray-400">관리자 메모: {r.adminNote}</p>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import LoginPage from '@/pages/LoginPage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import SupportPage from '@/pages/SupportPage';
 import ExplorePage from '@/pages/ExplorePage';
+import MessagesPage from '@/pages/MessagesPage';
 
 export default function App() {
   return (
@@ -30,6 +31,9 @@ export default function App() {
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
         <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/messages" element={
+          <ProtectedRoute><MessagesPage /></ProtectedRoute>
+        } />
         <Route path="/mypage" element={
           <ProtectedRoute><MyPage /></ProtectedRoute>
         } />
