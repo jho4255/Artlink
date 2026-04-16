@@ -74,6 +74,11 @@ export default function GalleryDetailPage() {
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
+  // 인라인 쪽지 모달
+  const [showMsgModal, setShowMsgModal] = useState(false);
+  const [msgSubject, setMsgSubject] = useState('');
+  const [msgContent, setMsgContent] = useState('');
+
   // 리뷰 작성/수정 폼 상태
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
@@ -218,6 +223,19 @@ export default function GalleryDetailPage() {
     onError: () => toast.error('갤러리 삭제에 실패했습니다.'),
   });
 
+  // 인라인 쪽지 전송
+  const sendMsgMutation = useMutation({
+    mutationFn: (data: { receiverId: number; subject: string; content: string }) =>
+      api.post('/messages', data),
+    onSuccess: () => {
+      toast.success('쪽지가 전송되었습니다.');
+      setShowMsgModal(false);
+      setMsgSubject('');
+      setMsgContent('');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '쪽지 전송에 실패했습니다.'),
+  });
+
   // 홍보 사진 삭제 (Gallery 오너 전용)
   const deletePromoPhotoMutation = useMutation({
     mutationFn: ({ exhibitionId, photoId }: { exhibitionId: number; photoId: number }) =>
@@ -337,7 +355,7 @@ export default function GalleryDetailPage() {
           {/* 쪽지 보내기 (Artist 전용, 오너 아닌 경우) */}
           {isAuthenticated && isArtist && !isOwner && (
             <button
-              onClick={() => navigate('/messages', { state: { receiverId: gallery.ownerId, receiverName: gallery.name, subject: `[${gallery.name}] ` } })}
+              onClick={() => { setMsgSubject(`[${gallery.name}] `); setShowMsgModal(true); }}
               className="mt-3 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
             >
               <Mail size={14} /> 쪽지 보내기
@@ -833,6 +851,60 @@ export default function GalleryDetailPage() {
         onConfirm={() => { deleteGalleryMutation.mutate(); setDeleteGalleryConfirm(false); }}
         onCancel={() => setDeleteGalleryConfirm(false)}
       />
+
+      {/* 인라인 쪽지 모달 */}
+      <AnimatePresence>
+        {showMsgModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            onClick={() => setShowMsgModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white p-6 mx-4 max-w-md w-full"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium">쪽지 보내기</h3>
+                <button onClick={() => setShowMsgModal(false)} aria-label="닫기"><X size={18} className="text-gray-400" /></button>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">{gallery.name}</p>
+              <input
+                value={msgSubject}
+                onChange={e => setMsgSubject(e.target.value)}
+                maxLength={200}
+                placeholder="제목"
+                className="w-full px-3 py-2 border-b border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 mb-3"
+              />
+              <textarea
+                value={msgContent}
+                onChange={e => setMsgContent(e.target.value)}
+                maxLength={5000}
+                placeholder="내용을 입력해주세요"
+                className="w-full px-3 py-2 border border-gray-200 text-sm h-32 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
+              />
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={() => {
+                    if (!msgSubject.trim()) { toast.error('제목을 입력해주세요.'); return; }
+                    if (!msgContent.trim()) { toast.error('내용을 입력해주세요.'); return; }
+                    sendMsgMutation.mutate({ receiverId: gallery.ownerId, subject: msgSubject.trim(), content: msgContent.trim() });
+                  }}
+                  disabled={sendMsgMutation.isPending}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm disabled:opacity-50"
+                >
+                  전송
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
       <AnimatePresence>
