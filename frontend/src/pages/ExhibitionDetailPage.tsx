@@ -22,7 +22,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp, Calendar, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -545,6 +545,15 @@ export default function ExhibitionDetailPage() {
 
         {/* 액션 버튼 */}
         <div className="space-y-3 pt-2">
+          {/* Artist 쪽지 문의 */}
+          {isArtist && exhibition.gallery?.ownerId && (
+            <button
+              onClick={() => navigate('/messages', { state: { receiverId: exhibition.gallery!.ownerId, receiverName: exhibition.gallery!.name, subject: `[${exhibition.title}] `, exhibitionId: exhibition.id, exhibitionTitle: exhibition.title } })}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
+            >
+              <Mail size={14} /> 갤러리에 문의하기
+            </button>
+          )}
           {/* Artist 지원하기 */}
           {isArtist && !isExpired && (
             <button

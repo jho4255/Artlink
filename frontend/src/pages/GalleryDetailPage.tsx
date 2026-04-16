@@ -334,6 +334,15 @@ export default function GalleryDetailPage() {
               <Instagram size={14} /> {gallery.instagramUrl}
             </a>
           )}
+          {/* 쪽지 보내기 (Artist 전용, 오너 아닌 경우) */}
+          {isAuthenticated && isArtist && !isOwner && (
+            <button
+              onClick={() => navigate('/messages', { state: { receiverId: gallery.ownerId, receiverName: gallery.name, subject: `[${gallery.name}] ` } })}
+              className="mt-3 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
+            >
+              <Mail size={14} /> 쪽지 보내기
+            </button>
+          )}
           {isEditingDesc ? (
             <div className="mt-2 space-y-2">
               <input
