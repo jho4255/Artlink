@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Upload, Loader2, Globe
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -224,6 +224,32 @@ function PortfolioSection() {
     },
   });
 
+  // 둘러보기 공개 토글 — 낙관적 업데이트
+  const exploreToggleMutation = useMutation({
+    mutationFn: (imageId: number) => api.patch(`/portfolio/images/${imageId}/explore`),
+    onMutate: async (imageId) => {
+      await queryClient.cancelQueries({ queryKey: ['portfolio'] });
+      const prev = queryClient.getQueryData<Portfolio>(['portfolio']);
+      if (prev) {
+        queryClient.setQueryData(['portfolio'], {
+          ...prev,
+          images: prev.images.map(img =>
+            img.id === imageId ? { ...img, showInExplore: !img.showInExplore } : img
+          ),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['portfolio'], ctx.prev);
+      toast.error('설정 변경에 실패했습니다.');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['explore'] });
+    },
+  });
+
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const startEdit = () => {
@@ -269,17 +295,131 @@ function PortfolioSection() {
 
       {/* 작품 사진 관리 */}
       <div>
-        <p className="text-sm font-medium text-gray-500 mb-2">작품 사진 ({portfolio?.images?.length || 0}/30)</p>
-        <MultiImageUpload
+        <p className="text-sm font-medium text-gray-500 mb-2">
+          작품 사진 ({portfolio?.images?.length || 0}/30)
+          <span className="text-xs text-gray-300 ml-2">
+            <Globe size={11} className="inline mb-0.5" /> 체크하면 둘러보기에 공개
+          </span>
+        </p>
+        <PortfolioImageGrid
           images={portfolio?.images || []}
           onAdd={(url) => addImageMutation.mutate(url)}
-          onRemove={(index) => {
-            const img = portfolio?.images?.[index];
-            if (img?.id) removeImageMutation.mutate(img.id);
-          }}
+          onRemove={(imageId) => removeImageMutation.mutate(imageId)}
+          onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
           maxCount={30}
         />
       </div>
+    </div>
+  );
+}
+
+// ========== 포트폴리오 이미지 그리드 (둘러보기 공개 체크박스 포함) ==========
+function PortfolioImageGrid({
+  images,
+  onAdd,
+  onRemove,
+  onToggleExplore,
+  maxCount = 30,
+}: {
+  images: { id: number; url: string; order: number; showInExplore?: boolean }[];
+  onAdd: (url: string) => void;
+  onRemove: (imageId: number) => void;
+  onToggleExplore: (imageId: number) => void;
+  maxCount?: number;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadCount, setUploadCount] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadMultiple = async (files: FileList) => {
+    const remaining = maxCount - images.length;
+    if (remaining <= 0) {
+      toast.error(`이미지는 최대 ${maxCount}장까지 등록 가능합니다.`);
+      return;
+    }
+    const fileArray = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    setUploadCount(fileArray.length);
+    let successCount = 0;
+    for (const file of fileArray) {
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await api.post('/upload/image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        onAdd(res.data.url);
+        successCount++;
+      } catch {
+        toast.error(`${file.name} 업로드 실패`);
+      }
+    }
+    if (successCount > 0) toast.success(`${successCount}장 업로드 완료`);
+    setUploading(false);
+    setUploadCount(0);
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {images.map((img) => (
+          <div key={img.id} className="relative group">
+            <img src={img.url} alt="" className="w-full h-24 object-cover" />
+            {/* 삭제 버튼 (우상단) */}
+            <button
+              onClick={() => onRemove(img.id)}
+              className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label="이미지 삭제"
+            >
+              <X size={12} />
+            </button>
+            {/* 둘러보기 공개 체크박스 (우하단) */}
+            <button
+              onClick={() => onToggleExplore(img.id)}
+              className={`absolute bottom-1 right-1 w-5 h-5 rounded flex items-center justify-center transition-all ${
+                img.showInExplore
+                  ? 'bg-gray-900 text-white opacity-100'
+                  : 'bg-white/70 text-gray-400 opacity-0 group-hover:opacity-100'
+              }`}
+              aria-label={img.showInExplore ? '둘러보기 비공개로 전환' : '둘러보기에 공개'}
+              title={img.showInExplore ? '둘러보기 공개 중' : '둘러보기에 공개'}
+            >
+              <Globe size={12} />
+            </button>
+          </div>
+        ))}
+        {images.length < maxCount && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="h-24 border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+          >
+            {uploading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span className="text-xs mt-1">{uploadCount}장 처리중</span>
+              </>
+            ) : (
+              <>
+                <Upload size={18} />
+                <span className="text-xs mt-1">{images.length}/{maxCount}</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files;
+          if (files && files.length > 0) handleUploadMultiple(files);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }

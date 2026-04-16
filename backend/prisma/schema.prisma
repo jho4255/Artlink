@@ -25,6 +25,7 @@ model User {
   applications   Application[]
   notifications  Notification[]
   inquiries      Inquiry[]
+  portfolioImageLikes PortfolioImageLike[]
 }
 
 // 갤러리 모델
@@ -200,11 +201,27 @@ model Portfolio {
 
 // 포트폴리오 이미지
 model PortfolioImage {
-  id          Int       @id @default(autoincrement())
-  url         String
-  order       Int       @default(0)
-  portfolioId Int
-  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  id            Int       @id @default(autoincrement())
+  url           String
+  order         Int       @default(0)
+  showInExplore Boolean   @default(false)
+  portfolioId   Int
+  portfolio     Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  likes         PortfolioImageLike[]
+}
+
+// 포트폴리오 이미지 좋아요
+model PortfolioImageLike {
+  id        Int            @id @default(autoincrement())
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageId   Int
+  image     PortfolioImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, imageId])
+  @@index([imageId])
+  @@index([userId])
 }
 
 // 지원

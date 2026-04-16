@@ -130,11 +130,26 @@ export interface GalleryOfMonth {
   gallery: Gallery;
 }
 
+export interface PortfolioImage {
+  id: number;
+  url: string;
+  order: number;
+  showInExplore?: boolean;
+}
+
 export interface Portfolio {
   id: number;
   biography?: string;
   exhibitionHistory?: string;
-  images: { id: number; url: string; order: number }[];
+  images: PortfolioImage[];
+}
+
+export interface ExploreImage {
+  id: number;
+  url: string;
+  artist: { id: number; name: string; avatar?: string };
+  likeCount: number;
+  isLiked: boolean;
 }
 
 // 전시 참여 작가 (userId 있으면 ArtLink 유저 연동)
@@ -148,7 +163,7 @@ export interface PublicPortfolio {
   id: number;
   biography?: string | null;
   exhibitionHistory?: string | null;
-  images: { id: number; url: string; order: number }[];
+  images: PortfolioImage[];
   user: { id: number; name: string; avatar?: string };
 }
 

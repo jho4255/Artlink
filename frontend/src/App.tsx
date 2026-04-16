@@ -13,12 +13,14 @@ import MyPage from '@/pages/MyPage';
 import LoginPage from '@/pages/LoginPage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import SupportPage from '@/pages/SupportPage';
+import ExplorePage from '@/pages/ExplorePage';
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/explore" element={<ExplorePage />} />
         <Route path="/galleries" element={<GalleriesPage />} />
         <Route path="/galleries/:id" element={<GalleryDetailPage />} />
         <Route path="/exhibitions" element={<ExhibitionsPage />} />

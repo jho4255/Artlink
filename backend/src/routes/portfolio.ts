@@ -108,6 +108,30 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
   } catch (error) { next(error); }
 });
 
+// PATCH /images/:imageId/explore — showInExplore 토글 (ARTIST 본인 전용)
+router.patch('/images/:imageId/explore', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const imageId = parseInt(req.params.imageId as string);
+    const userId = req.user!.id;
+
+    const image = await prisma.portfolioImage.findUnique({
+      where: { id: imageId },
+      include: { portfolio: { select: { userId: true } } },
+    });
+
+    if (!image || image.portfolio.userId !== userId) {
+      return res.status(404).json({ error: '이미지를 찾을 수 없습니다.' });
+    }
+
+    const updated = await prisma.portfolioImage.update({
+      where: { id: imageId },
+      data: { showInExplore: !image.showInExplore },
+    });
+
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
 // 포트폴리오 이미지 삭제
 router.delete('/images/:imageId', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
