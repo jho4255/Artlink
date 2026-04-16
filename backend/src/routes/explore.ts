@@ -31,14 +31,31 @@ router.get('/', optionalAuth, async (req, res, next) => {
       prisma.portfolioImage.count({ where: { showInExplore: true } }),
     ]);
 
+    // 같은 작가 이미지가 연속으로 나오지 않도록 라운드로빈 분산
+    const mapped = images.map(img => ({
+      id: img.id,
+      url: img.url,
+      artist: img.portfolio.user,
+      likeCount: img._count.likes,
+      isLiked: userId ? (img as any).likes?.length > 0 : false,
+    }));
+
+    const byArtist = new Map<number, typeof mapped>();
+    for (const img of mapped) {
+      const arr = byArtist.get(img.artist.id) || [];
+      arr.push(img);
+      byArtist.set(img.artist.id, arr);
+    }
+    const queues = Array.from(byArtist.values());
+    const interleaved: typeof mapped = [];
+    while (interleaved.length < mapped.length) {
+      for (const q of queues) {
+        if (q.length > 0) interleaved.push(q.shift()!);
+      }
+    }
+
     res.json({
-      images: images.map(img => ({
-        id: img.id,
-        url: img.url,
-        artist: img.portfolio.user,
-        likeCount: img._count.likes,
-        isLiked: userId ? (img as any).likes?.length > 0 : false,
-      })),
+      images: interleaved,
       total,
       page,
       limit,
