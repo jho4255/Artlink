@@ -482,57 +482,51 @@ export default function MessagesPage() {
           <p className="text-base font-semibold text-gray-900 truncate mt-0.5">{currentThread.subject}</p>
           <p className="text-xs text-gray-400 mt-0.5">{thread?.partner?.name} &middot; {currentThread.messages.length}건</p>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3">
           {currentThread.messages.map((msg) => {
             const isMe = msg.senderId === user?.id;
             const m: any = msg;
             const hidden = m.sanctioned || m.reportedByMe;
             return (
-              <div key={msg.id} className={`border-b border-gray-200 pb-4 ${hidden ? 'opacity-60' : ''}`}>
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[11px] px-2 py-0.5 font-medium ${isMe ? 'bg-gray-100 text-gray-600' : 'bg-gray-900 text-white'}`}>{isMe ? '보냄' : '받음'}</span>
-                    <span className="text-sm font-medium text-gray-900">{isMe ? '나' : thread?.partner?.name}</span>
+              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[75%] ${hidden ? 'opacity-60' : ''}`}>
+                  <div className={`px-4 py-2.5 text-sm ${isMe ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-800'}`}>
+                    {m.sanctioned ? (
+                      <p className="italic text-gray-400">제재로 가려진 메시지입니다</p>
+                    ) : m.reportedByMe ? (
+                      <p className="italic text-gray-400">신고한 메시지입니다</p>
+                    ) : (
+                      <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+                    )}
+                    {hidden ? null : (() => {
+                      let atts: MessageAttachment[] = [];
+                      try { if (msg.attachments) atts = JSON.parse(msg.attachments); } catch {}
+                      if (atts.length === 0) return null;
+                      return (
+                        <div className="mt-2 space-y-1.5">
+                          {atts.map((a, i) => (
+                            a.type.startsWith('image/') ? (
+                              <div key={i} className="inline-block">
+                                <button onClick={() => setLightboxUrl(a.url)} className="block">
+                                  <img src={a.url} alt={a.name} className="max-w-[200px] max-h-[150px] border border-gray-200 object-cover cursor-zoom-in hover:opacity-80 transition-opacity" />
+                                </button>
+                              </div>
+                            ) : (
+                              <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-2.5 py-1.5 bg-white/20 text-xs hover:bg-white/30 transition-colors w-fit">
+                                <Download size={12} />
+                                <span>{a.name}</span>
+                              </a>
+                            )
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400">{formatDateTime(msg.createdAt)}</span>
-                    {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="p-1 text-gray-300 hover:text-[#c4302b] transition-colors"><Flag size={12} /></button>}
+                  <div className={`flex items-center gap-2 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <span className="text-[10px] text-gray-300">{formatDateTime(msg.createdAt)}</span>
+                    {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="text-gray-300 hover:text-[#c4302b] transition-colors"><Flag size={10} /></button>}
                   </div>
                 </div>
-                {m.sanctioned ? (
-                  <p className="text-sm text-gray-400 italic pl-0.5">제재로 가려진 메시지입니다</p>
-                ) : m.reportedByMe ? (
-                  <p className="text-sm text-gray-400 italic pl-0.5">신고한 메시지입니다</p>
-                ) : (
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed pl-0.5">{msg.content}</p>
-                )}
-                {hidden ? null : (() => {
-                  let atts: MessageAttachment[] = [];
-                  try { if (msg.attachments) atts = JSON.parse(msg.attachments); } catch {}
-                  if (atts.length === 0) return null;
-                  return (
-                    <div className="mt-2 space-y-1.5">
-                      {atts.map((a, i) => (
-                        a.type.startsWith('image/') ? (
-                          <div key={i} className="inline-block">
-                            <button onClick={() => setLightboxUrl(a.url)} className="block">
-                              <img src={a.url} alt={a.name} className="max-w-[200px] max-h-[150px] border border-gray-200 object-cover cursor-zoom-in hover:opacity-80 transition-opacity" />
-                            </button>
-                            <a href={a.url} download={a.name} className="flex items-center gap-1 mt-1 text-[11px] text-gray-400 hover:text-gray-600">
-                              <Download size={10} /> {a.name}
-                            </a>
-                          </div>
-                        ) : (
-                          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-100 text-xs hover:bg-gray-200 transition-colors w-fit">
-                            <Download size={12} className="text-gray-400" />
-                            <span className="text-gray-700">{a.name}</span>
-                            <span className="text-gray-400">({(a.size / 1024).toFixed(0)}KB)</span>
-                          </a>
-                        )
-                      ))}
-                    </div>
-                  );
-                })()}
               </div>
             );
           })}
