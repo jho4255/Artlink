@@ -95,8 +95,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
       const groups: Record<string, {
         galleryId: number;
         galleryName: string;
-        partnerId: number;
-        partnerName: string;
+        ownerId: number;
         exhibitions: Record<number, {
           exhibitionId: number;
           exhibitionTitle: string;
@@ -114,7 +113,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
 
         const key = String(galleryId);
         if (!groups[key]) {
-          groups[key] = { galleryId, galleryName, partnerId: partner.id, partnerName: partner.name, exhibitions: {} };
+          groups[key] = { galleryId, galleryName, ownerId: partner.id, exhibitions: {} };
         }
         if (!groups[key].exhibitions[exId]) {
           groups[key].exhibitions[exId] = {
@@ -129,10 +128,10 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         }
       }
 
-      const result = Object.values(groups).map((g) => ({
-        ...g,
-        exhibitions: Object.values(g.exhibitions),
-      }));
+      const result = Object.values(groups).map((g) => {
+        const exhibitions = Object.values(g.exhibitions);
+        return { ...g, exhibitions, totalUnread: exhibitions.reduce((sum, e) => sum + e.unreadCount, 0) };
+      });
       res.json({ role: 'ARTIST', galleries: result });
     } else {
       // Gallery: group by exhibition -> partner
@@ -167,10 +166,10 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         }
       }
 
-      const result = Object.values(groups).map((g) => ({
-        ...g,
-        partners: Object.values(g.partners),
-      }));
+      const result = Object.values(groups).map((g) => {
+        const partners = Object.values(g.partners);
+        return { ...g, partners, totalUnread: partners.reduce((sum, p) => sum + p.unreadCount, 0) };
+      });
       res.json({ role: 'GALLERY', exhibitions: result });
     }
   } catch (error) { next(error); }
