@@ -171,7 +171,7 @@ export default function MessagesPage() {
   const { data: thread } = useQuery<any>({
     queryKey: ['message-thread', threadPartnerId, threadExId],
     queryFn: () => api.get(`/messages/thread/${threadPartnerId}?exhibitionId=${threadExId ?? ''}`).then(r => r.data),
-    enabled: !!(threadPartnerId && threadExId !== null && selL2 !== null),
+    enabled: threadPartnerId != null && threadPartnerId > 0 && threadExId !== null && threadExId !== undefined && selL2 !== null,
   });
 
   const { data: recipients = [] } = useQuery<any[]>({
