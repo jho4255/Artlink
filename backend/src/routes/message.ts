@@ -224,7 +224,11 @@ router.get('/thread/:userId', authenticate, authorize('ARTIST', 'GALLERY'), asyn
       });
     }
 
-    res.json(messages);
+    const partnerUser = await prisma.user.findUnique({
+      where: { id: partnerId },
+      select: { id: true, name: true, role: true, avatar: true },
+    });
+    res.json({ partner: partnerUser, messages });
   } catch (error) { next(error); }
 });
 
