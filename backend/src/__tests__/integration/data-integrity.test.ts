@@ -49,10 +49,28 @@ describe('데이터 정합성 복합 시나리오', () => {
         },
       });
 
+      // 공모 + ACCEPTED 지원 생성 (리뷰 작성 전제조건)
+      const ex1 = await testPrisma.exhibition.create({
+        data: {
+          title: '체인공모1', type: 'SOLO', deadline: new Date('2099-12-31'),
+          exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'SEOUL',
+          description: 'desc', status: 'APPROVED', galleryId: gallery.id,
+        },
+      });
+      await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex1.id, status: 'ACCEPTED' } });
+      const ex2 = await testPrisma.exhibition.create({
+        data: {
+          title: '체인공모2', type: 'SOLO', deadline: new Date('2099-12-31'),
+          exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'SEOUL',
+          description: 'desc', status: 'APPROVED', galleryId: gallery.id,
+        },
+      });
+      await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex2.id, status: 'ACCEPTED' } });
+
       // 1) Artist1이 별점 5 리뷰 작성
       const review1Res = await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, rating: 5, content: '최고의 갤러리!' });
+        .send({ galleryId: gallery.id, exhibitionId: ex1.id, rating: 5, content: '최고의 갤러리!' });
       expect(review1Res.status).toBe(201);
       const review1Id = review1Res.body.id;
 
@@ -64,7 +82,7 @@ describe('데이터 정합성 복합 시나리오', () => {
       // 2) Artist2가 별점 3 리뷰 작성
       const review2Res = await request.post('/api/reviews')
         .set('Authorization', artist2Token)
-        .send({ galleryId: gallery.id, rating: 3, content: '보통입니다' });
+        .send({ galleryId: gallery.id, exhibitionId: ex2.id, rating: 3, content: '보통입니다' });
       expect(review2Res.status).toBe(201);
 
       // 갤러리 rating=4 ((5+3)/2) 확인
@@ -162,10 +180,11 @@ describe('데이터 정합성 복합 시나리오', () => {
         data: { url: 'https://example.com/show-img.jpg', order: 0, showId: show.id },
       });
 
-      // Review 생성 (Artist1)
+      // Review 생성 (Artist1) — 공모 + ACCEPTED 지원 필요
+      await testPrisma.application.create({ data: { userId: 1, exhibitionId: exhibition.id, status: 'ACCEPTED' } });
       await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, rating: 4, content: 'Cascade 리뷰' });
+        .send({ galleryId: gallery.id, exhibitionId: exhibition.id, rating: 4, content: 'Cascade 리뷰' });
 
       // Favorite 생성 (Gallery, Exhibition, Show 각각)
       await request.post('/api/favorites/toggle')
@@ -486,16 +505,34 @@ describe('데이터 정합성 복합 시나리오', () => {
         },
       });
 
+      // 공모 + ACCEPTED 지원 생성
+      const exA = await testPrisma.exhibition.create({
+        data: {
+          title: '동시성공모A', type: 'SOLO', deadline: new Date('2099-12-31'),
+          exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'BUSAN',
+          description: 'desc', status: 'APPROVED', galleryId: gallery.id,
+        },
+      });
+      await testPrisma.application.create({ data: { userId: 1, exhibitionId: exA.id, status: 'ACCEPTED' } });
+      const exB = await testPrisma.exhibition.create({
+        data: {
+          title: '동시성공모B', type: 'SOLO', deadline: new Date('2099-12-31'),
+          exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'BUSAN',
+          description: 'desc', status: 'APPROVED', galleryId: gallery.id,
+        },
+      });
+      await testPrisma.application.create({ data: { userId: 2, exhibitionId: exB.id, status: 'ACCEPTED' } });
+
       // Artist1: 별점 4 리뷰
       const r1 = await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, rating: 4, content: '좋아요' });
+        .send({ galleryId: gallery.id, exhibitionId: exA.id, rating: 4, content: '좋아요' });
       expect(r1.status).toBe(201);
 
       // Artist2: 별점 3 리뷰
       const r2 = await request.post('/api/reviews')
         .set('Authorization', artist2Token)
-        .send({ galleryId: gallery.id, rating: 3, content: '괜찮아요' });
+        .send({ galleryId: gallery.id, exhibitionId: exB.id, rating: 3, content: '괜찮아요' });
       expect(r2.status).toBe(201);
 
       // 별점 평균 = (4+3)/2 = 3.5 (소수점 정밀도)

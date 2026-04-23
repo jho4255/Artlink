@@ -86,6 +86,10 @@ export default function GalleryDetailPage() {
   const [reviewImageUrl, setReviewImageUrl] = useState('');
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
 
+  // 리뷰 공모 선택 + 확인 다이얼로그 상태
+  const [selectedExhibitionId, setSelectedExhibitionId] = useState<number | null>(null);
+  const [reviewConfirmOpen, setReviewConfirmOpen] = useState(false);
+
   // ConfirmDialog 상태
   const [deleteExConfirmId, setDeleteExConfirmId] = useState<number | null>(null);
   const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<number | null>(null);
@@ -97,6 +101,14 @@ export default function GalleryDetailPage() {
     queryKey: ['gallery', id],
     queryFn: () => api.get(`/galleries/${id}`).then(r => r.data),
     enabled: !!id,
+  });
+
+  // 리뷰 작성 가능한 공모 목록 (Artist 전용)
+  const isArtistUser = isAuthenticated && user?.role === 'ARTIST';
+  const { data: reviewableExhibitions = [] } = useQuery<{ id: number; title: string }[]>({
+    queryKey: ['reviewable-exhibitions', id],
+    queryFn: () => api.get(`/reviews/reviewable/${id}`).then(r => r.data),
+    enabled: isArtistUser,
   });
 
   // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
@@ -143,18 +155,22 @@ export default function GalleryDetailPage() {
 
   // 리뷰 작성 (Artist 전용)
   const reviewMutation = useMutation({
-    mutationFn: (data: { galleryId: number; rating: number; content: string; anonymous: boolean; imageUrl?: string }) =>
+    mutationFn: (data: { galleryId: number; exhibitionId: number; rating: number; content: string; anonymous: boolean; imageUrl?: string }) =>
       api.post('/reviews', data),
     retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['gallery-of-month'] });
+      queryClient.invalidateQueries({ queryKey: ['reviewable-exhibitions', id] });
       // 폼 초기화
       setReviewContent('');
       setReviewRating(5);
       setReviewAnonymous(false);
       setReviewImageUrl('');
+      setSelectedExhibitionId(null);
+      toast.success('리뷰가 등록되었습니다.');
     },
+    onError: (err: any) => toast.error(err.response?.data?.error || '리뷰 작성에 실패했습니다.'),
   });
 
   // 리뷰 수정 (작성자 본인)
@@ -623,60 +639,75 @@ export default function GalleryDetailPage() {
           {isArtist && (
             <div className="mb-6 py-6 border-t border-b border-gray-200">
               <p className="text-sm font-medium mb-2">리뷰 작성</p>
-              {/* 별점 선택 (1~5) */}
-              <div className="flex gap-1 mb-3">
-                {[1, 2, 3, 4, 5].map(s => (
-                  <button key={s} onClick={() => setReviewRating(s)}>
-                    <Star
-                      size={20}
-                      className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'}
-                    />
-                  </button>
-                ))}
-              </div>
-              {/* 리뷰 텍스트 */}
-              <textarea
-                value={reviewContent}
-                onChange={e => setReviewContent(e.target.value)}
-                placeholder="리뷰를 작성해주세요"
-                className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
-              {/* 리뷰 이미지 (선택) */}
-              <ImageUpload
-                value={reviewImageUrl}
-                onChange={(url) => setReviewImageUrl(url)}
-                onRemove={() => setReviewImageUrl('')}
-                placeholder="사진 첨부 (선택)"
-                className="mt-2"
-              />
-              {/* 익명 체크박스 + 등록 버튼 */}
-              <div className="flex justify-between items-center mt-2">
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={reviewAnonymous}
-                    onChange={e => setReviewAnonymous(e.target.checked)}
-                    className="rounded"
+              {reviewableExhibitions.length === 0 ? (
+                <p className="text-sm text-gray-400 py-4">수락된 공모가 없거나 이미 리뷰를 작성했습니다.</p>
+              ) : (
+                <>
+                  {/* 공모 선택 드롭다운 */}
+                  <div className="mb-3">
+                    <label className="text-xs text-gray-500 mb-1 block">리뷰할 공모 선택</label>
+                    <select
+                      value={selectedExhibitionId ?? ''}
+                      onChange={e => setSelectedExhibitionId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                    >
+                      <option value="">공모를 선택해주세요</option>
+                      {reviewableExhibitions.map(ex => (
+                        <option key={ex.id} value={ex.id}>{ex.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* 별점 선택 (1~5) */}
+                  <div className="flex gap-1 mb-3">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <button key={s} onClick={() => setReviewRating(s)}>
+                        <Star
+                          size={20}
+                          className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  {/* 리뷰 텍스트 */}
+                  <textarea
+                    value={reviewContent}
+                    onChange={e => setReviewContent(e.target.value)}
+                    placeholder="리뷰를 작성해주세요"
+                    className="w-full h-20 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
                   />
-                  익명으로 작성
-                </label>
-                <button
-                  onClick={() => {
-                    if (!reviewContent.trim()) { toast.error('리뷰 내용을 입력해주세요.'); return; }
-                    reviewMutation.mutate({
-                      galleryId: Number(id),
-                      rating: reviewRating,
-                      content: reviewContent,
-                      anonymous: reviewAnonymous,
-                      imageUrl: reviewImageUrl || undefined,
-                    });
-                  }}
-                  disabled={reviewMutation.isPending}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
-                >
-                  등록
-                </button>
-              </div>
+                  {/* 리뷰 이미지 (선택) */}
+                  <ImageUpload
+                    value={reviewImageUrl}
+                    onChange={(url) => setReviewImageUrl(url)}
+                    onRemove={() => setReviewImageUrl('')}
+                    placeholder="사진 첨부 (선택)"
+                    className="mt-2"
+                  />
+                  {/* 익명 체크박스 + 등록 버튼 */}
+                  <div className="flex justify-between items-center mt-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={reviewAnonymous}
+                        onChange={e => setReviewAnonymous(e.target.checked)}
+                        className="rounded"
+                      />
+                      익명으로 작성
+                    </label>
+                    <button
+                      onClick={() => {
+                        if (!selectedExhibitionId) { toast.error('공모를 선택해주세요.'); return; }
+                        if (!reviewContent.trim()) { toast.error('리뷰 내용을 입력해주세요.'); return; }
+                        setReviewConfirmOpen(true);
+                      }}
+                      disabled={reviewMutation.isPending}
+                      className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                    >
+                      등록
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -742,7 +773,12 @@ export default function GalleryDetailPage() {
                       <>
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium text-sm">{getReviewerName(review)}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm">{getReviewerName(review)}</p>
+                              {review.exhibition && (
+                                <span className="text-xs text-gray-400">{review.exhibition.title}</span>
+                              )}
+                            </div>
                             <div className="flex gap-0.5 mt-1">
                               {[1, 2, 3, 4, 5].map(s => (
                                 <Star key={s} size={12} className={s <= review.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />
@@ -850,6 +886,24 @@ export default function GalleryDetailPage() {
         confirmText="삭제"
         onConfirm={() => { deleteGalleryMutation.mutate(); setDeleteGalleryConfirm(false); }}
         onCancel={() => setDeleteGalleryConfirm(false)}
+      />
+      <ConfirmDialog
+        open={reviewConfirmOpen}
+        title="리뷰 등록"
+        message={`'${reviewableExhibitions.find(e => e.id === selectedExhibitionId)?.title || ''}' 공모에 대한 리뷰를 등록합니다. 공모당 1회만 작성 가능합니다.`}
+        confirmText="등록"
+        onConfirm={() => {
+          setReviewConfirmOpen(false);
+          reviewMutation.mutate({
+            galleryId: Number(id),
+            exhibitionId: selectedExhibitionId!,
+            rating: reviewRating,
+            content: reviewContent,
+            anonymous: reviewAnonymous,
+            imageUrl: reviewImageUrl || undefined,
+          });
+        }}
+        onCancel={() => setReviewConfirmOpen(false)}
       />
 
       {/* 인라인 쪽지 모달 */}
