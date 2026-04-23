@@ -338,6 +338,15 @@ export default function ExhibitionDetailPage() {
               <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
             </div>
           </button>
+          {/* 쪽지 문의 (Artist 전용) */}
+          {isArtist && exhibition.gallery?.ownerId && (
+            <button
+              onClick={() => { setMsgSubject(`[${exhibition.title}] `); setShowMsgModal(true); }}
+              className="mt-2 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
+            >
+              <Mail size={14} /> 쪽지 보내기
+            </button>
+          )}
         </div>
 
         {/* 정보 카드 */}
@@ -562,15 +571,6 @@ export default function ExhibitionDetailPage() {
 
         {/* 액션 버튼 */}
         <div className="space-y-3 pt-2">
-          {/* Artist 쪽지 문의 */}
-          {isArtist && exhibition.gallery?.ownerId && (
-            <button
-              onClick={() => { setMsgSubject(`[${exhibition.title}] `); setShowMsgModal(true); }}
-              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
-            >
-              <Mail size={14} /> 갤러리에 문의하기
-            </button>
-          )}
           {/* Artist 지원하기 */}
           {isArtist && !isExpired && (
             <button
