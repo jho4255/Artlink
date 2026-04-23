@@ -101,6 +101,7 @@ export interface Review {
   userId: number;
   galleryId: number;
   user: Pick<User, 'id' | 'name' | 'avatar'>;
+  exhibition?: { id: number; title: string } | null;
   createdAt: string;
 }
 

@@ -67,7 +67,7 @@ ArtLink/
 - **HeroSlide** — 히어로 슬라이드 (Admin 관리)
 - **Benefit** — 혜택 (Admin 관리)
 - **GalleryOfMonth** — 이달의 갤러리 (자동 만료)
-- **Review** — 갤러리 리뷰 (별점, 익명 옵션, 사진)
+- **Review** — 갤러리 리뷰 (별점, 익명 옵션, 사진, exhibitionId로 공모 연동 — ACCEPTED 지원자만, 공모당 1회)
 - **Favorite** — 찜하기 (갤러리/공모/전시)
 - **Portfolio** — 아티스트 포트폴리오
 - **PortfolioImage** — 포트폴리오 이미지 (최대 30개)
@@ -85,7 +85,7 @@ ArtLink/
 | gallery | /api/galleries | 갤러리 목록/상세/등록/이미지/상세수정/삭제(Admin)/Instagram연동 |
 | exhibition | /api/exhibitions | 공모 목록/상세/등록/지원(+이메일)/내 지원/내 공모/홍보사진/삭제(오너/Admin) |
 | show | /api/shows | 전시 목록/상세/등록/수정/삭제/이미지관리/내 전시(GALLERY) |
-| review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명 |
+| review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명, 공모 연동 (GET /reviewable/:galleryId) |
 | favorite | /api/favorites | 찜하기 토글 (갤러리/공모/전시) |
 | portfolio | /api/portfolio | 포트폴리오 CRUD, 이미지 관리 |
 | approval | /api/approvals | 승인 큐 (갤러리/공모/전시), 수정 요청 관리 + 알림 트리거 |

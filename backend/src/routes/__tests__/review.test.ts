@@ -4,12 +4,46 @@ import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery } from 
 describe('Review Routes', () => {
   let galleryId: number;
   let reviewId: number;
+  let exhId1: number; // artist1 (userId=1) 용 ACCEPTED 공모
+  let exhId2: number; // artist2 (userId=2) 용 ACCEPTED 공모
+  let exhId3: number; // artist1 (userId=1) 용 두 번째 ACCEPTED 공모
 
   beforeAll(async () => {
     await cleanDb();
     await seedUsers();
     const gallery = await seedGallery();
     galleryId = gallery.id;
+
+    // 공모 3개 생성 + ACCEPTED 지원
+    const ex1 = await testPrisma.exhibition.create({
+      data: {
+        title: '리뷰공모1', type: 'SOLO', deadline: new Date('2099-12-31'),
+        exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'SEOUL',
+        description: 'desc', status: 'APPROVED', galleryId,
+      },
+    });
+    exhId1 = ex1.id;
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: exhId1, status: 'ACCEPTED' } });
+
+    const ex2 = await testPrisma.exhibition.create({
+      data: {
+        title: '리뷰공모2', type: 'SOLO', deadline: new Date('2099-12-31'),
+        exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'SEOUL',
+        description: 'desc', status: 'APPROVED', galleryId,
+      },
+    });
+    exhId2 = ex2.id;
+    await testPrisma.application.create({ data: { userId: 2, exhibitionId: exhId2, status: 'ACCEPTED' } });
+
+    const ex3 = await testPrisma.exhibition.create({
+      data: {
+        title: '리뷰공모3', type: 'SOLO', deadline: new Date('2099-12-31'),
+        exhibitDate: new Date('2099-12-31'), capacity: 5, region: 'SEOUL',
+        description: 'desc', status: 'APPROVED', galleryId,
+      },
+    });
+    exhId3 = ex3.id;
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: exhId3, status: 'ACCEPTED' } });
   });
   afterAll(async () => {
     await cleanDb();
@@ -19,7 +53,7 @@ describe('Review Routes', () => {
   it('POST /api/reviews — Artist가 리뷰 작성', async () => {
     const token = authToken(1, 'ARTIST');
     const res = await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
-      galleryId, rating: 5, content: '훌륭한 갤러리입니다', anonymous: false,
+      galleryId, exhibitionId: exhId1, rating: 5, content: '훌륭한 갤러리입니다', anonymous: false,
     });
     expect(res.status).toBe(201);
     expect(res.body.rating).toBe(5);
@@ -33,34 +67,33 @@ describe('Review Routes', () => {
     expect(gallery!.reviewCount).toBe(1);
   });
 
-  // 동일 내용 1분 내 재전송 → 기존 리뷰 반환 (idempotency)
-  it('POST /api/reviews — 동일 내용 재전송 시 201 + 중복 생성 없음', async () => {
+  // 동일 공모에 대한 중복 리뷰 → 409
+  it('POST /api/reviews — 동일 공모 중복 리뷰 시 409', async () => {
     const token = authToken(1, 'ARTIST');
     const res = await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
-      galleryId, rating: 5, content: '훌륭한 갤러리입니다',
+      galleryId, exhibitionId: exhId1, rating: 5, content: '다른 내용이지만 같은 공모',
     });
-    expect(res.status).toBe(201);
-    expect(res.body.id).toBe(reviewId); // 기존 리뷰 반환
+    expect(res.status).toBe(409);
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
     expect(gallery!.reviewCount).toBe(1); // 리뷰 수 변화 없음
   });
 
-  // 두 번째 리뷰로 평균 변화 확인
+  // 두 번째 리뷰로 평균 변화 확인 (다른 공모)
   it('두 번째 리뷰 추가 후 평균 별점 변화', async () => {
     const token = authToken(2, 'ARTIST');
     await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
-      galleryId, rating: 3, content: '보통이에요', anonymous: true,
+      galleryId, exhibitionId: exhId2, rating: 3, content: '보통이에요', anonymous: true,
     });
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
     expect(gallery!.rating).toBe(4); // (5+3)/2 = 4
     expect(gallery!.reviewCount).toBe(2);
   });
 
-  // 같은 유저가 다른 내용으로 추가 리뷰 가능
-  it('POST /api/reviews — 다른 내용은 새 리뷰 생성', async () => {
+  // 같은 유저가 다른 공모로 추가 리뷰 가능
+  it('POST /api/reviews — 다른 공모 리뷰는 새 리뷰 생성', async () => {
     const token = authToken(1, 'ARTIST');
     const res = await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
-      galleryId, rating: 4, content: '두 번째 방문 후기',
+      galleryId, exhibitionId: exhId3, rating: 4, content: '두 번째 방문 후기',
     });
     expect(res.status).toBe(201);
     expect(res.body.id).not.toBe(reviewId);
@@ -73,6 +106,8 @@ describe('Review Routes', () => {
     const res = await request.get(`/api/reviews/gallery/${galleryId}`);
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(3);
+    // exhibition 정보 포함 확인
+    expect(res.body[0]).toHaveProperty('exhibition');
   });
 
   // 리뷰 수정
@@ -92,7 +127,7 @@ describe('Review Routes', () => {
   it('POST /api/reviews — Gallery 유저 403', async () => {
     const token = authToken(3, 'GALLERY');
     const res = await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
-      galleryId, rating: 5, content: 'fail',
+      galleryId, exhibitionId: exhId1, rating: 5, content: 'fail',
     });
     expect(res.status).toBe(403);
   });

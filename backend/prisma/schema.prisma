@@ -103,6 +103,7 @@ model Exhibition {
   favorites    Favorite[]
   promoPhotos  PromoPhoto[]
   messages     Message[]
+  reviews      Review[]
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -168,6 +169,8 @@ model Review {
   user      User     @relation(fields: [userId], references: [id])
   galleryId Int
   gallery   Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  exhibitionId Int?
+  exhibition   Exhibition? @relation(fields: [exhibitionId], references: [id], onDelete: SetNull)
 
   @@index([galleryId])
   @@index([userId])
