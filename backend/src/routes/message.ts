@@ -45,23 +45,31 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
       }
       res.json(Array.from(recipientMap.values()));
     } else {
-      // Gallery: 본인 공모에 지원한 아티스트 목록
-      const galleries = await prisma.gallery.findMany({
-        where: { ownerId: myId },
-        select: { id: true },
+      // Gallery: 본인 공모별 지원자 그룹
+      const exhibitions = await prisma.exhibition.findMany({
+        where: { gallery: { ownerId: myId } },
+        select: {
+          id: true, title: true,
+          gallery: { select: { name: true } },
+          applications: {
+            select: { user: { select: { id: true, name: true, avatar: true } } },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
       });
-      const galleryIds = galleries.map((g) => g.id);
-      const applications = await prisma.application.findMany({
-        where: { exhibition: { galleryId: { in: galleryIds } } },
-        include: { user: { select: { id: true, name: true, role: true } } },
-      });
-      const recipientMap = new Map<number, { id: number; name: string; role: string }>();
-      for (const app of applications) {
-        if (!recipientMap.has(app.user.id)) {
-          recipientMap.set(app.user.id, app.user);
-        }
-      }
-      res.json(Array.from(recipientMap.values()));
+      const result = exhibitions
+        .filter(ex => ex.applications.length > 0)
+        .map(ex => ({
+          exhibitionId: ex.id,
+          exhibitionTitle: ex.title,
+          galleryName: ex.gallery.name,
+          applicants: ex.applications.map(a => ({
+            userId: a.user.id,
+            name: a.user.name,
+            avatar: a.user.avatar,
+          })),
+        }));
+      res.json(result);
     }
   } catch (error) { next(error); }
 });
@@ -75,8 +83,8 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
     const messages = await prisma.message.findMany({
       where: { OR: [{ senderId: myId }, { receiverId: myId }] },
       include: {
-        sender: { select: { id: true, name: true, role: true } },
-        receiver: { select: { id: true, name: true, role: true } },
+        sender: { select: { id: true, name: true, role: true, avatar: true } },
+        receiver: { select: { id: true, name: true, role: true, avatar: true } },
         exhibition: { select: { id: true, title: true, gallery: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
@@ -125,15 +133,14 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         ...g,
         exhibitions: Object.values(g.exhibitions),
       }));
-      res.json(result);
+      res.json({ role: 'ARTIST', galleries: result });
     } else {
       // Gallery: group by exhibition -> partner
       const groups: Record<string, {
         exhibitionId: number;
         exhibitionTitle: string;
         partners: Record<number, {
-          partnerId: number;
-          partnerName: string;
+          partner: { id: number; name: string; role: string; avatar: string | null };
           lastMessage: any;
           unreadCount: number;
         }>;
@@ -150,8 +157,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         }
         if (!groups[key].partners[partner.id]) {
           groups[key].partners[partner.id] = {
-            partnerId: partner.id,
-            partnerName: partner.name,
+            partner: { id: partner.id, name: partner.name, role: partner.role, avatar: (partner as any).avatar || null },
             lastMessage: m,
             unreadCount: 0,
           };
@@ -165,7 +171,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         ...g,
         partners: Object.values(g.partners),
       }));
-      res.json(result);
+      res.json({ role: 'GALLERY', exhibitions: result });
     }
   } catch (error) { next(error); }
 });
