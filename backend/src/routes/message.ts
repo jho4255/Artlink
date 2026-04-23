@@ -92,6 +92,14 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
 
     if (myRole === 'ARTIST') {
       // Artist: group by gallery -> exhibition
+      // 갤러리 이름 룩업 (exhibition 없는 일반 문의용)
+      const partnerIds = [...new Set(messages.map(m => m.senderId === myId ? m.receiverId : m.senderId))];
+      const partnerGalleries = await prisma.gallery.findMany({
+        where: { ownerId: { in: partnerIds }, status: 'APPROVED' },
+        select: { id: true, name: true, ownerId: true },
+      });
+      const galleryByOwner = new Map(partnerGalleries.map(g => [g.ownerId, g]));
+
       const groups: Record<string, {
         galleryId: number;
         galleryName: string;
@@ -106,8 +114,9 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
 
       for (const m of messages) {
         const partner = m.senderId === myId ? m.receiver : m.sender;
-        const galleryId = m.exhibition?.gallery?.id ?? -partner.id;
-        const galleryName = m.exhibition?.gallery?.name ?? partner.name;
+        const ownerGallery = galleryByOwner.get(partner.id);
+        const galleryId = m.exhibition?.gallery?.id ?? ownerGallery?.id ?? -partner.id;
+        const galleryName = m.exhibition?.gallery?.name ?? ownerGallery?.name ?? partner.name;
         const exId = m.exhibitionId ?? 0;
         const exTitle = m.exhibition?.title ?? '일반 문의';
 
