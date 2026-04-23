@@ -11,11 +11,12 @@
  *
  * API: GET /api/galleries?region=SEOUL&minRating=3&sortBy=rating
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Star, Heart, Phone, MapPin, X } from 'lucide-react';
 import api from '@/lib/axios';
+import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels } from '@/lib/utils';
 import type { Gallery } from '@/types';
@@ -198,23 +199,11 @@ export default function GalleriesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {galleries.map((gallery) => (
-            <article
+            <GlowCard
               key={gallery.id}
+              imageSrc={gallery.mainImage || gallery.images?.[0]?.url || '/images/gallery-sculpture.webp'}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
-              className="group cursor-pointer"
             >
-              {/* 갤러리 대표 이미지 */}
-              <div className="overflow-hidden">
-                <img
-                  src={
-                    gallery.mainImage ||
-                    gallery.images?.[0]?.url ||
-                    '/images/gallery-sculpture.webp'
-                  }
-                  alt={gallery.name}
-                  className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300"
-                />
-              </div>
 
               {/* 갤러리 정보 */}
               <div className="mt-3">
@@ -255,10 +244,46 @@ export default function GalleriesPage() {
                 </p>
                 <p className="text-base text-gray-500 mt-1.5 line-clamp-2">{gallery.description}</p>
               </div>
-            </article>
+            </GlowCard>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// hover 시 이미지 dominant color glow 카드
+function GlowCard({ imageSrc, onClick, children }: { imageSrc: string; onClick: () => void; children: React.ReactNode }) {
+  const [color, setColor] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
+  const extracted = useRef(false);
+
+  const handleMouseEnter = () => {
+    setHovered(true);
+    if (!extracted.current) {
+      extracted.current = true;
+      extractColor(imageSrc).then(setColor);
+    }
+  };
+
+  return (
+    <article
+      onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setHovered(false)}
+      className="group cursor-pointer"
+    >
+      <div
+        className="overflow-hidden rounded-lg transition-shadow duration-500"
+        style={hovered && color ? { boxShadow: `0 6px 30px ${color}, 0 2px 8px ${color}` } : {}}
+      >
+        <img
+          src={imageSrc}
+          alt=""
+          className="w-full aspect-[4/3] object-cover group-hover:opacity-90 transition-opacity duration-300"
+        />
+      </div>
+      {children}
+    </article>
   );
 }
