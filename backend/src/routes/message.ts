@@ -332,12 +332,13 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
 
     // Create notification for receiver (best-effort)
     try {
+      const baseSubject = subject.replace(/^(Re:\s*)+/i, '');
       await prisma.notification.create({
         data: {
           userId: receiverId,
           type: 'NEW_MESSAGE',
           message: `${req.user!.name}님이 메시지를 보냈습니다: ${subject}`,
-          linkUrl: `/messages/thread/${myId}`,
+          linkUrl: `/messages?partner=${myId}${exhibitionId ? `&exhibition=${exhibitionId}` : ''}&subject=${encodeURIComponent(baseSubject)}`,
         },
       });
     } catch {
