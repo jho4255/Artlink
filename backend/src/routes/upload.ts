@@ -2,25 +2,25 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const router = Router();
 
-// Cloudinary 환경변수가 있으면 Cloudinary 사용, 없으면 디스크 저장
-const useCloudinary = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+const useR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY);
 
-let cloudinary: any;
-if (useCloudinary) {
-  const { v2 } = require('cloudinary');
-  v2.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+let s3: S3Client;
+if (useR2) {
+  s3 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
   });
-  cloudinary = v2;
 }
 
-// Multer: Cloudinary 사용 시 메모리, 아닌 경우 디스크
-const storage = useCloudinary
+const storage = useR2
   ? multer.memoryStorage()
   : multer.diskStorage({
       destination: (_req, _file, cb) => cb(null, path.join(__dirname, '../../uploads')),
@@ -32,7 +32,7 @@ const storage = useCloudinary
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase());
@@ -42,25 +42,26 @@ const upload = multer({
   },
 });
 
-// Cloudinary 업로드 헬퍼
-async function uploadToCloudinary(file: Express.Multer.File, folder = 'artlink'): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      { folder, resource_type: 'auto' },
-      (err: any, result: any) => {
-        if (err) return reject(err);
-        resolve(result.secure_url);
-      }
-    ).end(file.buffer);
-  });
+async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promise<string> {
+  const ext = path.extname(file.originalname);
+  const key = `${folder}/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME!,
+    Key: key,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  }));
+
+  return `${process.env.R2_PUBLIC_URL}/${key}`;
 }
 
 // 단일 이미지 업로드
 router.post('/image', authenticate, upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
-    const url = useCloudinary
-      ? await uploadToCloudinary(req.file)
+    const url = useR2
+      ? await uploadToR2(req.file)
       : `/uploads/${req.file.filename}`;
     res.json({ url });
   } catch (err) {
@@ -73,8 +74,8 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
   try {
     const files = req.files as Express.Multer.File[];
     if (!files?.length) return res.status(400).json({ error: '파일이 필요합니다.' });
-    const urls = useCloudinary
-      ? await Promise.all(files.map(f => uploadToCloudinary(f)))
+    const urls = useR2
+      ? await Promise.all(files.map(f => uploadToR2(f)))
       : files.map(f => `/uploads/${f.filename}`);
     res.json({ urls });
   } catch (err) {
@@ -97,8 +98,8 @@ const fileUpload = multer({
 router.post('/file', authenticate, fileUpload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
-    const url = useCloudinary
-      ? await uploadToCloudinary(req.file, 'artlink/files')
+    const url = useR2
+      ? await uploadToR2(req.file, 'artlink/files')
       : `/uploads/${req.file.filename}`;
     res.json({ url, originalName: req.file.originalname });
   } catch (err) {
