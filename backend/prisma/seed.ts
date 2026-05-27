@@ -57,26 +57,26 @@ async function main() {
   // ━━━ 유저 (email @unique → Prisma upsert 안전) ━━━
   const artist1 = await prisma.user.upsert({
     where: { email: 'artist1@artlink.com' },
-    update: {},
-    create: { email: 'artist1@artlink.com', name: 'Artist 1', role: 'ARTIST' },
+    update: { provider: 'LOCAL' },
+    create: { email: 'artist1@artlink.com', name: 'Artist 1', role: 'ARTIST', provider: 'LOCAL' },
   });
 
   const artist2 = await prisma.user.upsert({
     where: { email: 'artist2@artlink.com' },
-    update: {},
-    create: { email: 'artist2@artlink.com', name: 'Artist 2', role: 'ARTIST' },
+    update: { provider: 'LOCAL' },
+    create: { email: 'artist2@artlink.com', name: 'Artist 2', role: 'ARTIST', provider: 'LOCAL' },
   });
 
   const galleryUser = await prisma.user.upsert({
     where: { email: 'gallery@artlink.com' },
-    update: {},
-    create: { email: 'gallery@artlink.com', name: 'Gallery Owner', role: 'GALLERY' },
+    update: { provider: 'LOCAL' },
+    create: { email: 'gallery@artlink.com', name: 'Gallery Owner', role: 'GALLERY', provider: 'LOCAL' },
   });
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@artlink.com' },
-    update: {},
-    create: { email: 'admin@artlink.com', name: 'Admin', role: 'ADMIN' },
+    update: { provider: 'LOCAL' },
+    create: { email: 'admin@artlink.com', name: 'Admin', role: 'ADMIN', provider: 'LOCAL' },
   });
 
   // ━━━ 갤러리 (비즈니스 키: name + ownerId) ━━━

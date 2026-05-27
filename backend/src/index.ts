@@ -93,6 +93,15 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+// 프론트엔드 정적 파일 제공 (프로덕션)
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(distPath));
+  app.get('/{*path}', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 // 에러 핸들러
 app.use(errorHandler);
 
