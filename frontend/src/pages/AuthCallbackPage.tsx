@@ -39,9 +39,10 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
         handleSuccess(data);
       }
     },
-    onError: () => {
-      setError('로그인에 실패했습니다. 다시 시도해주세요.');
-      setTimeout(() => navigate('/login', { replace: true }), 2000);
+    onError: (err: any) => {
+      const msg = err.response?.data?.error || '로그인에 실패했습니다.';
+      setError(msg);
+      setTimeout(() => navigate('/login', { replace: true }), 5000);
     },
   });
 
