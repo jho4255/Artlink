@@ -41,7 +41,10 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
       }),
     });
     const tokenData = await tokenRes.json() as any;
-    if (tokenData.error) throw new AppError('카카오 인증에 실패했습니다.', 401);
+    if (tokenData.error) {
+      console.error('[Kakao Token Error]', tokenData);
+      throw new AppError(`카카오 인증 실패: ${tokenData.error_description || tokenData.error}`, 401);
+    }
 
     const userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
