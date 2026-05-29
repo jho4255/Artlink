@@ -11,7 +11,6 @@ import PortfolioPage from '@/pages/PortfolioPage';
 import BenefitsPage from '@/pages/BenefitsPage';
 import MyPage from '@/pages/MyPage';
 import LoginPage from '@/pages/LoginPage';
-import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import SupportPage from '@/pages/SupportPage';
 import ExplorePage from '@/pages/ExplorePage';
@@ -32,7 +31,6 @@ export default function App() {
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
         <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/kakao/callback" element={<AuthCallbackPage provider="kakao" />} />
         <Route path="/messages" element={
           <ProtectedRoute><MessagesPage /></ProtectedRoute>
         } />

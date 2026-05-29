@@ -1,109 +1,98 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 
-const KAKAO_CLIENT_ID = import.meta.env.VITE_KAKAO_CLIENT_ID;
-
+// 개발용 퀵 로그인 페이지 - 유저 선택 시 즉시 로그인
 export default function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<number | null>(null);
 
-  const handleSuccess = (data: { token: string; user: any }) => {
-    queryClient.clear();
-    login(data.token, data.user);
-    navigate('/mypage');
+  const { data: users = [], isLoading: usersLoading, isError, refetch } = useQuery({
+    queryKey: ['dev-users'],
+    queryFn: () => api.get('/auth/dev-users').then((r) => r.data),
+    retry: 3,        // 로그인 페이지는 반드시 로딩되어야 하므로 재시도 3회
+    staleTime: 0,    // 항상 최신 데이터
+    retryDelay: 1000,
+  });
+
+  const loginMutation = useMutation({
+    mutationFn: (userId: number) => api.post('/auth/dev-login', { userId }),
+    onSuccess: (res) => {
+      // 이전 유저의 캐시된 데이터 전체 제거 (유저 전환 시 stale 데이터 방지)
+      queryClient.clear();
+      login(res.data.token, res.data.user);
+      navigate('/mypage');
+    },
+    onSettled: () => setLoading(null),
+  });
+
+  const handleLogin = (userId: number) => {
+    setLoading(userId);
+    loginMutation.mutate(userId);
   };
 
-  const handleKakao = () => {
-    if (!KAKAO_CLIENT_ID) return setError('카카오 로그인이 설정되지 않았습니다.');
-    const redirectUri = `${window.location.origin}/auth/kakao/callback`;
-    const state = crypto.randomUUID();
-    sessionStorage.setItem('kakao_state', state);
-    window.location.href =
-      `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
+  const roleIcons: Record<string, string> = {
+    ARTIST: '\uD83C\uDFA8',
+    GALLERY: '\uD83D\uDDBC\uFE0F',
+    ADMIN: '\u2699\uFE0F',
   };
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-serif text-center mb-1">ArtLink</h1>
-        <p className="text-sm text-gray-400 text-center mb-10">갤러리와 아티스트를 잇다</p>
+      <div className="w-full max-w-md">
+        <h1 className="text-2xl font-medium text-center mb-2 font-serif">로그인</h1>
+        <p className="text-sm text-gray-400 text-center mb-8">개발용 퀵 로그인 - 계정을 선택하세요</p>
 
-        <div className="space-y-2.5">
-          <button
-            onClick={handleKakao}
-            className="w-full flex items-center justify-center gap-2.5 h-12 rounded-lg font-medium text-sm cursor-pointer transition-opacity hover:opacity-90"
-            style={{ backgroundColor: '#FEE500', color: '#000000' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#000000" d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.45 4.08 3.63 5.18l-.93 3.44c-.08.3.26.54.52.37l4.1-2.72c.22.02.44.03.68.03 4.42 0 8-2.79 8-6.3C17 3.79 13.42 1 9 1"/></svg>
-            카카오로 시작하기
-          </button>
-
-          <button
-            disabled
-            className="w-full flex items-center justify-center gap-2.5 h-12 rounded-lg font-medium text-sm border border-gray-200 text-gray-300 cursor-not-allowed"
-          >
-            네이버 로그인 (준비 중)
-          </button>
-
-          <button
-            disabled
-            className="w-full flex items-center justify-center gap-2.5 h-12 rounded-lg font-medium text-sm border border-gray-200 text-gray-300 cursor-not-allowed"
-          >
-            Google 로그인 (준비 중)
-          </button>
-        </div>
-
-        {error && <p className="text-sm text-red-500 text-center mt-4">{error}</p>}
-
-        {/* 개발용 퀵 로그인 */}
-        {import.meta.env.DEV && <DevLogin onLogin={handleSuccess} />}
-      </div>
-    </div>
-  );
-}
-
-function DevLogin({ onLogin }: { onLogin: (data: { token: string; user: any }) => void }) {
-  const [open, setOpen] = useState(false);
-  const [users, setUsers] = useState<any[]>([]);
-
-  const devLoginMutation = useMutation({
-    mutationFn: (userId: number) => api.post('/auth/dev-login', { userId }).then((r) => r.data),
-    onSuccess: onLogin,
-  });
-
-  const handleToggle = async () => {
-    if (!open && users.length === 0) {
-      const res = await api.get('/auth/dev-users');
-      setUsers(res.data);
-    }
-    setOpen(!open);
-  };
-
-  return (
-    <div className="mt-8">
-      <button onClick={handleToggle} className="w-full text-xs text-gray-300 hover:text-gray-500 cursor-pointer text-center">
-        {open ? '닫기' : '개발자 로그인'}
-      </button>
-      {open && (
-        <div className="mt-3 space-y-1.5">
-          {users.map((u: any) => (
+        {/* 로딩 스켈레톤 */}
+        {usersLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-16 bg-gray-100 animate-pulse" />
+            ))}
+          </div>
+        ) : isError ? (
+          /* 에러 상태 — 재시도 버튼 */
+          <div className="text-center py-8">
+            <p className="text-red-500 mb-3">계정 목록을 불러오지 못했습니다.</p>
             <button
-              key={u.id}
-              onClick={() => devLoginMutation.mutate(u.id)}
-              disabled={devLoginMutation.isPending}
-              className="w-full p-2.5 text-left text-xs border border-gray-100 rounded-lg hover:border-gray-300 cursor-pointer"
+              onClick={() => refetch()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
             >
-              <span className="font-medium">{u.name}</span>
-              <span className="text-gray-400 ml-2">{u.email} · {u.role}</span>
+              <RefreshCw size={14} /> 다시 시도
             </button>
-          ))}
-        </div>
-      )}
+          </div>
+        ) : users.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">등록된 계정이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {users.map((user: any) => (
+              <button
+                key={user.id}
+                onClick={() => handleLogin(user.id)}
+                disabled={loading !== null}
+                className={`w-full p-4 rounded-lg border border-gray-200 bg-white hover:border-gray-400 text-left transition-all ${loading === user.id ? 'opacity-50' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{roleIcons[user.role]}</span>
+                  <div>
+                    <div className="font-semibold text-gray-900">{user.name}</div>
+                    <div className="text-xs text-gray-500">{user.email} · {user.role}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 text-center mt-6">
+          추후 OAuth/소셜 로그인으로 전환 예정
+        </p>
+      </div>
     </div>
   );
 }
