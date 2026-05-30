@@ -41,7 +41,7 @@ export default function GalleriesPage() {
   const [sortBy, setSortBy] = useState<string | null>(null);
 
   // 갤러리 목록 조회
-  const { data: galleries = [], isLoading } = useQuery<Gallery[]>({
+  const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
     queryKey: ['galleries', selectedRegion, minRating, sortBy],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -191,6 +191,14 @@ export default function GalleriesPage() {
           {[1, 2, 3, 4, 5, 6].map(i => (
             <div key={i} className="h-64 bg-gray-100 animate-pulse" />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="text-center py-20">
+          <p className="text-lg text-gray-700">갤러리를 불러오지 못했습니다.</p>
+          <p className="mt-1 text-sm text-gray-400">잠시 후 다시 시도해주세요.</p>
+          <button onClick={() => refetch()} className="mt-6 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+            다시 시도
+          </button>
         </div>
       ) : galleries.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
