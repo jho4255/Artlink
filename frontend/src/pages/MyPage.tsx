@@ -142,7 +142,7 @@ function ProfileCard() {
         <div className="relative group">
           <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
             {user?.avatar ? (
-              <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+              <img src={user.avatar} alt={`${user?.name ?? ''} 프로필 사진`} className="w-full h-full object-cover" />
             ) : (
               user?.name?.charAt(0)
             )}
@@ -366,7 +366,7 @@ function PortfolioImageGrid({
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {images.map((img) => (
           <div key={img.id} className="relative group">
-            <img src={img.url} alt="" className="w-full aspect-square object-cover" />
+            <img src={img.url} alt="내 포트폴리오 작품" className="w-full aspect-square object-cover" />
             {/* 삭제 버튼 (우상단) */}
             <button
               onClick={() => onRemove(img.id)}

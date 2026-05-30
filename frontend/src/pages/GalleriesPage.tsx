@@ -210,6 +210,7 @@ export default function GalleriesPage() {
             <GlowCard
               key={gallery.id}
               imageSrc={gallery.mainImage || gallery.images?.[0]?.url || '/images/gallery-sculpture.webp'}
+              alt={`${gallery.name} 대표 이미지`}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
             >
 
@@ -261,7 +262,7 @@ export default function GalleriesPage() {
 }
 
 // hover 시 이미지 dominant color glow 카드
-function GlowCard({ imageSrc, onClick, children }: { imageSrc: string; onClick: () => void; children: React.ReactNode }) {
+function GlowCard({ imageSrc, alt, onClick, children }: { imageSrc: string; alt?: string; onClick: () => void; children: React.ReactNode }) {
   const [color, setColor] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const extracted = useRef(false);
@@ -287,7 +288,7 @@ function GlowCard({ imageSrc, onClick, children }: { imageSrc: string; onClick: 
       >
         <img
           src={imageSrc}
-          alt=""
+          alt={alt || ''}
           className="w-full aspect-[4/3] object-cover group-hover:opacity-90 transition-opacity duration-300"
         />
       </div>
