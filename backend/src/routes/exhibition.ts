@@ -15,7 +15,16 @@ const customFieldSchema = z.object({
   options: z.array(z.string()).optional(),
   maxLength: z.number().int().min(0).optional(),   // 텍스트 글자수 제한 (0=무제한)
   maxSelect: z.number().int().min(0).optional(),   // 선택형 최대 선택 수 (1=단일, 0=무제한, 2+=최대N개)
-});
+}).refine(
+  (f) => {
+    // 선택형에서 최대 선택 수가 옵션 개수를 초과하면 안 됨 (0=무제한은 허용)
+    if ((f.type === 'select' || f.type === 'multiselect') && f.maxSelect && f.maxSelect > 0) {
+      return f.maxSelect <= (f.options?.length ?? 0);
+    }
+    return true;
+  },
+  { message: '최대 선택 수는 옵션 개수를 넘을 수 없습니다.' }
+);
 
 const exhibitionCreateSchema = z.object({
   title: z.string().min(1, '공모 제목을 입력해주세요.'),
