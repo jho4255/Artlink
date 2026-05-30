@@ -101,6 +101,7 @@ export default function ExhibitionDetailPage() {
     queryKey: ['exhibition', id],
     queryFn: () => api.get(`/exhibitions/${id}`).then(r => r.data),
     enabled: !!id,
+    retry: (count, err: any) => (err?.response?.status ?? 500) >= 500 && count < 2,
   });
 
   // 이미지 dominant color 추출
@@ -263,12 +264,23 @@ export default function ExhibitionDetailPage() {
     setDeleteConfirm(true);
   };
 
-  if (isLoading || !exhibition) {
+  if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
         <div className="h-48 bg-gray-100 animate-pulse mb-4" />
         <div className="h-8 bg-gray-100 rounded w-1/3 animate-pulse mb-2" />
         <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+      </div>
+    );
+  }
+  if (!exhibition) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 py-20">
+        <h1 className="text-xl font-semibold text-gray-900">공모를 찾을 수 없습니다</h1>
+        <p className="mt-2 text-sm text-gray-500">삭제되었거나 마감된 공모일 수 있습니다.</p>
+        <button onClick={() => navigate('/exhibitions')} className="mt-8 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+          모집공고 목록으로
+        </button>
       </div>
     );
   }
