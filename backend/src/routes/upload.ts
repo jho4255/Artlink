@@ -84,13 +84,29 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
 });
 
 // 파일 업로드 (PDF/DOC/HWP/ZIP, 20MB)
+// 허용 문서 MIME (HWP/ZIP는 브라우저마다 octet-stream으로 보내므로 포함)
+const allowedFileMimes = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/haansofthwp',
+  'application/x-hwp',
+  'application/vnd.hancom.hwp',
+  'application/vnd.hancom.hwpx',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
+]);
+
 const fileUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /pdf|doc|docx|hwp|hwpx|zip/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
-    if (ext) return cb(null, true);
+    // 확장자 + 실제 파일형식(MIME) 둘 다 검사 → 확장자만 위장한 파일 차단
+    const mimeOk = allowedFileMimes.has(file.mimetype);
+    if (ext && mimeOk) return cb(null, true);
     cb(new Error('허용된 파일 형식: PDF, DOC, DOCX, HWP, HWPX, ZIP'));
   },
 });
