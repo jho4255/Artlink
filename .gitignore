@@ -32,3 +32,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 backend/logs/
+.claude/
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
