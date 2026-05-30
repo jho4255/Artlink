@@ -1266,7 +1266,7 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
           <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
             {galleryImages.map((img) => (
               <div key={img.id} className="relative group">
-                <img src={img.url} alt={`${galleryName} 사진`} className="w-full h-20 object-cover rounded-lg" />
+                <img src={img.url} alt="갤러리 사진" className="w-full h-20 object-cover rounded-lg" />
                 <button
                   onClick={() => {
                     if (window.confirm('이 사진을 삭제하시겠습니까?')) {
