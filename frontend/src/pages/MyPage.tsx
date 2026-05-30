@@ -605,7 +605,7 @@ function MyReviewsSection() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => navigate(`/galleries/${r.galleryId}`)}
-                className="p-1 text-gray-400 hover:text-gray-900"
+                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-gray-900"
                 title="갤러리에서 수정"
                 aria-label="수정"
               >
@@ -613,7 +613,7 @@ function MyReviewsSection() {
               </button>
               <button
                 onClick={() => setDeleteReviewConfirmId(r.id)}
-                className="p-1 text-gray-400 hover:text-red-500"
+                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-red-500"
                 title="삭제"
                 aria-label="삭제"
               >

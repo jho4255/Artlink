@@ -812,7 +812,7 @@ export default function GalleryDetailPage() {
                                     setReviewAnonymous(review.anonymous);
                                     setReviewImageUrl(review.imageUrl || '');
                                   }}
-                                  className="p-1 text-gray-400 hover:text-gray-900"
+                                  className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-gray-900"
                                   title="수정"
                                   aria-label="수정"
                                 >
@@ -820,7 +820,7 @@ export default function GalleryDetailPage() {
                                 </button>
                                 <button
                                   onClick={() => setDeleteReviewConfirmId(review.id)}
-                                  className="p-1 text-gray-400 hover:text-red-500"
+                                  className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-red-500"
                                   aria-label="삭제"
                                 >
                                   <Trash2 size={14} />
@@ -831,7 +831,7 @@ export default function GalleryDetailPage() {
                             {isAdmin && !isMyReview && (
                               <button
                                 onClick={() => setDeleteReviewConfirmId(review.id)}
-                                className="p-1 text-red-400 hover:text-red-600"
+                                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-red-400 hover:text-red-600"
                                 aria-label="삭제"
                               >
                                 <Trash2 size={14} />
