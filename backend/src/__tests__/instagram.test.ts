@@ -201,7 +201,7 @@ describe('Instagram API', () => {
       global.fetch = originalFetch;
     });
 
-    it('Graph API 오류 시 빈 배열 반환', async () => {
+    it('Graph API 오류 시 502 반환 (빈 피드와 구분 — 프론트에서 안내 표시)', async () => {
       await testPrisma.gallery.update({
         where: { id: galleryId },
         data: { instagramAccessToken: 'expired_token', instagramFeedVisible: true },
@@ -211,8 +211,8 @@ describe('Instagram API', () => {
       global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400 } as any);
 
       const res = await request.get(`/api/galleries/${galleryId}/instagram-feed`);
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual([]);
+      expect(res.status).toBe(502);
+      expect(res.body.error).toBe('instagram_unavailable');
 
       global.fetch = originalFetch;
     });

@@ -290,7 +290,8 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
       { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
     );
 
-    if (!igRes.ok) return res.json([]);
+    // IG API 오류 → 빈 배열(정상 empty)과 구분되도록 502로 신호
+    if (!igRes.ok) return res.status(502).json({ error: 'instagram_unavailable' });
 
     const igData = await igRes.json() as { data?: any[] };
     const posts = (igData.data || []).map((p: any) => ({
@@ -304,9 +305,9 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
 
     res.json(posts);
   } catch (error: any) {
-    // best-effort: 오류 시 빈 배열 반환 (서비스 중단 방지)
+    // 토큰은 있으나 IG 호출 실패(네트워크/타임아웃) → 502로 신호 (빈 피드와 구분)
     logger.warn('Instagram', `피드 조회 실패: ${error.message}`, { galleryId: req.params.id });
-    res.json([]);
+    res.status(502).json({ error: 'instagram_unavailable' });
   }
 });
 

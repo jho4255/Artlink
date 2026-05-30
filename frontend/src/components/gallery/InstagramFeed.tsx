@@ -24,7 +24,7 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
   const [imagesReady, setImagesReady] = useState(false);
   const loadedCountRef = useRef(0);
 
-  const { data: posts = [], isLoading } = useQuery<InstagramPost[]>({
+  const { data: posts = [], isLoading, isError } = useQuery<InstagramPost[]>({
     queryKey: ['instagram-feed', galleryId],
     queryFn: () => api.get(`/galleries/${galleryId}/instagram-feed`).then(r => r.data),
     staleTime: 5 * 60 * 1000,
@@ -68,6 +68,15 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
   const imageUrls = posts.map(p =>
     p.mediaType === 'VIDEO' ? (p.thumbnailUrl || p.mediaUrl) : p.mediaUrl
   );
+
+  // 피드 불러오기 실패 (토큰은 있으나 Instagram 응답 오류) → 안내 표시
+  if (!isLoading && isError) {
+    return (
+      <div className="text-center py-6 text-sm text-gray-400">
+        Instagram 피드를 불러오지 못했습니다.
+      </div>
+    );
+  }
 
   // 게시물 없음 (API 완료 후)
   if (!isLoading && posts.length === 0) return null;
