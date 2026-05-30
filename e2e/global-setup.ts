@@ -25,7 +25,8 @@ async function waitForBackend(tries = 30) {
 
 export default async function globalSetup() {
   console.log('\n[global-setup] 1) DB 시드 리셋…');
-  execSync('npx prisma migrate reset --force --skip-seed', { cwd: BACKEND, stdio: 'inherit' });
+  // --skip-generate: prisma generate가 node_modules를 건드려 tsx watch 백엔드를 재시작시키는 것 방지
+  execSync('npx prisma migrate reset --force --skip-seed --skip-generate', { cwd: BACKEND, stdio: 'inherit' });
   execSync('npx tsx prisma/seed.ts', { cwd: BACKEND, stdio: 'inherit' });
 
   console.log('[global-setup] 2) 백엔드 응답 대기…');
@@ -36,6 +37,7 @@ export default async function globalSetup() {
   const users: Array<{ id: number; email: string }> = await (await fetch(`${API}/auth/dev-users`)).json();
 
   const saved: Record<string, number> = {};
+  const tokens: Record<string, string> = {};
   for (const u of users) {
     const role = ROLE_BY_EMAIL[u.email];
     if (!role) continue;
@@ -54,8 +56,10 @@ export default async function globalSetup() {
     };
     fs.writeFileSync(path.join(AUTH_DIR, `${role}.json`), JSON.stringify(storage, null, 2));
     saved[role] = u.id;
+    tokens[role] = token;
   }
-  // 테스트가 id를 알아야 할 때 쓰도록 매핑도 저장
+  // 테스트가 재사용 (dev-login 재호출 금지 → 요청폭주 차단 회피)
   fs.writeFileSync(path.join(AUTH_DIR, 'ids.json'), JSON.stringify(saved, null, 2));
+  fs.writeFileSync(path.join(AUTH_DIR, 'tokens.json'), JSON.stringify(tokens, null, 2));
   console.log('[global-setup] 완료. 유저 id:', saved, '\n');
 }

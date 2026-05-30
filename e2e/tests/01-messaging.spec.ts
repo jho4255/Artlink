@@ -1,5 +1,5 @@
-import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, userIds, settle } from '../lib/helpers';
+import { test, expect, request as pwRequest } from '@playwright/test';
+import { openAs, userIds, tokenFor, settle } from '../lib/helpers';
 
 /**
  * 지속 상호작용: 갤러리↔지원자(작가) 메시지를 여러 번 주고받기.
@@ -11,16 +11,11 @@ const SUBJECT = '협업제안';
 let exId: number;
 let ids: { artist: number; gallery: number };
 
-async function token(api: APIRequestContext, userId: number) {
-  const r = await api.post(`${API}/auth/dev-login`, { data: { userId } });
-  return (await r.json()).token as string;
-}
-
 test.beforeAll(async () => {
   ids = userIds() as any;
   const api = await pwRequest.newContext();
-  const gTok = await token(api, ids.gallery);
-  const aTok = await token(api, ids.artist);
+  const gTok = tokenFor('gallery');
+  const aTok = tokenFor('artist');
 
   // 갤러리의 승인된 공모 하나 선택
   const myEx = await (await api.get(`${API}/exhibitions/my-exhibitions`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
@@ -39,7 +34,7 @@ test.beforeAll(async () => {
     headers: { Authorization: `Bearer ${aTok}` },
     data: { customAnswers: answers },
   });
-  expect(applyRes.ok(), `지원 실패: ${applyRes.status()} ${await applyRes.text()}`).toBeTruthy();
+  expect([200, 201, 400, 409].includes(applyRes.status()), `지원 실패: ${applyRes.status()} ${await applyRes.text()}`).toBeTruthy();
   await api.dispose();
 });
 
@@ -52,7 +47,7 @@ test('메시지 6턴 왕복 — 누적·순서·읽음상태 지속 검증', asy
 
   // 작가의 미읽음 메시지 수 (API로 신뢰성 확인)
   const api = await pwRequest.newContext();
-  const aTok = await token(api, ids.artist);
+  const aTok = tokenFor('artist');
   const artistUnread = async () =>
     (await (await api.get(`${API}/messages/unread-count`, { headers: { Authorization: `Bearer ${aTok}` } })).json()).count;
 

@@ -12,6 +12,11 @@ export function userIds(): Record<Role, number> {
   return JSON.parse(fs.readFileSync(path.join(AUTH_DIR, 'ids.json'), 'utf-8'));
 }
 
+/** global-setup이 저장한 역할별 JWT 토큰 (dev-login 재호출 없이 API 셋업에 재사용) */
+export function tokenFor(role: Role): string {
+  return JSON.parse(fs.readFileSync(path.join(AUTH_DIR, 'tokens.json'), 'utf-8'))[role];
+}
+
 /** 특정 역할로 로그인된 새 브라우저 컨텍스트+페이지 (멀티유저 동시 테스트용) */
 export async function openAs(browser: Browser, role: Role): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({ storageState: statePath(role) });

@@ -57,7 +57,8 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Rate limiting (보안: 과도한 요청 방지, 테스트 시 비활성화)
 // 15분에 300회로 완화 (기존 100회 → SPA 특성상 페이지 로드에 다수 API 호출 필요)
-if (process.env.NODE_ENV !== 'test') {
+// DISABLE_RATE_LIMIT=true 시 비활성화 (로컬 E2E 전용 — 운영에선 절대 설정하지 않음)
+if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
   app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
 }
