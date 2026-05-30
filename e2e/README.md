@@ -30,13 +30,17 @@ npx playwright test tests/01-messaging.spec.ts   # 특정 파일만
 - 테스트는 `lib/helpers.ts`의 `openAs(browser, role)`로 역할별 컨텍스트를 동시에 열어 **유저 간 상호작용**을 재현.
 - 모바일 뷰포트(Pixel 7), workers=1(공유 DB 안정성), 실패 시 trace/screenshot/video 저장.
 
-## 시나리오 (계속 추가 중)
-- `00-smoke` — 3역할 세션 + 보호라우트 리다이렉트
-- `01-messaging` — 갤러리↔지원자 **6턴 왕복**(누적·순서·읽음상태)
-- `02-favorites-reliability` — 찜 **3라운드** cross-cache 일관성 + 5연타 멱등성
-- `03-application-status-notification` — 지원 상태 단계별 변경 → 알림 누적 + 배지 갱신 + **역행 차단**
+## 시나리오 (총 18개, 전부 통과)
+- `00-smoke` — 3역할 세션 + 보호라우트 리다이렉트 (4)
+- `01-messaging` — 갤러리↔지원자 **6턴 왕복**(누적·순서·읽음상태) (1)
+- `02-favorites-reliability` — 찜 **3라운드** cross-cache 일관성 + 5연타 멱등성 (2)
+- `03-application-status-notification` — 상태 단계변경 → 알림 누적 + 배지 갱신 + **역행 차단** (1)
+- `04-report-moderation` — 신고 → 관리자 제재 → 작가·갤러리 양쪽 마스킹 (3유저) (1)
+- `05-reliability` — 새로고침 유지 · 위조토큰 401→로그인 · **네트워크 단절→복구** (3)
+- `06-tier3-edge` — 정원초과 차단(미구현 갭, test.fail) · 권한 매트릭스 (3)
+- `07-registration-approval` — 갤러리 등록폼 → 승인/거절 UI → 공개노출/사유전달 + 폼검증 (3)
 
-### 남은 큐
-Tier1: 신고→제재→마스킹 · 등록→승인→검색→지원→리뷰 라이프사이클 · 거절+사유
-Tier2: 중복클릭 멱등성 · 네트워크 단절→복구 · 세션만료 · 새로고침 상태유지
-Tier3: 폼검증 · 권한매트릭스 · 정원초과 지원
+> 정원초과(06-tier3) 1건은 `test.fail`로 **알려진 갭** 표시 — 백엔드가 정원을 안 막음(docs/known-issues.md KI-2). 고치면 자동으로 초록불 전환.
+
+## 발견된 버그
+→ `docs/known-issues.md` 에 누적 (테스트로 발견한 것 포함). 일괄 수정 예정.
