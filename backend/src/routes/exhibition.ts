@@ -410,6 +410,12 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
       throw new AppError('지원 내역을 찾을 수 없습니다.', 404);
     }
 
+    // 상태 단계 강제: 접수(0) → 검토중(1) → 수락/거절(2). 역행 금지(낮은 단계로 되돌리기 차단)
+    const statusRank: Record<string, number> = { SUBMITTED: 0, REVIEWED: 1, ACCEPTED: 2, REJECTED: 2 };
+    if (statusRank[status] < statusRank[application.status]) {
+      throw new AppError('이미 진행된 단계로 되돌릴 수 없습니다.', 400);
+    }
+
     const updated = await prisma.application.update({
       where: { id: appId },
       data: { status },
