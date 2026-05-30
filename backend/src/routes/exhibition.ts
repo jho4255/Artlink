@@ -15,7 +15,16 @@ const customFieldSchema = z.object({
   options: z.array(z.string()).optional(),
   maxLength: z.number().int().min(0).optional(),   // 텍스트 글자수 제한 (0=무제한)
   maxSelect: z.number().int().min(0).optional(),   // 선택형 최대 선택 수 (1=단일, 0=무제한, 2+=최대N개)
-});
+}).refine(
+  (f) => {
+    // 선택형에서 최대 선택 수가 옵션 개수를 초과하면 안 됨 (0=무제한은 허용)
+    if ((f.type === 'select' || f.type === 'multiselect') && f.maxSelect && f.maxSelect > 0) {
+      return f.maxSelect <= (f.options?.length ?? 0);
+    }
+    return true;
+  },
+  { message: '최대 선택 수는 옵션 개수를 넘을 수 없습니다.' }
+);
 
 const exhibitionCreateSchema = z.object({
   title: z.string().min(1, '공모 제목을 입력해주세요.'),
@@ -408,6 +417,12 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
     const application = await prisma.application.findUnique({ where: { id: appId } });
     if (!application || application.exhibitionId !== exhibitionId) {
       throw new AppError('지원 내역을 찾을 수 없습니다.', 404);
+    }
+
+    // 상태 단계 강제: 접수(0) → 검토중(1) → 수락/거절(2). 역행 금지(낮은 단계로 되돌리기 차단)
+    const statusRank: Record<string, number> = { SUBMITTED: 0, REVIEWED: 1, ACCEPTED: 2, REJECTED: 2 };
+    if (statusRank[status] < statusRank[application.status]) {
+      throw new AppError('이미 진행된 단계로 되돌릴 수 없습니다.', 400);
     }
 
     const updated = await prisma.application.update({

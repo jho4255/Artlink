@@ -41,7 +41,7 @@ export default function GalleriesPage() {
   const [sortBy, setSortBy] = useState<string | null>(null);
 
   // 갤러리 목록 조회
-  const { data: galleries = [], isLoading } = useQuery<Gallery[]>({
+  const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
     queryKey: ['galleries', selectedRegion, minRating, sortBy],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -192,6 +192,14 @@ export default function GalleriesPage() {
             <div key={i} className="h-64 bg-gray-100 animate-pulse" />
           ))}
         </div>
+      ) : isError ? (
+        <div className="text-center py-20">
+          <p className="text-lg text-gray-700">갤러리를 불러오지 못했습니다.</p>
+          <p className="mt-1 text-sm text-gray-400">잠시 후 다시 시도해주세요.</p>
+          <button onClick={() => refetch()} className="mt-6 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+            다시 시도
+          </button>
+        </div>
       ) : galleries.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">조건에 맞는 갤러리가 없습니다.</p>
@@ -202,6 +210,7 @@ export default function GalleriesPage() {
             <GlowCard
               key={gallery.id}
               imageSrc={gallery.mainImage || gallery.images?.[0]?.url || '/images/gallery-sculpture.webp'}
+              alt={`${gallery.name} 대표 이미지`}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
             >
 
@@ -253,7 +262,7 @@ export default function GalleriesPage() {
 }
 
 // hover 시 이미지 dominant color glow 카드
-function GlowCard({ imageSrc, onClick, children }: { imageSrc: string; onClick: () => void; children: React.ReactNode }) {
+function GlowCard({ imageSrc, alt, onClick, children }: { imageSrc: string; alt?: string; onClick: () => void; children: React.ReactNode }) {
   const [color, setColor] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const extracted = useRef(false);
@@ -279,7 +288,7 @@ function GlowCard({ imageSrc, onClick, children }: { imageSrc: string; onClick: 
       >
         <img
           src={imageSrc}
-          alt=""
+          alt={alt || ''}
           className="w-full aspect-[4/3] object-cover group-hover:opacity-90 transition-opacity duration-300"
         />
       </div>

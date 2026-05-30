@@ -1,0 +1,22 @@
+[
+ {
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 11,
+  "EndLine": 11,
+  "StartColumn": 3,
+  "EndColumn": 50,
+  "Match": "LOUDINARY_API_SECRET=SKPC_MS5weivvSv3ofAVuNCUxeY",
+  "Secret": "SKPC_MS5weivvSv3ofAVuNCUxeY",
+  "File": "backend/.env",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 4.2545257,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "RuleID": "generic-api-key",
+  "Fingerprint": "backend/.env:generic-api-key:11"
+ }
+]

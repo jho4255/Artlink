@@ -18,7 +18,7 @@ export default function ShowsPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
-  const { data: shows = [], isLoading } = useQuery<Show[]>({
+  const { data: shows = [], isLoading, isError, refetch } = useQuery<Show[]>({
     queryKey: ['shows', selectedRegion, selectedStatus],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -123,6 +123,14 @@ export default function ShowsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {[1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 animate-pulse" />)}
+        </div>
+      ) : isError ? (
+        <div className="text-center py-20">
+          <p className="text-lg text-gray-700">전시를 불러오지 못했습니다.</p>
+          <p className="mt-1 text-sm text-gray-400">잠시 후 다시 시도해주세요.</p>
+          <button onClick={() => refetch()} className="mt-6 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+            다시 시도
+          </button>
         </div>
       ) : shows.length === 0 ? (
         <div className="text-center py-20 text-gray-400">

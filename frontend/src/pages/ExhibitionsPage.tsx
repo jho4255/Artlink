@@ -39,7 +39,7 @@ export default function ExhibitionsPage() {
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
-  const { data: exhibitions = [], isLoading } = useQuery<Exhibition[]>({
+  const { data: exhibitions = [], isLoading, isError, refetch } = useQuery<Exhibition[]>({
     queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -159,6 +159,14 @@ export default function ExhibitionsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {[1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 animate-pulse" />)}
+        </div>
+      ) : isError ? (
+        <div className="text-center py-20">
+          <p className="text-lg text-gray-700">공고를 불러오지 못했습니다.</p>
+          <p className="mt-1 text-sm text-gray-400">잠시 후 다시 시도해주세요.</p>
+          <button onClick={() => refetch()} className="mt-6 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
+            다시 시도
+          </button>
         </div>
       ) : exhibitions.length === 0 ? (
         <div className="text-center py-20 text-gray-400">

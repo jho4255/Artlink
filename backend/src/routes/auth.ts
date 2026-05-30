@@ -176,8 +176,15 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 
 // ========== 기존 엔드포인트 ==========
 
-router.get('/me', authenticate, async (req, res) => {
-  res.json({ user: req.user });
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    // avatar 포함해 최신 사용자 정보 반환 (authenticate가 채우는 req.user엔 avatar가 없음)
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { id: true, name: true, email: true, role: true, avatar: true },
+    });
+    res.json({ user });
+  } catch (error) { next(error); }
 });
 
 router.put('/me/avatar', authenticate, async (req, res, next) => {

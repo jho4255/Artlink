@@ -157,7 +157,7 @@ export default function Navbar() {
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50"
+                      className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50"
                     >
                       <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
                         <span className="text-sm font-semibold text-gray-900">알림</span>

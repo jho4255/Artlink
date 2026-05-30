@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
+import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const router = Router();
@@ -38,7 +39,7 @@ const upload = multer({
     const ext = allowed.test(path.extname(file.originalname).toLowerCase());
     const mime = allowed.test(file.mimetype);
     if (ext && mime) return cb(null, true);
-    cb(new Error('이미지 파일만 업로드 가능합니다.'));
+    cb(new AppError('이미지 파일만 업로드 가능합니다.', 400));
   },
 });
 
@@ -84,14 +85,30 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
 });
 
 // 파일 업로드 (PDF/DOC/HWP/ZIP, 20MB)
+// 허용 문서 MIME (HWP/ZIP는 브라우저마다 octet-stream으로 보내므로 포함)
+const allowedFileMimes = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/haansofthwp',
+  'application/x-hwp',
+  'application/vnd.hancom.hwp',
+  'application/vnd.hancom.hwpx',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
+]);
+
 const fileUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /pdf|doc|docx|hwp|hwpx|zip/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
-    if (ext) return cb(null, true);
-    cb(new Error('허용된 파일 형식: PDF, DOC, DOCX, HWP, HWPX, ZIP'));
+    // 확장자 + 실제 파일형식(MIME) 둘 다 검사 → 확장자만 위장한 파일 차단
+    const mimeOk = allowedFileMimes.has(file.mimetype);
+    if (ext && mimeOk) return cb(null, true);
+    cb(new AppError('허용된 파일 형식: PDF, DOC, DOCX, HWP, HWPX, ZIP', 400));
   },
 });
 
