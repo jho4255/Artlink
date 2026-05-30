@@ -10,7 +10,9 @@
       "Bash(chmod +x:*)",
       "Bash(npx prisma:*)",
       "Bash(npx tsx:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "mcp__plugin_playwright_playwright__browser_navigate"
     ]
   }
 }

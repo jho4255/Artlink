@@ -1,0 +1,433 @@
+--- /e/git/Artlink-submission-14/backend/src/routes/message.ts	2026-04-07 03:00:34.215882100 +0900
++++ /e/git/Artlink-submission-15/Artlink-submission-15/backend/src/routes/message.ts	2026-04-09 22:34:46.527120500 +0900
+@@ -266,15 +266,31 @@
+       whereClause.exhibitionId = exhibitionId;
+     }
+ 
+-    const messages = await prisma.message.findMany({
++    const messagesRaw = await prisma.message.findMany({
+       where: whereClause,
+       include: {
+         sender: { select: { id: true, name: true, role: true } },
+         receiver: { select: { id: true, name: true, role: true } },
+         exhibition: { select: { id: true, title: true } },
++        reports: { select: { reporterId: true, status: true } },
+       },
+       orderBy: { createdAt: 'asc' },
+     });
++    // 마스킹 규칙:
++    // - 관리자가 ACTIONED 처리한 메시지는 모든 참여자에게 가려짐 (sanctioned)
++    // - 내가 신고한(PENDING 포함) 메시지는 나에게만 가려짐 (reportedByMe)
++    const messages = messagesRaw.map((m: any) => {
++      const sanctioned = Array.isArray(m.reports) && m.reports.some((r: any) => r.status === 'ACTIONED');
++      const reportedByMe = Array.isArray(m.reports) && m.reports.some((r: any) => r.reporterId === myId);
++      const { reports, ...rest } = m;
++      if (sanctioned) {
++        return { ...rest, content: '[제재로 가려진 메시지입니다]', attachments: null, sanctioned: true, reportedByMe };
++      }
++      if (reportedByMe) {
++        return { ...rest, content: '[신고한 메시지입니다]', attachments: null, sanctioned: false, reportedByMe: true };
++      }
++      return { ...rest, sanctioned: false, reportedByMe: false };
++    });
+ 
+     // 내가 받은 안읽은 메시지를 모두 읽음 처리
+     const readWhere: any = { senderId: partnerId, receiverId: myId, read: false };
+--- /e/git/Artlink-submission-14/backend/src/routes/report.ts	2026-04-07 00:25:13.666183600 +0900
++++ /e/git/Artlink-submission-15/Artlink-submission-15/backend/src/routes/report.ts	2026-04-09 22:31:24.076472500 +0900
+@@ -86,13 +86,31 @@
+     const reportId = Number(req.params.id);
+     const { status, adminNote, deleteMessage } = req.body;
+ 
+-    const report = await prisma.messageReport.findUnique({ where: { id: reportId } });
++    const report = await prisma.messageReport.findUnique({
++      where: { id: reportId },
++      include: { message: { select: { id: true, senderId: true, receiverId: true, subject: true, exhibitionId: true } } },
++    });
+     if (!report) throw new AppError('신고를 찾을 수 없습니다.', 404);
+ 
++    // ACTIONED 시 메시지 송신자에게 제재 알림 생성 (해당 쪽지 스레드로 바로 이동)
++    if (status === 'ACTIONED' && report.message) {
++      const reasonText = adminNote && adminNote.trim() ? ` 사유: ${adminNote.trim()}` : '';
++      const deletedText = deleteMessage ? ' (메시지 삭제됨)' : '';
++      const baseSubject = report.message.subject.replace(/^(Re:\s*)+/i, '');
++      const linkUrl = `/messages?partner=${report.message.receiverId}${report.message.exhibitionId ? `&exhibition=${report.message.exhibitionId}` : ''}&subject=${encodeURIComponent(baseSubject)}`;
++      await prisma.notification.create({
++        data: {
++          userId: report.message.senderId,
++          type: 'MESSAGE_SANCTION',
++          message: `신고가 접수되어 귀하의 메시지 "${report.message.subject}"에 제재 조치가 이루어졌습니다.${deletedText}${reasonText}`,
++          linkUrl,
++        },
++      }).catch(() => {});
++    }
++
+     // 메시지 삭제 요청 시 메시지 삭제 (Cascade로 관련 신고도 삭제됨)
+     if (status === 'ACTIONED' && deleteMessage) {
+       await prisma.message.delete({ where: { id: report.messageId } }).catch(() => {});
+-      // Cascade 삭제 후 신고도 사라지므로 응답만 반환
+       return res.json({ id: reportId, status: 'ACTIONED', messageDeleted: true });
+     }
+ 
+--- /e/git/Artlink-submission-14/frontend/src/pages/MessagesPage.tsx	2026-04-07 03:00:34.247015700 +0900
++++ /e/git/Artlink-submission-15/Artlink-submission-15/frontend/src/pages/MessagesPage.tsx	2026-04-09 23:33:31.652175100 +0900
+@@ -4,7 +4,7 @@
+ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+ import { ArrowLeft, SendHorizonal, Plus, Mail, User as UserIcon, Flag, X, Reply, FileText, Building2, Paperclip, Image, Download } from 'lucide-react';
+ 
+-function useIsMobile(breakpoint = 768) {
++function useIsMobile(breakpoint = 1280) {
+   const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint);
+   useEffect(() => {
+     const handler = () => setIsMobile(window.innerWidth < breakpoint);
+@@ -48,15 +48,10 @@
+ 
+   const prefill = location.state as { receiverId?: number; receiverName?: string; subject?: string; exhibitionTitle?: string; exhibitionId?: number } | null;
+ 
+-  // URL 파라미터를 초기값으로 캡처 (한 번만)
+-  const [initParams] = useState(() => ({
+-    partner: searchParams.get('partner') ? Number(searchParams.get('partner')) : null,
+-    exhibition: searchParams.get('exhibition') ? Number(searchParams.get('exhibition')) : null,
+-    subject: searchParams.get('subject') || null,
+-  }));
+-  const partnerFromUrl = initParams.partner;
+-  const exhibitionFromUrl = initParams.exhibition;
+-  const subjectFromUrl = initParams.subject;
++  // URL 파라미터 (알림 클릭 시마다 갱신)
++  const partnerFromUrl = searchParams.get('partner') ? Number(searchParams.get('partner')) : null;
++  const exhibitionFromUrl = searchParams.get('exhibition') ? Number(searchParams.get('exhibition')) : null;
++  const subjectFromUrl = searchParams.get('subject') || null;
+ 
+   // 선택 상태
+   const [selL1, setSelL1] = useState<number | null>(null);
+@@ -109,10 +104,9 @@
+   // 모바일 현재 레벨 결정
+   const mobileLevel = selSubject ? 'L4' : selL2 !== null ? 'L3' : selL1 !== null ? 'L2' : 'L1';
+ 
+-  // 초기화
++  // 초기화 (prefill만 정리. URL 파라미터는 initParams에 캡처됨)
+   useEffect(() => {
+     if (prefill?.receiverId) window.history.replaceState({}, '');
+-    if (searchParams.get('partner')) setSearchParams({}, { replace: true });
+   }, []);
+ 
+   // ===== 쿼리 (useEffect보다 먼저 선언) =====
+@@ -122,48 +116,49 @@
+   });
+ 
+   // 알림에서 진입 시 conversations 로드 후 해당 레이어로 이동
+-  const [urlNavDone, setUrlNavDone] = useState(false);
++  // partnerFromUrl이 바뀌면(알림 재클릭) 다시 네비게이트
++  const lastNavKeyRef = useRef<string | null>(null);
+   useEffect(() => {
+-    if (urlNavDone || !conversations || !partnerFromUrl) return;
+-    setUrlNavDone(true);
++    if (!conversations || !partnerFromUrl) return;
++    const navKey = `${partnerFromUrl}|${exhibitionFromUrl ?? ''}|${subjectFromUrl ?? ''}`;
++    if (lastNavKeyRef.current === navKey) return;
++    lastNavKeyRef.current = navKey;
++
++    // exhibitionFromUrl 없으면 0(일반 문의)로 간주
++    const targetExId = exhibitionFromUrl ?? 0;
+ 
+     if (isArtist && conversations.galleries) {
+       for (const g of conversations.galleries) {
+         if (g.ownerId === partnerFromUrl) {
+           setSelL1(g.galleryId);
+-          if (exhibitionFromUrl) {
+-            const ex = g.exhibitions.find((e: any) => e.exhibitionId === exhibitionFromUrl);
+-            if (ex) {
+-              setSelL2(exhibitionFromUrl);
+-              setPartnerIdForThread(partnerFromUrl);
+-              if (subjectFromUrl) setSelSubject(subjectFromUrl);
+-            }
++          const ex = g.exhibitions.find((e: any) => e.exhibitionId === targetExId);
++          if (ex) {
++            setSelL2(targetExId);
++            setPartnerIdForThread(partnerFromUrl);
++            if (subjectFromUrl) setSelSubject(subjectFromUrl);
+           }
+           break;
+         }
+       }
+     } else if (!isArtist && conversations.exhibitions) {
+-      if (exhibitionFromUrl) {
+-        const ex = conversations.exhibitions.find((e: any) => e.exhibitionId === exhibitionFromUrl);
+-        if (ex) {
+-          setSelL1(exhibitionFromUrl);
+-          if (partnerFromUrl) {
+-            setSelL2(partnerFromUrl);
+-            if (subjectFromUrl) setSelSubject(subjectFromUrl);
+-          }
++      const ex = conversations.exhibitions.find((e: any) => e.exhibitionId === targetExId);
++      if (ex) {
++        setSelL1(targetExId);
++        if (partnerFromUrl) {
++          setSelL2(partnerFromUrl);
++          if (subjectFromUrl) setSelSubject(subjectFromUrl);
+         }
+       }
+     }
+-  }, [conversations, partnerFromUrl, exhibitionFromUrl, urlNavDone]);
++  }, [conversations, partnerFromUrl, exhibitionFromUrl, subjectFromUrl]);
+ 
+-  // Navbar 재클릭 시 리셋 (첫 마운트 제외)
++  // Navbar 재클릭 시 리셋 (첫 마운트 제외, URL 파라미터 없을 때만)
+   const [mounted, setMounted] = useState(false);
+   useEffect(() => {
+     if (!mounted) { setMounted(true); return; }
+-    // location.key가 변경됨 = 새로운 navigate 발생
+-    if (!location.state) {
++    if (!location.state && !partnerFromUrl) {
+       setSelL1(null); setSelL2(null); setSelSubject(null); setShowNew(false);
+-      setUrlNavDone(false);
++      lastNavKeyRef.current = null;
+     }
+   }, [location.key]);
+ 
+@@ -216,7 +211,7 @@
+ 
+   const reportMutation = useMutation({
+     mutationFn: (data: { messageId: number; reason: string; detail?: string }) => api.post('/reports', data),
+-    onSuccess: () => { toast.success('신고가 접수되었습니다.'); setReportingMsgId(null); setReportReason('PROFANITY'); setReportDetail(''); },
++    onSuccess: () => { toast.success('신고가 접수되었습니다.'); setReportingMsgId(null); setReportReason('PROFANITY'); setReportDetail(''); qc.invalidateQueries({ queryKey: ['message-thread'] }); qc.invalidateQueries({ queryKey: ['message-conversations'] }); },
+     onError: (err: any) => toast.error(err.response?.status === 409 ? '이미 신고한 메시지입니다.' : '신고에 실패했습니다.'),
+   });
+ 
+@@ -231,9 +226,9 @@
+   };
+ 
+   const handleReply = () => {
+-    if (!replyContent.trim() || !selSubject || !threadPartnerId || !threadExId) return;
++    if (!replyContent.trim() || !selSubject || !threadPartnerId || threadExId === null) return;
+     sendMutation.mutate(
+-      { receiverId: threadPartnerId, subject: `Re: ${selSubject}`, content: replyContent.trim(), exhibitionId: threadExId, ...(replyAttachments.length > 0 ? { attachments: replyAttachments } : {}) },
++      { receiverId: threadPartnerId, subject: `Re: ${selSubject}`, content: replyContent.trim(), ...(threadExId ? { exhibitionId: threadExId } : {}), ...(replyAttachments.length > 0 ? { attachments: replyAttachments } : {}) },
+       { onSuccess: () => { setReplyContent(''); setReplyAttachments([]); } },
+     );
+   };
+@@ -487,14 +482,17 @@
+     return (
+       <div className="flex flex-col h-full">
+         <div className="px-5 py-3 border-b border-gray-100 bg-white flex-none">
+-          <p className="text-base font-bold truncate">{currentThread.subject}</p>
++          <p className="text-[12px] font-bold text-gray-700">4단계 : 상세</p>
++          <p className="text-base font-bold truncate mt-0.5">{currentThread.subject}</p>
+           <p className="text-xs text-gray-400 mt-0.5">{thread?.partner?.name} &middot; {currentThread.messages.length}건</p>
+         </div>
+         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+           {currentThread.messages.map((msg) => {
+             const isMe = msg.senderId === user?.id;
++            const m: any = msg;
++            const hidden = m.sanctioned || m.reportedByMe;
+             return (
+-              <div key={msg.id} className={`rounded-2xl border p-4 shadow-sm ${isMe ? 'border-gray-200 bg-white' : 'border-blue-100 bg-blue-50/40'}`}>
++              <div key={msg.id} className={`rounded-2xl border p-4 shadow-sm ${hidden ? 'border-gray-200 bg-gray-50' : isMe ? 'border-gray-200 bg-white' : 'border-blue-100 bg-blue-50/40'}`}>
+                 <div className="flex items-center justify-between mb-2.5">
+                   <div className="flex items-center gap-2">
+                     <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${isMe ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-700'}`}>{isMe ? '보냄' : '받음'}</span>
+@@ -502,11 +500,17 @@
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <span className="text-[11px] text-gray-400">{formatDateTime(msg.createdAt)}</span>
+-                    {!isMe && <button onClick={() => setReportingMsgId(msg.id)} className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Flag size={12} /></button>}
++                    {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Flag size={12} /></button>}
+                   </div>
+                 </div>
+-                <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed pl-0.5">{msg.content}</p>
+-                {(() => {
++                {m.sanctioned ? (
++                  <p className="text-sm text-gray-400 italic pl-0.5">🛡️ 제재로 가려진 메시지입니다</p>
++                ) : m.reportedByMe ? (
++                  <p className="text-sm text-gray-400 italic pl-0.5">🚩 신고한 메시지입니다</p>
++                ) : (
++                  <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed pl-0.5">{msg.content}</p>
++                )}
++                {hidden ? null : (() => {
+                   let atts: MessageAttachment[] = [];
+                   try { if (msg.attachments) atts = JSON.parse(msg.attachments); } catch {}
+                   if (atts.length === 0) return null;
+@@ -576,16 +580,37 @@
+       else if (selL1 !== null) setSelL1(null);
+     };
+ 
++    // 브레드크럼: 선택된 상위 레이어는 위에 누적 표시 (클릭 시 해당 레이어로 되돌림)
++    const crumbs: { label: string; onClick: () => void }[] = [];
++    if (selL1 !== null) {
++      const l1Label = isArtist
++        ? (conversations?.galleries?.find((g: any) => g.galleryId === selL1)?.galleryName || '')
++        : (conversations?.exhibitions?.find((e: any) => e.exhibitionId === selL1)?.exhibitionTitle || '');
++      crumbs.push({ label: `1단계 : ${l1Label}`, onClick: () => { setSelL2(null); setSelSubject(null); setPartnerIdForThread(null); } });
++    }
++    if (selL2 !== null) {
++      let l2Label = '';
++      if (isArtist) {
++        const g = conversations?.galleries?.find((g: any) => g.galleryId === selL1);
++        l2Label = g?.exhibitions?.find((e: any) => e.exhibitionId === selL2)?.exhibitionTitle || '';
++      } else {
++        const ex = conversations?.exhibitions?.find((e: any) => e.exhibitionId === selL1);
++        l2Label = ex?.partners?.find((p: any) => p.partner.id === selL2)?.partner.name || '';
++      }
++      crumbs.push({ label: `2단계 : ${l2Label}`, onClick: () => { setSelSubject(null); } });
++    }
++    if (selSubject !== null) {
++      crumbs.push({ label: `3단계 : ${selSubject}`, onClick: () => {} });
++    }
++
+     return (
+       <div className="h-[calc(100dvh-5rem)] flex flex-col">
+-        {/* 헤더 */}
++        {/* 상단 헤더 */}
+         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white flex-none">
+           {mobileLevel !== 'L1' && (
+             <button onClick={mobileBack} className="p-1.5 hover:bg-gray-100 rounded-full"><ArrowLeft size={18} /></button>
+           )}
+-          <h1 className="text-base font-bold flex-1">
+-            {mobileLevel === 'L1' ? '쪽지함' : mobileLevel === 'L2' ? l2Title : mobileLevel === 'L3' ? (thread?.partner?.name || '쪽지') : currentThread?.subject || ''}
+-          </h1>
++          <h1 className="text-base font-bold flex-1">쪽지함</h1>
+           {mobileLevel === 'L1' && (
+             <button onClick={() => setShowNew(true)} className="flex items-center gap-1 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg">
+               <Plus size={12} /> 새 쪽지
+@@ -593,13 +618,44 @@
+           )}
+         </div>
+ 
+-        {/* 콘텐츠 */}
+-        <div className="flex-1 overflow-y-auto">
+-          {mobileLevel === 'L1' && renderL1List()}
+-          {mobileLevel === 'L2' && renderL2List()}
+-          {mobileLevel === 'L3' && renderL3List()}
++        {/* 브레드크럼 (아래로 차곡차곡 쌓임) */}
++        {crumbs.length > 0 && (
++          <div className="flex-none bg-gray-50 border-b border-gray-200">
++            {crumbs.map((c, i) => (
++              <button
++                key={i}
++                onClick={c.onClick}
++                className="w-full text-left px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-100 transition-colors"
++                style={{ paddingLeft: `${16 + i * 12}px` }}
++              >
++                <p className="text-[13px] font-semibold text-gray-700 truncate">{c.label}</p>
++              </button>
++            ))}
++          </div>
++        )}
++
++        {/* 현재 레이어 콘텐츠 */}
++        <div className="flex-1 overflow-y-auto flex flex-col">
++          {mobileLevel === 'L1' && (
++            <>
++              <div className="px-4 py-2 bg-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-widest">1단계 : {isArtist ? '갤러리' : '공모전'}</div>
++              {renderL1List()}
++            </>
++          )}
++          {mobileLevel === 'L2' && (
++            <>
++              <div className="px-4 py-2 bg-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-widest">2단계 : {isArtist ? '공모전' : '지원자'}</div>
++              {renderL2List()}
++            </>
++          )}
++          {mobileLevel === 'L3' && (
++            <>
++              <div className="px-4 py-2 bg-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-widest">3단계 : 대화 제목</div>
++              {renderL3List()}
++            </>
++          )}
++          {mobileLevel === 'L4' && <div className="flex-1 flex flex-col overflow-hidden">{renderL4Detail()}</div>}
+         </div>
+-        {mobileLevel === 'L4' && <div className="flex-1 flex flex-col overflow-hidden">{renderL4Detail()}</div>}
+ 
+         <AnimatePresence>{newMsgModal}</AnimatePresence>
+         <ReportModal {...{ reportingMsgId, reportReason, reportDetail, reportMutation, setReportingMsgId, setReportReason, setReportDetail, handleReport }} />
+@@ -625,11 +681,9 @@
+       <div ref={scrollRef} className="flex-1 flex items-stretch overflow-x-auto overflow-y-hidden border-t-2 border-t-gray-200">
+         {/* L1 */}
+         <div className="w-60 min-w-[15rem] h-full flex-none flex flex-col bg-white border-r-2 border-r-gray-200">
+-          <div className="px-4 h-[40px] flex items-center bg-gray-200 border-b-2 border-b-gray-300 flex-none">
+-            <div className="flex items-center gap-2">
+-              {isArtist ? <Building2 size={13} className="text-gray-500" /> : <FileText size={13} className="text-gray-500" />}
+-              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">{isArtist ? '갤러리' : '공모전'}</p>
+-            </div>
++          <div className="px-4 h-[40px] flex items-center gap-1.5 bg-gray-200 border-b-2 border-b-gray-300 flex-none">
++            {isArtist ? <Building2 size={12} className="text-gray-600" /> : <FileText size={12} className="text-gray-600" />}
++            <p className="text-[12px] font-bold text-gray-700 truncate">1단계 : {isArtist ? '갤러리' : '공모전'}</p>
+           </div>
+           <div className="flex-1 overflow-y-auto">{renderL1List()}</div>
+         </div>
+@@ -639,9 +693,9 @@
+           {selL1 !== null && (
+             <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 240, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+               className="min-w-[15rem] h-full flex-none flex flex-col bg-gray-50 border-r-2 border-r-gray-200">
+-              <div className="px-4 h-[40px] flex items-center gap-2 bg-gray-200 border-b-2 border-b-gray-300 flex-none">
+-                {isArtist ? <FileText size={12} className="text-gray-500" /> : <UserIcon size={12} className="text-gray-500" />}
+-                <p className="text-[11px] font-bold text-gray-500 truncate">{l2Title}</p>
++              <div className="px-4 h-[40px] flex items-center gap-1.5 bg-gray-200 border-b-2 border-b-gray-300 flex-none">
++                {isArtist ? <FileText size={12} className="text-gray-600" /> : <UserIcon size={12} className="text-gray-600" />}
++                <p className="text-[12px] font-bold text-gray-700 truncate">2단계 : {isArtist ? '공모전' : '지원자'}</p>
+               </div>
+               <div className="flex-1 overflow-y-auto">{renderL2List()}</div>
+             </motion.div>
+@@ -653,9 +707,9 @@
+           {selL2 !== null && (
+             <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 272, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+               className="min-w-[17rem] h-full flex-none flex flex-col bg-white border-r-2 border-r-gray-200">
+-              <div className="px-4 h-[40px] flex items-center gap-2 bg-gray-200 border-b-2 border-b-gray-300 flex-none">
+-                <Mail size={12} className="text-gray-500" />
+-                <p className="text-[11px] font-bold text-gray-500 truncate">{thread?.partner?.name || '쪽지'}</p>
++              <div className="px-4 h-[40px] flex items-center gap-1.5 bg-gray-200 border-b-2 border-b-gray-300 flex-none">
++                <Mail size={12} className="text-gray-600" />
++                <p className="text-[12px] font-bold text-gray-700 truncate">3단계 : 대화 제목</p>
+               </div>
+               <div className="flex-1 overflow-y-auto">{renderL3List()}</div>
+             </motion.div>
+--- /e/git/Artlink-submission-14/frontend/src/components/layout/Navbar.tsx	2026-04-01 23:32:11.990295100 +0900
++++ /e/git/Artlink-submission-15/Artlink-submission-15/frontend/src/components/layout/Navbar.tsx	2026-04-09 23:27:16.389071400 +0900
+@@ -1,5 +1,5 @@
+ import { Link, useLocation, useNavigate } from 'react-router-dom';
+-import { useState } from 'react';
++import { useState, useEffect, useRef } from 'react';
+ import { Menu, X, Bell, Mail } from 'lucide-react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+@@ -20,6 +20,15 @@
+ export default function Navbar() {
+   const [isOpen, setIsOpen] = useState(false);
+   const [notifOpen, setNotifOpen] = useState(false);
++  useEffect(() => {
++    if (!notifOpen) return;
++    const handler = (e: MouseEvent) => {
++      const target = e.target as HTMLElement;
++      if (!target.closest('[data-notif-region]')) setNotifOpen(false);
++    };
++    document.addEventListener('mousedown', handler);
++    return () => document.removeEventListener('mousedown', handler);
++  }, [notifOpen]);
+   const location = useLocation();
+   const navigate = useNavigate();
+   const queryClient = useQueryClient();
+@@ -115,7 +124,7 @@
+               </button>
+             )}
+             {isAuthenticated && (
+-              <div className="relative">
++              <div className="relative" data-notif-region>
+                 <button
+                   onClick={() => setNotifOpen(!notifOpen)}
+                   className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+@@ -197,6 +206,7 @@
+             )}
+             {isAuthenticated && (
+               <button
++                data-notif-region
+                 onClick={() => setNotifOpen(!notifOpen)}
+                 className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+               >
+@@ -225,6 +235,7 @@
+             initial={{ opacity: 0, height: 0 }}
+             animate={{ opacity: 1, height: 'auto' }}
+             exit={{ opacity: 0, height: 0 }}
++            data-notif-region
+             className="md:hidden border-t border-gray-100 bg-white"
+           >
+             <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
