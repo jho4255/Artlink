@@ -1,0 +1,15 @@
+{
+  "name": "artlink-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ArtLink E2E 테스트 (Playwright) — 로컬 서버 대상, 멀티유저/신뢰성/복합 시나리오",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "reseed": "cd ../backend && npx prisma migrate reset --force --skip-seed && npx tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
