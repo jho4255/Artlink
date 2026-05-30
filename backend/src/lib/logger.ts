@@ -13,6 +13,13 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
+// 허용된 로그 파일만 상수로 고정 (외부 입력이 경로에 끼어들 여지 제거)
+const LOG_FILES = {
+  app: path.join(LOG_DIR, 'app.log'),
+  error: path.join(LOG_DIR, 'error.log'),
+} as const;
+type LogTarget = keyof typeof LOG_FILES;
+
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
 
 function formatTimestamp(): string {
@@ -20,9 +27,10 @@ function formatTimestamp(): string {
 }
 
 /** 로그 한 줄을 파일에 append */
-function writeToFile(filename: string, message: string): void {
+function writeToFile(target: LogTarget, message: string): void {
   try {
-    const filePath = path.join(LOG_DIR, filename);
+    // 고정된 경로 상수만 사용 (외부 입력이 경로에 들어가지 않음)
+    const filePath = LOG_FILES[target];
 
     // 간단한 로테이션: 파일이 10MB 초과 시 .old로 교체
     try {
@@ -62,9 +70,9 @@ function log(level: LogLevel, category: string, message: string, meta?: Record<s
   }
 
   // 파일 기록
-  writeToFile('app.log', line);
+  writeToFile('app', line);
   if (level === 'ERROR') {
-    writeToFile('error.log', line);
+    writeToFile('error', line);
   }
 }
 
