@@ -29,6 +29,18 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return res.status(err.statusCode).json({ error: err.message });
   }
 
+  // 잘못된 입력값(타입 불일치 등) — Prisma 검증 에러 → 400
+  if (err.name === 'PrismaClientValidationError') {
+    logger.warn('PrismaValidation', err.message, meta);
+    return res.status(400).json({ error: '입력값 형식이 올바르지 않습니다.' });
+  }
+
+  // 파일 업로드 에러(용량 초과 등) → 400
+  if (err.name === 'MulterError') {
+    logger.warn('MulterError', err.message, meta);
+    return res.status(400).json({ error: `파일 업로드 오류: ${err.message}` });
+  }
+
   // Prisma 에러 처리
   if (err.name === 'PrismaClientKnownRequestError') {
     logger.error('PrismaError', err.message, { ...meta, code: (err as any).code });
