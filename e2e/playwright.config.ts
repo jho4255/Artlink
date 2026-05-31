@@ -24,5 +24,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
+    // 데스크톱 뷰포트 검증 (반응형-무관 핵심 스모크만 — 전체 중복 실행 방지)
+    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] }, testMatch: /00-smoke\.spec\.ts/ },
   ],
 });

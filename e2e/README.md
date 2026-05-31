@@ -30,17 +30,26 @@ npx playwright test tests/01-messaging.spec.ts   # 특정 파일만
 - 테스트는 `lib/helpers.ts`의 `openAs(browser, role)`로 역할별 컨텍스트를 동시에 열어 **유저 간 상호작용**을 재현.
 - 모바일 뷰포트(Pixel 7), workers=1(공유 DB 안정성), 실패 시 trace/screenshot/video 저장.
 
-## 시나리오 (총 18개, 전부 통과)
-- `00-smoke` — 3역할 세션 + 보호라우트 리다이렉트 (4)
-- `01-messaging` — 갤러리↔지원자 **6턴 왕복**(누적·순서·읽음상태) (1)
-- `02-favorites-reliability` — 찜 **3라운드** cross-cache 일관성 + 5연타 멱등성 (2)
-- `03-application-status-notification` — 상태 단계변경 → 알림 누적 + 배지 갱신 + **역행 차단** (1)
-- `04-report-moderation` — 신고 → 관리자 제재 → 작가·갤러리 양쪽 마스킹 (3유저) (1)
-- `05-reliability` — 새로고침 유지 · 위조토큰 401→로그인 · **네트워크 단절→복구** (3)
-- `06-tier3-edge` — 정원초과 차단(미구현 갭, test.fail) · 권한 매트릭스 (3)
-- `07-registration-approval` — 갤러리 등록폼 → 승인/거절 UI → 공개노출/사유전달 + 폼검증 (3)
-
-> 정원초과(06-tier3) 1건은 `test.fail`로 **알려진 갭** 표시 — 백엔드가 정원을 안 막음(docs/known-issues.md KI-2). 고치면 자동으로 초록불 전환.
+## 시나리오 (총 35 통과 + 1 보류, 모바일 전체 + 데스크톱 스모크)
+- `00-smoke` — 3역할 세션 + 보호라우트 (모바일·데스크톱 양쪽)
+- `01-messaging` — 갤러리↔지원자 **6턴 왕복**(누적·순서·읽음)
+- `02-favorites-reliability` — 찜 3라운드 cross-cache + 5연타 멱등성
+- `03-application-status-notification` — 상태 단계변경→알림 누적→배지→역행 차단
+- `04-report-moderation` — 신고→관리자 제재→양쪽 마스킹(3유저)
+- `05-reliability` — 새로고침 유지 · 위조토큰 401→로그인 · 네트워크 단절→복구
+- `06-tier3-edge` — 정원초과 차단(KI-2 수정 후 통과) · 권한 매트릭스
+- `07-registration-approval` — 갤러리 등록폼→승인/거절 UI→공개/사유 + 폼검증
+- `08-concurrency` — 정원1 동시지원 6건→1건만(레이스 없음)
+- `09-search-filter` — 지역/별점 필터
+- `10-portfolio` — 약력/이력 수정→새로고침 유지
+- `11-explore` — 포트폴리오 공개토글→탐색 노출+좋아요
+- `12-support` — FAQ 아코디언 + 1:1문의→답변→확인
+- `13-admin-content` — 히어로/혜택 생성→공개화면 노출
+- `14-show-lifecycle` — 전시 등록→승인→노출+작가파싱
+- `15-exhibition-registration` — 공모 등록 4날짜 폼→승인→노출
+- `16-review` — 수락 작가 리뷰 작성(별점)→노출+별점 반영
+- `17-apply-modal` — 커스텀필드 공모 지원 모달 입력→지원
+- `18-attachments` — 첨부 전송(UI 자동화 보류 `test.fixme`; 기능은 감사 API로 검증)
 
 ## 발견된 버그
 → `docs/known-issues.md` 에 누적 (테스트로 발견한 것 포함). 일괄 수정 예정.
