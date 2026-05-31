@@ -7,8 +7,7 @@ const API = 'http://localhost:4000/api';
  * Tier3 엣지: 정원 초과 지원(알려진 갭) + 권한 매트릭스(UI 레벨).
  */
 
-test('정원(capacity) 초과 지원이 서버에서 차단되어야 함 — 현재 미구현(알려진 갭)', async () => {
-  test.fail(); // 현재 백엔드는 정원 초과를 막지 않음 → 이 테스트는 의도적으로 실패 표시(구현되면 알림)
+test('정원(capacity) 초과 지원은 서버에서 차단된다 (KI-2 수정)', async () => {
   const api = await pwRequest.newContext();
   const gTok = tokenFor('gallery'); const adminTok = tokenFor('admin');
   const aTok = tokenFor('artist'); const a2Tok = tokenFor('artist2');

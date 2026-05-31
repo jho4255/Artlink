@@ -159,26 +159,29 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
       throw new AppError('거절 시 사유를 작성해야 합니다.', 400);
     }
 
-    const request = await prisma.approvalRequest.update({
-      where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason }
-    });
+    const reqId = parseInt(req.params.id as string);
+    const existingReq = await prisma.approvalRequest.findUnique({ where: { id: reqId } });
+    if (!existingReq) throw new AppError('수정 요청을 찾을 수 없습니다.', 404);
 
-    // 승인 시 변경사항 적용
+    // 승인 시: 대상이 살아있는지 먼저 확인하고 변경 적용 (없으면 친절한 404, 상태도 바꾸지 않음)
     if (status === 'APPROVED') {
-      const changes = JSON.parse(request.changes);
-      if (request.type === 'GALLERY_EDIT') {
-        await prisma.gallery.update({
-          where: { id: request.targetId },
-          data: changes
-        });
-      } else if (request.type === 'EXHIBITION_EDIT') {
-        await prisma.exhibition.update({
-          where: { id: request.targetId },
-          data: changes
-        });
+      const changes = JSON.parse(existingReq.changes);
+      if (existingReq.type === 'GALLERY_EDIT') {
+        const target = await prisma.gallery.findUnique({ where: { id: existingReq.targetId } });
+        if (!target) throw new AppError('수정 대상 갤러리를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
+        await prisma.gallery.update({ where: { id: existingReq.targetId }, data: changes });
+      } else if (existingReq.type === 'EXHIBITION_EDIT') {
+        const target = await prisma.exhibition.findUnique({ where: { id: existingReq.targetId } });
+        if (!target) throw new AppError('수정 대상 공모를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
+        await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: changes });
       }
     }
+
+    // 대상 변경이 성공한 뒤에야 요청 상태를 갱신
+    const request = await prisma.approvalRequest.update({
+      where: { id: reqId },
+      data: { status, rejectReason }
+    });
 
     res.json(request);
   } catch (error) { next(error); }
