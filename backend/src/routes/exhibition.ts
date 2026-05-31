@@ -227,6 +227,12 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
     if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
 
+    // 모집 정원 마감 확인 (현재 지원자 수가 정원 이상이면 차단)
+    const applicantCount = await prisma.application.count({ where: { exhibitionId } });
+    if (applicantCount >= exhibitionData.capacity) {
+      throw new AppError('모집 인원이 마감되었습니다.', 400);
+    }
+
     const fields = parseCustomFields(exhibitionData.customFields);
     if (fields && fields.length > 0) {
       const requiredIds = fields.filter((f: any) => f.required).map((f: any) => f.id);
