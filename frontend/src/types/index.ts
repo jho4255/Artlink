@@ -3,6 +3,7 @@
 export interface User {
   id: number;
   name: string;
+  nickname?: string | null;
   email: string;
   role: 'ARTIST' | 'GALLERY' | 'ADMIN';
   avatar?: string;
@@ -100,7 +101,7 @@ export interface Review {
   anonymous: boolean;
   userId: number;
   galleryId: number;
-  user: Pick<User, 'id' | 'name' | 'avatar'>;
+  user: Pick<User, 'id' | 'name' | 'nickname' | 'avatar'>;
   exhibition?: { id: number; title: string } | null;
   createdAt: string;
 }
@@ -148,7 +149,7 @@ export interface Portfolio {
 export interface ExploreImage {
   id: number;
   url: string;
-  artist: { id: number; name: string; avatar?: string };
+  artist: { id: number; name: string; nickname?: string | null; avatar?: string };
   likeCount: number;
   isLiked: boolean;
 }
@@ -165,7 +166,7 @@ export interface PublicPortfolio {
   biography?: string | null;
   exhibitionHistory?: string | null;
   images: PortfolioImage[];
-  user: { id: number; name: string; avatar?: string };
+  user: { id: number; name: string; nickname?: string | null; avatar?: string };
 }
 
 export interface Show {
@@ -209,9 +210,9 @@ export interface Message {
   content: string;
   read: boolean;
   senderId: number;
-  sender: { id: number; name: string; role: string };
+  sender: { id: number; name: string; nickname?: string | null; role: string };
   receiverId: number;
-  receiver: { id: number; name: string; role: string };
+  receiver: { id: number; name: string; nickname?: string | null; role: string };
   exhibitionId?: number | null;
   exhibition?: { id: number; title: string } | null;
   attachments?: string | null;

@@ -6,6 +6,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// 공개 표시명: 닉네임이 있으면 닉네임, 없으면 이름
+export function displayName(user?: { name?: string | null; nickname?: string | null } | null): string {
+  if (!user) return '';
+  return (user.nickname && user.nickname.trim()) || user.name || '';
+}
+
 // D-day 계산
 export function getDday(deadline: string | Date): number {
   const now = new Date();

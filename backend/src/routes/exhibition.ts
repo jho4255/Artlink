@@ -381,7 +381,7 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
       include: {
         user: {
           select: {
-            id: true, name: true, email: true, avatar: true,
+            id: true, name: true, nickname: true, email: true, avatar: true,
             portfolio: {
               include: { images: { orderBy: { order: 'asc' }, take: 10 } }
             }

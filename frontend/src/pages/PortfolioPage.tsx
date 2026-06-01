@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
 import api from '@/lib/axios';
+import { displayName } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import type { PublicPortfolio } from '@/types';
 
@@ -53,14 +54,14 @@ export default function PortfolioPage() {
       {/* 작가 프로필 */}
       <div className="flex items-center gap-4 mb-8">
         {portfolio.user.avatar ? (
-          <img src={portfolio.user.avatar} alt={portfolio.user.name} className="w-16 h-16 rounded-full object-cover" />
+          <img src={portfolio.user.avatar} alt={displayName(portfolio.user)} className="w-16 h-16 rounded-full object-cover" />
         ) : (
           <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
             <User size={24} className="text-gray-400" />
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-medium">{portfolio.user.name}</h1>
+          <h1 className="text-2xl font-medium">{displayName(portfolio.user)}</h1>
           <p className="text-sm text-gray-500">아티스트 포트폴리오</p>
         </div>
       </div>

@@ -12,6 +12,7 @@ model User {
   id         Int      @id @default(autoincrement())
   email      String   @unique
   name       String
+  nickname   String?  @unique  // 공개 표시명 (설정 시 이름 대신 노출), 중복 불가
   role       String   // ARTIST, GALLERY, ADMIN
   avatar     String?
   phone      String?  // 가입 시 입력받는 연락처 (기존 유저는 null 허용)

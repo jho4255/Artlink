@@ -15,8 +15,8 @@ function generateToken(user: { id: number; role: string }) {
   return jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null }) {
-  return { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar };
+function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null; nickname?: string | null }) {
+  return { id: user.id, name: user.name, nickname: user.nickname ?? null, email: user.email, role: user.role, avatar: user.avatar };
 }
 
 // ========== 카카오 OAuth ==========
@@ -183,7 +183,7 @@ router.get('/me', authenticate, async (req, res, next) => {
     // avatar 포함해 최신 사용자 정보 반환 (authenticate가 채우는 req.user엔 avatar가 없음)
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, name: true, email: true, role: true, avatar: true },
+      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true },
     });
     res.json({ user });
   } catch (error) { next(error); }
@@ -196,6 +196,36 @@ router.put('/me/avatar', authenticate, async (req, res, next) => {
       where: { id: req.user!.id },
       data: { avatar },
       select: { id: true, name: true, email: true, role: true, avatar: true },
+    });
+    res.json(user);
+  } catch (error) { next(error); }
+});
+
+// 닉네임 중복 확인
+router.get('/nickname-check', authenticate, async (req, res, next) => {
+  try {
+    const nickname = ((req.query.nickname as string) || '').trim();
+    if (nickname.length < 2 || nickname.length > 20) {
+      return res.json({ available: false, reason: '닉네임은 2~20자로 입력해주세요.' });
+    }
+    const existing = await prisma.user.findUnique({ where: { nickname } });
+    res.json({ available: !existing || existing.id === req.user!.id });
+  } catch (error) { next(error); }
+});
+
+// 닉네임 설정/변경 (중복 불가)
+const nicknameSchema = z.object({
+  nickname: z.string().trim().min(2, '닉네임은 2자 이상이어야 합니다.').max(20, '닉네임은 20자 이내여야 합니다.'),
+});
+router.put('/me/nickname', authenticate, validate(nicknameSchema), async (req, res, next) => {
+  try {
+    const nickname = (req.body.nickname as string).trim();
+    const existing = await prisma.user.findUnique({ where: { nickname } });
+    if (existing && existing.id !== req.user!.id) throw new AppError('이미 사용 중인 닉네임입니다.', 409);
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { nickname },
+      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true },
     });
     res.json(user);
   } catch (error) { next(error); }

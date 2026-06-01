@@ -6,6 +6,7 @@ import { Heart, X, User, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { displayName } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import type { ExploreImage } from '@/types';
 
@@ -216,7 +217,7 @@ function ImageDetailModal({ image, onClose, onUpdate }: ImageDetailModalProps) {
                 </div>
               )}
               <span className="text-sm font-medium text-gray-900 hover:underline">
-                {image.artist.name}
+                {displayName(image.artist)}
               </span>
             </button>
 

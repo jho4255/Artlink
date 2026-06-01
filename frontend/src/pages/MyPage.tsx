@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -144,9 +144,9 @@ function ProfileCard() {
         <div className="relative group">
           <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
             {user?.avatar ? (
-              <img src={user.avatar} alt={`${user?.name ?? ''} 프로필 사진`} className="w-full h-full object-cover" />
+              <img src={user.avatar} alt={`${displayName(user)} 프로필 사진`} className="w-full h-full object-cover" />
             ) : (
-              user?.name?.charAt(0)
+              displayName(user).charAt(0)
             )}
           </div>
           <button
@@ -170,7 +170,8 @@ function ProfileCard() {
           />
         </div>
         <div>
-          <h2 className="text-xl font-semibold">{user?.name}</h2>
+          <h2 className="text-xl font-semibold">{displayName(user)}</h2>
+          {user?.nickname && <p className="text-xs text-gray-400">{user.name}</p>}
           <p className="text-sm text-gray-500">{user?.email}</p>
           <span className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${roleBadgeClass}`}>{user?.role}</span>
         </div>
@@ -181,9 +182,94 @@ function ProfileCard() {
 
 // ========== 프로필 섹션 ==========
 function ProfileSection() {
+  const { user, updateUser } = useAuthStore();
+  const [nickname, setNickname] = useState(user?.nickname ?? '');
+  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ available: boolean; reason?: string } | null>(null);
+
+  const trimmed = nickname.trim();
+  const unchanged = trimmed === (user?.nickname ?? '');
+  const validLength = trimmed.length >= 2 && trimmed.length <= 20;
+
+  const handleCheck = async () => {
+    if (!validLength) {
+      setCheckResult({ available: false, reason: '닉네임은 2~20자로 입력해주세요.' });
+      return;
+    }
+    setChecking(true);
+    try {
+      const res = await api.get('/auth/nickname-check', { params: { nickname: trimmed } });
+      setCheckResult(res.data);
+    } catch {
+      toast.error('중복 확인에 실패했습니다.');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!validLength) {
+      toast.error('닉네임은 2~20자로 입력해주세요.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.put('/auth/me/nickname', { nickname: trimmed });
+      updateUser({ nickname: res.data.nickname });
+      setCheckResult(null);
+      toast.success('닉네임이 저장되었습니다.');
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setCheckResult({ available: false, reason: '이미 사용 중인 닉네임입니다.' });
+        toast.error('이미 사용 중인 닉네임입니다.');
+      } else {
+        toast.error(err?.response?.data?.message || '닉네임 저장에 실패했습니다.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="text-center py-8 text-gray-500">
-      <p>프로필 카드 위 사진을 클릭하여 프로필 사진을 변경할 수 있습니다.</p>
+    <div className="max-w-md space-y-6 py-2">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">닉네임</label>
+        <p className="text-xs text-gray-400 mb-2">다른 사용자에게는 이름 대신 닉네임이 표시됩니다. (2~20자, 중복 불가)</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => { setNickname(e.target.value); setCheckResult(null); }}
+            maxLength={20}
+            placeholder="닉네임을 입력하세요"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+          />
+          <button
+            onClick={handleCheck}
+            disabled={checking || !validLength || unchanged}
+            className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            중복확인
+          </button>
+        </div>
+        {checkResult && (
+          <p className={`text-xs mt-1.5 ${checkResult.available ? 'text-green-600' : 'text-red-500'}`}>
+            {checkResult.available ? '사용 가능한 닉네임입니다.' : (checkResult.reason || '이미 사용 중인 닉네임입니다.')}
+          </p>
+        )}
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={saving || !validLength || unchanged}
+        className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {saving ? '저장 중...' : '닉네임 저장'}
+      </button>
+
+      <div className="pt-4 border-t border-gray-100 text-sm text-gray-500">
+        <p>프로필 카드 위 사진을 클릭하여 프로필 사진을 변경할 수 있습니다.</p>
+      </div>
     </div>
   );
 }

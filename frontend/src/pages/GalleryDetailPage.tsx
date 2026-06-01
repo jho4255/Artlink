@@ -33,7 +33,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, displayName } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -312,12 +312,12 @@ export default function GalleryDetailPage() {
   const getReviewerName = (review: Review) => {
     if (review.anonymous) {
       if (isAdmin || review.userId === user?.id) {
-        return `${review.user.name} (익명)`;
+        return `${displayName(review.user)} (익명)`;
       }
       anonCounter++;
       return `익명의 예술가 ${anonCounter}`;
     }
-    return review.user.name;
+    return displayName(review.user);
   };
 
   return (

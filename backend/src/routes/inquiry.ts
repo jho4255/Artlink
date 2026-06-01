@@ -89,7 +89,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
     const inquiries = await prisma.inquiry.findMany({
       where,
-      include: { user: { select: { id: true, name: true, role: true } } },
+      include: { user: { select: { id: true, name: true, nickname: true, role: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(inquiries);
@@ -103,7 +103,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
   try {
     const inquiry = await prisma.inquiry.findUnique({
       where: { id: Number(req.params.id) },
-      include: { user: { select: { id: true, name: true, role: true } } },
+      include: { user: { select: { id: true, name: true, nickname: true, role: true } } },
     });
     if (!inquiry) throw new AppError('문의를 찾을 수 없습니다.', 404);
     if (req.user!.role !== 'ADMIN' && inquiry.userId !== req.user!.id) {

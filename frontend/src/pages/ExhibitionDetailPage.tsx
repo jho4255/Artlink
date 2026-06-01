@@ -27,7 +27,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, displayName } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import type { Exhibition, PromoPhoto, CustomField, CustomAnswer } from '@/types';
@@ -750,7 +750,7 @@ export default function ExhibitionDetailPage() {
                                       className="text-sm font-medium text-gray-900 hover:underline cursor-pointer"
                                       onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
                                     >
-                                      {app.user?.name}
+                                      {displayName(app.user)}
                                     </span>
                                     <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
                                   </div>

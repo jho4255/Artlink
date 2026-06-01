@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { cn, getDday, regionLabels, exhibitionTypeLabels, validateExhibitionDates } from '../utils';
+import { cn, getDday, regionLabels, exhibitionTypeLabels, validateExhibitionDates, displayName } from '../utils';
+
+describe('displayName (공개 표시명)', () => {
+  it('닉네임이 있으면 닉네임 반환', () => {
+    expect(displayName({ name: '홍길동', nickname: '길동이' })).toBe('길동이');
+  });
+  it('닉네임이 없으면 이름 반환', () => {
+    expect(displayName({ name: '홍길동', nickname: null })).toBe('홍길동');
+    expect(displayName({ name: '홍길동' })).toBe('홍길동');
+  });
+  it('닉네임이 공백뿐이면 이름 반환', () => {
+    expect(displayName({ name: '홍길동', nickname: '   ' })).toBe('홍길동');
+  });
+  it('user가 없으면 빈 문자열', () => {
+    expect(displayName(null)).toBe('');
+    expect(displayName(undefined)).toBe('');
+  });
+});
 
 describe('cn (클래스 병합)', () => {
   it('단일 클래스', () => {

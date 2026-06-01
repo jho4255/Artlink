@@ -13,7 +13,7 @@ router.get('/search', authenticate, authorize('GALLERY'), async (req, res, next)
 
     const users = await prisma.user.findMany({
       where: { role: 'ARTIST', name: { contains: q, mode: 'insensitive' } },
-      select: { id: true, name: true, avatar: true },
+      select: { id: true, name: true, nickname: true, avatar: true },
       take: 10,
     });
     res.json(users);
@@ -28,7 +28,7 @@ router.get('/:userId', async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, avatar: true, role: true },
+      select: { id: true, name: true, nickname: true, avatar: true, role: true },
     });
     if (!user || user.role !== 'ARTIST') {
       throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);

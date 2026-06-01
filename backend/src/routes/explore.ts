@@ -21,7 +21,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         include: {
           portfolio: {
             include: {
-              user: { select: { id: true, name: true, avatar: true } },
+              user: { select: { id: true, name: true, nickname: true, avatar: true } },
             },
           },
           _count: { select: { likes: true } },
@@ -109,7 +109,7 @@ router.get('/:imageId/likes', optionalAuth, async (req, res, next) => {
     if (isOwner) {
       const likers = await prisma.portfolioImageLike.findMany({
         where: { imageId },
-        include: { user: { select: { id: true, name: true, avatar: true } } },
+        include: { user: { select: { id: true, name: true, nickname: true, avatar: true } } },
         orderBy: { createdAt: 'desc' },
       });
       res.json({ likeCount, likers: likers.map(l => l.user) });

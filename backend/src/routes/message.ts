@@ -35,7 +35,7 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
       // Artist: 승인된 모든 갤러리 오너 목록 (지원 전에도 쪽지 가능)
       const galleries = await prisma.gallery.findMany({
         where: { status: 'APPROVED' },
-        include: { owner: { select: { id: true, name: true, role: true } } },
+        include: { owner: { select: { id: true, name: true, nickname: true, role: true } } },
       });
       const recipientMap = new Map<number, { userId: number; userName: string; galleryName: string; galleryId: number }>();
       for (const g of galleries) {
@@ -52,7 +52,7 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
           id: true, title: true,
           gallery: { select: { name: true } },
           applications: {
-            select: { user: { select: { id: true, name: true, avatar: true } } },
+            select: { user: { select: { id: true, name: true, nickname: true, avatar: true } } },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -65,7 +65,7 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
           galleryName: ex.gallery.name,
           applicants: ex.applications.map(a => ({
             userId: a.user.id,
-            name: a.user.name,
+            name: a.user.nickname || a.user.name,
             avatar: a.user.avatar,
           })),
         }));
@@ -83,8 +83,8 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
     const messages = await prisma.message.findMany({
       where: { OR: [{ senderId: myId }, { receiverId: myId }] },
       include: {
-        sender: { select: { id: true, name: true, role: true, avatar: true } },
-        receiver: { select: { id: true, name: true, role: true, avatar: true } },
+        sender: { select: { id: true, name: true, nickname: true, role: true, avatar: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true, avatar: true } },
         exhibition: { select: { id: true, title: true, gallery: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
@@ -116,7 +116,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         const partner = m.senderId === myId ? m.receiver : m.sender;
         const ownerGallery = galleryByOwner.get(partner.id);
         const galleryId = m.exhibition?.gallery?.id ?? ownerGallery?.id ?? -partner.id;
-        const galleryName = m.exhibition?.gallery?.name ?? ownerGallery?.name ?? partner.name;
+        const galleryName = m.exhibition?.gallery?.name ?? ownerGallery?.name ?? (partner as any).nickname ?? partner.name;
         const exId = m.exhibitionId ?? 0;
         const exTitle = m.exhibition?.title ?? '일반 문의';
 
@@ -165,7 +165,7 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
         }
         if (!groups[key].partners[partner.id]) {
           groups[key].partners[partner.id] = {
-            partner: { id: partner.id, name: partner.name, role: partner.role, avatar: (partner as any).avatar || null },
+            partner: { id: partner.id, name: (partner as any).nickname || partner.name, role: partner.role, avatar: (partner as any).avatar || null },
             lastMessage: m,
             unreadCount: 0,
           };
@@ -205,8 +205,8 @@ router.get('/thread/:userId', authenticate, authorize('ARTIST', 'GALLERY'), asyn
     const messagesRaw = await prisma.message.findMany({
       where: whereClause,
       include: {
-        sender: { select: { id: true, name: true, role: true } },
-        receiver: { select: { id: true, name: true, role: true } },
+        sender: { select: { id: true, name: true, nickname: true, role: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true } },
         exhibition: { select: { id: true, title: true } },
         reports: { select: { reporterId: true, status: true } },
       },
@@ -235,9 +235,9 @@ router.get('/thread/:userId', authenticate, authorize('ARTIST', 'GALLERY'), asyn
 
     const partnerUser = await prisma.user.findUnique({
       where: { id: partnerId },
-      select: { id: true, name: true, role: true, avatar: true },
+      select: { id: true, name: true, nickname: true, role: true, avatar: true },
     });
-    res.json({ partner: partnerUser, messages });
+    res.json({ partner: partnerUser ? { ...partnerUser, name: partnerUser.nickname || partnerUser.name } : null, messages });
   } catch (error) { next(error); }
 });
 
@@ -252,8 +252,8 @@ router.get('/', authenticate, authorize('ARTIST', 'GALLERY'), async (req, res, n
     const messages = await prisma.message.findMany({
       where,
       include: {
-        sender: { select: { id: true, name: true, role: true } },
-        receiver: { select: { id: true, name: true, role: true } },
+        sender: { select: { id: true, name: true, nickname: true, role: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true } },
         exhibition: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -272,8 +272,8 @@ router.get('/:id', authenticate, authorize('ARTIST', 'GALLERY'), async (req, res
     const message = await prisma.message.findUnique({
       where: { id: messageId },
       include: {
-        sender: { select: { id: true, name: true, role: true } },
-        receiver: { select: { id: true, name: true, role: true } },
+        sender: { select: { id: true, name: true, nickname: true, role: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true } },
         exhibition: { select: { id: true, title: true } },
       },
     });
@@ -333,8 +333,8 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
         attachments: attachments ? JSON.stringify(attachments) : null,
       },
       include: {
-        sender: { select: { id: true, name: true, role: true } },
-        receiver: { select: { id: true, name: true, role: true } },
+        sender: { select: { id: true, name: true, nickname: true, role: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true } },
         exhibition: { select: { id: true, title: true } },
       },
     });

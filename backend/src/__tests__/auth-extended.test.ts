@@ -77,6 +77,69 @@ describe('Auth & Authorization', () => {
     });
   });
 
+  // ===== 닉네임 (설정/중복확인) =====
+  describe('닉네임', () => {
+    it('PUT /me/nickname → 닉네임 설정 성공', async () => {
+      const token = authToken(1, 'ARTIST');
+      const res = await request.put('/api/auth/me/nickname')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ nickname: '아티스트닉' });
+      expect(res.status).toBe(200);
+      expect(res.body.nickname).toBe('아티스트닉');
+    });
+
+    it('GET /me는 nickname 포함', async () => {
+      const token = authToken(1, 'ARTIST');
+      await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${token}`).send({ nickname: '닉네임확인' });
+      const res = await request.get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      expect(res.body.user.nickname).toBe('닉네임확인');
+    });
+
+    it('다른 유저가 동일 닉네임 설정 → 409', async () => {
+      const t1 = authToken(1, 'ARTIST');
+      const t2 = authToken(2, 'GALLERY');
+      await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${t1}`).send({ nickname: '중복닉네임' });
+      const res = await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${t2}`).send({ nickname: '중복닉네임' });
+      expect(res.status).toBe(409);
+    });
+
+    it('본인이 동일 닉네임 재저장 → 200 (멱등)', async () => {
+      const token = authToken(1, 'ARTIST');
+      await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${token}`).send({ nickname: '내닉네임' });
+      const res = await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${token}`).send({ nickname: '내닉네임' });
+      expect(res.status).toBe(200);
+      expect(res.body.nickname).toBe('내닉네임');
+    });
+
+    it('2자 미만 → 400 (validation)', async () => {
+      const token = authToken(1, 'ARTIST');
+      const res = await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${token}`).send({ nickname: 'a' });
+      expect(res.status).toBe(400);
+    });
+
+    it('GET /nickname-check → 미사용 닉네임 available:true', async () => {
+      const token = authToken(1, 'ARTIST');
+      const res = await request.get('/api/auth/nickname-check').query({ nickname: '안쓰는닉' }).set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(true);
+    });
+
+    it('GET /nickname-check → 타인이 쓰는 닉네임 available:false', async () => {
+      const t1 = authToken(1, 'ARTIST');
+      const t2 = authToken(2, 'GALLERY');
+      await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${t1}`).send({ nickname: '점유된닉' });
+      const res = await request.get('/api/auth/nickname-check').query({ nickname: '점유된닉' }).set('Authorization', `Bearer ${t2}`);
+      expect(res.body.available).toBe(false);
+    });
+
+    it('GET /nickname-check → 본인이 쓰는 닉네임 available:true', async () => {
+      const token = authToken(1, 'ARTIST');
+      await request.put('/api/auth/me/nickname').set('Authorization', `Bearer ${token}`).send({ nickname: '내것닉' });
+      const res = await request.get('/api/auth/nickname-check').query({ nickname: '내것닉' }).set('Authorization', `Bearer ${token}`);
+      expect(res.body.available).toBe(true);
+    });
+  });
+
   // ===== authorize 미들웨어 (역할 기반 접근 제어) =====
   describe('Role-based access control', () => {
     // Gallery 등록은 GALLERY 역할만 가능
