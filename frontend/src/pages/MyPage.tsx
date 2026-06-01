@@ -2808,9 +2808,9 @@ function UserManageSection() {
                 </div>
                 <select
                   value={u.role}
-                  disabled={isMe || roleMutation.isPending}
+                  disabled={isMe || u.role === 'ADMIN' || roleMutation.isPending}
                   onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
-                  title={isMe ? '본인 역할은 변경할 수 없습니다' : '역할 변경'}
+                  title={isMe ? '본인 역할은 변경할 수 없습니다' : u.role === 'ADMIN' ? '관리자 계정은 강등/변경할 수 없습니다' : '역할 변경'}
                   className="text-sm px-2 py-1.5 border border-gray-200 rounded-lg flex-none disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="ARTIST">아티스트</option>
@@ -2824,7 +2824,7 @@ function UserManageSection() {
       )}
 
       <p className="text-xs text-gray-400 mt-4">
-        ※ 본인 계정 역할은 안전을 위해 변경할 수 없습니다. 변경은 즉시 적용되며, 대상자는 다음 로그인 시 반영됩니다.
+        ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 변경은 즉시 적용되며, 대상자는 다음 로그인 시 반영됩니다.
       </p>
     </div>
   );

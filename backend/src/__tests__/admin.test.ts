@@ -48,6 +48,16 @@ describe('Admin 사용자 관리', () => {
         .set('Authorization', `Bearer ${ADMIN()}`).send({ role: 'ARTIST' });
       expect(res.status).toBe(400);
     });
+    it('다른 관리자 강등/변경 시도 → 403 (관리자 보호)', async () => {
+      // user 1을 ADMIN으로 승격
+      await request.patch('/api/admin/users/1/role').set('Authorization', `Bearer ${ADMIN()}`).send({ role: 'ADMIN' });
+      // 다른 관리자(id 4)가 admin이 된 user 1을 강등 시도 → 차단
+      const res = await request.patch('/api/admin/users/1/role')
+        .set('Authorization', `Bearer ${ADMIN()}`).send({ role: 'ARTIST' });
+      expect(res.status).toBe(403);
+      const u = await testPrisma.user.findUnique({ where: { id: 1 } });
+      expect(u?.role).toBe('ADMIN'); // 여전히 ADMIN
+    });
     it('유효하지 않은 역할 → 400', async () => {
       const res = await request.patch('/api/admin/users/1/role')
         .set('Authorization', `Bearer ${ADMIN()}`).send({ role: 'SUPERUSER' });

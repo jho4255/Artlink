@@ -43,6 +43,8 @@ router.patch('/users/:id/role', authenticate, authorize('ADMIN'), async (req, re
 
     const target = await prisma.user.findUnique({ where: { id } });
     if (!target) throw new AppError('사용자를 찾을 수 없습니다.', 404);
+    // 관리자 계정은 다른 관리자가 강등/변경할 수 없음 (관리자 보호)
+    if (target.role === 'ADMIN') throw new AppError('관리자 계정의 역할은 변경할 수 없습니다.', 403);
 
     const updated = await prisma.user.update({
       where: { id },
