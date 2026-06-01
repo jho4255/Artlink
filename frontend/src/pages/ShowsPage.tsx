@@ -160,11 +160,13 @@ export default function ShowsPage() {
                 onClick={() => navigate(`/shows/${show.id}`)}
                 className="group cursor-pointer"
               >
-                <div className="overflow-hidden">
+                <div className="relative aspect-[3/4] overflow-hidden">
+                  {/* 카드 크기는 3:4 고정, 이미지는 원본 비율 유지(contain). 여백은 블러로 채움 */}
+                  <img src={show.posterImage} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" />
                   <img
                     src={show.posterImage}
                     alt={show.title}
-                    className="w-full aspect-[3/4] object-cover group-hover:opacity-80 transition-opacity duration-300"
+                    className="absolute inset-0 w-full h-full object-contain group-hover:opacity-80 transition-opacity duration-300"
                   />
                 </div>
 
