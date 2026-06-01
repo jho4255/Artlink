@@ -17,6 +17,7 @@ import ExplorePage from '@/pages/ExplorePage';
 import MessagesPage from '@/pages/MessagesPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
+import PrivacyPage from '@/pages/PrivacyPage';
 
 export default function App() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/support" element={
           <ProtectedRoute><SupportPage /></ProtectedRoute>
         } />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

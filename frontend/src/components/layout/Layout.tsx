@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
@@ -37,6 +37,9 @@ export default function Layout() {
           ) : (
             <p className="text-[11px] text-gray-300">&copy; 2026 ArtLink. All rights reserved.</p>
           )}
+          <div className="mt-2">
+            <Link to="/privacy" className="text-[11px] text-gray-300 hover:text-gray-500">개인정보처리방침</Link>
+          </div>
         </div>
       </footer>
     </div>
