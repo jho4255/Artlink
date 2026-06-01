@@ -10,6 +10,7 @@
     "reseed": "cd ../backend && npx prisma migrate reset --force --skip-seed && npx tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0"
+    "@playwright/test": "^1.49.0",
+    "jsonwebtoken": "^9.0.2"
   }
 }

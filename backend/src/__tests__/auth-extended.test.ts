@@ -10,30 +10,7 @@ describe('Auth & Authorization', () => {
     await seedUsers();
   });
 
-  // ===== POST /auth/dev-login =====
-  describe('POST /api/auth/dev-login', () => {
-    it('유효한 userId로 로그인 → JWT + 유저 정보 반환', async () => {
-      const res = await request.post('/api/auth/dev-login').send({ userId: 1 });
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('token');
-      expect(res.body.user).toMatchObject({ id: 1, role: 'ARTIST', email: 'artist1@test.com' });
-      // 토큰 디코딩 검증
-      const decoded = jwt.verify(res.body.token, JWT_SECRET) as any;
-      expect(decoded.userId).toBe(1);
-      expect(decoded.role).toBe('ARTIST');
-    });
-
-    it('존재하지 않는 userId → 404', async () => {
-      const res = await request.post('/api/auth/dev-login').send({ userId: 9999 });
-      expect(res.status).toBe(404);
-    });
-
-    it('userId 미전송 → 404 (null user)', async () => {
-      const res = await request.post('/api/auth/dev-login').send({});
-      // userId undefined → findUnique fails
-      expect(res.status).toBeGreaterThanOrEqual(400);
-    });
-  });
+  // (dev-login 제거됨 — 카카오 OAuth로 전환)
 
   // ===== GET /auth/me =====
   describe('GET /api/auth/me', () => {
@@ -80,18 +57,7 @@ describe('Auth & Authorization', () => {
     });
   });
 
-  // ===== GET /auth/dev-users =====
-  describe('GET /api/auth/dev-users', () => {
-    it('전체 유저 목록 반환 (인증 불필요)', async () => {
-      const res = await request.get('/api/auth/dev-users');
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(4);
-      // avatar, password 등 민감 필드 미노출 확인
-      expect(res.body[0]).toHaveProperty('id');
-      expect(res.body[0]).toHaveProperty('name');
-      expect(res.body[0]).toHaveProperty('role');
-    });
-  });
+  // (dev-users 제거됨)
 
   // ===== PUT /auth/me/avatar =====
   describe('PUT /api/auth/me/avatar', () => {

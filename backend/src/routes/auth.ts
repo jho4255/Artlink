@@ -201,24 +201,6 @@ router.put('/me/avatar', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 개발용 퀵 로그인 (임시 — 실제 인증 도입 시 제거)
-router.post('/dev-login', async (req, res, next) => {
-  try {
-    const { userId } = req.body;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new AppError('사용자를 찾을 수 없습니다.', 404);
-    const token = generateToken(user);
-    res.json({ token, user: safeUser(user) });
-  } catch (error) { next(error); }
-});
-
-router.get('/dev-users', async (_req, res, next) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true, avatar: true },
-    });
-    res.json(users);
-  } catch (error) { next(error); }
-});
+// (dev-login/dev-users 제거됨 — 카카오 OAuth 정식 로그인으로 전환, KI-1 해소)
 
 export default router;

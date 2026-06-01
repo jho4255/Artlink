@@ -18,7 +18,7 @@ describe('Error Handler Middleware', () => {
 
   // 유효하지 않은 JSON body
   it('잘못된 JSON body — 400 반환', async () => {
-    const res = await request.post('/api/auth/dev-login')
+    const res = await request.post('/api/auth/login')
       .set('Content-Type', 'application/json')
       .send('invalid json{');
     expect(res.status).toBeGreaterThanOrEqual(400);

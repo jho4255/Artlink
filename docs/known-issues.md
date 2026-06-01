@@ -3,11 +3,11 @@
 이 문서는 **아직 안 고친 / 의도적으로 미룬** 문제만 모은 중앙 목록입니다.
 (이미 고친 것은 `fix-report.md`, 최초 감사 전체는 `audit-report.md` 참고)
 
-최종 갱신: 2026-05-31
+최종 갱신: 2026-06-01
 
 | # | 문제 | 급함 | 상태 | 기록·검증 위치 |
 |---|------|------|------|----------------|
-| KI-1 | 개발용 로그인(dev-login/dev-users) 운영에서 열려 있음 | 🔴 | **의도적 보류** (OAuth 전환 시 함께 차단 예정) | audit-report.md "로그인 교체 시 챙길 것" |
+| KI-1 | 개발용 로그인(dev-login/dev-users) 운영에서 열려 있음 | 🔴 | ✅ **해소 완료** (2026-06-01) — 라우트 제거, 카카오 OAuth 전용 전환, E2E는 JWT 직접서명 | auth.ts(라우트 제거) + LoginPage(카카오 전용) + e2e/global-setup |
 | KI-2 | 공모 정원(모집인원) 초과 지원이 서버에서 안 막힘 | 🟡 | ✅ **수정 완료** (2026-05-31) | exhibition.ts apply + e2e 06-tier3 + backend known-issues-fixes.test.ts |
 | KI-3 | 삭제된 갤러리/공모의 수정요청을 관리자가 승인 시 500 오류 | 🟢 | ✅ **수정 완료** (2026-05-31) | approval.ts edit-request + backend known-issues-fixes.test.ts |
 | KI-4 | 사업자 정보(주소·사업자등록번호 등) 빈칸 | 🟡 | 사람이 입력 필요(코드 아님) | audit-report.md 문제1 |
