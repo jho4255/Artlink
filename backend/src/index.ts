@@ -26,6 +26,7 @@ import inquiryRoutes from './routes/inquiry';
 import exploreRoutes from './routes/explore';
 import messageRoutes from './routes/message';
 import reportRoutes from './routes/report';
+import adminRoutes from './routes/admin';
 
 // ===== 전역 에러 핸들러: 프로세스 크래시 방지 =====
 process.on('unhandledRejection', (reason: any) => {
@@ -81,6 +82,7 @@ app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/explore', exploreRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {

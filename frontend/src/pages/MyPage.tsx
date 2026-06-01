@@ -56,6 +56,7 @@ export default function MyPage() {
         { id: 'benefit-manage', label: '혜택 관리', icon: FileText },
         { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
         { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
+        { id: 'user-manage', label: '사용자 관리', icon: Search },
       ];
 
   return (
@@ -100,6 +101,7 @@ export default function MyPage() {
         {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
         {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
         {activeTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
+        {activeTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
       </div>
     </div>
   );
@@ -2757,6 +2759,73 @@ function ReportManageSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
+function UserManageSection() {
+  const queryClient = useQueryClient();
+  const me = useAuthStore((s) => s.user);
+  const [q, setQ] = useState('');
+  const [submitted, setSubmitted] = useState('');
+
+  const { data: users = [], isLoading } = useQuery<any[]>({
+    queryKey: ['admin-users', submitted],
+    queryFn: () => api.get(`/admin/users${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
+    staleTime: 0,
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: number; role: string }) => api.patch(`/admin/users/${id}/role`, { role }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('역할이 변경되었습니다.'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '역할 변경에 실패했습니다.'),
+  });
+
+  return (
+    <div>
+      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); }} className="flex gap-2 mb-4">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이메일 또는 이름으로 검색"
+          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
+      </form>
+
+      {isLoading ? (
+        <div className="h-20 bg-gray-100 animate-pulse rounded-lg" />
+      ) : users.length === 0 ? (
+        <p className="text-gray-400 text-center py-8 text-sm">검색 결과가 없습니다.</p>
+      ) : (
+        <div className="space-y-2">
+          {users.map((u) => {
+            const isMe = me?.id === u.id;
+            return (
+              <div key={u.id} className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-lg">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {u.name}{isMe && <span className="text-xs text-gray-400"> (나)</span>}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{u.email} · {u.provider}</p>
+                </div>
+                <select
+                  value={u.role}
+                  disabled={isMe || roleMutation.isPending}
+                  onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
+                  title={isMe ? '본인 역할은 변경할 수 없습니다' : '역할 변경'}
+                  className="text-sm px-2 py-1.5 border border-gray-200 rounded-lg flex-none disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="ARTIST">아티스트</option>
+                  <option value="GALLERY">갤러리</option>
+                  <option value="ADMIN">관리자</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-4">
+        ※ 본인 계정 역할은 안전을 위해 변경할 수 없습니다. 변경은 즉시 적용되며, 대상자는 다음 로그인 시 반영됩니다.
+      </p>
     </div>
   );
 }
