@@ -16,6 +16,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'ARTIST' | 'GALLERY'>('ARTIST');
   const [error, setError] = useState('');
 
@@ -47,7 +48,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   });
 
   const registerMutation = useMutation({
-    mutationFn: (body: { tempToken: string; role: string; name: string; email: string }) =>
+    mutationFn: (body: { tempToken: string; role: string; name: string; email: string; phone: string }) =>
       api.post('/auth/complete-registration', body).then((r) => r.data),
     onSuccess: handleSuccess,
     onError: (err: any) => setError(err.response?.data?.error || '가입에 실패했습니다.'),
@@ -79,7 +80,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     setError('');
     if (!name.trim()) return setError('이름을 입력해주세요.');
     if (!email.trim()) return setError('이메일을 입력해주세요.');
-    registerMutation.mutate({ tempToken, role, name: name.trim(), email: email.trim() });
+    if (!/^01[0-9]-?\d{3,4}-?\d{4}$/.test(phone.trim())) return setError('올바른 휴대폰 번호를 입력해주세요. (예: 010-1234-5678)');
+    registerMutation.mutate({ tempToken, role, name: name.trim(), email: email.trim(), phone: phone.trim() });
   };
 
   if (phase === 'loading') {
@@ -128,6 +130,18 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={profile.email ? '' : '이메일을 입력해주세요'}
+              className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">휴대폰 번호</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="010-1234-5678"
               className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
               required
             />

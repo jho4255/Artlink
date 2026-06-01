@@ -14,6 +14,7 @@ model User {
   name       String
   role       String   // ARTIST, GALLERY, ADMIN
   avatar     String?
+  phone      String?  // 가입 시 입력받는 연락처 (기존 유저는 null 허용)
   password   String?  // bcrypt hash (LOCAL auth only)
   provider   String   @default("LOCAL") // LOCAL, KAKAO, NAVER, GOOGLE
   providerId String?  // OAuth provider user ID

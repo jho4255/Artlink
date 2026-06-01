@@ -86,11 +86,12 @@ const completeSchema = z.object({
   role: z.enum(['ARTIST', 'GALLERY']),
   name: z.string().min(1, '이름을 입력해주세요.').max(50),
   email: z.string().email('유효한 이메일을 입력해주세요.'),
+  phone: z.string().regex(/^01[0-9]-?\d{3,4}-?\d{4}$/, '올바른 휴대폰 번호를 입력해주세요.'),
 });
 
 router.post('/complete-registration', validate(completeSchema), async (req, res, next) => {
   try {
-    const { tempToken, role, name, email } = req.body;
+    const { tempToken, role, name, email, phone } = req.body;
 
     let payload: any;
     try {
@@ -114,6 +115,7 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
       data: {
         name,
         email,
+        phone,
         role,
         avatar: payload.avatar,
         provider: payload.provider,
