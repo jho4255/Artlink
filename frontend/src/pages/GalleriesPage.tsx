@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Star, Heart, Phone, MapPin, X } from 'lucide-react';
+import { Star, Heart, Phone, MapPin, X, Plus } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
@@ -98,8 +98,20 @@ export default function GalleriesPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       {/* 헤더 */}
-      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Galleries</h1>
-      <p className="text-base text-gray-400 mt-2 mb-10">Find your next partner</p>
+      <div className="flex items-end justify-between gap-4 mb-10">
+        <div>
+          <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Galleries</h1>
+          <p className="text-base text-gray-400 mt-2">Find your next partner</p>
+        </div>
+        {user?.role === 'GALLERY' && (
+          <button
+            onClick={() => navigate('/mypage?tab=my-galleries')}
+            className="flex-none flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors whitespace-nowrap"
+          >
+            <Plus size={16} /> 갤러리 등록
+          </button>
+        )}
+      </div>
 
       {/* 필터 — 행 구분 */}
       <div className="space-y-3 mb-4 text-base">

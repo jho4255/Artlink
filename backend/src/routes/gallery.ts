@@ -163,6 +163,20 @@ router.delete('/:id/images/:imageId', authenticate, async (req, res, next) => {
     if (!image || image.galleryId !== galleryId) throw new AppError('이미지를 찾을 수 없습니다.', 404);
 
     await prisma.galleryImage.delete({ where: { id: imageId } });
+
+    // mainImage 동기화: 삭제한 이미지가 대표 이미지였다면 남은 첫 이미지로 교체(없으면 null).
+    // 이렇게 하지 않으면 상세 GET의 mainImage 자동 마이그레이션이 삭제된 이미지를 되살려 "삭제 안 됨" 버그 발생.
+    if (gallery.mainImage === image.url) {
+      const next = await prisma.galleryImage.findFirst({
+        where: { galleryId },
+        orderBy: { order: 'asc' },
+      });
+      await prisma.gallery.update({
+        where: { id: galleryId },
+        data: { mainImage: next?.url ?? null },
+      });
+    }
+
     res.status(204).send();
   } catch (error) { next(error); }
 });

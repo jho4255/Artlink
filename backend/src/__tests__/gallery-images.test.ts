@@ -84,6 +84,27 @@ describe('Gallery Image Delete API', () => {
     expect(res.status).toBe(404);
   });
 
+  it('대표이미지(mainImage)와 같은 마지막 1장 삭제 → GET 상세에서 되살아나지 않음', async () => {
+    // 재현: 등록 시 mainImage가 설정되고, 자동 마이그레이션으로 동일 URL의 GalleryImage 1장 존재
+    const onlyUrl = 'https://example.com/only.jpg';
+    await testPrisma.gallery.update({ where: { id: galleryId }, data: { mainImage: onlyUrl } });
+    // 기존 시드 이미지 제거 후, mainImage와 동일한 1장만 남김
+    await testPrisma.galleryImage.deleteMany({ where: { galleryId } });
+    const only = await testPrisma.galleryImage.create({ data: { url: onlyUrl, order: 0, galleryId } });
+
+    // 유일한 이미지 삭제
+    const del = await request
+      .delete(`/api/galleries/${galleryId}/images/${only.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(del.status).toBe(204);
+
+    // GET 상세 → 자동 마이그레이션이 mainImage로 되살리면 안 됨
+    const res = await request.get(`/api/galleries/${galleryId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.images).toHaveLength(0);
+    expect(res.body.mainImage).toBeNull();
+  });
+
   it('삭제 후 GET 상세에서 해당 이미지 미포함', async () => {
     // 두 번째 이미지 추가
     await testPrisma.galleryImage.create({

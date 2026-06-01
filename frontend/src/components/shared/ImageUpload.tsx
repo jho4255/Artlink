@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
+import { compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 
 interface ImageUploadProps {
   value?: string;
@@ -16,9 +17,14 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = async (rawFile: File) => {
     setUploading(true);
     try {
+      const file = await compressImage(rawFile);
+      if (file.size > MAX_IMAGE_BYTES) {
+        toast.error(`이미지 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+        return;
+      }
       const formData = new FormData();
       formData.append('image', file);
       const res = await api.post('/upload/image', formData, {
@@ -26,8 +32,8 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
       });
       onChange(res.data.url);
       toast.success('이미지가 업로드되었습니다.');
-    } catch {
-      toast.error('이미지 업로드에 실패했습니다.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '이미지 업로드에 실패했습니다.');
     } finally {
       setUploading(false);
     }
@@ -96,8 +102,13 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
     setUploading(true);
     setUploadCount(fileArray.length);
     let successCount = 0;
-    for (const file of fileArray) {
+    for (const rawFile of fileArray) {
       try {
+        const file = await compressImage(rawFile);
+        if (file.size > MAX_IMAGE_BYTES) {
+          toast.error(`${rawFile.name}: 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+          continue;
+        }
         const formData = new FormData();
         formData.append('image', file);
         const res = await api.post('/upload/image', formData, {
@@ -106,7 +117,7 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
         onAdd(res.data.url);
         successCount++;
       } catch {
-        toast.error(`${file.name} 업로드 실패`);
+        toast.error(`${rawFile.name} 업로드 실패`);
       }
     }
     if (successCount > 0) toast.success(`${successCount}장 업로드 완료`);

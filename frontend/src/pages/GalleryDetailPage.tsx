@@ -33,7 +33,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, displayName } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -1232,8 +1232,13 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
     const fileArray = Array.from(files).slice(0, remaining);
     setUploading(true);
     let count = 0;
-    for (const file of fileArray) {
+    for (const rawFile of fileArray) {
       try {
+        const file = await compressImage(rawFile);
+        if (file.size > MAX_IMAGE_BYTES) {
+          toast.error(`${rawFile.name}: 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+          continue;
+        }
         const formData = new FormData();
         formData.append('image', file);
         const res = await api.post('/upload/image', formData, {
@@ -1242,7 +1247,7 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
         await addImageMutation.mutateAsync(res.data.url);
         count++;
       } catch {
-        toast.error(`${file.name} 업로드 실패`);
+        toast.error(`${rawFile.name} 업로드 실패`);
       }
     }
     if (count > 0 && files.length > 1) toast.success(`${count}장 업로드 완료`);

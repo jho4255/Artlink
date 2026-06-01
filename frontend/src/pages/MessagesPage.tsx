@@ -5,6 +5,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, SendHorizonal, Plus, Mail, User as UserIcon, Flag, X, FileText, Building2, Paperclip, Image, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { compressImage } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import type { Message, MessageAttachment } from '@/types';
 
@@ -85,15 +86,16 @@ export default function MessagesPage() {
     if (current.length + files.length > 5) { toast.error('최대 5개까지 첨부 가능합니다.'); return; }
     setUploading(true);
     try {
-      for (const file of Array.from(files)) {
+      for (const rawFile of Array.from(files)) {
+        const isImage = rawFile.type.startsWith('image/');
+        const file = isImage ? await compressImage(rawFile) : rawFile;
         const formData = new FormData();
-        const isImage = file.type.startsWith('image/');
         formData.append(isImage ? 'image' : 'file', file);
         const endpoint = isImage ? '/upload/image' : '/upload/file';
         const res = await api.post(endpoint, formData);
         setAttachments(prev => [...prev, { url: res.data.url, name: file.name, type: file.type, size: file.size }]);
       }
-    } catch { toast.error('파일 업로드에 실패했습니다.'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error || '파일 업로드에 실패했습니다.'); }
     setUploading(false);
   };
 

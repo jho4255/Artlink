@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MapPin, Calendar, X } from 'lucide-react';
+import { Heart, MapPin, Calendar, X, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -65,8 +65,20 @@ export default function ShowsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Exhibitions</h1>
-      <p className="text-base text-gray-400 mt-2 mb-10">지금 만날 수 있는 전시</p>
+      <div className="flex items-end justify-between gap-4 mb-10">
+        <div>
+          <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Exhibitions</h1>
+          <p className="text-base text-gray-400 mt-2">지금 만날 수 있는 전시</p>
+        </div>
+        {user?.role === 'GALLERY' && (
+          <button
+            onClick={() => navigate('/mypage?tab=my-shows')}
+            className="flex-none flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors whitespace-nowrap"
+          >
+            <Plus size={16} /> 전시 등록
+          </button>
+        )}
+      </div>
 
       {/* 필터 */}
       <div className="space-y-3 mb-4 text-base">

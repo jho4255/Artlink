@@ -12,6 +12,56 @@ export function displayName(user?: { name?: string | null; nickname?: string | n
   return (user.nickname && user.nickname.trim()) || user.name || '';
 }
 
+// 업로드 가능한 최대 이미지 용량 (백엔드 multer limit과 동일하게 유지)
+export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+/**
+ * 큰 이미지를 업로드 전에 캔버스로 다운스케일/재인코딩해 용량을 줄인다.
+ * - 큰 사진(고해상도)이 용량 초과로 첨부 실패하는 문제 방지
+ * - 충분히 작은 이미지(≤2MB & ≤maxDim)는 원본 그대로 반환
+ * - GIF(애니메이션 손실)나 이미지가 아니면 원본 유지
+ * - 어떤 이유로든 실패하면 원본을 반환(업로드 시도는 계속)
+ */
+export async function compressImage(file: File, maxDim = 2000, quality = 0.85): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  try {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = dataUrl;
+    });
+
+    let { width, height } = img;
+    // 이미 작으면 원본 사용
+    if (width <= maxDim && height <= maxDim && file.size <= 2 * 1024 * 1024) return file;
+
+    const scale = Math.min(1, maxDim / Math.max(width, height));
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file; // 줄지 않았으면 원본 유지
+    const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], newName, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}
+
 // D-day 계산
 export function getDday(deadline: string | Date): number {
   const now = new Date();

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -21,9 +21,22 @@ const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'
 
 export default function MyPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user, logout } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
+
+  // 다른 페이지에서 ?tab=... 로 진입 시(이미 /mypage에 있을 때 포함) 해당 탭으로 전환
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && t !== activeTab) setActiveTab(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const selectTab = (id: string) => {
+    setActiveTab(id);
+    setSearchParams(id === 'profile' ? {} : { tab: id }, { replace: true });
+  };
 
   const handleLogout = () => {
     // 로그아웃 시 모든 캐시 제거 (다음 유저 로그인 시 stale 데이터 방지)
@@ -76,7 +89,7 @@ export default function MyPage() {
         {tabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id)}
             className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               activeTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
             }`}
@@ -113,9 +126,14 @@ function ProfileCard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  const handleAvatarUpload = async (file: File) => {
+  const handleAvatarUpload = async (rawFile: File) => {
     setUploading(true);
     try {
+      const file = await compressImage(rawFile);
+      if (file.size > MAX_IMAGE_BYTES) {
+        toast.error(`이미지 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+        return;
+      }
       const formData = new FormData();
       formData.append('image', file);
       const uploadRes = await api.post('/upload/image', formData, {
@@ -431,8 +449,13 @@ function PortfolioImageGrid({
     setUploading(true);
     setUploadCount(fileArray.length);
     let successCount = 0;
-    for (const file of fileArray) {
+    for (const rawFile of fileArray) {
       try {
+        const file = await compressImage(rawFile);
+        if (file.size > MAX_IMAGE_BYTES) {
+          toast.error(`${rawFile.name}: 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+          continue;
+        }
         const formData = new FormData();
         formData.append('image', file);
         const res = await api.post('/upload/image', formData, {
@@ -441,7 +464,7 @@ function PortfolioImageGrid({
         onAdd(res.data.url);
         successCount++;
       } catch {
-        toast.error(`${file.name} 업로드 실패`);
+        toast.error(`${rawFile.name} 업로드 실패`);
       }
     }
     if (successCount > 0) toast.success(`${successCount}장 업로드 완료`);
@@ -1926,6 +1949,10 @@ function MyShowsSection() {
       toast.error('시작일은 종료일 이전이어야 합니다.');
       return;
     }
+    if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(form.openingHours)) {
+      toast.error('관람 시작·종료 시간을 모두 선택해주세요.');
+      return;
+    }
     const validArtists = artists.filter(a => a.name.trim());
     createMutation.mutate({
       ...form,
@@ -1979,8 +2006,24 @@ function MyShowsSection() {
                 className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
             </div>
           </div>
-          <input placeholder="관람 시간 (예: 10:00-18:00)" value={form.openingHours} onChange={e => setForm({ ...form, openingHours: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <div>
+            <label className="text-xs text-gray-500">관람 시간</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                aria-label="관람 시작 시간"
+                value={form.openingHours.split('-')[0] || ''}
+                onChange={e => { const close = form.openingHours.split('-')[1] || ''; setForm({ ...form, openingHours: e.target.value || close ? `${e.target.value}-${close}` : '' }); }}
+                className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
+              <span className="text-gray-400">~</span>
+              <input
+                type="time"
+                aria-label="관람 종료 시간"
+                value={form.openingHours.split('-')[1] || ''}
+                onChange={e => { const open = form.openingHours.split('-')[0] || ''; setForm({ ...form, openingHours: open || e.target.value ? `${open}-${e.target.value}` : '' }); }}
+                className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
+            </div>
+          </div>
           <input placeholder="입장료 (예: 무료, 5,000원)" value={form.admissionFee} onChange={e => setForm({ ...form, admissionFee: e.target.value })}
             className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
           <input placeholder="위치 (주소)" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
