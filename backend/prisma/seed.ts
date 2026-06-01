@@ -45,6 +45,11 @@ async function cleanupDuplicates(
 }
 
 async function main() {
+  // 운영 환경에서는 데모 시드(테스트 계정/갤러리 등) 생성 안 함 — 실데이터만 유지
+  if (process.env.NODE_ENV === 'production') {
+    console.log('⏭️  운영 환경 — 데모 시드 데이터 생성을 건너뜁니다.');
+    return;
+  }
   console.log('🌱 시드 데이터 생성 중...');
 
   // ━━━ 중복 정리 (이전 id 기반 upsert 버그로 인한 중복) ━━━
