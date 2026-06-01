@@ -16,6 +16,7 @@ import SupportPage from '@/pages/SupportPage';
 import ExplorePage from '@/pages/ExplorePage';
 import MessagesPage from '@/pages/MessagesPage';
 import NotFoundPage from '@/pages/NotFoundPage';
+import AuthCallbackPage from '@/pages/AuthCallbackPage';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
         <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/kakao/callback" element={<AuthCallbackPage provider="kakao" />} />
         <Route path="/messages" element={
           <ProtectedRoute><MessagesPage /></ProtectedRoute>
         } />

@@ -36,6 +36,16 @@ export default function LoginPage() {
     loginMutation.mutate(userId);
   };
 
+  // 카카오 OAuth — state(CSRF) 생성·저장 후 카카오 인증 페이지로 이동
+  const handleKakaoLogin = () => {
+    const state = crypto.randomUUID();
+    sessionStorage.setItem('kakao_state', state);
+    const redirectUri = `${window.location.origin}/auth/kakao/callback`;
+    const clientId = import.meta.env.VITE_KAKAO_CLIENT_ID as string;
+    window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}`
+      + `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
+  };
+
   const roleIcons: Record<string, string> = {
     ARTIST: '\uD83C\uDFA8',
     GALLERY: '\uD83D\uDDBC\uFE0F',
@@ -45,8 +55,27 @@ export default function LoginPage() {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <h1 className="text-2xl font-medium text-center mb-2 font-serif">로그인</h1>
-        <p className="text-sm text-gray-400 text-center mb-8">개발용 퀵 로그인 - 계정을 선택하세요</p>
+        <h1 className="text-2xl font-medium text-center mb-2 font-serif">ArtLink 로그인</h1>
+        <p className="text-sm text-gray-400 text-center mb-8">갤러리와 아티스트를 잇다</p>
+
+        {/* 카카오 로그인 (정식) */}
+        <button
+          onClick={handleKakaoLogin}
+          className="w-full h-12 flex items-center justify-center gap-2 rounded-lg bg-[#FEE500] text-[#191600] text-sm font-semibold hover:brightness-95 transition cursor-pointer"
+          aria-label="카카오로 시작하기"
+        >
+          <svg width="18" height="18" viewBox="0 0 256 256" aria-hidden="true">
+            <path fill="#191600" d="M128 36C70.6 36 24 72.9 24 118.4c0 29.4 19.6 55.2 49 69.6-1.6 5.6-8.5 30.2-9.1 33.4 0 0-.2 1.5.8 2.1.9.6 2.1.1 2.1.1 4.3-.6 33.9-22.2 41-27.4 6.5 1 13.2 1.5 20.2 1.5 57.4 0 104-36.9 104-82.4S185.4 36 128 36"/>
+          </svg>
+          카카오로 시작하기
+        </button>
+
+        {/* 구분선 + 개발용 빠른 로그인 (운영 전환 후 제거 예정) */}
+        <div className="flex items-center gap-3 my-6">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400">개발용 빠른 로그인</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
 
         {/* 로딩 스켈레톤 */}
         {usersLoading ? (
