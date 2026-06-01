@@ -1121,10 +1121,18 @@ function GalleryImageCarousel({
             style={{ willChange: 'transform' }}
             onClick={() => handleSlideClick(i)}
           >
+            {/* 레터박스 여백을 같은 이미지의 블러로 채워 비율 유지가 자연스럽게 보이도록 */}
+            <img
+              src={src}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50 pointer-events-none"
+              draggable={false}
+            />
             <img
               src={src}
               alt={`${galleryName} ${i + 1}`}
-              className="w-full h-full object-cover"
+              className="relative w-full h-full object-contain"
               draggable={false}
               loading={i === 0 ? 'eager' : 'lazy'}
             />
