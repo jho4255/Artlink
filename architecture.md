@@ -233,6 +233,20 @@ cd frontend && npm run dev
 - `scrollbar-hide` CSS 유틸리티로 스크롤바 숨김
 - 구현: `frontend/src/components/home/HeroSlider.tsx`
 
+## 갤러리 상세 이미지 캐러셀 (GalleryImageCarousel)
+
+- HeroSlider와 동일한 scroll-snap + IntersectionObserver 방식, 5초 자동 슬라이드(hover 시 정지)
+- **휠 가로채기 방지**: scroll-snap 컨테이너에 비-passive `wheel` 리스너를 달아, 브라우저가 세로 휠을 가로 스크롤로 변환해 이미지가 움직이는 것을 막는다. 세로 휠은 `window.scrollBy`로 페이지 스크롤에 전달, 가로 휠(트랙패드)은 `preventDefault`로 무시
+- **데스크톱 마우스 드래그 비활성화**: 마우스로 이미지를 끌어 옮기는 동작 제거. 이동은 좌우 화살표·하단 점·자동 슬라이드로만. 클릭 시 라이트박스 오픈
+- **모바일 터치 스와이프**: `overflow-x-auto` 네이티브 스크롤로 동작(유지)
+- 구현: `frontend/src/pages/GalleryDetailPage.tsx`
+
+## 갤러리 대표 이미지(mainImage) 동기화 규칙
+
+- `mainImage`는 `GalleryImage[]`의 **첫 이미지(order asc)를 비정규화한 대표 썸네일**. 목록(GalleriesPage)·이달의 갤러리·공모 카드·찜 목록 등 `images` 배열을 include 하지 않는 화면이 이 값을 사용
+- 이미지 **추가/삭제 시 백엔드에서 항상 첫 이미지로 재동기화**(`POST/DELETE /galleries/:id/images`) → 사진 변경이 mainImage-only 화면에도 즉시 반영. 남은 이미지가 없으면 `null`
+- 목록 카드(`GalleriesPage`)는 상세 페이지와 동일하게 `images[0]?.url || mainImage` 순으로 표시
+
 ## 모바일 tel: 링크
 
 - 갤러리 상세 페이지 전화번호: 모바일 터치 시 다이얼러 오픈, 데스크톱은 일반 텍스트

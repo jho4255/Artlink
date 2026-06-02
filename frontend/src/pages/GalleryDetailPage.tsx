@@ -1008,7 +1008,6 @@ function GalleryImageCarousel({
   const isScrolling = useRef(false);
   // 내부 인덱스 ref — 리렌더 없이 자동슬라이드/observer에서 참조
   const currentRef = useRef(imgIndex);
-  const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
   const isHovered = useRef(false);
 
   // 외부 imgIndex 변경 시 ref 동기화
@@ -1051,6 +1050,27 @@ function GalleryImageCarousel({
     return () => observer.disconnect();
   }, [images.length, setImgIndex]);
 
+  // 휠 가로채기 방지 — 캐러셀 위에서 휠을 굴리면 브라우저가 세로 휠을 가로 스크롤로
+  // 변환해 이미지가 움직이는 문제를 막고, 세로 휠은 페이지 스크롤로 그대로 전달한다.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      // 가로 휠(트랙패드)은 캐러셀이 움직이지 않도록 무시
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        return;
+      }
+      // 세로 휠은 캐러셀이 삼키지 않고 페이지가 스크롤되도록 전달
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        window.scrollBy({ top: e.deltaY, behavior: 'auto' });
+      }
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, []);
+
   // 5초 자동 슬라이드 — hover 시 정지
   useEffect(() => {
     if (images.length <= 1) return;
@@ -1062,56 +1082,18 @@ function GalleryImageCarousel({
     return () => clearInterval(timer);
   }, [images.length, scrollToSlide]);
 
-  // 마우스 드래그 핸들러 (데스크톱)
-  const handleMouseDown = (e: React.MouseEvent) => {
-    const container = containerRef.current;
-    if (!container) return;
-    dragState.current = { isDragging: true, startX: e.pageX - container.offsetLeft, scrollLeft: container.scrollLeft, didDrag: false };
-    container.style.cursor = 'grabbing';
-    container.style.scrollSnapType = 'none';
-  };
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragState.current.isDragging) return;
-    e.preventDefault();
-    const container = containerRef.current;
-    if (!container) return;
-    const x = e.pageX - container.offsetLeft;
-    const walk = x - dragState.current.startX;
-    if (Math.abs(walk) > 5) dragState.current.didDrag = true;
-    container.scrollLeft = dragState.current.scrollLeft - walk;
-  };
-  const handleMouseUp = () => {
-    if (!dragState.current.isDragging) return;
-    dragState.current.isDragging = false;
-    const container = containerRef.current;
-    if (!container) return;
-    container.style.cursor = '';
-    container.style.scrollSnapType = 'x mandatory';
-  };
-  const handleMouseLeave = () => {
-    if (dragState.current.isDragging) handleMouseUp();
-  };
-
-  // 슬라이드 클릭 (드래그가 아닌 경우만 lightbox 열기)
-  const handleSlideClick = (index: number) => {
-    if (!dragState.current.didDrag) onImageClick(index);
-  };
-
   return (
     <div
       className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden"
       onMouseEnter={() => { isHovered.current = true; }}
       onMouseLeave={() => { isHovered.current = false; }}
     >
-      {/* scroll-snap 컨테이너 — GPU 가속, 터치 이벤트 직접 전달 */}
+      {/* scroll-snap 컨테이너 — 데스크톱 마우스 드래그는 비활성화(화살표/점/모바일 스와이프로 이동),
+          터치 스와이프는 네이티브 스크롤로 동작 */}
       <div
         ref={containerRef}
-        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-pointer select-none"
         style={{ WebkitOverflowScrolling: 'touch', willChange: 'scroll-position' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
       >
         {images.map((src, i) => (
           <div
@@ -1119,7 +1101,7 @@ function GalleryImageCarousel({
             data-index={i}
             className="relative w-full h-full flex-shrink-0 snap-start"
             style={{ willChange: 'transform' }}
-            onClick={() => handleSlideClick(i)}
+            onClick={() => onImageClick(i)}
           >
             {/* 레터박스 여백을 같은 이미지의 블러로 채워 비율 유지가 자연스럽게 보이도록 */}
             <img
