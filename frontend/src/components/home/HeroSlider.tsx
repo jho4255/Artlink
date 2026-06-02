@@ -26,10 +26,21 @@ export default function HeroSlider() {
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, didDrag: false });
   const isHovered = useRef(false);
 
-  const { data: slides = [] } = useQuery<HeroSlide[]>({
+  const { data: slides = [], isLoading } = useQuery<HeroSlide[]>({
     queryKey: ['hero-slides'],
     queryFn: () => api.get('/hero-slides').then((r) => r.data),
   });
+
+  // 이미지 파일이 실제로 로드 완료됐는지 추적 (CDN 다운로드 동안 스켈레톤 유지)
+  const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
+  const markLoaded = useCallback((i: number) => {
+    setLoadedImages((prev) => {
+      if (prev.has(i)) return prev;
+      const next = new Set(prev);
+      next.add(i);
+      return next;
+    });
+  }, []);
 
   // 슬라이드 이미지에서 색상 추출
   useEffect(() => {
@@ -122,7 +133,8 @@ export default function HeroSlider() {
 
   const currentBg = bgColors[current] || '#1a1a2e';
 
-  if (slides.length === 0) {
+  // 데이터 로딩 중이거나 슬라이드가 없으면 전체 스켈레톤
+  if (isLoading || slides.length === 0) {
     return (
       <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
@@ -154,13 +166,20 @@ export default function HeroSlider() {
               <div
                 key={slide.id ?? i}
                 data-index={i}
-                className="relative w-full h-full flex-shrink-0 snap-start"
+                className="relative w-full h-full flex-shrink-0 snap-start bg-gray-100"
               >
+                {/* 이미지 다운로드 동안 스켈레톤 유지 */}
+                {!loadedImages.has(i) && (
+                  <div className="absolute inset-0 bg-gray-100 animate-pulse" />
+                )}
                 <img
                   src={slide.imageUrl}
                   alt={slide.title}
-                  className="w-full h-full object-cover pointer-events-none"
+                  onLoad={() => markLoaded(i)}
+                  onError={() => markLoaded(i)}
+                  className={`w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
                   draggable={false}
+                  loading={i === 0 ? 'eager' : 'lazy'}
                 />
                 {/* 하단 그래디언트 */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
