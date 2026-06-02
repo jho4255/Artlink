@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import api from '@/lib/axios';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Benefit } from '@/types';
 
 // 혜택 페이지 - Admin이 등록한 혜택 목록
@@ -29,7 +30,7 @@ export default function BenefitsPage() {
               className="bg-white border-b border-gray-200 overflow-hidden hover:opacity-80 transition-opacity"
             >
               {benefit.imageUrl && (
-                <img src={benefit.imageUrl} alt={benefit.title} className="w-full h-48 object-cover" />
+                <SkeletonImage src={benefit.imageUrl} alt={benefit.title} className="w-full h-48" imgClassName="object-cover" />
               )}
               <div className="p-5">
                 <h2 className="text-lg font-semibold text-gray-900">{benefit.title}</h2>

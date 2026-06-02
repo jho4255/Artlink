@@ -5,6 +5,7 @@ import { Heart, Users, MapPin, X, Send, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import type { Exhibition } from '@/types';
@@ -196,15 +197,13 @@ export default function ExhibitionsPage() {
                 onClick={() => navigate(`/exhibitions/${ex.id}`)}
                 className="group cursor-pointer"
               >
-                <div className="relative aspect-[4/3] overflow-hidden">
-                  {/* 카드 크기는 4:3 고정, 이미지는 원본 비율 유지(contain). 여백은 블러로 채움 */}
-                  <img src={ex.imageUrl || ex.gallery?.mainImage || '/images/gallery-sculpture.webp'} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" />
-                  <img
-                    src={ex.imageUrl || ex.gallery?.mainImage || '/images/gallery-sculpture.webp'}
-                    alt={ex.title}
-                    className="absolute inset-0 w-full h-full object-contain group-hover:opacity-80 transition-opacity duration-300"
-                  />
-                </div>
+                <SkeletonImage
+                  src={ex.imageUrl || ex.gallery?.mainImage || '/images/gallery-sculpture.webp'}
+                  alt={ex.title}
+                  className="aspect-[4/3]"
+                  imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"
+                  blurFill
+                />
 
                 <div className="mt-3">
                   <div className="flex justify-between items-start">

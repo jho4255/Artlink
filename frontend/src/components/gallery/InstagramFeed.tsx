@@ -12,6 +12,7 @@ import { AnimatePresence } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
 import api from '@/lib/axios';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { InstagramPost } from '@/types';
 
 interface InstagramFeedProps {
@@ -116,10 +117,11 @@ export default function InstagramFeed({ galleryId, instagramUrl }: InstagramFeed
               onClick={() => setLightboxIndex(i)}
               className="relative aspect-square overflow-hidden rounded-lg group"
             >
-              <img
+              <SkeletonImage
                 src={post.mediaType === 'VIDEO' ? (post.thumbnailUrl || post.mediaUrl) : post.mediaUrl}
-                alt=""
-                className="w-full h-full object-cover transition-opacity group-hover:opacity-75"
+                className="absolute inset-0"
+                imgClassName="object-cover transition-opacity group-hover:opacity-75"
+                loading="lazy"
               />
             </button>
           ))}

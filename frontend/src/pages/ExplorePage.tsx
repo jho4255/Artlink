@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { ExploreImage } from '@/types';
 
 export default function ExplorePage() {
@@ -74,10 +75,10 @@ export default function ExplorePage() {
                 onClick={() => setSelectedImage(img)}
                 className="relative aspect-square overflow-hidden group"
               >
-                <img
+                <SkeletonImage
                   src={img.url}
-                  alt=""
-                  className="w-full h-full object-cover"
+                  className="absolute inset-0"
+                  imgClassName="object-cover"
                   loading="lazy"
                 />
                 {/* 호버 오버레이 */}

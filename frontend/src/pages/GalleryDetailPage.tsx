@@ -36,6 +36,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import InstagramFeed from '@/components/gallery/InstagramFeed';
 import InstagramPrivateMessage from '@/components/gallery/InstagramPrivateMessage';
@@ -1103,18 +1104,13 @@ function GalleryImageCarousel({
             style={{ willChange: 'transform' }}
             onClick={() => onImageClick(i)}
           >
-            {/* 레터박스 여백을 같은 이미지의 블러로 채워 비율 유지가 자연스럽게 보이도록 */}
-            <img
-              src={src}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50 pointer-events-none"
-              draggable={false}
-            />
-            <img
+            {/* 원본 비율 유지(contain) + 레터박스 블러 채움 + 로딩 스켈레톤 */}
+            <SkeletonImage
               src={src}
               alt={`${galleryName} ${i + 1}`}
-              className="relative w-full h-full object-contain"
+              className="w-full h-full"
+              imgClassName="object-contain"
+              blurFill
               draggable={false}
               loading={i === 0 ? 'eager' : 'lazy'}
             />

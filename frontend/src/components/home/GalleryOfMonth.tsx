@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Star, MapPin } from 'lucide-react';
 import api from '@/lib/axios';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { GalleryOfMonth } from '@/types';
 
 export default function GalleryOfMonthSection() {
@@ -35,13 +36,12 @@ export default function GalleryOfMonthSection() {
             className="group cursor-pointer"
           >
             {/* 이미지 — 직각, 그림자 없음 */}
-            <div className="overflow-hidden">
-              <img
-                src={item.gallery.mainImage || '/images/gallery-sculpture.webp'}
-                alt={item.gallery.name}
-                className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300"
-              />
-            </div>
+            <SkeletonImage
+              src={item.gallery.mainImage || '/images/gallery-sculpture.webp'}
+              alt={item.gallery.name}
+              className="aspect-[4/3]"
+              imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
+            />
 
             {/* 정보 */}
             <div className="mt-3">

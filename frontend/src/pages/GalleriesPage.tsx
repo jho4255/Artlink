@@ -19,6 +19,7 @@ import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels } from '@/lib/utils';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Gallery } from '@/types';
 
 // 지역 필터 옵션
@@ -295,15 +296,16 @@ function GlowCard({ imageSrc, alt, onClick, children }: { imageSrc: string; alt?
       className="group cursor-pointer"
     >
       <div
-        className="relative aspect-[4/3] overflow-hidden rounded-lg transition-shadow duration-500"
+        className="rounded-lg overflow-hidden transition-shadow duration-500"
         style={hovered && color ? { boxShadow: `0 6px 30px ${color}, 0 2px 8px ${color}` } : {}}
       >
-        {/* 카드 크기는 4:3 고정, 이미지는 원본 비율 유지(contain). 여백은 블러로 채움 */}
-        <img src={imageSrc} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-50" />
-        <img
+        {/* 카드 크기는 4:3 고정, 이미지는 원본 비율 유지(contain) + 로딩 스켈레톤 */}
+        <SkeletonImage
           src={imageSrc}
           alt={alt || ''}
-          className="absolute inset-0 w-full h-full object-contain group-hover:opacity-90 transition-opacity duration-300"
+          className="aspect-[4/3]"
+          imgClassName="object-contain group-hover:opacity-90 transition-opacity duration-300"
+          blurFill
         />
       </div>
       {children}

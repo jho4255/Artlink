@@ -6,6 +6,7 @@ import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
 import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { PublicPortfolio } from '@/types';
 
 export default function PortfolioPage() {
@@ -99,11 +100,13 @@ export default function PortfolioPage() {
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {imageUrls.map((url, i) => (
-                <img
+                <SkeletonImage
                   key={i}
                   src={url}
                   alt={`작품 ${i + 1}`}
-                  className="w-full aspect-square object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                  className="aspect-square cursor-pointer"
+                  imgClassName="object-cover hover:opacity-80 transition-opacity"
+                  loading="lazy"
                   onClick={() => { setLightboxIndex(i); setLightboxOpen(true); }}
                 />
               ))}
