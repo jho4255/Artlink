@@ -145,6 +145,17 @@ router.post('/:id/images', authenticate, async (req, res, next) => {
     const image = await prisma.galleryImage.create({
       data: { url, order: order || 0, galleryId: gallery.id }
     });
+
+    // 대표 이미지(mainImage) 동기화: 첫 이미지를 대표로 유지.
+    // mainImage만 읽는 화면(목록/이달의 갤러리/공모 카드/찜 목록)도 사진 변경을 즉시 반영하도록 한다.
+    const first = await prisma.galleryImage.findFirst({
+      where: { galleryId: gallery.id },
+      orderBy: { order: 'asc' },
+    });
+    if (first && gallery.mainImage !== first.url) {
+      await prisma.gallery.update({ where: { id: gallery.id }, data: { mainImage: first.url } });
+    }
+
     res.status(201).json(image);
   } catch (error) { next(error); }
 });
@@ -164,13 +175,14 @@ router.delete('/:id/images/:imageId', authenticate, async (req, res, next) => {
 
     await prisma.galleryImage.delete({ where: { id: imageId } });
 
-    // mainImage 동기화: 삭제한 이미지가 대표 이미지였다면 남은 첫 이미지로 교체(없으면 null).
-    // 이렇게 하지 않으면 상세 GET의 mainImage 자동 마이그레이션이 삭제된 이미지를 되살려 "삭제 안 됨" 버그 발생.
-    if (gallery.mainImage === image.url) {
-      const next = await prisma.galleryImage.findFirst({
-        where: { galleryId },
-        orderBy: { order: 'asc' },
-      });
+    // mainImage 동기화: 항상 남은 첫 이미지로 맞춘다(없으면 null).
+    // - 삭제한 이미지가 대표였으면 다음 이미지로 교체 → 목록 등 mainImage만 읽는 화면도 갱신.
+    // - 이렇게 하지 않으면 상세 GET의 mainImage 자동 마이그레이션이 삭제된 이미지를 되살려 "삭제 안 됨" 버그 발생.
+    const next = await prisma.galleryImage.findFirst({
+      where: { galleryId },
+      orderBy: { order: 'asc' },
+    });
+    if (gallery.mainImage !== (next?.url ?? null)) {
       await prisma.gallery.update({
         where: { id: galleryId },
         data: { mainImage: next?.url ?? null },

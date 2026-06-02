@@ -221,7 +221,7 @@ export default function GalleriesPage() {
           {galleries.map((gallery) => (
             <GlowCard
               key={gallery.id}
-              imageSrc={gallery.mainImage || gallery.images?.[0]?.url || '/images/gallery-sculpture.webp'}
+              imageSrc={gallery.images?.[0]?.url || gallery.mainImage || '/images/gallery-sculpture.webp'}
               alt={`${gallery.name} 대표 이미지`}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
             >
