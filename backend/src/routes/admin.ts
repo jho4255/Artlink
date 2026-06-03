@@ -55,4 +55,176 @@ router.patch('/users/:id/role', authenticate, authorize('ADMIN'), async (req, re
   } catch (error) { next(error); }
 });
 
+// ========== 운영 조회 (ADMIN 전용): 지원 현황 / 작가 지원이력 / 갤러리 게시물 ==========
+
+const APP_STATUSES = ['SUBMITTED', 'REVIEWED', 'ACCEPTED', 'REJECTED'];
+
+/** 상태별 카운트 헬퍼 */
+function countByStatus(apps: { status: string }[]) {
+  const counts: Record<string, number> = { ALL: apps.length };
+  for (const s of APP_STATUSES) counts[s] = 0;
+  for (const a of apps) counts[a.status] = (counts[a.status] || 0) + 1;
+  return counts;
+}
+
+/**
+ * 전체 공모 목록 (ADMIN 전용) — 제목 검색/갤러리 필터, 지원자 수 포함
+ * GET /api/admin/exhibitions?q=&galleryId=
+ */
+router.get('/exhibitions', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const q = ((req.query.q as string) || '').trim();
+    const galleryId = req.query.galleryId ? parseInt(req.query.galleryId as string) : undefined;
+    const where: any = {};
+    if (q) where.title = { contains: q, mode: 'insensitive' };
+    if (galleryId) where.galleryId = galleryId;
+
+    const exhibitions = await prisma.exhibition.findMany({
+      where,
+      select: {
+        id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
+        gallery: { select: { id: true, name: true } },
+        _count: { select: { applications: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json(exhibitions);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 특정 공모의 지원 현황 (ADMIN 전용) — 지원자 + 상태 + 결정시각 + 커스텀답변
+ * GET /api/admin/exhibitions/:id/applications
+ */
+router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const exRow = await prisma.exhibition.findUnique({
+      where: { id: exhibitionId },
+      select: {
+        id: true, title: true, type: true, status: true, capacity: true, deadline: true,
+        customFields: true,
+        gallery: { select: { id: true, name: true } },
+      },
+    });
+    if (!exRow) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    const { customFields, ...exRest } = exRow;
+    const exhibition = {
+      ...exRest,
+      customFields: customFields ? (() => { try { return JSON.parse(customFields); } catch { return null; } })() : null,
+    };
+
+    const applications = await prisma.application.findMany({
+      where: { exhibitionId },
+      include: { user: { select: { id: true, name: true, nickname: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const parsed = applications.map((app: any) => ({
+      id: app.id,
+      status: app.status,
+      appliedAt: app.createdAt,
+      decidedAt: app.updatedAt,
+      user: app.user,
+      customAnswers: app.customAnswers
+        ? (() => { try { return JSON.parse(app.customAnswers); } catch { return null; } })()
+        : null,
+    }));
+
+    res.json({ exhibition, counts: countByStatus(applications), applications: parsed });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 특정 사용자(작가)의 지원 이력 (ADMIN 전용) — 어떤 공모에 지원하고 수락/거절됐는지
+ * GET /api/admin/users/:id/applications
+ */
+router.get('/users/:id/applications', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.id as string);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, nickname: true, email: true, role: true },
+    });
+    if (!user) throw new AppError('사용자를 찾을 수 없습니다.', 404);
+
+    const applications = await prisma.application.findMany({
+      where: { userId },
+      select: {
+        id: true, status: true, createdAt: true, updatedAt: true,
+        exhibition: {
+          select: { id: true, title: true, gallery: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const history = applications.map((a) => ({
+      id: a.id,
+      status: a.status,
+      appliedAt: a.createdAt,
+      decidedAt: a.updatedAt,
+      exhibition: a.exhibition ? { id: a.exhibition.id, title: a.exhibition.title } : null,
+      gallery: a.exhibition?.gallery ?? null,
+    }));
+
+    res.json({ user, counts: countByStatus(applications), applications: history });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 갤러리 검색 (ADMIN 전용) — 이름 부분일치, 공모/전시 수 포함
+ * GET /api/admin/galleries?q=
+ */
+router.get('/galleries', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const q = ((req.query.q as string) || '').trim();
+    const galleries = await prisma.gallery.findMany({
+      where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+      select: {
+        id: true, name: true, region: true, status: true, ownerName: true, createdAt: true,
+        owner: { select: { id: true, name: true, email: true } },
+        _count: { select: { exhibitions: true, shows: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json(galleries);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 갤러리가 올린 모든 공모 + 전시 (ADMIN 전용) — 상태 무관 전체 이력
+ * GET /api/admin/galleries/:id/posts
+ */
+router.get('/galleries/:id/posts', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const galleryId = parseInt(req.params.id as string);
+    const gallery = await prisma.gallery.findUnique({
+      where: { id: galleryId },
+      select: { id: true, name: true, ownerName: true },
+    });
+    if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+
+    const [exhibitions, shows] = await Promise.all([
+      prisma.exhibition.findMany({
+        where: { galleryId },
+        select: {
+          id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
+          _count: { select: { applications: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.show.findMany({
+        where: { galleryId },
+        select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    res.json({ gallery, exhibitions, shows });
+  } catch (error) { next(error); }
+});
+
 export default router;

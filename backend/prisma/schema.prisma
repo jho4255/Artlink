@@ -248,6 +248,7 @@ model Application {
   customAnswers String?   // 커스텀 질문 답변 (JSON 문자열: [{fieldId, value}])
   status       String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
   createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt @default(now()) // 상태 변경(수락/거절 등) 시각 추적
 
   @@unique([userId, exhibitionId])
   @@index([userId])

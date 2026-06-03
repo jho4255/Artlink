@@ -94,6 +94,17 @@ ArtLink/
 | upload | /api/upload | 이미지 업로드 (Multer) |
 | notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
 | inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
+| admin | /api/admin | (ADMIN 전용) 사용자 검색·역할변경 + 운영 조회: 공모 지원현황/작가 지원이력/갤러리 게시물 |
+
+### Admin 운영 조회 (ADMIN 전용, `backend/src/routes/admin.ts`)
+
+- `GET /admin/exhibitions?q=&galleryId=` — 전체 공모 목록 + 지원자 수
+- `GET /admin/exhibitions/:id/applications` — 특정 공모 지원현황(지원자·상태·결정시각·커스텀답변·카운트)
+- `GET /admin/users/:id/applications` — 작가 지원 이력(공모/갤러리/상태/지원·결정시각)
+- `GET /admin/galleries?q=` — 갤러리 검색(+공모/전시 수)
+- `GET /admin/galleries/:id/posts` — 갤러리가 올린 공모+전시 전체(상태 무관)
+- `Application.updatedAt`(@updatedAt) 추가로 수락/거절 결정 시각 추적 (migration 20260603000000)
+- 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
 ## 인증 구조
 

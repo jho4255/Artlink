@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, Globe
+  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -70,6 +70,7 @@ export default function MyPage() {
         { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
         { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
         { id: 'user-manage', label: '사용자 관리', icon: Search },
+        { id: 'oversight', label: '운영 조회', icon: ClipboardList },
       ];
 
   return (
@@ -115,6 +116,7 @@ export default function MyPage() {
         {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
         {activeTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
         {activeTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
+        {activeTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
       </div>
     </div>
   );
@@ -2955,6 +2957,310 @@ function UserManageSection() {
       <p className="text-xs text-gray-400 mt-4">
         ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 변경은 즉시 적용되며, 대상자는 다음 로그인 시 반영됩니다.
       </p>
+    </div>
+  );
+}
+
+// ========== Admin: 운영 조회 (지원현황/작가이력/갤러리 게시물) ==========
+const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+const POST_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절' };
+const ovDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('ko') : '-');
+
+function OvBadge({ status, kind = 'app' }: { status: string; kind?: 'app' | 'post' }) {
+  const colors = kind === 'post' ? POST_STATUS_COLORS : OV_STATUS_COLORS;
+  const labels = kind === 'post' ? POST_STATUS_LABELS : OV_STATUS_LABELS;
+  return <span className={`px-2 py-0.5 text-xs rounded-full flex-none ${colors[status] || 'bg-gray-100 text-gray-600'}`}>{labels[status] || status}</span>;
+}
+
+function OvCounts({ counts }: { counts: Record<string, number> }) {
+  return (
+    <div className="flex gap-1.5 flex-wrap text-xs">
+      {[['ALL', '전체'], ['SUBMITTED', '접수'], ['REVIEWED', '검토중'], ['ACCEPTED', '수락'], ['REJECTED', '거절']].map(([k, l]) => (
+        <span key={k} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{l} {counts[k] ?? 0}</span>
+      ))}
+    </div>
+  );
+}
+
+function OversightSection() {
+  const [view, setView] = useState<'exhibition' | 'artist' | 'gallery'>('exhibition');
+  const tabs = [{ k: 'exhibition', l: '공모 지원현황' }, { k: 'artist', l: '작가 지원이력' }, { k: 'gallery', l: '갤러리 게시물' }] as const;
+  return (
+    <div>
+      <div className="flex gap-1.5 mb-5 flex-wrap">
+        {tabs.map(t => (
+          <button key={t.k} onClick={() => setView(t.k)}
+            className={`px-3 py-1.5 text-sm rounded-full transition-colors ${view === t.k ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {t.l}
+          </button>
+        ))}
+      </div>
+      {view === 'exhibition' && <OvExhibitions />}
+      {view === 'artist' && <OvArtists />}
+      {view === 'gallery' && <OvGalleries />}
+    </div>
+  );
+}
+
+// --- 공모 지원현황 ---
+function OvExhibitions() {
+  const [q, setQ] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [selId, setSelId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const { data: exhibitions = [], isLoading } = useQuery<any[]>({
+    queryKey: ['ov-exhibitions', submitted],
+    queryFn: () => api.get(`/admin/exhibitions${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
+    staleTime: 0,
+  });
+  const { data: detail } = useQuery<any>({
+    queryKey: ['ov-ex-apps', selId],
+    queryFn: () => api.get(`/admin/exhibitions/${selId}/applications`).then(r => r.data),
+    enabled: !!selId,
+  });
+
+  const fieldLabel = (fieldId: string) => detail?.exhibition?.customFields?.find((f: any) => f.id === fieldId)?.label || fieldId;
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="공모 제목 검색 (비우면 전체)"
+          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
+      </form>
+
+      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : exhibitions.length === 0 ? (
+        <p className="text-gray-400 text-center py-6 text-sm">공모가 없습니다.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {exhibitions.map((ex) => (
+            <button key={ex.id} onClick={() => { setSelId(ex.id); setExpanded(null); }}
+              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === ex.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{ex.title}</p>
+                <p className="text-xs text-gray-500 truncate">{ex.gallery?.name} · 마감 {ovDate(ex.deadline)}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-none">
+                <OvBadge status={ex.status} kind="post" />
+                <span className="text-xs text-gray-500">지원 {ex._count?.applications ?? 0}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selId && detail && (
+        <div className="border-t border-gray-200 pt-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-gray-900">{detail.exhibition.title} — 지원 현황</p>
+          </div>
+          <OvCounts counts={detail.counts} />
+          {detail.applications.length === 0 ? (
+            <p className="text-gray-400 text-center py-4 text-sm">지원자가 없습니다.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {detail.applications.map((app: any) => {
+                const isOpen = expanded === app.id;
+                const answers: { fieldId: string; value: string }[] = Array.isArray(app.customAnswers) ? app.customAnswers : [];
+                return (
+                  <div key={app.id} className="border border-gray-100 rounded-lg">
+                    <button onClick={() => setExpanded(isOpen ? null : app.id)} className="w-full text-left p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{displayName(app.user)}</p>
+                        <p className="text-xs text-gray-500 truncate">{app.user.email} · 지원 {ovDate(app.appliedAt)}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-none">
+                        <OvBadge status={app.status} />
+                        {(app.status === 'ACCEPTED' || app.status === 'REJECTED') && (
+                          <span className="text-xs text-gray-400">{ovDate(app.decidedAt)} 결정</span>
+                        )}
+                      </div>
+                    </button>
+                    {isOpen && answers.length > 0 && (
+                      <div className="px-3 pb-3 space-y-1.5 border-t border-gray-50 pt-2">
+                        {answers.map((a, i) => (
+                          <div key={i} className="text-xs">
+                            <span className="text-gray-500">{fieldLabel(a.fieldId)}: </span>
+                            <span className="text-gray-800 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1 inline-block">{a.value || '-'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {isOpen && answers.length === 0 && (
+                      <p className="px-3 pb-3 text-xs text-gray-400 border-t border-gray-50 pt-2">추가 답변 없음</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- 작가 지원이력 ---
+function OvArtists() {
+  const [q, setQ] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [selId, setSelId] = useState<number | null>(null);
+
+  const { data: users = [], isLoading } = useQuery<any[]>({
+    queryKey: ['ov-users', submitted],
+    queryFn: () => api.get(`/admin/users${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
+    staleTime: 0,
+  });
+  const { data: detail } = useQuery<any>({
+    queryKey: ['ov-user-apps', selId],
+    queryFn: () => api.get(`/admin/users/${selId}/applications`).then(r => r.data),
+    enabled: !!selId,
+  });
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="작가 이름/이메일 검색"
+          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
+      </form>
+
+      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : users.length === 0 ? (
+        <p className="text-gray-400 text-center py-6 text-sm">검색 결과가 없습니다.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {users.filter((u) => u.role === 'ARTIST').map((u) => (
+            <button key={u.id} onClick={() => setSelId(u.id)}
+              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === u.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{u.name}</p>
+                <p className="text-xs text-gray-500 truncate">{u.email}</p>
+              </div>
+              <span className="text-xs text-gray-400 flex-none">작가</span>
+            </button>
+          ))}
+          {users.filter((u) => u.role === 'ARTIST').length === 0 && (
+            <p className="text-gray-400 text-center py-6 text-sm">작가(ARTIST) 계정이 없습니다.</p>
+          )}
+        </div>
+      )}
+
+      {selId && detail && (
+        <div className="border-t border-gray-200 pt-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-900">{displayName(detail.user)} — 지원 이력</p>
+          <OvCounts counts={detail.counts} />
+          {detail.applications.length === 0 ? (
+            <p className="text-gray-400 text-center py-4 text-sm">지원 이력이 없습니다.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {detail.applications.map((a: any) => (
+                <div key={a.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{a.exhibition?.title || '(삭제된 공모)'}</p>
+                    <p className="text-xs text-gray-500 truncate">{a.gallery?.name} · 지원 {ovDate(a.appliedAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-none">
+                    <OvBadge status={a.status} />
+                    {(a.status === 'ACCEPTED' || a.status === 'REJECTED') && (
+                      <span className="text-xs text-gray-400">{ovDate(a.decidedAt)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- 갤러리 게시물(공모+전시) ---
+function OvGalleries() {
+  const [q, setQ] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [selId, setSelId] = useState<number | null>(null);
+
+  const { data: galleries = [], isLoading } = useQuery<any[]>({
+    queryKey: ['ov-galleries', submitted],
+    queryFn: () => api.get(`/admin/galleries${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
+    staleTime: 0,
+  });
+  const { data: detail } = useQuery<any>({
+    queryKey: ['ov-gallery-posts', selId],
+    queryFn: () => api.get(`/admin/galleries/${selId}/posts`).then(r => r.data),
+    enabled: !!selId,
+  });
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="갤러리 이름 검색 (비우면 전체)"
+          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
+      </form>
+
+      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : galleries.length === 0 ? (
+        <p className="text-gray-400 text-center py-6 text-sm">갤러리가 없습니다.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {galleries.map((g) => (
+            <button key={g.id} onClick={() => setSelId(g.id)}
+              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === g.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{g.name}</p>
+                <p className="text-xs text-gray-500 truncate">{g.owner?.name} · 공모 {g._count?.exhibitions ?? 0} · 전시 {g._count?.shows ?? 0}</p>
+              </div>
+              <OvBadge status={g.status} kind="post" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selId && detail && (
+        <div className="border-t border-gray-200 pt-4 space-y-4">
+          <p className="text-sm font-semibold text-gray-900">{detail.gallery.name} — 게시물</p>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">공모 ({detail.exhibitions.length})</p>
+            {detail.exhibitions.length === 0 ? (
+              <p className="text-gray-400 text-xs py-2">등록한 공모가 없습니다.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {detail.exhibitions.map((ex: any) => (
+                  <div key={ex.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{ex.title}</p>
+                      <p className="text-xs text-gray-500 truncate">마감 {ovDate(ex.deadline)} · 지원 {ex._count?.applications ?? 0} · 등록 {ovDate(ex.createdAt)}</p>
+                    </div>
+                    <OvBadge status={ex.status} kind="post" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">전시 ({detail.shows.length})</p>
+            {detail.shows.length === 0 ? (
+              <p className="text-gray-400 text-xs py-2">등록한 전시가 없습니다.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {detail.shows.map((s: any) => (
+                  <div key={s.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{s.title}</p>
+                      <p className="text-xs text-gray-500 truncate">{ovDate(s.startDate)} ~ {ovDate(s.endDate)} · 등록 {ovDate(s.createdAt)}</p>
+                    </div>
+                    <OvBadge status={s.status} kind="post" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
