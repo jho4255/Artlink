@@ -9,6 +9,43 @@ import logger from '../lib/logger';
 // Instagram Graph API 호출 시 타임아웃 (5초)
 const INSTAGRAM_TIMEOUT_MS = 5000;
 
+// Instagram OAuth (Instagram API with Instagram Login — 비즈니스/크리에이터 계정)
+// 자격증명은 호출 시점에 읽는다(테스트/런타임 구성 용이).
+// 장기 토큰(60일) 만료 N일 전이면 갱신 시도
+const INSTAGRAM_REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 만료 임박 시 장기 토큰 갱신 (best-effort). 실패해도 기존 토큰으로 계속 사용. */
+async function refreshInstagramTokenIfNeeded(gallery: {
+  id: number;
+  instagramAccessToken: string | null;
+  instagramTokenExpiresAt: Date | null;
+}): Promise<string | null> {
+  const token = gallery.instagramAccessToken;
+  if (!token) return null;
+  const expiresAt = gallery.instagramTokenExpiresAt;
+  // 만료 시각을 모르거나(레거시) 아직 여유 있으면 갱신하지 않음
+  if (!expiresAt || expiresAt.getTime() - Date.now() > INSTAGRAM_REFRESH_THRESHOLD_MS) {
+    return token;
+  }
+  try {
+    const res = await fetch(
+      `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`,
+      { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
+    );
+    if (!res.ok) return token;
+    const data = await res.json() as { access_token?: string; expires_in?: number };
+    if (!data.access_token) return token;
+    const newExpiry = new Date(Date.now() + (data.expires_in ?? 0) * 1000);
+    await prisma.gallery.update({
+      where: { id: gallery.id },
+      data: { instagramAccessToken: data.access_token, instagramTokenExpiresAt: newExpiry },
+    });
+    return data.access_token;
+  } catch {
+    return token; // 갱신 실패 시 기존 토큰 유지
+  }
+}
+
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
   address: z.string().min(1, '주소를 입력해주세요.'),
@@ -228,29 +265,77 @@ router.delete('/:id', authenticate, authorize('ADMIN', 'GALLERY'), async (req, r
 
 // ========== Instagram 연동 API ==========
 
-// Instagram 토큰 저장 (갤러리 오너 전용)
-router.post('/:id/instagram-token', authenticate, async (req, res, next) => {
+// Instagram OAuth 연동 (갤러리 오너 전용)
+// 프론트에서 Instagram authorize 후 받은 code를 넘기면 토큰 교환 후 저장한다.
+const instagramConnectSchema = z.object({
+  code: z.string().min(1),
+  redirectUri: z.string().url(),
+});
+
+router.post('/:id/instagram/connect', authenticate, validate(instagramConnectSchema), async (req, res, next) => {
   try {
     const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
     if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
-    const { accessToken } = req.body;
-    if (!accessToken) throw new AppError('액세스 토큰을 입력해주세요.', 400);
+    const appId = process.env.INSTAGRAM_APP_ID || '';
+    const appSecret = process.env.INSTAGRAM_APP_SECRET || '';
+    if (!appId || !appSecret) {
+      throw new AppError('Instagram 연동이 서버에 설정되지 않았습니다.', 500);
+    }
 
-    // Graph API로 토큰 유효성 검증 (타임아웃 적용)
-    const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`, {
+    const { code, redirectUri } = req.body;
+
+    // 1) code → 단기 토큰 (api.instagram.com/oauth/access_token)
+    const shortRes = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: appId,
+        client_secret: appSecret,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+        code,
+      }),
       signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS),
     });
-    if (!igRes.ok) throw new AppError('유효하지 않은 Instagram 토큰입니다.', 400);
+    const shortData = await shortRes.json() as { access_token?: string; user_id?: string; error_message?: string };
+    if (!shortRes.ok || !shortData.access_token) {
+      logger.warn('Instagram', `code 교환 실패: ${shortData.error_message || shortRes.status}`, { galleryId: gallery.id });
+      throw new AppError('Instagram 인증에 실패했습니다. 비즈니스/크리에이터 계정인지 확인해주세요.', 400);
+    }
 
-    const igData = await igRes.json() as { id: string; username: string };
+    // 2) 단기 → 장기 토큰 (60일)
+    const longRes = await fetch(
+      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortData.access_token}`,
+      { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
+    );
+    const longData = await longRes.json() as { access_token?: string; expires_in?: number };
+    if (!longRes.ok || !longData.access_token) {
+      throw new AppError('Instagram 토큰 발급에 실패했습니다.', 400);
+    }
+    const longToken = longData.access_token;
+    const expiresAt = new Date(Date.now() + (longData.expires_in ?? 0) * 1000);
+
+    // 3) username 조회
+    const meRes = await fetch(
+      `https://graph.instagram.com/me?fields=id,username&access_token=${longToken}`,
+      { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
+    );
+    if (!meRes.ok) throw new AppError('Instagram 프로필 조회에 실패했습니다.', 400);
+    const me = await meRes.json() as { id: string; username: string };
+
     await prisma.gallery.update({
       where: { id: gallery.id },
-      data: { instagramAccessToken: accessToken, instagramUrl: `@${igData.username}`, instagramProfileVisible: true },
+      data: {
+        instagramAccessToken: longToken,
+        instagramTokenExpiresAt: expiresAt,
+        instagramUrl: `@${me.username}`,
+        instagramProfileVisible: true,
+      },
     });
 
-    res.json({ instagramConnected: true, username: igData.username });
+    res.json({ instagramConnected: true, username: me.username });
   } catch (error) { next(error); }
 });
 
@@ -302,7 +387,7 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
   try {
     const gallery = await prisma.gallery.findUnique({
       where: { id: parseInt(req.params.id as string) },
-      select: { instagramAccessToken: true, instagramFeedVisible: true },
+      select: { id: true, instagramAccessToken: true, instagramTokenExpiresAt: true, instagramFeedVisible: true },
     });
 
     // 토큰 없거나 피드 비공개 → 빈 배열
@@ -310,9 +395,12 @@ router.get('/:id/instagram-feed', async (req, res, next) => {
       return res.json([]);
     }
 
+    // 만료 임박 시 장기 토큰 갱신 (best-effort)
+    const token = await refreshInstagramTokenIfNeeded(gallery);
+
     // Graph API로 최근 9개 게시물 조회 (타임아웃 5초, 오류 시 빈 배열 반환)
     const igRes = await fetch(
-      `https://graph.instagram.com/me/media?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&limit=9&access_token=${gallery.instagramAccessToken}`,
+      `https://graph.instagram.com/me/media?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&limit=9&access_token=${token}`,
       { signal: AbortSignal.timeout(INSTAGRAM_TIMEOUT_MS) }
     );
 

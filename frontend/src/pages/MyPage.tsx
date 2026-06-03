@@ -19,6 +19,8 @@ import type { Favorite, Portfolio, Gallery, Exhibition, Show, CustomField, Artis
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
+const INSTAGRAM_APP_ID = import.meta.env.VITE_INSTAGRAM_APP_ID as string;
+
 export default function MyPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -933,24 +935,22 @@ function MyGalleriesSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
 
-  // Instagram 연동 상태
-  const [instagramModalGalleryId, setInstagramModalGalleryId] = useState<number | null>(null);
-  const [tokenInput, setTokenInput] = useState('');
-
-  // Instagram 토큰 저장
-  const saveTokenMutation = useMutation({
-    mutationFn: ({ galleryId, accessToken }: { galleryId: number; accessToken: string }) =>
-      api.post(`/galleries/${galleryId}/instagram-token`, { accessToken }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
-      queryClient.invalidateQueries({ queryKey: ['galleries'] });
-      queryClient.invalidateQueries({ queryKey: ['gallery'] });
-      setInstagramModalGalleryId(null);
-      setTokenInput('');
-      toast.success('Instagram이 연동되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || 'Instagram 연동에 실패했습니다.'),
-  });
+  // Instagram OAuth 연동 시작 — authorize 페이지로 리다이렉트.
+  // 콜백(/auth/instagram/callback)에서 code를 받아 백엔드 connect로 교환한다.
+  const handleConnectInstagram = (galleryId: number) => {
+    if (!INSTAGRAM_APP_ID) {
+      toast.error('Instagram 연동이 설정되지 않았습니다.');
+      return;
+    }
+    const state = crypto.randomUUID();
+    sessionStorage.setItem('ig_oauth_state', state);
+    sessionStorage.setItem('ig_oauth_gallery', String(galleryId));
+    const redirectUri = `${window.location.origin}/auth/instagram/callback`;
+    window.location.href =
+      `https://www.instagram.com/oauth/authorize?client_id=${INSTAGRAM_APP_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&response_type=code&scope=instagram_business_basic&state=${state}`;
+  };
 
   // Instagram 프로필 링크 토글
   const toggleProfileVisibilityMutation = useMutation({
@@ -1120,12 +1120,13 @@ function MyGalleriesSection() {
                       {g.instagramConnected ? '연결됨' : '미연동'}
                     </span>
                     <button
-                      onClick={() => { setInstagramModalGalleryId(g.id); setTokenInput(''); }}
+                      onClick={() => handleConnectInstagram(g.id)}
                       className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
                     >
                       {g.instagramConnected ? '재연동' : '연동하기'}
                     </button>
                   </div>
+                  <p className="text-[11px] text-gray-400">비즈니스/크리에이터 계정만 연동됩니다 (전환은 인스타그램 앱에서 무료).</p>
                   {/* 토글들 (연동된 경우만) */}
                   {g.instagramConnected && (
                     <div className="space-y-1.5">
@@ -1164,44 +1165,6 @@ function MyGalleriesSection() {
         </div>
       )}
 
-      {/* Instagram 토큰 입력 모달 */}
-      {instagramModalGalleryId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" tabIndex={-1} onClick={() => setInstagramModalGalleryId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setInstagramModalGalleryId(null); }}>
-          <div role="dialog" aria-modal="true" aria-label="Instagram 연동" className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold flex items-center gap-2">
-              <Instagram size={18} className="text-gray-500" /> Instagram 연동
-            </h3>
-            <p className="text-xs text-gray-500">
-              Instagram Graph API 액세스 토큰을 입력해주세요.
-            </p>
-            <input
-              type="text"
-              value={tokenInput}
-              onChange={e => setTokenInput(e.target.value)}
-              placeholder="액세스 토큰"
-              className="w-full p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setInstagramModalGalleryId(null)}
-                className="px-4 py-2 text-sm text-gray-500"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  if (!tokenInput.trim()) { toast.error('토큰을 입력해주세요.'); return; }
-                  saveTokenMutation.mutate({ galleryId: instagramModalGalleryId, accessToken: tokenInput });
-                }}
-                disabled={saveTokenMutation.isPending}
-                className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
-              >
-                {saveTokenMutation.isPending ? '저장 중...' : '저장'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

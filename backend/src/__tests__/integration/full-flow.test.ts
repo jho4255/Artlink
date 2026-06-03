@@ -118,19 +118,21 @@ describe('Full Flow Integration', () => {
     const emptyFeed = await request.get(`/api/galleries/${galleryId}/instagram-feed`);
     expect(emptyFeed.body).toEqual([]);
 
-    // 16. Instagram 토큰 연동 (Graph API mock)
+    // 16. Instagram OAuth 연동 (code → 단기 → 장기 토큰 → 프로필 mock)
     const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: '99999', username: 'flow_test_gallery' }),
-    } as any);
+    process.env.INSTAGRAM_APP_ID = 'flow_app_id';
+    process.env.INSTAGRAM_APP_SECRET = 'flow_app_secret';
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'short', user_id: '99999' }) } as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'flow_long_token', expires_in: 5184000 }) } as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: '99999', username: 'flow_test_gallery' }) } as any);
 
-    const saveToken = await request.post(`/api/galleries/${galleryId}/instagram-token`)
+    const connect = await request.post(`/api/galleries/${galleryId}/instagram/connect`)
       .set('Authorization', galleryToken)
-      .send({ accessToken: 'flow_test_valid_token' });
-    expect(saveToken.status).toBe(200);
-    expect(saveToken.body.instagramConnected).toBe(true);
-    expect(saveToken.body.username).toBe('flow_test_gallery');
+      .send({ code: 'flow_auth_code', redirectUri: 'https://artlink.example/auth/instagram/callback' });
+    expect(connect.status).toBe(200);
+    expect(connect.body.instagramConnected).toBe(true);
+    expect(connect.body.username).toBe('flow_test_gallery');
 
     // 17. 연동 후 갤러리 상세에서 instagramConnected=true, token 미노출
     const galleryDetail = await request.get(`/api/galleries/${galleryId}`);
@@ -177,13 +179,15 @@ describe('Full Flow Integration', () => {
     expect(galleryWithFav.body.isFavorited).toBe(true);
     expect(galleryWithFav.body.instagramConnected).toBe(true);
 
-    // 21. Artist는 토큰 저장 불가 (비오너)
-    const artistAttempt = await request.post(`/api/galleries/${galleryId}/instagram-token`)
+    // 21. Artist는 연동 불가 (비오너)
+    const artistAttempt = await request.post(`/api/galleries/${galleryId}/instagram/connect`)
       .set('Authorization', artistToken)
-      .send({ accessToken: 'hacker_token' });
+      .send({ code: 'hacker_code', redirectUri: 'https://artlink.example/auth/instagram/callback' });
     expect(artistAttempt.status).toBe(403);
 
     global.fetch = originalFetch;
+    delete process.env.INSTAGRAM_APP_ID;
+    delete process.env.INSTAGRAM_APP_SECRET;
   });
 
   it('커스텀 필드 포함 공모: 등록 → 승인 → 필드 수정 → 지원(답변) → 필수 누락 차단 전체 흐름', async () => {

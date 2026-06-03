@@ -170,18 +170,29 @@ ArtLink/
 
 ## Instagram 피드 연동
 
+### 연동 방식: Instagram OAuth (Instagram API with Instagram Login)
+- **비즈니스/크리에이터 계정 전용** (개인 계정 불가 — Basic Display API는 2024-12 폐기)
+- 필요한 권한(scope): `instagram_business_basic` 하나
+- 환경변수: backend `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`(호출 시점 read), frontend `VITE_INSTAGRAM_APP_ID`
+
+### OAuth 플로우
+1. MyPage `[연동하기]` → `handleConnectInstagram` → `www.instagram.com/oauth/authorize` 리다이렉트 (`state`=nonce, `sessionStorage`에 nonce+galleryId 저장)
+2. `/auth/instagram/callback` (`InstagramCallbackPage`) — state 검증 후 `POST /galleries/:id/instagram/connect` 호출
+3. 백엔드: code → 단기토큰(`api.instagram.com/oauth/access_token`) → 장기토큰 60일(`graph.instagram.com/access_token`, `ig_exchange_token`) → `/me`로 username 조회 → 저장
+
 ### DB 필드 (Gallery 모델)
-- `instagramAccessToken` — Graph API 토큰 (서버 전용, 응답에 미노출)
+- `instagramAccessToken` — 장기 토큰 60일 (서버 전용, 응답에 미노출)
+- `instagramTokenExpiresAt` — 장기 토큰 만료 시각 (만료 7일 이내면 피드 조회 시 자동 갱신)
 - `instagramFeedVisible` — 피드 공개 여부 (기본 false)
-- `instagramUrl` — @handle (토큰 연동 시 자동 설정, 프로필 링크 토글로 null 가능)
+- `instagramUrl` — @handle (연동 시 자동 설정, 프로필 링크 토글로 null 가능)
 
 ### API 엔드포인트
 | 메서드 | 경로 | 인증 | 기능 |
 |--------|------|------|------|
-| POST | /api/galleries/:id/instagram-token | 오너 | Graph API 토큰 검증 및 저장 |
+| POST | /api/galleries/:id/instagram/connect | 오너 | OAuth code → 토큰 교환·저장 |
 | PATCH | /api/galleries/:id/instagram-profile-visibility | 오너 | @handle 프로필 링크 표시 토글 |
 | PATCH | /api/galleries/:id/instagram-visibility | 오너 | 피드 공개/비공개 토글 |
-| GET | /api/galleries/:id/instagram-feed | 공개 | 최근 9개 게시물 조회 (best-effort) |
+| GET | /api/galleries/:id/instagram-feed | 공개 | 최근 9개 게시물 조회 (best-effort, 만료 임박 시 토큰 갱신) |
 
 ### 토큰 보안
 - `maskInstagram()` 헬퍼: 모든 갤러리 응답에서 `instagramAccessToken`을 제거하고 `instagramConnected: boolean`으로 변환
@@ -190,12 +201,13 @@ ArtLink/
 ### 프론트엔드 컴포넌트
 - `InstagramFeed.tsx` — 3x3 그리드 + 앱 내 ImageLightbox 확대 (외부 이탈 없음)
 - `InstagramPrivateMessage.tsx` — 비공개 상태 안내 (오너에게 설정 링크)
+- `InstagramCallbackPage.tsx` — OAuth 콜백 처리 (`/auth/instagram/callback`)
 - GalleryDetailPage — Instagram 섹션 (연동 시만 표시)
-- MyPage MyGalleriesSection — 토큰 입력 모달 + 프로필/피드 토글 스위치
+- MyPage MyGalleriesSection — `[연동하기]`(OAuth 리다이렉트) + 프로필/피드 토글 스위치
 
-### 향후 계획
-- 현재: 수동 토큰 입력 방식 (Instagram Graph API long-lived token)
-- 추후: Instagram OAuth 연동 (Facebook Login 기반)으로 자동 토큰 발급
+### Meta App Review (승인)
+- 개발 모드에선 앱에 등록된 **테스터(인스타 비즈니스 계정)**만 OAuth 통과 → 이 상태로 시연 영상 촬영
+- 심사엔 실제 사용하는 권한(`instagram_business_basic`)만 제출 (미사용 권한 제출 시 거절 위험)
 
 ## 개발 계정 (Seed 데이터)
 
