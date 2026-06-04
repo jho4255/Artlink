@@ -48,6 +48,16 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (region) where.region = region;
     if (minRating) where.rating = { gte: parseFloat(minRating as string) };
 
+    // 키워드 검색 (이름/주소/소개)
+    const q = ((req.query.q as string) || '').trim();
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { address: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const orderBy: any = sortBy === 'rating' ? { rating: 'desc' } : sortBy === 'reviewCount' ? { reviewCount: 'desc' } : { createdAt: 'desc' };
 
     const galleries = await prisma.gallery.findMany({

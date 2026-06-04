@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Users, MapPin, X, Send, Plus } from 'lucide-react';
+import { Heart, Users, MapPin, X, Send, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -19,6 +19,8 @@ export default function ExhibitionsPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [minGalleryRating, setMinGalleryRating] = useState<number | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [applyTerms, setApplyTerms] = useState('');
   const [applyConfirmId, setApplyConfirmId] = useState<number | null>(null);
 
@@ -41,12 +43,13 @@ export default function ExhibitionsPage() {
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
   const { data: exhibitions = [], isLoading, isError, refetch } = useQuery<Exhibition[]>({
-    queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType],
+    queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
       if (minGalleryRating) params.set('minGalleryRating', String(minGalleryRating));
       if (selectedType) params.set('type', selectedType);
+      if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/exhibitions?${params}`).then(r => r.data);
     },
     staleTime: 0,
@@ -65,7 +68,7 @@ export default function ExhibitionsPage() {
     },
   });
 
-  const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType] as const;
+  const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post('/favorites/toggle', { exhibitionId }),
     onMutate: async (exhibitionId: number) => {
@@ -98,6 +101,9 @@ export default function ExhibitionsPage() {
   if (selectedType) {
     activeFilters.push({ label: exhibitionTypeLabels[selectedType], onRemove: () => setSelectedType(null) });
   }
+  if (appliedSearch) {
+    activeFilters.push({ label: `"${appliedSearch}"`, onRemove: () => { setSearch(''); setAppliedSearch(''); } });
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
@@ -115,6 +121,23 @@ export default function ExhibitionsPage() {
           </button>
         )}
       </div>
+
+      {/* 검색 */}
+      <form onSubmit={(e) => { e.preventDefault(); setAppliedSearch(search.trim()); }} className="relative mb-5">
+        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="공모 제목·소개 검색"
+          className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        {search && (
+          <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); }} aria-label="검색어 지우기"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+            <X size={16} />
+          </button>
+        )}
+      </form>
 
       {/* 필터 */}
       <div className="space-y-3 mb-4 text-base">

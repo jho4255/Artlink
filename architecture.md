@@ -82,9 +82,9 @@ ArtLink/
 |------|------|----------|
 | auth | /api/auth | 개발 퀵 로그인, 유저 정보, 아바타 변경 |
 | hero | /api/hero-slides | 슬라이드 CRUD (Admin) |
-| gallery | /api/galleries | 갤러리 목록/상세/등록/이미지/상세수정/삭제(Admin)/Instagram연동 |
-| exhibition | /api/exhibitions | 공모 목록/상세/등록/지원(+이메일)/내 지원/내 공모/홍보사진/삭제(오너/Admin) |
-| show | /api/shows | 전시 목록/상세/등록/수정/삭제/이미지관리/내 전시(GALLERY) |
+| gallery | /api/galleries | 갤러리 목록(지역/별점/정렬/키워드검색 q=이름·주소·소개)/상세/등록/이미지/상세수정/삭제(Admin)/Instagram연동 |
+| exhibition | /api/exhibitions | 공모 목록(지역/유형/별점/키워드검색 q=제목·소개)/상세/등록/지원(+이메일)/내 지원/내 공모/홍보사진/삭제(오너/Admin) |
+| show | /api/shows | 전시 목록(지역/상태/키워드검색 q=제목·장소·작가)/상세/등록/수정/삭제/이미지관리/내 전시(GALLERY) |
 | review | /api/reviews | 리뷰 CRUD, 별점 자동 계산, 익명, 공모 연동 (GET /reviewable/:galleryId) |
 | favorite | /api/favorites | 찜하기 토글 (갤러리/공모/전시) |
 | portfolio | /api/portfolio | 포트폴리오 CRUD, 이미지 관리 |

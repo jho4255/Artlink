@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Star, Heart, Phone, MapPin, X, Plus } from 'lucide-react';
+import { Star, Heart, Phone, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
@@ -40,15 +40,18 @@ export default function GalleriesPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<string | null>(null);
+  const [search, setSearch] = useState('');           // 입력 중인 검색어
+  const [appliedSearch, setAppliedSearch] = useState(''); // 적용된 검색어
 
   // 갤러리 목록 조회
   const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
-    queryKey: ['galleries', selectedRegion, minRating, sortBy],
+    queryKey: ['galleries', selectedRegion, minRating, sortBy, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
       if (minRating) params.set('minRating', String(minRating));
       if (sortBy) params.set('sortBy', sortBy);
+      if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/galleries?${params}`).then(r => r.data);
     },
     staleTime: 0,
@@ -56,7 +59,7 @@ export default function GalleriesPage() {
   });
 
   // 찜하기 토글 - 낙관적 업데이트
-  const currentQueryKey = ['galleries', selectedRegion, minRating, sortBy] as const;
+  const currentQueryKey = ['galleries', selectedRegion, minRating, sortBy, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (galleryId: number) => api.post('/favorites/toggle', { galleryId }),
     onMutate: async (galleryId: number) => {
@@ -95,6 +98,12 @@ export default function GalleriesPage() {
       onRemove: () => setMinRating(null),
     });
   }
+  if (appliedSearch) {
+    activeFilters.push({
+      label: `"${appliedSearch}"`,
+      onRemove: () => { setSearch(''); setAppliedSearch(''); },
+    });
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
@@ -113,6 +122,23 @@ export default function GalleriesPage() {
           </button>
         )}
       </div>
+
+      {/* 검색 */}
+      <form onSubmit={(e) => { e.preventDefault(); setAppliedSearch(search.trim()); }} className="relative mb-5">
+        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="갤러리 이름·주소 검색"
+          className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        {search && (
+          <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); }} aria-label="검색어 지우기"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+            <X size={16} />
+          </button>
+        )}
+      </form>
 
       {/* 필터 — 행 구분 */}
       <div className="space-y-3 mb-4 text-base">

@@ -71,6 +71,19 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (region) where.region = region;
     if (req.query.type) where.type = req.query.type;
 
+    // 키워드 검색 (제목/소개) — 기존 deadlineStart OR과 충돌 방지 위해 AND로 결합
+    const q = ((req.query.q as string) || '').trim();
+    if (q) {
+      where.AND = [
+        { OR: where.OR },
+        { OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+        ] },
+      ];
+      delete where.OR;
+    }
+
     const exhibitions = await prisma.exhibition.findMany({
       where,
       include: {

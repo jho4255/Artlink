@@ -64,6 +64,16 @@ router.get('/', optionalAuth, async (req, res, next) => {
     const where: any = { status: 'APPROVED' };
     if (region) where.region = region;
 
+    // 키워드 검색 (제목/장소/참여작가)
+    const q = ((req.query.q as string) || '').trim();
+    if (q) {
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { location: { contains: q, mode: 'insensitive' } },
+        { artists: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     // status 필터: ongoing(진행중), upcoming(예정), ended(종료)
     if (req.query.showStatus === 'ongoing') {
       where.startDate = { lte: now };

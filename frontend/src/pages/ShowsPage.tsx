@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MapPin, Calendar, X, Plus } from 'lucide-react';
+import { Heart, MapPin, Calendar, X, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -18,20 +18,23 @@ export default function ShowsPage() {
   const { isAuthenticated, user } = useAuthStore();
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
 
   const { data: shows = [], isLoading, isError, refetch } = useQuery<Show[]>({
-    queryKey: ['shows', selectedRegion, selectedStatus],
+    queryKey: ['shows', selectedRegion, selectedStatus, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
       if (selectedStatus) params.set('showStatus', selectedStatus);
+      if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/shows?${params}`).then(r => r.data);
     },
     staleTime: 0,
     refetchOnMount: 'always',
   });
 
-  const currentQueryKey = ['shows', selectedRegion, selectedStatus] as const;
+  const currentQueryKey = ['shows', selectedRegion, selectedStatus, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (showId: number) => api.post('/favorites/toggle', { showId }),
     onMutate: async (showId: number) => {
@@ -61,6 +64,9 @@ export default function ShowsPage() {
   if (selectedStatus) {
     activeFilters.push({ label: showStatusLabels[selectedStatus], onRemove: () => setSelectedStatus(null) });
   }
+  if (appliedSearch) {
+    activeFilters.push({ label: `"${appliedSearch}"`, onRemove: () => { setSearch(''); setAppliedSearch(''); } });
+  }
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -80,6 +86,23 @@ export default function ShowsPage() {
           </button>
         )}
       </div>
+
+      {/* 검색 */}
+      <form onSubmit={(e) => { e.preventDefault(); setAppliedSearch(search.trim()); }} className="relative mb-5">
+        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="전시 제목·장소·작가 검색"
+          className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        {search && (
+          <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); }} aria-label="검색어 지우기"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+            <X size={16} />
+          </button>
+        )}
+      </form>
 
       {/* 필터 */}
       <div className="space-y-3 mb-4 text-base">
