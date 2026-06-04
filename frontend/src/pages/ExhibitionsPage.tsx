@@ -221,8 +221,9 @@ export default function ExhibitionsPage() {
                 className="group cursor-pointer"
               >
                 <SkeletonImage
-                  src={ex.imageUrl || ex.gallery?.mainImage || '/images/gallery-sculpture.webp'}
+                  src={ex.imageUrl || ex.gallery?.mainImage || ''}
                   alt={ex.title}
+                  fallbackLabel={ex.title}
                   className="aspect-[4/3]"
                   imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"
                   blurFill

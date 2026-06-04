@@ -37,8 +37,9 @@ export default function GalleryOfMonthSection() {
           >
             {/* 이미지 — 직각, 그림자 없음 */}
             <SkeletonImage
-              src={item.gallery.mainImage || '/images/gallery-sculpture.webp'}
+              src={item.gallery.mainImage || ''}
               alt={item.gallery.name}
+              fallbackLabel={item.gallery.name}
               className="aspect-[4/3]"
               imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
             />

@@ -293,10 +293,10 @@ export default function GalleryDetailPage() {
     );
   }
 
-  // 이미지 목록 구성 (images 배열 -> mainImage -> 기본 이미지 순으로 fallback)
+  // 이미지 목록 구성 (images 배열 -> mainImage -> 빈 슬라이드(플레이스홀더))
   const images = gallery.images?.length > 0
     ? gallery.images.map(img => img.url)
-    : [gallery.mainImage || 'https://images.unsplash.com/photo-1577720643272-265f09367456?w=800'];
+    : [gallery.mainImage || ''];
 
   // 권한 체크
   const isOwner = user?.id === gallery.ownerId;
@@ -1108,6 +1108,7 @@ function GalleryImageCarousel({
             <SkeletonImage
               src={src}
               alt={`${galleryName} ${i + 1}`}
+              fallbackLabel={galleryName}
               className="w-full h-full"
               imgClassName="object-contain"
               blurFill

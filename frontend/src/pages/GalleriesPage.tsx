@@ -248,8 +248,9 @@ export default function GalleriesPage() {
           {galleries.map((gallery) => (
             <GlowCard
               key={gallery.id}
-              imageSrc={gallery.images?.[0]?.url || gallery.mainImage || '/images/gallery-sculpture.webp'}
+              imageSrc={gallery.images?.[0]?.url || gallery.mainImage || ''}
               alt={`${gallery.name} 대표 이미지`}
+              fallbackLabel={gallery.name}
               onClick={() => navigate(`/galleries/${gallery.id}`)}
             >
 
@@ -301,14 +302,14 @@ export default function GalleriesPage() {
 }
 
 // hover 시 이미지 dominant color glow 카드
-function GlowCard({ imageSrc, alt, onClick, children }: { imageSrc: string; alt?: string; onClick: () => void; children: React.ReactNode }) {
+function GlowCard({ imageSrc, alt, fallbackLabel, onClick, children }: { imageSrc: string; alt?: string; fallbackLabel?: string; onClick: () => void; children: React.ReactNode }) {
   const [color, setColor] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const extracted = useRef(false);
 
   const handleMouseEnter = () => {
     setHovered(true);
-    if (!extracted.current) {
+    if (!extracted.current && imageSrc) {
       extracted.current = true;
       extractColor(imageSrc).then(setColor);
     }
@@ -329,6 +330,7 @@ function GlowCard({ imageSrc, alt, onClick, children }: { imageSrc: string; alt?
         <SkeletonImage
           src={imageSrc}
           alt={alt || ''}
+          fallbackLabel={fallbackLabel}
           className="aspect-[4/3]"
           imgClassName="object-contain group-hover:opacity-90 transition-opacity duration-300"
           blurFill

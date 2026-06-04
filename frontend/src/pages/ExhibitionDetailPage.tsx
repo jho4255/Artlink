@@ -22,7 +22,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp, Calendar, Mail } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, Plus, Upload, Check, FileText, ChevronDown, ChevronUp, Calendar, Mail, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -300,15 +300,22 @@ export default function ExhibitionDetailPage() {
           className="max-w-lg mx-auto relative overflow-hidden rounded-lg transition-shadow duration-700"
           style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
         >
-            <img
-              src={exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp'}
-              alt={exhibition.title}
-              className="w-full block cursor-pointer"
-              onClick={() => {
-                const img = exhibition.imageUrl || exhibition.gallery?.mainImage || '/images/gallery-sculpture.webp';
-                setLightbox({ images: [img], index: 0 });
-              }}
-            />
+            {(() => {
+              const heroImg = exhibition.imageUrl || exhibition.gallery?.mainImage || '';
+              return heroImg ? (
+                <img
+                  src={heroImg}
+                  alt={exhibition.title}
+                  className="w-full block cursor-pointer"
+                  onClick={() => setLightbox({ images: [heroImg], index: 0 })}
+                />
+              ) : (
+                <div className="w-full aspect-[4/3] bg-gray-100 flex flex-col items-center justify-center gap-1.5 text-gray-300">
+                  <ImageOff size={30} strokeWidth={1.5} />
+                  <span className="text-xs text-gray-400 px-3 text-center line-clamp-1">{exhibition.title}</span>
+                </div>
+              );
+            })()}
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
             <button
               onClick={() => navigate(-1)}
