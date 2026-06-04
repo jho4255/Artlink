@@ -333,7 +333,7 @@ function GlowCard({ imageSrc, alt, fallbackLabel, onClick, children }: { imageSr
           fallbackLabel={fallbackLabel}
           className="aspect-[4/3]"
           imgClassName="object-contain group-hover:opacity-90 transition-opacity duration-300"
-          whiteFade
+          blurFill
         />
       </div>
       {children}
