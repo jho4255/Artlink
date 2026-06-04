@@ -199,7 +199,7 @@ export default function ShowsPage() {
                     </h3>
                     <div className="flex items-center gap-2 flex-none">
                       <span className={`text-xs font-medium px-2 py-0.5 ${
-                        status === 'ongoing' ? 'text-[#c4302b]' :
+                        status === 'ongoing' ? 'text-[#6366f1]' :
                         status === 'upcoming' ? 'text-gray-900' :
                         'text-gray-400'
                       }`}>
@@ -215,7 +215,7 @@ export default function ShowsPage() {
                           className="p-1 cursor-pointer"
                           aria-label={show.isFavorited ? '찜 해제' : '찜하기'}
                         >
-                          <Heart size={16} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                          <Heart size={16} className={show.isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300 hover:text-gray-500'} />
                         </button>
                       )}
                     </div>

@@ -28,11 +28,19 @@ export default function BenefitsPage() {
           {benefits.map((benefit) => (
             <div
               key={benefit.id}
-              className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+              className="bg-white border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg hover:shadow-indigo-100/60 transition-shadow flex flex-col"
             >
               {benefit.imageUrl && (
-                /* 박스 크기 고정(4:3), 이미지는 비율 유지(contain) — 잘림/찌그러짐 없음, 여백은 블러로 채움 */
-                <SkeletonImage src={benefit.imageUrl} alt={benefit.title} className="w-full aspect-[4/3]" imgClassName="object-contain" blurFill />
+                /* 로고: 연한 회색 영역 안의 흰색 라운드 박스에 object-contain 중앙정렬 (비율·크기 제각각이어도 안 깨짐) */
+                <div className="p-4 bg-gray-50">
+                  <SkeletonImage
+                    src={benefit.imageUrl}
+                    alt={benefit.title}
+                    fallbackLabel={benefit.title}
+                    className="w-full aspect-[4/3] bg-white rounded-xl border border-gray-100"
+                    imgClassName="object-contain p-4"
+                  />
+                </div>
               )}
               <div className="p-5 flex-1 flex flex-col">
                 <h2 className="text-lg font-semibold text-gray-900">{benefit.title}</h2>

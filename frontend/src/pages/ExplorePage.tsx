@@ -227,7 +227,7 @@ function ImageDetailModal({ image, onClose, onUpdate }: ImageDetailModalProps) {
               <button onClick={handleLike} aria-label={image.isLiked ? '좋아요 취소' : '좋아요'}>
                 <Heart
                   size={20}
-                  className={image.isLiked ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
+                  className={image.isLiked ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300 hover:text-gray-500'}
                 />
               </button>
               {isOwner ? (

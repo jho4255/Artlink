@@ -21,12 +21,12 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="border-t border-gray-100 bg-white">
+      <footer className="border-t border-gray-100 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
           {companyInfo.length > 0 ? (
             <div className="space-y-0.5 text-[11px] text-gray-300 leading-relaxed">

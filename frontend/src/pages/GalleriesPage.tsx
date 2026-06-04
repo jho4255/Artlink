@@ -271,7 +271,7 @@ export default function GalleriesPage() {
                     >
                       <Heart
                         size={18}
-                        className={gallery.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
+                        className={gallery.isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300 hover:text-gray-500'}
                       />
                     </button>
                   )}
@@ -279,8 +279,8 @@ export default function GalleriesPage() {
 
                 {/* 별점 */}
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <Star size={15} className="text-[#c4302b] fill-[#c4302b]" />
-                  <span className="text-base font-medium text-[#c4302b]">{gallery.rating.toFixed(1)}</span>
+                  <Star size={15} className="text-[#6366f1] fill-[#6366f1]" />
+                  <span className="text-base font-medium text-[#6366f1]">{gallery.rating.toFixed(1)}</span>
                   <span className="text-sm text-gray-400">({gallery.reviewCount})</span>
                 </div>
 

@@ -48,8 +48,8 @@ export default function GalleryOfMonthSection() {
             <div className="mt-3">
               {/* 별점 — 유일한 컬러 포인트 */}
               <div className="flex items-center gap-1.5 mb-2">
-                <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
-                <span className="text-base font-medium text-[#c4302b]">
+                <Star size={16} className="text-[#6366f1] fill-[#6366f1]" />
+                <span className="text-base font-medium text-[#6366f1]">
                   {item.gallery.rating?.toFixed(1)}
                 </span>
               </div>

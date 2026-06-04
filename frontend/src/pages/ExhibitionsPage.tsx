@@ -235,7 +235,7 @@ export default function ExhibitionsPage() {
                       {ex.title}
                     </h3>
                     <div className="flex items-center gap-2 flex-none">
-                      <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
+                      <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#6366f1]' : 'text-gray-500'}`}>
                         D-{dday}
                       </span>
                       {isAuthenticated && !isAdmin && (
@@ -244,7 +244,7 @@ export default function ExhibitionsPage() {
                           className="p-1 cursor-pointer"
                           aria-label={ex.isFavorited ? '찜 해제' : '찜하기'}
                         >
-                          <Heart size={16} className={ex.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                          <Heart size={16} className={ex.isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300 hover:text-gray-500'} />
                         </button>
                       )}
                     </div>
@@ -275,7 +275,7 @@ export default function ExhibitionsPage() {
                         }
                       }}
                       disabled={applyMutation.isPending}
-                      className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-[#c4302b] transition-colors cursor-pointer"
+                      className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-[#6366f1] transition-colors cursor-pointer"
                     >
                       지원하기 →
                     </button>

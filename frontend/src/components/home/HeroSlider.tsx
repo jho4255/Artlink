@@ -136,7 +136,7 @@ export default function HeroSlider() {
   // 데이터 로딩 중이거나 슬라이드가 없으면 전체 스켈레톤
   if (isLoading || slides.length === 0) {
     return (
-      <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
+      <div className="relative w-full pt-6 md:pt-10 pb-12 md:pb-16">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
           <div className="h-[50vh] md:h-[60vh] bg-gray-100 rounded-lg animate-pulse">
           </div>

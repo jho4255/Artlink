@@ -99,7 +99,7 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-16 md:h-20">
           {/* 로고 (좌) */}
           <Link to="/" className="flex-none text-2xl font-bold tracking-tight text-gray-900 font-serif">
-            Art<span className="text-[#dc3545]">Link</span>
+            Art<span className="text-[#6366f1]">Link</span>
           </Link>
 
           {/* 데스크탑 네비게이션 (중앙) */}
@@ -130,7 +130,7 @@ export default function Navbar() {
               >
                 <Mail size={20} className="text-gray-600" />
                 {unreadMsgCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#c4302b] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#6366f1] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                     {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                   </span>
                 )}
@@ -213,7 +213,7 @@ export default function Navbar() {
               >
                 <Mail size={20} />
                 {unreadMsgCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-[#c4302b] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-[#6366f1] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
                     {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                   </span>
                 )}
