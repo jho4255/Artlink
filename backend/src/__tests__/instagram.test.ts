@@ -3,11 +3,11 @@
  *
  * - GET /api/galleries — instagramAccessToken 미노출, instagramConnected 노출
  * - GET /api/galleries/:id — 동일 검증
- * - POST /api/galleries/:id/instagram-token — 토큰 저장
+ * - POST /api/galleries/:id/instagram/connect — OAuth code 교환 후 토큰 저장
  * - PATCH /api/galleries/:id/instagram-visibility — 피드 토글
  * - GET /api/galleries/:id/instagram-feed — 피드 조회
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery } from './helpers';
 
 describe('Instagram API', () => {
@@ -68,64 +68,87 @@ describe('Instagram API', () => {
     });
   });
 
-  describe('POST /api/galleries/:id/instagram-token', () => {
+  describe('POST /api/galleries/:id/instagram/connect', () => {
+    const validBody = { code: 'auth_code_123', redirectUri: 'https://artlink.example/auth/instagram/callback' };
+    let originalFetch: typeof global.fetch;
+    const origAppId = process.env.INSTAGRAM_APP_ID;
+    const origSecret = process.env.INSTAGRAM_APP_SECRET;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      process.env.INSTAGRAM_APP_ID = 'test_app_id';
+      process.env.INSTAGRAM_APP_SECRET = 'test_app_secret';
+    });
+    afterEach(() => {
+      global.fetch = originalFetch;
+      process.env.INSTAGRAM_APP_ID = origAppId;
+      process.env.INSTAGRAM_APP_SECRET = origSecret;
+    });
+
     it('인증 없으면 401', async () => {
-      const res = await request.post(`/api/galleries/${galleryId}/instagram-token`).send({ accessToken: 'test' });
+      const res = await request.post(`/api/galleries/${galleryId}/instagram/connect`).send(validBody);
       expect(res.status).toBe(401);
     });
 
     it('비오너면 403', async () => {
       const res = await request
-        .post(`/api/galleries/${galleryId}/instagram-token`)
+        .post(`/api/galleries/${galleryId}/instagram/connect`)
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ accessToken: 'test' });
+        .send(validBody);
       expect(res.status).toBe(403);
     });
 
-    it('빈 토큰이면 400', async () => {
+    it('code 누락이면 400 (validate)', async () => {
       const res = await request
-        .post(`/api/galleries/${galleryId}/instagram-token`)
+        .post(`/api/galleries/${galleryId}/instagram/connect`)
         .set('Authorization', `Bearer ${galleryToken}`)
-        .send({ accessToken: '' });
+        .send({ redirectUri: validBody.redirectUri });
       expect(res.status).toBe(400);
     });
 
-    it('잘못된 토큰이면 400 (Graph API mock)', async () => {
-      // Graph API mock — 실패 응답
-      const originalFetch = global.fetch;
-      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400 } as any);
+    it('code 교환 실패면 400 (Instagram mock)', async () => {
+      // 1차 호출(단기 토큰 교환) 실패
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error_message: 'bad code' }) } as any);
 
       const res = await request
-        .post(`/api/galleries/${galleryId}/instagram-token`)
+        .post(`/api/galleries/${galleryId}/instagram/connect`)
         .set('Authorization', `Bearer ${galleryToken}`)
-        .send({ accessToken: 'invalid_token' });
+        .send(validBody);
       expect(res.status).toBe(400);
-
-      global.fetch = originalFetch;
     });
 
-    it('유효한 토큰이면 저장 성공 (Graph API mock)', async () => {
-      const originalFetch = global.fetch;
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ id: '12345', username: 'test_gallery' }),
-      } as any);
+    it('유효한 code면 토큰 교환 후 저장 성공 (Instagram mock)', async () => {
+      // 3단계: 단기토큰 → 장기토큰 → 프로필
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'short_tok', user_id: '999' }) } as any)
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'long_tok', expires_in: 5184000 }) } as any)
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ id: '999', username: 'test_gallery' }) } as any);
 
       const res = await request
-        .post(`/api/galleries/${galleryId}/instagram-token`)
+        .post(`/api/galleries/${galleryId}/instagram/connect`)
         .set('Authorization', `Bearer ${galleryToken}`)
-        .send({ accessToken: 'valid_token_123' });
+        .send(validBody);
 
       expect(res.status).toBe(200);
       expect(res.body.instagramConnected).toBe(true);
       expect(res.body.username).toBe('test_gallery');
 
-      // DB 확인
+      // DB 확인 — 장기 토큰/핸들/만료시각 저장
       const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-      expect(gallery?.instagramAccessToken).toBe('valid_token_123');
+      expect(gallery?.instagramAccessToken).toBe('long_tok');
       expect(gallery?.instagramUrl).toBe('@test_gallery');
+      expect(gallery?.instagramTokenExpiresAt).toBeTruthy();
+    });
 
-      global.fetch = originalFetch;
+    it('앱 자격증명 미설정이면 500', async () => {
+      delete process.env.INSTAGRAM_APP_ID;
+      delete process.env.INSTAGRAM_APP_SECRET;
+
+      const res = await request
+        .post(`/api/galleries/${galleryId}/instagram/connect`)
+        .set('Authorization', `Bearer ${galleryToken}`)
+        .send(validBody);
+      expect(res.status).toBe(500);
     });
   });
 
