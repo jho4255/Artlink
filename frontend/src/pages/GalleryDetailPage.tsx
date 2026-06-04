@@ -1085,7 +1085,7 @@ function GalleryImageCarousel({
 
   return (
     <div
-      className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden"
+      className="relative w-full h-72 md:h-[28rem] bg-white overflow-hidden"
       onMouseEnter={() => { isHovered.current = true; }}
       onMouseLeave={() => { isHovered.current = false; }}
     >
@@ -1111,7 +1111,7 @@ function GalleryImageCarousel({
               fallbackLabel={galleryName}
               className="w-full h-full"
               imgClassName="object-contain"
-              blurFill
+              whiteFade
               draggable={false}
               loading={i === 0 ? 'eager' : 'lazy'}
             />

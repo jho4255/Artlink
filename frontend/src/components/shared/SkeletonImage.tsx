@@ -11,6 +11,8 @@ interface SkeletonImageProps {
   imgClassName?: string;
   /** contain 사용 시 레터박스 여백을 동일 이미지 블러로 채움 */
   blurFill?: boolean;
+  /** contain 사용 시 여백을 흰색으로 두고, 사진 가장자리를 흰색으로 부드럽게 그라데이션 블렌딩 */
+  whiteFade?: boolean;
   loading?: 'eager' | 'lazy';
   draggable?: boolean;
   onClick?: (e: React.MouseEvent) => void;
@@ -31,6 +33,7 @@ export default function SkeletonImage({
   className,
   imgClassName = 'object-cover',
   blurFill = false,
+  whiteFade = false,
   loading,
   draggable,
   onClick,
@@ -40,7 +43,7 @@ export default function SkeletonImage({
   const hasImage = !!(src && src.trim());
 
   return (
-    <div className={cn('relative overflow-hidden bg-gray-100', className)} onClick={onClick}>
+    <div className={cn('relative overflow-hidden', whiteFade ? 'bg-white' : 'bg-gray-100', className)} onClick={onClick}>
       {!hasImage ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-gray-300 select-none px-3">
           <ImageOff size={26} strokeWidth={1.5} />
@@ -76,6 +79,13 @@ export default function SkeletonImage({
               loaded ? 'opacity-100' : 'opacity-0',
             )}
           />
+          {whiteFade && loaded && (
+            /* 사진 가장자리를 흰색으로 부드럽게 그라데이션 블렌딩 (레터박스 여백 = 흰색) */
+            <div
+              className="absolute inset-0 pointer-events-none z-[1]"
+              style={{ background: 'radial-gradient(130% 130% at 50% 50%, rgba(255,255,255,0) 58%, #ffffff 100%)' }}
+            />
+          )}
         </>
       )}
     </div>
