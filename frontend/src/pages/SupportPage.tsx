@@ -230,7 +230,7 @@ function FaqSection() {
                           <button onClick={() => startEdit(faq)} className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1">
                             <Edit3 size={12} /> 수정
                           </button>
-                          <button onClick={() => deleteMutation.mutate(faq.id)} className="text-xs text-gray-400 hover:text-[#6366f1] flex items-center gap-1">
+                          <button onClick={() => deleteMutation.mutate(faq.id)} className="text-xs text-gray-400 hover:text-[#c4302b] flex items-center gap-1">
                             <Trash2 size={12} /> 삭제
                           </button>
                         </div>
@@ -414,7 +414,7 @@ function InquirySection() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-gray-900 truncate">{inq.subject}</h3>
                     <span className={`flex-none text-xs font-medium ${
-                      inq.status === 'ANSWERED' ? 'text-gray-500' : 'text-[#6366f1]'
+                      inq.status === 'ANSWERED' ? 'text-gray-500' : 'text-[#c4302b]'
                     }`}>
                       {inq.status === 'ANSWERED' ? '답변완료' : '대기중'}
                     </span>

@@ -358,7 +358,7 @@ export default function GalleryDetailPage() {
         <div>
           <h1 className="text-2xl font-medium">{gallery.name}</h1>
           <div className="flex items-center gap-2 mt-2">
-            <Star size={16} className="text-[#6366f1] fill-[#6366f1]" />
+            <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
             <span className="font-medium">{gallery.rating.toFixed(1)}</span>
             <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
           </div>
@@ -676,7 +676,7 @@ export default function GalleryDetailPage() {
                       <button key={s} onClick={() => setReviewRating(s)}>
                         <Star
                           size={20}
-                          className={s <= reviewRating ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300'}
+                          className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'}
                         />
                       </button>
                     ))}
@@ -742,7 +742,7 @@ export default function GalleryDetailPage() {
                         <div className="flex gap-1">
                           {[1, 2, 3, 4, 5].map(s => (
                             <button key={s} onClick={() => setReviewRating(s)}>
-                              <Star size={18} className={s <= reviewRating ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300'} />
+                              <Star size={18} className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'} />
                             </button>
                           ))}
                         </div>
@@ -794,7 +794,7 @@ export default function GalleryDetailPage() {
                             </div>
                             <div className="flex gap-0.5 mt-1">
                               {[1, 2, 3, 4, 5].map(s => (
-                                <Star key={s} size={12} className={s <= review.rating ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-200'} />
+                                <Star key={s} size={12} className={s <= review.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />
                               ))}
                             </div>
                           </div>
@@ -865,7 +865,7 @@ export default function GalleryDetailPage() {
           <button
             onClick={() => setDeleteGalleryConfirm(true)}
             disabled={deleteGalleryMutation.isPending}
-            className="text-sm text-gray-400 hover:text-[#6366f1] cursor-pointer"
+            className="text-sm text-gray-400 hover:text-[#c4302b] cursor-pointer"
           >
             갤러리 삭제
           </button>
@@ -1126,7 +1126,7 @@ function GalleryImageCarousel({
           className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow z-10"
           aria-label={isFavorited ? '찜 해제' : '찜하기'}
         >
-          <Heart size={22} className={isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-400'} />
+          <Heart size={22} className={isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
         </button>
       )}
 

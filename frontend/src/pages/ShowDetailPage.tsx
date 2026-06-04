@@ -149,7 +149,7 @@ export default function ShowDetailPage() {
         <h1 className="text-2xl font-medium text-gray-900">{show.title}</h1>
         <div className="flex items-center gap-3 flex-none">
           <span className={`text-sm font-medium ${
-            status === 'ongoing' ? 'text-[#6366f1]' :
+            status === 'ongoing' ? 'text-[#c4302b]' :
             status === 'upcoming' ? 'text-gray-900' :
             'text-gray-400'
           }`}>
@@ -157,7 +157,7 @@ export default function ShowDetailPage() {
           </span>
           {isAuthenticated && !isAdmin && (
             <button onClick={() => favMutation.mutate()} className="cursor-pointer" aria-label={show.isFavorited ? '찜 해제' : '찜하기'}>
-              <Heart size={20} className={show.isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-300 hover:text-gray-500'} />
+              <Heart size={20} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
             </button>
           )}
         </div>
@@ -253,7 +253,7 @@ export default function ShowDetailPage() {
         <div className="border-t border-gray-200 mt-12 pt-6">
           <button
             onClick={() => { if (confirm('전시를 삭제하시겠습니까?')) deleteMutation.mutate(); }}
-            className="text-sm text-gray-400 hover:text-[#6366f1] cursor-pointer"
+            className="text-sm text-gray-400 hover:text-[#c4302b] cursor-pointer"
           >
             전시 삭제
           </button>

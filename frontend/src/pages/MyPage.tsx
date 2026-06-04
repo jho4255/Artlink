@@ -161,7 +161,7 @@ function ProfileCard() {
     : 'bg-red-100 text-red-700';
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 mb-6 min-h-[180px] md:min-h-[240px] flex items-center">
+    <div className="bg-gray-50 rounded-2xl p-6 mb-6 min-h-[180px] md:min-h-[240px] flex items-center">
       <div className="flex items-center gap-4">
         <div className="relative group">
           <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
@@ -661,15 +661,15 @@ function FavoritesSection() {
                     {sub && <p className="text-sm text-gray-400 mt-0.5">{sub}</p>}
                     {rating != null && (
                       <div className="flex items-center gap-1 mt-1">
-                        <Star size={13} className="text-[#6366f1] fill-[#6366f1]" />
-                        <span className="text-sm text-[#6366f1]">{rating.toFixed(1)}</span>
+                        <Star size={13} className="text-[#c4302b] fill-[#c4302b]" />
+                        <span className="text-sm text-[#c4302b]">{rating.toFixed(1)}</span>
                       </div>
                     )}
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined }); }}
                     aria-label="찜 해제"
-                    className="p-1 text-gray-300 hover:text-[#6366f1] cursor-pointer flex-none"
+                    className="p-1 text-gray-300 hover:text-[#c4302b] cursor-pointer flex-none"
                   >
                     <Heart size={16} className="fill-current" />
                   </button>
@@ -714,7 +714,7 @@ function MyReviewsSection() {
                 {r.gallery?.name}
               </button>
               <div className="flex gap-0.5 mt-1">
-                {[1,2,3,4,5].map(s => <Star key={s} size={12} className={s <= r.rating ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-200'} />)}
+                {[1,2,3,4,5].map(s => <Star key={s} size={12} className={s <= r.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />)}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -1016,7 +1016,7 @@ function MyGalleriesSection() {
 
       {/* 등록 폼 */}
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <div className="flex justify-between items-center">
             <h4 className="font-medium text-sm">갤러리 등록 요청</h4>
             <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
@@ -1374,7 +1374,7 @@ function MyExhibitionsSection() {
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <div className="flex justify-between items-center">
             <h4 className="font-medium text-sm">공모 등록 요청</h4>
             <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
@@ -1949,7 +1949,7 @@ function MyShowsSection() {
 
       {/* 등록 폼 */}
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <select value={form.galleryId} onChange={e => setForm({ ...form, galleryId: Number(e.target.value) })}
             className="w-full p-2 border border-gray-200 rounded-lg text-sm">
             <option value={0}>갤러리 선택</option>
@@ -2455,7 +2455,7 @@ function HeroManageSection() {
 
       {/* 등록/수정 폼 */}
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <h4 className="font-medium text-sm">{editingId ? '슬라이드 수정' : '새 슬라이드 등록'}</h4>
           <input placeholder="제목 *" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
           <input placeholder="설명" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
@@ -2574,7 +2574,7 @@ function BenefitManageSection() {
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <h4 className="font-medium text-sm">{editingId ? '혜택 수정' : '새 혜택 등록'}</h4>
           <input placeholder="제목 *" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
           <textarea placeholder="설명 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
@@ -2683,7 +2683,7 @@ function GotmManageSection() {
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 bg-white border border-gray-100 rounded-xl space-y-3">
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <h4 className="font-medium text-sm">갤러리 검색 및 선정</h4>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -2816,7 +2816,7 @@ function ReportManageSection() {
               <div className="flex justify-between items-start cursor-pointer" onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-[#6366f1]' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
+                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-[#c4302b]' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
                       {statusLabels[r.status] || r.status}
                     </span>
                     <span className="text-xs text-gray-400">{reasonLabels[r.reason] || r.reason}</span>
@@ -2842,7 +2842,7 @@ function ReportManageSection() {
                       <div className="flex gap-2">
                         <button onClick={() => actionMutation.mutate({ id: r.id, status: 'DISMISSED', adminNote })} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900">반려</button>
                         <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote })} className="px-3 py-1.5 text-sm bg-gray-900 text-white">제재</button>
-                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-[#6366f1] hover:underline">제재 + 삭제</button>
+                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-[#c4302b] hover:underline">제재 + 삭제</button>
                       </div>
                     </div>
                   )}

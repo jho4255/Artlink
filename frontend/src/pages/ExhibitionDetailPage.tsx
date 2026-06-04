@@ -330,7 +330,7 @@ export default function ExhibitionDetailPage() {
                 className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
                 aria-label="찜하기"
               >
-                <Heart size={20} className={exhibition.isFavorited ? 'text-[#6366f1] fill-[#6366f1]' : 'text-gray-400'} />
+                <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
               </button>
             )}
             <div className="absolute bottom-4 left-4">
@@ -353,7 +353,7 @@ export default function ExhibitionDetailPage() {
           >
             {exhibition.gallery?.name}
             <div className="flex items-center gap-0.5 ml-2">
-              <Star size={12} className="text-[#6366f1] fill-[#6366f1]" />
+              <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
               <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
             </div>
           </button>

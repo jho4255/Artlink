@@ -343,7 +343,7 @@ export default function MessagesPage() {
                     {a.type.startsWith('image/') ? <Image size={12} className="text-gray-400" /> : <FileText size={12} className="text-gray-400" />}
                     <span className="flex-1 truncate">{a.name}</span>
                     <span className="text-gray-400">{(a.size / 1024).toFixed(0)}KB</span>
-                    <button onClick={() => setNewAttachments(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-[#6366f1]"><X size={12} /></button>
+                    <button onClick={() => setNewAttachments(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-[#c4302b]"><X size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -526,7 +526,7 @@ export default function MessagesPage() {
                   </div>
                   <div className={`flex items-center gap-2 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <span className="text-[10px] text-gray-300">{formatDateTime(msg.createdAt)}</span>
-                    {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="text-gray-300 hover:text-[#6366f1] transition-colors"><Flag size={10} /></button>}
+                    {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="text-gray-300 hover:text-[#c4302b] transition-colors"><Flag size={10} /></button>}
                   </div>
                 </div>
               </div>
@@ -541,7 +541,7 @@ export default function MessagesPage() {
                 <div key={i} className="flex items-center gap-2 px-2 py-1 bg-gray-50 text-xs">
                   {a.type.startsWith('image/') ? <Image size={10} className="text-gray-400" /> : <FileText size={10} className="text-gray-400" />}
                   <span className="flex-1 truncate">{a.name}</span>
-                  <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-[#6366f1]"><X size={10} /></button>
+                  <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-[#c4302b]"><X size={10} /></button>
                 </div>
               ))}
             </div>
