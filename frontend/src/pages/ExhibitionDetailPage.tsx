@@ -739,7 +739,7 @@ export default function ExhibitionDetailPage() {
                           const portfolio = app.user?.portfolio;
 
                           return (
-                            <div key={app.id} className={`border rounded-xl overflow-hidden transition-colors ${isSelected ? 'border-blue-300 bg-blue-50/30' : 'border-gray-100'}`}>
+                            <div key={app.id} className={`border rounded-xl overflow-hidden transition-colors ${isSelected ? 'border-blue-300 bg-blue-50/30' : app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
                               <div className="p-3 flex items-center gap-2">
                                 <input
                                   type="checkbox"
@@ -760,6 +760,11 @@ export default function ExhibitionDetailPage() {
                                       {displayName(app.user)}
                                     </span>
                                     <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
+                                    {app.isFirstApplication ? (
+                                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">★ 첫 지원</span>
+                                    ) : (
+                                      <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">이 갤러리 {app.galleryApplicationOrder}번째</span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <select

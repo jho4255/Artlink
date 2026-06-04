@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { galleryApplicationStats } from '../lib/applicationStats';
 
 const router = Router();
 
@@ -121,6 +122,9 @@ router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), as
       orderBy: { createdAt: 'desc' },
     });
 
+    // 갤러리 단위 지원 횟수/순번/첫지원 여부
+    const stats = await galleryApplicationStats(exRow.gallery.id, applications.map(a => a.userId));
+
     const parsed = applications.map((app: any) => ({
       id: app.id,
       status: app.status,
@@ -130,6 +134,7 @@ router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), as
       customAnswers: app.customAnswers
         ? (() => { try { return JSON.parse(app.customAnswers); } catch { return null; } })()
         : null,
+      ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
     }));
 
     res.json({ exhibition, counts: countByStatus(applications), applications: parsed });

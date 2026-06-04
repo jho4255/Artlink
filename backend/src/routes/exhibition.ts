@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { sendPortfolioEmail } from '../lib/mailer';
+import { galleryApplicationStats } from '../lib/applicationStats';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -404,10 +405,14 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
       orderBy: { createdAt: 'desc' }
     });
 
-    // customAnswers JSON 파싱
+    // 갤러리 단위 지원 횟수/순번/첫지원 여부 계산
+    const stats = await galleryApplicationStats(exhibition.galleryId, applications.map(a => a.userId));
+
+    // customAnswers JSON 파싱 + 갤러리 지원 통계 부착
     const parsed = applications.map((app: any) => ({
       ...app,
       customAnswers: app.customAnswers ? (() => { try { return JSON.parse(app.customAnswers); } catch { return null; } })() : null,
+      ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
     }));
 
     res.json(parsed);

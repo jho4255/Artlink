@@ -101,6 +101,31 @@ describe('Admin 운영 조회 API', () => {
       const res = await request.get('/api/admin/exhibitions/999999/applications').set('Authorization', `Bearer ${adminTok}`);
       expect(res.status).toBe(404);
     });
+
+    it('갤러리 단위 지원 횟수/순번/첫지원 여부', async () => {
+      // 같은 갤러리의 두 번째 공모에 user1이 또 지원 (총 2회)
+      const ex2 = await testPrisma.exhibition.create({
+        data: { title: '두번째 공모', type: 'SOLO', deadline: new Date(Date.now() + 30 * 86400000), exhibitDate: new Date(Date.now() + 60 * 86400000), capacity: 5, region: 'SEOUL', description: 'd', status: 'APPROVED', galleryId },
+      });
+      await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex2.id, status: 'SUBMITTED' } });
+
+      // 첫 공모: user1은 이 갤러리 첫 지원
+      const r1 = await request.get(`/api/admin/exhibitions/${exhibitionId}/applications`).set('Authorization', `Bearer ${adminTok}`);
+      const u1a = r1.body.applications.find((a: any) => a.user.id === 1);
+      expect(u1a.galleryApplicationCount).toBe(2);
+      expect(u1a.galleryApplicationOrder).toBe(1);
+      expect(u1a.isFirstApplication).toBe(true);
+      // user2는 1회뿐 → 첫 지원
+      const u2 = r1.body.applications.find((a: any) => a.user.id === 2);
+      expect(u2.isFirstApplication).toBe(true);
+      expect(u2.galleryApplicationCount).toBe(1);
+
+      // 두번째 공모: user1은 2번째 지원
+      const r2 = await request.get(`/api/admin/exhibitions/${ex2.id}/applications`).set('Authorization', `Bearer ${adminTok}`);
+      const u1b = r2.body.applications.find((a: any) => a.user.id === 1);
+      expect(u1b.galleryApplicationOrder).toBe(2);
+      expect(u1b.isFirstApplication).toBe(false);
+    });
   });
 
   // ===== 작가 지원 이력 =====

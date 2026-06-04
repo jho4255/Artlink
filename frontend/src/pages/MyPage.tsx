@@ -3029,10 +3029,17 @@ function OvExhibitions() {
                 const isOpen = expanded === app.id;
                 const answers: { fieldId: string; value: string }[] = Array.isArray(app.customAnswers) ? app.customAnswers : [];
                 return (
-                  <div key={app.id} className="border border-gray-100 rounded-lg">
+                  <div key={app.id} className={`border rounded-lg ${app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
                     <button onClick={() => setExpanded(isOpen ? null : app.id)} className="w-full text-left p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{displayName(app.user)}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-gray-900 truncate">{displayName(app.user)}</p>
+                          {app.isFirstApplication ? (
+                            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap flex-none">★ 첫 지원</span>
+                          ) : (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap flex-none">이 갤러리 {app.galleryApplicationOrder}번째</span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 truncate">{app.user.email} · 지원 {ovDate(app.appliedAt)}</p>
                       </div>
                       <div className="flex items-center gap-2 flex-none">
