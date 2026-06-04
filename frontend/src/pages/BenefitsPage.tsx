@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import api from '@/lib/axios';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Benefit } from '@/types';
 
 // 혜택 페이지 - Admin이 등록한 혜택 목록
@@ -29,8 +30,8 @@ export default function BenefitsPage() {
               className="bg-white border-b border-gray-200 overflow-hidden hover:opacity-80 transition-opacity"
             >
               {benefit.imageUrl && (
-                /* 원본 비율 유지 — 자르지 않고 전체 노출 */
-                <img src={benefit.imageUrl} alt={benefit.title} loading="lazy" className="w-full block bg-gray-50" />
+                /* 박스 크기는 고정(h-48), 이미지는 비율 유지(contain) + 여백은 블러로 채움 */
+                <SkeletonImage src={benefit.imageUrl} alt={benefit.title} className="w-full h-48" imgClassName="object-contain" blurFill />
               )}
               <div className="p-5">
                 <h2 className="text-lg font-semibold text-gray-900">{benefit.title}</h2>
