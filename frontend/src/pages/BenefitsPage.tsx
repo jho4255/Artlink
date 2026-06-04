@@ -36,7 +36,7 @@ export default function BenefitsPage() {
               )}
               <div className="p-5 flex-1 flex flex-col">
                 <h2 className="text-lg font-semibold text-gray-900">{benefit.title}</h2>
-                <p className="text-sm text-gray-600 mt-2 flex-1">{benefit.description}</p>
+                <p className="text-sm text-gray-600 mt-2 flex-1 whitespace-pre-wrap break-words">{benefit.description}</p>
                 {benefit.linkUrl && (
                   <a
                     href={benefit.linkUrl}

@@ -2589,7 +2589,7 @@ function BenefitManageSection() {
               {form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-32 object-cover" />}
               <div className="p-3">
                 <p className="font-semibold text-sm">{form.title || '제목'}</p>
-                <p className="text-xs text-gray-600 mt-1">{form.description || '설명'}</p>
+                <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap break-words">{form.description || '설명'}</p>
               </div>
             </div>
           )}
