@@ -6,8 +6,7 @@ import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { addClient, removeClient, pushToUser } from '../lib/sse';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
+import { JWT_SECRET } from '../lib/jwt';
 
 // 갤러리는 본인 공모 지원자에게만, 작가는 승인 갤러리에게만 메시지 가능 (기존 대화 있으면 회신 허용)
 async function canSend(myId: number, myRole: string, receiverId: number): Promise<boolean> {
@@ -38,12 +37,19 @@ const messageCreateSchema = z.object({
 
 const router = Router();
 
-// SSE 실시간 스트림 (EventSource는 헤더 불가 → 쿼리 토큰 인증). :id 라우트보다 먼저 등록.
+// SSE 접속용 단기 티켓 발급 (헤더 인증). EventSource URL에 장기 JWT를 노출하지 않기 위함.
+router.post('/stream-ticket', authenticate, authorize('ARTIST', 'GALLERY'), (req, res) => {
+  const ticket = jwt.sign({ userId: req.user!.id, sse: true }, JWT_SECRET, { expiresIn: '60s' });
+  res.json({ ticket });
+});
+
+// SSE 실시간 스트림 (EventSource는 헤더 불가 → 단기 티켓으로 인증). :id 라우트보다 먼저 등록.
 router.get('/stream', (req, res) => {
-  const token = (req.query.token as string) || '';
+  const ticket = (req.query.ticket as string) || '';
   let userId: number;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const decoded = jwt.verify(ticket, JWT_SECRET) as { userId: number; sse?: boolean };
+    if (!decoded.sse) { res.status(401).end(); return; }
     userId = decoded.userId;
   } catch {
     res.status(401).end();

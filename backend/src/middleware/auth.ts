@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import { AppError } from './errorHandler';
-const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
+import { JWT_SECRET } from '../lib/jwt';
 
 // JWT 페이로드 타입
 export interface JwtPayload {

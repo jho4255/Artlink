@@ -87,16 +87,30 @@ export default function MessagesPage() {
   }, [thread?.messages?.length, selectedId]);
 
   // ===== SSE 실시간 수신 =====
+  // 장기 JWT를 URL에 노출하지 않도록, 매 연결마다 단기(60s) 티켓을 헤더 인증으로 발급받아 사용.
   useEffect(() => {
     if (!token) return;
-    const es = new EventSource(`/api/messages/stream?token=${encodeURIComponent(token)}`);
-    es.addEventListener('message', () => {
-      qc.invalidateQueries({ queryKey: ['message-chats'] });
-      qc.invalidateQueries({ queryKey: ['message-unread-count'] });
-      qc.invalidateQueries({ queryKey: ['message-thread'] });
-    });
-    es.onerror = () => { /* 브라우저가 자동 재연결 */ };
-    return () => es.close();
+    let es: EventSource | null = null;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const connect = async () => {
+      if (stopped) return;
+      try {
+        const { data } = await api.post('/messages/stream-ticket');
+        if (stopped) return;
+        es = new EventSource(`/api/messages/stream?ticket=${encodeURIComponent(data.ticket)}`);
+        es.addEventListener('message', () => {
+          qc.invalidateQueries({ queryKey: ['message-chats'] });
+          qc.invalidateQueries({ queryKey: ['message-unread-count'] });
+          qc.invalidateQueries({ queryKey: ['message-thread'] });
+        });
+        es.onerror = () => { es?.close(); if (!stopped) { clearTimeout(retry); retry = setTimeout(connect, 3000); } };
+      } catch {
+        if (!stopped) { clearTimeout(retry); retry = setTimeout(connect, 5000); }
+      }
+    };
+    connect();
+    return () => { stopped = true; clearTimeout(retry); es?.close(); };
   }, [token, qc]);
 
   // ===== 파일 업로드 =====

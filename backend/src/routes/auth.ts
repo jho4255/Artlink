@@ -8,7 +8,7 @@ import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
+import { JWT_SECRET } from '../lib/jwt';
 const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID || '';
 
 function generateToken(user: { id: number; role: string }) {
