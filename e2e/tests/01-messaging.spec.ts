@@ -29,32 +29,30 @@ test.beforeAll(async () => {
   await api.dispose();
 });
 
-test('메시지 6턴 왕복 — 누적·순서·읽음상태 지속 검증', async ({ browser }) => {
+test('카톡식 1:1 — 6턴 왕복 누적·순서·읽음상태 지속 검증', async ({ browser }) => {
   const artist = await openAs(browser, 'artist');
   const gallery = await openAs(browser, 'gallery');
 
-  const artistThread = `/messages?partner=${ids.gallery}&exhibition=${exId}&subject=${encodeURIComponent(SUBJECT)}`;
-  const galleryThread = `/messages?partner=${ids.artist}&exhibition=${exId}&subject=${encodeURIComponent(SUBJECT)}`;
+  // 카톡식: 상대 파라미터로 1:1 대화 직접 오픈 (제목 없음)
+  const artistThread = `/messages?partner=${ids.gallery}`;
+  const galleryThread = `/messages?partner=${ids.artist}`;
 
-  // 작가의 미읽음 메시지 수 (API로 신뢰성 확인)
   const api = await pwRequest.newContext();
   const aTok = tokenFor('artist');
   const artistUnread = async () =>
     (await (await api.get(`${API}/messages/unread-count`, { headers: { Authorization: `Bearer ${aTok}` } })).json()).count;
 
-  // ── 턴 1: 갤러리가 지원자에게 첫 쪽지 (새 쪽지 작성 UI) ──
-  await gallery.page.goto('/messages');
-  await gallery.page.getByRole('button', { name: '새 쪽지' }).click();
-  await gallery.page.getByRole('button', { name: /Artist 1/ }).click();
-  await gallery.page.getByPlaceholder('제목을 입력해주세요').fill(SUBJECT);
-  await gallery.page.getByPlaceholder('내용을 작성해주세요').fill('지원 잘 봤습니다. 포트폴리오 인상깊네요 (1)');
-  await gallery.page.getByRole('button', { name: '보내기' }).click();
-  await expect(gallery.page.locator('body')).toContainText('쪽지를 보냈습니다', { timeout: 8000 });
+  // ── 턴 1: 갤러리가 지원자에게 첫 메시지 (말풍선) ──
+  await gallery.page.goto(galleryThread);
+  await expect(gallery.page.locator('textarea')).toBeVisible({ timeout: 10000 });
+  const gBox = gallery.page.locator('textarea');
+  await gBox.fill('지원 잘 봤습니다. 포트폴리오 인상깊네요 (1)');
+  await gBox.press('Enter');
+  await expect(gallery.page.getByText('포트폴리오 인상깊네요 (1)', { exact: false })).toBeVisible({ timeout: 8000 });
 
   // 신뢰성: 작가 미읽음 1 이상 (읽기 전)
   await expect.poll(artistUnread, { timeout: 8000 }).toBeGreaterThan(0);
 
-  // 왕복 대본 (보낸 사람, 화면, 내용)
   const turns: Array<{ who: 'artist' | 'gallery'; text: string }> = [
     { who: 'artist',  text: '안녕하세요! 관심 가져주셔서 감사합니다 (2)' },
     { who: 'gallery', text: '전시 일정은 다음달 초를 생각 중입니다 (3)' },
@@ -62,7 +60,6 @@ test('메시지 6턴 왕복 — 누적·순서·읽음상태 지속 검증', asy
     { who: 'gallery', text: '네 가능합니다. 도면 보내드릴게요 (5)' },
     { who: 'artist',  text: '확인했습니다. 잘 부탁드립니다 (6)' },
   ];
-
   const seen: string[] = ['지원 잘 봤습니다. 포트폴리오 인상깊네요 (1)'];
 
   for (const turn of turns) {
@@ -70,21 +67,19 @@ test('메시지 6턴 왕복 — 누적·순서·읽음상태 지속 검증', asy
     const threadUrl = turn.who === 'artist' ? artistThread : galleryThread;
 
     await actor.page.goto(threadUrl);
-    // 스레드 열릴 때까지 (회신창 등장)
-    await expect(actor.page.getByPlaceholder('회신 내용을 입력하세요...')).toBeVisible({ timeout: 10000 });
+    await expect(actor.page.locator('textarea')).toBeVisible({ timeout: 10000 });
 
-    // 지금까지의 모든 메시지가 이 화면에 누적되어 보여야 함 (순서/누적 검증)
+    // 지금까지의 모든 메시지가 1:1 대화에 누적 표시 (순서/누적 검증)
     for (const prev of seen) {
       await expect(actor.page.getByText(prev, { exact: false })).toBeVisible();
     }
 
-    // 작가가 스레드를 열었으면 읽음 처리 → 미읽음 0
+    // 작가가 대화를 열었으면 읽음 처리 → 미읽음 0
     if (turn.who === 'artist') {
       await expect.poll(artistUnread, { timeout: 8000 }).toBe(0);
     }
 
-    // 회신 전송 (Enter 전송)
-    const box = actor.page.getByPlaceholder('회신 내용을 입력하세요...');
+    const box = actor.page.locator('textarea');
     await box.fill(turn.text);
     await box.press('Enter');
     await expect(actor.page.getByText(turn.text, { exact: false })).toBeVisible({ timeout: 8000 });
@@ -92,11 +87,11 @@ test('메시지 6턴 왕복 — 누적·순서·읽음상태 지속 검증', asy
     await settle(actor.page, 400);
   }
 
-  // ── 최종: 양쪽 화면 모두 6개 메시지가 순서대로 보이는지 ──
+  // ── 최종: 양쪽 화면 모두 6개 메시지가 누적되어 보이는지 ──
   for (const [who, url] of [['artist', artistThread], ['gallery', galleryThread]] as const) {
     const actor = who === 'artist' ? artist : gallery;
     await actor.page.goto(url);
-    await expect(actor.page.getByPlaceholder('회신 내용을 입력하세요...')).toBeVisible({ timeout: 10000 });
+    await expect(actor.page.locator('textarea')).toBeVisible({ timeout: 10000 });
     for (const msg of seen) {
       await expect(actor.page.getByText(msg, { exact: false }), `${who} 화면에 "${msg}" 보여야 함`).toBeVisible();
     }

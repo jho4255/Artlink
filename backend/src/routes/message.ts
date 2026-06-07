@@ -1,9 +1,32 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
+import { addClient, removeClient, pushToUser } from '../lib/sse';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
+
+// 갤러리는 본인 공모 지원자에게만, 작가는 승인 갤러리에게만 메시지 가능 (기존 대화 있으면 회신 허용)
+async function canSend(myId: number, myRole: string, receiverId: number): Promise<boolean> {
+  if (myRole === 'GALLERY') {
+    const applied = await prisma.application.findFirst({
+      where: { userId: receiverId, exhibition: { gallery: { ownerId: myId } } },
+      select: { id: true },
+    });
+    if (applied) return true;
+    // 작가가 먼저 말을 건 경우(기존 대화) 회신 허용
+    const incoming = await prisma.message.findFirst({ where: { senderId: receiverId, receiverId: myId }, select: { id: true } });
+    return !!incoming;
+  }
+  if (myRole === 'ARTIST') {
+    const g = await prisma.gallery.findFirst({ where: { ownerId: receiverId, status: 'APPROVED' }, select: { id: true } });
+    return !!g;
+  }
+  return false;
+}
 
 const messageCreateSchema = z.object({
   receiverId: z.number().int().positive('유효한 수신자 ID가 필요합니다.'),
@@ -14,6 +37,29 @@ const messageCreateSchema = z.object({
 });
 
 const router = Router();
+
+// SSE 실시간 스트림 (EventSource는 헤더 불가 → 쿼리 토큰 인증). :id 라우트보다 먼저 등록.
+router.get('/stream', (req, res) => {
+  const token = (req.query.token as string) || '';
+  let userId: number;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    userId = decoded.userId;
+  } catch {
+    res.status(401).end();
+    return;
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(': connected\n\n');
+  addClient(userId, res);
+  const keepalive = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
+  req.on('close', () => { clearInterval(keepalive); removeClient(userId, res); });
+});
 
 // 안읽은 메시지 수
 router.get('/unread-count', authenticate, authorize('ARTIST', 'GALLERY'), async (req, res, next) => {
@@ -184,6 +230,47 @@ router.get('/conversations', authenticate, authorize('ARTIST', 'GALLERY'), async
   } catch (error) { next(error); }
 });
 
+// 카톡식 1:1 대화 목록 (상대별 1개, 최신 메시지/미읽음)
+router.get('/chats', authenticate, authorize('ARTIST', 'GALLERY'), async (req, res, next) => {
+  try {
+    const myId = req.user!.id;
+    const messages = await prisma.message.findMany({
+      where: { OR: [{ senderId: myId }, { receiverId: myId }] },
+      include: {
+        sender: { select: { id: true, name: true, nickname: true, role: true, avatar: true } },
+        receiver: { select: { id: true, name: true, nickname: true, role: true, avatar: true } },
+        exhibition: { select: { id: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // 갤러리 상대의 표시명을 갤러리명으로 보정
+    const partnerIds = [...new Set(messages.map(m => (m.senderId === myId ? m.receiverId : m.senderId)))];
+    const galleries = await prisma.gallery.findMany({
+      where: { ownerId: { in: partnerIds }, status: 'APPROVED' },
+      select: { name: true, ownerId: true },
+    });
+    const galleryByOwner = new Map(galleries.map(g => [g.ownerId, g.name]));
+
+    const byPartner = new Map<number, any>();
+    for (const m of messages) {
+      const partner = m.senderId === myId ? m.receiver : m.sender;
+      if (!byPartner.has(partner.id)) {
+        const displayName = partner.role === 'GALLERY'
+          ? (galleryByOwner.get(partner.id) || partner.nickname || partner.name)
+          : (partner.nickname || partner.name);
+        byPartner.set(partner.id, {
+          partner: { id: partner.id, name: displayName, role: partner.role, avatar: partner.avatar || null },
+          lastMessage: { content: m.content, createdAt: m.createdAt, fromMe: m.senderId === myId, exhibitionTitle: m.exhibition?.title ?? null },
+          unreadCount: 0,
+        });
+      }
+      if (m.receiverId === myId && !m.read) byPartner.get(partner.id).unreadCount++;
+    }
+    res.json(Array.from(byPartner.values()));
+  } catch (error) { next(error); }
+});
+
 // 특정 상대와의 쓰레드 조회
 router.get('/thread/:userId', authenticate, authorize('ARTIST', 'GALLERY'), async (req, res, next) => {
   try {
@@ -317,6 +404,11 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
       throw new AppError('갤러리는 아티스트 유저에게만 메시지를 보낼 수 있습니다.', 400);
     }
 
+    // 대화 상대 제한(스팸 차단): 갤러리는 본인 공모 지원자에게만 (작가가 먼저 보낸 경우 회신 허용)
+    if (!(await canSend(myId, myRole, receiverId))) {
+      throw new AppError('대화할 수 없는 상대입니다. 갤러리는 본인 공모에 지원한 작가에게만 메시지를 보낼 수 있습니다.', 403);
+    }
+
     // Exhibition validation
     if (exhibitionId) {
       const exhibition = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
@@ -338,6 +430,10 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
         exhibition: { select: { id: true, title: true } },
       },
     });
+
+    // 실시간 푸시 (SSE) — 수신자 + 발신자(다중 탭 동기화)
+    pushToUser(receiverId, 'message', message);
+    pushToUser(myId, 'message', message);
 
     // Create notification for receiver (best-effort)
     try {
