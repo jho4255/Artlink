@@ -12,6 +12,23 @@ export function displayName(user?: { name?: string | null; nickname?: string | n
   return (user.nickname && user.nickname.trim()) || user.name || '';
 }
 
+// 전화번호 입력 시 자동 하이픈 포맷 (한국 번호: 010-1234-5678, 02-123-4567 등)
+export function formatPhoneNumber(value: string): string {
+  const d = value.replace(/[^0-9]/g, '').slice(0, 11);
+  if (d.startsWith('02')) {
+    // 서울 지역번호 (02)
+    if (d.length < 3) return d;
+    if (d.length < 6) return `${d.slice(0, 2)}-${d.slice(2)}`;
+    if (d.length < 10) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`;
+    return `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6, 10)}`;
+  }
+  // 휴대폰 및 기타 (010, 070, 031 등)
+  if (d.length < 4) return d;
+  if (d.length < 8) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  if (d.length <= 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7, 11)}`;
+}
+
 // 업로드 가능한 최대 이미지 용량 (백엔드 multer limit과 동일하게 유지)
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 

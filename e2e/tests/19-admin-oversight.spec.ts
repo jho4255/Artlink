@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
 
 /**
  * Admin 운영 조회: 특정 공모 지원현황/수락·거절 여부, 작가 지원이력, 갤러리 게시물.
@@ -27,10 +27,7 @@ test.beforeAll(async () => {
   galleryName = detail.gallery?.name;
 
   // 작가 지원 (이미 지원돼 있어도 OK)
-  const answers = (detail.customFields || []).filter((f: any) => f.required).map((f: any) => ({
-    fieldId: f.id, value: f.type === 'select' || f.type === 'multiselect' ? (f.options?.[0] ?? '') : '답변',
-  }));
-  const ar = await api.post(`${API}/exhibitions/${exId}/apply`, { headers: { Authorization: `Bearer ${aTok}` }, data: { customAnswers: answers } });
+  const ar = await applyToExhibition(api, exId, aTok);
   expect([200, 201, 400, 409].includes(ar.status()), `지원 실패 ${ar.status()}`).toBeTruthy();
 
   // 갤러리가 지원자 목록 조회 → 수락 처리

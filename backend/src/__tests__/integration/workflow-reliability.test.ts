@@ -294,11 +294,13 @@ describe('Workflow Reliability', () => {
       expect(favExh.status).toBe(200);
       expect(favExh.body.favorited).toBe(true);
 
-      // 10. Exhibition 지원 (customAnswers 포함)
+      // 10. Exhibition 지원 (고정 양식)
       const applyRes = await request.post(`/api/exhibitions/${exhId}/apply`)
         .set('Authorization', artistToken)
         .send({
-          customAnswers: [{ fieldId: 'q1', value: '저는 추상미술을 전공했습니다.' }],
+          biography: '저는 추상미술을 전공했습니다.',
+          career: { artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] },
+          artworkImages: ['https://example.com/a.jpg'],
         });
       expect(applyRes.status).toBe(201);
 
@@ -306,7 +308,8 @@ describe('Workflow Reliability', () => {
       const dupRes = await request.post(`/api/exhibitions/${exhId}/apply`)
         .set('Authorization', artistToken)
         .send({
-          customAnswers: [{ fieldId: 'q1', value: '재지원 시도' }],
+          biography: '재지원 시도',
+          artworkImages: ['https://example.com/a.jpg'],
         });
       expect(dupRes.status).toBe(400);
 

@@ -19,6 +19,8 @@ import NotFoundPage from '@/pages/NotFoundPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import InstagramCallbackPage from '@/pages/InstagramCallbackPage';
 import PrivacyPage from '@/pages/PrivacyPage';
+import OperationPage from '@/pages/OperationPage';
+import OperationPrintPage from '@/pages/OperationPrintPage';
 
 export default function App() {
   return (
@@ -30,6 +32,9 @@ export default function App() {
         <Route path="/galleries/:id" element={<GalleryDetailPage />} />
         <Route path="/exhibitions" element={<ExhibitionsPage />} />
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
+        <Route path="/exhibitions/:id/operation" element={
+          <ProtectedRoute><OperationPage /></ProtectedRoute>
+        } />
         <Route path="/shows" element={<ShowsPage />} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
@@ -49,6 +54,10 @@ export default function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
+      {/* 인쇄 전용 (레이아웃 없음) */}
+      <Route path="/exhibitions/:id/operation/print/:userId/:doc" element={
+        <ProtectedRoute><OperationPrintPage /></ProtectedRoute>
+      } />
     </Routes>
   );
 }

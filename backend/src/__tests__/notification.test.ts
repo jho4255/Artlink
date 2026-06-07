@@ -76,7 +76,8 @@ describe('Notification Routes', () => {
 
     // Artist1이 지원
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
-      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`);
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
 
     // Gallery 오너가 상태 변경
     const app = await testPrisma.application.findFirst({ where: { userId: 1 } });
@@ -95,7 +96,8 @@ describe('Notification Routes', () => {
     const exhibition = await seedExhibition(gallery.id);
 
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
-      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`);
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
 
     const notifs = await testPrisma.notification.findMany({ where: { userId: 3, type: 'NEW_APPLICANT' } });
     expect(notifs.length).toBeGreaterThanOrEqual(1);

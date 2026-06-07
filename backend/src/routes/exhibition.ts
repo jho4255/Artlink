@@ -39,7 +39,7 @@ const exhibitionCreateSchema = z.object({
   description: z.string().min(1, '공모 소개를 입력해주세요.'),
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
   imageUrl: z.string().optional().nullable(),
-  customFields: z.array(customFieldSchema).optional().nullable(),
+  // customFields(추가정보요청)는 제거됨 — 스키마에서 빼면 잔여 draft의 customFields는 z.object가 자동으로 무시
 });
 
 const router = Router();
@@ -48,6 +48,28 @@ const router = Router();
 function parseCustomFields(raw: string | null): any[] | null {
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
+}
+
+// 안전 JSON 파싱 (지원서 career/artworkImages 등)
+function safeJson<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+
+// 경력 JSON → 이메일용 텍스트 변환
+function careerToText(career: any): string | undefined {
+  if (!career || typeof career !== 'object') return undefined;
+  const labels: Record<string, string> = { artFair: '아트페어', solo: '개인전', group: '단체전' };
+  const lines: string[] = [];
+  for (const key of ['artFair', 'solo', 'group']) {
+    const entries = Array.isArray(career[key]) ? career[key] : [];
+    if (entries.length === 0) continue;
+    lines.push(`[${labels[key]}]`);
+    for (const e of entries) {
+      lines.push(`- ${[e?.year, e?.content].filter(Boolean).join(' ')}`.trim());
+    }
+  }
+  return lines.length ? lines.join('\n') : undefined;
 }
 
 // 진행중인 공모 목록 (마감일이 지나지 않은 것만)
@@ -63,6 +85,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
     tomorrowEnd.setUTCHours(23, 59, 59, 999);
     const where: any = {
       status: 'APPROVED',
+      recruitmentClosed: false, // 모집마감/전시종료(종료 시 자동 마감) 공고는 목록에서 제외
       deadline: { gte: now },
       OR: [
         { deadlineStart: null },
@@ -138,7 +161,11 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(applications);
+    res.json(applications.map((app: any) => ({
+      ...app,
+      career: safeJson(app.career, null),
+      artworkImages: safeJson<string[]>(app.artworkImages, []),
+    })));
   } catch (error) { next(error); }
 });
 
@@ -201,7 +228,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -217,7 +244,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
         capacity, region, description, galleryId, imageUrl,
-        customFields: customFields ? JSON.stringify(customFields) : null,
+        // 추가정보요청(customFields) 기능 제거 — 지원서는 고정 양식(경력/작품사진/포트폴리오) 사용
         status: 'PENDING'
       }
     });
@@ -236,10 +263,13 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     });
     if (existing) throw new AppError('이미 지원한 공모입니다.', 400);
 
-    // 커스텀 필드 required 검증
-    const { customAnswers } = req.body || {};
+    // 지원서 고정 양식: 작가약력(필수) / 경력 / 작품사진(1장이상 필수) / 포트폴리오 파일
+    const { biography, career, artworkImages, portfolioFileUrl } = req.body || {};
     const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
     if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibitionData.recruitmentClosed || exhibitionData.ended) {
+      throw new AppError('모집이 마감된 공모입니다.', 400);
+    }
 
     // 모집 정원 마감 확인 (현재 지원자 수가 정원 이상이면 차단)
     const applicantCount = await prisma.application.count({ where: { exhibitionId } });
@@ -247,23 +277,25 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       throw new AppError('모집 인원이 마감되었습니다.', 400);
     }
 
-    const fields = parseCustomFields(exhibitionData.customFields);
-    if (fields && fields.length > 0) {
-      const requiredIds = fields.filter((f: any) => f.required).map((f: any) => f.id);
-      const answers: any[] = customAnswers || [];
-      for (const reqId of requiredIds) {
-        const answer = answers.find((a: any) => a.fieldId === reqId);
-        if (!answer || !answer.value) {
-          throw new AppError(`필수 항목을 모두 입력해주세요.`, 400);
-        }
-      }
+    // 필수 검증: 작가 약력
+    if (!biography || !String(biography).trim()) {
+      throw new AppError('작가 약력을 입력해주세요.', 400);
     }
+    // 필수 검증: 작품 사진 1장 이상 (최대 10장)
+    const images: string[] = Array.isArray(artworkImages) ? artworkImages.filter((u) => typeof u === 'string' && u.trim()) : [];
+    if (images.length < 1) throw new AppError('작품 사진을 1장 이상 첨부해주세요.', 400);
+    if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
+
+    const careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
 
     const application = await prisma.application.create({
       data: {
         userId: req.user!.id,
         exhibitionId,
-        customAnswers: customAnswers ? JSON.stringify(customAnswers) : null,
+        biography: String(biography).trim(),
+        career: careerStr,
+        artworkImages: JSON.stringify(images),
+        portfolioFileUrl: portfolioFileUrl || null,
       }
     });
 
@@ -285,24 +317,20 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       }
     } catch { /* best-effort */ }
 
-    // 포트폴리오 이메일 전송 (best-effort: 실패해도 지원은 성공)
+    // 지원서 이메일 전송 (best-effort: 실패해도 지원은 성공) — 지원 시 제출한 내용을 전송
     try {
       const exhibition = await prisma.exhibition.findUnique({
         where: { id: exhibitionId },
         include: { gallery: { include: { owner: { select: { email: true } } } } }
-      });
-      const portfolio = await prisma.portfolio.findUnique({
-        where: { userId: req.user!.id },
-        include: { images: { orderBy: { order: 'asc' } } }
       });
 
       if (exhibition && exhibition.gallery.owner.email) {
         await sendPortfolioEmail({
           artistName: req.user!.name,
           artistEmail: req.user!.email,
-          biography: portfolio?.biography || undefined,
-          exhibitionHistory: portfolio?.exhibitionHistory || undefined,
-          imageUrls: portfolio?.images.map(img => img.url) || [],
+          biography: String(biography).trim(),
+          exhibitionHistory: careerToText(safeJson(careerStr, null)),
+          imageUrls: images,
           exhibitionTitle: exhibition.title,
           galleryName: exhibition.gallery.name,
           galleryOwnerEmail: exhibition.gallery.owner.email,
@@ -408,10 +436,11 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
     // 갤러리 단위 지원 횟수/순번/첫지원 여부 계산
     const stats = await galleryApplicationStats(exhibition.galleryId, applications.map(a => a.userId));
 
-    // customAnswers JSON 파싱 + 갤러리 지원 통계 부착
+    // 지원서 고정 양식 필드 파싱 + 갤러리 지원 통계 부착
     const parsed = applications.map((app: any) => ({
       ...app,
-      customAnswers: app.customAnswers ? (() => { try { return JSON.parse(app.customAnswers); } catch { return null; } })() : null,
+      career: safeJson(app.career, null),
+      artworkImages: safeJson<string[]>(app.artworkImages, []),
       ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
     }));
 

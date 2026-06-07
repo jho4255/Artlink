@@ -69,9 +69,14 @@ ArtLink/
 - **GalleryOfMonth** — 이달의 갤러리 (자동 만료)
 - **Review** — 갤러리 리뷰 (별점, 익명 옵션, 사진, exhibitionId로 공모 연동 — ACCEPTED 지원자만, 공모당 1회)
 - **Favorite** — 찜하기 (갤러리/공모/전시)
-- **Portfolio** — 아티스트 포트폴리오
-- **PortfolioImage** — 포트폴리오 이미지 (최대 30개)
-- **Application** — 공모 지원
+- **Portfolio** — 아티스트 포트폴리오 (약력 biography, 경력 career[JSON: 아트페어/개인전/단체전], 포트폴리오파일 portfolioFileUrl, 작품사진)
+- **PortfolioImage** — 포트폴리오 이미지 (최대 10개)
+- **Application** — 공모 지원 (고정 양식: biography 필수, career[JSON], artworkImages[JSON, 1장이상 필수], portfolioFileUrl) — 갤러리별 커스텀 추가정보(customFields) 기능은 제거됨(컬럼만 하위호환 유지)
+- **ExhibitionNotice** — 공모 운영 공지사항 (갤러리 작성, 등록 시 수락작가에게 OPERATION_NOTICE 알림)
+- **ExhibitionSubmission** — 수락 작가의 전시정보 제출 (출품리스트/작가약력/작가노트 JSON, unique exhibitionId+userId)
+- **ArtworkSale** — 전시종료 후 판매작 (artistUserId+artworkIndex, soldPrice 원, unique exhibitionId+artist+index)
+- **ArtistSettlement** — 작가별 정산 비율 (galleryRatio %, 작가=100−갤러리, unique exhibitionId+artist)
+- **Exhibition** 상태필드: recruitmentClosed(모집마감), confirmed(확정·작가수정잠금/전시시작일경과시자동), ended(전시종료)
 - **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_REPLY)
 - **Inquiry** — 1:1 문의 (subject, content, reply, status: OPEN/ANSWERED)
 - **ApprovalRequest** — 수정 승인 요청
@@ -99,11 +104,26 @@ ArtLink/
 ### Admin 운영 조회 (ADMIN 전용, `backend/src/routes/admin.ts`)
 
 - `GET /admin/exhibitions?q=&galleryId=` — 전체 공모 목록 + 지원자 수
-- `GET /admin/exhibitions/:id/applications` — 특정 공모 지원현황(지원자·상태·결정시각·커스텀답변·카운트)
+- `GET /admin/exhibitions/:id/applications` — 특정 공모 지원현황(지원자·상태·결정시각·지원서[약력/경력/작품사진/파일]·카운트)
 - `GET /admin/users/:id/applications` — 작가 지원 이력(공모/갤러리/상태/지원·결정시각)
 - `GET /admin/galleries?q=` — 갤러리 검색(+공모/전시 수)
 - `GET /admin/galleries/:id/posts` — 갤러리가 올린 공모+전시 전체(상태 무관)
 - `Application.updatedAt`(@updatedAt) 추가로 수락/거절 결정 시각 추적 (migration 20260603000000)
+- 지원서 고정 양식 컬럼 추가: Portfolio.career/portfolioFileUrl, Application.biography/career/artworkImages/portfolioFileUrl (migration 20260607060000_artist_profile_fields)
+- 공용 컴포넌트: `CareerEditor`(경력 편집), `PortfolioFileInput`(pdf/doc/hwp 업로드), `ApplicationContent`(지원서 표시) — 포트폴리오/지원모달/지원자조회 공유
+- 지원 모달 '포트폴리오 불러오기' → `GET /portfolio`로 폼 자동 채움
+- **공모 운영 페이지** (migration 20260607080000_exhibition_operation)
+  - 접근: 갤러리 오너 / Admin / 수락(ACCEPTED) 작가. API `/api/operations/:id/(access|notices|me|submissions|submissions/:userId)`
+  - 공지사항: 오너·Admin 작성, 셋 다 열람
+  - 작가 제출: 출품리스트(이미지/제목/크기/재료/년도/가격) · 작가약력(헤더+학력/개인전/단체전/아트페어·옥션/수상) · 작가노트(전체+섹션)
+  - 열람 권한: 오너·Admin만 전 작가 열람, **작가 상호 비공개** (submissions는 오너/admin, submissions/:userId는 오너/admin/본인)
+  - PDF: 인쇄 기반 A4 화면(`OperationPrintPage`), 파일명 `[공모명]_[작가명]_[문서종류]` 자동 제안
+  - 전체 PDF 일괄 ZIP: 클라이언트(jsPDF+html2canvas+JSZip, `lib/operationPdf.ts`), `[공모명]_전체제출물.zip`
+- **공모 상태/정산** (migration 20260607100000_exhibition_lifecycle_settlement)
+  - 갤러리·Admin: 운영 페이지 상단 [모집마감]/[확정]/[전시종료] 토글(재오픈 가능). API `PATCH /api/operations/:id/lifecycle`
+  - 모집마감/종료 → `GET /exhibitions` 목록·지원에서 제외. 확정(또는 전시 시작일 경과) → 작가 `PUT /me` 잠금
+  - 전시종료 → 정산: 작가별 출품작 판매체크+판매가(원), 갤러리비율 입력(작가 자동). API `GET/PUT /api/operations/:id/settlement`
+  - 정산 PDF: 작가별/전체 (`downloadArtistSettlementPdf`, `downloadOverallSettlementPdf`)
 - 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
 ## 인증 구조
@@ -147,7 +167,9 @@ ArtLink/
 | ExhibitionDetailPage | 공모 상세, 지원하기(+이메일), 홍보사진, 삭제(오너/Admin) | `pages/ExhibitionDetailPage.tsx` |
 | ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
 | ShowDetailPage | 전시 상세, ImageLightbox, 소개수정(오너), 삭제, 찜, 작가→포트폴리오 | `pages/ShowDetailPage.tsx` |
-| PortfolioPage | 공개 포트폴리오 (약력, 전시이력, 작품 이미지 그리드) | `pages/PortfolioPage.tsx` |
+| PortfolioPage | 공개 포트폴리오 (약력, 경력[아트페어/개인전/단체전], 포트폴리오파일, 작품 이미지 그리드) | `pages/PortfolioPage.tsx` |
+| OperationPage | 공모 운영 페이지 (`/exhibitions/:id/operation`) — 공지/작가 전시정보 입력/갤러리·admin 열람 | `pages/OperationPage.tsx` |
+| OperationPrintPage | 작가 제출문서 PDF 인쇄 (`/exhibitions/:id/operation/print/:userId/:doc`) | `pages/OperationPrintPage.tsx` |
 | BenefitsPage | 혜택 목록 | `pages/BenefitsPage.tsx` |
 | MyPage | 역할별 탭 (아래 상세) | `pages/MyPage.tsx` |
 
@@ -156,7 +178,7 @@ ArtLink/
 | 섹션 | 역할 | 기능 |
 |------|------|------|
 | ProfileCard | 공통 | 아바타 업로드, 로그아웃 |
-| PortfolioSection | Artist | 전시이력, 약력, 작품사진(최대30) |
+| PortfolioSection | Artist | 약력, 경력(아트페어/개인전/단체전 +/-), 포트폴리오파일(pdf/doc/hwp), 작품사진(최대10) |
 | FavoritesSection | Artist | 갤러리/공모/전시 찜 목록 (탭 분리) |
 | MyReviewsSection | Artist | 작성 리뷰 목록 |
 | ApplicationsSection | Artist | 지원한 공고 목록 |
@@ -164,6 +186,7 @@ ArtLink/
 | MyExhibitionsSection | Gallery | 공모 등록 요청 (승인된 갤러리 선택), 공모 삭제 |
 | MyShowsSection | Gallery | 전시 등록 (갤러리 선택, 작가 연동/검색, 다중 이미지), 목록/상태/삭제 |
 | ApprovalsSection | Admin | 승인 큐 (갤러리/공모/전시 승인/거절+사유), 등록 관리 (삭제) |
+| (등록 폼 WYSIWYG) | Gallery | 갤러리·공고·전시 등록 폼을 상세페이지 디자인 그대로 인라인 편집 (`components/shared/EditableField.tsx`: EditableText/HeroImageEdit). 제출 전 실제 노출 모습 확인 |
 | HeroManageSection | Admin | Hero CRUD + 미리보기 |
 | BenefitManageSection | Admin | 혜택 CRUD + 미리보기 |
 | GotmManageSection | Admin | 이달의 갤러리 검색/선정/기한 |

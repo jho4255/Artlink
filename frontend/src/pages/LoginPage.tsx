@@ -1,17 +1,45 @@
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import api from '@/lib/axios';
+import { useAuthStore } from '@/stores/authStore';
+
 /**
- * 로그인 페이지 — 카카오 OAuth 전용
- * - "카카오로 시작하기" → state(CSRF) 생성·저장 → 카카오 인증 페이지로 이동
- * - 인증 후 /auth/kakao/callback (AuthCallbackPage)에서 처리
+ * 로그인 페이지
+ * - "카카오로 시작하기" → state(CSRF) 생성·저장 → 카카오 인증 페이지로 이동 → /auth/kakao/callback 처리
+ * - 개발 모드(import.meta.env.DEV)에서만 시드 계정 빠른 로그인 버튼 노출 (백엔드도 non-production에서만 동작)
  */
 const KAKAO_CLIENT_ID = import.meta.env.VITE_KAKAO_CLIENT_ID as string;
 
+const DEV_ACCOUNTS = [
+  { email: 'admin@artlink.com', label: 'Admin', desc: '승인 · 운영' },
+  { email: 'gallery@artlink.com', label: 'Gallery', desc: '갤러리 · 공모' },
+  { email: 'artist1@artlink.com', label: 'Artist 1', desc: '포트폴리오 · 지원' },
+  { email: 'artist2@artlink.com', label: 'Artist 2', desc: '포트폴리오 · 지원' },
+];
+
 export default function LoginPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const login = useAuthStore((s) => s.login);
+
   const handleKakaoLogin = () => {
     const state = crypto.randomUUID();
     sessionStorage.setItem('kakao_state', state);
     const redirectUri = `${window.location.origin}/auth/kakao/callback`;
     window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}`
       + `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
+  };
+
+  const handleDevLogin = async (email: string) => {
+    try {
+      const { data } = await api.post('/auth/dev-login', { email });
+      queryClient.clear();
+      login(data.token, data.user);
+      navigate('/mypage', { replace: true });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || '개발자 로그인에 실패했습니다.');
+    }
   };
 
   return (
@@ -34,6 +62,24 @@ export default function LoginPage() {
         <p className="text-xs text-gray-400 mt-6 leading-relaxed">
           처음이시면 카카오 인증 후 역할(아티스트/갤러리)과<br />연락처를 입력해 가입을 완료할 수 있어요.
         </p>
+
+        {import.meta.env.DEV && (
+          <div className="mt-10 pt-6 border-t border-dashed border-gray-200">
+            <p className="text-xs font-medium text-gray-400 mb-3">개발자 로그인 (로컬 전용)</p>
+            <div className="grid grid-cols-2 gap-2">
+              {DEV_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.email}
+                  onClick={() => handleDevLogin(acc.email)}
+                  className="p-3 rounded-lg border border-gray-200 hover:border-gray-900 transition-colors text-left cursor-pointer"
+                >
+                  <div className="text-sm font-medium text-gray-900">{acc.label}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{acc.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

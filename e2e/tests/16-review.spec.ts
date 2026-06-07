@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
 
 /**
  * 리뷰 작성 UI: 수락된 지원이 있는 작가가 갤러리 상세에서 별점+내용 리뷰 작성 → 노출 + 갤러리 별점 반영.
@@ -16,9 +16,7 @@ test.beforeAll(async () => {
   const ex = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
   exId = ex.id; galleryId = ex.galleryId; exTitle = ex.title;
 
-  const detail = await (await api.get(`${API}/exhibitions/${exId}`)).json();
-  const answers = (detail.customFields || []).filter((f: any) => f.required).map((f: any) => ({ fieldId: f.id, value: f.type.includes('select') ? (f.options?.[0] ?? '') : '답변' }));
-  await api.post(`${API}/exhibitions/${exId}/apply`, { headers: { Authorization: `Bearer ${aTok}` }, data: { customAnswers: answers } });
+  await applyToExhibition(api, exId, aTok);
 
   // 지원 수락
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();

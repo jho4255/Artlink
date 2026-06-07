@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition } from '../lib/helpers';
 
 /**
  * 지속 상호작용: 갤러리↔지원자(작가) 메시지를 여러 번 주고받기.
@@ -23,17 +23,8 @@ test.beforeAll(async () => {
   if (!approved) throw new Error('승인된 시드 공모가 없습니다 — 시드 확인 필요');
   exId = approved.id;
 
-  // 필수 커스텀필드가 있으면 채워서 작가가 지원
-  const detail = await (await api.get(`${API}/exhibitions/${exId}`)).json();
-  const fields: any[] = detail.customFields || [];
-  const answers = fields.filter(f => f.required).map(f => ({
-    fieldId: f.id,
-    value: f.type === 'select' || f.type === 'multiselect' ? (f.options?.[0] ?? '') : '테스트 답변',
-  }));
-  const applyRes = await api.post(`${API}/exhibitions/${exId}/apply`, {
-    headers: { Authorization: `Bearer ${aTok}` },
-    data: { customAnswers: answers },
-  });
+  // 작가가 공모에 지원 (고정 양식: 약력 + 작품사진)
+  const applyRes = await applyToExhibition(api, exId, aTok);
   expect([200, 201, 400, 409].includes(applyRes.status()), `지원 실패: ${applyRes.status()} ${await applyRes.text()}`).toBeTruthy();
   await api.dispose();
 });

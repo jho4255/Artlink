@@ -31,3 +31,27 @@ export async function expectToast(page: Page, text: string | RegExp) {
 
 /** 잠깐 대기 (폴링/애니메이션 안정화용) */
 export const settle = (page: Page, ms = 600) => page.waitForTimeout(ms);
+
+const API = 'http://localhost:4000/api';
+
+/**
+ * 공모 지원 (고정 양식: 작가약력 필수 + 작품사진 1장 이상 필수).
+ * E2E 셋업용 — APIRequestContext와 작가 토큰으로 유효 지원 1건 생성.
+ */
+export async function applyToExhibition(
+  api: import('@playwright/test').APIRequestContext,
+  exId: number,
+  token: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return api.post(`${API}/exhibitions/${exId}/apply`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      biography: 'E2E 작가 약력',
+      career: { artFair: [{ year: '2025', content: 'E2E 아트페어' }], solo: [], group: [] },
+      artworkImages: ['https://example.com/e2e-artwork.jpg'],
+      portfolioFileUrl: null,
+      ...overrides,
+    },
+  });
+}

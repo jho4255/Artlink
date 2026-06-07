@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
 
 const API = 'http://localhost:4000/api';
 
@@ -22,10 +22,10 @@ test('정원(capacity) 초과 지원은 서버에서 차단된다 (KI-2 수정)'
   await api.patch(`${API}/approvals/exhibition/${created.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
 
   // 1명 지원(정원 충족)
-  const first = await api.post(`${API}/exhibitions/${created.id}/apply`, { headers: { Authorization: `Bearer ${aTok}` }, data: { customAnswers: [] } });
+  const first = await applyToExhibition(api, created.id, aTok);
   expect(first.ok()).toBeTruthy();
-  // 2번째 지원 → 정원 초과이므로 차단(400)되어야 함 (현재는 201로 통과됨 → 이 expect가 실패 → 갭 노출)
-  const second = await api.post(`${API}/exhibitions/${created.id}/apply`, { headers: { Authorization: `Bearer ${a2Tok}` }, data: { customAnswers: [] } });
+  // 2번째 지원 → 정원 초과이므로 차단(400)되어야 함
+  const second = await applyToExhibition(api, created.id, a2Tok);
   await api.dispose();
   expect(second.status(), '정원 초과 2번째 지원은 막혀야 함').toBe(400);
 });

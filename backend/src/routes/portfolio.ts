@@ -5,6 +5,12 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
 
+// career JSON 문자열 → 객체 파싱 (프론트엔드는 항상 객체로 받음)
+function parseCareer(raw: string | null | undefined) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // 작가 검색 (Gallery 유저용, 전시 등록 시 작가 연동)
 router.get('/search', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
@@ -45,6 +51,8 @@ router.get('/:userId', async (req, res, next) => {
       id: portfolio?.id || 0,
       biography: portfolio?.biography || null,
       exhibitionHistory: portfolio?.exhibitionHistory || null,
+      career: parseCareer(portfolio?.career),
+      portfolioFileUrl: portfolio?.portfolioFileUrl || null,
       images: portfolio?.images || [],
       user: userInfo,
     });
@@ -64,25 +72,29 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
         include: { images: { orderBy: { order: 'asc' } } }
       });
     }
-    res.json(portfolio);
+    res.json({ ...portfolio, career: parseCareer(portfolio.career) });
   } catch (error) { next(error); }
 });
 
 // 포트폴리오 수정
 router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
-    const { biography, exhibitionHistory } = req.body;
+    const { biography, career, portfolioFileUrl } = req.body;
+    // career는 객체로 올 수 있으므로 JSON 문자열로 정규화
+    const careerStr =
+      career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
+    const data = { biography, career: careerStr, portfolioFileUrl: portfolioFileUrl ?? null };
     const portfolio = await prisma.portfolio.upsert({
       where: { userId: req.user!.id },
-      update: { biography, exhibitionHistory },
-      create: { userId: req.user!.id, biography, exhibitionHistory },
+      update: data,
+      create: { userId: req.user!.id, ...data },
       include: { images: { orderBy: { order: 'asc' } } }
     });
-    res.json(portfolio);
+    res.json({ ...portfolio, career: parseCareer(portfolio.career) });
   } catch (error) { next(error); }
 });
 
-// 포트폴리오 이미지 추가 (최대 30장)
+// 포트폴리오 이미지 추가 (최대 10장)
 router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     const portfolio = await prisma.portfolio.findUnique({
@@ -92,8 +104,8 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
     if (!portfolio) {
       throw new AppError('포트폴리오를 먼저 생성해주세요.', 400);
     }
-    if (portfolio.images.length >= 30) {
-      throw new AppError('작품 사진은 최대 30장까지 등록 가능합니다.', 400);
+    if (portfolio.images.length >= 10) {
+      throw new AppError('작품 사진은 최대 10장까지 등록 가능합니다.', 400);
     }
 
     const { url } = req.body;

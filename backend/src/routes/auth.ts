@@ -231,6 +231,23 @@ router.put('/me/nickname', authenticate, validate(nicknameSchema), async (req, r
   } catch (error) { next(error); }
 });
 
-// (dev-login/dev-users 제거됨 — 카카오 OAuth 정식 로그인으로 전환, KI-1 해소)
+// ========== 개발자 로그인 (로컬 전용) ==========
+// production에서는 절대 노출/동작하지 않음. 시드 계정 이메일로 즉시 JWT 발급.
+// 프론트 LoginPage는 import.meta.env.DEV 일 때만 버튼을 렌더한다.
+const devLoginSchema = z.object({
+  email: z.string().email(),
+});
+router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError('개발자 로그인은 사용할 수 없습니다.', 404);
+    }
+    const email = (req.body.email as string).trim().toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) throw new AppError('해당 이메일의 시드 계정이 없습니다. 시드를 먼저 실행하세요.', 404);
+    const token = generateToken(user);
+    res.json({ token, user: safeUser(user) });
+  } catch (error) { next(error); }
+});
 
 export default router;

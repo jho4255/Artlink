@@ -101,20 +101,14 @@ router.get('/exhibitions', authenticate, authorize('ADMIN'), async (req, res, ne
 router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
-    const exRow = await prisma.exhibition.findUnique({
+    const exhibition = await prisma.exhibition.findUnique({
       where: { id: exhibitionId },
       select: {
         id: true, title: true, type: true, status: true, capacity: true, deadline: true,
-        customFields: true,
         gallery: { select: { id: true, name: true } },
       },
     });
-    if (!exRow) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    const { customFields, ...exRest } = exRow;
-    const exhibition = {
-      ...exRest,
-      customFields: customFields ? (() => { try { return JSON.parse(customFields); } catch { return null; } })() : null,
-    };
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
 
     const applications = await prisma.application.findMany({
       where: { exhibitionId },
@@ -123,17 +117,19 @@ router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), as
     });
 
     // 갤러리 단위 지원 횟수/순번/첫지원 여부
-    const stats = await galleryApplicationStats(exRow.gallery.id, applications.map(a => a.userId));
+    const stats = await galleryApplicationStats(exhibition.gallery.id, applications.map(a => a.userId));
 
+    const safe = (raw: string | null, fb: any) => { if (!raw) return fb; try { return JSON.parse(raw); } catch { return fb; } };
     const parsed = applications.map((app: any) => ({
       id: app.id,
       status: app.status,
       appliedAt: app.createdAt,
       decidedAt: app.updatedAt,
       user: app.user,
-      customAnswers: app.customAnswers
-        ? (() => { try { return JSON.parse(app.customAnswers); } catch { return null; } })()
-        : null,
+      biography: app.biography ?? null,
+      career: safe(app.career, null),
+      artworkImages: safe(app.artworkImages, []),
+      portfolioFileUrl: app.portfolioFileUrl ?? null,
       ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
     }));
 

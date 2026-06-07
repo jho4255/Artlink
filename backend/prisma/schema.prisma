@@ -36,6 +36,7 @@ model User {
   sentMessages     Message[]       @relation("sentMessages")
   receivedMessages Message[]       @relation("receivedMessages")
   messageReports   MessageReport[] @relation("messageReports")
+  exhibitionSubmissions ExhibitionSubmission[]
 }
 
 // 갤러리 모델
@@ -100,8 +101,11 @@ model Exhibition {
   description String
   imageUrl    String?  // 공모 대표 이미지
   customFields String? // 커스텀 질문 항목 (JSON 문자열: [{id, label, type, required, options}])
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED (승인 상태)
   rejectReason String?
+  recruitmentClosed Boolean @default(false) // 모집마감 (수동 내림 → 목록 비노출)
+  confirmed   Boolean  @default(false)      // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
+  ended       Boolean  @default(false)      // 전시종료 (정산 단계)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -112,6 +116,10 @@ model Exhibition {
   promoPhotos  PromoPhoto[]
   messages     Message[]
   reviews      Review[]
+  notices      ExhibitionNotice[]
+  submissions  ExhibitionSubmission[]
+  sales        ArtworkSale[]
+  settlements  ArtistSettlement[]
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -207,7 +215,9 @@ model Favorite {
 model Portfolio {
   id              Int              @id @default(autoincrement())
   biography       String?
-  exhibitionHistory String?
+  exhibitionHistory String?        // (구) 전시이력 단일 텍스트 — career로 대체, 하위호환 위해 컬럼 유지
+  career          String?          // 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...] }
+  portfolioFileUrl String?         // 포트폴리오 파일(pdf/doc/hwp) URL
   userId          Int              @unique
   user            User             @relation(fields: [userId], references: [id])
   images          PortfolioImage[]
@@ -246,7 +256,11 @@ model Application {
   user         User       @relation(fields: [userId], references: [id])
   exhibitionId Int
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  customAnswers String?   // 커스텀 질문 답변 (JSON 문자열: [{fieldId, value}])
+  customAnswers String?   // (구) 커스텀 질문 답변 — 고정 양식으로 대체, 하위호환 위해 컬럼 유지
+  biography    String?    // 지원 시 작가 약력 (필수)
+  career       String?    // 지원 시 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...] }
+  artworkImages String?   // 지원 시 작품 사진 URL 배열 JSON (최대 10, 1장 이상 필수)
+  portfolioFileUrl String? // 지원 시 포트폴리오 파일(pdf/doc/hwp) URL
   status       String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt @default(now()) // 상태 변경(수락/거절 등) 시각 추적
@@ -386,4 +400,59 @@ model MessageReport {
   @@unique([messageId, reporterId])
   @@index([status])
   @@index([createdAt])
+}
+
+// 공모 운영 페이지 — 갤러리 공지사항
+model ExhibitionNotice {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  title        String
+  content      String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt @default(now())
+
+  @@index([exhibitionId])
+}
+
+// 공모 운영 페이지 — 수락 작가가 제출하는 전시 정보 (출품리스트/작가약력/작가노트)
+model ExhibitionSubmission {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  userId       Int
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artworkList  String?    // JSON: [{image,title,size,medium,year,price}]
+  cv           String?    // JSON: {nameKo,nameEn,birth,tel,email,education[],solo[],group[],artFair[],award[]} (각 항목 [{year,content}])
+  note         String?    // JSON: {statement, sections:[{title,body}]}
+  updatedAt    DateTime   @updatedAt @default(now())
+
+  @@unique([exhibitionId, userId])
+  @@index([exhibitionId])
+}
+
+// 판매된 작품 (전시종료 후 갤러리가 입력) — 작가 출품리스트의 index 기준
+model ArtworkSale {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  artistUserId Int
+  artworkIndex Int        // 해당 작가 artworkList 내 인덱스
+  title        String     // 작품명 스냅샷
+  soldPrice    Int        // 판매가 (원)
+
+  @@unique([exhibitionId, artistUserId, artworkIndex])
+  @@index([exhibitionId])
+}
+
+// 작가별 정산 비율 (전시종료 후 갤러리가 입력) — galleryRatio: 갤러리 몫 %, 작가 = 100 - galleryRatio
+model ArtistSettlement {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  artistUserId Int
+  galleryRatio Int        @default(0) // 0~100
+
+  @@unique([exhibitionId, artistUserId])
+  @@index([exhibitionId])
 }

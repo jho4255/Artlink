@@ -18,8 +18,8 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
   // 갤러리 선택(승인된 시드 갤러리)
   await gallery.page.locator('select', { has: gallery.page.getByRole('option', { name: '갤러리 선택 *' }) })
     .selectOption({ label: '서울 현대 갤러리' });
-  await gallery.page.getByPlaceholder('공모 제목 *').fill(TITLE);
-  await gallery.page.getByPlaceholder('간단 소개 *').fill('E2E 공모 소개입니다');
+  await gallery.page.getByPlaceholder('공모 제목').fill(TITLE);
+  await gallery.page.getByPlaceholder('공모 소개').fill('E2E 공모 소개입니다');
 
   // 4개 날짜: 공모시작=오늘(접수중) ≤ 마감 ≤ 전시시작 ≤ 전시종료 (미래)
   // 공모시작이 미래면 /exhibitions(접수중 목록)에 안 뜨므로 오늘부터 시작하게 설정

@@ -5,17 +5,43 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList
+  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
+import CareerEditor from '@/components/shared/CareerEditor';
+import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
+import ApplicationContent from '@/components/shared/ApplicationContent';
+import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, CustomField, ArtistEntry } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career } from '@/types';
+import { EMPTY_CAREER } from '@/types';
+
+// 경력(career) 표시용 — 카테고리별 라벨
+const CAREER_LABELS: { key: keyof Career; label: string }[] = [
+  { key: 'artFair', label: '아트페어' },
+  { key: 'solo', label: '개인전' },
+  { key: 'group', label: '단체전' },
+];
+
+// 경력 객체 정규화 (null/누락 대비)
+function normalizeCareer(c?: Career | null): Career {
+  return {
+    artFair: c?.artFair ?? [],
+    solo: c?.solo ?? [],
+    group: c?.group ?? [],
+  };
+}
+
+// 경력이 비어있는지
+function isCareerEmpty(c: Career): boolean {
+  return c.artFair.length === 0 && c.solo.length === 0 && c.group.length === 0;
+}
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
 
@@ -305,11 +331,12 @@ function PortfolioSection() {
   });
 
   const [biography, setBiography] = useState('');
-  const [exhibitionHistory, setExhibitionHistory] = useState('');
+  const [career, setCareer] = useState<Career>(EMPTY_CAREER);
+  const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: (data: { biography: string; exhibitionHistory: string }) => api.put('/portfolio', data),
+    mutationFn: (data: { biography: string; career: Career; portfolioFileUrl: string | null }) => api.put('/portfolio', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
       setEditing(false);
@@ -366,9 +393,20 @@ function PortfolioSection() {
 
   const startEdit = () => {
     setBiography(portfolio?.biography || '');
-    setExhibitionHistory(portfolio?.exhibitionHistory || '');
+    setCareer(normalizeCareer(portfolio?.career));
+    setPortfolioFileUrl(portfolio?.portfolioFileUrl || null);
     setEditing(true);
   };
+
+  const handleSave = () => {
+    if (!biography.trim()) {
+      toast.error('작가 약력을 입력해주세요.');
+      return;
+    }
+    mutation.mutate({ biography: biography.trim(), career, portfolioFileUrl });
+  };
+
+  const savedCareer = normalizeCareer(portfolio?.career);
 
   return (
     <div className="space-y-6">
@@ -378,17 +416,21 @@ function PortfolioSection() {
       </div>
 
       {editing ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div>
-            <label className="text-sm font-medium text-gray-700">작가 약력</label>
-            <textarea value={biography} onChange={e => setBiography(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
+            <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-red-500">*</span></label>
+            <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">전시 참가 이력</label>
-            <textarea value={exhibitionHistory} onChange={e => setExhibitionHistory(e.target.value)} className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
+            <label className="text-sm font-medium text-gray-700 block mb-2">경력</label>
+            <CareerEditor value={career} onChange={setCareer} />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">포트폴리오 파일 (PDF / DOC / HWP)</label>
+            <PortfolioFileInput value={portfolioFileUrl} onChange={setPortfolioFileUrl} />
           </div>
           <div className="flex gap-2">
-            <button onClick={() => mutation.mutate({ biography, exhibitionHistory })} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">저장</button>
+            <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">저장</button>
             <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
@@ -399,8 +441,35 @@ function PortfolioSection() {
             <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.biography || '등록된 약력이 없습니다.'}</p>
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-500">전시 참가 이력</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.exhibitionHistory || '등록된 이력이 없습니다.'}</p>
+            <p className="text-sm font-medium text-gray-500 mb-1">경력</p>
+            {isCareerEmpty(savedCareer) ? (
+              <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {CAREER_LABELS.map(({ key, label }) => savedCareer[key].length > 0 && (
+                  <div key={key}>
+                    <p className="text-xs font-medium text-gray-400">{label}</p>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {savedCareer[key].map((e, i) => (
+                        <li key={i} className="text-sm text-gray-700">
+                          <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500 mb-1">포트폴리오 파일</p>
+            {portfolio?.portfolioFileUrl ? (
+              <a href={portfolio.portfolioFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:underline">
+                <FileText size={15} /> 파일 보기
+              </a>
+            ) : (
+              <p className="text-sm text-gray-400">등록된 파일이 없습니다.</p>
+            )}
           </div>
         </div>
       )}
@@ -408,7 +477,7 @@ function PortfolioSection() {
       {/* 작품 사진 관리 */}
       <div>
         <p className="text-sm font-medium text-gray-500 mb-2">
-          작품 사진 ({portfolio?.images?.length || 0}/30)
+          작품 사진 ({portfolio?.images?.length || 0}/10)
           <span className="text-xs text-gray-300 ml-2">
             <Globe size={11} className="inline mb-0.5" /> 체크하면 둘러보기에 공개
           </span>
@@ -418,7 +487,7 @@ function PortfolioSection() {
           onAdd={(url) => addImageMutation.mutate(url)}
           onRemove={(imageId) => removeImageMutation.mutate(imageId)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
-          maxCount={30}
+          maxCount={10}
         />
       </div>
     </div>
@@ -801,12 +870,6 @@ function ApplicationsSection() {
       ) : (
         filteredApps.map((app: any) => {
           const isExpanded = expandedId === app.id;
-          // 커스텀 답변 파싱
-          let customAnswers: { fieldId: string; value: string }[] = [];
-          try { customAnswers = app.customAnswers ? JSON.parse(app.customAnswers) : []; } catch { /* pass */ }
-          // exhibition의 customFields 파싱
-          let customFields: CustomField[] = [];
-          try { customFields = app.exhibition?.customFields ? JSON.parse(app.exhibition.customFields) : []; } catch { /* pass */ }
 
           return (
             <div key={app.id} className="border border-gray-100 rounded-xl overflow-hidden">
@@ -829,40 +892,41 @@ function ApplicationsSection() {
                     </span>
                   </div>
                 </div>
+                {/* 수락된 공모: 운영 페이지(전시정보 입력) 바로가기 — 항상 노출 */}
+                {app.status === 'ACCEPTED' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation`); }}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+                  >
+                    <ClipboardList size={14} /> 운영 페이지에서 전시정보 입력
+                  </button>
+                )}
               </div>
 
-              {/* 확장 영역: 내가 입력한 답변 + 공모 상세 이동 */}
+              {/* 확장 영역: 내가 제출한 지원서 + 공모 상세 이동 */}
               {isExpanded && (
                 <div className="px-4 pb-4 pt-0 border-t border-gray-50 space-y-3">
-                  {/* 내 지원 답변 */}
-                  {customAnswers.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-gray-500">내 지원 정보</p>
-                      {customAnswers.map((ans, idx) => {
-                        const field = customFields.find(f => f.id === ans.fieldId);
-                        let displayValue = ans.value;
-                        if (((field?.type as string) === 'multiselect' || (field?.type === 'select' && field?.maxSelect !== 1)) && ans.value) {
-                          try { displayValue = JSON.parse(ans.value).join(', '); } catch { /* keep */ }
-                        }
-                        if (field?.type === 'file' && ans.value) {
-                          displayValue = '📎 파일 첨부됨';
-                        }
-                        return (
-                          <div key={idx} className="text-xs">
-                            <span className="text-gray-400">{field?.label || ans.fieldId}:</span>
-                            <p className="text-gray-700 mt-0.5 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1">{displayValue || '-'}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {/* 공모 상세 이동 버튼 */}
-                  <button
-                    onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
-                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
-                  >
-                    <Eye size={12} /> 공모 상세 보기
-                  </button>
+                  <div className="pt-3">
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">내가 제출한 지원서</p>
+                    <ApplicationContent app={app} />
+                  </div>
+                  {/* 이동 버튼들 */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
+                      className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
+                    >
+                      <Eye size={12} /> 공모 상세 보기
+                    </button>
+                    {app.status === 'ACCEPTED' && (
+                      <button
+                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}/operation`)}
+                        className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
+                      >
+                        <ClipboardList size={12} /> 운영 페이지 (전시정보 입력)
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1023,18 +1087,27 @@ function MyGalleriesSection() {
               <Save size={12} /> 임시저장
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="갤러리명 *" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="주소 *" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="대표자명 *" value={form.ownerName} onChange={e => setForm({...form, ownerName: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="전화번호 *" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <input placeholder="이메일 주소 (선택)" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm" />
-            <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm">
-              {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-            </select>
-            <textarea placeholder="한줄 소개 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="col-span-2 p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
+          {/* WYSIWYG: 실제 갤러리 상세 페이지 모습으로 편집 */}
+          <p className="text-xs text-gray-400">아래는 실제 갤러리 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
+          <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
+            <HeroImageEdit value={form.mainImage} onChange={(url) => setForm({...form, mainImage: url})} onRemove={() => setForm({...form, mainImage: ''})} className="w-full aspect-[4/3]" label="갤러리 대표 이미지" />
+            <div className="p-5 space-y-3">
+              <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
+                {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+              </select>
+              <EditableText value={form.name} onChange={v => setForm({...form, name: v})} placeholder="갤러리명" className="text-2xl font-serif text-gray-900" />
+              <div className="space-y-1 text-sm text-gray-600">
+                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.address} onChange={v => setForm({...form, address: v})} placeholder="주소" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><Phone size={15} className="text-gray-400 shrink-0" /><EditableText value={form.phone} onChange={v => setForm({...form, phone: v})} placeholder="전화번호" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><UserIcon size={15} className="text-gray-400 shrink-0" /><EditableText value={form.ownerName} onChange={v => setForm({...form, ownerName: v})} placeholder="대표자명" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><Mail size={15} className="text-gray-400 shrink-0" /><EditableText value={form.email} onChange={v => setForm({...form, email: v})} placeholder="이메일 (선택)" className="text-sm flex-1" /></div>
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-400 mb-1">소개</p>
+                <EditableText multiline rows={3} value={form.description} onChange={v => setForm({...form, description: v})} placeholder="갤러리 한줄 소개" className="text-sm text-gray-700" />
+              </div>
+            </div>
           </div>
-          <ImageUpload value={form.mainImage} onChange={(url) => setForm({...form, mainImage: url})} onRemove={() => setForm({...form, mainImage: ''})} placeholder="대표 이미지 업로드" />
           {/* 약관 동의 */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{galleryTerms || '약관 로딩 중...'}</div>
@@ -1174,17 +1247,13 @@ function MyExhibitionsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
-  const [enableCustomFields, setEnableCustomFields] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
-  // 커스텀 필드 인라인 수정 상태
-  const [editingCfExId, setEditingCfExId] = useState<number | null>(null);
-  const [editingCfFields, setEditingCfFields] = useState<CustomField[]>([]);
   // 지원자 관리 상태
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
 
@@ -1214,7 +1283,6 @@ function MyExhibitionsSection() {
       const draft = restoreDraft();
       if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
         setForm(draft);
-        if (draft.customFields && draft.customFields.length > 0) setEnableCustomFields(true);
       }
     }
     setShowForm(true);
@@ -1244,34 +1312,17 @@ function MyExhibitionsSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post('/exhibitions', {
-      ...data,
-      customFields: data.customFields?.length > 0 ? data.customFields : null,
-    }),
+    mutationFn: (data: any) => api.post('/exhibitions', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
       setShowForm(false);
       setForm(emptyExForm);
       setExhibitionAgreed(false);
-      setEnableCustomFields(false);
       setFormErrors(new Set());
       clearDraft();
       toast.success('공모 등록 요청이 제출되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
-  });
-
-  // 커스텀 필드 수정 mutation
-  const updateCfMutation = useMutation({
-    mutationFn: ({ id, customFields }: { id: number; customFields: CustomField[] | null }) =>
-      api.patch(`/exhibitions/${id}/custom-fields`, { customFields }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
-      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
-      setEditingCfExId(null);
-      toast.success('요청 정보가 수정되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '수정 실패'),
   });
 
   // 공모 삭제
@@ -1312,27 +1363,31 @@ function MyExhibitionsSection() {
   const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
   const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
 
-  // 지원자 목록 엑셀(CSV) 다운로드
+  // 지원자 목록 엑셀(CSV) 다운로드 — 고정 양식(약력/경력/작품사진수/포트폴리오 파일)
+  const careerToCsvText = (career: Career | null | undefined) => {
+    const c = normalizeCareer(career);
+    const parts: string[] = [];
+    for (const { key, label } of CAREER_LABELS) {
+      if (c[key].length > 0) {
+        parts.push(`[${label}] ` + c[key].map(e => [e.year, e.content].filter(Boolean).join(' ')).join(' / '));
+      }
+    }
+    return parts.join(' || ');
+  };
   const exportApplicantsCSV = (exhibition: any, apps: any[]) => {
     if (!apps.length) return;
-    const fields: CustomField[] = exhibition.customFields || [];
-    const headers = ['이름', '이메일', '지원일', '상태', ...fields.map(f => f.label)];
+    const headers = ['이름', '이메일', '지원일', '상태', '작가 약력', '경력', '작품 사진 수', '포트폴리오 파일'];
     const rows = apps.map(app => {
-      const answers: any[] = app.customAnswers || [];
-      const fieldValues = fields.map(f => {
-        const ans = answers.find((a: any) => a.fieldId === f.id);
-        if (!ans?.value) return '';
-        if ((f.type as string) === 'multiselect' || (f.type === 'select' && f.maxSelect !== 1)) {
-          try { return JSON.parse(ans.value).join(' / '); } catch { return ans.value; }
-        }
-        return ans.value;
-      });
+      const images: string[] = Array.isArray(app.artworkImages) ? app.artworkImages : [];
       return [
         app.user?.name || '',
         app.user?.email || '',
         new Date(app.createdAt).toLocaleDateString('ko'),
         appStatusLabels[app.status] || app.status,
-        ...fieldValues,
+        app.biography || '',
+        careerToCsvText(app.career),
+        String(images.length),
+        app.portfolioFileUrl || '',
       ];
     });
     const csvContent = '\uFEFF' + [headers, ...rows].map(row =>
@@ -1347,19 +1402,6 @@ function MyExhibitionsSection() {
     URL.revokeObjectURL(url);
   };
 
-  // 커스텀 필드 추가
-  const addCustomField = () => {
-    const newField: CustomField = { id: `cf_${Date.now()}`, label: '', type: 'text', required: false, maxLength: 0 };
-    setForm({ ...form, customFields: [...form.customFields, newField] });
-  };
-  const updateCustomField = (idx: number, field: Partial<CustomField>) => {
-    const updated = [...form.customFields];
-    updated[idx] = { ...updated[idx], ...field };
-    setForm({ ...form, customFields: updated });
-  };
-  const removeCustomField = (idx: number) => {
-    setForm({ ...form, customFields: form.customFields.filter((_, i) => i !== idx) });
-  };
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
@@ -1385,155 +1427,60 @@ function MyExhibitionsSection() {
             <p className="text-sm text-red-500">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
           ) : (
             <>
-              <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('galleryId') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
-                <option value={0}>갤러리 선택 *</option>
-                {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
-              <input placeholder="공모 제목 *" value={form.title} onChange={e => { setForm({...form, title: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('title'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('title') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-              <div className="grid grid-cols-2 gap-3">
-                <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="p-2.5 border border-gray-200 rounded-lg text-sm">
-                  <option value="SOLO">개인전</option>
-                  <option value="GROUP">단체전</option>
-                  <option value="ART_FAIR">아트페어</option>
-                </select>
-                <div>
-                  <label className="text-xs text-gray-500">모집 작가 수</label>
-                  <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
-                  <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-                </div>
-                <div>
-                  <label className={`text-xs ${formErrors.has('deadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
-                  <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-                </div>
-                <div>
-                  <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
-                  <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-                </div>
-                <div>
-                  <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
-                  <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full p-2.5 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-                </div>
-              </div>
-              {/* 날짜 검증 에러 */}
-              {dateError && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
-                  <AlertTriangle size={12} /> {dateError}
-                </p>
-              )}
-              <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm">
-                {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-              </select>
-              <textarea placeholder="간단 소개 *" value={form.description} onChange={e => { setForm({...form, description: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('description'); return n; }); }} className={`w-full p-2.5 border rounded-lg text-sm h-20 resize-none ${formErrors.has('description') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
-              <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="공모 대표 이미지 (선택)" />
-
-              {/* 커스텀 질문 항목 빌더 */}
-              <div className="border border-gray-200 rounded-lg p-3 space-y-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={enableCustomFields} onChange={e => {
-                    setEnableCustomFields(e.target.checked);
-                    if (!e.target.checked) setForm({ ...form, customFields: [] });
-                  }} className="rounded" />
-                  지원 시 추가 요청 정보 설정
-                </label>
-                {enableCustomFields && (
-                  <div className="space-y-2 pt-2">
-                    {form.customFields.map((cf, idx) => (
-                      <div key={cf.id} className="flex gap-2 items-start bg-white p-2 rounded border border-gray-100">
-                        <div className="flex-1 space-y-1.5">
-                          <input
-                            placeholder="질문 (예: 작품 소개)"
-                            value={cf.label}
-                            onChange={e => updateCustomField(idx, { label: e.target.value })}
-                            className="w-full p-1.5 border border-gray-200 rounded text-xs"
-                          />
-                          <div className="flex gap-2">
-                            <select value={(cf.type as string) === 'multiselect' ? 'select' : cf.type} onChange={e => updateCustomField(idx, { type: e.target.value as CustomField['type'], ...(e.target.value === 'select' && !cf.options?.length ? { options: [], maxSelect: 1 } : {}) })} className="p-1.5 border border-gray-200 rounded text-xs">
-                              <option value="text">텍스트</option>
-                              <option value="select">선택형</option>
-                              <option value="file">파일 업로드</option>
-                            </select>
-                            <label className="flex items-center gap-1 text-xs">
-                              <input type="checkbox" checked={cf.required} onChange={e => updateCustomField(idx, { required: e.target.checked })} className="rounded" />
-                              필수
-                            </label>
-                          </div>
-                          {/* 텍스트: 글자수 제한 */}
-                          {cf.type === 'text' && (
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs text-gray-500 whitespace-nowrap">글자수 제한</label>
-                              <input
-                                type="number"
-                                min={0}
-                                placeholder="0 = 무제한"
-                                value={cf.maxLength || ''}
-                                onChange={e => updateCustomField(idx, { maxLength: parseInt(e.target.value) || 0 })}
-                                className="w-24 p-1.5 border border-gray-200 rounded text-xs"
-                              />
-                              <span className="text-xs text-gray-400">{cf.maxLength ? `최대 ${cf.maxLength}자` : '무제한'}</span>
-                            </div>
-                          )}
-                          {/* 선택형: 최대 선택 수 */}
-                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs text-gray-500 whitespace-nowrap">최대 선택 수</label>
-                              <input
-                                type="number"
-                                min={0}
-                                placeholder="1 = 단일, 0 = 무제한"
-                                value={cf.maxSelect ?? 1}
-                                onChange={e => updateCustomField(idx, { maxSelect: parseInt(e.target.value) || 0 })}
-                                className="w-24 p-1.5 border border-gray-200 rounded text-xs"
-                              />
-                              <span className="text-xs text-gray-400">
-                                {cf.maxSelect === 1 ? '단일선택' : cf.maxSelect ? `최대 ${cf.maxSelect}개` : '무제한'}
-                              </span>
-                            </div>
-                          )}
-                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap gap-1">
-                                {(cf.options || []).map((opt, optIdx) => (
-                                  <span key={optIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-xs rounded">
-                                    {opt}
-                                    <button onClick={() => updateCustomField(idx, { options: cf.options!.filter((_, i) => i !== optIdx) })} className="text-gray-400 hover:text-red-500"><X size={10} /></button>
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="flex gap-1">
-                                <input
-                                  placeholder="옵션명 입력"
-                                  className="flex-1 p-1.5 border border-gray-200 rounded text-xs"
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const val = (e.target as HTMLInputElement).value.trim();
-                                      if (val) { updateCustomField(idx, { options: [...(cf.options || []), val] }); (e.target as HTMLInputElement).value = ''; }
-                                    }
-                                  }}
-                                />
-                                <button
-                                  onClick={e => {
-                                    const input = (e.target as HTMLElement).parentElement?.querySelector('input') as HTMLInputElement;
-                                    const val = input?.value.trim();
-                                    if (val) { updateCustomField(idx, { options: [...(cf.options || []), val] }); input.value = ''; }
-                                  }}
-                                  className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
-                                >추가</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <button onClick={() => removeCustomField(idx)} className="p-1 text-gray-400 hover:text-red-500"><X size={14} /></button>
-                      </div>
-                    ))}
-                    <button onClick={addCustomField} className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1">
-                      <Plus size={12} /> 항목 추가
-                    </button>
+              <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
+              <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
+                <HeroImageEdit value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} className="w-full aspect-[16/9]" label="공모 대표 이미지" />
+                <div className="p-5 space-y-3">
+                  {/* 갤러리 / 유형 / 지역 */}
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`text-xs px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${formErrors.has('galleryId') ? 'bg-red-50 text-red-600 ring-1 ring-red-300' : 'bg-gray-900 text-white'}`}>
+                      <option value={0}>갤러리 선택 *</option>
+                      {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
+                      <option value="SOLO">개인전</option>
+                      <option value="GROUP">단체전</option>
+                      <option value="ART_FAIR">아트페어</option>
+                    </select>
+                    <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
+                      {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                    </select>
                   </div>
-                )}
+                  {/* 제목 */}
+                  <EditableText value={form.title} onChange={v => { setForm({...form, title: v}); setFormErrors(prev => { const n = new Set(prev); n.delete('title'); return n; }); }} placeholder="공모 제목" className="text-2xl font-serif text-gray-900" error={formErrors.has('title')} />
+                  {/* 메타: 모집인원 + 일정 */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                    <div>
+                      <label className="text-xs text-gray-500">모집 작가 수</label>
+                      <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full mt-0.5 p-2 border border-gray-200 rounded-lg text-sm" />
+                    </div>
+                    <div></div>
+                    <div>
+                      <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
+                      <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`text-xs ${formErrors.has('deadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
+                      <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
+                      <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
+                      <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                    </div>
+                  </div>
+                  {dateError && (
+                    <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} /> {dateError}</p>
+                  )}
+                  {/* 소개 */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <p className="text-xs font-medium text-gray-400 mb-1">공모 소개</p>
+                    <EditableText multiline rows={3} value={form.description} onChange={v => { setForm({...form, description: v}); setFormErrors(prev => { const n = new Set(prev); n.delete('description'); return n; }); }} placeholder="공모 소개" className="text-sm text-gray-700" error={formErrors.has('description')} />
+                  </div>
+                </div>
               </div>
 
               {/* 약관 동의 */}
@@ -1571,21 +1518,6 @@ function MyExhibitionsSection() {
                       );
                       return;
                     }
-                    // 선택형 필드 maxSelect vs 옵션 수 경고
-                    if (enableCustomFields && form.customFields) {
-                      const warnings: string[] = [];
-                      for (const cf of form.customFields) {
-                        if (cf.type === 'select' && cf.maxSelect && cf.maxSelect > 1 && cf.options) {
-                          if (cf.options.length < cf.maxSelect) {
-                            warnings.push(`"${cf.label}" — 최대 선택 수(${cf.maxSelect})가 옵션 수(${cf.options.length})보다 많습니다.`);
-                          }
-                        }
-                      }
-                      if (warnings.length > 0) {
-                        warnings.forEach(w => toast.error(w, { duration: 4000 }));
-                        return;
-                      }
-                    }
                     setConfirmAction('submit');
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1612,7 +1544,7 @@ function MyExhibitionsSection() {
         message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
         confirmText="취소하기"
         variant="danger"
-        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setEnableCustomFields(false); setFormErrors(new Set()); }}
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); }}
         onCancel={() => setConfirmAction(null)}
       />
 
@@ -1646,112 +1578,6 @@ function MyExhibitionsSection() {
                   <p className="text-sm text-red-500 mt-2">거절 사유: {ex.rejectReason}</p>
                 )}
               </div>
-              {/* 커스텀 필드 표시/수정 */}
-              {ex.customFields && ex.customFields.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs text-gray-500">요청 정보 ({ex.customFields.length}개 항목)</span>
-                    <button
-                      onClick={() => {
-                        if (editingCfExId === ex.id) { setEditingCfExId(null); }
-                        else { setEditingCfExId(ex.id); setEditingCfFields([...ex.customFields]); }
-                      }}
-                      className="text-xs text-gray-400 hover:text-gray-900"
-                    >
-                      {editingCfExId === ex.id ? '취소' : <><Edit3 size={10} className="inline" /> 수정</>}
-                    </button>
-                  </div>
-                  {editingCfExId === ex.id ? (
-                    <div className="space-y-1.5">
-                      {editingCfFields.map((cf, idx) => (
-                        <div key={cf.id} className="space-y-1 bg-gray-50 p-2 rounded">
-                          <div className="flex gap-1.5 items-center">
-                            <input value={cf.label} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], label: e.target.value }; setEditingCfFields(u); }} className="flex-1 p-1 border border-gray-200 rounded text-xs" />
-                            <select value={(cf.type as string) === 'multiselect' ? 'select' : cf.type} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], type: e.target.value as CustomField['type'], ...(e.target.value === 'select' && !cf.options?.length ? { options: [], maxSelect: cf.maxSelect ?? 1 } : {}) }; setEditingCfFields(u); }} className="p-1 border border-gray-200 rounded text-xs">
-                              <option value="text">텍스트</option>
-                              <option value="select">선택형</option>
-                              <option value="file">파일</option>
-                            </select>
-                            <label className="flex items-center gap-1 text-xs whitespace-nowrap">
-                              <input type="checkbox" checked={cf.required} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], required: e.target.checked }; setEditingCfFields(u); }} className="rounded" />
-                              필수
-                            </label>
-                            <button onClick={() => setEditingCfFields(editingCfFields.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500"><X size={12} /></button>
-                          </div>
-                          {/* 텍스트: 글자수 제한 수정 */}
-                          {cf.type === 'text' && (
-                            <div className="flex items-center gap-2 pl-1">
-                              <label className="text-xs text-gray-500">글자수 제한</label>
-                              <input type="number" min={0} placeholder="0 = 무제한" value={cf.maxLength || ''} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], maxLength: parseInt(e.target.value) || 0 }; setEditingCfFields(u); }} className="w-20 p-1 border border-gray-200 rounded text-xs" />
-                              <span className="text-xs text-gray-400">{cf.maxLength ? `최대 ${cf.maxLength}자` : '무제한'}</span>
-                            </div>
-                          )}
-                          {/* 선택형: 최대 선택 수 수정 */}
-                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
-                            <div className="flex items-center gap-2 pl-1">
-                              <label className="text-xs text-gray-500">최대 선택 수</label>
-                              <input type="number" min={0} placeholder="1 = 단일선택" value={cf.maxSelect ?? ''} onChange={e => { const u = [...editingCfFields]; u[idx] = { ...u[idx], maxSelect: parseInt(e.target.value) || 0 }; setEditingCfFields(u); }} className="w-20 p-1 border border-gray-200 rounded text-xs" />
-                              <span className="text-xs text-gray-400">{cf.maxSelect === 1 ? '단일선택' : cf.maxSelect && cf.maxSelect > 1 ? `최대 ${cf.maxSelect}개` : '무제한'}</span>
-                            </div>
-                          )}
-                          {(cf.type === 'select' || (cf.type as string) === 'multiselect') && (
-                            <div className="space-y-1 pl-1">
-                              <div className="flex flex-wrap gap-1">
-                                {(cf.options || []).map((opt, optIdx) => (
-                                  <span key={optIdx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white border text-xs rounded">
-                                    {opt}
-                                    <button onClick={() => { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: cf.options!.filter((_, i) => i !== optIdx) }; setEditingCfFields(u); }} className="text-gray-400 hover:text-red-500"><X size={9} /></button>
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="flex gap-1">
-                                <input placeholder="옵션명 입력" className="flex-1 p-1 border border-gray-200 rounded text-xs"
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const val = (e.target as HTMLInputElement).value.trim();
-                                      if (val) { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: [...(cf.options || []), val] }; setEditingCfFields(u); (e.target as HTMLInputElement).value = ''; }
-                                    }
-                                  }}
-                                />
-                                <button onClick={e => { const input = (e.target as HTMLElement).parentElement?.querySelector('input') as HTMLInputElement; const val = input?.value.trim(); if (val) { const u = [...editingCfFields]; u[idx] = { ...u[idx], options: [...(cf.options || []), val] }; setEditingCfFields(u); input.value = ''; } }} className="px-1.5 py-0.5 text-xs bg-gray-200 rounded hover:bg-gray-300">추가</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <button
-                        onClick={() => {
-                          // maxSelect vs 옵션 수 경고
-                          const warnings: string[] = [];
-                          for (const cf of editingCfFields) {
-                            if (cf.type === 'select' && cf.maxSelect && cf.maxSelect > 1 && cf.options) {
-                              if (cf.options.length < cf.maxSelect) {
-                                warnings.push(`"${cf.label}" — 최대 선택 수(${cf.maxSelect})가 옵션 수(${cf.options.length})보다 많습니다.`);
-                              }
-                            }
-                          }
-                          if (warnings.length > 0) {
-                            warnings.forEach(w => toast.error(w, { duration: 4000 }));
-                            return;
-                          }
-                          updateCfMutation.mutate({ id: ex.id, customFields: editingCfFields.length > 0 ? editingCfFields : null });
-                        }}
-                        disabled={updateCfMutation.isPending}
-                        className="text-xs px-2 py-1 bg-gray-900 text-white rounded disabled:opacity-50"
-                      >저장</button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {ex.customFields.map((cf: CustomField) => (
-                        <span key={cf.id} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                          {cf.label} ({cf.type}){cf.required ? ' *' : ''}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
               {/* 지원자 관리 */}
               <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-2">
@@ -1761,6 +1587,14 @@ function MyExhibitionsSection() {
                   >
                     <Send size={10} /> {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
                   </button>
+                  {ex.status === 'APPROVED' && (
+                    <button
+                      onClick={() => navigate(`/exhibitions/${ex.id}/operation`)}
+                      className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
+                    >
+                      <ClipboardList size={10} /> 운영 페이지
+                    </button>
+                  )}
                   {manageAppsExId === ex.id && applicants.length > 0 && (
                     <button
                       onClick={() => exportApplicantsCSV(ex, applicants)}
@@ -1796,23 +1630,7 @@ function MyExhibitionsSection() {
                               <option value="REJECTED">거절</option>
                             </select>
                           </div>
-                          {app.customAnswers && app.customAnswers.length > 0 && (
-                            <div className="pl-7 space-y-0.5">
-                              {app.customAnswers.map((ans: any, aIdx: number) => {
-                                const field = ex.customFields?.find((cf: CustomField) => cf.id === ans.fieldId);
-                                let displayValue = ans.value;
-                                if (((field?.type as string) === 'multiselect' || (field?.type === 'select' && field?.maxSelect !== 1)) && ans.value) {
-                                  try { displayValue = JSON.parse(ans.value).join(', '); } catch { /* keep original */ }
-                                }
-                                return (
-                                  <div key={aIdx} className="text-xs">
-                                    <span className="text-gray-400">{field?.label || ans.fieldId}:</span>
-                                    <p className="text-gray-700 mt-0.5 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1">{displayValue || '-'}</p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                          <ApplicationContent app={app} />
                         </div>
                       ))
                     )}
@@ -1862,6 +1680,17 @@ function MyShowsSection() {
 
   // 약관 동의
   const [agreedTerms, setAgreedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState('');
+
+  // 약관 텍스트 로드
+  useEffect(() => {
+    if (showForm) {
+      fetch('/terms/show-registration.txt')
+        .then(r => { if (!r.ok || r.headers.get('content-type')?.includes('text/html')) throw new Error(); return r.text(); })
+        .then(t => { if (!t.trimStart().startsWith('<!')) setShowTerms(t); })
+        .catch(() => setShowTerms('약관을 불러올 수 없습니다.'));
+    }
+  }, [showForm]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/shows', data),
@@ -1950,53 +1779,53 @@ function MyShowsSection() {
       {/* 등록 폼 */}
       {showForm && (
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-          <select value={form.galleryId} onChange={e => setForm({ ...form, galleryId: Number(e.target.value) })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm">
-            <option value={0}>갤러리 선택</option>
-            {approvedGalleries.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-          <input placeholder="전시 제목" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
-          <textarea placeholder="전시 소개" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm min-h-[80px]" />
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500">시작일</label>
-              <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">종료일</label>
-              <input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })}
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
+          <p className="text-xs text-gray-400">실제 전시 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요.</p>
+          <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
+            <HeroImageEdit value={form.posterImage} onChange={(url) => setForm({ ...form, posterImage: url })} onRemove={() => setForm({ ...form, posterImage: '' })} className="w-full aspect-[4/3]" label="포스터 이미지" />
+            <div className="p-5 space-y-3">
+              <div className="flex flex-wrap gap-2 items-center">
+                <select value={form.galleryId} onChange={e => setForm({ ...form, galleryId: Number(e.target.value) })} className="text-xs px-2.5 py-1 bg-gray-900 text-white rounded-full cursor-pointer focus:outline-none">
+                  <option value={0}>갤러리 선택</option>
+                  {approvedGalleries.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+                <select value={form.region} onChange={e => setForm({ ...form, region: e.target.value })} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
+                  {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                </select>
+              </div>
+              <EditableText value={form.title} onChange={v => setForm({ ...form, title: v })} placeholder="전시 제목" className="text-2xl font-serif text-gray-900" />
+              {/* 메타: 일정/시간/입장료/위치 */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                <div>
+                  <label className="text-xs text-gray-500">시작일</label>
+                  <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} className="w-full mt-0.5 p-2 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">종료일</label>
+                  <input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} className="w-full mt-0.5 p-2 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500">관람 시간</label>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <input type="time" aria-label="관람 시작 시간" value={form.openingHours.split('-')[0] || ''}
+                      onChange={e => { const close = form.openingHours.split('-')[1] || ''; setForm({ ...form, openingHours: e.target.value || close ? `${e.target.value}-${close}` : '' }); }}
+                      className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
+                    <span className="text-gray-400">~</span>
+                    <input type="time" aria-label="관람 종료 시간" value={form.openingHours.split('-')[1] || ''}
+                      onChange={e => { const open = form.openingHours.split('-')[0] || ''; setForm({ ...form, openingHours: open || e.target.value ? `${open}-${e.target.value}` : '' }); }}
+                      className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1 text-sm text-gray-600">
+                <div className="flex items-center gap-2"><Ticket size={15} className="text-gray-400 shrink-0" /><EditableText value={form.admissionFee} onChange={v => setForm({ ...form, admissionFee: v })} placeholder="입장료 (예: 무료, 5,000원)" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="위치 (주소)" className="text-sm flex-1" /></div>
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-400 mb-1">전시 소개</p>
+                <EditableText multiline rows={3} value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="전시 소개" className="text-sm text-gray-700" />
+              </div>
             </div>
           </div>
-          <div>
-            <label className="text-xs text-gray-500">관람 시간</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="time"
-                aria-label="관람 시작 시간"
-                value={form.openingHours.split('-')[0] || ''}
-                onChange={e => { const close = form.openingHours.split('-')[1] || ''; setForm({ ...form, openingHours: e.target.value || close ? `${e.target.value}-${close}` : '' }); }}
-                className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
-              <span className="text-gray-400">~</span>
-              <input
-                type="time"
-                aria-label="관람 종료 시간"
-                value={form.openingHours.split('-')[1] || ''}
-                onChange={e => { const open = form.openingHours.split('-')[0] || ''; setForm({ ...form, openingHours: open || e.target.value ? `${open}-${e.target.value}` : '' }); }}
-                className="flex-1 p-2 border border-gray-200 rounded-lg text-sm" />
-            </div>
-          </div>
-          <input placeholder="입장료 (예: 무료, 5,000원)" value={form.admissionFee} onChange={e => setForm({ ...form, admissionFee: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
-          <input placeholder="위치 (주소)" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm" />
-          <select value={form.region} onChange={e => setForm({ ...form, region: e.target.value })}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm">
-            {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-          </select>
           {/* 참여 작가 (동적 목록) */}
           <div className="space-y-2">
             <label className="text-xs text-gray-500">참여 작가</label>
@@ -2055,23 +1884,23 @@ function MyShowsSection() {
               <Plus size={12} /> 작가 추가
             </button>
           </div>
-          <ImageUpload
-            value={form.posterImage}
-            onChange={(url) => setForm({ ...form, posterImage: url })}
-            placeholder="포스터 이미지"
-          />
-          <MultiImageUpload
-            images={form.additionalImages}
-            onAdd={(url: string) => setForm({ ...form, additionalImages: [...form.additionalImages, { url }] })}
-            onRemove={(index: number) => setForm({ ...form, additionalImages: form.additionalImages.filter((_: { url: string }, i: number) => i !== index) })}
-            maxCount={10}
-          />
+          <div>
+            <p className="text-xs font-medium text-gray-400 mb-1">추가 이미지 (선택, 최대 10장)</p>
+            <MultiImageUpload
+              images={form.additionalImages}
+              onAdd={(url: string) => setForm({ ...form, additionalImages: [...form.additionalImages, { url }] })}
+              onRemove={(index: number) => setForm({ ...form, additionalImages: form.additionalImages.filter((_: { url: string }, i: number) => i !== index) })}
+              maxCount={10}
+            />
+          </div>
           {/* 약관 동의 */}
-          <label className="flex items-start gap-2 text-sm text-gray-600">
-            <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)}
-              className="mt-1" />
-            <span>전시 등록 약관에 동의합니다.</span>
-          </label>
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{showTerms || '약관 로딩 중...'}</div>
+            <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
+              <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)} className="rounded" />
+              위 약관에 동의합니다
+            </label>
+          </div>
           <button
             onClick={handleSubmit}
             disabled={createMutation.isPending || !agreedTerms}
@@ -2969,6 +2798,7 @@ function OversightSection() {
 
 // --- 공모 지원현황 ---
 function OvExhibitions() {
+  const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [selId, setSelId] = useState<number | null>(null);
@@ -2985,7 +2815,6 @@ function OvExhibitions() {
     enabled: !!selId,
   });
 
-  const fieldLabel = (fieldId: string) => detail?.exhibition?.customFields?.find((f: any) => f.id === fieldId)?.label || fieldId;
 
   return (
     <div className="space-y-4">
@@ -3019,6 +2848,12 @@ function OvExhibitions() {
         <div className="border-t border-gray-200 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-gray-900">{detail.exhibition.title} — 지원 현황</p>
+            <button
+              onClick={() => navigate(`/exhibitions/${selId}/operation`)}
+              className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1 shrink-0"
+            >
+              <ClipboardList size={12} /> 운영 페이지
+            </button>
           </div>
           <OvCounts counts={detail.counts} />
           {detail.applications.length === 0 ? (
@@ -3027,7 +2862,6 @@ function OvExhibitions() {
             <div className="space-y-1.5">
               {detail.applications.map((app: any) => {
                 const isOpen = expanded === app.id;
-                const answers: { fieldId: string; value: string }[] = Array.isArray(app.customAnswers) ? app.customAnswers : [];
                 return (
                   <div key={app.id} className={`border rounded-lg ${app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
                     <button onClick={() => setExpanded(isOpen ? null : app.id)} className="w-full text-left p-3 flex items-center justify-between gap-2">
@@ -3049,18 +2883,10 @@ function OvExhibitions() {
                         )}
                       </div>
                     </button>
-                    {isOpen && answers.length > 0 && (
-                      <div className="px-3 pb-3 space-y-1.5 border-t border-gray-50 pt-2">
-                        {answers.map((a, i) => (
-                          <div key={i} className="text-xs">
-                            <span className="text-gray-500">{fieldLabel(a.fieldId)}: </span>
-                            <span className="text-gray-800 whitespace-pre-wrap break-all bg-gray-50 rounded px-2 py-1 inline-block">{a.value || '-'}</span>
-                          </div>
-                        ))}
+                    {isOpen && (
+                      <div className="px-3 pb-3 border-t border-gray-50 pt-2">
+                        <ApplicationContent app={app} />
                       </div>
-                    )}
-                    {isOpen && answers.length === 0 && (
-                      <p className="px-3 pb-3 text-xs text-gray-400 border-t border-gray-50 pt-2">추가 답변 없음</p>
                     )}
                   </div>
                 );

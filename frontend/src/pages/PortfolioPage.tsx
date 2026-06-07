@@ -7,7 +7,17 @@ import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import type { PublicPortfolio } from '@/types';
+import type { PublicPortfolio, Career } from '@/types';
+
+const CAREER_LABELS: { key: keyof Career; label: string }[] = [
+  { key: 'artFair', label: '아트페어' },
+  { key: 'solo', label: '개인전' },
+  { key: 'group', label: '단체전' },
+];
+
+function normalizeCareer(c?: Career | null): Career {
+  return { artFair: c?.artFair ?? [], solo: c?.solo ?? [], group: c?.group ?? [] };
+}
 
 export default function PortfolioPage() {
   const { userId } = useParams();
@@ -44,6 +54,8 @@ export default function PortfolioPage() {
   if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
 
   const imageUrls = portfolio.images.map(img => img.url);
+  const career = normalizeCareer(portfolio.career);
+  const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
@@ -77,13 +89,38 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* 전시 이력 */}
-      {portfolio.exhibitionHistory && (
+      {/* 경력 */}
+      {career && !careerEmpty && (
         <div className="mb-6">
           <h3 className="text-base font-medium text-gray-700 mb-2 flex items-center gap-1">
-            <Calendar size={14} /> 전시 이력
+            <Calendar size={14} /> 경력
           </h3>
-          <div className="border-l-2 border-gray-200 pl-4 py-2 text-sm text-gray-600 whitespace-pre-wrap">{portfolio.exhibitionHistory}</div>
+          <div className="border-l-2 border-gray-200 pl-4 py-2 space-y-2">
+            {CAREER_LABELS.map(({ key, label }) => career[key].length > 0 && (
+              <div key={key}>
+                <p className="text-xs font-medium text-gray-500">{label}</p>
+                <ul className="mt-0.5 space-y-0.5">
+                  {career[key].map((e, i) => (
+                    <li key={i} className="text-sm text-gray-600">
+                      <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 포트폴리오 파일 */}
+      {portfolio.portfolioFileUrl && (
+        <div className="mb-6">
+          <h3 className="text-base font-medium text-gray-700 mb-2 flex items-center gap-1">
+            <FileText size={14} /> 포트폴리오 파일
+          </h3>
+          <a href={portfolio.portfolioFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:underline pl-4">
+            <FileText size={14} /> 파일 보기
+          </a>
         </div>
       )}
 
@@ -116,7 +153,7 @@ export default function PortfolioPage() {
       )}
 
       {/* 빈 포트폴리오 */}
-      {!portfolio.biography && !portfolio.exhibitionHistory && imageUrls.length === 0 && (
+      {!portfolio.biography && careerEmpty && !portfolio.portfolioFileUrl && imageUrls.length === 0 && (
         <div className="text-center py-16 text-gray-400">아직 포트폴리오가 등록되지 않았습니다.</div>
       )}
 

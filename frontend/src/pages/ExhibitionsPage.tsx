@@ -1,13 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Users, MapPin, X, Send, Plus, Search } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
-import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import type { Exhibition } from '@/types';
 
 const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
@@ -21,24 +19,6 @@ export default function ExhibitionsPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [applyTerms, setApplyTerms] = useState('');
-  const [applyConfirmId, setApplyConfirmId] = useState<number | null>(null);
-
-  useEffect(() => {
-    fetch('/terms/artist_apply_real.txt')
-      .then(r => {
-        if (!r.ok || r.headers.get('content-type')?.includes('text/html')) {
-          throw new Error('not text');
-        }
-        return r.text();
-      })
-      .then(text => {
-        if (!text.trimStart().startsWith('<!') && !text.trimStart().startsWith('<html')) {
-          setApplyTerms(text);
-        }
-      })
-      .catch(() => setApplyTerms('이 공모에 지원하시겠습니까? 포트폴리오가 갤러리에 전송됩니다.'));
-  }, []);
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 
@@ -54,18 +34,6 @@ export default function ExhibitionsPage() {
     },
     staleTime: 0,
     refetchOnMount: 'always',
-  });
-
-  const applyMutation = useMutation({
-    mutationFn: (exhibitionId: number) => api.post(`/exhibitions/${exhibitionId}/apply`),
-    onSuccess: () => {
-      toast.success('지원이 완료되었습니다! 포트폴리오가 갤러리에 전송됩니다.');
-      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
-      queryClient.invalidateQueries({ queryKey: ['my-applications'] });
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || '지원 중 오류가 발생했습니다.');
-    },
   });
 
   const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType, appliedSearch] as const;
@@ -267,14 +235,8 @@ export default function ExhibitionsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (ex.customFields && ex.customFields.length > 0) {
-                          toast('추가 정보 입력이 필요합니다. 상세페이지로 이동합니다.', { icon: '📝' });
-                          navigate(`/exhibitions/${ex.id}`);
-                        } else {
-                          setApplyConfirmId(ex.id);
-                        }
+                        navigate(`/exhibitions/${ex.id}`);
                       }}
-                      disabled={applyMutation.isPending}
                       className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-[#c4302b] transition-colors cursor-pointer"
                     >
                       지원하기 →
@@ -286,14 +248,6 @@ export default function ExhibitionsPage() {
           })}
         </div>
       )}
-      <ConfirmDialog
-        open={applyConfirmId !== null}
-        title="지원하기"
-        message={applyTerms || '지원하시겠습니까?'}
-        confirmText="지원하기"
-        onConfirm={() => { applyMutation.mutate(applyConfirmId!); setApplyConfirmId(null); }}
-        onCancel={() => setApplyConfirmId(null)}
-      />
     </div>
   );
 }

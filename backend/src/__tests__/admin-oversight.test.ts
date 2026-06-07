@@ -30,7 +30,7 @@ describe('Admin 운영 조회 API', () => {
     await seedShow(galleryId);
 
     // 두 작가가 지원, 하나는 수락 처리됨
-    await testPrisma.application.create({ data: { userId: 1, exhibitionId, status: 'ACCEPTED', customAnswers: JSON.stringify([{ fieldId: 'f1', value: '답변A' }]) } });
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId, status: 'ACCEPTED', biography: '약력A', career: JSON.stringify({ artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] }), artworkImages: JSON.stringify(['https://example.com/a.jpg']) } });
     await testPrisma.application.create({ data: { userId: 2, exhibitionId, status: 'SUBMITTED' } });
   });
 
@@ -94,7 +94,9 @@ describe('Admin 운영 조회 API', () => {
       expect(accepted.user.id).toBe(1);
       expect(accepted.appliedAt).toBeTruthy();
       expect(accepted.decidedAt).toBeTruthy();
-      expect(accepted.customAnswers).toEqual([{ fieldId: 'f1', value: '답변A' }]);
+      expect(accepted.biography).toBe('약력A');
+      expect(accepted.career).toEqual({ artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] });
+      expect(accepted.artworkImages).toEqual(['https://example.com/a.jpg']);
     });
 
     it('없는 공모 → 404', async () => {

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { tokenFor } from '../lib/helpers';
+import { tokenFor, applyToExhibition } from '../lib/helpers';
 
 /**
  * 동시성: 정원 1명 공모에 여러 명이 "동시에" 지원하면 정원 초과 생성되는지(TOCTOU 경합).
@@ -32,8 +32,7 @@ test('정원 1명 공모에 동시 지원 6건 → 최종 수락/접수는 정�
 
   // 6명 동시 지원 (Promise.all)
   const results = await Promise.all(tokens.map(t =>
-    api.post(`${API}/exhibitions/${ex.id}/apply`, { headers: { Authorization: `Bearer ${t}` }, data: { customAnswers: [] } })
-      .then(res => res.status())
+    applyToExhibition(api, ex.id, t).then(res => res.status())
   ));
   const accepted = results.filter(s => s === 201).length;
   console.log('동시 지원 결과 상태들:', results.join(','), '→ 201 개수:', accepted);

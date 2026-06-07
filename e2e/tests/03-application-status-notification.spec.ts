@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition } from '../lib/helpers';
 
 /**
  * 멀티유저 지속 상호작용: 작가 지원 → 갤러리가 상태를 단계별로 올림 → 작가에게 알림 누적 + 상태배지 갱신.
@@ -19,11 +19,7 @@ test.beforeAll(async () => {
   const approved = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
   if (!approved) throw new Error('승인된 시드 공모 없음');
   exId = approved.id; exTitle = approved.title;
-  const detail = await (await api.get(`${API}/exhibitions/${exId}`)).json();
-  const answers = (detail.customFields || []).filter((f: any) => f.required).map((f: any) => ({
-    fieldId: f.id, value: f.type === 'select' || f.type === 'multiselect' ? (f.options?.[0] ?? '') : '답변',
-  }));
-  const r = await api.post(`${API}/exhibitions/${exId}/apply`, { headers: { Authorization: `Bearer ${aTok}` }, data: { customAnswers: answers } });
+  const r = await applyToExhibition(api, exId, aTok);
   // 201=새 지원, 400/409=이미 지원(다른 테스트에서) → 어느 쪽이든 "작가가 지원함" 전제 충족
   expect([200, 201, 400, 409].includes(r.status()), `지원 실패 ${r.status()}`).toBeTruthy();
   await api.dispose();

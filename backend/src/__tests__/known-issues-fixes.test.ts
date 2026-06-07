@@ -28,10 +28,10 @@ describe('Known issues 수정', () => {
     it('정원이 찬 뒤 추가 지원하면 400', async () => {
       const ex = await makeExhibition(1);
       const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ customAnswers: [] });
+        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
       expect(r1.status).toBe(201);
       const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ customAnswers: [] });
+        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
       expect(r2.status).toBe(400);
       expect(r2.body.error).toContain('마감');
     });
@@ -39,9 +39,9 @@ describe('Known issues 수정', () => {
     it('정원이 남아있으면 정상 지원(201)', async () => {
       const ex = await makeExhibition(2);
       const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ customAnswers: [] });
+        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
       const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ customAnswers: [] });
+        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
       expect(r1.status).toBe(201);
       expect(r2.status).toBe(201);
     });

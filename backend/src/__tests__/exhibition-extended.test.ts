@@ -246,13 +246,13 @@ describe('Exhibition apply edge cases', () => {
     const res1 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({});
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
     expect(res1.status).toBe(201);
 
     const res2 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({});
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
     expect(res2.status).toBe(400);
     expect(res2.body.error).toContain('이미');
 
@@ -268,7 +268,7 @@ describe('Exhibition apply edge cases', () => {
     const res = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({});
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
     expect(res.status).toBe(201);
 
     await testPrisma.application.deleteMany({ where: { exhibitionId: ex.id } });

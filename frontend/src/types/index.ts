@@ -139,10 +139,132 @@ export interface PortfolioImage {
   showInExplore?: boolean;
 }
 
+// 경력 항목 (연도 + 내용)
+export interface CareerEntry {
+  year: string;
+  content: string;
+}
+
+// 경력 (아트페어/개인전/단체전)
+export interface Career {
+  artFair: CareerEntry[];
+  solo: CareerEntry[];
+  group: CareerEntry[];
+}
+
+export const EMPTY_CAREER: Career = { artFair: [], solo: [], group: [] };
+
+// ===== 공모 운영 페이지 =====
+
+// 출품작 1개
+export interface ArtworkItem {
+  image?: string;   // 작품 이미지 URL
+  title: string;
+  size: string;     // 크기 (예: 33.4x24.2 cm)
+  medium: string;   // 재료 (예: Acrylic on Canvas)
+  year: string;
+  price: string;    // 가격 (자유 텍스트: 비매/협의/₩320,000)
+}
+
+// 약력 항목 (연도 + 내용)
+export interface CvEntry { year: string; content: string; }
+
+// 작가 약력
+export interface ArtistCv {
+  nameKo: string;
+  nameEn: string;
+  birth: string;    // 출생년 (예: 1993, Seoul, Korea)
+  tel: string;
+  email: string;
+  education: CvEntry[];  // 학력
+  solo: CvEntry[];       // 개인전
+  group: CvEntry[];      // 단체전
+  artFair: CvEntry[];    // 아트페어/옥션
+  award: CvEntry[];      // 수상 및 선정
+}
+
+export const EMPTY_CV: ArtistCv = {
+  nameKo: '', nameEn: '', birth: '', tel: '', email: '',
+  education: [], solo: [], group: [], artFair: [], award: [],
+};
+
+// 작가노트 섹션 (소제목 + 내용)
+export interface NoteSection { title: string; body: string; }
+
+// 작가노트
+export interface ArtistNote {
+  statement: string;        // 전체 작가노트
+  sections: NoteSection[];  // 시리즈별 섹션
+}
+
+export const EMPTY_NOTE: ArtistNote = { statement: '', sections: [] };
+
+// 작가 제출 정보 (운영 페이지)
+export interface OperationSubmission {
+  artworkList: ArtworkItem[];
+  cv: ArtistCv | null;
+  note: ArtistNote | null;
+}
+
+// 공모 운영 공지
+export interface ExhibitionNotice {
+  id: number;
+  exhibitionId: number;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 운영 페이지 접근 정보
+export interface OperationAccess {
+  exhibitionId: number;
+  title: string;
+  galleryName: string;
+  isOwner: boolean;
+  isAdmin: boolean;
+  isAcceptedArtist: boolean;
+  recruitmentClosed: boolean;
+  confirmed: boolean;        // 수동 확정 또는 전시 시작일 경과
+  manualConfirmed: boolean;  // 수동 확정 플래그
+  ended: boolean;
+}
+
+// 정산: 작가 작품 1개
+export interface SettlementWork {
+  index: number;
+  title: string;
+  image?: string;
+  size?: string;
+  medium?: string;
+  year?: string;
+  listPrice: string;
+  sold: boolean;
+  soldPrice: number;
+}
+// 정산: 작가별
+export interface SettlementArtist {
+  user: { id: number; name: string; nickname?: string | null; email?: string };
+  galleryRatio: number;
+  artistRatio: number;
+  works: SettlementWork[];
+  total: number;
+  galleryAmount: number;
+  artistAmount: number;
+}
+// 정산 전체
+export interface Settlement {
+  exhibitionTitle: string;
+  artists: SettlementArtist[];
+  grand: { total: number; galleryAmount: number; artistAmount: number; soldCount: number };
+}
+
 export interface Portfolio {
   id: number;
   biography?: string;
-  exhibitionHistory?: string;
+  exhibitionHistory?: string; // (구) 미사용
+  career?: Career | null;
+  portfolioFileUrl?: string | null;
   images: PortfolioImage[];
 }
 
@@ -165,6 +287,8 @@ export interface PublicPortfolio {
   id: number;
   biography?: string | null;
   exhibitionHistory?: string | null;
+  career?: Career | null;
+  portfolioFileUrl?: string | null;
   images: PortfolioImage[];
   user: { id: number; name: string; nickname?: string | null; avatar?: string };
 }

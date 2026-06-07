@@ -319,13 +319,23 @@ async function main() {
   );
 
   // ━━━ 포트폴리오 (userId @unique → Prisma upsert 안전) ━━━
+  const artist1Career = JSON.stringify({
+    artFair: [{ year: '2024', content: '서울 아트페어 참가' }],
+    solo: [{ year: '2025', content: '갤러리H 개인전 (서울)' }],
+    group: [{ year: '2023', content: '청년 작가 단체전 (부산)' }],
+  });
   await prisma.portfolio.upsert({
     where: { userId: artist1.id },
-    update: {},
+    // ⚠️ 스키마 신규 필드는 update 블록에도 반드시 포함 (기존 레코드는 update 경로를 탐)
+    update: {
+      biography: '서울대학교 미술대학 졸업. 현대 추상화를 주로 작업합니다.',
+      career: artist1Career,
+    },
     create: {
       userId: artist1.id,
       biography: '서울대학교 미술대학 졸업. 현대 추상화를 주로 작업합니다.',
       exhibitionHistory: '2024 서울 아트페어 참가\n2025 갤러리H 개인전',
+      career: artist1Career,
     },
   });
 

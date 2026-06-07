@@ -1,0 +1,262 @@
+/**
+ * 운영 페이지 — 작가 제출물 PDF/ZIP 일괄 생성 (클라이언트 사이드)
+ *
+ * 각 작가 × {출품리스트, 작가약력, 작가노트}를 HTML로 렌더 → html2canvas → jsPDF(A4) → JSZip.
+ * 파일명: [공모명]_[작가명]_[문서종류].pdf, ZIP: [공모명]_전체제출물.zip
+ * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
+ */
+import { displayName } from '@/lib/utils';
+import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist } from '@/types';
+
+const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
+
+const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
+  { key: 'solo', label: '개인전' },
+  { key: 'group', label: '단체전' },
+  { key: 'artFair', label: '아트페어 / 옥션' },
+  { key: 'award', label: '수상 및 선정' },
+];
+
+function esc(s: any): string {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+}
+// 파일명 안전화 (경로 구분자/제어문자 제거)
+function safeName(s: string): string {
+  return (s || '').replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim() || '무제';
+}
+
+const BASE = `font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;color:#111;font-size:13px;line-height:1.6;`;
+const header = (exTitle: string, docLabel: string, artist: string, email?: string) => `
+  <div style="margin-bottom:20px">
+    <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
+    <h1 style="font-size:22px;font-weight:700;margin:4px 0">${esc(docLabel)}</h1>
+    <p style="font-size:13px;color:#444;margin:0">${esc(artist)}${email ? ` · ${esc(email)}` : ''}</p>
+  </div>`;
+
+function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
+  const list = sub.artworkList || [];
+  const rows = list.length === 0
+    ? `<tr><td colspan="7" style="border:1px solid #ddd;padding:16px;text-align:center;color:#999">등록된 출품작이 없습니다.</td></tr>`
+    : list.map((a, i) => `
+      <tr>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${i + 1}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${a.image ? `<img src="${esc(a.image)}" crossorigin="anonymous" style="width:90px;height:90px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #ddd;padding:8px">${esc(a.title)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.size)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.medium)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.year)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:right">${esc(a.price)}</td>
+      </tr>`).join('');
+  return `<div style="${BASE}">${header(exTitle, '출품리스트', artist, email)}
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f5f5f5">
+        <th style="border:1px solid #ddd;padding:8px;width:30px">No</th>
+        <th style="border:1px solid #ddd;padding:8px;width:110px">Image</th>
+        <th style="border:1px solid #ddd;padding:8px">Title</th>
+        <th style="border:1px solid #ddd;padding:8px;width:100px">Size</th>
+        <th style="border:1px solid #ddd;padding:8px;width:130px">Medium</th>
+        <th style="border:1px solid #ddd;padding:8px;width:50px">Year</th>
+        <th style="border:1px solid #ddd;padding:8px;width:90px">Price</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function cvHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
+  const cv = sub.cv;
+  if (!cv) return `<div style="${BASE}">${header(exTitle, '작가약력', artist, email)}<p style="color:#999">등록된 약력이 없습니다.</p></div>`;
+  const section = (label: string, items: CvEntry[]) => items.length === 0 ? '' : `
+    <div style="margin-bottom:16px">
+      <h2 style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 6px">${esc(label)}</h2>
+      ${items.map(e => `<p style="margin:2px 0">${esc(e.year)} ${esc(e.content)}</p>`).join('')}
+    </div>`;
+  return `<div style="${BASE}">${header(exTitle, '작가약력', artist, email)}
+    <div style="margin-bottom:20px">
+      <p style="font-size:16px;font-weight:700;margin:0">${esc(cv.nameKo)} ${esc(cv.nameEn)} ${cv.birth ? `<span style="font-style:italic;color:#888;font-weight:400;font-size:13px">${esc(cv.birth)}</span>` : ''}</p>
+      ${cv.tel ? `<p style="margin:2px 0">Tel  ${esc(cv.tel)}</p>` : ''}
+      ${cv.email ? `<p style="margin:2px 0">email  ${esc(cv.email)}</p>` : ''}
+    </div>
+    ${CV_SECTIONS.map(({ key, label }) => section(label, cv[key])).join('')}
+  </div>`;
+}
+
+function noteHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
+  const note = sub.note;
+  if (!note || (!note.statement && !(note.sections?.length))) return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}<p style="color:#999">등록된 작가노트가 없습니다.</p></div>`;
+  return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}
+    <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 4px">작가노트</h2>
+    <p style="text-align:right;color:#666;margin:0 0 20px">${esc(artist)}</p>
+    ${note.statement ? `<p style="white-space:pre-wrap;margin:0 0 20px">${esc(note.statement)}</p>` : ''}
+    ${(note.sections || []).map(s => `
+      <div style="margin-bottom:18px">
+        ${s.title ? `<h3 style="font-size:15px;font-weight:700;background:#fdf3c4;display:inline-block;padding:2px 6px;margin:0 0 8px">${esc(s.title)}</h3>` : ''}
+        <p style="white-space:pre-wrap;margin:0">${esc(s.body)}</p>
+      </div>`).join('')}
+  </div>`;
+}
+
+// 호스트 내부 이미지 로드 대기
+function waitImages(host: HTMLElement): Promise<void> {
+  const imgs = Array.from(host.querySelectorAll('img'));
+  if (imgs.length === 0) return Promise.resolve();
+  return new Promise(resolve => {
+    let done = 0;
+    const check = () => { done += 1; if (done >= imgs.length) resolve(); };
+    imgs.forEach(im => {
+      if (im.complete) check();
+      else { im.addEventListener('load', check); im.addEventListener('error', check); }
+    });
+    setTimeout(resolve, 8000); // 안전장치
+  });
+}
+
+// HTML → A4 PDF Blob
+async function htmlToPdfBlob(html: string): Promise<Blob> {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import('jspdf'), import('html2canvas')]);
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;padding:32px;background:#fff;z-index:-1;';
+  host.innerHTML = html;
+  document.body.appendChild(host);
+  try {
+    await waitImages(host);
+    const canvas = await html2canvas(host, { scale: 2, useCORS: true, backgroundColor: '#fff' });
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210, pageH = 297;
+    const imgW = pageW;
+    const imgH = canvas.height * imgW / canvas.width;
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    if (imgH <= pageH) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
+    } else {
+      let y = 0;
+      while (y < imgH) {
+        if (y > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -y, imgW, imgH);
+        y += pageH;
+      }
+    }
+    return pdf.output('blob');
+  } finally {
+    document.body.removeChild(host);
+  }
+}
+
+// ── 정산서 ──
+function artistSettlementHtml(exTitle: string, a: SettlementArtist): string {
+  const artist = displayName(a.user);
+  const sold = a.works.filter(w => w.sold);
+  const rows = sold.length === 0
+    ? `<tr><td colspan="3" style="border:1px solid #ddd;padding:10px;text-align:center;color:#999">판매된 작품이 없습니다.</td></tr>`
+    : sold.map(w => `<tr>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center;width:90px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:70px;height:70px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #ddd;padding:8px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}</td>
+      </tr>`).join('');
+  return `<div style="${BASE}">${header(exTitle, '정산서', artist, a.user.email)}
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <thead><tr style="background:#f5f5f5">
+        <th style="border:1px solid #ddd;padding:8px">이미지</th>
+        <th style="border:1px solid #ddd;padding:8px;text-align:left">판매 작품</th>
+        <th style="border:1px solid #ddd;padding:8px;text-align:right;width:130px">판매가</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse">
+      <tbody>
+        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:160px">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.total)}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 비율 (갤러리 : 작가)</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${a.galleryRatio}% : ${a.artistRatio}%</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.galleryAmount)}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 정산 (지급액)</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(a.artistAmount)}</td></tr>
+      </tbody>
+    </table></div>`;
+}
+
+// 작가 1명의 판매작 내역 표 (이미지+제목+판매가) + 소계
+function artistBlock(a: SettlementArtist): string {
+  const sold = a.works.filter(w => w.sold);
+  const rows = sold.length === 0
+    ? `<tr><td colspan="3" style="border:1px solid #eee;padding:8px;text-align:center;color:#999">판매된 작품 없음</td></tr>`
+    : sold.map(w => `<tr>
+        <td style="border:1px solid #eee;padding:6px;text-align:center;width:80px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:60px;height:60px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #eee;padding:6px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
+        <td style="border:1px solid #eee;padding:6px;text-align:right;width:120px">${won(w.soldPrice)}</td>
+      </tr>`).join('');
+  return `<div style="margin-bottom:22px">
+    <h2 style="font-size:15px;font-weight:700;margin:0 0 6px">${esc(displayName(a.user))} <span style="font-weight:400;color:#888;font-size:12px">(갤러리 ${a.galleryRatio}% : 작가 ${a.artistRatio}%)</span></h2>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f7f7f7">
+        <th style="border:1px solid #eee;padding:6px">이미지</th>
+        <th style="border:1px solid #eee;padding:6px;text-align:left">판매 작품</th>
+        <th style="border:1px solid #eee;padding:6px;text-align:right">판매가</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="text-align:right;margin-top:4px;font-size:12px;color:#444">
+      판매 합계 <b>${won(a.total)}</b> &nbsp;·&nbsp; 갤러리 <b>${won(a.galleryAmount)}</b> &nbsp;·&nbsp; 작가 <b>${won(a.artistAmount)}</b>
+    </div>
+  </div>`;
+}
+
+function overallSettlementHtml(s: Settlement): string {
+  const blocks = s.artists.length === 0
+    ? `<p style="color:#999">수락된 작가가 없습니다.</p>`
+    : s.artists.map(artistBlock).join('');
+  return `<div style="${BASE}">${header(s.exhibitionTitle, '전체 정산서', '', '')}
+    ${blocks}
+    <div style="border-top:2px solid #333;padding-top:10px;margin-top:6px">
+      <h2 style="font-size:15px;font-weight:700;margin:0 0 6px">전체 합계</h2>
+      <table style="width:100%;border-collapse:collapse">
+        <tbody>
+          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:180px">판매 작품 수</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${s.grand.soldCount}점</td></tr>
+          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.total)}</td></tr>
+          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.galleryAmount)}</td></tr>
+          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 지급 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(s.grand.artistAmount)}</td></tr>
+        </tbody>
+      </table>
+    </div></div>`;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 작가별 정산서 PDF */
+export async function downloadArtistSettlementPdf(exTitle: string, artist: SettlementArtist): Promise<void> {
+  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, artist));
+  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_정산서.pdf`);
+}
+
+/** 전체 정산서 PDF */
+export async function downloadOverallSettlementPdf(s: Settlement): Promise<void> {
+  const blob = await htmlToPdfBlob(overallSettlementHtml(s));
+  triggerDownload(blob, `${safeName(s.exhibitionTitle)}_전체정산서.pdf`);
+}
+
+export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission; }
+
+/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드 */
+export async function downloadAllSubmissionsZip(exTitle: string, rows: SubmissionRow[]): Promise<void> {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  const exSafe = safeName(exTitle);
+  for (const { user, submission } of rows) {
+    const artist = displayName(user);
+    const aSafe = safeName(artist);
+    const email = user.email;
+    zip.file(`${exSafe}_${aSafe}_출품리스트.pdf`, await htmlToPdfBlob(artworkHtml(submission, exTitle, artist, email)));
+    zip.file(`${exSafe}_${aSafe}_작가약력.pdf`, await htmlToPdfBlob(cvHtml(submission, exTitle, artist, email)));
+    zip.file(`${exSafe}_${aSafe}_작가노트.pdf`, await htmlToPdfBlob(noteHtml(submission, exTitle, artist, email)));
+  }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${exSafe}_전체제출물.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

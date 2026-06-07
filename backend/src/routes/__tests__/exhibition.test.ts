@@ -60,7 +60,8 @@ describe('Exhibition Routes', () => {
   it('POST /api/exhibitions/:id/apply — Artist 지원', async () => {
     const token = authToken(1, 'ARTIST');
     const res = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Authorization', `Bearer ${token}`)
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('id');
   });
