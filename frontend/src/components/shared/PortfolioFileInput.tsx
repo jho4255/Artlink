@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Upload, FileText, X, Loader2 } from 'lucide-react';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
+import { safeHttpUrl } from '@/lib/utils';
 
 interface PortfolioFileInputProps {
   value?: string | null;
@@ -52,7 +53,7 @@ export default function PortfolioFileInput({ value, onChange, disabled }: Portfo
       <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg">
         <FileText size={18} className="text-gray-500 shrink-0" />
         <a
-          href={value}
+          href={safeHttpUrl(value) ?? '#'}
           target="_blank"
           rel="noreferrer"
           className="flex-1 min-w-0 text-sm text-gray-700 truncate hover:underline"

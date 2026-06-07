@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
 import api from '@/lib/axios';
-import { displayName } from '@/lib/utils';
+import { displayName, safeHttpUrl } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { PublicPortfolio, Career } from '@/types';
@@ -113,12 +113,12 @@ export default function PortfolioPage() {
       )}
 
       {/* 포트폴리오 파일 */}
-      {portfolio.portfolioFileUrl && (
+      {safeHttpUrl(portfolio.portfolioFileUrl) && (
         <div className="mb-6">
           <h3 className="text-base font-medium text-gray-700 mb-2 flex items-center gap-1">
             <FileText size={14} /> 포트폴리오 파일
           </h3>
-          <a href={portfolio.portfolioFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:underline pl-4">
+          <a href={safeHttpUrl(portfolio.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:underline pl-4">
             <FileText size={14} /> 파일 보기
           </a>
         </div>

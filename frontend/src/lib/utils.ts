@@ -12,6 +12,21 @@ export function displayName(user?: { name?: string | null; nickname?: string | n
   return (user.nickname && user.nickname.trim()) || user.name || '';
 }
 
+// 사용자 제공 URL을 href로 쓰기 전 스킴 검증 (javascript:/data: 등 XSS 차단)
+// 상대경로(/uploads/..)와 http(s)만 허용, 그 외엔 null
+export function safeHttpUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const t = String(url).trim();
+  if (!t) return null;
+  if (t.startsWith('/')) return t; // 동일 출처 상대경로(업로드)
+  try {
+    const u = new URL(t, window.location.origin);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // 전화번호 입력 시 자동 하이픈 포맷 (한국 번호: 010-1234-5678, 02-123-4567 등)
 export function formatPhoneNumber(value: string): string {
   const d = value.replace(/[^0-9]/g, '').slice(0, 11);

@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { sendPortfolioEmail } from '../lib/mailer';
 import { galleryApplicationStats } from '../lib/applicationStats';
+import { safeFileUrl } from '../lib/safeUrl';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -282,7 +283,9 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       throw new AppError('작가 약력을 입력해주세요.', 400);
     }
     // 필수 검증: 작품 사진 1장 이상 (최대 10장)
-    const images: string[] = Array.isArray(artworkImages) ? artworkImages.filter((u) => typeof u === 'string' && u.trim()) : [];
+    const images: string[] = (Array.isArray(artworkImages) ? artworkImages : [])
+      .map((u) => safeFileUrl(u))
+      .filter((u): u is string => !!u);
     if (images.length < 1) throw new AppError('작품 사진을 1장 이상 첨부해주세요.', 400);
     if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
 
@@ -295,7 +298,7 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         biography: String(biography).trim(),
         career: careerStr,
         artworkImages: JSON.stringify(images),
-        portfolioFileUrl: portfolioFileUrl || null,
+        portfolioFileUrl: safeFileUrl(portfolioFileUrl),
       }
     });
 

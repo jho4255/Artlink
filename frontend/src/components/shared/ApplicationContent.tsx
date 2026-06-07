@@ -1,4 +1,5 @@
 import { FileText } from 'lucide-react';
+import { safeHttpUrl } from '@/lib/utils';
 import type { Career } from '@/types';
 
 const LABELS: { key: keyof Career; label: string }[] = [
@@ -89,8 +90,8 @@ export default function ApplicationContent({ app, onImageClick }: Props) {
       {/* 포트폴리오 파일 */}
       <div>
         <p className="text-xs text-gray-400 mb-0.5">포트폴리오 파일</p>
-        {app.portfolioFileUrl ? (
-          <a href={app.portfolioFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-700 hover:underline">
+        {safeHttpUrl(app.portfolioFileUrl) ? (
+          <a href={safeHttpUrl(app.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-700 hover:underline">
             <FileText size={13} /> 파일 보기
           </a>
         ) : (

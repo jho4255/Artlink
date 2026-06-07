@@ -239,7 +239,8 @@ const devLoginSchema = z.object({
 });
 router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
   try {
-    if (process.env.NODE_ENV === 'production') {
+    // 양성 옵트인 전용: 로컬에서 ENABLE_DEV_LOGIN=true 일 때만 동작. production에서는 이중 차단.
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== 'true') {
       throw new AppError('개발자 로그인은 사용할 수 없습니다.', 404);
     }
     const email = (req.body.email as string).trim().toLowerCase();

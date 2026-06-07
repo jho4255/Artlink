@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { safeFileUrl } from '../lib/safeUrl';
 
 const router = Router();
 
@@ -83,7 +84,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     // career는 객체로 올 수 있으므로 JSON 문자열로 정규화
     const careerStr =
       career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
-    const data = { biography, career: careerStr, portfolioFileUrl: portfolioFileUrl ?? null };
+    const data = { biography, career: careerStr, portfolioFileUrl: safeFileUrl(portfolioFileUrl) };
     const portfolio = await prisma.portfolio.upsert({
       where: { userId: req.user!.id },
       update: data,

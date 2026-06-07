@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES, safeHttpUrl } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
@@ -463,8 +463,8 @@ function PortfolioSection() {
           </div>
           <div>
             <p className="text-sm font-medium text-gray-500 mb-1">포트폴리오 파일</p>
-            {portfolio?.portfolioFileUrl ? (
-              <a href={portfolio.portfolioFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:underline">
+            {safeHttpUrl(portfolio?.portfolioFileUrl) ? (
+              <a href={safeHttpUrl(portfolio?.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:underline">
                 <FileText size={15} /> 파일 보기
               </a>
             ) : (
