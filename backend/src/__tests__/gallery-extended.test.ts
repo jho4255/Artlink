@@ -125,6 +125,26 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       expect(res.body.description).toBe('새 한줄소개');
     });
 
+    it('오너가 전화번호·주소를 승인 없이 수정할 수 있다', async () => {
+      const res = await request
+        .patch(`/api/galleries/${galleryId}/detail`)
+        .set('Authorization', `Bearer ${galleryToken}`)
+        .send({ phone: '02-9999-8888', address: '서울시 강남구 신사동' });
+      expect(res.status).toBe(200);
+      expect(res.body.phone).toBe('02-9999-8888');
+      expect(res.body.address).toBe('서울시 강남구 신사동');
+      // status는 그대로 APPROVED (재승인 불필요)
+      expect(res.body.status).toBe('APPROVED');
+    });
+
+    it('전화번호를 빈 값으로 수정하면 400', async () => {
+      const res = await request
+        .patch(`/api/galleries/${galleryId}/detail`)
+        .set('Authorization', `Bearer ${galleryToken}`)
+        .send({ phone: '   ' });
+      expect(res.status).toBe(400);
+    });
+
     it('비오너는 403', async () => {
       const res = await request
         .patch(`/api/galleries/${galleryId}/detail`)

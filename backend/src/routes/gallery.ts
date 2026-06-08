@@ -250,6 +250,17 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
     const data: any = {};
     if (req.body.detailDesc !== undefined) data.detailDesc = req.body.detailDesc;
     if (req.body.description !== undefined) data.description = req.body.description;
+    // 전화번호·주소는 갤러리 주인이 승인 없이 즉시 수정 가능
+    if (req.body.phone !== undefined) {
+      const phone = String(req.body.phone).trim();
+      if (!phone) throw new AppError('전화번호를 입력해주세요.', 400);
+      data.phone = phone;
+    }
+    if (req.body.address !== undefined) {
+      const address = String(req.body.address).trim();
+      if (!address) throw new AppError('주소를 입력해주세요.', 400);
+      data.address = address;
+    }
 
     const updated = await prisma.gallery.update({
       where: { id: gallery.id },

@@ -119,6 +119,10 @@ ArtLink/
   - 열람 권한: 오너·Admin만 전 작가 열람, **작가 상호 비공개** (submissions는 오너/admin, submissions/:userId는 오너/admin/본인)
   - PDF: 인쇄 기반 A4 화면(`OperationPrintPage`), 파일명 `[공모명]_[작가명]_[문서종류]` 자동 제안
   - 전체 PDF 일괄 ZIP: 클라이언트(jsPDF+html2canvas+JSZip, `lib/operationPdf.ts`), `[공모명]_전체제출물.zip`
+  - **엽서 대표작** (migration 20260608120000_submission_representative_index): 수락 작가가 본인 출품작 중 1점 선택(`representativeIndex`, 범위 밖은 서버에서 null). `PUT /me` 저장, submissions/readonly에 '엽서 대표작' 뱃지. UI `RepresentativeSelector`(OperationPage)
+  - **작품 원본 일괄 다운로드(ZIP)**: 갤러리·Admin이 전 출품작 이미지를 캔버스로 **jpg 변환** 후 ZIP. 파일명 `작가명_제목_크기_재료_년도_가격.jpg`(중복 시 `_2`…). `downloadAllArtworkImagesZip` (`lib/operationPdf.ts`)
+  - **캡션 HWP(한글)**: `GET /api/operations/:id/caption.hwp`(오너/Admin). 원본 양식 템플릿(`backend/assets/caption-template.hwp`)을 베이스로 CFB 컨테이너는 그대로 두고 BodyText/Section0의 표 셀 텍스트만 교체(채움=가변 길이+PARA_HEADER 글자수 갱신, 빈칸=같은 길이 공백). 재압축은 유효 deflate 빈 블록 패딩으로 정확 길이 맞춰 섹터 제자리 덮어쓰기+디렉터리 크기 갱신(`backend/src/lib/captionHwp.ts`, cfb 라이브러리 미사용). 한 칸=한 작품(제목/크기/재료/년도+가격, **작가명 미표기**), 최대 96작품. 파일명 `[공모명]_작품캡션.hwp`
+  - **제출물 저장 검증**: 작가 전시정보 저장 시 캡션 필수항목(각 출품작 제목/크기/재료/년도/가격)이 비면 차단 + 미입력 항목 팝업(OperationPage `handleSave`/`collectMissing`)
 - **공모 상태/정산** (migration 20260607100000_exhibition_lifecycle_settlement)
   - 갤러리·Admin: 운영 페이지 상단 [모집마감]/[확정]/[전시종료] 토글(재오픈 가능). API `PATCH /api/operations/:id/lifecycle`
   - 모집마감/종료 → `GET /exhibitions` 목록·지원에서 제외. 확정(또는 전시 시작일 경과) → 작가 `PUT /me` 잠금
@@ -212,6 +216,7 @@ ArtLink/
 ### API 엔드포인트
 | 메서드 | 경로 | 인증 | 기능 |
 |--------|------|------|------|
+| PATCH | /api/galleries/:id/detail | 오너 | 한줄소개·상세소개 + **전화번호·주소 무승인 즉시 수정** (빈 값 400) |
 | POST | /api/galleries/:id/instagram/connect | 오너 | OAuth code → 토큰 교환·저장 |
 | PATCH | /api/galleries/:id/instagram-profile-visibility | 오너 | @handle 프로필 링크 표시 토글 |
 | PATCH | /api/galleries/:id/instagram-visibility | 오너 | 피드 공개/비공개 토글 |

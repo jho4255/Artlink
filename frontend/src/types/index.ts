@@ -204,6 +204,7 @@ export interface OperationSubmission {
   artworkList: ArtworkItem[];
   cv: ArtistCv | null;
   note: ArtistNote | null;
+  representativeIndex?: number | null;  // 엽서용 대표작 인덱스 (작가 선택)
 }
 
 // 공모 운영 공지

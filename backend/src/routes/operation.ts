@@ -11,6 +11,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { buildCaptionHwp, CAPTION_CELL_CAPACITY } from '../lib/captionHwp';
 
 const router = Router();
 
@@ -159,8 +160,11 @@ function parseSubmission(s: any) {
     artworkList: safeJson(s.artworkList, []),
     cv: safeJson(s.cv, null),
     note: safeJson(s.note, null),
+    representativeIndex: s.representativeIndex ?? null,
   } : null;
 }
+
+const EMPTY_SUB = { artworkList: [], cv: null, note: null, representativeIndex: null };
 
 router.get('/:id/me', authenticate, async (req, res, next) => {
   try {
@@ -170,7 +174,7 @@ router.get('/:id/me', authenticate, async (req, res, next) => {
     const sub = await prisma.exhibitionSubmission.findUnique({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
     });
-    res.json(parseSubmission(sub) ?? { artworkList: [], cv: null, note: null });
+    res.json(parseSubmission(sub) ?? EMPTY_SUB);
   } catch (e) { next(e); }
 });
 
@@ -180,11 +184,18 @@ router.put('/:id/me', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, isConfirmed } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
-    const { artworkList, cv, note } = req.body || {};
+    const { artworkList, cv, note, representativeIndex } = req.body || {};
+    // 대표작 인덱스: artworkList 범위 내 정수만 허용, 그 외 null
+    const listLen = Array.isArray(artworkList) ? artworkList.length : 0;
+    let repIdx: number | null = null;
+    if (Number.isInteger(representativeIndex) && representativeIndex >= 0 && representativeIndex < listLen) {
+      repIdx = representativeIndex;
+    }
     const data = {
       artworkList: normalizeStr(artworkList),
       cv: normalizeStr(cv),
       note: normalizeStr(note),
+      representativeIndex: repIdx,
     };
     const sub = await prisma.exhibitionSubmission.upsert({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
@@ -213,7 +224,7 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
 
     const result = accepted.map((a) => ({
       user: a.user,
-      submission: parseSubmission(subByUser.get(a.userId)) ?? { artworkList: [], cv: null, note: null },
+      submission: parseSubmission(subByUser.get(a.userId)) ?? EMPTY_SUB,
     }));
     res.json(result);
   } catch (e) { next(e); }
@@ -245,8 +256,43 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
     res.json({
       exhibitionTitle: exhibition.title,
       user,
-      submission: parseSubmission(sub) ?? { artworkList: [], cv: null, note: null },
+      submission: parseSubmission(sub) ?? EMPTY_SUB,
     });
+  } catch (e) { next(e); }
+});
+
+// ── 캡션 HWP 다운로드 (오너/Admin) — 전체 출품작을 한글 양식으로 ──
+router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+
+    const accepted = await prisma.application.findMany({
+      where: { exhibitionId, status: 'ACCEPTED' },
+      orderBy: { createdAt: 'asc' },
+      select: { userId: true },
+    });
+    const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
+    const byUser = new Map(subs.map((s) => [s.userId, safeJson<any[]>(s.artworkList, [])]));
+    const works: any[] = [];
+    for (const a of accepted) {
+      for (const w of (byUser.get(a.userId) || [])) {
+        works.push({ title: w.title, size: w.size, medium: w.medium, year: w.year, price: w.price });
+      }
+    }
+    if (works.length === 0) throw new AppError('등록된 출품작이 없습니다.', 400);
+    if (works.length > CAPTION_CELL_CAPACITY) {
+      // 양식은 96칸 — 초과분은 잘림(로그만 남기고 진행)
+      console.warn(`[caption] 출품작 ${works.length}점이 양식 용량(${CAPTION_CELL_CAPACITY})을 초과해 잘립니다. (공모 ${exhibitionId})`);
+    }
+
+    const buf = await buildCaptionHwp(works);
+    const safe = (exhibition.title || '공모').replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim() || '공모';
+    const fname = `${safe}_작품캡션.hwp`;
+    res.setHeader('Content-Type', 'application/x-hwp');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`);
+    res.send(buf);
   } catch (e) { next(e); }
 });
 

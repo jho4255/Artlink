@@ -67,6 +67,11 @@ export default function GalleryDetailPage() {
   const [isEditingDetail, setIsEditingDetail] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
 
+  // 연락처(전화번호·주소) 수정 상태 — 갤러리 오너가 승인 없이 즉시 수정
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [contactAddress, setContactAddress] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+
   // 홍보 사진 업로드 폼 상태 (전시 종료 후, 갤러리 오너 전용)
   const [promoExhibitionId, setPromoExhibitionId] = useState<number | null>(null);
   const [promoUrl, setPromoUrl] = useState('');
@@ -142,6 +147,18 @@ export default function GalleryDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
       setIsEditingDesc(false);
       toast.success('한줄 소개가 수정되었습니다.');
+    },
+    onError: () => toast.error('수정에 실패했습니다.'),
+  });
+
+  // 연락처(전화번호·주소) 수정 (갤러리 오너 전용, 승인 불필요)
+  const contactMutation = useMutation({
+    mutationFn: (payload: { address: string; phone: string }) => api.patch(`/galleries/${id}/detail`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery', id] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      setIsEditingContact(false);
+      toast.success('연락처 정보가 수정되었습니다.');
     },
     onError: () => toast.error('수정에 실패했습니다.'),
   });
@@ -362,14 +379,59 @@ export default function GalleryDetailPage() {
             <span className="font-medium">{gallery.rating.toFixed(1)}</span>
             <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
           </div>
-          <p className="text-gray-600 mt-2 flex items-center gap-1"><MapPin size={14} /> {gallery.address}</p>
-          {/* 모바일: tel: 링크로 다이얼러 연결, 데스크톱: 일반 텍스트 */}
-          <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-gray-900">
-            <Phone size={14} /> <span className="underline">{gallery.phone}</span>
-          </a>
-          <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
-          {gallery.email && (
-            <p className="text-gray-600 flex items-center gap-1"><Mail size={14} /> {gallery.email}</p>
+          {isEditingContact ? (
+            /* 오너 전용: 전화번호·주소 즉시 수정 (승인 불필요) */
+            <div className="mt-2 space-y-2 max-w-md">
+              <label className="block">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 주소</span>
+                <input
+                  value={contactAddress}
+                  onChange={(e) => setContactAddress(e.target.value)}
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm"
+                  placeholder="갤러리 주소"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><Phone size={12} /> 전화번호</span>
+                <input
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm"
+                  placeholder="예: 02-739-1212"
+                />
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (!contactAddress.trim() || !contactPhone.trim()) { toast.error('주소와 전화번호를 입력해주세요.'); return; }
+                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim() });
+                  }}
+                  disabled={contactMutation.isPending}
+                  className="px-3 py-1.5 bg-[#c4302b] text-white rounded text-sm disabled:opacity-50"
+                >저장</button>
+                <button onClick={() => setIsEditingContact(false)} className="px-3 py-1.5 border rounded text-sm">취소</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-gray-600 mt-2 flex items-center gap-1">
+                <MapPin size={14} /> {gallery.address}
+                {isOwner && (
+                  <button
+                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setIsEditingContact(true); }}
+                    className="ml-1 text-xs text-[#c4302b] underline"
+                  >수정</button>
+                )}
+              </p>
+              {/* 모바일: tel: 링크로 다이얼러 연결, 데스크톱: 일반 텍스트 */}
+              <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-gray-900">
+                <Phone size={14} /> <span className="underline">{gallery.phone}</span>
+              </a>
+              <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
+              {gallery.email && (
+                <p className="text-gray-600 flex items-center gap-1"><Mail size={14} /> {gallery.email}</p>
+              )}
+            </>
           )}
           {gallery.instagramUrl && (
             <a

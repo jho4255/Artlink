@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -217,6 +217,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const [artworkList, setArtworkList] = useState<ArtworkItem[]>([]);
   const [cv, setCv] = useState<ArtistCv>(EMPTY_CV);
   const [note, setNote] = useState<ArtistNote>(EMPTY_NOTE);
+  const [repIndex, setRepIndex] = useState<number | null>(null);
   const [tab, setTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
 
   useEffect(() => {
@@ -224,14 +225,52 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       setArtworkList(data.artworkList || []);
       setCv(data.cv || EMPTY_CV);
       setNote(data.note || EMPTY_NOTE);
+      setRepIndex(data.representativeIndex ?? null);
     }
   }, [data]);
 
+  // 대표작 인덱스가 출품작 범위를 벗어나면 해제
+  useEffect(() => {
+    if (repIndex != null && repIndex >= artworkList.length) setRepIndex(null);
+  }, [artworkList.length, repIndex]);
+
   const saveMutation = useMutation({
-    mutationFn: () => api.put(`/operations/${exhibitionId}/me`, { artworkList, cv, note }),
+    mutationFn: () => api.put(`/operations/${exhibitionId}/me`, { artworkList, cv, note, representativeIndex: repIndex }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] }); toast.success('전시 정보가 저장되었습니다.'); },
     onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
   });
+
+  // 캡션에 들어갈 내용(출품작 제목/크기/재료/년도/가격)은 필수 — 비면 저장 차단
+  const collectMissing = (): string[] => {
+    const missing: string[] = [];
+    if (artworkList.length === 0) {
+      missing.push('출품작을 1개 이상 등록해주세요.');
+      return missing;
+    }
+    const labels: [keyof ArtworkItem, string][] = [['title', '제목'], ['size', '크기'], ['medium', '재료'], ['year', '제작년도'], ['price', '가격']];
+    artworkList.forEach((a, i) => {
+      const lack = labels.filter(([k]) => !String(a[k] ?? '').trim()).map(([, l]) => l);
+      if (lack.length) missing.push(`작품 ${i + 1}: ${lack.join(', ')} 미입력`);
+    });
+    return missing;
+  };
+
+  const handleSave = () => {
+    const missing = collectMissing();
+    if (missing.length) {
+      setTab('artwork');
+      toast.error(
+        (t) => (
+          <div style={{ whiteSpace: 'pre-line' }} onClick={() => toast.dismiss(t.id)}>
+            {'캡션에 들어갈 내용이 비어 있어 저장할 수 없습니다.\n(작품 제목·크기·재료·제작년도·가격은 필수)\n\n' + missing.join('\n')}
+          </div>
+        ),
+        { duration: 7000 },
+      );
+      return;
+    }
+    saveMutation.mutate();
+  };
 
   const loadFromPortfolio = async () => {
     try {
@@ -268,7 +307,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
           <button onClick={() => openPrint('cv')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가약력 PDF</button>
           <button onClick={() => openPrint('note')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가노트 PDF</button>
         </div>
-        <SubmissionReadonly submission={{ artworkList, cv, note }} />
+        <SubmissionReadonly submission={{ artworkList, cv, note, representativeIndex: repIndex }} />
       </section>
     );
   }
@@ -277,7 +316,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     <section className="mb-10">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-medium text-gray-900">내 전시 정보</h2>
-        <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">
+        <button onClick={handleSave} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">
           {saveMutation.isPending ? '저장 중...' : '저장'}
         </button>
       </div>
@@ -295,6 +334,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
               <button onClick={() => openPrint('artwork')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
             <ArtworkListEditor value={artworkList} onChange={setArtworkList} />
+            <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} />
           </>
         )}
         {tab === 'cv' && (
@@ -330,6 +370,10 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   });
   const [openId, setOpenId] = useState<number | null>(null);
   const [zipping, setZipping] = useState(false);
+  const [captioning, setCaptioning] = useState(false);
+  const [imgZipping, setImgZipping] = useState(false);
+
+  const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
 
   const openPrint = (userId: number, doc: 'artwork' | 'cv' | 'note') => {
     window.open(`/exhibitions/${exhibitionId}/operation/print/${userId}/${doc}`, '_blank');
@@ -350,6 +394,42 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     }
   };
 
+  // 캡션 HWP (한글 파일) — 서버에서 원본 양식 채워 생성, 작가명 미표기
+  const downloadCaptions = async () => {
+    if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
+    setCaptioning(true);
+    const t = toast.loading('캡션(한글 파일)을 생성하는 중입니다...');
+    try {
+      const res = await api.get(`/operations/${exhibitionId}/caption.hwp`, { responseType: 'blob' });
+      let fname = `${exhibitionTitle}_작품캡션.hwp`;
+      const cd: string = res.headers['content-disposition'] || '';
+      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      if (m) { try { fname = decodeURIComponent(m[1]); } catch { /* keep default */ } }
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      URL.revokeObjectURL(url);
+      toast.success('캡션 한글 파일 다운로드를 시작합니다.', { id: t });
+    } catch (e: any) {
+      const msg = e?.response?.status === 400 ? '등록된 출품작이 없습니다.' : '캡션 생성에 실패했습니다.';
+      toast.error(msg, { id: t });
+    } finally { setCaptioning(false); }
+  };
+
+  // 작품 원본 이미지 일괄 다운로드 (jpg ZIP)
+  const downloadImages = async () => {
+    if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
+    setImgZipping(true);
+    const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
+    try {
+      const { downloadAllArtworkImagesZip } = await import('@/lib/operationPdf');
+      const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, data);
+      if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
+      else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
+    } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
+    finally { setImgZipping(false); }
+  };
+
   return (
     <section className="mb-10">
       <div className="flex items-center justify-between mb-3 gap-2">
@@ -357,10 +437,20 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
         <div className="flex items-center gap-3 shrink-0">
           <button onClick={() => refetch()} disabled={isFetching} className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50">{isFetching ? '불러오는 중...' : '새로고침'}</button>
           {data.length > 0 && (
-            <button onClick={downloadAllZip} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
-              {zipping ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-              {zipping ? '생성 중...' : '전체 PDF (ZIP)'}
-            </button>
+            <>
+              <button onClick={downloadCaptions} disabled={captioning} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                {captioning ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                {captioning ? '생성 중...' : '캡션(한글)'}
+              </button>
+              <button onClick={downloadImages} disabled={imgZipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                {imgZipping ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                {imgZipping ? '모으는 중...' : '작품 원본(ZIP)'}
+              </button>
+              <button onClick={downloadAllZip} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                {zipping ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                {zipping ? '생성 중...' : '전체 PDF (ZIP)'}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -404,9 +494,37 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   );
 }
 
+// 엽서용 대표작 선택 (작가) — 출품작 중 1개
+function RepresentativeSelector({ artworkList, value, onChange }: { artworkList: ArtworkItem[]; value: number | null; onChange: (v: number | null) => void }) {
+  if (artworkList.length === 0) return null;
+  return (
+    <div className="mt-5 pt-4 border-t border-gray-100">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-medium text-gray-900 flex items-center gap-1"><Star size={14} className="text-amber-500" /> 엽서 대표작</p>
+        {value != null && <button onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-700 underline">선택 해제</button>}
+      </div>
+      <p className="text-xs text-gray-400 mb-2">엽서·홍보물에 사용할 대표작 1점을 선택하세요. (선택 후 [저장])</p>
+      <div className="flex flex-wrap gap-2">
+        {artworkList.map((a, i) => {
+          const selected = value === i;
+          return (
+            <button key={i} type="button" onClick={() => onChange(i)}
+              className={`relative w-20 text-left rounded-lg border-2 overflow-hidden transition-colors ${selected ? 'border-amber-500' : 'border-gray-200 hover:border-gray-300'}`}>
+              {a.image ? <img src={a.image} alt="" className="w-full h-20 object-cover" /> : <div className="w-full h-20 bg-gray-100 flex items-center justify-center"><ImageOff size={16} className="text-gray-300" /></div>}
+              {selected && <span className="absolute top-1 right-1 bg-amber-500 text-white rounded-full p-0.5"><Star size={11} className="fill-white" /></span>}
+              <span className="block px-1 py-0.5 text-[10px] text-gray-600 truncate">{a.title || `작품 ${i + 1}`}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // 읽기 전용 제출정보 (갤러리/Admin)
 function SubmissionReadonly({ submission }: { submission: OperationSubmission }) {
   const { artworkList = [], cv, note } = submission;
+  const repIndex = submission.representativeIndex ?? null;
   return (
     <div className="space-y-4 text-sm">
       {/* 출품리스트 */}
@@ -418,6 +536,7 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
               <div key={i} className="flex items-center gap-2 text-xs">
                 {a.image ? <img src={a.image} alt="" className="w-10 h-10 object-cover rounded shrink-0" /> : <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
                 <span className="text-gray-800">{a.title || '(제목 없음)'}</span>
+                {repIndex === i && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0"><Star size={9} className="fill-amber-500 text-amber-500" /> 엽서 대표작</span>}
                 <span className="text-gray-400">{[a.size, a.medium, a.year, a.price].filter(Boolean).join(' · ')}</span>
               </div>
             ))}

@@ -425,6 +425,7 @@ model ExhibitionSubmission {
   artworkList  String?    // JSON: [{image,title,size,medium,year,price}]
   cv           String?    // JSON: {nameKo,nameEn,birth,tel,email,education[],solo[],group[],artFair[],award[]} (각 항목 [{year,content}])
   note         String?    // JSON: {statement, sections:[{title,body}]}
+  representativeIndex Int? // 엽서용 대표작 — artworkList 내 인덱스 (작가가 선택, null=미선택)
   updatedAt    DateTime   @updatedAt @default(now())
 
   @@unique([exhibitionId, userId])

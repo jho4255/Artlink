@@ -239,6 +239,95 @@ export async function downloadOverallSettlementPdf(s: Settlement): Promise<void>
 
 export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission; }
 
+// ── 캡션 시트 (작품 네임택) ──
+// hwp 양식: 한 칸 = 한 작품, [제목 / 크기 / 재료 / 제작년도 + 가격]. 작가명 미표기.
+function captionCell(a: { title?: string; size?: string; medium?: string; year?: string; price?: string }): string {
+  const yearPrice = `<div style="display:flex;justify-content:space-between;margin-top:2px">
+      <span>${esc(a.year)}</span><span>${esc(a.price)}</span></div>`;
+  return `<div style="border:1px solid #333;box-sizing:border-box;width:330px;min-height:96px;padding:14px 16px;margin:0 8px 12px 0;page-break-inside:avoid">
+    <p style="font-weight:700;font-size:15px;margin:0 0 8px">${esc(a.title) || '<span style="color:#bbb">(제목 없음)</span>'}</p>
+    <p style="margin:1px 0;font-size:12px;color:#333">${esc(a.size)}</p>
+    <p style="margin:1px 0;font-size:12px;color:#333">${esc(a.medium)}</p>
+    <div style="font-size:12px;color:#333">${yearPrice}</div>
+  </div>`;
+}
+
+/** 전체 출품작 캡션 시트 PDF (작가명 미표기, 한 칸 = 한 작품) */
+export async function downloadCaptionSheetPdf(exTitle: string, rows: SubmissionRow[]): Promise<void> {
+  const works: { title?: string; size?: string; medium?: string; year?: string; price?: string }[] = [];
+  for (const { submission } of rows) {
+    for (const a of (submission.artworkList || [])) works.push(a);
+  }
+  const cells = works.length === 0
+    ? `<p style="color:#999">등록된 출품작이 없습니다.</p>`
+    : works.map(captionCell).join('');
+  const html = `<div style="${BASE}">
+    <div style="margin-bottom:16px">
+      <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
+      <h1 style="font-size:20px;font-weight:700;margin:4px 0">작품 캡션 (${works.length})</h1>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;align-items:flex-start">${cells}</div>
+  </div>`;
+  const blob = await htmlToPdfBlob(html);
+  triggerDownload(blob, `${safeName(exTitle)}_작품캡션.pdf`);
+}
+
+// ── 작품 원본 이미지 일괄 다운로드 (jpg 통일) ──
+// 이미지 URL → 캔버스 → jpeg Blob (png/webp 등도 jpg로 변환). CORS 불가 시 null.
+function imageToJpegBlob(url: string): Promise<Blob | null> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 1;
+        canvas.height = img.naturalHeight || 1;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(b => resolve(b), 'image/jpeg', 0.95);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/** 전체 출품작 원본 이미지를 jpg로 변환해 ZIP 다운로드.
+ *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.jpg (동일명은 _2,_3 부여) */
+export async function downloadAllArtworkImagesZip(exTitle: string, rows: SubmissionRow[]): Promise<{ ok: number; fail: number }> {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  const used = new Set<string>();
+  let ok = 0, fail = 0;
+  for (const { user, submission } of rows) {
+    const artist = displayName(user);
+    for (const a of (submission.artworkList || [])) {
+      if (!a.image) continue;
+      const blob = await imageToJpegBlob(a.image);
+      if (!blob) { fail += 1; continue; }
+      const parts = [artist, a.title, a.size, a.medium, a.year, a.price]
+        .map(p => safeName(String(p ?? '')).replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      let base = parts.join('_') || '작품';
+      let name = `${base}.jpg`;
+      let n = 2;
+      while (used.has(name)) { name = `${base}_${n}.jpg`; n += 1; }
+      used.add(name);
+      zip.file(name, blob);
+      ok += 1;
+    }
+  }
+  if (ok > 0) {
+    const blob = await zip.generateAsync({ type: 'blob' });
+    triggerDownload(blob, `${safeName(exTitle)}_작품원본.zip`);
+  }
+  return { ok, fail };
+}
+
 /** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드 */
 export async function downloadAllSubmissionsZip(exTitle: string, rows: SubmissionRow[]): Promise<void> {
   const { default: JSZip } = await import('jszip');

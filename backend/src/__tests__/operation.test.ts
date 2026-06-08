@@ -101,6 +101,26 @@ describe('공모 운영 페이지 API', () => {
       const r = await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist2Tok}`).send({ artworkList: [] });
       expect(r.status).toBe(403);
     });
+    it('엽서 대표작(representativeIndex) 저장/조회', async () => {
+      const put = await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`).send({
+        artworkList: [
+          { title: 'A', size: '', medium: '', year: '', price: '' },
+          { title: 'B', size: '', medium: '', year: '', price: '' },
+        ],
+        representativeIndex: 1,
+      });
+      expect(put.status).toBe(200);
+      const get = await request.get(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`);
+      expect(get.body.representativeIndex).toBe(1);
+    });
+    it('범위를 벗어난 대표작 인덱스는 null 처리', async () => {
+      const put = await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`).send({
+        artworkList: [{ title: 'A', size: '', medium: '', year: '', price: '' }],
+        representativeIndex: 5,
+      });
+      expect(put.status).toBe(200);
+      expect(put.body.representativeIndex).toBeNull();
+    });
   });
 
   describe('갤러리/Admin 전 작가 열람 + 작가 상호 비공개', () => {
@@ -143,6 +163,43 @@ describe('공모 운영 페이지 API', () => {
     it('수락되지 않은 작가 대상 단일 조회 → 404', async () => {
       const r = await request.get(`/api/operations/${exId}/submissions/2`).set('Authorization', `Bearer ${ownerTok}`);
       expect(r.status).toBe(404);
+    });
+  });
+
+  describe('캡션 HWP 다운로드', () => {
+    it('오너가 캡션 HWP를 받는다 (CFB 시그니처 + 본문)', async () => {
+      // 출품작 등록
+      await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`).send({
+        artworkList: [
+          { title: 'Purified Fever', size: '30 x 40 cm', medium: 'Oil on canvas', year: '2024', price: '100만원' },
+          { title: '잔상', size: '24.2 x 33.4 cm', medium: '한지에 먹', year: '2026', price: '비매' },
+        ],
+      });
+      const r = await request.get(`/api/operations/${exId}/caption.hwp`)
+        .set('Authorization', `Bearer ${ownerTok}`)
+        .buffer(true).parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      expect(r.status).toBe(200);
+      expect(r.headers['content-type']).toContain('hwp');
+      expect(r.headers['content-disposition']).toContain('attachment');
+      expect(r.headers['content-disposition']).toContain('.hwp');
+      const body: Buffer = r.body;
+      // CFB(OLE) 시그니처
+      expect(body.slice(0, 8).toString('hex')).toBe('d0cf11e0a1b11ae1');
+      expect(body.length).toBeGreaterThan(40000);
+    });
+
+    it('출품작이 없으면 400', async () => {
+      const r = await request.get(`/api/operations/${exId}/caption.hwp`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(r.status).toBe(400);
+    });
+
+    it('수락 작가(비오너)는 403', async () => {
+      const r = await request.get(`/api/operations/${exId}/caption.hwp`).set('Authorization', `Bearer ${artist1Tok}`);
+      expect(r.status).toBe(403);
     });
   });
 
