@@ -15,7 +15,17 @@ interface ImageUploadProps {
 // 단일 이미지 업로드 컴포넌트
 export default function ImageUpload({ value, onChange, onRemove, className = '', placeholder = '이미지 업로드' }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 드래그앤드롭으로 떨어뜨린 첫 이미지 파일 업로드
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
+    if (file) handleUpload(file);
+    else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
 
   const handleUpload = async (rawFile: File) => {
     setUploading(true);
@@ -58,10 +68,14 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
         <button
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="w-full h-40 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-colors"
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className={`w-full h-40 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 bg-gray-50 text-gray-600' : 'border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-500'}`}
         >
           {uploading ? <Loader2 size={24} className="animate-spin" /> : <Upload size={24} />}
-          <span className="text-sm mt-2">{uploading ? '업로드 중...' : placeholder}</span>
+          <span className="text-sm mt-2">{uploading ? '업로드 중...' : dragOver ? '여기에 놓기' : placeholder}</span>
+          {!uploading && !dragOver && <span className="text-xs mt-0.5 text-gray-300">클릭 또는 드래그</span>}
         </button>
       )}
       <input
@@ -90,7 +104,19 @@ interface MultiImageUploadProps {
 export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: MultiImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      handleUploadMultiple(dt.files);
+    } else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
 
   const handleUploadMultiple = async (files: FileList) => {
     const remaining = maxCount - images.length;
@@ -126,7 +152,12 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
   };
 
   return (
-    <div>
+    <div
+      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={handleDrop}
+      className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
+    >
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {images.map((img, i) => (
           <div key={i} className="relative group">
@@ -144,7 +175,7 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="h-24 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+            className={`h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 text-gray-600 bg-gray-50' : 'border-gray-200 text-gray-400 hover:border-gray-400'}`}
           >
             {uploading ? (
               <>

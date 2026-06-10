@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Plus, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Career, CareerEntry } from '@/types';
@@ -35,6 +36,27 @@ export default function CareerEditor({ value, onChange, none, onNoneChange, erro
 
   const setEntries = (key: CareerKey, entries: CareerEntry[]) => {
     onChange({ ...value, [key]: entries });
+  };
+
+  // 아트페어: 자유 입력(여러 줄). 한 줄 = 한 건. 이력이 많을 때 +/- 없이 한 번에 입력.
+  const entriesToText = (entries: CareerEntry[]) =>
+    entries.map((e) => [e.year, e.content].filter(Boolean).join(' ')).join('\n');
+  const [artFairRaw, setArtFairRaw] = useState(() => entriesToText(value.artFair));
+  useEffect(() => {
+    // 외부에서 value.artFair가 교체되면(포트폴리오 불러오기 등) 동기화
+    const incoming = entriesToText(value.artFair);
+    const currentFiltered = artFairRaw.split('\n').filter((l) => l.trim()).join('\n');
+    if (incoming !== currentFiltered) setArtFairRaw(incoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.artFair]);
+  const setArtFairText = (text: string) => {
+    setArtFairRaw(text);
+    const entries = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((line) => ({ year: '', content: line }));
+    setEntries('artFair', entries);
   };
 
   const addRow = (key: CareerKey) => {
@@ -84,19 +106,29 @@ export default function CareerEditor({ value, onChange, none, onNoneChange, erro
                     없음
                   </label>
                 )}
-                <button
-                  type="button"
-                  onClick={() => addRow(key)}
-                  disabled={noneChecked}
-                  className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Plus size={14} /> 추가
-                </button>
+                {key !== 'artFair' && (
+                  <button
+                    type="button"
+                    onClick={() => addRow(key)}
+                    disabled={noneChecked}
+                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Plus size={14} /> 추가
+                  </button>
+                )}
               </div>
             </div>
 
             {noneChecked ? (
               <p className="text-xs text-gray-400 py-1">없음으로 표시됩니다.</p>
+            ) : key === 'artFair' ? (
+              <textarea
+                value={artFairRaw}
+                onChange={(e) => setArtFairText(e.target.value)}
+                placeholder={'예: 2026 아트링크 주관 아트페어 참여\n(한 줄에 한 건씩 자유롭게 입력하세요)'}
+                rows={4}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm resize-y leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400 placeholder:text-gray-300"
+              />
             ) : entries.length === 0 ? (
               <p className="text-xs text-gray-400 py-1">[추가] 버튼으로 경력을 입력하세요.</p>
             ) : (

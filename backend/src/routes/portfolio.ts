@@ -35,7 +35,7 @@ router.get('/:userId', async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, nickname: true, avatar: true, role: true },
+      select: { id: true, name: true, nickname: true, avatar: true, role: true, instagramUrl: true },
     });
     if (!user || user.role !== 'ARTIST') {
       throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);

@@ -12,6 +12,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { buildCaptionHwp, CAPTION_CELL_CAPACITY } from '../lib/captionHwp';
+import { toManWon } from '../lib/format';
 
 const router = Router();
 
@@ -278,7 +279,7 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
     const works: any[] = [];
     for (const a of accepted) {
       for (const w of (byUser.get(a.userId) || [])) {
-        works.push({ title: w.title, size: w.size, medium: w.medium, year: w.year, price: w.price });
+        works.push({ title: w.title, size: w.size, medium: w.medium, year: w.year, price: toManWon(w.price) });
       }
     }
     if (works.length === 0) throw new AppError('등록된 출품작이 없습니다.', 400);
@@ -326,23 +327,27 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
 
 // ── 정산: 판매작 + 작가별 비율 계산 결과 (오너/Admin) ──
 function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any[], settlements: any[]) {
-  const saleMap = new Map<string, number>(); // `${userId}:${idx}` → price
-  for (const s of sales) saleMap.set(`${s.artistUserId}:${s.artworkIndex}`, s.soldPrice);
+  const saleMap = new Map<string, { price: number; method: string }>(); // `${userId}:${idx}` → {price, method}
+  for (const s of sales) saleMap.set(`${s.artistUserId}:${s.artworkIndex}`, { price: s.soldPrice, method: s.paymentMethod || 'CARD' });
   const ratioMap = new Map<number, number>();
   for (const st of settlements) ratioMap.set(st.artistUserId, st.galleryRatio);
 
   const artists = rows.map(({ user, artworkList }) => {
-    const works = (artworkList || []).map((a, idx) => ({
-      index: idx,
-      title: a.title || '',
-      image: a.image || '',
-      size: a.size || '',
-      medium: a.medium || '',
-      year: a.year || '',
-      listPrice: a.price || '',
-      sold: saleMap.has(`${user.id}:${idx}`),
-      soldPrice: saleMap.get(`${user.id}:${idx}`) ?? 0,
-    }));
+    const works = (artworkList || []).map((a, idx) => {
+      const sale = saleMap.get(`${user.id}:${idx}`);
+      return {
+        index: idx,
+        title: a.title || '',
+        image: a.image || '',
+        size: a.size || '',
+        medium: a.medium || '',
+        year: a.year || '',
+        listPrice: a.price || '',
+        sold: !!sale,
+        soldPrice: sale?.price ?? 0,
+        paymentMethod: sale?.method ?? 'CARD',
+      };
+    });
     const total = works.filter(w => w.sold).reduce((s, w) => s + w.soldPrice, 0);
     const galleryRatio = ratioMap.get(user.id) ?? 0;
     const galleryAmount = Math.round(total * galleryRatio / 100);
@@ -422,6 +427,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
             artworkIndex: s.artworkIndex,
             title: String(s.title ?? ''),
             soldPrice: Math.max(0, Math.round(Number(s.soldPrice) || 0)),
+            paymentMethod: s.paymentMethod === 'CASH' ? 'CASH' : 'CARD',
           })),
       }),
       prisma.artistSettlement.deleteMany({ where: { exhibitionId } }),

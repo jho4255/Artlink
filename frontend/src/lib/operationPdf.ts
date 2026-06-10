@@ -41,11 +41,11 @@ function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, 
       <tr>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${i + 1}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${a.image ? `<img src="${esc(a.image)}" crossorigin="anonymous" style="width:90px;height:90px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
-        <td style="border:1px solid #ddd;padding:8px">${esc(a.title)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.title)}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.size)}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.medium)}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.year)}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:right">${esc(a.price)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.price)}</td>
       </tr>`).join('');
   return `<div style="${BASE}">${header(exTitle, '출품리스트', artist, email)}
     <table style="width:100%;border-collapse:collapse">
@@ -72,7 +72,7 @@ function cvHtml(sub: OperationSubmission, exTitle: string, artist: string, email
     </div>`;
   return `<div style="${BASE}">${header(exTitle, '작가약력', artist, email)}
     <div style="margin-bottom:20px">
-      <p style="font-size:16px;font-weight:700;margin:0">${esc(cv.nameKo)} ${esc(cv.nameEn)} ${cv.birth ? `<span style="font-style:italic;color:#888;font-weight:400;font-size:13px">${esc(cv.birth)}</span>` : ''}</p>
+      <p style="font-size:16px;font-weight:700;margin:0">${esc(cv.nameKo) || esc(artist)}</p>
       ${cv.tel ? `<p style="margin:2px 0">Tel  ${esc(cv.tel)}</p>` : ''}
       ${cv.email ? `<p style="margin:2px 0">email  ${esc(cv.email)}</p>` : ''}
     </div>
@@ -142,7 +142,29 @@ async function htmlToPdfBlob(html: string): Promise<Blob> {
 }
 
 // ── 정산서 ──
-function artistSettlementHtml(exTitle: string, a: SettlementArtist): string {
+// 결제수단(카드/현금)으로 필터해 합계를 재계산한 정산 객체 반환
+function filterArtistByMethod(a: SettlementArtist, method: 'CARD' | 'CASH'): SettlementArtist {
+  const works = a.works.filter(w => w.sold && (w.paymentMethod || 'CARD') === method);
+  const total = works.reduce((s, w) => s + (w.soldPrice || 0), 0);
+  const galleryAmount = Math.round(total * a.galleryRatio / 100);
+  return { ...a, works, total, galleryAmount, artistAmount: total - galleryAmount };
+}
+function filterSettlementByMethod(s: Settlement, method: 'CARD' | 'CASH'): Settlement {
+  const artists = s.artists.map(a => filterArtistByMethod(a, method));
+  return {
+    ...s,
+    artists,
+    grand: {
+      total: artists.reduce((sum, a) => sum + a.total, 0),
+      galleryAmount: artists.reduce((sum, a) => sum + a.galleryAmount, 0),
+      artistAmount: artists.reduce((sum, a) => sum + a.artistAmount, 0),
+      soldCount: artists.reduce((sum, a) => sum + a.works.length, 0),
+    },
+  };
+}
+const methodLabel = (m?: 'CARD' | 'CASH') => m === 'CASH' ? '현금' : m === 'CARD' ? '카드' : '';
+
+function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서'): string {
   const artist = displayName(a.user);
   const sold = a.works.filter(w => w.sold);
   const rows = sold.length === 0
@@ -150,9 +172,9 @@ function artistSettlementHtml(exTitle: string, a: SettlementArtist): string {
     : sold.map(w => `<tr>
         <td style="border:1px solid #ddd;padding:8px;text-align:center;width:90px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:70px;height:70px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
         <td style="border:1px solid #ddd;padding:8px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
       </tr>`).join('');
-  return `<div style="${BASE}">${header(exTitle, '정산서', artist, a.user.email)}
+  return `<div style="${BASE}">${header(exTitle, docLabel, artist, a.user.email)}
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
       <thead><tr style="background:#f5f5f5">
         <th style="border:1px solid #ddd;padding:8px">이미지</th>
@@ -179,7 +201,7 @@ function artistBlock(a: SettlementArtist): string {
     : sold.map(w => `<tr>
         <td style="border:1px solid #eee;padding:6px;text-align:center;width:80px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:60px;height:60px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
         <td style="border:1px solid #eee;padding:6px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
-        <td style="border:1px solid #eee;padding:6px;text-align:right;width:120px">${won(w.soldPrice)}</td>
+        <td style="border:1px solid #eee;padding:6px;text-align:right;width:120px">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
       </tr>`).join('');
   return `<div style="margin-bottom:22px">
     <h2 style="font-size:15px;font-weight:700;margin:0 0 6px">${esc(displayName(a.user))} <span style="font-weight:400;color:#888;font-size:12px">(갤러리 ${a.galleryRatio}% : 작가 ${a.artistRatio}%)</span></h2>
@@ -197,11 +219,11 @@ function artistBlock(a: SettlementArtist): string {
   </div>`;
 }
 
-function overallSettlementHtml(s: Settlement): string {
+function overallSettlementHtml(s: Settlement, docLabel = '전체 정산서'): string {
   const blocks = s.artists.length === 0
     ? `<p style="color:#999">수락된 작가가 없습니다.</p>`
     : s.artists.map(artistBlock).join('');
-  return `<div style="${BASE}">${header(s.exhibitionTitle, '전체 정산서', '', '')}
+  return `<div style="${BASE}">${header(s.exhibitionTitle, docLabel, '', '')}
     ${blocks}
     <div style="border-top:2px solid #333;padding-top:10px;margin-top:6px">
       <h2 style="font-size:15px;font-weight:700;margin:0 0 6px">전체 합계</h2>
@@ -225,16 +247,20 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/** 작가별 정산서 PDF */
-export async function downloadArtistSettlementPdf(exTitle: string, artist: SettlementArtist): Promise<void> {
-  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, artist));
-  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_정산서.pdf`);
+/** 작가별 정산서 PDF (method 지정 시 현금/카드 정산서) */
+export async function downloadArtistSettlementPdf(exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH'): Promise<void> {
+  const target = method ? filterArtistByMethod(artist, method) : artist;
+  const docLabel = method ? `${methodLabel(method)} 정산서` : '정산서';
+  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel));
+  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_${docLabel.replace(/\s/g, '')}.pdf`);
 }
 
-/** 전체 정산서 PDF */
-export async function downloadOverallSettlementPdf(s: Settlement): Promise<void> {
-  const blob = await htmlToPdfBlob(overallSettlementHtml(s));
-  triggerDownload(blob, `${safeName(s.exhibitionTitle)}_전체정산서.pdf`);
+/** 전체 정산서 PDF (method 지정 시 현금/카드 정산서) */
+export async function downloadOverallSettlementPdf(s: Settlement, method?: 'CARD' | 'CASH'): Promise<void> {
+  const target = method ? filterSettlementByMethod(s, method) : s;
+  const docLabel = method ? `전체 ${methodLabel(method)} 정산서` : '전체 정산서';
+  const blob = await htmlToPdfBlob(overallSettlementHtml(target, docLabel));
+  triggerDownload(blob, `${safeName(s.exhibitionTitle)}_${docLabel.replace(/\s/g, '')}.pdf`);
 }
 
 export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission; }

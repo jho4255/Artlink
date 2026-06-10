@@ -223,9 +223,10 @@ router.patch('/:id', authenticate, async (req, res, next) => {
     if (!show) throw new AppError('전시를 찾을 수 없습니다.', 404);
     if (show.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
-    const { description, artists } = req.body;
+    const { description, artists, posterImage } = req.body;
     const data: any = {};
     if (description !== undefined) data.description = description;
+    if (posterImage !== undefined && posterImage) data.posterImage = posterImage;
     if (artists !== undefined) {
       const normalized = normalizeArtistsInput(artists);
       data.artists = normalized ? JSON.stringify(normalized) : null;

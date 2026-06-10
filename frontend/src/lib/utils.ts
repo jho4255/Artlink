@@ -44,6 +44,54 @@ export function formatPhoneNumber(value: string): string {
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7, 11)}`;
 }
 
+// 숫자를 한국어 금액 표기로 변환 (예: 230000 → "이십삼만원").
+// 작품 가격 입력칸 옆에 연한 회색으로 보여주는 힌트용. 숫자가 아니거나 0이면 빈 문자열.
+const KR_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+const KR_SMALL_UNITS = ['', '십', '백', '천'];
+const KR_BIG_UNITS = ['', '만', '억', '조', '경'];
+
+// 0~9999 → 한글 (예: 1234 → 천이백삼십사, 23 → 이십삼)
+function readKrGroup(n: number): string {
+  let s = '';
+  const str = String(n).padStart(4, '0');
+  for (let i = 0; i < 4; i++) {
+    const d = Number(str[i]);
+    if (d === 0) continue;
+    const unit = KR_SMALL_UNITS[3 - i];
+    // 십/백/천 자리의 1은 '일' 생략 (11 → 십일, 일십일 아님)
+    s += d === 1 && unit ? unit : KR_DIGITS[d] + unit;
+  }
+  return s;
+}
+
+export function numberToKorean(num: number): string {
+  if (!Number.isFinite(num) || num <= 0) return '';
+  let n = Math.floor(num);
+  let result = '';
+  let gi = 0;
+  while (n > 0) {
+    const group = n % 10000;
+    if (group > 0) {
+      // 만 자리의 1은 생략 (10000 → 만), 억/조 이상은 유지 (1억 → 일억)
+      const prefix = group === 1 && gi === 1 ? '' : readKrGroup(group);
+      result = prefix + KR_BIG_UNITS[gi] + result;
+    }
+    n = Math.floor(n / 10000);
+    gi++;
+  }
+  return result;
+}
+
+// 문자열/숫자에서 숫자만 추출해 "○○원" 한글 표기 반환 (숫자 없으면 '')
+export function koreanWon(value: string | number | null | undefined): string {
+  const digits = String(value ?? '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  const n = parseInt(digits, 10);
+  if (!n) return '';
+  const kr = numberToKorean(n);
+  return kr ? `${kr}원` : '';
+}
+
 // 업로드 가능한 최대 이미지 용량 (백엔드 multer limit과 동일하게 유지)
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 

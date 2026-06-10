@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { ArrowLeft, User, FileText, Calendar } from 'lucide-react';
+import { ArrowLeft, User, FileText, Calendar, Instagram } from 'lucide-react';
 import api from '@/lib/axios';
 import { displayName, safeHttpUrl } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
@@ -76,6 +76,16 @@ export default function PortfolioPage() {
         <div>
           <h1 className="text-2xl font-medium">{displayName(portfolio.user)}</h1>
           <p className="text-sm text-gray-500">아티스트 포트폴리오</p>
+          {safeHttpUrl(portfolio.user.instagramUrl) && (
+            <a
+              href={safeHttpUrl(portfolio.user.instagramUrl)!}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mt-1"
+            >
+              <Instagram size={14} /> Instagram
+            </a>
+          )}
         </div>
       </div>
 

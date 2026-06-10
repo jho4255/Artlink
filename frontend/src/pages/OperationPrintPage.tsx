@@ -124,11 +124,11 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
             <td style={{ textAlign: 'center' }}>
               {a.image ? <img src={a.image} alt="" style={{ width: 90, height: 90, objectFit: 'cover' }} /> : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
             </td>
-            <td>{a.title}</td>
+            <td style={{ textAlign: 'center' }}>{a.title}</td>
             <td style={{ textAlign: 'center' }}>{a.size}</td>
             <td style={{ textAlign: 'center' }}>{a.medium}</td>
             <td style={{ textAlign: 'center' }}>{a.year}</td>
-            <td style={{ textAlign: 'right' }}>{a.price}</td>
+            <td style={{ textAlign: 'center' }}>{a.price}</td>
           </tr>
         ))}
       </tbody>
@@ -150,10 +150,9 @@ function CvDoc({ submission, artist }: { submission: OperationSubmission; artist
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <p style={{ fontSize: 16, fontWeight: 700 }}>{cv.nameKo} {cv.nameEn} {cv.birth && <span style={{ fontStyle: 'italic', color: '#888', fontWeight: 400, fontSize: 13 }}>{cv.birth}</span>}</p>
+        <p style={{ fontSize: 16, fontWeight: 700 }}>{cv.nameKo || artist}</p>
         {cv.tel && <p>Tel  {cv.tel}</p>}
         {cv.email && <p>email  {cv.email}</p>}
-        {!cv.nameKo && !cv.nameEn && <p style={{ color: '#888' }}>{artist}</p>}
       </div>
       {CV_SECTIONS.map(({ key, label }) => <Section key={key} label={label} items={cv[key]} />)}
     </div>

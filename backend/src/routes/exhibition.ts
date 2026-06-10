@@ -426,7 +426,7 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
       include: {
         user: {
           select: {
-            id: true, name: true, nickname: true, email: true, avatar: true,
+            id: true, name: true, nickname: true, email: true, phone: true, avatar: true,
             portfolio: {
               include: { images: { orderBy: { order: 'asc' }, take: 10 } }
             }
@@ -440,12 +440,18 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
     const stats = await galleryApplicationStats(exhibition.galleryId, applications.map(a => a.userId));
 
     // 지원서 고정 양식 필드 파싱 + 갤러리 지원 통계 부착
-    const parsed = applications.map((app: any) => ({
-      ...app,
-      career: safeJson(app.career, null),
-      artworkImages: safeJson<string[]>(app.artworkImages, []),
-      ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
-    }));
+    // 연락처(이메일/전화)는 '수락(ACCEPTED)'된 지원자에 한해 갤러리에 노출 (지원 시 작가에게 고지됨)
+    const parsed = applications.map((app: any) => {
+      const accepted = app.status === 'ACCEPTED';
+      const user = accepted ? app.user : { ...app.user, email: null, phone: null };
+      return {
+        ...app,
+        user,
+        career: safeJson(app.career, null),
+        artworkImages: safeJson<string[]>(app.artworkImages, []),
+        ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
+      };
+    });
 
     res.json(parsed);
   } catch (error) { next(error); }

@@ -8,6 +8,8 @@ interface User {
   email: string;
   role: string;
   avatar?: string;
+  phone?: string | null;
+  instagramUrl?: string | null;
 }
 
 interface AuthState {

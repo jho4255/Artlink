@@ -9,6 +9,8 @@ import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import { MultiImageUpload } from '@/components/shared/ImageUpload';
+import { HeroImageEdit } from '@/components/shared/EditableField';
 import type { Show } from '@/types';
 
 export default function ShowDetailPage() {
@@ -63,6 +65,23 @@ export default function ShowDetailPage() {
       toast.success('전시가 삭제되었습니다.');
       navigate('/shows');
     },
+  });
+
+  // 전시 사진 수정 (소유자) — 포스터 교체 / 추가사진 등록·삭제
+  const posterMutation = useMutation({
+    mutationFn: (url: string) => api.patch(`/shows/${id}`, { posterImage: url }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['show', id] }); queryClient.invalidateQueries({ queryKey: ['shows'] }); toast.success('포스터가 변경되었습니다.'); },
+    onError: () => toast.error('포스터 변경 실패'),
+  });
+  const addImageMutation = useMutation({
+    mutationFn: (url: string) => api.post(`/shows/${id}/images`, { url }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['show', id] }); },
+    onError: () => toast.error('사진 추가 실패'),
+  });
+  const removeImageMutation = useMutation({
+    mutationFn: (imageId: number) => api.delete(`/shows/${id}/images/${imageId}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['show', id] }); toast.success('사진이 삭제되었습니다.'); },
+    onError: () => toast.error('사진 삭제 실패'),
   });
 
   // 이미지 dominant color 추출
@@ -247,6 +266,31 @@ export default function ShowDetailPage() {
           <p className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed">{show.description}</p>
         )}
       </div>
+
+      {/* 사진 관리 (소유자) */}
+      {canEdit && (
+        <div className="mt-10 border-t border-gray-100 pt-6">
+          <h3 className="text-xl font-medium mb-3">사진 관리</h3>
+          <div className="mb-5">
+            <p className="text-xs font-medium text-gray-400 mb-1">포스터 이미지 (대표)</p>
+            <HeroImageEdit
+              value={show.posterImage}
+              onChange={(url) => posterMutation.mutate(url)}
+              className="w-full max-w-xs aspect-[4/3] rounded-lg"
+              label="포스터"
+            />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-400 mb-1">추가 사진 (최대 10장, 드래그앤드롭 지원)</p>
+            <MultiImageUpload
+              images={show.images || []}
+              onAdd={(url) => addImageMutation.mutate(url)}
+              onRemove={(index) => { const img = show.images?.[index]; if (img) removeImageMutation.mutate(img.id); }}
+              maxCount={10}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 삭제 */}
       {canDelete && (

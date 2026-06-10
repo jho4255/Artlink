@@ -16,6 +16,7 @@ model User {
   role       String   // ARTIST, GALLERY, ADMIN
   avatar     String?
   phone      String?  // 가입 시 입력받는 연락처 (기존 유저는 null 허용)
+  instagramUrl String? // 작가 프로필 인스타그램 주소 (선택)
   password   String?  // bcrypt hash (LOCAL auth only)
   provider   String   @default("LOCAL") // LOCAL, KAKAO, NAVER, GOOGLE
   providerId String?  // OAuth provider user ID
@@ -441,6 +442,7 @@ model ArtworkSale {
   artworkIndex Int        // 해당 작가 artworkList 내 인덱스
   title        String     // 작품명 스냅샷
   soldPrice    Int        // 판매가 (원)
+  paymentMethod String    @default("CARD") // CARD(카드) | CASH(현금)
 
   @@unique([exhibitionId, artistUserId, artworkIndex])
   @@index([exhibitionId])

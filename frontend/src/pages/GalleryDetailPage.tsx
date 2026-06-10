@@ -1238,7 +1238,18 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      handleUpload(dt.files);
+    } else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
 
   // 이미지 삭제 후 imgIndex 범위 초과 방지
   useEffect(() => {
@@ -1316,7 +1327,12 @@ function GalleryImageManager({ galleryId, galleryImages, onImgIndexGuard }: Imag
       </button>
 
       {isOpen && (
-        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div
+          className={`mt-3 p-3 bg-gray-50 rounded-lg ${dragOver ? 'ring-2 ring-gray-400' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+          onDrop={handleDrop}
+        >
           <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
             {galleryImages.map((img) => (
               <div key={img.id} className="relative group">

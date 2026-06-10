@@ -15,8 +15,8 @@ function generateToken(user: { id: number; role: string }) {
   return jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null; nickname?: string | null }) {
-  return { id: user.id, name: user.name, nickname: user.nickname ?? null, email: user.email, role: user.role, avatar: user.avatar };
+function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null; nickname?: string | null; phone?: string | null; instagramUrl?: string | null }) {
+  return { id: user.id, name: user.name, nickname: user.nickname ?? null, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone ?? null, instagramUrl: user.instagramUrl ?? null };
 }
 
 // ========== 카카오 OAuth ==========
@@ -183,7 +183,7 @@ router.get('/me', authenticate, async (req, res, next) => {
     // avatar 포함해 최신 사용자 정보 반환 (authenticate가 채우는 req.user엔 avatar가 없음)
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true },
+      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true, phone: true, instagramUrl: true },
     });
     res.json({ user });
   } catch (error) { next(error); }
@@ -226,6 +226,36 @@ router.put('/me/nickname', authenticate, validate(nicknameSchema), async (req, r
       where: { id: req.user!.id },
       data: { nickname },
       select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true },
+    });
+    res.json(user);
+  } catch (error) { next(error); }
+});
+
+// ========== 내 정보(연락처/이메일/인스타) 수정 ==========
+// 작가가 마이페이지 프로필 탭에서 전화번호·이메일·인스타그램 주소를 직접 수정.
+// 모든 필드 선택적(부분 업데이트). 이메일 변경 시 중복(409) 검증.
+const profileSchema = z.object({
+  phone: z.string().trim().max(20).optional(),
+  email: z.string().trim().email('유효한 이메일을 입력해주세요.').optional(),
+  instagramUrl: z.string().trim().max(300).optional(),
+});
+router.put('/me/profile', authenticate, validate(profileSchema), async (req, res, next) => {
+  try {
+    const { phone, email, instagramUrl } = req.body as { phone?: string; email?: string; instagramUrl?: string };
+    const data: { phone?: string | null; email?: string; instagramUrl?: string | null } = {};
+
+    if (email !== undefined) {
+      const taken = await prisma.user.findUnique({ where: { email } });
+      if (taken && taken.id !== req.user!.id) throw new AppError('이미 사용 중인 이메일입니다.', 409);
+      data.email = email;
+    }
+    if (phone !== undefined) data.phone = phone || null;            // 빈 문자열 → null(해제)
+    if (instagramUrl !== undefined) data.instagramUrl = instagramUrl || null;
+
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data,
+      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true, phone: true, instagramUrl: true },
     });
     res.json(user);
   } catch (error) { next(error); }

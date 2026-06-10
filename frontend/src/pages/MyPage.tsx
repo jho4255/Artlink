@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES, safeHttpUrl } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
@@ -155,6 +155,7 @@ function ProfileCard() {
   const { user, updateUser } = useAuthStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [avatarDrag, setAvatarDrag] = useState(false);
 
   const handleAvatarUpload = async (rawFile: File) => {
     setUploading(true);
@@ -189,8 +190,13 @@ function ProfileCard() {
   return (
     <div className="bg-gray-50 rounded-2xl p-6 mb-6 min-h-[180px] md:min-h-[240px] flex items-center">
       <div className="flex items-center gap-4">
-        <div className="relative group">
-          <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
+        <div
+          className="relative group"
+          onDragOver={(e) => { e.preventDefault(); setAvatarDrag(true); }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setAvatarDrag(false); }}
+          onDrop={(e) => { e.preventDefault(); setAvatarDrag(false); const f = Array.from(e.dataTransfer.files).find(file => file.type.startsWith('image/')); if (f) handleAvatarUpload(f); }}
+        >
+          <div className={`w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden ${avatarDrag ? 'ring-2 ring-gray-500 ring-offset-2' : ''}`}>
             {user?.avatar ? (
               <img src={user.avatar} alt={`${displayName(user)} 프로필 사진`} className="w-full h-full object-cover" />
             ) : (
@@ -201,7 +207,7 @@ function ProfileCard() {
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
             aria-label="프로필 사진 변경"
-            className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            className={`absolute inset-0 bg-black/40 rounded-full flex items-center justify-center transition-opacity ${avatarDrag ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
           >
             <Camera size={20} className="text-white" />
           </button>
@@ -235,6 +241,54 @@ function ProfileSection() {
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [checkResult, setCheckResult] = useState<{ available: boolean; reason?: string } | null>(null);
+
+  // 연락처/이메일/인스타 (작가 전용) — /auth/me로 최신값 하이드레이트
+  const isArtist = user?.role === 'ARTIST';
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [instagram, setInstagram] = useState(user?.instagramUrl ?? '');
+  const [savingContact, setSavingContact] = useState(false);
+
+  useEffect(() => {
+    if (!isArtist) return;
+    api.get('/auth/me').then(({ data }) => {
+      const u = data.user;
+      if (!u) return;
+      setEmail(u.email ?? '');
+      setPhone(u.phone ?? '');
+      setInstagram(u.instagramUrl ?? '');
+      updateUser({ email: u.email, phone: u.phone, instagramUrl: u.instagramUrl });
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isArtist]);
+
+  const contactChanged =
+    email.trim() !== (user?.email ?? '') ||
+    phone.trim() !== (user?.phone ?? '') ||
+    instagram.trim() !== (user?.instagramUrl ?? '');
+
+  const handleSaveContact = async () => {
+    const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast.error('유효한 이메일을 입력해주세요.');
+      return;
+    }
+    // 인스타: 스킴 없으면 https:// 보정해 저장
+    let ig = instagram.trim();
+    if (ig && !/^https?:\/\//i.test(ig)) ig = `https://${ig}`;
+    setSavingContact(true);
+    try {
+      const { data } = await api.put('/auth/me/profile', { email: trimmedEmail, phone: phone.trim(), instagramUrl: ig });
+      updateUser({ email: data.email, phone: data.phone, instagramUrl: data.instagramUrl });
+      setInstagram(data.instagramUrl ?? '');
+      toast.success('내 정보가 저장되었습니다.');
+    } catch (err: any) {
+      if (err?.response?.status === 409) toast.error('이미 사용 중인 이메일입니다.');
+      else toast.error(err?.response?.data?.error || '저장에 실패했습니다.');
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   const trimmed = nickname.trim();
   const unchanged = trimmed === (user?.nickname ?? '');
@@ -314,6 +368,55 @@ function ProfileSection() {
       >
         {saving ? '저장 중...' : '닉네임 저장'}
       </button>
+
+      {/* 연락처 / 인스타 (작가 전용) */}
+      {isArtist && (
+        <div className="pt-5 border-t border-gray-100 space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700">내 정보</h3>
+            <p className="text-xs text-gray-400 mt-0.5">갤러리·운영자에게 전달되는 연락 정보입니다.</p>
+          </div>
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1"><Mail size={14} className="text-gray-400" /> 이메일</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="email@example.com"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1"><Phone size={14} className="text-gray-400" /> 전화번호</label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              value={phone}
+              onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+              placeholder="010-1234-5678"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1"><Instagram size={14} className="text-gray-400" /> 인스타그램 주소</label>
+            <input
+              type="text"
+              value={instagram}
+              onChange={(e) => setInstagram(e.target.value)}
+              placeholder="instagram.com/your_id"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">포트폴리오 페이지에 인스타그램 링크로 표시됩니다.</p>
+          </div>
+          <button
+            onClick={handleSaveContact}
+            disabled={savingContact || !contactChanged}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+          >
+            <Save size={14} /> {savingContact ? '저장 중...' : '내 정보 저장'}
+          </button>
+        </div>
+      )}
 
       <div className="pt-4 border-t border-gray-100 text-sm text-gray-500">
         <p>프로필 카드 위 사진을 클릭하여 프로필 사진을 변경할 수 있습니다.</p>
@@ -510,6 +613,7 @@ function PortfolioImageGrid({
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleUploadMultiple = async (files: FileList) => {
@@ -545,8 +649,25 @@ function PortfolioImageGrid({
     setUploadCount(0);
   };
 
+  // 드래그앤드롭으로 떨어뜨린 이미지 파일들 업로드
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      handleUploadMultiple(dt.files);
+    } else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
+
   return (
-    <div>
+    <div
+      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={handleDrop}
+      className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
+    >
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {images.map((img) => (
           <div key={img.id} className="relative group">
@@ -578,7 +699,7 @@ function PortfolioImageGrid({
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="aspect-square border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-gray-400 transition-colors"
+            className={`aspect-square border-2 border-dashed flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 text-gray-600 bg-gray-50' : 'border-gray-200 text-gray-400 hover:border-gray-400'}`}
           >
             {uploading ? (
               <>
@@ -588,7 +709,7 @@ function PortfolioImageGrid({
             ) : (
               <>
                 <Upload size={18} />
-                <span className="text-xs mt-1">{images.length}/{maxCount}</span>
+                <span className="text-xs mt-1">{dragOver ? '여기에 놓기' : `${images.length}/${maxCount}`}</span>
               </>
             )}
           </button>
@@ -1888,8 +2009,8 @@ function MyShowsSection() {
             <p className="text-xs font-medium text-gray-400 mb-1">추가 이미지 (선택, 최대 10장)</p>
             <MultiImageUpload
               images={form.additionalImages}
-              onAdd={(url: string) => setForm({ ...form, additionalImages: [...form.additionalImages, { url }] })}
-              onRemove={(index: number) => setForm({ ...form, additionalImages: form.additionalImages.filter((_: { url: string }, i: number) => i !== index) })}
+              onAdd={(url: string) => setForm(prev => ({ ...prev, additionalImages: [...prev.additionalImages, { url }] }))}
+              onRemove={(index: number) => setForm(prev => ({ ...prev, additionalImages: prev.additionalImages.filter((_, i) => i !== index) }))}
               maxCount={10}
             />
           </div>

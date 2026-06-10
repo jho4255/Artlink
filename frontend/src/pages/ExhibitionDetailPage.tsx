@@ -719,8 +719,15 @@ export default function ExhibitionDetailPage() {
 
                               {isExpanded && (
                                 <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-7">
-                                  {app.user?.email && (
-                                    <p className="text-xs text-gray-500 pt-2">📧 {app.user.email}</p>
+                                  {(app.user?.email || app.user?.phone) ? (
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-gray-600">
+                                      {app.user?.email && <span>📧 {app.user.email}</span>}
+                                      {app.user?.phone && <span>📞 {app.user.phone}</span>}
+                                    </div>
+                                  ) : (
+                                    app.status !== 'ACCEPTED' && (
+                                      <p className="text-xs text-gray-400 pt-2">📇 연락처(이메일·전화)는 '수락' 시 표시됩니다.</p>
+                                    )
                                   )}
                                   <ApplicationContent
                                     app={app}
@@ -745,8 +752,8 @@ export default function ExhibitionDetailPage() {
       <ConfirmDialog
         open={applyConfirm}
         title="지원하기"
-        message={applyTerms || '지원하시겠습니까?'}
-        confirmText="지원하기"
+        message={`📌 지원이 수락되면 갤러리에 회원님의 이메일과 전화번호가 전달됩니다.\n동의하시면 [지원하기]를 눌러주세요.\n\n${applyTerms || '지원하시겠습니까?'}`}
+        confirmText="동의하고 지원하기"
         onConfirm={() => { setApplyConfirm(false); if (pendingApply) applyMutation.mutate(pendingApply); setPendingApply(undefined); }}
         onCancel={() => { setApplyConfirm(false); setPendingApply(undefined); }}
       />

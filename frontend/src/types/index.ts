@@ -7,6 +7,8 @@ export interface User {
   email: string;
   role: 'ARTIST' | 'GALLERY' | 'ADMIN';
   avatar?: string;
+  phone?: string | null;
+  instagramUrl?: string | null;
 }
 
 export interface Gallery {
@@ -160,7 +162,9 @@ export const EMPTY_CAREER: Career = { artFair: [], solo: [], group: [] };
 export interface ArtworkItem {
   image?: string;   // 작품 이미지 URL
   title: string;
-  size: string;     // 크기 (예: 33.4x24.2 cm)
+  size: string;     // 크기 (예: 33.4×24.2 cm) — width/height로부터 합성, 캡션·PDF의 단일 출처
+  width?: string;   // 가로 (cm) — 입력 분리용
+  height?: string;  // 세로 (cm) — 입력 분리용
   medium: string;   // 재료 (예: Acrylic on Canvas)
   year: string;
   price: string;    // 가격 (자유 텍스트: 비매/협의/₩320,000)
@@ -242,6 +246,7 @@ export interface SettlementWork {
   listPrice: string;
   sold: boolean;
   soldPrice: number;
+  paymentMethod?: 'CARD' | 'CASH';  // 결제수단 (카드/현금)
 }
 // 정산: 작가별
 export interface SettlementArtist {
@@ -291,7 +296,7 @@ export interface PublicPortfolio {
   career?: Career | null;
   portfolioFileUrl?: string | null;
   images: PortfolioImage[];
-  user: { id: number; name: string; nickname?: string | null; avatar?: string };
+  user: { id: number; name: string; nickname?: string | null; avatar?: string; instagramUrl?: string | null };
 }
 
 export interface Show {

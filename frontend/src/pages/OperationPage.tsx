@@ -15,7 +15,7 @@ import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { displayName, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber } from '@/lib/utils';
+import { displayName, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon } from '@/lib/utils';
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
@@ -269,22 +269,44 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       );
       return;
     }
+    // 엽서 대표작 미선택 시 저장 차단 + 안내 팝업
+    if (repIndex == null) {
+      setTab('artwork');
+      toast.error(
+        (t) => (
+          <div onClick={() => toast.dismiss(t.id)}>
+            엽서 대표작을 선택해주세요.<br />
+            <span style={{ fontSize: 12, opacity: 0.8 }}>출품작 중 1점을 엽서·홍보물용 대표작으로 선택해야 저장됩니다.</span>
+          </div>
+        ),
+        { duration: 6000 },
+      );
+      return;
+    }
     saveMutation.mutate();
   };
 
+  // 포트폴리오 경력 + 내 개인정보(이름/연락처/이메일)를 한 번에 약력으로 불러온다
   const loadFromPortfolio = async () => {
     try {
-      const { data: p } = await api.get('/portfolio');
+      const [{ data: p }, { data: me }] = await Promise.all([
+        api.get('/portfolio'),
+        api.get('/auth/me').then(r => r).catch(() => ({ data: { user: null } })),
+      ]);
       const c = p.career || {};
+      const u = me?.user;
       setCv(prev => ({
         ...prev,
+        nameKo: prev.nameKo || u?.name || '',
+        tel: prev.tel || u?.phone || '',
+        email: prev.email || u?.email || '',
         solo: (c.solo || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         group: (c.group || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         artFair: (c.artFair || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
       }));
-      toast.success('포트폴리오 약력을 불러왔습니다. (개인전/단체전/아트페어)');
+      toast.success('내 정보·포트폴리오 약력을 불러왔습니다.');
     } catch {
-      toast.error('포트폴리오를 불러오지 못했습니다.');
+      toast.error('불러오지 못했습니다.');
     }
   };
 
@@ -340,7 +362,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
         {tab === 'cv' && (
           <>
             <div className="flex justify-between mb-2">
-              <button onClick={loadFromPortfolio} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">포트폴리오 약력 불러오기</button>
+              <button onClick={loadFromPortfolio} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">내 정보·포트폴리오 불러오기</button>
               <button onClick={() => openPrint('cv')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
             <CvEditor value={cv} onChange={setCv} />
@@ -548,7 +570,7 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
         <p className="text-xs font-medium text-gray-500 mb-1">작가약력</p>
         {!cv ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="text-xs text-gray-700 space-y-1">
-            <p>{cv.nameKo} {cv.nameEn} {cv.birth && `(${cv.birth})`}</p>
+            <p>{cv.nameKo}{cv.tel ? ` · ${cv.tel}` : ''}{cv.email ? ` · ${cv.email}` : ''}</p>
             {CV_SECTIONS.map(({ key, label }) => (cv[key]?.length > 0) && (
               <p key={key}><span className="text-gray-400">{label}: </span>{cv[key].map(e => `${e.year} ${e.content}`).join(' / ')}</p>
             ))}
@@ -572,7 +594,7 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
 // ============ 정산 (전시종료 후) ============
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
-type EditWork = { index: number; title: string; image?: string; size?: string; medium?: string; year?: string; listPrice: string; sold: boolean; soldPrice: number };
+type EditWork = { index: number; title: string; image?: string; size?: string; medium?: string; year?: string; listPrice: string; sold: boolean; soldPrice: number; paymentMethod: 'CARD' | 'CASH' };
 type EditArtist = { user: { id: number; name: string; nickname?: string | null; email?: string }; galleryRatio: number; works: EditWork[] };
 
 function artistTotals(a: EditArtist) {
@@ -653,7 +675,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
       setArtists(data.artists.map(a => ({
         user: a.user,
         galleryRatio: a.galleryRatio,
-        works: a.works.map(w => ({ index: w.index, title: w.title, image: w.image, size: w.size, medium: w.medium, year: w.year, listPrice: w.listPrice, sold: w.sold, soldPrice: w.soldPrice })),
+        works: a.works.map(w => ({ index: w.index, title: w.title, image: w.image, size: w.size, medium: w.medium, year: w.year, listPrice: w.listPrice, sold: w.sold, soldPrice: w.soldPrice, paymentMethod: (w.paymentMethod || 'CARD') as 'CARD' | 'CASH' })),
       })));
     }
   }, [data]);
@@ -665,7 +687,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const sales = artists.flatMap(a => a.works.filter(w => w.sold).map(w => ({ artistUserId: a.user.id, artworkIndex: w.index, title: w.title, soldPrice: w.soldPrice || 0 })));
+      const sales = artists.flatMap(a => a.works.filter(w => w.sold).map(w => ({ artistUserId: a.user.id, artworkIndex: w.index, title: w.title, soldPrice: w.soldPrice || 0, paymentMethod: w.paymentMethod || 'CARD' })));
       const ratios = artists.map(a => ({ artistUserId: a.user.id, galleryRatio: a.galleryRatio }));
       return api.put(`/operations/${exhibitionId}/settlement`, { sales, ratios });
     },
@@ -691,19 +713,19 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
     };
   };
 
-  const downloadOverall = async () => {
+  const downloadOverall = async (method?: 'CARD' | 'CASH') => {
     setZipping(true);
     try {
       const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadOverallSettlementPdf(buildSettlement());
+      await downloadOverallSettlementPdf(buildSettlement(), method);
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
-  const downloadArtist = async (ai: number) => {
+  const downloadArtist = async (ai: number, method?: 'CARD' | 'CASH') => {
     setZipping(true);
     try {
       const s = buildSettlement();
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai]);
+      await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method);
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
 
@@ -715,9 +737,11 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
     <section className="mb-10">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-medium text-gray-900">정산</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
-          <button onClick={downloadOverall} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"><FileDown size={13} /> 전체 정산 PDF</button>
+          <button onClick={() => downloadOverall()} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"><FileDown size={13} /> 전체 정산 PDF</button>
+          <button onClick={() => downloadOverall('CASH')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">현금 정산서</button>
+          <button onClick={() => downloadOverall('CARD')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">카드 정산서</button>
         </div>
       </div>
 
@@ -731,7 +755,11 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
               <div key={a.user.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm text-gray-900">{displayName(a.user)}</span>
-                  <button onClick={() => downloadArtist(ai)} disabled={zipping} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"><FileDown size={12} /> 작가 정산 PDF</button>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <button onClick={() => downloadArtist(ai)} disabled={zipping} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"><FileDown size={12} /> 정산 PDF</button>
+                    <button onClick={() => downloadArtist(ai, 'CASH')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">현금</button>
+                    <button onClick={() => downloadArtist(ai, 'CARD')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">카드</button>
+                  </div>
                 </div>
 
                 {a.works.length === 0 ? (
@@ -752,12 +780,18 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                           <p className="text-sm font-medium text-gray-900 truncate">{w.title || '(제목 없음)'}</p>
                           <p className="text-xs text-gray-400 truncate">{[w.size, w.medium, w.year].filter(Boolean).join(' · ')}{w.listPrice ? ` · 희망 ${w.listPrice}` : ''}</p>
                         </div>
-                        {/* 판매가 */}
+                        {/* 판매가 + 결제수단(카드/현금) */}
                         {w.sold && (
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
+                              <button type="button" onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
+                                className={`px-2 py-1 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
+                              <button type="button" onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
+                                className={`px-2 py-1 ${w.paymentMethod === 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>현금</button>
+                            </div>
                             <input type="text" inputMode="numeric" value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
                               onChange={e => updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 })}
-                              placeholder="판매가" className="w-28 px-2 py-1 border border-gray-300 rounded text-sm text-right" />
+                              placeholder="판매가" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right" />
                             <span className="text-xs text-gray-400">원</span>
                           </div>
                         )}
@@ -802,6 +836,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
 // 출품작 이미지 셀 (compact 업로드)
 function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url: string) => void }) {
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const handle = async (raw: File) => {
     setUploading(true);
@@ -813,35 +848,78 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
       onChange(res.data.url);
     } catch { toast.error('이미지 업로드 실패'); } finally { setUploading(false); }
   };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const f = Array.from(e.dataTransfer.files).find(file => file.type.startsWith('image/'));
+    if (f) handle(f);
+    else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
   return (
-    <button type="button" onClick={() => inputRef.current?.click()} className="w-16 h-16 shrink-0 rounded border border-dashed border-gray-300 overflow-hidden flex items-center justify-center text-gray-400 hover:border-gray-400 bg-gray-50">
+    <button type="button" onClick={() => inputRef.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+      title="클릭 또는 이미지를 끌어다 놓기"
+      className={`w-16 h-16 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
       {uploading ? <Loader2 size={16} className="animate-spin" /> : value ? <img src={value} alt="" className="w-full h-full object-cover" /> : <Upload size={16} />}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handle(f); e.target.value = ''; }} />
     </button>
   );
 }
 
+// 크기 문자열 ↔ 가로/세로 분리 (size는 캡션·PDF용 단일 출처로 유지)
+function splitSize(s: string): { w: string; h: string } {
+  const m = String(s || '').match(/([\d.]+)\s*[x×X*]\s*([\d.]+)/);
+  return m ? { w: m[1], h: m[2] } : { w: '', h: '' };
+}
+function composeSize(w: string, h: string): string {
+  const ws = (w || '').trim(), hs = (h || '').trim();
+  if (!ws && !hs) return '';
+  if (ws && hs) return `${ws}×${hs} cm`;
+  return `${ws || hs} cm`;
+}
+
 function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
-  const add = () => onChange([...value, { image: '', title: '', size: '', medium: '', year: '', price: '' }]);
+  const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
   const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  const inputCls = "px-2 py-1.5 border border-gray-200 rounded text-sm";
   return (
     <div className="space-y-3">
       {value.length === 0 && <p className="text-xs text-gray-400">출품할 작품을 추가하세요.</p>}
-      {value.map((a, i) => (
-        <div key={i} className="flex gap-2 items-start border border-gray-100 rounded-lg p-2">
-          <span className="text-xs text-gray-400 w-5 pt-1 text-center shrink-0">{i + 1}</span>
-          <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
-          <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
-            <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className="col-span-2 px-2 py-1.5 border border-gray-200 rounded text-sm" />
-            <input value={a.size} onChange={e => upd(i, { size: e.target.value })} placeholder="크기 (33.4x24.2 cm)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
-            <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
-            <input value={a.year} onChange={e => upd(i, { year: e.target.value })} placeholder="제작년도" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
-            <input value={a.price} onChange={e => upd(i, { price: e.target.value })} placeholder="가격 (비매/₩320,000)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
+      {value.map((a, i) => {
+        const parsed = splitSize(a.size);
+        const w = a.width !== undefined ? a.width : parsed.w;
+        const h = a.height !== undefined ? a.height : parsed.h;
+        const priceHint = koreanWon(a.price);
+        return (
+          <div key={i} className="flex gap-2 items-start border border-gray-100 rounded-lg p-2">
+            <span className="text-xs text-gray-400 w-5 pt-1 text-center shrink-0">{i + 1}</span>
+            <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
+            <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
+              <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`col-span-2 ${inputCls}`} />
+              {/* 크기: 가로 × 세로 (cm) */}
+              <div className="col-span-2 flex items-center gap-1.5">
+                <input value={w} onChange={e => upd(i, { width: e.target.value, size: composeSize(e.target.value, h) })} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <span className="text-gray-400 text-sm shrink-0">×</span>
+                <input value={h} onChange={e => upd(i, { height: e.target.value, size: composeSize(w, e.target.value) })} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <span className="text-xs text-gray-500 shrink-0">cm</span>
+              </div>
+              <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
+              <input value={a.year} onChange={e => upd(i, { year: e.target.value })} placeholder="제작년도" className={inputCls} />
+              {/* 가격: 단위 '원' + 한글 금액 힌트 */}
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <input value={a.price} onChange={e => upd(i, { price: e.target.value })} placeholder="가격 (예: 230000)" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
+                  <span className="text-xs text-gray-500 shrink-0">원</span>
+                </div>
+                {priceHint && <span className="text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
+              </div>
+            </div>
+            <button onClick={() => rm(i)} className="p-1 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={16} /></button>
           </div>
-          <button onClick={() => rm(i)} className="p-1 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={16} /></button>
-        </div>
-      ))}
+        );
+      })}
       <button onClick={add} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"><Plus size={15} /> 작품 추가</button>
     </div>
   );
@@ -879,8 +957,6 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
         <input value={value.nameKo} onChange={e => set({ nameKo: e.target.value })} placeholder="이름 (한글)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
-        <input value={value.nameEn} onChange={e => set({ nameEn: e.target.value })} placeholder="이름 (영문)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
-        <input value={value.birth} onChange={e => set({ birth: e.target.value })} placeholder="출생 (예: b. 1993, Seoul)" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
         <input value={value.tel} onChange={e => set({ tel: formatPhoneNumber(e.target.value) })} placeholder="연락처 (010-1234-5678)" inputMode="numeric" className="px-2 py-1.5 border border-gray-200 rounded text-sm" />
         <input value={value.email} onChange={e => set({ email: e.target.value })} placeholder="이메일" className="col-span-2 px-2 py-1.5 border border-gray-200 rounded text-sm" />
       </div>
@@ -904,18 +980,18 @@ function NoteEditor({ value, onChange }: { value: ArtistNote; onChange: (v: Arti
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">시리즈 / 섹션</span>
-          <button onClick={addSection} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"><Plus size={13} /> 섹션 추가</button>
+          <span className="text-sm font-medium text-gray-700">작품별 상세설명</span>
+          <button onClick={addSection} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"><Plus size={13} /> 상세설명 추가</button>
         </div>
-        {value.sections.length === 0 ? <p className="text-xs text-gray-400">시리즈별로 나눠 쓰려면 섹션을 추가하세요. (선택)</p> : (
+        {value.sections.length === 0 ? <p className="text-xs text-gray-400">작품별로 설명을 따로 적으려면 추가하세요. (선택)</p> : (
           <div className="space-y-2">
             {value.sections.map((s, i) => (
               <div key={i} className="rounded-lg border border-gray-200 p-2 space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <input value={s.title} onChange={e => updSection(i, { title: e.target.value })} placeholder="소제목 (예: 호랑이 시리즈)" className="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm" />
+                  <input value={s.title} onChange={e => updSection(i, { title: e.target.value })} placeholder="작품명 / 소제목" className="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm" />
                   <button onClick={() => rmSection(i)} className="p-1.5 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={15} /></button>
                 </div>
-                <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="섹션 내용" className="w-full h-24 px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
+                <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="해당 작품에 대한 상세 설명" className="w-full h-24 px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
               </div>
             ))}
           </div>
