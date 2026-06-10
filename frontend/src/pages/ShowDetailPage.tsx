@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Heart, MapPin, Clock, DollarSign, Calendar, Users, ArrowLeft, Trash2, Edit3, Save, X } from 'lucide-react';
+import { Heart, MapPin, Clock, DollarSign, Calendar, Users, ArrowLeft, Trash2, Edit3, Save, X, Camera, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -24,6 +24,7 @@ export default function ShowDetailPage() {
   const [editingDesc, setEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState('');
   const [bgColor, setBgColor] = useState('#1a1a2e');
+  const [photoMgrOpen, setPhotoMgrOpen] = useState(false);
 
   const { data: show, isLoading } = useQuery<Show>({
     queryKey: ['show', id],
@@ -150,6 +151,42 @@ export default function ShowDetailPage() {
               </div>
             )}
         </div>
+
+        {/* 사진 관리 (소유자) — 갤러리 관리 페이지와 동일한 컴팩트 토글 */}
+        {canEdit && (
+          <div className="max-w-lg mx-auto mt-3">
+            <button
+              onClick={() => setPhotoMgrOpen(!photoMgrOpen)}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 cursor-pointer"
+              aria-label="사진 관리"
+            >
+              <Camera size={14} /> 사진 관리
+              <ChevronRight size={14} className={`transition-transform ${photoMgrOpen ? 'rotate-90' : ''}`} />
+            </button>
+            {photoMgrOpen && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">포스터(대표) 변경</p>
+                  <HeroImageEdit
+                    value={show.posterImage}
+                    onChange={(url) => posterMutation.mutate(url)}
+                    className="w-28 aspect-[3/4] rounded-lg"
+                    label="포스터"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">추가 사진 (최대 10장, 드래그앤드롭 지원)</p>
+                  <MultiImageUpload
+                    images={show.images || []}
+                    onAdd={(url) => addImageMutation.mutate(url)}
+                    onRemove={(index) => { const im = show.images?.[index]; if (im) removeImageMutation.mutate(im.id); }}
+                    maxCount={10}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Lightbox */}
@@ -266,31 +303,6 @@ export default function ShowDetailPage() {
           <p className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed">{show.description}</p>
         )}
       </div>
-
-      {/* 사진 관리 (소유자) */}
-      {canEdit && (
-        <div className="mt-10 border-t border-gray-100 pt-6">
-          <h3 className="text-xl font-medium mb-3">사진 관리</h3>
-          <div className="mb-5">
-            <p className="text-xs font-medium text-gray-400 mb-1">포스터 이미지 (대표)</p>
-            <HeroImageEdit
-              value={show.posterImage}
-              onChange={(url) => posterMutation.mutate(url)}
-              className="w-full max-w-xs aspect-[4/3] rounded-lg"
-              label="포스터"
-            />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-400 mb-1">추가 사진 (최대 10장, 드래그앤드롭 지원)</p>
-            <MultiImageUpload
-              images={show.images || []}
-              onAdd={(url) => addImageMutation.mutate(url)}
-              onRemove={(index) => { const img = show.images?.[index]; if (img) removeImageMutation.mutate(img.id); }}
-              maxCount={10}
-            />
-          </div>
-        </div>
-      )}
 
       {/* 삭제 */}
       {canDelete && (
