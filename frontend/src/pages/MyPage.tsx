@@ -1773,10 +1773,10 @@ function MyShowsSection() {
   const { user } = useAuthStore();
   const [showForm, setShowForm] = useState(false);
 
-  // 내 갤러리 (전시 등록 시 선택용)
+  // 내 갤러리 (전시 등록 시 선택용) — owned=true로 본인 갤러리 전체 조회 (/galleries/my 라우트는 없음)
   const { data: myGalleries = [] } = useQuery<Gallery[]>({
     queryKey: ['my-galleries'],
-    queryFn: () => api.get('/galleries/my').then(r => r.data),
+    queryFn: () => api.get('/galleries?owned=true').then(r => r.data).catch(() => []),
   });
   const approvedGalleries = myGalleries.filter(g => g.status === 'APPROVED');
 
@@ -1905,7 +1905,21 @@ function MyShowsSection() {
             <HeroImageEdit value={form.posterImage} onChange={(url) => setForm({ ...form, posterImage: url })} onRemove={() => setForm({ ...form, posterImage: '' })} className="w-full aspect-[4/3]" label="포스터 이미지" />
             <div className="p-5 space-y-3">
               <div className="flex flex-wrap gap-2 items-center">
-                <select value={form.galleryId} onChange={e => setForm({ ...form, galleryId: Number(e.target.value) })} className="text-xs px-2.5 py-1 bg-gray-900 text-white rounded-full cursor-pointer focus:outline-none">
+                <select value={form.galleryId} onChange={e => {
+                  const gid = Number(e.target.value);
+                  const g = approvedGalleries.find(x => x.id === gid);
+                  setForm(prev => {
+                    const prevG = approvedGalleries.find(x => x.id === prev.galleryId);
+                    // 위치를 사용자가 직접 입력하지 않았으면(비었거나 이전 갤러리 주소와 동일) 갤러리 주소 자동 입력
+                    const locUntouched = !prev.location || (!!prevG && prev.location === prevG.address);
+                    return {
+                      ...prev,
+                      galleryId: gid,
+                      location: g && locUntouched ? g.address : prev.location,
+                      region: g ? g.region : prev.region,
+                    };
+                  });
+                }} className="text-xs px-2.5 py-1 bg-gray-900 text-white rounded-full cursor-pointer focus:outline-none">
                   <option value={0}>갤러리 선택</option>
                   {approvedGalleries.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
@@ -1939,7 +1953,7 @@ function MyShowsSection() {
               </div>
               <div className="space-y-1 text-sm text-gray-600">
                 <div className="flex items-center gap-2"><Ticket size={15} className="text-gray-400 shrink-0" /><EditableText value={form.admissionFee} onChange={v => setForm({ ...form, admissionFee: v })} placeholder="입장료 (예: 무료, 5,000원)" className="text-sm flex-1" /></div>
-                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="위치 (주소)" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="위치 (갤러리 선택 시 자동 입력, 외부 장소면 직접 수정)" className="text-sm flex-1" /></div>
               </div>
               <div className="pt-3 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-400 mb-1">전시 소개</p>

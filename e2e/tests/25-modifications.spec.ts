@@ -155,3 +155,19 @@ test('#13 (UI) 포트폴리오 아트페어 경력은 가이드 placeholder의 t
   await expect(ta).toBeVisible({ timeout: 10000 });
   await ctx.close();
 });
+
+// ───────── (추가) 전시 등록 시 갤러리 선택 → 위치(주소) 자동 입력 ─────────
+test('전시 등록 폼: 갤러리 선택 시 위치(주소) 자동 입력', async ({ browser }) => {
+  const { page, ctx } = await openAs(browser, 'gallery');
+  await page.goto('/mypage?tab=my-shows');
+  await page.getByRole('button', { name: '전시 등록', exact: true }).click();
+
+  const locInput = page.locator('input[placeholder*="자동 입력"]');
+  await expect(locInput).toBeVisible({ timeout: 10000 });
+  await expect(locInput).toHaveValue(''); // 선택 전 비어있음
+
+  const gallerySelect = page.locator('select').filter({ hasText: '갤러리 선택' });
+  await gallerySelect.selectOption({ index: 1 }); // 첫 승인 갤러리 선택
+  await expect(locInput).toHaveValue(/.+/, { timeout: 5000 }); // 갤러리 주소가 자동 입력됨
+  await ctx.close();
+});
