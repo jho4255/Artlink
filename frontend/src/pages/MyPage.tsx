@@ -43,7 +43,7 @@ function isCareerEmpty(c: Career): boolean {
   return c.artFair.length === 0 && c.solo.length === 0 && c.group.length === 0;
 }
 
-const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
+const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
 const INSTAGRAM_APP_ID = import.meta.env.VITE_INSTAGRAM_APP_ID as string;
 

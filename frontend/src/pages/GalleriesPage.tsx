@@ -23,7 +23,7 @@ import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Gallery } from '@/types';
 
 // 지역 필터 옵션
-const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
+const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
 // 별점 필터 옵션
 const ratingFilters = [

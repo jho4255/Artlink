@@ -8,7 +8,7 @@ import SkeletonImage from '@/components/shared/SkeletonImage';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
 import type { Exhibition } from '@/types';
 
-const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
+const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
 export default function ExhibitionsPage() {
   const navigate = useNavigate();

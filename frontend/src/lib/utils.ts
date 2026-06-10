@@ -153,10 +153,13 @@ export function getDday(deadline: string | Date): number {
 // 지역 라벨 매핑
 export const regionLabels: Record<string, string> = {
   SEOUL: '서울',
+  INCHEON: '인천',
   GYEONGGI_NORTH: '경기 북부',
   GYEONGGI_SOUTH: '경기 남부',
   DAEJEON: '대전',
+  DAEGU: '대구',
   BUSAN: '부산',
+  ULSAN: '울산',
 };
 
 // 전시 타입 라벨

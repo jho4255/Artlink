@@ -9,7 +9,7 @@ import SkeletonImage from '@/components/shared/SkeletonImage';
 import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
 import type { Show } from '@/types';
 
-const regions = ['SEOUL', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'BUSAN'];
+const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 const statusFilters = ['ongoing', 'upcoming', 'ended'] as const;
 
 export default function ShowsPage() {
