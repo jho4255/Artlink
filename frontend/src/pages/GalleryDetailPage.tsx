@@ -71,6 +71,7 @@ export default function GalleryDetailPage() {
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [contactAddress, setContactAddress] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [contactRegion, setContactRegion] = useState('SEOUL');
 
   // 홍보 사진 업로드 폼 상태 (전시 종료 후, 갤러리 오너 전용)
   const [promoExhibitionId, setPromoExhibitionId] = useState<number | null>(null);
@@ -153,7 +154,7 @@ export default function GalleryDetailPage() {
 
   // 연락처(전화번호·주소) 수정 (갤러리 오너 전용, 승인 불필요)
   const contactMutation = useMutation({
-    mutationFn: (payload: { address: string; phone: string }) => api.patch(`/galleries/${id}/detail`, payload),
+    mutationFn: (payload: { address: string; phone: string; region: string }) => api.patch(`/galleries/${id}/detail`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
@@ -400,11 +401,21 @@ export default function GalleryDetailPage() {
                   placeholder="예: 02-739-1212"
                 />
               </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 지역</span>
+                <select
+                  value={contactRegion}
+                  onChange={(e) => setContactRegion(e.target.value)}
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm bg-white"
+                >
+                  {Object.keys(regionLabels).map((r) => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                </select>
+              </label>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
                     if (!contactAddress.trim() || !contactPhone.trim()) { toast.error('주소와 전화번호를 입력해주세요.'); return; }
-                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim() });
+                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim(), region: contactRegion });
                   }}
                   disabled={contactMutation.isPending}
                   className="px-3 py-1.5 bg-[#c4302b] text-white rounded text-sm disabled:opacity-50"
@@ -418,7 +429,7 @@ export default function GalleryDetailPage() {
                 <MapPin size={14} /> {gallery.address}
                 {isOwner && (
                   <button
-                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setIsEditingContact(true); }}
+                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setIsEditingContact(true); }}
                     className="ml-1 text-xs text-[#c4302b] underline"
                   >수정</button>
                 )}

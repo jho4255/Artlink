@@ -83,6 +83,23 @@ describe('Gallery Routes', () => {
     expect(res.body.detailDesc).toBe('수정된 상세 소개');
   });
 
+  it('PATCH /api/galleries/:id/detail — owner가 지역(region) 수정 가능', async () => {
+    const token = authToken(3, 'GALLERY');
+    const res = await request.patch(`/api/galleries/${galleryId}/detail`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ region: 'DAEGU' });
+    expect(res.status).toBe(200);
+    expect(res.body.region).toBe('DAEGU');
+  });
+
+  it('PATCH /api/galleries/:id/detail — 유효하지 않은 지역은 400', async () => {
+    const token = authToken(3, 'GALLERY');
+    const res = await request.patch(`/api/galleries/${galleryId}/detail`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ region: 'MARS' });
+    expect(res.status).toBe(400);
+  });
+
   // Admin 삭제
   it('DELETE /api/galleries/:id — Admin만 삭제 가능', async () => {
     const tempGallery = await testPrisma.gallery.create({

@@ -261,6 +261,13 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
       if (!address) throw new AppError('주소를 입력해주세요.', 400);
       data.address = address;
     }
+    // 지역도 갤러리 주인이 승인 없이 즉시 수정 가능 (허용된 지역 코드만)
+    if (req.body.region !== undefined) {
+      const region = String(req.body.region).trim();
+      const ALLOWED = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
+      if (!ALLOWED.includes(region)) throw new AppError('유효하지 않은 지역입니다.', 400);
+      data.region = region;
+    }
 
     const updated = await prisma.gallery.update({
       where: { id: gallery.id },
