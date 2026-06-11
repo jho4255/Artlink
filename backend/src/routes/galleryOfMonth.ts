@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
+import { maskGallery } from '../lib/sanitize';
 
 const router = Router();
 
@@ -16,7 +17,8 @@ router.get('/', async (_req, res, next) => {
         }
       }
     });
-    res.json(galleries);
+    // 중첩된 갤러리에서 Instagram 토큰 등 비밀 제거 (공개 응답)
+    res.json(galleries.map((g) => ({ ...g, gallery: maskGallery(g.gallery) })));
   } catch (error) { next(error); }
 });
 
@@ -31,7 +33,7 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
       create: { galleryId, expiresAt: new Date(expiresAt), title: title || null },
       include: { gallery: true }
     });
-    res.status(201).json(entry);
+    res.status(201).json({ ...entry, gallery: maskGallery(entry.gallery) });
   } catch (error) { next(error); }
 });
 

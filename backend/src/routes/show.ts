@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
+import { maskGallery } from '../lib/sanitize';
 
 // 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
 const artistEntrySchema = z.object({
@@ -155,11 +156,12 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       isFavorited = !!fav;
     }
 
+    // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트)
     const { owner, ...galleryRest } = show.gallery as any;
     res.json({
       ...show,
       artists: normalizeArtists(show.artists),
-      gallery: { ...galleryRest, ownerId: owner?.id },
+      gallery: maskGallery({ ...galleryRest, ownerId: owner?.id }),
       isFavorited,
     });
   } catch (error) { next(error); }
@@ -283,7 +285,12 @@ router.delete('/:id/images/:imageId', authenticate, authorize('GALLERY'), async 
     if (!show) throw new AppError('전시를 찾을 수 없습니다.', 404);
     if (show.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
-    await prisma.showImage.delete({ where: { id: parseInt(req.params.imageId as string) } });
+    // 대상 이미지가 이 전시(show)에 속하는지 검증 (다른 전시 이미지 삭제 IDOR 차단)
+    const imageId = parseInt(req.params.imageId as string);
+    const image = await prisma.showImage.findUnique({ where: { id: imageId }, select: { showId: true } });
+    if (!image || image.showId !== show.id) throw new AppError('이미지를 찾을 수 없습니다.', 404);
+
+    await prisma.showImage.delete({ where: { id: imageId } });
     res.json({ message: '이미지가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });

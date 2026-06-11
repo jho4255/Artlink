@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
+import { maskAnonymousReviews } from '../lib/sanitize';
 
 const reviewCreateSchema = z.object({
   galleryId: z.number().int().positive('유효한 갤러리 ID가 필요합니다.'),
@@ -23,18 +24,19 @@ const reviewUpdateSchema = z.object({
 
 const router = Router();
 
-// 갤러리 리뷰 목록 조회
-router.get('/gallery/:galleryId', async (req, res, next) => {
+// 갤러리 리뷰 목록 조회 (optionalAuth: 작성자 본인/관리자만 익명 리뷰 실명 확인)
+router.get('/gallery/:galleryId', optionalAuth, async (req, res, next) => {
   try {
     const reviews = await prisma.review.findMany({
-      where: { galleryId: parseInt(req.params.galleryId) },
+      where: { galleryId: parseInt(req.params.galleryId as string) },
       include: {
-        user: { select: { id: true, name: true, avatar: true } },
+        user: { select: { id: true, name: true, nickname: true, avatar: true } },
         exhibition: { select: { id: true, title: true } },
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(reviews);
+    // 익명 리뷰의 작성자 신원(user/userId)은 본인·관리자 외에는 마스킹
+    res.json(maskAnonymousReviews(reviews as any[], req.user));
   } catch (error) { next(error); }
 });
 

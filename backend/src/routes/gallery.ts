@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import logger from '../lib/logger';
+import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
 
 // Instagram Graph API 호출 시 타임아웃 (5초)
 const INSTAGRAM_TIMEOUT_MS = 5000;
@@ -57,15 +58,8 @@ const galleryCreateSchema = z.object({
   email: z.string().email('유효한 이메일 형식이 아닙니다.').optional().or(z.literal('')),
 });
 
-/** 토큰을 제거하고 instagramConnected boolean으로 변환, 프로필 비공개 시 instagramUrl 숨김 */
-function maskInstagram(g: any) {
-  const { instagramAccessToken, ...rest } = g;
-  return {
-    ...rest,
-    instagramConnected: !!instagramAccessToken,
-    instagramUrl: g.instagramProfileVisible ? g.instagramUrl : null,
-  };
-}
+/** 토큰을 제거하고 instagramConnected boolean으로 변환 — 공유 sanitize.maskGallery 사용 */
+const maskInstagram = maskGallery;
 
 const router = Router();
 
@@ -162,7 +156,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       isFavorited = !!fav;
     }
 
-    res.json(maskInstagram({ ...gallery, isFavorited }));
+    // 익명 리뷰의 작성자 신원은 본인/관리자 외에는 숨김 (PII 보호)
+    const reviews = maskAnonymousReviews(gallery.reviews as any[], req.user);
+    res.json(maskInstagram({ ...gallery, reviews, isFavorited }));
   } catch (error) { next(error); }
 });
 

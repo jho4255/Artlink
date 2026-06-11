@@ -145,12 +145,19 @@ router.patch('/images/:imageId/explore', authenticate, authorize('ARTIST'), asyn
   } catch (err) { next(err); }
 });
 
-// 포트폴리오 이미지 삭제
+// 포트폴리오 이미지 삭제 (본인 포트폴리오 이미지만)
 router.delete('/images/:imageId', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
-    await prisma.portfolioImage.delete({
-      where: { id: parseInt(req.params.imageId as string) }
+    const imageId = parseInt(req.params.imageId as string);
+    // 소유권 확인: 이미지가 요청자 본인의 포트폴리오에 속하는지 검증 (IDOR 차단)
+    const image = await prisma.portfolioImage.findUnique({
+      where: { id: imageId },
+      include: { portfolio: { select: { userId: true } } },
     });
+    if (!image || image.portfolio.userId !== req.user!.id) {
+      throw new AppError('이미지를 찾을 수 없습니다.', 404);
+    }
+    await prisma.portfolioImage.delete({ where: { id: imageId } });
     res.json({ message: '삭제되었습니다.' });
   } catch (error) { next(error); }
 });

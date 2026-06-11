@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate';
 import { sendPortfolioEmail } from '../lib/mailer';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { safeFileUrl } from '../lib/safeUrl';
+import { maskGallery } from '../lib/sanitize';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -215,12 +216,13 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       isFavorited = !!fav;
     }
 
-    // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록
+    // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록.
+    // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트).
     const { owner, ...galleryRest } = exhibition.gallery as any;
     res.json({
       ...exhibition,
       customFields: parseCustomFields(exhibition.customFields),
-      gallery: { ...galleryRest, ownerId: owner?.id },
+      gallery: maskGallery({ ...galleryRest, ownerId: owner?.id }),
       isFavorited,
     });
   } catch (error) { next(error); }
