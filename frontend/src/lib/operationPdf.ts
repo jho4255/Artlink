@@ -20,6 +20,11 @@ const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'a
 function esc(s: any): string {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 }
+// R2 등 외부(크로스오리진) 이미지는 동일출처 프록시 경유 → 캔버스/PDF taint 없이 렌더(CORS 불필요).
+// 상대경로(로컬 /uploads·/images)는 이미 동일출처라 그대로 사용.
+function proxied(url: string): string {
+  return /^https?:\/\//i.test(url) ? `/api/upload/image-proxy?url=${encodeURIComponent(url)}` : url;
+}
 // 파일명 안전화 (경로 구분자/제어문자 제거)
 function safeName(s: string): string {
   return (s || '').replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim() || '무제';
@@ -40,7 +45,7 @@ function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, 
     : list.map((a, i) => `
       <tr>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${i + 1}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${a.image ? `<img src="${esc(a.image)}" crossorigin="anonymous" style="width:90px;height:90px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center">${a.image ? `<img src="${esc(proxied(a.image))}" crossorigin="anonymous" style="width:90px;height:90px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.title)}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.size)}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.medium)}</td>
@@ -170,7 +175,7 @@ function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '
   const rows = sold.length === 0
     ? `<tr><td colspan="3" style="border:1px solid #ddd;padding:10px;text-align:center;color:#999">판매된 작품이 없습니다.</td></tr>`
     : sold.map(w => `<tr>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center;width:90px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:70px;height:70px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #ddd;padding:8px;text-align:center;width:90px">${w.image ? `<img src="${esc(proxied(w.image))}" crossorigin="anonymous" style="width:70px;height:70px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
         <td style="border:1px solid #ddd;padding:8px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
       </tr>`).join('');
@@ -199,7 +204,7 @@ function artistBlock(a: SettlementArtist): string {
   const rows = sold.length === 0
     ? `<tr><td colspan="3" style="border:1px solid #eee;padding:8px;text-align:center;color:#999">판매된 작품 없음</td></tr>`
     : sold.map(w => `<tr>
-        <td style="border:1px solid #eee;padding:6px;text-align:center;width:80px">${w.image ? `<img src="${esc(w.image)}" crossorigin="anonymous" style="width:60px;height:60px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="border:1px solid #eee;padding:6px;text-align:center;width:80px">${w.image ? `<img src="${esc(proxied(w.image))}" crossorigin="anonymous" style="width:60px;height:60px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
         <td style="border:1px solid #eee;padding:6px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
         <td style="border:1px solid #eee;padding:6px;text-align:right;width:120px">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
       </tr>`).join('');
@@ -318,7 +323,7 @@ function imageToJpegBlob(url: string): Promise<Blob | null> {
       } catch { resolve(null); }
     };
     img.onerror = () => resolve(null);
-    img.src = url;
+    img.src = proxied(url);
   });
 }
 
