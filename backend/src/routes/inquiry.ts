@@ -18,6 +18,7 @@ const faqSchema = z.object({
   question: z.string().min(1, '질문을 입력해주세요.').max(500),
   answer: z.string().min(1, '답변을 입력해주세요.').max(5000),
   order: z.number().int().optional(),
+  category: z.enum(['GENERAL', 'GALLERY', 'ARTIST']).optional(),
 });
 
 const router = Router();
@@ -37,8 +38,8 @@ router.get('/faq', async (_req, res, next) => {
 // POST /inquiries/faq — FAQ 작성 (Admin)
 router.post('/faq', authenticate, authorize('ADMIN'), validate(faqSchema), async (req, res, next) => {
   try {
-    const { question, answer, order } = req.body;
-    const faq = await prisma.faq.create({ data: { question, answer, order: order ?? 0 } });
+    const { question, answer, order, category } = req.body;
+    const faq = await prisma.faq.create({ data: { question, answer, order: order ?? 0, category: category ?? 'GENERAL' } });
     res.status(201).json(faq);
   } catch (err) {
     next(err);
@@ -52,7 +53,12 @@ router.patch('/faq/:id', authenticate, authorize('ADMIN'), validate(faqSchema), 
     if (!faq) throw new AppError('FAQ를 찾을 수 없습니다.', 404);
     const updated = await prisma.faq.update({
       where: { id: faq.id },
-      data: { question: req.body.question, answer: req.body.answer, order: req.body.order ?? faq.order },
+      data: {
+        question: req.body.question,
+        answer: req.body.answer,
+        order: req.body.order ?? faq.order,
+        category: req.body.category ?? faq.category,
+      },
     });
     res.json(updated);
   } catch (err) {

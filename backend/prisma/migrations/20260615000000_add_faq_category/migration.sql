@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Faq" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'GENERAL';

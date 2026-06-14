@@ -12,7 +12,17 @@ interface Faq {
   question: string;
   answer: string;
   order: number;
+  category: string;
 }
+
+type FaqCategory = 'ALL' | 'GENERAL' | 'GALLERY' | 'ARTIST';
+
+const CATEGORY_LABELS: Record<FaqCategory, string> = {
+  ALL: '전체',
+  GENERAL: '공통',
+  GALLERY: '갤러리',
+  ARTIST: '아티스트',
+};
 
 export default function SupportPage() {
   const { user } = useAuthStore();
@@ -66,6 +76,10 @@ function FaqSection() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const [formCategory, setFormCategory] = useState<'GENERAL' | 'GALLERY' | 'ARTIST'>('GENERAL');
+  const [formOrder, setFormOrder] = useState<string>('');
+
+  const [activeCategory, setActiveCategory] = useState<FaqCategory>('ALL');
 
   const { data: faqs = [], isLoading } = useQuery<Faq[]>({
     queryKey: ['faqs'],
@@ -73,61 +87,69 @@ function FaqSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { question: string; answer: string; order?: number }) => api.post('/inquiries/faq', data),
+    mutationFn: (data: { question: string; answer: string; order: number; category: string }) => api.post('/inquiries/faq', data),
     retry: false,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] });
-      resetForm();
-      toast.success('FAQ가 등록되었습니다.');
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['faqs'] }); resetForm(); toast.success('FAQ가 등록되었습니다.'); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'FAQ 등록에 실패했습니다.'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, ...data }: { id: number; question: string; answer: string }) => api.patch(`/inquiries/faq/${id}`, data),
+    mutationFn: ({ id, ...data }: { id: number; question: string; answer: string; order: number; category: string }) =>
+      api.patch(`/inquiries/faq/${id}`, data),
     retry: false,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] });
-      resetForm();
-      toast.success('FAQ가 수정되었습니다.');
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['faqs'] }); resetForm(); toast.success('FAQ가 수정되었습니다.'); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'FAQ 수정에 실패했습니다.'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/inquiries/faq/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] });
-      toast.success('FAQ가 삭제되었습니다.');
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['faqs'] }); toast.success('FAQ가 삭제되었습니다.'); },
   });
 
   const resetForm = () => {
-    setShowForm(false);
-    setEditingId(null);
-    setQuestion('');
-    setAnswer('');
+    setShowForm(false); setEditingId(null);
+    setQuestion(''); setAnswer(''); setFormCategory('GENERAL'); setFormOrder('');
   };
 
   const startEdit = (faq: Faq) => {
     setEditingId(faq.id);
     setQuestion(faq.question);
     setAnswer(faq.answer);
+    setFormCategory(faq.category as 'GENERAL' | 'GALLERY' | 'ARTIST');
+    setFormOrder(String(faq.order));
     setShowForm(true);
   };
 
   const handleSubmit = () => {
     if (!question.trim()) { toast.error('질문을 입력해주세요.'); return; }
     if (!answer.trim()) { toast.error('답변을 입력해주세요.'); return; }
+    const orderNum = parseInt(formOrder) || (faqs.length + 1);
     if (editingId) {
-      updateMutation.mutate({ id: editingId, question: question.trim(), answer: answer.trim() });
+      updateMutation.mutate({ id: editingId, question: question.trim(), answer: answer.trim(), order: orderNum, category: formCategory });
     } else {
-      createMutation.mutate({ question: question.trim(), answer: answer.trim(), order: faqs.length });
+      createMutation.mutate({ question: question.trim(), answer: answer.trim(), order: orderNum, category: formCategory });
     }
   };
 
+  const filtered = faqs.filter(faq => activeCategory === 'ALL' || faq.category === activeCategory);
+
   return (
     <>
+      {/* 카테고리 탭 */}
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {(['ALL', 'GENERAL', 'GALLERY', 'ARTIST'] as FaqCategory[]).map(cat => (
+          <button
+            key={cat}
+            onClick={() => { setActiveCategory(cat); setExpandedId(null); }}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              activeCategory === cat ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {CATEGORY_LABELS[cat]}
+          </button>
+        ))}
+      </div>
+
       {/* Admin: FAQ 추가 버튼 */}
       {isAdmin && (
         <div className="flex justify-end mb-4">
@@ -150,6 +172,30 @@ function FaqSection() {
             className="overflow-hidden mb-6"
           >
             <div className="p-5 bg-gray-50 rounded-lg space-y-3">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">카테고리</label>
+                  <select
+                    value={formCategory}
+                    onChange={e => setFormCategory(e.target.value as 'GENERAL' | 'GALLERY' | 'ARTIST')}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  >
+                    <option value="GENERAL">공통</option>
+                    <option value="GALLERY">갤러리</option>
+                    <option value="ARTIST">아티스트</option>
+                  </select>
+                </div>
+                <div className="w-28">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">번호</label>
+                  <input
+                    value={formOrder}
+                    onChange={e => setFormOrder(e.target.value)}
+                    placeholder="예: 101"
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">질문</label>
                 <input
@@ -190,27 +236,24 @@ function FaqSection() {
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 animate-pulse" />)}
         </div>
-      ) : faqs.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <HelpCircle size={40} className="mx-auto mb-3 opacity-50" />
           <p>등록된 FAQ가 없습니다.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {faqs.map((faq, i) => (
-            <div
-              key={faq.id}
-              className="border-b border-gray-200 overflow-hidden"
-            >
+        <div className="divide-y divide-gray-100 border-t border-gray-100">
+          {filtered.map(faq => (
+            <div key={faq.id} className="overflow-hidden">
               <button
                 onClick={() => setExpandedId(expandedId === faq.id ? null : faq.id)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center gap-4 px-4 py-4 text-left hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-gray-900 font-bold text-sm flex-none">Q</span>
-                  <span className="font-medium text-gray-900 truncate">{faq.question}</span>
-                </div>
-                {expandedId === faq.id ? <ChevronUp size={18} className="text-gray-400 flex-none" /> : <ChevronDown size={18} className="text-gray-400 flex-none" />}
+                <span className="text-sm text-gray-400 font-mono w-10 flex-none text-center">{faq.order}</span>
+                <span className="font-medium text-gray-900 flex-1 min-w-0 truncate">{faq.question}</span>
+                {expandedId === faq.id
+                  ? <ChevronUp size={18} className="text-gray-400 flex-none" />
+                  : <ChevronDown size={18} className="text-gray-400 flex-none" />}
               </button>
               <AnimatePresence>
                 {expandedId === faq.id && (
@@ -220,7 +263,7 @@ function FaqSection() {
                     exit={{ height: 0, opacity: 0 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-4 pb-4">
+                    <div className="pl-[4.5rem] pr-4 pb-4">
                       <div className="flex items-start gap-2 border-l-2 border-gray-200 pl-4 py-2">
                         <span className="text-gray-500 font-bold text-sm flex-none mt-0.5">A</span>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">{faq.answer}</p>
