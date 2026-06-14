@@ -144,10 +144,15 @@ router.get('/image-proxy', async (req, res, next) => {
     const upstream = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) });
     if (upstream.status >= 300 && upstream.status < 400) throw new AppError('허용되지 않은 리다이렉트입니다.', 400);
     if (!upstream.ok) throw new AppError('이미지를 가져오지 못했습니다.', 502);
-    const ct = upstream.headers.get('content-type') || '';
-    if (!ct.startsWith('image/')) throw new AppError('이미지 파일이 아닙니다.', 400);
+    // 래스터 이미지 타입만 허용 — image/svg+xml 등 스크립트 실행 가능 타입 차단(동일출처 XSS 방지)
+    const lc = (upstream.headers.get('content-type') || '').toLowerCase();
+    const SAFE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+    if (!SAFE.some((t) => lc.startsWith(t))) throw new AppError('지원하지 않는 이미지 형식입니다.', 400);
     const buf = Buffer.from(await upstream.arrayBuffer());
-    res.setHeader('Content-Type', ct);
+    res.setHeader('Content-Type', lc.split(';')[0]);
+    res.setHeader('X-Content-Type-Options', 'nosniff');               // MIME 스니핑 차단
+    res.setHeader('Content-Disposition', 'inline; filename="image"');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox"); // 만약 통과해도 스크립트 실행 불가
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.end(buf);
   } catch (err) { next(err); }
