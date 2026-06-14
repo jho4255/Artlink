@@ -330,6 +330,7 @@ model Faq {
   question  String
   answer    String
   order     Int      @default(0)
+  category  String   @default("GENERAL")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
