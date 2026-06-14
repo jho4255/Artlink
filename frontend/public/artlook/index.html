@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ArtLook : 예술의 완성</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<style>
+  :root{ --accent:#c4302b; --line:#e5e3dd; --ink:#1c1c1c; --muted:#7a766e; --panel:#fbfaf7; }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Segoe UI",sans-serif;
+        color:var(--ink); background:#f3f1ec; }
+  header{ padding:16px 22px; background:#fff; border-bottom:1px solid var(--line); }
+  header h1{ margin:0; font-size:25px; font-weight:800; letter-spacing:-.5px;
+             font-family:'Pretendard Variable','Pretendard',system-ui,sans-serif; color:var(--ink); }
+  header h1 b{ color:var(--accent); font-weight:800; }
+  header h1 .tagline{ font-size:.58em; font-weight:600; color:var(--muted); letter-spacing:.2px; margin-left:6px; }
+  header p{ margin:5px 0 0; font-size:12px; color:var(--muted); }
+  .wrap{ display:grid; grid-template-columns:340px 1fr; gap:0; min-height:calc(100vh - 56px); }
+  @media(max-width:860px){ .wrap{ grid-template-columns:1fr; } }
+  .panel{ background:var(--panel); border-right:1px solid var(--line); padding:16px; overflow-y:auto; }
+  .stage{ display:flex; align-items:center; justify-content:center; padding:24px; }
+  .stage-inner{ max-width:100%; }
+  canvas#preview{ max-width:100%; max-height:calc(100vh - 130px); box-shadow:0 10px 40px rgba(0,0,0,.18);
+                  background:
+                    linear-gradient(45deg,#ddd 25%,transparent 25%),
+                    linear-gradient(-45deg,#ddd 25%,transparent 25%),
+                    linear-gradient(45deg,transparent 75%,#ddd 75%),
+                    linear-gradient(-45deg,transparent 75%,#ddd 75%);
+                  background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0; }
+  .empty{ color:var(--muted); font-size:14px; text-align:center; padding:60px 20px; border:2px dashed var(--line);
+          border-radius:12px; background:#fff; }
+  .sec{ margin-bottom:18px; }
+  .sec > label{ display:block; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;
+                letter-spacing:.6px; margin-bottom:8px; }
+  .drop{ border:2px dashed var(--line); border-radius:10px; padding:14px; text-align:center; font-size:13px;
+         color:var(--muted); background:#fff; cursor:pointer; transition:.15s; }
+  .drop.over{ border-color:var(--accent); background:#fff5f4; color:var(--accent); }
+  .samples{ display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-top:8px; }
+  .samples img{ width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; cursor:pointer; border:2px solid transparent; }
+  .samples img:hover{ border-color:var(--accent); }
+  .chips{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .chip{ cursor:pointer; border:2px solid transparent; border-radius:8px; padding:4px; background:#fff; text-align:center; }
+  .chip.active{ border-color:var(--accent); }
+  .chip canvas, .chip img{ width:100%; display:block; border-radius:4px; }
+  .chip img{ height:46px; object-fit:cover; }
+  .chip span{ display:block; font-size:10px; color:var(--muted); margin-top:3px; line-height:1.2; }
+  .walls{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .row label{ width:64px; font-size:12px; color:var(--muted); flex:none; }
+  .row input[type=range]{ flex:1; accent-color:var(--accent); }
+  .row .val{ width:38px; text-align:right; font-size:12px; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .row input[type=checkbox]{ accent-color:var(--accent); width:16px; height:16px; }
+  .swatches{ display:flex; gap:6px; flex-wrap:wrap; }
+  .sw{ width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); }
+  .sw.active{ box-shadow:0 0 0 2px var(--accent); }
+  input[type=color]{ width:34px; height:28px; border:1px solid var(--line); border-radius:6px; background:#fff; padding:2px; cursor:pointer; }
+  .toggle{ display:flex; gap:6px; }
+  .toggle button, .ratios button{ flex:1; padding:8px 6px; font-size:12px; border:1px solid var(--line); background:#fff;
+                   border-radius:8px; cursor:pointer; color:var(--ink); }
+  .toggle button.active, .ratios button.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .ratios{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .dl{ width:100%; padding:12px; font-size:14px; font-weight:700; color:#fff; background:var(--accent);
+       border:none; border-radius:10px; cursor:pointer; margin-top:6px; }
+  .dl:disabled{ opacity:.4; cursor:not-allowed; }
+  .back{ width:100%; padding:11px; font-size:13px; font-weight:600; color:var(--ink); background:#fff;
+         border:1px solid var(--line); border-radius:10px; cursor:pointer; margin-top:8px; }
+  .back:hover{ background:#f3f1ec; }
+  .works{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .works img{ width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; cursor:pointer; border:2px solid transparent; background:#fff; }
+  .works img:hover{ border-color:var(--accent); }
+  .works img.active{ border-color:var(--accent); box-shadow:0 0 0 2px rgba(196,48,43,.3); }
+  .hint{ font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
+  code{ background:#efe; padding:1px 5px; border-radius:4px; font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Art<b>Look</b><span class="tagline">: 예술의 완성</span></h1>
+  <p>판매하신 작품을 액자와 전시 공간에 담아 SNS 홍보 이미지를 만들어 보세요</p>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <!-- 1. 판매 작품 (운영페이지에서 전달됨) -->
+    <div class="sec">
+      <label>1 · 판매 작품</label>
+      <div class="works" id="works"></div>
+      <div class="hint" id="worksEmpty" style="display:none;">불러온 판매 작품이 없습니다. 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]를 통해 들어와 주세요.</div>
+    </div>
+
+    <!-- 2. 프레임 스타일 -->
+    <div class="sec">
+      <label>2 · 프레임 스타일</label>
+      <div class="chips" id="frames"></div>
+    </div>
+
+    <!-- 3. 두께 / 매트 / 효과 -->
+    <div class="sec">
+      <label>3 · 두께 · 매트 · 효과</label>
+      <div class="row" style="display:none">
+        <label>프레임색</label>
+        <div class="swatches" id="frameSwatches"></div>
+        <input type="color" id="frameColor" value="#2b2b2b" />
+      </div>
+      <div class="row">
+        <label>두께</label>
+        <input type="range" id="frameW" min="1" max="8" value="3" />
+        <span class="val" id="frameWv">3%</span>
+      </div>
+      <div class="row">
+        <label>매트여백</label>
+        <input type="range" id="matteW" min="0" max="16" value="4" />
+        <span class="val" id="matteWv">4%</span>
+      </div>
+      <div class="row">
+        <label>매트색</label>
+        <div class="swatches" id="matteSwatches"></div>
+        <input type="color" id="matteColor" value="#f5f2ea" />
+      </div>
+      <div class="row">
+        <label>유리반사</label>
+        <input type="checkbox" id="glass" />
+        <span style="font-size:12px;color:var(--muted)">글라스 하이라이트</span>
+      </div>
+      <div class="row">
+        <label>캔버스질감</label>
+        <input type="checkbox" id="weave" />
+        <span style="font-size:12px;color:var(--muted)">작품 표면 직조 텍스처</span>
+      </div>
+      <div class="row">
+        <label>조명</label>
+        <div class="toggle" id="lightSel" style="flex:1">
+          <button data-eff="0" class="active">없음</button>
+          <button data-eff="1">스포트</button>
+          <button data-eff="2">소프트</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>조명 강도</label>
+        <input type="range" id="lightOp" min="10" max="100" value="45" />
+        <span class="val" id="lightOpv">45%</span>
+      </div>
+    </div>
+
+    <!-- 4. 배경 / 벽 -->
+    <div class="sec">
+      <label>4 · 배경</label>
+      <div class="walls" id="walls"></div>
+      <div class="hint" style="margin-top:6px;">💡 미리보기에서 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
+    </div>
+
+    <!-- 5. 비율 -->
+    <div class="sec">
+      <label>5 · 출력 비율 (SNS)</label>
+      <div class="ratios" id="ratios"></div>
+    </div>
+
+    <button class="dl" id="dl" disabled>홍보 이미지 저장 (PNG)</button>
+    <button class="back" id="back">완료 · ArtLink로 돌아가기</button>
+    <div class="hint">저장한 이미지는 인스타그램 등 SNS에 직접 올려 작품을 홍보하실 수 있습니다.</div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-inner">
+      <div class="empty" id="empty">왼쪽에서 판매 작품을 선택하면 미리보기가 표시됩니다.</div>
+      <canvas id="preview" style="display:none;"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   FrameIt POC v3
+   - 프레임: 단면 프로파일 몰딩 렌더링 (v2와 동일)
+   - 벽 목업: 실사 인테리어 사진 합성 (walls/*.jpg)
+     사진별로 액자를 걸 위치(art box, 이미지 좌표 비율)를 지정,
+     cover-fit 변환을 거쳐 캔버스에 매핑 + 이중 그림자 + 톤매칭
+   전부 클라이언트 Canvas. 외부 의존성 0.
+   ============================================================ */
+
+// roundRect 폴리필
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    r=Math.min(r,w/2,h/2); this.moveTo(x+r,y);
+    this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r);
+    this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); };
+}
+
+// ---- 색/난수 유틸 ----
+function hexToRgb(h){ h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; }
+function clamp255(v){ return Math.max(0,Math.min(255,v)); }
+function shade(hex,amt){ amt=Math.max(-1,Math.min(1,amt)); const {r,g,b}=hexToRgb(hex);
+  const t=amt<0?0:255; const p=Math.abs(amt);
+  return `rgb(${clamp255(r+(t-r)*p)|0},${clamp255(g+(t-g)*p)|0},${clamp255(b+(t-b)*p)|0})`; }
+// 시드 고정 PRNG — 슬라이더 드래그 중 텍스처가 흔들리지 않게 결정적이어야 함
+function prng(seed){ let s=(seed*2654435761)>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+const gauss=(t,c,w)=>Math.exp(-((t-c)*(t-c))/(w*w));
+
+// ---- 노이즈 텍스처 (종이 질감) ----
+let _noiseSrc=null;
+function noiseSrc(){ if(_noiseSrc) return _noiseSrc;
+  const c=document.createElement('canvas'); c.width=c.height=160;
+  const x=c.getContext('2d'); const id=x.createImageData(160,160); const rnd=prng(42);
+  for(let i=0;i<id.data.length;i+=4){ const v=205+rnd()*50|0;
+    id.data[i]=id.data[i+1]=id.data[i+2]=v; id.data[i+3]=255; }
+  x.putImageData(id,0,0); _noiseSrc=c; return c; }
+function applyNoise(ctx,x,y,w,h,alpha){
+  ctx.save(); ctx.globalAlpha=alpha; ctx.globalCompositeOperation='multiply';
+  ctx.fillStyle=ctx.createPattern(noiseSrc(),'repeat'); ctx.fillRect(x,y,w,h); ctx.restore(); }
+
+function bandPath(ctx,W,H,m){ ctx.beginPath(); ctx.rect(0,0,W,H);
+  ctx.rect(m.l,m.t,W-m.l-m.r,H-m.t-m.b); }
+const uni = t => ({t,r:t,b:t,l:t});
+
+// ============================================================
+//  프레임 몰딩 엔진
+// ============================================================
+const SIDE_LIGHT=[0.20,-0.07,-0.20,0.09]; // top,right,bottom,left
+
+function sideBand(W,H,s,d0,d1){
+  switch(s){
+    case 0: return [d0,d0, W-d0,d0, W-d1,d1, d1,d1];
+    case 1: return [W-d0,d0, W-d1,d1, W-d1,H-d1, W-d0,H-d0];
+    case 2: return [d0,H-d0, W-d0,H-d0, W-d1,H-d1, d1,H-d1];
+    case 3: return [d0,d0, d1,d1, d1,H-d1, d0,H-d0];
+  }
+}
+function quadFill(ctx,p,fill){ ctx.beginPath(); ctx.moveTo(p[0],p[1]);
+  for(let i=2;i<8;i+=2) ctx.lineTo(p[i],p[i+1]); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); }
+
+function drawMolding(ctx,W,H,m,style,color){
+  const N=18;
+  for(let s=0;s<4;s++){
+    for(let i=0;i<N;i++){
+      const t0=i/N, t1=(i+1)/N+0.002, tm=(t0+t1)/2;
+      const relief=style.profile(tm);
+      const v=SIDE_LIGHT[s]+relief*style.depth;
+      quadFill(ctx, sideBand(W,H,s,m*t0,m*Math.min(1,t1)), shade(color,v));
+    }
+  }
+  if(style.grain){
+    for(let s=0;s<4;s++){
+      ctx.save(); const p=sideBand(W,H,s,0,m);
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); for(let i=2;i<8;i+=2) ctx.lineTo(p[i],p[i+1]);
+      ctx.closePath(); ctx.clip();
+      const rnd=prng(7+s);
+      for(let k=0;k<24;k++){
+        const d=rnd()*m, a=.03+rnd()*.05, wob=(rnd()-.5)*m*.2;
+        ctx.strokeStyle=`rgba(35,20,8,${a})`; ctx.lineWidth=Math.max(.5,m*.018*(0.4+rnd()));
+        ctx.beginPath();
+        if(s===0){ ctx.moveTo(0,d); ctx.bezierCurveTo(W*.33,d+wob,W*.66,d-wob,W,d); }
+        else if(s===2){ const y=H-d; ctx.moveTo(0,y); ctx.bezierCurveTo(W*.33,y+wob,W*.66,y-wob,W,y); }
+        else if(s===3){ ctx.moveTo(d,0); ctx.bezierCurveTo(d+wob,H*.33,d-wob,H*.66,d,H); }
+        else { const x=W-d; ctx.moveTo(x,0); ctx.bezierCurveTo(x+wob,H*.33,x-wob,H*.66,x,H); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  if(style.speckle){
+    ctx.save(); bandPath(ctx,W,H,uni(m)); ctx.clip('evenodd');
+    const rnd=prng(11); const n=Math.min(700,Math.round((W+H)*.45));
+    for(let k=0;k<n;k++){
+      const x=rnd()*W, y=rnd()*H, r=Math.max(.4,m*(.015+rnd()*.03));
+      ctx.fillStyle = rnd()<.5? 'rgba(50,32,8,.10)' : 'rgba(255,242,200,.13)';
+      ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // 마이터 이음새
+  ctx.strokeStyle='rgba(0,0,0,.13)'; ctx.lineWidth=Math.max(.6,m*.012);
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(m,m); ctx.moveTo(W,0); ctx.lineTo(W-m,m);
+  ctx.moveTo(0,H); ctx.lineTo(m,H-m); ctx.moveTo(W,H); ctx.lineTo(W-m,H-m);
+  ctx.stroke();
+  const ow=Math.max(1,m*.02);
+  ctx.strokeStyle='rgba(0,0,0,.38)'; ctx.lineWidth=ow;
+  ctx.strokeRect(ow/2,ow/2,W-ow,H-ow);
+  ctx.strokeStyle='rgba(0,0,0,.32)'; ctx.lineWidth=Math.max(1,m*.015);
+  ctx.strokeRect(m,m,W-2*m,H-2*m);
+}
+
+// ---- 프레임 재질 (얇은 프레임용 — 정면 균일광 + 대각 메탈 그라데이션) ----
+const MATS = {
+  gold:   { light:'#f3e2a8', base:'#c9a24b', dark:'#7d5e25', edge:'rgba(255,246,212,.6)',  back:'#1c1a16', texture:'frames/frame-gold-texture.jpg' },
+  wood:   { light:'#d9bb8c', base:'#a9835a', dark:'#6e4f30', edge:'rgba(255,240,214,.4)',  back:'#221a12', texture:'frames/frame-oak-texture.jpg' },
+  walnut: { light:'#9b6a42', base:'#5b3722', dark:'#21130b', edge:'rgba(224,169,116,.34)', back:'#17100a', texture:'frames/frame-walnut-texture.jpg' },
+  black:  { light:'#3b3b3b', base:'#1f1f1f', dark:'#070707', edge:'rgba(255,255,255,.18)', back:'#101010', texture:'frames/frame-black-texture.jpg' },
+  silver: { light:'#f2f4f4', base:'#b9bfc2', dark:'#6f777c', edge:'rgba(255,255,255,.66)', back:'#171a1c', texture:'frames/frame-silver-texture.jpg' },
+  ivory:  { light:'#ffffff', base:'#eee8da', dark:'#cfc5b4', edge:'rgba(255,255,255,.72)', back:'#dfd8cc', texture:'frames/frame-ivory-texture.jpg' },
+  white:  { light:'#ffffff', base:'#f3f1ea', dark:'#d6d2c6', edge:'rgba(255,255,255,.7)',  back:'#e9e6dd', texture:'frames/frame-ivory-texture.jpg' },
+};
+Object.values(MATS).forEach(m=>{
+  if(!m.texture) return;
+  m.img=new Image();
+  m.img.onload=()=>render();
+  m.img.src=m.texture;
+});
+function fillRectBand(ctx,W,H,b,fill){
+  ctx.save();
+  ctx.fillStyle=fill;
+  ctx.beginPath(); ctx.rect(0,0,W,H); ctx.rect(b,b,W-2*b,H-2*b);
+  ctx.fill('evenodd');
+  ctx.restore();
+}
+
+function frameSideGradient(ctx,W,H,b,s,c){
+  let g;
+  if(s===0) g=ctx.createLinearGradient(0,0,0,b);
+  else if(s===1) g=ctx.createLinearGradient(W,0,W-b,0);
+  else if(s===2) g=ctx.createLinearGradient(0,H,0,H-b);
+  else g=ctx.createLinearGradient(0,0,b,0);
+  const side=[.10,-.06,-.16,.06][s];
+  g.addColorStop(0, shade(c.base, .22+side));
+  g.addColorStop(.18, c.light);
+  g.addColorStop(.58, shade(c.base, side));
+  g.addColorStop(.82, shade(c.base, -.18+side));
+  g.addColorStop(1, c.dark);
+  return g;
+}
+
+function drawFrameMiters(ctx,W,H,b,c){
+  const hi='rgba(255,245,220,.36)';
+  const lo='rgba(0,0,0,.18)';
+  ctx.lineWidth=Math.max(.7,b*.035);
+  ctx.strokeStyle=lo;
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(b,b);
+  ctx.moveTo(W,0); ctx.lineTo(W-b,b);
+  ctx.moveTo(0,H); ctx.lineTo(b,H-b);
+  ctx.moveTo(W,H); ctx.lineTo(W-b,H-b);
+  ctx.stroke();
+  ctx.strokeStyle=hi;
+  ctx.beginPath();
+  ctx.moveTo(1,1); ctx.lineTo(b*.92,b*.92);
+  ctx.moveTo(W-1,1); ctx.lineTo(W-b*.92,b*.92);
+  ctx.stroke();
+}
+
+function clipPoly(ctx,p){
+  ctx.beginPath(); ctx.moveTo(p[0],p[1]);
+  for(let i=2;i<8;i+=2) ctx.lineTo(p[i],p[i+1]);
+  ctx.closePath(); ctx.clip();
+}
+
+function drawTextureSide(ctx,W,H,b,s,c){
+  if(!c.img || !c.img.complete || !c.img.naturalWidth){
+    quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c));
+    return;
+  }
+  ctx.save();
+  clipPoly(ctx, sideBand(W,H,s,0,b));
+  const im=c.img;
+  if(s===0) ctx.drawImage(im,0,0,im.width,im.height,0,0,W,b);
+  else if(s===2) ctx.drawImage(im,0,0,im.width,im.height,0,H-b,W,b);
+  else if(s===3){
+    ctx.translate(0,H); ctx.rotate(-Math.PI/2);
+    ctx.drawImage(im,0,0,im.width,im.height,0,0,H,b);
+  } else {
+    ctx.translate(W,0); ctx.rotate(Math.PI/2);
+    ctx.drawImage(im,0,0,im.width,im.height,0,0,H,b);
+  }
+  ctx.restore();
+
+  ctx.save();
+  clipPoly(ctx, sideBand(W,H,s,0,b));
+  const shadeGrad=frameSideGradient(ctx,W,H,b,s,c);
+  ctx.globalCompositeOperation='multiply';
+  ctx.globalAlpha=(c===MATS.black || c===MATS.silver)? .35 : .24;
+  ctx.fillStyle=shadeGrad;
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+
+  ctx.save();
+  clipPoly(ctx, sideBand(W,H,s,0,b));
+  let hi;
+  if(s===0) hi=ctx.createLinearGradient(0,0,0,b);
+  else if(s===1) hi=ctx.createLinearGradient(W-b,0,W,0);
+  else if(s===2) hi=ctx.createLinearGradient(0,H-b,0,H);
+  else hi=ctx.createLinearGradient(0,0,b,0);
+  hi.addColorStop(0,'rgba(255,255,255,.28)');
+  hi.addColorStop(.18,'rgba(255,255,255,.06)');
+  hi.addColorStop(.55,'rgba(255,255,255,0)');
+  hi.addColorStop(1,'rgba(0,0,0,.18)');
+  ctx.globalCompositeOperation='screen';
+  ctx.globalAlpha=.42;
+  ctx.fillStyle=hi;
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+function drawFloaterTray(ctx,W,H,b,g,back){
+  if(g<=0) return;
+  for(let s=0;s<4;s++){
+    let grad;
+    if(s===0) grad=ctx.createLinearGradient(0,b,0,b+g);
+    else if(s===1) grad=ctx.createLinearGradient(W-b,0,W-b-g,0);
+    else if(s===2) grad=ctx.createLinearGradient(0,H-b,0,H-b-g);
+    else grad=ctx.createLinearGradient(b,0,b+g,0);
+    const light=[.08,-.02,-.18,.04][s];
+    grad.addColorStop(0, shade(back, light));
+    grad.addColorStop(.64, shade(back, -.18));
+    grad.addColorStop(1, 'rgba(0,0,0,.82)');
+    quadFill(ctx, sideBand(W,H,s,b,b+g), grad);
+  }
+  const lip=Math.max(.8,g*.10);
+  ctx.strokeStyle='rgba(255,255,255,.11)';
+  ctx.lineWidth=lip;
+  ctx.strokeRect(b+lip/2,b+lip/2,W-2*b-lip,H-2*b-lip);
+  ctx.strokeStyle='rgba(0,0,0,.68)';
+  ctx.lineWidth=Math.max(1,g*.18);
+  ctx.strokeRect(b+g-ctx.lineWidth/2,b+g-ctx.lineWidth/2,W-2*(b+g)+ctx.lineWidth,H-2*(b+g)+ctx.lineWidth);
+}
+
+// 바깥 테두리 밴드(margin m)에 재질 칠하기 (레퍼런스식 얇은 박스 프레임)
+function frameBand(ctx,W,H,m,mat){
+  const c=MATS[mat]||MATS.black;
+  const b=m.t;
+  for(let s=0;s<4;s++) drawTextureSide(ctx,W,H,b,s,c);
+  const outer=Math.max(.7,b*.045);
+  ctx.strokeStyle=c.edge; ctx.lineWidth=outer;
+  ctx.strokeRect(outer/2,outer/2,W-outer,H-outer);
+  const inner=Math.max(1,b*.105);
+  ctx.strokeStyle='rgba(0,0,0,.52)'; ctx.lineWidth=inner;
+  ctx.strokeRect(b-inner/2,b-inner/2,W-2*b+inner,H-2*b+inner);
+  ctx.strokeStyle='rgba(255,245,220,.32)'; ctx.lineWidth=Math.max(.55,b*.035);
+  ctx.strokeRect(b+ctx.lineWidth,b+ctx.lineWidth,W-2*(b+ctx.lineWidth),H-2*(b+ctx.lineWidth));
+  drawFrameMiters(ctx,W,H,b,c);
+}
+
+// ---- 프레임 스타일 10종 (frameit식: 얇은 플로터 / 플랫 / 매트) ----
+const FRAMES=[
+  { name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.018 },
+  { name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.018 },
+  { name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.018 },
+  { name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.017 },
+  { name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.017 },
+  { name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.016 },
+  { name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024 },
+  { name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028 },
+  { name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028 },
+  { name:'블랙 슬림',     kind:'flat',    material:'black',  border:.020 },
+  { name:'실버 슬림',     kind:'flat',    material:'silver', border:.020 },
+  { name:'화이트 매트',   kind:'mat',     material:'ivory',  border:.014 },
+  { name:'캔버스 랩',   kind:'canvas' },
+];
+
+// ============================================================
+//  액자 합성 (frameit식 — 얇은 프레임 / 플로터 갭 / 매트 / 캔버스랩)
+//  핵심: 얇고 절제 · 정면 균일광 · 캔버스가 떠 보이는 플로터 갭 그림자
+// ============================================================
+function buildFramedCore(img, style, o){
+  const aw=img.width, ah=img.height, base=Math.min(aw,ah);
+  const K=Math.max(.3, o.frame/0.035);          // 두께 슬라이더 (기본 .035 → 1.0배)
+
+  // --- 캔버스 랩 (액자 없음, 갤러리 캔버스) ---
+  if(style.kind==='canvas'){
+    const d=Math.max(3, base*.014);
+    const W=aw+2*d, H=ah+2*d;
+    const c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
+    // 측면(랩) — 위/좌 밝게, 우/아래 어둡게
+    ctx.fillStyle='#d8d2c6'; ctx.fillRect(0,0,W,H);
+    ctx.drawImage(img,d,d,aw,ah);
+    if(o.weave) applyWeave(ctx,d,d,aw,ah);
+    ctx.fillStyle='rgba(255,255,255,.25)'; ctx.fillRect(0,0,W,d); ctx.fillRect(0,0,d,H);
+    ctx.fillStyle='rgba(0,0,0,.22)'; ctx.fillRect(0,H-d,W,d); ctx.fillRect(W-d,0,d,H);
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=Math.max(1,base*.002); ctx.strokeRect(d,d,aw,ah);
+    return c;
+  }
+
+  const border=(style.border||0)*base*K;
+  const gap=(style.gap||0)*base*K;
+  const mat=(style.kind==='mat')? o.matte*base : 0;
+  const m=uni(border+gap+mat);
+  const W=Math.round(aw+2*m.t), H=Math.round(ah+2*m.t);
+  const c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
+  const ax=m.t, ay=m.t;                          // 작품 위치
+  const matC=MATS[style.material]||MATS.black;
+
+  // --- 바탕 ---
+  if(style.kind==='floater'){
+    ctx.fillStyle=matC.back; ctx.fillRect(0,0,W,H);          // 트레이(어두운 배경)
+    drawFloaterTray(ctx,W,H,border,gap,matC.back);
+  } else if(style.kind==='mat'){
+    ctx.fillStyle=o.matteColor; ctx.fillRect(0,0,W,H);
+    applyNoise(ctx, border, border, W-2*border, H-2*border, .05);
+  }
+
+  // --- 플로터: 캔버스가 트레이 위에 떠 있는 그림자 ---
+  if(style.kind==='floater'){
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.62)'; ctx.shadowBlur=Math.max(2,base*.010);
+    ctx.shadowOffsetX=base*.0015; ctx.shadowOffsetY=base*.0045;
+    ctx.fillStyle='#000'; ctx.fillRect(ax,ay,aw,ah);
+    ctx.restore();
+  }
+
+  // --- 작품 ---
+  ctx.drawImage(img,ax,ay,aw,ah);
+  if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
+  if(style.kind==='floater'){
+    ctx.strokeStyle='rgba(255,255,255,.16)';
+    ctx.lineWidth=Math.max(.7,base*.0012);
+    ctx.strokeRect(ax+.5,ay+.5,aw-1,ah-1);
+    ctx.strokeStyle='rgba(0,0,0,.30)';
+    ctx.lineWidth=Math.max(.8,base*.0015);
+    ctx.strokeRect(ax-ctx.lineWidth/2,ay-ctx.lineWidth/2,aw+ctx.lineWidth,ah+ctx.lineWidth);
+  }
+  // 아주 옅은 정면광 (위 살짝 밝고 아래 살짝 어둡게) — 과하지 않게
+  const lg=ctx.createLinearGradient(0,ay,0,ay+ah);
+  lg.addColorStop(0,'rgba(255,255,255,.03)'); lg.addColorStop(.6,'rgba(255,255,255,0)');
+  lg.addColorStop(1,'rgba(0,0,0,.035)');
+  ctx.fillStyle=lg; ctx.fillRect(ax,ay,aw,ah);
+
+  // --- 매트 베벨 + 개구부 그림자 ---
+  if(mat>0){
+    const bw=Math.max(2,base*.008);
+    quadFill(ctx,[ax-bw,ay-bw, ax+aw+bw,ay-bw, ax+aw,ay, ax,ay], shade(o.matteColor,-.16));
+    quadFill(ctx,[ax,ay+ah, ax+aw,ay+ah, ax+aw+bw,ay+ah+bw, ax-bw,ay+ah+bw], shade(o.matteColor,.12));
+    quadFill(ctx,[ax-bw,ay-bw, ax,ay, ax,ay+ah, ax-bw,ay+ah+bw], shade(o.matteColor,-.06));
+    quadFill(ctx,[ax+aw,ay, ax+aw+bw,ay-bw, ax+aw+bw,ay+ah+bw, ax+aw,ay+ah], shade(o.matteColor,-.1));
+    let g=ctx.createLinearGradient(0,ay,0,ay+base*.01);
+    g.addColorStop(0,'rgba(0,0,0,.14)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(ax,ay,aw,base*.01);
+  }
+
+  // --- 작품 테두리에 프레임/매트가 드리우는 안쪽 그림자 (입체감) ---
+  {
+    const k=Math.max(2, base*.012);
+    const sh=(x,y,w,h,horiz,a)=>{ const g=horiz? ctx.createLinearGradient(0,y,0,y+h):ctx.createLinearGradient(x,0,x+w,0);
+      g.addColorStop(0,`rgba(0,0,0,${a})`); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x,y,w,h); };
+    const ix=ax-(style.kind==='floater'?0:0), iy=ay;
+    sh(ax,ay,aw,k,true,.16);                                  // top
+    sh(ax,ay,k,ah,false,.10);                                 // left
+    ctx.save(); ctx.translate(ax+aw,0); ctx.scale(-1,1); sh(0,ay,k,ah,false,.06); ctx.restore();
+    ctx.save(); ctx.translate(0,ay+ah); ctx.scale(1,-1); sh(ax,0,aw,k*.8,true,.05); ctx.restore();
+  }
+
+  // --- 프레임 테두리 ---
+  if(style.kind==='floater'){
+    // 갭(트레이)은 이미 back색. 바깥 border만 재질로
+    frameBand(ctx,W,H, uni(border), style.material);
+  } else if(style.kind==='flat'){
+    frameBand(ctx,W,H, uni(border), style.material);
+  } else if(style.kind==='mat'){
+    frameBand(ctx,W,H, uni(border), style.material);
+  }
+
+  // --- 유리 반사 ---
+  if(o.glass){
+    const ix=mat>0?m.t-mat:ax, iy=ax, iw=aw+2*mat, ih=ah+2*mat;
+    ctx.save(); ctx.beginPath(); ctx.rect(ax-mat,ay-mat,aw+2*mat,ah+2*mat); ctx.clip();
+    const g=ctx.createLinearGradient(ax-mat,ay-mat,ax+aw*.9,ay+ah);
+    g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(.34,'rgba(255,255,255,0)');
+    g.addColorStop(.42,'rgba(255,255,255,.09)'); g.addColorStop(.47,'rgba(255,255,255,.012)');
+    g.addColorStop(.55,'rgba(255,255,255,.06)'); g.addColorStop(.62,'rgba(255,255,255,0)');
+    ctx.fillStyle=g; ctx.fillRect(ax-mat,ay-mat,aw+2*mat,ah+2*mat);
+    ctx.restore();
+  }
+  return c;
+}
+
+// ---- 상태 ----
+const state={ img:null, frameIdx:0, frameColor:'#2b2b2b', matteColor:'#f5f2ea',
+  frame:0.03, matte:0.04, glass:false, weave:false, mode:'wall', bg:'#ffffff', wallIdx:0,
+  ratio:'4:5', effect:0, effectOp:.45 };
+function buildFramed(img){ return buildFramedCore(img, FRAMES[state.frameIdx], state); }
+
+// ============================================================
+//  벽 목업 — 실사 인테리어 사진 합성
+//  art: 액자를 걸 영역 (이미지 좌표 비율: 중심 cx,cy / 최대 폭 w / 최대 높이 h)
+//  dark: 어두운 공간(액자 톤 다운), shadow: 그림자 강도 배율
+// ============================================================
+// frameit식 고급 중성 텍스처 벽 — 전면 텍스처(바닥선 없음), 작품은 정중앙
+const WALLS=[
+  { name:'갤러리 살롱', src:'walls/wall15-gallery-salon.jpg',   art:{cx:.54,cy:.40,w:.34,h:.42}, shadow:1.08, shx:.018, shy:.030, tone:.16 },
+  { name:'부티크 갤러리', src:'walls/wall16-boutique-gallery.jpg', art:{cx:.50,cy:.42,w:.38,h:.46}, shadow:.88, shx:-.006, shy:.024, tone:.10 },
+  { name:'컬렉터 살롱', src:'walls/wall17-collector-salon.jpg',  art:{cx:.52,cy:.38,w:.34,h:.40}, shadow:1.22, shx:-.020, shy:.030, dark:true, tone:.22 },
+  { name:'갤러리 리빙', src:'walls/wall11-gallery-living.jpg', art:{cx:.55,cy:.41,w:.34,h:.42}, shadow:1.05, shx:.018, shy:.030, tone:.16 },
+  { name:'화이트 큐브', src:'walls/wall12-white-cube.jpg',    art:{cx:.52,cy:.44,w:.42,h:.50}, shadow:.82, shx:-.010, shy:.026, tone:.10 },
+  { name:'호텔 라운지', src:'walls/wall13-hotel-lounge.jpg',  art:{cx:.53,cy:.40,w:.40,h:.48}, shadow:1.22, shx:.016, shy:.026, dark:true, tone:.24 },
+  { name:'컬렉터 홈',   src:'walls/wall14-collector-home.jpg', art:{cx:.51,cy:.39,w:.34,h:.42}, shadow:1.18, shx:-.020, shy:.030, dark:true, tone:.20 },
+  { name:'콘크리트',       src:'walls/wall01.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'스톤',          src:'walls/wall02.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:1.00, tone:.14 },
+  { name:'트래버틴',       src:'walls/wall03.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'크림 스톤',      src:'walls/wall04.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'화이트 브릭',    src:'walls/wall05.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'베이지 플라스터', src:'walls/wall06.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'웜 콘크리트',    src:'walls/wall07.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.92, tone:.10 },
+  { name:'토프 플라스터',  src:'walls/wall08.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'샌드',          src:'walls/wall09.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
+  { name:'그레이 브릭',    src:'walls/wall10.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.92, tone:.10 },
+];
+// 사진 프리로드 (로드 완료 시 현재 벽이면 다시 렌더) + 사용자 조정값(adj) 초기화
+WALLS.forEach(w=>{
+  w.adj={dx:0,dy:0,s:1};
+  w.img=new Image();
+  w.img.onload=()=>{ w.loaded=true;
+    if(state.mode==='wall' && WALLS[state.wallIdx]===w) render(); };
+  w.img.src=w.src;
+});
+
+// 배치 영역 주변의 사진 평균색 (톤매칭/그림자 방향용). 실패(taint 등) 시 null
+function sampleAvg(img, fx, fy, fw, fh){
+  try{
+    const iw=img.naturalWidth, ih=img.naturalHeight;
+    let sx=Math.max(0,fx*iw), sy=Math.max(0,fy*ih);
+    let sw=Math.min(iw-sx,fw*iw), sh=Math.min(ih-sy,fh*ih);
+    if(sw<2||sh<2) return null;
+    const c=document.createElement('canvas'); c.width=1; c.height=1;
+    const x=c.getContext('2d');
+    x.drawImage(img, sx,sy,sw,sh, 0,0,1,1);
+    const d=x.getImageData(0,0,1,1).data;
+    return {r:d[0],g:d[1],b:d[2]};
+  }catch(e){ return null; }
+}
+const lumOf=p=>p? p.r*.299+p.g*.587+p.b*.114 : null;
+
+// ============================================================
+//  조명 효과 — 프로 라이팅맵(그레이 월+스포트라이트+베이크드 섀도우)을
+//  9-슬라이스로 액자 위치에 정합시켜 장면 전체에 multiply.
+//  작품·배경·그림자가 단일 조명 아래 통합 → 합성티 제거 핵심.
+//  sq: 맵 안의 흰 사각형(작품 자리) 좌표 비율
+// ============================================================
+const EFFECTS=[
+  { name:'없음' },
+  { name:'스포트라이트', src:'effects/eff1.jpg', sq:{x1:.257,y1:.253,x2:.747,y2:.75} },
+  { name:'소프트',       src:'effects/eff2.jpg', sq:{x1:.257,y1:.252,x2:.743,y2:.752} },
+];
+EFFECTS.forEach(e=>{
+  if(!e.src) return;
+  e.img=new Image();
+  e.img.onload=()=>{ e.loaded=true; if(state.effect && EFFECTS[state.effect]===e) render(); };
+  e.img.src=e.src;
+});
+// art={x,y,fw,fh} 위치에 맵의 흰 사각형을 정합시키는 9-slice multiply
+function drawLightMap(ctx,W,H,art){
+  const eff=EFFECTS[state.effect];
+  if(!eff||!eff.src||!eff.loaded) return;
+  const im=eff.img, S=im.naturalWidth, q=eff.sq;
+  const sxs=[0, q.x1*S, q.x2*S, S];
+  const sys=[0, q.y1*S, q.y2*S, S];
+  const x1=Math.max(1,art.x), x2=Math.min(W-1,art.x+art.fw);
+  const y1=Math.max(1,art.y), y2=Math.min(H-1,art.y+art.fh);
+  if(x2-x1<4||y2-y1<4) return;
+  const dxs=[0, x1, x2, W];
+  const dys=[0, y1, y2, H];
+  ctx.save();
+  ctx.globalCompositeOperation='multiply';
+  ctx.globalAlpha=state.effectOp;
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
+    const sw=sxs[i+1]-sxs[i], sh=sys[j+1]-sys[j];
+    const dw=dxs[i+1]-dxs[i], dh=dys[j+1]-dys[j];
+    if(sw<1||sh<1||dw<1||dh<1) continue;
+    ctx.drawImage(im, sxs[i],sys[j],sw,sh, dxs[i],dys[j],dw,dh);
+  }
+  ctx.restore();
+}
+
+// 캔버스 직조(weave) 텍스처 — 작품 표면 질감
+let _weaveSrc=null;
+function weaveSrc(){ if(_weaveSrc) return _weaveSrc;
+  const c=document.createElement('canvas'); c.width=c.height=72;
+  const x=c.getContext('2d'); const id=x.createImageData(72,72); const rnd=prng(77);
+  for(let py=0;py<72;py++) for(let px=0;px<72;px++){
+    const v=225 + 14*Math.sin(px*1.55) + 14*Math.sin(py*1.55)
+            + 8*Math.sin((px+py)*.5) + (rnd()-.5)*10;
+    const i=(py*72+px)*4;
+    id.data[i]=id.data[i+1]=id.data[i+2]=Math.max(190,Math.min(255,v)); id.data[i+3]=255;
+  }
+  x.putImageData(id,0,0); _weaveSrc=c; return c; }
+function applyWeave(ctx,x,y,w,h){
+  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.globalCompositeOperation='multiply'; ctx.globalAlpha=.50;
+  ctx.fillStyle=ctx.createPattern(weaveSrc(),'repeat'); ctx.fillRect(x,y,w,h);
+  ctx.globalCompositeOperation='screen'; ctx.globalAlpha=.10;
+  ctx.fillRect(x,y,w,h);
+  ctx.restore(); }
+
+// ---- 비율 ----
+const RATIOS=[
+  {id:'original',name:'원본'}, {id:'1:1',name:'1:1'}, {id:'4:5',name:'4:5'},
+  {id:'3:4',name:'3:4'}, {id:'16:9',name:'16:9'}, {id:'9:16',name:'9:16'},
+];
+const LONG=2600; // 출력 해상도 (화면에 늘려 표시돼도 또렷하게)
+function targetDims(ratio,framed){
+  if(ratio==='original'){ const s=Math.min(1,LONG/Math.max(framed.width,framed.height));
+    return {W:Math.round(framed.width*s),H:Math.round(framed.height*s)}; }
+  const [a,b]=ratio.split(':').map(Number);
+  return a>=b? {W:LONG,H:Math.round(LONG*b/a)} : {W:Math.round(LONG*a/b),H:LONG};
+}
+
+// ============================================================
+//  최종 합성
+// ============================================================
+let lastArt=null; // 마지막 렌더의 액자 위치 (드래그 히트테스트)
+function compose(){
+  if(!state.img) return null;
+  const framed=buildFramed(state.img);
+  let {W,H}=targetDims(state.ratio,framed);
+  const out=document.getElementById('preview');
+  out.width=W; out.height=H;
+  const ctx=out.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  if(state.mode==='wall'){
+    const wall=WALLS[state.wallIdx];
+    if(!wall.loaded){
+      ctx.fillStyle='#eceae4'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='#9a958b'; ctx.font=`${Math.round(W*.03)}px sans-serif`; ctx.textAlign='center';
+      ctx.fillText('벽 사진 로딩중…', W/2, H/2);
+      return out;
+    }
+    const iw=wall.img.naturalWidth, ih=wall.img.naturalHeight;
+    // 액자 중심 cover-크롭: 어떤 출력 비율에서도 배치 영역이 화면에 들어오게
+    const a=wall.art;
+    const sc=Math.max(W/iw, H/ih);
+    let dx=W*.5 - a.cx*iw*sc;
+    let dy=H*.45 - a.cy*ih*sc;
+    dx=Math.min(0, Math.max(W-iw*sc, dx));
+    dy=Math.min(0, Math.max(H-ih*sc, dy));
+    ctx.drawImage(wall.img, dx, dy, iw*sc, ih*sc);
+    // 배치 박스 매핑 (이미지 비율 좌표 → 캔버스) + 사용자 조정(드래그/휠)
+    const adj=wall.adj;
+    const bx=dx+(a.cx-a.w/2)*iw*sc, by=dy+(a.cy-a.h/2)*ih*sc;
+    const bw=a.w*iw*sc, bh=a.h*ih*sc;
+    const s=Math.min(bw/framed.width, bh/framed.height)*adj.s;
+    const fw=framed.width*s, fh=framed.height*s;
+    let x=bx+(bw-fw)/2 + adj.dx*W;
+    let y=by+(bh-fh)/2 + adj.dy*H;
+    lastArt={x,y,fw,fh}; // 드래그 히트테스트용
+    // 그림자 방향: 배치 영역 좌/우 벽 밝기 차이로 광원 추정
+    const sLm=lumOf(sampleAvg(wall.img, a.cx-a.w*1.1, a.cy-a.h/2, a.w*.45, a.h));
+    const sRm=lumOf(sampleAvg(wall.img, a.cx+a.w*.65, a.cy-a.h/2, a.w*.45, a.h));
+    let shx=wall.shx!==undefined ? wall.shx*fw : 0;
+    if(wall.shx===undefined && sLm!==null && sRm!==null) shx=Math.max(-1,Math.min(1,(sLm-sRm)/40))*fw*.02;
+    const shy=(wall.shy??.03)*fh;
+    // 이중 그림자 (큰 소프트 + 컨택트)
+    const sa=wall.shadow??1;
+    ctx.save();
+    ctx.shadowColor=`rgba(0,0,0,${.24*sa})`; ctx.shadowBlur=fw*.060; ctx.shadowOffsetY=shy; ctx.shadowOffsetX=shx;
+    ctx.fillStyle='#000'; ctx.fillRect(x,y,fw,fh);
+    ctx.shadowColor=`rgba(0,0,0,${.32*sa})`; ctx.shadowBlur=fw*.010; ctx.shadowOffsetY=Math.max(1,shy*.20); ctx.shadowOffsetX=shx*.25;
+    ctx.fillRect(x,y,fw,fh);
+    ctx.restore();
+    // 액자: 아주 살짝만 블러(프레임 경계가 사진과 자연스럽게 맞물리게) — 고해상이라 최소화
+    const blurPx=Math.max(.15, Math.min(.7, W*0.00016));
+    ctx.save(); ctx.filter=`blur(${blurPx.toFixed(2)}px)`;
+    ctx.drawImage(framed,x,y,fw,fh);
+    ctx.restore();
+    // 사진 그레인 아주 살짝 (질감 일치)
+    applyNoise(ctx,x,y,fw,fh,.018);
+    // 톤매칭: 주변 벽 색을 약하게만 입혀 동화 (금속/우드 색 살리도록 절제)
+    const avg=sampleAvg(wall.img, a.cx-a.w/2, a.cy-a.h/2, a.w, a.h);
+    if(avg){
+      ctx.save(); ctx.globalCompositeOperation='soft-light';
+      ctx.globalAlpha=wall.tone??(wall.dark? .22 : .13);
+      ctx.fillStyle=`rgb(${avg.r},${avg.g},${avg.b})`;
+      ctx.fillRect(x,y,fw,fh); ctx.restore();
+    }
+    // 조명 효과 (기본 꺼짐 — frameit식 균일광. 켜면 라이팅맵 9-slice)
+    drawLightMap(ctx,W,H,{x,y,fw,fh});
+    // 아주 옅은 비네트
+    const vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.55,W/2,H/2,Math.max(W,H)*.82);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.04)');
+    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  } else {
+    const transparent = state.bg==='transparent';
+    if(!transparent){
+      ctx.fillStyle=state.bg; ctx.fillRect(0,0,W,H);
+      const bg2=ctx.createLinearGradient(0,0,0,H);
+      bg2.addColorStop(0,'rgba(255,255,255,.05)'); bg2.addColorStop(1,'rgba(0,0,0,.04)');
+      ctx.fillStyle=bg2; ctx.fillRect(0,0,W,H);
+    }
+    const pad=transparent? 0 : (state.ratio==='original'? .045 : .08);
+    const s=Math.min(W*(1-2*pad)/framed.width, H*(1-2*pad)/framed.height, 2);
+    const fw=framed.width*s, fh=framed.height*s;
+    const x=(W-fw)/2, y=(H-fh)/2;
+    if(!transparent){
+      ctx.save();
+      ctx.shadowColor='rgba(0,0,0,.22)'; ctx.shadowBlur=fw*.035; ctx.shadowOffsetY=fh*.018;
+      ctx.fillStyle='#000'; ctx.fillRect(x,y,fw,fh);
+      ctx.shadowColor='rgba(0,0,0,.25)'; ctx.shadowBlur=fw*.008; ctx.shadowOffsetY=fh*.004;
+      ctx.fillRect(x,y,fw,fh);
+      ctx.restore();
+    }
+    ctx.drawImage(framed,x,y,fw,fh);
+    if(!transparent) drawLightMap(ctx,W,H,{x,y,fw,fh});
+  }
+  return out;
+}
+
+function render(){
+  const empty=document.getElementById('empty'), prev=document.getElementById('preview');
+  if(!state.img){ empty.style.display='block'; prev.style.display='none';
+    document.getElementById('dl').disabled=true; return; }
+  empty.style.display='none'; prev.style.display='block';
+  compose();
+  document.getElementById('dl').disabled=false;
+}
+
+// ---- 이미지 로드 ----
+function capToCanvas(srcImg){
+  const w=srcImg.naturalWidth||srcImg.width, h=srcImg.naturalHeight||srcImg.height;
+  const s=Math.min(1,LONG/Math.max(w,h));
+  const c=document.createElement('canvas'); c.width=Math.round(w*s); c.height=Math.round(h*s);
+  c.getContext('2d').drawImage(srcImg,0,0,c.width,c.height); return c;
+}
+function loadFromSrc(src){
+  const im=new Image();
+  im.crossOrigin='anonymous';   // 캔버스 저장(toBlob) 위해 CORS 허용 로드 (동일 출처면 무영향)
+  im.onload=()=>{ state.img=capToCanvas(im); render(); };
+  im.onerror=()=>{ const e=document.getElementById('empty'); if(e){ e.style.display='block'; e.textContent='작품 이미지를 불러오지 못했습니다.'; } };
+  im.src=src;
+}
+
+// ============================================================
+//  UI 빌드
+// ============================================================
+function dummyArt(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d'); const g=x.createLinearGradient(0,0,w,h);
+  g.addColorStop(0,'#a9bdd4'); g.addColorStop(.5,'#ded3c0'); g.addColorStop(1,'#c5a78f');
+  x.fillStyle=g; x.fillRect(0,0,w,h);
+  x.fillStyle='rgba(255,255,255,.35)'; x.beginPath(); x.arc(w*.7,h*.3,w*.2,0,7); x.fill();
+  x.fillStyle='rgba(90,70,60,.25)'; x.beginPath(); x.arc(w*.3,h*.75,w*.28,0,7); x.fill();
+  return c; }
+
+// 프레임 칩
+const framesEl=document.getElementById('frames');
+FRAMES.forEach((f,i)=>{
+  const chip=document.createElement('div'); chip.className='chip'+(i===0?' active':'');
+  const cv=document.createElement('canvas'); cv.width=72; cv.height=88;
+  const framed=buildFramedCore(dummyArt(46,58), f,
+    { frame:.075, matte:.12, frameColor:'#46362a', matteColor:'#f2eee4', glass:false });
+  const ctx=cv.getContext('2d');
+  const s=Math.min(66/framed.width,82/framed.height);
+  ctx.drawImage(framed,(72-framed.width*s)/2,(88-framed.height*s)/2,framed.width*s,framed.height*s);
+  const span=document.createElement('span'); span.textContent=f.name;
+  chip.appendChild(cv); chip.appendChild(span);
+  chip.onclick=()=>{ state.frameIdx=i; [...framesEl.children].forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); render(); };
+  framesEl.appendChild(chip);
+});
+
+// 벽 칩 (실사 썸네일)
+const wallsEl=document.getElementById('walls');
+WALLS.forEach((w,i)=>{
+  const chip=document.createElement('div'); chip.className='chip'+(i===0?' active':'');
+  const im=document.createElement('img'); im.src=w.src; im.loading='lazy';
+  im.onerror=()=>{ im.style.background='#ddd'; };
+  const span=document.createElement('span'); span.textContent=w.name;
+  chip.appendChild(im); chip.appendChild(span);
+  chip.onclick=()=>{ state.wallIdx=i; [...wallsEl.children].forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); render(); };
+  wallsEl.appendChild(chip);
+});
+
+// 판매 작품 목록 (운영페이지에서 localStorage로 전달: [{url,title,artist,exhibition}])
+const worksEl=document.getElementById('works');
+let SOLD_WORKS=[];
+try{ SOLD_WORKS = JSON.parse(localStorage.getItem('artlook:works')||'[]'); }catch{ SOLD_WORKS=[]; }
+// 외부 도메인(R2) 이미지는 동일출처 프록시로 중계 → 캔버스 taint 방지(PNG 저장 가능).
+// 상대경로(로컬 /images, /uploads)는 이미 동일출처라 그대로 사용.
+function resolveSrc(url){ return /^https?:\/\//i.test(url) ? '/api/upload/image-proxy?url='+encodeURIComponent(url) : url; }
+let selectedWork=null;
+if(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length){
+  SOLD_WORKS.forEach((w,i)=>{
+    const img=document.createElement('img');
+    img.src=resolveSrc(w.url); img.loading='lazy'; img.title=w.title||'';
+    img.crossOrigin='anonymous';
+    if(i===0) img.classList.add('active');
+    img.onclick=()=>{ [...worksEl.children].forEach(x=>x.classList.remove('active')); img.classList.add('active'); selectedWork=w; loadFromSrc(resolveSrc(w.url)); };
+    img.onerror=()=>{ img.style.opacity='.3'; };
+    worksEl.appendChild(img);
+  });
+  selectedWork=SOLD_WORKS[0];
+  loadFromSrc(resolveSrc(SOLD_WORKS[0].url)); // 첫 작품 자동 로드
+} else {
+  document.getElementById('worksEmpty').style.display='block';
+}
+
+// 다운로드 파일명: 작가_작품명_공모명_판매작.png (없는 항목은 생략)
+function sanitizeName(s){ return String(s==null?'':s).replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim(); }
+function downloadFileName(){
+  const w=selectedWork||{};
+  const parts=[w.artist, w.title, w.exhibition].map(sanitizeName).filter(Boolean);
+  parts.push('판매작');
+  return parts.join('_')+'.png';
+}
+
+// 색 스와치
+function buildSwatches(elId,colors,onpick,initial){
+  const el=document.getElementById(elId);
+  colors.forEach(col=>{ const s=document.createElement('div'); s.className='sw'+(col===initial?' active':'');
+    s.style.background= col==='transparent'
+      ? 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 0 0/8px 8px' : col;
+    s.onclick=()=>{ [...el.children].forEach(x=>x.classList.remove('active'));
+      s.classList.add('active'); onpick(col); }; el.appendChild(s); });
+}
+buildSwatches('frameSwatches', ['#2b2b2b','#5a3a1e','#c9a24b','#8a8d92','#f5f3ee','#2a3b5e'],
+  col=>{ state.frameColor=col; document.getElementById('frameColor').value=col; render(); }, '#2b2b2b');
+buildSwatches('matteSwatches', ['#f5f2ea','#ffffff','#e7e2d6','#d9d2c4','#1c1c1c'],
+  col=>{ state.matteColor=col; document.getElementById('matteColor').value=col; render(); }, '#f5f2ea');
+// 비율 버튼
+const ratiosEl=document.getElementById('ratios');
+RATIOS.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.name;
+  if(r.id===state.ratio) b.classList.add('active');
+  b.onclick=()=>{ state.ratio=r.id; [...ratiosEl.children].forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); render(); }; ratiosEl.appendChild(b); });
+
+// 컬러 피커 / 토글
+document.getElementById('frameColor').oninput=e=>{ state.frameColor=e.target.value; render(); };
+document.getElementById('matteColor').oninput=e=>{ state.matteColor=e.target.value; render(); };
+document.getElementById('glass').onchange=e=>{ state.glass=e.target.checked; render(); };
+document.getElementById('weave').onchange=e=>{ state.weave=e.target.checked; render(); };
+
+// 조명 효과 선택/강도
+document.getElementById('lightSel').querySelectorAll('button').forEach(b=>{
+  b.onclick=()=>{ state.effect=Number(b.dataset.eff);
+    document.querySelectorAll('#lightSel button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); render(); };
+});
+const lo=document.getElementById('lightOp'), lov=document.getElementById('lightOpv');
+lo.oninput=()=>{ state.effectOp=lo.value/100; lov.textContent=lo.value+'%'; render(); };
+
+// 슬라이더
+const fw=document.getElementById('frameW'), fwv=document.getElementById('frameWv');
+fw.oninput=()=>{ state.frame=fw.value/100; fwv.textContent=fw.value+'%'; render(); };
+const mw=document.getElementById('matteW'), mwv=document.getElementById('matteWv');
+mw.oninput=()=>{ state.matte=mw.value/100; mwv.textContent=mw.value+'%'; render(); };
+
+// (파일 첨부/드래그드롭은 제거됨 — 판매 작품 목록에서만 선택)
+
+// ---- 벽 모드: 액자 드래그 이동 / 휠 크기 / 더블클릭 리셋 ----
+const pv=document.getElementById('preview');
+let dragging=null;
+function canvasPoint(e){
+  const r=pv.getBoundingClientRect();
+  return { x:(e.clientX-r.left)*pv.width/r.width, y:(e.clientY-r.top)*pv.height/r.height };
+}
+pv.addEventListener('pointerdown',e=>{
+  if(state.mode!=='wall'||!state.img||!lastArt) return;
+  const p=canvasPoint(e); const m=Math.max(20,lastArt.fw*.06);
+  if(p.x<lastArt.x-m||p.x>lastArt.x+lastArt.fw+m||p.y<lastArt.y-m||p.y>lastArt.y+lastArt.fh+m) return;
+  const adj=WALLS[state.wallIdx].adj;
+  dragging={px:p.x,py:p.y,dx0:adj.dx,dy0:adj.dy};
+  pv.setPointerCapture(e.pointerId); e.preventDefault();
+});
+pv.addEventListener('pointermove',e=>{
+  if(!dragging) return;
+  const p=canvasPoint(e); const adj=WALLS[state.wallIdx].adj;
+  adj.dx=dragging.dx0+(p.x-dragging.px)/pv.width;
+  adj.dy=dragging.dy0+(p.y-dragging.py)/pv.height;
+  render();
+});
+['pointerup','pointercancel'].forEach(ev=>pv.addEventListener(ev,()=>{ dragging=null; }));
+pv.addEventListener('wheel',e=>{
+  if(state.mode!=='wall'||!state.img) return;
+  e.preventDefault();
+  const adj=WALLS[state.wallIdx].adj;
+  adj.s=Math.max(.35, Math.min(2.5, adj.s*(e.deltaY<0?1.06:0.94)));
+  render();
+},{passive:false});
+pv.addEventListener('dblclick',()=>{
+  if(state.mode!=='wall') return;
+  WALLS[state.wallIdx].adj={dx:0,dy:0,s:1}; render();
+});
+
+// 다운로드
+document.getElementById('dl').onclick=()=>{
+  const c=document.getElementById('preview');
+  try{
+    c.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+      a.download=downloadFileName(); a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+      try{ localStorage.setItem('artlook:done', String(Date.now())); }catch(e){}
+    },'image/png');
+  }catch(err){ alert('이미지 저장에 실패했습니다. 작품 이미지가 외부 출처라 보안 제약이 있을 수 있습니다.'); }
+};
+
+// 완료 · ArtLink로 돌아가기 (스크립트로 연 탭은 자동 닫힘)
+document.getElementById('back').onclick=()=>{
+  try{ localStorage.setItem('artlook:done', String(Date.now())); }catch(e){}
+  window.close();
+  setTimeout(()=>{ if(!window.closed) alert('이 탭을 닫고 ArtLink 화면으로 돌아가 주세요.'); }, 300);
+};
+
+render();
+</script>
+</body>
+</html>

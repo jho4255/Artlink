@@ -87,9 +87,10 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
     onError: (e: any) => toast.error(e.response?.data?.error || '변경 실패'),
   });
 
-  const Toggle = ({ active, onLabel, offLabel, onClick, activeClass }: { active: boolean; onLabel: string; offLabel: string; onClick: () => void; activeClass: string }) => (
-    <button onClick={onClick} disabled={mutation.isPending}
-      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${active ? activeClass : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+  const locked = !!access.settled;
+  const Toggle = ({ active, onLabel, offLabel, onClick, activeClass, disabled }: { active: boolean; onLabel: string; offLabel: string; onClick: () => void; activeClass: string; disabled?: boolean }) => (
+    <button onClick={onClick} disabled={mutation.isPending || disabled}
+      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${active ? activeClass : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
       {active ? onLabel : offLabel}
     </button>
   );
@@ -102,20 +103,23 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
           {access.recruitmentClosed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">모집마감</span>}
           {access.confirmed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">확정</span>}
           {access.ended && <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">전시종료</span>}
+          {locked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">정산완료</span>}
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Toggle active={access.recruitmentClosed} onLabel="모집 재개" offLabel="모집마감" activeClass="border-gray-800 bg-gray-800 text-white"
+        <Toggle active={access.recruitmentClosed} onLabel="모집 재개" offLabel="모집마감" activeClass="border-gray-800 bg-gray-800 text-white" disabled={locked}
           onClick={() => mutation.mutate({ recruitmentClosed: !access.recruitmentClosed })} />
-        <Toggle active={access.manualConfirmed} onLabel="확정 취소" offLabel="확정" activeClass="border-blue-600 bg-blue-600 text-white"
+        <Toggle active={access.manualConfirmed} onLabel="확정 취소" offLabel="확정" activeClass="border-blue-600 bg-blue-600 text-white" disabled={locked}
           onClick={() => mutation.mutate({ confirmed: !access.manualConfirmed })} />
-        <Toggle active={access.ended} onLabel="종료 취소" offLabel="전시종료" activeClass="border-red-500 bg-red-500 text-white"
+        <Toggle active={access.ended} onLabel="종료 취소" offLabel="전시종료" activeClass="border-red-500 bg-red-500 text-white" disabled={locked}
           onClick={() => mutation.mutate({ ended: !access.ended })} />
       </div>
       <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-        · 모집마감: 모집공고가 목록에서 내려갑니다.<br />
-        · 확정: 작가의 전시정보 수정이 잠깁니다. <b>전시 시작일이 지나면 자동 확정</b>됩니다{access.confirmed && !access.manualConfirmed ? ' (현재 시작일 경과로 자동 확정됨)' : ''}.<br />
-        · 전시종료: 정산 단계로 전환되며 아래에 정산 입력이 나타납니다.
+        {locked
+          ? <>· <b className="text-green-700">정산이 완료</b>되어 운영 페이지가 잠겼습니다. 더 이상 상태·정산을 수정할 수 없습니다.</>
+          : <>· 모집마감: 모집공고가 목록에서 내려갑니다.<br />
+            · 확정: 작가의 전시정보 수정이 잠깁니다. <b>전시 시작일이 지나면 자동 확정</b>됩니다{access.confirmed && !access.manualConfirmed ? ' (현재 시작일 경과로 자동 확정됨)' : ''}.<br />
+            · 전시종료: 정산 단계로 전환되며 아래에 정산 입력이 나타납니다.</>}
       </p>
     </section>
   );
@@ -594,6 +598,16 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
 // ============ 정산 (전시종료 후) ============
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
+// 판매 작품들을 ArtLook(액자·전시공간 홍보 도구)로 넘겨 새 탭에서 연다.
+// 핸드오프: localStorage 'artlook:works' = [{url,title}] (동일 출처라 탭 간 공유됨)
+function openArtLook(works: { url: string; title: string; artist?: string; exhibition?: string }[]) {
+  const valid = works.filter(w => w.url);
+  if (valid.length === 0) { toast.error('홍보할 판매 작품 이미지가 없습니다.'); return; }
+  try { localStorage.setItem('artlook:works', JSON.stringify(valid)); } catch { /* noop */ }
+  // 정적 페이지 — 명시적 index.html 경로(개발 Vite·운영 모두 안전, SPA fallback 회피)
+  window.open('/artlook/index.html', '_blank');
+}
+
 type EditWork = { index: number; title: string; image?: string; size?: string; medium?: string; year?: string; listPrice: string; sold: boolean; soldPrice: number; paymentMethod: 'CARD' | 'CASH' };
 type EditArtist = { user: { id: number; name: string; nickname?: string | null; email?: string }; galleryRatio: number; works: EditWork[] };
 
@@ -605,7 +619,7 @@ function artistTotals(a: EditArtist) {
 
 // 작가 본인 정산 내역 (전시종료 후)
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; artist: SettlementArtist }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; settled?: boolean; artist: SettlementArtist | null }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -614,7 +628,17 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const [downloading, setDownloading] = useState(false);
 
   if (isLoading) return <div className="h-24 bg-gray-100 animate-pulse rounded-xl mb-10" />;
-  if (!data?.artist) return null;
+  // 정산 완료 전에는 작가에게 내역 비공개
+  if (!data?.settled || !data.artist) {
+    return (
+      <section className="mb-10">
+        <h2 className="text-lg font-medium text-gray-900 mb-3">내 정산 내역</h2>
+        <div className="border border-dashed border-gray-200 rounded-xl p-6 text-center text-sm text-gray-400">
+          갤러리가 정산을 완료하면 내 정산 내역이 공개됩니다.
+        </div>
+      </section>
+    );
+  }
   const a = data.artist;
   const sold = a.works.filter(w => w.sold);
 
@@ -659,7 +683,8 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
 }
 
 function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
-  const { data, isLoading } = useQuery<Settlement>({
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<Settlement & { settled?: boolean; settledAt?: string | null }>({
     queryKey: ['operation-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/settlement`).then(r => r.data),
     staleTime: 0,
@@ -668,6 +693,19 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const [artists, setArtists] = useState<EditArtist[]>([]);
   const [exTitle, setExTitle] = useState('');
   const [zipping, setZipping] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const settled = !!data?.settled;
+
+  const completeMutation = useMutation({
+    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/complete`),
+    onSuccess: () => {
+      toast.success('정산이 완료되었습니다. 참여 작가에게 공유됩니다.');
+      setConfirmOpen(false);
+      qc.invalidateQueries({ queryKey: ['operation-settlement', exhibitionId] });
+      qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '정산 완료 실패'),
+  });
 
   useEffect(() => {
     if (data) {
@@ -732,18 +770,44 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse rounded-xl mb-10" />;
 
   const grand = buildSettlement().grand;
+  // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
+  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: displayName(a.user), exhibition: exTitle })));
 
   return (
     <section className="mb-10">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-medium text-gray-900">정산</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
+          {!settled && (
+            <>
+              <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
+              <button onClick={() => setConfirmOpen(true)} disabled={completeMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 완료</button>
+            </>
+          )}
           <button onClick={() => downloadOverall()} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"><FileDown size={13} /> 전체 정산 PDF</button>
           <button onClick={() => downloadOverall('CASH')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">현금 정산서</button>
           <button onClick={() => downloadOverall('CARD')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">카드 정산서</button>
         </div>
       </div>
+
+      {settled && (
+        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <b>정산 완료됨</b>{data?.settledAt ? ` · ${new Date(data.settledAt).toLocaleDateString('ko-KR')}` : ''} · 참여 작가에게 정산 내역이 공유되었습니다. 더 이상 수정할 수 없습니다.
+        </div>
+      )}
+
+      {/* 판매작 홍보 CTA — ArtLook 연결 */}
+      {soldWorks.length > 0 && (
+        <div className="mb-4 rounded-xl border border-[#c4302b]/25 bg-[#fff5f4] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900">판매한 작품들을 홍보해보세요</p>
+            <p className="text-xs text-gray-500 mt-0.5">판매된 {soldWorks.length}점을 액자·전시 공간에 담아 SNS 홍보 이미지를 만들 수 있어요.</p>
+          </div>
+          <button onClick={() => openArtLook(soldWorks)} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer">
+            <Megaphone size={15} /> ArtLook으로 홍보 이미지 만들기
+          </button>
+        </div>
+      )}
 
       {artists.length === 0 ? (
         <p className="text-sm text-gray-400 py-4">수락된 작가가 없습니다.</p>
@@ -768,7 +832,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                   <div className="space-y-2">
                     {a.works.map((w, wi) => (
                       <div key={wi} className={`flex items-center gap-3 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
-                        <input type="checkbox" checked={w.sold} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0" />
+                        <input type="checkbox" checked={w.sold} disabled={settled} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
                         {/* 작품 사진 */}
                         {w.image ? (
                           <img src={w.image} alt="" className="w-14 h-14 object-cover rounded shrink-0" />
@@ -784,14 +848,14 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                         {w.sold && (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-                              <button type="button" onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
-                                className={`px-2 py-1 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
-                              <button type="button" onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
-                                className={`px-2 py-1 ${w.paymentMethod === 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>현금</button>
+                              <button type="button" disabled={settled} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
+                                className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
+                              <button type="button" disabled={settled} onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
+                                className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod === 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>현금</button>
                             </div>
-                            <input type="text" inputMode="numeric" value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
+                            <input type="text" inputMode="numeric" disabled={settled} value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
                               onChange={e => updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 })}
-                              placeholder="판매가" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right" />
+                              placeholder="판매가" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right disabled:bg-gray-100" />
                             <span className="text-xs text-gray-400">원</span>
                           </div>
                         )}
@@ -804,7 +868,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                   <span className="text-gray-500">판매 합계 <b className="text-gray-900">{won(t.total)}</b></span>
                   <span className="flex items-center gap-1">
                     갤러리
-                    <input type="number" min={0} max={100} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right" />%
+                    <input type="number" min={0} max={100} disabled={settled} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right disabled:bg-gray-100" />%
                     <span className="text-gray-400">: 작가 {100 - a.galleryRatio}%</span>
                   </span>
                   <span className="text-gray-500">갤러리 <b className="text-gray-900">{won(t.galleryAmount)}</b></span>
@@ -826,7 +890,26 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
           </div>
         </div>
       )}
-      <p className="text-xs text-gray-400 mt-2">* 비율·판매가 변경 후 [정산 저장]을 눌러야 보관됩니다. PDF는 현재 화면 값으로 생성됩니다.</p>
+      {!settled && (
+        <p className="text-xs text-gray-400 mt-2">* 비율·판매가 변경 후 [정산 저장]을 눌러야 보관됩니다. PDF는 현재 화면 값으로 생성됩니다. <b>[정산 완료]</b>를 누르면 작가에게 공유되고 수정이 잠깁니다.</p>
+      )}
+
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setConfirmOpen(false)}>
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">정산을 완료할까요?</h3>
+            <ul className="text-sm text-gray-600 space-y-1.5 mb-5 list-disc pl-4">
+              <li>정산을 완료하면 <b className="text-gray-900">더 이상 운영 페이지를 수정할 수 없습니다.</b></li>
+              <li>정산 내역이 <b className="text-gray-900">참여 작가들에게 공유</b>됩니다.</li>
+              <li>이 작업은 되돌릴 수 없습니다.</li>
+            </ul>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">취소</button>
+              <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50">{completeMutation.isPending ? '처리 중...' : '동의하고 정산 완료'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -124,4 +124,25 @@ router.post('/file', authenticate, fileUpload.single('file'), async (req, res, n
   }
 });
 
+// ── 이미지 동일출처 프록시 (ArtLook 캔버스 PNG 저장용) ──
+// R2 공개 이미지(외부 도메인)를 우리 도메인으로 중계 → 캔버스 taint 없이 toBlob 가능.
+// SSRF 방지: R2_PUBLIC_URL 접두사로 시작하는 URL만 허용. 공개 이미지라 인증 불필요.
+router.get('/image-proxy', async (req, res, next) => {
+  try {
+    const url = String(req.query.url || '');
+    const base = process.env.R2_PUBLIC_URL || '';
+    if (!base || !url.startsWith(base + '/')) {
+      throw new AppError('허용되지 않은 이미지 주소입니다.', 400);
+    }
+    const upstream = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!upstream.ok) throw new AppError('이미지를 가져오지 못했습니다.', 502);
+    const ct = upstream.headers.get('content-type') || '';
+    if (!ct.startsWith('image/')) throw new AppError('이미지 파일이 아닙니다.', 400);
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.end(buf);
+  } catch (err) { next(err); }
+});
+
 export default router;

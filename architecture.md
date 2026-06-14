@@ -128,6 +128,8 @@ ArtLink/
   - 모집마감/종료 → `GET /exhibitions` 목록·지원에서 제외. 확정(또는 전시 시작일 경과) → 작가 `PUT /me` 잠금
   - 전시종료 → 정산: 작가별 출품작 판매체크+판매가(원), 갤러리비율 입력(작가 자동). API `GET/PUT /api/operations/:id/settlement`
   - 정산 PDF: 작가별/전체 (`downloadArtistSettlementPdf`, `downloadOverallSettlementPdf`)
+  - **정산 완료(settledAt)** (migration 20260614141021_add_exhibition_settled_at): `POST /api/operations/:id/settlement/complete`(오너/Admin, 종료 후만, 일방 확정). 완료 시 ① `settledAt` 세팅 → `PUT settlement`·공지 CUD·`lifecycle` 403(운영페이지 잠금) ② 작가 알림(SETTLEMENT_SHARED). `GET /api/operations/:id/my-settlement`은 **settledAt 있을 때만** 작가에게 내역 공개(전엔 `{settled:false, artist:null}`). 프론트: 정산 섹션 [정산 완료] + 동의 모달, 완료 후 읽기전용 배너
+- **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
 - 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
 ## 인증 구조
