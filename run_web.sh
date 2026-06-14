@@ -42,20 +42,23 @@ fi
 # 2. 업로드 디렉토리 생성
 mkdir -p "$BACKEND_DIR/uploads"
 
-# 3. DB 마이그레이션 & 시드
+# 3. 이전 실행에서 남은 node 프로세스 정리 (DLL 잠금 방지)
+taskkill.exe /F /IM node.exe 2>/dev/null || true
+
+# 4. DB 마이그레이션 & 시드
 echo "🗄️  데이터베이스 설정 중..."
 cd "$BACKEND_DIR"
 npx prisma generate
 npx prisma migrate dev --name init 2>/dev/null || npx prisma db push
 npx tsx prisma/seed.ts 2>/dev/null || echo "시드 데이터가 이미 존재합니다."
 
-# 4. 백엔드 서버 시작 (백그라운드)
+# 5. 백엔드 서버 시작 (백그라운드)
 echo "🚀 백엔드 서버 시작 (포트 4000)..."
 cd "$BACKEND_DIR"
 npx tsx src/index.ts &
 BACKEND_PID=$!
 
-# 5. 프론트엔드 개발 서버 시작
+# 6. 프론트엔드 개발 서버 시작
 echo "🖥️  프론트엔드 서버 시작 (포트 5173)..."
 cd "$FRONTEND_DIR"
 npx vite --host &
