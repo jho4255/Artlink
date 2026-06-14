@@ -233,6 +233,16 @@ export interface OperationAccess {
   confirmed: boolean;        // 수동 확정 또는 전시 시작일 경과
   manualConfirmed: boolean;  // 수동 확정 플래그
   ended: boolean;
+  settled?: boolean;         // 정산 완료(확정) — 운영페이지 수정 잠금 + 작가에게 정산 공개
+  settledAt?: string | null;
+}
+
+// ArtLook(작품 액자/목업) 홍보용 핸드오프 payload (localStorage 'artlook:works')
+export interface ArtLookWork {
+  url: string;
+  title: string;
+  artist?: string;      // 작가 표시명 (다운로드 파일명용)
+  exhibition?: string;  // 공모명 (다운로드 파일명용)
 }
 
 // 정산: 작가 작품 1개

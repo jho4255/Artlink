@@ -261,16 +261,41 @@ describe('공모 운영 페이지 API', () => {
       const p = await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${artist1Tok}`).send({ sales: [], ratios: [] });
       expect(p.status).toBe(403);
     });
-    it('작가 본인 정산 내역 조회 (my-settlement)', async () => {
+    it('정산 완료 전 작가 본인 정산 비공개 → 완료 후 공개', async () => {
       await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({
         sales: [{ artistUserId: 1, artworkIndex: 0, title: 'A', soldPrice: 500000 }],
         ratios: [{ artistUserId: 1, galleryRatio: 40 }],
       });
-      const r = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
-      expect(r.status).toBe(200);
-      expect(r.body.artist.total).toBe(500000);
-      expect(r.body.artist.artistAmount).toBe(300000); // 60%
-      expect(r.body.artist.galleryRatio).toBe(40);
+      // 완료 전: 작가에게 비공개
+      const before = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+      expect(before.status).toBe(200);
+      expect(before.body.settled).toBe(false);
+      expect(before.body.artist).toBeNull();
+      // 정산 완료
+      const done = await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(done.status).toBe(200);
+      expect(done.body.settled).toBe(true);
+      // 완료 후: 작가에게 공개
+      const after = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+      expect(after.status).toBe(200);
+      expect(after.body.settled).toBe(true);
+      expect(after.body.artist.total).toBe(500000);
+      expect(after.body.artist.artistAmount).toBe(300000); // 60%
+      expect(after.body.artist.galleryRatio).toBe(40);
+    });
+    it('정산 완료 후 운영 수정 잠금 (PUT settlement·lifecycle 403) + 재완료 400', async () => {
+      await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+      const put = await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({ sales: [], ratios: [] });
+      expect(put.status).toBe(403);
+      const lifecycle = await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ recruitmentClosed: false });
+      expect(lifecycle.status).toBe(403);
+      const again = await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(again.status).toBe(400);
+    });
+    it('전시종료 전에는 정산 완료 불가 → 400', async () => {
+      await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ ended: false });
+      const r = await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(r.status).toBe(400);
     });
     it('미수락 작가는 본인 정산 조회 불가 → 403', async () => {
       const r = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist2Tok}`);

@@ -39,7 +39,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
     where: { id: exhibitionId },
     select: {
       id: true, title: true, galleryId: true,
-      recruitmentClosed: true, confirmed: true, ended: true, exhibitStartDate: true,
+      recruitmentClosed: true, confirmed: true, ended: true, settledAt: true, exhibitStartDate: true,
       gallery: { select: { ownerId: true, name: true } },
     },
   });
@@ -74,6 +74,8 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
       confirmed: isConfirmed,        // 수동 확정 또는 전시 시작일 경과
       manualConfirmed: exhibition.confirmed,
       ended: exhibition.ended,
+      settled: !!exhibition.settledAt,   // 정산 완료 여부 (운영페이지 수정 잠금)
+      settledAt: exhibition.settledAt,
     });
   } catch (e) { next(e); }
 });
@@ -93,8 +95,9 @@ router.get('/:id/notices', authenticate, async (req, res, next) => {
 
 router.post('/:id/notices', authenticate, async (req, res, next) => {
   try {
-    const { isOwner, isAdmin } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('공지 작성 권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { title, content } = req.body || {};
     if (!title?.trim() || !content?.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
     const exhibitionId = idOf(req.params.id);
@@ -127,8 +130,9 @@ router.post('/:id/notices', authenticate, async (req, res, next) => {
 
 router.patch('/:id/notices/:noticeId', authenticate, async (req, res, next) => {
   try {
-    const { isOwner, isAdmin } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const noticeId = idOf(req.params.noticeId);
     const existing = await prisma.exhibitionNotice.findUnique({ where: { id: noticeId } });
     if (!existing || existing.exhibitionId !== idOf(req.params.id)) throw new AppError('공지를 찾을 수 없습니다.', 404);
@@ -144,8 +148,9 @@ router.patch('/:id/notices/:noticeId', authenticate, async (req, res, next) => {
 
 router.delete('/:id/notices/:noticeId', authenticate, async (req, res, next) => {
   try {
-    const { isOwner, isAdmin } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const noticeId = idOf(req.params.noticeId);
     const existing = await prisma.exhibitionNotice.findUnique({ where: { id: noticeId } });
     if (!existing || existing.exhibitionId !== idOf(req.params.id)) throw new AppError('공지를 찾을 수 없습니다.', 404);
@@ -301,8 +306,9 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
 router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { recruitmentClosed, confirmed, ended } = req.body || {};
     const data: any = {};
     if (typeof recruitmentClosed === 'boolean') data.recruitmentClosed = recruitmentClosed;
@@ -381,7 +387,7 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
 
-    res.json({ exhibitionTitle: exhibition.title, ...computeSettlement(rows, sales, settlements) });
+    res.json({ exhibitionTitle: exhibition.title, settled: !!exhibition.settledAt, settledAt: exhibition.settledAt, ...computeSettlement(rows, sales, settlements) });
   } catch (e) { next(e); }
 });
 
@@ -393,6 +399,11 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 조회할 수 있습니다.', 403);
 
+    // 정산 완료(settledAt) 전에는 작가에게 정산 내역을 공개하지 않음
+    if (!exhibition.settledAt) {
+      return res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, settled: false, artist: null });
+    }
+
     const sub = await prisma.exhibitionSubmission.findUnique({ where: { exhibitionId_userId: { exhibitionId, userId } } });
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, nickname: true, email: true } });
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId, artistUserId: userId } });
@@ -402,15 +413,16 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
       [{ user, artworkList: safeJson<any[]>(sub?.artworkList, []) }],
       sales, settlements
     );
-    res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, artist: artists[0] });
+    res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, settled: true, settledAt: exhibition.settledAt, artist: artists[0] });
   } catch (e) { next(e); }
 });
 
 router.put('/:id/settlement', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
 
     const { sales, ratios } = req.body || {};
     const saleRows = Array.isArray(sales) ? sales : [];
@@ -442,6 +454,43 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       }),
     ]);
     res.json({ message: '정산 정보가 저장되었습니다.' });
+  } catch (e) { next(e); }
+});
+
+// ── 정산 완료 (오너/Admin) — 일방 확정: 수정 잠금 + 작가에게 정산 공개 ──
+router.post('/:id/settlement/complete', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (!exhibition.ended) throw new AppError('전시 종료 후에 정산을 완료할 수 있습니다.', 400);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+
+    const updated = await prisma.exhibition.update({
+      where: { id: exhibitionId },
+      data: { settledAt: new Date() },
+      select: { settledAt: true },
+    });
+
+    // 수락 작가에게 정산 공개 알림 (best-effort)
+    try {
+      const accepted = await prisma.application.findMany({
+        where: { exhibitionId, status: 'ACCEPTED' },
+        select: { userId: true },
+      });
+      if (accepted.length > 0) {
+        await prisma.notification.createMany({
+          data: accepted.map((a) => ({
+            userId: a.userId,
+            type: 'SETTLEMENT_SHARED',
+            message: `"${exhibition.title}" 전시의 정산 내역이 공개되었습니다.`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+          })),
+        });
+      }
+    } catch { /* 알림 실패해도 정산 완료는 정상 */ }
+
+    res.json({ settled: true, settledAt: updated.settledAt });
   } catch (e) { next(e); }
 });
 

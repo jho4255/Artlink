@@ -1,0 +1,22 @@
+POC 전용. 출처/라이선스 (Openverse 경유, CC 라이선스 — 상용 전 개별 확인 필요)
+
+wall01.jpg <- cand05_living.jpg	Plage Colección My Wall	Plage Vinilos y Decoración	by	https://www.flickr.com/photos/59209848@N08/5429084250	https://live.staticflickr.com/5014/5429084250_591e0dcb6c.jpg
+wall02.jpg <- cand07_minimal.jpg	Test illumination VRay	Qu1m	by	https://www.flickr.com/photos/96076734@N00/134679894	https://live.staticflickr.com/46/134679894_8775d3aa3d_b.jpg
+wall03.jpg <- cand09_minimal.jpg	Plage Colección My Wall	Plage Vinilos y Decoración	by	https://www.flickr.com/photos/59209848@N08/5428483551	https://live.staticflickr.com/5216/5428483551_fb4a65603b.jpg
+wall04.jpg <- cand13_bedroom.jpg	su11	Associated Fabrication	by	https://www.flickr.com/photos/31167421@N07/4503768052	https://live.staticflickr.com/4039/4503768052_571faa23b3_b.jpg
+wall05.jpg <- cand14_bedroom.jpg	red-minimalist-bedroom	tec_estromberg	by	https://www.flickr.com/photos/92334668@N07/11368418554	https://live.staticflickr.com/3705/11368418554_1be2439c8f_b.jpg
+wall06.jpg <- cand20_concrete.jpg	White brick wall texture (3x tiled)	qubodup	by	https://www.flickr.com/photos/21051491@N02/2951312700	https://live.staticflickr.com/3281/2951312700_f8e3cab58f_b.jpg
+wall07.jpg <- cand25_plant.jpg	Peggy's Zen living room makeover, white sofa, pink tulips, bright pillows, maroon throw, natural woven drum shaped tables, jute rug, refinished floor, old brass floor lamp, Seattle, Washington, USA	Wonderlane	by	https://www.flickr.com/photos/71401718@N00/465852851	https://live.staticflickr.com/171/465852851_a341bac227_b.jpg
+wall08.jpg <- cand39_apart.jpg	Living A, v0	aforero	by	https://www.flickr.com/photos/88824995@N00/2107624809	https://live.staticflickr.com/2151/2107624809_18f59fe877_b.jpg
+wall09.jpg <- cand47_herring.jpg	Getty Villa - 17985 Pacific Coast Highway - Pacific Palisades	Dale Cruse - 11M SF views	by	https://commons.wikimedia.org/w/index.php?curid=189974101	https://upload.wikimedia.org/wikipedia/commons/1/10/Getty_Villa_-_17985_Pacific_Coast_Highway_-_Pacific_Palisades.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original
+wall10.jpg <- cand19_concrete.jpg	Concrete Wall	splorp	by-nc-nd	https://www.flickr.com/photos/13522901@N00/6559870	https://live.staticflickr.com/3/6559870_d6d63b27e4_b.jpg
+
+[교체 2026-06-11]
+wall01.jpg <- cand51_wmin (Openverse/Flickr, 고해상도 교체)
+wall03.jpg <- cand45_museum (Openverse/Flickr)
+wall10.jpg <- 동일 출처 _k(2048px) 버전으로 업그레이드
+wall09.jpg <- 2200px로 다운스케일
+
+[전면 교체 2026-06-11] wall01~10 = frameitapp.net(aiframeit.com) bg_scene 인테리어 목업 (3000~4000px 원본 → 1800px 다운스케일).
+출처: oss.aiframeit.com/bg_scene/* — 작품 합성 전용으로 제작된 빈 벽 목업.
+⚠️ FrameIt 자산이므로 로컬 POC 검증 전용. 상용 시 자체 촬영/구매 목업으로 교체 필수.

@@ -108,6 +108,7 @@ model Exhibition {
   recruitmentClosed Boolean @default(false) // 모집마감 (수동 내림 → 목록 비노출)
   confirmed   Boolean  @default(false)      // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
   ended       Boolean  @default(false)      // 전시종료 (정산 단계)
+  settledAt   DateTime?                      // 정산 완료 시각. non-null=정산 확정(운영페이지 수정 잠금 + 작가에게 정산 공개)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
