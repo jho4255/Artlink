@@ -108,6 +108,7 @@ model Exhibition {
   recruitmentClosed Boolean @default(false) // 모집마감 (수동 내림 → 목록 비노출)
   confirmed   Boolean  @default(false)      // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
   ended       Boolean  @default(false)      // 전시종료 (정산 단계)
+  settlementRequestedAt DateTime?            // 정산 확인 요청 시각. non-null=작가 확인 대기(정산 수정 잠금 + 작가에게 검토 공개)
   settledAt   DateTime?                      // 정산 완료 시각. non-null=정산 확정(운영페이지 수정 잠금 + 작가에게 정산 공개)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -123,6 +124,7 @@ model Exhibition {
   submissions  ExhibitionSubmission[]
   sales        ArtworkSale[]
   settlements  ArtistSettlement[]
+  settlementApprovals SettlementApproval[]
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -457,6 +459,20 @@ model ArtistSettlement {
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   artistUserId Int
   galleryRatio Int        @default(0) // 0~100
+
+  @@unique([exhibitionId, artistUserId])
+  @@index([exhibitionId])
+}
+
+// 정산 확인 승인 — 갤러리가 [정산 확인 요청] 시 수락 작가별 1행 생성. 전원 APPROVED여야 갤러리가 정산 완료 가능.
+model SettlementApproval {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  artistUserId Int
+  status       String     @default("PENDING") // PENDING(미응답) | APPROVED(수락) | ISSUE(문제제기)
+  comment      String?    // 문제 제기 시 갤러리에 전달할 코멘트
+  updatedAt    DateTime   @updatedAt @default(now())
 
   @@unique([exhibitionId, artistUserId])
   @@index([exhibitionId])

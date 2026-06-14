@@ -39,7 +39,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
     where: { id: exhibitionId },
     select: {
       id: true, title: true, galleryId: true,
-      recruitmentClosed: true, confirmed: true, ended: true, settledAt: true, exhibitStartDate: true,
+      recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true,
       gallery: { select: { ownerId: true, name: true } },
     },
   });
@@ -74,6 +74,8 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
       confirmed: isConfirmed,        // 수동 확정 또는 전시 시작일 경과
       manualConfirmed: exhibition.confirmed,
       ended: exhibition.ended,
+      settlementRequested: !!exhibition.settlementRequestedAt, // 정산 확인 요청 중(작가 검토 대기)
+      settlementRequestedAt: exhibition.settlementRequestedAt,
       settled: !!exhibition.settledAt,   // 정산 완료 여부 (운영페이지 수정 잠금)
       settledAt: exhibition.settledAt,
     });
@@ -386,8 +388,22 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
 
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
+    const approvals = await prisma.settlementApproval.findMany({ where: { exhibitionId } });
+    const apprMap = new Map(approvals.map(a => [a.artistUserId, { status: a.status, comment: a.comment }]));
 
-    res.json({ exhibitionTitle: exhibition.title, settled: !!exhibition.settledAt, settledAt: exhibition.settledAt, ...computeSettlement(rows, sales, settlements) });
+    const computed = computeSettlement(rows, sales, settlements);
+    const artists = computed.artists.map(a => ({ ...a, approval: apprMap.get(a.user.id) || null }));
+    const allApproved = artists.length > 0 && artists.every(a => a.approval?.status === 'APPROVED');
+
+    res.json({
+      exhibitionTitle: exhibition.title,
+      settlementRequested: !!exhibition.settlementRequestedAt,
+      settlementRequestedAt: exhibition.settlementRequestedAt,
+      allApproved,
+      settled: !!exhibition.settledAt,
+      settledAt: exhibition.settledAt,
+      artists, grand: computed.grand,
+    });
   } catch (e) { next(e); }
 });
 
@@ -399,21 +415,29 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 조회할 수 있습니다.', 403);
 
-    // 정산 완료(settledAt) 전에는 작가에게 정산 내역을 공개하지 않음
-    if (!exhibition.settledAt) {
-      return res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, settled: false, artist: null });
+    const requested = !!exhibition.settlementRequestedAt;
+    const settled = !!exhibition.settledAt;
+    // 확인 요청(검토) 또는 정산 완료 전에는 작가에게 정산 내역 비공개
+    if (!requested && !settled) {
+      return res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, requested: false, settled: false, artist: null, myApproval: null });
     }
 
     const sub = await prisma.exhibitionSubmission.findUnique({ where: { exhibitionId_userId: { exhibitionId, userId } } });
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, nickname: true, email: true } });
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId, artistUserId: userId } });
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId, artistUserId: userId } });
+    const appr = await prisma.settlementApproval.findUnique({ where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } } });
 
     const { artists } = computeSettlement(
       [{ user, artworkList: safeJson<any[]>(sub?.artworkList, []) }],
       sales, settlements
     );
-    res.json({ exhibitionTitle: exhibition.title, ended: exhibition.ended, settled: true, settledAt: exhibition.settledAt, artist: artists[0] });
+    res.json({
+      exhibitionTitle: exhibition.title, ended: exhibition.ended,
+      requested, settled, settledAt: exhibition.settledAt,
+      artist: artists[0],
+      myApproval: appr ? { status: appr.status, comment: appr.comment } : null,
+    });
   } catch (e) { next(e); }
 });
 
@@ -423,6 +447,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
+    if (exhibition.settlementRequestedAt) throw new AppError('정산 확인 요청 중에는 수정할 수 없습니다. [요청 취소] 후 수정하세요.', 403);
 
     const { sales, ratios } = req.body || {};
     const saleRows = Array.isArray(sales) ? sales : [];
@@ -465,6 +490,15 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (!exhibition.ended) throw new AppError('전시 종료 후에 정산을 완료할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    if (!exhibition.settlementRequestedAt) throw new AppError('먼저 [정산 확인 요청]을 보내 작가 확인을 받아야 합니다.', 400);
+
+    // 전원 수락 게이트: 수락 작가 모두 APPROVED여야 완료 가능
+    const acceptedArtists = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
+    const apprs = await prisma.settlementApproval.findMany({ where: { exhibitionId }, select: { artistUserId: true, status: true } });
+    const okSet = new Set(apprs.filter((a) => a.status === 'APPROVED').map((a) => a.artistUserId));
+    if (acceptedArtists.some((a) => !okSet.has(a.userId))) {
+      throw new AppError('모든 참여 작가가 정산을 확인(수락)해야 완료할 수 있습니다.', 400);
+    }
 
     const updated = await prisma.exhibition.update({
       where: { id: exhibitionId },
@@ -491,6 +525,100 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     } catch { /* 알림 실패해도 정산 완료는 정상 */ }
 
     res.json({ settled: true, settledAt: updated.settledAt });
+  } catch (e) { next(e); }
+});
+
+// ── 정산 확인 요청 (오너/Admin) — 수락 작가 전원에게 확인 요청 + 알림 ──
+router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (!exhibition.ended) throw new AppError('전시 종료 후에 정산 확인을 요청할 수 있습니다.', 400);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    if (exhibition.settlementRequestedAt) throw new AppError('이미 정산 확인을 요청했습니다.', 400);
+
+    const accepted = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
+
+    await prisma.$transaction([
+      // 이전 응답 초기화 후 전원 PENDING 생성
+      prisma.settlementApproval.deleteMany({ where: { exhibitionId } }),
+      prisma.settlementApproval.createMany({ data: accepted.map((a) => ({ exhibitionId, artistUserId: a.userId, status: 'PENDING' })) }),
+      prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: new Date() } }),
+    ]);
+
+    // 작가에게 확인 요청 알림 (best-effort)
+    try {
+      if (accepted.length > 0) {
+        await prisma.notification.createMany({
+          data: accepted.map((a) => ({
+            userId: a.userId,
+            type: 'SETTLEMENT_CONFIRM_REQUEST',
+            message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요.`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+          })),
+        });
+      }
+    } catch { /* 알림 실패해도 요청은 정상 */ }
+
+    res.json({ settlementRequested: true, requestedCount: accepted.length });
+  } catch (e) { next(e); }
+});
+
+// ── 정산 확인 요청 취소 (오너/Admin) — 수정 위해 잠금 해제 ──
+router.post('/:id/settlement/request/cancel', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    if (!exhibition.settlementRequestedAt) throw new AppError('진행 중인 정산 확인 요청이 없습니다.', 400);
+
+    await prisma.$transaction([
+      prisma.settlementApproval.deleteMany({ where: { exhibitionId } }),
+      prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: null } }),
+    ]);
+    res.json({ settlementRequested: false });
+  } catch (e) { next(e); }
+});
+
+// ── 작가: 정산 확인 응답 (수락 / 문제 제기 + 코멘트) ──
+router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const userId = req.user!.id;
+    const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
+    if (!isAcceptedArtist) throw new AppError('수락된 작가만 응답할 수 있습니다.', 403);
+    if (!exhibition.settlementRequestedAt) throw new AppError('진행 중인 정산 확인 요청이 없습니다.', 400);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+
+    const approve = req.body?.approve === true;
+    const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
+    if (!approve && !comment) throw new AppError('문제 내용을 입력해주세요.', 400);
+
+    await prisma.settlementApproval.upsert({
+      where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
+      update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment },
+      create: { exhibitionId, artistUserId: userId, status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment },
+    });
+
+    // 문제 제기 시 갤러리 오너에게 알림 (best-effort)
+    if (!approve) {
+      try {
+        const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, nickname: true } });
+        const who = me?.nickname || me?.name || '작가';
+        await prisma.notification.create({
+          data: {
+            userId: exhibition.gallery.ownerId,
+            type: 'SETTLEMENT_ISSUE',
+            message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+          },
+        });
+      } catch { /* 알림 실패해도 응답은 정상 */ }
+    }
+
+    res.json({ status: approve ? 'APPROVED' : 'ISSUE' });
   } catch (e) { next(e); }
 });
 

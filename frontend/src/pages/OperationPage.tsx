@@ -617,30 +617,45 @@ function artistTotals(a: EditArtist) {
   return { total, galleryAmount, artistAmount: total - galleryAmount };
 }
 
-// 작가 본인 정산 내역 (전시종료 후)
+// 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; settled?: boolean; artist: SettlementArtist | null }>({
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null } | null }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
     refetchOnMount: 'always',
   });
   const [downloading, setDownloading] = useState(false);
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [comment, setComment] = useState('');
+
+  const respondMutation = useMutation({
+    mutationFn: (body: { approve: boolean; comment?: string }) => api.post(`/operations/${exhibitionId}/settlement/respond`, body),
+    onSuccess: (_d, vars) => {
+      toast.success(vars.approve ? '정산을 확인(수락)했습니다.' : '문제를 갤러리에 전달했습니다.');
+      setIssueOpen(false); setComment('');
+      qc.invalidateQueries({ queryKey: ['operation-my-settlement', exhibitionId] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
+  });
 
   if (isLoading) return <div className="h-24 bg-gray-100 animate-pulse rounded-xl mb-10" />;
-  // 정산 완료 전에는 작가에게 내역 비공개
-  if (!data?.settled || !data.artist) {
+  const requested = !!data?.requested, settled = !!data?.settled;
+  // 확인 요청/완료 전에는 작가에게 내역 비공개
+  if ((!requested && !settled) || !data?.artist) {
     return (
       <section className="mb-10">
         <h2 className="text-lg font-medium text-gray-900 mb-3">내 정산 내역</h2>
         <div className="border border-dashed border-gray-200 rounded-xl p-6 text-center text-sm text-gray-400">
-          갤러리가 정산을 완료하면 내 정산 내역이 공개됩니다.
+          갤러리가 정산 확인을 요청하면 내 정산 내역이 공개됩니다.
         </div>
       </section>
     );
   }
   const a = data.artist;
   const sold = a.works.filter(w => w.sold);
+  const myStatus = data.myApproval?.status;
 
   const downloadMine = async () => {
     setDownloading(true);
@@ -658,6 +673,36 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
           {downloading ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} 내 정산서 PDF
         </button>
       </div>
+
+      {/* 확인 요청 중 — 수락 / 문제 제기 */}
+      {requested && !settled && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">갤러리가 정산 내역 확인을 요청했습니다.</p>
+          <p className="text-xs text-amber-800/80 mt-0.5">아래 내역을 확인하고 <b>수락</b>하거나, 문제가 있으면 갤러리에 알려주세요. 모든 작가가 수락하면 정산이 완료됩니다.</p>
+          {myStatus === 'APPROVED' && <p className="text-sm font-medium text-green-700 mt-2">✓ 수락함 — 갤러리의 정산 완료를 기다리는 중입니다.</p>}
+          {myStatus === 'ISSUE' && (
+            <p className="text-sm text-red-600 mt-2">문제 제기함: “{data.myApproval?.comment}”<br/><span className="text-xs text-gray-500">갤러리가 수정 후 다시 요청하면 재확인할 수 있어요.</span></p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => respondMutation.mutate({ approve: true })} disabled={respondMutation.isPending}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">{myStatus === 'APPROVED' ? '수락됨' : '정산 확인(수락)'}</button>
+            <button onClick={() => setIssueOpen(v => !v)}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50">문제 제기</button>
+          </div>
+          {issueOpen && (
+            <div className="mt-2">
+              <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2}
+                placeholder="어떤 점이 문제인지 적어주세요 (예: 판매가/정산 비율 오류)"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
+              <button onClick={() => comment.trim() ? respondMutation.mutate({ approve: false, comment: comment.trim() }) : toast.error('문제 내용을 입력해주세요.')}
+                disabled={respondMutation.isPending}
+                className="mt-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50">갤러리에 전달</button>
+            </div>
+          )}
+        </div>
+      )}
+      {settled && <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">정산이 완료되었습니다.</div>}
+
       <div className="border border-gray-200 rounded-xl p-4">
         {sold.length === 0 ? (
           <p className="text-sm text-gray-400">아직 판매된 작품이 없습니다.</p>
@@ -684,7 +729,10 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
 
 function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<Settlement & { settled?: boolean; settledAt?: string | null }>({
+  const { data, isLoading } = useQuery<Omit<Settlement, 'artists'> & {
+    settled?: boolean; settledAt?: string | null; settlementRequested?: boolean; allApproved?: boolean;
+    artists: (SettlementArtist & { approval?: { status: string; comment?: string | null } | null })[];
+  }>({
     queryKey: ['operation-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/settlement`).then(r => r.data),
     staleTime: 0,
@@ -695,16 +743,29 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const [zipping, setZipping] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const settled = !!data?.settled;
+  const requested = !!data?.settlementRequested;
+  const allApproved = !!data?.allApproved;
+  const locked = settled || requested;   // 정산 입력 잠금 (완료 또는 확인 요청 중)
+  const approvalOf = (uid: number) => data?.artists.find(x => x.user.id === uid)?.approval ?? null;
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['operation-settlement', exhibitionId] });
+    qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] });
+  };
   const completeMutation = useMutation({
     mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/complete`),
-    onSuccess: () => {
-      toast.success('정산이 완료되었습니다. 참여 작가에게 공유됩니다.');
-      setConfirmOpen(false);
-      qc.invalidateQueries({ queryKey: ['operation-settlement', exhibitionId] });
-      qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] });
-    },
+    onSuccess: () => { toast.success('정산이 완료되었습니다. 참여 작가에게 공유됩니다.'); setConfirmOpen(false); invalidate(); },
     onError: (e: any) => toast.error(e.response?.data?.error || '정산 완료 실패'),
+  });
+  const requestMutation = useMutation({
+    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/request`),
+    onSuccess: () => { toast.success('참여 작가에게 정산 확인을 요청했습니다.'); invalidate(); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '요청 실패'),
+  });
+  const cancelMutation = useMutation({
+    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/request/cancel`),
+    onSuccess: () => { toast.success('정산 확인 요청을 취소했습니다.'); invalidate(); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '취소 실패'),
   });
 
   useEffect(() => {
@@ -778,10 +839,16 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-medium text-gray-900">정산</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          {!settled && (
+          {!settled && !requested && (
             <>
               <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
-              <button onClick={() => setConfirmOpen(true)} disabled={completeMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 완료</button>
+              <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 확인 요청</button>
+            </>
+          )}
+          {requested && !settled && (
+            <>
+              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50">요청 취소</button>
+              <button onClick={() => setConfirmOpen(true)} disabled={!allApproved || completeMutation.isPending} title={allApproved ? '' : '모든 작가가 수락해야 완료할 수 있습니다'} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">정산 완료</button>
             </>
           )}
           <button onClick={() => downloadOverall()} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"><FileDown size={13} /> 전체 정산 PDF</button>
@@ -793,6 +860,13 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
       {settled && (
         <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <b>정산 완료됨</b>{data?.settledAt ? ` · ${new Date(data.settledAt).toLocaleDateString('ko-KR')}` : ''} · 참여 작가에게 정산 내역이 공유되었습니다. 더 이상 수정할 수 없습니다.
+        </div>
+      )}
+
+      {requested && !settled && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <b>정산 확인 요청 중</b> · 작가 {(data?.artists.filter(x => x.approval?.status === 'APPROVED').length ?? 0)}/{data?.artists.length ?? 0}명 수락.
+          {allApproved ? ' 전원 수락 — [정산 완료]를 누를 수 있습니다.' : ' 전원 수락 시 [정산 완료]가 활성화됩니다.'} 내역을 고치려면 [요청 취소] 후 수정하세요.
         </div>
       )}
 
@@ -815,16 +889,25 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
         <div className="space-y-4">
           {artists.map((a, ai) => {
             const t = artistTotals(a);
+            const appr = approvalOf(a.user.id);
             return (
               <div key={a.user.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm text-gray-900">{displayName(a.user)}</span>
+                  <span className="font-medium text-sm text-gray-900 flex items-center gap-1.5">
+                    {displayName(a.user)}
+                    {requested && appr?.status === 'APPROVED' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">수락</span>}
+                    {requested && appr?.status === 'ISSUE' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">문제 제기</span>}
+                    {requested && (!appr || appr.status === 'PENDING') && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">대기중</span>}
+                  </span>
                   <div className="flex items-center gap-2 flex-wrap justify-end">
                     <button onClick={() => downloadArtist(ai)} disabled={zipping} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"><FileDown size={12} /> 정산 PDF</button>
                     <button onClick={() => downloadArtist(ai, 'CASH')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">현금</button>
                     <button onClick={() => downloadArtist(ai, 'CARD')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">카드</button>
                   </div>
                 </div>
+                {requested && appr?.status === 'ISSUE' && appr.comment && (
+                  <div className="mb-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">문제 제기: {appr.comment}</div>
+                )}
 
                 {a.works.length === 0 ? (
                   <p className="text-xs text-gray-400">등록된 출품작이 없습니다.</p>
@@ -832,7 +915,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                   <div className="space-y-2">
                     {a.works.map((w, wi) => (
                       <div key={wi} className={`flex items-center gap-3 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
-                        <input type="checkbox" checked={w.sold} disabled={settled} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
+                        <input type="checkbox" checked={w.sold} disabled={locked} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
                         {/* 작품 사진 */}
                         {w.image ? (
                           <img src={w.image} alt="" className="w-14 h-14 object-cover rounded shrink-0" />
@@ -848,12 +931,12 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                         {w.sold && (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-                              <button type="button" disabled={settled} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
+                              <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
                                 className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
-                              <button type="button" disabled={settled} onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
+                              <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
                                 className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod === 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>현금</button>
                             </div>
-                            <input type="text" inputMode="numeric" disabled={settled} value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
+                            <input type="text" inputMode="numeric" disabled={locked} value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
                               onChange={e => updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 })}
                               placeholder="판매가" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right disabled:bg-gray-100" />
                             <span className="text-xs text-gray-400">원</span>
@@ -868,7 +951,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
                   <span className="text-gray-500">판매 합계 <b className="text-gray-900">{won(t.total)}</b></span>
                   <span className="flex items-center gap-1">
                     갤러리
-                    <input type="number" min={0} max={100} disabled={settled} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right disabled:bg-gray-100" />%
+                    <input type="number" min={0} max={100} disabled={locked} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right disabled:bg-gray-100" />%
                     <span className="text-gray-400">: 작가 {100 - a.galleryRatio}%</span>
                   </span>
                   <span className="text-gray-500">갤러리 <b className="text-gray-900">{won(t.galleryAmount)}</b></span>
@@ -890,8 +973,11 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
           </div>
         </div>
       )}
-      {!settled && (
-        <p className="text-xs text-gray-400 mt-2">* 비율·판매가 변경 후 [정산 저장]을 눌러야 보관됩니다. PDF는 현재 화면 값으로 생성됩니다. <b>[정산 완료]</b>를 누르면 작가에게 공유되고 수정이 잠깁니다.</p>
+      {!settled && !requested && (
+        <p className="text-xs text-gray-400 mt-2">* 비율·판매가 변경 후 [정산 저장]을 눌러 보관하세요. <b>[정산 확인 요청]</b>을 누르면 참여 작가 전원에게 확인 요청이 가고, <b>전원 수락 시 [정산 완료]</b>가 가능합니다.</p>
+      )}
+      {requested && !settled && (
+        <p className="text-xs text-gray-400 mt-2">* 작가가 검토 중입니다. 내역을 수정하려면 [요청 취소] 후 변경하고 다시 요청하세요.</p>
       )}
 
       {confirmOpen && (
@@ -899,9 +985,9 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
           <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">정산을 완료할까요?</h3>
             <ul className="text-sm text-gray-600 space-y-1.5 mb-5 list-disc pl-4">
-              <li>정산을 완료하면 <b className="text-gray-900">더 이상 운영 페이지를 수정할 수 없습니다.</b></li>
-              <li>정산 내역이 <b className="text-gray-900">참여 작가들에게 공유</b>됩니다.</li>
-              <li>이 작업은 되돌릴 수 없습니다.</li>
+              <li>모든 참여 작가가 정산을 <b className="text-gray-900">확인(수락)</b>했습니다.</li>
+              <li>완료하면 <b className="text-gray-900">더 이상 운영 페이지를 수정할 수 없습니다.</b></li>
+              <li>정산 내역이 참여 작가에게 최종 공유되며, 이 작업은 <b className="text-gray-900">되돌릴 수 없습니다.</b></li>
             </ul>
             <div className="flex gap-2">
               <button onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">취소</button>

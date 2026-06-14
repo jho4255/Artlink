@@ -127,8 +127,13 @@ ArtLink/
   - 갤러리·Admin: 운영 페이지 상단 [모집마감]/[확정]/[전시종료] 토글(재오픈 가능). API `PATCH /api/operations/:id/lifecycle`
   - 모집마감/종료 → `GET /exhibitions` 목록·지원에서 제외. 확정(또는 전시 시작일 경과) → 작가 `PUT /me` 잠금
   - 전시종료 → 정산: 작가별 출품작 판매체크+판매가(원), 갤러리비율 입력(작가 자동). API `GET/PUT /api/operations/:id/settlement`
-  - 정산 PDF: 작가별/전체 (`downloadArtistSettlementPdf`, `downloadOverallSettlementPdf`)
-  - **정산 완료(settledAt)** (migration 20260614141021_add_exhibition_settled_at): `POST /api/operations/:id/settlement/complete`(오너/Admin, 종료 후만, 일방 확정). 완료 시 ① `settledAt` 세팅 → `PUT settlement`·공지 CUD·`lifecycle` 403(운영페이지 잠금) ② 작가 알림(SETTLEMENT_SHARED). `GET /api/operations/:id/my-settlement`은 **settledAt 있을 때만** 작가에게 내역 공개(전엔 `{settled:false, artist:null}`). 프론트: 정산 섹션 [정산 완료] + 동의 모달, 완료 후 읽기전용 배너
+  - 정산 PDF: 작가별/전체 (`downloadArtistSettlementPdf`, `downloadOverallSettlementPdf`). method 지정 시 라벨 "현금/카드 정산서". R2 이미지는 `proxied()`로 동일출처 프록시 경유(캔버스 taint 방지 → PDF에 작품사진 정상 표시)
+  - **정산 2단계 승인제** (migration 20260614141021 settledAt, 20260615 settlement_approval):
+    - `SettlementApproval{exhibitionId,artistUserId,status PENDING|APPROVED|ISSUE,comment}` + `Exhibition.settlementRequestedAt`
+    - 흐름: 갤러리 [정산 확인 요청]`POST .../settlement/request`(수락작가 전원 PENDING 생성+알림 SETTLEMENT_CONFIRM_REQUEST) → 작가 `POST .../settlement/respond`{approve|comment}(수락 APPROVED / 문제 ISSUE+코멘트→오너 알림 SETTLEMENT_ISSUE) → 전원 APPROVED여야 `POST .../settlement/complete`(settledAt) 가능
+    - 요청 중: `PUT settlement` 403 잠금, [요청 취소]`.../settlement/request/cancel`로 해제 후 수정·재요청
+    - `my-settlement`: **요청중 또는 완료 시** 작가에게 공개(+myApproval). `GET settlement`: artist별 approval + allApproved
+    - 프론트: 갤러리 정산섹션 OPEN[정산저장|정산확인요청]/REQUESTED[요청취소|정산완료(전원수락시활성)]+작가별 수락/문제뱃지+코멘트, 작가 [수락]/[문제제기+코멘트]
 - **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
 - 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
