@@ -99,7 +99,7 @@ router.post('/:id/notices', authenticate, async (req, res, next) => {
   try {
     const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('공지 작성 권한이 없습니다.', 403);
-    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { title, content } = req.body || {};
     if (!title?.trim() || !content?.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
     const exhibitionId = idOf(req.params.id);
@@ -134,7 +134,7 @@ router.patch('/:id/notices/:noticeId', authenticate, async (req, res, next) => {
   try {
     const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
-    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const noticeId = idOf(req.params.noticeId);
     const existing = await prisma.exhibitionNotice.findUnique({ where: { id: noticeId } });
     if (!existing || existing.exhibitionId !== idOf(req.params.id)) throw new AppError('공지를 찾을 수 없습니다.', 404);
@@ -152,7 +152,7 @@ router.delete('/:id/notices/:noticeId', authenticate, async (req, res, next) => 
   try {
     const { isOwner, isAdmin, exhibition } = await getAccess(idOf(req.params.id), req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
-    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const noticeId = idOf(req.params.noticeId);
     const existing = await prisma.exhibitionNotice.findUnique({ where: { id: noticeId } });
     if (!existing || existing.exhibitionId !== idOf(req.params.id)) throw new AppError('공지를 찾을 수 없습니다.', 404);
@@ -310,7 +310,7 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
     const exhibitionId = idOf(req.params.id);
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
-    if (exhibition.settledAt) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { recruitmentClosed, confirmed, ended } = req.body || {};
     const data: any = {};
     if (typeof recruitmentClosed === 'boolean') data.recruitmentClosed = recruitmentClosed;
@@ -446,8 +446,8 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     const exhibitionId = idOf(req.params.id);
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
-    if (exhibition.settledAt) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
-    if (exhibition.settlementRequestedAt) throw new AppError('정산 확인 요청 중에는 수정할 수 없습니다. [요청 취소] 후 수정하세요.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
+    if (exhibition.settlementRequestedAt && !isAdmin) throw new AppError('정산 확인 요청 중에는 수정할 수 없습니다. [요청 취소] 후 수정하세요.', 403);
 
     const { sales, ratios } = req.body || {};
     const saleRows = Array.isArray(sales) ? sales : [];

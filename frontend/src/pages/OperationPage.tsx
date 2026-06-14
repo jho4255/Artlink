@@ -73,7 +73,7 @@ export default function OperationPage() {
 
       {canManage && <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} />}
 
-      {canManage && access.ended && <SettlementSection exhibitionId={id!} />}
+      {canManage && access.ended && <SettlementSection exhibitionId={id!} isAdmin={access.isAdmin} />}
     </div>
   );
 }
@@ -87,7 +87,7 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
     onError: (e: any) => toast.error(e.response?.data?.error || '변경 실패'),
   });
 
-  const locked = !!access.settled;
+  const locked = !!access.settled && !access.isAdmin;   // 관리자는 완료 후에도 수정 가능
   const Toggle = ({ active, onLabel, offLabel, onClick, activeClass, disabled }: { active: boolean; onLabel: string; offLabel: string; onClick: () => void; activeClass: string; disabled?: boolean }) => (
     <button onClick={onClick} disabled={mutation.isPending || disabled}
       className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${active ? activeClass : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
@@ -727,7 +727,7 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   );
 }
 
-function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
+function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; isAdmin?: boolean }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<Omit<Settlement, 'artists'> & {
     settled?: boolean; settledAt?: string | null; settlementRequested?: boolean; allApproved?: boolean;
@@ -745,7 +745,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const settled = !!data?.settled;
   const requested = !!data?.settlementRequested;
   const allApproved = !!data?.allApproved;
-  const locked = settled || requested;   // 정산 입력 잠금 (완료 또는 확인 요청 중)
+  const locked = (settled || requested) && !isAdmin;   // 정산 입력 잠금 (관리자는 완료 후에도 수정 가능)
   const approvalOf = (uid: number) => data?.artists.find(x => x.user.id === uid)?.approval ?? null;
 
   const invalidate = () => {
@@ -839,11 +839,12 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-medium text-gray-900">정산</h2>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 저장: 편집 가능할 때(미잠금). 관리자는 완료 후에도 저장 가능 */}
+          {!locked && (
+            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
+          )}
           {!settled && !requested && (
-            <>
-              <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
-              <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 확인 요청</button>
-            </>
+            <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 확인 요청</button>
           )}
           {requested && !settled && (
             <>
@@ -859,7 +860,7 @@ function SettlementSection({ exhibitionId }: { exhibitionId: string }) {
 
       {settled && (
         <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          <b>정산 완료됨</b>{data?.settledAt ? ` · ${new Date(data.settledAt).toLocaleDateString('ko-KR')}` : ''} · 참여 작가에게 정산 내역이 공유되었습니다. 더 이상 수정할 수 없습니다.
+          <b>정산 완료됨</b>{data?.settledAt ? ` · ${new Date(data.settledAt).toLocaleDateString('ko-KR')}` : ''} · 참여 작가에게 정산 내역이 공유되었습니다. {isAdmin ? '관리자는 완료 후에도 수정할 수 있습니다.' : '더 이상 수정할 수 없습니다.'}
         </div>
       )}
 
