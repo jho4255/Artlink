@@ -47,6 +47,9 @@ process.on('uncaughtException', (err: Error) => {
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
+// Render 등 리버스 프록시 환경에서 X-Forwarded-For 신뢰
+app.set('trust proxy', 1);
+
 // 미들웨어 설정
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
