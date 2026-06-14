@@ -131,10 +131,18 @@ router.get('/image-proxy', async (req, res, next) => {
   try {
     const url = String(req.query.url || '');
     const base = process.env.R2_PUBLIC_URL || '';
-    if (!base || !url.startsWith(base + '/')) {
+    if (!base) throw new AppError('이미지 프록시가 설정되지 않았습니다.', 400);
+    // SSRF 방지: 호스트네임을 R2 공개 도메인과 정확히 일치 비교 + 동일 프로토콜 + 경로 접두사
+    let target: URL, allowed: URL;
+    try { target = new URL(url); allowed = new URL(base); }
+    catch { throw new AppError('허용되지 않은 이미지 주소입니다.', 400); }
+    const host = (u: URL) => u.hostname.replace(/\.$/, '').toLowerCase();
+    if (target.protocol !== allowed.protocol || host(target) !== host(allowed) || !url.startsWith(base + '/')) {
       throw new AppError('허용되지 않은 이미지 주소입니다.', 400);
     }
-    const upstream = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    // redirect: 'manual' — 3xx 리다이렉트(내부주소로 우회) 차단
+    const upstream = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    if (upstream.status >= 300 && upstream.status < 400) throw new AppError('허용되지 않은 리다이렉트입니다.', 400);
     if (!upstream.ok) throw new AppError('이미지를 가져오지 못했습니다.', 502);
     const ct = upstream.headers.get('content-type') || '';
     if (!ct.startsWith('image/')) throw new AppError('이미지 파일이 아닙니다.', 400);
