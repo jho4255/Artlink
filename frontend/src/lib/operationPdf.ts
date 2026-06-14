@@ -263,7 +263,7 @@ export async function downloadArtistSettlementPdf(exTitle: string, artist: Settl
 /** 전체 정산서 PDF (method 지정 시 현금/카드 정산서) */
 export async function downloadOverallSettlementPdf(s: Settlement, method?: 'CARD' | 'CASH'): Promise<void> {
   const target = method ? filterSettlementByMethod(s, method) : s;
-  const docLabel = method ? `전체 ${methodLabel(method)} 정산서` : '전체 정산서';
+  const docLabel = method ? `${methodLabel(method)} 정산서` : '전체 정산서';
   const blob = await htmlToPdfBlob(overallSettlementHtml(target, docLabel));
   triggerDownload(blob, `${safeName(s.exhibitionTitle)}_${docLabel.replace(/\s/g, '')}.pdf`);
 }
