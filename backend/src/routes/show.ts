@@ -147,6 +147,10 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       },
     });
     if (!show) throw new AppError('전시를 찾을 수 없습니다.', 404);
+    // 탈퇴 회원의 전시는 공개에서 숨김(관리자 제외)
+    if (show.status === 'WITHDRAWN' && req.user?.role !== 'ADMIN') {
+      throw new AppError('전시를 찾을 수 없습니다.', 404);
+    }
 
     let isFavorited = false;
     if (req.user) {

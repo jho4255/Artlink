@@ -1158,7 +1158,7 @@ function GalleryImageCarousel({
 
   return (
     <div
-      className="relative w-full h-72 md:h-[28rem] bg-black overflow-hidden"
+      className="relative w-full h-72 md:h-[28rem] bg-gray-100 overflow-hidden"
       onMouseEnter={() => { isHovered.current = true; }}
       onMouseLeave={() => { isHovered.current = false; }}
     >
@@ -1177,14 +1177,13 @@ function GalleryImageCarousel({
             style={{ willChange: 'transform' }}
             onClick={() => onImageClick(i)}
           >
-            {/* 원본 비율 유지(contain) + 레터박스 블러 채움 + 로딩 스켈레톤 */}
+            {/* 프레임을 사진으로 꽉 채움(cover) — 여백 없이 사진만 노출 (모집공고와 동일) */}
             <SkeletonImage
               src={src}
               alt={`${galleryName} ${i + 1}`}
               fallbackLabel={galleryName}
               className="w-full h-full"
-              imgClassName="object-contain"
-              blurFill
+              imgClassName="object-cover"
               draggable={false}
               loading={i === 0 ? 'eager' : 'lazy'}
             />

@@ -20,6 +20,7 @@ model User {
   password   String?  // bcrypt hash (LOCAL auth only)
   provider   String   @default("LOCAL") // LOCAL, KAKAO, NAVER, GOOGLE
   providerId String?  // OAuth provider user ID
+  deletedAt  DateTime? // 회원탈퇴(소프트 삭제) 시각. null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

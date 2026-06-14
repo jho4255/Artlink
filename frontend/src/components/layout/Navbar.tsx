@@ -25,7 +25,16 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
+
+  const handleLogout = () => {
+    // 로그아웃 시 모든 캐시 제거 (다음 유저 로그인 시 stale 데이터 방지)
+    queryClient.clear();
+    logout();
+    setNotifOpen(false);
+    setIsOpen(false);
+    navigate('/login');
+  };
 
   // 미읽음 알림 카운트
   const { data: unreadCount = 0 } = useQuery<number>({
@@ -196,15 +205,38 @@ export default function Navbar() {
                 </AnimatePresence>
               </div>
             )}
-            {isAuthenticated && (
-              <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
-                {user?.name} ({user?.role})
-              </span>
+            {isAuthenticated ? (
+              <>
+                <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
+                  {user?.name} ({user?.role})
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer"
+                >
+                  로그아웃
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => navigate('/login')}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
+              >
+                로그인
+              </button>
             )}
           </div>
 
-          {/* 모바일: 쪽지 + 알림 + 햄버거 */}
+          {/* 모바일: 로그인 / 쪽지 + 알림 + 햄버거 */}
           <div className="flex items-center gap-1 md:hidden">
+            {!isAuthenticated && (
+              <button
+                onClick={() => navigate('/login')}
+                className="px-3 py-1.5 mr-1 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                로그인
+              </button>
+            )}
             {isAuthenticated && user?.role !== 'ADMIN' && (
               <button
                 onClick={() => navigate('/messages')}
@@ -306,6 +338,14 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              {isAuthenticated && (
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-4 py-3 mt-1 text-sm font-medium text-gray-500 hover:text-gray-900 border-t border-gray-100"
+                >
+                  로그아웃
+                </button>
+              )}
             </div>
           </motion.div>
         )}

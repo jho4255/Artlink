@@ -32,10 +32,13 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, role: true, email: true, name: true }
+      select: { id: true, role: true, email: true, name: true, deletedAt: true }
     });
     if (!user) {
       throw new AppError('유효하지 않은 사용자입니다.', 401);
+    }
+    if (user.deletedAt) {
+      throw new AppError('탈퇴한 계정입니다.', 401);
     }
 
     req.user = user;
@@ -57,9 +60,9 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, role: true, email: true, name: true }
+      select: { id: true, role: true, email: true, name: true, deletedAt: true }
     });
-    if (user) {
+    if (user && !user.deletedAt) {
       req.user = user;
     }
     next();

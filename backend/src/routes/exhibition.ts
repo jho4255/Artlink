@@ -206,6 +206,10 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       }
     });
     if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    // 탈퇴 회원의 공모는 공개에서 숨김(관리자 제외)
+    if (exhibition.status === 'WITHDRAWN' && req.user?.role !== 'ADMIN') {
+      throw new AppError('공모를 찾을 수 없습니다.', 404);
+    }
 
     // 찜 여부 확인
     let isFavorited = false;
@@ -270,6 +274,9 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     const { biography, career, artworkImages, portfolioFileUrl } = req.body || {};
     const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
     if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibitionData.status !== 'APPROVED') {
+      throw new AppError('지원할 수 없는 공모입니다.', 400);
+    }
     if (exhibitionData.recruitmentClosed || exhibitionData.ended) {
       throw new AppError('모집이 마감된 공모입니다.', 400);
     }

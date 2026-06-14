@@ -138,6 +138,10 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       }
     });
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    // 탈퇴 회원의 갤러리는 공개에서 숨김(관리자 제외)
+    if (gallery.status === 'WITHDRAWN' && req.user?.role !== 'ADMIN') {
+      throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    }
 
     // mainImage만 있고 GalleryImage가 없으면 자동 마이그레이션
     if (gallery.mainImage && gallery.images.length === 0) {

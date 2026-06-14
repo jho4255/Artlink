@@ -57,7 +57,7 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
     const email = kakaoUser.kakao_account?.email || null;
 
     const existingUser = await prisma.user.findFirst({
-      where: { provider: 'KAKAO', providerId: kakaoId },
+      where: { provider: 'KAKAO', providerId: kakaoId, deletedAt: null },
     });
 
     if (existingUser) {
@@ -166,7 +166,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.password) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+    if (!user || !user.password || user.deletedAt) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
@@ -278,6 +278,133 @@ router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
     if (!user) throw new AppError('해당 이메일의 시드 계정이 없습니다. 시드를 먼저 실행하세요.', 404);
     const token = generateToken(user);
     res.json({ token, user: safeUser(user) });
+  } catch (error) { next(error); }
+});
+
+// ========== 회원 탈퇴 (소프트 삭제 + 익명화) ==========
+
+// 탈퇴 전 영향 요약: 보유 갤러리 / 진행 중 공고 / 처리 대기 지원자 / 본인 활동
+// 프론트 탈퇴 모달에서 안내 + 본인확인 방식(비밀번호 vs 문구) 분기에 사용.
+router.get('/me/withdraw-info', authenticate, async (req, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { provider: true, password: true, role: true },
+    });
+    if (!me) throw new AppError('유효하지 않은 사용자입니다.', 401);
+
+    const galleries = await prisma.gallery.findMany({
+      where: { ownerId: userId, status: { not: 'WITHDRAWN' } },
+      select: { id: true, name: true, status: true },
+    });
+    const galleryIds = galleries.map((g) => g.id);
+
+    const now = new Date();
+    let ongoingExhibitions = 0;
+    let activeApplicants = 0;
+    if (galleryIds.length) {
+      ongoingExhibitions = await prisma.exhibition.count({
+        where: { galleryId: { in: galleryIds }, status: 'APPROVED', recruitmentClosed: false, deadline: { gte: now } },
+      });
+      activeApplicants = await prisma.application.count({
+        where: { exhibition: { galleryId: { in: galleryIds } }, status: { not: 'REJECTED' } },
+      });
+    }
+
+    const [myApplications, myReviews] = await Promise.all([
+      prisma.application.count({ where: { userId } }),
+      prisma.review.count({ where: { userId } }),
+    ]);
+
+    res.json({
+      role: me.role,
+      // LOCAL(비밀번호 보유) 계정은 비밀번호 확인, 그 외(OAuth)는 '탈퇴' 문구 확인
+      confirmMethod: me.provider === 'LOCAL' && me.password ? 'password' : 'text',
+      galleries,
+      ongoingExhibitions,
+      activeApplicants,
+      myApplications,
+      myReviews,
+    });
+  } catch (error) { next(error); }
+});
+
+// 회원 탈퇴 실행: 본인 확인 → (갤러리 보유 시 책임고지 동의 필수) → 트랜잭션으로
+//   1) 소유 갤러리/공모 WITHDRAWN 처리(공개 목록 status='APPROVED' 필터에서 자동 제외)
+//   2) 개인정보 익명화 + deletedAt 마킹(=로그인 차단). 행은 유지해 참조 무결성/거래기록 보존.
+const withdrawSchema = z.object({
+  password: z.string().optional(),
+  confirmText: z.string().optional(),
+  acknowledge: z.boolean().optional(),
+});
+router.delete('/me', authenticate, validate(withdrawSchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, provider: true, password: true, role: true },
+    });
+    if (!me) throw new AppError('유효하지 않은 사용자입니다.', 401);
+    if (me.role === 'ADMIN') throw new AppError('관리자 계정은 탈퇴할 수 없습니다.', 403);
+
+    // 본인 확인
+    if (me.provider === 'LOCAL' && me.password) {
+      const password = (req.body.password as string) || '';
+      if (!password || !(await bcrypt.compare(password, me.password))) {
+        throw new AppError('비밀번호가 올바르지 않습니다.', 401);
+      }
+    } else {
+      const confirmText = ((req.body.confirmText as string) || '').trim();
+      if (confirmText !== '탈퇴') {
+        throw new AppError('확인 문구가 일치하지 않습니다. "탈퇴"를 입력해주세요.', 400);
+      }
+    }
+
+    // 갤러리 보유 시 책임 고지 동의 필수
+    const ownedGalleries = await prisma.gallery.findMany({
+      where: { ownerId: userId, status: { not: 'WITHDRAWN' } },
+      select: { id: true },
+    });
+    if (ownedGalleries.length > 0 && req.body.acknowledge !== true) {
+      throw new AppError('진행 중인 공고·지원자에 대한 책임 동의가 필요합니다.', 400);
+    }
+    const galleryIds = ownedGalleries.map((g) => g.id);
+
+    await prisma.$transaction(async (tx) => {
+      // 1) 소유 갤러리/공모 숨김 (status APPROVED 필터 기반 공개 목록에서 자동 제외)
+      if (galleryIds.length) {
+        await tx.exhibition.updateMany({
+          where: { galleryId: { in: galleryIds } },
+          data: { status: 'WITHDRAWN', recruitmentClosed: true },
+        });
+        await tx.show.updateMany({
+          where: { galleryId: { in: galleryIds } },
+          data: { status: 'WITHDRAWN' },
+        });
+        await tx.gallery.updateMany({
+          where: { id: { in: galleryIds } },
+          data: { status: 'WITHDRAWN' },
+        });
+      }
+      // 2) 개인정보 익명화 + 소프트 삭제 마킹
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: '탈퇴한 회원',
+          email: `deleted_${userId}@artlink.invalid`,
+          nickname: null,
+          phone: null,
+          avatar: null,
+          instagramUrl: null,
+          password: null,
+          providerId: null,
+          deletedAt: new Date(),
+        },
+      });
+    });
+
+    res.json({ success: true });
   } catch (error) { next(error); }
 });
 

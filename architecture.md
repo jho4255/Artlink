@@ -142,6 +142,14 @@ ArtLink/
 - `authStore` (Zustand + localStorage persist) — 토큰/유저 정보 영속화
 - 개발: POST /api/auth/dev-login으로 유저 선택 로그인
 - 추후: OAuth 교체 시 authStore.login() 호출만 변경
+- Navbar 우측 상단: 비로그인 시 [로그인], 로그인 시 [로그아웃](캐시 clear + logout + /login)
+
+### 회원 탈퇴 (소프트 삭제 + 익명화, migration 20260614120048_add_user_deleted_at)
+- `User.deletedAt DateTime?` — null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'. 행은 유지(참조 무결성·거래기록 보존)
+- `GET /auth/me/withdraw-info` — 탈퇴 영향 요약(보유 갤러리/진행 공고/대기 지원자) + 본인확인 방식(`confirmMethod`: LOCAL=password, OAuth=text)
+- `DELETE /auth/me` — 본인확인(비번 or '탈퇴' 입력) → 갤러리 보유 시 책임고지 `acknowledge` 필수 → 트랜잭션: ①소유 갤러리/공모/전시 `status='WITHDRAWN'`(공개 목록 APPROVED 필터에서 자동 제외) ②PII 익명화(name/email/phone/avatar/nickname/instagram/password/providerId) + `deletedAt`. ADMIN은 403
+- 차단 지점: `authenticate`/`optionalAuth`(deletedAt), 카카오/로컬 로그인, 갤러리·공모·전시 상세(WITHDRAWN→404, ADMIN 제외), 공모 지원(status!=APPROVED→400)
+- 프론트: MyPage 프로필 탭 하단 [회원 탈퇴] → `WithdrawModal`(영향 안내+동의+확인입력) → 성공 시 logout+/login
 
 ## 프론트엔드 라우트
 
