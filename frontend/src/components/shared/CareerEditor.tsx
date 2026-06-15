@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Plus, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Career, CareerEntry } from '@/types';
 
@@ -10,6 +9,12 @@ const CATEGORIES: { key: CareerKey; label: string }[] = [
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
 ];
+
+const PLACEHOLDERS: Record<CareerKey, string> = {
+  artFair: '예: 2026 아트링크 주관 아트페어 참여\n(한 줄에 한 건씩 자유롭게 입력하세요)',
+  solo: '예: 2025 개인전 《빛의 결》 (서울)\n(한 줄에 한 건씩 자유롭게 입력하세요)',
+  group: '예: 2024 청년작가 단체전 (부산)\n(한 줄에 한 건씩 자유롭게 입력하세요)',
+};
 
 interface NoneState {
   artFair: boolean;
@@ -27,60 +32,59 @@ interface CareerEditorProps {
   errorKeys?: Set<string>;
 }
 
+// 엔트리 ↔ 텍스트 (한 줄 = 한 건). 기존 [연도][내용] 데이터는 "연도 내용" 한 줄로 합쳐 표시.
+const entriesToText = (entries: CareerEntry[]) =>
+  entries.map((e) => [e.year, e.content].filter(Boolean).join(' ')).join('\n');
+
 /**
- * 경력 편집기 — 아트페어/개인전/단체전 각각 [연도][내용] 행을 +/-로 추가·삭제.
+ * 경력 편집기 — 아트페어/개인전/단체전 모두 자유 입력 칸(textarea, 한 줄=한 건).
  * - 포트폴리오/지원서 공용. 지원서에서는 none/onNoneChange를 넘겨 "없음" 체크 게이트를 사용.
  */
 export default function CareerEditor({ value, onChange, none, onNoneChange, errorKeys }: CareerEditorProps) {
   const showNone = !!none && !!onNoneChange;
 
-  const setEntries = (key: CareerKey, entries: CareerEntry[]) => {
-    onChange({ ...value, [key]: entries });
-  };
-
-  // 아트페어: 자유 입력(여러 줄). 한 줄 = 한 건. 이력이 많을 때 +/- 없이 한 번에 입력.
-  const entriesToText = (entries: CareerEntry[]) =>
-    entries.map((e) => [e.year, e.content].filter(Boolean).join(' ')).join('\n');
-  const [artFairRaw, setArtFairRaw] = useState(() => entriesToText(value.artFair));
+  // 카테고리별 자유 입력 원문(raw). value가 외부에서 교체되면(포트폴리오 불러오기 등) 동기화.
+  const [raw, setRaw] = useState<Record<CareerKey, string>>(() => ({
+    artFair: entriesToText(value.artFair),
+    solo: entriesToText(value.solo),
+    group: entriesToText(value.group),
+  }));
   useEffect(() => {
-    // 외부에서 value.artFair가 교체되면(포트폴리오 불러오기 등) 동기화
-    const incoming = entriesToText(value.artFair);
-    const currentFiltered = artFairRaw.split('\n').filter((l) => l.trim()).join('\n');
-    if (incoming !== currentFiltered) setArtFairRaw(incoming);
+    setRaw((prev) => {
+      const next = { ...prev };
+      (Object.keys(prev) as CareerKey[]).forEach((k) => {
+        const incoming = entriesToText(value[k]);
+        // raw도 저장 시와 동일하게 줄별 trim 후 비교 — 안 그러면 입력 중 끝 공백이 즉시 지워짐(스페이스 안 먹힘)
+        const currentNormalized = prev[k].split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+        if (incoming !== currentNormalized) next[k] = incoming;
+      });
+      return next;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.artFair]);
-  const setArtFairText = (text: string) => {
-    setArtFairRaw(text);
+  }, [value.artFair, value.solo, value.group]);
+
+  const setText = (key: CareerKey, text: string) => {
+    setRaw((prev) => ({ ...prev, [key]: text }));
     const entries = text
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
       .map((line) => ({ year: '', content: line }));
-    setEntries('artFair', entries);
-  };
-
-  const addRow = (key: CareerKey) => {
-    setEntries(key, [...value[key], { year: '', content: '' }]);
-  };
-
-  const updateRow = (key: CareerKey, idx: number, patch: Partial<CareerEntry>) => {
-    setEntries(key, value[key].map((e, i) => (i === idx ? { ...e, ...patch } : e)));
-  };
-
-  const removeRow = (key: CareerKey, idx: number) => {
-    setEntries(key, value[key].filter((_, i) => i !== idx));
+    onChange({ ...value, [key]: entries });
   };
 
   const toggleNone = (key: CareerKey, checked: boolean) => {
     if (!none || !onNoneChange) return;
     onNoneChange({ ...none, [key]: checked });
-    if (checked) setEntries(key, []); // 없음 체크 시 해당 카테고리 비움
+    if (checked) { // 없음 체크 시 해당 카테고리 비움
+      setRaw((prev) => ({ ...prev, [key]: '' }));
+      onChange({ ...value, [key]: [] });
+    }
   };
 
   return (
     <div className="space-y-4">
       {CATEGORIES.map(({ key, label }) => {
-        const entries = value[key];
         const noneChecked = showNone && none![key];
         const hasError = errorKeys?.has(key);
         return (
@@ -95,71 +99,28 @@ export default function CareerEditor({ value, onChange, none, onNoneChange, erro
               <span className={cn('text-sm font-medium', hasError ? 'text-red-600' : 'text-gray-700')}>
                 {label}
               </span>
-              <div className="flex items-center gap-3">
-                {showNone && (
-                  <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={noneChecked}
-                      onChange={(e) => toggleNone(key, e.target.checked)}
-                    />
-                    없음
-                  </label>
-                )}
-                {key !== 'artFair' && (
-                  <button
-                    type="button"
-                    onClick={() => addRow(key)}
-                    disabled={noneChecked}
-                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Plus size={14} /> 추가
-                  </button>
-                )}
-              </div>
+              {showNone && (
+                <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={noneChecked}
+                    onChange={(e) => toggleNone(key, e.target.checked)}
+                  />
+                  없음
+                </label>
+              )}
             </div>
 
             {noneChecked ? (
               <p className="text-xs text-gray-400 py-1">없음으로 표시됩니다.</p>
-            ) : key === 'artFair' ? (
+            ) : (
               <textarea
-                value={artFairRaw}
-                onChange={(e) => setArtFairText(e.target.value)}
-                placeholder={'예: 2026 아트링크 주관 아트페어 참여\n(한 줄에 한 건씩 자유롭게 입력하세요)'}
+                value={raw[key]}
+                onChange={(e) => setText(key, e.target.value)}
+                placeholder={PLACEHOLDERS[key]}
                 rows={4}
                 className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm resize-y leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400 placeholder:text-gray-300"
               />
-            ) : entries.length === 0 ? (
-              <p className="text-xs text-gray-400 py-1">[추가] 버튼으로 경력을 입력하세요.</p>
-            ) : (
-              <div className="space-y-2">
-                {entries.map((entry, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={entry.year}
-                      onChange={(e) => updateRow(key, idx, { year: e.target.value })}
-                      placeholder="연도"
-                      className="w-20 shrink-0 px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    />
-                    <input
-                      type="text"
-                      value={entry.content}
-                      onChange={(e) => updateRow(key, idx, { content: e.target.value })}
-                      placeholder="내용 (전시명 / 장소 등)"
-                      className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeRow(key, idx)}
-                      aria-label="삭제"
-                      className="shrink-0 p-1.5 text-gray-400 hover:text-red-500 cursor-pointer"
-                    >
-                      <Minus size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
         );

@@ -1096,27 +1096,31 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
 }
 
 // {year, content} 리스트 에디터
+// 작가약력 경력 항목 — 자유 입력 칸(한 줄 = 한 건). 기존 [연도][내용] 데이터는 "연도 내용" 한 줄로 표시.
 function EntryListEditor({ label, value, onChange }: { label: string; value: CvEntry[]; onChange: (v: CvEntry[]) => void }) {
-  const add = () => onChange([...value, { year: '', content: '' }]);
-  const upd = (i: number, patch: Partial<CvEntry>) => onChange(value.map((e, idx) => idx === i ? { ...e, ...patch } : e));
-  const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  const toText = (entries: CvEntry[]) => entries.map(e => [e.year, e.content].filter(Boolean).join(' ')).join('\n');
+  const [raw, setRaw] = useState(() => toText(value));
+  useEffect(() => {
+    const incoming = toText(value);
+    // raw도 저장 시와 동일하게 줄별 trim 후 비교 — 안 그러면 입력 중 끝 공백이 즉시 지워짐(스페이스 안 먹힘)
+    const currentNormalized = raw.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+    if (incoming !== currentNormalized) setRaw(incoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  const setText = (text: string) => {
+    setRaw(text);
+    onChange(text.split('\n').map(l => l.trim()).filter(Boolean).map(line => ({ year: '', content: line })));
+  };
   return (
     <div className="rounded-lg border border-gray-200 p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-700">{label}</span>
-        <button onClick={add} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"><Plus size={13} /> 추가</button>
-      </div>
-      {value.length === 0 ? <p className="text-xs text-gray-400">항목을 추가하세요.</p> : (
-        <div className="space-y-1.5">
-          {value.map((e, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input value={e.year} onChange={ev => upd(i, { year: ev.target.value })} placeholder="연도" className="w-16 shrink-0 px-2 py-1.5 border border-gray-200 rounded text-sm" />
-              <input value={e.content} onChange={ev => upd(i, { content: ev.target.value })} placeholder="내용 (전시명, 장소 등)" className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded text-sm" />
-              <button onClick={() => rm(i)} className="p-1.5 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={15} /></button>
-            </div>
-          ))}
-        </div>
-      )}
+      <span className="text-sm font-medium text-gray-700 block mb-2">{label}</span>
+      <textarea
+        value={raw}
+        onChange={e => setText(e.target.value)}
+        placeholder={`예: 2025 ${label} 참여\n(한 줄에 한 건씩 자유롭게 입력하세요)`}
+        rows={4}
+        className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm resize-y leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400 placeholder:text-gray-300"
+      />
     </div>
   );
 }
