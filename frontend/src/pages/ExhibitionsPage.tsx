@@ -206,7 +206,7 @@ export default function ExhibitionsPage() {
                       <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
                         D-{dday}
                       </span>
-                      {isAuthenticated && !isAdmin && (
+                      {user?.role === 'ARTIST' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); favMutation.mutate(ex.id); }}
                           className="p-1 cursor-pointer"

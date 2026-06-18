@@ -89,6 +89,17 @@ model GalleryImage {
   gallery   Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
 }
 
+// 공모 사진 (다중, 순서변경 가능) — 첫 사진(order 최소)이 대표 이미지로 imageUrl과 동기화
+model ExhibitionImage {
+  id           Int        @id @default(autoincrement())
+  url          String
+  order        Int        @default(0)
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+
+  @@index([exhibitionId])
+}
+
 // 전시/공모 모델
 model Exhibition {
   id          Int      @id @default(autoincrement())
@@ -118,6 +129,7 @@ model Exhibition {
   applications Application[]
   favorites    Favorite[]
   promoPhotos  PromoPhoto[]
+  images       ExhibitionImage[]
   messages     Message[]
   reviews      Review[]
   notices      ExhibitionNotice[]

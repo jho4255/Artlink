@@ -204,17 +204,24 @@ describe('공모 운영 페이지 API', () => {
   });
 
   describe('상태 토글 (모집마감/확정/종료)', () => {
-    it('오너가 전시종료 → ended + 모집 자동마감', async () => {
+    it('오너가 전시종료 → ended + 모집 자동마감 (모집마감·확정 선행 필요)', async () => {
+      // 순서 강제: 모집마감 → 확정 → 전시종료
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true } });
       const r = await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ ended: true });
       expect(r.status).toBe(200);
       expect(r.body.ended).toBe(true);
       expect(r.body.recruitmentClosed).toBe(true);
+    });
+    it('모집마감 없이 전시종료 시도 → 400 (순서 강제)', async () => {
+      const r = await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ ended: true });
+      expect(r.status).toBe(400);
     });
     it('작가는 상태 변경 불가 → 403', async () => {
       const r = await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${artist1Tok}`).send({ ended: true });
       expect(r.status).toBe(403);
     });
     it('확정 시 작가 전시정보 수정 잠금 → 403', async () => {
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true } });
       await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ confirmed: true });
       const r = await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`).send({ artworkList: [] });
       expect(r.status).toBe(403);
@@ -236,7 +243,8 @@ describe('공모 운영 페이지 API', () => {
         artworkList: [{ title: 'A', size: '', medium: '', year: '', price: '' }, { title: 'B', size: '', medium: '', year: '', price: '' }],
         cv: null, note: null,
       });
-      await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ ended: true });
+      // 순서 강제(모집마감→확정→종료)를 우회해 정산 단계 셋업 (정산 테스트의 관심사 아님)
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
     });
     it('오너가 판매작+비율 저장 후 계산 결과 조회', async () => {
       const put = await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({

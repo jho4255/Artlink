@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User, Star } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User, Star, Check, ArrowRight, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -78,7 +78,13 @@ export default function OperationPage() {
   );
 }
 
-// ============ 공모 상태 관리 (모집마감/확정/전시종료) ============
+// ============ 공모 상태 관리 — 모집마감 → 확정 → 전시종료 스텝퍼 ============
+const LIFECYCLE_STEPS: { label: string; desc: string; next: Record<string, boolean>; back: Record<string, boolean> }[] = [
+  { label: '모집마감', desc: '모집공고가 목록에서 내려갑니다.', next: { recruitmentClosed: true }, back: { recruitmentClosed: false } },
+  { label: '확정', desc: '작가의 전시정보 수정이 잠깁니다. (전시 시작일이 지나면 자동 확정)', next: { confirmed: true }, back: { confirmed: false } },
+  { label: '전시종료', desc: '정산 단계로 전환되며 아래에 정산 입력이 나타납니다.', next: { ended: true }, back: { ended: false } },
+];
+
 function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: OperationAccess }) {
   const qc = useQueryClient();
   const mutation = useMutation({
@@ -88,39 +94,89 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
   });
 
   const locked = !!access.settled && !access.isAdmin;   // 관리자는 완료 후에도 수정 가능
-  const Toggle = ({ active, onLabel, offLabel, onClick, activeClass, disabled }: { active: boolean; onLabel: string; offLabel: string; onClick: () => void; activeClass: string; disabled?: boolean }) => (
-    <button onClick={onClick} disabled={mutation.isPending || disabled}
-      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${active ? activeClass : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
-      {active ? onLabel : offLabel}
-    </button>
-  );
+  // 현재 단계: 0=모집중, 1=모집마감, 2=확정, 3=전시종료
+  const stage = access.ended ? 3 : access.confirmed ? 2 : access.recruitmentClosed ? 1 : 0;
+  const stageLabel = ['모집중', '모집마감', '확정', '전시종료'][stage];
+
+  const goNext = () => {
+    if (stage >= 3) return;
+    const step = LIFECYCLE_STEPS[stage];
+    if (step.next.ended && !window.confirm('전시를 종료하고 정산 단계로 넘어갈까요?')) return;
+    mutation.mutate(step.next);
+  };
+  const goPrev = () => {
+    if (stage <= 0) return;
+    mutation.mutate(LIFECYCLE_STEPS[stage - 1].back);
+  };
 
   return (
-    <section className="mb-8 border border-gray-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-gray-900">공모 상태 관리</h2>
-        <div className="flex gap-1.5">
-          {access.recruitmentClosed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">모집마감</span>}
-          {access.confirmed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">확정</span>}
-          {access.ended && <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">전시종료</span>}
-          {locked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">정산완료</span>}
-        </div>
+    <section className="mb-8 border border-gray-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-sm font-medium text-gray-900">공모 진행 단계</h2>
+        {locked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">정산완료</span>}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Toggle active={access.recruitmentClosed} onLabel="모집 재개" offLabel="모집마감" activeClass="border-gray-800 bg-gray-800 text-white" disabled={locked}
-          onClick={() => mutation.mutate({ recruitmentClosed: !access.recruitmentClosed })} />
-        <Toggle active={access.manualConfirmed} onLabel="확정 취소" offLabel="확정" activeClass="border-blue-600 bg-blue-600 text-white" disabled={locked}
-          onClick={() => mutation.mutate({ confirmed: !access.manualConfirmed })} />
-        <Toggle active={access.ended} onLabel="종료 취소" offLabel="전시종료" activeClass="border-red-500 bg-red-500 text-white" disabled={locked}
-          onClick={() => mutation.mutate({ ended: !access.ended })} />
+
+      {/* 스텝퍼 */}
+      <div className="flex items-center">
+        {LIFECYCLE_STEPS.map((s, i) => {
+          const idx = i + 1;            // 이 노드가 나타내는 단계
+          const done = stage >= idx;    // 도달 완료
+          const target = stage + 1 === idx; // 다음에 진행할 단계
+          return (
+            <div key={s.label} className="flex items-center flex-1 last:flex-none">
+              <div className="flex flex-col items-center">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                  done ? 'bg-gray-900 text-white'
+                    : target ? 'bg-white text-gray-900 ring-2 ring-gray-900'
+                    : 'bg-gray-100 text-gray-400'}`}>
+                  {done ? <Check size={16} /> : idx}
+                </div>
+                <span className={`mt-1.5 text-xs whitespace-nowrap ${done || target ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{s.label}</span>
+              </div>
+              {i < LIFECYCLE_STEPS.length - 1 && (
+                <div className={`h-0.5 flex-1 mx-2 mb-5 rounded-full transition-colors ${stage >= idx + 1 ? 'bg-gray-900' : 'bg-gray-200'}`} />
+              )}
+            </div>
+          );
+        })}
       </div>
-      <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-        {locked
-          ? <>· <b className="text-green-700">정산이 완료</b>되어 운영 페이지가 잠겼습니다. 더 이상 상태·정산을 수정할 수 없습니다.</>
-          : <>· 모집마감: 모집공고가 목록에서 내려갑니다.<br />
-            · 확정: 작가의 전시정보 수정이 잠깁니다. <b>전시 시작일이 지나면 자동 확정</b>됩니다{access.confirmed && !access.manualConfirmed ? ' (현재 시작일 경과로 자동 확정됨)' : ''}.<br />
-            · 전시종료: 정산 단계로 전환되며 아래에 정산 입력이 나타납니다.</>}
+
+      {/* 현재 상태 + 안내 */}
+      <p className="text-xs text-gray-500 mt-4 leading-relaxed">
+        현재 <b className="text-gray-900">{stageLabel}</b> 단계입니다.
+        {stage < 3 && <> 다음 단계: <b className="text-gray-900">{LIFECYCLE_STEPS[stage].label}</b> — {LIFECYCLE_STEPS[stage].desc}</>}
+        {stage === 2 && access.confirmed && !access.manualConfirmed && <span className="text-gray-400"> (전시 시작일 경과로 자동 확정됨)</span>}
       </p>
+
+      {/* 액션 */}
+      {locked ? (
+        <p className="text-xs text-gray-400 mt-3">· <b className="text-green-700">정산이 완료</b>되어 운영 페이지가 잠겼습니다.</p>
+      ) : (
+        <div className="flex items-center gap-2 mt-4">
+          {stage < 3 && (
+            <button
+              onClick={goNext}
+              disabled={mutation.isPending}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 cursor-pointer"
+            >
+              다음 단계로 — {LIFECYCLE_STEPS[stage].label}
+              <ArrowRight size={15} />
+            </button>
+          )}
+          {stage > 0 && (
+            <button
+              onClick={goPrev}
+              disabled={mutation.isPending}
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+            >
+              <Undo2 size={14} /> 이전 단계로
+            </button>
+          )}
+          {stage === 3 && (
+            <span className="text-sm text-gray-500">전시가 종료되었습니다. 아래에서 정산을 진행하세요.</span>
+          )}
+        </div>
+      )}
     </section>
   );
 }

@@ -205,7 +205,7 @@ export default function ShowsPage() {
                       }`}>
                         {showStatusLabels[status]}
                       </span>
-                      {isAuthenticated && !isAdmin && (
+                      {user?.role === 'ARTIST' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

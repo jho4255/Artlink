@@ -313,11 +313,41 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { recruitmentClosed, confirmed, ended } = req.body || {};
     const data: any = {};
-    if (typeof recruitmentClosed === 'boolean') data.recruitmentClosed = recruitmentClosed;
-    if (typeof confirmed === 'boolean') data.confirmed = confirmed;
+
+    // 현재 상태 (단계 순서 강제: 모집마감 → 확정 → 전시종료)
+    const curConfirmed = computeConfirmed(exhibition); // 수동 확정 또는 전시 시작일 경과
+    const curRecruitmentClosed = exhibition.recruitmentClosed;
+    const curEnded = exhibition.ended;
+
+    // 순서 강제는 오너에게만 적용 — 관리자(Admin)는 단계와 무관하게 자유 수정 가능
+    if (typeof recruitmentClosed === 'boolean') {
+      // 모집 재개(false)는 확정/종료가 걸려있으면 불가 — 뒷 단계부터 취소해야 함
+      if (!isAdmin && !recruitmentClosed && (exhibition.confirmed || curEnded)) {
+        throw new AppError('확정·전시종료를 먼저 취소한 뒤 모집을 재개할 수 있습니다.', 400);
+      }
+      data.recruitmentClosed = recruitmentClosed;
+    }
+    if (typeof confirmed === 'boolean') {
+      if (confirmed) {
+        // 확정은 모집마감 이후에만
+        if (!isAdmin && !curRecruitmentClosed && data.recruitmentClosed !== true) {
+          throw new AppError('모집마감 후에 확정할 수 있습니다.', 400);
+        }
+      } else {
+        // 확정 취소는 전시종료가 걸려있으면 불가
+        if (!isAdmin && curEnded) throw new AppError('전시종료를 먼저 취소한 뒤 확정을 취소할 수 있습니다.', 400);
+      }
+      data.confirmed = confirmed;
+    }
     if (typeof ended === 'boolean') {
+      if (ended) {
+        // 전시종료는 확정 이후에만 (수동 확정 또는 시작일 경과 자동 확정)
+        if (!isAdmin && !curConfirmed && data.confirmed !== true) {
+          throw new AppError('확정 후에 전시를 종료할 수 있습니다.', 400);
+        }
+        data.recruitmentClosed = true; // 종료 시 모집도 자동 마감
+      }
       data.ended = ended;
-      if (ended) data.recruitmentClosed = true; // 종료 시 모집도 자동 마감
     }
     const updated = await prisma.exhibition.update({
       where: { id: exhibitionId },

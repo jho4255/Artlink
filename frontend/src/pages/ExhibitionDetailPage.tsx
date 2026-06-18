@@ -3,38 +3,38 @@
  *
  * 기능:
  *  - 전시 상세 정보 (제목, 갤러리, 타입, 날짜, 인원, 지역, D-day, 설명)
+ *  - 상단 다중 사진 캐러셀 + 오너 인라인 사진 관리(추가/삭제(최소1장)/드래그 순서변경)
  *  - 홍보 사진 표시 (종료된 전시)
- *  - Artist: "지원하기" 버튼 (커스텀 필드 검증 강화)
- *  - Gallery 오너: 지원자 관리 (목록/상태변경/CSV)
- *  - Gallery 오너 / Admin: 삭제 버튼
+ *  - Artist: "지원하기" 버튼 + 찜(ARTIST 전용)
+ *  - Gallery 오너: [지원자 관리](별도 페이지) / [운영 페이지] 버튼, 우측 하단 소형 삭제
  *
  * API:
- *  - GET /api/exhibitions/:id - 공모 상세 조회
+ *  - GET /api/exhibitions/:id - 공모 상세 조회 (images 포함)
  *  - POST /api/exhibitions/:id/apply - 지원하기
- *  - GET /api/exhibitions/:id/applications - 지원자 목록 (Gallery 오너)
- *  - PATCH /api/exhibitions/:id/applications/:appId - 지원 상태 변경
+ *  - POST|DELETE|PATCH /api/exhibitions/:id/images[...] - 사진 추가/삭제/순서변경
  *  - DELETE /api/exhibitions/:id - 공모 삭제
+ *  - 지원자 관리는 ApplicantsPage(/exhibitions/:id/applicants)로 분리
  *
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, ChevronDown, ChevronUp, Calendar, Mail, ImageOff, ClipboardList } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronLeft, ChevronRight, Camera, Plus, GripVertical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, displayName } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
-import ApplicationContent from '@/components/shared/ApplicationContent';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
-import type { Exhibition, PromoPhoto, Career } from '@/types';
+import type { Exhibition, PromoPhoto, Career, ExhibitionImage } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력 표시용 라벨
@@ -86,12 +86,6 @@ export default function ExhibitionDetailPage() {
   const [imgError, setImgError] = useState(false);
   const [careerErrorKeys, setCareerErrorKeys] = useState<Set<string>>(new Set());
   const [pendingApply, setPendingApply] = useState<any>(undefined);
-  // 지원자 관리 상태 (Gallery 오너용)
-  const [showApplicants, setShowApplicants] = useState(false);
-  const [appStatusFilter, setAppStatusFilter] = useState<string>('ALL');
-  const [expandedAppId, setExpandedAppId] = useState<number | null>(null);
-  const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
-  const [batchStatus, setBatchStatus] = useState<string>('');
   const [bgColor, setBgColor] = useState('#1a1a2e');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   // 인라인 쪽지 모달
@@ -120,6 +114,8 @@ export default function ExhibitionDetailPage() {
     queryKey: ['exhibition', id],
     queryFn: () => api.get(`/exhibitions/${id}`).then(r => r.data),
     enabled: !!id,
+    staleTime: 0,
+    refetchOnMount: 'always',
     retry: (count, err: any) => (err?.response?.status ?? 500) >= 500 && count < 2,
   });
 
@@ -181,75 +177,6 @@ export default function ExhibitionDetailPage() {
     }
   };
 
-  // 지원자 목록 조회 (Gallery 오너)
-  const { data: applicants = [], isLoading: appsLoading } = useQuery<any[]>({
-    queryKey: ['exhibition-applicants', id],
-    queryFn: () => api.get(`/exhibitions/${id}/applications`).then(r => r.data),
-    enabled: showApplicants && !!id,
-  });
-
-  // 지원자 상태 변경
-  const updateAppStatusMutation = useMutation({
-    mutationFn: ({ appId, status }: { appId: number; status: string }) =>
-      api.patch(`/exhibitions/${id}/applications/${appId}`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', id] });
-      toast.success('상태가 변경되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
-  });
-
-  // 일괄 상태 변경
-  const batchUpdateStatus = async (status: string) => {
-    if (selectedAppIds.size === 0) return;
-    try {
-      await Promise.all(Array.from(selectedAppIds).map(appId =>
-        api.patch(`/exhibitions/${id}/applications/${appId}`, { status })
-      ));
-      queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', id] });
-      setSelectedAppIds(new Set());
-      setBatchStatus('');
-      toast.success(`${selectedAppIds.size}명의 상태를 변경했습니다.`);
-    } catch { toast.error('일괄 상태 변경 중 오류 발생'); }
-  };
-
-  // 지원자 CSV 다운로드 — 고정 양식(약력/경력/작품사진수/포트폴리오 파일)
-  const careerToCsvText = (career: Career | null | undefined) => {
-    const c = normalizeCareer(career);
-    const parts: string[] = [];
-    for (const { key, label } of APP_CAREER_LABELS) {
-      if (c[key].length > 0) {
-        parts.push(`[${label}] ` + c[key].map(e => [e.year, e.content].filter(Boolean).join(' ')).join(' / '));
-      }
-    }
-    return parts.join(' || ');
-  };
-  const exportCSV = (apps: any[]) => {
-    if (!apps.length || !exhibition) return;
-    const headers = ['이름', '이메일', '지원일', '상태', '작가 약력', '경력', '작품 사진 수', '포트폴리오 파일'];
-    const statusLabelsMap: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
-    const rows = apps.map(app => {
-      const images: string[] = Array.isArray(app.artworkImages) ? app.artworkImages : [];
-      return [
-        app.user?.name || '',
-        app.user?.email || '',
-        new Date(app.createdAt).toLocaleDateString('ko'),
-        statusLabelsMap[app.status] || app.status,
-        app.biography || '',
-        careerToCsvText(app.career),
-        String(images.length),
-        app.portfolioFileUrl || '',
-      ];
-    });
-    const csvContent = '\uFEFF' + [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${exhibition.title}_지원자목록.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
   const favMutation = useMutation({
@@ -342,54 +269,53 @@ export default function ExhibitionDetailPage() {
   const isGalleryOwner = user?.role === 'GALLERY' && exhibition.gallery?.ownerId === user.id;
   const canDelete = isAdmin || isGalleryOwner;
 
+  // 상단 캐러셀에 표시할 사진 목록 (다중 → imageUrl → 갤러리 대표 순 폴백)
+  const heroImages: string[] = (exhibition.images && exhibition.images.length > 0)
+    ? exhibition.images.map((img) => img.url)
+    : (exhibition.imageUrl ? [exhibition.imageUrl] : (exhibition.gallery?.mainImage ? [exhibition.gallery.mainImage] : []));
+
   return (
     <div className="max-w-7xl mx-auto pb-12">
-      {/* 상단 이미지 + glow shadow */}
+      {/* 상단 사진 (다중) + glow shadow */}
       <div className="px-6 md:px-12 pt-6 md:pt-10 pb-12 md:pb-16">
-        <div
-          className="max-w-lg mx-auto relative overflow-hidden rounded-lg transition-shadow duration-700"
-          style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
-        >
-            {(() => {
-              const heroImg = exhibition.imageUrl || exhibition.gallery?.mainImage || '';
-              return heroImg ? (
-                <img
-                  src={heroImg}
-                  alt={exhibition.title}
-                  className="w-full block cursor-pointer"
-                  onClick={() => setLightbox({ images: [heroImg], index: 0 })}
-                />
-              ) : (
-                <div className="w-full aspect-[4/3] bg-gray-100 flex flex-col items-center justify-center gap-1.5 text-gray-300">
-                  <ImageOff size={30} strokeWidth={1.5} />
-                  <span className="text-xs text-gray-400 px-3 text-center line-clamp-1">{exhibition.title}</span>
-                </div>
-              );
-            })()}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+        <div className="max-w-lg mx-auto">
+          <div
+            className="relative overflow-hidden rounded-lg transition-shadow duration-700"
+            style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
+          >
+            <ExhibitionImageCarousel
+              images={heroImages}
+              title={exhibition.title}
+              onImageClick={(index) => setLightbox({ images: heroImages, index })}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none z-10" />
             <button
               onClick={() => navigate(-1)}
-              className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+              className="absolute top-4 left-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
               aria-label="뒤로가기"
             >
               <ArrowLeft size={20} />
             </button>
-            {isAuthenticated && user?.role !== 'ADMIN' && (
+            {isArtist && (
               <button
                 onClick={() => favMutation.mutate()}
-                className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+                className="absolute top-4 right-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
                 aria-label="찜하기"
               >
                 <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
               </button>
             )}
-            <div className="absolute bottom-4 left-4">
-              <span className={`text-sm font-medium ${
-                isExpired ? 'text-white/60' : dday <= 7 ? 'text-white' : 'text-white'
-              }`}>
+            <div className="absolute bottom-4 left-4 z-20">
+              <span className="text-sm font-medium text-white">
                 {isExpired ? '마감' : `D-${dday}`}
               </span>
             </div>
+          </div>
+
+          {/* 오너 전용: 사진 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경) */}
+          {isGalleryOwner && exhibition.images && (
+            <ExhibitionImageManager exhibitionId={exhibition.id} images={exhibition.images} />
+          )}
         </div>
       </div>
 
@@ -540,6 +466,16 @@ export default function ExhibitionDetailPage() {
             <p className="text-center text-sm text-gray-400">지원하려면 로그인이 필요합니다.</p>
           )}
 
+          {/* Gallery 오너: 지원자 관리 (별도 페이지) — 운영 페이지 위 */}
+          {isGalleryOwner && (
+            <button
+              onClick={() => navigate(`/exhibitions/${id}/applicants`)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
+            >
+              <Users size={16} /> 지원자 관리
+            </button>
+          )}
+
           {/* Gallery 오너 / Admin 운영 페이지 */}
           {(isGalleryOwner || isAdmin) && (
             <button
@@ -549,210 +485,29 @@ export default function ExhibitionDetailPage() {
               <ClipboardList size={16} /> 운영 페이지
             </button>
           )}
+        </div>
 
-          {/* Gallery 오너 / Admin 삭제 */}
-          {canDelete && (
+        {/* Gallery 오너 / Admin 삭제 — 우측 하단 소형 */}
+        {canDelete && (
+          <div className="flex justify-end pt-1">
             <button
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50"
-              aria-label="삭제"
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 cursor-pointer"
+              aria-label="공모 삭제"
             >
-              <Trash2 size={16} /> 공모 삭제
+              <Trash2 size={13} /> 공모 삭제
             </button>
-          )}
-        </div>
-
-        {/* ====== 지원자 관리 (Gallery 오너 전용) ====== */}
-        {isGalleryOwner && (
-          <div className="mt-6 border-t pt-6">
-            <button
-              onClick={() => setShowApplicants(!showApplicants)}
-              className="w-full flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-              aria-label={showApplicants ? '접기' : '펼치기'}
-            >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Users size={16} /> 지원자 관리
-              </div>
-              {showApplicants ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-
-            {showApplicants && (
-              <div className="mt-4 space-y-4">
-                {appsLoading ? (
-                  <div className="h-20 bg-gray-100 animate-pulse" />
-                ) : applicants.length === 0 ? (
-                  <p className="text-gray-400 text-center py-6 text-sm">아직 지원자가 없습니다.</p>
-                ) : (() => {
-                  const filteredApps = appStatusFilter === 'ALL' ? applicants : applicants.filter((a: any) => a.status === appStatusFilter);
-                  const allFilteredSelected = filteredApps.length > 0 && filteredApps.every((a: any) => selectedAppIds.has(a.id));
-                  const toggleSelectAll = () => {
-                    if (allFilteredSelected) {
-                      const next = new Set(selectedAppIds);
-                      filteredApps.forEach((a: any) => next.delete(a.id));
-                      setSelectedAppIds(next);
-                    } else {
-                      const next = new Set(selectedAppIds);
-                      filteredApps.forEach((a: any) => next.add(a.id));
-                      setSelectedAppIds(next);
-                    }
-                  };
-                  const toggleSelect = (appId: number) => {
-                    const next = new Set(selectedAppIds);
-                    next.has(appId) ? next.delete(appId) : next.add(appId);
-                    setSelectedAppIds(next);
-                  };
-
-                  return (
-                    <>
-                      {/* 상태 필터 */}
-                      <div className="flex gap-1.5 flex-wrap">
-                        {[{ key: 'ALL', label: '전체' }, { key: 'SUBMITTED', label: '접수' }, { key: 'REVIEWED', label: '검토중' }, { key: 'ACCEPTED', label: '수락' }, { key: 'REJECTED', label: '거절' }].map(f => {
-                          const count = f.key === 'ALL' ? applicants.length : applicants.filter((a: any) => a.status === f.key).length;
-                          return (
-                            <button
-                              key={f.key}
-                              onClick={() => { setAppStatusFilter(f.key); setSelectedAppIds(new Set()); }}
-                              className={`px-2.5 py-1 text-xs rounded-full transition-colors ${appStatusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                              {f.label} {count > 0 ? `(${count})` : ''}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* 일괄 액션 바 */}
-                      <div className="flex items-center justify-between flex-wrap gap-2 bg-gray-50 rounded-xl px-3 py-2">
-                        <label className="flex items-center gap-2 text-xs cursor-pointer">
-                          <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="rounded" />
-                          전체 선택 {selectedAppIds.size > 0 && <span className="text-gray-900 font-medium">({selectedAppIds.size}명 선택)</span>}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          {selectedAppIds.size > 0 && (
-                            <>
-                              <select
-                                value={batchStatus}
-                                onChange={e => setBatchStatus(e.target.value)}
-                                className="text-xs p-1.5 border border-gray-200 rounded-lg"
-                              >
-                                <option value="">상태 변경</option>
-                                <option value="SUBMITTED">접수</option>
-                                <option value="REVIEWED">검토중</option>
-                                <option value="ACCEPTED">수락</option>
-                                <option value="REJECTED">거절</option>
-                              </select>
-                              <button
-                                onClick={() => batchStatus && batchUpdateStatus(batchStatus)}
-                                disabled={!batchStatus}
-                                className="px-2.5 py-1.5 text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30"
-                              >
-                                적용
-                              </button>
-                              <button
-                                onClick={() => exportCSV(applicants.filter((a: any) => selectedAppIds.has(a.id)))}
-                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 rounded-lg hover:bg-green-50"
-                              >
-                                <FileText size={12} /> 선택 다운로드
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => exportCSV(applicants)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-green-600 border border-green-200 rounded-lg hover:bg-green-50"
-                          >
-                            <FileText size={12} /> 전체 다운로드
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* 지원자 목록 */}
-                      <div className="space-y-2">
-                        {filteredApps.map((app: any) => {
-                          const isExpanded = expandedAppId === app.id;
-                          const isSelected = selectedAppIds.has(app.id);
-                          const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-blue-100 text-blue-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-
-                          return (
-                            <div key={app.id} className={`border rounded-xl overflow-hidden transition-colors ${isSelected ? 'border-blue-300 bg-blue-50/30' : app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
-                              <div className="p-3 flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleSelect(app.id)}
-                                  className="rounded shrink-0"
-                                />
-                                <div
-                                  className="flex-1 flex justify-between items-center cursor-pointer"
-                                  onClick={() => setExpandedAppId(isExpanded ? null : app.id)}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />}
-                                    <span
-                                      className="text-sm font-medium text-gray-900 hover:underline cursor-pointer"
-                                      onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
-                                    >
-                                      {displayName(app.user)}
-                                    </span>
-                                    <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
-                                    {app.isFirstApplication ? (
-                                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">★ 첫 지원</span>
-                                    ) : (
-                                      <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">이 갤러리 {app.galleryApplicationOrder}번째</span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <select
-                                      value={app.status}
-                                      onClick={e => e.stopPropagation()}
-                                      onChange={e => { e.stopPropagation(); updateAppStatusMutation.mutate({ appId: app.id, status: e.target.value }); }}
-                                      className={`text-xs px-2 py-1 rounded-lg border-0 cursor-pointer ${statusColors[app.status] || ''}`}
-                                    >
-                                      <option value="SUBMITTED">접수</option>
-                                      <option value="REVIEWED">검토중</option>
-                                      <option value="ACCEPTED">수락</option>
-                                      <option value="REJECTED">거절</option>
-                                    </select>
-                                    {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {isExpanded && (
-                                <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-7">
-                                  {(app.user?.email || app.user?.phone) ? (
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-gray-600">
-                                      {app.user?.email && <span>📧 {app.user.email}</span>}
-                                      {app.user?.phone && <span>📞 {app.user.phone}</span>}
-                                    </div>
-                                  ) : (
-                                    app.status !== 'ACCEPTED' && (
-                                      <p className="text-xs text-gray-400 pt-2">📇 연락처(이메일·전화)는 '수락' 시 표시됩니다.</p>
-                                    )
-                                  )}
-                                  <ApplicationContent
-                                    app={app}
-                                    onImageClick={(images, index) => setLightbox({ images, index })}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
           </div>
         )}
+
       </div>
 
       {/* 지원 확인 모달 (약관 동의 후 최종 제출) */}
       <ConfirmDialog
         open={applyConfirm}
         title="지원하기"
-        message={`📌 지원이 수락되면 갤러리에 회원님의 이메일과 전화번호가 전달됩니다.\n동의하시면 [지원하기]를 눌러주세요.\n\n${applyTerms || '지원하시겠습니까?'}`}
+        message={`📌 지원 시 갤러리에 회원님의 닉네임·이메일·전화번호가 지원서와 함께 전달됩니다.\n동의하시면 [지원하기]를 눌러주세요.\n\n${applyTerms || '지원하시겠습니까?'}`}
         confirmText="동의하고 지원하기"
         onConfirm={() => { setApplyConfirm(false); if (pendingApply) applyMutation.mutate(pendingApply); setPendingApply(undefined); }}
         onCancel={() => { setApplyConfirm(false); setPendingApply(undefined); }}
@@ -985,6 +740,292 @@ export default function ExhibitionDetailPage() {
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// =============================================
+// 공모 상단 사진 캐러셀 (다중) — object-cover, 화살표/점/자동 슬라이드
+// =============================================
+function ExhibitionImageCarousel({ images, title, onImageClick }: { images: string[]; title: string; onImageClick: (index: number) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useRef(false);
+  const currentRef = useRef(0);
+  const isHovered = useRef(false);
+  const [index, setIndex] = useState(0);
+
+  const scrollToSlide = useCallback((i: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    isScrolling.current = true;
+    container.scrollTo({ left: i * container.offsetWidth, behavior: 'smooth' });
+    currentRef.current = i;
+    setIndex(i);
+    setTimeout(() => { isScrolling.current = false; }, 400);
+  }, []);
+
+  // 현재 슬라이드 감지
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || images.length === 0) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (isScrolling.current) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const i = Number((entry.target as HTMLElement).dataset.index);
+          if (!isNaN(i) && i !== currentRef.current) { currentRef.current = i; setIndex(i); }
+        }
+      }
+    }, { root: container, threshold: 0.5 });
+    container.querySelectorAll('[data-index]').forEach((c) => observer.observe(c));
+    return () => observer.disconnect();
+  }, [images.length]);
+
+  // 5초 자동 슬라이드 (hover 정지)
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const timer = setInterval(() => {
+      if (isHovered.current) return;
+      scrollToSlide((currentRef.current + 1) % images.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [images.length, scrollToSlide]);
+
+  if (images.length === 0) {
+    return (
+      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+        <span className="text-xs text-gray-400 px-3 text-center line-clamp-1">{title}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden"
+      onMouseEnter={() => { isHovered.current = true; }}
+      onMouseLeave={() => { isHovered.current = false; }}
+    >
+      <div
+        ref={containerRef}
+        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-pointer select-none"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        {images.map((src, i) => (
+          <div
+            key={`${src}-${i}`}
+            data-index={i}
+            className="relative w-full h-full flex-shrink-0 snap-start"
+            onClick={() => onImageClick(i)}
+          >
+            <SkeletonImage
+              src={src}
+              alt={`${title} ${i + 1}`}
+              fallbackLabel={title}
+              className="w-full h-full"
+              imgClassName="object-cover"
+              draggable={false}
+              loading={i === 0 ? 'eager' : 'lazy'}
+            />
+          </div>
+        ))}
+      </div>
+
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={() => scrollToSlide((index - 1 + images.length) % images.length)}
+            className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+            aria-label="이전 사진"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={() => scrollToSlide((index + 1) % images.length)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
+            aria-label="다음 사진"
+          >
+            <ChevronRight size={20} />
+          </button>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToSlide(i)}
+                className={`w-2 h-2 rounded-full transition-all ${i === index ? 'bg-white w-5' : 'bg-white/50'}`}
+                aria-label={`${i + 1}번째 사진`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =============================================
+// 오너 전용: 공모 사진 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경)
+// =============================================
+const MAX_EXHIBITION_IMAGES = 20;
+
+function ExhibitionImageManager({ exhibitionId, images }: { exhibitionId: number; images: ExhibitionImage[] }) {
+  const queryClient = useQueryClient();
+  const [isOpen, setIsOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [order, setOrder] = useState<ExhibitionImage[]>(images);
+  const dragId = useRef<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 서버 데이터 변경 시 로컬 순서 동기화
+  useEffect(() => { setOrder(images); }, [images]);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['exhibition', String(exhibitionId)] });
+    queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+  };
+
+  const addMutation = useMutation({
+    mutationFn: (url: string) => api.post(`/exhibitions/${exhibitionId}/images`, { url }),
+    onSuccess: invalidate,
+    onError: () => toast.error('사진 추가에 실패했습니다.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (imageId: number) => api.delete(`/exhibitions/${exhibitionId}/images/${imageId}`),
+    onSuccess: () => { invalidate(); toast.success('사진이 삭제되었습니다.'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '사진 삭제에 실패했습니다.'),
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (orderedIds: number[]) => api.patch(`/exhibitions/${exhibitionId}/images/reorder`, { orderedIds }),
+    onSuccess: invalidate,
+    onError: () => { toast.error('순서 변경에 실패했습니다.'); setOrder(images); },
+  });
+
+  const handleDelete = (imageId: number) => {
+    // 최소 1장 유지 — 마지막 한 장은 삭제 불가 안내
+    if (order.length <= 1) {
+      toast.error('사진은 최소 한 장 이상 등록되어 있어야 합니다.');
+      return;
+    }
+    if (window.confirm('이 사진을 삭제하시겠습니까?')) deleteMutation.mutate(imageId);
+  };
+
+  const handleUpload = async (files: FileList) => {
+    const remaining = MAX_EXHIBITION_IMAGES - order.length;
+    if (remaining <= 0) { toast.error(`사진은 최대 ${MAX_EXHIBITION_IMAGES}장까지 등록 가능합니다.`); return; }
+    const fileArray = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    let count = 0;
+    for (const rawFile of fileArray) {
+      try {
+        const file = await compressImage(rawFile);
+        if (file.size > MAX_IMAGE_BYTES) {
+          toast.error(`${rawFile.name}: 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
+          continue;
+        }
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await addMutation.mutateAsync(res.data.url);
+        count++;
+      } catch { toast.error(`${rawFile.name} 업로드 실패`); }
+    }
+    if (count > 0) toast.success(`${count}장 추가되었습니다.`);
+    setUploading(false);
+  };
+
+  const handleDropUpload = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      handleUpload(dt.files);
+    } else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
+  };
+
+  // 썸네일 드래그 순서변경
+  const onThumbDrop = (targetId: number) => {
+    const fromId = dragId.current;
+    dragId.current = null;
+    if (fromId == null || fromId === targetId) return;
+    const fromIdx = order.findIndex(i => i.id === fromId);
+    const toIdx = order.findIndex(i => i.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = [...order];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setOrder(next);
+    reorderMutation.mutate(next.map(i => i.id));
+  };
+
+  return (
+    <div className="pt-3">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 cursor-pointer"
+        aria-label="사진 관리"
+      >
+        <Camera size={14} /> 사진 관리 ({order.length})
+        <ChevronRight size={14} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`mt-3 p-3 bg-gray-50 rounded-lg ${dragOver ? 'ring-2 ring-gray-400' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDrop={handleDropUpload}
+        >
+          <p className="text-xs text-gray-400 mb-2">썸네일을 드래그해 순서를 바꿀 수 있어요. 첫 번째 사진이 대표 이미지입니다.</p>
+          <div
+            className="grid grid-cols-4 sm:grid-cols-5 gap-2"
+            onDragEnter={() => setDragOver(false)}
+          >
+            {order.map((img) => (
+              <div
+                key={img.id}
+                draggable
+                onDragStart={() => { dragId.current = img.id; }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onThumbDrop(img.id); }}
+                className="relative group cursor-grab active:cursor-grabbing"
+              >
+                <img src={img.url} alt="공모 사진" className="w-full h-20 object-cover rounded-lg pointer-events-none" />
+                <span className="absolute bottom-1 left-1 p-0.5 bg-black/40 text-white rounded">
+                  <GripVertical size={11} />
+                </span>
+                <button
+                  onClick={() => handleDelete(img.id)}
+                  className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="삭제"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            {order.length < MAX_EXHIBITION_IMAGES && (
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="h-20 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-gray-400 hover:text-gray-600 disabled:opacity-50"
+                aria-label="사진 추가"
+              >
+                <Plus size={18} />
+                <span className="text-[11px]">{uploading ? '업로드 중' : '추가'}</span>
+              </button>
+            )}
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => { if (e.target.files?.length) handleUpload(e.target.files); e.target.value = ''; }}
+          />
+        </div>
+      )}
     </div>
   );
 }
