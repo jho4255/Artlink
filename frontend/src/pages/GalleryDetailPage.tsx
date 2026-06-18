@@ -354,7 +354,7 @@ export default function GalleryDetailPage() {
             setImgIndex={setImgIndex}
             onImageClick={(index) => setLightbox({ images, index })}
             isFavorited={!!gallery.isFavorited}
-            showFavorite={isAuthenticated && !isAdmin}
+            showFavorite={user?.role === 'ARTIST'}
             onFavoriteClick={() => favMutation.mutate()}
           />
         </div>

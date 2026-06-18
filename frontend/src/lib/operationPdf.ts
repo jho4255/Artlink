@@ -6,7 +6,7 @@
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
 import { displayName } from '@/lib/utils';
-import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist } from '@/types';
+import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career } from '@/types';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
@@ -379,4 +379,99 @@ export async function downloadAllSubmissionsZip(exTitle: string, rows: Submissio
   a.download = `${exSafe}_전체제출물.zip`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── 지원서 (지원자 관리 페이지) ──
+// 닉네임/전화/이메일 + 작가약력 + 경력 + 작품사진 + 포트폴리오 파일을 한 PDF로.
+export interface ApplicantLike {
+  user: { id?: number; name: string; nickname?: string | null; email?: string | null; phone?: string | null };
+  biography?: string | null;
+  career?: Career | null;
+  artworkImages?: string[] | null;
+  portfolioFileUrl?: string | null;
+  status?: string;
+  createdAt?: string;
+}
+
+const APP_CAREER_SECTIONS: { key: keyof Career; label: string }[] = [
+  { key: 'artFair', label: '아트페어' },
+  { key: 'solo', label: '개인전' },
+  { key: 'group', label: '단체전' },
+];
+
+function applicationHtml(exTitle: string, app: ApplicantLike): string {
+  const artist = displayName(app.user as any);
+  const career: Career = { artFair: app.career?.artFair ?? [], solo: app.career?.solo ?? [], group: app.career?.group ?? [] };
+  const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
+  const images = (app.artworkImages || []).filter(Boolean);
+  const appliedAt = app.createdAt ? new Date(app.createdAt).toLocaleDateString('ko') : '';
+
+  const contactRows = `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tbody>
+        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;width:90px;font-weight:700">닉네임</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.nickname || app.user.name)}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">전화번호</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.phone || '-')}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">이메일</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.email || '-')}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">지원일</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(appliedAt)}</td></tr>
+      </tbody>
+    </table>`;
+
+  const careerHtml = careerEmpty
+    ? `<p style="color:#999;margin:0 0 16px">등록된 경력이 없습니다.</p>`
+    : APP_CAREER_SECTIONS.map(({ key, label }) => career[key].length === 0 ? '' : `
+        <div style="margin-bottom:12px">
+          <h3 style="font-size:13px;font-weight:700;color:#1a1a2e;margin:0 0 4px">${esc(label)}</h3>
+          ${career[key].map(e => `<p style="margin:2px 0">${esc([e.year, e.content].filter(Boolean).join(' '))}</p>`).join('')}
+        </div>`).join('');
+
+  const imagesHtml = images.length === 0
+    ? `<p style="color:#999;margin:0">첨부된 작품 사진이 없습니다.</p>`
+    : `<div style="display:flex;flex-wrap:wrap;gap:8px">${images.map(u => `<img src="${esc(proxied(u))}" crossorigin="anonymous" style="width:170px;height:170px;object-fit:cover;border:1px solid #eee"/>`).join('')}</div>`;
+
+  return `<div style="${BASE}">
+    ${header(exTitle, '지원서', artist)}
+    ${contactRows}
+    <div style="margin-bottom:18px">
+      <h2 style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">작가 약력</h2>
+      <p style="white-space:pre-wrap;margin:0">${esc(app.biography) || '<span style="color:#999">등록된 약력이 없습니다.</span>'}</p>
+    </div>
+    <div style="margin-bottom:18px">
+      <h2 style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">경력</h2>
+      ${careerHtml}
+    </div>
+    <div style="margin-bottom:18px">
+      <h2 style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 8px">작품 사진 (${images.length})</h2>
+      ${imagesHtml}
+    </div>
+    ${app.portfolioFileUrl ? `<div><h2 style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">포트폴리오 파일</h2><p style="margin:0;word-break:break-all;color:#444">${esc(app.portfolioFileUrl)}</p></div>` : ''}
+  </div>`;
+}
+
+/** 지원자 1명의 지원서 PDF — 파일명: 공모명_작가명_지원서.pdf */
+export async function downloadApplicationPdf(exTitle: string, app: ApplicantLike): Promise<void> {
+  const blob = await htmlToPdfBlob(applicationHtml(exTitle, app));
+  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(app.user as any))}_지원서.pdf`);
+}
+
+/** 전체 지원자 지원서 PDF를 ZIP으로 묶어 다운로드 — 파일명: 공모명_지원서.zip */
+export async function downloadAllApplicationsZip(exTitle: string, apps: ApplicantLike[]): Promise<number> {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  const exSafe = safeName(exTitle);
+  const used = new Set<string>();
+  let count = 0;
+  for (const app of apps) {
+    const aSafe = safeName(displayName(app.user as any));
+    let name = `${exSafe}_${aSafe}_지원서.pdf`;
+    let n = 2;
+    while (used.has(name)) { name = `${exSafe}_${aSafe}_${n}_지원서.pdf`; n += 1; }
+    used.add(name);
+    zip.file(name, await htmlToPdfBlob(applicationHtml(exTitle, app)));
+    count += 1;
+  }
+  if (count > 0) {
+    const blob = await zip.generateAsync({ type: 'blob' });
+    triggerDownload(blob, `${exSafe}_지원서.zip`);
+  }
+  return count;
 }

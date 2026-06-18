@@ -196,19 +196,34 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
 // 공모 상세 조회
 router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: parseInt(req.params.id as string) },
+    const exhibitionId = parseInt(req.params.id as string);
+    let exhibition = await prisma.exhibition.findUnique({
+      where: { id: exhibitionId },
       include: {
         gallery: {
           include: { owner: { select: { id: true } } }
         },
-        promoPhotos: true
+        promoPhotos: true,
+        images: { orderBy: { order: 'asc' } },
       }
     });
     if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
     // 탈퇴 회원의 공모는 공개에서 숨김(관리자 제외)
     if (exhibition.status === 'WITHDRAWN' && req.user?.role !== 'ADMIN') {
       throw new AppError('공모를 찾을 수 없습니다.', 404);
+    }
+
+    // lazy 백필: 기존 공모(imageUrl만 있고 ExhibitionImage 행 없음)는 첫 조회 시 대표 이미지를 행으로 승격.
+    if (exhibition.images.length === 0 && exhibition.imageUrl) {
+      await prisma.exhibitionImage.create({ data: { url: exhibition.imageUrl, order: 0, exhibitionId } });
+      exhibition = await prisma.exhibition.findUnique({
+        where: { id: exhibitionId },
+        include: {
+          gallery: { include: { owner: { select: { id: true } } } },
+          promoPhotos: true,
+          images: { orderBy: { order: 'asc' } },
+        }
+      }) as typeof exhibition;
     }
 
     // 찜 여부 확인
@@ -243,6 +258,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
       throw new AppError('본인 소유의 갤러리만 선택할 수 있습니다.', 403);
     }
 
+    const safeImageUrl = safeFileUrl(imageUrl);
     const exhibition = await prisma.exhibition.create({
       data: {
         title, type,
@@ -250,9 +266,11 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
-        capacity, region, description, galleryId, imageUrl,
+        capacity, region, description, galleryId, imageUrl: safeImageUrl,
         // 추가정보요청(customFields) 기능 제거 — 지원서는 고정 양식(경력/작품사진/포트폴리오) 사용
-        status: 'PENDING'
+        status: 'PENDING',
+        // 대표 이미지를 다중사진 첫 행으로 등록 (이후 상세 페이지에서 추가/삭제/순서변경)
+        ...(safeImageUrl ? { images: { create: [{ url: safeImageUrl, order: 0 }] } } : {}),
       }
     });
     res.status(201).json(exhibition);
@@ -449,13 +467,10 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
     const stats = await galleryApplicationStats(exhibition.galleryId, applications.map(a => a.userId));
 
     // 지원서 고정 양식 필드 파싱 + 갤러리 지원 통계 부착
-    // 연락처(이메일/전화)는 '수락(ACCEPTED)'된 지원자에 한해 갤러리에 노출 (지원 시 작가에게 고지됨)
+    // 연락처(이메일/전화)는 지원 시점부터 갤러리 오너에게 노출 (지원 동의 문구에서 고지). 상태 무관.
     const parsed = applications.map((app: any) => {
-      const accepted = app.status === 'ACCEPTED';
-      const user = accepted ? app.user : { ...app.user, email: null, phone: null };
       return {
         ...app,
-        user,
         career: safeJson(app.career, null),
         artworkImages: safeJson<string[]>(app.artworkImages, []),
         ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
@@ -541,6 +556,101 @@ router.delete('/:id/promo-photos/:photoId', authenticate, authorize('GALLERY'), 
   try {
     await prisma.promoPhoto.delete({ where: { id: parseInt(req.params.photoId as string) } });
     res.json({ message: '삭제되었습니다.' });
+  } catch (error) { next(error); }
+});
+
+// ========== 공모 사진 관리 (다중, 오너/Admin) ==========
+const MAX_EXHIBITION_IMAGES = 20;
+
+// 오너(또는 Admin) 권한 확인 후 exhibition 반환
+async function assertExhibitionOwner(exhibitionId: number, user: { id: number; role: string }) {
+  const exhibition = await prisma.exhibition.findUnique({
+    where: { id: exhibitionId },
+    include: { gallery: { select: { ownerId: true } } },
+  });
+  if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+  if (user.role !== 'ADMIN' && exhibition.gallery.ownerId !== user.id) {
+    throw new AppError('권한이 없습니다.', 403);
+  }
+  return exhibition;
+}
+
+// 첫 사진(order 최소)을 대표 imageUrl로 동기화 (목록 썸네일 호환)
+async function syncExhibitionImageUrl(exhibitionId: number) {
+  const first = await prisma.exhibitionImage.findFirst({
+    where: { exhibitionId },
+    orderBy: { order: 'asc' },
+  });
+  await prisma.exhibition.update({
+    where: { id: exhibitionId },
+    data: { imageUrl: first ? first.url : null },
+  });
+}
+
+// 사진 추가
+router.post('/:id/images', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const exhibition = await assertExhibitionOwner(exhibitionId, req.user!);
+    const url = safeFileUrl(req.body?.url);
+    if (!url) throw new AppError('유효한 이미지 URL이 아닙니다.', 400);
+    let count = await prisma.exhibitionImage.count({ where: { exhibitionId } });
+    // 안전망: 기존 대표 imageUrl이 아직 행으로 승격되지 않았다면 먼저 order 0으로 보존
+    // (상세 GET 백필을 거치지 않고 업로드해도 기존 사진이 유실되지 않도록)
+    if (count === 0 && exhibition.imageUrl) {
+      await prisma.exhibitionImage.create({ data: { url: exhibition.imageUrl, order: 0, exhibitionId } });
+      count = 1;
+    }
+    if (count >= MAX_EXHIBITION_IMAGES) {
+      throw new AppError(`사진은 최대 ${MAX_EXHIBITION_IMAGES}장까지 등록할 수 있습니다.`, 400);
+    }
+    await prisma.exhibitionImage.create({ data: { url, order: count, exhibitionId } });
+    await syncExhibitionImageUrl(exhibitionId);
+    const images = await prisma.exhibitionImage.findMany({ where: { exhibitionId }, orderBy: { order: 'asc' } });
+    res.status(201).json(images);
+  } catch (error) { next(error); }
+});
+
+// 사진 삭제 (최소 1장 유지)
+router.delete('/:id/images/:imageId', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    await assertExhibitionOwner(exhibitionId, req.user!);
+    const imageId = parseInt(req.params.imageId as string);
+    const count = await prisma.exhibitionImage.count({ where: { exhibitionId } });
+    if (count <= 1) throw new AppError('사진은 최소 한 장 이상 등록되어 있어야 합니다.', 400);
+    const target = await prisma.exhibitionImage.findFirst({ where: { id: imageId, exhibitionId } });
+    if (!target) throw new AppError('사진을 찾을 수 없습니다.', 404);
+    await prisma.exhibitionImage.delete({ where: { id: imageId } });
+    // order 재정렬 (0..n-1)
+    const remaining = await prisma.exhibitionImage.findMany({ where: { exhibitionId }, orderBy: { order: 'asc' } });
+    await Promise.all(remaining.map((img, i) => prisma.exhibitionImage.update({ where: { id: img.id }, data: { order: i } })));
+    await syncExhibitionImageUrl(exhibitionId);
+    const images = await prisma.exhibitionImage.findMany({ where: { exhibitionId }, orderBy: { order: 'asc' } });
+    res.json(images);
+  } catch (error) { next(error); }
+});
+
+// 사진 순서 변경 (드래그앤드롭) — orderedIds: 새 순서의 이미지 id 배열
+router.patch('/:id/images/reorder', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    await assertExhibitionOwner(exhibitionId, req.user!);
+    const orderedIds = req.body?.orderedIds;
+    if (!Array.isArray(orderedIds) || orderedIds.some((x) => !Number.isInteger(x))) {
+      throw new AppError('orderedIds 배열이 필요합니다.', 400);
+    }
+    const existing = await prisma.exhibitionImage.findMany({ where: { exhibitionId }, select: { id: true } });
+    const existingIds = new Set(existing.map((e) => e.id));
+    // orderedIds가 현재 이미지 집합과 정확히 일치해야 함
+    if (orderedIds.length !== existing.length || orderedIds.some((id) => !existingIds.has(id))) {
+      throw new AppError('이미지 목록이 일치하지 않습니다.', 400);
+    }
+    await Promise.all(orderedIds.map((id: number, i: number) =>
+      prisma.exhibitionImage.update({ where: { id }, data: { order: i } })));
+    await syncExhibitionImageUrl(exhibitionId);
+    const images = await prisma.exhibitionImage.findMany({ where: { exhibitionId }, orderBy: { order: 'asc' } });
+    res.json(images);
   } catch (error) { next(error); }
 });
 

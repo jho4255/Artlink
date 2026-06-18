@@ -21,6 +21,7 @@ import InstagramCallbackPage from '@/pages/InstagramCallbackPage';
 import PrivacyPage from '@/pages/PrivacyPage';
 import OperationPage from '@/pages/OperationPage';
 import OperationPrintPage from '@/pages/OperationPrintPage';
+import ApplicantsPage from '@/pages/ApplicantsPage';
 
 export default function App() {
   return (
@@ -34,6 +35,9 @@ export default function App() {
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
         <Route path="/exhibitions/:id/operation" element={
           <ProtectedRoute><OperationPage /></ProtectedRoute>
+        } />
+        <Route path="/exhibitions/:id/applicants" element={
+          <ProtectedRoute><ApplicantsPage /></ProtectedRoute>
         } />
         <Route path="/shows" element={<ShowsPage />} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />

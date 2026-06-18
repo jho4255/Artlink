@@ -67,6 +67,7 @@ export interface Exhibition {
   exhibitDate: string;
   exhibitStartDate?: string;
   imageUrl?: string;
+  images?: ExhibitionImage[];
   customFields?: CustomField[] | null;
   capacity: number;
   region: string;
@@ -76,6 +77,12 @@ export interface Exhibition {
   gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'>;
   promoPhotos?: PromoPhoto[];
   isFavorited?: boolean;
+}
+
+export interface ExhibitionImage {
+  id: number;
+  url: string;
+  order: number;
 }
 
 export interface PromoPhoto {

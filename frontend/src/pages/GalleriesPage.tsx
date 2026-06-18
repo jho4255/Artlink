@@ -260,7 +260,7 @@ export default function GalleriesPage() {
                   <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
                     {gallery.name}
                   </h3>
-                  {isAuthenticated && user?.role !== 'ADMIN' && (
+                  {user?.role === 'ARTIST' && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
