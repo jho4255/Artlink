@@ -192,7 +192,7 @@ export default function ExhibitionsPage() {
                   src={ex.imageUrl || ex.gallery?.mainImage || ''}
                   alt={ex.title}
                   fallbackLabel={ex.title}
-                  className="aspect-[4/3]"
+                  className="aspect-[210/297]"
                   imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"
                   blurFill
                 />

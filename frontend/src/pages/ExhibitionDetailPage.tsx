@@ -18,11 +18,11 @@
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronLeft, ChevronRight, Camera, Plus, GripVertical } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -32,7 +32,6 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
-import SkeletonImage from '@/components/shared/SkeletonImage';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import type { Exhibition, PromoPhoto, Career, ExhibitionImage } from '@/types';
 import { EMPTY_CAREER } from '@/types';
@@ -86,7 +85,6 @@ export default function ExhibitionDetailPage() {
   const [imgError, setImgError] = useState(false);
   const [careerErrorKeys, setCareerErrorKeys] = useState<Set<string>>(new Set());
   const [pendingApply, setPendingApply] = useState<any>(undefined);
-  const [bgColor, setBgColor] = useState('#1a1a2e');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   // 인라인 쪽지 모달
   const [showMsgModal, setShowMsgModal] = useState(false);
@@ -119,11 +117,6 @@ export default function ExhibitionDetailPage() {
     retry: (count, err: any) => (err?.response?.status ?? 500) >= 500 && count < 2,
   });
 
-  // 이미지 dominant color 추출
-  useEffect(() => {
-    const imgSrc = exhibition?.imageUrl || exhibition?.gallery?.mainImage;
-    if (imgSrc) extractColor(imgSrc).then(setBgColor);
-  }, [exhibition?.imageUrl, exhibition?.gallery?.mainImage]);
 
   // 지원하기 (고정 양식 payload)
   const applyMutation = useMutation({
@@ -276,43 +269,50 @@ export default function ExhibitionDetailPage() {
 
   return (
     <div className="max-w-7xl mx-auto pb-12">
-      {/* 상단 사진 (다중) + glow shadow */}
+      {/* 상단 포스터 — 각 원본 비율 보존, 여러 장이면 순서대로 세로 나열. 포스터별 대표색 글로우 */}
       <div className="px-6 md:px-12 pt-6 md:pt-10 pb-12 md:pb-16">
-        <div className="max-w-lg mx-auto">
-          <div
-            className="relative overflow-hidden rounded-lg transition-shadow duration-700"
-            style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
-          >
-            <ExhibitionImageCarousel
-              images={heroImages}
-              title={exhibition.title}
-              onImageClick={(index) => setLightbox({ images: heroImages, index })}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none z-10" />
-            <button
-              onClick={() => navigate(-1)}
-              className="absolute top-4 left-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
-              aria-label="뒤로가기"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            {isArtist && (
-              <button
-                onClick={() => favMutation.mutate()}
-                className="absolute top-4 right-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
-                aria-label="찜하기"
-              >
-                <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
-              </button>
-            )}
-            <div className="absolute bottom-4 left-4 z-20">
-              <span className="text-sm font-medium text-white">
-                {isExpired ? '마감' : `D-${dday}`}
-              </span>
+        <div className="max-w-lg mx-auto space-y-4">
+          {heroImages.length === 0 ? (
+            <div className="w-full aspect-[210/297] bg-gray-100 rounded-lg flex items-center justify-center">
+              <span className="text-xs text-gray-400 px-3 text-center line-clamp-1">{exhibition.title}</span>
             </div>
-          </div>
+          ) : heroImages.map((src, i) => (
+            <PosterImage
+              key={`${src}-${i}`}
+              src={src}
+              alt={`${exhibition.title} ${i + 1}`}
+              eager={i === 0}
+              onClick={() => setLightbox({ images: heroImages, index: i })}
+            >
+              {i === 0 && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(-1); }}
+                    className="absolute top-4 left-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+                    aria-label="뒤로가기"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  {isArtist && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); favMutation.mutate(); }}
+                      className="absolute top-4 right-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
+                      aria-label="찜하기"
+                    >
+                      <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
+                    </button>
+                  )}
+                  <div className="absolute bottom-4 left-4 z-20">
+                    <span className="text-xs font-medium text-white bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                      {isExpired ? '마감' : `D-${dday}`}
+                    </span>
+                  </div>
+                </>
+              )}
+            </PosterImage>
+          ))}
 
-          {/* 오너 전용: 사진 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경) */}
+          {/* 오너 전용: 포스터 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경) */}
           {isGalleryOwner && exhibition.images && (
             <ExhibitionImageManager exhibitionId={exhibition.id} images={exhibition.images} />
           )}
@@ -745,119 +745,19 @@ export default function ExhibitionDetailPage() {
 }
 
 // =============================================
-// 공모 상단 사진 캐러셀 (다중) — object-cover, 화살표/점/자동 슬라이드
+// 포스터 1장 — 원본 비율 보존(w-full h-auto) + 자기 대표색 글로우
 // =============================================
-function ExhibitionImageCarousel({ images, title, onImageClick }: { images: string[]; title: string; onImageClick: (index: number) => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isScrolling = useRef(false);
-  const currentRef = useRef(0);
-  const isHovered = useRef(false);
-  const [index, setIndex] = useState(0);
-
-  const scrollToSlide = useCallback((i: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    isScrolling.current = true;
-    container.scrollTo({ left: i * container.offsetWidth, behavior: 'smooth' });
-    currentRef.current = i;
-    setIndex(i);
-    setTimeout(() => { isScrolling.current = false; }, 400);
-  }, []);
-
-  // 현재 슬라이드 감지
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || images.length === 0) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (isScrolling.current) return;
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const i = Number((entry.target as HTMLElement).dataset.index);
-          if (!isNaN(i) && i !== currentRef.current) { currentRef.current = i; setIndex(i); }
-        }
-      }
-    }, { root: container, threshold: 0.5 });
-    container.querySelectorAll('[data-index]').forEach((c) => observer.observe(c));
-    return () => observer.disconnect();
-  }, [images.length]);
-
-  // 5초 자동 슬라이드 (hover 정지)
-  useEffect(() => {
-    if (images.length <= 1) return;
-    const timer = setInterval(() => {
-      if (isHovered.current) return;
-      scrollToSlide((currentRef.current + 1) % images.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [images.length, scrollToSlide]);
-
-  if (images.length === 0) {
-    return (
-      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
-        <span className="text-xs text-gray-400 px-3 text-center line-clamp-1">{title}</span>
-      </div>
-    );
-  }
-
+function PosterImage({ src, alt, eager, onClick, children }: { src: string; alt: string; eager?: boolean; onClick: () => void; children?: React.ReactNode }) {
+  const [glow, setGlow] = useState('#1a1a2e');
+  useEffect(() => { if (src) extractColor(src).then(setGlow); }, [src]);
   return (
     <div
-      className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden"
-      onMouseEnter={() => { isHovered.current = true; }}
-      onMouseLeave={() => { isHovered.current = false; }}
+      onClick={onClick}
+      className="relative overflow-hidden rounded-lg cursor-pointer transition-shadow duration-700"
+      style={{ boxShadow: `0 8px 40px ${glow}, 0 2px 12px ${glow}` }}
     >
-      <div
-        ref={containerRef}
-        className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-pointer select-none"
-        style={{ WebkitOverflowScrolling: 'touch' }}
-      >
-        {images.map((src, i) => (
-          <div
-            key={`${src}-${i}`}
-            data-index={i}
-            className="relative w-full h-full flex-shrink-0 snap-start"
-            onClick={() => onImageClick(i)}
-          >
-            <SkeletonImage
-              src={src}
-              alt={`${title} ${i + 1}`}
-              fallbackLabel={title}
-              className="w-full h-full"
-              imgClassName="object-cover"
-              draggable={false}
-              loading={i === 0 ? 'eager' : 'lazy'}
-            />
-          </div>
-        ))}
-      </div>
-
-      {images.length > 1 && (
-        <>
-          <button
-            onClick={() => scrollToSlide((index - 1 + images.length) % images.length)}
-            className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
-            aria-label="이전 사진"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <button
-            onClick={() => scrollToSlide((index + 1) % images.length)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white/70 rounded-full z-10"
-            aria-label="다음 사진"
-          >
-            <ChevronRight size={20} />
-          </button>
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-            {images.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => scrollToSlide(i)}
-                className={`w-2 h-2 rounded-full transition-all ${i === index ? 'bg-white w-5' : 'bg-white/50'}`}
-                aria-label={`${i + 1}번째 사진`}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <img src={src} alt={alt} className="w-full h-auto block" loading={eager ? 'eager' : 'lazy'} />
+      {children}
     </div>
   );
 }
@@ -965,9 +865,9 @@ function ExhibitionImageManager({ exhibitionId, images }: { exhibitionId: number
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 cursor-pointer"
-        aria-label="사진 관리"
+        aria-label="포스터 관리"
       >
-        <Camera size={14} /> 사진 관리 ({order.length})
+        <Camera size={14} /> 포스터 관리 ({order.length})
         <ChevronRight size={14} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
       </button>
 
@@ -977,7 +877,7 @@ function ExhibitionImageManager({ exhibitionId, images }: { exhibitionId: number
           onDragOver={(e) => { e.preventDefault(); }}
           onDrop={handleDropUpload}
         >
-          <p className="text-xs text-gray-400 mb-2">썸네일을 드래그해 순서를 바꿀 수 있어요. 첫 번째 사진이 대표 이미지입니다.</p>
+          <p className="text-xs text-gray-400 mb-2">썸네일을 드래그해 순서를 바꿀 수 있어요. 첫 번째 포스터가 대표 이미지이며, 상세 페이지에 순서대로 세로로 표시됩니다.</p>
           <div
             className="grid grid-cols-4 sm:grid-cols-5 gap-2"
             onDragEnter={() => setDragOver(false)}
