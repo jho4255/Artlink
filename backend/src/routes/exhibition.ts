@@ -518,13 +518,18 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
 
     // 지원 상태 변경 → Artist에게 알림
     const statusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+    // 수락 시: 운영 페이지에서 전시정보 입력 안내 + 운영 페이지로 바로 이동
+    const accepted = status === 'ACCEPTED';
+    const message = accepted
+      ? `"${exhibition.title}" 공모에 수락되었습니다! 운영 페이지에서 전시 정보를 입력해주세요.`
+      : `"${exhibition.title}" 공모 지원 상태가 '${statusLabels[status] || status}'(으)로 변경되었습니다.`;
     try {
       await prisma.notification.create({
         data: {
           userId: application.userId,
           type: 'APPLICATION_STATUS',
-          message: `"${exhibition.title}" 공모 지원 상태가 '${statusLabels[status] || status}'(으)로 변경되었습니다.`,
-          linkUrl: `/exhibitions/${exhibitionId}`,
+          message,
+          linkUrl: accepted ? `/exhibitions/${exhibitionId}/operation` : `/exhibitions/${exhibitionId}`,
         },
       });
     } catch { /* best-effort */ }

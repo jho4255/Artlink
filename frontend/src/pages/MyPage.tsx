@@ -1009,7 +1009,7 @@ function FavoritesSection() {
                   <button
                     onClick={(e) => { e.stopPropagation(); removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined }); }}
                     aria-label="찜 해제"
-                    className="p-1 text-gray-300 hover:text-[#c4302b] cursor-pointer flex-none"
+                    className="p-1 text-[#c4302b] hover:text-[#a02620] cursor-pointer flex-none"
                   >
                     <Heart size={16} className="fill-current" />
                   </button>
@@ -1092,6 +1092,17 @@ function MyReviewsSection() {
   );
 }
 
+// 공모 진행 단계 (지원내역 표시용) — 모집중 → 모집마감 → 확정 → 전시종료 → 정산완료
+function exhibitionStage(ex: any): { label: string; cls: string } | null {
+  if (!ex) return null;
+  const startPassed = ex.exhibitStartDate && new Date(ex.exhibitStartDate) <= new Date();
+  if (ex.settledAt) return { label: '정산완료', cls: 'bg-green-100 text-green-700' };
+  if (ex.ended) return { label: '전시종료', cls: 'bg-red-100 text-red-600' };
+  if (ex.confirmed || startPassed) return { label: '확정', cls: 'bg-blue-100 text-blue-700' };
+  if (ex.recruitmentClosed) return { label: '모집마감', cls: 'bg-gray-200 text-gray-700' };
+  return { label: '모집중', cls: 'bg-amber-100 text-amber-700' };
+}
+
 // ========== Artist: 지원 내역 ==========
 function ApplicationsSection() {
   const navigate = useNavigate();
@@ -1112,20 +1123,30 @@ function ApplicationsSection() {
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
-  // 상태 필터링
-  const filteredApps = statusFilter === 'ALL' ? apps : apps.filter((a: any) => a.status === statusFilter);
+  // 거절(REJECTED)된 지원은 목록에서 제외
+  const visibleApps = apps.filter((a: any) => a.status !== 'REJECTED');
+  const isSettled = (a: any) => !!a.exhibition?.settledAt;
 
-  // 상태별 카운트
-  const counts: Record<string, number> = { ALL: apps.length };
-  apps.forEach((a: any) => { counts[a.status] = (counts[a.status] || 0) + 1; });
+  // 진행상태 필터: 전체 / 진행중(정산 전) / 정산완료
+  const filteredApps = statusFilter === 'SETTLED'
+    ? visibleApps.filter(isSettled)
+    : statusFilter === 'ONGOING'
+      ? visibleApps.filter((a: any) => !isSettled(a))
+      : visibleApps;
 
-  return apps.length === 0 ? (
+  const counts: Record<string, number> = {
+    ALL: visibleApps.length,
+    ONGOING: visibleApps.filter((a: any) => !isSettled(a)).length,
+    SETTLED: visibleApps.filter(isSettled).length,
+  };
+
+  return visibleApps.length === 0 ? (
     <p className="text-gray-400 text-center py-8">지원한 공고가 없습니다.</p>
   ) : (
     <div className="space-y-3">
-      {/* 상태 필터 탭 */}
+      {/* 진행상태 필터 탭 */}
       <div className="flex gap-1.5 flex-wrap">
-        {[{ key: 'ALL', label: '전체' }, { key: 'SUBMITTED', label: '접수' }, { key: 'REVIEWED', label: '검토중' }, { key: 'ACCEPTED', label: '수락' }, { key: 'REJECTED', label: '거절' }].map(f => (
+        {[{ key: 'ALL', label: '전체' }, { key: 'ONGOING', label: '진행중' }, { key: 'SETTLED', label: '정산완료' }].map(f => (
           <button
             key={f.key}
             onClick={() => setStatusFilter(f.key)}
@@ -1152,7 +1173,13 @@ function ApplicationsSection() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">{app.exhibition?.title}</h4>
-                    <p className="text-xs text-gray-500 mt-1">{app.exhibition?.gallery?.name}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <p className="text-xs text-gray-500">{app.exhibition?.gallery?.name}</p>
+                      {(() => {
+                        const stage = exhibitionStage(app.exhibition);
+                        return stage ? <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${stage.cls}`}>{stage.label}</span> : null;
+                      })()}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0">
                     <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -1163,14 +1190,16 @@ function ApplicationsSection() {
                     </span>
                   </div>
                 </div>
-                {/* 수락된 공모: 운영 페이지(전시정보 입력) 바로가기 — 항상 노출 */}
+                {/* 수락된 공모: 운영 페이지 바로가기 (소형) */}
                 {app.status === 'ACCEPTED' && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation`); }}
-                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
-                  >
-                    <ClipboardList size={14} /> 운영 페이지에서 전시정보 입력
-                  </button>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation`); }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <ClipboardList size={12} /> 운영페이지로 이동
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1194,7 +1223,7 @@ function ApplicationsSection() {
                         onClick={() => navigate(`/exhibitions/${app.exhibitionId}/operation`)}
                         className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
                       >
-                        <ClipboardList size={12} /> 운영 페이지 (전시정보 입력)
+                        <ClipboardList size={12} /> 운영페이지로 이동
                       </button>
                     )}
                   </div>
