@@ -45,7 +45,6 @@ function isCareerEmpty(c: Career): boolean {
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
-const INSTAGRAM_APP_ID = import.meta.env.VITE_INSTAGRAM_APP_ID as string;
 
 export default function MyPage() {
   const navigate = useNavigate();
@@ -1238,15 +1237,48 @@ function ApplicationsSection() {
 }
 
 // ========== Gallery: 내 갤러리 ==========
+// 삭제 이중확인 모달 — "삭제"를 입력해야 진행 (갤러리/공모/전시 공용)
+function DeleteConfirmModal({ open, name, description, onConfirm, onCancel, pending }: { open: boolean; name: string; description: string; onConfirm: () => void; onCancel: () => void; pending?: boolean }) {
+  const [text, setText] = useState('');
+  useEffect(() => { if (open) setText(''); }, [open]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onCancel}>
+      <div className="bg-white rounded-xl max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-gray-900">삭제 확인</h3>
+        <p className="text-sm text-gray-600 mt-2"><b>{name}</b> {description}</p>
+        <p className="text-sm text-gray-700 mt-3">계속하려면 아래에 <b className="text-[#c4302b]">삭제</b> 를 입력하세요.</p>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="삭제"
+          autoFocus
+          className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#c4302b]"
+        />
+        <div className="flex gap-2 justify-end mt-4">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-500">취소</button>
+          <button
+            onClick={onConfirm}
+            disabled={text.trim() !== '삭제' || pending}
+            className="px-4 py-2 text-sm bg-[#c4302b] text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+          >삭제</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MyGalleriesSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const emptyForm = { name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '' };
+  const emptyForm = { name: '', address: '', phone: '', description: '', region: 'SEOUL', ownerName: '', mainImage: '', email: '', instagramUrl: '' };
   const [form, setForm] = useState(emptyForm);
   const [galleryTerms, setGalleryTerms] = useState('');
   const [galleryAgreed, setGalleryAgreed] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
+  // 갤러리 삭제 이중확인 ("삭제" 입력)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   // 임시저장 훅
   const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_gallery_form', emptyForm);
@@ -1299,71 +1331,15 @@ function MyGalleriesSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
 
-  // Instagram OAuth 연동 시작 — authorize 페이지로 리다이렉트.
-  // 콜백(/auth/instagram/callback)에서 code를 받아 백엔드 connect로 교환한다.
-  const handleConnectInstagram = (galleryId: number) => {
-    if (!INSTAGRAM_APP_ID) {
-      toast.error('Instagram 연동이 설정되지 않았습니다.');
-      return;
-    }
-    const state = crypto.randomUUID();
-    sessionStorage.setItem('ig_oauth_state', state);
-    sessionStorage.setItem('ig_oauth_gallery', String(galleryId));
-    const redirectUri = `${window.location.origin}/auth/instagram/callback`;
-    window.location.href =
-      `https://www.instagram.com/oauth/authorize?client_id=${INSTAGRAM_APP_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=code&scope=instagram_business_basic&state=${state}`;
-  };
-
-  // Instagram 프로필 링크 토글
-  const toggleProfileVisibilityMutation = useMutation({
-    mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
-      api.patch(`/galleries/${galleryId}/instagram-profile-visibility`, { visible }),
-    onMutate: async ({ galleryId, visible }) => {
-      await queryClient.cancelQueries({ queryKey: ['my-galleries'] });
-      const prev = queryClient.getQueryData<any[]>(['my-galleries']);
-      if (prev) {
-        queryClient.setQueryData(['my-galleries'], prev.map((g: any) =>
-          g.id === galleryId ? { ...g, instagramProfileVisible: visible } : g
-        ));
-      }
-      return { prev };
-    },
-    onError: (err: any, _vars: any, ctx: any) => {
-      if (ctx?.prev) queryClient.setQueryData(['my-galleries'], ctx.prev);
-      toast.error(err.response?.data?.error || '설정 변경에 실패했습니다.');
-    },
-    onSettled: () => {
+  // 갤러리 삭제 (승인 완료/거절 건) — 관련 공모·전시·리뷰 cascade 삭제
+  const deleteGalleryMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/galleries/${id}`),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
-      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+      toast.success('갤러리가 삭제되었습니다.');
     },
-  });
-
-  // Instagram 피드 공개 토글 (낙관적 업데이트)
-  const toggleVisibilityMutation = useMutation({
-    mutationFn: ({ galleryId, visible }: { galleryId: number; visible: boolean }) =>
-      api.patch(`/galleries/${galleryId}/instagram-visibility`, { visible }),
-    onMutate: async ({ galleryId, visible }) => {
-      await queryClient.cancelQueries({ queryKey: ['my-galleries'] });
-      const prev = queryClient.getQueryData<any[]>(['my-galleries']);
-      if (prev) {
-        queryClient.setQueryData(['my-galleries'], prev.map((g: any) =>
-          g.id === galleryId ? { ...g, instagramFeedVisible: visible } : g
-        ));
-      }
-      return { prev };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.prev) queryClient.setQueryData(['my-galleries'], context.prev);
-      toast.error('설정 변경에 실패했습니다.');
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
-      queryClient.invalidateQueries({ queryKey: ['galleries'] });
-      queryClient.invalidateQueries({ queryKey: ['gallery'] });
-    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),
   });
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
@@ -1401,6 +1377,7 @@ function MyGalleriesSection() {
                 <div className="flex items-center gap-2"><Phone size={15} className="text-gray-400 shrink-0" /><EditableText value={form.phone} onChange={v => setForm({...form, phone: v})} placeholder="전화번호" className="text-sm flex-1" /></div>
                 <div className="flex items-center gap-2"><UserIcon size={15} className="text-gray-400 shrink-0" /><EditableText value={form.ownerName} onChange={v => setForm({...form, ownerName: v})} placeholder="대표자명" className="text-sm flex-1" /></div>
                 <div className="flex items-center gap-2"><Mail size={15} className="text-gray-400 shrink-0" /><EditableText value={form.email} onChange={v => setForm({...form, email: v})} placeholder="이메일 (선택)" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><Instagram size={15} className="text-gray-400 shrink-0" /><EditableText value={form.instagramUrl} onChange={v => setForm({...form, instagramUrl: v})} placeholder="인스타그램 주소 (선택)" className="text-sm flex-1" /></div>
               </div>
               <div className="pt-3 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-400 mb-1">소개</p>
@@ -1480,63 +1457,31 @@ function MyGalleriesSection() {
               {g.status === 'REJECTED' && g.rejectReason && (
                 <p className="text-sm text-red-500 mt-2">거절 사유: {g.rejectReason}</p>
               )}
-              {/* Instagram 설정 블록 (승인 갤러리만) */}
-              {g.status === 'APPROVED' && (
-                <div className="mt-3 pt-3 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Instagram size={14} className="text-gray-500" />
-                    <span className="font-medium">Instagram 연동</span>
-                  </div>
-                  {/* 연동 상태 + 버튼 */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">
-                      {g.instagramConnected ? '연결됨' : '미연동'}
-                    </span>
-                    <button
-                      onClick={() => handleConnectInstagram(g.id)}
-                      className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
-                    >
-                      {g.instagramConnected ? '재연동' : '연동하기'}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-gray-400">비즈니스/크리에이터 계정만 연동됩니다 (전환은 인스타그램 앱에서 무료).</p>
-                  {/* 토글들 (연동된 경우만) */}
-                  {g.instagramConnected && (
-                    <div className="space-y-1.5">
-                      {/* 프로필 링크 토글 */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">프로필 링크 표시</span>
-                        <button
-                          onClick={() => toggleProfileVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramProfileVisible })}
-                          role="switch"
-                          aria-checked={g.instagramProfileVisible}
-                          aria-label="프로필 링크 표시"
-                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramProfileVisible ? 'bg-gray-900' : 'bg-gray-300'}`}
-                        >
-                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramProfileVisible ? 'left-5' : 'left-0.5'}`} />
-                        </button>
-                      </div>
-                      {/* 피드 표시 토글 */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">피드 표시</span>
-                        <button
-                          onClick={() => toggleVisibilityMutation.mutate({ galleryId: g.id, visible: !g.instagramFeedVisible })}
-                          role="switch"
-                          aria-checked={g.instagramFeedVisible}
-                          aria-label="피드 표시"
-                          className={`w-10 h-5 rounded-full relative transition-colors ${g.instagramFeedVisible ? 'bg-gray-900' : 'bg-gray-300'}`}
-                        >
-                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${g.instagramFeedVisible ? 'left-5' : 'left-0.5'}`} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* 승인 완료/거절 건은 삭제 가능 (인스타 주소는 상세 페이지에서 추가/수정) */}
+              {(g.status === 'APPROVED' || g.status === 'REJECTED') && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => setDeleteTarget(g)}
+                    disabled={deleteGalleryMutation.isPending}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Trash2 size={13} /> 갤러리 삭제
+                  </button>
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={!!deleteTarget}
+        name={deleteTarget?.name ?? ''}
+        description="갤러리를 삭제하면 등록된 공모·전시·리뷰도 함께 삭제되며 되돌릴 수 없습니다."
+        pending={deleteGalleryMutation.isPending}
+        onConfirm={() => { deleteGalleryMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
     </div>
   );
@@ -1636,11 +1581,8 @@ function MyExhibitionsSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
   });
 
-  const handleDeleteExhibition = (id: number) => {
-    if (window.confirm('정말 이 공모를 삭제하시겠습니까?')) {
-      deleteMutation.mutate(id);
-    }
-  };
+  // 공모 삭제 이중확인 ("삭제" 입력)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   // 지원자 목록 조회
   const { data: applicants = [], isLoading: appsLoading } = useQuery<any[]>({
@@ -1865,7 +1807,7 @@ function MyExhibitionsSection() {
                       {statusLabels[ex.status] || ex.status}
                     </span>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteExhibition(ex.id); }}
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(ex); }}
                       className="p-1 text-gray-400 hover:text-red-500"
                       title="공모 삭제"
                       aria-label="삭제"
@@ -1941,6 +1883,15 @@ function MyExhibitionsSection() {
           ))}
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={!!deleteTarget}
+        name={deleteTarget?.title ?? ''}
+        description="공모를 삭제하면 지원 내역도 함께 삭제되며 되돌릴 수 없습니다."
+        pending={deleteMutation.isPending}
+        onConfirm={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -2013,6 +1964,9 @@ function MyShowsSection() {
       toast.success('전시가 삭제되었습니다.');
     },
   });
+
+  // 전시 삭제 이중확인 ("삭제" 입력)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   // 작가 검색
   const searchArtist = async (idx: number) => {
@@ -2243,7 +2197,7 @@ function MyShowsSection() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[show.status]}`}>
                     {statusLabels[show.status]}
                   </span>
-                  <button onClick={() => { if (confirm('삭제하시겠습니까?')) deleteMutation.mutate(show.id); }}
+                  <button onClick={() => setDeleteTarget(show)}
                     className="p-1 text-gray-400 hover:text-red-500"
                     aria-label="삭제">
                     <Trash2 size={14} />
@@ -2259,6 +2213,15 @@ function MyShowsSection() {
           ))}
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={!!deleteTarget}
+        name={deleteTarget?.title ?? ''}
+        description="전시를 삭제하면 되돌릴 수 없습니다."
+        pending={deleteMutation.isPending}
+        onConfirm={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

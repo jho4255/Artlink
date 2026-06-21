@@ -38,8 +38,6 @@ import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import InstagramFeed from '@/components/gallery/InstagramFeed';
-import InstagramPrivateMessage from '@/components/gallery/InstagramPrivateMessage';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
 
 // 갤러리 상세 응답 타입 (기본 Gallery + 연관 데이터)
@@ -72,6 +70,7 @@ export default function GalleryDetailPage() {
   const [contactAddress, setContactAddress] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactRegion, setContactRegion] = useState('SEOUL');
+  const [contactInstagram, setContactInstagram] = useState('');
 
   // 홍보 사진 업로드 폼 상태 (전시 종료 후, 갤러리 오너 전용)
   const [promoExhibitionId, setPromoExhibitionId] = useState<number | null>(null);
@@ -100,7 +99,6 @@ export default function GalleryDetailPage() {
   // ConfirmDialog 상태
   const [deleteExConfirmId, setDeleteExConfirmId] = useState<number | null>(null);
   const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<number | null>(null);
-  const [deleteGalleryConfirm, setDeleteGalleryConfirm] = useState(false);
   const [deleteImageConfirmId, setDeleteImageConfirmId] = useState<number | null>(null);
 
   // 갤러리 상세 조회
@@ -154,7 +152,7 @@ export default function GalleryDetailPage() {
 
   // 연락처(전화번호·주소) 수정 (갤러리 오너 전용, 승인 불필요)
   const contactMutation = useMutation({
-    mutationFn: (payload: { address: string; phone: string; region: string }) => api.patch(`/galleries/${id}/detail`, payload),
+    mutationFn: (payload: { address: string; phone: string; region: string; instagramUrl: string }) => api.patch(`/galleries/${id}/detail`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
@@ -248,16 +246,6 @@ export default function GalleryDetailPage() {
     onError: () => toast.error('공모 삭제에 실패했습니다.'),
   });
 
-  // 갤러리 삭제 (Gallery 오너 또는 Admin)
-  const deleteGalleryMutation = useMutation({
-    mutationFn: () => api.delete(`/galleries/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['galleries'] });
-      toast.success('갤러리가 삭제되었습니다.');
-      navigate('/galleries');
-    },
-    onError: () => toast.error('갤러리 삭제에 실패했습니다.'),
-  });
 
   // 인라인 쪽지 전송
   const sendMsgMutation = useMutation({
@@ -411,11 +399,20 @@ export default function GalleryDetailPage() {
                   {Object.keys(regionLabels).map((r) => <option key={r} value={r}>{regionLabels[r]}</option>)}
                 </select>
               </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><Instagram size={12} /> 인스타그램 주소 (선택)</span>
+                <input
+                  value={contactInstagram}
+                  onChange={(e) => setContactInstagram(e.target.value)}
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm"
+                  placeholder="instagram.com/your_id 또는 @your_id"
+                />
+              </label>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
                     if (!contactAddress.trim() || !contactPhone.trim()) { toast.error('주소와 전화번호를 입력해주세요.'); return; }
-                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim(), region: contactRegion });
+                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim(), region: contactRegion, instagramUrl: contactInstagram.trim() });
                   }}
                   disabled={contactMutation.isPending}
                   className="px-3 py-1.5 bg-[#c4302b] text-white rounded text-sm disabled:opacity-50"
@@ -429,7 +426,7 @@ export default function GalleryDetailPage() {
                 <MapPin size={14} /> {gallery.address}
                 {isOwner && (
                   <button
-                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setIsEditingContact(true); }}
+                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setContactInstagram(gallery.instagramUrl || ''); setIsEditingContact(true); }}
                     className="ml-1 text-xs text-[#c4302b] underline"
                   >수정</button>
                 )}
@@ -444,7 +441,7 @@ export default function GalleryDetailPage() {
               )}
             </>
           )}
-          {gallery.instagramUrl && (
+          {gallery.instagramUrl ? (
             <a
               href={gallery.instagramUrl.startsWith('http') ? gallery.instagramUrl : `https://instagram.com/${gallery.instagramUrl.replace('@', '')}`}
               target="_blank"
@@ -453,6 +450,13 @@ export default function GalleryDetailPage() {
             >
               <Instagram size={14} /> {gallery.instagramUrl}
             </a>
+          ) : isOwner && !isEditingContact && (
+            <button
+              onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setContactInstagram(''); setIsEditingContact(true); }}
+              className="text-gray-400 hover:text-gray-700 flex items-center gap-1 text-sm cursor-pointer"
+            >
+              <Instagram size={14} /> 인스타그램 주소 추가
+            </button>
           )}
           {/* 쪽지 보내기 (Artist 전용, 오너 아닌 경우) */}
           {isAuthenticated && isArtist && !isOwner && (
@@ -550,21 +554,6 @@ export default function GalleryDetailPage() {
             </p>
           )}
         </div>
-
-        {/* === Instagram 피드 섹션 === */}
-        {gallery.instagramConnected && (
-          <div>
-            <h2 className="text-xl font-medium mb-3 flex items-center gap-2">
-              <Instagram size={18} className="text-gray-500" />
-              Instagram
-            </h2>
-            {gallery.instagramFeedVisible ? (
-              <InstagramFeed galleryId={Number(id)} instagramUrl={gallery.instagramUrl} />
-            ) : (
-              <InstagramPrivateMessage isOwner={isOwner} />
-            )}
-          </div>
-        )}
 
         {/* === 진행중인 공모 섹션 === */}
         {gallery.exhibitions && gallery.exhibitions.length > 0 && (
@@ -932,18 +921,7 @@ export default function GalleryDetailPage() {
         </div>
       </div>
 
-      {/* === 갤러리 삭제 버튼 (오너 또는 Admin) === */}
-      {(isOwner || isAdmin) && (
-        <div className="border-t border-gray-200 mt-12 pt-6 px-4">
-          <button
-            onClick={() => setDeleteGalleryConfirm(true)}
-            disabled={deleteGalleryMutation.isPending}
-            className="text-sm text-gray-400 hover:text-[#c4302b] cursor-pointer"
-          >
-            갤러리 삭제
-          </button>
-        </div>
-      )}
+      {/* 갤러리 삭제는 마이페이지(내 갤러리)에서만 가능 — 상세 페이지에서는 제거 */}
 
       {/* ConfirmDialog 모음 */}
       <ConfirmDialog
@@ -963,15 +941,6 @@ export default function GalleryDetailPage() {
         confirmText="삭제"
         onConfirm={() => { deleteReviewMutation.mutate(deleteReviewConfirmId!); setDeleteReviewConfirmId(null); }}
         onCancel={() => setDeleteReviewConfirmId(null)}
-      />
-      <ConfirmDialog
-        open={deleteGalleryConfirm}
-        title="갤러리 삭제"
-        message="정말로 이 갤러리를 삭제하시겠습니까? 관련된 모든 공모, 리뷰, 이미지가 함께 삭제됩니다."
-        variant="danger"
-        confirmText="삭제"
-        onConfirm={() => { deleteGalleryMutation.mutate(); setDeleteGalleryConfirm(false); }}
-        onCancel={() => setDeleteGalleryConfirm(false)}
       />
       <ConfirmDialog
         open={reviewConfirmOpen}

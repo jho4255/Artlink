@@ -4,19 +4,15 @@
  */
 
 /**
- * 갤러리 객체에서 서버 전용 비밀(Instagram 액세스 토큰)을 제거하고 공개 안전한 형태로 변환.
- * - instagramAccessToken 제거 → instagramConnected(boolean)로 대체
- * - 프로필 비공개 시 instagramUrl 숨김
+ * 갤러리 객체에서 서버 전용 비밀(Instagram OAuth 토큰)만 제거.
+ * - instagramAccessToken / instagramTokenExpiresAt 제거
+ * - instagramUrl(인스타 주소)은 그대로 노출 — 갤러리가 직접 입력/표시하는 공개 정보
  * 갤러리를 직접/중첩으로 응답에 넣는 모든 경로(목록·상세·이달의갤러리·공모/전시 상세)에서 호출.
  */
 export function maskGallery<T extends Record<string, any>>(g: T | null | undefined): any {
   if (!g) return g;
-  const { instagramAccessToken, ...rest } = g as any;
-  return {
-    ...rest,
-    instagramConnected: !!instagramAccessToken,
-    instagramUrl: (g as any).instagramProfileVisible ? (g as any).instagramUrl : null,
-  };
+  const { instagramAccessToken, instagramTokenExpiresAt, ...rest } = g as any;
+  return rest;
 }
 
 type ReviewLike = { anonymous?: boolean; userId?: number | null; user?: any };
