@@ -171,6 +171,25 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
   } catch (error) { next(error); }
 });
 
+// 거절 확인 (Artist 전용) — 본인의 거절된 지원을 '확인' 처리 → 지원내역 목록에서 숨김
+router.post('/applications/:appId/acknowledge-rejection', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const appId = parseInt(req.params.appId as string);
+    const application = await prisma.application.findUnique({ where: { id: appId } });
+    if (!application || application.userId !== req.user!.id) {
+      throw new AppError('지원 내역을 찾을 수 없습니다.', 404);
+    }
+    if (application.status !== 'REJECTED') {
+      throw new AppError('거절된 지원만 확인 처리할 수 있습니다.', 400);
+    }
+    const updated = await prisma.application.update({
+      where: { id: appId },
+      data: { rejectionAckedAt: new Date() },
+    });
+    res.json({ id: updated.id, rejectionAckedAt: updated.rejectionAckedAt });
+  } catch (error) { next(error); }
+});
+
 // 내 공모 목록 조회 (Gallery 유저 전용)
 router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
@@ -495,7 +514,7 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
     if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
     const { status } = req.body;
-    const validStatuses = ['SUBMITTED', 'REVIEWED', 'ACCEPTED', 'REJECTED'];
+    const validStatuses = ['SUBMITTED', 'ACCEPTED', 'REJECTED']; // 검토중(REVIEWED) 폐지
     if (!validStatuses.includes(status)) {
       throw new AppError('유효하지 않은 상태입니다.', 400);
     }
@@ -505,19 +524,25 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
       throw new AppError('지원 내역을 찾을 수 없습니다.', 404);
     }
 
-    // 상태 단계 강제: 접수(0) → 검토중(1) → 수락/거절(2). 역행 금지(낮은 단계로 되돌리기 차단)
-    const statusRank: Record<string, number> = { SUBMITTED: 0, REVIEWED: 1, ACCEPTED: 2, REJECTED: 2 };
-    if (statusRank[status] < statusRank[application.status]) {
-      throw new AppError('이미 진행된 단계로 되돌릴 수 없습니다.', 400);
+    // 전이 규칙: 수락은 최종(변경 불가), 거절은 수락으로만 변경 가능. (레거시 REVIEWED는 접수로 간주)
+    const current = application.status === 'REVIEWED' ? 'SUBMITTED' : application.status;
+    if (current !== status) {
+      if (current === 'ACCEPTED') {
+        throw new AppError('수락한 지원은 상태를 변경할 수 없습니다.', 400);
+      }
+      if (current === 'REJECTED' && status !== 'ACCEPTED') {
+        throw new AppError('거절한 지원은 수락으로만 변경할 수 있습니다.', 400);
+      }
     }
 
     const updated = await prisma.application.update({
       where: { id: appId },
-      data: { status },
+      // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
+      data: { status, ...(status !== 'REJECTED' ? { rejectionAckedAt: null } : {}) },
     });
 
     // 지원 상태 변경 → Artist에게 알림
-    const statusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+    const statusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
     // 수락 시: 운영 페이지에서 전시정보 입력 안내 + 운영 페이지로 바로 이동
     const accepted = status === 'ACCEPTED';
     const message = accepted

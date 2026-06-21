@@ -279,6 +279,7 @@ model Application {
   artworkImages String?   // 지원 시 작품 사진 URL 배열 JSON (최대 10, 1장 이상 필수)
   portfolioFileUrl String? // 지원 시 포트폴리오 파일(pdf/doc/hwp) URL
   status       String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
+  rejectionAckedAt DateTime? // 거절을 작가가 '확인'한 시각. non-null이면 지원내역 목록에서 숨김
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt @default(now()) // 상태 변경(수락/거절 등) 시각 추적
 

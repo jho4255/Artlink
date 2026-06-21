@@ -58,7 +58,7 @@ router.patch('/users/:id/role', authenticate, authorize('ADMIN'), async (req, re
 
 // ========== 운영 조회 (ADMIN 전용): 지원 현황 / 작가 지원이력 / 갤러리 게시물 ==========
 
-const APP_STATUSES = ['SUBMITTED', 'REVIEWED', 'ACCEPTED', 'REJECTED'];
+const APP_STATUSES = ['SUBMITTED', 'ACCEPTED', 'REJECTED'];
 
 /** 상태별 카운트 헬퍼 */
 function countByStatus(apps: { status: string }[]) {
