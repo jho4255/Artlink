@@ -26,14 +26,14 @@ describe('Security — PII/secret exposure & IDOR', () => {
   });
   afterAll(async () => { await cleanDb(); });
 
-  // ===== 1) Instagram 토큰 비노출 =====
-  it('GET /api/shows/:id — instagramAccessToken 미노출, instagramConnected만', async () => {
+  // ===== 1) Instagram 토큰 비노출 (주소는 노출) =====
+  it('GET /api/shows/:id — instagramAccessToken 미노출, instagramUrl은 노출', async () => {
     const show = await seedShow(galleryId);
     const res = await request.get(`/api/shows/${show.id}`);
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).not.toContain(SECRET);
     expect(res.body.gallery).not.toHaveProperty('instagramAccessToken');
-    expect(res.body.gallery.instagramConnected).toBe(true);
+    expect(res.body.gallery.instagramUrl).toBe('@testgallery');
   });
 
   it('GET /api/exhibitions/:id — instagramAccessToken 미노출', async () => {
