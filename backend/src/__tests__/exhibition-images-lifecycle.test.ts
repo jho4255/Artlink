@@ -186,3 +186,96 @@ describe('지원자 연락처 노출 (상태 무관)', () => {
     expect(r.body[0].user.email).toBe('artist1@test.com');
   });
 });
+
+describe('거절 확인 (acknowledge-rejection)', () => {
+  let exId: number;
+  const artist1Tok = authToken(1, 'ARTIST');
+  const artist2Tok = authToken(2, 'ARTIST');
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+    const gallery = await seedGallery(3);
+    const ex = await seedExhibition(gallery.id);
+    exId = ex.id;
+  });
+
+  it('거절된 본인 지원은 확인 처리 → rejectionAckedAt 설정', async () => {
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'REJECTED', biography: '약력' } });
+    const r = await request.post(`/api/exhibitions/applications/${app.id}/acknowledge-rejection`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(r.status).toBe(200);
+    expect(r.body.rejectionAckedAt).toBeTruthy();
+    const updated = await testPrisma.application.findUnique({ where: { id: app.id } });
+    expect(updated?.rejectionAckedAt).not.toBeNull();
+  });
+
+  it('거절이 아닌(접수) 지원은 확인 불가 400', async () => {
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'SUBMITTED', biography: '약력' } });
+    const r = await request.post(`/api/exhibitions/applications/${app.id}/acknowledge-rejection`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(r.status).toBe(400);
+  });
+
+  it('남의 지원은 확인 불가 404', async () => {
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'REJECTED', biography: '약력' } });
+    const r = await request.post(`/api/exhibitions/applications/${app.id}/acknowledge-rejection`).set('Authorization', `Bearer ${artist2Tok}`);
+    expect(r.status).toBe(404);
+  });
+
+  it('확인 처리된 거절은 my-applications에서 rejectionAckedAt이 노출(프론트가 숨김 판단)', async () => {
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'REJECTED', biography: '약력' } });
+    await request.post(`/api/exhibitions/applications/${app.id}/acknowledge-rejection`).set('Authorization', `Bearer ${artist1Tok}`);
+    const r = await request.get('/api/exhibitions/my-applications').set('Authorization', `Bearer ${artist1Tok}`);
+    expect(r.status).toBe(200);
+    const found = r.body.find((a: any) => a.id === app.id);
+    expect(found.rejectionAckedAt).toBeTruthy();
+  });
+});
+
+describe('지원 상태 전이 규칙 (수락 최종 / 거절→수락만 / 검토중 폐지)', () => {
+  let exId: number;
+  let appId: number;
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+    const gallery = await seedGallery(3);
+    const ex = await seedExhibition(gallery.id);
+    exId = ex.id;
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'SUBMITTED', biography: '약력' } });
+    appId = app.id;
+  });
+  const patch = (status: string) =>
+    request.patch(`/api/exhibitions/${exId}/applications/${appId}`).set('Authorization', `Bearer ${ownerTok}`).send({ status });
+
+  it('접수 → 수락 허용', async () => {
+    expect((await patch('ACCEPTED')).status).toBe(200);
+  });
+  it('수락 → 거절 차단 (400)', async () => {
+    await patch('ACCEPTED');
+    const r = await patch('REJECTED');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toContain('수락한 지원');
+  });
+  it('수락 → 접수 차단 (400)', async () => {
+    await patch('ACCEPTED');
+    expect((await patch('SUBMITTED')).status).toBe(400);
+  });
+  it('거절 → 수락 허용', async () => {
+    await patch('REJECTED');
+    expect((await patch('ACCEPTED')).status).toBe(200);
+  });
+  it('거절 → 접수 차단 (400)', async () => {
+    await patch('REJECTED');
+    const r = await patch('SUBMITTED');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toContain('수락으로만');
+  });
+  it('검토중(REVIEWED)은 설정 불가 (400)', async () => {
+    expect((await patch('REVIEWED')).status).toBe(400);
+  });
+  it('거절→수락 시 거절확인(rejectionAckedAt) 해제', async () => {
+    await patch('REJECTED');
+    await testPrisma.application.update({ where: { id: appId }, data: { rejectionAckedAt: new Date() } });
+    await patch('ACCEPTED');
+    const updated = await testPrisma.application.findUnique({ where: { id: appId } });
+    expect(updated?.rejectionAckedAt).toBeNull();
+  });
+});

@@ -1105,6 +1105,7 @@ function exhibitionStage(ex: any): { label: string; cls: string } | null {
 // ========== Artist: 지원 내역 ==========
 function ApplicationsSection() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -1113,8 +1114,15 @@ function ApplicationsSection() {
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
 
-  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+  // 거절 확인 — '확인'을 눌러야 지원내역 목록에서 제거
+  const ackRejectionMutation = useMutation({
+    mutationFn: (appId: number) => api.post(`/exhibitions/applications/${appId}/acknowledge-rejection`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my-applications'] }); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
+  });
+
+  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
     return <p className="text-red-400 text-center py-8">지원 내역을 불러오는 중 오류가 발생했습니다.</p>;
@@ -1122,20 +1130,21 @@ function ApplicationsSection() {
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
-  // 거절(REJECTED)된 지원은 목록에서 제외
-  const visibleApps = apps.filter((a: any) => a.status !== 'REJECTED');
+  const isRejected = (a: any) => a.status === 'REJECTED';
   const isSettled = (a: any) => !!a.exhibition?.settledAt;
+  // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
+  const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
 
-  // 진행상태 필터: 전체 / 진행중(정산 전) / 정산완료
+  // 진행상태 필터: 전체 / 진행중(거절·정산 제외) / 정산완료
   const filteredApps = statusFilter === 'SETTLED'
     ? visibleApps.filter(isSettled)
     : statusFilter === 'ONGOING'
-      ? visibleApps.filter((a: any) => !isSettled(a))
+      ? visibleApps.filter((a: any) => !isSettled(a) && !isRejected(a))
       : visibleApps;
 
   const counts: Record<string, number> = {
     ALL: visibleApps.length,
-    ONGOING: visibleApps.filter((a: any) => !isSettled(a)).length,
+    ONGOING: visibleApps.filter((a: any) => !isSettled(a) && !isRejected(a)).length,
     SETTLED: visibleApps.filter(isSettled).length,
   };
 
@@ -1175,6 +1184,7 @@ function ApplicationsSection() {
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <p className="text-xs text-gray-500">{app.exhibition?.gallery?.name}</p>
                       {(() => {
+                        if (isRejected(app)) return null;
                         const stage = exhibitionStage(app.exhibition);
                         return stage ? <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${stage.cls}`}>{stage.label}</span> : null;
                       })()}
@@ -1197,6 +1207,19 @@ function ApplicationsSection() {
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
                     >
                       <ClipboardList size={12} /> 운영페이지로 이동
+                    </button>
+                  </div>
+                )}
+                {/* 거절된 공모: '확인' 눌러야 목록에서 제거 */}
+                {app.status === 'REJECTED' && (
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">아쉽게도 이번 지원은 거절되었습니다.</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); ackRejectionMutation.mutate(app.id); }}
+                      disabled={ackRejectionMutation.isPending}
+                      className="px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                    >
+                      확인
                     </button>
                   </div>
                 )}
@@ -1602,8 +1625,8 @@ function MyExhibitionsSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
   });
 
-  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   // 지원자 목록 엑셀(CSV) 다운로드 — 고정 양식(약력/경력/작품사진수/포트폴리오 파일)
   const careerToCsvText = (career: Career | null | undefined) => {
@@ -1861,16 +1884,19 @@ function MyExhibitionsSection() {
                               <span className="text-sm font-medium">{app.user?.name}</span>
                               <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
                             </div>
-                            <select
-                              value={app.status}
-                              onChange={e => updateAppStatusMutation.mutate({ exId: ex.id, appId: app.id, status: e.target.value })}
-                              className={`text-xs px-2 py-0.5 rounded border-0 ${appStatusColors[app.status] || ''}`}
-                            >
-                              <option value="SUBMITTED">접수</option>
-                              <option value="REVIEWED">검토중</option>
-                              <option value="ACCEPTED">수락</option>
-                              <option value="REJECTED">거절</option>
-                            </select>
+                            {app.status === 'ACCEPTED' ? (
+                              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-600 font-medium">수락 (확정)</span>
+                            ) : (
+                              <select
+                                value={app.status}
+                                onChange={e => updateAppStatusMutation.mutate({ exId: ex.id, appId: app.id, status: e.target.value })}
+                                className={`text-xs px-2 py-0.5 rounded border-0 ${appStatusColors[app.status] || ''}`}
+                              >
+                                {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
+                                <option value="ACCEPTED">수락</option>
+                                <option value="REJECTED">거절</option>
+                              </select>
+                            )}
                           </div>
                           <ApplicationContent app={app} />
                         </div>
@@ -3031,8 +3057,8 @@ function UserManageSection() {
 }
 
 // ========== Admin: 운영 조회 (지원현황/작가이력/갤러리 게시물) ==========
-const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', REVIEWED: 'bg-gray-200 text-gray-700', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '검토중', ACCEPTED: '수락', REJECTED: '거절' };
+const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
 const POST_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절' };
 const ovDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('ko') : '-');
@@ -3046,7 +3072,7 @@ function OvBadge({ status, kind = 'app' }: { status: string; kind?: 'app' | 'pos
 function OvCounts({ counts }: { counts: Record<string, number> }) {
   return (
     <div className="flex gap-1.5 flex-wrap text-xs">
-      {[['ALL', '전체'], ['SUBMITTED', '접수'], ['REVIEWED', '검토중'], ['ACCEPTED', '수락'], ['REJECTED', '거절']].map(([k, l]) => (
+      {[['ALL', '전체'], ['SUBMITTED', '접수'], ['ACCEPTED', '수락'], ['REJECTED', '거절']].map(([k, l]) => (
         <span key={k} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{l} {counts[k] ?? 0}</span>
       ))}
     </div>

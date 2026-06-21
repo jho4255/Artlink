@@ -30,13 +30,11 @@ import type { Exhibition } from '@/types';
 const STATUS_TABS = [
   { key: 'ALL', label: '전체' },
   { key: 'SUBMITTED', label: '접수' },
-  { key: 'REVIEWED', label: '검토중' },
   { key: 'ACCEPTED', label: '수락' },
   { key: 'REJECTED', label: '거절' },
 ];
 const statusColors: Record<string, string> = {
   SUBMITTED: 'bg-gray-100 text-gray-600',
-  REVIEWED: 'bg-blue-100 text-blue-600',
   ACCEPTED: 'bg-green-100 text-green-600',
   REJECTED: 'bg-red-100 text-red-600',
 };
@@ -53,7 +51,7 @@ export default function ApplicantsPage() {
   const [batchStatus, setBatchStatus] = useState('');
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [pdfBusy, setPdfBusy] = useState<number | 'all' | null>(null);
-  // 수락 확인 (수락은 접수·검토중으로 되돌릴 수 없음)
+  // 수락 확인 (수락은 최종 — 변경 불가)
   const [acceptTarget, setAcceptTarget] = useState<{ type: 'single'; appId: number } | { type: 'batch' } | null>(null);
 
   const { data: exhibition } = useQuery<Exhibition>({
@@ -196,7 +194,6 @@ export default function ApplicantsPage() {
                 <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-xs p-1.5 border border-gray-200 rounded-lg">
                   <option value="">상태 변경</option>
                   <option value="SUBMITTED">접수</option>
-                  <option value="REVIEWED">검토중</option>
                   <option value="ACCEPTED">수락</option>
                   <option value="REJECTED">거절</option>
                 </select>
@@ -231,17 +228,21 @@ export default function ApplicantsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <select
-                          value={app.status}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => { e.stopPropagation(); const v = e.target.value; v === 'ACCEPTED' ? setAcceptTarget({ type: 'single', appId: app.id }) : updateStatus.mutate({ appId: app.id, status: v }); }}
-                          className={`text-xs px-2 py-1 rounded-lg border-0 cursor-pointer ${statusColors[app.status] || ''}`}
-                        >
-                          <option value="SUBMITTED">접수</option>
-                          <option value="REVIEWED">검토중</option>
-                          <option value="ACCEPTED">수락</option>
-                          <option value="REJECTED">거절</option>
-                        </select>
+                        {app.status === 'ACCEPTED' ? (
+                          /* 수락은 최종 확정 — 변경 불가 */
+                          <span className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-600 font-medium">수락 (확정)</span>
+                        ) : (
+                          <select
+                            value={app.status}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); const v = e.target.value; v === 'ACCEPTED' ? setAcceptTarget({ type: 'single', appId: app.id }) : updateStatus.mutate({ appId: app.id, status: v }); }}
+                            className={`text-xs px-2 py-1 rounded-lg border-0 cursor-pointer ${statusColors[app.status] || ''}`}
+                          >
+                            {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
+                            <option value="ACCEPTED">수락</option>
+                            <option value="REJECTED">거절</option>
+                          </select>
+                        )}
                         {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                       </div>
                     </div>
@@ -277,7 +278,7 @@ export default function ApplicantsPage() {
       <ConfirmDialog
         open={acceptTarget !== null}
         title="지원자 수락"
-        message={`수락하면 접수·검토중 단계로 되돌릴 수 없습니다.\n수락 시 지원자에게 알림이 전송되고 운영 페이지 참여가 활성화됩니다.\n\n정말 수락하시겠습니까?`}
+        message={`수락하면 더 이상 상태를 변경할 수 없습니다.\n수락 시 지원자에게 알림이 전송되고 운영 페이지 참여가 활성화됩니다.\n\n정말 수락하시겠습니까?`}
         confirmText="수락하기"
         onConfirm={() => {
           if (acceptTarget?.type === 'single') updateStatus.mutate({ appId: acceptTarget.appId, status: 'ACCEPTED' });
