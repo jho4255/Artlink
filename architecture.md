@@ -72,6 +72,9 @@ ArtLink/
 - **Portfolio** — 아티스트 포트폴리오 (약력 biography, 경력 career[JSON: 아트페어/개인전/단체전], 포트폴리오파일 portfolioFileUrl, 작품사진)
 - **PortfolioImage** — 포트폴리오 이미지 (최대 10개)
 - **Application** — 공모 지원 (고정 양식: biography 필수, career[JSON], artworkImages[JSON, 1장이상 필수], portfolioFileUrl) — 갤러리별 커스텀 추가정보(customFields) 기능은 제거됨(컬럼만 하위호환 유지)
+  - **상태(status)**: 접수(SUBMITTED) / 수락(ACCEPTED) / 거절(REJECTED). **검토중(REVIEWED) 폐지**(기존 데이터는 SUBMITTED로 환원, migration `convert_reviewed_to_submitted`).
+  - **전이 규칙**(`PATCH /exhibitions/:id/applications/:appId`): 수락=최종(변경 불가), 거절→수락만 허용(거절→접수 차단), 접수→수락/거절. UI는 수락 시 "수락(확정)" 잠금 배지.
+  - **거절 확인**: `rejectionAckedAt` — 작가가 `POST /exhibitions/applications/:appId/acknowledge-rejection` 으로 '확인'해야 본인 지원내역 목록에서 숨김(확인 전엔 거절 카드+확인 버튼 노출). 거절→수락 전환 시 자동 해제.
 - **ExhibitionNotice** — 공모 운영 공지사항 (갤러리 작성, 등록 시 수락작가에게 OPERATION_NOTICE 알림)
 - **ExhibitionSubmission** — 수락 작가의 전시정보 제출 (출품리스트/작가약력/작가노트 JSON, unique exhibitionId+userId)
 - **ArtworkSale** — 전시종료 후 판매작 (artistUserId+artworkIndex, soldPrice 원, unique exhibitionId+artist+index)

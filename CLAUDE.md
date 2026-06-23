@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ArtLink — 갤러리-아티스트 매칭 모바일웹 플랫폼 (PWA). 3가지 역할: Artist(포트폴리오/지원/리뷰), Gallery(갤러리/공모 등록), Admin(승인/운영). Frontend와 Backend가 분리된 모노레포 구조.
 
+> 🔑 **새 세션/계정 인계 시**: `HANDOFF.md`의 **0장(계정 인계)** 을 먼저 읽으세요. 현재 상태·최근 변경 이력·다음 작업·운영(배포/계정) 정보가 정리돼 있습니다.
+
 ## Commands
 
 ```bash
@@ -66,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **161 tests**: Backend 128 (20 files, supertest), Frontend 33 (4 files, jsdom)
+- **479 tests**: Backend 433 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -140,12 +142,13 @@ sudo service postgresql start
 3. **Nodemailer 실제 전송** — SMTP 설정 시 작동. 현재 콘솔 로그만
 4. **코드 스플리팅** — 프론트 번들 572KB. React.lazy + Suspense로 페이지별 분리
 5. **ESLint + Prettier** — eslint.config.js 존재하나 팀 규칙 미설정
-6. **MyPage 분리** — ~1400줄 단일 파일. 섹션별 컴포넌트 분리 고려
+6. **MyPage 분리** — `MyPage.tsx` ~3000줄 단일 파일. 섹션별 컴포넌트 분리 고려
+7. 나머지 페이지 `DESIGN.md` 기반 리디자인 (상세/마이페이지/혜택/고객센터)
 
 ## 참고 문서
 
+- `HANDOFF.md` — **인계/현재상태 우선**. 0장(계정 인계)에 최근 변경 이력·운영 정보·다음 작업 정리. 이하 장은 API 전체·인증 플로우·버그 이력 등 상세 레퍼런스
 - `architecture.md` — 상세 아키텍처 (데이터 모델, API 상세, 컴포넌트 가이드, 로깅/안정성)
-- `HANDOFF.md` — 전체 핸드오프 문서 (50개 API 엔드포인트 전체, 인증 플로우, 버그 수정 이력, 배포 장애 기록)
 - `REQUIREMENTS_CHECKLIST.md` — 요구사항 체크리스트
 
 ---

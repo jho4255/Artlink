@@ -1,8 +1,86 @@
 # ArtLink HANDOFF
 
-> 최종 업데이트: 2026-03-14 | Git 태그: `submission/2` | 브랜치: `main`, `deploy/render`
+> 최종 업데이트: **2026-06-24** | 브랜치: `main`(개발), `deploy/render`(배포) | 최신 커밋: `8b2f627`
 
 이 문서를 읽으면 프로젝트의 모든 맥락을 파악하고 바로 이어서 개발할 수 있습니다.
+아래 **0장(계정 인계)** 이 가장 최신 상태이며, 1장부터는 기반 레퍼런스입니다.
+
+---
+
+## 0. ⭐ 계정 인계 — 새 세션은 여기부터 (2026-06-24)
+
+> Claude 구독 계정 전환 대비 인계 문서. 새 계정/머신에서 이 저장소를 받으면 아래만 읽고 바로 이어서 작업 가능.
+
+### 0-1. 한 줄 요약
+ArtLink는 **거의 완성된 운영 중 서비스**(https://artlink.cc). 코드는 GitHub `jho4255/Artlink`에 있고, 진실의 원천은 **이 저장소 + `CLAUDE.md`(세션 자동 로드)**. 대화 기록이 없어도 이 문서 + `git log` + `CLAUDE.md`로 전부 복원됨.
+
+### 0-2. 새 세션 첫 단계 (순서대로)
+1. `CLAUDE.md` 읽기 (자동 로드됨) — 명령어·아키텍처·**Critical Constraints**·유저 시나리오.
+2. 이 HANDOFF 0장(여기) 읽기 — 현재 상태·최근 변경·다음 작업.
+3. `git log --oneline -30` — 최근 작업 흐름.
+4. 로컬 띄우기: PostgreSQL 확인(`pg_isready`) → 백엔드/프론트 실행(아래 0-4).
+5. 작업 후 **반드시** `cd backend && npm test` + `cd frontend && npm test`.
+
+### 0-3. 운영/계정 정보 (비밀값은 저장 안 함)
+- **서비스 URL**: https://artlink.cc/ (커스텀 도메인)
+- **배포**: Render.com, 계정 `artlink.aws@gmail.com`(Google 로그인). 브랜치 `deploy/render` push 시 자동 배포.
+  - 빌드 체인: frontend build → backend build → `prisma migrate deploy` → seed → `npm start` (Express가 `frontend/dist`도 서빙하는 모놀리스).
+  - **환경변수(R2_*, JWT_SECRET, SMTP 등)는 Render 대시보드에 설정됨** — 코드/저장소에 없음. Claude 계정과 무관하므로 전환해도 영향 없음.
+- **이미지 저장소**: Cloudflare R2 (env 있으면 R2, 없으면 로컬 디스크 fallback). 변수: `R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME/R2_PUBLIC_URL`.
+- **로컬 DB(dev 전용, 비밀 아님)**: PostgreSQL16, user=`artlink` pw=`artlink_dev_password` db=`artlink` :5432. WSL2는 재부팅 후 `sudo service postgresql start`.
+- **GitHub**: `https://github.com/jho4255/Artlink.git` (origin). main + deploy/render.
+
+### 0-4. 빠른 시작 명령
+```bash
+# 한 번에 (PostgreSQL→마이그레이션→시드→백+프론트)
+bash run_web.sh
+# 또는 개별
+sudo service postgresql start                                  # WSL2 재부팅 후
+cd backend  && DISABLE_RATE_LIMIT=true ENABLE_DEV_LOGIN=true npm run dev   # :4000
+cd frontend && npm run dev                                     # :5173 (Vite proxy /api,/uploads → 4000)
+# 테스트 (코드 수정 후 필수)
+cd backend && npm test     # 433 통과 (순차, artlink_test DB)
+cd frontend && npm test    # 46 통과
+```
+- 로컬 인증 우회: `ENABLE_DEV_LOGIN=true`일 때 `POST /api/auth/dev-login {email}` 로 시드 계정 토큰 발급(시드 이메일: `artist1@artlink.com`, `gallery@artlink.com`, `admin@artlink.com`).
+
+### 0-5. 현재 상태 (2026-06-24)
+- **테스트**: 백엔드 **433** / 프론트 **46** 통과. (백엔드 순차 실행, `artlink_test` DB)
+- **DB 모델 22개**, 마이그레이션은 `backend/prisma/migrations/`에 누적(최신: `convert_reviewed_to_submitted`).
+- 배포 정상(번들 해시 교체로 확인). 마지막 배포 커밋 `8b2f627`.
+- ⚠️ 알려진 flaky 테스트 1건: `exhibition-extended.test.ts > 상세 조회 시 gallery 정보 포함` — 동시성 테스트 데이터 누수로 가끔 실패. 단독 재실행하면 통과(회귀 아님).
+
+### 0-6. 최근 변경 이력 (이번 인계 직전 세션들, 최신순)
+- `8b2f627` **지원 상태 전이 규칙 정비**: 수락=최종(변경 불가, UI "수락(확정)" 잠금 배지), 거절→수락만 허용(거절→접수 차단), **검토중(REVIEWED) 폐지**(기존 데이터는 접수로 환원 마이그레이션). 거절 시 작가가 **"확인"** 눌러야 지원내역에서 제거(`Application.rejectionAckedAt` + `POST /exhibitions/applications/:appId/acknowledge-rejection`).
+- `f1dd47e` **인스타 OAuth/피드 연동 전면 제거**(인증 어려움). 인스타 **주소(instagramUrl)는 유지** — 갤러리 등록 폼/상세 페이지에서 직접 입력, 상세에 링크 표시. `maskGallery`는 토큰만 가림. 개인정보처리방침에서 인스타 OAuth 항목 삭제. 갤러리 삭제는 마이페이지에서만(상세 페이지 삭제 제거), **갤러리/공모/전시 삭제 시 "삭제" 입력 이중확인 모달**(`DeleteConfirmModal`). 승인완료/거절 갤러리 삭제 가능.
+- `e6466f3` 수락 알림 메시지에 "운영 페이지에서 전시정보 입력" + 클릭 시 운영페이지 이동. 지원내역에 **공모 진행상태 배지**(모집중/모집마감/확정/전시종료/정산완료), 필터를 **전체/진행중/정산완료** 3개로 단순화. 마이페이지 찜목록 하트 빨강 채움.
+- `3711f61` 모집공고 포스터: 목록 **A4 비율**, 상세는 **원본 비율 보존 + 여러 장 세로 나열**, **포스터별 대표색 글로우**, 그라데이션 제거, "포스터 관리" 라벨.
+- `4a1e2ce` **공모 다중 사진**(`ExhibitionImage`, 추가/삭제(최소1장)/드래그 순서변경, lazy 백필). **지원자 관리 별도 페이지**(`/exhibitions/:id/applicants`) — 지원서 PDF(닉네임·전화·메일 포함)+전체 ZIP, CSV 제거, 연락처 지원 시점부터 노출. 운영 **상태 스텝퍼**(모집마감→확정→전시종료 순서 강제, Admin 우회). 전 페이지 찜 버튼 ARTIST 전용. 공모 삭제 버튼 소형화.
+- `286250c`~`d17b2a9` **정산 2단계 승인제**(갤러리 확인요청→작가 수락/문제제기→전원 수락 시 완료), 정산서 PDF(R2 이미지 동일출처 프록시로 캔버스 taint 해결), **ArtLook**(판매작 홍보 이미지 도구) 연동.
+- `bd25047` **회원탈퇴**(소프트삭제+익명화), Navbar 로그인/로그아웃 버튼.
+- 그 외 보안 강화(PII/IDOR/SSRF/XSS/SSE 티켓), 메시지 실시간(SSE), 캡션 .hwp 생성 등 — `git log` 참고.
+
+### 0-7. 다음 작업 / 미해결 (우선순위)
+1. **React-hook-form + Zod** 설치됨(v7.71/v4.3)이나 미사용 — 갤러리/공모 등록 폼에 적용 권장.
+2. **수정 요청 UI** — 백엔드 API는 완성, 프론트 MyPage Gallery에 "수정 요청" 버튼/폼 미구현.
+3. **Nodemailer 실제 SMTP** — 현재 콘솔 로그만. Render env에 SMTP 설정 시 작동.
+4. **코드 스플리팅** — 프론트 번들 큼. React.lazy + Suspense 페이지 분리.
+5. **MyPage 분리** — `MyPage.tsx` ~3000줄 단일 파일. 섹션별 컴포넌트 분리.
+6. 나머지 페이지 `DESIGN.md` 기반 리디자인(상세/마이페이지/혜택/고객센터).
+
+### 0-8. 절대 함정 (실수 빈발 — CLAUDE.md Critical Constraints도 필독)
+- **Prisma v5 고정**(v7 금지), **Tailwind v4**(`@import "tailwindcss"`), **Express v5**(SPA wildcard `/{*path}`).
+- **seed.ts upsert**: 스키마 새 필드 추가 시 `update` 블록에도 반드시 포함(Render DB는 유지되어 update 경로 탐).
+- **ImageLightbox** `initialIndex` prop(`currentIndex` 아님), 부모 `AnimatePresence` 필요. **ImageUpload** `placeholder` prop(`label` 아님).
+- **찜 연동**은 invalidate만으론 부족 — cross-cache `setQueriesData`로 즉시 수정.
+- **시드 ID 계약**: 1=artist1, 2=artist2, 3=gallery, 4=admin (추가 작가는 admin 뒤에 생성).
+- **배포 흐름**: `git checkout deploy/render && git merge origin/deploy/render && git merge main && git push origin deploy/render` 후 main도 push. Render가 자동 배포(~2분, 번들 해시 교체로 확인).
+- **GitHub 토큰 등 비밀값을 출력/커밋 금지** — 과거 트랜스크립트에 토큰이 섞였을 수 있어 `.jsonl`은 절대 커밋하지 말 것.
+
+### 0-9. 대화 기록(대화내역)의 위치
+- 과거 세션 원본 트랜스크립트(JSONL): `~/.claude/projects/-home-jho4255-ArtLink/*.jsonl` — **로컬에만 존재**(같은 OS 계정이면 Claude 구독 전환과 무관하게 유지). 비밀값이 섞일 수 있어 **저장소엔 커밋하지 않음**. 다른 머신으로 옮기려면 이 디렉토리를 별도로 백업.
+- 자동 메모리: `~/.claude/projects/-home-jho4255-ArtLink/memory/`(MEMORY.md + 개별 파일) — 같은 머신이면 새 계정 세션도 자동 로드. 머신 이동 시엔 함께 복사.
+- 대화의 *핵심*(결정·변경·이유)은 이 0장 + `git log` 커밋 메시지에 모두 녹여둠.
 
 ---
 
