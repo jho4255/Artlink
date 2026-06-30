@@ -19,7 +19,7 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력(career) 표시용 — 카테고리별 라벨
@@ -45,17 +45,116 @@ function isCareerEmpty(c: Career): boolean {
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
+type ExhibitionViewMode = 'operation' | 'classic';
+type OperationTone = 'active' | 'wait' | 'accent' | 'done' | 'danger';
+
+interface GalleryOperationOverview {
+  id: number;
+  title: string;
+  type: string;
+  region: string;
+  imageUrl?: string | null;
+  status: string;
+  rejectReason?: string | null;
+  deadlineStart?: string | null;
+  deadline?: string | null;
+  exhibitStartDate?: string | null;
+  exhibitDate?: string | null;
+  recruitmentClosed?: boolean;
+  confirmed?: boolean;
+  ended?: boolean;
+  settlementRequestedAt?: string | null;
+  settledAt?: string | null;
+  gallery?: { id: number; name: string };
+  stage: { key: string; label: string; tone: OperationTone };
+  nextAction: { label: string; description: string; route: string };
+  counts: {
+    applications: { total: number; submitted: number; reviewed: number; accepted: number; rejected: number };
+    submissions: { required: number; submitted: number; complete: number };
+    sales: { total: number };
+    settlement: { total: number; pending: number; approved: number; issue: number };
+  };
+}
+
+const operationToneClasses: Record<OperationTone, string> = {
+  active: 'bg-blue-50 text-blue-700 border-blue-100',
+  wait: 'bg-amber-50 text-amber-700 border-amber-100',
+  accent: 'bg-purple-50 text-purple-700 border-purple-100',
+  done: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  danger: 'bg-red-50 text-red-700 border-red-100',
+};
+
+const operationDate = (value?: string | null) => {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('ko', { month: 'short', day: 'numeric' });
+};
+
+const operationRange = (start?: string | null, end?: string | null) => {
+  if (!start && !end) return '-';
+  if (!start) return operationDate(end);
+  if (!end) return operationDate(start);
+  return `${operationDate(start)} - ${operationDate(end)}`;
+};
+
+const makeFallbackOperationOverview = (ex: any): GalleryOperationOverview => ({
+  id: ex.id,
+  title: ex.title,
+  type: ex.type,
+  region: ex.region,
+  imageUrl: ex.imageUrl,
+  status: ex.status,
+  rejectReason: ex.rejectReason,
+  deadlineStart: ex.deadlineStart,
+  deadline: ex.deadline,
+  exhibitStartDate: ex.exhibitStartDate,
+  exhibitDate: ex.exhibitDate,
+  recruitmentClosed: ex.recruitmentClosed,
+  confirmed: ex.confirmed,
+  ended: ex.ended,
+  settlementRequestedAt: ex.settlementRequestedAt,
+  settledAt: ex.settledAt,
+  gallery: ex.gallery,
+  stage: {
+    key: ex.status === 'APPROVED' ? 'recruiting' : ex.status === 'REJECTED' ? 'rejected' : 'review',
+    label: ex.status === 'APPROVED' ? '모집 중' : ex.status === 'REJECTED' ? '반려' : '승인 대기',
+    tone: ex.status === 'APPROVED' ? 'active' : ex.status === 'REJECTED' ? 'danger' : 'wait',
+  },
+  nextAction: {
+    label: ex.status === 'APPROVED' ? '지원자 검토' : '공모 상세 보기',
+    description: ex.status === 'APPROVED' ? '접수 현황을 확인하고 지원자 상태를 관리합니다.' : '관리자 승인 상태와 공모 내용을 확인합니다.',
+    route: ex.status === 'APPROVED' ? `/exhibitions/${ex.id}/applicants` : `/exhibitions/${ex.id}`,
+  },
+  counts: {
+    applications: { total: 0, submitted: 0, reviewed: 0, accepted: 0, rejected: 0 },
+    submissions: { required: 0, submitted: 0, complete: 0 },
+    sales: { total: 0 },
+    settlement: { total: 0, pending: 0, approved: 0, issue: 0 },
+  },
+});
+
 
 export default function MyPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user, logout } = useAuthStore();
-  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    return tab === 'my-exhibitions-classic' ? 'my-exhibitions' : (tab || 'profile');
+  });
 
   // 다른 페이지에서 ?tab=... 로 진입 시(이미 /mypage에 있을 때 포함) 해당 탭으로 전환
   useEffect(() => {
-    const t = searchParams.get('tab');
+    const rawTab = searchParams.get('tab');
+    const t = rawTab === 'my-exhibitions-classic' ? 'my-exhibitions' : rawTab;
+    if (rawTab === 'my-exhibitions-classic') {
+      try {
+        localStorage.setItem('artlink:my-exhibitions-view', 'classic');
+      } catch {
+        // localStorage can be unavailable in hardened browser modes.
+      }
+      setSearchParams({ tab: 'my-exhibitions' }, { replace: true });
+    }
     if (t && t !== activeTab) setActiveTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -135,7 +234,9 @@ export default function MyPage() {
         {activeTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
         {activeTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
         {activeTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
-        {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
+        {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && (
+          <MyExhibitionsSection initialViewMode={searchParams.get('tab') === 'my-exhibitions-classic' ? 'classic' : undefined} />
+        )}
         {activeTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
         {activeTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
         {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
@@ -1230,7 +1331,7 @@ function ApplicationsSection() {
                 <div className="px-4 pb-4 pt-0 border-t border-gray-50 space-y-3">
                   <div className="pt-3">
                     <p className="text-xs font-medium text-gray-500 mb-1.5">내가 제출한 지원서</p>
-                    <ApplicationContent app={app} />
+                    <ApplicationContent app={app} customFields={app.exhibition?.customFields} />
                   </div>
                   {/* 이동 버튼들 */}
                   <div className="flex items-center gap-3">
@@ -1367,7 +1468,6 @@ function MyGalleriesSection() {
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
-
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -1510,12 +1610,127 @@ function MyGalleriesSection() {
   );
 }
 
+function CustomQuestionBuilder({
+  fields,
+  onChange,
+}: {
+  fields: CustomField[];
+  onChange: (fields: CustomField[]) => void;
+}) {
+  const addQuestion = (type: 'textarea' | 'select') => {
+    onChange([
+      ...fields,
+      {
+        id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        label: '',
+        type,
+        required: false,
+        options: type === 'select' ? [''] : undefined,
+      },
+    ]);
+  };
+  const updateQuestion = (index: number, patch: Partial<CustomField>) => {
+    onChange(fields.map((field, i) => i === index ? { ...field, ...patch } : field));
+  };
+  const removeQuestion = (index: number) => {
+    onChange(fields.filter((_, i) => i !== index));
+  };
+  const updateOption = (fieldIndex: number, optionIndex: number, value: string) => {
+    const field = fields[fieldIndex];
+    const options = [...(field.options ?? [])];
+    options[optionIndex] = value;
+    updateQuestion(fieldIndex, { options });
+  };
+  const addOption = (fieldIndex: number) => {
+    const field = fields[fieldIndex];
+    updateQuestion(fieldIndex, { options: [...(field.options ?? []), ''] });
+  };
+  const removeOption = (fieldIndex: number, optionIndex: number) => {
+    const field = fields[fieldIndex];
+    updateQuestion(fieldIndex, { options: (field.options ?? []).filter((_, i) => i !== optionIndex) });
+  };
+
+  return (
+    <div className="pt-3 border-t border-gray-100">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div>
+          <p className="text-xs font-medium text-gray-500">추가 질문</p>
+          <p className="text-[11px] text-gray-400">작가 지원서에 객관식/주관식 질문을 추가할 수 있습니다.</p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => addQuestion('textarea')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">주관식</button>
+          <button type="button" onClick={() => addQuestion('select')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">객관식</button>
+        </div>
+      </div>
+      {fields.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-400">
+          필요한 경우 설치 가능 일정, 작품 운송 방식, 작가와의 협업 가능 여부 같은 질문을 추가하세요.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {fields.map((field, index) => (
+            <div key={field.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-medium text-gray-500">{field.type === 'select' ? '객관식' : '주관식'}</span>
+                <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                  <input
+                    type="checkbox"
+                    checked={field.required}
+                    onChange={(e) => updateQuestion(index, { required: e.target.checked })}
+                    className="rounded"
+                  />
+                  필수
+                </label>
+                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto text-[11px] text-red-500 hover:underline">삭제</button>
+              </div>
+              <input
+                value={field.label}
+                onChange={(e) => updateQuestion(index, { label: e.target.value })}
+                placeholder="질문을 입력하세요"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+              />
+              {field.type === 'select' && (
+                <div className="space-y-1.5">
+                  {(field.options ?? []).map((option, optionIndex) => (
+                    <div key={optionIndex} className="flex items-center gap-2">
+                      <input
+                        value={option}
+                        onChange={(e) => updateOption(index, optionIndex, e.target.value)}
+                        placeholder={`선택지 ${optionIndex + 1}`}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
+                      />
+                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="text-xs text-gray-400 hover:text-red-500">삭제</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => addOption(index)} className="text-xs text-gray-600 hover:underline">+ 선택지 추가</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ========== Gallery: 내 공모 ==========
-function MyExhibitionsSection() {
+function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: ExhibitionViewMode } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '' };
+  const [exhibitionViewMode, setExhibitionViewMode] = useState<ExhibitionViewMode>(() => {
+    if (initialViewMode) return initialViewMode;
+    try {
+      return localStorage.getItem('artlink:my-exhibitions-view') === 'classic' ? 'classic' : 'operation';
+    } catch {
+      return 'operation';
+    }
+  });
+
+  useEffect(() => {
+    if (initialViewMode) setExhibitionViewMode(initialViewMode);
+  }, [initialViewMode]);
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
@@ -1579,10 +1794,16 @@ function MyExhibitionsSection() {
     queryFn: () => api.get('/exhibitions/my-exhibitions').then(r => r.data).catch(() => []),
   });
 
+  const { data: operationOverview = [], isLoading: operationOverviewLoading } = useQuery<GalleryOperationOverview[]>({
+    queryKey: ['my-operation-overview'],
+    queryFn: () => api.get('/exhibitions/my-operation-overview').then(r => r.data).catch(() => []),
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/exhibitions', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
       setShowForm(false);
       setForm(emptyExForm);
       setExhibitionAgreed(false);
@@ -1598,6 +1819,7 @@ function MyExhibitionsSection() {
     mutationFn: (id: number) => api.delete(`/exhibitions/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       toast.success('공모가 삭제되었습니다.');
     },
@@ -1620,6 +1842,7 @@ function MyExhibitionsSection() {
       api.patch(`/exhibitions/${exId}/applications/${appId}`, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exhibition-applications', manageAppsExId] });
+      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
       toast.success('지원 상태가 변경되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
@@ -1670,14 +1893,65 @@ function MyExhibitionsSection() {
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
+  const overviewItems = operationOverview.length > 0
+    ? operationOverview
+    : exhibitions.map(makeFallbackOperationOverview);
+  const customFieldsByExId = useMemo(() => new Map(exhibitions.map((ex: any) => [ex.id, ex.customFields ?? null])), [exhibitions]);
+  const overviewSummary = overviewItems.reduce((acc, item) => {
+    acc.total += 1;
+    acc.action += item.status === 'APPROVED' && !item.settledAt ? 1 : 0;
+    acc.applications += item.counts.applications.total;
+    acc.accepted += item.counts.applications.accepted;
+    acc.submissionTodo += Math.max(0, item.counts.submissions.required - item.counts.submissions.complete);
+    acc.settlementTodo += item.ended && !item.settledAt ? 1 : 0;
+    return acc;
+  }, { total: 0, action: 0, applications: 0, accepted: 0, submissionTodo: 0, settlementTodo: 0 });
+
+  const switchExhibitionView = (mode: ExhibitionViewMode) => {
+    setExhibitionViewMode(mode);
+    setManageAppsExId(null);
+    try {
+      localStorage.setItem('artlink:my-exhibitions-view', mode);
+    } catch {
+      // localStorage can be unavailable in hardened browser modes.
+    }
+  };
+
+  const sanitizeCustomFields = (fields: CustomField[]) => fields
+    .map((field) => ({
+      ...field,
+      label: field.label.trim(),
+      options: field.type === 'select' ? (field.options ?? []).map((option) => option.trim()).filter(Boolean) : undefined,
+    }))
+    .filter((field) => field.label);
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-gray-400">Admin 승인 후 공고에 노출됩니다.</p>
-        <button onClick={() => showForm ? setShowForm(false) : openExForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
-          <Plus size={14} /> 공모 등록
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!showForm && (
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => switchExhibitionView('operation')}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'operation' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                신규 운영 보기
+              </button>
+              <button
+                type="button"
+                onClick={() => switchExhibitionView('classic')}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'classic' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                기존 목록 보기
+              </button>
+            </div>
+          )}
+          <button onClick={() => showForm ? setShowForm(false) : openExForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
+            <Plus size={14} /> 공모 등록
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -1745,6 +2019,10 @@ function MyExhibitionsSection() {
                     <p className="text-xs font-medium text-gray-400 mb-1">공모 소개</p>
                     <EditableText multiline rows={3} value={form.description} onChange={v => { setForm({...form, description: v}); setFormErrors(prev => { const n = new Set(prev); n.delete('description'); return n; }); }} placeholder="공모 소개" className="text-sm text-gray-700" error={formErrors.has('description')} />
                   </div>
+                  <CustomQuestionBuilder
+                    fields={form.customFields}
+                    onChange={(customFields) => setForm({ ...form, customFields })}
+                  />
                 </div>
               </div>
 
@@ -1770,6 +2048,8 @@ function MyExhibitionsSection() {
                     if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
                     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
                     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+                    const cleanedCustomFields = sanitizeCustomFields(form.customFields);
+                    const invalidSelect = cleanedCustomFields.find((field) => field.type === 'select' && (field.options ?? []).length < 2);
                     setFormErrors(errorFields);
                     if (missing.length > 0) {
                       toast.error(
@@ -1783,6 +2063,11 @@ function MyExhibitionsSection() {
                       );
                       return;
                     }
+                    if (invalidSelect) {
+                      toast.error('객관식 질문은 선택지를 2개 이상 입력해주세요.');
+                      return;
+                    }
+                    setForm({ ...form, customFields: cleanedCustomFields });
                     setConfirmAction('submit');
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1800,7 +2085,7 @@ function MyExhibitionsSection() {
         title="공모 등록"
         message="이 내용으로 공모 등록을 요청하시겠습니까?"
         confirmText="등록 요청"
-        onConfirm={() => { setConfirmAction(null); createMutation.mutate(form); }}
+        onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, customFields: sanitizeCustomFields(form.customFields) }); }}
         onCancel={() => setConfirmAction(null)}
       />
       <ConfirmDialog
@@ -1813,7 +2098,227 @@ function MyExhibitionsSection() {
         onCancel={() => setConfirmAction(null)}
       />
 
-      {exhibitions.length === 0 && !showForm ? (
+      {!showForm && exhibitionViewMode === 'operation' && (
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+            <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-400">Gallery operation hub</p>
+                <h3 className="mt-1 text-2xl font-semibold text-gray-950">내 공모 운영</h3>
+                <p className="mt-1 text-sm text-gray-500">공모별 지원자, 작가 제출자료, 판매 및 정산 상태를 한 화면에서 확인합니다.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-5 md:min-w-[620px]">
+                {[
+                  ['전체 공모', overviewSummary.total],
+                  ['운영 중', overviewSummary.action],
+                  ['전체 지원', overviewSummary.applications],
+                  ['확정 작가', overviewSummary.accepted],
+                  ['정산 대기', overviewSummary.settlementTodo],
+                ].map(([label, value]) => (
+                  <div key={label} className="border-t border-gray-100 pt-2 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+                    <p className="text-xs text-gray-400">{label}</p>
+                    <p className="mt-1 text-xl font-semibold text-gray-950">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {operationOverviewLoading ? (
+            <div className="grid gap-4">
+              {[0, 1].map(i => <div key={i} className="h-56 rounded-2xl bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : overviewItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
+              <p className="text-sm text-gray-400">등록된 공모가 없습니다.</p>
+              <button onClick={openExForm} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-4 py-2 text-sm text-white">
+                <Plus size={14} /> 공모 등록
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {overviewItems.map((item) => {
+                const apps = item.counts.applications;
+                const submissions = item.counts.submissions;
+                const settlement = item.counts.settlement;
+                const dday = item.deadline ? getDday(item.deadline) : null;
+                const submissionTodo = Math.max(0, submissions.required - submissions.complete);
+                const statusClass = statusColors[item.status] || 'bg-gray-100 text-gray-600';
+                return (
+                  <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                    <div className="grid gap-0 lg:grid-cols-[220px_1fr]">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/exhibitions/${item.id}`)}
+                        className="relative min-h-[180px] bg-gray-100 text-left lg:min-h-full"
+                      >
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center text-gray-300">
+                            <Camera size={34} />
+                          </div>
+                        )}
+                        <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm">
+                          D{dday !== null ? (dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`) : '-'}
+                        </span>
+                      </button>
+
+                      <div className="p-5">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${operationToneClasses[item.stage.tone]}`}>
+                                {item.stage.label}
+                              </span>
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass}`}>
+                                {statusLabels[item.status] || item.status}
+                              </span>
+                              {settlement.issue > 0 && (
+                                <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">정산 이슈 {settlement.issue}</span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/exhibitions/${item.id}`)}
+                              className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                            >
+                              {item.title}
+                            </button>
+                            <p className="mt-1 text-sm text-gray-500">
+                              {item.gallery?.name || 'Gallery'} · {exhibitionTypeLabels[item.type] || item.type} · {regionLabels[item.region] || item.region}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 xl:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => navigate(item.nextAction.route)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
+                            >
+                              <ClipboardList size={14} /> {item.nextAction.label}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/exhibitions/${item.id}/operation/new`)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <FileText size={14} /> 상세 운영
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(item)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                              title="공모 삭제"
+                              aria-label="공모 삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 border-y border-gray-100 py-4">
+                          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <div>
+                              <p className="text-xs text-gray-400">지원자</p>
+                              <p className="mt-1 text-lg font-semibold text-gray-950">{apps.total}명</p>
+                              <p className="text-xs text-gray-500">수락 {apps.accepted} · 대기 {apps.submitted + apps.reviewed} · 거절 {apps.rejected}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">작가 자료</p>
+                              <p className="mt-1 text-lg font-semibold text-gray-950">{submissions.complete}/{submissions.required}</p>
+                              <p className="text-xs text-gray-500">{submissionTodo > 0 ? `${submissionTodo}명 자료 대기` : '제출 확인 완료'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">판매/정산</p>
+                              <p className="mt-1 text-lg font-semibold text-gray-950">{item.counts.sales.total}건</p>
+                              <p className="text-xs text-gray-500">승인 {settlement.approved} · 대기 {settlement.pending}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">일정</p>
+                              <p className="mt-1 text-sm font-medium text-gray-950">공모 {operationRange(item.deadlineStart, item.deadline)}</p>
+                              <p className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-950">{item.nextAction.label}</p>
+                            <p className="mt-0.5 text-xs text-gray-500">{item.nextAction.description}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setManageAppsExId(manageAppsExId === item.id ? null : item.id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <Send size={14} /> {manageAppsExId === item.id ? '지원자 닫기' : '지원자 빠른 관리'}
+                            </button>
+                            {manageAppsExId === item.id && applicants.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => exportApplicantsCSV(item, applicants)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-green-100 px-3 py-2 text-sm text-green-700 hover:bg-green-50"
+                              >
+                                <FileText size={14} /> CSV
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {item.status === 'REJECTED' && item.rejectReason && (
+                          <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">반려 사유: {item.rejectReason}</p>
+                        )}
+
+                        {manageAppsExId === item.id && (
+                          <div className="mt-4 border-t border-gray-100 pt-4">
+                            {appsLoading ? (
+                              <div className="h-20 rounded-xl bg-gray-100 animate-pulse" />
+                            ) : applicants.length === 0 ? (
+                              <p className="text-sm text-gray-400">지원자가 없습니다.</p>
+                            ) : (
+                              <div className="space-y-3">
+                                {applicants.map((app: any) => (
+                                  <div key={app.id} className="rounded-xl bg-gray-50 p-3">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="flex items-center gap-2">
+                                        {app.user?.avatar && <img src={app.user.avatar} alt="" className="h-6 w-6 rounded-full" />}
+                                        <span className="text-sm font-medium text-gray-950">{app.user?.name}</span>
+                                        <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
+                                      </div>
+                                      {app.status === 'ACCEPTED' ? (
+                                        <span className="w-fit rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-600">수락 확정</span>
+                                      ) : (
+                                        <select
+                                          value={app.status}
+                                          onChange={e => updateAppStatusMutation.mutate({ exId: item.id, appId: app.id, status: e.target.value })}
+                                          className={`w-fit rounded-full border-0 px-2.5 py-1 text-xs ${appStatusColors[app.status] || ''}`}
+                                        >
+                                          {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
+                                          <option value="ACCEPTED">수락</option>
+                                          <option value="REJECTED">거절</option>
+                                        </select>
+                                      )}
+                                    </div>
+                                    <ApplicationContent app={app} customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!showForm && exhibitionViewMode === 'classic' && (exhibitions.length === 0 ? (
         <p className="text-gray-400 text-center py-8">등록된 공모가 없습니다.</p>
       ) : (
         <div className="space-y-3">
@@ -1898,7 +2403,7 @@ function MyExhibitionsSection() {
                               </select>
                             )}
                           </div>
-                          <ApplicationContent app={app} />
+                          <ApplicationContent app={app} customFields={ex.customFields} />
                         </div>
                       ))
                     )}
@@ -1908,7 +2413,7 @@ function MyExhibitionsSection() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       <DeleteConfirmModal
         open={!!deleteTarget}

@@ -41,7 +41,7 @@ const exhibitionCreateSchema = z.object({
   description: z.string().min(1, '공모 소개를 입력해주세요.'),
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
   imageUrl: z.string().optional().nullable(),
-  // customFields(추가정보요청)는 제거됨 — 스키마에서 빼면 잔여 draft의 customFields는 z.object가 자동으로 무시
+  customFields: z.array(customFieldSchema).optional().nullable(),
 });
 
 const router = Router();
@@ -56,6 +56,38 @@ function parseCustomFields(raw: string | null): any[] | null {
 function safeJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+
+function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string; value: string | string[] }[] {
+  const input = Array.isArray(raw) ? raw : [];
+  const answers = input
+    .filter((a: any) => a && typeof a.fieldId === 'string')
+    .map((a: any) => {
+      const field = fields.find((f: any) => f.id === a.fieldId);
+      const value = Array.isArray(a.value)
+        ? a.value.map((v: unknown) => String(v).trim()).filter(Boolean)
+        : String(a.value ?? '').trim();
+      return { fieldId: a.fieldId, value, field };
+    })
+    .filter((a) => a.field);
+
+  for (const field of fields) {
+    const answer = answers.find((a) => a.fieldId === field.id);
+    const value = answer?.value;
+    const empty = Array.isArray(value) ? value.length === 0 : !value;
+    if (field.required && empty) {
+      throw new AppError(`추가 질문 "${field.label}"에 답변해주세요.`, 400);
+    }
+    if ((field.type === 'select' || field.type === 'multiselect') && value) {
+      const options = Array.isArray(field.options) ? field.options : [];
+      const selected = Array.isArray(value) ? value : [value];
+      if (selected.some((v) => !options.includes(v))) {
+        throw new AppError(`추가 질문 "${field.label}"의 선택지가 올바르지 않습니다.`, 400);
+      }
+    }
+  }
+
+  return answers.map(({ fieldId, value }) => ({ fieldId, value }));
 }
 
 // 경력 JSON → 이메일용 텍스트 변환
@@ -167,6 +199,11 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
       ...app,
       career: safeJson(app.career, null),
       artworkImages: safeJson<string[]>(app.artworkImages, []),
+      customAnswers: safeJson(app.customAnswers, []),
+      exhibition: app.exhibition ? {
+        ...app.exhibition,
+        customFields: parseCustomFields(app.exhibition.customFields),
+      } : app.exhibition,
     })));
   } catch (error) { next(error); }
 });
@@ -213,6 +250,167 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
 });
 
 // 공모 상세 조회
+// Gallery operation overview for My Page.
+router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (req, res, next) => {
+  try {
+    const galleries = await prisma.gallery.findMany({
+      where: { ownerId: req.user!.id },
+      select: { id: true }
+    });
+    const galleryIds = galleries.map(g => g.id);
+    if (galleryIds.length === 0) return res.json([]);
+
+    const exhibitions = await prisma.exhibition.findMany({
+      where: { galleryId: { in: galleryIds } },
+      include: {
+        gallery: { select: { id: true, name: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    const exhibitionIds = exhibitions.map(e => e.id);
+    if (exhibitionIds.length === 0) return res.json([]);
+
+    const [applications, submissions, sales, approvals] = await Promise.all([
+      prisma.application.findMany({
+        where: { exhibitionId: { in: exhibitionIds } },
+        select: { exhibitionId: true, status: true }
+      }),
+      prisma.exhibitionSubmission.findMany({
+        where: { exhibitionId: { in: exhibitionIds } },
+        select: { exhibitionId: true, artworkList: true, cv: true, note: true }
+      }),
+      prisma.artworkSale.findMany({
+        where: { exhibitionId: { in: exhibitionIds } },
+        select: { exhibitionId: true }
+      }),
+      prisma.settlementApproval.findMany({
+        where: { exhibitionId: { in: exhibitionIds } },
+        select: { exhibitionId: true, status: true }
+      })
+    ]);
+
+    const appCounts = new Map<number, Record<string, number>>();
+    const submissionCounts = new Map<number, { submitted: number; complete: number }>();
+    const saleCounts = new Map<number, number>();
+    const approvalCounts = new Map<number, Record<string, number>>();
+
+    for (const app of applications) {
+      const row = appCounts.get(app.exhibitionId) ?? { total: 0, submitted: 0, reviewed: 0, accepted: 0, rejected: 0 };
+      row.total += 1;
+      row[app.status.toLowerCase()] = (row[app.status.toLowerCase()] ?? 0) + 1;
+      appCounts.set(app.exhibitionId, row);
+    }
+
+    for (const sub of submissions) {
+      const row = submissionCounts.get(sub.exhibitionId) ?? { submitted: 0, complete: 0 };
+      const artworks = safeJson<any[]>(sub.artworkList, []);
+      const hasArtwork = Array.isArray(artworks) && artworks.length > 0;
+      const hasCv = !!sub.cv;
+      const hasNote = !!sub.note;
+      if (hasArtwork || hasCv || hasNote) row.submitted += 1;
+      if (hasArtwork && hasCv && hasNote) row.complete += 1;
+      submissionCounts.set(sub.exhibitionId, row);
+    }
+
+    for (const sale of sales) {
+      saleCounts.set(sale.exhibitionId, (saleCounts.get(sale.exhibitionId) ?? 0) + 1);
+    }
+
+    for (const approval of approvals) {
+      const row = approvalCounts.get(approval.exhibitionId) ?? { total: 0, pending: 0, approved: 0, issue: 0 };
+      row.total += 1;
+      row[approval.status.toLowerCase()] = (row[approval.status.toLowerCase()] ?? 0) + 1;
+      approvalCounts.set(approval.exhibitionId, row);
+    }
+
+    const getStage = (exhibition: any) => {
+      if (exhibition.status === 'PENDING') return { key: 'review', label: '승인 대기', tone: 'wait' };
+      if (exhibition.status === 'REJECTED') return { key: 'rejected', label: '반려', tone: 'danger' };
+      if (exhibition.settledAt) return { key: 'settled', label: '정산 완료', tone: 'done' };
+      if (exhibition.ended) return { key: 'settlement', label: '정산 단계', tone: 'accent' };
+      if (exhibition.confirmed) return { key: 'confirmed', label: '전시 확정', tone: 'active' };
+      if (exhibition.recruitmentClosed) return { key: 'closed', label: '모집 마감', tone: 'wait' };
+      return { key: 'recruiting', label: '모집 중', tone: 'active' };
+    };
+
+    const getNextAction = (exhibition: any, acceptedCount: number, completeCount: number, saleCount: number, settlement: Record<string, number>) => {
+      if (exhibition.status === 'PENDING') {
+        return { label: '관리자 승인 대기', description: '승인 후 지원자 모집과 운영 페이지를 사용할 수 있습니다.', route: `/exhibitions/${exhibition.id}` };
+      }
+      if (exhibition.status === 'REJECTED') {
+        return { label: '반려 사유 확인', description: '공모 내용을 수정해 다시 제출해야 합니다.', route: `/exhibitions/${exhibition.id}` };
+      }
+      if (exhibition.ended) {
+        if (exhibition.settledAt) {
+          return { label: '정산 완료 내역 보기', description: '작가별 정산 결과와 판매 내역을 확인합니다.', route: `/exhibitions/${exhibition.id}/operation/new` };
+        }
+        if (exhibition.settlementRequestedAt) {
+          const issue = settlement.issue ?? 0;
+          return {
+            label: issue > 0 ? '정산 이슈 확인' : '작가 승인 대기',
+            description: issue > 0 ? '작가가 남긴 이슈를 확인하고 정산을 조정합니다.' : '작가별 정산 승인 상태를 확인합니다.',
+            route: `/exhibitions/${exhibition.id}/operation/new`
+          };
+        }
+        return {
+          label: saleCount > 0 ? '정산서 작성' : '판매 내역 입력',
+          description: saleCount > 0 ? '판매 작품과 배분율을 검토해 정산 요청을 보냅니다.' : '판매 작품을 입력하면 정산서 작성이 시작됩니다.',
+          route: `/exhibitions/${exhibition.id}/operation/new`
+        };
+      }
+      if (acceptedCount > 0 && completeCount < acceptedCount) {
+        return { label: '작가 자료 수집', description: '확정 작가의 작품, 약력, 작가노트 제출 현황을 확인합니다.', route: `/exhibitions/${exhibition.id}/operation/new` };
+      }
+      if (exhibition.confirmed) {
+        return { label: '운영 자료 확인', description: '캡션, 작품 목록, 홍보 자료를 전시 운영에 맞게 점검합니다.', route: `/exhibitions/${exhibition.id}/operation/new` };
+      }
+      if (exhibition.recruitmentClosed) {
+        return { label: '참여 작가 확정', description: '지원자를 검토하고 참여 작가를 확정합니다.', route: `/exhibitions/${exhibition.id}/applicants` };
+      }
+      return { label: '지원자 검토', description: '접수 현황을 확인하고 수락/거절 상태를 관리합니다.', route: `/exhibitions/${exhibition.id}/applicants` };
+    };
+
+    res.json(exhibitions.map((exhibition: any) => {
+      const apps = appCounts.get(exhibition.id) ?? { total: 0, submitted: 0, reviewed: 0, accepted: 0, rejected: 0 };
+      const subs = submissionCounts.get(exhibition.id) ?? { submitted: 0, complete: 0 };
+      const saleCount = saleCounts.get(exhibition.id) ?? 0;
+      const settlement = approvalCounts.get(exhibition.id) ?? { total: 0, pending: 0, approved: 0, issue: 0 };
+      return {
+        id: exhibition.id,
+        title: exhibition.title,
+        type: exhibition.type,
+        region: exhibition.region,
+        imageUrl: exhibition.imageUrl,
+        status: exhibition.status,
+        rejectReason: exhibition.rejectReason,
+        deadlineStart: exhibition.deadlineStart,
+        deadline: exhibition.deadline,
+        exhibitStartDate: exhibition.exhibitStartDate,
+        exhibitDate: exhibition.exhibitDate,
+        createdAt: exhibition.createdAt,
+        recruitmentClosed: exhibition.recruitmentClosed,
+        confirmed: exhibition.confirmed,
+        ended: exhibition.ended,
+        settlementRequestedAt: exhibition.settlementRequestedAt,
+        settledAt: exhibition.settledAt,
+        gallery: exhibition.gallery,
+        stage: getStage(exhibition),
+        nextAction: getNextAction(exhibition, apps.accepted ?? 0, subs.complete, saleCount, settlement),
+        counts: {
+          applications: apps,
+          submissions: {
+            required: apps.accepted ?? 0,
+            submitted: subs.submitted,
+            complete: subs.complete
+          },
+          sales: { total: saleCount },
+          settlement
+        }
+      };
+    }));
+  } catch (error) { next(error); }
+});
+
 router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
@@ -269,7 +467,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -286,7 +484,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
         capacity, region, description, galleryId, imageUrl: safeImageUrl,
-        // 추가정보요청(customFields) 기능 제거 — 지원서는 고정 양식(경력/작품사진/포트폴리오) 사용
+        customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
         // 대표 이미지를 다중사진 첫 행으로 등록 (이후 상세 페이지에서 추가/삭제/순서변경)
         ...(safeImageUrl ? { images: { create: [{ url: safeImageUrl, order: 0 }] } } : {}),
@@ -308,7 +506,7 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     if (existing) throw new AppError('이미 지원한 공모입니다.', 400);
 
     // 지원서 고정 양식: 작가약력(필수) / 경력 / 작품사진(1장이상 필수) / 포트폴리오 파일
-    const { biography, career, artworkImages, portfolioFileUrl } = req.body || {};
+    const { biography, career, artworkImages, portfolioFileUrl, customAnswers } = req.body || {};
     const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
     if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
     if (exhibitionData.status !== 'APPROVED') {
@@ -336,6 +534,8 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
 
     const careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
+    const customFields = parseCustomFields(exhibitionData.customFields) ?? [];
+    const normalizedCustomAnswers = normalizeCustomAnswers(customAnswers, customFields);
 
     const application = await prisma.application.create({
       data: {
@@ -345,6 +545,7 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         career: careerStr,
         artworkImages: JSON.stringify(images),
         portfolioFileUrl: safeFileUrl(portfolioFileUrl),
+        customAnswers: normalizedCustomAnswers.length ? JSON.stringify(normalizedCustomAnswers) : null,
       }
     });
 
@@ -492,6 +693,7 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
         ...app,
         career: safeJson(app.career, null),
         artworkImages: safeJson<string[]>(app.artworkImages, []),
+        customAnswers: safeJson(app.customAnswers, []),
         ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
       };
     });

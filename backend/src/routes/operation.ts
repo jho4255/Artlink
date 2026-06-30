@@ -13,6 +13,7 @@ import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { buildCaptionHwp, CAPTION_CELL_CAPACITY } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
+import { pushToUser } from '../lib/sse';
 
 const router = Router();
 
@@ -239,6 +240,82 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
 });
 
 // ── 단일 작가 제출정보 (PDF 인쇄용) — 갤러리/Admin 또는 본인 ──
+router.post('/:id/submission-reminders', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { exhibition, isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+
+    const accepted = await prisma.application.findMany({
+      where: { exhibitionId, status: 'ACCEPTED' },
+      include: { user: { select: { id: true, name: true, nickname: true, role: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
+    const subByUser = new Map(subs.map((s) => [s.userId, parseSubmission(s)]));
+    const targets = accepted.filter((a) => {
+      const sub = subByUser.get(a.userId);
+      const hasArtwork = (sub?.artworkList?.length || 0) > 0;
+      const hasCv = !!sub?.cv;
+      const hasNote = !!sub?.note;
+      return !(hasArtwork && hasCv && hasNote);
+    });
+
+    if (targets.length === 0) return res.json({ sentCount: 0, targets: [] });
+
+    const subject = String(req.body?.subject || `[${exhibition.title}] 전시 자료 제출 안내`).trim();
+    const content = String(req.body?.content || [
+      `안녕하세요. ${exhibition.title} 운영팀입니다.`,
+      '',
+      '전시 운영을 위해 작품 정보, 작가 약력, 작가노트 제출이 필요합니다.',
+      '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
+      '',
+      `바로가기: /exhibitions/${exhibitionId}/operation`,
+    ].join('\n')).trim();
+    if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
+
+    const messages = await prisma.$transaction(
+      targets.map((target) => prisma.message.create({
+        data: {
+          senderId: req.user!.id,
+          receiverId: target.userId,
+          subject,
+          content,
+          exhibitionId,
+        },
+        include: {
+          sender: { select: { id: true, name: true, nickname: true, role: true } },
+          receiver: { select: { id: true, name: true, nickname: true, role: true } },
+          exhibition: { select: { id: true, title: true } },
+        },
+      })),
+    );
+
+    try {
+      await prisma.notification.createMany({
+        data: targets.map((target) => ({
+          userId: target.userId,
+          type: 'SUBMISSION_REMINDER',
+          message: `"${exhibition.title}" 전시 자료 제출 안내가 도착했습니다.`,
+          linkUrl: `/messages?partner=${req.user!.id}&exhibition=${exhibitionId}&subject=${encodeURIComponent(subject)}`,
+        })),
+      });
+      for (const message of messages) {
+        pushToUser(message.receiverId, 'message', message);
+        pushToUser(req.user!.id, 'message', message);
+      }
+    } catch {
+      // 메시지는 이미 생성되었으므로 알림/SSE 실패는 무시합니다.
+    }
+
+    res.json({
+      sentCount: targets.length,
+      targets: targets.map((target) => ({ id: target.user.id, name: target.user.nickname || target.user.name })),
+    });
+  } catch (e) { next(e); }
+});
+
 router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
@@ -592,6 +669,80 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
     } catch { /* 알림 실패해도 요청은 정상 */ }
 
     res.json({ settlementRequested: true, requestedCount: accepted.length });
+  } catch (e) { next(e); }
+});
+
+// ── 정산 확인 재안내 (오너/Admin) — 미응답(PENDING) 작가에게 DM + 알림 ──
+router.post('/:id/settlement/reminders', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (!exhibition.ended) throw new AppError('전시 종료 후 사용할 수 있습니다.', 400);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    if (!exhibition.settlementRequestedAt) throw new AppError('먼저 정산 확인 요청을 보내주세요.', 400);
+
+    const pending = await prisma.settlementApproval.findMany({
+      where: { exhibitionId, status: 'PENDING' },
+      select: { artistUserId: true },
+    });
+    const pendingIds = pending.map((row) => row.artistUserId);
+    if (pendingIds.length === 0) return res.json({ sentCount: 0, targets: [] });
+
+    const targets = await prisma.user.findMany({
+      where: { id: { in: pendingIds } },
+      select: { id: true, name: true, nickname: true, role: true },
+    });
+
+    const subject = String(req.body?.subject || `[${exhibition.title}] 정산 확인 부탁드립니다`).trim();
+    const content = String(req.body?.content || [
+      `안녕하세요. ${exhibition.title} 운영팀입니다.`,
+      '',
+      '정산 내역 확인 요청을 다시 안내드립니다.',
+      '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
+      '',
+      `바로가기: /exhibitions/${exhibitionId}/operation`,
+    ].join('\n')).trim();
+    if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
+
+    const messages = await prisma.$transaction(
+      targets.map((target) => prisma.message.create({
+        data: {
+          senderId: req.user!.id,
+          receiverId: target.id,
+          subject,
+          content,
+          exhibitionId,
+        },
+        include: {
+          sender: { select: { id: true, name: true, nickname: true, role: true } },
+          receiver: { select: { id: true, name: true, nickname: true, role: true } },
+          exhibition: { select: { id: true, title: true } },
+        },
+      })),
+    );
+
+    try {
+      await prisma.notification.createMany({
+        data: targets.map((target) => ({
+          userId: target.id,
+          type: 'SETTLEMENT_CONFIRM_REQUEST',
+          message: `"${exhibition.title}" 정산 확인 재안내가 도착했습니다. 확인 후 수락해주세요.`,
+          linkUrl: `/messages?partner=${req.user!.id}&exhibition=${exhibitionId}&subject=${encodeURIComponent(subject)}`,
+        })),
+      });
+      for (const message of messages) {
+        pushToUser(message.receiverId, 'message', message);
+        pushToUser(req.user!.id, 'message', message);
+      }
+    } catch {
+      // 메시지는 이미 생성되었으므로 알림/SSE 실패는 무시합니다.
+    }
+
+    res.json({
+      sentCount: targets.length,
+      targets: targets.map((target) => ({ id: target.id, name: target.nickname || target.name })),
+    });
   } catch (e) { next(e); }
 });
 

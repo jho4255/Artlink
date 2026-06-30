@@ -19,6 +19,7 @@ import NotFoundPage from '@/pages/NotFoundPage';
 import AuthCallbackPage from '@/pages/AuthCallbackPage';
 import PrivacyPage from '@/pages/PrivacyPage';
 import OperationPage from '@/pages/OperationPage';
+import OperationClassicPage from '@/pages/OperationClassicPage';
 import OperationPrintPage from '@/pages/OperationPrintPage';
 import ApplicantsPage from '@/pages/ApplicantsPage';
 
@@ -32,8 +33,11 @@ export default function App() {
         <Route path="/galleries/:id" element={<GalleryDetailPage />} />
         <Route path="/exhibitions" element={<ExhibitionsPage />} />
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
-        <Route path="/exhibitions/:id/operation" element={
+        <Route path="/exhibitions/:id/operation/new" element={
           <ProtectedRoute><OperationPage /></ProtectedRoute>
+        } />
+        <Route path="/exhibitions/:id/operation" element={
+          <ProtectedRoute><OperationClassicPage /></ProtectedRoute>
         } />
         <Route path="/exhibitions/:id/applicants" element={
           <ProtectedRoute><ApplicantsPage /></ProtectedRoute>

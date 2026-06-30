@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OperationPage — 공모 운영 페이지 (/exhibitions/:id/operation)
  *
  * 접근: 갤러리 오너 / Admin / 수락(ACCEPTED)된 작가
@@ -29,133 +29,16 @@ const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'a
   { key: 'award', label: '수상 및 선정' },
 ];
 
-const stageToneClasses: Record<string, string> = {
-  recruiting: 'bg-blue-50 text-blue-700 border-blue-100',
-  closed: 'bg-amber-50 text-amber-700 border-amber-100',
-  confirmed: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  ended: 'bg-purple-50 text-purple-700 border-purple-100',
-  settled: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-};
-
-function getOperationStage(access: OperationAccess) {
-  if (access.settled) return { key: 'settled', label: '정산 완료', order: 4 };
-  if (access.ended) return { key: 'ended', label: '전시 종료', order: 3 };
-  if (access.confirmed) return { key: 'confirmed', label: '전시 확정', order: 2 };
-  if (access.recruitmentClosed) return { key: 'closed', label: '모집 마감', order: 1 };
-  return { key: 'recruiting', label: '모집 중', order: 0 };
-}
-
-function operationSummaryText(access: OperationAccess) {
-  if (access.settled) return '정산 결과 공유 완료';
-  if (access.settlementRequested) return '작가 정산 확인 대기';
-  if (access.ended) return '판매 내역과 정산 입력';
-  if (access.confirmed) return '운영 자료 최종 점검';
-  if (access.recruitmentClosed) return '참여 작가 확정';
-  return '지원자 검토 진행';
-}
-
-function compactDate(value?: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString('ko', { month: 'short', day: 'numeric' });
-}
-
-function getSubmissionMissingParts(submission: OperationSubmission): string[] {
-  const parts: string[] = [];
-  if ((submission.artworkList?.length || 0) === 0) parts.push('작품 정보');
-  if (!submission.cv) parts.push('작가 약력');
-  if (!(submission.note && (submission.note.statement || submission.note.sections?.length))) parts.push('작가노트');
-  return parts;
-}
-
 export default function OperationPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const queryClient = useQueryClient();
-  const [activeHelper, setActiveHelper] = useState<'submission' | 'settlement-request' | 'settlement-pdf' | null>(null);
-  const [activeWorkPanel, setActiveWorkPanel] = useState<'submissions' | 'settlement'>('submissions');
-  const [reminderSubject, setReminderSubject] = useState('');
-  const [reminderContent, setReminderContent] = useState('');
-  const [settlementReminderSubject, setSettlementReminderSubject] = useState('');
-  const [settlementReminderContent, setSettlementReminderContent] = useState('');
 
   const { data: access, isLoading, error } = useQuery<OperationAccess>({
     queryKey: ['operation-access', id],
     queryFn: () => api.get(`/operations/${id}/access`).then(r => r.data),
     enabled: !!id,
     retry: false,
-  });
-
-  const canManage = !!access && (access.isOwner || access.isAdmin);
-
-  const { data: submissionSummary = [] } = useQuery<{ user: any; submission: OperationSubmission }[]>({
-    queryKey: ['operation-submissions', id],
-    queryFn: () => api.get(`/operations/${id}/submissions`).then(r => r.data),
-    enabled: !!id && canManage,
-    staleTime: 0,
-  });
-
-  const { data: settlementSummary } = useQuery<Omit<Settlement, 'artists'> & {
-    settled?: boolean;
-    settledAt?: string | null;
-    settlementRequested?: boolean;
-    allApproved?: boolean;
-    artists: (SettlementArtist & { approval?: { status: string; comment?: string | null } | null })[];
-  }>({
-    queryKey: ['operation-settlement', id],
-    queryFn: () => api.get(`/operations/${id}/settlement`).then(r => r.data),
-    enabled: !!id && canManage && !!access?.ended,
-    staleTime: 0,
-  });
-  useEffect(() => {
-    if (!access) return;
-    setReminderSubject(`[${access.title}] 전시 자료 제출 안내`);
-    setReminderContent([
-      `안녕하세요. ${access.title} 운영팀입니다.`,
-      '',
-      '전시 운영을 위해 아직 제출되지 않은 자료 확인을 부탁드립니다.',
-      '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
-      '',
-      `바로가기: /exhibitions/${id}/operation`,
-    ].join('\n'));
-    setSettlementReminderSubject(`[${access.title}] 정산 확인 부탁드립니다`);
-    setSettlementReminderContent([
-      `안녕하세요. ${access.title} 운영팀입니다.`,
-      '',
-      '정산 내역 확인 요청을 다시 안내드립니다.',
-      '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
-      '',
-      `바로가기: /exhibitions/${id}/operation`,
-    ].join('\n'));
-  }, [access?.title, id]);
-
-  const reminderMutation = useMutation({
-    mutationFn: (payload: { subject: string; content: string }) => api.post(`/operations/${id}/submission-reminders`, payload),
-    onSuccess: (res) => {
-      toast.success(`자료 제출 안내를 ${res.data.sentCount}명에게 보냈습니다.`);
-      setActiveHelper(null);
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '자료 제출 안내 발송 실패'),
-  });
-  const requestSettlementMutation = useMutation({
-    mutationFn: () => api.post(`/operations/${id}/settlement/request`),
-    onSuccess: (res) => {
-      toast.success(`정산 확인 요청을 ${res.data.requestedCount}명에게 보냈습니다.`);
-      setActiveHelper(null);
-      queryClient.invalidateQueries({ queryKey: ['operation-settlement', id] });
-      queryClient.invalidateQueries({ queryKey: ['operation-access', id] });
-      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '정산 확인 요청 실패'),
-  });
-  const settlementReminderMutation = useMutation({
-    mutationFn: (payload: { subject: string; content: string }) => api.post(`/operations/${id}/settlement/reminders`, payload),
-    onSuccess: (res) => {
-      toast.success(`정산 확인 재안내를 ${res.data.sentCount}명에게 보냈습니다.`);
-      setActiveHelper(null);
-      queryClient.invalidateQueries({ queryKey: ['operation-settlement', id] });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '정산 확인 재안내 발송 실패'),
   });
 
   if (isLoading) return <div className="max-w-3xl mx-auto px-6 py-10"><div className="h-40 bg-gray-100 animate-pulse rounded-xl" /></div>;
@@ -168,445 +51,29 @@ export default function OperationPage() {
     );
   }
 
-  const stage = getOperationStage(access);
-  const submittedArtists = submissionSummary.filter(({ submission }) => {
-    const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
-    const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
-    return hasArtwork || hasCv || hasNote;
-  }).length;
-  const completeArtists = submissionSummary.filter(({ submission }) => {
-    const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
-    const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
-    return hasArtwork && hasCv && hasNote;
-  }).length;
-  const totalArtworks = submissionSummary.reduce((sum, row) => sum + (row.submission.artworkList?.length || 0), 0);
-  const settlementAccepted = settlementSummary?.artists.filter(a => a.approval?.status === 'APPROVED').length ?? 0;
-  const settlementIssues = settlementSummary?.artists.filter(a => a.approval?.status === 'ISSUE').length ?? 0;
-  const incompleteSubmissionRows = submissionSummary.filter(({ submission }) => {
-    const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
-    const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
-    return !(hasArtwork && hasCv && hasNote);
-  });
-  const incompleteSubmissionDetails = incompleteSubmissionRows.map(({ user, submission }) => ({
-    user,
-    missing: getSubmissionMissingParts(submission),
-  }));
-  const settlementPendingRows = settlementSummary?.artists.filter(a => a.approval?.status !== 'APPROVED') ?? [];
-  const settlementUnansweredRows = settlementSummary?.artists.filter(a => (a.approval?.status || 'PENDING') === 'PENDING') ?? [];
-
-  const managerSections = [
-    { id: 'operation-stage', label: '진행 단계', value: stage.label },
-    { id: 'operation-notices', label: '운영 공지사항', value: '공유' },
-    { id: 'operation-submissions', label: '작가 자료', value: `${completeArtists}/${submissionSummary.length}` },
-    ...(access.ended ? [{ id: 'operation-settlement', label: '정산', value: access.settled ? '완료' : access.settlementRequested ? '확인 중' : '준비' }] : []),
-  ];
-
-  const incompleteArtists = Math.max(0, submissionSummary.length - completeArtists);
-  const settlementArtistCount = settlementSummary?.artists.length ?? 0;
-  const nextTasks = access.ended
-    ? [
-        {
-          id: settlementArtistCount > 0 ? 'operation-settlement' : 'operation-submissions',
-          title: settlementArtistCount > 0
-            ? access.settlementRequested ? '정산 승인 상태 확인' : '판매 내역과 정산 입력'
-            : '수락 작가 먼저 확인',
-          meta: settlementArtistCount > 0
-            ? access.settlementRequested
-              ? `작가 ${settlementAccepted}/${settlementArtistCount}명 수락`
-              : '정산 요청 전 검토'
-            : '정산 대상이 아직 없습니다',
-        },
-      ]
-    : [
-        {
-          id: access.confirmed ? 'operation-submissions' : 'operation-stage',
-          title: access.confirmed ? '작가 제출자료 점검' : '다음 운영 단계 확인',
-          meta: access.confirmed ? `${incompleteArtists}명 자료 대기` : stage.label,
-        },
-      ];
-  const automationCandidates = [
-    {
-      title: '자료 제출 안내',
-      desc: submissionSummary.length === 0 ? '수락 작가가 생기면 표시' : incompleteArtists > 0 ? `미완료 ${incompleteArtists}명에게 제출 안내` : '자료 완료 시 자동 숨김',
-      targetId: 'operation-submissions',
-    },
-    {
-      title: '정산 확인 요청',
-      desc: !access.ended
-        ? '전시 종료 후 사용'
-        : settlementArtistCount === 0
-          ? '정산 대상 등록 후 사용'
-          : access.settlementRequested ? `미응답 ${settlementUnansweredRows.length}명 재안내` : '정산 요청 후 사용',
-      targetId: access.ended ? 'operation-settlement' : undefined,
-      disabled: !access.ended,
-    },
-    {
-      title: '정산서 일괄 생성',
-      desc: '현금/카드 정산서를 한 번에 생성',
-      targetId: access.ended ? 'operation-settlement' : undefined,
-      disabled: !access.ended,
-    },
-  ];
-  const totalSales = settlementSummary?.grand?.total ?? 0;
-  const todayTaskCount = Math.max(1, nextTasks.length + (incompleteArtists > 0 ? 1 : 0) + (settlementIssues > 0 ? 1 : 0));
-  const priorityTask = nextTasks[0];
-  const priorityTitle = incompleteArtists > 0
-    ? `미완료 작가 ${incompleteArtists}명: 누락 자료를 확인하세요`
-    : access.ended
-      ? settlementArtistCount > 0 ? '판매 및 정산 상태를 확인하세요' : '정산 대상 작가를 먼저 확인하세요'
-      : '현재 운영 단계를 확인하세요';
-  const priorityDesc = incompleteArtists > 0
-    ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${displayName(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
-    : priorityTask?.meta || operationSummaryText(access);
-  const downloadHelperSettlement = async (method?: 'CARD' | 'CASH') => {
-    if (!settlementSummary) return;
-    try {
-      const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadOverallSettlementPdf(settlementSummary, method);
-      setActiveHelper(null);
-    } catch {
-      toast.error('정산서 생성 실패');
-    }
-  };
-
-  if (!canManage) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 md:py-12">
-        <button onClick={() => navigate(`/exhibitions/${id}`)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 mb-4">
-          <ArrowLeft size={15} /> 공모 상세
-        </button>
-        <div className="mb-8">
-          <p className="text-xs text-gray-400">{access.galleryName} · 운영 페이지</p>
-          <h1 className="text-2xl md:text-3xl font-serif text-gray-900 mt-1">{access.title}</h1>
-        </div>
-
-        <NoticesSection exhibitionId={id!} canManage={false} />
-        {access.isAcceptedArtist && access.ended && <MyArtistSettlementSection exhibitionId={id!} />}
-        {access.isAcceptedArtist && <MySubmissionSection exhibitionId={id!} myUserId={user!.id} confirmed={access.confirmed} />}
-      </div>
-    );
-  }
+  const canManage = access.isOwner || access.isAdmin;
 
   return (
-    <div className="bg-white">
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8 xl:px-10">
-        <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm text-gray-500">내 공모 운영 · {access.galleryName}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="text-3xl font-semibold leading-tight text-gray-950">상세 운영</h1>
-              <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${stageToneClasses[stage.key]}`}>
-                {stage.label}
-              </span>
-              {access.settlementRequested && !access.settled && (
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">정산 확인 요청 중</span>
-              )}
-            </div>
-            <p className="mt-2 truncate text-sm text-gray-500">{access.title}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => navigate('/mypage?tab=my-exhibitions')} className="inline-flex min-h-10 items-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">
-              내 공모 운영
-            </button>
-            <button onClick={() => navigate(`/exhibitions/${id}`)} className="inline-flex min-h-10 items-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">
-              공모 상세
-            </button>
-            <button onClick={() => { setActiveWorkPanel('submissions'); window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
-              자료 확인
-            </button>
-          </div>
-        </header>
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-8 md:py-12">
+      <button onClick={() => navigate(`/exhibitions/${id}`)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 mb-4">
+        <ArrowLeft size={15} /> 공모 상세
+      </button>
+      <div className="mb-8">
+        <p className="text-xs text-gray-400">{access.galleryName} · 운영 페이지</p>
+        <h1 className="text-2xl md:text-3xl font-serif text-gray-900 mt-1">{access.title}</h1>
+      </div>
 
-        <section className="mb-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:grid-cols-2 lg:grid-cols-4">
-          <div className="border-b border-gray-200 p-4 sm:border-r lg:border-b-0">
-            <span className="block text-xs text-gray-500">자료 제출</span>
-            <strong className="mt-1 block text-2xl leading-8 text-gray-950">{completeArtists} / {submissionSummary.length}</strong>
-          </div>
-          <div className="border-b border-gray-200 p-4 lg:border-b-0 lg:border-r">
-            <span className="block text-xs text-gray-500">정산 확인</span>
-            <strong className="mt-1 block text-2xl leading-8 text-gray-950">{access.ended ? `${settlementAccepted} / ${settlementArtistCount}` : '-'}</strong>
-          </div>
-          <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
-            <span className="block text-xs text-gray-500">판매 합계</span>
-            <strong className="mt-1 block text-2xl leading-8 text-gray-950">{won(totalSales)}</strong>
-          </div>
-          <div className="p-4">
-            <span className="block text-xs text-gray-500">오늘 필요한 작업</span>
-            <strong className="mt-1 block text-2xl leading-8 text-gray-950">{todayTaskCount}건</strong>
-          </div>
-        </section>
+      {canManage && <StatusPanel exhibitionId={id!} access={access} />}
 
-        <section className="mb-5 grid gap-4 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-          <div>
-            <h2 className="text-base font-semibold text-gray-950">{priorityTitle}</h2>
-            <p className="mt-1 text-sm text-orange-900">{priorityDesc}</p>
-            {incompleteArtists > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {incompleteSubmissionDetails.slice(0, 4).map(({ user, missing }) => (
-                  <span key={user.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-950 ring-1 ring-orange-200">
-                    {displayName(user)} · {missing.join(', ')}
-                  </span>
-                ))}
-                {incompleteSubmissionDetails.length > 4 && (
-                  <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-900">
-                    외 {incompleteSubmissionDetails.length - 4}명
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 md:justify-end">
-            <button onClick={() => {
-              const targetId = priorityTask?.id || 'operation-submissions';
-              if (targetId === 'operation-submissions') setActiveWorkPanel('submissions');
-              if (targetId === 'operation-settlement') setActiveWorkPanel('settlement');
-              window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-            }} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-orange-100">
-              미완료 작가 보기
-            </button>
-            <button onClick={() => setActiveHelper('submission')} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
-              자료 제출 안내 DM
-            </button>
-          </div>
-        </section>
+      <NoticesSection exhibitionId={id!} canManage={canManage} />
 
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="grid gap-4">
-            <div id="operation-notices" className="scroll-mt-24">
-              <NoticesSection exhibitionId={id!} canManage={true} />
-            </div>
+      {access.isAcceptedArtist && access.ended && <MyArtistSettlementSection exhibitionId={id!} />}
 
-            <section>
-              <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-950">운영 작업</h2>
-                  <p className="mt-1 text-sm text-gray-500">작가 자료와 정산을 분리해서 확인합니다.</p>
-                </div>
-                <div className="inline-flex rounded-lg bg-gray-100 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setActiveWorkPanel('submissions')}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${activeWorkPanel === 'submissions' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                  >
-                    작가 제출 정보
-                  </button>
-                  {access.ended && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveWorkPanel('settlement')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${activeWorkPanel === 'settlement' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                    >
-                      정산
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div>
-                {activeWorkPanel === 'submissions' && (
-                  <div id="operation-submissions" className="scroll-mt-24">
-                    <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} />
-                  </div>
-                )}
-                {activeWorkPanel === 'settlement' && access.ended && (
-                  <div id="operation-settlement" className="scroll-mt-24">
-                    <SettlementSection exhibitionId={id!} isAdmin={access.isAdmin} />
-                  </div>
-                )}
-              </div>
-            </section>
+      {access.isAcceptedArtist && <MySubmissionSection exhibitionId={id!} myUserId={user!.id} confirmed={access.confirmed} />}
 
-          </section>
+      {canManage && <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} />}
 
-          <aside className="grid gap-4 lg:sticky lg:top-6">
-            <div id="operation-stage" className="scroll-mt-24">
-              <StatusPanel exhibitionId={id!} access={access} />
-            </div>
-
-            <section className="rounded-2xl border border-gray-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-              <div className="border-b border-gray-200 px-4 py-4">
-                <h2 className="text-lg font-semibold text-gray-950">현재 운영 상태</h2>
-                <p className="mt-1 text-sm text-gray-500">진행 단계와 작업 현황을 요약해서 보여줍니다.</p>
-              </div>
-              <div className="grid gap-3 p-4">
-                {managerSections.map((section, index) => (
-                  <div
-                    key={section.id}
-                    className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 rounded-lg bg-gray-50 px-3 py-2"
-                  >
-                    <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">{index + 1}</span>
-                    <span>
-                      <span className="block text-sm font-semibold text-gray-950">{section.label}</span>
-                      <span className="block text-xs text-gray-500">{section.value}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-              <div className="border-b border-gray-200 px-4 py-4">
-                <h2 className="text-lg font-semibold text-gray-950">운영 도우미</h2>
-                <p className="mt-1 text-sm text-gray-500">반복 작업을 빠르게 처리합니다.</p>
-              </div>
-              <div className="grid gap-2 p-4">
-                {automationCandidates.map((item, index) => (
-                  <button
-                    key={item.title}
-                    type="button"
-                    disabled={item.disabled}
-                    onClick={() => setActiveHelper(index === 0 ? 'submission' : index === 1 ? 'settlement-request' : 'settlement-pdf')}
-                    className={`group flex items-start justify-between gap-3 rounded-lg px-3 py-2 text-left ${
-                      item.disabled ? 'cursor-default opacity-45' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>
-                      <span className="block text-sm font-semibold text-gray-950">{item.title}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">{item.desc}</span>
-                    </span>
-                    {!item.disabled && <ArrowRight size={14} className="mt-1 shrink-0 text-gray-300 group-hover:text-gray-700" />}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-          </aside>
-        </div>
-
-        {activeHelper && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" onClick={() => setActiveHelper(null)}>
-            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-              {activeHelper === 'submission' && (
-                <>
-                  <h3 className="text-lg font-semibold text-gray-950">자료 제출 안내 DM</h3>
-                  <p className="mt-1 text-sm text-gray-500">미완료 작가에게 보낼 기본 문구를 확인하고 수정한 뒤 발송합니다.</p>
-                  <div className="mt-4 max-h-56 overflow-auto rounded-xl border border-gray-200">
-                    {incompleteSubmissionRows.length === 0 ? (
-                      <p className="p-4 text-sm text-gray-400">안내를 보낼 대상이 없습니다.</p>
-                    ) : incompleteSubmissionDetails.map(({ user, missing }) => (
-                      <div key={user.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
-                        <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
-                        <span className="text-right text-xs text-orange-700">{missing.join(', ')}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <label className="block text-xs font-medium text-gray-500">DM 제목</label>
-                    <input
-                      value={reminderSubject}
-                      onChange={(event) => setReminderSubject(event.target.value)}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    />
-                    <label className="block pt-2 text-xs font-medium text-gray-500">DM 내용</label>
-                    <textarea
-                      value={reminderContent}
-                      onChange={(event) => setReminderContent(event.target.value)}
-                      className="h-36 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    />
-                  </div>
-                  <div className="mt-5 flex gap-2">
-                    <button onClick={() => setActiveHelper(null)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">취소</button>
-                    <button
-                      onClick={() => reminderMutation.mutate({ subject: reminderSubject, content: reminderContent })}
-                      disabled={reminderMutation.isPending || incompleteSubmissionRows.length === 0 || !reminderSubject.trim() || !reminderContent.trim()}
-                      className="flex-1 rounded-lg bg-gray-950 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
-                    >
-                      {reminderMutation.isPending ? '발송 중...' : `${incompleteSubmissionRows.length}명에게 DM 발송`}
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {activeHelper === 'settlement-request' && (
-                <>
-                  <h3 className="text-lg font-semibold text-gray-950">{access.settlementRequested ? '미응답자 정산 확인 재안내' : '정산 확인 요청'}</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {access.settlementRequested
-                      ? '아직 정산을 승인하지 않은 작가에게 확인 부탁 DM을 다시 보냅니다.'
-                      : '정산 대상 작가에게 확인 요청 알림을 보냅니다. 요청 후에는 작가 확인 전까지 정산 입력이 잠깁니다.'}
-                  </p>
-                  <div className="mt-4 max-h-56 overflow-auto rounded-xl border border-gray-200">
-                    {(settlementSummary?.artists ?? []).length === 0 ? (
-                      <p className="p-4 text-sm text-gray-400">정산 대상 작가가 없습니다.</p>
-                    ) : (access.settlementRequested ? settlementUnansweredRows : (settlementSummary?.artists ?? [])).map((artist) => (
-                      <div key={artist.user.id} className="flex items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0">
-                        <span className="text-sm font-medium text-gray-900">{displayName(artist.user)}</span>
-                        <span className="text-xs text-gray-500">{access.settlementRequested ? '미응답' : won(artist.artistAmount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {access.settlementRequested && (
-                    <div className="mt-4 space-y-2">
-                      <label className="block text-xs font-medium text-gray-500">DM 제목</label>
-                      <input
-                        value={settlementReminderSubject}
-                        onChange={(event) => setSettlementReminderSubject(event.target.value)}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                      />
-                      <label className="block pt-2 text-xs font-medium text-gray-500">DM 내용</label>
-                      <textarea
-                        value={settlementReminderContent}
-                        onChange={(event) => setSettlementReminderContent(event.target.value)}
-                        className="h-36 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400"
-                      />
-                    </div>
-                  )}
-                  <div className="mt-5 flex gap-2">
-                    <button onClick={() => setActiveHelper(null)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">취소</button>
-                    <button
-                      onClick={() => {
-                        if (access.settlementRequested) {
-                          settlementReminderMutation.mutate({ subject: settlementReminderSubject, content: settlementReminderContent });
-                        } else {
-                          requestSettlementMutation.mutate();
-                        }
-                      }}
-                      disabled={
-                        access.settlementRequested
-                          ? settlementReminderMutation.isPending || settlementUnansweredRows.length === 0 || !settlementReminderSubject.trim() || !settlementReminderContent.trim()
-                          : requestSettlementMutation.isPending || !access.ended || settlementArtistCount === 0
-                      }
-                      className="flex-1 rounded-lg bg-green-600 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40"
-                    >
-                      {access.settlementRequested
-                        ? settlementReminderMutation.isPending ? '발송 중...' : `${settlementUnansweredRows.length}명에게 재안내`
-                        : requestSettlementMutation.isPending ? '요청 중...' : `${settlementArtistCount}명에게 요청`}
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {activeHelper === 'settlement-pdf' && (
-                <>
-                  <h3 className="text-lg font-semibold text-gray-950">정산서 일괄 생성</h3>
-                  <p className="mt-1 text-sm text-gray-500">현재 정산 데이터를 기준으로 전체, 현금, 카드 정산서를 바로 생성합니다.</p>
-                  <div className="mt-4 rounded-xl border border-gray-200 p-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">정산 대상</span>
-                      <b className="text-gray-950">{settlementArtistCount}명</b>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-sm">
-                      <span className="text-gray-500">판매 합계</span>
-                      <b className="text-gray-950">{won(totalSales)}</b>
-                    </div>
-                    {settlementPendingRows.length > 0 && (
-                      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">아직 정산 확인이 끝나지 않은 작가 {settlementPendingRows.length}명이 있습니다.</p>
-                    )}
-                  </div>
-                  <div className="mt-5 grid grid-cols-3 gap-2">
-                    <button onClick={() => downloadHelperSettlement()} className="rounded-lg bg-gray-950 py-2.5 text-sm font-medium text-white hover:bg-gray-800">전체</button>
-                    <button onClick={() => downloadHelperSettlement('CASH')} className="rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50">현금</button>
-                    <button onClick={() => downloadHelperSettlement('CARD')} className="rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50">카드</button>
-                  </div>
-                  <button onClick={() => setActiveHelper(null)} className="mt-2 w-full rounded-lg py-2 text-sm text-gray-500 hover:bg-gray-50">닫기</button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </main>
+      {canManage && access.ended && <SettlementSection exhibitionId={id!} isAdmin={access.isAdmin} />}
     </div>
   );
 }
@@ -643,7 +110,7 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
   };
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-8 border border-gray-200 rounded-xl p-5">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-sm font-medium text-gray-900">공모 진행 단계</h2>
         {locked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">정산완료</span>}
@@ -747,7 +214,7 @@ function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; can
   const startEdit = (n: ExhibitionNotice) => { setEditId(n.id); setTitle(n.title); setContent(n.content); setShowForm(true); };
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-10">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-medium text-gray-900"><Megaphone size={18} /> 운영 공지사항</h2>
@@ -931,7 +398,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   }
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-medium text-gray-900">내 전시 정보</h2>
         <button onClick={handleSave} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">
@@ -990,7 +457,6 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const [zipping, setZipping] = useState(false);
   const [captioning, setCaptioning] = useState(false);
   const [imgZipping, setImgZipping] = useState(false);
-  const [detailTab, setDetailTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
 
   const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
 
@@ -1050,7 +516,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   };
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-lg font-medium text-gray-900">작가 제출 정보 <span className="text-sm text-gray-400">({data.length}명)</span></h2>
         <div className="flex items-center gap-3 shrink-0">
@@ -1086,7 +552,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
             const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
             return (
               <div key={user.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                <button onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }} className="w-full flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
+                <button onClick={() => setOpenId(isOpen ? null : user.id)} className="w-full flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
                   <div className="flex items-center gap-2 min-w-0">
                     {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center"><User size={14} className="text-gray-400" /></div>}
                     <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
@@ -1095,27 +561,13 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                   {isOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                 </button>
                 {isOpen && (
-                  <div className="border-t border-gray-100 p-4">
-                    <div className="mb-3 grid gap-2 md:grid-cols-3">
-                      <button onClick={() => setDetailTab('artwork')} className={`rounded-lg border px-3 py-2 text-left ${detailTab === 'artwork' ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                        <span className="block text-xs opacity-70">출품리스트</span>
-                        <span className="block text-sm font-semibold">{artCount}점</span>
-                      </button>
-                      <button onClick={() => setDetailTab('cv')} className={`rounded-lg border px-3 py-2 text-left ${detailTab === 'cv' ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                        <span className="block text-xs opacity-70">작가약력</span>
-                        <span className="block text-sm font-semibold">{hasCv ? '입력 완료' : '미입력'}</span>
-                      </button>
-                      <button onClick={() => setDetailTab('note')} className={`rounded-lg border px-3 py-2 text-left ${detailTab === 'note' ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                        <span className="block text-xs opacity-70">작가노트</span>
-                        <span className="block text-sm font-semibold">{hasNote ? '입력 완료' : '미입력'}</span>
-                      </button>
-                    </div>
+                  <div className="border-t border-gray-100 p-4 space-y-4">
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => openPrint(user.id, 'artwork')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 출품리스트 PDF</button>
                       <button onClick={() => openPrint(user.id, 'cv')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가약력 PDF</button>
                       <button onClick={() => openPrint(user.id, 'note')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가노트 PDF</button>
                     </div>
-                    <SubmissionReadonly submission={submission} activeTab={detailTab} />
+                    <SubmissionReadonly submission={submission} />
                   </div>
                 )}
               </div>
@@ -1155,13 +607,13 @@ function RepresentativeSelector({ artworkList, value, onChange }: { artworkList:
 }
 
 // 읽기 전용 제출정보 (갤러리/Admin)
-function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission: OperationSubmission; activeTab?: 'artwork' | 'cv' | 'note' }) {
+function SubmissionReadonly({ submission }: { submission: OperationSubmission }) {
   const { artworkList = [], cv, note } = submission;
   const repIndex = submission.representativeIndex ?? null;
   return (
     <div className="space-y-4 text-sm">
       {/* 출품리스트 */}
-      {activeTab === 'artwork' && <div>
+      <div>
         <p className="text-xs font-medium text-gray-500 mb-1">출품리스트 ({artworkList.length})</p>
         {artworkList.length === 0 ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="space-y-1.5">
@@ -1175,9 +627,9 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
             ))}
           </div>
         )}
-      </div>}
+      </div>
       {/* 약력 */}
-      {activeTab === 'cv' && <div>
+      <div>
         <p className="text-xs font-medium text-gray-500 mb-1">작가약력</p>
         {!cv ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="text-xs text-gray-700 space-y-1">
@@ -1187,9 +639,9 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
             ))}
           </div>
         )}
-      </div>}
+      </div>
       {/* 노트 */}
-      {activeTab === 'note' && <div>
+      <div>
         <p className="text-xs font-medium text-gray-500 mb-1">작가노트</p>
         {!note || (!note.statement && !(note.sections?.length)) ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="text-xs text-gray-700 whitespace-pre-wrap">
@@ -1197,7 +649,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
             {note.sections?.map((s, i) => <div key={i} className="mt-2"><span className="font-medium">{s.title}</span>{'\n'}{s.body}</div>)}
           </div>
         )}
-      </div>}
+      </div>
     </div>
   );
 }
@@ -1273,7 +725,7 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   };
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-medium text-gray-900">내 정산 내역</h2>
         <button onClick={downloadMine} disabled={downloading} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
@@ -1442,7 +894,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
   const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: displayName(a.user), exhibition: exTitle })));
 
   return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-lg font-medium text-gray-900">정산</h2>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1781,3 +1233,4 @@ function NoteEditor({ value, onChange }: { value: ArtistNote; onChange: (v: Arti
     </div>
   );
 }
+

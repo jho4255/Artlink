@@ -33,7 +33,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
-import type { Exhibition, PromoPhoto, Career, ExhibitionImage } from '@/types';
+import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력 표시용 라벨
@@ -59,6 +59,12 @@ type ExhibitionDetail = Exhibition & {
   promoPhotos?: PromoPhoto[];
 };
 
+function buildCustomAnswers(fields: CustomField[] | null | undefined, values: Record<string, string>): CustomAnswer[] {
+  return (fields ?? [])
+    .map((field) => ({ fieldId: field.id, value: (values[field.id] ?? '').trim() }))
+    .filter((answer) => answer.value);
+}
+
 export default function ExhibitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -80,6 +86,7 @@ export default function ExhibitionDetailPage() {
   const [applyImages, setApplyImages] = useState<string[]>([]);
   const [applyFile, setApplyFile] = useState<string | null>(null);
   const [applyFileNone, setApplyFileNone] = useState(false);
+  const [applyCustomAnswers, setApplyCustomAnswers] = useState<Record<string, string>>({});
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [bioError, setBioError] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -120,7 +127,7 @@ export default function ExhibitionDetailPage() {
 
   // 지원하기 (고정 양식 payload)
   const applyMutation = useMutation({
-    mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null }) =>
+    mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null; customAnswers?: CustomAnswer[] }) =>
       api.post(`/exhibitions/${id}/apply`, payload),
     onSuccess: () => {
       toast.success('지원이 완료되었습니다! 지원서가 갤러리에 전송됩니다.');
@@ -141,6 +148,7 @@ export default function ExhibitionDetailPage() {
     setApplyImages([]);
     setApplyFile(null);
     setApplyFileNone(false);
+    setApplyCustomAnswers({});
     setBioError(false);
     setImgError(false);
     setCareerErrorKeys(new Set());
@@ -673,6 +681,41 @@ export default function ExhibitionDetailPage() {
                     <PortfolioFileInput value={applyFile} onChange={setApplyFile} />
                   )}
                 </div>
+
+                {(exhibition.customFields?.length ?? 0) > 0 && (
+                  <div className="pt-4 border-t border-gray-100">
+                    <p className="text-sm font-medium text-gray-700 mb-2">갤러리 추가 질문</p>
+                    <div className="space-y-3">
+                      {exhibition.customFields!.map((field) => (
+                        <div key={field.id}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {field.label}
+                            {field.required && <span className="text-red-500 ml-1">*</span>}
+                          </label>
+                          {field.type === 'select' ? (
+                            <select
+                              value={applyCustomAnswers[field.id] ?? ''}
+                              onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                            >
+                              <option value="">선택해주세요</option>
+                              {(field.options ?? []).map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <textarea
+                              value={applyCustomAnswers[field.id] ?? ''}
+                              onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                              placeholder="답변을 입력해주세요"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2 mt-6 justify-end">
@@ -692,6 +735,11 @@ export default function ExhibitionDetailPage() {
                     setCareerErrorKeys(careerErr);
                     if (!applyFile && !applyFileNone) {
                       errors.push("포트폴리오 파일을 첨부하거나 '없음'을 체크해주세요.");
+                    }
+                    for (const field of exhibition.customFields ?? []) {
+                      if (field.required && !(applyCustomAnswers[field.id] ?? '').trim()) {
+                        errors.push(`추가 질문 "${field.label}"에 답변해주세요.`);
+                      }
                     }
                     if (errors.length > 0) {
                       toast.error(
@@ -715,6 +763,7 @@ export default function ExhibitionDetailPage() {
                       career: cleanedCareer,
                       artworkImages: applyImages,
                       portfolioFileUrl: applyFileNone ? null : applyFile,
+                      customAnswers: buildCustomAnswers(exhibition.customFields, applyCustomAnswers),
                     });
                     setShowApplyModal(false);
                     setApplyConfirm(true);
