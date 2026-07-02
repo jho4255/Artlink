@@ -256,7 +256,7 @@ export default function ApplicantsPage() {
                         {app.user?.phone && <span>📞 {app.user.phone}</span>}
                         {app.user?.email && <span>📧 {app.user.email}</span>}
                       </div>
-                      <ApplicationContent app={app} onImageClick={(images, index) => setLightbox({ images, index })} />
+                      <ApplicationContent app={app} customFields={exhibition?.customFields} onImageClick={(images, index) => setLightbox({ images, index })} />
                       <button
                         onClick={() => handlePdf(app)}
                         disabled={pdfBusy !== null}

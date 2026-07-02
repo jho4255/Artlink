@@ -1,6 +1,6 @@
 import { FileText } from 'lucide-react';
 import { safeHttpUrl } from '@/lib/utils';
-import type { Career } from '@/types';
+import type { Career, CustomAnswer, CustomField } from '@/types';
 
 const LABELS: { key: keyof Career; label: string }[] = [
   { key: 'artFair', label: '아트페어' },
@@ -17,10 +17,12 @@ export interface ApplicationLike {
   career?: Career | null;
   artworkImages?: string[] | null;
   portfolioFileUrl?: string | null;
+  customAnswers?: CustomAnswer[] | null;
 }
 
 interface Props {
   app: ApplicationLike;
+  customFields?: CustomField[] | null;
   /** 작품 사진 클릭 시 라이트박스 오픈 */
   onImageClick?: (images: string[], index: number) => void;
 }
@@ -29,10 +31,11 @@ interface Props {
  * 지원서 제출 내용 표시 — 작가 약력 / 경력(아트페어·개인전·단체전) / 작품 사진 / 포트폴리오 파일.
  * 갤러리 지원자 관리 + Admin 오버사이트 공용.
  */
-export default function ApplicationContent({ app, onImageClick }: Props) {
+export default function ApplicationContent({ app, customFields, onImageClick }: Props) {
   const career = normalizeCareer(app.career);
   const images = app.artworkImages ?? [];
   const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
+  const answerMap = new Map((app.customAnswers ?? []).map((answer) => [answer.fieldId, answer.value]));
 
   return (
     <div className="space-y-2 bg-gray-50 rounded-lg p-3">
@@ -98,6 +101,24 @@ export default function ApplicationContent({ app, onImageClick }: Props) {
           <p className="text-xs text-gray-400">없음</p>
         )}
       </div>
+
+      {(customFields?.length ?? 0) > 0 && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1">갤러리 추가 질문</p>
+          <div className="space-y-1.5">
+            {customFields!.map((field) => {
+              const answer = answerMap.get(field.id);
+              const value = Array.isArray(answer) ? answer.join(', ') : answer;
+              return (
+                <div key={field.id} className="rounded-md bg-white border border-gray-100 px-2.5 py-2">
+                  <p className="text-[11px] font-medium text-gray-500">{field.label}</p>
+                  <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{value || '-'}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
