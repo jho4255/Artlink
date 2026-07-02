@@ -1616,12 +1616,12 @@ function CustomQuestionBuilder({
   onChange,
 }: {
   fields: CustomField[];
-  onChange: (fields: CustomField[]) => void;
+  onChange: (updater: (fields: CustomField[]) => CustomField[]) => void;
 }) {
   const isChoiceField = (field: CustomField) => field.type === 'select' || field.type === 'multiselect';
   const addQuestion = (type: 'textarea' | 'select') => {
-    onChange([
-      ...fields,
+    onChange((prev) => [
+      ...prev,
       {
         id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         label: '',
@@ -1633,24 +1633,24 @@ function CustomQuestionBuilder({
     ]);
   };
   const updateQuestion = (index: number, patch: Partial<CustomField>) => {
-    onChange(fields.map((field, i) => i === index ? { ...field, ...patch } : field));
+    onChange((prev) => prev.map((field, i) => i === index ? { ...field, ...patch } : field));
   };
   const removeQuestion = (index: number) => {
-    onChange(fields.filter((_, i) => i !== index));
+    onChange((prev) => prev.filter((_, i) => i !== index));
   };
   const updateOption = (fieldIndex: number, optionIndex: number, value: string) => {
-    const field = fields[fieldIndex];
-    const options = [...(field.options ?? [])];
-    options[optionIndex] = value;
-    updateQuestion(fieldIndex, { options });
+    onChange((prev) => prev.map((field, i) => {
+      if (i !== fieldIndex) return field;
+      const options = [...(field.options ?? [])];
+      options[optionIndex] = value;
+      return { ...field, options };
+    }));
   };
   const addOption = (fieldIndex: number) => {
-    const field = fields[fieldIndex];
-    updateQuestion(fieldIndex, { options: [...(field.options ?? []), ''] });
+    onChange((prev) => prev.map((field, i) => i === fieldIndex ? { ...field, options: [...(field.options ?? []), ''] } : field));
   };
   const removeOption = (fieldIndex: number, optionIndex: number) => {
-    const field = fields[fieldIndex];
-    updateQuestion(fieldIndex, { options: (field.options ?? []).filter((_, i) => i !== optionIndex) });
+    onChange((prev) => prev.map((field, i) => i === fieldIndex ? { ...field, options: (field.options ?? []).filter((_, oi) => oi !== optionIndex) } : field));
   };
 
   return (
@@ -2040,7 +2040,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                   </div>
                   <CustomQuestionBuilder
                     fields={form.customFields}
-                    onChange={(customFields) => setForm({ ...form, customFields })}
+                    onChange={(updateCustomFields) => setForm((prev) => ({ ...prev, customFields: updateCustomFields(prev.customFields) }))}
                   />
                 </div>
               </div>
