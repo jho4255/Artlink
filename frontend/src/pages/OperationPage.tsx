@@ -116,7 +116,7 @@ export default function OperationPage() {
       '전시 운영을 위해 아직 제출되지 않은 자료 확인을 부탁드립니다.',
       '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
       '',
-      `바로가기: /exhibitions/${id}/operation`,
+      `바로가기: /exhibitions/${id}/operation/new`,
     ].join('\n'));
     setSettlementReminderSubject(`[${access.title}] 정산 확인 부탁드립니다`);
     setSettlementReminderContent([
@@ -125,7 +125,7 @@ export default function OperationPage() {
       '정산 내역 확인 요청을 다시 안내드립니다.',
       '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
       '',
-      `바로가기: /exhibitions/${id}/operation`,
+      `바로가기: /exhibitions/${id}/operation/new`,
     ].join('\n'));
   }, [access?.title, id]);
 
@@ -205,6 +205,9 @@ export default function OperationPage() {
   ];
 
   const incompleteArtists = Math.max(0, submissionSummary.length - completeArtists);
+  // 자료 제출 챙김은 '전시 확정 ~ 전시 종료 전' 구간에서만 의미가 있음 (그 전엔 라인업 미확정, 종료 후엔 이미 늦음)
+  const submissionPhaseActive = access.confirmed && !access.ended;
+  const showSubmissionAlert = submissionPhaseActive && incompleteArtists > 0;
   const settlementArtistCount = settlementSummary?.artists.length ?? 0;
   const nextTasks = access.ended
     ? [
@@ -230,8 +233,13 @@ export default function OperationPage() {
   const automationCandidates = [
     {
       title: '자료 제출 안내',
-      desc: submissionSummary.length === 0 ? '수락 작가가 생기면 표시' : incompleteArtists > 0 ? `미완료 ${incompleteArtists}명에게 제출 안내` : '자료 완료 시 자동 숨김',
-      targetId: 'operation-submissions',
+      desc: !access.confirmed
+        ? '전시 확정 후 사용'
+        : access.ended
+          ? '전시 종료 후 자동 숨김'
+          : submissionSummary.length === 0 ? '수락 작가가 생기면 표시' : incompleteArtists > 0 ? `미완료 ${incompleteArtists}명에게 제출 안내` : '자료 완료 시 자동 숨김',
+      targetId: submissionPhaseActive ? 'operation-submissions' : undefined,
+      disabled: !submissionPhaseActive,
     },
     {
       title: '정산 확인 요청',
@@ -251,14 +259,14 @@ export default function OperationPage() {
     },
   ];
   const totalSales = settlementSummary?.grand?.total ?? 0;
-  const todayTaskCount = Math.max(1, nextTasks.length + (incompleteArtists > 0 ? 1 : 0) + (settlementIssues > 0 ? 1 : 0));
+  const todayTaskCount = Math.max(1, nextTasks.length + (showSubmissionAlert ? 1 : 0) + (settlementIssues > 0 ? 1 : 0));
   const priorityTask = nextTasks[0];
-  const priorityTitle = incompleteArtists > 0
+  const priorityTitle = showSubmissionAlert
     ? `미완료 작가 ${incompleteArtists}명: 누락 자료를 확인하세요`
     : access.ended
       ? settlementArtistCount > 0 ? '판매 및 정산 상태를 확인하세요' : '정산 대상 작가를 먼저 확인하세요'
       : '현재 운영 단계를 확인하세요';
-  const priorityDesc = incompleteArtists > 0
+  const priorityDesc = showSubmissionAlert
     ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${displayName(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
     : priorityTask?.meta || operationSummaryText(access);
   const downloadHelperSettlement = async (method?: 'CARD' | 'CASH') => {
@@ -343,7 +351,7 @@ export default function OperationPage() {
           <div>
             <h2 className="text-base font-semibold text-gray-950">{priorityTitle}</h2>
             <p className="mt-1 text-sm text-orange-900">{priorityDesc}</p>
-            {incompleteArtists > 0 && (
+            {showSubmissionAlert && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {incompleteSubmissionDetails.slice(0, 4).map(({ user, missing }) => (
                   <span key={user.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-950 ring-1 ring-orange-200">
@@ -359,17 +367,28 @@ export default function OperationPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
-            <button onClick={() => {
-              const targetId = priorityTask?.id || 'operation-submissions';
-              if (targetId === 'operation-submissions') setActiveWorkPanel('submissions');
-              if (targetId === 'operation-settlement') setActiveWorkPanel('settlement');
-              window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-            }} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-orange-100">
-              미완료 작가 보기
-            </button>
-            <button onClick={() => setActiveHelper('submission')} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
-              자료 제출 안내 DM
-            </button>
+            {showSubmissionAlert ? (
+              <>
+                <button onClick={() => {
+                  setActiveWorkPanel('submissions');
+                  window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                }} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-orange-100">
+                  미완료 작가 보기
+                </button>
+                <button onClick={() => setActiveHelper('submission')} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
+                  자료 제출 안내 DM
+                </button>
+              </>
+            ) : (
+              <button onClick={() => {
+                const targetId = priorityTask?.id || 'operation-stage';
+                if (targetId === 'operation-submissions') setActiveWorkPanel('submissions');
+                if (targetId === 'operation-settlement') setActiveWorkPanel('settlement');
+                window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+              }} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-orange-100">
+                {priorityTask?.title || '현재 단계 확인'}
+              </button>
+            )}
           </div>
         </section>
 
@@ -1084,13 +1103,19 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
             const artCount = submission.artworkList?.length || 0;
             const hasCv = !!submission.cv;
             const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
+            const isComplete = artCount > 0 && hasCv && hasNote;
             return (
               <div key={user.id} className="border border-gray-100 rounded-xl overflow-hidden">
                 <button onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }} className="w-full flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
                   <div className="flex items-center gap-2 min-w-0">
                     {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center"><User size={14} className="text-gray-400" /></div>}
                     <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
-                    <span className="text-xs text-gray-400">출품 {artCount} · 약력 {hasCv ? 'O' : '–'} · 노트 {hasNote ? 'O' : '–'}</span>
+                    {isComplete && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
+                        <Check size={10} /> 제출완료
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">출품 {artCount} · 약력 {hasCv ? 'V' : 'X'} · 노트 {hasNote ? 'V' : 'X'}</span>
                   </div>
                   {isOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                 </button>

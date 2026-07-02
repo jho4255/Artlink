@@ -756,7 +756,7 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
           userId: application.userId,
           type: 'APPLICATION_STATUS',
           message,
-          linkUrl: accepted ? `/exhibitions/${exhibitionId}/operation` : `/exhibitions/${exhibitionId}`,
+          linkUrl: accepted ? `/exhibitions/${exhibitionId}/operation/new` : `/exhibitions/${exhibitionId}`,
         },
       });
     } catch { /* best-effort */ }

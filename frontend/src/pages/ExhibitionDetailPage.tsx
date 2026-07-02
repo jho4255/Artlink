@@ -487,7 +487,7 @@ export default function ExhibitionDetailPage() {
           {/* Gallery 오너 / Admin 운영 페이지 */}
           {(isGalleryOwner || isAdmin) && (
             <button
-              onClick={() => navigate(`/exhibitions/${id}/operation`)}
+              onClick={() => navigate(`/exhibitions/${id}/operation/new`)}
               className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 text-gray-800 rounded-xl text-sm font-medium hover:bg-gray-50"
             >
               <ClipboardList size={16} /> 운영 페이지

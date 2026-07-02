@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon
+  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -19,6 +19,7 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { downloadAllApplicationsZip } from '@/lib/operationPdf';
 import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -1304,7 +1305,7 @@ function ApplicationsSection() {
                 {app.status === 'ACCEPTED' && (
                   <div className="mt-2 flex justify-end">
                     <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation`); }}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation/new`); }}
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
                     >
                       <ClipboardList size={12} /> 운영페이지로 이동
@@ -1343,7 +1344,7 @@ function ApplicationsSection() {
                     </button>
                     {app.status === 'ACCEPTED' && (
                       <button
-                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}/operation`)}
+                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}/operation/new`)}
                         className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
                       >
                         <ClipboardList size={12} /> 운영페이지로 이동
@@ -1739,6 +1740,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   // 지원자 관리 상태
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
+  const [applicantsZipBusy, setApplicantsZipBusy] = useState<number | null>(null);
 
   // 임시저장 훅
   const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_exhibition_form', emptyExForm);
@@ -1888,6 +1890,20 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
     a.download = `${exhibition.title}_지원자목록.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // 지원서 전체 ZIP 원클릭 다운로드 (지원자별 PDF 묶음)
+  const handleDownloadApplicantsZip = async (exhibition: any, apps: any[]) => {
+    if (!apps.length) return;
+    setApplicantsZipBusy(exhibition.id);
+    try {
+      const n = await downloadAllApplicationsZip(exhibition.title, apps);
+      toast.success(`${n}명의 지원서를 ZIP으로 받았습니다.`);
+    } catch {
+      toast.error('ZIP 생성에 실패했습니다.');
+    } finally {
+      setApplicantsZipBusy(null);
+    }
   };
 
 
@@ -2256,13 +2272,24 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               <Send size={14} /> {manageAppsExId === item.id ? '지원자 닫기' : '지원자 빠른 관리'}
                             </button>
                             {manageAppsExId === item.id && applicants.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => exportApplicantsCSV(item, applicants)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-green-100 px-3 py-2 text-sm text-green-700 hover:bg-green-50"
-                              >
-                                <FileText size={14} /> CSV
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadApplicantsZip(item, applicants)}
+                                  disabled={applicantsZipBusy === item.id}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                  {applicantsZipBusy === item.id ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
+                                  전체 지원서 ZIP
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => exportApplicantsCSV(item, applicants)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-green-100 px-3 py-2 text-sm text-green-700 hover:bg-green-50"
+                                >
+                                  <FileText size={14} /> CSV
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -2359,19 +2386,29 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                   </button>
                   {ex.status === 'APPROVED' && (
                     <button
-                      onClick={() => navigate(`/exhibitions/${ex.id}/operation`)}
+                      onClick={() => navigate(`/exhibitions/${ex.id}/operation/new`)}
                       className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
                     >
                       <ClipboardList size={10} /> 운영 페이지
                     </button>
                   )}
                   {manageAppsExId === ex.id && applicants.length > 0 && (
-                    <button
-                      onClick={() => exportApplicantsCSV(ex, applicants)}
-                      className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
-                    >
-                      <FileText size={10} /> 엑셀 다운로드
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleDownloadApplicantsZip(ex, applicants)}
+                        disabled={applicantsZipBusy === ex.id}
+                        className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {applicantsZipBusy === ex.id ? <Loader2 size={10} className="animate-spin" /> : <FileArchive size={10} />}
+                        전체 지원서 ZIP
+                      </button>
+                      <button
+                        onClick={() => exportApplicantsCSV(ex, applicants)}
+                        className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
+                      >
+                        <FileText size={10} /> 엑셀 다운로드
+                      </button>
+                    </>
                   )}
                 </div>
                 {manageAppsExId === ex.id && (
@@ -3657,7 +3694,7 @@ function OvExhibitions() {
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-gray-900">{detail.exhibition.title} — 지원 현황</p>
             <button
-              onClick={() => navigate(`/exhibitions/${selId}/operation`)}
+              onClick={() => navigate(`/exhibitions/${selId}/operation/new`)}
               className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1 shrink-0"
             >
               <ClipboardList size={12} /> 운영 페이지

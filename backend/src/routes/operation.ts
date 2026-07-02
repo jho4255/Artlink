@@ -121,7 +121,7 @@ router.post('/:id/notices', authenticate, async (req, res, next) => {
             userId: a.userId,
             type: 'OPERATION_NOTICE',
             message: `"${exData?.title ?? '공모'}" 운영 공지: ${title.trim()}`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           })),
         });
       }
@@ -246,6 +246,7 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
     const { exhibition, isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.ended && !isAdmin) throw new AppError('전시 종료 후에는 자료 제출 안내를 보낼 수 없습니다.', 400);
 
     const accepted = await prisma.application.findMany({
       where: { exhibitionId, status: 'ACCEPTED' },
@@ -271,7 +272,7 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
       '전시 운영을 위해 작품 정보, 작가 약력, 작가노트 제출이 필요합니다.',
       '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
       '',
-      `바로가기: /exhibitions/${exhibitionId}/operation`,
+      `바로가기: /exhibitions/${exhibitionId}/operation/new`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
 
@@ -625,7 +626,7 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
             userId: a.userId,
             type: 'SETTLEMENT_SHARED',
             message: `"${exhibition.title}" 전시의 정산 내역이 공개되었습니다.`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           })),
         });
       }
@@ -662,7 +663,7 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
             userId: a.userId,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
             message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요.`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           })),
         });
       }
@@ -701,7 +702,7 @@ router.post('/:id/settlement/reminders', authenticate, async (req, res, next) =>
       '정산 내역 확인 요청을 다시 안내드립니다.',
       '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
       '',
-      `바로가기: /exhibitions/${exhibitionId}/operation`,
+      `바로가기: /exhibitions/${exhibitionId}/operation/new`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
 
@@ -793,7 +794,7 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
             userId: exhibition.gallery.ownerId,
             type: 'SETTLEMENT_ISSUE',
             message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           },
         });
       } catch { /* 알림 실패해도 응답은 정상 */ }
