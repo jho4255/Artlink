@@ -1853,45 +1853,6 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
   const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
-  // 지원자 목록 엑셀(CSV) 다운로드 — 고정 양식(약력/경력/작품사진수/포트폴리오 파일)
-  const careerToCsvText = (career: Career | null | undefined) => {
-    const c = normalizeCareer(career);
-    const parts: string[] = [];
-    for (const { key, label } of CAREER_LABELS) {
-      if (c[key].length > 0) {
-        parts.push(`[${label}] ` + c[key].map(e => [e.year, e.content].filter(Boolean).join(' ')).join(' / '));
-      }
-    }
-    return parts.join(' || ');
-  };
-  const exportApplicantsCSV = (exhibition: any, apps: any[]) => {
-    if (!apps.length) return;
-    const headers = ['이름', '이메일', '지원일', '상태', '작가 약력', '경력', '작품 사진 수', '포트폴리오 파일'];
-    const rows = apps.map(app => {
-      const images: string[] = Array.isArray(app.artworkImages) ? app.artworkImages : [];
-      return [
-        app.user?.name || '',
-        app.user?.email || '',
-        new Date(app.createdAt).toLocaleDateString('ko'),
-        appStatusLabels[app.status] || app.status,
-        app.biography || '',
-        careerToCsvText(app.career),
-        String(images.length),
-        app.portfolioFileUrl || '',
-      ];
-    });
-    const csvContent = '\uFEFF' + [headers, ...rows].map(row =>
-      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${exhibition.title}_지원자목록.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   // 지원서 전체 ZIP 원클릭 다운로드 (지원자별 PDF 묶음)
   const handleDownloadApplicantsZip = async (exhibition: any, apps: any[]) => {
     if (!apps.length) return;
@@ -2272,24 +2233,15 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               <Send size={14} /> {manageAppsExId === item.id ? '지원자 닫기' : '지원자 빠른 관리'}
                             </button>
                             {manageAppsExId === item.id && applicants.length > 0 && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadApplicantsZip(item, applicants)}
-                                  disabled={applicantsZipBusy === item.id}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                                >
-                                  {applicantsZipBusy === item.id ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
-                                  전체 지원서 ZIP
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => exportApplicantsCSV(item, applicants)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-green-100 px-3 py-2 text-sm text-green-700 hover:bg-green-50"
-                                >
-                                  <FileText size={14} /> CSV
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadApplicantsZip(item, applicants)}
+                                disabled={applicantsZipBusy === item.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                {applicantsZipBusy === item.id ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
+                                전체 지원서 ZIP
+                              </button>
                             )}
                           </div>
                         </div>
@@ -2393,22 +2345,14 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                     </button>
                   )}
                   {manageAppsExId === ex.id && applicants.length > 0 && (
-                    <>
-                      <button
-                        onClick={() => handleDownloadApplicantsZip(ex, applicants)}
-                        disabled={applicantsZipBusy === ex.id}
-                        className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 disabled:opacity-50"
-                      >
-                        {applicantsZipBusy === ex.id ? <Loader2 size={10} className="animate-spin" /> : <FileArchive size={10} />}
-                        전체 지원서 ZIP
-                      </button>
-                      <button
-                        onClick={() => exportApplicantsCSV(ex, applicants)}
-                        className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
-                      >
-                        <FileText size={10} /> 엑셀 다운로드
-                      </button>
-                    </>
+                    <button
+                      onClick={() => handleDownloadApplicantsZip(ex, applicants)}
+                      disabled={applicantsZipBusy === ex.id}
+                      className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {applicantsZipBusy === ex.id ? <Loader2 size={10} className="animate-spin" /> : <FileArchive size={10} />}
+                      전체 지원서 ZIP
+                    </button>
                   )}
                 </div>
                 {manageAppsExId === ex.id && (
