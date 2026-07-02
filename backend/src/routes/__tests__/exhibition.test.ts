@@ -74,6 +74,69 @@ describe('Exhibition Routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /api/exhibitions/:id/apply — 객관식 추가 질문 복수 선택 지원', async () => {
+    const ex = await testPrisma.exhibition.create({
+      data: {
+        title: 'Multi Choice Exhibition',
+        type: 'SOLO',
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        exhibitDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        capacity: 5,
+        region: 'SEOUL',
+        description: '복수 선택 테스트',
+        status: 'APPROVED',
+        galleryId,
+        customFields: JSON.stringify([
+          { id: 'mediums', label: '가능 매체', type: 'multiselect', required: true, options: ['회화', '사진', '설치'], maxSelect: 2 },
+        ]),
+      },
+    });
+
+    const res = await request.post(`/api/exhibitions/${ex.id}/apply`)
+      .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`)
+      .send({
+        biography: '약력',
+        artworkImages: ['https://example.com/a.jpg'],
+        customAnswers: [{ fieldId: 'mediums', value: ['회화', '사진'] }],
+      });
+
+    expect(res.status).toBe(201);
+    const app = await testPrisma.application.findUnique({ where: { id: res.body.id } });
+    expect(JSON.parse(app!.customAnswers!)).toEqual([
+      { fieldId: 'mediums', value: ['회화', '사진'] },
+    ]);
+  });
+
+  it('POST /api/exhibitions/:id/apply — 객관식 추가 질문 최대 선택 수 검증', async () => {
+    const ex = await testPrisma.exhibition.create({
+      data: {
+        title: 'Multi Choice Limit Exhibition',
+        type: 'SOLO',
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        exhibitDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        capacity: 5,
+        region: 'SEOUL',
+        description: '복수 선택 제한 테스트',
+        status: 'APPROVED',
+        galleryId,
+        customFields: JSON.stringify([
+          { id: 'mediums', label: '가능 매체', type: 'multiselect', required: true, options: ['회화', '사진', '설치'], maxSelect: 2 },
+        ]),
+      },
+    });
+
+    const res = await request.post(`/api/exhibitions/${ex.id}/apply`)
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({
+        biography: '약력',
+        artworkImages: ['https://example.com/a.jpg'],
+        customAnswers: [{ fieldId: 'mediums', value: ['회화', '사진', '설치'] }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('최대 2개');
+  });
+
   // 삭제 (owner 또는 Admin)
   it('DELETE /api/exhibitions/:id — owner가 삭제 가능', async () => {
     const temp = await testPrisma.exhibition.create({

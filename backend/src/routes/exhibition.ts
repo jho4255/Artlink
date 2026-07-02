@@ -65,7 +65,7 @@ function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string;
     .map((a: any) => {
       const field = fields.find((f: any) => f.id === a.fieldId);
       const value = Array.isArray(a.value)
-        ? a.value.map((v: unknown) => String(v).trim()).filter(Boolean)
+        ? Array.from(new Set<string>(a.value.map((v: unknown) => String(v).trim()).filter(Boolean)))
         : String(a.value ?? '').trim();
       return { fieldId: a.fieldId, value, field };
     })
@@ -81,8 +81,14 @@ function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string;
     if ((field.type === 'select' || field.type === 'multiselect') && value) {
       const options = Array.isArray(field.options) ? field.options : [];
       const selected = Array.isArray(value) ? value : [value];
+      const maxSelect = Number.isInteger(field.maxSelect)
+        ? Number(field.maxSelect)
+        : field.type === 'select' ? 1 : 0;
       if (selected.some((v) => !options.includes(v))) {
         throw new AppError(`추가 질문 "${field.label}"의 선택지가 올바르지 않습니다.`, 400);
+      }
+      if (maxSelect > 0 && selected.length > maxSelect) {
+        throw new AppError(`추가 질문 "${field.label}"은 최대 ${maxSelect}개까지 선택할 수 있습니다.`, 400);
       }
     }
   }

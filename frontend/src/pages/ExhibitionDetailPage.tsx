@@ -59,10 +59,33 @@ type ExhibitionDetail = Exhibition & {
   promoPhotos?: PromoPhoto[];
 };
 
-function buildCustomAnswers(fields: CustomField[] | null | undefined, values: Record<string, string>): CustomAnswer[] {
+type CustomAnswerDraft = Record<string, string | string[]>;
+
+function isMultiChoiceField(field: CustomField): boolean {
+  return field.type === 'multiselect' || (field.type === 'select' && field.maxSelect !== undefined && field.maxSelect !== 1);
+}
+
+function getAnswerText(values: CustomAnswerDraft, fieldId: string): string {
+  const value = values[fieldId];
+  return Array.isArray(value) ? value.join('\n') : value ?? '';
+}
+
+function getAnswerList(values: CustomAnswerDraft, fieldId: string): string[] {
+  const value = values[fieldId];
+  return Array.isArray(value) ? value : value ? [value] : [];
+}
+
+function buildCustomAnswers(fields: CustomField[] | null | undefined, values: CustomAnswerDraft): CustomAnswer[] {
   return (fields ?? [])
-    .map((field) => ({ fieldId: field.id, value: (values[field.id] ?? '').trim() }))
-    .filter((answer) => answer.value);
+    .map((field) => {
+      const value = values[field.id];
+      if (Array.isArray(value)) {
+        const selected = Array.from(new Set(value.map((v) => v.trim()).filter(Boolean)));
+        return { fieldId: field.id, value: selected };
+      }
+      return { fieldId: field.id, value: (value ?? '').trim() };
+    })
+    .filter((answer) => Array.isArray(answer.value) ? answer.value.length > 0 : answer.value);
 }
 
 export default function ExhibitionDetailPage() {
@@ -86,7 +109,7 @@ export default function ExhibitionDetailPage() {
   const [applyImages, setApplyImages] = useState<string[]>([]);
   const [applyFile, setApplyFile] = useState<string | null>(null);
   const [applyFileNone, setApplyFileNone] = useState(false);
-  const [applyCustomAnswers, setApplyCustomAnswers] = useState<Record<string, string>>({});
+  const [applyCustomAnswers, setApplyCustomAnswers] = useState<CustomAnswerDraft>({});
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [bioError, setBioError] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -686,33 +709,63 @@ export default function ExhibitionDetailPage() {
                   <div className="pt-4 border-t border-gray-100">
                     <p className="text-sm font-medium text-gray-700 mb-2">갤러리 추가 질문</p>
                     <div className="space-y-3">
-                      {exhibition.customFields!.map((field) => (
-                        <div key={field.id}>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            {field.label}
-                            {field.required && <span className="text-red-500 ml-1">*</span>}
-                          </label>
-                          {field.type === 'select' ? (
-                            <select
-                              value={applyCustomAnswers[field.id] ?? ''}
-                              onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            >
-                              <option value="">선택해주세요</option>
-                              {(field.options ?? []).map((option) => (
-                                <option key={option} value={option}>{option}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <textarea
-                              value={applyCustomAnswers[field.id] ?? ''}
-                              onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                              placeholder="답변을 입력해주세요"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            />
-                          )}
-                        </div>
-                      ))}
+                      {exhibition.customFields!.map((field) => {
+                        const selectedValues = getAnswerList(applyCustomAnswers, field.id);
+                        const maxSelect = field.maxSelect ?? 0;
+                        return (
+                          <div key={field.id}>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              {field.label}
+                              {field.required && <span className="text-red-500 ml-1">*</span>}
+                            </label>
+                            {isMultiChoiceField(field) ? (
+                              <div className="space-y-1.5 rounded-lg border border-gray-200 p-2.5">
+                                {(field.options ?? []).map((option) => {
+                                  const checked = selectedValues.includes(option);
+                                  const disabled = !checked && maxSelect > 0 && selectedValues.length >= maxSelect;
+                                  return (
+                                    <label key={option} className={`flex items-center gap-2 text-sm ${disabled ? 'text-gray-300' : 'text-gray-700'}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={disabled}
+                                        onChange={(e) => setApplyCustomAnswers((prev) => {
+                                          const current = getAnswerList(prev, field.id);
+                                          const next = e.target.checked
+                                            ? [...current, option]
+                                            : current.filter((value) => value !== option);
+                                          return { ...prev, [field.id]: next };
+                                        })}
+                                        className="rounded"
+                                      />
+                                      {option}
+                                    </label>
+                                  );
+                                })}
+                                {maxSelect > 0 && <p className="text-[11px] text-gray-400">최대 {maxSelect}개 선택 가능</p>}
+                              </div>
+                            ) : field.type === 'select' ? (
+                              <select
+                                value={getAnswerText(applyCustomAnswers, field.id)}
+                                onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                              >
+                                <option value="">선택해주세요</option>
+                                {(field.options ?? []).map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <textarea
+                                value={getAnswerText(applyCustomAnswers, field.id)}
+                                onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                placeholder="답변을 입력해주세요"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -737,7 +790,9 @@ export default function ExhibitionDetailPage() {
                       errors.push("포트폴리오 파일을 첨부하거나 '없음'을 체크해주세요.");
                     }
                     for (const field of exhibition.customFields ?? []) {
-                      if (field.required && !(applyCustomAnswers[field.id] ?? '').trim()) {
+                      const value = applyCustomAnswers[field.id];
+                      const empty = Array.isArray(value) ? value.length === 0 : !(value ?? '').trim();
+                      if (field.required && empty) {
                         errors.push(`추가 질문 "${field.label}"에 답변해주세요.`);
                       }
                     }
