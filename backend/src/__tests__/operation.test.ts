@@ -78,7 +78,7 @@ describe('공모 운영 페이지 API', () => {
       const n2 = await testPrisma.notification.findMany({ where: { userId: 2, type: 'OPERATION_NOTICE' } });
       expect(n1.length).toBe(1);
       expect(n1[0].message).toContain('설치 안내');
-      expect(n1[0].linkUrl).toBe(`/exhibitions/${exId}/operation`);
+      expect(n1[0].linkUrl).toBe(`/exhibitions/${exId}/operation/new`);
       expect(n2.length).toBe(0); // 미수락 작가는 알림 없음
     });
   });
@@ -233,6 +233,33 @@ describe('공모 운영 페이지 API', () => {
         .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
       expect(r.status).toBe(400);
       expect(r.body.error).toContain('마감');
+    });
+  });
+
+  describe('자료 제출 안내 DM', () => {
+    it('오너가 미완료 작가에게 발송 → sentCount 1 (artist1)', async () => {
+      const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`)
+        .send({ subject: '제목', content: '내용' });
+      expect(r.status).toBe(200);
+      expect(r.body.sentCount).toBe(1);
+      expect(r.body.targets[0].id).toBe(1);
+    });
+    it('전시 종료 후 오너가 발송 시도 → 400', async () => {
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
+      const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`)
+        .send({ subject: '제목', content: '내용' });
+      expect(r.status).toBe(400);
+    });
+    it('전시 종료 후에도 Admin은 발송 가능', async () => {
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
+      const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${adminTok}`)
+        .send({ subject: '제목', content: '내용' });
+      expect(r.status).toBe(200);
+    });
+    it('작가는 발송 불가 → 403', async () => {
+      const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${artist1Tok}`)
+        .send({ subject: '제목', content: '내용' });
+      expect(r.status).toBe(403);
     });
   });
 

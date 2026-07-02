@@ -42,7 +42,7 @@ export interface GalleryImage {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'file';
+  type: 'text' | 'textarea' | 'select' | 'multiselect' | 'file';
   required: boolean;
   options?: string[];
   maxLength?: number;       // 텍스트 글자수 제한 (0 = 무제한)
@@ -52,7 +52,7 @@ export interface CustomField {
 // 커스텀 질문 답변 (Artist 지원 시 입력)
 export interface CustomAnswer {
   fieldId: string;
-  value: string;
+  value: string | string[];
 }
 
 export interface Exhibition {
@@ -237,6 +237,8 @@ export interface OperationAccess {
   confirmed: boolean;        // 수동 확정 또는 전시 시작일 경과
   manualConfirmed: boolean;  // 수동 확정 플래그
   ended: boolean;
+  settlementRequested?: boolean;
+  settlementRequestedAt?: string | null;
   settled?: boolean;         // 정산 완료(확정) — 운영페이지 수정 잠금 + 작가에게 정산 공개
   settledAt?: string | null;
 }

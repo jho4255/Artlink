@@ -294,13 +294,14 @@ describe('Workflow Reliability', () => {
       expect(favExh.status).toBe(200);
       expect(favExh.body.favorited).toBe(true);
 
-      // 10. Exhibition 지원 (고정 양식)
+      // 10. Exhibition 지원 (고정 양식 + 필수 커스텀 질문 답변)
       const applyRes = await request.post(`/api/exhibitions/${exhId}/apply`)
         .set('Authorization', artistToken)
         .send({
           biography: '저는 추상미술을 전공했습니다.',
           career: { artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] },
           artworkImages: ['https://example.com/a.jpg'],
+          customAnswers: [{ fieldId: 'q1', value: '추상미술을 전공한 작가입니다.' }],
         });
       expect(applyRes.status).toBe(201);
 
