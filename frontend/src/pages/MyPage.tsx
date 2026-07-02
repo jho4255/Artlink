@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive
+  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -3519,6 +3519,7 @@ function ReportManageSection() {
 
 // ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
 function UserManageSection() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const [q, setQ] = useState('');
@@ -3552,25 +3553,43 @@ function UserManageSection() {
         <div className="space-y-2">
           {users.map((u) => {
             const isMe = me?.id === u.id;
+            const isArtist = u.role === 'ARTIST';
             return (
               <div key={u.id} className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-lg">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <button
+                    type="button"
+                    disabled={!isArtist}
+                    onClick={() => isArtist && navigate(`/portfolio/${u.id}`)}
+                    className={`block max-w-full truncate text-left text-sm font-medium ${isArtist ? 'text-gray-900 hover:underline' : 'text-gray-900 cursor-default'}`}
+                    title={isArtist ? '작가 포트폴리오 보기' : undefined}
+                  >
                     {u.name}{isMe && <span className="text-xs text-gray-400"> (나)</span>}
-                  </p>
+                  </button>
                   <p className="text-xs text-gray-500 truncate">{u.email} · {u.provider}</p>
                 </div>
-                <select
-                  value={u.role}
-                  disabled={isMe || u.role === 'ADMIN' || roleMutation.isPending}
-                  onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
-                  title={isMe ? '본인 역할은 변경할 수 없습니다' : u.role === 'ADMIN' ? '관리자 계정은 강등/변경할 수 없습니다' : '역할 변경'}
-                  className="text-sm px-2 py-1.5 border border-gray-200 rounded-lg flex-none disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="ARTIST">아티스트</option>
-                  <option value="GALLERY">갤러리</option>
-                  <option value="ADMIN">관리자</option>
-                </select>
+                <div className="flex flex-none items-center gap-2">
+                  {isArtist && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/portfolio/${u.id}`)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    >
+                      <ExternalLink size={13} /> 포트폴리오
+                    </button>
+                  )}
+                  <select
+                    value={u.role}
+                    disabled={isMe || u.role === 'ADMIN' || roleMutation.isPending}
+                    onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
+                    title={isMe ? '본인 역할은 변경할 수 없습니다' : u.role === 'ADMIN' ? '관리자 계정은 강등/변경할 수 없습니다' : '역할 변경'}
+                    className="text-sm px-2 py-1.5 border border-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="ARTIST">아티스트</option>
+                    <option value="GALLERY">갤러리</option>
+                    <option value="ADMIN">관리자</option>
+                  </select>
+                </div>
               </div>
             );
           })}
