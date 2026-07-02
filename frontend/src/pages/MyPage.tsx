@@ -1618,6 +1618,7 @@ function CustomQuestionBuilder({
   fields: CustomField[];
   onChange: (fields: CustomField[]) => void;
 }) {
+  const isChoiceField = (field: CustomField) => field.type === 'select' || field.type === 'multiselect';
   const addQuestion = (type: 'textarea' | 'select') => {
     onChange([
       ...fields,
@@ -1627,6 +1628,7 @@ function CustomQuestionBuilder({
         type,
         required: false,
         options: type === 'select' ? [''] : undefined,
+        maxSelect: type === 'select' ? 1 : undefined,
       },
     ]);
   };
@@ -1672,7 +1674,9 @@ function CustomQuestionBuilder({
           {fields.map((field, index) => (
             <div key={field.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium text-gray-500">{field.type === 'select' ? '객관식' : '주관식'}</span>
+                <span className="text-[11px] font-medium text-gray-500">
+                  {isChoiceField(field) ? (field.type === 'multiselect' ? '객관식 · 중복 선택' : '객관식') : '주관식'}
+                </span>
                 <label className="flex items-center gap-1 text-[11px] text-gray-500">
                   <input
                     type="checkbox"
@@ -1690,8 +1694,36 @@ function CustomQuestionBuilder({
                 placeholder="질문을 입력하세요"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
               />
-              {field.type === 'select' && (
+              {isChoiceField(field) && (
                 <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                    <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={field.type === 'multiselect'}
+                        onChange={(e) => updateQuestion(index, {
+                          type: e.target.checked ? 'multiselect' : 'select',
+                          maxSelect: e.target.checked ? 0 : 1,
+                        })}
+                        className="rounded"
+                      />
+                      중복 선택 허용
+                    </label>
+                    {field.type === 'multiselect' && (
+                      <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                        최대
+                        <input
+                          type="number"
+                          min={0}
+                          max={(field.options ?? []).filter(Boolean).length || undefined}
+                          value={field.maxSelect ?? 0}
+                          onChange={(e) => updateQuestion(index, { maxSelect: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-16 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
+                        />
+                        개 선택 <span className="text-gray-400">(0=무제한)</span>
+                      </label>
+                    )}
+                  </div>
                   {(field.options ?? []).map((option, optionIndex) => (
                     <div key={optionIndex} className="flex items-center gap-2">
                       <input
@@ -1895,11 +1927,21 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   };
 
   const sanitizeCustomFields = (fields: CustomField[]) => fields
-    .map((field) => ({
-      ...field,
-      label: field.label.trim(),
-      options: field.type === 'select' ? (field.options ?? []).map((option) => option.trim()).filter(Boolean) : undefined,
-    }))
+    .map((field) => {
+      const options = field.type === 'select' || field.type === 'multiselect'
+        ? (field.options ?? []).map((option) => option.trim()).filter(Boolean)
+        : undefined;
+      const rawMaxSelect = field.maxSelect ?? 0;
+      const maxSelect = field.type === 'select' ? 1 : field.type === 'multiselect'
+        ? rawMaxSelect > 0 ? Math.min(rawMaxSelect, options?.length ?? 0) : 0
+        : undefined;
+      return {
+        ...field,
+        label: field.label.trim(),
+        options,
+        maxSelect,
+      };
+    })
     .filter((field) => field.label);
 
   return (
@@ -2026,7 +2068,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
                     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
                     const cleanedCustomFields = sanitizeCustomFields(form.customFields);
-                    const invalidSelect = cleanedCustomFields.find((field) => field.type === 'select' && (field.options ?? []).length < 2);
+                    const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
                     setFormErrors(errorFields);
                     if (missing.length > 0) {
                       toast.error(
