@@ -22,7 +22,13 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
             { name: { contains: q, mode: 'insensitive' } },
           ] }
         : undefined,
-      select: { id: true, email: true, name: true, role: true, provider: true, createdAt: true },
+      select: {
+        id: true, email: true, name: true, role: true, provider: true, createdAt: true,
+        galleries: {
+          select: { id: true, name: true, status: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });

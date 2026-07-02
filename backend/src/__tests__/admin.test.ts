@@ -24,6 +24,20 @@ describe('Admin 사용자 관리', () => {
       const res = await request.get('/api/admin/users?q=Gallery').set('Authorization', `Bearer ${ADMIN()}`);
       expect(res.body.some((u: any) => u.email === 'gallery@test.com')).toBe(true);
     });
+    it('ADMIN: 갤러리 유저의 소유 갤러리 목록 포함', async () => {
+      await testPrisma.gallery.createMany({
+        data: [
+          { name: 'First Gallery', address: '서울', phone: '02-1111', description: 'desc', region: 'SEOUL', ownerName: 'Owner', status: 'APPROVED', ownerId: 3 },
+          { name: 'Second Gallery', address: '부산', phone: '051-1111', description: 'desc', region: 'BUSAN', ownerName: 'Owner', status: 'PENDING', ownerId: 3 },
+        ],
+      });
+
+      const res = await request.get('/api/admin/users?q=Gallery').set('Authorization', `Bearer ${ADMIN()}`);
+      expect(res.status).toBe(200);
+      const galleryUser = res.body.find((u: any) => u.email === 'gallery@test.com');
+      expect(galleryUser.galleries).toHaveLength(2);
+      expect(galleryUser.galleries.map((g: any) => g.name)).toEqual(expect.arrayContaining(['First Gallery', 'Second Gallery']));
+    });
     it('ARTIST: 접근 → 403', async () => {
       const res = await request.get('/api/admin/users').set('Authorization', `Bearer ${ARTIST()}`);
       expect(res.status).toBe(403);

@@ -3518,6 +3518,8 @@ function ReportManageSection() {
 }
 
 // ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
+const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
+
 function UserManageSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -3554,19 +3556,27 @@ function UserManageSection() {
           {users.map((u) => {
             const isMe = me?.id === u.id;
             const isArtist = u.role === 'ARTIST';
+            const isGallery = u.role === 'GALLERY';
+            const ownedGalleries = Array.isArray(u.galleries) ? u.galleries : [];
             return (
               <div key={u.id} className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-lg">
                 <div className="min-w-0">
                   <button
                     type="button"
-                    disabled={!isArtist}
-                    onClick={() => isArtist && navigate(`/portfolio/${u.id}`)}
-                    className={`block max-w-full truncate text-left text-sm font-medium ${isArtist ? 'text-gray-900 hover:underline' : 'text-gray-900 cursor-default'}`}
-                    title={isArtist ? '작가 포트폴리오 보기' : undefined}
+                    disabled={!isArtist && !(isGallery && ownedGalleries.length === 1)}
+                    onClick={() => {
+                      if (isArtist) navigate(`/portfolio/${u.id}`);
+                      if (isGallery && ownedGalleries.length === 1) navigate(`/galleries/${ownedGalleries[0].id}`);
+                    }}
+                    className={`block max-w-full truncate text-left text-sm font-medium ${isArtist || (isGallery && ownedGalleries.length === 1) ? 'text-gray-900 hover:underline' : 'text-gray-900 cursor-default'}`}
+                    title={isArtist ? '작가 포트폴리오 보기' : isGallery && ownedGalleries.length === 1 ? '갤러리 보기' : undefined}
                   >
                     {u.name}{isMe && <span className="text-xs text-gray-400"> (나)</span>}
                   </button>
-                  <p className="text-xs text-gray-500 truncate">{u.email} · {u.provider}</p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {u.email} · {u.provider}
+                    {isGallery && <span> · 갤러리 {ownedGalleries.length}개</span>}
+                  </p>
                 </div>
                 <div className="flex flex-none items-center gap-2">
                   {isArtist && (
@@ -3577,6 +3587,32 @@ function UserManageSection() {
                     >
                       <ExternalLink size={13} /> 포트폴리오
                     </button>
+                  )}
+                  {isGallery && ownedGalleries.length === 1 && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/galleries/${ownedGalleries[0].id}`)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    >
+                      <Building2 size={13} /> 갤러리
+                    </button>
+                  )}
+                  {isGallery && ownedGalleries.length > 1 && (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) navigate(`/galleries/${e.target.value}`);
+                      }}
+                      className="max-w-44 rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                      title="소유 갤러리 선택"
+                    >
+                      <option value="">갤러리 선택</option>
+                      {ownedGalleries.map((g: any) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name} · {ADMIN_USER_GALLERY_STATUS_LABELS[g.status] || g.status}
+                        </option>
+                      ))}
+                    </select>
                   )}
                   <select
                     value={u.role}
