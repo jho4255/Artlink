@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers } from '../helpers';
+import { ARTIST_APPLY_TERMS_VERSION } from '../../lib/terms';
 
 describe('Full Flow Integration', () => {
   beforeAll(async () => {
@@ -80,13 +81,13 @@ describe('Full Flow Integration', () => {
     // 9. Artist가 공모에 지원
     const apply = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
       .set('Authorization', artistToken)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(apply.status).toBe(201);
 
     // 10. 중복 지원 불가
     const applyDup = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
       .set('Authorization', artistToken)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(applyDup.status).toBe(400);
 
     // 11. Artist의 지원 내역 확인

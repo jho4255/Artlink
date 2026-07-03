@@ -9,6 +9,7 @@ import { galleryApplicationStats } from '../lib/applicationStats';
 import { safeFileUrl } from '../lib/safeUrl';
 import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
+import { ARTIST_APPLY_TERMS_HASH, ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -521,7 +522,7 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     if (existing) throw new AppError('이미 지원한 공모입니다.', 400);
 
     // 지원서 고정 양식: 작가약력(필수) / 경력 / 작품사진(1장이상 필수) / 포트폴리오 파일
-    const { biography, career, artworkImages, portfolioFileUrl, customAnswers } = req.body || {};
+    const { biography, career, artworkImages, portfolioFileUrl, customAnswers, termsAgreed, termsVersion } = req.body || {};
     const exhibitionData = await prisma.exhibition.findUnique({ where: { id: exhibitionId } });
     if (!exhibitionData) throw new AppError('공모를 찾을 수 없습니다.', 404);
     if (exhibitionData.status !== 'APPROVED') {
@@ -551,6 +552,9 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     const careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
     const customFields = parseCustomFields(exhibitionData.customFields) ?? [];
     const normalizedCustomAnswers = normalizeCustomAnswers(customAnswers, customFields);
+    if (termsAgreed !== true || termsVersion !== ARTIST_APPLY_TERMS_VERSION) {
+      throw new AppError('작가 지원 약관에 동의해야 지원할 수 있습니다.', 400);
+    }
 
     const application = await prisma.application.create({
       data: {
@@ -560,6 +564,9 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         career: careerStr,
         artworkImages: JSON.stringify(images),
         portfolioFileUrl: safeFileUrl(portfolioFileUrl),
+        termsAgreedAt: new Date(),
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
+        termsTextHash: ARTIST_APPLY_TERMS_HASH,
         customAnswers: normalizedCustomAnswers.length ? JSON.stringify(normalizedCustomAnswers) : null,
       }
     });
