@@ -2781,6 +2781,30 @@ function MyShowsSection() {
 }
 
 // ========== Admin: 승인 관리 ==========
+function approvalRequestTypeLabel(type?: string) {
+  if (type === 'GALLERY_EDIT') return '갤러리 수정';
+  if (type === 'EXHIBITION_EDIT') return '공모 수정';
+  return type || '수정 요청';
+}
+
+function parseApprovalChanges(changes: unknown): Record<string, unknown> {
+  if (!changes) return {};
+  if (typeof changes === 'object') return changes as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(changes));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatApprovalChangeValue(value: unknown) {
+  if (value === null || value === undefined) return '-';
+  if (value instanceof Date) return value.toLocaleString('ko');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
 function ApprovalsSection() {
   const queryClient = useQueryClient();
   // 모든 useState/useQuery/useMutation 훅은 조건부 return 전에 선언 (React 훅 규칙)
@@ -2883,6 +2907,7 @@ function ApprovalsSection() {
     ...(data?.pendingGalleries?.map(g => ({ ...g, _type: 'gallery' })) || []),
     ...(data?.pendingExhibitions?.map(e => ({ ...e, _type: 'exhibition' })) || []),
     ...(data?.pendingShows?.map(s => ({ ...s, _type: 'show' })) || []),
+    ...(data?.pendingRequests?.map(r => ({ ...r, _type: 'edit-request' })) || []),
   ];
 
   return (
@@ -2996,7 +3021,7 @@ function ApprovalsSection() {
           {allPending.map(item => (
             <div key={`${item._type}-${item.id}`} className="p-4 border border-gray-100 rounded-xl">
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : '전시'}
+                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : item._type === 'show' ? '전시' : '수정 요청'}
               </span>
               <h4 className="font-medium mt-1">{item.name || item.title}</h4>
               {item._type === 'gallery' && (
@@ -3025,6 +3050,28 @@ function ApprovalsSection() {
                   <p>관람: {item.openingHours} · 입장료: {item.admissionFee}</p>
                   <p>위치: {item.location} · 지역: {regionLabels[item.region]}</p>
                   {item.posterImage && <img src={item.posterImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
+                </div>
+              )}
+              {item._type === 'edit-request' && (
+                <div className="text-sm text-gray-500 space-y-1 mt-1">
+                  <p>유형: {approvalRequestTypeLabel(item.type)} · 대상 ID: {item.targetId}</p>
+                  <p>요청자: {item.requester?.name || `User #${item.requesterId}`}{item.requester?.email ? ` (${item.requester.email})` : ''}</p>
+                  <p>요청일: {new Date(item.createdAt).toLocaleString('ko')}</p>
+                  <div className="mt-2 rounded-lg bg-gray-50 p-2">
+                    <p className="text-xs font-medium text-gray-600 mb-1">변경 요청 내용</p>
+                    {Object.entries(parseApprovalChanges(item.changes)).length === 0 ? (
+                      <p className="text-xs text-gray-400">표시할 변경 내용이 없습니다.</p>
+                    ) : (
+                      <dl className="space-y-1">
+                        {Object.entries(parseApprovalChanges(item.changes)).map(([key, value]) => (
+                          <div key={key} className="grid grid-cols-[88px_1fr] gap-2 text-xs">
+                            <dt className="text-gray-400">{key}</dt>
+                            <dd className="text-gray-700 break-words">{formatApprovalChangeValue(value)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </div>
                 </div>
               )}
               {item.description && <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{item.description}</p>}

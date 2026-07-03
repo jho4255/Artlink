@@ -8,6 +8,7 @@ import { sendPortfolioEmail } from '../lib/mailer';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { safeFileUrl } from '../lib/safeUrl';
 import { maskGallery } from '../lib/sanitize';
+import { notifyApprovalRequest } from '../lib/telegram';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -495,6 +496,14 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         // 대표 이미지를 다중사진 첫 행으로 등록 (이후 상세 페이지에서 추가/삭제/순서변경)
         ...(safeImageUrl ? { images: { create: [{ url: safeImageUrl, order: 0 }] } } : {}),
       }
+    });
+    void notifyApprovalRequest({
+      kind: 'exhibition',
+      title: exhibition.title,
+      targetId: exhibition.id,
+      galleryName: gallery.name,
+      requesterName: req.user!.name,
+      requesterEmail: req.user!.email,
     });
     res.status(201).json(exhibition);
   } catch (error) { next(error); }

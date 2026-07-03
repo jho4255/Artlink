@@ -95,6 +95,18 @@ describe('Approval Routes', () => {
     expect(res.body.status).toBe('PENDING');
   });
 
+  it('GET /api/approvals — 수정 요청과 요청자 정보 포함', async () => {
+    const token = authToken(4, 'ADMIN');
+    const res = await request.get('/api/approvals').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.pendingRequests).toHaveLength(1);
+    expect(res.body.pendingRequests[0].type).toBe('GALLERY_EDIT');
+    expect(res.body.pendingRequests[0].requester).toMatchObject({
+      id: 3,
+      email: 'gallery@test.com',
+    });
+  });
+
   // 수정 요청 승인
   it('PATCH /api/approvals/edit-request/:id — 수정 요청 승인 시 변경 적용', async () => {
     const editReq = await testPrisma.approvalRequest.findFirst({ where: { status: 'PENDING' } });
