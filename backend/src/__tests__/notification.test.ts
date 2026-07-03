@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { request, cleanDb, seedUsers, authToken, testPrisma, seedGallery, seedExhibition } from './helpers';
+import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 describe('Notification Routes', () => {
   beforeEach(async () => {
@@ -77,7 +78,7 @@ describe('Notification Routes', () => {
     // Artist1이 지원
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
 
     // Gallery 오너가 상태 변경
     const app = await testPrisma.application.findFirst({ where: { userId: 1 } });
@@ -97,7 +98,7 @@ describe('Notification Routes', () => {
 
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
 
     const notifs = await testPrisma.notification.findMany({ where: { userId: 3, type: 'NEW_APPLICANT' } });
     expect(notifs.length).toBeGreaterThanOrEqual(1);

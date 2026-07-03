@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers } from '../helpers';
+import { ARTIST_APPLY_TERMS_VERSION } from '../../lib/terms';
 
 describe('Workflow Reliability', () => {
   const galleryToken = `Bearer ${authToken(3, 'GALLERY')}`;
@@ -301,6 +302,8 @@ describe('Workflow Reliability', () => {
           biography: '저는 추상미술을 전공했습니다.',
           career: { artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] },
           artworkImages: ['https://example.com/a.jpg'],
+          termsAgreed: true,
+          termsVersion: ARTIST_APPLY_TERMS_VERSION,
           customAnswers: [{ fieldId: 'q1', value: '추상미술을 전공한 작가입니다.' }],
         });
       expect(applyRes.status).toBe(201);
@@ -311,6 +314,8 @@ describe('Workflow Reliability', () => {
         .send({
           biography: '재지원 시도',
           artworkImages: ['https://example.com/a.jpg'],
+          termsAgreed: true,
+          termsVersion: ARTIST_APPLY_TERMS_VERSION,
         });
       expect(dupRes.status).toBe(400);
 

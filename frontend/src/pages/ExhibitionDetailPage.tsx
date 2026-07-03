@@ -42,6 +42,7 @@ const APP_CAREER_LABELS: { key: keyof Career; label: string }[] = [
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
 ];
+const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-07-03';
 
 function normalizeCareer(c?: Career | null): Career {
   return { artFair: c?.artFair ?? [], solo: c?.solo ?? [], group: c?.group ?? [] };
@@ -101,8 +102,8 @@ export default function ExhibitionDetailPage() {
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   // 지원 모달 상태 (고정 양식: 약력/경력/작품사진/포트폴리오 파일)
   const [showApplyModal, setShowApplyModal] = useState(false);
-  const [applyConfirm, setApplyConfirm] = useState(false);
   const [applyTerms, setApplyTerms] = useState('');
+  const [applyAgreed, setApplyAgreed] = useState(false);
   const [applyBiography, setApplyBiography] = useState('');
   const [applyCareer, setApplyCareer] = useState<Career>(EMPTY_CAREER);
   const [applyCareerNone, setApplyCareerNone] = useState({ artFair: false, solo: false, group: false });
@@ -114,7 +115,6 @@ export default function ExhibitionDetailPage() {
   const [bioError, setBioError] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [careerErrorKeys, setCareerErrorKeys] = useState<Set<string>>(new Set());
-  const [pendingApply, setPendingApply] = useState<any>(undefined);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   // 인라인 쪽지 모달
   const [showMsgModal, setShowMsgModal] = useState(false);
@@ -150,13 +150,14 @@ export default function ExhibitionDetailPage() {
 
   // 지원하기 (고정 양식 payload)
   const applyMutation = useMutation({
-    mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null; customAnswers?: CustomAnswer[] }) =>
+    mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null; customAnswers?: CustomAnswer[]; termsAgreed: boolean; termsVersion: string }) =>
       api.post(`/exhibitions/${id}/apply`, payload),
     onSuccess: () => {
       toast.success('지원이 완료되었습니다! 지원서가 갤러리에 전송됩니다.');
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['my-applications'] });
       setShowApplyModal(false);
+      setApplyAgreed(false);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || '지원 중 오류가 발생했습니다.');
@@ -172,6 +173,7 @@ export default function ExhibitionDetailPage() {
     setApplyFile(null);
     setApplyFileNone(false);
     setApplyCustomAnswers({});
+    setApplyAgreed(false);
     setBioError(false);
     setImgError(false);
     setCareerErrorKeys(new Set());
@@ -534,16 +536,6 @@ export default function ExhibitionDetailPage() {
 
       </div>
 
-      {/* 지원 확인 모달 (약관 동의 후 최종 제출) */}
-      <ConfirmDialog
-        open={applyConfirm}
-        title="지원하기"
-        message={`📌 지원 시 갤러리에 회원님의 닉네임·이메일·전화번호가 지원서와 함께 전달됩니다.\n동의하시면 [지원하기]를 눌러주세요.\n\n${applyTerms || '지원하시겠습니까?'}`}
-        confirmText="동의하고 지원하기"
-        onConfirm={() => { setApplyConfirm(false); if (pendingApply) applyMutation.mutate(pendingApply); setPendingApply(undefined); }}
-        onCancel={() => { setApplyConfirm(false); setPendingApply(undefined); }}
-      />
-
       {/* 삭제 확인 모달 */}
       <ConfirmDialog
         open={deleteConfirm}
@@ -769,6 +761,15 @@ export default function ExhibitionDetailPage() {
                     </div>
                   </div>
                 )}
+
+                {/* 약관 동의 */}
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{applyTerms || '약관 로딩 중...'}</div>
+                  <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
+                    <input type="checkbox" checked={applyAgreed} onChange={e => setApplyAgreed(e.target.checked)} className="rounded" />
+                    위 약관에 동의합니다
+                  </label>
+                </div>
               </div>
 
               <div className="flex gap-2 mt-6 justify-end">
@@ -813,18 +814,18 @@ export default function ExhibitionDetailPage() {
                       solo: applyCareerNone.solo ? [] : applyCareer.solo.filter(e => e.year.trim() || e.content.trim()),
                       group: applyCareerNone.group ? [] : applyCareer.group.filter(e => e.year.trim() || e.content.trim()),
                     };
-                    setPendingApply({
+                    applyMutation.mutate({
                       biography: applyBiography.trim(),
                       career: cleanedCareer,
                       artworkImages: applyImages,
                       portfolioFileUrl: applyFileNone ? null : applyFile,
                       customAnswers: buildCustomAnswers(exhibition.customFields, applyCustomAnswers),
+                      termsAgreed: true,
+                      termsVersion: ARTIST_APPLY_TERMS_VERSION,
                     });
-                    setShowApplyModal(false);
-                    setApplyConfirm(true);
                   }}
-                  disabled={applyMutation.isPending}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                  disabled={applyMutation.isPending || !applyAgreed}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {applyMutation.isPending ? '지원 중...' : '지원하기'}
                 </button>

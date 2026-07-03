@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   request, authToken, cleanDb, seedUsers, seedGallery, testPrisma,
 } from './helpers';
+import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 const artistToken = authToken(1, 'ARTIST');
 const artist2Token = authToken(2, 'ARTIST');
@@ -246,13 +247,13 @@ describe('Exhibition apply edge cases', () => {
     const res1 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res1.status).toBe(201);
 
     const res2 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res2.status).toBe(400);
     expect(res2.body.error).toContain('이미');
 
@@ -268,7 +269,7 @@ describe('Exhibition apply edge cases', () => {
     const res = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res.status).toBe(201);
 
     await testPrisma.application.deleteMany({ where: { exhibitionId: ex.id } });

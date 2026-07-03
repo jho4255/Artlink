@@ -278,6 +278,9 @@ model Application {
   career       String?    // 지원 시 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...] }
   artworkImages String?   // 지원 시 작품 사진 URL 배열 JSON (최대 10, 1장 이상 필수)
   portfolioFileUrl String? // 지원 시 포트폴리오 파일(pdf/doc/hwp) URL
+  termsAgreedAt DateTime? // 작가 지원 약관 동의 시각
+  termsVersion String?    // 동의한 작가 지원 약관 버전
+  termsTextHash String?   // 동의한 약관 전문의 해시(SHA-256)
   status       String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
   rejectionAckedAt DateTime? // 거절을 작가가 '확인'한 시각. non-null이면 지원내역 목록에서 숨김
   createdAt    DateTime   @default(now())
