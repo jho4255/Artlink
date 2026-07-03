@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { maskGallery } from '../lib/sanitize';
+import { notifyApprovalRequest } from '../lib/telegram';
 
 // 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
 const artistEntrySchema = z.object({
@@ -215,6 +216,14 @@ router.post('/', authenticate, authorize('GALLERY'), validate(showCreateSchema),
       return created;
     });
 
+    void notifyApprovalRequest({
+      kind: 'show',
+      title: show.title,
+      targetId: show.id,
+      galleryName: gallery.name,
+      requesterName: req.user!.name,
+      requesterEmail: req.user!.email,
+    });
     res.status(201).json(show);
   } catch (error) { next(error); }
 });

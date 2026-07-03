@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { notifyApprovalRequest } from '../lib/telegram';
 
 const router = Router();
 
@@ -34,9 +35,22 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
     });
 
     // 수정 요청 대기
-    const pendingRequests = await prisma.approvalRequest.findMany({
-      where: { status: 'PENDING' }
+    const requests = await prisma.approvalRequest.findMany({
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
     });
+    const requesterIds = [...new Set(requests.map((request) => request.requesterId))];
+    const requesters = requesterIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: requesterIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const requesterById = new Map(requesters.map((requester) => [requester.id, requester]));
+    const pendingRequests = requests.map((request) => ({
+      ...request,
+      requester: requesterById.get(request.requesterId) ?? null,
+    }));
 
     res.json({ pendingGalleries, pendingExhibitions, pendingShows, pendingRequests });
   } catch (error) { next(error); }
@@ -146,6 +160,13 @@ router.post('/edit-request', authenticate, authorize('GALLERY'), async (req, res
         requesterId: req.user!.id,
         status: 'PENDING'
       }
+    });
+    void notifyApprovalRequest({
+      kind: 'edit-request',
+      title: type,
+      targetId: request.targetId,
+      requesterName: req.user!.name,
+      requesterEmail: req.user!.email,
     });
     res.status(201).json(request);
   } catch (error) { next(error); }

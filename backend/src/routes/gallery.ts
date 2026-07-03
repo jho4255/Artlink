@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
+import { notifyApprovalRequest } from '../lib/telegram';
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -138,6 +139,13 @@ router.post('/', authenticate, authorize('GALLERY'), validate(galleryCreateSchem
         ownerId: req.user!.id,
         status: 'PENDING'
       }
+    });
+    void notifyApprovalRequest({
+      kind: 'gallery',
+      title: gallery.name,
+      targetId: gallery.id,
+      requesterName: req.user!.name,
+      requesterEmail: req.user!.email,
     });
     res.status(201).json(maskInstagram(gallery));
   } catch (error) { next(error); }
