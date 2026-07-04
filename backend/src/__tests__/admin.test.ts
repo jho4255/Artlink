@@ -13,6 +13,23 @@ describe('Admin 사용자 관리', () => {
       const res = await request.get('/api/admin/users').set('Authorization', `Bearer ${ADMIN()}`);
       expect(res.status).toBe(200);
       expect(res.body.length).toBeGreaterThanOrEqual(4);
+      expect(res.body[0]).toHaveProperty('createdAt');
+      expect(res.body[0]).toHaveProperty('lastSeenAt');
+      expect(res.body.find((u: any) => u.id === 4).lastSeenAt).not.toBeNull();
+    });
+    it('ADMIN: 역할별 사용자 조회', async () => {
+      const galleryRes = await request.get('/api/admin/users?role=GALLERY').set('Authorization', `Bearer ${ADMIN()}`);
+      expect(galleryRes.status).toBe(200);
+      expect(galleryRes.body.length).toBeGreaterThanOrEqual(1);
+      expect(galleryRes.body.every((u: any) => u.role === 'GALLERY')).toBe(true);
+
+      const adminRes = await request.get('/api/admin/users?role=ADMIN').set('Authorization', `Bearer ${ADMIN()}`);
+      expect(adminRes.status).toBe(200);
+      expect(adminRes.body.every((u: any) => u.role === 'ADMIN')).toBe(true);
+    });
+    it('ADMIN: 유효하지 않은 역할 필터 → 400', async () => {
+      const res = await request.get('/api/admin/users?role=SUPERUSER').set('Authorization', `Bearer ${ADMIN()}`);
+      expect(res.status).toBe(400);
     });
     it('ADMIN: 이메일로 검색', async () => {
       const res = await request.get('/api/admin/users?q=artist1').set('Authorization', `Bearer ${ADMIN()}`);

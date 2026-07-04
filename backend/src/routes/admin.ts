@@ -9,28 +9,33 @@ const router = Router();
 const VALID_ROLES = ['ADMIN', 'ARTIST', 'GALLERY'];
 
 /**
- * 사용자 검색 (ADMIN 전용) — 이메일/이름 부분일치, 최대 50명
- * GET /api/admin/users?q=검색어
+ * 사용자 검색 (ADMIN 전용) — 이메일/이름 부분일치, 최대 100명
+ * GET /api/admin/users?q=검색어&role=ARTIST|GALLERY|ADMIN
  */
 router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const q = ((req.query.q as string) || '').trim();
+    const role = ((req.query.role as string) || '').trim();
+    if (role && !VALID_ROLES.includes(role)) throw new AppError('유효하지 않은 역할입니다.', 400);
+    const where: any = {};
+    if (role) where.role = role;
+    if (q) {
+      where.OR = [
+        { email: { contains: q, mode: 'insensitive' } },
+        { name: { contains: q, mode: 'insensitive' } },
+      ];
+    }
     const users = await prisma.user.findMany({
-      where: q
-        ? { OR: [
-            { email: { contains: q, mode: 'insensitive' } },
-            { name: { contains: q, mode: 'insensitive' } },
-          ] }
-        : undefined,
+      where,
       select: {
-        id: true, email: true, name: true, role: true, provider: true, createdAt: true,
+        id: true, email: true, name: true, role: true, provider: true, createdAt: true, lastSeenAt: true,
         galleries: {
           select: { id: true, name: true, status: true },
           orderBy: { createdAt: 'desc' },
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
     });
     res.json(users);
   } catch (error) { next(error); }
