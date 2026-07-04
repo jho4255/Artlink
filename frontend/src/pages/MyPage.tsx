@@ -3566,6 +3566,30 @@ function ReportManageSection() {
 
 // ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
 const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
+const ADMIN_USER_ROLE_TABS = [
+  { role: 'GALLERY', label: '갤러리 유저' },
+  { role: 'ARTIST', label: '아티스트 유저' },
+  { role: 'ADMIN', label: 'admin 유저' },
+] as const;
+const ADMIN_USER_ROLE_LABELS: Record<string, string> = { ARTIST: '아티스트', GALLERY: '갤러리', ADMIN: '관리자' };
+const adminUserDate = (value?: string | null) => {
+  if (!value) return '기록 없음';
+  return new Date(value).toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+};
+const adminUserDateTime = (value?: string | null) => {
+  if (!value) return '기록 없음';
+  return new Date(value).toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 function UserManageSection() {
   const navigate = useNavigate();
@@ -3573,10 +3597,15 @@ function UserManageSection() {
   const me = useAuthStore((s) => s.user);
   const [q, setQ] = useState('');
   const [submitted, setSubmitted] = useState('');
+  const [activeRole, setActiveRole] = useState<(typeof ADMIN_USER_ROLE_TABS)[number]['role']>('GALLERY');
 
   const { data: users = [], isLoading } = useQuery<any[]>({
-    queryKey: ['admin-users', submitted],
-    queryFn: () => api.get(`/admin/users${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
+    queryKey: ['admin-users', activeRole, submitted],
+    queryFn: () => {
+      const params = new URLSearchParams({ role: activeRole });
+      if (submitted) params.set('q', submitted);
+      return api.get(`/admin/users?${params.toString()}`).then(r => r.data);
+    },
     staleTime: 0,
   });
 
@@ -3593,6 +3622,26 @@ function UserManageSection() {
           className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {ADMIN_USER_ROLE_TABS.map((tab) => {
+          const selected = activeRole === tab.role;
+          return (
+            <button
+              key={tab.role}
+              type="button"
+              onClick={() => setActiveRole(tab.role)}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                selected
+                  ? 'border-gray-900 bg-gray-900 text-white'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {isLoading ? (
         <div className="h-20 bg-gray-100 animate-pulse rounded-lg" />
@@ -3621,11 +3670,17 @@ function UserManageSection() {
                     {u.name}{isMe && <span className="text-xs text-gray-400"> (나)</span>}
                   </button>
                   <p className="text-xs text-gray-500 truncate">
-                    {u.email} · {u.provider}
+                    {u.email}
                     {isGallery && <span> · 갤러리 {ownedGalleries.length}개</span>}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    가입일 {adminUserDate(u.createdAt)} · 최근 접속 {adminUserDateTime(u.lastSeenAt)}
                   </p>
                 </div>
                 <div className="flex flex-none items-center gap-2">
+                  <span className="hidden sm:inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">
+                    {ADMIN_USER_ROLE_LABELS[u.role] || u.role}
+                  </span>
                   {isArtist && (
                     <button
                       type="button"
@@ -3680,7 +3735,7 @@ function UserManageSection() {
       )}
 
       <p className="text-xs text-gray-400 mt-4">
-        ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 변경은 즉시 적용되며, 대상자는 다음 로그인 시 반영됩니다.
+        ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 최근 접속은 이 기능 배포 후 인증된 요청이 들어온 시점부터 기록됩니다.
       </p>
     </div>
   );

@@ -10,6 +10,27 @@ export interface JwtPayload {
   role: string;
 }
 
+const LAST_SEEN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+
+async function touchLastSeen(userId: number) {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - LAST_SEEN_UPDATE_INTERVAL_MS);
+  try {
+    await prisma.user.updateMany({
+      where: {
+        id: userId,
+        OR: [
+          { lastSeenAt: null },
+          { lastSeenAt: { lt: cutoff } },
+        ],
+      },
+      data: { lastSeenAt: now },
+    });
+  } catch (error) {
+    console.warn('[auth] failed to update lastSeenAt', error);
+  }
+}
+
 // Express Request 확장
 declare global {
   namespace Express {
@@ -42,6 +63,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     }
 
     req.user = user;
+    await touchLastSeen(user.id);
     next();
   } catch (error) {
     if (error instanceof AppError) return next(error);
@@ -64,6 +86,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     });
     if (user && !user.deletedAt) {
       req.user = user;
+      await touchLastSeen(user.id);
     }
     next();
   } catch {
