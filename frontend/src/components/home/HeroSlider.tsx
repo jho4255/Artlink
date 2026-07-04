@@ -138,7 +138,7 @@ export default function HeroSlider() {
     return (
       <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
-          <div className="h-[50vh] md:h-[60vh] bg-gray-100 rounded-lg animate-pulse">
+          <div className="aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[60vh] bg-gray-100 rounded-lg animate-pulse">
           </div>
         </div>
       </div>
@@ -156,7 +156,7 @@ export default function HeroSlider() {
         >
           <div
             ref={containerRef}
-            className="flex w-full h-[50vh] md:h-[60vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+            className="flex w-full aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[60vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -185,13 +185,13 @@ export default function HeroSlider() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
 
                 {/* 텍스트 */}
-                <div className="absolute bottom-14 md:bottom-16 left-6 md:left-10 right-6 md:right-auto max-w-xl pointer-events-none">
+                <div className="absolute bottom-12 md:bottom-16 left-5 md:left-10 right-5 md:right-auto max-w-xl pointer-events-none">
                   {slide.description && (
-                    <p className="text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/60 mb-2">
+                    <p className="hidden sm:block text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/60 mb-2">
                       {slide.description}
                     </p>
                   )}
-                  <h2 className="text-xl md:text-3xl font-semibold text-white leading-snug">
+                  <h2 className="text-lg md:text-3xl font-semibold text-white leading-snug pr-20 md:pr-0">
                     {slide.title}
                   </h2>
                 </div>
@@ -200,7 +200,7 @@ export default function HeroSlider() {
                 {slide.linkUrl && (
                   <button
                     onClick={() => handleLink(slide.linkUrl)}
-                    className="absolute bottom-14 md:bottom-16 right-6 md:right-10 text-white/80 text-sm md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
+                    className="absolute bottom-5 md:bottom-16 right-5 md:right-10 text-white/80 text-xs md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
                   >
                     자세히 보기 →
                   </button>
