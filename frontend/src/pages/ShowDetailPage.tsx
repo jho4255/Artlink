@@ -11,6 +11,7 @@ import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { HeroImageEdit } from '@/components/shared/EditableField';
+import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import type { Show } from '@/types';
 
 export default function ShowDetailPage() {
@@ -204,6 +205,7 @@ export default function ShowDetailPage() {
       <div className="flex justify-between items-start mb-2">
         <h1 className="text-2xl font-medium text-gray-900">{show.title}</h1>
         <div className="flex items-center gap-3 flex-none">
+          <ViewCountBadge count={show.viewCount} />
           <span className={`text-sm font-medium ${
             status === 'ongoing' ? 'text-[#c4302b]' :
             status === 'upcoming' ? 'text-gray-900' :

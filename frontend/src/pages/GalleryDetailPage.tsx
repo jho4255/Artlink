@@ -37,6 +37,7 @@ import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
+import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
 
@@ -362,7 +363,10 @@ export default function GalleryDetailPage() {
       <div className="px-4 py-6 space-y-8">
         {/* === 기본 정보 섹션 === */}
         <div>
-          <h1 className="text-2xl font-medium">{gallery.name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-medium">{gallery.name}</h1>
+            <ViewCountBadge count={gallery.viewCount} className="mt-1 shrink-0" />
+          </div>
           <div className="flex items-center gap-2 mt-2">
             <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
             <span className="font-medium">{gallery.rating.toFixed(1)}</span>
