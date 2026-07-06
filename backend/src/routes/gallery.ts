@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
+import { bumpViewCount } from '../lib/viewCount';
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -120,6 +121,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       });
       isFavorited = !!fav;
     }
+
+    // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
+    await bumpViewCount('gallery', gallery.id, gallery.ownerId, req.user);
 
     // 익명 리뷰의 작성자 신원은 본인/관리자 외에는 숨김 (PII 보호)
     const reviews = maskAnonymousReviews(gallery.reviews as any[], req.user);

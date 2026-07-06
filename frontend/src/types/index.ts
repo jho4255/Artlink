@@ -21,6 +21,7 @@ export interface Gallery {
   region: string;
   rating: number;
   reviewCount: number;
+  viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   status: string;
   rejectReason?: string;
   ownerName: string;
@@ -70,6 +71,7 @@ export interface Exhibition {
   region: string;
   description: string;
   status: string;
+  viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   galleryId: number;
   gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'>;
   promoPhotos?: PromoPhoto[];
@@ -329,6 +331,7 @@ export interface Show {
   posterImage: string;
   status: string;
   rejectReason?: string;
+  viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   galleryId: number;
   gallery: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'region'> & { ownerId?: number };
   images?: ShowImage[];

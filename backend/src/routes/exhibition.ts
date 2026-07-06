@@ -10,6 +10,7 @@ import { safeFileUrl } from '../lib/safeUrl';
 import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { ARTIST_APPLY_TERMS_HASH, ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
+import { bumpViewCount } from '../lib/viewCount';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -459,6 +460,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       });
       isFavorited = !!fav;
     }
+
+    // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
+    await bumpViewCount('exhibition', exhibition.id, (exhibition.gallery as any).owner?.id, req.user);
 
     // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록.
     // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트).

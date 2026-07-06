@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
+import { bumpViewCount } from '../lib/viewCount';
 
 // 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
 const artistEntrySchema = z.object({
@@ -160,6 +161,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       });
       isFavorited = !!fav;
     }
+
+    // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
+    await bumpViewCount('show', show.id, (show.gallery as any).owner?.id, req.user);
 
     // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트)
     const { owner, ...galleryRest } = show.gallery as any;

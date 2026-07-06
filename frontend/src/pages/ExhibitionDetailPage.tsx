@@ -33,6 +33,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
+import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -355,7 +356,10 @@ export default function ExhibitionDetailPage() {
       <div className="px-6 md:px-12 py-6 space-y-6 max-w-4xl mx-auto">
         {/* 제목 & 갤러리 */}
         <div>
-          <h1 className="text-2xl font-medium">{exhibition.title}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-medium">{exhibition.title}</h1>
+            <ViewCountBadge count={exhibition.viewCount} className="mt-1 shrink-0" />
+          </div>
           <button
             onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
             className="text-gray-500 hover:underline text-sm mt-1 flex items-center gap-1"

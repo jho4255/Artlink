@@ -239,4 +239,54 @@ router.get('/galleries/:id/posts', authenticate, authorize('ADMIN'), async (req,
   } catch (error) { next(error); }
 });
 
+/**
+ * 페이지별 상세 조회수 통계 (ADMIN 전용)
+ * GET /api/admin/view-stats
+ * - 갤러리 상세 / 모집공고(공모) 상세 / 전시 상세 각각의 조회수를 내림차순으로 반환
+ * - 조회수는 비-관리자·비-소유자의 상세 페이지 진입 시 누적됨 (lib/viewCount)
+ */
+router.get('/view-stats', authenticate, authorize('ADMIN'), async (_req, res, next) => {
+  try {
+    const [galleries, exhibitions, shows] = await Promise.all([
+      prisma.gallery.findMany({
+        select: { id: true, name: true, status: true, viewCount: true },
+        orderBy: [{ viewCount: 'desc' }, { id: 'asc' }],
+      }),
+      prisma.exhibition.findMany({
+        select: {
+          id: true, title: true, type: true, status: true, viewCount: true,
+          gallery: { select: { name: true } },
+        },
+        orderBy: [{ viewCount: 'desc' }, { id: 'asc' }],
+      }),
+      prisma.show.findMany({
+        select: {
+          id: true, title: true, status: true, viewCount: true,
+          gallery: { select: { name: true } },
+        },
+        orderBy: [{ viewCount: 'desc' }, { id: 'asc' }],
+      }),
+    ]);
+
+    // 합계도 함께 제공하여 대시보드에서 총 조회수를 표시할 수 있게 한다.
+    const sum = (arr: { viewCount: number }[]) => arr.reduce((acc, r) => acc + r.viewCount, 0);
+    res.json({
+      galleries: galleries.map((g) => ({ id: g.id, name: g.name, status: g.status, viewCount: g.viewCount })),
+      exhibitions: exhibitions.map((e) => ({
+        id: e.id, title: e.title, type: e.type, status: e.status,
+        galleryName: e.gallery?.name ?? '', viewCount: e.viewCount,
+      })),
+      shows: shows.map((s) => ({
+        id: s.id, title: s.title, status: s.status,
+        galleryName: s.gallery?.name ?? '', viewCount: s.viewCount,
+      })),
+      totals: {
+        galleries: sum(galleries),
+        exhibitions: sum(exhibitions),
+        shows: sum(shows),
+      },
+    });
+  } catch (error) { next(error); }
+});
+
 export default router;

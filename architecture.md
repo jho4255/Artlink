@@ -116,6 +116,9 @@ ArtLink/
 - `GET /admin/users/:id/applications` — 작가 지원 이력(공모/갤러리/상태/지원·결정시각)
 - `GET /admin/galleries?q=` — 갤러리 검색(+공모/전시 수)
 - `GET /admin/galleries/:id/posts` — 갤러리가 올린 공모+전시 전체(상태 무관)
+- `GET /admin/view-stats` — 상세 페이지 조회수 통계 API: `{galleries, exhibitions, shows, totals}` 각 항목 viewCount 내림차순 (Admin 대시보드용, 현재 UI 미연결·테스트 존재)
+- **조회수(viewCount)**: 갤러리/공모/전시 상세 `GET /:id` 응답에 `viewCount` 포함. 각 상세 페이지에서 **ADMIN에게만** 배지로 노출(`components/shared/ViewCountBadge`, GalleryDetail/ExhibitionDetail/ShowDetailPage 제목 옆)
+  - 누적: `lib/viewCount.ts`의 `bumpViewCount`가 상세 조회 시 `viewCount` +1 (best-effort). **관리자·소유자 본인 조회는 집계 제외**. 스키마: Gallery/Exhibition/Show.viewCount Int @default(0) (migration ..._add_view_count)
 - `Application.updatedAt`(@updatedAt) 추가로 수락/거절 결정 시각 추적 (migration 20260603000000)
 - 지원서 고정 양식 컬럼 추가: Portfolio.career/portfolioFileUrl, Application.biography/career/artworkImages/portfolioFileUrl (migration 20260607060000_artist_profile_fields)
 - 공용 컴포넌트: `CareerEditor`(경력 편집), `PortfolioFileInput`(pdf/doc/hwp 업로드), `ApplicationContent`(지원서 표시) — 포트폴리오/지원모달/지원자조회 공유
