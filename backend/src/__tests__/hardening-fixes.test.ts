@@ -154,4 +154,132 @@ describe('하드닝 수정 검증', () => {
       expect(remaining.some((n) => n.message === 'fresh-unread')).toBe(true);
     });
   });
+
+  // ===== 접근제어 보안감사 수정 (M1 edit-request · L1 정산 · L2/L4 URL · L3 열거) =====
+  describe('접근제어 보안감사 수정', () => {
+    it('M1: 남의 갤러리 수정요청 제출 차단 (403)', async () => {
+      const other = await testPrisma.user.create({ data: { email: 'other-gallery@test.com', name: 'Other', role: 'GALLERY' } });
+      const g = await seedGallery(other.id); // 타 오너 소유 갤러리
+      const res = await request.post('/api/approvals/edit-request')
+        .set('Authorization', `Bearer ${OWNER()}`) // user 3 — 비소유자
+        .send({ type: 'GALLERY_EDIT', targetId: g.id, changes: { description: '탈취시도' } });
+      expect(res.status).toBe(403);
+    });
+
+    it('M1: changes의 ownerId/status/viewCount는 화이트리스트로 폐기 (제출·승인 양쪽)', async () => {
+      const g = await seedGallery(3);
+      const create = await request.post('/api/approvals/edit-request')
+        .set('Authorization', `Bearer ${OWNER()}`)
+        .send({ type: 'GALLERY_EDIT', targetId: g.id, changes: { description: '새 소개', ownerId: 1, status: 'WITHDRAWN', viewCount: 9999 } });
+      expect(create.status).toBe(201);
+      const stored = JSON.parse((await testPrisma.approvalRequest.findUnique({ where: { id: create.body.id } }))!.changes);
+      expect(stored).toEqual({ description: '새 소개' }); // 화이트리스트 필드만 저장
+
+      await request.patch(`/api/approvals/edit-request/${create.body.id}`).set('Authorization', `Bearer ${ADMIN()}`).send({ status: 'APPROVED' });
+      const after = await testPrisma.gallery.findUnique({ where: { id: g.id } });
+      expect(after!.ownerId).toBe(3);          // 소유권 탈취 안 됨
+      expect(after!.status).toBe('APPROVED');  // 상태 위조 안 됨
+      expect(after!.description).toBe('새 소개'); // 허용 필드는 반영
+    });
+
+    it('L1: 정산 저장 시 비-수락 작가 artistUserId는 무시', async () => {
+      const g = await seedGallery(3);
+      const ex = await seedExhibition(g.id);
+      await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED' } });
+      await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex.id, status: 'SUBMITTED' } });
+      const res = await request.put(`/api/operations/${ex.id}/settlement`).set('Authorization', `Bearer ${OWNER()}`).send({
+        sales: [
+          { artistUserId: 1, artworkIndex: 0, title: 'A', soldPrice: 100 },
+          { artistUserId: 2, artworkIndex: 0, title: 'B', soldPrice: 200 }, // 미수락 → 무시
+        ],
+        ratios: [{ artistUserId: 1, galleryRatio: 10 }, { artistUserId: 2, galleryRatio: 50 }],
+      });
+      expect(res.status).toBe(200);
+      const sales = await testPrisma.artworkSale.findMany({ where: { exhibitionId: ex.id } });
+      expect(sales.map((s) => s.artistUserId)).toEqual([1]);
+      const setts = await testPrisma.artistSettlement.findMany({ where: { exhibitionId: ex.id } });
+      expect(setts.map((s) => s.artistUserId)).toEqual([1]);
+    });
+
+    it('L2: 갤러리 이미지 추가 — 안전하지 않은 URL 거부(400), 업로드 경로 허용(201)', async () => {
+      const g = await seedGallery(3);
+      const bad = await request.post(`/api/galleries/${g.id}/images`).set('Authorization', `Bearer ${OWNER()}`).send({ url: 'javascript:alert(1)' });
+      expect(bad.status).toBe(400);
+      const ok = await request.post(`/api/galleries/${g.id}/images`).set('Authorization', `Bearer ${OWNER()}`).send({ url: '/uploads/abc.jpg' });
+      expect(ok.status).toBe(201);
+    });
+
+    it('L4: avatar — 안전하지 않은 URL 거부(400), null 허용(200)', async () => {
+      const bad = await request.put('/api/auth/me/avatar').set('Authorization', `Bearer ${ARTIST()}`).send({ avatar: 'javascript:alert(1)' });
+      expect(bad.status).toBe(400);
+      const ok = await request.put('/api/auth/me/avatar').set('Authorization', `Bearer ${ARTIST()}`).send({ avatar: null });
+      expect(ok.status).toBe(200);
+    });
+
+    it('L3: 관계 없는 유저와의 빈 스레드는 partner=null (열거 차단)', async () => {
+      const res = await request.get('/api/messages/thread/2').set('Authorization', `Bearer ${ARTIST()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.partner).toBeNull();
+      expect(res.body.messages).toEqual([]);
+    });
+
+    it('L3: 메시지 전송 자격 있는 상대는 빈 스레드여도 partner 노출', async () => {
+      await seedGallery(3); // 승인 갤러리 → 작가가 메시지 전송 자격 보유
+      const res = await request.get('/api/messages/thread/3').set('Authorization', `Bearer ${ARTIST()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.partner).not.toBeNull();
+      expect(res.body.partner.id).toBe(3);
+    });
+  });
+
+  // ===== 게시된 공고 추가 질문: 단일선택 → 다중선택 수정 =====
+  describe('공고 추가질문 단일→다중 수정', () => {
+    it('오너는 select(단일)을 multiselect(다중)로 변경 가능', async () => {
+      const g = await seedGallery(3);
+      const ex = await seedExhibition(g.id);
+      // 단일선택(select, maxSelect 1) 질문 저장
+      const set = await request.patch(`/api/exhibitions/${ex.id}/custom-fields`).set('Authorization', `Bearer ${OWNER()}`)
+        .send({ customFields: [{ id: 'q1', label: '선호 요일', type: 'select', required: true, options: ['월', '화'], maxSelect: 1 }] });
+      expect(set.status).toBe(200);
+      expect(set.body.customFields[0].type).toBe('select');
+
+      // 다중선택(multiselect, 무제한)으로 전환
+      const conv = await request.patch(`/api/exhibitions/${ex.id}/custom-fields`).set('Authorization', `Bearer ${OWNER()}`)
+        .send({ customFields: [{ id: 'q1', label: '선호 요일', type: 'multiselect', required: true, options: ['월', '화'], maxSelect: 0 }] });
+      expect(conv.status).toBe(200);
+      expect(conv.body.customFields[0].type).toBe('multiselect');
+      expect(conv.body.customFields[0].maxSelect).toBe(0);
+
+      const detail = await request.get(`/api/exhibitions/${ex.id}`);
+      expect(detail.body.customFields[0].type).toBe('multiselect');
+    });
+
+    it('비오너(작가)는 추가 질문 수정 불가 → 403', async () => {
+      const g = await seedGallery(3);
+      const ex = await seedExhibition(g.id);
+      const res = await request.patch(`/api/exhibitions/${ex.id}/custom-fields`).set('Authorization', `Bearer ${ARTIST()}`)
+        .send({ customFields: [{ id: 'q1', label: 'x', type: 'multiselect', required: false, options: ['a', 'b'], maxSelect: 0 }] });
+      expect(res.status).toBe(403);
+    });
+
+    it('실서버 호환: 단일→다중 전환 후에도 기존 지원자의 답변(문자열)이 보존됨', async () => {
+      const g = await seedGallery(3);
+      const ex = await seedExhibition(g.id);
+      // 단일선택 질문 설정
+      await request.patch(`/api/exhibitions/${ex.id}/custom-fields`).set('Authorization', `Bearer ${OWNER()}`)
+        .send({ customFields: [{ id: 'q1', label: '요일', type: 'select', required: false, options: ['월', '화'], maxSelect: 1 }] });
+      // 실서버의 기존 데이터 모사: 단일선택 시절 제출된 지원서(문자열 답변)
+      await testPrisma.application.create({
+        data: { userId: 1, exhibitionId: ex.id, status: 'SUBMITTED', customAnswers: JSON.stringify([{ fieldId: 'q1', value: '월' }]) },
+      });
+      // 질문을 다중선택으로 전환
+      await request.patch(`/api/exhibitions/${ex.id}/custom-fields`).set('Authorization', `Bearer ${OWNER()}`)
+        .send({ customFields: [{ id: 'q1', label: '요일', type: 'multiselect', required: false, options: ['월', '화'], maxSelect: 0 }] });
+      // 지원자 목록: 기존 답변이 fieldId 매칭으로 그대로 보존(문자열 값 유지, 손실/변형 없음)
+      const apps = await request.get(`/api/exhibitions/${ex.id}/applications`).set('Authorization', `Bearer ${OWNER()}`);
+      expect(apps.status).toBe(200);
+      expect(apps.body).toHaveLength(1);
+      expect(apps.body[0].customAnswers).toEqual([{ fieldId: 'q1', value: '월' }]);
+    });
+  });
 });

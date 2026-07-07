@@ -111,7 +111,8 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
       throw new AppError('작품 사진은 최대 30장까지 등록 가능합니다.', 400);
     }
 
-    const { url } = req.body;
+    const url = safeFileUrl(req.body.url);
+    if (!url) throw new AppError('유효하지 않은 이미지 URL입니다.', 400);
     // 중간 삭제 후에도 order가 겹치지 않도록 (기존 최대 order) + 1 사용
     const nextOrder = portfolio.images.reduce((max, img) => Math.max(max, img.order), -1) + 1;
     const image = await prisma.portfolioImage.create({

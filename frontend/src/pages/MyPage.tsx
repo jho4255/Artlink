@@ -15,6 +15,7 @@ import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
+import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -1643,141 +1644,6 @@ function MyGalleriesSection() {
   );
 }
 
-function CustomQuestionBuilder({
-  fields,
-  onChange,
-}: {
-  fields: CustomField[];
-  onChange: (updater: (fields: CustomField[]) => CustomField[]) => void;
-}) {
-  const isChoiceField = (field: CustomField) => field.type === 'select' || field.type === 'multiselect';
-  const addQuestion = (type: 'textarea' | 'select') => {
-    onChange((prev) => [
-      ...prev,
-      {
-        id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        label: '',
-        type,
-        required: false,
-        options: type === 'select' ? [''] : undefined,
-        maxSelect: type === 'select' ? 1 : undefined,
-      },
-    ]);
-  };
-  const updateQuestion = (index: number, patch: Partial<CustomField>) => {
-    onChange((prev) => prev.map((field, i) => i === index ? { ...field, ...patch } : field));
-  };
-  const removeQuestion = (index: number) => {
-    onChange((prev) => prev.filter((_, i) => i !== index));
-  };
-  const updateOption = (fieldIndex: number, optionIndex: number, value: string) => {
-    onChange((prev) => prev.map((field, i) => {
-      if (i !== fieldIndex) return field;
-      const options = [...(field.options ?? [])];
-      options[optionIndex] = value;
-      return { ...field, options };
-    }));
-  };
-  const addOption = (fieldIndex: number) => {
-    onChange((prev) => prev.map((field, i) => i === fieldIndex ? { ...field, options: [...(field.options ?? []), ''] } : field));
-  };
-  const removeOption = (fieldIndex: number, optionIndex: number) => {
-    onChange((prev) => prev.map((field, i) => i === fieldIndex ? { ...field, options: (field.options ?? []).filter((_, oi) => oi !== optionIndex) } : field));
-  };
-
-  return (
-    <div className="pt-3 border-t border-gray-100">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div>
-          <p className="text-xs font-medium text-gray-500">추가 질문</p>
-          <p className="text-[11px] text-gray-400">작가 지원서에 객관식/주관식 질문을 추가할 수 있습니다.</p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => addQuestion('textarea')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">주관식</button>
-          <button type="button" onClick={() => addQuestion('select')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">객관식</button>
-        </div>
-      </div>
-      {fields.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-400">
-          필요한 경우 설치 가능 일정, 작품 운송 방식, 작가와의 협업 가능 여부 같은 질문을 추가하세요.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {fields.map((field, index) => (
-            <div key={field.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium text-gray-500">
-                  {isChoiceField(field) ? (field.type === 'multiselect' ? '객관식 · 중복 선택' : '객관식') : '주관식'}
-                </span>
-                <label className="flex items-center gap-1 text-[11px] text-gray-500">
-                  <input
-                    type="checkbox"
-                    checked={field.required}
-                    onChange={(e) => updateQuestion(index, { required: e.target.checked })}
-                    className="rounded"
-                  />
-                  필수
-                </label>
-                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto text-[11px] text-red-500 hover:underline">삭제</button>
-              </div>
-              <input
-                value={field.label}
-                onChange={(e) => updateQuestion(index, { label: e.target.value })}
-                placeholder="질문을 입력하세요"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-              />
-              {isChoiceField(field) && (
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
-                    <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                      <input
-                        type="checkbox"
-                        checked={field.type === 'multiselect'}
-                        onChange={(e) => updateQuestion(index, {
-                          type: e.target.checked ? 'multiselect' : 'select',
-                          maxSelect: e.target.checked ? 0 : 1,
-                        })}
-                        className="rounded"
-                      />
-                      중복 선택 허용
-                    </label>
-                    {field.type === 'multiselect' && (
-                      <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                        최대
-                        <input
-                          type="number"
-                          min={0}
-                          max={(field.options ?? []).filter(Boolean).length || undefined}
-                          value={field.maxSelect ?? 0}
-                          onChange={(e) => updateQuestion(index, { maxSelect: Math.max(0, Number(e.target.value) || 0) })}
-                          className="w-16 rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
-                        />
-                        개 선택 <span className="text-gray-400">(0=무제한)</span>
-                      </label>
-                    )}
-                  </div>
-                  {(field.options ?? []).map((option, optionIndex) => (
-                    <div key={optionIndex} className="flex items-center gap-2">
-                      <input
-                        value={option}
-                        onChange={(e) => updateOption(index, optionIndex, e.target.value)}
-                        placeholder={`선택지 ${optionIndex + 1}`}
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
-                      />
-                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="text-xs text-gray-400 hover:text-red-500">삭제</button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => addOption(index)} className="text-xs text-gray-600 hover:underline">+ 선택지 추가</button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ========== Gallery: 내 공모 ==========
 function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: ExhibitionViewMode } = {}) {
   const navigate = useNavigate();
@@ -1804,6 +1670,8 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   // 지원자 관리 상태
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
+  // 추가 질문 수정 대상 공모 (게시 후 수정)
+  const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
   const [applicantsZipBusy, setApplicantsZipBusy] = useState<number | null>(null);
 
   // 임시저장 훅
@@ -1957,24 +1825,6 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
       // localStorage can be unavailable in hardened browser modes.
     }
   };
-
-  const sanitizeCustomFields = (fields: CustomField[]) => fields
-    .map((field) => {
-      const options = field.type === 'select' || field.type === 'multiselect'
-        ? (field.options ?? []).map((option) => option.trim()).filter(Boolean)
-        : undefined;
-      const rawMaxSelect = field.maxSelect ?? 0;
-      const maxSelect = field.type === 'select' ? 1 : field.type === 'multiselect'
-        ? rawMaxSelect > 0 ? Math.min(rawMaxSelect, options?.length ?? 0) : 0
-        : undefined;
-      return {
-        ...field,
-        label: field.label.trim(),
-        options,
-        maxSelect,
-      };
-    })
-    .filter((field) => field.label);
 
   return (
     <div>
@@ -2130,6 +1980,16 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
         </div>
       )}
 
+      {/* 추가 질문 수정 모달 (게시 후) */}
+      {editQuestionsEx && (
+        <CustomQuestionsEditModal
+          exhibitionId={editQuestionsEx.id}
+          exhibitionTitle={editQuestionsEx.title}
+          initialFields={customFieldsByExId.get(editQuestionsEx.id) as CustomField[] | null | undefined}
+          onClose={() => setEditQuestionsEx(null)}
+        />
+      )}
+
       {/* 등록/취소 확인 모달 */}
       <ConfirmDialog
         open={confirmAction === 'submit'}
@@ -2255,6 +2115,13 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                             >
                               <FileText size={14} /> 상세 운영
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <Edit3 size={14} /> 추가 질문
                             </button>
                             <button
                               type="button"
@@ -2418,6 +2285,12 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                       <ClipboardList size={10} /> 운영 페이지
                     </button>
                   )}
+                  <button
+                    onClick={() => setEditQuestionsEx({ id: ex.id, title: ex.title })}
+                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
+                  >
+                    <Edit3 size={10} /> 추가 질문 수정
+                  </button>
                   {manageAppsExId === ex.id && applicants.length > 0 && (
                     <button
                       onClick={() => handleDownloadApplicantsZip(ex, applicants)}

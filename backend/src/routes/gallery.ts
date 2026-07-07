@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
+import { safeFileUrl } from '../lib/safeUrl';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { bumpViewCount } from '../lib/viewCount';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
@@ -162,7 +163,9 @@ router.post('/:id/images', authenticate, async (req, res, next) => {
     const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) } });
     if (!gallery || gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
-    const { url, order } = req.body;
+    const url = safeFileUrl(req.body.url);
+    if (!url) throw new AppError('유효하지 않은 이미지 URL입니다.', 400);
+    const { order } = req.body;
     const image = await prisma.galleryImage.create({
       data: { url, order: order || 0, galleryId: gallery.id }
     });

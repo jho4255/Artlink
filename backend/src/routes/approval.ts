@@ -172,15 +172,57 @@ router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, nex
   } catch (error) { next(error); }
 });
 
+// 수정 요청으로 변경 가능한 필드 화이트리스트.
+// 소유권(ownerId/galleryId)·승인상태(status)·집계(rating/reviewCount)·조회수(viewCount)·
+// 인스타 토큰·정산 플래그 등은 절대 수정 대상이 될 수 없다. (admin이 무심코 승인해도 안전)
+const EDIT_TYPES = ['GALLERY_EDIT', 'EXHIBITION_EDIT'] as const;
+const GALLERY_EDIT_FIELDS = ['name', 'address', 'phone', 'description', 'detailDesc', 'region', 'mainImage', 'ownerName', 'instagramUrl', 'email'];
+const EXHIBITION_EDIT_FIELDS = ['title', 'type', 'deadline', 'deadlineStart', 'exhibitDate', 'exhibitStartDate', 'capacity', 'region', 'description', 'imageUrl', 'customFields'];
+
+function pickAllowed(changes: any, allowed: string[]): Record<string, any> {
+  const out: Record<string, any> = {};
+  if (changes && typeof changes === 'object' && !Array.isArray(changes)) {
+    for (const k of allowed) {
+      if (changes[k] !== undefined) out[k] = changes[k];
+    }
+  }
+  return out;
+}
+
+// 수정 요청 대상이 요청자(갤러리 오너) 본인 소유인지 검증 — 남의 리소스에 대한 요청 큐잉 차단
+async function assertEditRequestOwnership(type: string, targetId: number, userId: number) {
+  if (type === 'GALLERY_EDIT') {
+    const g = await prisma.gallery.findUnique({ where: { id: targetId }, select: { ownerId: true } });
+    if (!g) throw new AppError('수정 대상 갤러리를 찾을 수 없습니다.', 404);
+    if (g.ownerId !== userId) throw new AppError('본인 소유의 갤러리만 수정 요청할 수 있습니다.', 403);
+  } else {
+    const ex = await prisma.exhibition.findUnique({ where: { id: targetId }, select: { gallery: { select: { ownerId: true } } } });
+    if (!ex) throw new AppError('수정 대상 공모를 찾을 수 없습니다.', 404);
+    if (ex.gallery.ownerId !== userId) throw new AppError('본인 소유의 공모만 수정 요청할 수 있습니다.', 403);
+  }
+}
+
 // 수정 요청 제출 (Gallery 유저)
 router.post('/edit-request', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
-    const { type, targetId, changes } = req.body;
+    const { type, targetId: rawTargetId, changes } = req.body;
+    if (!EDIT_TYPES.includes(type)) throw new AppError('유효하지 않은 수정 요청 유형입니다.', 400);
+    const targetId = Number(rawTargetId);
+    if (!Number.isInteger(targetId)) throw new AppError('유효한 대상 ID가 필요합니다.', 400);
+
+    // 본인 소유 대상만 수정 요청 가능 (confused-deputy 방지)
+    await assertEditRequestOwnership(type, targetId, req.user!.id);
+
+    // 변경 항목은 타입별 화이트리스트로 제한 후 저장 (ownerId/status 등 주입 차단)
+    const allowed = type === 'GALLERY_EDIT' ? GALLERY_EDIT_FIELDS : EXHIBITION_EDIT_FIELDS;
+    const safeChanges = pickAllowed(changes, allowed);
+    if (Object.keys(safeChanges).length === 0) throw new AppError('변경할 수 있는 항목이 없습니다.', 400);
+
     const request = await prisma.approvalRequest.create({
       data: {
         type,
         targetId,
-        changes: JSON.stringify(changes),
+        changes: JSON.stringify(safeChanges),
         requesterId: req.user!.id,
         status: 'PENDING'
       }
@@ -219,11 +261,12 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
       if (existingReq.type === 'GALLERY_EDIT') {
         const target = await prisma.gallery.findUnique({ where: { id: existingReq.targetId } });
         if (!target) throw new AppError('수정 대상 갤러리를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
-        await prisma.gallery.update({ where: { id: existingReq.targetId }, data: changes });
+        // 화이트리스트 재적용 — 과거에 쌓인 요청까지 안전하게 (ownerId/status 등 무시)
+        await prisma.gallery.update({ where: { id: existingReq.targetId }, data: pickAllowed(changes, GALLERY_EDIT_FIELDS) });
       } else if (existingReq.type === 'EXHIBITION_EDIT') {
         const target = await prisma.exhibition.findUnique({ where: { id: existingReq.targetId } });
         if (!target) throw new AppError('수정 대상 공모를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
-        await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: changes });
+        await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: pickAllowed(changes, EXHIBITION_EDIT_FIELDS) });
       }
     }
 

@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **516 tests**: Backend 470 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
+- **526 tests**: Backend 480 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -186,7 +186,7 @@ sudo service postgresql start
       - 텍스트 필드: `maxLength` 속성으로 글자수 제한 (0 = 무제한). 지원 모달에서 실시간 글자수 카운트 표시.
       - 선택형 필드: `maxSelect` 속성으로 동작 제어 (1=단일선택 라디오버튼, 2+=최대N개 체크박스, 0=무제한 체크박스). 초과 시 체크박스 비활성화 + 카운트 표시.
       - **maxSelect vs 옵션 수 검증**: 최대 선택 수가 옵션 수보다 많으면 등록/수정 시 경고 후 차단.
-      - 승인 후에도 커스텀 필드 수정 가능 (Gallery 오너, ExhibitionDetailPage에서 인라인 수정). 수정 시 `maxLength`, `maxSelect` 값도 편집 가능.
+      - 게시(승인) 후에도 Gallery 오너가 커스텀 필드 수정 가능 — **공유 모달** `components/shared/CustomQuestionsEditor.tsx`(default export `CustomQuestionsEditModal`)를 **MyPage 내 공모 카드**(운영/클래식 뷰의 "추가 질문" 버튼)에서 호출 → `PATCH /exhibitions/:id/custom-fields`. (공고 상세 페이지에는 진입점 없음 — 마이페이지 전용). 단일선택(`type:'select'`,maxSelect 1)↔다중선택(`type:'multiselect'`)은 "중복 선택 허용" 토글로 전환, `maxSelect`도 편집. 등록 폼과 동일한 `CustomQuestionBuilder`/`sanitizeCustomFields`를 공유. 기존 지원자 답변은 유지됨.
       - **백엔드 Zod 스키마**: `customFieldSchema`에 `maxLength`, `maxSelect` optional 필드 포함 → DB 저장/조회 시 유실 방지.
     - **지원자 관리**: 공모별 지원자 목록 조회, 커스텀 답변 확인, 상태 변경 (접수 → 검토중 → 수락/거절).
       - **엑셀(CSV) 다운로드**: 지원자 목록을 CSV로 내보내기 (이름, 이메일, 지원일, 상태, 커스텀 답변 포함). BOM 포함 UTF-8 인코딩.

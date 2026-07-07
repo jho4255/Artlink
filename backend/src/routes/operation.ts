@@ -574,11 +574,19 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     const saleRows = Array.isArray(sales) ? sales : [];
     const ratioRows = Array.isArray(ratios) ? ratios : [];
 
+    // 정산 대상은 이 공모의 '수락된 작가'로 한정 — 임의 artistUserId 주입으로 인한
+    // 고아/오귀속 재무 레코드 생성 차단 (데이터 정합성)
+    const acceptedArtists = await prisma.application.findMany({
+      where: { exhibitionId, status: 'ACCEPTED' },
+      select: { userId: true },
+    });
+    const acceptedSet = new Set(acceptedArtists.map((a) => a.userId));
+
     await prisma.$transaction([
       prisma.artworkSale.deleteMany({ where: { exhibitionId } }),
       prisma.artworkSale.createMany({
         data: saleRows
-          .filter((s: any) => Number.isInteger(s.artistUserId) && Number.isInteger(s.artworkIndex))
+          .filter((s: any) => Number.isInteger(s.artistUserId) && Number.isInteger(s.artworkIndex) && acceptedSet.has(s.artistUserId))
           .map((s: any) => ({
             exhibitionId,
             artistUserId: s.artistUserId,
@@ -591,7 +599,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       prisma.artistSettlement.deleteMany({ where: { exhibitionId } }),
       prisma.artistSettlement.createMany({
         data: ratioRows
-          .filter((r: any) => Number.isInteger(r.artistUserId))
+          .filter((r: any) => Number.isInteger(r.artistUserId) && acceptedSet.has(r.artistUserId))
           .map((r: any) => ({
             exhibitionId,
             artistUserId: r.artistUserId,

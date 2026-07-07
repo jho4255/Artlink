@@ -7,10 +7,14 @@ import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { deleteUploadedFile } from '../lib/storage';
+import { safeFileUrl } from '../lib/safeUrl';
 
 const router = Router();
 import { JWT_SECRET } from '../lib/jwt';
 const KAKAO_CLIENT_ID = process.env.KAKAO_CLIENT_ID || '';
+
+// 로그인 타이밍 오라클 제거용 더미 해시 — 존재하지 않는 계정에도 동일한 bcrypt 비용을 지불한다.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('artlink-timing-guard', 10);
 
 function generateToken(user: { id: number; role: string }) {
   return jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -173,7 +177,11 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.password || user.deletedAt) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+    // 계정 부재/OAuth전용/탈퇴 시에도 동일 비용의 bcrypt를 수행해 존재여부 타이밍 노출 방지
+    if (!user || !user.password || user.deletedAt) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+    }
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
@@ -198,7 +206,10 @@ router.get('/me', authenticate, async (req, res, next) => {
 
 router.put('/me/avatar', authenticate, async (req, res, next) => {
   try {
-    const { avatar } = req.body;
+    // null(제거)은 허용, 값이 있으면 안전한 URL(업로드 경로 or http(s))만 저장 — javascript:/data: 등 폐기
+    const raw = req.body.avatar;
+    const avatar = raw == null || raw === '' ? null : safeFileUrl(raw);
+    if (raw && !avatar) throw new AppError('유효하지 않은 이미지 URL입니다.', 400);
     const before = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatar: true } });
     const user = await prisma.user.update({
       where: { id: req.user!.id },

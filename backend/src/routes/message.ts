@@ -333,10 +333,14 @@ router.get('/thread/:userId', authenticate, authorize('ARTIST', 'GALLERY'), asyn
       });
     }
 
-    const partnerUser = await prisma.user.findUnique({
-      where: { id: partnerId },
-      select: { id: true, name: true, nickname: true, role: true, avatar: true },
-    });
+    // 관계 없는 임의 유저 열거 차단: 대화 이력이 있거나 메시지 전송 자격이 있을 때만 상대 프로필 노출
+    const relationExists = messagesRaw.length > 0 || await canSend(myId, req.user!.role, partnerId);
+    const partnerUser = relationExists
+      ? await prisma.user.findUnique({
+          where: { id: partnerId },
+          select: { id: true, name: true, nickname: true, role: true, avatar: true },
+        })
+      : null;
     res.json({ partner: partnerUser ? { ...partnerUser, name: partnerUser.nickname || partnerUser.name } : null, messages });
   } catch (error) { next(error); }
 });
