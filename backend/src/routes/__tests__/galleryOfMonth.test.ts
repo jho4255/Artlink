@@ -41,12 +41,12 @@ describe('Gallery of Month Routes', () => {
     expect(res.body.length).toBeGreaterThanOrEqual(1);
   });
 
-  // 자동 만료 필터링 테스트 — 만료된 항목은 GET에서 제외됨 (where expiresAt >= now)
+  // 자동 만료 필터링 테스트 — 만료된 항목은 GET에서 제외됨 (만료는 KST 달력 날짜 단위)
   it('GET /api/gallery-of-month — 만료된 항목 필터링', async () => {
-    // 만료 시점을 과거로 수정
+    // 만료 시점을 이틀 전으로 수정 (KST 경계와 무관하게 확실히 만료)
     await testPrisma.galleryOfMonth.update({
       where: { id: gotmId },
-      data: { expiresAt: new Date(Date.now() - 1000) },
+      data: { expiresAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
     });
     const res = await request.get('/api/gallery-of-month');
     expect(res.status).toBe(200);

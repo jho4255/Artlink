@@ -200,6 +200,9 @@ export default function MyPage() {
         { id: 'oversight', label: '운영 조회', icon: ClipboardList },
       ];
 
+  // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백
+  const currentTab = tabs.some(t => t.id === activeTab) ? activeTab : (tabs[0]?.id ?? 'profile');
+
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       <div className="flex justify-between items-center mb-8">
@@ -219,7 +222,7 @@ export default function MyPage() {
             key={tab.id}
             onClick={() => selectTab(tab.id)}
             className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
+              currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
             }`}
           >
             {tab.label}
@@ -229,23 +232,23 @@ export default function MyPage() {
 
       {/* 탭 콘텐츠 */}
       <div>
-        {activeTab === 'profile' && <ProfileSection />}
-        {activeTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
-        {activeTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
-        {activeTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
-        {activeTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
-        {activeTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
-        {activeTab === 'my-exhibitions' && user.role === 'GALLERY' && (
+        {currentTab === 'profile' && <ProfileSection />}
+        {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
+        {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
+        {currentTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
+        {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
+        {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
+        {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && (
           <MyExhibitionsSection initialViewMode={searchParams.get('tab') === 'my-exhibitions-classic' ? 'classic' : undefined} />
         )}
-        {activeTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
-        {activeTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
-        {activeTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
-        {activeTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
-        {activeTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
-        {activeTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
-        {activeTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
-        {activeTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
+        {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
+        {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
+        {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
+        {currentTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
+        {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
+        {currentTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
+        {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
+        {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
       </div>
     </div>
   );
@@ -556,16 +559,24 @@ function WithdrawModal({ onClose }: { onClose: () => void }) {
   const { logout } = useAuthStore();
   const [info, setInfo] = useState<WithdrawInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [acknowledge, setAcknowledge] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  const fetchInfo = () => {
+    setLoading(true);
+    setLoadError(false);
     api.get('/auth/me/withdraw-info')
       .then(({ data }) => setInfo(data))
-      .catch(() => toast.error('정보를 불러오지 못했습니다.'))
+      .catch(() => { setLoadError(true); toast.error('정보를 불러오지 못했습니다.'); })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const hasGalleries = (info?.galleries.length ?? 0) > 0;
@@ -606,6 +617,16 @@ function WithdrawModal({ onClose }: { onClose: () => void }) {
 
         {loading ? (
           <div className="py-10 text-center text-sm text-gray-400">불러오는 중...</div>
+        ) : loadError ? (
+          <div className="py-8 text-center space-y-3">
+            <p className="text-sm text-gray-500">정보를 불러오지 못했습니다.</p>
+            <button
+              onClick={fetchInfo}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              다시 시도
+            </button>
+          </div>
         ) : (
           <div className="space-y-4 text-sm">
             <p className="text-gray-600">
@@ -696,6 +717,7 @@ function PortfolioSection() {
       setEditing(false);
       toast.success('포트폴리오가 저장되었습니다.');
     },
+    onError: (err: any) => toast.error(err.response?.data?.error || '포트폴리오 저장에 실패했습니다.'),
   });
 
   // 포트폴리오 이미지 추가
@@ -715,6 +737,7 @@ function PortfolioSection() {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
       toast.success('작품 사진이 삭제되었습니다.');
     },
+    onError: (err: any) => toast.error(err.response?.data?.error || '작품 사진 삭제에 실패했습니다.'),
   });
 
   // 둘러보기 공개 토글 — 낙관적 업데이트
@@ -1005,6 +1028,7 @@ function FavoritesSection() {
           prev.filter(f => {
             if (data.galleryId) return f.galleryId !== data.galleryId;
             if (data.exhibitionId) return f.exhibitionId !== data.exhibitionId;
+            if (data.showId) return f.showId !== data.showId;
             return true;
           })
         );
@@ -1048,6 +1072,9 @@ function FavoritesSection() {
       if (context?.prev) queryClient.setQueryData(['favorites'], context.prev);
       toast.error('찜 해제에 실패했습니다.');
     },
+    onSuccess: () => {
+      toast.success('찜이 해제되었습니다.');
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
@@ -1056,7 +1083,6 @@ function FavoritesSection() {
       queryClient.invalidateQueries({ queryKey: ['exhibition'] });
       queryClient.invalidateQueries({ queryKey: ['shows'] });
       queryClient.invalidateQueries({ queryKey: ['show'] });
-      toast.success('찜이 해제되었습니다.');
     },
   });
 
@@ -1224,7 +1250,7 @@ function ApplicationsSection() {
   });
 
   const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
+  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
     return <p className="text-red-400 text-center py-8">지원 내역을 불러오는 중 오류가 발생했습니다.</p>;
@@ -1462,6 +1488,12 @@ function MyGalleriesSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-galleries'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      // 갤러리 삭제 시 하위 공모/전시가 cascade 삭제되므로 관련 캐시도 갱신
+      queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['my-shows'] });
+      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['shows'] });
       toast.success('갤러리가 삭제되었습니다.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),
@@ -1546,7 +1578,7 @@ function MyGalleriesSection() {
       <ConfirmDialog
         open={confirmAction === 'cancel'}
         title="작성 취소"
-        message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
+        message={'작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다.'}
         confirmText="취소하기"
         variant="danger"
         onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); }}
@@ -1883,7 +1915,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   });
 
   const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
+  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   // 지원서 전체 ZIP 원클릭 다운로드 (지원자별 PDF 묶음)
   const handleDownloadApplicantsZip = async (exhibition: any, apps: any[]) => {
@@ -2110,7 +2142,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
       <ConfirmDialog
         open={confirmAction === 'cancel'}
         title="작성 취소"
-        message="작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다."
+        message={'작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다.'}
         confirmText="취소하기"
         variant="danger"
         onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); }}
@@ -2517,6 +2549,7 @@ function MyShowsSection() {
       queryClient.invalidateQueries({ queryKey: ['my-shows'] });
       toast.success('전시가 삭제되었습니다.');
     },
+    onError: (err: any) => toast.error(err.response?.data?.error || '전시 삭제에 실패했습니다.'),
   });
 
   // 전시 삭제 이중확인 ("삭제" 입력)
@@ -2857,6 +2890,7 @@ function ApprovalsSection() {
       invalidateAllRelated();
       toast.success('승인되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '승인에 실패했습니다.'),
   });
 
   const rejectMutation = useMutation({
@@ -2868,6 +2902,7 @@ function ApprovalsSection() {
       setRejectReason('');
       toast.success('거절되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '거절에 실패했습니다.'),
   });
 
   // Admin: 갤러리 삭제
@@ -3080,14 +3115,14 @@ function ApprovalsSection() {
                 <div className="mt-3 space-y-2">
                   <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="거절 사유를 입력하세요 (필수)" className="w-full h-20 p-2 border border-gray-200 rounded-lg text-sm resize-none" />
                   <div className="flex gap-2">
-                    <button onClick={() => rejectMutation.mutate({ type: item._type, id: item.id, reason: rejectReason })} disabled={!rejectReason.trim()} className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg disabled:opacity-50">거절 확인</button>
+                    <button onClick={() => rejectMutation.mutate({ type: item._type, id: item.id, reason: rejectReason })} disabled={!rejectReason.trim() || approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg disabled:opacity-50">거절 확인</button>
                     <button onClick={() => setRejectingId(null)} className="px-3 py-1.5 text-sm text-gray-500">취소</button>
                   </div>
                 </div>
               ) : (
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => approveMutation.mutate({ type: item._type, id: item.id })} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1"><Check size={14} /> 승인</button>
-                  <button onClick={() => setRejectingId({ type: item._type, id: item.id })} className="px-3 py-1.5 bg-red-50 text-red-500 text-sm rounded-lg flex items-center gap-1"><XCircle size={14} /> 거절</button>
+                  <button onClick={() => approveMutation.mutate({ type: item._type, id: item.id })} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><Check size={14} /> 승인</button>
+                  <button onClick={() => { setRejectReason(''); setRejectingId({ type: item._type, id: item.id }); }} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-red-50 text-red-500 text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><XCircle size={14} /> 거절</button>
                 </div>
               )}
             </div>
@@ -3119,6 +3154,7 @@ function HeroManageSection() {
       resetForm();
       toast.success('슬라이드가 등록되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '슬라이드 등록에 실패했습니다.'),
   });
 
   const updateMutation = useMutation({
@@ -3128,6 +3164,7 @@ function HeroManageSection() {
       resetForm();
       toast.success('슬라이드가 수정되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '슬라이드 수정에 실패했습니다.'),
   });
 
   const deleteMutation = useMutation({
@@ -3136,6 +3173,7 @@ function HeroManageSection() {
       queryClient.invalidateQueries({ queryKey: ['hero-slides'] });
       toast.success('슬라이드가 삭제되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '슬라이드 삭제에 실패했습니다.'),
   });
 
   const resetForm = () => {
@@ -3185,6 +3223,11 @@ function HeroManageSection() {
               {form.linkUrl && <span className="absolute bottom-3 right-3 text-xs bg-white text-gray-900 px-2 py-1 rounded">바로가기 →</span>}
             </div>
           )}
+          {preview && !form.imageUrl && (
+            <div className="w-full h-40 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-sm text-gray-400">
+              이미지를 먼저 등록하세요
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button
@@ -3192,7 +3235,8 @@ function HeroManageSection() {
                 if (!form.title || !form.imageUrl) { toast.error('제목과 이미지는 필수입니다.'); return; }
                 editingId ? updateMutation.mutate() : createMutation.mutate();
               }}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
             >{editingId ? '수정' : '등록'}</button>
             <button onClick={resetForm} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
@@ -3239,6 +3283,7 @@ function BenefitManageSection() {
       resetForm();
       toast.success('혜택이 등록되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 등록에 실패했습니다.'),
   });
 
   const updateMutation = useMutation({
@@ -3248,6 +3293,7 @@ function BenefitManageSection() {
       resetForm();
       toast.success('혜택이 수정되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 수정에 실패했습니다.'),
   });
 
   const deleteMutation = useMutation({
@@ -3256,6 +3302,7 @@ function BenefitManageSection() {
       queryClient.invalidateQueries({ queryKey: ['benefits'] });
       toast.success('혜택이 삭제되었습니다.');
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 삭제에 실패했습니다.'),
   });
 
   const resetForm = () => {
@@ -3307,7 +3354,8 @@ function BenefitManageSection() {
                 if (!form.title || !form.description) { toast.error('제목과 설명은 필수입니다.'); return; }
                 editingId ? updateMutation.mutate() : createMutation.mutate();
               }}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
             >{editingId ? '수정' : '등록'}</button>
             <button onClick={resetForm} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
@@ -3378,6 +3426,7 @@ function GotmManageSection() {
       queryClient.invalidateQueries({ queryKey: ['gallery-of-month'] });
       toast.success('삭제되었습니다.');
     },
+    onError: (err: any) => toast.error(err.response?.data?.error || '삭제에 실패했습니다.'),
   });
 
   return (
@@ -3520,7 +3569,7 @@ function ReportManageSection() {
         <div className="space-y-0">
           {reports.map((r: any) => (
             <div key={r.id} className="py-4 border-b border-gray-100">
-              <div className="flex justify-between items-start cursor-pointer" onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
+              <div className="flex justify-between items-start cursor-pointer" onClick={() => { setAdminNote(''); setExpandedId(expandedId === r.id ? null : r.id); }}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-[#c4302b]' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
@@ -3743,7 +3792,7 @@ function UserManageSection() {
 
 // ========== Admin: 운영 조회 (지원현황/작가이력/갤러리 게시물) ==========
 const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
+const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
 const POST_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절' };
 const ovDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('ko') : '-');

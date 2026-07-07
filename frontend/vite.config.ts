@@ -18,6 +18,8 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
+        // API/업로드 경로는 SPA 앱셸(index.html)로 폴백하지 않도록 제외
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
       },
       manifest: {
         name: 'ArtLink',

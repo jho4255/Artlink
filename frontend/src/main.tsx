@@ -9,11 +9,13 @@ import './index.css';
 
 // PWA 서비스워커 업데이트 감지 → 자동 새로고침 안내
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.ready.then((registration) => {
-    registration.addEventListener('controllerchange', () => {
-      // 새 서비스워커가 활성화되면 페이지 새로고침
-      window.location.reload();
-    });
+  // controllerchange는 registration이 아닌 serviceWorker 컨테이너에서 발생.
+  // 새 서비스워커가 활성화되면 페이지 새로고침 (reload 루프 방지 가드 포함)
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
 
   navigator.serviceWorker.addEventListener('message', (event) => {

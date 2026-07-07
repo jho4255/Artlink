@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { safeFileUrl } from '../lib/safeUrl';
+import { deleteUploadedFile } from '../lib/storage';
 
 const router = Router();
 
@@ -33,8 +34,9 @@ router.get('/:userId', async (req, res, next) => {
     const userId = parseInt(req.params.userId as string);
     if (isNaN(userId)) throw new AppError('유효하지 않은 유저 ID입니다.', 400);
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    // 탈퇴(deletedAt) 회원의 포트폴리오는 공개에서 숨김 → 404
+    const user = await prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
       select: { id: true, name: true, nickname: true, avatar: true, role: true, instagramUrl: true },
     });
     if (!user || user.role !== 'ARTIST') {
@@ -95,7 +97,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 포트폴리오 이미지 추가 (최대 10장)
+// 포트폴리오 이미지 추가 (최대 30장)
 router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     const portfolio = await prisma.portfolio.findUnique({
@@ -105,16 +107,18 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
     if (!portfolio) {
       throw new AppError('포트폴리오를 먼저 생성해주세요.', 400);
     }
-    if (portfolio.images.length >= 10) {
-      throw new AppError('작품 사진은 최대 10장까지 등록 가능합니다.', 400);
+    if (portfolio.images.length >= 30) {
+      throw new AppError('작품 사진은 최대 30장까지 등록 가능합니다.', 400);
     }
 
     const { url } = req.body;
+    // 중간 삭제 후에도 order가 겹치지 않도록 (기존 최대 order) + 1 사용
+    const nextOrder = portfolio.images.reduce((max, img) => Math.max(max, img.order), -1) + 1;
     const image = await prisma.portfolioImage.create({
       data: {
         url,
         portfolioId: portfolio.id,
-        order: portfolio.images.length
+        order: nextOrder
       }
     });
     res.status(201).json(image);
@@ -158,6 +162,7 @@ router.delete('/images/:imageId', authenticate, authorize('ARTIST'), async (req,
       throw new AppError('이미지를 찾을 수 없습니다.', 404);
     }
     await prisma.portfolioImage.delete({ where: { id: imageId } });
+    void deleteUploadedFile(image.url); // orphan 방지
     res.json({ message: '삭제되었습니다.' });
   } catch (error) { next(error); }
 });

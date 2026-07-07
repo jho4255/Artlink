@@ -47,7 +47,8 @@ router.post('/faq', authenticate, authorize('ADMIN'), validate(faqSchema), async
 });
 
 // PATCH /inquiries/faq/:id — FAQ 수정 (Admin)
-router.patch('/faq/:id', authenticate, authorize('ADMIN'), validate(faqSchema), async (req, res, next) => {
+// 부분 수정 허용(정렬만/답변만 수정) → partial 스키마 사용. 생성(POST)은 전체 스키마 유지.
+router.patch('/faq/:id', authenticate, authorize('ADMIN'), validate(faqSchema.partial()), async (req, res, next) => {
   try {
     const faq = await prisma.faq.findUnique({ where: { id: Number(req.params.id) } });
     if (!faq) throw new AppError('FAQ를 찾을 수 없습니다.', 404);

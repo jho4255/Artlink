@@ -25,7 +25,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // 로그인 시도(/auth/*) 실패의 401은 기존 세션을 날리지 않도록 로그아웃 제외
+    if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/')) {
       useAuthStore.getState().logout();
     }
     // 네트워크/타임아웃/서버 에러 로깅 (개발 환경)

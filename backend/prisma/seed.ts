@@ -79,6 +79,24 @@ async function main() {
     console.log(`✅ FAQ ${faqData.length}개 등록`);
   }
 
+  // ━━━ 부트스트랩 관리자 (신규/재생성 DB 대응) ━━━
+  // 관리자가 한 명도 없을 때, ADMIN_BOOTSTRAP_EMAIL 로 지정된 '기존 가입 사용자'를 ADMIN으로 승격.
+  // (운영은 데모 시드를 건너뛰므로, 빈 DB에서 승인 플로우를 시작할 유일한 관리자 경로.
+  //  카카오 로그인은 providerId로 매칭되므로 신규 계정 생성이 아닌 '기존 사용자 승격' 방식을 사용한다.)
+  const bootstrapEmail = process.env.ADMIN_BOOTSTRAP_EMAIL?.trim();
+  if (bootstrapEmail) {
+    const adminCount = await prisma.user.count({ where: { role: 'ADMIN', deletedAt: null } });
+    if (adminCount === 0) {
+      const target = await prisma.user.findUnique({ where: { email: bootstrapEmail } });
+      if (target) {
+        await prisma.user.update({ where: { id: target.id }, data: { role: 'ADMIN' } });
+        console.log(`✅ 부트스트랩: ${bootstrapEmail} → ADMIN 승격`);
+      } else {
+        console.log(`⚠️  부트스트랩 대상(${bootstrapEmail}) 없음 — 먼저 카카오로 가입 후 재배포하세요.`);
+      }
+    }
+  }
+
   // 운영 환경에서는 데모 시드(테스트 계정/갤러리 등) 생성 안 함 — 실데이터만 유지
   if (process.env.NODE_ENV === 'production') {
     console.log('⏭️  운영 환경 — 데모 시드 데이터 생성을 건너뜁니다.');

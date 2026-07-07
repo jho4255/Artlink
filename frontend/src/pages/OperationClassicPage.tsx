@@ -29,6 +29,15 @@ const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'a
   { key: 'award', label: '수상 및 선정' },
 ];
 
+// 빈 객체({})는 미제출로 판정 — 백엔드 predicate와 동일하게 내용 유무로 판단
+function hasContent(obj: any): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.values(obj).some((v) =>
+    typeof v === 'string' ? v.trim().length > 0
+    : Array.isArray(v) ? v.length > 0
+    : (v && typeof v === 'object') ? hasContent(v) : false);
+}
+
 export default function OperationPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -104,8 +113,11 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
     if (step.next.ended && !window.confirm('전시를 종료하고 정산 단계로 넘어갈까요?')) return;
     mutation.mutate(step.next);
   };
+  // 전시 시작일 경과 등으로 자동 확정된 '확정' 단계는 되돌리기가 백엔드에서 거부됨 → 버튼 비활성
+  const cannotUndoConfirm = stage === 2 && access.confirmed && !access.manualConfirmed;
   const goPrev = () => {
     if (stage <= 0) return;
+    if (cannotUndoConfirm) return;
     mutation.mutate(LIFECYCLE_STEPS[stage - 1].back);
   };
 
@@ -163,7 +175,7 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
               <ArrowRight size={15} />
             </button>
           )}
-          {stage > 0 && (
+          {stage > 0 && !cannotUndoConfirm && (
             <button
               onClick={goPrev}
               disabled={mutation.isPending}
@@ -548,7 +560,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
           {data.map(({ user, submission }) => {
             const isOpen = openId === user.id;
             const artCount = submission.artworkList?.length || 0;
-            const hasCv = !!submission.cv;
+            const hasCv = hasContent(submission.cv);
             const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
             return (
               <div key={user.id} className="border border-gray-100 rounded-xl overflow-hidden">

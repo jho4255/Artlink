@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
@@ -54,7 +54,12 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     onError: (err: any) => setError(err.response?.data?.error || '가입에 실패했습니다.'),
   });
 
+  // StrictMode 이중 실행 방지 — code는 1회용이므로 교환은 한 번만 실행
+  const fired = useRef(false);
   useEffect(() => {
+    if (fired.current) return;
+    fired.current = true;
+
     const code = searchParams.get('code');
     const state = searchParams.get('state');
 

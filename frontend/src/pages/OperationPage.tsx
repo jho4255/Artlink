@@ -59,10 +59,19 @@ function compactDate(value?: string | null) {
   return new Date(value).toLocaleDateString('ko', { month: 'short', day: 'numeric' });
 }
 
+// 빈 객체({})는 미제출로 판정 — 백엔드 predicate와 동일하게 내용 유무로 판단
+function hasContent(obj: any): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.values(obj).some((v) =>
+    typeof v === 'string' ? v.trim().length > 0
+    : Array.isArray(v) ? v.length > 0
+    : (v && typeof v === 'object') ? hasContent(v) : false);
+}
+
 function getSubmissionMissingParts(submission: OperationSubmission): string[] {
   const parts: string[] = [];
   if ((submission.artworkList?.length || 0) === 0) parts.push('작품 정보');
-  if (!submission.cv) parts.push('작가 약력');
+  if (!hasContent(submission.cv)) parts.push('작가 약력');
   if (!(submission.note && (submission.note.statement || submission.note.sections?.length))) parts.push('작가노트');
   return parts;
 }
@@ -171,13 +180,13 @@ export default function OperationPage() {
   const stage = getOperationStage(access);
   const submittedArtists = submissionSummary.filter(({ submission }) => {
     const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
+    const hasCv = hasContent(submission.cv);
     const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
     return hasArtwork || hasCv || hasNote;
   }).length;
   const completeArtists = submissionSummary.filter(({ submission }) => {
     const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
+    const hasCv = hasContent(submission.cv);
     const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
     return hasArtwork && hasCv && hasNote;
   }).length;
@@ -186,7 +195,7 @@ export default function OperationPage() {
   const settlementIssues = settlementSummary?.artists.filter(a => a.approval?.status === 'ISSUE').length ?? 0;
   const incompleteSubmissionRows = submissionSummary.filter(({ submission }) => {
     const hasArtwork = (submission.artworkList?.length || 0) > 0;
-    const hasCv = !!submission.cv;
+    const hasCv = hasContent(submission.cv);
     const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
     return !(hasArtwork && hasCv && hasNote);
   });
@@ -270,7 +279,7 @@ export default function OperationPage() {
     ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${displayName(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
     : priorityTask?.meta || operationSummaryText(access);
   const downloadHelperSettlement = async (method?: 'CARD' | 'CASH') => {
-    if (!settlementSummary) return;
+    if (!settlementSummary) { toast('정산 정보를 불러오는 중입니다.'); return; }
     try {
       const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
       await downloadOverallSettlementPdf(settlementSummary, method);
@@ -656,8 +665,11 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
     if (step.next.ended && !window.confirm('전시를 종료하고 정산 단계로 넘어갈까요?')) return;
     mutation.mutate(step.next);
   };
+  // 전시 시작일 경과 등으로 자동 확정된 '확정' 단계는 되돌리기가 백엔드에서 거부됨 → 버튼 비활성
+  const cannotUndoConfirm = stage === 2 && access.confirmed && !access.manualConfirmed;
   const goPrev = () => {
     if (stage <= 0) return;
+    if (cannotUndoConfirm) return;
     mutation.mutate(LIFECYCLE_STEPS[stage - 1].back);
   };
 
@@ -715,7 +727,7 @@ function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: O
               <ArrowRight size={15} />
             </button>
           )}
-          {stage > 0 && (
+          {stage > 0 && !cannotUndoConfirm && (
             <button
               onClick={goPrev}
               disabled={mutation.isPending}
@@ -1101,7 +1113,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
           {data.map(({ user, submission }) => {
             const isOpen = openId === user.id;
             const artCount = submission.artworkList?.length || 0;
-            const hasCv = !!submission.cv;
+            const hasCv = hasContent(submission.cv);
             const hasNote = !!(submission.note && (submission.note.statement || submission.note.sections?.length));
             const isComplete = artCount > 0 && hasCv && hasNote;
             return (

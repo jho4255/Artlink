@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Star, Heart, Phone, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -36,12 +36,25 @@ export default function GalleriesPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
 
-  // 필터 상태
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [minRating, setMinRating] = useState<number | null>(null);
-  const [sortBy, setSortBy] = useState<string | null>(null);
-  const [search, setSearch] = useState('');           // 입력 중인 검색어
-  const [appliedSearch, setAppliedSearch] = useState(''); // 적용된 검색어
+  // 필터 상태 — URL 쿼리스트링과 동기화(뒤로가기 시 필터 유지). 호출부는 기존 setter 시그니처 유지.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setParam = (key: string, value: string | number | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, String(value));
+      return next;
+    }, { replace: true });
+  };
+  const selectedRegion = searchParams.get('region');
+  const setSelectedRegion = (v: string | null) => setParam('region', v);
+  const minRating = searchParams.get('minRating') ? Number(searchParams.get('minRating')) : null;
+  const setMinRating = (v: number | null) => setParam('minRating', v);
+  const sortBy = searchParams.get('sortBy');
+  const setSortBy = (v: string | null) => setParam('sortBy', v);
+  const appliedSearch = searchParams.get('q') ?? '';
+  const setAppliedSearch = (v: string) => setParam('q', v);
+  const [search, setSearch] = useState(appliedSearch); // 입력 중인 검색어(로컬)
 
   // 갤러리 목록 조회
   const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({

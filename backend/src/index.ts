@@ -101,11 +101,26 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+// 매칭되지 않은 /api 경로는 SPA(index.html)로 흘리지 않고 404 JSON 반환
+// (그렇지 않으면 오타/미존재 API가 200+HTML로 응답돼 클라이언트가 오작동)
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: '요청한 API를 찾을 수 없습니다.' });
+});
+
 // 프론트엔드 정적 파일 제공 (프로덕션)
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../frontend/dist');
-  app.use(express.static(distPath));
+  // 해시된 번들은 장기 캐시(immutable), index.html은 항상 재검증(no-cache)
+  app.use(express.static(distPath, {
+    maxAge: '1y',
+    immutable: true,
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
   app.get('/{*path}', (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
@@ -115,9 +130,25 @@ app.use(errorHandler);
 
 // 테스트 환경에서는 supertest가 자체 포트 사용하므로 listen 생략
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info('Server', `ArtLink 백엔드 서버 실행 중: http://0.0.0.0:${PORT}`);
   });
+
+  // Graceful shutdown: 배포/재시작 시 SIGTERM에 진행 중 요청을 정리하고 Prisma 연결 해제
+  const shutdown = (signal: string) => {
+    logger.info('Server', `${signal} 수신 — graceful shutdown 시작`);
+    server.close(async () => {
+      try {
+        const { prisma } = await import('./lib/prisma');
+        await prisma.$disconnect();
+      } catch { /* 무시 */ }
+      process.exit(0);
+    });
+    // 10초 내 정리되지 않으면 강제 종료
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 export default app;

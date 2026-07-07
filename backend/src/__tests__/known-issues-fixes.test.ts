@@ -46,6 +46,22 @@ describe('Known issues 수정', () => {
       expect(r1.status).toBe(201);
       expect(r2.status).toBe(201);
     });
+
+    it('거절된 지원은 정원에서 제외되어 슬롯이 복구됨', async () => {
+      const ex = await makeExhibition(1);
+      // 작가1 지원 → 정원 참
+      const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
+        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      expect(r1.status).toBe(201);
+      // 갤러리 오너(3)가 작가1 거절
+      const rej = await request.patch(`/api/exhibitions/${ex.id}/applications/${r1.body.id}`)
+        .set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ status: 'REJECTED' });
+      expect(rej.status).toBe(200);
+      // 작가2는 이제 지원 가능해야 함 (거절이 슬롯을 점유하지 않음)
+      const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
+        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      expect(r2.status).toBe(201);
+    });
   });
 
   describe('KI-3: 삭제된 대상 수정요청 승인', () => {

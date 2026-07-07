@@ -35,3 +35,22 @@ backend/logs/
 .claude/
 frontend/tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# 로컬 스크래치 / 개인자료 (커밋 금지 — 실명 포함 문서·샘플·PoC)
+# 루트 레벨 문서/이미지 스크래치 (프로젝트 자산은 frontend/public·src 하위에 위치)
+/*.pdf
+/*.hwp
+/*.docx
+/*.docx.pdf
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
+/samplepic/
+/sample작가/
+/poc/
+/tmp_*/
+/docs/manual/
+backend/prisma/_*.ts
+e2e/_*

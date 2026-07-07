@@ -7,6 +7,9 @@ import { validate } from '../middleware/validate';
 import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { bumpViewCount } from '../lib/viewCount';
+import { safeFileUrl } from '../lib/safeUrl';
+import { startOfTodayKstAsUtc, endOfTodayKstAsUtc } from '../lib/kstDate';
+import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 
 // 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
 const artistEntrySchema = z.object({
@@ -48,8 +51,9 @@ function normalizeArtists(artistsJson: string | null): { name: string; userId: n
 /**
  * 입력 배열(string | object 혼합)을 일관된 ArtistEntry[]로 정규화
  */
-function normalizeArtistsInput(artists: any[] | null | undefined): { name: string; userId: number | null }[] | null {
-  if (!artists || artists.length === 0) return null;
+function normalizeArtistsInput(artists: any): { name: string; userId: number | null }[] | null {
+  // 배열이 아닌 값(예: "홍길동" 문자열)이 오면 .map 호출 전 null 반환 (TypeError → 500 방지)
+  if (!Array.isArray(artists) || artists.length === 0) return null;
   return artists.map((a: any) => {
     if (typeof a === 'string') return { name: a, userId: null };
     return { name: a.name, userId: a.userId || null };
@@ -62,32 +66,30 @@ const router = Router();
 router.get('/', optionalAuth, async (req, res, next) => {
   try {
     const { region } = req.query;
-    const now = new Date();
+    // KST 달력 날짜 경계 (endDate가 UTC 자정=KST 09:00 저장이라 raw new Date() 비교 시
+    // 마감일 당일 오전 9시에 진행중→종료로 오프바이원. startOf/endOfTodayKstAsUtc로 하루 단위 판정)
+    const todayStart = startOfTodayKstAsUtc();
+    const todayEnd = endOfTodayKstAsUtc();
 
     const where: any = { status: 'APPROVED' };
     if (region) where.region = region;
 
-    // 키워드 검색 (제목/장소/참여작가)
+    // 키워드 검색: 참여작가(artists)는 JSON 문자열로 저장돼 DB `contains`로 검색하면
+    // 'name','{','null' 같은 JSON 아티팩트가 모든 전시에 매칭된다. 따라서 DB에서는
+    // q를 걸지 않고, 아래에서 제목/장소/파싱된 작가명 기준 app-level 필터링한다.
     const q = ((req.query.q as string) || '').trim();
-    if (q) {
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { location: { contains: q, mode: 'insensitive' } },
-        { artists: { contains: q, mode: 'insensitive' } },
-      ];
-    }
 
-    // status 필터: ongoing(진행중), upcoming(예정), ended(종료)
+    // status 필터: ongoing(진행중), upcoming(예정), ended(종료) — KST 달력 하루 기준
     if (req.query.showStatus === 'ongoing') {
-      where.startDate = { lte: now };
-      where.endDate = { gte: now };
+      where.startDate = { lte: todayEnd };
+      where.endDate = { gte: todayStart };
     } else if (req.query.showStatus === 'upcoming') {
-      where.startDate = { gt: now };
+      where.startDate = { gt: todayEnd };
     } else if (req.query.showStatus === 'ended') {
-      where.endDate = { lt: now };
+      where.endDate = { lt: todayStart };
     }
 
-    const shows = await prisma.show.findMany({
+    let shows = await prisma.show.findMany({
       where,
       include: {
         gallery: { select: { id: true, name: true, mainImage: true, region: true } },
@@ -95,6 +97,17 @@ router.get('/', optionalAuth, async (req, res, next) => {
       },
       orderBy: { startDate: 'asc' },
     });
+
+    // 키워드 검색 app-level 필터: 제목/장소/참여작가(파싱된 이름) 부분 일치
+    if (q) {
+      const needle = q.toLowerCase();
+      shows = shows.filter((s) => {
+        if (s.title.toLowerCase().includes(needle)) return true;
+        if (s.location.toLowerCase().includes(needle)) return true;
+        const artists = normalizeArtists(s.artists);
+        return !!artists?.some((a) => a.name.toLowerCase().includes(needle));
+      });
+    }
 
     // 찜 여부
     if (req.user) {
@@ -269,7 +282,10 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     const isAdmin = req.user!.role === 'ADMIN';
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
+    // 삭제 전 포스터/추가이미지 URL 수집 → cascade 삭제 후 실제 파일 정리(best-effort)
+    const showImgs = await prisma.showImage.findMany({ where: { showId: show.id }, select: { url: true } });
     await prisma.show.delete({ where: { id: show.id } });
+    void deleteUploadedFiles([...showImgs.map((i) => i.url), show.posterImage]);
     res.json({ message: '전시가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });
@@ -285,8 +301,11 @@ router.post('/:id/images', authenticate, authorize('GALLERY'), async (req, res, 
     if (show.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
     const { url, order } = req.body;
+    // 저장형 XSS 방지: 동일 출처 경로 또는 http(s) URL만 허용
+    const safeUrl = safeFileUrl(url);
+    if (!safeUrl) throw new AppError('유효한 이미지 URL이 필요합니다.', 400);
     const image = await prisma.showImage.create({
-      data: { url, order: order || 0, showId: show.id },
+      data: { url: safeUrl, order: order || 0, showId: show.id },
     });
     res.status(201).json(image);
   } catch (error) { next(error); }
@@ -304,10 +323,11 @@ router.delete('/:id/images/:imageId', authenticate, authorize('GALLERY'), async 
 
     // 대상 이미지가 이 전시(show)에 속하는지 검증 (다른 전시 이미지 삭제 IDOR 차단)
     const imageId = parseInt(req.params.imageId as string);
-    const image = await prisma.showImage.findUnique({ where: { id: imageId }, select: { showId: true } });
+    const image = await prisma.showImage.findUnique({ where: { id: imageId }, select: { showId: true, url: true } });
     if (!image || image.showId !== show.id) throw new AppError('이미지를 찾을 수 없습니다.', 404);
 
     await prisma.showImage.delete({ where: { id: imageId } });
+    void deleteUploadedFile(image.url); // orphan 방지
     res.json({ message: '이미지가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });

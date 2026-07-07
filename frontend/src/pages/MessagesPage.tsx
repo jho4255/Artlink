@@ -144,6 +144,7 @@ export default function MessagesPage() {
   });
 
   const send = () => {
+    if (sendMutation.isPending) return;
     if (!selectedId) return;
     if (!replyContent.trim() && replyAttachments.length === 0) return;
     sendMutation.mutate(

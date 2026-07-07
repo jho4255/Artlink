@@ -55,6 +55,14 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return res.status(503).json({ error: '서버가 일시적으로 바쁩니다. 잠시 후 다시 시도해주세요.' });
   }
 
+  // body-parser 에러 (잘못된 JSON 문법, 100kb 초과 등)는 자체 status(400/413)를 가진다
+  const bodyErrStatus = (err as any).status ?? (err as any).statusCode;
+  if (typeof bodyErrStatus === 'number' && bodyErrStatus >= 400 && bodyErrStatus < 500) {
+    logger.warn('BodyParser', err.message, meta);
+    const msg = bodyErrStatus === 413 ? '요청 본문이 너무 큽니다.' : '요청 형식이 올바르지 않습니다.';
+    return res.status(bodyErrStatus).json({ error: msg });
+  }
+
   // 알 수 없는 서버 에러
   logger.error('UnhandledError', err.message, meta);
   return res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });

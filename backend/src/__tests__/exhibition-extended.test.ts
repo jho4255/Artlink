@@ -261,16 +261,17 @@ describe('Exhibition apply edge cases', () => {
     await testPrisma.exhibition.delete({ where: { id: ex.id } });
   });
 
-  it('만료된 공모에도 지원 가능 (서버에 만료 체크 없음)', async () => {
+  it('마감일이 지난 공모 지원 차단 (서버 마감 검사)', async () => {
     const ex = await createExhibition({
       title: 'Expired Apply Test',
-      deadline: new Date(Date.now() - 86400000),
+      deadline: new Date(Date.now() - 2 * 86400000), // 그저께: KST 경계와 무관하게 확실히 만료
     });
     const res = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
       .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('마감');
 
     await testPrisma.application.deleteMany({ where: { exhibitionId: ex.id } });
     await testPrisma.exhibition.delete({ where: { id: ex.id } });

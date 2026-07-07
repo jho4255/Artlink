@@ -142,12 +142,18 @@ export async function compressImage(file: File, maxDim = 2000, quality = 0.85): 
   }
 }
 
-// D-day 계산
+// KST(UTC+9) 달력 날짜의 일련번호(에폭 기준 일수). 시/분/초를 버리고 '그 날짜'만 비교하기 위함.
+// 백엔드는 마감/전시일을 UTC 자정(=KST 09:00)으로 저장하므로, KST 달력 날짜 단위로 맞춰야
+// 마감일 당일 오전 9시에 D-day가 어긋나거나 목록에서 사라지는 오프바이원을 막는다.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+function kstDayNumber(date: string | Date): number {
+  const kst = new Date(new Date(date).getTime() + KST_OFFSET_MS);
+  return Math.floor(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) / 86400000);
+}
+
+// D-day 계산 (KST 달력 날짜 기준). 마감일 당일=0(D-DAY), 이후=음수(만료).
 export function getDday(deadline: string | Date): number {
-  const now = new Date();
-  const target = new Date(deadline);
-  const diff = target.getTime() - now.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return kstDayNumber(deadline) - kstDayNumber(new Date());
 }
 
 // 지역 라벨 매핑
@@ -169,13 +175,11 @@ export const exhibitionTypeLabels: Record<string, string> = {
   ART_FAIR: '아트페어',
 };
 
-// 전시(Show) 상태 계산
+// 전시(Show) 상태 계산 (KST 달력 날짜 기준: 종료일 당일까지 '진행중')
 export function getShowStatus(startDate: string | Date, endDate: string | Date): 'upcoming' | 'ongoing' | 'ended' {
-  const now = new Date();
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (now < start) return 'upcoming';
-  if (now > end) return 'ended';
+  const today = kstDayNumber(new Date());
+  if (today < kstDayNumber(startDate)) return 'upcoming';
+  if (today > kstDayNumber(endDate)) return 'ended';
   return 'ongoing';
 }
 

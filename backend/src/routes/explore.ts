@@ -7,14 +7,18 @@ const router = Router();
 // GET / — 공개 탐색 피드 (Explore)
 router.get('/', optionalAuth, async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 30;
+    // page/limit 클램핑 (음수 skip → 500, 과도한 limit 방지)
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 30, 1), 60);
     const skip = (page - 1) * limit;
     const userId = req.user?.id;
 
+    // 탈퇴(deletedAt) 작가의 이미지는 탐색 피드에서 제외
+    const feedWhere = { showInExplore: true, portfolio: { user: { deletedAt: null } } };
+
     const [images, total] = await Promise.all([
       prisma.portfolioImage.findMany({
-        where: { showInExplore: true },
+        where: feedWhere,
         orderBy: { id: 'desc' },
         skip,
         take: limit,
@@ -28,7 +32,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
           ...(userId ? { likes: { where: { userId }, select: { id: true } } } : {}),
         },
       }),
-      prisma.portfolioImage.count({ where: { showInExplore: true } }),
+      prisma.portfolioImage.count({ where: feedWhere }),
     ]);
 
     // 같은 작가 이미지가 연속으로 나오지 않도록 라운드로빈 분산
@@ -78,10 +82,15 @@ router.post('/:imageId/like', authenticate, async (req, res, next) => {
       where: { userId_imageId: { userId, imageId } },
     });
 
-    if (existing) {
-      await prisma.portfolioImageLike.delete({ where: { id: existing.id } });
-    } else {
-      await prisma.portfolioImageLike.create({ data: { userId, imageId } });
+    // 더블클릭 레이스를 멱등 처리: P2002(중복 생성)/P2025(없는 행 삭제)는 최종 상태로 수렴하므로 무시
+    try {
+      if (existing) {
+        await prisma.portfolioImageLike.delete({ where: { id: existing.id } });
+      } else {
+        await prisma.portfolioImageLike.create({ data: { userId, imageId } });
+      }
+    } catch (e: any) {
+      if (e?.code !== 'P2002' && e?.code !== 'P2025') throw e;
     }
 
     const likeCount = await prisma.portfolioImageLike.count({ where: { imageId } });

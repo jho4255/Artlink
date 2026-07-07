@@ -78,14 +78,18 @@ export default function ApplicantsPage() {
 
   const batchUpdate = async (status: string) => {
     if (selectedIds.size === 0) return;
-    try {
-      await Promise.all(Array.from(selectedIds).map(appId =>
-        api.patch(`/exhibitions/${id}/applications/${appId}`, { status })));
-      queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', id] });
-      toast.success(`${selectedIds.size}명의 상태를 변경했습니다.`);
-      setSelectedIds(new Set());
-      setBatchStatus('');
-    } catch { toast.error('일괄 상태 변경 중 오류 발생'); }
+    const results = await Promise.allSettled(Array.from(selectedIds).map(appId =>
+      api.patch(`/exhibitions/${id}/applications/${appId}`, { status })));
+    // 부분 실패해도 성공분은 반영되므로 항상 캐시 무효화
+    queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', id] });
+    queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
+    queryClient.invalidateQueries({ queryKey: ['exhibition-applications'] });
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.length - ok;
+    if (fail === 0) toast.success(`${ok}명의 상태를 변경했습니다.`);
+    else toast.error(`${ok}건 변경, ${fail}건 실패`);
+    setSelectedIds(new Set());
+    setBatchStatus('');
   };
 
   const exTitle = exhibition?.title || '공모';

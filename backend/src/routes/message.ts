@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { addClient, removeClient, pushToUser } from '../lib/sse';
 import { JWT_SECRET } from '../lib/jwt';
+import { safeFileUrl } from '../lib/safeUrl';
 
 // 갤러리는 본인 공모 지원자에게만, 작가는 승인 갤러리에게만 메시지 가능 (기존 대화 있으면 회신 허용)
 async function canSend(myId: number, myRole: string, receiverId: number): Promise<boolean> {
@@ -22,7 +23,13 @@ async function canSend(myId: number, myRole: string, receiverId: number): Promis
   }
   if (myRole === 'ARTIST') {
     const g = await prisma.gallery.findFirst({ where: { ownerId: receiverId, status: 'APPROVED' }, select: { id: true } });
-    return !!g;
+    if (g) return true;
+    // 갤러리가 삭제/승인해제된 뒤에도 기존 대화가 있으면 회신 허용 (일방향 대화 방지)
+    const existing = await prisma.message.findFirst({
+      where: { OR: [{ senderId: receiverId, receiverId: myId }, { senderId: myId, receiverId }] },
+      select: { id: true },
+    });
+    return !!existing;
   }
   return false;
 }
@@ -32,7 +39,7 @@ const messageCreateSchema = z.object({
   subject: z.string().min(1, '제목을 입력해주세요.').max(200, '제목은 200자 이내로 작성해주세요.'),
   content: z.string().min(1, '내용을 입력해주세요.').max(5000, '내용은 5000자 이내로 작성해주세요.'),
   exhibitionId: z.number().int().positive().optional(),
-  attachments: z.array(z.string()).max(5, '첨부파일은 최대 5개까지 가능합니다.').optional(),
+  attachments: z.array(z.object({ url: z.string(), name: z.string(), type: z.string(), size: z.number().optional() })).max(5, '첨부파일은 최대 5개까지 가능합니다.').optional(),
 });
 
 const router = Router();
@@ -395,9 +402,9 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
     const myRole = req.user!.role;
     const { receiverId, subject, content, exhibitionId, attachments } = req.body;
 
-    // 수신자 확인
-    const receiver = await prisma.user.findUnique({
-      where: { id: receiverId },
+    // 수신자 확인 (탈퇴한 회원에게는 전송 불가)
+    const receiver = await prisma.user.findFirst({
+      where: { id: receiverId, deletedAt: null },
       select: { id: true, role: true },
     });
     if (!receiver) throw new AppError('수신자를 찾을 수 없습니다.', 404);
@@ -421,6 +428,13 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
       if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
     }
 
+    // 첨부파일 url 정규화 — 저장형 XSS 방지. 정규화 실패한 항목은 폐기.
+    const cleanAttachments = Array.isArray(attachments)
+      ? attachments
+          .map((a: { url: string; name: string; type: string; size?: number }) => ({ ...a, url: safeFileUrl(a.url) }))
+          .filter((a): a is { url: string; name: string; type: string; size?: number } => a.url !== null)
+      : [];
+
     const message = await prisma.message.create({
       data: {
         senderId: myId,
@@ -428,7 +442,7 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
         subject,
         content,
         exhibitionId: exhibitionId || null,
-        attachments: attachments ? JSON.stringify(attachments) : null,
+        attachments: cleanAttachments.length ? JSON.stringify(cleanAttachments) : null,
       },
       include: {
         sender: { select: { id: true, name: true, nickname: true, role: true } },
@@ -444,11 +458,17 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(messageC
     // Create notification for receiver (best-effort)
     try {
       const baseSubject = subject.replace(/^(Re:\s*)+/i, '');
+      // 발신자 표시명: 갤러리는 갤러리명, 그 외는 nickname||name (/chats 파트너 표시 로직과 동일)
+      let senderName = message.sender.nickname || message.sender.name;
+      if (myRole === 'GALLERY') {
+        const myGallery = await prisma.gallery.findFirst({ where: { ownerId: myId, status: 'APPROVED' }, select: { name: true } });
+        senderName = myGallery?.name || senderName;
+      }
       await prisma.notification.create({
         data: {
           userId: receiverId,
           type: 'NEW_MESSAGE',
-          message: `${req.user!.name}님이 메시지를 보냈습니다: ${subject}`,
+          message: `${senderName}님이 메시지를 보냈습니다: ${subject}`,
           linkUrl: `/messages?partner=${myId}${exhibitionId ? `&exhibition=${exhibitionId}` : ''}&subject=${encodeURIComponent(baseSubject)}`,
         },
       });

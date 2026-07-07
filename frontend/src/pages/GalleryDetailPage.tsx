@@ -304,6 +304,8 @@ export default function GalleryDetailPage() {
   const images = gallery.images?.length > 0
     ? gallery.images.map(img => img.url)
     : [gallery.mainImage || ''];
+  // 실제 이미지가 최소 1장 있는지 — 0장 갤러리에서 빈 라이트박스가 열리는 것 방지
+  const hasImage = images.some((url) => !!url && url.trim() !== '');
 
   // 권한 체크
   const isOwner = user?.id === gallery.ownerId;
@@ -341,7 +343,7 @@ export default function GalleryDetailPage() {
             galleryName={gallery.name}
             imgIndex={imgIndex}
             setImgIndex={setImgIndex}
-            onImageClick={(index) => setLightbox({ images, index })}
+            onImageClick={(index) => { if (hasImage) setLightbox({ images, index }); }}
             isFavorited={!!gallery.isFavorited}
             showFavorite={user?.role === 'ARTIST'}
             onFavoriteClick={() => favMutation.mutate()}
@@ -607,12 +609,12 @@ export default function GalleryDetailPage() {
         )}
 
         {/* === 종료된 전시 - 홍보 사진 섹션 === */}
-        {gallery.exhibitions && gallery.exhibitions.filter(e => new Date(e.exhibitDate) < new Date()).length > 0 && (
+        {gallery.exhibitions && gallery.exhibitions.filter(e => getDday(e.exhibitDate) < 0).length > 0 && (
           <div>
             <h2 className="text-xl font-medium mb-3">종료된 전시</h2>
             <div className="space-y-4">
               {gallery.exhibitions
-                .filter(e => new Date(e.exhibitDate) < new Date())
+                .filter(e => getDday(e.exhibitDate) < 0)
                 .map(ex => (
                   <div key={ex.id} className="py-4 border-b border-gray-200">
                     <div className="flex justify-between items-start mb-2">

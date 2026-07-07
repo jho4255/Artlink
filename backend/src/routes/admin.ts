@@ -17,6 +17,10 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
     const q = ((req.query.q as string) || '').trim();
     const role = ((req.query.role as string) || '').trim();
     if (role && !VALID_ROLES.includes(role)) throw new AppError('유효하지 않은 역할입니다.', 400);
+    // 페이지네이션: 1-based page 쿼리 → skip 적용. page 미지정 시 1페이지처럼 동작(하위호환).
+    // 프론트가 순수 배열을 기대하므로 응답 형태는 배열 유지, page만 존중.
+    const PAGE_SIZE = 100;
+    const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
     const where: any = {};
     if (role) where.role = role;
     if (q) {
@@ -35,7 +39,8 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     });
     res.json(users);
   } catch (error) { next(error); }
@@ -192,6 +197,10 @@ router.get('/users/:id/applications', authenticate, authorize('ADMIN'), async (r
 router.get('/galleries', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const q = ((req.query.q as string) || '').trim();
+    // 페이지네이션: 1-based page 쿼리 → skip 적용. page 미지정 시 1페이지처럼 동작(하위호환).
+    // 프론트가 순수 배열을 기대하므로 응답 형태는 배열 유지, page만 존중.
+    const PAGE_SIZE = 50;
+    const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
     const galleries = await prisma.gallery.findMany({
       where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
       select: {
@@ -200,7 +209,8 @@ router.get('/galleries', authenticate, authorize('ADMIN'), async (req, res, next
         _count: { select: { exhibitions: true, shows: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     });
     res.json(galleries);
   } catch (error) { next(error); }

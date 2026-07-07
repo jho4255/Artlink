@@ -347,9 +347,11 @@ function InquirySection() {
     replyMutation.mutate({ id, reply: replyText.trim() });
   };
 
-  const toggleExpand = (id: number) => {
-    setExpandedId(expandedId === id ? null : id);
-    setReplyText('');
+  const toggleExpand = (inq: Inquiry) => {
+    const willExpand = expandedId !== inq.id;
+    setExpandedId(willExpand ? inq.id : null);
+    // 확장 시 기존 답변으로 초기화 → 지우면 빈 값 유지(부활 방지)
+    setReplyText(willExpand ? (inq.reply ?? '') : '');
   };
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('ko-KR', {
@@ -450,7 +452,7 @@ function InquirySection() {
               className="border-b border-gray-200 overflow-hidden"
             >
               <button
-                onClick={() => toggleExpand(inq.id)}
+                onClick={() => toggleExpand(inq)}
                 className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
               >
                 <div className="flex-1 min-w-0">
@@ -497,7 +499,7 @@ function InquirySection() {
                       {isAdmin && (
                         <div className="space-y-2">
                           <textarea
-                            value={replyText || (inq.status === 'ANSWERED' ? inq.reply || '' : '')}
+                            value={replyText}
                             onChange={e => setReplyText(e.target.value)}
                             maxLength={5000}
                             placeholder={inq.status === 'ANSWERED' ? '답변을 수정해주세요' : '답변을 입력해주세요'}

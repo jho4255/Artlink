@@ -60,13 +60,21 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
 router.patch('/gallery/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const { status, rejectReason } = req.body;
+    if (status !== 'APPROVED' && status !== 'REJECTED') {
+      throw new AppError('유효하지 않은 상태입니다.', 400);
+    }
     if (status === 'REJECTED' && !rejectReason) {
       throw new AppError('거절 시 사유를 작성해야 합니다.', 400);
     }
 
+    const id = parseInt(req.params.id as string);
+    const existing = await prisma.gallery.findUnique({ where: { id } });
+    if (!existing) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+
     const gallery = await prisma.gallery.update({
-      where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason }
+      where: { id },
+      // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason }
     });
 
     // 승인/거절 → Gallery 오너에게 알림
@@ -90,13 +98,21 @@ router.patch('/gallery/:id', authenticate, authorize('ADMIN'), async (req, res, 
 router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const { status, rejectReason } = req.body;
+    if (status !== 'APPROVED' && status !== 'REJECTED') {
+      throw new AppError('유효하지 않은 상태입니다.', 400);
+    }
     if (status === 'REJECTED' && !rejectReason) {
       throw new AppError('거절 시 사유를 작성해야 합니다.', 400);
     }
 
+    const id = parseInt(req.params.id as string);
+    const existing = await prisma.exhibition.findUnique({ where: { id } });
+    if (!existing) throw new AppError('공모를 찾을 수 없습니다.', 404);
+
     const exhibition = await prisma.exhibition.update({
-      where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason },
+      where: { id },
+      // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason },
       include: { gallery: { select: { ownerId: true, name: true } } },
     });
 
@@ -121,13 +137,21 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
 router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const { status, rejectReason } = req.body;
+    if (status !== 'APPROVED' && status !== 'REJECTED') {
+      throw new AppError('유효하지 않은 상태입니다.', 400);
+    }
     if (status === 'REJECTED' && !rejectReason) {
       throw new AppError('거절 시 사유를 작성해야 합니다.', 400);
     }
 
+    const id = parseInt(req.params.id as string);
+    const existing = await prisma.show.findUnique({ where: { id } });
+    if (!existing) throw new AppError('전시를 찾을 수 없습니다.', 404);
+
     const show = await prisma.show.update({
-      where: { id: parseInt(req.params.id as string) },
-      data: { status, rejectReason },
+      where: { id },
+      // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason },
       include: { gallery: { select: { ownerId: true, name: true } } },
     });
 
@@ -186,7 +210,12 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
 
     // 승인 시: 대상이 살아있는지 먼저 확인하고 변경 적용 (없으면 친절한 404, 상태도 바꾸지 않음)
     if (status === 'APPROVED') {
-      const changes = JSON.parse(existingReq.changes);
+      let changes: any;
+      try {
+        changes = JSON.parse(existingReq.changes);
+      } catch {
+        throw new AppError('수정 요청 데이터를 해석할 수 없습니다.', 400);
+      }
       if (existingReq.type === 'GALLERY_EDIT') {
         const target = await prisma.gallery.findUnique({ where: { id: existingReq.targetId } });
         if (!target) throw new AppError('수정 대상 갤러리를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);

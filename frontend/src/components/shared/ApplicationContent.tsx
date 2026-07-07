@@ -37,6 +37,14 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
   const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
   const answerMap = new Map((app.customAnswers ?? []).map((answer) => [answer.fieldId, answer.value]));
 
+  // 문자열/배열 답변을 공통 포맷으로 렌더
+  const formatAnswer = (value?: string | string[]) => (Array.isArray(value) ? value.join(', ') : value);
+
+  // 갤러리가 질문을 수정/삭제해도 기존 지원자의 답변이 사라지지 않도록,
+  // 현재 필드에 없는 fieldId의 답변은 "삭제된 질문"으로 별도 표시한다.
+  const currentFieldIds = new Set((customFields ?? []).map((field) => field.id));
+  const orphanAnswers = (app.customAnswers ?? []).filter((answer) => !currentFieldIds.has(answer.fieldId));
+
   return (
     <div className="space-y-2 bg-gray-50 rounded-lg p-3">
       <p className="text-xs font-medium text-gray-600">📋 지원서 내용</p>
@@ -102,16 +110,25 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
         )}
       </div>
 
-      {(customFields?.length ?? 0) > 0 && (
+      {((customFields?.length ?? 0) > 0 || orphanAnswers.length > 0) && (
         <div>
           <p className="text-xs text-gray-400 mb-1">갤러리 추가 질문</p>
           <div className="space-y-1.5">
-            {customFields!.map((field) => {
-              const answer = answerMap.get(field.id);
-              const value = Array.isArray(answer) ? answer.join(', ') : answer;
+            {(customFields ?? []).map((field) => {
+              const value = formatAnswer(answerMap.get(field.id));
               return (
                 <div key={field.id} className="rounded-md bg-white border border-gray-100 px-2.5 py-2">
                   <p className="text-[11px] font-medium text-gray-500">{field.label}</p>
+                  <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{value || '-'}</p>
+                </div>
+              );
+            })}
+            {/* 질문이 삭제/재생성되어 현재 필드에 없는 답변 — 데이터 유실 방지 */}
+            {orphanAnswers.map((answer) => {
+              const value = formatAnswer(answer.value);
+              return (
+                <div key={answer.fieldId} className="rounded-md bg-white border border-gray-100 px-2.5 py-2">
+                  <p className="text-[11px] font-medium text-gray-400">삭제된 질문</p>
                   <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{value || '-'}</p>
                 </div>
               );

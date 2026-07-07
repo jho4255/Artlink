@@ -4,10 +4,18 @@ import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+const NOTIFICATION_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 읽은 알림 보관 기간 (90일)
+
 // GET /notifications — 내 알림 목록 (최근 50개, 미읽음 우선)
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 50);
+    // TTL 정리(best-effort, 비차단): 읽은 지 90일 넘은 알림 제거 → 무한 증가 방지.
+    // 미읽음은 사용자가 확인해야 하므로 삭제하지 않는다.
+    prisma.notification.deleteMany({
+      where: { userId: req.user!.id, read: true, createdAt: { lt: new Date(Date.now() - NOTIFICATION_TTL_MS) } },
+    }).catch(() => { /* 정리 실패는 무시 */ });
+
     const notifications = await prisma.notification.findMany({
       where: { userId: req.user!.id },
       orderBy: [{ read: 'asc' }, { createdAt: 'desc' }],

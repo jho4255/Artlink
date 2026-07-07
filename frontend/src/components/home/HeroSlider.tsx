@@ -81,7 +81,7 @@ export default function HeroSlider() {
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
       if (!isHovered.current) scrollToSlide((current + 1) % slides.length);
-    }, 5000);
+    }, 3000);
     return () => clearInterval(timer);
   }, [slides.length, current, scrollToSlide]);
 

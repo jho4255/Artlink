@@ -14,6 +14,7 @@ import { AppError } from '../middleware/errorHandler';
 import { buildCaptionHwp, CAPTION_CELL_CAPACITY } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
+import { hasSubmissionContent } from '../lib/submission';
 
 const router = Router();
 
@@ -258,8 +259,8 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
     const targets = accepted.filter((a) => {
       const sub = subByUser.get(a.userId);
       const hasArtwork = (sub?.artworkList?.length || 0) > 0;
-      const hasCv = !!sub?.cv;
-      const hasNote = !!sub?.note;
+      const hasCv = hasSubmissionContent(sub?.cv);
+      const hasNote = hasSubmissionContent(sub?.note);
       return !(hasArtwork && hasCv && hasNote);
     });
 
@@ -414,6 +415,18 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
       } else {
         // 확정 취소는 전시종료가 걸려있으면 불가
         if (!isAdmin && curEnded) throw new AppError('전시종료를 먼저 취소한 뒤 확정을 취소할 수 있습니다.', 400);
+        // 전시 시작일이 지나 자동 확정된 경우 수동 취소 불가 (조용한 무반응 방지)
+        if (!isAdmin && !exhibition.confirmed && curConfirmed) {
+          throw new AppError('전시 시작일이 지나 자동 확정된 상태입니다. 확정을 취소할 수 없습니다.', 400);
+        }
+        // 판매/정산 데이터가 있으면 확정 해제 불가 — 확정 해제 시 작가가 출품작을 수정하면
+        // 인덱스 기반 판매기록이 어긋난다. 먼저 정산을 취소하고 판매 내역을 비워야 함.
+        if (!isAdmin) {
+          const saleCount = await prisma.artworkSale.count({ where: { exhibitionId } });
+          if (saleCount > 0) {
+            throw new AppError('판매·정산 데이터가 있어 확정을 해제할 수 없습니다. 먼저 정산 요청을 취소하고 판매 내역을 비워주세요.', 400);
+          }
+        }
       }
       data.confirmed = confirmed;
     }

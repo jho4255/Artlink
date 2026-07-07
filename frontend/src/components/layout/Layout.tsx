@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 
@@ -24,7 +24,13 @@ export default function Layout() {
     <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
       <main className="flex-1">
-        <Outlet />
+        <Suspense fallback={
+          <div className="flex items-center justify-center py-24 text-gray-300">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
+          </div>
+        }>
+          <Outlet />
+        </Suspense>
       </main>
       <footer className="border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
@@ -37,8 +43,9 @@ export default function Layout() {
           ) : (
             <p className="text-[11px] text-gray-300">&copy; 2026 ArtLink. All rights reserved.</p>
           )}
-          <div className="mt-2">
+          <div className="mt-2 flex gap-4">
             <Link to="/privacy" className="text-[11px] text-gray-300 hover:text-gray-500">개인정보처리방침</Link>
+            <Link to="/terms" className="text-[11px] text-gray-300 hover:text-gray-500">이용약관</Link>
           </div>
         </div>
       </footer>

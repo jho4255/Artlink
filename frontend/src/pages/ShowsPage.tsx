@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, MapPin, Calendar, X, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -16,10 +16,23 @@ export default function ShowsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  // 필터 상태 — URL 쿼리스트링과 동기화(뒤로가기 시 필터 유지)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setParam = (key: string, value: string | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { replace: true });
+  };
+  const selectedRegion = searchParams.get('region');
+  const setSelectedRegion = (v: string | null) => setParam('region', v);
+  const selectedStatus = searchParams.get('status');
+  const setSelectedStatus = (v: string | null) => setParam('status', v);
+  const appliedSearch = searchParams.get('q') ?? '';
+  const setAppliedSearch = (v: string) => setParam('q', v);
+  const [search, setSearch] = useState(appliedSearch);
 
   const { data: shows = [], isLoading, isError, refetch } = useQuery<Show[]>({
     queryKey: ['shows', selectedRegion, selectedStatus, appliedSearch],

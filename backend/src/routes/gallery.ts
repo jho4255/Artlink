@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate';
 import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { bumpViewCount } from '../lib/viewCount';
+import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -194,6 +195,7 @@ router.delete('/:id/images/:imageId', authenticate, async (req, res, next) => {
     if (!image || image.galleryId !== galleryId) throw new AppError('이미지를 찾을 수 없습니다.', 404);
 
     await prisma.galleryImage.delete({ where: { id: imageId } });
+    void deleteUploadedFile(image.url); // orphan 방지: 실제 파일도 제거(best-effort)
 
     // mainImage 동기화: 항상 남은 첫 이미지로 맞춘다(없으면 null).
     // - 삭제한 이미지가 대표였으면 다음 이미지로 교체 → 목록 등 mainImage만 읽는 화면도 갱신.
@@ -263,7 +265,10 @@ router.delete('/:id', authenticate, authorize('ADMIN', 'GALLERY'), async (req, r
       throw new AppError('본인 소유 갤러리만 삭제할 수 있습니다.', 403);
     }
 
+    // 삭제 전 갤러리 직속 이미지 URL 수집 → cascade 삭제 후 실제 파일도 정리(best-effort)
+    const galleryImages = await prisma.galleryImage.findMany({ where: { galleryId: gallery.id }, select: { url: true } });
     await prisma.gallery.delete({ where: { id: gallery.id } });
+    void deleteUploadedFiles([...galleryImages.map((i) => i.url), gallery.mainImage]);
     res.json({ message: '갤러리가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });

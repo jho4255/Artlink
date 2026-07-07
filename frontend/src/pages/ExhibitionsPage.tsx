@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -14,11 +14,25 @@ export default function ExhibitionsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [minGalleryRating, setMinGalleryRating] = useState<number | null>(null);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  // 필터 상태 — URL 쿼리스트링과 동기화(뒤로가기 시 필터 유지)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setParam = (key: string, value: string | number | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, String(value));
+      return next;
+    }, { replace: true });
+  };
+  const selectedRegion = searchParams.get('region');
+  const setSelectedRegion = (v: string | null) => setParam('region', v);
+  const minGalleryRating = searchParams.get('minGalleryRating') ? Number(searchParams.get('minGalleryRating')) : null;
+  const setMinGalleryRating = (v: number | null) => setParam('minGalleryRating', v);
+  const selectedType = searchParams.get('type');
+  const setSelectedType = (v: string | null) => setParam('type', v);
+  const appliedSearch = searchParams.get('q') ?? '';
+  const setAppliedSearch = (v: string) => setParam('q', v);
+  const [search, setSearch] = useState(appliedSearch);
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
 

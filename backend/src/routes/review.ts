@@ -109,26 +109,22 @@ router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema)
       throw new AppError('수락된 공모에 대해서만 리뷰를 작성할 수 있습니다.', 403);
     }
 
-    // 3) 해당 공모에 대한 기존 리뷰 확인 (공모당 1회)
+    // 3) 해당 공모에 대한 기존 리뷰 확인 (공모당 1회) + 멱등 처리
+    //    - 같은 공모에 이미 리뷰가 있고, 내용이 같으며 최근(1분) 재전송이면 기존 리뷰를 201로 반환
+    //      (더블클릭/네트워크 재시도로 인한 중복 생성 방지)
+    //    - 그 외 기존 리뷰가 있으면 409 (공모당 1회)
+    //    ※ exhibitionId로 스코프하므로 같은 갤러리의 다른 공모 리뷰를 삼키지 않는다.
     const existingReview = await prisma.review.findFirst({
       where: { userId: req.user!.id, exhibitionId },
     });
     if (existingReview) {
+      const isRecentDuplicate =
+        existingReview.content === content &&
+        existingReview.createdAt >= new Date(Date.now() - 60 * 1000);
+      if (isRecentDuplicate) {
+        return res.status(201).json(existingReview);
+      }
       throw new AppError('이 공모에 대한 리뷰는 이미 작성하셨습니다.', 409);
-    }
-
-    // 중복 제출 방지 (idempotency): 같은 유저+갤러리+내용이 최근 1분 내에 있으면 기존 리뷰 반환
-    // Render 콜드스타트(~30s) 중 timeout → 재클릭 시 동일 리뷰 다수 생성되는 문제 방지
-    const recentDup = await prisma.review.findFirst({
-      where: {
-        userId: req.user!.id,
-        galleryId,
-        content,
-        createdAt: { gte: new Date(Date.now() - 60 * 1000) },
-      },
-    });
-    if (recentDup) {
-      return res.status(201).json(recentDup);
     }
 
     // 트랜잭션으로 리뷰 생성 + 평점 재계산 atomic 보장

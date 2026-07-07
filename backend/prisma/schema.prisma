@@ -40,6 +40,9 @@ model User {
   receivedMessages Message[]       @relation("receivedMessages")
   messageReports   MessageReport[] @relation("messageReports")
   exhibitionSubmissions ExhibitionSubmission[]
+  artworkSales        ArtworkSale[]        @relation("artworkSales")
+  artistSettlements   ArtistSettlement[]   @relation("artistSettlements")
+  settlementApprovals SettlementApproval[] @relation("settlementApprovals")
 }
 
 // 갤러리 모델
@@ -229,6 +232,10 @@ model Favorite {
   @@unique([userId, exhibitionId])
   @@unique([userId, showId])
   @@index([userId])
+  // 역방향 조회/부모 삭제(cascade) 시 seq scan 방지
+  @@index([galleryId])
+  @@index([exhibitionId])
+  @@index([showId])
 }
 
 // 포트폴리오
@@ -291,6 +298,8 @@ model Application {
 
   @@unique([userId, exhibitionId])
   @@index([userId])
+  // 지원마다 실행되는 정원 count + 지원자 목록이 exhibitionId로 필터 → 인덱스 필요
+  @@index([exhibitionId])
 }
 
 // 전시 (갤러리의 실제 전시/행사 소개)
@@ -464,6 +473,7 @@ model ArtworkSale {
   exhibitionId Int
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   artistUserId Int
+  artist       User       @relation("artworkSales", fields: [artistUserId], references: [id], onDelete: Restrict)
   artworkIndex Int        // 해당 작가 artworkList 내 인덱스
   title        String     // 작품명 스냅샷
   soldPrice    Int        // 판매가 (원)
@@ -471,6 +481,7 @@ model ArtworkSale {
 
   @@unique([exhibitionId, artistUserId, artworkIndex])
   @@index([exhibitionId])
+  @@index([artistUserId])
 }
 
 // 작가별 정산 비율 (전시종료 후 갤러리가 입력) — galleryRatio: 갤러리 몫 %, 작가 = 100 - galleryRatio
@@ -479,10 +490,12 @@ model ArtistSettlement {
   exhibitionId Int
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   artistUserId Int
+  artist       User       @relation("artistSettlements", fields: [artistUserId], references: [id], onDelete: Restrict)
   galleryRatio Int        @default(0) // 0~100
 
   @@unique([exhibitionId, artistUserId])
   @@index([exhibitionId])
+  @@index([artistUserId])
 }
 
 // 정산 확인 승인 — 갤러리가 [정산 확인 요청] 시 수락 작가별 1행 생성. 전원 APPROVED여야 갤러리가 정산 완료 가능.
@@ -491,10 +504,12 @@ model SettlementApproval {
   exhibitionId Int
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   artistUserId Int
+  artist       User       @relation("settlementApprovals", fields: [artistUserId], references: [id], onDelete: Restrict)
   status       String     @default("PENDING") // PENDING(미응답) | APPROVED(수락) | ISSUE(문제제기)
   comment      String?    // 문제 제기 시 갤러리에 전달할 코멘트
   updatedAt    DateTime   @updatedAt @default(now())
 
   @@unique([exhibitionId, artistUserId])
   @@index([exhibitionId])
+  @@index([artistUserId])
 }

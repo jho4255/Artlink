@@ -22,6 +22,7 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const mobileBellRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -84,7 +85,11 @@ export default function Navbar() {
       if (e.key === 'Escape') setNotifOpen(false);
     };
     const handleClickOutside = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // 모바일 벨 버튼은 notifRef 밖에 있어 예외 처리 — 재탭 시 닫힘(mousedown)→다시 열림(click) 방지
+      const insideNotif = notifRef.current?.contains(target);
+      const insideMobileBell = mobileBellRef.current?.contains(target);
+      if (!insideNotif && !insideMobileBell) {
         setNotifOpen(false);
       }
     };
@@ -253,6 +258,7 @@ export default function Navbar() {
             )}
             {isAuthenticated && (
               <button
+                ref={mobileBellRef}
                 onClick={() => setNotifOpen(!notifOpen)}
                 className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
                 aria-label="알림"

@@ -283,6 +283,26 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       expect(gallery!.reviewCount).toBe(2);
     });
 
+    it('같은 공모에 동일 내용 재전송은 멱등 처리(중복 생성 없이 201, 동일 리뷰 반환)', async () => {
+      const r1 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '같은내용' });
+      expect(r1.status).toBe(201);
+      const r2 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '같은내용' });
+      expect(r2.status).toBe(201);
+      expect(r2.body.id).toBe(r1.body.id);
+      const count = await testPrisma.review.count({ where: { exhibitionId: exhibitionId1 } });
+      expect(count).toBe(1);
+    });
+
+    it('같은 공모에 다른 내용으로 재작성은 409 (공모당 1회)', async () => {
+      await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '첫리뷰' });
+      const r2 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, rating: 2, content: '다른리뷰' });
+      expect(r2.status).toBe(409);
+    });
+
     it('리뷰 수정(rating 변경) 시 갤러리 rating이 재계산된다', async () => {
       const res = await request
         .post('/api/reviews')

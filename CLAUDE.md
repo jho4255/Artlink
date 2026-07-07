@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **479 tests**: Backend 433 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
+- **516 tests**: Backend 470 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -90,6 +90,8 @@ sudo service postgresql start
 11. **ImageLightbox**: `initialIndex` prop 사용 (NOT `currentIndex`), 부모에서 `AnimatePresence`로 감싸야 exit 애니메이션 동작
 12. **ImageUpload**: `placeholder` prop 사용 (NOT `label`)
 13. **Show artists 필드** — DB에 JSON string 저장 (`JSON.stringify`), API에서 `JSON.parse`로 배열 반환. null 허용
+14. **날짜 경계는 KST 기준** — `<input type="date">`→`new Date("YYYY-MM-DD")`는 UTC 자정(=KST 09:00)로 저장됨. 마감/만료/전시상태 판정은 반드시 KST 달력 날짜 단위로: 백엔드 `lib/kstDate.ts`(`startOfTodayKstAsUtc`/`endOfTodayKstAsUtc`/`isDeadlinePassedKst`), 프론트 `utils.ts`(`getDday`/`getShowStatus`). 순수 `new Date()` 비교 금지(마감일 당일 09시 소멸 버그)
+15. **작가 제출자료 완료 판정** — cv/note는 빈 객체도 저장되므로 `!!`로 판정 금지. `lib/submission.ts`의 `hasSubmissionContent`(내용 존재 검사)로 통일. 프론트도 동일 predicate 사용
 
 ## TanStack Query Key Map
 
@@ -124,7 +126,7 @@ sudo service postgresql start
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload
-- **무료 플랜**: 15분 미사용 시 sleep (~30초 콜드스타트), PostgreSQL 90일 후 자동 삭제
+- **요금제(Starter)**: 2026-07 무료→Starter 전환. **스핀다운/콜드스타트 없음**, PostgreSQL **90일 자동삭제 없음**(영구 유지). 백업 보존은 대시보드에서 확인 권장(별도 pg_dump→R2 오프사이트 백업 미구성)
 - **재배포**: `git checkout deploy/render && git merge main && git push`
 
 ## 개발 원칙
@@ -139,11 +141,11 @@ sudo service postgresql start
 
 1. **React-hook-form + Zod** — 설치됨(v7.71, v4.3)이나 미사용. 갤러리/공모 등록 폼에 적용 필요
 2. **수정 요청 UI** — 백엔드 API 완성, 프론트엔드 MyPage Gallery 섹션에 "수정 요청" 버튼+폼 미구현
-3. **Nodemailer 실제 전송** — SMTP 설정 시 작동. 현재 콘솔 로그만
-4. **코드 스플리팅** — 프론트 번들 572KB. React.lazy + Suspense로 페이지별 분리
-5. **ESLint + Prettier** — eslint.config.js 존재하나 팀 규칙 미설정
-6. **MyPage 분리** — `MyPage.tsx` ~3000줄 단일 파일. 섹션별 컴포넌트 분리 고려
-7. 나머지 페이지 `DESIGN.md` 기반 리디자인 (상세/마이페이지/혜택/고객센터)
+3. **ESLint + Prettier** — eslint.config.js 존재하나 팀 규칙 미설정
+4. **MyPage 분리** — `MyPage.tsx` ~3000줄 단일 파일. 섹션별 컴포넌트 분리 고려
+5. 나머지 페이지 `DESIGN.md` 기반 리디자인 (상세/마이페이지/혜택/고객센터)
+
+> 2026-07 완료: 코드 스플리팅(React.lazy), 목록필터 URL 동기화, 알림 TTL 정리(읽은 90일+), 업로드 orphan 파일 정리(`lib/storage.ts`)
 
 ## 참고 문서
 
@@ -207,7 +209,7 @@ sudo service postgresql start
     - **리뷰**: Artist 전용. [별점, 사진(옵션), 텍스트]. 익명 시 `익명의 예술가 N` 표기. Admin은 삭제 버튼 노출.
 - **모집 공고**:
     - D-day가 남은 공고만 노출. 갤러리 별점 및 지역 필터 제공.
-    - **지원하기**: 클릭 시 마이페이지의 포트폴리오를 해당 갤러리 메일로 자동 전송 (Artist 전용).
+    - **지원하기**: 클릭 시 갤러리 오너에게 인앱 알림(NEW_APPLICANT) 발송 (Artist 전용). ※ 포트폴리오 이메일 자동전송 기능은 제거됨(2026-07, mailer 삭제).
     - **커스텀 필드 지원**: 공모에 추가정보 항목이 있으면 지원 시 모달에서 입력.
       - 텍스트: 글자수 제한 시 실시간 카운트 표시, maxLength > 200이면 textarea로 자동 전환.
       - 선택형(select): maxSelect=1이면 **라디오 버튼**, 2+/0이면 **체크박스**. 최대 선택 수 도달 시 나머지 비활성화 + 카운트 표시.

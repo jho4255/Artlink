@@ -46,6 +46,31 @@ describe('메시지 전송 제한', () => {
     expect(r.status).toBe(201);
   });
 
+  it('첨부파일(객체 배열) 포함 전송 201 + JSON 왕복', async () => {
+    const r = await request.post('/api/messages').set('Authorization', `Bearer ${a1Tok}`)
+      .send({ receiverId: 3, subject: '첨부', content: '파일첨부', attachments: [{ url: '/uploads/a.png', name: 'a.png', type: 'image/png', size: 123 }] });
+    expect(r.status).toBe(201);
+    expect(r.body.attachments).toBeTruthy();
+    const parsed = JSON.parse(r.body.attachments);
+    expect(parsed[0].url).toBe('/uploads/a.png');
+    expect(parsed[0].name).toBe('a.png');
+    expect(parsed[0].type).toBe('image/png');
+  });
+
+  it('첨부가 문자열 배열(구 형식)이면 400', async () => {
+    const r = await request.post('/api/messages').set('Authorization', `Bearer ${a1Tok}`)
+      .send({ receiverId: 3, subject: 'x', content: 'y', attachments: ['/uploads/a.png'] });
+    expect(r.status).toBe(400);
+  });
+
+  it('작가 → 승인 갤러리가 아니어도 기존 대화 있으면 회신 허용 (201)', async () => {
+    await testPrisma.gallery.updateMany({ where: { ownerId: 3 }, data: { status: 'WITHDRAWN' } });
+    // 사전 대화: 갤러리(3) → 작가1
+    await testPrisma.message.create({ data: { senderId: 3, receiverId: 1, subject: '먼저', content: '안녕' } });
+    const r = await send(a1Tok, 3);
+    expect(r.status).toBe(201);
+  });
+
   it('1:1 대화 목록(/chats): 상대별 1건 + 미읽음', async () => {
     await send(a1Tok, 3, '첫 메시지');
     await send(a1Tok, 3, '둘째 메시지');

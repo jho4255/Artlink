@@ -8,7 +8,7 @@
  *
  * @see Phase 4 - 폼 UX 개선
  */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -33,6 +33,18 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // 확인 버튼 더블클릭 시 중복 제출 방지 — 다이얼로그가 열릴 때마다 리셋
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) setBusy(false);
+  }, [open]);
+
+  const handleConfirm = () => {
+    if (busy) return; // 이미 처리 중이면 무시 (exit 애니메이션 동안 재클릭 방지)
+    setBusy(true);
+    onConfirm();
+  };
+
   // ESC 키로 닫기
   useEffect(() => {
     if (!open) return;
@@ -75,8 +87,9 @@ export default function ConfirmDialog({
                 {cancelText}
               </button>
               <button
-                onClick={onConfirm}
-                className={`px-4 py-2 text-sm rounded-lg ${confirmBtnClass}`}
+                onClick={handleConfirm}
+                disabled={busy}
+                className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 ${confirmBtnClass}`}
               >
                 {confirmText}
               </button>

@@ -155,6 +155,7 @@ export default function ExhibitionDetailPage() {
       api.post(`/exhibitions/${id}/apply`, payload),
     onSuccess: () => {
       toast.success('지원이 완료되었습니다! 지원서가 갤러리에 전송됩니다.');
+      queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['my-applications'] });
       setShowApplyModal(false);

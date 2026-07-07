@@ -7,7 +7,18 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const router = Router();
 
-const useR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY);
+// R2 사용 조건: 5개 환경변수가 모두 있어야 함. 일부만 있으면 "undefined/..." URL 저장/500을 유발하므로 비활성화.
+const R2_VARS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'R2_PUBLIC_URL'] as const;
+const useR2 = R2_VARS.every((k) => !!process.env[k]);
+
+// production에서 일부만 설정된 경우 명확히 경고 (조용한 오작동 방지)
+const setR2Count = R2_VARS.filter((k) => !!process.env[k]).length;
+if (process.env.NODE_ENV === 'production' && setR2Count > 0 && setR2Count < R2_VARS.length) {
+  console.error(
+    '[Upload] R2 환경변수가 일부만 설정되어 R2 업로드가 비활성화되고 디스크 저장으로 대체됩니다. 누락:',
+    R2_VARS.filter((k) => !process.env[k]).join(', '),
+  );
+}
 
 let s3: S3Client;
 if (useR2) {
@@ -31,9 +42,12 @@ const storage = useR2
       },
     });
 
+// defParamCharset: 'utf8' — multer 기본 latin1 파싱으로 한글 파일명이 깨지는 문제 방지.
+// (@types/multer 5.x Options에는 없어 인터섹션 타입으로 명시)
 const upload = multer({
   storage,
   limits: { fileSize: 15 * 1024 * 1024 },
+  defParamCharset: 'utf8',
   fileFilter: (_req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase());
@@ -41,7 +55,7 @@ const upload = multer({
     if (ext && mime) return cb(null, true);
     cb(new AppError('이미지 파일만 업로드 가능합니다.', 400));
   },
-});
+} as multer.Options & { defParamCharset: string });
 
 async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promise<string> {
   const ext = path.extname(file.originalname);
@@ -102,6 +116,7 @@ const allowedFileMimes = new Set([
 const fileUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
+  defParamCharset: 'utf8', // 한글 파일명(originalname) mojibake 방지
   fileFilter: (_req, file, cb) => {
     const allowed = /pdf|doc|docx|hwp|hwpx|zip/;
     const ext = allowed.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
@@ -110,7 +125,7 @@ const fileUpload = multer({
     if (ext && mimeOk) return cb(null, true);
     cb(new AppError('허용된 파일 형식: PDF, DOC, DOCX, HWP, HWPX, ZIP', 400));
   },
-});
+} as multer.Options & { defParamCharset: string });
 
 router.post('/file', authenticate, fileUpload.single('file'), async (req, res, next) => {
   try {

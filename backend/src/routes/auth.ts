@@ -6,6 +6,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
+import { deleteUploadedFile } from '../lib/storage';
 
 const router = Router();
 import { JWT_SECRET } from '../lib/jwt';
@@ -50,6 +51,12 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     const kakaoUser = await userRes.json() as any;
+
+    // 사용자 정보 응답 검증: 오류 바디(레이트리밋/장애 등)면 id가 undefined → providerId "undefined"로 교차 로그인 방지
+    if (!userRes.ok || !kakaoUser?.id) {
+      console.error('[Kakao UserInfo Error]', userRes.status, kakaoUser);
+      throw new AppError('카카오 사용자 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.', 502);
+    }
 
     const kakaoId = String(kakaoUser.id);
     const nickname = kakaoUser.kakao_account?.profile?.nickname || '';
@@ -104,7 +111,7 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
     if (emailTaken) throw new AppError('이미 사용 중인 이메일입니다.', 409);
 
     const oauthExists = await prisma.user.findFirst({
-      where: { provider: payload.provider, providerId: payload.providerId },
+      where: { provider: payload.provider, providerId: payload.providerId, deletedAt: null },
     });
     if (oauthExists) {
       const token = generateToken(oauthExists);
@@ -192,11 +199,14 @@ router.get('/me', authenticate, async (req, res, next) => {
 router.put('/me/avatar', authenticate, async (req, res, next) => {
   try {
     const { avatar } = req.body;
+    const before = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatar: true } });
     const user = await prisma.user.update({
       where: { id: req.user!.id },
       data: { avatar },
       select: { id: true, name: true, email: true, role: true, avatar: true },
     });
+    // 아바타가 우리 업로드 파일에서 다른 값으로 바뀌면 이전 파일 정리(카카오 외부 URL은 헬퍼가 무시)
+    if (before?.avatar && before.avatar !== user.avatar) void deleteUploadedFile(before.avatar);
     res.json(user);
   } catch (error) { next(error); }
 });
