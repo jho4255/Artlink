@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, Globe, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -856,8 +856,8 @@ function PortfolioSection() {
       <div>
         <p className="text-sm font-medium text-gray-500 mb-2">
           작품 사진 ({portfolio?.images?.length || 0}/10)
-          <span className="text-xs text-gray-300 ml-2">
-            <Globe size={11} className="inline mb-0.5" /> 체크하면 둘러보기에 공개
+          <span className="text-xs text-gray-500 ml-2 font-normal">
+            <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
           </span>
         </p>
         <PortfolioImageGrid
@@ -947,26 +947,28 @@ function PortfolioImageGrid({
         {images.map((img) => (
           <div key={img.id} className="relative group">
             <img src={img.url} alt="내 포트폴리오 작품" className="w-full aspect-square object-cover" />
-            {/* 삭제 버튼 (우상단) */}
+            {/* 삭제 버튼 (우상단) — PC는 hover 시, 터치기기(hover 없음)는 항상 노출 */}
             <button
               onClick={() => onRemove(img.id)}
-              className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
               aria-label="이미지 삭제"
             >
               <X size={12} />
             </button>
-            {/* 둘러보기 공개 체크박스 (우하단) */}
+            {/* 둘러보기 공개 토글 (하단 좌측, 항상 노출) — 상태는 색+아이콘+라벨로 구분 */}
             <button
               onClick={() => onToggleExplore(img.id)}
-              className={`absolute bottom-1 right-1 w-5 h-5 rounded flex items-center justify-center transition-all ${
+              className={`absolute bottom-1 left-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium shadow-sm transition-colors ${
                 img.showInExplore
-                  ? 'bg-gray-900 text-white opacity-100'
-                  : 'bg-white/70 text-gray-400 opacity-0 group-hover:opacity-100'
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-white/85 text-gray-600 hover:bg-white ring-1 ring-black/5'
               }`}
-              aria-label={img.showInExplore ? '둘러보기 비공개로 전환' : '둘러보기에 공개'}
-              title={img.showInExplore ? '둘러보기 공개 중' : '둘러보기에 공개'}
+              aria-pressed={img.showInExplore}
+              aria-label={img.showInExplore ? '둘러보기에 공개 중 — 탭하면 비공개로 전환' : '비공개 상태 — 탭하면 둘러보기에 공개'}
+              title={img.showInExplore ? '둘러보기에 공개 중 (탭하면 비공개)' : '비공개 (탭하면 둘러보기에 공개)'}
             >
-              <Globe size={12} />
+              {img.showInExplore ? <Eye size={12} /> : <EyeOff size={12} />}
+              {img.showInExplore ? '공개' : '비공개'}
             </button>
           </div>
         ))}
