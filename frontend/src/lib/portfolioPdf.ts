@@ -99,15 +99,18 @@ export function portfolioHtml(data: PortfolioPdfData): string {
         </div>`).join('')}
     </div>`;
 
-  // 작품 — 정사각 썸네일 그리드(object-cover), 각 이미지 원자 블록이라 페이지 경계에서 안 잘림.
-  // data-pdf-break-before: '작품' 섹션은 무조건 경력 다음 '새 페이지'부터 시작한다.
-  const worksHtml = images.length === 0 ? '' : `
-    <div data-pdf-break-before style="margin-bottom:4px">
-      ${sectionTitle(`작품 (${images.length})`)}
-      <div style="display:flex;flex-wrap:wrap;gap:12px">
-        ${images.map((u) => `<img data-pdf-atomic src="${esc(proxied(u))}" crossorigin="anonymous" style="width:360px;height:360px;object-fit:cover;border:1px solid #f0f0f0"/>`).join('')}
+  // 작품 — 정사각 썸네일. 한 페이지에 6장(2열 × 3행)씩. 6장 단위로 그룹을 나눠 각 그룹을
+  // data-pdf-break-before 로 '새 페이지'에서 시작 → 잘림 없이 6장씩, 첫 그룹은 경력 다음 페이지부터.
+  const WORK_CELL = 340; // px (2열 × 3행 + 첫 페이지 제목이 한 페이지에 들어가는 크기)
+  const workGroups: string[][] = [];
+  for (let i = 0; i < images.length; i += 6) workGroups.push(images.slice(i, i + 6));
+  const worksHtml = images.length === 0 ? '' : workGroups.map((group, gi) => `
+    <div data-pdf-break-before style="margin-bottom:14px">
+      ${gi === 0 ? sectionTitle(`작품 (${images.length})`) : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+        ${group.map((u) => `<img data-pdf-atomic src="${esc(proxied(u))}" crossorigin="anonymous" style="width:${WORK_CELL}px;height:${WORK_CELL}px;object-fit:cover;border:1px solid #f0f0f0"/>`).join('')}
       </div>
-    </div>`;
+    </div>`).join('');
 
   return `<div style="${BASE}">${headerHtml}${bioHtml}${careerHtml}${worksHtml}</div>`;
 }

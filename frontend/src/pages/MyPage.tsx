@@ -890,7 +890,7 @@ function PortfolioSection() {
       {/* 작품 사진 관리 */}
       <div>
         <p className="text-sm font-medium text-gray-500 mb-2">
-          작품 사진 ({portfolio?.images?.length || 0}/10)
+          작품 사진 ({portfolio?.images?.length || 0}/30)
           <span className="text-xs text-gray-500 ml-2 font-normal">
             <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
           </span>
@@ -900,7 +900,7 @@ function PortfolioSection() {
           onAdd={(url) => addImageMutation.mutate(url)}
           onRemove={(imageId) => removeImageMutation.mutate(imageId)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
-          maxCount={10}
+          maxCount={30}
         />
       </div>
     </div>

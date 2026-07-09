@@ -213,21 +213,23 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
 
               {isExpanded && (
                 <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-7">
-                  {/* 연락처 — 지원 시점부터 노출 */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-gray-600">
-                    <span>🪪 {app.user?.nickname || app.user?.name}</span>
-                    {app.user?.phone && <span>📞 {app.user.phone}</span>}
-                    {app.user?.email && <span>📧 {app.user.email}</span>}
+                  {/* 연락처(좌) + 개별 지원서 PDF 다운로드(우측 상단, 상태 선택 아래·연락처 높이) */}
+                  <div className="flex items-start justify-between gap-2 pt-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+                      <span>🪪 {app.user?.nickname || app.user?.name}</span>
+                      {app.user?.phone && <span>📞 {app.user.phone}</span>}
+                      {app.user?.email && <span>📧 {app.user.email}</span>}
+                    </div>
+                    <button
+                      onClick={() => handlePdf(app)}
+                      disabled={pdfBusy !== null}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                      지원서 PDF
+                    </button>
                   </div>
                   <ApplicationContent app={app} customFields={customFields} onImageClick={(images, index) => setLightbox({ images, index })} />
-                  <button
-                    onClick={() => handlePdf(app)}
-                    disabled={pdfBusy !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-                    지원서 PDF
-                  </button>
                 </div>
               )}
             </div>

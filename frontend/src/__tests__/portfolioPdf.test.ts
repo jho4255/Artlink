@@ -62,15 +62,17 @@ describe('portfolioHtml - 작가 포트폴리오 PDF', () => {
     expect(html).toContain('data-pdf-keep-next');
   });
 
-  it('작품은 정사각 썸네일 그리드로 표시되고 각 이미지가 원자 블록이다', () => {
+  it('작품은 정사각 썸네일(object-cover)로 표시되고 각 이미지가 원자 블록이다', () => {
     const html = portfolioHtml(fullData as any);
-    expect(html).toContain('width:360px;height:360px'); // 정사각 썸네일
+    expect(html).toContain('width:340px;height:340px'); // 정사각 썸네일
     expect(html).toContain('object-fit:cover');
   });
 
-  it('작품 섹션은 강제 페이지 나눔(data-pdf-break-before)으로 경력 다음 페이지부터 시작한다', () => {
-    const html = portfolioHtml(fullData as any);
-    expect(html).toContain('data-pdf-break-before');
+  it('작품은 6장 단위 그룹마다 새 페이지에서 시작(한 페이지 6장, data-pdf-break-before)', () => {
+    // 14장 → 3그룹(6+6+2) → 강제 나눔 마커 3개
+    const many = { user: { name: 'x' }, images: Array.from({ length: 14 }, (_, i) => ({ url: `/w${i}.jpg` })) };
+    const html = portfolioHtml(many as any);
+    expect((html.match(/data-pdf-break-before/g) || []).length).toBe(3);
     // 작품이 없으면 강제 나눔 마커도 없음
     const noWorks = portfolioHtml({ user: { name: 'x' }, career: fullData.career } as any);
     expect(noWorks).not.toContain('data-pdf-break-before');

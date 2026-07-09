@@ -104,4 +104,16 @@ describe('computePageCuts - PDF 페이지 분할', () => {
   it('강제 나눔이 없으면 기존과 동일(균등 분할)', () => {
     expect(computePageCuts([], 2500, PAGE, 0, [])).toEqual([0, 1000, 2000, 2500]);
   });
+
+  it('강제 나눔에도 guard 적용: 컷이 이미지 상단에 정확히 맞지 않게 여백 안쪽으로 당긴다', () => {
+    // group0 이미지 [700,1000], 14px 여백 후 group1 이미지 [1014,1314], 강제 나눔 1014
+    const blocks: Block[] = [
+      { top: 700, bottom: 1000 },
+      { top: 1014, bottom: 1314 },
+    ];
+    const cuts = computePageCuts(blocks, 1400, 2000, 6, [1014]);
+    expect(cuts).toContain(1008);          // 1014 - guard 6 → 여백(1000~1014) 안쪽
+    expect(cuts).not.toContain(1014);      // 이미지 상단 정확히 아님
+    expect(noCutInsideBlock(cuts, blocks)).toBe(true);
+  });
 });

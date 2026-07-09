@@ -140,24 +140,27 @@ export function computePageCuts(
   while (iter++ < 4000) {
     let limit = start + pageHcss;
     // 이번 페이지 범위 안에 강제 나눔이 있으면 거기서 끊는다(한 페이지에 다 들어가도 강제로 다음 페이지).
-    const nextForced = forced.find((b) => b > start + 0.5);
+    // 이미 guard만큼 당겨 페이지가 강제 나눔 바로 위에서 시작했다면(= start가 그 지점 근처) 소진된 것으로 보고 건너뛴다.
+    const nextForced = forced.find((b) => b > start + guardPx + 1);
     const forcedHere = nextForced !== undefined && nextForced <= limit;
     if (forcedHere) limit = nextForced!;
     // 남은 내용이 이번 페이지에 다 들어가고 더 강제 나눔도 없으면 종료.
     if (limit >= totalCss - 0.5) break;
     let cut = limit;
     if (!forcedHere) {
+      // 자연 분할: 컷을 가로지르는 원자 블록이 있으면 그 블록 top으로 당김(블록 통째로 다음 페이지).
       const straddleTops = atomics
         .filter((b) => b.top > start && b.top < cut && b.bottom > cut)
         .map((b) => b.top);
-      if (straddleTops.length) {
-        const top = Math.min(...straddleTops);
-        // blockTop 위쪽 여백 크기 = top - (그 위에서 가장 아래에서 끝나는 블록의 bottom)
-        const aboveBottom = atomics.reduce((m, b) => (b.bottom <= top && b.bottom > m ? b.bottom : m), start);
-        const gap = top - aboveBottom;
-        const g = gap > 1 ? Math.min(guardPx, gap - 1) : 0; // 여백이 있을 때만, 여백 안쪽으로만
-        cut = top - g;
-      }
+      if (straddleTops.length) cut = Math.min(...straddleTops);
+    }
+    // guard(강제/자연 공통): 컷이 원자 블록 top(=이미지 상단)에 정확히 맞으면 렌더링 라운딩으로 윗줄이
+    // 이전 페이지에 얇게 남는다. 컷 위 여백(직전 블록 bottom과의 간격) 안쪽으로 최대 guardPx만큼 당겨 방지.
+    {
+      const aboveBottom = atomics.reduce((m, b) => (b.bottom <= cut && b.bottom > m ? b.bottom : m), start);
+      const gap = cut - aboveBottom;
+      const g = gap > 1 ? Math.min(guardPx, gap - 1) : 0; // 여백이 있을 때만, 여백 안쪽으로만
+      cut = cut - g;
     }
     if (cut <= start) break; // 진행 보장(무한루프 방지)
     cuts.push(cut);
