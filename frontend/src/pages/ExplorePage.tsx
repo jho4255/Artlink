@@ -68,6 +68,7 @@ export default function ExplorePage() {
         </div>
       ) : (
         <>
+          {/* 그리드는 정사각 썸네일(object-cover), 클릭해 확대(모달)하면 원본 비율로 표시 */}
           <div className="grid grid-cols-3 md:grid-cols-4 gap-1.5">
             {allImages.map((img) => (
               <button
@@ -199,8 +200,8 @@ function ImageDetailModal({ image, onClose, onUpdate }: ImageDetailModalProps) {
           <X size={20} />
         </button>
 
-        {/* 이미지 */}
-        <img src={image.url} alt="" className="w-full" />
+        {/* 이미지 — 확대 시 원본 비율 그대로(정사각 크롭 없이), 화면에 맞게 contain */}
+        <img src={image.url} alt="" className="w-full max-h-[75vh] object-contain bg-gray-50" />
 
         {/* 정보 영역 */}
         <div className="p-4">

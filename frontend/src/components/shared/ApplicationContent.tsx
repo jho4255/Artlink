@@ -35,7 +35,9 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
   const career = normalizeCareer(app.career);
   const images = app.artworkImages ?? [];
   const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
-  const answerMap = new Map((app.customAnswers ?? []).map((answer) => [answer.fieldId, answer.value]));
+  // customAnswers는 (구) 하위호환 컬럼이라 배열이 아닌 레거시 데이터가 있을 수 있어 방어적으로 배열만 사용.
+  const safeAnswers = Array.isArray(app.customAnswers) ? app.customAnswers : [];
+  const answerMap = new Map(safeAnswers.map((answer) => [answer.fieldId, answer.value]));
 
   // 문자열/배열 답변을 공통 포맷으로 렌더
   const formatAnswer = (value?: string | string[]) => (Array.isArray(value) ? value.join(', ') : value);
@@ -43,7 +45,7 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
   // 갤러리가 질문을 수정/삭제해도 기존 지원자의 답변이 사라지지 않도록,
   // 현재 필드에 없는 fieldId의 답변은 "삭제된 질문"으로 별도 표시한다.
   const currentFieldIds = new Set((customFields ?? []).map((field) => field.id));
-  const orphanAnswers = (app.customAnswers ?? []).filter((answer) => !currentFieldIds.has(answer.fieldId));
+  const orphanAnswers = safeAnswers.filter((answer) => !currentFieldIds.has(answer.fieldId));
 
   return (
     <div className="space-y-2 bg-gray-50 rounded-lg p-3">

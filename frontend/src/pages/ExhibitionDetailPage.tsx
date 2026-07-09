@@ -13,7 +13,7 @@
  *  - POST /api/exhibitions/:id/apply - 지원하기
  *  - POST|DELETE|PATCH /api/exhibitions/:id/images[...] - 사진 추가/삭제/순서변경
  *  - DELETE /api/exhibitions/:id - 공모 삭제
- *  - 지원자 관리는 ApplicantsPage(/exhibitions/:id/applicants)로 분리
+ *  - 지원자 관리는 마이페이지 '내 공모'의 인라인 ApplicantManager로 통합(별도 페이지 없음)
  *
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
@@ -504,10 +504,10 @@ export default function ExhibitionDetailPage() {
             <p className="text-center text-sm text-gray-400">지원하려면 로그인이 필요합니다.</p>
           )}
 
-          {/* Gallery 오너: 지원자 관리 (별도 페이지) — 운영 페이지 위 */}
+          {/* Gallery 오너: 지원자 관리 — 마이페이지 '내 공모'에서 인라인 관리(창 이동 없이 전 기능) */}
           {isGalleryOwner && (
             <button
-              onClick={() => navigate(`/exhibitions/${id}/applicants`)}
+              onClick={() => navigate('/mypage')}
               className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
             >
               <Users size={16} /> 지원자 관리

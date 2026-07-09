@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -15,12 +15,12 @@ import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
+import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { downloadAllApplicationsZip } from '@/lib/operationPdf';
 import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -122,9 +122,9 @@ const makeFallbackOperationOverview = (ex: any): GalleryOperationOverview => ({
     tone: ex.status === 'APPROVED' ? 'active' : ex.status === 'REJECTED' ? 'danger' : 'wait',
   },
   nextAction: {
-    label: ex.status === 'APPROVED' ? '지원자 검토' : '공모 상세 보기',
+    label: ex.status === 'APPROVED' ? '지원자 관리' : '공모 상세 보기',
     description: ex.status === 'APPROVED' ? '접수 현황을 확인하고 지원자 상태를 관리합니다.' : '관리자 승인 상태와 공모 내용을 확인합니다.',
-    route: ex.status === 'APPROVED' ? `/exhibitions/${ex.id}/applicants` : `/exhibitions/${ex.id}`,
+    route: `/exhibitions/${ex.id}`,
   },
   counts: {
     applications: { total: 0, submitted: 0, reviewed: 0, accepted: 0, rejected: 0 },
@@ -701,6 +701,7 @@ function WithdrawModal({ onClose }: { onClose: () => void }) {
 // ========== Artist: 포트폴리오 관리 ==========
 function PortfolioSection() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
   const { data: portfolio, isLoading } = useQuery<Portfolio>({
     queryKey: ['portfolio'],
     queryFn: () => api.get('/portfolio').then(r => r.data),
@@ -710,6 +711,27 @@ function PortfolioSection() {
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  // 포트폴리오 PDF 저장 — 약력/경력/작품사진을 문서 한 장으로 (portfolioPdf.ts)
+  const handlePortfolioPdf = async () => {
+    if (!user) return;
+    setPdfBusy(true);
+    try {
+      const { downloadPortfolioPdf } = await import('@/lib/portfolioPdf');
+      await downloadPortfolioPdf({
+        user,
+        biography: portfolio?.biography,
+        career: normalizeCareer(portfolio?.career),
+        images: portfolio?.images ?? [],
+      });
+      toast.success('포트폴리오 PDF를 저장했습니다.');
+    } catch {
+      toast.error('PDF 생성에 실패했습니다.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: (data: { biography: string; career: Career; portfolioFileUrl: string | null }) => api.put('/portfolio', data),
@@ -790,7 +812,20 @@ function PortfolioSection() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="font-semibold">포트폴리오</h3>
-        {!editing && <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>}
+        {!editing && (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handlePortfolioPdf}
+              disabled={pdfBusy}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 disabled:opacity-50"
+              title="약력·경력·작품 사진을 PDF 문서로 저장"
+            >
+              {pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+              포트폴리오 PDF로 저장
+            </button>
+            <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
+          </div>
+        )}
       </div>
 
       {editing ? (
@@ -1670,11 +1705,10 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
-  // 지원자 관리 상태
+  // 지원자 관리 상태 — 인라인 ApplicantManager 를 펼칠 공모 id
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
   // 추가 질문 수정 대상 공모 (게시 후 수정)
   const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
-  const [applicantsZipBusy, setApplicantsZipBusy] = useState<number | null>(null);
 
   // 임시저장 훅
   const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_exhibition_form', emptyExForm);
@@ -1765,42 +1799,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   // 공모 삭제 이중확인 ("삭제" 입력)
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
-  // 지원자 목록 조회
-  const { data: applicants = [], isLoading: appsLoading } = useQuery<any[]>({
-    queryKey: ['exhibition-applications', manageAppsExId],
-    queryFn: () => api.get(`/exhibitions/${manageAppsExId}/applications`).then(r => r.data),
-    enabled: !!manageAppsExId,
-  });
-
-  // 지원 상태 변경 mutation
-  const updateAppStatusMutation = useMutation({
-    mutationFn: ({ exId, appId, status }: { exId: number; appId: number; status: string }) =>
-      api.patch(`/exhibitions/${exId}/applications/${appId}`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['exhibition-applications', manageAppsExId] });
-      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
-      toast.success('지원 상태가 변경되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '상태 변경 실패'),
-  });
-
-  const appStatusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
-  const appStatusLabels: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
-
-  // 지원서 전체 ZIP 원클릭 다운로드 (지원자별 PDF 묶음)
-  const handleDownloadApplicantsZip = async (exhibition: any, apps: any[]) => {
-    if (!apps.length) return;
-    setApplicantsZipBusy(exhibition.id);
-    try {
-      const n = await downloadAllApplicationsZip(exhibition.title, apps);
-      toast.success(`${n}명의 지원서를 ZIP으로 받았습니다.`);
-    } catch {
-      toast.error('ZIP 생성에 실패했습니다.');
-    } finally {
-      setApplicantsZipBusy(null);
-    }
-  };
-
+  // 지원자 목록/상태변경/ZIP/필터/수락확인/이미지확대는 인라인 <ApplicantManager /> 가 모두 담당(창 이동 없음).
 
   const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
@@ -1992,6 +1991,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
         />
       )}
 
+
       {/* 등록/취소 확인 모달 */}
       <ConfirmDialog
         open={confirmAction === 'submit'}
@@ -2106,10 +2106,12 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                           <div className="flex flex-wrap gap-2 xl:justify-end">
                             <button
                               type="button"
-                              onClick={() => navigate(item.nextAction.route)}
+                              onClick={() => item.status === 'APPROVED'
+                                ? setManageAppsExId(manageAppsExId === item.id ? null : item.id)
+                                : navigate(item.nextAction.route)}
                               className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
                             >
-                              <ClipboardList size={14} /> {item.nextAction.label}
+                              <ClipboardList size={14} /> {item.status === 'APPROVED' && manageAppsExId === item.id ? '지원자 닫기' : item.nextAction.label}
                             </button>
                             <button
                               type="button"
@@ -2162,72 +2164,18 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                           </div>
                         </div>
 
-                        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-gray-950">{item.nextAction.label}</p>
-                            <p className="mt-0.5 text-xs text-gray-500">{item.nextAction.description}</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setManageAppsExId(manageAppsExId === item.id ? null : item.id)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              <Send size={14} /> {manageAppsExId === item.id ? '지원자 닫기' : '지원자 빠른 관리'}
-                            </button>
-                            {manageAppsExId === item.id && applicants.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadApplicantsZip(item, applicants)}
-                                disabled={applicantsZipBusy === item.id}
-                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                {applicantsZipBusy === item.id ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
-                                전체 지원서 ZIP
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
                         {item.status === 'REJECTED' && item.rejectReason && (
                           <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">반려 사유: {item.rejectReason}</p>
                         )}
 
+                        {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대) */}
                         {manageAppsExId === item.id && (
                           <div className="mt-4 border-t border-gray-100 pt-4">
-                            {appsLoading ? (
-                              <div className="h-20 rounded-xl bg-gray-100 animate-pulse" />
-                            ) : applicants.length === 0 ? (
-                              <p className="text-sm text-gray-400">지원자가 없습니다.</p>
-                            ) : (
-                              <div className="space-y-3">
-                                {applicants.map((app: any) => (
-                                  <div key={app.id} className="rounded-xl bg-gray-50 p-3">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                      <div className="flex items-center gap-2">
-                                        {app.user?.avatar && <img src={app.user.avatar} alt="" className="h-6 w-6 rounded-full" />}
-                                        <span className="text-sm font-medium text-gray-950">{app.user?.name}</span>
-                                        <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
-                                      </div>
-                                      {app.status === 'ACCEPTED' ? (
-                                        <span className="w-fit rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-600">수락 확정</span>
-                                      ) : (
-                                        <select
-                                          value={app.status}
-                                          onChange={e => updateAppStatusMutation.mutate({ exId: item.id, appId: app.id, status: e.target.value })}
-                                          className={`w-fit rounded-full border-0 px-2.5 py-1 text-xs ${appStatusColors[app.status] || ''}`}
-                                        >
-                                          {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
-                                          <option value="ACCEPTED">수락</option>
-                                          <option value="REJECTED">거절</option>
-                                        </select>
-                                      )}
-                                    </div>
-                                    <ApplicationContent app={app} customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined} />
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            <ApplicantManager
+                              exhibitionId={item.id}
+                              exhibitionTitle={item.title}
+                              customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
+                            />
                           </div>
                         )}
                       </div>
@@ -2293,50 +2241,15 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                   >
                     <Edit3 size={10} /> 추가 질문 수정
                   </button>
-                  {manageAppsExId === ex.id && applicants.length > 0 && (
-                    <button
-                      onClick={() => handleDownloadApplicantsZip(ex, applicants)}
-                      disabled={applicantsZipBusy === ex.id}
-                      className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {applicantsZipBusy === ex.id ? <Loader2 size={10} className="animate-spin" /> : <FileArchive size={10} />}
-                      전체 지원서 ZIP
-                    </button>
-                  )}
                 </div>
+                {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대) */}
                 {manageAppsExId === ex.id && (
-                  <div className="mt-2 space-y-2">
-                    {appsLoading ? (
-                      <div className="h-16 bg-gray-100 rounded animate-pulse" />
-                    ) : applicants.length === 0 ? (
-                      <p className="text-xs text-gray-400 py-2">지원자가 없습니다.</p>
-                    ) : (
-                      applicants.map((app: any) => (
-                        <div key={app.id} className="p-2 bg-gray-50 rounded space-y-1.5">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-5 h-5 rounded-full" />}
-                              <span className="text-sm font-medium">{app.user?.name}</span>
-                              <span className="text-xs text-gray-400">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
-                            </div>
-                            {app.status === 'ACCEPTED' ? (
-                              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-600 font-medium">수락 (확정)</span>
-                            ) : (
-                              <select
-                                value={app.status}
-                                onChange={e => updateAppStatusMutation.mutate({ exId: ex.id, appId: app.id, status: e.target.value })}
-                                className={`text-xs px-2 py-0.5 rounded border-0 ${appStatusColors[app.status] || ''}`}
-                              >
-                                {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
-                                <option value="ACCEPTED">수락</option>
-                                <option value="REJECTED">거절</option>
-                              </select>
-                            )}
-                          </div>
-                          <ApplicationContent app={app} customFields={ex.customFields} />
-                        </div>
-                      ))
-                    )}
+                  <div className="mt-2">
+                    <ApplicantManager
+                      exhibitionId={ex.id}
+                      exhibitionTitle={ex.title}
+                      customFields={ex.customFields}
+                    />
                   </div>
                 )}
               </div>

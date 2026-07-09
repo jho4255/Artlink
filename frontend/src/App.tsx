@@ -25,7 +25,6 @@ const TermsPage = lazy(() => import('@/pages/TermsPage'));
 const OperationPage = lazy(() => import('@/pages/OperationPage'));
 const OperationClassicPage = lazy(() => import('@/pages/OperationClassicPage'));
 const OperationPrintPage = lazy(() => import('@/pages/OperationPrintPage'));
-const ApplicantsPage = lazy(() => import('@/pages/ApplicantsPage'));
 
 // 인쇄 전용 라우트(레이아웃 없음)용 지연 로딩 폴백
 function RouteFallback() {
@@ -51,9 +50,6 @@ export default function App() {
         } />
         <Route path="/exhibitions/:id/operation" element={
           <ProtectedRoute><OperationClassicPage /></ProtectedRoute>
-        } />
-        <Route path="/exhibitions/:id/applicants" element={
-          <ProtectedRoute><ApplicantsPage /></ProtectedRoute>
         } />
         <Route path="/shows" element={<ShowsPage />} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />
