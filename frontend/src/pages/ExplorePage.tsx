@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, User, ChevronDown } from 'lucide-react';
+import { Heart, X, User, ChevronDown, RefreshCw, Shuffle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -11,21 +11,38 @@ import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { ExploreImage } from '@/types';
 
+const PERIODS = [
+  { key: 'day', label: '하루' },
+  { key: 'week', label: '일주일' },
+  { key: 'month', label: '한달' },
+  { key: 'year', label: '1년' },
+  { key: 'all', label: '전체' },
+] as const;
+type SortMode = 'random' | 'popular';
+type Period = typeof PERIODS[number]['key'];
+
 export default function ExplorePage() {
   const { isAuthenticated } = useAuthStore();
   const [selectedImage, setSelectedImage] = useState<ExploreImage | null>(null);
 
-  // 무한 스크롤 쿼리
+  // 정렬 상태: 진입 시 랜덤 시드 생성(매번 다른 순서), 새로고침 버튼으로 재셔플
+  const [sort, setSort] = useState<SortMode>('random');
+  const [period, setPeriod] = useState<Period>('all');
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000_000));
+  const reshuffle = () => setSeed(Math.floor(Math.random() * 1_000_000_000));
+
+  // 무한 스크롤 쿼리 (정렬/기간/시드가 키에 포함 → 바뀌면 1페이지부터 새로)
   const {
     data,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isFetching,
   } = useInfiniteQuery({
-    queryKey: ['explore'],
+    queryKey: ['explore', sort, period, seed],
     queryFn: ({ pageParam = 1 }) =>
-      api.get(`/explore?page=${pageParam}&limit=30`).then(r => r.data),
+      api.get('/explore', { params: { page: pageParam, limit: 30, sort, seed, period } }).then(r => r.data),
     getNextPageParam: (lastPage) => {
       const nextPage = lastPage.page + 1;
       return nextPage <= Math.ceil(lastPage.total / lastPage.limit) ? nextPage : undefined;
@@ -53,8 +70,52 @@ export default function ExplorePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Explore</h1>
-      <p className="text-base text-gray-400 mt-2 mb-10">작가들의 작품을 둘러보세요</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Explore</h1>
+          <p className="text-base text-gray-400 mt-2">작가들의 작품을 둘러보세요</p>
+        </div>
+        {/* 우측 상단 새로고침 — 랜덤 재정렬(같은 작가 연속 방지) */}
+        <button
+          onClick={reshuffle}
+          title="새로고침 (랜덤 재정렬)"
+          aria-label="새로고침"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          <RefreshCw size={16} className={isFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
+          <span className="hidden sm:inline">새로고침</span>
+        </button>
+      </div>
+
+      {/* 정렬 컨트롤 */}
+      <div className="flex flex-wrap items-center gap-2 mt-6 mb-10">
+        <button
+          onClick={() => setSort('random')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full transition-colors ${sort === 'random' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+        >
+          <Shuffle size={14} /> 랜덤
+        </button>
+        <button
+          onClick={() => setSort('popular')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full transition-colors ${sort === 'popular' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+        >
+          <Heart size={14} /> 좋아요순
+        </button>
+        {sort === 'popular' && (
+          <div className="flex flex-wrap items-center gap-1 sm:ml-2">
+            <span className="text-xs text-gray-400 mr-1">기간</span>
+            {PERIODS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${period === p.key ? 'bg-[#c4302b] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="grid grid-cols-3 md:grid-cols-4 gap-1.5">
