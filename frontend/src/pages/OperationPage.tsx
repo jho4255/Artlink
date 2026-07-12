@@ -268,7 +268,6 @@ export default function OperationPage() {
     },
   ];
   const totalSales = settlementSummary?.grand?.total ?? 0;
-  const todayTaskCount = Math.max(1, nextTasks.length + (showSubmissionAlert ? 1 : 0) + (settlementIssues > 0 ? 1 : 0));
   const priorityTask = nextTasks[0];
   const priorityTitle = showSubmissionAlert
     ? `미완료 작가 ${incompleteArtists}명: 누락 자료를 확인하세요`
@@ -337,22 +336,18 @@ export default function OperationPage() {
           </div>
         </header>
 
-        <section className="mb-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:grid-cols-2 lg:grid-cols-4">
-          <div className="border-b border-gray-200 p-4 sm:border-r lg:border-b-0">
+        <section className="mb-5 grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:grid-cols-3">
+          <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
             <span className="block text-xs text-gray-500">자료 제출</span>
             <strong className="mt-1 block text-2xl leading-8 text-gray-950">{completeArtists} / {submissionSummary.length}</strong>
           </div>
-          <div className="border-b border-gray-200 p-4 lg:border-b-0 lg:border-r">
+          <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
             <span className="block text-xs text-gray-500">정산 확인</span>
             <strong className="mt-1 block text-2xl leading-8 text-gray-950">{access.ended ? `${settlementAccepted} / ${settlementArtistCount}` : '-'}</strong>
           </div>
-          <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
+          <div className="p-4">
             <span className="block text-xs text-gray-500">판매 합계</span>
             <strong className="mt-1 block text-2xl leading-8 text-gray-950">{won(totalSales)}</strong>
-          </div>
-          <div className="p-4">
-            <span className="block text-xs text-gray-500">오늘 필요한 작업</span>
-            <strong className="mt-1 block text-2xl leading-8 text-gray-950">{todayTaskCount}건</strong>
           </div>
         </section>
 
