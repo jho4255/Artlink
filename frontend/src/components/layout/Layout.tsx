@@ -1,6 +1,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import Navbar from './Navbar';
+import ErrorBoundary from '@/components/shared/ErrorBoundary';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -24,13 +25,16 @@ export default function Layout() {
     <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
       <main className="flex-1">
-        <Suspense fallback={
-          <div className="flex items-center justify-center py-24 text-gray-300">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
-          </div>
-        }>
-          <Outlet />
-        </Suspense>
+        {/* ErrorBoundary: 배포 후 이전 청크 404 등으로 페이지 로딩 실패 시 흰 화면 대신 복구 UI */}
+        <ErrorBoundary>
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-24 text-gray-300">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <footer className="border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">

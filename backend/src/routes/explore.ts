@@ -4,12 +4,15 @@ import { authenticate, optionalAuth } from '../middleware/auth';
 
 const router = Router();
 
-// (id, seed) → 결정적 의사난수. seed가 다르면 순서가 바뀜(매번/새로고침 시 랜덤 정렬).
-function shuffleHash(id: number, seed: number): number {
-  let h = (id ^ seed) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 2246822507) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
+// 시드 기반 결정적 PRNG (mulberry32) — seed가 다르면 전혀 다른 난수열(매번/새로고침 시 랜덤 정렬).
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 // 좋아요순 기간 필터 시작 시각 (없으면 전체 기간)
@@ -19,29 +22,44 @@ function periodSince(period: string): Date | null {
   return new Date(Date.now() - days[period] * 86400000);
 }
 
-// 같은 작가 작품이 연속(두 개 이상)으로 나오지 않도록 재배치.
-// 각 작가 큐의 셔플 순서는 유지하되, 매 단계 "남은 수가 가장 많은(≠직전) 작가"를 골라 배치(막다른 배치 방지).
-// 동수일 땐 입력(셔플) 순서를 따르므로 seed가 바뀌면 전체 배치도 달라진다.
-function arrangeNoAdjacent<T>(items: T[], artistOf: (t: T) => number): T[] {
+// 같은 작가 작품이 연속으로 나오지 않도록 재배치 — "가중 랜덤 + 실행가능성 보장".
+// 매 단계 (직전 작가 제외) 남은 작가 중에서 남은 수에 비례한 가중치로 랜덤 선택하되,
+// 어떤 작가의 남은 수가 남은 슬롯의 과반을 넘으면 반드시 그 작가부터 배치(연속을 피할 수 있으면 항상 피함).
+// 결정적 "최다 우선"과 달리 작은 작가도 앞쪽에 골고루 섞여 나온다(진짜 랜덤 느낌). rand는 시드 PRNG.
+function arrangeNoAdjacent<T>(items: T[], artistOf: (t: T) => number, rand: () => number): T[] {
   const groups = new Map<number, T[]>();
   for (const it of items) {
     const a = artistOf(it);
     if (!groups.has(a)) groups.set(a, []);
     groups.get(a)!.push(it);
   }
+  const buckets = Array.from(groups.entries()).map(([a, q]) => ({ a, q }));
   const result: T[] = [];
   let last = -1;
-  while (result.length < items.length) {
-    let bestA = -1, bestLen = -1;
-    for (const [a, q] of groups) {
-      if (q.length === 0 || a === last) continue;
-      if (q.length > bestLen) { bestLen = q.length; bestA = a; }
+  let remaining = items.length;
+  while (remaining > 0) {
+    const avail = buckets.filter(b => b.q.length > 0);
+    let elig = avail.filter(b => b.a !== last);
+    if (elig.length === 0) elig = avail; // 직전 작가만 남음(불가피한 연속)
+
+    // 과반 작가는 강제 우선(연속 최소화). 남은 슬롯(자기 배치 후) 대비 최다가 과반이면 그것부터.
+    const capacity = Math.ceil((remaining - 1) / 2);
+    const maxLen = Math.max(...avail.map(b => b.q.length));
+    let choices = elig;
+    if (maxLen > capacity) {
+      const forced = elig.filter(b => b.q.length === maxLen);
+      choices = forced.length > 0 ? forced : avail.filter(b => b.q.length === maxLen);
     }
-    if (bestA === -1) { // 직전 작가만 남음(불가피)
-      for (const [a, q] of groups) if (q.length > 0) { bestA = a; break; }
-    }
-    result.push(groups.get(bestA)!.shift()!);
-    last = bestA;
+
+    // 남은 수 가중 랜덤 선택
+    const totalW = choices.reduce((s, b) => s + b.q.length, 0);
+    let r = rand() * totalW;
+    let pick = choices[choices.length - 1];
+    for (const b of choices) { r -= b.q.length; if (r <= 0) { pick = b; break; } }
+
+    result.push(pick.q.shift()!);
+    last = pick.a;
+    remaining--;
   }
   return result;
 }
@@ -85,9 +103,15 @@ router.get('/', optionalAuth, async (req, res, next) => {
         .sort((a, b) => b.c - a.c || b.id - a.id) // 좋아요 많은 순, 동수는 최신(id) 순
         .map(x => x.id);
     } else {
-      // 시드 셔플 후 같은 작가 연속 방지
-      const shuffled = [...candidates].sort((a, b) => shuffleHash(a.id, seed) - shuffleHash(b.id, seed));
-      orderedIds = arrangeNoAdjacent(shuffled, c => c.portfolio.userId).map(c => c.id);
+      // 시드 PRNG로 Fisher-Yates 셔플(작가내 순서 랜덤) 후, 같은 작가 연속 방지 배치.
+      // id 기준 정렬을 base로 두어 DB 반환 순서와 무관하게 같은 seed면 항상 같은 결과.
+      const rand = mulberry32(seed);
+      const base = [...candidates].sort((a, b) => a.id - b.id);
+      for (let i = base.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [base[i], base[j]] = [base[j], base[i]];
+      }
+      orderedIds = arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
     }
 
     const pageIds = orderedIds.slice(skip, skip + limit);

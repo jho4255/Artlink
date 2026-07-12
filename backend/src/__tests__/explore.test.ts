@@ -49,6 +49,28 @@ describe('GET /api/explore', () => {
     expect(new Set(full).size).toBe(6);
   });
 
+  it('random: 작은 작가가 항상 뒤로 몰리지 않고 골고루 섞인다 (+ 연속 없음)', async () => {
+    // 중간 작가 3명(5,5,4) + 작은 작가 2명(1,1) = 16장 — 예전 "최다 우선"이면 작은 작가가 뒤로 몰렸음
+    const a5 = await testPrisma.user.create({ data: { email: 'a5@t.com', name: 'A5', role: 'ARTIST' } });
+    const owners: [number, number][] = [[1, 5], [2, 5], [3, 4], [4, 1], [a5.id, 1]];
+    for (const [uid, n] of owners) {
+      const p = await testPrisma.portfolio.create({ data: { userId: uid } });
+      for (let i = 0; i < n; i++) {
+        await testPrisma.portfolioImage.create({ data: { portfolioId: p.id, url: `/${uid}_${i}.jpg`, showInExplore: true } });
+      }
+    }
+    const small = new Set([4, a5.id]);
+    let frontHalfHits = 0;
+    const seeds = 16;
+    for (let s = 1; s <= seeds; s++) {
+      const arts = (await request.get(`/api/explore?sort=random&seed=${s * 7}&limit=60`)).body.images.map((i: any) => i.artist.id);
+      for (let i = 1; i < arts.length; i++) expect(arts[i]).not.toBe(arts[i - 1]); // 연속 없음(feasible)
+      const front = arts.slice(0, Math.floor(arts.length / 2));
+      if (front.some((a: number) => small.has(a))) frontHalfHits++;
+    }
+    expect(frontHalfHits).toBeGreaterThan(seeds / 2); // 뒤로만 몰리면 0에 가까움
+  });
+
   it('popular: 기간(하루/전체)별 받은 좋아요 수로 정렬, 배지는 전체 좋아요 수', async () => {
     const { a, b } = await seedExploreData();
     const recent = new Date();

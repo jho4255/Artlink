@@ -1,30 +1,49 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, type ComponentType } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
+import ErrorBoundary from '@/components/shared/ErrorBoundary';
+
+// 새 배포로 청크 파일명(해시)이 바뀌면 예전 청크 import가 404 → 모바일에서 흰 화면 원인.
+// 이때 한 번만 새로고침해 최신 index.html + 청크를 받게 한다(무한 새로고침 방지 가드).
+function lazyWithReload<T extends ComponentType<any>>(factory: () => Promise<{ default: T }>) {
+  return lazy(() =>
+    factory().catch((err) => {
+      const KEY = 'chunk-reload-at';
+      const now = Date.now();
+      const last = Number(sessionStorage.getItem(KEY) || 0);
+      if (now - last > 15000) {
+        sessionStorage.setItem(KEY, String(now));
+        window.location.reload();
+        return new Promise<{ default: T }>(() => {}); // 새로고침 동안 렌더 보류
+      }
+      throw err; // 재시도 후에도 실패 → ErrorBoundary가 복구 UI 표시
+    }),
+  );
+}
 
 // 페이지는 지연 로딩(코드 스플리팅) — 초기 번들 축소. 셸(Layout/ProtectedRoute)과 랜딩(HomePage)은 즉시 로드.
-const GalleriesPage = lazy(() => import('@/pages/GalleriesPage'));
-const GalleryDetailPage = lazy(() => import('@/pages/GalleryDetailPage'));
-const ExhibitionsPage = lazy(() => import('@/pages/ExhibitionsPage'));
-const ExhibitionDetailPage = lazy(() => import('@/pages/ExhibitionDetailPage'));
-const ShowsPage = lazy(() => import('@/pages/ShowsPage'));
-const ShowDetailPage = lazy(() => import('@/pages/ShowDetailPage'));
-const PortfolioPage = lazy(() => import('@/pages/PortfolioPage'));
-const BenefitsPage = lazy(() => import('@/pages/BenefitsPage'));
-const MyPage = lazy(() => import('@/pages/MyPage'));
-const LoginPage = lazy(() => import('@/pages/LoginPage'));
-const SupportPage = lazy(() => import('@/pages/SupportPage'));
-const ExplorePage = lazy(() => import('@/pages/ExplorePage'));
-const MessagesPage = lazy(() => import('@/pages/MessagesPage'));
-const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
-const AuthCallbackPage = lazy(() => import('@/pages/AuthCallbackPage'));
-const PrivacyPage = lazy(() => import('@/pages/PrivacyPage'));
-const TermsPage = lazy(() => import('@/pages/TermsPage'));
-const OperationPage = lazy(() => import('@/pages/OperationPage'));
-const OperationClassicPage = lazy(() => import('@/pages/OperationClassicPage'));
-const OperationPrintPage = lazy(() => import('@/pages/OperationPrintPage'));
+const GalleriesPage = lazyWithReload(() => import('@/pages/GalleriesPage'));
+const GalleryDetailPage = lazyWithReload(() => import('@/pages/GalleryDetailPage'));
+const ExhibitionsPage = lazyWithReload(() => import('@/pages/ExhibitionsPage'));
+const ExhibitionDetailPage = lazyWithReload(() => import('@/pages/ExhibitionDetailPage'));
+const ShowsPage = lazyWithReload(() => import('@/pages/ShowsPage'));
+const ShowDetailPage = lazyWithReload(() => import('@/pages/ShowDetailPage'));
+const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
+const BenefitsPage = lazyWithReload(() => import('@/pages/BenefitsPage'));
+const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
+const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
+const SupportPage = lazyWithReload(() => import('@/pages/SupportPage'));
+const ExplorePage = lazyWithReload(() => import('@/pages/ExplorePage'));
+const MessagesPage = lazyWithReload(() => import('@/pages/MessagesPage'));
+const NotFoundPage = lazyWithReload(() => import('@/pages/NotFoundPage'));
+const AuthCallbackPage = lazyWithReload(() => import('@/pages/AuthCallbackPage'));
+const PrivacyPage = lazyWithReload(() => import('@/pages/PrivacyPage'));
+const TermsPage = lazyWithReload(() => import('@/pages/TermsPage'));
+const OperationPage = lazyWithReload(() => import('@/pages/OperationPage'));
+const OperationClassicPage = lazyWithReload(() => import('@/pages/OperationClassicPage'));
+const OperationPrintPage = lazyWithReload(() => import('@/pages/OperationPrintPage'));
 
 // 인쇄 전용 라우트(레이아웃 없음)용 지연 로딩 폴백
 function RouteFallback() {
@@ -72,9 +91,11 @@ export default function App() {
       {/* 인쇄 전용 (레이아웃 없음) */}
       <Route path="/exhibitions/:id/operation/print/:userId/:doc" element={
         <ProtectedRoute>
-          <Suspense fallback={<RouteFallback />}>
-            <OperationPrintPage />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <OperationPrintPage />
+            </Suspense>
+          </ErrorBoundary>
         </ProtectedRoute>
       } />
     </Routes>
