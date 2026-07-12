@@ -1122,7 +1122,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                         <Check size={10} /> 제출완료
                       </span>
                     )}
-                    <span className="text-xs text-gray-400">출품 {artCount} · 약력 {hasCv ? 'V' : 'X'} · 노트 {hasNote ? 'V' : 'X'}</span>
+                    <span className="text-xs text-gray-400">출품 {artCount}점 · 약력 {hasCv ? 'V' : 'X'} · 노트 {hasNote ? 'V' : 'X'}</span>
                   </div>
                   {isOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                 </button>

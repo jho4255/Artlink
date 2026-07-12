@@ -568,7 +568,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                   <div className="flex items-center gap-2 min-w-0">
                     {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center"><User size={14} className="text-gray-400" /></div>}
                     <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
-                    <span className="text-xs text-gray-400">출품 {artCount} · 약력 {hasCv ? 'O' : '–'} · 노트 {hasNote ? 'O' : '–'}</span>
+                    <span className="text-xs text-gray-400">출품 {artCount}점 · 약력 {hasCv ? 'O' : '–'} · 노트 {hasNote ? 'O' : '–'}</span>
                   </div>
                   {isOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                 </button>
