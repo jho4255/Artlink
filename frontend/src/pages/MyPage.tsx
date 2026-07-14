@@ -2104,15 +2104,23 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                           </div>
 
                           <div className="flex flex-wrap gap-2 xl:justify-end">
-                            <button
-                              type="button"
-                              onClick={() => item.status === 'APPROVED'
-                                ? setManageAppsExId(manageAppsExId === item.id ? null : item.id)
-                                : navigate(item.nextAction.route)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
-                            >
-                              <ClipboardList size={14} /> {item.status === 'APPROVED' && manageAppsExId === item.id ? '지원자 닫기' : item.nextAction.label}
-                            </button>
+                            {(() => {
+                              // 검정 버튼 = '지원자 관리' 전용. 승인된 공모면 어느 단계든(모집중~정산) 인라인 지원자 관리를 펼친다.
+                              // 자료 확인·정산서 등 운영 작업은 옆의 '상세 운영' 버튼/페이지에서 처리(중복 방지).
+                              const isApproved = item.status === 'APPROVED';
+                              const open = manageAppsExId === item.id;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => isApproved
+                                    ? setManageAppsExId(open ? null : item.id)
+                                    : navigate(item.nextAction.route)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
+                                >
+                                  <Send size={14} /> {isApproved ? (open ? '지원자 닫기' : '지원자 관리') : item.nextAction.label}
+                                </button>
+                              );
+                            })()}
                             <button
                               type="button"
                               onClick={() => navigate(`/exhibitions/${item.id}/operation/new`)}

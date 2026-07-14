@@ -504,13 +504,13 @@ export default function ExhibitionDetailPage() {
             <p className="text-center text-sm text-gray-400">지원하려면 로그인이 필요합니다.</p>
           )}
 
-          {/* Gallery 오너: 지원자 관리 — 마이페이지 '내 공모'에서 인라인 관리(창 이동 없이 전 기능) */}
+          {/* Gallery 오너: 지원자 관리는 마이페이지 '내 공모'에서 인라인으로 — 해당 탭으로 이동 */}
           {isGalleryOwner && (
             <button
-              onClick={() => navigate('/mypage')}
+              onClick={() => navigate('/mypage?tab=my-exhibitions')}
               className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
             >
-              <Users size={16} /> 지원자 관리
+              <Users size={16} /> 내 공모로 이동
             </button>
           )}
 
