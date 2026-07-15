@@ -68,6 +68,17 @@ if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true'
   app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
 }
 
+// API 응답은 절대 HTTP 캐시하지 않음.
+// Cache-Control이 없으면 Safari 등이 ETag 기반 휴리스틱 캐싱으로 오래된(내 공모 생성 전이거나
+// 빈) 목록을 계속 보여주는 문제가 있음(크롬은 보수적이라 재현 안 됨). 서비스워커도 /api는
+// 캐싱하지 않으므로 여기서 no-store만 명시하면 브라우저 HTTP 캐시로 인한 stale 목록이 사라진다.
+// 클라이언트 캐싱은 TanStack Query가 메모리에서 담당하므로 no-store가 성능에 영향 없음.
+// (개별 라우트가 이후 res.setHeader로 재지정하면 그 값이 우선 — 예: 업로드 이미지 max-age)
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // API 라우트
 app.use('/api/auth', authRoutes);
 app.use('/api/hero-slides', heroRoutes);

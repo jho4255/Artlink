@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
 
 export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [searchParams] = useSearchParams();
@@ -23,7 +24,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const handleSuccess = (data: { token: string; user: any }) => {
     queryClient.clear();
     login(data.token, data.user);
-    navigate('/mypage', { replace: true });
+    // 로그인/가입 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지
+    navigate(consumePostLoginRedirect() || '/mypage', { replace: true });
   };
 
   const oauthMutation = useMutation({
