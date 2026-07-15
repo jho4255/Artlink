@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
+import { useTourStore } from '@/stores/tourStore';
+import { ARTIST_ONBOARDING_TOUR, artistOnboardingSteps } from '@/lib/tours';
 
 /**
  * 로그인 페이지
@@ -23,6 +25,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
+  const startTour = useTourStore((s) => s.start);
 
   const handleKakaoLogin = () => {
     const state = crypto.randomUUID();
@@ -41,6 +44,25 @@ export default function LoginPage() {
       navigate(consumePostLoginRedirect() || '/mypage', { replace: true });
     } catch (err: any) {
       toast.error(err.response?.data?.error || '개발자 로그인에 실패했습니다.');
+    }
+  };
+
+  // 개발자 신규 가입: 매번 갓 가입한 빈 계정을 만들어 실제 신규 가입 온보딩을 재현.
+  // (작가면 온보딩 투어 자동 시작 → AuthCallbackPage의 신규 가입 경로와 동일 동작)
+  const handleDevRegister = async (role: 'ARTIST' | 'GALLERY') => {
+    try {
+      const { data } = await api.post('/auth/dev-register', { role });
+      queryClient.clear();
+      login(data.token, data.user);
+      consumePostLoginRedirect(); // 신규 가입은 투어로 안내하므로 복귀 경로는 폐기
+      if (role === 'ARTIST') {
+        startTour(ARTIST_ONBOARDING_TOUR, artistOnboardingSteps);
+        navigate('/', { replace: true });
+      } else {
+        navigate('/mypage', { replace: true });
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || '개발자 가입에 실패했습니다.');
     }
   };
 
@@ -79,6 +101,24 @@ export default function LoginPage() {
                   <div className="text-xs text-gray-400 mt-0.5">{acc.desc}</div>
                 </button>
               ))}
+            </div>
+
+            <p className="text-xs font-medium text-gray-400 mt-6 mb-3">개발자 신규 가입 (빈 계정 · 온보딩 테스트)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleDevRegister('ARTIST')}
+                className="p-3 rounded-lg border border-dashed border-gray-300 hover:border-gray-900 transition-colors text-left cursor-pointer"
+              >
+                <div className="text-sm font-medium text-gray-900">작가로 신규 가입</div>
+                <div className="text-xs text-gray-400 mt-0.5">빈 계정 + 온보딩 투어</div>
+              </button>
+              <button
+                onClick={() => handleDevRegister('GALLERY')}
+                className="p-3 rounded-lg border border-dashed border-gray-300 hover:border-gray-900 transition-colors text-left cursor-pointer"
+              >
+                <div className="text-sm font-medium text-gray-900">갤러리로 신규 가입</div>
+                <div className="text-xs text-gray-400 mt-0.5">빈 계정 · 마이페이지</div>
+              </button>
             </div>
           </div>
         )}

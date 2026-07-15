@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
+import TourOverlay from '@/components/onboarding/TourOverlay';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -53,6 +54,8 @@ export default function Layout() {
           </div>
         </div>
       </footer>
+      {/* 온보딩 코치마크 (활성 투어가 있을 때만 렌더) */}
+      <TourOverlay />
     </div>
   );
 }

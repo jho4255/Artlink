@@ -5,11 +5,14 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown, HelpCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import { useTourStore } from '@/stores/tourStore';
+import { ARTIST_ONBOARDING_TOUR, artistOnboardingSteps } from '@/lib/tours';
+import TourDemoContent from '@/components/onboarding/TourDemoContent';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
@@ -140,6 +143,9 @@ export default function MyPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user, logout } = useAuthStore();
+  const startTour = useTourStore((s) => s.start);
+  // 투어가 특정 탭 스텝일 때 콘텐츠 영역에 예시 목업을 보여주기 위한 키
+  const tourDemoKind = useTourStore((s) => (s.tourId ? s.steps[s.index]?.preview : undefined));
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab');
     return tab === 'my-exhibitions-classic' ? 'my-exhibitions' : (tab || 'profile');
@@ -208,9 +214,19 @@ export default function MyPage() {
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-4xl md:text-5xl font-serif text-gray-900">My Page</h1>
-        <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 cursor-pointer">
-          <LogOut size={16} /> 로그아웃
-        </button>
+        <div className="flex items-center gap-3">
+          {user.role === 'ARTIST' && (
+            <button
+              onClick={() => { navigate('/'); startTour(ARTIST_ONBOARDING_TOUR, artistOnboardingSteps); }}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
+            >
+              <HelpCircle size={16} /> 사용법 보기
+            </button>
+          )}
+          <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 cursor-pointer">
+            <LogOut size={16} /> 로그아웃
+          </button>
+        </div>
       </div>
 
       {/* 프로필 카드 */}
@@ -221,6 +237,7 @@ export default function MyPage() {
         {tabs.map(tab => (
           <button
             key={tab.id}
+            data-tour={`mypage-tab-${tab.id}`}
             onClick={() => selectTab(tab.id)}
             className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
@@ -234,10 +251,10 @@ export default function MyPage() {
       {/* 탭 콘텐츠 */}
       <div>
         {currentTab === 'profile' && <ProfileSection />}
-        {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
-        {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
-        {currentTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
-        {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
+        {currentTab === 'portfolio' && user.role === 'ARTIST' && (tourDemoKind === 'portfolio' ? <TourDemoContent kind="portfolio" /> : <PortfolioSection />)}
+        {currentTab === 'favorites' && user.role === 'ARTIST' && (tourDemoKind === 'favorites' ? <TourDemoContent kind="favorites" /> : <FavoritesSection />)}
+        {currentTab === 'reviews' && user.role === 'ARTIST' && (tourDemoKind === 'reviews' ? <TourDemoContent kind="reviews" /> : <MyReviewsSection />)}
+        {currentTab === 'applications' && user.role === 'ARTIST' && (tourDemoKind === 'applications' ? <TourDemoContent kind="applications" /> : <ApplicationsSection />)}
         {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
         {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && (
           <MyExhibitionsSection initialViewMode={searchParams.get('tab') === 'my-exhibitions-classic' ? 'classic' : undefined} />

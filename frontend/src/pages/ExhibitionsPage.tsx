@@ -192,13 +192,14 @@ export default function ExhibitionsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {exhibitions.map((ex) => {
+          {exhibitions.map((ex, i) => {
             const dday = getDday(ex.deadline);
             const isAdmin = user?.role === 'ADMIN';
 
             return (
               <article
                 key={ex.id}
+                data-tour={i === 0 ? 'exhibition-card' : undefined}
                 onClick={() => navigate(`/exhibitions/${ex.id}`)}
                 className="group cursor-pointer"
               >

@@ -302,6 +302,36 @@ router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// ========== 개발자 신규 가입 (로컬 전용) ==========
+// 매 호출마다 '갓 가입한' 빈 계정(작가/갤러리)을 새로 만들어 즉시 로그인시킨다.
+// 신규 가입 온보딩(작가 투어 등)을 실제 카카오 없이 반복 테스트하기 위한 용도.
+// dev-login과 동일하게 ENABLE_DEV_LOGIN=true + 비-production 에서만 동작.
+const devRegisterSchema = z.object({
+  role: z.enum(['ARTIST', 'GALLERY']),
+});
+router.post('/dev-register', validate(devRegisterSchema), async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== 'true') {
+      throw new AppError('개발자 가입은 사용할 수 없습니다.', 404);
+    }
+    const role = req.body.role as 'ARTIST' | 'GALLERY';
+    const stamp = Date.now();
+    const user = await prisma.user.create({
+      data: {
+        name: role === 'ARTIST' ? `테스트 작가 ${stamp % 100000}` : `테스트 갤러리 ${stamp % 100000}`,
+        email: `dev-${role.toLowerCase()}-${stamp}@artlink.dev`,
+        role,
+        phone: '010-0000-0000',
+        provider: 'DEV',
+        providerId: String(stamp),
+      },
+    });
+    const token = generateToken(user);
+    // isNewUser: 프론트가 신규 가입 온보딩(투어)을 태울지 판단
+    res.json({ token, user: safeUser(user), isNewUser: true });
+  } catch (error) { next(error); }
+});
+
 // ========== 회원 탈퇴 (소프트 삭제 + 익명화) ==========
 
 // 탈퇴 전 영향 요약: 보유 갤러리 / 진행 중 공고 / 처리 대기 지원자 / 본인 활동

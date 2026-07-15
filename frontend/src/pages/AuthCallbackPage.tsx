@@ -4,12 +4,15 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
+import { useTourStore } from '@/stores/tourStore';
+import { ARTIST_ONBOARDING_TOUR, artistOnboardingSteps } from '@/lib/tours';
 
 export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
+  const startTour = useTourStore((s) => s.start);
 
   const [phase, setPhase] = useState<'loading' | 'register'>('loading');
   const [tempToken, setTempToken] = useState('');
@@ -52,7 +55,19 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const registerMutation = useMutation({
     mutationFn: (body: { tempToken: string; role: string; name: string; email: string; phone: string }) =>
       api.post('/auth/complete-registration', body).then((r) => r.data),
-    onSuccess: handleSuccess,
+    // 신규 가입: 작가는 빈 포트폴리오로 지원서를 마주하면 이탈하기 쉬우므로,
+    // 지원서로 바로 보내지 않고 전체 서비스 온보딩 투어로 안내한다(홈→모집공고→마이페이지).
+    onSuccess: (data) => {
+      queryClient.clear();
+      login(data.token, data.user);
+      consumePostLoginRedirect(); // 가입은 투어로 안내하므로 지원 복귀 경로는 폐기
+      if (data.user.role === 'ARTIST') {
+        startTour(ARTIST_ONBOARDING_TOUR, artistOnboardingSteps);
+        navigate('/', { replace: true }); // 투어 첫 스텝(환영)부터 시작
+      } else {
+        navigate('/mypage', { replace: true });
+      }
+    },
     onError: (err: any) => setError(err.response?.data?.error || '가입에 실패했습니다.'),
   });
 
