@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
 
 /**
  * 로그인 페이지
@@ -36,7 +37,8 @@ export default function LoginPage() {
       const { data } = await api.post('/auth/dev-login', { email });
       queryClient.clear();
       login(data.token, data.user);
-      navigate('/mypage', { replace: true });
+      // 로그인 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지
+      navigate(consumePostLoginRedirect() || '/mypage', { replace: true });
     } catch (err: any) {
       toast.error(err.response?.data?.error || '개발자 로그인에 실패했습니다.');
     }

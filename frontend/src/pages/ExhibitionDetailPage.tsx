@@ -19,7 +19,7 @@
  * @see /src/stores/authStore.ts - 인증 상태
  */
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical } from 'lucide-react';
@@ -34,6 +34,7 @@ import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
+import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -93,6 +94,7 @@ function buildCustomAnswers(fields: CustomField[] | null | undefined, values: Cu
 export default function ExhibitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
 
@@ -181,6 +183,21 @@ export default function ExhibitionDetailPage() {
     setCareerErrorKeys(new Set());
     setShowApplyModal(true);
   };
+
+  // 로그인 후 복귀 진입점: '로그인하고 지원하기' → 로그인 → 이 페이지로 ?apply=1 복귀 시
+  // 작가이고 마감 전이면 지원 모달을 자동으로 연다. 처리 후 파라미터를 제거해 새로고침 시 재오픈 방지.
+  useEffect(() => {
+    if (!exhibition || searchParams.get('apply') !== '1') return;
+    const isArtistUser = user?.role === 'ARTIST';
+    const notExpired = getDday(exhibition.deadline) >= 0;
+    if (isArtistUser && notExpired) openApplyModal();
+    setSearchParams(
+      (prev) => { const next = new URLSearchParams(prev); next.delete('apply'); return next; },
+      { replace: true },
+    );
+    // openApplyModal은 매 렌더 새로 생성되지만 의존성에 넣으면 불필요한 재실행을 유발하므로 제외
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exhibition, user, searchParams]);
 
   // 포트폴리오 불러오기 — 내 포트폴리오를 지원서 폼에 채움
   const loadMyPortfolio = async () => {
@@ -499,9 +516,22 @@ export default function ExhibitionDetailPage() {
             </button>
           )}
 
-          {/* 비로그인 안내 */}
+          {/* 비로그인: 작은 회색 안내문은 놓치기 쉬워(지원 버튼이 아예 안 보인다는 오해) 눈에 띄는 CTA 버튼으로 안내 */}
           {!isAuthenticated && !isExpired && (
-            <p className="text-center text-sm text-gray-400">지원하려면 로그인이 필요합니다.</p>
+            <>
+              <button
+                onClick={() => { setPostLoginRedirect(`/exhibitions/${id}?apply=1`); navigate('/login'); }}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
+              >
+                <Send size={16} /> 로그인하고 지원하기
+              </button>
+              <p className="text-center text-xs text-gray-400">작가 계정으로 로그인하면 지원할 수 있어요.</p>
+            </>
+          )}
+
+          {/* 로그인했지만 작가 계정이 아닌 경우(갤러리·관리자 제외) — 지원 불가 안내 */}
+          {isAuthenticated && !isArtist && !isGalleryOwner && !isAdmin && !isExpired && (
+            <p className="text-center text-sm text-gray-400">작가 계정만 지원할 수 있습니다.</p>
           )}
 
           {/* Gallery 오너: 지원자 관리는 마이페이지 '내 공모'에서 인라인으로 — 해당 탭으로 이동 */}
