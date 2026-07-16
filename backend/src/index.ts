@@ -137,12 +137,15 @@ if (process.env.NODE_ENV === 'production') {
     index: false,
     setHeaders: (res, filePath) => {
       if (NO_CACHE_FILES.has(path.basename(filePath))) {
-        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        // no-store: CDN(Cloudflare) 엣지가 아예 저장하지 못하게 한다.
+        // no-cache는 엣지 설정(Browser Cache TTL 등)에 따라 덮어써질 수 있고,
+        // 실제로 sw.js가 엣지에 1년 immutable로 굳어 신버전이 배포되지 않는 사고 발생(2026-07).
+        res.setHeader('Cache-Control', 'no-store');
       }
     },
   }));
   app.get('/{*path}', (_req, res) => {
-    res.set('Cache-Control', 'no-cache');
+    res.set('Cache-Control', 'no-store');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }

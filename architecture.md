@@ -336,16 +336,37 @@ cd frontend && npm run dev
 - `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침
 - 배포 후 수동 Clear site data 불필요
 
+### 서비스워커 등록 — 버전 쿼리로 CDN 엣지 캐시 우회 (2026-07 사고 재발 방지)
+- **등록은 `main.tsx`에서 직접**: `navigator.serviceWorker.register('/sw.js?v=' + __BUILD_ID__)` (PROD에서만).
+  `__BUILD_ID__`는 `vite.config.ts`의 `define`으로 빌드 시 주입되는 타임스탬프.
+- `vite.config.ts` VitePWA에 `injectRegister: null` — 자동 생성 `registerSW.js`를 만들지 않음.
+- **배경(2026-07 실사고)**: Cloudflare 엣지가 고정 URL `/sw.js`·`/registerSW.js`를 옛 헤더(1년 immutable) 시절에
+  캐시해버려, 오리진(Render)에 신버전이 배포돼도 전 사용자에게 7/8자 워커가 계속 서빙됨.
+  쿼리스트링은 CF 캐시 키에 포함되므로 빌드마다 URL이 바뀌어 **반드시 오리진에서 새로 받는다**.
+  (같은 스코프에 다른 URL을 등록하면 브라우저가 기존 등록을 새 워커로 교체)
+
+### 커스텀 서비스워커 — 네비게이션 네트워크 우선, precache 소실 내성 (Safari/삼성인터넷)
+- `frontend/src/sw.js` (vite-plugin-pwa `strategies: 'injectManifest'`, srcDir `src`, 출력 `dist/sw.js`):
+  페이지 이동(navigation)을 **NetworkOnly(5초 타임아웃)**로 처리 — 온라인이면 항상 최신 index.html.
+  실패(오프라인/타임아웃) 시에만 precache된 '현재 배포' 셸로 폴백(`createHandlerBoundToURL`, 키 없으면 가드).
+  skipWaiting/clientsClaim/cleanupOutdatedCaches/precache는 기존 generateSW와 동등. `/api`·`/uploads`는 denylist.
+- **배경**: 기존 방식(precache된 index.html에 네비게이션 바인딩, 캐시 우선)은 Safari(ITP 7일 제한)·삼성인터넷이
+  CacheStorage를 임의로 비우면(워커 등록은 살아있음) 서빙할 것이 없어 **"화면을 불러오지 못했어요"** 에러로 죽고,
+  precache가 낡으면 죽은 청크를 가리키는 옛 셸에 갇혔음. 네트워크 우선이라 캐시 소실/노후 모두 내성.
+
 ### 캐시 무효화 (파일명 버전)
 - `vite.config.ts` `build.rollupOptions.output`에서 `entry/chunk/assetFileNames`를 `[name]-[hash]`로 **명시 고정**.
   내용이 바뀌면 파일명(=버전)이 바뀌어 브라우저·CDN이 무조건 새 파일을 받는다. (Vite 기본값이지만 해싱이 꺼지는 사고 방지용으로 명시)
 
 ### HTTP 캐시 만료 정책 (`backend/src/index.ts`)
 - **해시 번들** (`assets/*-[hash].js/css`, `workbox-*.js`): `Cache-Control: public, max-age=31536000, immutable` (1년 장기 캐시)
-- **고정 파일명** (`index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`): `Cache-Control: no-cache, must-revalidate`
-  → 파일명이 안 바뀌므로 매 요청 재검증 필수. 특히 `sw.js`가 immutable로 캐시되면 서비스워커가 영영 갱신 안 돼 **흰 화면·데이터 미갱신**의 원인이 됨(`NO_CACHE_FILES` Set으로 관리).
-- **SPA fallback** (`/{*path}` → index.html): `no-cache`
+- **고정 파일명** (`index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`): `Cache-Control: no-store`
+  → CDN 엣지·브라우저가 아예 저장하지 못하게 함. `no-cache`는 CDN 설정(Browser Cache TTL 등)에 덮어써질 수 있어
+  실제로 `sw.js`가 엣지에 1년 immutable로 굳는 사고 발생(2026-07). `NO_CACHE_FILES` Set으로 관리.
+- **SPA fallback** (`/{*path}` → index.html): `no-store`
 - **API 응답** (`/api/*`): `Cache-Control: no-store` (Safari ETag 휴리스틱 캐싱으로 인한 stale 목록 방지)
+- **Cloudflare 대시보드 권장 설정**: ① Browser Cache TTL = "Respect Existing Headers", ② `/sw.js*`·`/workbox-*.js` Cache Rule = Bypass.
+  (코드만으로도 버전 쿼리 덕에 안전하지만, 이중 방어)
 
 ## 로깅 & 안정성 시스템
 

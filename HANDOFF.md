@@ -51,6 +51,7 @@ cd frontend && npm test    # 46 통과
 - ⚠️ 알려진 flaky 테스트 1건: `exhibition-extended.test.ts > 상세 조회 시 gallery 정보 포함` — 동시성 테스트 데이터 누수로 가끔 실패. 단독 재실행하면 통과(회귀 아님).
 
 ### 0-6. 최근 변경 이력 (이번 인계 직전 세션들, 최신순)
+- (2026-07-16) **크롬 외 브라우저 에러 화면 사고 해결**: Cloudflare 엣지가 7/8자 `sw.js`·`registerSW.js`를 1년 immutable로 캐시(옛 헤더 시절) → 오리진에 수정이 배포돼도 전 사용자에게 옛 워커가 서빙되고, Safari/삼성인터넷은 CacheStorage 소실 시 "화면을 불러오지 못했어요"로 죽음. 대응: ① SW 등록을 `main.tsx`에서 `/sw.js?v=BUILD_ID`(빌드마다 새 URL → CF 캐시 키 우회)로 직접, `registerSW.js` 생성 중단(`injectRegister: null`) ② 네비게이션을 precache 바인딩→**네트워크 우선**으로 전환(`1ce07ea` injectManifest 커스텀 `frontend/src/sw.js` — NetworkOnly 5s + 오프라인만 precache 폴백, 캐시 소실 내성) ③ 고정 파일명 응답 `no-cache`→**no-store**. **잔여 조치**: 크롬 사용자 복구를 위해 Cloudflare 대시보드에서 캐시 퍼지 + Browser Cache TTL="Respect Existing Headers" 권장(architecture.md 캐시 정책 절 참고).
 - `8b2f627` **지원 상태 전이 규칙 정비**: 수락=최종(변경 불가, UI "수락(확정)" 잠금 배지), 거절→수락만 허용(거절→접수 차단), **검토중(REVIEWED) 폐지**(기존 데이터는 접수로 환원 마이그레이션). 거절 시 작가가 **"확인"** 눌러야 지원내역에서 제거(`Application.rejectionAckedAt` + `POST /exhibitions/applications/:appId/acknowledge-rejection`).
 - `f1dd47e` **인스타 OAuth/피드 연동 전면 제거**(인증 어려움). 인스타 **주소(instagramUrl)는 유지** — 갤러리 등록 폼/상세 페이지에서 직접 입력, 상세에 링크 표시. `maskGallery`는 토큰만 가림. 개인정보처리방침에서 인스타 OAuth 항목 삭제. 갤러리 삭제는 마이페이지에서만(상세 페이지 삭제 제거), **갤러리/공모/전시 삭제 시 "삭제" 입력 이중확인 모달**(`DeleteConfirmModal`). 승인완료/거절 갤러리 삭제 가능.
 - `e6466f3` 수락 알림 메시지에 "운영 페이지에서 전시정보 입력" + 클릭 시 운영페이지 이동. 지원내역에 **공모 진행상태 배지**(모집중/모집마감/확정/전시종료/정산완료), 필터를 **전체/진행중/정산완료** 3개로 단순화. 마이페이지 찜목록 하트 빨강 채움.

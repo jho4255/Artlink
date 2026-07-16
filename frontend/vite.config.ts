@@ -8,7 +8,15 @@ import path from 'path';
 // DEV_HTTPS=true 로 띄우면 self-signed HTTPS (인스타 OAuth redirect 로컬 테스트용)
 const useHttps = process.env.DEV_HTTPS === 'true';
 
+// 빌드 식별자: 서비스워커 등록 URL(/sw.js?v=...)에 붙여 CDN(Cloudflare) 엣지 캐시를 우회.
+// sw.js는 파일명이 고정이라 엣지에 한번 오래 캐시되면 신버전이 영영 배포되지 않는 사고가
+// 실제로 발생(2026-07). 쿼리가 캐시 키에 포함되므로 빌드마다 반드시 오리진에서 새로 받는다.
+const BUILD_ID = Date.now().toString(36);
+
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -19,7 +27,11 @@ export default defineConfig({
       // 캐시가 비거나 낡아도 흰 화면/구버전 고착이 나지 않게 한다(오프라인은 precache 폴백).
       strategies: 'injectManifest',
       srcDir: 'src',
-      filename: 'sw.js', // 출력도 dist/sw.js (백엔드 no-cache 대상·등록 스크립트와 이름 일치)
+      filename: 'sw.js', // 출력도 dist/sw.js (백엔드 no-store 대상·등록 URL과 이름 일치)
+      // 등록 스크립트(registerSW.js)를 생성하지 않음 — main.tsx에서 /sw.js?v=BUILD_ID로 직접 등록.
+      // (registerSW.js·sw.js는 고정 파일명이라 CDN 엣지에 stale하게 갇히는 사고가 실제 발생(2026-07).
+      //  버전 쿼리는 CF 캐시 키에 포함되므로 빌드마다 반드시 오리진에서 새로 받는다)
+      injectRegister: null,
       injectManifest: {
         // precache 대상: 앱셸/번들/아이콘 (generateSW 기본과 동등하게 유지)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
