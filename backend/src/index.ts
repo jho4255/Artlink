@@ -121,13 +121,24 @@ app.use('/api', (_req, res) => {
 // 프론트엔드 정적 파일 제공 (프로덕션)
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../frontend/dist');
-  // 해시된 번들은 장기 캐시(immutable), index.html은 항상 재검증(no-cache)
+  // 캐시 만료 정책 (명시적):
+  //  - 해시된 번들(assets/*-[hash].js/css 등): 파일명이 곧 버전이므로 1년 immutable 장기 캐시
+  //  - 앱셸/서비스워커/매니페스트: 파일명이 고정이라 캐시되면 신버전을 못 받음 → 항상 재검증(no-cache).
+  //    특히 sw.js가 immutable로 캐시되면 서비스워커가 영영 갱신되지 않아 흰 화면·데이터 미갱신의 원인이 됨.
+  const NO_CACHE_FILES = new Set([
+    'index.html',
+    'sw.js',
+    'registerSW.js',
+    'manifest.webmanifest',
+  ]);
   app.use(express.static(distPath, {
     maxAge: '1y',
     immutable: true,
     index: false,
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+      if (NO_CACHE_FILES.has(path.basename(filePath))) {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
     },
   }));
   app.get('/{*path}', (_req, res) => {

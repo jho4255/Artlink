@@ -330,11 +330,22 @@ cd frontend && npm run dev
 - Tailwind 반응형 분기: `md:hidden` (모바일 `<a>`) / `hidden md:flex` (데스크톱 `<p>`)
 - 구현: `frontend/src/pages/GalleryDetailPage.tsx:288`
 
-## PWA 자동 캐시 갱신
+## PWA 자동 캐시 갱신 & HTTP 캐시 정책
 
 - `vite.config.ts`: workbox `skipWaiting: true` + `clientsClaim: true`
 - `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침
 - 배포 후 수동 Clear site data 불필요
+
+### 캐시 무효화 (파일명 버전)
+- `vite.config.ts` `build.rollupOptions.output`에서 `entry/chunk/assetFileNames`를 `[name]-[hash]`로 **명시 고정**.
+  내용이 바뀌면 파일명(=버전)이 바뀌어 브라우저·CDN이 무조건 새 파일을 받는다. (Vite 기본값이지만 해싱이 꺼지는 사고 방지용으로 명시)
+
+### HTTP 캐시 만료 정책 (`backend/src/index.ts`)
+- **해시 번들** (`assets/*-[hash].js/css`, `workbox-*.js`): `Cache-Control: public, max-age=31536000, immutable` (1년 장기 캐시)
+- **고정 파일명** (`index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`): `Cache-Control: no-cache, must-revalidate`
+  → 파일명이 안 바뀌므로 매 요청 재검증 필수. 특히 `sw.js`가 immutable로 캐시되면 서비스워커가 영영 갱신 안 돼 **흰 화면·데이터 미갱신**의 원인이 됨(`NO_CACHE_FILES` Set으로 관리).
+- **SPA fallback** (`/{*path}` → index.html): `no-cache`
+- **API 응답** (`/api/*`): `Cache-Control: no-store` (Safari ETag 휴리스틱 캐싱으로 인한 stale 목록 방지)
 
 ## 로깅 & 안정성 시스템
 
