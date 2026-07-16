@@ -15,12 +15,14 @@ export default defineConfig({
     ...(useHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        cleanupOutdatedCaches: true, // 이전 배포의 precache(오래된 청크) 정리 → 흰 화면 유발 감소
-        // API/업로드 경로는 SPA 앱셸(index.html)로 폴백하지 않도록 제외
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
+      // 커스텀 서비스워커(src/sw.js) 사용: 페이지 이동을 네트워크 우선으로 처리해
+      // 캐시가 비거나 낡아도 흰 화면/구버전 고착이 나지 않게 한다(오프라인은 precache 폴백).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js', // 출력도 dist/sw.js (백엔드 no-cache 대상·등록 스크립트와 이름 일치)
+      injectManifest: {
+        // precache 대상: 앱셸/번들/아이콘 (generateSW 기본과 동등하게 유지)
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
       },
       manifest: {
         name: 'ArtLink',
