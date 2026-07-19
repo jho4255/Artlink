@@ -200,7 +200,8 @@ export default function HeroSlider() {
                 {slide.linkUrl && (
                   <button
                     onClick={() => handleLink(slide.linkUrl)}
-                    className="absolute bottom-5 md:bottom-16 right-5 md:right-10 text-white/80 text-xs md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
+                    // p-3 + 네거티브 마진: 시각 위치는 유지하면서 터치 히트영역만 확대
+                    className="absolute bottom-5 md:bottom-16 right-5 md:right-10 p-3 -m-3 text-white/80 text-xs md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
                   >
                     자세히 보기 →
                   </button>
@@ -214,29 +215,36 @@ export default function HeroSlider() {
             <>
               <button
                 onClick={() => scrollToSlide((current - 1 + slides.length) % slides.length)}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                aria-label="이전 슬라이드"
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
               >
                 <ChevronLeft size={18} />
               </button>
               <button
                 onClick={() => scrollToSlide((current + 1) % slides.length)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                aria-label="다음 슬라이드"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
               >
                 <ChevronRight size={18} />
               </button>
             </>
           )}
 
-          {/* 인디케이터 */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+          {/* 인디케이터 — 시각은 2px 라인 유지, 버튼 패딩으로 터치 히트영역만 확대 */}
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex z-10">
             {slides.map((_, i) => (
               <button
                 key={i}
                 onClick={() => scrollToSlide(i)}
-                className={`h-[2px] rounded-full transition-all cursor-pointer ${
-                  i === current ? 'bg-white w-6' : 'bg-white/40 w-3'
-                }`}
-              />
+                aria-label={`${i + 1}번째 슬라이드로 이동`}
+                className="py-2.5 px-[3px] cursor-pointer"
+              >
+                <span
+                  className={`block h-[2px] rounded-full transition-all ${
+                    i === current ? 'bg-white w-6' : 'bg-white/40 w-3'
+                  }`}
+                />
+              </button>
             ))}
           </div>
         </div>

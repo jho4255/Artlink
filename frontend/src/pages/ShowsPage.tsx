@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, MapPin, Calendar, X, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -192,16 +192,18 @@ export default function ShowsPage() {
             const isAdmin = user?.role === 'ADMIN';
 
             return (
-              <article
+              // 실제 <a>(Link) — 새 탭 열기·주소 복사·키보드 접근 지원. 내부 버튼은 preventDefault 필수
+              <Link
                 key={show.id}
-                onClick={() => navigate(`/shows/${show.id}`)}
-                className="group cursor-pointer"
+                to={`/shows/${show.id}`}
+                className="group cursor-pointer block"
               >
                 <SkeletonImage
                   src={show.posterImage}
                   alt={show.title}
                   className="aspect-[3/4]"
                   imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"
+                  loading="lazy"
                   blurFill
                 />
 
@@ -221,6 +223,7 @@ export default function ShowsPage() {
                       {user?.role === 'ARTIST' && (
                         <button
                           onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             if (!isAuthenticated) { toast.error('로그인이 필요합니다.'); return; }
                             favMutation.mutate(show.id);
@@ -235,7 +238,7 @@ export default function ShowsPage() {
                   </div>
 
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${show.gallery?.id}`); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/galleries/${show.gallery?.id}`); }}
                     className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
                   >
                     {show.gallery?.name}
@@ -248,7 +251,7 @@ export default function ShowsPage() {
                           {idx > 0 && ', '}
                           {a.userId ? (
                             <span
-                              onClick={(e) => { e.stopPropagation(); navigate(`/portfolio/${a.userId}`); }}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/portfolio/${a.userId}`); }}
                               className="hover:underline cursor-pointer"
                             >{a.name}</span>
                           ) : a.name}
@@ -266,7 +269,7 @@ export default function ShowsPage() {
                     <MapPin size={13} /> {regionLabels[show.region]}
                   </p>
                 </div>
-              </article>
+              </Link>
             );
           })}
         </div>

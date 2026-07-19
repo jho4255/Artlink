@@ -76,8 +76,9 @@ export default function App() {
         <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/kakao/callback" element={<AuthCallbackPage provider="kakao" />} />
+        {/* 쪽지는 작가↔갤러리 전용 (백엔드 authorize와 동일) — Admin은 홈으로 리다이렉트 */}
         <Route path="/messages" element={
-          <ProtectedRoute><MessagesPage /></ProtectedRoute>
+          <ProtectedRoute roles={['ARTIST', 'GALLERY']}><MessagesPage /></ProtectedRoute>
         } />
         <Route path="/mypage" element={
           <ProtectedRoute><MyPage /></ProtectedRoute>

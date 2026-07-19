@@ -369,10 +369,17 @@ export default function GalleryDetailPage() {
             <h1 className="text-2xl font-medium">{gallery.name}</h1>
             <ViewCountBadge count={gallery.viewCount} className="mt-1 shrink-0" />
           </div>
+          {/* 리뷰 0건이면 ★0.0 대신 '아직 리뷰 없음' */}
           <div className="flex items-center gap-2 mt-2">
-            <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
-            <span className="font-medium">{gallery.rating.toFixed(1)}</span>
-            <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
+            {gallery.reviewCount > 0 ? (
+              <>
+                <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
+                <span className="font-medium">{gallery.rating.toFixed(1)}</span>
+                <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
+              </>
+            ) : (
+              <span className="text-gray-400 text-sm">아직 리뷰 없음</span>
+            )}
           </div>
           {isEditingContact ? (
             /* 오너 전용: 전화번호·주소 즉시 수정 (승인 불필요) */

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -197,10 +197,11 @@ export default function ExhibitionsPage() {
             const isAdmin = user?.role === 'ADMIN';
 
             return (
-              <article
+              // 실제 <a>(Link) — 새 탭 열기·주소 복사·키보드 접근 지원. 내부 버튼은 preventDefault 필수
+              <Link
                 key={ex.id}
-                onClick={() => navigate(`/exhibitions/${ex.id}`)}
-                className="group cursor-pointer"
+                to={`/exhibitions/${ex.id}`}
+                className="group cursor-pointer block"
               >
                 <SkeletonImage
                   src={ex.imageUrl || ex.gallery?.mainImage || ''}
@@ -208,6 +209,7 @@ export default function ExhibitionsPage() {
                   fallbackLabel={ex.title}
                   className="aspect-[210/297]"
                   imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"
+                  loading="lazy"
                   blurFill
                 />
 
@@ -222,7 +224,7 @@ export default function ExhibitionsPage() {
                       </span>
                       {user?.role === 'ARTIST' && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); favMutation.mutate(ex.id); }}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(ex.id); }}
                           className="p-1 cursor-pointer"
                           aria-label={ex.isFavorited ? '찜 해제' : '찜하기'}
                         >
@@ -233,7 +235,7 @@ export default function ExhibitionsPage() {
                   </div>
 
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
                     className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
                   >
                     {ex.gallery?.name}
@@ -248,6 +250,7 @@ export default function ExhibitionsPage() {
                   {user?.role === 'ARTIST' && (
                     <button
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         navigate(`/exhibitions/${ex.id}`);
                       }}
@@ -257,7 +260,7 @@ export default function ExhibitionsPage() {
                     </button>
                   )}
                 </div>
-              </article>
+              </Link>
             );
           })}
         </div>

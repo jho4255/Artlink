@@ -37,7 +37,18 @@ export default function SkeletonImage({
   fallbackLabel,
 }: SkeletonImageProps) {
   const [loaded, setLoaded] = useState(false);
-  const hasImage = !!(src && src.trim());
+  // 로드 실패(404·URL 유실) 시 깨진 이미지 아이콘 대신 '이미지 없음' 플레이스홀더로 폴백
+  const [errored, setErrored] = useState(false);
+
+  // 스와이퍼 등에서 src가 교체되면 스켈레톤/에러 상태 초기화 (렌더 중 상태 조정 패턴)
+  const [prevSrc, setPrevSrc] = useState(src);
+  if (prevSrc !== src) {
+    setPrevSrc(src);
+    setLoaded(false);
+    setErrored(false);
+  }
+
+  const hasImage = !!(src && src.trim()) && !errored;
 
   return (
     <div className={cn('relative overflow-hidden bg-gray-100', className)} onClick={onClick}>
@@ -69,7 +80,7 @@ export default function SkeletonImage({
             loading={loading}
             draggable={draggable}
             onLoad={() => setLoaded(true)}
-            onError={() => setLoaded(true)}
+            onError={() => { setLoaded(true); setErrored(true); }}
             className={cn(
               'relative w-full h-full transition-opacity duration-500',
               imgClassName,

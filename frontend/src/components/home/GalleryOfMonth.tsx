@@ -42,16 +42,23 @@ export default function GalleryOfMonthSection() {
               fallbackLabel={item.gallery.name}
               className="aspect-[4/3]"
               imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
+              loading="lazy"
             />
 
             {/* 정보 */}
             <div className="mt-3">
-              {/* 별점 — 유일한 컬러 포인트 */}
+              {/* 별점 — 유일한 컬러 포인트. 리뷰 0건이면 '아직 리뷰 없음' */}
               <div className="flex items-center gap-1.5 mb-2">
-                <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
-                <span className="text-base font-medium text-[#c4302b]">
-                  {item.gallery.rating?.toFixed(1)}
-                </span>
+                {(item.gallery.reviewCount ?? 0) > 0 ? (
+                  <>
+                    <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
+                    <span className="text-base font-medium text-[#c4302b]">
+                      {item.gallery.rating?.toFixed(1)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-gray-400">아직 리뷰 없음</span>
+                )}
               </div>
 
               <h3 className="font-serif text-xl text-gray-900 hover:underline underline-offset-2 decoration-1">

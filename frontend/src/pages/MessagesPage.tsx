@@ -56,9 +56,14 @@ export default function MessagesPage() {
   useEffect(() => { if (partnerFromUrl) setSelectedId(partnerFromUrl); }, [partnerFromUrl, location.key]);
 
   // ===== 쿼리 =====
-  const { data: chats = [], isLoading: chatsLoading } = useQuery<ChatItem[]>({
+  const { data: chats = [], isLoading: chatsLoading, isError: chatsError, refetch: refetchChats } = useQuery<ChatItem[]>({
     queryKey: ['message-chats'],
     queryFn: () => api.get('/messages/chats').then(r => r.data),
+    // 403(권한 없음)은 재시도해도 결과가 같으므로 즉시 에러 상태로 전환
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      return status !== 403 && failureCount < 3;
+    },
   });
 
   const { data: thread } = useQuery<any>({
@@ -187,6 +192,14 @@ export default function MessagesPage() {
     <div className="divide-y divide-gray-100">
       {chatsLoading ? (
         <div className="p-6 text-center text-gray-300 text-sm">불러오는 중…</div>
+      ) : chatsError ? (
+        <div className="p-8 text-center text-gray-400 text-sm">
+          <p className="mb-3">대화 목록을 불러오지 못했습니다.</p>
+          <button
+            onClick={() => refetchChats()}
+            className="px-4 py-2 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >다시 시도</button>
+        </div>
       ) : chats.length === 0 ? (
         <div className="p-8 text-center text-gray-300 text-sm">
           <Mail size={36} className="mx-auto mb-2 opacity-30" />

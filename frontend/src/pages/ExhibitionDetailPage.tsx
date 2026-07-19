@@ -22,7 +22,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical } from 'lucide-react';
+import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -380,13 +380,19 @@ export default function ExhibitionDetailPage() {
           </div>
           <button
             onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
-            className="text-gray-500 hover:underline text-sm mt-1 flex items-center gap-1"
+            // py-2.5 + 네거티브 마진: 시각 위치 유지하며 터치 히트영역 확보
+            className="text-gray-500 hover:underline text-sm mt-1 py-2.5 -my-2.5 flex items-center gap-1"
           >
             {exhibition.gallery?.name}
-            <div className="flex items-center gap-0.5 ml-2">
-              <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
-              <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
-            </div>
+            {/* 리뷰 0건이면 ★0.0 대신 '리뷰 없음' — 신규 갤러리가 최하점처럼 보이지 않도록 */}
+            {(exhibition.gallery?.reviewCount ?? 0) > 0 ? (
+              <div className="flex items-center gap-0.5 ml-2">
+                <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
+                <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-400 ml-2">리뷰 없음</span>
+            )}
           </button>
           {/* 쪽지 문의 (Artist 전용) */}
           {isArtist && exhibition.gallery?.ownerId && (
@@ -889,6 +895,11 @@ export default function ExhibitionDetailPage() {
 // =============================================
 function PosterImage({ src, alt, eager, onClick, children }: { src: string; alt: string; eager?: boolean; onClick: () => void; children?: React.ReactNode }) {
   const [glow, setGlow] = useState('#1a1a2e');
+  // 이미지 유실(404) 시 깨진 아이콘 대신 플레이스홀더 표시
+  const [errored, setErrored] = useState(false);
+  // src 교체 시 에러 상태 초기화 (렌더 중 상태 조정 패턴 — effect 내 setState 금지)
+  const [prevSrc, setPrevSrc] = useState(src);
+  if (prevSrc !== src) { setPrevSrc(src); setErrored(false); }
   useEffect(() => { if (src) extractColor(src).then(setGlow); }, [src]);
   return (
     <div
@@ -896,7 +907,14 @@ function PosterImage({ src, alt, eager, onClick, children }: { src: string; alt:
       className="relative overflow-hidden rounded-lg cursor-pointer transition-shadow duration-700"
       style={{ boxShadow: `0 8px 40px ${glow}, 0 2px 12px ${glow}` }}
     >
-      <img src={src} alt={alt} className="w-full h-auto block" loading={eager ? 'eager' : 'lazy'} />
+      {errored ? (
+        <div className="w-full aspect-[210/297] bg-gray-100 flex flex-col items-center justify-center gap-1.5 text-gray-300">
+          <ImageOff size={26} strokeWidth={1.5} />
+          <span className="text-[11px] text-gray-400 px-3 text-center line-clamp-1">{alt}</span>
+        </div>
+      ) : (
+        <img src={src} alt={alt} className="w-full h-auto block" loading={eager ? 'eager' : 'lazy'} onError={() => setErrored(true)} />
+      )}
       {children}
     </div>
   );

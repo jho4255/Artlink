@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Star, Heart, Phone, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -213,11 +213,11 @@ export default function GalleriesPage() {
       {/* 구분선 */}
       <div className="border-t border-gray-200 mb-6" />
 
-      {/* 정렬 — 우측 정렬 */}
-      <div className="flex justify-end items-center gap-4 mb-8 text-sm">
+      {/* 정렬 — 우측 정렬 (패딩으로 터치 히트영역 확보, 시각 위치는 네거티브 마진으로 유지) */}
+      <div className="flex justify-end items-center gap-1 mb-8 text-sm">
         <button
           onClick={() => setSortBy(sortBy === 'rating' ? null : 'rating')}
-          className={`cursor-pointer transition-colors ${
+          className={`px-2.5 py-2.5 -my-2.5 cursor-pointer transition-colors ${
             sortBy === 'rating'
               ? 'text-gray-900 underline underline-offset-4 decoration-1'
               : 'text-gray-400 hover:text-gray-900'
@@ -227,7 +227,7 @@ export default function GalleriesPage() {
         </button>
         <button
           onClick={() => setSortBy(sortBy === 'reviewCount' ? null : 'reviewCount')}
-          className={`cursor-pointer transition-colors ${
+          className={`px-2.5 py-2.5 -my-2.5 -mr-2.5 cursor-pointer transition-colors ${
             sortBy === 'reviewCount'
               ? 'text-gray-900 underline underline-offset-4 decoration-1'
               : 'text-gray-400 hover:text-gray-900'
@@ -264,7 +264,7 @@ export default function GalleriesPage() {
               imageSrc={gallery.images?.[0]?.url || gallery.mainImage || ''}
               alt={`${gallery.name} 대표 이미지`}
               fallbackLabel={gallery.name}
-              onClick={() => navigate(`/galleries/${gallery.id}`)}
+              to={`/galleries/${gallery.id}`}
             >
 
               {/* 갤러리 정보 */}
@@ -276,6 +276,8 @@ export default function GalleriesPage() {
                   {user?.role === 'ARTIST' && (
                     <button
                       onClick={(e) => {
+                        // Link(앵커) 내부 버튼: 기본 이동 차단 + 버블링 차단
+                        e.preventDefault();
                         e.stopPropagation();
                         favMutation.mutate(gallery.id);
                       }}
@@ -290,11 +292,17 @@ export default function GalleriesPage() {
                   )}
                 </div>
 
-                {/* 별점 */}
+                {/* 별점 — 리뷰 0건이면 '아직 리뷰 없음' (신규 갤러리가 최하점처럼 보이지 않도록) */}
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <Star size={15} className="text-[#c4302b] fill-[#c4302b]" />
-                  <span className="text-base font-medium text-[#c4302b]">{gallery.rating.toFixed(1)}</span>
-                  <span className="text-sm text-gray-400">({gallery.reviewCount})</span>
+                  {gallery.reviewCount > 0 ? (
+                    <>
+                      <Star size={15} className="text-[#c4302b] fill-[#c4302b]" />
+                      <span className="text-base font-medium text-[#c4302b]">{gallery.rating.toFixed(1)}</span>
+                      <span className="text-sm text-gray-400">({gallery.reviewCount})</span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-gray-400">아직 리뷰 없음</span>
+                  )}
                 </div>
 
                 {/* 주소, 전화번호 */}
@@ -315,7 +323,8 @@ export default function GalleriesPage() {
 }
 
 // hover 시 이미지 dominant color glow 카드
-function GlowCard({ imageSrc, alt, fallbackLabel, onClick, children }: { imageSrc: string; alt?: string; fallbackLabel?: string; onClick: () => void; children: React.ReactNode }) {
+// 실제 <a>(Link)로 렌더 — 새 탭 열기·주소 복사·키보드 접근이 가능해짐 (div onClick 금지)
+function GlowCard({ imageSrc, alt, fallbackLabel, to, children }: { imageSrc: string; alt?: string; fallbackLabel?: string; to: string; children: React.ReactNode }) {
   const [color, setColor] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const extracted = useRef(false);
@@ -329,11 +338,11 @@ function GlowCard({ imageSrc, alt, fallbackLabel, onClick, children }: { imageSr
   };
 
   return (
-    <article
-      onClick={onClick}
+    <Link
+      to={to}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setHovered(false)}
-      className="group cursor-pointer"
+      className="group cursor-pointer block"
     >
       <div
         className="rounded-lg overflow-hidden transition-shadow duration-500"
@@ -346,10 +355,11 @@ function GlowCard({ imageSrc, alt, fallbackLabel, onClick, children }: { imageSr
           fallbackLabel={fallbackLabel}
           className="aspect-[4/3]"
           imgClassName="object-contain group-hover:opacity-90 transition-opacity duration-300"
+          loading="lazy"
           blurFill
         />
       </div>
       {children}
-    </article>
+    </Link>
   );
 }

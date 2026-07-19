@@ -452,6 +452,23 @@ cd frontend && npm run dev
 - Admin 계정은 갤러리/공모 찜하기 버튼이 표시되지 않음
 - GalleriesPage, GalleryDetailPage, ExhibitionsPage에서 처리
 
+## UI/UX 개선 (2026-07-19 전수 점검 반영)
+
+PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반영:
+
+- **쪽지 접근 제어**: `/messages` 라우트에 `roles={['ARTIST','GALLERY']}` (백엔드 authorize와 동일). Admin은 홈으로 리다이렉트 — 이전엔 403 무한 "불러오는 중". 대화목록 쿼리에 에러 상태 UI("다시 시도") + 403은 retry 안 함 (`MessagesPage.tsx`)
+- **이미지 404 폴백**: `SkeletonImage`가 onError 시 '이미지 없음' 플레이스홀더로 폴백 (`errored` 상태, src 교체 시 렌더 중 상태 조정 패턴으로 리셋 — effect 내 setState 금지). ExhibitionDetail `PosterImage`·ShowDetail 포스터도 동일
+- **목록 카드 = 실제 링크**: Galleries(GlowCard `to` prop)/Exhibitions/Shows 목록 카드를 div onClick → `<Link>`. 새 탭·주소 복사·키보드 접근 가능. **내부 버튼(찜·갤러리명 등)은 `e.preventDefault()+stopPropagation()` 필수** (앵커 기본 이동 차단)
+- **리뷰 0건 표시**: `reviewCount === 0`이면 ★0.0 대신 "아직 리뷰 없음" — GalleriesPage, GalleryDetailPage, ExhibitionDetailPage, GotM, MyPage 찜 목록. favorites API의 gallery select에 `reviewCount` 추가
+- **갤러리 등록 검증**: 공모 폼과 동일하게 누락 항목 나열 toast + `EditableText error` 빨간 테두리 + 입력 시 즉시 해제 (`galleryFormErrors` Set)
+- **FAQ 번호**: 내부 정렬값(`faq.order`) 노출 중단 → 화면엔 1부터 순번 (`SupportPage`)
+- **마이페이지 탭바**: 가로 오버플로 시 우측 페이드 그라데이션(`pointer-events-none`)으로 스크롤 힌트 — Admin 8탭 모바일 대응. 훅은 early return(`if (!user)`)보다 위에 선언
+- **히어로 조작부**: 화살표/인디케이터에 aria-label, 인디케이터는 시각 2px 라인 유지 + 버튼 패딩으로 히트영역 확대(22px+). '자세히 보기'는 `p-3 -m-3`
+- **터치 타겟**: 별점순/리뷰순·푸터 링크·공모상세 갤러리명 버튼 — 패딩+네거티브 마진으로 시각 유지하며 히트영역만 확대
+- **상태 뱃지**: `whitespace-nowrap` ("승인 대/기" 줄바꿈 방지)
+- **목록 이미지 lazy**: Galleries/Exhibitions/Shows/GotM/찜 목록 `loading="lazy"` (히어로 첫 장은 eager 유지)
+- **OG 태그**: `og:url`=artlink.cc, `og:image`=`/og-image.png`(1200×630, `frontend/public/`), `twitter:card` 추가. og-image 재생성은 `e2e/og-image-gen.mjs` 참조. ⚠️ og-image.png는 고정 파일명이라 1y immutable로 캐시됨 — **내용을 바꾸면 파일명도 바꿔야** CDN/브라우저에 반영됨
+
 ## 배포 구조 (Render.com)
 
 ```

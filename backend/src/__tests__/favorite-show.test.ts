@@ -76,6 +76,12 @@ describe('Favorite API (Show)', () => {
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
+
+      // 갤러리 찜에는 평점 표시용 rating·reviewCount가 포함되어야 함 (리뷰 0건 UI 분기용)
+      const galleryFav = res.body.find((f: { galleryId: number | null }) => f.galleryId === gallery.id);
+      expect(galleryFav.gallery).toMatchObject({ id: gallery.id });
+      expect(galleryFav.gallery).toHaveProperty('rating');
+      expect(galleryFav.gallery).toHaveProperty('reviewCount');
     });
   });
 });

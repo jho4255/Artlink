@@ -9,6 +9,7 @@ import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import SkeletonImage from '@/components/shared/SkeletonImage';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { HeroImageEdit } from '@/components/shared/EditableField';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
@@ -125,10 +126,12 @@ export default function ShowDetailPage() {
           className="max-w-lg mx-auto relative overflow-hidden rounded-lg transition-shadow duration-700"
           style={{ boxShadow: `0 8px 40px ${bgColor}, 0 2px 12px ${bgColor}` }}
         >
-            <img
+            <SkeletonImage
               src={show.posterImage}
               alt={show.title}
-              className="w-full block cursor-pointer"
+              fallbackLabel={show.title}
+              className="w-full min-h-40 cursor-pointer"
+              imgClassName="object-contain !h-auto block"
               onClick={() => { setLightboxIndex(0); setLightboxOpen(true); }}
             />
             {/* 추가 이미지 썸네일 */}

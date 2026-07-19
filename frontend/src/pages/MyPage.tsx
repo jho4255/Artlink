@@ -173,6 +173,20 @@ export default function MyPage() {
     navigate('/login');
   };
 
+  // 모바일에서 탭이 화면을 넘어갈 때(Admin 8개 등) 우측 페이드로 "더 있음"을 알림
+  // (훅은 아래 early return보다 먼저 호출되어야 함)
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const [tabOverflowRight, setTabOverflowRight] = useState(false);
+  useEffect(() => {
+    const el = tabBarRef.current;
+    if (!el) return;
+    const update = () => setTabOverflowRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 8);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => { el.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
+  }, [user?.role]);
+
   if (!user) return null;
 
   const tabs = user.role === 'ARTIST'
@@ -217,18 +231,24 @@ export default function MyPage() {
       <ProfileCard />
 
       {/* 탭 메뉴 */}
-      <div className="flex gap-4 overflow-x-auto pb-2 mb-8 border-b border-gray-200 scrollbar-hide">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => selectTab(tab.id)}
-            className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
-              currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="relative mb-8">
+        <div ref={tabBarRef} className="flex gap-4 overflow-x-auto pb-2 border-b border-gray-200 scrollbar-hide">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => selectTab(tab.id)}
+              className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {/* 우측 스크롤 힌트 (클릭 차단 방지 위해 pointer-events-none 필수) */}
+        {tabOverflowRight && (
+          <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none" />
+        )}
       </div>
 
       {/* 탭 콘텐츠 */}
@@ -1157,17 +1177,24 @@ function FavoritesSection() {
               <div key={fav.id} className="group cursor-pointer" onClick={() => navigate(link)}>
                 {img && (
                   <div className="overflow-hidden mb-3">
-                    <img src={img} alt={title} className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300" />
+                    <img src={img} alt={title} loading="lazy" className="w-full aspect-[4/3] object-cover group-hover:opacity-80 transition-opacity duration-300" />
                   </div>
                 )}
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="text-base font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">{title}</h4>
                     {sub && <p className="text-sm text-gray-400 mt-0.5">{sub}</p>}
+                    {/* 리뷰 0건이면 ★0.0 대신 '아직 리뷰 없음' */}
                     {rating != null && (
                       <div className="flex items-center gap-1 mt-1">
-                        <Star size={13} className="text-[#c4302b] fill-[#c4302b]" />
-                        <span className="text-sm text-[#c4302b]">{rating.toFixed(1)}</span>
+                        {(fav.gallery?.reviewCount ?? 0) > 0 ? (
+                          <>
+                            <Star size={13} className="text-[#c4302b] fill-[#c4302b]" />
+                            <span className="text-sm text-[#c4302b]">{rating.toFixed(1)}</span>
+                          </>
+                        ) : (
+                          <span className="text-sm text-gray-400">아직 리뷰 없음</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1357,7 +1384,7 @@ function ApplicationsSection() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0">
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
                       {statusLabelsLocal[app.status] || app.status}
                     </span>
                     <span className="text-xs text-gray-400">
@@ -1466,6 +1493,12 @@ function MyGalleriesSection() {
   const [galleryTerms, setGalleryTerms] = useState('');
   const [galleryAgreed, setGalleryAgreed] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
+  // 필수 항목 검증 하이라이트 (공모 등록 폼과 동일 패턴)
+  const [galleryFormErrors, setGalleryFormErrors] = useState<Set<string>>(new Set());
+  const clearGalleryError = (field: string) => setGalleryFormErrors(prev => {
+    if (!prev.has(field)) return prev;
+    const next = new Set(prev); next.delete(field); return next;
+  });
   // 갤러리 삭제 이중확인 ("삭제" 입력)
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
@@ -1565,17 +1598,17 @@ function MyGalleriesSection() {
               <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
                 {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
               </select>
-              <EditableText value={form.name} onChange={v => setForm({...form, name: v})} placeholder="갤러리명" className="text-2xl font-serif text-gray-900" />
+              <EditableText value={form.name} onChange={v => { setForm({...form, name: v}); clearGalleryError('name'); }} placeholder="갤러리명" error={galleryFormErrors.has('name')} className="text-2xl font-serif text-gray-900" />
               <div className="space-y-1 text-sm text-gray-600">
-                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.address} onChange={v => setForm({...form, address: v})} placeholder="주소" className="text-sm flex-1" /></div>
-                <div className="flex items-center gap-2"><Phone size={15} className="text-gray-400 shrink-0" /><EditableText value={form.phone} onChange={v => setForm({...form, phone: v})} placeholder="전화번호" className="text-sm flex-1" /></div>
-                <div className="flex items-center gap-2"><UserIcon size={15} className="text-gray-400 shrink-0" /><EditableText value={form.ownerName} onChange={v => setForm({...form, ownerName: v})} placeholder="대표자명" className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><MapPin size={15} className="text-gray-400 shrink-0" /><EditableText value={form.address} onChange={v => { setForm({...form, address: v}); clearGalleryError('address'); }} placeholder="주소" error={galleryFormErrors.has('address')} className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><Phone size={15} className="text-gray-400 shrink-0" /><EditableText value={form.phone} onChange={v => { setForm({...form, phone: v}); clearGalleryError('phone'); }} placeholder="전화번호" error={galleryFormErrors.has('phone')} className="text-sm flex-1" /></div>
+                <div className="flex items-center gap-2"><UserIcon size={15} className="text-gray-400 shrink-0" /><EditableText value={form.ownerName} onChange={v => { setForm({...form, ownerName: v}); clearGalleryError('ownerName'); }} placeholder="대표자명" error={galleryFormErrors.has('ownerName')} className="text-sm flex-1" /></div>
                 <div className="flex items-center gap-2"><Mail size={15} className="text-gray-400 shrink-0" /><EditableText value={form.email} onChange={v => setForm({...form, email: v})} placeholder="이메일 (선택)" className="text-sm flex-1" /></div>
                 <div className="flex items-center gap-2"><Instagram size={15} className="text-gray-400 shrink-0" /><EditableText value={form.instagramUrl} onChange={v => setForm({...form, instagramUrl: v})} placeholder="인스타그램 주소 (선택)" className="text-sm flex-1" /></div>
               </div>
               <div className="pt-3 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-400 mb-1">소개</p>
-                <EditableText multiline rows={3} value={form.description} onChange={v => setForm({...form, description: v})} placeholder="갤러리 한줄 소개" className="text-sm text-gray-700" />
+                <EditableText multiline rows={3} value={form.description} onChange={v => { setForm({...form, description: v}); clearGalleryError('description'); }} placeholder="갤러리 한줄 소개" error={galleryFormErrors.has('description')} className="text-sm text-gray-700" />
               </div>
             </div>
           </div>
@@ -1591,14 +1624,32 @@ function MyGalleriesSection() {
             <button
               disabled={createMutation.isPending || !galleryAgreed}
               onClick={() => {
-                if (!form.name || !form.address || !form.phone || !form.description || !form.ownerName) {
-                  toast.error('필수 항목을 모두 입력해주세요.'); return;
+                // 필수 항목 구체적 검증 + 빨간 테두리 하이라이트 (공모 등록 폼과 동일 UX)
+                const missing: string[] = [];
+                const errorFields = new Set<string>();
+                if (!form.name) { missing.push('갤러리명'); errorFields.add('name'); }
+                if (!form.address) { missing.push('주소'); errorFields.add('address'); }
+                if (!form.phone) { missing.push('전화번호'); errorFields.add('phone'); }
+                if (!form.ownerName) { missing.push('대표자명'); errorFields.add('ownerName'); }
+                if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+                setGalleryFormErrors(errorFields);
+                if (missing.length > 0) {
+                  toast.error(
+                    () => (
+                      <div className="text-sm">
+                        <p className="font-medium mb-1">다음 필수 항목을 입력해주세요:</p>
+                        {missing.map((m, i) => <p key={i} className="text-red-400">• {m}</p>)}
+                      </div>
+                    ),
+                    { duration: 4000 }
+                  );
+                  return;
                 }
                 setConfirmAction('submit');
               }}
               className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-            <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setGalleryAgreed(false); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
+            <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
       )}
@@ -1619,7 +1670,7 @@ function MyGalleriesSection() {
         message={'작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다.'}
         confirmText="취소하기"
         variant="danger"
-        onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); }}
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); }}
         onCancel={() => setConfirmAction(null)}
       />
 
@@ -1644,7 +1695,7 @@ function MyGalleriesSection() {
                     <p className="text-xs text-gray-500 mt-1">상세페이지 보기 →</p>
                   )}
                 </div>
-                <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[g.status] || ''}`}>
+                <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[g.status] || ''}`}>
                   {statusLabels[g.status] || g.status}
                 </span>
               </div>
@@ -2084,7 +2135,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${operationToneClasses[item.stage.tone]}`}>
                                 {item.stage.label}
                               </span>
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass}`}>
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusClass}`}>
                                 {statusLabels[item.status] || item.status}
                               </span>
                               {settlement.issue > 0 && (
@@ -2209,7 +2260,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                     <p className="text-sm text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]} · {regionLabels[ex.region]}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${statusColors[ex.status] || ''}`}>
+                    <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[ex.status] || ''}`}>
                       {statusLabels[ex.status] || ex.status}
                     </span>
                     <button
@@ -2577,7 +2628,7 @@ function MyShowsSection() {
                   <p className="text-xs text-gray-500 mt-1">{show.gallery?.name}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[show.status]}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusColors[show.status]}`}>
                     {statusLabels[show.status]}
                   </span>
                   <button onClick={() => setDeleteTarget(show)}

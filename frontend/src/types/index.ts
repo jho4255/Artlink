@@ -73,7 +73,8 @@ export interface Exhibition {
   status: string;
   viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   galleryId: number;
-  gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'>;
+  // reviewCount는 상세 API(include)에서만 내려옴 — 목록 API(select)에는 없어 optional
+  gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'> & { reviewCount?: number };
   promoPhotos?: PromoPhoto[];
   isFavorited?: boolean;
 }
@@ -119,7 +120,7 @@ export interface Favorite {
   galleryId?: number;
   exhibitionId?: number;
   showId?: number;
-  gallery?: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'rating'>;
+  gallery?: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'rating'> & { reviewCount?: number };
   exhibition?: { id: number; title: string; gallery: { name: string } };
   show?: { id: number; title: string; posterImage: string; gallery: { name: string } };
 }

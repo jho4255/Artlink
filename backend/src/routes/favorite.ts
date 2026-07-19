@@ -21,7 +21,7 @@ router.get('/', authenticate, async (req, res, next) => {
     const favorites = await prisma.favorite.findMany({
       where: { userId: req.user!.id },
       include: {
-        gallery: { select: { id: true, name: true, mainImage: true, rating: true, status: true } },
+        gallery: { select: { id: true, name: true, mainImage: true, rating: true, reviewCount: true, status: true } },
         exhibition: {
           select: { id: true, title: true, status: true, gallery: { select: { name: true } } }
         },

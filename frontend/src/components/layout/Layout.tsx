@@ -47,9 +47,10 @@ export default function Layout() {
           ) : (
             <p className="text-[11px] text-gray-300">&copy; 2026 ArtLink. All rights reserved.</p>
           )}
-          <div className="mt-2 flex gap-4">
-            <Link to="/privacy" className="text-[11px] text-gray-300 hover:text-gray-500">개인정보처리방침</Link>
-            <Link to="/terms" className="text-[11px] text-gray-300 hover:text-gray-500">이용약관</Link>
+          {/* 터치 히트영역 확보(py-2) — 시각 간격은 네거티브 마진으로 유지 */}
+          <div className="mt-2 flex gap-2">
+            <Link to="/privacy" className="text-[11px] text-gray-300 hover:text-gray-500 py-2 -my-2 px-1.5 -ml-1.5">개인정보처리방침</Link>
+            <Link to="/terms" className="text-[11px] text-gray-300 hover:text-gray-500 py-2 -my-2 px-1.5">이용약관</Link>
           </div>
         </div>
       </footer>

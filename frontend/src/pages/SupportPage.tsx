@@ -243,13 +243,14 @@ function FaqSection() {
         </div>
       ) : (
         <div className="divide-y divide-gray-100 border-t border-gray-100">
-          {filtered.map(faq => (
+          {filtered.map((faq, faqIdx) => (
             <div key={faq.id} className="overflow-hidden">
               <button
                 onClick={() => setExpandedId(expandedId === faq.id ? null : faq.id)}
                 className="w-full flex items-center gap-4 px-4 py-4 text-left hover:bg-gray-50 transition-colors"
               >
-                <span className="text-sm text-gray-400 font-mono w-10 flex-none text-center">{faq.order}</span>
+                {/* order는 정렬용 내부값 — 화면에는 1부터 순번 표시 */}
+                <span className="text-sm text-gray-400 font-mono w-10 flex-none text-center">{faqIdx + 1}</span>
                 <span className="font-medium text-gray-900 flex-1 min-w-0 truncate">{faq.question}</span>
                 {expandedId === faq.id
                   ? <ChevronUp size={18} className="text-gray-400 flex-none" />
