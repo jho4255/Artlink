@@ -535,7 +535,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
     try {
       const { downloadAllArtworkImagesZip, safeName } = await import('@/lib/operationPdf');
-      const zipName = `${safeName(exhibitionTitle)}_${safeName(displayName(row.user))}_작품원본.zip`;
+      const zipName = `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`;
       const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, [row], zipName);
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
@@ -923,7 +923,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
 
   const grand = buildSettlement().grand;
   // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
-  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: displayName(a.user), exhibition: exTitle })));
+  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle })));
 
   return (
     <section className="mb-10">
@@ -986,7 +986,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
               <div key={a.user.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm text-gray-900 flex items-center gap-1.5">
-                    {displayName(a.user)}
+                    {nameWithNickname(a.user)}
                     {requested && appr?.status === 'APPROVED' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">수락</span>}
                     {requested && appr?.status === 'ISSUE' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">문제 제기</span>}
                     {requested && (!appr || appr.status === 'PENDING') && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">대기중</span>}

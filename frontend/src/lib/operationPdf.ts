@@ -5,7 +5,7 @@
  * 파일명: [공모명]_[작가명]_[문서종류].pdf, ZIP: [공모명]_전체제출물.zip
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
-import { displayName } from '@/lib/utils';
+import { displayName, nameWithNickname } from '@/lib/utils';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
@@ -446,7 +446,7 @@ export async function downloadAllArtworkImagesZip(exTitle: string, rows: Submiss
   const used = new Set<string>();
   let ok = 0, fail = 0;
   for (const { user, submission } of rows) {
-    const artist = displayName(user);
+    const artist = nameWithNickname(user); // 작품원본 jpg 파일명도 이름(닉네임) 병기
     for (const a of (submission.artworkList || [])) {
       if (!a.image) continue;
       const blob = await imageToJpegBlob(a.image);

@@ -275,7 +275,7 @@ export default function OperationPage() {
       ? settlementArtistCount > 0 ? '판매 및 정산 상태를 확인하세요' : '정산 대상 작가를 먼저 확인하세요'
       : '현재 운영 단계를 확인하세요';
   const priorityDesc = showSubmissionAlert
-    ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${displayName(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
+    ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${nameWithNickname(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
     : priorityTask?.meta || operationSummaryText(access);
   const downloadHelperSettlement = async (method?: 'CARD' | 'CASH') => {
     if (!settlementSummary) { toast('정산 정보를 불러오는 중입니다.'); return; }
@@ -359,7 +359,7 @@ export default function OperationPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {incompleteSubmissionDetails.slice(0, 4).map(({ user, missing }) => (
                   <span key={user.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-950 ring-1 ring-orange-200">
-                    {displayName(user)} · {missing.join(', ')}
+                    {nameWithNickname(user)} · {missing.join(', ')}
                   </span>
                 ))}
                 {incompleteSubmissionDetails.length > 4 && (
@@ -510,7 +510,7 @@ export default function OperationPage() {
                       <p className="p-4 text-sm text-gray-400">안내를 보낼 대상이 없습니다.</p>
                     ) : incompleteSubmissionDetails.map(({ user, missing }) => (
                       <div key={user.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
-                        <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
+                        <span className="text-sm font-medium text-gray-900">{nameWithNickname(user)}</span>
                         <span className="text-right text-xs text-orange-700">{missing.join(', ')}</span>
                       </div>
                     ))}
@@ -555,7 +555,7 @@ export default function OperationPage() {
                       <p className="p-4 text-sm text-gray-400">정산 대상 작가가 없습니다.</p>
                     ) : (access.settlementRequested ? settlementUnansweredRows : (settlementSummary?.artists ?? [])).map((artist) => (
                       <div key={artist.user.id} className="flex items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0">
-                        <span className="text-sm font-medium text-gray-900">{displayName(artist.user)}</span>
+                        <span className="text-sm font-medium text-gray-900">{nameWithNickname(artist.user)}</span>
                         <span className="text-xs text-gray-500">{access.settlementRequested ? '미응답' : won(artist.artistAmount)}</span>
                       </div>
                     ))}
@@ -1083,7 +1083,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
     try {
       const { downloadAllArtworkImagesZip, safeName } = await import('@/lib/operationPdf');
-      const zipName = `${safeName(exhibitionTitle)}_${safeName(displayName(row.user))}_작품원본.zip`;
+      const zipName = `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`;
       const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, [row], zipName);
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
@@ -1491,7 +1491,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
 
   const grand = buildSettlement().grand;
   // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
-  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: displayName(a.user), exhibition: exTitle })));
+  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle })));
 
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
@@ -1554,7 +1554,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
               <div key={a.user.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm text-gray-900 flex items-center gap-1.5">
-                    {displayName(a.user)}
+                    {nameWithNickname(a.user)}
                     {requested && appr?.status === 'APPROVED' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">수락</span>}
                     {requested && appr?.status === 'ISSUE' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">문제 제기</span>}
                     {requested && (!appr || appr.status === 'PENDING') && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">대기중</span>}
