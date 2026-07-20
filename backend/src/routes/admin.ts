@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { galleryApplicationStats } from '../lib/applicationStats';
+import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 
 const router = Router();
 
@@ -296,6 +297,35 @@ router.get('/view-stats', authenticate, authorize('ADMIN'), async (_req, res, ne
         shows: sum(shows),
       },
     });
+  } catch (error) { next(error); }
+});
+
+// ========== 개발자 도구 (ADMIN 전용): 런타임 전역 플래그 토글 ==========
+
+/**
+ * 개발자 도구 설정 조회
+ * GET /api/admin/dev-settings
+ * - allowAcceptedRevert: ON이면 전체 갤러리가 '수락'한 지원을 '거절'로 되돌릴 수 있음
+ *   (되돌리면 해당 작가의 운영페이지 제출물/판매기록/정산 데이터가 삭제됨)
+ */
+router.get('/dev-settings', authenticate, authorize('ADMIN'), async (_req, res, next) => {
+  try {
+    res.json({ allowAcceptedRevert: await getSettingBool(ALLOW_ACCEPTED_REVERT) });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 개발자 도구 설정 변경
+ * PUT /api/admin/dev-settings  body: { allowAcceptedRevert: boolean }
+ */
+router.put('/dev-settings', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { allowAcceptedRevert } = req.body || {};
+    if (typeof allowAcceptedRevert !== 'boolean') {
+      throw new AppError('allowAcceptedRevert는 boolean이어야 합니다.', 400);
+    }
+    await setSettingBool(ALLOW_ACCEPTED_REVERT, allowAcceptedRevert);
+    res.json({ allowAcceptedRevert });
   } catch (error) { next(error); }
 });
 

@@ -15,7 +15,7 @@ import { AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, FileText, FileArchive, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { displayName } from '@/lib/utils';
+import { nameWithNickname } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicationContent from '@/components/shared/ApplicationContent';
@@ -51,17 +51,27 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [pdfBusy, setPdfBusy] = useState<number | 'all' | null>(null);
   const [acceptTarget, setAcceptTarget] = useState<{ type: 'single'; appId: number } | { type: 'batch' } | null>(null);
+  const [revertTarget, setRevertTarget] = useState<number | null>(null);
 
   const { data: applicants = [], isLoading, isError } = useQuery<any[]>({
     queryKey: ['exhibition-applicants', exhibitionId],
     queryFn: () => api.get(`/exhibitions/${exhibitionId}/applications`).then(r => r.data),
   });
 
-  // 상태 변경 후 목록/카운트(운영 오버뷰·공모 목록)까지 갱신
+  // Admin 개발자 도구 전역 플래그 — ON이면 수락한 지원을 거절로 되돌릴 수 있음
+  const { data: flags } = useQuery<{ allowAcceptedRevert: boolean }>({
+    queryKey: ['feature-flags'],
+    queryFn: () => api.get('/settings/flags').then(r => r.data),
+    staleTime: 60_000,
+  });
+  const allowRevert = !!flags?.allowAcceptedRevert;
+
+  // 상태 변경 후 목록/카운트(운영 오버뷰·공모 목록·운영페이지 제출정보)까지 갱신
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', exhibitionId] });
     queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
     queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
+    queryClient.invalidateQueries({ queryKey: ['operation-submissions'] });
   };
 
   const updateStatus = useMutation({
@@ -182,7 +192,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                       className="text-sm font-medium text-gray-900 hover:underline cursor-pointer truncate"
                       onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
                     >
-                      {displayName(app.user)}
+                      {nameWithNickname(app.user)}
                     </span>
                     <span className="text-xs text-gray-400 shrink-0">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
                     {app.isFirstApplication ? (
@@ -192,16 +202,23 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {app.status === 'ACCEPTED' ? (
+                    {app.status === 'ACCEPTED' && !allowRevert ? (
                       <span className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-600 font-medium">수락 (확정)</span>
                     ) : (
                       <select
                         value={app.status}
                         onClick={e => e.stopPropagation()}
-                        onChange={e => { e.stopPropagation(); const v = e.target.value; v === 'ACCEPTED' ? setAcceptTarget({ type: 'single', appId: app.id }) : updateStatus.mutate({ appId: app.id, status: v }); }}
+                        onChange={e => {
+                          e.stopPropagation();
+                          const v = e.target.value;
+                          if (v === app.status) return;
+                          if (app.status === 'ACCEPTED' && v === 'REJECTED') setRevertTarget(app.id);
+                          else if (v === 'ACCEPTED') setAcceptTarget({ type: 'single', appId: app.id });
+                          else updateStatus.mutate({ appId: app.id, status: v });
+                        }}
                         className={`text-xs px-2 py-1 rounded-lg border-0 cursor-pointer ${statusColors[app.status] || ''}`}
                       >
-                        {app.status !== 'REJECTED' && <option value="SUBMITTED">접수</option>}
+                        {app.status === 'SUBMITTED' && <option value="SUBMITTED">접수</option>}
                         <option value="ACCEPTED">수락</option>
                         <option value="REJECTED">거절</option>
                       </select>
@@ -216,7 +233,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                   {/* 연락처(좌) + 개별 지원서 PDF 다운로드(우측 상단, 상태 선택 아래·연락처 높이) */}
                   <div className="flex items-start justify-between gap-2 pt-2">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
-                      <span>🪪 {app.user?.nickname || app.user?.name}</span>
+                      <span>🪪 {nameWithNickname(app.user)}</span>
                       {app.user?.phone && <span>📞 {app.user.phone}</span>}
                       {app.user?.email && <span>📧 {app.user.email}</span>}
                     </div>
@@ -249,6 +266,20 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
           setAcceptTarget(null);
         }}
         onCancel={() => setAcceptTarget(null)}
+      />
+
+      {/* 수락 → 거절 되돌리기 확인 (개발자 도구 활성화 시에만 진입 가능) */}
+      <ConfirmDialog
+        open={revertTarget !== null}
+        title="수락을 거절로 되돌리기"
+        message={`수락을 거절로 되돌리면:\n\n· 해당 작가가 운영 페이지에 제출한 자료(출품리스트·작가약력·작가노트)가 모두 삭제됩니다.\n· 해당 작가의 판매·정산 기록도 함께 삭제됩니다.\n· 모집 정원 슬롯이 복구됩니다.\n\n삭제된 자료는 복구할 수 없습니다. 계속하시겠습니까?`}
+        confirmText="거절로 되돌리기"
+        variant="danger"
+        onConfirm={() => {
+          if (revertTarget !== null) updateStatus.mutate({ appId: revertTarget, status: 'REJECTED' });
+          setRevertTarget(null);
+        }}
+        onCancel={() => setRevertTarget(null)}
       />
 
       {/* 이미지 라이트박스 — 원본 비율 */}

@@ -15,7 +15,7 @@ import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { displayName, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon } from '@/lib/utils';
+import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon } from '@/lib/utils';
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
@@ -1016,6 +1016,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const [zipping, setZipping] = useState(false);
   const [captioning, setCaptioning] = useState(false);
   const [imgZipping, setImgZipping] = useState(false);
+  const [artistImgZipping, setArtistImgZipping] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
 
   const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
@@ -1075,6 +1076,21 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     finally { setImgZipping(false); }
   };
 
+  // 개별 작가 작품 원본 이미지 다운로드 (jpg ZIP)
+  const downloadArtistImages = async (row: { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission }) => {
+    if ((row.submission.artworkList?.length || 0) === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
+    setArtistImgZipping(row.user.id);
+    const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
+    try {
+      const { downloadAllArtworkImagesZip, safeName } = await import('@/lib/operationPdf');
+      const zipName = `${safeName(exhibitionTitle)}_${safeName(displayName(row.user))}_작품원본.zip`;
+      const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, [row], zipName);
+      if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
+      else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
+    } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
+    finally { setArtistImgZipping(null); }
+  };
+
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex items-center justify-between mb-3 gap-2">
@@ -1116,7 +1132,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                 <button onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }} className="w-full flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
                   <div className="flex items-center gap-2 min-w-0">
                     {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center"><User size={14} className="text-gray-400" /></div>}
-                    <span className="text-sm font-medium text-gray-900">{displayName(user)}</span>
+                    <span className="text-sm font-medium text-gray-900">{nameWithNickname(user)}</span>
                     {isComplete && (
                       <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
                         <Check size={10} /> 제출완료
@@ -1146,6 +1162,10 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                       <button onClick={() => openPrint(user.id, 'artwork')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 출품리스트 PDF</button>
                       <button onClick={() => openPrint(user.id, 'cv')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가약력 PDF</button>
                       <button onClick={() => openPrint(user.id, 'note')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가노트 PDF</button>
+                      <button onClick={() => downloadArtistImages({ user, submission })} disabled={artistImgZipping !== null || artCount === 0} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                        {artistImgZipping === user.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                        {artistImgZipping === user.id ? '모으는 중...' : '작품 원본(ZIP)'}
+                      </button>
                     </div>
                     <SubmissionReadonly submission={submission} activeTab={detailTab} />
                   </div>

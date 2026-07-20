@@ -5,12 +5,12 @@ import { motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown, Wrench
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
@@ -213,6 +213,7 @@ export default function MyPage() {
         { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
         { id: 'user-manage', label: '사용자 관리', icon: Search },
         { id: 'oversight', label: '운영 조회', icon: ClipboardList },
+        { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
       ];
 
   // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백
@@ -270,6 +271,7 @@ export default function MyPage() {
         {currentTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
         {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
         {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
+        {currentTab === 'dev-tools' && user.role === 'ADMIN' && <DevToolsSection />}
       </div>
     </div>
   );
@@ -3660,6 +3662,70 @@ function OvCounts({ counts }: { counts: Record<string, number> }) {
   );
 }
 
+// ========== 개발자 도구 (Admin) — 런타임 전역 플래그 토글 ==========
+function DevToolsSection() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{ allowAcceptedRevert: boolean }>({
+    queryKey: ['dev-settings'],
+    queryFn: () => api.get('/admin/dev-settings').then(r => r.data),
+    staleTime: 0,
+  });
+  const toggleMutation = useMutation({
+    mutationFn: (allowAcceptedRevert: boolean) =>
+      api.put('/admin/dev-settings', { allowAcceptedRevert }).then(r => r.data),
+    onSuccess: (res) => {
+      queryClient.setQueryData(['dev-settings'], res);
+      queryClient.invalidateQueries({ queryKey: ['feature-flags'] });
+      toast.success(res.allowAcceptedRevert ? '수락 되돌리기가 활성화되었습니다.' : '수락 되돌리기가 비활성화되었습니다.');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(msg || '설정 변경에 실패했습니다.');
+    },
+  });
+
+  const on = !!data?.allowAcceptedRevert;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+        <p>개발/운영 지원용 임시 도구입니다. 필요할 때만 켜고, 작업이 끝나면 반드시 꺼주세요.</p>
+      </div>
+
+      <div className="border border-gray-200 rounded-2xl p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-base font-medium text-gray-900">수락 상태 되돌리기 허용</p>
+            <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+              켜면 <b>전체 갤러리</b>가 지원자 관리에서 <b>수락한 지원을 거절로</b> 변경할 수 있습니다.<br />
+              거절로 되돌리면 해당 작가의 운영페이지 제출자료(출품리스트·약력·노트)와 판매·정산 기록이 <b className="text-red-600">모두 삭제</b>되고,
+              모집 정원 슬롯이 복구됩니다. (정산 완료된 공모는 되돌리기 불가)
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="w-12 h-7 rounded-full bg-gray-100 animate-pulse shrink-0" />
+          ) : (
+            <button
+              role="switch"
+              aria-checked={on}
+              aria-label="수락 상태 되돌리기 허용"
+              disabled={toggleMutation.isPending}
+              onClick={() => toggleMutation.mutate(!on)}
+              className={`relative w-12 h-7 rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-50 ${on ? 'bg-red-600' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-6' : 'left-1'}`} />
+            </button>
+          )}
+        </div>
+        <p className={`mt-3 text-xs font-medium ${on ? 'text-red-600' : 'text-gray-400'}`}>
+          {isLoading ? '상태 확인 중...' : on ? '● 현재 활성화됨 — 전체 갤러리에 적용 중' : '○ 현재 비활성화됨 (기본값)'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function OversightSection() {
   const [view, setView] = useState<'exhibition' | 'artist' | 'gallery'>('exhibition');
   const tabs = [{ k: 'exhibition', l: '공모 지원현황' }, { k: 'artist', l: '작가 지원이력' }, { k: 'gallery', l: '갤러리 게시물' }] as const;
@@ -3751,7 +3817,7 @@ function OvExhibitions() {
                     <button onClick={() => setExpanded(isOpen ? null : app.id)} className="w-full text-left p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900 truncate">{displayName(app.user)}</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{nameWithNickname(app.user)}</p>
                           {app.isFirstApplication ? (
                             <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap flex-none">★ 첫 지원</span>
                           ) : (
@@ -3830,7 +3896,7 @@ function OvArtists() {
 
       {selId && detail && (
         <div className="border-t border-gray-200 pt-4 space-y-3">
-          <p className="text-sm font-semibold text-gray-900">{displayName(detail.user)} — 지원 이력</p>
+          <p className="text-sm font-semibold text-gray-900">{nameWithNickname(detail.user)} — 지원 이력</p>
           <OvCounts counts={detail.counts} />
           {detail.applications.length === 0 ? (
             <p className="text-gray-400 text-center py-4 text-sm">지원 이력이 없습니다.</p>

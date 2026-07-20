@@ -437,9 +437,10 @@ function imageToJpegBlob(url: string): Promise<Blob | null> {
   });
 }
 
-/** 전체 출품작 원본 이미지를 jpg로 변환해 ZIP 다운로드.
- *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.jpg (동일명은 _2,_3 부여) */
-export async function downloadAllArtworkImagesZip(exTitle: string, rows: SubmissionRow[]): Promise<{ ok: number; fail: number }> {
+/** 출품작 원본 이미지를 jpg로 변환해 ZIP 다운로드 (rows에 1명만 넘기면 개별 작가용).
+ *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.jpg (동일명은 _2,_3 부여)
+ *  zipName 미지정 시 "{공모명}_작품원본.zip" */
+export async function downloadAllArtworkImagesZip(exTitle: string, rows: SubmissionRow[], zipName?: string): Promise<{ ok: number; fail: number }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const used = new Set<string>();
@@ -464,7 +465,7 @@ export async function downloadAllArtworkImagesZip(exTitle: string, rows: Submiss
   }
   if (ok > 0) {
     const blob = await zip.generateAsync({ type: 'blob' });
-    triggerDownload(blob, `${safeName(exTitle)}_작품원본.zip`);
+    triggerDownload(blob, zipName || `${safeName(exTitle)}_작품원본.zip`);
   }
   return { ok, fail };
 }

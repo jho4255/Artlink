@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { galleryApplicationStats } from '../lib/applicationStats';
+import { getSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { safeFileUrl } from '../lib/safeUrl';
 import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
@@ -739,21 +740,53 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
     }
 
     // 전이 규칙: 수락은 최종(변경 불가), 거절은 수락으로만 변경 가능. (레거시 REVIEWED는 접수로 간주)
+    // 예외: Admin 개발자 도구(allowAcceptedRevert) ON이면 전체 갤러리가 수락→거절 되돌리기 가능.
     const current = application.status === 'REVIEWED' ? 'SUBMITTED' : application.status;
+    let acceptedRevert = false;
     if (current !== status) {
       if (current === 'ACCEPTED') {
-        throw new AppError('수락한 지원은 상태를 변경할 수 없습니다.', 400);
+        const revertAllowed = status === 'REJECTED' && (await getSettingBool(ALLOW_ACCEPTED_REVERT));
+        if (!revertAllowed) {
+          throw new AppError('수락한 지원은 상태를 변경할 수 없습니다.', 400);
+        }
+        // 정산 완료 후에는 판매/정산 기록이 확정된 상태라 되돌리기 불가
+        if (exhibition.settledAt) {
+          throw new AppError('정산이 완료된 공모는 수락을 되돌릴 수 없습니다.', 400);
+        }
+        acceptedRevert = true;
       }
       if (current === 'REJECTED' && status !== 'ACCEPTED') {
         throw new AppError('거절한 지원은 수락으로만 변경할 수 있습니다.', 400);
       }
     }
 
-    const updated = await prisma.application.update({
-      where: { id: appId },
-      // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
-      data: { status, ...(status !== 'REJECTED' ? { rejectionAckedAt: null } : {}) },
-    });
+    let updated;
+    if (acceptedRevert) {
+      // 수락→거절 되돌리기: 해당 작가의 운영페이지 제출물·판매기록·정산 데이터를 함께 삭제해
+      // 정원/제출현황/정산이 수락 이전으로 정상화되도록 한다. (지원 이력 자체는 거절 상태로 유지 → 정원 슬롯은 자동 복구)
+      const sub = await prisma.exhibitionSubmission.findUnique({
+        where: { exhibitionId_userId: { exhibitionId, userId: application.userId } },
+      });
+      [updated] = await prisma.$transaction([
+        prisma.application.update({ where: { id: appId }, data: { status } }),
+        prisma.exhibitionSubmission.deleteMany({ where: { exhibitionId, userId: application.userId } }),
+        prisma.artworkSale.deleteMany({ where: { exhibitionId, artistUserId: application.userId } }),
+        prisma.artistSettlement.deleteMany({ where: { exhibitionId, artistUserId: application.userId } }),
+        prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: application.userId } }),
+      ]);
+      if (sub?.artworkList) {
+        try {
+          const list = JSON.parse(sub.artworkList) as { image?: string }[];
+          void deleteUploadedFiles(list.map((a) => a.image)); // orphan 방지
+        } catch { /* 파일 정리는 best-effort */ }
+      }
+    } else {
+      updated = await prisma.application.update({
+        where: { id: appId },
+        // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
+        data: { status, ...(status !== 'REJECTED' ? { rejectionAckedAt: null } : {}) },
+      });
+    }
 
     // 지원 상태 변경 → Artist에게 알림
     const statusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };

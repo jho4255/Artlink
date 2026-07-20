@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cn, getDday, regionLabels, exhibitionTypeLabels, validateExhibitionDates, displayName } from '../utils';
+import { cn, getDday, regionLabels, exhibitionTypeLabels, validateExhibitionDates, displayName, nameWithNickname } from '../utils';
 
 describe('displayName (공개 표시명)', () => {
   it('닉네임이 있으면 닉네임 반환', () => {
@@ -15,6 +15,24 @@ describe('displayName (공개 표시명)', () => {
   it('user가 없으면 빈 문자열', () => {
     expect(displayName(null)).toBe('');
     expect(displayName(undefined)).toBe('');
+  });
+});
+
+describe('nameWithNickname (이름/닉네임 병기 — 갤러리/Admin 내부 화면용)', () => {
+  it('닉네임이 있으면 "이름 (닉네임)"', () => {
+    expect(nameWithNickname({ name: '홍길동', nickname: '길동이' })).toBe('홍길동 (길동이)');
+  });
+  it('닉네임이 없으면 이름만', () => {
+    expect(nameWithNickname({ name: '홍길동', nickname: null })).toBe('홍길동');
+    expect(nameWithNickname({ name: '홍길동' })).toBe('홍길동');
+  });
+  it('닉네임이 공백뿐이거나 이름과 같으면 이름만', () => {
+    expect(nameWithNickname({ name: '홍길동', nickname: '   ' })).toBe('홍길동');
+    expect(nameWithNickname({ name: '홍길동', nickname: '홍길동' })).toBe('홍길동');
+  });
+  it('user가 없으면 빈 문자열', () => {
+    expect(nameWithNickname(null)).toBe('');
+    expect(nameWithNickname(undefined)).toBe('');
   });
 });
 

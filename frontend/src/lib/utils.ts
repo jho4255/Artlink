@@ -12,6 +12,14 @@ export function displayName(user?: { name?: string | null; nickname?: string | n
   return (user.nickname && user.nickname.trim()) || user.name || '';
 }
 
+// 이름/닉네임 병기: "이름 (닉네임)" — 갤러리/Admin의 지원자·제출정보 화면용 (닉네임 없으면 이름만)
+export function nameWithNickname(user?: { name?: string | null; nickname?: string | null } | null): string {
+  if (!user) return '';
+  const name = user.name || '';
+  const nick = user.nickname?.trim();
+  return nick && nick !== name ? `${name} (${nick})` : name;
+}
+
 // 사용자 제공 URL을 href로 쓰기 전 스킴 검증 (javascript:/data: 등 XSS 차단)
 // 상대경로(/uploads/..)와 http(s)만 허용, 그 외엔 null
 export function safeHttpUrl(url?: string | null): string | null {

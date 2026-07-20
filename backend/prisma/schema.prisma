@@ -513,3 +513,10 @@ model SettlementApproval {
   @@index([exhibitionId])
   @@index([artistUserId])
 }
+
+// 앱 전역 설정 (key-value) — Admin 개발자 도구 토글 등 런타임 플래그 영속화
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @default(now())
+}

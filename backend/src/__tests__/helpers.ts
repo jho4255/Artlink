@@ -48,6 +48,7 @@ export async function cleanDb() {
     await tx.heroSlide.deleteMany();
     await tx.benefit.deleteMany();
     await tx.user.deleteMany();
+    await tx.appSetting.deleteMany(); // FK 없음 — 개발자 도구 토글이 테스트 간 누수되지 않도록 명시 삭제
   });
   // 시퀀스 리셋 (트랜잭션 외부 — DDL은 트랜잭션 안에서 불안정)
   for (const table of ALL_TABLES) {
