@@ -15,7 +15,7 @@ import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon } from '@/lib/utils';
+import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
@@ -1093,9 +1093,9 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
 
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-3 gap-2">
-        <h2 className="text-lg font-medium text-gray-900">작가 제출 정보 <span className="text-sm text-gray-400">({data.length}명)</span></h2>
-        <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-medium text-gray-900 shrink-0">작가 제출 정보 <span className="text-sm text-gray-400">({data.length}명)</span></h2>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button onClick={() => refetch()} disabled={isFetching} className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50">{isFetching ? '불러오는 중...' : '새로고침'}</button>
           {data.length > 0 && (
             <>
@@ -1129,22 +1129,45 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
             const isComplete = artCount > 0 && hasCv && hasNote;
             return (
               <div key={user.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                <button onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }} className="w-full flex items-center justify-between gap-2 p-3 hover:bg-gray-50">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center"><User size={14} className="text-gray-400" /></div>}
-                    <span className="text-sm font-medium text-gray-900">{nameWithNickname(user)}</span>
-                    {isComplete && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
-                        <Check size={10} /> 제출완료
-                      </span>
-                    )}
-                    <span className="text-xs text-gray-400">출품 {artCount}점 · 약력 {hasCv ? 'V' : 'X'} · 노트 {hasNote ? 'V' : 'X'}</span>
-                  </div>
-                  {isOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+                {/* sm+: 이름 고정폭+truncate로 요약(출품·약력·노트) 시작점 정렬 / 모바일: 2줄(이름 / 요약 들여쓰기)로 접기 */}
+                <button onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }} className="w-full p-3 hover:bg-gray-50 text-left">
+                  <span className="flex items-center gap-2.5">
+                    {user.avatar ? <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" /> : <span className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0"><User size={14} className="text-gray-400" /></span>}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 sm:flex-none sm:w-44" title={nameWithNickname(user)}>{nameWithNickname(user)}</span>
+                    <span className="hidden sm:inline text-xs text-gray-400 whitespace-nowrap tabular-nums">
+                      출품 <b className={artCount > 0 ? 'font-medium text-gray-700' : 'font-normal'}>{artCount}</b>점
+                      <span className="mx-1 text-gray-200">|</span>약력 {hasCv ? <Check size={11} className="inline text-green-600" /> : <span className="text-gray-300">✗</span>}
+                      <span className="mx-1 text-gray-200">|</span>노트 {hasNote ? <Check size={11} className="inline text-green-600" /> : <span className="text-gray-300">✗</span>}
+                    </span>
+                    <span className="ml-auto flex items-center gap-2 shrink-0">
+                      {isComplete && (
+                        <span className="hidden sm:inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
+                          <Check size={10} /> 제출완료
+                        </span>
+                      )}
+                      {isOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                    </span>
+                  </span>
+                  {/* 모바일 2번째 줄 — pl로 이름 시작점에 맞춰 들여쓰기 (아바타 28px + gap 10px) */}
+                  <span className="mt-1 block pl-[38px] text-xs text-gray-400 tabular-nums sm:hidden">
+                    출품 <b className={artCount > 0 ? 'font-medium text-gray-700' : 'font-normal'}>{artCount}</b>점
+                    <span className="mx-1 text-gray-200">|</span>약력 {hasCv ? <Check size={11} className="inline text-green-600" /> : <span className="text-gray-300">✗</span>}
+                    <span className="mx-1 text-gray-200">|</span>노트 {hasNote ? <Check size={11} className="inline text-green-600" /> : <span className="text-gray-300">✗</span>}
+                    {isComplete && <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200"><Check size={10} /> 제출완료</span>}
+                  </span>
                 </button>
                 {isOpen && (
                   <div className="border-t border-gray-100 p-4">
-                    <div className="mb-3 grid gap-2 md:grid-cols-3">
+                    {/* 펼침 시 이름 풀네임 노출 (접힌 행에서는 truncate되므로) */}
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-900 break-all">{nameWithNickname(user)}</p>
+                      {isComplete && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
+                          <Check size={10} /> 제출완료
+                        </span>
+                      )}
+                    </div>
+                    <div className="mb-3 grid gap-2 grid-cols-3">
                       <button onClick={() => setDetailTab('artwork')} className={`rounded-lg border px-3 py-2 text-left ${detailTab === 'artwork' ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
                         <span className="block text-xs opacity-70">출품리스트</span>
                         <span className="block text-sm font-semibold">{artCount}점</span>
@@ -1158,11 +1181,12 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                         <span className="block text-sm font-semibold">{hasNote ? '입력 완료' : '미입력'}</span>
                       </button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => openPrint(user.id, 'artwork')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 출품리스트 PDF</button>
-                      <button onClick={() => openPrint(user.id, 'cv')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가약력 PDF</button>
-                      <button onClick={() => openPrint(user.id, 'note')} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50"><FileDown size={13} /> 작가노트 PDF</button>
-                      <button onClick={() => downloadArtistImages({ user, submission })} disabled={artistImgZipping !== null || artCount === 0} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                    {/* PDF/ZIP 버튼 — 그리드로 4개 모두 동일 크기 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <button onClick={() => openPrint(user.id, 'artwork')} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"><FileDown size={13} /> 출품리스트 PDF</button>
+                      <button onClick={() => openPrint(user.id, 'cv')} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"><FileDown size={13} /> 작가약력 PDF</button>
+                      <button onClick={() => openPrint(user.id, 'note')} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"><FileDown size={13} /> 작가노트 PDF</button>
+                      <button onClick={() => downloadArtistImages({ user, submission })} disabled={artistImgZipping !== null || artCount === 0} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap">
                         {artistImgZipping === user.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
                         {artistImgZipping === user.id ? '모으는 중...' : '작품 원본(ZIP)'}
                       </button>
@@ -1211,18 +1235,26 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
   const { artworkList = [], cv, note } = submission;
   const repIndex = submission.representativeIndex ?? null;
   return (
-    <div className="space-y-4 text-sm">
+    // 탭 카드가 이미 섹션명·개수를 보여주므로 내부 중복 제목은 생략, 위 버튼들과는 구분선으로 분리
+    <div className="mt-4 pt-3 border-t border-gray-100 text-sm">
       {/* 출품리스트 */}
       {activeTab === 'artwork' && <div>
-        <p className="text-xs font-medium text-gray-500 mb-1">출품리스트 ({artworkList.length})</p>
         {artworkList.length === 0 ? <p className="text-xs text-gray-400">미입력</p> : (
-          <div className="space-y-1.5">
+          // 제목/메타 2줄 + 가격 우측 정렬 — 제목 길이와 무관하게 컬럼 시작·끝점 고정
+          <div>
             {artworkList.map((a, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
+              <div key={i} className="flex items-center gap-2.5 py-1.5 text-xs border-b border-gray-50 last:border-b-0">
                 {a.image ? <img src={a.image} alt="" className="w-10 h-10 object-cover rounded shrink-0" /> : <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
-                <span className="text-gray-800">{a.title || '(제목 없음)'}</span>
-                {repIndex === i && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0"><Star size={9} className="fill-amber-500 text-amber-500" /> 엽서 대표작</span>}
-                <span className="text-gray-400">{[a.size, a.medium, a.year, a.price].filter(Boolean).join(' · ')}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5">
+                    <span className="min-w-0 truncate font-medium text-gray-800" title={a.title || undefined}>{a.title || '(제목 없음)'}</span>
+                    {repIndex === i && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0"><Star size={9} className="fill-amber-500 text-amber-500" /> 엽서 대표작</span>}
+                  </p>
+                  {[a.size, a.medium, a.year].some(Boolean) && (
+                    <p className="mt-0.5 text-[11px] text-gray-400 truncate">{[a.size, a.medium, a.year].filter(Boolean).join(' · ')}</p>
+                  )}
+                </div>
+                {a.price && <span className="shrink-0 text-gray-600 tabular-nums">{formatArtworkPrice(a.price)}</span>}
               </div>
             ))}
           </div>
@@ -1230,7 +1262,6 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
       </div>}
       {/* 약력 */}
       {activeTab === 'cv' && <div>
-        <p className="text-xs font-medium text-gray-500 mb-1">작가약력</p>
         {!cv ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="text-xs text-gray-700 space-y-1">
             <p>{cv.nameKo}{cv.tel ? ` · ${cv.tel}` : ''}{cv.email ? ` · ${cv.email}` : ''}</p>
@@ -1242,7 +1273,6 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
       </div>}
       {/* 노트 */}
       {activeTab === 'note' && <div>
-        <p className="text-xs font-medium text-gray-500 mb-1">작가노트</p>
         {!note || (!note.statement && !(note.sections?.length)) ? <p className="text-xs text-gray-400">미입력</p> : (
           <div className="text-xs text-gray-700 whitespace-pre-wrap">
             {note.statement}

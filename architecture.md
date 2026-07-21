@@ -324,6 +324,20 @@ cd frontend && npm run dev
 - 이미지 **추가/삭제 시 백엔드에서 항상 첫 이미지로 재동기화**(`POST/DELETE /galleries/:id/images`) → 사진 변경이 mainImage-only 화면에도 즉시 반영. 남은 이미지가 없으면 `null`
 - 목록 카드(`GalleriesPage`)는 상세 페이지와 동일하게 `images[0]?.url || mainImage` 순으로 표시
 
+## 모바일 반응형 규칙 (2026-07 전수 수리)
+
+별도 모바일 UI 없이 기존 UI를 반응형으로 유지한다. 320~412px 실기기에서 확인된 깨짐 2건(운영 페이지 헤더 세로 깨짐, 지원자 행 액션 잘림)을 수리하면서 프론트 전체에 아래 규칙을 적용했다:
+
+- **헤더/툴바**: 제목+버튼이 한 줄 flex일 때 `flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`(제목 `shrink-0`, 버튼 그룹 `flex flex-wrap`) 또는 최소 `flex-wrap` 추가. 한글은 공백 없이도 글자 단위 줄바꿈되므로 제목 컬럼이 짜부라지면 세로로 깨진다 (OperationPage/OperationClassicPage `작가 제출 정보` 헤더, 목록 페이지 h1 헤더)
+- **truncate + min-w-0**: flex 자식은 `min-width:auto`가 기본이라 `min-w-0` 없이는 truncate가 동작하지 않음. 이름/이메일/제목 등 긴 텍스트 flex 자식에 `min-w-0`(+필요 시 `break-all`) 필수 (ApplicantManager 행, GalleryDetailPage 연락처, 카드 h3)
+- **모바일 2줄 접기**: 한 행에 많은 요소가 있으면 `flex-col gap-2 sm:flex-row`로 모바일에서 2줄 분리 (ApplicantManager 지원자 행: 1줄 체크박스+이름, 2줄 날짜+뱃지+액션 / 운영 페이지 작가 제출 행: 1줄 아바타+이름, 2줄 요약을 `pl-[38px]`로 이름 시작점에 들여쓰기)
+- **목록 컬럼 정렬**: sm+에서 이름 등 가변 텍스트는 고정폭+truncate(`sm:w-44 truncate` + `title` 속성)로 뒤 컬럼 시작점을 정렬. 접힌 행에서 잘린 풀네임은 펼침 영역 상단에 다시 노출. 출품작 가격은 `formatArtworkPrice`(`lib/utils.ts`: 숫자만이면 콤마+원, 비매/협의는 원문)로 우측 정렬(`tabular-nums`)
+- **터치 타겟 ≥44px**: 관례는 `min-h-[44px] min-w-[44px] (inline-)flex items-center justify-center` + 시각 크기 유지가 필요하면 네거티브 마진(`-m-2`~`-m-3`). 찜 하트, 삭제 휴지통, 모달 닫기 X, 네브바 아이콘, 다이얼로그 버튼 등에 적용
+- **hover 전용 컨트롤 금지**: 터치 기기에는 hover가 없음. `opacity-0 group-hover:opacity-100`은 `opacity-100 md:opacity-0 md:group-hover:opacity-100`으로 — 모바일 항상 노출, md 이상만 hover 게이트 (ImageUpload 삭제 버튼, EditableField HeroImageEdit 변경/삭제 오버레이)
+- **그리드 모바일 축소**: base가 4열 이상이면 `grid-cols-3 sm:grid-cols-4 md:grid-cols-5`식으로 (ApplicationContent 작품 썸네일)
+- **Navbar 데스크톱 분기점은 lg(1024px)**: 링크 8개+우측 아이콘이 768px에서는 안 들어가 라벨이 2줄로 깨짐 → `hidden lg:flex`/`lg:hidden` (기존 md에서 상향)
+- **검증**: dev 서버 + 디바이스 모드 320/375/768/1024에서 `document.body.scrollWidth > window.innerWidth`가 false여야 함
+
 ## 모바일 tel: 링크
 
 - 갤러리 상세 페이지 전화번호: 모바일 터치 시 다이얼러 오픈, 데스크톱은 일반 텍스트

@@ -89,7 +89,7 @@ export default function ExhibitionsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <div className="flex items-end justify-between gap-4 mb-10">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
         <div>
           <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Open Call</h1>
           <p className="text-base text-gray-400 mt-2">진행 중인 공모를 확인하세요</p>
@@ -214,8 +214,8 @@ export default function ExhibitionsPage() {
                 />
 
                 <div className="mt-3">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1 line-clamp-1">
+                  <div className="flex justify-between items-start gap-2">
+                    <h3 className="min-w-0 text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1 line-clamp-1">
                       {ex.title}
                     </h3>
                     <div className="flex items-center gap-2 flex-none">
@@ -225,7 +225,7 @@ export default function ExhibitionsPage() {
                       {user?.role === 'ARTIST' && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(ex.id); }}
-                          className="p-1 cursor-pointer"
+                          className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer"
                           aria-label={ex.isFavorited ? '찜 해제' : '찜하기'}
                         >
                           <Heart size={16} className={ex.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />

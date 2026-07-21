@@ -283,7 +283,7 @@ export default function MessagesPage() {
                 </div>
                 <div className={`flex items-center gap-2 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                   <span className="text-[10px] text-gray-300">{formatTime(msg.createdAt)}</span>
-                  {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} className="text-gray-300 hover:text-[#c4302b]"><Flag size={10} /></button>}
+                  {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} aria-label="신고" className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center text-gray-300 hover:text-[#c4302b]"><Flag size={10} /></button>}
                 </div>
               </div>
             </div>
@@ -297,10 +297,10 @@ export default function MessagesPage() {
         {replyAttachments.length > 0 && (
           <div className="mb-2 space-y-1">
             {replyAttachments.map((a, i) => (
-              <div key={i} className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded text-xs">
-                {a.type.startsWith('image/') ? <Image size={10} className="text-gray-400" /> : <FileText size={10} className="text-gray-400" />}
-                <span className="flex-1 truncate">{a.name}</span>
-                <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-[#c4302b]"><X size={10} /></button>
+              <div key={i} className="flex items-center gap-2 px-2 py-1 min-w-0 bg-gray-50 rounded text-xs">
+                {a.type.startsWith('image/') ? <Image size={10} className="text-gray-400 shrink-0" /> : <FileText size={10} className="text-gray-400 shrink-0" />}
+                <span className="flex-1 min-w-0 truncate">{a.name}</span>
+                <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} aria-label="첨부 삭제" className="shrink-0 min-h-[36px] min-w-[36px] -my-2 flex items-center justify-center text-gray-400 hover:text-[#c4302b]"><X size={10} /></button>
               </div>
             ))}
           </div>

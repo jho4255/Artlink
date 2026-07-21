@@ -51,14 +51,14 @@ export function CustomQuestionBuilder({
 
   return (
     <div className="pt-3 border-t border-gray-100">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+        <div className="min-w-0">
           <p className="text-xs font-medium text-gray-500">추가 질문</p>
           <p className="text-[11px] text-gray-400">작가 지원서에 객관식/주관식 질문을 추가할 수 있습니다.</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => addQuestion('textarea')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">주관식</button>
-          <button type="button" onClick={() => addQuestion('select')} className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">객관식</button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button type="button" onClick={() => addQuestion('textarea')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">주관식</button>
+          <button type="button" onClick={() => addQuestion('select')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">객관식</button>
         </div>
       </div>
       {fields.length === 0 ? (
@@ -82,7 +82,7 @@ export function CustomQuestionBuilder({
                   />
                   필수
                 </label>
-                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto text-[11px] text-red-500 hover:underline">삭제</button>
+                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto px-2 -my-1 min-h-[44px] inline-flex items-center text-[11px] text-red-500 hover:underline">삭제</button>
               </div>
               <input
                 value={field.label}
@@ -128,10 +128,10 @@ export function CustomQuestionBuilder({
                         placeholder={`선택지 ${optionIndex + 1}`}
                         className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
                       />
-                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="text-xs text-gray-400 hover:text-red-500">삭제</button>
+                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="shrink-0 px-2 min-h-[44px] inline-flex items-center text-xs text-gray-400 hover:text-red-500">삭제</button>
                     </div>
                   ))}
-                  <button type="button" onClick={() => addOption(index)} className="text-xs text-gray-600 hover:underline">+ 선택지 추가</button>
+                  <button type="button" onClick={() => addOption(index)} className="px-1 min-h-[44px] inline-flex items-center text-xs text-gray-600 hover:underline">+ 선택지 추가</button>
                 </div>
               )}
             </div>
@@ -211,12 +211,12 @@ export default function CustomQuestionsEditModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <div>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="min-w-0 flex-1">
             <h3 className="text-lg font-medium text-gray-900">추가 질문 수정</h3>
-            {exhibitionTitle && <p className="text-sm text-gray-400">{exhibitionTitle}</p>}
+            {exhibitionTitle && <p className="text-sm text-gray-400 truncate">{exhibitionTitle}</p>}
           </div>
-          <button onClick={onClose} aria-label="닫기" className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          <button onClick={onClose} aria-label="닫기" className="shrink-0 -mr-2 -mt-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
           이미 지원한 작가의 기존 답변은 그대로 유지됩니다. 모집 진행 중에는 질문 변경에 유의하세요.
@@ -225,11 +225,11 @@ export default function CustomQuestionsEditModal({
         <CustomQuestionBuilder fields={fields} onChange={(updater) => setFields((prev) => updater(prev))} />
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500">취소</button>
+          <button onClick={onClose} className="px-4 min-h-[44px] text-sm text-gray-500">취소</button>
           <button
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+            className="px-4 min-h-[44px] bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
           >
             {saveMutation.isPending ? '저장 중...' : '저장'}
           </button>

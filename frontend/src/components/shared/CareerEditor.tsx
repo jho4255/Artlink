@@ -100,7 +100,7 @@ export default function CareerEditor({ value, onChange, none, onNoneChange, erro
                 {label}
               </span>
               {showNone && (
-                <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
+                <label className="flex items-center gap-1.5 px-1 -my-2 min-h-[44px] text-xs text-gray-500 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={noneChecked}

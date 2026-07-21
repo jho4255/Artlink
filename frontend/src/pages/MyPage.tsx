@@ -2191,7 +2191,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                             <button
                               type="button"
                               onClick={() => setDeleteTarget(item)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
                               title="공모 삭제"
                               aria-label="공모 삭제"
                             >
@@ -2267,7 +2267,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                     </span>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget(ex); }}
-                      className="p-1 text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
                       title="공모 삭제"
                       aria-label="삭제"
                     >
@@ -2634,7 +2634,7 @@ function MyShowsSection() {
                     {statusLabels[show.status]}
                   </span>
                   <button onClick={() => setDeleteTarget(show)}
-                    className="p-1 text-gray-400 hover:text-red-500"
+                    className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
                     aria-label="삭제">
                     <Trash2 size={14} />
                   </button>
@@ -2827,7 +2827,7 @@ function ApprovalsSection() {
                           deleteGalleryMutation.mutate(g.id);
                         }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -2855,7 +2855,7 @@ function ApprovalsSection() {
                           deleteExhibitionMutation.mutate(ex.id);
                         }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -2883,7 +2883,7 @@ function ApprovalsSection() {
                           deleteShowMutation.mutate(s.id);
                         }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -3103,7 +3103,7 @@ function HeroManageSection() {
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(s.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(s.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -3221,7 +3221,7 @@ function BenefitManageSection() {
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(b.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(b.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -3347,7 +3347,7 @@ function GotmManageSection() {
                 <Calendar size={12} /> 만료: {new Date(item.expiresAt).toLocaleDateString('ko')}
               </p>
             </div>
-            <button onClick={() => deleteMutation.mutate(item.id)} className="p-1.5 text-gray-400 hover:text-red-500" aria-label="삭제">
+            <button onClick={() => deleteMutation.mutate(item.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제">
               <Trash2 size={14} />
             </button>
           </div>

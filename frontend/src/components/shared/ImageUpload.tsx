@@ -54,13 +54,14 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
       {value ? (
         <div className="relative group">
           <img src={value} alt="" className="w-full h-40 object-cover rounded-lg" />
+          {/* 터치 기기에는 hover가 없으므로 항상 노출(md 이상에서만 hover 게이트), 히트 영역 44px */}
           {onRemove && (
             <button
               onClick={onRemove}
               aria-label="이미지 삭제"
-              className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             >
-              <X size={14} />
+              <span className="p-1 bg-red-500 text-white rounded-full shadow"><X size={14} /></span>
             </button>
           )}
         </div>
@@ -162,12 +163,13 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
         {images.map((img, i) => (
           <div key={i} className="relative group">
             <img src={img.url} alt="" className="w-full h-24 object-cover rounded-lg" />
+            {/* 터치 기기에는 hover가 없으므로 항상 노출(md 이상에서만 hover 게이트), 히트 영역 44px */}
             <button
               onClick={() => onRemove(i)}
               aria-label="이미지 삭제"
-              className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             >
-              <X size={12} />
+              <span className="p-1 bg-red-500 text-white rounded-full shadow"><X size={12} /></span>
             </button>
           </div>
         ))}

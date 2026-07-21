@@ -100,6 +100,17 @@ export function koreanWon(value: string | number | null | undefined): string {
   return kr ? `${kr}원` : '';
 }
 
+// 출품작 가격 표시용: 숫자(콤마 포함)면 "500,000원"으로 정규화, 그 외(비매/협의/₩320,000 등)는 원문 유지
+export function formatArtworkPrice(price: string | null | undefined): string {
+  const t = (price ?? '').trim();
+  if (!t) return '';
+  if (/^[0-9,]+$/.test(t)) {
+    const n = parseInt(t.replace(/,/g, ''), 10);
+    if (n) return `${n.toLocaleString('ko-KR')}원`;
+  }
+  return t;
+}
+
 // 업로드 가능한 최대 이미지 용량 (백엔드 multer limit과 동일하게 유지)
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 

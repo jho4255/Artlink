@@ -436,7 +436,7 @@ export default function GalleryDetailPage() {
           ) : (
             <>
               <p className="text-gray-600 mt-2 flex items-center gap-1">
-                <MapPin size={14} /> {gallery.address}
+                <MapPin size={14} className="flex-none" /> {gallery.address}
                 {isOwner && (
                   <button
                     onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setContactInstagram(gallery.instagramUrl || ''); setIsEditingContact(true); }}
@@ -450,7 +450,7 @@ export default function GalleryDetailPage() {
               </a>
               <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
               {gallery.email && (
-                <p className="text-gray-600 flex items-center gap-1"><Mail size={14} /> {gallery.email}</p>
+                <p className="text-gray-600 flex items-center gap-1 min-w-0"><Mail size={14} className="flex-none" /> <span className="break-all">{gallery.email}</span></p>
               )}
             </>
           )}
@@ -459,9 +459,9 @@ export default function GalleryDetailPage() {
               href={gallery.instagramUrl.startsWith('http') ? gallery.instagramUrl : `https://instagram.com/${gallery.instagramUrl.replace('@', '')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-500 hover:underline flex items-center gap-1"
+              className="text-gray-500 hover:underline flex items-center gap-1 min-w-0"
             >
-              <Instagram size={14} /> {gallery.instagramUrl}
+              <Instagram size={14} className="flex-none" /> <span className="break-all">{gallery.instagramUrl}</span>
             </a>
           ) : isOwner && !isEditingContact && (
             <button

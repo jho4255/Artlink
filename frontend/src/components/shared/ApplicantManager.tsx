@@ -140,7 +140,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
               <button
                 key={f.key}
                 onClick={() => { setStatusFilter(f.key); setSelectedIds(new Set()); }}
-                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${statusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-3 min-h-[40px] inline-flex items-center text-xs rounded-full transition-colors ${statusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
                 {f.label} {count > 0 ? `(${count})` : ''}
               </button>
@@ -150,7 +150,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         <button
           onClick={handleZip}
           disabled={pdfBusy !== null}
-          className="flex-none flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-800 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+          className="flex-none flex items-center gap-1.5 px-3 min-h-[40px] border border-gray-300 text-gray-800 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
         >
           {pdfBusy === 'all' ? <Loader2 size={13} className="animate-spin" /> : <FileArchive size={13} />}
           전체 지원서 ZIP
@@ -165,13 +165,13 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         </label>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2">
-            <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-xs p-1.5 border border-gray-200 rounded-lg">
+            <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-xs px-2 min-h-[40px] border border-gray-200 rounded-lg">
               <option value="">상태 변경</option>
               <option value="SUBMITTED">접수</option>
               <option value="ACCEPTED">수락</option>
               <option value="REJECTED">거절</option>
             </select>
-            <button onClick={() => { if (!batchStatus) return; batchStatus === 'ACCEPTED' ? setAcceptTarget({ type: 'batch' }) : batchUpdate(batchStatus); }} disabled={!batchStatus} className="px-2.5 py-1.5 text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30">적용</button>
+            <button onClick={() => { if (!batchStatus) return; batchStatus === 'ACCEPTED' ? setAcceptTarget({ type: 'batch' }) : batchUpdate(batchStatus); }} disabled={!batchStatus} className="px-3 min-h-[40px] text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30">적용</button>
           </div>
         )}
       </div>
@@ -183,13 +183,14 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
           const isSelected = selectedIds.has(app.id);
           return (
             <div key={app.id} className={`border rounded-xl overflow-hidden transition-colors ${isSelected ? 'border-blue-300 bg-blue-50/30' : app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
-              <div className="p-3 flex items-center gap-2">
-                <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(app.id)} className="rounded shrink-0" />
-                <div className="flex-1 flex justify-between items-center cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : app.id)}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />}
+              <div className="p-3 flex items-start gap-2 sm:items-center">
+                <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(app.id)} className="rounded shrink-0 w-5 h-5 mt-0.5 sm:mt-0 sm:w-4 sm:h-4" />
+                {/* 모바일: 2줄(이름 / 날짜·뱃지·액션)로 접힘 — 한 줄이면 360px 뷰포트를 넘겨 액션이 화면 밖으로 밀림 */}
+                <div className="min-w-0 flex-1 flex flex-col gap-2 cursor-pointer sm:flex-row sm:justify-between sm:items-center" onClick={() => setExpandedId(isExpanded ? null : app.id)}>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                    {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />}
                     <span
-                      className="text-sm font-medium text-gray-900 hover:underline cursor-pointer truncate"
+                      className="text-sm font-medium text-gray-900 hover:underline cursor-pointer truncate min-w-0 flex-1 sm:flex-none sm:max-w-[16rem]"
                       onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
                     >
                       {nameWithNickname(app.user)}
@@ -201,7 +202,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                       <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">이 갤러리 {app.galleryApplicationOrder}번째</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:shrink-0">
                     {app.status === 'ACCEPTED' && !allowRevert ? (
                       <span className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-600 font-medium">수락 (확정)</span>
                     ) : (
@@ -216,7 +217,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                           else if (v === 'ACCEPTED') setAcceptTarget({ type: 'single', appId: app.id });
                           else updateStatus.mutate({ appId: app.id, status: v });
                         }}
-                        className={`text-xs px-2 py-1 rounded-lg border-0 cursor-pointer ${statusColors[app.status] || ''}`}
+                        className={`text-xs px-2 rounded-lg border-0 cursor-pointer min-h-[44px] sm:min-h-0 sm:py-1 ${statusColors[app.status] || ''}`}
                       >
                         {app.status === 'SUBMITTED' && <option value="SUBMITTED">접수</option>}
                         <option value="ACCEPTED">수락</option>
@@ -229,18 +230,18 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
               </div>
 
               {isExpanded && (
-                <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-7">
+                <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-0 sm:ml-7">
                   {/* 연락처(좌) + 개별 지원서 PDF 다운로드(우측 상단, 상태 선택 아래·연락처 높이) */}
                   <div className="flex items-start justify-between gap-2 pt-2">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
                       <span>🪪 {nameWithNickname(app.user)}</span>
                       {app.user?.phone && <span>📞 {app.user.phone}</span>}
-                      {app.user?.email && <span>📧 {app.user.email}</span>}
+                      {app.user?.email && <span className="break-all">📧 {app.user.email}</span>}
                     </div>
                     <button
                       onClick={() => handlePdf(app)}
                       disabled={pdfBusy !== null}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      className="shrink-0 flex items-center gap-1.5 px-3 min-h-[40px] text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
                       {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                       지원서 PDF

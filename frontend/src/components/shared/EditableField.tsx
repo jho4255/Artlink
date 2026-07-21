@@ -101,12 +101,13 @@ export function HeroImageEdit({ value, onChange, onRemove, className, label = '�
       {value ? (
         <>
           <img src={value} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-            <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 bg-white/90 text-gray-800 text-xs rounded-lg flex items-center gap-1">
+          {/* 터치 기기에는 hover가 없으므로 모바일에서는 항상 노출, md 이상에서만 hover 게이트 */}
+          <div className="absolute inset-0 bg-black/20 md:bg-black/0 md:group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+            <button type="button" onClick={() => inputRef.current?.click()} className="px-3 min-h-[40px] bg-white/90 text-gray-800 text-xs rounded-lg flex items-center gap-1">
               <Upload size={13} /> 변경
             </button>
             {onRemove && (
-              <button type="button" onClick={onRemove} className="px-3 py-1.5 bg-white/90 text-red-500 text-xs rounded-lg flex items-center gap-1">
+              <button type="button" onClick={onRemove} className="px-3 min-h-[40px] bg-white/90 text-red-500 text-xs rounded-lg flex items-center gap-1">
                 <X size={13} /> 삭제
               </button>
             )}

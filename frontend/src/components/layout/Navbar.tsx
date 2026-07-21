@@ -110,14 +110,14 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 md:h-20">
+        <div className="flex justify-between items-center h-16 lg:h-20">
           {/* 로고 (좌) */}
           <Link to="/" className="flex-none text-2xl font-bold tracking-tight text-gray-900 font-serif">
             Art<span className="text-[#dc3545]">Link</span>
           </Link>
 
           {/* 데스크탑 네비게이션 (중앙) */}
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
@@ -135,7 +135,7 @@ export default function Navbar() {
           </div>
 
           {/* 우측: 쪽지 + 알림 + 유저 정보 */}
-          <div className="hidden md:flex items-center gap-3 flex-none">
+          <div className="hidden lg:flex items-center gap-3 flex-none">
             {isAuthenticated && user?.role !== 'ADMIN' && (
               <button
                 onClick={() => navigate('/messages')}
@@ -233,11 +233,11 @@ export default function Navbar() {
           </div>
 
           {/* 모바일: 로그인 / 쪽지 + 알림 + 햄버거 */}
-          <div className="flex items-center gap-1 md:hidden">
+          <div className="flex items-center gap-1 lg:hidden">
             {!isAuthenticated && (
               <button
                 onClick={() => navigate('/login')}
-                className="px-3 py-1.5 mr-1 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
+                className="px-3 min-h-[40px] mr-1 inline-flex items-center text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
               >
                 로그인
               </button>
@@ -245,7 +245,7 @@ export default function Navbar() {
             {isAuthenticated && user?.role !== 'ADMIN' && (
               <button
                 onClick={() => navigate('/messages')}
-                className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
                 aria-label="쪽지"
               >
                 <Mail size={20} />
@@ -260,7 +260,7 @@ export default function Navbar() {
               <button
                 ref={mobileBellRef}
                 onClick={() => setNotifOpen(!notifOpen)}
-                className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
                 aria-label="알림"
               >
                 <Bell size={20} />
@@ -273,7 +273,7 @@ export default function Navbar() {
             )}
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
               aria-label={isOpen ? '메뉴 닫기' : '메뉴 열기'}
             >
               {isOpen ? <X size={24} /> : <Menu size={24} />}
@@ -289,12 +289,12 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gray-100 bg-white"
+            className="lg:hidden border-t border-gray-100 bg-white"
           >
             <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
               <span className="text-sm font-semibold text-gray-900">알림</span>
               {unreadCount > 0 && (
-                <button onClick={() => readAllMutation.mutate()} className="text-xs text-blue-500">전체 읽음</button>
+                <button onClick={() => readAllMutation.mutate()} className="shrink-0 px-3 -mx-3 min-h-[44px] -my-2 inline-flex items-center text-xs text-blue-500">전체 읽음</button>
               )}
             </div>
             <div className="max-h-60 overflow-y-auto">
@@ -326,7 +326,7 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gray-100 bg-white"
+            className="lg:hidden border-t border-gray-100 bg-white"
           >
             <div className="px-4 py-2 space-y-1">
               {navLinks.map((link) => (

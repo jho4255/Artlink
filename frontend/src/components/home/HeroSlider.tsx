@@ -216,14 +216,14 @@ export default function HeroSlider() {
               <button
                 onClick={() => scrollToSlide((current - 1 + slides.length) % slides.length)}
                 aria-label="이전 슬라이드"
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                className="absolute left-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
               >
                 <ChevronLeft size={18} />
               </button>
               <button
                 onClick={() => scrollToSlide((current + 1) % slides.length)}
                 aria-label="다음 슬라이드"
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
               >
                 <ChevronRight size={18} />
               </button>
@@ -237,7 +237,7 @@ export default function HeroSlider() {
                 key={i}
                 onClick={() => scrollToSlide(i)}
                 aria-label={`${i + 1}번째 슬라이드로 이동`}
-                className="py-2.5 px-[3px] cursor-pointer"
+                className="py-4 px-1 min-h-[44px] flex items-center cursor-pointer"
               >
                 <span
                   className={`block h-[2px] rounded-full transition-all ${

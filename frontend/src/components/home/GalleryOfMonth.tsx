@@ -71,8 +71,8 @@ export default function GalleryOfMonthSection() {
                 </p>
               )}
 
-              <p className="flex items-center gap-1.5 mt-2 text-base text-gray-400">
-                <MapPin size={15} />
+              <p className="flex items-start gap-1.5 mt-2 text-base text-gray-400">
+                <MapPin size={15} className="shrink-0 mt-1" />
                 {item.gallery.address}
               </p>
             </div>

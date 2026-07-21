@@ -217,7 +217,7 @@ export default function ShowDetailPage() {
             {showStatusLabels[status]}
           </span>
           {user?.role === 'ARTIST' && (
-            <button onClick={() => favMutation.mutate()} className="cursor-pointer" aria-label={show.isFavorited ? '찜 해제' : '찜하기'}>
+            <button onClick={() => favMutation.mutate()} className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer" aria-label={show.isFavorited ? '찜 해제' : '찜하기'}>
               <Heart size={20} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
             </button>
           )}

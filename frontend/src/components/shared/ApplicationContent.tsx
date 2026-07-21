@@ -86,7 +86,7 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
         {images.length === 0 ? (
           <p className="text-xs text-gray-400">없음</p>
         ) : (
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
             {images.map((url, idx) => (
               <img
                 key={idx}
@@ -104,7 +104,7 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
       <div>
         <p className="text-xs text-gray-400 mb-0.5">포트폴리오 파일</p>
         {safeHttpUrl(app.portfolioFileUrl) ? (
-          <a href={safeHttpUrl(app.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-700 hover:underline">
+          <a href={safeHttpUrl(app.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-1 -mx-1 min-h-[44px] text-xs text-gray-700 hover:underline">
             <FileText size={13} /> 파일 보기
           </a>
         ) : (

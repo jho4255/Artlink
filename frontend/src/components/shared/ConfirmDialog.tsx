@@ -74,7 +74,7 @@ export default function ConfirmDialog({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="bg-white rounded-xl p-6 mx-4 max-w-sm w-full shadow-xl"
+            className="bg-white rounded-xl p-5 sm:p-6 mx-4 max-w-sm w-full max-h-[85vh] overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-2">{title}</h3>
@@ -82,14 +82,14 @@ export default function ConfirmDialog({
             <div className="flex gap-2 justify-end">
               <button
                 onClick={onCancel}
-                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg"
+                className="px-4 min-h-[44px] text-sm text-gray-500 hover:text-gray-700 rounded-lg"
               >
                 {cancelText}
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={busy}
-                className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 ${confirmBtnClass}`}
+                className={`px-4 min-h-[44px] text-sm rounded-lg disabled:opacity-50 ${confirmBtnClass}`}
               >
                 {confirmText}
               </button>

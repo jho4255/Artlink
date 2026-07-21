@@ -121,7 +121,7 @@ export default function GalleriesPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       {/* 헤더 */}
-      <div className="flex items-end justify-between gap-4 mb-10">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
         <div>
           <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Galleries</h1>
           <p className="text-base text-gray-400 mt-2">Find your next partner</p>
@@ -269,8 +269,8 @@ export default function GalleriesPage() {
 
               {/* 갤러리 정보 */}
               <div className="mt-3">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
+                <div className="flex justify-between items-start gap-2">
+                  <h3 className="min-w-0 text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
                     {gallery.name}
                   </h3>
                   {user?.role === 'ARTIST' && (
@@ -281,7 +281,7 @@ export default function GalleriesPage() {
                         e.stopPropagation();
                         favMutation.mutate(gallery.id);
                       }}
-                      className="p-1.5 flex-none cursor-pointer"
+                      className="min-h-[44px] min-w-[44px] -m-2.5 flex items-center justify-center flex-none cursor-pointer"
                       aria-label={gallery.isFavorited ? '찜 해제' : '찜하기'}
                     >
                       <Heart

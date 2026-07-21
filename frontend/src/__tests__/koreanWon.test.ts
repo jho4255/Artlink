@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { numberToKorean, koreanWon } from '../lib/utils';
+import { numberToKorean, koreanWon, formatArtworkPrice } from '../lib/utils';
 
 describe('numberToKorean', () => {
   it('만 단위 변환', () => {
@@ -41,5 +41,25 @@ describe('koreanWon', () => {
     expect(koreanWon('')).toBe('');
     expect(koreanWon(null)).toBe('');
     expect(koreanWon(0)).toBe('');
+  });
+});
+
+describe('formatArtworkPrice', () => {
+  it('순수 숫자 → 콤마+원', () => {
+    expect(formatArtworkPrice('500000')).toBe('500,000원');
+    expect(formatArtworkPrice('300,000')).toBe('300,000원');
+  });
+
+  it('자유 텍스트는 원문 유지 (비매/협의/₩ 표기)', () => {
+    expect(formatArtworkPrice('비매')).toBe('비매');
+    expect(formatArtworkPrice('협의')).toBe('협의');
+    expect(formatArtworkPrice('₩320,000')).toBe('₩320,000');
+  });
+
+  it('빈 값/0은 빈 문자열', () => {
+    expect(formatArtworkPrice('')).toBe('');
+    expect(formatArtworkPrice(null)).toBe('');
+    expect(formatArtworkPrice(undefined)).toBe('');
+    expect(formatArtworkPrice('0')).toBe('0');
   });
 });
