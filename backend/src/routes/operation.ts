@@ -11,7 +11,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-import { buildCaptionHwp, CAPTION_CELL_CAPACITY } from '../lib/captionHwp';
+import { buildCaptionHwp, CAPTION_MAX_WORKS } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
@@ -369,9 +369,9 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
       }
     }
     if (works.length === 0) throw new AppError('등록된 출품작이 없습니다.', 400);
-    if (works.length > CAPTION_CELL_CAPACITY) {
-      // 양식은 96칸 — 초과분은 잘림(로그만 남기고 진행)
-      console.warn(`[caption] 출품작 ${works.length}점이 양식 용량(${CAPTION_CELL_CAPACITY})을 초과해 잘립니다. (공모 ${exhibitionId})`);
+    // 페이지 수는 출품작 수에 맞춰 자동 확장(1페이지=24칸) — 잘림 없음. 상한만 방어.
+    if (works.length > CAPTION_MAX_WORKS) {
+      throw new AppError(`출품작이 너무 많아 캡션을 한 파일로 만들 수 없습니다. (${works.length}점 / 최대 ${CAPTION_MAX_WORKS}점)`, 400);
     }
 
     const buf = await buildCaptionHwp(works);
