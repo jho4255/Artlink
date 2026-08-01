@@ -17,20 +17,21 @@ import type { ExploreImage } from '@/types';
  *  2) **좋아요에 결과를 만들어주는 장치** — 좋아요가 "홈에 무엇이 걸릴지"를 정하면
  *     누르는 행위가 단순 호감 표시에서 큐레이션 참여로 바뀐다. 부제로 그 근거를 밝힌다.
  *
- * 부제는 서버가 내려주는 basis로 결정한다(초기에는 좋아요가 없어 주간 집계가 무의미하므로
- * 서버가 주간→전체→랜덤 순으로 폴백해준다). 백엔드 `GET /api/explore/highlight` 참고.
+ * 정렬은 **전체 좋아요 수 내림차순**(카드 배지와 같은 값). 좋아요가 전무하면 날짜 시드 랜덤.
+ * 백엔드 `GET /api/explore/highlight` 참고.
  * 작품 클릭 시 둘러보기와 동일한 확대 모달을 띄운다(어디서 눌러도 같은 경험).
  */
 // 제목은 홈의 다른 섹션(Gallery of the Month)과 같은 영문 serif로 통일하고, 부제로 근거를 밝힌다.
+// ⚠️ 부제에 '이번 주'를 쓰지 않는다 — 정렬은 전체 좋아요 수(=카드에 찍히는 배지) 기준이라
+//    주간 문구를 달면 "하트순이 아닌 것처럼" 보인다(실제로 그런 신고가 있었다).
 const LABELS: Record<string, { title: string; subtitle: string }> = {
-  week: { title: 'Favorites', subtitle: '이번 주 가장 많이 사랑받은 작품들' },
   all: { title: 'Favorites', subtitle: '가장 많이 사랑받은 작품들' },
   random: { title: 'Favorites', subtitle: '마음에 드는 작품에 좋아요를 눌러보세요' },
 };
 
 interface HighlightResponse {
   images: ExploreImage[];
-  basis: 'week' | 'all' | 'random';
+  basis: 'all' | 'random';
 }
 
 export default function ExploreHighlight() {

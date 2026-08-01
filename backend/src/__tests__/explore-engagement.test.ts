@@ -62,23 +62,41 @@ describe('GET /api/explore/highlight — 홈 하이라이트', () => {
     expect(r2.body.images.map((i: any) => i.id)).toEqual(r1.body.images.map((i: any) => i.id));
   });
 
-  it('최근 7일 내 좋아요가 있으면 basis=week, 그 작품이 1위', async () => {
+  it('좋아요가 있으면 basis=all, 가장 많이 받은 작품이 1위', async () => {
     const imgs = await seedImages(1, 3);
     await testPrisma.portfolioImageLike.create({ data: { userId: 2, imageId: imgs[2].id } });
     const r = await request.get('/api/explore/highlight');
-    expect(r.body.basis).toBe('week');
+    expect(r.body.basis).toBe('all');
     expect(r.body.images[0].id).toBe(imgs[2].id);
     expect(r.body.images[0].likeCount).toBe(1);
   });
 
-  it('좋아요가 7일보다 오래됐으면 basis=all', async () => {
-    const imgs = await seedImages(1, 3);
-    await testPrisma.portfolioImageLike.create({
-      data: { userId: 2, imageId: imgs[1].id, createdAt: new Date(Date.now() - 30 * 86400000) },
-    });
+  it('★ 화면에 찍히는 하트 수 기준으로 항상 내림차순이다 (오래된 좋아요도 포함)', async () => {
+    // 회귀 방지: 예전에는 '최근 7일' 기준으로 정렬하면서 배지는 전체 수를 보여줘
+    // "1,1,1,3" 처럼 순서가 뒤집혀 보였다.
+    const imgs = await seedImages(1, 4);
+    const old = new Date(Date.now() - 30 * 86400000);
+    // imgs[0]: 오래된 좋아요 3개(이번 주엔 0) / imgs[1]: 이번 주 좋아요 1개
+    for (const uid of [2, 3, 4]) {
+      await testPrisma.portfolioImageLike.create({ data: { userId: uid, imageId: imgs[0].id, createdAt: old } });
+    }
+    await testPrisma.portfolioImageLike.create({ data: { userId: 2, imageId: imgs[1].id } });
+
     const r = await request.get('/api/explore/highlight');
-    expect(r.body.basis).toBe('all');
+    const counts = r.body.images.map((i: any) => i.likeCount);
+    expect(counts, `표시 하트가 내림차순이 아님: ${counts}`).toEqual([...counts].sort((a: number, b: number) => b - a));
+    expect(r.body.images[0].id, '전체 3개가 1위').toBe(imgs[0].id);
+    expect(r.body.images[1].id, '전체 1개가 2위').toBe(imgs[1].id);
+  });
+
+  it('좋아요 수가 같으면 최근에 받은 작품이 앞선다(신선도 tie-break)', async () => {
+    const imgs = await seedImages(1, 3);
+    const old = new Date(Date.now() - 30 * 86400000);
+    await testPrisma.portfolioImageLike.create({ data: { userId: 2, imageId: imgs[0].id, createdAt: old } });
+    await testPrisma.portfolioImageLike.create({ data: { userId: 2, imageId: imgs[1].id } }); // 이번 주
+    const r = await request.get('/api/explore/highlight');
     expect(r.body.images[0].id).toBe(imgs[1].id);
+    expect(r.body.images[1].id).toBe(imgs[0].id);
   });
 
   it('비공개 작품과 탈퇴 작가 작품은 제외한다', async () => {

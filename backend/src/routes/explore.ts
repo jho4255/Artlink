@@ -209,12 +209,11 @@ router.get('/', optionalAuth, async (req, res, next) => {
 // ── 단일 경로 라우트는 /:imageId 패턴보다 먼저 등록 ────────────────────────
 
 /**
- * GET /highlight — 홈 "이번 주 인기 작품" 섹션용 (인증 불필요)
+ * GET /highlight — 홈 "Favorites" 섹션용 (인증 불필요)
  *
- * 좋아요가 아직 적은 초기에는 주간 집계가 전부 0이라 의미 없는 순서가 나온다.
- * 그래서 서버가 폴백까지 판단해 `basis`로 알려준다 → 홈이 제목만 바꿔 달면 된다.
- *   week   : 최근 7일 좋아요가 1개 이상 → "이번 주 인기 작품"
- *   all    : 전체 기간 좋아요가 1개 이상 → "많이 사랑받은 작품"
+ * 정렬은 **전체 좋아요 수 내림차순** — 화면에 찍히는 하트 배지와 같은 값이어야
+ * 사용자가 보기에 "하트순"이 된다. 동점이면 최근 7일 좋아요가 많은 쪽(신선도), 그다음 최신.
+ *   all    : 좋아요가 하나라도 있음 → "가장 많이 사랑받은 작품들"
  *   random : 좋아요가 전무 → 날짜 시드 랜덤(하루 동안 고정) → "작가들의 작품"
  */
 router.get('/highlight', optionalAuth, async (req, res, next) => {
@@ -240,13 +239,13 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
       return new Map<number, number>(grouped.map(g => [g.imageId, g._count.imageId]));
     };
 
+    // ⚠️ 정렬 기준은 화면에 찍히는 배지(=전체 좋아요 수)와 반드시 일치해야 한다.
+    // 예전에는 '최근 7일' 기준으로 정렬하면서 배지는 전체 수를 보여줘서
+    // "하트 1,1,1,…,3" 처럼 순서가 뒤집혀 보였다(전체 3개지만 이번 주엔 0개인 작품이 꼴찌).
+    // → 1차: 전체 좋아요 desc(= 배지 순서), 2차: 최근 7일 desc(신선도), 3차: 최신
+    const allCnt = await countLikes(null);
     const weekCnt = await countLikes(new Date(Date.now() - 7 * 86400000));
-    let basis: 'week' | 'all' | 'random' = 'week';
-    let cnt = weekCnt;
-    if (candidates.every(c => !weekCnt.get(c.id))) {
-      cnt = await countLikes(null);
-      basis = candidates.some(c => cnt.get(c.id)) ? 'all' : 'random';
-    }
+    const basis: 'all' | 'random' = candidates.some(c => allCnt.get(c.id)) ? 'all' : 'random';
 
     let orderedIds: number[];
     if (basis === 'random') {
@@ -262,8 +261,8 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
       orderedIds = arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
     } else {
       orderedIds = candidates
-        .map(c => ({ id: c.id, c: cnt.get(c.id) || 0 }))
-        .sort((a, b) => b.c - a.c || b.id - a.id)
+        .map(c => ({ id: c.id, total: allCnt.get(c.id) || 0, week: weekCnt.get(c.id) || 0 }))
+        .sort((a, b) => b.total - a.total || b.week - a.week || b.id - a.id)
         .map(x => x.id);
     }
 
