@@ -518,6 +518,35 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 - **상한**: `CAPTION_MAX_WORKS = 1200`. 초과 시 400으로 명확히 안내(잘림 없음).
 - **검증**: `caption-hwp.test.ts` 19개 (페이지 수 적응·전 작품 포함·구조 불변식·섹터 확장·상한). 추가로 독립 파서(pyhwp)로 20/30/100/200작품 전 제목 존재 + ODT→PDF 렌더 페이지 수(2·5) 확인. ⚠️ 리눅스에는 한글이 없고 LibreOffice HWP 필터는 v3 전용이라(원본 템플릿도 못 엶) **한글 열림 최종 확인은 수동**이다.
 
+## 프로그래매틱 SEO — robots/sitemap + 페이지별 meta 주입 (2026-08-01)
+
+SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 ① 검색엔진에 공모/갤러리 수백 개가 중복 페이지로 보이고 ② **JS를 실행하지 않는 카톡/페북 공유봇**에는 어떤 링크를 공유해도 같은 미리보기가 떴다. SSR 도입 없이 `<head>`의 meta 블록만 서버에서 갈아끼워 해결한다.
+
+### (a) 색인 진입로 — `routes/seo.ts`
+- `GET /robots.txt` (text/plain), `GET /sitemap.xml` (application/xml). 이전엔 SPA 와일드카드에 걸려 **index.html이 200으로** 나갔다(sitemap 제출 시 파싱 에러).
+- `NODE_ENV` 조건 **밖**에 등록 — dist가 필요 없어 기존 supertest 스위트로 그대로 검증된다.
+- sitemap 대상: 정적 공개 페이지 8개 + `status:'APPROVED'` 갤러리/공모/전시 + `user.deletedAt:null`이고 이미지 1장 이상인 포트폴리오. TTL 10분 캐시, 상한 5,000 URL. DB 실패 시 **정적 URL만 담은 유효한 sitemap**을 반환(503로 죽이지 않음).
+
+### (b) 상세 페이지 meta 주입 — `lib/seoMeta.ts`
+- 대상 4종: `/exhibitions/:id`, `/galleries/:id`, `/shows/:id`, `/portfolio/:id`
+- **기존 SPA 와일드카드(`index.ts`의 `/{*path}`)는 수정하지 않는다.** 명시 라우트 4개를 그 앞에 추가하고, 조건 미달이면 `next()`로 흘려보내 와일드카드가 원본을 내려준다 → 최악의 경우가 "현재 동작".
+- `frontend/index.html`의 `<!--SEO_META_START-->` ~ `<!--SEO_META_END-->` 사이를 통째로 교체(og 태그 중복 없음). 마커가 없으면 주입하지 않으며, **프론트 테스트 `seoMarkers.test.ts`가 마커 존재를 감시**한다. `facebook-domain-verification`은 마커 밖.
+
+**방어 4종 (설계 근거)**
+1. **인젝션**: 값이 HTML이 되는 지점은 `buildMetaTags()` 하나뿐이고 전부 `escapeAttr()`(`& < > " '` + 제어문자 제거)를 통과. 문맥이 `content="..."` 속성값 하나로 고정돼 이 치환이면 완전하다. 호출부에서 문자열을 이어붙일 수 없는 구조 → 이스케이프 누락 불가. og:image는 `https://` 또는 `/uploads/` **화이트리스트**만 통과.
+2. **DB 장애**: 경로 allowlist(정수 id `^\d{1,9}$`만) + 1.5초 타임아웃 + `try/catch` → 실패 시 `next()`. 템플릿은 기동 후 1회만 읽어 메모리 보관(읽기 실패 시 주입만 비활성).
+3. **비공개 노출**: 쿼리에 `status:'APPROVED'`(공모/전시는 소속 갤러리도) / `deletedAt:null`을 못 박음. 노출 필드 화이트리스트 = 제목·지역·기간·한줄소개·대표이미지 (연락처/주소상세/이메일 제외). 작가는 닉네임 우선.
+4. **부하**: TTL 60초 인메모리 캐시(상한 500, **없는 id도 캐시**해 열거 공격 흡수) + `/api`와 별개의 rate limit **10분 800회**. ⚠️ 초과해도 **429를 던지지 않고** `SEO_RATE_LIMITED` 표시만 남겨 주입만 생략한다(공유 링크로 트래픽이 몰려도 페이지는 정상).
+
+### 킬스위치 / 환경변수
+- `SEO_META=off` → 주입만 비활성(robots/sitemap은 유지). Render 대시보드에서 즉시 되돌릴 수 있는 1차 롤백 수단.
+- `PUBLIC_BASE_URL` (기본 `https://artlink.cc`) → sitemap·og:url·이미지 절대경로 기준값.
+
+### 검증
+- `backend/src/__tests__/seo.test.ts` 27개 + `frontend/src/__tests__/seoMarkers.test.ts` 4개.
+- 로컬 프로덕션 모드 실기동 확인: 공모/갤러리별 meta 주입, PENDING·탈퇴·비정수 id·없는 id 전부 원본 폴백, 킬스위치 동작, 805회 연속 요청 시 **429 없이 전부 200**(한도 초과분은 기본 meta).
+- XSS 실물 검증: 제목 `"><script>...`, 소개 `<img src=x onerror=...>`인 공모를 실제로 만들어 응답을 **jsdom으로 파싱** → script 태그는 앱 번들 1개뿐, img 0개, `on*` 이벤트 핸들러 0개, 페이로드는 전부 텍스트로 파싱됨.
+
 ## 배포 구조 (Render.com)
 
 ```

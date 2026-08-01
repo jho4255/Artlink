@@ -29,6 +29,9 @@ import reportRoutes from './routes/report';
 import adminRoutes from './routes/admin';
 import operationRoutes from './routes/operation';
 import settingsRoutes from './routes/settings';
+import seoRoutes from './routes/seo';
+import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
+import type { SeoKind } from './lib/seoMeta';
 
 // ===== 전역 에러 핸들러: 프로세스 크래시 방지 =====
 process.on('unhandledRejection', (reason: any) => {
@@ -120,6 +123,10 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: '요청한 API를 찾을 수 없습니다.' });
 });
 
+// robots.txt / sitemap.xml (검색엔진 색인 진입로)
+// SPA 와일드카드보다 앞에 두어야 index.html이 아닌 실제 파일이 응답된다.
+app.use('/', seoRoutes);
+
 // 프론트엔드 정적 파일 제공 (프로덕션)
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../frontend/dist');
@@ -146,6 +153,33 @@ if (process.env.NODE_ENV === 'production') {
       }
     },
   }));
+  // ── 상세 페이지 SEO 메타 주입 ──────────────────────────────────────────
+  // 아래 기존 와일드카드는 수정하지 않는다. 명시 라우트 4개를 앞에 추가만 하고,
+  // 조건 미달(비정수 id·미승인/탈퇴·DB 실패·SEO_META=off)이면 next()로 와일드카드가 원본을 내려준다.
+  const loadSeoTemplate = createTemplateLoader(path.join(distPath, 'index.html'));
+  const seoLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 800,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => process.env.DISABLE_RATE_LIMIT === 'true',
+    // 초과해도 429로 막지 않는다 — 표시만 남기고 '메타 주입'만 생략한다.
+    // (429를 던지면 공유 링크로 트래픽이 몰릴 때 정상 사용자의 페이지가 안 열린다)
+    handler: (req, _res, next) => {
+      (req as unknown as Record<symbol, unknown>)[SEO_RATE_LIMITED] = true;
+      next();
+    },
+  });
+  const SEO_ROUTES: [string, SeoKind][] = [
+    ['/exhibitions/:id', 'exhibition'],
+    ['/galleries/:id', 'gallery'],
+    ['/shows/:id', 'show'],
+    ['/portfolio/:id', 'portfolio'],
+  ];
+  for (const [route, kind] of SEO_ROUTES) {
+    app.get(route, seoLimiter, createSeoHandler(kind, loadSeoTemplate));
+  }
+
   app.get('/{*path}', (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.sendFile(path.join(distPath, 'index.html'));
