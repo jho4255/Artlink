@@ -53,3 +53,22 @@ npx playwright test tests/01-messaging.spec.ts   # 특정 파일만
 
 ## 발견된 버그
 → `docs/known-issues.md` 에 누적 (테스트로 발견한 것 포함). 일괄 수정 예정.
+
+## 2026-08-01 노후 테스트 정비
+
+시간이 지나며 제품 규칙이 바뀌었는데 테스트가 따라가지 못해 21건이 실패하고 있었다. 원인과 조치:
+
+| 원인 | 영향 | 조치 |
+|---|---|---|
+| `applyToExhibition` 헬퍼에 **약관 동의 누락** (지원 시 필수로 바뀜) | 지원이 전부 400 → 하위 테스트 연쇄 실패 | 헬퍼에 `termsAgreed`/`termsVersion` 추가. 버전은 `backend/src/lib/terms.ts`에서 **런타임에 읽어** 하드코딩 방지 |
+| **시드 공모의 마감일이 과거** | 지원 400 → "지원자 관계" 미성립 → 메시지 403, 지원자 목록 비어 있음 | 01/03에서 매 실행마다 모집 중인 공모를 새로 생성 |
+| 지원자 관리가 공모 상세 → **마이페이지 인라인**으로 이동 | `getByText('지원자 관리')` 타임아웃 | `openApplicantManager(page, title)` 헬퍼 신설 |
+| 라이프사이클 **순서 강제**(모집마감→확정→전시종료) 도입 | 확정/종료 전환이 400 → 잠금·정산 미검증 | 22에서 앞 단계를 함께 전송 |
+| 정산 **2단계 승인제** 도입 | 작가 `my-settlement`가 null | 갤러리 '확인 요청' 단계 추가 후 검증 |
+| 연락처 노출 정책 변경(**지원 시점부터** 공개) | 낡은 단언 실패 | 현재 정책 + 타 갤러리 403 검증으로 갱신 |
+| CareerEditor가 연도/내용 행 → **자유 textarea** | '추가' 버튼 없음 | textarea placeholder로 입력 |
+| 지원 모달 제출이 **약관 동의 전까지 disabled** | 빈 제출 검증 단계 진입 불가 | 동의 후 빈 제출로 검증 확인 |
+| `getByPlaceholder('주소')`가 '인스타그램 주소'까지 매칭 | strict mode 위반 | `{ exact: true }` |
+| 테스트가 존재하지 않는 `/uploads/art1.png` 사용 | SkeletonImage가 404 시 `<img>`를 렌더하지 않음 | `realUploadUrl()`로 실제 파일 사용 |
+
+결과: **21 failed / 32 passed → 0 failed / 74 passed** (1건은 원래 `test.fixme`).

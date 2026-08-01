@@ -146,6 +146,8 @@ export interface PortfolioImage {
   url: string;
   order: number;
   showInExplore?: boolean;
+  /** 받은 좋아요 수 (내 포트폴리오 조회 시 포함) */
+  _count?: { likes: number };
 }
 
 // 경력 항목 (연도 + 내용)
@@ -299,6 +301,40 @@ export interface ExploreImage {
   artist: { id: number; name: string; nickname?: string | null; avatar?: string };
   likeCount: number;
   isLiked: boolean;
+  /** 갤러리 계정으로 조회할 때만 내려온다 (본인 스크랩 여부 — 작가에게는 절대 노출 안 됨) */
+  isScrapped?: boolean;
+}
+
+// 갤러리의 비공개 스크랩 (관심 작품 보드)
+export interface ArtworkScrap {
+  id: number;
+  memo: string | null;
+  createdAt: string;
+  /** 확대 모달에 그대로 넘길 수 있도록 하트/북마크 상태까지 포함해 내려온다 */
+  image: ExploreImage;
+}
+
+// 갤러리가 보낸 공모 초대 (작가가 받은 목록)
+export interface ExhibitionInvite {
+  id: number;
+  message: string | null;
+  status: 'SENT' | 'APPLIED' | 'DECLINED';
+  createdAt: string;
+  applied: boolean;
+  closed: boolean;
+  /** 정원이 찬 공모 — 지원하지 않은 초대는 서버가 목록에서 제외한다 */
+  full?: boolean;
+  exhibition: {
+    id: number;
+    title: string;
+    type: string;
+    region: string;
+    deadline: string;
+    imageUrl?: string | null;
+    /** 간편 지원 모달에서 갤러리가 물은 추가 질문만 받기 위해 함께 내려온다 */
+    customFields?: CustomField[] | null;
+    gallery: { id: number; name: string };
+  };
 }
 
 // 전시 참여 작가 (userId 있으면 ArtLink 유저 연동)

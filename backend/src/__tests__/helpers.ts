@@ -19,7 +19,8 @@ export function authToken(userId: number, role: string): string {
 
 const ALL_TABLES = [
   'MessageReport', 'Message',
-  'Faq', 'Inquiry', 'Notification', 'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
+  'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
+  'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
   'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
 ];
@@ -32,6 +33,8 @@ export async function cleanDb() {
     await tx.faq.deleteMany();
     await tx.inquiry.deleteMany();
     await tx.notification.deleteMany();
+    await tx.exhibitionInvite.deleteMany();
+    await tx.artworkScrap.deleteMany();
     await tx.application.deleteMany();
     await tx.approvalRequest.deleteMany();
     await tx.favorite.deleteMany();

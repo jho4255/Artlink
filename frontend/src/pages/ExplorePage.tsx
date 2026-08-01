@@ -1,14 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, User, ChevronDown, RefreshCw, Shuffle } from 'lucide-react';
-import { createPortal } from 'react-dom';
-import toast from 'react-hot-toast';
+import { useState, useEffect, useRef } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { AnimatePresence } from 'framer-motion';
+import { Heart, RefreshCw, Shuffle } from 'lucide-react';
+import SkeletonImage from '@/components/shared/SkeletonImage';
+import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
 import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
-import { useAuthStore } from '@/stores/authStore';
-import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { ExploreImage } from '@/types';
 
 const PERIODS = [
@@ -22,7 +19,6 @@ type SortMode = 'random' | 'popular';
 type Period = typeof PERIODS[number]['key'];
 
 export default function ExplorePage() {
-  const { isAuthenticated } = useAuthStore();
   const [selectedImage, setSelectedImage] = useState<ExploreImage | null>(null);
 
   // 정렬 상태: 진입 시 랜덤 시드 생성(매번 다른 순서), 새로고침 버튼으로 재셔플
@@ -136,6 +132,7 @@ export default function ExplorePage() {
                 key={img.id}
                 onClick={() => setSelectedImage(img)}
                 className="relative aspect-square overflow-hidden group"
+                aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
               >
                 <SkeletonImage
                   src={img.url}
@@ -165,7 +162,7 @@ export default function ExplorePage() {
       {/* 이미지 상세 모달 */}
       <AnimatePresence>
         {selectedImage && (
-          <ImageDetailModal
+          <ArtworkDetailModal
             image={selectedImage}
             onClose={() => setSelectedImage(null)}
             onUpdate={(updated) => setSelectedImage(updated)}
@@ -173,178 +170,5 @@ export default function ExplorePage() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-// ===== 이미지 상세 모달 =====
-interface ImageDetailModalProps {
-  image: ExploreImage;
-  onClose: () => void;
-  onUpdate: (img: ExploreImage) => void;
-}
-
-function ImageDetailModal({ image, onClose, onUpdate }: ImageDetailModalProps) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { isAuthenticated, user } = useAuthStore();
-  const [showLikers, setShowLikers] = useState(false);
-
-  const isOwner = user?.id === image.artist.id;
-
-  // ESC 키 + 스크롤 잠금
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [onClose]);
-
-  // 좋아요 토글
-  const likeMutation = useMutation({
-    mutationFn: () => api.post(`/explore/${image.id}/like`),
-    onMutate: () => {
-      const newLiked = !image.isLiked;
-      onUpdate({
-        ...image,
-        isLiked: newLiked,
-        likeCount: image.likeCount + (newLiked ? 1 : -1),
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-    },
-  });
-
-  // 좋아요한 사람 목록 (이미지 주인만)
-  const { data: likersData } = useQuery({
-    queryKey: ['explore-likes', image.id],
-    queryFn: () => api.get(`/explore/${image.id}/likes`).then(r => r.data),
-    enabled: isOwner && showLikers,
-    staleTime: 30000,
-  });
-
-  const handleLike = () => {
-    if (!isAuthenticated) {
-      toast.error('로그인이 필요합니다.');
-      return;
-    }
-    likeMutation.mutate();
-  };
-
-  return createPortal(
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="relative bg-white max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* 닫기 */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-gray-900 z-10"
-          aria-label="닫기"
-        >
-          <X size={20} />
-        </button>
-
-        {/* 이미지 — 확대 시 원본 비율 그대로(정사각 크롭 없이), 화면에 맞게 contain */}
-        <img src={image.url} alt="" className="w-full max-h-[75vh] object-contain bg-gray-50" />
-
-        {/* 정보 영역 */}
-        <div className="p-4">
-          {/* 작가 정보 */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => { onClose(); navigate(`/portfolio/${image.artist.id}`); }}
-              className="flex items-center gap-2 hover:opacity-70 transition-opacity"
-            >
-              {image.artist.avatar ? (
-                <img src={image.artist.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                  <User size={14} className="text-gray-400" />
-                </div>
-              )}
-              <span className="text-sm font-medium text-gray-900 hover:underline">
-                {displayName(image.artist)}
-              </span>
-            </button>
-
-            {/* 좋아요 */}
-            <div className="flex items-center gap-2">
-              <button onClick={handleLike} aria-label={image.isLiked ? '좋아요 취소' : '좋아요'}>
-                <Heart
-                  size={20}
-                  className={image.isLiked ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
-                />
-              </button>
-              {isOwner ? (
-                <button
-                  onClick={() => setShowLikers(!showLikers)}
-                  className="text-sm text-gray-500 underline underline-offset-2 cursor-pointer"
-                >
-                  {image.likeCount}
-                </button>
-              ) : (
-                <span className="text-sm text-gray-500">{image.likeCount}</span>
-              )}
-            </div>
-          </div>
-
-          {/* 좋아요한 사람 목록 (이미지 주인만) */}
-          <AnimatePresence>
-            {isOwner && showLikers && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden mt-3"
-              >
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs text-gray-400 mb-2">좋아요한 사람</p>
-                  {!likersData || likersData.likers.length === 0 ? (
-                    <p className="text-xs text-gray-300 py-2">아직 좋아요한 사람이 없습니다.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {likersData.likers.map((liker: any) => (
-                        <button
-                          key={liker.id}
-                          onClick={() => { onClose(); navigate(`/portfolio/${liker.id}`); }}
-                          className="flex items-center gap-2 text-sm text-gray-700 hover:underline"
-                        >
-                          {liker.avatar ? (
-                            <img src={liker.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
-                              <User size={10} className="text-gray-400" />
-                            </div>
-                          )}
-                          {liker.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </motion.div>
-    </motion.div>,
-    document.body
   );
 }

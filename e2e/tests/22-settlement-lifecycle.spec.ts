@@ -49,7 +49,7 @@ test('확정 → 작가 전시정보 수정 잠금(403)', async () => {
   const ok = await api.put(`${API}/operations/${exId}/me`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` }, data: { artworkList: [{ title: 'A', size: '', medium: '', year: '', price: '' }] } });
   expect(ok.status()).toBe(200);
   // 확정
-  await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { confirmed: true } });
+  await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { recruitmentClosed: true, confirmed: true } });
   const locked = await api.put(`${API}/operations/${exId}/me`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` }, data: { artworkList: [] } });
   expect(locked.status()).toBe(403);
   await api.dispose();
@@ -68,7 +68,7 @@ test('전시종료 → 정산 계산(갤러리:작가) + 작가 본인 정산 �
     ], cv: null, note: null },
   });
   // 전시종료
-  const ended = await (await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { ended: true } })).json();
+  const ended = await (await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { recruitmentClosed: true, confirmed: true, ended: true } })).json();
   expect(ended.ended).toBe(true);
   expect(ended.recruitmentClosed).toBe(true);
   // 판매작(0번) 100만 + 갤러리 30%
@@ -84,8 +84,15 @@ test('전시종료 → 정산 계산(갤러리:작가) + 작가 본인 정산 �
   expect(a.artistAmount).toBe(700000);
   expect(a.works.find((w: any) => w.index === 0).sold).toBe(true);
   expect(s.grand.total).toBe(1000000);
+  // 정산 2단계 승인제(286250c): 갤러리가 '확인 요청'을 보내야 작가에게 공개된다
+  const before = await (await api.get(`${API}/operations/${exId}/my-settlement`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` } })).json();
+  expect(before.artist, '확인 요청 전에는 작가에게 비공개').toBeNull();
+
+  await api.post(`${API}/operations/${exId}/settlement/request`, { headers: gAuth() });
+
   // 작가 본인 정산
   const mine = await (await api.get(`${API}/operations/${exId}/my-settlement`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` } })).json();
+  expect(mine.requested).toBe(true);
   expect(mine.artist.artistAmount).toBe(700000);
   await api.dispose();
 });
@@ -95,7 +102,7 @@ test('UI: 전시종료 후 갤러리 운영 페이지에 정산 섹션 표시', 
   const exId = await createApprovedExhibition(api, '정산UI ' + Date.now());
   await acceptArtist1(api, exId);
   await api.put(`${API}/operations/${exId}/me`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` }, data: { artworkList: [{ title: '작품X', size: '', medium: '', year: '', price: '', image: '' }] } });
-  await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { ended: true } });
+  await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { recruitmentClosed: true, confirmed: true, ended: true } });
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'gallery');

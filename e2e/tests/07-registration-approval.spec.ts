@@ -11,7 +11,7 @@ async function registerGallery(page: any, name: string) {
   await page.getByText('내 갤러리', { exact: false }).first().click();
   await page.getByRole('button', { name: '갤러리 등록' }).click();
   await page.getByPlaceholder('갤러리명').fill(name);
-  await page.getByPlaceholder('주소').fill('서울시 종로구 테스트로 1');
+  await page.getByPlaceholder('주소', { exact: true }).fill('서울시 종로구 테스트로 1');
   await page.getByPlaceholder('대표자명').fill('홍길동');
   await page.getByPlaceholder('전화번호').fill('02-1234-5678');
   await page.getByPlaceholder('갤러리 한줄 소개').fill('E2E 테스트용 갤러리입니다');
@@ -52,14 +52,14 @@ test('폼 검증: 필수 항목(갤러리명) 누락 시 등록 거절 + 안내'
   await gallery.page.getByText('내 갤러리', { exact: false }).first().click();
   await gallery.page.getByRole('button', { name: '갤러리 등록' }).click();
   // 갤러리명을 비운 채 나머지만 채우고 동의
-  await gallery.page.getByPlaceholder('주소').fill('주소만 입력');
+  await gallery.page.getByPlaceholder('주소', { exact: true }).fill('주소만 입력');
   await gallery.page.getByPlaceholder('대표자명').fill('홍길동');
   await gallery.page.getByPlaceholder('전화번호').fill('02-0000-0000');
   await gallery.page.getByPlaceholder('갤러리 한줄 소개').fill('소개');
   await gallery.page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
   await gallery.page.getByRole('button', { name: '등록 요청' }).first().click();
   // 필수 누락 안내 + 확인 다이얼로그로 진행되지 않음
-  await expect(gallery.page.locator('body')).toContainText('필수 항목을 모두 입력해주세요', { timeout: 8000 });
+  await expect(gallery.page.locator('body')).toContainText('다음 필수 항목을 입력해주세요', { timeout: 8000 });
   await expect(gallery.page.locator('body')).not.toContainText('갤러리 등록 요청이 제출되었습니다');
   await gallery.ctx.close();
 });

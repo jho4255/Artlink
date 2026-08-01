@@ -1,6 +1,7 @@
 import HeroSlider from '@/components/home/HeroSlider';
 import QuickActionCards from '@/components/home/QuickActionCards';
 import GalleryOfMonthSection from '@/components/home/GalleryOfMonth';
+import ExploreHighlight from '@/components/home/ExploreHighlight';
 
 export default function HomePage() {
   return (
@@ -17,6 +18,13 @@ export default function HomePage() {
       <section className="border-t border-gray-200 px-6 md:px-12 py-16 md:py-24">
         <div className="max-w-7xl mx-auto">
           <GalleryOfMonthSection />
+        </div>
+      </section>
+
+      {/* 둘러보기 하이라이트 — 좋아요가 홈 노출을 결정한다(참여 동기) */}
+      <section className="border-t border-gray-200 px-6 md:px-12 py-16 md:py-24">
+        <div className="max-w-7xl mx-auto">
+          <ExploreHighlight />
         </div>
       </section>
     </div>

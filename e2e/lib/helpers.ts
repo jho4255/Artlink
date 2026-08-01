@@ -35,7 +35,18 @@ export const settle = (page: Page, ms = 600) => page.waitForTimeout(ms);
 const API = 'http://localhost:4000/api';
 
 /**
- * 공모 지원 (고정 양식: 작가약력 필수 + 작품사진 1장 이상 필수).
+ * 백엔드가 요구하는 작가 지원 약관 버전을 소스에서 직접 읽는다.
+ * (버전이 올라가도 테스트가 조용히 400으로 깨지지 않도록 하드코딩하지 않는다)
+ */
+export function applyTermsVersion(): string {
+  const src = fs.readFileSync(path.resolve(process.cwd(), '../backend/src/lib/terms.ts'), 'utf-8');
+  const m = src.match(/ARTIST_APPLY_TERMS_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  if (!m) throw new Error('ARTIST_APPLY_TERMS_VERSION을 backend/src/lib/terms.ts에서 찾지 못했습니다.');
+  return m[1];
+}
+
+/**
+ * 공모 지원 (고정 양식: 작가약력 필수 + 작품사진 1장 이상 필수 + 약관 동의 필수).
  * E2E 셋업용 — APIRequestContext와 작가 토큰으로 유효 지원 1건 생성.
  */
 export async function applyToExhibition(
@@ -51,7 +62,32 @@ export async function applyToExhibition(
       career: { artFair: [{ year: '2025', content: 'E2E 아트페어' }], solo: [], group: [] },
       artworkImages: ['https://example.com/e2e-artwork.jpg'],
       portfolioFileUrl: null,
+      termsAgreed: true,
+      termsVersion: applyTermsVersion(),
       ...overrides,
     },
   });
+}
+
+/**
+ * 갤러리 지원자 관리 열기.
+ * 지원자 관리는 공모 상세가 아니라 **마이페이지 '내 공모'의 인라인 패널**로 옮겨졌다
+ * (공모 상세에는 '내 공모로 이동' 버튼만 있음). 제목으로 해당 카드를 특정해 펼친다.
+ */
+export async function openApplicantManager(page: Page, exhibitionTitle: string) {
+  await page.goto('/mypage?tab=my-exhibitions');
+  await expect(page.locator('body')).toContainText(exhibitionTitle, { timeout: 15000 });
+  const card = page.locator('div')
+    .filter({ hasText: exhibitionTitle })
+    .filter({ has: page.getByRole('button', { name: '지원자 관리' }) })
+    .last();
+  await card.getByRole('button', { name: '지원자 관리' }).click();
+}
+
+/** 백엔드 uploads 폴더에 실제 존재하는 이미지 URL (404 이미지는 SkeletonImage가 <img>를 렌더하지 않는다) */
+export function realUploadUrl(): string {
+  const dir = path.resolve(process.cwd(), '../backend/uploads');
+  const f = fs.readdirSync(dir).find(n => /\.(png|jpe?g|webp)$/i.test(n));
+  if (!f) throw new Error('backend/uploads 에 이미지 파일이 없습니다.');
+  return `/uploads/${f}`;
 }

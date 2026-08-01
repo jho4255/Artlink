@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, openApplicantManager } from '../lib/helpers';
 
 /**
  * 지원서(고정 양식) 갤러리 열람 + 등록 폼 약관(placeholder 아님) 검증.
@@ -21,8 +21,7 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${ex.id}`);
-  await page.getByText('지원자 관리', { exact: false }).click();
+  await openApplicantManager(page, ex.title);
   await expect(page.getByText('Artist 1', { exact: false }).first()).toBeVisible({ timeout: 10000 });
   // 지원자 펼치기 (이름 클릭은 포트폴리오 이동이므로 행의 펼치기 chevron 클릭) → 지원서 내용 표시
   await page.locator('svg.lucide-chevron-down').first().click();

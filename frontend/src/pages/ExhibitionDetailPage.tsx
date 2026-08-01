@@ -29,6 +29,7 @@ import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
+import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
@@ -60,6 +61,8 @@ type ExhibitionDetail = Exhibition & {
     ownerId?: number;
   };
   promoPhotos?: PromoPhoto[];
+  /** 이 공모에 초대받은 작가인지 (본인 기준) — 지원 버튼을 '간편 지원'으로 바꾼다 */
+  invited?: boolean;
 };
 
 type CustomAnswerDraft = Record<string, string | string[]>;
@@ -105,6 +108,8 @@ export default function ExhibitionDetailPage() {
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   // 지원 모달 상태 (고정 양식: 약력/경력/작품사진/포트폴리오 파일)
   const [showApplyModal, setShowApplyModal] = useState(false);
+  // 초대받은 공모는 지원서 없이 포트폴리오로 지원(간편 지원). 초대 안 받은 작가는 기존 지원 모달 그대로.
+  const [showInviteApply, setShowInviteApply] = useState(false);
   const [applyTerms, setApplyTerms] = useState('');
   const [applyAgreed, setApplyAgreed] = useState(false);
   const [applyBiography, setApplyBiography] = useState('');
@@ -511,15 +516,36 @@ export default function ExhibitionDetailPage() {
 
         {/* 액션 버튼 */}
         <div className="space-y-3 pt-2">
-          {/* Artist 지원하기 */}
+          {/* Artist 지원하기 — 초대받은 작가는 '간편 지원'으로 바뀐다 */}
           {isArtist && !isExpired && (
-            <button
-              onClick={openApplyModal}
-              disabled={applyMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-            >
-              <Send size={16} /> 지원하기
-            </button>
+            exhibition.invited ? (
+              <>
+                <button
+                  onClick={() => setShowInviteApply(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
+                >
+                  <Send size={16} /> 간편 지원
+                </button>
+                <p className="text-center text-xs text-gray-400">
+                  초대받은 공모예요. 지원서 작성 없이 내 포트폴리오로 지원됩니다.
+                </p>
+                <button
+                  onClick={openApplyModal}
+                  disabled={applyMutation.isPending}
+                  className="w-full text-center text-xs text-gray-400 hover:text-gray-700 underline underline-offset-2 cursor-pointer"
+                >
+                  지원서를 직접 작성해서 지원하기
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={openApplyModal}
+                disabled={applyMutation.isPending}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+              >
+                <Send size={16} /> 지원하기
+              </button>
+            )
           )}
 
           {/* 비로그인: 작은 회색 안내문은 놓치기 쉬워(지원 버튼이 아예 안 보인다는 오해) 눈에 띄는 CTA 버튼으로 안내 */}
@@ -875,6 +901,17 @@ export default function ExhibitionDetailPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 초대 간편 지원 모달 */}
+      {showInviteApply && (
+        <InviteApplyModal
+          exhibitionId={exhibition.id}
+          exhibitionTitle={exhibition.title}
+          galleryName={exhibition.gallery.name}
+          customFields={exhibition.customFields}
+          onClose={() => setShowInviteApply(false)}
+        />
+      )}
 
       {/* 이미지 확대 Lightbox (AnimatePresence로 exit 애니메이션 지원) */}
       <AnimatePresence>

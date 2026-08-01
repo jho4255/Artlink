@@ -17,15 +17,27 @@ test.beforeAll(async () => {
   const gTok = tokenFor('gallery');
   const aTok = tokenFor('artist');
 
-  // 갤러리의 승인된 공모 하나 선택
-  const myEx = await (await api.get(`${API}/exhibitions/my-exhibitions`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
-  const approved = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
-  if (!approved) throw new Error('승인된 시드 공모가 없습니다 — 시드 확인 필요');
-  exId = approved.id;
+  // 시드 공모는 마감일이 과거라 지원이 400이 된다(→ 지원 관계가 없어 메시지도 403).
+  // 매 실행마다 모집 중인 공모를 새로 만들어 '지원자 관계'를 확실히 성립시킨다.
+  const adTok = tokenFor('admin');
+  const gal = await (await api.get(`${API}/galleries`)).json();
+  const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
+  const today = new Date().toISOString().slice(0, 10);
+  const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
+  const ex = await (await api.post(`${API}/exhibitions`, {
+    headers: { Authorization: `Bearer ${gTok}` },
+    data: {
+      title: `메시지검증 ${Date.now()}`, type: 'SOLO', deadlineStart: today, deadline: future,
+      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
+      description: '메시지 E2E', galleryId,
+    },
+  })).json();
+  await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adTok}` }, data: { status: 'APPROVED' } });
+  exId = ex.id;
 
-  // 작가가 공모에 지원 (고정 양식: 약력 + 작품사진)
+  // 작가가 공모에 지원 (고정 양식: 약력 + 작품사진 + 약관동의)
   const applyRes = await applyToExhibition(api, exId, aTok);
-  expect([200, 201, 400, 409].includes(applyRes.status()), `지원 실패: ${applyRes.status()} ${await applyRes.text()}`).toBeTruthy();
+  expect(applyRes.status(), `지원 실패: ${applyRes.status()} ${await applyRes.text()}`).toBe(201);
   await api.dispose();
 });
 

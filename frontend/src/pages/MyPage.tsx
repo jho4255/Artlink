@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown, Wrench
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown, Wrench, Bookmark, Inbox
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -21,7 +21,9 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField } from '@/types';
+import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
+import InviteApplyModal from '@/components/shared/InviteApplyModal';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력(career) 표시용 — 카테고리별 라벨
@@ -193,7 +195,9 @@ export default function MyPage() {
     ? [
         { id: 'profile', label: '프로필', icon: Camera },
         { id: 'portfolio', label: '포트폴리오', icon: FileText },
+        { id: 'invites', label: '받은 초대', icon: Inbox },
         { id: 'favorites', label: '찜 목록', icon: Heart },
+        { id: 'liked-artworks', label: '좋아요한 작품', icon: Heart },
         { id: 'reviews', label: '내 리뷰', icon: Star },
         { id: 'applications', label: '지원 내역', icon: Send },
       ]
@@ -203,6 +207,7 @@ export default function MyPage() {
         { id: 'my-galleries', label: '내 갤러리', icon: Building2 },
         { id: 'my-exhibitions', label: '내 공모', icon: FileText },
         { id: 'my-shows', label: '내 전시', icon: Ticket },
+        { id: 'scraps', label: '관심 작품', icon: Bookmark },
       ]
     : [
         { id: 'profile', label: '프로필', icon: Camera },
@@ -256,7 +261,10 @@ export default function MyPage() {
       <div>
         {currentTab === 'profile' && <ProfileSection />}
         {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
+        {currentTab === 'invites' && user.role === 'ARTIST' && <ReceivedInvitesSection />}
         {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
+        {currentTab === 'liked-artworks' && user.role === 'ARTIST' && <LikedArtworksSection />}
+        {currentTab === 'scraps' && user.role === 'GALLERY' && <ArtworkScrapsSection />}
         {currentTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
         {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
         {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
@@ -937,13 +945,15 @@ function PortfolioImageGrid({
   onToggleExplore,
   maxCount = 30,
 }: {
-  images: { id: number; url: string; order: number; showInExplore?: boolean }[];
+  images: { id: number; url: string; order: number; showInExplore?: boolean; _count?: { likes: number } }[];
   onAdd: (url: string) => void;
   onRemove: (imageId: number) => void;
   onToggleExplore: (imageId: number) => void;
   maxCount?: number;
 }) {
   const [uploading, setUploading] = useState(false);
+  // 작품별 "좋아요한 사람" 목록 (인스타 방식) — 서버는 이미지 주인에게만 명단을 내려준다
+  const [likersImageId, setLikersImageId] = useState<number | null>(null);
   const [uploadCount, setUploadCount] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1027,6 +1037,18 @@ function PortfolioImageGrid({
               {img.showInExplore ? <Eye size={12} /> : <EyeOff size={12} />}
               {img.showInExplore ? '공개' : '비공개'}
             </button>
+            {/* 좋아요 수 (하단 우측) — 탭하면 누가 눌렀는지 명단이 열리고, 각 사람의 포트폴리오로 이동 */}
+            {(img._count?.likes ?? 0) > 0 && (
+              <button
+                onClick={() => setLikersImageId(img.id)}
+                className="absolute bottom-1 right-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium bg-white/85 text-[#c4302b] ring-1 ring-black/5 shadow-sm hover:bg-white cursor-pointer"
+                aria-label={`좋아요 ${img._count?.likes}개 — 누가 눌렀는지 보기`}
+                title="좋아요한 사람 보기"
+              >
+                <Heart size={12} className="fill-[#c4302b]" />
+                {img._count?.likes}
+              </button>
+            )}
           </div>
         ))}
         {images.length < maxCount && (
@@ -1061,6 +1083,10 @@ function PortfolioImageGrid({
           e.target.value = '';
         }}
       />
+
+      {likersImageId !== null && (
+        <ArtworkLikersModal imageId={likersImageId} onClose={() => setLikersImageId(null)} />
+      )}
     </div>
   );
 }
@@ -1213,6 +1239,315 @@ function FavoritesSection() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ========== Artist: 좋아요한 작품 (참여 동기 ① — 누른 게 나에게 남는다) ==========
+// 좋아요는 지금까지 눌러도 회수할 방법이 없었다. 모아 보여줘야 "다시 볼 것"으로서 의미가 생긴다.
+// 작가가 공개를 내린 작품은 서버에서 제외된다(작가 선택 존중).
+function LikedArtworksSection() {
+  const navigate = useNavigate();
+  const [selected, setSelected] = useState<ExploreImage | null>(null);
+  const { data, isLoading } = useQuery<{ images: ExploreImage[]; total: number }>({
+    queryKey: ['my-likes'],
+    queryFn: () => api.get('/explore/my-likes', { params: { limit: 60 } }).then(r => r.data),
+  });
+
+  if (isLoading) return <p className="text-gray-400 py-10 text-center">불러오는 중…</p>;
+  const images = data?.images ?? [];
+
+  if (images.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <Heart size={32} className="mx-auto text-gray-200 mb-3" />
+        <p className="text-gray-400 mb-4">아직 좋아요한 작품이 없습니다.</p>
+        <button onClick={() => navigate('/explore')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
+          둘러보기에서 작품 보기
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-400 mb-4">{data?.total ?? images.length}점</p>
+      <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
+        {images.map(img => (
+          <div key={img.id} className="relative aspect-square overflow-hidden group">
+            {/* 작품 클릭 → 원본 비율 확대 (둘러보기와 동일) */}
+            <button
+              onClick={() => setSelected(img)}
+              className="absolute inset-0 w-full h-full cursor-pointer"
+              aria-label="작품 크게 보기"
+            >
+              <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+            </button>
+            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+            {/* 작가 이름 클릭 → 작가 포트폴리오 */}
+            <button
+              onClick={() => navigate(`/portfolio/${img.artist.id}`)}
+              className="absolute bottom-1 left-1.5 right-1.5 text-[11px] text-white/90 truncate text-left hover:underline cursor-pointer"
+            >
+              {displayName(img.artist)}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {selected && (
+          <ArtworkDetailModal image={selected} onClose={() => setSelected(null)} onUpdate={setSelected} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ========== Artist: 받은 초대 (갤러리가 보낸 공모 초대) ==========
+// 초대는 알림일 뿐 자동 지원이 아니다 — 여기서 공모 상세로 이동해 직접 지원해야 한다.
+function ReceivedInvitesSection() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [applyTarget, setApplyTarget] = useState<ExhibitionInvite | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const { data, isLoading } = useQuery<{ invites: ExhibitionInvite[] }>({
+    queryKey: ['received-invites'],
+    queryFn: () => api.get('/exhibitions/invites/received').then(r => r.data),
+  });
+
+  // 삭제 = status DECLINED (행은 남긴다). 목록에서 완전히 사라지고, 갤러리도 재초대할 수 없다.
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.patch(`/exhibitions/invites/${id}`),
+    onSuccess: () => {
+      toast.success('초대를 삭제했습니다.');
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
+    },
+    onError: () => {
+      toast.error('삭제에 실패했습니다.');
+      setDeleteTarget(null);
+    },
+  });
+
+  if (isLoading) return <p className="text-gray-400 py-10 text-center">불러오는 중…</p>;
+  const invites = data?.invites ?? [];
+
+  if (invites.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <Inbox size={32} className="mx-auto text-gray-200 mb-3" />
+        <p className="text-gray-400 mb-1">받은 초대가 없습니다.</p>
+        <p className="text-sm text-gray-300">둘러보기에 작품을 공개하면 갤러리 눈에 띌 확률이 높아집니다.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {invites.map(inv => (
+        <div key={inv.id} className="border border-gray-200 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400">{inv.exhibition.gallery.name}</p>
+              <button
+                onClick={() => navigate(`/exhibitions/${inv.exhibition.id}`)}
+                className="text-base font-medium text-gray-900 hover:underline text-left cursor-pointer break-keep"
+              >
+                {inv.exhibition.title}
+              </button>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <span className="text-xs text-gray-500">{regionLabels[inv.exhibition.region] || inv.exhibition.region}</span>
+                {inv.closed ? (
+                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">모집 마감</span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 bg-[#c4302b]/10 text-[#c4302b] rounded-full">
+                    D-{getDday(inv.exhibition.deadline)}
+                  </span>
+                )}
+                {inv.applied && (
+                  <span className="text-xs px-2 py-0.5 bg-gray-900 text-white rounded-full">지원함</span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setDeleteTarget(inv.id)}
+              className="shrink-0 text-xs text-gray-400 hover:text-[#c4302b] cursor-pointer"
+            >
+              삭제
+            </button>
+          </div>
+
+          {inv.message && (
+            <p className="mt-3 text-sm text-gray-600 bg-gray-50 rounded px-3 py-2 whitespace-pre-wrap break-all">
+              {inv.message}
+            </p>
+          )}
+
+          {!inv.applied && !inv.closed && (
+            <div className="mt-3">
+              <div className="flex flex-wrap gap-2">
+                {/* 초대받은 공모는 지원서를 다시 쓰지 않는다 — 포트폴리오가 그대로 전달된다 */}
+                <button
+                  onClick={() => setApplyTarget(inv)}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm cursor-pointer"
+                >
+                  간편 지원
+                </button>
+                <button
+                  onClick={() => navigate(`/exhibitions/${inv.exhibition.id}`)}
+                  className="px-4 py-2 border border-gray-200 text-gray-700 text-sm cursor-pointer hover:bg-gray-50"
+                >
+                  공모 상세 보기
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-gray-400">
+                지원서 작성 없이 내 포트폴리오로 지원됩니다. 수락 여부는 갤러리가 결정합니다.
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="초대 삭제"
+        message="이 초대를 삭제할까요? 목록에서 사라지며 되돌릴 수 없습니다."
+        confirmText="삭제"
+        variant="danger"
+        onConfirm={() => deleteTarget !== null && deleteMutation.mutate(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {applyTarget && (
+        <InviteApplyModal
+          exhibitionId={applyTarget.exhibition.id}
+          exhibitionTitle={applyTarget.exhibition.title}
+          galleryName={applyTarget.exhibition.gallery.name}
+          customFields={applyTarget.exhibition.customFields}
+          onClose={() => setApplyTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== Gallery: 관심 작품 (비공개 스카우팅 보드) ==========
+// ⚠️ 스크랩 사실은 작가에게 노출되지 않는다. 초대를 보내야 비로소 알려진다.
+function ArtworkScrapsSection() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [memoDraft, setMemoDraft] = useState('');
+  const [selected, setSelected] = useState<ExploreImage | null>(null);
+
+  const { data, isLoading } = useQuery<{ scraps: ArtworkScrap[] }>({
+    queryKey: ['artwork-scraps'],
+    queryFn: () => api.get('/explore/scraps').then(r => r.data),
+  });
+
+  const memoMutation = useMutation({
+    mutationFn: ({ id, memo }: { id: number; memo: string }) => api.patch(`/explore/scraps/${id}`, { memo }),
+    onSuccess: () => {
+      setEditingId(null);
+      toast.success('메모를 저장했습니다.');
+      queryClient.invalidateQueries({ queryKey: ['artwork-scraps'] });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (imageId: number) => api.post(`/explore/${imageId}/scrap`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['artwork-scraps'] });
+      queryClient.invalidateQueries({ queryKey: ['explore'] });
+    },
+  });
+
+  if (isLoading) return <p className="text-gray-400 py-10 text-center">불러오는 중…</p>;
+  const scraps = data?.scraps ?? [];
+
+  if (scraps.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <Bookmark size={32} className="mx-auto text-gray-200 mb-3" />
+        <p className="text-gray-400 mb-4">저장한 작품이 없습니다.</p>
+        <button onClick={() => navigate('/explore')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
+          둘러보기에서 작가 찾기
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-400 mb-4">
+        {scraps.length}점 · 저장 사실은 작가에게 보이지 않습니다.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {scraps.map(s => (
+          <div key={s.id} className="border border-gray-200">
+            {/* 이미지 클릭 → 원본 비율 확대 (작가 이동은 아래 이름 클릭) */}
+            <button
+              onClick={() => setSelected(s.image)}
+              className="block w-full aspect-square overflow-hidden cursor-pointer"
+              aria-label="작품 크게 보기"
+            >
+              <img src={s.image.url} alt="" className="w-full h-full object-cover hover:opacity-80 transition-opacity" loading="lazy" />
+            </button>
+            <div className="p-3">
+              <button
+                onClick={() => navigate(`/portfolio/${s.image.artist.id}`)}
+                className="text-sm font-medium text-gray-900 hover:underline cursor-pointer"
+              >
+                {displayName(s.image.artist)}
+              </button>
+
+              {editingId === s.id ? (
+                <div className="mt-2">
+                  <textarea
+                    value={memoDraft}
+                    onChange={(e) => setMemoDraft(e.target.value.slice(0, 500))}
+                    rows={2}
+                    placeholder="메모 (나만 봅니다)"
+                    className="w-full border border-gray-200 px-2 py-1.5 text-sm resize-none focus:outline-none focus:border-gray-900"
+                  />
+                  <div className="flex gap-2 mt-1.5">
+                    <button
+                      onClick={() => memoMutation.mutate({ id: s.id, memo: memoDraft })}
+                      className="px-3 py-1 bg-gray-900 text-white text-xs cursor-pointer"
+                    >
+                      저장
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="px-3 py-1 border border-gray-200 text-xs cursor-pointer">
+                      취소
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingId(s.id); setMemoDraft(s.memo || ''); }}
+                  className="block w-full text-left mt-1.5 text-xs text-gray-500 hover:text-gray-900 cursor-pointer"
+                >
+                  {s.memo || '+ 메모 추가'}
+                </button>
+              )}
+
+              <button
+                onClick={() => removeMutation.mutate(s.image.id)}
+                className="mt-2 text-xs text-gray-300 hover:text-[#c4302b] cursor-pointer"
+              >
+                저장 해제
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {selected && (
+          <ArtworkDetailModal image={selected} onClose={() => setSelected(null)} onUpdate={setSelected} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

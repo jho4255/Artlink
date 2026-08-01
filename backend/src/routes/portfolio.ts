@@ -45,7 +45,7 @@ router.get('/:userId', async (req, res, next) => {
 
     let portfolio = await prisma.portfolio.findUnique({
       where: { userId },
-      include: { images: { orderBy: { order: 'asc' } } },
+      include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } },
     });
 
     // 포트폴리오가 없으면 빈 데이터 반환
@@ -67,12 +67,12 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     let portfolio = await prisma.portfolio.findUnique({
       where: { userId: req.user!.id },
-      include: { images: { orderBy: { order: 'asc' } } }
+      include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
     });
     if (!portfolio) {
       portfolio = await prisma.portfolio.create({
         data: { userId: req.user!.id },
-        include: { images: { orderBy: { order: 'asc' } } }
+        include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
       });
     }
     res.json({ ...portfolio, career: parseCareer(portfolio.career) });
@@ -91,7 +91,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       where: { userId: req.user!.id },
       update: data,
       create: { userId: req.user!.id, ...data },
-      include: { images: { orderBy: { order: 'asc' } } }
+      include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
     });
     res.json({ ...portfolio, career: parseCareer(portfolio.career) });
   } catch (error) { next(error); }

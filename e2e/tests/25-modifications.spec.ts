@@ -86,20 +86,25 @@ test('#12 정산 결제수단(카드/현금) 저장·조회', async () => {
 });
 
 // ───────── #15 지원 연락처는 '수락' 시에만 노출 ─────────
-test('#15 지원자 연락처(이메일/전화)는 수락 시에만 갤러리에 노출', async () => {
+test('#15 지원자 연락처는 지원 시점부터 갤러리에 노출(지원 약관 고지) — 다른 갤러리에는 비노출', async () => {
   const api = await pwRequest.newContext();
   const exId = await createApprovedExhibition(api, '연락처 ' + Date.now());
   await applyToExhibition(api, exId, tokenFor('artist2'));
 
-  let apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
-  let app = (apps.applications || apps).find((a: any) => a.user.id === userIds().artist2);
-  expect(app.user.email).toBeNull();
-  expect(app.user.phone).toBeNull();
+  // 정책 변경(4a1e2ce): 수락 전이라도 지원 시점부터 오너에게 연락처 공개 (약관에서 고지)
+  const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
+  const app = (apps.applications || apps).find((a: any) => a.user.id === userIds().artist2);
+  expect(app.status, '수락 전 상태').toBe('SUBMITTED');
+  expect(app.user.email, '지원 시점부터 이메일 노출').toBeTruthy();
 
-  await api.patch(`${API}/exhibitions/${exId}/applications/${app.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
-  apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
-  app = (apps.applications || apps).find((a: any) => a.user.id === userIds().artist2);
-  expect(app.user.email).toBeTruthy();
+  // 공모 소유자가 아닌 갤러리 계정은 지원자 목록 자체에 접근 불가
+  const other = await (await api.post(`${API}/auth/signup`, {
+    data: { email: `otherg${Date.now()}@e2e.test`, password: 'e2e-pass-1234', name: '타갤러리', role: 'GALLERY' },
+  })).json();
+  const denied = await api.get(`${API}/exhibitions/${exId}/applications`, {
+    headers: { Authorization: `Bearer ${other.token}` },
+  });
+  expect(denied.status(), '남의 공모 지원자 목록 접근 차단').toBe(403);
   await api.dispose();
 });
 

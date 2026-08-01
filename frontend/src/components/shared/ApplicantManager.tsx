@@ -201,6 +201,10 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                     ) : (
                       <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">이 갤러리 {app.galleryApplicationOrder}번째</span>
                     )}
+                    {/* 내가 둘러보기에서 초대한 작가 — 지원서 없이 포트폴리오로 간편 지원한 건이라 구분해서 보여준다 */}
+                    {app.invited && (
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-900 text-white whitespace-nowrap">초대한 작가</span>
+                    )}
                   </div>
                   <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:shrink-0">
                     {app.status === 'ACCEPTED' && !allowRevert ? (

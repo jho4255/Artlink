@@ -404,6 +404,188 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
   } catch (error) { next(error); }
 });
 
+// ── 공모 초대 (갤러리 → 작가) ──────────────────────────────────────────────
+// 둘러보기에서 발견한 작가를 자기 공모로 부르는 기능. 초대는 '알림'일 뿐 자동 지원이 아니다
+// (커스텀 질문이 있으므로 작가가 직접 지원해야 한다).
+// 스팸이 되기 쉬운 기능이라 아래 상한을 반드시 지킨다.
+const INVITE_MAX_PER_EXHIBITION = 100; // 공모 하나당 초대 총량
+const INVITE_MAX_PER_DAY = 10;         // 갤러리 계정당 하루 초대 수 (무분별한 초대 방지)
+
+/**
+ * 정원이 찬 공모 판정 — 거절(REJECTED)은 정원에서 빠진다(거절 시 슬롯 복구 규칙과 동일).
+ * 지원 API의 정원 계산과 반드시 같은 기준을 써야 "초대는 보이는데 지원은 실패"가 생기지 않는다.
+ */
+async function activeApplicationCounts(exhibitionIds: number[]): Promise<Map<number, number>> {
+  if (exhibitionIds.length === 0) return new Map();
+  const grouped = await prisma.application.groupBy({
+    by: ['exhibitionId'],
+    where: { exhibitionId: { in: exhibitionIds }, status: { not: 'REJECTED' } },
+    _count: { _all: true },
+  });
+  return new Map(grouped.map(g => [g.exhibitionId, g._count._all]));
+}
+
+// GET /invites/received — 작가가 받은 초대 목록 (작가가 삭제한 것 제외)
+router.get('/invites/received', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const invites = await prisma.exhibitionInvite.findMany({
+      where: { artistId: req.user!.id, status: { not: 'DECLINED' } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        exhibition: {
+          select: {
+            id: true, title: true, type: true, region: true, deadline: true, imageUrl: true,
+            status: true, recruitmentClosed: true, confirmed: true, ended: true,
+            capacity: true, // 정원이 찬 초대를 목록에서 걷어내기 위해 필요
+            customFields: true, // 간편 지원 모달에서 갤러리가 물은 추가 질문만 받기 위해 필요
+            gallery: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    // 내가 이미 지원한 공모인지 표시 (지원 버튼 대신 '지원함' 배지)
+    const appliedIds = new Set(
+      (await prisma.application.findMany({
+        where: { userId: req.user!.id, exhibitionId: { in: invites.map(i => i.exhibitionId) } },
+        select: { exhibitionId: true },
+      })).map(a => a.exhibitionId)
+    );
+    const activeCounts = await activeApplicationCounts(invites.map(i => i.exhibitionId));
+
+    const mapped = invites.map(i => ({
+      id: i.id,
+      message: i.message,
+      status: i.status,
+      createdAt: i.createdAt,
+      applied: appliedIds.has(i.exhibitionId),
+      closed: i.exhibition.recruitmentClosed || i.exhibition.confirmed || i.exhibition.ended
+        || isDeadlinePassedKst(i.exhibition.deadline),
+      full: (activeCounts.get(i.exhibitionId) ?? 0) >= i.exhibition.capacity,
+      exhibition: { ...i.exhibition, customFields: parseCustomFields(i.exhibition.customFields) },
+    }));
+
+    // 정원이 찬 공모의 초대는 목록에서 자동으로 걷어낸다 — 눌러도 실패할 초대를 남겨두지 않기 위함.
+    // ⚠️ DB에서 지우지는 않는다: 거절이 나오면 슬롯이 복구되므로(거절은 정원에서 제외) 그때 다시 유효해진다.
+    //    이미 지원한 건은 상태 확인이 필요하므로 정원과 무관하게 남긴다.
+    res.json({ invites: mapped.filter(i => i.applied || !i.full) });
+  } catch (error) { next(error); }
+});
+
+// PATCH /invites/:id — 작가가 받은 초대를 삭제. 본인 것만.
+// 행을 지우지 않고 status를 DECLINED로 두는 이유: 유니크 제약(exhibitionId+artistId)이 살아 있어야
+// 갤러리가 같은 작가에게 다시 초대를 보내는 '재초대 스팸'이 막힌다. 작가 목록에서는 완전히 사라진다.
+router.patch('/invites/:id', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const invite = await prisma.exhibitionInvite.findUnique({ where: { id } });
+    if (!invite || invite.artistId !== req.user!.id) throw new AppError('초대를 찾을 수 없습니다.', 404);
+    await prisma.exhibitionInvite.update({ where: { id }, data: { status: 'DECLINED' } });
+    res.json({ id, status: 'DECLINED' });
+  } catch (error) { next(error); }
+});
+
+// POST /:id/invite — 작가 초대 (공모 소유 갤러리만)
+router.post('/:id/invite', authenticate, authorize('GALLERY'), async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const artistId = parseInt(req.body?.artistId);
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 300) : null;
+    if (!Number.isInteger(artistId) || artistId <= 0) throw new AppError('작가를 선택해주세요.', 400);
+
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id: exhibitionId },
+      include: { gallery: { select: { ownerId: true, name: true } } },
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    // 모집 중인 공모만 초대 가능
+    if (exhibition.status !== 'APPROVED') throw new AppError('승인된 공모만 초대할 수 있습니다.', 400);
+    if (exhibition.recruitmentClosed || exhibition.confirmed || exhibition.ended) {
+      throw new AppError('모집이 마감된 공모는 초대할 수 없습니다.', 400);
+    }
+    if (isDeadlinePassedKst(exhibition.deadline)) throw new AppError('마감된 공모는 초대할 수 없습니다.', 400);
+
+    // 정원이 이미 찼으면 초대해도 지원할 수 없으므로 애초에 막는다(거절은 정원에서 제외)
+    const activeCount = await prisma.application.count({
+      where: { exhibitionId, status: { not: 'REJECTED' } },
+    });
+    if (activeCount >= exhibition.capacity) {
+      throw new AppError('모집 인원이 마감된 공모입니다.', 400);
+    }
+
+    const artist = await prisma.user.findFirst({
+      where: { id: artistId, role: 'ARTIST', deletedAt: null },
+      select: { id: true },
+    });
+    if (!artist) throw new AppError('작가를 찾을 수 없습니다.', 404);
+
+    const applied = await prisma.application.findFirst({
+      where: { exhibitionId, userId: artistId },
+      select: { id: true },
+    });
+    if (applied) throw new AppError('이미 이 공모에 지원한 작가입니다.', 400);
+
+    const dup = await prisma.exhibitionInvite.findUnique({
+      where: { exhibitionId_artistId: { exhibitionId, artistId } },
+      select: { id: true },
+    });
+    if (dup) throw new AppError('이미 초대한 작가입니다.', 409);
+
+    // 스팸 상한
+    const [perExhibition, perDay] = await Promise.all([
+      prisma.exhibitionInvite.count({ where: { exhibitionId } }),
+      prisma.exhibitionInvite.count({
+        where: { senderId: req.user!.id, createdAt: { gte: new Date(Date.now() - 86400000) } },
+      }),
+    ]);
+    if (perExhibition >= INVITE_MAX_PER_EXHIBITION) {
+      throw new AppError(`한 공모에는 최대 ${INVITE_MAX_PER_EXHIBITION}명까지 초대할 수 있습니다.`, 400);
+    }
+    if (perDay >= INVITE_MAX_PER_DAY) {
+      throw new AppError(`하루에 최대 ${INVITE_MAX_PER_DAY}명까지 초대할 수 있습니다. 내일 다시 시도해주세요.`, 400);
+    }
+
+    const invite = await prisma.exhibitionInvite.create({
+      data: { exhibitionId, artistId, senderId: req.user!.id, message },
+    });
+
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: artistId,
+          type: 'EXHIBITION_INVITE',
+          // 조사 문제를 피하려고 "에서"를 쓴다(갤러리명 받침 유무와 무관하게 자연스럽다)
+          message: `${exhibition.gallery.name}에서 회원님을 "${exhibition.title}" 공모에 초대했습니다.`,
+          linkUrl: `/exhibitions/${exhibitionId}`,
+          refKey: `invite:${invite.id}`,
+        },
+      });
+    } catch { /* best-effort */ }
+
+    res.status(201).json({ id: invite.id, artistId, status: invite.status });
+  } catch (error) { next(error); }
+});
+
+// GET /:id/invites — 이 공모에 이미 초대한 작가 id 목록 (버튼 상태 표시용, 소유 갤러리만)
+router.get('/:id/invites', authenticate, authorize('GALLERY'), async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id: exhibitionId },
+      include: { gallery: { select: { ownerId: true } } },
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+
+    const invites = await prisma.exhibitionInvite.findMany({
+      where: { exhibitionId },
+      select: { artistId: true },
+    });
+    res.json({ artistIds: invites.map(i => i.artistId) });
+  } catch (error) { next(error); }
+});
+
 router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
@@ -448,6 +630,23 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
     await bumpViewCount('exhibition', exhibition.id, (exhibition.gallery as any).owner?.id, req.user);
 
+    // 이 공모에 초대받은 작가인지 (상세 페이지에서 '간편 지원' 버튼으로 전환하기 위함).
+    // 본인 것만 조회하므로 다른 사람의 초대 여부는 응답에 섞이지 않는다.
+    // 정원이 이미 찼으면 false — 눌러도 실패할 '간편 지원' 버튼을 보여주지 않는다(받은 초대 목록과 동일 규칙).
+    let invited = false;
+    if (req.user?.role === 'ARTIST') {
+      const hasInvite = await prisma.exhibitionInvite.findFirst({
+        where: { exhibitionId, artistId: req.user.id, status: 'SENT' },
+        select: { id: true },
+      });
+      if (hasInvite) {
+        const active = await prisma.application.count({
+          where: { exhibitionId, status: { not: 'REJECTED' } },
+        });
+        invited = active < exhibition.capacity;
+      }
+    }
+
     // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록.
     // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트).
     const { owner, ...galleryRest } = exhibition.gallery as any;
@@ -456,6 +655,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       customFields: parseCustomFields(exhibition.customFields),
       gallery: maskGallery({ ...galleryRest, ownerId: owner?.id }),
       isFavorited,
+      invited,
     });
   } catch (error) { next(error); }
 });
@@ -532,18 +732,49 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       throw new AppError('모집 인원이 마감되었습니다.', 400);
     }
 
-    // 필수 검증: 작가 약력
-    if (!biography || !String(biography).trim()) {
-      throw new AppError('작가 약력을 입력해주세요.', 400);
-    }
-    // 필수 검증: 작품 사진 1장 이상 (최대 10장)
-    const images: string[] = (Array.isArray(artworkImages) ? artworkImages : [])
-      .map((u) => safeFileUrl(u))
-      .filter((u): u is string => !!u);
-    if (images.length < 1) throw new AppError('작품 사진을 1장 이상 첨부해주세요.', 400);
-    if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
+    // 초대 간편 지원 — 갤러리가 이미 작품을 보고 부른 것이므로 지원서를 다시 쓰지 않는다.
+    // 약력·작품·경력·포트폴리오 파일을 작가의 포트폴리오에서 그대로 가져와 첨부한다.
+    // (약관 동의와 필수 추가질문은 그대로 받는다 — 법적 요건이고 갤러리가 직접 물은 항목이므로)
+    const pendingInvite = await prisma.exhibitionInvite.findFirst({
+      where: { exhibitionId, artistId: req.user!.id, status: 'SENT' },
+      select: { id: true },
+    });
+    const viaInvite = !!pendingInvite && req.body?.viaInvite === true;
 
-    const careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
+    let bioValue: string;
+    let images: string[];
+    let careerStr: string | null;
+    let fileUrl: string | null;
+
+    if (viaInvite) {
+      const portfolio = await prisma.portfolio.findUnique({
+        where: { userId: req.user!.id },
+        include: { images: { orderBy: { order: 'asc' }, take: 10 } },
+      });
+      images = (portfolio?.images ?? [])
+        .map((i) => safeFileUrl(i.url))
+        .filter((u): u is string => !!u);
+      if (images.length < 1) {
+        throw new AppError('포트폴리오에 작품 사진이 없어 간편 지원할 수 없습니다. 포트폴리오에 작품을 등록한 뒤 다시 시도해주세요.', 400);
+      }
+      bioValue = (portfolio?.biography || '').trim() || '(초대 지원 — 작가 포트폴리오 참조)';
+      careerStr = portfolio?.career ?? null;
+      fileUrl = safeFileUrl(portfolio?.portfolioFileUrl);
+    } else {
+      // 필수 검증: 작가 약력
+      if (!biography || !String(biography).trim()) {
+        throw new AppError('작가 약력을 입력해주세요.', 400);
+      }
+      // 필수 검증: 작품 사진 1장 이상 (최대 10장)
+      images = (Array.isArray(artworkImages) ? artworkImages : [])
+        .map((u) => safeFileUrl(u))
+        .filter((u): u is string => !!u);
+      if (images.length < 1) throw new AppError('작품 사진을 1장 이상 첨부해주세요.', 400);
+      if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
+      bioValue = String(biography).trim();
+      careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
+      fileUrl = safeFileUrl(portfolioFileUrl);
+    }
     const customFields = parseCustomFields(exhibitionData.customFields) ?? [];
     const normalizedCustomAnswers = normalizeCustomAnswers(customAnswers, customFields);
     if (termsAgreed !== true || termsVersion !== ARTIST_APPLY_TERMS_VERSION) {
@@ -562,10 +793,10 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         data: {
           userId: req.user!.id,
           exhibitionId,
-          biography: String(biography).trim(),
+          biography: bioValue,
           career: careerStr,
           artworkImages: JSON.stringify(images),
-          portfolioFileUrl: safeFileUrl(portfolioFileUrl),
+          portfolioFileUrl: fileUrl,
           termsAgreedAt: new Date(),
           termsVersion: ARTIST_APPLY_TERMS_VERSION,
           termsTextHash: ARTIST_APPLY_TERMS_HASH,
@@ -585,11 +816,21 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
           data: {
             userId: galleryOwner.gallery.ownerId,
             type: 'NEW_APPLICANT',
-            message: `"${galleryOwner.gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
+            message: viaInvite
+              ? `초대한 작가(${req.user!.name})가 "${exhibitionData.title}" 공모에 지원했습니다. 수락 여부를 결정해주세요.`
+              : `"${galleryOwner.gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
             linkUrl: `/exhibitions/${exhibitionId}`,
           },
         });
       }
+    } catch { /* best-effort */ }
+
+    // 초대받아 지원한 경우 초대 상태를 APPLIED로 (받은 초대 목록에서 '지원함'으로 표시)
+    try {
+      await prisma.exhibitionInvite.updateMany({
+        where: { exhibitionId, artistId: req.user!.id, status: 'SENT' },
+        data: { status: 'APPLIED' },
+      });
     } catch { /* best-effort */ }
 
     res.status(201).json(application);
@@ -694,6 +935,14 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
     // 갤러리 단위 지원 횟수/순번/첫지원 여부 계산
     const stats = await galleryApplicationStats(exhibition.galleryId, applications.map(a => a.userId));
 
+    // 내가 초대해서 지원한 작가 표시 (지원서를 다시 쓰지 않는 간편 지원이므로 구분해서 보여준다)
+    const invitedIds = new Set(
+      (await prisma.exhibitionInvite.findMany({
+        where: { exhibitionId, artistId: { in: applications.map(a => a.userId) } },
+        select: { artistId: true },
+      })).map(i => i.artistId)
+    );
+
     // 지원서 고정 양식 필드 파싱 + 갤러리 지원 통계 부착
     // 연락처(이메일/전화)는 지원 시점부터 갤러리 오너에게 노출 (지원 동의 문구에서 고지). 상태 무관.
     const parsed = applications.map((app: any) => {
@@ -702,6 +951,7 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
         career: safeJson(app.career, null),
         artworkImages: safeJson<string[]>(app.artworkImages, []),
         customAnswers: safeJson(app.customAnswers, []),
+        invited: invitedIds.has(app.userId),
         ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
       };
     });

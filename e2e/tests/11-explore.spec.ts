@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, realUploadUrl } from '../lib/helpers';
 
 /**
  * 탐색(Explore): 포트폴리오 이미지를 '둘러보기 공개'로 켜면 피드에 노출 + 좋아요 반영.
@@ -14,7 +14,7 @@ test('포트폴리오 이미지 공개 토글 → 탐색 피드 노출 + 좋아�
   let pf = await (await api.get(`${API}/portfolio`, { headers: { Authorization: `Bearer ${aTok}` } })).json();
   let img = (pf.images || [])[0];
   if (!img) {
-    img = await (await api.post(`${API}/portfolio/images`, { headers: { Authorization: `Bearer ${aTok}` }, data: { url: '/uploads/art1.png' } })).json();
+    img = await (await api.post(`${API}/portfolio/images`, { headers: { Authorization: `Bearer ${aTok}` }, data: { url: realUploadUrl() } })).json();
   }
   if (!img.showInExplore) {
     await api.patch(`${API}/portfolio/images/${img.id}/explore`, { headers: { Authorization: `Bearer ${aTok}` } });

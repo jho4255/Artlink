@@ -32,6 +32,8 @@ test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 �
   await expect(page.getByText('지원서 작성', { exact: false })).toBeVisible({ timeout: 8000 });
 
   // 1) 빈 제출 → 검증 토스트
+  // 제출 버튼은 '약관 동의' 전까지 disabled → 먼저 동의한 뒤 빈 상태로 제출해 검증을 확인한다
+  await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
   await page.getByRole('button', { name: '지원하기' }).last().click();
   await expect(page.locator('body')).toContainText('다음 항목을 확인해주세요', { timeout: 8000 });
 
