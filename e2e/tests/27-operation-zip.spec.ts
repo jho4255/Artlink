@@ -138,3 +138,53 @@ test('이미지를 못 받으면 조용히 빠지지 않고 실패 목록을 알
   await api.dispose();
   await ctx.close();
 });
+
+test('★ 진행률은 버튼에 표시되어 작업 내내 끊기지 않는다 (사라졌다 생기던 문제)', async ({ browser }) => {
+  const api = await pwRequest.newContext();
+  const { exId } = await seedOperation(api, 10);
+
+  const { page, ctx } = await openAs(browser, 'gallery');
+  // 갱신 간격을 벌려(동시 5개 × 4초) 진행률이 오래 유지되어야 하는 상황을 만든다
+  await page.route('**/*.r2.dev/**', async (route) => {
+    await new Promise((r) => setTimeout(r, 4000));
+    await route.continue();
+  });
+
+  await page.goto(`/exhibitions/${exId}/operation`);
+  const btn = page.getByRole('button', { name: /작품 원본/ }).first();
+  await expect(btn).toBeVisible({ timeout: 20000 });
+  await btn.click();
+
+  // 진행 중에는 버튼 라벨이 "이미지 N/M장"으로 바뀐다(토스트와 달리 사라질 수 없다)
+  const working = page.locator('button', { hasText: /이미지 \d+\/\d+장|모으는 중/ });
+  await expect(working.first()).toBeVisible({ timeout: 20_000 });
+
+  // 연속 관찰: 작업이 끝날 때까지 한 번도 공백이 없어야 한다
+  let gaps = 0, samples = 0, sawCount = false;
+  for (let i = 0; i < 120; i++) {
+    const st = await page.evaluate(() => {
+      const t = document.body.innerText;
+      return {
+        working: /이미지 \d+\/\d+장/.test(t) || t.includes('모으는 중'),
+        counted: /이미지 \d+\/\d+장/.test(t),
+        done: t.includes('ZIP 다운로드 시작'),
+      };
+    });
+    if (st.done) break;
+    samples += 1;
+    if (st.counted) sawCount = true;
+    if (!st.working) gaps += 1;
+    await page.waitForTimeout(120);
+  }
+
+  expect(samples, '관찰이 유효할 만큼 오래 진행되어야 한다').toBeGreaterThan(30);
+  expect(sawCount, '실제 진행 숫자(N/M장)가 노출되어야 한다').toBe(true);
+  expect(gaps, `진행 표시가 ${gaps}/${samples}회 사라졌다`).toBe(0);
+
+  await expect(page.locator('body')).toContainText('ZIP 다운로드 시작', { timeout: 60_000 });
+  // 끝나면 원래 라벨로 복귀
+  await expect(page.getByRole('button', { name: '작품 원본(ZIP)' }).first()).toBeVisible({ timeout: 15_000 });
+
+  await api.dispose();
+  await ctx.close();
+});

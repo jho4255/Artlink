@@ -1017,6 +1017,10 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const [captioning, setCaptioning] = useState(false);
   const [imgZipping, setImgZipping] = useState(false);
   const [artistImgZipping, setArtistImgZipping] = useState<number | null>(null);
+  // 진행률은 토스트가 아니라 **버튼에 직접** 표시한다. 토스트는 성격상 사라질 수 있어
+  // "몇 장째 불러오는 중"이 깜빡인다는 신고가 있었다(2026-08). 버튼 라벨은 작업이 끝날 때까지 유지된다.
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
+  const progressText = progress ? `${progress.label} ${progress.done}/${progress.total}` : null;
   const [detailTab, setDetailTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
 
   const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
@@ -1032,19 +1036,14 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     try {
       const { downloadAllSubmissionsZip } = await import('@/lib/operationPdf');
       await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
-        // 진행률을 실시간으로 보여줘야 "멈춘 건지" 알 수 있다(예전엔 스피너만 돌았다)
-        toast.loading(
-          phase === 'images'
-            ? `작품 이미지 ${done}/${total}장 불러오는 중...`
-            : `PDF ${done}/${total}개 만드는 중...`,
-          { id: t },
-        );
+        setProgress({ done, total, label: phase === 'images' ? '이미지' : 'PDF' });
       });
       toast.success('ZIP 다운로드를 시작합니다.', { id: t });
     } catch (e) {
       toast.error('PDF 생성에 실패했습니다.', { id: t });
     } finally {
       setZipping(false);
+      setProgress(null);
     }
   };
 
@@ -1079,7 +1078,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
       const { downloadAllArtworkImagesZip } = await import('@/lib/operationPdf');
       const { ok, fail, failed } = await downloadAllArtworkImagesZip(
         exhibitionTitle, data, undefined,
-        (done, total) => toast.loading(`작품 원본 ${done}/${total}장 모으는 중...`, { id: t }),
+        (done, total) => setProgress({ done, total, label: '이미지' }),
       );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else if (fail > 0) {
@@ -1088,7 +1087,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
         toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}${failed.length > 5 ? `\n외 ${failed.length - 5}건` : ''}`, { duration: 8000 });
       } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
-    finally { setImgZipping(false); }
+    finally { setImgZipping(false); setProgress(null); }
   };
 
   // 개별 작가 작품 원본 이미지 다운로드 (jpg ZIP)
@@ -1101,7 +1100,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
       const zipName = `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`;
       const { ok, fail, failed } = await downloadAllArtworkImagesZip(
         exhibitionTitle, [row], zipName,
-        (done, total) => toast.loading(`작품 원본 ${done}/${total}장 모으는 중...`, { id: t }),
+        (done, total) => setProgress({ done, total, label: '이미지' }),
       );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else if (fail > 0) {
@@ -1109,7 +1108,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
         toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}`, { duration: 8000 });
       } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
-    finally { setArtistImgZipping(null); }
+    finally { setArtistImgZipping(null); setProgress(null); }
   };
 
   return (
@@ -1126,11 +1125,11 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
               </button>
               <button onClick={downloadImages} disabled={imgZipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
                 {imgZipping ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-                {imgZipping ? '모으는 중...' : '작품 원본(ZIP)'}
+                {imgZipping ? (progressText ? `${progressText}장` : '모으는 중...') : '작품 원본(ZIP)'}
               </button>
               <button onClick={downloadAllZip} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50">
                 {zipping ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-                {zipping ? '생성 중...' : '전체 PDF (ZIP)'}
+                {zipping ? (progressText ? `${progressText}` : '생성 중...') : '전체 PDF (ZIP)'}
               </button>
             </>
           )}
@@ -1209,7 +1208,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                       <button onClick={() => openPrint(user.id, 'note')} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap"><FileDown size={13} /> 작가노트 PDF</button>
                       <button onClick={() => downloadArtistImages({ user, submission })} disabled={artistImgZipping !== null || artCount === 0} className="flex items-center justify-center gap-1 text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap">
                         {artistImgZipping === user.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-                        {artistImgZipping === user.id ? '모으는 중...' : '작품 원본(ZIP)'}
+                        {artistImgZipping === user.id ? (progressText ? `${progressText}장` : '모으는 중...') : '작품 원본(ZIP)'}
                       </button>
                     </div>
                     <SubmissionReadonly submission={submission} activeTab={detailTab} />

@@ -7,6 +7,9 @@
  *  - 확장자 판정(원본 바이트를 그대로 ZIP에 넣기 위함)
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+/** vi.stubGlobal('fetch', ...) 에 넘길 때 쓰는 최소 타입 (any 사용 회피) */
+type FetchStub = (input: string) => Promise<Response>;
 import { mapLimit, extOf, proxyUrl, fetchImage, releaseImageCache } from '@/lib/imageFetch';
 
 const R2 = 'https://pub-abc.r2.dev/artlink/art1.jpg';
@@ -87,7 +90,7 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
 
   it('R2 직접 성공 시 프록시를 쓰지 않는다', async () => {
     // 인자 타입을 명시해야 spy.mock.calls[0][0] 인덱싱이 타입체크를 통과한다(빌드는 tsc -b로 테스트도 검사)
-    const spy = vi.fn(async (_url: string) => imageResponse());
+    const spy = vi.fn(async (url: string) => imageResponse(url.endsWith('.png') ? 'image/png' : 'image/jpeg'));
     vi.stubGlobal('fetch', spy);
     const img = await fetchImage(R2);
     expect(img?.ext).toBe('jpg');
@@ -100,7 +103,7 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
       if (u === R2) throw new TypeError('Failed to fetch');
       return imageResponse();
     });
-    vi.stubGlobal('fetch', spy as any);
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
     const img = await fetchImage(R2);
     expect(img).toBeTruthy();
     expect(spy).toHaveBeenCalledTimes(2);
@@ -115,19 +118,19 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
       if (n === 2) return { ok: false, status: 500 } as Response; // 첫 프록시 실패
       return imageResponse();                                     // 재시도 성공
     });
-    vi.stubGlobal('fetch', spy as any);
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
     const img = await fetchImage(R2);
     expect(img).toBeTruthy();
     expect(spy).toHaveBeenCalledTimes(3);
   });
 
   it('모두 실패하면 예외 대신 null (호출부가 실패 목록으로 처리)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down'); }) as any);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down'); }) as unknown as FetchStub);
     expect(await fetchImage(R2)).toBeNull();
   });
 
   it('★ 같은 URL을 여러 번 요청해도 네트워크는 1회 (ZIP/PDF 캐시 공유)', async () => {
-    const spy = vi.fn(async (_url: string) => imageResponse());
+    const spy = vi.fn(async (url: string) => imageResponse(url.endsWith('.png') ? 'image/png' : 'image/jpeg'));
     vi.stubGlobal('fetch', spy);
     const [a, b, c] = await Promise.all([fetchImage(R2), fetchImage(R2), fetchImage(R2)]);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -140,7 +143,7 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
       ok: true,
       headers: { get: () => 'text/html' },
       blob: async () => new Blob(['<html>'], { type: 'text/html' }),
-    })) as any);
+    })) as unknown as FetchStub);
     expect(await fetchImage(R2)).toBeNull();
   });
 });

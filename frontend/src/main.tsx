@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster, toast } from 'react-hot-toast';
+import { TOAST_OPTIONS } from '@/lib/toastOptions';
 import { queryClient } from '@/lib/queryClient';
 import App from './App';
 import './index.css';
@@ -41,11 +42,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <App />
         {/* z-index: 모달(z-9999)·중첩 모달(z-10000) 위에 떠야 한다.
-            어두운 오버레이 뒤로 토스트가 가려져 "이미 지원한 작가입니다" 같은 안내를 못 보는 문제가 있었다. */}
-        <Toaster position="bottom-center" containerStyle={{ zIndex: 100000 }} toastOptions={{
-          duration: 3000,
-          style: { fontSize: '14px', borderRadius: '12px' },
-        }} />
+            어두운 오버레이 뒤로 토스트가 가려져 "이미 지원한 작가입니다" 같은 안내를 못 보는 문제가 있었다.
+            duration 등 세부 설정과 그 이유는 lib/toastOptions.ts 참고. */}
+        <Toaster position="bottom-center" containerStyle={{ zIndex: 100000 }} toastOptions={TOAST_OPTIONS} />
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>
