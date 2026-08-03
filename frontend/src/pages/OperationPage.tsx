@@ -1028,10 +1028,18 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const downloadAllZip = async () => {
     if (data.length === 0) { toast.error('수락된 작가가 없습니다.'); return; }
     setZipping(true);
-    const t = toast.loading('전체 제출물 PDF를 생성하는 중입니다... (작가 수에 따라 다소 걸릴 수 있어요)');
+    const t = toast.loading('전체 제출물 PDF를 생성하는 중입니다...');
     try {
       const { downloadAllSubmissionsZip } = await import('@/lib/operationPdf');
-      await downloadAllSubmissionsZip(exhibitionTitle, data);
+      await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
+        // 진행률을 실시간으로 보여줘야 "멈춘 건지" 알 수 있다(예전엔 스피너만 돌았다)
+        toast.loading(
+          phase === 'images'
+            ? `작품 이미지 ${done}/${total}장 불러오는 중...`
+            : `PDF ${done}/${total}개 만드는 중...`,
+          { id: t },
+        );
+      });
       toast.success('ZIP 다운로드를 시작합니다.', { id: t });
     } catch (e) {
       toast.error('PDF 생성에 실패했습니다.', { id: t });
@@ -1069,9 +1077,16 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
     try {
       const { downloadAllArtworkImagesZip } = await import('@/lib/operationPdf');
-      const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, data);
+      const { ok, fail, failed } = await downloadAllArtworkImagesZip(
+        exhibitionTitle, data, undefined,
+        (done, total) => toast.loading(`작품 원본 ${done}/${total}장 모으는 중...`, { id: t }),
+      );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
-      else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
+      else if (fail > 0) {
+        // 실패한 작품을 조용히 빠뜨리지 않고 명시한다
+        toast.success(`원본 ${ok}개 ZIP 다운로드 시작 (실패 ${fail}개)`, { id: t });
+        toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}${failed.length > 5 ? `\n외 ${failed.length - 5}건` : ''}`, { duration: 8000 });
+      } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
     finally { setImgZipping(false); }
   };
@@ -1084,9 +1099,15 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     try {
       const { downloadAllArtworkImagesZip, safeName } = await import('@/lib/operationPdf');
       const zipName = `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`;
-      const { ok, fail } = await downloadAllArtworkImagesZip(exhibitionTitle, [row], zipName);
+      const { ok, fail, failed } = await downloadAllArtworkImagesZip(
+        exhibitionTitle, [row], zipName,
+        (done, total) => toast.loading(`작품 원본 ${done}/${total}장 모으는 중...`, { id: t }),
+      );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
-      else toast.success(`원본 ${ok}개 ZIP 다운로드 시작${fail ? ` (실패 ${fail}개)` : ''}`, { id: t });
+      else if (fail > 0) {
+        toast.success(`원본 ${ok}개 ZIP 다운로드 시작 (실패 ${fail}개)`, { id: t });
+        toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}`, { duration: 8000 });
+      } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
     finally { setArtistImgZipping(null); }
   };

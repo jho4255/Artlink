@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ownedGalleryId } from '../lib/helpers';
 
 /**
  * 둘러보기 참여 + 초대/간편지원 (2026-08 신규 기능) E2E
@@ -39,8 +39,7 @@ async function ensurePublicArtworks(api: APIRequestContext, tok: string, want = 
 
 /** 승인된 공모 1개 생성 */
 async function createApprovedExhibition(api: APIRequestContext, opts: { capacity?: number; title?: string } = {}) {
-  const gal = await (await api.get(`${API}/galleries`)).json();
-  const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
+  const galleryId = await ownedGalleryId(api);
   const today = new Date().toISOString().slice(0, 10);
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {

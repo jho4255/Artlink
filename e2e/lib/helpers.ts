@@ -91,3 +91,13 @@ export function realUploadUrl(): string {
   if (!f) throw new Error('backend/uploads 에 이미지 파일이 없습니다.');
   return `/uploads/${f}`;
 }
+
+/** 갤러리 계정이 **소유한** 승인 갤러리 id. 목록에서 아무거나 집으면 다른 계정 소유일 수 있어 403이 난다. */
+export async function ownedGalleryId(api: import('@playwright/test').APIRequestContext, token = tokenFor('gallery')): Promise<number> {
+  const r = await api.get(`${API}/galleries?owned=true`, { headers: { Authorization: `Bearer ${token}` } });
+  const list = await r.json();
+  const arr = Array.isArray(list) ? list : (list.galleries || []);
+  const g = arr.find((x: any) => x.status === 'APPROVED');
+  if (!g) throw new Error('승인된 소유 갤러리가 없습니다.');
+  return g.id;
+}

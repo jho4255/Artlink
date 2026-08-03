@@ -6,6 +6,7 @@
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
 import { displayName, nameWithNickname } from '@/lib/utils';
+import { fetchImage, imageSrc, prefetchImages, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
@@ -20,10 +21,11 @@ const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'a
 export function esc(s: any): string {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 }
-// R2 등 외부(크로스오리진) 이미지는 동일출처 프록시 경유 → 캔버스/PDF taint 없이 렌더(CORS 불필요).
-// 상대경로(로컬 /uploads·/images)는 이미 동일출처라 그대로 사용.
+// PDF/ZIP이 쓰는 이미지 주소.
+// 미리 받아둔 게 있으면 blob: URL(동일출처 → taint 없음, 재요청 없음), 없으면 동일출처 프록시로 폴백.
+// 실제 획득 로직(R2 직접 → 프록시 폴백 → 재시도)·캐시·병렬은 lib/imageFetch.ts 참고.
 export function proxied(url: string): string {
-  return /^https?:\/\//i.test(url) ? `/api/upload/image-proxy?url=${encodeURIComponent(url)}` : url;
+  return imageSrc(url);
 }
 // 파일명 안전화 (경로 구분자/제어문자 제거)
 export function safeName(s: string): string {
@@ -415,81 +417,99 @@ export async function downloadCaptionSheetPdf(exTitle: string, rows: SubmissionR
 
 // ── 작품 원본 이미지 일괄 다운로드 (jpg 통일) ──
 // 이미지 URL → 캔버스 → jpeg Blob (png/webp 등도 jpg로 변환). CORS 불가 시 null.
-function imageToJpegBlob(url: string): Promise<Blob | null> {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth || 1;
-        canvas.height = img.naturalHeight || 1;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return resolve(null);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(b => resolve(b), 'image/jpeg', 0.95);
-      } catch { resolve(null); }
-    };
-    img.onerror = () => resolve(null);
-    img.src = proxied(url);
-  });
-}
-
-/** 출품작 원본 이미지를 jpg로 변환해 ZIP 다운로드 (rows에 1명만 넘기면 개별 작가용).
- *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.jpg (동일명은 _2,_3 부여)
+/** 출품작 **원본 이미지**를 그대로 ZIP으로 묶어 다운로드 (rows에 1명만 넘기면 개별 작가용).
+ *
+ *  - 예전엔 캔버스로 JPEG(0.95) **재인코딩**해서 화질이 떨어지고 EXIF가 날아갔다. 이제 받은 바이트를
+ *    그대로 넣어 진짜 원본이고, 디코딩/인코딩이 없어 훨씬 빠르며 모바일 메모리 문제도 없다.
+ *  - 순차 → **동시 5개 병렬**. 실패는 1회 재시도 후 목록으로 돌려준다(조용히 빠지지 않게).
+ *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.{원본확장자} (동일명은 _2,_3 부여)
  *  zipName 미지정 시 "{공모명}_작품원본.zip" */
-export async function downloadAllArtworkImagesZip(exTitle: string, rows: SubmissionRow[], zipName?: string): Promise<{ ok: number; fail: number }> {
+export async function downloadAllArtworkImagesZip(
+  exTitle: string,
+  rows: SubmissionRow[],
+  zipName?: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ ok: number; fail: number; failed: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
+
+  // 작업 목록 평탄화 (작가 경계와 무관하게 전부 병렬로 돌린다)
+  const jobs = rows.flatMap(({ user, submission }) =>
+    (submission.artworkList || [])
+      .filter((a) => !!a.image)
+      .map((a) => ({ artist: nameWithNickname(user), a })), // 파일명도 이름(닉네임) 병기
+  );
+
+  const results = await mapLimit(
+    jobs,
+    IMAGE_CONCURRENCY,
+    async ({ artist, a }) => ({ artist, a, img: await fetchImage(a.image as string) }),
+    onProgress,
+  );
+
   const used = new Set<string>();
-  let ok = 0, fail = 0;
-  for (const { user, submission } of rows) {
-    const artist = nameWithNickname(user); // 작품원본 jpg 파일명도 이름(닉네임) 병기
-    for (const a of (submission.artworkList || [])) {
-      if (!a.image) continue;
-      const blob = await imageToJpegBlob(a.image);
-      if (!blob) { fail += 1; continue; }
-      const parts = [artist, a.title, a.size, a.medium, a.year, a.price]
-        .map(p => safeName(String(p ?? '')).replace(/\s+/g, ' ').trim())
-        .filter(Boolean);
-      let base = parts.join('_') || '작품';
-      let name = `${base}.jpg`;
-      let n = 2;
-      while (used.has(name)) { name = `${base}_${n}.jpg`; n += 1; }
-      used.add(name);
-      zip.file(name, blob);
-      ok += 1;
-    }
+  let ok = 0;
+  const failed: string[] = [];
+  for (const { artist, a, img } of results) {
+    if (!img) { failed.push(`${artist} · ${a.title || '무제'}`); continue; }
+    const parts = [artist, a.title, a.size, a.medium, a.year, a.price]
+      .map(p => safeName(String(p ?? '')).replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const base = parts.join('_') || '작품';
+    let name = `${base}.${img.ext}`;
+    let n = 2;
+    while (used.has(name)) { name = `${base}_${n}.${img.ext}`; n += 1; }
+    used.add(name);
+    zip.file(name, img.blob);
+    ok += 1;
   }
+
   if (ok > 0) {
     const blob = await zip.generateAsync({ type: 'blob' });
     triggerDownload(blob, zipName || `${safeName(exTitle)}_작품원본.zip`);
   }
-  return { ok, fail };
+  return { ok, fail: failed.length, failed };
 }
 
-/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드 */
-export async function downloadAllSubmissionsZip(exTitle: string, rows: SubmissionRow[]): Promise<void> {
+/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드.
+ *
+ *  PDF 렌더(html2canvas)는 DOM을 써야 해서 병렬화할 수 없다. 대신 **이미지를 먼저 병렬로 모두 받아
+ *  blob: URL로 캐시**해두면, 이후 각 PDF의 <img>는 네트워크를 타지 않고 즉시 로드된다.
+ *  (예전엔 작가마다 같은 이미지를 프록시로 다시 받아 `waitImages`가 최대 8초씩 대기했다.)
+ *  진행률은 이미지 수집(0~50%)과 PDF 렌더(50~100%)를 합쳐 보고한다. */
+export async function downloadAllSubmissionsZip(
+  exTitle: string,
+  rows: SubmissionRow[],
+  onProgress?: (done: number, total: number, phase: 'images' | 'pdf') => void,
+): Promise<void> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
-  for (const { user, submission } of rows) {
+
+  // 1) 이 ZIP에 들어갈 모든 작품 이미지를 병렬 선수집 → 이후 PDF는 캐시(blob:)만 사용
+  const urls = rows.flatMap(({ submission }) =>
+    (submission.artworkList || []).map((a) => a.image).filter((u): u is string => !!u),
+  );
+  await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
+
+  // 2) PDF 렌더 (DOM 사용이라 순차)
+  const docs = rows.flatMap(({ user, submission }) => {
     const artist = displayName(user);
     const aSafe = safeName(artist);
     const email = user.email;
-    zip.file(`${exSafe}_${aSafe}_출품리스트.pdf`, await htmlToPdfBlob(artworkHtml(submission, exTitle, artist, email)));
-    zip.file(`${exSafe}_${aSafe}_작가약력.pdf`, await htmlToPdfBlob(cvHtml(submission, exTitle, artist, email)));
-    zip.file(`${exSafe}_${aSafe}_작가노트.pdf`, await htmlToPdfBlob(noteHtml(submission, exTitle, artist, email)));
+    return [
+      { name: `${exSafe}_${aSafe}_출품리스트.pdf`, html: () => artworkHtml(submission, exTitle, artist, email) },
+      { name: `${exSafe}_${aSafe}_작가약력.pdf`, html: () => cvHtml(submission, exTitle, artist, email) },
+      { name: `${exSafe}_${aSafe}_작가노트.pdf`, html: () => noteHtml(submission, exTitle, artist, email) },
+    ];
+  });
+  for (let i = 0; i < docs.length; i++) {
+    zip.file(docs[i].name, await htmlToPdfBlob(docs[i].html()));
+    onProgress?.(i + 1, docs.length, 'pdf');
   }
+
   const blob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${exSafe}_전체제출물.zip`;
-  a.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(blob, `${exSafe}_전체제출물.zip`);
 }
 
 // ── 지원서 (지원자 관리 페이지) ──

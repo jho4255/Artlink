@@ -156,20 +156,31 @@ router.get('/image-proxy', async (req, res, next) => {
       throw new AppError('허용되지 않은 이미지 주소입니다.', 400);
     }
     // redirect: 'manual' — 3xx 리다이렉트(내부주소로 우회) 차단
-    const upstream = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    // 타임아웃 20초: Render 인스턴스가 혼잡할 때 10초로는 정상 요청까지 500이 났다(2026-08 운영 로그).
+    const upstream = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
     if (upstream.status >= 300 && upstream.status < 400) throw new AppError('허용되지 않은 리다이렉트입니다.', 400);
     if (!upstream.ok) throw new AppError('이미지를 가져오지 못했습니다.', 502);
     // 래스터 이미지 타입만 허용 — image/svg+xml 등 스크립트 실행 가능 타입 차단(동일출처 XSS 방지)
     const lc = (upstream.headers.get('content-type') || '').toLowerCase();
     const SAFE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
     if (!SAFE.some((t) => lc.startsWith(t))) throw new AppError('지원하지 않는 이미지 형식입니다.', 400);
-    const buf = Buffer.from(await upstream.arrayBuffer());
     res.setHeader('Content-Type', lc.split(';')[0]);
     res.setHeader('X-Content-Type-Options', 'nosniff');               // MIME 스니핑 차단
     res.setHeader('Content-Disposition', 'inline; filename="image"');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox"); // 만약 통과해도 스크립트 실행 불가
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.end(buf);
+    const len = upstream.headers.get('content-length');
+    if (len) res.setHeader('Content-Length', len);
+
+    // 스트리밍으로 중계 — 예전엔 arrayBuffer()로 이미지 전체를 메모리에 담았다가 내보내서
+    // 동시 요청이 몰리면 인스턴스 메모리/이벤트루프가 포화됐다(운영 로그에 10초 타임아웃 다수).
+    if (!upstream.body) throw new AppError('이미지를 가져오지 못했습니다.', 502);
+    const { Readable } = await import('stream');
+    const nodeStream = Readable.fromWeb(upstream.body as any);
+    nodeStream.on('error', () => { if (!res.headersSent) res.status(502).end(); else res.destroy(); });
+    // 클라이언트가 중간에 끊으면 업스트림 읽기도 즉시 중단(소켓·메모리 회수)
+    res.on('close', () => { if (!res.writableEnded) nodeStream.destroy(); });
+    nodeStream.pipe(res);
   } catch (err) { next(err); }
 });
 
