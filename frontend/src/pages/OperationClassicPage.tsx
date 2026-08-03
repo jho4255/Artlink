@@ -487,10 +487,19 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
     const t = toast.loading('전체 제출물 PDF를 생성하는 중입니다...');
     try {
       const { downloadAllSubmissionsZip } = await import('@/lib/operationPdf');
-      await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
+      const { missing } = await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
         setProgress({ done, total, label: phase === 'images' ? '이미지' : 'PDF' });
       });
-      toast.success('ZIP 다운로드를 시작합니다.', { id: t });
+      if (missing.length > 0) {
+        // 이미지가 빠진 채로 PDF가 나갔다는 걸 반드시 알린다(예전엔 조용히 넘어갔다)
+        toast.success(`ZIP 다운로드를 시작합니다. (이미지 ${missing.length}개 누락)`, { id: t });
+        toast.error(
+          `PDF에 이미지가 빠진 작품:\n${missing.slice(0, 5).join('\n')}${missing.length > 5 ? `\n외 ${missing.length - 5}건` : ''}`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success('ZIP 다운로드를 시작합니다.', { id: t });
+      }
     } catch (e) {
       toast.error('PDF 생성에 실패했습니다.', { id: t });
     } finally {

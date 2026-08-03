@@ -481,7 +481,7 @@ export async function downloadAllSubmissionsZip(
   exTitle: string,
   rows: SubmissionRow[],
   onProgress?: (done: number, total: number, phase: 'images' | 'pdf') => void,
-): Promise<void> {
+): Promise<{ missing: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
@@ -490,7 +490,14 @@ export async function downloadAllSubmissionsZip(
   const urls = rows.flatMap(({ submission }) =>
     (submission.artworkList || []).map((a) => a.image).filter((u): u is string => !!u),
   );
-  await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
+  const failedUrls = await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
+  // 못 받은 이미지는 PDF에 빈 칸으로 나간다 → 어떤 작품인지 이름으로 돌려줘 사용자가 알 수 있게 한다
+  const failedSet = new Set(failedUrls);
+  const missing = rows.flatMap(({ user, submission }) =>
+    (submission.artworkList || [])
+      .filter((a) => a.image && failedSet.has(a.image))
+      .map((a) => `${nameWithNickname(user)} · ${a.title || '무제'}`),
+  );
 
   // 2) PDF 렌더 (DOM 사용이라 순차)
   const docs = rows.flatMap(({ user, submission }) => {
@@ -510,6 +517,7 @@ export async function downloadAllSubmissionsZip(
 
   const blob = await zip.generateAsync({ type: 'blob' });
   triggerDownload(blob, `${exSafe}_전체제출물.zip`);
+  return { missing };
 }
 
 // ── 지원서 (지원자 관리 페이지) ──

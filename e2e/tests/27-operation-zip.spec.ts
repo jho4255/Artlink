@@ -188,3 +188,34 @@ test('★ 진행률은 버튼에 표시되어 작업 내내 끊기지 않는다 
   await api.dispose();
   await ctx.close();
 });
+
+test('★ 전체 PDF(ZIP) — 이미지를 못 받으면 누락 사실과 작품명을 알려준다', async ({ browser }) => {
+  const api = await pwRequest.newContext();
+  const { exId } = await seedOperation(api, 2);
+
+  // 존재하지 않는 이미지를 하나 섞는다 → PDF에는 빈 칸으로 나가므로 반드시 알려야 한다
+  const aTok = tokenFor('artist');
+  const cur = await (await api.get(`${API}/operations/${exId}/me`, { headers: auth(aTok) })).json();
+  await api.put(`${API}/operations/${exId}/me`, {
+    headers: auth(aTok),
+    data: {
+      ...cur,
+      artworkList: [
+        ...cur.artworkList,
+        { image: 'https://pub-e87cde18dad54847b656f80cf0ae7b28.r2.dev/artlink/__PDF없는파일__.jpg', title: 'PDF누락작품', size: '', medium: '', year: '', price: '' },
+      ],
+    },
+  });
+
+  const { page, ctx } = await openAs(browser, 'gallery');
+  await page.goto(`/exhibitions/${exId}/operation`);
+  const btn = page.getByRole('button', { name: /전체 PDF|전체 제출물/ }).first();
+  await expect(btn).toBeVisible({ timeout: 20000 });
+  await btn.click();
+
+  await expect(page.locator('body'), '누락 개수 안내').toContainText('이미지 1개 누락', { timeout: 120_000 });
+  await expect(page.locator('body'), '누락된 작품명 안내').toContainText('PDF누락작품', { timeout: 15_000 });
+
+  await api.dispose();
+  await ctx.close();
+});
