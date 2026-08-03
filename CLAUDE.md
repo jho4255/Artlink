@@ -124,6 +124,8 @@ sudo service postgresql start
 - **URL**: https://artlink-stmq.onrender.com
 - **브랜치**: `deploy/render` (main에서 작업 → merge → push)
 - **빌드 순서**: frontend build → backend build → prisma migrate deploy → seed → npm start
+- ⚠️ **Node 버전 고정 필수** — `backend/package.json`의 `engines.node`는 **`24.x`(LTS)**. 예전엔 `">=20"`이라 Render가 매번 **최신 Node**를 골랐고, 2026-08-03 새로 나온 **26.6.0 설치 실패**로 배포가 죽었다(`Unable to install Node.js version 26.6.0`). 범위 지정 금지 — 새 Node가 나올 때마다 무작위로 배포가 깨진다. `.nvmrc`(24)도 함께 둔다.
+- ⚠️ **배포 전 검증은 `npm run build`로** — `tsc --noEmit`은 테스트 파일을 검사하지 않아 통과하지만, 실제 빌드는 `tsc -b && vite build`라 테스트까지 검사한다. 실제로 테스트의 타입 오류로 배포가 실패한 적 있다(2026-08-03).
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload
