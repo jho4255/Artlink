@@ -86,7 +86,8 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
   });
 
   it('R2 직접 성공 시 프록시를 쓰지 않는다', async () => {
-    const spy = vi.fn(async () => imageResponse());
+    // 인자 타입을 명시해야 spy.mock.calls[0][0] 인덱싱이 타입체크를 통과한다(빌드는 tsc -b로 테스트도 검사)
+    const spy = vi.fn(async (_url: string) => imageResponse());
     vi.stubGlobal('fetch', spy);
     const img = await fetchImage(R2);
     expect(img?.ext).toBe('jpg');
@@ -126,7 +127,7 @@ describe('fetchImage — 직접 → 프록시 폴백 → 재시도 → 캐시', 
   });
 
   it('★ 같은 URL을 여러 번 요청해도 네트워크는 1회 (ZIP/PDF 캐시 공유)', async () => {
-    const spy = vi.fn(async () => imageResponse());
+    const spy = vi.fn(async (_url: string) => imageResponse());
     vi.stubGlobal('fetch', spy);
     const [a, b, c] = await Promise.all([fetchImage(R2), fetchImage(R2), fetchImage(R2)]);
     expect(spy).toHaveBeenCalledTimes(1);
