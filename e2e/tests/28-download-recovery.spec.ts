@@ -16,6 +16,7 @@ import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openAppli
  *   R2 CORS가 열려 있어 localhost에서도 직접 로드된다. 쓰기는 전부 로컬 서버 대상.
  */
 const API = 'http://localhost:4000/api';
+const MISSING_NOTE = '_받지못한작품.txt';
 const auth = (tok: string) => ({ Authorization: `Bearer ${tok}` });
 const gAuth = () => auth(tokenFor('gallery'));
 
@@ -57,8 +58,13 @@ async function seedAccepted(api: APIRequestContext, title: string) {
 
 /** 출품작 제출 (urls 순서대로) */
 async function submitArtworks(api: APIRequestContext, exId: number, urls: string[]) {
+  return submitArtworksAs(api, exId, urls, tokenFor('artist'));
+}
+
+/** 출품작 제출 — 작가 토큰 지정 (여러 작가를 넣어 폴더 분리를 볼 때) */
+async function submitArtworksAs(api: APIRequestContext, exId: number, urls: string[], token: string) {
   await api.put(`${API}/operations/${exId}/me`, {
-    headers: auth(tokenFor('artist')),
+    headers: auth(token),
     data: {
       artworkList: urls.map((image, i) => ({
         image, title: `작품${i + 1}`, size: '50x50', medium: 'Oil on canvas', year: '2025', price: '1,000,000',
@@ -69,10 +75,11 @@ async function submitArtworks(api: APIRequestContext, exId: number, urls: string
   });
 }
 
-/** ZIP 안의 파일 목록 */
+/** ZIP 안의 **파일** 목록 (디렉터리 항목 제외). 작가별 폴더가 생기므로 `폴더/파일` 형태로 나온다. */
 async function zipEntries(zipPath: string): Promise<string[]> {
   const { execFileSync } = await import('child_process');
-  return execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+  return execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' })
+    .trim().split('\n').filter((n) => n && !n.endsWith('/'));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -122,6 +129,9 @@ test('★ 처음 실패한 이미지를 자동 회수해 결국 전부 받는다
   const names = await zipEntries((await dl.path())!);
   expect(names).toHaveLength(urls.length);
   expect(names.some((n) => n.includes('받지못한작품')), '전부 받았으면 누락 메모가 없어야 한다').toBe(false);
+  // 작가별 폴더 — 평평하게 쏟아지지 않아야 한다
+  expect(names.every((n) => n.includes('/')), `작가 폴더 안에 담긴다. 실제: ${JSON.stringify(names)}`).toBe(true);
+  expect(new Set(names.map((n) => n.split('/')[0])), '작가 1명이므로 폴더도 1개').toHaveProperty('size', 1);
 
   await api.dispose();
   await ctx.close();
@@ -172,8 +182,10 @@ test('★ 끝내 못 받으면 배너로 남고, [다시 받기]로 완전한 ZI
 
   // ③ ZIP이 스스로 누락을 증언한다
   const names1 = await zipEntries((await dl1.path())!);
-  expect(names1).toContain('_받지못한작품.txt');
-  expect(names1.filter((n) => !n.startsWith('_'))).toHaveLength(urls.length - 1);
+  expect(names1, '누락 메모는 ZIP 최상단에 둔다(작가를 가로지르는 정보)').toContain('_받지못한작품.txt');
+  const files1 = names1.filter((n) => n !== MISSING_NOTE);
+  expect(files1).toHaveLength(urls.length - 1);
+  expect(files1.every((n) => n.includes('/')), '작품 파일은 작가 폴더 안에').toBe(true);
 
   // ② 다시 받기 — 이번엔 통과시킨다
   blocking = false;
@@ -183,7 +195,57 @@ test('★ 끝내 못 받으면 배너로 남고, [다시 받기]로 완전한 ZI
 
   const names2 = await zipEntries((await dl2.path())!);
   expect(names2, '이번엔 전부 담겨야 한다').toHaveLength(urls.length);
+  expect(names2.every((n) => n.includes('/')), '재시도본도 작가 폴더 구조를 유지한다').toBe(true);
   expect(names2.some((n) => n.includes('받지못한작품')), '누락 메모가 없어야 한다').toBe(false);
+
+  await api.dispose();
+  await ctx.close();
+});
+
+// ─────────────────────────────────────────────────────────────
+// 작가별 폴더 (전체 다운로드가 평평하게 쏟아지지 않게)
+// ─────────────────────────────────────────────────────────────
+
+test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원본 + 전체 PDF)', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const api = await pwRequest.newContext();
+  const urls = await realArtworkUrls(api, 4);
+  const { exId } = await seedAccepted(api, '작가폴더');
+
+  // 두 번째 작가도 지원 → 수락 (폴더가 실제로 갈라지는지 보려면 2명 이상이어야 한다)
+  await applyToExhibition(api, exId, tokenFor('artist2'));
+  const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
+  const second = (apps.applications || apps).find((a: any) => a.userId === userIds().artist2);
+  await api.patch(`${API}/exhibitions/${exId}/applications/${second.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
+
+  await submitArtworks(api, exId, urls.slice(0, 2));                       // artist1: 2점
+  await submitArtworksAs(api, exId, urls.slice(2, 4), tokenFor('artist2')); // artist2: 2점
+
+  const { page, ctx } = await openAs(browser, 'gallery');
+  await page.goto(`/exhibitions/${exId}/operation`);
+
+  // ① 작품 원본 ZIP
+  const imgDl = page.waitForEvent('download', { timeout: 150_000 });
+  await page.getByRole('button', { name: /작품 원본/ }).first().click();
+  const imgNames = await zipEntries((await (await imgDl).path())!);
+  expect(imgNames).toHaveLength(4);
+  const imgFolders = new Set(imgNames.map((n) => n.split('/')[0]));
+  expect(imgFolders.size, `작가 2명 → 폴더 2개. 실제: ${JSON.stringify(imgNames)}`).toBe(2);
+  for (const f of imgFolders) {
+    expect(imgNames.filter((n) => n.startsWith(`${f}/`)), '각 폴더에 2점씩').toHaveLength(2);
+  }
+
+  // ② 전체 제출물 PDF ZIP — 작가마다 3문서
+  const pdfDl = page.waitForEvent('download', { timeout: 150_000 });
+  await page.getByRole('button', { name: /전체 PDF/ }).first().click();
+  const pdfNames = await zipEntries((await (await pdfDl).path())!);
+  const pdfFolders = new Set(pdfNames.map((n) => n.split('/')[0]));
+  expect(pdfFolders.size, `작가 2명 → 폴더 2개. 실제: ${JSON.stringify(pdfNames)}`).toBe(2);
+  for (const f of pdfFolders) {
+    const inFolder = pdfNames.filter((n) => n.startsWith(`${f}/`));
+    expect(inFolder, '출품리스트·작가약력·작가노트 3개').toHaveLength(3);
+    expect(inFolder.every((n) => n.endsWith('.pdf'))).toBe(true);
+  }
 
   await api.dispose();
   await ctx.close();
@@ -285,7 +347,7 @@ test('★ 지원서 사진을 못 받으면 배너로 알리고 다시 받게 �
   await expect(page.getByRole('button', { name: '다시 받기' })).toBeVisible();
 
   const names = await zipEntries((await dl.path())!);
-  expect(names, 'ZIP도 스스로 누락을 증언한다').toContain('_받지못한작품.txt');
+  expect(names, 'ZIP도 스스로 누락을 증언한다').toContain(MISSING_NOTE);
 
   await api.dispose();
   await ctx.close();

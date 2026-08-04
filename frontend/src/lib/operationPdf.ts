@@ -32,6 +32,25 @@ export function safeName(s: string): string {
   return (s || '').replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim() || '무제';
 }
 
+// ── ZIP 폴더 이름 ──
+// 전체 다운로드는 작가별 폴더로 나눈다(평평하게 쏟아지면 작가가 여럿일 때 정리가 안 된다).
+//
+// ⚠️ **동명이인 처리**가 핵심이다. 같은 이름 두 명을 한 폴더에 합치면 갤러리가 서로 다른 작가의
+// 작품을 섞어버린다 — 파일이 사라지지 않으니 **눈치채기도 어렵다**. 이름이 겹치면 `(2)`, `(3)`을
+// 붙여 반드시 분리한다. 반환값은 userId → 폴더명.
+export function artistFolderNames(users: { id: number; name: string; nickname?: string | null }[]): Map<number, string> {
+  const used = new Map<string, number>();
+  const out = new Map<number, string>();
+  for (const u of users) {
+    if (out.has(u.id)) continue; // 같은 작가가 여러 번 들어와도 폴더는 하나
+    const base = safeName(nameWithNickname(u));
+    const seen = (used.get(base) || 0) + 1;
+    used.set(base, seen);
+    out.set(u.id, seen === 1 ? base : `${base} (${seen})`);
+  }
+  return out;
+}
+
 // ── 누락 메모 ──
 // 자동 회수까지 했는데도 못 받은 이미지가 있으면 **ZIP 안에 목록을 동봉**한다.
 // 화면 안내는 페이지를 닫으면 사라지지만, 파일은 남는다 — "하나 빠졌는데 모르고 넘어가는" 상황을 막는 마지막 안전망.
@@ -475,7 +494,10 @@ export async function downloadCaptionSheetPdf(exTitle: string, rows: SubmissionR
  *    그대로 넣어 진짜 원본이고, 디코딩/인코딩이 없어 훨씬 빠르며 모바일 메모리 문제도 없다.
  *  - 순차 → **동시 5개 병렬**. 실패분은 배치가 끝난 뒤 자동 회수(`recoverFailed`)를 거치고,
  *    그래도 남으면 목록으로 돌려주고 ZIP 안에 누락 메모까지 넣는다(조용히 빠지지 않게).
+ *  구조: **작가명 폴더** 안에 파일 (작가가 여럿일 때 평평하게 쏟아지지 않게)
  *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.{원본확장자} (동일명은 _2,_3 부여)
+ *    - 폴더에 작가명이 있어도 파일명에 그대로 둔다. 파일을 폴더 밖으로 꺼내 인쇄소·디자이너에게
+ *      넘기는 일이 잦은데, 그때 이름이 없으면 어느 작가 작품인지 알 수 없다.
  *  zipName 미지정 시 "{공모명}_작품원본.zip" */
 export async function downloadAllArtworkImagesZip(
   exTitle: string,
@@ -486,17 +508,20 @@ export async function downloadAllArtworkImagesZip(
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
 
-  // 작업 목록 평탄화 (작가 경계와 무관하게 전부 병렬로 돌린다)
+  // 작가별 폴더 (동명이인은 자동 분리)
+  const folders = artistFolderNames(rows.map((r) => r.user));
+
+  // 작업 목록 평탄화 (작가 경계와 무관하게 전부 병렬로 돌린다 — 폴더는 담을 때만 쓴다)
   const jobs = rows.flatMap(({ user, submission }) =>
     (submission.artworkList || [])
       .filter((a) => !!a.image)
-      .map((a) => ({ artist: nameWithNickname(user), a })), // 파일명도 이름(닉네임) 병기
+      .map((a) => ({ artist: nameWithNickname(user), folder: folders.get(user.id)!, a })),
   );
 
   const results = await mapLimit(
     jobs,
     IMAGE_CONCURRENCY,
-    async ({ artist, a }) => ({ artist, a, img: await fetchImage(a.image as string) }),
+    async ({ artist, folder, a }) => ({ artist, folder, a, img: await fetchImage(a.image as string) }),
     (d, t) => onProgress?.(d, t, 'collect'),
   );
 
@@ -508,20 +533,23 @@ export async function downloadAllArtworkImagesZip(
     for (const r of results) if (!r.img) r.img = await fetchImage(r.a.image as string);
   }
 
-  const used = new Set<string>();
+  // 이름 중복 검사는 **폴더별**로 — 다른 작가 폴더에 같은 파일명이 있어도 충돌이 아니다
+  const usedByFolder = new Map<string, Set<string>>();
   let ok = 0;
   const failed: string[] = [];
-  for (const { artist, a, img } of results) {
+  for (const { artist, folder, a, img } of results) {
     if (!img) { failed.push(`${artist} · ${a.title || '무제'}`); continue; }
     const parts = [artist, a.title, a.size, a.medium, a.year, a.price]
       .map(p => safeName(String(p ?? '')).replace(/\s+/g, ' ').trim())
       .filter(Boolean);
     const base = parts.join('_') || '작품';
+    const used = usedByFolder.get(folder) || new Set<string>();
+    usedByFolder.set(folder, used);
     let name = `${base}.${img.ext}`;
     let n = 2;
     while (used.has(name)) { name = `${base}_${n}.${img.ext}`; n += 1; }
     used.add(name);
-    zip.file(name, img.blob);
+    zip.file(`${folder}/${name}`, img.blob);
     ok += 1;
   }
 
@@ -535,7 +563,7 @@ export async function downloadAllArtworkImagesZip(
   return { ok, fail: failed.length, failed };
 }
 
-/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드.
+/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드. **작가명 폴더**로 나눠 담는다.
  *
  *  PDF 렌더(html2canvas)는 DOM을 써야 해서 병렬화할 수 없다. 대신 **이미지를 먼저 병렬로 모두 받아
  *  blob: URL로 캐시**해두면, 이후 각 PDF의 <img>는 네트워크를 타지 않고 즉시 로드된다.
@@ -567,15 +595,18 @@ export async function downloadAllSubmissionsZip(
       .map((a) => `${nameWithNickname(user)} · ${a.title || '무제'}`),
   );
 
-  // 2) PDF 렌더 (DOM 사용이라 순차)
+  // 2) PDF 렌더 (DOM 사용이라 순차) — 작가별 폴더에 담는다(동명이인은 자동 분리)
+  const folders = artistFolderNames(rows.map((r) => r.user));
   const docs = rows.flatMap(({ user, submission }) => {
     const artist = displayName(user);
     const aSafe = safeName(artist);
     const email = user.email;
+    const dir = folders.get(user.id)!;
+    // 폴더에 작가명이 있어도 파일명은 그대로 둔다 — PDF는 폴더 밖으로 꺼내 메일로 보내는 일이 잦다
     return [
-      { name: `${exSafe}_${aSafe}_출품리스트.pdf`, html: () => artworkHtml(submission, exTitle, artist, email) },
-      { name: `${exSafe}_${aSafe}_작가약력.pdf`, html: () => cvHtml(submission, exTitle, artist, email) },
-      { name: `${exSafe}_${aSafe}_작가노트.pdf`, html: () => noteHtml(submission, exTitle, artist, email) },
+      { name: `${dir}/${exSafe}_${aSafe}_출품리스트.pdf`, html: () => artworkHtml(submission, exTitle, artist, email) },
+      { name: `${dir}/${exSafe}_${aSafe}_작가약력.pdf`, html: () => cvHtml(submission, exTitle, artist, email) },
+      { name: `${dir}/${exSafe}_${aSafe}_작가노트.pdf`, html: () => noteHtml(submission, exTitle, artist, email) },
     ];
   });
   for (let i = 0; i < docs.length; i++) {
