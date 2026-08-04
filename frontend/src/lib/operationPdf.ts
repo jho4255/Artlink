@@ -6,7 +6,7 @@
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
 import { displayName, nameWithNickname } from '@/lib/utils';
-import { fetchImage, imageSrc, prefetchImages, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
+import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
@@ -30,6 +30,22 @@ export function proxied(url: string): string {
 // 파일명 안전화 (경로 구분자/제어문자 제거)
 export function safeName(s: string): string {
   return (s || '').replace(/[\\/:*?"<>|\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim() || '무제';
+}
+
+// ── 누락 메모 ──
+// 자동 회수까지 했는데도 못 받은 이미지가 있으면 **ZIP 안에 목록을 동봉**한다.
+// 화면 안내는 페이지를 닫으면 사라지지만, 파일은 남는다 — "하나 빠졌는데 모르고 넘어가는" 상황을 막는 마지막 안전망.
+export const MISSING_NOTE_NAME = '_받지못한작품.txt';
+export function missingNote(exTitle: string, what: string, items: string[]): string {
+  return [
+    `[${exTitle}] ${what} — 받지 못한 항목 ${items.length}건`,
+    '',
+    ...items.map((s, i) => `${i + 1}. ${s}`),
+    '',
+    '이 목록의 항목은 이 ZIP에 들어있지 않습니다.',
+    '운영 페이지에서 [다시 받기]를 누르면 받지 못한 항목만 다시 시도합니다.',
+    '(이미 받은 항목은 다시 내려받지 않으므로 금방 끝납니다.)',
+  ].join('\n');
 }
 
 export const BASE = `font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;color:#111;font-size:13px;line-height:1.6;`;
@@ -364,20 +380,56 @@ export function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * PDF 하나를 만들기 전 이미지를 **먼저 병렬로 모아 둔다**.
+ *
+ * 안 하면 `<img src>`가 전부 프록시(백엔드 중계)를 타고, `htmlToPdfBlob`의 이미지 대기가
+ * 장마다 붙어 "안 끝나는" 상태가 된다 — 일괄 ZIP에서 실제로 겪은 그 문제다(2026-08).
+ * 선수집해두면 `imageSrc`가 blob: URL을 돌려주므로 렌더 중 네트워크가 0이 된다.
+ * 실패분은 자동 회수까지 거치고, 그래도 못 받으면 **이름 목록으로 돌려준다**(조용히 빈 칸 금지).
+ */
+async function prefetchForPdf(
+  urls: (string | null | undefined)[],
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+): Promise<Set<string>> {
+  const list = urls.filter((u): u is string => !!u);
+  if (list.length === 0) return new Set();
+  let failed = await prefetchImages(list, (d, t) => onProgress?.(d, t, 'images'));
+  if (failed.length > 0) failed = await recoverFailed(failed, (d, t) => onProgress?.(d, t, 'retry'));
+  return new Set(failed);
+}
+
+/** 정산서에 실리는 판매작 이미지 주소 */
+const settlementImages = (a: SettlementArtist) => a.works.filter(w => w.sold).map(w => w.image);
+
 /** 작가별 정산서 PDF (method 지정 시 현금/카드 정산서) */
-export async function downloadArtistSettlementPdf(exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH'): Promise<void> {
+export async function downloadArtistSettlementPdf(
+  exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH',
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+): Promise<{ missing: string[] }> {
   const target = method ? filterArtistByMethod(artist, method) : artist;
   const docLabel = method ? `${methodLabel(method)} 정산서` : '정산서';
+  const failed = await prefetchForPdf(settlementImages(target), onProgress);
   const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel));
   triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_${docLabel.replace(/\s/g, '')}.pdf`);
+  return { missing: target.works.filter(w => w.sold && w.image && failed.has(w.image)).map(w => w.title || '무제') };
 }
 
 /** 전체 정산서 PDF (method 지정 시 현금/카드 정산서) */
-export async function downloadOverallSettlementPdf(s: Settlement, method?: 'CARD' | 'CASH'): Promise<void> {
+export async function downloadOverallSettlementPdf(
+  s: Settlement, method?: 'CARD' | 'CASH',
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+): Promise<{ missing: string[] }> {
   const target = method ? filterSettlementByMethod(s, method) : s;
   const docLabel = method ? `${methodLabel(method)} 정산서` : '전체 정산서';
+  const failed = await prefetchForPdf(target.artists.flatMap(settlementImages), onProgress);
   const blob = await htmlToPdfBlob(overallSettlementHtml(target, docLabel));
   triggerDownload(blob, `${safeName(s.exhibitionTitle)}_${docLabel.replace(/\s/g, '')}.pdf`);
+  return {
+    missing: target.artists.flatMap(a =>
+      a.works.filter(w => w.sold && w.image && failed.has(w.image))
+        .map(w => `${displayName(a.user)} · ${w.title || '무제'}`)),
+  };
 }
 
 export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission; }
@@ -421,14 +473,15 @@ export async function downloadCaptionSheetPdf(exTitle: string, rows: SubmissionR
  *
  *  - 예전엔 캔버스로 JPEG(0.95) **재인코딩**해서 화질이 떨어지고 EXIF가 날아갔다. 이제 받은 바이트를
  *    그대로 넣어 진짜 원본이고, 디코딩/인코딩이 없어 훨씬 빠르며 모바일 메모리 문제도 없다.
- *  - 순차 → **동시 5개 병렬**. 실패는 1회 재시도 후 목록으로 돌려준다(조용히 빠지지 않게).
+ *  - 순차 → **동시 5개 병렬**. 실패분은 배치가 끝난 뒤 자동 회수(`recoverFailed`)를 거치고,
+ *    그래도 남으면 목록으로 돌려주고 ZIP 안에 누락 메모까지 넣는다(조용히 빠지지 않게).
  *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.{원본확장자} (동일명은 _2,_3 부여)
  *  zipName 미지정 시 "{공모명}_작품원본.zip" */
 export async function downloadAllArtworkImagesZip(
   exTitle: string,
   rows: SubmissionRow[],
   zipName?: string,
-  onProgress?: (done: number, total: number) => void,
+  onProgress?: (done: number, total: number, phase?: 'collect' | 'retry') => void,
 ): Promise<{ ok: number; fail: number; failed: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
@@ -444,8 +497,16 @@ export async function downloadAllArtworkImagesZip(
     jobs,
     IMAGE_CONCURRENCY,
     async ({ artist, a }) => ({ artist, a, img: await fetchImage(a.image as string) }),
-    onProgress,
+    (d, t) => onProgress?.(d, t, 'collect'),
   );
+
+  // 실패분 자동 회수 — 배치가 끝나 동시성 경쟁이 사라진 뒤라 같은 요청도 성공할 수 있다.
+  // 회수분 반영은 캐시 히트라 네트워크를 다시 타지 않는다.
+  const lost = results.filter((r) => !r.img).map((r) => r.a.image as string);
+  if (lost.length > 0) {
+    await recoverFailed(lost, (d, t) => onProgress?.(d, t, 'retry'));
+    for (const r of results) if (!r.img) r.img = await fetchImage(r.a.image as string);
+  }
 
   const used = new Set<string>();
   let ok = 0;
@@ -464,6 +525,9 @@ export async function downloadAllArtworkImagesZip(
     ok += 1;
   }
 
+  // ZIP이 스스로 누락을 증언하게 한다 — 페이지를 닫아도 무엇이 빠졌는지 파일만 보면 안다.
+  if (failed.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, '작품 원본 이미지', failed));
+
   if (ok > 0) {
     const blob = await zip.generateAsync({ type: 'blob' });
     triggerDownload(blob, zipName || `${safeName(exTitle)}_작품원본.zip`);
@@ -480,7 +544,7 @@ export async function downloadAllArtworkImagesZip(
 export async function downloadAllSubmissionsZip(
   exTitle: string,
   rows: SubmissionRow[],
-  onProgress?: (done: number, total: number, phase: 'images' | 'pdf') => void,
+  onProgress?: (done: number, total: number, phase: 'images' | 'pdf' | 'retry') => void,
 ): Promise<{ missing: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
@@ -490,8 +554,12 @@ export async function downloadAllSubmissionsZip(
   const urls = rows.flatMap(({ submission }) =>
     (submission.artworkList || []).map((a) => a.image).filter((u): u is string => !!u),
   );
-  const failedUrls = await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
-  // 못 받은 이미지는 PDF에 빈 칸으로 나간다 → 어떤 작품인지 이름으로 돌려줘 사용자가 알 수 있게 한다
+  let failedUrls = await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
+  // 실패분 자동 회수 — 이미지가 빠지면 PDF에 빈 칸이 남으므로 PDF를 만들기 **전에** 최대한 되찾는다
+  if (failedUrls.length > 0) {
+    failedUrls = await recoverFailed(failedUrls, (d, t) => onProgress?.(d, t, 'retry'));
+  }
+  // 그래도 못 받은 이미지는 PDF에 빈 칸으로 나간다 → 어떤 작품인지 이름으로 돌려줘 사용자가 알 수 있게 한다
   const failedSet = new Set(failedUrls);
   const missing = rows.flatMap(({ user, submission }) =>
     (submission.artworkList || [])
@@ -514,6 +582,9 @@ export async function downloadAllSubmissionsZip(
     zip.file(docs[i].name, await htmlToPdfBlob(docs[i].html()));
     onProgress?.(i + 1, docs.length, 'pdf');
   }
+
+  // 이미지가 빈 채로 나간 PDF가 있으면 ZIP이 스스로 증언하게 한다
+  if (missing.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, 'PDF에 들어갈 작품 이미지', missing));
 
   const blob = await zip.generateAsync({ type: 'blob' });
   triggerDownload(blob, `${exSafe}_전체제출물.zip`);
@@ -611,19 +682,39 @@ export function applicationHtml(exTitle: string, app: ApplicantLike, customField
   </div>`;
 }
 
+/** 지원서에 실리는 작품 사진 주소 (지원자 1명 최대 30장) */
+const applicationImages = (app: ApplicantLike) => app.artworkImages || [];
+
 /** 지원자 1명의 지원서 PDF — 파일명: 공모명_작가명_지원서.pdf */
-export async function downloadApplicationPdf(exTitle: string, app: ApplicantLike, customFields?: CustomField[] | null): Promise<void> {
+export async function downloadApplicationPdf(
+  exTitle: string, app: ApplicantLike, customFields?: CustomField[] | null,
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+): Promise<{ missing: number }> {
+  const failed = await prefetchForPdf(applicationImages(app), onProgress);
   const blob = await htmlToPdfBlob(applicationHtml(exTitle, app, customFields));
   triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(app.user as any))}_지원서.pdf`);
+  return { missing: applicationImages(app).filter((u) => failed.has(u)).length };
 }
 
-/** 전체 지원자 지원서 PDF를 ZIP으로 묶어 다운로드 — 파일명: 공모명_지원서.zip */
-export async function downloadAllApplicationsZip(exTitle: string, apps: ApplicantLike[], customFields?: CustomField[] | null): Promise<number> {
+/** 전체 지원자 지원서 PDF를 ZIP으로 묶어 다운로드 — 파일명: 공모명_지원서.zip
+ *
+ *  지원자마다 작품 사진이 최대 30장이라 여기가 이미지 규모가 가장 크다.
+ *  PDF 렌더는 DOM을 써서 순차일 수밖에 없으므로, **이미지는 먼저 전부 병렬로 받아둔다.** */
+export async function downloadAllApplicationsZip(
+  exTitle: string, apps: ApplicantLike[], customFields?: CustomField[] | null,
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry' | 'pdf') => void,
+): Promise<{ count: number; missing: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
   const used = new Set<string>();
   let count = 0;
+
+  const failed = await prefetchForPdf(apps.flatMap(applicationImages), onProgress);
+  const missing = apps
+    .filter((app) => applicationImages(app).some((u) => failed.has(u)))
+    .map((app) => `${displayName(app.user as any)} · 사진 ${applicationImages(app).filter((u) => failed.has(u)).length}장`);
+
   for (const app of apps) {
     const aSafe = safeName(displayName(app.user as any));
     let name = `${exSafe}_${aSafe}_지원서.pdf`;
@@ -632,10 +723,12 @@ export async function downloadAllApplicationsZip(exTitle: string, apps: Applican
     used.add(name);
     zip.file(name, await htmlToPdfBlob(applicationHtml(exTitle, app, customFields)));
     count += 1;
+    onProgress?.(count, apps.length, 'pdf');
   }
   if (count > 0) {
+    if (missing.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, '지원서에 들어갈 작품 사진', missing));
     const blob = await zip.generateAsync({ type: 'blob' });
     triggerDownload(blob, `${exSafe}_지원서.zip`);
   }
-  return count;
+  return { count, missing };
 }

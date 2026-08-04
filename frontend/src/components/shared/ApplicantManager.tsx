@@ -19,6 +19,7 @@ import { nameWithNickname } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicationContent from '@/components/shared/ApplicationContent';
+import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 import { downloadApplicationPdf, downloadAllApplicationsZip } from '@/lib/operationPdf';
 import type { CustomField } from '@/types';
 
@@ -50,6 +51,10 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const [batchStatus, setBatchStatus] = useState('');
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [pdfBusy, setPdfBusy] = useState<number | 'all' | null>(null);
+  // 진행률은 토스트가 아니라 **버튼 라벨**에 넣는다(토스트는 사라져서 "멈춘 줄" 알게 된다는 신고, 2026-08)
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
+  // 사진을 못 받은 지원자 — 배너로 남겨 [다시 받기]로 이어지게 한다
+  const [missingPhotos, setMissingPhotos] = useState<string[]>([]);
   const [acceptTarget, setAcceptTarget] = useState<{ type: 'single'; appId: number } | { type: 'batch' } | null>(null);
   const [revertTarget, setRevertTarget] = useState<number | null>(null);
 
@@ -96,19 +101,29 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
 
   const handlePdf = async (app: any) => {
     setPdfBusy(app.id);
-    try { await downloadApplicationPdf(exhibitionTitle, app, customFields); }
+    setProgress(null);
+    try {
+      const { missing } = await downloadApplicationPdf(exhibitionTitle, app, customFields,
+        (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : '사진' }));
+      if (missing > 0) toast.error(`작품 사진 ${missing}장을 받지 못해 PDF에 빠졌습니다. 다시 시도해 보세요.`, { duration: 8000 });
+    }
     catch { toast.error('PDF 생성에 실패했습니다.'); }
-    finally { setPdfBusy(null); }
+    finally { setPdfBusy(null); setProgress(null); }
   };
 
   const handleZip = async () => {
     if (applicants.length === 0) return;
     setPdfBusy('all');
+    setProgress(null);
     try {
-      const n = await downloadAllApplicationsZip(exhibitionTitle, applicants, customFields);
-      toast.success(`${n}명의 지원서를 ZIP으로 받았습니다.`);
+      const { count, missing } = await downloadAllApplicationsZip(exhibitionTitle, applicants, customFields,
+        (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : phase === 'pdf' ? 'PDF' : '사진' }));
+      // 사진이 빠진 채로 나갔으면 **사라지는 토스트에만** 의존하지 않는다 — 배너로 남겨 다시 받을 수 있게.
+      setMissingPhotos(missing);
+      if (missing.length > 0) toast.success(`${count}명의 지원서를 ZIP으로 받았습니다. (사진 누락 ${missing.length}명)`);
+      else toast.success(`${count}명의 지원서를 ZIP으로 받았습니다.`);
     } catch { toast.error('ZIP 생성에 실패했습니다.'); }
-    finally { setPdfBusy(null); }
+    finally { setPdfBusy(null); setProgress(null); }
   };
 
   const filtered = statusFilter === 'ALL' ? applicants : applicants.filter(a => a.status === statusFilter);
@@ -153,9 +168,18 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
           className="flex-none flex items-center gap-1.5 px-3 min-h-[40px] border border-gray-300 text-gray-800 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
         >
           {pdfBusy === 'all' ? <Loader2 size={13} className="animate-spin" /> : <FileArchive size={13} />}
-          전체 지원서 ZIP
+          {pdfBusy === 'all' && progress ? `${progress.label} ${progress.done}/${progress.total}` : '전체 지원서 ZIP'}
         </button>
       </div>
+
+      {/* 사진 누락 배너 — 토스트와 달리 사라지지 않는다. 다시 받기는 이미 받은 사진을 재사용하므로 금방 끝난다. */}
+      <MissingImagesBanner
+        items={missingPhotos}
+        what="지원서에 들어갈 작품 사진"
+        busy={pdfBusy !== null}
+        onRetry={handleZip}
+        onDismiss={() => setMissingPhotos([])}
+      />
 
       {/* 일괄 액션 */}
       <div className="flex items-center justify-between flex-wrap gap-2 bg-gray-50 rounded-xl px-3 py-2">
@@ -248,7 +272,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                       className="shrink-0 flex items-center gap-1.5 px-3 min-h-[40px] text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
                       {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-                      지원서 PDF
+                      {pdfBusy === app.id && progress ? `${progress.label} ${progress.done}/${progress.total}` : '지원서 PDF'}
                     </button>
                   </div>
                   <ApplicationContent app={app} customFields={customFields} onImageClick={(images, index) => setLightbox({ images, index })} />

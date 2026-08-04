@@ -21,6 +21,7 @@ import type {
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
 } from '@/types';
 import { EMPTY_CV, EMPTY_NOTE } from '@/types';
+import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 
 const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
   { key: 'solo', label: '개인전' },
@@ -474,6 +475,8 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   // "몇 장째 불러오는 중"이 깜빡인다는 신고가 있었다(2026-08). 버튼 라벨은 작업이 끝날 때까지 유지된다.
   const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const progressText = progress ? `${progress.label} ${progress.done}/${progress.total}` : null;
+  // 자동 회수까지 하고도 못 받은 항목 — 사라지는 토스트 대신 배너로 남겨 [다시 받기]로 잇는다
+  const [missing, setMissing] = useState<{ items: string[]; what: string; retry: () => void } | null>(null);
 
   const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
 
@@ -484,19 +487,18 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const downloadAllZip = async () => {
     if (data.length === 0) { toast.error('수락된 작가가 없습니다.'); return; }
     setZipping(true);
+    setMissing(null);
     const t = toast.loading('전체 제출물 PDF를 생성하는 중입니다...');
     try {
       const { downloadAllSubmissionsZip } = await import('@/lib/operationPdf');
-      const { missing } = await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
-        setProgress({ done, total, label: phase === 'images' ? '이미지' : 'PDF' });
+      const { missing: lost } = await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
+        setProgress({ done, total, label: phase === 'images' ? '이미지' : phase === 'retry' ? '재시도' : 'PDF' });
       });
-      if (missing.length > 0) {
-        // 이미지가 빠진 채로 PDF가 나갔다는 걸 반드시 알린다(예전엔 조용히 넘어갔다)
-        toast.success(`ZIP 다운로드를 시작합니다. (이미지 ${missing.length}개 누락)`, { id: t });
-        toast.error(
-          `PDF에 이미지가 빠진 작품:\n${missing.slice(0, 5).join('\n')}${missing.length > 5 ? `\n외 ${missing.length - 5}건` : ''}`,
-          { duration: 8000 },
-        );
+      if (lost.length > 0) {
+        // 이미지가 빠진 채로 PDF가 나갔다는 걸 반드시 알린다(예전엔 조용히 넘어갔다).
+        // 토스트는 사라지므로 배너로도 남겨 다시 받을 수 있게 한다.
+        toast.success(`ZIP 다운로드를 시작합니다. (이미지 ${lost.length}개 누락)`, { id: t });
+        setMissing({ items: lost, what: 'PDF에 들어갈 작품 이미지', retry: downloadAllZip });
       } else {
         toast.success('ZIP 다운로드를 시작합니다.', { id: t });
       }
@@ -534,18 +536,19 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const downloadImages = async () => {
     if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
     setImgZipping(true);
+    setMissing(null);
     const t = toast.loading('작품 원본 이미지를 모으는 중입니다...');
     try {
       const { downloadAllArtworkImagesZip } = await import('@/lib/operationPdf');
       const { ok, fail, failed } = await downloadAllArtworkImagesZip(
         exhibitionTitle, data, undefined,
-        (done, total) => setProgress({ done, total, label: '이미지' }),
+        (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : '이미지' }),
       );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else if (fail > 0) {
-        // 실패한 작품을 조용히 빠뜨리지 않고 명시한다
+        // 실패한 작품을 조용히 빠뜨리지 않고 명시한다 (+ 사라지지 않는 배너로 다시 받기 제공)
         toast.success(`원본 ${ok}개 ZIP 다운로드 시작 (실패 ${fail}개)`, { id: t });
-        toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}${failed.length > 5 ? `\n외 ${failed.length - 5}건` : ''}`, { duration: 8000 });
+        setMissing({ items: failed, what: '작품 원본', retry: downloadImages });
       } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
     finally { setImgZipping(false); setProgress(null); }
@@ -561,12 +564,12 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
       const zipName = `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`;
       const { ok, fail, failed } = await downloadAllArtworkImagesZip(
         exhibitionTitle, [row], zipName,
-        (done, total) => setProgress({ done, total, label: '이미지' }),
+        (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : '이미지' }),
       );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else if (fail > 0) {
         toast.success(`원본 ${ok}개 ZIP 다운로드 시작 (실패 ${fail}개)`, { id: t });
-        toast.error(`받지 못한 작품:\n${failed.slice(0, 5).join('\n')}`, { duration: 8000 });
+        setMissing({ items: failed, what: '작품 원본', retry: () => downloadArtistImages(row) });
       } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
     } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
     finally { setArtistImgZipping(null); setProgress(null); }
@@ -596,6 +599,15 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
           )}
         </div>
       </div>
+      {missing && (
+        <MissingImagesBanner
+          items={missing.items}
+          what={missing.what}
+          busy={imgZipping || zipping || artistImgZipping !== null}
+          onRetry={missing.retry}
+          onDismiss={() => setMissing(null)}
+        />
+      )}
       {isLoading ? (
         <div className="h-20 bg-gray-100 animate-pulse rounded-xl" />
       ) : data.length === 0 ? (
@@ -805,7 +817,8 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
     setDownloading(true);
     try {
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadArtistSettlementPdf(data.exhibitionTitle, a);
+      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a);
+      if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setDownloading(false); }
   };
 
@@ -960,7 +973,8 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
     setZipping(true);
     try {
       const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadOverallSettlementPdf(buildSettlement(), method);
+      const { missing } = await downloadOverallSettlementPdf(buildSettlement(), method);
+      if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
   const downloadArtist = async (ai: number, method?: 'CARD' | 'CASH') => {
@@ -968,7 +982,8 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
     try {
       const s = buildSettlement();
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method);
+      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method);
+      if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
 

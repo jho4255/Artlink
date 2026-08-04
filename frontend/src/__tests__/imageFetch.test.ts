@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /** vi.stubGlobal('fetch', ...) 에 넘길 때 쓰는 최소 타입 (any 사용 회피) */
 type FetchStub = (input: string) => Promise<Response>;
-import { mapLimit, extOf, proxyUrl, fetchImage, prefetchImages, releaseImageCache } from '@/lib/imageFetch';
+import { mapLimit, extOf, proxyUrl, fetchImage, prefetchImages, recoverFailed, releaseImageCache } from '@/lib/imageFetch';
 
 const R2 = 'https://pub-abc.r2.dev/artlink/art1.jpg';
 
@@ -221,5 +221,84 @@ describe('prefetchImages — 실패 URL 반환 (PDF 누락 안내용)', () => {
   it('전부 성공하면 빈 배열', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => imageResponse()) as unknown as FetchStub);
     expect(await prefetchImages(['https://pub-abc.r2.dev/artlink/a.jpg'])).toEqual([]);
+  });
+});
+
+/**
+ * "하나 빠지면 어떡해" — 실패를 그냥 버리지 않고 되찾는 장치.
+ * 핵심 전제: **실패는 캐시에 남기지 않는다.** 남기면 다시 받기를 눌러도 캐시가 즉시 null을
+ * 돌려주며 네트워크를 아예 타지 않아, 재시도 기능 자체가 무력화된다.
+ */
+describe('실패 캐시 무효화 — 다시 받기가 진짜 다시 받게', () => {
+  beforeEach(() => { releaseImageCache(); vi.restoreAllMocks(); });
+
+  it('★ 한 번 실패한 URL도 다음 호출에서 다시 네트워크를 탄다', async () => {
+    let calls = 0;
+    const spy = vi.fn(async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: false, status: 404 } as Response; // 1회차: 직접+프록시 모두 실패
+      return imageResponse();                                        // 2회차: 성공
+    });
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
+
+    expect(await fetchImage(R2), '1회차는 실패').toBeNull();
+    expect(await fetchImage(R2), '2회차는 성공해야 한다 — 실패가 캐시되면 여기서 null이 나온다').toBeTruthy();
+  });
+
+  it('성공은 계속 캐시된다 (재시도가 성공분까지 다시 받지 않게)', async () => {
+    const spy = vi.fn(async () => imageResponse());
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
+    await fetchImage(R2);
+    await fetchImage(R2);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('recoverFailed — 배치 종료 후 자동 회수', () => {
+  beforeEach(() => { releaseImageCache(); vi.restoreAllMocks(); });
+
+  const A = 'https://pub-abc.r2.dev/artlink/recover-a.jpg';
+  const B = 'https://pub-abc.r2.dev/artlink/recover-b.jpg';
+
+  it('★ 배치 때 실패했던 이미지를 되찾는다', async () => {
+    let phase = 'batch';
+    vi.stubGlobal('fetch', vi.fn(async () => (
+      phase === 'batch' ? ({ ok: false, status: 500 } as Response) : imageResponse()
+    )) as unknown as FetchStub);
+
+    const failed = await prefetchImages([A, B]);
+    expect(failed).toEqual([A, B]);
+
+    phase = 'recover'; // 배치가 끝나 동시성 경쟁이 사라진 상황
+    const left = await recoverFailed(failed, undefined, { rounds: 1, backoffMs: [0] });
+    expect(left, '회수 후에는 남는 게 없어야 한다').toEqual([]);
+  });
+
+  it('끝까지 안 되면 남은 목록을 돌려준다 (무한 재시도 금지)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 }) as Response) as unknown as FetchStub);
+    const left = await recoverFailed([A, B], undefined, { rounds: 2, backoffMs: [0, 0] });
+    expect(left.sort()).toEqual([A, B].sort());
+  });
+
+  it('★ 시간 예산을 넘기면 즉시 멈춘다 (무작정 기다리지 않게)', async () => {
+    const spy = vi.fn(async () => ({ ok: false, status: 500 }) as Response);
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
+    const left = await recoverFailed([A], undefined, { rounds: 5, budgetMs: 0, backoffMs: [0] });
+    expect(left).toEqual([A]);
+    expect(spy, '예산이 0이면 한 번도 시도하지 않는다').not.toHaveBeenCalled();
+  });
+
+  it('라운드마다 진행률을 보고한다', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 }) as Response) as unknown as FetchStub);
+    const rounds: number[] = [];
+    await recoverFailed([A, B], (_d, _t, round) => rounds.push(round), { rounds: 2, backoffMs: [0, 0] });
+    expect(new Set(rounds)).toEqual(new Set([1, 2]));
+  });
+
+  it('빈 목록이면 아무것도 하지 않는다', async () => {
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy as unknown as FetchStub);
+    expect(await recoverFailed([])).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
