@@ -92,7 +92,8 @@ sudo service postgresql start
 13. **Show artists 필드** — DB에 JSON string 저장 (`JSON.stringify`), API에서 `JSON.parse`로 배열 반환. null 허용
 14. **날짜 경계는 KST 기준** — `<input type="date">`→`new Date("YYYY-MM-DD")`는 UTC 자정(=KST 09:00)로 저장됨. 마감/만료/전시상태 판정은 반드시 KST 달력 날짜 단위로: 백엔드 `lib/kstDate.ts`(`startOfTodayKstAsUtc`/`endOfTodayKstAsUtc`/`isDeadlinePassedKst`), 프론트 `utils.ts`(`getDday`/`getShowStatus`). 순수 `new Date()` 비교 금지(마감일 당일 09시 소멸 버그)
 15. **작가 제출자료 완료 판정** — cv/note는 빈 객체도 저장되므로 `!!`로 판정 금지. `lib/submission.ts`의 `hasSubmissionContent`(내용 존재 검사)로 통일. 프론트도 동일 predicate 사용
-16. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
+16. **`R2_PUBLIC_URL`은 쉼표 구분 목록** — **첫 번째**가 신규 업로드용 정식 주소, **전체**가 프록시 허용·파일 삭제로 인정할 주소(`backend/src/lib/r2Urls.ts`). 2026-08-04 개발용 `pub-*.r2.dev` → `img.artlink.cc` 전환 때문. **DB에 옛 주소가 남아 있는 한 목록에서 빼지 말 것** — 빼면 ①프록시가 옛 주소를 400으로 막아 폴백이 죽고 ②`deleteUploadedFile`이 옛 주소를 못 알아봐 **에러 없이 조용히** 고아 파일을 남긴다. 코드에서 `process.env.R2_PUBLIC_URL`을 직접 접두사 비교하지 말고 `r2CanonicalBase()`/`matchR2Base()`를 쓸 것
+17. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
 
 ## TanStack Query Key Map
 

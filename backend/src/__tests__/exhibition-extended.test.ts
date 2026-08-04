@@ -56,11 +56,11 @@ beforeAll(async () => {
       create: u,
     });
   }
-  // 갤러리도 upsert 또는 find-or-create
-  let gallery = await testPrisma.gallery.findFirst({ where: { ownerId: 3, status: 'APPROVED' } });
-  if (!gallery) {
-    gallery = await seedGallery();
-  }
+  // ⚠️ 예전엔 `findFirst({ownerId:3, status:'APPROVED'})`로 남아 있는 갤러리를 재사용했는데,
+  // 앞서 실행된 파일이 남긴 갤러리를 집어와 파일 실행 순서에 따라 깨졌다
+  // (data-integrity의 '동시성 테스트 갤러리' → 이름 단언 실패, 리뷰가 달려 있어 rating 0 전제도 깨짐).
+  // 이 파일 전용 갤러리를 항상 새로 만든다 — 이름·평점을 스스로 통제해야 순서에 무관해진다.
+  const gallery = await seedGallery();
   galleryId = gallery.id;
 });
 

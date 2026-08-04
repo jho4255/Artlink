@@ -145,7 +145,8 @@ test('★ 진행률은 버튼에 표시되어 작업 내내 끊기지 않는다 
 
   const { page, ctx } = await openAs(browser, 'gallery');
   // 갱신 간격을 벌려(동시 5개 × 4초) 진행률이 오래 유지되어야 하는 상황을 만든다
-  await page.route('**/*.r2.dev/**', async (route) => {
+  // 이미지 도메인은 전환 중이다(pub-*.r2.dev → img.artlink.cc). 둘 다 잡는다.
+  await page.route(/https:\/\/(pub-[^/]+\.r2\.dev|img\.artlink\.cc)\//, async (route) => {
     await new Promise((r) => setTimeout(r, 4000));
     await route.continue();
   });

@@ -1,4 +1,5 @@
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { matchR2Base } from './r2Urls';
 import fs from 'fs';
 import path from 'path';
 
@@ -27,8 +28,10 @@ if (useR2) {
 export async function deleteUploadedFile(url: string | null | undefined): Promise<void> {
   if (!url || typeof url !== 'string') return;
   try {
-    const base = process.env.R2_PUBLIC_URL;
-    if (useR2 && s3 && base && url.startsWith(base + '/')) {
+    // 도메인 전환기에는 신·구 주소가 섞여 있다. 어느 쪽이든 "우리 것"으로 인식해야
+    // 옛 주소 파일이 지워지지 않고 고아로 남는 일이 없다(lib/r2Urls.ts).
+    const base = matchR2Base(url);
+    if (useR2 && s3 && base) {
       const key = url.slice(base.length + 1);
       if (key) await s3.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME!, Key: key }));
       return;

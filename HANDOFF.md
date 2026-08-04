@@ -27,6 +27,7 @@ ArtLink는 **거의 완성된 운영 중 서비스**(https://artlink.cc). 코드
   - 빌드 체인: frontend build → backend build → `prisma migrate deploy` → seed → `npm start` (Express가 `frontend/dist`도 서빙하는 모놀리스).
   - **환경변수(R2_*, JWT_SECRET, SMTP 등)는 Render 대시보드에 설정됨** — 코드/저장소에 없음. Claude 계정과 무관하므로 전환해도 영향 없음.
 - **이미지 저장소**: Cloudflare R2 (env 있으면 R2, 없으면 로컬 디스크 fallback). 변수: `R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME/R2_PUBLIC_URL`.
+  - ⚠️ `R2_PUBLIC_URL`은 **쉼표로 여러 개** 가능. **첫 번째 = 신규 업로드에 쓰는 정식 주소**, **전체 = 프록시 허용·파일 삭제로 인정할 주소**(`lib/r2Urls.ts`). 2026-08-04 개발용 `pub-*.r2.dev` → 커스텀 도메인 `img.artlink.cc` 전환 때문. **DB에 옛 주소가 남아 있는 한 옛 주소를 목록에서 빼면 안 된다**(빼면 고아 파일 + 프록시 폴백 사망). 상세는 architecture.md "R2 이미지 도메인 전환".
 - **로컬 DB(dev 전용, 비밀 아님)**: PostgreSQL16, user=`artlink` pw=`artlink_dev_password` db=`artlink` :5432. WSL2는 재부팅 후 `sudo service postgresql start`.
 - **GitHub**: `https://github.com/jho4255/Artlink.git` (origin). main + deploy/render.
 

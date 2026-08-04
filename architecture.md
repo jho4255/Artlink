@@ -632,6 +632,48 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 - E2E `e2e/tests/27-operation-zip.spec.ts` 3개 — 실제 R2 이미지로 ZIP·PDF 다운로드 발생, 진행률 문구, **실패 시 작품명 안내**
 - ⚠️ E2E에서 갤러리 소유 갤러리는 `ownedGalleryId()`로 찾을 것. 목록에서 아무 승인 갤러리나 집으면 **다른 갤러리 계정 소유**라 403이 난다(스펙 26 F4가 별도 갤러리 계정을 만든다).
 
+## R2 이미지 도메인 전환 — 개발용 URL → 커스텀 도메인 (2026-08-04)
+
+### 배경
+모든 이미지 주소가 Cloudflare의 **Public Development URL**(`pub-<hash>.r2.dev`)이었다. 이름 그대로 **개발용**이라 Cloudflare가 속도 제한을 걸어두며, 캐싱도 프로덕션 수준이 아니다. 프로덕션 트래픽을 여기에 태우면 안 된다. → 커스텀 도메인 `img.artlink.cc`로 옮긴다.
+
+### 전환기의 함정 — `R2_PUBLIC_URL`을 그냥 바꾸면 두 곳이 조용히 깨진다
+DB에 **이미 저장된 이미지 주소는 전부 옛 도메인**이다(실측: 표본 69/69). 그런데 `R2_PUBLIC_URL`은 단순 접두사 비교로 3곳에서 쓰인다.
+
+| 위치 | 그냥 바꾸면 |
+|---|---|
+| `routes/upload.ts` 업로드 URL 생성 | (정상 — 새 주소로 저장) |
+| `routes/upload.ts` `image-proxy` SSRF 허용검사 | 옛 주소가 **400**으로 막혀 R2 직접 수신이 실패했을 때의 **폴백이 죽는다** |
+| `lib/storage.ts` `deleteUploadedFile` | 옛 주소를 "우리 것"으로 못 알아봐 **에러 없이 조용히** 건너뛴다 → R2에 고아 파일이 계속 쌓인다 |
+
+### 해결 — `lib/r2Urls.ts` (공개 주소를 목록으로)
+`R2_PUBLIC_URL`에 **쉼표로 여러 개**를 넣을 수 있게 했다.
+
+```
+R2_PUBLIC_URL="https://img.artlink.cc,https://pub-xxxx.r2.dev"
+                 └ 첫 번째 = 신규 업로드에 쓸 정식 주소
+                 └ 전체    = 프록시 허용·파일 삭제 시 "우리 것"으로 인정
+```
+
+- `r2CanonicalBase()` — 업로드 URL 생성 (`upload.ts`)
+- `matchR2Base(url)` — 일치하면 그때 쓴 base를 반환(키 추출에 필요). 프록시 허용검사·파일 삭제가 공유
+- 값이 하나면 예전과 **완전히 동일하게 동작**(하위호환)
+
+**SSRF 방어는 그대로**: 호스트네임 정확 일치 + 동일 프로토콜 + 경로 접두사(`base + '/'`) 3중 검사. `evil.com/?x=https://img.artlink.cc/a.jpg`, `img.artlink.cc.evil.com` 같은 우회는 여전히 차단.
+
+### 적용 순서 (반드시 지킬 것)
+1. **먼저 배포** — 위 코드(두 도메인 허용)를 올린다.
+2. **그 다음** Render 환경변수 `R2_PUBLIC_URL`을 `https://img.artlink.cc,https://pub-xxxx.r2.dev`로 변경.
+   순서를 바꾸면 배포 전까지 옛 이미지의 프록시 폴백이 400으로 막힌다.
+3. 옛 주소는 **지우지 않는다**. DB에 남아 있는 한 계속 목록에 둬야 삭제·폴백이 동작한다.
+
+> R2 CORS 정책은 **버킷 단위**라 커스텀 도메인에도 그대로 적용된다(별도 설정 불필요). 실측: `img.artlink.cc` 200 + `access-control-allow-origin: https://artlink.cc`, 응답 0.345s(옛 도메인 0.312s와 동등, 캐싱 켜기 전 기준).
+
+### 검증
+- `backend/src/__tests__/r2-urls.test.ts` 12개 — 단일/다중 도메인, 정식 주소 선택, 키 추출, SSRF 우회 6종 차단
+- `backend/src/__tests__/storage-delete.test.ts` 4개 — 신·구 도메인 삭제, 폴더 키 보존, 남의 도메인 무시
+- `backend/src/__tests__/upload-proxy-stream.test.ts` +3개 — 라우트에서 두 도메인 모두 중계, 화이트리스트 밖은 400
+
 ## 프로그래매틱 SEO — robots/sitemap + 페이지별 meta 주입 (2026-08-01)
 
 SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 ① 검색엔진에 공모/갤러리 수백 개가 중복 페이지로 보이고 ② **JS를 실행하지 않는 카톡/페북 공유봇**에는 어떤 링크를 공유해도 같은 미리보기가 떴다. SSR 도입 없이 `<head>`의 meta 블록만 서버에서 갈아끼워 해결한다.

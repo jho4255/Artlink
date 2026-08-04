@@ -4,6 +4,7 @@ import path from 'path';
 import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { r2CanonicalBase, matchR2Base } from '../lib/r2Urls';
 
 const router = Router();
 
@@ -68,7 +69,8 @@ async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promis
     ContentType: file.mimetype,
   }));
 
-  return `${process.env.R2_PUBLIC_URL}/${key}`;
+  // 여러 도메인이 설정돼 있으면 첫 번째가 정식 주소 (lib/r2Urls.ts 참고)
+  return `${r2CanonicalBase()}/${key}`;
 }
 
 // 단일 이미지 업로드
@@ -141,18 +143,14 @@ router.post('/file', authenticate, fileUpload.single('file'), async (req, res, n
 
 // ── 이미지 동일출처 프록시 (ArtLook 캔버스 PNG 저장용) ──
 // R2 공개 이미지(외부 도메인)를 우리 도메인으로 중계 → 캔버스 taint 없이 toBlob 가능.
-// SSRF 방지: R2_PUBLIC_URL 접두사로 시작하는 URL만 허용. 공개 이미지라 인증 불필요.
+// SSRF 방지: 설정된 R2 공개 주소로 시작하는 URL만 허용. 공개 이미지라 인증 불필요.
+// 도메인 전환기에는 신·구 주소가 함께 설정되므로 둘 다 허용한다(lib/r2Urls.ts).
 router.get('/image-proxy', async (req, res, next) => {
   try {
     const url = String(req.query.url || '');
-    const base = process.env.R2_PUBLIC_URL || '';
-    if (!base) throw new AppError('이미지 프록시가 설정되지 않았습니다.', 400);
-    // SSRF 방지: 호스트네임을 R2 공개 도메인과 정확히 일치 비교 + 동일 프로토콜 + 경로 접두사
-    let target: URL, allowed: URL;
-    try { target = new URL(url); allowed = new URL(base); }
-    catch { throw new AppError('허용되지 않은 이미지 주소입니다.', 400); }
-    const host = (u: URL) => u.hostname.replace(/\.$/, '').toLowerCase();
-    if (target.protocol !== allowed.protocol || host(target) !== host(allowed) || !url.startsWith(base + '/')) {
+    if (!process.env.R2_PUBLIC_URL) throw new AppError('이미지 프록시가 설정되지 않았습니다.', 400);
+    // 호스트네임 정확 일치 + 동일 프로토콜 + 경로 접두사까지 확인한다
+    if (!matchR2Base(url)) {
       throw new AppError('허용되지 않은 이미지 주소입니다.', 400);
     }
     // redirect: 'manual' — 3xx 리다이렉트(내부주소로 우회) 차단

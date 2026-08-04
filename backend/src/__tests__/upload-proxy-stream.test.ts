@@ -80,3 +80,33 @@ describe('image-proxy 스트리밍', () => {
     expect(r.status).toBe(400);
   });
 });
+
+/**
+ * 커스텀 도메인 전환(2026-08-04): DB의 기존 이미지 주소는 전부 옛 도메인이라
+ * `R2_PUBLIC_URL`에 신·구를 함께 넣는다. 라우트에서도 둘 다 통과해야 폴백이 살아 있다.
+ */
+describe('image-proxy — 공개 주소가 여러 개일 때', () => {
+  const NEW_BASE = 'https://img.test-artlink.cc';
+
+  beforeAll(() => { process.env.R2_PUBLIC_URL = `${NEW_BASE},${R2_BASE}`; });
+  afterAll(() => { process.env.R2_PUBLIC_URL = R2_BASE; }); // 위 afterAll이 최종 정리
+
+  it('새 도메인 주소를 중계한다', async () => {
+    globalThis.fetch = vi.fn(async () => streamResponse(PNG, 'image/png')) as any;
+    const r = await request.get('/api/upload/image-proxy').query({ url: `${NEW_BASE}/artlink/new.png` });
+    expect(r.status).toBe(200);
+  });
+
+  it('★ 옛 도메인 주소도 계속 중계한다 (기존 이미지가 죽지 않아야 한다)', async () => {
+    globalThis.fetch = vi.fn(async () => streamResponse(PNG, 'image/png')) as any;
+    const r = await request.get('/api/upload/image-proxy').query({ url: OK_URL });
+    expect(r.status).toBe(200);
+    expect(Buffer.from(r.body).equals(PNG)).toBe(true);
+  });
+
+  it('그래도 화이트리스트 밖은 400', async () => {
+    globalThis.fetch = vi.fn(async () => streamResponse(PNG, 'image/png')) as any;
+    const r = await request.get('/api/upload/image-proxy').query({ url: 'https://evil.example.com/a.png' });
+    expect(r.status).toBe(400);
+  });
+});
