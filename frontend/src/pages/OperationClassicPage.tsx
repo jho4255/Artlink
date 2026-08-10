@@ -1073,8 +1073,9 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
                   <p className="text-xs text-gray-400">등록된 출품작이 없습니다.</p>
                 ) : (
                   <div className="space-y-2">
+                    {/* 모바일: 결제수단·판매가를 둘째 줄로 접기 — 한 줄이면 고정폭 컨트롤(~190px)만으로 375px 초과 */}
                     {a.works.map((w, wi) => (
-                      <div key={wi} className={`flex items-center gap-3 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
+                      <div key={wi} className={`flex flex-wrap items-center gap-x-3 gap-y-2 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
                         <input type="checkbox" checked={w.sold} disabled={locked} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
                         {/* 작품 사진 */}
                         {w.image ? (
@@ -1089,7 +1090,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
                         </div>
                         {/* 판매가 + 결제수단(카드/현금) */}
                         {w.sold && (
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
                             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
                               <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
                                 className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>

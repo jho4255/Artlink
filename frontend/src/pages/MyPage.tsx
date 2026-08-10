@@ -2573,7 +2573,8 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                         </span>
                       </button>
 
-                      <div className="p-5">
+                      {/* grid 셀에 min-w-0 필수 — 없으면 컬럼이 제목 min-content만큼 늘어나 truncate가 무력화되고 카드 밖으로 잘림 */}
+                      <div className="p-5 min-w-0">
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
