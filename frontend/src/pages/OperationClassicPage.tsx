@@ -1210,6 +1210,10 @@ function composeSize(w: string, h: string): string {
   return `${ws || hs} cm`;
 }
 
+// 숫자 전용 입력 새니타이저 — 가로/세로는 소수점 1개 허용(72.7cm), 제작년도/가격은 정수만
+const decimalOnly = (v: string) => { const t = v.replace(/[^0-9.]/g, ''); const i = t.indexOf('.'); return i === -1 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, ''); };
+const digitsOnly = (v: string) => v.replace(/[^0-9]/g, '');
+
 function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
@@ -1231,23 +1235,23 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
               <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`col-span-2 ${inputCls}`} />
               {/* 크기: 가로 × 세로 (cm) */}
               <div className="col-span-2 flex items-center gap-1.5">
-                <input value={w} onChange={e => upd(i, { width: e.target.value, size: composeSize(e.target.value, h) })} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
                 <span className="text-gray-400 text-sm shrink-0">×</span>
-                <input value={h} onChange={e => upd(i, { height: e.target.value, size: composeSize(w, e.target.value) })} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
                 <span className="text-xs text-gray-500 shrink-0">cm</span>
               </div>
               <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
-              <input value={a.year} onChange={e => upd(i, { year: e.target.value })} placeholder="제작년도" className={inputCls} />
+              <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={inputCls} />
               {/* 가격: 단위 '원' + 한글 금액 힌트 */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
-                  <input value={a.price} onChange={e => upd(i, { price: e.target.value })} placeholder="가격 (예: 230000)" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
+                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="가격 (예: 230000)" inputMode="numeric" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
                   <span className="text-xs text-gray-500 shrink-0">원</span>
                 </div>
                 {priceHint && <span className="text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
               </div>
             </div>
-            <button onClick={() => rm(i)} className="p-1 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={16} /></button>
+            <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
           </div>
         );
       })}

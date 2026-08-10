@@ -947,8 +947,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   // 확정됨 → 읽기 전용
   if (confirmed) {
     return (
-      <section className="mb-10">
-        <h2 className="text-lg font-medium text-gray-900 mb-2">내 전시 정보</h2>
+      <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
+        <p className="mt-1 mb-3 text-sm text-gray-500">제출한 출품작·약력·노트를 확인합니다.</p>
         <div className="mb-3 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           전시 정보가 <b>확정</b>되어 더 이상 수정할 수 없습니다. (제출 내용은 아래에서 확인 가능)
         </div>
@@ -963,18 +964,33 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     );
   }
 
+  // 탭별 입력 상태 — 갤러리 측 탭 카드처럼 채움 여부를 점으로 표시
+  const tabDone: Record<'artwork' | 'cv' | 'note', boolean> = {
+    artwork: artworkList.length > 0,
+    cv: hasContent(cv),
+    note: !!(note && (note.statement || note.sections?.length)),
+  };
+
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-medium text-gray-900">내 전시 정보</h2>
-        <button onClick={handleSave} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
+          <p className="mt-1 text-sm text-gray-500">출품작·약력·노트를 입력하고 저장하면 갤러리에 전달됩니다.</p>
+        </div>
+        <button onClick={handleSave} disabled={saveMutation.isPending} className="shrink-0 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
           {saveMutation.isPending ? '저장 중...' : '저장'}
         </button>
       </div>
 
-      <div className="flex gap-1.5 mb-4">
+      {/* 갤러리 측 '운영 작업'과 동일한 세그먼트 탭 */}
+      <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-4">
         {([['artwork', '출품리스트'], ['cv', '작가약력'], ['note', '작가노트']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm rounded-full transition-colors ${tab === k ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{label}</button>
+          <button key={k} type="button" onClick={() => setTab(k)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${tab === k ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>
+            {label}
+            <span className={`w-1.5 h-1.5 rounded-full ${tabDone[k] ? 'bg-green-500' : 'bg-gray-300'}`} aria-label={tabDone[k] ? '입력됨' : '미입력'} />
+          </button>
         ))}
       </div>
 
@@ -1779,6 +1795,10 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
 
 // 크기 문자열 ↔ 가로/세로 분리는 lib/artwork.ts로 옮겼다 (포트폴리오 작품 정보 입력과 표기를 하나로 맞추기 위해)
 
+// 숫자 전용 입력 새니타이저 — 가로/세로는 소수점 1개 허용(72.7cm), 제작년도/가격은 정수만
+const decimalOnly = (v: string) => { const t = v.replace(/[^0-9.]/g, ''); const i = t.indexOf('.'); return i === -1 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, ''); };
+const digitsOnly = (v: string) => v.replace(/[^0-9]/g, '');
+
 function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
@@ -1800,23 +1820,23 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
               <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`col-span-2 ${inputCls}`} />
               {/* 크기: 가로 × 세로 (cm) */}
               <div className="col-span-2 flex items-center gap-1.5">
-                <input value={w} onChange={e => upd(i, { width: e.target.value, size: composeSize(e.target.value, h) })} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
                 <span className="text-gray-400 text-sm shrink-0">×</span>
-                <input value={h} onChange={e => upd(i, { height: e.target.value, size: composeSize(w, e.target.value) })} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
+                <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
                 <span className="text-xs text-gray-500 shrink-0">cm</span>
               </div>
               <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
-              <input value={a.year} onChange={e => upd(i, { year: e.target.value })} placeholder="제작년도" className={inputCls} />
+              <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={inputCls} />
               {/* 가격: 단위 '원' + 한글 금액 힌트 */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
-                  <input value={a.price} onChange={e => upd(i, { price: e.target.value })} placeholder="가격 (예: 230000)" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
+                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="가격 (예: 230000)" inputMode="numeric" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
                   <span className="text-xs text-gray-500 shrink-0">원</span>
                 </div>
                 {priceHint && <span className="text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
               </div>
             </div>
-            <button onClick={() => rm(i)} className="p-1 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={16} /></button>
+            <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
           </div>
         );
       })}
