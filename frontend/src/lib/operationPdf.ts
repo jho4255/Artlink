@@ -5,7 +5,7 @@
  * 파일명: [공모명]_[작가명]_[문서종류].pdf, ZIP: [공모명]_전체제출물.zip
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
-import { displayName, nameWithNickname } from '@/lib/utils';
+import { displayName, nameWithNickname, formatArtworkPrice } from '@/lib/utils';
 import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 
@@ -68,6 +68,9 @@ export function missingNote(exTitle: string, what: string, items: string[]): str
 }
 
 export const BASE = `font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;color:#111;font-size:13px;line-height:1.6;`;
+// 표 셀 — 가로·세로 가운데 정렬 (열마다 따로 주면 행별로 어긋나 보인다)
+const TD = `border:1px solid #ddd;padding:8px;text-align:center;vertical-align:middle`;
+const TH = `${TD};font-weight:600;font-size:12px`;
 const header = (exTitle: string, docLabel: string, artist: string, email?: string) => `
   <div style="margin-bottom:20px">
     <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
@@ -75,30 +78,35 @@ const header = (exTitle: string, docLabel: string, artist: string, email?: strin
     <p style="font-size:13px;color:#444;margin:0">${esc(artist)}${email ? ` · ${esc(email)}` : ''}</p>
   </div>`;
 
-function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
+// export: ZIP PDF의 표·이미지 규칙을 테스트로 고정하기 위해 (operationPdfDocs.test.ts)
+export function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
   const list = sub.artworkList || [];
   const rows = list.length === 0
     ? `<tr><td colspan="7" style="border:1px solid #ddd;padding:16px;text-align:center;color:#999">등록된 출품작이 없습니다.</td></tr>`
     : list.map((a, i) => `
       <tr data-pdf-atomic>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${i + 1}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${a.image ? `<img src="${esc(proxied(a.image))}" crossorigin="anonymous" style="width:90px;height:90px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.title)}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.size)}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.medium)}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.year)}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center">${esc(a.price)}</td>
+        <td style="${TD}">${i + 1}</td>
+        <td style="${TD}">${a.image ? `<img src="${esc(proxied(a.image))}" crossorigin="anonymous" style="max-width:88px;max-height:88px;display:block;margin:0 auto"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="${TD};word-break:break-word">${esc(a.title)}</td>
+        <td style="${TD};white-space:nowrap">${esc(a.size)}</td>
+        <td style="${TD};word-break:break-word">${esc(a.medium)}</td>
+        <td style="${TD}">${esc(a.year)}</td>
+        <td style="${TD};white-space:nowrap">${esc(formatArtworkPrice(a.price))}</td>
       </tr>`).join('');
+  // table-layout:fixed + colgroup — 내용 길이와 무관하게 열 너비를 고정해 행마다 칸이 어긋나지 않게 한다
   return `<div style="${BASE}">${header(exTitle, '출품리스트', artist, email)}
-    <table style="width:100%;border-collapse:collapse">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+      <colgroup>
+        <col style="width:34px"/><col style="width:104px"/><col/><col style="width:112px"/><col style="width:118px"/><col style="width:52px"/><col style="width:96px"/>
+      </colgroup>
       <thead><tr data-pdf-keep-next style="background:#f5f5f5">
-        <th style="border:1px solid #ddd;padding:8px;width:30px">No</th>
-        <th style="border:1px solid #ddd;padding:8px;width:110px">Image</th>
-        <th style="border:1px solid #ddd;padding:8px">Title</th>
-        <th style="border:1px solid #ddd;padding:8px;width:100px">Size</th>
-        <th style="border:1px solid #ddd;padding:8px;width:130px">Medium</th>
-        <th style="border:1px solid #ddd;padding:8px;width:50px">Year</th>
-        <th style="border:1px solid #ddd;padding:8px;width:90px">Price</th>
+        <th style="${TH}">No</th>
+        <th style="${TH}">Image</th>
+        <th style="${TH}">Title</th>
+        <th style="${TH}">Size</th>
+        <th style="${TH}">Medium</th>
+        <th style="${TH}">Year</th>
+        <th style="${TH}">Price</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -122,18 +130,28 @@ function cvHtml(sub: OperationSubmission, exTitle: string, artist: string, email
   </div>`;
 }
 
-function noteHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
+export function noteHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
   const note = sub.note;
   if (!note || (!note.statement && !(note.sections?.length))) return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}<p style="color:#999">등록된 작가노트가 없습니다.</p></div>`;
+  const list = sub.artworkList || [];
+  // 헤더에 이미 '작가노트'와 작가명이 있으므로 중복 제목은 두지 않는다.
+  // 상세설명은 출품작에 붙는 글 — 해당 작품 사진을 함께 싣는다 (max-*로만 제한해 비율 유지)
   return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}
-    <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 4px">작가노트</h2>
-    <p style="text-align:right;color:#666;margin:0 0 20px">${esc(artist)}</p>
-    ${note.statement ? `<p style="white-space:pre-wrap;margin:0 0 20px">${esc(note.statement)}</p>` : ''}
-    ${(note.sections || []).map(s => `
-      <div style="margin-bottom:18px">
-        ${s.title ? `<h3 data-pdf-keep-next style="font-size:15px;font-weight:700;background:#fdf3c4;display:inline-block;padding:2px 6px;margin:0 0 8px">${esc(s.title)}</h3>` : ''}
-        <p style="white-space:pre-wrap;margin:0">${esc(s.body)}</p>
-      </div>`).join('')}
+    ${note.statement ? `<p style="white-space:pre-wrap;margin:0 0 24px">${esc(note.statement)}</p>` : ''}
+    ${note.sections?.length ? `<h2 data-pdf-keep-next style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 10px">작품별 상세설명</h2>` : ''}
+    ${(note.sections || []).map(s => {
+      const art = list.find(a => a.title?.trim() === s.title);
+      const meta = art ? [art.size, art.medium, art.year].filter(Boolean).join(' · ') : '';
+      return `
+      <div data-pdf-atomic style="margin-bottom:18px;display:flex;gap:12px;align-items:flex-start">
+        ${art?.image ? `<img src="${esc(proxied(art.image))}" crossorigin="anonymous" style="max-width:130px;max-height:130px;flex-shrink:0"/>` : ''}
+        <div style="min-width:0;flex:1">
+          ${s.title ? `<h3 style="font-size:15px;font-weight:700;background:#fdf3c4;display:inline-block;padding:2px 6px;margin:0 0 8px">${esc(s.title)}</h3>` : ''}
+          ${meta ? `<p style="color:#666;font-size:12px;margin:0 0 6px">${esc(meta)}</p>` : ''}
+          <p style="white-space:pre-wrap;margin:0">${esc(s.body)}</p>
+        </div>
+      </div>`;
+    }).join('')}
   </div>`;
 }
 
