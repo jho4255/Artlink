@@ -847,6 +847,8 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const [note, setNote] = useState<ArtistNote>(EMPTY_NOTE);
   const [repIndex, setRepIndex] = useState<number | null>(null);
   const [tab, setTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
+  // 마지막으로 서버에 저장된 출품작 스냅샷 — 작품별 '저장 안 됨' 표시의 기준
+  const [savedList, setSavedList] = useState<ArtworkItem[]>([]);
 
   useEffect(() => {
     if (data) {
@@ -854,6 +856,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       setCv(data.cv || EMPTY_CV);
       setNote(data.note || EMPTY_NOTE);
       setRepIndex(data.representativeIndex ?? null);
+      setSavedList(data.artworkList || []);
     }
   }, [data]);
 
@@ -862,11 +865,31 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     if (repIndex != null && repIndex >= artworkList.length) setRepIndex(null);
   }, [artworkList.length, repIndex]);
 
+  // partial=true (작품 단위 저장)일 땐 refetch를 하지 않는다 —
+  // 되받은 서버 값으로 폼을 덮으면 다른 작품에 입력 중이던 내용이 날아간다.
   const saveMutation = useMutation({
-    mutationFn: () => api.put(`/operations/${exhibitionId}/me`, { artworkList, cv, note, representativeIndex: repIndex }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] }); toast.success('전시 정보가 저장되었습니다.'); },
+    mutationFn: (v: { list: ArtworkItem[]; partial?: boolean; msg?: string }) =>
+      api.put(`/operations/${exhibitionId}/me`, { artworkList: v.list, cv, note, representativeIndex: repIndex }),
+    onSuccess: (_res, v) => {
+      setSavedList(v.list);
+      if (!v.partial) qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] });
+      toast.success(v.msg || '전시 정보가 저장되었습니다.');
+    },
     onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
   });
+
+  // 작품 한 점만 저장 — 전체 제출 검증(대표작·다른 작품 필수값) 없이 이 작품만 확인한다
+  const saveArtwork = (i: number) => {
+    const a = artworkList[i];
+    if (!a) return;
+    const labels: [keyof ArtworkItem, string][] = [['title', '작품명'], ['size', '크기'], ['medium', '재료'], ['year', '제작년도'], ['price', '가격']];
+    const lack = labels.filter(([k]) => !String(a[k] ?? '').trim()).map(([, l]) => l);
+    if (lack.length) { toast.error(`작품 ${i + 1}: ${lack.join(', ')}을(를) 입력해주세요.`); return; }
+    saveMutation.mutate({ list: artworkList, partial: true, msg: `작품 ${i + 1} 저장되었습니다.` });
+  };
+
+  // 이 작품이 마지막 저장 이후 바뀌었는지 (새로 추가한 작품은 저장 전이므로 true)
+  const isArtworkDirty = (i: number) => JSON.stringify(artworkList[i] ?? null) !== JSON.stringify(savedList[i] ?? null);
 
   // 캡션에 들어갈 내용(출품작 제목/크기/재료/년도/가격)은 필수 — 비면 저장 차단
   const collectMissing = (): string[] => {
@@ -911,7 +934,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       );
       return;
     }
-    saveMutation.mutate();
+    saveMutation.mutate({ list: artworkList });
   };
 
   // 포트폴리오 경력 + 내 개인정보(이름/연락처/이메일)를 한 번에 약력으로 불러온다
@@ -1000,7 +1023,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('artwork')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSave={handleSave} saving={saveMutation.isPending} />
+            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSaveArtwork={saveArtwork} isDirty={isArtworkDirty} saving={saveMutation.isPending} />
             <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} onSave={handleSave} saving={saveMutation.isPending} />
           </>
         )}
@@ -1803,13 +1826,15 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
 const decimalOnly = (v: string) => { const t = v.replace(/[^0-9.]/g, ''); const i = t.indexOf('.'); return i === -1 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, ''); };
 const digitsOnly = (v: string) => v.replace(/[^0-9]/g, '');
 
-function ArtworkListEditor({ value, onChange, onSave, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSave?: () => void; saving?: boolean }) {
+function ArtworkListEditor({ value, onChange, onSaveArtwork, isDirty, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSaveArtwork?: (i: number) => void; isDirty?: (i: number) => boolean; saving?: boolean }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
   const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
   const inputCls = "px-2 py-1.5 border border-gray-200 rounded text-sm";
   // 단위(cm·원)와 삭제(−)가 같은 세로 열에 오도록 고정 폭
   const unitCol = "w-7 shrink-0 flex items-center justify-center";
+  // 입력 후에도 어느 칸인지 알 수 있도록 항상 보이는 라벨 (placeholder만으론 채우면 사라짐)
+  const labelCls = "block text-[11px] text-gray-400 mb-0.5";
   return (
     <div className="space-y-3">
       {value.length === 0 && <p className="text-xs text-gray-400">출품할 작품을 추가하세요.</p>}
@@ -1818,43 +1843,69 @@ function ArtworkListEditor({ value, onChange, onSave, saving }: { value: Artwork
         const w = a.width !== undefined ? a.width : parsed.w;
         const h = a.height !== undefined ? a.height : parsed.h;
         const priceHint = koreanWon(a.price);
+        // 저장 여부를 박스 색으로: 저장 전/수정됨 = 주황, 저장됨 = 초록
+        const dirty = isDirty ? isDirty(i) : false;
         return (
-          <div key={i} className="flex gap-2 items-start border border-gray-100 rounded-lg p-2">
-            <span className="text-xs text-gray-400 w-5 pt-2 text-center shrink-0">{i + 1}</span>
-            <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
+          <div key={i} className={`flex gap-2 items-start border rounded-lg p-2 transition-colors ${dirty ? 'border-amber-300 bg-amber-50/40' : 'border-green-200 bg-green-50/30'}`}>
+            <span className="text-xs text-gray-400 w-5 pt-5 text-center shrink-0">{i + 1}</span>
+            <div className="shrink-0">
+              <span className={labelCls}>작품 사진</span>
+              <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
+            </div>
             {/* 입력 칸은 모두 같은 오른쪽 끝에서 멈추고, 단위(cm·원)와 삭제(−)는 그 오른쪽 고정 폭 열에 세로로 정렬 */}
             <div className="flex-1 min-w-0 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`flex-1 min-w-0 ${inputCls}`} />
+              <div className="flex items-end gap-1.5">
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>작품명</span>
+                  <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="예: 푸른 밤의 정원" className={`w-full ${inputCls}`} />
+                </label>
                 <span className={unitCol}>
                   <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
                 </span>
               </div>
               {/* 크기: 가로 × 세로 (cm) */}
-              <div className="flex items-center gap-1.5">
-                <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
-                <span className="text-gray-400 text-sm shrink-0">×</span>
-                <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
-                <span className={`${unitCol} text-xs text-gray-500`}>cm</span>
+              <div className="flex items-end gap-1.5">
+                <label className="w-0 flex-1 min-w-0">
+                  <span className={labelCls}>가로</span>
+                  <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                </label>
+                <span className="text-gray-400 text-sm shrink-0 pb-1.5">×</span>
+                <label className="w-0 flex-1 min-w-0">
+                  <span className={labelCls}>세로</span>
+                  <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                </label>
+                <span className={`${unitCol} pb-1.5 items-end text-xs text-gray-500`}>cm</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`flex-1 min-w-0 ${inputCls}`} />
+              <div className="flex items-end gap-1.5">
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>재료</span>
+                  <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="예: Acrylic on Canvas" className={`w-full ${inputCls}`} />
+                </label>
                 <span className={unitCol} />
               </div>
               {/* 제작년도 | 가격(단위 '원' + 한글 금액 힌트) */}
               <div className="flex items-start gap-1.5">
-                <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={`flex-1 min-w-0 ${inputCls}`} />
-                <div className="flex-1 min-w-0">
-                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="가격 (예: 230000)" inputMode="numeric" className={`w-full text-right ${inputCls}`} />
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>제작년도</span>
+                  <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="예: 2026" inputMode="numeric" className={`w-full ${inputCls}`} />
+                </label>
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>가격</span>
+                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="예: 230000" inputMode="numeric" className={`w-full text-right ${inputCls}`} />
                   {priceHint && <span className="block text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
-                </div>
-                <span className={`${unitCol} pt-2 items-start text-xs text-gray-500`}>원</span>
+                </label>
+                <span className={`${unitCol} pt-[1.35rem] items-start text-xs text-gray-500`}>원</span>
               </div>
-              {/* 작품마다 저장 — 전체 제출 저장과 동일 동작, 입력하던 자리에서 바로 저장 */}
-              {onSave && (
-                <div className="flex items-center gap-1.5">
-                  <span className="flex-1" />
-                  <button onClick={onSave} disabled={saving} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>
+              {/* 이 작품만 저장 — 다른 작품·대표작 검증 없이 해당 작품만 확인 후 저장 */}
+              {onSaveArtwork && (
+                <div className="flex items-center gap-2">
+                  <span className={`flex-1 min-w-0 text-[11px] truncate ${dirty ? 'text-amber-700' : 'text-green-700'}`}>
+                    {dirty ? '저장 안 됨' : '✓ 저장됨'}
+                  </span>
+                  <button onClick={() => onSaveArtwork(i)} disabled={saving || !dirty}
+                    className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${dirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                    {saving ? '저장 중...' : '이 작품 저장'}
+                  </button>
                   <span className={unitCol} />
                 </div>
               )}
@@ -1950,15 +2001,21 @@ function NoteEditor({ value, onChange, artworkList = [] }: { value: ArtistNote; 
                     <div className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={20} className="text-gray-300" /></div>
                   )}
                   <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
-                        <option value="">작품 선택...</option>
-                        {titled.map((a, ai) => <option key={ai} value={a.title.trim()}>{ai + 1}. {a.title.trim()}</option>)}
-                        {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
-                      </select>
-                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
+                    <div className="flex items-end gap-2">
+                      <label className="flex-1 min-w-0">
+                        <span className="block text-[11px] text-gray-400 mb-0.5">작품</span>
+                        <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
+                          <option value="">작품 선택...</option>
+                          {titled.map((a, ai) => <option key={ai} value={a.title.trim()}>{ai + 1}. {a.title.trim()}</option>)}
+                          {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
+                        </select>
+                      </label>
+                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -mb-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
                     </div>
-                    <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="선택한 작품에 대한 상세 설명" className="w-full flex-1 min-h-[5.5rem] px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
+                    <label className="flex-1 flex flex-col min-h-0">
+                      <span className="block text-[11px] text-gray-400 mb-0.5">상세 설명</span>
+                      <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="선택한 작품에 대한 상세 설명" className="w-full flex-1 min-h-[5rem] px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
+                    </label>
                   </div>
                 </div>
               );
