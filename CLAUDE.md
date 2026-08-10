@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **526 tests**: Backend 480 (supertest, `artlink_test` DB 순차), Frontend 46 (jsdom)
+- **781 tests**: Backend 638 (supertest, `artlink_test` DB 순차), Frontend 143 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -94,7 +94,10 @@ sudo service postgresql start
 15. **작가 제출자료 완료 판정** — cv/note는 빈 객체도 저장되므로 `!!`로 판정 금지. `lib/submission.ts`의 `hasSubmissionContent`(내용 존재 검사)로 통일. 프론트도 동일 predicate 사용
 16. **R2 이미지를 `fetch`로 받을 땐 `cache: 'reload'` 필수** (`lib/imageFetch.ts`) — 화면이 같은 이미지를 평범한 `<img src>`(crossorigin 없음)로 먼저 그리면 브라우저 캐시에 **CORS 정보 없는 항목**이 남고, 이후 CORS 모드 `fetch`가 그 항목을 재사용하며 차단된다(서버 헤더는 정상). 그러면 R2 직접 경로가 죽고 **에러 없이 조용히** 백엔드 프록시로 되돌아가 느려진다. `force-cache` 제거만으로는 해결되지 않음(실측). 썸네일이 떠 있는 상태로 다운로드해야 재현된다
 17. **`R2_PUBLIC_URL`은 쉼표 구분 목록** — **첫 번째**가 신규 업로드용 정식 주소, **전체**가 프록시 허용·파일 삭제로 인정할 주소(`backend/src/lib/r2Urls.ts`). 2026-08-04 개발용 `pub-*.r2.dev` → `img.artlink.cc` 전환 때문. **DB에 옛 주소가 남아 있는 한 목록에서 빼지 말 것** — 빼면 ①프록시가 옛 주소를 400으로 막아 폴백이 죽고 ②`deleteUploadedFile`이 옛 주소를 못 알아봐 **에러 없이 조용히** 고아 파일을 남긴다. 코드에서 `process.env.R2_PUBLIC_URL`을 직접 접두사 비교하지 말고 `r2CanonicalBase()`/`matchR2Base()`를 쓸 것
-18. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
+18. **작품 이미지는 자르지도 늘리지도 말 것** — 회화에서 비율은 작품 그 자체다. 포맷 엔진의 `img()` 헬퍼가 `object-fit:contain`을 강제하고, 크기는 `max-width`/`max-height`로만 준다. 화면 쪽도 마찬가지(`aspect-square + object-cover` 금지). 회귀 방지 테스트가 `portfolioFormats.test.ts`에 있다
+19. **포트폴리오 포맷 페이지는 `PAD` 상수에서만 여백을 읽을 것** (`lib/portfolioFormats.ts`) — 페이지별로 숫자를 손으로 적었더니 아카이브에서 머리말과 작품이 **겹치고**, 스토리 페이지가 하단 연락처 줄을 **뚫고 나갔다**. 이미지 높이는 `availH()`/`captionH()`로 계산한다. 대각선 장식은 `transform` 금지 → **`linear-gradient`로** (html2canvas가 transform을 정확히 재현하지 않음). 렌더 전 `await document.fonts.ready` 필수 — 없으면 표지 큰 글씨가 폴백 글꼴로 찍힌다
+20. **경력(`Career`)의 `education`/`award`는 선택 항목** — 기존에 저장된 JSON엔 없다. 직접 `career[key].length`로 접근 금지, 반드시 `lib/artwork.ts`의 `normalizeCareer()`를 통과시킬 것 (안 그러면 옛 데이터에서 런타임 에러)
+21. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
 
 ## TanStack Query Key Map
 
@@ -174,7 +177,10 @@ sudo service postgresql start
 ### 2. 마이페이지 및 권한 (My Page)
 - **인증**: 비로그인 시 로그인 창 노출. 로그아웃 시 로그인 페이지 이동. **프로필 사진 변경 기능** 포함.
 - **Artist 유저**:
-    - **포트폴리오**: [전시 이력, 작가 약력, 작품 사진(최대 30장)] 관리.
+    - **포트폴리오**: [작가 약력, 작가노트, 한 줄 소개, 경력(학력/개인전/단체전/아트페어/수상), 작품 사진(최대 30장)] 관리.
+      - **작품 정보**: 사진을 누르면 [작품명, 시리즈, 크기(가로×세로), 재료, 제작연도, 판매상태, 작품 설명] 입력. 실제 작가 포트폴리오는 예외 없이 작품마다 캡션을 붙이므로 이 정보가 없으면 포맷 PDF에서 캡션이 통째로 빠진다 — 미입력 작품엔 '정보 없음' 배지 표시.
+      - **시리즈**: 작품에 붙인 시리즈명으로 자동으로 묶이고, 시리즈마다 소개 글을 넣으면 PDF에 소개 페이지가 생긴다.
+      - **포맷 PDF**: 4종(화이트 갤러리 16:9 / 스튜디오 볼드 A4가로 / 스토리 A4가로 / 아카이브 A4세로) 중 골라 미리보기 후 저장. 미리보기는 PDF와 **같은 HTML**을 축소해 보여준다(`components/shared/PortfolioFormatPicker.tsx`, `lib/portfolioFormats.ts`).
     - **찜 목록**: 갤러리(갤러리명)와 공모(갤러리명-공모명) 구분 노출. **찜 취소 시 목록에서 즉시 제거.**
     - **활동 내역**: 본인이 작성한 리뷰 및 지원한 공고 목록 모아보기.
     - **지원 내역 관리**: 지원한 공모 목록에서 상태 배지 표시 (접수/검토중/수락/거절).

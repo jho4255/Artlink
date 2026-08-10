@@ -247,8 +247,12 @@ model Portfolio {
   id                Int              @id @default(autoincrement())
   biography         String?
   exhibitionHistory String? // (구) 전시이력 단일 텍스트 — career로 대체, 하위호환 위해 컬럼 유지
-  career            String? // 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...] }
+  career            String? // 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...], education?, award? }
   portfolioFileUrl  String? // 포트폴리오 파일(pdf/doc/hwp) URL
+  statement         String? // 작가노트(ARTIST STATEMENT) — 약력(biography)과 별개. 갤러리가 가장 먼저 읽는 글
+  tagline           String? // 한 줄 소개 — 포맷 PDF 표지 부제
+  themeId           String? // 마지막으로 고른 포트폴리오 포맷 (gallery|studio|story|archive)
+  seriesInfo        String? // 시리즈 설명 JSON: [{ name, note }]
   userId            Int              @unique
   user              User             @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
@@ -261,6 +265,16 @@ model PortfolioImage {
   url           String
   order         Int                  @default(0)
   showInExplore Boolean              @default(false)
+  // ── 작품 정보 ──
+  // 실제 작가 포트폴리오는 예외 없이 [제목/재료/크기/제작연도]를 작품마다 붙인다(샘플 5종 전부).
+  // 없으면 캡션이 통째로 빠지므로 전부 nullable — 있는 항목만 조립한다(lib/artwork.ts).
+  title       String?
+  medium      String? // 재료 (예: Acrylic on canvas)
+  sizeText    String? // 크기 (예: 72.7 × 90.9 cm) — 자유 텍스트
+  year        String? // 제작연도
+  series      String? // 시리즈명 — 포맷 PDF에서 이 값으로 묶고 시리즈 표지를 만든다
+  description String? // 작품 설명 / 서사
+  status      String? // AVAILABLE | SOLD | NFS(비매) — null이면 표기 안 함
   portfolioId   Int
   portfolio     Portfolio            @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   likes         PortfolioImageLike[]

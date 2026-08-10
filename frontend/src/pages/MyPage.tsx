@@ -5,14 +5,18 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, FileDown, Wrench, Bookmark, Inbox
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
-import CareerEditor from '@/components/shared/CareerEditor';
+import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
+import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
+import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
+import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
+import type { PortfolioBookData } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -23,29 +27,17 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, Career, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
+import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
-// 경력(career) 표시용 — 카테고리별 라벨
-const CAREER_LABELS: { key: keyof Career; label: string }[] = [
-  { key: 'artFair', label: '아트페어' },
+// 경력(career) 표시용 — 카테고리별 라벨 (학력·수상은 포트폴리오 전용 확장)
+const CAREER_LABELS: { key: CareerKey; label: string }[] = [
+  { key: 'education', label: '학력' },
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
+  { key: 'artFair', label: '아트페어' },
+  { key: 'award', label: '수상 및 선정' },
 ];
-
-// 경력 객체 정규화 (null/누락 대비)
-function normalizeCareer(c?: Career | null): Career {
-  return {
-    artFair: c?.artFair ?? [],
-    solo: c?.solo ?? [],
-    group: c?.group ?? [],
-  };
-}
-
-// 경력이 비어있는지
-function isCareerEmpty(c: Career): boolean {
-  return c.artFair.length === 0 && c.solo.length === 0 && c.group.length === 0;
-}
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
@@ -738,39 +730,50 @@ function PortfolioSection() {
   });
 
   const [biography, setBiography] = useState('');
+  const [statement, setStatement] = useState('');
+  const [tagline, setTagline] = useState('');
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
+  const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
-  const [pdfBusy, setPdfBusy] = useState(false);
-
-  // 포트폴리오 PDF 저장 — 약력/경력/작품사진을 문서 한 장으로 (portfolioPdf.ts)
-  const handlePortfolioPdf = async () => {
-    if (!user) return;
-    setPdfBusy(true);
-    try {
-      const { downloadPortfolioPdf } = await import('@/lib/portfolioPdf');
-      await downloadPortfolioPdf({
-        user,
-        biography: portfolio?.biography,
-        career: normalizeCareer(portfolio?.career),
-        images: portfolio?.images ?? [],
-      });
-      toast.success('포트폴리오 PDF를 저장했습니다.');
-    } catch {
-      toast.error('PDF 생성에 실패했습니다.');
-    } finally {
-      setPdfBusy(false);
-    }
-  };
+  // 열려 있는 작품 정보 모달. id로 들고 있어야 저장 후 최신 데이터로 다시 그려진다(객체로 들면 옛 값이 남는다)
+  const [metaImageId, setMetaImageId] = useState<number | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (data: { biography: string; career: Career; portfolioFileUrl: string | null }) => api.put('/portfolio', data),
+    mutationFn: (data: Partial<Portfolio> & { career: Career }) => api.put('/portfolio', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
       setEditing(false);
       toast.success('포트폴리오가 저장되었습니다.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '포트폴리오 저장에 실패했습니다.'),
+  });
+
+  // 포맷 선택만 조용히 저장 (편집 모드와 무관 — 고른 즉시 기억해 둔다)
+  const themeMutation = useMutation({
+    mutationFn: (themeId: string) =>
+      api.put('/portfolio', {
+        biography: portfolio?.biography ?? '',
+        career: normalizeCareer(portfolio?.career),
+        portfolioFileUrl: portfolio?.portfolioFileUrl ?? null,
+        statement: portfolio?.statement ?? null,
+        tagline: portfolio?.tagline ?? null,
+        seriesInfo: portfolio?.seriesInfo ?? [],
+        themeId,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
+  });
+
+  // 작품 정보 저장
+  const metaMutation = useMutation({
+    mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft }) =>
+      api.patch(`/portfolio/images/${imageId}`, { ...draft, status: draft.status || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['explore'] });
+      toast.success('작품 정보를 저장했습니다. 아래 포맷 미리보기와 공개 포트폴리오에 바로 반영됩니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || '작품 정보 저장에 실패했습니다.'),
   });
 
   // 포트폴리오 이미지 추가
@@ -821,10 +824,17 @@ function PortfolioSection() {
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
+  const images = portfolio?.images ?? [];
+  const foundSeries = seriesNames(images);
+  const metaImage = images.find((i) => i.id === metaImageId) ?? null;
+
   const startEdit = () => {
     setBiography(portfolio?.biography || '');
+    setStatement(portfolio?.statement || '');
+    setTagline(portfolio?.tagline || '');
     setCareer(normalizeCareer(portfolio?.career));
     setPortfolioFileUrl(portfolio?.portfolioFileUrl || null);
+    setSeriesNotes(Object.fromEntries((portfolio?.seriesInfo ?? []).map(s => [s.name, s.note])));
     setEditing(true);
   };
 
@@ -833,26 +843,44 @@ function PortfolioSection() {
       toast.error('작가 약력을 입력해주세요.');
       return;
     }
-    mutation.mutate({ biography: biography.trim(), career, portfolioFileUrl });
+    mutation.mutate({
+      biography: biography.trim(),
+      career,
+      portfolioFileUrl,
+      statement: statement.trim() || null,
+      tagline: tagline.trim() || null,
+      themeId: portfolio?.themeId ?? null,
+      // 작품에 실제로 붙어 있는 시리즈만 저장 (이름을 바꾸면 옛 설명이 유령으로 남는다)
+      seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
+    });
   };
 
   const savedCareer = normalizeCareer(portfolio?.career);
+  const bookData: PortfolioBookData = {
+    user: user ?? { name: '' },
+    tagline: portfolio?.tagline,
+    statement: portfolio?.statement,
+    biography: portfolio?.biography,
+    career: portfolio?.career,
+    seriesInfo: portfolio?.seriesInfo,
+    images,
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <h3 className="font-semibold">포트폴리오</h3>
         {!editing && (
           <div className="flex items-center gap-4">
-            <button
-              onClick={handlePortfolioPdf}
-              disabled={pdfBusy}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 disabled:opacity-50"
-              title="약력·경력·작품 사진을 PDF 문서로 저장"
+            {/* 편집 화면에서 '갤러리에게 이렇게 보인다'를 바로 확인할 길이 없었다 */}
+            <a
+              href={`/portfolio/${user?.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
             >
-              {pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-              포트폴리오 PDF로 저장
-            </button>
+              <ExternalLink size={13} /> 공개 포트폴리오 보기
+            </a>
             <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
           </div>
         )}
@@ -865,8 +893,38 @@ function PortfolioSection() {
             <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
+            <label className="text-sm font-medium text-gray-700">작가노트</label>
+            <p className="text-xs text-gray-400 mt-0.5 mb-1">갤러리가 가장 먼저 읽는 글입니다. 무엇을 왜 그리는지 편하게 적어보세요.</p>
+            <textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="예: 나의 작업은 시간의 흐름 속에서 휘발되는 기억과, 그 자리에 남은 감정의 잔상을 기록하는 과정이다…" className="w-full h-36 p-3 border border-gray-200 rounded-lg text-sm resize-y leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">한 줄 소개</label>
+            <p className="text-xs text-gray-400 mt-0.5 mb-1">포트폴리오 표지에 이름 아래로 들어갑니다.</p>
+            <input value={tagline} onChange={e => setTagline(e.target.value)} maxLength={200} placeholder="예: 동심의 이면을 과잉된 에너지로 시각화하는 감각의 연출자" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          </div>
+          {foundSeries.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">시리즈 소개</label>
+              <p className="text-xs text-gray-400 mt-0.5 mb-2">작품에 붙인 시리즈마다 소개 페이지를 만들어 드립니다. 비워두면 페이지를 넣지 않습니다.</p>
+              <div className="space-y-2">
+                {foundSeries.map(name => (
+                  <div key={name} className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-sm font-medium text-gray-700 mb-1.5">{name}</p>
+                    <textarea
+                      value={seriesNotes[name] ?? ''}
+                      onChange={e => setSeriesNotes(prev => ({ ...prev, [name]: e.target.value }))}
+                      placeholder="이 시리즈가 어떤 작업인지 적어주세요. (선택)"
+                      rows={3}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm resize-y leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">경력</label>
-            <CareerEditor value={career} onChange={setCareer} />
+            <CareerEditor value={career} onChange={setCareer} categories={PORTFOLIO_CATEGORIES} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">포트폴리오 파일 (PDF / DOC / HWP)</label>
@@ -880,8 +938,18 @@ function PortfolioSection() {
       ) : (
         <div className="space-y-4">
           <div>
+            <p className="text-sm font-medium text-gray-500">한 줄 소개</p>
+            <p className="text-sm text-gray-700 mt-1 break-keep">
+              {portfolio?.tagline || <span className="text-gray-400">등록된 한 줄 소개가 없습니다. 포트폴리오 표지와 공개 페이지의 이름 아래에 들어갑니다.</span>}
+            </p>
+          </div>
+          <div>
             <p className="text-sm font-medium text-gray-500">작가 약력</p>
             <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.biography || '등록된 약력이 없습니다.'}</p>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">작가노트</p>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.statement || '등록된 작가노트가 없습니다.'}</p>
           </div>
           <div>
             <p className="text-sm font-medium text-gray-500 mb-1">경력</p>
@@ -889,11 +957,11 @@ function PortfolioSection() {
               <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
             ) : (
               <div className="space-y-2">
-                {CAREER_LABELS.map(({ key, label }) => savedCareer[key].length > 0 && (
+                {CAREER_LABELS.map(({ key, label }) => (savedCareer[key] ?? []).length > 0 && (
                   <div key={key}>
                     <p className="text-xs font-medium text-gray-400">{label}</p>
                     <ul className="mt-0.5 space-y-0.5">
-                      {savedCareer[key].map((e, i) => (
+                      {(savedCareer[key] ?? []).map((e, i) => (
                         <li key={i} className="text-sm text-gray-700">
                           <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
                         </li>
@@ -919,20 +987,41 @@ function PortfolioSection() {
 
       {/* 작품 사진 관리 */}
       <div>
-        <p className="text-sm font-medium text-gray-500 mb-2">
-          작품 사진 ({portfolio?.images?.length || 0}/30)
+        <p className="text-sm font-medium text-gray-500 mb-1">
+          작품 사진 ({images.length}/30)
           <span className="text-xs text-gray-500 ml-2 font-normal">
             <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
           </span>
         </p>
+        <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
         <PortfolioImageGrid
-          images={portfolio?.images || []}
+          images={images}
           onAdd={(url) => addImageMutation.mutate(url)}
           onRemove={(imageId) => removeImageMutation.mutate(imageId)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
+          onEdit={(imageId) => setMetaImageId(imageId)}
           maxCount={30}
         />
       </div>
+
+      {/* 포맷 선택 + 미리보기 + PDF */}
+      <div className="pt-2 border-t border-gray-100">
+        <PortfolioFormatPicker
+          data={bookData}
+          value={portfolio?.themeId}
+          onChange={(id) => { if (id !== portfolio?.themeId) themeMutation.mutate(id); }}
+        />
+      </div>
+
+      {metaImage && (
+        <ArtworkMetaModal
+          image={metaImage}
+          seriesOptions={foundSeries}
+          saving={metaMutation.isPending}
+          onSave={(draft) => metaMutation.mutate({ imageId: metaImage.id, draft }, { onSuccess: () => setMetaImageId(null) })}
+          onClose={() => setMetaImageId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -943,12 +1032,14 @@ function PortfolioImageGrid({
   onAdd,
   onRemove,
   onToggleExplore,
+  onEdit,
   maxCount = 30,
 }: {
-  images: { id: number; url: string; order: number; showInExplore?: boolean; _count?: { likes: number } }[];
+  images: PortfolioImage[];
   onAdd: (url: string) => void;
   onRemove: (imageId: number) => void;
   onToggleExplore: (imageId: number) => void;
+  onEdit: (imageId: number) => void;
   maxCount?: number;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -1013,7 +1104,24 @@ function PortfolioImageGrid({
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {images.map((img) => (
           <div key={img.id} className="relative group">
-            <img src={img.url} alt="내 포트폴리오 작품" className="w-full aspect-square object-cover" />
+            {/* 사진 전체가 '작품 정보' 버튼 — 캡션이 비면 포맷 PDF에서 제목 자리가 통째로 빈다 */}
+            <button
+              onClick={() => onEdit(img.id)}
+              className="block w-full aspect-square bg-gray-50"
+              aria-label="작품 정보 입력"
+              title="작품 정보 입력"
+            >
+              {/* 작품은 자르지 않는다 — 정사각 썸네일에 맞추려고 object-cover를 쓰면 세로로 긴 작품이 잘려 보인다 */}
+              <img src={img.url} alt="내 포트폴리오 작품" className="w-full h-full object-contain" />
+            </button>
+            {/* 캡션 상태 배지 (좌상단) — 정보가 없으면 눈에 띄게 알린다 */}
+            {hasCaption(img) ? (
+              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-white/85 text-gray-700 text-[10px] font-medium ring-1 ring-black/5 pointer-events-none max-w-[80%] truncate">
+                {artworkTitle(img)}
+              </span>
+            ) : (
+              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-400 text-amber-950 text-[10px] font-semibold pointer-events-none">정보 없음</span>
+            )}
             {/* 삭제 버튼 (우상단) — PC는 hover 시, 터치기기(hover 없음)는 항상 노출 */}
             <button
               onClick={() => onRemove(img.id)}

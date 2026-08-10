@@ -635,10 +635,13 @@ export interface ApplicantLike {
   createdAt?: string;
 }
 
+// 표시용 — 포트폴리오에서 넘어온 학력·수상도 지원서 PDF에 함께 싣는다(빈 항목은 자동으로 빠진다)
 const APP_CAREER_SECTIONS: { key: keyof Career; label: string }[] = [
-  { key: 'artFair', label: '아트페어' },
+  { key: 'education', label: '학력' },
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
+  { key: 'artFair', label: '아트페어' },
+  { key: 'award', label: '수상 및 선정' },
 ];
 
 // export: 지원서 PDF의 HTML 빌더 (순수 함수) — 단위 테스트/미리보기용
@@ -683,10 +686,10 @@ export function applicationHtml(exTitle: string, app: ApplicantLike, customField
 
   const careerHtml = careerEmpty
     ? `<p style="color:#999;margin:0 0 16px">등록된 경력이 없습니다.</p>`
-    : APP_CAREER_SECTIONS.map(({ key, label }) => career[key].length === 0 ? '' : `
+    : APP_CAREER_SECTIONS.map(({ key, label }) => (career[key] ?? []).length === 0 ? '' : `
         <div data-pdf-atomic style="margin-bottom:12px">
           <h3 style="font-size:13px;font-weight:700;color:#1a1a2e;margin:0 0 4px">${esc(label)}</h3>
-          ${career[key].map(e => `<p style="margin:2px 0">${esc([e.year, e.content].filter(Boolean).join(' '))}</p>`).join('')}
+          ${(career[key] ?? []).map(e => `<p style="margin:2px 0">${esc([e.year, e.content].filter(Boolean).join(' '))}</p>`).join('')}
         </div>`).join('');
 
   const imagesHtml = images.length === 0

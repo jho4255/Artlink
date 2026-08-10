@@ -32,6 +32,7 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CareerEditor from '@/components/shared/CareerEditor';
+import { normalizeCareer } from '@/lib/artwork';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
@@ -47,9 +48,6 @@ const APP_CAREER_LABELS: { key: keyof Career; label: string }[] = [
 ];
 const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-07-03';
 
-function normalizeCareer(c?: Career | null): Career {
-  return { artFair: c?.artFair ?? [], solo: c?.solo ?? [], group: c?.group ?? [] };
-}
 
 type ExhibitionDetail = Exhibition & {
   gallery: {
@@ -723,7 +721,7 @@ export default function ExhibitionDetailPage() {
                     value={applyCareer}
                     onChange={(c) => { setApplyCareer(c); setCareerErrorKeys(new Set()); }}
                     none={applyCareerNone}
-                    onNoneChange={(n) => { setApplyCareerNone(n); setCareerErrorKeys(new Set()); }}
+                    onNoneChange={(n) => { setApplyCareerNone((prev) => ({ ...prev, ...n })); setCareerErrorKeys(new Set()); }}
                     errorKeys={careerErrorKeys}
                   />
                 </div>
@@ -848,7 +846,7 @@ export default function ExhibitionDetailPage() {
                     if (applyImages.length < 1) { errors.push('작품 사진을 1장 이상 첨부해주세요.'); setImgError(true); }
                     const careerErr = new Set<string>();
                     for (const { key, label } of APP_CAREER_LABELS) {
-                      if (applyCareer[key].length === 0 && !applyCareerNone[key as keyof typeof applyCareerNone]) {
+                      if ((applyCareer[key] ?? []).length === 0 && !applyCareerNone[key as keyof typeof applyCareerNone]) {
                         errors.push(`${label} 경력을 입력하거나 '없음'을 체크해주세요.`);
                         careerErr.add(key as string);
                       }

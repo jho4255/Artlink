@@ -1,16 +1,17 @@
 import { FileText } from 'lucide-react';
 import { safeHttpUrl } from '@/lib/utils';
-import type { Career, CustomAnswer, CustomField } from '@/types';
+import { isCareerEmpty, normalizeCareer } from '@/lib/artwork';
+import type { Career, CareerKey, CustomAnswer, CustomField } from '@/types';
 
-const LABELS: { key: keyof Career; label: string }[] = [
-  { key: 'artFair', label: '아트페어' },
+// 표시용 — 작가가 포트폴리오에 학력·수상을 적었으면 지원서에도 실려 오므로 함께 보여준다
+// (지원 시 '필수'로 요구하는 항목은 ExhibitionDetailPage의 APP_CAREER_LABELS 3종 그대로)
+const LABELS: { key: CareerKey; label: string }[] = [
+  { key: 'education', label: '학력' },
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
+  { key: 'artFair', label: '아트페어' },
+  { key: 'award', label: '수상 및 선정' },
 ];
-
-function normalizeCareer(c?: Career | null): Career {
-  return { artFair: c?.artFair ?? [], solo: c?.solo ?? [], group: c?.group ?? [] };
-}
 
 export interface ApplicationLike {
   biography?: string | null;
@@ -34,7 +35,7 @@ interface Props {
 export default function ApplicationContent({ app, customFields, onImageClick }: Props) {
   const career = normalizeCareer(app.career);
   const images = app.artworkImages ?? [];
-  const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
+  const careerEmpty = isCareerEmpty(app.career);
   // customAnswers는 (구) 하위호환 컬럼이라 배열이 아닌 레거시 데이터가 있을 수 있어 방어적으로 배열만 사용.
   const safeAnswers = Array.isArray(app.customAnswers) ? app.customAnswers : [];
   const answerMap = new Map(safeAnswers.map((answer) => [answer.fieldId, answer.value]));

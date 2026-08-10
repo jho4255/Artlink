@@ -15,6 +15,7 @@ import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import { composeSize, splitSize } from '@/lib/artwork';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
@@ -1772,17 +1773,7 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
   );
 }
 
-// 크기 문자열 ↔ 가로/세로 분리 (size는 캡션·PDF용 단일 출처로 유지)
-function splitSize(s: string): { w: string; h: string } {
-  const m = String(s || '').match(/([\d.]+)\s*[x×X*]\s*([\d.]+)/);
-  return m ? { w: m[1], h: m[2] } : { w: '', h: '' };
-}
-function composeSize(w: string, h: string): string {
-  const ws = (w || '').trim(), hs = (h || '').trim();
-  if (!ws && !hs) return '';
-  if (ws && hs) return `${ws}×${hs} cm`;
-  return `${ws || hs} cm`;
-}
+// 크기 문자열 ↔ 가로/세로 분리는 lib/artwork.ts로 옮겼다 (포트폴리오 작품 정보 입력과 표기를 하나로 맞추기 위해)
 
 function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);

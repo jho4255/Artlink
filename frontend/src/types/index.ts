@@ -141,6 +141,9 @@ export interface GalleryOfMonth {
   gallery: Gallery;
 }
 
+/** 작품 판매 상태 — null이면 표기하지 않는다 */
+export type ArtworkStatus = 'AVAILABLE' | 'SOLD' | 'NFS';
+
 export interface PortfolioImage {
   id: number;
   url: string;
@@ -148,6 +151,20 @@ export interface PortfolioImage {
   showInExplore?: boolean;
   /** 받은 좋아요 수 (내 포트폴리오 조회 시 포함) */
   _count?: { likes: number };
+  // ── 작품 정보 (전부 선택. 있는 항목만 캡션에 조립된다 — lib/artwork.ts) ──
+  title?: string | null;
+  medium?: string | null;
+  sizeText?: string | null;
+  year?: string | null;
+  series?: string | null;
+  description?: string | null;
+  status?: ArtworkStatus | null;
+}
+
+/** 시리즈 설명 — 포맷 PDF의 시리즈 표지에 실린다 */
+export interface SeriesInfo {
+  name: string;
+  note: string;
 }
 
 // 경력 항목 (연도 + 내용)
@@ -156,11 +173,22 @@ export interface CareerEntry {
   content: string;
 }
 
-// 경력 (아트페어/개인전/단체전)
+// 경력. artFair/solo/group은 지원서와 공용이라 필수,
+// education/award는 포트폴리오에서만 쓰는 확장이라 선택 (기존에 저장된 JSON에는 없다).
 export interface Career {
   artFair: CareerEntry[];
   solo: CareerEntry[];
   group: CareerEntry[];
+  education?: CareerEntry[];
+  award?: CareerEntry[];
+}
+
+export type CareerKey = keyof Career;
+
+/** normalizeCareer가 돌려주는, 모든 항목이 채워진 경력 */
+export interface FullCareer extends Career {
+  education: CareerEntry[];
+  award: CareerEntry[];
 }
 
 export const EMPTY_CAREER: Career = { artFair: [], solo: [], group: [] };
@@ -292,6 +320,10 @@ export interface Portfolio {
   exhibitionHistory?: string; // (구) 미사용
   career?: Career | null;
   portfolioFileUrl?: string | null;
+  statement?: string | null;   // 작가노트
+  tagline?: string | null;     // 한 줄 소개 (포맷 표지 부제)
+  themeId?: string | null;     // 마지막으로 고른 포맷
+  seriesInfo?: SeriesInfo[] | null;
   images: PortfolioImage[];
 }
 
@@ -350,6 +382,10 @@ export interface PublicPortfolio {
   exhibitionHistory?: string | null;
   career?: Career | null;
   portfolioFileUrl?: string | null;
+  statement?: string | null;
+  tagline?: string | null;
+  themeId?: string | null;
+  seriesInfo?: SeriesInfo[] | null;
   images: PortfolioImage[];
   user: { id: number; name: string; nickname?: string | null; avatar?: string; instagramUrl?: string | null };
 }

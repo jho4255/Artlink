@@ -790,6 +790,73 @@ SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 
 - **환경 전환**: Cloudinary 환경변수 유무로 업로드 방식 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **Express v5**: SPA wildcard `/{*path}` 문법 필수 (`*` 단독 사용 불가)
 
+## 작가 포트폴리오 포맷 (2026-08-10)
+
+실제 작가 5명의 포트폴리오 PDF를 기준으로 삼아, 우리 포트폴리오가 무엇이 부족했는지 정리하고 포맷 4종을 만들었다.
+
+### 무엇이 문제였나 (레퍼런스 대비)
+
+| 레퍼런스 5종의 공통 문법 | 기존 ArtLink |
+|---|---|
+| 작품마다 **[제목 / 재료 / 크기 / 제작연도]** 캡션 (5/5) | `PortfolioImage = {url, order}` — 정보가 아예 없음 |
+| 작품을 **자르지 않음**. 중립 배경에 원본 비율 (5/5) | `aspect-square object-cover` — 회화를 정사각으로 크롭 |
+| **시리즈 단위** 구성 + 시리즈별 설명 (4/5) | 30장 평면 나열 |
+| **작가노트(ARTIST STATEMENT)** 전용 페이지 (5/5) | 약력만 있음 (정작 제출 플로우엔 작가노트가 있었다) |
+| **표지 + 연락처 페이지**로 시작·마무리 (5/5) | 없음 |
+| 학력·수상까지 담은 CV (5/5) | 경력 = 아트페어/개인전/단체전 3종 |
+
+### 데이터 (migration `20260810135150_add_portfolio_artwork_meta`)
+
+- `PortfolioImage` + `title` `medium` `sizeText` `year` `series` `description` `status`(AVAILABLE/SOLD/NFS)
+- `Portfolio` + `statement`(작가노트) `tagline`(한 줄 소개) `themeId`(고른 포맷) `seriesInfo`(JSON `[{name,note}]`)
+- `career` JSON에 `education` `award` 선택 항목 추가 — **기존 JSON엔 없으므로 항상 `normalizeCareer()`로 통과**시킬 것
+
+### 포맷 4종 (`frontend/src/lib/portfolioFormats.ts`)
+
+| id | 이름 | 판형 | 작품/쪽 | 성격 |
+|---|---|---|---|---|
+| `gallery` | 화이트 갤러리 | 16:9 (1600×900 → 297×167mm) | 2 | 아이보리 + 명조, 무장식 |
+| `studio` | 스튜디오 볼드 | A4 가로 (1414×1000) | 3 | 차콜/오렌지, 큰 시리즈 제목 + 그리드 + 하단 러닝 푸터 |
+| `story` | 스토리 | A4 가로 | 1 | 좌 작품 / 우 이야기, 매 장 하단 연락처 |
+| `archive` | 아카이브 | A4 세로 (1000×1414) | 2 | 인쇄·공모 첨부용 정통 문서 |
+
+페이지 순서(공통): 표지 → 작가노트 → [시리즈 소개 → 작품…]× → CV → 연락처
+
+### 엔진이 `operationPdf.htmlToPdfBlob`과 다른 점
+
+`htmlToPdfBlob`은 **긴 세로 문서 한 장**을 렌더해 잘라내므로 페이지마다 다른 레이아웃을 줄 수 없다.
+포맷 엔진은 반대로 **페이지 하나 = 판형 크기 HTML 하나**를 렌더해 1:1로 넣는다(`renderPagesToPdf`).
+덕분에 표지·시리즈 표지·작품 페이지가 각기 다른 구성을 갖고, **미리보기 화면이 같은 HTML을 축소해 보여주므로
+미리보기와 PDF가 구조적으로 어긋날 수 없다**(`PortfolioFormatPicker`).
+
+배율은 판형 폭 기준 240dpi를 목표로 자동 계산한다(`scale = min(2.4, mm/25.4*240 / px)`).
+실측: 작품 9점 + 전시전경 2장 기준 13~18쪽, 5~8MB, 7~10초.
+
+### 페이지 레이아웃에서 주의할 점
+
+- **`PAD` 상수에서만 여백을 읽을 것.** 페이지별로 손으로 숫자를 적었더니 아카이브에서 머리말과 작품이 겹치고,
+  스토리 전시전경이 하단 연락처 줄을 뚫고 나갔다. `availH()` / `captionH()`로 이미지 높이를 계산한다.
+- **대각선은 `transform` 대신 `linear-gradient`로.** html2canvas가 transform을 항상 정확히 재현하지는 않는다.
+  기울어진 배너는 `linear-gradient(100deg, transparent 0 3%, accent 3% 97%, transparent 97%)` 형태.
+- **글꼴 대기 필수** — `await document.fonts.ready` 없이 렌더하면 표지 큰 글씨가 폴백 글꼴로 찍힌다.
+  명조(Nanum Myeongjo)는 `frontend/index.html`에서 로드한다.
+- **작품 이미지는 반드시 prefetch 후 렌더** — 안 하면 페이지 수만큼 프록시 요청이 붙는다(`operationPdf` 주석 참고).
+- **작품은 절대 자르거나 늘리지 않는다.** 회화에서 비율은 작품 그 자체다. `img()` 헬퍼가 `object-fit:contain`을
+  강제로 덧붙이므로 호출부가 `cover`를 적어도 무시된다. 크기는 `max-width`/`max-height`로만 준다.
+  표지를 꾸미려고 `cover`로 깔았다가 그림이 잘린 적이 있어(화이트 갤러리·스토리 표지) 회귀 방지 테스트를 뒀다
+  (`portfolioFormats.test.ts` — 전 포맷 전 페이지 HTML에 cover/fill 및 img의 width/height가 없어야 통과).
+- **전시 전경(설치 사진) 기능은 두지 않는다.** 2026-08-11 철회 — 작품/전시전경 분류 입력이 작가에게 부담이었고
+  포트폴리오 본문과 겹쳤다. `PortfolioImage.category`는 migration `20260811001500_remove_portfolio_image_category`로 제거.
+- **시리즈 제목은 페이지 '내용'이 그린다(머리말 장식이 아니다).** 스튜디오에서 시리즈명을 상단 배너 장식에
+  넣어뒀더니, 시리즈를 쓰지 않는 작가에게 **내용 없는 빈 띠**만 남았다. 지금은 `worksHtml`이 직접 그리고
+  시리즈가 없으면 아예 그리지 않는다. 같은 시리즈가 여러 장 이어지면 첫 장만 큰 제목, 이후는 축약형.
+
+### 공용 순수 함수 (`frontend/src/lib/artwork.ts`)
+
+캡션 조립(`captionInline`/`captionLines` — **있는 항목만** 이어붙임), 시리즈 그룹핑(`groupBySeries` — 미지정 묶음은 맨 뒤),
+크기 합성(`composeSize`/`splitSize` — 운영페이지 출품리스트와 공용), 경력 정규화(`normalizeCareer`).
+`normalizeCareer`는 MyPage/PortfolioPage/ExhibitionDetailPage/ApplicationContent 4곳에 복붙돼 있던 것을 여기로 합쳤다.
+
 ## 주의사항
 
 - **Prisma v5만 사용** — v7은 `datasource url` 제거로 인한 breaking change

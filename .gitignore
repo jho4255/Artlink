@@ -18,6 +18,9 @@ build/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# 참고용 작가 포트폴리오 원본 + 그걸로 만든 포맷 샘플 (타인 저작물이므로 절대 커밋 금지)
+portfolio/
+
 # IDE
 .vscode/
 .idea/
