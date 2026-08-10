@@ -295,8 +295,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const [note, setNote] = useState<ArtistNote>(EMPTY_NOTE);
   const [repIndex, setRepIndex] = useState<number | null>(null);
   const [tab, setTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
-  // 마지막으로 서버에 저장된 출품작 스냅샷 — 작품별 '저장 안 됨' 표시의 기준
+  // 마지막으로 서버에 저장된 스냅샷 — 항목별 '저장 안 됨' 표시의 기준
   const [savedList, setSavedList] = useState<ArtworkItem[]>([]);
+  const [savedNote, setSavedNote] = useState<ArtistNote>(EMPTY_NOTE);
 
   useEffect(() => {
     if (data) {
@@ -305,6 +306,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       setNote(data.note || EMPTY_NOTE);
       setRepIndex(data.representativeIndex ?? null);
       setSavedList(data.artworkList || []);
+      setSavedNote(data.note || EMPTY_NOTE);
     }
   }, [data]);
 
@@ -320,11 +322,21 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       api.put(`/operations/${exhibitionId}/me`, { artworkList: v.list, cv, note, representativeIndex: repIndex }),
     onSuccess: (_res, v) => {
       setSavedList(v.list);
+      setSavedNote(note); // PUT은 노트도 함께 보내므로 노트 기준선도 갱신
       if (!v.partial) qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] });
       toast.success(v.msg || '전시 정보가 저장되었습니다.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
   });
+
+  // 작가노트 저장 (전체 노트 + 작품별 상세설명) — 출품작 검증 없이 노트만 확인
+  const saveNote = (label: string) => {
+    const bad = note.sections.findIndex(s => !s.title.trim());
+    if (bad !== -1) { toast.error(`상세설명 ${bad + 1}: 작품을 선택해주세요.`); return; }
+    saveMutation.mutate({ list: artworkList, partial: true, msg: `${label} 저장되었습니다.` });
+  };
+  const isSectionDirty = (i: number) => JSON.stringify(note.sections[i] ?? null) !== JSON.stringify(savedNote.sections?.[i] ?? null);
+  const statementDirty = (note.statement || '') !== (savedNote.statement || '');
 
   // 작품 한 점만 저장 — 전체 제출 검증(대표작·다른 작품 필수값) 없이 이 작품만 확인한다
   const saveArtwork = (i: number) => {
@@ -473,7 +485,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('note')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <NoteEditor value={note} onChange={setNote} artworkList={artworkList} />
+            <NoteEditor value={note} onChange={setNote} artworkList={artworkList} onSaveNote={saveNote} isSectionDirty={isSectionDirty} statementDirty={statementDirty} saving={saveMutation.isPending} />
           </>
         )}
       </div>
@@ -764,13 +776,35 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
           </div>
         )}
       </div>
-      {/* 노트 */}
+      {/* 노트 — 전체 노트와 작품별 상세설명(썸네일 + 제목 + 본문)을 구분해서 보여준다 */}
       <div>
         <p className="text-xs font-medium text-gray-500 mb-1">작가노트</p>
         {!note || (!note.statement && !(note.sections?.length)) ? <p className="text-xs text-gray-400">미입력</p> : (
-          <div className="text-xs text-gray-700 whitespace-pre-wrap">
-            {note.statement}
-            {note.sections?.map((s, i) => <div key={i} className="mt-2"><span className="font-medium">{s.title}</span>{'\n'}{s.body}</div>)}
+          <div className="space-y-3">
+            {note.statement && <p className="text-xs text-gray-700 whitespace-pre-wrap">{note.statement}</p>}
+            {!!note.sections?.length && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">작품별 상세설명 ({note.sections.length})</p>
+                <div className="space-y-2">
+                  {note.sections.map((s, i) => {
+                    const art = artworkList.find(a => a.title?.trim() === s.title);
+                    return (
+                      <div key={i} className="flex gap-2.5 items-start">
+                        {art?.image ? (
+                          <img src={art.image} alt="" className="w-12 h-12 rounded object-contain bg-gray-50 shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-800 truncate">{s.title || '(작품 미선택)'}</p>
+                          <p className={`mt-0.5 text-xs whitespace-pre-wrap ${s.body ? 'text-gray-600' : 'text-gray-300'}`}>{s.body || '설명 없음'}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1191,7 +1225,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
 // ============ 에디터들 ============
 
 // 출품작 이미지 셀 (compact 업로드)
-function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url: string) => void }) {
+function ArtworkImageCell({ value, onChange, className = '' }: { value?: string; onChange: (url: string) => void; className?: string }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1217,7 +1251,7 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
       title="클릭 또는 이미지를 끌어다 놓기"
-      className={`w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
+      className={`w-32 sm:w-40 h-32 sm:h-40 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${className} ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
       {/* object-contain — 작품 비율은 작품 그 자체라 자르지 않는다 (CLAUDE.md 18) */}
       {uploading ? <Loader2 size={18} className="animate-spin" /> : value ? <img src={value} alt="" className="w-full h-full object-contain" /> : <Upload size={18} />}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handle(f); e.target.value = ''; }} />
@@ -1261,22 +1295,36 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, isDirty, saving }: 
         // 저장 여부를 박스 색으로: 저장 전/수정됨 = 주황, 저장됨 = 초록
         const dirty = isDirty ? isDirty(i) : false;
         return (
-          <div key={i} className={`flex gap-2 items-start border rounded-lg p-2 transition-colors ${dirty ? 'border-amber-300 bg-amber-50/40' : 'border-green-200 bg-green-50/30'}`}>
-            <span className="text-xs text-gray-400 w-5 pt-5 text-center shrink-0">{i + 1}</span>
-            <div className="shrink-0">
-              <span className={labelCls}>작품 사진</span>
-              <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
+          <div key={i} className={`border rounded-lg p-2 transition-colors ${dirty ? 'border-amber-300 bg-amber-50/40' : 'border-green-200 bg-green-50/30'}`}>
+            {/* 저장 버튼 줄은 아래로 빼서, 사진이 '가격' 칸 아래까지만 차도록 한다 */}
+            <div className="flex gap-2 items-stretch">
+            <span className="text-xs text-gray-400 w-5 pt-[1.375rem] text-center shrink-0">{i + 1}</span>
+            {/* 사진은 입력 칸 아래까지 꽉 차게 (items-stretch + flex-1).
+                h-4 스페이서는 오른쪽 상태줄과 같은 높이 — '작품 사진' 라벨을 '작품명' 라벨과 같은 줄에 맞춘다 */}
+            <div className="shrink-0 flex flex-col space-y-1.5">
+              <div className="h-4" aria-hidden />
+              <div className="flex flex-col flex-1 min-h-0">
+                <span className={labelCls}>작품 사진</span>
+                <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} className="flex-1 h-auto sm:h-auto" />
+              </div>
             </div>
-            {/* 입력 칸은 모두 같은 오른쪽 끝에서 멈추고, 단위(cm·원)와 삭제(−)는 그 오른쪽 고정 폭 열에 세로로 정렬 */}
+            {/* 입력 칸은 모두 같은 오른쪽 끝에서 멈추고, 단위(cm·원)는 그 오른쪽 고정 폭 열에 세로로 정렬 */}
             <div className="flex-1 min-w-0 space-y-1.5">
+              {/* 상단 우측: 저장 상태 + 삭제 */}
+              <div className="flex items-center justify-end gap-2 h-4">
+                <span className={`text-[11px] ${dirty ? 'text-amber-700' : 'text-green-700'}`}>
+                  {dirty ? '저장 안 됨' : '✓ 저장됨'}
+                </span>
+                <span className={unitCol}>
+                  <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
+                </span>
+              </div>
               <div className="flex items-end gap-1.5">
                 <label className="flex-1 min-w-0">
                   <span className={labelCls}>작품명</span>
                   <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="예: 푸른 밤의 정원" className={`w-full ${inputCls}`} />
                 </label>
-                <span className={unitCol}>
-                  <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
-                </span>
+                <span className={unitCol} />
               </div>
               {/* 크기: 가로 × 세로 (cm) */}
               <div className="flex items-end gap-1.5">
@@ -1311,20 +1359,18 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, isDirty, saving }: 
                 </label>
                 <span className={`${unitCol} pt-[1.35rem] items-start text-xs text-gray-500`}>원</span>
               </div>
-              {/* 이 작품만 저장 — 다른 작품·대표작 검증 없이 해당 작품만 확인 후 저장 */}
-              {onSaveArtwork && (
-                <div className="flex items-center gap-2">
-                  <span className={`flex-1 min-w-0 text-[11px] truncate ${dirty ? 'text-amber-700' : 'text-green-700'}`}>
-                    {dirty ? '저장 안 됨' : '✓ 저장됨'}
-                  </span>
-                  <button onClick={() => onSaveArtwork(i)} disabled={saving || !dirty}
-                    className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${dirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
-                    {saving ? '저장 중...' : '이 작품 저장'}
-                  </button>
-                  <span className={unitCol} />
-                </div>
-              )}
             </div>
+            </div>
+            {/* 이 작품만 저장 — 다른 작품·대표작 검증 없이 해당 작품만 확인 후 저장 */}
+            {onSaveArtwork && (
+              <div className="mt-1.5 flex items-center justify-end gap-1.5">
+                <button onClick={() => onSaveArtwork(i)} disabled={saving || !dirty}
+                  className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${dirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                  {saving ? '저장 중...' : '저장'}
+                </button>
+                <span className={unitCol} />
+              </div>
+            )}
           </div>
         );
       })}
@@ -1379,24 +1425,42 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
   );
 }
 
-function NoteEditor({ value, onChange, artworkList = [] }: { value: ArtistNote; onChange: (v: ArtistNote) => void; artworkList?: ArtworkItem[] }) {
+function NoteEditor({ value, onChange, artworkList = [], onSaveNote, isSectionDirty, statementDirty, saving }: { value: ArtistNote; onChange: (v: ArtistNote) => void; artworkList?: ArtworkItem[]; onSaveNote?: (label: string) => void; isSectionDirty?: (i: number) => boolean; statementDirty?: boolean; saving?: boolean }) {
   const set = (patch: Partial<ArtistNote>) => onChange({ ...value, ...patch });
-  const addSection = () => set({ sections: [...value.sections, { title: '', body: '' }] });
   const updSection = (i: number, patch: Partial<{ title: string; body: string }>) => set({ sections: value.sections.map((s, idx) => idx === i ? { ...s, ...patch } : s) });
   const rmSection = (i: number) => set({ sections: value.sections.filter((_, idx) => idx !== i) });
   // 상세설명 대상은 출품작 — 자유 입력 대신 출품리스트(제목 있는 작품)에서 선택.
   // 저장 형식은 기존과 동일한 작품명 문자열이라 PDF·갤러리 열람은 그대로 동작한다.
   const titled = artworkList.filter(a => a.title?.trim());
+  // 한 작품에 상세설명은 하나만 — 이미 쓴 작품은 다른 칸에서 선택 불가
+  const usedElsewhere = (exceptIdx: number) => new Set(value.sections.filter((_, idx) => idx !== exceptIdx).map(s => s.title).filter(Boolean));
+  const allUsed = titled.length > 0 && titled.every(a => value.sections.some(s => s.title === a.title.trim()));
+  const addSection = () => {
+    const used = new Set(value.sections.map(s => s.title).filter(Boolean));
+    const next = titled.find(a => !used.has(a.title.trim()));
+    set({ sections: [...value.sections, { title: next ? next.title.trim() : '', body: '' }] });
+  };
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-gray-700 block mb-1">작가노트 (전체)</label>
+        <div className="flex items-end justify-between gap-2 mb-1">
+          <label className="text-sm font-medium text-gray-700">작가노트 (전체)</label>
+          {onSaveNote && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[11px] ${statementDirty ? 'text-amber-700' : 'text-green-700'}`}>{statementDirty ? '저장 안 됨' : '✓ 저장됨'}</span>
+              <button onClick={() => onSaveNote('작가노트')} disabled={saving || !statementDirty}
+                className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${statementDirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                {saving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          )}
+        </div>
         <textarea value={value.statement} onChange={e => set({ statement: e.target.value })} placeholder="작품 세계 전반에 대한 이야기를 자유롭게 작성하세요." className="w-full h-40 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y focus:outline-none focus:ring-1 focus:ring-gray-400" />
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">작품별 상세설명</span>
-          <button onClick={addSection} disabled={titled.length === 0} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><Plus size={13} /> 상세설명 추가</button>
+          <button onClick={addSection} disabled={titled.length === 0 || allUsed} title={allUsed ? '모든 출품작에 상세설명을 작성했습니다.' : ''} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><Plus size={13} /> 상세설명 추가</button>
         </div>
         {titled.length === 0 ? (
           <p className="text-xs text-gray-400">출품리스트에서 작품명을 먼저 입력하면 여기서 작품을 선택해 설명을 쓸 수 있습니다.</p>
@@ -1407,30 +1471,45 @@ function NoteEditor({ value, onChange, artworkList = [] }: { value: ArtistNote; 
             {value.sections.map((s, i) => {
               const matched = titled.find(a => a.title.trim() === s.title);
               const orphan = !!s.title && !matched; // 옛 데이터: 출품리스트에 없는 제목 — 선택지를 유지해 값이 사라지지 않게
+              const used = usedElsewhere(i);
+              const dirty = isSectionDirty ? isSectionDirty(i) : false;
               return (
                 // 좌: 작품 이미지(큼) / 우: 작품 선택 + 설명
-                <div key={i} className="flex gap-3 rounded-lg border border-gray-200 p-2">
+                <div key={i} className={`flex gap-3 rounded-lg border p-2 transition-colors ${onSaveNote ? (dirty ? 'border-amber-300 bg-amber-50/40' : 'border-green-200 bg-green-50/30') : 'border-gray-200'}`}>
                   {matched?.image ? (
                     <img src={matched.image} alt="" className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded object-contain shrink-0 bg-gray-50" />
                   ) : (
                     <div className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={20} className="text-gray-300" /></div>
                   )}
                   <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                    <div className="flex items-end gap-2">
-                      <label className="flex-1 min-w-0">
-                        <span className="block text-[11px] text-gray-400 mb-0.5">작품</span>
-                        <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
-                          <option value="">작품 선택...</option>
-                          {titled.map((a, ai) => <option key={ai} value={a.title.trim()}>{ai + 1}. {a.title.trim()}</option>)}
-                          {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
-                        </select>
-                      </label>
-                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -mb-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
+                    {/* 상단 우측: 저장 상태 + 삭제 */}
+                    <div className="flex items-center justify-end gap-2 h-4">
+                      {onSaveNote && <span className={`text-[11px] ${dirty ? 'text-amber-700' : 'text-green-700'}`}>{dirty ? '저장 안 됨' : '✓ 저장됨'}</span>}
+                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
                     </div>
+                    <label className="block">
+                      <span className="block text-[11px] text-gray-400 mb-0.5">작품</span>
+                      <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
+                        <option value="">작품 선택...</option>
+                        {titled.map((a, ai) => {
+                          const t = a.title.trim();
+                          return <option key={ai} value={t} disabled={used.has(t)}>{ai + 1}. {t}{used.has(t) ? ' (이미 작성됨)' : ''}</option>;
+                        })}
+                        {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
+                      </select>
+                    </label>
                     <label className="flex-1 flex flex-col min-h-0">
                       <span className="block text-[11px] text-gray-400 mb-0.5">상세 설명</span>
                       <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="선택한 작품에 대한 상세 설명" className="w-full flex-1 min-h-[5rem] px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
                     </label>
+                    {onSaveNote && (
+                      <div className="flex justify-end">
+                        <button onClick={() => onSaveNote(`상세설명 ${i + 1}`)} disabled={saving || !dirty}
+                          className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${dirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                          {saving ? '저장 중...' : '저장'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
