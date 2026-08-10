@@ -17,7 +17,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { composeSize, splitSize } from '@/lib/artwork';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
-import { STATE_UI, computeSaveState, isBlankArtwork, type SaveState } from '@/lib/saveState';
+import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 
 import type {
@@ -863,6 +863,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const [savedList, setSavedList] = useState<ArtworkItem[]>([]);
   const [savedNote, setSavedNote] = useState<ArtistNote>(EMPTY_NOTE);
   const [savedCv, setSavedCv] = useState<ArtistCv>(EMPTY_CV);
+  const [savedRepIndex, setSavedRepIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (data) {
@@ -873,6 +874,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       setSavedList(data.artworkList || []);
       setSavedNote(data.note || EMPTY_NOTE);
       setSavedCv(data.cv || EMPTY_CV);
+      setSavedRepIndex(data.representativeIndex ?? null);
     }
   }, [data]);
 
@@ -884,21 +886,38 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   // partial=true (작품 단위 저장)일 땐 refetch를 하지 않는다 —
   // 되받은 서버 값으로 폼을 덮으면 다른 작품에 입력 중이던 내용이 날아간다.
   const saveMutation = useMutation({
-    // 빈 칸을 걸러 보내므로 대표작 인덱스도 보낼 목록 기준으로 다시 계산한다(엉뚱한 작품이 대표작이 되는 것 방지)
-    mutationFn: (v: { list: ArtworkItem[]; partial?: boolean; msg?: string }) => {
-      const rep = repIndex == null ? null : v.list.findIndex(x => x === artworkList[repIndex]);
-      return api.put(`/operations/${exhibitionId}/me`, {
+    // 빈 칸을 걸러 보내므로 대표작 인덱스도 보낼 목록 기준으로 다시 계산한다.
+    // 참조 비교(===)는 금물 — 저장 시 {...a}로 복제된 목록에서는 항상 실패해 대표작이 지워진다.
+    // 보낼 목록은 filledList와 같은 순서이므로 '빈 칸 제외 서수'로 변환한다.
+    mutationFn: (v: { list: ArtworkItem[]; partial?: boolean; msg?: string }) =>
+      api.put(`/operations/${exhibitionId}/me`, {
         artworkList: v.list, cv, note,
-        representativeIndex: rep != null && rep >= 0 ? rep : null,
+        representativeIndex: repOrdinal(artworkList, repIndex, v.list.length),
+      }),
+    onSuccess: (res, v) => {
+      // 기준선은 서버 응답(실제 저장된 값) — 요청이 나가는 동안 사용자가 더 입력한
+      // 내용을 '저장됨'으로 잘못 표시하지 않기 위해 렌더 시점 값 대신 응답을 쓴다
+      const srv = res.data || {};
+      setSavedList(Array.isArray(srv.artworkList) ? srv.artworkList : v.list);
+      setSavedNote(srv.note ?? EMPTY_NOTE);
+      setSavedCv(srv.cv ?? EMPTY_CV);
+      setSavedRepIndex(srv.representativeIndex ?? null);
+      // 화면 목록은 자리 이동 없이 항목별로만 갱신 — 통째로 교체하면
+      // ① 빈 칸이 뒤로 밀리며 repIndex가 엉뚱한 칸을 가리키고
+      // ② 저장 중에 다른 작품에 입력하던 내용이 날아간다.
+      // draft 플래그만 다른(=이번 저장으로 플래그가 바뀐) 항목만 보낸 값으로 바꾼다.
+      const sameArt = (a: ArtworkItem, b: ArtworkItem) => {
+        const { draft: _a, ...x } = a; const { draft: _b, ...y } = b;
+        return JSON.stringify(x) === JSON.stringify(y);
+      };
+      setArtworkList(prev => {
+        let ord = 0;
+        return prev.map(a => {
+          if (isBlankArtwork(a)) return a;
+          const sent = v.list[ord++];
+          return sent && sameArt(a, sent) ? sent : a;
+        });
       });
-    },
-    onSuccess: (_res, v) => {
-      setSavedList(v.list);
-      // 보낸 목록(draft 플래그 포함)으로 화면 상태도 맞춘다. 이걸 빠뜨리면 저장했는데도
-      // 로컬 값과 저장본이 달라 계속 '저장 안 됨'으로 보인다. 작성 중인 빈 칸은 남겨둔다.
-      setArtworkList(prev => [...v.list, ...prev.filter(isBlankArtwork)]);
-      setSavedNote(note); // PUT은 노트·약력도 함께 보내므로 기준선을 같이 갱신
-      setSavedCv(cv);
       if (!v.partial) qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] });
       toast.success(v.msg || '전시 정보가 저장되었습니다.');
     },
@@ -909,7 +928,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const saveNote = (label: string) => {
     const bad = note.sections.findIndex(s => !s.title.trim());
     if (bad !== -1) { toast.error(`상세설명 ${bad + 1}: 작품을 선택해주세요.`); return; }
-    saveMutation.mutate({ list: artworkList, partial: true, msg: `${label} 저장되었습니다.` });
+    saveMutation.mutate({ list: filledList, partial: true, msg: `${label} 저장되었습니다.` });
   };
   const isSectionDirty = (i: number) => JSON.stringify(note.sections[i] ?? null) !== JSON.stringify(savedNote.sections?.[i] ?? null);
   const statementDirty = (note.statement || '') !== (savedNote.statement || '');
@@ -957,9 +976,11 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     ));
     saveMutation.mutate({ list, partial: true, msg: '임시저장했습니다. 갤러리에는 아직 보이지 않아요.' });
   };
+  // 대표작 변경도 저장 대상 — 빼먹으면 대표작만 바꾼 경우 이탈 경고 없이 조용히 유실된다
   const anyDirty = JSON.stringify(filledList) !== JSON.stringify(savedList)
     || JSON.stringify(note) !== JSON.stringify(savedNote)
-    || JSON.stringify(cv) !== JSON.stringify(savedCv);
+    || JSON.stringify(cv) !== JSON.stringify(savedCv)
+    || repOrdinal(artworkList, repIndex, filledList.length) !== (savedRepIndex ?? null);
   // 저장 전 이탈 경고 (닫기·새로고침·뒤로가기·앱 내 링크)
   useUnsavedChanges(anyDirty, UNSAVED_MESSAGE);
 
@@ -971,7 +992,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       return missing;
     }
     const labels: [keyof ArtworkItem, string][] = [['title', '제목'], ['size', '크기'], ['medium', '재료'], ['year', '제작년도'], ['price', '가격']];
+    // 갓 추가한 빈 칸(작성 전)은 서버로 보내지 않으므로 검증에서도 건너뛴다
     artworkList.forEach((a, i) => {
+      if (isBlankArtwork(a)) return;
       const lack = labels.filter(([k]) => !String(a[k] ?? '').trim()).map(([, l]) => l);
       if (lack.length) missing.push(`작품 ${i + 1}: ${lack.join(', ')} 미입력`);
     });
@@ -2009,7 +2032,6 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, stateOf, saving }: 
         // 저장 상태를 박스 색으로: 빨강(저장 전) / 노랑(임시저장) / 초록(저장됨)
         const st: SaveState = stateOf ? stateOf(i) : 'saved';
         const ui = STATE_UI[st];
-        const dirty = st === 'unsaved';
         return (
           <div key={i} className={`border rounded-lg p-2 transition-colors ${ui.box}`}>
             {/* 카드 머리에 상태·저장·삭제를 모두 모은다 — 저장 버튼이 카드 아래 홀로 떠 있으면

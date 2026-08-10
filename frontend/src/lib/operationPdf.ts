@@ -80,7 +80,7 @@ const TH = `${TD};font-weight:600;font-size:12px`;
  * 크기를 바꾸므로 html2canvas도 그대로 따라 그린다.
  */
 const imgBox = (url: string, size: number) => `
-  <div style="width:${size}px;height:${size}px;line-height:${size}px;text-align:center;flex-shrink:0">
+  <div style="width:${size}px;height:${size}px;line-height:${size}px;font-size:0;text-align:center;flex-shrink:0">
     <img src="${esc(proxied(url))}" crossorigin="anonymous" style="max-width:${size}px;max-height:${size}px;vertical-align:middle"/>
   </div>`;
 const header = (exTitle: string, docLabel: string, artist: string, email?: string) => `
@@ -152,7 +152,7 @@ export function noteHtml(sub: OperationSubmission, exTitle: string, artist: stri
     ${note.statement ? `<p style="white-space:pre-wrap;margin:0 0 24px">${esc(note.statement)}</p>` : ''}
     ${note.sections?.length ? `<h2 data-pdf-keep-next style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 10px">작품별 상세설명</h2>` : ''}
     ${(note.sections || []).map(s => {
-      const art = list.find(a => a.title?.trim() === s.title);
+      const art = list.find(a => a.title?.trim() === s.title?.trim());
       const meta = art ? [art.size, art.medium, art.year].filter(Boolean).join(' · ') : '';
       return `
       <div data-pdf-atomic style="margin-bottom:18px;display:flex;gap:12px;align-items:flex-start">

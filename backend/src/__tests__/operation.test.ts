@@ -432,4 +432,56 @@ describe('임시저장 작품 비공개', () => {
     const me = r.body.artists.find((a: any) => a.user.id === 1);
     expect(me.works.map((w: any) => w.title)).toEqual(['공개 작품', '공개 작품2']);
   });
+
+  it('판매 기록이 갤러리와 작가에게 같은 작품을 가리킨다 (draft로 인한 인덱스 어긋남 방지)', async () => {
+    // 갤러리 정산 화면(draft 제외 목록)에서 index 1 = '공개 작품2'를 판매 처리
+    await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
+    const put = await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({
+      sales: [{ artistUserId: 1, artworkIndex: 1, title: '공개 작품2', soldPrice: 300000 }],
+      ratios: [{ artistUserId: 1, galleryRatio: 30 }],
+    });
+    expect(put.status).toBe(200);
+    // 확인 요청 후에야 작가에게 내역이 공개된다
+    expect((await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(200);
+    // 작가의 '내 정산 내역'도 같은 필터 목록을 써야 같은 작품이 판매됨으로 보인다
+    const mine = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(mine.status).toBe(200);
+    const sold = mine.body.artist.works.filter((w: any) => w.sold);
+    expect(sold.map((w: any) => w.title)).toEqual(['공개 작품2']);
+    expect(sold[0].soldPrice).toBe(300000);
+  });
+
+  it('전시 종료 전에는 판매를 기록할 수 없다 (인덱스 프레임이 얼기 전 판매 금지)', async () => {
+    const r = await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({
+      sales: [{ artistUserId: 1, artworkIndex: 0, title: '공개 작품', soldPrice: 100000 }],
+      ratios: [],
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('배열이 아닌 artworkList는 400으로 거부한다 (저장되면 갤러리 조회 전체가 죽는다)', async () => {
+    const r = await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`)
+      .send({ artworkList: { a: 1 }, cv: null, note: null });
+    expect(r.status).toBe(400);
+  });
+
+  it('draft 작품에 대한 노트 상세설명은 갤러리에게 감춰진다', async () => {
+    await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`).send({
+      artworkList: [
+        { title: '공개 작품', size: '10×10 cm', medium: 'Oil', year: '2026', price: '100000' },
+        { title: '비밀 신작', size: '', medium: '', year: '', price: '', draft: true },
+      ],
+      cv: null,
+      note: { statement: '전체 노트', sections: [
+        { title: '공개 작품', body: '공개 설명' },
+        { title: '비밀 신작', body: '아직 보여주기 싫은 설명' },
+      ] },
+    });
+    const g = await request.get(`/api/operations/${exId}/submissions/1`).set('Authorization', `Bearer ${ownerTok}`);
+    const secs = g.body.submission.note.sections.map((x: any) => x.title);
+    expect(secs).toEqual(['공개 작품']);
+    // 작가 본인은 전부 보인다
+    const me = await request.get(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(me.body.note.sections.length).toBe(2);
+  });
 });

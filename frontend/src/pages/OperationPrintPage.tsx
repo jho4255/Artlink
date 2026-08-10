@@ -55,7 +55,7 @@ export default function OperationPrintPage() {
       ? list.map(a => a.image).filter(Boolean) as string[]
       : docType === 'note'
         ? (data.submission.note?.sections || [])
-            .map(s => list.find(a => a.title?.trim() === s.title)?.image)
+            .map(s => list.find(a => a.title?.trim() === s.title?.trim())?.image)
             .filter(Boolean) as string[]
         : [];
     if (imgs.length === 0) { setReady(true); return; }
@@ -194,7 +194,7 @@ function NoteDoc({ submission }: { submission: OperationSubmission }) {
       )}
       {note.sections?.map((s, i) => {
         // 상세설명은 출품작에 붙는 글 — 해당 작품 사진을 함께 싣는다 (비율 유지: contain)
-        const art = list.find(a => a.title?.trim() === s.title);
+        const art = list.find(a => a.title?.trim() === s.title?.trim());
         return (
           <div key={i} style={{ marginBottom: 18, display: 'flex', gap: 12, alignItems: 'flex-start', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             {art?.image && (

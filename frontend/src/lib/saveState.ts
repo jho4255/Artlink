@@ -30,3 +30,22 @@ export function computeSaveState(current: unknown, saved: unknown, isDraft?: boo
   if (JSON.stringify(current ?? null) !== JSON.stringify(saved ?? null)) return 'unsaved';
   return isDraft ? 'draft' : 'saved';
 }
+
+/**
+ * 대표작 인덱스(전체 목록 기준)를 서버로 보낼 목록(빈 칸 제외) 기준 서수로 변환.
+ * 참조 비교(===)는 금물 — 저장 시 {...a}로 복제된 목록에서는 항상 실패해 대표작이 지워진다.
+ * @param artworkList 화면의 전체 목록 (빈 칸 포함)
+ * @param repIndex    전체 목록 기준 대표작 인덱스
+ * @param sentLength  실제로 보내는 목록 길이 (범위 밖이면 null)
+ */
+export function repOrdinal(
+  artworkList: Parameters<typeof isBlankArtwork>[0][],
+  repIndex: number | null,
+  sentLength: number,
+): number | null {
+  if (repIndex == null) return null;
+  const target = artworkList[repIndex];
+  if (!target || isBlankArtwork(target)) return null;
+  const ord = artworkList.slice(0, repIndex).filter(a => !isBlankArtwork(a)).length;
+  return ord < sentLength ? ord : null;
+}

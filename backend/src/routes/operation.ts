@@ -184,22 +184,35 @@ const EMPTY_SUB = { artworkList: [], cv: null, note: null, representativeIndex: 
  */
 /** 캡션·정산처럼 출품작 배열만 필요한 곳 — 임시저장(draft) 제외 */
 function publishedArtworks(s: any): any[] {
-  return safeJson<any[]>(s?.artworkList, []).filter((a) => !a?.draft);
+  const list = safeJson<any[]>(s?.artworkList, []);
+  // DB에 배열이 아닌 JSON이 저장돼 있어도(구버전/비정상 클라이언트) 갤러리 화면 전체가 500으로 죽지 않게
+  return Array.isArray(list) ? list.filter((a) => !a?.draft) : [];
 }
 
 function publicSubmission(s: any) {
   const parsed = parseSubmission(s);
   if (!parsed) return null;
-  const list: any[] = parsed.artworkList || [];
+  const raw: any[] = Array.isArray(parsed.artworkList) ? parsed.artworkList : [];
   const kept: any[] = [];
   let repIndex: number | null = null;
-  list.forEach((a, i) => {
-    if (a?.draft) return;
+  const draftTitles = new Set<string>();
+  raw.forEach((a, i) => {
+    if (a?.draft) { if (a?.title?.trim()) draftTitles.add(a.title.trim()); return; }
     if (parsed.representativeIndex === i) repIndex = kept.length;
     kept.push(a);
   });
-  // 임시저장 작품만 있는 노트 상세설명은 남겨둔다(작품명 기준이라 자동으로 매칭이 끊길 뿐)
-  return { ...parsed, artworkList: kept, representativeIndex: repIndex };
+  // 노트의 작품별 상세설명도 draft 작품 것은 감춘다 — 작품은 숨겼는데
+  // 설명 본문으로 제목·내용이 새는 것을 막기 위해 (공개 작품과 제목이 겹치면 유지)
+  const publishedTitles = new Set(kept.map((a) => a?.title?.trim()).filter(Boolean));
+  let note = parsed.note;
+  if (note?.sections?.length) {
+    const sections = note.sections.filter((sec: any) => {
+      const t = sec?.title?.trim();
+      return !t || !draftTitles.has(t) || publishedTitles.has(t);
+    });
+    if (sections.length !== note.sections.length) note = { ...note, sections };
+  }
+  return { ...parsed, artworkList: kept, representativeIndex: repIndex, note };
 }
 
 router.get('/:id/me', authenticate, async (req, res, next) => {
@@ -221,6 +234,8 @@ router.put('/:id/me', authenticate, async (req, res, next) => {
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
     const { artworkList, cv, note, representativeIndex } = req.body || {};
+    // 배열이 아닌 artworkList는 거부 — 저장되면 갤러리 쪽 모든 조회가 500으로 죽는다
+    if (artworkList != null && !Array.isArray(artworkList)) throw new AppError('출품 목록 형식이 올바르지 않습니다.', 400);
     // 대표작 인덱스: artworkList 범위 내 정수만 허용, 그 외 null
     const listLen = Array.isArray(artworkList) ? artworkList.length : 0;
     let repIdx: number | null = null;
@@ -576,8 +591,10 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId, artistUserId: userId } });
     const appr = await prisma.settlementApproval.findUnique({ where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } } });
 
+    // publishedArtworks 필수 — 갤러리가 판매를 기록하는 정산 화면도 draft 제외 목록이라,
+    // 여기서 원본 목록을 쓰면 artworkIndex(위치 기반)가 어긋나 작가에게 엉뚱한 작품이 '판매됨'으로 보인다
     const { artists } = computeSettlement(
-      [{ user, artworkList: safeJson<any[]>(sub?.artworkList, []) }],
+      [{ user, artworkList: publishedArtworks(sub) }],
       sales, settlements
     );
     res.json({
@@ -594,6 +611,9 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     const exhibitionId = idOf(req.params.id);
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    // 전시 종료 후에만 판매 입력 가능 — 종료 전에는 작가가 출품 목록을 고칠 수 있어
+    // 위치 기반 artworkIndex가 다른 작품을 가리키게 된다 (작가 편집은 확정 시점에 잠김)
+    if (!exhibition.ended && !isAdmin) throw new AppError('전시 종료 후에 정산을 입력할 수 있습니다.', 400);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
     if (exhibition.settlementRequestedAt && !isAdmin) throw new AppError('정산 확인 요청 중에는 수정할 수 없습니다. [요청 취소] 후 수정하세요.', 403);
 
