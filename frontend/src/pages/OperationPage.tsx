@@ -1000,8 +1000,8 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('artwork')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <ArtworkListEditor value={artworkList} onChange={setArtworkList} />
-            <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} />
+            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSave={handleSave} saving={saveMutation.isPending} />
+            <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} onSave={handleSave} saving={saveMutation.isPending} />
           </>
         )}
         {tab === 'cv' && (
@@ -1018,7 +1018,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('note')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <NoteEditor value={note} onChange={setNote} />
+            <NoteEditor value={note} onChange={setNote} artworkList={artworkList} />
           </>
         )}
       </div>
@@ -1267,13 +1267,16 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
 }
 
 // 엽서용 대표작 선택 (작가) — 출품작 중 1개
-function RepresentativeSelector({ artworkList, value, onChange }: { artworkList: ArtworkItem[]; value: number | null; onChange: (v: number | null) => void }) {
+function RepresentativeSelector({ artworkList, value, onChange, onSave, saving }: { artworkList: ArtworkItem[]; value: number | null; onChange: (v: number | null) => void; onSave?: () => void; saving?: boolean }) {
   if (artworkList.length === 0) return null;
   return (
     <div className="mt-5 pt-4 border-t border-gray-100">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <p className="text-sm font-medium text-gray-900 flex items-center gap-1"><Star size={14} className="text-amber-500" /> 엽서 대표작</p>
-        {value != null && <button onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-700 underline">선택 해제</button>}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {value != null && <button onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-700 underline">선택 해제</button>}
+          {onSave && <button onClick={onSave} disabled={saving} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>}
+        </div>
       </div>
       <p className="text-xs text-gray-400 mb-2">엽서·홍보물에 사용할 대표작 1점을 선택하세요. (선택 후 [저장])</p>
       <div className="flex flex-wrap gap-2">
@@ -1786,8 +1789,9 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
       title="클릭 또는 이미지를 끌어다 놓기"
-      className={`w-16 h-16 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
-      {uploading ? <Loader2 size={16} className="animate-spin" /> : value ? <img src={value} alt="" className="w-full h-full object-cover" /> : <Upload size={16} />}
+      className={`w-32 h-32 sm:w-40 sm:h-40 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
+      {/* object-contain — 작품 비율은 작품 그 자체라 자르지 않는다 (CLAUDE.md 18) */}
+      {uploading ? <Loader2 size={20} className="animate-spin" /> : value ? <img src={value} alt="" className="w-full h-full object-contain" /> : <Upload size={20} />}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handle(f); e.target.value = ''; }} />
     </button>
   );
@@ -1799,11 +1803,13 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
 const decimalOnly = (v: string) => { const t = v.replace(/[^0-9.]/g, ''); const i = t.indexOf('.'); return i === -1 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, ''); };
 const digitsOnly = (v: string) => v.replace(/[^0-9]/g, '');
 
-function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
+function ArtworkListEditor({ value, onChange, onSave, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSave?: () => void; saving?: boolean }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
   const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
   const inputCls = "px-2 py-1.5 border border-gray-200 rounded text-sm";
+  // 단위(cm·원)와 삭제(−)가 같은 세로 열에 오도록 고정 폭
+  const unitCol = "w-7 shrink-0 flex items-center justify-center";
   return (
     <div className="space-y-3">
       {value.length === 0 && <p className="text-xs text-gray-400">출품할 작품을 추가하세요.</p>}
@@ -1814,30 +1820,45 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
         const priceHint = koreanWon(a.price);
         return (
           <div key={i} className="flex gap-2 items-start border border-gray-100 rounded-lg p-2">
-            <span className="text-xs text-gray-400 w-5 pt-1 text-center shrink-0">{i + 1}</span>
+            <span className="text-xs text-gray-400 w-5 pt-2 text-center shrink-0">{i + 1}</span>
             <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
-            <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
-              <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`col-span-2 ${inputCls}`} />
+            {/* 입력 칸은 모두 같은 오른쪽 끝에서 멈추고, 단위(cm·원)와 삭제(−)는 그 오른쪽 고정 폭 열에 세로로 정렬 */}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`flex-1 min-w-0 ${inputCls}`} />
+                <span className={unitCol}>
+                  <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
+                </span>
+              </div>
               {/* 크기: 가로 × 세로 (cm) */}
-              <div className="col-span-2 flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
                 <span className="text-gray-400 text-sm shrink-0">×</span>
                 <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
-                <span className="text-xs text-gray-500 shrink-0">cm</span>
+                <span className={`${unitCol} text-xs text-gray-500`}>cm</span>
               </div>
-              <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
-              {/* self-start — 옆 가격 칸의 한글 힌트 줄 때문에 stretch되어 혼자 커지는 것 방지 */}
-              <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={`self-start w-full ${inputCls}`} />
-              {/* 가격: 단위 '원' + 한글 금액 힌트 */}
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="가격 (예: 230000)" inputMode="numeric" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
-                  <span className="text-xs text-gray-500 shrink-0">원</span>
+              <div className="flex items-center gap-1.5">
+                <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`flex-1 min-w-0 ${inputCls}`} />
+                <span className={unitCol} />
+              </div>
+              {/* 제작년도 | 가격(단위 '원' + 한글 금액 힌트) */}
+              <div className="flex items-start gap-1.5">
+                <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={`flex-1 min-w-0 ${inputCls}`} />
+                <div className="flex-1 min-w-0">
+                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="가격 (예: 230000)" inputMode="numeric" className={`w-full text-right ${inputCls}`} />
+                  {priceHint && <span className="block text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
                 </div>
-                {priceHint && <span className="text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
+                <span className={`${unitCol} pt-2 items-start text-xs text-gray-500`}>원</span>
               </div>
+              {/* 작품마다 저장 — 전체 제출 저장과 동일 동작, 입력하던 자리에서 바로 저장 */}
+              {onSave && (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex-1" />
+                  <button onClick={onSave} disabled={saving} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>
+                  <span className={unitCol} />
+                </div>
+              )}
             </div>
-            <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
           </div>
         );
       })}
@@ -1892,11 +1913,14 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
   );
 }
 
-function NoteEditor({ value, onChange }: { value: ArtistNote; onChange: (v: ArtistNote) => void }) {
+function NoteEditor({ value, onChange, artworkList = [] }: { value: ArtistNote; onChange: (v: ArtistNote) => void; artworkList?: ArtworkItem[] }) {
   const set = (patch: Partial<ArtistNote>) => onChange({ ...value, ...patch });
   const addSection = () => set({ sections: [...value.sections, { title: '', body: '' }] });
   const updSection = (i: number, patch: Partial<{ title: string; body: string }>) => set({ sections: value.sections.map((s, idx) => idx === i ? { ...s, ...patch } : s) });
   const rmSection = (i: number) => set({ sections: value.sections.filter((_, idx) => idx !== i) });
+  // 상세설명 대상은 출품작 — 자유 입력 대신 출품리스트(제목 있는 작품)에서 선택.
+  // 저장 형식은 기존과 동일한 작품명 문자열이라 PDF·갤러리 열람은 그대로 동작한다.
+  const titled = artworkList.filter(a => a.title?.trim());
   return (
     <div className="space-y-4">
       <div>
@@ -1906,19 +1930,39 @@ function NoteEditor({ value, onChange }: { value: ArtistNote; onChange: (v: Arti
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">작품별 상세설명</span>
-          <button onClick={addSection} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"><Plus size={13} /> 상세설명 추가</button>
+          <button onClick={addSection} disabled={titled.length === 0} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><Plus size={13} /> 상세설명 추가</button>
         </div>
-        {value.sections.length === 0 ? <p className="text-xs text-gray-400">작품별로 설명을 따로 적으려면 추가하세요. (선택)</p> : (
+        {titled.length === 0 ? (
+          <p className="text-xs text-gray-400">출품리스트에서 작품명을 먼저 입력하면 여기서 작품을 선택해 설명을 쓸 수 있습니다.</p>
+        ) : value.sections.length === 0 ? (
+          <p className="text-xs text-gray-400">출품작을 선택해 작품별 설명을 따로 적으려면 추가하세요. (선택)</p>
+        ) : (
           <div className="space-y-2">
-            {value.sections.map((s, i) => (
-              <div key={i} className="rounded-lg border border-gray-200 p-2 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <input value={s.title} onChange={e => updSection(i, { title: e.target.value })} placeholder="작품명 / 소제목" className="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm" />
-                  <button onClick={() => rmSection(i)} className="p-1.5 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={15} /></button>
+            {value.sections.map((s, i) => {
+              const matched = titled.find(a => a.title.trim() === s.title);
+              const orphan = !!s.title && !matched; // 옛 데이터: 출품리스트에 없는 제목 — 선택지를 유지해 값이 사라지지 않게
+              return (
+                // 좌: 작품 이미지(큼) / 우: 작품 선택 + 설명
+                <div key={i} className="flex gap-3 rounded-lg border border-gray-200 p-2">
+                  {matched?.image ? (
+                    <img src={matched.image} alt="" className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded object-contain shrink-0 bg-gray-50" />
+                  ) : (
+                    <div className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={20} className="text-gray-300" /></div>
+                  )}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
+                        <option value="">작품 선택...</option>
+                        {titled.map((a, ai) => <option key={ai} value={a.title.trim()}>{ai + 1}. {a.title.trim()}</option>)}
+                        {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
+                      </select>
+                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
+                    </div>
+                    <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="선택한 작품에 대한 상세 설명" className="w-full flex-1 min-h-[5.5rem] px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
+                  </div>
                 </div>
-                <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="해당 작품에 대한 상세 설명" className="w-full h-24 px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
