@@ -1826,7 +1826,8 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
                 <span className="text-xs text-gray-500 shrink-0">cm</span>
               </div>
               <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
-              <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={inputCls} />
+              {/* self-start — 옆 가격 칸의 한글 힌트 줄 때문에 stretch되어 혼자 커지는 것 방지 */}
+              <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="제작년도" inputMode="numeric" className={`self-start w-full ${inputCls}`} />
               {/* 가격: 단위 '원' + 한글 금액 힌트 */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
