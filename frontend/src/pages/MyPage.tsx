@@ -3357,8 +3357,8 @@ function ApprovalsSection() {
                   <p>주소: {item.address}</p>
                   <p>전화: {item.phone} · 대표: {item.ownerName}</p>
                   <p>지역: {regionLabels[item.region]}</p>
-                  {item.instagramUrl && <p>인스타: {item.instagramUrl}</p>}
-                  {item.email && <p>이메일: {item.email}</p>}
+                  {item.instagramUrl && <p className="break-all">인스타: {item.instagramUrl}</p>}
+                  {item.email && <p className="break-all">이메일: {item.email}</p>}
                   {item.mainImage && <img src={item.mainImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
                 </div>
               )}
@@ -3391,10 +3391,12 @@ function ApprovalsSection() {
                       <p className="text-xs text-gray-400">표시할 변경 내용이 없습니다.</p>
                     ) : (
                       <dl className="space-y-1">
+                        {/* minmax(0,1fr) + break-all 필수 — 값에 긴 URL(mainImage 등)이 오면
+                            1fr(=minmax(auto,1fr))의 auto 최소폭이 URL 전체 폭으로 잡혀 탭이 가로로 밀림 */}
                         {Object.entries(parseApprovalChanges(item.changes)).map(([key, value]) => (
-                          <div key={key} className="grid grid-cols-[88px_1fr] gap-2 text-xs">
+                          <div key={key} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2 text-xs">
                             <dt className="text-gray-400">{key}</dt>
-                            <dd className="text-gray-700 break-words">{formatApprovalChangeValue(value)}</dd>
+                            <dd className="text-gray-700 break-all">{formatApprovalChangeValue(value)}</dd>
                           </div>
                         ))}
                       </dl>
@@ -3546,7 +3548,7 @@ function HeroManageSection() {
               <p className="text-xs text-gray-500 truncate">{s.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
+              <button onClick={() => startEdit(s)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
               <button onClick={() => deleteMutation.mutate(s.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
@@ -3664,7 +3666,7 @@ function BenefitManageSection() {
               <p className="text-xs text-gray-500 truncate">{b.description}</p>
             </div>
             <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
+              <button onClick={() => startEdit(b)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
               <button onClick={() => deleteMutation.mutate(b.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>

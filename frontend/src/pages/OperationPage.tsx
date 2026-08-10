@@ -952,10 +952,11 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
         <div className="mb-3 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           전시 정보가 <b>확정</b>되어 더 이상 수정할 수 없습니다. (제출 내용은 아래에서 확인 가능)
         </div>
-        <div className="flex gap-2 mb-3">
-          <button onClick={() => openPrint('artwork')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 출품리스트 PDF</button>
-          <button onClick={() => openPrint('cv')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가약력 PDF</button>
-          <button onClick={() => openPrint('note')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가노트 PDF</button>
+        {/* 버튼 3개 합 ~364px > 모바일 343px — 갤러리 측과 동일하게 그리드로 균일 배치 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          <button onClick={() => openPrint('artwork')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 출품리스트 PDF</button>
+          <button onClick={() => openPrint('cv')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 작가약력 PDF</button>
+          <button onClick={() => openPrint('note')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 작가노트 PDF</button>
         </div>
         <SubmissionReadonly submission={{ artworkList, cv, note, representativeIndex: repIndex }} />
       </section>
@@ -989,7 +990,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
         )}
         {tab === 'cv' && (
           <>
-            <div className="flex justify-between mb-2">
+            <div className="flex flex-wrap gap-2 justify-between mb-2">
               <button onClick={loadFromPortfolio} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">내 정보·포트폴리오 불러오기</button>
               <button onClick={() => openPrint('cv')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
