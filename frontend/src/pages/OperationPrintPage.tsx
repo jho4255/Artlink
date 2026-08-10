@@ -85,7 +85,8 @@ export default function OperationPrintPage() {
         @media print { .no-print { display: none !important; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
         .print-root { max-width: 800px; margin: 0 auto; padding: 32px 24px 64px; color: #111; font-size: 13px; line-height: 1.6; }
         .pr-table { width: 100%; border-collapse: collapse; }
-        .pr-table th, .pr-table td { border: 1px solid #ddd; padding: 8px; vertical-align: middle; }
+        /* 모든 칸 가로·세로 가운데 정렬 (열마다 따로 지정하면 행별로 어긋난다) */
+        .pr-table th, .pr-table td { border: 1px solid #ddd; padding: 8px; vertical-align: middle; text-align: center; }
         .pr-table th { background: #f5f5f5; font-weight: 600; font-size: 12px; }
       `}</style>
 
@@ -127,26 +128,28 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
         <tr>
           <th>No</th>
           <th>Image</th>
-          <th style={{ textAlign: 'left' }}>Title</th>
+          <th>Title</th>
           <th>Size</th>
           <th>Medium</th>
           <th>Year</th>
-          <th style={{ textAlign: 'right' }}>Price</th>
+          <th>Price</th>
         </tr>
       </thead>
       <tbody>
         {list.map((a, i) => (
           <tr key={i}>
-            <td style={{ textAlign: 'center' }}>{i + 1}</td>
-            <td style={{ textAlign: 'center' }}>
-              {/* objectFit contain — 작품 비율은 자르지 않는다 (CLAUDE.md 18) */}
-              {a.image ? <img src={a.image} alt="" style={{ width: 88, height: 88, objectFit: 'contain' }} /> : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
+            <td>{i + 1}</td>
+            <td>
+              {/* 크기는 max-*로만 제한 — width/height를 함께 주면 비율이 찌그러진다 (CLAUDE.md 18) */}
+              {a.image
+                ? <img src={a.image} alt="" style={{ maxWidth: 88, maxHeight: 88, display: 'block', margin: '0 auto' }} />
+                : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
             </td>
             <td style={{ wordBreak: 'break-word' }}>{a.title}</td>
-            <td style={{ textAlign: 'center' }}>{a.size}</td>
-            <td style={{ textAlign: 'center', wordBreak: 'break-word' }}>{a.medium}</td>
-            <td style={{ textAlign: 'center' }}>{a.year}</td>
-            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatArtworkPrice(a.price)}</td>
+            <td>{a.size}</td>
+            <td style={{ wordBreak: 'break-word' }}>{a.medium}</td>
+            <td>{a.year}</td>
+            <td style={{ whiteSpace: 'nowrap' }}>{formatArtworkPrice(a.price)}</td>
           </tr>
         ))}
       </tbody>
