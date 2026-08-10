@@ -119,8 +119,8 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
         <col style={{ width: 34 }} />
         <col style={{ width: 104 }} />
         <col />
-        <col style={{ width: 96 }} />
-        <col style={{ width: 130 }} />
+        <col style={{ width: 112 }} />
+        <col style={{ width: 118 }} />
         <col style={{ width: 52 }} />
         <col style={{ width: 96 }} />
       </colgroup>
@@ -146,7 +146,8 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
                 : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
             </td>
             <td style={{ wordBreak: 'break-word' }}>{a.title}</td>
-            <td>{a.size}</td>
+            {/* 크기는 한 덩어리 — 'cm'만 다음 줄로 떨어지지 않게 */}
+            <td style={{ whiteSpace: 'nowrap' }}>{a.size}</td>
             <td style={{ wordBreak: 'break-word' }}>{a.medium}</td>
             <td>{a.year}</td>
             <td style={{ whiteSpace: 'nowrap' }}>{formatArtworkPrice(a.price)}</td>
