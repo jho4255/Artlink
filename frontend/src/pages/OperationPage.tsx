@@ -883,6 +883,11 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     if (repIndex != null && repIndex >= artworkList.length) setRepIndex(null);
   }, [artworkList.length, repIndex]);
 
+  // 작품 삭제 시 대표작 인덱스 보정 — 지운 것이 대표작이면 해제, 그보다 앞이면 한 칸 당긴다
+  const handleArtworkRemoved = (removed: number) => {
+    setRepIndex(prev => (prev == null ? null : prev === removed ? null : prev > removed ? prev - 1 : prev));
+  };
+
   // partial=true (작품 단위 저장)일 땐 refetch를 하지 않는다 —
   // 되받은 서버 값으로 폼을 덮으면 다른 작품에 입력 중이던 내용이 날아간다.
   const saveMutation = useMutation({
@@ -1127,7 +1132,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('artwork')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSaveArtwork={saveArtwork} stateOf={artworkState} saving={saveMutation.isPending} />
+            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSaveArtwork={saveArtwork} onRemoved={handleArtworkRemoved} stateOf={artworkState} saving={saveMutation.isPending} />
             <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} stateOf={artworkState} onSave={handleSave} saving={saveMutation.isPending} />
           </>
         )}
@@ -2001,7 +2006,7 @@ function BulkImageUpload({ onAdd }: { onAdd: (items: { image: string; title: str
   );
 }
 
-function ArtworkListEditor({ value, onChange, onSaveArtwork, stateOf, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSaveArtwork?: (i: number) => void; stateOf?: (i: number) => SaveState; saving?: boolean }) {
+function ArtworkListEditor({ value, onChange, onSaveArtwork, onRemoved, stateOf, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSaveArtwork?: (i: number) => void; onRemoved?: (i: number) => void; stateOf?: (i: number) => SaveState; saving?: boolean }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
   // 일괄 업로드: 사진이 비어 있는 기존 작품부터 채우고, 남으면 새 작품으로 추가
   const addImages = (items: { image: string; title: string }[]) => {
@@ -2015,7 +2020,8 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, stateOf, saving }: 
     onChange(next);
   };
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
-  const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  // 삭제한 위치를 부모에 알린다 — 대표작보다 앞을 지우면 인덱스가 밀려 엉뚱한 작품이 대표작이 된다
+  const rm = (i: number) => { onChange(value.filter((_, idx) => idx !== i)); onRemoved?.(i); };
   const inputCls = "px-2 py-1.5 border border-gray-200 rounded text-sm";
   // 단위(cm·원)와 삭제(−)가 같은 세로 열에 오도록 고정 폭
   const unitCol = "w-7 shrink-0 flex items-center justify-center";
