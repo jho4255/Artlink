@@ -374,3 +374,62 @@ describe('공모 운영 페이지 API', () => {
     });
   });
 });
+
+/**
+ * 임시저장(draft) 작품은 작가에게만 보이고 갤러리·관리자에게는 감춰져야 한다.
+ * 프론트에서 감추면 목록·PDF·정산 등 경로마다 빠뜨리기 쉬워 서버에서 한 번에 거른다.
+ */
+describe('임시저장 작품 비공개', () => {
+  let exId: number;
+
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+    const gallery = await seedGallery(3);
+    const ex = await seedExhibition(gallery.id);
+    exId = ex.id;
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'ACCEPTED' } });
+
+    await request.put(`/api/operations/${exId}/me`)
+      .set('Authorization', `Bearer ${artist1Tok}`)
+      .send({
+        artworkList: [
+          { title: '공개 작품', size: '10×10 cm', medium: 'Oil', year: '2026', price: '100000' },
+          { title: '임시 작품', size: '20×20 cm', medium: 'Acrylic', year: '2026', price: '200000', draft: true },
+          { title: '공개 작품2', size: '30×30 cm', medium: 'Oil', year: '2026', price: '300000' },
+        ],
+        cv: null, note: null,
+        representativeIndex: 2, // 임시저장 뒤의 작품 — 걸러낸 뒤에도 같은 작품을 가리켜야 한다
+      });
+  });
+
+  it('작가 본인은 임시저장 작품까지 모두 본다', async () => {
+    const r = await request.get(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(r.status).toBe(200);
+    expect(r.body.artworkList.map((a: any) => a.title)).toEqual(['공개 작품', '임시 작품', '공개 작품2']);
+  });
+
+  it('갤러리 오너의 전체 목록에서는 임시저장 작품이 빠진다', async () => {
+    const r = await request.get(`/api/operations/${exId}/submissions`).set('Authorization', `Bearer ${ownerTok}`);
+    expect(r.status).toBe(200);
+    const mine = r.body.find((x: any) => x.user.id === 1);
+    expect(mine.submission.artworkList.map((a: any) => a.title)).toEqual(['공개 작품', '공개 작품2']);
+  });
+
+  it('단일 조회(PDF용)에서도 빠지고, 대표작 인덱스가 다시 매핑된다', async () => {
+    const r = await request.get(`/api/operations/${exId}/submissions/1`).set('Authorization', `Bearer ${ownerTok}`);
+    expect(r.status).toBe(200);
+    const list = r.body.submission.artworkList;
+    expect(list.map((a: any) => a.title)).toEqual(['공개 작품', '공개 작품2']);
+    // 원래 index 2(공개 작품2) → 걸러낸 배열에서는 index 1
+    expect(r.body.submission.representativeIndex).toBe(1);
+    expect(list[r.body.submission.representativeIndex].title).toBe('공개 작품2');
+  });
+
+  it('정산 대상 작품 목록에도 임시저장 작품은 포함되지 않는다', async () => {
+    const r = await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+    expect(r.status).toBe(200);
+    const me = r.body.artists.find((a: any) => a.user.id === 1);
+    expect(me.works.map((w: any) => w.title)).toEqual(['공개 작품', '공개 작품2']);
+  });
+});

@@ -28,11 +28,14 @@ const submission = {
 describe('artworkHtml (출품리스트 PDF)', () => {
   const html = artworkHtml(submission, '테스트 공모', '홍길동', 'a@b.com');
 
-  it('작품 이미지는 max-*로만 제한 — width/height 동시 지정 시 비율이 찌그러진다', () => {
+  it('사진 칸 크기는 통일하되 이미지는 max-*로만 제한해 비율을 유지한다', () => {
+    // 고정 크기 박스 안에 max-* 이미지 — html2canvas는 object-fit을 재현하지 못해
+    // 박스에 꽉 늘려 그리므로(작품 왜곡) object-fit에 의존하면 안 된다
+    expect(html).toContain('width:88px;height:88px');
     expect(html).toContain('max-width:88px');
     expect(html).toContain('max-height:88px');
+    expect(html).not.toMatch(/<img[^>]*object-fit/);
     expect(html).not.toMatch(/<img[^>]*style="[^"]*[^-]width:\d+px;height:\d+px/);
-    expect(html).not.toContain('object-fit:cover');
   });
 
   it('열 너비 고정 + 모든 칸 가운데 정렬', () => {
@@ -61,6 +64,10 @@ describe('noteHtml (작가노트 PDF)', () => {
     // 이미지는 CORS 회피용 프록시를 거치므로 URL이 인코딩되어 들어간다
     expect(html).toContain(encodeURIComponent('https://img.example/a.jpg'));
     expect(html).toContain('72.7×60.6 cm · Acrylic on canvas · 2026');
+    // 사진 칸 크기 통일 + 비율 유지
+    expect(html).toContain('width:130px;height:130px');
+    expect(html).toContain('max-width:130px');
+    expect(html).not.toMatch(/<img[^>]*object-fit/);
   });
 
   it('출품리스트에 없는 제목은 사진 없이 본문만 유지 (옛 데이터 보존)', () => {

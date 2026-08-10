@@ -140,9 +140,9 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
           <tr key={i}>
             <td>{i + 1}</td>
             <td>
-              {/* 크기는 max-*로만 제한 — width/height를 함께 주면 비율이 찌그러진다 (CLAUDE.md 18) */}
+              {/* 고정 박스 + contain — 칸 크기는 통일, 작품 비율은 유지 (CLAUDE.md 18) */}
               {a.image
-                ? <img src={a.image} alt="" style={{ maxWidth: 88, maxHeight: 88, display: 'block', margin: '0 auto' }} />
+                ? <img src={a.image} alt="" style={{ width: 88, height: 88, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
                 : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
             </td>
             <td style={{ wordBreak: 'break-word' }}>{a.title}</td>

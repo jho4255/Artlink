@@ -71,6 +71,18 @@ export const BASE = `font-family:'Pretendard Variable',Pretendard,system-ui,sans
 // 표 셀 — 가로·세로 가운데 정렬 (열마다 따로 주면 행별로 어긋나 보인다)
 const TD = `border:1px solid #ddd;padding:8px;text-align:center;vertical-align:middle`;
 const TH = `${TD};font-weight:600;font-size:12px`;
+
+/**
+ * 작품 사진 — 크기는 통일하되 비율은 유지한다.
+ * 고정 크기 박스 + 이미지 max-*(100%) 조합. `object-fit`을 쓰지 않는 이유:
+ * ZIP PDF는 html2canvas로 그리는데 html2canvas가 object-fit을 재현하지 못해
+ * 이미지를 박스에 꽉 늘려 그린다(= 작품이 찌그러진다). max-*는 실제 레이아웃
+ * 크기를 바꾸므로 html2canvas도 그대로 따라 그린다.
+ */
+const imgBox = (url: string, size: number) => `
+  <div style="width:${size}px;height:${size}px;line-height:${size}px;text-align:center;flex-shrink:0">
+    <img src="${esc(proxied(url))}" crossorigin="anonymous" style="max-width:${size}px;max-height:${size}px;vertical-align:middle"/>
+  </div>`;
 const header = (exTitle: string, docLabel: string, artist: string, email?: string) => `
   <div style="margin-bottom:20px">
     <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
@@ -86,7 +98,7 @@ export function artworkHtml(sub: OperationSubmission, exTitle: string, artist: s
     : list.map((a, i) => `
       <tr data-pdf-atomic>
         <td style="${TD}">${i + 1}</td>
-        <td style="${TD}">${a.image ? `<img src="${esc(proxied(a.image))}" crossorigin="anonymous" style="max-width:88px;max-height:88px;display:block;margin:0 auto"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
+        <td style="${TD}"><div style="display:flex;justify-content:center">${a.image ? imgBox(a.image, 88) : '<span style="color:#bbb;font-size:11px">-</span>'}</div></td>
         <td style="${TD};word-break:break-word">${esc(a.title)}</td>
         <td style="${TD};white-space:nowrap">${esc(a.size)}</td>
         <td style="${TD};word-break:break-word">${esc(a.medium)}</td>
@@ -144,7 +156,7 @@ export function noteHtml(sub: OperationSubmission, exTitle: string, artist: stri
       const meta = art ? [art.size, art.medium, art.year].filter(Boolean).join(' · ') : '';
       return `
       <div data-pdf-atomic style="margin-bottom:18px;display:flex;gap:12px;align-items:flex-start">
-        ${art?.image ? `<img src="${esc(proxied(art.image))}" crossorigin="anonymous" style="max-width:130px;max-height:130px;flex-shrink:0"/>` : ''}
+        ${art?.image ? imgBox(art.image, 130) : ''}
         <div style="min-width:0;flex:1">
           ${s.title ? `<h3 style="font-size:15px;font-weight:700;background:#fdf3c4;display:inline-block;padding:2px 6px;margin:0 0 8px">${esc(s.title)}</h3>` : ''}
           ${meta ? `<p style="color:#666;font-size:12px;margin:0 0 6px">${esc(meta)}</p>` : ''}

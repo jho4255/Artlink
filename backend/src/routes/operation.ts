@@ -176,6 +176,32 @@ function parseSubmission(s: any) {
 
 const EMPTY_SUB = { artworkList: [], cv: null, note: null, representativeIndex: null };
 
+/**
+ * 갤러리·관리자에게 내보내는 제출정보 — 작가가 '임시저장'한 작품(draft:true)은 제거한다.
+ * 임시저장은 "아직 보여주고 싶지 않은 작성 중인 내용"이라, 여기서 한 번 걸러야
+ * 목록·PDF·정산 등 갤러리 쪽 모든 화면에서 일관되게 감춰진다.
+ * 대표작 인덱스도 제거 후 배열 기준으로 다시 매핑한다(엉뚱한 작품이 대표작이 되는 것 방지).
+ */
+/** 캡션·정산처럼 출품작 배열만 필요한 곳 — 임시저장(draft) 제외 */
+function publishedArtworks(s: any): any[] {
+  return safeJson<any[]>(s?.artworkList, []).filter((a) => !a?.draft);
+}
+
+function publicSubmission(s: any) {
+  const parsed = parseSubmission(s);
+  if (!parsed) return null;
+  const list: any[] = parsed.artworkList || [];
+  const kept: any[] = [];
+  let repIndex: number | null = null;
+  list.forEach((a, i) => {
+    if (a?.draft) return;
+    if (parsed.representativeIndex === i) repIndex = kept.length;
+    kept.push(a);
+  });
+  // 임시저장 작품만 있는 노트 상세설명은 남겨둔다(작품명 기준이라 자동으로 매칭이 끊길 뿐)
+  return { ...parsed, artworkList: kept, representativeIndex: repIndex };
+}
+
 router.get('/:id/me', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
@@ -234,7 +260,7 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
 
     const result = accepted.map((a) => ({
       user: a.user,
-      submission: parseSubmission(subByUser.get(a.userId)) ?? EMPTY_SUB,
+      submission: publicSubmission(subByUser.get(a.userId)) ?? EMPTY_SUB,
     }));
     res.json(result);
   } catch (e) { next(e); }
@@ -255,7 +281,8 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
       orderBy: { createdAt: 'asc' },
     });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
-    const subByUser = new Map(subs.map((s) => [s.userId, parseSubmission(s)]));
+    // 임시저장(draft)만 있는 작가는 아직 제출 전 — 안내 대상에 포함되도록 publicSubmission 기준으로 판단
+    const subByUser = new Map(subs.map((s) => [s.userId, publicSubmission(s)]));
     const targets = accepted.filter((a) => {
       const sub = subByUser.get(a.userId);
       const hasArtwork = (sub?.artworkList?.length || 0) > 0;
@@ -343,7 +370,7 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
     res.json({
       exhibitionTitle: exhibition.title,
       user,
-      submission: parseSubmission(sub) ?? EMPTY_SUB,
+      submission: publicSubmission(sub) ?? EMPTY_SUB,
     });
   } catch (e) { next(e); }
 });
@@ -361,7 +388,7 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
       select: { userId: true },
     });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
-    const byUser = new Map(subs.map((s) => [s.userId, safeJson<any[]>(s.artworkList, [])]));
+    const byUser = new Map(subs.map((s) => [s.userId, publishedArtworks(s)]));
     const works: any[] = [];
     for (const a of accepted) {
       for (const w of (byUser.get(a.userId) || [])) {
@@ -504,7 +531,7 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
       orderBy: { createdAt: 'asc' },
     });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
-    const subByUser = new Map(subs.map(s => [s.userId, safeJson<any[]>(s.artworkList, [])]));
+    const subByUser = new Map(subs.map(s => [s.userId, publishedArtworks(s)]));
     const rows = accepted.map(a => ({ user: a.user, artworkList: subByUser.get(a.userId) || [] }));
 
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
