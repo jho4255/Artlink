@@ -126,8 +126,10 @@ ArtLink/
 - **공모 운영 페이지** (migration 20260607080000_exhibition_operation)
   - 접근: 갤러리 오너 / Admin / 수락(ACCEPTED) 작가. API `/api/operations/:id/(access|notices|me|submissions|submissions/:userId)`
   - 공지사항: 오너·Admin 작성, 셋 다 열람
-  - 작가 제출: 출품리스트(이미지/제목/크기/재료/년도/가격) · 작가약력(헤더+학력/개인전/단체전/아트페어·옥션/수상) · 작가노트(전체+섹션)
+  - 작가 제출: 출품리스트(이미지/제목/크기/재료/년도/가격) · 작가약력(헤더+학력/개인전/단체전/아트페어·옥션/수상) · 작가노트(전체+작품별 상세설명 — 출품작 드롭다운 선택, 한 작품당 1개)
   - 열람 권한: 오너·Admin만 전 작가 열람, **작가 상호 비공개** (submissions는 오너/admin, submissions/:userId는 오너/admin/본인)
+  - **임시저장(draft)**: 출품작에 `draft:true` — 필수값이 덜 채워져도 보관되지만 **갤러리·Admin에게 비공개**. 서버에서 일괄 필터(`publicSubmission`/`publishedArtworks`, operation.ts) — 목록·PDF·캡션·정산·독촉 대상 판단·대시보드 카운트(exhibition.ts) 모두 여기서 걸러지고, 대표작 인덱스는 걸러낸 배열 기준 재매핑, draft 작품의 노트 상세설명도 함께 감춤. 정식 [저장] 시 draft 해제(전체 검증+대표작 필수). 프론트 상태 4색(`lib/saveState.ts`): 회색(작성 전 빈 칸, 서버 미전송)/빨강(저장 안 됨)/노랑(임시저장)/초록(저장됨). **대표작 인덱스는 참조 비교 금지** — 전송 목록은 복제본이므로 `repOrdinal()`(빈 칸 제외 서수)로 변환. 저장 기준선은 서버 응답으로 갱신(요청 중 입력 유실 방지), 미저장 이탈 경고 `useUnsavedChanges`(닫기/뒤로가기/앱 내 링크)
+  - **정산 입력은 전시 종료 후에만** (`PUT /settlement`에서 차단) — 종료 전엔 작가가 출품 목록을 고칠 수 있어 위치 기반 `artworkIndex`가 어긋난다. 작가 열람용 `/my-settlement`도 갤러리와 같은 draft 제외 목록으로 계산(프레임 일치)
   - PDF: 인쇄 기반 A4 화면(`OperationPrintPage`), 파일명 `[공모명]_[작가명]_[문서종류]` 자동 제안
   - 전체 PDF 일괄 ZIP: 클라이언트(jsPDF+html2canvas+JSZip, `lib/operationPdf.ts`), `[공모명]_전체제출물.zip`
   - **엽서 대표작** (migration 20260608120000_submission_representative_index): 수락 작가가 본인 출품작 중 1점 선택(`representativeIndex`, 범위 밖은 서버에서 null). `PUT /me` 저장, submissions/readonly에 '엽서 대표작' 뱃지. UI `RepresentativeSelector`(OperationPage)

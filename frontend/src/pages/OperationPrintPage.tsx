@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
-import { displayName } from '@/lib/utils';
+import { displayName, formatArtworkPrice } from '@/lib/utils';
 import type { OperationSubmission, ArtistCv, CvEntry } from '@/types';
 
 const DOC_LABEL: Record<string, string> = { artwork: '출품리스트', cv: '작가약력', note: '작가노트' };
@@ -48,9 +48,16 @@ export default function OperationPrintPage() {
     const artist = displayName(data.user);
     document.title = `${data.exhibitionTitle}_${artist}_${docLabel}`;
 
+    // 작가노트도 작품별 상세설명에 작품 사진이 들어가므로 함께 프리로드해야 한다
+    // (안 하면 이미지가 그려지기 전에 인쇄창이 떠서 PDF에 사진이 빠진다)
+    const list = data.submission.artworkList || [];
     const imgs: string[] = docType === 'artwork'
-      ? (data.submission.artworkList || []).map(a => a.image).filter(Boolean) as string[]
-      : [];
+      ? list.map(a => a.image).filter(Boolean) as string[]
+      : docType === 'note'
+        ? (data.submission.note?.sections || [])
+            .map(s => list.find(a => a.title?.trim() === s.title?.trim())?.image)
+            .filter(Boolean) as string[]
+        : [];
     if (imgs.length === 0) { setReady(true); return; }
     let loaded = 0;
     const done = () => { loaded += 1; if (loaded >= imgs.length) setReady(true); };
@@ -78,7 +85,8 @@ export default function OperationPrintPage() {
         @media print { .no-print { display: none !important; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
         .print-root { max-width: 800px; margin: 0 auto; padding: 32px 24px 64px; color: #111; font-size: 13px; line-height: 1.6; }
         .pr-table { width: 100%; border-collapse: collapse; }
-        .pr-table th, .pr-table td { border: 1px solid #ddd; padding: 8px; vertical-align: middle; }
+        /* 모든 칸 가로·세로 가운데 정렬 (열마다 따로 지정하면 행별로 어긋난다) */
+        .pr-table th, .pr-table td { border: 1px solid #ddd; padding: 8px; vertical-align: middle; text-align: center; }
         .pr-table th { background: #f5f5f5; font-weight: 600; font-size: 12px; }
       `}</style>
 
@@ -96,7 +104,7 @@ export default function OperationPrintPage() {
 
       {docType === 'artwork' && <ArtworkDoc submission={submission} />}
       {docType === 'cv' && <CvDoc submission={submission} artist={artist} />}
-      {docType === 'note' && <NoteDoc submission={submission} artist={artist} />}
+      {docType === 'note' && <NoteDoc submission={submission} />}
     </div>
   );
 }
@@ -105,30 +113,44 @@ function ArtworkDoc({ submission }: { submission: OperationSubmission }) {
   const list = submission.artworkList || [];
   if (list.length === 0) return <p style={{ color: '#999' }}>등록된 출품작이 없습니다.</p>;
   return (
-    <table className="pr-table">
+    // table-layout:fixed — 내용 길이와 무관하게 열 너비를 선언한 대로 고정해 행마다 칸이 어긋나지 않게 한다
+    <table className="pr-table" style={{ tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: 34 }} />
+        <col style={{ width: 104 }} />
+        <col />
+        <col style={{ width: 112 }} />
+        <col style={{ width: 118 }} />
+        <col style={{ width: 52 }} />
+        <col style={{ width: 96 }} />
+      </colgroup>
       <thead>
         <tr>
-          <th style={{ width: 30 }}>No</th>
-          <th style={{ width: 110 }}>Image</th>
+          <th>No</th>
+          <th>Image</th>
           <th>Title</th>
-          <th style={{ width: 110 }}>Size</th>
-          <th style={{ width: 140 }}>Medium</th>
-          <th style={{ width: 50 }}>Year</th>
-          <th style={{ width: 90 }}>Price</th>
+          <th>Size</th>
+          <th>Medium</th>
+          <th>Year</th>
+          <th>Price</th>
         </tr>
       </thead>
       <tbody>
         {list.map((a, i) => (
           <tr key={i}>
-            <td style={{ textAlign: 'center' }}>{i + 1}</td>
-            <td style={{ textAlign: 'center' }}>
-              {a.image ? <img src={a.image} alt="" style={{ width: 90, height: 90, objectFit: 'cover' }} /> : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
+            <td>{i + 1}</td>
+            <td>
+              {/* 고정 박스 + contain — 칸 크기는 통일, 작품 비율은 유지 (CLAUDE.md 18) */}
+              {a.image
+                ? <img src={a.image} alt="" style={{ width: 88, height: 88, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+                : <span style={{ color: '#bbb', fontSize: 11 }}>-</span>}
             </td>
-            <td style={{ textAlign: 'center' }}>{a.title}</td>
-            <td style={{ textAlign: 'center' }}>{a.size}</td>
-            <td style={{ textAlign: 'center' }}>{a.medium}</td>
-            <td style={{ textAlign: 'center' }}>{a.year}</td>
-            <td style={{ textAlign: 'center' }}>{a.price}</td>
+            <td style={{ wordBreak: 'break-word' }}>{a.title}</td>
+            {/* 크기는 한 덩어리 — 'cm'만 다음 줄로 떨어지지 않게 */}
+            <td style={{ whiteSpace: 'nowrap' }}>{a.size}</td>
+            <td style={{ wordBreak: 'break-word' }}>{a.medium}</td>
+            <td>{a.year}</td>
+            <td style={{ whiteSpace: 'nowrap' }}>{formatArtworkPrice(a.price)}</td>
           </tr>
         ))}
       </tbody>
@@ -159,20 +181,37 @@ function CvDoc({ submission, artist }: { submission: OperationSubmission; artist
   );
 }
 
-function NoteDoc({ submission, artist }: { submission: OperationSubmission; artist: string }) {
+// 문서 상단 헤더에 이미 '작가노트'와 작가명이 있으므로 여기서 다시 찍지 않는다
+function NoteDoc({ submission }: { submission: OperationSubmission }) {
   const note = submission.note;
   if (!note || (!note.statement && !(note.sections?.length))) return <p style={{ color: '#999' }}>등록된 작가노트가 없습니다.</p>;
+  const list = submission.artworkList || [];
   return (
     <div>
-      <h2 style={{ textAlign: 'center', fontSize: 18, fontWeight: 700, marginBottom: 4 }}>작가노트</h2>
-      <p style={{ textAlign: 'right', color: '#666', marginBottom: 20 }}>{artist}</p>
-      {note.statement && <p style={{ whiteSpace: 'pre-wrap', marginBottom: 20 }}>{note.statement}</p>}
-      {note.sections?.map((s, i) => (
-        <div key={i} style={{ marginBottom: 18 }}>
-          {s.title && <h3 style={{ fontSize: 15, fontWeight: 700, background: '#fdf3c4', display: 'inline-block', padding: '2px 6px', marginBottom: 8 }}>{s.title}</h3>}
-          <p style={{ whiteSpace: 'pre-wrap' }}>{s.body}</p>
-        </div>
-      ))}
+      {note.statement && <p style={{ whiteSpace: 'pre-wrap', marginBottom: 24 }}>{note.statement}</p>}
+      {!!note.sections?.length && (
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>작품별 상세설명</h2>
+      )}
+      {note.sections?.map((s, i) => {
+        // 상세설명은 출품작에 붙는 글 — 해당 작품 사진을 함께 싣는다 (비율 유지: contain)
+        const art = list.find(a => a.title?.trim() === s.title?.trim());
+        return (
+          <div key={i} style={{ marginBottom: 18, display: 'flex', gap: 12, alignItems: 'flex-start', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+            {art?.image && (
+              <img src={art.image} alt="" style={{ width: 130, height: 130, objectFit: 'contain', flexShrink: 0 }} />
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {s.title && <h3 style={{ fontSize: 15, fontWeight: 700, background: '#fdf3c4', display: 'inline-block', padding: '2px 6px', marginBottom: 8 }}>{s.title}</h3>}
+              {art && (
+                <p style={{ color: '#666', fontSize: 12, margin: '0 0 6px' }}>
+                  {[art.size, art.medium, art.year].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              <p style={{ whiteSpace: 'pre-wrap' }}>{s.body}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

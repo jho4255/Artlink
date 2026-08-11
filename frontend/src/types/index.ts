@@ -205,6 +205,12 @@ export interface ArtworkItem {
   medium: string;   // 재료 (예: Acrylic on Canvas)
   year: string;
   price: string;    // 가격 (자유 텍스트: 비매/협의/₩320,000)
+  /**
+   * 임시저장 여부. true면 작가 화면에만 보이고 갤러리·관리자에게는 노출되지 않는다
+   * (백엔드 operation.ts의 publicSubmission/publishedArtworks에서 걸러짐).
+   * 정식 [저장]을 누르면 false가 되어 제출물로 넘어간다.
+   */
+  draft?: boolean;
 }
 
 // 약력 항목 (연도 + 내용)

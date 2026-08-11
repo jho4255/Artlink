@@ -17,12 +17,24 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { composeSize, splitSize } from '@/lib/artwork';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
+import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
 } from '@/types';
 import { EMPTY_CV, EMPTY_NOTE } from '@/types';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
+
+// 저장 전 이탈 경고 문구 (닫기·새로고침·뒤로가기·앱 내 링크 이동 시)
+const UNSAVED_MESSAGE = [
+  '저장하지 않은 작품 정보가 있습니다.',
+  '[임시저장]을 누르면 작성 중인 내용을 보관할 수 있어요.',
+  '',
+  '저장하지 않고 나가시겠습니까?',
+].join('\n');
+
 
 const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
   { key: 'solo', label: '개인전' },
@@ -401,7 +413,9 @@ export default function OperationPage() {
         </section>
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="grid gap-4">
+          {/* min-w-0 필수 — lg 미만 단일 컬럼 grid에서 아이템 min-width:auto가 truncate 텍스트의
+              min-content(≈388px)만큼 컬럼을 늘려 페이지 전체가 가로로 밀림 */}
+          <section className="grid gap-4 min-w-0">
             <div id="operation-notices" className="scroll-mt-24">
               <NoticesSection exhibitionId={id!} canManage={true} />
             </div>
@@ -447,7 +461,7 @@ export default function OperationPage() {
 
           </section>
 
-          <aside className="grid gap-4 lg:sticky lg:top-6">
+          <aside className="grid gap-4 min-w-0 lg:sticky lg:top-6">
             <div id="operation-stage" className="scroll-mt-24">
               <StatusPanel exhibitionId={id!} access={access} />
             </div>
@@ -845,6 +859,11 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   const [note, setNote] = useState<ArtistNote>(EMPTY_NOTE);
   const [repIndex, setRepIndex] = useState<number | null>(null);
   const [tab, setTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
+  // 마지막으로 서버에 저장된 스냅샷 — 항목별 '저장 안 됨' 표시의 기준
+  const [savedList, setSavedList] = useState<ArtworkItem[]>([]);
+  const [savedNote, setSavedNote] = useState<ArtistNote>(EMPTY_NOTE);
+  const [savedCv, setSavedCv] = useState<ArtistCv>(EMPTY_CV);
+  const [savedRepIndex, setSavedRepIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (data) {
@@ -852,6 +871,10 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       setCv(data.cv || EMPTY_CV);
       setNote(data.note || EMPTY_NOTE);
       setRepIndex(data.representativeIndex ?? null);
+      setSavedList(data.artworkList || []);
+      setSavedNote(data.note || EMPTY_NOTE);
+      setSavedCv(data.cv || EMPTY_CV);
+      setSavedRepIndex(data.representativeIndex ?? null);
     }
   }, [data]);
 
@@ -860,11 +883,111 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
     if (repIndex != null && repIndex >= artworkList.length) setRepIndex(null);
   }, [artworkList.length, repIndex]);
 
+  // 작품 삭제 시 대표작 인덱스 보정 — 지운 것이 대표작이면 해제, 그보다 앞이면 한 칸 당긴다
+  const handleArtworkRemoved = (removed: number) => {
+    setRepIndex(prev => (prev == null ? null : prev === removed ? null : prev > removed ? prev - 1 : prev));
+  };
+
+  // partial=true (작품 단위 저장)일 땐 refetch를 하지 않는다 —
+  // 되받은 서버 값으로 폼을 덮으면 다른 작품에 입력 중이던 내용이 날아간다.
   const saveMutation = useMutation({
-    mutationFn: () => api.put(`/operations/${exhibitionId}/me`, { artworkList, cv, note, representativeIndex: repIndex }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] }); toast.success('전시 정보가 저장되었습니다.'); },
+    // 빈 칸을 걸러 보내므로 대표작 인덱스도 보낼 목록 기준으로 다시 계산한다.
+    // 참조 비교(===)는 금물 — 저장 시 {...a}로 복제된 목록에서는 항상 실패해 대표작이 지워진다.
+    // 보낼 목록은 filledList와 같은 순서이므로 '빈 칸 제외 서수'로 변환한다.
+    mutationFn: (v: { list: ArtworkItem[]; partial?: boolean; msg?: string }) =>
+      api.put(`/operations/${exhibitionId}/me`, {
+        artworkList: v.list, cv, note,
+        representativeIndex: repOrdinal(artworkList, repIndex, v.list.length),
+      }),
+    onSuccess: (res, v) => {
+      // 기준선은 서버 응답(실제 저장된 값) — 요청이 나가는 동안 사용자가 더 입력한
+      // 내용을 '저장됨'으로 잘못 표시하지 않기 위해 렌더 시점 값 대신 응답을 쓴다
+      const srv = res.data || {};
+      setSavedList(Array.isArray(srv.artworkList) ? srv.artworkList : v.list);
+      setSavedNote(srv.note ?? EMPTY_NOTE);
+      setSavedCv(srv.cv ?? EMPTY_CV);
+      setSavedRepIndex(srv.representativeIndex ?? null);
+      // 화면 목록은 자리 이동 없이 항목별로만 갱신 — 통째로 교체하면
+      // ① 빈 칸이 뒤로 밀리며 repIndex가 엉뚱한 칸을 가리키고
+      // ② 저장 중에 다른 작품에 입력하던 내용이 날아간다.
+      // draft 플래그만 다른(=이번 저장으로 플래그가 바뀐) 항목만 보낸 값으로 바꾼다.
+      const sameArt = (a: ArtworkItem, b: ArtworkItem) => {
+        const { draft: _a, ...x } = a; const { draft: _b, ...y } = b;
+        return JSON.stringify(x) === JSON.stringify(y);
+      };
+      setArtworkList(prev => {
+        let ord = 0;
+        return prev.map(a => {
+          if (isBlankArtwork(a)) return a;
+          const sent = v.list[ord++];
+          return sent && sameArt(a, sent) ? sent : a;
+        });
+      });
+      if (!v.partial) qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] });
+      toast.success(v.msg || '전시 정보가 저장되었습니다.');
+    },
     onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
   });
+
+  // 작가노트 저장 (전체 노트 + 작품별 상세설명) — 출품작 검증 없이 노트만 확인
+  const saveNote = (label: string) => {
+    const bad = note.sections.findIndex(s => !s.title.trim());
+    if (bad !== -1) { toast.error(`상세설명 ${bad + 1}: 작품을 선택해주세요.`); return; }
+    saveMutation.mutate({ list: filledList, partial: true, msg: `${label} 저장되었습니다.` });
+  };
+  const isSectionDirty = (i: number) => JSON.stringify(note.sections[i] ?? null) !== JSON.stringify(savedNote.sections?.[i] ?? null);
+  const statementDirty = (note.statement || '') !== (savedNote.statement || '');
+
+  // 작품 한 점만 저장 — 전체 제출 검증(대표작·다른 작품 필수값) 없이 이 작품만 확인한다.
+  // 필수값이 비어 있어도 '임시저장'으로 지금까지 쓴 내용은 지킬 수 있게 안내한다.
+  const saveArtwork = (i: number) => {
+    const a = artworkList[i];
+    if (!a) return;
+    const labels: [keyof ArtworkItem, string][] = [['title', '작품명'], ['size', '크기'], ['medium', '재료'], ['year', '제작년도'], ['price', '가격']];
+    const lack = labels.filter(([k]) => !String(a[k] ?? '').trim()).map(([, l]) => l);
+    if (lack.length) { toast.error(`작품 ${i + 1}: ${lack.join(', ')} 미입력 — [임시저장]으로 지금까지 쓴 내용은 저장할 수 있어요.`, { duration: 6000 }); return; }
+    // 정식 저장 → draft 해제(갤러리에 공개)
+    const ord = ordinalOf.get(i);
+    const list = filledList.map((x, o) => (o === ord ? { ...x, draft: false } : x));
+    saveMutation.mutate({ list, partial: true, msg: `작품 ${i + 1} 저장되었습니다. 갤러리에 공개됩니다.` });
+  };
+
+  /**
+   * 작품별 저장 상태 3단계
+   *  - 'unsaved'(빨강): 저장 전이거나 저장 후 고친 상태 — 새로고침하면 사라진다
+   *  - 'draft'(노랑): 임시저장됨 — 서버에 남지만 갤러리에게는 보이지 않는다
+   *  - 'saved'(초록): 정식 저장 — 갤러리·관리자에게 제출된다
+   */
+  // 서버에 보낼 목록 — 갓 추가해 비어 있는 칸은 제외한다(빈 작품이 쌓이면 갤러리 카운트가 어긋난다).
+  // 상태 비교도 이 목록 기준으로 해야 인덱스가 어긋나지 않는다.
+  const filledList = artworkList.filter(a => !isBlankArtwork(a));
+  const ordinalOf = new Map<number, number>();
+  artworkList.forEach((a, i) => { if (!isBlankArtwork(a)) ordinalOf.set(i, ordinalOf.size); });
+
+  const artworkState = (i: number): SaveState => {
+    // 갓 추가해 비어 있는 칸은 색으로 경고하지 않는다 (저장할 것도, 잃을 것도 없음)
+    if (isBlankArtwork(artworkList[i])) return 'empty';
+    const ord = ordinalOf.get(i)!;
+    return computeSaveState(artworkList[i], savedList[ord], artworkList[i]?.draft);
+  };
+
+  // 저장(공개)된 작품만 대표작·작가노트 상세설명의 대상이 된다
+  const savedArtworks = artworkList.filter((_, i) => artworkState(i) === 'saved');
+
+  // 임시저장 — 아직 다 채우지 못했어도 작성한 만큼 서버에 보관. 갤러리에는 안 보이도록 draft 표시.
+  const saveDraft = () => {
+    const list = filledList.map((a, ord) => (
+      JSON.stringify(a) === JSON.stringify(savedList[ord]) && !a.draft ? a : { ...a, draft: true }
+    ));
+    saveMutation.mutate({ list, partial: true, msg: '임시저장했습니다. 갤러리에는 아직 보이지 않아요.' });
+  };
+  // 대표작 변경도 저장 대상 — 빼먹으면 대표작만 바꾼 경우 이탈 경고 없이 조용히 유실된다
+  const anyDirty = JSON.stringify(filledList) !== JSON.stringify(savedList)
+    || JSON.stringify(note) !== JSON.stringify(savedNote)
+    || JSON.stringify(cv) !== JSON.stringify(savedCv)
+    || repOrdinal(artworkList, repIndex, filledList.length) !== (savedRepIndex ?? null);
+  // 저장 전 이탈 경고 (닫기·새로고침·뒤로가기·앱 내 링크)
+  useUnsavedChanges(anyDirty, UNSAVED_MESSAGE);
 
   // 캡션에 들어갈 내용(출품작 제목/크기/재료/년도/가격)은 필수 — 비면 저장 차단
   const collectMissing = (): string[] => {
@@ -874,7 +997,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       return missing;
     }
     const labels: [keyof ArtworkItem, string][] = [['title', '제목'], ['size', '크기'], ['medium', '재료'], ['year', '제작년도'], ['price', '가격']];
+    // 갓 추가한 빈 칸(작성 전)은 서버로 보내지 않으므로 검증에서도 건너뛴다
     artworkList.forEach((a, i) => {
+      if (isBlankArtwork(a)) return;
       const lack = labels.filter(([k]) => !String(a[k] ?? '').trim()).map(([, l]) => l);
       if (lack.length) missing.push(`작품 ${i + 1}: ${lack.join(', ')} 미입력`);
     });
@@ -909,7 +1034,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       );
       return;
     }
-    saveMutation.mutate();
+    // 정식 저장 → 모든 작품의 draft 해제(갤러리에 공개)
+    const list = filledList.map(a => ({ ...a, draft: false }));
+    saveMutation.mutate({ list });
   };
 
   // 포트폴리오 경력 + 내 개인정보(이름/연락처/이메일)를 한 번에 약력으로 불러온다
@@ -945,33 +1072,57 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
   // 확정됨 → 읽기 전용
   if (confirmed) {
     return (
-      <section className="mb-10">
-        <h2 className="text-lg font-medium text-gray-900 mb-2">내 전시 정보</h2>
+      <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
+        <p className="mt-1 mb-3 text-sm text-gray-500">제출한 출품작·약력·노트를 확인합니다.</p>
         <div className="mb-3 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           전시 정보가 <b>확정</b>되어 더 이상 수정할 수 없습니다. (제출 내용은 아래에서 확인 가능)
         </div>
-        <div className="flex gap-2 mb-3">
-          <button onClick={() => openPrint('artwork')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 출품리스트 PDF</button>
-          <button onClick={() => openPrint('cv')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가약력 PDF</button>
-          <button onClick={() => openPrint('note')} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1"><FileDown size={13} /> 작가노트 PDF</button>
+        {/* 버튼 3개 합 ~364px > 모바일 343px — 갤러리 측과 동일하게 그리드로 균일 배치 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          <button onClick={() => openPrint('artwork')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 출품리스트 PDF</button>
+          <button onClick={() => openPrint('cv')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 작가약력 PDF</button>
+          <button onClick={() => openPrint('note')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 작가노트 PDF</button>
         </div>
         <SubmissionReadonly submission={{ artworkList, cv, note, representativeIndex: repIndex }} />
       </section>
     );
   }
 
+  // 탭별 입력 상태 — 갤러리 측 탭 카드처럼 채움 여부를 점으로 표시
+  const tabDone: Record<'artwork' | 'cv' | 'note', boolean> = {
+    artwork: artworkList.length > 0,
+    cv: hasContent(cv),
+    note: !!(note && (note.statement || note.sections?.length)),
+  };
+
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-medium text-gray-900">내 전시 정보</h2>
-        <button onClick={handleSave} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">
-          {saveMutation.isPending ? '저장 중...' : '저장'}
-        </button>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
+          <p className="mt-1 text-sm text-gray-500">출품작·약력·노트를 입력하고 저장하면 갤러리에 전달됩니다.</p>
+        </div>
+        {/* 임시저장: 필수값이 덜 채워져도 작성한 만큼 보관 / 저장: 제출 기준(필수값·대표작) 충족 시 */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={saveDraft} disabled={saveMutation.isPending || !anyDirty} title="아직 다 채우지 않아도 지금까지 작성한 내용을 저장합니다"
+            className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50">
+            임시저장
+          </button>
+          <button onClick={handleSave} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
+            {saveMutation.isPending ? '저장 중...' : '저장'}
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-1.5 mb-4">
+      {/* 갤러리 측 '운영 작업'과 동일한 세그먼트 탭 */}
+      <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-4">
         {([['artwork', '출품리스트'], ['cv', '작가약력'], ['note', '작가노트']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm rounded-full transition-colors ${tab === k ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{label}</button>
+          <button key={k} type="button" onClick={() => setTab(k)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${tab === k ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}>
+            {label}
+            <span className={`w-1.5 h-1.5 rounded-full ${tabDone[k] ? 'bg-green-500' : 'bg-gray-300'}`} aria-label={tabDone[k] ? '입력됨' : '미입력'} />
+          </button>
         ))}
       </div>
 
@@ -981,13 +1132,13 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('artwork')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <ArtworkListEditor value={artworkList} onChange={setArtworkList} />
-            <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} />
+            <ArtworkListEditor value={artworkList} onChange={setArtworkList} onSaveArtwork={saveArtwork} onRemoved={handleArtworkRemoved} stateOf={artworkState} saving={saveMutation.isPending} />
+            <RepresentativeSelector artworkList={artworkList} value={repIndex} onChange={setRepIndex} stateOf={artworkState} onSave={handleSave} saving={saveMutation.isPending} />
           </>
         )}
         {tab === 'cv' && (
           <>
-            <div className="flex justify-between mb-2">
+            <div className="flex flex-wrap gap-2 justify-between mb-2">
               <button onClick={loadFromPortfolio} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">내 정보·포트폴리오 불러오기</button>
               <button onClick={() => openPrint('cv')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
@@ -999,7 +1150,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
             <div className="flex justify-end mb-2">
               <button onClick={() => openPrint('note')} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} /> PDF 미리보기</button>
             </div>
-            <NoteEditor value={note} onChange={setNote} />
+            <NoteEditor value={note} onChange={setNote} artworkList={savedArtworks} onSaveNote={saveNote} isSectionDirty={isSectionDirty} statementDirty={statementDirty} saving={saveMutation.isPending} />
           </>
         )}
       </div>
@@ -1248,21 +1399,27 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
 }
 
 // 엽서용 대표작 선택 (작가) — 출품작 중 1개
-function RepresentativeSelector({ artworkList, value, onChange }: { artworkList: ArtworkItem[]; value: number | null; onChange: (v: number | null) => void }) {
+function RepresentativeSelector({ artworkList, value, onChange, stateOf, onSave, saving }: { artworkList: ArtworkItem[]; value: number | null; onChange: (v: number | null) => void; stateOf?: (i: number) => SaveState; onSave?: () => void; saving?: boolean }) {
   if (artworkList.length === 0) return null;
   return (
     <div className="mt-5 pt-4 border-t border-gray-100">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <p className="text-sm font-medium text-gray-900 flex items-center gap-1"><Star size={14} className="text-amber-500" /> 엽서 대표작</p>
-        {value != null && <button onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-700 underline">선택 해제</button>}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {value != null && <button onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-700 underline">선택 해제</button>}
+          {onSave && <button onClick={onSave} disabled={saving} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>}
+        </div>
       </div>
       <p className="text-xs text-gray-400 mb-2">엽서·홍보물에 사용할 대표작 1점을 선택하세요. (선택 후 [저장])</p>
       <div className="flex flex-wrap gap-2">
         {artworkList.map((a, i) => {
           const selected = value === i;
+          // 저장된 작품만 대표작으로 고를 수 있다 — 임시저장·미저장 작품은 갤러리에 보이지 않으므로
+          const selectable = stateOf ? stateOf(i) === 'saved' : true;
           return (
-            <button key={i} type="button" onClick={() => onChange(i)}
-              className={`relative w-20 text-left rounded-lg border-2 overflow-hidden transition-colors ${selected ? 'border-amber-500' : 'border-gray-200 hover:border-gray-300'}`}>
+            <button key={i} type="button" onClick={() => selectable && onChange(i)} disabled={!selectable}
+              title={selectable ? '' : '저장한 작품만 대표작으로 선택할 수 있어요.'}
+              className={`relative w-20 text-left rounded-lg border-2 overflow-hidden transition-colors ${selected ? 'border-amber-500' : 'border-gray-200 hover:border-gray-300'} ${selectable ? '' : 'opacity-40 cursor-not-allowed'}`}>
               {a.image ? <img src={a.image} alt="" className="w-full h-20 object-cover" /> : <div className="w-full h-20 bg-gray-100 flex items-center justify-center"><ImageOff size={16} className="text-gray-300" /></div>}
               {selected && <span className="absolute top-1 right-1 bg-amber-500 text-white rounded-full p-0.5"><Star size={11} className="fill-white" /></span>}
               <span className="block px-1 py-0.5 text-[10px] text-gray-600 truncate">{a.title || `작품 ${i + 1}`}</span>
@@ -1315,12 +1472,39 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
           </div>
         )}
       </div>}
-      {/* 노트 */}
+      {/* 노트 — 전체 노트와 작품별 상세설명(썸네일 + 제목 + 본문)을 구분해서 보여준다 */}
       {activeTab === 'note' && <div>
         {!note || (!note.statement && !(note.sections?.length)) ? <p className="text-xs text-gray-400">미입력</p> : (
-          <div className="text-xs text-gray-700 whitespace-pre-wrap">
-            {note.statement}
-            {note.sections?.map((s, i) => <div key={i} className="mt-2"><span className="font-medium">{s.title}</span>{'\n'}{s.body}</div>)}
+          <div className="space-y-3">
+            {note.statement && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">작가노트</p>
+                <p className="text-xs text-gray-700 whitespace-pre-wrap">{note.statement}</p>
+              </div>
+            )}
+            {!!note.sections?.length && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">작품별 상세설명 ({note.sections.length})</p>
+                <div className="space-y-2">
+                  {note.sections.map((s, i) => {
+                    const art = artworkList.find(a => a.title?.trim() === s.title);
+                    return (
+                      <div key={i} className="flex gap-2.5 items-start">
+                        {art?.image ? (
+                          <img src={art.image} alt="" className="w-12 h-12 rounded object-contain bg-gray-50 shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-800 truncate">{s.title || '(작품 미선택)'}</p>
+                          <p className={`mt-0.5 text-xs whitespace-pre-wrap ${s.body ? 'text-gray-600' : 'text-gray-300'}`}>{s.body || '설명 없음'}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>}
@@ -1650,8 +1834,9 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
                   <p className="text-xs text-gray-400">등록된 출품작이 없습니다.</p>
                 ) : (
                   <div className="space-y-2">
+                    {/* 모바일: 결제수단·판매가를 둘째 줄로 접기 — 한 줄이면 고정폭 컨트롤(~190px)만으로 375px 초과 */}
                     {a.works.map((w, wi) => (
-                      <div key={wi} className={`flex items-center gap-3 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
+                      <div key={wi} className={`flex flex-wrap items-center gap-x-3 gap-y-2 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
                         <input type="checkbox" checked={w.sold} disabled={locked} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
                         {/* 작품 사진 */}
                         {w.image ? (
@@ -1666,7 +1851,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
                         </div>
                         {/* 판매가 + 결제수단(카드/현금) */}
                         {w.sold && (
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
                             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
                               <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
                                 className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
@@ -1740,7 +1925,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
 // ============ 에디터들 ============
 
 // 출품작 이미지 셀 (compact 업로드)
-function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url: string) => void }) {
+function ArtworkImageCell({ value, onChange, className = '' }: { value?: string; onChange: (url: string) => void; className?: string }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1766,8 +1951,9 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
       title="클릭 또는 이미지를 끌어다 놓기"
-      className={`w-16 h-16 shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
-      {uploading ? <Loader2 size={16} className="animate-spin" /> : value ? <img src={value} alt="" className="w-full h-full object-cover" /> : <Upload size={16} />}
+      className={`shrink-0 rounded border border-dashed overflow-hidden flex items-center justify-center bg-gray-50 transition-colors ${className || 'w-32 h-32'} ${dragOver ? 'border-gray-600 text-gray-600 bg-gray-100' : 'border-gray-300 text-gray-400 hover:border-gray-400'}`}>
+      {/* max-* + contain — 작품 비율은 자르지 않고, 이미지가 칸 높이를 밀어올리지도 않게 한다 */}
+      {uploading ? <Loader2 size={20} className="animate-spin" /> : value ? <img src={value} alt="" className="max-w-full max-h-full object-contain" /> : <Upload size={20} />}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handle(f); e.target.value = ''; }} />
     </button>
   );
@@ -1775,11 +1961,72 @@ function ArtworkImageCell({ value, onChange }: { value?: string; onChange: (url:
 
 // 크기 문자열 ↔ 가로/세로 분리는 lib/artwork.ts로 옮겼다 (포트폴리오 작품 정보 입력과 표기를 하나로 맞추기 위해)
 
-function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void }) {
+// 숫자 전용 입력 새니타이저 — 가로/세로는 소수점 1개 허용(72.7cm), 제작년도/가격은 정수만
+const decimalOnly = (v: string) => { const t = v.replace(/[^0-9.]/g, ''); const i = t.indexOf('.'); return i === -1 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, ''); };
+const digitsOnly = (v: string) => v.replace(/[^0-9]/g, '');
+
+/**
+ * 작품 사진 일괄 업로드 — 여러 장을 한 번에 골라 빈 사진 칸부터 채우고, 모자라면 작품을 새로 추가한다.
+ * 파일명을 작품명 기본값으로 넣어 어떤 사진인지 바로 알아볼 수 있게 한다(비어 있을 때만).
+ */
+function BulkImageUpload({ onAdd }: { onAdd: (items: { image: string; title: string }[]) => void }) {
+  const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pick = async (files: File[]) => {
+    const images = files.filter(f => f.type.startsWith('image/'));
+    if (images.length === 0) { toast.error('이미지 파일만 업로드할 수 있습니다.'); return; }
+    setBusy({ done: 0, total: images.length });
+    const uploaded: { image: string; title: string }[] = [];
+    let failed = 0;
+    for (let i = 0; i < images.length; i++) {
+      try {
+        const file = await compressImage(images[i]);
+        if (file.size > MAX_IMAGE_BYTES) { failed++; continue; }
+        const fd = new FormData(); fd.append('image', file);
+        const res = await api.post('/upload/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        uploaded.push({ image: res.data.url, title: images[i].name.replace(/\.[^.]+$/, '') });
+      } catch { failed++; }
+      setBusy({ done: i + 1, total: images.length });
+    }
+    setBusy(null);
+    if (uploaded.length) onAdd(uploaded);
+    if (failed) toast.error(`${failed}장은 올리지 못했습니다.`);
+    if (uploaded.length) toast.success(`사진 ${uploaded.length}장을 넣었습니다. 작품 정보를 채워주세요.`);
+  };
+  return (
+    <>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={!!busy}
+        className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50">
+        {busy ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+        {busy ? `업로드 중 ${busy.done}/${busy.total}` : '사진 여러 장 올리기'}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
+        onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; if (fs.length) pick(fs); }} />
+    </>
+  );
+}
+
+function ArtworkListEditor({ value, onChange, onSaveArtwork, onRemoved, stateOf, saving }: { value: ArtworkItem[]; onChange: (v: ArtworkItem[]) => void; onSaveArtwork?: (i: number) => void; onRemoved?: (i: number) => void; stateOf?: (i: number) => SaveState; saving?: boolean }) {
   const add = () => onChange([...value, { image: '', title: '', size: '', width: '', height: '', medium: '', year: '', price: '' }]);
+  // 일괄 업로드: 사진이 비어 있는 기존 작품부터 채우고, 남으면 새 작품으로 추가
+  const addImages = (items: { image: string; title: string }[]) => {
+    const next = value.map(a => ({ ...a }));
+    const queue = [...items];
+    for (const a of next) {
+      if (queue.length === 0) break;
+      if (!a.image) { const it = queue.shift()!; a.image = it.image; if (!a.title.trim()) a.title = it.title; }
+    }
+    queue.forEach(it => next.push({ image: it.image, title: it.title, size: '', width: '', height: '', medium: '', year: '', price: '' }));
+    onChange(next);
+  };
   const upd = (i: number, patch: Partial<ArtworkItem>) => onChange(value.map((a, idx) => idx === i ? { ...a, ...patch } : a));
-  const rm = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  // 삭제한 위치를 부모에 알린다 — 대표작보다 앞을 지우면 인덱스가 밀려 엉뚱한 작품이 대표작이 된다
+  const rm = (i: number) => { onChange(value.filter((_, idx) => idx !== i)); onRemoved?.(i); };
   const inputCls = "px-2 py-1.5 border border-gray-200 rounded text-sm";
+  // 단위(cm·원)와 삭제(−)가 같은 세로 열에 오도록 고정 폭
+  const unitCol = "w-7 shrink-0 flex items-center justify-center";
+  // 입력 후에도 어느 칸인지 알 수 있도록 항상 보이는 라벨 (placeholder만으론 채우면 사라짐)
+  const labelCls = "block text-[11px] text-gray-400 mb-0.5";
   return (
     <div className="space-y-3">
       {value.length === 0 && <p className="text-xs text-gray-400">출품할 작품을 추가하세요.</p>}
@@ -1788,35 +2035,90 @@ function ArtworkListEditor({ value, onChange }: { value: ArtworkItem[]; onChange
         const w = a.width !== undefined ? a.width : parsed.w;
         const h = a.height !== undefined ? a.height : parsed.h;
         const priceHint = koreanWon(a.price);
+        // 저장 상태를 박스 색으로: 빨강(저장 전) / 노랑(임시저장) / 초록(저장됨)
+        const st: SaveState = stateOf ? stateOf(i) : 'saved';
+        const ui = STATE_UI[st];
         return (
-          <div key={i} className="flex gap-2 items-start border border-gray-100 rounded-lg p-2">
-            <span className="text-xs text-gray-400 w-5 pt-1 text-center shrink-0">{i + 1}</span>
-            <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} />
-            <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
-              <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="작품명" className={`col-span-2 ${inputCls}`} />
-              {/* 크기: 가로 × 세로 (cm) */}
-              <div className="col-span-2 flex items-center gap-1.5">
-                <input value={w} onChange={e => upd(i, { width: e.target.value, size: composeSize(e.target.value, h) })} placeholder="가로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
-                <span className="text-gray-400 text-sm shrink-0">×</span>
-                <input value={h} onChange={e => upd(i, { height: e.target.value, size: composeSize(w, e.target.value) })} placeholder="세로" inputMode="decimal" className={`w-0 flex-1 min-w-0 text-center ${inputCls}`} />
-                <span className="text-xs text-gray-500 shrink-0">cm</span>
-              </div>
-              <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="재료 (Acrylic on Canvas)" className={`col-span-2 ${inputCls}`} />
-              <input value={a.year} onChange={e => upd(i, { year: e.target.value })} placeholder="제작년도" className={inputCls} />
-              {/* 가격: 단위 '원' + 한글 금액 힌트 */}
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <input value={a.price} onChange={e => upd(i, { price: e.target.value })} placeholder="가격 (예: 230000)" className={`w-0 flex-1 min-w-0 text-right ${inputCls}`} />
-                  <span className="text-xs text-gray-500 shrink-0">원</span>
-                </div>
-                {priceHint && <span className="text-[11px] text-gray-300 mt-0.5 text-right truncate">{priceHint}</span>}
+          <div key={i} className={`border rounded-lg p-2 transition-colors ${ui.box}`}>
+            {/* 카드 머리에 상태·저장·삭제를 모두 모은다 — 저장 버튼이 카드 아래 홀로 떠 있으면
+                어느 작품 것인지 애매하고, 가격 힌트와도 겹친다 */}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xs text-gray-400">{i + 1}</span>
+              <span className={`ml-auto text-[11px] ${ui.text}`}>{ui.label}</span>
+              {onSaveArtwork && (
+                <button onClick={() => onSaveArtwork(i)} disabled={saving || st === 'saved'}
+                  className={`shrink-0 text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${st === 'saved' ? 'border border-gray-300 text-gray-500' : 'bg-gray-900 text-white hover:bg-gray-800'}`}>
+                  {saving ? '저장 중...' : '저장'}
+                </button>
+              )}
+              <span className={unitCol}>
+                <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
+              </span>
+            </div>
+            {/* 모바일: 사진을 위로 쌓는다 (옆에 두면 입력 칸이 짜부라진다) / sm+: 좌측 사진 + 우측 입력 */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="shrink-0 flex flex-col sm:w-40">
+              <span className={labelCls}>작품 사진</span>
+              {/* 사진 칸을 absolute로 띄워 레이아웃 높이에서 빼면, 카드 높이는 입력 칸들이 정하고
+                  사진 아래선이 '제작년도' 박스 아래와 정확히 맞는다 (이미지가 높이를 밀어올리지 않음) */}
+              <div className="relative w-full h-36 sm:h-auto sm:flex-1">
+                <ArtworkImageCell value={a.image} onChange={url => upd(i, { image: url })} className="absolute inset-0 w-full h-full" />
               </div>
             </div>
-            <button onClick={() => rm(i)} className="p-1 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={16} /></button>
+            {/* 입력 칸은 모두 같은 오른쪽 끝에서 멈추고, 단위(cm·원)는 그 오른쪽 고정 폭 열에 세로로 정렬 */}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <div className="flex items-end gap-1.5">
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>작품명</span>
+                  <input value={a.title} onChange={e => upd(i, { title: e.target.value })} placeholder="예: 푸른 밤의 정원" className={`w-full ${inputCls}`} />
+                </label>
+                <span className={unitCol} />
+              </div>
+              {/* 크기: 가로 × 세로 (cm) */}
+              <div className="flex items-end gap-1.5">
+                <label className="w-0 flex-1 min-w-0">
+                  <span className={labelCls}>가로</span>
+                  <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                </label>
+                <span className="text-gray-400 text-sm shrink-0 pb-1.5">×</span>
+                <label className="w-0 flex-1 min-w-0">
+                  <span className={labelCls}>세로</span>
+                  <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                </label>
+                <span className={`${unitCol} pb-1.5 items-end text-xs text-gray-500`}>cm</span>
+              </div>
+              <div className="flex items-end gap-1.5">
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>재료</span>
+                  <input value={a.medium} onChange={e => upd(i, { medium: e.target.value })} placeholder="예: Acrylic on Canvas" className={`w-full ${inputCls}`} />
+                </label>
+                <span className={unitCol} />
+              </div>
+              {/* 제작년도 | 가격(단위 '원' + 한글 금액 힌트) */}
+              <div className="flex items-start gap-1.5">
+                <label className="flex-1 min-w-0">
+                  <span className={`${labelCls} whitespace-nowrap`}>제작년도</span>
+                  <input value={a.year} onChange={e => upd(i, { year: digitsOnly(e.target.value).slice(0, 4) })} placeholder="예: 2026" inputMode="numeric" className={`w-full ${inputCls}`} />
+                </label>
+                <label className="relative flex-1 min-w-0">
+                  <span className={labelCls}>가격</span>
+                  <input value={a.price} onChange={e => upd(i, { price: digitsOnly(e.target.value) })} placeholder="예: 230000" inputMode="numeric" className={`w-full text-right ${inputCls}`} />
+                  {/* 힌트는 absolute — 이 줄이 높아지면 사진 아래선이 제작년도 박스 아래보다 내려간다 */}
+                  {priceHint && <span className="absolute right-0 top-full mt-0.5 text-[11px] text-gray-300 truncate max-w-full">{priceHint}</span>}
+                </label>
+                <span className={`${unitCol} pt-[1.35rem] items-start text-xs text-gray-500`}>원</span>
+              </div>
+            </div>
+            </div>
+            {/* 가격 칸 아래 한글 금액 힌트(absolute)가 들어갈 자리 */}
+            <div className="h-4" aria-hidden />
           </div>
         );
       })}
-      <button onClick={add} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"><Plus size={15} /> 작품 추가</button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <button onClick={add} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"><Plus size={15} /> 작품 추가</button>
+        <BulkImageUpload onAdd={addImages} />
+      </div>
     </div>
   );
 }
@@ -1867,33 +2169,95 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
   );
 }
 
-function NoteEditor({ value, onChange }: { value: ArtistNote; onChange: (v: ArtistNote) => void }) {
+function NoteEditor({ value, onChange, artworkList = [], onSaveNote, isSectionDirty, statementDirty, saving }: { value: ArtistNote; onChange: (v: ArtistNote) => void; artworkList?: ArtworkItem[]; onSaveNote?: (label: string) => void; isSectionDirty?: (i: number) => boolean; statementDirty?: boolean; saving?: boolean }) {
   const set = (patch: Partial<ArtistNote>) => onChange({ ...value, ...patch });
-  const addSection = () => set({ sections: [...value.sections, { title: '', body: '' }] });
   const updSection = (i: number, patch: Partial<{ title: string; body: string }>) => set({ sections: value.sections.map((s, idx) => idx === i ? { ...s, ...patch } : s) });
   const rmSection = (i: number) => set({ sections: value.sections.filter((_, idx) => idx !== i) });
+  // 상세설명 대상은 출품작 — 자유 입력 대신 출품리스트(제목 있는 작품)에서 선택.
+  // 저장 형식은 기존과 동일한 작품명 문자열이라 PDF·갤러리 열람은 그대로 동작한다.
+  const titled = artworkList.filter(a => a.title?.trim());
+  // 한 작품에 상세설명은 하나만 — 이미 쓴 작품은 다른 칸에서 선택 불가
+  const usedElsewhere = (exceptIdx: number) => new Set(value.sections.filter((_, idx) => idx !== exceptIdx).map(s => s.title).filter(Boolean));
+  const allUsed = titled.length > 0 && titled.every(a => value.sections.some(s => s.title === a.title.trim()));
+  const addSection = () => {
+    const used = new Set(value.sections.map(s => s.title).filter(Boolean));
+    const next = titled.find(a => !used.has(a.title.trim()));
+    set({ sections: [...value.sections, { title: next ? next.title.trim() : '', body: '' }] });
+  };
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-gray-700 block mb-1">작가노트 (전체)</label>
+        <div className="flex items-end justify-between gap-2 mb-1">
+          <label className="text-sm font-medium text-gray-700">작가노트 (전체)</label>
+          {onSaveNote && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[11px] ${statementDirty ? 'text-amber-700' : 'text-green-700'}`}>{statementDirty ? '저장 안 됨' : '✓ 저장됨'}</span>
+              <button onClick={() => onSaveNote('작가노트')} disabled={saving || !statementDirty}
+                className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${statementDirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                {saving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          )}
+        </div>
         <textarea value={value.statement} onChange={e => set({ statement: e.target.value })} placeholder="작품 세계 전반에 대한 이야기를 자유롭게 작성하세요." className="w-full h-40 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y focus:outline-none focus:ring-1 focus:ring-gray-400" />
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">작품별 상세설명</span>
-          <button onClick={addSection} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"><Plus size={13} /> 상세설명 추가</button>
+          <button onClick={addSection} disabled={titled.length === 0 || allUsed} title={allUsed ? '모든 출품작에 상세설명을 작성했습니다.' : ''} className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"><Plus size={13} /> 상세설명 추가</button>
         </div>
-        {value.sections.length === 0 ? <p className="text-xs text-gray-400">작품별로 설명을 따로 적으려면 추가하세요. (선택)</p> : (
+        {titled.length === 0 ? (
+          <p className="text-xs text-gray-400">출품리스트에서 작품을 <b>저장</b>하면 여기서 그 작품을 골라 설명을 쓸 수 있습니다. (임시저장 상태는 아직 선택할 수 없어요)</p>
+        ) : value.sections.length === 0 ? (
+          <p className="text-xs text-gray-400">출품작을 선택해 작품별 설명을 따로 적으려면 추가하세요. (선택)</p>
+        ) : (
           <div className="space-y-2">
-            {value.sections.map((s, i) => (
-              <div key={i} className="rounded-lg border border-gray-200 p-2 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <input value={s.title} onChange={e => updSection(i, { title: e.target.value })} placeholder="작품명 / 소제목" className="flex-1 px-2 py-1.5 border border-gray-200 rounded text-sm" />
-                  <button onClick={() => rmSection(i)} className="p-1.5 text-gray-400 hover:text-red-500 shrink-0" aria-label="삭제"><Minus size={15} /></button>
+            {value.sections.map((s, i) => {
+              const matched = titled.find(a => a.title.trim() === s.title);
+              const orphan = !!s.title && !matched; // 옛 데이터: 출품리스트에 없는 제목 — 선택지를 유지해 값이 사라지지 않게
+              const used = usedElsewhere(i);
+              const dirty = isSectionDirty ? isSectionDirty(i) : false;
+              return (
+                // 좌: 작품 이미지(큼) / 우: 작품 선택 + 설명
+                <div key={i} className={`flex gap-3 rounded-lg border p-2 transition-colors ${onSaveNote ? (dirty ? 'border-amber-300 bg-amber-50/40' : 'border-green-200 bg-green-50/30') : 'border-gray-200'}`}>
+                  {matched?.image ? (
+                    <img src={matched.image} alt="" className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded object-contain shrink-0 bg-gray-50" />
+                  ) : (
+                    <div className="w-24 sm:w-32 self-stretch min-h-[7rem] rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={20} className="text-gray-300" /></div>
+                  )}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    {/* 상단 우측: 저장 상태 + 삭제 */}
+                    <div className="flex items-center justify-end gap-2 h-4">
+                      {onSaveNote && <span className={`text-[11px] ${dirty ? 'text-amber-700' : 'text-green-700'}`}>{dirty ? '저장 안 됨' : '✓ 저장됨'}</span>}
+                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
+                    </div>
+                    <label className="block">
+                      <span className="block text-[11px] text-gray-400 mb-0.5">작품</span>
+                      <select value={s.title} onChange={e => updSection(i, { title: e.target.value })} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm bg-white">
+                        <option value="">작품 선택...</option>
+                        {titled.map((a, ai) => {
+                          const t = a.title.trim();
+                          return <option key={ai} value={t} disabled={used.has(t)}>{ai + 1}. {t}{used.has(t) ? ' (이미 작성됨)' : ''}</option>;
+                        })}
+                        {orphan && <option value={s.title}>{s.title} (출품리스트에 없음)</option>}
+                      </select>
+                    </label>
+                    <label className="flex-1 flex flex-col min-h-0">
+                      <span className="block text-[11px] text-gray-400 mb-0.5">상세 설명</span>
+                      <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="선택한 작품에 대한 상세 설명" className="w-full flex-1 min-h-[5rem] px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
+                    </label>
+                    {onSaveNote && (
+                      <div className="flex justify-end">
+                        <button onClick={() => onSaveNote(`상세설명 ${i + 1}`)} disabled={saving || !dirty}
+                          className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 ${dirty ? 'bg-gray-900 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-500'}`}>
+                          {saving ? '저장 중...' : '저장'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <textarea value={s.body} onChange={e => updSection(i, { body: e.target.value })} placeholder="해당 작품에 대한 상세 설명" className="w-full h-24 px-2 py-1.5 border border-gray-200 rounded text-sm resize-y" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

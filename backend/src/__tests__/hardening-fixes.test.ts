@@ -185,6 +185,8 @@ describe('하드닝 수정 검증', () => {
     it('L1: 정산 저장 시 비-수락 작가 artistUserId는 무시', async () => {
       const g = await seedGallery(3);
       const ex = await seedExhibition(g.id);
+      // 정산 입력은 전시 종료 후에만 가능 (인덱스 프레임 고정) — 이 테스트의 관심사는 아님
+      await testPrisma.exhibition.update({ where: { id: ex.id }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
       await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED' } });
       await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex.id, status: 'SUBMITTED' } });
       const res = await request.put(`/api/operations/${ex.id}/settlement`).set('Authorization', `Bearer ${OWNER()}`).send({

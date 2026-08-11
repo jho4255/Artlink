@@ -297,7 +297,9 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
     for (const sub of submissions) {
       const row = submissionCounts.get(sub.exhibitionId) ?? { submitted: 0, complete: 0 };
       const artworks = safeJson<any[]>(sub.artworkList, []);
-      const hasArtwork = Array.isArray(artworks) && artworks.length > 0;
+      // 임시저장(draft) 작품은 갤러리에 비공개 — 제출 카운트에서도 제외해야
+      // 목록(빈)과 대시보드('제출 완료')가 서로 다른 말을 하지 않는다
+      const hasArtwork = Array.isArray(artworks) && artworks.some((a: any) => !a?.draft);
       const hasCv = hasSubmissionContent(safeJson(sub.cv, null));
       const hasNote = hasSubmissionContent(safeJson(sub.note, null));
       if (hasArtwork || hasCv || hasNote) row.submitted += 1;
