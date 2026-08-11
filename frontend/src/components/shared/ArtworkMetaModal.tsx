@@ -148,7 +148,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
             </div>
 
             <div>
-              <label className={label}>작품 설명 <span className="font-normal text-gray-400">— 「스토리」 포맷에서 작품 옆에 실립니다</span></label>
+              <label className={label}>작품 설명 <span className="font-normal text-gray-400">— 포맷 C에서 작품 옆에 실립니다</span></label>
               <textarea
                 value={d.description}
                 onChange={(e) => set({ description: e.target.value })}

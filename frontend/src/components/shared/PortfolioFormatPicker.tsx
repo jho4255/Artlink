@@ -188,7 +188,7 @@ export default function PortfolioFormatPicker({ data, value, onChange }: Props) 
       if (missing.length > 0) {
         toast.error(`${pages}쪽으로 저장했지만 작품 ${missing.length}장을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.`, { duration: 6000 });
       } else {
-        toast.success(`${theme.name} 포맷으로 저장했습니다. (${pages}쪽)`);
+        toast.success(`${theme.name}로 저장했습니다. (${pages}쪽)`);
       }
     } catch {
       toast.error('PDF 생성에 실패했습니다.');
@@ -270,8 +270,7 @@ function FormatCard({
           <span className="text-sm font-semibold">{theme.name}</span>
           <span className="text-[11px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 ml-auto flex-none">{theme.sizeLabel}</span>
         </div>
-        <p className="text-[12px] text-gray-600 mt-1 leading-relaxed">{theme.summary}</p>
-        <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{theme.fitFor}</p>
+        <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">{theme.summary}</p>
       </button>
       <div className="flex border-t border-gray-100">
         <button onClick={onPreview} className="flex-1 py-2.5 text-[13px] text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5">

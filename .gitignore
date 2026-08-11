@@ -5,10 +5,10 @@ node_modules/
 dist/
 build/
 
-# Environment
+# Environment — 접속정보가 들어 있다. 백업본(.env.local-backup 등)도 전부 제외
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # Database
 *.db
@@ -17,6 +17,11 @@ build/
 # Uploads
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# DB 덤프 — 실서버 개인정보가 들어 있다. 절대 커밋 금지 (덤프는 /tmp 에만 둘 것)
+*.dump
+*.sql.gz
+db-*.sql
 
 # 참고용 작가 포트폴리오 원본 + 그걸로 만든 포맷 샘플 (타인 저작물이므로 절대 커밋 금지)
 portfolio/

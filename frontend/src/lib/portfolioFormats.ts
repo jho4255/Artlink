@@ -32,10 +32,8 @@ export type PortfolioThemeId = 'gallery' | 'studio' | 'story' | 'archive';
 export interface PortfolioTheme {
   id: PortfolioThemeId;
   name: string;
-  /** 선택 화면에 뜨는 한 줄 설명 */
+  /** 선택 화면에 뜨는 한 줄 스타일 설명 */
   summary: string;
-  /** 어떤 작가에게 어울리는지 */
-  fitFor: string;
   /** 판형 라벨 (예: 와이드 16:9) */
   sizeLabel: string;
   /** 페이지 픽셀 크기 + PDF mm 크기 */
@@ -57,9 +55,8 @@ const SERIF = `'Nanum Myeongjo','Apple SD Gothic Neo',Georgia,'Times New Roman',
 export const PORTFOLIO_THEMES: PortfolioTheme[] = [
   {
     id: 'gallery',
-    name: '화이트 갤러리',
-    summary: '여백과 명조체. 작품 1~2점만 크게 놓는 조용한 구성',
-    fitFor: '회화·사진처럼 작품 자체로 말하는 작업, 아트페어·갤러리 제안용',
+    name: '포맷 A',
+    summary: '아이보리 배경에 명조체. 작품 1~2점을 크게',
     sizeLabel: '와이드 16:9',
     page: { w: 1600, h: 900, mmW: 297, mmH: 167 },
     worksPerPage: 2,
@@ -68,9 +65,8 @@ export const PORTFOLIO_THEMES: PortfolioTheme[] = [
   },
   {
     id: 'studio',
-    name: '스튜디오 볼드',
-    summary: '큰 시리즈 제목과 3점 그리드. 작품 수가 많아도 리듬이 유지되는 구성',
-    fitFor: '팝아트·일러스트처럼 색이 강한 작업, 작품 수가 많은 작가',
+    name: '포맷 B',
+    summary: '차콜·오렌지. 큰 시리즈 제목과 3점 그리드',
     sizeLabel: 'A4 가로',
     page: { w: 1414, h: 1000, mmW: 297, mmH: 210 },
     worksPerPage: 3,
@@ -79,9 +75,8 @@ export const PORTFOLIO_THEMES: PortfolioTheme[] = [
   },
   {
     id: 'story',
-    name: '스토리',
-    summary: '왼쪽에 작품 한 점, 오른쪽에 그 작품의 이야기. 연락처가 매 장에 남는 구성',
-    fitFor: '작품마다 하고 싶은 이야기가 있는 작가, SNS로 팬이 쌓인 작가',
+    name: '포맷 C',
+    summary: '왼쪽에 작품, 오른쪽에 이야기. 매 장 하단에 연락처',
     sizeLabel: 'A4 가로',
     page: { w: 1414, h: 1000, mmW: 297, mmH: 210 },
     worksPerPage: 1,
@@ -90,9 +85,8 @@ export const PORTFOLIO_THEMES: PortfolioTheme[] = [
   },
   {
     id: 'archive',
-    name: '아카이브',
-    summary: 'A4 세로 정통 문서. 인쇄하거나 메일·공모에 첨부하기 좋은 구성',
-    fitFor: '공모 제출용, 인쇄해서 건네야 하는 자리',
+    name: '포맷 D',
+    summary: '흰 여백과 얇은 테두리. 명조체 문서형',
     sizeLabel: 'A4 세로',
     page: { w: 1000, h: 1414, mmW: 210, mmH: 297 },
     worksPerPage: 2,
@@ -151,6 +145,61 @@ function paragraphs(text: string, style: string): string {
     .join('');
 }
 
+// ── 긴 글 나누기 ──
+// 페이지가 고정 크기라 글이 길면 **넘치는 만큼 그대로 잘려 나간다**(표시도 없이).
+// 실서버에 작가노트 3,316자짜리 작가가 있었고, 4개 포맷 전부에서 최대 1,154px가 잘리고 있었다.
+// 빌더가 DOM 없는 순수 함수라 실측이 불가능하므로 **넉넉하게 추정**한다 — 남는 건 괜찮고 넘치면 글이 사라진다.
+
+/** 한글은 글자 하나가 거의 1em을 먹는다. 라틴/공백이 섞이면 더 좁아지므로 이 값이면 보수적이다. */
+const CHAR_W_RATIO = 0.95;
+
+/** 문단 하나의 높이 추정 (줄바꿈 포함) */
+export function estimateParaH(text: string, fontPx: number, lineH: number, colW: number, gap: number): number {
+  const perLine = Math.max(1, Math.floor(colW / (fontPx * CHAR_W_RATIO)));
+  const lines = text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0);
+  return lines * lineH + gap;
+}
+
+/**
+ * 문단들을 페이지 용량에 맞춰 나눈다.
+ * 한 문단이 통째로 한 페이지보다 크면 그 문단은 줄 단위로 쪼갠다(안 그러면 영원히 안 들어간다).
+ */
+export function splitParagraphs(
+  paras: string[], firstCap: number, restCap: number,
+  fontPx: number, lineH: number, colW: number, gap: number,
+): string[][] {
+  const perLine = Math.max(1, Math.floor(colW / (fontPx * CHAR_W_RATIO)));
+  const pages: string[][] = [];
+  let cur: string[] = [];
+  let used = 0;
+  let cap = firstCap;
+  const flush = () => { if (cur.length) { pages.push(cur); cur = []; } used = 0; cap = restCap; };
+
+  for (const raw of paras) {
+    let text = raw;
+    while (text) {
+      const h = estimateParaH(text, fontPx, lineH, colW, gap);
+      if (used + h <= cap) { cur.push(text); used += h; break; }
+      // 남은 공간에 들어갈 만큼만 잘라 넣는다
+      const room = cap - used - gap;
+      const fitLines = Math.floor(room / lineH);
+      if (fitLines >= 2) {
+        const cut = fitLines * perLine;
+        // 가능하면 공백에서 끊어 단어가 갈라지지 않게
+        const slice = text.slice(0, cut);
+        const sp = slice.lastIndexOf(' ');
+        const at = sp > cut * 0.6 ? sp : cut;
+        cur.push(text.slice(0, at).trimEnd());
+        text = text.slice(at).trimStart();
+      }
+      flush();
+      if (fitLines < 2 && used === 0 && cap <= gap) break; // 안전장치 (용량이 비정상)
+    }
+  }
+  flush();
+  return pages.length ? pages : [[]];
+}
+
 const chunk = <T,>(arr: T[], n: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -166,8 +215,25 @@ const chunk = <T,>(arr: T[], n: number): T[][] => {
  *  회귀 방지 테스트: `portfolioFormats.test.ts` — 모든 페이지 HTML에 cover/fill이 없어야 통과)
  * 크기는 반드시 `max-width`/`max-height`로만 주고, `width`/`height`를 함께 못 박지 말 것.
  */
-const img = (url: string, style: string) =>
-  `<img src="${esc(proxied(url))}" crossorigin="anonymous" style="${style};object-fit:contain"/>`;
+/**
+ * 이미지 주소 결정 방식. `buildPortfolioPages`가 시작할 때 정하고 그 **동기 실행 동안만** 유효하다.
+ *  - 'display'(미리보기): 원본 주소를 그대로 쓴다. 화면에 그리는 것뿐이라 프록시가 필요 없다.
+ *    예전엔 미리보기도 프록시를 태웠는데, 페이지 수만큼 백엔드 왕복이 생기고
+ *    프록시가 설정 안 된 환경에서는 **사진이 통째로 깨졌다**(로컬에서 실서버 데이터 볼 때).
+ *  - 'pdf': prefetch가 만들어 둔 blob(동일 출처 → canvas taint 없음), 없으면 프록시로 폴백.
+ */
+let imgMode: 'display' | 'pdf' = 'display';
+
+const img = (url: string, style: string) => {
+  const pdf = imgMode === 'pdf';
+  // ⚠️ 미리보기에는 crossorigin을 붙이면 안 된다.
+  // 같은 사진을 화면 어딘가(작품 그리드 등)에서 **crossorigin 없는 <img>** 로 먼저 그리면
+  // 브라우저 캐시에 'CORS 정보 없는' 항목이 남는다. 그 뒤 crossorigin="anonymous" 로 같은 주소를
+  // 요청하면 그 캐시 항목을 재사용하며 **차단**된다(서버 헤더는 정상인데도). 그러면 미리보기에서
+  // 사진이 통째로 안 뜬다 — 실제로 그랬다. CLAUDE.md 제약 16의 <img> 버전.
+  // 화면에 그리는 데는 CORS가 필요 없으므로 PDF 경로에서만 붙인다.
+  return `<img src="${esc(pdf ? proxied(url) : url)}"${pdf ? ' crossorigin="anonymous"' : ''} style="${style};object-fit:contain"/>`;
+};
 
 // ── 페이지 껍데기 ──
 // 모든 페이지는 정확히 판형 크기의 박스다. 여기서 배경·기본 글꼴·러닝 요소(머리말/꼬리말)를 씌운다.
@@ -214,7 +280,7 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
       ? `<div style="position:absolute;top:40px;left:${p.x}px;font-size:12px;letter-spacing:0.26em;color:${theme.sub}">${esc(chrome.running.toUpperCase())}</div>`
       : '';
   } else if (theme.id === 'studio') {
-    // 하단 얇은 룰 + 러닝 푸터만. 시리즈 제목은 페이지 '내용'이 직접 그린다(worksHtml) —
+    // 하단 얇은 룰 + 러닝 푸터만. 시리즈 제목은 페이지 '내용'이 직접 그린다(worksPages) —
     // 머리말 장식에 시리즈명을 넣어두면 시리즈를 안 쓰는 작가에게 **내용 없는 빈 띠**만 남는다.
     deco = `
       <div style="position:absolute;left:${p.x}px;right:${p.x}px;bottom:44px">
@@ -344,25 +410,45 @@ function coverHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
 }
 
 // ── 글 페이지 (작가노트 / 시리즈 소개) ──
-function proseHtml(theme: PortfolioTheme, data: PortfolioBookData, eyebrow: string, title: string, body: string): string {
+function prosePages(
+  theme: PortfolioTheme, data: PortfolioBookData,
+  eyebrow: string, title: string, body: string, label: string,
+): PortfolioPage[] {
   const isSerif = theme.display === SERIF;
   const titleStyle = isSerif
     ? `font-family:${theme.display};font-size:38px;letter-spacing:0.04em`
     : `font-size:36px;font-weight:800;letter-spacing:-0.02em`;
-  const bodyStyle = `margin:0 0 20px;font-size:${theme.id === 'archive' ? 15 : 17}px;line-height:2.05;color:${theme.ink};word-break:keep-all`;
+  const fontPx = theme.id === 'archive' ? 15 : 17;
+  const lineH = Math.round(fontPx * 2.05);
+  const bodyStyle = `margin:0 0 20px;font-size:${fontPx}px;line-height:2.05;color:${theme.ink};word-break:keep-all`;
+  const contentW = theme.page.w - PAD[theme.id].x * 2;
+  const colW = theme.id === 'archive' ? contentW : Math.min(1080, contentW);
   const maxW = theme.id === 'archive' ? '100%' : '1080px';
 
-  // 글이 짧으면 페이지 아래쪽이 통째로 비어 어색하다 → 본문 영역 안에서 위쪽 1/3 지점에 맞춰 세로 중앙 정렬.
-  // running은 넘기지 않는다 — 넘기면 머리말과 큰 제목에 같은 글자가 두 번 나온다.
-  return page(theme, data, `
-    <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
-      <div style="max-width:${maxW};margin:0 auto;width:100%">
-        <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">${esc(eyebrow)}</div>
-        <div style="margin-top:16px;${titleStyle}">${esc(title)}</div>
-        <div style="margin-top:22px;width:64px;height:3px;background:${theme.accent}"></div>
-        <div style="margin-top:34px">${paragraphs(body, bodyStyle)}</div>
-      </div>
-    </div>`);
+  // 첫 장은 아이브로우 + 제목 + 룰이 자리를 먹는다. 이어지는 장은 작은 머리말만.
+  // 여유분 24px — 추정이 맞아떨어져도 기기·글꼴 버전에 따라 몇 px씩 어긋난다. 마지막 줄이 가장자리에
+  // 딱 붙으면 그런 오차에 바로 잘리므로 쿠션을 둔다(쪽수가 조금 늘어나는 건 감수).
+  const SAFETY = 24;
+  const firstCap = availH(theme) - (18 + 16 + 46 + 22 + 3 + 34) - SAFETY;
+  const restCap = availH(theme) - (18 + 16 + 30 + 24) - SAFETY;
+  const paras = String(body).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const pageParas = splitParagraphs(paras, firstCap, restCap, fontPx, lineH, colW, 20);
+  const multi = pageParas.length > 1;
+
+  return pageParas.map((ps, i) => ({
+    label: i === 0 ? label : `${label} (${i + 1})`,
+    html: page(theme, data, `
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:${multi ? 'flex-start' : 'center'}">
+        <div style="max-width:${maxW};margin:0 auto;width:100%">
+          <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">${esc(eyebrow)}${i > 0 ? ' (계속)' : ''}</div>
+          ${i === 0
+            ? `<div style="margin-top:16px;${titleStyle}">${esc(title)}</div>
+               <div style="margin-top:22px;width:64px;height:3px;background:${theme.accent}"></div>`
+            : `<div style="margin-top:16px;font-size:20px;font-weight:${isSerif ? 400 : 700};font-family:${isSerif ? theme.display : SANS};color:${theme.sub}">${esc(title)}</div>`}
+          <div style="margin-top:34px">${ps.map((t) => `<p style="${bodyStyle}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
+        </div>
+      </div>`),
+  }));
 }
 
 // ── 캡션 ──
@@ -415,28 +501,46 @@ function studioSeriesHead(theme: PortfolioTheme, series: string | undefined, fir
   };
 }
 
-function worksHtml(theme: PortfolioTheme, data: PortfolioBookData, items: PortfolioImage[], running?: string, first = true): string {
+function worksPages(theme: PortfolioTheme, data: PortfolioBookData, items: PortfolioImage[], label: string, running?: string, first = true): PortfolioPage[] {
   const { w } = theme.page;
   const avail = availH(theme);
   const capH = captionH(theme);
 
   // story — 좌: 작품 한 점, 우: 캡션 + 이야기
+  // 작품 설명이 길면 오른쪽 칸을 넘어 위아래로 삐져나갔다(가운데 정렬이라 양쪽으로). 칸에 들어갈 만큼만 싣고
+  // 나머지는 이어지는 글 페이지로 넘긴다 — 자르지 않는다.
   if (theme.id === 'story') {
     const a = items[0]!;
     const imgW = Math.round(w * 0.55);
+    const colW = w - PAD.story.x * 2 - imgW - 56;
     const desc = String(a.description ?? '').trim();
-    return page(theme, data, `
+    const CAP_BLOCK = 150;                       // 제목 + 캡션 줄 + 구분선 여백
+    const room = avail - CAP_BLOCK;
+    // 첫 덩어리만 오른쪽 칸 크기에 맞추고, 나머지는 통째로 뒤 페이지(prosePages)가 다시 나눈다.
+    // 여기서 restCap을 0으로 두면 나머지를 담을 데가 없어 **조용히 버려진다**(테스트로 잡음).
+    const parts = desc
+      ? splitParagraphs(desc.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), room, 1e9, 15, 30, colW, 14)
+      : [[]];
+    const head = parts[0] ?? [];
+
+    const first = page(theme, data, `
       <div style="display:flex;gap:56px;align-items:center;height:${avail}px">
         <div style="width:${imgW}px;height:${avail}px;display:flex;align-items:center;justify-content:center">
           ${img(a.url, `max-width:${imgW}px;max-height:${avail}px;object-fit:contain;display:block`)}
         </div>
         <div style="flex:1;min-width:0">
           ${captionHtml(theme, a, 'left').replace('margin-top:18px', 'margin-top:0')}
-          ${desc ? `<div style="margin-top:26px;padding-top:24px;border-top:1px solid ${theme.line}">
-            ${paragraphs(desc, `margin:0 0 14px;font-size:15px;line-height:1.95;color:#444;word-break:keep-all`)}
+          ${head.length ? `<div style="margin-top:26px;padding-top:24px;border-top:1px solid ${theme.line}">
+            ${head.map((t) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.95;color:#444;word-break:keep-all">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}
           </div>` : ''}
         </div>
       </div>`, { running: running || undefined });
+
+    // 남은 이야기는 글 페이지로 (작품명을 제목으로) — 자르지 않는다
+    const rest = parts.slice(1).flat();
+    return rest.length
+      ? [{ label, html: first }, ...prosePages(theme, data, 'STORY', artworkTitle(a), rest.join('\n\n'), `${artworkTitle(a)} 이야기`).slice(0, 99)]
+      : [{ label, html: first }];
   }
 
   // studio — 시리즈 제목 블록 + 3점 그리드.
@@ -447,7 +551,7 @@ function worksHtml(theme: PortfolioTheme, data: PortfolioBookData, items: Portfo
     const head = studioSeriesHead(theme, running, first);
     const gridH = avail - head.h;
     const boxH = Math.min(gridH - capH, 520);
-    return page(theme, data, `
+    return [{ label, html: page(theme, data, `
       ${head.html}
       <div style="height:${gridH}px;display:flex;gap:36px;align-items:center;justify-content:center;width:100%">
         ${items.map((a) => `
@@ -457,7 +561,7 @@ function worksHtml(theme: PortfolioTheme, data: PortfolioBookData, items: Portfo
             </div>
             ${captionHtml(theme, a, 'center')}
           </div>`).join('')}
-      </div>`, { running: running || undefined });
+      </div>`, { running: running || undefined }) }];
   }
 
   // gallery(가로 2점) / archive(세로 2점)
@@ -476,47 +580,127 @@ function worksHtml(theme: PortfolioTheme, data: PortfolioBookData, items: Portfo
       ${captionHtml(theme, a, 'center')}
     </div>`;
 
-  return page(theme, data, `
+  return [{ label, html: page(theme, data, `
     <div style="display:flex;flex-direction:${isArchive ? 'column' : 'row'};gap:${gap}px;
                 align-items:stretch;justify-content:center;width:100%;height:${avail}px">
       ${items.map(cell).join('')}
-    </div>`, { running: running || undefined });
+    </div>`, { running: running || undefined }) }];
 }
 
 // ── CV ──
-function cvHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
+// 경력은 작가마다 편차가 극심하다(실서버에 72건짜리 작가가 있다). 한 장에 다 넣으려 하면
+// 페이지가 고정 크기라 **넘치는 만큼 그냥 잘려 나간다** — 게다가 잘렸다는 표시조차 없다.
+// 그래서 넣기 전에 높이를 계산해 여러 장으로 나눈다.
+//
+// 실측이 아니라 추정이다(빌더가 DOM 없는 순수 함수라 잴 수가 없다). 그래서 넉넉하게 잡는다 —
+// 좀 남는 건 괜찮지만 넘치면 글자가 사라진다.
+const CV_LINE_H = 23;   // 항목 한 줄 (13px / line-height 1.75)
+const CV_HEAD_H = 41;   // 섹션 제목 + 밑줄 + 여백
+const CV_SEC_GAP = 26;  // 섹션 사이 여백
+
+interface CvChunk { key: CareerKey; label: string; en: string; entries: string[]; cont: boolean }
+
+/** 한 항목이 몇 줄로 접히는지 추정 (한글은 글자폭이 넓어 넉넉히 잡는다) */
+function cvEntryLines(text: string, colW: number): number {
+  const perChar = 11.5; // 13px 한글 기준 근사
+  return Math.max(1, Math.ceil((text.length * perChar) / Math.max(colW, 120)));
+}
+
+/**
+ * 경력 항목들을 페이지 → 단(column) 단위로 나눈다.
+ * - 섹션 제목만 단 끝에 남는 고아를 막는다(제목 뒤에 최소 1줄은 붙인다)
+ * - 섹션이 이어지면 다음 단에 제목을 다시 쓰고 `(계속)`을 붙인다 — 안 그러면 어느 섹션인지 알 수 없다
+ */
+export function splitCvColumns(
+  sections: { key: CareerKey; label: string; en: string; entries: string[] }[],
+  colH: number,
+  colW: number,
+  colsPerPage: number,
+  firstPageColH: number,
+): CvChunk[][][] {
+  const pages: CvChunk[][][] = [];
+  let page: CvChunk[][] = [];
+  let col: CvChunk[] = [];
+  let used = 0;
+  let limit = firstPageColH;
+
+  const pushCol = () => {
+    page.push(col); col = []; used = 0;
+    if (page.length >= colsPerPage) { pages.push(page); page = []; limit = colH; }
+  };
+
+  for (const sec of sections) {
+    let cont = false;
+    let i = 0;
+    while (i < sec.entries.length) {
+      const headH = CV_HEAD_H;
+      // 제목만 들어가고 항목이 하나도 안 들어가면 이 단은 접는다(고아 방지)
+      if (used + headH + CV_LINE_H > limit && used > 0) { pushCol(); continue; }
+      const taken: string[] = [];
+      let h = used + headH;
+      while (i < sec.entries.length) {
+        const eh = cvEntryLines(sec.entries[i]!, colW) * CV_LINE_H;
+        if (h + eh > limit && taken.length > 0) break;
+        taken.push(sec.entries[i]!); h += eh; i++;
+      }
+      col.push({ key: sec.key, label: sec.label, en: sec.en, entries: taken, cont });
+      used = h + CV_SEC_GAP;
+      cont = true;
+      if (i < sec.entries.length) pushCol();
+    }
+  }
+  if (col.length) page.push(col);
+  if (page.length) pages.push(page);
+  return pages;
+}
+
+function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[] {
   const c = normalizeCareer(data.career);
   const isSerif = theme.display === SERIF;
   const bio = String(data.biography ?? '').trim();
-  const sections = CV_ORDER.filter(({ key }) => (c[key] ?? []).length > 0);
-
-  const block = ({ key, label, en }: (typeof CV_ORDER)[number]) => `
-    <div style="margin-bottom:26px;break-inside:avoid">
-      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:1px solid ${theme.line};padding-bottom:7px">
-        <span style="font-size:${isSerif ? 16 : 15}px;font-weight:${isSerif ? 400 : 800};font-family:${isSerif ? theme.display : SANS}">${esc(label)}</span>
-        <span style="font-size:10px;letter-spacing:0.22em;color:${theme.sub}">${esc(en)}</span>
-      </div>
-      <div style="margin-top:9px">
-        ${(c[key] ?? []).map((e) => `<div style="font-size:13px;line-height:1.75;color:#3a3a3a">${esc(careerLineText(e))}</div>`).join('')}
-      </div>
-    </div>`;
+  const sections = CV_ORDER
+    .filter(({ key }) => (c[key] ?? []).length > 0)
+    .map(({ key, label, en }) => ({ key, label, en, entries: (c[key] ?? []).map(careerLineText).filter(Boolean) }));
 
   // 세로 판형은 한 단, 가로 판형은 두 단 (가로에서 한 단이면 줄이 지나치게 길어져 읽기 나쁘다)
   const twoCol = theme.page.w > theme.page.h;
-  const half = Math.ceil(sections.length / 2);
+  const cols = twoCol ? 2 : 1;
+  const gap = twoCol ? 64 : 0;
+  const contentW = theme.page.w - PAD[theme.id].x * 2;
+  const colW = (contentW - gap * (cols - 1)) / cols;
 
-  return page(theme, data, `
-    <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">CURRICULUM VITAE</div>
-    <div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 800};font-family:${isSerif ? theme.display : SANS}">
-      ${esc(displayName(data.user))}
-    </div>
-    ${bio ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:#4a4a4a;max-width:${twoCol ? '900px' : '100%'};word-break:keep-all">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}
-    <div style="margin-top:30px;display:flex;gap:${twoCol ? 64 : 0}px;align-items:flex-start">
-      ${twoCol
-        ? `<div style="flex:1;min-width:0">${sections.slice(0, half).map(block).join('')}</div>
-           <div style="flex:1;min-width:0">${sections.slice(half).map(block).join('')}</div>`
-        : `<div style="flex:1;min-width:0">${sections.map(block).join('')}</div>`}
-    </div>`);
+  // 첫 장은 이름·약력이 자리를 먹는다
+  const headBlock = 16 + 14 + (isSerif ? 40 : 38) + 30;
+  const bioH = bio ? Math.ceil((bio.length * 8.5) / Math.max(twoCol ? 900 : contentW, 200)) * 27 + 16 : 0;
+  const firstColH = availH(theme) - headBlock - bioH;
+  const contColH = availH(theme) - (16 + 14 + 30 + 26);
+
+  const laid = sections.length === 0 ? [] : splitCvColumns(sections, contColH, colW, cols, firstColH);
+
+  const blockHtml = (b: CvChunk) => `
+    <div style="margin-bottom:${CV_SEC_GAP}px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:1px solid ${theme.line};padding-bottom:7px">
+        <span style="font-size:${isSerif ? 16 : 15}px;font-weight:${isSerif ? 400 : 800};font-family:${isSerif ? theme.display : SANS}">${esc(b.label)}${b.cont ? ' <span style="font-size:11px;font-weight:400;color:' + theme.sub + '">(계속)</span>' : ''}</span>
+        <span style="font-size:10px;letter-spacing:0.22em;color:${theme.sub}">${esc(b.en)}</span>
+      </div>
+      <div style="margin-top:9px">
+        ${b.entries.map((e) => `<div style="font-size:13px;line-height:1.75;color:#3a3a3a">${esc(e)}</div>`).join('')}
+      </div>
+    </div>`;
+
+  return laid.map((cols2, pi) => ({
+    label: pi === 0 ? 'CV' : `CV (${pi + 1})`,
+    html: page(theme, data, `
+      <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">CURRICULUM VITAE${pi > 0 ? ' (계속)' : ''}</div>
+      ${pi === 0
+        ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 800};font-family:${isSerif ? theme.display : SANS}">${esc(displayName(data.user))}</div>
+           ${bio ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:#4a4a4a;max-width:${twoCol ? '900px' : '100%'};word-break:keep-all">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
+        : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 700};font-family:${isSerif ? theme.display : SANS};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
+      <div style="margin-top:30px;display:flex;gap:${gap}px;align-items:flex-start">
+        ${Array.from({ length: cols }, (_, ci) =>
+          `<div style="flex:1;min-width:0">${(cols2[ci] ?? []).map(blockHtml).join('')}</div>`).join('')}
+      </div>`),
+  }));
 }
 
 // ── 연락처 (마지막 장) ──
@@ -551,24 +735,29 @@ function contactHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
  * 포트폴리오 전체를 페이지 배열로 만든다 (순수 함수 — 미리보기와 PDF가 같은 결과를 쓴다).
  * 순서: 표지 → 작가노트 → [시리즈 소개 → 작품…]× → CV → 연락처
  */
-export function buildPortfolioPages(data: PortfolioBookData, theme: PortfolioTheme): PortfolioPage[] {
+export function buildPortfolioPages(
+  data: PortfolioBookData,
+  theme: PortfolioTheme,
+  opts?: { forPdf?: boolean },
+): PortfolioPage[] {
+  imgMode = opts?.forPdf ? 'pdf' : 'display';
   const pages: PortfolioPage[] = [{ label: '표지', html: coverHtml(theme, data) }];
 
   const statement = String(data.statement ?? '').trim();
-  if (statement) pages.push({ label: '작가노트', html: proseHtml(theme, data, 'ARTIST STATEMENT', '작가노트', statement) });
+  if (statement) pages.push(...prosePages(theme, data, 'ARTIST STATEMENT', '작가노트', statement, '작가노트'));
 
   for (const g of groupBySeries(data.images, data.seriesInfo)) {
-    if (g.name && g.note) pages.push({ label: `${g.name} 소개`, html: proseHtml(theme, data, 'SERIES', g.name, g.note) });
+    if (g.name && g.note) pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`));
     // 같은 시리즈가 여러 장 이어지면 첫 장만 큰 제목, 이후는 축약형 (first)
     chunk(g.images, theme.worksPerPage).forEach((items, i) => {
-      pages.push({ label: g.name || '작품', html: worksHtml(theme, data, items, g.name || undefined, i === 0) });
+      pages.push(...worksPages(theme, data, items, g.name || '작품', g.name || undefined, i === 0));
     });
   }
 
 
   const c = normalizeCareer(data.career);
   const hasCv = String(data.biography ?? '').trim() || CV_ORDER.some(({ key }) => (c[key] ?? []).length > 0);
-  if (hasCv) pages.push({ label: 'CV', html: cvHtml(theme, data) });
+  if (hasCv) pages.push(...cvPages(theme, data));
 
   pages.push({ label: '연락처', html: contactHtml(theme, data) });
   return pages;
@@ -657,7 +846,7 @@ export async function downloadPortfolioBook(
   let failed = urls.length ? await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images')) : [];
   if (failed.length) failed = await recoverFailed(failed, (d, t) => onProgress?.(d, t, 'retry'));
 
-  const pages = buildPortfolioPages(data, theme);
+  const pages = buildPortfolioPages(data, theme, { forPdf: true });
   const blob = await renderPagesToPdf(pages, theme, (d, t) => onProgress?.(d, t, 'render'));
   triggerDownload(blob, `${safeName(displayName(data.user))}_포트폴리오_${theme.name}.pdf`);
   return { missing: failed, pages: pages.length };
