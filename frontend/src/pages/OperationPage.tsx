@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { composeSize, splitSize } from '@/lib/artwork';
+import Thumb from '@/components/shared/Thumb';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -317,7 +318,7 @@ export default function OperationPage() {
 
         <NoticesSection exhibitionId={id!} canManage={false} />
         {access.isAcceptedArtist && access.ended && <MyArtistSettlementSection exhibitionId={id!} />}
-        {access.isAcceptedArtist && <MySubmissionSection exhibitionId={id!} myUserId={user!.id} confirmed={access.confirmed} />}
+        {access.isAcceptedArtist && <MySubmissionSection exhibitionId={id!} myUserId={user!.id} confirmed={access.confirmed} ended={access.ended} manualConfirmed={access.manualConfirmed} />}
       </div>
     );
   }
@@ -845,7 +846,27 @@ function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; can
 }
 
 // ============ 작가 본인 제출정보 ============
-function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibitionId: string; myUserId: number; confirmed: boolean }) {
+/**
+ * 제출 자료가 잠긴 이유와 다음 행동을 알려준다.
+ * 예전엔 "확정되어 수정할 수 없습니다" 한 줄뿐이라, 작가 입장에서 **왜 잠겼는지·어떻게 해야 하는지**를 알 수 없었다.
+ * 확정 경로가 둘(전시 시작일 경과 자동 확정 / 갤러리 수동 확정)이고 종료 후에는 기록 보존 목적이라 구분해서 안내한다.
+ */
+function lockedReason(ended?: boolean, manualConfirmed?: boolean): { title: string; detail: string } {
+  if (ended) return {
+    title: '전시가 끝나 제출 자료가 잠겼습니다.',
+    detail: '정산·기록 보존을 위해 종료 후에는 수정할 수 없습니다. 고쳐야 할 내용이 있으면 갤러리에 문의해 주세요.',
+  };
+  if (manualConfirmed) return {
+    title: '갤러리가 전시 정보를 확정해 수정이 잠겼습니다.',
+    detail: '확정 이후에는 출품 목록이 바뀌면 안내물·정산 기준이 흔들리기 때문입니다. 수정이 필요하면 갤러리에 문의해 주세요.',
+  };
+  return {
+    title: '전시 시작일이 지나 자동으로 확정되었습니다.',
+    detail: '확정 이후에는 출품 목록이 바뀌면 안내물·정산 기준이 흔들리기 때문에 수정이 잠깁니다. 수정이 필요하면 갤러리에 문의해 주세요.',
+  };
+}
+
+function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed }: { exhibitionId: string; myUserId: number; confirmed: boolean; ended?: boolean; manualConfirmed?: boolean }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<OperationSubmission>({
     queryKey: ['operation-me', exhibitionId],
@@ -1075,9 +1096,13 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed }: { exhibition
       <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
         <p className="mt-1 mb-3 text-sm text-gray-500">제출한 출품작·약력·노트를 확인합니다.</p>
-        <div className="mb-3 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-          전시 정보가 <b>확정</b>되어 더 이상 수정할 수 없습니다. (제출 내용은 아래에서 확인 가능)
-        </div>
+        {(() => { const r = lockedReason(ended, manualConfirmed); return (
+          <div className="mb-3 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+            <p className="font-medium">{r.title}</p>
+            <p className="mt-0.5 text-[13px] text-blue-700/90 leading-relaxed">{r.detail}</p>
+            <p className="mt-1 text-[12px] text-blue-700/70">제출한 내용은 아래에서 확인하고 PDF로 저장할 수 있습니다.</p>
+          </div>
+        ); })()}
         {/* 버튼 3개 합 ~364px > 모바일 343px — 갤러리 측과 동일하게 그리드로 균일 배치 */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
           <button onClick={() => openPrint('artwork')} className="text-xs px-2 min-h-[40px] border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1 whitespace-nowrap"><FileDown size={13} /> 출품리스트 PDF</button>
@@ -1445,7 +1470,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
           <div>
             {artworkList.map((a, i) => (
               <div key={i} className="flex items-center gap-2.5 py-1.5 text-xs border-b border-gray-50 last:border-b-0">
-                {a.image ? <img src={a.image} alt="" className="w-10 h-10 object-cover rounded shrink-0" /> : <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
+                {a.image ? <Thumb src={a.image} alt="" className="w-10 h-10 object-cover rounded shrink-0" /> : <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1.5">
                     <span className="min-w-0 truncate font-medium text-gray-800" title={a.title || undefined}>{a.title || '(제목 없음)'}</span>
@@ -1491,7 +1516,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
                     return (
                       <div key={i} className="flex gap-2.5 items-start">
                         {art?.image ? (
-                          <img src={art.image} alt="" className="w-12 h-12 rounded object-contain bg-gray-50 shrink-0" />
+                          <Thumb src={art.image} alt="" className="w-12 h-12 rounded object-contain bg-gray-50 shrink-0" />
                         ) : (
                           <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>
                         )}
@@ -1628,7 +1653,7 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
           <div className="space-y-2 mb-3">
             {sold.map((w, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
-                {w.image ? <img src={w.image} alt="" className="w-12 h-12 object-cover rounded shrink-0" /> : <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
+                {w.image ? <Thumb src={w.image} alt="" className="w-12 h-12 object-cover rounded shrink-0" /> : <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={14} className="text-gray-300" /></div>}
                 <span className="flex-1 min-w-0 truncate">{w.title || '(제목 없음)'}</span>
                 <span className="text-gray-700 shrink-0">{w.soldPrice.toLocaleString('ko')}원</span>
               </div>
@@ -1840,7 +1865,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
                         <input type="checkbox" checked={w.sold} disabled={locked} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
                         {/* 작품 사진 */}
                         {w.image ? (
-                          <img src={w.image} alt="" className="w-14 h-14 object-cover rounded shrink-0" />
+                          <Thumb src={w.image} alt="" className="w-14 h-14 object-cover rounded shrink-0" />
                         ) : (
                           <div className="w-14 h-14 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={16} className="text-gray-300" /></div>
                         )}

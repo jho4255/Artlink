@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **781 tests**: Backend 638 (supertest, `artlink_test` DB 순차), Frontend 143 (jsdom)
+- **827 tests**: Backend 651 (supertest, `artlink_test` DB 순차), Frontend 176 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -97,7 +97,8 @@ sudo service postgresql start
 18. **작품 이미지는 자르지도 늘리지도 말 것** — 회화에서 비율은 작품 그 자체다. 포맷 엔진의 `img()` 헬퍼가 `object-fit:contain`을 강제하고, 크기는 `max-width`/`max-height`로만 준다. 화면 쪽도 마찬가지(`aspect-square + object-cover` 금지). 회귀 방지 테스트가 `portfolioFormats.test.ts`에 있다
 19. **포트폴리오 포맷 페이지는 `PAD` 상수에서만 여백을 읽을 것** (`lib/portfolioFormats.ts`) — 페이지별로 숫자를 손으로 적었더니 포맷 D에서 머리말과 작품이 **겹치고**, 포맷 C 페이지가 하단 연락처 줄을 **뚫고 나갔다**. 이미지 높이는 `availH()`/`captionH()`로 계산한다. 대각선 장식은 `transform` 금지 → **`linear-gradient`로** (html2canvas가 transform을 정확히 재현하지 않음). 렌더 전 `await document.fonts.ready` 필수 — 없으면 표지 큰 글씨가 폴백 글꼴로 찍힌다
 20. **경력(`Career`)의 `education`/`award`는 선택 항목** — 기존에 저장된 JSON엔 없다. 직접 `career[key].length`로 접근 금지, 반드시 `lib/artwork.ts`의 `normalizeCareer()`를 통과시킬 것 (안 그러면 옛 데이터에서 런타임 에러)
-21. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
+21. **목록 썸네일은 `Thumb` 컴포넌트로** (`components/shared/Thumb.tsx`) — 목록이 원본을 받아 한 페이지에 96MB를 쓰던 문제. 업로드 시 `t240/`에 240px를 함께 생성(`backend/src/lib/thumb.ts`), 없으면 원본 폴백. **확대·라이트박스·PDF는 원본 유지**(키우면 뭉개짐). 썸네일 키를 `String.replace`로 만들지 말 것 — 디렉터리가 중복돼 **R2에서만 조용히** 깨진다
+22. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
 
 ## TanStack Query Key Map
 
@@ -136,6 +137,14 @@ sudo service postgresql start
 - **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload
 - **요금제(Starter)**: 2026-07 무료→Starter 전환. **스핀다운/콜드스타트 없음**, PostgreSQL **90일 자동삭제 없음**(영구 유지). 백업 보존은 대시보드에서 확인 권장(별도 pg_dump→R2 오프사이트 백업 미구성)
 - **재배포**: `git checkout deploy/render && git merge main && git push`
+- 🔒 **배포 전 데이터 유출 점검 필수** — `bash scripts/predeploy-check.sh`
+  - `.githooks/pre-push`가 **push 때 자동 실행**한다. 최초 1회만 `git config core.hooksPath .githooks`
+  - 막는 것: DB 덤프(`*.dump/*.sql/*.csv` — 마이그레이션 제외) · `.env` 계열 · `backend/uploads` 원본 ·
+    파일 내용의 실서버 접속정보(Render Postgres 호스트, 비밀번호가 박힌 DB URL) 및 GitHub 토큰 · 2MB 초과 신규 파일
+  - **왜**: 실서버 DB를 로컬로 복제해 확인하는 일이 잦다. 그때 생기는 덤프·`.env` 백업이 커밋되면
+    **실제 가입자 개인정보가 GitHub에 공개**된다. 한번 올라가면 커밋을 지워도 퍼진 것으로 봐야 하므로
+    올라가기 전에 막는 게 유일한 방어다. 실제로 `.env.local-backup`이 추적 대상이라 커밋될 뻔했다(2026-08-11)
+  - 우회는 `--no-verify`지만, 걸린 이유를 먼저 확인할 것
 
 ## 개발 원칙
 

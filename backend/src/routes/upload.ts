@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { r2CanonicalBase, matchR2Base } from '../lib/r2Urls';
+import { makeThumb, thumbKey, thumbDiskPath } from '../lib/thumb';
 
 const router = Router();
 
@@ -69,17 +70,44 @@ async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promis
     ContentType: file.mimetype,
   }));
 
+  // 목록용 썸네일도 함께 올린다 (lib/thumb.ts 참고 — 목록이 원본을 받아 96MB를 쓰던 문제).
+  // ⚠️ 실패해도 업로드는 성공으로 둔다. 사진이 올라가는 게 우선이고, 화면은 썸네일이 없으면 원본으로 되돌린다.
+  void makeThumb(file.buffer)
+    .then((thumb) => thumb && s3.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: thumbKey(key),
+      Body: thumb,
+      ContentType: 'image/jpeg',
+    })))
+    .catch((e) => console.error('[Upload] 썸네일 생성/업로드 실패(원본은 정상):', key, e?.message));
+
   // 여러 도메인이 설정돼 있으면 첫 번째가 정식 주소 (lib/r2Urls.ts 참고)
   return `${r2CanonicalBase()}/${key}`;
+}
+
+// 디스크 저장 모드(로컬)에서도 같은 규칙으로 썸네일을 만들어 둔다 — 로컬에서 화면 동작이 실서버와 달라지지 않게.
+async function writeDiskThumb(file: Express.Multer.File): Promise<void> {
+  try {
+    const fs = await import('fs/promises');
+    const uploadsDir = path.join(__dirname, '../../uploads');
+    const buf = await fs.readFile(path.join(uploadsDir, file.filename));
+    const thumb = await makeThumb(buf);
+    if (!thumb) return;
+    const out = thumbDiskPath(uploadsDir, file.filename);
+    await fs.mkdir(path.dirname(out), { recursive: true });
+    await fs.writeFile(out, thumb);
+  } catch (e) {
+    console.error('[Upload] 디스크 썸네일 실패(원본은 정상):', file.filename, (e as Error)?.message);
+  }
 }
 
 // 단일 이미지 업로드
 router.post('/image', authenticate, upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
-    const url = useR2
-      ? await uploadToR2(req.file)
-      : `/uploads/${req.file.filename}`;
+    let url: string;
+    if (useR2) url = await uploadToR2(req.file);
+    else { url = `/uploads/${req.file.filename}`; void writeDiskThumb(req.file); }
     res.json({ url });
   } catch (err) {
     next(err);
@@ -91,9 +119,9 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
   try {
     const files = req.files as Express.Multer.File[];
     if (!files?.length) return res.status(400).json({ error: '파일이 필요합니다.' });
-    const urls = useR2
-      ? await Promise.all(files.map(f => uploadToR2(f)))
-      : files.map(f => `/uploads/${f.filename}`);
+    let urls: string[];
+    if (useR2) urls = await Promise.all(files.map(f => uploadToR2(f)));
+    else { urls = files.map(f => `/uploads/${f.filename}`); files.forEach(f => void writeDiskThumb(f)); }
     res.json({ urls });
   } catch (err) {
     next(err);

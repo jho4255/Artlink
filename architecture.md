@@ -859,6 +859,43 @@ SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 
 크기 합성(`composeSize`/`splitSize` — 운영페이지 출품리스트와 공용), 경력 정규화(`normalizeCareer`).
 `normalizeCareer`는 MyPage/PortfolioPage/ExhibitionDetailPage/ApplicationContent 4곳에 복붙돼 있던 것을 여기로 합쳤다.
 
+## 목록 썸네일 (2026-08-12)
+
+목록 화면이 **원본을 그대로** 받아 작은 자리에 그리고 있었다. 실측:
+
+| | 값 |
+|---|---|
+| 갤러리 운영 페이지 1회 열람 | 이미지 149건 · 평균 674KB · **약 96MB** |
+| 표시 크기 대비 원본 | 16~28배 (원본 2000px급 → 표시 28×28px) |
+| 240px 썸네일 적용 시 | 평균 8KB · 같은 페이지 **1.3MB** |
+
+- 업로드 시 `t240/` 아래에 240px JPEG를 함께 올린다(`backend/src/lib/thumb.ts`).
+  **실패해도 업로드는 성공**으로 둔다 — 사진이 올라가는 게 우선이고, 화면은 폴백이 있다.
+- 화면은 `components/shared/Thumb.tsx`. 썸네일이 404면 원본으로 되돌린다.
+- **기존 이미지(약 785장)는 백필하지 않았다.** 업로드 파일명이 `<Date.now()>-난수` 라서
+  `THUMB_SINCE` 이전 파일은 **아예 썸네일을 요청하지 않는다** — 헛된 404가 0건. 백필하면 이 값을 0으로.
+- **확대·라이트박스·PDF는 원본**을 쓴다. 240px를 키우면 뭉개진다.
+- ⚠️ `thumbKey`를 `String.replace`로 만들면 `artlinkartlink/t240/…` 처럼 디렉터리가 중복된다
+  (replace는 매칭 부분만 치환). 로컬은 디스크 경로를 따로 써서 **R2에서만 조용히** 깨진다 — 문자열을 직접 조립할 것.
+
+## 배포 전 데이터 유출 점검 (2026-08-11)
+
+`scripts/predeploy-check.sh` — 커밋 예정분 + 아직 push 하지 않은 커밋을 훑어 다음을 차단한다.
+
+| 검사 | 막는 것 |
+|---|---|
+| 덤프·데이터 파일 | `*.sql/dump/csv/sqlite/db/bak/tar/gz/zip` (`prisma/migrations/` 는 제외) |
+| 접속정보 파일 | `.env`, `.env.*` (`.env.example` 제외) |
+| 업로드 원본 | `backend/uploads/*` (`.gitkeep` 제외) |
+| 파일 **내용** | Render Postgres 호스트명, 비밀번호가 박힌 DB URL, GitHub 토큰(classic·fine-grained) |
+| 덩치 | 2MB 초과 신규 파일 경고 |
+
+`.githooks/pre-push`가 push마다 자동 실행한다(활성화: `git config core.hooksPath .githooks`).
+세 가지 유출 시나리오(덤프 add / 소스에 접속정보 / `.env` 강제 add)로 **차단되는 것까지 확인**했다.
+
+배경: 실서버 DB를 로컬 `artlink_prod`로 복제해 확인하는 작업이 반복된다. 그 과정에서 만들어지는
+덤프와 `.env` 백업이 실수로 커밋되면 실제 가입자 개인정보가 공개된다 — 되돌릴 수 없는 사고다.
+
 ## 주의사항
 
 - **Prisma v5만 사용** — v7은 `datasource url` 제거로 인한 breaking change

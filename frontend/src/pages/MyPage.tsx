@@ -16,6 +16,7 @@ import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEd
 import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
+import Thumb from '@/components/shared/Thumb';
 import type { PortfolioBookData } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
@@ -1113,7 +1114,7 @@ function PortfolioImageGrid({
               title="작품 정보 입력"
             >
               {/* 작품은 자르지 않는다 — 정사각 썸네일에 맞추려고 object-cover를 쓰면 세로로 긴 작품이 잘려 보인다 */}
-              <img src={img.url} alt="내 포트폴리오 작품" className="w-full h-full object-contain" />
+              <Thumb src={img.url} alt="내 포트폴리오 작품" className="w-full h-full object-contain" />
             </button>
             {/* 캡션 상태 배지 (좌상단) — 정보가 없으면 눈에 띄게 알린다 */}
             {hasCaption(img) ? (
