@@ -956,9 +956,10 @@ function PortfolioSection() {
             {isCareerEmpty(savedCareer) ? (
               <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
             ) : (
-              <div className="space-y-2">
+              /* PC에서는 2열 — 항목이 5종이라 1열이면 오른쪽 절반이 통째로 빈다 (모바일은 1열) */
+              <div className="sm:columns-2 sm:gap-x-8">
                 {CAREER_LABELS.map(({ key, label }) => (savedCareer[key] ?? []).length > 0 && (
-                  <div key={key}>
+                  <div key={key} className="break-inside-avoid mb-3">
                     <p className="text-xs font-medium text-gray-400">{label}</p>
                     <ul className="mt-0.5 space-y-0.5">
                       {(savedCareer[key] ?? []).map((e, i) => (

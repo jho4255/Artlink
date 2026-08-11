@@ -147,9 +147,9 @@ export default function PortfolioPage() {
       {!careerEmpty && (
         <div className="mb-6">
           <SectionTitle>경력</SectionTitle>
-          <div className="grid sm:grid-cols-2 gap-x-10 gap-y-3 max-w-3xl">
+          <div className="sm:columns-2 sm:gap-x-10 max-w-3xl">
             {CAREER_LABELS.map(({ key, label }) => (career[key] ?? []).length > 0 && (
-              <div key={key}>
+              <div key={key} className="break-inside-avoid mb-3">
                 <p className="text-xs font-medium text-gray-400 flex items-center gap-1"><Calendar size={11} /> {label}</p>
                 <ul className="mt-1 space-y-0.5">
                   {(career[key] ?? []).map((e, i) => (
