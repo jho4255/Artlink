@@ -331,7 +331,9 @@ function ProfileCard() {
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setAvatarDrag(false); }}
           onDrop={(e) => { e.preventDefault(); setAvatarDrag(false); const f = Array.from(e.dataTransfer.files).find(file => file.type.startsWith('image/')); if (f) handleAvatarUpload(f); }}
         >
-          <div className={`w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden ${avatarDrag ? 'ring-2 ring-gray-500 ring-offset-2' : ''}`}>
+          {/* 320px 미만(갤럭시 폴드 커버화면)에서만 축소 — 96px 아바타가 남은 폭을 다 먹어
+              글꼴 크게 설정과 겹치면 카드가 화면을 밀어낸다. 일반 폰(360px+)의 모양은 그대로 둔다. */}
+          <div className={`w-24 h-24 max-[320px]:w-16 max-[320px]:h-16 bg-gray-200 rounded-full flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden ${avatarDrag ? 'ring-2 ring-gray-500 ring-offset-2' : ''}`}>
             {user?.avatar ? (
               <img src={user.avatar} alt={`${displayName(user)} 프로필 사진`} className="w-full h-full object-cover" />
             ) : (
@@ -358,10 +360,14 @@ function ProfileCard() {
             }}
           />
         </div>
-        <div>
-          <h2 className="text-xl font-semibold">{displayName(user)}</h2>
-          {user?.nickname && <p className="text-xs text-gray-400">{user.name}</p>}
-          <p className="text-sm text-gray-500">{user?.email}</p>
+        {/* min-w-0 필수 — 없으면 flex 자식이 min-content 아래로 못 줄어든다.
+            이메일은 공백 없는 한 덩어리라 그대로 카드를 밀어내고, 마이페이지는 프로필 카드가
+            모든 탭 공통이라 **페이지 전체가 가로로 넓어진다**(갤럭시 폴드 280px, 글꼴 크게 설정에서 실측).
+            그러면 화면이 좌우로 흔들리고 오른쪽이 잘려 보인다 — 가로모드에선 폭이 남아 멀쩡해 보인다. */}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-semibold truncate">{displayName(user)}</h2>
+          {user?.nickname && <p className="text-xs text-gray-400 truncate">{user.name}</p>}
+          <p className="text-sm text-gray-500 break-all">{user?.email}</p>
           <span className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${roleBadgeClass}`}>{user?.role}</span>
         </div>
       </div>
@@ -481,7 +487,7 @@ function ProfileSection() {
             onChange={(e) => { setNickname(e.target.value); setCheckResult(null); }}
             maxLength={20}
             placeholder="닉네임을 입력하세요"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+            className="min-w-0 flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
           />
           <button
             onClick={handleCheck}
@@ -3983,7 +3989,7 @@ function UserManageSection() {
     <div>
       <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); }} className="flex gap-2 mb-4">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이메일 또는 이름으로 검색"
-          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
 
@@ -4236,7 +4242,7 @@ function OvExhibitions() {
     <div className="space-y-4">
       <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="공모 제목 검색 (비우면 전체)"
-          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
 
@@ -4336,7 +4342,7 @@ function OvArtists() {
     <div className="space-y-4">
       <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="작가 이름/이메일 검색"
-          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
 
@@ -4411,7 +4417,7 @@ function OvGalleries() {
     <div className="space-y-4">
       <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="갤러리 이름 검색 (비우면 전체)"
-          className="flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
 
