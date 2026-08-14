@@ -8,12 +8,13 @@ import { validate } from '../middleware/validate';
 import { addClient, removeClient, pushToUser } from '../lib/sse';
 import { JWT_SECRET } from '../lib/jwt';
 import { safeFileUrl } from '../lib/safeUrl';
+import { operableExhibitionWhere } from '../lib/exhibitionAccess';
 
 // 갤러리는 본인 공모 지원자에게만, 작가는 승인 갤러리에게만 메시지 가능 (기존 대화 있으면 회신 허용)
 async function canSend(myId: number, myRole: string, receiverId: number): Promise<boolean> {
   if (myRole === 'GALLERY') {
     const applied = await prisma.application.findFirst({
-      where: { userId: receiverId, exhibition: { gallery: { ownerId: myId } } },
+      where: { userId: receiverId, exhibition: operableExhibitionWhere(myId) },
       select: { id: true },
     });
     if (applied) return true;
@@ -106,7 +107,8 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
     } else {
       // Gallery: 본인 공모별 지원자 그룹
       const exhibitions = await prisma.exhibition.findMany({
-        where: { gallery: { ownerId: myId } },
+        // 아트링크 주최 공모 중 운영을 위임받은 것도 포함 (지원자와 쪽지를 주고받아야 한다)
+        where: operableExhibitionWhere(myId),
         select: {
           id: true, title: true,
           gallery: { select: { name: true } },

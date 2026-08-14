@@ -28,6 +28,8 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
+import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
+import HostBadge from '@/components/shared/HostBadge';
 import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -52,6 +54,8 @@ interface GalleryOperationOverview {
   region: string;
   imageUrl?: string | null;
   status: string;
+  /** 'ADMIN'이면 아트링크 주최 공모 — 우리 갤러리는 운영만 위임받았다 */
+  hostType?: 'GALLERY' | 'ADMIN';
   rejectReason?: string | null;
   deadlineStart?: string | null;
   deadline?: string | null;
@@ -100,6 +104,7 @@ const makeFallbackOperationOverview = (ex: any): GalleryOperationOverview => ({
   region: ex.region,
   imageUrl: ex.imageUrl,
   status: ex.status,
+  hostType: ex.hostType,
   rejectReason: ex.rejectReason,
   deadlineStart: ex.deadlineStart,
   deadline: ex.deadline,
@@ -205,6 +210,7 @@ export default function MyPage() {
     : [
         { id: 'profile', label: '프로필', icon: Camera },
         { id: 'approvals', label: '승인 관리', icon: Check },
+        { id: 'hosted-exhibitions', label: '주최 공모', icon: FileText },
         { id: 'hero-manage', label: '히어로 관리', icon: Eye },
         { id: 'benefit-manage', label: '혜택 관리', icon: FileText },
         { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
@@ -266,6 +272,7 @@ export default function MyPage() {
         )}
         {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
         {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
+        {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
         {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
         {currentTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
         {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
@@ -2589,6 +2596,8 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               {settlement.issue > 0 && (
                                 <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">정산 이슈 {settlement.issue}</span>
                               )}
+                              {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
+                              <HostBadge exhibition={item} />
                             </div>
                             <button
                               type="button"
@@ -2634,15 +2643,18 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                             >
                               <Edit3 size={14} /> 추가 질문
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(item)}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
-                              title="공모 삭제"
-                              aria-label="공모 삭제"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다) */}
+                            {item.hostType !== 'ADMIN' && (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(item)}
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                                title="공모 삭제"
+                                aria-label="공모 삭제"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -2704,21 +2716,27 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
               <div className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-medium">{ex.title}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-medium">{ex.title}</h3>
+                      <HostBadge exhibition={ex} />
+                    </div>
                     <p className="text-sm text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]} · {regionLabels[ex.region]}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[ex.status] || ''}`}>
                       {statusLabels[ex.status] || ex.status}
                     </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(ex); }}
-                      className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
-                      title="공모 삭제"
-                      aria-label="삭제"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다) */}
+                    {ex.hostType !== 'ADMIN' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(ex); }}
+                        className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
+                        title="공모 삭제"
+                        aria-label="삭제"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {ex.status === 'REJECTED' && ex.rejectReason && (

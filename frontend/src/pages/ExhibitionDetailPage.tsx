@@ -37,6 +37,8 @@ import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
+import HostBadge from '@/components/shared/HostBadge';
+import { isAdminHosted, canOperate, canDelete } from '@/lib/exhibitionHost';
 import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -314,8 +316,9 @@ export default function ExhibitionDetailPage() {
   const isExpired = dday < 0;
   const isArtist = user?.role === 'ARTIST';
   const isAdmin = user?.role === 'ADMIN';
-  const isGalleryOwner = user?.role === 'GALLERY' && exhibition.gallery?.ownerId === user.id;
-  const canDelete = isAdmin || isGalleryOwner;
+  // 아트링크 주최 공모는 위임받은 운영 갤러리도 오너와 같은 권한을 갖는다 (lib/exhibitionHost.ts)
+  const isGalleryOwner = canOperate(exhibition, user);
+  const canDeleteExhibition = canDelete(exhibition, user);
 
   // 상단 캐러셀에 표시할 사진 목록 (다중 → imageUrl → 갤러리 대표 순 폴백)
   const heroImages: string[] = (exhibition.images && exhibition.images.length > 0)
@@ -378,25 +381,44 @@ export default function ExhibitionDetailPage() {
         {/* 제목 & 갤러리 */}
         <div>
           <div className="flex items-start justify-between gap-3">
-            <h1 className="text-2xl font-medium">{exhibition.title}</h1>
+            <div className="min-w-0">
+              <HostBadge exhibition={exhibition} className="block mb-1" />
+              <h1 className="text-2xl font-medium">{exhibition.title}</h1>
+            </div>
             <ViewCountBadge count={exhibition.viewCount} className="mt-1 shrink-0" />
           </div>
-          <button
-            onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
-            // py-2.5 + 네거티브 마진: 시각 위치 유지하며 터치 히트영역 확보
-            className="text-gray-500 hover:underline text-sm mt-1 py-2.5 -my-2.5 flex items-center gap-1"
-          >
-            {exhibition.gallery?.name}
-            {/* 리뷰 0건이면 ★0.0 대신 '리뷰 없음' — 신규 갤러리가 최하점처럼 보이지 않도록 */}
-            {(exhibition.gallery?.reviewCount ?? 0) > 0 ? (
-              <div className="flex items-center gap-0.5 ml-2">
-                <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
-                <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
-              </div>
-            ) : (
-              <span className="text-xs text-gray-400 ml-2">리뷰 없음</span>
-            )}
-          </button>
+          {isAdminHosted(exhibition) ? (
+            /* 아트링크 주최 공모 — 주최는 아트링크이고 갤러리들은 다같이 참여하는 것이라
+               특정 갤러리를 대표로 세우지 않는다(별점·리뷰도 이 공모의 것이 아니라 붙이지 않는다). */
+            <p className="mt-1 text-sm text-gray-500">
+              참여 갤러리 :{' '}
+              {(exhibition.managerGalleries ?? []).map((g, i) => (
+                <span key={g.id}>
+                  {i > 0 && ', '}
+                  <button onClick={() => navigate(`/galleries/${g.id}`)} className="hover:underline">
+                    {g.name}
+                  </button>
+                </span>
+              ))}
+            </p>
+          ) : (
+            <button
+              onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
+              // py-2.5 + 네거티브 마진: 시각 위치 유지하며 터치 히트영역 확보
+              className="text-gray-500 hover:underline text-sm mt-1 py-2.5 -my-2.5 flex items-center gap-1"
+            >
+              {exhibition.gallery?.name}
+              {/* 리뷰 0건이면 ★0.0 대신 '리뷰 없음' — 신규 갤러리가 최하점처럼 보이지 않도록 */}
+              {(exhibition.gallery?.reviewCount ?? 0) > 0 ? (
+                <div className="flex items-center gap-0.5 ml-2">
+                  <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
+                  <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400 ml-2">리뷰 없음</span>
+              )}
+            </button>
+          )}
           {/* 쪽지 문의 (Artist 전용) */}
           {isArtist && exhibition.gallery?.ownerId && (
             <button
@@ -586,7 +608,7 @@ export default function ExhibitionDetailPage() {
         </div>
 
         {/* Gallery 오너 / Admin 삭제 — 우측 하단 소형 */}
-        {canDelete && (
+        {canDeleteExhibition && (
           <div className="flex justify-end pt-1">
             <button
               onClick={handleDelete}

@@ -20,7 +20,7 @@ export function authToken(userId: number, role: string): string {
 const ALL_TABLES = [
   'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
-  'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto',
+  'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
 ];

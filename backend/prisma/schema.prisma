@@ -78,6 +78,7 @@ model Gallery {
   owner          User            @relation(fields: [ownerId], references: [id])
   images         GalleryImage[]
   exhibitions    Exhibition[]
+  managedExhibitions ExhibitionManager[] // 아트링크 주최 공모 중 이 갤러리가 운영을 위임받은 것
   shows          Show[]
   reviews        Review[]
   favorites      Favorite[]
@@ -125,6 +126,7 @@ model Exhibition {
   viewCount             Int       @default(0) // 상세 페이지 조회수 (Admin 통계용, 비-관리자/비-소유자 조회 시 증가)
   status                String    @default("PENDING") // PENDING, APPROVED, REJECTED (승인 상태)
   rejectReason          String?
+  hostType              String    @default("GALLERY") // GALLERY(갤러리 주최, 기본) | ADMIN(아트링크 주최 — 운영은 managers 갤러리들에게 위임)
   recruitmentClosed     Boolean   @default(false) // 모집마감 (수동 내림 → 목록 비노출)
   confirmed             Boolean   @default(false) // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
   ended                 Boolean   @default(false) // 전시종료 (정산 단계)
@@ -135,6 +137,7 @@ model Exhibition {
 
   galleryId           Int
   gallery             Gallery                @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  managers            ExhibitionManager[]
   applications        Application[]
   favorites           Favorite[]
   promoPhotos         PromoPhoto[]
@@ -151,6 +154,26 @@ model Exhibition {
   @@index([galleryId])
   @@index([status, deadline])
   @@index([region])
+}
+
+// 아트링크(Admin) 주최 공모의 운영 갤러리 — 이 갤러리 오너는 해당 공모를 소유 갤러리처럼 운영할 수 있다.
+//
+// ⚠️ hostType='ADMIN' 인 공모에서만 의미가 있다. 갤러리가 직접 등록한 공모(hostType='GALLERY')에는
+//    행을 만들지 않고, 권한 판정에서도 hostType 을 먼저 확인한다(lib/exhibitionAccess.ts).
+//    "운영 위임은 아트링크가 주최할 때만" 이라는 규칙을 데이터와 코드 양쪽에서 지키기 위함.
+//
+// galleryId 는 여전히 필수(주관 갤러리)이며 반드시 이 목록에 함께 들어간다 —
+// 목록 카드·정산·통계 등 기존 코드 전부가 exhibition.gallery 를 전제로 하기 때문이다.
+model ExhibitionManager {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  galleryId    Int
+  gallery      Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([exhibitionId, galleryId])
+  @@index([galleryId])
 }
 
 // 전시 종료 후 홍보 사진

@@ -39,6 +39,8 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import HostBadge from '@/components/shared/HostBadge';
+import { canDelete } from '@/lib/exhibitionHost';
 import type { Gallery, Review, Exhibition, PromoPhoto } from '@/types';
 
 // 갤러리 상세 응답 타입 (기본 Gallery + 연관 데이터)
@@ -583,7 +585,11 @@ export default function GalleryDetailPage() {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-medium">{ex.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-medium">{ex.title}</h3>
+                          {/* 이 갤러리가 운영만 위임받은 공고 — 배지가 없으면 이 갤러리 주최로 오해한다 */}
+                          <HostBadge exhibition={ex} />
+                        </div>
                         <p className="text-sm text-gray-500 mt-1">
                           {exhibitionTypeLabels[ex.type]} · 모집 {ex.capacity}명 · {regionLabels[ex.region]}
                         </p>
@@ -595,7 +601,9 @@ export default function GalleryDetailPage() {
                         <span className="text-sm font-bold text-red-500 flex items-center gap-1">
                           <Clock size={14} /> D-{getDday(ex.deadline)}
                         </span>
-                        {(isOwner || isAdmin) && (
+                        {/* 아트링크 주최 공모는 주최자(Admin)만 삭제할 수 있다 — 서버도 403.
+                            운영 여부는 이 페이지의 갤러리 오너인지로 정해진다(공모 응답에 ownerId가 없다) */}
+                        {canDelete({ ...ex, canOperate: isOwner }, user) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -626,7 +634,10 @@ export default function GalleryDetailPage() {
                   <div key={ex.id} className="py-4 border-b border-gray-200">
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className="font-medium">{ex.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-medium">{ex.title}</h3>
+                          <HostBadge exhibition={ex} />
+                        </div>
                         <p className="text-sm text-gray-500">
                           {exhibitionTypeLabels[ex.type]} · 전시일: {new Date(ex.exhibitDate).toLocaleDateString('ko')}
                         </p>

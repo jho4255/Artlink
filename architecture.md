@@ -859,6 +859,92 @@ SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 
 크기 합성(`composeSize`/`splitSize` — 운영페이지 출품리스트와 공용), 경력 정규화(`normalizeCareer`).
 `normalizeCareer`는 MyPage/PortfolioPage/ExhibitionDetailPage/ApplicationContent 4곳에 복붙돼 있던 것을 여기로 합쳤다.
 
+## 아트링크(Admin) 주최 공모 · 운영 갤러리 위임 (2026-08-14)
+
+Admin 계정이 직접 공모를 **주최**하고, 지정한 **여러 갤러리**에게 실제 운영을 맡기는 기능.
+
+### 데이터 모델
+
+| | 설명 |
+|---|---|
+| `Exhibition.hostType` | `'GALLERY'`(기본, 기존 전부) \| `'ADMIN'`(아트링크 주최) |
+| `ExhibitionManager` | `(exhibitionId, galleryId)` 유니크. **아트링크 주최 공모에서만** 의미가 있다 |
+
+마이그레이션: `20260814120000_add_admin_hosted_exhibition`
+
+### `galleryId`는 왜 그대로 두었나
+
+목록 카드의 갤러리명, 지원 통계(`galleryApplicationStats`), 정산, SEO, 찜, 메시지 그룹핑 등
+**기존 코드 79곳**이 "공모에는 갤러리 1곳이 붙어 있다"를 전제로 한다. nullable로 바꾸면 프론트까지 전부 손봐야 한다.
+그래서 아트링크 주최 공모도 **주관 갤러리 1곳을 반드시 지정**하고(선택 목록의 첫 번째),
+그 갤러리는 운영 갤러리 목록에도 함께 들어간다. 화면에서는 `hostType`을 보고 "아트링크 주최" 배지를 붙인다.
+
+### 권한 판정 — `backend/src/lib/exhibitionAccess.ts` 한 곳
+
+```
+canOperateExhibition(ex, userId)   주관 갤러리 오너 || (hostType==='ADMIN' && 위임 갤러리 오너)
+operableExhibitionWhere(ownerId)   목록 조회용 where 절
+assertCanManageExhibition(id, u)   단건 조회 + 403 (Admin 은 항상 통과)
+operatorUserIds(ex)                알림 발송 대상 전부
+```
+
+⚠️ **위임은 `hostType === 'ADMIN'` 일 때만 인정한다.** 갤러리가 등록한 공모에 `ExhibitionManager` 행이
+어떤 경로로든 섞여 들어가도 권한을 주지 않는다 — 뚫리면 **남의 공모 지원자 개인정보가 통째로** 열린다.
+데이터(행을 만들지 않음)와 코드(hostType 먼저 확인) 양쪽에서 막고, 회귀 테스트로 고정했다.
+
+적용 지점: `exhibition.ts`(내 공모/운영 대시보드/지원자 조회·상태변경/초대/소개·추가질문 수정/홍보사진/사진관리),
+`operation.ts`(`getAccess` — 공지·제출자료·캡션·확정·정산 전부가 여기를 지난다), `message.ts`(지원자 쪽지).
+
+### 갤러리 주최와 다른 점
+
+| | 갤러리 주최 | 아트링크 주최 |
+|---|---|---|
+| 등록 | `POST /exhibitions` (GALLERY) | `POST /exhibitions/hosted` (ADMIN) |
+| 승인 | `PENDING` → Admin 승인 필요 | **`APPROVED` 즉시 게시** (주최자가 관리자) |
+| 운영 | 오너 1명 | 지정된 갤러리 전부 |
+| 삭제 | 오너 또는 Admin | **Admin만** (갤러리는 운영만 위임받았다) |
+
+추가 API: `GET /exhibitions/hosted`(목록), `PATCH /exhibitions/:id/managers`(운영 갤러리 전체 교체 — 첫 번째가 새 주관).
+
+### Admin 도 지원자 관리를 한다 (2026-08-14)
+
+`authorize('GALLERY')` 가 ADMIN 을 걸러내는 바람에 관리자가 **지원자 수락/거절을 못 했다**.
+운영 페이지·승인·삭제는 이미 다 열려 있었는데 이 한 줄 때문에 막혀 있던 것. 다음 라우트를
+`authorize('GALLERY', 'ADMIN')` + `assertCanManageExhibition` 로 바꿨다.
+
+| 라우트 | 하는 일 |
+|---|---|
+| `GET/PATCH /exhibitions/:id/applications[/:appId]` | 지원자 조회 · 수락/거절 |
+| `POST /exhibitions/:id/invite`, `GET .../invites` | 작가 초대 |
+| `PATCH /exhibitions/:id/description`, `.../custom-fields` | 소개 · 추가 질문 |
+| `POST/DELETE /exhibitions/:id/promo-photos[...]` | 홍보 사진 |
+
+화면 진입점은 마이페이지(Admin) > 주최 공모 카드의 **[지원자 관리]** — 갤러리와 같은
+인라인 `ApplicantManager` 를 그대로 쓴다(역할 분기 없음).
+
+⚠️ 순수 함수 `canOperateExhibition` 에는 Admin 을 넣지 않았다. `operation.ts` 는 `isOwner` 와 `isAdmin` 을
+나눠 쓴다(정산 완료 후 수정은 Admin만 허용하는 식) — 섞으면 그 구분이 무너진다.
+
+### 화면
+
+- Admin 마이페이지 **'주최 공모'** 탭 — `frontend/src/components/admin/HostedExhibitionsSection.tsx`
+  (MyPage.tsx가 이미 4400줄이라 별도 파일로 분리)
+- 표시 `components/shared/HostBadge.tsx` — 모집공고 목록·상세, 갤러리 내 공모(운영/클래식 뷰), 갤러리 상세.
+  글자("아트링크 주최") 대신 **로고 워드마크**만 찍는다(`ArtLinkWordmark` — Navbar 와 동일한 `Art`+빨간 `Link`).
+  칩(테두리·바탕)도 "주최" 글자도 붙이지 않는다 — 로고 자체로 읽힌다는 판단.
+  크기는 자리마다 다르므로 호출부에서 `className` 으로 준다(목록 카드는 갤러리명과 같은 `text-base`).
+  ⚠️ `<span>` 이라 `mb-*` 만 주면 안 먹는다 — 상세 페이지처럼 아래를 띄워야 하면 `block` 을 함께
+- **모집공고 목록 카드는 갤러리명 자리를 배지로 대체한다.** 거기 나오는 갤러리는 '주관' 1곳일 뿐이라
+  이름을 그대로 두면 그 갤러리가 주최한 것으로 읽힌다. 참여 갤러리 전체는 상세에서 밝힌다
+- **갤러리 상세 페이지**는 자기 공모(relation) + 위임받은 아트링크 주최 공모를 합쳐 마감일 순으로 보여준다
+  (`routes/gallery.ts`). 실제로 그 갤러리가 운영하는 공고이므로 갤러리 페이지에 없으면 관람객이 찾지 못한다.
+  주관 갤러리는 relation 에 이미 들어 있으므로 `galleryId: { not: id }` 로 **중복을 뺀다**
+- 판정 규칙은 `frontend/src/lib/exhibitionHost.ts` (`isAdminHosted`/`canOperate`/`canDelete`) — 순수 함수 + 테스트
+- **공고 상세는 "참여 갤러리 : A, B"** 로만 쓴다. 아트링크가 주최고 갤러리들은 같이 참여하는 것이라
+  누가 주관인지 화면에 드러내지 않는다. 갤러리 별점·리뷰 줄도 붙이지 않는다 — 이 공모의 평가가 아니다
+- 상세 API가 `canOperate`를 계산해 내려준다 — 프론트에서 오너 비교를 다시 구현하지 않는다
+- 갤러리 화면에서 아트링크 주최 공모의 **삭제 버튼은 숨긴다** (서버도 403)
+
 ## 목록 썸네일 (2026-08-12)
 
 목록 화면이 **원본을 그대로** 받아 작은 자리에 그리고 있었다. 실측:

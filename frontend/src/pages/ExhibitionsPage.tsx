@@ -6,6 +6,8 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import HostBadge from '@/components/shared/HostBadge';
+import { isAdminHosted } from '@/lib/exhibitionHost';
 import type { Exhibition } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -234,14 +236,23 @@ export default function ExhibitionsPage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
-                    className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
-                  >
-                    {ex.gallery?.name}
-                  </button>
+                  {/* 아트링크 주최 공모는 갤러리명 자리에 주최자를 쓴다.
+                      여기 나오는 갤러리는 '주관' 1곳일 뿐이라, 이름을 그대로 두면 그 갤러리가 주최한 것으로 오해한다.
+                      참여 갤러리 전체는 상세 페이지에서 "참여 갤러리 : A, B" 로 밝힌다. */}
+                  {isAdminHosted(ex) ? (
+                    <div className="mt-1">
+                      <HostBadge exhibition={ex} className="text-base" />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/galleries/${ex.gallery?.id}`); }}
+                      className="text-base text-gray-500 hover:underline mt-1 cursor-pointer"
+                    >
+                      {ex.gallery?.name}
+                    </button>
+                  )}
 
-                  <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-400">
+                  <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-400">
                     <span>{exhibitionTypeLabels[ex.type]}</span>
                     <span className="flex items-center gap-1"><Users size={13} /> {ex.capacity}명</span>
                     <span className="flex items-center gap-1"><MapPin size={13} /> {regionLabels[ex.region]}</span>

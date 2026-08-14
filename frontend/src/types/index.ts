@@ -73,6 +73,12 @@ export interface Exhibition {
   status: string;
   viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   galleryId: number;
+  /** 'GALLERY'(갤러리 주최, 기본) | 'ADMIN'(아트링크 주최 — 운영은 managerGalleries 가 맡는다) */
+  hostType?: 'GALLERY' | 'ADMIN';
+  /** 아트링크 주최 공모의 운영 갤러리. 첫 번째가 주관(= gallery). 갤러리 주최면 빈 배열 */
+  managerGalleries?: { id: number; name: string }[];
+  /** 이 공모를 운영할 수 있는 계정인지 — 서버가 계산해 내려준다(상세 API 전용) */
+  canOperate?: boolean;
   // reviewCount는 상세 API(include)에서만 내려옴 — 목록 API(select)에는 없어 optional
   gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'> & { reviewCount?: number };
   promoPhotos?: PromoPhoto[];

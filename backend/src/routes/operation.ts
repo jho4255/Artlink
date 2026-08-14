@@ -15,6 +15,7 @@ import { buildCaptionHwp, CAPTION_MAX_WORKS } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
+import { canOperateExhibition, operatorUserIds } from '../lib/exhibitionAccess';
 
 const router = Router();
 
@@ -40,13 +41,15 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
   const exhibition = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },
     select: {
-      id: true, title: true, galleryId: true,
+      id: true, title: true, galleryId: true, hostType: true,
       recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true,
       gallery: { select: { ownerId: true, name: true } },
+      // 아트링크 주최 공모는 admin 이 지정한 운영 갤러리도 오너와 동일하게 운영한다
+      managers: { select: { gallery: { select: { ownerId: true } } } },
     },
   });
   if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-  const isOwner = exhibition.gallery.ownerId === userId;
+  const isOwner = canOperateExhibition(exhibition, userId);
   const isAdmin = role === 'ADMIN';
   let isAcceptedArtist = false;
   if (!isOwner && !isAdmin) {
@@ -70,7 +73,11 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
     res.json({
       exhibitionId: exhibition.id,
       title: exhibition.title,
-      galleryName: exhibition.gallery.name,
+      // 아트링크 주최 공모는 gallery 가 '주관' 갤러리일 뿐이라, 위임받은 갤러리가 보면 남의 이름이 뜬다.
+      // 화면에 쓸 이름은 주최자 기준으로 내려준다(주관 갤러리명은 hostGalleryName 으로 따로).
+      galleryName: exhibition.hostType === 'ADMIN' ? '아트링크 주최' : exhibition.gallery.name,
+      hostGalleryName: exhibition.gallery.name,
+      hostType: exhibition.hostType,
       isOwner, isAdmin, isAcceptedArtist,
       recruitmentClosed: exhibition.recruitmentClosed,
       confirmed: isConfirmed,        // 수동 확정 또는 전시 시작일 경과
@@ -857,13 +864,14 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
       try {
         const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, nickname: true } });
         const who = me?.nickname || me?.name || '작가';
-        await prisma.notification.create({
-          data: {
-            userId: exhibition.gallery.ownerId,
+        // 아트링크 주최 공모는 위임받은 운영 갤러리들도 정산 담당이므로 모두에게 보낸다
+        await prisma.notification.createMany({
+          data: operatorUserIds(exhibition).map((uid) => ({
+            userId: uid,
             type: 'SETTLEMENT_ISSUE',
             message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,
             linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
-          },
+          })),
         });
       } catch { /* 알림 실패해도 응답은 정상 */ }
     }

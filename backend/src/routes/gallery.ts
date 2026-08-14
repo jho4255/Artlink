@@ -127,9 +127,25 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
     await bumpViewCount('gallery', gallery.id, gallery.ownerId, req.user);
 
+    // 아트링크(Admin) 주최 공모 중 이 갤러리가 운영을 위임받은 것도 함께 보여준다.
+    // 실제로 이 갤러리가 운영하는 공고이므로 갤러리 페이지에 없으면 관람객이 찾지 못한다.
+    // 주관 갤러리인 경우는 위 relation(exhibitions)에 이미 들어 있어 제외한다 — 안 그러면 두 번 나온다.
+    const managedExhibitions = await prisma.exhibition.findMany({
+      where: {
+        status: 'APPROVED',
+        hostType: 'ADMIN',
+        galleryId: { not: gallery.id },
+        managers: { some: { galleryId: gallery.id } },
+      },
+      orderBy: { deadline: 'asc' },
+      include: { promoPhotos: { orderBy: { createdAt: 'desc' } } },
+    });
+    const exhibitions = [...gallery.exhibitions, ...managedExhibitions]
+      .sort((a, b) => a.deadline.getTime() - b.deadline.getTime()); // relation 과 같은 정렬 유지
+
     // 익명 리뷰의 작성자 신원은 본인/관리자 외에는 숨김 (PII 보호)
     const reviews = maskAnonymousReviews(gallery.reviews as any[], req.user);
-    res.json(maskInstagram({ ...gallery, reviews, isFavorited }));
+    res.json(maskInstagram({ ...gallery, exhibitions, reviews, isFavorited }));
   } catch (error) { next(error); }
 });
 

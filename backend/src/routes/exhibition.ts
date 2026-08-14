@@ -14,6 +14,13 @@ import { bumpViewCount } from '../lib/viewCount';
 import { startOfTodayKstAsUtc, endOfTodayKstAsUtc, isDeadlinePassedKst } from '../lib/kstDate';
 import { hasSubmissionContent } from '../lib/submission';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
+import {
+  OPERATOR_INCLUDE,
+  assertCanManageExhibition,
+  canOperateExhibition,
+  operableExhibitionWhere,
+  operatorUserIds,
+} from '../lib/exhibitionAccess';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
 const customFieldSchema = z.object({
@@ -51,6 +58,11 @@ const exhibitionCreateSchema = z.object({
 });
 
 const router = Router();
+
+/** 알림 문구용 주최자 이름 — 아트링크 주최 공모는 주관 갤러리명 대신 '아트링크' */
+function hostLabel(ex: { hostType?: string | null; gallery?: { name?: string } | null }): string {
+  return ex.hostType === 'ADMIN' ? '아트링크' : (ex.gallery?.name ?? '갤러리');
+}
 
 // customFields JSON 파싱 헬퍼 (DB string → object array)
 function parseCustomFields(raw: string | null): any[] | null {
@@ -221,23 +233,22 @@ router.post('/applications/:appId/acknowledge-rejection', authenticate, authoriz
 });
 
 // 내 공모 목록 조회 (Gallery 유저 전용)
+// 내 갤러리가 등록한 공모 + 아트링크 주최 공모 중 운영을 위임받은 것
 router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
-    const galleries = await prisma.gallery.findMany({
-      where: { ownerId: req.user!.id },
-      select: { id: true }
-    });
-    const galleryIds = galleries.map(g => g.id);
     const exhibitions = await prisma.exhibition.findMany({
-      where: { galleryId: { in: galleryIds } },
+      where: operableExhibitionWhere(req.user!.id),
       include: {
-        gallery: { select: { id: true, name: true } }
+        gallery: { select: { id: true, name: true } },
+        managers: { select: { gallery: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' }
     });
     res.json(exhibitions.map((e: any) => ({
       ...e,
       customFields: parseCustomFields(e.customFields),
+      managerGalleries: e.managers.map((m: any) => m.gallery),
+      managers: undefined,
     })));
   } catch (error) { next(error); }
 });
@@ -246,15 +257,8 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
 // Gallery operation overview for My Page.
 router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
-    const galleries = await prisma.gallery.findMany({
-      where: { ownerId: req.user!.id },
-      select: { id: true }
-    });
-    const galleryIds = galleries.map(g => g.id);
-    if (galleryIds.length === 0) return res.json([]);
-
     const exhibitions = await prisma.exhibition.findMany({
-      where: { galleryId: { in: galleryIds } },
+      where: operableExhibitionWhere(req.user!.id),
       include: {
         gallery: { select: { id: true, name: true } }
       },
@@ -377,6 +381,7 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
         region: exhibition.region,
         imageUrl: exhibition.imageUrl,
         status: exhibition.status,
+        hostType: exhibition.hostType, // 'ADMIN'이면 아트링크 주최 — 운영만 위임받은 공모
         rejectReason: exhibition.rejectReason,
         deadlineStart: exhibition.deadlineStart,
         deadline: exhibition.deadline,
@@ -487,19 +492,16 @@ router.patch('/invites/:id', authenticate, authorize('ARTIST'), async (req, res,
 });
 
 // POST /:id/invite — 작가 초대 (공모 소유 갤러리만)
-router.post('/:id/invite', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.post('/:id/invite', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
     const artistId = parseInt(req.body?.artistId);
     const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 300) : null;
     if (!Number.isInteger(artistId) || artistId <= 0) throw new AppError('작가를 선택해주세요.', 400);
 
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: exhibitionId },
-      include: { gallery: { select: { ownerId: true, name: true } } },
+    const exhibition = await assertCanManageExhibition(exhibitionId, req.user!, {
+      gallery: { select: { ownerId: true, name: true } },
     });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
     // 모집 중인 공모만 초대 가능
     if (exhibition.status !== 'APPROVED') throw new AppError('승인된 공모만 초대할 수 있습니다.', 400);
@@ -558,7 +560,7 @@ router.post('/:id/invite', authenticate, authorize('GALLERY'), async (req, res, 
           userId: artistId,
           type: 'EXHIBITION_INVITE',
           // 조사 문제를 피하려고 "에서"를 쓴다(갤러리명 받침 유무와 무관하게 자연스럽다)
-          message: `${exhibition.gallery.name}에서 회원님을 "${exhibition.title}" 공모에 초대했습니다.`,
+          message: `${hostLabel(exhibition)}에서 회원님을 "${exhibition.title}" 공모에 초대했습니다.`,
           linkUrl: `/exhibitions/${exhibitionId}`,
           refKey: `invite:${invite.id}`,
         },
@@ -570,21 +572,154 @@ router.post('/:id/invite', authenticate, authorize('GALLERY'), async (req, res, 
 });
 
 // GET /:id/invites — 이 공모에 이미 초대한 작가 id 목록 (버튼 상태 표시용, 소유 갤러리만)
-router.get('/:id/invites', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.get('/:id/invites', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: exhibitionId },
-      include: { gallery: { select: { ownerId: true } } },
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    await assertCanManageExhibition(exhibitionId, req.user!);
 
     const invites = await prisma.exhibitionInvite.findMany({
       where: { exhibitionId },
       select: { artistId: true },
     });
     res.json({ artistIds: invites.map(i => i.artistId) });
+  } catch (error) { next(error); }
+});
+
+// ==========================================================================
+// 아트링크(Admin) 주최 공모
+//
+// 갤러리가 등록하는 공모(POST /)와 달리 ① 승인 절차 없이 바로 게시되고
+// ② admin 이 고른 갤러리들이 운영을 위임받는다(ExhibitionManager).
+// 운영 위임은 이 경로로 만든 공모(hostType='ADMIN')에서만 생긴다.
+// ==========================================================================
+
+/** 주관 갤러리(galleryId)는 목록에서 첫 번째. 기존 코드 전부가 exhibition.gallery 를 전제로 하므로 반드시 1곳 필요. */
+const adminHostedCreateSchema = exhibitionCreateSchema.omit({ galleryId: true }).extend({
+  galleryIds: z
+    .array(z.number().int().positive())
+    .min(1, '운영 갤러리를 1곳 이상 선택해주세요.')
+    .max(20, '운영 갤러리는 최대 20곳까지 지정할 수 있습니다.'),
+});
+
+/** 선택한 갤러리들이 실제로 존재하고 승인 상태인지 확인 후, 중복 제거된 순서 유지 목록 반환 */
+async function verifyManagerGalleries(rawIds: number[]) {
+  const ids = [...new Set(rawIds)];
+  const galleries = await prisma.gallery.findMany({
+    where: { id: { in: ids }, status: 'APPROVED' },
+    select: { id: true, name: true, ownerId: true },
+  });
+  if (galleries.length !== ids.length) {
+    throw new AppError('승인된 갤러리만 운영 갤러리로 지정할 수 있습니다.', 400);
+  }
+  const byId = new Map(galleries.map((g) => [g.id, g]));
+  return ids.map((id) => byId.get(id)!); // 입력 순서 유지 (첫 번째 = 주관)
+}
+
+/** 운영 갤러리로 지정됐음을 갤러리 오너에게 알림 (best-effort) */
+async function notifyManagerAssigned(exhibitionId: number, title: string, ownerIds: number[]) {
+  if (!ownerIds.length) return;
+  try {
+    await prisma.notification.createMany({
+      data: [...new Set(ownerIds)].map((userId) => ({
+        userId,
+        type: 'EXHIBITION_MANAGER_ASSIGNED',
+        message: `아트링크 주최 "${title}" 공모의 운영 갤러리로 지정되었습니다. 마이페이지 > 내 공모에서 확인하세요.`,
+        linkUrl: `/exhibitions/${exhibitionId}`,
+      })),
+    });
+  } catch { /* 알림 실패해도 등록은 정상 */ }
+}
+
+// 아트링크 주최 공모 목록 (Admin 전용) — /:id 보다 먼저 등록해야 'hosted'가 id로 잡히지 않는다
+router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const exhibitions = await prisma.exhibition.findMany({
+      where: { hostType: 'ADMIN' },
+      include: {
+        gallery: { select: { id: true, name: true } },
+        managers: { select: { gallery: { select: { id: true, name: true } } } },
+        _count: { select: { applications: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(exhibitions.map((e: any) => ({
+      ...e,
+      customFields: parseCustomFields(e.customFields),
+      managers: undefined,
+      managerGalleries: e.managers.map((m: any) => m.gallery),
+      applicationCount: e._count.applications,
+    })));
+  } catch (error) { next(error); }
+});
+
+// 아트링크 주최 공모 등록 (Admin 전용) — 승인 절차 없이 바로 게시
+router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCreateSchema), async (req, res, next) => {
+  try {
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
+
+    const galleries = await verifyManagerGalleries(galleryIds);
+    const hostGallery = galleries[0]!; // 주관 갤러리
+
+    const safeImageUrl = safeFileUrl(imageUrl);
+    const exhibition = await prisma.exhibition.create({
+      data: {
+        title, type,
+        deadline: new Date(deadline),
+        deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
+        exhibitDate: new Date(exhibitDate),
+        exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        capacity, region, description,
+        galleryId: hostGallery.id,
+        imageUrl: safeImageUrl,
+        customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
+        hostType: 'ADMIN',
+        status: 'APPROVED', // 주최자가 관리자이므로 별도 승인 없이 게시
+        managers: { create: galleries.map((g) => ({ galleryId: g.id })) },
+        ...(safeImageUrl ? { images: { create: [{ url: safeImageUrl, order: 0 }] } } : {}),
+      },
+    });
+
+    await notifyManagerAssigned(exhibition.id, exhibition.title, galleries.map((g) => g.ownerId));
+    res.status(201).json({ ...exhibition, managerGalleries: galleries.map((g) => ({ id: g.id, name: g.name })) });
+  } catch (error) { next(error); }
+});
+
+// 운영 갤러리 변경 (Admin 전용, 아트링크 주최 공모만) — 목록 전체 교체, 첫 번째가 주관 갤러리
+router.patch('/:id/managers', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id: exhibitionId },
+      include: { managers: { select: { galleryId: true } } },
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    if (exhibition.hostType !== 'ADMIN') {
+      throw new AppError('아트링크 주최 공모에만 운영 갤러리를 지정할 수 있습니다.', 400);
+    }
+
+    const parsed = z.array(z.number().int().positive()).min(1).max(20).safeParse(req.body?.galleryIds);
+    if (!parsed.success) throw new AppError('운영 갤러리를 1곳 이상 선택해주세요.', 400);
+
+    const galleries = await verifyManagerGalleries(parsed.data);
+    const before = new Set(exhibition.managers.map((m) => m.galleryId));
+
+    await prisma.$transaction([
+      prisma.exhibitionManager.deleteMany({ where: { exhibitionId } }),
+      prisma.exhibitionManager.createMany({
+        data: galleries.map((g) => ({ exhibitionId, galleryId: g.id })),
+      }),
+      // 주관 갤러리도 함께 옮긴다 — 목록 카드/지원 통계가 이 값을 쓴다
+      prisma.exhibition.update({ where: { id: exhibitionId }, data: { galleryId: galleries[0]!.id } }),
+    ]);
+
+    // 새로 추가된 갤러리에만 알림 (기존 갤러리에 중복 발송하지 않는다)
+    await notifyManagerAssigned(
+      exhibitionId,
+      exhibition.title,
+      galleries.filter((g) => !before.has(g.id)).map((g) => g.ownerId)
+    );
+
+    res.json({ id: exhibitionId, managerGalleries: galleries.map((g) => ({ id: g.id, name: g.name })) });
   } catch (error) { next(error); }
 });
 
@@ -597,6 +732,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
         gallery: {
           include: { owner: { select: { id: true } } }
         },
+        // 아트링크 주최 공모의 운영 갤러리 (화면에 "운영: A, B" 로 표기)
+        managers: { select: { gallery: { select: { id: true, name: true, ownerId: true } } } },
         promoPhotos: true,
         images: { orderBy: { order: 'asc' } },
       }
@@ -614,6 +751,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
         where: { id: exhibitionId },
         include: {
           gallery: { include: { owner: { select: { id: true } } } },
+          managers: { select: { gallery: { select: { id: true, name: true, ownerId: true } } } },
           promoPhotos: true,
           images: { orderBy: { order: 'asc' } },
         }
@@ -652,10 +790,19 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록.
     // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트).
     const { owner, ...galleryRest } = exhibition.gallery as any;
+    const managerGalleries = (exhibition as any).managers.map((m: any) => m.gallery);
     res.json({
       ...exhibition,
       customFields: parseCustomFields(exhibition.customFields),
       gallery: maskGallery({ ...galleryRest, ownerId: owner?.id }),
+      // 아트링크 주최 공모의 운영 갤러리 목록 (갤러리 주최면 빈 배열)
+      managers: undefined,
+      managerGalleries: managerGalleries.map((g: any) => ({ id: g.id, name: g.name })),
+      // 화면에서 "운영자 전용" UI 노출 판단용 — 갤러리 오너 비교를 프론트에서 재구현하지 않게 서버가 계산해 내려준다
+      canOperate: !!req.user && canOperateExhibition(
+        { hostType: exhibition.hostType, gallery: { ownerId: owner?.id }, managers: (exhibition as any).managers },
+        req.user.id
+      ),
       isFavorited,
       invited,
     });
@@ -807,22 +954,25 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
       });
     }, { isolationLevel: 'Serializable' });
 
-    // 새 지원자 → Gallery 오너에게 알림
+    // 새 지원자 → 운영 갤러리 오너들에게 알림 (아트링크 주최면 위임 갤러리 전부)
     try {
-      const galleryOwner = await prisma.exhibition.findUnique({
+      const target = await prisma.exhibition.findUnique({
         where: { id: exhibitionId },
-        include: { gallery: { select: { ownerId: true, name: true } } },
+        include: { ...OPERATOR_INCLUDE, gallery: { select: { ownerId: true, name: true } } },
       });
-      if (galleryOwner) {
-        await prisma.notification.create({
-          data: {
-            userId: galleryOwner.gallery.ownerId,
+      const receivers = operatorUserIds(target as any);
+      if (receivers.length) {
+        await prisma.notification.createMany({
+          data: receivers.map((uid) => ({
+            userId: uid,
             type: 'NEW_APPLICANT',
             message: viaInvite
               ? `초대한 작가(${req.user!.name})가 "${exhibitionData.title}" 공모에 지원했습니다. 수락 여부를 결정해주세요.`
-              : `"${galleryOwner.gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
+              : (target as any).hostType === 'ADMIN'
+                ? `아트링크 주최 "${exhibitionData.title}" 공모에 새로운 지원자(${req.user!.name})가 있습니다.`
+                : `"${(target as any).gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
             linkUrl: `/exhibitions/${exhibitionId}`,
-          },
+          })),
         });
       }
     } catch { /* best-effort */ }
@@ -839,15 +989,10 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
   } catch (error) { next(error); }
 });
 
-// 공모 소개 수정 (Gallery 오너 전용)
+// 공모 소개 수정 (운영 갤러리 또는 Admin)
 router.patch('/:id/description', authenticate, async (req, res, next) => {
   try {
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: parseInt(req.params.id as string) },
-      include: { gallery: { select: { ownerId: true } } }
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
 
     const updated = await prisma.exhibition.update({
       where: { id: exhibition.id },
@@ -857,15 +1002,10 @@ router.patch('/:id/description', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 커스텀 필드 수정 (Gallery 오너 전용)
+// 커스텀 필드 수정 (운영 갤러리 또는 Admin)
 router.patch('/:id/custom-fields', authenticate, async (req, res, next) => {
   try {
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: parseInt(req.params.id as string) },
-      include: { gallery: { select: { ownerId: true } } }
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
 
     const { customFields } = req.body;
     // 검증: 배열이거나 null
@@ -891,10 +1031,18 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     });
     if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
 
-    // 소유권 확인: Gallery 오너 또는 Admin만 삭제 가능
-    const isOwner = exhibition.gallery.ownerId === req.user!.id;
+    // 소유권 확인: Gallery 오너 또는 Admin만 삭제 가능.
+    // 아트링크 주최 공모는 운영을 위임받았을 뿐이므로 갤러리가 지울 수 없다 — 주최자(Admin)만 삭제한다.
     const isAdmin = req.user!.role === 'ADMIN';
-    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    const isOwner = exhibition.hostType !== 'ADMIN' && exhibition.gallery.ownerId === req.user!.id;
+    if (!isOwner && !isAdmin) {
+      throw new AppError(
+        exhibition.hostType === 'ADMIN'
+          ? '아트링크 주최 공모는 운영 갤러리가 삭제할 수 없습니다. 관리자에게 문의해주세요.'
+          : '권한이 없습니다.',
+        403
+      );
+    }
 
     // 삭제 전 직속 이미지/홍보사진 URL 수집 → cascade 삭제 후 실제 파일 정리(best-effort)
     const [exImgs, promos] = await Promise.all([
@@ -908,16 +1056,11 @@ router.delete('/:id', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 공모 지원자 목록 조회 (Gallery 오너 전용)
-router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, res, next) => {
+// 공모 지원자 목록 조회 (운영 갤러리 전용)
+router.get('/:id/applications', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: exhibitionId },
-      include: { gallery: { select: { ownerId: true } } }
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    const exhibition = await assertCanManageExhibition(exhibitionId, req.user!);
 
     const applications = await prisma.application.findMany({
       where: { exhibitionId },
@@ -962,18 +1105,13 @@ router.get('/:id/applications', authenticate, authorize('GALLERY'), async (req, 
   } catch (error) { next(error); }
 });
 
-// 지원 상태 변경 (Gallery 오너 전용)
-router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), async (req, res, next) => {
+// 지원 상태 변경 (운영 갤러리 전용)
+router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
     const appId = parseInt(req.params.appId as string);
 
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: exhibitionId },
-      include: { gallery: { select: { ownerId: true } } }
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    const exhibition = await assertCanManageExhibition(exhibitionId, req.user!);
 
     const { status } = req.body;
     const validStatuses = ['SUBMITTED', 'ACCEPTED', 'REJECTED']; // 검토중(REVIEWED) 폐지
@@ -1063,14 +1201,9 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY'), asy
 });
 
 // 홍보 사진 등록 (Gallery 전용, 전시 종료 후)
-router.post('/:id/promo-photos', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.post('/:id/promo-photos', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: parseInt(req.params.id as string) },
-      include: { gallery: true }
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
 
     const { url, caption } = req.body;
     const safeUrl = safeFileUrl(url);
@@ -1083,16 +1216,11 @@ router.post('/:id/promo-photos', authenticate, authorize('GALLERY'), async (req,
 });
 
 // 홍보 사진 삭제 (해당 공모 소유자만, 사진이 그 공모 소속인지 확인)
-router.delete('/:id/promo-photos/:photoId', authenticate, authorize('GALLERY'), async (req, res, next) => {
+router.delete('/:id/promo-photos/:photoId', authenticate, authorize('GALLERY', 'ADMIN'), async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
     const photoId = parseInt(req.params.photoId as string);
-    const exhibition = await prisma.exhibition.findUnique({
-      where: { id: exhibitionId },
-      include: { gallery: { select: { ownerId: true } } },
-    });
-    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-    if (exhibition.gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
+    await assertCanManageExhibition(exhibitionId, req.user!);
     const photo = await prisma.promoPhoto.findFirst({ where: { id: photoId, exhibitionId } });
     if (!photo) throw new AppError('사진을 찾을 수 없습니다.', 404);
     await prisma.promoPhoto.delete({ where: { id: photoId } });
@@ -1104,14 +1232,14 @@ router.delete('/:id/promo-photos/:photoId', authenticate, authorize('GALLERY'), 
 // ========== 공모 사진 관리 (다중, 오너/Admin) ==========
 const MAX_EXHIBITION_IMAGES = 20;
 
-// 오너(또는 Admin) 권한 확인 후 exhibition 반환
+// 운영 갤러리(또는 Admin) 권한 확인 후 exhibition 반환
 async function assertExhibitionOwner(exhibitionId: number, user: { id: number; role: string }) {
   const exhibition = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },
-    include: { gallery: { select: { ownerId: true } } },
+    include: OPERATOR_INCLUDE,
   });
   if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
-  if (user.role !== 'ADMIN' && exhibition.gallery.ownerId !== user.id) {
+  if (user.role !== 'ADMIN' && !canOperateExhibition(exhibition, user.id)) {
     throw new AppError('권한이 없습니다.', 403);
   }
   return exhibition;
