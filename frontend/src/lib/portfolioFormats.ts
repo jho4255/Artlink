@@ -175,6 +175,34 @@ export function splitParagraphs(
   let cap = firstCap;
   const flush = () => { if (cur.length) { pages.push(cur); cur = []; } used = 0; cap = restCap; };
 
+  /**
+   * 문단에서 `maxLines` 줄만큼 떼어낸다.
+   *
+   * ⚠️ 문단 안의 `\n` 은 화면에서 `<br/>` 로 그대로 줄을 바꾼다. 그래서 **글자 수로만 자르면 안 된다** —
+   * 빈 줄 없이 줄바꿈만 여러 번 쓴 약력(작가들이 흔히 이렇게 쓴다)에서 떼어낸 조각의 실제 줄 수가
+   * 예상보다 훨씬 많아져 마지막 장이 100px 넘게 넘쳤다(실측). 줄 단위로 세어가며 떼어낸다.
+   */
+  const takeLines = (text: string, maxLines: number): { head: string; rest: string } => {
+    const src = text.split('\n');
+    const head: string[] = [];
+    let lines = 0;
+    for (let i = 0; i < src.length; i++) {
+      const need = Math.max(1, Math.ceil(src[i]!.length / perLine));
+      if (lines + need <= maxLines) { head.push(src[i]!); lines += need; continue; }
+      // 이 줄은 일부만 들어간다 — 가능하면 공백에서 끊어 단어가 갈라지지 않게
+      const room = maxLines - lines;
+      if (room > 0) {
+        const cut = room * perLine;
+        const sp = src[i]!.slice(0, cut).lastIndexOf(' ');
+        const at = sp > cut * 0.6 ? sp : cut;
+        head.push(src[i]!.slice(0, at).trimEnd());
+        src[i] = src[i]!.slice(at).trimStart();
+      }
+      return { head: head.join('\n'), rest: src.slice(i).join('\n') };
+    }
+    return { head: head.join('\n'), rest: '' };
+  };
+
   for (const raw of paras) {
     let text = raw;
     while (text) {
@@ -184,13 +212,9 @@ export function splitParagraphs(
       const room = cap - used - gap;
       const fitLines = Math.floor(room / lineH);
       if (fitLines >= 2) {
-        const cut = fitLines * perLine;
-        // 가능하면 공백에서 끊어 단어가 갈라지지 않게
-        const slice = text.slice(0, cut);
-        const sp = slice.lastIndexOf(' ');
-        const at = sp > cut * 0.6 ? sp : cut;
-        cur.push(text.slice(0, at).trimEnd());
-        text = text.slice(at).trimStart();
+        const { head, rest } = takeLines(text, fitLines);
+        if (head) cur.push(head);
+        text = rest;
       }
       flush();
       if (fitLines < 2 && used === 0 && cap <= gap) break; // 안전장치 (용량이 비정상)
@@ -259,8 +283,20 @@ const PAD: Record<PortfolioThemeId, { top: number; bottom: number; x: number }> 
 };
 /** 본문에 실제로 쓸 수 있는 세로 크기 */
 const availH = (theme: PortfolioTheme) => theme.page.h - PAD[theme.id].top - PAD[theme.id].bottom;
-/** 캡션(제목 + 보조 줄들)이 차지하는 높이 — 이미지 높이를 정할 때 빼둔다 */
-const captionH = (theme: PortfolioTheme) => (theme.worksPerPage === 3 ? 78 : 104);
+/**
+ * 캡션(제목 + 보조 줄들)이 차지하는 높이 — 이미지 높이를 정할 때 빼둔다.
+ *
+ * ⚠️ 상수 하나로 두면 안 된다. 캡션 줄 수는 작품마다 다른데(크기·재료·연도 중 채운 것만 나온다)
+ * 예전엔 104 로 고정이라 **세 줄짜리 작품에서 15px씩 모자랐다**. 포맷 D는 한 장에 두 점을 세로로
+ * 쌓아 그 오차가 두 배가 되고, 페이지가 `overflow:hidden` 이라 **에러 없이 조용히 잘렸다**.
+ * 아래 값은 실측이다 — 0줄 45 / 1줄 70 / 2줄 94 / 3줄 119 (포맷 A·D 기준).
+ */
+const captionH = (theme: PortfolioTheme, items: PortfolioImage[]) => {
+  // studio 는 보조 줄을 한 줄로 합쳐 찍어서(captionInline) 줄 수와 무관하게 일정하다(실측 63)
+  if (theme.worksPerPage === 3) return 78;
+  const lines = Math.max(0, ...items.map((a) => captionLines(a).length));
+  return 45 + lines * 25;
+};
 
 function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chrome: Chrome = {}): string {
   const { w, h } = theme.page;
@@ -504,7 +540,7 @@ function studioSeriesHead(theme: PortfolioTheme, series: string | undefined, fir
 function worksPages(theme: PortfolioTheme, data: PortfolioBookData, items: PortfolioImage[], label: string, running?: string, first = true): PortfolioPage[] {
   const { w } = theme.page;
   const avail = availH(theme);
-  const capH = captionH(theme);
+  const capH = captionH(theme, items);
 
   // story — 좌: 작품 한 점, 우: 캡션 + 이야기
   // 작품 설명이 길면 오른쪽 칸을 넘어 위아래로 삐져나갔다(가운데 정렬이라 양쪽으로). 칸에 들어갈 만큼만 싣고
@@ -669,13 +705,39 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   const contentW = theme.page.w - PAD[theme.id].x * 2;
   const colW = (contentW - gap * (cols - 1)) / cols;
 
-  // 첫 장은 이름·약력이 자리를 먹는다
-  const headBlock = 16 + 14 + (isSerif ? 40 : 38) + 30;
-  const bioH = bio ? Math.ceil((bio.length * 8.5) / Math.max(twoCol ? 900 : contentW, 200)) * 27 + 16 : 0;
-  const firstColH = availH(theme) - headBlock - bioH;
-  const contColH = availH(theme) - (16 + 14 + 30 + 26);
+  // 첫 장은 이름·약력이 자리를 먹는다.
+  // 값은 실측이다 — 아이브로우 18 / 이름 여백 14 / 이름 51(명조 34px)·48(고딕 32px) / 단 시작 여백 30.
+  // 예전 값(16+14+40·38+30)은 이름 높이를 10px 넘게 낮잡아 그만큼 경력이 아래로 넘쳤다.
+  const headBlock = 18 + 14 + (isSerif ? 51 : 48) + 30;
+  // 추정이 맞아떨어져도 글꼴 버전·기기에 따라 몇 px 어긋난다. 마지막 줄이 가장자리에 딱 붙으면
+  // 그 오차에 바로 잘리므로 쿠션을 둔다(글 페이지와 같은 값).
+  const SAFETY = 24;
 
-  const laid = sections.length === 0 ? [] : splitCvColumns(sections, contColH, colW, cols, firstColH);
+  // ⚠️ 약력 높이는 **줄바꿈을 세어야 한다**. 예전엔 글자 수만 폭으로 나눠 줄 수를 잡았는데,
+  // 화면에는 `\n`이 `<br/>`로 그대로 나가므로 짧은 줄이 여럿인 약력(학력/수상을 줄 나눠 적는 흔한 형태)에서
+  // 90~136px 씩 모자랐고, 그만큼 경력이 아래로 넘쳐 **잘려 나갔다**(4개 포맷 전부, 실측).
+  // 글 페이지가 쓰는 estimateParaH 와 같은 규칙으로 통일한다.
+  const BIO_FONT = 14, BIO_LINE = 27, BIO_GAP = 16;
+  const bioW = twoCol ? 900 : contentW;
+  const bioH = bio ? estimateParaH(bio, BIO_FONT, BIO_LINE, bioW, BIO_GAP) : 0;
+
+  // 약력이 길어 첫 장에 경력 칸이 쓸 만큼 안 남으면, 약력을 글 페이지로 빼고 경력은 다음 장부터 시작한다.
+  // 억지로 같은 장에 밀어 넣으면 추정을 아무리 잘 해도 물리적으로 안 들어간다(약력만 600px 넘는 작가가 있다).
+  const MIN_COL_H = 200;
+  const bioOwnPage = bioH > 0 && availH(theme) - headBlock - bioH < MIN_COL_H;
+  const bioPages = bioOwnPage
+    ? prosePages(theme, data, 'CURRICULUM VITAE', displayName(data.user), bio, '약력')
+    : [];
+
+  const firstColH = availH(theme) - headBlock - (bioOwnPage ? 0 : bioH) - SAFETY;
+  // 이어지는 장은 아이브로우 + 작은 이름줄(18px)만 — 이것도 실측 기준
+  const contColH = availH(theme) - (18 + 14 + 30 + 30) - SAFETY;
+
+  // 경력이 하나도 없어도 약력은 반드시 실어야 한다. 예전엔 여기서 빈 배열이 나와
+  // **약력이 통째로 사라졌다**(경력 미입력 작가는 PDF에 약력이 아예 안 찍혔다).
+  const laid = sections.length === 0
+    ? (bioOwnPage ? [] : [[]])
+    : splitCvColumns(sections, contColH, colW, cols, firstColH);
 
   const blockHtml = (b: CvChunk) => `
     <div style="margin-bottom:${CV_SEC_GAP}px">
@@ -688,19 +750,19 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
       </div>
     </div>`;
 
-  return laid.map((cols2, pi) => ({
+  return [...bioPages, ...laid.map((cols2, pi) => ({
     label: pi === 0 ? 'CV' : `CV (${pi + 1})`,
     html: page(theme, data, `
       <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">CURRICULUM VITAE${pi > 0 ? ' (계속)' : ''}</div>
       ${pi === 0
         ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 800};font-family:${isSerif ? theme.display : SANS}">${esc(displayName(data.user))}</div>
-           ${bio ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:#4a4a4a;max-width:${twoCol ? '900px' : '100%'};word-break:keep-all">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
+           ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:#4a4a4a;max-width:${twoCol ? '900px' : '100%'};word-break:keep-all">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
         : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 700};font-family:${isSerif ? theme.display : SANS};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
       <div style="margin-top:30px;display:flex;gap:${gap}px;align-items:flex-start">
         ${Array.from({ length: cols }, (_, ci) =>
           `<div style="flex:1;min-width:0">${(cols2[ci] ?? []).map(blockHtml).join('')}</div>`).join('')}
       </div>`),
-  }));
+  }))];
 }
 
 // ── 연락처 (마지막 장) ──

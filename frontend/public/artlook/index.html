@@ -949,7 +949,10 @@ let SOLD_WORKS=[];
 try{ SOLD_WORKS = JSON.parse(localStorage.getItem('artlook:works')||'[]'); }catch{ SOLD_WORKS=[]; }
 // 외부 도메인(R2) 이미지는 동일출처 프록시로 중계 → 캔버스 taint 방지(PNG 저장 가능).
 // 상대경로(로컬 /images, /uploads)는 이미 동일출처라 그대로 사용.
-function resolveSrc(url){ return /^https?:\/\//i.test(url) ? '/api/upload/image-proxy?url='+encodeURIComponent(url) : url; }
+// `immutable=1` — 프록시에 7일 캐시를 요청한다. 작품 주소는 `타임스탬프-난수.jpg`라 내용이 바뀌지 않고,
+// 새 작품은 새 주소가 생기므로 캐시가 새 작품을 가리지 않는다. 작품 '정보'(제목·크기·상태)는
+// API(no-store)에서 매번 새로 오므로 이 캐시와 무관하다.
+function resolveSrc(url){ return /^https?:\/\//i.test(url) ? '/api/upload/image-proxy?url='+encodeURIComponent(url)+'&immutable=1' : url; }
 let selectedWork=null;
 // 작품 목록 — 한 화면에 9장(3×3)씩 끊어 넘긴다.
 // 30장을 한 번에 깔면 목록이 세로로 길어져 **아래 액자·배경 설정이 화면 밖으로 밀린다**(실사용 신고).

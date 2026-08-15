@@ -110,3 +110,43 @@ describe('image-proxy — 공개 주소가 여러 개일 때', () => {
     expect(r.status).toBe(400);
   });
 });
+
+/**
+ * 캐시 기간을 **부르는 쪽이 고른다** (2026-08-16).
+ *
+ * ArtLook 은 같은 사람이 하루에도 여러 번 들어와 같은 작품을 다시 받는다. 기본 1일로는
+ * 사람당 하루 1회씩 재전송돼 Render 대역폭이 월 수백 GB로 뛴다(실측 33MB/첫방문).
+ * 그렇다고 기본값을 늘리면 PDF·ZIP 폴백 경로(lib/imageFetch.ts)의 동작까지 바뀌므로
+ * `immutable=1` 을 붙인 요청에만 길게 준다.
+ */
+describe('image-proxy 캐시 기간', () => {
+  const png = () => { globalThis.fetch = vi.fn(async () => streamResponse(PNG, 'image/png')) as any; };
+
+  it('기본은 1일 — PDF·ZIP 경로의 동작을 바꾸지 않는다', async () => {
+    png();
+    const r = await request.get('/api/upload/image-proxy').query({ url: OK_URL });
+    expect(r.headers['cache-control']).toBe('public, max-age=86400');
+  });
+
+  it('immutable=1 이면 7일 — ArtLook 이 매 방문 다시 받지 않게', async () => {
+    png();
+    const r = await request.get('/api/upload/image-proxy').query({ url: OK_URL, immutable: '1' });
+    expect(r.headers['cache-control']).toBe('public, max-age=604800');
+  });
+
+  it('immutable 이 1 이 아니면 기본값 — 오타나 임의 값에 끌려가지 않는다', async () => {
+    for (const v of ['0', 'true', 'yes', '']) {
+      png();
+      const r = await request.get('/api/upload/image-proxy').query({ url: OK_URL, immutable: v });
+      expect(r.headers['cache-control'], `immutable=${v}`).toBe('public, max-age=86400');
+    }
+  });
+
+  it('캐시 기간과 무관하게 보안 헤더는 그대로 붙는다', async () => {
+    png();
+    const r = await request.get('/api/upload/image-proxy').query({ url: OK_URL, immutable: '1' });
+    expect(r.headers['x-content-type-options']).toBe('nosniff');
+    expect(r.headers['content-security-policy']).toContain("default-src 'none'");
+    expect(Buffer.from(r.body).equals(PNG)).toBe(true);
+  });
+});

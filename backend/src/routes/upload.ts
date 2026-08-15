@@ -194,7 +194,14 @@ router.get('/image-proxy', async (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');               // MIME 스니핑 차단
     res.setHeader('Content-Disposition', 'inline; filename="image"');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox"); // 만약 통과해도 스크립트 실행 불가
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // 캐시 기간은 **부르는 쪽이 정한다**.
+    // ArtLook(`&immutable=1`)은 같은 사람이 하루에도 여러 번 들어와 매번 같은 작품을 다시 받는다 —
+    // 기본 1일로는 사람당 하루 1회씩 재전송돼 Render 대역폭이 월 수백 GB로 뛴다(실측).
+    // 업로드 키가 `타임스탬프-난수.jpg`라 **같은 주소에 다른 이미지가 덮이지 않으므로** 길게 잡아도 안전하다.
+    // 기본값(1일)은 그대로 둔다 — PDF·ZIP 폴백 경로(lib/imageFetch.ts)의 동작을 바꾸지 않기 위해서다.
+    res.setHeader('Cache-Control', req.query.immutable === '1'
+      ? 'public, max-age=604800'
+      : 'public, max-age=86400');
     const len = upstream.headers.get('content-length');
     if (len) res.setHeader('Content-Length', len);
 

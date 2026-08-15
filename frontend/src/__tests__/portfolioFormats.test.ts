@@ -295,3 +295,88 @@ describe('긴 글 분할 (작가노트 · 시리즈 소개 · 작품 이야기)'
     expect(estimateParaH('가\n나\n다', 17, 35, 900, 20)).toBeGreaterThan(one);
   });
 });
+
+/**
+ * 여백 넘침 회귀 방지 (2026-08-16 전수조사).
+ *
+ * 페이지는 고정 크기 + `overflow:hidden` 이라 넘치면 **에러 없이 조용히 잘린다**.
+ * 실제로 40여 명 × 4포맷을 브라우저에 그려 재보니 17장이 넘쳤고, 원인이 넷이었다.
+ * 여기서는 그 넷을 순수 함수 수준에서 잠근다(픽셀 실측은 e2e 몫).
+ */
+describe('여백 넘침 회귀 방지', () => {
+  const bioOnly = (bio: string): PortfolioBookData => ({
+    ...base, statement: null, seriesInfo: null, biography: bio,
+    career: { artFair: [], solo: [], group: [] },   // 경력 0건
+  });
+
+  it('경력이 없어도 약력은 반드시 문서에 실린다 — 예전엔 CV 페이지가 통째로 안 생겨 약력이 사라졌다', () => {
+    for (const t of PORTFOLIO_THEMES) {
+      const pages = buildPortfolioPages(bioOnly('단국대학교 서양화과 졸업'), t);
+      const html = pages.map((p) => p.html).join('');
+      expect(html, `${t.name}: 약력이 어느 페이지에도 없다`).toContain('단국대학교 서양화과 졸업');
+    }
+  });
+
+  it('약력이 아무리 길어도 한 줄도 잃지 않는다', () => {
+    // 세로 판형(포맷 D)은 페이지가 높아 같은 약력이 첫 장에 들어가기도 한다 —
+    // 어디에 실리느냐가 아니라 **내용이 남아 있느냐**가 지켜야 할 규칙이다.
+    const long = Array.from({ length: 60 }, (_, i) => `${2000 + i}년 어느 전시에 참여하고 무엇을 배웠는지에 대한 긴 문장`).join('\n');
+    for (const t of PORTFOLIO_THEMES) {
+      const text = buildPortfolioPages(bioOnly(long), t).map((p) => p.html).join('').replace(/<[^>]*>/g, '');
+      for (const line of long.split('\n')) {
+        expect(text, `${t.name}: "${line.slice(0, 12)}" 이 빠졌다`).toContain(line.slice(0, 24));
+      }
+    }
+  });
+
+  it('첫 장에 경력 칸이 안 남을 만큼 약력이 길면 약력을 자기 페이지로 뺀다 (가로 판형)', () => {
+    const long = Array.from({ length: 60 }, (_, i) => `${2000 + i}년 어느 전시에 참여하고 무엇을 배웠는지에 대한 긴 문장`).join('\n');
+    for (const t of PORTFOLIO_THEMES.filter((x) => x.page.w > x.page.h)) {
+      const pages = buildPortfolioPages(bioOnly(long), t);
+      expect(pages.some((p) => p.label.startsWith('약력')), `${t.name}: 약력 전용 페이지가 없다`).toBe(true);
+    }
+  });
+
+  it('약력이 짧으면 CV 첫 장에 같이 실린다 (쓸데없이 장을 늘리지 않는다)', () => {
+    for (const t of PORTFOLIO_THEMES) {
+      const pages = buildPortfolioPages(bioOnly('짧은 약력'), t);
+      expect(pages.some((p) => p.label.startsWith('약력')), `${t.name}`).toBe(false);
+      expect(pages.find((p) => p.label === 'CV')!.html).toContain('짧은 약력');
+    }
+  });
+
+  it('splitParagraphs — 빈 줄 없이 줄바꿈만 쓴 글도 줄 예산을 지킨다', () => {
+    // 글자 수로만 자르던 시절엔 이 모양에서 조각의 실제 줄 수가 예산을 넘겼다
+    const para = Array.from({ length: 40 }, (_, i) => `${i}번째 줄입니다`).join('\n');
+    const lineH = 30, cap = 10 * lineH + 20;          // 10줄 + gap
+    const pages = splitParagraphs([para], cap, cap, 15, lineH, 600, 20);
+    for (const chunk of pages) {
+      const lines = chunk.join('\n').split('\n').length;
+      expect(lines, `한 장에 ${lines}줄 — 예산 10줄 초과`).toBeLessThanOrEqual(10);
+    }
+    // 한 줄도 잃지 않는다
+    expect(pages.flat().join('\n').split('\n').filter((l) => l.trim()).length).toBe(40);
+  });
+
+  it('splitParagraphs — 줄바꿈이 많을수록 더 많은 장으로 나뉜다', () => {
+    const flat = '가'.repeat(400);
+    const broken = Array.from({ length: 40 }, () => '가'.repeat(10)).join('\n');  // 같은 글자 수, 줄바꿈만 다름
+    const args = [200, 200, 15, 30, 600, 20] as const;
+    expect(splitParagraphs([broken], ...args).length)
+      .toBeGreaterThan(splitParagraphs([flat], ...args).length);
+  });
+
+  it('캡션 줄 수가 많은 작품은 이미지 높이를 그만큼 양보한다 — 상수로 고정하면 포맷 D에서 잘렸다', () => {
+    const withCaption = { ...base, images: [
+      img({ id: 1, title: 'A', sizeText: '50×50 cm', medium: 'Oil on canvas', year: '2025' }),
+      img({ id: 2, title: 'B', sizeText: '50×50 cm', medium: 'Oil on canvas', year: '2025' }),
+    ] };
+    const bare = { ...base, images: [img({ id: 1, title: 'A' }), img({ id: 2, title: 'B' })] };
+    // 표지도 max-height 를 쓰므로 **작품 페이지만** 본다
+    const workImgH = (d: PortfolioBookData) => {
+      const pg = buildPortfolioPages(d, themeById('archive')).find((p) => p.label === '작품')!;
+      return Math.max(...[...pg.html.matchAll(/max-height:(\d+)px/g)].map((m) => Number(m[1])));
+    };
+    expect(workImgH(withCaption)).toBeLessThan(workImgH(bare));
+  });
+});
