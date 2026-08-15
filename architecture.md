@@ -960,7 +960,10 @@ operatorUserIds(ex)                알림 발송 대상 전부
 - **갤러리 상세 페이지**는 자기 공모(relation) + 위임받은 아트링크 주최 공모를 합쳐 마감일 순으로 보여준다
   (`routes/gallery.ts`). 실제로 그 갤러리가 운영하는 공고이므로 갤러리 페이지에 없으면 관람객이 찾지 못한다.
   주관 갤러리는 relation 에 이미 들어 있으므로 `galleryId: { not: id }` 로 **중복을 뺀다**
-- 판정 규칙은 `frontend/src/lib/exhibitionHost.ts` (`isAdminHosted`/`canOperate`/`canDelete`) — 순수 함수 + 테스트
+- 판정 규칙은 `frontend/src/lib/exhibitionHost.ts` (`isAdminHosted`/`canOperate`/`canManage`/`canDelete`) — 순수 함수 + 테스트
+- ⚠️ **편집 버튼은 `canOperate` 가 아니라 `canManage` 로 판단할 것.** `canOperate` 는 운영 위임을
+  판정하는 함수라 갤러리 계정만 인정한다 — 그걸로 버튼을 그리면 **Admin 이 자기가 주최한 공고의
+  소개·포스터를 못 고친다**(서버는 허용하는데 버튼만 없는 상태였다). 백엔드 `assertCanManageExhibition` 과 짝
 - **공고 상세는 "참여 갤러리 : A, B"** 로만 쓴다. 아트링크가 주최고 갤러리들은 같이 참여하는 것이라
   누가 주관인지 화면에 드러내지 않는다. 갤러리 별점·리뷰 줄도 붙이지 않는다 — 이 공모의 평가가 아니다
 - 상세 API가 `canOperate`를 계산해 내려준다 — 프론트에서 오너 비교를 다시 구현하지 않는다

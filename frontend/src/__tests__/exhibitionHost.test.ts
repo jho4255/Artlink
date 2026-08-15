@@ -6,7 +6,7 @@
  *      규칙이 두 벌이 되어 어긋난다.
  */
 import { describe, it, expect } from 'vitest';
-import { isAdminHosted, canOperate, canDelete } from '../lib/exhibitionHost';
+import { isAdminHosted, canOperate, canManage, canDelete } from '../lib/exhibitionHost';
 
 const gallery = { id: 7, role: 'GALLERY' };
 const admin = { id: 1, role: 'ADMIN' };
@@ -37,6 +37,29 @@ describe('canOperate', () => {
     expect(canOperate({ canOperate: true }, artist)).toBe(false);
     expect(canOperate({ canOperate: true }, admin)).toBe(false); // Admin 은 운영자가 아니라 관리자
     expect(canOperate({ canOperate: true }, null)).toBe(false);
+  });
+});
+
+describe('canManage', () => {
+  // 서버(assertCanManageExhibition)와 짝. 화면 편집 버튼은 이걸로 판단한다.
+  it('★ Admin 은 자기가 주최한 공고를 고칠 수 있다 (버튼이 사라지면 안 된다)', () => {
+    const hosted = { hostType: 'ADMIN', canOperate: false };
+    expect(canOperate(hosted, admin)).toBe(false);  // 운영 위임 대상은 아니지만
+    expect(canManage(hosted, admin)).toBe(true);    // 편집은 된다
+  });
+
+  it('Admin 은 갤러리가 등록한 공고도 고칠 수 있다', () => {
+    expect(canManage({ hostType: 'GALLERY', gallery: { ownerId: 99 } }, admin)).toBe(true);
+  });
+
+  it('운영 갤러리는 고칠 수 있다', () => {
+    expect(canManage({ hostType: 'ADMIN', canOperate: true }, gallery)).toBe(true);
+  });
+
+  it('무관한 갤러리·작가·비로그인은 못 고친다', () => {
+    expect(canManage({ hostType: 'ADMIN', canOperate: false }, gallery)).toBe(false);
+    expect(canManage({ hostType: 'ADMIN', canOperate: true }, artist)).toBe(false);
+    expect(canManage({ hostType: 'ADMIN' }, null)).toBe(false);
   });
 });
 

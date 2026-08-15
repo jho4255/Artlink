@@ -38,7 +38,7 @@ import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
-import { isAdminHosted, canOperate, canDelete } from '@/lib/exhibitionHost';
+import { isAdminHosted, canOperate, canManage, canDelete } from '@/lib/exhibitionHost';
 import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -318,6 +318,9 @@ export default function ExhibitionDetailPage() {
   const isAdmin = user?.role === 'ADMIN';
   // 아트링크 주최 공모는 위임받은 운영 갤러리도 오너와 같은 권한을 갖는다 (lib/exhibitionHost.ts)
   const isGalleryOwner = canOperate(exhibition, user);
+  // 편집(소개·포스터·운영)은 Admin 도 된다 — 자기가 주최한 공고를 못 고치면 안 된다.
+  // isGalleryOwner 는 '갤러리 계정인가'까지 보므로 편집 판정에 그대로 쓰면 Admin 이 빠진다.
+  const canEdit = canManage(exhibition, user);
   const canDeleteExhibition = canDelete(exhibition, user);
 
   // 상단 캐러셀에 표시할 사진 목록 (다중 → imageUrl → 갤러리 대표 순 폴백)
@@ -370,8 +373,8 @@ export default function ExhibitionDetailPage() {
             </PosterImage>
           ))}
 
-          {/* 오너 전용: 포스터 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경) */}
-          {isGalleryOwner && exhibition.images && (
+          {/* 운영 갤러리 / Admin: 포스터 관리 (추가 / 삭제(최소 1장) / 드래그 순서변경) */}
+          {canEdit && exhibition.images && (
             <ExhibitionImageManager exhibitionId={exhibition.id} images={exhibition.images} />
           )}
         </div>
@@ -479,7 +482,7 @@ export default function ExhibitionDetailPage() {
         <div>
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-xl font-medium">공모 소개</h2>
-            {isGalleryOwner && !isEditingDesc && (
+            {canEdit && !isEditingDesc && (
               <button
                 onClick={() => { setEditDesc(exhibition.description); setIsEditingDesc(true); }}
                 className="text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
@@ -596,8 +599,8 @@ export default function ExhibitionDetailPage() {
             </button>
           )}
 
-          {/* Gallery 오너 / Admin 운영 페이지 */}
-          {(isGalleryOwner || isAdmin) && (
+          {/* 운영 갤러리 / Admin 운영 페이지 */}
+          {canEdit && (
             <button
               onClick={() => navigate(`/exhibitions/${id}/operation/new`)}
               className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 text-gray-800 rounded-xl text-sm font-medium hover:bg-gray-50"

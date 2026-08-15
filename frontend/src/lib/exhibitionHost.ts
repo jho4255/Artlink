@@ -34,6 +34,20 @@ export function canOperate(ex: HostLike | null | undefined, user: UserLike | nul
   return !!ex.gallery?.ownerId && ex.gallery.ownerId === user.id;
 }
 
+/**
+ * 공모 내용(소개·사진·공지 등)을 고칠 수 있는가 — **운영 갤러리 또는 Admin**.
+ *
+ * `canOperate` 는 갤러리 계정만 인정한다(운영 위임을 판정하는 함수라서).
+ * 화면의 편집 버튼은 그걸로 판단하면 안 된다 — Admin 이 자기가 주최한 공고의
+ * 소개·포스터를 못 고치게 된다(서버는 허용하는데 버튼만 없는 상태였다).
+ * 백엔드 `assertCanManageExhibition` 과 짝을 이룬다.
+ */
+export function canManage(ex: HostLike | null | undefined, user: UserLike | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === 'ADMIN') return true;
+  return canOperate(ex, user);
+}
+
 /** 삭제 가능한가 — 아트링크 주최 공모는 주최자(Admin)만. 갤러리는 운영만 위임받았다. */
 export function canDelete(ex: HostLike | null | undefined, user: UserLike | null | undefined): boolean {
   if (!ex || !user) return false;

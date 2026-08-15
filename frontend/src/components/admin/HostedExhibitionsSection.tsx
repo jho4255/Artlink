@@ -29,6 +29,7 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
+import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
 import type { CustomField } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -239,6 +240,8 @@ export default function HostedExhibitionsSection() {
   // 지원자 관리 — 갤러리 마이페이지와 같은 인라인 <ApplicantManager /> 를 그대로 쓴다(창 이동 없음).
   // Admin 도 수락/거절을 해야 해서 백엔드 라우트가 GALLERY+ADMIN 으로 열려 있다.
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
+  // 추가 질문 수정 — 갤러리 마이페이지와 같은 공용 모달. 주최자가 자기 공고 질문을 못 고치면 안 된다.
+  const [editQuestionsEx, setEditQuestionsEx] = useState<any>(null);
 
   const clearError = (key: string) =>
     setFormErrors(prev => { const n = new Set(prev); n.delete(key); return n; });
@@ -455,6 +458,15 @@ export default function HostedExhibitionsSection() {
         <ManagerEditModal exhibition={editManagersFor} onClose={() => setEditManagersFor(null)} />
       )}
 
+      {editQuestionsEx && (
+        <CustomQuestionsEditModal
+          exhibitionId={editQuestionsEx.id}
+          exhibitionTitle={editQuestionsEx.title}
+          initialFields={editQuestionsEx.customFields}
+          onClose={() => setEditQuestionsEx(null)}
+        />
+      )}
+
       {/* 목록 */}
       {isLoading ? (
         <div className="grid gap-3">{[0, 1].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-gray-100" />)}</div>
@@ -507,6 +519,9 @@ export default function HostedExhibitionsSection() {
                         className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white"
                       >
                         {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
+                      </button>
+                      <button onClick={() => setEditQuestionsEx(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+                        추가 질문
                       </button>
                       <button onClick={() => setEditManagersFor(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
                         운영 갤러리 변경

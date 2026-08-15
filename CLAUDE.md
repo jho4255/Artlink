@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **885 tests**: Backend 701 (supertest, `artlink_test` DB 순차), Frontend 184 (jsdom)
+- **889 tests**: Backend 701 (supertest, `artlink_test` DB 순차), Frontend 188 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
