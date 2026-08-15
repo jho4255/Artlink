@@ -42,6 +42,22 @@ export function statusLabel(img: Pick<PortfolioImage, 'status'>): string {
   return '';
 }
 
+/**
+ * 화면용 판매상태 배지 — **판매중까지 전부** 표기한다.
+ *
+ * `statusLabel` 과 따로 두는 이유: 그쪽은 포맷 PDF 가 쓴다. 작가가 갤러리에 내는 문서라
+ * 작품마다 '판매중'이 찍히면 시끄럽고, 실제 작가 포트폴리오 관례도 Sold/NFS 만 적는다.
+ * 반면 공개 포트폴리오는 갤러리가 보는 화면이라 "살 수 있는가"가 정보가 된다.
+ *
+ * tone: 'sold' 는 강조색, 'muted' 는 회색 — 대부분이 판매중일 텐데 다 강조하면 화면이 시끄러워진다.
+ */
+export function statusBadge(img: Pick<PortfolioImage, 'status'>): { label: string; tone: 'sold' | 'muted' } | null {
+  if (img.status === 'SOLD') return { label: '판매완료', tone: 'sold' };
+  if (img.status === 'NFS') return { label: '비매', tone: 'muted' };
+  if (img.status === 'AVAILABLE') return { label: '판매중', tone: 'muted' };
+  return null;   // 미입력
+}
+
 /** 제목 — 없으면 '무제' (캡션 자리를 비워두면 페이지 정렬이 흔들린다) */
 export function artworkTitle(img: Pick<PortfolioImage, 'title'>): string {
   return trimmed(img.title) || '무제';

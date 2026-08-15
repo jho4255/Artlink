@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   artworkTitle, captionInline, captionLines, careerLineText, composeSize, groupBySeries,
-  hasCaption, isCareerEmpty, normalizeCareer, seriesNames, splitSize, statusLabel,
+  hasCaption, isCareerEmpty, normalizeCareer, seriesNames, splitSize, statusBadge, statusLabel,
 } from '../lib/artwork';
 import type { PortfolioImage } from '../types';
 
@@ -36,6 +36,31 @@ describe('작품 캡션', () => {
     expect(hasCaption(img({}))).toBe(false);
     expect(hasCaption(img({ title: '', medium: '', sizeText: '', year: '' }))).toBe(false);
     expect(hasCaption(img({ year: '2025' }))).toBe(true);
+  });
+});
+
+describe('화면용 판매상태 배지 (statusBadge)', () => {
+  it('세 상태를 모두 표기한다 — 공개 페이지는 갤러리가 "살 수 있는가"를 봐야 한다', () => {
+    expect(statusBadge(img({ status: 'SOLD' }))).toEqual({ label: '판매완료', tone: 'sold' });
+    expect(statusBadge(img({ status: 'NFS' }))).toEqual({ label: '비매', tone: 'muted' });
+    expect(statusBadge(img({ status: 'AVAILABLE' }))).toEqual({ label: '판매중', tone: 'muted' });
+  });
+
+  it('미입력은 배지를 달지 않는다 — 없는 정보를 "판매중"으로 단정하면 안 된다', () => {
+    expect(statusBadge(img({}))).toBeNull();
+    expect(statusBadge(img({ status: null as never }))).toBeNull();
+  });
+
+  it('강조색은 판매완료만 — 대부분이 판매중인데 다 강조하면 화면이 시끄럽다', () => {
+    const tones = (['SOLD', 'NFS', 'AVAILABLE'] as const)
+      .map(s => statusBadge(img({ status: s }))!.tone);
+    expect(tones.filter(t => t === 'sold')).toHaveLength(1);
+  });
+
+  it('PDF용 statusLabel 과 규칙이 다르다 — 한쪽을 고쳐도 다른 쪽이 딸려가면 안 된다', () => {
+    // PDF(작가가 갤러리에 내는 문서)는 판매중을 적지 않는 것이 관례
+    expect(statusLabel(img({ status: 'AVAILABLE' }))).toBe('');
+    expect(statusBadge(img({ status: 'AVAILABLE' }))!.label).toBe('판매중');
   });
 });
 

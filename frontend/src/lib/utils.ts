@@ -35,6 +35,24 @@ export function safeHttpUrl(url?: string | null): string | null {
   }
 }
 
+/**
+ * 인스타그램 주소에서 계정 아이디를 뽑는다 → `@handle`.
+ *
+ * 화면에 'Instagram' 이라고만 쓰면 누구 계정인지 알 수 없어 눌러보기 전엔 모른다.
+ * 저장된 값이 제각각이라(`https://Instagram.com/x`, `instagram.com/x/`, `@x`, `x`) 전부 받아준다.
+ * 뽑아내지 못하면 null — 호출부는 'Instagram' 으로 되돌린다.
+ */
+export function instagramHandle(url?: string | null): string | null {
+  if (!url) return null;
+  const t = String(url).trim();
+  if (!t) return null;
+  // 주소 형태면 경로 첫 조각이 아이디, 아니면 값 자체를 아이디로 본다
+  const m = t.match(/instagram\.com\/+([^/?#]+)/i);
+  const raw = (m ? m[1] : t).replace(/^@/, '').replace(/\/+$/, '').trim();
+  // 인스타 아이디 규칙: 영숫자·마침표·밑줄 (한글 등이 섞이면 아이디가 아니다)
+  return /^[A-Za-z0-9._]{1,30}$/.test(raw) ? `@${raw}` : null;
+}
+
 // 전화번호 입력 시 자동 하이픈 포맷 (한국 번호: 010-1234-5678, 02-123-4567 등)
 export function formatPhoneNumber(value: string): string {
   const d = value.replace(/[^0-9]/g, '').slice(0, 11);

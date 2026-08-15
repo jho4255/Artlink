@@ -4,10 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, FileText, Calendar, Instagram } from 'lucide-react';
 import api from '@/lib/axios';
-import { displayName, safeHttpUrl } from '@/lib/utils';
+import { displayName, safeHttpUrl, instagramHandle } from '@/lib/utils';
 import {
   artworkTitle, captionInline, careerLineText, groupBySeries,
-  isCareerEmpty, normalizeCareer, statusLabel,
+  isCareerEmpty, normalizeCareer, statusBadge,
 } from '@/lib/artwork';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import type { PortfolioImage, PublicPortfolio, CareerKey } from '@/types';
@@ -75,7 +75,7 @@ export default function PortfolioPage() {
   // 작품 카드 — 회화를 정사각형으로 자르지 않는다. 원본 비율 그대로 두고 캡션을 아래에 붙인다.
   // (기존에는 aspect-square + object-cover라 세로로 긴 작품이 잘려 나갔다)
   const ArtworkCard = ({ img }: { img: PortfolioImage }) => {
-    const st = statusLabel(img);
+    const st = statusBadge(img);
     const meta = captionInline(img);
     return (
       <figure className="mb-6 break-inside-avoid">
@@ -85,7 +85,12 @@ export default function PortfolioPage() {
         <figcaption className="mt-2">
           <p className="text-sm text-gray-900">
             {artworkTitle(img)}
-            {st && <span className="ml-2 text-[11px] font-semibold text-[#c4302b]">● {st}</span>}
+            {/* 판매중까지 전부 표기하되, 대부분이 판매중일 테니 강조는 '판매완료'에만 준다 */}
+            {st && (
+              <span className={`ml-2 text-[11px] font-semibold ${st.tone === 'sold' ? 'text-[#c4302b]' : 'text-gray-400'}`}>
+                ● {st.label}
+              </span>
+            )}
           </p>
           {meta && <p className="text-xs text-gray-500 mt-0.5">{meta}</p>}
         </figcaption>
@@ -119,9 +124,11 @@ export default function PortfolioPage() {
               href={safeHttpUrl(portfolio.user.instagramUrl)!}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mt-1"
+              className="inline-flex items-center gap-1 text-sm text-[#E4405F] hover:text-[#c13584] hover:underline mt-1"
             >
-              <Instagram size={14} /> Instagram
+              {/* 'Instagram' 이라고만 쓰면 누구 계정인지 눌러보기 전엔 모른다 → 아이디를 보여준다.
+                  주소에서 아이디를 못 뽑으면(형식이 이상하면) 종전대로 'Instagram' */}
+              <Instagram size={14} /> {instagramHandle(portfolio.user.instagramUrl) ?? 'Instagram'}
             </a>
           )}
         </div>
@@ -147,9 +154,12 @@ export default function PortfolioPage() {
       {!careerEmpty && (
         <div className="mb-6">
           <SectionTitle>경력</SectionTitle>
-          <div className="sm:columns-2 sm:gap-x-10 max-w-3xl">
+          {/* grid 3열. columns(신문 단) 는 세로로 채워서 개인전+단체전이 한 열에 몰리고
+              아트페어만 옆으로 가는 식이라 배치가 예측되지 않았다. grid 는 순서대로 가로로 놓인다.
+              items-start 라 항목 수가 달라도 각 칸이 자기 높이만 쓴다. */}
+          <div className="grid gap-x-10 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 items-start max-w-5xl">
             {CAREER_LABELS.map(({ key, label }) => (career[key] ?? []).length > 0 && (
-              <div key={key} className="break-inside-avoid mb-3">
+              <div key={key}>
                 <p className="text-xs font-medium text-gray-400 flex items-center gap-1"><Calendar size={11} /> {label}</p>
                 <ul className="mt-1 space-y-0.5">
                   {(career[key] ?? []).map((e, i) => (

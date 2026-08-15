@@ -148,6 +148,19 @@ ArtLink/
     - `my-settlement`: **요청중 또는 완료 시** 작가에게 공개(+myApproval). `GET settlement`: artist별 approval + allApproved
     - 프론트: 갤러리 정산섹션 OPEN[정산저장|정산확인요청]/REQUESTED[요청취소|정산완료(전원수락시활성)]+작가별 수락/문제뱃지+코멘트, 작가 [수락]/[문제제기+코멘트]
 - **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
+- **ArtLook 진입 경로 2개** (2026-08-15): ① 운영페이지 정산 > 판매작 홍보 ② 마이페이지 > 포트폴리오 > [액자에 걸어보기].
+  핸드오프는 `frontend/src/lib/artlook.ts` 로 공용화했고, payload 에 `kind`('sold'|'portfolio')를 실어
+  **파일명에서 '판매작' 접미사를 판매작에만** 붙인다(포트폴리오 작품에 붙으면 사실과 다르다). `kind` 없는 옛 payload 는 판매작으로 본다.
+  작품 카드는 네 모서리(캡션·삭제·공개토글·좋아요)가 이미 차 있어 카드마다 버튼을 얹지 않고 **섹션 헤더에 하나** 두고 전체를 넘긴다 — 고르는 건 ArtLook 안에서.
+  ⚠️ 호출부는 **3곳**이다 — `MyPage`, `OperationPage`, 그리고 **`OperationClassicPage`**(클래식 뷰). 클래식 쪽을 빼먹으면
+  갤러리가 어떤 뷰를 쓰느냐에 따라 `kind` 가 실리거나 안 실려 **에러 없이 조용히** 파일명만 달라진다(실제로 그랬다).
+  `lib/artlook.ts` 밖에서 `localStorage.setItem('artlook:works', ...)` 를 직접 쓰지 말 것.
+- **ArtLook 워터마크** (2026-08-15): 출력 우하단에 `ArtLink` 워드마크. **항상 켜짐(끌 수 없음)** —
+  두 진입 경로 모두 적용된다. 체크박스는 없앴다: 이 도구를 무료로 여는 목적 자체가 작가 유입이라
+  워터마크가 곧 노출 경로다. 미리보기에도 같이 그린다(저장 후 발견하면 배신감). 벽이 17종이라 밝기 편차가 커서
+  **놓일 자리 배경을 캔버스에서 읽어 글자색을 뒤집는다**(밝으면 검정+흰 그림자, 어두우면 흰색+검은 그림자). 빨강 `Link` 는 유지.
+  ⚠️ 캔버스에 글자를 그리기 전 `document.fonts.ready` 를 기다린다 — 없으면 Pretendard 대신 시스템 글꼴로 찍힌다(포트폴리오 PDF와 같은 함정).
+  ⚠️ 로컬에서 작품이 안 뜨면 `backend/.env` 의 `R2_PUBLIC_URL` 누락이다. ArtLook 은 캔버스 taint 를 피하려고 R2 이미지를 동일출처 프록시로 받는데, 그 값이 없으면 프록시가 400 을 낸다.
 - 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
 ## 인증 구조

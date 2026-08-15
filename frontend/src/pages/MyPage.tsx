@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -28,6 +28,7 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
+import { openArtLook, type ArtLookWork } from '@/lib/artlook';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
 import HostBadge from '@/components/shared/HostBadge';
 import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
@@ -893,7 +894,7 @@ function PortfolioSection() {
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
             >
-              <ExternalLink size={13} /> 공개 포트폴리오 보기
+              <ExternalLink size={13} /> 공개 작가 페이지 보기
             </a>
             <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
           </div>
@@ -970,10 +971,12 @@ function PortfolioSection() {
             {isCareerEmpty(savedCareer) ? (
               <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
             ) : (
-              /* PC에서는 2열 — 항목이 5종이라 1열이면 오른쪽 절반이 통째로 빈다 (모바일은 1열) */
-              <div className="sm:columns-2 sm:gap-x-8">
+              /* grid 3열 (모바일 1열 → sm 2열 → lg 3열). 공개 포트폴리오와 같은 배치다.
+                 columns(신문 단) 는 세로로 채워서 개인전+단체전이 한 열에 몰리고 아트페어만 옆으로 갔다.
+                 grid 는 순서대로 가로로 놓이고, items-start 라 항목 수가 달라도 각 칸이 자기 높이만 쓴다. */
+              <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 items-start">
                 {CAREER_LABELS.map(({ key, label }) => (savedCareer[key] ?? []).length > 0 && (
-                  <div key={key} className="break-inside-avoid mb-3">
+                  <div key={key}>
                     <p className="text-xs font-medium text-gray-400">{label}</p>
                     <ul className="mt-0.5 space-y-0.5">
                       {(savedCareer[key] ?? []).map((e, i) => (
@@ -1002,12 +1005,33 @@ function PortfolioSection() {
 
       {/* 작품 사진 관리 */}
       <div>
-        <p className="text-sm font-medium text-gray-500 mb-1">
-          작품 사진 ({images.length}/30)
-          <span className="text-xs text-gray-500 ml-2 font-normal">
-            <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
-          </span>
-        </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+          <p className="text-sm font-medium text-gray-500">
+            작품 사진 ({images.length}/30)
+            <span className="text-xs text-gray-500 ml-2 font-normal">
+              <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
+            </span>
+          </p>
+          {/* ArtLook 진입 — 작품 카드는 네 모서리(캡션·삭제·공개토글·좋아요)가 이미 차 있어
+              카드마다 버튼을 얹으면 난잡해진다. 여기서 전체를 넘기고 어떤 작품을 쓸지는 ArtLook 안에서 고른다. */}
+          {images.length > 0 && (
+            <button
+              onClick={() => {
+                const works: ArtLookWork[] = images.map(img => ({
+                  url: img.url,
+                  title: artworkTitle(img),
+                  artist: displayName(user),
+                  kind: 'portfolio' as const,
+                }));
+                if (openArtLook(works) === 0) toast.error('사용할 수 있는 작품 이미지가 없습니다.');
+              }}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer"
+              title="작품을 액자·전시 공간에 담아 SNS 홍보 이미지를 만듭니다"
+            >
+              <Megaphone size={13} /> 액자에 걸어보기
+            </button>
+          )}
+        </div>
         <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
         <PortfolioImageGrid
           images={images}

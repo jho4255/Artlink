@@ -18,8 +18,35 @@
   header h1 .tagline{ font-size:.58em; font-weight:600; color:var(--muted); letter-spacing:.2px; margin-left:6px; }
   header p{ margin:5px 0 0; font-size:12px; color:var(--muted); }
   .wrap{ display:grid; grid-template-columns:340px 1fr; gap:0; min-height:calc(100vh - 56px); }
-  @media(max-width:860px){ .wrap{ grid-template-columns:1fr; } }
+  @media(max-width:860px){
+    .wrap{ grid-template-columns:1fr; }
+    /* 좁은 화면은 패널·스테이지가 세로로 쌓이므로 높이 고정을 푼다(페이지 스크롤) */
+    html,body{ height:auto; }
+    body{ display:block; }
+    .wrap{ min-height:calc(100vh - 56px); }
+    .panel,.stage{ overflow:visible; }
+    .actions{ position:static; box-shadow:none; }
+  }
+  /* 설정이 세로로 1764px까지 늘어나 900px 화면에서 두 번 스크롤해야 했다(실측).
+     오른쪽 스테이지는 미리보기(616px)만 쓰고 좌우 242px씩 놀고 있었으므로,
+     넓은 화면에서는 그 여백을 패널로 돌려 **2열로 접는다** → 대부분 한 화면에 들어온다.
+     좁은 화면(<1200px)은 미리보기가 더 중요하므로 종전 1열 그대로. */
   .panel{ background:var(--panel); border-right:1px solid var(--line); padding:16px; overflow-y:auto; }
+  /* 패널을 **진짜 독립 스크롤 영역**으로 만든다.
+     원래 .panel 에 overflow-y:auto 가 있었지만 .wrap 이 min-height 라 패널이 콘텐츠만큼 늘어나
+     결국 페이지 전체가 스크롤됐다 → 설정을 내리면 미리보기도 같이 사라졌다.
+     높이를 화면에 고정하면 ① 미리보기가 항상 보이고 ② 아래 sticky 저장 버튼이 실제로 붙는다.
+     (헤더 높이가 바뀌어도 안전하도록 flex 로 잡는다) */
+  html,body{ height:100%; }
+  body{ display:flex; flex-direction:column; }
+  header{ flex:none; }
+  .wrap{ flex:1; min-height:0; }
+  .panel{ min-height:0; }
+  .stage{ overflow:auto; min-height:0; }
+  /* 저장 버튼은 패널 하단에 고정 — 화면 높이는 제각각이라 '스크롤을 없애는' 대신
+     **어느 크기에서도 저장에 바로 닿게** 한다. 좁은 화면에서 특히 크게 작용한다. */
+  .actions{ position:sticky; bottom:0; z-index:2; background:var(--panel);
+            padding:8px 0 4px; margin-top:4px; box-shadow:0 -8px 12px -8px rgba(0,0,0,.12); }
   .stage{ display:flex; align-items:center; justify-content:center; padding:24px; }
   .stage-inner{ max-width:100%; }
   canvas#preview{ max-width:100%; max-height:calc(100vh - 130px); box-shadow:0 10px 40px rgba(0,0,0,.18);
@@ -71,23 +98,56 @@
   .works img{ width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; cursor:pointer; border:2px solid transparent; background:#fff; }
   .works img:hover{ border-color:var(--accent); }
   .works img.active{ border-color:var(--accent); box-shadow:0 0 0 2px rgba(196,48,43,.3); }
+/* 작품이 많으면 목록이 세로로 길어져 아래 액자·배경 설정이 화면 밖으로 밀린다 → 9장씩 끊는다 */
+.pager{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
+.pager button{ width:30px; height:30px; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; color:#333; }
+.pager button:hover:not(:disabled){ border-color:var(--accent); color:var(--accent); }
+.pager button:disabled{ opacity:.3; cursor:default; }
+.pager span{ font-size:12px; color:#666; min-width:52px; text-align:center; }
   .hint{ font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
   code{ background:#efe; padding:1px 5px; border-radius:4px; font-size:11px; }
+  @media(min-width:1200px){
+    .wrap{ grid-template-columns:660px 1fr; }
+    .cols{ column-count:2; column-gap:18px; }
+    .cols .sec{ break-inside:avoid; }   /* 섹션이 열 경계에서 쪼개지지 않게 */
+    .tail{ margin-bottom:16px; }
+    .tail .ratios{ grid-template-columns:repeat(6,1fr); }   /* 660px 폭이면 6개가 한 줄 */
+    /* 칩 라벨이 두 줄로 접히면 프레임 3행·배경 4행에서만 100px 가까이 먹는다 → 한 줄로 고정.
+       잘린 이름은 title 툴팁으로 확인할 수 있다(buildChips 에서 넣는다). */
+    .chip span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* ⚠️ nowrap 을 주면 셀의 min-content 가 라벨 길이가 되어 1fr 이 그 아래로 못 줄고
+       2열 안에서 그리드가 컨테이너를 **넘어 잘린다**. minmax(0,1fr) 로 0까지 줄 수 있게 한다. */
+    .chips, .walls, .works{ grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .works{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .tail{ padding-bottom:4px; }
+    .tail .ratios{ grid-template-columns:repeat(6,minmax(0,1fr)); }
+    .cols .sec{ margin-bottom:14px; }
+    .panel .hint{ margin-top:6px; line-height:1.4; }
+    /* 저장·완료를 한 줄로 — 세로로 쌓으면 그것만 92px 을 쓴다 */
+    .actions{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
+    .actions .dl, .actions .back{ margin:0; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>Art<b>Look</b><span class="tagline">: 예술의 완성</span></h1>
-  <p>판매하신 작품을 액자와 전시 공간에 담아 SNS 홍보 이미지를 만들어 보세요</p>
+  <p>작품을 액자와 전시 공간에 담아 SNS 홍보 이미지를 만들어 보세요</p>
 </header>
 
 <div class="wrap">
   <div class="panel">
+    <div class="cols">
     <!-- 1. 판매 작품 (운영페이지에서 전달됨) -->
     <div class="sec">
-      <label>1 · 판매 작품</label>
+      <label>1 · 작품</label>
       <div class="works" id="works"></div>
-      <div class="hint" id="worksEmpty" style="display:none;">불러온 판매 작품이 없습니다. 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]를 통해 들어와 주세요.</div>
+      <div class="pager" id="worksPager" style="display:none;">
+        <button type="button" id="worksPrev" aria-label="이전 작품 목록">‹</button>
+        <span id="worksPage">1 / 1</span>
+        <button type="button" id="worksNext" aria-label="다음 작품 목록">›</button>
+      </div>
+      <div class="hint" id="worksEmpty" style="display:none;">불러온 작품이 없습니다. 마이페이지 &gt; 포트폴리오의 [액자에 걸어보기] 또는 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]로 들어와 주세요.</div>
     </div>
 
     <!-- 2. 프레임 스타일 -->
@@ -98,37 +158,10 @@
 
     <!-- 3. 두께 / 매트 / 효과 -->
     <div class="sec">
-      <label>3 · 두께 · 매트 · 효과</label>
-      <div class="row" style="display:none">
-        <label>프레임색</label>
-        <div class="swatches" id="frameSwatches"></div>
-        <input type="color" id="frameColor" value="#2b2b2b" />
-      </div>
-      <div class="row">
-        <label>두께</label>
-        <input type="range" id="frameW" min="1" max="8" value="3" />
-        <span class="val" id="frameWv">3%</span>
-      </div>
-      <div class="row">
-        <label>매트여백</label>
-        <input type="range" id="matteW" min="0" max="16" value="4" />
-        <span class="val" id="matteWv">4%</span>
-      </div>
-      <div class="row">
-        <label>매트색</label>
-        <div class="swatches" id="matteSwatches"></div>
-        <input type="color" id="matteColor" value="#f5f2ea" />
-      </div>
-      <div class="row">
-        <label>유리반사</label>
-        <input type="checkbox" id="glass" />
-        <span style="font-size:12px;color:var(--muted)">글라스 하이라이트</span>
-      </div>
-      <div class="row">
-        <label>캔버스질감</label>
-        <input type="checkbox" id="weave" />
-        <span style="font-size:12px;color:var(--muted)">작품 표면 직조 텍스처</span>
-      </div>
+      <label>3 · 조명</label>
+      <!-- 두께·매트여백·매트색·유리반사·캔버스질감은 화면에서 뺐다(2026-08-15).
+           프레임 스타일(2번)이 이미 모양을 정하고, 세부 조절은 거의 쓰이지 않으면서 세로를 크게 먹었다.
+           값은 state 기본값(두께 3% / 매트 4% 등)으로 고정되어 렌더링은 종전과 같다. -->
       <div class="row">
         <label>조명</label>
         <div class="toggle" id="lightSel" style="flex:1">
@@ -148,23 +181,29 @@
     <div class="sec">
       <label>4 · 배경</label>
       <div class="walls" id="walls"></div>
-      <div class="hint" style="margin-top:6px;">💡 미리보기에서 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
+      <div class="hint" style="margin-top:6px;">💡 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
     </div>
 
-    <!-- 5. 비율 -->
-    <div class="sec">
-      <label>5 · 출력 비율 (SNS)</label>
-      <div class="ratios" id="ratios"></div>
+    </div><!-- /.cols -->
+
+    <!-- 5·6 은 2열 밖(패널 전체 폭)에 나란히 — 6개 비율 버튼이 한 줄에 들어가 세로를 아낀다 -->
+    <div class="tail">
+      <div class="sec" style="margin-bottom:0;">
+        <label>5 · 출력 비율</label>
+        <div class="ratios" id="ratios"></div>
+      </div>
     </div>
 
-    <button class="dl" id="dl" disabled>홍보 이미지 저장 (PNG)</button>
-    <button class="back" id="back">완료 · ArtLink로 돌아가기</button>
-    <div class="hint">저장한 이미지는 인스타그램 등 SNS에 직접 올려 작품을 홍보하실 수 있습니다.</div>
+    <div class="hint" style="margin-top:0;margin-bottom:8px;">저장한 이미지는 인스타그램 등 SNS에 올려 홍보하실 수 있습니다.</div>
+    <div class="actions">
+      <button class="dl" id="dl" disabled>홍보 이미지 저장 (PNG)</button>
+      <button class="back" id="back">완료</button>
+    </div>
   </div>
 
   <div class="stage">
     <div class="stage-inner">
-      <div class="empty" id="empty">왼쪽에서 판매 작품을 선택하면 미리보기가 표시됩니다.</div>
+      <div class="empty" id="empty">왼쪽에서 작품을 선택하면 미리보기가 표시됩니다.</div>
       <canvas id="preview" style="display:none;"></canvas>
     </div>
   </div>
@@ -790,7 +829,51 @@ function compose(){
     ctx.drawImage(framed,x,y,fw,fh);
     if(!transparent) drawLightMap(ctx,W,H,{x,y,fw,fh});
   }
+  drawWatermark(ctx,W,H);
   return out;
+}
+
+// ============================================================
+//  워터마크 — 우측 하단 ArtLink 워드마크
+// ============================================================
+// 항상 찍는다(끌 수 없음). 이 도구를 여는 유일한 이유가 유입이라 워터마크가 빠지면 남는 게 없다.
+// 대신 크기를 절제하고(긴 변의 2.6%) 미리보기에도 그대로 보여준다 — 저장하고 나서 발견하면 배신감이 든다.
+//
+// 색: Navbar 로고와 같은 'Art'(흰) + 'Link'(#dc3545). 벽 배경이 화이트큐브부터
+// 호텔라운지까지 밝기가 제각각이라 그림자로 대비를 확보한다(배경을 덮지 않는다).
+function drawWatermark(ctx,W,H){
+  const LONGSIDE=Math.max(W,H);
+  const fs=Math.round(LONGSIDE*0.026);          // 글자 크기 — 긴 변의 2.6%
+  const pad=Math.round(LONGSIDE*0.028);         // 가장자리 여백
+  ctx.save();
+  ctx.font='700 '+fs+'px "Pretendard Variable",Pretendard,system-ui,sans-serif';
+  ctx.textBaseline='alphabetic';
+  ctx.textAlign='left';
+  const wArt=ctx.measureText('Art').width, wLink=ctx.measureText('Link').width;
+  const x=W-pad-(wArt+wLink), y=H-pad;
+
+  // 벽이 17종이라 밝기 편차가 크다(화이트큐브 ~ 호텔라운지). 흰 글씨로 고정하면 밝은 벽에서 흐려지고
+  // 검은 글씨로 고정하면 어두운 벽에서 묻힌다 → **놓일 자리의 배경을 읽어 글자색을 뒤집는다.**
+  // 합성이 끝난 캔버스에서 직접 읽으므로 조명 효과까지 반영된다(동일출처 프록시 덕에 taint 없음).
+  let lum=null, alpha=255;
+  try{
+    const bx=Math.max(0,Math.round(x)), by=Math.max(0,Math.round(y-fs));
+    const bw=Math.max(1,Math.min(W-bx,Math.round(wArt+wLink))), bh=Math.max(1,Math.min(H-by,Math.round(fs*1.3)));
+    const d=ctx.getImageData(bx,by,bw,bh).data;
+    let sum=0,n=0,asum=0;
+    for(let i=0;i<d.length;i+=16){ sum+=0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]; asum+=d[i+3]; n++; }
+    if(n){ lum=sum/n; alpha=asum/n; }
+  }catch(e){ /* 읽기 실패하면 흰 글씨 기본값 */ }
+  // 투명 배경(원본 비율·배경없음)은 흰 종이에 놓일 가능성이 높으니 어두운 글씨로 본다
+  const onLight = (alpha<40) || (lum!==null && lum>148);
+
+  ctx.shadowColor = onLight ? 'rgba(255,255,255,.65)' : 'rgba(0,0,0,.55)';
+  ctx.shadowBlur=Math.round(fs*0.35); ctx.shadowOffsetY=Math.round(fs*0.06);
+  ctx.fillStyle = onLight ? '#1f1f1f' : '#ffffff';
+  ctx.fillText('Art',x,y);
+  ctx.fillStyle='#dc3545';   // 브랜드 빨강은 밝기와 무관하게 유지
+  ctx.fillText('Link',x+wArt,y);
+  ctx.restore();
 }
 
 function render(){
@@ -839,6 +922,7 @@ FRAMES.forEach((f,i)=>{
   const s=Math.min(66/framed.width,82/framed.height);
   ctx.drawImage(framed,(72-framed.width*s)/2,(88-framed.height*s)/2,framed.width*s,framed.height*s);
   const span=document.createElement('span'); span.textContent=f.name;
+  chip.title=f.name;   // 라벨이 한 줄로 잘리므로 전체 이름은 툴팁으로
   chip.appendChild(cv); chip.appendChild(span);
   chip.onclick=()=>{ state.frameIdx=i; [...framesEl.children].forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); render(); };
@@ -852,6 +936,7 @@ WALLS.forEach((w,i)=>{
   const im=document.createElement('img'); im.src=w.src; im.loading='lazy';
   im.onerror=()=>{ im.style.background='#ddd'; };
   const span=document.createElement('span'); span.textContent=w.name;
+  chip.title=w.name;
   chip.appendChild(im); chip.appendChild(span);
   chip.onclick=()=>{ state.wallIdx=i; [...wallsEl.children].forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); render(); };
@@ -866,16 +951,43 @@ try{ SOLD_WORKS = JSON.parse(localStorage.getItem('artlook:works')||'[]'); }catc
 // 상대경로(로컬 /images, /uploads)는 이미 동일출처라 그대로 사용.
 function resolveSrc(url){ return /^https?:\/\//i.test(url) ? '/api/upload/image-proxy?url='+encodeURIComponent(url) : url; }
 let selectedWork=null;
-if(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length){
-  SOLD_WORKS.forEach((w,i)=>{
+// 작품 목록 — 한 화면에 9장(3×3)씩 끊어 넘긴다.
+// 30장을 한 번에 깔면 목록이 세로로 길어져 **아래 액자·배경 설정이 화면 밖으로 밀린다**(실사용 신고).
+// 곁들여 프록시 요청도 전체가 아니라 현재 페이지분만 나간다.
+const PER_PAGE=9;
+let worksPage=0, selectedIndex=0;
+
+function renderWorks(){
+  const total=SOLD_WORKS.length;
+  const pages=Math.max(1, Math.ceil(total/PER_PAGE));
+  worksPage=Math.min(Math.max(0,worksPage), pages-1);
+  worksEl.innerHTML='';
+  SOLD_WORKS.slice(worksPage*PER_PAGE, worksPage*PER_PAGE+PER_PAGE).forEach((w,j)=>{
+    const idx=worksPage*PER_PAGE+j;
     const img=document.createElement('img');
     img.src=resolveSrc(w.url); img.loading='lazy'; img.title=w.title||'';
     img.crossOrigin='anonymous';
-    if(i===0) img.classList.add('active');
-    img.onclick=()=>{ [...worksEl.children].forEach(x=>x.classList.remove('active')); img.classList.add('active'); selectedWork=w; loadFromSrc(resolveSrc(w.url)); };
+    if(idx===selectedIndex) img.classList.add('active');   // 페이지를 넘겨도 선택 표시가 유지된다
+    img.onclick=()=>{
+      selectedIndex=idx; selectedWork=w;
+      [...worksEl.children].forEach(x=>x.classList.remove('active'));
+      img.classList.add('active');
+      loadFromSrc(resolveSrc(w.url));
+    };
     img.onerror=()=>{ img.style.opacity='.3'; };
     worksEl.appendChild(img);
   });
+  const pager=document.getElementById('worksPager');
+  pager.style.display = pages>1 ? 'flex' : 'none';   // 9장 이하면 페이저를 숨긴다
+  document.getElementById('worksPage').textContent = (worksPage+1)+' / '+pages;
+  document.getElementById('worksPrev').disabled = worksPage===0;
+  document.getElementById('worksNext').disabled = worksPage>=pages-1;
+}
+
+if(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length){
+  document.getElementById('worksPrev').onclick=()=>{ worksPage--; renderWorks(); };
+  document.getElementById('worksNext').onclick=()=>{ worksPage++; renderWorks(); };
+  renderWorks();
   selectedWork=SOLD_WORKS[0];
   loadFromSrc(resolveSrc(SOLD_WORKS[0].url)); // 첫 작품 자동 로드
 } else {
@@ -887,23 +999,12 @@ function sanitizeName(s){ return String(s==null?'':s).replace(/[\\/:*?"<>|]+/g,'
 function downloadFileName(){
   const w=selectedWork||{};
   const parts=[w.artist, w.title, w.exhibition].map(sanitizeName).filter(Boolean);
-  parts.push('판매작');
+  // '판매작' 접미사는 운영페이지에서 넘어온 판매작에만. 포트폴리오 작품에 붙으면 사실과 다르다.
+  if(w.kind!=='portfolio') parts.push('판매작');
+  if(!parts.length) parts.push('ArtLook');
   return parts.join('_')+'.png';
 }
 
-// 색 스와치
-function buildSwatches(elId,colors,onpick,initial){
-  const el=document.getElementById(elId);
-  colors.forEach(col=>{ const s=document.createElement('div'); s.className='sw'+(col===initial?' active':'');
-    s.style.background= col==='transparent'
-      ? 'repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 0 0/8px 8px' : col;
-    s.onclick=()=>{ [...el.children].forEach(x=>x.classList.remove('active'));
-      s.classList.add('active'); onpick(col); }; el.appendChild(s); });
-}
-buildSwatches('frameSwatches', ['#2b2b2b','#5a3a1e','#c9a24b','#8a8d92','#f5f3ee','#2a3b5e'],
-  col=>{ state.frameColor=col; document.getElementById('frameColor').value=col; render(); }, '#2b2b2b');
-buildSwatches('matteSwatches', ['#f5f2ea','#ffffff','#e7e2d6','#d9d2c4','#1c1c1c'],
-  col=>{ state.matteColor=col; document.getElementById('matteColor').value=col; render(); }, '#f5f2ea');
 // 비율 버튼
 const ratiosEl=document.getElementById('ratios');
 RATIOS.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.name;
@@ -912,10 +1013,11 @@ RATIOS.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.na
     b.classList.add('active'); render(); }; ratiosEl.appendChild(b); });
 
 // 컬러 피커 / 토글
-document.getElementById('frameColor').oninput=e=>{ state.frameColor=e.target.value; render(); };
-document.getElementById('matteColor').oninput=e=>{ state.matteColor=e.target.value; render(); };
-document.getElementById('glass').onchange=e=>{ state.glass=e.target.checked; render(); };
-document.getElementById('weave').onchange=e=>{ state.weave=e.target.checked; render(); };
+
+// 웹폰트(Pretendard)가 도착하기 전에 캔버스에 글자를 그리면 시스템 기본 글꼴로 찍힌다.
+// 화면 텍스트와 달리 캔버스는 나중에 다시 그려지지 않으므로 폰트를 기다렸다가 한 번 더 렌더한다.
+// (포트폴리오 PDF에서 표지 큰 글씨가 폴백 글꼴로 나갔던 것과 같은 함정)
+if(document.fonts && document.fonts.ready){ document.fonts.ready.then(()=>{ if(state.img) render(); }); }
 
 // 조명 효과 선택/강도
 document.getElementById('lightSel').querySelectorAll('button').forEach(b=>{
@@ -926,11 +1028,6 @@ document.getElementById('lightSel').querySelectorAll('button').forEach(b=>{
 const lo=document.getElementById('lightOp'), lov=document.getElementById('lightOpv');
 lo.oninput=()=>{ state.effectOp=lo.value/100; lov.textContent=lo.value+'%'; render(); };
 
-// 슬라이더
-const fw=document.getElementById('frameW'), fwv=document.getElementById('frameWv');
-fw.oninput=()=>{ state.frame=fw.value/100; fwv.textContent=fw.value+'%'; render(); };
-const mw=document.getElementById('matteW'), mwv=document.getElementById('matteWv');
-mw.oninput=()=>{ state.matte=mw.value/100; mwv.textContent=mw.value+'%'; render(); };
 
 // (파일 첨부/드래그드롭은 제거됨 — 판매 작품 목록에서만 선택)
 

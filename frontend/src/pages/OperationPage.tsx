@@ -13,6 +13,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User, Star, Check, ArrowRight, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { openArtLook, type ArtLookWork } from '@/lib/artlook';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { composeSize, splitSize } from '@/lib/artwork';
@@ -1540,16 +1541,6 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
 // ============ 정산 (전시종료 후) ============
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
-// 판매 작품들을 ArtLook(액자·전시공간 홍보 도구)로 넘겨 새 탭에서 연다.
-// 핸드오프: localStorage 'artlook:works' = [{url,title}] (동일 출처라 탭 간 공유됨)
-function openArtLook(works: { url: string; title: string; artist?: string; exhibition?: string }[]) {
-  const valid = works.filter(w => w.url);
-  if (valid.length === 0) { toast.error('홍보할 판매 작품 이미지가 없습니다.'); return; }
-  try { localStorage.setItem('artlook:works', JSON.stringify(valid)); } catch { /* noop */ }
-  // 정적 페이지 — 명시적 index.html 경로(개발 Vite·운영 모두 안전, SPA fallback 회피)
-  window.open('/artlook/index.html', '_blank');
-}
-
 type EditWork = { index: number; title: string; image?: string; size?: string; medium?: string; year?: string; listPrice: string; sold: boolean; soldPrice: number; paymentMethod: 'CARD' | 'CASH' };
 type EditArtist = { user: { id: number; name: string; nickname?: string | null; email?: string }; galleryRatio: number; works: EditWork[] };
 
@@ -1777,7 +1768,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
 
   const grand = buildSettlement().grand;
   // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
-  const soldWorks = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle })));
+  const soldWorks: ArtLookWork[] = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle, kind: 'sold' as const })));
 
   return (
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
@@ -1823,7 +1814,7 @@ function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; is
             <p className="text-sm font-medium text-gray-900">판매한 작품들을 홍보해보세요</p>
             <p className="text-xs text-gray-500 mt-0.5">판매된 {soldWorks.length}점을 액자·전시 공간에 담아 SNS 홍보 이미지를 만들 수 있어요.</p>
           </div>
-          <button onClick={() => openArtLook(soldWorks)} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer">
+          <button onClick={() => { if (openArtLook(soldWorks) === 0) toast.error('홍보할 판매 작품 이미지가 없습니다.'); }} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer">
             <Megaphone size={15} /> ArtLook으로 홍보 이미지 만들기
           </button>
         </div>
