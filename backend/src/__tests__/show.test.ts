@@ -267,7 +267,8 @@ describe('Show API', () => {
       expect(res.status).toBe(201);
 
       // 상세 조회 시 정규화된 형식 반환
-      const detail = await request.get(`/api/shows/${res.body.id}`);
+      // 등록 직후 전시는 PENDING — 승인 전에는 비공개이므로 소유자 토큰으로 읽는다
+      const detail = await request.get(`/api/shows/${res.body.id}`).set('Authorization', `Bearer ${token}`);
       expect(detail.body.artists).toEqual([
         { name: '김작가', userId: 1 },
         { name: '외부 작가', userId: null },
@@ -289,7 +290,8 @@ describe('Show API', () => {
       });
       expect(res.status).toBe(201);
 
-      const detail = await request.get(`/api/shows/${res.body.id}`);
+      // 등록 직후 전시는 PENDING — 승인 전에는 비공개이므로 소유자 토큰으로 읽는다
+      const detail = await request.get(`/api/shows/${res.body.id}`).set('Authorization', `Bearer ${token}`);
       expect(detail.body.artists).toEqual([
         { name: '김작가', userId: null },
         { name: '이작가', userId: null },
@@ -326,7 +328,8 @@ describe('Show API', () => {
       expect(res.status).toBe(201);
 
       // 상세 조회 시 이미지 포함
-      const detail = await request.get(`/api/shows/${res.body.id}`);
+      // 등록 직후 전시는 PENDING — 승인 전에는 비공개이므로 소유자 토큰으로 읽는다
+      const detail = await request.get(`/api/shows/${res.body.id}`).set('Authorization', `Bearer ${token}`);
       expect(detail.body.images).toHaveLength(2);
       expect(detail.body.images[0].url).toBe('https://example.com/img1.jpg');
     });

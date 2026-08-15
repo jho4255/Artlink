@@ -68,7 +68,7 @@ sudo service postgresql start
 
 ## Testing
 
-- **889 tests**: Backend 701 (supertest, `artlink_test` DB 순차), Frontend 188 (jsdom)
+- **920 tests**: Backend 732 (supertest, `artlink_test` DB 순차), Frontend 188 (jsdom)
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
 - **Frontend**: jsdom 환경, 순수함수(utils) + zustand store 테스트
 - **Test helper** (`backend/src/__tests__/helpers.ts`): `cleanDb` (TRUNCATE CASCADE), `seedUsers` (id 1-4), `seedGallery`, `seedShow`
@@ -99,7 +99,8 @@ sudo service postgresql start
 20. **경력(`Career`)의 `education`/`award`는 선택 항목** — 기존에 저장된 JSON엔 없다. 직접 `career[key].length`로 접근 금지, 반드시 `lib/artwork.ts`의 `normalizeCareer()`를 통과시킬 것 (안 그러면 옛 데이터에서 런타임 에러)
 21. **목록 썸네일은 `Thumb` 컴포넌트로** (`components/shared/Thumb.tsx`) — 목록이 원본을 받아 한 페이지에 96MB를 쓰던 문제. 업로드 시 `t240/`에 240px를 함께 생성(`backend/src/lib/thumb.ts`), 없으면 원본 폴백. **확대·라이트박스·PDF는 원본 유지**(키우면 뭉개짐). 썸네일 키를 `String.replace`로 만들지 말 것 — 디렉터리가 중복돼 **R2에서만 조용히** 깨진다
 22. **공모 운영 권한은 `lib/exhibitionAccess.ts`로만 판정** — 아트링크(Admin) 주최 공모(`hostType='ADMIN'`)는 admin이 지정한 여러 갤러리(`ExhibitionManager`)가 오너처럼 운영한다. **위임은 `hostType==='ADMIN'`일 때만 인정**할 것 — 갤러리 주최 공모에 위임 행이 섞여도 권한을 주면 **남의 공모 지원자 개인정보가 통째로** 열린다. 새 엔드포인트에서 `gallery.ownerId !== req.user.id` 를 직접 쓰지 말고 `assertCanManageExhibition`(Admin 포함)/`operableExhibitionWhere` 를 쓸 것. **지원자 관리·초대·홍보사진 라우트에 `authorize('GALLERY')` 만 걸면 Admin이 막힌다** — 실제로 관리자가 수락/거절을 못 했다. `galleryId`(주관 갤러리)는 기존 코드 79곳이 전제하므로 nullable로 바꾸지 말 것
-23. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
+23. **공개 상세 라우트는 `status !== 'APPROVED'` 를 먼저 막을 것** — 목록만 거르고 상세를 열어두면 목록에 없는 심사중·반려 항목이 **주소로 id 만 치면 비로그인에게 다 보인다**(2026-08-15 수정). 당사자·Admin 만 열고 **404**로 응답(403은 존재를 알려준다). 탈퇴(WITHDRAWN)는 Admin 전용 유지. 새 공개 상세를 만들면 `private-detail.test.ts` 에 케이스를 추가할 것
+24. **`frontend/index.html`의 SEO 마커 삭제 금지** — `<!--SEO_META_START-->`~`<!--SEO_META_END-->` 사이를 서버(`lib/seoMeta.ts`)가 상세 페이지 요청 시 교체한다. 마커가 사라지면 **에러 없이 조용히** 기본 meta로 되돌아감(카톡 공유 미리보기·검색 노출 전부 무력화). meta 값을 코드로 만들 때는 반드시 `buildMetaTags()`를 통과시킬 것 — 직접 문자열 연결 시 XSS. 킬스위치 `SEO_META=off`
 
 ## TanStack Query Key Map
 

@@ -162,9 +162,18 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       },
     });
     if (!show) throw new AppError('전시를 찾을 수 없습니다.', 404);
-    // 탈퇴 회원의 전시는 공개에서 숨김(관리자 제외)
-    if (show.status === 'WITHDRAWN' && req.user?.role !== 'ADMIN') {
-      throw new AppError('전시를 찾을 수 없습니다.', 404);
+    // 승인된 것만 공개한다. 심사중(PENDING)·반려(REJECTED)·탈퇴(WITHDRAWN)는 **당사자와 Admin 만**.
+    //
+    // 예전엔 WITHDRAWN 만 막아서, 목록에는 안 뜨는데 **주소로 id 를 치면 비로그인에게도 전부 보였다**.
+    // 순번 id 라 1번부터 훑으면 심사 중인 신청서와 반려 사유까지 긁을 수 있었다.
+    // 없는 것처럼 404 로 돌려준다 — 403 이면 "그 번호에 뭔가 있다"는 것까지 알려주는 셈이다.
+    // 화이트리스트(APPROVED 만 통과)로 둔 이유: 나중에 상태가 늘어도 기본이 '숨김'이 되게.
+    if (show.status !== 'APPROVED') {
+      const viewer = req.user;
+      // 탈퇴(WITHDRAWN)는 종전대로 Admin 만 — 소유자에게도 다시 열지 않는다
+      const allowed = viewer?.role === 'ADMIN'
+        || (show.gallery.ownerId === viewer?.id && show.status !== 'WITHDRAWN');
+      if (!allowed) throw new AppError('전시를 찾을 수 없습니다.', 404);
     }
 
     let isFavorited = false;
