@@ -181,13 +181,13 @@ export default function HeroSlider() {
                   draggable={false}
                   loading={i === 0 ? 'eager' : 'lazy'}
                 />
-                {/* 하단 그래디언트 */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-
-                {/* 텍스트 */}
-                <div className="absolute bottom-12 md:bottom-16 left-5 md:left-10 right-5 md:right-auto max-w-xl pointer-events-none">
+                {/* 텍스트
+                    하단 그래디언트는 뺐다(2026-08-15) — 배너 이미지에 이미 디자인이 다 들어 있는데
+                    어둡게 덮어서 아래쪽이 안 보였다. 대신 **글자에만** 그림자를 줘서 밝은 이미지 위에서도
+                    읽히게 한다. 배경을 덮지 않으니 같은 문제가 다시 생기지 않는다. */}
+                <div className="absolute bottom-12 md:bottom-16 left-5 md:left-10 right-5 md:right-auto max-w-xl pointer-events-none [text-shadow:0_1px_4px_rgba(0,0,0,0.55)]">
                   {slide.description && (
-                    <p className="hidden sm:block text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/60 mb-2">
+                    <p className="hidden sm:block text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/80 mb-2">
                       {slide.description}
                     </p>
                   )}
@@ -201,7 +201,7 @@ export default function HeroSlider() {
                   <button
                     onClick={() => handleLink(slide.linkUrl)}
                     // p-3 + 네거티브 마진: 시각 위치는 유지하면서 터치 히트영역만 확대
-                    className="absolute bottom-5 md:bottom-16 right-5 md:right-10 p-3 -m-3 text-white/80 text-xs md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/40 hover:decoration-white"
+                    className="absolute bottom-5 md:bottom-16 right-5 md:right-10 p-3 -m-3 text-white text-xs md:text-base tracking-wide hover:text-white transition-colors cursor-pointer underline underline-offset-4 decoration-white/60 hover:decoration-white [text-shadow:0_1px_4px_rgba(0,0,0,0.55)]"
                   >
                     자세히 보기 →
                   </button>
