@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  artworkTitle, captionInline, captionLines, careerLineText, composeSize, groupBySeries,
+  artworkTitle, captionInline, captionLines, careerLineText, composeSize, groupBySeries, hasTitle,
   hasCaption, isCareerEmpty, normalizeCareer, seriesNames, splitSize, statusBadge, statusLabel,
 } from '../lib/artwork';
 import type { PortfolioImage } from '../types';
@@ -122,5 +122,31 @@ describe('경력', () => {
   it('careerLineText — 연도가 없으면 내용만 (작가마다 표기가 자유롭다)', () => {
     expect(careerLineText({ year: '2025', content: '개인전' })).toBe('2025 개인전');
     expect(careerLineText({ year: '', content: '2025 개인전' })).toBe('2025 개인전');
+  });
+});
+
+/**
+ * 공개 페이지는 제목이 없는 작품에 '무제' 를 붙이지 않는다.
+ * 실데이터 372점 중 제목이 있는 건 9점(2%)이라, 붙이면 화면이 '무제' 로 도배된다.
+ * 편집 화면은 반대로 보여줘야 작가가 빠진 걸 안다 — 그래서 artworkTitle 은 그대로 두고
+ * 표시 여부만 hasTitle 로 가른다.
+ */
+describe('hasTitle', () => {
+  const img = (o: Partial<{ title: string | null }>) => ({ title: null, ...o }) as never;
+
+  it('제목이 있으면 true', () => {
+    expect(hasTitle(img({ title: '겨울 들판' }))).toBe(true);
+  });
+
+  it('비었거나 공백뿐이면 false', () => {
+    expect(hasTitle(img({ title: null }))).toBe(false);
+    expect(hasTitle(img({ title: '' }))).toBe(false);
+    expect(hasTitle(img({ title: '   ' }))).toBe(false);
+  });
+
+  it("artworkTitle 과 갈린다 — '무제' 를 표시 여부 판정에 쓰면 안 된다", () => {
+    const untitled = img({ title: null });
+    expect(artworkTitle(untitled)).toBe('무제');   // 편집 화면용 표시값
+    expect(hasTitle(untitled)).toBe(false);        // 공개 화면 판정
   });
 });

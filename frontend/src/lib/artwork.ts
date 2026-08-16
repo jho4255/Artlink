@@ -64,6 +64,18 @@ export function artworkTitle(img: Pick<PortfolioImage, 'title'>): string {
 }
 
 /**
+ * 제목이 실제로 입력됐는지.
+ *
+ * `artworkTitle()` 은 빈 제목에 '무제' 를 돌려주므로 **표시 여부 판정에 쓰면 안 된다** —
+ * 실데이터 372점 중 제목이 있는 건 9점(2%)뿐이라, 그대로 그리면 화면이 '무제' 로 도배된다.
+ * 공개 페이지에서는 이걸로 걸러 제목 줄 자체를 그리지 않는다.
+ * (편집 화면은 반대로 '무제'/'정보 없음' 을 보여줘야 작가가 빠진 걸 안다)
+ */
+export function hasTitle(img: Pick<PortfolioImage, 'title'>): boolean {
+  return !!trimmed(img.title);
+}
+
+/**
  * 캡션 보조 줄 — [재료, 크기, 연도] 중 채워진 것만.
  * 세로로 쌓는 포맷(화이트 갤러리·스토리)이 쓴다.
  */

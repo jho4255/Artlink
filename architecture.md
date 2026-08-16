@@ -213,6 +213,21 @@ ArtLink/
 | ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
 | ShowDetailPage | 전시 상세, ImageLightbox, 소개수정(오너), 삭제, 찜, 작가→포트폴리오 | `pages/ShowDetailPage.tsx` |
 | PortfolioPage | 공개 포트폴리오 (약력, 경력[아트페어/개인전/단체전], 포트폴리오파일, 작품 이미지 그리드) | `pages/PortfolioPage.tsx` |
+
+> **작가 공개페이지 표시 규칙** (2026-08-16)
+> - **작품 격자**: `aspect-square` 칸 + `object-contain`, 칸 배경은 **흰색**. 예전 masonry(`columns`)는 폭만 맞고
+>   높이가 제각각이라 줄이 어긋났다. 칸을 정사각으로 고정해 행렬을 맞추되, 회색 타일을 깔면 타일이
+>   작품보다 먼저 읽히므로 배경은 두지 않는다. 비율은 그대로다(18번 규칙).
+> - **이미지 프리로드 제거**: masonry 시절 높이를 미리 몰라 30장을 전부 받은 뒤 한꺼번에 보여줬다.
+>   칸 높이가 정해지면서 불필요해졌다 — 한 장씩 lazy 로 들어와도 레이아웃이 움직이지 않는다.
+> - **캡션**: `hasTitle()` 이 false 면 제목 줄을 그리지 않는다. `artworkTitle()` 은 빈 제목에 '무제' 를
+>   돌려주므로 **표시 여부 판정에 쓰면 안 된다** — 실데이터 372점 중 제목이 있는 건 9점(2%)뿐이라
+>   그대로 그리면 화면이 '무제' 로 도배된다. 편집 화면(MyPage)은 반대로 보여줘야 작가가 빠진 걸 안다.
+>   보여줄 게 아무것도 없으면 `<figcaption>` 자체를 그리지 않는다(빈 요소가 여백을 먹는다).
+> - **약력·작가노트**: `reflowProse()`(`lib/prose.ts`)로 손으로 넣은 줄바꿈을 정리해 표시한다.
+>   **저장값은 건드리지 않는다.**
+> - **뒤로가기**: `useGoBack('/explore')`. `navigate(-1)` 은 기록이 있을 때만 동작하는데, 공개페이지는
+>   공유·새 탭으로 열리는 일이 잦아 그때 버튼이 죽는다. 기록이 없으면 목록으로 보낸다.
 | OperationPage | 공모 운영 페이지 (`/exhibitions/:id/operation`) — 공지/작가 전시정보 입력/갤러리·admin 열람 | `pages/OperationPage.tsx` |
 | OperationPrintPage | 작가 제출문서 PDF 인쇄 (`/exhibitions/:id/operation/print/:userId/:doc`) | `pages/OperationPrintPage.tsx` |
 | BenefitsPage | 혜택 목록 | `pages/BenefitsPage.tsx` |

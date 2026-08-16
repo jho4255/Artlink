@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -887,15 +887,16 @@ function PortfolioSection() {
         <h3 className="font-semibold">포트폴리오</h3>
         {!editing && (
           <div className="flex items-center gap-4">
-            {/* 편집 화면에서 '갤러리에게 이렇게 보인다'를 바로 확인할 길이 없었다 */}
-            <a
-              href={`/portfolio/${user?.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
+            {/* 편집 화면에서 '갤러리에게 이렇게 보인다'를 바로 확인할 길이 없었다.
+                예전엔 target="_blank" 로 새 탭에 띄웠는데, 새 탭에는 뒤로 갈 기록이 없어
+                공개페이지의 '뒤로가기'가 아무 일도 하지 않았다 → 같은 탭에서 이동한다.
+                Link(클라이언트 이동)라 뒤로가기가 즉시 마이페이지로 돌아온다. */}
+            <Link
+              to={`/portfolio/${user?.id}`}
+              className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
             >
               <ExternalLink size={13} /> 공개 작가 페이지 보기
-            </a>
+            </Link>
             <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
           </div>
         )}

@@ -380,7 +380,7 @@ export default function GalleryDetailPage() {
                 <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
               </>
             ) : (
-              <span className="text-gray-400 text-sm">아직 리뷰 없음</span>
+              <span className="text-gray-500 text-sm">아직 리뷰 없음</span>
             )}
           </div>
           {isEditingContact ? (
@@ -812,7 +812,7 @@ export default function GalleryDetailPage() {
 
           {/* 리뷰 목록 */}
           {gallery.reviews?.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">아직 리뷰가 없습니다.</p>
+            <p className="text-gray-500 text-center py-8">아직 리뷰가 없습니다.</p>
           ) : (
             <div className="space-y-4">
               {gallery.reviews?.map(review => {
@@ -1212,14 +1212,21 @@ function GalleryImageCarousel({
           >
             <ChevronRight size={20} />
           </button>
-          {/* 인디케이터 점 */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+          {/* 인디케이터 점
+              점 자체는 8px 이지만 그대로 두면 터치 영역이 8×8 이라 WCAG 2.2 AA(24×24)에 못 미치고
+              손가락으로는 사실상 누를 수 없다. 보이는 크기는 유지한 채 버튼만 24×24 로 키운다.
+              라벨이 없어 스크린리더가 빈 버튼으로 읽던 것도 함께 고친다. */}
+          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex z-10">
             {images.map((_, i) => (
               <button
                 key={i}
                 onClick={() => scrollToSlide(i)}
-                className={`w-2 h-2 rounded-full transition-all ${i === imgIndex ? 'bg-white w-5' : 'bg-white/50'}`}
-              />
+                aria-label={`${i + 1}번째 사진 보기`}
+                aria-current={i === imgIndex ? 'true' : undefined}
+                className="flex h-6 w-6 items-center justify-center cursor-pointer"
+              >
+                <span className={`block h-2 rounded-full transition-all ${i === imgIndex ? 'bg-white w-5' : 'bg-white/50 w-2'}`} />
+              </button>
             ))}
           </div>
         </>
