@@ -45,7 +45,14 @@ const CAREER_LABELS: { key: CareerKey; label: string }[] = [
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
-type ExhibitionViewMode = 'operation' | 'classic';
+/**
+ * 내 공모 목록 필터.
+ * 예전엔 `'operation' | 'classic'`(신규 운영 보기 / 기존 목록 보기) 두 벌의 **렌더링 토글**이었는데,
+ * 같은 목록을 두 가지로 그리다 보니 한쪽만 뒤처졌다(단계 배지·다음 할 일이 신규에만 있었다).
+ * 게다가 끝난 공모가 목록에 계속 쌓여 진행 중인 걸 찾기 어려웠다.
+ * 그래서 렌더링은 운영 허브 한 벌로 통일하고, 토글 자리를 **진행/종료 필터**로 바꿨다.
+ */
+type ExhibitionViewMode = 'active' | 'closed';
 type OperationTone = 'active' | 'wait' | 'accent' | 'done' | 'danger';
 
 interface GalleryOperationOverview {
@@ -150,14 +157,8 @@ export default function MyPage() {
   useEffect(() => {
     const rawTab = searchParams.get('tab');
     const t = rawTab === 'my-exhibitions-classic' ? 'my-exhibitions' : rawTab;
-    if (rawTab === 'my-exhibitions-classic') {
-      try {
-        localStorage.setItem('artlink:my-exhibitions-view', 'classic');
-      } catch {
-        // localStorage can be unavailable in hardened browser modes.
-      }
-      setSearchParams({ tab: 'my-exhibitions' }, { replace: true });
-    }
+    // 옛 딥링크(?tab=my-exhibitions-classic) 호환 — 클래식 목록은 없어졌으므로 '내 공모' 로만 보낸다
+    if (rawTab === 'my-exhibitions-classic') setSearchParams({ tab: 'my-exhibitions' }, { replace: true });
     if (t && t !== activeTab) setActiveTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -268,9 +269,7 @@ export default function MyPage() {
         {currentTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
         {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
         {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
-        {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && (
-          <MyExhibitionsSection initialViewMode={searchParams.get('tab') === 'my-exhibitions-classic' ? 'classic' : undefined} />
-        )}
+        {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
         {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
         {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
         {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
@@ -2222,14 +2221,9 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [exhibitionViewMode, setExhibitionViewMode] = useState<ExhibitionViewMode>(() => {
-    if (initialViewMode) return initialViewMode;
-    try {
-      return localStorage.getItem('artlink:my-exhibitions-view') === 'classic' ? 'classic' : 'operation';
-    } catch {
-      return 'operation';
-    }
-  });
+  // 항상 '진행중'으로 시작한다. 선택을 저장해두면 다음에 열었을 때 종료 탭이 떠 있어
+  // "내 공모가 다 사라졌다"로 읽힌다 — 필터는 기억하지 않는 편이 안전하다.
+  const [exhibitionViewMode, setExhibitionViewMode] = useState<ExhibitionViewMode>(initialViewMode ?? 'active');
 
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
@@ -2355,13 +2349,16 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
 
   const switchExhibitionView = (mode: ExhibitionViewMode) => {
     setExhibitionViewMode(mode);
-    setManageAppsExId(null);
-    try {
-      localStorage.setItem('artlink:my-exhibitions-view', mode);
-    } catch {
-      // localStorage can be unavailable in hardened browser modes.
-    }
+    setManageAppsExId(null);   // 필터를 바꾸면 열려 있던 지원자 목록은 닫는다
   };
+
+  // 종료 = 정산까지 끝난 것. '전시종료'는 아직 정산이 남아 있어 할 일이 있는 상태라 진행중에 둔다.
+  const activeExhibitions = overviewItems.filter((x) => !x.settledAt);
+  // 최근에 마감한 것부터 — 오래된 기록일수록 아래로
+  const closedExhibitions = overviewItems
+    .filter((x) => x.settledAt)
+    .sort((a, b) => new Date(b.settledAt!).getTime() - new Date(a.settledAt!).getTime());
+  const shownExhibitions = exhibitionViewMode === 'closed' ? closedExhibitions : activeExhibitions;
 
   return (
     <div>
@@ -2372,17 +2369,17 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
             <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
               <button
                 type="button"
-                onClick={() => switchExhibitionView('operation')}
-                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'operation' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                onClick={() => switchExhibitionView('active')}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'active' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
               >
-                신규 운영 보기
+                진행중인 공모 {activeExhibitions.length > 0 && <span className="text-gray-400">{activeExhibitions.length}</span>}
               </button>
               <button
                 type="button"
-                onClick={() => switchExhibitionView('classic')}
-                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'classic' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                onClick={() => switchExhibitionView('closed')}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'closed' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
               >
-                기존 목록 보기
+                종료된 공모 {closedExhibitions.length > 0 && <span className="text-gray-400">{closedExhibitions.length}</span>}
               </button>
             </div>
           )}
@@ -2547,7 +2544,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
         onCancel={() => setConfirmAction(null)}
       />
 
-      {!showForm && exhibitionViewMode === 'operation' && (
+      {!showForm && (
         <div className="space-y-5">
           <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
             <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between">
@@ -2577,16 +2574,22 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
             <div className="grid gap-4">
               {[0, 1].map(i => <div key={i} className="h-56 rounded-2xl bg-gray-100 animate-pulse" />)}
             </div>
-          ) : overviewItems.length === 0 ? (
+          ) : shownExhibitions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
-              <p className="text-sm text-gray-400">등록된 공모가 없습니다.</p>
-              <button onClick={openExForm} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-4 py-2 text-sm text-white">
-                <Plus size={14} /> 공모 등록
-              </button>
+              {exhibitionViewMode === 'closed' ? (
+                <p className="text-sm text-gray-500">아직 정산까지 끝난 공모가 없습니다.</p>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">{closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
+                  <button onClick={openExForm} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-4 py-2 text-sm text-white">
+                    <Plus size={14} /> 공모 등록
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid gap-4">
-              {overviewItems.map((item) => {
+              {shownExhibitions.map((item) => {
                 const apps = item.counts.applications;
                 const submissions = item.counts.submissions;
                 const settlement = item.counts.settlement;
@@ -2667,15 +2670,19 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                             >
                               <FileText size={14} /> 상세 운영
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              <Edit3 size={14} /> 추가 질문
-                            </button>
-                            {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다) */}
-                            {item.hostType !== 'ADMIN' && (
+                            {/* 마감(정산 완료)된 공모는 수정이 서버에서 막힌다 — 눌러보고 실패하게 두지 않는다 */}
+                            {!item.settledAt && (
+                              <button
+                                type="button"
+                                onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                <Edit3 size={14} /> 추가 질문
+                              </button>
+                            )}
+                            {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다).
+                                정산 완료 건도 마찬가지 — 지우면 판매·정산 기록이 통째로 사라진다(서버 400) */}
+                            {item.hostType !== 'ADMIN' && !item.settledAt && (
                               <button
                                 type="button"
                                 onClick={() => setDeleteTarget(item)}
@@ -2738,81 +2745,6 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
         </div>
       )}
 
-      {!showForm && exhibitionViewMode === 'classic' && (exhibitions.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">등록된 공모가 없습니다.</p>
-      ) : (
-        <div className="space-y-3">
-          {exhibitions.map((ex: any) => (
-            <div key={ex.id} className="p-4 border border-gray-100 rounded-xl">
-              <div className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-medium">{ex.title}</h3>
-                      <HostBadge exhibition={ex} />
-                    </div>
-                    <p className="text-sm text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]} · {regionLabels[ex.region]}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[ex.status] || ''}`}>
-                      {statusLabels[ex.status] || ex.status}
-                    </span>
-                    {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다) */}
-                    {ex.hostType !== 'ADMIN' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(ex); }}
-                        className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
-                        title="공모 삭제"
-                        aria-label="삭제"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {ex.status === 'REJECTED' && ex.rejectReason && (
-                  <p className="text-sm text-red-500 mt-2">거절 사유: {ex.rejectReason}</p>
-                )}
-              </div>
-              {/* 지원자 관리 */}
-              <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setManageAppsExId(manageAppsExId === ex.id ? null : ex.id)}
-                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
-                  >
-                    <Send size={10} /> {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
-                  </button>
-                  {ex.status === 'APPROVED' && (
-                    <button
-                      onClick={() => navigate(`/exhibitions/${ex.id}/operation/new`)}
-                      className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
-                    >
-                      <ClipboardList size={10} /> 운영 페이지
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setEditQuestionsEx({ id: ex.id, title: ex.title })}
-                    className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
-                  >
-                    <Edit3 size={10} /> 추가 질문 수정
-                  </button>
-                </div>
-                {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대) */}
-                {manageAppsExId === ex.id && (
-                  <div className="mt-2">
-                    <ApplicantManager
-                      exhibitionId={ex.id}
-                      exhibitionTitle={ex.title}
-                      customFields={ex.customFields}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
 
       <DeleteConfirmModal
         open={!!deleteTarget}

@@ -237,6 +237,36 @@ describe('Exhibition DELETE', () => {
     const apps = await testPrisma.application.findMany({ where: { exhibitionId: ex.id } });
     expect(apps).toHaveLength(0);
   });
+
+  /**
+   * 정산이 끝난 공모를 지우면 cascade 가 ArtworkSale·ArtistSettlement·SettlementApproval 까지
+   * 함께 지운다. 그건 **작가와 갤러리가 합의를 끝낸 금전 기록**이라, 버튼 한 번으로 사라지면
+   * 나중에 지급액 다툼이 생겨도 근거가 남지 않는다. 마이페이지 카드에 삭제 버튼이 있었다.
+   */
+  it('정산 완료된 공모는 갤러리가 삭제할 수 없다 → 400, 기록 보존', async () => {
+    const ex = await createExhibition({ title: 'Delete Settled Test' });
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED' } });
+    await testPrisma.artworkSale.create({ data: { exhibitionId: ex.id, artistUserId: 1, artworkIndex: 0, title: 'W', soldPrice: 1_000_000 } });
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { ended: true, settledAt: new Date() } });
+
+    const res = await request.delete(`/api/exhibitions/${ex.id}`).set('Authorization', `Bearer ${galleryToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('정산');
+
+    expect(await testPrisma.exhibition.findUnique({ where: { id: ex.id } })).not.toBeNull();
+    expect(await testPrisma.artworkSale.count({ where: { exhibitionId: ex.id } })).toBe(1);
+
+    await testPrisma.exhibition.delete({ where: { id: ex.id } });
+  });
+
+  it('정산 완료된 공모도 Admin은 삭제 가능 (잘못 만들어진 데이터를 치울 통로)', async () => {
+    const ex = await createExhibition({ title: 'Delete Settled Admin Test' });
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { ended: true, settledAt: new Date() } });
+
+    const res = await request.delete(`/api/exhibitions/${ex.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(await testPrisma.exhibition.findUnique({ where: { id: ex.id } })).toBeNull();
+  });
 });
 
 // ─── POST /exhibitions/:id/apply — edge cases ───

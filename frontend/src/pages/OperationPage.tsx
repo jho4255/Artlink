@@ -20,6 +20,8 @@ import Thumb from '@/components/shared/Thumb';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+// 진행 단계 스텝퍼도 두 뷰가 한 벌을 공유한다 (복붙 두 벌이 갈라지는 걸 막는다)
+import StatusPanel from '@/components/operation/StatusPanel';
 // 정산 섹션은 클래식 뷰와 **한 벌을 공유**한다 (돈 계산이 두 벌로 갈라지면 한쪽만 조용히 틀어진다)
 import SettlementSection from '@/components/operation/SettlementSection';
 import { won } from '@/lib/settlement';
@@ -472,7 +474,7 @@ export default function OperationPage() {
 
           <aside className="grid gap-4 min-w-0 lg:sticky lg:top-6">
             <div id="operation-stage" className="scroll-mt-24">
-              <StatusPanel exhibitionId={id!} access={access} />
+              <StatusPanel exhibitionId={id!} access={access} className="mb-0 rounded-lg border border-gray-200 bg-white p-4" />
             </div>
 
             <section className="rounded-2xl border border-gray-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
@@ -661,111 +663,6 @@ export default function OperationPage() {
   );
 }
 
-// ============ 공모 상태 관리 — 모집마감 → 확정 → 전시종료 스텝퍼 ============
-const LIFECYCLE_STEPS: { label: string; desc: string; next: Record<string, boolean>; back: Record<string, boolean> }[] = [
-  { label: '모집마감', desc: '모집공고가 목록에서 내려갑니다.', next: { recruitmentClosed: true }, back: { recruitmentClosed: false } },
-  { label: '확정', desc: '작가의 전시정보 수정이 잠깁니다. (전시 시작일이 지나면 자동 확정)', next: { confirmed: true }, back: { confirmed: false } },
-  { label: '전시종료', desc: '정산 단계로 전환되며 아래에 정산 입력이 나타납니다.', next: { ended: true }, back: { ended: false } },
-];
-
-function StatusPanel({ exhibitionId, access }: { exhibitionId: string; access: OperationAccess }) {
-  const qc = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, boolean>) => api.patch(`/operations/${exhibitionId}/lifecycle`, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] }); qc.invalidateQueries({ queryKey: ['exhibitions'] }); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '변경 실패'),
-  });
-
-  const locked = !!access.settled && !access.isAdmin;   // 관리자는 완료 후에도 수정 가능
-  // 현재 단계: 0=모집중, 1=모집마감, 2=확정, 3=전시종료
-  const stage = access.ended ? 3 : access.confirmed ? 2 : access.recruitmentClosed ? 1 : 0;
-  const stageLabel = ['모집중', '모집마감', '확정', '전시종료'][stage];
-
-  const goNext = () => {
-    if (stage >= 3) return;
-    const step = LIFECYCLE_STEPS[stage];
-    if (step.next.ended && !window.confirm('전시를 종료하고 정산 단계로 넘어갈까요?')) return;
-    mutation.mutate(step.next);
-  };
-  // 전시 시작일 경과 등으로 자동 확정된 '확정' 단계는 되돌리기가 백엔드에서 거부됨 → 버튼 비활성
-  const cannotUndoConfirm = stage === 2 && access.confirmed && !access.manualConfirmed;
-  const goPrev = () => {
-    if (stage <= 0) return;
-    if (cannotUndoConfirm) return;
-    mutation.mutate(LIFECYCLE_STEPS[stage - 1].back);
-  };
-
-  return (
-    <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-sm font-medium text-gray-900">공모 진행 단계</h2>
-        {locked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">정산완료</span>}
-      </div>
-
-      {/* 스텝퍼 */}
-      <div className="flex items-center">
-        {LIFECYCLE_STEPS.map((s, i) => {
-          const idx = i + 1;            // 이 노드가 나타내는 단계
-          const done = stage >= idx;    // 도달 완료
-          const target = stage + 1 === idx; // 다음에 진행할 단계
-          return (
-            <div key={s.label} className="flex items-center flex-1 last:flex-none">
-              <div className="flex flex-col items-center">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                  done ? 'bg-gray-900 text-white'
-                    : target ? 'bg-white text-gray-900 ring-2 ring-gray-900'
-                    : 'bg-gray-100 text-gray-400'}`}>
-                  {done ? <Check size={16} /> : idx}
-                </div>
-                <span className={`mt-1.5 text-xs whitespace-nowrap ${done || target ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{s.label}</span>
-              </div>
-              {i < LIFECYCLE_STEPS.length - 1 && (
-                <div className={`h-0.5 flex-1 mx-2 mb-5 rounded-full transition-colors ${stage >= idx + 1 ? 'bg-gray-900' : 'bg-gray-200'}`} />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 현재 상태 + 안내 */}
-      <p className="text-xs text-gray-500 mt-4 leading-relaxed">
-        현재 <b className="text-gray-900">{stageLabel}</b> 단계입니다.
-        {stage < 3 && <> 다음 단계: <b className="text-gray-900">{LIFECYCLE_STEPS[stage].label}</b> — {LIFECYCLE_STEPS[stage].desc}</>}
-        {stage === 2 && access.confirmed && !access.manualConfirmed && <span className="text-gray-400"> (전시 시작일 경과로 자동 확정됨)</span>}
-      </p>
-
-      {/* 액션 */}
-      {locked ? (
-        <p className="text-xs text-gray-400 mt-3">· <b className="text-green-700">정산이 완료</b>되어 운영 페이지가 잠겼습니다.</p>
-      ) : (
-        <div className="flex items-center gap-2 mt-4">
-          {stage < 3 && (
-            <button
-              onClick={goNext}
-              disabled={mutation.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 cursor-pointer"
-            >
-              다음 단계로 — {LIFECYCLE_STEPS[stage].label}
-              <ArrowRight size={15} />
-            </button>
-          )}
-          {stage > 0 && !cannotUndoConfirm && (
-            <button
-              onClick={goPrev}
-              disabled={mutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-            >
-              <Undo2 size={14} /> 이전 단계로
-            </button>
-          )}
-          {stage === 3 && (
-            <span className="text-sm text-gray-500">전시가 종료되었습니다. 아래에서 정산을 진행하세요.</span>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ============ 공지사항 ============
 function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; canManage: boolean }) {

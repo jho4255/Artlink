@@ -177,6 +177,11 @@ ArtLink/
     - 계산·표기는 `lib/settlement.ts`(`won`/`artistTotals`/`initialOpenArtistIds`)로 분리 — 컴포넌트 파일이 함수를 함께 export 하면 Vite fast-refresh 가 편집 중 입력을 날린다
     - 기본 접힘. 예외 둘: **작가 2명 이하**(개인전에서 매번 한 번 더 누르게 하지 않는다), **ISSUE 작가**(갤러리가 지금 봐야 할 사람). 접힌 줄엔 상태배지·판매점수·작가지급액만. 실측 18명 기준 문서 높이 16015px → 2807px
     - ⚠️ `truncate` 는 **min-content 를 줄이지 않는다** — `overflow:hidden` 은 flex 자동 최소치의 '바닥'만 없앨 뿐이라, min-content 로 크기가 정해지는 grid 트랙 안에서는 nowrap 텍스트가 폭을 그대로 밀어낸다. `OperationPage` 의 grid 아이템에 `min-w-0` 을 **하나라도 빼먹으면** 375px 에서 가로 스크롤이 생긴다(실측 447px). 모바일에선 토글이 한 줄을 다 쓰고 PDF 버튼이 아래로 내려간다 — 한 줄에 다 넣었더니 이름이 '한' 한 글자로 뭉개졌다
+- **정산 완료 후 공모 취급** (2026-08-17):
+  - 공고는 살아 있고 **잠긴다** — 상세/운영 페이지 열람·정산 PDF 는 그대로, 공지·제출자료·정산·단계 변경은 403(Admin 예외). 공개 목록에는 전시종료 때 이미 `recruitmentClosed` 로 빠져 있어 정산 완료가 추가로 하는 일은 없다. `settledAt` 을 되돌리는 API 는 없다(완료 모달에도 '되돌릴 수 없습니다')
+  - ⚠️ **삭제 차단**(`DELETE /exhibitions/:id`) — cascade 가 `ArtworkSale`·`ArtistSettlement`·`SettlementApproval`·`ExhibitionSubmission` 까지 지운다. 합의가 끝난 금전 기록이라 버튼 한 번에 사라지면 다툼 시 근거가 없다. 갤러리 400, **Admin 은 허용**(잘못 만든 데이터 정리용). 회귀 `exhibition-extended.test.ts`
+  - **마이페이지 내 공모 = [진행중인 공모] / [종료된 공모] 탭** — 예전엔 `신규 운영 보기 / 기존 목록 보기`(같은 목록의 렌더링 두 벌) 였는데, 한쪽만 뒤처지고(단계 배지·다음 할 일이 신규에만 있었다) 끝난 공모가 계속 쌓였다. 렌더링은 운영 허브 한 벌로 통일하고 토글 자리를 필터로 바꿨다. **종료 = `settledAt`**(전시종료는 정산이 남아 할 일이 있으므로 진행중). 종료 탭은 최근 마감순, 카드에서 [추가 질문]·[삭제] 를 감춘다(서버가 막는 동작이라 눌러보고 실패하게 두지 않는다). 필터는 localStorage 에 **저장하지 않는다** — 다음에 열었을 때 종료 탭이 떠 있으면 "공모가 다 사라졌다"로 읽힌다
+  - **진행 단계 스텝퍼에 4번째 '정산 완료'** (`components/operation/StatusPanel.tsx`, 두 운영 뷰 공용) — 예전엔 전시종료에서 끝나 완전히 마감됐는지 알 수 없었다. ⚠️ 앞 3단계와 달리 **버튼으로 넘어가는 단계가 아니다**(작가 확인을 거쳐야 함). `LIFECYCLE_STEPS`(버튼용 3개)와 `STEP_NODES`(표시용 4개)를 분리해 둔 이유 — 합치면 [다음 단계로]가 정산을 건너뛰고 마감시킨다. 마감 시 초록 체크 + [🔒 마감됨] 배지
 - **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
 - **ArtLook 진입 경로 2개** (2026-08-15): ① 운영페이지 정산 > 판매작 홍보 ② 마이페이지 > 포트폴리오 > [액자에 걸어보기].
   핸드오프는 `frontend/src/lib/artlook.ts` 로 공용화했고, payload 에 `kind`('sold'|'portfolio')를 실어

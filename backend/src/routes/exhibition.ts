@@ -1056,6 +1056,15 @@ router.delete('/:id', authenticate, async (req, res, next) => {
       );
     }
 
+    // 정산이 완료된 공모는 갤러리가 지울 수 없다.
+    // cascade 가 ArtworkSale·ArtistSettlement·SettlementApproval·ExhibitionSubmission 을 통째로 지우는데,
+    // 그건 **작가와 갤러리가 합의를 끝낸 금전 기록**이다. 버튼 한 번으로 사라지면
+    // 나중에 지급액 다툼이 생겨도 근거가 남지 않는다. (수락 되돌리기를 막는 규칙과 같은 선)
+    // Admin 은 예외 — 잘못 만들어진 데이터를 치울 통로는 남겨둔다.
+    if (exhibition.settledAt && !isAdmin) {
+      throw new AppError('정산이 완료된 공모는 삭제할 수 없습니다. 판매·정산 기록이 함께 사라집니다.', 400);
+    }
+
     // 삭제 전 직속 이미지/홍보사진 URL 수집 → cascade 삭제 후 실제 파일 정리(best-effort)
     const [exImgs, promos] = await Promise.all([
       prisma.exhibitionImage.findMany({ where: { exhibitionId: exhibition.id }, select: { url: true } }),
