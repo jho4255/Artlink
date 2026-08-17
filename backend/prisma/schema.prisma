@@ -555,6 +555,13 @@ model SettlementApproval {
   // 지문이 어긋나 자동으로 PENDING 으로 되돌아간다 → 금액이 그대로인 작가는 수락이 유지된다.
   // null = 옛 데이터/미응답. 옛 APPROVED 행은 첫 저장 때 한 번 재확인 대상이 된다(안전한 방향).
   snapshot     String?
+  // 이 작가에게 **마지막으로 물어본** 시각. 무응답 자동 수락 기한의 기준점이라
+  // PENDING 으로 만들 때마다(최초 요청·작가별 재요청·금액 수정으로 인한 초기화) 새로 찍는다.
+  // null = 옛 데이터 → 자동 수락 대상이 아니다(경고를 못 받은 사람에게 소급 적용하지 않는다).
+  askedAt      DateTime?
+  // 무응답으로 자동 수락된 시각. 사람이 직접 누른 수락과 반드시 구분돼야 한다 — 돈 문제라
+  // 나중에 "동의한 적 없다"는 다툼이 생기면 이 값이 유일한 근거다.
+  autoApprovedAt DateTime?
   updatedAt    DateTime   @default(now()) @updatedAt
 
   @@unique([exhibitionId, artistUserId])

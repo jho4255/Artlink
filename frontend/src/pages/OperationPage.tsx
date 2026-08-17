@@ -1550,7 +1550,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
 // 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null } | null; fingerprint?: string }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -1618,7 +1618,20 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
         <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-medium text-amber-900">갤러리가 정산 내역 확인을 요청했습니다.</p>
           <p className="text-xs text-amber-800/80 mt-0.5">아래 내역을 확인하고 <b>수락</b>하거나, 문제가 있으면 갤러리에 알려주세요. 모든 작가가 수락하면 정산이 완료됩니다.</p>
-          {myStatus === 'APPROVED' && <p className="text-sm font-medium text-green-700 mt-2">✓ 수락함 — 갤러리의 정산 완료를 기다리는 중입니다.</p>}
+          {/* 침묵이 동의로 바뀌는 규칙이라, 기한은 반드시 눈에 보여야 한다 */}
+          {data.autoApproveAt && myStatus !== 'APPROVED' && myStatus !== 'ISSUE' && (
+            <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs text-amber-900">
+              <b>{new Date(data.autoApproveAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}까지</b> 응답이 없으면 자동으로 수락 처리됩니다.
+              금액이 맞지 않으면 [문제 제기]를 눌러주세요.
+            </p>
+          )}
+          {myStatus === 'APPROVED' && (
+            <p className="text-sm font-medium text-green-700 mt-2">
+              {data.myApproval?.autoApproved
+                ? `✓ 기한 내 응답이 없어 자동 수락 처리되었습니다 — 문제가 있으면 갤러리에 문의해주세요.`
+                : '✓ 수락함 — 갤러리의 정산 완료를 기다리는 중입니다.'}
+            </p>
+          )}
           {myStatus === 'ISSUE' && (
             <p className="text-sm text-red-600 mt-2">문제 제기함: “{data.myApproval?.comment}”<br/><span className="text-xs text-gray-500">갤러리가 수정 후 다시 요청하면 재확인할 수 있어요.</span></p>
           )}

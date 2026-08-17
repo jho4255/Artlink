@@ -160,6 +160,17 @@ ArtLink/
     - `settlement/complete`: 전원 APPROVED 게이트에 더해 **지문 일치까지 확인**(PUT 을 우회한 직접 수정 방어). 어긋나면 400
     - ⚠️ **보내는 버튼은 화면 값을 먼저 저장한다** ([정산 확인 요청], [이 작가에게 다시 확인 요청]). 저장을 안 했더니 ①작가에게 **옛 금액**이 그대로 갔고 ②invalidate→refetch 가 입력 중이던 값을 **조용히 되돌렸다**(실측 재현). 저장 응답의 `resetIds` 로 그 작가가 이미 알림을 받았는지 보고 재요청을 건너뛴다(알림 2번 방지). 값을 확정/철회하는 [정산 완료]·[요청 취소]는 반대로 **미저장이면 막는다**(옛 금액으로 확정되거나 입력이 사라진다). 미저장 여부는 `lib/settlement.ts` 의 `settlementFormSignature` 로 화면 값 ↔ 서버 값 지문 비교, 화면엔 '저장 안 된 변경 있음' 배지
     - 회귀 테스트: `operation.test.ts > 정산 부분 재확인`(14), `settlement-fingerprint.test.ts`(8), `frontend/src/__tests__/settlement.test.ts`(15), E2E `e2e/_settle.mjs`(브라우저 42항목)
+  - **무응답 자동 수락 (3일)** (2026-08-17, migration 20260817140000, `lib/settlementDeadline.ts`):
+    - 확인 요청 후 작가가 3일간 응답하지 않으면 수락으로 처리. 응답이 없어 정산이 무기한 멈추는 걸 막는다
+    - 기준은 공모의 `settlementRequestedAt` 이 아니라 **작가별 `SettlementApproval.askedAt`** — 부분 재확인 때문에 작가마다 물어본 시점이 다르다. PENDING 을 만드는 **모든 경로**에서 새로 찍는다(최초 요청 / 작가별 재요청 / 금액 수정으로 인한 초기화) = **기한이 다시 시작된다**
+    - ⚠️ 특히 **금액 수정 시 연장**이 핵심 — 안 그러면 마감 직전에 금액을 바꿔놓고 자동 수락시키는 게 가능하다
+    - ⚠️ **ISSUE 는 절대 자동 수락하지 않는다**. 명시적으로 이의를 낸 사람을 침묵으로 간주하는 건 취지와 정반대
+    - 자동 수락 시 `autoApprovedAt` 기록 — 사람이 누른 수락과 반드시 구분(다툼 시 유일한 근거). 화면에도 '자동 수락' 회색 배지. **지문(snapshot)도 함께 써야 한다** — 안 쓰면 곧바로 '확인 이후 변경'으로 잡혀 완료가 400
+    - 기한은 **KST 달력 3일**(`endOfTodayKstAsUtc(askedAt) + 3일`). 72시간으로 하면 밤에 보낸 요청이 하루를 손해 본다 — 돈 판정은 작가에게 유리한 쪽으로
+    - 별도 스케줄러 없이 **정산 화면 조회/완료 시 훑는다**(`autoApproveOverdue`, 알림 TTL 정리와 같은 방식). best-effort — 실패해도 조회·완료는 진행
+    - 고지: 확인 요청 알림 3종 모두에 "3일간 응답이 없으면 자동 수락" 문구, 작가 화면에 기한 날짜, 갤러리 카드에 작가별 기한. 자동 수락되면 작가에게 알림
+    - ⚠️ **소급 적용하지 않는다** — 배포 시점의 기존 PENDING 행은 `askedAt` 이 NULL 이라 영원히 자동 수락되지 않는다. 안내를 받은 적 없는 사람에게 침묵=동의를 적용할 수 없기 때문. 기존 건은 갤러리가 [이 작가에게 다시 확인 요청]을 눌러야 기한이 시작되고, 그때 안내가 함께 나간다
+    - 회귀: `settlement-deadline.test.ts`(12, KST 경계 실측), `operation.test.ts > 무응답 자동 수락`(11), E2E `e2e/_autoapprove2.mjs`(10)
   - **작가용 정산서 PDF 는 갤러리 몫 금액을 찍지 않는다** (2026-08-17): `downloadArtistSettlementPdf(…, { forArtist: true })` → `artistSettlementHtml` 의 `hideGalleryAmount`. 화면(`MyArtistSettlementSection`)은 원래부터 판매합계·비율·내 정산액만 보여주는데 PDF 만 '갤러리 정산' 줄을 인쇄해 어긋나 있었다. **갤러리가 받는 작가별/전체 정산서는 그대로**(운영 기록에서 자기 몫이 사라지면 안 된다). 정보 은닉이 아니라 서식 규칙 — 판매합계·비율이 남으니 갤러리 몫은 뺄셈으로 나온다. 회귀 `frontend/src/__tests__/settlementPdf.test.ts`(6)
   - **정산 섹션 컴포넌트 공용화 + 작가별 접기/열기** (2026-08-17):
     - `components/operation/SettlementSection.tsx` 한 벌을 `OperationPage`(신규)·`OperationClassicPage`(클래식)가 공유(`className` 만 다름). 예전엔 같은 코드가 두 파일에 복붙돼 있어 **돈 계산이 한쪽만 조용히 틀어질 수 있었다**

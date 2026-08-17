@@ -28,16 +28,25 @@ import { openArtLook, type ArtLookWork } from '@/lib/artlook';
 import { won, artistTotals, initialOpenArtistIds, settlementFormSignature, type EditArtist, type EditWork } from '@/lib/settlement';
 import type { Settlement, SettlementArtist } from '@/types';
 
-type Approval = { status: string; comment?: string | null } | null;
+type Approval = {
+  status: string;
+  comment?: string | null;
+  /** 이 날짜까지 무응답이면 자동 수락 (PENDING 일 때만) */
+  autoApproveAt?: string | null;
+  /** 사람이 누른 수락이 아니라 무응답 자동 처리인가 */
+  autoApproved?: boolean;
+} | null;
 type SettlementData = Omit<Settlement, 'artists'> & {
   settled?: boolean; settledAt?: string | null; settlementRequested?: boolean; allApproved?: boolean;
   artists: (SettlementArtist & { approval?: Approval })[];
 };
 
 /** 접힌 줄의 상태 배지 — 요청 중이 아니어도 '이미 수락함' 은 보여준다(재요청해도 유지되는 정보라 중요) */
-function ApprovalBadge({ status }: { status?: string }) {
+function ApprovalBadge({ status, autoApproved }: { status?: string; autoApproved?: boolean }) {
   // shrink-0 + whitespace-nowrap 필수 — 좁은 화면에서 눌리면 '대 기 중' 처럼 세로로 쪼개진다
   const base = 'shrink-0 whitespace-nowrap text-[11px] px-1.5 py-0.5 rounded-full';
+  // 자동 수락은 사람이 누른 수락과 반드시 구분해서 보여준다 — 나중에 다툼이 생기면 이 구분이 근거다
+  if (status === 'APPROVED' && autoApproved) return <span className={`${base} bg-gray-100 text-gray-600`}>자동 수락</span>;
   if (status === 'APPROVED') return <span className={`${base} bg-green-100 text-green-700`}>수락</span>;
   if (status === 'ISSUE') return <span className={`${base} bg-red-100 text-red-700`}>문제 제기</span>;
   if (status === 'PENDING') return <span className={`${base} bg-gray-100 text-gray-500`}>대기중</span>;
@@ -321,7 +330,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
                     <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-2">
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="font-medium text-sm text-gray-900 truncate">{nameWithNickname(a.user)}</span>
-                        <ApprovalBadge status={appr?.status} />
+                        <ApprovalBadge status={appr?.status} autoApproved={appr?.autoApproved} />
                       </span>
                       {!open && (
                         <span className="text-xs text-gray-500 truncate">
@@ -336,6 +345,13 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
                     <button onClick={() => downloadArtist(ai, 'CARD')} disabled={zipping} className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50">카드</button>
                   </div>
                 </div>
+
+                {/* 언제까지 기다리면 되는지 — 갤러리도 알아야 [정산 완료] 시점을 잡는다 */}
+                {appr?.status === 'PENDING' && appr.autoApproveAt && (
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    {new Date(appr.autoApproveAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}까지 무응답이면 자동 수락
+                  </p>
+                )}
 
                 {/* 문제 제기는 접혀 있어도 보여준다 — 갤러리가 지금 조치해야 하는 유일한 항목 */}
                 {appr?.status === 'ISSUE' && appr.comment && (

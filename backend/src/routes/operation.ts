@@ -17,6 +17,7 @@ import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
 import { canOperateExhibition, operatorUserIds } from '../lib/exhibitionAccess';
 import { fingerprintsOf, settlementFingerprint } from '../lib/settlementFingerprint';
+import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
 
 const router = Router();
 
@@ -504,6 +505,60 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/**
+ * 무응답 자동 수락 처리 (3일).
+ *
+ * 별도 스케줄러 없이 **정산 화면을 열 때 훑는다** — 알림 TTL 정리(`notification.ts`)와 같은 방식이다.
+ * 자동 수락으로 막히는 건 갤러리의 [정산 완료]뿐이라, 누군가 화면을 볼 때 정리되면 충분하다.
+ *
+ * ⚠️ 자동 수락하면서 **지문(snapshot)을 반드시 함께 써 넣어야 한다**. 안 그러면 곧바로 '확인 이후
+ *    금액이 바뀐 행'으로 잡혀 완료가 400 으로 막힌다(사람이 누른 수락과 같은 규칙을 타야 한다).
+ * ⚠️ PENDING 만 대상. ISSUE(문제 제기)는 절대 자동 수락하지 않는다.
+ *
+ * best-effort — 여기서 실패해도 조회·완료 자체는 진행돼야 한다.
+ */
+async function autoApproveOverdue(exhibition: { id: number; title: string; settlementRequestedAt: Date | null; settledAt: Date | null }): Promise<number> {
+  if (!exhibition.settlementRequestedAt || exhibition.settledAt) return 0;
+  const exhibitionId = exhibition.id;
+  try {
+    const accepted = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
+    const acceptedIds = accepted.map((a) => a.userId);
+    if (acceptedIds.length === 0) return 0;
+
+    const pending = await prisma.settlementApproval.findMany({
+      where: { exhibitionId, status: 'PENDING', artistUserId: { in: acceptedIds } },
+      select: { artistUserId: true, askedAt: true },
+    });
+    const now = new Date();
+    const due = pending.filter((p) => isAutoApproveDue(p.askedAt, now)).map((p) => p.artistUserId);
+    if (due.length === 0) return 0;
+
+    const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
+    const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
+    const fps = fingerprintsOf(due, sales, ratios);
+
+    await prisma.$transaction(
+      due.map((uid) => prisma.settlementApproval.update({
+        where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: uid } },
+        data: { status: 'APPROVED', comment: null, autoApprovedAt: now, snapshot: fps.get(uid) ?? null },
+      })),
+    );
+
+    // 작가에게 알린다 — 본인이 누르지 않은 수락이므로 통보는 필수다
+    await prisma.notification.createMany({
+      data: due.map((uid) => ({
+        userId: uid,
+        type: 'SETTLEMENT_SHARED',
+        message: `"${exhibition.title}" 전시의 정산이 ${AUTO_APPROVE_DAYS}일간 응답이 없어 자동 수락 처리되었습니다.`,
+        linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+      })),
+    });
+    return due.length;
+  } catch {
+    return 0;   // 자동 처리 실패가 조회·완료를 막으면 안 된다
+  }
+}
+
 // ── 정산: 판매작 + 작가별 비율 계산 결과 (오너/Admin) ──
 function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any[], settlements: any[]) {
   const saleMap = new Map<string, { price: number; method: string }>(); // `${userId}:${idx}` → {price, method}
@@ -548,6 +603,9 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
+    // 스케줄러 대신 화면을 열 때 훑는다 (알림 TTL 정리와 같은 방식)
+    await autoApproveOverdue(exhibition);
+
     const accepted = await prisma.application.findMany({
       where: { exhibitionId, status: 'ACCEPTED' },
       include: { user: { select: { id: true, name: true, nickname: true, email: true } } },
@@ -560,7 +618,13 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
     const approvals = await prisma.settlementApproval.findMany({ where: { exhibitionId } });
-    const apprMap = new Map(approvals.map(a => [a.artistUserId, { status: a.status, comment: a.comment }]));
+    const apprMap = new Map(approvals.map(a => [a.artistUserId, {
+      status: a.status,
+      comment: a.comment,
+      // 갤러리 화면에 "8/20까지 무응답이면 자동 수락" 을 작가별로 보여주기 위한 값
+      autoApproveAt: a.status === 'PENDING' && a.askedAt ? autoApproveDeadline(a.askedAt) : null,
+      autoApproved: !!a.autoApprovedAt,
+    }]));
 
     const computed = computeSettlement(rows, sales, settlements);
     const artists = computed.artists.map(a => ({ ...a, approval: apprMap.get(a.user.id) || null }));
@@ -586,6 +650,7 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 조회할 수 있습니다.', 403);
 
+    await autoApproveOverdue(exhibition);
     const requested = !!exhibition.settlementRequestedAt;
     const settled = !!exhibition.settledAt;
     // 확인 요청(검토) 또는 정산 완료 전에는 작가에게 정산 내역 비공개
@@ -609,7 +674,10 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
       exhibitionTitle: exhibition.title, ended: exhibition.ended,
       requested, settled, settledAt: exhibition.settledAt,
       artist: artists[0],
-      myApproval: appr ? { status: appr.status, comment: appr.comment } : null,
+      myApproval: appr ? { status: appr.status, comment: appr.comment, autoApproved: !!appr.autoApprovedAt } : null,
+      // 이 날짜까지 응답이 없으면 자동 수락된다 — 화면에 반드시 보여줘야 하는 값
+      autoApproveAt: appr?.status === 'PENDING' && appr.askedAt ? autoApproveDeadline(appr.askedAt) : null,
+      autoApproveDays: AUTO_APPROVE_DAYS,
       // 지금 화면에 그린 금액의 지문. 수락할 때 그대로 돌려보내면 서버가 대조해
       // **보던 화면과 다른 금액에 동의하는 사고**를 막는다(갤러리가 검토 중에 고칠 수 있으므로).
       fingerprint: settlementFingerprint(sales, settlements[0]?.galleryRatio ?? 0),
@@ -679,10 +747,12 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       prisma.artworkSale.createMany({ data: saleData }),
       prisma.artistSettlement.deleteMany({ where: { exhibitionId } }),
       prisma.artistSettlement.createMany({ data: ratioData }),
+      // askedAt 갱신 = 자동 수락 기한 재시작. **금액을 고쳤으면 3일을 새로 준다** —
+      // 안 그러면 마감 직전에 금액을 바꿔놓고 자동 수락시키는 게 가능해진다.
       ...(staleIds.length > 0
         ? [prisma.settlementApproval.updateMany({
             where: { exhibitionId, artistUserId: { in: staleIds } },
-            data: { status: 'PENDING', comment: null, snapshot: null },
+            data: { status: 'PENDING', comment: null, snapshot: null, askedAt: new Date(), autoApprovedAt: null },
           })]
         : []),
     ]);
@@ -695,7 +765,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
           data: staleIds.map((uid) => ({
             userId: uid,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
-            message: `"${exhibition.title}" 전시의 정산 내역이 수정되었습니다. 다시 확인해주세요.`,
+            message: `"${exhibition.title}" 전시의 정산 내역이 수정되었습니다. 다시 확인해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
             linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           })),
         });
@@ -719,6 +789,9 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     if (!exhibition.ended) throw new AppError('전시 종료 후에 정산을 완료할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
     if (!exhibition.settlementRequestedAt) throw new AppError('먼저 [정산 확인 요청]을 보내 작가 확인을 받아야 합니다.', 400);
+
+    // 게이트를 보기 전에 기한 지난 무응답을 먼저 정리한다 (화면을 안 거치고 눌러도 반영되게)
+    await autoApproveOverdue(exhibition);
 
     // 전원 수락 게이트: 수락 작가 모두 APPROVED여야 완료 가능
     const acceptedArtists = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
@@ -809,7 +882,7 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
         : [prisma.settlementApproval.deleteMany({ where: { exhibitionId } })]),
       // 다시 확인 받을 작가만 초기화 후 PENDING 재생성 (수락 유지 대상은 건드리지 않는다)
       prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { in: askIds } } }),
-      prisma.settlementApproval.createMany({ data: askIds.map((uid) => ({ exhibitionId, artistUserId: uid, status: 'PENDING' })) }),
+      prisma.settlementApproval.createMany({ data: askIds.map((uid) => ({ exhibitionId, artistUserId: uid, status: 'PENDING', askedAt: new Date() })) }),
       prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: new Date() } }),
     ]);
 
@@ -820,7 +893,7 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
           data: askIds.map((uid) => ({
             userId: uid,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
-            message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요.`,
+            message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
             linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
           })),
         });
@@ -853,10 +926,12 @@ router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async 
     });
     if (app?.status !== 'ACCEPTED') throw new AppError('이 공모의 참여 작가가 아닙니다.', 400);
 
+    // askedAt 갱신 = 자동 수락 기한 3일 재시작
+    const askedAt = new Date();
     await prisma.settlementApproval.upsert({
       where: { exhibitionId_artistUserId: { exhibitionId, artistUserId } },
-      update: { status: 'PENDING', comment: null, snapshot: null },
-      create: { exhibitionId, artistUserId, status: 'PENDING' },
+      update: { status: 'PENDING', comment: null, snapshot: null, askedAt, autoApprovedAt: null },
+      create: { exhibitionId, artistUserId, status: 'PENDING', askedAt },
     });
 
     try {
@@ -864,7 +939,7 @@ router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async 
         data: {
           userId: artistUserId,
           type: 'SETTLEMENT_CONFIRM_REQUEST',
-          message: `"${exhibition.title}" 전시의 정산 확인을 다시 요청했습니다. 확인 후 수락해주세요.`,
+          message: `"${exhibition.title}" 전시의 정산 확인을 다시 요청했습니다. 확인 후 수락해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
           linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
         },
       });
@@ -999,7 +1074,7 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
 
     await prisma.settlementApproval.upsert({
       where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
-      update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot },
+      update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot, autoApprovedAt: null },
       create: { exhibitionId, artistUserId: userId, status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot },
     });
 

@@ -625,6 +625,136 @@ describe('공모 운영 페이지 API', () => {
       expect(r.status).toBe(200);
     });
 
+    /**
+     * 무응답 자동 수락 (3일) — 침묵을 동의로 바꾸는 장치라 기한 계산이 틀리면 작가가 손해를 본다.
+     * 핵심은 "마지막으로 물어본 때"가 기준이라는 것. 갤러리가 다시 물으면 기한도 다시 시작된다.
+     */
+    describe('무응답 자동 수락', () => {
+      const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+      const setAskedAt = (uid: number, at: Date) =>
+        testPrisma.settlementApproval.update({
+          where: { exhibitionId_artistUserId: { exhibitionId: exId, artistUserId: uid } },
+          data: { askedAt: at },
+        });
+      const apprOf = (uid: number) =>
+        testPrisma.settlementApproval.findUnique({ where: { exhibitionId_artistUserId: { exhibitionId: exId, artistUserId: uid } } });
+
+      beforeEach(async () => {
+        await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      });
+
+      it('요청 시 askedAt 이 찍히고, 3일이 지나면 자동 수락된다', async () => {
+        expect((await apprOf(artistA))!.askedAt).not.toBeNull();
+
+        await setAskedAt(artistA, daysAgo(5));
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+
+        const a = await apprOf(artistA);
+        expect(a!.status).toBe('APPROVED');
+        expect(a!.autoApprovedAt).not.toBeNull();   // 사람이 누른 수락과 구분된다
+        expect(a!.snapshot).not.toBeNull();          // 지문을 안 쓰면 곧바로 '변경됨'으로 잡혀 완료가 막힌다
+      });
+
+      it('기한 안이면 건드리지 않는다', async () => {
+        await setAskedAt(artistA, daysAgo(1));
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+        expect((await apprOf(artistA))!.status).toBe('PENDING');
+      });
+
+      it('문제 제기(ISSUE)는 아무리 오래돼도 자동 수락되지 않는다', async () => {
+        await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: false, comment: '이의 있습니다' });
+        await setAskedAt(artistA, daysAgo(30));
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+
+        const a = await apprOf(artistA);
+        expect(a!.status).toBe('ISSUE');
+        expect(a!.autoApprovedAt).toBeNull();
+      });
+
+      it('askedAt 이 없는 옛 데이터는 자동 수락 대상이 아니다 (소급 적용 금지)', async () => {
+        await testPrisma.settlementApproval.update({
+          where: { exhibitionId_artistUserId: { exhibitionId: exId, artistUserId: artistA } },
+          data: { askedAt: null },
+        });
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+        expect((await apprOf(artistA))!.status).toBe('PENDING');
+      });
+
+      // ── 기한 연장 ──
+      it('[이 작가에게 다시 확인 요청] 하면 기한이 다시 시작된다', async () => {
+        await setAskedAt(artistA, daysAgo(5));
+        await request.post(`/api/operations/${exId}/settlement/request/artist/${artistA}`).set('Authorization', `Bearer ${ownerTok}`);
+
+        const a = await apprOf(artistA);
+        expect(a!.askedAt!.getTime()).toBeGreaterThan(daysAgo(1).getTime());
+        // 다시 물었으니 곧바로 자동 수락되면 안 된다
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+        expect((await apprOf(artistA))!.status).toBe('PENDING');
+      });
+
+      it('금액을 고쳐 저장하면 그 작가의 기한이 다시 시작된다 (마감 직전 금액 변경 방지)', async () => {
+        // A 는 수락했지만 기한이 임박한 상태를 만든다
+        await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+        await setAskedAt(artistA, daysAgo(5));
+
+        // 금액 변경 → A 는 PENDING 으로 돌아가고 askedAt 도 새로 찍혀야 한다
+        await put({ ...baseline, sales: [{ ...baseline.sales[0], soldPrice: 5_000_000 }, baseline.sales[1]] });
+        const a = await apprOf(artistA);
+        expect(a!.status).toBe('PENDING');
+        expect(a!.askedAt!.getTime()).toBeGreaterThan(daysAgo(1).getTime());
+
+        // 바꾼 직후 바로 자동 수락되면 '고쳐놓고 자동 통과' 가 되므로 반드시 막혀야 한다
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+        expect((await apprOf(artistA))!.status).toBe('PENDING');
+      });
+
+      it('자동 수락된 뒤 갤러리가 금액을 고치면 다시 물어본다 (자동 수락 표시도 지워짐)', async () => {
+        await setAskedAt(artistA, daysAgo(5));
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+        expect((await apprOf(artistA))!.autoApprovedAt).not.toBeNull();
+
+        await put({ ...baseline, sales: [{ ...baseline.sales[0], soldPrice: 6_000_000 }, baseline.sales[1]] });
+        const a = await apprOf(artistA);
+        expect(a!.status).toBe('PENDING');
+        expect(a!.autoApprovedAt).toBeNull();
+      });
+
+      it('자동 수락으로 전원이 채워지면 정산 완료가 된다', async () => {
+        await setAskedAt(artistA, daysAgo(5));
+        await setAskedAt(artistB, daysAgo(5));
+        const done = await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+        expect(done.status).toBe(200);   // 화면을 안 거치고 눌러도 완료 직전에 훑는다
+      });
+
+      it('작가에게 기한과 자동 수락 여부를 알려준다', async () => {
+        const mine = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+        expect(mine.body.autoApproveDays).toBe(3);
+        expect(mine.body.autoApproveAt).toBeTruthy();
+        expect(mine.body.myApproval.autoApproved).toBe(false);
+
+        await setAskedAt(artistA, daysAgo(5));
+        const after = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+        expect(after.body.myApproval.status).toBe('APPROVED');
+        expect(after.body.myApproval.autoApproved).toBe(true);
+        expect(after.body.autoApproveAt).toBeNull();   // 이미 처리됐으므로 기한 표시 없음
+      });
+
+      it('자동 수락되면 작가에게 알림이 간다 (본인이 누르지 않은 수락이므로)', async () => {
+        await testPrisma.notification.deleteMany({});
+        await setAskedAt(artistA, daysAgo(5));
+        await request.get(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`);
+
+        const notis = await testPrisma.notification.findMany({ where: { userId: artistA } });
+        expect(notis.some((n) => n.message.includes('자동 수락'))).toBe(true);
+      });
+
+      it('확인 요청 알림에 자동 수락 안내가 들어간다 (모르고 침묵하는 일이 없게)', async () => {
+        const notis = await testPrisma.notification.findMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+        expect(notis.length).toBeGreaterThan(0);
+        expect(notis[0]!.message).toContain('3일간 응답이 없으면 자동 수락');
+      });
+    });
+
     it('수락 후 거절로 되돌린 작가의 확인 기록은 재요청 때 정리된다', async () => {
       await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
       await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
