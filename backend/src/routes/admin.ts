@@ -101,6 +101,8 @@ router.get('/exhibitions', authenticate, authorize('ADMIN'), async (req, res, ne
       where,
       select: {
         id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
+        // 운영 조회에서 진행중/종료를 나누기 위한 값. 갤러리 마이페이지와 같은 기준(정산 완료 = 종료)
+        ended: true, settledAt: true,
         gallery: { select: { id: true, name: true } },
         _count: { select: { applications: true } },
       },

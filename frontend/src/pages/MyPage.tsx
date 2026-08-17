@@ -4182,6 +4182,9 @@ function OvExhibitions() {
   const [submitted, setSubmitted] = useState('');
   const [selId, setSelId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // 진행/종료 필터 — 갤러리 마이페이지(내 공모)와 **같은 기준**을 쓴다: 종료 = 정산 완료(settledAt).
+  // 전시종료는 아직 정산이 남아 할 일이 있으므로 진행중에 둔다. 기준이 갈리면 두 화면의 숫자가 달라진다.
+  const [scope, setScope] = useState<'active' | 'closed'>('active');
 
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
     queryKey: ['ov-exhibitions', submitted],
@@ -4195,6 +4198,13 @@ function OvExhibitions() {
   });
 
 
+  // 검색 결과 안에서 나눈다 — 검색어를 지운 채 탭만 바꾸면 전체가 다시 갈린다
+  const activeList = exhibitions.filter((ex) => !ex.settledAt);
+  const closedList = exhibitions
+    .filter((ex) => ex.settledAt)
+    .sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
+  const shown = scope === 'closed' ? closedList : activeList;
+
   return (
     <div className="space-y-4">
       <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
@@ -4203,11 +4213,26 @@ function OvExhibitions() {
         <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
       </form>
 
-      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : exhibitions.length === 0 ? (
-        <p className="text-gray-400 text-center py-6 text-sm">공모가 없습니다.</p>
+      <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+        {([['active', '진행중인 공모', activeList.length], ['closed', '종료된 공모', closedList.length]] as const).map(([k, label, n]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => { setScope(k); setSelId(null); setExpanded(null); }}
+            className={`rounded-md px-3 py-1.5 text-sm transition ${scope === k ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+          >
+            {label} {n > 0 && <span className="text-gray-400">{n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : shown.length === 0 ? (
+        <p className="text-gray-500 text-center py-6 text-sm">
+          {scope === 'closed' ? '정산까지 끝난 공모가 없습니다.' : exhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '공모가 없습니다.'}
+        </p>
       ) : (
         <div className="space-y-1.5">
-          {exhibitions.map((ex) => (
+          {shown.map((ex) => (
             <button key={ex.id} onClick={() => { setSelId(ex.id); setExpanded(null); }}
               className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === ex.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
               <div className="min-w-0">
@@ -4215,6 +4240,9 @@ function OvExhibitions() {
                 <p className="text-xs text-gray-500 truncate">{ex.gallery?.name} · 마감 {ovDate(ex.deadline)}</p>
               </div>
               <div className="flex items-center gap-2 flex-none">
+                {ex.settledAt
+                  ? <span className="shrink-0 whitespace-nowrap text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">정산 완료</span>
+                  : ex.ended && <span className="shrink-0 whitespace-nowrap text-[11px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">정산 단계</span>}
                 <OvBadge status={ex.status} kind="post" />
                 <span className="text-xs text-gray-500">지원 {ex._count?.applications ?? 0}</span>
               </div>

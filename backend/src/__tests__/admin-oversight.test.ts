@@ -72,6 +72,24 @@ describe('Admin 운영 조회 API', () => {
       expect(ex._count.applications).toBe(2);
     });
 
+    /**
+     * 운영 조회의 [진행중인 공모 / 종료된 공모] 탭이 이 두 필드로 나뉜다.
+     * 빠지면 화면이 에러 없이 **전부 진행중으로** 보인다 — 종료 탭이 영원히 비어도 눈치채기 어렵다.
+     */
+    it('진행/종료 구분에 필요한 ended·settledAt 을 함께 내려준다', async () => {
+      const res = await request.get('/api/admin/exhibitions').set('Authorization', `Bearer ${adminTok}`);
+      const ex = res.body.find((e: any) => e.id === exhibitionId);
+      expect(ex).toHaveProperty('ended');
+      expect(ex).toHaveProperty('settledAt');
+      expect(ex.settledAt).toBeNull();
+
+      await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { ended: true, settledAt: new Date() } });
+      const after = await request.get('/api/admin/exhibitions').set('Authorization', `Bearer ${adminTok}`);
+      const done = after.body.find((e: any) => e.id === exhibitionId);
+      expect(done.ended).toBe(true);
+      expect(done.settledAt).not.toBeNull();
+    });
+
     it('제목 검색(q) 필터', async () => {
       const hit = await request.get('/api/admin/exhibitions?q=Test').set('Authorization', `Bearer ${adminTok}`);
       expect(hit.body.length).toBeGreaterThan(0);
