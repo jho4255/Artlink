@@ -79,6 +79,7 @@ ArtLink/
 - **ExhibitionSubmission** — 수락 작가의 전시정보 제출 (출품리스트/작가약력/작가노트 JSON, unique exhibitionId+userId)
 - **ArtworkSale** — 전시종료 후 판매작 (artistUserId+artworkIndex, soldPrice 원, unique exhibitionId+artist+index)
 - **ArtistSettlement** — 작가별 정산 비율 (galleryRatio %, 작가=100−갤러리, unique exhibitionId+artist)
+- **SettlementApproval.snapshot** — 작가가 **응답할 때 본 금액**의 지문. 갤러리가 그 작가 금액을 고치면 어긋나 자동으로 재확인 대상이 된다(`lib/settlementFingerprint.ts`). null=옛 데이터/미응답
 - **Exhibition** 상태필드: recruitmentClosed(모집마감), confirmed(확정·작가수정잠금/전시시작일경과시자동), ended(전시종료)
   - **라이프사이클 순서 강제** (오너 한정, Admin은 우회): 모집마감 → 확정 → 전시종료. 확정은 모집마감 후, 전시종료는 확정 후에만 가능. 역순 해제는 뒷 단계부터.
 - **ExhibitionImage** — 공모 다중 사진 (url, order, exhibitionId Cascade). 첫 사진(order 최소)이 대표 `imageUrl`과 동기화. 기존 `imageUrl`만 있던 공모는 상세 GET 시 lazy 백필. 상세 페이지 인라인 관리(추가/삭제(최소1장)/드래그 순서변경, 최대 20장)
@@ -142,11 +143,29 @@ ArtLink/
   - 전시종료 → 정산: 작가별 출품작 판매체크+판매가(원), 갤러리비율 입력(작가 자동). API `GET/PUT /api/operations/:id/settlement`
   - 정산 PDF: 작가별/전체 (`downloadArtistSettlementPdf`, `downloadOverallSettlementPdf`). method 지정 시 라벨 "현금/카드 정산서". R2 이미지는 `proxied()`로 동일출처 프록시 경유(캔버스 taint 방지 → PDF에 작품사진 정상 표시)
   - **정산 2단계 승인제** (migration 20260614141021 settledAt, 20260615 settlement_approval):
-    - `SettlementApproval{exhibitionId,artistUserId,status PENDING|APPROVED|ISSUE,comment}` + `Exhibition.settlementRequestedAt`
-    - 흐름: 갤러리 [정산 확인 요청]`POST .../settlement/request`(수락작가 전원 PENDING 생성+알림 SETTLEMENT_CONFIRM_REQUEST) → 작가 `POST .../settlement/respond`{approve|comment}(수락 APPROVED / 문제 ISSUE+코멘트→오너 알림 SETTLEMENT_ISSUE) → 전원 APPROVED여야 `POST .../settlement/complete`(settledAt) 가능
-    - 요청 중: `PUT settlement` 403 잠금, [요청 취소]`.../settlement/request/cancel`로 해제 후 수정·재요청
+    - `SettlementApproval{exhibitionId,artistUserId,status PENDING|APPROVED|ISSUE,comment,snapshot}` + `Exhibition.settlementRequestedAt`
+    - 흐름: 갤러리 [정산 확인 요청]`POST .../settlement/request`(재확인 대상만 PENDING 생성+알림 SETTLEMENT_CONFIRM_REQUEST) → 작가 `POST .../settlement/respond`{approve|comment}(수락 APPROVED / 문제 ISSUE+코멘트→오너 알림 SETTLEMENT_ISSUE) → 전원 APPROVED여야 `POST .../settlement/complete`(settledAt) 가능
+    - 요청 중에도 `PUT settlement` **수정 가능**(2026-08-17, 이전엔 403 잠금). [요청 취소]`.../settlement/request/cancel`는 정산을 작가들에게서 통째로 다시 감출 때만
     - `my-settlement`: **요청중 또는 완료 시** 작가에게 공개(+myApproval). `GET settlement`: artist별 approval + allApproved
     - 프론트: 갤러리 정산섹션 OPEN[정산저장|정산확인요청]/REQUESTED[요청취소|정산완료(전원수락시활성)]+작가별 수락/문제뱃지+코멘트, 작가 [수락]/[문제제기+코멘트]
+  - **부분 재확인 — 금액이 바뀐 작가만 다시 묻는다** (2026-08-17, migration 20260817120000_add_settlement_approval_snapshot):
+    - 왜: 예전엔 [요청 취소]가 `settlementApproval` 을 통째로 지워서, **한 명이 문제를 제기하면 전원이 다시 확인**해야 했다. 18명짜리 단체전(실데이터)에서 1명 때문에 17명을 다시 붙잡는 셈이라 실무에서 못 쓴다
+    - 지문(`backend/src/lib/settlementFingerprint.ts`): 작가별 `r{비율}|{작품index}:{판매가}:{결제수단},…`. 응답 시 `SettlementApproval.snapshot` 에 저장. **`ArtworkSale.title` 은 넣지 않는다** — 화면 제목은 작가 출품목록에서 오고 이 컬럼은 판매 당시 스냅샷이라, 넣으면 금액이 그대로인데도 멀쩡한 수락이 풀린다. `findMany` 순서를 믿지 말고 반드시 index 정렬 후 생성
+    - **요청을 유지한 채 그 작가만 고쳐 보낸다** — `PUT settlement` 의 요청 중 403 잠금을 없앴다. 예전엔 수정 경로가 [요청 취소]뿐이라, 한 명을 고치려면 요청 전체를 내려야 했고 **아직 검토 중이던 작가의 화면까지 닫혔다**(`my-settlement` 가 requested:false 로 비공개). 지금은 저장만 하면 끝
+    - `PUT settlement`: 저장 후 지문이 어긋난 작가만 `PENDING`(+comment/snapshot null)로 되돌리고, **요청이 열려 있으면 그 작가에게만** 재확인 알림(`SETTLEMENT_CONFIRM_REQUEST`, "…수정되었습니다"). `{resetCount, notified}` 반환. **관리자가 요청 중 금액을 고쳐도 여기서 자동으로 풀린다** — 예전엔 작가가 못 본 금액으로 완료될 수 있었다
+    - ⚠️ **낙관적 동시성**: 갤러리가 검토 중에 고칠 수 있게 되면서, 작가가 **옛 화면을 띄워둔 채 수락**하면 본 적 없는 금액에 동의한 기록이 남는다. `GET my-settlement` 이 현재 지문(`fingerprint`)을 함께 내려주고, `POST settlement/respond` 가 그걸 되돌려받아 대조 → 불일치면 **409**(프론트는 409에서 `['operation-my-settlement']` invalidate 해 최신 금액을 다시 그린다). 지문을 안 보내는 옛 클라이언트는 통과(하위호환)
+    - `POST .../settlement/request/artist/:artistUserId`: **그 작가만** PENDING 으로 되돌리고(코멘트도 지움) 알림. 금액을 고칠 게 없는데 ISSUE 가 남은 경우(작가가 잘못 봤거나 전화로 이미 풀린 경우)의 출구 — 없으면 전원 수락이 안 돼 정산을 못 끝내고 결국 요청 전체를 내렸다 올려야 한다. 화면에선 **요청 중인 모든 작가 카드**에 [이 작가에게 다시 확인 요청] (상태별로 감췄더니 금액을 고쳐 PENDING 이 된 순간 버튼이 사라져 다시 보낼 길이 없었다). 수락 작가 검증(임의 id 주입 차단), 요청 전이면 400
+    - `request/cancel`: 승인 기록을 **지우지 않고** `settlementRequestedAt` 만 해제(`keptCount` 반환)
+    - `settlement/request`: `APPROVED && snapshot 일치` 인 작가는 건너뛰고(=수락 유지), 나머지(미응답·ISSUE·금액변경)만 PENDING 재생성 + **그들에게만 알림**. `{requestedCount, keptCount}` 반환. ISSUE 는 금액이 그대로여도 다시 묻는다(그 상태로는 어차피 완료 불가). 수락 취소된 작가 행은 이때 정리
+    - `settlement/complete`: 전원 APPROVED 게이트에 더해 **지문 일치까지 확인**(PUT 을 우회한 직접 수정 방어). 어긋나면 400
+    - ⚠️ **보내는 버튼은 화면 값을 먼저 저장한다** ([정산 확인 요청], [이 작가에게 다시 확인 요청]). 저장을 안 했더니 ①작가에게 **옛 금액**이 그대로 갔고 ②invalidate→refetch 가 입력 중이던 값을 **조용히 되돌렸다**(실측 재현). 저장 응답의 `resetIds` 로 그 작가가 이미 알림을 받았는지 보고 재요청을 건너뛴다(알림 2번 방지). 값을 확정/철회하는 [정산 완료]·[요청 취소]는 반대로 **미저장이면 막는다**(옛 금액으로 확정되거나 입력이 사라진다). 미저장 여부는 `lib/settlement.ts` 의 `settlementFormSignature` 로 화면 값 ↔ 서버 값 지문 비교, 화면엔 '저장 안 된 변경 있음' 배지
+    - 회귀 테스트: `operation.test.ts > 정산 부분 재확인`(14), `settlement-fingerprint.test.ts`(8), `frontend/src/__tests__/settlement.test.ts`(15), E2E `e2e/_settle.mjs`(브라우저 42항목)
+  - **작가용 정산서 PDF 는 갤러리 몫 금액을 찍지 않는다** (2026-08-17): `downloadArtistSettlementPdf(…, { forArtist: true })` → `artistSettlementHtml` 의 `hideGalleryAmount`. 화면(`MyArtistSettlementSection`)은 원래부터 판매합계·비율·내 정산액만 보여주는데 PDF 만 '갤러리 정산' 줄을 인쇄해 어긋나 있었다. **갤러리가 받는 작가별/전체 정산서는 그대로**(운영 기록에서 자기 몫이 사라지면 안 된다). 정보 은닉이 아니라 서식 규칙 — 판매합계·비율이 남으니 갤러리 몫은 뺄셈으로 나온다. 회귀 `frontend/src/__tests__/settlementPdf.test.ts`(6)
+  - **정산 섹션 컴포넌트 공용화 + 작가별 접기/열기** (2026-08-17):
+    - `components/operation/SettlementSection.tsx` 한 벌을 `OperationPage`(신규)·`OperationClassicPage`(클래식)가 공유(`className` 만 다름). 예전엔 같은 코드가 두 파일에 복붙돼 있어 **돈 계산이 한쪽만 조용히 틀어질 수 있었다**
+    - 계산·표기는 `lib/settlement.ts`(`won`/`artistTotals`/`initialOpenArtistIds`)로 분리 — 컴포넌트 파일이 함수를 함께 export 하면 Vite fast-refresh 가 편집 중 입력을 날린다
+    - 기본 접힘. 예외 둘: **작가 2명 이하**(개인전에서 매번 한 번 더 누르게 하지 않는다), **ISSUE 작가**(갤러리가 지금 봐야 할 사람). 접힌 줄엔 상태배지·판매점수·작가지급액만. 실측 18명 기준 문서 높이 16015px → 2807px
+    - ⚠️ `truncate` 는 **min-content 를 줄이지 않는다** — `overflow:hidden` 은 flex 자동 최소치의 '바닥'만 없앨 뿐이라, min-content 로 크기가 정해지는 grid 트랙 안에서는 nowrap 텍스트가 폭을 그대로 밀어낸다. `OperationPage` 의 grid 아이템에 `min-w-0` 을 **하나라도 빼먹으면** 375px 에서 가로 스크롤이 생긴다(실측 447px). 모바일에선 토글이 한 줄을 다 쓰고 PDF 버튼이 아래로 내려간다 — 한 줄에 다 넣었더니 이름이 '한' 한 글자로 뭉개졌다
 - **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
 - **ArtLook 진입 경로 2개** (2026-08-15): ① 운영페이지 정산 > 판매작 홍보 ② 마이페이지 > 포트폴리오 > [액자에 걸어보기].
   핸드오프는 `frontend/src/lib/artlook.ts` 로 공용화했고, payload 에 `kind`('sold'|'portfolio')를 실어

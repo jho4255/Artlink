@@ -346,7 +346,17 @@ function filterSettlementByMethod(s: Settlement, method: 'CARD' | 'CASH'): Settl
 }
 const methodLabel = (m?: 'CARD' | 'CASH') => m === 'CASH' ? '현금' : m === 'CARD' ? '카드' : '';
 
-function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서'): string {
+/**
+ * 작가 1명짜리 정산서.
+ *
+ * `hideGalleryAmount` — 작가가 내려받는 [내 정산서]에서 **갤러리 몫 금액 줄을 뺀다**.
+ * 화면(`MyArtistSettlementSection`)은 원래부터 판매합계·비율·내 정산액만 보여주는데
+ * PDF 만 갤러리 금액을 찍고 있어 서로 어긋나 있었다. 갤러리가 받는 같은 이름의 PDF 는 그대로다.
+ *
+ * ⚠️ 정보를 감추는 장치가 아니다 — 판매합계와 비율이 남으니 갤러리 몫은 뺄셈으로 나온다.
+ *    '작가에게 주는 문서에는 갤러리 숫자를 적지 않는다'는 서식 규칙일 뿐이다.
+ */
+export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서', hideGalleryAmount = false): string {
   const artist = displayName(a.user);
   const sold = a.works.filter(w => w.sold);
   const rows = sold.length === 0
@@ -369,7 +379,7 @@ function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '
       <tbody>
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:160px">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.total)}</td></tr>
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 비율 (갤러리 : 작가)</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${a.galleryRatio}% : ${a.artistRatio}%</td></tr>
-        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.galleryAmount)}</td></tr>
+        ${hideGalleryAmount ? '' : `<tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.galleryAmount)}</td></tr>`}
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 정산 (지급액)</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(a.artistAmount)}</td></tr>
       </tbody>
     </table></div>`;
@@ -401,7 +411,7 @@ function artistBlock(a: SettlementArtist): string {
   </div>`;
 }
 
-function overallSettlementHtml(s: Settlement, docLabel = '전체 정산서'): string {
+export function overallSettlementHtml(s: Settlement, docLabel = '전체 정산서'): string {
   const blocks = s.artists.length === 0
     ? `<p style="color:#999">수락된 작가가 없습니다.</p>`
     : s.artists.map(artistBlock).join('');
@@ -451,15 +461,21 @@ async function prefetchForPdf(
 /** 정산서에 실리는 판매작 이미지 주소 */
 const settlementImages = (a: SettlementArtist) => a.works.filter(w => w.sold).map(w => w.image);
 
-/** 작가별 정산서 PDF (method 지정 시 현금/카드 정산서) */
+/**
+ * 작가별 정산서 PDF (method 지정 시 현금/카드 정산서)
+ *
+ * @param opts.forArtist 작가 본인이 [내 정산서]로 받는 경우. 갤러리 몫 금액 줄을 뺀다.
+ *   갤러리가 같은 함수로 받는 작가별 정산서는 기본값(false)이라 예전 그대로다.
+ */
 export async function downloadArtistSettlementPdf(
   exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH',
   onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+  opts?: { forArtist?: boolean },
 ): Promise<{ missing: string[] }> {
   const target = method ? filterArtistByMethod(artist, method) : artist;
   const docLabel = method ? `${methodLabel(method)} 정산서` : '정산서';
   const failed = await prefetchForPdf(settlementImages(target), onProgress);
-  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel));
+  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel, !!opts?.forArtist));
   triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_${docLabel.replace(/\s/g, '')}.pdf`);
   return { missing: target.works.filter(w => w.sold && w.image && failed.has(w.image)).map(w => w.title || '무제') };
 }

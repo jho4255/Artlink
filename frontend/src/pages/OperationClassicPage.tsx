@@ -18,12 +18,13 @@ import { useAuthStore } from '@/stores/authStore';
 import { displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice } from '@/lib/utils';
 import Thumb from '@/components/shared/Thumb';
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
-import { openArtLook, type ArtLookWork } from '@/lib/artlook';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+// 정산 섹션은 신규 뷰(OperationPage)와 **한 벌을 공유**한다 (돈 계산이 두 벌로 갈라지면 한쪽만 조용히 틀어진다)
+import SettlementSection from '@/components/operation/SettlementSection';
 
 import type {
   OperationAccess, ExhibitionNotice, OperationSubmission,
-  ArtworkItem, ArtistCv, CvEntry, ArtistNote, Settlement, SettlementArtist,
+  ArtworkItem, ArtistCv, CvEntry, ArtistNote, SettlementArtist,
 } from '@/types';
 import { EMPTY_CV, EMPTY_NOTE } from '@/types';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
@@ -932,21 +933,11 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
 }
 
 // ============ 정산 (전시종료 후) ============
-const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
-
-type EditWork = { index: number; title: string; image?: string; size?: string; medium?: string; year?: string; listPrice: string; sold: boolean; soldPrice: number; paymentMethod: 'CARD' | 'CASH' };
-type EditArtist = { user: { id: number; name: string; nickname?: string | null; email?: string }; galleryRatio: number; works: EditWork[] };
-
-function artistTotals(a: EditArtist) {
-  const total = a.works.filter(w => w.sold).reduce((s, w) => s + (w.soldPrice || 0), 0);
-  const galleryAmount = Math.round(total * a.galleryRatio / 100);
-  return { total, galleryAmount, artistAmount: total - galleryAmount };
-}
 
 // 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null } | null }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null } | null; fingerprint?: string }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -957,13 +948,20 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const [comment, setComment] = useState('');
 
   const respondMutation = useMutation({
-    mutationFn: (body: { approve: boolean; comment?: string }) => api.post(`/operations/${exhibitionId}/settlement/respond`, body),
+    // fingerprint: 지금 화면에 그린 금액의 지문. 갤러리가 검토 중에 금액을 고칠 수 있으므로
+    // 서버가 이걸 대조해 **내가 본 적 없는 금액에 동의하는 사고**를 막는다(불일치 시 409).
+    mutationFn: (body: { approve: boolean; comment?: string }) =>
+      api.post(`/operations/${exhibitionId}/settlement/respond`, { ...body, fingerprint: data?.fingerprint }),
     onSuccess: (_d, vars) => {
       toast.success(vars.approve ? '정산을 확인(수락)했습니다.' : '문제를 갤러리에 전달했습니다.');
       setIssueOpen(false); setComment('');
       qc.invalidateQueries({ queryKey: ['operation-my-settlement', exhibitionId] });
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
+    onError: (e: any) => {
+      toast.error(e.response?.data?.error || '처리에 실패했습니다.');
+      // 금액이 바뀌어 거절된 경우 — 최신 내역을 바로 다시 그려준다
+      if (e.response?.status === 409) qc.invalidateQueries({ queryKey: ['operation-my-settlement', exhibitionId] });
+    },
   });
 
   if (isLoading) return <div className="h-24 bg-gray-100 animate-pulse rounded-xl mb-10" />;
@@ -987,7 +985,8 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
     setDownloading(true);
     try {
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a);
+      // forArtist: 작가 본인 문서라 갤러리 몫 금액은 찍지 않는다 (화면 표기와 맞춤)
+      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a, undefined, undefined, { forArtist: true });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setDownloading(false); }
   };
@@ -1054,282 +1053,6 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   );
 }
 
-function SettlementSection({ exhibitionId, isAdmin }: { exhibitionId: string; isAdmin?: boolean }) {
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery<Omit<Settlement, 'artists'> & {
-    settled?: boolean; settledAt?: string | null; settlementRequested?: boolean; allApproved?: boolean;
-    artists: (SettlementArtist & { approval?: { status: string; comment?: string | null } | null })[];
-  }>({
-    queryKey: ['operation-settlement', exhibitionId],
-    queryFn: () => api.get(`/operations/${exhibitionId}/settlement`).then(r => r.data),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
-  const [artists, setArtists] = useState<EditArtist[]>([]);
-  const [exTitle, setExTitle] = useState('');
-  const [zipping, setZipping] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const settled = !!data?.settled;
-  const requested = !!data?.settlementRequested;
-  const allApproved = !!data?.allApproved;
-  const locked = (settled || requested) && !isAdmin;   // 정산 입력 잠금 (관리자는 완료 후에도 수정 가능)
-  const approvalOf = (uid: number) => data?.artists.find(x => x.user.id === uid)?.approval ?? null;
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['operation-settlement', exhibitionId] });
-    qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] });
-  };
-  const completeMutation = useMutation({
-    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/complete`),
-    onSuccess: () => { toast.success('정산이 완료되었습니다. 참여 작가에게 공유됩니다.'); setConfirmOpen(false); invalidate(); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '정산 완료 실패'),
-  });
-  const requestMutation = useMutation({
-    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/request`),
-    onSuccess: () => { toast.success('참여 작가에게 정산 확인을 요청했습니다.'); invalidate(); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '요청 실패'),
-  });
-  const cancelMutation = useMutation({
-    mutationFn: () => api.post(`/operations/${exhibitionId}/settlement/request/cancel`),
-    onSuccess: () => { toast.success('정산 확인 요청을 취소했습니다.'); invalidate(); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '취소 실패'),
-  });
-
-  useEffect(() => {
-    if (data) {
-      setExTitle(data.exhibitionTitle);
-      setArtists(data.artists.map(a => ({
-        user: a.user,
-        galleryRatio: a.galleryRatio,
-        works: a.works.map(w => ({ index: w.index, title: w.title, image: w.image, size: w.size, medium: w.medium, year: w.year, listPrice: w.listPrice, sold: w.sold, soldPrice: w.soldPrice, paymentMethod: (w.paymentMethod || 'CARD') as 'CARD' | 'CASH' })),
-      })));
-    }
-  }, [data]);
-
-  const updWork = (ai: number, wi: number, patch: Partial<EditWork>) =>
-    setArtists(prev => prev.map((a, i) => i !== ai ? a : { ...a, works: a.works.map((w, j) => j === wi ? { ...w, ...patch } : w) }));
-  const updRatio = (ai: number, ratio: number) =>
-    setArtists(prev => prev.map((a, i) => i === ai ? { ...a, galleryRatio: Math.min(100, Math.max(0, ratio)) } : a));
-
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      const sales = artists.flatMap(a => a.works.filter(w => w.sold).map(w => ({ artistUserId: a.user.id, artworkIndex: w.index, title: w.title, soldPrice: w.soldPrice || 0, paymentMethod: w.paymentMethod || 'CARD' })));
-      const ratios = artists.map(a => ({ artistUserId: a.user.id, galleryRatio: a.galleryRatio }));
-      return api.put(`/operations/${exhibitionId}/settlement`, { sales, ratios });
-    },
-    onSuccess: () => toast.success('정산 정보가 저장되었습니다.'),
-    onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
-  });
-
-  // 현재 편집 상태로 정산 객체 구성 (PDF용)
-  const buildSettlement = (): Settlement => {
-    const built = artists.map(a => {
-      const t = artistTotals(a);
-      return { user: a.user, galleryRatio: a.galleryRatio, artistRatio: 100 - a.galleryRatio, works: a.works, ...t };
-    });
-    return {
-      exhibitionTitle: exTitle,
-      artists: built,
-      grand: {
-        total: built.reduce((s, a) => s + a.total, 0),
-        galleryAmount: built.reduce((s, a) => s + a.galleryAmount, 0),
-        artistAmount: built.reduce((s, a) => s + a.artistAmount, 0),
-        soldCount: built.reduce((s, a) => s + a.works.filter(w => w.sold).length, 0),
-      },
-    };
-  };
-
-  const downloadOverall = async (method?: 'CARD' | 'CASH') => {
-    setZipping(true);
-    try {
-      const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadOverallSettlementPdf(buildSettlement(), method);
-      if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
-    } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
-  };
-  const downloadArtist = async (ai: number, method?: 'CARD' | 'CASH') => {
-    setZipping(true);
-    try {
-      const s = buildSettlement();
-      const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method);
-      if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
-    } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
-  };
-
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse rounded-xl mb-10" />;
-
-  const grand = buildSettlement().grand;
-  // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
-  const soldWorks: ArtLookWork[] = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle, kind: 'sold' as const })));
-
-  return (
-    <section className="mb-10">
-      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 className="text-lg font-medium text-gray-900">정산</h2>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 저장: 편집 가능할 때(미잠금). 관리자는 완료 후에도 저장 가능 */}
-          {!locked && (
-            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
-          )}
-          {!settled && !requested && (
-            <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 확인 요청</button>
-          )}
-          {requested && !settled && (
-            <>
-              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50">요청 취소</button>
-              <button onClick={() => setConfirmOpen(true)} disabled={!allApproved || completeMutation.isPending} title={allApproved ? '' : '모든 작가가 수락해야 완료할 수 있습니다'} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">정산 완료</button>
-            </>
-          )}
-          <button onClick={() => downloadOverall()} disabled={zipping} className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"><FileDown size={13} /> 전체 정산 PDF</button>
-          <button onClick={() => downloadOverall('CASH')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">현금 정산서</button>
-          <button onClick={() => downloadOverall('CARD')} disabled={zipping} className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">카드 정산서</button>
-        </div>
-      </div>
-
-      {settled && (
-        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          <b>정산 완료됨</b>{data?.settledAt ? ` · ${new Date(data.settledAt).toLocaleDateString('ko-KR')}` : ''} · 참여 작가에게 정산 내역이 공유되었습니다. {isAdmin ? '관리자는 완료 후에도 수정할 수 있습니다.' : '더 이상 수정할 수 없습니다.'}
-        </div>
-      )}
-
-      {requested && !settled && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <b>정산 확인 요청 중</b> · 작가 {(data?.artists.filter(x => x.approval?.status === 'APPROVED').length ?? 0)}/{data?.artists.length ?? 0}명 수락.
-          {allApproved ? ' 전원 수락 — [정산 완료]를 누를 수 있습니다.' : ' 전원 수락 시 [정산 완료]가 활성화됩니다.'} 내역을 고치려면 [요청 취소] 후 수정하세요.
-        </div>
-      )}
-
-      {/* 판매작 홍보 CTA — ArtLook 연결 */}
-      {soldWorks.length > 0 && (
-        <div className="mb-4 rounded-xl border border-[#c4302b]/25 bg-[#fff5f4] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900">판매한 작품들을 홍보해보세요</p>
-            <p className="text-xs text-gray-500 mt-0.5">판매된 {soldWorks.length}점을 액자·전시 공간에 담아 SNS 홍보 이미지를 만들 수 있어요.</p>
-          </div>
-          <button onClick={() => { if (openArtLook(soldWorks) === 0) toast.error('홍보할 판매 작품 이미지가 없습니다.'); }} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer">
-            <Megaphone size={15} /> ArtLook으로 홍보 이미지 만들기
-          </button>
-        </div>
-      )}
-
-      {artists.length === 0 ? (
-        <p className="text-sm text-gray-400 py-4">수락된 작가가 없습니다.</p>
-      ) : (
-        <div className="space-y-4">
-          {artists.map((a, ai) => {
-            const t = artistTotals(a);
-            const appr = approvalOf(a.user.id);
-            return (
-              <div key={a.user.id} className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm text-gray-900 flex items-center gap-1.5">
-                    {nameWithNickname(a.user)}
-                    {requested && appr?.status === 'APPROVED' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">수락</span>}
-                    {requested && appr?.status === 'ISSUE' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">문제 제기</span>}
-                    {requested && (!appr || appr.status === 'PENDING') && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">대기중</span>}
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    <button onClick={() => downloadArtist(ai)} disabled={zipping} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"><FileDown size={12} /> 정산 PDF</button>
-                    <button onClick={() => downloadArtist(ai, 'CASH')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">현금</button>
-                    <button onClick={() => downloadArtist(ai, 'CARD')} disabled={zipping} className="text-xs text-gray-400 hover:text-gray-900 disabled:opacity-50">카드</button>
-                  </div>
-                </div>
-                {requested && appr?.status === 'ISSUE' && appr.comment && (
-                  <div className="mb-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">문제 제기: {appr.comment}</div>
-                )}
-
-                {a.works.length === 0 ? (
-                  <p className="text-xs text-gray-400">등록된 출품작이 없습니다.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {/* 모바일: 결제수단·판매가를 둘째 줄로 접기 — 한 줄이면 고정폭 컨트롤(~190px)만으로 375px 초과 */}
-                    {a.works.map((w, wi) => (
-                      <div key={wi} className={`flex flex-wrap items-center gap-x-3 gap-y-2 p-2 rounded-lg border ${w.sold ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
-                        <input type="checkbox" checked={w.sold} disabled={locked} onChange={e => updWork(ai, wi, { sold: e.target.checked })} className="shrink-0 disabled:opacity-50" />
-                        {/* 작품 사진 */}
-                        {w.image ? (
-                          <Thumb src={w.image} alt="" className="w-14 h-14 object-cover rounded shrink-0" />
-                        ) : (
-                          <div className="w-14 h-14 rounded bg-gray-100 flex items-center justify-center shrink-0"><ImageOff size={16} className="text-gray-300" /></div>
-                        )}
-                        {/* 작품 정보 */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{w.title || '(제목 없음)'}</p>
-                          <p className="text-xs text-gray-400 truncate">{[w.size, w.medium, w.year].filter(Boolean).join(' · ')}{w.listPrice ? ` · 희망 ${w.listPrice}` : ''}</p>
-                        </div>
-                        {/* 판매가 + 결제수단(카드/현금) */}
-                        {w.sold && (
-                          <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
-                            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-                              <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })}
-                                className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod !== 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>카드</button>
-                              <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })}
-                                className={`px-2 py-1 disabled:opacity-60 ${w.paymentMethod === 'CASH' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500'}`}>현금</button>
-                            </div>
-                            <input type="text" inputMode="numeric" disabled={locked} value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
-                              onChange={e => updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 })}
-                              placeholder="판매가" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right disabled:bg-gray-100" />
-                            <span className="text-xs text-gray-400">원</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-sm">
-                  <span className="text-gray-500">판매 합계 <b className="text-gray-900">{won(t.total)}</b></span>
-                  <span className="flex items-center gap-1">
-                    갤러리
-                    <input type="number" min={0} max={100} disabled={locked} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right disabled:bg-gray-100" />%
-                    <span className="text-gray-400">: 작가 {100 - a.galleryRatio}%</span>
-                  </span>
-                  <span className="text-gray-500">갤러리 <b className="text-gray-900">{won(t.galleryAmount)}</b></span>
-                  <span className="text-gray-500">작가 <b className="text-gray-900">{won(t.artistAmount)}</b></span>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* 전체 합계 */}
-          <div className="border border-gray-300 rounded-xl p-4 bg-gray-50">
-            <p className="text-sm font-medium text-gray-900 mb-1">전체 정산</p>
-            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
-              <span>판매 작품 <b className="text-gray-900">{grand.soldCount}점</b></span>
-              <span>판매 합계 <b className="text-gray-900">{won(grand.total)}</b></span>
-              <span>갤러리 합계 <b className="text-gray-900">{won(grand.galleryAmount)}</b></span>
-              <span>작가 지급 합계 <b className="text-gray-900">{won(grand.artistAmount)}</b></span>
-            </div>
-          </div>
-        </div>
-      )}
-      {!settled && !requested && (
-        <p className="text-xs text-gray-400 mt-2">* 비율·판매가 변경 후 [정산 저장]을 눌러 보관하세요. <b>[정산 확인 요청]</b>을 누르면 참여 작가 전원에게 확인 요청이 가고, <b>전원 수락 시 [정산 완료]</b>가 가능합니다.</p>
-      )}
-      {requested && !settled && (
-        <p className="text-xs text-gray-400 mt-2">* 작가가 검토 중입니다. 내역을 수정하려면 [요청 취소] 후 변경하고 다시 요청하세요.</p>
-      )}
-
-      {confirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setConfirmOpen(false)}>
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">정산을 완료할까요?</h3>
-            <ul className="text-sm text-gray-600 space-y-1.5 mb-5 list-disc pl-4">
-              <li>모든 참여 작가가 정산을 <b className="text-gray-900">확인(수락)</b>했습니다.</li>
-              <li>완료하면 <b className="text-gray-900">더 이상 운영 페이지를 수정할 수 없습니다.</b></li>
-              <li>정산 내역이 참여 작가에게 최종 공유되며, 이 작업은 <b className="text-gray-900">되돌릴 수 없습니다.</b></li>
-            </ul>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmOpen(false)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">취소</button>
-              <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50">{completeMutation.isPending ? '처리 중...' : '동의하고 정산 완료'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ============ 에디터들 ============
 

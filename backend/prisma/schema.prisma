@@ -551,6 +551,10 @@ model SettlementApproval {
   artist       User       @relation("settlementApprovals", fields: [artistUserId], references: [id], onDelete: Restrict)
   status       String     @default("PENDING") // PENDING(미응답) | APPROVED(수락) | ISSUE(문제제기)
   comment      String? // 문제 제기 시 갤러리에 전달할 코멘트
+  // 응답 당시 정산 금액의 지문(lib/settlementFingerprint.ts). 갤러리가 이 작가 금액을 고치면
+  // 지문이 어긋나 자동으로 PENDING 으로 되돌아간다 → 금액이 그대로인 작가는 수락이 유지된다.
+  // null = 옛 데이터/미응답. 옛 APPROVED 행은 첫 저장 때 한 번 재확인 대상이 된다(안전한 방향).
+  snapshot     String?
   updatedAt    DateTime   @default(now()) @updatedAt
 
   @@unique([exhibitionId, artistUserId])

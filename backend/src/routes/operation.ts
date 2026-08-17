@@ -16,6 +16,7 @@ import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
 import { canOperateExhibition, operatorUserIds } from '../lib/exhibitionAccess';
+import { fingerprintsOf, settlementFingerprint } from '../lib/settlementFingerprint';
 
 const router = Router();
 
@@ -609,6 +610,9 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
       requested, settled, settledAt: exhibition.settledAt,
       artist: artists[0],
       myApproval: appr ? { status: appr.status, comment: appr.comment } : null,
+      // 지금 화면에 그린 금액의 지문. 수락할 때 그대로 돌려보내면 서버가 대조해
+      // **보던 화면과 다른 금액에 동의하는 사고**를 막는다(갤러리가 검토 중에 고칠 수 있으므로).
+      fingerprint: settlementFingerprint(sales, settlements[0]?.galleryRatio ?? 0),
     });
   } catch (e) { next(e); }
 });
@@ -622,7 +626,11 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     // 위치 기반 artworkIndex가 다른 작품을 가리키게 된다 (작가 편집은 확정 시점에 잠김)
     if (!exhibition.ended && !isAdmin) throw new AppError('전시 종료 후에 정산을 입력할 수 있습니다.', 400);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 더 이상 수정할 수 없습니다.', 403);
-    if (exhibition.settlementRequestedAt && !isAdmin) throw new AppError('정산 확인 요청 중에는 수정할 수 없습니다. [요청 취소] 후 수정하세요.', 403);
+    // ⚠️ 확인 요청 중에도 수정할 수 있다. 예전엔 여기서 403 으로 막아, 한 작가의 문제를 고치려면
+    // **요청 전체를 내려야** 했다 — 그러면 아직 검토 중이던 다른 작가의 화면까지 닫히고
+    // (`my-settlement` 가 requested:false 로 비공개), 다들 처음부터 다시 하는 꼴이 된다.
+    // 대신 아래에서 ①금액이 바뀐 작가만 PENDING 으로 되돌리고 ②그 사람에게만 재확인 알림을 보낸다.
+    // 작가가 옛 화면을 보고 수락하는 사고는 `respond` 의 지문 대조(409)로 막는다.
 
     const { sales, ratios } = req.body || {};
     const saleRows = Array.isArray(sales) ? sales : [];
@@ -634,34 +642,71 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       where: { exhibitionId, status: 'ACCEPTED' },
       select: { userId: true },
     });
-    const acceptedSet = new Set(acceptedArtists.map((a) => a.userId));
+    const acceptedIds = acceptedArtists.map((a) => a.userId);
+    const acceptedSet = new Set(acceptedIds);
+
+    const saleData = saleRows
+      .filter((s: any) => Number.isInteger(s.artistUserId) && Number.isInteger(s.artworkIndex) && acceptedSet.has(s.artistUserId))
+      .map((s: any) => ({
+        exhibitionId,
+        artistUserId: s.artistUserId as number,
+        artworkIndex: s.artworkIndex as number,
+        title: String(s.title ?? ''),
+        soldPrice: Math.max(0, Math.round(Number(s.soldPrice) || 0)),
+        paymentMethod: s.paymentMethod === 'CASH' ? 'CASH' : 'CARD',
+      }));
+    const ratioData = ratioRows
+      .filter((r: any) => Number.isInteger(r.artistUserId) && acceptedSet.has(r.artistUserId))
+      .map((r: any) => ({
+        exhibitionId,
+        artistUserId: r.artistUserId as number,
+        galleryRatio: Math.min(100, Math.max(0, Math.round(Number(r.galleryRatio) || 0))),
+      }));
+
+    // 이 저장으로 **금액이 실제로 달라진 작가만** 확인을 무효화한다.
+    // 예전엔 요청 취소가 승인 기록을 통째로 지워 전원이 다시 확인해야 했다(10명 중 1명 때문에 9명 재확인).
+    const fps = fingerprintsOf(acceptedIds, saleData, ratioData);
+    const approvals = await prisma.settlementApproval.findMany({
+      where: { exhibitionId },
+      select: { artistUserId: true, status: true, snapshot: true },
+    });
+    const staleIds = approvals
+      .filter((a) => a.status !== 'PENDING' && a.snapshot !== (fps.get(a.artistUserId) ?? null))
+      .map((a) => a.artistUserId);
 
     await prisma.$transaction([
       prisma.artworkSale.deleteMany({ where: { exhibitionId } }),
-      prisma.artworkSale.createMany({
-        data: saleRows
-          .filter((s: any) => Number.isInteger(s.artistUserId) && Number.isInteger(s.artworkIndex) && acceptedSet.has(s.artistUserId))
-          .map((s: any) => ({
-            exhibitionId,
-            artistUserId: s.artistUserId,
-            artworkIndex: s.artworkIndex,
-            title: String(s.title ?? ''),
-            soldPrice: Math.max(0, Math.round(Number(s.soldPrice) || 0)),
-            paymentMethod: s.paymentMethod === 'CASH' ? 'CASH' : 'CARD',
-          })),
-      }),
+      prisma.artworkSale.createMany({ data: saleData }),
       prisma.artistSettlement.deleteMany({ where: { exhibitionId } }),
-      prisma.artistSettlement.createMany({
-        data: ratioRows
-          .filter((r: any) => Number.isInteger(r.artistUserId) && acceptedSet.has(r.artistUserId))
-          .map((r: any) => ({
-            exhibitionId,
-            artistUserId: r.artistUserId,
-            galleryRatio: Math.min(100, Math.max(0, Math.round(Number(r.galleryRatio) || 0))),
-          })),
-      }),
+      prisma.artistSettlement.createMany({ data: ratioData }),
+      ...(staleIds.length > 0
+        ? [prisma.settlementApproval.updateMany({
+            where: { exhibitionId, artistUserId: { in: staleIds } },
+            data: { status: 'PENDING', comment: null, snapshot: null },
+          })]
+        : []),
     ]);
-    res.json({ message: '정산 정보가 저장되었습니다.' });
+    // 확인 요청이 열려 있는 채로 금액을 고쳤다면, **그 작가에게만** 다시 봐달라고 알린다.
+    // 요청을 내렸다 다시 올릴 필요 없이 여기서 끝난다 — 나머지 작가의 검토는 그대로 이어진다.
+    let notified = 0;
+    if (exhibition.settlementRequestedAt && staleIds.length > 0) {
+      try {
+        await prisma.notification.createMany({
+          data: staleIds.map((uid) => ({
+            userId: uid,
+            type: 'SETTLEMENT_CONFIRM_REQUEST',
+            message: `"${exhibition.title}" 전시의 정산 내역이 수정되었습니다. 다시 확인해주세요.`,
+            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+          })),
+        });
+        notified = staleIds.length;
+      } catch { /* 알림 실패해도 저장은 정상 */ }
+    }
+
+    // resetIds: 이번 저장으로 재확인 대상이 된 작가들.
+    // 화면의 [이 작가에게 다시 확인 요청]은 저장을 먼저 하는데, 저장이 이미 그 작가를 되돌리고
+    // 알림까지 보냈다면 재요청을 또 부르지 않는다 — 안 그러면 **알림이 두 번** 간다.
+    res.json({ message: '정산 정보가 저장되었습니다.', resetCount: staleIds.length, resetIds: staleIds, notified });
   } catch (e) { next(e); }
 });
 
@@ -677,10 +722,22 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
 
     // 전원 수락 게이트: 수락 작가 모두 APPROVED여야 완료 가능
     const acceptedArtists = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
-    const apprs = await prisma.settlementApproval.findMany({ where: { exhibitionId }, select: { artistUserId: true, status: true } });
+    const apprs = await prisma.settlementApproval.findMany({ where: { exhibitionId }, select: { artistUserId: true, status: true, snapshot: true } });
     const okSet = new Set(apprs.filter((a) => a.status === 'APPROVED').map((a) => a.artistUserId));
     if (acceptedArtists.some((a) => !okSet.has(a.userId))) {
       throw new AppError('모든 참여 작가가 정산을 확인(수락)해야 완료할 수 있습니다.', 400);
+    }
+
+    // 확인 이후 금액이 바뀐 채로 완료되는 것을 막는다 — 작가는 **자기가 못 본 금액**에 동의한 셈이 된다.
+    // 정상 경로(PUT /settlement)에서는 이미 PENDING 으로 되돌아가므로 여기 걸릴 일이 없지만,
+    // 정산은 돈 문제라 기록이 어긋나면 나중에 다툼의 근거가 사라진다. 마지막 문에서 한 번 더 본다.
+    const acceptedIds = acceptedArtists.map((a) => a.userId);
+    const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
+    const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
+    const fps = fingerprintsOf(acceptedIds, sales, ratios);
+    const staleCount = apprs.filter((a) => a.status === 'APPROVED' && acceptedIds.includes(a.artistUserId) && a.snapshot !== fps.get(a.artistUserId)).length;
+    if (staleCount > 0) {
+      throw new AppError(`작가 확인 이후 정산 내용이 바뀐 작가가 ${staleCount}명 있습니다. [정산 확인 요청]을 다시 보내주세요.`, 400);
     }
 
     const updated = await prisma.exhibition.update({
@@ -722,20 +779,46 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
     if (exhibition.settlementRequestedAt) throw new AppError('이미 정산 확인을 요청했습니다.', 400);
 
     const accepted = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
+    const acceptedIds = accepted.map((a) => a.userId);
+
+    // 재요청 시 **이미 수락했고 그 뒤로 금액이 안 바뀐 작가는 그대로 둔다**.
+    // 나머지(미응답·문제제기·금액 변경)만 PENDING 으로 새로 만들어 다시 묻는다.
+    // 문제를 제기한 작가는 금액이 안 바뀌었어도 다시 묻는다 — 갤러리가 화면 밖에서 설명해 풀었을 수 있고,
+    // 그 사람의 '문제 있음' 이 남은 채로는 어차피 정산을 완료할 수 없다.
+    const existing = await prisma.settlementApproval.findMany({
+      where: { exhibitionId },
+      select: { artistUserId: true, status: true, snapshot: true },
+    });
+    const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
+    const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
+    const fps = fingerprintsOf(acceptedIds, sales, ratios);
+
+    const byArtist = new Map(existing.map((e) => [e.artistUserId, e]));
+    const keptIds: number[] = [];
+    const askIds: number[] = [];
+    for (const uid of acceptedIds) {
+      const prev = byArtist.get(uid);
+      if (prev && prev.status === 'APPROVED' && prev.snapshot === fps.get(uid)) keptIds.push(uid);
+      else askIds.push(uid);
+    }
 
     await prisma.$transaction([
-      // 이전 응답 초기화 후 전원 PENDING 생성
-      prisma.settlementApproval.deleteMany({ where: { exhibitionId } }),
-      prisma.settlementApproval.createMany({ data: accepted.map((a) => ({ exhibitionId, artistUserId: a.userId, status: 'PENDING' })) }),
+      // 더 이상 수락 상태가 아닌 작가(거절로 되돌림 등)의 행 정리
+      ...(acceptedIds.length > 0
+        ? [prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { notIn: acceptedIds } } })]
+        : [prisma.settlementApproval.deleteMany({ where: { exhibitionId } })]),
+      // 다시 확인 받을 작가만 초기화 후 PENDING 재생성 (수락 유지 대상은 건드리지 않는다)
+      prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { in: askIds } } }),
+      prisma.settlementApproval.createMany({ data: askIds.map((uid) => ({ exhibitionId, artistUserId: uid, status: 'PENDING' })) }),
       prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: new Date() } }),
     ]);
 
-    // 작가에게 확인 요청 알림 (best-effort)
+    // 알림은 **다시 물어야 하는 작가에게만** — 수락이 유지된 작가에게 보내면 이미 끝낸 일을 또 하라는 소리가 된다
     try {
-      if (accepted.length > 0) {
+      if (askIds.length > 0) {
         await prisma.notification.createMany({
-          data: accepted.map((a) => ({
-            userId: a.userId,
+          data: askIds.map((uid) => ({
+            userId: uid,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
             message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요.`,
             linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
@@ -744,7 +827,50 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
       }
     } catch { /* 알림 실패해도 요청은 정상 */ }
 
-    res.json({ settlementRequested: true, requestedCount: accepted.length });
+    res.json({ settlementRequested: true, requestedCount: askIds.length, keptCount: keptIds.length });
+  } catch (e) { next(e); }
+});
+
+// ── 작가 한 명에게만 다시 확인 요청 (오너/Admin) ──
+//
+// 금액을 고치면 `PUT /settlement` 이 알아서 그 작가를 재확인 대상으로 돌린다. 문제는 **고칠 게 없을 때**다.
+// 작가가 잘못 봤거나 전화로 이미 설명이 끝난 경우, 금액은 그대로인데 '문제 제기' 상태가 남아
+// 전원 수락이 안 되니 정산을 못 끝낸다. 그렇다고 요청 전체를 내렸다 올리면 남들까지 다시 붙잡는다.
+// 그래서 그 사람만 콕 집어 PENDING 으로 되돌리고 알린다.
+router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const artistUserId = idOf(req.params.artistUserId);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    if (!exhibition.settlementRequestedAt) throw new AppError('먼저 [정산 확인 요청]을 보내주세요.', 400);
+
+    // 이 공모의 수락 작가만 — 임의 id 주입으로 고아 승인행이 생기는 것을 막는다
+    const app = await prisma.application.findUnique({
+      where: { userId_exhibitionId: { userId: artistUserId, exhibitionId } },
+      select: { status: true },
+    });
+    if (app?.status !== 'ACCEPTED') throw new AppError('이 공모의 참여 작가가 아닙니다.', 400);
+
+    await prisma.settlementApproval.upsert({
+      where: { exhibitionId_artistUserId: { exhibitionId, artistUserId } },
+      update: { status: 'PENDING', comment: null, snapshot: null },
+      create: { exhibitionId, artistUserId, status: 'PENDING' },
+    });
+
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: artistUserId,
+          type: 'SETTLEMENT_CONFIRM_REQUEST',
+          message: `"${exhibition.title}" 전시의 정산 확인을 다시 요청했습니다. 확인 후 수락해주세요.`,
+          linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+        },
+      });
+    } catch { /* 알림 실패해도 요청은 정상 */ }
+
+    res.json({ status: 'PENDING' });
   } catch (e) { next(e); }
 });
 
@@ -831,11 +957,12 @@ router.post('/:id/settlement/request/cancel', authenticate, async (req, res, nex
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
     if (!exhibition.settlementRequestedAt) throw new AppError('진행 중인 정산 확인 요청이 없습니다.', 400);
 
-    await prisma.$transaction([
-      prisma.settlementApproval.deleteMany({ where: { exhibitionId } }),
-      prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: null } }),
-    ]);
-    res.json({ settlementRequested: false });
+    // ⚠️ 승인 기록을 **지우지 않는다**. 예전엔 여기서 deleteMany 로 통째로 밀어서,
+    // 한 명이 문제를 제기하면 이미 수락한 작가까지 전부 다시 확인해야 했다.
+    // 지금은 기록을 남겨두고 `PUT /settlement` 이 금액이 바뀐 작가만 PENDING 으로 되돌린다.
+    await prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: null } });
+    const kept = await prisma.settlementApproval.count({ where: { exhibitionId, status: 'APPROVED' } });
+    res.json({ settlementRequested: false, keptCount: kept });
   } catch (e) { next(e); }
 });
 
@@ -853,10 +980,27 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
     const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
     if (!approve && !comment) throw new AppError('문제 내용을 입력해주세요.', 400);
 
+    // 응답한 **그 금액**을 지문으로 남긴다 — 이후 갤러리가 이 작가 금액을 고치면 지문이 어긋나
+    // 자동으로 재확인 대상이 되고, 안 고치면 재요청해도 수락이 유지된다.
+    const mySales = await prisma.artworkSale.findMany({ where: { exhibitionId, artistUserId: userId } });
+    const myRatio = await prisma.artistSettlement.findUnique({
+      where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
+      select: { galleryRatio: true },
+    });
+    const snapshot = settlementFingerprint(mySales, myRatio?.galleryRatio ?? 0);
+
+    // 갤러리는 확인 요청 중에도 금액을 고칠 수 있다. 작가가 **고쳐지기 전 화면**을 띄워둔 채
+    // 수락을 누르면, 본 적 없는 금액에 동의한 기록이 남는다 — 정산은 돈 문제라 그게 곧 분쟁 근거다.
+    // 화면이 그릴 때 받은 지문을 되돌려받아 대조한다(구버전 클라이언트는 지문을 안 보내므로 통과).
+    const seen = typeof req.body?.fingerprint === 'string' ? req.body.fingerprint : null;
+    if (seen !== null && seen !== snapshot) {
+      throw new AppError('정산 내역이 방금 수정되었습니다. 새로고침해서 바뀐 금액을 확인해주세요.', 409);
+    }
+
     await prisma.settlementApproval.upsert({
       where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
-      update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment },
-      create: { exhibitionId, artistUserId: userId, status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment },
+      update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot },
+      create: { exhibitionId, artistUserId: userId, status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot },
     });
 
     // 문제 제기 시 갤러리 오너에게 알림 (best-effort)

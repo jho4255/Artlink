@@ -326,10 +326,10 @@ describe('공모 운영 페이지 API', () => {
       expect(mine.body.artist.artistAmount).toBe(300000);
     });
 
-    it('요청 중 PUT 잠금(403) + 작가 문제제기 시 완료 불가 + 요청취소로 해제', async () => {
+    it('요청 중에도 수정 가능 + 작가 문제제기 시 완료 불가 + 요청취소로 공개 해제', async () => {
       await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
-      // 요청 중 수정 잠금
-      expect((await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({ sales: [], ratios: [] })).status).toBe(403);
+      // 요청 중 수정 허용 — 예전엔 403 이라, 한 명 고치려고 요청 전체를 내려야 했다
+      expect((await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({ sales: [], ratios: [] })).status).toBe(200);
       // 작가 문제 제기(코멘트)
       expect((await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: false, comment: '판매가 오류' })).status).toBe(200);
       // 갤러리 조회 시 ISSUE + 코멘트, 완료 불가
@@ -371,6 +371,270 @@ describe('공모 운영 페이지 API', () => {
     it('미수락 작가는 본인 정산 조회 불가 → 403', async () => {
       const r = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist2Tok}`);
       expect(r.status).toBe(403);
+    });
+  });
+
+  /**
+   * 재확인은 '전원'이 아니라 '금액이 바뀐 작가'만 받는다.
+   *
+   * 예전엔 [요청 취소]가 승인 기록을 통째로 지워서, 한 명이 문제를 제기하면
+   * 이미 수락한 작가까지 전부 다시 확인해야 했다. 10명 단체전에서 1명 때문에 9명을 다시 붙잡는 셈.
+   * 지금은 응답 시점 금액을 지문으로 남겨두고(lib/settlementFingerprint.ts) 대조한다.
+   */
+  describe('정산 부분 재확인', () => {
+    const artistA = 1, artistB = 2;
+    const put = (body: any, tok = ownerTok) =>
+      request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${tok}`).send(body);
+    const baseline = {
+      sales: [
+        { artistUserId: artistA, artworkIndex: 0, title: 'A', soldPrice: 1000000 },
+        { artistUserId: artistB, artworkIndex: 0, title: 'B', soldPrice: 2000000 },
+      ],
+      ratios: [
+        { artistUserId: artistA, galleryRatio: 30 },
+        { artistUserId: artistB, galleryRatio: 30 },
+      ],
+    };
+    const statusOf = async (uid: number) =>
+      (await testPrisma.settlementApproval.findUnique({
+        where: { exhibitionId_artistUserId: { exhibitionId: exId, artistUserId: uid } },
+      }))?.status ?? null;
+
+    beforeEach(async () => {
+      // 두 작가 모두 수락 + 출품 + 전시 종료 (정산 단계 셋업)
+      await testPrisma.application.update({ where: { userId_exhibitionId: { userId: artistB, exhibitionId: exId } }, data: { status: 'ACCEPTED' } });
+      for (const tok of [artist1Tok, artist2Tok]) {
+        await request.put(`/api/operations/${exId}/me`).set('Authorization', `Bearer ${tok}`).send({
+          artworkList: [{ title: 'W1', size: '', medium: '', year: '', price: '' }], cv: null, note: null,
+        });
+      }
+      await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
+      await put(baseline);
+    });
+
+    it('요청 취소해도 수락 기록이 남는다 (예전엔 통째로 지웠다)', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+
+      const cancel = await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(cancel.status).toBe(200);
+      expect(cancel.body.keptCount).toBe(1);
+      expect(await statusOf(artistA)).toBe('APPROVED');
+    });
+
+    it('B만 금액 수정 → 재요청 시 B만 다시 묻고 A의 수락은 유지', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: false, comment: '판매가가 다릅니다' });
+      await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+
+      // B 판매가만 정정 — A 는 손대지 않는다
+      const saved = await put({
+        ...baseline,
+        sales: [baseline.sales[0], { ...baseline.sales[1], soldPrice: 2500000 }],
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.body.resetCount).toBe(1);          // B 만 무효화
+      expect(await statusOf(artistA)).toBe('APPROVED');
+      expect(await statusOf(artistB)).toBe('PENDING');
+
+      const re = await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(re.status).toBe(200);
+      expect(re.body.requestedCount).toBe(1);          // B 에게만 요청
+      expect(re.body.keptCount).toBe(1);               // A 는 그대로
+      expect(await statusOf(artistA)).toBe('APPROVED');
+
+      // A 는 다시 응답할 필요 없이, B 만 수락하면 완료된다
+      expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(400);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(200);
+    });
+
+    it('재요청 알림은 다시 물어야 하는 작가에게만 간다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+      await testPrisma.notification.deleteMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+
+      await put({ ...baseline, sales: [baseline.sales[0], { ...baseline.sales[1], soldPrice: 3000000 }] });
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+
+      const notis = await testPrisma.notification.findMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+      expect(notis.map((n) => n.userId)).toEqual([artistB]);
+    });
+
+    it('금액을 안 바꾸고 저장하면 아무 수락도 풀리지 않는다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+
+      // 순서만 뒤집어 같은 내용을 다시 저장 — 지문은 index 정렬 기준이라 흔들리면 안 된다
+      const saved = await put({ sales: [baseline.sales[1], baseline.sales[0]], ratios: [baseline.ratios[1], baseline.ratios[0]] });
+      expect(saved.body.resetCount).toBe(0);
+      const re = await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(re.body.requestedCount).toBe(0);
+      expect(re.body.keptCount).toBe(2);
+      expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(200);
+    });
+
+    it('비율만 바꿔도 그 작가는 재확인 대상', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+
+      await put({ ...baseline, ratios: [{ artistUserId: artistA, galleryRatio: 50 }, baseline.ratios[1]] });
+      expect(await statusOf(artistA)).toBe('PENDING');
+      expect(await statusOf(artistB)).toBe('APPROVED');
+    });
+
+    it('관리자가 요청 중에 금액을 고치면 그 작가 수락이 자동으로 풀린다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+
+      // 관리자는 요청 중에도 수정 가능 — 예전엔 수락 기록이 그대로 남아
+      // 작가가 못 본 금액으로 정산이 완료될 수 있었다
+      await put({ ...baseline, sales: [{ ...baseline.sales[0], soldPrice: 9000000 }, baseline.sales[1]] }, adminTok);
+      expect(await statusOf(artistA)).toBe('PENDING');
+      expect(await statusOf(artistB)).toBe('APPROVED');
+      expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(400);
+    });
+
+    it('수락 기록이 있어도 확인 이후 금액이 바뀐 채로는 완료 불가', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      // PUT 을 거치지 않고 DB 를 직접 고친 상황 (마지막 문 방어)
+      await testPrisma.artworkSale.updateMany({ where: { exhibitionId: exId, artistUserId: artistA }, data: { soldPrice: 4321000 } });
+
+      const r = await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(r.status).toBe(400);
+      expect(r.body.error).toContain('다시');
+    });
+
+    /**
+     * 핵심 시나리오 — 요청을 내리지 않고 문제 제기한 작가만 고쳐서 다시 보낸다.
+     * 예전엔 [요청 취소]가 유일한 수정 경로여서, 아직 검토 중이던 작가의 화면까지 닫혔다.
+     */
+    it('요청을 유지한 채 B만 고치면 → B만 재확인 + B에게만 알림, A·C 검토는 그대로', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: false, comment: '판매가 확인 부탁드립니다' });
+      await testPrisma.notification.deleteMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+
+      // 요청을 내리지 않고 바로 수정
+      const saved = await put({ ...baseline, sales: [baseline.sales[0], { ...baseline.sales[1], soldPrice: 2500000 }] });
+      expect(saved.status).toBe(200);
+      expect(saved.body.resetCount).toBe(1);
+      expect(saved.body.notified).toBe(1);
+
+      // 요청은 계속 열려 있다 — 작가들은 내역을 계속 볼 수 있다
+      const ex = await testPrisma.exhibition.findUnique({ where: { id: exId } });
+      expect(ex!.settlementRequestedAt).not.toBeNull();
+      const mine = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+      expect(mine.body.requested).toBe(true);
+
+      expect(await statusOf(artistA)).toBe('APPROVED');   // 손대지 않은 작가는 수락 유지
+      expect(await statusOf(artistB)).toBe('PENDING');
+
+      const notis = await testPrisma.notification.findMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+      expect(notis.map((n) => n.userId)).toEqual([artistB]);
+      expect(notis[0]!.message).toContain('수정');
+
+      // B 만 다시 수락하면 완료
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(200);
+    });
+
+    /**
+     * 금액을 고칠 게 없는데 '문제 제기'가 남은 경우 — 작가가 잘못 봤거나 전화로 이미 풀린 상황.
+     * 이 출구가 없으면 전원 수락이 안 돼 정산을 영영 못 끝내고, 결국 요청 전체를 내렸다 올려야 한다.
+     */
+    it('작가 한 명만 다시 확인 요청 → 그 사람만 PENDING + 그 사람에게만 알림', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: false, comment: '제가 잘못 봤나요?' });
+      await testPrisma.notification.deleteMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+
+      // 금액은 그대로 두고 B 에게만 다시 물어본다
+      const r = await request.post(`/api/operations/${exId}/settlement/request/artist/${artistB}`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(r.status).toBe(200);
+      expect(await statusOf(artistB)).toBe('PENDING');
+      expect(await statusOf(artistA)).toBe('APPROVED');   // A 는 건드리지 않는다
+
+      const notis = await testPrisma.notification.findMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+      expect(notis.map((n) => n.userId)).toEqual([artistB]);
+
+      // 문제 제기 코멘트도 지워져 화면에 남지 않는다
+      const appr = await testPrisma.settlementApproval.findUnique({ where: { exhibitionId_artistUserId: { exhibitionId: exId, artistUserId: artistB } } });
+      expect(appr!.comment).toBeNull();
+    });
+
+    it('작가별 재요청 — 참여 작가가 아니면 400, 권한 없으면 403, 요청 전이면 400', async () => {
+      // 요청 전
+      expect((await request.post(`/api/operations/${exId}/settlement/request/artist/${artistA}`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(400);
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      // 미참여 작가(수락되지 않은 id)
+      expect((await request.post(`/api/operations/${exId}/settlement/request/artist/9999`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(400);
+      // 작가 본인은 호출 불가
+      expect((await request.post(`/api/operations/${exId}/settlement/request/artist/${artistB}`).set('Authorization', `Bearer ${artist1Tok}`)).status).toBe(403);
+    });
+
+    it('금액이 안 바뀐 저장은 요청 중이어도 알림을 보내지 않는다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await testPrisma.notification.deleteMany({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } });
+
+      const saved = await put(baseline);
+      expect(saved.body.resetCount).toBe(0);
+      expect(saved.body.notified).toBe(0);
+      expect(await testPrisma.notification.count({ where: { type: 'SETTLEMENT_CONFIRM_REQUEST' } })).toBe(0);
+    });
+
+    /**
+     * 갤러리가 검토 중에 금액을 고칠 수 있게 되면서 생긴 위험 — 작가가 옛 화면을 띄워둔 채
+     * 수락을 누르면 **본 적 없는 금액에 동의한 기록**이 남는다. 화면이 받은 지문을 되돌려받아 막는다.
+     */
+    it('작가가 옛 화면(옛 지문)으로 수락하면 409', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      const before = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+      const staleFp = before.body.fingerprint;
+      expect(typeof staleFp).toBe('string');
+
+      // 갤러리가 A 의 금액을 고침
+      await put({ ...baseline, sales: [{ ...baseline.sales[0], soldPrice: 7000000 }, baseline.sales[1]] });
+
+      const r = await request.post(`/api/operations/${exId}/settlement/respond`)
+        .set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true, fingerprint: staleFp });
+      expect(r.status).toBe(409);
+      expect(await statusOf(artistA)).toBe('PENDING');
+
+      // 새로 받은 지문으로는 정상 수락
+      const after = await request.get(`/api/operations/${exId}/my-settlement`).set('Authorization', `Bearer ${artist1Tok}`);
+      const ok = await request.post(`/api/operations/${exId}/settlement/respond`)
+        .set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true, fingerprint: after.body.fingerprint });
+      expect(ok.status).toBe(200);
+      expect(await statusOf(artistA)).toBe('APPROVED');
+    });
+
+    it('지문을 안 보내는 옛 클라이언트도 그대로 동작한다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      const r = await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      expect(r.status).toBe(200);
+    });
+
+    it('수락 후 거절로 되돌린 작가의 확인 기록은 재요청 때 정리된다', async () => {
+      await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist1Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/respond`).set('Authorization', `Bearer ${artist2Tok}`).send({ approve: true });
+      await request.post(`/api/operations/${exId}/settlement/request/cancel`).set('Authorization', `Bearer ${ownerTok}`);
+
+      await testPrisma.application.update({ where: { userId_exhibitionId: { userId: artistB, exhibitionId: exId } }, data: { status: 'REJECTED' } });
+      const re = await request.post(`/api/operations/${exId}/settlement/request`).set('Authorization', `Bearer ${ownerTok}`);
+      expect(re.body.keptCount).toBe(1);
+      expect(await statusOf(artistB)).toBeNull();
     });
   });
 });
