@@ -63,6 +63,12 @@ type ExhibitionDetail = Exhibition & {
   promoPhotos?: PromoPhoto[];
   /** 이 공모에 초대받은 작가인지 (본인 기준) — 지원 버튼을 '간편 지원'으로 바꾼다 */
   invited?: boolean;
+  /**
+   * 마감 판정에 필요. **마감일과 별개다** — 마감일이 남았는데 갤러리가 수동으로 모집을 닫거나
+   * 전시를 종료한 경우가 있다. 이걸 안 보면 그런 공고에 지원 버튼이 그대로 뜬다.
+   */
+  recruitmentClosed?: boolean;
+  ended?: boolean;
 };
 
 type CustomAnswerDraft = Record<string, string | string[]>;
@@ -194,8 +200,9 @@ export default function ExhibitionDetailPage() {
   useEffect(() => {
     if (!exhibition || searchParams.get('apply') !== '1') return;
     const isArtistUser = user?.role === 'ARTIST';
-    const notExpired = getDday(exhibition.deadline) >= 0;
-    if (isArtistUser && notExpired) openApplyModal();
+    // 마감일뿐 아니라 수동 모집마감·전시종료도 봐야 한다 — 마감일이 남은 채 마감된 공고가 있다
+    const open = getDday(exhibition.deadline) >= 0 && !exhibition.recruitmentClosed && !exhibition.ended;
+    if (isArtistUser && open) openApplyModal();
     setSearchParams(
       (prev) => { const next = new URLSearchParams(prev); next.delete('apply'); return next; },
       { replace: true },
@@ -313,7 +320,16 @@ export default function ExhibitionDetailPage() {
   }
 
   const dday = getDday(exhibition.deadline);
-  const isExpired = dday < 0;
+  /**
+   * '지원할 수 없음' 판정.
+   *
+   * 예전엔 마감일만 봤는데, 그러면 **마감일이 남은 채 수동 모집마감/전시종료된 공고**에
+   * 지원 버튼이 그대로 떴다. 목록에서 안 보일 때는 드러나지 않다가,
+   * [마감된 공고] 탭이 생기면서 실제로 도달 가능한 경로가 됐다.
+   * 서버(`POST /:id/apply`)는 상태·수동마감·전시종료·마감일을 4중으로 막고 있으므로
+   * 여기서 새도 지원이 되지는 않지만, 눌러보고 400 을 받는 화면은 만들지 않는다.
+   */
+  const isExpired = dday < 0 || !!exhibition.recruitmentClosed || !!exhibition.ended;
   const isArtist = user?.role === 'ARTIST';
   const isAdmin = user?.role === 'ADMIN';
   // 아트링크 주최 공모는 위임받은 운영 갤러리도 오너와 같은 권한을 갖는다 (lib/exhibitionHost.ts)

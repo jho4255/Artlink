@@ -64,6 +64,13 @@ export interface Exhibition {
   deadlineStart?: string;
   exhibitDate: string;
   exhibitStartDate?: string;
+  /**
+   * 마감 판정에 필요 — **마감일과 별개다.** 마감일이 남았는데 갤러리가 수동으로 모집을 닫거나
+   * 전시를 종료한 경우가 있어, 마감일만 보면 그런 공고에 지원 경로가 열린 채로 남는다.
+   * ([마감된 공고] 탭이 생기며 실제로 도달 가능해졌다)
+   */
+  recruitmentClosed?: boolean;
+  ended?: boolean;
   imageUrl?: string;
   images?: ExhibitionImage[];
   customFields?: CustomField[] | null;

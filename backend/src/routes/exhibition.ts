@@ -122,15 +122,36 @@ router.get('/', optionalAuth, async (req, res, next) => {
     // KST 달력 날짜 기준 경계로 마감/시작을 판정 (마감일 당일은 종일 노출, 시작일 당일부터 노출)
     const todayStartKst = startOfTodayKstAsUtc();
     const todayEndKst = endOfTodayKstAsUtc();
-    const where: any = {
-      status: 'APPROVED',
-      recruitmentClosed: false, // 모집마감/전시종료(종료 시 자동 마감) 공고는 목록에서 제외
-      deadline: { gte: todayStartKst },
-      OR: [
+    /**
+     * scope — 'open'(기본, 모집 중) | 'closed'(마감된 공고)
+     *
+     * 마감되면 목록에서 통째로 사라져 화면이 비었다(실측: 노출 4건 / 숨김 6건).
+     * 지원자 19명이 붙었던 공모도 흔적이 없어져, 갤러리가 어떤 공모를 해왔는지 알 수 없었다.
+     * 그래서 마감분을 **별도 탭**으로 볼 수 있게 한다.
+     *
+     * ⚠️ `status: 'APPROVED'` 는 두 scope 모두에 **항상** 걸린다.
+     *    심사중(PENDING)·반려(REJECTED)·탈퇴(WITHDRAWN)가 '마감된 공고'로 새어나가면
+     *    남의 미승인 공모가 공개되는 것과 같다(CLAUDE.md 23 — 상세도 APPROVED 화이트리스트).
+     * ⚠️ 지원 차단은 화면이 아니라 `POST /:id/apply` 가 한다(상태·수동마감·전시종료·마감일 4중).
+     *    목록에 노출한다고 지원 경로가 열리는 게 아니다.
+     */
+    const scope = req.query.scope === 'closed' ? 'closed' : 'open';
+    const where: any = { status: 'APPROVED' };
+    if (scope === 'closed') {
+      // 마감: 수동 모집마감/전시종료 됐거나, 마감일이 지난 것
+      where.OR = [
+        { recruitmentClosed: true },
+        { ended: true },
+        { deadline: { lt: todayStartKst } },
+      ];
+    } else {
+      where.recruitmentClosed = false; // 모집마감/전시종료(종료 시 자동 마감) 공고는 목록에서 제외
+      where.deadline = { gte: todayStartKst };
+      where.OR = [
         { deadlineStart: null },
         { deadlineStart: { lte: todayEndKst } }
-      ]
-    };
+      ];
+    }
     if (region) where.region = region;
     if (req.query.type) where.type = req.query.type;
 
@@ -154,7 +175,8 @@ router.get('/', optionalAuth, async (req, res, next) => {
           select: { id: true, name: true, rating: true, mainImage: true, region: true }
         }
       },
-      orderBy: { deadline: 'asc' }
+      // 모집 중은 임박한 순, 마감분은 최근에 끝난 순 (오래된 공모가 위로 오면 볼 이유가 없다)
+      orderBy: { deadline: scope === 'closed' ? 'desc' : 'asc' }
     });
 
     // 갤러리 별점 필터 (DB 레벨에서 어려우므로 앱 레벨 필터)

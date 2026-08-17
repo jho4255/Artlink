@@ -177,6 +177,12 @@ ArtLink/
     - 계산·표기는 `lib/settlement.ts`(`won`/`artistTotals`/`initialOpenArtistIds`)로 분리 — 컴포넌트 파일이 함수를 함께 export 하면 Vite fast-refresh 가 편집 중 입력을 날린다
     - 기본 접힘. 예외 둘: **작가 2명 이하**(개인전에서 매번 한 번 더 누르게 하지 않는다), **ISSUE 작가**(갤러리가 지금 봐야 할 사람). 접힌 줄엔 상태배지·판매점수·작가지급액만. 실측 18명 기준 문서 높이 16015px → 2807px
     - ⚠️ `truncate` 는 **min-content 를 줄이지 않는다** — `overflow:hidden` 은 flex 자동 최소치의 '바닥'만 없앨 뿐이라, min-content 로 크기가 정해지는 grid 트랙 안에서는 nowrap 텍스트가 폭을 그대로 밀어낸다. `OperationPage` 의 grid 아이템에 `min-w-0` 을 **하나라도 빼먹으면** 375px 에서 가로 스크롤이 생긴다(실측 447px). 모바일에선 토글이 한 줄을 다 쓰고 PDF 버튼이 아래로 내려간다 — 한 줄에 다 넣었더니 이름이 '한' 한 글자로 뭉개졌다
+- **공개 모집공고 [모집 중 / 마감된 공고] 탭** (2026-08-17, `GET /exhibitions?scope=open|closed`):
+  - 마감되면 목록에서 통째로 사라져 화면이 비었다(실측 노출 4 / 숨김 6). 지원자 19명이 붙었던 공모도 흔적이 없어 갤러리가 뭘 해왔는지 알 수 없었다. `scope=closed` 는 **수동 모집마감 · 전시종료 · 마감일 경과** 를 모은다(최근 마감순). 기본은 `open`, 알 수 없는 값도 `open`(기본이 숨김)
+  - ⚠️ **`status: 'APPROVED'` 는 두 scope 모두에 항상 걸린다** — 심사중·반려·탈퇴가 '마감된 공고'로 새면 남의 미승인 공모를 공개하는 셈이다(CLAUDE.md 23 과 같은 사고). 검색어(`q`)가 있으면 기존 코드가 `where.OR` 를 `AND` 로 감싸므로 scope 조건이 유지된다 — 여기를 고칠 땐 반드시 같이 확인할 것
+  - ⚠️ **상세의 지원 차단은 마감일만 보면 안 된다.** `ExhibitionDetailPage` 의 `isExpired` 가 `dday < 0` 뿐이라, **마감일이 남은 채 수동 마감/전시종료된 공고**에 [지원하기]가 그대로 떴다. 목록에 안 보일 땐 드러나지 않다가 이 탭이 생기며 도달 가능해졌다 → `recruitmentClosed`/`ended` 포함으로 확장(`?apply=1` 자동 오픈 경로도 동일). 서버 `POST /:id/apply` 는 상태·수동마감·전시종료·마감일 **4중**으로 이미 막고 있어 새도 지원은 안 되지만, 눌러보고 400 을 받는 화면을 만들지 않는다
+  - 카드는 D-day 대신 `마감` 배지 + 흐리게. 상세는 계속 열람 가능(기록·갤러리 신뢰도). 탭은 URL(`?scope=closed`)에 실어 뒤로가기·공유에서 유지
+  - 회귀: `exhibition-closed-scope.test.ts`(11 — 미승인 누출·검색 결합·지원 차단), E2E `e2e/_closedlist.mjs`(18)
 - **정산 완료 후 공모 취급** (2026-08-17):
   - 공고는 살아 있고 **잠긴다** — 상세/운영 페이지 열람·정산 PDF 는 그대로, 공지·제출자료·정산·단계 변경은 403(Admin 예외). 공개 목록에는 전시종료 때 이미 `recruitmentClosed` 로 빠져 있어 정산 완료가 추가로 하는 일은 없다. `settledAt` 을 되돌리는 API 는 없다(완료 모달에도 '되돌릴 수 없습니다')
   - ⚠️ **삭제 차단**(`DELETE /exhibitions/:id`) — cascade 가 `ArtworkSale`·`ArtistSettlement`·`SettlementApproval`·`ExhibitionSubmission` 까지 지운다. 합의가 끝난 금전 기록이라 버튼 한 번에 사라지면 다툼 시 근거가 없다. 갤러리 400, **Admin 은 허용**(잘못 만든 데이터 정리용). 회귀 `exhibition-extended.test.ts`

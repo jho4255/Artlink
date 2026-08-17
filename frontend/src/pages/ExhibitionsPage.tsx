@@ -32,16 +32,21 @@ export default function ExhibitionsPage() {
   const setMinGalleryRating = (v: number | null) => setParam('minGalleryRating', v);
   const selectedType = searchParams.get('type');
   const setSelectedType = (v: string | null) => setParam('type', v);
+  // 마감된 공고를 볼지 — URL 에 실어야 뒤로가기·주소 공유에서 탭이 유지된다
+  const scope = searchParams.get('scope') === 'closed' ? 'closed' : 'open';
+  const setScope = (v: 'open' | 'closed') => setParam('scope', v === 'closed' ? 'closed' : null);
   const appliedSearch = searchParams.get('q') ?? '';
   const setAppliedSearch = (v: string) => setParam('q', v);
   const [search, setSearch] = useState(appliedSearch);
 
   const exhibitionTypes = ['SOLO', 'GROUP', 'ART_FAIR'];
+  const closedTab = scope === 'closed';
 
   const { data: exhibitions = [], isLoading, isError, refetch } = useQuery<Exhibition[]>({
-    queryKey: ['exhibitions', selectedRegion, minGalleryRating, selectedType, appliedSearch],
+    queryKey: ['exhibitions', scope, selectedRegion, minGalleryRating, selectedType, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
+      if (scope === 'closed') params.set('scope', 'closed');
       if (selectedRegion) params.set('region', selectedRegion);
       if (minGalleryRating) params.set('minGalleryRating', String(minGalleryRating));
       if (selectedType) params.set('type', selectedType);
@@ -52,7 +57,7 @@ export default function ExhibitionsPage() {
     refetchOnMount: 'always',
   });
 
-  const currentQueryKey = ['exhibitions', selectedRegion, minGalleryRating, selectedType, appliedSearch] as const;
+  const currentQueryKey = ['exhibitions', scope, selectedRegion, minGalleryRating, selectedType, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post('/favorites/toggle', { exhibitionId }),
     onMutate: async (exhibitionId: number) => {
@@ -94,7 +99,9 @@ export default function ExhibitionsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
         <div>
           <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Open Call</h1>
-          <p className="text-base text-gray-400 mt-2">진행 중인 공모를 확인하세요</p>
+          <p className="text-base text-gray-500 mt-2">
+            {closedTab ? '지원이 마감된 공모입니다. 내용은 계속 볼 수 있어요.' : '진행 중인 공모를 확인하세요'}
+          </p>
         </div>
         {user?.role === 'GALLERY' && (
           <button
@@ -104,6 +111,21 @@ export default function ExhibitionsPage() {
             <Plus size={16} /> 공모 등록
           </button>
         )}
+      </div>
+
+      {/* 모집 중 / 마감 — 섞지 않고 나눈다. 한 목록에 섞으면 지원할 수 없는 공고를 눌러 들어가게 된다 */}
+      <div className="mb-4 inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+        {([['open', '모집 중'], ['closed', '마감된 공고']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setScope(k)}
+            aria-current={scope === k ? 'page' : undefined}
+            className={`min-h-[36px] rounded-md px-3.5 py-1.5 text-sm transition ${scope === k ? 'bg-white text-gray-950 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-900'}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* 검색 */}
@@ -189,13 +211,24 @@ export default function ExhibitionsPage() {
           </button>
         </div>
       ) : exhibitions.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-lg">진행 중인 공고가 없습니다.</p>
+        <div className="text-center py-20 text-gray-500">
+          <p className="text-lg">{closedTab ? '마감된 공고가 없습니다.' : '진행 중인 공고가 없습니다.'}</p>
+          {!closedTab && (
+            <button type="button" onClick={() => setScope('closed')} className="mt-3 text-sm text-gray-900 underline underline-offset-4">
+              마감된 공고 보기
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {exhibitions.map((ex) => {
             const dday = getDday(ex.deadline);
+            /**
+             * 이 공고가 마감됐는가 — 배지와 [지원하기 →] 링크가 **같은 값을 봐야 한다**.
+             * 따로 판정했더니 마감 탭 카드에 배지는 '마감'인데 지원 링크가 그대로 남았다.
+             * 마감일뿐 아니라 수동 모집마감·전시종료도 본다(마감일이 남은 채 닫힌 공고가 있다).
+             */
+            const isClosed = closedTab || dday < 0 || !!ex.recruitmentClosed || !!ex.ended;
             const isAdmin = user?.role === 'ADMIN';
 
             return (
@@ -203,6 +236,8 @@ export default function ExhibitionsPage() {
               <Link
                 key={ex.id}
                 to={`/exhibitions/${ex.id}`}
+                // 마감분이라고 흐리게 깔지 않는다 — 포스터는 갤러리가 만든 작업물이라
+                // opacity 를 씌우면 그 디자인이 망가져 보인다. 구분은 '마감' 배지로 충분하다.
                 className="group cursor-pointer block"
               >
                 <SkeletonImage
@@ -221,9 +256,14 @@ export default function ExhibitionsPage() {
                       {ex.title}
                     </h3>
                     <div className="flex items-center gap-2 flex-none">
-                      <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
-                        D-{dday}
-                      </span>
+                      {/* 마감분은 D-day 대신 '마감' — 음수 D-day 를 그대로 찍으면 아직 열린 줄 안다 */}
+                      {isClosed ? (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">마감</span>
+                      ) : (
+                        <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
+                          D-{dday}
+                        </span>
+                      )}
                       {user?.role === 'ARTIST' && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(ex.id); }}
@@ -258,7 +298,8 @@ export default function ExhibitionsPage() {
                     <span className="flex items-center gap-1"><MapPin size={13} /> {regionLabels[ex.region]}</span>
                   </div>
 
-                  {user?.role === 'ARTIST' && (
+                  {/* 마감분엔 지원 링크를 두지 않는다 — 눌러 들어가도 지원할 수 없다 */}
+                  {user?.role === 'ARTIST' && !isClosed && (
                     <button
                       onClick={(e) => {
                         e.preventDefault();
