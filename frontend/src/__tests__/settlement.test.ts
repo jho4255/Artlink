@@ -118,3 +118,73 @@ describe('settlementFormSignature', () => {
     expect(settlementFormSignature(withGhost)).toBe(settlementFormSignature(base()));
   });
 });
+
+/**
+ * 카드 수수료 (2026-08-19)
+ *
+ * 화면 계산이 백엔드(`routes/operation.ts` 의 `artistAmounts`)와 **한 원이라도 어긋나면**
+ * 갤러리가 보는 금액과 작가가 확인하는 금액이 달라진다 — 정산은 돈 문제라 그게 곧 분쟁이다.
+ * 아래 기대값은 백엔드 `settlement-card-fee.test.ts` 와 같은 숫자를 쓴다.
+ */
+describe('카드 수수료', () => {
+  const mixed = (ratio: number, rows: [number, 'CARD' | 'CASH'][]): EditArtist => ({
+    user: { id: 1, name: 'A' },
+    galleryRatio: ratio,
+    works: rows.map(([price, method], i) => ({
+      index: i, title: '', listPrice: '', sold: true, soldPrice: price, paymentMethod: method,
+    })),
+  });
+
+  it('수수료율 0 이면 예전 계산 그대로', () => {
+    const t = artistTotals(mixed(40, [[1_000_000, 'CARD']]), 0);
+    expect(t.cardFee).toBe(0);
+    expect(t.galleryAmount).toBe(400_000);
+    expect(t.artistAmount).toBe(600_000);
+  });
+
+  it('율을 안 넘기면 0으로 본다 (기존 호출부 호환)', () => {
+    expect(artistTotals(mixed(40, [[1_000_000, 'CARD']])).artistAmount).toBe(600_000);
+  });
+
+  it('카드 수수료를 먼저 떼고 남은 금액을 비율로 나눈다', () => {
+    const t = artistTotals(mixed(40, [[1_000_000, 'CARD']]), 2.2);
+    expect(t.cardFee).toBe(22_000);
+    expect(t.settleBase).toBe(978_000);
+    expect(t.galleryAmount).toBe(391_200);
+    expect(t.artistAmount).toBe(586_800);
+  });
+
+  it('현금 판매에는 붙지 않는다', () => {
+    const t = artistTotals(mixed(40, [[1_000_000, 'CASH']]), 2.2);
+    expect(t.cardFee).toBe(0);
+    expect(t.artistAmount).toBe(600_000);
+  });
+
+  it('카드+현금이 섞이면 카드분에만 붙는다', () => {
+    const t = artistTotals(mixed(40, [[1_000_000, 'CARD'], [500_000, 'CASH']]), 2.2);
+    expect(t.cardTotal).toBe(1_000_000);
+    expect(t.cashTotal).toBe(500_000);
+    expect(t.cardFee).toBe(22_000);
+    expect(t.artistAmount).toBe(886_800);
+  });
+
+  it('갤러리 몫 + 작가 몫 = 정산 대상액 (1원도 새면 안 된다)', () => {
+    for (const ratio of [0, 3, 33, 47, 50, 66, 97, 100]) {
+      const t = artistTotals(mixed(ratio, [[1_234_567, 'CARD'], [7_777, 'CASH']]), 2.2);
+      expect(t.galleryAmount + t.artistAmount).toBe(t.settleBase);
+      expect(t.settleBase).toBe(t.total - t.cardFee);
+    }
+  });
+
+  it('음수·NaN 은 0으로 본다 (수수료가 지급액을 늘리는 일은 없다)', () => {
+    const base = artistTotals(mixed(40, [[1_000_000, 'CARD']]), 0).artistAmount;
+    expect(artistTotals(mixed(40, [[1_000_000, 'CARD']]), -5).artistAmount).toBe(base);
+    expect(artistTotals(mixed(40, [[1_000_000, 'CARD']]), NaN).artistAmount).toBe(base);
+  });
+
+  it('저장 안 된 변경 판정에 수수료율이 포함된다 — 율만 고치고 보내면 옛 금액이 나간다', () => {
+    const a = [mixed(40, [[1_000_000, 'CARD']])];
+    expect(settlementFormSignature(a, 2.2)).not.toBe(settlementFormSignature(a, 0));
+    expect(settlementFormSignature(a, 2.2)).toBe(settlementFormSignature(a, 2.20));
+  });
+});

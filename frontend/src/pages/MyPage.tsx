@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
+import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
 import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
@@ -199,7 +200,7 @@ export default function MyPage() {
         { id: 'favorites', label: '찜 목록', icon: Heart },
         { id: 'liked-artworks', label: '좋아요한 작품', icon: Heart },
         { id: 'reviews', label: '내 리뷰', icon: Star },
-        { id: 'applications', label: '지원 내역', icon: Send },
+        { id: 'applications', label: '내 전시', icon: Ticket },
       ]
     : user.role === 'GALLERY'
     ? [
@@ -1768,22 +1769,14 @@ function MyReviewsSection() {
   );
 }
 
-// 공모 진행 단계 (지원내역 표시용) — 모집중 → 모집마감 → 확정 → 전시종료 → 정산완료
-function exhibitionStage(ex: any): { label: string; cls: string } | null {
-  if (!ex) return null;
-  const startPassed = ex.exhibitStartDate && new Date(ex.exhibitStartDate) <= new Date();
-  if (ex.settledAt) return { label: '정산완료', cls: 'bg-green-100 text-green-700' };
-  if (ex.ended) return { label: '전시종료', cls: 'bg-red-100 text-red-600' };
-  if (ex.confirmed || startPassed) return { label: '확정', cls: 'bg-blue-100 text-blue-700' };
-  if (ex.recruitmentClosed) return { label: '모집마감', cls: 'bg-gray-200 text-gray-700' };
-  return { label: '모집중', cls: 'bg-amber-100 text-amber-700' };
-}
-
-// ========== Artist: 지원 내역 ==========
+// ========== Artist: 내 전시 (지원 → 수락 → 자료제출 → 전시 → 정산) ==========
+// 분류 규칙은 lib/myExhibitions.ts 참고 (심사중 / 진행중 / 진행종료)
 function ApplicationsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  // null = 아직 자동 선택 전. 데이터가 온 뒤 '내용이 있는 첫 탭'으로 한 번만 정한다
+  // (전체 탭을 없앴으므로 기본값을 고정하면 가진 게 있는데도 빈 화면이 될 수 있다)
+  const [statusFilter, setStatusFilter] = useState<MyExhibitionBucket | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const { data: apps = [], isLoading, isError } = useQuery<any[]>({
@@ -1791,7 +1784,12 @@ function ApplicationsSection() {
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
 
-  // 거절 확인 — '확인'을 눌러야 지원내역 목록에서 제거
+  // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다
+  useEffect(() => {
+    if (statusFilter === null && apps.length > 0) setStatusFilter(defaultBucket(apps));
+  }, [apps, statusFilter]);
+
+  // 거절 확인 — '확인'을 눌러야 목록에서 제거 (그전까지는 '심사중' 탭에 남는다)
   const ackRejectionMutation = useMutation({
     mutationFn: (appId: number) => api.post(`/exhibitions/applications/${appId}/acknowledge-rejection`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my-applications'] }); },
@@ -1802,40 +1800,35 @@ function ApplicationsSection() {
   const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
-    return <p className="text-red-400 text-center py-8">지원 내역을 불러오는 중 오류가 발생했습니다.</p>;
+    return <p className="text-red-400 text-center py-8">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
-  const isRejected = (a: any) => a.status === 'REJECTED';
-  const isSettled = (a: any) => !!a.exhibition?.settledAt;
   // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
 
-  // 진행상태 필터: 전체 / 진행중(거절·정산 제외) / 정산완료
-  const filteredApps = statusFilter === 'SETTLED'
-    ? visibleApps.filter(isSettled)
-    : statusFilter === 'ONGOING'
-      ? visibleApps.filter((a: any) => !isSettled(a) && !isRejected(a))
-      : visibleApps;
+  const buckets = groupMyExhibitions(visibleApps);
+  const activeTab: MyExhibitionBucket = statusFilter ?? defaultBucket(visibleApps);
+  const filteredApps = buckets[activeTab];
 
   const counts: Record<string, number> = {
-    ALL: visibleApps.length,
-    ONGOING: visibleApps.filter((a: any) => !isSettled(a) && !isRejected(a)).length,
-    SETTLED: visibleApps.filter(isSettled).length,
+    REVIEWING: buckets.REVIEWING.length,
+    ONGOING: buckets.ONGOING.length,
+    CLOSED: buckets.CLOSED.length,
   };
 
   return visibleApps.length === 0 ? (
-    <p className="text-gray-400 text-center py-8">지원한 공고가 없습니다.</p>
+    <p className="text-gray-400 text-center py-8">아직 지원하거나 참여한 전시가 없습니다.</p>
   ) : (
     <div className="space-y-3">
-      {/* 진행상태 필터 탭 */}
+      {/* 진행상태 필터 탭 — 심사중 / 진행중 / 진행종료 */}
       <div className="flex gap-1.5 flex-wrap">
-        {[{ key: 'ALL', label: '전체' }, { key: 'ONGOING', label: '진행중' }, { key: 'SETTLED', label: '정산완료' }].map(f => (
+        {MY_EXHIBITION_TABS.map(f => (
           <button
             key={f.key}
             onClick={() => setStatusFilter(f.key)}
-            className={`px-2.5 py-1 text-xs rounded-full transition-colors ${statusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-2.5 py-1 text-xs rounded-full transition-colors ${activeTab === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             {f.label} {counts[f.key] ? `(${counts[f.key]})` : ''}
           </button>
@@ -1843,7 +1836,7 @@ function ApplicationsSection() {
       </div>
 
       {filteredApps.length === 0 ? (
-        <p className="text-gray-400 text-center py-4 text-sm">해당 상태의 지원 내역이 없습니다.</p>
+        <p className="text-gray-400 text-center py-4 text-sm">{MY_EXHIBITION_EMPTY[activeTab]}</p>
       ) : (
         filteredApps.map((app: any) => {
           const isExpanded = expandedId === app.id;
@@ -1876,17 +1869,43 @@ function ApplicationsSection() {
                     </span>
                   </div>
                 </div>
-                {/* 수락된 공모: 운영 페이지 바로가기 (소형) */}
-                {app.status === 'ACCEPTED' && (
-                  <div className="mt-2 flex justify-end">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation/new`); }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
-                    >
-                      <ClipboardList size={12} /> 운영페이지로 이동
-                    </button>
-                  </div>
-                )}
+                {/*
+                  진행중 전시의 다음 일정 — 작가가 가장 자주 놓치는 게 '자료 언제까지'다.
+                  마감이 지났어도 줄을 지우지 않는다(늦었어도 내야 하는 일이라 숨기면 모른다).
+                */}
+                {/*
+                  다음 일정 + 운영페이지 버튼을 **한 줄**에 둔다. 예전엔 회색 상자와 버튼이
+                  각각 한 줄씩 차지해 카드가 쓸데없이 높았다.
+                  좁은 화면에서는 자연스럽게 줄바꿈되고, 버튼은 ml-auto 로 오른쪽에 붙는다.
+                */}
+                {(() => {
+                  const rows = activeTab === 'ONGOING'
+                    ? nextSchedule(app.exhibition ?? {}, !!app.submissionComplete, getDday)
+                    : [];
+                  const showButton = app.status === 'ACCEPTED';
+                  if (rows.length === 0 && !showButton) return null;
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      {rows.map((r, i) => (
+                        <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-[#c4302b] font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
+                          {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" />}
+                          {r.tone === 'done' && <Check size={11} className="shrink-0" />}
+                          {r.label}
+                          {r.dday && <b className="tabular-nums">{r.dday}</b>}
+                          <span className="text-gray-400 tabular-nums">({r.date})</span>
+                        </span>
+                      ))}
+                      {showButton && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation/new`); }}
+                          className="ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+                        >
+                          <ClipboardList size={12} /> 운영페이지
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* 거절된 공모: '확인' 눌러야 목록에서 제거 */}
                 {app.status === 'REJECTED' && (
                   <div className="mt-2 flex items-center justify-between gap-2">
@@ -2228,7 +2247,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
   }, [initialViewMode]);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
@@ -2258,7 +2277,8 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
     deadline: form.deadline,
     exhibitStartDate: form.exhibitStartDate || undefined,
     exhibitDate: form.exhibitDate,
-  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate]);
+    submissionDeadline: form.submissionDeadline || undefined,
+  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline]);
 
   // 폼 열기 (draft 복원)
   const openExForm = () => {
@@ -2352,12 +2372,16 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
     setManageAppsExId(null);   // 필터를 바꾸면 열려 있던 지원자 목록은 닫는다
   };
 
-  // 종료 = 정산까지 끝난 것. '전시종료'는 아직 정산이 남아 있어 할 일이 있는 상태라 진행중에 둔다.
-  const activeExhibitions = overviewItems.filter((x) => !x.settledAt);
-  // 최근에 마감한 것부터 — 오래된 기록일수록 아래로
+  // 종료 판정은 서버가 한다(`lib/exhibitionLifecycle.ts`) — 정산 완료 **또는**
+  // 전시 종료 20일 경과(단, 정산을 시작했으면 진행중 유지).
+  // 갤러리가 [전시종료]조차 안 누른 공모가 영원히 '진행중' 으로 쌓이는 걸 막는다.
+  // 옛 응답(closed 없음)은 예전 규칙(정산 완료)으로 떨어진다.
+  const isClosedItem = (x: any) => x.closed ?? !!x.settledAt;
+  const activeExhibitions = overviewItems.filter((x) => !isClosedItem(x));
+  // 최근에 끝난 것부터 — 오래된 기록일수록 아래로. 정산을 안 한 공모는 전시 종료일이 기준이 된다
   const closedExhibitions = overviewItems
-    .filter((x) => x.settledAt)
-    .sort((a, b) => new Date(b.settledAt!).getTime() - new Date(a.settledAt!).getTime());
+    .filter(isClosedItem)
+    .sort((a: any, b: any) => new Date(b.settledAt ?? b.exhibitDate ?? 0).getTime() - new Date(a.settledAt ?? a.exhibitDate ?? 0).getTime());
   const shownExhibitions = exhibitionViewMode === 'closed' ? closedExhibitions : activeExhibitions;
 
   return (
@@ -2445,6 +2469,17 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                       <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
                       <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                     </div>
+                    {/*
+                      작가가 출품자료(출품리스트·약력·노트)를 내야 하는 날짜.
+                      공모 마감과 전시 시작 사이에 있어야 한다 — 지원도 안 끝났는데 자료를 받을 수 없고,
+                      전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다.
+                      min/max 로 달력 자체를 막아, 틀린 날짜를 고르고 저장 버튼에서 튕기는 일이 없게 한다.
+                    */}
+                    <div className="col-span-2">
+                      <label className={`text-xs ${formErrors.has('submissionDeadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>작가 자료제출 마감일 *</label>
+                      <input type="date" value={form.submissionDeadline} onChange={e => { setForm({...form, submissionDeadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; }); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('submissionDeadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <p className="mt-1 text-[11px] text-gray-400">수락된 작가가 출품작·약력·작가노트를 내야 하는 날짜입니다. 공모 마감일과 전시 시작일 사이로 정해주세요.</p>
+                    </div>
                   </div>
                   {dateError && (
                     <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} /> {dateError}</p>
@@ -2481,6 +2516,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
                     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
                     if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+                    if (!form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
                     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
                     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
                     const cleanedCustomFields = sanitizeCustomFields(form.customFields);
@@ -4182,7 +4218,9 @@ function OvExhibitions() {
   const [submitted, setSubmitted] = useState('');
   const [selId, setSelId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
-  // 진행/종료 필터 — 갤러리 마이페이지(내 공모)와 **같은 기준**을 쓴다: 종료 = 정산 완료(settledAt).
+  // 진행/종료 필터 — 갤러리 마이페이지(내 공모)와 **같은 기준**을 쓴다.
+  // 판정은 서버(`lib/exhibitionLifecycle.ts`)가 내려주는 `closed`: 정산 완료 또는
+  // 전시 종료 20일 경과(정산을 시작했으면 진행중 유지).
   // 전시종료는 아직 정산이 남아 할 일이 있으므로 진행중에 둔다. 기준이 갈리면 두 화면의 숫자가 달라진다.
   const [scope, setScope] = useState<'active' | 'closed'>('active');
 
@@ -4199,10 +4237,11 @@ function OvExhibitions() {
 
 
   // 검색 결과 안에서 나눈다 — 검색어를 지운 채 탭만 바꾸면 전체가 다시 갈린다
-  const activeList = exhibitions.filter((ex) => !ex.settledAt);
+  const isClosedEx = (ex: any) => ex.closed ?? !!ex.settledAt;
+  const activeList = exhibitions.filter((ex) => !isClosedEx(ex));
   const closedList = exhibitions
-    .filter((ex) => ex.settledAt)
-    .sort((a, b) => new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime());
+    .filter(isClosedEx)
+    .sort((a: any, b: any) => new Date(b.settledAt ?? b.exhibitDate ?? 0).getTime() - new Date(a.settledAt ?? a.exhibitDate ?? 0).getTime());
   const shown = scope === 'closed' ? closedList : activeList;
 
   return (

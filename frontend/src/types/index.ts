@@ -265,6 +265,8 @@ export interface OperationSubmission {
   cv: ArtistCv | null;
   note: ArtistNote | null;
   representativeIndex?: number | null;  // 엽서용 대표작 인덱스 (작가 선택)
+  /** 작가 본인이 아니라 갤러리/Admin 이 대신 입력한 자료인가 (작가가 직접 저장하면 해제된다) */
+  proxyEdited?: boolean;
 }
 
 // 공모 운영 공지
@@ -293,6 +295,12 @@ export interface OperationAccess {
   settlementRequestedAt?: string | null;
   settled?: boolean;         // 정산 완료(확정) — 운영페이지 수정 잠금 + 작가에게 정산 공개
   settledAt?: string | null;
+  /** 전시 종료일 — 자동 정리(20일) 남은 기간을 계산하는 기준 */
+  exhibitDate?: string | null;
+  /** 전시 종료 후 이 기간 동안 정산을 시작하지 않으면 '종료된 공모' 로 정리된다 */
+  autoCloseDays?: number;
+  /** 갤러리가 정산에 손을 댔는가 (금액 입력 또는 확인 요청) — true 면 자동 정리 대상이 아니다 */
+  settlementStarted?: boolean;
 }
 
 // ArtLook(작품 액자/목업) 홍보용 핸드오프 payload (localStorage 'artlook:works')
@@ -323,14 +331,25 @@ export interface SettlementArtist {
   artistRatio: number;
   works: SettlementWork[];
   total: number;
+  /** 카드로 팔린 합계 / 현금으로 팔린 합계 */
+  cardTotal?: number;
+  cashTotal?: number;
+  /** 카드 판매분에 붙는 수수료(원). 이걸 먼저 뺀 `settleBase` 를 비율로 나눈다 */
+  cardFee?: number;
+  settleBase?: number;
   galleryAmount: number;
   artistAmount: number;
 }
 // 정산 전체
 export interface Settlement {
   exhibitionTitle: string;
+  /** 카드 결제 수수료율(%) — 전시 하나에 하나 */
+  cardFeeRate?: number;
   artists: SettlementArtist[];
-  grand: { total: number; galleryAmount: number; artistAmount: number; soldCount: number };
+  grand: {
+    total: number; galleryAmount: number; artistAmount: number; soldCount: number;
+    cardTotal?: number; cashTotal?: number; cardFee?: number; settleBase?: number;
+  };
 }
 
 export interface Portfolio {

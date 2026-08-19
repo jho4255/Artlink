@@ -69,6 +69,11 @@ type ExhibitionDetail = Exhibition & {
    */
   recruitmentClosed?: boolean;
   ended?: boolean;
+  /**
+   * 작가 자료제출 마감일. 2026-08-19 이전 공모에는 값이 없어(nullable) 운영자가 한 번 채운다.
+   * 값이 없는 동안에는 아예 표시하지 않는다 — 없는 기한을 지어내면 안 된다.
+   */
+  submissionDeadline?: string | null;
 };
 
 type CustomAnswerDraft = Record<string, string | string[]>;
@@ -482,6 +487,12 @@ export default function ExhibitionDetailPage() {
               </p>
             </div>
           </div>
+          {/*
+            자료제출 마감일 — 공모기간과 전시기간 **사이**에 둔다. 시간 순서대로 읽히는 게
+            작가에게 가장 자연스럽다(지원 → 자료 제출 → 전시).
+            값이 없는 옛 공모에는 운영자에게만 [입력] 버튼을 보인다.
+          */}
+          <SubmissionDeadlineRow exhibition={exhibition} canEdit={canEdit} isAdmin={isAdmin} />
           <div className="flex items-center gap-3 py-4 border-b border-gray-100">
             <Calendar size={16} className="text-gray-400 flex-none" />
             <div>
@@ -1159,6 +1170,92 @@ function ExhibitionImageManager({ exhibitionId, images }: { exhibitionId: number
             onChange={(e) => { if (e.target.files?.length) handleUpload(e.target.files); e.target.value = ''; }}
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 작가 자료제출 마감일 줄 — 공모기간과 전시기간 사이에 놓인다.
+ *
+ * ── 세 가지 상태 ────────────────────────────────────────────
+ *   값이 있음            날짜만 보여준다 (수정 버튼 없음)
+ *   값이 없음 + 운영자    [입력] 버튼 → 한 번만 넣을 수 있다
+ *   값이 없음 + 그 외     아무것도 안 보인다 (없는 기한을 지어내지 않는다)
+ *
+ * ⚠️ 한 번 넣으면 갤러리는 못 고친다(서버가 403). 작가가 이 날짜를 보고 일정을 잡기 때문에,
+ *    뒤늦게 당기면 안내받은 기한이 조용히 바뀐다. 오타 구제는 Admin 에게만 열려 있다.
+ * ⚠️ 전시가 이미 시작된 공모에는 입력 버튼을 띄우지 않는다 — 지난 날짜를 적는 건 의미가 없고,
+ *    작가 화면에 '이미 지난 마감'이 새로 생기는 것도 이상하다.
+ */
+function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: ExhibitionDetail; canEdit: boolean; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+
+  const start = exhibition.exhibitStartDate || exhibition.exhibitDate;
+  const started = new Date(start) <= new Date();
+  const canFill = canEdit && (!exhibition.submissionDeadline || isAdmin) && (!started || isAdmin);
+
+  const save = useMutation({
+    mutationFn: () => api.patch(`/exhibitions/${exhibition.id}/submission-deadline`, { submissionDeadline: value }),
+    onSuccess: () => {
+      toast.success('자료제출 마감일을 저장했습니다.');
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ['exhibition', String(exhibition.id)] });
+      qc.invalidateQueries({ queryKey: ['exhibition', exhibition.id] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '저장에 실패했습니다.'),
+  });
+
+  if (!exhibition.submissionDeadline && !canFill) return null;
+
+  // 달력 자체를 유효 범위로 막는다 — 틀린 날짜를 고르고 저장에서 튕기는 일이 없게
+  const ymd = (v: string | Date) => new Date(v).toISOString().slice(0, 10);
+  const dayShift = (v: string | Date, n: number) => ymd(new Date(new Date(v).getTime() + n * 86400000));
+
+  return (
+    <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+      <FileText size={16} className="text-gray-400 flex-none" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-gray-400">작가 자료제출 마감일</p>
+        {exhibition.submissionDeadline && !editing ? (
+          <p className="text-base">{new Date(exhibition.submissionDeadline).toLocaleDateString('ko')}</p>
+        ) : editing ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              min={dayShift(exhibition.deadline, 1)}
+              max={dayShift(start, -1)}
+              className="min-h-10 rounded-lg border border-gray-300 px-2 py-1 text-sm"
+            />
+            <button onClick={() => save.mutate()} disabled={!value || save.isPending}
+              className="min-h-10 rounded-lg bg-gray-900 px-3 text-sm text-white hover:bg-gray-800 disabled:opacity-50">
+              {save.isPending ? '저장 중...' : '저장'}
+            </button>
+            <button onClick={() => setEditing(false)} className="min-h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50">
+              취소
+            </button>
+          </div>
+        ) : (
+          <p className="text-base text-gray-400">미설정</p>
+        )}
+        {editing && (
+          <p className="mt-1 text-xs text-gray-500">
+            공모 마감일 다음날 ~ 전시 시작일 전날 사이로 정해주세요.
+            {!isAdmin && ' 한 번 저장하면 변경할 수 없습니다.'}
+          </p>
+        )}
+      </div>
+      {canFill && !editing && (
+        <button
+          onClick={() => { setValue(exhibition.submissionDeadline ? ymd(exhibition.submissionDeadline) : ''); setEditing(true); }}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <Edit3 size={12} /> {exhibition.submissionDeadline ? '수정' : '입력'}
+        </button>
       )}
     </div>
   );

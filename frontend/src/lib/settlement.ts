@@ -19,14 +19,45 @@ export type EditArtist = {
 };
 
 /**
+ * 카드 수수료율 → 계산에 쓸 정수(백분율의 1/100 단위. 2.2% → 220).
+ * 백엔드 `lib/settlementFingerprint.ts` 의 `feeUnits` 와 같은 규칙이다 — 갈라지면
+ * 화면 금액과 서버 금액이 어긋난다.
+ */
+export const feeUnits = (rate: unknown): number => {
+  const n = Number(rate);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(Math.min(100, n) * 100);
+};
+
+/** 카드로 팔린 금액에 붙는 수수료(원). 현금 판매분에는 붙지 않는다. */
+export function cardFeeOf(works: { sold: boolean; soldPrice: number; paymentMethod?: string | null }[], cardFeeRate: unknown): number {
+  const units = feeUnits(cardFeeRate);
+  if (units === 0) return 0;
+  const cardTotal = works
+    .filter(w => w.sold && w.paymentMethod !== 'CASH')
+    .reduce((s, w) => s + (Math.round(Number(w.soldPrice)) || 0), 0);
+  return Math.round((cardTotal * units) / 10000);
+}
+
+/**
  * 작가 한 명의 합계.
+ *
+ * 순서가 중요하다 — **카드 수수료를 먼저 떼고, 남은 금액을 갤러리:작가 비율로 나눈다.**
+ * 그래야 수수료를 양쪽이 비율만큼 나눠 부담한다. 비율을 먼저 적용하고 갤러리 몫에서만 빼면
+ * 작가는 수수료를 전혀 부담하지 않게 돼 결과가 달라진다. (백엔드 `artistAmounts` 와 같은 식)
+ *
  * 갤러리 몫을 먼저 반올림하고 작가 몫을 뺄셈으로 구한다 — 양쪽을 따로 반올림하면
  * 합이 총액과 1원 어긋나 정산서에서 숫자가 안 맞는다.
  */
-export function artistTotals(a: EditArtist) {
-  const total = a.works.filter(w => w.sold).reduce((s, w) => s + (w.soldPrice || 0), 0);
-  const galleryAmount = Math.round(total * a.galleryRatio / 100);
-  return { total, galleryAmount, artistAmount: total - galleryAmount };
+export function artistTotals(a: EditArtist, cardFeeRate: unknown = 0) {
+  const sold = a.works.filter(w => w.sold);
+  const cardTotal = sold.filter(w => w.paymentMethod !== 'CASH').reduce((s, w) => s + (w.soldPrice || 0), 0);
+  const cashTotal = sold.filter(w => w.paymentMethod === 'CASH').reduce((s, w) => s + (w.soldPrice || 0), 0);
+  const total = cardTotal + cashTotal;
+  const cardFee = cardFeeOf(a.works, cardFeeRate);
+  const settleBase = total - cardFee;
+  const galleryAmount = Math.round(settleBase * a.galleryRatio / 100);
+  return { total, cardTotal, cashTotal, cardFee, settleBase, galleryAmount, artistAmount: settleBase - galleryAmount };
 }
 
 /**
@@ -45,8 +76,8 @@ export interface SignatureArtist {
   works: { index: number; sold: boolean; soldPrice: number; paymentMethod?: string | null }[];
 }
 
-export function settlementFormSignature(artists: SignatureArtist[]): string {
-  return [...artists]
+export function settlementFormSignature(artists: SignatureArtist[], cardFeeRate: unknown = 0): string {
+  const rows = [...artists]
     .sort((a, b) => a.user.id - b.user.id)
     .map((a) => {
       const sold = a.works
@@ -57,6 +88,9 @@ export function settlementFormSignature(artists: SignatureArtist[]): string {
       return `${a.user.id}|r${Math.round(a.galleryRatio || 0)}|${sold}`;
     })
     .join(';');
+  // 수수료율도 저장 대상 — 빼면 율만 고치고 저장 없이 [작가에게 보내기] 를 눌러
+  // **옛 금액이 그대로 나가는** 사고가 그대로 재현된다
+  return `f${feeUnits(cardFeeRate)};${rows}`;
 }
 
 /** 접기/펼치기를 정할 때 필요한 최소 정보 */

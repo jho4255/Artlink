@@ -63,6 +63,8 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
   });
   const [artists, setArtists] = useState<EditArtist[]>([]);
   const [exTitle, setExTitle] = useState('');
+  /** 카드 결제 수수료율(%) — 전시 하나에 하나. 입력 중 '2.' 같은 상태를 허용해야 해서 문자열로 들고 있다 */
+  const [feeRate, setFeeRate] = useState('0');
   const [zipping, setZipping] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   /** 펼친 작가 id 집합. 초기값은 데이터가 온 뒤 한 번만 정한다(사용자가 접은 걸 refetch 가 되돌리면 안 된다) */
@@ -82,6 +84,8 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
     qc.invalidateQueries({ queryKey: ['operation-settlement', exhibitionId] });
     qc.invalidateQueries({ queryKey: ['operation-access', exhibitionId] });
   };
+  // 입력 중인 문자열('', '2.')은 0으로 본다 — 계산·저장은 항상 숫자로만 한다
+  const feeNum = Number(feeRate) || 0;
   /**
    * 화면에 입력된 내용을 서버에 쓴다.
    *
@@ -93,7 +97,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
   function persist() {
     const sales = artists.flatMap(a => a.works.filter(w => w.sold).map(w => ({ artistUserId: a.user.id, artworkIndex: w.index, title: w.title, soldPrice: w.soldPrice || 0, paymentMethod: w.paymentMethod || 'CARD' })));
     const ratios = artists.map(a => ({ artistUserId: a.user.id, galleryRatio: a.galleryRatio }));
-    return api.put(`/operations/${exhibitionId}/settlement`, { sales, ratios });
+    return api.put(`/operations/${exhibitionId}/settlement`, { sales, ratios, cardFeeRate: feeNum });
   }
 
   const completeMutation = useMutation({
@@ -147,6 +151,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
   useEffect(() => {
     if (!data) return;
     setExTitle(data.exhibitionTitle);
+    setFeeRate(String(data.cardFeeRate ?? 0));
     setArtists(data.artists.map(a => ({
       user: a.user,
       galleryRatio: a.galleryRatio,
@@ -172,7 +177,8 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
   // 저장 안 된 변경이 있는가 — 화면 값과 서버 값을 같은 규칙으로 지문 비교.
   // ref 로도 들고 있는 이유: mutationFn 이 만들어질 때가 아니라 **클릭한 순간**의 값을 봐야 한다.
-  const dirty = !!data && artists.length > 0 && settlementFormSignature(artists) !== settlementFormSignature(data.artists);
+  const dirty = !!data && artists.length > 0
+    && settlementFormSignature(artists, feeNum) !== settlementFormSignature(data.artists, data.cardFeeRate ?? 0);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
@@ -192,14 +198,19 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
   // 현재 편집 상태로 정산 객체 구성 (PDF용)
   const buildSettlement = (): Settlement => {
     const built = artists.map(a => {
-      const t = artistTotals(a);
+      const t = artistTotals(a, feeNum);
       return { user: a.user, galleryRatio: a.galleryRatio, artistRatio: 100 - a.galleryRatio, works: a.works, ...t };
     });
     return {
       exhibitionTitle: exTitle,
+      cardFeeRate: feeNum,
       artists: built,
       grand: {
         total: built.reduce((s, a) => s + a.total, 0),
+        cardTotal: built.reduce((s, a) => s + a.cardTotal, 0),
+        cashTotal: built.reduce((s, a) => s + a.cashTotal, 0),
+        cardFee: built.reduce((s, a) => s + a.cardFee, 0),
+        settleBase: built.reduce((s, a) => s + a.settleBase, 0),
         galleryAmount: built.reduce((s, a) => s + a.galleryAmount, 0),
         artistAmount: built.reduce((s, a) => s + a.artistAmount, 0),
         soldCount: built.reduce((s, a) => s + a.works.filter(w => w.sold).length, 0),
@@ -220,7 +231,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
     try {
       const s = buildSettlement();
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method);
+      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai], method, undefined, { cardFeeRate: feeNum });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
@@ -282,6 +293,35 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
         </div>
       )}
 
+      {/*
+        카드 수수료율 — 전시 하나에 하나. 카드로 팔린 금액에서 먼저 떼고 남은 금액을 비율로 나눈다.
+        여기 값을 고치면 **카드 판매가 있는 작가만** 수락이 풀린다(현금으로만 판 작가는 금액이 안 변하므로 유지).
+      */}
+      {!locked && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label htmlFor="card-fee-rate" className="text-sm font-medium text-gray-900 shrink-0">카드 수수료</label>
+            <input
+              id="card-fee-rate" type="number" inputMode="decimal" step="0.01" min="0" max="100"
+              value={feeRate}
+              onChange={e => setFeeRate(e.target.value)}
+              onBlur={() => setFeeRate(String(feeNum))}
+              className="w-24 min-h-[36px] px-2 py-1 border border-gray-300 rounded-lg text-sm text-right tabular-nums"
+            />
+            <span className="text-sm text-gray-600 shrink-0">%</span>
+            {grand.cardFee ? (
+              <span className="text-xs text-gray-500 min-w-0">
+                카드 {won(grand.cardTotal ?? 0)} 중 <b className="text-gray-900">{won(grand.cardFee)}</b> 공제
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1.5 text-xs text-gray-500">
+            카드로 팔린 금액에서 먼저 뗀 뒤, 남은 금액을 갤러리:작가 비율로 나눕니다. 현금 판매에는 붙지 않습니다.
+            {' '}0을 넣으면 수수료 없이 계산됩니다.
+          </p>
+        </div>
+      )}
+
       {/* 판매작 홍보 CTA — ArtLook 연결 */}
       {soldWorks.length > 0 && (
         <div className="mb-4 rounded-xl border border-[#c4302b]/25 bg-[#fff5f4] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -307,7 +347,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
             </div>
           )}
           {artists.map((a, ai) => {
-            const t = artistTotals(a);
+            const t = artistTotals(a, feeNum);
             const appr = approvalOf(a.user.id);
             const open = isOpen(a.user.id);
             const soldCount = a.works.filter(w => w.sold).length;
@@ -420,6 +460,13 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-sm">
                       <span className="text-gray-500">판매 합계 <b className="text-gray-900">{won(t.total)}</b></span>
+                      {/* 수수료는 뗀 사실과 금액이 같이 보여야 한다 — 작가가 "왜 줄었냐" 물을 때 답이 화면에 있어야 한다 */}
+                      {t.cardFee > 0 && (
+                        <>
+                          <span className="text-gray-500">카드 수수료 <b className="text-gray-900">-{won(t.cardFee)}</b></span>
+                          <span className="text-gray-500">정산 대상 <b className="text-gray-900">{won(t.settleBase)}</b></span>
+                        </>
+                      )}
                       <span className="flex items-center gap-1">
                         갤러리
                         <input type="number" min={0} max={100} disabled={locked} value={a.galleryRatio} onChange={e => updRatio(ai, parseInt(e.target.value) || 0)} className="w-14 px-1.5 py-0.5 border border-gray-200 rounded text-sm text-right disabled:bg-gray-100" />%
@@ -440,6 +487,12 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
               <span>판매 작품 <b className="text-gray-900">{grand.soldCount}점</b></span>
               <span>판매 합계 <b className="text-gray-900">{won(grand.total)}</b></span>
+              {(grand.cardFee ?? 0) > 0 && (
+                <>
+                  <span>카드 수수료 <b className="text-gray-900">-{won(grand.cardFee ?? 0)}</b></span>
+                  <span>정산 대상 <b className="text-gray-900">{won(grand.settleBase ?? 0)}</b></span>
+                </>
+              )}
               <span>갤러리 합계 <b className="text-gray-900">{won(grand.galleryAmount)}</b></span>
               <span>작가 지급 합계 <b className="text-gray-900">{won(grand.artistAmount)}</b></span>
             </div>

@@ -13,6 +13,8 @@ import { ARTIST_APPLY_TERMS_HASH, ARTIST_APPLY_TERMS_VERSION } from '../lib/term
 import { bumpViewCount } from '../lib/viewCount';
 import { startOfTodayKstAsUtc, endOfTodayKstAsUtc, isDeadlinePassedKst } from '../lib/kstDate';
 import { hasSubmissionContent } from '../lib/submission';
+import { isExhibitionClosed, isSettlementStarted } from '../lib/exhibitionLifecycle';
+import { sweepSettlementReminders } from '../lib/settlementReminder';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import {
   OPERATOR_INCLUDE,
@@ -49,6 +51,8 @@ const exhibitionCreateSchema = z.object({
   deadlineStart: z.string().optional().nullable(),
   exhibitDate: z.string().min(1, '전시 종료일을 입력해주세요.'),
   exhibitStartDate: z.string().optional().nullable(),
+  // 신규 등록은 필수. 옛 공모(값 없음)는 상세 화면에서 따로 채운다 — `PATCH /:id/submission-deadline`
+  submissionDeadline: z.string().min(1, '자료제출 마감일을 입력해주세요.'),
   capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.'),
   region: z.string().min(1, '지역을 선택해주세요.'),
   description: z.string().min(1, '공모 소개를 입력해주세요.'),
@@ -58,6 +62,27 @@ const exhibitionCreateSchema = z.object({
 });
 
 const router = Router();
+
+/**
+ * 자료제출 마감일이 지원마감과 전시시작 **사이**에 있는지 검사한다.
+ *
+ * 순서가 어긋나면 실무가 성립하지 않는다 — 지원도 안 끝났는데 자료를 내라고 할 수 없고,
+ * 전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다.
+ * 경계(같은 날)는 막는다. 실서버 공모 12건의 지원마감~전시시작 틈이 모두 8일 이상이라
+ * 엄격하게 잡아도 걸리는 데이터가 없다(2026-08-19 확인).
+ *
+ * 전시 시작일은 선택값이므로, 없으면 전시 종료일을 기준으로 삼는다.
+ */
+function assertSubmissionDeadline(submissionDeadline: Date, deadline: Date, exhibitStart: Date | null, exhibitEnd: Date) {
+  if (Number.isNaN(submissionDeadline.getTime())) throw new AppError('자료제출 마감일이 올바르지 않습니다.', 400);
+  const start = exhibitStart ?? exhibitEnd;
+  if (submissionDeadline <= deadline) {
+    throw new AppError('자료제출 마감일은 지원 마감일보다 뒤여야 합니다.', 400);
+  }
+  if (submissionDeadline >= start) {
+    throw new AppError('자료제출 마감일은 전시 시작일보다 앞이어야 합니다.', 400);
+  }
+}
 
 /** 알림 문구용 주최자 이름 — 아트링크 주최 공모는 주관 갤러리명 대신 '아트링크' */
 function hostLabel(ex: { hostType?: string | null; gallery?: { name?: string } | null }): string {
@@ -117,6 +142,9 @@ function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string;
 // 진행중인 공모 목록 (마감일이 지나지 않은 것만)
 router.get('/', optionalAuth, async (req, res, next) => {
   try {
+    // 스케줄러가 없어 읽기에 얹어 훑는다. 갤러리가 화면을 안 열어도 재촉 알림이 나가야 하므로
+    // 트래픽이 있는 공개 목록에 건다(프로세스당 5분 스로틀 · best-effort).
+    void sweepSettlementReminders();
     const { region, minGalleryRating } = req.query;
 
     // KST 달력 날짜 기준 경계로 마감/시작을 판정 (마감일 당일은 종일 노출, 시작일 당일부터 노출)
@@ -211,27 +239,50 @@ router.get('/', optionalAuth, async (req, res, next) => {
 // 내 지원 내역 조회 (Artist 전용)
 router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
+    const userId = req.user!.id;
     const applications = await prisma.application.findMany({
-      where: { userId: req.user!.id },
+      where: { userId },
       include: {
         exhibition: {
           include: {
-            gallery: { select: { id: true, name: true, rating: true } }
+            gallery: { select: { id: true, name: true, rating: true } },
+            // 이 작가가 자료를 냈는지 / 갤러리가 정산을 시작했는지 — 마이페이지 [내 전시] 의
+            // '다음 일정' 과 진행중·종료 분류에 쓴다. 목록 한 번에 같이 담아 N+1 을 만들지 않는다.
+            submissions: { where: { userId }, select: { artworkList: true, cv: true, note: true } },
+            _count: { select: { sales: true } },
           }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(applications.map((app: any) => ({
-      ...app,
-      career: safeJson(app.career, null),
-      artworkImages: safeJson<string[]>(app.artworkImages, []),
-      customAnswers: safeJson(app.customAnswers, []),
-      exhibition: app.exhibition ? {
-        ...app.exhibition,
-        customFields: parseCustomFields(app.exhibition.customFields),
-      } : app.exhibition,
-    })));
+    res.json(applications.map((app: any) => {
+      const ex = app.exhibition;
+      if (!ex) return { ...app, career: safeJson(app.career, null), artworkImages: safeJson<string[]>(app.artworkImages, []), customAnswers: safeJson(app.customAnswers, []) };
+      const sub = ex.submissions?.[0];
+      // '제출 완료' 판정은 갤러리 화면의 [제출완료] 배지와 **같은 규칙**이어야 한다 —
+      // 작가는 다 냈다고 보는데 갤러리는 미제출로 보이면 서로 다른 말을 하게 된다.
+      // 임시저장(draft) 작품은 갤러리에 비공개라 여기서도 제외한다.
+      const artworks = safeJson<any[]>(sub?.artworkList, []);
+      const hasArtwork = Array.isArray(artworks) && artworks.some((a: any) => !a?.draft);
+      const submissionComplete = hasArtwork
+        && hasSubmissionContent(safeJson(sub?.cv, null))
+        && hasSubmissionContent(safeJson(sub?.note, null));
+      const { submissions: _s, _count, ...exRest } = ex;
+      return {
+        ...app,
+        career: safeJson(app.career, null),
+        artworkImages: safeJson<string[]>(app.artworkImages, []),
+        customAnswers: safeJson(app.customAnswers, []),
+        submissionComplete,
+        exhibition: {
+          ...exRest,
+          customFields: parseCustomFields(ex.customFields),
+          closed: isExhibitionClosed({ ...ex, saleCount: _count?.sales ?? 0 }),
+          // 배지를 '전시종료' 와 '정산중' 으로 가르는 값 — 갤러리가 정산에 손을 댔는가
+          settlementStarted: isSettlementStarted({ ...ex, saleCount: _count?.sales ?? 0 }),
+        },
+      };
+    }));
   } catch (error) { next(error); }
 });
 
@@ -279,6 +330,7 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
 // Gallery operation overview for My Page.
 router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (req, res, next) => {
   try {
+    void sweepSettlementReminders();   // 갤러리가 직접 들어왔을 때도 한 번
     const exhibitions = await prisma.exhibition.findMany({
       where: operableExhibitionWhere(req.user!.id),
       include: {
@@ -413,8 +465,12 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
         recruitmentClosed: exhibition.recruitmentClosed,
         confirmed: exhibition.confirmed,
         ended: exhibition.ended,
+        submissionDeadline: exhibition.submissionDeadline,
         settlementRequestedAt: exhibition.settlementRequestedAt,
         settledAt: exhibition.settledAt,
+        // 목록에서 '종료' 로 내릴지 — 정산 완료 또는 전시 종료 20일 경과(단, 정산을 시작했으면 유지).
+        // 갤러리가 [전시종료]조차 안 누른 공모가 영원히 '진행중' 으로 쌓이는 걸 막는다.
+        closed: isExhibitionClosed({ ...exhibition, saleCount }),
         gallery: exhibition.gallery,
         stage: getStage(exhibition),
         nextAction: getNextAction(exhibition, apps.accepted ?? 0, subs.complete, saleCount, settlement),
@@ -677,10 +733,13 @@ router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) =
 // 아트링크 주최 공모 등록 (Admin 전용) — 승인 절차 없이 바로 게시
 router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
 
     const galleries = await verifyManagerGalleries(galleryIds);
     const hostGallery = galleries[0]!; // 주관 갤러리
+
+    const subDeadline = new Date(submissionDeadline);
+    assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
 
     const safeImageUrl = safeFileUrl(imageUrl);
     const exhibition = await prisma.exhibition.create({
@@ -690,6 +749,7 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCre
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        submissionDeadline: subDeadline,
         capacity, region, description,
         galleryId: hostGallery.id,
         imageUrl: safeImageUrl,
@@ -846,13 +906,16 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
     if (!gallery || gallery.ownerId !== req.user!.id) {
       throw new AppError('본인 소유의 갤러리만 선택할 수 있습니다.', 403);
     }
+
+    const subDeadline = new Date(submissionDeadline);
+    assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
 
     const safeImageUrl = safeFileUrl(imageUrl);
     const exhibition = await prisma.exhibition.create({
@@ -862,6 +925,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        submissionDeadline: subDeadline,
         capacity, region, description, galleryId, imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
@@ -878,6 +942,57 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
       requesterEmail: req.user!.email,
     });
     res.status(201).json(exhibition);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 자료제출 마감일 채워넣기 (갤러리 오너/Admin)
+ *
+ * 왜 별도 엔드포인트인가: 이 필드는 2026-08-19에 생겼는데, 그전에 올라간 공모 12건에는 값이 없다.
+ * 시스템이 임의로 날짜를 채우면 **갤러리가 작가에게 안내한 적도 없는 기한**이 생기므로,
+ * 운영자가 직접 한 번 넣게 한다.
+ *
+ * ⚠️ 갤러리는 **비어 있을 때만** 넣을 수 있다(한 번 넣으면 수정 버튼이 사라진다).
+ *    작가가 이 날짜를 보고 일정을 잡기 때문에, 뒤늦게 당기면 안내받은 기한이 조용히 바뀐다.
+ *    오타 구제는 Admin 에게만 열어둔다(2026-08-19 결정).
+ * ⚠️ 전시가 시작된 뒤에는 갤러리도 못 넣는다 — 지난 날짜를 적는 건 기록으로도 의미가 없고,
+ *    작가 화면에 "이미 지난 마감" 이 새로 나타나는 것도 이상하다.
+ */
+router.patch('/:id/submission-deadline', authenticate, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) throw new AppError('유효하지 않은 공모 ID입니다.', 400);
+
+    const exhibition = await prisma.exhibition.findUnique({
+      where: { id },
+      include: { gallery: { select: { ownerId: true } }, managers: { select: { gallery: { select: { ownerId: true } } } } },
+    });
+    if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+
+    const isAdmin = req.user!.role === 'ADMIN';
+    if (!isAdmin && !canOperateExhibition(exhibition as any, req.user!.id)) {
+      throw new AppError('권한이 없습니다.', 403);
+    }
+    if (exhibition.submissionDeadline && !isAdmin) {
+      throw new AppError('자료제출 마감일은 한 번만 설정할 수 있습니다. 변경이 필요하면 관리자에게 문의해주세요.', 403);
+    }
+
+    const start = exhibition.exhibitStartDate ?? exhibition.exhibitDate;
+    if (!isAdmin && start <= new Date()) {
+      throw new AppError('전시가 시작된 공모에는 자료제출 마감일을 설정할 수 없습니다.', 400);
+    }
+
+    const raw = req.body?.submissionDeadline;
+    if (typeof raw !== 'string' || !raw.trim()) throw new AppError('자료제출 마감일을 입력해주세요.', 400);
+    const next = new Date(raw);
+    assertSubmissionDeadline(next, exhibition.deadline, exhibition.exhibitStartDate, exhibition.exhibitDate);
+
+    const updated = await prisma.exhibition.update({
+      where: { id },
+      data: { submissionDeadline: next },
+      select: { id: true, submissionDeadline: true },
+    });
+    res.json(updated);
   } catch (error) { next(error); }
 });
 

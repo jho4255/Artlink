@@ -6,6 +6,7 @@
  * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
  */
 import { displayName, nameWithNickname, formatArtworkPrice } from '@/lib/utils';
+import { cardFeeOf } from '@/lib/settlement';
 import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 
@@ -324,20 +325,35 @@ export async function htmlToPdfBlob(html: string, opts?: { pageNumbers?: boolean
 }
 
 // ── 정산서 ──
-// 결제수단(카드/현금)으로 필터해 합계를 재계산한 정산 객체 반환
-function filterArtistByMethod(a: SettlementArtist, method: 'CARD' | 'CASH'): SettlementArtist {
+/**
+ * 결제수단(카드/현금)으로 필터해 합계를 재계산한 정산 객체.
+ *
+ * 카드 수수료는 **카드 정산서에만** 따라간다 — 현금 정산서에서 카드 수수료를 빼면
+ * 두 장을 더했을 때 수수료가 두 번 빠진다.
+ */
+function filterArtistByMethod(a: SettlementArtist, method: 'CARD' | 'CASH', cardFeeRate = 0): SettlementArtist {
   const works = a.works.filter(w => w.sold && (w.paymentMethod || 'CARD') === method);
   const total = works.reduce((s, w) => s + (w.soldPrice || 0), 0);
-  const galleryAmount = Math.round(total * a.galleryRatio / 100);
-  return { ...a, works, total, galleryAmount, artistAmount: total - galleryAmount };
+  const cardFee = method === 'CARD' ? cardFeeOf(works.map(w => ({ ...w, sold: true })), cardFeeRate) : 0;
+  const settleBase = total - cardFee;
+  const galleryAmount = Math.round(settleBase * a.galleryRatio / 100);
+  return {
+    ...a, works, total,
+    cardTotal: method === 'CARD' ? total : 0,
+    cashTotal: method === 'CASH' ? total : 0,
+    cardFee, settleBase,
+    galleryAmount, artistAmount: settleBase - galleryAmount,
+  };
 }
 function filterSettlementByMethod(s: Settlement, method: 'CARD' | 'CASH'): Settlement {
-  const artists = s.artists.map(a => filterArtistByMethod(a, method));
+  const artists = s.artists.map(a => filterArtistByMethod(a, method, s.cardFeeRate ?? 0));
   return {
     ...s,
     artists,
     grand: {
       total: artists.reduce((sum, a) => sum + a.total, 0),
+      cardFee: artists.reduce((sum, a) => sum + (a.cardFee ?? 0), 0),
+      settleBase: artists.reduce((sum, a) => sum + (a.settleBase ?? a.total), 0),
       galleryAmount: artists.reduce((sum, a) => sum + a.galleryAmount, 0),
       artistAmount: artists.reduce((sum, a) => sum + a.artistAmount, 0),
       soldCount: artists.reduce((sum, a) => sum + a.works.length, 0),
@@ -345,6 +361,17 @@ function filterSettlementByMethod(s: Settlement, method: 'CARD' | 'CASH'): Settl
   };
 }
 const methodLabel = (m?: 'CARD' | 'CASH') => m === 'CASH' ? '현금' : m === 'CARD' ? '카드' : '';
+
+/**
+ * 정산서 합계표에 넣을 '카드 수수료 / 정산 대상' 두 줄.
+ * 수수료가 0이면 아무것도 넣지 않는다 — 예전 정산서와 서식이 같아야 한다.
+ */
+function feeRows(cardFee?: number, settleBase?: number, cardFeeRate?: number): string {
+  if (!cardFee || cardFee <= 0) return '';
+  const rate = cardFeeRate ? ` (${cardFeeRate}%)` : '';
+  return `<tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">카드 수수료${rate}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">-${won(cardFee)}</td></tr>
+        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 대상 금액</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(settleBase ?? 0)}</td></tr>`;
+}
 
 /**
  * 작가 1명짜리 정산서.
@@ -356,7 +383,7 @@ const methodLabel = (m?: 'CARD' | 'CASH') => m === 'CASH' ? '현금' : m === 'CA
  * ⚠️ 정보를 감추는 장치가 아니다 — 판매합계와 비율이 남으니 갤러리 몫은 뺄셈으로 나온다.
  *    '작가에게 주는 문서에는 갤러리 숫자를 적지 않는다'는 서식 규칙일 뿐이다.
  */
-export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서', hideGalleryAmount = false): string {
+export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서', hideGalleryAmount = false, cardFeeRate = 0): string {
   const artist = displayName(a.user);
   const sold = a.works.filter(w => w.sold);
   const rows = sold.length === 0
@@ -378,6 +405,7 @@ export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLa
     <table style="width:100%;border-collapse:collapse">
       <tbody>
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:160px">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.total)}</td></tr>
+        ${feeRows(a.cardFee, a.settleBase, cardFeeRate)}
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 비율 (갤러리 : 작가)</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${a.galleryRatio}% : ${a.artistRatio}%</td></tr>
         ${hideGalleryAmount ? '' : `<tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.galleryAmount)}</td></tr>`}
         <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 정산 (지급액)</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(a.artistAmount)}</td></tr>
@@ -406,7 +434,7 @@ function artistBlock(a: SettlementArtist): string {
       <tbody>${rows}</tbody>
     </table>
     <div style="text-align:right;margin-top:4px;font-size:12px;color:#444">
-      판매 합계 <b>${won(a.total)}</b> &nbsp;·&nbsp; 갤러리 <b>${won(a.galleryAmount)}</b> &nbsp;·&nbsp; 작가 <b>${won(a.artistAmount)}</b>
+      판매 합계 <b>${won(a.total)}</b>${(a.cardFee ?? 0) > 0 ? ` &nbsp;·&nbsp; 카드 수수료 <b>-${won(a.cardFee ?? 0)}</b>` : ''} &nbsp;·&nbsp; 갤러리 <b>${won(a.galleryAmount)}</b> &nbsp;·&nbsp; 작가 <b>${won(a.artistAmount)}</b>
     </div>
   </div>`;
 }
@@ -423,6 +451,7 @@ export function overallSettlementHtml(s: Settlement, docLabel = '전체 정산�
         <tbody>
           <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:180px">판매 작품 수</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${s.grand.soldCount}점</td></tr>
           <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.total)}</td></tr>
+          ${feeRows(s.grand.cardFee, s.grand.settleBase, s.cardFeeRate)}
           <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.galleryAmount)}</td></tr>
           <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 지급 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(s.grand.artistAmount)}</td></tr>
         </tbody>
@@ -470,12 +499,13 @@ const settlementImages = (a: SettlementArtist) => a.works.filter(w => w.sold).ma
 export async function downloadArtistSettlementPdf(
   exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH',
   onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
-  opts?: { forArtist?: boolean },
+  opts?: { forArtist?: boolean; cardFeeRate?: number },
 ): Promise<{ missing: string[] }> {
-  const target = method ? filterArtistByMethod(artist, method) : artist;
+  const feeRate = opts?.cardFeeRate ?? 0;
+  const target = method ? filterArtistByMethod(artist, method, feeRate) : artist;
   const docLabel = method ? `${methodLabel(method)} 정산서` : '정산서';
   const failed = await prefetchForPdf(settlementImages(target), onProgress);
-  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel, !!opts?.forArtist));
+  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel, !!opts?.forArtist, feeRate));
   triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_${docLabel.replace(/\s/g, '')}.pdf`);
   return { missing: target.works.filter(w => w.sold && w.image && failed.has(w.image)).map(w => w.title || '무제') };
 }

@@ -459,7 +459,7 @@ export default function OperationPage() {
               <div>
                 {activeWorkPanel === 'submissions' && (
                   <div id="operation-submissions" className="scroll-mt-24">
-                    <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} />
+                    <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} myUserId={user!.id} confirmed={access.confirmed} ended={access.ended} isAdmin={access.isAdmin} />
                   </div>
                 )}
                 {activeWorkPanel === 'settlement' && access.ended && (
@@ -771,11 +771,37 @@ function lockedReason(ended?: boolean, manualConfirmed?: boolean): { title: stri
   };
 }
 
-function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed }: { exhibitionId: string; myUserId: number; confirmed: boolean; ended?: boolean; manualConfirmed?: boolean }) {
+/**
+ * 작가에게 "이 자료는 갤러리가 대신 넣었다" 고 알리는 안내.
+ * 알림만으로는 놓치기 쉬워서 자료 화면에도 남긴다 — 본인 모르게 자기 이름의 자료가 바뀌면 안 된다.
+ */
+function ProxyEditedNotice() {
+  return (
+    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+      <p className="font-medium">갤러리가 대신 입력한 자료입니다.</p>
+      <p className="mt-0.5 text-[13px] text-amber-800/90 leading-relaxed">
+        내용이 맞는지 확인해주세요. 직접 고쳐 저장하면 이 안내는 사라집니다.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 작가 본인의 제출 자료 편집기 — `proxyFor` 를 주면 **갤러리/Admin 이 그 작가 대신** 쓰는 화면이 된다.
+ *
+ * 왜 같은 컴포넌트를 쓰나: 자료를 직접 못 올리는 작가(주로 고령)를 갤러리가 대신 입력해줘야 하는데,
+ * 편집기를 따로 만들면 검증·임시저장·대표작 보정 규칙이 두 벌이 돼 반드시 갈라진다.
+ * 서버도 같은 이유로 `submissionDataFrom` 하나를 공유한다.
+ */
+function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed, proxyFor }: { exhibitionId: string; myUserId: number; confirmed: boolean; ended?: boolean; manualConfirmed?: boolean; proxyFor?: { id: number; name: string } }) {
   const qc = useQueryClient();
+  const targetUserId = proxyFor?.id ?? myUserId;
+  // 대신 입력은 **원본**을 읽는다 — 임시저장(draft)까지 보여야 작가가 쓰다 만 내용을 모르고 날리지 않는다
+  const path = proxyFor ? `/operations/${exhibitionId}/submissions/${proxyFor.id}` : `/operations/${exhibitionId}/me`;
+  const queryKey = proxyFor ? ['operation-submission-edit', exhibitionId, proxyFor.id] : ['operation-me', exhibitionId];
   const { data, isLoading } = useQuery<OperationSubmission>({
-    queryKey: ['operation-me', exhibitionId],
-    queryFn: () => api.get(`/operations/${exhibitionId}/me`).then(r => r.data),
+    queryKey,
+    queryFn: () => api.get(proxyFor ? `${path}/edit` : path).then(r => r.data),
     staleTime: 0,
     refetchOnMount: 'always',
   });
@@ -821,7 +847,7 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
     // 참조 비교(===)는 금물 — 저장 시 {...a}로 복제된 목록에서는 항상 실패해 대표작이 지워진다.
     // 보낼 목록은 filledList와 같은 순서이므로 '빈 칸 제외 서수'로 변환한다.
     mutationFn: (v: { list: ArtworkItem[]; partial?: boolean; msg?: string }) =>
-      api.put(`/operations/${exhibitionId}/me`, {
+      api.put(path, {
         artworkList: v.list, cv, note,
         representativeIndex: repOrdinal(artworkList, repIndex, v.list.length),
       }),
@@ -849,7 +875,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
           return sent && sameArt(a, sent) ? sent : a;
         });
       });
-      if (!v.partial) qc.invalidateQueries({ queryKey: ['operation-me', exhibitionId] });
+      if (!v.partial) qc.invalidateQueries({ queryKey });
+      // 대신 입력한 내용은 갤러리 목록(출품 점수·제출완료 배지)에도 바로 반영돼야 한다
+      if (proxyFor) qc.invalidateQueries({ queryKey: ['operation-submissions', exhibitionId] });
       toast.success(v.msg || '전시 정보가 저장되었습니다.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '저장 실패'),
@@ -965,12 +993,16 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
     saveMutation.mutate({ list });
   };
 
-  // 포트폴리오 경력 + 내 개인정보(이름/연락처/이메일)를 한 번에 약력으로 불러온다
+  // 포트폴리오 경력 + 내 개인정보(이름/연락처/이메일)를 한 번에 약력으로 불러온다.
+  // 대신 입력 중이면 **그 작가의 공개 포트폴리오**에서 가져온다 — 갤러리 자신의 것을 넣으면 안 되고,
+  // 연락처·이메일은 공개 API 에 없으므로 갤러리가 직접 받아 적는다(없는 정보를 끌어오지 않는다).
   const loadFromPortfolio = async () => {
     try {
       const [{ data: p }, { data: me }] = await Promise.all([
-        api.get('/portfolio'),
-        api.get('/auth/me').then(r => r).catch(() => ({ data: { user: null } })),
+        api.get(proxyFor ? `/portfolio/${proxyFor.id}` : '/portfolio'),
+        proxyFor
+          ? Promise.resolve({ data: { user: { name: proxyFor.name } } })
+          : api.get('/auth/me').then(r => r).catch(() => ({ data: { user: null } })),
       ]);
       const c = p.career || {};
       const u = me?.user;
@@ -983,14 +1015,14 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
         group: (c.group || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         artFair: (c.artFair || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
       }));
-      toast.success('내 정보·포트폴리오 약력을 불러왔습니다.');
+      toast.success(proxyFor ? `${proxyFor.name}님의 포트폴리오 약력을 불러왔습니다.` : '내 정보·포트폴리오 약력을 불러왔습니다.');
     } catch {
       toast.error('불러오지 못했습니다.');
     }
   };
 
   const openPrint = (doc: 'artwork' | 'cv' | 'note') => {
-    window.open(`/exhibitions/${exhibitionId}/operation/print/${myUserId}/${doc}`, '_blank');
+    window.open(`/exhibitions/${exhibitionId}/operation/print/${targetUserId}/${doc}`, '_blank');
   };
 
   if (isLoading) return <div className="h-40 bg-gray-100 animate-pulse rounded-xl mb-10" />;
@@ -999,8 +1031,9 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
   if (confirmed) {
     return (
       <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
+        <h2 className="text-lg font-semibold text-gray-950">{proxyFor ? `${proxyFor.name}님의 전시 정보` : '내 전시 정보'}</h2>
         <p className="mt-1 mb-3 text-sm text-gray-500">제출한 출품작·약력·노트를 확인합니다.</p>
+        {!proxyFor && data?.proxyEdited && <ProxyEditedNotice />}
         {(() => { const r = lockedReason(ended, manualConfirmed); return (
           <div className="mb-3 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
             <p className="font-medium">{r.title}</p>
@@ -1030,8 +1063,12 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
     <section className="mb-0 rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-950">내 전시 정보</h2>
-          <p className="mt-1 text-sm text-gray-500">출품작·약력·노트를 입력하고 저장하면 갤러리에 전달됩니다.</p>
+          <h2 className="text-lg font-semibold text-gray-950">{proxyFor ? `${proxyFor.name}님의 전시 정보 대신 입력` : '내 전시 정보'}</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {proxyFor
+              ? '작가에게 받은 내용을 대신 입력합니다. 저장하면 작가에게 알림이 가고, 작가 화면에도 그대로 보입니다.'
+              : '출품작·약력·노트를 입력하고 저장하면 갤러리에 전달됩니다.'}
+          </p>
         </div>
         {/* 임시저장: 필수값이 덜 채워져도 작성한 만큼 보관 / 저장: 제출 기준(필수값·대표작) 충족 시 */}
         <div className="flex items-center gap-2 shrink-0">
@@ -1044,6 +1081,8 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
           </button>
         </div>
       </div>
+
+      {!proxyFor && data?.proxyEdited && <ProxyEditedNotice />}
 
       {/* 갤러리 측 '운영 작업'과 동일한 세그먼트 탭 */}
       <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-4">
@@ -1084,13 +1123,17 @@ function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualC
           </>
         )}
       </div>
-      <p className="text-xs text-gray-400 mt-2">* 입력 내용은 [저장] 후 갤러리·관리자에게 전달됩니다. 다른 작가는 내 정보를 볼 수 없습니다.</p>
+      <p className="text-xs text-gray-400 mt-2">
+        {proxyFor
+          ? '* 작가 본인이 나중에 직접 고칠 수 있습니다. 그러면 [갤러리가 대신 입력함] 표시는 사라집니다.'
+          : '* 입력 내용은 [저장] 후 갤러리·관리자에게 전달됩니다. 다른 작가는 내 정보를 볼 수 없습니다.'}
+      </p>
     </section>
   );
 }
 
 // ============ 갤러리/Admin: 전 작가 제출정보 ============
-function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibitionId: string; exhibitionTitle: string }) {
+function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, confirmed, ended, isAdmin }: { exhibitionId: string; exhibitionTitle: string; myUserId: number; confirmed: boolean; ended?: boolean; isAdmin?: boolean }) {
   const { data = [], isLoading, refetch, isFetching } = useQuery<{ user: any; submission: OperationSubmission }[]>({
     queryKey: ['operation-submissions', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/submissions`).then(r => r.data),
@@ -1109,6 +1152,12 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
   const [detailTab, setDetailTab] = useState<'artwork' | 'cv' | 'note'>('artwork');
   // 자동 회수까지 하고도 못 받은 항목 — 사라지는 토스트 대신 배너로 남겨 [다시 받기]로 잇는다
   const [missing, setMissing] = useState<{ items: string[]; what: string; retry: () => void } | null>(null);
+  /** 지금 대신 입력 중인 작가 (null = 보기 모드). 자료를 못 올리는 작가를 갤러리가 도와주는 경로 */
+  const [proxyEditId, setProxyEditId] = useState<number | null>(null);
+  // 잠금 기준은 확정이 아니라 **전시종료**다. 확정 잠금은 *작가가* 인쇄 기준을 몰래 바꾸는 걸
+  // 막는 장치라, 캡션·엽서를 만드는 갤러리까지 막으면 정작 도와줘야 할 때 못 돕는다.
+  // 종료 후는 판매 기록이 출품목록 '위치'에 묶여 있어 반드시 막는다(Admin 만 예외).
+  const canProxyEdit = !ended || !!isAdmin;
 
   const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
 
@@ -1291,7 +1340,42 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
                           <Check size={10} /> 제출완료
                         </span>
                       )}
+                      {/* 누가 넣은 자료인지 갤러리도 알아야 한다 — 작가가 직접 쓴 것과 구분 */}
+                      {(submission as any).proxyEdited && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                          대신 입력함
+                        </span>
+                      )}
+                      {canProxyEdit && (
+                        <button
+                          onClick={() => setProxyEditId(proxyEditId === user.id ? null : user.id)}
+                          className={`ml-auto shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${proxyEditId === user.id ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                        >
+                          <Edit3 size={12} /> {proxyEditId === user.id ? '대신 입력 닫기' : '대신 입력'}
+                        </button>
+                      )}
                     </div>
+
+                    {/*
+                      대신 입력 — 작가 본인이 쓰는 편집기를 그대로 띄운다(검증·임시저장 규칙이 갈라지면 안 된다).
+                      자료를 직접 올리기 어려워하는 작가를 갤러리가 도와주는 경로다.
+                    */}
+                    {proxyEditId === user.id && (
+                      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-1">
+                        {/* 확정 후에도 열어두되, 인쇄물이 이미 나갔을 수 있다는 건 반드시 알린다 */}
+                        {confirmed && (
+                          <p className="m-1 rounded-lg bg-amber-100/70 px-3 py-2 text-xs text-amber-900">
+                            <b>확정 이후입니다.</b> 캡션·엽서를 이미 만들었다면 이 내용을 고친 뒤 인쇄물도 다시 확인해주세요.
+                          </p>
+                        )}
+                        <MySubmissionSection
+                          exhibitionId={exhibitionId}
+                          myUserId={myUserId}
+                          confirmed={false}
+                          proxyFor={{ id: user.id, name: nameWithNickname(user) }}
+                        />
+                      </div>
+                    )}
                     <div className="mb-3 grid gap-2 grid-cols-3">
                       <button onClick={() => setDetailTab('artwork')} className={`rounded-lg border px-3 py-2 text-left ${detailTab === 'artwork' ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
                         <span className="block text-xs opacity-70">출품리스트</span>
@@ -1447,7 +1531,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
 // 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number; cardFeeRate?: number }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -1496,7 +1580,7 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
     try {
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
       // forArtist: 작가 본인 문서라 갤러리 몫 금액은 찍지 않는다 (화면 표기와 맞춤)
-      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a, undefined, undefined, { forArtist: true });
+      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a, undefined, undefined, { forArtist: true, cardFeeRate: data.cardFeeRate ?? 0 });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setDownloading(false); }
   };
@@ -1568,6 +1652,14 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
         )}
         <div className="flex flex-wrap gap-x-5 gap-y-1 pt-3 border-t border-gray-100 text-sm">
           <span className="text-gray-500">판매 합계 <b className="text-gray-900">{a.total.toLocaleString('ko')}원</b></span>
+          {/* 수수료를 뗐으면 반드시 보여준다 — 작가가 수락 여부를 판단하는 근거고,
+              안 보이면 "판매 합계 × 비율" 과 안 맞아 계산이 틀린 것처럼 읽힌다 */}
+          {(a.cardFee ?? 0) > 0 && (
+            <>
+              <span className="text-gray-500">카드 수수료{data.cardFeeRate ? ` (${data.cardFeeRate}%)` : ''} <b className="text-gray-900">-{(a.cardFee ?? 0).toLocaleString('ko')}원</b></span>
+              <span className="text-gray-500">정산 대상 <b className="text-gray-900">{(a.settleBase ?? 0).toLocaleString('ko')}원</b></span>
+            </>
+          )}
           <span className="text-gray-500">정산 비율 <b className="text-gray-900">갤러리 {a.galleryRatio}% : 작가 {a.artistRatio}%</b></span>
           <span className="text-gray-900 font-medium">내 정산액 {a.artistAmount.toLocaleString('ko')}원</span>
         </div>

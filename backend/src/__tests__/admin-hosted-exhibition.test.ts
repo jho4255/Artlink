@@ -27,6 +27,7 @@ const basePayload = () => ({
   deadline: future(20),
   exhibitStartDate: future(40),
   exhibitDate: future(60),
+  submissionDeadline: future(30),   // 공모 마감(20)과 전시 시작(40) 사이
   capacity: 5,
   region: 'SEOUL',
   description: '아트링크가 주최하는 기획 공모입니다.',

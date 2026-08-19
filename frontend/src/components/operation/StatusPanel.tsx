@@ -27,6 +27,16 @@ const LIFECYCLE_STEPS: { label: string; desc: string; next: Record<string, boole
   { label: '전시종료', desc: '정산 단계로 전환되며 아래에 정산 입력이 나타납니다.', next: { ended: true }, back: { ended: false } },
 ];
 
+/**
+ * 전시 종료일로부터 며칠 지났는가 (KST 달력 날짜 기준).
+ * 순수 시간 차이로 재면 자정 직후/직전에 하루가 어긋난다(CLAUDE.md 14).
+ */
+function daysSince(date: string): number {
+  const KST = 9 * 60 * 60 * 1000, DAY = 24 * 60 * 60 * 1000;
+  const kstDay = (t: number) => Math.floor((t + KST) / DAY);
+  return kstDay(Date.now()) - kstDay(new Date(date).getTime());
+}
+
 /** 스텝퍼에 그릴 노드 — 마지막 '정산 완료'는 표시 전용 */
 const STEP_NODES = [...LIFECYCLE_STEPS.map((s) => s.label), '정산 완료'];
 const LAST = STEP_NODES.length;   // 4 = 완전히 마감
@@ -112,6 +122,35 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
           : <> 다음 단계: <b className="text-gray-900">정산 완료</b> — 아래 정산에서 [정산 확인 요청]을 보내고 작가 확인을 받으면 마감됩니다.</>)}
         {stage === 2 && access.confirmed && !access.manualConfirmed && <span className="text-gray-400"> (전시 시작일 경과로 자동 확정됨)</span>}
       </p>
+
+      {/*
+        정산을 시작하지 않은 채 전시가 끝난 지 오래된 공모는 목록에서 '종료된 공모' 로 정리된다.
+        아무 말 없이 사라지면 갤러리는 자기 공모가 어디 갔는지 모르므로, 남은 기간을 여기서 알린다.
+        (알림도 D+5·10·15 에 나가고, 20일째에 종료 통보가 간다 — lib/settlementReminder.ts)
+        정산을 이미 시작했으면 정리 대상이 아니라 띄우지 않는다.
+      */}
+      {(() => {
+        if (settled || access.settlementStarted) return null;
+        if (!access.exhibitDate || !access.autoCloseDays) return null;
+        // ⚠️ `access.ended` 로 거르면 안 된다 — 이 안내가 필요한 대표적인 대상이
+        //    [전시종료] 를 **누르지 않은** 갤러리다. 그 사람들은 ended=false 라 안내를 못 본다
+        //    (2026-08-20 E2E 에서 잡음). 판정은 자동 정리와 같은 기준인 **전시 종료일**로 한다.
+        const passed = daysSince(access.exhibitDate);
+        if (passed < 0) return null;   // 아직 전시가 안 끝났다
+        const left = access.autoCloseDays - passed;
+        return left > 0 ? (
+          <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 leading-relaxed">
+            <b>{left}일 뒤</b>에 이 공모는 <b>종료된 공모</b>로 정리됩니다. 전시 종료 후 {access.autoCloseDays}일 동안
+            판매·정산 입력이 없으면 목록을 정돈하기 위해 자동으로 내려갑니다.
+            <span className="text-amber-800/80"> 정리된 뒤에도 [종료된 공모] 탭에서 정산을 이어서 하실 수 있습니다.</span>
+          </p>
+        ) : (
+          <p className="mt-3 rounded-lg bg-gray-100 border border-gray-200 px-3 py-2 text-xs text-gray-700 leading-relaxed">
+            전시 종료 후 {access.autoCloseDays}일이 지나 <b>종료된 공모</b>로 정리되었습니다.
+            정산은 여기서 그대로 이어서 하실 수 있습니다.
+          </p>
+        );
+      })()}
 
       {/* 액션 */}
       {locked ? (

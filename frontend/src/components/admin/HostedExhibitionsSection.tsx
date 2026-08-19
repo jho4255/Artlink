@@ -43,6 +43,7 @@ const emptyForm = {
   deadline: '',
   exhibitStartDate: '',
   exhibitDate: '',
+  submissionDeadline: '',
   capacity: 1,
   region: 'SEOUL',
   description: '',
@@ -250,8 +251,9 @@ export default function HostedExhibitionsSection() {
     deadlineStart: form.deadlineStart || undefined,
     deadline: form.deadline,
     exhibitStartDate: form.exhibitStartDate || undefined,
+    submissionDeadline: form.submissionDeadline || undefined,
     exhibitDate: form.exhibitDate,
-  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate]);
+  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline]);
 
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
     queryKey: ['hosted-exhibitions'],
@@ -295,6 +297,7 @@ export default function HostedExhibitionsSection() {
     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
     if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+    if (!form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
     setFormErrors(errorFields);
@@ -379,6 +382,8 @@ export default function HostedExhibitionsSection() {
                   ['deadline', '공모 마감일'],
                   ['exhibitStartDate', '전시 시작일'],
                   ['exhibitDate', '전시 종료일'],
+                  // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이
+                  ['submissionDeadline', '작가 자료제출 마감일'],
                 ] as const).map(([key, label]) => (
                   <div key={key}>
                     <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-red-500' : 'text-gray-500'}`}>{label} *</label>

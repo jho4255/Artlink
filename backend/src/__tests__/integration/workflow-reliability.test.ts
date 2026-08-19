@@ -93,6 +93,7 @@ describe('Workflow Reliability', () => {
           galleryId: galleryId2, title: 'WR Exhibition', type: 'SOLO',
           deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
           exhibitDate: new Date(Date.now() + 60 * 86400000).toISOString(),
+          submissionDeadline: new Date(Date.now() + 45 * 86400000).toISOString(),
           capacity: 5, region: 'SEOUL', description: 'WR 공모 테스트',
         });
       expect(exhRes.status).toBe(201);
@@ -418,6 +419,7 @@ describe('Workflow Reliability', () => {
           galleryId: otherGallery.id, title: 'Hack Exhibition', type: 'SOLO',
           deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
           exhibitDate: new Date(Date.now() + 60 * 86400000).toISOString(),
+          submissionDeadline: new Date(Date.now() + 45 * 86400000).toISOString(),
           capacity: 3, region: 'BUSAN', description: 'Unauthorized',
         });
       expect(res.status).toBe(403);

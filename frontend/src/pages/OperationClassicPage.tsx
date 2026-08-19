@@ -834,7 +834,7 @@ function SubmissionReadonly({ submission }: { submission: OperationSubmission })
 // 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
 function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number; cardFeeRate?: number }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -883,7 +883,7 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
     try {
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
       // forArtist: 작가 본인 문서라 갤러리 몫 금액은 찍지 않는다 (화면 표기와 맞춤)
-      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a, undefined, undefined, { forArtist: true });
+      const { missing } = await downloadArtistSettlementPdf(data.exhibitionTitle, a, undefined, undefined, { forArtist: true, cardFeeRate: data.cardFeeRate ?? 0 });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setDownloading(false); }
   };

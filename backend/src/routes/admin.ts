@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { isExhibitionClosed } from '../lib/exhibitionLifecycle';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 
@@ -101,15 +102,19 @@ router.get('/exhibitions', authenticate, authorize('ADMIN'), async (req, res, ne
       where,
       select: {
         id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
-        // 운영 조회에서 진행중/종료를 나누기 위한 값. 갤러리 마이페이지와 같은 기준(정산 완료 = 종료)
-        ended: true, settledAt: true,
+        // 운영 조회에서 진행중/종료를 나누기 위한 값. 갤러리 마이페이지와 **같은 기준**을 써야
+        // 두 화면이 같은 공모를 다르게 분류하지 않는다 (lib/exhibitionLifecycle.ts)
+        ended: true, settledAt: true, settlementRequestedAt: true, exhibitDate: true,
         gallery: { select: { id: true, name: true } },
-        _count: { select: { applications: true } },
+        _count: { select: { applications: true, sales: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    res.json(exhibitions);
+    res.json(exhibitions.map((e) => ({
+      ...e,
+      closed: isExhibitionClosed({ ...e, saleCount: e._count.sales }),
+    })));
   } catch (error) { next(error); }
 });
 

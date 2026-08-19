@@ -38,6 +38,7 @@ model User {
   receivedMessages      Message[]              @relation("receivedMessages")
   messageReports        MessageReport[]        @relation("messageReports")
   exhibitionSubmissions ExhibitionSubmission[]
+  submissionEdits       ExhibitionSubmission[] @relation("submissionEditor") // 갤러리/Admin 이 대신 입력해 준 작가 자료
   artworkSales          ArtworkSale[]          @relation("artworkSales")
   artistSettlements     ArtistSettlement[]     @relation("artistSettlements")
   settlementApprovals   SettlementApproval[]   @relation("settlementApprovals")
@@ -127,11 +128,18 @@ model Exhibition {
   status                String    @default("PENDING") // PENDING, APPROVED, REJECTED (승인 상태)
   rejectReason          String?
   hostType              String    @default("GALLERY") // GALLERY(갤러리 주최, 기본) | ADMIN(아트링크 주최 — 운영은 managers 갤러리들에게 위임)
+  // 작가가 출품자료(출품리스트·약력·노트)를 내야 하는 마감일. 지원마감 < 이 날짜 < 전시시작.
+  // 신규 등록은 필수지만, 2026-08-19 이전에 올라간 공모는 값이 없어 nullable 이다
+  // (갤러리가 공모 상세에서 한 번 채워 넣고, 그 뒤로는 Admin 만 고칠 수 있다).
+  submissionDeadline    DateTime?
   recruitmentClosed     Boolean   @default(false) // 모집마감 (수동 내림 → 목록 비노출)
   confirmed             Boolean   @default(false) // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
   ended                 Boolean   @default(false) // 전시종료 (정산 단계)
   settlementRequestedAt DateTime? // 정산 확인 요청 시각. non-null=작가 확인 대기(정산 수정 잠금 + 작가에게 검토 공개)
   settledAt             DateTime? // 정산 완료 시각. non-null=정산 확정(운영페이지 수정 잠금 + 작가에게 정산 공개)
+  // 카드 결제 수수료율(%). 카드로 팔린 작품 합계에서 먼저 떼고 남은 금액을 갤러리:작가 비율로 나눈다.
+  // 현금 판매분에는 붙지 않는다. 0이면 예전과 완전히 같은 계산(기본값) — lib/settlementFingerprint.ts 참고.
+  cardFeeRate           Float     @default(0)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -505,6 +513,11 @@ model ExhibitionSubmission {
   cv                  String? // JSON: {nameKo,nameEn,birth,tel,email,education[],solo[],group[],artFair[],award[]} (각 항목 [{year,content}])
   note                String? // JSON: {statement, sections:[{title,body}]}
   representativeIndex Int? // 엽서용 대표작 — artworkList 내 인덱스 (작가가 선택, null=미선택)
+  // 마지막으로 저장한 사람. null 이거나 userId 와 같으면 작가 본인이 쓴 것,
+  // 다르면 갤러리/Admin 이 대신 입력한 것이다(자료 업로드가 어려운 작가를 돕는 경로).
+  // 작가가 나중에 직접 고치면 다시 본인 id 로 덮여 '대신 입력' 표시가 사라진다.
+  updatedById         Int?
+  updatedBy           User?      @relation("submissionEditor", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt           DateTime   @default(now()) @updatedAt
 
   @@unique([exhibitionId, userId])

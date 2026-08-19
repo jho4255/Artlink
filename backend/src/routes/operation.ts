@@ -16,7 +16,8 @@ import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
 import { canOperateExhibition, operatorUserIds } from '../lib/exhibitionAccess';
-import { fingerprintsOf, settlementFingerprint } from '../lib/settlementFingerprint';
+import { fingerprintsOf, settlementFingerprint, feeUnits, cardFeeAmount } from '../lib/settlementFingerprint';
+import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
 
 const router = Router();
@@ -44,7 +45,8 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
     where: { id: exhibitionId },
     select: {
       id: true, title: true, galleryId: true, hostType: true,
-      recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true,
+      recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true, exhibitDate: true,
+      cardFeeRate: true,
       gallery: { select: { ownerId: true, name: true } },
       // 아트링크 주최 공모는 admin 이 지정한 운영 갤러리도 오너와 동일하게 운영한다
       managers: { select: { gallery: { select: { ownerId: true } } } },
@@ -89,6 +91,14 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
       settlementRequestedAt: exhibition.settlementRequestedAt,
       settled: !!exhibition.settledAt,   // 정산 완료 여부 (운영페이지 수정 잠금)
       settledAt: exhibition.settledAt,
+      // 전시 종료 20일 뒤 자동으로 '종료된 공모' 로 정리되는 규칙을 화면에 안내하기 위한 값.
+      // settlementStarted 가 true 면 정리 대상이 아니므로 안내를 띄우지 않는다 —
+      // 빼먹으면 "5일 뒤 정리됩니다" 라고 해놓고 실제로는 안 내려가는, 거짓말하는 화면이 된다.
+      exhibitDate: exhibition.exhibitDate,
+      autoCloseDays: STALE_AFTER_DAYS,
+      settlementStarted: !!exhibition.settlementRequestedAt || (exhibition.ended && !exhibition.settledAt
+        ? (await prisma.artworkSale.count({ where: { exhibitionId: exhibition.id } })) > 0
+        : false),
     });
   } catch (e) { next(e); }
 });
@@ -224,6 +234,16 @@ function publicSubmission(s: any) {
   return { ...parsed, artworkList: kept, representativeIndex: repIndex, note };
 }
 
+/**
+ * "이 자료는 작가 본인이 아니라 갤러리/Admin 이 대신 넣은 것" 표시.
+ * `updatedById` 가 NULL 인 옛 자료는 전부 본인이 쓴 것으로 본다(대신 입력 기능 이전 데이터).
+ */
+function withProxyFlag<T extends object | null>(sub: T, artistUserId: number): T {
+  if (!sub) return sub;
+  const by = (sub as any).updatedById;
+  return { ...sub, proxyEdited: by != null && by !== artistUserId } as T;
+}
+
 router.get('/:id/me', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
@@ -232,9 +252,32 @@ router.get('/:id/me', authenticate, async (req, res, next) => {
     const sub = await prisma.exhibitionSubmission.findUnique({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
     });
-    res.json(parseSubmission(sub) ?? EMPTY_SUB);
+    res.json(withProxyFlag(parseSubmission(sub), req.user!.id) ?? EMPTY_SUB);
   } catch (e) { next(e); }
 });
+
+/**
+ * 요청 본문 → 저장할 제출자료. 작가 본인 저장(`PUT /me`)과 갤러리 대신 입력
+ * (`PUT /submissions/:userId`)이 **같은 검증을 타야** 한다 — 한쪽만 고치면
+ * 대신 입력 경로로 이상한 값이 들어와 갤러리 쪽 조회가 통째로 죽는다.
+ */
+function submissionDataFrom(body: any) {
+  const { artworkList, cv, note, representativeIndex } = body || {};
+  // 배열이 아닌 artworkList는 거부 — 저장되면 갤러리 쪽 모든 조회가 500으로 죽는다
+  if (artworkList != null && !Array.isArray(artworkList)) throw new AppError('출품 목록 형식이 올바르지 않습니다.', 400);
+  // 대표작 인덱스: artworkList 범위 내 정수만 허용, 그 외 null
+  const listLen = Array.isArray(artworkList) ? artworkList.length : 0;
+  let repIdx: number | null = null;
+  if (Number.isInteger(representativeIndex) && representativeIndex >= 0 && representativeIndex < listLen) {
+    repIdx = representativeIndex;
+  }
+  return {
+    artworkList: normalizeStr(artworkList),
+    cv: normalizeStr(cv),
+    note: normalizeStr(note),
+    representativeIndex: repIdx,
+  };
+}
 
 router.put('/:id/me', authenticate, async (req, res, next) => {
   try {
@@ -242,27 +285,16 @@ router.put('/:id/me', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, isConfirmed } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
-    const { artworkList, cv, note, representativeIndex } = req.body || {};
-    // 배열이 아닌 artworkList는 거부 — 저장되면 갤러리 쪽 모든 조회가 500으로 죽는다
-    if (artworkList != null && !Array.isArray(artworkList)) throw new AppError('출품 목록 형식이 올바르지 않습니다.', 400);
-    // 대표작 인덱스: artworkList 범위 내 정수만 허용, 그 외 null
-    const listLen = Array.isArray(artworkList) ? artworkList.length : 0;
-    let repIdx: number | null = null;
-    if (Number.isInteger(representativeIndex) && representativeIndex >= 0 && representativeIndex < listLen) {
-      repIdx = representativeIndex;
-    }
-    const data = {
-      artworkList: normalizeStr(artworkList),
-      cv: normalizeStr(cv),
-      note: normalizeStr(note),
-      representativeIndex: repIdx,
-    };
+    // 본인이 직접 저장 → 대신 입력 표시가 있었다면 여기서 사라진다
+    const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
     const sub = await prisma.exhibitionSubmission.upsert({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
       update: data,
       create: { exhibitionId, userId: req.user!.id, ...data },
     });
-    res.json(parseSubmission(sub));
+    // 저장 응답에도 표시를 담는다 — 작품 단위 저장(partial)은 화면이 refetch 를 안 하므로,
+    // 빼면 작가가 직접 고쳤는데도 '갤러리가 대신 입력함' 안내가 남아 있는다.
+    res.json(withProxyFlag(parseSubmission(sub), req.user!.id));
   } catch (e) { next(e); }
 });
 
@@ -284,7 +316,7 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
 
     const result = accepted.map((a) => ({
       user: a.user,
-      submission: publicSubmission(subByUser.get(a.userId)) ?? EMPTY_SUB,
+      submission: withProxyFlag(publicSubmission(subByUser.get(a.userId)), a.userId) ?? EMPTY_SUB,
     }));
     res.json(result);
   } catch (e) { next(e); }
@@ -396,6 +428,93 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
       user,
       submission: publicSubmission(sub) ?? EMPTY_SUB,
     });
+  } catch (e) { next(e); }
+});
+
+/**
+ * ── 갤러리/Admin 이 작가 자료를 대신 입력한다 ──────────────────────
+ *
+ * 왜: 출품 자료를 직접 올리기 어려워하는 작가(주로 고령)가 있어, 갤러리가 전화로 받아 적거나
+ * 종이로 받은 내용을 대신 넣어줘야 실무가 굴러간다. 안 그러면 그 작가만 캡션·엽서에서 빠진다.
+ *
+ * 지켜야 하는 것:
+ *  · **대상은 이 공모의 수락 작가만.** 임의 userId 로 남의 자료를 만들거나 덮어쓸 수 없다.
+ *  · 잠금 기준은 **확정이 아니라 전시종료**다. 작가 본인은 확정되면 잠기지만(`PUT /me`),
+ *    갤러리는 확정 후에도 대신 넣을 수 있다 — 확정 잠금은 *작가가* 인쇄 기준을 몰래 바꾸는 걸
+ *    막으려는 것이고, 캡션·엽서를 만드는 주체인 갤러리까지 막으면 정작 도와줘야 할 때 못 돕는다
+ *    (실제로 확정만 눌러둔 공모에서 작가 11명을 두고 막혔다, 2026-08-19).
+ *    ⚠️ **전시종료 후는 반드시 막는다.** 판매 기록(`ArtworkSale.artworkIndex`)이 출품목록의
+ *    *위치*를 가리키므로, 종료 뒤 목록을 고치면 판매·정산이 엉뚱한 작품에 붙는다.
+ *    Admin 만 예외 — 다른 잠금들도 Admin 은 통과시킨다.
+ *  · 누가 썼는지 `updatedById` 에 남기고 작가에게 알린다. 본인 모르게 자기 이름의 자료가
+ *    바뀌는 일은 없어야 한다. 작가가 나중에 직접 저장하면 표시는 자동으로 사라진다(`PUT /me`).
+ *
+ * 편집용 조회는 `publicSubmission` 이 아니라 **원본**을 준다 — 임시저장(draft)까지 보여야
+ * 갤러리가 작가가 쓰다 만 내용을 모르고 날리지 않는다.
+ */
+async function assertProxyTarget(exhibitionId: number, targetUserId: number) {
+  const app = await prisma.application.findUnique({
+    where: { userId_exhibitionId: { userId: targetUserId, exhibitionId } },
+    select: { status: true },
+  });
+  if (!app || app.status !== 'ACCEPTED') throw new AppError('해당 공모의 수락 작가가 아닙니다.', 404);
+}
+
+router.get('/:id/submissions/:userId/edit', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const targetUserId = idOf(req.params.userId);
+    const { isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    await assertProxyTarget(exhibitionId, targetUserId);
+
+    const sub = await prisma.exhibitionSubmission.findUnique({
+      where: { exhibitionId_userId: { exhibitionId, userId: targetUserId } },
+    });
+    res.json(withProxyFlag(parseSubmission(sub), targetUserId) ?? EMPTY_SUB);
+  } catch (e) { next(e); }
+});
+
+router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const targetUserId = idOf(req.params.userId);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    // 종료 후에는 판매 기록이 출품목록 위치에 묶여 있어 고치면 정산이 엉뚱한 작품을 가리킨다
+    if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 제출 자료를 수정할 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
+    await assertProxyTarget(exhibitionId, targetUserId);
+
+    const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
+    const sub = await prisma.exhibitionSubmission.upsert({
+      where: { exhibitionId_userId: { exhibitionId, userId: targetUserId } },
+      update: data,
+      create: { exhibitionId, userId: targetUserId, ...data },
+    });
+
+    // 작가에게 알린다. 대신 입력은 작품 단위로 여러 번 저장하게 되므로,
+    // 안 읽은 같은 알림이 있으면 새로 쌓지 않고 갱신한다(explore.ts 의 좋아요 알림과 같은 방식).
+    if (targetUserId !== req.user!.id) {
+      try {
+        const editor = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true, nickname: true } });
+        const who = isAdmin && !isOwner ? '관리자' : (exhibition.gallery?.name || editor?.nickname || editor?.name || '갤러리');
+        const refKey = `submission-proxy:${exhibitionId}`;
+        const message = `"${exhibition.title}" 전시의 제출 자료를 ${who}에서 대신 입력했습니다. 내용을 확인해주세요.`;
+        const linkUrl = `/exhibitions/${exhibitionId}/operation/new`;
+        const existing = await prisma.notification.findFirst({
+          where: { userId: targetUserId, refKey, read: false },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (existing) {
+          await prisma.notification.update({ where: { id: existing.id }, data: { message, linkUrl, createdAt: new Date() } });
+        } else {
+          await prisma.notification.create({ data: { userId: targetUserId, type: 'SUBMISSION_PROXY_EDIT', message, linkUrl, refKey } });
+        }
+      } catch { /* 알림 실패해도 저장은 정상 */ }
+    }
+
+    res.json(withProxyFlag(parseSubmission(sub), targetUserId));
   } catch (e) { next(e); }
 });
 
@@ -517,7 +636,7 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
  *
  * best-effort — 여기서 실패해도 조회·완료 자체는 진행돼야 한다.
  */
-async function autoApproveOverdue(exhibition: { id: number; title: string; settlementRequestedAt: Date | null; settledAt: Date | null }): Promise<number> {
+async function autoApproveOverdue(exhibition: { id: number; title: string; settlementRequestedAt: Date | null; settledAt: Date | null; cardFeeRate?: number }): Promise<number> {
   if (!exhibition.settlementRequestedAt || exhibition.settledAt) return 0;
   const exhibitionId = exhibition.id;
   try {
@@ -535,7 +654,7 @@ async function autoApproveOverdue(exhibition: { id: number; title: string; settl
 
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
-    const fps = fingerprintsOf(due, sales, ratios);
+    const fps = fingerprintsOf(due, sales, ratios, exhibition.cardFeeRate ?? 0);
 
     await prisma.$transaction(
       due.map((uid) => prisma.settlementApproval.update({
@@ -559,8 +678,36 @@ async function autoApproveOverdue(exhibition: { id: number; title: string; settl
   }
 }
 
+/**
+ * 작가 한 명의 정산 금액.
+ *
+ * 순서가 중요하다 — **카드 수수료를 먼저 떼고, 남은 금액을 갤러리:작가 비율로 나눈다.**
+ * 그래야 수수료를 양쪽이 비율만큼 나눠 부담한다(2026-08-19 확정). 비율을 먼저 적용하고
+ * 갤러리 몫에서만 빼면 작가는 수수료를 전혀 부담하지 않게 되므로 결과가 달라진다.
+ *
+ * 수수료는 **카드로 팔린 작품에만** 붙는다(현금 판매분은 카드사를 거치지 않는다).
+ * 갤러리 몫을 먼저 반올림하고 작가 몫은 뺄셈으로 구한다 — 양쪽을 따로 반올림하면
+ * 합이 정산 대상액과 1원 어긋나 정산서에서 숫자가 안 맞는다.
+ */
+function artistAmounts(
+  works: { sold: boolean; soldPrice: number; paymentMethod: string }[],
+  galleryRatio: number,
+  cardFeeRate: number,
+) {
+  const sold = works.filter((w) => w.sold);
+  const cardTotal = sold.filter((w) => w.paymentMethod !== 'CASH').reduce((s, w) => s + w.soldPrice, 0);
+  const cashTotal = sold.filter((w) => w.paymentMethod === 'CASH').reduce((s, w) => s + w.soldPrice, 0);
+  const total = cardTotal + cashTotal;
+  // 지문과 **같은 함수**로 구한다 — 두 곳에서 따로 계산하면 화면 금액은 그대로인데
+  // 지문만 달라져 작가 수락이 이유 없이 풀리는 사고가 난다.
+  const cardFee = cardFeeAmount(sold, cardFeeRate);
+  const settleBase = total - cardFee;
+  const galleryAmount = Math.round((settleBase * galleryRatio) / 100);
+  return { cardTotal, cashTotal, total, cardFee, settleBase, galleryAmount, artistAmount: settleBase - galleryAmount };
+}
+
 // ── 정산: 판매작 + 작가별 비율 계산 결과 (오너/Admin) ──
-function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any[], settlements: any[]) {
+function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any[], settlements: any[], cardFeeRate = 0) {
   const saleMap = new Map<string, { price: number; method: string }>(); // `${userId}:${idx}` → {price, method}
   for (const s of sales) saleMap.set(`${s.artistUserId}:${s.artworkIndex}`, { price: s.soldPrice, method: s.paymentMethod || 'CARD' });
   const ratioMap = new Map<number, number>();
@@ -582,19 +729,21 @@ function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any
         paymentMethod: sale?.method ?? 'CARD',
       };
     });
-    const total = works.filter(w => w.sold).reduce((s, w) => s + w.soldPrice, 0);
     const galleryRatio = ratioMap.get(user.id) ?? 0;
-    const galleryAmount = Math.round(total * galleryRatio / 100);
-    const artistAmount = total - galleryAmount;
-    return { user, galleryRatio, artistRatio: 100 - galleryRatio, works, total, galleryAmount, artistAmount };
+    const amounts = artistAmounts(works, galleryRatio, cardFeeRate);
+    return { user, galleryRatio, artistRatio: 100 - galleryRatio, works, ...amounts };
   });
   const grand = {
     total: artists.reduce((s, a) => s + a.total, 0),
+    cardTotal: artists.reduce((s, a) => s + a.cardTotal, 0),
+    cashTotal: artists.reduce((s, a) => s + a.cashTotal, 0),
+    cardFee: artists.reduce((s, a) => s + a.cardFee, 0),
+    settleBase: artists.reduce((s, a) => s + a.settleBase, 0),
     galleryAmount: artists.reduce((s, a) => s + a.galleryAmount, 0),
     artistAmount: artists.reduce((s, a) => s + a.artistAmount, 0),
     soldCount: artists.reduce((s, a) => s + a.works.filter((w: any) => w.sold).length, 0),
   };
-  return { artists, grand };
+  return { artists, grand, cardFeeRate: Number(cardFeeRate) || 0 };
 }
 
 router.get('/:id/settlement', authenticate, async (req, res, next) => {
@@ -626,7 +775,7 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
       autoApproved: !!a.autoApprovedAt,
     }]));
 
-    const computed = computeSettlement(rows, sales, settlements);
+    const computed = computeSettlement(rows, sales, settlements, exhibition.cardFeeRate);
     const artists = computed.artists.map(a => ({ ...a, approval: apprMap.get(a.user.id) || null }));
     const allApproved = artists.length > 0 && artists.every(a => a.approval?.status === 'APPROVED');
 
@@ -638,6 +787,7 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
       settled: !!exhibition.settledAt,
       settledAt: exhibition.settledAt,
       artists, grand: computed.grand,
+      cardFeeRate: computed.cardFeeRate,
     });
   } catch (e) { next(e); }
 });
@@ -668,7 +818,7 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
     // 여기서 원본 목록을 쓰면 artworkIndex(위치 기반)가 어긋나 작가에게 엉뚱한 작품이 '판매됨'으로 보인다
     const { artists } = computeSettlement(
       [{ user, artworkList: publishedArtworks(sub) }],
-      sales, settlements
+      sales, settlements, exhibition.cardFeeRate
     );
     res.json({
       exhibitionTitle: exhibition.title, ended: exhibition.ended,
@@ -678,9 +828,10 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
       // 이 날짜까지 응답이 없으면 자동 수락된다 — 화면에 반드시 보여줘야 하는 값
       autoApproveAt: appr?.status === 'PENDING' && appr.askedAt ? autoApproveDeadline(appr.askedAt) : null,
       autoApproveDays: AUTO_APPROVE_DAYS,
+      cardFeeRate: Number(exhibition.cardFeeRate) || 0,
       // 지금 화면에 그린 금액의 지문. 수락할 때 그대로 돌려보내면 서버가 대조해
       // **보던 화면과 다른 금액에 동의하는 사고**를 막는다(갤러리가 검토 중에 고칠 수 있으므로).
-      fingerprint: settlementFingerprint(sales, settlements[0]?.galleryRatio ?? 0),
+      fingerprint: settlementFingerprint(sales, settlements[0]?.galleryRatio ?? 0, exhibition.cardFeeRate),
     });
   } catch (e) { next(e); }
 });
@@ -700,9 +851,15 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     // 대신 아래에서 ①금액이 바뀐 작가만 PENDING 으로 되돌리고 ②그 사람에게만 재확인 알림을 보낸다.
     // 작가가 옛 화면을 보고 수락하는 사고는 `respond` 의 지문 대조(409)로 막는다.
 
-    const { sales, ratios } = req.body || {};
+    const { sales, ratios, cardFeeRate } = req.body || {};
     const saleRows = Array.isArray(sales) ? sales : [];
     const ratioRows = Array.isArray(ratios) ? ratios : [];
+    // 카드 수수료율 — 안 보내면 기존 값을 그대로 둔다(옛 화면이 이 필드 없이 저장해도 0으로 지워지면 안 된다).
+    // 소수 둘째 자리까지만 인정한다(2.2% → 2.2 / 2.255% → 2.26). 지문·계산이 정수 단위(feeUnits)를 쓰므로
+    // 여기서 미리 맞춰 두지 않으면 저장값과 지문이 어긋난다.
+    const nextFeeRate = cardFeeRate === undefined || cardFeeRate === null
+      ? Number(exhibition.cardFeeRate) || 0
+      : feeUnits(cardFeeRate) / 100;
 
     // 정산 대상은 이 공모의 '수락된 작가'로 한정 — 임의 artistUserId 주입으로 인한
     // 고아/오귀속 재무 레코드 생성 차단 (데이터 정합성)
@@ -733,7 +890,8 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
 
     // 이 저장으로 **금액이 실제로 달라진 작가만** 확인을 무효화한다.
     // 예전엔 요청 취소가 승인 기록을 통째로 지워 전원이 다시 확인해야 했다(10명 중 1명 때문에 9명 재확인).
-    const fps = fingerprintsOf(acceptedIds, saleData, ratioData);
+    // 수수료율을 고치면 카드로 팔린 작가 전원의 지급액이 달라지므로, 그들의 확인도 함께 풀린다.
+    const fps = fingerprintsOf(acceptedIds, saleData, ratioData, nextFeeRate);
     const approvals = await prisma.settlementApproval.findMany({
       where: { exhibitionId },
       select: { artistUserId: true, status: true, snapshot: true },
@@ -743,6 +901,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       .map((a) => a.artistUserId);
 
     await prisma.$transaction([
+      prisma.exhibition.update({ where: { id: exhibitionId }, data: { cardFeeRate: nextFeeRate } }),
       prisma.artworkSale.deleteMany({ where: { exhibitionId } }),
       prisma.artworkSale.createMany({ data: saleData }),
       prisma.artistSettlement.deleteMany({ where: { exhibitionId } }),
@@ -776,7 +935,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
     // resetIds: 이번 저장으로 재확인 대상이 된 작가들.
     // 화면의 [이 작가에게 다시 확인 요청]은 저장을 먼저 하는데, 저장이 이미 그 작가를 되돌리고
     // 알림까지 보냈다면 재요청을 또 부르지 않는다 — 안 그러면 **알림이 두 번** 간다.
-    res.json({ message: '정산 정보가 저장되었습니다.', resetCount: staleIds.length, resetIds: staleIds, notified });
+    res.json({ message: '정산 정보가 저장되었습니다.', resetCount: staleIds.length, resetIds: staleIds, notified, cardFeeRate: nextFeeRate });
   } catch (e) { next(e); }
 });
 
@@ -807,7 +966,7 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     const acceptedIds = acceptedArtists.map((a) => a.userId);
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
-    const fps = fingerprintsOf(acceptedIds, sales, ratios);
+    const fps = fingerprintsOf(acceptedIds, sales, ratios, exhibition.cardFeeRate);
     const staleCount = apprs.filter((a) => a.status === 'APPROVED' && acceptedIds.includes(a.artistUserId) && a.snapshot !== fps.get(a.artistUserId)).length;
     if (staleCount > 0) {
       throw new AppError(`작가 확인 이후 정산 내용이 바뀐 작가가 ${staleCount}명 있습니다. [정산 확인 요청]을 다시 보내주세요.`, 400);
@@ -864,7 +1023,7 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
     });
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const ratios = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
-    const fps = fingerprintsOf(acceptedIds, sales, ratios);
+    const fps = fingerprintsOf(acceptedIds, sales, ratios, exhibition.cardFeeRate);
 
     const byArtist = new Map(existing.map((e) => [e.artistUserId, e]));
     const keptIds: number[] = [];
@@ -1062,7 +1221,7 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
       where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
       select: { galleryRatio: true },
     });
-    const snapshot = settlementFingerprint(mySales, myRatio?.galleryRatio ?? 0);
+    const snapshot = settlementFingerprint(mySales, myRatio?.galleryRatio ?? 0, exhibition.cardFeeRate);
 
     // 갤러리는 확인 요청 중에도 금액을 고칠 수 있다. 작가가 **고쳐지기 전 화면**을 띄워둔 채
     // 수락을 누르면, 본 적 없는 금액에 동의한 기록이 남는다 — 정산은 돈 문제라 그게 곧 분쟁 근거다.

@@ -234,9 +234,20 @@ export function validateExhibitionDates(dates: {
   deadline: string;
   exhibitStartDate?: string;
   exhibitDate: string;
+  /** 작가 자료제출 마감일 — 공모 마감과 전시 시작 사이여야 한다 */
+  submissionDeadline?: string;
 }): string | null {
-  const { deadlineStart, deadline, exhibitStartDate, exhibitDate } = dates;
+  const { deadlineStart, deadline, exhibitStartDate, exhibitDate, submissionDeadline } = dates;
   if (!deadline || !exhibitDate) return null;
+
+  // 자료제출 마감일: 지원도 안 끝났는데 자료를 받을 수 없고,
+  // 전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다. 백엔드와 같은 규칙(경계 포함 금지).
+  if (submissionDeadline) {
+    const sd = new Date(submissionDeadline);
+    if (sd <= new Date(deadline)) return '자료제출 마감일은 공모 마감일보다 뒤여야 합니다.';
+    const start = new Date(exhibitStartDate || exhibitDate);
+    if (sd >= start) return '자료제출 마감일은 전시 시작일보다 앞이어야 합니다.';
+  }
 
   const dl = new Date(deadline);
   const ed = new Date(exhibitDate);
