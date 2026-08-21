@@ -109,6 +109,7 @@ ArtLink/
 | notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
 | inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
 | admin | /api/admin | (ADMIN 전용) 사용자 검색·역할변경 + 운영 조회: 공모 지원현황/작가 지원이력/갤러리 게시물 |
+| kanban | /api/kanban | (ADMIN 전용) 할 일 보드 — 회의 내용·할 일 정리. 보드/항목/댓글 CRUD, 순서 재배치 |
 
 ### Admin 운영 조회 (ADMIN 전용, `backend/src/routes/admin.ts`)
 
@@ -292,6 +293,83 @@ ArtLink/
 | HeroManageSection | Admin | Hero CRUD + 미리보기 |
 | BenefitManageSection | Admin | 혜택 CRUD + 미리보기 |
 | GotmManageSection | Admin | 이달의 갤러리 검색/선정/기한 |
+| KanbanSection | Admin | 할 일 보드 (`components/admin/KanbanSection.tsx`) — 보드 여러 개, 체크박스 목록, 세부항목 인라인, 담당자·마감일·댓글 |
+
+## Admin 할 일 보드 (2026-08-21)
+
+마이페이지(Admin) > **할 일 보드** 탭. Admin 계정끼리 회의 내용과 할 일을 정리한다.
+
+### 화면은 한 장뿐이다
+보드를 클릭해 **들어가는 단계가 없다.** 보드 목록 화면에 각 보드의 할 일이 그대로 펼쳐지고,
+추가·체크·순서·세부항목까지 전부 거기서 끝낸다. 보드가 많아지면 머리말을 눌러 접을 수 있고,
+접어 둔 보드는 `localStorage`(`artlink-todo-collapsed`)에 기억된다(읽기·쓰기 모두 try/catch).
+
+그래서 **`GET /kanban/boards` 가 항목과 세부항목까지 통째로** 준다 — 보드마다 따로 부르면
+화면 하나 그리는 데 N+1 번을 부르게 된다. 쿼리 키도 `['todo-boards']` 하나뿐이라 모든 변경이
+이 키만 무효화하면 된다. 낙관적 업데이트는 **해당 보드의 cards 만** 갈아끼운다(다른 보드는 그대로).
+
+### 구조
+- **보드 여러 개** — 회의별·주제별로 나눈다(`KanbanBoard`). 머리말에 진행 표시줄과 완료/전체.
+- **각 보드는 체크박스 목록 하나** — 한 줄에 항목 하나(`KanbanCard`). 제목, 본문(회의 내용),
+  담당자(Admin 중에서만), 마감일, 댓글(`KanbanComment`).
+- **세부항목**(`KanbanSubtask`) — 항목 아래에 **목록 화면에서 그대로 펼쳐진다.** 거기서 바로
+  추가·체크·이름수정·삭제한다(모달을 열지 않는다). 상위 줄에는 `2/3` 배지만 붙는다.
+
+> 이름이 `Kanban*` / `/api/kanban` 인 이유: 처음엔 3열 칸반으로 만들었다가 목록형 체크리스트로 바꿨다
+> (2026-08-21 당일). 테이블·경로 이름만 남았을 뿐 **열(column) 개념은 없다.**
+
+### 지켜야 할 규칙
+1. **라우터 전체가 Admin 전용** — `routes/kanban.ts` 는 `router.use(authenticate, authorize('ADMIN'))` 로
+   한 번에 건다. 보드 제목·항목 본문·댓글에 내부 논의가 그대로 들어가므로 공개 엔드포인트를 하나라도
+   만들면 그 즉시 샌다. 회귀 방지는 `__tests__/kanban.test.ts` 의 '접근 제어' 블록(엔드포인트 전수 검사).
+2. **완료는 `doneAt` 하나로만 판정** — 상태 필드를 따로 만들지 말 것. 두 곳에 두면 반드시 어긋나고,
+   어긋난 쪽이 화면이면 "체크했는데 안 된 것처럼 보이는" 상태가 된다.
+3. **체크해도 `position` 은 건드리지 않는다** — 완료 항목은 `sortItems` 정렬로만 뒤로 간다.
+   실제로 줄을 옮겨버리면 **체크를 푸는 순간 원래 자리로 돌아올 수 없다.**
+   정렬 규칙: 안 한 일(position 순) → 완료(최근 체크 순). 백엔드·프론트 양쪽 `sortItems` 가 같아야 한다.
+4. **position 은 보드 안에서 0부터 연속** — 소수점 사이값(0.5)을 끼워 넣는 방식은 옮길수록 자릿수가 늘어
+   부동소수점에서 순서가 뒤집힌다. 재정렬할 때마다 서버가 0..n-1 로 다시 매긴다.
+5. **순서 변경은 전체 순서 id 배열을 통째로 보낸다**(`PATCH /boards/:id/reorder`). "몇 번째 앞으로" 를
+   index 로 주고받으면 완료 항목이 뒤로 밀려 보이는 화면과 실제 position 이 어긋나 계산이 틀어진다.
+   ids 에 빠진 항목(그 사이 다른 Admin 이 추가한 것)은 **뒤에 붙인다** — 여기서 409 로 거절하면
+   같이 쓰는 보드에서 재정렬이 자꾸 실패한다.
+6. **순서 이동 경로가 둘인 이유** — 드래그앤드롭은 HTML5 네이티브라 **터치에서 동작하지 않는다.**
+   이 사이트는 모바일웹이 기본이므로 줄의 `↑ ↓` 버튼이 폰에서의 유일한 경로다. 지우지 말 것.
+   (Framer Motion drag 는 CLAUDE.md 제약 9 때문에 쓰지 않는다.)
+   ⚠️ 목록 컨테이너의 `onDragOver` 에서 목표 위치를 **덮어쓰지 말 것** — 줄 사이 여백에서도 이 핸들러가
+   뜨는데, 그때마다 '맨 끝'으로 덮으면 마지막 순간이 하필 여백일 때 항목이 엉뚱하게 맨 아래로 간다
+   (2026-08-21 E2E 에서 잡음). 목표는 줄의 dragover 가 정한다.
+7. **드래그는 같은 보드 안에서만** — 보드를 건너뛰면 그 항목이 어느 보드 소속인지가 흔들린다.
+   보드 구획(`BoardSection`)이 각자 dragging 상태를 들고 있어 자연히 갈라진다.
+8. **댓글은 작성자 본인만 삭제** — 다른 Admin 이 남긴 회의 기록을 지울 수 있으면 논의 근거가 조용히 사라진다.
+9. **마감일 판정은 KST 달력 날짜** — `dueBadge()` 가 `getDday` 를 쓴다. 순수 `new Date()` 비교를 쓰면
+   마감일 당일 오전 9시에 '지남'으로 바뀐다(CLAUDE.md 제약 14).
+10. **담당자는 Admin + 미탈퇴만** — 서버 `assertAssignee()` 가 검증한다. 작가/갤러리를 넣으면 400.
+11. **세부항목을 다 체크해도 상위 항목을 자동 완료시키지 말 것** — 확인·보고가 남아 있을 수 있고,
+    자동으로 목록에서 사라지면 되돌리기도 번거롭다. 진행(2/3)만 보여주고 마무리는 사람이 누른다.
+12. **세부항목은 체크해도 자리가 안 바뀐다**(상위 항목과 다른 점) — 언제나 position 순 그대로다.
+    서너 줄짜리 목록에서 체크할 때마다 줄이 튀어 다니면 다음 걸 누르기가 힘들다.
+    담당자·마감일·댓글도 없다 — 그 정도로 무거운 일이면 상위 항목으로 올리는 게 맞다.
+
+### API
+```
+GET    /api/kanban/members                담당자 후보(Admin 목록)
+GET    /api/kanban/boards                 보드 목록 (항목·세부항목 통째로, 정렬 완료 상태)
+POST   /api/kanban/boards                 보드 생성
+GET    /api/kanban/boards/:id             보드 하나 (테스트·단건 조회용)
+PATCH  /api/kanban/boards/:id             이름·설명 수정
+PATCH  /api/kanban/boards/:id/reorder     항목 순서 { ids: 전체 순서 }
+DELETE /api/kanban/boards/:id             삭제 (항목·댓글 Cascade)
+POST   /api/kanban/boards/:id/cards       항목 추가 (목록 맨 뒤)
+POST   /api/kanban/cards/:id/subtasks     세부항목 추가 (맨 뒤)
+PATCH  /api/kanban/subtasks/:id           세부항목 수정 (이름 / done 체크)
+DELETE /api/kanban/subtasks/:id           세부항목 삭제
+PATCH  /api/kanban/cards/:id              항목 수정 (+ done 체크)
+DELETE /api/kanban/cards/:id              항목 삭제
+GET    /api/kanban/cards/:id/comments     댓글 목록
+POST   /api/kanban/cards/:id/comments     댓글 작성
+DELETE /api/kanban/comments/:id           댓글 삭제 (작성자 본인만)
+```
 
 ## Instagram 피드 연동
 

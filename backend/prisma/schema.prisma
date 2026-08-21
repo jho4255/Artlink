@@ -45,6 +45,10 @@ model User {
   artworkScraps         ArtworkScrap[]         @relation("artworkScraps")
   invitesReceived       ExhibitionInvite[]     @relation("invitesReceived")
   invitesSent           ExhibitionInvite[]     @relation("invitesSent")
+  kanbanBoards          KanbanBoard[]          @relation("kanbanBoardCreator")
+  kanbanCardsAssigned   KanbanCard[]           @relation("kanbanAssignee")
+  kanbanCardsCreated    KanbanCard[]           @relation("kanbanCardCreator")
+  kanbanComments        KanbanComment[]        @relation("kanbanCommentAuthor")
 
   @@unique([provider, providerId])
 }
@@ -619,4 +623,77 @@ model ExhibitionInvite {
   @@unique([exhibitionId, artistId])
   @@index([artistId, status])
   @@index([exhibitionId])
+}
+
+// ===== Admin 전용 할 일 보드 (회의 내용·할 일 정리) =====
+// 공개 API 없음. 모든 라우트가 authorize('ADMIN') 뒤에 있다 — 보드 제목·항목 본문·댓글에
+// 회의 내용이 그대로 들어가므로 역할 검증을 빼면 곧바로 내부 논의가 새어 나간다.
+//
+// 이름이 Kanban* 인 이유: 처음엔 3열 칸반으로 만들었다가 목록형 체크리스트로 바꿨다.
+// 테이블명만 남았을 뿐 열(column) 개념은 없다 — 완료 여부는 doneAt 하나로 판정한다.
+
+model KanbanBoard {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String? // 보드 부제(무엇을 모아두는 보드인지)
+  position    Int           @default(0) // 보드 목록 내 정렬 순서 (0부터 연속, 이동 시 서버가 재부여)
+  createdById Int?
+  createdBy   User?         @relation("kanbanBoardCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  cards       KanbanCard[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([position])
+}
+
+model KanbanCard {
+  id          Int             @id @default(autoincrement())
+  boardId     Int
+  board       KanbanBoard     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  title       String
+  body        String? // 회의 내용·상세 메모
+  assigneeId  Int?
+  assignee    User?           @relation("kanbanAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  dueDate     DateTime? // KST 달력 날짜 기준으로 판정 (lib/kstDate.ts)
+  position    Int             @default(0) // 목록 순서 (0부터 연속, 재정렬 시 서버가 다시 부여)
+  doneAt      DateTime? // 체크한 시각. null 이면 아직 안 한 일. 완료 판정은 이 값 하나뿐이다
+  createdById Int?
+  createdBy   User?           @relation("kanbanCardCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  comments    KanbanComment[]
+  subtasks    KanbanSubtask[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([boardId, position])
+  @@index([assigneeId])
+}
+
+model KanbanComment {
+  id        Int        @id @default(autoincrement())
+  cardId    Int
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  authorId  Int? // 작성자가 하드 삭제돼도 회의 기록은 남긴다 (SetNull, 화면엔 '알 수 없음')
+  author    User?      @relation("kanbanCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime   @default(now())
+
+  @@index([cardId, createdAt])
+}
+
+// 항목 안의 세부항목(체크리스트). 목록 화면에 그대로 펼쳐 보이고 거기서 바로 체크한다.
+//
+// 상위 항목과 일부러 다르게 두 가지:
+//   ① 담당자·마감일·댓글이 없다 — 그 정도로 무거운 일이면 상위 항목으로 올리는 게 맞다.
+//   ② 체크해도 자리가 안 바뀐다(정렬도 position 순 그대로). 서너 줄짜리 목록에서 체크할 때마다
+//      줄이 튀어 다니면 다음 걸 누르기가 힘들다.
+model KanbanSubtask {
+  id        Int        @id @default(autoincrement())
+  cardId    Int
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  title     String
+  doneAt    DateTime? // 체크한 시각. null 이면 아직 안 한 일 (상위 항목과 같은 규약)
+  position  Int        @default(0) // 적은 순서 (0부터 연속)
+  createdAt DateTime   @default(now())
+
+  @@index([cardId, position])
 }

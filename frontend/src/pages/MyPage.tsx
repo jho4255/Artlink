@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox, ListChecks
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -31,6 +31,7 @@ import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/Artw
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import { openArtLook, type ArtLookWork } from '@/lib/artlook';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
+import KanbanSection from '@/components/admin/KanbanSection';
 import HostBadge from '@/components/shared/HostBadge';
 import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
@@ -220,6 +221,7 @@ export default function MyPage() {
         { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
         { id: 'user-manage', label: '사용자 관리', icon: Search },
         { id: 'oversight', label: '운영 조회', icon: ClipboardList },
+        { id: 'todo', label: '할 일 보드', icon: ListChecks },
         { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
       ];
 
@@ -280,6 +282,7 @@ export default function MyPage() {
         {currentTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
         {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
         {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
+        {currentTab === 'todo' && user.role === 'ADMIN' && <KanbanSection />}
         {currentTab === 'dev-tools' && user.role === 'ADMIN' && <DevToolsSection />}
       </div>
     </div>

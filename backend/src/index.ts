@@ -27,6 +27,7 @@ import exploreRoutes from './routes/explore';
 import messageRoutes from './routes/message';
 import reportRoutes from './routes/report';
 import adminRoutes from './routes/admin';
+import kanbanRoutes from './routes/kanban';
 import operationRoutes from './routes/operation';
 import settingsRoutes from './routes/settings';
 import seoRoutes from './routes/seo';
@@ -102,6 +103,7 @@ app.use('/api/explore', exploreRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/kanban', kanbanRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/settings', settingsRoutes);
 

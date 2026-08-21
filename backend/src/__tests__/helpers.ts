@@ -18,6 +18,7 @@ export function authToken(userId: number, role: string): string {
 }
 
 const ALL_TABLES = [
+  'KanbanSubtask', 'KanbanComment', 'KanbanCard', 'KanbanBoard',
   'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
@@ -28,6 +29,10 @@ const ALL_TABLES = [
 // DB 전체 정리 — interactive transaction (단일 커넥션, deadlock 불가)
 export async function cleanDb() {
   await testPrisma.$transaction(async (tx) => {
+    await tx.kanbanSubtask.deleteMany();
+    await tx.kanbanComment.deleteMany();
+    await tx.kanbanCard.deleteMany();
+    await tx.kanbanBoard.deleteMany();
     await tx.messageReport.deleteMany();
     await tx.message.deleteMany();
     await tx.faq.deleteMany();
