@@ -350,7 +350,7 @@ describe('순서 바꾸기 — 전체 순서를 통째로 보낸다', () => {
 
   it('position 은 언제나 0..n-1 로 연속', async () => {
     const board = await makeBoard();
-    const items = [];
+    const items: any[] = [];
     for (const t of ['A', 'B', 'C', 'D']) items.push(await makeItem(board.id, { title: t }));
 
     for (const order of [[3, 1, 0, 2], [2, 3, 1, 0], [0, 3, 2, 1]]) {
