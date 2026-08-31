@@ -705,10 +705,14 @@
     const capped = trueScale && t >= Math.min(physMax, CEIL) - 1e-6;
     t *= gain;
     t *= (o.scale == null ? 1 : o.scale);
-    // 조절(자동 프레이밍·휠)은 **물리 한계**까지. 절대 상한은 영역이 아니라
-    // **화면 기준**으로 `composeScene` 이 건다(사용자가 보는 건 화면이라 그쪽이 맞고,
-    // 영역에도 상한을 두면 자동 프레이밍 배수까지 깎여 이중으로 걸린다)
-    t = Math.max(0.02, Math.min(physMax, t));
+    // 조절(자동 프레이밍·휠)은 물리 한계까지. 그 위에 호출부가 **화면 기준 상한**을
+    // 얹을 수 있다(`fillMax`).
+    // ⚠️⚠️ **상한을 `gain` 으로 낮추려 하지 말 것.** `t` 는 이미 `physMax` 에 붙어
+    //   포화돼 있는 경우가 많아(자동 프레이밍이 영역을 꽉 채운 상태) gain 을 줄여도
+    //   결과가 **한 픽셀도 안 변한다** — 실제로 갤러리 살롱에서 상한 0.49 를 걸었는데
+    //   54.6% 가 그대로 나왔다. 상한은 t 자체에 걸어야 한다.
+    const hardMax = o.fillMax != null ? Math.min(physMax, o.fillMax) : physMax;
+    t = Math.max(0.02, Math.min(hardMax, t));
 
     const vh = t, uw = (A * t) / aspect;
     const cu = 0.5 + (o.dx || 0), cv = 0.5 + (o.dy || 0);
@@ -764,7 +768,7 @@
           artCm: u.artCm,
           artAspect: aw0 / ah0,
           fill: scene.fill,
-          gain: a.gain,
+          gain: a.gain, fillMax: a.fillMax,
           scale: a.scale, dx: a.dx, dy: a.dy,
         });
         if (!p) return null;
@@ -795,7 +799,7 @@
     //   "액자가 아니라 벽이 먼저 보이는" 사진이 됐다. 면적으로 잡으면 가로·세로·정사각이
     //   모두 같은 존재감을 갖는다.
     const areaOf = (q) => { const s = quadSize(q); return (s.w * s.h) / (W * H); };
-    let zoom = 1, gain = 1, enlarged = 1;
+    let zoom = 1, gain = 1, enlarged = 1, fillMax = null;
     if (u.autoFrame !== false) {
       const wantA = u.frameArea == null ? 0.44 : u.frameArea;
       // ── 최소 크기 (2026-08-31 신고) ────────────────────────────────────────
@@ -856,21 +860,33 @@
       //    다시 당기면 화면에서는 그대로 커진다 — 실측: 벽 영역을 70% 로 묶었는데도
       //    화면 긴변이 **74.9%** 였다(치수 미입력 작품, 흰 벽돌). 사용자가 보는 건 화면이다.
       {
-        const MAXLONG = u.maxLongFrac == null ? 0.70 : u.maxLongFrac;
+        // 장면마다 다르다 — **실내 사진은 더 작게**. 평면 매크로 벽은 벽면만 크게 찍은
+        // 사진이라 작품이 화면의 70% 를 차지해도 '벽에 걸린 그림'으로 읽히지만,
+        // 방이 통째로 보이는 실내 사진에서 같은 비율이면 **벽 한 면을 삼킨 크기**가 된다.
+        // (2026-08-31 요청: 실내는 지금의 0.7 배로)
+        const MAXLONG = u.maxLongFrac != null ? u.maxLongFrac
+          : (scene.maxLong == null ? 0.70 : scene.maxLong);
         const cap = MAXLONG * Math.max(W, H);
-        const sz = quadSize((solve(fit, { gain }) || neutral).quad);   // zoom=1 기준
-        const long0 = Math.max(sz.w, sz.h);
+        // ⚠️ **`quadSize` 로 재지 말 것 — 그건 마주보는 변의 평균이다.** 원근이 있는 실내
+        //    장면에서는 화면에 실제로 차지하는 **바운딩 박스**가 그보다 크다. 실측(갤러리
+        //    살롱): 상한을 0.49 로 걸었는데 결과가 54.6% 였다. 계측 훅(`artlookProbe`)도,
+        //    사용자 눈도 바운딩 박스를 본다 — 같은 것으로 재야 한다.
+        const s0 = solve(fit, { gain }) || neutral;                     // zoom=1 기준
+        const q0 = s0.quad;
+        const xs0 = q0.map((p) => p[0]), ys0 = q0.map((p) => p[1]);
+        const long0 = Math.max(Math.max(...xs0) - Math.min(...xs0),
+                               Math.max(...ys0) - Math.min(...ys0));
         if (long0 > 1e-6) {
           zoom = Math.max(1, Math.min(zoom, cap / long0));
-          // zoom 을 1 까지 내려도 넘치면 **영역 안에서** 줄인다(카메라로는 더 못 줄인다)
-          if (long0 > cap) {
-            const g2 = cap / long0;
-            if (solve(fit, { gain: gain * g2 })) gain *= g2;
+          // zoom 을 1 까지 내려도 넘치면 **영역 안에서** 줄인다(카메라로는 더 못 줄인다).
+          // 줄이는 건 `gain` 이 아니라 `fillMax` 다 — 위 주석 참고.
+          if (long0 > cap && s0.place && s0.place.heightRatio > 0) {
+            fillMax = s0.place.heightRatio * (cap / long0);
           }
         }
       }
       if (zoom > 1.02) {
-        const nq = (solve(fit, { gain }) || neutral).quad;
+        const nq = (solve(fit, { gain, fillMax }) || neutral).quad;
         const cx = nq.reduce((s, p) => s + p[0], 0) / 4;
         const cy = nq.reduce((s, p) => s + p[1], 0) / 4;
         const focus = [(cx - fit.dx) / fit.sw, (cy - fit.dy) / fit.sh];
@@ -879,13 +895,13 @@
       // 얼마나 부풀렸나 — **추정하지 말고 결과에서 잰다**(placeInRegion 이 영역 밖으로
       // 못 나가게 다시 깎으므로, gain 을 그대로 쓰면 실제보다 크게 보고하게 된다).
       if (honest) {
-        const got0 = areaOf((solve(fit, { gain }) || neutral).quad);
+        const got0 = areaOf((solve(fit, { gain, fillMax }) || neutral).quad);
         const hon0 = areaOf((solve(fit, null) || neutral).quad);
         if (hon0 > 1e-9) enlarged = Math.sqrt(got0 / hon0);
       }
     }
     // 프레이밍(gain·zoom)이 정해진 뒤에 사용자 조절을 얹는다
-    let got = solve(fit, Object.assign({ gain }, userAdj));
+    let got = solve(fit, Object.assign({ gain, fillMax }, userAdj));
     if (!got) return null;
 
     const dbg = u.debug ? {} : null;

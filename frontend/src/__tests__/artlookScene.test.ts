@@ -419,9 +419,28 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     // ⚠️ **영역(벽) 상한만으로는 부족하다.** 자동 프레이밍이 목표 면적을 채우려고 카메라를
     //    다시 당기면 화면에서는 그대로 커진다 — 벽 영역을 70% 로 묶었는데도 화면 긴변이
     //    74.9% 였다(치수 미입력 작품). 사용자가 보는 건 화면이라 화면 기준으로 건다.
-    expect(js).toMatch(/const MAXLONG = u\.maxLongFrac == null \? 0\.70/);
-    // zoom 을 1 까지 내려도 넘치면 영역 안에서 줄이는 폴백이 있어야 한다
-    expect(js).toMatch(/if \(long0 > cap\)/);
+    expect(js).toMatch(/scene\.maxLong == null \? 0\.70 : scene\.maxLong/);
+    // ⚠️ 화면 차지는 **바운딩 박스**로 재야 한다 — `quadSize` 는 마주보는 변의 평균이라
+    //    원근이 있는 실내 장면에서 작게 나온다(0.49 를 걸었는데 54.6% 가 나왔다).
+    expect(js).toMatch(/Math\.max\(\.\.\.xs0\) - Math\.min\(\.\.\.xs0\)/);
+    // ⚠️ 넘칠 때 줄이는 건 gain 이 아니라 fillMax 다 — t 가 physMax 에 포화돼 있으면
+    //    gain 을 줄여도 결과가 한 픽셀도 안 변한다(실측).
+    expect(js).toMatch(/fillMax = s0\.place\.heightRatio \* \(cap \/ long0\)/);
+    expect(js).toMatch(/const hardMax = o\.fillMax != null/);
+  });
+
+  it('실내 장면은 상한이 더 작다 — scenes.json 이 장면별로 선언한다', () => {
+    const scenes = JSON.parse(
+      readFileSync(resolve(__dirname, '../../public/artlook/scenes/scenes.json'), 'utf-8'),
+    ).scenes as Array<Record<string, unknown>>;
+    // 방이 통째로 보이는 실내 사진(wall11~17)은 0.70 × 0.70
+    const interior = scenes.filter((s) => /wall1[1-7]/.test(String(s.src)));
+    expect(interior.length).toBeGreaterThanOrEqual(7);
+    for (const s of interior) expect(s.maxLong, String(s.id)).toBeCloseTo(0.49, 5);
+    // 평면 매크로 벽은 기본값(0.70)을 쓴다 — 선언하지 않는다
+    for (const s of scenes.filter((x) => !/wall1[1-7]/.test(String(x.src)))) {
+      expect(s.maxLong, String(s.id)).toBeUndefined();
+    }
   });
 
   it('합성 해상도(SUPERSAMPLE)는 2.0 이고 확대 한도에 SS 를 곱해 넘긴다', () => {

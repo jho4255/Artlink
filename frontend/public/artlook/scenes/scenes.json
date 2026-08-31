@@ -24,13 +24,15 @@
   "wallAmt 는 벽 명암이 작품을 통과하는 세기(합성티 제거의 핵심). toneAmt 는 방 색으로 물들이기.",
   "",
   "⚠️ 장면 사진의 해상도가 곧 출력 해상도 상한이다(원본 이상으로 늘리지 않는다).",
-  "   1080 이상이면 SNS 에 충분하고, 1600~2048 이면 넉넉하다."
+  "   1080 이상이면 SNS 에 충분하고, 1600~2048 이면 넉넉하다.",
+  "maxLong: 조각의 긴 변이 화면에서 차지할 수 있는 최대 비율(기본 0.70). 방이 통째로 보이는 실내 사진은 0.49 — 같은 비율이라도 벽 한 면을 삼킨 크기로 보인다."
  ],
  "scenes": [
   {
    "id": "gallery-salon",
    "name": "갤러리 살롱",
    "src": "walls/wall15-gallery-salon.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -74,6 +76,7 @@
    "id": "boutique",
    "name": "부티크 갤러리",
    "src": "walls/wall16-boutique-gallery.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -117,6 +120,7 @@
    "id": "collector-salon",
    "name": "컬렉터 살롱",
    "src": "walls/wall17-collector-salon.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -160,6 +164,7 @@
    "id": "gallery-living",
    "name": "갤러리 리빙",
    "src": "walls/wall11-gallery-living.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -203,6 +208,7 @@
    "id": "white-cube",
    "name": "화이트 큐브",
    "src": "walls/wall12-white-cube.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -246,6 +252,7 @@
    "id": "collector-home",
    "name": "컬렉터 홈",
    "src": "walls/wall14-collector-home.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
@@ -289,6 +296,7 @@
    "id": "hotel-lounge",
    "name": "호텔 라운지",
    "src": "walls/wall13-hotel-lounge.jpg",
+   "maxLong": 0.49,
    "frameless": true,
    "region": [
     [
