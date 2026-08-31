@@ -325,7 +325,8 @@ function paperTile(rgbKey,px,amp,seed){
     // 순수 노이즈만 쓰면 화면 축소에서 먼저 사라진다.
     // ⚠️ 직조 성분을 세게 주면 **체크무늬 천**이 된다(규칙적 격자가 눈에 띈다).
     //    실제 리넨은 실 굵기가 제각각이라 불규칙하다 — 직조는 거들고 랜덤이 주다.
-    const d=(Math.sin(xx*Math.PI/2)+Math.sin(yy*Math.PI/2))*amp*0.26 + (rnd()-.5)*amp*2.0;
+    // ⚠️ 직조(주기) 성분을 키우면 격자가 눈에 띈다 — 거들기만 하고 랜덤이 주다
+    const d=(Math.sin(xx*Math.PI/2)+Math.sin(yy*Math.PI/2))*amp*0.10 + (rnd()-.5)*amp*2.0;
     const i=(yy*n+xx)*4;
     id.data[i]=clamp255(r0+d); id.data[i+1]=clamp255(g0+d); id.data[i+2]=clamp255(b0+d);
     id.data[i+3]=255;
@@ -343,7 +344,9 @@ function paperTile(rgbKey,px,amp,seed){
 function matPaper(ctx,x,y,w,h,px,color){
   const {r,g,b}=hexToRgb(color);
   const lum=r*.2126+g*.7152+b*.0722;
-  const amp=Math.max(11, lum*0.175+6);
+  // ⚠️ 골든의 결은 std 6.4(검정)~13.5(흰색)인데 amp 48 은 **체크무늬 천**으로 보인다
+  //    (2026-08-31 크롭 확인). 결은 있어야 하지만 무늬로 읽히면 안 된다.
+  const amp=Math.max(7, lum*0.140+6);
   ctx.save();
   ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
   ctx.fillStyle=ctx.createPattern(paperTile(`${r},${g},${b}`,px,amp,4242),'repeat');
@@ -386,7 +389,7 @@ function frameShadowOnMat(ctx,x,y,w,h,depth,ld){
                [-1,0,x,y,x+d,y,d,h],[1,0,x+w,y,x+w-d,y,d,h]];
   for(const [nx,ny,gx0,gy0,gx1,gy1] of sides){
     const lit=(nx*ld[0]+ny*ld[1])/n;          // +1 = 그 변이 빛 쪽
-    const a=0.30*Math.max(0.28,(1-lit)/2+0.28);
+    const a=0.30*SYN_EDGE*Math.max(0.28,(1-lit)/2+0.28);
     const g=ctx.createLinearGradient(gx0,gy0,gx1,gy1);
     g.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`);
     g.addColorStop(.35,`rgba(0,0,0,${(a*0.42).toFixed(3)})`);
@@ -419,7 +422,8 @@ function matOpeningBevel(ctx,ax,ay,aw,ah,bw,matColor,ld){
     const lit=(nx*ld[0]+ny*ld[1])/n;
     // 코어는 매트 속살이라 밝지만(+.10) 면 방향이 지배한다 —
     // 위 사면은 아래를 향해 그늘지고(음수) 아래 사면은 위를 향해 밝다.
-    quadFill(ctx,poly, shade(matColor, .10 + 0.40*lit));
+    // ⚠️ 실측: 이 낙차가 골든 33 인데 우리는 **150** 이었다 — 흰 매트에서 밝은 링으로 보인다.
+    quadFill(ctx,poly, shade(matColor, (.10 + 0.40*lit)*SYN_EDGE));
   }
 }
 
@@ -459,6 +463,26 @@ function quadFill(ctx,p,fill){ ctx.beginPath(); ctx.moveTo(p[0],p[1]);
 //                          기본적으로 그늘지고, 이게 곧 '작품이 뒤로 들어갔다'는 신호다.
 // 코너는 마이터라 각 면을 **사다리꼴로 클립**한다 — 사각형으로 칠하면 코너가 두 번 어두워진다.
 const FACE_OUT=0.18, FACE_FRONT=0.74;   // 살 폭 대비 면 경계 (③ 은 0.74~1.0)
+
+// ⚠️⚠️ **합성 음영 세기 — 원본 액자 사진이 주인공이고 우리 음영은 거들 뿐이다.**
+//   사진 액자는 이미 실제 제품 사진이라 베벨·결·명암을 다 갖고 있다. 그 위에 우리가
+//   프로파일을 다시 그리면 "real frame + many synthetic effects" 가 된다.
+//   2026-08-31 실측(mat.py, 골든 대조):
+//     개구부 사면 낙차 골든 33 ↔ 우리 **150** · 틈 깊이 골든 21% ↔ 우리 **74%**
+//     살 단면 낙차 골든 7~54 ↔ 우리 중앙 **91**
+//   눈으로도 [액자 → 흰 테두리 → 검은 선 → 흰 매트 → 작품] 이 층층이 보였다.
+//   레이어가 몇 겹이든 **하나의 실제 물체**로 보여야 한다.
+//   이 상수 하나로 전체 세기를 조절한다 — 올릴 땐 반드시 mat.py·run.py 로 골든과 대조할 것.
+// ⚠️ **한 노브로 일괄 조절하지 말 것.** 0.40 을 전부에 걸었더니 층은 줄었지만
+//   **장면 광원 추종까지 깎였다** — 위살↔아래살 밝기차가 골든 30~90 인데 19.8 로
+//   떨어져, 브리핑이 "유지하라"고 한 scene-adaptive lighting 이 죽었다. 둘로 나눈다.
+//     DIR  : 면의 **방향광**(바깥면/앞면/옆면). 이건 '층'을 만들지 않는다 — 유지한다.
+//     EDGE : **테두리·링·띠**(아리스, 매트 개구부 사면, 리베이트, 액자가 매트에 지는 그늘).
+//            사용자가 본 [액자 → 흰 테두리 → 검은 선 → 흰 매트] 가 전부 여기서 나온다.
+const _synQ=(k,d)=>{ try{ const v=parseFloat(new URLSearchParams(location.search).get(k));
+  return isFinite(v)&&v>=0&&v<=2 ? v : d; }catch(e){ return d; } };
+const SYN_DIR=_synQ('syndir', 0.85);
+const SYN_EDGE=_synQ('syn', 0.35);
 // (개구부 립 `LIP` 은 2026-08-31 제거 — 무엇을 해도 1px 밝은 선이 됐다. shadeFrameProfile 주석 참고)
 const FACE_NORMAL=[[0,-1],[1,0],[0,1],[-1,0]];   // s: 0 위 1 오른쪽 2 아래 3 왼쪽
 
@@ -537,13 +561,18 @@ function shadeBandRamp(ctx,W,H,s,l,t,r,b,d0,d1,f0,f1){
 function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   const o=opt||{};
   const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
-  const AO=o.outer==null?0.34:o.outer;      // 바깥 모따기 진폭
-  const AF=o.front==null?0.11:o.front;      // 앞면 진폭 (작아야 한다 — 정면은 광원과 수직)
+  // ⚠️ **바깥 모따기 진폭이 `rail_span` 의 주범이다.** 살 폭의 18% 밖에 안 되는 좁은 띠인데
+  //   ±29% 로 흔들려서, 화면에서는 액자 둘레의 **밝은/어두운 테두리**로 읽힌다
+  //   (골든의 살 단면 변화는 19, 우리는 82였다).
+  const AO=(o.outer==null?0.34:o.outer)*SYN_DIR*0.42;   // 바깥 모따기 진폭
+  const AF=(o.front==null?0.11:o.front)*SYN_DIR;  // 앞면 진폭 (작아야 한다 — 정면은 광원과 수직)
   // ⚠️ 안쪽 사면은 **빛을 향한 변에서도 어두워야 한다.** 리베이트는 파인 홈이라
   //   방향광보다 **폐색(ambient occlusion)** 이 지배한다. 예전엔 진폭이 커서 아랫변
   //   사면이 0.82 까지 밝아져 리베이트가 거의 사라졌다 — FrameIt 은 네 변 모두 진하다.
-  const AR=o.rebate==null?0.22:o.rebate;    // 방향 진폭(작게)
-  const RB=o.rebateBase==null?0.58:o.rebateBase;  // 기본 그늘(깊게)
+  const AR=(o.rebate==null?0.22:o.rebate)*SYN_DIR;    // 방향 진폭(작게)
+  // ⚠️ 기본 그늘을 깊게 두지 말 것. 0.58 은 살을 42% 어둡게 만드는데, 골든의 틈 깊이는
+  //    21% 다. 사진 액자에는 **이미 제 리베이트가 찍혀 있다** — 우리는 거들기만 한다.
+  const RB=o.rebateBase==null?(1-0.42*SYN_EDGE):o.rebateBase;
   // ── 살 한 변을 **폴리곤 하나 + 다중 스톱 그라디언트 한 쌍**으로 칠한다 ──────────
   // ⚠️⚠️ **맞닿은 밴드를 여러 개 그리지 말 것.** canvas 는 폴리곤 가장자리를 안티에일리어싱
   //   하므로 공유 경계 픽셀을 양쪽이 **절반씩** 덮는다. 곱연산에서 절반 알파를 두 번 거는
@@ -567,20 +596,28 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     const stops=[
       [0,               fOut],
       [FACE_OUT-e,      fOut],
-      [FACE_OUT,        fOut+0.14*lit],      // 바깥면↔앞면 깎인 각
+      [FACE_OUT,        fOut+0.14*SYN_DIR*lit],  // 바깥면↔앞면 깎인 각
       [FACE_OUT+e,      fFront],
-      [FACE_FRONT-e,    fFront*0.94],        // 앞면은 안쪽으로 갈수록 살짝 어두워진다
-      [FACE_FRONT,      fFront*0.86],        // 앞면↔사면 깎인 각 (그늘)
+      [FACE_FRONT-e,    fFront*(1-0.06*SYN_DIR)],  // 앞면은 안쪽으로 갈수록 살짝 어두워진다
+      [FACE_FRONT,      fFront*(1-0.14*SYN_DIR)],  // 앞면↔사면 깎인 각 (그늘)
       // ⚠️ 리베이트를 **직선 두 토막**으로 두지 말 것. 기울기가 꺾이는 스톱에서
       //   2차 미분이 튀어 중앙값 필터에 잡힌다 — 실측(오크): 네 위치 전부 **살의 88%**
       //   에서 잔차 16~19 (같은 자리에서 반복되면 텍스처가 아니라 우리가 그린 것이다).
       //   스톱을 늘려 완만한 곡선으로 만든다.
-      [FACE_FRONT+e,    Math.min(1,rb*1.45)],
-      [0.82,            rb*1.18],
-      [0.88,            rb*1.02],
-      [0.94,            rb*0.92],
-      [1,               rb*0.82],            // 개구부 — 가장 깊고 어둡다(립 없음)
+      // ⚠️ **평평한 띠가 아니라 좁고 깊은 V 여야 한다.** 단조로 완만히 내려가면 살 안쪽
+      //   10~15px 이 통째로 어두운 **띠**가 되어 [액자|검은 띠|매트] 로 층이 보인다.
+      //   골든 실측(case_01 금장): 살 166 → **37** 로 급락 → 62 로 회복 → 작품.
+      //   골이 좁으면 '층'이 아니라 두 면이 만나는 **이음매**로 읽힌다.
+      [FACE_FRONT+e,    Math.min(1,rb*1.30)],
+      [0.90,            rb*0.93],            // 가장 깊은 골 — 좁고 **얕게**
+      [1,               rb*1.06],            // 작품·매트에서 오는 반사광으로 회복
     ];
+    // ⚠️ **방향광을 모따기에만 실으면 안 된다.** 모따기를 줄이면 위살↔아래살 밝기차
+    //   (`dir_tb`, 장면 광원 추종의 증거)까지 같이 죽는다. 실제로도 빛을 받는 쪽 살은
+    //   **면 전체가** 조금 더 밝다 — 살 전체에 걸리는 **균일 항**으로 나눠 싣는다.
+    //   균일 항은 살을 가로지르는 대비를 만들지 않으므로 '테두리'로 보이지 않는다.
+    const uni=1 + 0.11*SYN_DIR*lit;
+    for (let i=0;i<stops.length;i++) stops[i][1]*=uni;
     const poly=mitreBand(W,H,s,l,t,r,b,0,1);
     const gm=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
     const gs=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
@@ -617,7 +654,7 @@ function rebateShadow(ctx,ax,ay,aw,ah,base,ld){
     const lit=nx*L[0]+ny*L[1];               // +1 = 그 변이 빛 쪽
     // ⚠️ 45° 코어 사면·액자 그림자와 **겹친다**. 예전 값이면 개구부가 새까매져
     //    (매트 대비 낙차 90%, FrameIt 은 48%) 오히려 '오려 낸 구멍'으로 보인다.
-    const a=0.22*Math.max(0.18, (1-lit)/2 + 0.18);
+    const a=0.22*SYN_EDGE*Math.max(0.18, (1-lit)/2 + 0.18);   // 틈 깊이 골든 21% 기준
     const g=ctx.createLinearGradient(x0,y0,x1,y1);
     g.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`);
     g.addColorStop(0.55,`rgba(0,0,0,${(a*0.28).toFixed(3)})`);
@@ -795,8 +832,8 @@ function planeAxis(ctx,W,H,b,s){
 // 텍스처 위에 얹는 **면 음영** — 색을 덮지 않고 밝기만 계단식으로 준다
 function planeShade(ctx,W,H,b,s,ld){
   const [o,f,r]=planeOf(s,ld);
-  const col=(v)=> v>=0 ? `rgba(255,248,236,${Math.min(.55,v*1.05).toFixed(3)})`
-                       : `rgba(18,11,4,${Math.min(.62,-v*1.05).toFixed(3)})`;
+  const col=(v)=> v>=0 ? `rgba(255,248,236,${Math.min(.55,v*1.05*SYN_DIR).toFixed(3)})`
+                       : `rgba(18,11,4,${Math.min(.62,-v*1.05*SYN_DIR).toFixed(3)})`;
   const g=planeAxis(ctx,W,H,b,s), A=PLANE_OUT, B=PLANE_OUT+PLANE_FRONT;
   g.addColorStop(0,col(o));      g.addColorStop(A-0.005,col(o));
   g.addColorStop(A,col(f));      g.addColorStop(B-0.005,col(f));
@@ -921,8 +958,8 @@ function drawTextureSide(ctx,W,H,b,s,c,ld){
     g.addColorStop(1,`rgba(${rgb},0)`);
     ctx.fillStyle=g; ctx.fillRect(bx,by,bw,bh);
   };
-  arris(PLANE_OUT, lit0>=0?'255,250,240':'0,0,0', lit0>=0?.17:.09, .045);  // 바깥면 ↔ 앞면
-  arris(PLANE_OUT+PLANE_FRONT, '0,0,0', .20, .050);                        // 앞면 ↔ 안쪽사면
+  arris(PLANE_OUT, lit0>=0?'255,250,240':'0,0,0', (lit0>=0?.17:.09)*SYN_EDGE, .045);
+  arris(PLANE_OUT+PLANE_FRONT, '0,0,0', .20*SYN_EDGE, .050);
   ctx.restore();
 }
 
@@ -948,13 +985,13 @@ function drawFloaterTray(ctx,W,H,b,g,back,ld){
     // ⚠️ 몰딩과 만나는 첫 픽셀을 가장 밝게 두면 어두운 몰딩 안쪽 끝과 붙어 **밝은 선**이
     //    된다(실측 오크 플로터 165→198, 3px 짜리 봉우리). 실제로는 몰딩이 트레이의 그
     //    자리에 그늘을 드리운다 — 살짝만 밝게 한다.
-    grad.addColorStop(0, shade(back, .16));
-    grad.addColorStop(.45, shade(back, .06));
+    grad.addColorStop(0, shade(back, .09));
+    grad.addColorStop(.45, shade(back, .03));
     // ⚠️ **바닥을 검정에 붙이지 말 것.** 예전엔 여기에 더해 `rgba(0,0,0,.68)` 를
     //    strokeRect 로 둘러 갭 바닥이 휘도 0~1 까지 떨어졌다(실측 오크 플로터 0.0,
     //    골든 최저는 살 대비 0.110). 그게 "dark inner gap 이 black outline 으로 보인다"
     //    의 정체다. 작품이 트레이에 드리우는 접지 그림자는 바로 아래에서 따로 그린다.
-    grad.addColorStop(1, shade(back, -.18));
+    grad.addColorStop(1, shade(back, -.10));
     quadFill(ctx, sideBand(W,H,s,b,b+g), grad);
   }
   // ── 방향광은 **오목면 프로파일과 분리해서** 곱/스크린으로 얹는다 ─────────────
@@ -1008,7 +1045,7 @@ function frameBand(ctx,W,H,m,mat,ld){
   const k=Math.max(2,b*.22);
   for(let s=0;s<4;s++){
     const nv=FACE_NORMAL[s], lit=(nv[0]*(ld?ld[0]:-1)+nv[1]*(ld?ld[1]:-1))/n;
-    const a=0.42*Math.max(0.45,(1-lit)/2+0.45);
+    const a=0.42*SYN_EDGE*Math.max(0.45,(1-lit)/2+0.45);
     let grad;
     if(s===0) grad=ctx.createLinearGradient(0,b,0,b-k);
     else if(s===1) grad=ctx.createLinearGradient(W-b,0,W-b+k,0);
@@ -1213,12 +1250,15 @@ function buildFramedCore(img, style, o){
         ctx.fillStyle=o.matteColor; ctx.fillRect(l,t,W-l-r,H-t-b);
         matPaper(ctx,l,t,W-l-r,H-t-b, Math.max(1,Math.round(base*0.0016)), o.matteColor);
         shadeMatSurface(ctx,l,t,W-l-r,H-t-b,ld);
-        frameShadowOnMat(ctx,l,t,W-l-r,H-t-b, Math.max(4,matPx*.62), ld);
+        // ⚠️ 폭을 넓게 두지 말 것. 매트는 액자 뒤 몇 mm 에 있을 뿐인데 매트 폭의 62%
+        //    (실측 28px)를 어둡게 칠하면 **액자와 매트 사이에 검은 띠**가 생겨 층으로 읽힌다.
+        //    골든의 같은 자리는 좁고 깊은 V 지 넓은 띠가 아니다.
+        frameShadowOnMat(ctx,l,t,W-l-r,H-t-b, Math.max(3,matPx*.20), ld);
       }
       ctx.drawImage(img,ax,ay,aw,ah);
       if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
       // 매트 개구부의 45° 코어 사면 — 얇은 선 하나로는 '종이 한 장'으로 보인다
-      if(matPx>0) matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(2,matPx*.13), o.matteColor, ld);
+      if(matPx>0) matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(1.5,matPx*.085), o.matteColor, ld);
       drawNineSlice(ctx,im,meta,0,0,W,H,kx);
       // 살에 방향광 — 이게 없으면 위살·아래살이 같은 밝기라 인쇄한 띠로 보인다
       shadeFrameProfile(ctx,W,H,l,t,r,b,ld);
@@ -1312,7 +1352,7 @@ function buildFramedCore(img, style, o){
       ctx.fillStyle=o.matteColor; ctx.fillRect(q,q,W-2*q,H-2*q);
       matPaper(ctx,q,q,W-2*q,H-2*q, Math.max(1,Math.round(base*0.0016)), o.matteColor);
       shadeMatSurface(ctx,q,q,W-2*q,H-2*q,ld);
-      frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(4,mat*.62), ld);
+      frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(3,mat*.20), ld);
     }
     drawFloaterTray(ctx,W,H,border,gap,matC.back,ld);
   } else if(mat>0){
@@ -1322,7 +1362,7 @@ function buildFramedCore(img, style, o){
     matPaper(ctx, border, border, W-2*border, H-2*border,
              Math.max(1,Math.round(base*0.0016)), o.matteColor);
     shadeMatSurface(ctx, border, border, W-2*border, H-2*border, ld);
-    frameShadowOnMat(ctx, border, border, W-2*border, H-2*border, Math.max(4,mat*.62), ld);
+    frameShadowOnMat(ctx, border, border, W-2*border, H-2*border, Math.max(3,mat*.20), ld);
   }
 
   // --- 플로터: 캔버스가 트레이 위에 떠 있는 그림자 ---
@@ -1356,7 +1396,7 @@ function buildFramedCore(img, style, o){
   // --- 매트 개구부의 45° 코어 사면 (사진 액자와 같은 함수) ---
   // ⚠️ 플로터는 **개구부가 없다** — 작품이 매트 보드 위에 얹혀 있지, 매트에 뚫린 창으로
   //    들여다보는 게 아니다. 여기에 사면을 그리면 있지도 않은 종이 두께가 작품 위에 생긴다.
-  if(mat>0 && style.kind!=='floater') matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(2,mat*.13), o.matteColor, ld);
+  if(mat>0 && style.kind!=='floater') matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(1.5,mat*.085), o.matteColor, ld);
 
   // --- 리베이트 — 액자·매트가 작품 위에 드리우는 그림자 ---
   // ⚠️ 예전엔 여기만 **손으로 적은 사방 고정값**(위 .16 / 왼 .10 / 오른 .06 / 아래 .05)

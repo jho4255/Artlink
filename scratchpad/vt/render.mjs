@@ -19,7 +19,11 @@ const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
 p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 140)); });
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+// 하니스에서 합성 음영 세기를 바꿔 렌더할 수 있게 (브리핑 9번 전/후 비교)
+//   SYN=0 SYNDIR=0 node render.mjs renders_off   → 사진 액자 원본만
+const qs = [process.env.SYN != null ? `syn=${process.env.SYN}` : '',
+  process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : ''].filter(Boolean).join('&');
+await p.goto('http://localhost:5173/artlook/index.html' + (qs ? '?' + qs : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 
 // 데모 작품을 직접 심는다 — 로그인/포트폴리오에 기대면 장비마다 결과가 달라진다

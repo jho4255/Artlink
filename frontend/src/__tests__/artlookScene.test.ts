@@ -354,7 +354,13 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(m).toBeTruthy();
     const rows = [...m![1].matchAll(/\[([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*'(\w+)'/g)]
       .map((r) => ({ blur: +r[1], alpha: +r[2], k: +r[3], name: r[4] }));
-    expect(rows.length).toBe(3);
+    // ⚠️ 넓은 반그림자(penumbra)는 뺐다 — 방향을 줘도 회색 헤일로로 읽혔다.
+    //    남은 건 접지 + 아주 옅은 투영 둘뿐이고, 투영이 접지보다 **약해야** 한다.
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => r.name).sort()).toEqual(['cast', 'contact']);
+    const cast = rows.find((r) => r.name === 'cast')!;
+    const contact = rows.find((r) => r.name === 'contact')!;
+    expect(cast.alpha).toBeLessThan(contact.alpha);
     for (const r of rows) {
       if (r.name === 'contact') continue;   // 접지는 '틈의 폐색'이라 사방에 조금씩 있는 게 맞다
       // 오프셋 = off * 0.030 * k (x축 기준). 블러보다 커야 한 방향으로만 진다.
@@ -441,6 +447,23 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     for (const s of scenes.filter((x) => !/wall1[1-7]/.test(String(x.src)))) {
       expect(s.maxLong, String(s.id)).toBeUndefined();
     }
+  });
+
+  it('합성 음영은 방향광/테두리 두 노브로 나뉘어 있다 (2026-09-01)', () => {
+    // ⚠️ 한 노브로 일괄 조절하면 '층'을 줄이려다 **장면 광원 추종까지** 깎인다
+    //    (실측: 일괄 0.40 에서 위살↔아래살 차이가 골든 30~90 대비 19.8 로 떨어졌다).
+    expect(html).toMatch(/const SYN_DIR=_synQ\('syndir'/);
+    expect(html).toMatch(/const SYN_EDGE=_synQ\('syn'/);
+    // 테두리·링 계열은 EDGE 로 눌러야 한다 — 사용자가 본 '흰 테두리/검은 선'이 여기서 나온다
+    // 각 함수 본문 안에 SYN_EDGE 가 있어야 한다 (함수 단위로 잘라서 본다)
+    for (const fn of ['matOpeningBevel', 'rebateShadow', 'frameShadowOnMat']) {
+      const i = html.indexOf(`function ${fn}(`);
+      expect(i, `${fn} 정의`).toBeGreaterThan(0);
+      const body = html.slice(i, html.indexOf('\nfunction ', i + 10));
+      expect(body, `${fn} 본문의 SYN_EDGE`).toContain('SYN_EDGE');
+    }
+    // 하니스가 같은 입력으로 전/후를 뽑을 수 있어야 한다(브리핑 "동시에 테스트")
+    expect(html).toMatch(/URLSearchParams\(location\.search\)/);
   });
 
   it('합성 해상도(SUPERSAMPLE)는 2.0 이고 확대 한도에 SS 를 곱해 넘긴다', () => {
