@@ -130,10 +130,21 @@
 </style>
 </head>
 <body>
-<header>
+<!--
+  머리말은 **새 탭으로 띄웠을 때만** 보인다.
+  마이페이지 [ArtLook] 탭은 이 페이지를 iframe 으로 품는데(같은 출처라 localStorage 가 그대로 읽힌다),
+  그때는 바깥 화면에 이미 'ArtLook 액자 걸기' 제목이 있어 여기 머리말이 겹친다.
+  임베드 쪽에서 `?embed=1` 을 붙여 알려준다.
+-->
+<header id="page-header">
   <h1>Art<b>Look</b><span class="tagline">: 예술의 완성</span></h1>
   <p>작품을 액자와 전시 공간에 담아 SNS 홍보 이미지를 만들어 보세요</p>
 </header>
+<script>
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.getElementById('page-header').style.display = 'none';
+  }
+</script>
 
 <div class="wrap">
   <div class="panel">
@@ -154,6 +165,20 @@
     <div class="sec">
       <label>2 · 프레임 스타일</label>
       <div class="chips" id="frames"></div>
+      <!-- 매트(대지) — 액자와 작품 사이의 여백. 경쟁사 결과물의 '고급스럽다'는 인상의
+           상당 부분이 여기서 온다. 캔버스 랩만 빼고 전 스타일에서 쓴다(`updateMatRow`). -->
+      <div class="row" id="matRow" style="margin-top:8px;">
+        <label>매트</label>
+        <div class="toggle" id="matSel" style="flex:1">
+          <button data-mat="0.05" class="active">좁게</button>
+          <button data-mat="0.10">넓게</button>
+        </div>
+      </div>
+      <div class="hint" id="matHint" style="display:none;margin-top:4px;">캔버스 랩은 액자가 없어 매트를 받칠 곳이 없습니다. 다른 액자를 고르면 켜집니다.</div>
+      <div class="row" id="matColorRow" style="display:none;">
+        <label>매트 색</label>
+        <div class="sw-row" id="matColors" style="display:flex;gap:8px;flex:1;"></div>
+      </div>
     </div>
 
     <!-- 3. 두께 / 매트 / 효과 -->
@@ -162,26 +187,32 @@
       <!-- 두께·매트여백·매트색·유리반사·캔버스질감은 화면에서 뺐다(2026-08-15).
            프레임 스타일(2번)이 이미 모양을 정하고, 세부 조절은 거의 쓰이지 않으면서 세로를 크게 먹었다.
            값은 state 기본값(두께 3% / 매트 4% 등)으로 고정되어 렌더링은 종전과 같다. -->
-      <div class="row">
-        <label>조명</label>
-        <div class="toggle" id="lightSel" style="flex:1">
-          <button data-eff="0" class="active">없음</button>
-          <button data-eff="1">스포트</button>
-          <button data-eff="2">소프트</button>
-        </div>
-      </div>
+      <!-- ⚠️ 종류(없음/스포트/소프트) 선택은 없앴다(2026-08-31). 세 값이 실제로는
+           **같은 일의 강약**이었고, 게다가 옛 라이팅맵은 장면 모드에서 아예 호출되지
+           않아 무엇을 골라도 화면이 그대로였다. 강도 0 이 곧 '없음'이다. -->
       <div class="row">
         <label>조명 강도</label>
-        <input type="range" id="lightOp" min="10" max="100" value="45" />
-        <span class="val" id="lightOpv">45%</span>
+        <input type="range" id="lightOp" min="0" max="100" step="5" value="0" />
+        <span class="val" id="lightOpv">0%</span>
       </div>
+      <div class="hint" style="margin-top:4px;">이 장면의 광원 방향으로 스포트라이트를 겁니다. 올릴수록 주변 벽이 어두워지고 액자 쪽이 밝아집니다.</div>
     </div>
 
     <!-- 4. 배경 / 벽 -->
     <div class="sec">
       <label>4 · 배경</label>
+      <!-- 장면(프리미엄)은 실사 공간에 원근을 맞춰 끼우는 방식이라 결과가 다르다.
+           장면 목록이 없거나 WebGL2 가 없으면 이 토글 자체를 감춘다(빈 탭을 보여주지 않는다). -->
+      <div class="row" id="bgModeRow" style="display:none;">
+        <div class="toggle" id="bgMode" style="flex:1">
+          <button data-bg="wall" class="active">기본 벽</button>
+          <button data-bg="scene">장면</button>
+        </div>
+      </div>
       <div class="walls" id="walls"></div>
-      <div class="hint" style="margin-top:6px;">💡 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
+      <div class="walls" id="scenes" style="display:none;"></div>
+      <div class="hint" id="sceneNote" style="display:none;margin-top:6px;"></div>
+      <div class="hint" id="wallHint" style="margin-top:6px;">💡 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
     </div>
 
     </div><!-- /.cols -->
@@ -209,6 +240,7 @@
   </div>
 </div>
 
+<script src="scene.js"></script>
 <script>
 /* ============================================================
    FrameIt POC v3
@@ -228,8 +260,24 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
 }
 
 // ---- 색/난수 유틸 ----
-function hexToRgb(h){ h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join('');
-  const n=parseInt(h,16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; }
+// ⚠️⚠️ **`rgb(...)` 문자열도 반드시 받을 것.** 예전엔 16진수만 파싱했는데,
+//   `gradeHex()`(액자 재질 색 보정)와 `shade()` 가 **둘 다 `rgb(…)` 를 돌려준다.**
+//   그걸 다시 넣으면 `parseInt('rgb(44,40,35)',16)` → NaN → `NaN|0` = 0 → **순검정**이 된다.
+//   에러도 경고도 없다. 실제 피해(2026-08-31 실측):
+//     · 플로터 트레이가 **오크·골드·월넛에서만** 새까맣게 칠해졌다(틈 바닥 휘도 0~2,
+//       골든 최저는 살 대비 0.110). 검정·실버·아이보리는 보정값이 [1,1] 이라 hex 가
+//       그대로 나와 멀쩡했다 — 그래서 '일부 액자만 이상하다'로 보였다.
+//     · `frameSideGradient` 의 텍스처 폴백도 같은 이유로 검게 떨어진다.
+//   같은 함정이 CLAUDE.md 38번(매트 개구부가 통째로 검게)에도 적혀 있다. 근본 원인은
+//   **색을 문자열로 주고받으면서 형식을 하나로 안 정한 것**이라, 파서 쪽에서 막는다.
+function hexToRgb(h){
+  h=String(h==null?'':h).trim();
+  const m=h.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if(m) return {r:+m[1]|0, g:+m[2]|0, b:+m[3]|0};
+  h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16);
+  if(!isFinite(n)) return {r:0,g:0,b:0};
+  return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; }
 function clamp255(v){ return Math.max(0,Math.min(255,v)); }
 function shade(hex,amt){ amt=Math.max(-1,Math.min(1,amt)); const {r,g,b}=hexToRgb(hex);
   const t=amt<0?0:255; const p=Math.abs(amt);
@@ -250,6 +298,131 @@ function applyNoise(ctx,x,y,w,h,alpha){
   ctx.save(); ctx.globalAlpha=alpha; ctx.globalCompositeOperation='multiply';
   ctx.fillStyle=ctx.createPattern(noiseSrc(),'repeat'); ctx.fillRect(x,y,w,h); ctx.restore(); }
 
+// ---- 매트(대지) 종이 결 ----
+// ⚠️ **1px 노이즈 × alpha 0.05 로는 아무것도 안 남는다.** 판은 화면까지 또 축소되므로
+//    미세 노이즈는 밉맵에서 지워진다(실측 std 0.92, FrameIt Pro 는 6.4 — 7배 차이).
+//    그게 "매트가 무슨 그냥 하얀 색"의 정체였다(2026-08-30 지적).
+//    ① 입자를 2px 덩어리로 키우고 ② **어두운 반점과 밝은 반점을 함께** 준다 —
+//    종이는 요철이라 그늘과 하이라이트가 같이 생긴다. multiply 만 쓰면 때 탄 것처럼 보인다.
+//    ⚠️ 두 겹은 **서로 다른 시드**여야 한다. 같은 노이즈로 multiply+screen 하면 상쇄된다.
+// ⚠️ 결은 **랜덤 점이 아니라 직조**다. FrameIt Pro 결과물을 확대하면 가로·세로 실이
+//    교차하는 격자가 뚜렷하다(리넨 매트). 순수 노이즈는 모래알처럼 보이고 축소되면
+//    먼저 사라진다 — 격자 성분은 주기가 있어 축소돼도 남는다.
+// ⚠️ **결을 multiply 로 얹지 말 것 — 매트 색이 통째로 어두워진다.**
+//    평균 128 노이즈를 alpha .30 으로 곱하면 흰 매트 231 이 204 로 내려앉아
+//    "흰 매트"가 회색이 된다(실측). screen 을 더해도 흰색은 밝아질 여지가 없어 못 되돌린다.
+//    **평균이 매트색과 같은 불투명 타일**을 만들어 그대로 덮는다 — 색은 보존되고 결만 생긴다.
+const _paperTiles={};
+function paperTile(rgbKey,px,amp,seed){
+  const k=rgbKey+'_'+px+'_'+amp.toFixed(1)+'_'+seed;
+  if(_paperTiles[k]) return _paperTiles[k];
+  const [r0,g0,b0]=rgbKey.split(',').map(Number);
+  const n=176, s=Math.max(1,Math.round(px));
+  const a=document.createElement('canvas'); a.width=a.height=n;
+  const ax=a.getContext('2d'), id=ax.createImageData(n,n), rnd=prng(seed);
+  for(let yy=0;yy<n;yy++) for(let xx=0;xx<n;xx++){
+    // 실 교차(직조) + 미세 랜덤. 직조 성분은 **주기가 있어 축소돼도 남는다** —
+    // 순수 노이즈만 쓰면 화면 축소에서 먼저 사라진다.
+    // ⚠️ 직조 성분을 세게 주면 **체크무늬 천**이 된다(규칙적 격자가 눈에 띈다).
+    //    실제 리넨은 실 굵기가 제각각이라 불규칙하다 — 직조는 거들고 랜덤이 주다.
+    const d=(Math.sin(xx*Math.PI/2)+Math.sin(yy*Math.PI/2))*amp*0.26 + (rnd()-.5)*amp*2.0;
+    const i=(yy*n+xx)*4;
+    id.data[i]=clamp255(r0+d); id.data[i+1]=clamp255(g0+d); id.data[i+2]=clamp255(b0+d);
+    id.data[i+3]=255;
+  }
+  ax.putImageData(id,0,0);
+  if(s===1){ _paperTiles[k]=a; return a; }
+  const b=document.createElement('canvas'); b.width=b.height=n*s;
+  const bx=b.getContext('2d'); bx.imageSmoothingEnabled=false;
+  bx.drawImage(a,0,0,n*s,n*s);
+  _paperTiles[k]=b; return b;
+}
+/** 매트 표면의 종이 결. color = 매트색(hex).
+ *  결의 세기는 **매트 밝기에 비례**한다 — FrameIt 실측도 흰 매트 std 11~13,
+ *  검은 매트 6.4 로 밝을수록 세다(어두운 종이는 그늘이 얕아 결이 덜 드러난다). */
+function matPaper(ctx,x,y,w,h,px,color){
+  const {r,g,b}=hexToRgb(color);
+  const lum=r*.2126+g*.7152+b*.0722;
+  const amp=Math.max(11, lum*0.175+6);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.fillStyle=ctx.createPattern(paperTile(`${r},${g},${b}`,px,amp,4242),'repeat');
+  ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+
+/** 매트 표면의 방향광.
+ *  ⚠️ **대각선 그라디언트를 쓰지 말 것.** 좌상단 '모서리'만 최대로 밝아서 매트 위쪽
+ *     중앙은 이미 그라디언트의 30% 지점이 된다 — 위↔아래 낙차가 4분의 1로 죽는다
+ *     (실측 9레벨, FrameIt 은 흰 매트 7 / 검은 매트 32). 세로를 지배시킨다.
+ *  ⚠️ 흰 매트에는 **흰색을 얹어도 밝아질 여지가 없다**(231에 alpha .16 을 얹어야 +4).
+ *     그래서 밝히기는 screen, 어둡게는 multiply 로 나눠 건다 — 매트 색과 무관하게 먹는다. */
+function shadeMatSurface(ctx,x,y,w,h,ld){
+  const n=Math.hypot(ld[0],ld[1])||1, ux=-ld[0]/n, uy=-ld[1]/n;   // 빛의 진행 방향
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  const ax0=x+(ux<0?w:0), ay0=y+(uy<0?h:0);
+  const g1=ctx.createLinearGradient(ax0,ay0, ax0+ux*w*0.35, ay0+uy*h);
+  g1.addColorStop(0,'rgba(0,0,0,0)'); g1.addColorStop(1,'rgba(0,0,0,.17)');
+  ctx.globalCompositeOperation='multiply'; ctx.fillStyle=g1; ctx.fillRect(x,y,w,h);
+  const g2=ctx.createLinearGradient(ax0,ay0, ax0+ux*w*0.35, ay0+uy*h);
+  g2.addColorStop(0,'rgba(255,255,255,.11)'); g2.addColorStop(.55,'rgba(255,255,255,0)');
+  ctx.globalCompositeOperation='screen'; ctx.fillStyle=g2; ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+
+/** 액자가 매트에 드리우는 그림자.
+ *  액자는 매트보다 **앞에 있는 판**이라 안쪽 둘레에 그늘이 진다. 이게 없으면 액자와
+ *  매트가 같은 평면에 인쇄된 것처럼 보인다 — "액자와 그림 사이가 평면적"의 큰 원인.
+ *  (FrameIt Pro 실측: 액자 근처 매트가 안쪽보다 11~26레벨 어둡다) */
+function frameShadowOnMat(ctx,x,y,w,h,depth,ld){
+  const n=Math.hypot(ld[0],ld[1])||1;
+  const d=Math.max(2,depth);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.globalCompositeOperation='multiply';
+  // 빛을 등진 변일수록 진하다
+  const sides=[[0,-1,x,y,x,y+d,w,d],[0,1,x,y+h,x,y+h-d,w,d],
+               [-1,0,x,y,x+d,y,d,h],[1,0,x+w,y,x+w-d,y,d,h]];
+  for(const [nx,ny,gx0,gy0,gx1,gy1] of sides){
+    const lit=(nx*ld[0]+ny*ld[1])/n;          // +1 = 그 변이 빛 쪽
+    const a=0.30*Math.max(0.28,(1-lit)/2+0.28);
+    const g=ctx.createLinearGradient(gx0,gy0,gx1,gy1);
+    g.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`);
+    g.addColorStop(.35,`rgba(0,0,0,${(a*0.42).toFixed(3)})`);
+    g.addColorStop(.7,`rgba(0,0,0,${(a*0.12).toFixed(3)})`);
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
+  }
+  ctx.restore();
+}
+
+/** 매트 개구부의 45° 코어 사면.
+ *  매트보드는 **두께가 있는 판**이라 개구부가 비스듬히 잘려 단면(코어)이 보인다.
+ *  코어는 보통 속살이라 표면보다 밝다. 얇은 선 하나로 대신하면 '종이 한 장'으로 보인다.
+ *  ⚠️ 네 면의 밝기가 **광원에 따라 달라야** 한다 — 위 사면은 아래를 향해 그늘지고
+ *     아래 사면은 위를 향해 밝다. 균일하게 칠하면 그린 테두리가 된다. */
+// ⚠️⚠️ **`shade()` 의 반환값을 다시 `shade()` 에 넣지 말 것.** 반환이 `rgb(…)` 문자열인데
+//    `hexToRgb` 는 16진수만 파싱한다 → NaN → `NaN|0` = 0 → **새까만 검정**이 된다.
+//    실제로 이 실수로 매트 개구부가 통째로 검게 칠해져 '틈'이 오려 낸 구멍처럼 보였다
+//    (실측 낙차 90%, 골든 48%). 밝기 보정은 **한 번에 더해서** 한 번만 호출한다.
+function matOpeningBevel(ctx,ax,ay,aw,ah,bw,matColor,ld){
+  if(bw<1) return;
+  const n=Math.hypot(ld[0],ld[1])||1;
+  const faces=[
+    [0, 1, [ax-bw,ay-bw, ax+aw+bw,ay-bw, ax+aw,ay, ax,ay]],           // 위 사면(아래를 향함)
+    [-1,0, [ax+aw+bw,ay-bw, ax+aw+bw,ay+ah+bw, ax+aw,ay+ah, ax+aw,ay]], // 오른쪽
+    [0,-1, [ax-bw,ay+ah+bw, ax,ay+ah, ax+aw,ay+ah, ax+aw+bw,ay+ah+bw]], // 아래
+    [1, 0, [ax-bw,ay-bw, ax,ay, ax,ay+ah, ax-bw,ay+ah+bw]],           // 왼쪽
+  ];
+  for(const [nx,ny,poly] of faces){
+    const lit=(nx*ld[0]+ny*ld[1])/n;
+    // 코어는 매트 속살이라 밝지만(+.10) 면 방향이 지배한다 —
+    // 위 사면은 아래를 향해 그늘지고(음수) 아래 사면은 위를 향해 밝다.
+    quadFill(ctx,poly, shade(matColor, .10 + 0.40*lit));
+  }
+}
+
 function bandPath(ctx,W,H,m){ ctx.beginPath(); ctx.rect(0,0,W,H);
   ctx.rect(m.l,m.t,W-m.l-m.r,H-m.t-m.b); }
 const uni = t => ({t,r:t,b:t,l:t});
@@ -257,7 +430,7 @@ const uni = t => ({t,r:t,b:t,l:t});
 // ============================================================
 //  프레임 몰딩 엔진
 // ============================================================
-const SIDE_LIGHT=[0.20,-0.07,-0.20,0.09]; // top,right,bottom,left
+const SIDE_LIGHT=[0.28,-0.10,-0.28,0.12]; // top,right,bottom,left
 
 function sideBand(W,H,s,d0,d1){
   switch(s){
@@ -269,6 +442,204 @@ function sideBand(W,H,s,d0,d1){
 }
 function quadFill(ctx,p,fill){ ctx.beginPath(); ctx.moveTo(p[0],p[1]);
   for(let i=2;i<8;i+=2) ctx.lineTo(p[i],p[i+1]); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); }
+
+// ============================================================
+//  액자 살의 **방향광** — 사진 액자를 방에 맞춰 다시 비춘다
+// ============================================================
+// 왜 필요한가 (2026-08-30 실측):
+//   사진 액자(GPT 생성)는 스튜디오 확산광으로 찍혀 **네 변이 똑같이 밝다.**
+//   그대로 방에 걸면 위살 180 / 아래살 180 — 밝기차 0. 그러면 아무리 결이 살아 있어도
+//   **인쇄한 띠**로 읽힌다. FrameIt 은 같은 자리에서 위살 168 / 아래살 145 (차이 23~90).
+//   그게 '몰딩'과 '띠'를 가르는 가장 큰 신호였다.
+//
+// 모델: 몰딩을 **세 면**으로 본다.
+//   ① 바깥 모따기(outer) — 살 바깥 18%, 법선은 그 변의 바깥쪽
+//   ② 앞면(front)        — 가운데 56%, 법선은 보는 사람 쪽(광원 영향 작음)
+//   ③ 안쪽 사면(rebate)  — 안쪽 26%, 법선은 ①의 반대. 작품으로 내려가는 면이라
+//                          기본적으로 그늘지고, 이게 곧 '작품이 뒤로 들어갔다'는 신호다.
+// 코너는 마이터라 각 면을 **사다리꼴로 클립**한다 — 사각형으로 칠하면 코너가 두 번 어두워진다.
+const FACE_OUT=0.18, FACE_FRONT=0.74;   // 살 폭 대비 면 경계 (③ 은 0.74~1.0)
+// (개구부 립 `LIP` 은 2026-08-31 제거 — 무엇을 해도 1px 밝은 선이 됐다. shadeFrameProfile 주석 참고)
+const FACE_NORMAL=[[0,-1],[1,0],[0,1],[-1,0]];   // s: 0 위 1 오른쪽 2 아래 3 왼쪽
+
+// 마이터를 지킨 사다리꼴 — 살 두께가 변마다 달라도 맞는다 (d0,d1 = 살 폭 대비 0~1)
+function mitreBand(W,H,s,l,t,r,b,d0,d1){
+  const X=(d)=>[l*d, W-r*d], Y=(d)=>[t*d, H-b*d];
+  const [x0a,x1a]=X(d0), [x0b,x1b]=X(d1), [y0a,y1a]=Y(d0), [y0b,y1b]=Y(d1);
+  switch(s){
+    case 0: return [x0a,y0a, x1a,y0a, x1b,y0b, x0b,y0b];
+    case 1: return [x1a,y0a, x1a,y1a, x1b,y1b, x1b,y0b];
+    case 2: return [x0a,y1a, x0b,y1b, x1b,y1b, x1a,y1a];
+    case 3: return [x0a,y0a, x0b,y0b, x0b,y1b, x0a,y1a];
+  }
+}
+
+// ⚠️⚠️ **맞닿은 밴드는 1px 겹쳐 그릴 것 — 안 그러면 경계에 밝은 선이 남는다.**
+//   canvas 는 폴리곤 가장자리를 안티에일리어싱하므로, 공유하는 경계 픽셀을 양쪽이
+//   각각 **절반만** 덮는다. 곱연산에서 절반 알파를 두 번 거는 것은 온전히 한 번 거는
+//   것보다 **덜 어둡다** → 그 1px 만 밝게 뜬다. 실측(골드 액자, 원본 픽셀):
+//   `118 151 120` — 살의 85% 자리에 1px 짜리 밝은 선(잔차 32, 골든 최대 14.4).
+//   눈에는 '액자에 그어 놓은 가는 선'으로 보인다(브리핑 2번이 금지한 그것).
+//   해법은 안쪽 끝을 1px 만큼 넘겨 그려 다음 밴드가 그 위를 온전히 덮게 하는 것이다.
+const seamPad=(rail)=>Math.min(0.03, 1.2/Math.max(1,rail));
+
+// f<1 이면 곱연산으로 어둡게, f>1 이면 스크린으로 밝게. 색을 갈아치우지 않고 밝기만 준다.
+function shadeBand(ctx,poly,f){
+  if(Math.abs(f-1)<0.004) return;
+  ctx.save();
+  if(f<1){ ctx.globalCompositeOperation='multiply';
+    quadFill(ctx,poly,`rgba(28,22,16,${Math.min(.82,1-f).toFixed(3)})`); }
+  else { ctx.globalCompositeOperation='screen';
+    quadFill(ctx,poly,`rgba(255,248,235,${Math.min(.55,(f-1)*0.9).toFixed(3)})`); }
+  ctx.restore();
+}
+
+// 살을 가로지르는 방향의 그라디언트 축 (바깥 → 안쪽)
+function bandAxis(ctx,W,H,s,l,t,r,b,d0,d1){
+  switch(s){
+    case 0: return ctx.createLinearGradient(0,t*d0,0,t*d1);
+    case 1: return ctx.createLinearGradient(W-r*d0,0,W-r*d1,0);
+    case 2: return ctx.createLinearGradient(0,H-b*d0,0,H-b*d1);
+    default: return ctx.createLinearGradient(l*d0,0,l*d1,0);
+  }
+}
+
+// ⚠️ **안쪽 사면은 평평하게 칠하지 말 것.** 균일한 회색 띠는 '테두리를 그렸다'로 보인다.
+//    실제 사면은 앞면에서 작품 쪽으로 내려가며 점점 그늘지는 **면**이다. 그 낙차가
+//    있어야 각도가 읽힌다. (f0 = 앞면 쪽 밝기 배수, f1 = 작품 쪽 밝기 배수)
+function shadeBandGrad(ctx,W,H,s,l,t,r,b,d0,d1,f0,f1){
+  const poly=mitreBand(W,H,s,l,t,r,b,d0,d1);
+  const g=bandAxis(ctx,W,H,s,l,t,r,b,d0,d1);
+  const dark=(f)=>`rgba(28,22,16,${Math.max(0,Math.min(.85,1-f)).toFixed(3)})`;
+  g.addColorStop(0,dark(f0)); g.addColorStop(1,dark(f1));
+  ctx.save(); ctx.globalCompositeOperation='multiply';
+  quadFill(ctx,poly,g); ctx.restore();
+}
+
+// 밝기 배수를 **양방향으로** 램프한다(f<1 어둡게 / f>1 밝게).
+// ⚠️ `shadeBand` 는 밴드 하나를 **평평하게** 칠한다 — 개구부 립처럼 살의 5% 밖에 안 되는
+//    자리에 쓰면 그건 면이 아니라 **1px 밝은 선**이 된다(브리핑 2·3번이 금지한 그것).
+//    실제 몰딩의 립은 모서리가 둥글려진 자리라 밝기가 램프로 오른다.
+function shadeBandRamp(ctx,W,H,s,l,t,r,b,d0,d1,f0,f1){
+  const poly=mitreBand(W,H,s,l,t,r,b,d0,d1);
+  const mk=(pick)=>{ const g=bandAxis(ctx,W,H,s,l,t,r,b,d0,d1);
+    g.addColorStop(0,pick(f0)); g.addColorStop(1,pick(f1)); return g; };
+  const dark=(f)=>`rgba(28,22,16,${Math.max(0,Math.min(.85,1-f)).toFixed(3)})`;
+  const lite=(f)=>`rgba(255,248,235,${Math.max(0,Math.min(.55,(f-1)*0.9)).toFixed(3)})`;
+  ctx.save();
+  if(f0<1||f1<1){ ctx.globalCompositeOperation='multiply'; quadFill(ctx,poly,mk(dark)); }
+  if(f0>1||f1>1){ ctx.globalCompositeOperation='screen'; quadFill(ctx,poly,mk(lite)); }
+  ctx.restore();
+}
+
+/** 액자 살에 방향광 + 안쪽 사면 그늘(리베이트)을 입힌다.
+ *  ld = 빛이 **오는** 방향 (예: [-1,-1] 좌상단). l,t,r,b = 변별 살 두께(px). */
+function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
+  const o=opt||{};
+  const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
+  const AO=o.outer==null?0.34:o.outer;      // 바깥 모따기 진폭
+  const AF=o.front==null?0.11:o.front;      // 앞면 진폭 (작아야 한다 — 정면은 광원과 수직)
+  // ⚠️ 안쪽 사면은 **빛을 향한 변에서도 어두워야 한다.** 리베이트는 파인 홈이라
+  //   방향광보다 **폐색(ambient occlusion)** 이 지배한다. 예전엔 진폭이 커서 아랫변
+  //   사면이 0.82 까지 밝아져 리베이트가 거의 사라졌다 — FrameIt 은 네 변 모두 진하다.
+  const AR=o.rebate==null?0.22:o.rebate;    // 방향 진폭(작게)
+  const RB=o.rebateBase==null?0.58:o.rebateBase;  // 기본 그늘(깊게)
+  // ── 살 한 변을 **폴리곤 하나 + 다중 스톱 그라디언트 한 쌍**으로 칠한다 ──────────
+  // ⚠️⚠️ **맞닿은 밴드를 여러 개 그리지 말 것.** canvas 는 폴리곤 가장자리를 안티에일리어싱
+  //   하므로 공유 경계 픽셀을 양쪽이 **절반씩** 덮는다. 곱연산에서 절반 알파를 두 번 거는
+  //   것은 온전히 한 번 거는 것보다 **덜 어둡다** → 그 1px 만 밝게 떠서 '액자에 그어 놓은
+  //   가는 선'이 된다(실측 골드: `118 151 120`, 잔차 32 ↔ 골든 최대 14.4).
+  //   1px 겹쳐 그려 봤지만 이번엔 겹친 자리가 **두 번 어두워져** 검은 선이 됐다(중앙값
+  //   잔차 15.9 → 19.9). 경계를 없애는 게 유일한 해법이다 — 면 구분은 **스톱 위치**로 준다.
+  //   (`drawTextureSide` 의 `planeShade` 가 이미 같은 방식을 쓴다)
+  //
+  // 프로파일(d = 살을 가로지르는 0~1): 바깥 모따기 → 앞면 → 안쪽 사면(리베이트).
+  // 브리핑 2번대로 **면마다 노출이 다를 뿐** 경계에 선을 긋지 않는다.
+  const thin=Math.max(.9,Math.min(l,t,r,b)*.10);
+  for(let s=0;s<4;s++){
+    const nv=FACE_NORMAL[s];
+    const lit=nv[0]*L[0]+nv[1]*L[1];        // 그 변의 바깥면이 빛을 향한 정도 (-1~1)
+    const rb=RB*(1-AR*lit);
+    const e=Math.min(.05, Math.max(.012, thin/Math.max(1,[t,r,b,l][s])));
+    const fOut=1+AO*lit;                     // 바깥 모따기 — 광원을 정면으로 받는 면
+    const fFront=1+AF*lit;                   // 앞면 — 광원과 거의 수직이라 진폭이 작다
+    // 아리스(면이 꺾이는 자리)는 **스톱 하나**로만 표현한다 — 별도 밴드를 그리면 또 이음매다
+    const stops=[
+      [0,               fOut],
+      [FACE_OUT-e,      fOut],
+      [FACE_OUT,        fOut+0.14*lit],      // 바깥면↔앞면 깎인 각
+      [FACE_OUT+e,      fFront],
+      [FACE_FRONT-e,    fFront*0.94],        // 앞면은 안쪽으로 갈수록 살짝 어두워진다
+      [FACE_FRONT,      fFront*0.86],        // 앞면↔사면 깎인 각 (그늘)
+      // ⚠️ 리베이트를 **직선 두 토막**으로 두지 말 것. 기울기가 꺾이는 스톱에서
+      //   2차 미분이 튀어 중앙값 필터에 잡힌다 — 실측(오크): 네 위치 전부 **살의 88%**
+      //   에서 잔차 16~19 (같은 자리에서 반복되면 텍스처가 아니라 우리가 그린 것이다).
+      //   스톱을 늘려 완만한 곡선으로 만든다.
+      [FACE_FRONT+e,    Math.min(1,rb*1.45)],
+      [0.82,            rb*1.18],
+      [0.88,            rb*1.02],
+      [0.94,            rb*0.92],
+      [1,               rb*0.82],            // 개구부 — 가장 깊고 어둡다(립 없음)
+    ];
+    const poly=mitreBand(W,H,s,l,t,r,b,0,1);
+    const gm=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
+    const gs=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
+    let prev=-1;
+    for(const [pRaw,f] of stops){
+      const pos=Math.max(prev+1e-4, Math.min(1, pRaw)); prev=pos;
+      gm.addColorStop(pos, `rgba(28,22,16,${Math.max(0,Math.min(.85,1-f)).toFixed(3)})`);
+      gs.addColorStop(pos, `rgba(255,248,235,${Math.max(0,Math.min(.55,(f-1)*0.9)).toFixed(3)})`);
+    }
+    ctx.save();
+    ctx.globalCompositeOperation='multiply'; quadFill(ctx,poly,gm);
+    ctx.globalCompositeOperation='screen';   quadFill(ctx,poly,gs);
+    ctx.restore();
+  }
+}
+
+/** 리베이트 — 액자(·매트)가 작품 위에 드리우는 그림자.
+ *  작품이 **액자 뒤로 들어가 있다**는 신호는 실질적으로 이것 하나뿐이다.
+ *  ⚠️ 사방을 똑같이 주지 말 것 — 빛을 향한 변이 진하고 반대편은 옅다. 균일하면
+ *     '테두리를 그렸다'로 보이고 깊이가 안 생긴다. (FrameIt 실측: 살 대비 44~131 레벨) */
+function rebateShadow(ctx,ax,ay,aw,ah,base,ld){
+  const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
+  const k=Math.max(2.5, base*.022);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(ax,ay,aw,ah); ctx.clip();
+  // s: 0 위 1 오른쪽 2 아래 3 왼쪽 — 그 변의 안쪽 사면이 빛을 향하면 그림자가 옅다
+  const sides=[
+    [0,-1, ax,ay, ax,ay+k, aw,k],
+    [1, 0, ax+aw,ay, ax+aw-k,ay, k,ah],
+    [0, 1, ax,ay+ah, ax,ay+ah-k, aw,k],
+    [-1,0, ax,ay, ax+k,ay, k,ah],
+  ];
+  for(const [nx,ny,x0,y0,x1,y1] of sides){
+    const lit=nx*L[0]+ny*L[1];               // +1 = 그 변이 빛 쪽
+    // ⚠️ 45° 코어 사면·액자 그림자와 **겹친다**. 예전 값이면 개구부가 새까매져
+    //    (매트 대비 낙차 90%, FrameIt 은 48%) 오히려 '오려 낸 구멍'으로 보인다.
+    const a=0.22*Math.max(0.18, (1-lit)/2 + 0.18);
+    const g=ctx.createLinearGradient(x0,y0,x1,y1);
+    g.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`);
+    g.addColorStop(0.55,`rgba(0,0,0,${(a*0.28).toFixed(3)})`);
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(ax,ay,aw,ah);
+  }
+  ctx.restore();
+  // ⚠️⚠️ **작품 둘레에 검은 선을 두르지 말 것** (브리핑 체크리스트 "no black stroke
+  //    around artwork", 2026-08-31). 예전엔 여기서 `strokeRect(rgba(0,0,0,.30))` 로
+  //    작품 경계를 한 바퀴 둘렀다. 사방 균일한 stroke 는 깊이 신호가 아니라 **오려 낸
+  //    자국**이고, 실측에서 틈 최대 낙차를 골든(44)의 두 배(89)로 밀어 올린 주범이었다.
+  //    깊이는 위의 방향성 그라디언트(빛을 향한 변이 진하다)가 이미 만든다.
+}
+
+/** 매트(대지) 표면의 완만한 광량 기울기 — 균일한 색면은 즉시 CG 로 읽힌다. */
+function shadeMatSurface(ctx,x,y,w,h,ld){
+  const n=Math.hypot(ld[0],ld[1])||1;
+  const g=ctx.createLinearGradient(x,y,x-ld[0]/n*w,y-ld[1]/n*h);
+  g.addColorStop(0,'rgba(255,255,255,.085)');
+  g.addColorStop(1,'rgba(0,0,0,.075)');
+  ctx.save(); ctx.fillStyle=g; ctx.fillRect(x,y,w,h); ctx.restore();
+}
 
 function drawMolding(ctx,W,H,m,style,color){
   const N=18;
@@ -322,21 +693,66 @@ function drawMolding(ctx,W,H,m,style,color){
   ctx.strokeRect(m,m,W-2*m,H-2*m);
 }
 
+// ---- 액자 재질 색 보정 (FRAME_GRADE) ------------------------------------
+// ⚠️ **우리 액자는 실제 액자보다 훨씬 쨍하다** (2026-08-30 실측).
+//    살의 채도 폭(mean RGB max−min)을 FrameIt 결과물과 같은 코드로 재면
+//        오크   FrameIt 24.5  ↔  우리 60.4        골드  FrameIt 36.1  ↔  우리 97.3
+//    실물 나무 액자는 실내광에서 채도가 낮은 웜그레이로 찍힌다. 원색에 가까운 주황 오크·
+//    놋쇠 골드는 그 자체로 **'AI 가 그린 액자'** 로 읽힌다("plastic wood").
+//    그래서 재질마다 [채도, 밝기] 를 한 번만 먹여 굽는다 — 매 렌더 필터가 아니라
+//    이미지 로드 때 오프스크린에 구워 두므로 비용이 0 이고, 액자칩·PDF 까지 같은 색이 된다.
+// ⚠️ 검정·흰색·은색·아이보리는 이미 채도가 3~5 라 건드리지 않는다(1.0).
+const FRAME_GRADE = {
+  oak:[0.45,0.93], wood:[0.45,0.93], gold:[0.40,0.95], walnut:[0.72,1.0],
+  black:[1,1], white:[1,1], silver:[1,1], ivory:[1,1],
+};
+// ctx.filter 이 없는 아주 오래된 브라우저에서는 **hex 도 함께 건너뛴다** —
+// 색만 바꾸고 결 텍스처를 그대로 두면 밴드와 결의 색이 어긋난다.
+const CAN_FILTER=(()=>{ try{ return typeof document.createElement('canvas')
+  .getContext('2d').filter==='string'; }catch(e){ return false; } })();
+function gradeOf(k){ return CAN_FILTER ? (FRAME_GRADE[k] || [1,1]) : [1,1]; }
+// 이미지에 채도·밝기를 구워 캔버스로 돌려준다 (ctx.filter 미지원이면 원본 그대로)
+function gradeImage(img,k){
+  const [s,b]=gradeOf(k);
+  const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+  if((s===1&&b===1)||!w||!h) return img;
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d');
+  if(typeof x.filter!=='string') return img;
+  x.filter=`saturate(${s}) brightness(${b})`;
+  x.drawImage(img,0,0);
+  // ⚠️ 캔버스를 <img> 처럼 쓰는 곳이 있다(`drawTextureSide` 가 `complete`·`naturalWidth` 로
+  //    로딩 여부를 판정한다). 안 채우면 **결 텍스처가 조용히 단색 그라디언트로 폴백**한다.
+  c.complete=true; c.naturalWidth=w; c.naturalHeight=h;
+  return c;
+}
+// 색상 문자열에 같은 보정 (절차적 액자는 색이 hex 로 박혀 있다)
+function gradeHex(hex,k){
+  const [s,b]=gradeOf(k);
+  if(s===1&&b===1) return hex;
+  const c=hexToRgb(hex);
+  const y=0.2126*c.r+0.7152*c.g+0.0722*c.b;
+  const f=(v)=>clamp255(Math.round((y+(v-y)*s)*b));
+  return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
+}
+
 // ---- 프레임 재질 (얇은 프레임용 — 정면 균일광 + 대각 메탈 그라데이션) ----
 const MATS = {
-  gold:   { light:'#f3e2a8', base:'#c9a24b', dark:'#7d5e25', edge:'rgba(255,246,212,.6)',  back:'#1c1a16', texture:'frames/frame-gold-texture.jpg' },
-  wood:   { light:'#d9bb8c', base:'#a9835a', dark:'#6e4f30', edge:'rgba(255,240,214,.4)',  back:'#221a12', texture:'frames/frame-oak-texture.jpg' },
-  walnut: { light:'#9b6a42', base:'#5b3722', dark:'#21130b', edge:'rgba(224,169,116,.34)', back:'#17100a', texture:'frames/frame-walnut-texture.jpg' },
-  black:  { light:'#3b3b3b', base:'#1f1f1f', dark:'#070707', edge:'rgba(255,255,255,.18)', back:'#101010', texture:'frames/frame-black-texture.jpg' },
-  silver: { light:'#f2f4f4', base:'#b9bfc2', dark:'#6f777c', edge:'rgba(255,255,255,.66)', back:'#171a1c', texture:'frames/frame-silver-texture.jpg' },
+  gold:   { light:'#f3e2a8', base:'#c9a24b', dark:'#7d5e25', edge:'rgba(255,246,212,.6)',  back:'#2b2721', texture:'frames/frame-gold-texture.jpg' },
+  wood:   { light:'#d9bb8c', base:'#a9835a', dark:'#6e4f30', edge:'rgba(255,240,214,.4)',  back:'#352a1e', texture:'frames/frame-oak-texture.jpg' },
+  walnut: { light:'#9b6a42', base:'#5b3722', dark:'#21130b', edge:'rgba(224,169,116,.34)', back:'#281c12', texture:'frames/frame-walnut-texture.jpg' },
+  black:  { light:'#3b3b3b', base:'#1f1f1f', dark:'#070707', edge:'rgba(255,255,255,.18)', back:'#1b1b1b', texture:'frames/frame-black-texture.jpg' },
+  silver: { light:'#f2f4f4', base:'#b9bfc2', dark:'#6f777c', edge:'rgba(255,255,255,.66)', back:'#262a2d', texture:'frames/frame-silver-texture.jpg' },
   ivory:  { light:'#ffffff', base:'#eee8da', dark:'#cfc5b4', edge:'rgba(255,255,255,.72)', back:'#dfd8cc', texture:'frames/frame-ivory-texture.jpg' },
   white:  { light:'#ffffff', base:'#f3f1ea', dark:'#d6d2c6', edge:'rgba(255,255,255,.7)',  back:'#e9e6dd', texture:'frames/frame-ivory-texture.jpg' },
 };
-Object.values(MATS).forEach(m=>{
+Object.entries(MATS).forEach(([k,m])=>{
+  // 색 보정은 hex 와 텍스처 **둘 다** 먹여야 한다 — 하나만 하면 밴드 색과 결이 어긋난다
+  ['light','base','dark','back'].forEach(f=>{ if(m[f]) m[f]=gradeHex(m[f],k); });
   if(!m.texture) return;
-  m.img=new Image();
-  m.img.onload=()=>render();
-  m.img.src=m.texture;
+  const raw=new Image();
+  raw.onload=()=>{ m.img=gradeImage(raw,k); render(); };
+  raw.src=m.texture;
 });
 function fillRectBand(ctx,W,H,b,fill){
   ctx.save();
@@ -346,37 +762,81 @@ function fillRectBand(ctx,W,H,b,fill){
   ctx.restore();
 }
 
-function frameSideGradient(ctx,W,H,b,s,c){
-  let g;
-  if(s===0) g=ctx.createLinearGradient(0,0,0,b);
-  else if(s===1) g=ctx.createLinearGradient(W,0,W-b,0);
-  else if(s===2) g=ctx.createLinearGradient(0,H,0,H-b);
-  else g=ctx.createLinearGradient(0,0,b,0);
-  const side=[.10,-.06,-.16,.06][s];
-  g.addColorStop(0, shade(c.base, .22+side));
-  g.addColorStop(.18, c.light);
-  g.addColorStop(.58, shade(c.base, side));
-  g.addColorStop(.82, shade(c.base, -.18+side));
-  g.addColorStop(1, c.dark);
+// ⚠️ **액자는 '부드러운 리본'이 아니라 평면 세 개가 각을 이룬 막대다.**
+//    ① 바깥면(벽 바깥·위를 향한 면)  ② 앞면(정면)  ③ 안쪽 사면(작품으로 내려가는 면)
+//    경계를 부드럽게 이으면 **인쇄한 띠**처럼 보인다 — 경쟁사와 같은 배율로 모서리를 확대해
+//    비교했을 때 이게 결정적 차이였다(2026-08-30). 각 면은 **평평하고 경계는 또렷해야** 한다.
+//    면마다 밝기는 광원(좌상단) 기준으로 정해진다. 예: 윗변의 바깥면은 위를 향하므로 가장 밝고,
+//    안쪽 사면은 아래를 향하므로 그늘. 아랫변은 정반대다.
+// ⚠️ 예전엔 이 값이 **좌상단 광원으로 고정**돼 있었다. 장면마다 빛이 다른데
+//    액자만 늘 같은 방향으로 칠해지면, 창빛이 오른쪽에서 들어오는 방에서 액자만
+//    반대로 밝아 혼자 뜬다. 이제 장면의 lightDir 로 계산한다(사진 액자와 같은 모델).
+//    ⚠️ 좌우 살의 **바깥면**은 약하게 — 강하게 주면 조각 둘레에 검은 테로 읽힌다
+//    (실측 2026-08-30: 검은 슬림 액자 오른쪽 keyline 14.2, FrameIt 흰 액자는 8.2).
+const PLANE_AMP=[
+  [.48,.09,.44],   // 위   [바깥면, 앞면, 안쪽사면]
+  [.26,.06,.27],   // 오른쪽
+  [.48,.12,.44],   // 아래
+  [.26,.04,.27],   // 왼쪽
+];
+function planeOf(s,ld){
+  const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1;
+  const nv=FACE_NORMAL[s], lit=nv[0]*d[0]/n+nv[1]*d[1]/n;
+  const [ao,af,ar]=PLANE_AMP[s];
+  return [ao*lit, af*lit, -ar*lit];
+}
+const PLANE_OUT=0.20, PLANE_FRONT=0.60;   // 밴드 폭 대비 각 면의 비율
+function planeAxis(ctx,W,H,b,s){
+  if(s===0) return ctx.createLinearGradient(0,0,0,b);
+  if(s===1) return ctx.createLinearGradient(W,0,W-b,0);
+  if(s===2) return ctx.createLinearGradient(0,H,0,H-b);
+  return ctx.createLinearGradient(0,0,b,0);
+}
+// 텍스처 위에 얹는 **면 음영** — 색을 덮지 않고 밝기만 계단식으로 준다
+function planeShade(ctx,W,H,b,s,ld){
+  const [o,f,r]=planeOf(s,ld);
+  const col=(v)=> v>=0 ? `rgba(255,248,236,${Math.min(.55,v*1.05).toFixed(3)})`
+                       : `rgba(18,11,4,${Math.min(.62,-v*1.05).toFixed(3)})`;
+  const g=planeAxis(ctx,W,H,b,s), A=PLANE_OUT, B=PLANE_OUT+PLANE_FRONT;
+  g.addColorStop(0,col(o));      g.addColorStop(A-0.005,col(o));
+  g.addColorStop(A,col(f));      g.addColorStop(B-0.005,col(f));
+  g.addColorStop(B,col(r));      g.addColorStop(1,col(r*1.3));
+  return g;
+}
+// 텍스처가 없을 때의 대체 — 같은 계단 구조를 재질색으로
+function frameSideGradient(ctx,W,H,b,s,c,ld){
+  const [o,f,r]=planeOf(s,ld);
+  const g=planeAxis(ctx,W,H,b,s), A=PLANE_OUT, B=PLANE_OUT+PLANE_FRONT;
+  g.addColorStop(0,shade(c.base,o));   g.addColorStop(A-0.005,shade(c.base,o));
+  g.addColorStop(A,shade(c.base,f));   g.addColorStop(B-0.005,shade(c.base,f));
+  g.addColorStop(B,shade(c.base,r));   g.addColorStop(1,shade(c.base,r*1.3));
   return g;
 }
 
-function drawFrameMiters(ctx,W,H,b,c){
-  const hi='rgba(255,245,220,.36)';
-  const lo='rgba(0,0,0,.18)';
+// 마이터 이음새. 두 살이 45°로 맞물린 **틈**이라 사방이 조금씩 어둡고(폐색),
+// 반사 하이라이트는 **광원을 향한 코너에만** 생긴다.
+// ⚠️ 예전엔 하이라이트가 늘 위쪽 두 코너에 고정이었다 — 장면 15개 중 8개가 빛이
+//    오른쪽에서 오고 둘은 왼쪽이라, 대부분의 방에서 코너 하이라이트가 광원과 어긋났다.
+function drawFrameMiters(ctx,W,H,b,c,ld){
+  const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1, L=[d[0]/n,d[1]/n];
   ctx.lineWidth=Math.max(.7,b*.035);
-  ctx.strokeStyle=lo;
+  ctx.strokeStyle='rgba(0,0,0,.18)';
   ctx.beginPath();
   ctx.moveTo(0,0); ctx.lineTo(b,b);
   ctx.moveTo(W,0); ctx.lineTo(W-b,b);
   ctx.moveTo(0,H); ctx.lineTo(b,H-b);
   ctx.moveTo(W,H); ctx.lineTo(W-b,H-b);
   ctx.stroke();
-  ctx.strokeStyle=hi;
-  ctx.beginPath();
-  ctx.moveTo(1,1); ctx.lineTo(b*.92,b*.92);
-  ctx.moveTo(W-1,1); ctx.lineTo(W-b*.92,b*.92);
-  ctx.stroke();
+  // 코너 방향 벡터와 광원의 내적이 클수록 그 이음새가 빛을 받는다
+  const corners=[[0,0,-1,-1],[W,0,1,-1],[0,H,-1,1],[W,H,1,1]];
+  for(const [cx,cy,ux,uy] of corners){
+    const lit=(ux*L[0]+uy*L[1])/Math.SQRT2;
+    if(lit<=0.05) continue;
+    ctx.strokeStyle=`rgba(255,245,220,${(0.34*lit).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(cx-ux, cy-uy); ctx.lineTo(cx-ux*b*.92, cy-uy*b*.92);
+    ctx.stroke();
+  }
 }
 
 function clipPoly(ctx,p){
@@ -385,99 +845,247 @@ function clipPoly(ctx,p){
   ctx.closePath(); ctx.clip();
 }
 
-function drawTextureSide(ctx,W,H,b,s,c){
+function drawTextureSide(ctx,W,H,b,s,c,ld){
   if(!c.img || !c.img.complete || !c.img.naturalWidth){
-    quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c));
+    quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c,ld));
     return;
   }
   ctx.save();
   clipPoly(ctx, sideBand(W,H,s,0,b));
   const im=c.img;
-  if(s===0) ctx.drawImage(im,0,0,im.width,im.height,0,0,W,b);
-  else if(s===2) ctx.drawImage(im,0,0,im.width,im.height,0,H-b,W,b);
-  else if(s===3){
-    ctx.translate(0,H); ctx.rotate(-Math.PI/2);
-    ctx.drawImage(im,0,0,im.width,im.height,0,0,H,b);
-  } else {
-    ctx.translate(W,0); ctx.rotate(Math.PI/2);
-    ctx.drawImage(im,0,0,im.width,im.height,0,0,H,b);
-  }
+  // ⚠️ **텍스처를 밴드에 통째로 욱여넣지 말 것.** 예전엔 1200px 나뭇결 사진을
+  // 폭 13~70px 밴드에 `drawImage(...,0,0,W,b)` 로 밀어 넣어 **17~60배 압축**했다.
+  // 결이 사라지고 색만 남은 띠가 되는데, 이게 "액자가 납작하다"의 정체였다(2026-08-30 확대 비교).
+  //
+  // 두 가지로 해결한다.
+  //  ① 텍스처에서 **작은 조각만 잘라** 밴드에 맞춘다(=나뭇결을 확대). 실제 3cm 액자에는
+  //     결이 대여섯 줄 보이지 화면 가득 보이지 않는다. 좌우 반전 타일링으로 이음매를 감춘다.
+  //  ② 그 위에 **절차적 결**을 얹는다. 판은 최종 화면까지 2~3배 더 축소되므로
+  //     사진 결만으로는 또 사라진다. 밴드 폭 기준으로 간격을 정하면 축소돼도 남는다.
+  const tile=(len)=>{
+    const sh=Math.max(12, Math.min(im.naturalHeight, b*0.5));     // 잘라올 텍스처 높이
+    const sw=Math.max(24, Math.min(im.naturalWidth, sh*3));
+    const tw=Math.max(12, sw*(b/sh));
+    for(let i=0, x=0; x<len; i++, x+=tw){
+      ctx.save();
+      if(i%2){ ctx.translate(x+tw,0); ctx.scale(-1,1); ctx.drawImage(im,0,0,sw,sh,0,0,tw,b); }
+      else ctx.drawImage(im,0,0,sw,sh,x,0,tw,b);
+      ctx.restore();
+    }
+    // 절차적 결 — 길이 방향으로 흐르는 미세한 선. 금속이면 더 가늘고 옅게.
+    const metal=(c===MATS.gold||c===MATS.silver);
+    const n=metal?16:9, rnd=prng(c===MATS.wood?3:c===MATS.walnut?5:c===MATS.black?7:11);
+    ctx.save();
+    ctx.lineCap='round';
+    for(let k=0;k<n;k++){
+      const y=(k+0.35+rnd()*0.3)/n*b;
+      const a=(metal?0.05:0.10)*(0.45+rnd());
+      ctx.strokeStyle=rnd()<0.55?`rgba(30,18,6,${a})`:`rgba(255,240,214,${a*0.8})`;
+      ctx.lineWidth=Math.max(0.6, b*(metal?0.012:0.022)*(0.5+rnd()));
+      ctx.beginPath(); ctx.moveTo(0,y);
+      const wob=b*0.06;
+      ctx.bezierCurveTo(len*0.3,y+(rnd()-0.5)*wob, len*0.7,y-(rnd()-0.5)*wob, len,y+(rnd()-0.5)*wob*0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  if(s===0){ tile(W); }
+  else if(s===2){ ctx.translate(0,H-b); tile(W); }
+  else if(s===3){ ctx.translate(0,H); ctx.rotate(-Math.PI/2); tile(H); }
+  else { ctx.translate(W,0); ctx.rotate(Math.PI/2); tile(H); }
   ctx.restore();
 
+  // ── 면 음영 — 부드러운 롤 대신 **계단식 세 평면**. 여기가 '리본 vs 나무막대'를 가른다 ──
   ctx.save();
   clipPoly(ctx, sideBand(W,H,s,0,b));
-  const shadeGrad=frameSideGradient(ctx,W,H,b,s,c);
-  ctx.globalCompositeOperation='multiply';
-  ctx.globalAlpha=(c===MATS.black || c===MATS.silver)? .35 : .24;
-  ctx.fillStyle=shadeGrad;
+  ctx.globalAlpha=1;
+  ctx.fillStyle=planeShade(ctx,W,H,b,s,ld);
   ctx.fillRect(0,0,W,H);
-  ctx.restore();
-
-  ctx.save();
-  clipPoly(ctx, sideBand(W,H,s,0,b));
-  let hi;
-  if(s===0) hi=ctx.createLinearGradient(0,0,0,b);
-  else if(s===1) hi=ctx.createLinearGradient(W-b,0,W,0);
-  else if(s===2) hi=ctx.createLinearGradient(0,H-b,0,H);
-  else hi=ctx.createLinearGradient(0,0,b,0);
-  hi.addColorStop(0,'rgba(255,255,255,.28)');
-  hi.addColorStop(.18,'rgba(255,255,255,.06)');
-  hi.addColorStop(.55,'rgba(255,255,255,0)');
-  hi.addColorStop(1,'rgba(0,0,0,.18)');
-  ctx.globalCompositeOperation='screen';
-  ctx.globalAlpha=.42;
-  ctx.fillStyle=hi;
-  ctx.fillRect(0,0,W,H);
+  // 면과 면이 만나는 모서리(아리스) — **선이 아니라 아주 좁은 면**이다.
+  // ⚠️ 예전엔 1px stroke 였다(밝은 흰 선 .30 + 검은 선 .34). 판은 화면까지 2~3배 더
+  //    축소되므로 그게 곧 '액자 위에 그어 넣은 선'으로 남는다 — 실측(physics.py,
+  //    64표본 리샘플): 살 단면의 얇은선 잔차가 골든 10~22.8 인데 우리는 10~42.0 이었다.
+  //    실제 몰딩의 아리스는 **깎인 자리**라 2~3px 에 걸쳐 부드럽게 전이한다.
+  //    세기도 절반으로 — 브리핑 2번 "변화량은 매우 작게, 빛나는 경계선이 아니라
+  //    서로 다른 면이 빛을 다르게 받는 것".
+  const lit0=planeOf(s,ld)[0];
+  const arris=(t,rgb,peak,halfT)=>{
+    const half=Math.max(.9,b*halfT), d=b*t;
+    let g,bx,by,bw,bh;
+    if(s===0){ g=ctx.createLinearGradient(0,d-half,0,d+half); bx=0; by=d-half; bw=W; bh=half*2; }
+    else if(s===1){ g=ctx.createLinearGradient(W-d-half,0,W-d+half,0); bx=W-d-half; by=0; bw=half*2; bh=H; }
+    else if(s===2){ g=ctx.createLinearGradient(0,H-d-half,0,H-d+half); bx=0; by=H-d-half; bw=W; bh=half*2; }
+    else { g=ctx.createLinearGradient(d-half,0,d+half,0); bx=d-half; by=0; bw=half*2; bh=H; }
+    g.addColorStop(0,`rgba(${rgb},0)`);
+    g.addColorStop(.5,`rgba(${rgb},${peak.toFixed(3)})`);
+    g.addColorStop(1,`rgba(${rgb},0)`);
+    ctx.fillStyle=g; ctx.fillRect(bx,by,bw,bh);
+  };
+  arris(PLANE_OUT, lit0>=0?'255,250,240':'0,0,0', lit0>=0?.17:.09, .045);  // 바깥면 ↔ 앞면
+  arris(PLANE_OUT+PLANE_FRONT, '0,0,0', .20, .050);                        // 앞면 ↔ 안쪽사면
   ctx.restore();
 }
 
-function drawFloaterTray(ctx,W,H,b,g,back){
+function drawFloaterTray(ctx,W,H,b,g,back,ld){
   if(g<=0) return;
+  const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1;
   for(let s=0;s<4;s++){
     let grad;
     if(s===0) grad=ctx.createLinearGradient(0,b,0,b+g);
     else if(s===1) grad=ctx.createLinearGradient(W-b,0,W-b-g,0);
     else if(s===2) grad=ctx.createLinearGradient(0,H-b,0,H-b-g);
     else grad=ctx.createLinearGradient(b,0,b+g,0);
-    const light=[.08,-.02,-.18,.04][s];
-    grad.addColorStop(0, shade(back, light));
-    grad.addColorStop(.64, shade(back, -.18));
-    grad.addColorStop(1, 'rgba(0,0,0,.82)');
+    // ⚠️ 갭을 **검은 홈**으로 두지 말 것. 플로터의 갭은 액자 안쪽 벽이 뒤로 물러난 면이라
+    //    실제로는 **빛을 받는 나무면**이다(경쟁사 확대 비교). 검게 칠하면 액자가 아니라
+    //    잘라낸 구멍처럼 보이고, 액자의 '두께'가 통째로 사라진다.
+    //    앞(액자 쪽)은 밝고 뒤(작품 쪽)로 갈수록 어두워지는 진짜 오목면으로 그린다.
+    // ⚠️⚠️ **면 밝기를 손으로 적지 말 것** — 예전엔 `[.16,.02,-.14,.08]` 고정이라
+    //    ①방의 광원과 무관했고(장면 15개 중 10개가 좌상단이 아니다) ②부호가 물리와
+    //    거꾸로였다. 트레이 안쪽 벽은 **안쪽을 향한 면**이라(윗변이면 아래를 향한다)
+    //    위에서 오는 빛에는 **그늘져야** 하는데 위가 가장 밝게(+.16) 칠해져 있었다.
+    //    실측(framelight.mjs): 좌우 광원을 뒤집어도 좌−우 살 밝기차가 그대로였다
+    //    (샴페인/아이보리 sym=1.00 = 광원 무시, 오크 0.97).
+    // ⚠️ 몰딩과 만나는 첫 픽셀을 가장 밝게 두면 어두운 몰딩 안쪽 끝과 붙어 **밝은 선**이
+    //    된다(실측 오크 플로터 165→198, 3px 짜리 봉우리). 실제로는 몰딩이 트레이의 그
+    //    자리에 그늘을 드리운다 — 살짝만 밝게 한다.
+    grad.addColorStop(0, shade(back, .16));
+    grad.addColorStop(.45, shade(back, .06));
+    // ⚠️ **바닥을 검정에 붙이지 말 것.** 예전엔 여기에 더해 `rgba(0,0,0,.68)` 를
+    //    strokeRect 로 둘러 갭 바닥이 휘도 0~1 까지 떨어졌다(실측 오크 플로터 0.0,
+    //    골든 최저는 살 대비 0.110). 그게 "dark inner gap 이 black outline 으로 보인다"
+    //    의 정체다. 작품이 트레이에 드리우는 접지 그림자는 바로 아래에서 따로 그린다.
+    grad.addColorStop(1, shade(back, -.18));
     quadFill(ctx, sideBand(W,H,s,b,b+g), grad);
   }
-  const lip=Math.max(.8,g*.10);
-  ctx.strokeStyle='rgba(255,255,255,.11)';
-  ctx.lineWidth=lip;
-  ctx.strokeRect(b+lip/2,b+lip/2,W-2*b-lip,H-2*b-lip);
-  ctx.strokeStyle='rgba(0,0,0,.68)';
-  ctx.lineWidth=Math.max(1,g*.18);
-  ctx.strokeRect(b+g-ctx.lineWidth/2,b+g-ctx.lineWidth/2,W-2*(b+g)+ctx.lineWidth,H-2*(b+g)+ctx.lineWidth);
+  // ── 방향광은 **오목면 프로파일과 분리해서** 곱/스크린으로 얹는다 ─────────────
+  // ⚠️ 밝기를 `shade(back, light+…)` 처럼 색에 더하면 **양 끝에서 뭉갠다**:
+  //    아이보리 트레이(L≈216)는 밝은 쪽이 255 로 붙어 좌우 차이가 사라지고(sym 1.00),
+  //    월넛 트레이(L≈29)는 어두운 쪽이 0 으로 붙는다(sym 0.75). 둘 다 실측된 값이다.
+  //    곱/스크린은 **비율**이라 트레이 색과 무관하게 같은 방향성을 준다.
+  for(let s=0;s<4;s++){
+    const nv=FACE_NORMAL[s], lit=-(nv[0]*d[0]+nv[1]*d[1])/n;   // 안쪽 벽은 안쪽을 향한다
+    if(Math.abs(lit)<0.02) continue;
+    const poly=sideBand(W,H,s,b,b+g);
+    ctx.save();
+    if(lit<0){ ctx.globalCompositeOperation='multiply';
+      quadFill(ctx,poly,`rgba(22,18,14,${(0.30*-lit).toFixed(3)})`); }
+    else { ctx.globalCompositeOperation='screen';
+      quadFill(ctx,poly,`rgba(255,248,236,${(0.24*lit).toFixed(3)})`); }
+    ctx.restore();
+  }
+  // 갭 안쪽 끝(작품이 얹히는 자리)의 폐색 — **선이 아니라 좁은 그라디언트**로.
+  const k=Math.max(1.5,g*.34);
+  for(let s=0;s<4;s++){
+    const q=b+g;
+    let grad;
+    if(s===0) grad=ctx.createLinearGradient(0,q,0,q-k);
+    else if(s===1) grad=ctx.createLinearGradient(W-q,0,W-q+k,0);
+    else if(s===2) grad=ctx.createLinearGradient(0,H-q,0,H-q+k);
+    else grad=ctx.createLinearGradient(q,0,q-k,0);
+    grad.addColorStop(0,'rgba(0,0,0,.34)'); grad.addColorStop(1,'rgba(0,0,0,0)');
+    quadFill(ctx, sideBand(W,H,s,q-k,q), grad);
+  }
 }
 
 // 바깥 테두리 밴드(margin m)에 재질 칠하기 (레퍼런스식 얇은 박스 프레임)
-function frameBand(ctx,W,H,m,mat){
+function frameBand(ctx,W,H,m,mat,ld){
   const c=MATS[mat]||MATS.black;
   const b=m.t;
-  for(let s=0;s<4;s++) drawTextureSide(ctx,W,H,b,s,c);
-  const outer=Math.max(.7,b*.045);
-  ctx.strokeStyle=c.edge; ctx.lineWidth=outer;
-  ctx.strokeRect(outer/2,outer/2,W-outer,H-outer);
-  const inner=Math.max(1,b*.105);
-  ctx.strokeStyle='rgba(0,0,0,.52)'; ctx.lineWidth=inner;
-  ctx.strokeRect(b-inner/2,b-inner/2,W-2*b+inner,H-2*b+inner);
-  ctx.strokeStyle='rgba(255,245,220,.32)'; ctx.lineWidth=Math.max(.55,b*.035);
-  ctx.strokeRect(b+ctx.lineWidth,b+ctx.lineWidth,W-2*(b+ctx.lineWidth),H-2*(b+ctx.lineWidth));
-  drawFrameMiters(ctx,W,H,b,c);
+  for(let s=0;s<4;s++) drawTextureSide(ctx,W,H,b,s,c,ld);
+  // ⚠️⚠️ **테두리를 stroke 로 두르지 말 것** (2026-08-31, 브리핑 2번).
+  //    예전엔 여기서 세 줄을 그었다 — 바깥에 재질색 밝은 선(`c.edge`, 금장은
+  //    rgba(255,246,212,.6)), 안쪽에 검은 선(alpha .52, 폭 b*.105), 그 안에 또
+  //    밝은 선(alpha .32). 셋 다 **면이 아니라 선**이라 확대하면 "액자를 그린 뒤
+  //    테두리를 덧그린" 것으로 읽힌다. 실측(physics.py): 틈 최대 낙차가 골든
+  //    28.8~44.4 인데 우리는 19.5~89.0(중앙 49) — 절반이 이 선들이었다.
+  //    깊이는 `drawTextureSide` 의 **면 음영**(바깥면/앞면/안쪽사면)과 아래 리베이트
+  //    그라디언트가 만든다. 선은 하나도 필요 없다.
+  // 살 안쪽 끝의 리베이트 — 좁지만 **면**이다(선이 아니다). 광원을 등진 변이 더 깊다.
+  const n=Math.hypot(ld?ld[0]:-1, ld?ld[1]:-1)||1;
+  // ⚠️ 얇은 액자(슬림)는 살이 20px 남짓이라 이 그늘이 **유일한 깊이 신호**다.
+  //    검은 stroke 로 흉내내던 걸 걷어내면서 rebate_ratio 가 0.3 → 0.2 로 떨어져
+  //    임계(0.24) 아래가 됐다 — 가짜 깊이를 지웠으면 **진짜 면으로 채워야** 한다.
+  const k=Math.max(2,b*.22);
+  for(let s=0;s<4;s++){
+    const nv=FACE_NORMAL[s], lit=(nv[0]*(ld?ld[0]:-1)+nv[1]*(ld?ld[1]:-1))/n;
+    const a=0.42*Math.max(0.45,(1-lit)/2+0.45);
+    let grad;
+    if(s===0) grad=ctx.createLinearGradient(0,b,0,b-k);
+    else if(s===1) grad=ctx.createLinearGradient(W-b,0,W-b+k,0);
+    else if(s===2) grad=ctx.createLinearGradient(0,H-b,0,H-b+k);
+    else grad=ctx.createLinearGradient(b,0,b-k,0);
+    grad.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`);
+    grad.addColorStop(.55,`rgba(0,0,0,${(a*0.34).toFixed(3)})`);
+    grad.addColorStop(1,'rgba(0,0,0,0)');
+    quadFill(ctx, sideBand(W,H,s,b-k,b), grad);
+  }
+  drawFrameMiters(ctx,W,H,b,c,ld);
+}
+
+// ============================================================
+//  사진 액자 (photo) — 실사 액자 이미지를 9-slice 로 늘려 쓴다
+// ============================================================
+// 절차적 액자는 아무리 다듬어도 '평면을 계단식으로 칠한 것'이라 미세 질감에서 진다.
+// GPT 로 뽑은 **정면·빈 액자·흰배경** 사진에서 바깥/개구부 사각형을 검출해
+// 알파 PNG(개구부 투명)로 잘라 뒀다(frames/photo/*.png, frames.json).
+// ⚠️ **통짜로 늘리지 말 것** — 모서리 마이터가 같이 늘어나 즉시 가짜가 된다.
+//    네 모서리는 원본 비율 그대로 두고 **네 변만 길이 방향으로 늘리는** 9-slice 로 그린다.
+const PHOTO_FRAMES = {};
+let PHOTO_META = null;
+fetch('frames/photo/frames.json').then(r=>r.ok?r.json():null).then(j=>{
+  if(!j) return;
+  PHOTO_META = j;
+  Object.keys(j).forEach(k=>{
+    const im=new Image();
+    // 로드 때 한 번만 색 보정을 구워 둔다(FRAME_GRADE 주석 참고)
+    im.onload=()=>{ PHOTO_FRAMES[k]=gradeImage(im,k); buildFrameChips(); render(); };
+    im.src='frames/photo/'+j[k].file;
+  });
+}).catch(()=>{});
+
+// 9-slice: 모서리(살 두께 사방)는 그대로, 변은 늘린다
+function drawNineSlice(ctx, im, meta, dx, dy, dw, dh, kIn){
+  // ⚠️ 색 보정된 액자는 <canvas> 라 naturalWidth 가 없다 — 둘 다 받는다
+  const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
+  const [ix,iy,ix2,iy2]=meta.inner;          // 원본 안에서의 개구부
+  const L=ix, T=iy, R=W-1-ix2, B=H-1-iy2;    // 네 변 살 두께(원본 픽셀)
+  // 목표 크기에 맞춰 살 두께를 비례 축소 — 작품이 작아도 액자가 통째로 두꺼워지지 않게
+  // ⚠️ **여기서 배율을 다시 정하지 말 것.** 호출부가 이미 그 두께로 캔버스를 잡아 놨다.
+  //    따로 계산하면 액자가 작품을 덮거나 살과 캔버스 사이에 틈이 생긴다(2026-08-30 버그).
+  const k = kIn || Math.min(1, Math.min(dw/(L+R+8), dh/(T+B+8)));
+  const l=L*k, t=T*k, r=R*k, b=B*k;
+  const S=(sx,sy,sw,sh,tx,ty,tw,th)=>{ if(sw>0&&sh>0&&tw>0&&th>0) ctx.drawImage(im,sx,sy,sw,sh,tx,ty,tw,th); };
+  const mw=W-L-R, mh=H-T-B, tw=dw-l-r, th=dh-t-b;
+  S(0,0,L,T, dx,dy,l,t);                       // 좌상
+  S(W-R,0,R,T, dx+dw-r,dy,r,t);                // 우상
+  S(0,H-B,L,B, dx,dy+dh-b,l,b);                // 좌하
+  S(W-R,H-B,R,B, dx+dw-r,dy+dh-b,r,b);         // 우하
+  S(L,0,mw,T, dx+l,dy,tw,t);                   // 상
+  S(L,H-B,mw,B, dx+l,dy+dh-b,tw,b);            // 하
+  S(0,T,L,mh, dx,dy+t,l,th);                   // 좌
+  S(W-R,T,R,mh, dx+dw-r,dy+t,r,th);            // 우
+  return {l,t,r,b};
 }
 
 // ---- 프레임 스타일 10종 (frameit식: 얇은 플로터 / 플랫 / 매트) ----
 const FRAMES=[
-  { name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.018 },
-  { name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.018 },
-  { name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.018 },
-  { name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.017 },
-  { name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.017 },
-  { name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.016 },
+  // ⚠️ 살 두께는 **조각 폭 대비 4~6%** 로 둘 것. FrameIt 실물 5장 실측이 2.8~7.6%(평균 4.5)인데
+  //    우리는 6.5% 라 액자가 주인공처럼 굵었다. 홍보 이미지의 주인공은 작품이다.
+  //    (여기 값은 '작품 짧은 변' 대비이므로 조각 대비로는 rail/(1+2·rail) 이 된다)
+  // ⚠️ 이름에 '(사진)' 을 붙이지 말 것 — 고르는 사람에게 **구현 방식**은 알 바 아니다.
+  //    옆의 절차적 액자와 나란히 놓이는 칩이라 '(사진)' 은 설명이 아니라 잡음이었다.
+  //    구현 구분은 `kind:'photo'` 로 이미 명확하다.
+  { name:'오크',         kind:'photo', photo:'oak', rail:0.055 },
+  { name:'블랙',         kind:'photo', photo:'black', rail:0.052 },
+  { name:'화이트',       kind:'photo', photo:'white', rail:0.052 },
+  { name:'월넛',         kind:'photo', photo:'walnut', rail:0.055 },
+  { name:'골드',         kind:'photo', photo:'gold', rail:0.052 },
+  { name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.011 },
+  { name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.011 },
+  { name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.011 },
+  { name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.010 },
+  { name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.010 },
+  { name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.010 },
   { name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024 },
   { name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028 },
   { name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028 },
@@ -491,28 +1099,202 @@ const FRAMES=[
 //  액자 합성 (frameit식 — 얇은 프레임 / 플로터 갭 / 매트 / 캔버스랩)
 //  핵심: 얇고 절제 · 정면 균일광 · 캔버스가 떠 보이는 플로터 갭 그림자
 // ============================================================
+// 계측용 — 액자 캔버스 안에서 작품이 앉은 자리와 살·매트 두께(액자 캔버스 픽셀).
+// 화질 회귀 하니스가 '리베이트가 실제로 생겼는가'를 작품 경계에서 재는 데 쓴다.
+let lastFrameLayout=null;
+// ── 조명 통합 — 판 전체에 아주 완만한 기울기 + 마이터 코너 감쇠 ─────────────
+// ⚠️ **왜 필요한가** (2026-08-30 5차 실측): 골든의 윗살 밝기를 길이 방향 9곳에서 재면
+//    160·183·178·178·166·172·169·176·**155** 처럼 18~28 레벨이 오르내린다. 우리는
+//    182·184·186·183·184·185·186·185·180 — **범위 6**, 사실상 상수였다.
+//    살이 길이 방향으로 완전히 균일하면 그건 **인쇄한 띠**이고, 방과 따로 조명된
+//    물체로 읽힌다("액자가 합성된 것처럼 보인다"의 실체).
+//    골든에서 눈에 띄는 건 **양 끝(코너)이 중앙보다 어둡다**는 것이다 — case_00 은 빛이
+//    왼쪽에서 오는데도 왼쪽 끝이 가장 어둡다(160 vs 중앙 183). 즉 이건 광원 기울기가
+//    아니라 **마이터 코너의 상호 폐색**이다. 그래서 둘을 따로 준다.
+// ⚠️⚠️ **`source-atop` 필수.** multiply/screen 은 **투명 픽셀 위에도 색을 칠해서**
+//    액자 바깥에 네모난 헤일로를 만든다(2차 라운드 '판 둘레 투명 픽셀' 함정과 같은 원리).
+//    source-atop 은 이미 그려진 곳에만 얹는다. 낮은 알파에서는 multiply/screen 과 사실상 같다.
+// ⚠️ 새 텍스처를 만들지 않는다 — 원본 결은 그대로 두고 **밝기만** 아주 약하게 변조한다.
+// ⚠️⚠️ **판(plate)에만 기울기를 주면 판 경계에서 벽과 어긋나 검은 테가 생긴다.**
+//    실측(2026-08-30): 곱셈 램프를 판에 걸었더니 빛을 등진 아래·오른쪽 변에서 판이
+//    12% 어두워져 벽(228)과 판(147) 사이에 **검은 선**이 생겼다 — 사용자가 금지한 것.
+//    골든을 다시 보면 살이 단조로 기울지 않는다: 160·183·178·178·166·172·169·176·155,
+//    즉 **양 끝이 어둡다**. 그건 광원 기울기가 아니라 **렌즈 비네팅**이다.
+//    비네팅은 화면 전체에 연속으로 걸리므로 경계에 단차가 없다 → `sceneVignette` 로 옮겼다.
+//    이 함수는 남겨 두되 진폭 0 이다(되살릴 땐 반드시 경계 단차부터 확인할 것).
+function applyLightRamp(ctx,W,H,ld,amt,railPx,corner){
+  if(!(amt>0) && !(corner>0)) return;
+  const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
+  const cx=W/2, cy=H/2, r=Math.hypot(W,H)/2;
+  const x0=cx+L[0]*r, y0=cy+L[1]*r, x1=cx-L[0]*r, y1=cy-L[1]*r;   // 시작=빛을 향한 쪽
+  ctx.save();
+  ctx.globalCompositeOperation='source-atop';
+  // ⚠️⚠️ **밝은 쪽을 흰색으로 올리지 말 것 — 검은 액자의 흑색이 들린다.**
+  //    source-atop 의 흰색 알파는 `base*(1−a) + 255a` 라 어두울수록 **상대 상승폭이 크다**
+  //    (살 40 → +32%, 리베이트 골 20 → +70%). 그래서 검은 슬림 액자의 리베이트 대비가
+  //    0.25 → 0.23 으로 깎여 '작품이 액자 뒤에 있다'는 신호가 약해졌다(실측 t09).
+  //    **검은색만 써서 빛을 등진 쪽을 어둡게 한다** — `base*(1−a)` 는 순수한 곱셈이라
+  //    밝기 비(=대비)를 정확히 보존한다. 변화 폭은 같고 평균만 조금 내려간다.
+  const g=ctx.createLinearGradient(x0,y0,x1,y1);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,`rgba(0,0,0,${amt*2})`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // 코너 폐색 — **살 두께의 몇 배**로 좁게. 넓게 주면 그냥 비네트가 되어 작품까지 어두워진다.
+  if(corner>0 && railPx>0){
+    const rr=Math.max(8, railPx*3.1);
+    for(const [px,py] of [[0,0],[W,0],[0,H],[W,H]]){
+      const rg=ctx.createRadialGradient(px,py,0,px,py,rr);
+      rg.addColorStop(0,`rgba(0,0,0,${corner})`); rg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
+    }
+  }
+  ctx.restore();
+}
+const RAMP_AMT=0.0, RAMP_CORNER=0.0;   // ↓ 아래 sceneVignette 로 대체
+
+// bands = 액자 살 안에서의 **면 구분**(판 좌표). 디버그 마스크가 이걸 그대로 칠한다 —
+// 렌더와 다른 계산으로 마스크를 다시 만들면 디버그 그림이 거짓말이 된다.
+//   plate : 판 전체(=액자 바깥 경계)   front : 앞면 띠   bevel : 안쪽 사면(리베이트)
+//   mat   : 매트   opening : 작품
+function noteLayout(x,y,w,h,rail,mat,bands){ lastFrameLayout={x,y,w,h,rail,mat,bands:bands||null}; }
+
+// 디버그용 마스크 판 — 판과 같은 크기의 캔버스에 영역별 색을 칠한다.
+// 엔진이 **본 판과 똑같은 quad·호모그래피로** 워프하므로 화면과 정확히 겹친다.
+const MASK_COLORS={ front:'#e0483c', bevel:'#f0a020', mat:'#3f7fd0', opening:'#ffffff' };
+function buildMaskPlate(framed){
+  const g=lastFrameLayout; if(!g) return null;
+  const W=framed.width, H=framed.height;
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const x=c.getContext('2d');
+  const b=g.bands||{l:0,t:0,r:0,b:0,faceOut:0,faceFront:1};
+  // 바깥에서 안으로 **덮어 칠한다**(중첩 사각형). 각 띠는 자동으로 상호배타가 된다.
+  //   0 ~ 살×faceFront : 앞면(바깥 모따기 포함)
+  //   살×faceFront ~ 살 : 안쪽 사면(리베이트)
+  //   살 ~ 작품 : 매트   /   작품 : 개구부
+  const ff=b.faceFront;
+  x.fillStyle=MASK_COLORS.front;   x.fillRect(0,0,W,H);
+  x.fillStyle=MASK_COLORS.bevel;   x.fillRect(b.l*ff, b.t*ff, W-(b.l+b.r)*ff, H-(b.t+b.b)*ff);
+  x.fillStyle=MASK_COLORS.mat;     x.fillRect(b.l, b.t, W-b.l-b.r, H-b.t-b.b);
+  x.fillStyle=MASK_COLORS.opening; x.fillRect(g.x,g.y,g.w,g.h);
+  return c;
+}
+
 function buildFramedCore(img, style, o){
   const aw=img.width, ah=img.height, base=Math.min(aw,ah);
   const K=Math.max(.3, o.frame/0.035);          // 두께 슬라이더 (기본 .035 → 1.0배)
+  // ⚠️ **매트 비율은 여기서 한 번만 정한다.** 예전엔 사진 액자 분기가 `o.matWidth` 를
+  //    직접 읽고 절차적 분기는 따로 계산해서, 규칙을 바꾸면 **한쪽만 바뀌었다**
+  //    (매트 필수로 만들었는데 사진 액자 5종에서만 안 나왔다).
+  //    매트는 필수다(2026-08-31 요청) — 캔버스 랩만 예외(액자가 없어 받칠 것이 없다).
+  const matFrac = (style.kind==='canvas') ? 0 : Math.max(o.matWidth||0, 0.05);
+
+  // --- 사진 액자 (실사 이미지 9-slice) ---
+  // 절차적 액자와 달리 **액자 픽셀이 사진**이라 미세 질감·마이터가 그대로 산다.
+  // 작품은 개구부 안에 놓고, 그 위에 액자 PNG(개구부 투명)를 9-slice 로 덮는다.
+  if(style.kind==='photo'){
+    const im=PHOTO_FRAMES[style.photo], meta=PHOTO_META && PHOTO_META[style.photo];
+    if(im && meta){
+      const [ix,iy,ix2,iy2]=meta.inner;
+      const iw=im.naturalWidth||im.width, ih=im.naturalHeight||im.height;
+      const L=ix, T=iy, R=iw-1-ix2, B=ih-1-iy2;
+      // 액자 살 두께를 작품 크기에 비례시킨다 — 원본 비율(약 9.5%)을 유지
+      const railPx = base*(style.rail||0.075);
+      const kx = railPx/((L+R)/2);
+      const l=Math.round(L*kx), t=Math.round(T*kx), r=Math.round(R*kx), b=Math.round(B*kx);
+      const matPx = Math.round(matFrac*base);
+      const W=aw+2*matPx+l+r, H=ah+2*matPx+t+b;
+      const c=document.createElement('canvas'); c.width=W; c.height=H;
+      const ctx=c.getContext('2d');
+      const ax=l+matPx, ay=t+matPx;
+      const ld=o.lightDir||[-1,-1];
+      // ── 매트는 '색면'이 아니라 **두께 있는 종이판**이다 ──────────────────────
+      // 순서가 중요하다: 결·음영·액자그림자를 **작품을 그리기 전에** 매트에 입혀야
+      // 작품이 그 위를 덮는다. 작품 위에 매트 음영을 얹으면 그림 색이 변조된다.
+      if(matPx>0){
+        ctx.fillStyle=o.matteColor; ctx.fillRect(l,t,W-l-r,H-t-b);
+        matPaper(ctx,l,t,W-l-r,H-t-b, Math.max(1,Math.round(base*0.0016)), o.matteColor);
+        shadeMatSurface(ctx,l,t,W-l-r,H-t-b,ld);
+        frameShadowOnMat(ctx,l,t,W-l-r,H-t-b, Math.max(4,matPx*.62), ld);
+      }
+      ctx.drawImage(img,ax,ay,aw,ah);
+      if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
+      // 매트 개구부의 45° 코어 사면 — 얇은 선 하나로는 '종이 한 장'으로 보인다
+      if(matPx>0) matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(2,matPx*.13), o.matteColor, ld);
+      drawNineSlice(ctx,im,meta,0,0,W,H,kx);
+      // 살에 방향광 — 이게 없으면 위살·아래살이 같은 밝기라 인쇄한 띠로 보인다
+      shadeFrameProfile(ctx,W,H,l,t,r,b,ld);
+      // 리베이트 — 액자(·매트)가 작품에 드리우는 그림자. 작품이 **뒤로 들어가 있다**는 신호는
+      // 이것 하나뿐이다. 빛을 향한 변이 진하고 반대편은 옅다(예전엔 사방 동일 + 너무 옅었다).
+      rebateShadow(ctx,ax,ay,aw,ah,base,ld);
+      applyLightRamp(ctx,W,H,ld,RAMP_AMT,(l+r)/2,RAMP_CORNER);
+      noteLayout(ax,ay,aw,ah,(l+r)/2,matPx,{l,t,r,b,faceOut:FACE_OUT,faceFront:FACE_FRONT});
+      return c;
+    }
+    // 사진이 아직 안 왔으면 얇은 평면 액자로 대체 (빈 화면 방지)
+    style={ kind:'flat', material:'wood', border:.028 };
+  }
 
   // --- 캔버스 랩 (액자 없음, 갤러리 캔버스) ---
   if(style.kind==='canvas'){
     const d=Math.max(3, base*.014);
     const W=aw+2*d, H=ah+2*d;
     const c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
-    // 측면(랩) — 위/좌 밝게, 우/아래 어둡게
-    ctx.fillStyle='#d8d2c6'; ctx.fillRect(0,0,W,H);
+    const ld=o.lightDir||[-1,-1];
+    // ⚠️ **옆면을 단색으로 깔지 말 것.** 갤러리랩은 그림이 실제로 모서리를 감싸므로
+    //    옆면에도 그림이 이어진다. 크림색 한 겹을 깔았더니 '테두리를 그린 판'으로 보였고,
+    //    그 위에 흰 25% / 검정 22% 를 덧칠해 **바깥 둘레에 밝은 테**까지 생겼다
+    //    (keyline 26.5, 2026-08-30 실측). 밑에 늘려 깔면 옆면이 그림의 연장이 된다.
+    ctx.drawImage(img,0,0,W,H);
     ctx.drawImage(img,d,d,aw,ah);
-    if(o.weave) applyWeave(ctx,d,d,aw,ah);
-    ctx.fillStyle='rgba(255,255,255,.25)'; ctx.fillRect(0,0,W,d); ctx.fillRect(0,0,d,H);
-    ctx.fillStyle='rgba(0,0,0,.22)'; ctx.fillRect(0,H-d,W,d); ctx.fillRect(W-d,0,d,H);
-    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=Math.max(1,base*.002); ctx.strokeRect(d,d,aw,ah);
+    if(o.weave) applyWeave(ctx,0,0,W,H);
+    // 옆면 명암 — 빛을 향한 면은 밝고 등진 면은 어둡다. 이게 두께의 신호다.
+    // ⚠️ 랩의 옆면은 **면 하나**다. 액자처럼 세 면으로 쪼개 칠하면 맨 바깥 띠만 따로
+    //    어두워져 조각 둘레에 검은 테가 생긴다(실측 keyline 41.7). 면 전체를 한 밝기로
+    //    주고, 벽에 가까워질수록만 조금 더 그늘지게 한다.
+    {
+      const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
+      for(let s=0;s<4;s++){
+        const nv=FACE_NORMAL[s], lit=nv[0]*L[0]+nv[1]*L[1];
+        shadeBand(ctx, mitreBand(W,H,s,d,d,d,d,0,1), 1+0.26*lit);
+        shadeBandGrad(ctx,W,H,s,d,d,d,d,0,1, 0.94, 1.0);   // 벽 쪽(0) 이 살짝 더 그늘
+      }
+    }
+    // 앞면과 옆면이 만나는 접힘(모서리)의 그늘.
+    // ⚠️ **작품 경계를 stroke 로 두르지 말 것**(브리핑: no black stroke around artwork).
+    //    예전엔 `strokeRect(rgba(0,0,0,.22))` 라 선의 절반이 **작품 픽셀 위**에 얹혔다.
+    //    접힘의 그늘은 물리적으로 **옆면 쪽**에 생긴다 — 작품 바깥에만 좁게 램프한다.
+    {
+      const k=Math.max(1.2, d*0.34);
+      for(let s=0;s<4;s++){
+        let g;
+        if(s===0) g=ctx.createLinearGradient(0,d,0,d-k);
+        else if(s===1) g=ctx.createLinearGradient(W-d,0,W-d+k,0);
+        else if(s===2) g=ctx.createLinearGradient(0,H-d,0,H-d+k);
+        else g=ctx.createLinearGradient(d,0,d-k,0);
+        g.addColorStop(0,'rgba(0,0,0,.26)'); g.addColorStop(1,'rgba(0,0,0,0)');
+        quadFill(ctx, sideBand(W,H,s,d-k,d), g);
+      }
+    }
+    applyLightRamp(ctx,W,H,ld,RAMP_AMT,d*3,RAMP_CORNER*.5);   // 랩은 코너 살이 없어 약하게
+    noteLayout(d,d,aw,ah,d,0,{l:d,t:d,r:d,b:d,faceOut:0,faceFront:1});   // 랩은 옆면 하나
     return c;
   }
 
+  const ld=o.lightDir||[-1,-1];
   const border=(style.border||0)*base*K;
   const gap=(style.gap||0)*base*K;
-  const mat=(style.kind==='mat')? o.matte*base : 0;
+  // 매트(대지) — 경쟁사 결과물의 premium 인상은 상당 부분 이 흰 여백에서 온다.
+  // 예전엔 '화이트 매트' 스타일에서만 나왔다. 이제 **캔버스 랩을 뺀 전 스타일**에서 쓴다.
+  // ⚠️ 예전 주석("플로터는 갭이 그 역할을 하므로 제외")은 틀렸다 — 갭과 매트는 다른 물건이다.
+  //    갭은 액자 안쪽 벽이 뒤로 물러난 **면**이고, 매트는 그 안에 깔린 **종이판**이다.
+  //    둘이 같이 있는 게 실제 액자업의 **플로트 마운트**(작품을 매트 보드 위에 띄워 붙여
+  //    네 변의 데클 에지를 다 보이게 하는 방식)이고, 종이 작품에서 가장 흔한 고급 마감이다.
+  //    순서는 바깥부터 [몰딩] → [갭(오목한 안쪽 벽)] → [매트 보드] → [떠 있는 작품].
+  // ⚠️ '화이트 매트' 스타일(kind:'mat')도 **슬라이더를 따르게** 한다. 예전엔 style 고정값
+  //    (o.matte)만 봐서 매트 줄을 아무리 눌러도 그 스타일에서만 아무 일이 없었다 —
+  //    같은 컨트롤이 스타일에 따라 먹었다 안 먹었다 하면 고장으로 보인다.
+  //    다만 이 스타일의 정체성이 '매트가 있는 액자'라 **하한**을 둔다(없음 = 얇게).
+  const matW=matFrac;
+  const mat=matW*base;
   const m=uni(border+gap+mat);
   const W=Math.round(aw+2*m.t), H=Math.round(ah+2*m.t);
   const c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
@@ -522,70 +1304,76 @@ function buildFramedCore(img, style, o){
   // --- 바탕 ---
   if(style.kind==='floater'){
     ctx.fillStyle=matC.back; ctx.fillRect(0,0,W,H);          // 트레이(어두운 배경)
-    drawFloaterTray(ctx,W,H,border,gap,matC.back);
-  } else if(style.kind==='mat'){
+    // 플로트 마운트 — 갭 **안쪽**을 매트 보드로 깐다. 작품은 그 위에 떠서 그림자를 드리운다.
+    // ⚠️ 순서를 지킬 것: 보드를 먼저 깔고 갭을 그려야 갭의 안쪽 그늘 선이 보드 위에 얹힌다.
+    //    반대로 하면 보드가 갭의 오목면을 덮어 액자가 평평해진다.
+    if(mat>0){
+      const q=border+gap;
+      ctx.fillStyle=o.matteColor; ctx.fillRect(q,q,W-2*q,H-2*q);
+      matPaper(ctx,q,q,W-2*q,H-2*q, Math.max(1,Math.round(base*0.0016)), o.matteColor);
+      shadeMatSurface(ctx,q,q,W-2*q,H-2*q,ld);
+      frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(4,mat*.62), ld);
+    }
+    drawFloaterTray(ctx,W,H,border,gap,matC.back,ld);
+  } else if(mat>0){
+    // 사진 액자와 **같은 매트 처리**를 쓴다 — 여기만 옛 방식으로 두면 절차적 액자에서만
+    // 매트가 색면으로 남는다(실측 그레인 0.93 vs 사진 액자 7.4).
     ctx.fillStyle=o.matteColor; ctx.fillRect(0,0,W,H);
-    applyNoise(ctx, border, border, W-2*border, H-2*border, .05);
+    matPaper(ctx, border, border, W-2*border, H-2*border,
+             Math.max(1,Math.round(base*0.0016)), o.matteColor);
+    shadeMatSurface(ctx, border, border, W-2*border, H-2*border, ld);
+    frameShadowOnMat(ctx, border, border, W-2*border, H-2*border, Math.max(4,mat*.62), ld);
   }
 
   // --- 플로터: 캔버스가 트레이 위에 떠 있는 그림자 ---
+  // ⚠️⚠️ **캐스터를 제자리에 칠하지 말 것.** 예전엔 `fillStyle='#000'` 으로 작품
+  //    자리를 그대로 채워 그림자를 만들었다. `ax` 는 `border+gap+mat` 이라 **소수점**
+  //    이고, 그러면 fillRect 의 가장자리 1px 이 안티에일리어싱으로 남는다 — 그 위에
+  //    작품을 같은 소수점 좌표로 얹어도 완전히 덮이지 않아 **작품 둘레에 검은 실선**이
+  //    남았다(실측: 플로터 3종의 틈 바닥 휘도 0.0, 골든 최저는 살 대비 0.110).
+  //    scene.js 가 벽 그림자에서 겪은 것과 같은 함정이다. 해법도 같다 —
+  //    **캐스터를 캔버스 밖에 두고 shadowOffset 으로 그림자만 끌어온다.**
   if(style.kind==='floater'){
+    const AWAY=W*2+aw;
     ctx.save();
-    ctx.shadowColor='rgba(0,0,0,.62)'; ctx.shadowBlur=Math.max(2,base*.010);
-    ctx.shadowOffsetX=base*.0015; ctx.shadowOffsetY=base*.0045;
-    ctx.fillStyle='#000'; ctx.fillRect(ax,ay,aw,ah);
+    ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=Math.max(2,base*.010);
+    ctx.shadowOffsetX=base*.0015+AWAY; ctx.shadowOffsetY=base*.0045;
+    ctx.fillStyle='#000'; ctx.fillRect(ax-AWAY,ay,aw,ah);
     ctx.restore();
   }
 
   // --- 작품 ---
   ctx.drawImage(img,ax,ay,aw,ah);
   if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
-  if(style.kind==='floater'){
-    ctx.strokeStyle='rgba(255,255,255,.16)';
-    ctx.lineWidth=Math.max(.7,base*.0012);
-    ctx.strokeRect(ax+.5,ay+.5,aw-1,ah-1);
-    ctx.strokeStyle='rgba(0,0,0,.30)';
-    ctx.lineWidth=Math.max(.8,base*.0015);
-    ctx.strokeRect(ax-ctx.lineWidth/2,ay-ctx.lineWidth/2,aw+ctx.lineWidth,ah+ctx.lineWidth);
-  }
-  // 아주 옅은 정면광 (위 살짝 밝고 아래 살짝 어둡게) — 과하지 않게
-  const lg=ctx.createLinearGradient(0,ay,0,ay+ah);
-  lg.addColorStop(0,'rgba(255,255,255,.03)'); lg.addColorStop(.6,'rgba(255,255,255,0)');
-  lg.addColorStop(1,'rgba(0,0,0,.035)');
-  ctx.fillStyle=lg; ctx.fillRect(ax,ay,aw,ah);
+  // ⚠️ 플로터의 작품 둘레에 **흰 선 + 검은 선**을 두르고 있었다(2026-08-31 제거).
+  //    브리핑 체크리스트의 "no black stroke around artwork" · "no white border" 그 자체다.
+  //    작품이 보드 위에 **떠 있다**는 신호는 위에서 그린 접지 그림자(shadowBlur)가 만든다.
+  // ⚠️ 작품 위의 '정면광' 그라디언트(위 +3% → 아래 −3.5%)도 없앴다. 두 가지가 틀렸다 —
+  //    ①광원 방향과 무관하게 **늘 위가 밝았다**(장면 15개 중 10개가 좌상단 광이 아니다)
+  //    ②**절차적 액자에만** 걸려서, 같은 방에서 액자만 바꿔도 작품 밝기가 달라졌다.
+  //    방의 빛이 작품에 얹히는 건 장면 셰이더의 벽 명암(wallAmt)이 담당한다.
 
-  // --- 매트 베벨 + 개구부 그림자 ---
-  if(mat>0){
-    const bw=Math.max(2,base*.008);
-    quadFill(ctx,[ax-bw,ay-bw, ax+aw+bw,ay-bw, ax+aw,ay, ax,ay], shade(o.matteColor,-.16));
-    quadFill(ctx,[ax,ay+ah, ax+aw,ay+ah, ax+aw+bw,ay+ah+bw, ax-bw,ay+ah+bw], shade(o.matteColor,.12));
-    quadFill(ctx,[ax-bw,ay-bw, ax,ay, ax,ay+ah, ax-bw,ay+ah+bw], shade(o.matteColor,-.06));
-    quadFill(ctx,[ax+aw,ay, ax+aw+bw,ay-bw, ax+aw+bw,ay+ah+bw, ax+aw,ay+ah], shade(o.matteColor,-.1));
-    let g=ctx.createLinearGradient(0,ay,0,ay+base*.01);
-    g.addColorStop(0,'rgba(0,0,0,.14)'); g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g; ctx.fillRect(ax,ay,aw,base*.01);
-  }
+  // --- 매트 개구부의 45° 코어 사면 (사진 액자와 같은 함수) ---
+  // ⚠️ 플로터는 **개구부가 없다** — 작품이 매트 보드 위에 얹혀 있지, 매트에 뚫린 창으로
+  //    들여다보는 게 아니다. 여기에 사면을 그리면 있지도 않은 종이 두께가 작품 위에 생긴다.
+  if(mat>0 && style.kind!=='floater') matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(2,mat*.13), o.matteColor, ld);
 
-  // --- 작품 테두리에 프레임/매트가 드리우는 안쪽 그림자 (입체감) ---
-  {
-    const k=Math.max(2, base*.012);
-    const sh=(x,y,w,h,horiz,a)=>{ const g=horiz? ctx.createLinearGradient(0,y,0,y+h):ctx.createLinearGradient(x,0,x+w,0);
-      g.addColorStop(0,`rgba(0,0,0,${a})`); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(x,y,w,h); };
-    const ix=ax-(style.kind==='floater'?0:0), iy=ay;
-    sh(ax,ay,aw,k,true,.16);                                  // top
-    sh(ax,ay,k,ah,false,.10);                                 // left
-    ctx.save(); ctx.translate(ax+aw,0); ctx.scale(-1,1); sh(0,ay,k,ah,false,.06); ctx.restore();
-    ctx.save(); ctx.translate(0,ay+ah); ctx.scale(1,-1); sh(ax,0,aw,k*.8,true,.05); ctx.restore();
-  }
+  // --- 리베이트 — 액자·매트가 작품 위에 드리우는 그림자 ---
+  // ⚠️ 예전엔 여기만 **손으로 적은 사방 고정값**(위 .16 / 왼 .10 / 오른 .06 / 아래 .05)
+  //    이었다. 사진 액자는 광원을 따르는 `rebateShadow` 를 쓰는데 절차적 액자만 좌상단
+  //    고정이라, **같은 방에서 액자를 바꾸면 그림자 방향이 바뀌었다** — 브리핑 5번이
+  //    금지한 바로 그것("frame만 교체했을 뿐 같은 방에서 같은 카메라로 촬영한 것처럼").
+  //    이제 두 경로가 같은 함수를 쓴다.
+  rebateShadow(ctx,ax,ay,aw,ah,base,ld);
 
   // --- 프레임 테두리 ---
   if(style.kind==='floater'){
     // 갭(트레이)은 이미 back색. 바깥 border만 재질로
-    frameBand(ctx,W,H, uni(border), style.material);
+    frameBand(ctx,W,H, uni(border), style.material, ld);
   } else if(style.kind==='flat'){
-    frameBand(ctx,W,H, uni(border), style.material);
+    frameBand(ctx,W,H, uni(border), style.material, ld);
   } else if(style.kind==='mat'){
-    frameBand(ctx,W,H, uni(border), style.material);
+    frameBand(ctx,W,H, uni(border), style.material, ld);
   }
 
   // --- 유리 반사 ---
@@ -599,13 +1387,16 @@ function buildFramedCore(img, style, o){
     ctx.fillStyle=g; ctx.fillRect(ax-mat,ay-mat,aw+2*mat,ah+2*mat);
     ctx.restore();
   }
+  applyLightRamp(ctx,W,H,ld,RAMP_AMT,border+gap,RAMP_CORNER);
+  noteLayout(ax,ay,aw,ah,border+gap,mat,
+    {l:border+gap,t:border+gap,r:border+gap,b:border+gap,faceOut:0,faceFront:border/Math.max(1,border+gap)});
   return c;
 }
 
 // ---- 상태 ----
 const state={ img:null, frameIdx:0, frameColor:'#2b2b2b', matteColor:'#f5f2ea',
-  frame:0.03, matte:0.04, glass:false, weave:false, mode:'wall', bg:'#ffffff', wallIdx:0,
-  ratio:'4:5', effect:0, effectOp:.45 };
+  frame:0.044, glass:false, weave:false, mode:'wall', bg:'#ffffff', wallIdx:0, sceneIdx:0,
+  ratio:'1:1', light:0, matWidth:0.05 };   // 매트는 필수 — 0 은 없다(캔버스 랩만 예외)
 function buildFramed(img){ return buildFramedCore(img, FRAMES[state.frameIdx], state); }
 
 // ============================================================
@@ -659,42 +1450,175 @@ function sampleAvg(img, fx, fy, fw, fh){
 const lumOf=p=>p? p.r*.299+p.g*.587+p.b*.114 : null;
 
 // ============================================================
-//  조명 효과 — 프로 라이팅맵(그레이 월+스포트라이트+베이크드 섀도우)을
-//  9-슬라이스로 액자 위치에 정합시켜 장면 전체에 multiply.
-//  작품·배경·그림자가 단일 조명 아래 통합 → 합성티 제거 핵심.
-//  sq: 맵 안의 흰 사각형(작품 자리) 좌표 비율
+//  조명(스튜디오 라이트) — 강도 하나로만 조절한다 (0~100, 0 = 없음)
 // ============================================================
-const EFFECTS=[
-  { name:'없음' },
-  { name:'스포트라이트', src:'effects/eff1.jpg', sq:{x1:.257,y1:.253,x2:.747,y2:.75} },
-  { name:'소프트',       src:'effects/eff2.jpg', sq:{x1:.257,y1:.252,x2:.743,y2:.752} },
-];
-EFFECTS.forEach(e=>{
-  if(!e.src) return;
-  e.img=new Image();
-  e.img.onload=()=>{ e.loaded=true; if(state.effect && EFFECTS[state.effect]===e) render(); };
-  e.img.src=e.src;
-});
-// art={x,y,fw,fh} 위치에 맵의 흰 사각형을 정합시키는 9-slice multiply
-function drawLightMap(ctx,W,H,art){
-  const eff=EFFECTS[state.effect];
-  if(!eff||!eff.src||!eff.loaded) return;
-  const im=eff.img, S=im.naturalWidth, q=eff.sq;
-  const sxs=[0, q.x1*S, q.x2*S, S];
-  const sys=[0, q.y1*S, q.y2*S, S];
-  const x1=Math.max(1,art.x), x2=Math.min(W-1,art.x+art.fw);
-  const y1=Math.max(1,art.y), y2=Math.min(H-1,art.y+art.fh);
-  if(x2-x1<4||y2-y1<4) return;
-  const dxs=[0, x1, x2, W];
-  const dys=[0, y1, y2, H];
+// ⚠️ **옛 방식(라이팅맵 9-slice multiply)은 버렸다.** 두 가지가 잘못돼 있었다.
+//    ① 장면 모드에서 **한 번도 호출되지 않았다**(`compose()` 의 scene 분기에 없다).
+//       장면이 유일한 배경 목록이 된 뒤로는 무엇을 골라도 화면이 그대로였다 — 에러 없이 조용히.
+//    ② 사진 한 장을 9-slice 로 늘려 쓰므로 **방의 광원 방향과 무관**했다. 좌상단에서
+//       빛이 오는 방에 우상단이 밝은 조명맵을 곱하면 그림자와 하이라이트가 서로 어긋난다.
+//
+// 새 방식은 **장면이 이미 알고 있는 광원 방향(`scenes.json` 의 lightDir, 사진에서 측정한 값)**
+// 으로 조명을 건다. 세 겹이고, 각각 물리적으로 뜻이 있다.
+//   ① 낙차(falloff)  광원에서 멀어질수록 벽이 어두워진다. **이게 조명의 주역이다.**
+//   ② 웅덩이(pool)   광원이 벽에 만드는 밝은 자리.
+//   ③ 물듦(warm)     빛의 색이 화면 전체에 옅게 앉는다.
+//
+// ── FrameIt 실측에서 얻은 것 (`~/ArtLink/light/`, 분석은 scratchpad/vt/lightref.py) ──
+//  · 강도를 올릴 때 일어나는 일의 **주역은 '밝아짐'이 아니라 '주변이 어두워짐'** 이다.
+//    opacity100 의 (조명후/조명전) 배율을 광원 기준 거리별로 재면
+//    중심 1.44 → 곧바로 1.07 → 0.76 → **0.65에서 평평**. 즉 좁은 웅덩이 + 넓은 바닥.
+//    화면 전체 평균 변화는 **−58 레벨**(어두워짐)이었다. 흰 빛을 더하는 방식으로 만들면
+//    HDR·글로우가 되어 사용자가 금지한 그것이 된다.
+//  · 조명은 벽뿐 아니라 **작품 픽셀에도 걸린다**(작품 ΔRGB / 벽 ΔRGB = 0.45~0.51, 전 강도 일정).
+//    작품만 빼면 오려 붙인 티가 난다(CLAUDE.md 41 의 ΔRGB 주석과 같은 이야기).
+//  · ⚠️ 다만 **FrameIt 은 강도 50%부터 작품을 망가뜨린다** — 작품 채도가 92.6 → 63.7(50%)
+//    → 46.5(100%), 지역 대비 14.2 → 9.4. 홍보 이미지의 주인공은 작품이라 우리는 여기까지
+//    따라가지 않는다. 우리 강도 100 은 FrameIt 의 30~40 쯤이고, 그 대신
+//    **작품이 웅덩이 안에 들어오도록 반경을 잡아** 자연스럽게 보호한다(마스크가 아니다).
+//  · ⚠️⚠️ **작품/액자만 따로 밝히거나 지키면 안 된다.** 그 순간 경계에 마스크 테가 생긴다
+//    (라운드 2~5 에서 반복해 확인한 함정). 그래서 이 함수는 **합성이 다 끝난 화면 전체**에
+//    연속 그라디언트로만 건다 — 조각 사각형을 참조하는 건 웅덩이의 위치·크기뿐이다.
+// ⚠️ **조각이 화면의 44% 를 차지한다**(라운드 3에서 그렇게 키웠다). 즉 조명이 일할 수 있는
+//    벽이 얼마 안 남는다 — 낙차의 안쪽 반경을 넉넉히 잡으면 화면 밖으로 나가 아무 일도
+//    일어나지 않는다(첫 구현 실측: 구석 배율 1.00, 즉 무효과였다).
+//    그래서 안쪽 반경은 **조각 반반경(half-diagonal) 언저리**로 잡는다. 조각의 네 귀퉁이가
+//    정확히 그 반경에 있으므로 작품은 사실상 통째로 보호되고, 어두워지는 건 대각선 방향의
+//    벽부터다.
+// ⚠️⚠️ **아무것도 밝히지 않는다 — 어둡게만 한다.** 처음엔 광원 자리를 `screen` 으로
+//    밝히는 '웅덩이' 를 뒀는데, 조각이 화면의 44% 라 그 웅덩이가 **작품 위에 얹혔고**
+//    작품이 76% 밝아졌다(실측 white-brick, 강도 100). screen 은 어두운 픽셀을 가장 크게
+//    올리므로 그림이 제일 심하게 뜬다. 게다가 그게 곧 사용자가 금지한 글로우/HDR 이다.
+//    '빛이 있다'는 인상은 **상대 대비**로 충분히 만들어진다 — 하이라이트를 노출에 맞춘
+//    사진이 정확히 그런 모습이다. 그래서 필드는 곱연산 하나뿐이고, 최댓값이 1(무변화)이다.
+const LIGHT={
+  fall : 0.42,   // 강도 100 에서 **가장 먼 구석**의 어두워짐 (FrameIt 70% 실측 0.69 배)
+  warm : 0.27,   // 빛 색으로 물드는 정도 (0~1, 아래 WARM_MAX 를 쓰는 비율)
+                 // ⚠️ 여기를 키우면 **작품이 먼저 망가진다**(균일하게 걸리므로).
+                 //    soft-light 로 0.16 을 줬을 때 작품 dE 18.4 · 채도비 0.79 였다(실측).
+  reach: 0.95,   // 낙차 안쪽 반경 = 조각 반반경 × 이 값 (안은 정확히 1배 = 작품 보존)
+  off  : 0.34,   // 낙차 중심을 광원 쪽으로 미는 거리 (조각 반반경 배수)
+                 // — 이 편심이 '비네트'와 '조명'을 가른다. 광원 쪽 구석과 반대쪽 구석의
+                 //   어두워짐이 달라야 방향이 읽힌다.
+  aniso: 0.72,   // 낙차 타원의 장축/단축. 빛의 축(광원→조각)으로 늘여 **빔**처럼 보이게 한다.
+                 // 1.0 이면 완전한 원 = 그냥 비네트로 읽힌다.
+  spill: 0.13,   // 벽에 닿은 빛자국(조각 **바깥**에만). 유일하게 밝히는 항이다.
+  spillR: 0.42,  // 빛자국 반경 = 조각 짧은 변 × 이 값
+  spillOff: 0.68,// 빛자국 중심 = 조각 중심에서 광원 쪽으로 (조각 반변 배수). 1 이 조각 경계.
+};
+// 그늘색 — 순검정으로 곱하면 채도가 통째로 빠진다. 실내 그늘은 광원의 보색 쪽(푸른 기)이다.
+const LIGHT_SHADE={r:34,g:38,b:52};
+// ⚠️ 물듦에 **soft-light 를 쓰지 말 것.** 밝은 색으로 soft-light 하면 **검정이 들린다**
+//    (Cb=0.1 이 +11%). 어두운 방(collector-salon)에서 낙차를 그대로 상쇄해 조명이 무효가 됐고
+//    (구석 배율 0.97), 작품 채도비도 0.83 까지 떨어졌다(실측). 곱연산은 밝기 비를 보존한다.
+// 빛의 색 — **그 장면 사진에서 가장 밝은 쪽의 색**을 쓴다. 방마다 전구색이 다른데
+// 따뜻한 색을 고정으로 박으면 화이트큐브에서 혼자 노래진다.
+// 실패(taint 등)하면 갤러리 할로겐 근사값으로 폴백.
+const LIGHT_FALLBACK={r:255,g:243,b:222};
+function sceneLightColor(sc){
+  if(!sc || !sc.img) return LIGHT_FALLBACK;
+  if(sc._lightCol) return sc._lightCol;
+  let col=LIGHT_FALLBACK;
+  try{
+    const n=64, c=document.createElement('canvas'); c.width=n; c.height=n;
+    const x=c.getContext('2d',{willReadFrequently:true});
+    x.drawImage(sc.img,0,0,n,n);
+    const d=x.getImageData(0,0,n,n).data;
+    const px=[];
+    for(let i=0;i<d.length;i+=4) px.push([d[i],d[i+1],d[i+2], d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722]);
+    px.sort((a,b)=>b[3]-a[3]);
+    const k=Math.max(1,Math.round(px.length*0.10));   // 가장 밝은 10%
+    let r=0,g=0,b=0; for(let i=0;i<k;i++){ r+=px[i][0]; g+=px[i][1]; b+=px[i][2]; }
+    r/=k; g/=k; b/=k;
+    // 밝은 쪽 색은 거의 흰색에 수렴한다 — 색기만 뽑아 쓰려고 채도를 키운다.
+    const m=(r+g+b)/3||1, K=2.1;
+    col={ r:Math.round(Math.min(255,m+(r-m)*K)),
+          g:Math.round(Math.min(255,m+(g-m)*K)),
+          b:Math.round(Math.min(255,m+(b-m)*K)) };
+  }catch(e){ /* 크로스오리진 등 — 폴백 */ }
+  sc._lightCol=col;
+  return col;
+}
+// art = 조각(액자 포함) 사각형 {x,y,fw,fh} — 합성 좌표. ld = 광원 방향(빛이 오는 쪽).
+function applyStudioLight(ctx,W,H,s,art,ld,col){
+  if(!(s>0) || !art) return;
+  s=Math.max(0,Math.min(1,s));
+  const c=col||LIGHT_FALLBACK;
+  const px=art.x+art.fw/2, py=art.y+art.fh/2;
+  const pr=Math.hypot(art.fw,art.fh)/2 || Math.min(W,H)*0.3;
+  const n=Math.hypot(ld[0],ld[1])||1, ux=ld[0]/n, uy=ld[1]/n;
+  const S=LIGHT_SHADE;
+  const corner=(cx,cy)=>Math.max(
+    Math.hypot(cx,cy), Math.hypot(W-cx,cy), Math.hypot(cx,H-cy), Math.hypot(W-cx,H-cy));
   ctx.save();
   ctx.globalCompositeOperation='multiply';
-  ctx.globalAlpha=state.effectOp;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
-    const sw=sxs[i+1]-sxs[i], sh=sys[j+1]-sys[j];
-    const dw=dxs[i+1]-dxs[i], dh=dys[j+1]-dys[j];
-    if(sw<1||sh<1||dw<1||dh<1) continue;
-    ctx.drawImage(im, sxs[i],sys[j],sw,sh, dxs[i],dys[j],dw,dh);
+  // ① 낙차 — 광원에서 멀수록 어둡게. **조명의 주역이자 전부다**(FrameIt 실측: 강도를
+  //    올릴 때 화면 평균이 −58 레벨, 즉 밝아지는 게 아니라 주변이 어두워진다).
+  //    안쪽 반경 안은 정확히 1배 — 마스크가 아니라 **기하**로 작품을 보호하므로 경계가 없다.
+  {
+    const fx=px+ux*pr*LIGHT.off, fy=py+uy*pr*LIGHT.off;
+    const a=LIGHT.fall*s;
+    const sh=(al)=>`rgba(${S.r},${S.g},${S.b},${al.toFixed(4)})`;
+    // 빛의 축으로 늘인 **타원**. 원으로 두면 아무리 편심을 줘도 '비네트'로 읽힌다 —
+    // 빔은 광원에서 조각으로 이어지는 밝은 복도가 있고 그 양옆이 급히 어두워진다.
+    // ⚠️ 좌표계를 돌린 채 그라디언트를 만들 것(그라디언트는 유저 좌표라 같이 변환된다).
+    // ⚠️⚠️ **반경을 늘인 좌표계에서 다시 계산할 것.** 변환만 걸고 반경을 그대로 뒀더니
+    //    화면 구석이 그라디언트의 끝에 도달하지 못해 **어두워짐이 0.67 → 0.95 로 사라졌다**
+    //    (실측). 늘인 좌표계에서 축방향 거리는 1/k 이 되므로 그만큼 다시 재야 한다.
+    const k=LIGHT.aniso, ang=Math.atan2(uy,ux);
+    const rad=(x,y)=>{ const dx=x-fx, dy=y-fy;
+      return Math.hypot((dx*ux+dy*uy)/k, -dx*uy+dy*ux); };
+    const far=Math.max(rad(0,0),rad(W,0),rad(0,H),rad(W,H));
+    // 안쪽 반경은 **조각 네 귀퉁이**가 다 들어가도록 — 그래야 작품이 통째로 배율 1 이다
+    const r0=Math.min(LIGHT.reach*Math.max(
+      rad(art.x,art.y), rad(art.x+art.fw,art.y),
+      rad(art.x,art.y+art.fh), rad(art.x+art.fw,art.y+art.fh)), far*0.80);
+    ctx.save();
+    ctx.translate(fx,fy); ctx.rotate(ang); ctx.scale(k,1); ctx.rotate(-ang); ctx.translate(-fx,-fy);
+    const g=ctx.createRadialGradient(fx,fy,r0,fx,fy,far);
+    // ⚠️ 곱연산 그라디언트의 **끝 색은 어두워야 한다.** 처음엔 rgb(232,236,255) 같은 밝은
+    //    색을 적어 놓고 어두워지길 기대했는데, 곱연산은 `base·(1−a(1−C))` 라 밝은 C 는
+    //    아무 일도 하지 않는다(실측 구석 배율 1.00 — 조명이 통째로 무효였다).
+    g.addColorStop(0,'rgba(255,255,255,0)');
+    g.addColorStop(0.35,sh(a*0.16));
+    g.addColorStop(0.70,sh(a*0.60));
+    g.addColorStop(1,sh(a));
+    ctx.fillStyle=g; ctx.fillRect(-W*k,-H*k,W*k*3,H*k*3);
+    ctx.restore();
+  }
+  // ①-b 빛자국 — 빛이 **벽에** 닿은 자리. 유일하게 밝히는 항이라 두 가지를 지킨다.
+  //    ⚠️ 조각 **바깥**에만 놓는다. 조각이 화면의 44% 라 조금만 안쪽으로 들어와도
+  //       그림 위에 얹혀 작품이 뜬다(첫 구현 실측: 작품 +76%).
+  //       그래서 중심을 반반경(대각선)이 아니라 **조각의 변**을 기준으로 잡는다.
+  //    ⚠️ 알파를 키우면 그게 곧 글로우/HDR 이다. 벽 밝기 몇 % 수준으로만.
+  {
+    const half=Math.max(1,Math.min(art.fw,art.fh)/2);
+    const t=half*(1+LIGHT.spillOff);
+    const lx=px+ux*t, ly=py+uy*t;
+    const r=Math.max(art.fw,art.fh)*LIGHT.spillR;
+    const g=ctx.createRadialGradient(lx,ly,0,lx,ly,r);
+    const a=LIGHT.spill*s;
+    g.addColorStop(0,`rgba(${c.r},${c.g},${c.b},${a.toFixed(4)})`);
+    g.addColorStop(0.5,`rgba(${c.r},${c.g},${c.b},${(a*0.42).toFixed(4)})`);
+    g.addColorStop(1,`rgba(${c.r},${c.g},${c.b},0)`);
+    ctx.globalCompositeOperation='screen';
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation='multiply';
+  }
+  // ② 물듦 — 빛의 색이 화면 전체에 옅게. **균일**하므로 경계가 생길 수 없고,
+  //    작품·액자·벽이 같은 색온도를 공유하게 만든다(라운드 3 브리핑 G 항).
+  //    빛이 따뜻하면 따뜻하게, 차가우면 차갑게 — 색은 이 장면 사진에서 뽑은 것을 쓴다.
+  {
+    const t=LIGHT.warm*s;
+    // 빛 색의 **색기만** 뽑는다 — 가장 밝은 채널을 255 로 올려 밝기를 빼고 hue 만 남긴다.
+    // 그 다음 흰색 쪽으로 (1−t) 만큼 되돌린다. t=0 이면 순백(무변화).
+    // ⚠️ 편차에 상한(TINT_MAX)을 둘 것 — 장면 사진이 유난히 색이 진하면 화면이 통째로
+    //    물들어 **작품 색이 바뀐다**. 여기는 색온도를 맞추는 자리지 컬러 그레이딩이 아니다.
+    const mx=Math.max(c.r,c.g,c.b)||255, TINT_MAX=30;
+    const dv=(v)=>Math.min(TINT_MAX,255-v*255/mx);
+    const mix=(v)=>Math.round(255-dv(v)*t);
+    ctx.fillStyle=`rgb(${mix(c.r)},${mix(c.g)},${mix(c.b)})`;
+    ctx.fillRect(0,0,W,H);
   }
   ctx.restore();
 }
@@ -720,30 +1644,240 @@ function applyWeave(ctx,x,y,w,h){
   ctx.restore(); }
 
 // ---- 비율 ----
+// '원본'(작품 비율 그대로)은 없앴다 — 이 도구의 결과물은 SNS 홍보 이미지고,
+// 그쪽은 1:1 이 기본이다. 작품 비율은 액자 안에서 이미 지켜진다(자르지 않는다).
 const RATIOS=[
-  {id:'original',name:'원본'}, {id:'1:1',name:'1:1'}, {id:'4:5',name:'4:5'},
+  {id:'1:1',name:'1:1'}, {id:'4:5',name:'4:5'},
   {id:'3:4',name:'3:4'}, {id:'16:9',name:'16:9'}, {id:'9:16',name:'9:16'},
 ];
-const LONG=2600; // 출력 해상도 (화면에 늘려 표시돼도 또렷하게)
-function targetDims(ratio,framed){
-  if(ratio==='original'){ const s=Math.min(1,LONG/Math.max(framed.width,framed.height));
-    return {W:Math.round(framed.width*s),H:Math.round(framed.height*s)}; }
+const LONG=2600; // 출력 해상도 상한 (화면에 늘려 표시돼도 또렷하게)
+// 장면 모드 출력 크기 — 원본의 1/SCENE_HEADROOM. 남긴 여유가 곧 **자동 프레이밍의
+// 확대 한도**다(작을수록 액자를 크게 잡을 수 있지만 결과물이 작아진다). 2600px 벽 → 1625px.
+const SCENE_HEADROOM=1.6, SCENE_MIN_LONG=1080;
+// ⚠️ **합성은 출력보다 크게 하고, 줄이는 건 맨 마지막 한 번뿐**(2026-08-30 4차).
+//    마스크·그림자·워프·워터마크를 전부 SUPERSAMPLE 배로 계산한 뒤 한 번에 내린다.
+//    벽 화질은 그대로다(확대 한도를 같이 곱해 주므로 최종 배율이 변하지 않는다) —
+//    달라지는 건 **액자 모서리와 그림자 계조**로, 표본이 2.5배 늘어 계단이 사라진다.
+//    상한(STAGE_MAX)은 메모리 때문이다. 4096² 이면 캔버스 하나가 64MB 다.
+const SUPERSAMPLE=2.0, STAGE_MAX=4096;
+let _stage=null;
+function stageCanvas(w,h){
+  if(!_stage) _stage=document.createElement('canvas');
+  if(_stage.width!==w||_stage.height!==h){ _stage.width=w; _stage.height=h; }
+  else _stage.getContext('2d').clearRect(0,0,w,h);
+  return _stage;
+}
+// ⚠️ 장면 모드는 **배경 사진을 원본 이상으로 늘리지 않는다.**
+// 1254px 사진을 2600px 로 뽑으면 2.1배 확대라 벽 질감이 뭉개진다('확대하면 깨진다'의 원인).
+// 인스타 권장이 1080 이라 1254 로도 충분하다. 장면 사진이 커지면 그만큼 따라 올라간다.
+function targetDims(ratio,longSide){
+  const L=longSide||LONG;
   const [a,b]=ratio.split(':').map(Number);
-  return a>=b? {W:LONG,H:Math.round(LONG*b/a)} : {W:Math.round(LONG*a/b),H:LONG};
+  return a>=b? {W:L,H:Math.round(L*b/a)} : {W:Math.round(L*a/b),H:L};
 }
 
 // ============================================================
 //  최종 합성
 // ============================================================
 let lastArt=null; // 마지막 렌더의 액자 위치 (드래그 히트테스트)
+let lastFitNote=null;  // 장면 모드에서 실치수가 맞았는지 (화면에 알려준다)
+let lastRegionPx=null; // 장면 영역의 화면 크기 (드래그 단위 환산용)
+
+// 작품 크기 문자열 → [가로cm, 세로cm]. 파서는 scene.js 에 있다(테스트가 그걸 검사한다).
+function artCmOf(w){
+  if(!w || !window.ArtLookScene) return null;
+  return ArtLookScene.parseSizeCm(w.sizeText || w.size);
+}
+
+// 계측 훅 — 조각(액자 포함)과 작품 자체의 출력 사각형을 픽셀로 알려준다.
+// 화질 회귀 하니스가 쓴다. 렌더 결과에는 영향이 없다.
+function artlookProbe(placed, framed, ss){
+  // ⚠️ **실루엣은 앞면만이 아니다.** 두께가 있으면(캔버스랩) 뒷면·옆면이 오른쪽·아래로
+  //    더 나간다. 앞면만 재면 조각 바깥 8px 이 '벽'으로 잡혀, 멀쩡한 렌더가 검은 테를
+  //    가진 것처럼 측정된다(2026-08-30 t07 실측 40.4 → 실제로는 결함 없음).
+  const q=[].concat(placed.quad||[], placed.hitQuad||[]);
+  const xs=q.map(p=>p[0]), ys=q.map(p=>p[1]);
+  const px=Math.min(...xs), py=Math.min(...ys);
+  const pw=Math.max(...xs)-px, ph=Math.max(...ys)-py;
+  // 작품 사각형은 **앞면 quad** 기준으로 환산한다 — 실루엣(뒷면 포함)으로 나누면
+  // 두께가 있는 조각에서 배율이 틀어져 비율이 어긋난 것처럼 측정된다.
+  const f=placed.hitQuad||placed.quad;
+  const fx=f.map(p=>p[0]), fy=f.map(p=>p[1]);
+  const ox=Math.min(...fx), oy=Math.min(...fy);
+  const k=(Math.max(...fx)-ox)/Math.max(1,framed.width);
+  const ky=(Math.max(...fy)-oy)/Math.max(1,framed.height);
+  const g=lastFrameLayout;                                 // 액자 안에서 작품이 앉은 자리
+  const S=ss>0?ss:1, sc=(r)=>({x:r.x/S,y:r.y/S,w:r.w/S,h:r.h/S});
+  return {
+    // ⚠️ 전부 **출력 좌표**다 — 합성은 SS 배에서 했지만 회귀 하니스는 저장된 PNG 를 잰다
+    ss:S,
+    piece:sc({x:px,y:py,w:pw,h:ph}),
+    // ⚠️ 살 폭의 좌우·상하 대칭은 **앞면**으로 재야 한다. 실루엣(piece)은 두께가 있는
+    //    조각에서 뒷면까지 포함하므로, 그걸로 재면 캔버스랩이 늘 '비뚤어진' 것으로 나온다.
+    front:sc({x:ox,y:oy,w:Math.max(...fx)-ox,h:Math.max(...fy)-oy}),
+    art:sc(g? {x:ox+g.x*k, y:oy+g.y*ky, w:g.w*k, h:g.h*ky} : {x:ox,y:oy,w:pw,h:ph}),
+    railPx:(g? g.rail*k:0)/S, matPx:(g? g.mat*k:0)/S,
+    framedWH:[framed.width,framed.height], srcWH:[state.img.width,state.img.height],
+  };
+}
+
+// ============================================================
+//  개발자 디버그 훅 — 마스크·그림자 레이어 추출 (?debug=1 에서만 노출)
+// ============================================================
+// 브리핑 요구: "outer frame / inner opening / bevel / artwork / contact shadow /
+// cast shadow 를 시각화할 수 있는 debug output". 화면 동작에는 아무 영향이 없고,
+// 마스크는 **렌더와 같은 quad·같은 워프**를 통과하므로 그림과 정확히 겹친다.
+//   window.__artlookDebug({wallCalm:0, frameArea:0.21})  → 옵션을 덮어써 BEFORE 도 뽑는다
+let _dbg=null;
+function installDebugHook(){
+  if(!/[?&]debug=1/.test(location.search)) return;
+  window.__artlookDebug=function(override){
+    _dbg={ override: override||{}, out:null };
+    try{ render(); }finally{ const r=_dbg; _dbg=null; render(); return r.out; }
+  };
+}
+
 function compose(){
   if(!state.img) return null;
+  // 액자를 **그 장면의 광원**으로 비춘다. 사진 액자는 스튜디오 확산광으로 찍혀 있어
+  // 방향을 안 주면 위살·아래살이 같은 밝기가 되고, 그러면 인쇄한 띠로 보인다.
+  state.lightDir = (state.mode==='scene' && SCENES[state.sceneIdx] && SCENES[state.sceneIdx].lightDir)
+    || [-1,-1];
   const framed=buildFramed(state.img);
-  let {W,H}=targetDims(state.ratio,framed);
+  // 장면 모드는 배경 사진의 원본 해상도를 상한으로 삼는다(위 targetDims 주석 참고).
+  // ⚠️ **원본 크기 그대로 뽑으면 카메라를 당길 여지가 사라진다** (2026-08-30 실측).
+  //    자동 프레이밍은 `zoom × (출력/원본) ≤ 1.15` 안에서만 확대할 수 있는데, 출력을
+  //    원본과 같게 두면 그 비가 1 이라 **확대 한도가 1.15배**뿐이었다. 그래서 액자가
+  //    화면의 16% 에서 더 커지지 못했다(FrameIt Pro 는 44%).
+  //    출력을 원본의 1/1.6 로 잡으면 같은 화질 보증(1.15배 이내) 아래서 1.84배까지 당긴다.
+  //    SNS 홍보 이미지라 1080~1650px 이면 충분하다.
+  const sceneNow = state.mode==='scene' ? SCENES[state.sceneIdx] : null;
+  const longSide = (sceneNow && sceneNow.loaded)
+    ? Math.min(LONG, Math.max(SCENE_MIN_LONG,
+        Math.round(Math.max(sceneNow.img.naturalWidth, sceneNow.img.naturalHeight) / SCENE_HEADROOM)))
+    : LONG;
+  const {W:OW,H:OH}=targetDims(state.ratio,longSide);
   const out=document.getElementById('preview');
-  out.width=W; out.height=H;
-  const ctx=out.getContext('2d');
+  out.width=OW; out.height=OH;
+  // 합성은 여기서 — 출력보다 크게 잡고 맨 마지막에 한 번만 줄인다(SUPERSAMPLE 주석 참고)
+  const SS=Math.max(1, Math.min(SUPERSAMPLE, STAGE_MAX/Math.max(OW,OH)));
+  const W=Math.round(OW*SS), H=Math.round(OH*SS);
+  const ctx=stageCanvas(W,H).getContext('2d');
   ctx.clearRect(0,0,W,H);
+  // 최종 축소는 **한 번**. 여기가 유일한 리샘플 지점이다.
+  const finish=()=>{
+    const p=out.getContext('2d');
+    p.imageSmoothingEnabled=true; p.imageSmoothingQuality='high';
+    p.clearRect(0,0,OW,OH);
+    p.drawImage(_stage,0,0,W,H,0,0,OW,OH);
+    return out;
+  };
+  const toOut=(r)=>r&&{x:r.x/SS,y:r.y/SS,fw:r.fw/SS,fh:r.fh/SS};
+
+  // ── 장면(프리미엄) — 실사 공간에 원근을 맞춰 끼운다 (scene.js) ──────────────
+  // 예전 방식과 근본적으로 다른 점: 액자를 그리지 않고 **사진에 있는 액자 구멍**에
+  // 원본을 워프해 넣고, 벽 명암·구운 그림자·전경 가림을 덮는다.
+  if(state.mode==='scene'){
+    const sc=SCENES[state.sceneIdx];
+    if(!sc || !sc.loaded){
+      ctx.fillStyle='#eceae4'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='#9a958b'; ctx.font=`${Math.round(W*.03)}px sans-serif`; ctx.textAlign='center';
+      ctx.fillText('장면 로딩중…', W/2, H/2);
+      return finish();
+    }
+    // ⚠️ **액자째로 장면 엔진에 통과시킨다.**
+    // 예전엔 액자를 다 그린 뒤 벽 위에 그냥 얹었다. 그러면 액자는 늘 좌상단 고정광으로
+    // 칠해진 채라 어둡고 따뜻한 방에서 **혼자 노랗게 떠서 스티커처럼 보였다**(실측 비교).
+    // 판(insert)에 액자를 포함시키면 액자도 벽 명암·방 색·그레인·원근을 함께 받는다.
+    // 사진에 이미 액자가 있는 장면(opening)에는 우리 액자를 겹치지 않는다.
+    const useFramed = !!sc.frameless;
+    const piece = useFramed ? framed : state.img;
+    // ⚠️ **액자에는 3D 옆면을 만들지 않는다.** 액자는 거의 정면으로 보이고 측면은 솔질한
+    //    나무 한 줄이라, 가장자리 픽셀을 문질러 옆면을 만들면 **액자 옆에 그림이 번져 나온다**
+    //    (2026-08-30 신고, 경쟁사도 액자는 정면 + 그림자만 쓴다).
+    //    두께감은 액자 자신의 단면 명암과 그림자가 만든다.
+    //    캔버스 랩(액자 없음)만 옆면이 실제로 보이므로 그때만 만든다.
+    const isCanvasWrap = (FRAMES[state.frameIdx]||{}).kind==='canvas';
+    // 실치수는 '작품' 기준인데 판은 액자를 포함하므로, 액자 테두리만큼 키워 환산한다
+    let cm = artCmOf(selectedWork);
+    if(cm && useFramed && state.img.width && state.img.height){
+      cm = [cm[0]*framed.width/state.img.width, cm[1]*framed.height/state.img.height];
+    }
+    const placed=ArtLookScene.composeScene(ctx,W,H,sc,piece,{
+      artCm: cm,                             // 작품 크기를 알면 벽에서 차지하는 크기에 반영된다
+      scale: sc.adj ? sc.adj.s : 1,
+      dx: sc.adj ? sc.adj.dx : 0,
+      dy: sc.adj ? sc.adj.dy : 0,
+      // 액자를 통과시킬 땐 매트·캔버스결을 다시 입히지 않는다 — 액자가 이미 갖고 있다
+      mat: useFramed ? 0 : undefined,
+      canvasTexture: !useFramed,
+      // 판 가장자리 폐색은 **사진에 액자 구멍이 있는 장면에서만**. 판이 액자까지 포함한
+      // 조각일 때 걸면 액자 바깥 테두리가 어두워져 잘라 붙인 티가 난다.
+      innerShadow: sc.opening ? undefined : 0,
+      depth: isCanvasWrap ? undefined : 0,     // 액자는 옆면 없이 정면 + 그림자
+      // ⚠️ **확대 한도는 '최종 출력' 기준이어야 한다.** 합성이 SS 배 크기라 그대로 두면
+      //    한도가 SS 배만큼 빡빡해져 액자가 다시 작아진다. SS 를 곱해 최종 배율을 고정한다
+      //    (zoom × 합성W/원본 ≤ 1.15·SS  ⇔  zoom × 출력W/원본 ≤ 1.15).
+      maxSrcScale: 1.15*SS,
+      // 그레인은 합성 픽셀 단위 잡음이라 축소하면 그만큼 옅어진다 — SS 를 곱해 상쇄한다
+      grainScale: SS,
+      debug: !!_dbg,
+      maskPlate: _dbg ? buildMaskPlate(framed) : null,
+      ...(_dbg ? _dbg.override : null),
+    });
+    lastArt=null;
+    let stageArt=null;
+    if(placed && placed.quad){
+      // 드래그 히트테스트는 **눈에 보이는 앞면** 기준(두께만큼 어긋나면 손이 헛간다)
+      const hq=placed.hitQuad||placed.quad;
+      const xs=hq.map(p=>p[0]), ys=hq.map(p=>p[1]);
+      // 조명은 **합성 좌표**에서 걸어야 한다(출력 좌표로 주면 SS 배만큼 빗나간다)
+      stageArt={x:Math.min(...xs),y:Math.min(...ys),
+        fw:Math.max(...xs)-Math.min(...xs),fh:Math.max(...ys)-Math.min(...ys)};
+      // ⚠️ 합성은 SS 배 크기에서 했으므로 **출력 좌표로 되돌려** 넘긴다 —
+      //    안 그러면 드래그 판정이 SS 배만큼 어긋나 손이 헛간다.
+      lastArt=toOut({x:Math.min(...xs),y:Math.min(...ys),fw:Math.max(...xs)-Math.min(...xs),fh:Math.max(...ys)-Math.min(...ys)});
+    }
+    lastFitNote = placed ? placed.fitNote : null;
+    lastRegionPx = placed && placed.regionPx
+      ? {w:placed.regionPx.w/SS, h:placed.regionPx.h/SS} : null;
+    // 계측 훅 — 화질 회귀 하니스(scratchpad/vt)가 **조각/작품의 정확한 사각형**을 읽는다.
+    // 목업에서 다시 검출하면 그림자·벽무늬 때문에 십수 px 씩 어긋나 측정이 못 쓰게 된다.
+    // 그리기에는 아무 영향이 없다.
+    window.__artlook = placed ? artlookProbe(placed, framed, SS) : null;
+    // 조명 — **합성이 다 끝난 뒤 화면 전체에.** 조각만 따로 밝히면 그 경계가 마스크 테가 된다.
+    // 방향은 이 장면의 측정된 광원(`scenes.json` lightDir), 색은 이 사진의 밝은 쪽 색.
+    applyStudioLight(ctx,W,H,state.light,stageArt,state.lightDir,sceneLightColor(sc));
+    // 조명·비네트 **변조만** 따로 뽑는다 — 중간 회색 판에 같은 코드를 걸면
+    // '무엇이 어디서 얼마나 어두워지는가'가 그대로 그림이 된다(브리핑 9번 lighting modulation).
+    let lightLayer=null;
+    if(_dbg){
+      lightLayer=document.createElement('canvas'); lightLayer.width=W; lightLayer.height=H;
+      const lx=lightLayer.getContext('2d');
+      lx.fillStyle='#808080'; lx.fillRect(0,0,W,H);
+      applyStudioLight(lx,W,H,state.light,stageArt,state.lightDir,sceneLightColor(sc));
+      sceneVignette(lx,W,H);
+    }
+    drawWatermark(ctx,W,H);
+    sceneVignette(ctx,W,H);
+    const done=finish();
+    if(_dbg && placed && placed.debug){
+      const png=(c)=>c? c.toDataURL('image/png') : null;
+      _dbg.out={
+        final: done.toDataURL('image/png'),
+        masks: png(placed.debug.masks),
+        shadow: Object.fromEntries(Object.entries(placed.debug.shadow||{}).map(([k,v])=>[k,png(v)])),
+        light: png(lightLayer),
+        maskColors: MASK_COLORS,
+        // 끄고 켜 볼 수 있는 것들 — `__artlookDebug({shadow:0})` 처럼 넘긴다.
+        // 어떤 효과가 '합성 느낌'을 만드는지 하나씩 빼 보라고 두는 목록이다.
+        toggles: ['shadow','cornerAO','wallCalm','wallAmt','innerShadow','glass',
+                  'mat','depth','autoFrame','frameArea','minArea','grainScale','supersample'],
+        geom: window.__artlook, ss:SS, canvas:[OW,OH],
+      };
+    }
+    return done;
+  }
 
   if(state.mode==='wall'){
     const wall=WALLS[state.wallIdx];
@@ -751,7 +1885,7 @@ function compose(){
       ctx.fillStyle='#eceae4'; ctx.fillRect(0,0,W,H);
       ctx.fillStyle='#9a958b'; ctx.font=`${Math.round(W*.03)}px sans-serif`; ctx.textAlign='center';
       ctx.fillText('벽 사진 로딩중…', W/2, H/2);
-      return out;
+      return finish();
     }
     const iw=wall.img.naturalWidth, ih=wall.img.naturalHeight;
     // 액자 중심 cover-크롭: 어떤 출력 비율에서도 배치 영역이 화면에 들어오게
@@ -770,7 +1904,7 @@ function compose(){
     const fw=framed.width*s, fh=framed.height*s;
     let x=bx+(bw-fw)/2 + adj.dx*W;
     let y=by+(bh-fh)/2 + adj.dy*H;
-    lastArt={x,y,fw,fh}; // 드래그 히트테스트용
+    lastArt=toOut({x,y,fw,fh}); // 드래그 히트테스트용 (출력 좌표)
     // 그림자 방향: 배치 영역 좌/우 벽 밝기 차이로 광원 추정
     const sLm=lumOf(sampleAvg(wall.img, a.cx-a.w*1.1, a.cy-a.h/2, a.w*.45, a.h));
     const sRm=lumOf(sampleAvg(wall.img, a.cx+a.w*.65, a.cy-a.h/2, a.w*.45, a.h));
@@ -800,8 +1934,9 @@ function compose(){
       ctx.fillStyle=`rgb(${avg.r},${avg.g},${avg.b})`;
       ctx.fillRect(x,y,fw,fh); ctx.restore();
     }
-    // 조명 효과 (기본 꺼짐 — frameit식 균일광. 켜면 라이팅맵 9-slice)
-    drawLightMap(ctx,W,H,{x,y,fw,fh});
+    // 조명 (기본 꺼짐). 폴백 경로는 벽 사진의 광원 방향을 모르므로 좌상단으로 둔다.
+    applyStudioLight(ctx,W,H,state.light,{x,y,fw,fh},[-1,-1],
+      sampleAvg(wall.img,.02,.02,.3,.3)||LIGHT_FALLBACK);
     // 아주 옅은 비네트
     const vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.55,W/2,H/2,Math.max(W,H)*.82);
     vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.04)');
@@ -814,7 +1949,7 @@ function compose(){
       bg2.addColorStop(0,'rgba(255,255,255,.05)'); bg2.addColorStop(1,'rgba(0,0,0,.04)');
       ctx.fillStyle=bg2; ctx.fillRect(0,0,W,H);
     }
-    const pad=transparent? 0 : (state.ratio==='original'? .045 : .08);
+    const pad=transparent? 0 : .08;
     const s=Math.min(W*(1-2*pad)/framed.width, H*(1-2*pad)/framed.height, 2);
     const fw=framed.width*s, fh=framed.height*s;
     const x=(W-fw)/2, y=(H-fh)/2;
@@ -827,10 +1962,10 @@ function compose(){
       ctx.restore();
     }
     ctx.drawImage(framed,x,y,fw,fh);
-    if(!transparent) drawLightMap(ctx,W,H,{x,y,fw,fh});
+    if(!transparent) applyStudioLight(ctx,W,H,state.light,{x,y,fw,fh},[-1,-1],LIGHT_FALLBACK);
   }
   drawWatermark(ctx,W,H);
-  return out;
+  return finish();
 }
 
 // ============================================================
@@ -841,6 +1976,22 @@ function compose(){
 //
 // 색: Navbar 로고와 같은 'Art'(흰) + 'Link'(#dc3545). 벽 배경이 화이트큐브부터
 // 호텔라운지까지 밝기가 제각각이라 그림자로 대비를 확보한다(배경을 덮지 않는다).
+// 렌즈 비네팅 — **화면 전체**에 아주 완만하게. 실제 사진에는 반드시 있고, 없으면
+// 조각이 균일하게 칠해진 판으로 보인다(골든 살 길이방향 변화 8.5~104%, 우리는 3% 였다).
+// ⚠️ 조각에만 걸면 경계에서 벽과 어긋나 검은 테가 된다 — 반드시 합성이 끝난 뒤 전체에.
+// ⚠️ 세게 주면 '드라마틱 조명'이 되어 오히려 가짜다. 코너에서 15% 안쪽으로 유지한다.
+const VIGNETTE=0.12;
+function sceneVignette(ctx,W,H){
+  if(VIGNETTE<=0) return;
+  const cx=W/2, cy=H/2, r=Math.hypot(W,H)/2;
+  const g=ctx.createRadialGradient(cx,cy,r*0.30,cx,cy,r);
+  g.addColorStop(0,'rgba(0,0,0,0)');
+  g.addColorStop(0.62,`rgba(0,0,0,${(VIGNETTE*0.28).toFixed(3)})`);
+  g.addColorStop(1,`rgba(0,0,0,${VIGNETTE})`);
+  ctx.save(); ctx.globalCompositeOperation='multiply';
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.restore();
+}
+
 function drawWatermark(ctx,W,H){
   const LONGSIDE=Math.max(W,H);
   const fs=Math.round(LONGSIDE*0.026);          // 글자 크기 — 긴 변의 2.6%
@@ -882,6 +2033,7 @@ function render(){
     document.getElementById('dl').disabled=true; return; }
   empty.style.display='none'; prev.style.display='block';
   compose();
+  updateSceneNote();
   document.getElementById('dl').disabled=false;
 }
 
@@ -913,23 +2065,32 @@ function dummyArt(w,h){ const c=document.createElement('canvas'); c.width=w; c.h
 
 // 프레임 칩
 const framesEl=document.getElementById('frames');
+function buildFrameChips(){
+framesEl.innerHTML='';
 FRAMES.forEach((f,i)=>{
-  const chip=document.createElement('div'); chip.className='chip'+(i===0?' active':'');
+  const chip=document.createElement('div'); chip.className='chip'+(i===state.frameIdx?' active':'');
   const cv=document.createElement('canvas'); cv.width=72; cv.height=88;
+  // 칩은 **그 스타일이 무엇인가**를 보여주는 자리다 — 매트가 정체성인 스타일에만 매트를 준다
+  // (현재 매트 설정을 반영하면 칩 18개가 전부 같은 모양이 되어 고를 단서가 사라진다).
   const framed=buildFramedCore(dummyArt(46,58), f,
-    { frame:.075, matte:.12, frameColor:'#46362a', matteColor:'#f2eee4', glass:false });
+    { frame:.075, matWidth: f.kind==='canvas' ? 0 : .06,
+      frameColor:'#46362a', matteColor:'#f2eee4', glass:false });
   const ctx=cv.getContext('2d');
   const s=Math.min(66/framed.width,82/framed.height);
   ctx.drawImage(framed,(72-framed.width*s)/2,(88-framed.height*s)/2,framed.width*s,framed.height*s);
   const span=document.createElement('span'); span.textContent=f.name;
   chip.title=f.name;   // 라벨이 한 줄로 잘리므로 전체 이름은 툴팁으로
   chip.appendChild(cv); chip.appendChild(span);
-  chip.onclick=()=>{ state.frameIdx=i; [...framesEl.children].forEach(c=>c.classList.remove('active'));
+  chip.onclick=()=>{ state.frameIdx=i; updateMatRow(); [...framesEl.children].forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); render(); };
   framesEl.appendChild(chip);
 });
+}
+buildFrameChips();
 
 // 벽 칩 (실사 썸네일)
+updateMatRow();   // 처음 그릴 때도 액자 종류에 맞춰 매트 줄을 정리한다
+
 const wallsEl=document.getElementById('walls');
 WALLS.forEach((w,i)=>{
   const chip=document.createElement('div'); chip.className='chip'+(i===0?' active':'');
@@ -943,10 +2104,152 @@ WALLS.forEach((w,i)=>{
   wallsEl.appendChild(chip);
 });
 
+// ============================================================
+//  장면(프리미엄) — scenes/scenes.json
+// ============================================================
+// 목록이 비었거나 WebGL2 가 없으면 토글을 아예 안 띄운다. 빈 탭을 보여주면
+// 고장난 것처럼 보이고, 폴백으로 기본 벽이 그대로 있으니 잃는 게 없다.
+let SCENES=[];
+const scenesEl=document.getElementById('scenes');
+const bgModeRow=document.getElementById('bgModeRow');
+
+function buildSceneChips(){
+  scenesEl.innerHTML='';
+  SCENES.forEach((s,i)=>{
+    const chip=document.createElement('div'); chip.className='chip'+(i===state.sceneIdx?' active':'');
+    const im=document.createElement('img'); im.src=s.src; im.loading='lazy';
+    im.onerror=()=>{ im.style.background='#ddd'; };
+    const span=document.createElement('span'); span.textContent=s.name;
+    chip.title=s.name;
+    chip.appendChild(im); chip.appendChild(span);
+    chip.onclick=()=>{ state.sceneIdx=i; [...scenesEl.children].forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active'); render(); };
+    scenesEl.appendChild(chip);
+  });
+}
+
+// ⚠️ **기본 벽과 장면을 나누지 말 것** (2026-08-30). 예전엔 [기본 벽]이 옛 평면 합성
+// 경로를 그대로 쓰고 [장면]만 새 엔진을 타서, 실제로 대부분이 쓰는 기본 벽이 훨씬 나빴다
+// ("기본벽에서 입체감이 존나 부족하다" 신고). 같은 벽 사진을 두 경로로 그릴 이유가 없다.
+// 이제 **장면 목록이 벽 목록을 대체**하고, 옛 경로는 WebGL2 가 없을 때만 폴백으로 남는다.
+if(window.ArtLookScene && ArtLookScene.supported()){
+  ArtLookScene.loadScenes('scenes/scenes.json',(one,all)=>{
+    if(all){                                   // 목록 도착
+      SCENES=all.filter(s=>s && s.src && (s.region||s.opening));
+      SCENES.forEach(s=>{ s.adj={dx:0,dy:0,s:1}; });
+      if(SCENES.length){
+        state.mode='scene';
+        buildSceneChips();
+        document.getElementById('walls').style.display='none';
+        scenesEl.style.display='';
+        bgModeRow.style.display='none';        // 고를 이유가 없어졌다
+        render();
+      }
+      return;
+    }
+    if(one && state.mode==='scene') render();  // 사진이 늦게 도착하면 다시 그린다
+  });
+}
+
+document.querySelectorAll('#bgMode button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#bgMode button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    state.mode = b.dataset.bg==='scene' ? 'scene' : 'wall';
+    const isScene = state.mode==='scene';
+    document.getElementById('walls').style.display = isScene? 'none':'';
+    scenesEl.style.display = isScene? '':'none';
+    document.getElementById('wallHint').style.display = isScene? 'none':'';
+    render();
+  };
+});
+
+// 크기 안내 — 경쟁 앱 리뷰의 최다 불만이 "크기를 바꿔도 숫자를 안 보여준다"였다.
+// 크기 모드는 **실제 크기 하나뿐**이다(2026-08-31). 고를 게 없으므로 '실제 크기입니다'
+// 류의 안내도 두지 않는다 — 아무 선택지도 없는데 상태를 설명하면 잔소리다.
+// 남기는 건 둘: ①크기를 아직 입력 안 했을 때의 안내 ②장면 자리보다 작품이 커서 줄여
+// 걸었을 때의 경고(다른 장면을 고르라는 실행 가능한 정보라 남긴다).
+function updateSceneNote(){
+  const el=document.getElementById('sceneNote');
+  if(state.mode!=='scene'){ el.style.display='none'; return; }
+  const cm=artCmOf(selectedWork);
+  if(!cm){
+    el.style.display='block';
+    el.innerHTML='💡 작품에 <b>크기</b>가 입력돼 있으면 벽에서 차지하는 크기에 반영됩니다. (포트폴리오에서 가로×세로 입력)';
+  } else if(lastFitNote && lastFitNote.ok===false){
+    el.style.display='block';
+    el.innerHTML=`⚠️ <b>${cm[0]}×${cm[1]}cm</b> — 이 장면의 자리보다 커서 줄여 걸었습니다. 다른 장면을 골라 보세요.`;
+  } else if(lastFitNote && lastFitNote.enlarged>1.05){
+    // 실치수대로 걸면 안 보이는 소품 — 부풀린 사실을 **반드시** 알린다.
+    // (실측: 갤러리 살롱에서 12×12cm 는 화면의 0.2%, 짧은 변 40px 이었다)
+    el.style.display='block';
+    el.innerHTML=`💡 <b>${cm[0]}×${cm[1]}cm</b> — 실제 비율대로 걸면 너무 작아서 `
+      + `<b>${lastFitNote.enlarged.toFixed(1)}배</b> 크게 걸었습니다. `
+      + `실제 비율에 가깝게 보려면 벽 장면(화이트 브릭·베이지 스투코 등)을 골라 보세요.`;
+  } else {
+    el.style.display='none';
+  }
+}
+
+// ---- 매트(대지) ----
+const MAT_COLORS=['#f6f4ee','#ffffff','#efe7d8','#e4e0d6','#2b2b2b'];
+const matColorsEl=document.getElementById('matColors');
+MAT_COLORS.forEach((c,i)=>{
+  const b=document.createElement('div');
+  b.className='sw'+(i===0?' active':''); b.style.background=c; b.title=c;
+  b.onclick=()=>{ state.matteColor=c;
+    [...matColorsEl.children].forEach(x=>x.classList.remove('active')); b.classList.add('active');
+    render(); };
+  matColorsEl.appendChild(b);
+});
+document.querySelectorAll('#matSel button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#matSel button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    state.matWidth=parseFloat(b.dataset.mat)||0;
+    // 매트는 필수라 색 선택도 늘 열려 있다 (캔버스 랩만 updateMatRow 가 접는다)
+    render();
+  };
+});
+// 매트는 평면 액자에서만 의미가 있다 — 플로터·캔버스랩에서는 줄째로 감춘다
+// ⚠️ **줄째로 감추지 말 것.** 기본 액자가 플로터라 감췄더니 사용자가 매트 기능이
+// 있는지도 모르고 "매트 설정이 없다"고 했다(2026-08-30). 항상 보이되, 못 쓰는 조합에서는
+// **비활성 + 이유**를 적는다. Frame / Mat / Effect 세 축이 늘 같은 자리에 있어야 한다.
+// ⚠️ **캔버스 랩만 예외다.** 예전엔 플로터도 막아 뒀는데 막을 이유가 없었다(위 `matW` 주석).
+//    캔버스 랩은 액자가 아예 없어서 매트를 **물리적으로 잡아 줄 것이 없다** — 넣으면 벽에
+//    흰 종이가 혼자 떠 있는 그림이 된다. 이건 못 고치는 제약이라 이유를 적어 비활성으로 둔다.
+function updateMatRow(){
+  const k=(FRAMES[state.frameIdx]||{}).kind;
+  const on = k!=='canvas';
+  const row=document.getElementById('matRow'), hint=document.getElementById('matHint');
+  row.style.display='flex';
+  row.style.opacity = on ? '1' : '.42';
+  row.style.pointerEvents = on ? 'auto' : 'none';
+  hint.style.display = on ? 'none' : 'block';
+  document.getElementById('matColorRow').style.display = on ? 'flex':'none';
+}
+
 // 판매 작품 목록 (운영페이지에서 localStorage로 전달: [{url,title,artist,exhibition}])
 const worksEl=document.getElementById('works');
 let SOLD_WORKS=[];
 try{ SOLD_WORKS = JSON.parse(localStorage.getItem('artlook:works')||'[]'); }catch{ SOLD_WORKS=[]; }
+
+// 넘어온 작품이 없으면(주소로 직접 들어온 경우) **데모 작품**을 띄운다.
+// 예전엔 '불러온 작품이 없습니다' 한 줄만 남아 아무것도 못 해 보고 나갔다.
+// 데모 그림은 절차적으로 그린 것이라 개인정보가 아니고, 크기(sizeText)도 실제 호수 규격이라
+// 장면 모드의 '실제 치수대로 걸린다'를 바로 확인할 수 있다.
+// ⚠️ 절대경로(`/demo-art/…`)를 쓴다 — 이 페이지는 마이페이지 안 iframe 으로도 뜨고,
+//    시드 스크립트(backend/scripts/seed-demo-portfolio.ts)도 같은 파일을 가리킨다.
+const DEMO_WORKS=[
+  { url:'/demo-art/dawn-window.jpg',   title:'새벽의 창',   sizeText:'72.7 × 90.9 cm',   artist:'데모' },
+  { url:'/demo-art/long-summer.jpg',   title:'긴 여름',     sizeText:'162.1 × 130.3 cm', artist:'데모' },
+  { url:'/demo-art/square-garden.jpg', title:'사각의 정원', sizeText:'100 × 100 cm',     artist:'데모' },
+  { url:'/demo-art/horizon.jpg',       title:'수평선',      sizeText:'145.5 × 60.6 cm',  artist:'데모' },
+  { url:'/demo-art/small-room.jpg',    title:'작은 방',     sizeText:'24.2 × 33.4 cm',   artist:'데모' },
+  { url:'/demo-art/blue-wall.jpg',     title:'푸른 벽',     sizeText:'130.3 × 162.1 cm', artist:'데모' },
+];
+const IS_DEMO = !(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length);
+if(IS_DEMO) SOLD_WORKS = DEMO_WORKS.map(w=>({...w, kind:'portfolio'}));
 // 외부 도메인(R2) 이미지는 동일출처 프록시로 중계 → 캔버스 taint 방지(PNG 저장 가능).
 // 상대경로(로컬 /images, /uploads)는 이미 동일출처라 그대로 사용.
 // `immutable=1` — 프록시에 7일 캐시를 요청한다. 작품 주소는 `타임스탬프-난수.jpg`라 내용이 바뀌지 않고,
@@ -987,14 +2290,15 @@ function renderWorks(){
   document.getElementById('worksNext').disabled = worksPage>=pages-1;
 }
 
-if(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length){
-  document.getElementById('worksPrev').onclick=()=>{ worksPage--; renderWorks(); };
-  document.getElementById('worksNext').onclick=()=>{ worksPage++; renderWorks(); };
-  renderWorks();
-  selectedWork=SOLD_WORKS[0];
-  loadFromSrc(resolveSrc(SOLD_WORKS[0].url)); // 첫 작품 자동 로드
-} else {
-  document.getElementById('worksEmpty').style.display='block';
+document.getElementById('worksPrev').onclick=()=>{ worksPage--; renderWorks(); };
+document.getElementById('worksNext').onclick=()=>{ worksPage++; renderWorks(); };
+renderWorks();
+selectedWork=SOLD_WORKS[0];
+loadFromSrc(resolveSrc(SOLD_WORKS[0].url)); // 첫 작품 자동 로드
+if(IS_DEMO){
+  const e=document.getElementById('worksEmpty');
+  e.style.display='block';
+  e.innerHTML='둘러보기용 <b>데모 작품</b>입니다. 마이페이지 &gt; 포트폴리오의 [ArtLook] 또는 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]로 들어오면 내 작품이 뜹니다.';
 }
 
 // 다운로드 파일명: 작가_작품명_공모명_판매작.png (없는 항목은 생략)
@@ -1022,51 +2326,60 @@ RATIOS.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.na
 // (포트폴리오 PDF에서 표지 큰 글씨가 폴백 글꼴로 나갔던 것과 같은 함정)
 if(document.fonts && document.fonts.ready){ document.fonts.ready.then(()=>{ if(state.img) render(); }); }
 
-// 조명 효과 선택/강도
-document.getElementById('lightSel').querySelectorAll('button').forEach(b=>{
-  b.onclick=()=>{ state.effect=Number(b.dataset.eff);
-    document.querySelectorAll('#lightSel button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); render(); };
-});
+// 조명 강도 — 0 이 곧 '없음'이다(종류 선택은 없앴다)
 const lo=document.getElementById('lightOp'), lov=document.getElementById('lightOpv');
-lo.oninput=()=>{ state.effectOp=lo.value/100; lov.textContent=lo.value+'%'; render(); };
+lo.oninput=()=>{ state.light=lo.value/100; lov.textContent=lo.value+'%'; render(); };
 
 
 // (파일 첨부/드래그드롭은 제거됨 — 판매 작품 목록에서만 선택)
 
-// ---- 벽 모드: 액자 드래그 이동 / 휠 크기 / 더블클릭 리셋 ----
+// ---- 벽·장면 모드: 액자 드래그 이동 / 휠 크기 / 더블클릭 리셋 ----
 const pv=document.getElementById('preview');
 let dragging=null;
 function canvasPoint(e){
   const r=pv.getBoundingClientRect();
   return { x:(e.clientX-r.left)*pv.width/r.width, y:(e.clientY-r.top)*pv.height/r.height };
 }
+// 조절 대상 — 벽이면 그 벽, 장면이면 그 장면.
+// ⚠️ 사진에 액자가 박혀 있는 장면(opening)은 **움직일 수 없다** — 액자가 고정이므로
+//    작품만 옮기면 액자 밖으로 삐져나온다. 그때는 null 을 돌려 조작을 막는다.
+function adjTarget(){
+  if(state.mode==='wall') return WALLS[state.wallIdx].adj;
+  const s=SCENES[state.sceneIdx];
+  return (s && s.region) ? s.adj : null;
+}
+// 드래그 한 픽셀이 몇 '단위' 인지 — 벽은 캔버스 기준, 장면은 영역 기준이라 다르다
+function adjScale(){
+  if(state.mode==='wall') return {x:pv.width,y:pv.height};
+  const r=lastRegionPx;
+  return r && r.w>4 && r.h>4 ? {x:r.w,y:r.h} : {x:pv.width,y:pv.height};
+}
 pv.addEventListener('pointerdown',e=>{
-  if(state.mode!=='wall'||!state.img||!lastArt) return;
+  if(!state.img||!lastArt||!adjTarget()) return;
   const p=canvasPoint(e); const m=Math.max(20,lastArt.fw*.06);
   if(p.x<lastArt.x-m||p.x>lastArt.x+lastArt.fw+m||p.y<lastArt.y-m||p.y>lastArt.y+lastArt.fh+m) return;
-  const adj=WALLS[state.wallIdx].adj;
+  const adj=adjTarget();
   dragging={px:p.x,py:p.y,dx0:adj.dx,dy0:adj.dy};
   pv.setPointerCapture(e.pointerId); e.preventDefault();
 });
 pv.addEventListener('pointermove',e=>{
   if(!dragging) return;
-  const p=canvasPoint(e); const adj=WALLS[state.wallIdx].adj;
-  adj.dx=dragging.dx0+(p.x-dragging.px)/pv.width;
-  adj.dy=dragging.dy0+(p.y-dragging.py)/pv.height;
+  const adj=adjTarget(); if(!adj) return;
+  const p=canvasPoint(e), k=adjScale();
+  adj.dx=dragging.dx0+(p.x-dragging.px)/k.x;
+  adj.dy=dragging.dy0+(p.y-dragging.py)/k.y;
   render();
 });
 ['pointerup','pointercancel'].forEach(ev=>pv.addEventListener(ev,()=>{ dragging=null; }));
 pv.addEventListener('wheel',e=>{
-  if(state.mode!=='wall'||!state.img) return;
+  const adj=adjTarget(); if(!state.img||!adj) return;
   e.preventDefault();
-  const adj=WALLS[state.wallIdx].adj;
   adj.s=Math.max(.35, Math.min(2.5, adj.s*(e.deltaY<0?1.06:0.94)));
   render();
 },{passive:false});
 pv.addEventListener('dblclick',()=>{
-  if(state.mode!=='wall') return;
-  WALLS[state.wallIdx].adj={dx:0,dy:0,s:1}; render();
+  const adj=adjTarget(); if(!adj) return;
+  adj.dx=0; adj.dy=0; adj.s=1; render();
 });
 
 // 다운로드
@@ -1088,6 +2401,7 @@ document.getElementById('back').onclick=()=>{
   setTimeout(()=>{ if(!window.closed) alert('이 탭을 닫고 ArtLink 화면으로 돌아가 주세요.'); }, 300);
 };
 
+installDebugHook();
 render();
 </script>
 </body>

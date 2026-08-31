@@ -1,0 +1,67 @@
+{
+  "black": {
+    "file": "black.png",
+    "inner": [
+      97,
+      97,
+      891,
+      889
+    ],
+    "w": 989,
+    "h": 987,
+    "rail": 97,
+    "railPct": 9.8
+  },
+  "gold": {
+    "file": "gold.png",
+    "inner": [
+      93,
+      93,
+      889,
+      889
+    ],
+    "w": 983,
+    "h": 983,
+    "rail": 93,
+    "railPct": 9.5
+  },
+  "oak": {
+    "file": "oak.png",
+    "inner": [
+      90,
+      90,
+      879,
+      874
+    ],
+    "w": 970,
+    "h": 965,
+    "rail": 90,
+    "railPct": 9.3
+  },
+  "white": {
+    "file": "white.png",
+    "inner": [
+      88,
+      88,
+      885,
+      875
+    ],
+    "w": 974,
+    "h": 964,
+    "rail": 88,
+    "railPct": 9.0
+  },
+  "walnut": {
+    "file": "walnut.png",
+    "inner": [
+      93,
+      93,
+      873,
+      876
+    ],
+    "w": 967,
+    "h": 970,
+    "rail": 93,
+    "railPct": 9.6
+  }
+}

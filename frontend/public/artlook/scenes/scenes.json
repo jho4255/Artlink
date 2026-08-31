@@ -1,0 +1,675 @@
+{
+ "version": 1,
+ "_readme": [
+  "ArtLook 장면 템플릿 목록. scene.js 가 읽는다.",
+  "",
+  "네 점은 좌상→우상→우하→좌하, 사진 비율좌표(0~1). 정면 사진이면 그냥 직사각형이다",
+  "(예: [[0.2,0.12],[0.78,0.12],[0.78,0.62],[0.2,0.62]]). 비스듬한 벽이면 네 점이 각각 다르고,",
+  "엔진이 원근으로 맞춰 넣는다.",
+  "",
+  "자리 잡는 방법은 둘 중 하나만 쓴다.",
+  "  region  : 벽의 '걸 수 있는 영역'. 작품 비율 그대로 그 안에 놓는다(액자 없이 캔버스만).",
+  "            regionAspect = 그 영역의 실제 가로/세로. 정면 사진이면 픽셀 비율과 같다.",
+  "            regionCm 을 주면 작품 실치수 기준으로 크기가 정해진다(정직한 스케일).",
+  "  opening : 사진에 이미 있는 '액자 구멍'. 작품이 그 안에 매트와 함께 앉는다.",
+  "            openingCm 을 주면 작품 실치수에 맞춰 매트 폭이 자동으로 정해진다.",
+  "            액자가 고정이므로 화면에서 드래그·휠이 잠긴다.",
+  "",
+  "선택 레이어(있으면 훨씬 사실적이다 — 장면 사진을 만들 때 함께 뽑을 것):",
+  "  occlusion  : 액자가 작품에 드리우는 그림자. multiply 로 덮는다.",
+  "  reflection : 유리 반사. screen 으로 덮는다.",
+  "  foreground : 화분·소파처럼 작품 '앞'을 가리는 것. 알파 PNG. 깊이감이 즉시 생긴다.",
+  "",
+  "lightDir 는 광원 방향 [x,y] — [-1,-1] 이면 좌상단에서 온다. 그림자·베벨이 이걸 따른다.",
+  "wallAmt 는 벽 명암이 작품을 통과하는 세기(합성티 제거의 핵심). toneAmt 는 방 색으로 물들이기.",
+  "",
+  "⚠️ 장면 사진의 해상도가 곧 출력 해상도 상한이다(원본 이상으로 늘리지 않는다).",
+  "   1080 이상이면 SNS 에 충분하고, 1600~2048 이면 넉넉하다."
+ ],
+ "scenes": [
+  {
+   "id": "gallery-salon",
+   "name": "갤러리 살롱",
+   "src": "walls/wall15-gallery-salon.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.319,
+     0.127
+    ],
+    [
+     0.761,
+     0.127
+    ],
+    [
+     0.761,
+     0.673
+    ],
+    [
+     0.319,
+     0.673
+    ]
+   ],
+   "regionAspect": 0.8095,
+   "regionCm": [
+    155,
+    191
+   ],
+   "focus": [
+    0.54,
+    0.4
+   ],
+   "lightDir": [
+    0.78,
+    -0.63
+   ],
+   "shadow": 1.08,
+   "wallAmt": 0.34,
+   "toneAmt": 0.14,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.52
+  },
+  {
+   "id": "boutique",
+   "name": "부티크 갤러리",
+   "src": "walls/wall16-boutique-gallery.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.253,
+     0.121
+    ],
+    [
+     0.747,
+     0.121
+    ],
+    [
+     0.747,
+     0.719
+    ],
+    [
+     0.253,
+     0.719
+    ]
+   ],
+   "regionAspect": 0.8261,
+   "regionCm": [
+    168,
+    203
+   ],
+   "focus": [
+    0.5,
+    0.42
+   ],
+   "lightDir": [
+    0.94,
+    -0.33
+   ],
+   "shadow": 0.95,
+   "wallAmt": 0.32,
+   "toneAmt": 0.11,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.26
+  },
+  {
+   "id": "collector-salon",
+   "name": "컬렉터 살롱",
+   "src": "walls/wall17-collector-salon.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.299,
+     0.12
+    ],
+    [
+     0.741,
+     0.12
+    ],
+    [
+     0.741,
+     0.64
+    ],
+    [
+     0.299,
+     0.64
+    ]
+   ],
+   "regionAspect": 0.85,
+   "regionCm": [
+    150,
+    177
+   ],
+   "focus": [
+    0.52,
+    0.38
+   ],
+   "lightDir": [
+    -0.9,
+    -0.44
+   ],
+   "shadow": 1.2,
+   "wallAmt": 0.44,
+   "toneAmt": 0.18,
+   "exposure": 0.96,
+   "depth": 0.03,
+   "wallCalm": 0.2
+  },
+  {
+   "id": "gallery-living",
+   "name": "갤러리 리빙",
+   "src": "walls/wall11-gallery-living.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.329,
+     0.137
+    ],
+    [
+     0.771,
+     0.137
+    ],
+    [
+     0.771,
+     0.683
+    ],
+    [
+     0.329,
+     0.683
+    ]
+   ],
+   "regionAspect": 0.8095,
+   "regionCm": [
+    155,
+    191
+   ],
+   "focus": [
+    0.55,
+    0.41
+   ],
+   "lightDir": [
+    0.94,
+    -0.33
+   ],
+   "shadow": 1.05,
+   "wallAmt": 0.36,
+   "toneAmt": 0.14,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.15
+  },
+  {
+   "id": "white-cube",
+   "name": "화이트 큐브",
+   "src": "walls/wall12-white-cube.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.247,
+     0.115
+    ],
+    [
+     0.793,
+     0.115
+    ],
+    [
+     0.793,
+     0.765
+    ],
+    [
+     0.247,
+     0.765
+    ]
+   ],
+   "regionAspect": 0.84,
+   "regionCm": [
+    180,
+    214
+   ],
+   "focus": [
+    0.52,
+    0.44
+   ],
+   "lightDir": [
+    0.84,
+    -0.54
+   ],
+   "shadow": 0.85,
+   "wallAmt": 0.28,
+   "toneAmt": 0.09,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.17
+  },
+  {
+   "id": "collector-home",
+   "name": "컬렉터 홈",
+   "src": "walls/wall14-collector-home.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.2,
+     0.12
+    ],
+    [
+     0.78,
+     0.12
+    ],
+    [
+     0.78,
+     0.62
+    ],
+    [
+     0.2,
+     0.62
+    ]
+   ],
+   "regionAspect": 1.16,
+   "regionCm": [
+    193,
+    166
+   ],
+   "focus": [
+    0.49,
+    0.37
+   ],
+   "lightDir": [
+    -0.86,
+    -0.52
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.38,
+   "toneAmt": 0.11,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.38
+  },
+  {
+   "id": "hotel-lounge",
+   "name": "호텔 라운지",
+   "src": "walls/wall13-hotel-lounge.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.18,
+     0.14
+    ],
+    [
+     0.78,
+     0.14
+    ],
+    [
+     0.78,
+     0.64
+    ],
+    [
+     0.18,
+     0.64
+    ]
+   ],
+   "regionAspect": 1.2,
+   "regionCm": [
+    225,
+    187
+   ],
+   "focus": [
+    0.48,
+    0.39
+   ],
+   "lightDir": [
+    0.77,
+    -0.64
+   ],
+   "shadow": 1.15,
+   "wallAmt": 0.42,
+   "toneAmt": 0.14,
+   "exposure": 0.98,
+   "depth": 0.03,
+   "wallCalm": 0.33
+  },
+  {
+   "id": "concrete",
+   "name": "콘크리트",
+   "src": "walls/wall01.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.39
+  },
+  {
+   "id": "travertine",
+   "name": "트래버틴",
+   "src": "walls/wall03.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    0.35,
+    -0.94
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.73
+  },
+  {
+   "id": "cream-stone",
+   "name": "크림 스톤",
+   "src": "walls/wall04.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.67
+  },
+  {
+   "id": "white-brick",
+   "name": "화이트 브릭",
+   "src": "walls/wall05.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    163,
+    154
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03
+  },
+  {
+   "id": "beige-plaster",
+   "name": "베이지 플라스터",
+   "src": "walls/wall06.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.79
+  },
+  {
+   "id": "warm-concrete",
+   "name": "웜 콘크리트",
+   "src": "walls/wall07.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    0.85,
+    -0.53
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.67
+  },
+  {
+   "id": "taupe-plaster",
+   "name": "토프 플라스터",
+   "src": "walls/wall08.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.72
+  },
+  {
+   "id": "sand",
+   "name": "샌드",
+   "src": "walls/wall09.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -1,
+    -1
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.66
+  }
+ ]
+}

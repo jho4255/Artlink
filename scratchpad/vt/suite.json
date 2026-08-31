@@ -1,0 +1,85 @@
+{
+ "_readme": "골든 회귀 스위트. 초상/가로/정사각, 밝은/어두운, 단순/복잡, 액자 종류·두께·재질, 플로터/리베이트, 캔버스랩을 고루 덮는다. work 는 데모 작품 파일명, scene 은 scenes.json 의 id.",
+ "cases": [
+  {
+   "id": "t01",
+   "work": "water-memory.jpg",
+   "frame": "오크",
+   "mat": 0,
+   "scene": "white-brick",
+   "why": "기준선. FrameIt 05/08 과 같은 흰 벽돌벽 · 세로 작품"
+  },
+  {
+   "id": "t02",
+   "work": "quiet-afternoon.jpg",
+   "frame": "화이트",
+   "mat": 0.05,
+   "scene": "taupe-plaster",
+   "why": "흰 액자는 단면 프로파일이 가장 잘 드러난다 · 가로 작품 · 매트"
+  },
+  {
+   "id": "t03",
+   "work": "square-garden.jpg",
+   "frame": "블랙",
+   "mat": 0.1,
+   "scene": "collector-salon",
+   "why": "어두운 벽 + 검은 액자 = 흰 테·키라인이 가장 잘 보인다 · 정사각 · 넓은 매트"
+  },
+  {
+   "id": "t04",
+   "work": "dawn-window.jpg",
+   "frame": "골드",
+   "mat": 0,
+   "scene": "concrete",
+   "why": "금속 재질 · 밝은 작품"
+  },
+  {
+   "id": "t05",
+   "work": "red-hill.jpg",
+   "frame": "월넛",
+   "mat": 0.05,
+   "scene": "white-brick",
+   "why": "어두운 액자 · 밝은 벽 (대비 최대)"
+  },
+  {
+   "id": "t06",
+   "work": "blue-wall.jpg",
+   "frame": "오크 플로터",
+   "mat": 0,
+   "scene": "taupe-plaster",
+   "why": "플로터 갭 — 리베이트와 다른 구조"
+  },
+  {
+   "id": "t07",
+   "work": "small-room.jpg",
+   "frame": "캔버스 랩",
+   "mat": 0,
+   "scene": "white-brick",
+   "why": "액자 없음 · 옆면(랩)이 실제로 보이는 유일한 종류"
+  },
+  {
+   "id": "t08",
+   "work": "winter-garden.jpg",
+   "frame": "오크",
+   "mat": 0,
+   "scene": "gallery-salon",
+   "why": "실내 장면(평벽 아님) · 가로"
+  },
+  {
+   "id": "t09",
+   "work": "forgotten-alley.jpg",
+   "frame": "블랙 슬림",
+   "mat": 0.05,
+   "scene": "cream-stone",
+   "why": "절차적 평면 액자 경로도 회귀에서 빠지지 않게"
+  },
+  {
+   "id": "t10",
+   "work": "horizon.jpg",
+   "frame": "화이트",
+   "mat": 0,
+   "scene": "beige-plaster",
+   "why": "극단 비율(2.4:1) — 9-slice 가 늘어나는 한계"
+  }
+ ]
+}

@@ -63,3 +63,29 @@ frontend/tsconfig.tsbuildinfo
 backend/prisma/_*.ts
 e2e/_*
 .worklog/
+
+# ArtLook 화질 회귀 하니스 — 코드만 남기고 렌더 결과물·레퍼런스는 제외한다.
+# ⚠️ frameitsample/ 은 **경쟁사 앱 결과물 스크린샷**이라 저작권상 커밋 금지.
+#    gptsamplecase/ 는 액자 원본 보관함(용량 큼, 추출 결과만 배포된다).
+#    light/ 는 FrameIt 조명 샘플 스크린샷 16장 — 같은 이유로 커밋 금지(분석은 lightref.py).
+frameitsample/
+gptsamplecase/
+light/
+scratchpad/vt/cases/
+scratchpad/vt/light/
+scratchpad/vt/renders/
+scratchpad/vt/sweep/
+scratchpad/vt/crops/
+scratchpad/vt/*.png
+scratchpad/vt/*.jpg
+
+scratchpad/vt/renders_ss1/
+scratchpad/vt/debug/
+scratchpad/vt/leak/
+__pycache__/
+
+# 포트폴리오 PDF 회귀 하니스 — 코드만 남기고 번들·렌더 결과물은 제외한다.
+# ⚠️ portfolio/ 의 레퍼런스(타인 저작물)는 위 27행에서 이미 제외돼 있다. 여기서 나오는 건 숫자뿐이다.
+scratchpad/pf/engine.mjs
+scratchpad/pf/*.png
+scratchpad/pf/*.json

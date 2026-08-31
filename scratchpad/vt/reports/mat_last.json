@@ -1,0 +1,54 @@
+{
+ "golden": {
+  "mat_lum": 69.4,
+  "grain_abs": 6.39,
+  "grain_pct": 9.2,
+  "dir_abs": 31.6,
+  "dir_pct": 45.5,
+  "bevel_abs": 33.4,
+  "gap_abs": 14.8,
+  "gap_pct": 21.3
+ },
+ "ours": {
+  "t02": {
+   "mat_lum": 219.9,
+   "grain_abs": 11.03,
+   "grain_pct": 5.02,
+   "dir_abs": 14.1,
+   "dir_pct": 6.4,
+   "bevel_abs": 69.6,
+   "gap_abs": 114.9,
+   "gap_pct": 52.3
+  },
+  "t03": {
+   "mat_lum": 219.3,
+   "grain_abs": 8.63,
+   "grain_pct": 3.94,
+   "dir_abs": 17.0,
+   "dir_pct": 7.8,
+   "bevel_abs": 9.9,
+   "gap_abs": 116.4,
+   "gap_pct": 53.1
+  },
+  "t05": {
+   "mat_lum": 220.3,
+   "grain_abs": 7.81,
+   "grain_pct": 3.54,
+   "dir_abs": 11.4,
+   "dir_pct": 5.2,
+   "bevel_abs": 92.2,
+   "gap_abs": 138.4,
+   "gap_pct": 62.8
+  },
+  "t09": {
+   "mat_lum": 219.4,
+   "grain_abs": 10.75,
+   "grain_pct": 4.9,
+   "dir_abs": 18.3,
+   "dir_pct": 8.3,
+   "bevel_abs": 25.7,
+   "gap_abs": 124.6,
+   "gap_pct": 56.8
+  }
+ }
+}

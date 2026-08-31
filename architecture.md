@@ -10,7 +10,7 @@ ArtLink/
 │   ├── src/
 │   │   ├── components/    # UI 컴포넌트
 │   │   │   ├── layout/    # Navbar, Layout (공통 레이아웃)
-│   │   │   ├── home/      # SplashScreen, HeroSlider, QuickActionCards, GalleryOfMonth
+│   │   │   ├── home/      # SplashScreen, ArtWorks, HeroSlider, GalleryOfMonth
 │   │   │   ├── gallery/   # InstagramFeed, InstagramPrivateMessage
 │   │   │   └── shared/    # ProtectedRoute, ImageUpload, MultiImageUpload
 │   │   ├── pages/         # 라우트별 페이지
@@ -86,9 +86,14 @@ ArtLink/
   - API: `POST /api/exhibitions/:id/images`, `DELETE /api/exhibitions/:id/images/:imageId`(최소1장 400), `PATCH /api/exhibitions/:id/images/reorder`{orderedIds}
 - **지원자 관리**: 공모 상세에서 분리된 별도 페이지 `/exhibitions/:id/applicants` (ApplicantsPage). 연락처(닉네임·전화·이메일)는 지원 시점부터 오너에게 노출(상태 무관). 지원서 PDF 다운로드(지원자별 `공모명_작가명_지원서.pdf` + 전체 ZIP `공모명_지원서.zip`). 기존 CSV 내보내기 제거. (`operationPdf.ts`: downloadApplicationPdf / downloadAllApplicationsZip)
 - **찜(Favorite)**: ARTIST 전용 — 갤러리/공모/전시 목록·상세 모든 곳에서 GALLERY·ADMIN 유저는 하트 버튼 미표시
-- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_REPLY)
+- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_REPLY, NEIGHBOR_FOLLOW, GUESTBOOK_NEW, GUESTBOOK_REPLY 등)
 - **Inquiry** — 1:1 문의 (subject, content, reply, status: OPEN/ANSWERED)
 - **ApprovalRequest** — 수정 승인 요청
+- **Post / PostComment / PostLike** — 커뮤니티(글로벌 게시판). 글마다 anonymous, images[], likeCount/commentCount/viewCount 비정규화
+- **Follow** — 이웃(단방향 팔로우). `@@unique([followerId, followingId])`
+- **Story / StoryLike / StoryComment** — 스토리(작업 사진+짧은 글). visibility PUBLIC|NEIGHBORS(글마다), likeCount/commentCount 비정규화. ArtStory([소식]) 피드의 출처
+- **GuestbookEntry** — 방명록(작가 홈페이지). secret(비밀글), parentId(방 주인 답글, 1단계)
+- **AdBanner** — 광고 배너(Admin 관리). imageUrl/title/linkUrl/active/position. 사이드바 하단 `AdSlot` 노출
 
 ## API 엔드포인트 (14개 라우트 모듈)
 
@@ -105,11 +110,17 @@ ArtLink/
 | approval | /api/approvals | 승인 큐 (갤러리/공모/전시), 수정 요청 관리 + 알림 트리거 |
 | benefit | /api/benefits | 혜택 CRUD (Admin) |
 | galleryOfMonth | /api/gallery-of-month | 이달의 갤러리 (자동 만료) |
-| upload | /api/upload | 이미지 업로드 (Multer) |
+| upload | /api/upload | 업로드 (Multer): `/image`(15MB)·`/video`(25MB, 대화 첨부용)·`/file`(20MB, PDF/DOC/HWP/ZIP) |
 | notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
 | inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
 | admin | /api/admin | (ADMIN 전용) 사용자 검색·역할변경 + 운영 조회: 공모 지원현황/작가 지원이력/갤러리 게시물 |
 | kanban | /api/kanban | (ADMIN 전용) 할 일 보드 — 회의 내용·할 일 정리. 보드/항목/댓글 CRUD, 순서 재배치 |
+| chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만) |
+| community | /api/community | 커뮤니티 글로벌 게시판(블라인드식). 글마다 실명/익명, 좋아요·댓글·조회수. `/popular`=홈 인기글 |
+| follow | /api/follow | 이웃(단방향 팔로우). 추가 시 상대에게 알림(멱등). 상태 `GET /:userId`(following/팔로워수) |
+| stories | /api/stories | 스토리(ArtStory [소식]). `/feed`, `/user/:id`, 좋아요·댓글. 공개범위 글마다 |
+| guestbook | /api/guestbook | 방명록(작가 홈페이지). 공개, 비밀글(본문만 가림), 답글은 방 주인만(1단계) |
+| ad | /api/ads | 광고 배너. 공개 GET(활성만) / Admin CRUD. 사이드바 하단 슬롯 |
 
 ### Admin 운영 조회 (ADMIN 전용, `backend/src/routes/admin.ts`)
 
@@ -204,6 +215,103 @@ ArtLink/
   **놓일 자리 배경을 캔버스에서 읽어 글자색을 뒤집는다**(밝으면 검정+흰 그림자, 어두우면 흰색+검은 그림자). 빨강 `Link` 는 유지.
   ⚠️ 캔버스에 글자를 그리기 전 `document.fonts.ready` 를 기다린다 — 없으면 Pretendard 대신 시스템 글꼴로 찍힌다(포트폴리오 PDF와 같은 함정).
   ⚠️ 로컬에서 작품이 안 뜨면 `backend/.env` 의 `R2_PUBLIC_URL` 누락이다. ArtLook 은 캔버스 taint 를 피하려고 R2 이미지를 동일출처 프록시로 받는데, 그 값이 없으면 프록시가 400 을 낸다.
+- **ArtLook 장면(Scene) 모드** (2026-08-30, `public/artlook/scene.js` + `scenes/scenes.json` + `author.html`):
+  [4 · 배경]의 [기본 벽 | 장면] 토글. **장면** = Flux 로 사전 생성한 *빈 액자가 걸린 방* 사진에
+  원본 작품을 **원근 워프**해 끼우는 방식. 액자를 그리지 않고 사진에서 가져오므로 CG 티가 없다.
+  - 파이프라인: `buildInsert`(매트+작품 contain+베벨+안쪽그림자) → `boxFaces`(입체 — 뒷면/앞면/옆면)
+    → 2겹 그림자 → 옆면 `warp` → 앞면 `warp`(WebGL2 역호모그래피, 밉맵·이방성·fwidth AA)
+    → `occlusion`(multiply) → `reflection`(screen) → `foreground`(작품 앞을 가리는 화분·의자).
+    **전경은 반드시 마지막** — 순서가 바뀌면 가려진다.
+  - **입체(2026-08-30)**: 작품을 벽에서 떠 있는 상자로 본다. `depth`(기본 0.030=짧은 변 대비)·
+    `view`(시선 오프셋 `[0.58,0.32]` — **빛을 받는 왼쪽·위 면이 보이게**)로 앞면을 밀고 키워
+    옆면을 드러낸다. 옆면 텍스처는 `edgeStrip()`(판 가장자리 픽셀 띠, 폭은 **실제 두께만큼**,
+    바깥 `inset` 만큼 건너뜀) + 앞→벽 낙차 + 경계 그늘 선. 액자에는 옆면을 만들지 않고
+    (`depth:0`) 몰딩 프로파일이 두께를 낸다. `opening` 장면도 두께 없음(사진 액자가 이미 갖고 있다).
+  - **액자 몰딩 조명(2026-08-30, `shadeFrameProfile`)**: 사진 액자는 스튜디오 확산광으로 찍혀
+    네 변이 같은 밝기라 그대로 걸면 인쇄한 띠로 보인다. 살을 **세 면**(바깥 모따기 18% /
+    앞면 56% / 안쪽 사면 26%)으로 보고 장면 `lightDir` 로 다시 비춘다. 코너는 마이터라
+    `mitreBand()` 사다리꼴로 클립. 안쪽 사면은 **폐색 지배**(기본 그늘 .58, 방향 진폭 .22)라
+    빛을 향한 변에서도 어둡다 — 이게 '작품이 액자 뒤에 있다'는 유일한 신호(`rebateShadow`).
+    절차적 액자도 같은 모델(`planeOf()` 가 `lightDir` 로 `PLANE_AMP` 를 회전).
+  - **합성 해상도(2026-08-30 4차)**: 출력보다 `SUPERSAMPLE`(1.6)배 큰 오프스크린
+    (`stageCanvas`)에서 마스크·그림자·워프·워터마크를 전부 계산하고 `finish()` 가 **한 번만**
+    내린다. 벽 배율은 그대로다(`maxSrcScale`에 SS 를 곱해 넘긴다) — 좋아지는 건 그림자 계조와
+    글자·대각 경계. 화면에 넘기는 좌표는 `toOut`/`artlookProbe(…,SS)` 로 출력 좌표로 되돌린다.
+  - **그림자는 세 겹**: 넓은 반그림자(0.160/0.065) · 투영(0.050/0.170) · 접지(0.014/0.140).
+    두 겹일 때 감쇠 꼬리가 골든보다 일찍 죽었다(폭 8% 지점 0.02~0.06 vs 0.10~0.12).
+  - **코너 폐색 + 비네팅(2026-08-30 5차)**: 골든의 살은 길이 방향으로 8.5~104% 흔들리는데
+    (양 끝이 어둡다 = 마이터 코너 폐색) 우리는 3% 로 균일했다. `composeScene` 이 **화면
+    좌표**에서 조각 네 모서리에 곱연산 폐색(`cornerAO`)을 걸고, `sceneVignette` 이 화면
+    전체에 렌즈 비네팅을 건다. ⚠️ 판(plate)에만 걸면 판 경계에서 벽과 어긋나 **검은 테**가
+    생긴다(실측 벽 228 / 판 147). 조각 배치도 정중앙이 아니라 살짝 위(`fitScene` 0.485).
+  - **디버그 마스크**: `/artlook/index.html?debug=1` → `window.__artlookDebug(override)` 가
+    outer/front/bevel/mat/opening 마스크와 접지·투영·반그림자 레이어, BEFORE/AFTER 를 준다.
+    마스크는 **본 렌더와 같은 quad 로 워프**하므로 화면과 정확히 겹친다.
+    하니스 `scratchpad/vt/masks.mjs` + `masksheet.py`.
+  - **그림자(2026-08-30)**: 캐스터를 캔버스 밖(−2W)에 두고 `shadowOffsetX` 로 **그림자만** 끌어온다.
+    본 캔버스에 바로 `fill()` 하면 quad 가 통짜 검정이 되어 조각 둘레에 검은 테가 생기고,
+    파내기로 지우면 반대로 밝은 테가 생긴다(둘 다 실측으로 확인).
+  - **매트(2026-08-30)**: 색면이 아니라 **두께 있는 종이판**으로 그린다 —
+    `matPaper`(평균 보존 직조 결) → `shadeMatSurface`(세로 지배 방향광) →
+    `frameShadowOnMat`(액자가 드리우는 그림자) → 작품 → `matOpeningBevel`(45° 코어 사면).
+    액자↔작품 틈은 **다섯 마디**(앞면 → 급락 → 회복 → 밝은 립 → 작품 위 그림자).
+  - **벽 명암 LOD**: 장면 사진 크기와 무관하게 ≈11텍셀로 뭉갠다(고정 5단계는 큰 사진에서
+    벽돌 줄눈이 작품에 비쳤다 — 스톤 20% 유출).
+  - **`lightDir` 은 사진에서 측정**(`scratchpad/vt/lightdir.py`). 손으로 적은 값이 실제와
+    반대인 장면이 11개 중 10개였다. 단, 세로는 항상 위로 보정(바닥 반사 때문).
+  - **벽 진정(`wallCalm`, 2026-08-30 3차)**: 배경의 결만 죽이고 조명 낙차는 남긴다 —
+    같은 사진의 **흐린 판을 알파로 덮는다**(`원본×(1−c)+흐림×c`). 반드시 화면 전체에 균일하게
+    (액자 둘레만 흐리면 그게 마스크 테다). 세기는 `scratchpad/vt/wallcalm.py` 로 **재서** 넣는다
+    (평평한 벽 목표 3.3 / 실내 사진 4.0 — 방은 가구까지 흐려지면 가짜 아웃포커스가 된다).
+    최종 세기는 `calmtune.py` 가 **렌더 결과를 보고** 2.5~4.5 밴드 안으로 되먹임 조정한다.
+  - **액자 색 보정(`FRAME_GRADE`, 2026-08-30 3차)**: 우리 액자는 실물보다 채도가 2.5배 높았다
+    (오크 60.4 ↔ FrameIt 24.5, 골드 97.3 ↔ 36.1 — 'plastic wood'의 정체).
+    재질별 [채도, 밝기]를 **로드 때 한 번 구워** 둔다(hex 색 + 텍스처 이미지 **둘 다**).
+  - **사진 액자 기하 대칭**: 개구부가 치우쳐 있었다(오크 위 119/아래 91 = 26.7%).
+    `frontend/scripts/symmetrize-photo-frames.py` 가 개구부를 고정하고 바깥을 깎아 맞춘다(멱등).
+  - **화질 회귀**: `scratchpad/vt/` — FrameIt 결과물을 골든으로 고정하고 keyline·rebate·
+    rail_span·dir_tb·contact·recover·aspect 7지표(`run.py`) + 매트 4지표(`mat.py`) +
+    존재감 7지표(`presence.py` — 조각 면적·벽 소란도·디테일비·대비비·살 채도·색온도·살 대칭) +
+    작품 보존 4지표(`artpreserve.py` — 원본 파일과 직접 대조) + 벽무늬 유출(`leak.py`)을
+    같은 코드로 잰다. 전수 스윕은 `sweepcheck.py frames|scenes`. 액자·매트·배경 변경 시 필수.
+  - **장면 15종**: 매크로 벽 텍스처 8 + 인테리어 7. (스톤·그레이브릭은 2026-08-31 제거)
+  - **조명(2026-08-31, `applyStudioLight`)**: [3 · 조명]은 **강도 0~100 슬라이더 하나**(0=없음).
+    종류(없음/스포트/소프트)와 옛 라이팅맵 9-slice(`drawLightMap`)는 제거 —
+    ⚠️ 그 코드는 **장면 분기에서 호출조차 되지 않아** 무엇을 골라도 화면이 그대로였다.
+    합성이 끝난 **화면 전체**에 곱연산 두 겹 + 벽에만 닿는 밝힘 한 겹:
+    ① 낙차(주역) — 장면의 `lightDir` 쪽으로 편심을 준 타원 그라디언트. 안쪽 반경이 조각
+    네 귀퉁이를 덮으므로 작품은 배율 1(마스크가 아니라 **기하**로 보호 → 경계 테 없음).
+    타원은 **광원 축에 수직**으로 늘인다(`aniso` 0.72). ② 물듦 — `sceneLightColor`(장면 사진의
+    밝은 10% 색, 편차 상한 30레벨)를 화면 전체에 곱연산(soft-light 금지: 검정이 들린다).
+    ③ 빛자국 — 조각 **바깥**(변 기준 1.68배)에만 `screen`.
+    강도 100 실측: 작품 dE 0.7~2.8 · 채도비 0.90~1.00 · 그늘 쪽 구석 0.67~0.70 · 방향성 1.42~1.49.
+    회귀 `scratchpad/vt/light.mjs` + `lightcheck.py`, 레퍼런스 분석 `lightref.py`.
+  - **매트는 캔버스 랩만 빼고 전 스타일**(2026-08-31). 플로터는 **플로트 마운트** —
+    [몰딩] → [갭] → [매트 보드] → [보드 위에 떠서 그림자를 드리우는 작품]. 개구부 사면은 없다.
+    캔버스 랩은 액자가 없어 매트를 받칠 것이 없다(비활성 + 이유 표시). 액자 이름의 '(사진)' 제거.
+  - 셰이더가 **장면사진의 같은 자리 밝기를 읽어 작품에 곱한다**(`wallAmt`) + 그레인 매칭.
+    방의 조명 낙차가 작품 위로 이어지지 않으면 작품만 균일하게 떠 보인다(=붙여넣은 티).
+  - 자리 지정 둘: `opening`(액자 구멍 4점 — 매트가 비율차를 먹는다, **드래그·휠 잠금**) /
+    `region`(액자 없이 캔버스만 — 작품 비율 그대로, `regionCm`+`sizeText` 로 **실제 cm 스케일**).
+  - **크기는 실제 크기 하나뿐**(2026-08-31): `sizeText` 를 압축 없이 벽 대비 실제 비율로 건다.
+    실측(흰 벽돌 163×154cm): 4호 5.7% · 10호 14.8% · 30호 43.6% · 100호 44%(영역 상한).
+    모드 토글·크기 안내문은 제거. 작아 보이면 자동 프레이밍이 **카메라를 당겨** 채운다
+    (실치수를 아는 작품엔 `gain` 을 쓰지 않는다 — 비례가 거짓말이 되므로).
+  - **자동 프레이밍은 '화면에서 차지하는 면적'이 목표**(`u.frameArea`, 기본 0.44 — 2026-08-30 3차).
+    예전엔 작품 **높이**의 52% 였는데 세로 작품이면 면적은 21% 뿐이라 액자가 주인공이 못 됐다
+    (실측 중앙값 16.9%, FrameIt Pro 44.1%). 키우는 순서: ①`placeInRegion` 의 `gain` 으로
+    **영역 안에서**(화질 손실 0) ②모자란 만큼만 카메라를 당긴다. `gain` 은 실제 크기 모드에선
+    쓰지 않고(정직한 치수), 사용자 조절(`scale`)과도 별개 축이다.
+    확대 상한 `maxSrcScale`(1.15배) — 그 이상은 배경이 뭉개진다.
+  - **출력 해상도는 장면 원본의 1/`SCENE_HEADROOM`(1.6)**, 최소 1080(`compose()`).
+    원본 크기 그대로 뽑으면 `zoom×(출력/원본)≤1.15` 때문에 **확대 한도가 1.15배**뿐이라
+    액자를 키울 수 없었다. 2600px 벽 → 1625px 출력이면 같은 화질 보증 아래 1.84배까지 당긴다.
+    비율은 1:1 기본, '원본'은 제거.
+  - **작품이 안 넘어오면 데모 작품(`demo/*.jpg`, 절차적 생성)** 을 띄워 바로 만져볼 수 있게 한다.
+    ⚠️ 실제 가입자 작품을 `public/` 에 두지 말 것(배포물에 개인정보).
+  - 폴백: WebGL2 미지원이거나 `scenes.json` 이 비면 토글을 감추고 기본 벽만 남는다.
+  - 회귀: `frontend/src/__tests__/artlookScene.test.ts`(38) — 호모그래피 정확도·두 크기모드·비율보존·파서·폴백 +
+    자동 프레이밍 `gain`·`scenes.json` 데이터 규칙(lightDir 세로/wallCalm 범위)·사진 액자 살 대칭.
 - 프론트: MyPage Admin '운영 조회' 탭 (`OversightSection` → 공모 지원현황/작가 지원이력/갤러리 게시물 서브탭)
 
 ## 인증 구조
@@ -218,7 +326,14 @@ ArtLink/
 - `authStore` (Zustand + localStorage persist) — 토큰/유저 정보 영속화
 - 개발: POST /api/auth/dev-login으로 유저 선택 로그인
 - 추후: OAuth 교체 시 authStore.login() 호출만 변경
-- Navbar 우측 상단: 비로그인 시 [로그인], 로그인 시 [로그아웃](캐시 clear + logout + /login)
+- Navbar 배치: 로고는 본문 컨테이너 왼쪽, **가운데 메뉴는 네비바 전체의 정중앙**(absolute), **우측 그룹은 네비바 오른쪽 끝**(`absolute right-4`).
+  `right-4`(16px)는 우측 사이드바 `nav` 의 `px-4` 와 같은 값이라 [로그아웃] 오른쪽 끝이 사이드바 메뉴 항목과 맞는다.
+  실측(1024~1920, 로그인): 로그아웃 우단 = 사이드바 우단, 메뉴 중심 = 화면 중심, 겹침 없음.
+- Navbar 우측 상단: 비로그인 시 [로그인] 하나. 로그인 시 `이름 (역할)` → [로그아웃](캐시 clear + logout + /login)
+  - **[마이페이지] 버튼은 제거**(2026-08-27) — 우측 세로 사이드바가 각 탭으로 바로 보내 중복이었다
+  - 🔑 **로고 왼쪽 끝 = 본문 제목 왼쪽 끝.** 네비바도 본문과 같은 컨테이너(`max-w-7xl mx-auto px-6 md:px-12`)를 쓰고,
+    사이드바가 뜨는 조건과 **같은 조건으로** `w-56` 자리를 비운다. 안 맞추면 1600px에서 48~144px 어긋난다(실측)
+  - **로그아웃도 Navbar 전용** — MyPage 본문 우상단의 로그아웃 버튼은 제거(한 화면에 두 개였다)
 
 ### 회원 탈퇴 (소프트 삭제 + 익명화, migration 20260614120048_add_user_deleted_at)
 - `User.deletedAt DateTime?` — null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'. 행은 유지(참조 무결성·거래기록 보존)
@@ -238,7 +353,7 @@ ArtLink/
 | /exhibitions/:id | ExhibitionDetailPage | X |
 | /shows | ShowsPage | X |
 | /shows/:id | ShowDetailPage | X |
-| /benefits | BenefitsPage | X |
+| /benefits | ⏸ 비활성화 → `/` 리다이렉트 (BenefitsPage 파일·API·Admin 관리탭은 유지) | X |
 | /login | LoginPage | X |
 | /mypage | MyPage | O (ProtectedRoute) |
 
@@ -248,7 +363,7 @@ ArtLink/
 
 | 페이지 | 주요 기능 | 관련 코드 |
 |--------|----------|-----------|
-| HomePage | Splash, Hero 슬라이더, 캐치프레이즈, 퀵액션, GotM | `components/home/*` |
+| HomePage | ArtWorks → Hero 슬라이더 → GotM (2026-08-27 개편, 퀵액션 삭제) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |
@@ -274,7 +389,7 @@ ArtLink/
 | OperationPage | 공모 운영 페이지 (`/exhibitions/:id/operation`) — 공지/작가 전시정보 입력/갤러리·admin 열람 | `pages/OperationPage.tsx` |
 | OperationPrintPage | 작가 제출문서 PDF 인쇄 (`/exhibitions/:id/operation/print/:userId/:doc`) | `pages/OperationPrintPage.tsx` |
 | BenefitsPage | 혜택 목록 | `pages/BenefitsPage.tsx` |
-| MyPage | 역할별 탭 (아래 상세) | `pages/MyPage.tsx` |
+| MyPage | 역할별 메뉴 — **lg↑ 우측 세로 사이드바 / lg↓ 가로 탭바** (아래 상세) | `pages/MyPage.tsx` |
 
 ### MyPage 섹션별 가이드
 
@@ -485,7 +600,7 @@ cd frontend && npm run dev
 - **터치 타겟 ≥44px**: 관례는 `min-h-[44px] min-w-[44px] (inline-)flex items-center justify-center` + 시각 크기 유지가 필요하면 네거티브 마진(`-m-2`~`-m-3`). 찜 하트, 삭제 휴지통, 모달 닫기 X, 네브바 아이콘, 다이얼로그 버튼 등에 적용
 - **hover 전용 컨트롤 금지**: 터치 기기에는 hover가 없음. `opacity-0 group-hover:opacity-100`은 `opacity-100 md:opacity-0 md:group-hover:opacity-100`으로 — 모바일 항상 노출, md 이상만 hover 게이트 (ImageUpload 삭제 버튼, EditableField HeroImageEdit 변경/삭제 오버레이)
 - **그리드 모바일 축소**: base가 4열 이상이면 `grid-cols-3 sm:grid-cols-4 md:grid-cols-5`식으로 (ApplicationContent 작품 썸네일)
-- **Navbar 데스크톱 분기점은 lg(1024px)**: 링크 8개+우측 아이콘이 768px에서는 안 들어가 라벨이 2줄로 깨짐 → `hidden lg:flex`/`lg:hidden` (기존 md에서 상향)
+- **Navbar 데스크톱 분기점은 lg(1024px)**: 가운데 링크(현 6개)+우측 아이콘·[마이페이지]·[로그아웃]이 768px에서는 안 들어가 라벨이 2줄로 깨짐 → `hidden lg:flex`/`lg:hidden` (기존 md에서 상향)
 - **검증**: dev 서버 + 디바이스 모드 320/375/768/1024에서 `document.body.scrollWidth > window.innerWidth`가 false여야 함
 
 ### 글꼴 크게 설정까지 같이 봐야 한다 (2026-08-14)
@@ -590,10 +705,28 @@ cd frontend && npm run dev
 
 ## Vitest 테스트 스위트
 
-- 161 tests: Backend 128 (20 files), Frontend 33 (4 files)
+- **1547 tests**: Backend 1087 (68 files), Frontend 460 (30 files) — 2026-08-28 기준
 - Test DB: `artlink_test`, Backend: supertest, Frontend: jsdom
 - Show 테스트: show.test.ts(17), show-extended.test.ts(10), favorite-show.test.ts(4), approval-show.test.ts(4), frontend show.test.ts(11)
 - Run: `cd backend && npm test` + `cd frontend && npm test`
+
+### 소스를 훑는 '가드 테스트'
+
+타입도 단위 테스트도 못 잡는 어긋남이 있다 — **주소·라벨이 문자열**이라서다. 그런 자리는 소스를 직접 대조한다.
+
+| 파일 | 무엇을 지키나 | 왜 |
+|---|---|---|
+| `frontend/…/myPageMenu.test.ts` | 메뉴 정의 ↔ `MyPage.tsx` 분기 양방향 | 메뉴엔 있는데 눌러도 **빈 화면**이 되는 걸 막는다 |
+| `frontend/…/retiredApis.test.ts` | 은퇴한 API 호출 · **갠톡 진입점 목록** | 옛 `POST /messages` 를 계속 부르던 [쪽지 보내기]가 **에러 없이** 허공으로 갔다(2026-08-28) |
+| `backend/…/notify-links.test.ts` | 알림 링크가 받는 사람에 맞는가 | 작가 링크로 바꾸면 오너가 작가 탭으로 튕겨 아무것도 못 한다 |
+| `backend/…/chat-wiring.test.ts` | 승인·수락 라우트가 실제로 단톡을 만드는가 | 세 호출부가 전부 `try{}catch{}` 라 **호출이 빠져도 조용하다** |
+
+### 2026-08-28 추가분
+
+- `chatView.test.ts`(21) — 카톡식 묶음(이름은 첫 줄, 시각은 마지막 줄) · 갠톡 제목 · 시각 표기
+- `artworkGridSignature.test.ts`(13) — 작품 격자 재렌더 방지 지문(무관한 편집엔 안 바뀌고, 캡션·시리즈엔 바뀐다)
+- `careerColumnsBreakpoint.test.ts`(6) — 경력 열 수가 Tailwind sm/lg 경계와 같은가
+- `retiredApis.test.ts`(4) · `chat-wiring.test.ts`(9) · `artlook.test.ts` 확장(15) · `myPageMenu.test.ts` 확장(44)
 
 ## Show(전시) 기능 (2026-03-14)
 
@@ -647,7 +780,53 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 - **리뷰 0건 표시**: `reviewCount === 0`이면 ★0.0 대신 "아직 리뷰 없음" — GalleriesPage, GalleryDetailPage, ExhibitionDetailPage, GotM, MyPage 찜 목록. favorites API의 gallery select에 `reviewCount` 추가
 - **갤러리 등록 검증**: 공모 폼과 동일하게 누락 항목 나열 toast + `EditableText error` 빨간 테두리 + 입력 시 즉시 해제 (`galleryFormErrors` Set)
 - **FAQ 번호**: 내부 정렬값(`faq.order`) 노출 중단 → 화면엔 1부터 순번 (`SupportPage`)
-- **마이페이지 탭바**: 가로 오버플로 시 우측 페이드 그라데이션(`pointer-events-none`)으로 스크롤 힌트 — Admin 8탭 모바일 대응. 훅은 early return(`if (!user)`)보다 위에 선언
+- **마이페이지 메뉴는 전 페이지에 뜨고, 폭에 따라 두 형태**(2026-08-27, artspoon.io 참고. 그쪽은 좌측, 우리는 우측):
+  - 정의는 **`lib/myPageMenu.ts` 하나** (`myPageTabs(role)` / `resolveTab` / `myPageHref`). 쓰는 곳 셋이 이걸 공유한다.
+  - **lg(1024px)↑ — 전 페이지 우측 세로 사이드바** (`components/layout/MyPageSideMenu.tsx`, `Layout` 이 `<Outlet/>` 옆에 렌더):
+    `<aside className="hidden lg:block w-56 shrink-0 border-l">`, 안의 `<nav>`는 `sticky top-24`
+    (= 네비바 `h-20` 80px + 16px. **네비바 높이를 바꾸면 여기도 맞출 것**).
+    항목은 아이콘+라벨, 선택 항목만 `bg-gray-100` 라운드 채움 + `aria-current="page"`.
+    **로그인 시에만** 렌더하고, **강조는 `/mypage` 에서만** — 홈에서 '프로필'이 눌린 것처럼 보이면 현재 위치를 잘못 알려준다.
+    ⚠️ `Layout` 의 `<main>` 에 **`min-w-0` 필수** — 없으면 안쪽 표·긴 제목의 min-content 가 폭을 밀어 사이드바를 화면 밖으로 낸다(위 27번).
+    ⚠️ sticky 는 부모(`aside`) 높이 안에서만 움직인다. **본문이 메뉴보다 짧으면 여유가 0이라 안 붙는다** —
+    버그가 아니다(그 경우 메뉴가 페이지에서 제일 긴 요소라 어차피 화면에 다 들어온다). 실측: 본문 774 > 메뉴 480 → top 96 고정, 본문 480 = 메뉴 480 → 여유 0.
+    ⚠️ **MyPage 안에 같은 사이드바를 또 두지 말 것** — 마이페이지에서만 메뉴가 두 개가 된다.
+  - **lg↓ — Navbar 우측 상단 [메뉴] 버튼**: 같은 목록이 'MY PAGE' 구분선 아래로 들어간다(`Navbar.tsx`).
+    **버튼을 따로 만들지 않는다** — 우측 상단에 햄버거가 둘이면 구분이 안 된다.
+  - **lg↓ 마이페이지 본문의 가로 탭바는 유지**: 375px에 224px 사이드바를 붙이면 본문이 150px밖에 안 남고,
+    그 화면 안에서 탭을 바꾸는 데는 가로 탭바가 제일 빠르다.
+    가로 오버플로 시 우측 페이드 그라데이션(`pointer-events-none`)으로 스크롤 힌트 — Admin 11탭 모바일 대응.
+    훅(`tabBarRef` 측정)은 early return(`if (!user)`)보다 위에 선언
+  - **작가 메뉴 개편(2026-08-27)**:
+    | 메뉴 | 가는 곳 | 내용 |
+    |---|---|---|
+    | 홈페이지 | `/portfolio/:userId` (바깥 링크, `linkTo`) | 공개 작가 페이지. 마이페이지 탭이 **아니다** |
+    | 포트폴리오 | `?tab=portfolio` | PDF 포맷 4종 (`PortfolioFormatSection`) |
+    | (숨김) | `?tab=homepage-edit` | 홈페이지 편집 (`PortfolioSection`) — 공개 페이지 [수정] 에서만 |
+    - 작가에게 공개 페이지는 '관리 화면'이 아니라 **남에게 보여줄 홈페이지**다. 그래서 메뉴는 편집이 아니라 공개 페이지로 보낸다 —
+      고치기 전에 남 눈에 어떻게 보이는지 반드시 한 번 보게 된다.
+    - **[수정] → 한 번에 편집 모드**. 그 탭은 진입 즉시 `initForm()` 으로 편집을 연다(읽기 화면을 거치지 않는다).
+      ⚠️ `autoEditedRef` 로 **한 번만** — 저장 시 invalidate→재조회마다 걸리면 저장 결과를 못 보고 튕기고 [취소]가 무력해진다.
+    - **[수정] 은 주인 본인에게만**. 판정은 `viewer.id === params.userId` 뿐 — 역할(ARTIST)만 보면 **남의 페이지에서도 뜬다**.
+    - PDF 포맷은 예전에 편집 화면 **맨 아래**(작품 30장 뒤)에 있어 있는 줄도 모르는 기능이었다.
+    - `?tab=homepage` 로 들어와도 열 화면이 없다 → `resolveTab` 은 **`linkTo` 항목 id 를 절대 돌려주지 않는다**.
+  - **편집 화면 = 좌우 2단**(lg↑): 왼쪽 입력 **+ 작품 사진 관리(2열)** / 오른쪽 실시간 미리보기(`lg:sticky top-24`). lg↓ 는 아래로 쌓임.
+    - ⚠️ 작품 사진 관리를 2단 **바깥**에 두면 거기까지 스크롤한 순간 미리보기가 사라진다(sticky 는 부모 높이 안에서만).
+    - ⚠️ 2단 컨테이너에 `items-start` 금지 — 오른쪽 열이 제 내용 높이로 줄어 sticky 여지가 0이 된다(실측 y=800에서 이탈).
+    - 미리보기는 편집 영역 끝(2단 구간, 실측 0~6668px)까지 상단 고정. 그 아래 324px(저장바+푸터)에서는 자연히 올라간다.
+    - 미리보기와 공개 페이지는 **같은 컴포넌트** `components/shared/HomepageView.tsx` 를 쓴다. 따로 만들면 반드시 어긋나고,
+      실제와 다른 미리보기는 볼 이유가 없다. 페이지 껍데기(뒤로가기·[수정]·라이트박스)만 `PortfolioPage` 가 붙인다.
+    - 미리보기 경력 열 수는 폭이 절반이라 `careerColumnCount - 1`.
+    - ⚡ **작품 격자 memo**: 미리보기는 한 글자 칠 때마다 부모가 다시 렌더된다. 작품 30장을 매번 재조정하면 입력이 밀리므로
+      `HomepageView` 가 **내용 지문**(`id|url|title|series|status|caption` + seriesInfo JSON)으로 `useMemo`/`memo` 한다.
+      참조가 아니라 내용으로 판단하므로 부모가 데이터 객체를 매번 새로 만들어도 안전하다.
+      ⚠️ `onOpenImage` 는 **`useCallback` 필수** — 매 렌더 새 함수면 memo 가 매번 깨진다.
+      실측: 10글자 타이핑 후에도 첫 `<img>` DOM 노드가 동일(30→30장).
+  - **편집 저장은 하단 고정 저장바**(`sticky bottom-0`, 미저장 시 빨간 안내). ⚠️ **폼 안이 아니라 섹션 맨 끝**에 둘 것 —
+    폼 안에 두면 sticky 가 폼 높이에서 끝나 아래 '작품 사진 관리'로 내리는 순간 저장 안 된 변경을 안은 채 사라진다(실측 y=-299).
+  - 🔑 **메뉴에 항목을 추가하면 `MyPage.tsx` 의 `currentTab === '...'` 분기도 추가**할 것. 빠뜨리면 역할 폴백에도
+    안 걸려(id 가 유효하므로) **에러 없이 빈 화면**이 된다. `__tests__/myPageMenu.test.ts` 가 MyPage.tsx 소스를
+    직접 읽어 양방향(분기 누락/죽은 분기)으로 잡는다 — 일부러 깨뜨려 실패하는 것까지 확인했다.
 - **히어로 조작부**: 화살표/인디케이터에 aria-label, 인디케이터는 시각 2px 라인 유지 + 버튼 패딩으로 히트영역 확대(22px+). '자세히 보기'는 `p-3 -m-3`
 - **터치 타겟**: 별점순/리뷰순·푸터 링크·공모상세 갤러리명 버튼 — 패딩+네거티브 마진으로 시각 유지하며 히트영역만 확대
 - **상태 뱃지**: `whitespace-nowrap` ("승인 대/기" 줄바꿈 방지)
@@ -706,27 +885,52 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
   새로 쌓지 않고 문구·링크·`createdAt`만 갱신("A님 외 3명이…") → 목록 최상단으로 올라온다.
 - 자기 작품 자기 좋아요는 알리지 않는다. 알림 실패해도 좋아요는 성공(best-effort).
 
-### ③ 눌러도 아무것도 안 정해지던 문제 → 홈 하이라이트 (D)
+### ③ 눌러도 아무것도 안 정해지던 문제 → 홈 ArtWorks (D)
 - `GET /api/explore/highlight?limit=8` (인증 불필요) → `{ images, basis }`
   - **정렬 = 전체 좋아요 수 내림차순**. 동점이면 최근 7일 좋아요 많은 순(신선도) → 최신 순.
-  - `all`(좋아요 하나라도 있음) → "가장 많이 사랑받은 작품들" / `random`(좋아요 전무, **날짜 시드**로 하루 고정) → "작가들의 작품"
-  - ⚠️ **정렬 기준은 카드에 찍히는 배지(전체 좋아요 수)와 반드시 같아야 한다.** 처음엔 '최근 7일' 기준으로 정렬하면서 배지는 전체 수를 보여줘 실서비스에서 하트가 `1,1,1,…,3` 순으로 보이는(=하트순이 아닌 것처럼 보이는) 신고가 있었다 — 전체 3개지만 이번 주엔 0개인 작품이 주간 정렬에서 꼴찌로 밀린 것. 부제에도 '이번 주'를 쓰지 않는다. 회귀 방지 테스트: "화면에 찍히는 하트 수 기준으로 항상 내림차순".
-- `components/home/ExploreHighlight.tsx` — HomePage의 GalleryOfMonth 아래. 부제 **"가장 많이 사랑받은 작품들"** 로 근거를 노출해 좋아요를 큐레이션 참여로 만든다.
+  - `all`(좋아요 하나라도 있음) / `random`(좋아요 전무, **날짜 시드**로 하루 고정)
+  - ⚠️ **정렬 기준은 카드에 찍히는 배지(전체 좋아요 수)와 반드시 같아야 한다.** 처음엔 '최근 7일' 기준으로 정렬하면서 배지는 전체 수를 보여줘 실서비스에서 하트가 `1,1,1,…,3` 순으로 보이는(=하트순이 아닌 것처럼 보이는) 신고가 있었다 — 전체 3개지만 이번 주엔 0개인 작품이 주간 정렬에서 꼴찌로 밀린 것. 회귀 방지 테스트: "화면에 찍히는 하트 수 기준으로 항상 내림차순".
+- `GET /api/explore/highlight?seed=N` — **홈 ArtWorks [새로고침]** (2026-08-27). 그 시드로 랜덤 재정렬 + 같은 작가 연속 방지.
+  - 둘러보기(`/explore`)의 새로고침과 **같은 함수**(`shuffleNoAdjacent`)를 쓴다 — 두 화면에서 누른 느낌이 같아야 한다.
+  - seed가 있으면 좋아요 집계 쿼리 2개를 **건너뛴다**. 연타되는 버튼이라 매번 전체 집계를 돌릴 이유가 없다. `basis`는 `random`.
+  - `seed=0`·문자·빈값은 seed 없음으로 취급(좋아요순 유지), 음수는 절대값 — Explore 피드와 동일.
+### 경력 배치 — `lib/careerColumns.ts` (2026-08-27)
+공개 작가 페이지와 마이페이지 읽기 뷰가 함께 쓴다. 열 수는 `hooks/useCareerColumns`(sm 640 / lg 1024 — Tailwind 와 같은 경계).
+- **grid 를 쓰면 안 된다**: 한 **행**의 높이가 그 행에서 제일 긴 칸에 맞춰진다. 실제 데이터가 단체전 20줄 / 개인전·아트페어 3줄이라
+  '수상 및 선정'이 개인전에서 한참 떨어져 보였다. `items-start` 는 칸 안에서 위로 붙일 뿐 **행 높이를 못 줄인다**.
+- **CSS columns 도 아니다**: 브라우저가 알아서 세로로 채워 어느 항목이 어느 열에 갈지 예측이 안 된다(예전에 개인전+단체전이 한 열에 몰렸다).
+- **항목의 줄 수를 무게로 주고, 그때그때 제일 짧은 열에 담는다.** 단순 라운드로빈(i%n)은 2열에서 무너진다 —
+  열0=[학력,단체전,수상](26줄) / 열1=[개인전,아트페어](6줄) 이 되어 수상이 1180px 밀리고 오른쪽이 텅 빈다.
+- 실측(김혜원 데이터, 수상↔개인전 세로 간격): 3열 227px · 2열 509px(개선 전 1180px) · 1열은 단일 열이라 해당 없음.
+- **항목 이름은 내용보다 크게**: 이름 `text-sm font-semibold text-gray-900` + 밑줄 / 내용 `text-[13px] text-gray-600`.
+  예전엔 이름 12px 회색 · 내용 14px 이라 **이름이 더 작아** 한 열에 두 덩어리가 들어가면 경계가 안 읽혔다.
 
-### 갤러리 스크랩 + 공모 초대 (E)
-갤러리는 동기가 다르다 — "관심 있다는 티를 아직 내고 싶지 않다". 그래서 하트와 분리한다.
+- `components/home/ArtWorks.tsx` (구 `ExploreHighlight`) — **HomePage 최상단**(2026-08-27 개편 전에는 GalleryOfMonth 아래였다).
+  - 제목은 ArtLink 로고와 같은 색 규칙 `Art` + `Works`(#dc3545), 크기는 **로고보다 작게**(20/24px vs 로고 30/36px) — 회사 이름이 섹션 제목에 눌리면 안 된다. **부제는 없다.**
+  - **첫 진입부터 랜덤**이다 — 마운트마다 새 시드(`newSeed()`, 1 이상)를 만들어 `?seed=N`으로 부른다.
+    좋아요순 고정은 홈에 늘 같은 작품만 걸려 좋아요가 적은 작가가 영영 노출되지 않는 문제가 있었다.
+    ⚠️ 그 대가로 "좋아요 → 홈 노출"이라는 참여 동기(위 ③의 원래 설계)는 없어졌다. 되돌리려면 프론트에서 seed만 빼면 서버는 그대로 좋아요순을 준다.
+  - 우측 상단 [⟳ 새로고침] · [모두 모아보기 →]. **둘러보기의 유일한 진입점**이다(Navbar 메뉴에서 뺐다).
+    색은 `text-gray-500` 이 하한 — gray-300/400 은 흰 배경에서 안 보인다(실사용 지적). 현재 대비 4.84:1.
+  - 재정렬 중 `placeholderData: prev => prev` 필수 — 없으면 `images.length === 0 → null` 때문에 섹션이 사라졌다 나타나며 홈이 위로 튄다.
+
+### 갤러리 스카우팅 + 공모 초대 (E)
+> ⚠️ **2026-08-28 개편** — 아래 '비공개 스크랩' 설계는 **하트(좋아요)로 통합**됐다. 갤러리도 하트로 작품을 모으고,
+> 그 작가에게 초대를 보낸다. 스크랩과 달리 **하트는 작가에게 보인다**("관심을 숨길 이유가 없다"). 백엔드 스크랩
+> 모델·라우트·테스트는 **그대로 남겨 두되 화면에서만 뗐다**(`ArtworkDetailModal` 북마크 버튼 삭제, [관심 작품] 탭은 `/explore/my-likes`).
+
+원래 설계(참고 — 백엔드는 유효):
 
 | | 공개 | 작가 알림 | 용도 |
 |---|---|---|---|
-| 하트(좋아요) | 공개 | O | 응원 |
-| 🔖 스크랩 | **비공개** | X | 스카우팅 메모 |
+| 하트(좋아요) | 공개 | O | 응원 → (지금은) 스카우팅도 겸함 |
+| 🔖 스크랩 | **비공개** | X | 스카우팅 메모 (UI 미사용) |
 
 - **모델 2개(순수 추가)**: `ArtworkScrap`(userId+imageId unique, memo), `ExhibitionInvite`(exhibitionId+artistId unique, status SENT/APPLIED/DECLINED)
 - **API**: `POST /explore/:imageId/scrap`(토글) · `GET /explore/scraps` · `PATCH /explore/scraps/:id`(메모) · `POST /exhibitions/:id/invite` · `GET /exhibitions/:id/invites` · `GET /exhibitions/invites/received` · `PATCH /exhibitions/invites/:id`(숨김)
-- ⚠️ **스크랩은 작가에게 절대 노출하지 않는다.** 피드 응답의 `isScrapped`는 **GALLERY 계정 + 본인 것만** 포함되고, 작가 응답에는 필드 자체가 없다(테스트로 고정).
-- **초대는 알림일 뿐 자동 지원이 아니다** — 공모마다 커스텀 질문이 다르므로 작가가 직접 지원해야 한다. 지원하면 초대가 `APPLIED`로 전환된다.
+- **초대는 알림일 뿐 자동 지원이 아니다** — 공모마다 커스텀 질문이 다르므로 작가가 직접 지원해야 한다(단, 초대 수락 = 바로 참가 경로는 별도, `POST /invites/:id/accept`).
 - **초대 방어**: 소유 갤러리만 / `APPROVED` + 모집중(`recruitmentClosed·confirmed·ended` 아님) + 마감 전(KST) / 이미 지원한 작가 400 / 중복 초대 409 / 탈퇴·비ARTIST 404 / **공모당 100명·계정당 하루 50명 상한**
-- UI: ExplorePage 모달(갤러리 액션 + 초대 모달), MyPage GALLERY **"관심 작품"**, MyPage ARTIST **"받은 초대"**
+- **초대 진입 2방향**(2026-08-28): 작가 고정+공모 선택(`InviteModal` — 작품 모달·관심 작품 탭), 공모 고정+작가 선택(`ExhibitionInviteModal` — 내 공모 지원자 관리 패널, 대상은 하트 저장 작가). UI: ExplorePage/홈 모달, MyPage GALLERY **"관심 작품"**(=하트 보드), MyPage ARTIST **[내 전시] 초대받은 전시 탭**.
 
 ### 초대 간편 지원 (자동 수락 아님)
 갤러리가 작품을 보고 직접 부른 것이므로 지원서를 다시 쓰게 하지 않는다.
@@ -1028,7 +1232,44 @@ SPA라 서버가 내려주는 HTML이 모든 URL에서 동일했다. 그 결과 
     포맷 D는 한 장에 2점을 세로로 쌓아 오차가 두 배가 됐다. 지금은 `captionH(theme, items)` 로 그 장의 작품에서 계산.
   - `splitParagraphs` 의 조각내기도 줄바꿈을 세도록 고쳤다(`takeLines`). 빈 줄 없이 줄바꿈만 22번 쓴 약력에서
     조각의 실제 줄 수가 예산을 넘겼다. 추정치엔 `SAFETY`(24px) 쿠션을 둔다.
-  - 회귀: `portfolioFormats.test.ts`(순수 함수) + `e2e/_pdfaudit.mjs`(전 작가 × 4포맷 픽셀 실측, 넘침 0 확인)
+  - 회귀: `portfolioFormats.test.ts`(순수 함수·문자열) + **`scratchpad/pf/`(브라우저 실측 하니스, 2026-08-31 재구축)**.
+    ⚠️ vitest 는 jsdom 이라 레이아웃을 못 잰다 — 넘침·작품 크기·렌더 색 대비·PDF 저장 성패는 하니스 몫이다.
+
+#### 2026-08-31 실측 감사에서 고친 것 (`scratchpad/pf/` README 에 수치)
+
+| | 전 | 후 |
+|---|---|---|
+| PDF 가 나오는 표지×작품 조합 | **16/126 (13%)** | 126/126 |
+| 작품설명 2줄 예약 초과 | 216건 (최대 60px / 예약 42px) | 0건 |
+| 대비 미달 조합 | 216/216 (최저 2.76:1) | 0/216 |
+| 구분선 대비(어두운 배경) | 1.03:1 | 1.51:1 |
+| 작품 지면점유 `grid`@와이드 | 4.2% | 10.3% |
+| 작품 지면점유 `hero`@와이드 | 17.6% | 24.5% |
+| 넘침 | 0 | 0 (유지) |
+
+**실데이터로 본 것** (`artlink_prod` 복제본, 작품 372점) — 지금까지 수치로만 판정하고 렌더를 본 적이 없었다.
+
+- **작품 372점 중 361점(97%)이 제목·재료·크기·연도가 전부 비어 있다.** `artworkTitle()` 이 '무제' 를
+  돌려주므로 26점짜리 포트폴리오가 **26쪽 내내 '무제'** 한 단어만 달고 나왔다. 공개 홈페이지는 이미
+  `hasTitle()` 로 걸러 왔는데 PDF 만 안 걸렀다 → `captionParts()` 로 통일, 캡션이 비면 자리도 예약하지 않는다.
+- **`hero` 의 이미지 상자가 `height` 고정이라** 정사각 작품이 상자 안에서 뜨고 캡션이 145~185px 떨어졌다
+  → `max-height` 로 바꿔 작품+캡션이 한 덩어리로 앉는다.
+- **표지 `bandTop`(기본값) 하단 28.7% 가 비어 있었다** — 사진 높이를 `h*0.5` 로 못박고 글을 그 아래 붙였는데,
+  그 자리를 메울 한 줄 소개를 채운 작가가 **81명 중 0명**이라 전원이 그 표지를 받았다 → 위아래를 잡은
+  flex 기둥으로 바꿔 사진이 남는 높이를 가져간다(7.1/8.5 대칭). ⚠️ 21종 전수 측정에서 비대칭인 건 이것 하나 —
+  `serifCenter`·`nameplate`·`accentField` 는 위아래가 같이 비는 **가운데 정렬**이라 의도된 구성이다.
+- **`label`(뮤지엄 라벨)은 적을 게 없으면 `hero` 로 전환** — 캡션 칸이 지면 44% 인데 97% 는 넣을 게 없었다.
+- 결과(실데이터 4명, A4 세로 `hero`): 골든 42.2% 대비 **93~117%**. 실데이터 4명 PDF 생성 전부 성공.
+
+- **`color-mix()` 가 PDF 를 죽이고 있었다** — 크롬 계산값 `color(srgb …)` 를 html2canvas 1.4.1 이
+  파싱하다 던진다. `softPanel()` 하나 때문에 표지 13/21 · 작품 4/6 이 걸려 **기본값 포함 87% 조합에서
+  PDF 가 안 나왔다**. PPTX 는 `hexOf()` 가 null 을 돌려 배경 도형이 조용히 빠졌다. → `mixHex()` 로 hex 고정.
+- **여백이 판형에 안 따라갔다** — A4 세로 기준 픽셀 상수를 전 판형에 써서 와이드에서 상하 여백이 24.9%.
+  `PAD_RATIO` + `runTop()` 으로 비례화(그 판형에서는 기존 값 그대로 재현).
+- **파생 색을 아무도 안 쟀다** — `sub`(캡션·설명·CV 라벨·연락처)가 최선 조합에서도 3.90:1.
+  `towardBg()` 가 대비를 만족하는 가장 물린 값을 찾는다. 강조색 추천 기준 3.0 → 4.5.
+- **죽은 코드 82줄** — `paragraphs`/`studioSeriesHead`/`fullDescWork` 는 호출부가 0이었고,
+  `captionHtml` 의 `worksPerPage === 3` 분기는 `WORKS_PER_PAGE` 가 1·2·4·6 만 내므로 도달 불가였다.
 - **전시 전경(설치 사진) 기능은 두지 않는다.** 2026-08-11 철회 — 작품/전시전경 분류 입력이 작가에게 부담이었고
   포트폴리오 본문과 겹쳤다. `PortfolioImage.category`는 migration `20260811001500_remove_portfolio_image_category`로 제거.
 - **시리즈 제목은 페이지 '내용'이 그린다(머리말 장식이 아니다).** 스튜디오에서 시리즈명을 상단 배너 장식에
@@ -1208,3 +1449,30 @@ operatorUserIds(ex)                알림 발송 대상 전부
 | 마이페이지 찜 공모 클릭 무반응 | exhibitionId navigate 분기 누락 | `frontend/src/pages/MyPage.tsx` |
 | GotM 평점 미갱신 | 리뷰 mutation에서 gallery-of-month 쿼리 미invalidate | `frontend/src/pages/GalleryDetailPage.tsx` |
 | Exhibition 타입에 isFavorited 없음 | 타입 정의 누락 | `frontend/src/types/index.ts` |
+
+### ArtLook 6차 — 물리 일관성 (2026-08-31)
+
+브리핑("효과를 더 넣지 말고 한 촬영 환경에서 액자만 교체된 것처럼")에 따라 잣대를
+**세기에서 관계로** 바꿨다. 새 지표 `scratchpad/vt/physics.py`(그림자 방향·얇은 선·틈 바닥)와
+`framelight.mjs`(액자 18종이 광원을 따르는가). 자세한 함정은 CLAUDE.md 44b.
+
+| | 전 | 후 | 골든 |
+|---|---|---|---|
+| 그림자가 광원 반대쪽으로 지는가 | (미측정, 사실상 헤일로) | **9/9** cos≥0.969 | — |
+| 액자↔작품 틈 바닥 ÷ 살 | **0.002** (플로터 3종 = 순검정) | 0.12~0.55 | 0.11~0.38 |
+| 액자가 광원에 반응하는 폭 Δ | 플로터 **0** (좌상단 고정) | 전 18종 5.1~37 | — |
+| 액자를 바꿀 때 작품 밝기 편차 | 1.6 레벨 | **0.5 레벨** | 0 이어야 |
+| 살의 1~2px 임펄스 | 최대 60.6 | 최대 30.7(대부분 액자 사진 자체의 결) | 2.1~14.4 |
+
+주요 변경: `hexToRgb` 가 `rgb(...)` 도 파싱(그렇지 않아 오크·골드·월넛 트레이가 순검정이었다) ·
+작품 둘레 stroke 전부 제거(면으로 대체) · 개구부 밝은 립 폐기 · 살 한 변을 폴리곤 하나 +
+다중 스톱 그라디언트로(밴드 이음매 제거) · 그림자 오프셋 > 블러 + lightDir 정규화 ·
+플로터 트레이/마이터/리베이트의 좌상단 고정광 제거 · `SUPERSAMPLE` 1.6→2.0 ·
+디버그에 조명 변조 레이어와 토글 목록.
+
+**최소 크기**(신고: 12×12cm 소품이 안 보임): 실치수를 유지하되 **무릎(soft knee)** 으로 바닥만
+든다(KNEE 11% / FLOOR 5.5%). 딱딱한 clamp 는 12~60cm 를 전부 같은 크기로 만들어 기각했다.
+부풀린 경우 `fitNote.enlarged` 로 화면에 알린다.
+
+⚠️ **`scene.js`·`scenes/scenes.json`·`frames/photo/` 는 아직 git 에 없다** — 실서버에는 장면
+모드가 통째로 빠져 있다(CLAUDE.md 44d).

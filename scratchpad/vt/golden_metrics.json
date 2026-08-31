@@ -1,0 +1,362 @@
+{
+ "case_00": {
+  "rect": [
+   338,
+   363,
+   741,
+   1005
+  ],
+  "art": [
+   374,
+   399,
+   705,
+   969
+  ],
+  "per_side": {
+   "top": {
+    "wall": 215.7,
+    "rail": 177.2,
+    "rail_std": 30.31,
+    "rail_span": 110.1,
+    "rail_turns": 2,
+    "rebate_drop": 142.2,
+    "rebate_ratio": 0.802,
+    "keyline_spike": 0.0
+   },
+   "bottom": {
+    "wall": 201.5,
+    "rail": 142.3,
+    "rail_std": 13.85,
+    "rail_span": 41.5,
+    "rail_turns": 0,
+    "rebate_drop": 112.0,
+    "rebate_ratio": 0.788,
+    "keyline_spike": 0.0
+   },
+   "left": {
+    "wall": 220.7,
+    "rail": 164.3,
+    "rail_std": 3.64,
+    "rail_span": 16.1,
+    "rail_turns": 7,
+    "rebate_drop": 136.5,
+    "rebate_ratio": 0.83,
+    "keyline_spike": 5.7
+   },
+   "right": {
+    "wall": 154.7,
+    "rail": 165.7,
+    "rail_std": 5.85,
+    "rail_span": 25.3,
+    "rail_turns": 4,
+    "rebate_drop": 120.6,
+    "rebate_ratio": 0.728,
+    "keyline_spike": 2.9
+   }
+  },
+  "keyline_spike": 5.7,
+  "rail_std": 13.41,
+  "rail_span": 48.2,
+  "rail_turns": 3.2,
+  "rebate_drop": 127.8,
+  "rebate_ratio": 0.787,
+  "dir_tb": 34.9,
+  "dir_lr": 1.4,
+  "piece_wh": [
+   404,
+   643
+  ],
+  "fill_w": 0.374,
+  "contact_pct": -27.6,
+  "contact_drop": 60.1,
+  "recover_pct": 13.1
+ },
+ "case_01": {
+  "rect": [
+   272,
+   406,
+   810,
+   945
+  ],
+  "art": [
+   301,
+   435,
+   781,
+   916
+  ],
+  "per_side": {
+   "top": {
+    "wall": 130.1,
+    "rail": 180.6,
+    "rail_std": 7.21,
+    "rail_span": 18.6,
+    "rail_turns": 2,
+    "rebate_drop": 143.6,
+    "rebate_ratio": 0.795,
+    "keyline_spike": 0.0
+   },
+   "bottom": {
+    "wall": 106.2,
+    "rail": 150.7,
+    "rail_std": 18.18,
+    "rail_span": 79.5,
+    "rail_turns": 2,
+    "rebate_drop": 133.9,
+    "rebate_ratio": 0.889,
+    "keyline_spike": 4.6
+   },
+   "left": {
+    "wall": 129.0,
+    "rail": 167.3,
+    "rail_std": 1.9,
+    "rail_span": 7.5,
+    "rail_turns": 2,
+    "rebate_drop": 129.3,
+    "rebate_ratio": 0.773,
+    "keyline_spike": 0.0
+   },
+   "right": {
+    "wall": 98.3,
+    "rail": 165.3,
+    "rail_std": 26.5,
+    "rail_span": 109.7,
+    "rail_turns": 4,
+    "rebate_drop": 118.4,
+    "rebate_ratio": 0.716,
+    "keyline_spike": 3.7
+   }
+  },
+  "keyline_spike": 4.6,
+  "rail_std": 13.45,
+  "rail_span": 53.8,
+  "rail_turns": 2.5,
+  "rebate_drop": 131.3,
+  "rebate_ratio": 0.793,
+  "dir_tb": 29.9,
+  "dir_lr": 2.0,
+  "piece_wh": [
+   539,
+   540
+  ],
+  "fill_w": 0.499,
+  "contact_pct": -55.2,
+  "contact_drop": 78.9,
+  "recover_pct": 12.8
+ },
+ "case_05": {
+  "rect": [
+   384,
+   524,
+   759,
+   872
+  ],
+  "art": [
+   410,
+   550,
+   733,
+   846
+  ],
+  "per_side": {
+   "top": {
+    "wall": 228.2,
+    "rail": 177.9,
+    "rail_std": 12.1,
+    "rail_span": 42.2,
+    "rail_turns": 0,
+    "rebate_drop": 140.7,
+    "rebate_ratio": 0.791,
+    "keyline_spike": 0.5
+   },
+   "bottom": {
+    "wall": 220.9,
+    "rail": 208.5,
+    "rail_std": 6.05,
+    "rail_span": 19.0,
+    "rail_turns": 2,
+    "rebate_drop": 43.9,
+    "rebate_ratio": 0.21,
+    "keyline_spike": 0.0
+   },
+   "left": {
+    "wall": 232.2,
+    "rail": 226.2,
+    "rail_std": 30.17,
+    "rail_span": 68.3,
+    "rail_turns": 2,
+    "rebate_drop": 191.4,
+    "rebate_ratio": 0.846,
+    "keyline_spike": 0.0
+   },
+   "right": {
+    "wall": 231.9,
+    "rail": 225.2,
+    "rail_std": 1.74,
+    "rail_span": 5.4,
+    "rail_turns": 0,
+    "rebate_drop": 16.5,
+    "rebate_ratio": 0.073,
+    "keyline_spike": 0.0
+   }
+  },
+  "keyline_spike": 0.5,
+  "rail_std": 12.52,
+  "rail_span": 33.7,
+  "rail_turns": 1.0,
+  "rebate_drop": 98.1,
+  "rebate_ratio": 0.48,
+  "dir_tb": 30.6,
+  "dir_lr": 1.0,
+  "piece_wh": [
+   376,
+   349
+  ],
+  "fill_w": 0.348,
+  "contact_pct": -9.5,
+  "contact_drop": 22.4,
+  "recover_pct": 23.7
+ },
+ "case_06": {
+  "rect": [
+   377,
+   545,
+   744,
+   827
+  ],
+  "art": [
+   398,
+   566,
+   723,
+   806
+  ],
+  "per_side": {
+   "top": {
+    "wall": 217.6,
+    "rail": 219.3,
+    "rail_std": 3.55,
+    "rail_span": 9.2,
+    "rail_turns": 0,
+    "rebate_drop": 27.5,
+    "rebate_ratio": 0.126,
+    "keyline_spike": 0.0
+   },
+   "bottom": {
+    "wall": 199.5,
+    "rail": 187.5,
+    "rail_std": 1.98,
+    "rail_span": 6.5,
+    "rail_turns": 0,
+    "rebate_drop": 33.6,
+    "rebate_ratio": 0.179,
+    "keyline_spike": 0.0
+   },
+   "left": {
+    "wall": 220.7,
+    "rail": 211.8,
+    "rail_std": 0.86,
+    "rail_span": 2.8,
+    "rail_turns": 0,
+    "rebate_drop": 148.1,
+    "rebate_ratio": 0.699,
+    "keyline_spike": 0.0
+   },
+   "right": {
+    "wall": 210.9,
+    "rail": 190.8,
+    "rail_std": 2.92,
+    "rail_span": 8.7,
+    "rail_turns": 0,
+    "rebate_drop": 7.6,
+    "rebate_ratio": 0.04,
+    "keyline_spike": 0.0
+   }
+  },
+  "keyline_spike": 0.0,
+  "rail_std": 2.33,
+  "rail_span": 6.8,
+  "rail_turns": 0.0,
+  "rebate_drop": 54.2,
+  "rebate_ratio": 0.261,
+  "dir_tb": 31.8,
+  "dir_lr": 21.0,
+  "piece_wh": [
+   368,
+   283
+  ],
+  "fill_w": 0.341,
+  "contact_pct": -11.3,
+  "contact_drop": 24.8,
+  "recover_pct": 19.8
+ },
+ "case_09": {
+  "rect": [
+   412,
+   544,
+   668,
+   799
+  ],
+  "art": [
+   452,
+   584,
+   628,
+   759
+  ],
+  "per_side": {
+   "top": {
+    "wall": 217.9,
+    "rail": 86.5,
+    "rail_std": 13.96,
+    "rail_span": 48.6,
+    "rail_turns": 1,
+    "rebate_drop": 0.0,
+    "rebate_ratio": 0.0,
+    "keyline_spike": 0.0
+   },
+   "bottom": {
+    "wall": 214.1,
+    "rail": 176.7,
+    "rail_std": 4.34,
+    "rail_span": 15.8,
+    "rail_turns": 4,
+    "rebate_drop": 111.8,
+    "rebate_ratio": 0.633,
+    "keyline_spike": 0.0
+   },
+   "left": {
+    "wall": 217.8,
+    "rail": 129.3,
+    "rail_std": 11.04,
+    "rail_span": 33.1,
+    "rail_turns": 1,
+    "rebate_drop": 64.9,
+    "rebate_ratio": 0.502,
+    "keyline_spike": 8.2
+   },
+   "right": {
+    "wall": 213.6,
+    "rail": 90.2,
+    "rail_std": 4.32,
+    "rail_span": 13.2,
+    "rail_turns": 3,
+    "rebate_drop": 0.0,
+    "rebate_ratio": 0.0,
+    "keyline_spike": 0.0
+   }
+  },
+  "keyline_spike": 8.2,
+  "rail_std": 8.41,
+  "rail_span": 27.7,
+  "rail_turns": 2.2,
+  "rebate_drop": 44.2,
+  "rebate_ratio": 0.284,
+  "dir_tb": 90.2,
+  "dir_lr": 39.1,
+  "piece_wh": [
+   257,
+   256
+  ],
+  "fill_w": 0.238,
+  "contact_pct": -29.2,
+  "contact_drop": 65.2,
+  "recover_pct": 1.2
+ }
+}
