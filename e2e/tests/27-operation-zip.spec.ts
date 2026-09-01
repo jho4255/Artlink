@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitionDates } from '../lib/helpers';
 
 /**
  * 운영페이지 일괄 다운로드 (2026-08 성능 사고 대응) E2E
@@ -36,8 +36,7 @@ async function seedOperation(api: APIRequestContext, artworkCount: number) {
     data: {
       title: `ZIP검증 ${Date.now()}`, type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
-      description: '일괄 다운로드 E2E', galleryId,
-    },
+      description: '일괄 다운로드 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok), data: { status: 'APPROVED' } });
 

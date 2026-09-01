@@ -1,0 +1,3 @@
+-- 커뮤니티 글: 사진 첨부 + 조회수
+ALTER TABLE "Post" ADD COLUMN "images" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "Post" ADD COLUMN "viewCount" INTEGER NOT NULL DEFAULT 0;

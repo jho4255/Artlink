@@ -26,6 +26,22 @@ function parseSeriesInfo(raw: string | null | undefined): { name: string; note: 
   } catch { return []; }
 }
 
+// 가이드형 디자인 설정(색감 팔레트 등) — 작은 JSON. 화면이 normalizePdfDesign 으로 최종 정규화하므로
+// 여기서는 "객체이고 너무 크지 않은가"만 본다(깨진 값·거대 값 차단).
+function parseDesignConfig(raw: string | null | undefined) {
+  if (!raw) return null;
+  try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : null; } catch { return null; }
+}
+function sanitizeDesignConfig(input: unknown): string | null {
+  if (input == null) return null;
+  try {
+    const obj = typeof input === 'string' ? JSON.parse(input) : input;
+    if (!obj || typeof obj !== 'object') return null;
+    const s = JSON.stringify(obj);
+    return s.length <= 4000 ? s : null;
+  } catch { return null; }
+}
+
 // 자유 텍스트 정규화 — 빈 문자열은 null로(있는 항목만 캡션에 조립하므로 ''와 null을 구분할 필요가 없다)
 function text(v: unknown, max: number): string | null {
   if (v === undefined || v === null) return null;
@@ -101,6 +117,7 @@ router.get('/:userId', async (req, res, next) => {
       tagline: portfolio?.tagline || null,
       themeId: portfolio?.themeId || null,
       seriesInfo: parseSeriesInfo(portfolio?.seriesInfo),
+      designConfig: parseDesignConfig(portfolio?.designConfig),
       images: portfolio?.images || [],
       user: userInfo,
     });
@@ -120,7 +137,7 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
         include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
       });
     }
-    res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo) });
+    res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
   } catch (error) { next(error); }
 });
 
@@ -136,7 +153,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       seriesInfo == null
         ? null
         : JSON.stringify(parseSeriesInfo(typeof seriesInfo === 'string' ? seriesInfo : JSON.stringify(seriesInfo)));
-    const data = {
+    const base = {
       biography,
       career: careerStr,
       portfolioFileUrl: safeFileUrl(portfolioFileUrl),
@@ -145,13 +162,17 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       themeId: oneOf(themeId, THEME_IDS),
       seriesInfo: seriesStr,
     };
+    // designConfig 는 **보냈을 때만** 갱신한다 — 홈페이지 내용 저장(전체 교체)이 색감 설정을 지우지 않게(독립 필드).
+    const data = 'designConfig' in req.body
+      ? { ...base, designConfig: sanitizeDesignConfig(req.body.designConfig) }
+      : base;
     const portfolio = await prisma.portfolio.upsert({
       where: { userId: req.user!.id },
       update: data,
       create: { userId: req.user!.id, ...data },
       include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
     });
-    res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo) });
+    res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
   } catch (error) { next(error); }
 });
 

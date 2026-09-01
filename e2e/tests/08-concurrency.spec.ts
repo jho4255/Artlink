@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { tokenFor, applyToExhibition } from '../lib/helpers';
+import { tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
 
 /**
  * 동시성: 정원 1명 공모에 여러 명이 "동시에" 지원하면 정원 초과 생성되는지(TOCTOU 경합).
@@ -17,7 +17,7 @@ test('정원 1명 공모에 동시 지원 6건 → 최종 수락/접수는 정�
   const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '동시성테스트공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: '서울', description: '동시성', galleryId },
+    data: { title: '동시성테스트공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: '서울', description: '동시성', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
 

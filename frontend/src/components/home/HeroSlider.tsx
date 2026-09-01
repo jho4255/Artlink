@@ -48,13 +48,30 @@ export default function HeroSlider() {
     Promise.all(slides.map((s) => extractColor(s.imageUrl))).then(setBgColors);
   }, [slides]);
 
+  // 슬라이드 전환은 **직접 애니메이션**한다 — 브라우저 기본 smooth 는 속도를 못 정한다.
+  // 900ms ease-in-out 으로 천천히·부드럽게 넘긴다(그림을 홱 넘기지 않게).
+  const animRef = useRef<number | null>(null);
+  const SLIDE_MS = 900;
   const scrollToSlide = useCallback((index: number) => {
     const container = containerRef.current;
     if (!container) return;
     isScrolling.current = true;
-    container.scrollTo({ left: index * container.offsetWidth, behavior: 'smooth' });
     setCurrent(index);
-    setTimeout(() => { isScrolling.current = false; }, 500);
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    const start = container.scrollLeft;
+    const target = index * container.offsetWidth;
+    const dist = target - start;
+    if (Math.abs(dist) < 1) { isScrolling.current = false; return; }
+    let startTs: number | null = null;
+    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    const step = (ts: number) => {
+      if (startTs === null) startTs = ts;
+      const p = Math.min(1, (ts - startTs) / SLIDE_MS);
+      container.scrollLeft = start + dist * easeInOut(p);
+      if (p < 1) { animRef.current = requestAnimationFrame(step); }
+      else { isScrolling.current = false; animRef.current = null; }
+    };
+    animRef.current = requestAnimationFrame(step);
   }, []);
 
   useEffect(() => {
@@ -79,9 +96,10 @@ export default function HeroSlider() {
 
   useEffect(() => {
     if (slides.length <= 1) return;
+    // 10초마다 자동 전환 (예전 3초는 그림을 볼 새도 없이 넘어갔다)
     const timer = setInterval(() => {
       if (!isHovered.current) scrollToSlide((current + 1) % slides.length);
-    }, 3000);
+    }, 10000);
     return () => clearInterval(timer);
   }, [slides.length, current, scrollToSlide]);
 
@@ -136,27 +154,31 @@ export default function HeroSlider() {
   // 데이터 로딩 중이거나 슬라이드가 없으면 전체 스켈레톤
   if (isLoading || slides.length === 0) {
     return (
-      <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
-        <div className="max-w-7xl mx-auto px-4 md:px-8">
-          <div className="aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[60vh] bg-gray-100 rounded-lg animate-pulse">
-          </div>
+      <div className="w-full bg-gray-100">
+        <div className="max-w-7xl mx-auto">
+          <div className="aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[46vh] bg-gray-100 animate-pulse" />
         </div>
       </div>
     );
   }
 
+  /*
+    배너는 **화면 전체 폭을 채우는 색 띠**(currentBg) 위에 컨텐츠를 가운데(max-w-7xl)로 둔다.
+    화면이 넓어지면 컨텐츠 좌우는 이 배경색이 자동으로 채운다("좌우 자동확장").
+    그라데이션·글로우는 없앴다 — 배너 이미지에 이미 디자인이 다 들어 있어서 덮을 이유가 없다.
+    색은 슬라이드 이미지의 dominant color 라 이미지와 띠가 자연스럽게 이어진다.
+  */
   return (
-    <div className="relative w-full bg-white pt-6 md:pt-10 pb-12 md:pb-16">
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
+    <div className="w-full transition-colors duration-700" style={{ backgroundColor: currentBg }}>
+      <div className="max-w-7xl mx-auto">
         <div
-          className="relative overflow-hidden rounded-lg transition-shadow duration-700"
-          style={{ boxShadow: `0 8px 40px ${currentBg}, 0 2px 12px ${currentBg}` }}
+          className="group relative overflow-hidden"
           onMouseEnter={() => { isHovered.current = true; }}
           onMouseLeave={() => { isHovered.current = false; }}
         >
           <div
             ref={containerRef}
-            className="flex w-full aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[60vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+            className="flex w-full aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[46vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -210,22 +232,28 @@ export default function HeroSlider() {
             ))}
           </div>
 
-          {/* 좌우 화살표 */}
+          {/* 좌우 화살표 — 세련되게. 평소엔 옅게, 호버 때만 또렷이(그림을 가리지 않게).
+              44px 히트영역은 유지하되 보이는 원은 작게(28px), 채움 대신 얇은 아웃라인.
+              데스크톱은 호버로 드러나고(opacity-0→100), 터치기기는 스와이프가 있어 아주 옅게만 둔다. */}
           {slides.length > 1 && (
             <>
               <button
                 onClick={() => scrollToSlide((current - 1 + slides.length) % slides.length)}
                 aria-label="이전 슬라이드"
-                className="absolute left-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                className="group/nav absolute left-2 md:left-4 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center z-10 cursor-pointer opacity-0 max-md:opacity-40 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300"
               >
-                <ChevronLeft size={18} />
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/40 backdrop-blur-sm text-white/90 group-hover/nav:bg-white/30 transition-colors">
+                  <ChevronLeft size={16} strokeWidth={2.2} />
+                </span>
               </button>
               <button
                 onClick={() => scrollToSlide((current + 1) % slides.length)}
                 aria-label="다음 슬라이드"
-                className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-full text-white/70 hover:text-white hover:bg-black/40 transition-all z-10 cursor-pointer"
+                className="group/nav absolute right-2 md:right-4 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center z-10 cursor-pointer opacity-0 max-md:opacity-40 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300"
               >
-                <ChevronRight size={18} />
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/40 backdrop-blur-sm text-white/90 group-hover/nav:bg-white/30 transition-colors">
+                  <ChevronRight size={16} strokeWidth={2.2} />
+                </span>
               </button>
             </>
           )}

@@ -5,7 +5,7 @@
  * 특히 기본 탭 선택은 빈 화면을 그대로 보여주게 되는 지점이라 테스트로 묶어 둔다.
  */
 import { describe, it, expect } from 'vitest';
-import { bucketOf, groupMyExhibitions, defaultBucket, nextSchedule, shortDate, exhibitionStage, MY_EXHIBITION_TABS } from '@/lib/myExhibitions';
+import { bucketOf, groupMyExhibitions, defaultBucket, nextSchedule, shortDate, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY} from '@/lib/myExhibitions';
 
 const app = (status: string, settledAt: string | null = null) => ({
   status,
@@ -86,8 +86,25 @@ describe('defaultBucket — 처음 열었을 때 빈 화면이 되면 안 된다
 });
 
 describe('탭 정의', () => {
-  it('심사중 / 진행중 / 진행종료 세 개, 전체 탭은 없다', () => {
-    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['심사중', '진행중', '진행종료']);
+  it('초대받은 전시 / 심사중 / 진행중 / 진행종료 네 개, 전체 탭은 없다', () => {
+    // '초대받은 전시'가 맨 앞 — 예전 [받은 초대] 메뉴 탭을 여기로 합쳤다(2026-08-28)
+    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['받은 초대', '심사중', '진행중', '진행종료']);
+  });
+
+  it('★ INVITED 는 지원 분류가 채우지 않는다 (초대는 Application 이 아니다)', () => {
+    // 목록이 다른 API(`/exhibitions/invites/received`)라 호출부가 따로 넣는다.
+    // 여기서 채우려 들면 초대가 '심사중'으로 잘못 들어간다.
+    const g = groupMyExhibitions([
+      { status: 'SUBMITTED' }, { status: 'ACCEPTED' }, { status: 'REJECTED' },
+    ] as any);
+    expect(g.INVITED).toEqual([]);
+    expect(Object.keys(g)).toEqual(['INVITED', 'REVIEWING', 'ONGOING', 'CLOSED']);
+  });
+
+  it('빈 안내 문구가 탭마다 있다', () => {
+    for (const t of MY_EXHIBITION_TABS) {
+      expect(MY_EXHIBITION_EMPTY[t.key], `${t.key} 안내 없음`).toBeTruthy();
+    }
   });
 });
 

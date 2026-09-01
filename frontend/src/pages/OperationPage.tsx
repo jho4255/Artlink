@@ -9,7 +9,7 @@
  * API: /api/operations/:id/(access|notices|me|submissions|submissions/:userId)
  */
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Minus, Trash2, Edit3, Megaphone, FileDown, ChevronDown, ChevronUp, Loader2, Upload, ImageOff, User, Star, Check, ArrowRight, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -96,8 +96,18 @@ function getSubmissionMissingParts(submission: OperationSubmission): string[] {
   return parts;
 }
 
-export default function OperationPage() {
-  const { id } = useParams<{ id: string }>();
+/**
+ * 갤러리 상세 운영 화면의 본문.
+ *
+ * 두 곳에서 같은 코드를 쓴다:
+ *  · `/exhibitions/:id/operation` 전용 페이지(기본 export) — 옛 알림 링크가 이 주소를 가리킨다(라우트 유지 필수)
+ *  · 마이페이지 [내 공모]의 [상세 운영] 아코디언 — `embedded` 로 바깥 껍데기(머리말·최대폭)를 벗긴다
+ *
+ * `id` 는 embedded 일 때 prop 으로, 전용 페이지일 땐 URL(:id)에서 온다.
+ */
+export function OperationBody({ id: idProp, embedded = false }: { id?: string; embedded?: boolean } = {}) {
+  const params = useParams<{ id: string }>();
+  const id = idProp ?? params.id;
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -310,27 +320,23 @@ export default function OperationPage() {
     }
   };
 
-  if (!canManage) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 md:py-12">
-        <button onClick={() => navigate(`/exhibitions/${id}`)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 mb-4">
-          <ArrowLeft size={15} /> 공모 상세
-        </button>
-        <div className="mb-8">
-          <p className="text-xs text-gray-400">{access.galleryName} · 운영 페이지</p>
-          <h1 className="text-2xl md:text-3xl font-serif text-gray-900 mt-1">{access.title}</h1>
-        </div>
+  /*
+    작가는 이 페이지에 오지 않는다 — 마이페이지 [내 전시] 카드 안에서 공지·제출자료·정산을 다 처리한다
+    (`components/operation/ArtistOperationPanel.tsx`, 여기서 export 하는 세 섹션을 그대로 쓴다).
 
-        <NoticesSection exhibitionId={id!} canManage={false} />
-        {access.isAcceptedArtist && access.ended && <MyArtistSettlementSection exhibitionId={id!} />}
-        {access.isAcceptedArtist && <MySubmissionSection exhibitionId={id!} myUserId={user!.id} confirmed={access.confirmed} ended={access.ended} manualConfirmed={access.manualConfirmed} />}
-      </div>
-    );
+    ⚠️ **라우트를 지우지 말고 되돌려 보낼 것.** 이미 발송된 알림 10곳이 이 주소를 가리키고 있어서
+       (수락·자료제출 안내·정산 확인 요청·리마인더) 404 로 두면 그 알림들이 전부 죽는다.
+       새로 만드는 알림은 백엔드에서 /mypage?tab=applications 로 보낸다.
+  */
+  if (!canManage) {
+    return <Navigate to="/mypage?tab=applications" replace />;
   }
 
   return (
-    <div className="bg-white">
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8 xl:px-10">
+    <div className={embedded ? '' : 'bg-white'}>
+      <main className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8 xl:px-10'}>
+        {/* 머리말(제목·이동 버튼)은 **전용 페이지에서만** — 마이페이지 카드 안에서는 이미 제목·단계·이동이 있어 중복이다 */}
+        {!embedded && (
         <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
             <p className="text-sm text-gray-500">내 공모 운영 · {access.galleryName}</p>
@@ -357,6 +363,7 @@ export default function OperationPage() {
             </button>
           </div>
         </header>
+        )}
 
         <section className="mb-5 grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:grid-cols-3">
           <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
@@ -663,9 +670,14 @@ export default function OperationPage() {
   );
 }
 
+/** `/exhibitions/:id/operation` 전용 페이지 — 본문은 OperationBody 가 그린다(마이페이지 카드와 공유) */
+export default function OperationPage() {
+  return <OperationBody />;
+}
+
 
 // ============ 공지사항 ============
-function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; canManage: boolean }) {
+export function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; canManage: boolean }) {
   const qc = useQueryClient();
   const { data: notices = [], isLoading } = useQuery<ExhibitionNotice[]>({
     queryKey: ['operation-notices', exhibitionId],
@@ -793,7 +805,7 @@ function ProxyEditedNotice() {
  * 편집기를 따로 만들면 검증·임시저장·대표작 보정 규칙이 두 벌이 돼 반드시 갈라진다.
  * 서버도 같은 이유로 `submissionDataFrom` 하나를 공유한다.
  */
-function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed, proxyFor }: { exhibitionId: string; myUserId: number; confirmed: boolean; ended?: boolean; manualConfirmed?: boolean; proxyFor?: { id: number; name: string } }) {
+export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed, proxyFor }: { exhibitionId: string; myUserId: number; confirmed: boolean; ended?: boolean; manualConfirmed?: boolean; proxyFor?: { id: number; name: string } }) {
   const qc = useQueryClient();
   const targetUserId = proxyFor?.id ?? myUserId;
   // 대신 입력은 **원본**을 읽는다 — 임시저장(draft)까지 보여야 작가가 쓰다 만 내용을 모르고 날리지 않는다
@@ -1529,7 +1541,7 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
 // ============ 정산 (전시종료 후) ============
 
 // 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기
-function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
+export function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number; cardFeeRate?: number }>({
     queryKey: ['operation-my-settlement', exhibitionId],

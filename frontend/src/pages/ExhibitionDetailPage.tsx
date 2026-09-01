@@ -135,10 +135,6 @@ export default function ExhibitionDetailPage() {
   const [imgError, setImgError] = useState(false);
   const [careerErrorKeys, setCareerErrorKeys] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  // 인라인 쪽지 모달
-  const [showMsgModal, setShowMsgModal] = useState(false);
-  const [msgSubject, setMsgSubject] = useState('');
-  const [msgContent, setMsgContent] = useState('');
 
   // 지원 약관 텍스트 로드
   useEffect(() => {
@@ -286,17 +282,13 @@ export default function ExhibitionDetailPage() {
     onError: () => toast.error('수정에 실패했습니다.'),
   });
 
-  // 인라인 쪽지 전송
-  const sendMsgMutation = useMutation({
-    mutationFn: (data: { receiverId: number; subject: string; content: string; exhibitionId?: number }) =>
-      api.post('/messages', data),
-    onSuccess: () => {
-      toast.success('쪽지가 전송되었습니다.');
-      setShowMsgModal(false);
-      setMsgSubject('');
-      setMsgContent('');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '쪽지 전송에 실패했습니다.'),
+  /* 갠톡 열기 — 이미 있으면 그 방으로 (서버가 판단).
+     ⚠️ 예전에는 여기서 옛 쪽지 API(`POST /messages`)를 불렀는데, 대화가 ArtTalk 으로 바뀐 뒤로는
+     그렇게 보낸 글을 **아무도 읽을 수 없었다**("전송되었습니다" 만 뜨고 어디에도 안 남는다). */
+  const openChat = useMutation({
+    mutationFn: (ownerId: number) => api.post('/chats/direct', { userId: ownerId }).then(r => r.data),
+    onSuccess: (data: { id: number }) => navigate(`/messages?chat=${data.id}`),
+    onError: (err: any) => toast.error(err.response?.data?.error || '대화를 열지 못했습니다.'),
   });
 
   const handleDelete = () => {
@@ -443,13 +435,14 @@ export default function ExhibitionDetailPage() {
               )}
             </button>
           )}
-          {/* 쪽지 문의 (Artist 전용) */}
+          {/* 메시지 — 공모를 보고 있는 자리에서 바로 갤러리와 대화를 연다(갠톡 길목 중 하나) */}
           {isArtist && exhibition.gallery?.ownerId && (
             <button
-              onClick={() => { setMsgSubject(`[${exhibition.title}] `); setShowMsgModal(true); }}
-              className="mt-2 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer"
+              onClick={() => openChat.mutate(exhibition.gallery!.ownerId!)}
+              disabled={openChat.isPending}
+              className="mt-2 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900 cursor-pointer disabled:opacity-50"
             >
-              <Mail size={14} /> 쪽지 보내기
+              <Mail size={14} /> 메시지
             </button>
           )}
         </div>
@@ -663,65 +656,6 @@ export default function ExhibitionDetailPage() {
         onConfirm={() => { setDeleteConfirm(false); deleteMutation.mutate(); }}
         onCancel={() => setDeleteConfirm(false)}
       />
-
-      {/* 인라인 쪽지 모달 */}
-      <AnimatePresence>
-        {showMsgModal && exhibition.gallery?.ownerId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-            onClick={() => setShowMsgModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white p-6 mx-4 max-w-md w-full max-h-[80vh] overflow-y-auto"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">갤러리에 문의</h3>
-                <button onClick={() => setShowMsgModal(false)} aria-label="닫기"><X size={18} className="text-gray-400" /></button>
-              </div>
-              <p className="text-sm text-gray-400 mb-4">{exhibition.gallery.name}</p>
-              <input
-                value={msgSubject}
-                onChange={e => setMsgSubject(e.target.value)}
-                maxLength={200}
-                placeholder="제목"
-                className="w-full px-3 py-2 border-b border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 mb-3"
-              />
-              <textarea
-                value={msgContent}
-                onChange={e => setMsgContent(e.target.value)}
-                maxLength={5000}
-                placeholder="내용을 입력해주세요"
-                className="w-full px-3 py-2 border border-gray-200 text-sm h-32 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
-              />
-              <div className="flex justify-end mt-4">
-                <button
-                  onClick={() => {
-                    if (!msgSubject.trim()) { toast.error('제목을 입력해주세요.'); return; }
-                    if (!msgContent.trim()) { toast.error('내용을 입력해주세요.'); return; }
-                    sendMsgMutation.mutate({
-                      receiverId: exhibition.gallery!.ownerId!,
-                      subject: msgSubject.trim(),
-                      content: msgContent.trim(),
-                      exhibitionId: exhibition.id,
-                    });
-                  }}
-                  disabled={sendMsgMutation.isPending}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm disabled:opacity-50"
-                >
-                  전송
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* 지원 모달 (고정 양식: 약력/경력/작품사진/포트폴리오 파일) */}
       <AnimatePresence>

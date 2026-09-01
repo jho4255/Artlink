@@ -37,6 +37,9 @@ model User {
   sentMessages          Message[]              @relation("sentMessages")
   receivedMessages      Message[]              @relation("receivedMessages")
   messageReports        MessageReport[]        @relation("messageReports")
+  chatParticipations    ChatParticipant[]
+  chatMessages          ChatMessage[]          @relation("chatSender")
+  chatsCreated          Chat[]                 @relation("chatCreator")
   exhibitionSubmissions ExhibitionSubmission[]
   submissionEdits       ExhibitionSubmission[] @relation("submissionEditor") // 갤러리/Admin 이 대신 입력해 준 작가 자료
   artworkSales          ArtworkSale[]          @relation("artworkSales")
@@ -49,8 +52,156 @@ model User {
   kanbanCardsAssigned   KanbanCard[]           @relation("kanbanAssignee")
   kanbanCardsCreated    KanbanCard[]           @relation("kanbanCardCreator")
   kanbanComments        KanbanComment[]        @relation("kanbanCommentAuthor")
+  posts                 Post[]                 @relation("postAuthor")
+  postComments          PostComment[]          @relation("postCommentAuthor")
+  postLikes             PostLike[]             @relation("postLiker")
+  following             Follow[]               @relation("follower")   // 내가 이웃 추가한 사람들
+  followers             Follow[]               @relation("following")  // 나를 이웃 추가한 사람들
+  stories               Story[]                @relation("storyAuthor")
+  storyLikes            StoryLike[]            @relation("storyLiker")
+  storyComments         StoryComment[]         @relation("storyCommentAuthor")
+  guestbookReceived     GuestbookEntry[]       @relation("guestbookTarget") // 내 방명록에 달린 글
+  guestbookWritten      GuestbookEntry[]       @relation("guestbookAuthor") // 내가 남긴 방명록 글
 
   @@unique([provider, providerId])
+}
+
+// ── 방명록 (작가 홈페이지의 방명록) ──
+// target 의 홈페이지에 author 가 남긴 글. 방 주인은 답글(parentId)을 달 수 있다.
+// secret 이면 방 주인과 작성자만 본문을 볼 수 있다.
+model GuestbookEntry {
+  id           Int              @id @default(autoincrement())
+  targetUserId Int
+  target       User             @relation("guestbookTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  authorId     Int
+  author       User             @relation("guestbookAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body         String
+  secret       Boolean          @default(false)
+  parentId     Int?
+  parent       GuestbookEntry?  @relation("guestbookReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      GuestbookEntry[] @relation("guestbookReplies")
+  createdAt    DateTime         @default(now())
+
+  @@index([targetUserId, createdAt])
+}
+
+// ── 이웃 (단방향 팔로우) ──
+// follower → following. 상대 수락 불필요. following 에게 알림만 간다.
+model Follow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId Int
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+// ── 스토리 (작업 중 사진 + 짧은 글) ──
+// 별도 [소식] 피드에 뜬다. visibility 는 **글마다** — PUBLIC(전체공개) | NEIGHBORS(이웃공개).
+model Story {
+  id           Int            @id @default(autoincrement())
+  authorId     Int
+  author       User           @relation("storyAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  caption      String         @default("")
+  images       String[]       @default([])
+  visibility   String         @default("NEIGHBORS") // PUBLIC | NEIGHBORS
+  likeCount    Int            @default(0)  // 비정규화 카운트
+  commentCount Int            @default(0)
+  likes        StoryLike[]
+  comments     StoryComment[]
+  createdAt    DateTime       @default(now())
+
+  @@index([authorId, createdAt])
+  @@index([createdAt])
+}
+
+model StoryLike {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation("storyLiker", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([storyId, userId])
+}
+
+model StoryComment {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User     @relation("storyCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([storyId, createdAt])
+}
+
+// ── 광고 배너 (Admin 관리) — 사이드바 하단 등에 노출하는 자체 광고 슬롯 ──
+model AdBanner {
+  id        Int      @id @default(autoincrement())
+  imageUrl  String
+  title     String   @default("")
+  linkUrl   String   @default("")
+  active    Boolean  @default(true)
+  position  Int      @default(0)   // 정렬(작을수록 먼저)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, position])
+}
+
+// ── 커뮤니티 게시판 (블라인드식 글로벌 게시판, 홈 인기글의 출처) ──
+model Post {
+  id        Int      @id @default(autoincrement())
+  authorId  Int
+  author    User     @relation("postAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  // 첨부 사진 (우리 저장소 주소만). 순서 유지.
+  images    String[] @default([])
+  // 글마다 실명(닉네임+역할)/익명 선택 — true 면 응답에서 작성자 신원을 가린다
+  anonymous Boolean  @default(false)
+  // 랭킹·목록을 매번 집계하지 않으려고 비정규화해서 들고 있는다
+  likeCount    Int   @default(0)
+  commentCount Int   @default(0)
+  viewCount    Int   @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments PostComment[]
+  likes    PostLike[]
+
+  @@index([createdAt])
+  @@index([likeCount])
+}
+
+model PostComment {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User     @relation("postCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  anonymous Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+model PostLike {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation("postLiker", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
 }
 
 // 갤러리 모델
@@ -79,15 +230,15 @@ model Gallery {
   updatedAt               DateTime  @updatedAt
 
   // Relations
-  ownerId        Int
-  owner          User            @relation(fields: [ownerId], references: [id])
-  images         GalleryImage[]
-  exhibitions    Exhibition[]
+  ownerId            Int
+  owner              User                @relation(fields: [ownerId], references: [id])
+  images             GalleryImage[]
+  exhibitions        Exhibition[]
   managedExhibitions ExhibitionManager[] // 아트링크 주최 공모 중 이 갤러리가 운영을 위임받은 것
-  shows          Show[]
-  reviews        Review[]
-  favorites      Favorite[]
-  galleryOfMonth GalleryOfMonth?
+  shows              Show[]
+  reviews            Review[]
+  favorites          Favorite[]
+  galleryOfMonth     GalleryOfMonth?
 
   @@index([ownerId])
   @@index([status, region])
@@ -162,6 +313,7 @@ model Exhibition {
   settlements         ArtistSettlement[]
   settlementApprovals SettlementApproval[]
   invites             ExhibitionInvite[]
+  chat                Chat?
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -288,6 +440,7 @@ model Portfolio {
   tagline           String? // 한 줄 소개 — 포맷 PDF 표지 부제
   themeId           String? // 마지막으로 고른 포트폴리오 포맷 (gallery|studio|story|archive)
   seriesInfo        String? // 시리즈 설명 JSON: [{ name, note }]
+  designConfig      String? // 가이드형 디자인 JSON: { theme, works, sections:[{id,enabled}] }. null=기본(현재 모습)
   userId            Int              @unique
   user              User             @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
@@ -303,13 +456,13 @@ model PortfolioImage {
   // ── 작품 정보 ──
   // 실제 작가 포트폴리오는 예외 없이 [제목/재료/크기/제작연도]를 작품마다 붙인다(샘플 5종 전부).
   // 없으면 캡션이 통째로 빠지므로 전부 nullable — 있는 항목만 조립한다(lib/artwork.ts).
-  title       String?
-  medium      String? // 재료 (예: Acrylic on canvas)
-  sizeText    String? // 크기 (예: 72.7 × 90.9 cm) — 자유 텍스트
-  year        String? // 제작연도
-  series      String? // 시리즈명 — 포맷 PDF에서 이 값으로 묶고 시리즈 표지를 만든다
-  description String? // 작품 설명 / 서사
-  status      String? // AVAILABLE | SOLD | NFS(비매) — null이면 표기 안 함
+  title         String?
+  medium        String? // 재료 (예: Acrylic on canvas)
+  sizeText      String? // 크기 (예: 72.7 × 90.9 cm) — 자유 텍스트
+  year          String? // 제작연도
+  series        String? // 시리즈명 — 포맷 PDF에서 이 값으로 묶고 시리즈 표지를 만든다
+  description   String? // 작품 설명 / 서사
+  status        String? // AVAILABLE | SOLD | NFS(비매) — null이면 표기 안 함
   portfolioId   Int
   portfolio     Portfolio            @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   likes         PortfolioImageLike[]
@@ -561,25 +714,25 @@ model ArtistSettlement {
 
 // 정산 확인 승인 — 갤러리가 [정산 확인 요청] 시 수락 작가별 1행 생성. 전원 APPROVED여야 갤러리가 정산 완료 가능.
 model SettlementApproval {
-  id           Int        @id @default(autoincrement())
-  exhibitionId Int
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  artistUserId Int
-  artist       User       @relation("settlementApprovals", fields: [artistUserId], references: [id], onDelete: Restrict)
-  status       String     @default("PENDING") // PENDING(미응답) | APPROVED(수락) | ISSUE(문제제기)
-  comment      String? // 문제 제기 시 갤러리에 전달할 코멘트
+  id             Int        @id @default(autoincrement())
+  exhibitionId   Int
+  exhibition     Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  artistUserId   Int
+  artist         User       @relation("settlementApprovals", fields: [artistUserId], references: [id], onDelete: Restrict)
+  status         String     @default("PENDING") // PENDING(미응답) | APPROVED(수락) | ISSUE(문제제기)
+  comment        String? // 문제 제기 시 갤러리에 전달할 코멘트
   // 응답 당시 정산 금액의 지문(lib/settlementFingerprint.ts). 갤러리가 이 작가 금액을 고치면
   // 지문이 어긋나 자동으로 PENDING 으로 되돌아간다 → 금액이 그대로인 작가는 수락이 유지된다.
   // null = 옛 데이터/미응답. 옛 APPROVED 행은 첫 저장 때 한 번 재확인 대상이 된다(안전한 방향).
-  snapshot     String?
+  snapshot       String?
   // 이 작가에게 **마지막으로 물어본** 시각. 무응답 자동 수락 기한의 기준점이라
   // PENDING 으로 만들 때마다(최초 요청·작가별 재요청·금액 수정으로 인한 초기화) 새로 찍는다.
   // null = 옛 데이터 → 자동 수락 대상이 아니다(경고를 못 받은 사람에게 소급 적용하지 않는다).
-  askedAt      DateTime?
+  askedAt        DateTime?
   // 무응답으로 자동 수락된 시각. 사람이 직접 누른 수락과 반드시 구분돼야 한다 — 돈 문제라
   // 나중에 "동의한 적 없다"는 다툼이 생기면 이 값이 유일한 근거다.
   autoApprovedAt DateTime?
-  updatedAt    DateTime   @default(now()) @updatedAt
+  updatedAt      DateTime   @default(now()) @updatedAt
 
   @@unique([exhibitionId, artistUserId])
   @@index([exhibitionId])
@@ -633,15 +786,15 @@ model ExhibitionInvite {
 // 테이블명만 남았을 뿐 열(column) 개념은 없다 — 완료 여부는 doneAt 하나로 판정한다.
 
 model KanbanBoard {
-  id          Int           @id @default(autoincrement())
+  id          Int          @id @default(autoincrement())
   title       String
   description String? // 보드 부제(무엇을 모아두는 보드인지)
-  position    Int           @default(0) // 보드 목록 내 정렬 순서 (0부터 연속, 이동 시 서버가 재부여)
+  position    Int          @default(0) // 보드 목록 내 정렬 순서 (0부터 연속, 이동 시 서버가 재부여)
   createdById Int?
-  createdBy   User?         @relation("kanbanBoardCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("kanbanBoardCreator", fields: [createdById], references: [id], onDelete: SetNull)
   cards       KanbanCard[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([position])
 }
@@ -696,4 +849,69 @@ model KanbanSubtask {
   createdAt DateTime   @default(now())
 
   @@index([cardId, position])
+}
+
+// ===== 대화 (갠톡 1:1 · 단톡 그룹) =====
+//
+// 예전 Message 모델은 sender/receiver 한 쌍의 '쪽지'라 단톡을 담을 수 없었고,
+// "갤러리↔작가만" 같은 역할 제약이 라우트에 박혀 있어 작가끼리 대화도 못 했다.
+// 여기서는 **누가 대화할 수 있는가를 '방에 들어가 있는가'로만** 판정한다 —
+// 역할로 막지 않고, 방을 만드는 길목에서만 제한한다(아래).
+//
+// ⚠️ 임의 검색으로 아무에게나 말을 걸 수 있으면 안 된다. 방이 생기는 길은 둘뿐이다:
+//    · 갠톡(DIRECT) — 둘러보기·작가 홈페이지에서 그 사람을 보고 시작
+//    · 단톡(GROUP)  — 공모가 승인되면 자동 생성. 갤러리(+Admin 주최면 운영 갤러리)와
+//                     수락된 작가가 자동으로 참여자가 된다
+model Chat {
+  id            Int               @id @default(autoincrement())
+  kind          String // DIRECT(1:1) | GROUP(단톡)
+  title         String? // 단톡 이름 (공모 제목). 갠톡은 상대 이름을 화면에서 만든다
+  // 공모 단톡은 공모당 하나 — 유니크로 중복 생성을 막는다
+  exhibitionId  Int?              @unique
+  exhibition    Exhibition?       @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  // 갠톡 중복 방지 키 `min-max` (예: "12-45"). 그룹은 null.
+  // 유니크 인덱스라 같은 두 사람의 방이 두 개 생기지 않는다.
+  directKey     String?           @unique
+  createdById   Int?
+  createdBy     User?             @relation("chatCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  // 목록 정렬용. 메시지를 넣을 때 함께 갱신한다(매번 집계하면 목록이 느려진다)
+  lastMessageAt DateTime          @default(now())
+  participants  ChatParticipant[]
+  messages      ChatMessage[]
+  createdAt     DateTime          @default(now())
+
+  @@index([lastMessageAt])
+}
+
+model ChatParticipant {
+  id         Int       @id @default(autoincrement())
+  chatId     Int
+  chat       Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 이 시각 **이후**에 온 메시지가 안 읽음이다. 메시지마다 읽음 행을 쌓지 않는 이유는
+  // 단톡 20명 × 메시지 수만큼 행이 늘기 때문 — 시각 하나로 같은 답을 낼 수 있다.
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  chatId    Int
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId  Int
+  sender    User     @relation("chatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  // 첨부만 있는 메시지(사진/동영상/파일)는 본문이 빈 문자열일 수 있다
+  content   String   @default("")
+  // 첨부 (사진/동영상/파일 한 건). 없으면 모두 null.
+  attachmentUrl  String? // 업로드된 파일 주소
+  attachmentType String? // IMAGE | VIDEO | FILE
+  attachmentName String? // 원본 파일명 (FILE 다운로드 표시용)
+  attachmentSize Int? // 바이트 (용량 표시용)
+  createdAt DateTime @default(now())
+
+  @@index([chatId, createdAt])
 }

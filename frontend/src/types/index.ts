@@ -362,6 +362,7 @@ export interface Portfolio {
   tagline?: string | null;     // 한 줄 소개 (포맷 표지 부제)
   themeId?: string | null;     // 마지막으로 고른 포맷
   seriesInfo?: SeriesInfo[] | null;
+  designConfig?: unknown; // 포트폴리오 PDF 가이드형 디자인(색감 팔레트 등) — normalizePdfDesign 통과시켜 사용
   images: PortfolioImage[];
 }
 
@@ -424,6 +425,7 @@ export interface PublicPortfolio {
   tagline?: string | null;
   themeId?: string | null;
   seriesInfo?: SeriesInfo[] | null;
+  designConfig?: unknown;
   images: PortfolioImage[];
   user: { id: number; name: string; nickname?: string | null; avatar?: string; instagramUrl?: string | null };
 }

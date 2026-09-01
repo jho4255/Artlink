@@ -149,3 +149,32 @@ export function seriesNames(images: PortfolioImage[]): string[] {
   }
   return out;
 }
+
+/**
+ * 작품 격자의 **내용 지문**.
+ *
+ * ## 왜 필요한가
+ * 홈페이지 편집 화면은 한 글자 칠 때마다 미리보기를 다시 그린다. 작품이 30장이면
+ * 그때마다 figure/img 30개가 재조정돼 **입력이 밀린다**. 그래서 작품 덩어리는
+ * 이 지문이 바뀔 때만 다시 만든다(`HomepageView` 의 useMemo).
+ *
+ * ## 지문에 무엇을 넣는가
+ * 참조(배열 identity)가 아니라 **내용**으로 판단한다 — 부모가 매 렌더 새 배열을 만들어도
+ * 내용이 같으면 그대로 재사용된다. 반대로 캡션·시리즈처럼 **화면에 나오는 값**은
+ * 반드시 포함해야 한다. 빼면 작품 정보를 고쳐도 미리보기가 옛 화면 그대로다.
+ *
+ * 약력·작가노트·한 줄 소개는 **일부러 넣지 않는다** — 작품 격자와 무관하고,
+ * 넣으면 글자를 칠 때마다 지문이 바뀌어 최적화가 통째로 무의미해진다.
+ */
+export function artworkGridSignature(
+  images: PortfolioImage[],
+  seriesInfo?: SeriesInfo[] | null,
+): string {
+  return (
+    images
+      .map((i) => `${i.id}|${i.url}|${i.title ?? ''}|${i.series ?? ''}|${i.status ?? ''}|${captionInline(i)}`)
+      .join('§') +
+    '¶' +
+    JSON.stringify(seriesInfo ?? [])
+  );
+}

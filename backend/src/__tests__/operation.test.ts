@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { artistExhibitionLink } from '../lib/notifyLinks';
 
 const ownerTok = authToken(3, 'GALLERY');
 const adminTok = authToken(4, 'ADMIN');
@@ -78,7 +79,8 @@ describe('공모 운영 페이지 API', () => {
       const n2 = await testPrisma.notification.findMany({ where: { userId: 2, type: 'OPERATION_NOTICE' } });
       expect(n1.length).toBe(1);
       expect(n1[0].message).toContain('설치 안내');
-      expect(n1[0].linkUrl).toBe(`/exhibitions/${exId}/operation/new`);
+      // 작가에게 가는 알림은 마이페이지 [내 전시] 로, **그 전시를 열어둔 채로**(lib/notifyLinks.ts)
+      expect(n1[0].linkUrl).toBe(artistExhibitionLink(exId));
       expect(n2.length).toBe(0); // 미수락 작가는 알림 없음
     });
   });

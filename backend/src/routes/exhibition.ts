@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { ensureExhibitionChat } from '../lib/chat';
+import { artistExhibitionLink, operationLink } from '../lib/notifyLinks';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
@@ -16,6 +18,7 @@ import { hasSubmissionContent } from '../lib/submission';
 import { isExhibitionClosed, isSettlementStarted } from '../lib/exhibitionLifecycle';
 import { sweepSettlementReminders } from '../lib/settlementReminder';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
+import { canInviteArtist } from '../lib/inviteEligibility';
 import {
   OPERATOR_INCLUDE,
   assertCanManageExhibition,
@@ -556,6 +559,82 @@ router.get('/invites/received', authenticate, authorize('ARTIST'), async (req, r
   } catch (error) { next(error); }
 });
 
+/**
+ * POST /invites/:id/accept — 초대 수락 = **지원 없이 바로 참가**
+ *
+ * 갤러리가 이미 작품을 보고 부른 것이라 지원서를 다시 쓰게 할 이유가 없다.
+ * 수락하는 순간 `status='ACCEPTED'` 인 지원이 만들어져 그대로 공모 진행(자료 제출 → 전시 → 정산)에 들어간다.
+ * 지원서 내용(약력·작품·경력·파일)은 작가 포트폴리오에서 그대로 가져온다.
+ *
+ * ⚠️ 정원·마감은 그대로 지킨다 — 초대가 있었다고 정원을 넘겨 받을 수는 없다.
+ * ⚠️ 약관은 수락 행위로 동의한 것으로 본다(화면에서 문구를 함께 보여준다).
+ */
+router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const userId = req.user!.id;
+    const invite = await prisma.exhibitionInvite.findUnique({
+      where: { id },
+      include: { exhibition: { select: { id: true, title: true, capacity: true, deadline: true, status: true, recruitmentClosed: true, confirmed: true, ended: true, gallery: { select: { ownerId: true } } } } },
+    });
+    if (!invite || invite.artistId !== userId) throw new AppError('초대를 찾을 수 없습니다.', 404);
+
+    const ex = invite.exhibition;
+    if (ex.status !== 'APPROVED') throw new AppError('참여할 수 없는 공모입니다.', 400);
+    if (ex.recruitmentClosed || ex.confirmed || ex.ended || isDeadlinePassedKst(ex.deadline)) {
+      throw new AppError('마감된 공모입니다.', 400);
+    }
+
+    const already = await prisma.application.findFirst({ where: { exhibitionId: ex.id, userId }, select: { id: true } });
+    if (already) throw new AppError('이미 참여 중인 공모입니다.', 400);
+
+    const counts = await activeApplicationCounts([ex.id]);
+    if ((counts.get(ex.id) ?? 0) >= ex.capacity) throw new AppError('모집 인원이 마감되었습니다.', 400);
+
+    const portfolio = await prisma.portfolio.findUnique({
+      where: { userId },
+      include: { images: { orderBy: { order: 'asc' }, take: 10 } },
+    });
+    const images = (portfolio?.images ?? []).map(i => safeFileUrl(i.url)).filter((u): u is string => !!u);
+    if (images.length < 1) {
+      throw new AppError('포트폴리오에 작품 사진이 없어 참여할 수 없습니다. 홈페이지에 작품을 등록한 뒤 다시 시도해주세요.', 400);
+    }
+
+    const application = await prisma.application.create({
+      data: {
+        exhibitionId: ex.id,
+        userId,
+        status: 'ACCEPTED',
+        biography: (portfolio?.biography || '').trim() || '(초대 참여 — 작가 포트폴리오 참조)',
+        artworkImages: JSON.stringify(images),
+        career: portfolio?.career ?? null,
+        portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
+        termsAgreedAt: new Date(),
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
+      },
+    });
+    await prisma.exhibitionInvite.update({ where: { id }, data: { status: 'APPLIED' } });
+
+    // 갤러리에게 알림 + 단톡 합류 (둘 다 best-effort — 참여 자체는 이미 끝났다)
+    try {
+      if (ex.gallery?.ownerId) {
+        const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, nickname: true } });
+        await prisma.notification.create({
+          data: {
+            userId: ex.gallery.ownerId,
+            type: 'NEW_APPLICANT',
+            message: `"${ex.title}" 초대를 ${me?.nickname || me?.name || '작가'}님이 수락해 참여합니다.`,
+            linkUrl: operationLink(ex.id),
+          },
+        });
+      }
+    } catch { /* best-effort */ }
+    try { await ensureExhibitionChat(ex.id); } catch { /* best-effort */ }
+
+    res.status(201).json(application);
+  } catch (error) { next(error); }
+});
+
 // PATCH /invites/:id — 작가가 받은 초대를 삭제. 본인 것만.
 // 행을 지우지 않고 status를 DECLINED로 두는 이유: 유니크 제약(exhibitionId+artistId)이 살아 있어야
 // 갤러리가 같은 작가에게 다시 초대를 보내는 '재초대 스팸'이 막힌다. 작가 목록에서는 완전히 사라진다.
@@ -601,6 +680,13 @@ router.post('/:id/invite', authenticate, authorize('GALLERY', 'ADMIN'), async (r
       select: { id: true },
     });
     if (!artist) throw new AppError('작가를 찾을 수 없습니다.', 404);
+
+    // 관문 — 갤러리는 '좋아요했거나 서로 이웃'인 작가만 초대할 수 있다(lib/inviteEligibility.ts).
+    // 예외 둘: ①Admin(큐레이션 주최) ②Admin 주최 공모(hostType='ADMIN')의 위임 갤러리 — 그건 관리자 큐레이션이라 자유 초대.
+    if (req.user!.role === 'GALLERY' && exhibition.hostType !== 'ADMIN'
+        && !(await canInviteArtist(req.user!.id, artistId))) {
+      throw new AppError('관심 작품(하트)을 저장했거나 서로 이웃인 작가만 초대할 수 있습니다.', 403);
+    }
 
     const applied = await prisma.application.findFirst({
       where: { exhibitionId, userId: artistId },
@@ -1349,10 +1435,16 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
           userId: application.userId,
           type: 'APPLICATION_STATUS',
           message,
-          linkUrl: accepted ? `/exhibitions/${exhibitionId}/operation/new` : `/exhibitions/${exhibitionId}`,
+          // 수락되면 마이페이지 [내 전시] 로 — 거기서 공지·제출자료·정산을 다 처리한다
+          linkUrl: accepted ? artistExhibitionLink(exhibitionId) : `/exhibitions/${exhibitionId}`,
         },
       });
     } catch { /* best-effort */ }
+
+    // 수락된 작가를 공모 단톡에 넣는다 (방이 없으면 만든다). 실패해도 수락은 성공이어야 한다
+    if (accepted) {
+      try { await ensureExhibitionChat(exhibitionId); } catch { /* best-effort */ }
+    }
 
     res.json(updated);
   } catch (error) { next(error); }

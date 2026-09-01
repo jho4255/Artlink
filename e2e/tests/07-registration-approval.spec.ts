@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs } from '../lib/helpers';
+import { openAs, openMyPageTab } from '../lib/helpers';
 
 /**
  * 라이프사이클(UI 폼): 갤러리 등록 폼 작성 → 관리자 승인/거절 → 공개 노출 / 거절사유 전달.
@@ -8,7 +8,7 @@ import { openAs } from '../lib/helpers';
 
 async function registerGallery(page: any, name: string) {
   await page.goto('/mypage');
-  await page.getByText('내 갤러리', { exact: false }).first().click();
+  await openMyPageTab(page, '내 갤러리', 'gallery');
   await page.getByRole('button', { name: '갤러리 등록' }).click();
   await page.getByPlaceholder('갤러리명').fill(name);
   await page.getByPlaceholder('주소', { exact: true }).fill('서울시 종로구 테스트로 1');
@@ -32,7 +32,7 @@ test('갤러리 등록(폼) → 관리자 승인(UI) → 공개 목록 노출', 
 
   // 관리자: 승인 대기에서 해당 카드 승인
   await admin.page.goto('/mypage');
-  await admin.page.getByText('승인 관리', { exact: false }).first().click();
+  await openMyPageTab(admin.page, '승인 관리', 'admin');
   const card = admin.page.locator('div.border').filter({ hasText: NAME }).first();
   await expect(card).toBeVisible({ timeout: 8000 });
   await card.getByRole('button', { name: '승인' }).click();
@@ -49,7 +49,7 @@ test('갤러리 등록(폼) → 관리자 승인(UI) → 공개 목록 노출', 
 test('폼 검증: 필수 항목(갤러리명) 누락 시 등록 거절 + 안내', async ({ browser }) => {
   const gallery = await openAs(browser, 'gallery');
   await gallery.page.goto('/mypage');
-  await gallery.page.getByText('내 갤러리', { exact: false }).first().click();
+  await openMyPageTab(gallery.page, '내 갤러리', 'gallery');
   await gallery.page.getByRole('button', { name: '갤러리 등록' }).click();
   // 갤러리명을 비운 채 나머지만 채우고 동의
   await gallery.page.getByPlaceholder('주소', { exact: true }).fill('주소만 입력');
@@ -74,7 +74,7 @@ test('갤러리 등록 → 관리자 거절(사유) → 갤러리 화면에 거�
 
   // 관리자: 거절 + 사유
   await admin.page.goto('/mypage');
-  await admin.page.getByText('승인 관리', { exact: false }).first().click();
+  await openMyPageTab(admin.page, '승인 관리', 'admin');
   const card = admin.page.locator('div.border').filter({ hasText: NAME }).first();
   await expect(card).toBeVisible({ timeout: 8000 });
   await card.getByRole('button', { name: '거절' }).click();
@@ -84,7 +84,7 @@ test('갤러리 등록 → 관리자 거절(사유) → 갤러리 화면에 거�
 
   // 갤러리: 내 갤러리에서 거절 사유 확인
   await gallery.page.goto('/mypage');
-  await gallery.page.getByText('내 갤러리', { exact: false }).first().click();
+  await openMyPageTab(gallery.page, '내 갤러리', 'gallery');
   await expect(gallery.page.getByText(REASON, { exact: false })).toBeVisible({ timeout: 8000 });
 
   await gallery.ctx.close();

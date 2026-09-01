@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
 
 /**
  * 공모 상태(모집마감/확정/전시종료) + 정산.
@@ -13,7 +13,7 @@ async function createApprovedExhibition(api: APIRequestContext, title: string) {
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: gAuth(),
-    data: { title, type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId },
+    data: { title, type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${tokenFor('admin')}` }, data: { status: 'APPROVED' } });
   return ex.id;

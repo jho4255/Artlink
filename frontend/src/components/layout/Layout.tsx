@@ -1,6 +1,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { Outlet, Link } from 'react-router-dom';
 import Navbar from './Navbar';
+import BottomTabBar from './BottomTabBar';
+import MyPageSideMenu from './MyPageSideMenu';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
@@ -22,20 +24,26 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    // pb — 모바일 하단 고정 탭바(BottomTabBar) 높이만큼 비워 본문·푸터가 가리지 않게 (iOS safe-area 포함)
+    <div className="min-h-screen bg-white flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
       <Navbar />
-      <main className="flex-1">
-        {/* ErrorBoundary: 배포 후 이전 청크 404 등으로 페이지 로딩 실패 시 흰 화면 대신 복구 UI */}
-        <ErrorBoundary>
-          <Suspense fallback={
-            <div className="flex items-center justify-center py-24 text-gray-300">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
-            </div>
-          }>
-            <Outlet />
-          </Suspense>
-        </ErrorBoundary>
-      </main>
+      {/* 본문 + 우측 세로 메뉴(lg↑, 로그인 시에만).
+          min-w-0 필수 — 없으면 안쪽 표·긴 제목의 min-content 가 폭을 밀어 메뉴를 화면 밖으로 낸다(CLAUDE.md 27번) */}
+      <div className="flex-1 flex">
+        <main className="flex-1 min-w-0">
+          {/* ErrorBoundary: 배포 후 이전 청크 404 등으로 페이지 로딩 실패 시 흰 화면 대신 복구 UI */}
+          <ErrorBoundary>
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-24 text-gray-300">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
+              </div>
+            }>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+        <MyPageSideMenu />
+      </div>
       <footer className="border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
           {companyInfo.length > 0 ? (
@@ -54,6 +62,8 @@ export default function Layout() {
           </div>
         </div>
       </footer>
+      {/* 모바일 전용 하단 탭바 — 상단 가운데 5메뉴를 아래로(catch 앱 방식). lg↑ 는 상단 네비 유지 */}
+      <BottomTabBar />
     </div>
   );
 }

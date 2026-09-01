@@ -267,3 +267,19 @@ export function validateExhibitionDates(dates: {
 
   return null;
 }
+
+/** '방금 전 / N분 전 / N시간 전 / N일 전 / YYYY.MM.DD' — 커뮤니티·소식용 상대 시각 */
+export function timeAgo(iso: string, now: Date = new Date()): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const sec = Math.floor((now.getTime() - t) / 1000);
+  if (sec < 60) return '방금 전';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}일 전`;
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}

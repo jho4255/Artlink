@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates } from '../lib/helpers';
 
 /**
  * 다운로드 실패 회수 + 그동안 커버리지가 없던 PDF 경로 (2026-08-04)
@@ -39,8 +39,7 @@ async function seedExhibition(api: APIRequestContext, title: string) {
     data: {
       title: fullTitle, type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
-      description: '다운로드 회수 E2E', galleryId,
-    },
+      description: '다운로드 회수 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(tokenFor('admin')), data: { status: 'APPROVED' } });
   return { exId: ex.id as number, title: fullTitle };

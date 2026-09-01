@@ -1,449 +1,470 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useLocation, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, SendHorizonal, Plus, Mail, User as UserIcon, Flag, X, FileText, Building2, Paperclip, Image, Download } from 'lucide-react';
+import { Send, Users, MessageCircle, ArrowLeft, Paperclip, Image as ImageIcon, Film, FileText, Loader2, Download, X, UserPlus } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { compressImage } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
-import type { MessageAttachment } from '@/types';
+import { displayName } from '@/lib/utils';
+// 표시 규칙(묶음·제목·시각)은 화면 밖에 두고 테스트로 지킨다 — lib/chatView.ts
+import { chatTitle, groupFlags, showsSenderName, timeLabel } from '@/lib/chatView';
 
-function useIsMobile(breakpoint = 1024) {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint);
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [breakpoint]);
-  return isMobile;
+/**
+ * 대화 — 갠톡(1:1)과 단톡(공모방)을 한 화면에서 본다.
+ *
+ * ## 예전 쪽지와 무엇이 다른가
+ * 예전에는 제목+본문의 '쪽지'였고, 라우트에 "작가는 갤러리에게만" 같은 역할 규칙이 박혀 있어
+ * 작가끼리는 대화 자체가 불가능했다. 지금은 **방에 들어가 있으면 대화할 수 있다** — 그게 전부다.
+ *
+ * ## 대신 방이 생기는 길목이 좁다
+ *  · 갠톡 — 둘러보기 작품 모달 / 작가 홈페이지의 [메시지] 버튼 (그 사람을 보고 시작)
+ *  · 단톡 — 공모가 승인되면 서버가 자동 생성. 갤러리와 수락 작가가 자동 참여자
+ * 그래서 이 화면에는 임의 검색으로 아무나 찾아 말 거는 기능이 없다.
+ * **딱 하나 예외** — 이미 **서로 이웃**인 사람에게는 목록 위 [이웃에게 메시지]로 바로 갠톡을 연다.
+ *   (서로 이웃 = 양방향 팔로우. 임의 검색이 아니라 이미 맺어진 관계라 설계 전제를 깨지 않는다)
+ *
+ * ## 읽음
+ *  · 갠톡 : 내가 보낸 말 옆에 '읽음'
+ *  · 단톡 : 내가 보낸 말 옆에 아직 안 읽은 사람 수 (카카오톡과 같은 방식)
+ */
+interface ChatUser { id: number; name: string; nickname?: string | null; avatar?: string | null; role?: string }
+interface ChatSummary {
+  id: number;
+  kind: 'DIRECT' | 'GROUP';
+  title: string | null;
+  exhibitionId: number | null;
+  lastMessageAt: string;
+  unread: number;
+  participants: ChatUser[];
+  lastMessage: { content: string; senderId: number; createdAt: string } | null;
+}
+type AttachmentType = 'IMAGE' | 'VIDEO' | 'FILE';
+interface ChatMessage {
+  id: number; senderId: number; content: string; createdAt: string;
+  sender: ChatUser; read: boolean | null; unreadBy: number | null;
+  attachmentUrl?: string | null;
+  attachmentType?: AttachmentType | null;
+  attachmentName?: string | null;
+  attachmentSize?: number | null;
+}
+interface ChatDetail {
+  id: number; kind: 'DIRECT' | 'GROUP'; title: string | null;
+  exhibition: { id: number; title: string } | null;
+  participants: ChatUser[]; otherCount: number; messages: ChatMessage[];
 }
 
-interface ChatItem {
-  partner: { id: number; name: string; role: string; avatar: string | null };
-  lastMessage: { content: string; createdAt: string; fromMe: boolean; exhibitionTitle: string | null };
-  unreadCount: number;
+/** 바이트 → 사람이 읽는 크기 */
+function formatBytes(n?: number | null): string {
+  if (!n || n <= 0) return '';
+  const mb = n / 1024 / 1024;
+  if (mb >= 1) return `${mb.toFixed(1)}MB`;
+  return `${Math.max(1, Math.round(n / 1024))}KB`;
+}
+
+/**
+ * 대화 첨부 렌더 — 사진(클릭 확대) / 동영상(인라인 재생) / 파일(다운로드).
+ * ⚠️ `<a download>` 은 크로스오리진(R2)에서 브라우저가 무시할 수 있어 새 탭으로도 열리게 target 을 함께 준다.
+ */
+function ChatAttachment({ message, onOpenImage }: { message: ChatMessage; onOpenImage: (url: string) => void }) {
+  const url = message.attachmentUrl!;
+  if (message.attachmentType === 'IMAGE') {
+    return (
+      <button type="button" onClick={() => onOpenImage(url)} className="block overflow-hidden rounded-2xl border border-gray-100 cursor-pointer">
+        <img src={url} alt="" loading="lazy" className="max-h-64 max-w-full object-cover hover:opacity-90" />
+      </button>
+    );
+  }
+  if (message.attachmentType === 'VIDEO') {
+    return (
+      <video src={url} controls preload="metadata" className="max-h-64 max-w-full rounded-2xl border border-gray-100 bg-black" />
+    );
+  }
+  // FILE
+  const name = message.attachmentName || '첨부파일';
+  const size = formatBytes(message.attachmentSize);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      download={name}
+      className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 hover:bg-gray-50"
+    >
+      <span className="grid h-9 w-9 place-items-center rounded-lg bg-gray-100 text-gray-500 shrink-0"><FileText size={18} /></span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-gray-900">{name}</span>
+        <span className="block text-xs text-gray-400">{size ? `${size} · ` : ''}다운로드</span>
+      </span>
+      <Download size={16} className="ml-auto shrink-0 text-gray-400" />
+    </a>
+  );
 }
 
 export default function MessagesPage() {
-  const { user, token } = useAuthStore();
-  const qc = useQueryClient();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const isMobile = useIsMobile();
+  const { user } = useAuthStore();
+  const myId = user?.id ?? 0;
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openId = Number(searchParams.get('chat')) || null;
+  const [draft, setDraft] = useState('');
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // 서로 이웃에게 바로 말 걸기 — '아무나 검색'이 아니라 이미 서로 이웃인 사람만. 설계상 유일한 진입점 확장.
+  const [pickerOpen, setPickerOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const prefill = location.state as { receiverId?: number; receiverName?: string; exhibitionId?: number } | null;
-  const partnerFromUrl = searchParams.get('partner') ? Number(searchParams.get('partner')) : null;
+  const { data: chats = [], isLoading } = useQuery<ChatSummary[]>({
+    queryKey: ['chats'],
+    queryFn: () => api.get('/chats').then(r => r.data),
+    refetchInterval: 15000,   // 폴링 — SSE 는 예전 쪽지 전용이라 걷어냈다
+  });
 
-  const [selectedId, setSelectedId] = useState<number | null>(prefill?.receiverId ?? partnerFromUrl ?? null);
-  // 첫 대화 시 공모 맥락(있으면 첫 메시지에 연결)
-  const [pendingExhibitionId, setPendingExhibitionId] = useState<number | undefined>(prefill?.exhibitionId);
+  const { data: chat } = useQuery<ChatDetail>({
+    queryKey: ['chat', openId],
+    queryFn: () => api.get(`/chats/${openId}`).then(r => r.data),
+    enabled: !!openId,
+    refetchInterval: 8000,
+  });
 
-  const [replyContent, setReplyContent] = useState('');
-  const [replyAttachments, setReplyAttachments] = useState<MessageAttachment[]>([]);
+  // 방을 안 골랐으면 첫 방을 연다 (넓은 화면에서 빈 오른쪽을 보여주지 않게)
+  useEffect(() => {
+    if (!openId && chats.length > 0 && window.innerWidth >= 768) {
+      setSearchParams({ chat: String(chats[0].id) }, { replace: true });
+    }
+  }, [chats, openId, setSearchParams]);
+
+  // 새 말이 오면 아래로
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [chat?.messages.length, openId]);
+
+  const send = useMutation({
+    mutationFn: (payload: {
+      content?: string;
+      attachmentUrl?: string; attachmentType?: AttachmentType; attachmentName?: string; attachmentSize?: number;
+    }) => api.post(`/chats/${openId}/messages`, payload),
+    onSuccess: () => {
+      setDraft('');
+      queryClient.invalidateQueries({ queryKey: ['chat', openId] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '보내지 못했습니다.'),
+  });
+
+  // 서로 이웃 목록 — 피커를 열 때만 부른다
+  const { data: mutuals = [], isLoading: mutualsLoading } = useQuery<ChatUser[]>({
+    queryKey: ['mutuals'],
+    queryFn: () => api.get('/follow/mutuals').then(r => r.data),
+    enabled: pickerOpen,
+  });
+
+  // 이웃을 고르면 갠톡을 연다(이미 있으면 그 방으로 — 서버가 멱등 처리)
+  const startDirect = useMutation({
+    mutationFn: (userId: number) => api.post('/chats/direct', { userId }).then(r => r.data),
+    onSuccess: (data: { id: number }) => {
+      setPickerOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+      setSearchParams({ chat: String(data.id) });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '대화를 열지 못했습니다.'),
+  });
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || send.isPending) return;
+    send.mutate({ content: text });
+  };
+
+  /*
+    첨부 보내기 — 화면에서 먼저 업로드(`/api/upload/*`)한 뒤 그 url·메타로 메시지를 만든다.
+    ⚠️ 용량 상한은 **서버가 최종 판정**(multer). 여기서도 미리 잘라 헛된 업로드·서버비를 줄인다.
+      · 사진 15MB(/upload/image)  · 동영상 25MB(/upload/video)  · 파일 20MB(/upload/file, PDF/DOC/HWP/ZIP)
+  */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachKind, setAttachKind] = useState<AttachmentType>('IMAGE');
   const [uploading, setUploading] = useState(false);
 
-  const [showNew, setShowNew] = useState(false);
-  const [reportingMsgId, setReportingMsgId] = useState<number | null>(null);
-  const [reportReason, setReportReason] = useState<string>('PROFANITY');
-  const [reportDetail, setReportDetail] = useState('');
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const openPicker = (kind: AttachmentType) => {
+    setAttachKind(kind);
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.accept = kind === 'IMAGE' ? 'image/*' : kind === 'VIDEO' ? 'video/*' : '.pdf,.doc,.docx,.hwp,.hwpx,.zip';
+    input.value = '';
+    input.click();
+  };
 
-  // prefill state 정리
-  useEffect(() => { if (prefill?.receiverId) window.history.replaceState({}, ''); }, []);
-  // 알림/네비게이션 파라미터로 들어온 상대 선택
-  useEffect(() => { if (partnerFromUrl) setSelectedId(partnerFromUrl); }, [partnerFromUrl, location.key]);
+  const ATTACH_LIMITS: Record<AttachmentType, { bytes: number; endpoint: string; field: string; label: string }> = {
+    IMAGE: { bytes: 15 * 1024 * 1024, endpoint: '/upload/image', field: 'image', label: '사진' },
+    VIDEO: { bytes: 25 * 1024 * 1024, endpoint: '/upload/video', field: 'video', label: '동영상' },
+    FILE: { bytes: 20 * 1024 * 1024, endpoint: '/upload/file', field: 'file', label: '파일' },
+  };
 
-  // ===== 쿼리 =====
-  const { data: chats = [], isLoading: chatsLoading, isError: chatsError, refetch: refetchChats } = useQuery<ChatItem[]>({
-    queryKey: ['message-chats'],
-    queryFn: () => api.get('/messages/chats').then(r => r.data),
-    // 403(권한 없음)은 재시도해도 결과가 같으므로 즉시 에러 상태로 전환
-    retry: (failureCount, error) => {
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      return status !== 403 && failureCount < 3;
-    },
-  });
-
-  const { data: thread } = useQuery<any>({
-    queryKey: ['message-thread', selectedId],
-    queryFn: () => api.get(`/messages/thread/${selectedId}`).then(r => r.data),
-    enabled: selectedId != null && selectedId > 0,
-  });
-
-  const { data: recipients = [] } = useQuery<any[]>({
-    queryKey: ['message-recipients'],
-    queryFn: () => api.get('/messages/recipients').then(r => r.data),
-    enabled: showNew,
-  });
-
-  // 스레드 열람 시 미읽음 갱신
-  useEffect(() => {
-    if (selectedId) {
-      qc.invalidateQueries({ queryKey: ['message-unread-count'] });
-      qc.invalidateQueries({ queryKey: ['message-chats'] });
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !openId) return;
+    const spec = ATTACH_LIMITS[attachKind];
+    if (file.size > spec.bytes) {
+      toast.error(`${spec.label}은(는) 최대 ${Math.round(spec.bytes / 1024 / 1024)}MB 까지 보낼 수 있습니다.`);
+      return;
     }
-  }, [selectedId, thread?.messages?.length]);
-
-  // 새 메시지 도착 시 맨 아래로
-  useEffect(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-  }, [thread?.messages?.length, selectedId]);
-
-  // ===== SSE 실시간 수신 =====
-  // 장기 JWT를 URL에 노출하지 않도록, 매 연결마다 단기(60s) 티켓을 헤더 인증으로 발급받아 사용.
-  useEffect(() => {
-    if (!token) return;
-    let es: EventSource | null = null;
-    let stopped = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const connect = async () => {
-      if (stopped) return;
-      try {
-        const { data } = await api.post('/messages/stream-ticket');
-        if (stopped) return;
-        es = new EventSource(`/api/messages/stream?ticket=${encodeURIComponent(data.ticket)}`);
-        es.addEventListener('message', () => {
-          qc.invalidateQueries({ queryKey: ['message-chats'] });
-          qc.invalidateQueries({ queryKey: ['message-unread-count'] });
-          qc.invalidateQueries({ queryKey: ['message-thread'] });
-        });
-        es.onerror = () => { es?.close(); if (!stopped) { clearTimeout(retry); retry = setTimeout(connect, 3000); } };
-      } catch {
-        if (!stopped) { clearTimeout(retry); retry = setTimeout(connect, 5000); }
-      }
-    };
-    connect();
-    return () => { stopped = true; clearTimeout(retry); es?.close(); };
-  }, [token, qc]);
-
-  // ===== 파일 업로드 =====
-  const handleFileUpload = async (files: FileList) => {
-    if (replyAttachments.length + files.length > 5) { toast.error('최대 5개까지 첨부 가능합니다.'); return; }
     setUploading(true);
     try {
-      for (const rawFile of Array.from(files)) {
-        const isImage = rawFile.type.startsWith('image/');
-        const file = isImage ? await compressImage(rawFile) : rawFile;
-        const formData = new FormData();
-        formData.append(isImage ? 'image' : 'file', file);
-        const res = await api.post(isImage ? '/upload/image' : '/upload/file', formData);
-        setReplyAttachments(prev => [...prev, { url: res.data.url, name: file.name, type: file.type, size: file.size }]);
-      }
-    } catch (err: any) { toast.error(err?.response?.data?.error || '파일 업로드에 실패했습니다.'); }
-    setUploading(false);
+      const form = new FormData();
+      form.append(spec.field, file);
+      const { data } = await api.post(spec.endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
+      send.mutate({
+        attachmentUrl: data.url,
+        attachmentType: attachKind,
+        attachmentName: attachKind === 'FILE' ? (data.originalName || file.name) : undefined,
+        attachmentSize: data.size ?? file.size,
+      });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || '첨부를 보내지 못했습니다.');
+    } finally {
+      setUploading(false);
+    }
   };
 
-  // ===== Mutations =====
-  const sendMutation = useMutation({
-    mutationFn: (data: any) => api.post('/messages', data),
-    retry: false,
-    onError: (err: any) => toast.error(err.response?.data?.error || '전송에 실패했습니다.'),
-  });
+  const sorted = useMemo(() => chats, [chats]);
 
-  const reportMutation = useMutation({
-    mutationFn: (data: { messageId: number; reason: string; detail?: string }) => api.post('/reports', data),
-    onSuccess: () => { toast.success('신고가 접수되었습니다.'); setReportingMsgId(null); setReportReason('PROFANITY'); setReportDetail(''); qc.invalidateQueries({ queryKey: ['message-thread'] }); },
-    onError: (err: any) => toast.error(err.response?.status === 409 ? '이미 신고한 메시지입니다.' : '신고에 실패했습니다.'),
-  });
+  return (
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+      <h1 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900 mb-6">
+        Art<span className="text-[#dc3545]">Talk</span>
+      </h1>
 
-  const send = () => {
-    if (sendMutation.isPending) return;
-    if (!selectedId) return;
-    if (!replyContent.trim() && replyAttachments.length === 0) return;
-    sendMutation.mutate(
-      {
-        receiverId: selectedId,
-        subject: '대화',
-        content: replyContent.trim() || '(첨부)',
-        ...(pendingExhibitionId ? { exhibitionId: pendingExhibitionId } : {}),
-        ...(replyAttachments.length > 0 ? { attachments: replyAttachments } : {}),
-      },
-      {
-        onSuccess: () => {
-          setReplyContent(''); setReplyAttachments([]); setPendingExhibitionId(undefined);
-          qc.invalidateQueries({ queryKey: ['message-thread', selectedId] });
-          qc.invalidateQueries({ queryKey: ['message-chats'] });
-        },
-      },
-    );
-  };
-
-  const handleReport = () => {
-    if (!reportingMsgId) return;
-    reportMutation.mutate({ messageId: reportingMsgId, reason: reportReason, ...(reportDetail.trim() ? { detail: reportDetail.trim() } : {}) });
-  };
-
-  const openChat = (partnerId: number, exhibitionId?: number) => {
-    setSelectedId(partnerId);
-    setPendingExhibitionId(exhibitionId);
-    setShowNew(false);
-    setReplyContent(''); setReplyAttachments([]);
-  };
-
-  const formatTime = (d: string) => new Date(d).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const formatDay = (d: string) => new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-
-  const partnerName = thread?.partner?.name || chats.find(c => c.partner.id === selectedId)?.partner.name || '대화';
-
-  // ===== 대화 목록 (좌측) =====
-  const chatList = (
-    <div className="divide-y divide-gray-100">
-      {chatsLoading ? (
-        <div className="p-6 text-center text-gray-300 text-sm">불러오는 중…</div>
-      ) : chatsError ? (
-        <div className="p-8 text-center text-gray-400 text-sm">
-          <p className="mb-3">대화 목록을 불러오지 못했습니다.</p>
-          <button
-            onClick={() => refetchChats()}
-            className="px-4 py-2 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >다시 시도</button>
-        </div>
-      ) : chats.length === 0 ? (
-        <div className="p-8 text-center text-gray-300 text-sm">
-          <Mail size={36} className="mx-auto mb-2 opacity-30" />
-          아직 대화가 없습니다.
-        </div>
-      ) : (
-        chats.map(c => (
-          <button
-            key={c.partner.id}
-            onClick={() => openChat(c.partner.id)}
-            className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors ${selectedId === c.partner.id ? 'bg-gray-100' : ''}`}
-          >
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-none overflow-hidden">
-              {c.partner.avatar ? <img src={c.partner.avatar} alt="" className="w-full h-full object-cover" /> : (c.partner.role === 'GALLERY' ? <Building2 size={18} className="text-gray-400" /> : <UserIcon size={18} className="text-gray-400" />)}
+      <div className="grid gap-0 md:grid-cols-[300px_1fr] rounded-2xl border border-gray-200 overflow-hidden bg-white">
+        {/* 목록 — 좁은 화면에서는 방을 고르면 숨긴다 */}
+        <div className={`border-gray-200 md:border-r ${openId ? 'hidden md:block' : ''}`}>
+          {/* 이웃에게 바로 말 걸기 진입점 — 목록 위에 둔다(임의 검색이 아니라 서로 이웃만) */}
+          <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
+            <span className="text-xs font-medium text-gray-400">대화 목록</span>
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              <UserPlus size={13} /> 이웃에게 메시지
+            </button>
+          </div>
+          {isLoading ? (
+            <div className="p-6 text-sm text-gray-400">불러오는 중…</div>
+          ) : sorted.length === 0 ? (
+            <div className="p-6 text-sm text-gray-400 leading-relaxed">
+              아직 대화가 없습니다.<br />
+              둘러보기에서 작가를 보고 [메시지]를 누르거나, 공모에 참여하면 단체 대화가 생깁니다.
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-gray-900 truncate">{c.partner.name}</p>
-                <span className="text-[10px] text-gray-300 flex-none">{formatDay(c.lastMessage.createdAt)}</span>
-              </div>
-              <p className="text-xs text-gray-400 truncate">{c.lastMessage.fromMe ? '나: ' : ''}{c.lastMessage.content}</p>
+          ) : (
+            <ul className="max-h-[70vh] overflow-y-auto divide-y divide-gray-50">
+              {sorted.map(c => (
+                <li key={c.id}>
+                  <button
+                    onClick={() => setSearchParams({ chat: String(c.id) })}
+                    className={`w-full px-4 py-3 text-left transition-colors ${openId === c.id ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {c.kind === 'GROUP'
+                        ? <Users size={14} className="shrink-0 text-gray-400" />
+                        : <MessageCircle size={14} className="shrink-0 text-gray-400" />}
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                        {chatTitle(c, myId)}
+                      </span>
+                      {/* 안 읽은 게 있으면 개수 배지 */}
+                      {c.unread > 0 && (
+                        <span className="shrink-0 rounded-full bg-[#c4302b] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {c.unread > 99 ? '99+' : c.unread}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-xs text-gray-500">
+                      {c.lastMessage?.content || '아직 대화가 없습니다.'}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-gray-300">{timeLabel(c.lastMessageAt)}</p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* 대화 */}
+        <div className={`flex flex-col ${openId ? '' : 'hidden md:flex'}`}>
+          {!chat ? (
+            <div className="flex flex-1 items-center justify-center p-10 text-sm text-gray-400">
+              대화를 선택하세요.
             </div>
-            {c.unreadCount > 0 && (
-              <span className="flex-none min-w-[18px] h-[18px] px-1 rounded-full bg-[#c4302b] text-white text-[10px] font-bold flex items-center justify-center">{c.unreadCount}</span>
-            )}
-          </button>
-        ))
-      )}
-    </div>
-  );
-
-  // ===== 대화창 (우측) =====
-  const threadView = selectedId == null ? (
-    <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-300">
-      <div className="text-center"><Mail size={48} className="mx-auto mb-3 opacity-20" /><p className="text-sm">대화를 선택하세요</p></div>
-    </div>
-  ) : (
-    <div className="flex flex-col h-full bg-gray-50">
-      {/* 헤더 */}
-      <div className="px-5 py-3 border-b border-gray-200 bg-white flex-none flex items-center gap-2">
-        {isMobile && <button onClick={() => setSelectedId(null)} className="p-1.5 hover:bg-gray-100 -ml-1"><ArrowLeft size={18} /></button>}
-        <p className="text-base font-semibold text-gray-900 truncate">{partnerName}</p>
-      </div>
-
-      {/* 말풍선 */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
-        {(thread?.messages || []).map((msg: any) => {
-          const isMe = msg.senderId === user?.id;
-          const hidden = msg.sanctioned || msg.reportedByMe;
-          let atts: MessageAttachment[] = [];
-          try { if (msg.attachments) atts = JSON.parse(msg.attachments); } catch { /* noop */ }
-          return (
-            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[78%] ${hidden ? 'opacity-60' : ''}`}>
-                {msg.exhibition?.title && (
-                  <p className={`text-[10px] text-gray-400 mb-0.5 ${isMe ? 'text-right' : 'text-left'}`}>📌 {msg.exhibition.title}</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
+                <button onClick={() => setSearchParams({})} className="md:hidden text-gray-400" aria-label="목록으로">
+                  <ArrowLeft size={16} />
+                </button>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-gray-900">{chatTitle(chat, myId)}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {chat.kind === 'GROUP' ? `참여자 ${chat.participants.length}명` : '1:1 대화'}
+                    {chat.exhibition && ' · 공모 단체 대화'}
+                  </p>
+                </div>
+                {chat.exhibition && (
+                  <button
+                    onClick={() => navigate(`/exhibitions/${chat.exhibition!.id}`)}
+                    className="ml-auto shrink-0 text-xs text-gray-400 hover:text-gray-900"
+                  >
+                    공모 보기
+                  </button>
                 )}
-                <div className={`px-4 py-2.5 text-sm rounded-2xl ${isMe ? 'bg-gray-900 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
-                  {msg.sanctioned ? (
-                    <p className="italic text-gray-400">제재로 가려진 메시지입니다</p>
-                  ) : msg.reportedByMe ? (
-                    <p className="italic text-gray-400">신고한 메시지입니다</p>
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
-                  )}
-                  {!hidden && atts.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
-                      {atts.map((a, i) => (
-                        a.type.startsWith('image/') ? (
-                          <button key={i} onClick={() => setLightboxUrl(a.url)} className="block">
-                            <img src={a.url} alt={a.name} className="max-w-[200px] max-h-[150px] rounded-lg border border-gray-200 object-cover cursor-zoom-in hover:opacity-80" />
-                          </button>
-                        ) : (
-                          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs w-fit ${isMe ? 'bg-white/20 hover:bg-white/30' : 'bg-gray-100 hover:bg-gray-200'}`}>
-                            <Download size={12} /><span>{a.name}</span>
-                          </a>
-                        )
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4 max-h-[55vh] min-h-[280px]">
+                {chat.messages.length === 0 && (
+                  <p className="py-10 text-center text-sm text-gray-400">첫 메시지를 보내보세요.</p>
+                )}
+                {chat.messages.map((m, i) => {
+                  const mine = m.senderId === myId;
+                  /*
+                    카카오톡처럼 **이어 보낸 말은 묶는다.** (규칙은 lib/chatView.ts, 회귀는 chatView.test.ts)
+                    예전엔 메시지마다 이름과 시각이 다 붙어서, 한 사람이 세 줄을 쓰면
+                    이름 3번·시각 3번이 나와 정작 말이 안 읽혔다.
+                  */
+                  const { first, last } = groupFlags(chat.messages, i);
+                  return (
+                    <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${first ? 'mt-3 first:mt-0' : 'mt-0.5'}`}>
+                      <div className={`max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
+                        {showsSenderName(chat.kind, mine, first) && (
+                          <span className="mb-0.5 text-[11px] text-gray-400">{displayName(m.sender)}</span>
+                        )}
+                        {/* 첨부(사진/동영상/파일) — 있으면 본문 위에 */}
+                        {m.attachmentUrl && m.attachmentType && (
+                          <ChatAttachment message={m} onOpenImage={setPreviewUrl} />
+                        )}
+                        {/* 본문 — 첨부만 있는 메시지는 빈 문자열이라 말풍선을 그리지 않는다 */}
+                        {m.content && (
+                          <div className={`rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-keep [overflow-wrap:anywhere] ${
+                            mine ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'
+                          } ${m.attachmentUrl ? 'mt-1' : ''}`}>
+                            {m.content}
+                          </div>
+                        )}
+                        {last && (
+                          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-300">
+                            {/* 갠톡 '읽음' / 단톡 안 읽은 사람 수 — 내 말에만 붙는다 */}
+                            {mine && chat.kind === 'DIRECT' && m.read && <b className="font-medium text-gray-400">읽음</b>}
+                            {mine && chat.kind === 'GROUP' && (m.unreadBy ?? 0) > 0 && (
+                              <b className="font-medium text-[#c4302b]">{m.unreadBy}</b>
+                            )}
+                            {timeLabel(m.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={bottomRef} />
+
+                {/* 사진 크게 보기 */}
+                {previewUrl && createPortal(
+                  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4" onClick={() => setPreviewUrl(null)}>
+                    <button aria-label="닫기" className="absolute right-4 top-4 text-white/80 hover:text-white"><X size={24} /></button>
+                    <img src={previewUrl} alt="" className="max-h-[92vh] max-w-full object-contain" onClick={e => e.stopPropagation()} />
+                  </div>,
+                  document.body,
+                )}
+              </div>
+
+              {/* 첨부 업로드용 숨은 input — 종류에 따라 accept 를 바꿔 연다 */}
+              <input ref={fileInputRef} type="file" className="hidden" onChange={onFilePicked} />
+
+              <form onSubmit={submit} className="flex items-center gap-1.5 border-t border-gray-100 p-3">
+                {/* 첨부 메뉴 — 사진·동영상·파일 */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAttachOpen(v => !v)}
+                    disabled={uploading || send.isPending}
+                    aria-label="첨부"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
+                  >
+                    {uploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+                  </button>
+                  {attachOpen && !uploading && (
+                    <div className="absolute bottom-11 left-0 z-10 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                      {([
+                        ['IMAGE', '사진', <ImageIcon size={15} key="i" />],
+                        ['VIDEO', '동영상', <Film size={15} key="v" />],
+                        ['FILE', '파일', <FileText size={15} key="f" />],
+                      ] as const).map(([kind, label, icon]) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          onClick={() => { setAttachOpen(false); openPicker(kind); }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          {icon} {label}
+                        </button>
                       ))}
                     </div>
                   )}
                 </div>
-                <div className={`flex items-center gap-2 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  <span className="text-[10px] text-gray-300">{formatTime(msg.createdAt)}</span>
-                  {!isMe && !hidden && <button onClick={() => setReportingMsgId(msg.id)} aria-label="신고" className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center text-gray-300 hover:text-[#c4302b]"><Flag size={10} /></button>}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* 입력 */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white flex-none">
-        {replyAttachments.length > 0 && (
-          <div className="mb-2 space-y-1">
-            {replyAttachments.map((a, i) => (
-              <div key={i} className="flex items-center gap-2 px-2 py-1 min-w-0 bg-gray-50 rounded text-xs">
-                {a.type.startsWith('image/') ? <Image size={10} className="text-gray-400 shrink-0" /> : <FileText size={10} className="text-gray-400 shrink-0" />}
-                <span className="flex-1 min-w-0 truncate">{a.name}</span>
-                <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} aria-label="첨부 삭제" className="shrink-0 min-h-[36px] min-w-[36px] -my-2 flex items-center justify-center text-gray-400 hover:text-[#c4302b]"><X size={10} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex items-end gap-2">
-          <label className="p-2.5 text-gray-400 hover:text-gray-900 cursor-pointer flex-none">
-            <Paperclip size={16} />
-            <input type="file" multiple className="hidden" onChange={e => e.target.files && handleFileUpload(e.target.files)} accept="*/*" />
-          </label>
-          <textarea
-            value={replyContent}
-            onChange={e => setReplyContent(e.target.value)}
-            maxLength={5000}
-            placeholder={uploading ? '업로드 중…' : '메시지를 입력하세요…'}
-            rows={1}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400 max-h-24 overflow-y-auto"
-            style={{ minHeight: '42px' }}
-          />
-          <button onClick={send} disabled={(!replyContent.trim() && replyAttachments.length === 0) || sendMutation.isPending}
-            className="p-2.5 bg-gray-900 text-white rounded-full disabled:opacity-30 hover:bg-gray-800 flex-none"><SendHorizonal size={16} /></button>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="h-[calc(100dvh-5rem)] flex flex-col">
-      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200 bg-white flex-none">
-        <h1 className="text-lg font-semibold font-serif text-gray-900">메시지</h1>
-        <button onClick={() => setShowNew(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">
-          <Plus size={14} /> 새 대화
-        </button>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* 목록 */}
-        {(!isMobile || selectedId == null) && (
-          <div className={`${isMobile ? 'w-full' : 'w-80 flex-none border-r border-gray-200'} overflow-y-auto bg-white`}>
-            {chatList}
-          </div>
-        )}
-        {/* 대화창 */}
-        {(!isMobile || selectedId != null) && (
-          <div className="flex-1 flex flex-col overflow-hidden">{threadView}</div>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {showNew && (
-          <NewChatModal
-            recipients={recipients}
-            isArtist={user?.role === 'ARTIST'}
-            onClose={() => setShowNew(false)}
-            onPick={(uid, exId) => openChat(uid, exId)}
-          />
-        )}
-      </AnimatePresence>
-      <ReportModal {...{ reportingMsgId, reportReason, reportDetail, reportMutation, setReportingMsgId, setReportReason, setReportDetail, handleReport }} />
-      <MessageImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
-    </div>
-  );
-}
-
-// ========== 새 대화 상대 선택 ==========
-function NewChatModal({ recipients, isArtist, onClose, onPick }: { recipients: any[]; isArtist: boolean; onClose: () => void; onPick: (userId: number, exhibitionId?: number) => void }) {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <motion.div initial={{ scale: 0.96 }} animate={{ scale: 1 }} exit={{ scale: 0.96 }} onClick={e => e.stopPropagation()} className="bg-white w-full max-w-md max-h-[80vh] flex flex-col rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">새 대화 상대</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
-        </div>
-        <div className="overflow-y-auto p-2">
-          {recipients.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">{isArtist ? '메시지를 보낼 수 있는 갤러리가 없습니다.' : '아직 지원자가 없습니다. (지원한 작가에게만 메시지를 보낼 수 있어요)'}</p>
-          ) : isArtist ? (
-            recipients.map((r: any) => (
-              <button key={r.userId} onClick={() => onPick(r.userId)} className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 flex items-center gap-2">
-                <Building2 size={16} className="text-gray-400" />
-                <span className="text-sm text-gray-800">{r.galleryName}</span>
-              </button>
-            ))
-          ) : (
-            recipients.map((ex: any) => (
-              <div key={ex.exhibitionId} className="mb-2">
-                <p className="px-3 py-1 text-[11px] font-medium text-gray-400">{ex.exhibitionTitle}</p>
-                {ex.applicants.map((a: any) => (
-                  <button key={a.userId} onClick={() => onPick(a.userId, ex.exhibitionId)} className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden flex-none">
-                      {a.avatar ? <img src={a.avatar} alt="" className="w-full h-full object-cover" /> : <UserIcon size={14} className="text-gray-400" />}
-                    </div>
-                    <span className="text-sm text-gray-800">{a.name}</span>
-                  </button>
-                ))}
-              </div>
-            ))
+                <input
+                  value={draft}
+                  onChange={e => setDraft(e.target.value.slice(0, 2000))}
+                  placeholder={uploading ? '첨부를 보내는 중…' : '메시지를 입력하세요'}
+                  disabled={uploading}
+                  className="flex-1 min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50"
+                />
+                <button
+                  type="submit"
+                  disabled={!draft.trim() || send.isPending || uploading}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  <Send size={14} /> 보내기
+                </button>
+              </form>
+            </>
           )}
         </div>
-      </motion.div>
-    </motion.div>
-  );
-}
+      </div>
 
-// ========== 신고 모달 ==========
-function ReportModal({ reportingMsgId, reportReason, reportDetail, reportMutation, setReportingMsgId, setReportReason, setReportDetail, handleReport }: any) {
-  return (
-    <AnimatePresence>
-      {reportingMsgId !== null && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setReportingMsgId(null)}>
-          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={(e: React.MouseEvent) => e.stopPropagation()} className="bg-white w-full max-w-sm p-5 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">메시지 신고</h3>
-              <button onClick={() => setReportingMsgId(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+      {/* 이웃에게 바로 말 걸기 — 서로 이웃인 사람만 나온다(임의 검색 아님) */}
+      {pickerOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4" onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">이웃에게 메시지</h3>
+              <button onClick={() => setPickerOpen(false)} aria-label="닫기" className="text-gray-400 hover:text-gray-900"><X size={18} /></button>
             </div>
-            <div className="space-y-2 mb-4">
-              {([['PROFANITY','비속어 / 욕설'],['SPAM','스팸 / 광고'],['INAPPROPRIATE','부적절한 내용'],['OTHER','기타']] as const).map(([v,l]) => (
-                <label key={v} className="flex items-center gap-2.5 p-2.5 hover:bg-gray-50 rounded cursor-pointer">
-                  <input type="radio" name="rr" value={v} checked={reportReason===v} onChange={()=>setReportReason(v)} className="accent-gray-900" /><span className="text-sm">{l}</span>
-                </label>
-              ))}
-            </div>
-            <textarea value={reportDetail} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>)=>setReportDetail(e.target.value)} maxLength={500} placeholder="상세 내용 (선택)" className="w-full h-20 px-3 py-2 border border-gray-200 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400 mb-4" />
-            <div className="flex gap-2">
-              <button onClick={()=>setReportingMsgId(null)} className="flex-1 py-2.5 border border-gray-200 rounded text-sm text-gray-600 hover:bg-gray-50">취소</button>
-              <button onClick={handleReport} disabled={reportMutation.isPending} className="flex-1 py-2.5 bg-gray-900 text-white rounded text-sm hover:bg-gray-800 disabled:opacity-50">{reportMutation.isPending?'처리 중...':'신고하기'}</button>
-            </div>
-          </motion.div>
-        </motion.div>
+            <p className="mb-3 text-xs text-gray-400">서로 이웃인 사람에게 바로 말을 걸 수 있어요.</p>
+            {mutualsLoading ? (
+              <p className="py-6 text-center text-sm text-gray-400">불러오는 중…</p>
+            ) : mutuals.length === 0 ? (
+              <p className="py-6 text-center text-sm leading-relaxed text-gray-400">
+                서로 이웃인 사람이 아직 없습니다.<br />
+                <span className="text-xs">상대가 나를 이웃으로 추가하고, 나도 그 사람을 추가하면 여기에 나타납니다.</span>
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {mutuals.map(u => (
+                  <li key={u.id}>
+                    <button
+                      onClick={() => startDirect.mutate(u.id)}
+                      disabled={startDirect.isPending}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {u.avatar
+                        ? <img src={u.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
+                        : <span className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-gray-400"><Users size={14} /></span>}
+                      <span className="min-w-0 truncate text-sm text-gray-900">{displayName(u)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
-    </AnimatePresence>
-  );
-}
-
-// ========== 이미지 라이트박스 ==========
-function MessageImageLightbox({ url, onClose }: { url: string | null; onClose: () => void }) {
-  if (!url) return null;
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4 cursor-zoom-out" onClick={onClose}>
-      <img src={url} alt="" className="max-w-full max-h-[85vh] object-contain" onClick={e => e.stopPropagation()} />
-      <a href={url} download onClick={e => e.stopPropagation()} className="mt-3 flex items-center gap-1.5 px-4 py-2 bg-white/90 text-gray-800 text-sm rounded hover:bg-white cursor-pointer">
-        <Download size={14} /> 다운로드
-      </a>
-    </motion.div>
+    </div>
   );
 }

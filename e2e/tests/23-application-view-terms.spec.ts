@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, openApplicantManager } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, openApplicantManager, openMyPageTab, exhibitionDates } from '../lib/helpers';
 
 /**
  * 지원서(고정 양식) 갤러리 열람 + 등록 폼 약관(placeholder 아님) 검증.
@@ -14,7 +14,7 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '지원서열람공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId },
+    data: { title: '지원서열람공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await applyToExhibition(api, ex.id, tokenFor('artist'), { biography: 'E2E_제출약력_표시확인' });
@@ -35,20 +35,20 @@ test('등록 폼 약관이 placeholder가 아닌 실제 약관 텍스트', async
 
   // 갤러리 등록 폼
   await page.goto('/mypage');
-  await page.getByText('내 갤러리', { exact: false }).first().click();
+  await openMyPageTab(page, '내 갤러리', 'gallery');
   await page.getByRole('button', { name: '갤러리 등록' }).click();
   await expect(page.locator('body')).toContainText('갤러리 등록 약관', { timeout: 8000 });
   await expect(page.locator('body')).not.toContainText('sample_약관');
 
   // 공모 등록 폼
   await page.goto('/mypage');
-  await page.getByText('내 공모', { exact: false }).first().click();
+  await openMyPageTab(page, '내 공모', 'gallery');
   await page.getByRole('button', { name: '공모 등록' }).click();
   await expect(page.locator('body')).toContainText('공모 등록 약관', { timeout: 8000 });
 
   // 전시 등록 폼
   await page.goto('/mypage');
-  await page.getByText('내 전시', { exact: false }).first().click();
+  await openMyPageTab(page, '내 전시', 'gallery');
   await page.getByRole('button', { name: '전시 등록' }).click();
   await expect(page.locator('body')).toContainText('전시 등록 약관', { timeout: 8000 });
   await expect(page.locator('body')).not.toContainText('sample_약관');

@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ComponentType } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
@@ -31,12 +31,22 @@ const ExhibitionDetailPage = lazyWithReload(() => import('@/pages/ExhibitionDeta
 const ShowsPage = lazyWithReload(() => import('@/pages/ShowsPage'));
 const ShowDetailPage = lazyWithReload(() => import('@/pages/ShowDetailPage'));
 const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
-const BenefitsPage = lazyWithReload(() => import('@/pages/BenefitsPage'));
+// 혜택 페이지는 당분간 비활성화 — 아래 /benefits 라우트가 홈으로 보낸다.
+// 다시 켤 땐 이 import 와 라우트, Navbar navLinks, QuickActionCards 카드를 되살리면 된다.
+// (Admin 마이페이지의 '혜택 관리' 탭과 백엔드 /api/benefits 는 그대로 살아 있다)
+// const BenefitsPage = lazyWithReload(() => import('@/pages/BenefitsPage'));
 const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
 const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
 const SupportPage = lazyWithReload(() => import('@/pages/SupportPage'));
 const ExplorePage = lazyWithReload(() => import('@/pages/ExplorePage'));
 const MessagesPage = lazyWithReload(() => import('@/pages/MessagesPage'));
+const CommunityPage = lazyWithReload(() => import('@/pages/CommunityPage'));
+const CommunityWritePage = lazyWithReload(() => import('@/pages/CommunityWritePage'));
+const CommunityPostPage = lazyWithReload(() => import('@/pages/CommunityPostPage'));
+const FeedPage = lazyWithReload(() => import('@/pages/FeedPage'));
+const GalleryRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.GalleryRegisterPage })));
+const ExhibitionRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ExhibitionRegisterPage })));
+const ShowRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ShowRegisterPage })));
 const NotFoundPage = lazyWithReload(() => import('@/pages/NotFoundPage'));
 const AuthCallbackPage = lazyWithReload(() => import('@/pages/AuthCallbackPage'));
 const PrivacyPage = lazyWithReload(() => import('@/pages/PrivacyPage'));
@@ -61,8 +71,10 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/explore" element={<ExplorePage />} />
         <Route path="/galleries" element={<GalleriesPage />} />
+        <Route path="/galleries/new" element={<ProtectedRoute><GalleryRegisterPage /></ProtectedRoute>} />
         <Route path="/galleries/:id" element={<GalleryDetailPage />} />
         <Route path="/exhibitions" element={<ExhibitionsPage />} />
+        <Route path="/exhibitions/new" element={<ProtectedRoute><ExhibitionRegisterPage /></ProtectedRoute>} />
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
         <Route path="/exhibitions/:id/operation/new" element={
           <ProtectedRoute><OperationPage /></ProtectedRoute>
@@ -71,19 +83,26 @@ export default function App() {
           <ProtectedRoute><OperationClassicPage /></ProtectedRoute>
         } />
         <Route path="/shows" element={<ShowsPage />} />
+        <Route path="/shows/new" element={<ProtectedRoute><ShowRegisterPage /></ProtectedRoute>} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
-        <Route path="/benefits" element={<BenefitsPage />} />
+        {/* 혜택 비활성화 — 기존 링크·북마크·검색결과가 죽지 않게 404 대신 홈으로 */}
+        <Route path="/benefits" element={<Navigate to="/" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/kakao/callback" element={<AuthCallbackPage provider="kakao" />} />
-        {/* 쪽지는 작가↔갤러리 전용 (백엔드 authorize와 동일) — Admin은 홈으로 리다이렉트 */}
+        {/* 대화는 역할로 막지 않는다 — 방에 들어가 있으면 누구든 쓴다(Admin 도 단톡 참여자가 될 수 있다) */}
         <Route path="/messages" element={
-          <ProtectedRoute roles={['ARTIST', 'GALLERY']}><MessagesPage /></ProtectedRoute>
+          <ProtectedRoute><MessagesPage /></ProtectedRoute>
         } />
         <Route path="/mypage" element={
           <ProtectedRoute><MyPage /></ProtectedRoute>
         } />
         {/* 공개 FAQ 조회 가능 — 1:1 문의 탭은 SupportPage 내부에서 로그인 게이팅 */}
+        {/* 커뮤니티 — 읽기는 공개, 글쓰기/댓글은 페이지 내부에서 로그인 게이팅 */}
+        <Route path="/community" element={<CommunityPage />} />
+        <Route path="/community/write" element={<ProtectedRoute><CommunityWritePage /></ProtectedRoute>} />
+        <Route path="/community/:id" element={<CommunityPostPage />} />
+        <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />

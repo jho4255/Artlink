@@ -19,7 +19,11 @@ test('히어로 슬라이드 생성 → 홈 노출', async ({ browser }) => {
   await ctx.close();
 });
 
-test('혜택 생성 → 혜택 페이지 노출', async ({ browser }) => {
+/**
+ * 혜택 페이지는 당분간 비활성화 — /benefits 가 홈으로 리다이렉트된다(App.tsx).
+ * 백엔드 API 와 Admin '혜택 관리' 탭은 살아 있으므로, 페이지를 되살리면 skip 만 풀면 된다.
+ */
+test.skip('혜택 생성 → 혜택 페이지 노출', async ({ browser }) => {
   const api = await pwRequest.newContext();
   const adminTok = tokenFor('admin');
   const TITLE = 'E2E 혜택 ' + Date.now();

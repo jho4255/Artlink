@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates } from '../lib/helpers';
 import { applyToExhibition } from '../lib/helpers';
 
 /**
@@ -26,7 +26,7 @@ async function setupExhibitionWithAcceptedArtist(api: APIRequestContext): Promis
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '신규기능공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '신규기능', galleryId: gid },
+    data: { title: '신규기능공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '신규기능', galleryId: gid, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await applyToExhibition(api, ex.id, aTok);
@@ -210,8 +210,10 @@ test.describe('제출물 저장 검증(캡션 필수항목)', () => {
   test('UI: 캡션 항목(제목) 비우면 저장 차단 + 무엇이 비었는지 안내', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.goto(`/exhibitions/${exId}/operation`);
-    // 출품리스트 탭 (기본) — 첫 작품 제목 비우기
-    const titleInput = page.getByPlaceholder('작품명').first();
+    /* 출품리스트 탭(기본) — 첫 작품 제목 비우기.
+       ⚠️ placeholder 가 '작품명' → '예: 푸른 밤의 정원' 으로 바뀌었다(라벨이 '작품명' 을 맡는다).
+       라벨로 찾으면 문구가 또 바뀌어도 안 깨진다. */
+    const titleInput = page.locator('label').filter({ hasText: '작품명' }).first().locator('input');
     await expect(titleInput).toBeVisible({ timeout: 10000 });
     await titleInput.fill('');
     await page.getByRole('button', { name: '저장', exact: true }).first().click();

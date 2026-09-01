@@ -4,8 +4,24 @@
 
 ## 실행 전제 (로컬 서버 2개)
 
+> 🚨 **DB 를 반드시 확인하고 돌리세요.**
+> `global-setup.ts` 는 실행 때마다 `prisma migrate reset --force` 로 **대상 DB 를 통째로 지웁니다.**
+> `backend/.env` 의 `DATABASE_URL` 이 실서버 복제본(`artlink_prod`)을 가리키고 있으면
+> **실제 가입자 데이터가 사라집니다**(2026-08-28 실측: 그 DB 에 유저 93명이 들어 있었다).
+> 아래처럼 **로컬 데모 DB(`artlink`)를 명시**해서 돌리세요 — 환경변수가 `.env` 보다 우선합니다.
+>
+> ```bash
+> # backend/.env 의 **로컬** DATABASE_URL 을 그대로 넣으세요.
+> # ⚠️ 그 값이 artlink_prod(실서버 복제본)를 가리키고 있지 않은지 **눈으로 확인**할 것 —
+> #    DB 이름이 반드시 `artlink` 여야 합니다.
+> export DATABASE_URL='<backend/.env 의 로컬 DATABASE_URL — DB 이름이 artlink 인 것>'
+> ```
+> (레포에 접속 문자열을 그대로 적지 않습니다 — `scripts/predeploy-check.sh` 가 막습니다)
+> 백엔드도 **같은 DB 로** 띄워야 합니다(아래 명령의 앞에 같은 변수를 붙일 것).
+
 ```bash
 # 1) 백엔드 — E2E 동안 rate limit 비활성화 플래그 필수 (E2E는 수백 개 API 호출)
+# (위에서 export 한 DATABASE_URL 을 그대로 물려받는다)
 cd backend && DISABLE_RATE_LIMIT=true npx tsx watch src/index.ts
 
 # 2) 프론트엔드
@@ -72,3 +88,31 @@ npx playwright test tests/01-messaging.spec.ts   # 특정 파일만
 | 테스트가 존재하지 않는 `/uploads/art1.png` 사용 | SkeletonImage가 404 시 `<img>`를 렌더하지 않음 | `realUploadUrl()`로 실제 파일 사용 |
 
 결과: **21 failed / 32 passed → 0 failed / 74 passed** (1건은 원래 `test.fixme`).
+
+
+## 2026-08-28 정비 — 개편분 반영 + 연쇄 실패 제거
+
+한 세션에서 대화(ArtTalk)·마이페이지 메뉴·홈·작가 홈페이지가 크게 바뀌었고, 그 사이 백엔드에도
+필수 필드가 하나 늘어 있었다. 돌려보니 **72 failed / 69 passed**. 원인은 넷뿐이었다.
+
+| 원인 | 영향 | 조치 |
+|---|---|---|
+| **공모 등록에 `submissionDeadline`(자료제출 마감일)이 필수가 됨** (2026-08-19) | 공모 생성이 전부 400 → 지원·수락·운영·정산이 **줄줄이 실패**(30여 개) | `exhibitionDates()` / `createExhibition()` 헬퍼 신설. 날짜 한 벌을 한 곳에서 만든다(지원마감 < 자료제출 < 전시시작 순서까지 맞춰서) |
+| 마이페이지 메뉴가 **세 곳**(Navbar 메뉴·본문 탭바·우측 사이드바)에 생김 | `getByText('내 갤러리').first()` 가 모바일에서 **감춰진 사이드바**를 집어 15초 타임아웃 | `openMyPageTab(page, '내 갤러리')` 헬퍼로 교체 — 주소로 바로 간다 |
+| 옛 쪽지 UI(제목+textarea) 폐기, ArtTalk 으로 전면 개편 | `01-messaging` 전체가 무의미 | `29-chat.spec.ts` 로 옮기고 **6턴 왕복 시나리오는 그대로 이식**. 옛 파일은 은퇴 |
+| 화면 이름 변경 (Favorites→ArtWorks, 포트폴리오 탭 분리, 받은 초대→내 전시, FAQ 삭제) | 셀렉터 불일치 | 10·12·26 갱신 |
+
+테스트끼리 상태를 물려주던 것도 하나 고쳤다 — `02-favorites` 는 앞 테스트가 켜 둔 찜 때문에
+[찜하기] 를 못 찾고 죽었다. 이제 `beforeEach` 에서 시작 상태를 직접 맞춘다.
+
+### 새로 추가한 시나리오
+- `29-chat` — 갠톡 길목(작가 홈페이지·둘러보기) · 안읽음/읽음 · **카톡식 묶음** · 단톡 자동 생성 · **남의 방 404** · 6턴 왕복
+- `30-mypage-menu` — lg↑ 사이드바 / lg↓ 햄버거 하나 · 로그아웃 위치 · 탭 왕복 · **모든 탭이 빈 화면이 아닌지** · 브랜드 제목 색
+- `31-home-artworks` — ArtWorks 최상단 · 첫 진입 랜덤 · 새로고침 · 대비(AA) · /benefits 리다이렉트
+- `32-artist-homepage` — [수정] 한 번에 편집 · 실시간 미리보기 · 저장 후 공개 페이지 복귀 · **무공백 400자에도 가로 밀림 없음** · 경력 배치
+- `33-artist-exhibitions` — 초대 탭 · 초대 수락 = 바로 참가 · 카드 안에서 운영(공지/제출/정산) · 카드 높이
+- `34-picks-and-scrap` — MyPicks 통합 · **갤러리 관심 작품 = 하트 보드**(스크랩 버튼 삭제) → [전시 초대] · 갤러리 탭 왕복
+- `35-gallery-exhibition-ops` — 내 공모 [상세 운영] **인라인 아코디언**(페이지 이동 없음) · `/operation/new` 라우트 보존 · [추가 질문]·[작가 초대]는 지원자 관리 패널 안 · 하트 저장 작가 초대
+
+> ⚠️ `like` 는 **토글**이라 같은 이미지를 두 번 좋아요하면 취소된다. 갤러리 하트가 필요한 테스트는
+> `seedGalleryLike`(항상 새 작품에 첫 하트)로 my-likes 를 결정적으로 채운다.

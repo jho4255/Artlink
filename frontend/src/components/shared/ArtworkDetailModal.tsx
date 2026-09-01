@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, User, Bookmark, Mail } from 'lucide-react';
+import { Heart, X, User, MessageCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { displayName, getDday } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import FollowButton from './FollowButton';
 import type { ExploreImage } from '@/types';
 
 /**
@@ -32,17 +33,21 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
   const { isAuthenticated, user } = useAuthStore();
   const [image, setImage] = useState<ExploreImage>(initial);
   const [showLikers, setShowLikers] = useState(false);
-  const [scrapped, setScrapped] = useState(!!initial.isScrapped);
-  const [inviteOpen, setInviteOpen] = useState(false);
 
   // 부모가 새 이미지를 넘기면 따라간다(목록에서 다른 작품을 연 경우)
-  useEffect(() => {
-    setImage(initial);
-    setScrapped(!!initial.isScrapped);
-  }, [initial]);
+  useEffect(() => { setImage(initial); }, [initial]);
 
   const isOwner = user?.id === image.artist.id;
-  const isGallery = user?.role === 'GALLERY';
+
+  /* 갠톡 열기 — 이미 있으면 그 방으로, 없으면 만들어서 그 방으로 (서버가 판단) */
+  const openChat = useMutation({
+    mutationFn: () => api.post('/chats/direct', { userId: image.artist.id }).then(r => r.data),
+    onSuccess: (data: { id: number }) => {
+      onClose();
+      navigate(`/messages?chat=${data.id}`);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '대화를 열지 못했습니다.'),
+  });
 
   const apply = (next: ExploreImage) => {
     setImage(next);
@@ -78,23 +83,6 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
       queryClient.invalidateQueries({ queryKey: ['explore'] });
       queryClient.invalidateQueries({ queryKey: ['explore-highlight'] });
       queryClient.invalidateQueries({ queryKey: ['my-likes'] });
-    },
-  });
-
-  const scrapMutation = useMutation({
-    mutationFn: () => api.post(`/explore/${image.id}/scrap`).then(r => r.data),
-    onMutate: () => setScrapped(s => !s),
-    onError: () => {
-      setScrapped(s => !s);
-      toast.error('저장에 실패했습니다.');
-    },
-    onSuccess: (data: { scrapped: boolean }) => {
-      setScrapped(data.scrapped);
-      toast.success(data.scrapped ? '관심 작품에 저장했어요 (작가에게는 보이지 않습니다)' : '저장을 해제했어요');
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-      queryClient.invalidateQueries({ queryKey: ['artwork-scraps'] });
     },
   });
 
@@ -161,29 +149,29 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
             </button>
 
             <div className="flex items-center gap-3 shrink-0">
-              {/* 갤러리 전용 액션 — 아이콘만 얹어 모달 높이를 늘리지 않는다 */}
-              {isGallery && (
-                <>
-                  <button
-                    onClick={() => scrapMutation.mutate()}
-                    title={scrapped ? '관심 작품에서 해제 (작가에게 보이지 않음)' : '관심 작품으로 저장 (작가에게 보이지 않음)'}
-                    aria-label={scrapped ? '관심 작품 해제' : '관심 작품 저장'}
-                    className="cursor-pointer"
-                  >
-                    <Bookmark
-                      size={20}
-                      className={scrapped ? 'text-gray-900 fill-gray-900' : 'text-gray-300 hover:text-gray-500'}
-                    />
-                  </button>
-                  <button
-                    onClick={() => setInviteOpen(true)}
-                    title="내 공모에 초대"
-                    aria-label="내 공모에 초대"
-                    className="cursor-pointer"
-                  >
-                    <Mail size={20} className="text-gray-300 hover:text-gray-500" />
-                  </button>
-                </>
+              {/* 이웃(팔로우) — 여기가 이웃인지 바로 보이고, 추가/삭제도 여기서 한다.
+                  ⚠️ 카드에서 바로 '공모 초대'하던 버튼은 없앴다. 초대는 공모 쪽(내 공모 → 지원자 관리 → 작가 초대)에서만 하고,
+                  서버도 '좋아요했거나 서로이웃'인 작가만 초대되게 막는다. 여기선 관심 표시(하트)·이웃 맺기까지만. */}
+              {isAuthenticated && !isOwner && (
+                <FollowButton userId={image.artist.id} iconOnly />
+              )}
+
+              {/*
+                [메시지] — 갠톡을 여는 **몇 안 되는 길목** 중 하나.
+                대화 상대를 임의로 검색해 말 걸 수는 없고, 이렇게 작품을 보고 있는 자리에서만 시작한다.
+                역할을 가리지 않는다 — 작가끼리도 서로 연락할 수 있어야 한다(예전 쪽지는 이게 막혀 있었다).
+                ⚠️ 자기 작품에는 띄우지 않는다(자기 자신과의 대화는 서버가 400 으로 막는다).
+              */}
+              {isAuthenticated && !isOwner && (
+                <button
+                  onClick={() => openChat.mutate()}
+                  disabled={openChat.isPending}
+                  title={`${displayName(image.artist)} 님에게 메시지`}
+                  aria-label="메시지 보내기"
+                  className="cursor-pointer disabled:opacity-40"
+                >
+                  <MessageCircle size={20} className="text-gray-300 hover:text-gray-500" />
+                </button>
               )}
 
               <div className="flex items-center gap-1.5">
@@ -225,14 +213,6 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
           </AnimatePresence>
         </div>
       </motion.div>
-
-      {inviteOpen && (
-        <InviteModal
-          artistId={image.artist.id}
-          artistName={displayName(image.artist)}
-          onClose={() => setInviteOpen(false)}
-        />
-      )}
     </motion.div>,
     document.body
   );
@@ -324,7 +304,7 @@ interface InvitableExhibition {
   ended?: boolean;
 }
 
-function InviteModal({ artistId, artistName, onClose }: { artistId: number; artistName: string; onClose: () => void }) {
+export function InviteModal({ artistId, artistName, onClose }: { artistId: number; artistName: string; onClose: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [message, setMessage] = useState('');
 

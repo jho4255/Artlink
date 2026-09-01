@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, openMyPageTab, exhibitionDates } from '../lib/helpers';
 
 /**
  * 지원 모달(고정 양식): 작가약력(필수) + 경력 + 작품사진(1장 이상 필수) + 포트폴리오 파일.
@@ -19,7 +19,7 @@ test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 �
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '고정양식공모 ' + Date.now(), type: 'SOLO', deadlineStart: today, deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '고정 양식 지원 테스트', galleryId },
+    data: { title: '고정양식공모 ' + Date.now(), type: 'SOLO', deadlineStart: today, deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '고정 양식 지원 테스트', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await api.dispose();
@@ -55,8 +55,8 @@ test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 �
   await expect(page.locator('body')).toContainText(/지원이 완료|지원.*완료/, { timeout: 10000 });
 
   // 지원 내역 반영
-  await page.goto('/mypage');
-  await page.getByText('지원 내역', { exact: false }).first().click();
+  // 예전 [지원 내역] 탭은 [내 전시]로 이름이 바뀌었다 (초대·진행·정산까지 한 곳에서 본다)
+  await openMyPageTab(page, '내 전시');
   await expect(page.getByText('고정양식공모', { exact: false }).first()).toBeVisible({ timeout: 8000 });
   await ctx.close();
 });

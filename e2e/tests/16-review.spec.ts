@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, createExhibition } from '../lib/helpers';
 
 /**
  * 리뷰 작성 UI: 수락된 지원이 있는 작가가 갤러리 상세에서 별점+내용 리뷰 작성 → 노출 + 갤러리 별점 반영.
@@ -12,11 +12,18 @@ let exId: number, galleryId: number, exTitle: string;
 test.beforeAll(async () => {
   const api = await pwRequest.newContext();
   const gTok = tokenFor('gallery'); const aTok = tokenFor('artist');
-  const myEx = await (await api.get(`${API}/exhibitions/my-exhibitions`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
-  const ex = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
-  exId = ex.id; galleryId = ex.galleryId; exTitle = ex.title;
 
-  await applyToExhibition(api, exId, aTok);
+  /* ⚠️ '내 공모 중 아무거나'를 집으면 안 된다 — 앞선 테스트가 만든 **정원 1짜리 공모**를 집어
+     지원이 400 이 나고, 그러면 수락도 없어 리뷰 작성 자격이 안 생긴다(2026-08-28 실패 원인).
+     이 테스트만의 공모를 새로 만든다. */
+  const gs = await (await api.get(`${API}/galleries?owned=true`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
+  const gal = (Array.isArray(gs) ? gs : gs.galleries).find((g: any) => g.status === 'APPROVED');
+  galleryId = gal.id;
+  exTitle = `리뷰검증 ${Date.now()}`;
+  exId = await createExhibition(api, { title: exTitle, galleryId, description: '리뷰 E2E' });
+
+  const applied = await applyToExhibition(api, exId, aTok);
+  expect(applied.status(), `지원 실패 ${applied.status()}`).toBe(201);
 
   // 지원 수락
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();

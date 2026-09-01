@@ -84,6 +84,12 @@ scratchpad/vt/renders_before/
 scratchpad/vt/nomat/
 scratchpad/vt/nomat_off/
 scratchpad/vt/renders_off/
+scratchpad/vt/matrix/
+scratchpad/vt/matrix_best/
+scratchpad/vt/matrix_off/
+scratchpad/vt/nomat_base/
+scratchpad/vt/renders_base/
+scratchpad/vt/best/
 scratchpad/vt/sweep_old/
 scratchpad/vt/debug/
 scratchpad/vt/leak/
@@ -94,3 +100,11 @@ __pycache__/
 scratchpad/pf/engine.mjs
 scratchpad/pf/*.png
 scratchpad/pf/*.json
+scratchpad/vt/matrix_r9/
+
+# 원본 자산 보관함 — 추출 결과만 커밋한다(gptsamplecase/ 와 같은 규칙)
+frameit_test_assets*.zip
+# Playwright 실행 산출물
+test-results/
+# 개인 파일 (파일명에 비밀번호가 들어 있다)
+*_포트폴리오.pptx

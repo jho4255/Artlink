@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ChevronDown, ChevronUp, MessageCircle, Send, HelpCircle, Trash2, Edit3 } from 'lucide-react';
+// HelpCircle 은 아래 FaqSection(현재 화면에서 부르지 않음)이 쓴다 — 되살릴 때를 위해 남겨둔다
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import WithdrawModal from '@/components/shared/WithdrawModal';
 import type { Inquiry } from '@/types';
 
 interface Faq {
@@ -27,40 +29,33 @@ const CATEGORY_LABELS: Record<FaqCategory, string> = {
 export default function SupportPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const isAdmin = user?.role === 'ADMIN';
-
-  const [activeTab, setActiveTab] = useState<'faq' | 'inquiry'>('faq');
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <p className="text-base text-gray-400 mt-2">Support</p>
-      <h1 className="text-4xl md:text-5xl font-serif text-gray-900">도움이 필요하신가요?</h1>
-      <div className="mb-10" />
+      {/*
+        머리말('Support / 도움이 필요하신가요')과 [자주 묻는 질문] 탭은 없앴다(2026-08-28).
+        남은 게 1:1 문의 하나뿐이라 탭이 있을 이유가 없고, 화면 이름은 사이드바가 알려준다.
+        ⚠️ FaqSection 과 백엔드 /api/inquiries/faq 는 **그대로 살아 있다** — 되살리려면 여기서 다시 부르면 된다.
+      */}
+      <InquirySection />
 
-      {/* 탭 전환 */}
-      <div className="flex gap-1 border-b border-gray-100 mb-6">
-        <button
-          onClick={() => setActiveTab('faq')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'faq' ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent hover:text-gray-600'
-          }`}
-        >
-          <HelpCircle size={15} /> 자주 묻는 질문
-        </button>
-        <button
-          onClick={() => setActiveTab('inquiry')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'inquiry' ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent hover:text-gray-600'
-          }`}
-        >
-          <MessageCircle size={15} /> 1:1 문의
-        </button>
-      </div>
-
-      {/* 탭 콘텐츠 */}
-      <div>
-        {activeTab === 'faq' ? <FaqSection /> : <InquirySection />}
-      </div>
+      {/*
+        회원 탈퇴 — 프로필을 고치러 들어간 사람 눈앞에 빨간 [회원 탈퇴]가 늘 놓여 있는 게 맞지 않아
+        여기 **우측 하단**으로 옮겼다(2026-08-27).
+        ⚠️ 로그인한 사람에게만 — 비로그인에게는 누를 계정이 없다.
+      */}
+      {user && (
+        <div className="mt-16 pt-6 border-t border-gray-100 flex justify-end">
+          <button
+            onClick={() => setWithdrawOpen(true)}
+            className="text-xs text-gray-400 hover:text-[#c4302b] transition-colors cursor-pointer"
+          >
+            회원 탈퇴
+          </button>
+        </div>
+      )}
+      {withdrawOpen && <WithdrawModal onClose={() => setWithdrawOpen(false)} />}
     </div>
   );
 }

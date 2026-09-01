@@ -29,29 +29,53 @@ import { useState } from 'react';
  */
 export const THUMB_SINCE = Date.parse('2026-08-11T00:00:00+09:00');
 
-export function thumbUrl(url: string): string {
+/**
+ * 크기 두 종. 백엔드 `lib/thumb.ts` 의 THUMB_SPECS 와 **폴더명이 같아야** 한다.
+ *
+ *  list(t240) — 목록·운영페이지의 작은 칸(28~120px)
+ *  grid(t800) — 작가 홈페이지 작품 격자. 표시 크기가 PC 377px / 레티나 754px / 모바일3x 486px 이라
+ *               240px 로는 0.32~0.64배로 늘어나 뭉개진다.
+ *
+ * `backfilled` — 그 폴더에 **옛 파일까지 채워 넣었는지**.
+ *   t240 은 2026-08-11 이후 업로드분에만 있다 → 옛 파일은 시각으로 걸러 헛된 404를 피한다.
+ *   t800 은 도입과 동시에 PortfolioImage 372장을 전부 백필했다 → 시각으로 거르면 오히려 전부 원본이 된다.
+ *   ⚠️ t240 까지 백필하면 여기 `backfilled: true` 로 바꿀 것(그전엔 바꾸면 404가 두 배로 늘어난다).
+ */
+export const THUMB_SIZES = {
+  list: { dir: 't240', backfilled: false },
+  grid: { dir: 't800', backfilled: true },
+} as const;
+
+export type ThumbSize = keyof typeof THUMB_SIZES;
+
+export function thumbUrl(url: string, size: ThumbSize = 'list'): string {
   if (!url) return url;
-  const name = url.split(/[?#]/)[0]!.split('/').pop() ?? '';
-  const stamp = Number(name.split('-')[0]);
-  // 시각을 못 읽거나(옛 형식) 기능 도입 전 파일이면 썸네일이 없다 — 처음부터 원본을 쓴다
-  if (!Number.isFinite(stamp) || stamp < THUMB_SINCE) return url;
-  // 마지막 파일명 앞에 t240/ 삽입 (backend/src/lib/thumb.ts 와 같은 규칙)
-  //   https://img.artlink.cc/artlink/abc.jpg → https://img.artlink.cc/artlink/t240/abc.jpg
-  //   /uploads/abc.jpg                      → /uploads/t240/abc.jpg
-  return url.replace(/\/([^/?#]+)(\?[^#]*)?(#.*)?$/, '/t240/$1$2$3');
+  const { dir, backfilled } = THUMB_SIZES[size];
+  if (!backfilled) {
+    const name = url.split(/[?#]/)[0]!.split('/').pop() ?? '';
+    const stamp = Number(name.split('-')[0]);
+    // 시각을 못 읽거나(옛 형식) 기능 도입 전 파일이면 썸네일이 없다 — 처음부터 원본을 쓴다
+    if (!Number.isFinite(stamp) || stamp < THUMB_SINCE) return url;
+  }
+  // 마지막 파일명 앞에 tNNN/ 삽입 (backend/src/lib/thumb.ts 와 같은 규칙)
+  //   https://img.artlink.cc/artlink/abc.jpg → https://img.artlink.cc/artlink/t800/abc.jpg
+  //   /uploads/abc.jpg                      → /uploads/t800/abc.jpg
+  return url.replace(/\/([^/?#]+)(\?[^#]*)?(#.*)?$/, `/${dir}/$1$2$3`);
 }
 
 interface Props extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** 원본 주소 — 썸네일이 없으면 이걸로 되돌린다 */
   src: string;
+  /** 어느 크기를 쓸지. 기본은 목록용 240px */
+  size?: ThumbSize;
 }
 
-export default function Thumb({ src, ...rest }: Props) {
+export default function Thumb({ src, size = 'list', ...rest }: Props) {
   const [fallback, setFallback] = useState(false);
   return (
     <img
       {...rest}
-      src={fallback ? src : thumbUrl(src)}
+      src={fallback ? src : thumbUrl(src, size)}
       onError={(e) => {
         if (!fallback) setFallback(true);   // 썸네일 없음 → 원본
         rest.onError?.(e);

@@ -104,12 +104,12 @@ export default function ExhibitionsPage() {
           </p>
         </div>
         {user?.role === 'GALLERY' && (
-          <button
-            onClick={() => navigate('/mypage?tab=my-exhibitions')}
-            className="flex-none flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors whitespace-nowrap"
+          <Link
+            to="/exhibitions/new"
+            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors whitespace-nowrap"
           >
-            <Plus size={16} /> 공모 등록
-          </button>
+            <Plus size={15} /> 공모 등록
+          </Link>
         )}
       </div>
 

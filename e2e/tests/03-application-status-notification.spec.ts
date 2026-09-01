@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, exhibitionDates } from '../lib/helpers';
 
 /**
  * 멀티유저 지속 상호작용: 작가 지원 → 갤러리가 상태를 단계별로 올림 → 작가에게 알림 누적 + 상태배지 갱신.
@@ -28,8 +28,7 @@ test.beforeAll(async () => {
     data: {
       title: exTitle, type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
-      description: '지원 상태 변경 E2E', galleryId,
-    },
+      description: '지원 상태 변경 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adTok}` }, data: { status: 'APPROVED' } });
   exId = ex.id;

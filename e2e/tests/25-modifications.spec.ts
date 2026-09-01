@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, exhibitionDates } from '../lib/helpers';
 
 /**
  * 2026-06-10 수정사항 검증 (항목 1·2·11·12·15·16·17 중심)
@@ -19,7 +19,7 @@ async function createApprovedExhibition(api: APIRequestContext, title: string) {
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: gAuth(),
-    data: { title, type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId: gId },
+    data: { title, type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: 'x', galleryId: gId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${tokenFor('admin')}` }, data: { status: 'APPROVED' } });
   return ex.id;
@@ -67,7 +67,12 @@ test('#12 정산 결제수단(카드/현금) 저장·조회', async () => {
       { title: 'B', size: '20x20', medium: 'oil', year: '2025', price: '2000000', image: '' },
     ] },
   });
-  await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: gAuth(), data: { ended: true } });
+  /* 라이프사이클은 **순서가 강제**된다 — 모집마감 → 확정 → 전시종료.
+     `ended: true` 만 보내면 "확정 후에 전시를 종료할 수 있습니다"로 400 이 나고,
+     그러면 아래 정산 저장도 400 → 조회는 기본값(CARD)을 돌려줘 엉뚱한 실패로 보인다. */
+  await api.patch(`${API}/operations/${exId}/lifecycle`, {
+    headers: gAuth(), data: { recruitmentClosed: true, confirmed: true, ended: true },
+  });
   await api.put(`${API}/operations/${exId}/settlement`, {
     headers: gAuth(),
     data: {
@@ -119,6 +124,11 @@ test('#17 전시 사진 추가/삭제 + 포스터 교체', async () => {
   })).json();
 
   const img = await (await api.post(`${API}/shows/${show.id}/images`, { headers: gAuth(), data: { url: 'https://example.com/extra.jpg' } })).json();
+  /* ⚠️ 공개 상세는 **승인된 것만** 열린다(2026-08-15) — 심사중이면 404 라 detail.images 가 undefined 가 된다.
+     오너 자격으로 조회하거나 승인시키지 않으면 여기서 조용히 죽는다. */
+  await api.patch(`${API}/approvals/show/${show.id}`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin')}` }, data: { status: 'APPROVED' },
+  });
   let detail = await (await api.get(`${API}/shows/${show.id}`)).json();
   expect(detail.images.some((i: any) => i.url === 'https://example.com/extra.jpg')).toBeTruthy();
 
@@ -153,10 +163,12 @@ test('#16 (UI) 전시 등록 폼에 사진 7장 드롭 → 7장 모두 반영', 
 // ───────── #13 (UI) 아트페어 자유입력 textarea + 가이드 ─────────
 test('#13 (UI) 포트폴리오 아트페어 경력은 가이드 placeholder의 textarea', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
-  await page.goto('/mypage?tab=portfolio');
-  // 포트폴리오는 읽기전용 → '수정'을 눌러 편집 모드 진입 후 CareerEditor 노출
-  await page.getByRole('button', { name: '수정', exact: true }).click();
-  const ta = page.locator('textarea[placeholder*="아트링크 주관 아트페어"]');
+  /* 내용 편집은 `?tab=homepage-edit` 로 옮겼고(2026-08-27), **들어오자마자 편집 모드**다.
+     `?tab=portfolio` 는 이제 PDF 포맷 고르는 화면이라 [수정] 버튼이 없다. */
+  await page.goto('/mypage?tab=homepage-edit');
+  /* ⚠️ '아트링크 주관 아트페어' 는 **지원서용** 예시다(APPLY_CATEGORIES).
+     포트폴리오(PORTFOLIO_CATEGORIES)의 아트페어 예시는 '화랑미술제' 다 — 둘을 헷갈리면 못 찾는다. */
+  const ta = page.locator('textarea[placeholder*="화랑미술제"]');
   await expect(ta).toBeVisible({ timeout: 10000 });
   await ctx.close();
 });

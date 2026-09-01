@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { openAs, tokenFor, openMyPageTab } from '../lib/helpers';
 
 /**
  * 신뢰성: 찜을 여러 번 껐다 켰다 하며 화면 간(상세↔목록↔마이페이지) 일관성 검증.
@@ -15,6 +15,23 @@ test.beforeAll(async () => {
   const list = await (await api.get(`${API}/galleries`)).json();
   const arr = list.galleries || list;
   gid = arr[0].id; gname = arr[0].name;
+  await api.dispose();
+});
+
+/**
+ * 두 테스트 모두 "아직 찜하지 않은 상태"에서 시작한다고 전제한다.
+ * 앞 테스트가 찜을 켜 둔 채 끝나면 뒤 테스트가 [찜하기] 를 못 찾고 죽는다 —
+ * 제품 문제가 아니라 테스트끼리 상태를 물려준 것이다(실제로 그렇게 깨졌다).
+ * 공유 DB(workers=1)를 쓰므로 시작 상태를 **테스트가 직접 맞춘다.**
+ */
+test.beforeEach(async () => {
+  const api = await pwRequest.newContext();
+  const tok = tokenFor('artist');
+  const favs = await (await api.get(`${API}/favorites`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+  const mine = (Array.isArray(favs) ? favs : favs.favorites ?? []).filter((f: any) => (f.galleryId ?? f.gallery?.id) === gid);
+  for (let i = 0; i < mine.length; i++) {
+    await api.post(`${API}/favorites/toggle`, { headers: { Authorization: `Bearer ${tok}` }, data: { galleryId: gid } });
+  }
   await api.dispose();
 });
 
@@ -36,7 +53,7 @@ test('찜 토글 3라운드 — 상세/목록/마이페이지 cross-cache 일관
 
     // 3) 마이페이지 찜목록에 등장
     await page.goto('/mypage');
-    await page.getByText('찜 목록', { exact: false }).first().click();
+    await openMyPageTab(page, '찜 목록');
     await expect(page.getByText(gname, { exact: false }).first()).toBeVisible({ timeout: 8000 });
 
     // 4) 상세에서 찜 OFF (찜 상태 유지 확인 후 해제)
@@ -52,7 +69,7 @@ test('찜 토글 3라운드 — 상세/목록/마이페이지 cross-cache 일관
     // 6) 마이페이지 찜목록에서 사라짐 (stale 없이 즉시 제거)
     //    "찜한 항목이 없습니다" 등장 = 섹션 로드됨 + 비어있음 둘 다 확인
     await page.goto('/mypage');
-    await page.getByText('찜 목록', { exact: false }).first().click();
+    await openMyPageTab(page, '찜 목록');
     await expect(page.getByText('찜한 항목이 없습니다', { exact: false })).toBeVisible({ timeout: 8000 });
   }
   await ctx.close();

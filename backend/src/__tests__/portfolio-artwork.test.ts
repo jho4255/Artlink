@@ -73,6 +73,47 @@ describe('포트폴리오 작품 정보', () => {
       // 이름 없는 항목과 문자열은 버리고, note 없는 항목은 빈 note로
       expect(res.body.seriesInfo).toEqual([{ name: '산', note: '' }]);
     });
+
+    // ── 포트폴리오 PDF 색감(designConfig) — '보냈을 때만' 갱신 ──
+    it('designConfig 를 저장하고 다시 내려준다', async () => {
+      const res = await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '약력', career: {}, designConfig: { palette: 'ivory' } });
+      expect(res.status).toBe(200);
+      expect(res.body.designConfig).toEqual({ palette: 'ivory' });
+    });
+
+    it('★ designConfig 를 안 보내면 기존 값을 지우지 않는다 (홈페이지 저장이 색감을 안 건드림)', async () => {
+      await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '약력', career: {}, designConfig: { palette: 'white' } });
+      // designConfig 없이 다른 내용만 저장(홈페이지 편집처럼 전체 교체)
+      const res = await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '새 약력', career: {}, statement: '노트' });
+      expect(res.status).toBe(200);
+      expect(res.body.biography).toBe('새 약력');
+      expect(res.body.designConfig).toEqual({ palette: 'white' }); // 유지
+    });
+
+    it('designConfig: null 을 명시하면 지운다', async () => {
+      await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '약력', career: {}, designConfig: { palette: 'white' } });
+      const res = await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '약력', career: {}, designConfig: null });
+      expect(res.status).toBe(200);
+      expect(res.body.designConfig).toBeNull();
+    });
+
+    it('거대한 designConfig 는 null (4000자 초과 차단)', async () => {
+      const res = await request.put('/api/portfolio')
+        .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '약력', career: {}, designConfig: { junk: 'x'.repeat(5000) } });
+      expect(res.status).toBe(200);
+      expect(res.body.designConfig).toBeNull();
+    });
   });
 
   describe('POST /api/portfolio/images — 등록하면서 작품 정보 함께 저장', () => {
@@ -221,5 +262,49 @@ describe('포트폴리오 작품 정보', () => {
       expect(res.body.seriesInfo).toEqual([]);
       expect(res.body.images).toEqual([]);
     });
+  });
+});
+
+// ── 개발자 로그인 계정 목록 (로컬 전용) ──
+// 실서버 DB 복제본 확인용으로 추가한 엔드포인트. **production에서 절대 열리면 안 된다**.
+describe('GET /api/auth/dev-users — 개발자 로그인 계정 목록', () => {
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+  });
+
+  it('ENABLE_DEV_LOGIN 옵트인이 없으면 404 (존재하지 않는 것처럼)', async () => {
+    const prev = process.env.ENABLE_DEV_LOGIN;
+    delete process.env.ENABLE_DEV_LOGIN;
+    const res = await request.get('/api/auth/dev-users');
+    expect(res.status).toBe(404);
+    if (prev !== undefined) process.env.ENABLE_DEV_LOGIN = prev;
+  });
+
+  it('production이면 옵트인이 있어도 404', async () => {
+    const prevEnv = process.env.NODE_ENV, prevOptIn = process.env.ENABLE_DEV_LOGIN;
+    process.env.NODE_ENV = 'production';
+    process.env.ENABLE_DEV_LOGIN = 'true';
+    const res = await request.get('/api/auth/dev-users');
+    expect(res.status).toBe(404);
+    process.env.NODE_ENV = prevEnv;
+    if (prevOptIn === undefined) delete process.env.ENABLE_DEV_LOGIN; else process.env.ENABLE_DEV_LOGIN = prevOptIn;
+  });
+
+  it('옵트인 시 역할 필터·검색이 동작하고, 비밀번호는 내려주지 않는다', async () => {
+    process.env.ENABLE_DEV_LOGIN = 'true';
+    const all = await request.get('/api/auth/dev-users');
+    expect(all.status).toBe(200);
+    expect(all.body.length).toBe(4);
+    expect(all.body[0]).not.toHaveProperty('password');
+    expect(all.body[0]).toHaveProperty('workCount');
+
+    const artists = await request.get('/api/auth/dev-users?role=ARTIST');
+    expect(artists.body.every((u: { role: string }) => u.role === 'ARTIST')).toBe(true);
+
+    const found = await request.get('/api/auth/dev-users?q=gallery');
+    expect(found.body.length).toBe(1);
+    expect(found.body[0].role).toBe('GALLERY');
+    delete process.env.ENABLE_DEV_LOGIN;
   });
 });

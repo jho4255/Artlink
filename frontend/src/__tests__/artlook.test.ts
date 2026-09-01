@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { openArtLook, ARTLOOK_STORAGE_KEY, type ArtLookWork } from '../lib/artlook';
+import { openArtLook, stageArtLookWorks, ARTLOOK_STORAGE_KEY, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '../lib/artlook';
 
 /**
  * ArtLook 핸드오프 — 마이페이지(포트폴리오)와 운영페이지(판매작) 두 곳에서 같은 함수를 쓴다.
@@ -70,5 +70,69 @@ describe('openArtLook', () => {
     const sent = JSON.parse(localStorage.getItem(ARTLOOK_STORAGE_KEY)!);
     expect(sent).toHaveLength(1);
     expect(sent[0].title).toBe('새것');
+  });
+});
+
+/**
+ * `stageArtLookWorks` — 마이페이지 [ArtLook] 탭이 쓰는 경로(새 탭이 아니라 **같은 페이지 안 iframe**).
+ *
+ * ⚠️ ArtLook 은 뜰 때 localStorage 를 **한 번만** 읽는다.
+ *    그래서 iframe 을 그리기 **전에** 올려야 하고, 이 함수는 창을 열지 않아야 한다
+ *    (열어 버리면 탭 안에서 볼 화면이 새 창으로도 튀어나온다).
+ */
+describe('stageArtLookWorks — iframe 용 사전 적재', () => {
+  let opened: string[];
+
+  beforeEach(() => {
+    localStorage.clear();
+    opened = [];
+    vi.spyOn(window, 'open').mockImplementation(((url: string) => { opened.push(url); return null; }) as never);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const work = (p: Partial<ArtLookWork> = {}): ArtLookWork => ({ url: 'https://img/1.jpg', ...p });
+
+  it('★ 창을 열지 않고 작품만 올린다', () => {
+    const n = stageArtLookWorks([work(), work({ url: 'https://img/2.jpg' })]);
+    expect(n).toBe(2);
+    expect(opened).toEqual([]);
+    expect(JSON.parse(localStorage.getItem(ARTLOOK_STORAGE_KEY)!)).toHaveLength(2);
+  });
+
+  it('이미지 없는 작품은 걸러낸다 (빈 액자 방지)', () => {
+    expect(stageArtLookWorks([work(), work({ url: '' })])).toBe(1);
+  });
+
+  it('보여줄 게 없으면 0 — 화면이 대신 안내한다', () => {
+    expect(stageArtLookWorks([])).toBe(0);
+    expect(localStorage.getItem(ARTLOOK_STORAGE_KEY)).toBeNull();
+  });
+
+  it('다시 올리면 이전 작품이 남지 않는다', () => {
+    stageArtLookWorks([work(), work({ url: 'https://img/2.jpg' })]);
+    stageArtLookWorks([work({ url: 'https://img/3.jpg' })]);
+    expect(JSON.parse(localStorage.getItem(ARTLOOK_STORAGE_KEY)!)).toHaveLength(1);
+  });
+
+  it('저장이 막혀도(시크릿 모드) 예외로 죽지 않는다 — 여기서 던지면 탭이 통째로 안 뜬다', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    expect(() => stageArtLookWorks([work()])).not.toThrow();
+  });
+
+  it('★ openArtLook 은 같은 적재를 하고 창까지 연다 (두 경로가 어긋나지 않게)', () => {
+    const n = openArtLook([work()]);
+    expect(n).toBe(1);
+    expect(opened).toEqual([ARTLOOK_URL]);
+    expect(JSON.parse(localStorage.getItem(ARTLOOK_STORAGE_KEY)!)).toHaveLength(1);
+  });
+});
+
+describe('ArtLook 주소', () => {
+  it('정적 페이지라 index.html 을 명시한다 (SPA fallback 회피)', () => {
+    expect(ARTLOOK_URL).toBe('/artlook/index.html');
+  });
+
+  it('★ 임베드 주소는 ?embed=1 — 바깥에 이미 제목이 있어 머리말이 겹친다', () => {
+    expect(ARTLOOK_EMBED_URL).toBe(`${ARTLOOK_URL}?embed=1`);
   });
 });

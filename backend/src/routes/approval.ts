@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureExhibitionChat } from '../lib/chat';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { notifyApprovalRequest } from '../lib/telegram';
@@ -128,6 +129,12 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
         },
       });
     } catch { /* best-effort */ }
+
+    // 승인된 공모에는 단톡방을 만들어 둔다 — 갤러리와 수락 작가가 자동 참여자가 된다(lib/chat.ts).
+    // 실패해도 승인은 성공이어야 하므로 best-effort.
+    if (status === 'APPROVED') {
+      try { await ensureExhibitionChat(exhibition.id); } catch { /* best-effort */ }
+    }
 
     res.json(exhibition);
   } catch (error) { next(error); }

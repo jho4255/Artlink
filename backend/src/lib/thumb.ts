@@ -18,9 +18,27 @@
  */
 import path from 'path';
 
-/** 썸네일 최대 변 길이(px). 바꾸면 기존 썸네일과 섞이므로 폴더명(t240)도 함께 바꿀 것 */
-export const THUMB_SIZE = 240;
-export const THUMB_DIR = 't240';
+/**
+ * 썸네일 크기는 **두 종류**다. 쓰임이 다르므로 하나로 합치면 한쪽이 반드시 망가진다.
+ *
+ *  t240 — 목록·운영페이지의 작은 칸(28~120px). 8~11KB.
+ *  t800 — **작가 홈페이지 작품 격자**. 실측 표시 크기가 PC 377px / 레티나 754px / 모바일3x 486px 이라
+ *         240px 를 늘려 쓰면 눈에 띄게 뭉개진다(0.32~0.64배). 800px 이면 전부 덮으면서 원본의 1/6.5 다.
+ *         작품 30장 한 페이지: 원본 28.1MB → t800 4.3MB → (t240 이라면 0.3MB 지만 화질 불가).
+ *
+ * ⚠️ 크기를 바꾸면 이미 올라간 것과 섞인다 — 폴더명(tNNN)도 반드시 함께 바꿀 것.
+ * ⚠️ **확대·라이트박스·PDF 는 여전히 원본**이다. 여기 것을 키우면 뭉개진다.
+ */
+export interface ThumbSpec { dir: string; size: number; quality: number }
+
+export const THUMB_LIST: ThumbSpec = { dir: 't240', size: 240, quality: 72 };
+export const THUMB_GRID: ThumbSpec = { dir: 't800', size: 800, quality: 80 };
+/** 업로드 때 함께 만들 크기 전부 */
+export const THUMB_SPECS: ThumbSpec[] = [THUMB_LIST, THUMB_GRID];
+
+// 기존 호출부 호환 (t240 을 가리킨다)
+export const THUMB_SIZE = THUMB_LIST.size;
+export const THUMB_DIR = THUMB_LIST.dir;
 
 /**
  * 원본 키/경로 → 썸네일 키/경로 (마지막 파일명 앞에 t240/ 삽입).
@@ -30,25 +48,25 @@ export const THUMB_DIR = 't240';
  * **실서버에서만 조용히** 엉뚱한 키에 올라가고, 화면은 404 → 원본 폴백이라 아무도 눈치채지 못한다.
  * 그래서 문자열을 직접 조립한다.
  */
-export function thumbKey(key: string): string {
+export function thumbKey(key: string, thumbDir: string = THUMB_DIR): string {
   const i = key.lastIndexOf('/');
   const dir = i >= 0 ? key.slice(0, i) : '';
   const name = i >= 0 ? key.slice(i + 1) : key;
-  return `${dir ? dir + '/' : ''}${THUMB_DIR}/${name}`;
+  return `${dir ? dir + '/' : ''}${thumbDir}/${name}`;
 }
 
 /**
  * 썸네일 버퍼 생성. 실패하면 null — 호출부는 그냥 넘어가면 된다(원본은 이미 올라갔다).
  * 애니메이션 GIF 등은 첫 프레임만 쓴다. 결과는 항상 JPEG(용량이 가장 작고 어디서나 열린다).
  */
-export async function makeThumb(buf: Buffer): Promise<Buffer | null> {
+export async function makeThumb(buf: Buffer, spec: ThumbSpec = THUMB_LIST): Promise<Buffer | null> {
   try {
     // sharp는 네이티브 모듈이라 무겁다 — 업로드 때만 지연 로드
     const sharp = (await import('sharp')).default;
     return await sharp(buf, { failOn: 'none' })
       .rotate()                                   // EXIF 회전 반영 (안 하면 썸네일만 눕는다)
-      .resize(THUMB_SIZE, THUMB_SIZE, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 72, mozjpeg: true })
+      .resize(spec.size, spec.size, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: spec.quality, mozjpeg: true })
       .toBuffer();
   } catch {
     return null;
@@ -56,6 +74,6 @@ export async function makeThumb(buf: Buffer): Promise<Buffer | null> {
 }
 
 /** 디스크 저장 모드에서 쓸 썸네일 파일 경로 */
-export function thumbDiskPath(uploadsDir: string, filename: string): string {
-  return path.join(uploadsDir, THUMB_DIR, filename);
+export function thumbDiskPath(uploadsDir: string, filename: string, thumbDir: string = THUMB_DIR): string {
+  return path.join(uploadsDir, thumbDir, filename);
 }

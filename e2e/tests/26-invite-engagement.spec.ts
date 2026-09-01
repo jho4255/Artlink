@@ -1,10 +1,10 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ownedGalleryId } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ownedGalleryId, exhibitionDates , realUploadUrl, seedGalleryLike } from '../lib/helpers';
 
 /**
  * 둘러보기 참여 + 초대/간편지원 (2026-08 신규 기능) E2E
  *
- *  A. 홈 Favorites 섹션 → 작품 확대 → 좋아요 → 하트 유지
+ *  A. 홈 ArtWorks 섹션(구 Favorites) → 작품 확대 → 좋아요 → 하트 유지
  *  B. 좋아요 알림(여러 명 집계) + 포트폴리오 좋아요 명단
  *  C. 좋아요한 작품 보드 (작품=확대 / 작가=이동)
  *  D. 갤러리 스크랩(비공개) + 작가에게 미노출
@@ -49,30 +49,56 @@ async function createApprovedExhibition(api: APIRequestContext, opts: { capacity
       type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future,
       capacity: opts.capacity ?? 5, region: '서울', description: '초대/간편지원 E2E',
-      galleryId,
-    },
+      galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok()), data: { status: 'APPROVED' } });
   return ex;
 }
 
 // ─────────────────────────────────────────────────────────────────────
-test('A. 홈 Favorites — 작품 확대 → 좋아요 → 재오픈 시 하트 유지', async ({ browser }) => {
+test('A. 홈 ArtWorks — 작품 확대 → 좋아요 → 재오픈 시 하트 유지', async ({ browser }) => {
   const api = await pwRequest.newContext();
   const images = await ensurePublicArtworks(api, aTok(), 3);
   expect(images.length, '공개 작품 확보').toBeGreaterThan(0);
+
+  /* 이 테스트만의 작품을 **실제 존재하는 이미지 파일**로 만든다.
+     ① 접근성 라벨이 '<작가> 작가의 작품 — 크게 보기' 뿐이라 작품을 특정할 수 없다(한 작가의 여러 점이 같은 라벨).
+     ② `SkeletonImage` 는 404 면 `<img>` 를 아예 안 그려서 src 로도 못 잡는다.
+     그래서 진짜 파일을 쓰되 **?u= 로 src 를 유일하게** 만든다 —
+     `realUploadUrl()` 은 같은 파일을 돌려줘서, 다른 스펙(34)이 같은 src 로 작품을 만들면
+     `byImage(src).first()` 가 **엉뚱한(안 좋아요한) 작품**을 열어 재오픈 하트 검증이 깨진다.
+     정적 서빙은 쿼리스트링을 무시하므로 파일은 그대로 뜬다. */
+  const mine = await (await api.post(`${API}/portfolio/images`, {
+    headers: auth(aTok()), data: { url: `${realUploadUrl()}?u=${Date.now()}` },
+  })).json();
+  await api.patch(`${API}/portfolio/images/${mine.id}/explore`, { headers: auth(aTok()) });
 
   // artist2(=다른 유저) 시점으로 홈 진입
   const { page, ctx } = await openAs(browser, 'artist2');
   await page.goto('/');
 
-  // 섹션 노출 (제목 Favorites)
-  const section = page.getByRole('heading', { name: 'Favorites' });
+  // 섹션 노출 (제목 ArtWorks — 구 Favorites)
+  const section = page.getByRole('heading', { name: 'ArtWorks' });
   await section.scrollIntoViewIfNeeded();
   await expect(section).toBeVisible({ timeout: 10000 });
 
-  // 작품 클릭 → 확대 모달 (둘러보기와 동일)
+  /* 작품 클릭 → 확대 모달 (둘러보기와 동일).
+     ⚠️ 홈 ArtWorks 는 **들어올 때마다 랜덤**이라(2026-08-27) '첫 번째 칸'을 두 번 눌러도
+     같은 작품이라는 보장이 없다. 그래서 **작가 이름이 붙은 접근성 라벨로 특정**해 두고
+     닫았다 여는 것도 같은 버튼으로 한다. */
+  // 홈에서 확대 모달이 열리는 것 자체를 먼저 확인
   await page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
+  await expect(page.getByRole('button', { name: /^좋아요/ }).first()).toBeVisible({ timeout: 8000 });
+  await page.getByRole('button', { name: '닫기' }).first().click();
+
+  /* 좋아요 → 재오픈 검증은 **둘러보기(전체 목록)** 에서 한다.
+     홈 ArtWorks 는 들어올 때마다 랜덤 8점이라 그 작품이 이번 화면에 없을 수 있다. */
+  await page.goto('/explore');
+  await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 10000 });
+  const target = page.locator(`button:has(img[src="${mine.url}"])`).first();
+  await expect(target, '방금 만든 작품이 둘러보기에 없다').toBeVisible({ timeout: 10000 });
+  const targetSrc = mine.url as string;
+  await target.click();
   const likeBtn = page.getByRole('button', { name: '좋아요', exact: true });
   await expect(likeBtn).toBeVisible({ timeout: 8000 });
 
@@ -87,8 +113,17 @@ test('A. 홈 Favorites — 작품 확대 → 좋아요 → 재오픈 시 하트 
   await page.getByRole('button', { name: '닫기' }).first().click();
   await settle(page, 800);
   await page.reload();
-  await page.getByRole('heading', { name: 'Favorites' }).scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 10000 });
+  const again = page.locator(`button:has(img[src="${targetSrc}"])`).first();
+  await expect(again, '좋아요한 그 작품을 다시 찾지 못했다').toBeVisible({ timeout: 10000 });
+  // 모달 열기 클릭이 부하에서 한 번 씹힐 수 있어, 하트 상태 버튼이 뜰 때까지 재시도
+  const likeState = page.getByRole('button', { name: /^좋아요( 취소)?$/ }).first();
+  await expect.poll(async () => {
+    if (await likeState.count() > 0) return true;
+    await again.click();
+    await page.waitForTimeout(600);
+    return likeState.count().then(c => c > 0);
+  }, { timeout: 20000 }).toBe(true);
   await expect(page.getByRole('button', { name: '좋아요 취소' }), '재오픈 시 하트 유지').toBeVisible({ timeout: 8000 });
 
   await api.dispose();
@@ -122,8 +157,10 @@ test('B. 좋아요 알림 집계 + 포트폴리오에서 좋아요한 사람 명
 
   // 작가 마이페이지 포트폴리오 → 좋아요 뱃지 → 명단 모달
   const { page, ctx } = await openAs(browser, 'artist');
-  await page.goto('/mypage?tab=portfolio');
-  const badge = page.getByRole('button', { name: /좋아요 \d+개 — 누가 눌렀는지 보기/ }).first();
+  await page.goto('/mypage?tab=homepage-edit');  // 내용 편집은 homepage-edit (portfolio 탭은 PDF 포맷)
+  /* ⚠️ `.first()` 로 아무 뱃지나 누르면 **다른 작품의 명단**이 열린다(앞 테스트가 남긴 좋아요).
+     이 테스트의 대상은 두 명이 누른 작품이므로 '좋아요 2개' 뱃지를 콕 집는다. */
+  const badge = page.getByRole('button', { name: /좋아요 2개 — 누가 눌렀는지 보기/ }).first();
   await expect(badge, '포트폴리오에 좋아요 수 뱃지').toBeVisible({ timeout: 10000 });
   await badge.click();
   await expect(page.getByRole('heading', { name: /좋아요 \d+/ })).toBeVisible({ timeout: 8000 });
@@ -143,7 +180,8 @@ test('C. 좋아요한 작품 보드 — 작품=확대 / 작가명=포트폴리�
   await api.post(`${API}/explore/${images[0].id}/like`, { headers: auth(a2Tok()) });
 
   const { page, ctx } = await openAs(browser, 'artist2');
-  await page.goto('/mypage?tab=liked-artworks');
+  await page.goto('/mypage?tab=favorites');  // 좋아요한 작품은 찜 목록 안 '작품' 필터로 합쳐졌다
+  await page.getByRole('button', { name: '작품', exact: true }).click();
   await expect(page.getByRole('button', { name: '작품 크게 보기' }).first()).toBeVisible({ timeout: 10000 });
 
   // 작품 클릭 → 확대 모달
@@ -160,45 +198,38 @@ test('C. 좋아요한 작품 보드 — 작품=확대 / 작가명=포트폴리�
   await ctx.close();
 });
 
-test('D. 갤러리 스크랩은 비공개 — 작가 시점에 흔적이 없다', async ({ browser }) => {
+test('D. 갤러리 관심은 이제 하트(공개) — 저장(스크랩) 버튼은 사라졌다', async ({ browser }) => {
+  /*
+    2026-08-28 개편: 갤러리의 비공개 스크랩(북마크)을 없앴다. 갤러리도 **하트**로 작품을 모은다.
+    스크랩과 달리 하트는 **작가에게 보인다**(관심을 숨길 이유가 없다는 판단) — 그 트레이드오프를 여기서 못 박는다.
+  */
   const api = await pwRequest.newContext();
-  const images = await ensurePublicArtworks(api, aTok(), 3);
-  const target = images[0];
+  // 갤러리가 새 작품(작가 소유)에 하트 — 토글 취소 방지
+  const target = await seedGalleryLike(api);
 
-  // 갤러리: 둘러보기에서 작품 확대 → 북마크
+  // 갤러리: 작품 모달에 저장(북마크) 버튼이 없다(하트로 대체)
   const g = await openAs(browser, 'gallery');
   await g.page.goto('/explore');
   await g.page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
-  const bookmark = g.page.getByRole('button', { name: '관심 작품 저장' });
-  await expect(bookmark).toBeVisible({ timeout: 10000 });
-  await bookmark.click();
-  await expect(g.page.locator('body')).toContainText('작가에게는 보이지 않습니다', { timeout: 8000 });
+  await expect(g.page.getByRole('button', { name: /관심 작품 저장|관심 작품 해제/ }), '스크랩 버튼은 없어졌다').toHaveCount(0);
+  await expect(g.page.getByRole('button', { name: '내 공모에 초대' }), '대신 초대 버튼이 있다').toBeVisible({ timeout: 8000 });
 
-  // 관심 작품 탭에서 회수 + 메모 + 확대
+  // 관심 작품 탭 = 하트 보드. 개수·비공개 문구 대신 초대 안내.
   await g.page.goto('/mypage?tab=scraps');
-  await expect(g.page.locator('body')).toContainText('저장 사실은 작가에게 보이지 않습니다', { timeout: 10000 });
-  await g.page.getByRole('button', { name: '+ 메모 추가' }).first().click();
-  await g.page.getByPlaceholder('메모 (나만 봅니다)').fill('가을 기획전 후보');
-  await g.page.getByRole('button', { name: '저장', exact: true }).first().click();
-  await expect(g.page.locator('body')).toContainText('가을 기획전 후보', { timeout: 8000 });
-  await g.page.getByRole('button', { name: '작품 크게 보기' }).first().click();
-  await expect(g.page.getByRole('button', { name: '관심 작품 해제' }), '보드에서도 확대 모달').toBeVisible({ timeout: 8000 });
+  await expect(g.page.locator('main')).toContainText('전시 초대를 보낼 수 있습니다', { timeout: 10000 });
+  expect(await g.page.locator('main').innerText()).not.toContain('보이지 않습니다');
 
-  // 작가 시점: 스크랩 흔적 없음 (API + UI 양쪽)
-  const feed = await (await api.get(`${API}/explore`, { headers: auth(aTok()) })).json();
-  expect(JSON.stringify(feed), '작가 응답에 scrap 관련 필드 없음').not.toContain('scrap');
+  // ★ 트레이드오프: 갤러리의 하트는 작품 주인(작가)에게 보인다 (owner 만 조회 가능한 likers 에 잡힌다)
+  const likes = await (await api.get(`${API}/explore/${target.id}/likes`, { headers: auth(aTok()) })).json();
+  const galleryId = userIds().gallery;
+  expect((likes.likers ?? []).some((l: any) => l.id === galleryId), '작가는 어느 갤러리가 하트했는지 볼 수 있다').toBe(true);
+
+  // 스크랩 전용 목록은 더는 갤러리 UI가 쓰지 않는다(백엔드 라우트는 유지) — 작가는 여전히 접근 불가
   const denied = await api.get(`${API}/explore/scraps`, { headers: auth(aTok()) });
-  expect(denied.status(), '작가는 스크랩 목록 접근 불가').toBe(403);
-
-  const a = await openAs(browser, 'artist');
-  await a.page.goto('/explore');
-  await a.page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
-  await expect(a.page.getByRole('button', { name: '좋아요' }).first()).toBeVisible({ timeout: 10000 });
-  await expect(a.page.getByRole('button', { name: /관심 작품/ }), '작가에겐 스크랩 버튼 자체가 없음').toHaveCount(0);
+  expect(denied.status()).toBe(403);
 
   await api.dispose();
   await g.ctx.close();
-  await a.ctx.close();
 });
 
 test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락→운영페이지', async ({ browser }) => {
@@ -224,22 +255,22 @@ test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락
   expect(mine.message).toBe('E2E 초대 메시지');
 
   const a = await openAs(browser, 'artist');
-  await a.page.goto('/mypage?tab=invites');
+  await a.page.goto('/mypage?tab=applications');  // [받은 초대] 탭은 [내 전시] 첫 탭으로 합쳐졌다
+  await a.page.getByRole('button', { name: '받은 초대' }).click();
   await expect(a.page.locator('body')).toContainText(ex.title, { timeout: 10000 });
   await expect(a.page.locator('body')).toContainText('E2E 초대 메시지');
 
-  // 3) 간편 지원 (지원서 작성 없이 약관만)
-  await a.page.getByRole('button', { name: '간편 지원' }).first().click();
-  await expect(a.page.getByRole('heading', { name: '간편 지원' })).toBeVisible({ timeout: 8000 });
-  await expect(a.page.locator('body')).toContainText('지원서를 다시 작성하지 않습니다');
-  await a.page.getByRole('checkbox').first().check();
-  await a.page.getByRole('button', { name: '지원하기' }).click();
-  await expect(a.page.locator('body')).toContainText('지원이 접수되었습니다', { timeout: 10000 });
+  /* 3) [참여하기] — 2026-08-28 부터 **초대 수락 = 지원 없이 바로 참가**다.
+        예전에는 초대받은 작가가 공모 상세에서 [간편 지원]을 눌러 SUBMITTED 로 들어갔는데,
+        지금은 초대 탭에서 한 번 누르면 곧장 ACCEPTED 가 된다.
+        (공모 상세의 [간편 지원] 버튼 자체는 그대로 있고 F1 이 그걸 본다) */
+  await a.page.getByRole('button', { name: '참여하기' }).first().click();
+  await expect(a.page.locator('body')).toContainText(/참여|수락/, { timeout: 10000 });
 
   // 4) 지원서에 포트폴리오 내용이 자동 첨부됐는지 (빈 지원서 방지)
   const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: auth(gTok()) })).json();
   const app = apps.find((x: any) => x.userId === userIds().artist);
-  expect(app.status, '자동 수락이 아니라 접수 상태').toBe('SUBMITTED');
+  expect(app.status, '초대 수락은 바로 참가 → ACCEPTED').toBe('ACCEPTED');
   expect(app.invited, '초대 건으로 표시').toBe(true);
   expect((app.artworkImages || []).length, '포트폴리오 작품 자동 첨부').toBeGreaterThan(0);
   expect((app.biography || '').length, '약력 자동 첨부').toBeGreaterThan(0);
@@ -256,6 +287,7 @@ test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락
   await expect(g.page.locator('body')).toContainText('Artist 1', { timeout: 15000 });
   await expect(g.page.locator('body'), '초대한 작가 배지').toContainText('초대한 작가');
 
+  // 이미 ACCEPTED 지만(초대 수락) 멱등이라 그대로 둔다 — 아래 운영페이지 진입 조건을 명시적으로 만든다
   await api.patch(`${API}/exhibitions/${ex.id}/applications/${app.id}`, {
     headers: auth(gTok()), data: { status: 'ACCEPTED' },
   });
@@ -294,7 +326,7 @@ test('F1. 공모 상세 — 초대받은 작가만 간편 지원 버튼', async 
   await a2.ctx.close();
 });
 
-test('F2. 초대 삭제 — 확인 다이얼로그 후 목록에서 사라짐', async ({ browser }) => {
+test('F2. 초대 거절 — 목록에서 사라지고 재초대는 막힌다', async ({ browser }) => {
   const api = await pwRequest.newContext();
   await ensurePublicArtworks(api, aTok(), 3);
   const ex = await createApprovedExhibition(api, { capacity: 3, title: `초대해제검증 ${Date.now()}` });
@@ -303,15 +335,14 @@ test('F2. 초대 삭제 — 확인 다이얼로그 후 목록에서 사라짐', 
   });
 
   const { page, ctx } = await openAs(browser, 'artist');
-  await page.goto('/mypage?tab=invites');
+  await page.goto('/mypage?tab=applications');  // [받은 초대] 탭은 [내 전시] 첫 탭으로 합쳐졌다
+  await page.getByRole('button', { name: '받은 초대' }).click();
   await expect(page.locator('body')).toContainText(ex.title, { timeout: 10000 });
 
-  await page.getByRole('button', { name: '삭제', exact: true }).first().click();
-  await expect(page.getByText('초대 삭제')).toBeVisible({ timeout: 8000 });
-  await expect(page.locator('body')).toContainText('되돌릴 수 없습니다');
-  await page.getByRole('button', { name: '삭제', exact: true }).last().click();
-  await expect(page.locator('body')).toContainText('초대를 삭제했습니다', { timeout: 8000 });
-  await expect(page.locator('body')).not.toContainText(ex.title, { timeout: 8000 });
+  /* [삭제] + 확인 다이얼로그였던 것이 [거절] 한 번으로 바뀌었다(2026-08-28).
+     초대 탭은 [참여하기]/[거절] 두 버튼만 둔다 — 목록에서 사라지는 건 동일하다. */
+  await page.getByRole('button', { name: '거절', exact: true }).first().click();
+  await expect(page.locator('body')).not.toContainText(ex.title, { timeout: 10000 });
 
   // 삭제해도 갤러리는 재초대 불가 (스팸 방지) — 유니크 제약이 살아있어야 한다
   const re = await api.post(`${API}/exhibitions/${ex.id}/invite`, {
@@ -399,8 +430,7 @@ test('F4. 하루 초대 상한 10명', async () => {
     data: {
       title: `상한테스트 ${stamp}`, type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future, capacity: 50, region: '서울',
-      description: '초대 상한 E2E', galleryId: gal.id,
-    },
+      description: '초대 상한 E2E', galleryId: gal.id, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok()), data: { status: 'APPROVED' } });
 

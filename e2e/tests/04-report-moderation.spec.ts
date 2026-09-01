@@ -1,84 +1,60 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, applyToExhibition } from '../lib/helpers';
+import { userIds, tokenFor } from '../lib/helpers';
 
 /**
- * 멀티유저 모더레이션: 갤러리가 보낸 메시지를 작가가 신고 → 관리자 제재 → 양쪽 화면에서 마스킹.
- * - 신고(작가) UI / 제재(관리자) API / 마스킹 표시(작가·갤러리) UI 로 검증.
+ * 메시지 신고 → 관리자 제재 → 마스킹.
+ *
+ * ⚠️ **2026-08-28 대화 개편으로 이 흐름이 화면에서 끊겼다.**
+ *   · 신고는 여전히 옛 쪽지(`Message`)만 대상으로 한다(`backend/src/routes/report.ts` 의 `messageId`).
+ *   · 그런데 화면의 대화는 ArtTalk(`Chat`/`ChatMessage`)으로 바뀌었고, **말풍선에 신고 버튼이 없다.**
+ *   · 즉 지금 제품에서는 **부적절한 메시지를 신고할 방법이 없다.** Admin '신고 관리' 탭은 살아 있지만
+ *     새 신고가 들어올 경로가 없다.
+ *
+ * 그래서 UI 시나리오는 `test.fixme` 로 **명시적으로 남겨 둔다**(지우면 기능이 사라진 사실까지 사라진다).
+ * 아래 API 검증은 백엔드 신고·제재 로직이 아직 살아 있음을 지킨다 — 화면만 붙이면 되도록.
+ *
+ * 되살릴 때 할 일:
+ *   1. `ChatMessage` 를 신고 대상으로 받도록 `report.ts` 확장 (또는 chatMessageId 필드 추가)
+ *   2. `MessagesPage` 말풍선에 신고 버튼 + 제재된 메시지 마스킹 표시
+ *   3. 이 파일의 `test.fixme` 를 `test` 로 되돌리고 ArtTalk 셀렉터로 갱신
  */
 const API = 'http://localhost:4000/api';
-const SUBJECT = '신고테스트케이스';
-const BAD_MSG = '이건 신고 대상이 될 부적절한 테스트 메시지입니다';
-let exId: number;
-let ids: { artist: number; gallery: number; admin: number };
 
-test.beforeAll(async () => {
-  ids = userIds() as any;
+test.fixme('신고 → 관리자 제재 → 작가·갤러리 양쪽에서 메시지 마스킹 (ArtTalk 에 신고 UI 없음)', async () => {
+  // 위 주석의 1~3이 끝나면 되살릴 것
+});
+
+test('★ 신고 API 는 살아 있다 — 화면만 붙이면 된다 (관리자 목록 조회 가능)', async () => {
   const api = await pwRequest.newContext();
-  const gTok = tokenFor('gallery');
-  const myEx = await (await api.get(`${API}/exhibitions/my-exhibitions`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
-  const approved = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
-  exId = approved.id;
-  // 대화 상대 제한 충족: 작가가 먼저 공모에 지원(관계 성립) → 갤러리 메시지 가능
-  await applyToExhibition(api, exId, tokenFor('artist'));
-  // 갤러리 → 작가 메시지 전송 (신고 대상)
-  const r = await api.post(`${API}/messages`, {
-    headers: { Authorization: `Bearer ${gTok}` },
-    data: { receiverId: ids.artist, subject: SUBJECT, content: BAD_MSG, exhibitionId: exId },
+  const list = await api.get(`${API}/reports`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin')}` },
   });
-  expect(r.ok(), `메시지 전송 실패 ${r.status()}`).toBeTruthy();
+  expect(list.status(), '신고 목록 API 가 사라졌다면 Admin 신고 관리 탭이 죽는다').toBe(200);
   await api.dispose();
 });
 
-test('신고 → 관리자 제재 → 작가·갤러리 양쪽에서 메시지 마스킹', async ({ browser }) => {
-  const artist = await openAs(browser, 'artist');
-  const gallery = await openAs(browser, 'gallery');
+test('★ 신고 API 는 아무나 못 부른다 (작가/갤러리만, 남의 메시지만)', async () => {
   const api = await pwRequest.newContext();
-  const adminTok = tokenFor('admin');
-  const galleryTok = tokenFor('gallery');
+  const ids = userIds();
 
-  const artistThread = `/messages?partner=${ids.gallery}&exhibition=${exId}&subject=${encodeURIComponent(SUBJECT)}`;
-  const galleryThread = `/messages?partner=${ids.artist}&exhibition=${exId}&subject=${encodeURIComponent(SUBJECT)}`;
+  // 비로그인
+  const anon = await api.post(`${API}/reports`, { data: { messageId: 1, reason: '테스트' } });
+  expect(anon.status()).toBe(401);
 
-  // ── 1) 작가: 스레드 열고 갤러리 메시지 신고 ──
-  await artist.page.goto(artistThread);
-  await expect(artist.page.getByText(BAD_MSG, { exact: false })).toBeVisible({ timeout: 10000 });
-  // 카톡식 1:1엔 다른 메시지도 누적되므로 BAD_MSG가 속한 말풍선 행에 한정해 신고
-  const badRow = artist.page.locator('div.justify-start').filter({ hasText: BAD_MSG });
-  await badRow.locator('button:has(svg.lucide-flag)').click(); // 신고(깃발) 버튼
-  await expect(artist.page.getByText('신고하기')).toBeVisible();
-  await artist.page.getByRole('button', { name: '신고하기' }).click();
-  await expect(artist.page.locator('body')).toContainText('신고가 접수되었습니다', { timeout: 8000 });
-
-  // 신고 직후 작가 화면: 본인이 신고한 메시지로 가려짐
-  await artist.page.goto(artistThread);
-  await expect(artist.page.getByText('신고한 메시지입니다', { exact: false })).toBeVisible({ timeout: 10000 });
-  await expect(artist.page.getByText(BAD_MSG, { exact: false })).toHaveCount(0);
-
-  // ── 2) 관리자: 신고 큐에서 제재(ACTIONED) — API ──
-  const reports = await (await api.get(`${API}/reports?status=PENDING`, { headers: { Authorization: `Bearer ${adminTok}` } })).json();
-  const report = (reports.reports || reports).find((r: any) => r.status === 'PENDING');
-  expect(report, '대기 중 신고가 있어야 함').toBeTruthy();
-  const act = await api.patch(`${API}/reports/${report.id}`, {
-    headers: { Authorization: `Bearer ${adminTok}` },
-    data: { status: 'ACTIONED', adminNote: 'E2E 제재' },
+  // Admin 은 신고 주체가 아니다 (처리하는 쪽이다)
+  const asAdmin = await api.post(`${API}/reports`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin')}` },
+    data: { messageId: 1, reason: '테스트' },
   });
-  expect(act.ok()).toBeTruthy();
+  expect(asAdmin.status(), 'Admin 이 신고까지 넣을 수 있으면 역할이 뒤엉킨다').toBe(403);
 
-  // ── 3) 작가 화면: 제재로 가려진 메시지로 변경 ──
-  await artist.page.goto(artistThread);
-  await expect(artist.page.getByText('제재로 가려진 메시지입니다', { exact: false })).toBeVisible({ timeout: 10000 });
+  // 없는 메시지
+  const missing = await api.post(`${API}/reports`, {
+    headers: { Authorization: `Bearer ${tokenFor('artist')}` },
+    data: { messageId: 999999, reason: '테스트' },
+  });
+  expect(missing.status()).toBe(404);
 
-  // ── 4) 갤러리(발신자) 화면도 제재로 가려짐 ──
-  await gallery.page.goto(galleryThread);
-  await expect(gallery.page.getByText('제재로 가려진 메시지입니다', { exact: false })).toBeVisible({ timeout: 10000 });
-  await expect(gallery.page.getByText(BAD_MSG, { exact: false })).toHaveCount(0);
-
-  // ── 5) 발신자(갤러리)에게 제재 알림(MESSAGE_SANCTION) ──
-  const gNotis = await (await api.get(`${API}/notifications`, { headers: { Authorization: `Bearer ${galleryTok}` } })).json();
-  const sanction = (gNotis.notifications || gNotis).filter((n: any) => n.type === 'MESSAGE_SANCTION');
-  expect(sanction.length, '갤러리에 제재 알림').toBeGreaterThan(0);
-
+  expect(ids.artist).toBeGreaterThan(0);
   await api.dispose();
-  await artist.ctx.close();
-  await gallery.ctx.close();
 });

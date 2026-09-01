@@ -19,6 +19,7 @@
  *    이게 없으면 새로고침할 때마다 알림이 쌓인다.
  */
 import prisma from './prisma';
+import { operationLink } from './notifyLinks';
 import { startOfTodayKstAsUtc } from './kstDate';
 import { operatorUserIds } from './exhibitionAccess';
 import { STALE_AFTER_DAYS } from './exhibitionLifecycle';
@@ -96,7 +97,8 @@ export async function sweepSettlementReminders(now: Date = new Date()): Promise<
           userId,
           type: plan.kind === 'closed' ? 'SETTLEMENT_AUTO_CLOSED' : 'SETTLEMENT_REMINDER',
           message,
-          linkUrl: `/exhibitions/${ex.id}/operation/new`,
+          // ⚠️ 받는 사람이 **갤러리 오너·운영자**다(판매·정산 입력은 갤러리 일) — 작가 링크로 바꾸지 말 것
+          linkUrl: operationLink(ex.id),
           refKey,
         })),
       });

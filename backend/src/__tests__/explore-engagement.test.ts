@@ -143,6 +143,83 @@ describe('GET /api/explore/highlight — 홈 하이라이트', () => {
     const r = await request.get('/api/explore/highlight?limit=999');
     expect(r.body.images.length).toBe(24);
   });
+
+  // ── 홈 ArtWorks [새로고침] (?seed=N) ─────────────────────────────────
+  // 둘러보기(/explore)의 새로고침과 같은 규칙: 시드 랜덤 + 같은 작가 연속 방지.
+
+  it('★ seed를 주면 좋아요순이 아니라 랜덤 재정렬된다 (basis=random)', async () => {
+    const imgs = await seedImages(1, 12);
+    // imgs[0] 이 좋아요 1위 — seed 없이는 항상 1등, seed 를 주면 그 보장이 사라진다
+    for (const uid of [2, 3, 4]) {
+      await testPrisma.portfolioImageLike.create({ data: { userId: uid, imageId: imgs[0].id } });
+    }
+
+    const plain = await request.get('/api/explore/highlight?limit=8');
+    expect(plain.body.basis).toBe('all');
+    expect(plain.body.images[0].id).toBe(imgs[0].id);
+
+    const shuffled = await request.get('/api/explore/highlight?limit=8&seed=12345');
+    expect(shuffled.status).toBe(200);
+    expect(shuffled.body.basis).toBe('random');
+    expect(shuffled.body.images).toHaveLength(8);
+
+    // 시드가 다르면 순서도 달라진다(전부 같으면 seed가 무시된 것)
+    const other = await request.get('/api/explore/highlight?limit=8&seed=987654');
+    const a = shuffled.body.images.map((i: any) => i.id).join(',');
+    const b = other.body.images.map((i: any) => i.id).join(',');
+    expect(a, '서로 다른 seed인데 순서가 같다 = seed 무시됨').not.toBe(b);
+  });
+
+  it('같은 seed면 항상 같은 순서 (연타해도 화면이 흔들리지 않는다)', async () => {
+    await seedImages(1, 10);
+    const r1 = await request.get('/api/explore/highlight?limit=6&seed=42');
+    const r2 = await request.get('/api/explore/highlight?limit=6&seed=42');
+    expect(r2.body.images.map((i: any) => i.id)).toEqual(r1.body.images.map((i: any) => i.id));
+  });
+
+  it('seed 재정렬에서도 같은 작가가 연달아 나오지 않는다', async () => {
+    // 작가 3명 × 4장 — 연속 방지가 없으면 같은 작가가 뭉쳐 나온다
+    await seedImages(1, 4);
+    await seedImages(2, 4);
+    await seedImages(3, 4);
+    const r = await request.get('/api/explore/highlight?limit=12&seed=777');
+    const artistIds = r.body.images.map((i: any) => i.artist.id);
+    const adjacent = artistIds.filter((id: number, k: number) => k > 0 && id === artistIds[k - 1]);
+    expect(adjacent, `같은 작가 연속: ${artistIds}`).toEqual([]);
+  });
+
+  it('seed 재정렬에서도 비공개·탈퇴 작가 작품은 여전히 제외된다', async () => {
+    await seedImages(1, 3, false); // 비공개
+    await seedImages(2, 3, true);
+    await testPrisma.user.update({ where: { id: 2 }, data: { deletedAt: new Date() } });
+    const r = await request.get('/api/explore/highlight?limit=8&seed=555');
+    expect(r.body.images).toEqual([]);
+  });
+
+  it('seed 재정렬에서도 좋아요 배지(likeCount)와 로그인 상태(isLiked)는 그대로다', async () => {
+    const imgs = await seedImages(1, 5);
+    await request.post(`/api/explore/${imgs[0].id}/like`).set('Authorization', `Bearer ${artist2Tok}`);
+    const r = await request.get('/api/explore/highlight?limit=5&seed=31337').set('Authorization', `Bearer ${artist2Tok}`);
+    const liked = r.body.images.find((i: any) => i.id === imgs[0].id);
+    expect(liked.likeCount).toBe(1);
+    expect(liked.isLiked).toBe(true);
+  });
+
+  it('잘못된 seed(0·문자·음수)는 seed 없음으로 취급 — 좋아요순 유지', async () => {
+    const imgs = await seedImages(1, 4);
+    for (const uid of [2, 3]) {
+      await testPrisma.portfolioImageLike.create({ data: { userId: uid, imageId: imgs[3].id } });
+    }
+    for (const bad of ['0', 'abc', '', '-0']) {
+      const r = await request.get(`/api/explore/highlight?limit=4&seed=${bad}`);
+      expect(r.status, `seed=${bad}`).toBe(200);
+      expect(r.body.basis, `seed=${bad} 는 무시되어야 한다`).toBe('all');
+      expect(r.body.images[0].id, `seed=${bad}`).toBe(imgs[3].id);
+    }
+    // 음수는 절대값으로 받아 재정렬한다(Explore 피드와 동일)
+    const neg = await request.get('/api/explore/highlight?limit=4&seed=-42');
+    expect(neg.body.basis).toBe('random');
+  });
 });
 
 describe('GET /api/explore/my-likes — 좋아요한 작품 보드', () => {
@@ -353,10 +430,38 @@ describe('공모 초대 (갤러리 → 작가)', () => {
     const g = await seedGallery();
     const ex = await seedExhibition(g.id);
     exhibitionId = ex.id;
+    // 새 관문(lib/inviteEligibility): 갤러리는 '좋아요했거나 서로 이웃'인 작가만 초대 가능.
+    // 초대 '기전'을 검사하는 이 블록은 서로 이웃(양방향 팔로우)으로 자격을 충족시킨다.
+    await testPrisma.follow.createMany({
+      data: [
+        { followerId: 3, followingId: 1 }, { followerId: 1, followingId: 3 },
+        { followerId: 3, followingId: 2 }, { followerId: 2, followingId: 3 },
+      ],
+    });
   });
 
   const invite = (tok: string, body: object) =>
     request.post(`/api/exhibitions/${exhibitionId}/invite`).set('Authorization', `Bearer ${tok}`).send(body);
+
+  /** 갤러리(3)와 작가(1)의 이웃 관계를 끊어 관문을 '미충족' 상태로 만든다 */
+  const unlinkGalleryArtist1 = () =>
+    testPrisma.follow.deleteMany({ where: { OR: [
+      { followerId: 3, followingId: 1 }, { followerId: 1, followingId: 3 },
+    ] } });
+
+  it('좋아요도 이웃도 아닌 작가는 초대할 수 없다(403)', async () => {
+    await unlinkGalleryArtist1();
+    const r = await invite(galleryTok, { artistId: 1 });
+    expect(r.status).toBe(403);
+  });
+
+  it('작품에 좋아요를 눌렀으면 이웃이 아니어도 초대할 수 있다(201)', async () => {
+    await unlinkGalleryArtist1();
+    const imgs = await seedImages(1, 1);
+    await request.post(`/api/explore/${imgs[0].id}/like`).set('Authorization', `Bearer ${galleryTok}`);
+    const r = await invite(galleryTok, { artistId: 1 });
+    expect(r.status).toBe(201);
+  });
 
   it('초대하면 작가에게 알림이 간다', async () => {
     const r = await invite(galleryTok, { artistId: 1, message: '작품 잘 봤습니다' });
@@ -567,9 +672,14 @@ describe('공모 초대 (갤러리 → 작가)', () => {
     // 같은 갤러리가 오늘 이미 10건을 보낸 상태로 만든다 (다른 공모여도 계정 기준으로 합산)
     const others = [];
     for (let i = 0; i < 10; i++) {
-      others.push(await testPrisma.user.create({
+      const u = await testPrisma.user.create({
         data: { email: `bulk${i}@test.com`, name: `대상${i}`, role: 'ARTIST' },
-      }));
+      });
+      others.push(u);
+      // 관문 충족(lib/inviteEligibility): 갤러리와 서로 이웃으로 만들어 초대 자격을 준다
+      await testPrisma.follow.createMany({ data: [
+        { followerId: 3, followingId: u.id }, { followerId: u.id, followingId: 3 },
+      ] });
     }
     const ex2 = await seedExhibition((await testPrisma.exhibition.findUnique({ where: { id: exhibitionId } }))!.galleryId);
     await testPrisma.exhibition.update({ where: { id: ex2.id }, data: { capacity: 50 } });

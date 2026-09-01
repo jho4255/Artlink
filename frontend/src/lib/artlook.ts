@@ -18,15 +18,28 @@ export interface ArtLookWork {
   exhibition?: string;
   /** 어디서 왔는지. ArtLook 이 파일명과 안내 문구를 이걸로 고른다 */
   kind?: 'sold' | 'portfolio';
+  /**
+   * 작품 실치수 — 포트폴리오의 `sizeText`('116.8 × 91.0 cm' 처럼 자유 형식).
+   * 장면(프리미엄) 모드가 이걸 읽어 **방에 실제 크기대로** 건다. 30호와 100호가
+   * 같은 벽에서 다르게 보여야 목업이 판단 근거가 된다(경쟁 앱 리뷰의 최다 불만).
+   * 없으면 장면의 기본 채움 비율로 앉으므로 넘겨도 안 넘겨도 동작은 한다.
+   */
+  sizeText?: string;
 }
 
 export const ARTLOOK_STORAGE_KEY = 'artlook:works';
 
+/** 정적 페이지라 index.html 을 명시한다 (개발 Vite·운영 Express 양쪽에서 SPA fallback 회피) */
+export const ARTLOOK_URL = '/artlook/index.html';
+/** 마이페이지 안 iframe 용 — 바깥에 이미 제목이 있으므로 페이지 머리말을 감춘다 */
+export const ARTLOOK_EMBED_URL = `${ARTLOOK_URL}?embed=1`;
+
 /**
- * 새 탭으로 ArtLook 을 연다. 이미지 없는 항목은 걸러낸다.
- * @returns 넘긴 작품 수 (0이면 열지 않음 — 호출부에서 안내)
+ * 넘길 작품을 localStorage 에 올려둔다. 이미지 없는 항목은 걸러낸다.
+ * ArtLook 은 **뜰 때 한 번** 읽으므로 화면(iframe)을 그리기 **전에** 불러야 한다.
+ * @returns 넘긴 작품 수 (0이면 보여줄 게 없다 — 호출부에서 안내)
  */
-export function openArtLook(works: ArtLookWork[]): number {
+export function stageArtLookWorks(works: ArtLookWork[]): number {
   const valid = works.filter(w => w.url);
   if (valid.length === 0) return 0;
   try {
@@ -34,7 +47,17 @@ export function openArtLook(works: ArtLookWork[]): number {
   } catch {
     // 시크릿 모드 등에서 저장이 막히면 ArtLook 이 빈 화면을 띄운다 — 여는 것 자체는 막지 않는다
   }
-  // 정적 페이지라 index.html 을 명시한다 (개발 Vite·운영 Express 양쪽에서 SPA fallback 회피)
-  window.open('/artlook/index.html', '_blank');
   return valid.length;
+}
+
+/**
+ * 새 탭으로 ArtLook 을 연다.
+ * 마이페이지 [ArtLook] 탭은 **같은 페이지 안 iframe** 으로 띄우고(왔다갔다 하지 않게),
+ * 이 함수는 운영페이지 정산의 '판매작 홍보' 처럼 다른 화면에서 넘어올 때 쓴다.
+ */
+export function openArtLook(works: ArtLookWork[]): number {
+  const n = stageArtLookWorks(works);
+  if (n === 0) return 0;
+  window.open(ARTLOOK_URL, '_blank');
+  return n;
 }

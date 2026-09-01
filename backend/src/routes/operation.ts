@@ -9,6 +9,7 @@
  */
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { artistExhibitionLink, operationLink } from '../lib/notifyLinks';
 import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { buildCaptionHwp, CAPTION_MAX_WORKS } from '../lib/captionHwp';
@@ -141,7 +142,7 @@ router.post('/:id/notices', authenticate, async (req, res, next) => {
             userId: a.userId,
             type: 'OPERATION_NOTICE',
             message: `"${exData?.title ?? '공모'}" 운영 공지: ${title.trim()}`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+            linkUrl: artistExhibitionLink(exhibitionId),
           })),
         });
       }
@@ -500,7 +501,7 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
         const who = isAdmin && !isOwner ? '관리자' : (exhibition.gallery?.name || editor?.nickname || editor?.name || '갤러리');
         const refKey = `submission-proxy:${exhibitionId}`;
         const message = `"${exhibition.title}" 전시의 제출 자료를 ${who}에서 대신 입력했습니다. 내용을 확인해주세요.`;
-        const linkUrl = `/exhibitions/${exhibitionId}/operation/new`;
+        const linkUrl = artistExhibitionLink(exhibitionId);
         const existing = await prisma.notification.findFirst({
           where: { userId: targetUserId, refKey, read: false },
           orderBy: { createdAt: 'desc' },
@@ -669,7 +670,7 @@ async function autoApproveOverdue(exhibition: { id: number; title: string; settl
         userId: uid,
         type: 'SETTLEMENT_SHARED',
         message: `"${exhibition.title}" 전시의 정산이 ${AUTO_APPROVE_DAYS}일간 응답이 없어 자동 수락 처리되었습니다.`,
-        linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+        linkUrl: artistExhibitionLink(exhibitionId),
       })),
     });
     return due.length;
@@ -925,7 +926,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
             userId: uid,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
             message: `"${exhibition.title}" 전시의 정산 내역이 수정되었습니다. 다시 확인해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+            linkUrl: artistExhibitionLink(exhibitionId),
           })),
         });
         notified = staleIds.length;
@@ -990,7 +991,7 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
             userId: a.userId,
             type: 'SETTLEMENT_SHARED',
             message: `"${exhibition.title}" 전시의 정산 내역이 공개되었습니다.`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+            linkUrl: artistExhibitionLink(exhibitionId),
           })),
         });
       }
@@ -1053,7 +1054,7 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
             userId: uid,
             type: 'SETTLEMENT_CONFIRM_REQUEST',
             message: `"${exhibition.title}" 전시의 정산 내역 확인을 요청했습니다. 확인 후 수락해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+            linkUrl: artistExhibitionLink(exhibitionId),
           })),
         });
       }
@@ -1099,7 +1100,7 @@ router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async 
           userId: artistUserId,
           type: 'SETTLEMENT_CONFIRM_REQUEST',
           message: `"${exhibition.title}" 전시의 정산 확인을 다시 요청했습니다. 확인 후 수락해주세요. (${AUTO_APPROVE_DAYS}일간 응답이 없으면 자동 수락 처리됩니다)`,
-          linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+          linkUrl: artistExhibitionLink(exhibitionId),
         },
       });
     } catch { /* 알림 실패해도 요청은 정상 */ }
@@ -1248,7 +1249,8 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
             userId: uid,
             type: 'SETTLEMENT_ISSUE',
             message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,
-            linkUrl: `/exhibitions/${exhibitionId}/operation/new`,
+            // ⚠️ 받는 사람이 **갤러리 오너·운영자**다 — 작가 링크로 바꾸지 말 것
+            linkUrl: operationLink(exhibitionId),
           })),
         });
       } catch { /* 알림 실패해도 응답은 정상 */ }

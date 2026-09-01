@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Star, Heart, Phone, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -32,7 +32,6 @@ const ratingFilters = [
 ];
 
 export default function GalleriesPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
 
@@ -127,12 +126,12 @@ export default function GalleriesPage() {
           <p className="text-base text-gray-400 mt-2">Find your next partner</p>
         </div>
         {user?.role === 'GALLERY' && (
-          <button
-            onClick={() => navigate('/mypage?tab=my-galleries')}
-            className="flex-none flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors whitespace-nowrap"
+          <Link
+            to="/galleries/new"
+            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors whitespace-nowrap"
           >
-            <Plus size={16} /> 갤러리 등록
-          </button>
+            <Plus size={15} /> 갤러리 등록
+          </Link>
         )}
       </div>
 

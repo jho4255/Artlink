@@ -125,6 +125,21 @@ function arrangeNoAdjacent<T>(items: T[], artistOf: (t: T) => number, rand: () =
   return result;
 }
 
+// 시드 셔플 + 같은 작가 연속 방지 — Explore 피드와 홈 ArtWorks [새로고침]이 같은 규칙을 쓴다.
+// id 기준 정렬을 base로 두어 DB 반환 순서와 무관하게 같은 seed면 항상 같은 결과.
+function shuffleNoAdjacent(
+  candidates: { id: number; portfolio: { userId: number } }[],
+  seed: number,
+): number[] {
+  const rand = mulberry32(seed);
+  const base = [...candidates].sort((a, b) => a.id - b.id);
+  for (let i = base.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [base[i], base[j]] = [base[j], base[i]];
+  }
+  return arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
+}
+
 // GET / — 공개 탐색 피드 (Explore)
 //   sort=random&seed=N : 시드 기반 랜덤 + 같은 작가 연속 방지 (기본)
 //   sort=popular&period=day|week|month|year|all : 기간 내 받은 좋아요 수 내림차순
@@ -165,15 +180,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         .sort((a, b) => b.c - a.c || b.id - a.id) // 좋아요 많은 순, 동수는 최신(id) 순
         .map(x => x.id);
     } else {
-      // 시드 PRNG로 Fisher-Yates 셔플(작가내 순서 랜덤) 후, 같은 작가 연속 방지 배치.
-      // id 기준 정렬을 base로 두어 DB 반환 순서와 무관하게 같은 seed면 항상 같은 결과.
-      const rand = mulberry32(seed);
-      const base = [...candidates].sort((a, b) => a.id - b.id);
-      for (let i = base.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [base[i], base[j]] = [base[j], base[i]];
-      }
-      orderedIds = arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
+      orderedIds = shuffleNoAdjacent(candidates, seed);
     }
 
     const pageIds = orderedIds.slice(skip, skip + limit);
@@ -209,16 +216,23 @@ router.get('/', optionalAuth, async (req, res, next) => {
 // ── 단일 경로 라우트는 /:imageId 패턴보다 먼저 등록 ────────────────────────
 
 /**
- * GET /highlight — 홈 "Favorites" 섹션용 (인증 불필요)
+ * GET /highlight — 홈 "ArtWorks" 섹션용 (인증 불필요)
  *
- * 정렬은 **전체 좋아요 수 내림차순** — 화면에 찍히는 하트 배지와 같은 값이어야
- * 사용자가 보기에 "하트순"이 된다. 동점이면 최근 7일 좋아요가 많은 쪽(신선도), 그다음 최신.
- *   all    : 좋아요가 하나라도 있음 → "가장 많이 사랑받은 작품들"
- *   random : 좋아요가 전무 → 날짜 시드 랜덤(하루 동안 고정) → "작가들의 작품"
+ * seed 없음(기본, 첫 진입):
+ *   정렬은 **전체 좋아요 수 내림차순** — 화면에 찍히는 하트 배지와 같은 값이어야
+ *   사용자가 보기에 "하트순"이 된다. 동점이면 최근 7일 좋아요가 많은 쪽(신선도), 그다음 최신.
+ *     all    : 좋아요가 하나라도 있음
+ *     random : 좋아요가 전무 → 날짜 시드 랜덤(하루 동안 고정)
+ *
+ * seed=N (홈 ArtWorks 의 [새로고침] 버튼):
+ *   그 시드로 랜덤 재정렬 + 같은 작가 연속 방지 — 둘러보기(/explore)의 새로고침과 같은 규칙이라
+ *   두 화면에서 누른 느낌이 같다. basis 는 'random'.
+ *   ⚠️ 좋아요 집계 쿼리 2개를 건너뛴다 — 새로고침은 연타되는 버튼이라 매번 전체 집계를 돌릴 이유가 없다.
  */
 router.get('/highlight', optionalAuth, async (req, res, next) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 8, 1), 24);
+    const reshuffleSeed = (Math.abs(parseInt(req.query.seed as string)) || 0) >>> 0;
     const userId = req.user?.id;
     const isGallery = !!userId && req.user?.role === 'GALLERY';
     const candidates = await prisma.portfolioImage.findMany({
@@ -243,27 +257,28 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
     // 예전에는 '최근 7일' 기준으로 정렬하면서 배지는 전체 수를 보여줘서
     // "하트 1,1,1,…,3" 처럼 순서가 뒤집혀 보였다(전체 3개지만 이번 주엔 0개인 작품이 꼴찌).
     // → 1차: 전체 좋아요 desc(= 배지 순서), 2차: 최근 7일 desc(신선도), 3차: 최신
-    const allCnt = await countLikes(null);
-    const weekCnt = await countLikes(new Date(Date.now() - 7 * 86400000));
-    const basis: 'all' | 'random' = candidates.some(c => allCnt.get(c.id)) ? 'all' : 'random';
-
+    let basis: 'all' | 'random';
     let orderedIds: number[];
-    if (basis === 'random') {
-      // 날짜 시드 — 하루 동안 같은 순서(새로고침마다 바뀌면 홈이 산만해진다)
-      const today = new Date();
-      const seed = today.getUTCFullYear() * 10000 + (today.getUTCMonth() + 1) * 100 + today.getUTCDate();
-      const rand = mulberry32(seed);
-      const base = [...candidates].sort((a, b) => a.id - b.id);
-      for (let i = base.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [base[i], base[j]] = [base[j], base[i]];
-      }
-      orderedIds = arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
+
+    if (reshuffleSeed > 0) {
+      basis = 'random';
+      orderedIds = shuffleNoAdjacent(candidates, reshuffleSeed);
     } else {
-      orderedIds = candidates
-        .map(c => ({ id: c.id, total: allCnt.get(c.id) || 0, week: weekCnt.get(c.id) || 0 }))
-        .sort((a, b) => b.total - a.total || b.week - a.week || b.id - a.id)
-        .map(x => x.id);
+      const allCnt = await countLikes(null);
+      const weekCnt = await countLikes(new Date(Date.now() - 7 * 86400000));
+      basis = candidates.some(c => allCnt.get(c.id)) ? 'all' : 'random';
+
+      if (basis === 'random') {
+        // 날짜 시드 — 하루 동안 같은 순서(첫 진입마다 바뀌면 홈이 산만해진다)
+        const today = new Date();
+        const seed = today.getUTCFullYear() * 10000 + (today.getUTCMonth() + 1) * 100 + today.getUTCDate();
+        orderedIds = shuffleNoAdjacent(candidates, seed);
+      } else {
+        orderedIds = candidates
+          .map(c => ({ id: c.id, total: allCnt.get(c.id) || 0, week: weekCnt.get(c.id) || 0 }))
+          .sort((a, b) => b.total - a.total || b.week - a.week || b.id - a.id)
+          .map(x => x.id);
+      }
     }
 
     const pageIds = orderedIds.slice(0, limit);

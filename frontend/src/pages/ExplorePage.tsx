@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Heart, RefreshCw, Shuffle } from 'lucide-react';
+import { Heart, RefreshCw } from 'lucide-react';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
 import api from '@/lib/axios';
@@ -66,52 +66,55 @@ export default function ExplorePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Explore</h1>
-          <p className="text-base text-gray-400 mt-2">작가들의 작품을 둘러보세요</p>
+      {/*
+        홈의 ArtWorks 섹션이 [모두 모아보기]로 여기 보낸다 — **같은 이름·같은 컨트롤**이어야
+        다른 데로 온 것처럼 보이지 않는다. 제목은 ArtLink 로고 규칙(앞 검정 + 뒤 빨강),
+        부제는 두지 않는다.
+      */}
+      <div className="flex items-start justify-between gap-4 mb-8 md:mb-10">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+          Art<span className="text-[#dc3545]">Works</span>
+        </h1>
+
+        {/* 우측 상단: [작품 새로고침] 아래 [좋아요순] — 홈 ArtWorks 와 같은 글자 버튼 모양.
+            예전엔 알약 모양 [랜덤]/[좋아요순] 두 개였는데, '랜덤'이 기본이라 버튼일 이유가 없었다. */}
+        <div className="shrink-0 flex flex-col items-end">
+          <button
+            onClick={() => { setSort('random'); reshuffle(); }}
+            title="다른 작품 보기 (랜덤 재정렬)"
+            className="flex items-center gap-1.5 py-1 text-sm text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+          >
+            <RefreshCw size={15} className={isFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
+            작품 새로고침
+          </button>
+          <button
+            onClick={() => setSort(sort === 'popular' ? 'random' : 'popular')}
+            aria-pressed={sort === 'popular'}
+            className={`flex items-center gap-1.5 py-1 text-sm transition-colors cursor-pointer ${
+              sort === 'popular' ? 'text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Heart size={15} className={sort === 'popular' ? 'fill-[#c4302b] text-[#c4302b]' : ''} />
+            좋아요순
+          </button>
         </div>
-        {/* 우측 상단 새로고침 — 랜덤 재정렬(같은 작가 연속 방지) */}
-        <button
-          onClick={reshuffle}
-          title="새로고침 (랜덤 재정렬)"
-          aria-label="새로고침"
-          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
-        >
-          <RefreshCw size={16} className={isFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
-          <span className="hidden sm:inline">새로고침</span>
-        </button>
       </div>
 
-      {/* 정렬 컨트롤 */}
-      <div className="flex flex-wrap items-center gap-2 mt-6 mb-10">
-        <button
-          onClick={() => setSort('random')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full transition-colors ${sort === 'random' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          <Shuffle size={14} /> 랜덤
-        </button>
-        <button
-          onClick={() => setSort('popular')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full transition-colors ${sort === 'popular' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          <Heart size={14} /> 좋아요순
-        </button>
-        {sort === 'popular' && (
-          <div className="flex flex-wrap items-center gap-1 sm:ml-2">
-            <span className="text-xs text-gray-400 mr-1">기간</span>
-            {PERIODS.map(p => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${period === p.key ? 'bg-[#c4302b] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* 기간은 좋아요순일 때만 의미가 있다 */}
+      {sort === 'popular' && (
+        <div className="flex flex-wrap items-center gap-1 mb-8">
+          <span className="text-xs text-gray-400 mr-1">기간</span>
+          {PERIODS.map(p => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-2.5 py-1 text-xs rounded-full transition-colors ${period === p.key ? 'bg-[#c4302b] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-3 md:grid-cols-4 gap-1.5">

@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  LogOut, Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
+  Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Bookmark, Inbox, ListChecks
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -17,8 +18,14 @@ import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibition
 import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
+import HomepageView from '@/components/shared/HomepageView';
+import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
+import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
-import type { PortfolioBookData } from '@/lib/portfolioFormats';
+import { myPageTabs, resolveTab, tabHref, HOMEPAGE_EDIT_HREF } from '@/lib/myPageMenu';
+import { splitIntoColumns } from '@/lib/careerColumns';
+import { useCareerColumns } from '@/hooks/useCareerColumns';
+import type { PortfolioBookData, PdfDesign } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -27,13 +34,14 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import ArtworkDetailModal, { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
+import ArtworkDetailModal, { ArtworkLikersModal, InviteModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
-import { openArtLook, type ArtLookWork } from '@/lib/artlook';
+import { openArtLook, stageArtLookWorks, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '@/lib/artlook';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
 import KanbanSection from '@/components/admin/KanbanSection';
+import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
-import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ArtworkScrap, ExhibitionInvite } from '@/types';
+import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력(career) 표시용 — 카테고리별 라벨 (학력·수상은 포트폴리오 전용 확장)
@@ -146,10 +154,8 @@ const makeFallbackOperationOverview = (ex: any): GalleryOperationOverview => ({
 
 
 export default function MyPage() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab');
     return tab === 'my-exhibitions-classic' ? 'my-exhibitions' : (tab || 'profile');
@@ -158,23 +164,22 @@ export default function MyPage() {
   // 다른 페이지에서 ?tab=... 로 진입 시(이미 /mypage에 있을 때 포함) 해당 탭으로 전환
   useEffect(() => {
     const rawTab = searchParams.get('tab');
-    const t = rawTab === 'my-exhibitions-classic' ? 'my-exhibitions' : rawTab;
     // 옛 딥링크(?tab=my-exhibitions-classic) 호환 — 클래식 목록은 없어졌으므로 '내 공모' 로만 보낸다
-    if (rawTab === 'my-exhibitions-classic') setSearchParams({ tab: 'my-exhibitions' }, { replace: true });
-    if (t && t !== activeTab) setActiveTab(t);
+    if (rawTab === 'my-exhibitions-classic') { setSearchParams({ tab: 'my-exhibitions' }, { replace: true }); return; }
+    /*
+      ⚠️ `?tab=` 이 **없을 때도** 반드시 되돌려야 한다.
+      예전엔 `if (t && ...)` 라 값이 없으면 아무것도 안 했다 → 사이드바에서 [프로필](= `/mypage`, 쿼리 없음)을
+      누르면 주소만 바뀌고 화면은 이전 탭에 머물렀다(갤러리 계정에서 프로필↔내 갤러리 왕복 시 신고, 2026-08-28).
+      프로필은 기본 탭이라 쿼리를 안 붙이므로(myPageHref) 이 경로가 매번 걸린다.
+    */
+    const t = rawTab ?? 'profile';
+    if (t !== activeTab) setActiveTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const selectTab = (id: string) => {
     setActiveTab(id);
     setSearchParams(id === 'profile' ? {} : { tab: id }, { replace: true });
-  };
-
-  const handleLogout = () => {
-    // 로그아웃 시 모든 캐시 제거 (다음 유저 로그인 시 stale 데이터 방지)
-    queryClient.clear();
-    logout();
-    navigate('/login');
   };
 
   // 모바일에서 탭이 화면을 넘어갈 때(Admin 8개 등) 우측 페이드로 "더 있음"을 알림
@@ -193,67 +198,42 @@ export default function MyPage() {
 
   if (!user) return null;
 
-  const tabs = user.role === 'ARTIST'
-    ? [
-        { id: 'profile', label: '프로필', icon: Camera },
-        { id: 'portfolio', label: '포트폴리오', icon: FileText },
-        { id: 'invites', label: '받은 초대', icon: Inbox },
-        { id: 'favorites', label: '찜 목록', icon: Heart },
-        { id: 'liked-artworks', label: '좋아요한 작품', icon: Heart },
-        { id: 'reviews', label: '내 리뷰', icon: Star },
-        { id: 'applications', label: '내 전시', icon: Ticket },
-      ]
-    : user.role === 'GALLERY'
-    ? [
-        { id: 'profile', label: '프로필', icon: Camera },
-        { id: 'my-galleries', label: '내 갤러리', icon: Building2 },
-        { id: 'my-exhibitions', label: '내 공모', icon: FileText },
-        { id: 'my-shows', label: '내 전시', icon: Ticket },
-        { id: 'scraps', label: '관심 작품', icon: Bookmark },
-      ]
-    : [
-        { id: 'profile', label: '프로필', icon: Camera },
-        { id: 'approvals', label: '승인 관리', icon: Check },
-        { id: 'hosted-exhibitions', label: '주최 공모', icon: FileText },
-        { id: 'hero-manage', label: '히어로 관리', icon: Eye },
-        { id: 'benefit-manage', label: '혜택 관리', icon: FileText },
-        { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
-        { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
-        { id: 'user-manage', label: '사용자 관리', icon: Search },
-        { id: 'oversight', label: '운영 조회', icon: ClipboardList },
-        { id: 'todo', label: '할 일 보드', icon: ListChecks },
-        { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
-      ];
+  // 메뉴 정의는 lib/myPageMenu.ts 하나뿐 — 우측 사이드바(Layout)·Navbar 모바일 메뉴와 같은 것을 쓴다
+  const tabs = myPageTabs(user.role);
 
-  // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백
-  const currentTab = tabs.some(t => t.id === activeTab) ? activeTab : (tabs[0]?.id ?? 'profile');
+  // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백.
+  // 사이드바도 같은 resolveTab 을 써야 강조와 내용이 어긋나지 않는다.
+  const currentTab = resolveTab(user.role, activeTab);
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-serif text-gray-900">My Page</h1>
-        <button onClick={handleLogout} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900 cursor-pointer">
-          <LogOut size={16} /> 로그아웃
-        </button>
-      </div>
-
+      {/* 'My Page' 제목은 두지 않는다 — 우측 사이드바가 현재 위치를 알려주고,
+          각 탭이 제 이름을 갖는다(예: 포트폴리오 탭의 PortFolio).
+          로그아웃도 여기 없다 — Navbar 우측으로 일원화 */}
       {/* 프로필 카드 */}
       <ProfileCard />
 
-      {/* 탭 메뉴 */}
-      <div className="relative mb-8">
+      {/*
+        메뉴는 **lg(1024px) 이상에서만 우측 세로 사이드바**, 그 아래는 기존 가로 탭바.
+        375px 폭에 224px 사이드바를 붙이면 본문이 150px밖에 안 남는다 — 좁은 화면에서는
+        가로 스크롤 탭이 유일하게 쓸 만한 형태다(참고한 artspoon 도 좁아지면 사이드바를 접는다).
+      */}
+      <div className="relative mb-8 lg:hidden">
         <div ref={tabBarRef} className="flex gap-4 overflow-x-auto pb-2 border-b border-gray-200 scrollbar-hide">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => selectTab(tab.id)}
-              className={`px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {tabs.map(tab => {
+            const cls = `px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              !tab.linkTo && currentTab === tab.id ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-900'
+            }`;
+            // [홈페이지]는 탭이 아니라 공개 작가 페이지로 나가는 링크다 — 여기서 selectTab 하면 빈 화면이 된다
+            const name = tab.brand
+              ? <span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-[#dc3545]">{tab.brand[1]}</span></span>
+              : tab.label;
+            return tab.linkTo ? (
+              <Link key={tab.id} to={tabHref(tab, user.id)} className={cls}>{name}</Link>
+            ) : (
+              <button key={tab.id} onClick={() => selectTab(tab.id)} className={cls}>{name}</button>
+            );
+          })}
         </div>
         {/* 우측 스크롤 힌트 (클릭 차단 방지 위해 pointer-events-none 필수) */}
         {tabOverflowRight && (
@@ -263,27 +243,33 @@ export default function MyPage() {
 
       {/* 탭 콘텐츠 */}
       <div>
-        {currentTab === 'profile' && <ProfileSection />}
-        {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioSection />}
-        {currentTab === 'invites' && user.role === 'ARTIST' && <ReceivedInvitesSection />}
-        {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
-        {currentTab === 'liked-artworks' && user.role === 'ARTIST' && <LikedArtworksSection />}
-        {currentTab === 'scraps' && user.role === 'GALLERY' && <ArtworkScrapsSection />}
-        {currentTab === 'reviews' && user.role === 'ARTIST' && <MyReviewsSection />}
-        {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
-        {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
-        {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
-        {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
-        {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
-        {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
-        {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
-        {currentTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
-        {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
-        {currentTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
-        {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
-        {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
-        {currentTab === 'todo' && user.role === 'ADMIN' && <KanbanSection />}
-        {currentTab === 'dev-tools' && user.role === 'ADMIN' && <DevToolsSection />}
+        <div className="min-w-0">
+          {currentTab === 'profile' && <ProfileSection />}
+          {/* 홈페이지 편집 — 메뉴에 없다. 공개 작가 페이지의 [수정](주인만)에서 들어온다 */}
+          {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <PortfolioSection />}
+          {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioFormatSection />}
+          {currentTab === 'artlook' && user.role === 'ARTIST' && <ArtLookSection />}
+          {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
+          {currentTab === 'scraps' && user.role === 'GALLERY' && <ArtworkScrapsSection />}
+          {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
+          {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
+          {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
+          {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
+          {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
+          {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
+          {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
+          {currentTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
+          {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
+          {currentTab === 'ad-manage' && user.role === 'ADMIN' && <AdManageSection />}
+          {currentTab === 'report-manage' && user.role === 'ADMIN' && <ReportManageSection />}
+          {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
+          {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
+          {currentTab === 'todo' && user.role === 'ADMIN' && <KanbanSection />}
+          {currentTab === 'dev-tools' && user.role === 'ADMIN' && <DevToolsSection />}
+        </div>
+
+        {/* 우측 세로 메뉴는 여기 없다 — Layout 의 <MyPageSideMenu/> 가 전 페이지에 띄운다.
+            여기에도 두면 마이페이지에서만 메뉴가 두 개로 보인다. */}
       </div>
     </div>
   );
@@ -386,7 +372,6 @@ function ProfileSection() {
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [checkResult, setCheckResult] = useState<{ available: boolean; reason?: string } | null>(null);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   // 연락처/이메일/인스타 (작가 전용) — /auth/me로 최신값 하이드레이트
   const isArtist = user?.role === 'ARTIST';
@@ -483,7 +468,7 @@ function ProfileSection() {
     <div className="max-w-md space-y-6 py-2">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">닉네임</label>
-        <p className="text-xs text-gray-400 mb-2">다른 사용자에게는 이름 대신 닉네임이 표시됩니다. (2~20자, 중복 불가)</p>
+        <p className="text-xs text-gray-400 mb-2">(2~20자)</p>
         <div className="flex gap-2">
           <input
             type="text"
@@ -520,7 +505,6 @@ function ProfileSection() {
         <div className="pt-5 border-t border-gray-100 space-y-4">
           <div>
             <h3 className="text-sm font-medium text-gray-700">내 정보</h3>
-            <p className="text-xs text-gray-400 mt-0.5">갤러리·운영자에게 전달되는 연락 정보입니다.</p>
           </div>
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1"><Mail size={14} className="text-gray-400" /> 이메일</label>
@@ -552,7 +536,6 @@ function ProfileSection() {
               placeholder="instagram.com/your_id"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
-            <p className="text-xs text-gray-400 mt-1">포트폴리오 페이지에 인스타그램 링크로 표시됩니다.</p>
           </div>
           <button
             onClick={handleSaveContact}
@@ -564,182 +547,20 @@ function ProfileSection() {
         </div>
       )}
 
-      <div className="pt-4 border-t border-gray-100 text-sm text-gray-500">
-        <p>프로필 카드 위 사진을 클릭하여 프로필 사진을 변경할 수 있습니다.</p>
-      </div>
-
-      {/* 회원 탈퇴 */}
-      <div className="pt-5 border-t border-gray-100">
-        <h3 className="text-sm font-medium text-gray-700">회원 탈퇴</h3>
-        <p className="text-xs text-gray-400 mt-0.5 mb-3">탈퇴 시 계정과 개인정보가 삭제되며 되돌릴 수 없습니다.</p>
-        <button
-          onClick={() => setWithdrawOpen(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
-        >
-          <Trash2 size={14} /> 회원 탈퇴
-        </button>
-      </div>
-      {withdrawOpen && <WithdrawModal onClose={() => setWithdrawOpen(false)} />}
-    </div>
-  );
-}
-
-// ========== 회원 탈퇴 모달 ==========
-interface WithdrawInfo {
-  role: string;
-  confirmMethod: 'password' | 'text';
-  galleries: { id: number; name: string; status: string }[];
-  ongoingExhibitions: number;
-  activeApplicants: number;
-  myApplications: number;
-  myReviews: number;
-}
-function WithdrawModal({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { logout } = useAuthStore();
-  const [info, setInfo] = useState<WithdrawInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-  const [acknowledge, setAcknowledge] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchInfo = () => {
-    setLoading(true);
-    setLoadError(false);
-    api.get('/auth/me/withdraw-info')
-      .then(({ data }) => setInfo(data))
-      .catch(() => { setLoadError(true); toast.error('정보를 불러오지 못했습니다.'); })
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const hasGalleries = (info?.galleries.length ?? 0) > 0;
-  const confirmOk = info?.confirmMethod === 'password' ? password.length > 0 : confirmText.trim() === '탈퇴';
-  const canSubmit = !submitting && !!info && confirmOk && (!hasGalleries || acknowledge);
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    try {
-      await api.delete('/auth/me', {
-        data: info?.confirmMethod === 'password'
-          ? { password }
-          : { confirmText: confirmText.trim(), acknowledge },
-      });
-      toast.success('회원 탈퇴가 완료되었습니다.');
-      queryClient.clear();
-      logout();
-      navigate('/login');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err?.response?.data?.message || '탈퇴에 실패했습니다.');
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-1.5">
-            <AlertTriangle size={18} className="text-red-500" /> 회원 탈퇴
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700" aria-label="닫기"><X size={20} /></button>
-        </div>
-
-        {loading ? (
-          <div className="py-10 text-center text-sm text-gray-400">불러오는 중...</div>
-        ) : loadError ? (
-          <div className="py-8 text-center space-y-3">
-            <p className="text-sm text-gray-500">정보를 불러오지 못했습니다.</p>
-            <button
-              onClick={fetchInfo}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              다시 시도
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4 text-sm">
-            <p className="text-gray-600">
-              탈퇴하면 이름·이메일·연락처 등 <strong>개인정보가 즉시 삭제</strong>되고 계정으로 다시 로그인할 수 없습니다. 이 작업은 되돌릴 수 없습니다.
-            </p>
-
-            {/* 갤러리 보유 시 영향 안내 + 책임 고지 */}
-            {hasGalleries && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-                <p className="font-medium text-red-700">보유하신 갤러리·공모가 함께 비공개 처리됩니다.</p>
-                <ul className="text-xs text-red-700/90 list-disc pl-4 space-y-0.5">
-                  <li>갤러리 {info!.galleries.length}개 — {info!.galleries.map((g) => g.name).join(', ')}</li>
-                  <li>진행 중인 공고 {info!.ongoingExhibitions}건이 마감 처리됩니다.</li>
-                  <li>처리 대기 중인 지원자 {info!.activeApplicants}명의 관리가 불가능해집니다.</li>
-                </ul>
-                <p className="text-xs text-red-700">
-                  진행 중인 공고와 지원자가 있다면 <strong>정리 후 탈퇴</strong>를 권장합니다.
-                  탈퇴를 진행할 경우 <strong>진행 중 공고·지원자에 대한 모든 책임은 본인에게 있습니다.</strong>
-                </p>
-                <label className="flex items-start gap-2 text-xs text-gray-700 pt-1">
-                  <input type="checkbox" checked={acknowledge} onChange={(e) => setAcknowledge(e.target.checked)} className="rounded mt-0.5" />
-                  <span>위 내용을 확인했으며, 진행 중 공고·지원자에 대한 모든 책임이 본인에게 있음에 동의합니다.</span>
-                </label>
-              </div>
-            )}
-
-            {/* 본인 확인 */}
-            {info?.confirmMethod === 'password' ? (
-              <div>
-                <label className="block font-medium text-gray-700 mb-1">비밀번호 확인</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="현재 비밀번호"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block font-medium text-gray-700 mb-1">확인을 위해 <span className="text-red-600 font-semibold">탈퇴</span> 를 입력하세요.</label>
-                <input
-                  type="text"
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  placeholder="탈퇴"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
-                />
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">
-                취소
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {submitting ? '처리 중...' : '탈퇴하기'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* 회원 탈퇴는 여기 없다 — 고객센터(SupportPage) 우측 하단으로 옮겼다 */}
     </div>
   );
 }
 
 // ========== Artist: 포트폴리오 관리 ==========
+// 폼 지문 — 값이 하나라도 달라지면 문자열이 달라진다(하단 저장바의 '저장되지 않은 변경사항' 표시용)
+const formSignature = (v: {
+  biography: string; statement: string; tagline: string;
+  career: Career; portfolioFileUrl: string | null; seriesNotes: Record<string, string>;
+}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes]);
+
 function PortfolioSection() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { data: portfolio, isLoading } = useQuery<Portfolio>({
@@ -754,6 +575,12 @@ function PortfolioSection() {
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
   const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
+  // 훅은 아래 early return(isLoading)보다 반드시 위에서 호출한다
+  const careerColumnCount = useCareerColumns();
+  // 자동 편집 진입을 딱 한 번만 하기 위한 표시 (아래 useEffect 주석 참고)
+  const autoEditedRef = useRef(false);
+  // 편집 시작 시점의 폼 지문. 하단 저장바의 '저장되지 않은 변경사항' 판정에만 쓴다.
+  const [snapshot, setSnapshot] = useState('');
   // 열려 있는 작품 정보 모달. id로 들고 있어야 저장 후 최신 데이터로 다시 그려진다(객체로 들면 옛 값이 남는다)
   const [metaImageId, setMetaImageId] = useState<number | null>(null);
 
@@ -761,10 +588,18 @@ function PortfolioSection() {
     mutationFn: (data: Partial<Portfolio> & { career: Career }) => api.put('/portfolio', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      // 공개 페이지 캐시도 갈아끼운다 — 안 하면 방금 저장한 내용이 아니라 옛 화면이 뜬다
+      if (user?.id) queryClient.invalidateQueries({ queryKey: ['portfolio', String(user.id)] });
       setEditing(false);
-      toast.success('포트폴리오가 저장되었습니다.');
+      toast.success('홈페이지가 저장되었습니다.');
+      /*
+        저장하면 **홈페이지로 돌아간다.**
+        이 화면은 공개 페이지의 [수정]으로만 들어오는 편집 전용 화면이라, 저장 후 남으면
+        '나만 보는 옛 관리 화면'에 갇힌 것처럼 보인다(2026-08-28 신고). 온 곳으로 돌려보낸다.
+      */
+      if (user?.id) navigate(`/portfolio/${user.id}`);
     },
-    onError: (err: any) => toast.error(err.response?.data?.error || '포트폴리오 저장에 실패했습니다.'),
+    onError: (err: any) => toast.error(err.response?.data?.error || '홈페이지 저장에 실패했습니다.'),
   });
 
   // 포맷 선택만 조용히 저장 (편집 모드와 무관 — 고른 즉시 기억해 둔다)
@@ -840,20 +675,90 @@ function PortfolioSection() {
     },
   });
 
+  /** 저장된 값으로 편집 폼을 채운다 (수동 [수정] · 자동 진입 공용) */
+  const initForm = useCallback((p?: Portfolio) => {
+    const init = {
+      biography: p?.biography || '',
+      statement: p?.statement || '',
+      tagline: p?.tagline || '',
+      career: normalizeCareer(p?.career),
+      portfolioFileUrl: p?.portfolioFileUrl || null,
+      seriesNotes: Object.fromEntries((p?.seriesInfo ?? []).map(s => [s.name, s.note])),
+    };
+    setBiography(init.biography);
+    setStatement(init.statement);
+    setTagline(init.tagline);
+    setCareer(init.career);
+    setPortfolioFileUrl(init.portfolioFileUrl);
+    setSeriesNotes(init.seriesNotes);
+    setSnapshot(formSignature(init));
+    setEditing(true);
+  }, []);
+
+  /*
+    이 탭은 공개 홈페이지의 [수정] 버튼으로만 들어온다 — 들어오자마자 **바로 편집 모드**여야 한다.
+    예전엔 읽기 화면이 먼저 떠서 [수정]을 한 번 더 눌러야 했다.
+
+    ⚠️ **딱 한 번만** 실행한다(autoEditedRef). 저장하면 invalidate → portfolio 재조회가 일어나는데,
+       매번 걸리면 저장하자마자 결과를 볼 새도 없이 편집 모드로 다시 튕기고, [취소]도 무력화된다.
+  */
+  useEffect(() => {
+    if (!portfolio || autoEditedRef.current) return;
+    autoEditedRef.current = true;
+    initForm(portfolio);
+  }, [portfolio, initForm]);
+
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const images = portfolio?.images ?? [];
   const foundSeries = seriesNames(images);
   const metaImage = images.find((i) => i.id === metaImageId) ?? null;
 
-  const startEdit = () => {
-    setBiography(portfolio?.biography || '');
-    setStatement(portfolio?.statement || '');
-    setTagline(portfolio?.tagline || '');
-    setCareer(normalizeCareer(portfolio?.career));
-    setPortfolioFileUrl(portfolio?.portfolioFileUrl || null);
-    setSeriesNotes(Object.fromEntries((portfolio?.seriesInfo ?? []).map(s => [s.name, s.note])));
-    setEditing(true);
+  const startEdit = () => initForm(portfolio);
+
+  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) !== snapshot;
+
+  // 작품 사진 관리 — 편집 중엔 **왼쪽 열 안**, 아닐 땐 본문 아래에 놓는다(아래 렌더 참고)
+  const artworkManager = (
+    <div>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+          <p className="text-sm font-medium text-gray-500">
+            작품 사진 ({images.length}/30)
+            <span className="text-xs text-gray-500 ml-2 font-normal">
+              <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
+            </span>
+          </p>
+          {/* [액자에 걸어보기] 는 여기 없다 — 편집과 무관한 기능인데 '수정'에 들어가야만 보였다.
+              메뉴 [ArtLook] 탭으로 옮겼다(ArtLookSection). */}
+        </div>
+        <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
+        <PortfolioImageGrid
+          images={images}
+          onAdd={(url) => addImageMutation.mutate(url)}
+          onRemove={(imageId) => removeImageMutation.mutate(imageId)}
+          onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
+          onEdit={(imageId) => setMetaImageId(imageId)}
+          maxCount={30}
+          gridClassName={editing ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 sm:grid-cols-4 gap-2'}
+        />
+    </div>
+  );
+
+  /*
+    미리보기에 넘길 데이터 — **저장 전 입력값**을 그대로 쓴다(그래야 보면서 쓸 수 있다).
+    작품 사진은 편집 대상이 아니라 따로 즉시 저장되므로 저장된 것을 그대로 보여준다.
+    ⚠️ HomepageView 가 작품 격자를 내용 지문으로 memo 하므로, 여기서 객체를 매번 새로 만들어도
+       타이핑 때 30장이 다시 그려지지는 않는다(참조가 아니라 내용으로 판단한다).
+  */
+  const previewData = {
+    user: user ?? { name: '' },
+    tagline,
+    statement,
+    biography,
+    career,
+    portfolioFileUrl,
+    seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
+    images,
   };
 
   const handleSave = () => {
@@ -898,7 +803,7 @@ function PortfolioSection() {
               to={`/portfolio/${user?.id}`}
               className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
             >
-              <ExternalLink size={13} /> 공개 작가 페이지 보기
+              <ExternalLink size={13} /> 홈페이지 보기
             </Link>
             <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
           </div>
@@ -906,25 +811,31 @@ function PortfolioSection() {
       </div>
 
       {editing ? (
-        <div className="space-y-5">
+        /*
+          좌: 입력 / 우: 홈페이지 모양 미리보기 (lg 1024px 이상).
+          그 아래 폭에서는 미리보기가 입력란 밑으로 내려간다 — 375px 을 반으로 가르면 둘 다 못 쓴다.
+          ⚠️ 두 칸 모두 `min-w-0` — 없으면 미리보기 안의 작품 격자·긴 제목이 폭을 밀어낸다(CLAUDE.md 27번).
+        */
+        /* ⚠️ `items-start` 를 주면 안 된다 — 오른쪽 열이 제 내용 높이로 줄어들어
+              sticky 미리보기가 **움직일 여지가 0** 이 되고, 조금만 내려도 화면 밖으로 나간다
+              (2026-08-27 실측: y=800 에서 top -70). 기본값 stretch 로 두어야 왼쪽 열 높이만큼 늘어난다. */
+        <div className="lg:flex lg:gap-8">
+        <div className="space-y-5 lg:flex-1 lg:min-w-0">
           <div>
             <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-red-500">*</span></label>
             <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">작가노트</label>
-            <p className="text-xs text-gray-400 mt-0.5 mb-1">갤러리가 가장 먼저 읽는 글입니다. 무엇을 왜 그리는지 편하게 적어보세요.</p>
             <textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="예: 나의 작업은 시간의 흐름 속에서 휘발되는 기억과, 그 자리에 남은 감정의 잔상을 기록하는 과정이다…" className="w-full h-36 p-3 border border-gray-200 rounded-lg text-sm resize-y leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">한 줄 소개</label>
-            <p className="text-xs text-gray-400 mt-0.5 mb-1">포트폴리오 표지에 이름 아래로 들어갑니다.</p>
             <input value={tagline} onChange={e => setTagline(e.target.value)} maxLength={200} placeholder="예: 동심의 이면을 과잉된 에너지로 시각화하는 감각의 연출자" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           {foundSeries.length > 0 && (
             <div>
               <label className="text-sm font-medium text-gray-700">시리즈 소개</label>
-              <p className="text-xs text-gray-400 mt-0.5 mb-2">작품에 붙인 시리즈마다 소개 페이지를 만들어 드립니다. 비워두면 페이지를 넣지 않습니다.</p>
               <div className="space-y-2">
                 {foundSeries.map(name => (
                   <div key={name} className="rounded-lg border border-gray-200 p-3">
@@ -949,10 +860,27 @@ function PortfolioSection() {
             <label className="text-sm font-medium text-gray-700 block mb-2">포트폴리오 파일 (PDF / DOC / HWP)</label>
             <PortfolioFileInput value={portfolioFileUrl} onChange={setPortfolioFileUrl} />
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">저장</button>
-            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+          {/* 저장/취소는 이 폼이 아니라 **섹션 맨 끝의 고정 저장바**에 있다(아래 참고) */}
+
+          {/* 작품 사진 관리도 왼쪽 열 안에 — 그래야 이 아래로 스크롤해도 오른쪽 미리보기가 계속 붙어 있다 */}
+          {artworkManager}
+        </div>
+
+        {/* 미리보기 — 공개 페이지와 **같은 컴포넌트**(HomepageView)라 실제와 어긋나지 않는다.
+            sticky 로 붙여 아래쪽 입력란을 채우는 동안에도 계속 보인다. */}
+        <div className="mt-8 lg:mt-0 lg:w-[46%] lg:min-w-0 lg:shrink-0">
+          <div className="lg:sticky lg:top-24">
+            <p className="text-xs font-medium tracking-widest text-gray-400 uppercase mb-2">Preview</p>
+            {/* 실제 홈페이지 폭보다 좁으므로 살짝 줄여 담는다(글 크기 비율은 그대로 유지) */}
+            <div className="rounded-lg border border-gray-200 bg-white p-4 max-h-[calc(100vh-9rem)] overflow-y-auto">
+              <HomepageView
+                data={previewData}
+                careerColumns={Math.max(1, careerColumnCount - 1)}
+                emptyText="내용을 입력하면 여기에 홈페이지 모양으로 보입니다."
+              />
+            </div>
           </div>
+        </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -975,20 +903,28 @@ function PortfolioSection() {
             {isCareerEmpty(savedCareer) ? (
               <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
             ) : (
-              /* grid 3열 (모바일 1열 → sm 2열 → lg 3열). 공개 포트폴리오와 같은 배치다.
-                 columns(신문 단) 는 세로로 채워서 개인전+단체전이 한 열에 몰리고 아트페어만 옆으로 갔다.
-                 grid 는 순서대로 가로로 놓이고, items-start 라 항목 수가 달라도 각 칸이 자기 높이만 쓴다. */
-              <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 items-start">
-                {CAREER_LABELS.map(({ key, label }) => (savedCareer[key] ?? []).length > 0 && (
-                  <div key={key}>
-                    <p className="text-xs font-medium text-gray-400">{label}</p>
-                    <ul className="mt-0.5 space-y-0.5">
-                      {(savedCareer[key] ?? []).map((e, i) => (
-                        <li key={i} className="text-sm text-gray-700">
-                          <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
-                        </li>
-                      ))}
-                    </ul>
+              /* 공개 작가 페이지와 같은 라운드로빈 배치(lib/careerColumns.ts).
+                 grid 는 한 행의 높이가 제일 긴 칸(단체전)에 맞춰져 '수상 및 선정'이 개인전에서 한참 떨어진다. */
+              <div className="flex gap-x-8 items-start">
+                {splitIntoColumns(
+                  CAREER_LABELS.filter(({ key }) => (savedCareer[key] ?? []).length > 0),
+                  careerColumnCount,
+                  // 무게 = 그 항목의 줄 수. 긴 단체전 아래로 다른 항목이 밀리지 않게 한다
+                  ({ key }) => (savedCareer[key] ?? []).length,
+                ).map((column, ci) => (
+                  <div key={ci} className="flex-1 min-w-0 space-y-4">
+                    {column.map(({ key, label }) => (
+                      <div key={key}>
+                        <p className="text-xs font-medium text-gray-400">{label}</p>
+                        <ul className="mt-0.5 space-y-0.5">
+                          {(savedCareer[key] ?? []).map((e, i) => (
+                            <li key={i} className="text-sm text-gray-700">
+                              <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -1004,57 +940,40 @@ function PortfolioSection() {
               <p className="text-sm text-gray-400">등록된 파일이 없습니다.</p>
             )}
           </div>
+
+          {/* 읽기 화면에서는 본문 아래에 그대로 */}
+          {artworkManager}
         </div>
       )}
 
-      {/* 작품 사진 관리 */}
-      <div>
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
-          <p className="text-sm font-medium text-gray-500">
-            작품 사진 ({images.length}/30)
-            <span className="text-xs text-gray-500 ml-2 font-normal">
-              <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
-            </span>
-          </p>
-          {/* ArtLook 진입 — 작품 카드는 네 모서리(캡션·삭제·공개토글·좋아요)가 이미 차 있어
-              카드마다 버튼을 얹으면 난잡해진다. 여기서 전체를 넘기고 어떤 작품을 쓸지는 ArtLook 안에서 고른다. */}
-          {images.length > 0 && (
-            <button
-              onClick={() => {
-                const works: ArtLookWork[] = images.map(img => ({
-                  url: img.url,
-                  title: artworkTitle(img),
-                  artist: displayName(user),
-                  kind: 'portfolio' as const,
-                }));
-                if (openArtLook(works) === 0) toast.error('사용할 수 있는 작품 이미지가 없습니다.');
-              }}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer"
-              title="작품을 액자·전시 공간에 담아 SNS 홍보 이미지를 만듭니다"
-            >
-              <Megaphone size={13} /> 액자에 걸어보기
-            </button>
-          )}
-        </div>
-        <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
-        <PortfolioImageGrid
-          images={images}
-          onAdd={(url) => addImageMutation.mutate(url)}
-          onRemove={(imageId) => removeImageMutation.mutate(imageId)}
-          onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
-          onEdit={(imageId) => setMetaImageId(imageId)}
-          maxCount={30}
-        />
-      </div>
 
-      {/* 포맷 선택 + 미리보기 + PDF */}
-      <div className="pt-2 border-t border-gray-100">
-        <PortfolioFormatPicker
-          data={bookData}
-          value={portfolio?.themeId}
-          onChange={(id) => { if (id !== portfolio?.themeId) themeMutation.mutate(id); }}
-        />
-      </div>
+      {/* 포맷 선택·미리보기·PDF 는 여기 없다 — 메뉴 [포트폴리오] 탭(PortfolioFormatSection)으로 옮겼다.
+          편집 화면 맨 아래에 붙어 있어서 있는 줄도 모르는 기능이었다. */}
+
+      {/*
+        하단 고정 저장바 — 폼이 길어서 [저장]이 화면 밖으로 나가 있었다(약력·노트·한줄소개·시리즈·경력 5칸·파일).
+
+        ⚠️ **폼 안이 아니라 섹션 맨 끝에 둔다.** 폼 안에 두면 sticky 가 폼 높이 안에서만 동작해서,
+           아래 '작품 사진 관리'로 스크롤을 내리는 순간 **저장 안 된 변경을 안은 채 바가 사라진다**
+           (2026-08-27 실측: 맨 아래에서 y=-299). 섹션 전체를 부모로 삼아야 끝까지 따라온다.
+        ⚠️ `sticky bottom-0` 은 스크롤 조상이 있으면 그 안에 갇힌다 — 조상에 `overflow:auto` 를 주면 조용히 깨진다.
+        ⚠️ 뒤에 내용이 이어지므로 배경을 반드시 칠한다(투명하면 글자가 겹쳐 읽힌다).
+      */}
+      {editing && (
+        <div className="sticky bottom-0 z-20 -mx-1 px-1 pb-2 pt-3 bg-white border-t border-gray-200">
+          {/* 버튼은 **우측 하단**. 안내는 그 왼쪽에 붙여 눈이 왼→오로 읽고 바로 누르게 한다 */}
+          <div className="flex items-center justify-end gap-3 flex-wrap">
+            {/* 뭐가 달라졌는지가 아니라 '아직 안 갔다'만 알려주면 된다 */}
+            {dirty && !mutation.isPending && (
+              <span className="text-xs text-[#c4302b] mr-auto sm:mr-0">저장되지 않은 변경사항이 있습니다.</span>
+            )}
+            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-500 cursor-pointer">취소</button>
+            <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 cursor-pointer">
+              {mutation.isPending ? '저장 중...' : '저장'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {metaImage && (
         <ArtworkMetaModal
@@ -1069,6 +988,175 @@ function PortfolioSection() {
   );
 }
 
+// ========== Artist: ArtLook (액자 걸기) ==========
+/**
+ * 내 작품을 액자·전시 공간에 얹어 SNS 홍보 이미지를 만드는 도구.
+ *
+ * 예전엔 홈페이지 편집 화면 안의 버튼이라 **'수정'에 들어가야만** 보였다 — 편집과 아무 상관 없는
+ * 기능인데도. 메뉴로 꺼내 놓으면 있는 줄 알고 쓴다.
+ *
+ * 화면 자체는 `/artlook/index.html` 이라는 **별도 정적 페이지**다. 작품 목록은 localStorage 로
+ * 넘기고 새 탭에서 연다(`lib/artlook.ts`). 여기서는 무엇을 넘길지만 정한다.
+ */
+function ArtLookSection() {
+  const { user } = useAuthStore();
+  const { data: portfolio, isLoading } = useQuery<Portfolio>({
+    queryKey: ['portfolio'],
+    queryFn: () => api.get('/portfolio').then(r => r.data),
+  });
+
+  const images = useMemo(() => portfolio?.images ?? [], [portfolio]);
+
+  /*
+    작품 목록을 **iframe 을 그리기 전에** localStorage 에 올려둔다 —
+    ArtLook 은 뜰 때 한 번만 읽으므로 순서가 뒤바뀌면 빈 화면이 된다.
+    예전엔 새 탭(window.open)으로 열었는데, 마이페이지 안에서 하는 일이라 왔다갔다 할 이유가 없었다.
+    ⚠️ 정적 페이지가 같은 출처라서 iframe 안에서도 localStorage 를 그대로 읽는다(다른 출처면 못 읽는다).
+  */
+  const staged = useMemo(() => {
+    if (images.length === 0) return 0;
+    return stageArtLookWorks(images.map(img => ({
+      url: img.url,
+      title: artworkTitle(img),
+      artist: displayName(user),
+      kind: 'portfolio' as const,
+      sizeText: img.sizeText || undefined,   // 장면 모드가 실제 크기대로 건다
+    })));
+  }, [images, user]);
+
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+          Art<span className="text-[#dc3545]">Look</span>
+          <span className="ml-2 align-middle text-sm font-normal text-gray-400">액자 걸기</span>
+        </h2>
+        {/* 좁은 화면에서 iframe 이 답답할 때를 위한 탈출구 */}
+        {staged > 0 && (
+          <a
+            href={ARTLOOK_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-gray-400 hover:text-gray-900 inline-flex items-center gap-1"
+          >
+            <ExternalLink size={12} /> 새 탭에서 열기
+          </a>
+        )}
+      </div>
+
+      {images.length === 0 ? (
+        <div className="rounded-lg border border-gray-200 py-12 text-center">
+          <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
+          <Link to={HOMEPAGE_EDIT_HREF} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
+            홈페이지에서 작품 등록하기
+          </Link>
+        </div>
+      ) : (
+        <iframe
+          key={staged}
+          src={ARTLOOK_EMBED_URL}
+          title="ArtLook"
+          /* 화면 대부분을 쓰되 페이지를 밀지 않게 — 안쪽에서 스크롤한다 */
+          className="w-full h-[calc(100vh-14rem)] min-h-[520px] rounded-lg border border-gray-200 bg-white"
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== Artist: 포트폴리오 (PDF 포맷 4종) ==========
+/**
+ * 메뉴 [포트폴리오] 탭. 예전엔 홈페이지 편집 화면 **맨 아래**에 붙어 있어서
+ * 작품 30장을 지나 한참 내려가야 나왔고, 있는 줄도 모르는 작가가 많았다.
+ *
+ * 내용물(약력·작가노트·경력·작품)은 [홈페이지]에서 고친다 — 여기선 그걸 **어떤 판형으로 뽑을지**만 고른다.
+ * 포맷 선택은 편집 모드 없이 고른 즉시 저장된다(themeMutation).
+ */
+function PortfolioFormatSection() {
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const { data: portfolio, isLoading } = useQuery<Portfolio>({
+    queryKey: ['portfolio'],
+    queryFn: () => api.get('/portfolio').then(r => r.data),
+  });
+
+  // 디자인(표지·글꼴·판형·밀도·설명·색감) 저장 — designConfig 만 보낸다.
+  // 백엔드는 designConfig 를 '보냈을 때만' 갱신하므로 홈페이지 내용 저장(전체 교체)이 이 설정을 지우지 않는다.
+  // 나머지 필드는 전체 교체라 그대로 실어 보낸다.
+  const designMutation = useMutation({
+    mutationFn: (designConfig: PdfDesign) =>
+      api.put('/portfolio', {
+        biography: portfolio?.biography ?? '',
+        career: normalizeCareer(portfolio?.career),
+        portfolioFileUrl: portfolio?.portfolioFileUrl ?? null,
+        statement: portfolio?.statement ?? null,
+        tagline: portfolio?.tagline ?? null,
+        seriesInfo: portfolio?.seriesInfo ?? [],
+        themeId: portfolio?.themeId ?? null,
+        designConfig,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
+    onError: (err: any) => toast.error(err.response?.data?.error || '색감 저장에 실패했습니다.'),
+  });
+
+  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
+
+  const images = portfolio?.images ?? [];
+  const bookData: PortfolioBookData = {
+    user: user ?? { name: '' },
+    tagline: portfolio?.tagline,
+    statement: portfolio?.statement,
+    biography: portfolio?.biography,
+    career: portfolio?.career,
+    seriesInfo: portfolio?.seriesInfo,
+    images,
+  };
+
+  // 작품이 없으면 포맷을 골라도 빈 책이 나온다 — 미리보기를 띄우기 전에 어디로 가야 하는지 알려준다
+  if (images.length === 0) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+          Port<span className="text-[#dc3545]">Folio</span>
+        </h2>
+        <div className="rounded-lg border border-gray-200 py-12 text-center">
+          <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
+          <p className="text-xs text-gray-400 mt-1">작품을 올리면 포맷을 골라 PDF로 뽑을 수 있습니다.</p>
+          <Link to={HOMEPAGE_EDIT_HREF} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
+            홈페이지에서 작품 등록하기
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          {/* ArtLink 로고와 같은 색 규칙 — Art(검정) + Link/Works/Folio(빨강) */}
+          <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+            Port<span className="text-[#dc3545]">Folio</span>
+          </h2>
+          <p className="text-xs text-gray-400 mt-1">
+            홈페이지에 등록해둔 정보 기반으로 작가님만의 Portfolio를 생성합니다.
+          </p>
+        </div>
+        <Link to={HOMEPAGE_EDIT_HREF} className="shrink-0 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
+          <Edit3 size={13} /> 내용 수정
+        </Link>
+      </div>
+      <PortfolioFormatPicker
+        data={bookData}
+        designValue={portfolio?.designConfig}
+        onChangeDesign={(d) => designMutation.mutate(d)}
+      />
+    </div>
+  );
+}
+
 // ========== 포트폴리오 이미지 그리드 (둘러보기 공개 체크박스 포함) ==========
 function PortfolioImageGrid({
   images,
@@ -1077,6 +1165,7 @@ function PortfolioImageGrid({
   onToggleExplore,
   onEdit,
   maxCount = 30,
+  gridClassName = 'grid grid-cols-3 sm:grid-cols-4 gap-2',
 }: {
   images: PortfolioImage[];
   onAdd: (url: string) => void;
@@ -1084,6 +1173,8 @@ function PortfolioImageGrid({
   onToggleExplore: (imageId: number) => void;
   onEdit: (imageId: number) => void;
   maxCount?: number;
+  /** 편집 화면은 폭이 절반이라 2열로 줄여 넘긴다 */
+  gridClassName?: string;
 }) {
   const [uploading, setUploading] = useState(false);
   // 작품별 "좋아요한 사람" 목록 (인스타 방식) — 서버는 이미지 주인에게만 명단을 내려준다
@@ -1144,7 +1235,7 @@ function PortfolioImageGrid({
       onDrop={handleDrop}
       className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
     >
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+      <div className={gridClassName}>
         {images.map((img) => (
           <div key={img.id} className="relative group">
             {/* 사진 전체가 '작품 정보' 버튼 — 캡션이 비면 포맷 PDF에서 제목 자리가 통째로 빈다 */}
@@ -1246,7 +1337,8 @@ function PortfolioImageGrid({
 function FavoritesSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<'all' | 'gallery' | 'exhibition' | 'show'>('all');
+  // '작품'(좋아요한 작품)도 여기서 본다 — 예전엔 별도 탭이었는데 '모아둔 것'이라는 성격이 같아 합쳤다.
+  const [filter, setFilter] = useState<'all' | 'gallery' | 'exhibition' | 'show' | 'artwork'>('all');
 
   const { data: favorites = [] } = useQuery<Favorite[]>({
     queryKey: ['favorites'],
@@ -1332,14 +1424,23 @@ function FavoritesSection() {
 
   return (
     <div>
-      <div className="flex gap-4 mb-6">
-        {(['all', 'gallery', 'exhibition', 'show'] as const).map(f => (
+      {/* 화면 이름 — ArtLink 로고와 같은 색 규칙(My 검정 + Picks 빨강). 좌측 상단(PortFolio 등과 동일). */}
+      <h2 className="mb-6 text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+        My <span className="text-[#dc3545]">Picks</span>
+      </h2>
+
+      <div className="flex flex-wrap gap-4 mb-6">
+        {(['all', 'gallery', 'exhibition', 'show', 'artwork'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`text-base cursor-pointer transition-colors ${filter === f ? 'text-gray-900 underline underline-offset-4 decoration-1' : 'text-gray-400 hover:text-gray-900'}`}>
-            {f === 'all' ? '전체' : f === 'gallery' ? '갤러리' : f === 'exhibition' ? '공모' : '전시'}
+            {f === 'all' ? '전체' : f === 'gallery' ? '갤러리' : f === 'exhibition' ? '공모' : f === 'show' ? '전시' : '작품'}
           </button>
         ))}
       </div>
+
+      {/* '전체' 에서는 찜한 항목 아래에 좋아요한 작품을 이어 붙인다 — 성격이 달라 격자를 따로 둔다
+          (찜은 갤러리/공모/전시 카드, 작품은 정사각 썸네일 + 확대 모달) */}
+      {filter === 'artwork' ? <LikedArtworks /> : (<>
 
       {filtered.length === 0 ? (
         <p className="text-gray-400 text-center py-8">찜한 항목이 없습니다.</p>
@@ -1390,6 +1491,14 @@ function FavoritesSection() {
           })}
         </div>
       )}
+
+      {filter === 'all' && (
+        <div className="mt-10 pt-8 border-t border-gray-100">
+          <p className="text-sm font-medium text-gray-500 mb-4">좋아요한 작품</p>
+          <LikedArtworks />
+        </div>
+      )}
+      </>)}
     </div>
   );
 }
@@ -1397,7 +1506,7 @@ function FavoritesSection() {
 // ========== Artist: 좋아요한 작품 (참여 동기 ① — 누른 게 나에게 남는다) ==========
 // 좋아요는 지금까지 눌러도 회수할 방법이 없었다. 모아 보여줘야 "다시 볼 것"으로서 의미가 생긴다.
 // 작가가 공개를 내린 작품은 서버에서 제외된다(작가 선택 존중).
-function LikedArtworksSection() {
+function LikedArtworks() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<ExploreImage | null>(null);
   const { data, isLoading } = useQuery<{ images: ExploreImage[]; total: number }>({
@@ -1455,173 +1564,32 @@ function LikedArtworksSection() {
   );
 }
 
-// ========== Artist: 받은 초대 (갤러리가 보낸 공모 초대) ==========
-// 초대는 알림일 뿐 자동 지원이 아니다 — 여기서 공모 상세로 이동해 직접 지원해야 한다.
-function ReceivedInvitesSection() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [applyTarget, setApplyTarget] = useState<ExhibitionInvite | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
-  const { data, isLoading } = useQuery<{ invites: ExhibitionInvite[] }>({
-    queryKey: ['received-invites'],
-    queryFn: () => api.get('/exhibitions/invites/received').then(r => r.data),
-  });
 
-  // 삭제 = status DECLINED (행은 남긴다). 목록에서 완전히 사라지고, 갤러리도 재초대할 수 없다.
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.patch(`/exhibitions/invites/${id}`),
-    onSuccess: () => {
-      toast.success('초대를 삭제했습니다.');
-      setDeleteTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
-    },
-    onError: () => {
-      toast.error('삭제에 실패했습니다.');
-      setDeleteTarget(null);
-    },
-  });
-
-  if (isLoading) return <p className="text-gray-400 py-10 text-center">불러오는 중…</p>;
-  const invites = data?.invites ?? [];
-
-  if (invites.length === 0) {
-    return (
-      <div className="text-center py-16">
-        <Inbox size={32} className="mx-auto text-gray-200 mb-3" />
-        <p className="text-gray-400 mb-1">받은 초대가 없습니다.</p>
-        <p className="text-sm text-gray-300">둘러보기에 작품을 공개하면 갤러리 눈에 띌 확률이 높아집니다.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {invites.map(inv => (
-        <div key={inv.id} className="border border-gray-200 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs text-gray-400">{inv.exhibition.gallery.name}</p>
-              <button
-                onClick={() => navigate(`/exhibitions/${inv.exhibition.id}`)}
-                className="text-base font-medium text-gray-900 hover:underline text-left cursor-pointer break-keep"
-              >
-                {inv.exhibition.title}
-              </button>
-              <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                <span className="text-xs text-gray-500">{regionLabels[inv.exhibition.region] || inv.exhibition.region}</span>
-                {inv.closed ? (
-                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">모집 마감</span>
-                ) : (
-                  <span className="text-xs px-2 py-0.5 bg-[#c4302b]/10 text-[#c4302b] rounded-full">
-                    D-{getDday(inv.exhibition.deadline)}
-                  </span>
-                )}
-                {inv.applied && (
-                  <span className="text-xs px-2 py-0.5 bg-gray-900 text-white rounded-full">지원함</span>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={() => setDeleteTarget(inv.id)}
-              className="shrink-0 text-xs text-gray-400 hover:text-[#c4302b] cursor-pointer"
-            >
-              삭제
-            </button>
-          </div>
-
-          {inv.message && (
-            <p className="mt-3 text-sm text-gray-600 bg-gray-50 rounded px-3 py-2 whitespace-pre-wrap break-all">
-              {inv.message}
-            </p>
-          )}
-
-          {!inv.applied && !inv.closed && (
-            <div className="mt-3">
-              <div className="flex flex-wrap gap-2">
-                {/* 초대받은 공모는 지원서를 다시 쓰지 않는다 — 포트폴리오가 그대로 전달된다 */}
-                <button
-                  onClick={() => setApplyTarget(inv)}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm cursor-pointer"
-                >
-                  간편 지원
-                </button>
-                <button
-                  onClick={() => navigate(`/exhibitions/${inv.exhibition.id}`)}
-                  className="px-4 py-2 border border-gray-200 text-gray-700 text-sm cursor-pointer hover:bg-gray-50"
-                >
-                  공모 상세 보기
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-gray-400">
-                지원서 작성 없이 내 포트폴리오로 지원됩니다. 수락 여부는 갤러리가 결정합니다.
-              </p>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        title="초대 삭제"
-        message="이 초대를 삭제할까요? 목록에서 사라지며 되돌릴 수 없습니다."
-        confirmText="삭제"
-        variant="danger"
-        onConfirm={() => deleteTarget !== null && deleteMutation.mutate(deleteTarget)}
-        onCancel={() => setDeleteTarget(null)}
-      />
-
-      {applyTarget && (
-        <InviteApplyModal
-          exhibitionId={applyTarget.exhibition.id}
-          exhibitionTitle={applyTarget.exhibition.title}
-          galleryName={applyTarget.exhibition.gallery.name}
-          customFields={applyTarget.exhibition.customFields}
-          onClose={() => setApplyTarget(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ========== Gallery: 관심 작품 (비공개 스카우팅 보드) ==========
-// ⚠️ 스크랩 사실은 작가에게 노출되지 않는다. 초대를 보내야 비로소 알려진다.
+// ========== Gallery: 관심 작품 (하트로 모은 작품 → 작가 초대) ==========
+/*
+  갤러리도 이제 **하트(좋아요)** 로 작품을 모은다(예전의 비공개 스크랩·메모 보드는 없앴다).
+  여기 모인 작품의 **작가에게 전시 초대를 보내는** 스카우팅 창구다.
+  ⚠️ 하트는 작가에게 보인다(스크랩과 달리 비공개가 아니다) — 관심을 숨길 이유가 없다는 판단.
+  데이터는 작가 [찜 목록]의 '좋아요한 작품'과 같은 `/explore/my-likes` 를 쓴다.
+*/
 function ArtworkScrapsSection() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [memoDraft, setMemoDraft] = useState('');
   const [selected, setSelected] = useState<ExploreImage | null>(null);
+  const [invite, setInvite] = useState<{ id: number; name: string } | null>(null);
 
-  const { data, isLoading } = useQuery<{ scraps: ArtworkScrap[] }>({
-    queryKey: ['artwork-scraps'],
-    queryFn: () => api.get('/explore/scraps').then(r => r.data),
-  });
-
-  const memoMutation = useMutation({
-    mutationFn: ({ id, memo }: { id: number; memo: string }) => api.patch(`/explore/scraps/${id}`, { memo }),
-    onSuccess: () => {
-      setEditingId(null);
-      toast.success('메모를 저장했습니다.');
-      queryClient.invalidateQueries({ queryKey: ['artwork-scraps'] });
-    },
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: (imageId: number) => api.post(`/explore/${imageId}/scrap`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['artwork-scraps'] });
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-    },
+  const { data, isLoading } = useQuery<{ images: ExploreImage[]; total: number }>({
+    queryKey: ['my-likes'],
+    queryFn: () => api.get('/explore/my-likes', { params: { limit: 60 } }).then(r => r.data),
   });
 
   if (isLoading) return <p className="text-gray-400 py-10 text-center">불러오는 중…</p>;
-  const scraps = data?.scraps ?? [];
+  const images = data?.images ?? [];
 
-  if (scraps.length === 0) {
+  if (images.length === 0) {
     return (
       <div className="text-center py-16">
-        <Bookmark size={32} className="mx-auto text-gray-200 mb-3" />
-        <p className="text-gray-400 mb-4">저장한 작품이 없습니다.</p>
+        <Heart size={32} className="mx-auto text-gray-200 mb-3" />
+        <p className="text-gray-400 mb-4">하트를 누른 작품이 없습니다.</p>
         <button onClick={() => navigate('/explore')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
           둘러보기에서 작가 찾기
         </button>
@@ -1631,68 +1599,42 @@ function ArtworkScrapsSection() {
 
   return (
     <div>
-      <p className="text-sm text-gray-400 mb-4">
-        {scraps.length}점 · 저장 사실은 작가에게 보이지 않습니다.
+      {/* 개수·'저장 사실 비공개' 문구 대신, 이 화면이 무엇을 위한 곳인지 안내한다 */}
+      <p className="text-sm text-gray-500 mb-4">
+        저장한 작품의 작가에게는 전시 초대를 보낼 수 있습니다.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {scraps.map(s => (
-          <div key={s.id} className="border border-gray-200">
+        {images.map(img => (
+          <div key={img.id} className="relative border border-gray-200">
             {/* 이미지 클릭 → 원본 비율 확대 (작가 이동은 아래 이름 클릭) */}
             <button
-              onClick={() => setSelected(s.image)}
+              onClick={() => setSelected(img)}
               className="block w-full aspect-square overflow-hidden cursor-pointer"
               aria-label="작품 크게 보기"
             >
-              <img src={s.image.url} alt="" className="w-full h-full object-cover hover:opacity-80 transition-opacity" loading="lazy" />
+              <img src={img.url} alt="" className="w-full h-full object-cover hover:opacity-80 transition-opacity" loading="lazy" />
             </button>
-            <div className="p-3">
+            <div className="flex items-center justify-between gap-2 p-3">
               <button
-                onClick={() => navigate(`/portfolio/${s.image.artist.id}`)}
-                className="text-sm font-medium text-gray-900 hover:underline cursor-pointer"
+                onClick={() => navigate(`/portfolio/${img.artist.id}`)}
+                className="min-w-0 truncate text-sm font-medium text-gray-900 hover:underline cursor-pointer"
               >
-                {displayName(s.image.artist)}
+                {displayName(img.artist)}
               </button>
-
-              {editingId === s.id ? (
-                <div className="mt-2">
-                  <textarea
-                    value={memoDraft}
-                    onChange={(e) => setMemoDraft(e.target.value.slice(0, 500))}
-                    rows={2}
-                    placeholder="메모 (나만 봅니다)"
-                    className="w-full border border-gray-200 px-2 py-1.5 text-sm resize-none focus:outline-none focus:border-gray-900"
-                  />
-                  <div className="flex gap-2 mt-1.5">
-                    <button
-                      onClick={() => memoMutation.mutate({ id: s.id, memo: memoDraft })}
-                      className="px-3 py-1 bg-gray-900 text-white text-xs cursor-pointer"
-                    >
-                      저장
-                    </button>
-                    <button onClick={() => setEditingId(null)} className="px-3 py-1 border border-gray-200 text-xs cursor-pointer">
-                      취소
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => { setEditingId(s.id); setMemoDraft(s.memo || ''); }}
-                  className="block w-full text-left mt-1.5 text-xs text-gray-500 hover:text-gray-900 cursor-pointer"
-                >
-                  {s.memo || '+ 메모 추가'}
-                </button>
-              )}
-
               <button
-                onClick={() => removeMutation.mutate(s.image.id)}
-                className="mt-2 text-xs text-gray-300 hover:text-[#c4302b] cursor-pointer"
+                onClick={() => setInvite({ id: img.artist.id, name: displayName(img.artist) })}
+                className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800 cursor-pointer"
               >
-                저장 해제
+                <Mail size={13} /> 전시 초대
               </button>
             </div>
           </div>
         ))}
       </div>
+
+      {invite && (
+        <InviteModal artistId={invite.id} artistName={invite.name} onClose={() => setInvite(null)} />
+      )}
 
       <AnimatePresence>
         {selected && (
@@ -1703,71 +1645,114 @@ function ArtworkScrapsSection() {
   );
 }
 
-// ========== Artist: 내 리뷰 ==========
-function MyReviewsSection() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<number | null>(null);
-  const { data: reviews = [] } = useQuery<any[]>({
-    queryKey: ['my-reviews'],
-    queryFn: () => api.get('/reviews/my').then(r => r.data),
+// ========== Gallery: 공모에 작가 초대 (내 공모 → 지원자 관리 패널) ==========
+/*
+  '공모 고정 + 작가 선택' 초대. 작품 모달의 InviteModal(작가 고정 + 공모 선택)과 방향만 반대다.
+  초대 대상은 **관심 작품(하트)을 저장한 작가** — 아무나 검색해 부르는 게 아니라, 작품을 보고 담아둔 작가다.
+  모집 마감·정원 초과·중복 초대는 서버가 막고, 그 사유를 토스트로 보여준다.
+*/
+function ExhibitionInviteModal({ exhibitionId, exhibitionTitle, onClose }: { exhibitionId: number; exhibitionTitle: string; onClose: () => void }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+
+  const { data, isLoading } = useQuery<{ images: ExploreImage[] }>({
+    queryKey: ['my-likes'],
+    queryFn: () => api.get('/explore/my-likes', { params: { limit: 60 } }).then(r => r.data),
   });
 
-  const deleteReviewMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/reviews/${id}`),
+  // 같은 작가의 작품이 여러 점이면 한 번만 (초대는 작가 단위다)
+  const artists = useMemo(() => {
+    const seen = new Map<number, { id: number; name: string; avatar?: string | null; url: string }>();
+    for (const img of data?.images ?? []) {
+      if (!seen.has(img.artist.id)) {
+        seen.set(img.artist.id, { id: img.artist.id, name: displayName(img.artist), avatar: img.artist.avatar, url: img.url });
+      }
+    }
+    return [...seen.values()];
+  }, [data]);
+
+  const inviteMutation = useMutation({
+    mutationFn: () => api.post(`/exhibitions/${exhibitionId}/invite`, { artistId: selected, message: message.trim() || undefined }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
-      toast.success('리뷰가 삭제되었습니다.');
+      toast.success('초대를 보냈습니다.');
+      onClose();
     },
-    onError: () => toast.error('리뷰 삭제에 실패했습니다.'),
+    onError: (e: any) => toast.error(e.response?.data?.error || '초대에 실패했습니다.'),
   });
 
-  return reviews.length === 0 ? (
-    <p className="text-gray-400 text-center py-8">작성한 리뷰가 없습니다.</p>
-  ) : (
-    <div className="space-y-3">
-      {reviews.map((r: any) => (
-        <div key={r.id} className="p-4 border border-gray-100 rounded-xl">
-          <div className="flex justify-between items-start">
-            <div>
-              <button onClick={() => navigate(`/galleries/${r.galleryId}`)} className="text-sm font-medium text-gray-500 hover:underline">
-                {r.gallery?.name}
-              </button>
-              <div className="flex gap-0.5 mt-1">
-                {[1,2,3,4,5].map(s => <Star key={s} size={12} className={s <= r.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />)}
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => navigate(`/galleries/${r.galleryId}`)}
-                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-gray-900"
-                title="갤러리에서 수정"
-                aria-label="수정"
-              >
-                <Edit3 size={14} />
-              </button>
-              <button
-                onClick={() => setDeleteReviewConfirmId(r.id)}
-                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-gray-400 hover:text-red-500"
-                title="삭제"
-                aria-label="삭제"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-          <p className="text-sm text-gray-700 mt-1">{r.content}</p>
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-medium text-gray-900">작가 초대</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-900 cursor-pointer" aria-label="닫기"><X size={18} /></button>
         </div>
-      ))}
-      <ConfirmDialog
-        open={deleteReviewConfirmId !== null}
-        title="리뷰 삭제"
-        message="이 리뷰를 삭제하시겠습니까?"
-        variant="danger"
-        confirmText="삭제"
-        onConfirm={() => { deleteReviewMutation.mutate(deleteReviewConfirmId!); setDeleteReviewConfirmId(null); }}
-        onCancel={() => setDeleteReviewConfirmId(null)}
-      />
+        <p className="text-sm text-gray-500 mb-4 truncate">{exhibitionTitle}</p>
+
+        {isLoading ? (
+          <p className="text-sm text-gray-400 py-6 text-center">불러오는 중…</p>
+        ) : artists.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center leading-relaxed">
+            초대할 작가가 없습니다.<br />
+            <span className="text-xs">둘러보기에서 마음에 드는 작품에 <b>하트</b>를 누르면<br />그 작가를 여기로 초대할 수 있습니다.</span>
+          </p>
+        ) : (
+          <>
+            {/* 관심 작품(하트)을 저장한 작가만 초대 대상이라는 걸 명시 */}
+            <p className="mb-2 text-xs text-gray-500">관심 작품(하트)을 저장한 작가를 초대할 수 있습니다.</p>
+            <div className="space-y-1.5 max-h-52 overflow-y-auto mb-4">
+              {artists.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => setSelected(a.id)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-sm border transition-colors cursor-pointer ${
+                    selected === a.id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <img src={a.url} alt="" className="h-9 w-9 rounded object-cover shrink-0" loading="lazy" />
+                  <span className="min-w-0 truncate text-left">{a.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <label className="block text-xs text-gray-500 mb-1.5">메시지 (선택, 300자)</label>
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value.slice(0, 300))}
+              rows={3}
+              placeholder="작품 잘 봤습니다. 함께하고 싶습니다."
+              className="w-full border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-900"
+            />
+            <p className="mt-3 text-xs text-gray-400">
+              초대한 작가는 <span className="text-gray-600">지원서 없이 바로 참가</span>합니다. 정원·마감은 그대로 지켜집니다.
+            </p>
+
+            <button
+              onClick={() => inviteMutation.mutate()}
+              disabled={!selected || inviteMutation.isPending}
+              className="w-full mt-4 py-2.5 bg-gray-900 text-white text-sm disabled:bg-gray-300 cursor-pointer disabled:cursor-not-allowed"
+            >
+              {inviteMutation.isPending ? '보내는 중…' : '초대 보내기'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/** 참고용 내용을 접어두는 상자 — ArtistOperationPanel 의 블록과 같은 모양으로 맞춘다 */
+function CollapsibleBox({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-gray-100 pt-3">
+      <button onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full items-center gap-2 py-1 text-left cursor-pointer group">
+        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-950">{title}</span>
+        <ChevronDown size={14} className={`ml-auto shrink-0 text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="pt-2">{children}</div>}
     </div>
   );
 }
@@ -1777,10 +1762,40 @@ function MyReviewsSection() {
 function ApplicationsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   // null = 아직 자동 선택 전. 데이터가 온 뒤 '내용이 있는 첫 탭'으로 한 번만 정한다
   // (전체 탭을 없앴으므로 기본값을 고정하면 가진 게 있는데도 빈 화면이 될 수 있다)
   const [statusFilter, setStatusFilter] = useState<MyExhibitionBucket | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // 알림에서 온 전시(`?ex=`) — 한 번만 열고 그 뒤엔 사용자가 접었다 폈다 하도록 둔다
+  const deepLinkExId = Number(searchParams.get('ex')) || null;
+  const deepLinkDone = useRef(false);
+
+  // 받은 초대 — 예전 [받은 초대] 탭이 여기 첫 탭으로 들어왔다 (목록 API 는 그대로)
+  const { data: inviteData } = useQuery<{ invites: any[] }>({
+    queryKey: ['received-invites'],
+    queryFn: () => api.get('/exhibitions/invites/received').then(r => r.data),
+  });
+  const invites = (inviteData?.invites ?? []).filter((i: any) => !i.applied && !i.closed);
+
+  /* 초대 수락 = **지원 없이 바로 참가**. 갤러리가 이미 작품을 보고 부른 것이라
+     지원서를 다시 쓰게 하지 않는다(서버가 포트폴리오에서 채운다). 곧바로 '진행중' 탭으로 옮겨간다. */
+  const acceptInvite = useMutation({
+    mutationFn: (id: number) => api.post(`/exhibitions/invites/${id}/accept`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
+      queryClient.invalidateQueries({ queryKey: ['my-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+      setStatusFilter('ONGOING');
+      toast.success('전시에 참여하게 되었습니다. 제출 자료를 확인해주세요.');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '참여 처리에 실패했습니다.'),
+  });
+  const declineInvite = useMutation({
+    mutationFn: (id: number) => api.patch(`/exhibitions/invites/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['received-invites'] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
+  });
 
   const { data: apps = [], isLoading, isError } = useQuery<any[]>({
     queryKey: ['my-applications'],
@@ -1791,6 +1806,24 @@ function ApplicationsSection() {
   useEffect(() => {
     if (statusFilter === null && apps.length > 0) setStatusFilter(defaultBucket(apps));
   }, [apps, statusFilter]);
+
+  /*
+    알림을 눌러 들어오면(`?ex=<id>`) **그 전시를 [전시 관리] 누른 상태로** 보여준다.
+    목록에서 다시 찾아 누르게 하면 알림으로 보낸 의미가 없다.
+
+    ⚠️ 그 전시가 들어 있는 **탭까지 함께 바꿔야** 한다 — 기본 탭이 다르면 카드가 아예 안 보인다.
+    ⚠️ 딱 한 번만(`deepLinkDone`) — refetch 때마다 걸리면 사용자가 접어도 다시 열린다.
+  */
+  useEffect(() => {
+    if (!deepLinkExId || deepLinkDone.current || apps.length === 0) return;
+    const target = apps.find((a: any) => a.exhibitionId === deepLinkExId);
+    if (!target) return;
+    deepLinkDone.current = true;
+    const buckets = groupMyExhibitions(apps);
+    const bucket = (Object.keys(buckets) as MyExhibitionBucket[]).find(k => buckets[k].some((a: any) => a.id === target.id));
+    if (bucket) setStatusFilter(bucket);
+    setExpandedId(target.id);
+  }, [apps, deepLinkExId]);
 
   // 거절 확인 — '확인'을 눌러야 목록에서 제거 (그전까지는 '심사중' 탭에 남는다)
   const ackRejectionMutation = useMutation({
@@ -1816,12 +1849,13 @@ function ApplicationsSection() {
   const filteredApps = buckets[activeTab];
 
   const counts: Record<string, number> = {
+    INVITED: invites.length,
     REVIEWING: buckets.REVIEWING.length,
     ONGOING: buckets.ONGOING.length,
     CLOSED: buckets.CLOSED.length,
   };
 
-  return visibleApps.length === 0 ? (
+  return visibleApps.length === 0 && invites.length === 0 ? (
     <p className="text-gray-400 text-center py-8">아직 지원하거나 참여한 전시가 없습니다.</p>
   ) : (
     <div className="space-y-3">
@@ -1838,119 +1872,196 @@ function ApplicationsSection() {
         ))}
       </div>
 
-      {filteredApps.length === 0 ? (
+      {/* 초대 탭 — 카드 얼개는 아래 지원 카드와 같게 두되, 버튼만 [참여하기]/[거절] 이다 */}
+      {activeTab === 'INVITED' ? (
+        invites.length === 0 ? (
+          <p className="text-gray-400 text-center py-4 text-sm">{MY_EXHIBITION_EMPTY.INVITED}</p>
+        ) : invites.map((inv: any) => {
+          const ex = inv.exhibition ?? {};
+          const dday = ex.deadline ? getDday(ex.deadline) : null;
+          return (
+            <article key={inv.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              {/* 왼쪽 포스터 이미지 제거(2026-08-28) — 지원 카드와 동일. D-day 는 배지 줄로. */}
+              <div className="grid gap-0">
+                <div className="p-5 min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#c4302b]/10 px-2.5 py-1 text-xs font-medium text-[#c4302b]">초대</span>
+                        {dday !== null && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
+                            D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
+                          </span>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)}
+                        className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline">
+                        {ex.title}
+                      </button>
+                      <p className="mt-1 text-sm text-gray-500">{ex.gallery?.name || 'Gallery'}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      <button type="button" onClick={() => acceptInvite.mutate(inv.id)} disabled={acceptInvite.isPending}
+                        className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                        <Check size={14} /> 참여하기
+                      </button>
+                      <button type="button" onClick={() => declineInvite.mutate(inv.id)} disabled={declineInvite.isPending}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                        거절
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 갤러리가 적어 보낸 말 — 초대에서 가장 중요한 내용이라 접지 않는다 */}
+                  {inv.message && (
+                    <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
+                      {inv.message}
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs text-gray-400">
+                    참여하면 지원서 없이 바로 참가자로 등록되며, 작가 약력·작품은 홈페이지에서 자동으로 가져옵니다.
+                  </p>
+                </div>
+              </div>
+            </article>
+          );
+        })
+      ) : filteredApps.length === 0 ? (
         <p className="text-gray-400 text-center py-4 text-sm">{MY_EXHIBITION_EMPTY[activeTab]}</p>
       ) : (
         filteredApps.map((app: any) => {
           const isExpanded = expandedId === app.id;
+          const ex = app.exhibition ?? {};
+          const stage = isRejected(app) ? null : exhibitionStage(ex);
+          const dday = ex.exhibitStartDate ? getDday(ex.exhibitStartDate) : null;
+          const rows = activeTab === 'ONGOING' ? nextSchedule(ex, !!app.submissionComplete, getDday) : [];
 
+          /* 갤러리 [내 공모 운영] 카드와 **같은 얼개**다 — 배지·제목·버튼, 그 아래 일정 요약, 펼치면 작업 영역.
+             왼쪽 220px 포스터 이미지는 없앴다(2026-08-28) — 갤러리 카드와 마찬가지로 펼쳤을 때 정신없었다.
+             D-day 는 상태 배지 줄로 옮겼다. */
           return (
-            <div key={app.id} className="border border-gray-100 rounded-xl overflow-hidden">
-              {/* 메인 행 */}
-              <div
-                className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => setExpandedId(isExpanded ? null : app.id)}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm truncate">{app.exhibition?.title}</h4>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <p className="text-xs text-gray-500">{app.exhibition?.gallery?.name}</p>
-                      {(() => {
-                        if (isRejected(app)) return null;
-                        const stage = exhibitionStage(app.exhibition);
-                        return stage ? <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${stage.cls}`}>{stage.label}</span> : null;
-                      })()}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
-                    <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {statusLabelsLocal[app.status] || app.status}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(app.createdAt).toLocaleDateString('ko')}
-                    </span>
-                  </div>
-                </div>
-                {/*
-                  진행중 전시의 다음 일정 — 작가가 가장 자주 놓치는 게 '자료 언제까지'다.
-                  마감이 지났어도 줄을 지우지 않는다(늦었어도 내야 하는 일이라 숨기면 모른다).
-                */}
-                {/*
-                  다음 일정 + 운영페이지 버튼을 **한 줄**에 둔다. 예전엔 회색 상자와 버튼이
-                  각각 한 줄씩 차지해 카드가 쓸데없이 높았다.
-                  좁은 화면에서는 자연스럽게 줄바꿈되고, 버튼은 ml-auto 로 오른쪽에 붙는다.
-                */}
-                {(() => {
-                  const rows = activeTab === 'ONGOING'
-                    ? nextSchedule(app.exhibition ?? {}, !!app.submissionComplete, getDday)
-                    : [];
-                  const showButton = app.status === 'ACCEPTED';
-                  if (rows.length === 0 && !showButton) return null;
-                  return (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      {rows.map((r, i) => (
-                        <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-[#c4302b] font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
-                          {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" />}
-                          {r.tone === 'done' && <Check size={11} className="shrink-0" />}
-                          {r.label}
-                          {r.dday && <b className="tabular-nums">{r.dday}</b>}
-                          <span className="text-gray-400 tabular-nums">({r.date})</span>
+            <article key={app.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="grid gap-0">
+                {/* min-w-0 필수 — 없으면 제목 min-content 가 컬럼을 밀어 truncate 가 무력해진다 */}
+                <div className="p-5 min-w-0">
+                  {/* 버튼은 **어느 폭에서든 카드 우측 상단**. 예전엔 xl 미만에서 제목 아래로 내려가
+                      카드마다 버튼 위치가 달랐다. 제목은 min-w-0 + truncate 로 줄어든다. */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {stage && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stage.cls}`}>{stage.label}</span>}
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {statusLabelsLocal[app.status] || app.status}
                         </span>
-                      ))}
-                      {showButton && (
+                        {dday !== null && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
+                            D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
+                        className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                      >
+                        {ex.title}
+                      </button>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {ex.gallery?.name || 'Gallery'} · 지원일 {new Date(app.createdAt).toLocaleDateString('ko')}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      {app.status === 'ACCEPTED' && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/exhibitions/${app.exhibitionId}/operation/new`); }}
-                          className="ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          type="button"
+                          onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
                         >
-                          <ClipboardList size={12} /> 운영페이지
+                          <ClipboardList size={14} /> {isExpanded ? '닫기' : '전시 관리'}
+                        </button>
+                      )}
+                      {app.status !== 'ACCEPTED' && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          <Eye size={14} /> {isExpanded ? '닫기' : '지원서 보기'}
+                        </button>
+                      )}
+                      {/* [공모 상세] 버튼은 없다 — 제목과 이미지를 누르면 그리로 간다(같은 곳으로 가는 길이 셋일 이유가 없다) */}
+                      {/* 거절: '확인'을 눌러야 목록에서 사라진다 */}
+                      {app.status === 'REJECTED' && (
+                        <button
+                          type="button"
+                          onClick={() => ackRejectionMutation.mutate(app.id)}
+                          disabled={ackRejectionMutation.isPending}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          확인
                         </button>
                       )}
                     </div>
-                  );
-                })()}
-                {/* 거절된 공모: '확인' 눌러야 목록에서 제거 */}
-                {app.status === 'REJECTED' && (
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-xs text-gray-500">아쉽게도 이번 지원은 거절되었습니다.</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); ackRejectionMutation.mutate(app.id); }}
-                      disabled={ackRejectionMutation.isPending}
-                      className="px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-                    >
-                      확인
-                    </button>
                   </div>
-                )}
-              </div>
 
-              {/* 확장 영역: 내가 제출한 지원서 + 공모 상세 이동 */}
-              {isExpanded && (
-                <div className="px-4 pb-4 pt-0 border-t border-gray-50 space-y-3">
-                  <div className="pt-3">
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">내가 제출한 지원서</p>
-                    <ApplicationContent app={app} customFields={app.exhibition?.customFields} />
-                  </div>
-                  {/* 이동 버튼들 */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
-                      className="text-xs text-gray-400 hover:text-gray-900 flex items-center gap-1"
-                    >
-                      <Eye size={12} /> 공모 상세 보기
-                    </button>
-                    {app.status === 'ACCEPTED' && (
-                      <button
-                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}/operation/new`)}
-                        className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1"
-                      >
-                        <ClipboardList size={12} /> 운영페이지로 이동
-                      </button>
+                  {/*
+                    일정 줄은 **항상** 그린다.
+                    남은 일정이 없을 때 줄째로 빼면 카드 높이가 제각각이 된다 —
+                    실측 130px vs 188px 로, 목록에서 한 카드만 작아 보였다(2026-08-28).
+                    남은 일정이 없으면 대신 전시 기간을 적는다(빈 줄로 자리만 채우지 않는다).
+
+                    마감이 지났어도 줄을 지우지 않는다 — 늦었어도 내야 하는 일이라 숨기면 모른다.
+                  */}
+                  <div className="mt-4 border-y border-gray-100 py-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                    {rows.length > 0 ? rows.map((r, i) => (
+                      <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-[#c4302b] font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
+                        {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" />}
+                        {r.tone === 'done' && <Check size={11} className="shrink-0" />}
+                        {r.label}
+                        {r.dday && <b className="tabular-nums">{r.dday}</b>}
+                        <span className="text-gray-400 tabular-nums">({r.date})</span>
+                      </span>
+                    )) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+                        <Calendar size={11} className="shrink-0 text-gray-400" />
+                        전시 기간
+                        <span className="text-gray-400 tabular-nums">
+                          ({[ex.exhibitStartDate, ex.exhibitDate].filter(Boolean).map((v: string) => new Date(v).toLocaleDateString('ko', { month: 'numeric', day: 'numeric' })).join(' ~ ') || '미정'})
+                        </span>
+                      </span>
                     )}
                   </div>
+
+                  {app.status === 'REJECTED' && (
+                    <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">아쉽게도 이번 지원은 거절되었습니다.</p>
+                  )}
+
+                  {isExpanded && (
+                    <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
+                      {/* 할 일이 맨 위 — 지원서(수십 줄)를 먼저 두면 정작 해야 할 게 아래로 밀린다 */}
+                      {app.status === 'ACCEPTED' && (
+                        <ArtistOperationPanel
+                          exhibitionId={app.exhibitionId}
+                          exhibition={ex}
+                          submissionComplete={app.submissionComplete}
+                        />
+                      )}
+                      {app.status === 'ACCEPTED' ? (
+                        <CollapsibleBox title="내가 제출한 지원서">
+                          <ApplicationContent app={app} customFields={ex.customFields} />
+                        </CollapsibleBox>
+                      ) : (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-1.5">내가 제출한 지원서</p>
+                          <ApplicationContent app={app} customFields={ex.customFields} />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            </article>
           );
         })
       )}
@@ -1990,7 +2101,7 @@ function DeleteConfirmModal({ open, name, description, onConfirm, onCancel, pend
   );
 }
 
-function MyGalleriesSection() {
+function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -2031,6 +2142,10 @@ function MyGalleriesSection() {
     setShowForm(true);
   };
 
+  // 전용 등록 화면(/galleries/new)에서는 폼만 연 채로 시작한다(목록·헤더 숨김).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (createOnly) openForm(); }, [createOnly]);
+
   // 약관 텍스트 로드
   useEffect(() => {
     if (showForm) {
@@ -2055,6 +2170,7 @@ function MyGalleriesSection() {
       setGalleryAgreed(false);
       clearDraft();
       toast.success('갤러리 등록 요청이 제출되었습니다.');
+      if (createOnly) navigate('/mypage?tab=my-galleries');   // 전용 화면에서 제출 후 내 갤러리 목록으로
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
@@ -2080,12 +2196,14 @@ function MyGalleriesSection() {
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-gray-400">Admin 승인 후 검색에 노출됩니다.</p>
-        <button onClick={() => showForm ? setShowForm(false) : openForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
-          <Plus size={14} /> 갤러리 등록
-        </button>
-      </div>
+      {!createOnly && (
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-sm text-gray-400">Admin 승인 후 검색에 노출됩니다.</p>
+          <button onClick={() => navigate('/galleries/new')} className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors">
+            <Plus size={14} /> 갤러리 등록
+          </button>
+        </div>
+      )}
 
       {/* 등록 폼 */}
       {showForm && (
@@ -2155,7 +2273,7 @@ function MyGalleriesSection() {
               }}
               className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-            <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
+            <button onClick={() => { if (isDirty) { setConfirmAction('cancel'); } else if (createOnly) { navigate(-1); } else { setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); } }} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
       )}
@@ -2176,12 +2294,12 @@ function MyGalleriesSection() {
         message={'작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다.'}
         confirmText="취소하기"
         variant="danger"
-        onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); }}
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setGalleryAgreed(false); setGalleryFormErrors(new Set()); if (createOnly) navigate(-1); }}
         onCancel={() => setConfirmAction(null)}
       />
 
-      {/* 갤러리 목록 */}
-      {galleries.length === 0 && !showForm ? (
+      {/* 갤러리 목록 (전용 등록 화면에서는 숨김) */}
+      {!createOnly && (galleries.length === 0 && !showForm ? (
         <p className="text-gray-400 text-center py-8">등록된 갤러리가 없습니다.</p>
       ) : (
         <div className="space-y-3">
@@ -2223,7 +2341,7 @@ function MyGalleriesSection() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       <DeleteConfirmModal
         open={!!deleteTarget}
@@ -2239,10 +2357,12 @@ function MyGalleriesSection() {
 }
 
 // ========== Gallery: 내 공모 ==========
-function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: ExhibitionViewMode } = {}) {
+function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initialViewMode?: ExhibitionViewMode; createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  // 전용 등록 화면(/exhibitions/new)에서는 폼만 연 채로 시작한다.
+  useEffect(() => { if (createOnly) setShowForm(true); }, [createOnly]);
   // 항상 '진행중'으로 시작한다. 선택을 저장해두면 다음에 열었을 때 종료 탭이 떠 있어
   // "내 공모가 다 사라졌다"로 읽힌다 — 필터는 기억하지 않는 편이 안전하다.
   const [exhibitionViewMode, setExhibitionViewMode] = useState<ExhibitionViewMode>(initialViewMode ?? 'active');
@@ -2259,7 +2379,11 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   // 지원자 관리 상태 — 인라인 ApplicantManager 를 펼칠 공모 id
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
-  // 추가 질문 수정 대상 공모 (게시 후 수정)
+  // 상세 운영 상태 — 인라인 OperationBody 를 펼칠 공모 id (페이지 이동 대신 카드 안에서 접었다폈다)
+  const [manageOpsExId, setManageOpsExId] = useState<number | null>(null);
+  // 작가 초대 대상 공모 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대한다
+  const [inviteEx, setInviteEx] = useState<{ id: number; title: string } | null>(null);
+  // 추가 질문 수정 대상 공모 (게시 후 수정) — 지원자 관리 패널 안에서 연다
   const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
 
   // 임시저장 훅
@@ -2293,6 +2417,10 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
     }
     setShowForm(true);
   };
+
+  // 전용 등록 화면(/exhibitions/new)에서는 폼만 연 채로 시작한다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (createOnly) openExForm(); }, [createOnly]);
 
   // 약관 텍스트 로드
   useEffect(() => {
@@ -2333,6 +2461,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
       setFormErrors(new Set());
       clearDraft();
       toast.success('공모 등록 요청이 제출되었습니다.');
+      if (createOnly) navigate('/mypage?tab=my-exhibitions');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
@@ -2389,6 +2518,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
 
   return (
     <div>
+      {!createOnly && (
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-gray-400">Admin 승인 후 공고에 노출됩니다.</p>
         <div className="flex flex-wrap items-center gap-2">
@@ -2410,11 +2540,12 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
               </button>
             </div>
           )}
-          <button onClick={() => showForm ? setShowForm(false) : openExForm()} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
+          <button onClick={() => navigate('/exhibitions/new')} className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors">
             <Plus size={14} /> 공모 등록
           </button>
         </div>
       </div>
+      )}
 
       {showForm && (
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
@@ -2546,7 +2677,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                   }}
                   className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-                <button onClick={() => isDirty ? setConfirmAction('cancel') : (() => { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); })()} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button onClick={() => { if (isDirty) { setConfirmAction('cancel'); } else if (createOnly) { navigate(-1); } else { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); } }} className="px-4 py-2 text-sm text-gray-500">취소</button>
               </div>
             </>
           )}
@@ -2560,6 +2691,15 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
           exhibitionTitle={editQuestionsEx.title}
           initialFields={customFieldsByExId.get(editQuestionsEx.id) as CustomField[] | null | undefined}
           onClose={() => setEditQuestionsEx(null)}
+        />
+      )}
+
+      {/* 작가 초대 모달 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대 */}
+      {inviteEx && (
+        <ExhibitionInviteModal
+          exhibitionId={inviteEx.id}
+          exhibitionTitle={inviteEx.title}
+          onClose={() => setInviteEx(null)}
         />
       )}
 
@@ -2579,7 +2719,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
         message={'작성 중인 내용이 있습니다. 정말 취소하시겠습니까?\n임시저장된 내용은 유지됩니다.'}
         confirmText="취소하기"
         variant="danger"
-        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); }}
+        onConfirm={() => { setConfirmAction(null); setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); if (createOnly) navigate(-1); }}
         onCancel={() => setConfirmAction(null)}
       />
 
@@ -2620,7 +2760,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
               ) : (
                 <>
                   <p className="text-sm text-gray-500">{closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
-                  <button onClick={openExForm} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-4 py-2 text-sm text-white">
+                  <button onClick={() => navigate('/exhibitions/new')} className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5">
                     <Plus size={14} /> 공모 등록
                   </button>
                 </>
@@ -2636,33 +2776,36 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                 const submissionTodo = Math.max(0, submissions.required - submissions.complete);
                 const statusClass = statusColors[item.status] || 'bg-gray-100 text-gray-600';
                 return (
-                  <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                    <div className="grid gap-0 lg:grid-cols-[220px_1fr]">
+                  <article key={item.id} className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                    {/* 삭제는 카드 **우측 상단 모서리**에 따로 둔다 — 지원자 관리·상세 운영 옆에 있으면 잘못 눌러 공모가 지워질 수 있다.
+                        아트링크 주최 공모(위임 운영)·정산 완료 건은 지울 수 없다(서버도 403/400). */}
+                    {item.hostType !== 'ADMIN' && !item.settledAt && (
                       <button
                         type="button"
-                        onClick={() => navigate(`/exhibitions/${item.id}`)}
-                        className="relative min-h-[180px] bg-gray-100 text-left lg:min-h-full"
+                        onClick={() => setDeleteTarget(item)}
+                        className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                        title="공모 삭제"
+                        aria-label="공모 삭제"
                       >
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-gray-300">
-                            <Camera size={34} />
-                          </div>
-                        )}
-                        <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm">
-                          D{dday !== null ? (dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`) : '-'}
-                        </span>
+                        <Trash2 size={14} />
                       </button>
-
-                      {/* grid 셀에 min-w-0 필수 — 없으면 컬럼이 제목 min-content만큼 늘어나 truncate가 무력화되고 카드 밖으로 잘림 */}
+                    )}
+                    {/* 왼쪽 포스터 이미지를 없앴다(2026-08-28) — 패널을 펼치면 옆에 큰 세로 이미지가 정신없었다.
+                        D-day 는 이미지 배지 대신 아래 상태 배지 줄로 옮겼다. */}
+                    <div className="grid gap-0">
                       <div className="p-5 min-w-0">
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
+                            {/* 우측 상단 삭제 버튼과 겹치지 않게 배지 줄에만 우측 여백(모바일). xl 은 액션줄이 따로라 불필요 */}
+                            <div className="flex flex-wrap items-center gap-2 pr-9 xl:pr-0">
                               <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${operationToneClasses[item.stage.tone]}`}>
                                 {item.stage.label}
                               </span>
+                              {dday !== null && (
+                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
+                                  D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
+                                </span>
+                              )}
                               <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusClass}`}>
                                 {statusLabels[item.status] || item.status}
                               </span>
@@ -2684,7 +2827,7 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                             </p>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 xl:justify-end">
+                          <div className="flex flex-wrap gap-2 xl:justify-end xl:pr-12">
                             {(() => {
                               // 검정 버튼 = '지원자 관리' 전용. 승인된 공모면 어느 단계든(모집중~정산) 인라인 지원자 관리를 펼친다.
                               // 자료 확인·정산서 등 운영 작업은 옆의 '상세 운영' 버튼/페이지에서 처리(중복 방지).
@@ -2693,45 +2836,35 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                               return (
                                 <button
                                   type="button"
-                                  onClick={() => isApproved
-                                    ? setManageAppsExId(open ? null : item.id)
-                                    : navigate(item.nextAction.route)}
+                                  onClick={() => {
+                                    if (!isApproved) { navigate(item.nextAction.route); return; }
+                                    const next = open ? null : item.id;
+                                    setManageAppsExId(next);
+                                    if (next) setManageOpsExId(null); // 한 번에 하나만 — 상세 운영이 열려 있으면 닫는다
+                                  }}
                                   className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
                                 >
                                   <Send size={14} /> {isApproved ? (open ? '지원자 닫기' : '지원자 관리') : item.nextAction.label}
                                 </button>
                               );
                             })()}
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/exhibitions/${item.id}/operation/new`)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              <FileText size={14} /> 상세 운영
-                            </button>
-                            {/* 마감(정산 완료)된 공모는 수정이 서버에서 막힌다 — 눌러보고 실패하게 두지 않는다 */}
-                            {!item.settledAt && (
+                            {/* 상세 운영 — 페이지 이동 대신 카드 안에서 접었다폈다(승인된 공모만).
+                                운영 화면(OperationBody)을 그대로 임베드하므로 공지·자료·정산을 여기서 다 한다.
+                                추가 질문 수정은 여기 top-level 버튼에서 빼고 지원자 관리 패널 안으로 옮겼다. */}
+                            {item.status === 'APPROVED' && (
                               <button
                                 type="button"
-                                onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
+                                onClick={() => {
+                                  const next = manageOpsExId === item.id ? null : item.id;
+                                  setManageOpsExId(next);
+                                  if (next) setManageAppsExId(null); // 한 번에 하나만 — 지원자 관리가 열려 있으면 닫는다
+                                }}
                                 className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                               >
-                                <Edit3 size={14} /> 추가 질문
+                                <FileText size={14} /> {manageOpsExId === item.id ? '상세 운영 닫기' : '상세 운영'}
                               </button>
                             )}
-                            {/* 아트링크 주최 공모는 운영만 위임받은 것이라 갤러리가 삭제할 수 없다 (서버도 403으로 막는다).
-                                정산 완료 건도 마찬가지 — 지우면 판매·정산 기록이 통째로 사라진다(서버 400) */}
-                            {item.hostType !== 'ADMIN' && !item.settledAt && (
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget(item)}
-                                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
-                                title="공모 삭제"
-                                aria-label="공모 삭제"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
+                            {/* 공모 삭제 버튼은 카드 우측 상단 모서리로 옮겼다(오조작 방지) */}
                           </div>
                         </div>
 
@@ -2764,14 +2897,45 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
                           <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">반려 사유: {item.rejectReason}</p>
                         )}
 
-                        {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대) */}
+                        {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대)
+                            + 게시 후 추가 질문 수정(정산 완료 전까지) */}
                         {manageAppsExId === item.id && (
                           <div className="mt-4 border-t border-gray-100 pt-4">
+                            <div className="mb-3 flex flex-wrap justify-end gap-2">
+                              {/* 관심 작품(하트)을 저장한 작가를 이 공모에 직접 초대 —
+                                  **확정 전(모집 중)까지만**. 서버도 recruitmentClosed·confirmed·ended 를 막으므로
+                                  버튼도 같은 창에서만 띄운다(안 그러면 눌러서 400 을 받는 죽은 버튼이 된다) */}
+                              {item.status === 'APPROVED' && !item.recruitmentClosed && !item.confirmed && !item.ended && (
+                                <button
+                                  type="button"
+                                  onClick={() => setInviteEx({ id: item.id, title: item.title })}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+                                >
+                                  <Mail size={13} /> 작가 초대
+                                </button>
+                              )}
+                              {!item.settledAt && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                                >
+                                  <Edit3 size={13} /> 추가 질문 수정
+                                </button>
+                              )}
+                            </div>
                             <ApplicantManager
                               exhibitionId={item.id}
                               exhibitionTitle={item.title}
                               customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
                             />
+                          </div>
+                        )}
+
+                        {/* 상세 운영 — 페이지 이동 없이 카드 안에서(공지·자료·정산). 운영 화면 코드를 그대로 임베드 */}
+                        {manageOpsExId === item.id && (
+                          <div className="mt-4 border-t border-gray-100 pt-4">
+                            <OperationBody id={String(item.id)} embedded />
                           </div>
                         )}
                       </div>
@@ -2798,11 +2962,13 @@ function MyExhibitionsSection({ initialViewMode }: { initialViewMode?: Exhibitio
 }
 
 // ========== Gallery: 내 전시(Show) 관리 ==========
-function MyShowsSection() {
+function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [showForm, setShowForm] = useState(false);
+  // 전용 등록 화면(/shows/new)에서는 폼만 연 채로 시작한다.
+  useEffect(() => { if (createOnly) setShowForm(true); }, [createOnly]);
 
   // 내 갤러리 (전시 등록 시 선택용) — owned=true로 본인 갤러리 전체 조회 (/galleries/my 라우트는 없음)
   const { data: myGalleries = [] } = useQuery<Gallery[]>({
@@ -2854,6 +3020,7 @@ function MyShowsSection() {
       setArtists([{ name: '' }]);
       setAgreedTerms(false);
       toast.success('전시 등록 요청이 완료되었습니다. Admin 승인을 기다려주세요.');
+      if (createOnly) navigate('/mypage?tab=my-shows');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록에 실패했습니다.'),
   });
@@ -2922,15 +3089,17 @@ function MyShowsSection() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold">내 전시</h3>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg"
-        >
-          <Plus size={14} /> 전시 등록
-        </button>
-      </div>
+      {!createOnly && (
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-semibold">내 전시</h3>
+          <button
+            onClick={() => navigate('/shows/new')}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors"
+          >
+            <Plus size={14} /> 전시 등록
+          </button>
+        </div>
+      )}
 
       {/* 등록 폼 */}
       {showForm && (
@@ -3081,8 +3250,8 @@ function MyShowsSection() {
         </div>
       )}
 
-      {/* 내 전시 목록 */}
-      {isLoading ? (
+      {/* 내 전시 목록 (전용 등록 화면에서는 숨김) */}
+      {!createOnly && (isLoading ? (
         <div className="h-32 bg-gray-100 animate-pulse" />
       ) : myShows.length === 0 ? (
         <p className="text-gray-400 text-center py-8">등록한 전시가 없습니다.</p>
@@ -3114,7 +3283,7 @@ function MyShowsSection() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       <DeleteConfirmModal
         open={!!deleteTarget}
@@ -4508,4 +4677,32 @@ function OvGalleries() {
       )}
     </div>
   );
+}
+
+// ===== 전용 등록 화면 (커뮤니티 글쓰기처럼 별도 페이지로 이동) =====
+// 목록 페이지·마이페이지의 [등록] 버튼이 여기로 온다. 폼만 보여주고(createOnly),
+// 제출하면 마이페이지의 내 목록으로, 취소/뒤로가기는 이전 화면으로.
+function RegisterShell({ title, children }: { title: string; children: ReactNode }) {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  if (user && user.role !== 'GALLERY') return <Navigate to="/" replace />;
+  return (
+    <div className="max-w-3xl mx-auto px-6 md:px-12 py-8 md:py-12">
+      <button onClick={() => navigate(-1)} className="mb-5 inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
+        <ArrowLeft size={16} /> 뒤로가기
+      </button>
+      <h1 className="mb-6 text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">{title}</h1>
+      {children}
+    </div>
+  );
+}
+
+export function GalleryRegisterPage() {
+  return <RegisterShell title="갤러리 등록"><MyGalleriesSection createOnly /></RegisterShell>;
+}
+export function ExhibitionRegisterPage() {
+  return <RegisterShell title="공모 등록"><MyExhibitionsSection createOnly /></RegisterShell>;
+}
+export function ShowRegisterPage() {
+  return <RegisterShell title="전시 등록"><MyShowsSection createOnly /></RegisterShell>;
 }

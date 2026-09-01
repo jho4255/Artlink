@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
 
 /**
  * 공모 운영 페이지: 접근권한 / 공지→수락작가 알림 / 작가 제출정보 저장 + 작가간 비공개.
@@ -15,7 +15,7 @@ async function setup(api: APIRequestContext) {
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '운영테스트공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '운영', galleryId },
+    data: { title: '운영테스트공모 ' + Date.now(), type: 'SOLO', deadlineStart: new Date().toISOString().slice(0, 10), deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '운영', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await applyToExhibition(api, ex.id, aTok);

@@ -288,15 +288,56 @@ router.put('/me/profile', authenticate, validate(profileSchema), async (req, res
 const devLoginSchema = z.object({
   email: z.string().email(),
 });
+
+// dev-login과 **완전히 동일한 이중 차단**. production이거나 옵트인이 없으면 존재하지 않는 것처럼 404.
+function assertDevLoginAllowed() {
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== 'true') {
+    throw new AppError('개발자 로그인은 사용할 수 없습니다.', 404);
+  }
+}
+
+// 개발자 로그인용 계정 목록 (로컬 전용).
+// 실서버 DB 복제본으로 화면을 확인할 때 시드 4계정만으로는 아무것도 볼 수 없어서 추가했다.
+// 비밀번호/전화 등 민감 정보는 내려주지 않는다 — 로그인 대상을 고르는 데 필요한 최소한만.
+router.get('/dev-users', async (req, res, next) => {
+  try {
+    assertDevLoginAllowed();
+    const q = String(req.query.q ?? '').trim();
+    const role = String(req.query.role ?? '').trim().toUpperCase();
+    const users = await prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        ...(role === 'ARTIST' || role === 'GALLERY' || role === 'ADMIN' ? { role } : {}),
+        ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { email: { contains: q, mode: 'insensitive' as const } }] } : {}),
+      },
+      select: {
+        id: true, name: true, nickname: true, email: true, role: true,
+        // 작품 수가 많은 작가부터 보는 게 확인에 유리하다
+        portfolio: { select: { _count: { select: { images: true } } } },
+      },
+      // ⚠️ 작품 수는 관계 카운트라 DB에서 정렬할 수 없다. take로 먼저 자르고 나중에 정렬하면
+      // **작품이 제일 많은 작가가 잘려 나간다**(id가 뒤쪽이면 40위 밖으로 밀림 — 실제로 그랬다).
+      // 후보를 넉넉히 받아서 정렬한 뒤 자른다.
+      take: 300,
+      orderBy: { id: 'asc' },
+    });
+    res.json(
+      users
+        .map((u) => {
+          const { portfolio, ...rest } = u;
+          return { ...rest, workCount: portfolio?._count.images ?? 0 };
+        })
+        .sort((a, b) => b.workCount - a.workCount)
+        .slice(0, 40),
+    );
+  } catch (error) { next(error); }
+});
 router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
   try {
-    // 양성 옵트인 전용: 로컬에서 ENABLE_DEV_LOGIN=true 일 때만 동작. production에서는 이중 차단.
-    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== 'true') {
-      throw new AppError('개발자 로그인은 사용할 수 없습니다.', 404);
-    }
+    assertDevLoginAllowed();
     const email = (req.body.email as string).trim().toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) throw new AppError('해당 이메일의 시드 계정이 없습니다. 시드를 먼저 실행하세요.', 404);
+    const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
+    if (!user) throw new AppError('해당 이메일의 계정이 없습니다.', 404);
     const token = generateToken(user);
     res.json({ token, user: safeUser(user) });
   } catch (error) { next(error); }
