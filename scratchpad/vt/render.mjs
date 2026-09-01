@@ -55,6 +55,12 @@ for (const c of suite.cases) {
       probe: window.__artlook || null,             // 정확한 조각·작품 사각형 (계측 훅)
       srcWH: wh, framedWH: [framed.width, framed.height],
       frameKind: FRAMES[fi].kind,
+      // ⚠️ **엔진이 실제로 쓴 광원**을 받아 적는다. `scenes.json` 의 날것을 하니스가
+      //   따로 읽으면 신뢰도 보정(sceneLightModel) 만큼 어긋나 멀쩡한 그림자가
+      //   '방향이 틀렸다'로 잡힌다(2026-09-01 실측: 평면 벽 3개가 그렇게 실패했다).
+      lightDir: state.lightDir,
+      lightConf: window.ArtLookScene && SCENES[si]
+        ? +ArtLookScene.sceneLightModel(SCENES[si]).conf.toFixed(3) : null,
     };
   }, c);
   if (r.err || !r.probe) { console.log(`✗ ${c.id} ${r.err || '계측 훅 없음'}`); continue; }
@@ -64,8 +70,10 @@ for (const c of suite.cases) {
   const rect = box(r.probe.piece), art = box(r.probe.art);
   out[c.id] = {
     ...c, rect, art, front: r.probe.front ? box(r.probe.front) : rect,
+    back: r.probe.back ? box(r.probe.back) : rect,   // 그림자를 던지는 뒷면(두께 보정)
     railPx: Math.round(r.probe.railPx), matPx: Math.round(r.probe.matPx),
     canvas: [r.W, r.H], srcWH: r.srcWH, framedWH: r.framedWH, frameKind: r.frameKind,
+    lightDir: r.lightDir, lightConf: r.lightConf,
     srcAspect: r.srcWH[0] / r.srcWH[1], framedAspect: r.framedWH[0] / r.framedWH[1],
   };
   console.log(`✓ ${c.id} ${c.frame} @${c.scene}  piece=[${rect}] art=[${art}] rail=${Math.round(r.probe.railPx)}px`);

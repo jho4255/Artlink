@@ -452,8 +452,9 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
   it('합성 음영은 방향광/테두리 두 노브로 나뉘어 있다 (2026-09-01)', () => {
     // ⚠️ 한 노브로 일괄 조절하면 '층'을 줄이려다 **장면 광원 추종까지** 깎인다
     //    (실측: 일괄 0.40 에서 위살↔아래살 차이가 골든 30~90 대비 19.8 로 떨어졌다).
-    expect(html).toMatch(/const SYN_DIR=_synQ\('syndir'/);
-    expect(html).toMatch(/const SYN_EDGE=_synQ\('syn'/);
+    // 8차에서 폴백 사다리(LEVEL)가 두 노브를 감쌌지만, **노브 자체는 남아 있어야** 한다
+    expect(html).toMatch(/const SYN_DIR=.*_synQ\('syndir'/);
+    expect(html).toMatch(/const SYN_EDGE=.*_synQ\('syn'/);
     // 테두리·링 계열은 EDGE 로 눌러야 한다 — 사용자가 본 '흰 테두리/검은 선'이 여기서 나온다
     // 각 함수 본문 안에 SYN_EDGE 가 있어야 한다 (함수 단위로 잘라서 본다)
     for (const fn of ['matOpeningBevel', 'rebateShadow', 'frameShadowOnMat']) {
@@ -475,5 +476,101 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(html).toMatch(/light: png\(lightLayer\)/);
     expect(html).toMatch(/toggles: \['shadow'/);
     expect(js).toMatch(/u\.shadow != null \? u\.shadow/);
+  });
+});
+
+// ============================================================================
+//  8차 — 자산·장면을 **재서** 모자란 만큼만 (CLAUDE.md 44g)
+// ============================================================================
+describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
+  const html = readFileSync(resolve(__dirname, '../../public/artlook/index.html'), 'utf-8');
+  const js = readFileSync(resolve(__dirname, '../../public/artlook/scene.js'), 'utf-8');
+
+  it('액자 자산에 이미 구워진 조명을 **잰다** (SOURCE-ASSET LIGHTING PROTECTION)', () => {
+    expect(html).toMatch(/function measureAssetLight\(/);
+    // ⚠️ 반드시 **색 보정된 뒤** 재야 한다 — 우리가 실제로 그리는 픽셀이 그것이다
+    const i = html.indexOf('PHOTO_LIGHT[k]=measureAssetLight(');
+    expect(i, 'gradeImage 뒤에서 재는가').toBeGreaterThan(html.indexOf('PHOTO_FRAMES[k]=gradeImage('));
+    // 알파를 걸러야 한다 — 개구부가 투명이라 섞이면 값이 통째로 어두워진다
+    expect(html).toMatch(/d\[i\+3\]>200/);
+  });
+
+  it('균일 항은 상수가 아니라 **잔차**다 — 이미 충분하면 손대지 않는다', () => {
+    const i = html.indexOf('const want=UNI_AMP*lit;');
+    expect(i, 'want 계산').toBeGreaterThan(0);
+    const body = html.slice(i, i + 600);
+    expect(body).toMatch(/const have=/);
+    // 자산이 이미 목표만큼 갖고 있으면 delta=0 (SOURCE-FIRST · VISUAL STOP CONDITION)
+    expect(body).toMatch(/Math\.abs\(have\)>=Math\.abs\(want\)\)\s*delta=0/);
+    // ⚠️ **want 에 SYN_DIR 을 곱하지 말 것** — `?syndir=0` 이 원본이 아니게 되어
+    //    syncheck 의 차등 측정이 통째로 거짓이 된다. 노브는 개입량 전체에만 곱한다.
+    expect(html).not.toMatch(/const want=UNI_AMP\*SYN_DIR/);
+    expect(body).toMatch(/delta=\(want-have\)\*SYN_DIR/);
+  });
+
+  it('밝히기는 screen 이 아니라 lighter(가산)로 — 밝은 액자에서 헤드룸이 없다', () => {
+    const i = html.indexOf('function applyRailGain(');
+    expect(i, 'applyRailGain 정의').toBeGreaterThan(0);
+    const body = html.slice(i, html.indexOf('\nfunction ', i + 10));
+    expect(body).toMatch(/globalCompositeOperation='lighter'/);
+    expect(body).toMatch(/drawImage\(plate,0,0\)/);
+    expect(body).not.toMatch(/'screen'/);
+  });
+
+  it('단면 프로파일은 자산이 가진 만큼 꺼진다(P) — 폐색은 P 와 무관하다', () => {
+    // 방향 성분은 자산에 있으므로 P 로 끈다
+    expect(html).toMatch(/const AO=.*\*P;/);
+    expect(html).toMatch(/const AR=.*\*P;/);
+    // ⚠️ 폐색(사방 공통)은 자산에 **없다** — P 를 곱하면 빛 받는 변에서 사면이 사라진다
+    expect(html).toMatch(/const RB=o\.rebateBase==null\?\(1-REBATE_AMBIENT\*SYN_EDGE\)/);
+    expect(html).not.toMatch(/REBATE_AMBIENT\*SYN_EDGE\*P/);
+  });
+
+  it('깊은 폐색은 근사 검정으로 — 따뜻한 그늘색은 어두운 액자에서 바닥이 된다', () => {
+    expect(html).toMatch(/const SHADE_WARM='28,22,16', SHADE_OCCL='6,6,8'/);
+    expect(html).toMatch(/const tint = P<=0\.02 \? SHADE_OCCL : SHADE_WARM/);
+  });
+
+  it('장면 광원은 **신뢰도 모델**을 통과한다 — 날것의 lightDir 을 쓰지 않는다', () => {
+    expect(js).toMatch(/function sceneLightModel\(/);
+    // 낙차를 재서 신뢰도를 만든다
+    expect(js).toMatch(/conf = Math\.max\(0, Math\.min\(1, \(grad - 4\) \/ 18\)\)/);
+    // ⚠️ 가로만 줄이고 세로는 **항상 위** (실내 조명의 보편 가정)
+    expect(js).toMatch(/Math\.min\(-0\.35, raw\[1\] \/ rn\)/);
+    // ⚠️ 가로를 0 까지 죽이지 않는다 — 완벽한 좌우 대칭 자체가 CG 신호다
+    expect(js).toMatch(/\(0\.40 \+ 0\.60 \* conf\)/);
+    // composeScene 과 index.html 둘 다 모델을 거쳐야 한다(같은 방 · 같은 카메라)
+    expect(js).toMatch(/lightDir: sceneLightModel\(scene\)\.dir/);
+    expect(js).toMatch(/const lm = sceneLightModel\(scene\);\s*\n\s*const ld = lm\.dir;/);
+    expect(html).toMatch(/ArtLookScene\.sceneLightModel\(SCENES\[state\.sceneIdx\]\)\.dir/);
+  });
+
+  it('그림자 세기는 신뢰도로 깎지 않는다 — 방향은 신뢰도, 세기는 물리', () => {
+    // 2026-09-01 에 시도했다가 되돌렸다(contact_drop 이 전 케이스에서 내려갔다)
+    expect(js).toMatch(/const LAYERS = \[\[0\.045, 0\.060, 2\.20, 'cast'\]/);
+    expect(js).not.toMatch(/0\.060 \* castConf/);
+  });
+
+  it('폴백 사다리 — level 0~3 이 단계별로 합성을 덜어낸다', () => {
+    expect(html).toMatch(/const LEVEL=/);
+    expect(html).toMatch(/const SYN_DIR=LEVEL>=3 \?/);
+    expect(html).toMatch(/const SYN_EDGE=LEVEL>=2 \?/);
+    expect(html).toMatch(/LEVEL<1 \? \{shadow:0, cornerAO:0, wallCalm:0, wallAmt:0\}/);
+  });
+
+  it('매트 사면은 폭이 모자라면 알파로 사라진다 — 바닥값으로 선을 만들지 않는다', () => {
+    // ⚠️ 옛 `Math.max(1.5, matPx*.085)` 는 안 보일 폭에서도 1.5px 짜리 **선**을 그렸다
+    expect(html).not.toMatch(/matOpeningBevel\([^)]*Math\.max\(1\.5,/);
+    expect(html).toMatch(/const MAT_BEVEL_FRAC=0\.085/);
+    expect(html).toMatch(/\(bw-0\.55\)\/0\.85/);
+  });
+
+  it('액자↔매트 이음매 폐색은 사방 공통 항을 갖는다 (빛 받는 변에서도 남는다)', () => {
+    expect(html).toMatch(/const AO_SEAM=0\.34, AO_SEAM_DIR=0\.34/);
+    expect(html).toMatch(/const a=\(AO_SEAM \+ AO_SEAM_DIR\*\(1-lit\)\/2\)\*SYN_EDGE/);
+  });
+
+  it('계측 훅이 **뒷면**을 함께 알려준다 — 두께가 있으면 실루엣으로 그림자를 못 잰다', () => {
+    expect(html).toMatch(/back:\(\(\)=>\{ const q=placed\.quad/);
   });
 });

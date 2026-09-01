@@ -19,7 +19,8 @@ import numpy as np
 import metrics as M
 
 LIM = {'syn_delta': 25.0,   # 살 단면 대비를 합성이 몇 % 바꾸는가 (원본 대비)
-       'dir_gain': 8.0}     # 장면 광원 추종은 **생겨야** 한다(위살↔아래살 차이 증가분)
+       'dir_gain': 8.0,     # 장면 광원 추종이 **없으면 생겨야** 한다(위살↔아래살 증가분)
+       'dir_rel': 0.13}     # 다만 **이미 따르고 있으면** 더할 이유가 없다(아래 주석)
 
 
 def load(d):
@@ -57,7 +58,17 @@ if __name__ == '__main__':
         f = []
         if d > LIM['syn_delta'] and kd not in EXEMPT_DELTA:
             f.append('합성과다')
-        if g < LIM['dir_gain'] and kd not in EXEMPT_GAIN:
+        # ⚠️⚠️ **'우리가 방향광을 더했는가'로 판정하면 안 된다** (2026-09-01 수정).
+        #   8차에서 자산의 baked 조명을 재기 시작하면서, **자산이 이미 장면과 맞는**
+        #   액자(검정·월넛·골드)에는 아무것도 더하지 않게 됐다 — 그게 브리핑이 요구한
+        #   "SOURCE-FIRST / 이미 있으면 다시 만들지 않는다" 이고 가장 좋은 상태다.
+        #   그런데 옛 판정은 그걸 '광원무시 FAIL' 로 잡았다. 재야 하는 건 **결과물이
+        #   장면 광원을 따르는가**지 우리가 손을 댔는가가 아니다.
+        #   장면 광원은 언제나 위에서 온다(`sceneLightModel` 이 세로를 위로 고정한다) →
+        #   최종 렌더에서 위살이 아래살보다 밝고 상대 낙차가 밴드 안이면 통과.
+        follows = (on[k]['per_side']['top']['rail'] > on[k]['per_side']['bottom']['rail']
+                   and on[k].get('dir_rel', 0) >= LIM['dir_rel'])
+        if g < LIM['dir_gain'] and not follows and kd not in EXEMPT_GAIN:
             f.append('광원무시')
         bad += bool(f)
         print(f'{k:6s} {a:6.1f}→{b:6.1f} {d:9.1f}%   {da:5.1f}→{db:5.1f} {g:+7.1f}   '

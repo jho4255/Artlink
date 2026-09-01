@@ -80,6 +80,9 @@ scratchpad/vt/*.png
 scratchpad/vt/*.jpg
 
 scratchpad/vt/renders_ss1/
+scratchpad/vt/renders_before/
+scratchpad/vt/renders_off/
+scratchpad/vt/sweep_old/
 scratchpad/vt/debug/
 scratchpad/vt/leak/
 __pycache__/

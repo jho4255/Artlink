@@ -168,6 +168,13 @@ def analyse(src, rect, art, rail_px):
            # 위·아래 살이 **얼마나 다른가**가 방향광의 증거다. 부호는 장면의 광원 방향에
            # 따라 뒤집히므로(레퍼런스도 +92 ~ -91) 절대값으로 본다.
            'dir_tb': round(abs(per['top']['rail'] - per['bottom']['rail']), 1),
+           # ⚠️ **절대 낙차로 판정하면 어두운 액자가 부당하게 실패한다** — `rebate_ratio` 가
+           #    같은 이유로 이미 비율이다(위 주석). 골든 5장의 살 평균은 120~209 뿐이라
+           #    **어두운 액자가 한 장도 없다**: 검정(살 46)·월넛(살 60)은 물리적으로 옳게
+           #    그늘져도 절대 낙차가 30 을 못 넘는다(곱연산이므로 낙차는 밝기에 비례한다).
+           #    골든을 같은 코드로 재면 상대값은 0.146·0.180·0.146·0.157·0.747 이다.
+           'dir_rel': round(abs(per['top']['rail'] - per['bottom']['rail'])
+                            / max(1.0, float(np.mean([per[s]['rail'] for s in SIDES]))), 3),
            'dir_lr': round(abs(per['left']['rail'] - per['right']['rail']), 1),
            'piece_wh': [w, h], 'fill_w': round(w / im.width, 3)}
     out.update(shadow_stats(L, rect))

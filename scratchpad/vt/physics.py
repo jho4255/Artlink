@@ -183,10 +183,12 @@ def gap_stats(L, rect, art, rail_frac=None):
             'gap_floor_rel': round(min(v['floor_rel'] for v in out.values()), 3)}
 
 
-def analyse(path, rect, art, rail_frac=None, light_dir=None):
+def analyse(path, rect, art, rail_frac=None, light_dir=None, shadow_rect=None):
+    """shadow_rect — 그림자를 던지는 **뒷면**. 두께가 있는 조각에서만 rect 와 다르다.
+    실루엣으로 재면 뒷면이 더 나간 쪽에만 그림자가 삐져나와 **기하가 방향으로 오독**된다."""
     a = np.asarray(Image.open(path).convert('RGB')).astype(float)
     L = M.lum(a)
-    sh = shadow_aniso(L, rect)
+    sh = shadow_aniso(L, shadow_rect or rect)
     return {'shadow': sh, 'gap': gap_stats(L, rect, art, rail_frac),
             'dir_cos': shadow_dir_cos(sh['per_side'] if sh else None, light_dir)}
 
@@ -212,13 +214,18 @@ if __name__ == '__main__':
         gold[k] = r
         _row(k, r, g['note'])
     print('-' * 78)
+    # ⚠️ **`scenes.json` 의 날것을 읽지 말 것.** 엔진은 `sceneLightModel` 로 신뢰도를 재서
+    #    측정되지 않은 가로 성분을 0 으로 수렴시킨다(평면 매크로 벽 6개가 그 경우다).
+    #    하니스가 옛 값을 쓰면 **멀쩡한 그림자가 '방향이 틀렸다'로 잡힌다** —
+    #    실제로 그렇게 3건이 실패했다(2026-09-01). 렌더가 기록해 준 값을 쓴다.
     scn = json.load(open('/home/jho4255/ArtLink/frontend/public/artlook/scenes/scenes.json'))
     LD = {s['id']: s.get('lightDir') for s in scn['scenes']}
     geo = json.load(open('renders/geometry.json'))
     ours = {}
     for k, c in sorted(geo.items()):
         r = analyse(f'renders/{k}.png', c['rect'], c['art'],
-                    c['railPx'] / max(1, c['art'][0] - c['rect'][0]), LD.get(c['scene']))
+                    c['railPx'] / max(1, c['art'][0] - c['rect'][0]),
+                    c.get('lightDir') or LD.get(c['scene']), c.get('back'))
         ours[k] = r
         _row(k, r, f"{c['frame']} @{c['scene']}")
 

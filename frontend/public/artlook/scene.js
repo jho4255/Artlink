@@ -726,6 +726,81 @@
     return { quad: px, trueScale, over, capped, heightRatio: t };
   }
 
+  // ==========================================================================
+  //  장면 조명 모델 — 방향 + **신뢰도** (브리핑: CONFIDENCE-AWARE RENDERING)
+  // ==========================================================================
+  // 브리핑: "If scene-light estimation is uncertain: apply LESS synthetic lighting,
+  //          not more. UNCERTAINTY ↑ → SYNTHETIC EFFECT STRENGTH ↓"
+  //
+  // `scenes.json` 의 `lightDir` 은 신뢰도가 없다. 실측(scenelight.mjs, 2026-09-01):
+  //     실내 7개   벽 낙차 21~96  → 방향이 사진에 실제로 찍혀 있다
+  //     평면 벽 6개 벽 낙차 0~4.5 → **아무 방향도 없다**(흰 벽돌은 정확히 0.0)
+  //   그런데 그 6개는 전부 손으로 적은 `[-1,-1]` 이었다. 즉 우리는 근거 없이
+  //   45° 대각 광원을 **발명해** 액자 음영과 그림자를 그 방향으로 그려 왔다.
+  //
+  // ⚠️ 신뢰도로 줄이는 것은 **세기가 아니라 가로 성분**이다.
+  //    · 가로(창이 어느 쪽인가)는 사진에서만 알 수 있다 → 모르면 0 으로 수렴시킨다.
+  //    · 세로(위에서 온다)는 실내 조명의 보편 가정이라 신뢰도와 무관하게 유지한다
+  //      (CLAUDE.md 39 가 이미 같은 이유로 세로를 항상 위로 고정했다).
+  //    세기까지 줄이면 평면 벽 6개에서 액자가 통째로 납작해진다 — 그건 다른 결함이다.
+  //    결과적으로 평면 벽에서는 광원이 **바로 위**가 되고 그림자도 곧게 아래로 진다
+  //    (모르는 방향으로 비스듬히 드리우지 않는다 = 최소 주장).
+  function sceneLightModel(scene) {
+    if (!scene) return { dir: [-0.7071, -0.7071], conf: 0, wallLum: 0.6, grad: 0 };
+    if (scene._lm) return scene._lm;
+    const raw = scene.lightDir || [-1, -1];
+    const rn = Math.hypot(raw[0], raw[1]) || 1;
+    let conf = 0, wallLum = 0.6, grad = 0, measured = false;
+    const q = scene.region || scene.opening;
+    if (scene.img && scene.loaded && q) {
+      try {
+        const iw = scene.img.naturalWidth, ih = scene.img.naturalHeight;
+        const xs = q.map((p) => p[0]), ys = q.map((p) => p[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs);
+        const y0 = Math.min(...ys), y1 = Math.max(...ys);
+        // 영역을 35% 넓혀 **주변 벽**까지 본다 — 작품이 덮을 자리 밖의 빛을 읽어야 한다
+        const ex = (x1 - x0) * 0.35, ey = (y1 - y0) * 0.35;
+        const rx0 = Math.max(0, x0 - ex), rx1 = Math.min(1, x1 + ex);
+        const ry0 = Math.max(0, y0 - ey), ry1 = Math.min(1, y1 + ey);
+        const N = 7;   // 7×7 이면 벽 무늬는 평균으로 사라지고 넓은 낙차만 남는다
+        const c = document.createElement('canvas');
+        c.width = N; c.height = N;
+        const cx = c.getContext('2d', { willReadFrequently: true });
+        cx.drawImage(scene.img, rx0 * iw, ry0 * ih, (rx1 - rx0) * iw, (ry1 - ry0) * ih, 0, 0, N, N);
+        const d = cx.getImageData(0, 0, N, N).data;
+        let mean = 0, gx = 0, gy = 0, ss = 0;
+        const L = [];
+        for (let i = 0; i < N * N; i++) {
+          L.push((d[i * 4] * 0.2126 + d[i * 4 + 1] * 0.7152 + d[i * 4 + 2] * 0.0722) / 255);
+          mean += L[i];
+        }
+        mean /= N * N;
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const u = x - (N - 1) / 2, v = y - (N - 1) / 2;
+          gx += u * L[y * N + x]; gy += v * L[y * N + x]; ss += u * u;
+        }
+        gx /= ss; gy /= ss;
+        wallLum = mean;
+        grad = Math.hypot(gx, gy) * (N - 1) * 255;      // 영역 전체에 걸친 밝기 낙차(레벨)
+        measured = true;
+      } catch (e) { /* taint 등 — 신뢰도 0 으로 남는다(= 보수적) */ }
+    }
+    // 낙차 4 미만은 측정 잡음이다(실측: 흰 벽돌 0.0 · 콘크리트 1.8). 22 위면 확실하다.
+    conf = Math.max(0, Math.min(1, (grad - 4) / 18));
+    // ⚠️ **가로 성분을 0 까지 죽이지 말 것 — 완벽한 좌우 대칭 자체가 CG 신호다.**
+    //   처음엔 `x *= conf` 로 평면 벽 6개를 **정확히 수직광**으로 만들었는데, 그러면
+    //   좌우 살이 한 치도 다르지 않고 캔버스 랩의 양 옆면이 똑같이 어두워진다
+    //   (실측 t07: 왼쪽 옆면 배율 0.91 → 0.79 로 떨어져 세로 검은 띠로 보였다).
+    //   실제 실내 사진에 완전한 수직광은 없다. 모르면 **주장을 약하게** 할 뿐,
+    //   있지도 않은 대칭을 만들지는 않는다 — 40% 를 바닥으로 남긴다(≈수직에서 22°).
+    const x = (raw[0] / rn) * (0.40 + 0.60 * conf);
+    const y = Math.min(-0.35, raw[1] / rn);            // 언제나 위에서 (보편 가정)
+    const m = Math.hypot(x, y) || 1;
+    const lm = { dir: [x / m, y / m], conf, wallLum, grad, measured };
+    if (scene.loaded) scene._lm = lm;
+    return lm;
+  }
+
   // 사진에서 구멍 주변 평균색을 읽어 조명 톤을 추정 (taint 되면 null)
   function sampleTone(img, quad) {
     try {
@@ -975,7 +1050,7 @@
       innerShadow: u.innerShadow != null ? u.innerShadow
         : (scene.innerShadow == null ? 0.22 : scene.innerShadow),
       glass: u.glass == null ? (scene.glass || 0) : u.glass,
-      lightDir: scene.lightDir || [-1, -1],
+      lightDir: sceneLightModel(scene).dir,
       canvasTexture: !!u.canvasTexture,
       backing: !!scene.opening,   // 액자 구멍 안에서만 뒤판을 깐다
     });
@@ -1005,7 +1080,11 @@
     //   읽혀 아무 도움이 안 됐다. FrameIt 의 캔버스랩도 **왼쪽·위** 면이 보인다
     //   (실측: 그쪽 단면 낙차 42~59, 반대쪽은 5~8).
     view: scene.view || [0.58, 0.32], persp: scene.persp });
-    const ld = scene.lightDir || [-1, -1];
+    // ⚠️ **광원은 한 곳에서만 온다** (브리핑 5번: 같은 방·같은 카메라).
+    //    옛 코드는 `scene.lightDir` 을 날것으로 썼는데, 그 값의 절반은 근거 없이 손으로
+    //    적은 `[-1,-1]` 이었다. 신뢰도 모델을 통과시켜 **측정된 만큼만** 방향을 준다.
+    const lm = sceneLightModel(scene);
+    const ld = lm.dir;
     // ⚠️ **그림자 길이는 lightDir 을 어떻게 적었는지에 좌우되면 안 된다.**
     //   scenes.json 은 절반이 `[-1,-1]`(크기 1.414), 절반이 측정값 `[0.78,-0.63]`(크기 1)
     //   이라, 정규화하지 않으면 앞쪽 7개 장면의 그림자가 이유 없이 **41% 더 길었다**.
@@ -1077,6 +1156,20 @@
       //   가까운 쪽 총량도 0.21 → 0.08 로 줄였다 — 이번 라운드의 목표는 효과를 더하는
       //   게 아니라 **덜어내는 것**이다("아무것도 안 한 것처럼 자연스러운가").
       //           [블러(off 대비), 알파, 오프셋 배수, 이름]
+      // ⚠️ **투영(cast)만 장면 광원 신뢰도로 줄인다** (브리핑 "CAST SHADOW: only create if
+      //   scene lighting provides a credible directional source"). 평면 매크로 벽 6개는
+      //   벽 낙차가 0~4.5 라 **방향광의 증거가 없다** — 거기에 또렷한 방향 투영을 그리는 건
+      //   근거 없는 발명이다.
+      //   ⚠️ 다만 **없애지는 않는다.** 벽에 걸린 액자는 어떤 빛에서도 그림자를 만든다 —
+      //     지우면 곧바로 '오려 붙였다'로 되돌아간다(4·7차에서 반복 확인). 방향은 이미
+      //     `sceneLightModel` 이 바로 위로 수렴시켰으므로, 여기서는 **세기만** 눅인다.
+      //   ⚠️ 접지(contact)는 건드리지 않는다 — 벽과 맞닿은 **틈의 폐색**이라 광원과 무관하다.
+      // ⚠️⚠️ **세기까지 줄이는 건 시도했다가 되돌렸다** (2026-09-01). 신뢰도로 투영 알파를
+      //   0.70~1.00 배 했더니 `contact_drop` 이 전 케이스에서 내려갔고(t01 39.9→36.9,
+      //   t07 19.9→17.6 로 밴드 밖) `recover_pct` 도 같이 떨어졌다. **얻는 게 없었다** —
+      //   근거 없는 방향을 그리는 문제는 이미 `sceneLightModel` 이 방향을 바로 위로
+      //   수렴시켜 해결했고, 여기서 세기를 더 깎는 건 '효과를 약하게' 할 뿐 '합성을 줄이는'
+      //   게 아니다. 브리핑의 Pareto 규칙대로 되돌린다. 방향 = 신뢰도, 세기 = 물리.
       const LAYERS = [[0.045, 0.060, 2.20, 'cast'],      // 아주 부드러운 투영
                       [0.012, 0.195, 0.16, 'contact']];  // 접지(짧고 또렷)
       // 디버그: 겹마다 따로도 그려 둔다 — **같은 배열·같은 코드**를 쓰므로 화면과 어긋날 수 없다
@@ -1278,7 +1371,7 @@
 
   global.ArtLookScene = {
     parseSizeCm,
-    supported, warp, buildInsert, composeScene, loadScenes,
+    supported, warp, buildInsert, composeScene, loadScenes, sceneLightModel,
     homographyUnitToQuad, inv3, quadSize, fitScene, mapQuad, placeInRegion,
   };
 })(window);
