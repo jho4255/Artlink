@@ -170,6 +170,7 @@
       <div class="row" id="matRow" style="margin-top:8px;">
         <label>매트</label>
         <div class="toggle" id="matSel" style="flex:1">
+          <button data-mat="0">없음</button>
           <button data-mat="0.05" class="active">좁게</button>
           <button data-mat="0.10">넓게</button>
         </div>
@@ -607,6 +608,8 @@ function shadeBandRamp(ctx,W,H,s,l,t,r,b,d0,d1,f0,f1){
 // 균일 항의 목표 진폭과 안전 상한. 진폭은 '이 방에서 그 변이 받아야 할 밝기',
 // 상한은 '한 번에 이만큼 넘게는 손대지 않는다'(자산이 크게 틀려도 난폭해지지 않게).
 const UNI_AMP=0.11, UNI_CLAMP=0.16;
+// 매트 없이 걸 때 안쪽 사면이 앞면 대비 도달해야 할 밝기(1.0 이면 앞면과 같다)
+const LIP_TARGET=0.85;
 // 안쪽 사면의 **사방 공통** 폐색 깊이(그 자리 밝기 대비). 방향 성분은 자산에 이미 있다.
 // ⚠️ **램프를 넓혀 지표를 맞추려 하지 말 것.** 0.74→0.58 로 넓히면 `rebate_ratio` 는
 //   올라가지만(t05 0.22→0.26) `gap_pct` 가 64→69 로 밴드를 벗어난다 — 그건 곧
@@ -678,7 +681,18 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   //      그 반사광이 사면을 들어 올렸기 때문이다(실측: 변별 rebate_ratio 위 0.46~0.59 ↔
   //      아래 0.00~0.10, 골든은 네 변 0.63~0.89 인 경우도 있다). 실물은 작품이 뒤로
   //      물러나 있어 **어느 변에서든** 사면이 앞면보다 어둡다. 그래서 P 와 무관하게 건다.
-  const RB=o.rebateBase==null?(1-REBATE_AMBIENT*SYN_EDGE):o.rebateBase;
+  // ⚠️⚠️ **매트가 없으면 안쪽 사면이 작품과 직접 맞닿는다** (2026-09-01 '없음' 복원).
+  //    자산의 밝은 립(검정 2.22배 … 화이트 1.28배)이 그대로 **흰 테두리**가 된다.
+  //    브리핑 NO-MAT SAFETY: "비어 보인다고 매트 같은 테두리를 넣지 말 것 — rabbet
+  //    depth · inner occlusion · frame geometry 를 먼저 보라." 그래서 테두리를 **더하지
+  //    않고**, 물리적으로 없어야 할 밝기를 **덜어낸다**.
+  //    목표: 파인 사면은 노출된 앞면보다 **밝을 수 없다**(정반사가 아닌 한). 앞면의
+  //    LIP_TARGET(85%) 수준으로 내린다 — 상쇄지 추가가 아니라서, 립이 이미 어두운
+  //    자산(lip≤1)에는 **아무 일도 일어나지 않는다**.
+  let ambient=REBATE_AMBIENT*SYN_EDGE;
+  if(o.noMat && A.lip>1.02 && SYN_EDGE>0)
+    ambient=Math.max(ambient, Math.min(0.65, 1-LIP_TARGET/A.lip));
+  const RB=o.rebateBase==null?(1-ambient):o.rebateBase;
   // ── 살 한 변을 **폴리곤 하나 + 다중 스톱 그라디언트 한 쌍**으로 칠한다 ──────────
   // ⚠️⚠️ **맞닿은 밴드를 여러 개 그리지 말 것.** canvas 는 폴리곤 가장자리를 안티에일리어싱
   //   하므로 공유 경계 픽셀을 양쪽이 **절반씩** 덮는다. 곱연산에서 절반 알파를 두 번 거는
@@ -724,7 +738,10 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
       //   1.0 에서 되올라오므로 '띠'가 아니라 두 면이 만나는 **이음매**로 읽힌다.
       [FACE_FRONT+e,    Math.min(1, rb*(1+0.30*P))],
       [0.92,            rb],                 // 가장 깊은 골 — 좁고 **얕게**
-      [1,               rb*1.12],            // 작품·매트에서 오는 반사광으로 회복
+      // ⚠️ 회복 스톱은 **매트·작품에서 되돌아오는 반사광**을 모델링한 것이다.
+      //   매트가 없으면 그 자리에 (대개 더 어두운) 작품이 있어 돌아올 빛이 거의 없다 —
+      //   그대로 두면 방금 덜어낸 립을 다시 밝혀 놓는다.
+      [1,               rb*(o.noMat?1.0:1.12)],
     ];
     // ── 균일 항 = **잔차(residual)**. 여기가 8차의 핵심이다 ─────────────────────
     // ⚠️ **방향광을 모따기에만 실으면 안 된다.** 모따기를 줄이면 위살↔아래살 밝기차
@@ -1114,7 +1131,7 @@ function drawTextureSide(ctx,W,H,b,s,c,ld){
   ctx.restore();
 }
 
-function drawFloaterTray(ctx,W,H,b,g,back,ld){
+function drawFloaterTray(ctx,W,H,b,g,back,ld,innerOcc){
   if(g<=0) return;
   const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1;
   for(let s=0;s<4;s++){
@@ -1162,6 +1179,13 @@ function drawFloaterTray(ctx,W,H,b,g,back,ld){
     ctx.restore();
   }
   // 갭 안쪽 끝(작품이 얹히는 자리)의 폐색 — **선이 아니라 좁은 그라디언트**로.
+  // ⚠️⚠️ **매트가 없으면 그리지 말 것.** 매트가 있으면 이 폐색은 트레이↔매트 이음매에
+  //   앉고 작품의 접지 그림자는 매트 위 작품 경계에 앉아 **서로 떨어져** 있다. 매트를 빼면
+  //   `ax = border+gap` 이라 둘이 **같은 자리에 겹쳐** 작품 둘레에 검은 선이 된다
+  //   (실측 nomat.py: 샴페인 플로터 10.3 → 19.5 · 아이보리 박스 14.6 → 23.5).
+  //   브리핑 ANTI-COMPOUNDING — 같은 깊이 신호를 두 겹으로 쌓지 않는다. 작품이 보드 위에
+  //   떠 있다는 신호는 바로 아래에서 그리는 **접지 그림자**가 이미 만든다.
+  if(innerOcc===false) return;
   const k=Math.max(1.5,g*.34);
   for(let s=0;s<4;s++){
     const q=b+g;
@@ -1246,7 +1270,7 @@ let PHOTO_META = null;
 //
 // 그래서 여기서 한 번 재서, 렌더는 **모자란 만큼만** 채운다(`shadeFrameProfile`).
 const PHOTO_LIGHT = {};
-const ASSET_NEUTRAL = { tb:0, lr:0, modeled:0, ok:false };
+const ASSET_NEUTRAL = { tb:0, lr:0, modeled:0, lip:1, ok:false };
 function measureAssetLight(im, meta){
   try{
     const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
@@ -1269,16 +1293,32 @@ function measureAssetLight(im, meta){
     const left=mean(0,cy0,ix,cy1), right=mean(ix2+1,cy0,W,cy1);
     if(![top,bot,left,right].every(v=>isFinite(v)&&v>1)) return ASSET_NEUTRAL;
     const base=(top+bot+left+right)/4;
-    // 살을 가로지르는 프로파일 낙차 — 자산에 **이미 몰딩 단면이 찍혀 있는가**
-    let mn=Infinity, mx=-Infinity;
+    // 살을 가로지르는 프로파일 — 자산에 **이미 몰딩 단면이 찍혀 있는가**, 그리고
+    // **안쪽 립이 앞면보다 얼마나 밝은가**(매트 없이 걸 때 결정적이다. 아래 lip 주석)
+    let mn=Infinity, mx=-Infinity, plateau=0, pn=0, lipMax=0;
     for(let yy=0;yy<iy;yy++){ const v=mean(cx0,yy,cx1,yy+1);
-      if(isFinite(v)){ if(v<mn) mn=v; if(v>mx) mx=v; } }
+      if(!isFinite(v)) continue;
+      if(v<mn) mn=v; if(v>mx) mx=v;
+      const d=yy/Math.max(1,iy-1);              // 0 = 바깥, 1 = 작품 쪽
+      if(d<=0.45){ plateau+=v; pn++; }          // 앞면 평탄부
+      if(d>=0.86 && v>lipMax) lipMax=v;         // 안쪽 립(개구부 직전)
+    }
     const span=(isFinite(mn)&&mx>mn)? (mx-mn)/base : 0;
+    // ⚠️⚠️ **안쪽 립은 매트가 있을 때만 안전하다.** 자산 5종 전부 개구부 직전이 앞면보다
+    //   밝다 — 실측 배수: 검정 2.22 · 월넛 1.81 · 오크 1.50 · 골드 1.40 · 화이트 1.28.
+    //   매트가 있으면 그 립이 **밝은 매트 옆**이라 연속으로 이어져 안 보인다. 매트를 빼면
+    //   **어두운 작품에 직접** 닿아 [액자 → 흰 테두리 → 작품] 이 된다(사용자가 든 실패 조건).
+    //   실측(nomat.py, 흰 벽돌): 작품 경계 임펄스가 매트 0.05 에서 12~16 인데 매트 없음에선
+    //   **18.8~40.2** 로 뛴다.
+    //   왜 밝은가: 자산을 찍을 때 개구부에 **밝은 회색판**을 대서 그 반사광이 사면을 들었다.
+    //   실물에서 그 자리에는 작품(대개 더 어둡다)이 있으므로 그 바운스가 없다 —
+    //   즉 립이 밝은 건 **촬영 세팅의 흔적**이지 그 액자의 성질이 아니다.
+    const lip = (pn && plateau/pn > 1) ? lipMax/(plateau/pn) : 1;
     return { tb:(top-bot)/base, lr:(left-right)/base,
              // 0.45(=살 평균의 45% 낙차)면 '충분히 모델링된 몰딩'으로 본다.
              // 실측 5종 전부 0.64~2.17 이라 1 로 포화한다 = 우리는 단면을 안 그린다.
              modeled: Math.max(0, Math.min(1, span/0.45)),
-             span, base, ok:true };
+             lip, span, base, ok:true };
   }catch(e){ return ASSET_NEUTRAL; }
 }
 function assetLightOf(style){
@@ -1442,7 +1482,10 @@ function buildFramedCore(img, style, o){
   //    직접 읽고 절차적 분기는 따로 계산해서, 규칙을 바꾸면 **한쪽만 바뀌었다**
   //    (매트 필수로 만들었는데 사진 액자 5종에서만 안 나왔다).
   //    매트는 필수다(2026-08-31 요청) — 캔버스 랩만 예외(액자가 없어 받칠 것이 없다).
-  const matFrac = (style.kind==='canvas') ? 0 : Math.max(o.matWidth||0, 0.05);
+  // ⚠️ **하한(0.05)은 없앴다** (2026-09-01 요청 — 44e 의 '매트 필수'를 되돌린다).
+  //    '없음'이 다시 선택지가 됐다. 여전히 **한 곳에서만** 정한다(그게 44e 의 핵심이었다).
+  //    캔버스 랩은 여전히 0 고정 — 액자가 없어 매트를 물리적으로 받칠 것이 없다.
+  const matFrac = (style.kind==='canvas') ? 0 : Math.max(0, o.matWidth||0);
 
   // --- 사진 액자 (실사 이미지 9-slice) ---
   // 절차적 액자와 달리 **액자 픽셀이 사진**이라 미세 질감·마이터가 그대로 산다.
@@ -1487,7 +1530,7 @@ function buildFramedCore(img, style, o){
       drawNineSlice(fc.getContext('2d'),im,meta,0,0,W,H,kx);
       ctx.drawImage(fc,0,0);
       // 살에 방향광 — 자산에 **없는 만큼만**. 자산 실측치를 넘겨 잔차로 계산한다.
-      shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc});
+      shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc, noMat:matPx<=0});
       // 리베이트 — 액자(·매트)가 작품에 드리우는 그림자. 작품이 **뒤로 들어가 있다**는 신호는
       // 이것 하나뿐이다. 빛을 향한 변이 진하고 반대편은 옅다(예전엔 사방 동일 + 너무 옅었다).
       rebateShadow(ctx,ax,ay,aw,ah,base,ld);
@@ -1580,7 +1623,7 @@ function buildFramedCore(img, style, o){
       shadeMatSurface(ctx,q,q,W-2*q,H-2*q,ld);
       frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(3,mat*.20), ld);
     }
-    drawFloaterTray(ctx,W,H,border,gap,matC.back,ld);
+    drawFloaterTray(ctx,W,H,border,gap,matC.back,ld, mat>0);
   } else if(mat>0){
     // 사진 액자와 **같은 매트 처리**를 쓴다 — 여기만 옛 방식으로 두면 절차적 액자에서만
     // 매트가 색면으로 남는다(실측 그레인 0.93 vs 사진 액자 7.4).
@@ -2499,7 +2542,7 @@ document.querySelectorAll('#matSel button').forEach(b=>{
     document.querySelectorAll('#matSel button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     state.matWidth=parseFloat(b.dataset.mat)||0;
-    // 매트는 필수라 색 선택도 늘 열려 있다 (캔버스 랩만 updateMatRow 가 접는다)
+    updateMatRow();   // '없음'이면 매트 색 줄은 고를 게 없다 — 접는다
     render();
   };
 });
@@ -2518,7 +2561,10 @@ function updateMatRow(){
   row.style.opacity = on ? '1' : '.42';
   row.style.pointerEvents = on ? 'auto' : 'none';
   hint.style.display = on ? 'none' : 'block';
-  document.getElementById('matColorRow').style.display = on ? 'flex':'none';
+  // 매트 색은 **매트가 있을 때만** 뜻이 있다 — '없음'에서 색을 고르게 두면 아무 일도
+  // 안 일어나는 컨트롤이 되어 고장으로 보인다(44e 가 반대 방향으로 지적한 것과 같은 문제).
+  document.getElementById('matColorRow').style.display =
+    (on && (state.matWidth||0) > 0) ? 'flex' : 'none';
 }
 
 // 판매 작품 목록 (운영페이지에서 localStorage로 전달: [{url,title,artist,exhibition}])

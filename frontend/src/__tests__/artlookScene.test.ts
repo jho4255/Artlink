@@ -291,20 +291,48 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
     for (const n of names) expect(n, `액자 이름 "${n}"`).not.toMatch(/\(사진\)/);
   });
 
-  it('매트는 필수다 — 캔버스 랩만 예외 (2026-08-31 요청)', () => {
+  it('매트는 없음/좁게/넓게 — 캔버스 랩만 예외 (2026-09-01, 44e 의 필수화를 되돌림)', () => {
     expect(html).toMatch(/const on\s*=\s*k\s*!==\s*'canvas'/);
-    // 비율은 **한 곳에서만** 정한다. 예전엔 사진 액자 분기가 `o.matWidth` 를 따로 읽어서,
-    // 매트를 필수로 만들었는데 **사진 액자 5종에서만 안 나왔다**(오크·블랙·화이트·월넛·골드).
+    // ⚠️ 44e 의 **진짜 값**은 '필수'가 아니라 **한 곳에서만 정한다**였다. 예전엔 사진 액자
+    //    분기가 `o.matWidth` 를 따로 읽어서, 규칙을 바꾸면 한쪽만 바뀌었다(사진 액자 5종에서만
+    //    매트가 안 나왔다). '없음'을 되살려도 그 구조는 그대로 지킨다.
     const m = html.match(/const matFrac = [^;]+;/);
     expect(m, 'matFrac 계산부').toBeTruthy();
     expect(m![0]).toContain("'canvas'");
-    expect(m![0]).toMatch(/Math\.max\(o\.matWidth\|\|0,\s*0\.05\)/);
+    expect(m![0]).toMatch(/Math\.max\(0,\s*o\.matWidth\|\|0\)/);
     expect(html).not.toMatch(/const matPx = Math\.round\(\(o\.matWidth\|\|0\)\*base\)/);
-    // 화면에서도 '없음'은 없다 — 좁게/넓게 둘뿐
     const sel = html.slice(html.indexOf('id="matSel"'), html.indexOf('id="matHint"'));
-    expect(sel).not.toContain('data-mat="0"');
-    expect(sel).toContain('좁게');
-    expect(sel).toContain('넓게');
+    for (const t of ['없음', '좁게', '넓게']) expect(sel, t).toContain(t);
+    expect(sel).toContain('data-mat="0"');
+  });
+
+  it('NO-MAT SAFETY — 매트가 없으면 자산의 밝은 립을 상쇄한다 (테두리를 더하지 않는다)', () => {
+    // ⚠️ 매트가 있으면 자산의 밝은 안쪽 립이 **밝은 매트 옆**이라 안 보인다. 매트를 빼면
+    //    어두운 작품에 직접 닿아 [액자 → 흰 테두리 → 작품] 이 된다(사용자가 든 실패 조건).
+    //    실측 립 배수: 검정 2.74 · 월넛 2.72. 매트 없음에서 경계 임펄스 40.2 / 38.1 이었다.
+    //    브리핑 NO-MAT SAFETY 대로 **테두리를 더하지 않고**, 물리적으로 없어야 할 밝기를 던다.
+    expect(html).toMatch(/const LIP_TARGET=0\.85/);
+    expect(html).toMatch(/if\(o\.noMat && A\.lip>1\.02/);
+    // 립이 이미 어두운 자산(lip≤1)에는 **아무 일도 일어나지 않아야** 한다 —
+    // 무조건 걸면 오크·화이트·골드(lip 0.74~0.94)의 사면을 근거 없이 어둡게 만든다.
+    expect(html).toMatch(/ambient=Math\.max\(ambient, Math\.min\(0\.65, 1-LIP_TARGET\/A\.lip\)\)/);
+    // 반사광 회복 스톱은 매트가 없으면 꺼야 한다 — 방금 덜어낸 립을 다시 밝힌다
+    expect(html).toMatch(/rb\*\(o\.noMat\?1\.0:1\.12\)/);
+    // 호출부가 실제로 알려 줘야 한다
+    expect(html).toMatch(/noMat:matPx<=0/);
+  });
+
+  it('NO-MAT SAFETY — 플로터는 트레이 폐색과 접지 그림자를 겹치지 않는다', () => {
+    // 매트가 있으면 트레이 폐색은 트레이↔매트 이음매, 접지 그림자는 작품 경계 — 떨어져 있다.
+    // 매트를 빼면 `ax = border+gap` 이라 **같은 자리에 겹쳐** 검은 선이 된다
+    // (실측: 샴페인 플로터 10.3 → 19.5 · 아이보리 박스 14.6 → 23.5).
+    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,back,ld,innerOcc\)/);
+    expect(html).toMatch(/if\(innerOcc===false\) return;/);
+    expect(html).toMatch(/drawFloaterTray\(ctx,W,H,border,gap,matC\.back,ld, mat>0\)/);
+  });
+
+  it('매트 색은 매트가 있을 때만 뜬다 — 아무 일도 안 하는 컨트롤을 남기지 않는다', () => {
+    expect(html).toMatch(/\(on && \(state\.matWidth\|\|0\) > 0\) \? 'flex' : 'none'/);
   });
 
   it('조명은 종류 선택 없이 강도 0~100 하나로만 조절한다', () => {
@@ -396,7 +424,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
 
   it('광원 방향을 손으로 적은 자리가 없다 (같은 방 · 같은 카메라)', () => {
     expect(html).not.toMatch(/const light=\[\.16,\.02,-\.14,\.08\]\[s\]/);   // 플로터 트레이
-    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,back,ld\)/);
+    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,back,ld,innerOcc\)/);
     expect(html).toMatch(/function drawFrameMiters\(ctx,W,H,b,c,ld\)/);
     // 절차적 액자도 사진 액자와 **같은** 리베이트 함수를 쓴다
     expect(html).toMatch(/rebateShadow\(ctx,ax,ay,aw,ah,base,ld\);/);
@@ -522,7 +550,8 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
     expect(html).toMatch(/const AO=.*\*P;/);
     expect(html).toMatch(/const AR=.*\*P;/);
     // ⚠️ 폐색(사방 공통)은 자산에 **없다** — P 를 곱하면 빛 받는 변에서 사면이 사라진다
-    expect(html).toMatch(/const RB=o\.rebateBase==null\?\(1-REBATE_AMBIENT\*SYN_EDGE\)/);
+    expect(html).toMatch(/let ambient=REBATE_AMBIENT\*SYN_EDGE;/);
+    expect(html).toMatch(/const RB=o\.rebateBase==null\?\(1-ambient\)/);
     expect(html).not.toMatch(/REBATE_AMBIENT\*SYN_EDGE\*P/);
   });
 
