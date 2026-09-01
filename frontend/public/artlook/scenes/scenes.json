@@ -70,7 +70,8 @@
    "toneAmt": 0.14,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.52
+   "wallCalm": 0.52,
+   "group": "space"
   },
   {
    "id": "boutique",
@@ -114,7 +115,8 @@
    "toneAmt": 0.11,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.26
+   "wallCalm": 0.26,
+   "group": "space"
   },
   {
    "id": "collector-salon",
@@ -158,7 +160,8 @@
    "toneAmt": 0.18,
    "exposure": 0.96,
    "depth": 0.03,
-   "wallCalm": 0.2
+   "wallCalm": 0.2,
+   "group": "space"
   },
   {
    "id": "gallery-living",
@@ -202,7 +205,8 @@
    "toneAmt": 0.14,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.15
+   "wallCalm": 0.15,
+   "group": "space"
   },
   {
    "id": "white-cube",
@@ -246,7 +250,8 @@
    "toneAmt": 0.09,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.17
+   "wallCalm": 0.17,
+   "group": "space"
   },
   {
    "id": "collector-home",
@@ -290,7 +295,8 @@
    "toneAmt": 0.11,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.38
+   "wallCalm": 0.38,
+   "group": "space"
   },
   {
    "id": "hotel-lounge",
@@ -334,7 +340,54 @@
    "toneAmt": 0.14,
    "exposure": 0.98,
    "depth": 0.03,
-   "wallCalm": 0.33
+   "wallCalm": 0.33,
+   "group": "space"
+  },
+  {
+   "id": "quiet-study",
+   "name": "콰이어트 스터디",
+   "group": "space",
+   "src": "walls/wall18-quiet-study.jpg",
+   "maxLong": 0.49,
+   "frameless": true,
+   "region": [
+    [
+     0.24,
+     0.04
+    ],
+    [
+     0.72,
+     0.04
+    ],
+    [
+     0.72,
+     0.38
+    ],
+    [
+     0.24,
+     0.38
+    ]
+   ],
+   "regionAspect": 1.6244,
+   "regionCm": [
+    146,
+    90
+   ],
+   "focus": [
+    0.48,
+    0.21
+   ],
+   "lightDir": [
+    0.5,
+    -0.87
+   ],
+   "shadow": 1.1,
+   "wallAmt": 0.4,
+   "toneAmt": 0.16,
+   "exposure": 0.97,
+   "depth": 0.03,
+   "wallCalm": 0.0,
+   "_note": "원본이 382px 짜리 매우 매끈한 렌더라 벽에 결이 거의 없다(고주파 std 0.84 → 렌더에서 0.44, 목표 밴드 2.5~4.5). 흐릴 것이 없으므로 wallCalm=0. 다른 장면보다 배경이 평평하게 읽힌다 — 더 큰 원본이 생기면 교체할 것."
   },
   {
    "id": "concrete",
@@ -377,7 +430,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.39
+   "wallCalm": 0.39,
+   "group": "wall"
   },
   {
    "id": "travertine",
@@ -420,7 +474,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.73
+   "wallCalm": 0.73,
+   "group": "wall"
   },
   {
    "id": "cream-stone",
@@ -463,7 +518,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.67
+   "wallCalm": 0.67,
+   "group": "wall"
   },
   {
    "id": "white-brick",
@@ -505,7 +561,8 @@
    "wallAmt": 0.3,
    "toneAmt": 0.1,
    "exposure": 1.0,
-   "depth": 0.03
+   "depth": 0.03,
+   "group": "wall"
   },
   {
    "id": "beige-plaster",
@@ -548,7 +605,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.79
+   "wallCalm": 0.79,
+   "group": "wall"
   },
   {
    "id": "warm-concrete",
@@ -591,7 +649,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.67
+   "wallCalm": 0.67,
+   "group": "wall"
   },
   {
    "id": "taupe-plaster",
@@ -634,7 +693,8 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.72
+   "wallCalm": 0.72,
+   "group": "wall"
   },
   {
    "id": "sand",
@@ -677,7 +737,98 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03,
-   "wallCalm": 0.66
+   "wallCalm": 0.66,
+   "group": "wall"
+  },
+  {
+   "id": "linen-living",
+   "name": "리넨 리빙",
+   "group": "space",
+   "src": "walls/wall19-linen-living.jpg",
+   "maxLong": 0.49,
+   "frameless": true,
+   "region": [
+    [
+     0.42,
+     0.08
+    ],
+    [
+     0.84,
+     0.08
+    ],
+    [
+     0.84,
+     0.58
+    ],
+    [
+     0.42,
+     0.58
+    ]
+   ],
+   "regionAspect": 0.9639,
+   "regionCm": [
+    149,
+    154
+   ],
+   "focus": [
+    0.63,
+    0.33
+   ],
+   "lightDir": [
+    -0.55,
+    -0.84
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.32,
+   "toneAmt": 0.12,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.1
+  },
+  {
+   "id": "clay-salon",
+   "name": "클레이 살롱",
+   "group": "space",
+   "src": "walls/wall20-clay-salon.jpg",
+   "maxLong": 0.49,
+   "frameless": true,
+   "region": [
+    [
+     0.24,
+     0.06
+    ],
+    [
+     0.78,
+     0.06
+    ],
+    [
+     0.78,
+     0.6
+    ],
+    [
+     0.24,
+     0.6
+    ]
+   ],
+   "regionAspect": 1.1506,
+   "regionCm": [
+    190,
+    165
+   ],
+   "focus": [
+    0.51,
+    0.33
+   ],
+   "lightDir": [
+    -0.75,
+    -0.66
+   ],
+   "shadow": 1.1,
+   "wallAmt": 0.38,
+   "toneAmt": 0.15,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.0
   }
  ]
 }

@@ -81,9 +81,18 @@ def _side_stats(p, i0, rail_px, art_px):
         sg = np.sign(g)
         turns = int(np.sum(sg[1:] * sg[:-1] < 0))
     wall = float(np.median(p[:max(1, i0 - 1)])) if i0 >= 3 else float(p[0])
+    # ⚠️ **살 전체 span 과 앞면 span 을 구분할 것.** `rail_span` 은 `rail_px` 가 가리키는
+    #   구간 전체(바깥 모따기 ~ 안쪽 사면)를 본다. 그런데 골든은 `golden.py` 가 살 두께를
+    #   **앞면만**(case_00: rail 16 / gap 36) 손으로 재서 넣으므로 리베이트가 안 들어간다.
+    #   우리 렌더의 `railPx` 는 사진 액자에서 리베이트를 **포함**한다 — 즉 둘은 애초에
+    #   다른 구간을 재고 있었다(우리 값이 늘 골든의 1.7배였던 이유).
+    #   `face_span` 은 리베이트 밴드 앞까지만 본다 = 액자 **재질**이 있는 자리.
+    #   "합성이 원본 사진을 덮어쓰는가"(syncheck)는 여기서 물어야 한다.
+    face = p[s:b0] if b0 - s >= 3 else rail
     return {'wall': round(wall, 1), 'rail': round(plateau, 1),
             'rail_std': round(float(np.std(rail)), 2),
             'rail_span': round(float(rail.max() - rail.min()), 1),
+            'face_span': round(float(face.max() - face.min()), 1),
             'rail_turns': turns, 'rebate_drop': round(rebate, 1),
             'rebate_ratio': round(ratio, 3),
             'keyline_spike': round(spike, 1)}
@@ -162,6 +171,7 @@ def analyse(src, rect, art, rail_px):
            'keyline_spike': round(max(v['keyline_spike'] for v in per.values()), 1),
            'rail_std': round(float(np.mean([v['rail_std'] for v in per.values()])), 2),
            'rail_span': round(float(np.mean([v['rail_span'] for v in per.values()])), 1),
+           'face_span': round(float(np.mean([v['face_span'] for v in per.values()])), 1),
            'rail_turns': round(float(np.mean([v['rail_turns'] for v in per.values()])), 1),
            'rebate_drop': round(float(np.mean([v['rebate_drop'] for v in per.values()])), 1),
            'rebate_ratio': round(float(np.mean([v['rebate_ratio'] for v in per.values()])), 3),

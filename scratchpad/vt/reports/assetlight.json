@@ -1,0 +1,542 @@
+[
+ {
+  "name": "오크",
+  "kind": "photo",
+  "ld": "좌상",
+  "baked": -16,
+  "total": 18.9,
+  "add": 34.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "오크",
+  "kind": "photo",
+  "ld": "우상",
+  "baked": -16,
+  "total": 7.2,
+  "add": 23.2,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "오크",
+  "kind": "photo",
+  "ld": "좌상수평",
+  "baked": -16,
+  "total": 11.1,
+  "add": 27.2,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "블랙",
+  "kind": "photo",
+  "ld": "좌상",
+  "baked": 28.1,
+  "total": 28.1,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "블랙",
+  "kind": "photo",
+  "ld": "우상",
+  "baked": 28.1,
+  "total": 28.1,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "블랙",
+  "kind": "photo",
+  "ld": "좌상수평",
+  "baked": 28.1,
+  "total": 28.1,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "화이트",
+  "kind": "photo",
+  "ld": "좌상",
+  "baked": -41.2,
+  "total": 8.1,
+  "add": 49.3,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "화이트",
+  "kind": "photo",
+  "ld": "우상",
+  "baked": -41.2,
+  "total": -2.2,
+  "add": 38.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "화이트",
+  "kind": "photo",
+  "ld": "좌상수평",
+  "baked": -41.2,
+  "total": -0.3,
+  "add": 40.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "월넛",
+  "kind": "photo",
+  "ld": "좌상",
+  "baked": 19.8,
+  "total": 19.8,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "월넛",
+  "kind": "photo",
+  "ld": "우상",
+  "baked": 19.8,
+  "total": 19.8,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "월넛",
+  "kind": "photo",
+  "ld": "좌상수평",
+  "baked": 19.8,
+  "total": 19.8,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "골드",
+  "kind": "photo",
+  "ld": "좌상",
+  "baked": 15.1,
+  "total": 22.3,
+  "add": 7.2,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "골드",
+  "kind": "photo",
+  "ld": "우상",
+  "baked": 15.1,
+  "total": 15.1,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "골드",
+  "kind": "photo",
+  "ld": "좌상수평",
+  "baked": 15.1,
+  "total": 15.1,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "샴페인 플로터",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -15.5,
+  "total": -9,
+  "add": 6.4,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "샴페인 플로터",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -7,
+  "total": -3.8,
+  "add": 3.1,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "샴페인 플로터",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -9.6,
+  "total": -5.5,
+  "add": 4.1,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "오크 플로터",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -13.4,
+  "total": -4.8,
+  "add": 8.5,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "오크 플로터",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -6.1,
+  "total": -1.7,
+  "add": 4.4,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "오크 플로터",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -8.3,
+  "total": -2.7,
+  "add": 5.6,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "월넛 플로터",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -12.4,
+  "total": -5.6,
+  "add": 6.8,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "월넛 플로터",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -5.7,
+  "total": -2.3,
+  "add": 3.4,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "월넛 플로터",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -7.7,
+  "total": -3.4,
+  "add": 4.2,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "블랙 플로터",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -14.5,
+  "total": -8.2,
+  "add": 6.2,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "블랙 플로터",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -6.6,
+  "total": -3.5,
+  "add": 3.1,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "블랙 플로터",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -9,
+  "total": -5,
+  "add": 3.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "실버 플로터",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -14.8,
+  "total": -7.5,
+  "add": 7.3,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "실버 플로터",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -6.8,
+  "total": -3.2,
+  "add": 3.5,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "실버 플로터",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -9.3,
+  "total": -4.6,
+  "add": 4.7,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "아이보리 박스",
+  "kind": "floater",
+  "ld": "좌상",
+  "baked": -14.8,
+  "total": -7,
+  "add": 7.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "아이보리 박스",
+  "kind": "floater",
+  "ld": "우상",
+  "baked": -7,
+  "total": -3.1,
+  "add": 3.9,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "아이보리 박스",
+  "kind": "floater",
+  "ld": "좌상수평",
+  "baked": -9.5,
+  "total": -4.3,
+  "add": 5.1,
+  "fight": true,
+  "dup": false
+ },
+ {
+  "name": "샴페인 슬림",
+  "kind": "flat",
+  "ld": "좌상",
+  "baked": 0,
+  "total": 11.6,
+  "add": 11.6,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "샴페인 슬림",
+  "kind": "flat",
+  "ld": "우상",
+  "baked": 0,
+  "total": 5.7,
+  "add": 5.7,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "샴페인 슬림",
+  "kind": "flat",
+  "ld": "좌상수평",
+  "baked": 0,
+  "total": 7.3,
+  "add": 7.4,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "오크 슬림",
+  "kind": "flat",
+  "ld": "좌상",
+  "baked": 0,
+  "total": 10.8,
+  "add": 10.8,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "오크 슬림",
+  "kind": "flat",
+  "ld": "우상",
+  "baked": -0.1,
+  "total": 5.4,
+  "add": 5.5,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "오크 슬림",
+  "kind": "flat",
+  "ld": "좌상수평",
+  "baked": 0,
+  "total": 7,
+  "add": 7.1,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "월넛 슬림",
+  "kind": "flat",
+  "ld": "좌상",
+  "baked": 0,
+  "total": 8.7,
+  "add": 8.6,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "월넛 슬림",
+  "kind": "flat",
+  "ld": "우상",
+  "baked": 0,
+  "total": 4.3,
+  "add": 4.3,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "월넛 슬림",
+  "kind": "flat",
+  "ld": "좌상수평",
+  "baked": 0,
+  "total": 5.5,
+  "add": 5.4,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "블랙 슬림",
+  "kind": "flat",
+  "ld": "좌상",
+  "baked": 0.1,
+  "total": 9.2,
+  "add": 9.2,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "블랙 슬림",
+  "kind": "flat",
+  "ld": "우상",
+  "baked": 0,
+  "total": 4.6,
+  "add": 4.6,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "블랙 슬림",
+  "kind": "flat",
+  "ld": "좌상수평",
+  "baked": 0,
+  "total": 5.9,
+  "add": 5.8,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "실버 슬림",
+  "kind": "flat",
+  "ld": "좌상",
+  "baked": 0,
+  "total": 10.8,
+  "add": 10.9,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "실버 슬림",
+  "kind": "flat",
+  "ld": "우상",
+  "baked": -0.1,
+  "total": 5.4,
+  "add": 5.5,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "실버 슬림",
+  "kind": "flat",
+  "ld": "좌상수평",
+  "baked": -0.1,
+  "total": 7,
+  "add": 7.1,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "화이트 매트",
+  "kind": "mat",
+  "ld": "좌상",
+  "baked": 0.1,
+  "total": 14.4,
+  "add": 14.3,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "화이트 매트",
+  "kind": "mat",
+  "ld": "우상",
+  "baked": 0.1,
+  "total": 7.1,
+  "add": 7,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "화이트 매트",
+  "kind": "mat",
+  "ld": "좌상수평",
+  "baked": 0.1,
+  "total": 9.4,
+  "add": 9.3,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "캔버스 랩",
+  "kind": "canvas",
+  "ld": "좌상",
+  "baked": -60,
+  "total": -60,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "캔버스 랩",
+  "kind": "canvas",
+  "ld": "우상",
+  "baked": -90,
+  "total": -90,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ },
+ {
+  "name": "캔버스 랩",
+  "kind": "canvas",
+  "ld": "좌상수평",
+  "baked": -81.9,
+  "total": -81.9,
+  "add": 0,
+  "fight": false,
+  "dup": false
+ }
+]

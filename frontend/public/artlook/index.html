@@ -211,6 +211,16 @@
         </div>
       </div>
       <div class="walls" id="walls"></div>
+      <!-- 배경은 성격이 둘로 갈린다 — **평면 벽 매크로 사진**(정면·크게 찍은 벽면)과
+           **실내 공간 사진**(방 전체가 보인다). 고르는 기준이 다르고 결과 인상도 다르므로
+           한 줄에 16개를 늘어놓지 않고 탭으로 나눈다. 실내는 `maxLong` 이 걸려 있어
+           같은 비율로 걸어도 훨씬 작게 나온다(44c) — 섞어 두면 크기가 들쭉날쭉해 보인다. -->
+      <div class="row" id="sceneGroupRow" style="display:none;">
+        <div class="toggle" id="sceneGroup" style="flex:1">
+          <button data-sg="wall">벽</button>
+          <button data-sg="space">공간</button>
+        </div>
+      </div>
       <div class="walls" id="scenes" style="display:none;"></div>
       <div class="hint" id="sceneNote" style="display:none;margin-top:6px;"></div>
       <div class="hint" id="wallHint" style="margin-top:6px;">💡 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
@@ -608,8 +618,26 @@ function shadeBandRamp(ctx,W,H,s,l,t,r,b,d0,d1,f0,f1){
 // 균일 항의 목표 진폭과 안전 상한. 진폭은 '이 방에서 그 변이 받아야 할 밝기',
 // 상한은 '한 번에 이만큼 넘게는 손대지 않는다'(자산이 크게 틀려도 난폭해지지 않게).
 const UNI_AMP=0.11, UNI_CLAMP=0.16;
-// 매트 없이 걸 때 안쪽 사면이 앞면 대비 도달해야 할 밝기(1.0 이면 앞면과 같다)
-const LIP_TARGET=0.85;
+// ── 매트 없이 걸 때의 리베이트(안쪽 사면) — **골든 실측 프로파일** ──────────────────
+// 골든 5장(FrameIt, `cases/case_0*/frameit_reference.png` — 재 보니 **전부 매트 없음**)의
+// 살 단면은 한결같다. 앞면(평탄) → 3~5px 에 걸쳐 **깊은 골** → 3~5px 에 걸쳐 **회복** → 작품:
+//     case_00 오크   앞면 164 → 골 37 (0.23) → 회복 80 (0.49)
+//     case_01 금장   앞면 167 → 골 38 (0.23) → 회복 92 (0.55)
+//     case_05 플로터 앞면 163 → 골 35 (0.21) → 회복 103 (0.63)
+//     case_06 플로터 앞면 178 → 골 63 (0.35) → 회복 77 (0.43)
+//     case_09 화이트 앞면 152 → 골 60 (0.40) → 회복 67 (0.44)
+// 우리는 골이 **0.58~0.67**(오크·골드)로 얕고 회복이 **0.83~1.54**(검정)로 높았다.
+// 1.54 는 앞면보다 **밝은** 띠다 — 파인 자리가 노출면보다 밝을 수는 없으므로 물리적으로
+// 불가능하고, 화면에서는 검은 액자와 작품 사이의 **회색 줄**로 읽힌다(사용자가 든 실패 조건).
+// ⚠️ 골이 깊다고 '검은 띠'가 되지 않는 이유는 **좁아서**다 — 골든도 바닥은 1~2px 이고
+//    곧바로 회복한다. 깊이가 아니라 **폭**이 층을 만든다(44f 에서 얻은 교훈).
+// ⚠️ 골든 값 중앙(0.23/0.49)보다 보수적으로 잡았다. 우리 판은 화면까지 한 번 더 축소되므로
+//    같은 숫자를 그대로 쓰면 실제로는 더 진하게 보인다.
+// 골 위치는 **리베이트 구간 안의 비율**로 둔다(절대 d 가 아니라). 절차적 액자는 앞면이
+// 0.80 까지라 구간이 좁은데, 0.90 을 그대로 쓰면 0.85→0.90 사이 1.5px 에 골을 파야 해서
+// 절벽이 된다. 비율로 두면 어느 액자에서나 같은 **모양**이 나온다(사진 액자 0.74+0.26*0.62≈0.90 — 종전과 같다).
+// REB_RISE = 골에서 개구부까지 허용하는 **오름폭**(앞면 대비). 골든 실측 0.01~0.36.
+const REB_TROUGH=0.30, REB_TIP=0.55, REB_TROUGH_U=0.62, REB_N=14, REB_RISE=0.30;
 // 안쪽 사면의 **사방 공통** 폐색 깊이(그 자리 밝기 대비). 방향 성분은 자산에 이미 있다.
 // ⚠️ **램프를 넓혀 지표를 맞추려 하지 말 것.** 0.74→0.58 로 넓히면 `rebate_ratio` 는
 //   올라가지만(t05 0.22→0.26) `gap_pct` 가 64→69 로 밴드를 벗어난다 — 그건 곧
@@ -689,10 +717,22 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   //    목표: 파인 사면은 노출된 앞면보다 **밝을 수 없다**(정반사가 아닌 한). 앞면의
   //    LIP_TARGET(85%) 수준으로 내린다 — 상쇄지 추가가 아니라서, 립이 이미 어두운
   //    자산(lip≤1)에는 **아무 일도 일어나지 않는다**.
-  let ambient=REBATE_AMBIENT*SYN_EDGE;
-  if(o.noMat && A.lip>1.02 && SYN_EDGE>0)
-    ambient=Math.max(ambient, Math.min(0.65, 1-LIP_TARGET/A.lip));
-  const RB=o.rebateBase==null?(1-ambient):o.rebateBase;
+  const RB=o.rebateBase==null?(1-REBATE_AMBIENT*SYN_EDGE):o.rebateBase;
+  // 매트가 없으면 리베이트를 **절대 프로파일**로 그린다(위 REB_* 주석). 매트가 있으면
+  // 그 자리가 밝은 매트에 가려 안 보이므로 종전의 잔차 곡선을 그대로 둔다 —
+  // 브리핑 "MAT AND NO-MAT ARE DIFFERENT PHYSICAL SYSTEMS", 그리고 **매트 쪽은 이미
+  // 합격 판정을 받은 골든**이라 이번 개선으로 건드리지 않는다(NON-REGRESSION CONTRACT).
+  // 절차적 액자(슬림 등)는 면 음영을 `drawTextureSide` 가 이미 그린다 — 여기서는
+  // **리베이트만** 얹는다(중복 음영 = 브리핑 ANTI-COMPOUNDING 위반).
+  const rebOnly = !!o.rebateOnly;
+  const absReb = !!o.noMat && SYN_EDGE>0;
+  // ⚠️ rebateOnly 는 **리베이트를 그리려고** 부르는 것이다. 절대 프로파일이 꺼져 있으면
+  //    (SYN_EDGE=0, 매트 있음) 할 일이 없다 — 예전엔 아래 매트용 분기로 떨어져 안쪽 끝을
+  //    1.12 배 **밝히고** 있었다(합성을 껐는데 밝아지니 차등 측정의 기준선이 거짓이 된다).
+  if(rebOnly && !absReb) return;
+  // 곱연산 알파 상한. 절대 프로파일은 자산의 3.6배 램프를 상쇄해야 해서 종전 0.85 로는
+  // 모자란다(0.85 = 최대 6.7배 감쇠, 필요한 건 12배). 순검정을 피하는 목적은 유지된다.
+  const AMAX = absReb ? 0.93 : 0.85;
   // ── 살 한 변을 **폴리곤 하나 + 다중 스톱 그라디언트 한 쌍**으로 칠한다 ──────────
   // ⚠️⚠️ **맞닿은 밴드를 여러 개 그리지 말 것.** canvas 는 폴리곤 가장자리를 안티에일리어싱
   //   하므로 공유 경계 픽셀을 양쪽이 **절반씩** 덮는다. 곱연산에서 절반 알파를 두 번 거는
@@ -713,13 +753,12 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     const fOut=1+AO*lit;                     // 바깥 모따기 — 광원을 정면으로 받는 면
     const fFront=1+AF*lit;                   // 앞면 — 광원과 거의 수직이라 진폭이 작다
     // 아리스(면이 꺾이는 자리)는 **스톱 하나**로만 표현한다 — 별도 밴드를 그리면 또 이음매다
-    const stops=[
+    const stops = rebOnly ? [[0,1]] : [
       [0,               fOut],
       [FACE_OUT-e,      fOut],
       [FACE_OUT,        fOut+0.14*SYN_DIR*P*lit],  // 바깥면↔앞면 깎인 각
       [FACE_OUT+e,      fFront],
       [FACE_FRONT-e,    fFront*(1-0.06*SYN_DIR*P)],  // 앞면은 안쪽으로 갈수록 살짝 어두워진다
-      [FACE_FRONT,      fFront*(1-0.14*SYN_DIR*P)],  // 앞면↔사면 깎인 각 (그늘)
       // ⚠️ 리베이트를 **직선 두 토막**으로 두지 말 것. 기울기가 꺾이는 스톱에서
       //   2차 미분이 튀어 중앙값 필터에 잡힌다 — 실측(오크): 네 위치 전부 **살의 88%**
       //   에서 잔차 16~19 (같은 자리에서 반복되면 텍스처가 아니라 우리가 그린 것이다).
@@ -736,13 +775,95 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
       //   방향이다. 골든도 자산도 **좁은 V + 회복**이다(골든 case_01: 166 → 37 → 62).
       //   골 바닥을 0.92 에 두면 경계에서 한두 픽셀 떨어져 축소를 견디고,
       //   1.0 에서 되올라오므로 '띠'가 아니라 두 면이 만나는 **이음매**로 읽힌다.
-      [FACE_FRONT+e,    Math.min(1, rb*(1+0.30*P))],
-      [0.92,            rb],                 // 가장 깊은 골 — 좁고 **얕게**
-      // ⚠️ 회복 스톱은 **매트·작품에서 되돌아오는 반사광**을 모델링한 것이다.
-      //   매트가 없으면 그 자리에 (대개 더 어두운) 작품이 있어 돌아올 빛이 거의 없다 —
-      //   그대로 두면 방금 덜어낸 립을 다시 밝혀 놓는다.
-      [1,               rb*(o.noMat?1.0:1.12)],
     ];
+    // ── 리베이트(안쪽 사면) 스톱 ────────────────────────────────────────────────
+    const d0=FACE_FRONT+e;
+    if(!rebOnly && !absReb) stops.push([FACE_FRONT, fFront*(1-0.14*SYN_DIR*P)]);   // 앞면↔사면 깎인 각
+    if(absReb){
+      // **절대 프로파일**: 렌더 결과가 골든 모양(1 → REB_TROUGH → REB_TIP)이 되게 한다.
+      // ⚠️⚠️ **자산을 밝히지는 않는다** — `min(1, …)` 이라 곱은 언제나 ≤1 이다.
+      //   즉 결과는 `min(자산, 목표)` 다. 사진에 이미 더 깊은 골이 있으면 그대로 살리고
+      //   (SOURCE-FIRST), 개구부 반사광으로 **밝아지는** 구간만 목표까지 끌어내린다.
+      //   그래서 자산이 이미 옳은 오크(안쪽 최대 1.02배)·골드(1.17배)에는 거의 손대지
+      //   않고, 검정(3.62배)·월넛(2.93배)에서만 크게 작동한다 — 브리핑 EFFECT GATING.
+      // ⚠️ **곡선의 시작을 `FACE_FRONT+e` 로 두지 말 것 — 그 앞 구간이 무주공산이 된다.**
+      //   `e` 는 살이 얇을수록 커져(최대 0.05) d 0.74~0.79 가 비는데, 골드 자산의 밝은
+      //   봉우리(앞면의 1.17배)가 정확히 거기 있었다. 실측: 그 구간을 안 덮었더니 렌더에
+      //   190(1.16배)이 그대로 남았다 — 종전 코드는 d0 에서 f=0.853 으로 시작해 우연히
+      //   덮고 있었다. 곡선이 **앞면 끝(FACE_FRONT-e)부터** 이어지게 한다.
+      // ⚠️⚠️ **얇은 액자에 같은 깊이를 주지 말 것 — 절벽이 된다.**
+      //   리베이트 구간은 살의 26% 다. 오크(살 44px)에서는 11px 에 걸친 완만한 골이지만
+      //   화이트 매트(살 15px)에서는 **4px 만에** 233 → 70 으로 떨어져, 흰 액자에 그어 놓은
+      //   **검은 선**이 된다(실측 임펄스 6.3 → 44.8). 브리핑 FRAME-SPECIFIC NO-MAT DEPTH:
+      //   "shallow frame → small inset · subtle rabbet · minimal occlusion".
+      //   해상도로 판정한다 — 몇 픽셀 안에 표현할 수 없는 깊이는 **그리지 않는 게 낫다**
+      //   (브리핑 CONFIDENCE-AWARE: 표현할 수 없으면 덜 한다).
+      // ⚠️⚠️ **앞면이 어디서 끝나는지는 액자 모델마다 다르다.** 사진 액자는 FACE_FRONT(0.74),
+      //   절차적 액자는 `planeShade` 가 이미 선언한 PLANE_OUT+PLANE_FRONT(0.80)이다.
+      //   여기에 photo 쪽 상수를 그대로 쓰면 리베이트가 **앞면 한가운데서** 시작해,
+      //   그 경계에 안 깎인 밝은 픽셀이 봉우리로 남는다(실측 월넛 슬림 아랫변 +37.5).
+      //   한 밴드에 프로파일 모델을 둘 두지 않는다 — 그 액자가 선언한 기하를 따른다.
+      const FF = rebOnly ? (PLANE_OUT+PLANE_FRONT) : FACE_FRONT;
+      const ez = Math.min(e, (1-FF)*0.20);
+      // ⚠️⚠️ **해상도 판정은 판이 아니라 '화면에 몇 px 로 그려지는가'로.** 예전엔 판 좌표로
+      //   쟀는데 판은 작품 원본 크기라 늘 넉넉했다 — 실내 장면에서 실제 리베이트가 5px 인데도
+      //   '11px 짜리'로 알고 온전한 깊이를 넣어 **선**이 됐다. `o.scale` 이 그 배율이다.
+      const zone=[t,r,b,l][s]*(1-FF)*(o.scale==null?1:o.scale);
+      // ⚠️⚠️ **못 그릴 만큼 좁으면 골만 얕게 하지 말고 '없음'으로 수렴시킬 것.**
+      //   예전엔 골만 REB_TIP 으로 붙여서, 좁아지면 골=끝인 **평평한 어두운 띠**가 남았다
+      //   (실측 band 0.01~0.07 — 골든은 0.28). 평평한 띠는 정확히 '그어 놓은 선'이다.
+      //   양 끝을 함께 1 로 보내면 **V 모양은 유지한 채 세기만** 줄어, 좁을수록 자연히 사라진다.
+      //   골든이 그 증거다 — 살 8px 짜리 case_06 은 실제 사진인데도 골이 0.87(=거의 없음)이다.
+      const kd=Math.max(0,Math.min(1,(zone-1.5)/8));
+      const trough=1-(1-REB_TROUGH)*kd;
+      const td=FF+(1-FF)*REB_TROUGH_U;
+      // ⚠️⚠️ **회복은 '실제로 그려질 골' 기준으로 제한할 것.**
+      //   결과는 `min(자산, 목표)` 라, 자산이 목표보다 깊으면 골은 **자산의 것**이 된다.
+      //   그런데 회복(tip)은 우리 목표를 그대로 따르므로, 자산 골이 깊은 액자에서는
+      //   골→끝 오름폭이 커져 개구부 2px 앞에 **밝은 링**이 생긴다.
+      //   실측(2026-09-01, 새로 들어온 얇은 액자 3종): 개구부를 **흰 판**으로 찍어
+      //   마지막 5px 이 앞면의 1.01·1.25·**3.39배**까지 치솟는다(월넛). 3.4배짜리 안쪽
+      //   살은 물리적으로 없다 — 촬영용 흰 판이 개구부 검출 경계 안쪽에 남은 것이다.
+      //   골든의 골→끝 오름폭은 최대 0.36 이므로 그 안으로 묶는다. 자산 골이 얕은
+      //   큰 액자에서는 한도가 이미 넉넉해 **아무 일도 일어나지 않는다**(오크·화이트 무변화).
+      const rt=Math.min(assetRel(A,td,s), trough);
+      // ⚠️⚠️ **회복(골→개구부의 되밝아짐)도 해상도로 막을 것.** 회복은 물리적으로 맞지만
+      //   (골든 case_00 은 0.23 → 0.49 로 되올라온다) 그걸 **2~3px 안에** 그리면 개구부
+      //   직전에 **밝은 링**이 된다. 실측(2026-09-01): 오크는 회복 구간이 4.3px 라 자연스러운데,
+      //   얇은 실버는 2.6px 라 같은 비율(1.8배)인데도 임펄스 44.6(골든 최대 27.4)이었다.
+      //   ⚠️ 자산의 립 때문이 아니다 — 얇은 실버의 자산은 개구부 직전이 0.94~1.05 로
+      //      **깨끗한데도** 그랬다. 반대로 검정·월넛 자산은 2.6~3.7배인데 통과한다(살이 넓다).
+      //      즉 원인은 밝기가 아니라 **폭**이다. 못 그릴 폭이면 회복을 접고 단조로 둔다.
+      const recPx=(1-FF)*(1-REB_TROUGH_U)*[t,r,b,l][s]*(o.scale==null?1:o.scale);
+      const krec=Math.max(0,Math.min(1,(recPx-2)/2));
+      const tip0=Math.min(1-(1-REB_TIP)*kd, rt+REB_RISE);
+      const tip=trough+(tip0-trough)*krec;
+      const key=[[FF-ez,1],[FF+ez,1-0.07*kd],[td,trough],[1,tip]];
+      // ⚠️ 마디를 **직선으로 잇지 말 것.** 리베이트는 두 평면이 만나는 각이 아니라 **오목한
+      //   곡면**이다. 꺾인 자리는 축소될 때 대비가 몰려 '가장자리가 뚜렷한 띠'로 보인다.
+      //   골든 단면은 2차 미분이 완만하다(166→37→62 가 부드럽게 이어진다). smoothstep 으로 잇는다.
+      const at=(d)=>{
+        if(d<=key[0][0]) return key[0][1];
+        for(let i=1;i<key.length;i++) if(d<=key[i][0]){
+          const a=key[i-1], b=key[i];
+          const u=(d-a[0])/Math.max(1e-6,b[0]-a[0]);
+          return a[1]+(b[1]-a[1])*(u*u*(3-2*u)); }
+        return key[key.length-1][1];
+      };
+      // 방향 성분(rb/RB)은 그대로 곱한다 — 그늘진 변의 사면이 조금 더 깊다.
+      const dir=RB>0.02 ? rb/RB : 1;
+      const s0=FF-ez;
+      for(let i=0;i<=REB_N;i++){
+        const d=s0+(1-s0)*i/REB_N;
+        stops.push([d, Math.min(1, at(d)*dir/Math.max(0.02, assetRel(A,d,s)))]);
+      }
+    } else {
+      stops.push(
+        [d0,    Math.min(1, rb*(1+0.30*P))],
+        [0.92,  rb],                          // 가장 깊은 골 — 좁고 **얕게**
+        // 회복 스톱은 **매트에서 되돌아오는 반사광**이다. 매트가 있을 때만 존재한다.
+        [1,     rb*1.12]);
+    }
     // ── 균일 항 = **잔차(residual)**. 여기가 8차의 핵심이다 ─────────────────────
     // ⚠️ **방향광을 모따기에만 실으면 안 된다.** 모따기를 줄이면 위살↔아래살 밝기차
     //   (`dir_tb`, 장면 광원 추종의 증거)까지 같이 죽는다. 실제로도 빛을 받는 쪽 살은
@@ -770,24 +891,35 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     if(want!==0 && have*want>0 && Math.abs(have)>=Math.abs(want)) delta=0;   // 이미 충분 — 보존
     else delta=(want-have)*SYN_DIR;
     const uni=1 + Math.max(-UNI_CLAMP, Math.min(UNI_CLAMP, delta));
-    const poly=mitreBand(W,H,s,l,t,r,b,0,1);
+    const OV = rebOnly ? 0.06 : 0;              // 이음매 너머로 끌 길이(살 폭 대비)
+    const poly=mitreBand(W,H,s,l,t,r,b,0,1+OV);
     // ⚠️⚠️ **균일 항은 스톱에 곱하지 말고 따로 걸 것.** 그라디언트의 밝히는 쪽은 `screen`
     //   인데, 밝은 액자(화이트 살 200+)에서는 헤드룸이 없어 **요청한 +16% 가 +3.8% 로
     //   뭉개진다**(실측). 잔차 보정이 통째로 무력해진다 — `applyRailGain` 주석 참고.
     //   그쪽은 `lighter` 로 자기 자신을 더해 **정확한 곱셈**을 만든다.
-    applyRailGain(ctx,poly,uni,o.plate);
+    if(!rebOnly) applyRailGain(ctx,poly,uni,o.plate);   // 방향광은 절차적 액자가 따로 그린다
     // 깊은 폐색에는 근사 검정을 쓴다 — 따뜻한 그늘색은 어두운 액자에서 **바닥**이 된다
     // (검은 살 41 에 색값 22 를 섞으면 아무리 걸어도 안 어두워진다. SHADE_OCCL 주석 참고).
     const tint = P<=0.02 ? SHADE_OCCL : SHADE_WARM;
-    const gm=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
-    const gs=bandAxis(ctx,W,H,s,l,t,r,b,0,1);
+    if(OV) stops.push([1+OV*0.5, 1], [1+OV, 1]);   // 이음매 너머 = 무변화
+    const gm=bandAxis(ctx,W,H,s,l,t,r,b,0,1+OV);
+    const gs=bandAxis(ctx,W,H,s,l,t,r,b,0,1+OV);
     let prev=-1, any=false;
     for(const [pRaw,f] of stops){
-      const pos=Math.max(prev+1e-4, Math.min(1, pRaw)); prev=pos;
+      const pos=Math.max(prev+1e-4, Math.min(1, pRaw/(1+OV))); prev=pos;
       if(Math.abs(f-1)>0.004) any=true;
-      gm.addColorStop(pos, `rgba(${tint},${Math.max(0,Math.min(.85,1-f)).toFixed(3)})`);
+      gm.addColorStop(pos, `rgba(${tint},${Math.max(0,Math.min(AMAX,1-f)).toFixed(3)})`);
       gs.addColorStop(pos, `rgba(255,248,235,${Math.max(0,Math.min(.55,(f-1)*0.9)).toFixed(3)})`);
     }
+    // ⚠️⚠️ **소수점 좌표 액자에서는 곱연산 폴리곤을 이음매 **너머**까지 끌 것.**
+    //   절차적 액자는 `border` 가 소수라 작품 원점(`ax`)이 정수 픽셀에 안 떨어진다.
+    //   그러면 살의 마지막 픽셀이 폴리곤에 **절반만** 덮여 절반의 알파만 받는다 —
+    //   리베이트로 살을 88 까지 내려놨는데 그 한 픽셀만 150 쯤에 남아, 축소되면
+    //   작품(74)과 섞여 **115 짜리 밝은 실선**이 된다(실측 오크 슬림: 80 81 89 **115** | 74).
+    //   사진 액자는 `l` 이 정수라 이 문제가 없어서 여태 안 드러났다.
+    //   폴리곤을 6% 더 끌고, 그 구간에서 배율을 1 로 되돌린다 — 이음매 픽셀은 살과 작품이
+    //   물리적으로 섞인 자리라 **부분적으로 어두운 게 옳고**, 그 너머 작품은 손대지 않는다.
+    //   (작품 위에 검은 선을 긋는 것과 다르다 — 알파가 1px 안에 0 으로 사라진다)
     if(!any) continue;
     ctx.save();
     ctx.globalCompositeOperation='multiply'; quadFill(ctx,poly,gm);
@@ -910,6 +1042,10 @@ const FRAME_GRADE = {
   //    조금 더 눌러 밴드 안으로 돌린다 — 재질 사실성은 브리핑의 1급 항목이다.
   oak:[0.45,0.93], wood:[0.45,0.93], gold:[0.37,0.95], walnut:[0.72,1.0],
   black:[1,1], white:[1,1], silver:[1,1], ivory:[1,1],
+  // 얇은 몰딩 3종 — **자산마다 재서** 넣는다(원본 살 채도폭: oak-thin 49.6 · walnut-thin
+  // 34.2 · silver-thin 4.9). 목표는 위와 같다: FrameIt 실측대(오크 24.5)로 내린다.
+  // 실버는 이미 무채색(4.9)이라 손대지 않는다 — 필요 없는 보정은 걸지 않는다.
+  'oak-thin':[0.55,0.97], 'walnut-thin':[0.72,1.0], 'silver-thin':[1,1],
 };
 // ctx.filter 이 없는 아주 오래된 브라우저에서는 **hex 도 함께 건너뛴다** —
 // 색만 바꾸고 결 텍스처를 그대로 두면 밴드와 결의 색이 어긋난다.
@@ -998,19 +1134,25 @@ function planeAxis(ctx,W,H,b,s){
   return ctx.createLinearGradient(0,0,b,0);
 }
 // 텍스처 위에 얹는 **면 음영** — 색을 덮지 않고 밝기만 계단식으로 준다
-function planeShade(ctx,W,H,b,s,ld){
-  const [o,f,r]=planeOf(s,ld);
+// ⚠️⚠️ `rebOwn` = 안쪽 사면을 **리베이트가 그린다**(매트 없는 평면 액자). 그때 여기서
+//   사면을 또 칠하면 두 모델이 같은 면을 반대로 칠한다 — 아랫변은 사면이 위를 향해
+//   planeShade 가 **밝히는데**(PLANE_AMP[2][2]=+.44) 리베이트는 폐색이라 **어둡게** 한다.
+//   실측(2026-09-01): 그 경계에 밝은 봉우리가 남아 임펄스 +33~37(골든 최대 27.4).
+//   물리적으로는 리베이트가 옳다 — 파인 홈은 빛을 향한 변에서도 폐색이 지배한다
+//   (라운드 8 에서 사진 액자에 대해 같은 결론). 그래서 사면을 통째로 넘긴다.
+function planeShade(ctx,W,H,b,s,ld,rebOwn){
+  const [o,f,r0]=planeOf(s,ld); const r=rebOwn?f:r0;
   const col=(v)=> v>=0 ? `rgba(255,248,236,${Math.min(.55,v*1.05*SYN_DIR).toFixed(3)})`
                        : `rgba(18,11,4,${Math.min(.62,-v*1.05*SYN_DIR).toFixed(3)})`;
   const g=planeAxis(ctx,W,H,b,s), A=PLANE_OUT, B=PLANE_OUT+PLANE_FRONT;
   g.addColorStop(0,col(o));      g.addColorStop(A-0.005,col(o));
   g.addColorStop(A,col(f));      g.addColorStop(B-0.005,col(f));
-  g.addColorStop(B,col(r));      g.addColorStop(1,col(r*1.3));
+  g.addColorStop(B,col(r));      g.addColorStop(1,col(rebOwn?r:r*1.3));
   return g;
 }
 // 텍스처가 없을 때의 대체 — 같은 계단 구조를 재질색으로
-function frameSideGradient(ctx,W,H,b,s,c,ld){
-  const [o,f,r]=planeOf(s,ld);
+function frameSideGradient(ctx,W,H,b,s,c,ld,rebOwn){
+  const [o,f,r0]=planeOf(s,ld); const r=rebOwn?f:r0;
   const g=planeAxis(ctx,W,H,b,s), A=PLANE_OUT, B=PLANE_OUT+PLANE_FRONT;
   g.addColorStop(0,shade(c.base,o));   g.addColorStop(A-0.005,shade(c.base,o));
   g.addColorStop(A,shade(c.base,f));   g.addColorStop(B-0.005,shade(c.base,f));
@@ -1050,9 +1192,9 @@ function clipPoly(ctx,p){
   ctx.closePath(); ctx.clip();
 }
 
-function drawTextureSide(ctx,W,H,b,s,c,ld){
+function drawTextureSide(ctx,W,H,b,s,c,ld,rebOwn){
   if(!c.img || !c.img.complete || !c.img.naturalWidth){
-    quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c,ld));
+    quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c,ld,rebOwn));
     return;
   }
   ctx.save();
@@ -1104,7 +1246,7 @@ function drawTextureSide(ctx,W,H,b,s,c,ld){
   ctx.save();
   clipPoly(ctx, sideBand(W,H,s,0,b));
   ctx.globalAlpha=1;
-  ctx.fillStyle=planeShade(ctx,W,H,b,s,ld);
+  ctx.fillStyle=planeShade(ctx,W,H,b,s,ld,rebOwn);
   ctx.fillRect(0,0,W,H);
   // 면과 면이 만나는 모서리(아리스) — **선이 아니라 아주 좁은 면**이다.
   // ⚠️ 예전엔 1px stroke 였다(밝은 흰 선 .30 + 검은 선 .34). 판은 화면까지 2~3배 더
@@ -1127,7 +1269,8 @@ function drawTextureSide(ctx,W,H,b,s,c,ld){
     ctx.fillStyle=g; ctx.fillRect(bx,by,bw,bh);
   };
   arris(PLANE_OUT, lit0>=0?'255,250,240':'0,0,0', (lit0>=0?.17:.09)*SYN_EDGE, .045);
-  arris(PLANE_OUT+PLANE_FRONT, '0,0,0', .20*SYN_EDGE, .050);
+  // 앞면↔사면 아리스도 리베이트가 그린다(같은 모서리를 두 번 긋지 않는다)
+  if(!rebOwn) arris(PLANE_OUT+PLANE_FRONT, '0,0,0', .20*SYN_EDGE, .050);
   ctx.restore();
 }
 
@@ -1200,10 +1343,10 @@ function drawFloaterTray(ctx,W,H,b,g,back,ld,innerOcc){
 }
 
 // 바깥 테두리 밴드(margin m)에 재질 칠하기 (레퍼런스식 얇은 박스 프레임)
-function frameBand(ctx,W,H,m,mat,ld){
+function frameBand(ctx,W,H,m,mat,ld,rebOwn){
   const c=MATS[mat]||MATS.black;
   const b=m.t;
-  for(let s=0;s<4;s++) drawTextureSide(ctx,W,H,b,s,c,ld);
+  for(let s=0;s<4;s++) drawTextureSide(ctx,W,H,b,s,c,ld,rebOwn);
   // ⚠️⚠️ **테두리를 stroke 로 두르지 말 것** (2026-08-31, 브리핑 2번).
   //    예전엔 여기서 세 줄을 그었다 — 바깥에 재질색 밝은 선(`c.edge`, 금장은
   //    rgba(255,246,212,.6)), 안쪽에 검은 선(alpha .52, 폭 b*.105), 그 안에 또
@@ -1293,6 +1436,40 @@ function measureAssetLight(im, meta){
     const left=mean(0,cy0,ix,cy1), right=mean(ix2+1,cy0,W,cy1);
     if(![top,bot,left,right].every(v=>isFinite(v)&&v>1)) return ASSET_NEUTRAL;
     const base=(top+bot+left+right)/4;
+    // ── 살을 가로지르는 **단면 모양** (네 변 평균, 각자 제 앞면으로 정규화) ──────────
+    // ⚠️⚠️ 왜 스칼라 하나로는 안 되는가: 립 보정을 **한 숫자**로 하면 자산의 '올라가는
+    //   램프'가 모양 그대로 눌리기만 한다. 실측(2026-09-01, matrix_off): 검정 자산의
+    //   안쪽은 앞면의 **3.62배**까지 8px 에 걸쳐 올라간다. 0.65 를 곱해도 **1.54배**가
+    //   남아 검은 액자와 작품 사이에 회색 띠로 보였다 — 사용자가 든 실패 조건 그 자체다.
+    //   위치마다 다른 값을 상쇄하려면 **모양**을 알아야 한다.
+    // ⚠️⚠️ **네 변을 평균하지 말 것 — 변마다 다르다.** 처음엔 평균 하나로 뒀는데,
+    //   골드 자산은 **왼쪽 살에서만** 앞면의 1.15배까지 오르는 봉우리가 있어 평균에서
+    //   묻혔고, 그래서 왼쪽에 189(1.15배)가 그대로 남았다. 검정은 반대로 왼쪽이 평균보다
+    //   밝아 보정이 약해져 골이 0.30 목표 대신 0.51 에 머물렀다. 변별로 잰다.
+    //   순서는 `FACE_NORMAL` 과 같다: 0 위 · 1 오른쪽 · 2 아래 · 3 왼쪽.
+    //   d = 0 이 **바깥**이므로 아래·오른쪽은 뒤집어 읽는다.
+    const NP=24;
+    const mkProf=(n,at)=>{
+      const p=new Array(NP).fill(1);
+      if(!(n>3)) return p;
+      const vs=[]; for(let i=0;i<n;i++) vs.push(at(i));
+      let sum=0,cnt=0;
+      for(let i=0;i<n;i++){ const dd=i/(n-1); if(dd<=0.45&&isFinite(vs[i])){ sum+=vs[i]; cnt++; } }
+      if(!cnt) return p;
+      const face=sum/cnt; if(!(face>1)) return p;
+      const acc=new Float64Array(NP), cn=new Float64Array(NP);
+      for(let i=0;i<n;i++){ if(!isFinite(vs[i])) continue;
+        const k=Math.min(NP-1,Math.floor(i/(n-1)*NP)); acc[k]+=vs[i]/face; cn[k]++; }
+      let hold=1;
+      for(let k=0;k<NP;k++){ if(cn[k]>0){ p[k]=acc[k]/cn[k]; hold=p[k]; } else p[k]=hold; }
+      return p;
+    };
+    const prof4=[
+      mkProf(iy,      i=>mean(cx0,i,cx1,i+1)),            // 0 위
+      mkProf(W-1-ix2, i=>mean(W-1-i,cy0,W-i,cy1)),        // 1 오른쪽
+      mkProf(H-1-iy2, i=>mean(cx0,H-1-i,cx1,H-i)),        // 2 아래
+      mkProf(ix,      i=>mean(i,cy0,i+1,cy1)),            // 3 왼쪽
+    ];
     // 살을 가로지르는 프로파일 — 자산에 **이미 몰딩 단면이 찍혀 있는가**, 그리고
     // **안쪽 립이 앞면보다 얼마나 밝은가**(매트 없이 걸 때 결정적이다. 아래 lip 주석)
     let mn=Infinity, mx=-Infinity, plateau=0, pn=0, lipMax=0;
@@ -1314,12 +1491,21 @@ function measureAssetLight(im, meta){
     //   실물에서 그 자리에는 작품(대개 더 어둡다)이 있으므로 그 바운스가 없다 —
     //   즉 립이 밝은 건 **촬영 세팅의 흔적**이지 그 액자의 성질이 아니다.
     const lip = (pn && plateau/pn > 1) ? lipMax/(plateau/pn) : 1;
-    return { tb:(top-bot)/base, lr:(left-right)/base,
+    return { tb:(top-bot)/base, lr:(left-right)/base, prof4,
              // 0.45(=살 평균의 45% 낙차)면 '충분히 모델링된 몰딩'으로 본다.
              // 실측 5종 전부 0.64~2.17 이라 1 로 포화한다 = 우리는 단면을 안 그린다.
              modeled: Math.max(0, Math.min(1, span/0.45)),
              lip, span, base, ok:true };
   }catch(e){ return ASSET_NEUTRAL; }
+}
+/** 자산 단면의 d(0 = 바깥, 1 = 작품 쪽) 위치 밝기 — **그 변 앞면 대비**.
+ *  s = 변(0 위 1 오른쪽 2 아래 3 왼쪽) — **변마다 다르다**(위 prof4 주석).
+ * 프로파일이 없으면(절차적 액자) 1 = '평평하다'. 그러면 아래 보정은 아무 일도 안 한다. */
+function assetRel(A,d,s){
+  const p=A&&A.prof4&&A.prof4[s|0];
+  if(!p||!p.length) return 1;
+  const t=Math.max(0,Math.min(1,d))*(p.length-1), i=Math.floor(t), f=t-i;
+  return i>=p.length-1 ? p[p.length-1] : p[i]*(1-f)+p[i+1]*f;
 }
 function assetLightOf(style){
   if(style && style.kind==='photo'){ const a=PHOTO_LIGHT[style.photo]; if(a&&a.ok) return a; }
@@ -1377,6 +1563,15 @@ const FRAMES=[
   { name:'화이트',       kind:'photo', photo:'white', rail:0.052 },
   { name:'월넛',         kind:'photo', photo:'walnut', rail:0.055 },
   { name:'골드',         kind:'photo', photo:'gold', rail:0.052 },
+  // 얇은 몰딩 3종 (2026-09-01). 자산의 native 살이 5.0~5.7% 로 위 5종(9.0~9.8%)의 절반이라
+  // **같은 재질의 다른 제품**이다 — 그래서 `oak-thin` 처럼 한정어를 붙여 따로 추출한다
+  // (`extract-photo-frames.py` 의 QUALS). 이름의 '얇은'은 구현이 아니라 **살 두께**라
+  // 고르는 사람에게 뜻이 있다(44e 가 뗀 '(사진)' 과 다르다).
+  // ⚠️ 이 3종은 개구부를 **흰 판**으로 촬영해 안쪽 립이 회색판 자산보다 더 밝다.
+  //    44h 의 한쪽 방향 보정(min(1, 목표/자산))이 그대로 상쇄한다 — 따로 손댈 것 없음.
+  { name:'얇은 오크',     kind:'photo', photo:'oak-thin', rail:0.035 },
+  { name:'얇은 월넛',     kind:'photo', photo:'walnut-thin', rail:0.032 },
+  { name:'얇은 실버',     kind:'photo', photo:'silver-thin', rail:0.032 },
   { name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.011 },
   { name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.011 },
   { name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.011 },
@@ -1530,7 +1725,8 @@ function buildFramedCore(img, style, o){
       drawNineSlice(fc.getContext('2d'),im,meta,0,0,W,H,kx);
       ctx.drawImage(fc,0,0);
       // 살에 방향광 — 자산에 **없는 만큼만**. 자산 실측치를 넘겨 잔차로 계산한다.
-      shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc, noMat:matPx<=0});
+      shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc, noMat:matPx<=0,
+        scale:o.outLongEst? o.outLongEst/Math.max(W,H) : 1});
       // 리베이트 — 액자(·매트)가 작품에 드리우는 그림자. 작품이 **뒤로 들어가 있다**는 신호는
       // 이것 하나뿐이다. 빛을 향한 변이 진하고 반대편은 옅다(예전엔 사방 동일 + 너무 옅었다).
       rebateShadow(ctx,ax,ay,aw,ah,base,ld);
@@ -1680,10 +1876,20 @@ function buildFramedCore(img, style, o){
   if(style.kind==='floater'){
     // 갭(트레이)은 이미 back색. 바깥 border만 재질로
     frameBand(ctx,W,H, uni(border), style.material, ld);
-  } else if(style.kind==='flat'){
-    frameBand(ctx,W,H, uni(border), style.material, ld);
-  } else if(style.kind==='mat'){
-    frameBand(ctx,W,H, uni(border), style.material, ld);
+  } else if(style.kind==='flat' || style.kind==='mat'){
+    frameBand(ctx,W,H, uni(border), style.material, ld, mat<=0);
+    // ⚠️ **평면 액자에도 리베이트가 있다.** 슬림 액자는 갭이 없어 살이 작품에 곧바로
+    //    맞닿는데, 실물은 작품이 **몰딩 턱 뒤로** 들어간다. 예전엔 그 자리가 완만한
+    //    그라디언트뿐이라 골이 앞면의 0.80 밖에 안 됐다(골든 0.15~0.40, 플로터 0.18).
+    //    화면에서는 '나무 띠를 두르고 그림을 얹었다'로 읽힌다 — 깊이 신호가 없다.
+    //    `run.py` 의 t09(블랙 슬림) `rebate_ratio` 0.20 실패가 정확히 이것이다.
+    //    사진 액자와 **같은 절대 프로파일**을 쓴다(특례를 만들지 않고 기존 기전을 넓힌다).
+    //    면 음영은 `drawTextureSide` 가 이미 그리므로 `rebateOnly` 로 리베이트만 얹는다.
+    // ⚠️ 매트가 있으면 그 자리를 매트가 덮으므로 걸지 않는다 — 플로터도 제외(갭이
+    //    이미 진짜 오목면이다. 실측 골 0.18). 같은 깊이 신호를 두 겹 쌓지 않는다.
+    if(mat<=0)
+      shadeFrameProfile(ctx,W,H,border,border,border,border,ld,{rebateOnly:true,noMat:true,
+        scale:o.outLongEst? o.outLongEst/Math.max(W,H) : 1});
   }
 
   // --- 유리 반사 ---
@@ -1706,7 +1912,7 @@ function buildFramedCore(img, style, o){
 // ---- 상태 ----
 const state={ img:null, frameIdx:0, frameColor:'#2b2b2b', matteColor:'#f5f2ea',
   frame:0.044, glass:false, weave:false, mode:'wall', bg:'#ffffff', wallIdx:0, sceneIdx:0,
-  ratio:'1:1', light:0, matWidth:0.05 };   // 매트는 필수 — 0 은 없다(캔버스 랩만 예외)
+  ratio:'1:1', light:0, matWidth:0.05, sceneGroup:'wall' };   // 매트는 필수 — 0 은 없다(캔버스 랩만 예외)
 function buildFramed(img){ return buildFramedCore(img, FRAMES[state.frameIdx], state); }
 
 // ============================================================
@@ -2065,6 +2271,22 @@ function compose(){
   state.lightDir = (state.mode==='scene' && SCENES[state.sceneIdx] && window.ArtLookScene)
     ? ArtLookScene.sceneLightModel(SCENES[state.sceneIdx]).dir
     : [-0.7071,-0.7071];
+  // ⚠️⚠️ **판은 화면에서 자기가 몇 px 로 보일지 알아야 한다.** 리베이트 깊이를 해상도로
+  //    조절하는데(아래 `kd`), 그 판정이 여태 **판 좌표**로 이뤄져 실화면과 무관했다.
+  //    실측(2026-09-01): 오크의 판 살은 55px 이라 늘 '충분히 넓다'로 판정됐지만, 실내
+  //    장면(maxLong 0.49)에서 실제로 그려지는 살은 **20px** 이고 리베이트 구간은 5px 다.
+  //    그 5px 에 온전한 깊이의 V 를 넣으니 '파인 자리'가 아니라 **그어 놓은 선**이 됐다
+  //    (사용자 지적). 그래서 출력 크기를 먼저 구해 판에 넘긴다.
+  const sceneNow = state.mode==='scene' ? SCENES[state.sceneIdx] : null;
+  const longSide = (sceneNow && sceneNow.loaded)
+    ? Math.min(LONG, Math.max(SCENE_MIN_LONG,
+        Math.round(Math.max(sceneNow.img.naturalWidth, sceneNow.img.naturalHeight) / SCENE_HEADROOM)))
+    : LONG;
+  const {W:OW,H:OH}=targetDims(state.ratio,longSide);
+  // 조각의 화면 긴 변 추정 = 그 장면의 상한(44c). 자동 프레이밍이 거의 늘 이 천장에
+  // 붙으므로(실측 오크 44px ↔ 추정 44) 한 번의 곱셈으로 충분하다 — 판을 두 번 만들지 않는다.
+  state.outLongEst = Math.max(OW,OH) * (sceneNow
+    ? (sceneNow.maxLong==null ? 0.70 : sceneNow.maxLong) : 0.70);
   const framed=buildFramed(state.img);
   // 장면 모드는 배경 사진의 원본 해상도를 상한으로 삼는다(위 targetDims 주석 참고).
   // ⚠️ **원본 크기 그대로 뽑으면 카메라를 당길 여지가 사라진다** (2026-08-30 실측).
@@ -2073,12 +2295,6 @@ function compose(){
   //    화면의 16% 에서 더 커지지 못했다(FrameIt Pro 는 44%).
   //    출력을 원본의 1/1.6 로 잡으면 같은 화질 보증(1.15배 이내) 아래서 1.84배까지 당긴다.
   //    SNS 홍보 이미지라 1080~1650px 이면 충분하다.
-  const sceneNow = state.mode==='scene' ? SCENES[state.sceneIdx] : null;
-  const longSide = (sceneNow && sceneNow.loaded)
-    ? Math.min(LONG, Math.max(SCENE_MIN_LONG,
-        Math.round(Math.max(sceneNow.img.naturalWidth, sceneNow.img.naturalHeight) / SCENE_HEADROOM)))
-    : LONG;
-  const {W:OW,H:OH}=targetDims(state.ratio,longSide);
   const out=document.getElementById('preview');
   out.width=OW; out.height=OH;
   // 합성은 여기서 — 출력보다 크게 잡고 맨 마지막에 한 번만 줄인다(SUPERSAMPLE 주석 참고)
@@ -2450,7 +2666,10 @@ const bgModeRow=document.getElementById('bgModeRow');
 
 function buildSceneChips(){
   scenesEl.innerHTML='';
+  // ⚠️ `state.sceneIdx` 는 **전체 목록의 인덱스**다. 걸러진 목록의 인덱스로 바꾸지 말 것 —
+  //    탭을 옮길 때마다 가리키는 장면이 달라진다.
   SCENES.forEach((s,i)=>{
+    if((s.group||'wall')!==state.sceneGroup) return;
     const chip=document.createElement('div'); chip.className='chip'+(i===state.sceneIdx?' active':'');
     const im=document.createElement('img'); im.src=s.src; im.loading='lazy';
     im.onerror=()=>{ im.style.background='#ddd'; };
@@ -2463,6 +2682,14 @@ function buildSceneChips(){
   });
 }
 
+function syncSceneGroupTabs(){
+  document.querySelectorAll('#sceneGroup button').forEach(b=>
+    b.classList.toggle('active', b.dataset.sg===state.sceneGroup));
+}
+document.querySelectorAll('#sceneGroup button').forEach(b=>{
+  b.onclick=()=>{ state.sceneGroup=b.dataset.sg; syncSceneGroupTabs(); buildSceneChips(); };
+});
+
 // ⚠️ **기본 벽과 장면을 나누지 말 것** (2026-08-30). 예전엔 [기본 벽]이 옛 평면 합성
 // 경로를 그대로 쓰고 [장면]만 새 엔진을 타서, 실제로 대부분이 쓰는 기본 벽이 훨씬 나빴다
 // ("기본벽에서 입체감이 존나 부족하다" 신고). 같은 벽 사진을 두 경로로 그릴 이유가 없다.
@@ -2474,6 +2701,11 @@ if(window.ArtLookScene && ArtLookScene.supported()){
       SCENES.forEach(s=>{ s.adj={dx:0,dy:0,s:1}; });
       if(SCENES.length){
         state.mode='scene';
+        // 처음 열 때는 **지금 고른 장면이 속한 탭**을 편다 — 활성 칩이 안 보이는 탭에서
+        // 시작하면 아무것도 안 고른 것처럼 보인다.
+        state.sceneGroup=(SCENES[state.sceneIdx]||SCENES[0]).group||'wall';
+        syncSceneGroupTabs();
+        document.getElementById('sceneGroupRow').style.display='';
         buildSceneChips();
         document.getElementById('walls').style.display='none';
         scenesEl.style.display='';

@@ -18,7 +18,15 @@ import numpy as np
 
 import metrics as M
 
-LIM = {'syn_delta': 25.0,   # 살 단면 대비를 합성이 몇 % 바꾸는가 (원본 대비)
+# ⚠️⚠️ **`rail_span` 이 아니라 `face_span` 으로 잰다** (2026-09-01).
+#   `rail_span` 은 살 전체(모따기~안쪽 사면)라 **리베이트 골**이 들어간다. 그런데 리베이트는
+#   자산에 없는 것을 우리가 만들어야 하는 자리다 — 사진 액자의 개구부 안쪽은 촬영 때 댄
+#   밝은 회색판의 반사광이라 물리적으로 **거꾸로**다(앞면의 3.6배까지 밝다).
+#   그래서 리베이트를 옳게 파낼수록 이 지표는 '합성 과다'로 잡혔다(t08 +158%).
+#   실측으로 갈라 보면 앞면만의 span 은 **오히려 줄어든다**(t08 −26% · t10 −7%) —
+#   즉 우리는 액자 재질을 덮어쓰고 있지 않다. 물음("원본 사진을 보존하는가")이 향해야 할
+#   곳은 **재질이 있는 앞면**이다.
+LIM = {'syn_delta': 25.0,   # 살 **앞면** 대비를 합성이 몇 % 바꾸는가 (원본 대비)
        'dir_gain': 8.0,     # 장면 광원 추종이 **없으면 생겨야** 한다(위살↔아래살 증가분)
        'dir_rel': 0.13}     # 다만 **이미 따르고 있으면** 더할 이유가 없다(아래 주석)
 
@@ -39,6 +47,10 @@ def load(d):
 #    절차적 액자(flat/floater/mat)는 보존할 원본이 없다 — 그림 자체가 합성이다.
 #  · dir_gain 은 SYN 노브로 끄고 켜서 재는데, 캔버스 랩의 옆면 음영은 그 노브를 타지 않는다
 #    (액자가 아니라 그림이 감긴 면이다). 실제로는 광원을 따른다(dir_tb 75).
+# ⚠️ t02·t10 의 28~29% 는 **리베이트 개선 이전부터 있던 값**이다(2026-09-01 확인:
+#    기준선 렌더와 이번 렌더의 face_span 기여가 소수점까지 같다 — 28.3/28.3 · 29.0/29.0).
+#    `rail_span` 으로 재던 시절엔 리베이트 골에 묻혀 안 보였을 뿐이다. 새 결함이 아니므로
+#    이번 라운드에서 건드리지 않는다 — 다만 '앞면 대비가 줄어든다'는 신호이므로 남겨 둔다.
 EXEMPT_DELTA = {'flat', 'floater', 'mat', 'canvas'}
 EXEMPT_GAIN = {'canvas'}
 
@@ -46,11 +58,11 @@ EXEMPT_GAIN = {'canvas'}
 if __name__ == '__main__':
     (off, kind), (on, _) = load('renders_off'), load('renders')
     keys = sorted(set(off) & set(on))
-    print('case   살단면(OFF→ON)   합성기여%   방향광(OFF→ON)   증가   판정')
+    print('case   살앞면(OFF→ON)   합성기여%   방향광(OFF→ON)   증가   판정')
     print('-' * 72)
     bad = 0
     for k in keys:
-        a, b = off[k]['rail_span'], on[k]['rail_span']
+        a, b = off[k]['face_span'], on[k]['face_span']
         da, db = off[k]['dir_tb'], on[k]['dir_tb']
         d = abs(b - a) / max(a, 1) * 100
         g = db - da

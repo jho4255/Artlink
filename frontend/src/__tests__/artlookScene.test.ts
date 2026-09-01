@@ -251,7 +251,11 @@ describe('scenes.json 데이터 규칙', () => {
   it('벽 진정(wallCalm)은 0~0.9 — 1 이면 배경이 통째로 흐려진다', () => {
     for (const s of scenes) {
       if (s.wallCalm == null) continue;
-      expect(s.wallCalm as number, `${s.id}`).toBeGreaterThan(0);
+      // ⚠️ 진짜 가드는 **상한**이다(1 이면 배경이 통째로 흐려진다).
+      //    0 은 유효한 값이다 — 벽에 결이 거의 없어 **흐릴 것이 없는** 장면이 있다
+      //    (콰이어트 스터디·클레이 살롱: 결 0.44~1.81, 목표 밴드 2.5~4.5 아래).
+      //    그때 억지로 0 보다 크게 두면 없는 결을 더 지우기만 한다.
+      expect(s.wallCalm as number, `${s.id}`).toBeGreaterThanOrEqual(0);
       expect(s.wallCalm as number, `${s.id}`).toBeLessThanOrEqual(0.9);
     }
   });
@@ -311,13 +315,18 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
     //    어두운 작품에 직접 닿아 [액자 → 흰 테두리 → 작품] 이 된다(사용자가 든 실패 조건).
     //    실측 립 배수: 검정 2.74 · 월넛 2.72. 매트 없음에서 경계 임펄스 40.2 / 38.1 이었다.
     //    브리핑 NO-MAT SAFETY 대로 **테두리를 더하지 않고**, 물리적으로 없어야 할 밝기를 던다.
-    expect(html).toMatch(/const LIP_TARGET=0\.85/);
-    expect(html).toMatch(/if\(o\.noMat && A\.lip>1\.02/);
-    // 립이 이미 어두운 자산(lip≤1)에는 **아무 일도 일어나지 않아야** 한다 —
-    // 무조건 걸면 오크·화이트·골드(lip 0.74~0.94)의 사면을 근거 없이 어둡게 만든다.
-    expect(html).toMatch(/ambient=Math\.max\(ambient, Math\.min\(0\.65, 1-LIP_TARGET\/A\.lip\)\)/);
-    // 반사광 회복 스톱은 매트가 없으면 꺼야 한다 — 방금 덜어낸 립을 다시 밝힌다
-    expect(html).toMatch(/rb\*\(o\.noMat\?1\.0:1\.12\)/);
+    // ⚠️ 스칼라 하나로 누르면 자산의 '올라가는 램프'가 **모양 그대로** 남는다
+    //    (실측: 검정 자산 3.62배 → 0.65 를 곱해도 1.54배). 위치마다 상쇄해야 하므로
+    //    자산의 **단면 모양**을 재고(prof4) 그 위치의 값으로 나눈다.
+    expect(html).toMatch(/const prof4=\[/);
+    expect(html).toMatch(/function assetRel\(A,d,s\)/);
+    expect(html).toMatch(/assetRel\(A,d,s\)/);
+    // 목표는 골든(실제 사진 5장) 실측 프로파일이다 — 상상한 숫자가 아니다
+    expect(html).toMatch(/const REB_TROUGH=0\.30, REB_TIP=0\.55/);
+    // ⚠️⚠️ **한 방향으로만** — Math.min(1,…) 이라 곱은 언제나 ≤1 이다. 자산에 이미 더 깊은
+    //    골이 있으면 살리고(SOURCE-FIRST), 밝아지는 구간만 끌어내린다. 오크·골드처럼
+    //    이미 옳은 자산에는 아무 일도 일어나지 않는다.
+    expect(html).toMatch(/Math\.min\(1, at\(d\)\*dir\/Math\.max\(0\.02, assetRel\(A,d,s\)\)\)/);
     // 호출부가 실제로 알려 줘야 한다
     expect(html).toMatch(/noMat:matPx<=0/);
   });
@@ -416,7 +425,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
   it('살 한 변은 폴리곤 하나로 칠한다 — 맞닿은 밴드는 경계 1px 이 뜬다', () => {
     const fn = html.slice(html.indexOf('function shadeFrameProfile'),
       html.indexOf('/** 리베이트'));
-    expect(fn).toMatch(/const stops=\[/);
+    expect(fn).toMatch(/const stops = rebOnly \? \[\[0,1\]\] : \[/);
     expect(fn).toMatch(/globalCompositeOperation='multiply'[\s\S]*globalCompositeOperation='screen'/);
     // 예전처럼 밴드를 여러 개 이어 붙이면 안 된다
     expect(fn).not.toMatch(/shadeBand\(ctx, mitreBand/);
@@ -467,12 +476,18 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     const scenes = JSON.parse(
       readFileSync(resolve(__dirname, '../../public/artlook/scenes/scenes.json'), 'utf-8'),
     ).scenes as Array<Record<string, unknown>>;
-    // 방이 통째로 보이는 실내 사진(wall11~17)은 0.70 × 0.70
-    const interior = scenes.filter((s) => /wall1[1-7]/.test(String(s.src)));
+    // ⚠️ 파일명(wall11~17)이 아니라 **`group` 으로** 가른다 — 장면이 늘 때마다 정규식을
+    //    고쳐야 하면 새 장면이 조용히 검사 밖으로 빠진다(실제로 wall18 이 그랬다).
+    //    `group` 은 화면의 [벽]/[공간] 탭이 쓰는 값이라 분류가 한 곳에서만 정해진다.
+    for (const s of scenes) {
+      expect(['wall', 'space'], String(s.id)).toContain(s.group);
+    }
+    // 방이 통째로 보이는 실내 사진은 0.70 × 0.70
+    const interior = scenes.filter((s) => s.group === 'space');
     expect(interior.length).toBeGreaterThanOrEqual(7);
     for (const s of interior) expect(s.maxLong, String(s.id)).toBeCloseTo(0.49, 5);
     // 평면 매크로 벽은 기본값(0.70)을 쓴다 — 선언하지 않는다
-    for (const s of scenes.filter((x) => !/wall1[1-7]/.test(String(x.src)))) {
+    for (const s of scenes.filter((x) => x.group !== 'space')) {
       expect(s.maxLong, String(s.id)).toBeUndefined();
     }
   });
@@ -550,9 +565,86 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
     expect(html).toMatch(/const AO=.*\*P;/);
     expect(html).toMatch(/const AR=.*\*P;/);
     // ⚠️ 폐색(사방 공통)은 자산에 **없다** — P 를 곱하면 빛 받는 변에서 사면이 사라진다
-    expect(html).toMatch(/let ambient=REBATE_AMBIENT\*SYN_EDGE;/);
-    expect(html).toMatch(/const RB=o\.rebateBase==null\?\(1-ambient\)/);
+    expect(html).toMatch(/const RB=o\.rebateBase==null\?\(1-REBATE_AMBIENT\*SYN_EDGE\)/);
     expect(html).not.toMatch(/REBATE_AMBIENT\*SYN_EDGE\*P/);
+  });
+
+  it('리베이트는 매트가 없을 때만 절대 프로파일 — 매트 쪽은 종전 잔차 곡선 그대로', () => {
+    // 브리핑 "MAT AND NO-MAT ARE DIFFERENT PHYSICAL SYSTEMS" + NON-REGRESSION CONTRACT:
+    // 매트 있는 렌더는 라운드 9 전후로 **픽셀이 하나도 안 바뀌어야** 한다(실측 확인).
+    expect(html).toMatch(/const absReb = !!o\.noMat && SYN_EDGE>0;/);
+    // 반사광 회복(1.12)은 **매트에서 되돌아오는 빛**이라 매트 분기에만 있어야 한다
+    const reb = html.slice(html.indexOf('const d0=FACE_FRONT+e;'),
+      html.indexOf('// ── 균일 항'));
+    expect(reb).toMatch(/} else \{[\s\S]*rb\*1\.12/);
+    expect(reb.slice(0, reb.indexOf('} else {'))).not.toMatch(/1\.12/);
+  });
+
+  it('얇은 액자에는 얕은 리베이트 — 몇 px 안에 표현 못 할 깊이는 그리지 않는다', () => {
+    // 브리핑 FRAME-SPECIFIC NO-MAT DEPTH. 화이트 매트(살 15px)에 오크(44px)와 같은 깊이를
+    // 주면 4px 만에 233→70 으로 떨어져 **검은 선**이 된다(실측 임펄스 6.3 → 44.8).
+    // ⚠️ 판정은 **화면 px** 로. 예전엔 판 좌표라(작품 원본 크기) 늘 '넉넉하다'로 나와,
+    //    실내 장면에서 리베이트가 5px 인데도 온전한 깊이를 넣어 **선**이 됐다.
+    expect(html).toMatch(/const zone=\[t,r,b,l\]\[s\]\*\(1-FF\)\*\(o\.scale==null\?1:o\.scale\);/);
+    expect(html).toMatch(/scale:o\.outLongEst\? o\.outLongEst\/Math\.max\(W,H\) : 1/);
+    expect(html).toMatch(/const kd=Math\.max\(0,Math\.min\(1,\(zone-1\.5\)\/8\)\);/);
+    // ⚠️⚠️ 좁아지면 **골만** 얕게 하지 말 것 — 골=끝이 되어 평평한 어두운 띠(=선)가 남는다.
+    //    양 끝을 함께 1 로 보내야 V 모양을 지키며 세기만 준다.
+    expect(html).toMatch(/const trough=1-\(1-REB_TROUGH\)\*kd;/);
+    expect(html).not.toMatch(/trough=REB_TIP-\(REB_TIP-REB_TROUGH\)/);
+    // 골 위치는 절대 d 가 아니라 **구간 안의 비율** — 액자마다 앞면이 끝나는 자리가 다르다
+    expect(html).toMatch(/const REB_TROUGH_U=0\.62|REB_TROUGH_U=0\.62/);
+    expect(html).toMatch(/FF\+\(1-FF\)\*REB_TROUGH_U/);
+  });
+
+  it('회복은 그릴 수 있을 때만 — 2~3px 안의 되밝아짐은 밝은 링이 된다', () => {
+    // 골든은 골에서 개구부로 되올라온다(case_00 0.23 → 0.49). 물리적으로 맞지만 그걸
+    // **2.6px 안에** 그리면 링으로 보인다 — 얇은 실버 실측 임펄스 44.6(골든 최대 27.4).
+    // ⚠️ 원인은 자산의 밝은 립이 **아니다**: 얇은 실버 자산은 개구부 직전이 0.94~1.05 로
+    //    깨끗한데도 그랬고, 반대로 검정·월넛 자산은 2.6~3.7배인데 살이 넓어 통과한다.
+    expect(html).toMatch(/const recPx=\(1-FF\)\*\(1-REB_TROUGH_U\)\*\[t,r,b,l\]\[s\]/);
+    expect(html).toMatch(/const krec=Math\.max\(0,Math\.min\(1,\(recPx-2\)\/2\)\);/);
+    expect(html).toMatch(/const tip=trough\+\(tip0-trough\)\*krec;/);
+    // 오름폭 자체도 골든 범위(≤0.36)로 묶는다 — **실제로 그려질 골** 기준으로
+    expect(html).toMatch(/REB_RISE=0\.30/);
+    expect(html).toMatch(/const rt=Math\.min\(assetRel\(A,td,s\), trough\);/);
+  });
+
+  it('배경은 벽/공간 탭으로 나뉜다 — 인덱스는 전체 목록 기준을 유지한다', () => {
+    expect(html).toMatch(/id="sceneGroupRow"/);
+    expect(html).toMatch(/data-sg="wall"[\s\S]*data-sg="space"/);
+    // ⚠️ 걸러진 목록의 인덱스로 바꾸면 탭을 옮길 때마다 가리키는 장면이 달라진다
+    expect(html).toMatch(/if\(\(s\.group\|\|'wall'\)!==state\.sceneGroup\) return;/);
+    // 처음 열 때는 지금 고른 장면이 속한 탭을 편다(활성 칩이 안 보이면 안 고른 것처럼 보인다)
+    expect(html).toMatch(/state\.sceneGroup=\(SCENES\[state\.sceneIdx\]\|\|SCENES\[0\]\)\.group/);
+  });
+
+  it('리베이트 곡선은 꺾이지 않는다 — 오목한 곡면이지 두 평면이 만나는 각이 아니다', () => {
+    expect(html).toMatch(/u\*u\*\(3-2\*u\)/);          // smoothstep
+  });
+
+  it('한 밴드에 프로파일 모델을 둘 두지 않는다 — 안쪽 사면은 리베이트가 가진다', () => {
+    // ⚠️ `planeShade` 는 아랫변 사면을 **밝히고**(PLANE_AMP[2][2]=+.44) 리베이트는 폐색이라
+    //    **어둡게** 한다. 둘을 같이 두면 그 경계에 밝은 봉우리가 남는다(실측 임펄스 +33~37,
+    //    골든 최대 27.4). 물리적으로는 리베이트가 옳다 — 파인 홈은 폐색이 지배한다.
+    expect(html).toMatch(/function planeShade\(ctx,W,H,b,s,ld,rebOwn\)/);
+    expect(html).toMatch(/const \[o,f,r0\]=planeOf\(s,ld\); const r=rebOwn\?f:r0;/);
+    expect(html).toMatch(/if\(!rebOwn\) arris\(PLANE_OUT\+PLANE_FRONT/);
+    // 절차적 액자는 제 기하(PLANE_OUT+PLANE_FRONT)를 앞면 끝으로 쓴다
+    expect(html).toMatch(/const FF = rebOnly \? \(PLANE_OUT\+PLANE_FRONT\) : FACE_FRONT;/);
+    // 호출부: 매트가 없을 때만 사면을 넘긴다
+    expect(html).toMatch(/frameBand\(ctx,W,H, uni\(border\), style\.material, ld, mat<=0\);/);
+    // rebateOnly 인데 절대 프로파일이 꺼져 있으면 아무것도 하지 않는다(밝히면 안 된다)
+    expect(html).toMatch(/if\(rebOnly && !absReb\) return;/);
+  });
+
+  it('소수점 좌표 액자는 곱연산을 이음매 너머까지 끈다 — 안 그러면 밝은 실선이 남는다', () => {
+    // 절차적 액자는 border 가 소수라 살의 마지막 픽셀이 폴리곤에 절반만 덮인다 →
+    // 그 한 줄만 덜 어두워져 밝은 선이 된다(실측 오크 슬림: 80 81 89 **115** | 74).
+    expect(html).toMatch(/const OV = rebOnly \? 0\.06 : 0;/);
+    expect(html).toMatch(/mitreBand\(W,H,s,l,t,r,b,0,1\+OV\)/);
+    expect(html).toMatch(/if\(OV\) stops\.push\(\[1\+OV\*0\.5, 1\], \[1\+OV, 1\]\);/);
+    expect(html).toMatch(/Math\.min\(1, pRaw\/\(1\+OV\)\)/);
   });
 
   it('깊은 폐색은 근사 검정으로 — 따뜻한 그늘색은 어두운 액자에서 바닥이 된다', () => {

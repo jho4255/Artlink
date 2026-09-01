@@ -63,5 +63,44 @@
     "h": 970,
     "rail": 93,
     "railPct": 9.6
+  },
+  "oak-thin": {
+    "file": "oak-thin.png",
+    "inner": [
+      56,
+      56,
+      954,
+      956
+    ],
+    "w": 1011,
+    "h": 1013,
+    "rail": 56,
+    "railPct": 5.5
+  },
+  "silver-thin": {
+    "file": "silver-thin.png",
+    "inner": [
+      49,
+      49,
+      954,
+      961
+    ],
+    "w": 1004,
+    "h": 1011,
+    "rail": 49,
+    "railPct": 4.9
+  },
+  "walnut-thin": {
+    "file": "walnut-thin.png",
+    "inner": [
+      49,
+      49,
+      952,
+      953
+    ],
+    "w": 1002,
+    "h": 1003,
+    "rail": 49,
+    "railPct": 4.9
   }
 }
