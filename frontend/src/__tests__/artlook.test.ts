@@ -18,10 +18,10 @@ describe('openArtLook', () => {
   const work = (p: Partial<ArtLookWork> = {}): ArtLookWork => ({ url: 'https://img/1.jpg', ...p });
 
   it('작품을 localStorage 로 넘기고 새 탭을 연다', () => {
-    const n = openArtLook([work({ title: '겨울 들판', artist: '마은영', kind: 'portfolio' })]);
+    const n = openArtLook([work({ title: '겨울 들판', artist: '유하람', kind: 'portfolio' })]);
     expect(n).toBe(1);
     expect(JSON.parse(localStorage.getItem(ARTLOOK_STORAGE_KEY)!)).toEqual([
-      { url: 'https://img/1.jpg', title: '겨울 들판', artist: '마은영', kind: 'portfolio' },
+      { url: 'https://img/1.jpg', title: '겨울 들판', artist: '유하람', kind: 'portfolio' },
     ]);
     expect(opened).toEqual(['/artlook/index.html']);
   });

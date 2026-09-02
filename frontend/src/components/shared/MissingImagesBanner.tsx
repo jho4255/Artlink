@@ -13,7 +13,7 @@
 import { AlertTriangle, RotateCw } from 'lucide-react';
 
 interface Props {
-  /** 못 받은 항목 이름 (예: "김혜원 · 무제 3") */
+  /** 못 받은 항목 이름 (예: "한도윤 · 무제 3") */
   items: string[];
   /** 무엇을 받다 실패했는지 (예: "작품 원본", "PDF에 들어갈 작품 이미지") */
   what: string;

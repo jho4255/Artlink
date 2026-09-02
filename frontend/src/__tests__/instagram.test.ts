@@ -33,8 +33,8 @@ describe('instagramHandle', () => {
   });
 
   it('아이디 규칙에 안 맞으면 null — 호출부가 그냥 "Instagram" 으로 되돌린다', () => {
-    expect(instagramHandle('https://instagram.com/마은영')).toBeNull();  // 한글 아이디는 없다
-    expect(instagramHandle('마은영')).toBeNull();
+    expect(instagramHandle('https://instagram.com/유하람')).toBeNull();  // 한글 아이디는 없다
+    expect(instagramHandle('유하람')).toBeNull();
     expect(instagramHandle('a'.repeat(31))).toBeNull();                  // 인스타 상한 30자
     expect(instagramHandle('https://facebook.com/eunyeongma')).toBeNull();
   });

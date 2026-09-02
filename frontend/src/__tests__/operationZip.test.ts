@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { missingNote, MISSING_NOTE_NAME, artistFolderNames } from '../lib/operationPdf';
 
 describe('missingNote', () => {
-  const items = ['김혜원 · 무제 3', '이서준 · 봄의 기록'];
+  const items = ['한도윤 · 무제 3', '이서준 · 봄의 기록'];
 
   it('파일명이 목록 맨 위에 오도록 밑줄로 시작한다', () => {
     expect(MISSING_NOTE_NAME.startsWith('_')).toBe(true);
@@ -23,7 +23,7 @@ describe('missingNote', () => {
     expect(note).toContain('2026 봄 공모');
     expect(note).toContain('작품 원본 이미지');
     expect(note).toContain('2건');
-    expect(note).toContain('1. 김혜원 · 무제 3');
+    expect(note).toContain('1. 한도윤 · 무제 3');
     expect(note).toContain('2. 이서준 · 봄의 기록');
   });
 
@@ -50,16 +50,16 @@ describe('missingNote', () => {
 describe('artistFolderNames', () => {
   it('작가마다 폴더 하나', () => {
     const m = artistFolderNames([
-      { id: 1, name: '김혜원' },
+      { id: 1, name: '한도윤' },
       { id: 2, name: '이서준' },
     ]);
-    expect(m.get(1)).toBe('김혜원');
+    expect(m.get(1)).toBe('한도윤');
     expect(m.get(2)).toBe('이서준');
   });
 
   it('닉네임이 있으면 함께 표기한다 (화면 표기와 일치)', () => {
-    const m = artistFolderNames([{ id: 1, name: '김혜원', nickname: '혜원' }]);
-    expect(m.get(1)).toContain('김혜원');
+    const m = artistFolderNames([{ id: 1, name: '한도윤', nickname: '혜원' }]);
+    expect(m.get(1)).toContain('한도윤');
     expect(m.get(1)).toContain('혜원');
   });
 
@@ -76,10 +76,10 @@ describe('artistFolderNames', () => {
   });
 
   it('같은 작가가 여러 번 들어와도 폴더는 하나 (중복 호출 방어)', () => {
-    const u = { id: 1, name: '김혜원' };
+    const u = { id: 1, name: '한도윤' };
     const m = artistFolderNames([u, u, u]);
     expect(m.size).toBe(1);
-    expect(m.get(1)).toBe('김혜원');
+    expect(m.get(1)).toBe('한도윤');
   });
 
   it('★ 경로 구분자는 제거된다 (ZIP 밖으로 새어나가면 안 된다)', () => {

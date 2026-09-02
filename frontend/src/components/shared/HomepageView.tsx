@@ -18,7 +18,7 @@ import type { PortfolioImage, Career, CareerKey, SeriesInfo } from '@/types';
  *
  * ⚠️ **작가가 넣는 글에는 `break-keep` 만으로 부족하다.** `word-break: keep-all` 은 낱말 안에서 안 끊는데,
  *    공백 없이 이어 쓴 한글 한 덩어리는 통째로 한 낱말이라 아무 데서도 안 끊긴다.
- *    실측(2026-08-28, 김혜원 작가노트 432자 무공백): 글상자가 **4848px 넘치고 페이지 전체가 가로로 4224px 밀렸다**.
+ *    실측(2026-08-28, 작가A 작가노트 432자 무공백): 글상자가 **4848px 넘치고 페이지 전체가 가로로 4224px 밀렸다**.
  *    그래서 글이 들어가는 자리마다 `[overflow-wrap:anywhere]` 를 함께 준다 —
  *    평소엔 낱말 단위로 끊고, 한 줄에 못 담는 덩어리만 강제로 끊는다.
  *    (`break-words`(break-word)로는 min-content 가 안 줄어 부모를 계속 밀어낸다 → `anywhere` 여야 한다)

@@ -1,14 +1,18 @@
 // 표지 21종의 **하단 빈 공간** — 실데이터 조건(한 줄 소개 0명)에서.
 // bandTop 하나만 보고 고치면 또 같은 실수다. 전부 재고 고칠 것을 고른다.
+//
+// ⚠️ 대상 작가 id 를 소스에 박지 말 것 — 공개 레포라 실제 가입자를 가리키게 된다.
+//    기본값은 시드 계정(artist1). 실데이터로 보려면  PF_UID=<id> node covervoid.mjs
 import pw from '/home/jho4255/ArtLink/e2e/node_modules/playwright/index.js';
+const UID = process.env.PF_UID || '1';
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 1700, height: 1500 } });
 await p.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(1200);
-const rows = await p.evaluate(async () => {
+const rows = await p.evaluate(async (uid) => {
   const m = await import('/src/lib/portfolioFormats.ts');
-  const pf = await (await fetch('/api/portfolio/542')).json();
-  const data = { user: pf.user ?? { name: '박명선' }, tagline: null, statement: pf.statement,
+  const pf = await (await fetch(`/api/portfolio/${uid}`)).json();
+  const data = { user: pf.user ?? { name: '작가' }, tagline: null, statement: pf.statement,
     biography: pf.biography, career: pf.career, seriesInfo: pf.seriesInfo, images: pf.images ?? [] };
   const host = document.getElementById('root');
   const out = [];
@@ -38,7 +42,7 @@ const rows = await p.evaluate(async () => {
       host.innerHTML = '';
     }
   return out;
-});
+}, UID);
 const byCover = {};
 for (const r of rows) (byCover[r.cover] ??= {})[r.page] = r;
 console.log('표지            A4세로: 위/아래      와이드: 위/아래     대칭?  판정');

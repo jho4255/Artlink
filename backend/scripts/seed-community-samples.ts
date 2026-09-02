@@ -59,6 +59,26 @@ const SAMPLES: Sample[] = [
   },
 ];
 
+/**
+ * ⚠️ 이 스크립트는 **실제 가입자 이름으로 글을 쓴다**(작성자·좋아요를 DB 에서 골라 온다).
+ * 그래서 두 가지를 다 막는다 —
+ *   ① NODE_ENV=production (배포 서버)
+ *   ② DATABASE_URL 이 실서버/복제본을 가리킬 때. 로컬 .env 는 NODE_ENV=development 인 채로
+ *      artlink_prod 를 보고 있는 일이 잦아서, ① 만으로는 정작 위험한 경로를 못 막는다.
+ */
+function assertNotProd() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('⛔ production 에서는 실행하지 않습니다.');
+    process.exit(1);
+  }
+  const url = process.env.DATABASE_URL ?? '';
+  if (/_prod|render\.com|\.rds\.|neon\.tech/i.test(url)) {
+    console.error('⛔ DATABASE_URL 이 실서버(복제본)를 가리킵니다 — 실제 가입자 이름으로 글이 올라갑니다.');
+    console.error(`   현재: ${url.replace(/:\/\/[^@]*@/, '://***@')}`);
+    process.exit(1);
+  }
+}
+
 async function pickUser(role: string): Promise<number | null> {
   const u = await prisma.user.findFirst({ where: { role, deletedAt: null }, orderBy: { id: 'asc' }, select: { id: true } });
   return u?.id ?? null;
@@ -105,6 +125,8 @@ async function clean() {
   const r = await prisma.post.deleteMany({ where: { title: { endsWith: MARK } } });
   console.log(`\n샘플 글 ${r.count}개 삭제(제목 끝 표식 기준).\n`);
 }
+
+assertNotProd();
 
 (process.argv.includes('--clean') ? clean() : seed())
   .catch((e) => { console.error(e); process.exit(1); })

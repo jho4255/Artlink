@@ -109,7 +109,7 @@ describe('showsSenderName — 이름을 붙일 자리', () => {
 });
 
 describe('chatTitle', () => {
-  const me = { id: 1, name: '김혜원' };
+  const me = { id: 1, name: '한도윤' };
   const other = { id: 2, name: '전지에', nickname: '지에' };
 
   it('갠톡은 상대 이름 (닉네임 우선)', () => {

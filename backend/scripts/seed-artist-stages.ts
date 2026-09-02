@@ -24,7 +24,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const PREFIX = '[TEST]';
-const ARTIST_NAME = '김혜원';
+const ARTIST_NAME = '한도윤';
 const CLEAN = process.argv.includes('--clean');
 
 const day = (n: number) => new Date(Date.now() + n * 86400000);
