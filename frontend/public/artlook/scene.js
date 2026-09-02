@@ -661,9 +661,19 @@
     // 작아 보이는 문제는 크기를 부풀려서가 아니라 **카메라를 당겨서** 푼다
     // (`composeScene` 의 자동 프레이밍). 사진가가 하는 것과 같고, 비례는 거짓말하지 않는다.
     // ⚠️ 작품을 자르거나 늘리지는 않는다 — 바뀌는 건 벽에서 차지하는 크기뿐이다.
-    const FILL_DEFAULT = 0.62;   // 치수를 모를 때만 쓰는 기본 채움 비율
+    const FILL_DEFAULT = 0.62;   // 장면이 `fill` 을 직접 지정할 때만 쓰는 채움 비율
+    // ⚠️⚠️ **치수를 모른다고 '최대치'로 걸지 말 것** (2026-09-03 신고).
+    //   예전엔 치수가 없으면 `fill`(0.62) 에 자동 프레이밍 `gain` 까지 걸려 화면 상한까지
+    //   커졌다. 그 결과 **크기를 모르는 작품이 100호보다 크게** 걸렸다 —
+    //   실측(minsize.mjs): 흰 벽돌 70.0% ↔ 100호 65.7%, 컬렉터 살롱 49.0% ↔ 100호 38.2%.
+    //   모르는 값을 최댓값으로 놓는 셈이라 앞뒤가 안 맞고, 실서버 작품의 **97% 가 이 경로**다.
+    //   대신 **중간 크기(30호, 높이 90cm)로 가정**하고 실치수와 똑같은 경로를 태운다.
+    //   장면마다 `regionCm` 이 다르므로 그 방에 맞는 크기가 자동으로 나온다.
+    //   ⚠️ `trueScale` 로 치지는 않는다 — 안내문이 "실제 크기"라고 말하면 거짓말이 된다.
+    const ASSUMED_CM = 90;
     let t;                       // 작품 높이 (영역 높이 = 1 기준)
     let trueScale = false;
+    let assumed = false;
     // gain — 자동 프레이밍이 '영역 안에서' 키우는 배수. 사용자 조절(scale)과 **별개**다.
     // ⚠️ **실치수를 아는 작품에는 쓰지 않는다**(호출부가 안 준다) — 벽 대비 비율이 곧
     //    정직한 치수인데 여기에 배수를 곱하면 작품 크기가 거짓말이 된다.
@@ -672,8 +682,11 @@
     if (knowCm) {
       t = o.artCm[1] / o.regionCm[1];
       trueScale = true;
+    } else if (o.fill == null && o.regionCm && o.regionCm[1] > 0) {
+      t = ASSUMED_CM / o.regionCm[1];                         // 치수를 모를 때 = 30호로 가정
+      assumed = true;
     } else {
-      t = o.fill == null ? FILL_DEFAULT : o.fill;             // 치수를 모를 때
+      t = o.fill == null ? FILL_DEFAULT : o.fill;             // 장면이 채움 비율을 지정한 경우
     }
     // ── 영역 상한 ─────────────────────────────────────────────────────────
     // ⚠️ **작품이 벽 한 면을 꽉 채우게 두지 말 것** (2026-08-31 신고).
@@ -700,7 +713,7 @@
     //   실제로 기본 채움 0.5 가 0.47 로, gain 1.3 배가 1.19 배로 깎였다(테스트가 잡았다).
     //   신고("아무리 커도 벽을 꽉 채운다")는 **치수를 아는 큰 작품** 이야기다.
     const squeeze = (v) => (v <= KH ? v : KH + (CEIL - KH) * (v - KH) / ((v - KH) + (CEIL - KH)));
-    if (trueScale) t = squeeze(t);
+    if (trueScale || assumed) t = squeeze(t);   // 가정 크기도 같은 상한을 받는다
     t = Math.min(t, physMax);
     const capped = trueScale && t >= Math.min(physMax, CEIL) - 1e-6;
     t *= gain;
@@ -723,7 +736,7 @@
       const w = H[6] * u + H[7] * v + H[8];
       return [(H[0] * u + H[1] * v + H[2]) / w, (H[3] * u + H[4] * v + H[5]) / w];
     });
-    return { quad: px, trueScale, over, capped, heightRatio: t };
+    return { quad: px, trueScale, assumed, over, capped, heightRatio: t };
   }
 
   // ==========================================================================
@@ -890,13 +903,28 @@
       //     reach ≥ KNEE  → 손대지 않는다(예전 그대로 정직한 비율)
       //     reach < KNEE  → [0,KNEE] 를 [FLOOR,KNEE] 로 **선형 사상**한다
       //   순서는 그대로 보존되고 바닥만 들린다. KNEE 에서 값이 이어지므로 단차도 없다.
-      const KNEE = u.minArea == null ? 0.11 : u.minArea;      // 이 위로는 무보정
-      const FLOOR = u.floorArea == null ? 0.055 : u.floorArea; // 아무리 작아도 이만큼은
+      // ⚠️⚠️ **무릎을 '화면 절대 면적'으로 고정하지 말 것 — 실내 장면에서 전 구간을 삼킨다.**
+      //   실내는 `maxLong` 0.49 라 조각이 화면 면적의 24% 를 넘을 수 없는데 KNEE 가 11% 였다.
+      //   즉 12cm 소품부터 100호까지 **전부** 보정 구간 안에 들어가, [0,KNEE] → [FLOOR,KNEE]
+      //   사상이 실치수를 통째로 절반으로 압축했다. 실측(2026-09-03 신고, minsize.mjs):
+      //   컬렉터 살롱에서 12×12cm 이 화면 긴변 27.1% · 130×162cm 이 38.2% —
+      //   **실치수 13.5배 차이가 화면에서 1.41배**가 됐다(평면 벽은 2.3배로 멀쩡했다).
+      //   방에는 소파·콘솔이 함께 찍혀 있어 크기 기준이 눈에 보이므로, 그 압축이
+      //   평면 벽과 달리 **바로 '너무 크다'로 읽힌다**.
+      //   그 장면이 보여 줄 수 있는 최대 면적에 비례시켜 무릎이 어느 장면에서나 같은
+      //   **상대 위치**에 오게 한다(평면 벽 maxLong 0.70 에서는 기존 값 그대로다).
+      const _mlKnee = u.maxLongFrac != null ? u.maxLongFrac
+        : (scene.maxLong == null ? 0.70 : scene.maxLong);
+      const _kneeK = Math.min(1, Math.pow(_mlKnee / 0.70, 2));
+      const KNEE = u.minArea == null ? 0.11 * _kneeK : u.minArea;      // 이 위로는 무보정
+      const FLOOR = u.floorArea == null ? 0.055 * _kneeK : u.floorArea; // 아무리 작아도 이만큼은
       const a0 = areaOf(neutral.quad);
       // ① 먼저 **영역 안에서** 키운다 — 카메라를 안 건드리므로 벽 화질 손실이 0이다.
       //    ⚠️ **실치수를 아는 작품에는 쓰지 않는다** — 벽 대비 비율이 곧 정직한 치수라
       //    여기에 배수를 곱하면 30호가 100호처럼 보인다. 그런 작품은 ②카메라만 쓴다.
-      const honest = !!(neutral.place && neutral.place.trueScale);
+      // 가정 크기(치수 미입력)도 `gain` 에서 제외한다 — 배수를 곱하면 그 가정마저
+      // 무의미해지고 다시 화면 상한까지 커진다(그게 이 신고의 원인이었다).
+      const honest = !!(neutral.place && (neutral.place.trueScale || neutral.place.assumed));
       if (a0 > 1e-4 && a0 < wantA && scene.region && !honest) {
         const g = Math.sqrt(wantA / a0);
         if (solve(fit, { gain: g })) gain = g;   // 영역 밖으론 placeInRegion 이 알아서 막는다

@@ -40,11 +40,12 @@ const M = [
   ['m18_walthin_nomat',  '얇은 월넛',   0,    'white-brick',   'water-memory.jpg'],
   ['m19_silthin_nomat',  '얇은 실버',   0,    'white-brick',   'water-memory.jpg'],
   ['m20_oakthin_mat',    '얇은 오크',   0.05, 'white-brick',   'water-memory.jpg'],
-  ['m21_quietstudy',     '오크',        0,    'quiet-study',   'water-memory.jpg'],
-  ['m22_qs_silthin',     '얇은 실버',   0,    'quiet-study',   'water-memory.jpg'],
-  ['m23_linen',          '오크',        0,    'linen-living',  'water-memory.jpg'],
-  ['m24_clay',           '얇은 월넛',   0,    'clay-salon',    'water-memory.jpg'],
-  ['m25_clay_mat',       '블랙',        0.05, 'clay-salon',    'dawn-window.jpg'],
+  // 2026-09-03 추가 벽 6종. 여기 오기 전에는 벽이 전부 밝고(157~231) 중성색이라
+  // **어두운 벽·색 있는 벽에서 액자가 어떻게 보이는지 한 번도 재 본 적이 없었다.**
+  ['m21_charcoal',       '오크',        0,    'charcoal',      'water-memory.jpg'],
+  ['m22_walnutpanel',    '얇은 실버',   0,    'walnut-panel',  'water-memory.jpg'],
+  ['m23_terracotta',     '블랙',        0.05, 'terracotta',    'dawn-window.jpg'],
+  ['m24_whiteplaster',   '얇은 오크',   0,    'white-plaster', 'water-memory.jpg'],
 ];
 
 const b = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });

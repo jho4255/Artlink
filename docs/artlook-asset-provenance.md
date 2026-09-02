@@ -47,6 +47,20 @@ FrameIt 은 원본 자산을 배포하지 않으므로 받아올 수 있는 것�
    그렇게 부른 것이지 FrameIt 자산이 아니다). 2026-09-02 감사에서 이름만 보고 FrameIt
    계열로 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**
    위 [전면 교체 2026-06-11] 의 wall01~10 은 별개이고, 그쪽 경고는 그대로 유효하다.
+
+[삭제 2026-09-03] wall18·19·20 (quiet-study / linen-living / clay-salon) — 사용자 요청.
+   원본이 382×332 뿐이라 3배 확대해 넣은 것이라 화질 부채가 있었다. 파일까지 지웠다.
+
+[추가 2026-09-03] wall21~26 = **GPT 생성**(직접 제작, `gptgenwall/` 원본 PNG). 저작권 제약 없음.
+  wall21 charcoal       차콜 미장          wall24 terracotta      테라코타 라임워시
+  wall22 olive          올리브 라임워시     wall25 blue-grey       블루 그레이 라임워시
+  wall23 walnut-panel   월넛 세로 슬랫      wall26 white-plaster   웜 오프화이트 베네치안
+   생성 프롬프트는 `scratchpad/artlook-asset-prompts.md` §3.
+   1254×1254 원본을 **×2 LANCZOS 업스케일**해 2508×2508 로 넣었다 — 실측상 같은 표시
+   크기에서 벽 결 손실이 **0.0%** 인데, 출력이 1080→1568px 로 커지고 자동 프레이밍
+   확대 한도가 1.34→1.84 배가 된다(규칙 41 의 SCENE_HEADROOM 여유).
+   ⚠️ 이 여섯이 **처음으로 어두운 벽(밝기 48~135)과 색 있는 벽**을 연다. 기존 8종은
+      157~231 에 전부 중성색이었다.
 ```
 
 ## 사진 액자 (`frontend/public/artlook/frames/photo/`)

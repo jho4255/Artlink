@@ -15,7 +15,11 @@ await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkid
 await p.waitForTimeout(3800);
 
 const SCENES_UNDER_TEST = ['white-brick', 'stone', 'grey-brick', 'travertine',
-  'concrete', 'cream-stone', 'taupe-plaster', 'gallery-salon'];
+  'concrete', 'cream-stone', 'taupe-plaster', 'gallery-salon',
+  // 2026-09-03 추가 6종. **walnut-panel 이 이 검사의 핵심**이다 — 세로 슬랫이
+  // 폭 200px 짜리 주기 무늬라 벽 명암 밉맵(≈11텍셀)을 그냥 통과한다. 규칙 40 의
+  // '그림이 투명해져서 벽문양이 비친다'가 재현될 수 있는 유일한 새 자산이다.
+  'charcoal', 'olive', 'walnut-panel', 'terracotta', 'blue-grey', 'white-plaster'];
 
 const shots = await p.evaluate(async (ids) => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));

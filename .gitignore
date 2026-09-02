@@ -68,8 +68,11 @@ e2e/_*
 # ⚠️ frameitsample/ 은 **경쟁사 앱 결과물 스크린샷**이라 저작권상 커밋 금지.
 #    gptsamplecase/ 는 액자 원본 보관함(용량 큼, 추출 결과만 배포된다).
 #    light/ 는 FrameIt 조명 샘플 스크린샷 16장 — 같은 이유로 커밋 금지(분석은 lightref.py).
+#    gptgenwall/ 은 벽 원본 PNG 보관함 — gptsamplecase/ 와 같은 규칙(장당 2~3MB,
+#    배포되는 건 walls/ 의 ×2 업스케일 JPG 뿐이다).
 frameitsample/
 gptsamplecase/
+gptgenwall/
 light/
 scratchpad/vt/cases/
 scratchpad/vt/light/
