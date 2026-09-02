@@ -20,3 +20,14 @@ wall09.jpg <- 2200px로 다운스케일
 [전면 교체 2026-06-11] wall01~10 = frameitapp.net(aiframeit.com) bg_scene 인테리어 목업 (3000~4000px 원본 → 1800px 다운스케일).
 출처: oss.aiframeit.com/bg_scene/* — 작품 합성 전용으로 제작된 빈 벽 목업.
 ⚠️ FrameIt 자산이므로 로컬 POC 검증 전용. 상용 시 자체 촬영/구매 목업으로 교체 필수.
+
+[추가 2026-09-01] wall11~20 = **GPT 생성**(직접 제작). 저작권 제약 없음.
+  wall11~17  실내 장면 7종
+  wall18     quiet-study   <- room_03_no_artwork  (382x332 원본 -> 3배 확대)
+  wall19     linen-living  <- room_01             (381x332 원본 -> 3배 확대)
+  wall20     clay-salon    <- room_02             (382x332 원본 -> 3배 확대)
+
+⚠️ wall18~20 을 담아 온 파일 이름이 `frameit_test_assets*.zip` 이었다(FrameIt 과 비교하려고
+   그렇게 부른 것이지 FrameIt 자산이 아니다). 2026-09-02 감사에서 이름만 보고 FrameIt
+   계열로 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**
+   위 [전면 교체 2026-06-11] 의 wall01~10 은 별개이고, 그쪽 경고는 그대로 유효하다.

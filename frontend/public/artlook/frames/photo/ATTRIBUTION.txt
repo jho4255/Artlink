@@ -1,0 +1,12 @@
+ArtLook 사진 액자 — 출처
+
+전 8종 **GPT 생성**(직접 제작). 저작권 제약 없음.
+원본 보관함은 레포 루트 `gptsamplecase/`(용량이 커서 커밋하지 않는다),
+추출은 `frontend/scripts/extract-photo-frames.py`.
+
+  black / gold / oak / walnut / white     1254px 원본, 살 9.0~9.8%
+  oak-thin / silver-thin / walnut-thin    1024px 원본, 살 4.9~5.5%   (2026-09-01 추가)
+
+⚠️ 얇은 3종을 담아 온 파일 이름이 `frameit_test_assets_updated.zip` 이었다
+   (FrameIt 과 비교하려고 그렇게 부른 것이지 FrameIt 자산이 아니다).
+   2026-09-02 감사에서 이름만 보고 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**
