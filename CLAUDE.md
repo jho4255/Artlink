@@ -1018,6 +1018,11 @@ sudo service postgresql start
 - `HANDOFF.md` — **인계/현재상태 우선**. 0장(계정 인계)에 최근 변경 이력·운영 정보·다음 작업 정리. 이하 장은 API 전체·인증 플로우·버그 이력 등 상세 레퍼런스
 - `architecture.md` — 상세 아키텍처 (데이터 모델, API 상세, 컴포넌트 가이드, 로깅/안정성)
 - `REQUIREMENTS_CHECKLIST.md` — 요구사항 체크리스트
+- `docs/artlook-asset-provenance.md` — **ArtLook 벽·액자 자산 출처**. 전부 자체 제작(GPT 생성)이다.
+  ⚠️ 예전엔 `frontend/public/artlook/*/ATTRIBUTION.txt` 였는데 그 자리는 `artlink.cc/...` 로
+  **공개 서빙된다** — 내부 메모라 2026-09-02 에 옮겼다. 자산을 추가하면 여기에 적을 것.
+  ⚠️ **출처를 추측으로 적지 말 것** — zip 파일 이름만 보고 경쟁사 자산이라 적어 둔 옛 기록 때문에
+  2026-09-02 감사가 멀쩡한 자산의 배포를 막을 뻔했다. 모르면 '미확인'으로 두고 만든 사람에게 물을 것.
 
 ---
 

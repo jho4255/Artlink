@@ -1,3 +1,12 @@
+# ArtLook 자산 출처
+
+> 원래 `frontend/public/artlook/{walls,frames/photo}/ATTRIBUTION.txt` 에 있었다.
+> 거기 두면 `artlink.cc/artlook/walls/ATTRIBUTION.txt` 로 **누구나 읽힌다** — 내부 메모라
+> 2026-09-02 에 서빙되지 않는 이 자리로 옮겼다. 자산을 추가하면 여기에 적을 것.
+
+## 벽 (`frontend/public/artlook/walls/`)
+
+```
 POC 전용. 출처/라이선스 (Openverse 경유, CC 라이선스 — 상용 전 개별 확인 필요)
 
 wall01.jpg <- cand05_living.jpg	Plage Colección My Wall	Plage Vinilos y Decoración	by	https://www.flickr.com/photos/59209848@N08/5429084250	https://live.staticflickr.com/5014/5429084250_591e0dcb6c.jpg
@@ -38,3 +47,21 @@ FrameIt 은 원본 자산을 배포하지 않으므로 받아올 수 있는 것�
    그렇게 부른 것이지 FrameIt 자산이 아니다). 2026-09-02 감사에서 이름만 보고 FrameIt
    계열로 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**
    위 [전면 교체 2026-06-11] 의 wall01~10 은 별개이고, 그쪽 경고는 그대로 유효하다.
+```
+
+## 사진 액자 (`frontend/public/artlook/frames/photo/`)
+
+```
+ArtLook 사진 액자 — 출처
+
+전 8종 **GPT 생성**(직접 제작). 저작권 제약 없음.
+원본 보관함은 레포 루트 `gptsamplecase/`(용량이 커서 커밋하지 않는다),
+추출은 `frontend/scripts/extract-photo-frames.py`.
+
+  black / gold / oak / walnut / white     1254px 원본, 살 9.0~9.8%
+  oak-thin / silver-thin / walnut-thin    1024px 원본, 살 4.9~5.5%   (2026-09-01 추가)
+
+⚠️ 얇은 3종을 담아 온 파일 이름이 `frameit_test_assets_updated.zip` 이었다
+   (FrameIt 과 비교하려고 그렇게 부른 것이지 FrameIt 자산이 아니다).
+   2026-09-02 감사에서 이름만 보고 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**
+```
