@@ -27,8 +27,34 @@ const ALL_TABLES = [
   'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
 ];
 
+/**
+ * ⚠️⚠️ **테스트 DB가 아니면 지우지 않는다.**
+ *
+ * 2026-09-04 사고: `npx vitest run` 을 **레포 루트에서** 돌렸다. 루트에는 `vitest.config.ts` 가
+ * 없어서 `backend/vitest.config.ts` 의 `setupFiles`(= `DATABASE_URL` 을 `artlink_test` 로 덮어쓰는
+ * 유일한 장치)가 **로드되지 않았고**, 기본 include 패턴이 `backend/src/**` 를 주워 담았다.
+ * 그래서 `lib/prisma.ts` 가 `backend/.env` 의 `artlink_prod`(실서버 복제본)에 붙었고
+ * `cleanDb()` 가 그걸 통째로 비웠다. **에러 없이, 초록색으로 통과하면서.**
+ *
+ * 안전장치를 `setup.ts`(설정 파일에 의존)에만 두면 이렇게 조용히 우회된다.
+ * **지우는 지점에서** 막는다 — cwd·설정·실행 방법과 무관하게 항상 걸린다.
+ */
+function assertTestDatabase() {
+  const url = process.env.DATABASE_URL ?? '';
+  const db = url.split('/').pop()?.split('?')[0] ?? '';
+  if (db !== 'artlink_test') {
+    throw new Error(
+      `[cleanDb] 테스트 DB 가 아닙니다: "${db || '(DATABASE_URL 없음)'}"\n` +
+      `  테스트는 반드시 artlink_test 에서만 돌아야 합니다.\n` +
+      `  → 백엔드 테스트는 backend/ 디렉터리에서 'npm test' 로 실행하세요.\n` +
+      `    (레포 루트에서 'npx vitest run' 을 돌리면 setupFiles 가 안 걸려 실 DB 를 지웁니다)`,
+    );
+  }
+}
+
 // DB 전체 정리 — interactive transaction (단일 커넥션, deadlock 불가)
 export async function cleanDb() {
+  assertTestDatabase();
   await testPrisma.$transaction(async (tx) => {
     await tx.chatMessage.deleteMany();
     await tx.chatParticipant.deleteMany();

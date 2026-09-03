@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PORTFOLIO_THEMES, buildPortfolioPages, bookImageUrls, estimateParaH, splitCvColumns, splitParagraphs, themeById,
-  normalizePdfDesign, applyDesign, PAGE_DIMS, COVER_LAYOUTS, COVER_SHOWS_TAGLINE,
+  normalizePdfDesign, applyDesign, PAGE_DIMS, COVER_LAYOUTS,
   type PortfolioBookData,
 } from '../lib/portfolioFormats';
 import type { PortfolioImage } from '../types';
@@ -41,9 +41,21 @@ describe('페이지 구성', () => {
     }
   });
 
-  it('순서: 표지 → 작가노트 → 시리즈 소개 → 작품 → CV → 연락처 (기본 hero=쪽당 1점)', () => {
-    // 산 시리즈 2점 → hero 라 각 1쪽씩. 무시리즈 1점 → '작품' 1쪽.
-    expect(labels(base)).toEqual(['표지', '작가노트', '산 소개', '산', '산', '작품', 'CV', '연락처']);
+  it('순서: 표지 → 작가노트 → 시리즈 여는 장 → 작품 → CV → 연락처', () => {
+    // 자동 편집: '산 소개'가 대표작 1점을 함께 실으므로 남은 1점이 '산' 1쪽. 무시리즈 1점 → '작품' 1쪽.
+    expect(labels(base)).toEqual(['표지', '작가노트', '산 소개', '산', '작품', 'CV', '연락처']);
+  });
+
+  it('수동 편집이면 시리즈 소개는 예전처럼 글만 있는 장이다 (고른 배치를 건드리지 않는다)', () => {
+    const l = buildPortfolioPages(base, themeById('archive'), { design: { worksLayout: 'hero' } }).map((p) => p.label);
+    expect(l).toEqual(['표지', '작가노트', '산 소개', '산', '산', '작품', 'CV', '연락처']);
+  });
+
+  it('자동 편집의 시리즈 여는 장은 **대표작을 함께 싣는다** (글만 있는 빈 장을 만들지 않는다)', () => {
+    const opener = buildPortfolioPages(base, themeById('archive')).find((p) => p.label === '산 소개')!;
+    expect(opener.html).toContain('<img');          // 대표작이 실렸다
+    expect(opener.html).toContain('산');            // 시리즈 제목
+    expect(opener.html).toContain('시리즈 설명');
   });
 
   it('작가노트가 없으면 그 페이지를 넣지 않는다', () => {
@@ -141,18 +153,19 @@ describe('본문 정렬 — proseAlign (작가노트·약력 등 읽는 글 전�
 
 describe('페이지 내용', () => {
   it('작품 페이지에 제목·재료·크기·연도가 들어간다', () => {
-    const p = buildPortfolioPages(base, themeById('gallery')).find((x) => x.label === '산')!;
+    // 자동 편집은 첫 작품을 시리즈 여는 장에 싣는다 — 캡션은 '어느 장에든' 반드시 있어야 한다.
+    const p = { html: buildPortfolioPages(base, themeById('gallery')).map((x) => x.html).join('') };
     expect(p.html).toContain('작품 A');
     expect(p.html).toContain('Acrylic on canvas');
     expect(p.html).toContain('50×50 cm');
     expect(p.html).toContain('2025');
   });
 
-  it('표지에 이름·연도·한 줄 소개가 들어간다', () => {
+  it('표지에 이름·연도가 들어간다 (한 줄 소개는 2026-09-04 제거)', () => {
     const cover = buildPortfolioPages(base, themeById('gallery'))[0]!.html;
     expect(cover).toContain('김작가');
     expect(cover).toContain('2026');
-    expect(cover).toContain('한 줄 소개');
+    expect(cover).not.toContain('한 줄 소개');
   });
 
   it('연락처 페이지에 이메일·전화·인스타 핸들이 들어간다', () => {
@@ -179,46 +192,44 @@ describe('페이지 내용', () => {
   });
 });
 
-describe('표지 = 디자인 레이아웃 21종', () => {
+describe('표지 = 디자인 레이아웃 15종', () => {
   // 작품 5장 있는 작가(그리드 레이아웃 폴백 안 타게)
   const many = { ...base, images: Array.from({ length: 5 }, (_, i) => img({ id: i + 1, title: `작품 ${i + 1}` })) };
   const cover = (design: Record<string, unknown>, data = many) =>
     buildPortfolioPages(data, themeById('archive'), { design })[0]!.html;
   const ALL = COVER_LAYOUTS.map((c) => c.key);
 
-  it('22종이 있고, 모든 레이아웃에 이름이 들어가고 빌드가 죽지 않는다', () => {
-    expect(ALL.length).toBe(21);
+  it('15종이 있고, 모든 레이아웃에 이름이 들어가고 빌드가 죽지 않는다', () => {
+    expect(ALL.length).toBe(15);
     for (const coverLayout of ALL) expect(cover({ coverLayout }), coverLayout).toContain('김작가');
   });
 
-  it('COVER_SHOWS_TAGLINE 이 실제 렌더와 일치한다(전 22종) — 편집기 안내의 단일 소스', () => {
+  it('한 줄 소개는 **어느 표지에도 나오지 않는다** (2026-09-04 제거)', () => {
+    // 실서버 작가 81명 중 한 줄 소개를 채운 사람이 0명이라, 자리만 차지하고 구성을 흔들었다.
     const TAG = '표지에만 나오는 한줄소개 문구입니다';
     const withTag = { ...many, tagline: TAG };
     for (const coverLayout of ALL) {
-      const has = buildPortfolioPages(withTag, themeById('archive'), { design: { coverLayout, coverTagline: true } })[0]!.html.includes(TAG);
-      expect(has, `${coverLayout}: 렌더=${has} / SET=${COVER_SHOWS_TAGLINE.has(coverLayout)}`).toBe(COVER_SHOWS_TAGLINE.has(coverLayout));
+      expect(cover({ coverLayout }, withTag), coverLayout).not.toContain(TAG);
     }
   });
 
   it('기본(bandTop)은 글 요소 + 이미지가 표시된다', () => {
     const h = cover({});
     expect(h).toContain('김작가');
-    expect(h).toContain('한 줄 소개');
     expect(h).toContain('2026');
     expect(h).toContain('ARTWORK PORTFOLIO');
     expect(h).toContain('<img');
   });
 
-  it('글 요소 표시/숨김 (머리말·한 줄 소개·연도) — 여러 레이아웃에서', () => {
-    for (const coverLayout of ['bandTop', 'poster', 'colorBand', 'matted', 'grid2x2'] as const) {
-      expect(cover({ coverLayout, coverTagline: false }), coverLayout).not.toContain('한 줄 소개');
+  it('글 요소 표시/숨김 (머리말·연도) — 여러 레이아웃에서', () => {
+    for (const coverLayout of ['bandTop', 'fullTint', 'colorBand', 'matted', 'grid2x2'] as const) {
       expect(cover({ coverLayout, coverEyebrow: false, coverYear: false }), coverLayout).not.toContain('ARTWORK PORTFOLIO');
-      expect(cover({ coverLayout, coverTagline: false }), coverLayout).toContain('김작가');
+      expect(cover({ coverLayout }), coverLayout).toContain('김작가');
     }
   });
 
   it('타이포 레이아웃(serifCenter/stacked/…)은 이미지가 없다', () => {
-    for (const coverLayout of ['serifCenter', 'editorialLeft', 'stacked', 'baseline', 'nameplate', 'accentField'] as const) {
+    for (const coverLayout of ['serifCenter', 'stacked', 'nameplate', 'accentField'] as const) {
       expect(cover({ coverLayout }), coverLayout).not.toContain('<img');
     }
   });
@@ -356,14 +367,14 @@ describe('CV 분할 (경력이 많은 작가)', () => {
 
 describe('이미지 주소 — 미리보기 vs PDF', () => {
   it('미리보기는 원본 주소를 그대로 쓴다 (프록시 왕복·미설정 환경 깨짐 방지)', () => {
-    const p = buildPortfolioPages(base, themeById('gallery')).find((x) => x.label === '산')!;
-    expect(p.html).toContain('https://x/1.jpg');
-    expect(p.html).not.toContain('image-proxy');
+    const html = buildPortfolioPages(base, themeById('gallery')).map((x) => x.html).join('');
+    expect(html).toContain('https://x/1.jpg');
+    expect(html).not.toContain('image-proxy');
   });
 
   it('PDF는 프록시/blob 경로를 쓴다 (canvas taint 방지)', () => {
-    const p = buildPortfolioPages(base, themeById('gallery'), { forPdf: true }).find((x) => x.label === '산')!;
-    expect(p.html).toContain('image-proxy');
+    const html = buildPortfolioPages(base, themeById('gallery'), { forPdf: true }).map((x) => x.html).join('');
+    expect(html).toContain('image-proxy');
   });
 
   // 같은 사진을 화면 어딘가에서 crossorigin 없는 <img>로 먼저 그리면 브라우저 캐시에 'CORS 정보 없는'
@@ -578,31 +589,32 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
   const DEFAULT_DESIGN = {
     bg: 'white', ink: 'black', accent: 'red', font: 'myeongjo', page: 'a4-portrait',
     worksLayout: 'hero', desc: 'none', worksCaption: 'below', proseAlign: 'left',
-    coverLayout: 'bandTop', coverEyebrow: true, coverEyebrowText: null, coverTagline: true, coverYear: true, coverNameAccent: false,
-    coverImageIds: [], coverTaglineText: null, coverImageScale: 1, coverTextScale: 1,
+    coverLayout: 'bandTop', coverEyebrow: true, coverEyebrowText: null, coverYear: true, coverNameAccent: false,
+    coverImageIds: [], coverImageScale: 1, coverTextScale: 1,
+    auto: true, direction: null,
   };
 
   it('normalizePdfDesign: 알 수 없거나 깨진 값은 기본으로 눕힌다', () => {
     expect(normalizePdfDesign(null)).toEqual(DEFAULT_DESIGN);
     expect(normalizePdfDesign('{bad')).toEqual(DEFAULT_DESIGN);
+    // 값이 전부 깨졌어도 **키가 있었다는 사실**은 "고른 적 있음"이라 auto 는 꺼진다(옛 저장값 보호)
     expect(normalizePdfDesign({ bg: 'neon', ink: 'zz', accent: 'qq', worksLayout: 'zz', desc: 'x', page: 'z', font: 'z', worksCaption: 'zz', coverLayout: 'zz' }))
-      .toEqual(DEFAULT_DESIGN);
+      .toEqual({ ...DEFAULT_DESIGN, auto: false });
     // 명시값 그대로 보존(round-trip)
-    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'poster', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverTagline: false, coverYear: false, coverNameAccent: true, coverImageIds: [42], coverTaglineText: '표지 문구', coverImageScale: 0.8, coverTextScale: 1.1 };
+    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, auto: false, direction: 'gallery' };
     expect(normalizePdfDesign(explicit)).toEqual(explicit);
     // 옛 단일값(coverImageId) → 배열 마이그레이션
     expect(normalizePdfDesign({ coverImageId: 7 }).coverImageIds).toEqual([7]);
   });
 
-  it('인라인 편집 — coverImageIds 로 슬롯별 사진 지정, coverTaglineText 로 표지 문구 override', () => {
+  it('인라인 편집 — coverImageIds 로 슬롯별 사진 지정, coverEyebrowText 로 머리말 override', () => {
     const imgs = [img({ id: 10, title: '작품10' }), img({ id: 20, title: '작품20' })];
     const d: PortfolioBookData = { ...base, seriesInfo: [], images: imgs, tagline: '원래 소개' };
     // 대표 사진을 20번으로 → 표지(밴드상단)의 이미지가 20번 url
     const cover = (design: Record<string, unknown>) => buildPortfolioPages(d, themeById('archive'), { design: { coverLayout: 'bandTop', ...design } })[0]!.html;
     expect(cover({ coverImageIds: [20] })).toContain(imgs[1].url);
-    // 표지 문구 override
-    expect(cover({ coverTaglineText: '표지 전용 문구' })).toContain('표지 전용 문구');
-    expect(cover({ coverTaglineText: '표지 전용 문구' })).not.toContain('원래 소개');
+    // 한 줄 소개는 표지에 안 나온다(2026-09-04 제거)
+    expect(cover({})).not.toContain('원래 소개');
     // 영문 머리말 override(없으면 기본 ARTWORK PORTFOLIO)
     expect(cover({})).toContain('ARTWORK PORTFOLIO');
     expect(cover({ coverEyebrowText: 'SOLO SHOW 2025' })).toContain('SOLO SHOW 2025');
@@ -620,6 +632,21 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     // 자동(미편집)인데 이미지가 4장 미만이면 빈 표지 방지 폴백 → 격자 아님
     const auto = buildPortfolioPages({ ...dd, images: [img({ id: 99 })] }, themeById('archive'), { design: { coverLayout: 'grid2x2' } })[0]!.html;
     expect(auto).not.toContain('grid-template-columns:1fr 1fr');
+  });
+
+  it('없어진 표지 키는 **가장 가까운 표지**로 옮긴다 — 기본값으로 튀지 않는다', () => {
+    // 큰 이름 타이포(editorialLeft·baseline) → stacked(가운데 여백)
+    expect(normalizePdfDesign({ coverLayout: 'editorialLeft' }).coverLayout).toBe('stacked');
+    expect(normalizePdfDesign({ coverLayout: 'baseline' }).coverLayout).toBe('stacked');
+    // 큰 이름+사진(poster·overlap) → fullTint(사진 크게)
+    expect(normalizePdfDesign({ coverLayout: 'poster' }).coverLayout).toBe('fullTint');
+    expect(normalizePdfDesign({ coverLayout: 'overlap' }).coverLayout).toBe('fullTint');
+    // 3점 가로 · 이름+작품 띠 → 4점 격자 / 구석·여백 → 얇은 테두리
+    expect(normalizePdfDesign({ coverLayout: 'triptych' }).coverLayout).toBe('grid2x2');
+    expect(normalizePdfDesign({ coverLayout: 'filmstrip' }).coverLayout).toBe('grid2x2');
+    expect(normalizePdfDesign({ coverLayout: 'corner' }).coverLayout).toBe('ruleFrame');
+    // 아예 모르는 값은 기본값
+    expect(normalizePdfDesign({ coverLayout: 'nonsense' }).coverLayout).toBe('bandTop');
   });
 
   it('옛 값 마이그레이션 — palette / font / 이미지없음 → minimal / 옛 축·cover키(무시)', () => {
