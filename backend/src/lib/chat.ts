@@ -134,6 +134,25 @@ export async function ensureExhibitionChat(exhibitionId: number): Promise<number
   return chat.id;
 }
 
+/**
+ * "안 읽음" 조건 — 방마다 기준 시각(`lastReadAt`)이 다르다.
+ *
+ * ⚠️ 방마다 쿼리를 돌지 말 것. 예전엔 `for (const p of parts)` 로 방 수만큼 쿼리를 날렸는데,
+ *    이 계산은 **로그인한 모든 사용자가 30초마다**(Navbar 배지) 부른다 — 방이 늘수록,
+ *    사용자가 늘수록 배경 폴링이 DB 커넥션을 다 먹는다.
+ *    기준 시각이 방마다 다르니 `OR` 한 덩어리로 묶어 **한 번에** 묻는다.
+ */
+const unreadWhere = (
+  userId: number,
+  parts: { chatId: number; lastReadAt: Date | null }[],
+) => ({
+  OR: parts.map(p => ({
+    chatId: p.chatId,
+    senderId: { not: userId },                          // 내가 보낸 건 안 읽음이 아니다
+    ...(p.lastReadAt ? { createdAt: { gt: p.lastReadAt } } : {}),
+  })),
+});
+
 /** 내 대화 목록 — 마지막 메시지·안 읽은 수까지 한 번에 */
 export async function listChats(userId: number): Promise<ChatSummary[]> {
   const rows = await prisma.chat.findMany({
@@ -144,16 +163,21 @@ export async function listChats(userId: number): Promise<ChatSummary[]> {
       messages: { orderBy: { createdAt: 'desc' }, take: 1 },
     },
   });
+  if (rows.length === 0) return [];
 
-  return Promise.all(rows.map(async (c) => {
-    const me = c.participants.find(p => p.userId === userId);
-    const unread = await prisma.chatMessage.count({
-      where: {
-        chatId: c.id,
-        senderId: { not: userId },                       // 내가 보낸 건 안 읽음이 아니다
-        ...(me?.lastReadAt ? { createdAt: { gt: me.lastReadAt } } : {}),
-      },
-    });
+  // 방마다 count 를 돌지 않고 한 번에 묶어 센다 (위 unreadWhere 참고)
+  const mine = rows.map(c => ({
+    chatId: c.id,
+    lastReadAt: c.participants.find(p => p.userId === userId)?.lastReadAt ?? null,
+  }));
+  const grouped = await prisma.chatMessage.groupBy({
+    by: ['chatId'],
+    where: unreadWhere(userId, mine),
+    _count: { _all: true },
+  });
+  const unreadOf = new Map(grouped.map(g => [g.chatId, g._count._all]));
+
+  return rows.map((c) => {
     const last = c.messages[0] ?? null;
     // 목록 미리보기: 본문이 없고 첨부만이면 종류 라벨을 보여준다("[사진]" 등)
     const preview = last
@@ -165,11 +189,11 @@ export async function listChats(userId: number): Promise<ChatSummary[]> {
       title: c.title,
       exhibitionId: c.exhibitionId,
       lastMessageAt: c.lastMessageAt,
-      unread,
+      unread: unreadOf.get(c.id) ?? 0,
       participants: c.participants.map(p => p.user),
       lastMessage: last ? { content: preview, senderId: last.senderId, createdAt: last.createdAt } : null,
     };
-  }));
+  });
 }
 
 /** 안 읽은 메시지가 있는 방 개수 (벨 배지) */
@@ -178,27 +202,51 @@ export async function unreadChatCount(userId: number): Promise<number> {
     where: { userId }, select: { chatId: true, lastReadAt: true },
   });
   if (parts.length === 0) return 0;
-  let n = 0;
-  for (const p of parts) {
-    const has = await prisma.chatMessage.findFirst({
-      where: {
-        chatId: p.chatId,
-        senderId: { not: userId },
-        ...(p.lastReadAt ? { createdAt: { gt: p.lastReadAt } } : {}),
-      },
-      select: { id: true },
-    });
-    if (has) n++;
-  }
-  return n;
+  // 개수가 아니라 **방의 수**라 groupBy 로 방만 뽑는다 (총 2쿼리)
+  const grouped = await prisma.chatMessage.groupBy({
+    by: ['chatId'],
+    where: unreadWhere(userId, parts),
+  });
+  return grouped.length;
+}
+
+/** 방을 열 때 한 번에 내려주는 메시지 수. 화면은 이 뒤로 `before` 로 더 받는다 */
+export const CHAT_PAGE_SIZE = 150;
+/** 한 번에 받을 수 있는 최대치 — 화면이 큰 수를 보내도 여기서 잘린다 */
+const CHAT_MAX_TAKE = 200;
+
+export interface ReadChatOptions {
+  /** 이 id **이후**의 새 메시지만 (폴링). 조용하면 빈 배열이라 방 크기와 무관하게 싸다 */
+  after?: number;
+  /** 이 id **이전**의 지난 메시지 (더 보기) */
+  before?: number;
+  limit?: number;
 }
 
 /**
  * 메시지 목록 + 읽음 정보.
  *   갠톡 : 내가 보낸 메시지에 `read`(상대가 읽었는가)
  *   단톡 : 각 메시지에 `unreadBy`(아직 안 읽은 사람 수, 보낸 사람 제외)
+ *
+ * ⚠️⚠️ **방의 메시지를 전부 내려주지 말 것.** 예전엔 `take` 가 없어서 방에 쌓인 걸 통째로 보냈는데,
+ *    화면이 이 응답을 **8초마다** 다시 받는다(`MessagesPage` refetchInterval). 실측 메시지당 287 bytes 라
+ *    5,000개 방이면 1.4MB × 8초마다 = 175KB/s 였다. 방이 오래될수록 무거워지는 구조다.
+ *    지금은 최근 `CHAT_PAGE_SIZE` 개만 주고, 폴링은 `after` 로 **새 것만** 받는다(보통 빈 배열).
+ *
+ * ⚠️⚠️ **커서도 정렬도 `id` 로 한다 — 둘을 다르게 쓰면 메시지가 샌다.**
+ *    처음엔 커서만 `id`, 정렬은 `createdAt` 이었는데 그러면 둘의 순서가 어긋난다:
+ *    Postgres 의 `now()` 는 **트랜잭션 시작 시각**이라, 동시에 들어온 메시지는 `createdAt` 이 같은
+ *    밀리초이거나 심지어 id 순서와 **거꾸로**다(실측: 창의 마지막이 id 269 인데 창 안에 id 265 가 있었다).
+ *      · 폴링 : 창의 마지막 id 로 `after` 를 잡으면 **이미 받은 걸 또 받는다**(실측 5건)
+ *      · 더보기: 창의 첫 id 로 `before` 를 잡으면 그보다 id 가 큰 옛 메시지를 **영영 못 받는다**
+ *    `id` 는 시퀀스라 곧 삽입 순서이고 중복도 빈틈도 없다. 화면 표시는 분(minute) 단위로 묶으므로
+ *    밀리초 이하의 차이는 보이지도 않는다. (프론트 `mergeMessages` 도 같은 이유로 id 로 정렬한다)
+ *
+ * ⚠️ `after` 응답에는 **지난 메시지가 없다.** 그래서 상대가 옛 메시지를 읽어도 그 '읽음' 표시가
+ *    안 바뀐다 — 화면이 다시 계산할 수 있게 참여자별 `lastReadAt`(`readers`)을 **매번 함께** 준다.
+ *    (같은 규칙이 프론트 `lib/chatView.ts` 의 `applyReadState` 에 있다)
  */
-export async function readChat(chatId: number, userId: number) {
+export async function readChat(chatId: number, userId: number, opts: ReadChatOptions = {}) {
   const chat = await prisma.chat.findUnique({
     where: { id: chatId },
     include: {
@@ -208,11 +256,26 @@ export async function readChat(chatId: number, userId: number) {
   });
   if (!chat) return null;
 
-  const messages = await prisma.chatMessage.findMany({
-    where: { chatId },
-    orderBy: { createdAt: 'asc' },
-    include: { sender: { select: { id: true, name: true, nickname: true, avatar: true } } },
-  });
+  const take = Math.min(Math.max(opts.limit ?? CHAT_PAGE_SIZE, 1), CHAT_MAX_TAKE);
+  const sender = { sender: { select: { id: true, name: true, nickname: true, avatar: true } } };
+
+  let messages;
+  let hasMore = false;
+  if (opts.after != null) {
+    // 폴링 — 새 것만. 더 있으면 화면이 곧 또 부르므로 hasMore 를 따지지 않는다
+    messages = await prisma.chatMessage.findMany({
+      where: { chatId, id: { gt: opts.after } },
+      orderBy: { id: 'asc' }, take, include: sender,
+    });
+  } else {
+    // 최신 쪽에서 take+1 개를 떠서 '더 있는가'를 추가 쿼리 없이 안다
+    const where = opts.before != null ? { chatId, id: { lt: opts.before } } : { chatId };
+    const desc = await prisma.chatMessage.findMany({
+      where, orderBy: { id: 'desc' }, take: take + 1, include: sender,
+    });
+    hasMore = desc.length > take;
+    messages = desc.slice(0, take).reverse();          // 화면은 오래된 것부터 그린다
+  }
 
   const others = chat.participants.filter(p => p.userId !== userId);
   const withRead = messages.map((m) => {
@@ -236,5 +299,9 @@ export async function readChat(chatId: number, userId: number) {
     participants: chat.participants.map(p => p.user),
     otherCount: others.length,
     messages: withRead,
+    /** 더 앞(과거) 메시지가 남아 있는가 — `after` 폴링에서는 항상 false */
+    hasMore,
+    /** 참여자별 마지막 읽은 시각 — 화면이 캐시에 든 옛 메시지의 읽음 표시를 갱신하는 근거 */
+    readers: chat.participants.map(p => ({ userId: p.userId, lastReadAt: p.lastReadAt })),
   };
 }

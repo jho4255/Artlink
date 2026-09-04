@@ -146,7 +146,10 @@ test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => 
     // 모달이 열렸다 (하트가 마커) → 스크랩 버튼은 없고, 초대 버튼이 있다
     await expect(likeBtn).toBeVisible({ timeout: 8000 });
     await expect(page.getByRole('button', { name: /관심 작품 저장|관심 작품 해제/ })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '내 공모에 초대' })).toBeVisible();
+    // ⚠️ '바로 공모 초대' 버튼도 2026-08-29 에 **의도적으로 없앴다** — 초대는 공모 쪽에서만 한다.
+    //    남은 액션은 [이웃]·[메시지]·[하트] 셋뿐이다.
+    await expect(page.getByRole('button', { name: '내 공모에 초대' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /메시지/ })).toBeVisible();
     await ctx.close();
   });
 

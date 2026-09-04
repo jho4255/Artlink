@@ -104,7 +104,12 @@ test('#15 지원자 연락처는 지원 시점부터 갤러리에 노출(지원 
 
   // 공모 소유자가 아닌 갤러리 계정은 지원자 목록 자체에 접근 불가
   const other = await (await api.post(`${API}/auth/signup`, {
-    data: { email: `otherg${Date.now()}@e2e.test`, password: 'e2e-pass-1234', name: '타갤러리', role: 'GALLERY' },
+    // ⚠️ 가입에는 약관·개인정보 동의가 필수다(2026-09-04) — 안 보내면 400 이라 토큰이 없고,
+    //    그러면 '남의 공모 차단(403)'을 보려던 이 테스트가 401 로 죽는다.
+    data: {
+      email: `otherg${Date.now()}@e2e.test`, password: 'e2e-pass-1234', name: '타갤러리', role: 'GALLERY',
+      agreeTerms: true, agreePrivacy: true,
+    },
   })).json();
   const denied = await api.get(`${API}/exhibitions/${exId}/applications`, {
     headers: { Authorization: `Bearer ${other.token}` },

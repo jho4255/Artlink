@@ -1,6 +1,7 @@
 import { Browser, BrowserContext, Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
+import jwt from 'jsonwebtoken';
 
 export type Role = 'artist' | 'artist2' | 'gallery' | 'admin';
 
@@ -271,6 +272,79 @@ export async function seedGalleryLike(
   const liked = await api.post(`${API}/explore/${img.id}/like`, { headers: gH });   // 신규라 항상 ON
   if (!liked.ok()) throw new Error(`좋아요 실패 ${liked.status()}: ${await liked.text()}`);
   return { id: img.id as number, url: img.url as string, artistId: userIds()[artistRole] };
+}
+
+/**
+ * ── 부하·동시성 검증용 ──────────────────────────────────────────────
+ * 시드 4명(artist/artist2/gallery/admin)으로는 "여러 사람이 동시에" 를 못 만든다.
+ * seed.ts 가 만드는 유저는 id 1~23 이므로, 백엔드와 **같은 비밀키로 직접 서명**해
+ * 임의 유저의 토큰을 얻는다(global-setup 이 4명에게 하는 것과 같은 방식).
+ * ⚠️ 로그인 API 를 20번 때리는 대신 서명하는 이유 — 카카오 OAuth 라 E2E 가 로그인을 못 한다.
+ */
+function jwtSecret(): string {
+  try {
+    const env = fs.readFileSync(path.resolve(process.cwd(), '../backend/.env'), 'utf-8');
+    const m = env.match(/^JWT_SECRET=(.*)$/m);
+    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+  } catch {}
+  return 'artlink-dev-secret';
+}
+
+export function tokenForUserId(id: number, role: 'ARTIST' | 'GALLERY' | 'ADMIN' = 'ARTIST'): string {
+  return jwt.sign({ userId: id, role }, jwtSecret(), { expiresIn: '7d' });
+}
+
+export const authHeader = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/**
+ * "여러 사람이 동시에" 를 만들기 위한 **검증용 사용자 무리**.
+ *
+ * ⚠️ 시드(`seed.ts`)가 만드는 유저는 **4명뿐**이다. 로컬 DB 에 20명 넘게 보이는 건
+ *    지난 E2E 가 남긴 것이라 `migrate reset` 뒤에는 사라진다 — 그걸 전제로 쓰면
+ *    토큰이 401 로 떨어지고, 부하 테스트가 "카운트 드리프트"로 **오진**한다.
+ *    그래서 매 실행마다 직접 만든다(가입 API 를 쓰므로 동의 필수화도 함께 검증된다).
+ *
+ * 같은 실행 안에서는 캐시해 재사용한다(가입은 bcrypt 라 느리다).
+ */
+const CROWD_PW = 'CrowdTest1234!';
+let crowdCache: { id: number; token: string }[] = [];
+
+export async function crowdUsers(
+  api: import('@playwright/test').APIRequestContext,
+  n: number,
+): Promise<{ id: number; token: string }[]> {
+  if (crowdCache.length >= n) return crowdCache.slice(0, n);
+
+  for (let i = crowdCache.length; i < n; i++) {
+    const email = `crowd${i}@e2e.test`;
+    let r = await api.post(`${API}/auth/signup`, {
+      data: {
+        name: `무리${i}`, email, password: CROWD_PW, role: 'ARTIST',
+        agreeTerms: true, agreePrivacy: true,
+      },
+    });
+    if (r.status() === 409) {
+      r = await api.post(`${API}/auth/login`, { data: { email, password: CROWD_PW } });
+    }
+    if (!r.ok()) throw new Error(`검증용 사용자 ${email} 준비 실패 ${r.status()}: ${await r.text()}`);
+    const b = await r.json();
+    crowdCache.push({ id: b.user.id as number, token: b.token as string });
+  }
+  return crowdCache.slice(0, n);
+}
+
+/** 같은 요청을 동시에 N개 쏘고 상태코드 분포를 돌려준다 (동시성 검증의 기본 도구) */
+export async function fireConcurrently<T>(
+  tasks: (() => Promise<T>)[],
+): Promise<PromiseSettledResult<T>[]> {
+  return Promise.allSettled(tasks.map((t) => t()));
+}
+
+/** 밀리초 측정 */
+export async function timed<T>(fn: () => Promise<T>): Promise<{ ms: number; value: T }> {
+  const t0 = Date.now();
+  const value = await fn();
+  return { ms: Date.now() - t0, value };
 }
 
 /**

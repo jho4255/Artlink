@@ -54,6 +54,8 @@ const ARTIST_TABS: MyPageTab[] = [
   // 예전엔 홈페이지 편집 화면 안 버튼이라 '수정'에 들어가야만 보였다 — 편집과 무관한 기능인데.
   // 이름이 ArtLink 와 비슷해 헷갈리므로 옆에 무엇인지 작게 적는다.
   { id: 'artlook', label: 'ArtLook', brand: ['Art', 'Look'], note: '액자 걸기', icon: Frame },
+  // 소식 피드 — 이웃한 작가들의 작업 사진과 소식. 마이페이지 탭이 아니라 별도 페이지지만 메뉴 일관성을 위해 여기 둔다.
+  { id: 'artstory', label: 'ArtStory', brand: ['Art', 'Story'], note: '소식 공유', icon: Camera, linkTo: () => '/feed' },
 ];
 
 /**
@@ -145,12 +147,8 @@ export interface FooterLink {
 }
 /**
  * 역할 메뉴 **바로 아래, 구분선 위**에 붙는 링크 — 자주 쓰는 기능이라 footer(구분선 아래)와 분리한다.
- * ArtStory(소식)는 SNS 피드라 '나가기/문의' 묶음보다 위에 있어야 한다.
  */
-export const MYPAGE_PRIMARY_LINKS: FooterLink[] = [
-  // 소식(스토리 피드) = ArtStory. 픽토그램은 카메라(작업 사진을 올리는 곳).
-  { label: '소식', to: '/feed', brand: ['Art', 'Story'], note: '소식 공유', icon: Camera },
-];
+export const MYPAGE_PRIMARY_LINKS: FooterLink[] = [];
 
 /** 구분선 **아래**(로그아웃 위)에 붙는 항목 — 자주 쓰지 않는 것. */
 export const MYPAGE_FOOTER_LINKS: FooterLink[] = [

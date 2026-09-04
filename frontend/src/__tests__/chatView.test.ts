@@ -12,6 +12,8 @@ import {
   showsSenderName,
   chatTitle,
   timeLabel,
+  mergeMessages,
+  applyReadState,
 } from '@/lib/chatView';
 
 const msg = (senderId: number, createdAt: string) => ({ senderId, createdAt });
@@ -139,5 +141,93 @@ describe('timeLabel', () => {
   it('지난 말은 월/일 (점 표기)', () => {
     const now = new Date('2026-08-28T12:00:00+09:00');
     expect(timeLabel('2026-08-20T10:03:00+09:00', now)).toContain('.');
+  });
+});
+
+/**
+ * 증분 폴링 — 2026-09-04.
+ *
+ * 방을 열 때만 최근 150개를 받고, 이후 폴링은 `?after=<마지막 id>` 로 **새 것만** 받는다.
+ * (예전엔 8초마다 방을 통째로 다시 받아서 5,000개 방이면 175KB/s 였다)
+ * 그래서 화면이 두 가지를 스스로 해야 하고, 둘 다 여기 규칙이다.
+ */
+describe('mergeMessages — 초기·폴링·더보기 응답 합치기', () => {
+  const m = (id: number, createdAt: string, extra: any = {}) =>
+    ({ id, createdAt, senderId: 1, ...extra });
+
+  it('새 것을 뒤에 붙이고 시간순을 지킨다', () => {
+    const held = [m(1, '2026-09-04T10:00:00.000Z'), m(2, '2026-09-04T10:01:00.000Z')];
+    const got = mergeMessages(held, [m(3, '2026-09-04T10:02:00.000Z')]);
+    expect(got.map(x => x.id)).toEqual([1, 2, 3]);
+  });
+
+  it('[이전 메시지]로 받은 옛 것은 앞에 붙는다', () => {
+    const held = [m(5, '2026-09-04T10:05:00.000Z')];
+    const got = mergeMessages(held, [m(3, '2026-09-04T10:03:00.000Z'), m(4, '2026-09-04T10:04:00.000Z')]);
+    expect(got.map(x => x.id)).toEqual([3, 4, 5]);
+  });
+
+  it('★ 겹치면 나중 것이 이긴다 — 읽음 표시가 갱신돼야 하므로 건너뛰기가 아니라 덮어쓰기', () => {
+    const held = [m(1, '2026-09-04T10:00:00.000Z', { read: false })];
+    const got = mergeMessages(held, [m(1, '2026-09-04T10:00:00.000Z', { read: true })]);
+    expect(got).toHaveLength(1);
+    expect((got[0] as any).read).toBe(true);
+  });
+
+  it('빈 응답(조용한 폴링)은 들고 있던 것을 그대로 둔다', () => {
+    const held = [m(1, '2026-09-04T10:00:00.000Z')];
+    expect(mergeMessages(held, [])).toBe(held);
+  });
+
+  it('같은 시각이면 id 순 — 동시에 들어온 메시지의 순서가 흔들리지 않게', () => {
+    const t = '2026-09-04T10:00:00.000Z';
+    const got = mergeMessages([], [m(9, t), m(7, t), m(8, t)]);
+    expect(got.map(x => x.id)).toEqual([7, 8, 9]);
+  });
+});
+
+describe('applyReadState — 폴링에 없는 옛 메시지의 읽음 표시 되계산', () => {
+  const mine = { id: 1, senderId: 1, createdAt: '2026-09-04T10:00:00.000Z', read: false, unreadBy: null };
+  const theirs = { id: 2, senderId: 2, createdAt: '2026-09-04T10:01:00.000Z', read: null, unreadBy: null };
+
+  it('★ 갠톡 — 상대가 그 뒤에 읽었으면 읽음으로 바뀐다', () => {
+    const got = applyReadState([mine], 'DIRECT',
+      [{ userId: 1, lastReadAt: null }, { userId: 2, lastReadAt: '2026-09-04T10:00:30.000Z' }], 1);
+    expect(got[0].read).toBe(true);
+  });
+
+  it('갠톡 — 상대가 아직 안 읽었으면 그대로', () => {
+    const got = applyReadState([mine], 'DIRECT',
+      [{ userId: 1, lastReadAt: null }, { userId: 2, lastReadAt: null }], 1);
+    expect(got[0].read).toBe(false);
+  });
+
+  it('남이 보낸 말에는 읽음 표시를 달지 않는다', () => {
+    const got = applyReadState([theirs], 'DIRECT',
+      [{ userId: 1, lastReadAt: '2026-09-04T11:00:00.000Z' }, { userId: 2, lastReadAt: null }], 1);
+    expect(got[0].read).toBeNull();
+    expect(got[0].unreadBy).toBeNull();
+  });
+
+  it('★ 단톡 — 아직 안 읽은 사람 수를 센다 (보낸 사람 제외)', () => {
+    const got = applyReadState([mine], 'GROUP', [
+      { userId: 1, lastReadAt: null },                              // 나 (제외)
+      { userId: 2, lastReadAt: '2026-09-04T10:00:30.000Z' },        // 읽음
+      { userId: 3, lastReadAt: null },                              // 안 읽음
+      { userId: 4, lastReadAt: '2026-09-04T09:00:00.000Z' },        // 그 전에 읽음 = 안 읽음
+    ], 1);
+    expect(got[0].unreadBy).toBe(2);
+    expect(got[0].read).toBeNull();
+  });
+
+  it('readers 가 없으면(옛 서버) 아무것도 건드리지 않는다', () => {
+    const list = [mine];
+    expect(applyReadState(list, 'DIRECT', [], 1)).toBe(list);
+  });
+
+  it('바뀔 게 없으면 같은 객체를 돌려준다 (불필요한 리렌더 방지)', () => {
+    const readers = [{ userId: 1, lastReadAt: null }, { userId: 2, lastReadAt: null }];
+    const got = applyReadState([mine], 'DIRECT', readers, 1);
+    expect(got[0]).toBe(mine);
   });
 });

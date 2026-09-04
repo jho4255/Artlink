@@ -45,6 +45,13 @@ export default function PortfolioPage() {
     queryFn: () => api.get(`/portfolio/${userId}`).then(r => r.data),
   });
 
+  // 공개 하이라이트 목록 (작가 프로필 아래에 표시)
+  const { data: highlights } = useQuery<any[]>({
+    queryKey: ['highlights', userId],
+    queryFn: () => userId ? api.get(`/stories/highlights/${userId}`).then(r => r.data) : Promise.resolve([]),
+    enabled: !!userId,
+  });
+
   /* HomepageView 안에서 작품 격자를 memo 하므로 이 콜백은 **참조가 안정적이어야** 한다.
      매 렌더 새로 만들면 memo 가 매번 깨져 30장이 다시 그려진다. */
   const openAt = useCallback((img: PortfolioImage) => {
@@ -109,6 +116,35 @@ export default function PortfolioPage() {
           )}
         </div>
       </div>
+
+      {/* 하이라이트 앨범 (프로필 사진 아래) */}
+      {highlights && highlights.length > 0 && (
+        <div className="mb-8 pt-6 border-t border-gray-100">
+          <div className="flex items-center gap-3 flex-wrap">
+            {highlights.map(h => {
+              // 커버 이미지: coverStoryId 또는 첫 번째 스토리
+              const coverStory = portfolio.images.find(img => img.storyId === h.coverStoryId || (h.storyIds.length > 0 && img.storyId === h.storyIds[0]));
+              return (
+                <div key={h.id} className="flex flex-col items-center gap-1.5">
+                  <button
+                    className="h-16 w-16 rounded-full border-2 border-gray-200 overflow-hidden hover:border-gray-400 bg-gray-100"
+                    title={h.name}
+                  >
+                    {coverStory ? (
+                      <img src={coverStory.url} alt={h.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
+                        {h.name.slice(0, 2)}
+                      </div>
+                    )}
+                  </button>
+                  <span className="text-xs text-gray-600 text-center max-w-16 truncate">{h.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <HomepageView
         data={{

@@ -478,9 +478,13 @@ export default function FeedPage() {
                     className="h-16 w-16 rounded-full border-2 border-gray-200 overflow-hidden hover:border-gray-400 bg-gray-100"
                     title={h.name}
                   >
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
-                      {h.name.slice(0, 2)}
-                    </div>
+                    {h.coverImage ? (
+                      <img src={h.coverImage} alt={h.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
+                        {h.name.slice(0, 2)}
+                      </div>
+                    )}
                   </button>
                   <span className="text-xs text-gray-600 text-center max-w-16 truncate">{h.name}</span>
                 </div>

@@ -8,7 +8,10 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { displayName } from '@/lib/utils';
 // 표시 규칙(묶음·제목·시각)은 화면 밖에 두고 테스트로 지킨다 — lib/chatView.ts
-import { chatTitle, groupFlags, showsSenderName, timeLabel } from '@/lib/chatView';
+import {
+  chatTitle, groupFlags, showsSenderName, timeLabel,
+  mergeMessages, applyReadState, type ChatReader,
+} from '@/lib/chatView';
 
 /**
  * 대화 — 갠톡(1:1)과 단톡(공모방)을 한 화면에서 본다.
@@ -52,7 +55,18 @@ interface ChatDetail {
   id: number; kind: 'DIRECT' | 'GROUP'; title: string | null;
   exhibition: { id: number; title: string } | null;
   participants: ChatUser[]; otherCount: number; messages: ChatMessage[];
+  /** 더 앞(과거) 메시지가 남아 있는가 — 첫 로드·[이전 메시지]에서만 의미가 있다 */
+  hasMore?: boolean;
+  /** 참여자별 마지막 읽은 시각 — 캐시에 든 옛 메시지의 읽음 표시를 갱신하는 근거 */
+  readers?: ChatReader[];
 }
+
+/**
+ * 방을 열 때 받는 메시지 수. 서버 `CHAT_PAGE_SIZE` 와 같은 값.
+ * ⚠️ 폴링은 이 창을 다시 받지 않는다 — `?after=<마지막 id>` 로 **새 것만** 받는다.
+ *    예전엔 8초마다 방을 통째로 다시 받아서, 방이 오래될수록 무거워졌다(5,000개 방 = 175KB/s).
+ */
+const CHAT_PAGE = 150;
 
 /** 바이트 → 사람이 읽는 크기 */
 function formatBytes(n?: number | null): string {
@@ -121,12 +135,49 @@ export default function MessagesPage() {
     refetchInterval: 15000,   // 폴링 — SSE 는 예전 쪽지 전용이라 걷어냈다
   });
 
-  const { data: chat } = useQuery<ChatDetail>({
+  /*
+    ── 증분 폴링 ───────────────────────────────────────────────────
+    방을 열 때만 최근 150개를 받고, 이후 8초 폴링은 `?after=<마지막 id>` 로 **새 것만** 받는다.
+    조용한 방은 응답이 `[]` 라 **방에 몇 개가 쌓였든 폴링 비용이 같다**.
+    그래서 메시지는 쿼리 결과가 아니라 여기 누적 state 가 진실이다 — 폴링 응답만 그리면
+    새 말 몇 개만 남고 대화가 통째로 사라진다.
+  */
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const cursorRef = useRef<number | null>(null);          // 폴링 커서(마지막으로 받은 메시지 id)
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
+
+  // 방을 바꾸면 누적분과 커서를 비운다 (안 비우면 남의 방 메시지가 섞인다)
+  useEffect(() => {
+    cursorRef.current = null;
+    setMessages([]);
+    setHasMore(false);
+  }, [openId]);
+
+  const { data: chat } = useQuery<ChatDetail & { mode: 'init' | 'poll' }>({
     queryKey: ['chat', openId],
-    queryFn: () => api.get(`/chats/${openId}`).then(r => r.data),
+    queryFn: async () => {
+      const after = cursorRef.current;
+      const params = after == null ? { limit: CHAT_PAGE } : { after };
+      const d: ChatDetail = await api.get(`/chats/${openId}`, { params }).then(r => r.data);
+      return { ...d, mode: after == null ? 'init' : 'poll' };
+    },
     enabled: !!openId,
     refetchInterval: 8000,
   });
+
+  // 받은 것을 누적분에 합치고, 읽음 표시는 참여자 lastReadAt 으로 **전부** 다시 계산한다
+  // (폴링 응답에는 지난 메시지가 없어서, 상대가 옛 말을 읽어도 그대로면 '읽음'이 안 뜬다)
+  useEffect(() => {
+    if (!chat) return;
+    setMessages(prev => applyReadState(
+      mergeMessages(prev, chat.messages), chat.kind, chat.readers ?? [], myId,
+    ));
+    if (chat.mode === 'init') setHasMore(!!chat.hasMore);
+    const maxId = chat.messages.reduce((a, m) => Math.max(a, m.id), 0);
+    cursorRef.current = Math.max(cursorRef.current ?? 0, maxId);
+  }, [chat, myId]);
 
   // 방을 안 골랐으면 첫 방을 연다 (넓은 화면에서 빈 오른쪽을 보여주지 않게)
   useEffect(() => {
@@ -135,8 +186,34 @@ export default function MessagesPage() {
     }
   }, [chats, openId, setSearchParams]);
 
-  // 새 말이 오면 아래로
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [chat?.messages.length, openId]);
+  /** [이전 메시지] — 지금 들고 있는 가장 옛 메시지보다 앞을 받는다 */
+  const loadOlder = async () => {
+    const first = messages[0];
+    if (!openId || !first || loadingOlder) return;
+    setLoadingOlder(true);
+    // 위로 붙이면 보던 자리가 밀린다 — 늘어난 높이만큼 스크롤을 되돌려 제자리를 지킨다
+    const box = scrollBoxRef.current;
+    const before = box ? box.scrollHeight - box.scrollTop : 0;
+    try {
+      const d: ChatDetail = await api
+        .get(`/chats/${openId}`, { params: { before: first.id, limit: CHAT_PAGE } })
+        .then(r => r.data);
+      setMessages(prev => applyReadState(
+        mergeMessages(prev, d.messages), d.kind, d.readers ?? [], myId,
+      ));
+      setHasMore(!!d.hasMore);
+      requestAnimationFrame(() => { if (box) box.scrollTop = box.scrollHeight - before; });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || '이전 메시지를 불러오지 못했습니다.');
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  // 새 말이 오면 아래로. ⚠️ 개수가 아니라 **마지막 id** 를 본다 —
+  //    개수로 보면 [이전 메시지]로 위를 채웠을 때도 맨 아래로 튕긴다.
+  const lastMsgId = messages[messages.length - 1]?.id;
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [lastMsgId, openId]);
 
   const send = useMutation({
     mutationFn: (payload: {
@@ -317,18 +394,31 @@ export default function MessagesPage() {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-4 max-h-[55vh] min-h-[280px]">
-                {chat.messages.length === 0 && (
+              <div ref={scrollBoxRef} className="flex-1 overflow-y-auto px-4 py-4 max-h-[55vh] min-h-[280px]">
+                {/* 방을 열면 최근 150개만 받는다 — 그 앞은 눌러서 더 받는다 */}
+                {hasMore && (
+                  <div className="mb-3 text-center">
+                    <button
+                      type="button"
+                      onClick={loadOlder}
+                      disabled={loadingOlder}
+                      className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {loadingOlder ? '불러오는 중…' : '이전 메시지 더 보기'}
+                    </button>
+                  </div>
+                )}
+                {messages.length === 0 && (
                   <p className="py-10 text-center text-sm text-gray-400">첫 메시지를 보내보세요.</p>
                 )}
-                {chat.messages.map((m, i) => {
+                {messages.map((m, i) => {
                   const mine = m.senderId === myId;
                   /*
                     카카오톡처럼 **이어 보낸 말은 묶는다.** (규칙은 lib/chatView.ts, 회귀는 chatView.test.ts)
                     예전엔 메시지마다 이름과 시각이 다 붙어서, 한 사람이 세 줄을 쓰면
                     이름 3번·시각 3번이 나와 정작 말이 안 읽혔다.
                   */
-                  const { first, last } = groupFlags(chat.messages, i);
+                  const { first, last } = groupFlags(messages, i);
                   return (
                     <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${first ? 'mt-3 first:mt-0' : 'mt-0.5'}`}>
                       <div className={`max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>

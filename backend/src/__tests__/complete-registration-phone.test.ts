@@ -11,12 +11,16 @@ describe('POST /auth/complete-registration — 전화번호 수집', () => {
     await seedUsers();
   });
 
+  // ⚠️ 가입에는 **약관·개인정보 동의가 필수**다(2026-09-04). 안 보내면 400 이라
+  //    '전화번호' 를 보는 이 테스트가 엉뚱한 이유로 죽는다.
+  const consent = { agreeTerms: true, agreePrivacy: true };
+
   const tempToken = (providerId: string) =>
     jwt.sign({ provider: 'KAKAO', providerId, name: '카카오유저', email: null, avatar: null }, JWT_SECRET, { expiresIn: '10m' });
 
   it('전화번호 포함 가입 → 201 + phone DB 저장', async () => {
     const res = await request.post('/api/auth/complete-registration')
-      .send({ tempToken: tempToken('kakao_p1'), role: 'ARTIST', name: '폰유저', email: 'phone1@test.com', phone: '010-1234-5678' });
+      .send({ tempToken: tempToken('kakao_p1'), role: 'ARTIST', name: '폰유저', email: 'phone1@test.com', phone: '010-1234-5678', ...consent });
     expect(res.status).toBe(201);
     const u = await testPrisma.user.findUnique({ where: { email: 'phone1@test.com' } });
     expect(u?.phone).toBe('010-1234-5678');
@@ -24,7 +28,7 @@ describe('POST /auth/complete-registration — 전화번호 수집', () => {
 
   it('하이픈 없는 번호도 허용 → 201', async () => {
     const res = await request.post('/api/auth/complete-registration')
-      .send({ tempToken: tempToken('kakao_p2'), role: 'GALLERY', name: '폰유저2', email: 'phone2@test.com', phone: '01012345678' });
+      .send({ tempToken: tempToken('kakao_p2'), role: 'GALLERY', name: '폰유저2', email: 'phone2@test.com', phone: '01012345678', ...consent });
     expect(res.status).toBe(201);
   });
 

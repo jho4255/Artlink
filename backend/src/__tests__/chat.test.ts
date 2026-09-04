@@ -346,3 +346,100 @@ describe('초대 수락 → 바로 참가', () => {
     expect(r.body.error).toContain('작품');
   });
 });
+
+/**
+ * 메시지 페이지네이션 — 2026-09-04.
+ *
+ * 예전엔 방을 열 때 **쌓인 메시지를 전부** 내려줬는데, 화면이 그걸 **8초마다** 다시 받는다.
+ * 실측 메시지당 287 bytes 라 5,000개 방이면 1.4MB × 8초마다 = 175KB/s — 방이 오래될수록
+ * 무거워지는 구조였다. 지금은 최근 창만 주고 폴링은 `after` 로 새 것만 받는다.
+ */
+describe('메시지 페이지네이션 (증분 폴링)', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  /** a1↔a2 갠톡에 n개를 순서대로 넣는다 (id 가 곧 시간 순서) */
+  async function roomWith(n: number) {
+    const open = await request.post('/api/chats/direct')
+      .set('Authorization', `Bearer ${a1}`).send({ userId: 2 });
+    const chatId = open.body.id as number;
+    for (let i = 0; i < n; i++) {
+      await request.post(`/api/chats/${chatId}/messages`)
+        .set('Authorization', `Bearer ${i % 2 ? a2 : a1}`).send({ content: `말 ${i}` });
+    }
+    return chatId;
+  }
+  const get = (chatId: number, q = '', tok = a1) =>
+    request.get(`/api/chats/${chatId}${q}`).set('Authorization', `Bearer ${tok}`);
+
+  it('★ 방을 열면 전부가 아니라 최근 창만 내려준다', async () => {
+    const chatId = await roomWith(30);
+    const r = await get(chatId, '?limit=10');
+    expect(r.status).toBe(200);
+    expect(r.body.messages).toHaveLength(10);
+    // 최근 것이어야 한다 — 앞에서 자르면 사용자는 옛날 대화만 보게 된다
+    expect(r.body.messages.at(-1).content).toBe('말 29');
+    expect(r.body.messages[0].content).toBe('말 20');
+    expect(r.body.hasMore).toBe(true);          // 더 앞이 남아 있다
+  });
+
+  it('창보다 적으면 hasMore 가 false 다 ([이전 메시지] 버튼을 띄우지 않게)', async () => {
+    const chatId = await roomWith(3);
+    const r = await get(chatId, '?limit=10');
+    expect(r.body.messages).toHaveLength(3);
+    expect(r.body.hasMore).toBe(false);
+  });
+
+  it('★ after 는 그 뒤 새 것만 준다 — 조용하면 빈 배열 (폴링 비용이 방 크기와 무관해진다)', async () => {
+    const chatId = await roomWith(20);
+    const first = await get(chatId, '?limit=20');
+    const lastId = first.body.messages.at(-1).id;
+
+    // 아무 일도 없으면 빈 배열
+    const quiet = await get(chatId, `?after=${lastId}`);
+    expect(quiet.body.messages).toEqual([]);
+
+    // 새 말이 오면 그것만
+    await request.post(`/api/chats/${chatId}/messages`)
+      .set('Authorization', `Bearer ${a2}`).send({ content: '새 말' });
+    const delta = await get(chatId, `?after=${lastId}`);
+    expect(delta.body.messages).toHaveLength(1);
+    expect(delta.body.messages[0].content).toBe('새 말');
+  });
+
+  it('★ before 로 지난 메시지를 이어 받으면 빠짐도 겹침도 없다', async () => {
+    const chatId = await roomWith(25);
+    const page1 = await get(chatId, '?limit=10');
+    const page2 = await get(chatId, `?before=${page1.body.messages[0].id}&limit=10`);
+    const page3 = await get(chatId, `?before=${page2.body.messages[0].id}&limit=10`);
+
+    const ids = [...page3.body.messages, ...page2.body.messages, ...page1.body.messages]
+      .map((m: any) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);   // 겹침 없음
+    expect(ids).toHaveLength(25);                 // 빠짐 없음
+    expect([...ids].sort((x, y) => x - y)).toEqual(ids);   // 순서 유지
+    expect(page3.body.hasMore).toBe(false);       // 맨 앞까지 왔다
+  });
+
+  it('한 번에 너무 많이 달라고 해도 서버가 상한을 건다', async () => {
+    const chatId = await roomWith(5);
+    const r = await get(chatId, '?limit=99999');
+    expect(r.status).toBe(200);
+    expect(r.body.messages.length).toBeLessThanOrEqual(200);
+  });
+
+  it('쿼리를 안 붙이면 예전처럼 동작한다 (옛 화면 호환)', async () => {
+    const chatId = await roomWith(5);
+    const r = await get(chatId);
+    expect(r.body.messages).toHaveLength(5);
+    expect(r.body.messages[0].content).toBe('말 0');
+  });
+
+  it('★ readers 를 매번 준다 — after 응답에는 지난 메시지가 없어서 화면이 읽음을 다시 계산해야 한다', async () => {
+    const chatId = await roomWith(4);
+    const r = await get(chatId, '?after=0');
+    expect(Array.isArray(r.body.readers)).toBe(true);
+    expect(r.body.readers).toHaveLength(2);
+    expect(r.body.readers[0]).toHaveProperty('userId');
+    expect(r.body.readers[0]).toHaveProperty('lastReadAt');
+  });
+});

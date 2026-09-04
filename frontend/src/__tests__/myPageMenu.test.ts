@@ -172,9 +172,9 @@ describe('홈페이지 항목 — 공개 작가 페이지로 나간다', () => {
  * ─────────────────────────────────────────────────────────────
  */
 describe('메뉴 구성 (2026-08-28 기준)', () => {
-  it('작가 메뉴는 프로필·홈페이지·포트폴리오·찜 목록·내 전시·ArtLook 순', () => {
+  it('작가 메뉴는 프로필·홈페이지·포트폴리오·찜 목록·내 전시·ArtLook·ArtStory 순', () => {
     expect(myPageTabs('ARTIST').map(t => t.id)).toEqual([
-      'profile', 'homepage', 'portfolio', 'favorites', 'applications', 'artlook',
+      'profile', 'homepage', 'portfolio', 'favorites', 'applications', 'artlook', 'artstory',
     ]);
   });
 
@@ -200,14 +200,15 @@ describe('메뉴 구성 (2026-08-28 기준)', () => {
 });
 
 describe('브랜드 이름 규칙 (ArtLink 로고: 앞 검정 + 뒤 빨강)', () => {
-  it('★ 메뉴에서 색을 쓰는 항목은 ArtLook 하나뿐', () => {
+  it('★ 메뉴에서 색을 쓰는 항목은 ArtLook·ArtStory (브랜드 이름)', () => {
     // 화면 이름(HomePage·PortFolio·MyPicks·ArtTalk)은 **화면 좌측 상단**에 찍는다.
     // 메뉴 라벨까지 전부 색을 넣으면 로고 규칙이 헐거워져 브랜드로 안 읽힌다.
+    // ArtLook(액자), ArtStory(소식)만 브랜드 이름이라 메뉴에서도 색을 쓴다.
     const branded = (['ARTIST', 'GALLERY', 'ADMIN'] as const)
       .flatMap(r => myPageTabs(r))
       .filter(t => t.brand)
       .map(t => t.id);
-    expect([...new Set(branded)]).toEqual(['artlook']);
+    expect([...new Set(branded)]).toEqual(['artlook', 'artstory']);
   });
 
   it('ArtLook 은 Art + Look 으로 쪼개지고 무엇인지 옆에 적는다', () => {
@@ -236,8 +237,10 @@ describe('사이드바 맨 아래 (로그아웃 바로 위)', () => {
     for (const link of [...MYPAGE_FOOTER_LINKS, ...MYPAGE_PRIMARY_LINKS]) expect(allIds).not.toContain(link.to);
   });
 
-  it('★ ArtStory(소식)는 구분선 위(primary), 1:1 문의는 구분선 아래(footer)', () => {
-    expect(MYPAGE_PRIMARY_LINKS.map(l => l.to)).toContain('/feed');
+  it('★ ArtStory(소식)는 메뉴 탭(ARTIST_TABS), 1:1 문의는 구분선 아래(footer)', () => {
+    // ArtStory는 이제 ARTIST_TABS의 탭이라 PRIMARY_LINKS에는 없다.
+    expect(MYPAGE_PRIMARY_LINKS.map(l => l.to)).not.toContain('/feed');
     expect(MYPAGE_FOOTER_LINKS.map(l => l.to)).not.toContain('/feed');
+    expect(MYPAGE_FOOTER_LINKS.map(l => l.to)).toContain('/support');
   });
 });

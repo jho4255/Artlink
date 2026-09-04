@@ -25,11 +25,13 @@ router.post('/:userId', authenticate, async (req, res, next) => {
     const user = await prisma.user.findFirst({ where: { id: target, deletedAt: null }, select: { id: true } });
     if (!user) throw new AppError('대상을 찾을 수 없습니다.', 404);
 
-    const existing = await prisma.follow.findUnique({
-      where: { followerId_followingId: { followerId: me, followingId: target } }, select: { id: true },
+    // ⚠️ 확인하고 만들면(check-then-act) 동시에 두 번 눌렀을 때 둘 다 "없음"을 보고 들어가
+    //    unique 위반이 나거나 **알림이 두 번** 간다(`refKey` 는 유니크가 아니라 DB 가 안 막아 준다).
+    //    `createMany(skipDuplicates)` 는 안 던지고, `count` 가 곧 "이번에 새로 맺어졌는가" 다.
+    const added = await prisma.follow.createMany({
+      data: [{ followerId: me, followingId: target }], skipDuplicates: true,
     });
-    if (!existing) {
-      await prisma.follow.create({ data: { followerId: me, followingId: target } });
+    if (added.count > 0) {
       // 상대에게 알림 (내 프로필로) — 멱등: 이미 이웃이면 알림 재발송 안 함
       try {
         const meUser = await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });

@@ -90,6 +90,12 @@ ArtLink/
 - **Inquiry** — 1:1 문의 (subject, content, reply, status: OPEN/ANSWERED)
 - **ApprovalRequest** — 수정 승인 요청
 - **Post / PostComment / PostLike** — 커뮤니티(글로벌 게시판). 글마다 anonymous, images[], likeCount/commentCount/viewCount 비정규화
+- **PostCategory** — 커뮤니티 탭(말머리). **Admin 만** 만든다(`name`/`slug`/`order`/`active`/`writeAdminOnly`).
+  `writeAdminOnly` 를 켜면 **Admin 만 그 탭에 글을 쓴다**(공지 탭). 읽기는 그대로 공개.
+  `Post.categoryId?` 는 `onDelete: SetNull` — **탭을 지워도 글은 안 지운다**(미분류로 내려온다).
+  `Post.notice`(공지 배지) 와 `Post.pinnedAt`(고정 시각) 도 Admin 전용. ⚠️ 고정을 Boolean 이 아니라
+  **시각**으로 둔 이유 — 고정 글이 여럿일 때 순서가 있어야 한다(최근 고정이 위).
+  마이그레이션 `20260904120000_add_community_tabs_and_notice`
 - **Follow** — 이웃(단방향 팔로우). `@@unique([followerId, followingId])`
 - **Story / StoryLike / StoryComment** — 스토리(작업 사진+짧은 글). visibility PUBLIC|NEIGHBORS(글마다), likeCount/commentCount 비정규화. ArtStory([소식]) 피드의 출처
 - **GuestbookEntry** — 방명록(작가 홈페이지). secret(비밀글), parentId(방 주인 답글, 1단계)
@@ -115,8 +121,8 @@ ArtLink/
 | inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
 | admin | /api/admin | (ADMIN 전용) 사용자 검색·역할변경 + 운영 조회: 공모 지원현황/작가 지원이력/갤러리 게시물 |
 | kanban | /api/kanban | (ADMIN 전용) 할 일 보드 — 회의 내용·할 일 정리. 보드/항목/댓글 CRUD, 순서 재배치 |
-| chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만) |
-| community | /api/community | 커뮤니티 글로벌 게시판(블라인드식). 글마다 실명/익명, 좋아요·댓글·조회수. `/popular`=홈 인기글 |
+| chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만). `GET /:id` 는 **최근 150개**만 주고 `?after=<id>`(폴링, 새 것만)·`?before=<id>`(더 보기)·`?limit=` 지원 — 8초 폴링이 방 전체를 다시 받지 않게(2026-09-04) |
+| community | /api/community | 커뮤니티 글로벌 게시판(블라인드식). 글마다 실명/익명, 좋아요·댓글·조회수. `/popular`=홈 인기글. **Admin 전용**: `categories` CUD(탭) · `:id/pin`(고정) · `:id/notice`(공지) · `:id/category`(탭 이동). ⚠️ `/categories` 는 `/:id` 보다 **먼저** 선언해야 한다 — 뒤에 두면 `parseInt('categories')=NaN` 으로 404 |
 | follow | /api/follow | 이웃(단방향 팔로우). 추가 시 상대에게 알림(멱등). 상태 `GET /:userId`(following/팔로워수) |
 | stories | /api/stories | 스토리(ArtStory [소식]). `/feed`, `/user/:id`, 좋아요·댓글. 공개범위 글마다 |
 | guestbook | /api/guestbook | 방명록(작가 홈페이지). 공개, 비밀글(본문만 가림), 답글은 방 주인만(1단계) |
@@ -952,6 +958,43 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 - `explore-engagement.test.ts` **53개** — 하이라이트 폴백 3분기·`isLiked` 반영·비공개/탈퇴 제외, 좋아요 보드, 알림 집계(5명 "외 4명"·읽은 알림 분리·24시간 창)·자기좋아요 제외, 스크랩 권한/토글/메모/**작가 미노출**, 간편 지원(포트폴리오 첨부·약관 필수·작품 0장 차단·우회 시도), 초대 방어(중복·마감·정원·상한 10명·재초대 차단)·정원 복구 시 재노출.
 - E2E `e2e/tests/26-invite-engagement.spec.ts` **9개** — 홈 확대·좋아요 지속, 좋아요 명단, 보드, 스크랩 프라이버시, **복합 시나리오(발견→스크랩→초대→알림→간편지원→수락→운영페이지)**, 상세 버튼 분기, 삭제 다이얼로그, 정원 마감, 하루 상한.
 - ⚠️ **확대 모달 이미지에 `min-h-[200px]` 필수** — 이미지 로드가 실패하면 높이가 0이 되어 정보줄이 위로 올라오고 우상단 닫기 버튼이 좋아요 버튼을 덮어 클릭이 막힌다(E2E에서 실제 재현).
+
+## 트래픽·동시성 하드닝 (2026-09-04)
+
+E2E 부하 스위트(`e2e/tests/39~41`)로 **실측해서** 찾은 것 셋. 전부 "기능은 되는데 사람이 몰리면 깨지는" 종류라
+단발 기능 테스트로는 안 잡혔다.
+
+### ① 토글 연타 → 400 (커뮤니티·ArtStory 좋아요, 이웃 추가)
+- **증상**: 하트를 빠르게 두 번 누르면 `{"error":"데이터 처리 중 오류가 발생했습니다."}`.
+  실측 동시 10회에 **200 1건 + 400 9건**. 커뮤니티는 조용히 롤백("눌렀는데 안 눌림"),
+  ArtStory 는 **에러 토스트**까지 떴다.
+- **원인**: `findUnique` 로 확인한 뒤 `create`/`delete` 하는데 그 확인이 **트랜잭션 밖**이라,
+  동시 요청이 둘 다 "없음"을 보고 들어가 unique 제약을 위반했다.
+- **수정**: `deleteMany`/`createMany({skipDuplicates})` 로 **던지지 않게** 하고, 카운터는
+  `1` 이 아니라 **실제로 바뀐 행 수(`.count`)만큼** 증감한다 → 에러도 드리프트도 사라진다.
+  `routes/community.ts`·`routes/story.ts`·`routes/follow.ts`. (`explore.ts` 는 이미 같은 해법이 있었다)
+- **결과**: 동시 10회 → **전부 200**. 좋아요 17명 동시 = 정확히 17.
+
+### ② 대화방이 메시지를 전부 내려주고, 화면이 그걸 8초마다 다시 받음
+- **실측**: 메시지당 287 bytes. 233개 65KB(8.2KB/s) · 1,000개 280KB(35KB/s) ·
+  **5,000개 1.4MB(175KB/s, 1시간 616MB)** — 방이 오래될수록 무거워지는 구조.
+- **수정**: `lib/chat.ts readChat` 에 창(`CHAT_PAGE_SIZE` 150)을 두고 커서를 붙였다.
+  `GET /chats/:id` 는 최근 150개 + `hasMore` + `readers`,
+  `?after=<id>` 는 새 것만(폴링), `?before=<id>` 는 지난 것(더 보기). 커서는 `createdAt` 이 아니라 **`id`**.
+  화면(`MessagesPage`)은 누적 state 에 **id 로 병합**(`chatView.mergeMessages`)하고,
+  `readers` 로 **모든** 메시지의 읽음 표시를 다시 계산한다(`applyReadState`).
+- **결과**: 200개 방 열기 42KB · **조용한 폴링 391 bytes**(방 크기와 무관).
+
+### ③ 안읽음 배지 N+1
+- `unreadChatCount` 는 **모든 로그인 사용자가 30초마다**, `listChats` 는 15초마다 부르는데
+  둘 다 방 수만큼 쿼리를 돌았다(실측 방1 13ms → 방17 25ms). 사용자가 늘면 배경 폴링이 커넥션을 먹는다.
+- 기준 시각(`lastReadAt`)이 방마다 다르므로 `unreadWhere` 로 **`OR` 한 덩어리**를 만들어
+  `groupBy` **한 번**에 묻는다(`@@index([chatId, createdAt])` 를 그대로 탄다).
+
+### 이상 없음으로 확인된 것 (같은 하니스)
+카운트 정합성(17명 동시 좋아요·댓글·조회, 동시 삭제) · 페이지네이션(글 103개 6페이지 중복·누락 0) ·
+목록 응답 5~7ms · 동시 30요청 실패 0 · 메시지 동시 30건 유실·중복 0 · 같은 상대 방 20회 동시 개설 → 1개 ·
+ArtLook 장면 21개 × 2바퀴에 WebGL 컨텍스트 **1개** 유지·손실 0·메모리 10.0MB 고정.
 
 ## 운영페이지 일괄 다운로드 성능 (2026-08-03)
 

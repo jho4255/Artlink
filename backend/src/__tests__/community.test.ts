@@ -202,3 +202,250 @@ describe('삭제 권한', () => {
     expect(await testPrisma.postLike.count()).toBe(0);
   });
 });
+
+// ══ 탭(말머리) · 공지 · 고정 — 전부 Admin 전용 (2026-09-04) ═══════════════
+// ⚠️ 화면에서 감추는 것은 권한이 아니다. 여기서 잠그는 건 **서버가 role 로 막는가** 하나다.
+describe('탭 — Admin 만 만들고 고친다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  const mkTab = (tok: string, name = '자유') =>
+    request.post('/api/community/categories').set('Authorization', `Bearer ${tok}`).send({ name });
+
+  it('작가·갤러리는 탭을 만들 수 없다 (403)', async () => {
+    expect((await mkTab(a1)).status).toBe(403);
+    expect((await mkTab(gallery)).status).toBe(403);
+  });
+
+  it('비로그인은 401', async () => {
+    expect((await request.post('/api/community/categories').send({ name: '자유' })).status).toBe(401);
+  });
+
+  it('Admin 은 만들 수 있고, 목록은 누구나 읽는다', async () => {
+    const r = await mkTab(admin, '작가 모집');
+    expect(r.status).toBe(201);
+    expect(r.body.name).toBe('작가 모집');
+    expect(r.body.slug).toBeTruthy();          // 한글 이름이어도 안정적인 키가 생긴다
+    const list = await request.get('/api/community/categories');
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+  });
+
+  it('같은 이름은 409', async () => {
+    await mkTab(admin, '자유');
+    expect((await mkTab(admin, '자유')).status).toBe(409);
+  });
+
+  it('꺼진 탭은 일반 사용자에게 안 보이고 Admin 에게는 보인다 (다시 켜야 하므로)', async () => {
+    const { body: tab } = await mkTab(admin, '숨김탭');
+    await request.patch(`/api/community/categories/${tab.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+    expect((await request.get('/api/community/categories')).body).toHaveLength(0);
+    const asAdmin = await request.get('/api/community/categories').set('Authorization', `Bearer ${admin}`);
+    expect(asAdmin.body).toHaveLength(1);
+    expect(asAdmin.body[0].active).toBe(false);
+  });
+
+  it('⚠️ 탭을 지워도 **글은 안 지운다** — 미분류로 내려온다', async () => {
+    const { body: tab } = await mkTab(admin, '자유');
+    const { body: post } = await createPost(a1, { categoryId: tab.id });
+    const del = await request.delete(`/api/community/categories/${tab.id}`).set('Authorization', `Bearer ${admin}`);
+    expect(del.status).toBe(200);
+    expect(del.body.movedToUncategorized).toBe(1);
+    const row = await testPrisma.post.findUnique({ where: { id: post.id } });
+    expect(row).not.toBeNull();               // 글은 살아 있다
+    expect(row!.categoryId).toBeNull();       // 미분류로 내려왔다
+  });
+
+  it('탭으로 목록을 거른다 (?category=slug), 지워진 탭 slug 는 빈 목록', async () => {
+    const { body: tab } = await mkTab(admin, '자유');
+    await createPost(a1, { categoryId: tab.id, title: '탭글' });
+    await createPost(a1, { title: '미분류글' });
+    const inTab = await request.get(`/api/community?category=${tab.slug}`);
+    expect(inTab.body.posts.map((p: any) => p.title)).toEqual(['탭글']);
+    const none = await request.get('/api/community?category=none');
+    expect(none.body.posts.map((p: any) => p.title)).toEqual(['미분류글']);
+    // ⚠️ 없는 탭이면 전체가 쏟아지면 안 된다(옛 링크로 들어와도)
+    expect((await request.get('/api/community?category=zzz-없는탭')).body.posts).toHaveLength(0);
+  });
+});
+
+describe('공지 · 고정 — Admin 만', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  it('⚠️ 작가가 notice/pinned 를 보내도 **무시된다** (클라이언트를 믿지 않는다)', async () => {
+    const { body } = await createPost(a1, { notice: true, pinned: true });
+    const row = await testPrisma.post.findUnique({ where: { id: body.id } });
+    expect(row!.notice).toBe(false);
+    expect(row!.pinnedAt).toBeNull();
+  });
+
+  it('Admin 이 쓰면 공지·고정이 붙는다', async () => {
+    const { body } = await createPost(admin, { notice: true, pinned: true });
+    const row = await testPrisma.post.findUnique({ where: { id: body.id } });
+    expect(row!.notice).toBe(true);
+    expect(row!.pinnedAt).not.toBeNull();
+  });
+
+  it('공지는 익명일 수 없다 — 누가 공지했는지 모르면 공지가 아니다', async () => {
+    const { body } = await createPost(admin, { notice: true, anonymous: true });
+    const row = await testPrisma.post.findUnique({ where: { id: body.id } });
+    expect(row!.anonymous).toBe(false);
+  });
+
+  it('고정 토글은 Admin 만 (작가는 403)', async () => {
+    const { body } = await createPost(a1);
+    expect((await request.patch(`/api/community/${body.id}/pin`).set('Authorization', `Bearer ${a1}`).send({ pinned: true })).status).toBe(403);
+    const ok = await request.patch(`/api/community/${body.id}/pin`).set('Authorization', `Bearer ${admin}`).send({ pinned: true });
+    expect(ok.status).toBe(200);
+    expect(ok.body.pinned).toBe(true);
+  });
+
+  it('공지 토글도 Admin 만', async () => {
+    const { body } = await createPost(a1);
+    expect((await request.patch(`/api/community/${body.id}/notice`).set('Authorization', `Bearer ${a2}`).send({ notice: true })).status).toBe(403);
+    const ok = await request.patch(`/api/community/${body.id}/notice`).set('Authorization', `Bearer ${admin}`).send({ notice: true });
+    expect(ok.body.notice).toBe(true);
+  });
+
+  it('⚠️ 고정 글이 목록 맨 위로 온다 — Postgres 는 DESC 에서 NULL 을 먼저 놓으므로 nulls:last 가 필수', async () => {
+    await createPost(a1, { title: '오래된 글' });
+    await createPost(a1, { title: '최신 글' });
+    const { body: old } = await request.get('/api/community');
+    expect(old.posts[0].title).toBe('최신 글');           // 기본은 최신순
+
+    const target = old.posts[1].id;                       // '오래된 글' 을 고정
+    await request.patch(`/api/community/${target}/pin`).set('Authorization', `Bearer ${admin}`).send({ pinned: true });
+    const { body: after } = await request.get('/api/community');
+    expect(after.posts[0].title).toBe('오래된 글');
+    expect(after.posts[0].pinned).toBe(true);
+  });
+
+  it('⚠️ 내 글/내 댓글 필터에서는 고정을 적용하지 않는다 (내 활동 목록에 남의 고정이 끼면 안 된다)', async () => {
+    const { body: mineOld } = await createPost(a1, { title: '내 오래된 글' });
+    await createPost(a1, { title: '내 최신 글' });
+    await request.patch(`/api/community/${mineOld.id}/pin`).set('Authorization', `Bearer ${admin}`).send({ pinned: true });
+    const r = await request.get('/api/community?mine=posts').set('Authorization', `Bearer ${a1}`);
+    expect(r.body.posts[0].title).toBe('내 최신 글');
+  });
+
+  it('탭 옮기기도 Admin 만', async () => {
+    const { body: tab } = await request.post('/api/community/categories').set('Authorization', `Bearer ${admin}`).send({ name: '자유' });
+    const { body: post } = await createPost(a1);
+    expect((await request.patch(`/api/community/${post.id}/category`).set('Authorization', `Bearer ${a1}`).send({ categoryId: tab.id })).status).toBe(403);
+    const ok = await request.patch(`/api/community/${post.id}/category`).set('Authorization', `Bearer ${admin}`).send({ categoryId: tab.id });
+    expect(ok.body.category.name).toBe('자유');
+  });
+});
+
+// ══ 탭별 쓰기 제한 — 공지 탭처럼 Admin 만 쓰게 (2026-09-04) ═══════════════
+describe('쓰기 제한 탭', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  const mkLockedTab = async (name = '공지') => {
+    const r = await request.post('/api/community/categories')
+      .set('Authorization', `Bearer ${admin}`).send({ name, writeAdminOnly: true });
+    return r.body;
+  };
+
+  it('Admin 은 쓰기 제한 탭을 만들 수 있다', async () => {
+    const tab = await mkLockedTab();
+    expect(tab.writeAdminOnly).toBe(true);
+  });
+
+  it('⚠️ 작가·갤러리는 그 탭에 글을 못 쓴다 (403) — 조용히 미분류로 옮기지 않는다', async () => {
+    const tab = await mkLockedTab();
+    const r = await createPost(a1, { categoryId: tab.id });
+    expect(r.status).toBe(403);
+    expect(r.body.error).toContain('관리자만');
+    expect(await testPrisma.post.count()).toBe(0);   // 글이 만들어지지도 않았다
+  });
+
+  it('Admin 은 쓸 수 있다', async () => {
+    const tab = await mkLockedTab();
+    const r = await createPost(admin, { categoryId: tab.id, notice: true });
+    expect(r.status).toBe(201);
+    const row = await testPrisma.post.findUnique({ where: { id: r.body.id } });
+    expect(row!.categoryId).toBe(tab.id);
+  });
+
+  it('제한을 풀면 누구나 쓸 수 있다 (되돌릴 수 있어야 한다)', async () => {
+    const tab = await mkLockedTab();
+    await request.patch(`/api/community/categories/${tab.id}`)
+      .set('Authorization', `Bearer ${admin}`).send({ writeAdminOnly: false });
+    expect((await createPost(a1, { categoryId: tab.id })).status).toBe(201);
+  });
+
+  it('제한 탭도 **읽기는 공개** — 목록·탭 목록에 그대로 나온다', async () => {
+    const tab = await mkLockedTab();
+    await createPost(admin, { categoryId: tab.id, title: '공지사항' });
+    const cats = await request.get('/api/community/categories');
+    expect(cats.body.find((c: any) => c.id === tab.id)?.writeAdminOnly).toBe(true);
+    const list = await request.get(`/api/community?category=${tab.slug}`);
+    expect(list.body.posts.map((p: any) => p.title)).toEqual(['공지사항']);
+  });
+
+  it('제한 탭이 아니면 예전처럼 누구나 쓴다 (기본값 false — 동작이 안 바뀐다)', async () => {
+    const { body: free } = await request.post('/api/community/categories')
+      .set('Authorization', `Bearer ${admin}`).send({ name: '자유' });
+    expect(free.writeAdminOnly).toBe(false);
+    expect((await createPost(a1, { categoryId: free.id })).status).toBe(201);
+  });
+});
+
+/**
+ * 좋아요 연타(더블탭) — 2026-09-04.
+ *
+ * 예전엔 `findUnique` 로 있나 본 뒤 `create` 했는데 그 확인이 트랜잭션 밖이라,
+ * 동시에 두 번 누르면 둘 다 "없음"을 보고 들어가 unique 위반으로 떨어졌다
+ * (실측 동시 10회에 200 1건 + **400 9건**). 화면은 낙관적 갱신이 조용히 롤백돼
+ * "눌렀는데 안 눌림"이 됐다.
+ */
+describe('★ 좋아요 연타에도 에러가 없고 카운트가 안 어긋난다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  const like = (id: number, tok: string) =>
+    request.post(`/api/community/${id}/like`).set('Authorization', `Bearer ${tok}`);
+
+  async function makePost() {
+    const r = await request.post('/api/community').set('Authorization', `Bearer ${a1}`)
+      .send({ title: '연타 대상', body: '본문', anonymous: false });
+    return r.body.id as number;
+  }
+
+  it('같은 사람이 동시에 10번 눌러도 4xx·5xx 가 없다', async () => {
+    const id = await makePost();
+    const res = await Promise.all(Array.from({ length: 10 }, () => like(id, a2)));
+    const bad = res.filter(r => r.status !== 200).map(r => r.status);
+    expect(bad, `연타가 에러로 떨어졌다: ${bad.join(',')}`).toHaveLength(0);
+  });
+
+  it('연타 뒤에도 likeCount 가 실제 행 수와 같다 (드리프트 없음)', async () => {
+    const id = await makePost();
+    await Promise.all(Array.from({ length: 10 }, () => like(id, a2)));
+
+    const post = await testPrisma.post.findUnique({ where: { id }, select: { likeCount: true } });
+    const rows = await testPrisma.postLike.count({ where: { postId: id } });
+    expect(post!.likeCount).toBe(rows);
+    expect(post!.likeCount).toBeLessThanOrEqual(1);
+    expect(post!.likeCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('여러 사람이 동시에 눌러도 정확히 사람 수만큼 오른다', async () => {
+    const id = await makePost();
+    const people = [a2, gallery, admin];
+    const res = await Promise.all(people.map(t => like(id, t)));
+    expect(res.every(r => r.status === 200)).toBe(true);
+
+    const post = await testPrisma.post.findUnique({ where: { id }, select: { likeCount: true } });
+    expect(post!.likeCount).toBe(3);
+    expect(await testPrisma.postLike.count({ where: { postId: id } })).toBe(3);
+  });
+
+  it('토글은 그대로 동작한다 — 켜고 끄면 0 으로 돌아온다', async () => {
+    const id = await makePost();
+    const on = await like(id, a2);
+    expect(on.body).toMatchObject({ liked: true, likeCount: 1 });
+    const off = await like(id, a2);
+    expect(off.body).toMatchObject({ liked: false, likeCount: 0 });
+    expect(await testPrisma.postLike.count({ where: { postId: id } })).toBe(0);
+  });
+});

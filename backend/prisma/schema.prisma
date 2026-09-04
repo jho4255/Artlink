@@ -22,6 +22,10 @@ model User {
   providerId   String? // OAuth provider user ID
   deletedAt    DateTime? // 회원탈퇴(소프트 삭제) 시각. null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'
   lastSeenAt   DateTime? // 최근 인증된 접속 시각. 기존 유저는 다음 접속 전까지 null
+  /// 가입 시 약관 동의 시각. **동의한 사실과 시점을 남긴다** — 분쟁 시 근거가 된다.
+  /// null = 이 기능(2026-09-04) 이전에 가입한 회원. 소급해서 동의한 것으로 치지 않는다.
+  termsAgreedAt   DateTime?
+  privacyAgreedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -60,6 +64,7 @@ model User {
   stories               Story[]                @relation("storyAuthor")
   storyLikes            StoryLike[]            @relation("storyLiker")
   storyComments         StoryComment[]         @relation("storyCommentAuthor")
+  storyHighlights       StoryHighlight[]       @relation("storyHighlights")
   guestbookReceived     GuestbookEntry[]       @relation("guestbookTarget") // 내 방명록에 달린 글
   guestbookWritten      GuestbookEntry[]       @relation("guestbookAuthor") // 내가 남긴 방명록 글
 
@@ -141,6 +146,28 @@ model StoryComment {
   @@index([storyId, createdAt])
 }
 
+// ── 스토리 하이라이트 (인스타그램 하이라이트처럼 프로필에 영구 보존) ──
+model StoryHighlight {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  user            User     @relation("storyHighlights", fields: [userId], references: [id], onDelete: Cascade)
+  /// 하이라이트 이름 (e.g., "좋아요", "여행")
+  name            String
+  /// 이 하이라이트에 포함된 Story id 배열
+  storyIds        Int[]    @default([])
+  /// 커버 사진으로 사용할 Story (첫 번째 스토리 또는 선택한 스토리)
+  coverStoryId    Int?
+  /// 공개 여부 (기본값: true)
+  isPublic        Boolean  @default(true)
+  /// 프로필에서 표시 순서
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, order])
+}
+
 // ── 광고 배너 (Admin 관리) — 사이드바 하단 등에 노출하는 자체 광고 슬롯 ──
 model AdBanner {
   id        Int      @id @default(autoincrement())
@@ -156,10 +183,38 @@ model AdBanner {
 }
 
 // ── 커뮤니티 게시판 (블라인드식 글로벌 게시판, 홈 인기글의 출처) ──
+/// 커뮤니티 탭(말머리) — **Admin 만** 만들고 고친다.
+/// 탭을 지워도 글은 안 지운다(onDelete: SetNull → '미분류'로 내려온다).
+model PostCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  /// 목록 쿼리(?category=)와 주소에 쓰는 키. 한글 이름과 별개로 안정적이어야 한다.
+  slug      String   @unique
+  /// 탭 순서 (작을수록 앞). 같으면 id 순
+  order     Int      @default(0)
+  /// 끄면 탭이 안 보인다 — 글은 그대로 남는다(삭제 대신 쓰는 안전한 숨기기)
+  active    Boolean  @default(true)
+  /// 켜면 **Admin 만 이 탭에 글을 쓸 수 있다**(공지 탭 등). 읽기는 그대로 공개.
+  /// ⚠️ 탭 이름이 '공지'인지로 판단하지 않는다 — 이름을 '안내'로 바꾸는 순간 조용히 풀린다.
+  writeAdminOnly Boolean @default(false)
+  createdAt DateTime @default(now())
+  posts     Post[]
+
+  @@index([order])
+}
+
 model Post {
   id        Int      @id @default(autoincrement())
   authorId  Int
   author    User     @relation("postAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  /// 어느 탭의 글인가. null 이면 '미분류'(전체 탭에만 뜬다)
+  categoryId Int?
+  category   PostCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// 공지글 — Admin 만 지정. 목록에서 배지가 붙는다
+  notice    Boolean  @default(false)
+  /// 고정 시각. null 이면 고정 아님. **Boolean 이 아니라 시각인 이유**: 고정 글이 여럿일 때
+  /// 순서가 있어야 한다(최근에 고정한 것이 위). Admin 만 바꾼다
+  pinnedAt  DateTime?
   title     String
   body      String
   // 첨부 사진 (우리 저장소 주소만). 순서 유지.
@@ -178,6 +233,8 @@ model Post {
 
   @@index([createdAt])
   @@index([likeCount])
+  @@index([categoryId])
+  @@index([pinnedAt])
 }
 
 model PostComment {

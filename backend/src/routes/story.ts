@@ -16,6 +16,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
+import { extractMentions, resolveMentions, normalizeMentions } from '../lib/mention';
 
 const router = Router();
 
@@ -136,19 +137,26 @@ router.post('/:id/like', authenticate, async (req, res, next) => {
     const story = await prisma.story.findUnique({ where: { id }, select: { id: true } });
     if (!story) throw new AppError('스토리를 찾을 수 없습니다.', 404);
 
-    const existing = await prisma.storyLike.findUnique({ where: { storyId_userId: { storyId: id, userId: me } }, select: { id: true } });
-    if (existing) {
-      const [, updated] = await prisma.$transaction([
-        prisma.storyLike.delete({ where: { id: existing.id } }),
-        prisma.story.update({ where: { id }, data: { likeCount: { decrement: 1 } }, select: { likeCount: true } }),
-      ]);
-      return res.json({ liked: false, likeCount: updated.likeCount });
-    }
-    const [, updated] = await prisma.$transaction([
-      prisma.storyLike.create({ data: { storyId: id, userId: me } }),
-      prisma.story.update({ where: { id }, data: { likeCount: { increment: 1 } }, select: { likeCount: true } }),
-    ]);
-    res.json({ liked: true, likeCount: updated.likeCount });
+    // ⚠️ 연타(더블탭) 경합 — 자세한 이유는 `routes/community.ts` 의 같은 자리 주석 참고.
+    //    확인 없이 지우고/만들고, 카운터는 **실제로 바뀐 행 수만큼** 움직인다.
+    //    여기는 커뮤니티와 달리 실패하면 화면에 에러 토스트까지 떴다.
+    const out = await prisma.$transaction(async (tx) => {
+      const del = await tx.storyLike.deleteMany({ where: { storyId: id, userId: me } });
+      if (del.count > 0) {
+        const u = await tx.story.update({
+          where: { id }, data: { likeCount: { decrement: del.count } }, select: { likeCount: true },
+        });
+        return { liked: false, likeCount: u.likeCount };
+      }
+      const add = await tx.storyLike.createMany({
+        data: [{ storyId: id, userId: me }], skipDuplicates: true,
+      });
+      const u = await tx.story.update({
+        where: { id }, data: { likeCount: { increment: add.count } }, select: { likeCount: true },
+      });
+      return { liked: true, likeCount: u.likeCount };
+    });
+    res.json(out);
   } catch (e) { next(e); }
 });
 
@@ -167,7 +175,7 @@ router.get('/:id/comments', optionalAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ── 댓글 작성 ──
+// ── 댓글 작성 (@mention 지원) ──
 const commentSchema = z.object({ body: z.string().trim().min(1, '댓글을 입력해주세요.').max(1000, '댓글은 1000자까지입니다.') });
 router.post('/:id/comments', authenticate, validate(commentSchema), async (req, res, next) => {
   try {
@@ -176,8 +184,11 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
     const story = await prisma.story.findUnique({ where: { id }, select: { id: true, authorId: true } });
     if (!story) throw new AppError('스토리를 찾을 수 없습니다.', 404);
 
+    // @mention 정규화 및 검증
+    const normalized = await normalizeMentions(req.body.body.trim(), prisma);
+
     const [comment] = await prisma.$transaction([
-      prisma.storyComment.create({ data: { storyId: id, authorId: me, body: req.body.body.trim() }, include: { author: authorSelect } }),
+      prisma.storyComment.create({ data: { storyId: id, authorId: me, body: normalized }, include: { author: authorSelect } }),
       prisma.story.update({ where: { id }, data: { commentCount: { increment: 1 } } }),
     ]);
     // 스토리 주인에게 알림 (자기 글에 자기가 달면 없음)
@@ -219,6 +230,145 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     if (story.authorId !== req.user!.id && req.user!.role !== 'ADMIN') throw new AppError('삭제 권한이 없습니다.', 403);
     await prisma.story.delete({ where: { id } });
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ── 하이라이트 관리 (인스타그램 하이라이트처럼 프로필에 영구 보존) ──
+// POST /highlights — 하이라이트 생성 (이름, 공개 여부)
+router.post('/highlights', authenticate, async (req, res, next) => {
+  try {
+    const { name, isPublic } = req.body;
+    if (!name || typeof name !== 'string' || name.length < 1 || name.length > 50) {
+      throw new AppError('이름은 1~50자 사이여야 합니다.', 400);
+    }
+    const highlight = await prisma.storyHighlight.create({
+      data: {
+        userId: req.user!.id,
+        name,
+        isPublic: isPublic === false ? false : true,
+        order: 0,
+        storyIds: [],
+      },
+    });
+    res.status(201).json(highlight);
+  } catch (e: any) {
+    if (e.code === 'P2002') return next(new AppError('이미 같은 이름의 하이라이트가 있습니다.', 409));
+    next(e);
+  }
+});
+
+// GET /highlights/:userId — 사용자의 하이라이트 목록 조회 (공개 것 + 본인 것)
+router.get('/highlights/:userId', optionalAuth, async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.userId as string);
+    const isOwn = req.user?.id === userId;
+    const highlights = await prisma.storyHighlight.findMany({
+      where: {
+        userId,
+        ...(isOwn ? {} : { isPublic: true }), // 본인이 아니면 공개 것만
+      },
+      orderBy: { order: 'asc' },
+    });
+
+    // 각 하이라이트의 첫 번째 스토리 이미지 조회
+    const result = await Promise.all(
+      highlights.map(async (h) => {
+        let coverImage = null;
+        if (h.storyIds.length > 0) {
+          const story = await prisma.story.findUnique({
+            where: { id: h.storyIds[0] },
+            select: { images: true },
+          });
+          coverImage = story?.images?.[0] || null;
+        }
+        return {
+          ...h,
+          coverImage,
+        };
+      })
+    );
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
+// PATCH /highlights/:id — 하이라이트 이름/커버/공개 설정/순서 변경 (본인만)
+router.patch('/highlights/:id', authenticate, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { name, order, coverStoryId, isPublic } = req.body;
+    const highlight = await prisma.storyHighlight.findUnique({ where: { id }, select: { userId: true } });
+    if (!highlight) throw new AppError('하이라이트를 찾을 수 없습니다.', 404);
+    if (highlight.userId !== req.user!.id) throw new AppError('수정 권한이 없습니다.', 403);
+
+    const data: any = {};
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length < 1 || name.length > 50) {
+        throw new AppError('이름은 1~50자 사이여야 합니다.', 400);
+      }
+      data.name = name;
+    }
+    if (order !== undefined && typeof order === 'number') data.order = order;
+    if (coverStoryId !== undefined) data.coverStoryId = coverStoryId || null;
+    if (isPublic !== undefined) data.isPublic = !!isPublic;
+
+    const updated = await prisma.storyHighlight.update({ where: { id }, data });
+    res.json(updated);
+  } catch (e: any) {
+    if (e.code === 'P2002') return next(new AppError('이미 같은 이름의 하이라이트가 있습니다.', 409));
+    next(e);
+  }
+});
+
+// DELETE /highlights/:id — 하이라이트 삭제
+router.delete('/highlights/:id', authenticate, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const highlight = await prisma.storyHighlight.findUnique({ where: { id }, select: { userId: true } });
+    if (!highlight) throw new AppError('하이라이트를 찾을 수 없습니다.', 404);
+    if (highlight.userId !== req.user!.id) throw new AppError('삭제 권한이 없습니다.', 403);
+    await prisma.storyHighlight.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// POST /highlights/:id/stories/:storyId — 스토리를 하이라이트에 추가 (본인 스토리만)
+router.post('/highlights/:id/stories/:storyId', authenticate, async (req, res, next) => {
+  try {
+    const highlightId = parseInt(req.params.id as string);
+    const storyId = parseInt(req.params.storyId as string);
+
+    const highlight = await prisma.storyHighlight.findUnique({ where: { id: highlightId }, select: { userId: true, storyIds: true } });
+    if (!highlight) throw new AppError('하이라이트를 찾을 수 없습니다.', 404);
+    if (highlight.userId !== req.user!.id) throw new AppError('수정 권한이 없습니다.', 403);
+
+    // 스토리가 본인 것인지 확인
+    const story = await prisma.story.findFirst({ where: { id: storyId, authorId: req.user!.id } });
+    if (!story) throw new AppError('본인 스토리만 추가할 수 있습니다.', 403);
+
+    // 이미 있으면 무시, 없으면 추가
+    const updated = await prisma.storyHighlight.update({
+      where: { id: highlightId },
+      data: { storyIds: Array.from(new Set([...highlight.storyIds, storyId])) },
+    });
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// DELETE /highlights/:id/stories/:storyId — 하이라이트에서 스토리 제거 (본인만)
+router.delete('/highlights/:id/stories/:storyId', authenticate, async (req, res, next) => {
+  try {
+    const highlightId = parseInt(req.params.id as string);
+    const storyId = parseInt(req.params.storyId as string);
+
+    const highlight = await prisma.storyHighlight.findUnique({ where: { id: highlightId }, select: { userId: true, storyIds: true } });
+    if (!highlight) throw new AppError('하이라이트를 찾을 수 없습니다.', 404);
+    if (highlight.userId !== req.user!.id) throw new AppError('삭제 권한이 없습니다.', 403);
+
+    const updated = await prisma.storyHighlight.update({
+      where: { id: highlightId },
+      data: { storyIds: highlight.storyIds.filter(id => id !== storyId) },
+    });
+    res.json(updated);
   } catch (e) { next(e); }
 });
 

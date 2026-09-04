@@ -19,6 +19,11 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'ARTIST' | 'GALLERY'>('ARTIST');
+  // 가입 필수 동의 — 이용약관 · 개인정보 처리방침. 서버도 true 가 아니면 400 으로 막는다
+  // (화면에서만 막으면 API 를 직접 부르는 순간 미동의 가입이 된다).
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [agreePrivacy, setAgreePrivacy] = useState(false);
+  const allAgreed = agreeTerms && agreePrivacy;
   const [error, setError] = useState('');
 
   const handleSuccess = (data: { token: string; user: any }) => {
@@ -50,7 +55,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   });
 
   const registerMutation = useMutation({
-    mutationFn: (body: { tempToken: string; role: string; name: string; email: string; phone: string }) =>
+    mutationFn: (body: { tempToken: string; role: string; name: string; email: string; phone: string; agreeTerms: boolean; agreePrivacy: boolean }) =>
       api.post('/auth/complete-registration', body).then((r) => r.data),
     onSuccess: handleSuccess,
     onError: (err: any) => setError(err.response?.data?.error || '가입에 실패했습니다.'),
@@ -88,7 +93,9 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     if (!name.trim()) return setError('이름을 입력해주세요.');
     if (!email.trim()) return setError('이메일을 입력해주세요.');
     if (!/^01[0-9]-?\d{3,4}-?\d{4}$/.test(phone.trim())) return setError('올바른 휴대폰 번호를 입력해주세요. (예: 010-1234-5678)');
-    registerMutation.mutate({ tempToken, role, name: name.trim(), email: email.trim(), phone: phone.trim() });
+    if (!agreeTerms) return setError('이용약관에 동의해주세요.');
+    if (!agreePrivacy) return setError('개인정보 처리방침에 동의해주세요.');
+    registerMutation.mutate({ tempToken, role, name: name.trim(), email: email.trim(), phone: phone.trim(), agreeTerms, agreePrivacy });
   };
 
   if (phase === 'loading') {
@@ -178,11 +185,48 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
             </div>
           </div>
 
+          {/* ── 필수 동의 ──────────────────────────────────────────────
+              ⚠️ 링크는 **새 탭**으로 연다. 같은 탭에서 열면 입력하던 내용과 tempToken 이 날아가고,
+                 돌아왔을 때 '등록 세션이 만료되었습니다' 를 보게 된다.
+              ⚠️ 마케팅 수신 동의는 두지 않는다 — 우리는 메일을 보내지 않는다. */}
+          <div className="pt-1 space-y-2 rounded-lg border border-gray-200 p-3">
+            <label className="flex cursor-pointer items-center gap-2 border-b border-gray-100 pb-2">
+              <input
+                type="checkbox" checked={allAgreed}
+                onChange={(e) => { setAgreeTerms(e.target.checked); setAgreePrivacy(e.target.checked); }}
+                className="h-4 w-4 accent-gray-900"
+              />
+              <span className="text-sm font-medium text-gray-900">전체 동의</span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="checkbox" checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} className="mt-0.5 h-4 w-4 accent-gray-900" />
+              <span className="text-sm text-gray-600">
+                <b className="font-medium text-gray-900">[필수]</b>{' '}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-gray-900 underline" onClick={(e) => e.stopPropagation()}>이용약관</a>
+                에 동의합니다
+                <span className="mt-0.5 block text-xs text-gray-400">
+                  정산 무응답 3일 자동 수락, 방치 공모 20일 자동 정리 등 자동으로 처리되는 사항이 포함됩니다.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="checkbox" checked={agreePrivacy} onChange={(e) => setAgreePrivacy(e.target.checked)} className="mt-0.5 h-4 w-4 accent-gray-900" />
+              <span className="text-sm text-gray-600">
+                <b className="font-medium text-gray-900">[필수]</b>{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-gray-900 underline" onClick={(e) => e.stopPropagation()}>개인정보 처리방침</a>
+                에 동의합니다
+                <span className="mt-0.5 block text-xs text-gray-400">
+                  이름·이메일·연락처를 수집하며, 공모 지원 시 해당 갤러리에 제공됩니다.
+                </span>
+              </span>
+            </label>
+          </div>
+
           {error && <p className="text-sm text-red-500">{error}</p>}
 
           <button
             type="submit"
-            disabled={registerMutation.isPending}
+            disabled={registerMutation.isPending || !allAgreed}
             className="w-full h-11 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 cursor-pointer transition-colors"
           >
             {registerMutation.isPending ? '처리 중...' : '가입 완료'}

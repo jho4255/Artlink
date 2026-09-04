@@ -86,7 +86,15 @@ router.post('/direct', validate(directSchema), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/** 방 하나 읽기 — 참여자만. 여는 순간 읽음 처리한다 */
+/**
+ * 방 하나 읽기 — 참여자만. 여는 순간 읽음 처리한다.
+ *
+ * 쿼리 셋 다 선택이고, 아무것도 없으면 **최근 `CHAT_PAGE_SIZE` 개**를 준다.
+ *   · `?after=<id>`  폴링 — 그 뒤 새 메시지만 (조용하면 빈 배열)
+ *   · `?before=<id>` 더 보기 — 그 앞 지난 메시지
+ *   · `?limit=<n>`   한 번에 받을 개수 (서버가 상한을 건다)
+ * ⚠️ 옛 화면은 쿼리를 안 붙이므로 그대로 동작한다(응답 형식도 필드가 늘기만 했다).
+ */
 router.get('/:id', async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
@@ -95,7 +103,15 @@ router.get('/:id', async (req, res, next) => {
     if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
-    const data = await readChat(chatId, me);
+    const num = (v: unknown) => {
+      const n = parseInt(String(v));
+      return Number.isFinite(n) && n >= 0 ? n : undefined;
+    };
+    const data = await readChat(chatId, me, {
+      after: num(req.query.after),
+      before: num(req.query.before),
+      limit: num(req.query.limit),
+    });
     if (!data) throw new AppError('대화를 찾을 수 없습니다.', 404);
 
     await prisma.chatParticipant.update({

@@ -212,7 +212,10 @@ test('D. 갤러리 관심은 이제 하트(공개) — 저장(스크랩) 버튼�
   await g.page.goto('/explore');
   await g.page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
   await expect(g.page.getByRole('button', { name: /관심 작품 저장|관심 작품 해제/ }), '스크랩 버튼은 없어졌다').toHaveCount(0);
-  await expect(g.page.getByRole('button', { name: '내 공모에 초대' }), '대신 초대 버튼이 있다').toBeVisible({ timeout: 8000 });
+  // ⚠️ '바로 공모 초대' 버튼도 2026-08-29 에 **의도적으로 없앴다** — 초대는 공모 쪽에서만 한다.
+  //    남은 액션은 [이웃]·[메시지]·[하트] 셋뿐이다(초대는 아래 [관심 작품] 탭에서 확인한다).
+  await expect(g.page.getByRole('button', { name: '내 공모에 초대' })).toHaveCount(0);
+  await expect(g.page.getByRole('button', { name: /메시지/ }), '메시지 버튼은 남아 있다').toBeVisible({ timeout: 8000 });
 
   // 관심 작품 탭 = 하트 보드. 개수·비공개 문구 대신 초대 안내.
   await g.page.goto('/mypage?tab=scraps');
@@ -237,12 +240,14 @@ test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락
   await ensurePublicArtworks(api, aTok(), 3);
   const ex = await createApprovedExhibition(api, { capacity: 3, title: `복합시나리오 ${Date.now()}` });
 
-  // 1) 갤러리: 둘러보기 → 작품 확대 → 초대
+  /* 1) 갤러리: 하트로 모아둔 [관심 작품] → 초대
+        ⚠️ 예전엔 둘러보기 작품 모달에 '내 공모에 초대'가 있었는데 2026-08-29 에 없앴다.
+           지금 초대 진입점은 ①[관심 작품] 탭의 [전시 초대] ②내 공모 [지원자 관리]의 [작가 초대] 둘이다. */
+  await seedGalleryLike(api);
   const g = await openAs(browser, 'gallery');
-  await g.page.goto('/explore');
-  await g.page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
-  await g.page.getByRole('button', { name: '내 공모에 초대' }).click();
-  await expect(g.page.getByRole('heading', { name: '공모에 초대' })).toBeVisible({ timeout: 8000 });
+  await g.page.goto('/mypage?tab=scraps');
+  await g.page.getByRole('button', { name: '전시 초대' }).first().click();
+  await expect(g.page.getByRole('heading', { name: '공모에 초대' })).toBeVisible({ timeout: 10000 });
   await g.page.getByRole('button', { name: new RegExp(ex.title) }).click();
   await g.page.getByPlaceholder('작품 잘 봤습니다. 함께하고 싶습니다.').fill('E2E 초대 메시지');
   await g.page.getByRole('button', { name: '초대 보내기' }).click();
@@ -411,9 +416,14 @@ test('F4. 하루 초대 상한 10명', async () => {
   // 상한은 '갤러리 계정 기준 24시간 합산'이라 앞선 테스트의 초대와 섞이면 안 된다.
   // → 초대 0건인 새 갤러리 계정을 만들어 격리한다.
   const gSignup = await (await api.post(`${API}/auth/signup`, {
-    data: { email: `limitgallery${stamp}@e2e.test`, password: 'e2e-pass-1234', name: '상한테스트갤러리', role: 'GALLERY' },
+    // ⚠️ 가입에는 약관·개인정보 동의가 필수다(2026-09-04)
+    data: {
+      email: `limitgallery${stamp}@e2e.test`, password: 'e2e-pass-1234', name: '상한테스트갤러리', role: 'GALLERY',
+      agreeTerms: true, agreePrivacy: true,
+    },
   })).json();
   const newGTok = gSignup.token;
+  const gUserId = gSignup.user?.id ?? gSignup.id;   // 서로 이웃을 맺으려면 갤러리 **사용자 id** 가 필요하다
   const gal = await (await api.post(`${API}/galleries`, {
     headers: auth(newGTok),
     data: {
@@ -443,11 +453,18 @@ test('F4. 하루 초대 상한 10명', async () => {
         password: 'e2e-pass-1234',
         name: `초대대상${i}`,
         role: 'ARTIST',
+        agreeTerms: true, agreePrivacy: true,   // 동의 필수(2026-09-04)
       },
     });
     const body = await r.json();
     const id = body.user?.id ?? body.id;
     expect(id, `대상 작가 ${i} 생성`).toBeTruthy();
+
+    /* ⚠️ 2026-08-29 부터 **초대 관문**이 있다(`lib/inviteEligibility.ts`) — 갤러리는
+       하트를 저장했거나 **서로 이웃**인 작가만 초대할 수 있다. 안 맺어 두면 첫 초대부터
+       403 이라, '상한 10명'을 보려던 이 테스트가 상한과 무관한 이유로 죽는다. */
+    await api.post(`${API}/follow/${gUserId}`, { headers: auth(body.token) });   // 작가 → 갤러리
+    await api.post(`${API}/follow/${id}`, { headers: auth(newGTok) });           // 갤러리 → 작가
     targets.push(id);
   }
 
@@ -458,7 +475,11 @@ test('F4. 하루 초대 상한 10명', async () => {
     expect(r.status(), `${i + 1}번째 초대는 성공`).toBe(201);
   }
 
-  // 11번째 → 상한 차단
+  /* 11번째 → 상한 차단.
+     ⚠️ 이 작가와도 **먼저 서로 이웃을 맺어야** 한다 — 안 그러면 초대 관문(403)에 먼저 걸려
+        '상한 400' 대신 엉뚱한 코드가 나오고, 상한이 실제로 도는지 확인하지 못한다. */
+  await api.post(`${API}/follow/${gUserId}`, { headers: auth(aTok()) });
+  await api.post(`${API}/follow/${userIds().artist}`, { headers: auth(newGTok) });
   const over = await api.post(`${API}/exhibitions/${ex.id}/invite`, {
     headers: auth(newGTok), data: { artistId: userIds().artist },
   });

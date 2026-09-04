@@ -62,6 +62,10 @@ export async function cleanDb() {
     await tx.postLike.deleteMany();
     await tx.postComment.deleteMany();
     await tx.post.deleteMany();
+    // ⚠️ 새 테이블을 만들면 **여기에 반드시 추가할 것.** 빠뜨리면 테스트 간에 데이터가 새고,
+    //    증상이 엉뚱하게 나온다 — PostCategory 를 빠뜨렸을 때 '같은 이름 409' 때문에 뒤 테스트가
+    //    id 없는 응답을 받아 400·빈 목록으로 실패했다(원인이 전혀 안 보였다).
+    await tx.postCategory.deleteMany();
     await tx.kanbanSubtask.deleteMany();
     await tx.kanbanComment.deleteMany();
     await tx.kanbanCard.deleteMany();

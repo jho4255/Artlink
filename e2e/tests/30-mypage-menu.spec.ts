@@ -47,7 +47,8 @@ test.describe('lg↑ 전 페이지 우측 사이드바', () => {
     const labels = await page.locator('aside nav a').allInnerTexts();
     const cleaned = labels.map(t => t.replace(/\s+/g, ' ').trim());
     expect(cleaned).toEqual([
-      '프로필', '홈페이지', '포트폴리오', '찜 목록', '내 전시', 'ArtLook액자 걸기', '1:1 문의',
+      '프로필', '홈페이지', '포트폴리오', '찜 목록', '내 전시', 'ArtLook액자 걸기',
+      'ArtStory소식 공유', '1:1 문의',
     ]);
     await ctx.close();
   });

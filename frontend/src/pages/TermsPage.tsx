@@ -79,8 +79,58 @@ export default function TermsPage() {
           </p>
         </section>
 
+        {/* ⚠️ 자동 처리 규칙의 **정본**. 규칙을 바꾸면 코드 상수(AUTO_APPROVE_DAYS·STALE_AFTER_DAYS·
+            NOTIFICATION_TTL_MS)와 여기, 그리고 시점별 약관(public/terms/*.txt)을 함께 고쳐야 한다.
+            한 곳만 고치면 화면과 약관이 어긋난 채로 남는다. */}
         <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">제9조 (면책)</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">제9조 (자동으로 처리되는 사항)</h2>
+          <p className="text-gray-600">
+            서비스 운영을 위해 아래 사항은 회원의 별도 조작 없이 자동으로 처리됩니다. 각 항목은 해당 기능을 이용하는
+            시점의 안내와 화면에도 표시됩니다.
+          </p>
+          <ul className="mt-3 space-y-2 text-gray-600 list-disc pl-5">
+            <li>
+              <b className="text-gray-900">정산 무응답 자동 수락</b> — 갤러리 회원의 정산 확인 요청일로부터
+              <b className="text-gray-900"> 3일</b>(한국 시간 달력 기준) 이내에 작가 회원이 수락 또는 이의 제기를 하지 않으면
+              해당 정산 내역을 수락한 것으로 처리합니다. 이의를 제기한 경우에는 자동 수락되지 않으며,
+              금액이 수정되면 기한이 새로 시작됩니다.
+            </li>
+            <li>
+              <b className="text-gray-900">방치 공모 자동 정리</b> — 전시 종료일로부터 <b className="text-gray-900">20일</b>이
+              지날 때까지 정산을 시작하지 않은 공모는 ‘종료된 공모’로 정리되어 진행 중 목록에서 제외됩니다.
+              정리 전 5일·10일·15일째에 알림을 보내며, 정리된 뒤에도 정산을 이어서 진행할 수 있고 자료는 삭제되지 않습니다.
+            </li>
+            <li>
+              <b className="text-gray-900">읽은 알림 삭제</b> — 읽음 처리된 알림은 <b className="text-gray-900">90일</b>이
+              지나면 자동으로 삭제됩니다.
+            </li>
+            <li>
+              <b className="text-gray-900">이달의 갤러리 노출 종료</b> — 관리자가 지정한 노출 기한이 지나면 자동으로 노출이 종료됩니다.
+            </li>
+            <li>
+              <b className="text-gray-900">업로드 파일 삭제</b> — 이미지를 교체하거나 삭제하면 이전 파일은 저장소에서 함께
+              삭제되며 복구되지 않습니다.
+            </li>
+            <li>
+              <b className="text-gray-900">탈퇴 시 게시물 비공개</b> — 회원이 탈퇴하면 해당 회원이 등록한 갤러리·공모·전시는
+              공개 목록에서 즉시 제외됩니다.
+            </li>
+            <li>
+              <b className="text-gray-900">정원 및 마감</b> — 모집 정원이 찼거나 마감일이 지난 공모에는 지원할 수 없으며,
+              동시에 여러 건이 접수되면 정원을 초과하는 지원은 접수되지 않습니다. 초대를 받은 경우에도 동일하게 적용됩니다.
+            </li>
+          </ul>
+          <p className="mt-3 text-sm text-gray-500">
+            위 자동 처리는 정해진 시각에 일괄 실행되는 것이 아니라 서비스 이용 중 해당 조건이 확인되는 시점에 반영됩니다.
+            따라서 실제 반영은 기준일보다 늦어질 수 있습니다.
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            모든 날짜 기준은 한국 시간(KST) 달력 날짜이며, 기한 당일 자정까지를 포함합니다.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">제10조 (면책)</h2>
           <p className="text-gray-600">
             회사는 천재지변, 회원의 귀책사유, 회원 간 거래 과정에서 발생한 손해에 대해 관계 법령이 허용하는 범위에서 책임을 지지 않습니다.
             회사는 회원이 게시한 정보의 신뢰성·정확성을 보증하지 않습니다.
@@ -88,7 +138,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">제10조 (분쟁 해결 및 준거법)</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">제11조 (분쟁 해결 및 준거법)</h2>
           <p className="text-gray-600">
             이 약관은 대한민국 법령에 따라 규율되고 해석되며, 서비스 이용과 관련하여 분쟁이 발생한 경우 회사의 본점 소재지를
             관할하는 법원을 관할 법원으로 합니다.

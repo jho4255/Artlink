@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { useAuthStore } from '@/stores/authStore';
+import type { CommunityTab } from '@/components/community/TabManager';
 
 /**
  * 커뮤니티 글쓰기 — 전용 페이지(모달 아님). 블라인드 글쓰기 화면을 우리 스타일로.
@@ -13,15 +15,32 @@ import api from '@/lib/axios';
 export default function CommunityWritePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [anonymous, setAnonymous] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [categoryId, setCategoryId] = useState<number | ''>('');
+  // Admin 전용 — 서버가 role 로 다시 막으므로 화면 상태는 편의일 뿐이다
+  const [notice, setNotice] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const { data: tabs } = useQuery<CommunityTab[]>({
+    queryKey: ['community-tabs'],
+    queryFn: () => api.get('/community/categories').then((r) => r.data),
+  });
+
+  const writableTabs = (tabs ?? []).filter((t) => t.active && (isAdmin || !t.writeAdminOnly));
+
   const create = useMutation({
-    mutationFn: () => api.post('/community', { title: title.trim(), body: body.trim(), anonymous, images }).then((r) => r.data),
+    mutationFn: () => api.post('/community', {
+      title: title.trim(), body: body.trim(), anonymous, images,
+      categoryId: categoryId === '' ? null : categoryId,
+      ...(isAdmin ? { notice, pinned } : {}),
+    }).then((r) => r.data),
     onSuccess: (data: { id: number }) => {
       queryClient.invalidateQueries({ queryKey: ['community'] });
       queryClient.invalidateQueries({ queryKey: ['community-popular'] });
@@ -117,8 +136,45 @@ export default function CommunityWritePage() {
         </button>
         <span className="text-xs text-gray-400">{images.length}/10</span>
 
-        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-sm text-gray-600">
-          <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} className="accent-gray-900" />
+        {/* 탭(말머리) — Admin 이 만든 탭이 있을 때만 보인다. 없으면 '미분류'로 들어간다.
+            ⚠️ **쓸 수 없는 탭은 아예 안 보여준다** — 고르게 해 놓고 등록에서 403 을 주면 함정이다.
+               서버도 같은 규칙으로 다시 막는다(화면만 감추는 건 권한이 아니다). */}
+        {writableTabs.length > 0 && (
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-700 focus:border-gray-500 focus:outline-none"
+          >
+            <option value="">탭 없음</option>
+            {writableTabs.map((t) => <option key={t.id} value={t.id}>{t.name}{t.writeAdminOnly ? ' (관리자)' : ''}</option>)}
+          </select>
+        )}
+
+        {/* ⚠️ 공지·고정은 **Admin 에게만** 보인다. 감추는 것만으로는 권한이 아니라서
+            서버가 role 로 한 번 더 막는다(클라이언트가 보냈다고 켜지지 않는다). */}
+        {isAdmin && (
+          <>
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-600" title="공지글로 표시합니다 (관리자)">
+              <input
+                type="checkbox" checked={notice}
+                onChange={(e) => { setNotice(e.target.checked); if (e.target.checked) setAnonymous(false); }}
+                className="accent-[#c4302b]"
+              />
+              공지
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-600" title="목록 맨 위에 고정합니다 (관리자)">
+              <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="accent-amber-600" />
+              고정
+            </label>
+          </>
+        )}
+
+        <label className={`ml-auto flex items-center gap-1.5 text-sm ${notice ? 'cursor-not-allowed text-gray-300' : 'cursor-pointer text-gray-600'}`}
+          title={notice ? '공지는 익명으로 쓸 수 없습니다' : undefined}>
+          <input
+            type="checkbox" checked={anonymous} disabled={notice}
+            onChange={(e) => setAnonymous(e.target.checked)} className="accent-gray-900"
+          />
           익명
         </label>
       </div>

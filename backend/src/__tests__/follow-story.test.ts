@@ -203,3 +203,48 @@ describe('스토리 + [소식] 피드', () => {
     expect(await testPrisma.storyComment.count()).toBe(0);
   });
 });
+
+/**
+ * 연타(더블탭) 경합 — 2026-09-04.
+ * 스토리 좋아요는 실패하면 화면에 **에러 토스트까지** 떴다("잠시 후 다시 시도해주세요").
+ * 이웃 추가는 알림이 두 번 갈 수 있었다 — `refKey` 가 유니크가 아니라 DB 가 안 막아 준다.
+ */
+describe('★ 연타에도 에러가 없고 카운트·알림이 안 어긋난다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  async function makeStory() {
+    const r = await request.post('/api/stories').set('Authorization', `Bearer ${a1}`)
+      .send({ caption: '연타 대상', visibility: 'PUBLIC' });
+    return r.body.id as number;
+  }
+
+  it('스토리 좋아요를 동시에 10번 눌러도 4xx·5xx 가 없다', async () => {
+    const id = await makeStory();
+    const res = await Promise.all(Array.from({ length: 10 }, () =>
+      request.post(`/api/stories/${id}/like`).set('Authorization', `Bearer ${a2}`)));
+    const bad = res.filter(r => r.status !== 200).map(r => r.status);
+    expect(bad, `연타가 에러로 떨어졌다: ${bad.join(',')}`).toHaveLength(0);
+  });
+
+  it('연타 뒤에도 스토리 likeCount 가 실제 행 수와 같다', async () => {
+    const id = await makeStory();
+    await Promise.all(Array.from({ length: 10 }, () =>
+      request.post(`/api/stories/${id}/like`).set('Authorization', `Bearer ${a2}`)));
+    const story = await testPrisma.story.findUnique({ where: { id }, select: { likeCount: true } });
+    expect(story!.likeCount).toBe(await testPrisma.storyLike.count({ where: { storyId: id } }));
+    expect(story!.likeCount).toBeLessThanOrEqual(1);
+  });
+
+  it('★ 이웃 추가를 동시에 20번 눌러도 이웃 1건 · 알림 1건', async () => {
+    const res = await Promise.all(Array.from({ length: 20 }, () =>
+      request.post('/api/follow/2').set('Authorization', `Bearer ${a1}`)));
+    const bad = res.filter(r => r.status !== 200).map(r => r.status);
+    expect(bad, `이웃 추가가 에러로 떨어졌다: ${bad.join(',')}`).toHaveLength(0);
+
+    expect(await testPrisma.follow.count({ where: { followerId: 1, followingId: 2 } })).toBe(1);
+    const notes = await testPrisma.notification.count({
+      where: { userId: 2, type: 'NEIGHBOR_FOLLOW' },
+    });
+    expect(notes, `이웃 알림이 ${notes}건 갔다 — 멱등이 깨졌다`).toBe(1);
+  });
+});

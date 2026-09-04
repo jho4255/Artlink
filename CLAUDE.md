@@ -68,8 +68,8 @@ sudo service postgresql start
 
 ## Testing
 
-- **1547 tests**: Backend 1087 (supertest, `artlink_test` DB 순차), Frontend 460 (jsdom)
-- **E2E**: `e2e/` Playwright 34개 파일. 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
+- **1829 tests**: Backend 1197 (supertest, `artlink_test` DB 순차), Frontend 632 (jsdom)
+- **E2E**: `e2e/` Playwright 41개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
@@ -165,6 +165,30 @@ sudo service postgresql start
 - 읽음은 참여자별 `lastReadAt` **하나**로 판정한다(메시지마다 읽음 행을 쌓으면 20명×메시지 수만큼 불어난다).
     - 갠톡 `read` : 상대의 lastReadAt 이 그 메시지보다 뒤면 읽음
     - 단톡 `unreadBy` : 보낸 사람을 뺀 참여자 중 아직 안 읽은 수
+- ⚠️⚠️ **방의 메시지를 전부 내려주지 말 것 — 화면이 그걸 8초마다 다시 받는다** (2026-09-04).
+  `readChat` 에 `take` 가 없어서 방에 쌓인 걸 통째로 보냈는데, `MessagesPage` 가 `refetchInterval: 8000` 으로
+  같은 응답을 계속 다시 받는다. 실측 **메시지당 287 bytes** 라 방이 오래될수록 무거워지는 구조였다 —
+  233개 65KB(8.2KB/s) · 1,000개 280KB(35KB/s) · **5,000개 1.4MB(175KB/s, 1시간 616MB)**.
+    - 지금은 방을 열 때 **최근 `CHAT_PAGE_SIZE`(150)개**만 주고, 폴링은 **`?after=<마지막 id>` 로 새 것만** 받는다.
+      조용하면 응답이 `[]`(실측 **391 bytes**)라 **방에 몇 개가 쌓였든 폴링 비용이 같다**.
+      지난 메시지는 `?before=<첫 id>` 로 [이전 메시지 더 보기].
+    - ⚠️ 커서는 `createdAt` 이 아니라 **`id`** 로 잡을 것 — 동시에 들어온 메시지는 `createdAt` 이 같을 수 있어
+      시각 커서로는 건너뛰거나 되받는다(정렬 자체는 화면 순서와 맞추려고 createdAt 을 쓴다).
+    - ⚠️⚠️ **화면은 폴링 응답만 그리면 안 된다.** `after` 응답은 새 메시지 몇 개뿐이라, 그걸 그대로 렌더하면
+      대화가 통째로 사라진다. `MessagesPage` 는 누적 state 가 진실이고 모든 응답을 **id 로 병합**한다
+      (`lib/chatView.ts` `mergeMessages` — 겹치면 **나중 것이 이긴다**. 읽음 표시가 갱신돼야 하므로
+      '있으면 건너뛰기'가 아니라 덮어쓰기다). 대화에 삭제 라우트가 없어 병합만으로 안전하다.
+    - ⚠️⚠️ **`after` 응답에는 지난 메시지가 없어서 '읽음' 표시가 안 바뀐다.** 상대가 옛 메시지를 읽어도
+      캐시에 든 값은 옛날 그대로다. 그래서 서버가 참여자별 `lastReadAt`(**`readers`**)을 **매번 함께** 주고
+      화면이 들고 있는 **모든** 메시지를 다시 판정한다(`applyReadState`). ⚠️ 그 규칙은 서버 `readChat` 과
+      **같아야 한다** — 어긋나면 화면과 서버가 다른 답을 낸다(회귀는 `chatView.test.ts`).
+    - ⚠️ 맨 아래로 스크롤하는 조건을 **개수**로 두지 말 것 — [이전 메시지]로 위를 채웠을 때도 맨 아래로 튕긴다.
+      **마지막 메시지 id** 를 본다. 위에 붙일 땐 늘어난 높이만큼 `scrollTop` 을 되돌려 보던 자리를 지킨다.
+- ⚠️ **안읽음을 방마다 세지 말 것(N+1)** (2026-09-04). `unreadChatCount` 는 **로그인한 모든 사용자가 30초마다**
+  (Navbar 배지), `listChats` 는 15초마다 부른다. 예전엔 둘 다 방 수만큼 쿼리를 돌아, 방이 늘고 사용자가 늘수록
+  **배경 폴링이 DB 커넥션을 다 먹는** 구조였다(실측 방1 13ms → 방17 25ms). 기준 시각(`lastReadAt`)이 방마다
+  다르므로 `unreadWhere` 로 **`OR` 한 덩어리**를 만들어 `groupBy` 한 번에 묻는다 — `@@index([chatId, createdAt])`
+  를 그대로 탄다.
 - **첨부 — 사진·동영상·파일** (2026-08-28). `ChatMessage` 에 `attachmentUrl/Type(IMAGE|VIDEO|FILE)/Name/Size` 를 얹었고 `content` 는 첨부만 있는 메시지를 위해 `@default("")` 로 바꿨다(마이그레이션 `20260828140000_add_chat_attachment`).
     - **먼저 업로드하고 그 url·메타를 함께 보낸다** — 화면이 `/api/upload/image`(사진 15MB)·`/api/upload/video`(동영상 25MB, 신규)·`/api/upload/file`(파일 20MB, PDF/DOC/HWP/ZIP)로 올린 뒤 `POST /chats/:id/messages` 에 `{attachmentUrl, attachmentType, attachmentName?, attachmentSize?}`.
     - ⚠️ **서버비 고려한 용량 상한**은 multer 가 최종 판정(초과 시 400). 동영상은 이미지·파일보다 짧게(25MB). 프론트도 선검사해 헛된 업로드를 줄인다.
@@ -191,7 +215,37 @@ sudo service postgresql start
 - [소식] 진입점은 **마이페이지 사이드바 맨 아래 링크**(`MYPAGE_FOOTER_LINKS`) — 로그인 필요라 Navbar 가운데 메뉴엔 못 둔다(비로그인이 눌렀다 튕긴다).
 - **스토리에도 좋아요·댓글**(`StoryLike`/`StoryComment`, 비정규화 카운트). 댓글 달면 스토리 주인에게 `STORY_COMMENT` 알림(/feed). 댓글 삭제는 작성자·스토리 주인·Admin.
 - **소식 탭 이름은 ArtStory** (로고 규칙: Art**Story**, 사이드바 픽토그램은 사람 상반신 `User`). 진입점은 사이드바 footer 링크.
-- 회귀: 백엔드 `follow-story.test.ts`·`guestbook.test.ts`·`community.test.ts`·`ad.test.ts`, E2E `36-community`·`37-social`.
+- **커뮤니티 탭·공지·고정 — 전부 Admin 전용** (2026-09-04, `PostCategory` + `Post.notice`/`pinnedAt`,
+  마이그레이션 `20260904120000_add_community_tabs_and_notice`)
+    - **탭(말머리)은 Admin 이 만든다** — 이름·순서·숨김·삭제. 목록은 `?category=<slug>` 로 거른다.
+      ⚠️ **`/categories` 라우트를 `/:id` 보다 먼저 선언할 것** — 뒤에 두면 `parseInt('categories')=NaN`
+      으로 404 가 나고 에러 메시지가 엉뚱해 원인을 못 찾는다.
+    - ⚠️ **탭을 지워도 글은 안 지운다** (`onDelete: SetNull` → 미분류). 삭제 응답이 몇 개가 내려왔는지
+      (`movedToUncategorized`) 돌려주고 화면이 미리 경고한다. 되돌릴 수 없으므로 **숨기기(active:false)를 먼저 권한다.**
+    - ⚠️ **`slug` 는 이름을 바꿔도 안 바꾼다** — 주소·북마크가 죽는다. 한글만인 이름은 `tab-N` 로 떨어진다.
+    - **공지(`notice`)와 고정(`pinnedAt`)은 다른 것이다.** 공지는 글의 성격(배지), 고정은 위치.
+      남의 글도 고정할 수 있다. ⚠️ `pinned` 를 Boolean 이 아니라 **시각**으로 둔 이유: 고정 글이 여럿일 때
+      순서가 있어야 한다(최근 고정이 위).
+    - ⚠️⚠️ **목록 정렬에 `nulls: 'last'` 필수** — Postgres 는 `DESC` 에서 NULL 을 **먼저** 놓는다.
+      빼면 고정 안 된 글이 맨 위로 올라온다(정반대). 회귀 테스트가 잡는다.
+    - ⚠️ **'내 글/내 댓글' 필터에는 고정을 적용하지 않는다** — 내 활동 목록에 남이 고정한 글이 끼면 안 된다.
+    - ⚠️⚠️ **클라이언트가 보낸 `notice`/`pinned` 를 믿지 말 것.** 스키마는 값을 받기만 하고
+      권한은 핸들러가 `req.user.role` 로 판정한다. 작가가 보내면 **조용히 무시**된다(회귀 테스트 있음).
+      탭 CUD·고정·공지·탭 이동은 전부 `authorize('ADMIN')`.
+    - **공지는 익명일 수 없다** — 누가 공지했는지 모르면 공지가 아니다(서버가 `anonymous` 를 끈다).
+    - ⚠️ **삭제는 원래 서버가 작성자·Admin 둘 다 허용했는데 화면이 `author.mine` 일 때만 버튼을 그렸다.**
+      그래서 관리자가 신고받은 글을 못 지웠다 — 권한은 있는데 손이 닿지 않았다. 목록(hover)·상세·댓글 모두 열었다.
+    - **탭마다 `writeAdminOnly`** (2026-09-04, 마이그레이션 `20260904140000_add_category_write_admin_only`) —
+      켜면 **Admin 만 그 탭에 글을 쓴다**(공지 탭). **읽기는 그대로 공개**다.
+      ⚠️ **탭 이름이 '공지'인지로 판단하지 말 것** — 관리자가 '안내'로 바꾸는 순간 조용히 풀린다. 플래그로 둔다.
+      ⚠️ 제한 탭에 일반 사용자가 글을 보내면 **403 으로 막는다 — 조용히 미분류로 내리지 않는다.**
+      조용히 옮기면 작성자는 공지 탭에 올렸다고 믿는데 실제로는 미분류에 있다(에러 없이 어긋난다).
+      ⚠️ 화면에서는 **쓸 수 없는 탭을 선택지에서 아예 뺀다** — 고르게 해 놓고 등록에서 403 을 주면 함정이다.
+      기본값 false 라 기존 탭 동작은 그대로.
+    - ⚠️ **새 테이블을 만들면 `helpers.ts` 의 `cleanDb()` 에 반드시 추가할 것.** `PostCategory` 를 빠뜨렸더니
+      테스트 간에 탭이 새어 '같은 이름 409' → 뒤 테스트가 id 없는 응답을 받아 400·빈 목록으로 실패했다.
+      **증상이 원인과 전혀 안 닮았다.**
+- 회귀: 백엔드 `follow-story.test.ts`·`guestbook.test.ts`·`community.test.ts`(42개)·`ad.test.ts`, E2E `36-community`·`37-social`.
 
 ### 홈 레이아웃 (2026-08-29)
 - ArtWorks → 배너(HeroSlider) → **1행 [좌 인기글 / 우 진행중인 전시]** → **2행 [좌 마감임박 공모 / 우 주목할 갤러리] 1:1**.
@@ -1023,6 +1077,25 @@ sudo service postgresql start
     - 결과(마은영 27점): 37쪽 → **18쪽** · 채움 67~85% → **99.9%** · 크기편차 0.14 → **0.74** ·
       같은 구성 최대 연속 27 → **2** · 거의 빈 장 5 → **0** · 채점 **94.4/100** · 잘림 0 유지.
       합성 검증 40조합 평균 **92.0점**. 회귀는 `portfolioArtDirection.test.ts`(28개)+`score.mjs`.
+
+46. **토글은 '확인하고 만들지' 말 것 — 연타에 에러가 난다** (2026-09-04, 하니스 `e2e/tests/39-load-community-story.spec.ts`)
+    좋아요·이웃 추가가 `findUnique` 로 있나 본 뒤 `create`/`delete` 했는데, 그 확인이 **트랜잭션 밖**이라
+    동시에 두 번 누르면 둘 다 "없음"을 보고 들어가 unique 위반으로 떨어졌다.
+    실측 동시 10회에 **200 1건 + 400 9건**(`{"error":"데이터 처리 중 오류가 발생했습니다."}`).
+    - 하트는 **모바일에서 더블탭이 흔하다** — 재현이 어려운 게 아니라 자주 났다.
+      커뮤니티는 낙관적 갱신이 조용히 롤백돼 "눌렀는데 안 눌림"이 되고,
+      **ArtStory 는 에러 토스트까지** 떴다("잠시 후 다시 시도해주세요").
+    - 고치는 방법은 둘을 **함께** 지키는 것이다:
+      ① `deleteMany` / `createMany({skipDuplicates:true})` — 없는 걸 지우거나 있는 걸 만들어도 **안 던진다**
+      ② 카운터를 `1` 이 아니라 **실제로 바뀐 행 수(`.count`)만큼** 움직인다
+         → 아무것도 안 바뀐 요청은 카운터도 안 건드리므로 드리프트가 **원천 차단**된다
+    - ⚠️ `explore.ts` 작품 좋아요에는 **이 해법이 먼저 들어가 있었다**(P2002/P2025 를 잡고 `count()` 로 다시 셈).
+      커뮤니티·스토리가 나중에 만들어지며 그 패턴을 안 가져온 것이다 — **새 토글을 만들 땐 먼저 여기를 볼 것.**
+      다만 거긴 매번 세도 되지만, 커뮤니티·스토리는 **인기순 정렬 근거**로 `likeCount` 컬럼을 들고 있어 셀 수 없다.
+    - ⚠️ 이웃 추가(`follow.ts`)는 알림이 두 번 갈 수 있었다 — `Notification.refKey` 는 **유니크가 아니라**
+      (`@@index([userId, refKey])` 뿐) DB 가 안 막아 준다. `createMany` 의 `count > 0` 을 "이번에 새로 맺어졌는가"로 쓴다.
+    - ⚠️⚠️ **회귀 임계를 '5xx 만 아니면 통과' 로 두지 말 것.** 실제로 나던 건 **400** 이었다 —
+      500 만 보면 사용자가 겪던 증상을 통째로 놓친다. 지금은 `!== 200` 이면 실패다.
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

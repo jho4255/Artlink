@@ -92,12 +92,26 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
 
 // ========== OAuth 가입 완료 ==========
 
+/**
+ * 가입 시 필수 동의 — **이용약관 · 개인정보 처리방침**.
+ *
+ * ⚠️ `z.boolean()` 이 아니라 **true 를 강제**한다. optional 로 두면 화면이 값을 안 보내는 순간
+ *    조용히 미동의 가입이 된다 — 동의를 받은 적 없는 회원이 생기고, 그건 나중에 되돌릴 수 없다.
+ * ⚠️ 마케팅 수신 동의는 두지 않는다. 우리는 메일을 보내지 않는다(2026-07 mailer 삭제).
+ *    하지도 않을 일에 동의를 받아 두는 건 그 자체가 문제다.
+ */
+const consentFields = {
+  agreeTerms: z.boolean().refine((v) => v === true, '이용약관에 동의해주세요.'),
+  agreePrivacy: z.boolean().refine((v) => v === true, '개인정보 처리방침에 동의해주세요.'),
+};
+
 const completeSchema = z.object({
   tempToken: z.string().min(1),
   role: z.enum(['ARTIST', 'GALLERY']),
   name: z.string().min(1, '이름을 입력해주세요.').max(50),
   email: z.string().email('유효한 이메일을 입력해주세요.'),
   phone: z.string().regex(/^01[0-9]-?\d{3,4}-?\d{4}$/, '올바른 휴대폰 번호를 입력해주세요.'),
+  ...consentFields,
 });
 
 router.post('/complete-registration', validate(completeSchema), async (req, res, next) => {
@@ -122,6 +136,8 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
       return res.json({ token, user: safeUser(oauthExists) });
     }
 
+    // 동의 시각은 **서버 시각**으로 남긴다(클라이언트가 보낸 시각을 믿지 않는다)
+    const agreedAt = new Date();
     const user = await prisma.user.create({
       data: {
         name,
@@ -131,6 +147,8 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
         avatar: payload.avatar,
         provider: payload.provider,
         providerId: payload.providerId,
+        termsAgreedAt: agreedAt,
+        privacyAgreedAt: agreedAt,
       },
     });
 
@@ -146,6 +164,8 @@ const signupSchema = z.object({
   email: z.string().email('유효한 이메일을 입력해주세요.'),
   password: z.string().min(6, '비밀번호는 6자 이상이어야 합니다.').max(100),
   role: z.enum(['ARTIST', 'GALLERY']),
+  // ⚠️ 화면은 카카오 가입만 쓰지만 이 API 도 열려 있다. 한쪽만 막으면 뚫린 채로 남는다.
+  ...consentFields,
 });
 
 router.post('/signup', validate(signupSchema), async (req, res, next) => {
@@ -156,8 +176,9 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     if (existing) throw new AppError('이미 사용 중인 이메일입니다.', 409);
 
     const hashed = await bcrypt.hash(password, 10);
+    const agreedAt = new Date();
     const user = await prisma.user.create({
-      data: { name, email, password: hashed, role, provider: 'LOCAL' },
+      data: { name, email, password: hashed, role, provider: 'LOCAL', termsAgreedAt: agreedAt, privacyAgreedAt: agreedAt },
     });
 
     const token = generateToken(user);

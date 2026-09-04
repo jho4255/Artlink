@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import jwt from 'jsonwebtoken';
-import { request, authToken, cleanDb, seedUsers } from './helpers';
+import { request, testPrisma, authToken, cleanDb, seedUsers } from './helpers';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'artlink-dev-secret';
 
@@ -11,6 +11,51 @@ describe('Auth & Authorization', () => {
   });
 
   // (dev-login 제거됨 — 카카오 OAuth로 전환)
+
+  // ══ 가입 시 필수 동의 (2026-09-04) ═══════════════════════════════
+  // ⚠️ 화면 체크박스는 편의일 뿐이다. **동의 없이 가입되는 경로가 하나라도 있으면**
+  //    동의를 받은 적 없는 회원이 생기고 그건 되돌릴 수 없다. 서버에서 막는지만 잠근다.
+  describe('가입 동의', () => {
+    const base = { name: '새회원', email: 'new@test.com', password: 'pw123456', role: 'ARTIST' as const };
+    const signup = (body: Record<string, unknown>) => request.post('/api/auth/signup').send(body);
+
+    it('동의 없이 가입하면 400', async () => {
+      expect((await signup(base)).status).toBe(400);
+      expect(await testPrisma.user.count({ where: { email: base.email } })).toBe(0);
+    });
+
+    it('약관만 동의하면 400 (개인정보도 필수)', async () => {
+      expect((await signup({ ...base, agreeTerms: true })).status).toBe(400);
+    });
+
+    it('⚠️ false 를 명시해도 400 — optional 로 두면 조용히 미동의 가입이 된다', async () => {
+      expect((await signup({ ...base, agreeTerms: false, agreePrivacy: false })).status).toBe(400);
+      expect((await signup({ ...base, agreeTerms: true, agreePrivacy: false })).status).toBe(400);
+    });
+
+    it('둘 다 동의하면 가입되고 **동의 시각이 기록된다**', async () => {
+      const r = await signup({ ...base, agreeTerms: true, agreePrivacy: true });
+      expect(r.status).toBe(201);
+      const u = await testPrisma.user.findUnique({ where: { email: base.email } });
+      expect(u!.termsAgreedAt).toBeInstanceOf(Date);
+      expect(u!.privacyAgreedAt).toBeInstanceOf(Date);
+    });
+
+    it('카카오 가입(complete-registration)도 동의가 없으면 400', async () => {
+      const tempToken = jwt.sign({ provider: 'KAKAO', providerId: 'k1', avatar: null }, JWT_SECRET, { expiresIn: '10m' });
+      const body = { tempToken, role: 'ARTIST', name: '카카오', email: 'k@test.com', phone: '010-1234-5678' };
+      expect((await request.post('/api/auth/complete-registration').send(body)).status).toBe(400);
+      const ok = await request.post('/api/auth/complete-registration').send({ ...body, agreeTerms: true, agreePrivacy: true });
+      expect(ok.status).toBe(201);
+      const u = await testPrisma.user.findUnique({ where: { email: 'k@test.com' } });
+      expect(u!.termsAgreedAt).toBeInstanceOf(Date);
+    });
+
+    it('기존 회원은 NULL 로 남는다 — 소급해서 동의한 것으로 치지 않는다', async () => {
+      const u = await testPrisma.user.findUnique({ where: { id: 1 } });
+      expect(u!.termsAgreedAt).toBeNull();
+    });
+  });
 
   // ===== GET /auth/me =====
   describe('GET /api/auth/me', () => {

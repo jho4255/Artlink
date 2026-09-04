@@ -124,7 +124,12 @@ describe('Account Withdrawal (DELETE /api/auth/me)', () => {
   });
 
   it('DELETE /me — LOCAL 계정은 비밀번호 확인(오답 401, 정답 200)', async () => {
-    const signup = await request.post('/api/auth/signup').send({ name: '비번유저', email: 'pw@test.com', password: 'secret123', role: 'ARTIST' });
+    // ⚠️ 가입에는 약관·개인정보 동의가 필수다(2026-09-04) — 안 보내면 400 이라 계정이 안 만들어지고,
+    //    그러면 '비밀번호 확인'을 보려던 이 테스트가 토큰 없이 굴러 엉뚱하게 죽는다.
+    const signup = await request.post('/api/auth/signup').send({
+      name: '비번유저', email: 'pw@test.com', password: 'secret123', role: 'ARTIST',
+      agreeTerms: true, agreePrivacy: true,
+    });
     const token = signup.body.token;
 
     const info = await request.get('/api/auth/me/withdraw-info').set('Authorization', `Bearer ${token}`);

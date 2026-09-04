@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, settle, createExhibition, ensurePublicArtworks } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, settle, createExhibition, ensurePublicArtworks, seedGalleryLike } from '../lib/helpers';
 
 /**
  * 작가 [내 전시] — 2026-08-27~28 개편분.
@@ -25,6 +25,10 @@ async function galleryId(api: any): Promise<number> {
  * ⚠️ 하루 초대 상한(갤러리당 10명)이 있어 앞선 테스트가 다 써 버릴 수 있다 → 상태를 확인해 알려준다.
  */
 async function invite(api: any, exhibitionId: number, message?: string) {
+  // ⚠️ 2026-08-29 부터 **초대 관문**이 있다(`lib/inviteEligibility.ts`) — 갤러리는 하트를 저장했거나
+  //    서로 이웃인 작가만 초대할 수 있다. 안 눌러 두면 여기가 **403** 이고, 그러면 이 파일의
+  //    모든 테스트가 "탭이 없다"로 엉뚱하게 죽는다(원인이 증상과 안 닮았다).
+  await seedGalleryLike(api, 'artist');
   const r = await api.post(`${API}/exhibitions/${exhibitionId}/invite`, {
     headers: { Authorization: `Bearer ${tokenFor('gallery')}` },
     data: { artistId: userIds().artist, ...(message ? { message } : {}) },

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 import api from '@/lib/axios';
-import { myPageTabs, tabHref, resolveTab } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
 import { NAV_LINKS as navLinks } from '@/lib/navLinks';
 
 // 가운데 메뉴 정의는 lib/navLinks.ts 하나뿐 — 데스크톱 상단 중앙과 모바일 하단 탭바(BottomTabBar)가 공유한다.
@@ -225,6 +225,10 @@ export default function Navbar() {
                             </button>
                           ))
                         )}
+                        {/* 보관기간 고지 — 규칙을 코드에만 두지 않는다(읽은 알림은 90일 뒤 삭제된다) */}
+                        {notifications.length > 0 && (
+                          <p className="px-4 py-2.5 text-[11px] text-gray-400">읽은 알림은 90일 뒤 자동으로 삭제됩니다.</p>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -363,6 +367,35 @@ export default function Navbar() {
                 홈에서 바로 마이페이지 각 탭으로 갈 수 있다(artspoon 과 같은 방식).
                 별도 버튼을 하나 더 두지 않는다 — 우측 상단에 햄버거가 둘이면 뭐가 뭔지 알 수 없다.
               */}
+              {isAuthenticated && (
+                <>
+                  {/* ArtStory(소식) 등 마이페이지 주요 링크 — 역할 무관 */}
+                  {MYPAGE_PRIMARY_LINKS.length > 0 && (
+                    <div className="space-y-1">
+                      {MYPAGE_PRIMARY_LINKS.map((link) => {
+                        const Icon = link.icon;
+                        return (
+                          <Link
+                            key={link.to}
+                            to={link.to}
+                            onClick={() => setIsOpen(false)}
+                            className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                          >
+                            {Icon && <Icon size={16} className="shrink-0" />}
+                            <span className="min-w-0 truncate">
+                              {link.brand
+                                ? (<span className="font-bold tracking-tight font-serif">{link.brand[0]}<span className="text-[#dc3545]">{link.brand[1]}</span></span>)
+                                : link.label}
+                              {link.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{link.note}</span>}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                      <div className="border-t border-gray-100" />
+                    </div>
+                  )}
+                </>
+              )}
               {isAuthenticated && myTabs.length > 0 && (
                 <>
                   <p className="px-4 pt-4 pb-1 mt-1 text-[11px] font-medium tracking-widest text-gray-300 uppercase border-t border-gray-100">

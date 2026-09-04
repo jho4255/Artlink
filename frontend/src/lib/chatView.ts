@@ -63,6 +63,68 @@ export function chatTitle(
   return other ? displayName(other) : '나';
 }
 
+/**
+ * ── 증분 폴링을 위한 두 규칙 ────────────────────────────────────────
+ *
+ * 방을 열면 최근 150개만 받고, 이후 폴링은 `?after=<마지막 id>` 로 **새 것만** 받는다.
+ * 예전엔 8초마다 방의 메시지를 통째로 다시 받아서, 방이 오래될수록 무거워졌다
+ * (실측 5,000개 방 = 1.4MB × 8초마다 = 175KB/s). 그래서 화면이 두 가지를 스스로 해야 한다.
+ */
+
+/** 읽음 판정에 필요한 최소한 */
+export interface ChatReader { userId: number; lastReadAt: string | null }
+
+export interface ReadableMessage extends ChatViewMessage {
+  id: number;
+  read?: boolean | null;
+  unreadBy?: number | null;
+}
+
+/**
+ * ① **초기·폴링·더보기 응답을 하나로 합친다.** id 로 겹치는 건 나중 것이 이긴다
+ *    (읽음 표시처럼 같은 메시지의 값이 갱신되므로 '있으면 건너뛰기'가 아니라 덮어쓰기다).
+ *    대화에는 삭제가 없어서 합치기만으로 안전하다.
+ */
+export function mergeMessages<T extends { id: number; createdAt: string }>(
+  held: T[],
+  incoming: T[],
+): T[] {
+  if (incoming.length === 0) return held;
+  const byId = new Map<number, T>();
+  for (const m of held) byId.set(m.id, m);
+  for (const m of incoming) byId.set(m.id, m);
+  // ⚠️ `createdAt` 이 아니라 **id** 로 정렬한다 — 서버와 같은 기준이어야 한다.
+  //    동시에 들어온 메시지는 createdAt 이 같은 밀리초라(Postgres now() = 트랜잭션 시작 시각)
+  //    시각으로 정렬하면 서버가 준 순서와 어긋난다. id 는 시퀀스라 곧 삽입 순서다.
+  return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
+/**
+ * ② **읽음 표시를 다시 계산한다.**
+ *    `after` 응답에는 지난 메시지가 없으니, 상대가 옛 메시지를 읽어도 서버가 준 `read` 값은
+ *    캐시에 든 옛날 그대로다. 서버가 매번 함께 주는 참여자별 `lastReadAt`(`readers`)으로
+ *    **내가 들고 있는 모든 메시지**를 다시 판정한다.
+ *    ⚠️ 판정 규칙은 서버 `lib/chat.ts readChat` 과 **같아야** 한다(회귀는 chatView.test.ts).
+ */
+export function applyReadState<T extends ReadableMessage>(
+  messages: T[],
+  kind: 'DIRECT' | 'GROUP',
+  readers: ChatReader[],
+  myId: number,
+): T[] {
+  if (readers.length === 0) return messages;
+  return messages.map((m) => {
+    if (m.senderId !== myId) return m.read == null && m.unreadBy == null ? m : { ...m, read: null, unreadBy: null };
+    // 이 메시지를 아직 안 읽은 사람 (보낸 사람 본인은 제외)
+    const notRead = readers.filter(
+      r => r.userId !== m.senderId && (!r.lastReadAt || r.lastReadAt < m.createdAt),
+    ).length;
+    const read = kind === 'DIRECT' ? notRead === 0 : null;
+    const unreadBy = kind === 'GROUP' ? notRead : null;
+    return m.read === read && m.unreadBy === unreadBy ? m : { ...m, read, unreadBy };
+  });
+}
+
 /** 오늘 보낸 말은 시:분, 지난 말은 월/일 */
 export function timeLabel(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);

@@ -63,6 +63,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['pptxgenjs'],
+  },
   // 캐시 무효화: 모든 번들/에셋 파일명에 콘텐츠 해시([hash])를 강제로 포함.
   // 내용이 바뀌면 파일명(=버전)이 바뀌므로 브라우저·CDN이 무조건 새 파일을 받는다.
   // (Vite 기본값과 동일하지만, 실수로 해싱이 꺼지는 것을 막기 위해 명시적으로 고정)
