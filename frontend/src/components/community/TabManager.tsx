@@ -56,8 +56,11 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
   const move = (i: number, dir: -1 | 1) => {
     const a = tabs[i], b = tabs[i + dir];
     if (!a || !b) return;
-    patch.mutate({ id: a.id, order: b.order === a.order ? a.order + dir : b.order });
-    patch.mutate({ id: b.id, order: b.order === a.order ? a.order : a.order });
+    // 두 탭의 순서를 맞바꾼다. 값이 같으면(옛 데이터) 한쪽을 밀어 서로 달라지게 한다.
+    // ⚠️ 두 번째 삼항은 양쪽 가지가 같은 값이라 죽은 코드였다 — b 는 늘 a 자리로 간다.
+    const [na, nb] = b.order === a.order ? [a.order + dir, a.order] : [b.order, a.order];
+    patch.mutate({ id: a.id, order: na });
+    patch.mutate({ id: b.id, order: nb });
   };
 
   return createPortal(

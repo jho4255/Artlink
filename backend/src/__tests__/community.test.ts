@@ -449,3 +449,81 @@ describe('★ 좋아요 연타에도 에러가 없고 카운트가 안 어긋난
     expect(await testPrisma.postLike.count({ where: { postId: id } })).toBe(0);
   });
 });
+
+/**
+ * 글 수정 — 커밋된 코드가 **컴파일조차 안 됐다**(`content` 라는 없는 필드에 쓰고,
+ * 없는 함수 `serializePost` 를 불렀다). 화면에도 모달이 없어 [✏️]가 아무 일도 안 했다.
+ * 앞뒤가 다 끊겨 있어 아무도 못 알아챘으므로 여기서 못 박는다.
+ */
+describe('글 수정 (PATCH /:id)', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  it('★ 본문이 실제로 바뀐다 (옛 코드는 `content` 를 읽어 본문이 영영 안 바뀌었다)', async () => {
+    const p = await createPost(a1, { title: '원래 제목', body: '원래 본문' });
+    const r = await request.patch(`/api/community/${p.body.id}`)
+      .set('Authorization', `Bearer ${a1}`).send({ title: '새 제목', body: '새 본문' });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ title: '새 제목', body: '새 본문' });
+    expect((await request.get(`/api/community/${p.body.id}`)).body.body).toBe('새 본문');
+  });
+
+  it('★ 사진은 지워지지 않는다 — 수정 폼이 사진을 안 보내기 때문', async () => {
+    // `createSchema` 가 `images` 를 `[]` 로 채워 주므로 그대로 쓰면 고칠 때마다 사진이 사라진다
+    const p = await createPost(a1, { images: ['/uploads/a.png', '/uploads/b.png'] });
+    await request.patch(`/api/community/${p.body.id}`)
+      .set('Authorization', `Bearer ${a1}`).send({ title: '제목', body: '고친 본문' });
+    expect((await request.get(`/api/community/${p.body.id}`)).body.images).toEqual(['/uploads/a.png', '/uploads/b.png']);
+  });
+
+  it('남의 글은 못 고친다 (Admin 도 — 삭제와 달리 수정은 작성자만)', async () => {
+    const p = await createPost(a1);
+    expect((await request.patch(`/api/community/${p.body.id}`).set('Authorization', `Bearer ${a2}`).send({ title: 'x', body: 'y' })).status).toBe(403);
+    expect((await request.patch(`/api/community/${p.body.id}`).set('Authorization', `Bearer ${admin}`).send({ title: 'x', body: 'y' })).status).toBe(403);
+  });
+
+  it('익명 여부를 바꿀 수 있다', async () => {
+    const p = await createPost(a1, { anonymous: false });
+    const r = await request.patch(`/api/community/${p.body.id}`)
+      .set('Authorization', `Bearer ${a1}`).send({ title: '제목', body: '본문', anonymous: true });
+    expect(r.body.author.id).toBeNull();      // 신원이 가려진다
+  });
+});
+
+describe('★ 익명은 운영도 벗길 수 없다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  it('익명 글은 공지로 지정할 수 없다 (400)', async () => {
+    // 예전엔 공지로 올리면서 `anonymous:false` 를 강제해, 관리자가 남의 익명 글을 공지로
+    // 만드는 순간 작성자 신원이 **영구히** 드러났다(공지를 풀어도 안 돌아왔다).
+    const p = await createPost(a1, { anonymous: true });
+    const r = await request.patch(`/api/community/${p.body.id}/notice`)
+      .set('Authorization', `Bearer ${admin}`).send({ notice: true });
+    expect(r.status).toBe(400);
+    expect((await request.get(`/api/community/${p.body.id}`)).body.author.id).toBeNull();  // 여전히 익명
+  });
+
+  it('실명 글은 공지로 지정된다', async () => {
+    const p = await createPost(a1, { anonymous: false });
+    expect((await request.patch(`/api/community/${p.body.id}/notice`).set('Authorization', `Bearer ${admin}`).send({ notice: true })).status).toBe(200);
+  });
+});
+
+describe('숨긴 탭 — 조용히 미분류로 내리지 않는다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  it('★ 일반 사용자가 숨긴 탭에 쓰면 403 (미분류로 옮기면 어디 올렸는지 어긋난다)', async () => {
+    const c = await request.post('/api/community/categories').set('Authorization', `Bearer ${admin}`).send({ name: '숨김탭' });
+    await request.patch(`/api/community/categories/${c.body.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+    const r = await createPost(a1, { categoryId: c.body.id });
+    expect(r.status).toBe(403);
+  });
+
+  it('Admin 은 숨긴 탭에도 쓸 수 있다 (공개 전에 미리 채워 두는 용도)', async () => {
+    const c = await request.post('/api/community/categories').set('Authorization', `Bearer ${admin}`).send({ name: '숨김탭' });
+    await request.patch(`/api/community/categories/${c.body.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+    const r = await createPost(admin, { categoryId: c.body.id });
+    expect(r.status).toBe(201);
+    // 작성 응답엔 탭이 없다 — 상세로 확인한다
+    expect((await request.get(`/api/community/${r.body.id}`)).body.category?.id).toBe(c.body.id);
+  });
+});

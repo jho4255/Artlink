@@ -185,10 +185,20 @@ describe('메뉴 구성 (2026-08-28 기준)', () => {
     }
   });
 
-  it('갤러리 메뉴는 프로필·내 갤러리·내 공모·내 전시·관심 작품', () => {
+  it('갤러리 메뉴는 프로필·내 갤러리·내 공모·내 전시·관심 작품·ArtStory', () => {
     expect(myPageTabs('GALLERY').map(t => t.id)).toEqual([
-      'profile', 'my-galleries', 'my-exhibitions', 'my-shows', 'scraps',
+      'profile', 'my-galleries', 'my-exhibitions', 'my-shows', 'scraps', 'artstory',
     ]);
+  });
+
+  it('★ ArtStory 는 세 역할 모두에게 있다 — 이웃·스토리는 역할 무관이다', () => {
+    // 작가에게만 두면 갤러리·운영은 이웃을 맺고 소식을 쓸 수는 있는데 **그 화면에 갈 길이 없다**.
+    // (사이드바 아래 링크가 그 역할을 하다가 비면서 실제로 끊겼다)
+    for (const role of ROLES) {
+      const artstory = myPageTabs(role).find(t => t.id === 'artstory');
+      expect(artstory, `${role} 에게 ArtStory 진입점이 없다`).toBeTruthy();
+      expect(tabHref(artstory!, 1)).toBe('/feed');
+    }
   });
 
   it('Admin 메뉴에 운영 도구가 모두 있다', () => {

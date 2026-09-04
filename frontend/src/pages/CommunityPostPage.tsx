@@ -260,6 +260,51 @@ export default function CommunityPostPage() {
         </div>
       </section>
 
+      {/* 글 수정 — [✏️] 이 상태만 바꾸고 **그리는 곳이 없어** 눌러도 아무 일이 없었다.
+          사진은 여기서 못 고친다(서버도 손대지 않는다) — 제목·내용·익명만. */}
+      {editOpen && editData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setEditOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-gray-900">글 수정</h2>
+            <input
+              value={editData.title}
+              onChange={(e) => setEditData({ ...editData, title: e.target.value.slice(0, 120) })}
+              placeholder="제목"
+              className="mt-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+            />
+            <textarea
+              value={editData.body}
+              onChange={(e) => setEditData({ ...editData, body: e.target.value.slice(0, 5000) })}
+              placeholder="내용"
+              className="mt-2 min-h-[180px] w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400 [overflow-wrap:anywhere]"
+            />
+            {/* 공지는 익명일 수 없다 — 서버도 같은 규칙이라 여기서 고를 수 없게 막는다 */}
+            {!post.notice && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={editData.anonymous}
+                  onChange={(e) => setEditData({ ...editData, anonymous: e.target.checked })} />
+                익명으로 표시
+              </label>
+            )}
+            {post.images.length > 0 && (
+              <p className="mt-3 text-xs text-gray-400">사진 {post.images.length}장은 그대로 유지됩니다.</p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setEditOpen(false)}
+                className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">취소</button>
+              <button
+                onClick={() => editPost.mutate(editData)}
+                disabled={!editData.title.trim() || !editData.body.trim() || editPost.isPending}
+                className="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
+              >
+                {editPost.isPending ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={deleteOpen}
         title="글 삭제"

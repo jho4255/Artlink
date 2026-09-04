@@ -16,9 +16,17 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
-import { extractMentions, resolveMentions, normalizeMentions } from '../lib/mention';
+import { resolveMentions, notifyMentions } from '../lib/mention';
 
 const router = Router();
+
+/**
+ * 알림이 가리키는 곳 — **그 소식이 열린 채로** 연다.
+ * ⚠️ 예전엔 그냥 `/feed` 라, 알림을 눌러도 [소식] 첫 화면이 뜰 뿐 무엇 때문에 온 건지 알 수 없었다.
+ *    더구나 나를 부른 글의 작성자를 내가 팔로우하지 않았으면 **피드에 아예 없다.**
+ */
+const storyLink = (storyId: number, commentId?: number) =>
+  `/feed?story=${storyId}${commentId ? `&comment=${commentId}` : ''}`;
 
 /** 스토리 사진도 **우리 저장소** 주소만 (외부 URL 차단). */
 function ownImageUrls(raw: unknown): string[] {
@@ -109,9 +117,15 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
     const caption = String(req.body.caption ?? '').trim();
     const images = ownImageUrls(req.body.images);
     if (!caption && images.length === 0) throw new AppError('사진이나 글 중 하나는 있어야 합니다.', 400);
+    const me = req.user!.id;
+    const mentions = await resolveMentions(prisma, me, caption);
     const story = await prisma.story.create({
-      data: { authorId: req.user!.id, caption, images, visibility: req.body.visibility ?? 'NEIGHBORS' },
+      data: { authorId: me, caption, images, visibility: req.body.visibility ?? 'NEIGHBORS' },
       include: { author: authorSelect },
+    });
+    await notifyMentions(prisma, {
+      meId: me, meName: story.author.nickname || story.author.name, targets: mentions,
+      where: '소식', linkUrl: storyLink(story.id), refKey: `mention:story:${story.id}`,
     });
     res.status(201).json(serialize(story, true));
   } catch (e) { next(e); }
@@ -184,22 +198,29 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
     const story = await prisma.story.findUnique({ where: { id }, select: { id: true, authorId: true } });
     if (!story) throw new AppError('스토리를 찾을 수 없습니다.', 404);
 
-    // @mention 정규화 및 검증
-    const normalized = await normalizeMentions(req.body.body.trim(), prisma);
+    const body = req.body.body.trim();
+    // 멘션은 **글을 고치지 않는다** — 부를 수 있는 사람에게만 알림이 간다(`lib/mention.ts`).
+    const mentions = await resolveMentions(prisma, me, body);
 
     const [comment] = await prisma.$transaction([
-      prisma.storyComment.create({ data: { storyId: id, authorId: me, body: normalized }, include: { author: authorSelect } }),
+      prisma.storyComment.create({ data: { storyId: id, authorId: me, body }, include: { author: authorSelect } }),
       prisma.story.update({ where: { id }, data: { commentCount: { increment: 1 } } }),
     ]);
+    const meUser = await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });
+    const meName = meUser ? (meUser.nickname || meUser.name) : '누군가';
     // 스토리 주인에게 알림 (자기 글에 자기가 달면 없음)
     if (story.authorId !== me) {
       try {
-        const meUser = await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });
         await prisma.notification.create({
-          data: { userId: story.authorId, type: 'STORY_COMMENT', message: `${meUser ? (meUser.nickname || meUser.name) : '누군가'}님이 소식에 댓글을 남겼습니다.`, linkUrl: `/feed` },
+          data: { userId: story.authorId, type: 'STORY_COMMENT', message: `${meName}님이 소식에 댓글을 남겼습니다.`, linkUrl: storyLink(id, comment.id) },
         });
       } catch { /* best-effort */ }
     }
+    await notifyMentions(prisma, {
+      meId: me, meName, targets: mentions,
+      where: '소식 댓글', linkUrl: storyLink(id, comment.id), refKey: `mention:story-comment:${comment.id}`,
+      skip: story.authorId !== me ? [story.authorId] : [],   // 방금 댓글 알림을 받았다
+    });
     res.status(201).json({ id: comment.id, body: comment.body, createdAt: comment.createdAt, author: serializeAuthor(comment.author), mine: true });
   } catch (e) { next(e); }
 });
@@ -270,24 +291,51 @@ router.get('/highlights/:userId', optionalAuth, async (req, res, next) => {
       orderBy: { order: 'asc' },
     });
 
-    // 각 하이라이트의 첫 번째 스토리 이미지 조회
-    const result = await Promise.all(
-      highlights.map(async (h) => {
-        let coverImage = null;
-        if (h.storyIds.length > 0) {
-          const story = await prisma.story.findUnique({
-            where: { id: h.storyIds[0] },
-            select: { images: true },
-          });
-          coverImage = story?.images?.[0] || null;
-        }
-        return {
-          ...h,
-          coverImage,
-        };
-      })
-    );
-    res.json(result);
+    // ── 커버 사진 ──
+    // ⚠️ **첫 스토리만 보고 포기하지 말 것.** 스토리는 글만 있어도 되므로(사진 0장) 맨 앞이
+    //    글뿐이면 커버가 비어 이니셜로 떨어진다 — 뒤에 사진이 멀쩡히 있는데도.
+    //    그래서 **사진이 나올 때까지 순서대로 훑는다**: 지정 커버 → 담은 순서 → 없으면 null.
+    // ⚠️ 하이라이트마다 쿼리를 돌리지 말 것(N+1) — 프로필을 열 때마다 도는 경로다. 한 번에 받는다.
+    // ⚠️ 지운 스토리 id 는 `storyIds` 에 그대로 남는다(배열이라 FK 가 없다) — 실제로 있는 것만 센다.
+    const allIds = [...new Set(highlights.flatMap((h) => h.storyIds))];
+    const stories = allIds.length
+      ? await prisma.story.findMany({ where: { id: { in: allIds } }, select: { id: true, images: true } })
+      : [];
+    const imagesOf = new Map<number, string[]>(stories.map((s) => [s.id, s.images]));
+
+    res.json(highlights.map((h) => {
+      const live = h.storyIds.filter((id) => imagesOf.has(id));
+      const order = h.coverStoryId ? [h.coverStoryId, ...live] : live;
+      const coverImage = order.map((id) => imagesOf.get(id)?.[0]).find(Boolean) ?? null;
+      return { ...h, coverImage, storyCount: live.length };
+    }));
+  } catch (e) { next(e); }
+});
+
+// GET /highlights/:id/stories — 하이라이트에 담긴 스토리 (동그라미를 눌렀을 때 펼칠 것)
+// ⚠️ `/highlights/:userId` 와 헷갈리지 말 것 — 이쪽 `:id` 는 **하이라이트 id** 다.
+//    세그먼트 수가 달라 라우트가 겹치지는 않는다.
+router.get('/highlights/:id/stories', optionalAuth, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const h = await prisma.storyHighlight.findUnique({ where: { id } });
+    // 비공개는 주인 말고는 **없는 것으로** 답한다(403 은 존재를 알려준다 — 규칙 23)
+    if (!h || (!h.isPublic && h.userId !== req.user?.id)) throw new AppError('하이라이트를 찾을 수 없습니다.', 404);
+
+    const rows = await prisma.story.findMany({
+      where: { id: { in: h.storyIds } },
+      include: { author: authorSelect },
+    });
+    // 담은 순서를 지킨다 — `findMany` 순서를 믿지 말 것
+    const byId = new Map(rows.map((s) => [s.id, s]));
+    const ordered = h.storyIds.map((sid) => byId.get(sid)).filter(Boolean) as typeof rows;
+
+    const me = req.user?.id;
+    const liked = me ? await likedSet(me, ordered.map((s) => s.id)) : new Set<number>();
+    res.json({
+      id: h.id, name: h.name, isPublic: h.isPublic,
+      stories: ordered.map((s) => serialize(s, s.authorId === me, liked.has(s.id))),
+    });
   } catch (e) { next(e); }
 });
 
@@ -369,6 +417,39 @@ router.delete('/highlights/:id/stories/:storyId', authenticate, async (req, res,
       data: { storyIds: highlight.storyIds.filter(id => id !== storyId) },
     });
     res.json(updated);
+  } catch (e) { next(e); }
+});
+
+/**
+ * GET /:id — 스토리 하나. **멘션 알림이 가리키는 곳**([소식] 화면이 맨 위에 끼워 그린다).
+ *
+ * ⚠️ 피드에 없는 글일 수 있다 — 남이 나를 부른 글의 작성자를 내가 팔로우하지 않았을 수 있고,
+ *    ArtLink(운영)를 부른 글은 더더욱 그렇다. 그래서 피드와 별개로 하나만 여는 길이 필요하다.
+ * ⚠️ **공개범위는 그대로 지킨다** — 이웃공개 글은 작성자·팔로워·Admin 만. 아니면 **404**
+ *    (403 은 그런 글이 있다는 걸 알려준다 — 규칙 23).
+ * ⚠️⚠️ **이 라우트는 반드시 맨 아래에 둘 것.** `/:id` 는 한 조각짜리 주소를 다 잡아먹어서
+ *    위로 올리면 `/feed` 가 `id='feed'` 로 걸린다(`parseInt` 가 NaN → 404, 원인이 안 보인다).
+ */
+router.get('/:id', optionalAuth, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (!Number.isFinite(id)) throw new AppError('소식을 찾을 수 없습니다.', 404);
+    const me = req.user?.id;
+    const s = await prisma.story.findUnique({ where: { id }, include: { author: authorSelect } });
+    if (!s) throw new AppError('소식을 찾을 수 없습니다.', 404);
+
+    const mine = s.authorId === me;
+    let visible = mine || s.visibility === 'PUBLIC' || req.user?.role === 'ADMIN';
+    if (!visible && me) {
+      // 이웃공개 — 내가 작성자를 팔로우하고 있으면 보인다(피드와 같은 규칙)
+      visible = !!(await prisma.follow.findFirst({
+        where: { followerId: me, followingId: s.authorId }, select: { id: true },
+      }));
+    }
+    if (!visible) throw new AppError('소식을 찾을 수 없습니다.', 404);
+
+    const liked = me ? await likedSet(me, [s.id]) : new Set<number>();
+    res.json(serialize(s, mine, liked.has(s.id)));
   } catch (e) { next(e); }
 });
 

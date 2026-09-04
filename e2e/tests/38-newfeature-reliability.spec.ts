@@ -355,13 +355,16 @@ test('★ 동의 없이는 가입이 안 되고, 동의하면 동의 시각이 �
 
   // ⚠️ "동의했다"가 아니라 **동의 시각이 DB 에 남았는가** 를 본다.
   //    응답에는 안 실리므로 직접 확인한다 — 안 남으면 나중에 분쟁에서 근거가 없다.
-  //    (psql 은 `-c` 에서 변수 치환을 안 하므로, 값을 끼워 넣지 않고 **방금 만든 마지막 행**을 읽는다)
+  // ⚠️ **`order by id desc limit 1` 로 읽지 말 것** — 다른 스펙(39·40)이 동시에 사용자를 만들면
+  //    마지막 행이 남의 것이라 엉뚱한 메시지로 실패한다. `-v` 로 **이 이메일을 지목**해 읽는다.
+  // ⚠️ 접속정보를 스펙에 박지 말 것 — `DATABASE_URL` 을 쓰고 없을 때만 로컬 기본값.
   const { execFileSync } = await import('child_process');
   const row = execFileSync('psql', [
-    'postgresql://artlink:artlink_dev_password@localhost:5432/artlink', '-tA',
-    '-c', 'select email, "termsAgreedAt" is not null, "privacyAgreedAt" is not null from "User" order by id desc limit 1;',
+    process.env.DATABASE_URL || 'postgresql://artlink:artlink_dev_password@localhost:5432/artlink', '-tA',
+    '-v', `em=${email}`,
+    '-c', `select "termsAgreedAt" is not null, "privacyAgreedAt" is not null from "User" where email = :'em';`,
   ], { encoding: 'utf-8' }).trim();
-  expect(row, `동의 시각이 DB 에 안 남았다 (row=${row})`).toBe(`${email}|t|t`);
+  expect(row, `동의 시각이 DB 에 안 남았다 (email=${email} row=${row})`).toBe('t|t');
   await api.dispose();
 });
 

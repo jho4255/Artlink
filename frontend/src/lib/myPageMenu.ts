@@ -37,6 +37,18 @@ export interface MyPageTab {
 
 export type MyPageRole = 'ARTIST' | 'GALLERY' | 'ADMIN' | string;
 
+/**
+ * 소식 피드 — 이웃의 작업 사진과 소식. 마이페이지 탭이 아니라 별도 페이지지만 메뉴 일관성을 위해 여기 둔다.
+ *
+ * ⚠️ **세 역할 모두에게 준다.** 이웃(팔로우)·스토리는 설계상 **역할 무관**이고(작가↔갤러리도 맺는다)
+ *    서버 `/stories/feed` 도 `authenticate` 하나뿐이다. 그런데 이 탭을 작가에게만 두면
+ *    갤러리·운영은 이웃을 맺고 소식을 쓸 수는 있는데 **그 화면에 갈 길이 없다** —
+ *    예전엔 사이드바 아래 링크(`MYPAGE_PRIMARY_LINKS`)가 그 역할을 했는데 그게 비면서 끊겼다.
+ */
+const ARTSTORY_TAB: MyPageTab = {
+  id: 'artstory', label: 'ArtStory', brand: ['Art', 'Story'], note: '소식 공유', icon: Camera, linkTo: () => '/feed',
+};
+
 const ARTIST_TABS: MyPageTab[] = [
   { id: 'profile', label: '프로필', icon: Camera },
   // 작가에게 이 페이지는 '내 포트폴리오 관리 화면'이 아니라 **남에게 보여줄 홈페이지**다.
@@ -54,9 +66,9 @@ const ARTIST_TABS: MyPageTab[] = [
   // 예전엔 홈페이지 편집 화면 안 버튼이라 '수정'에 들어가야만 보였다 — 편집과 무관한 기능인데.
   // 이름이 ArtLink 와 비슷해 헷갈리므로 옆에 무엇인지 작게 적는다.
   { id: 'artlook', label: 'ArtLook', brand: ['Art', 'Look'], note: '액자 걸기', icon: Frame },
-  // 소식 피드 — 이웃한 작가들의 작업 사진과 소식. 마이페이지 탭이 아니라 별도 페이지지만 메뉴 일관성을 위해 여기 둔다.
-  { id: 'artstory', label: 'ArtStory', brand: ['Art', 'Story'], note: '소식 공유', icon: Camera, linkTo: () => '/feed' },
+  ARTSTORY_TAB,
 ];
+
 
 /**
  * 메뉴에는 없지만 살아 있는 마이페이지 탭 — 다른 화면의 버튼으로만 들어간다.
@@ -72,6 +84,7 @@ const GALLERY_TABS: MyPageTab[] = [
   { id: 'my-exhibitions', label: '내 공모', icon: FileText },
   { id: 'my-shows', label: '내 전시', icon: Ticket },
   { id: 'scraps', label: '관심 작품', icon: Bookmark },
+  ARTSTORY_TAB,
 ];
 
 const ADMIN_TABS: MyPageTab[] = [
@@ -87,6 +100,7 @@ const ADMIN_TABS: MyPageTab[] = [
   { id: 'oversight', label: '운영 조회', icon: ClipboardList },
   { id: 'todo', label: '할 일 보드', icon: ListChecks },
   { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
+  ARTSTORY_TAB,
 ];
 
 export function myPageTabs(role?: MyPageRole | null): MyPageTab[] {

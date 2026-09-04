@@ -502,3 +502,23 @@ export interface Inquiry {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * 하이라이트 — 스토리를 주제별로 묶어 프로필에 영구 보존한다(인스타그램 하이라이트).
+ * `coverImage`/`storyCount` 는 서버가 계산해 내려주는 값이다 (DB 컬럼이 아니다).
+ */
+export interface StoryHighlight {
+  id: number;
+  userId: number;
+  name: string;
+  storyIds: number[];
+  coverStoryId: number | null;
+  isPublic: boolean;
+  order: number;
+  /** 담긴 스토리 중 **사진이 있는 첫 번째** 것. 전부 글뿐이면 null */
+  coverImage: string | null;
+  /** 지워진 스토리를 뺀 실제 개수 */
+  storyCount: number;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -98,6 +98,9 @@ ArtLink/
   마이그레이션 `20260904120000_add_community_tabs_and_notice`
 - **Follow** — 이웃(단방향 팔로우). `@@unique([followerId, followingId])`
 - **Story / StoryLike / StoryComment** — 스토리(작업 사진+짧은 글). visibility PUBLIC|NEIGHBORS(글마다), likeCount/commentCount 비정규화. ArtStory([소식]) 피드의 출처
+- **StoryHighlight** — 스토리를 주제별로 묶어 프로필에 영구 보존(인스타 하이라이트). `storyIds Int[]`(담은 순서) · `coverStoryId?` · `isPublic` · `order`.
+  ⚠️ `storyIds` 는 **배열이라 FK 가 없다** — 스토리를 지워도 id 가 남으므로 읽을 때 실재하는 것만 센다.
+  응답의 `coverImage`/`storyCount` 는 **서버 계산값**(DB 컬럼 아님)
 - **GuestbookEntry** — 방명록(작가 홈페이지). secret(비밀글), parentId(방 주인 답글, 1단계)
 - **AdBanner** — 광고 배너(Admin 관리). imageUrl/title/linkUrl/active/position. 사이드바 하단 `AdSlot` 노출
 
@@ -124,7 +127,8 @@ ArtLink/
 | chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만). `GET /:id` 는 **최근 150개**만 주고 `?after=<id>`(폴링, 새 것만)·`?before=<id>`(더 보기)·`?limit=` 지원 — 8초 폴링이 방 전체를 다시 받지 않게(2026-09-04) |
 | community | /api/community | 커뮤니티 글로벌 게시판(블라인드식). 글마다 실명/익명, 좋아요·댓글·조회수. `/popular`=홈 인기글. **Admin 전용**: `categories` CUD(탭) · `:id/pin`(고정) · `:id/notice`(공지) · `:id/category`(탭 이동). ⚠️ `/categories` 는 `/:id` 보다 **먼저** 선언해야 한다 — 뒤에 두면 `parseInt('categories')=NaN` 으로 404 |
 | follow | /api/follow | 이웃(단방향 팔로우). 추가 시 상대에게 알림(멱등). 상태 `GET /:userId`(following/팔로워수) |
-| stories | /api/stories | 스토리(ArtStory [소식]). `/feed`, `/user/:id`, 좋아요·댓글. 공개범위 글마다 |
+| stories | /api/stories | 스토리(ArtStory [소식]). `/feed`, `/user/:id`, 좋아요·댓글. 공개범위 글마다. **하이라이트**: `POST /highlights` · `GET /highlights/:userId`(목록, `coverImage` 포함) · `GET /highlights/:id/stories`(뷰어) · `PATCH·DELETE /highlights/:id` · `POST·DELETE /highlights/:id/stories/:storyId` |
+| mentions | /api/mentions | @멘션 자동완성 — **부를 수 있는 사람만**(ArtLink=운영 + 서로 이웃). ⚠️ 전체 회원 검색이 아니다. 저장 검증과 **같은 함수**(`lib/mention.ts` `mentionTargets`)를 쓴다 |
 | guestbook | /api/guestbook | 방명록(작가 홈페이지). 공개, 비밀글(본문만 가림), 답글은 방 주인만(1단계) |
 | ad | /api/ads | 광고 배너. 공개 GET(활성만) / Admin CRUD. 사이드바 하단 슬롯 |
 

@@ -15,7 +15,7 @@ import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
-import { extractMentions, resolveMentions } from '../lib/mention';
+import { resolveMentions, notifyMentions } from '../lib/mention';
 
 const router = Router();
 
@@ -174,8 +174,6 @@ router.get('/categories', optionalAuth, async (req, res, next) => {
 router.post('/categories', authenticate, authorize('ADMIN'), validate(categorySchema), async (req, res, next) => {
   try {
     const name = String(req.body.name).trim();
-    const dup = await prisma.postCategory.findUnique({ where: { name }, select: { id: true } });
-    if (dup) throw new AppError('같은 이름의 탭이 이미 있습니다.', 409);
     // slug 는 이름에서 뽑되, 한글만이면 안정적인 대체 키를 쓴다. 충돌하면 뒤에 번호를 붙인다.
     const base = toSlug(name) || 'tab';
     let slug = base;
@@ -189,7 +187,15 @@ router.post('/categories', authenticate, authorize('ADMIN'), validate(categorySc
       id: c.id, name: c.name, slug: c.slug, order: c.order, active: c.active,
       writeAdminOnly: c.writeAdminOnly, postCount: 0,
     });
-  } catch (e) { next(e); }
+  } catch (e: any) {
+    // ⚠️ **확인하고 만들지 말 것**(규칙 46). 예전엔 `findUnique` 로 중복을 본 뒤 `create` 했는데
+    //    그 확인이 트랜잭션 밖이라 같은 이름을 동시에 보내면 둘 다 "없음"을 보고 들어가
+    //    unique 위반이 났다. 그러면 `errorHandler` 가 **400**("데이터 처리 중 오류")으로 뭉개
+    //    화면에 "이미 있는 이름"이라고 알려 줄 수가 없다.
+    //    지금은 **DB 의 unique 가 판정**하고 여기서 409 로 번역한다 — 경합해도 답이 같다.
+    if (e?.code === 'P2002') return next(new AppError('같은 이름의 탭이 이미 있습니다.', 409));
+    next(e);
+  }
 });
 
 // 탭 수정 (Admin) — 이름·순서·활성. ⚠️ slug 는 바꾸지 않는다(주소·북마크가 죽는다)
@@ -288,7 +294,12 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
       if (c?.writeAdminOnly && !isAdmin) {
         throw new AppError(`‘${c.name}’ 탭에는 관리자만 글을 쓸 수 있습니다.`, 403);
       }
-      if (c && (c.active || isAdmin)) categoryId = c.id;
+      // ⚠️ 숨긴 탭도 **같은 이유로** 조용히 내리지 않는다 — 위 주석의 함정이 플래그만 다른 것이다.
+      //    (Admin 은 숨긴 탭에도 쓸 수 있다 — 공개 전에 미리 채워 두는 용도)
+      if (c && !c.active && !isAdmin) {
+        throw new AppError(`‘${c.name}’ 탭은 지금 숨겨져 있어 글을 쓸 수 없습니다.`, 403);
+      }
+      if (c) categoryId = c.id;
     }
 
     const post = await prisma.post.create({
@@ -319,13 +330,21 @@ router.patch('/:id/pin', authenticate, authorize('ADMIN'), async (req, res, next
 router.patch('/:id/notice', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const post = await prisma.post.findUnique({ where: { id }, select: { notice: true } });
+    const post = await prisma.post.findUnique({ where: { id }, select: { notice: true, anonymous: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
     const want = typeof req.body?.notice === 'boolean' ? req.body.notice : !post.notice;
-    // 공지로 올리면 익명을 푼다 — 누가 공지했는지 알 수 없으면 공지가 아니다
-    const updated = await prisma.post.update({
-      where: { id }, data: { notice: want, ...(want ? { anonymous: false } : {}) }, select: { notice: true },
-    });
+
+    // ⚠️⚠️ **남의 익명 글을 공지로 올려 신원을 벗기지 말 것.**
+    //   "공지는 익명일 수 없다"는 맞지만, 그건 **글쓴이가 공지로 쓸 때** 얘기다.
+    //   여기서 `anonymous:false` 를 강제하면 관리자가 남의 익명 글을 공지로 지정하는 순간
+    //   작성자의 id·닉네임·역할이 게시판에 **영구히** 드러난다(공지를 풀어도 안 돌아온다).
+    //   익명은 우리가 그 사람에게 한 약속이라 운영 편의로 깰 수 없다 — 익명 글은 **거절**한다.
+    //   공지로 올려야 할 내용이면 운영 계정으로 다시 쓰거나, 글쓴이에게 실명 전환을 요청할 것.
+    if (want && post.anonymous) {
+      throw new AppError('익명 글은 공지로 지정할 수 없습니다. 작성자만 실명으로 바꿀 수 있습니다.', 400);
+    }
+
+    const updated = await prisma.post.update({ where: { id }, data: { notice: want }, select: { notice: true } });
     res.json({ notice: updated.notice });
   } catch (e) { next(e); }
 });
@@ -352,18 +371,30 @@ router.patch('/:id/category', authenticate, authorize('ADMIN'), async (req, res,
 router.patch('/:id', authenticate, validate(createSchema), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true } });
+    if (!Number.isFinite(id)) throw new AppError('글을 찾을 수 없습니다.', 404);
+    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true, notice: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
     if (post.authorId !== req.user!.id) {
       throw new AppError('수정 권한이 없습니다.', 403);
     }
-    const { title, content, anonymous } = req.body;
+    const { title, body, anonymous } = req.body;
     const updated = await prisma.post.update({
       where: { id },
-      data: { title, content, anonymous },
-      include: { author: true, category: true, _count: { select: { likes: true, comments: true } } }
+      // ⚠️ **사진(`images`)은 건드리지 않는다.** 수정 폼이 제목·내용·익명만 보내는데
+      //    `createSchema` 가 `images` 를 `[]` 로 채워 주므로, 그대로 쓰면 글을 고칠 때마다
+      //    **사진이 조용히 전부 지워진다**. 보낸 것과 기본값을 구분할 수 없으니 아예 뺀다.
+      // ⚠️ 공지는 익명일 수 없다(누가 공지했는지 모르면 공지가 아니다) — 작성 때와 같은 규칙.
+      data: { title, body, anonymous: post.notice ? false : !!anonymous },
+      include: { author: authorSelect, category: true },
     });
-    res.json(serializePost(updated, req.user!.id));
+    res.json({
+      id: updated.id, title: updated.title, body: updated.body, images: updated.images,
+      notice: updated.notice, pinned: updated.pinnedAt != null,
+      category: updated.category ? { id: updated.category.id, name: updated.category.name, slug: updated.category.slug } : null,
+      likeCount: updated.likeCount, commentCount: updated.commentCount, viewCount: updated.viewCount,
+      createdAt: updated.createdAt, updatedAt: updated.updatedAt,
+      author: serializeAuthor(updated.anonymous, updated.author, req.user!.id),
+    });
   } catch (e) { next(e); }
 });
 
@@ -432,26 +463,28 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
 
     const { body, anonymous } = req.body;
-    // ⚠️ @mention 파싱: 텍스트에서 @닉네임 추출하되, 존재하지 않는 사용자는 @ 제거
-    const mentions = extractMentions(body);
-    let normalizedBody = body.trim();
-    if (mentions.length > 0) {
-      const resolved = await resolveMentions(mentions, prisma);
-      for (const [mention, userId] of Object.entries(resolved)) {
-        if (userId === null) {
-          // 존재하지 않는 사용자는 @ 제거
-          normalizedBody = normalizedBody.replace(new RegExp(`@${mention}\\b`, 'g'), mention);
-        }
-      }
-    }
+    // 멘션은 **글을 고치지 않는다** — 부를 수 있는 사람(ArtLink · 서로 이웃)에게만 알림이 간다.
+    const trimmed = body.trim();
+    const mentions = await resolveMentions(prisma, me, trimmed);
 
     const [comment] = await prisma.$transaction([
       prisma.postComment.create({
-        data: { postId: id, authorId: me, body: normalizedBody, anonymous: !!anonymous },
+        data: { postId: id, authorId: me, body: trimmed, anonymous: !!anonymous },
         include: { author: authorSelect },
       }),
       prisma.post.update({ where: { id }, data: { commentCount: { increment: 1 } } }),
     ]);
+    if (mentions.length > 0) {
+      // ⚠️ 익명 댓글이어도 **부른 사람에게는 알림이 가야** 멘션이다. 다만 누가 불렀는지는
+      //    글에서 이미 가려져 있으므로 알림에도 이름을 쓰지 않는다(익명 신원 역추적 방지).
+      const meUser = anonymous ? null : await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });
+      await notifyMentions(prisma, {
+        meId: me,
+        meName: meUser ? (meUser.nickname || meUser.name) : '익명',
+        targets: mentions,
+        where: '커뮤니티 댓글', linkUrl: `/community/${id}`, refKey: `mention:post-comment:${comment.id}`,
+      });
+    }
     res.status(201).json({
       id: comment.id, body: comment.body, createdAt: comment.createdAt,
       author: serializeAuthor(comment.anonymous, comment.author, me),

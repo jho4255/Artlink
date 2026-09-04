@@ -22,6 +22,7 @@ const ALL_TABLES = [
   'KanbanSubtask', 'KanbanComment', 'KanbanCard', 'KanbanBoard',
   'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
+  'StoryHighlight', 'PostCategory',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
@@ -95,7 +96,8 @@ export async function cleanDb() {
     await tx.user.deleteMany();
     await tx.appSetting.deleteMany(); // FK 없음 — 개발자 도구 토글이 테스트 간 누수되지 않도록 명시 삭제
     await tx.adBanner.deleteMany();    // FK 없음(User 캐스케이드 대상 아님) — 명시 삭제
-    // Follow/Story/StoryLike/StoryComment/GuestbookEntry 는 User 캐스케이드로 함께 지워진다
+    // Follow/Story/StoryLike/StoryComment/GuestbookEntry/StoryHighlight 는 User 캐스케이드로 함께 지워진다
+    // (지워지긴 하지만 **id 시퀀스는 따로다** — 그래서 ALL_TABLES 에는 들어가 있어야 한다)
   });
   // 시퀀스 리셋 (트랜잭션 외부 — DDL은 트랜잭션 안에서 불안정)
   for (const table of ALL_TABLES) {

@@ -10,11 +10,13 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import HomepageView from '@/components/shared/HomepageView';
 import FollowButton from '@/components/shared/FollowButton';
 import Guestbook from '@/components/shared/Guestbook';
+import HighlightRail from '@/components/shared/HighlightRail';
+import HighlightViewer from '@/components/shared/HighlightViewer';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
 import { useAuthStore } from '@/stores/authStore';
 import { HOMEPAGE_EDIT_HREF } from '@/lib/myPageMenu';
-import type { PortfolioImage, PublicPortfolio } from '@/types';
+import type { PortfolioImage, PublicPortfolio, StoryHighlight } from '@/types';
 
 /**
  * 공개 작가 페이지 — 작가에게는 이게 '내 홈페이지'다.
@@ -29,6 +31,7 @@ export default function PortfolioPage() {
   const navigate = useNavigate();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [openHighlight, setOpenHighlight] = useState<number | null>(null);
   // 훅은 아래 early return(로딩/에러)보다 반드시 위에서 호출한다
   const careerColumnCount = useCareerColumns();
   const { user: viewer } = useAuthStore();
@@ -46,9 +49,9 @@ export default function PortfolioPage() {
   });
 
   // 공개 하이라이트 목록 (작가 프로필 아래에 표시)
-  const { data: highlights } = useQuery<any[]>({
+  const { data: highlights } = useQuery<StoryHighlight[]>({
     queryKey: ['highlights', userId],
-    queryFn: () => userId ? api.get(`/stories/highlights/${userId}`).then(r => r.data) : Promise.resolve([]),
+    queryFn: () => api.get(`/stories/highlights/${userId}`).then(r => r.data),
     enabled: !!userId,
   });
 
@@ -117,32 +120,10 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* 하이라이트 앨범 (프로필 사진 아래) */}
+      {/* 하이라이트 앨범 — ArtStory 와 같은 컴포넌트를 쓴다(따로 만들면 어긋난다) */}
       {highlights && highlights.length > 0 && (
-        <div className="mb-8 pt-6 border-t border-gray-100">
-          <div className="flex items-center gap-3 flex-wrap">
-            {highlights.map(h => {
-              // 커버 이미지: coverStoryId 또는 첫 번째 스토리
-              const coverStory = portfolio.images.find(img => img.storyId === h.coverStoryId || (h.storyIds.length > 0 && img.storyId === h.storyIds[0]));
-              return (
-                <div key={h.id} className="flex flex-col items-center gap-1.5">
-                  <button
-                    className="h-16 w-16 rounded-full border-2 border-gray-200 overflow-hidden hover:border-gray-400 bg-gray-100"
-                    title={h.name}
-                  >
-                    {coverStory ? (
-                      <img src={coverStory.url} alt={h.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
-                        {h.name.slice(0, 2)}
-                      </div>
-                    )}
-                  </button>
-                  <span className="text-xs text-gray-600 text-center max-w-16 truncate">{h.name}</span>
-                </div>
-              );
-            })}
-          </div>
+        <div className="mb-8 border-t border-gray-100 pt-6">
+          <HighlightRail highlights={highlights} onOpen={(h) => setOpenHighlight(h.id)} />
         </div>
       )}
 
@@ -163,6 +144,10 @@ export default function PortfolioPage() {
 
       {/* 방명록 — 공개 홈페이지 하단 */}
       <Guestbook userId={Number(userId)} />
+
+      {openHighlight != null && (
+        <HighlightViewer highlightId={openHighlight} onClose={() => setOpenHighlight(null)} />
+      )}
 
       {/* Lightbox */}
       <AnimatePresence>

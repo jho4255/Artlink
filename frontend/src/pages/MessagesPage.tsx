@@ -149,11 +149,16 @@ export default function MessagesPage() {
   const scrollBoxRef = useRef<HTMLDivElement>(null);
 
   // 방을 바꾸면 누적분과 커서를 비운다 (안 비우면 남의 방 메시지가 섞인다)
+  // ⚠️⚠️ **캐시도 함께 버릴 것.** 커서는 ref 라 캐시 밖에 있는데, 방을 나갔다 5분 안에 다시
+  //   들어오면 TanStack 이 **직전 폴링 응답**(조용한 방이면 `messages: []`)을 그대로 내준다.
+  //   그러면 화면이 텅 빈 채로 "첫 메시지를 보내보세요" 가 뜨고, 커서까지 0 으로 잡혀
+  //   다음 폴링이 `?after=0` 을 보내 **가장 오래된 150개**를 받아 온다(그 방에 갇힌다).
   useEffect(() => {
     cursorRef.current = null;
     setMessages([]);
     setHasMore(false);
-  }, [openId]);
+    if (openId) queryClient.removeQueries({ queryKey: ['chat', openId] });
+  }, [openId, queryClient]);
 
   const { data: chat } = useQuery<ChatDetail & { mode: 'init' | 'poll' }>({
     queryKey: ['chat', openId],
@@ -175,8 +180,11 @@ export default function MessagesPage() {
       mergeMessages(prev, chat.messages), chat.kind, chat.readers ?? [], myId,
     ));
     if (chat.mode === 'init') setHasMore(!!chat.hasMore);
+    // ⚠️ **빈 응답으로 커서를 0 으로 만들지 말 것.** `null`(=아직 초기 적재 전)과 `0` 은 뜻이
+    //   전혀 다르다 — 0 이 되면 다음 요청이 `?after=0` 이라 서버가 **맨 처음부터** 150개를 준다.
+    //   받은 게 없으면 커서는 그대로 둔다.
     const maxId = chat.messages.reduce((a, m) => Math.max(a, m.id), 0);
-    cursorRef.current = Math.max(cursorRef.current ?? 0, maxId);
+    if (maxId > 0) cursorRef.current = Math.max(cursorRef.current ?? 0, maxId);
   }, [chat, myId]);
 
   // 방을 안 골랐으면 첫 방을 연다 (넓은 화면에서 빈 오른쪽을 보여주지 않게)

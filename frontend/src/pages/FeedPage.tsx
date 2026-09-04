@@ -1,12 +1,16 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send, Plus } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send, Star, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
+import HighlightRail from '@/components/shared/HighlightRail';
+import HighlightViewer from '@/components/shared/HighlightViewer';
+import { useMention, MentionSuggest } from '@/components/shared/MentionSuggest';
 import { useAuthStore } from '@/stores/authStore';
 import { timeAgo } from '@/lib/utils';
+import type { StoryHighlight } from '@/types';
 
 /**
  * 소식 (Story Feed) — 커뮤니티(글로벌 게시판)와 **다른** 개인 피드.
@@ -31,29 +35,8 @@ function Composer() {
   const [images, setImages] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'PUBLIC' | 'NEIGHBORS'>('NEIGHBORS');
   const [uploading, setUploading] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // 멘션 사용자 검색
-  const { data: mentionUsers } = useQuery<StoryAuthor[]>({
-    queryKey: ['mention-users', mentionQuery],
-    queryFn: () => mentionQuery ? api.get('/users/search', { params: { q: mentionQuery } }).then(r => r.data) : Promise.resolve([]),
-    enabled: mentionQuery.length > 0,
-  });
-
-  const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value;
-    setCaption(text);
-    // @ 이후의 텍스트 추출
-    const match = text.match(/@(\w*)$/);
-    setMentionQuery(match ? match[1] : '');
-  };
-
-  const insertMention = (user: StoryAuthor) => {
-    const parts = caption.split(/@\w*$/);
-    setCaption(parts[0] + `@${user.nickname || user.name} `);
-    setMentionQuery('');
-  };
+  const mention = useMention(caption, (v) => setCaption(v.slice(0, 1000)));
 
   const create = useMutation({
     mutationFn: () => api.post('/stories', { caption: caption.trim(), images, visibility }).then((r) => r.data),
@@ -95,25 +78,14 @@ function Composer() {
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
       <div className="relative">
         <textarea
+          ref={mention.ref as React.Ref<HTMLTextAreaElement>}
           value={caption}
-          onChange={(e) => {
-            const text = e.target.value.slice(0, 1000);
-            handleCaptionChange({ ...e, target: { ...e.target, value: text } } as any);
-          }}
-          placeholder="작업 소식을 남겨보세요. @를 쳐서 사람을 멘션할 수 있습니다."
+          onChange={mention.onChange}
+          onBlur={mention.onBlur}
+          placeholder="작업 소식을 남겨보세요. @로 이웃이나 ArtLink를 부를 수 있습니다."
           className="min-h-[72px] w-full resize-none text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
         />
-        {/* 멘션 자동완성 */}
-        {mentionQuery && mentionUsers && mentionUsers.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white shadow-md z-10">
-            {mentionUsers.slice(0, 5).map(u => (
-              <button key={u.id} onClick={() => insertMention(u)}
-                className="block w-full px-3 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg">
-                @{u.nickname || u.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <MentionSuggest {...mention.suggest} />
       </div>
 
       {images.length > 0 && (
@@ -164,47 +136,32 @@ function Composer() {
   );
 }
 
-function StoryCard({ story }: { story: Story }) {
+function StoryCard({ story, openComments = false }: { story: Story; openComments?: boolean }) {
   const qc = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
-  const [showComments, setShowComments] = useState(false);
+  const [showComments, setShowComments] = useState(openComments);
   const [showLikers, setShowLikers] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
+  const mention = useMention(commentText, setCommentText);
   const a = story.author;
 
   // 본인의 하이라이트 목록
-  const { data: myHighlights } = useQuery<any[]>({
-    queryKey: ['my-highlights'],
-    queryFn: () => user?.id ? api.get(`/stories/highlights/${user.id}`).then((r) => r.data) : Promise.resolve([]),
+  const { data: myHighlights } = useQuery<StoryHighlight[]>({
+    queryKey: ['highlights', user?.id],
+    queryFn: () => api.get(`/stories/highlights/${user!.id}`).then((r) => r.data),
     enabled: showHighlightPicker && !!user?.id,
   });
-
-  // 멘션 사용자 검색
-  const { data: mentionUsers } = useQuery<StoryAuthor[]>({
-    queryKey: ['mention-users', mentionQuery],
-    queryFn: () => mentionQuery ? api.get('/users/search', { params: { q: mentionQuery } }).then(r => r.data) : Promise.resolve([]),
-    enabled: mentionQuery.length > 0,
-  });
-
-  const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const text = e.target.value;
-    setCommentText(text);
-    const match = text.match(/@(\w*)$/);
-    setMentionQuery(match ? match[1] : '');
-  };
-
-  const insertMention = (u: StoryAuthor) => {
-    const parts = commentText.split(/@\w*$/);
-    setCommentText(parts[0] + `@${u.nickname || u.name} `);
-    setMentionQuery('');
-  };
 
   // 스토리를 하이라이트에 추가
   const addToHighlight = useMutation({
     mutationFn: (highlightId: number) => api.post(`/stories/highlights/${highlightId}/stories/${story.id}`),
-    onSuccess: () => { toast.success('하이라이트에 추가했어요.'); setShowHighlightPicker(false); },
+    onSuccess: () => {
+      toast.success('하이라이트에 추가했어요.');
+      setShowHighlightPicker(false);
+      // ⚠️ 담고 나면 커버 사진이 생긴다 — invalidate 를 빼면 맨 위 동그라미가 이니셜 그대로다
+      qc.invalidateQueries({ queryKey: ['highlights'] });
+    },
     onError: (e: any) => toast.error(e.response?.data?.error || '추가 실패'),
   });
 
@@ -214,14 +171,24 @@ function StoryCard({ story }: { story: Story }) {
     enabled: showLikers && story.likeCount > 0,
   });
 
+  /**
+   * 이 소식이 들어 있는 캐시를 **전부** 고친다.
+   * ⚠️ 피드 캐시만 고치면 안 된다 — 알림으로 연 소식(`/feed?story=`)은 피드에 없을 수 있어
+   *    `['story', id]` 에만 산다. 그것만 빼먹으면 **좋아요를 눌러도 화면이 그대로**다.
+   */
   const patchFeed = (fn: (s: Story) => Story) => {
     qc.setQueryData<{ pages: FeedPage[]; pageParams: unknown[] }>(['story-feed'], (old) =>
       old ? { ...old, pages: old.pages.map((p) => ({ ...p, stories: p.stories.map((s) => (s.id === story.id ? fn(s) : s)) })) } : old);
+    qc.setQueryData<Story>(['story', story.id], (old) => (old ? fn(old) : old));
   };
 
   const del = useMutation({
     mutationFn: () => api.delete(`/stories/${story.id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['story-feed'] }); toast.success('삭제했어요.'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['story-feed'] });
+      qc.removeQueries({ queryKey: ['story', story.id] });   // 지운 글이 핀으로 남지 않게
+      toast.success('삭제했어요.');
+    },
     onError: () => toast.error('삭제에 실패했습니다.'),
   });
 
@@ -300,14 +267,22 @@ function StoryCard({ story }: { story: Story }) {
         <button onClick={() => setShowComments((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
           <MessageCircle size={16} /> {story.commentCount > 0 && story.commentCount}
         </button>
-        {story.mine && isAuthenticated && (
-          <button onClick={() => setShowHighlightPicker((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
-            ⭐ 하이라이트
-          </button>
-        )}
         {story.likeCount > 0 && (
           <button onClick={() => setShowLikers((v) => !v)} className="ml-auto text-xs text-gray-400 hover:text-gray-700">
             좋아요 누른 사람
+          </button>
+        )}
+        {/* 하이라이트에 담기 — **오른쪽 끝의 아이콘 하나**.
+            좋아요·댓글과 나란히 글자로 두면 남들도 누르는 것처럼 보이는데, 이건 내 글에만 뜨는
+            정리용 도구라 성격이 다르다. 무엇인지는 title 로 알린다. */}
+        {story.mine && isAuthenticated && (
+          <button
+            onClick={() => setShowHighlightPicker((v) => !v)}
+            title="하이라이트에 담기"
+            aria-label="하이라이트에 담기"
+            className={`${story.likeCount > 0 ? '' : 'ml-auto'} text-gray-300 hover:text-amber-500`}
+          >
+            <Star size={16} className={showHighlightPicker ? 'fill-amber-400 text-amber-500' : ''} />
           </button>
         )}
       </div>
@@ -326,7 +301,7 @@ function StoryCard({ story }: { story: Story }) {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-gray-400">하이라이트가 없습니다. 프로필 편집에서 만들어보세요.</p>
+            <p className="text-xs text-gray-400">하이라이트가 없습니다. 맨 위 [+ 추가]로 만들어보세요.</p>
           )}
         </div>
       )}
@@ -365,29 +340,19 @@ function StoryCard({ story }: { story: Story }) {
             </div>
           ))}
           {isAuthenticated && (
-            <div className="space-y-1">
-              <div className="relative flex items-center gap-2">
-                <input
-                  value={commentText}
-                  onChange={handleCommentChange}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate(); }}
-                  placeholder="댓글 달기… (@를 쳐서 멘션)"
-                  className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-                />
-                <button onClick={() => commentText.trim() && addComment.mutate()} disabled={!commentText.trim() || addComment.isPending}
-                  aria-label="댓글 등록" className="text-gray-500 hover:text-gray-900 disabled:text-gray-300"><Send size={16} /></button>
-                {/* 멘션 자동완성 */}
-                {mentionQuery && mentionUsers && mentionUsers.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white shadow-md z-10 max-h-40 overflow-y-auto">
-                    {mentionUsers.slice(0, 5).map(u => (
-                      <button key={u.id} onClick={() => insertMention(u)}
-                        className="block w-full px-3 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg">
-                        @{u.nickname || u.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className="relative flex items-center gap-2">
+              <input
+                ref={mention.ref as React.Ref<HTMLInputElement>}
+                value={commentText}
+                onChange={mention.onChange}
+                onBlur={mention.onBlur}
+                onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate(); }}
+                placeholder="댓글 달기… (@로 이웃·ArtLink 부르기)"
+                className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+              />
+              <button onClick={() => commentText.trim() && addComment.mutate()} disabled={!commentText.trim() || addComment.isPending}
+                aria-label="댓글 등록" className="text-gray-500 hover:text-gray-900 disabled:text-gray-300"><Send size={16} /></button>
+              <MentionSuggest {...mention.suggest} />
             </div>
           )}
         </div>
@@ -399,7 +364,9 @@ function StoryCard({ story }: { story: Story }) {
 export default function FeedPage() {
   const { isAuthenticated, user } = useAuthStore();
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showHighlightModal, setShowHighlightModal] = useState(false);
+  const [openHighlight, setOpenHighlight] = useState<number | null>(null);
   const [highlightName, setHighlightName] = useState('');
   const [highlightIsPublic, setHighlightIsPublic] = useState(true);
 
@@ -411,10 +378,10 @@ export default function FeedPage() {
     enabled: isAuthenticated,
   });
 
-  // 로그인한 사용자의 하이라이트 불러오기
-  const { data: myHighlights } = useQuery<any[]>({
-    queryKey: ['my-highlights'],
-    queryFn: () => user?.id ? api.get(`/stories/highlights/${user.id}`).then(r => r.data) : Promise.resolve([]),
+  // 내 하이라이트 (내 화면이므로 비공개 것도 함께 온다 — 서버가 본인 여부로 판정)
+  const { data: myHighlights } = useQuery<StoryHighlight[]>({
+    queryKey: ['highlights', user?.id],
+    queryFn: () => api.get(`/stories/highlights/${user!.id}`).then(r => r.data),
     enabled: !!user?.id,
   });
 
@@ -424,11 +391,39 @@ export default function FeedPage() {
     onSuccess: () => {
       setHighlightName('');
       setShowHighlightModal(false);
-      qc.invalidateQueries({ queryKey: ['my-highlights'] });
+      qc.invalidateQueries({ queryKey: ['highlights'] });
       toast.success('하이라이트가 생성되었습니다.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '생성에 실패했습니다.'),
   });
+
+  // 알림(`/feed?story=123`)으로 들어오면 **그 소식을 맨 위에** 펼친다.
+  // ⚠️ 피드에 없는 글일 수 있다 — 나를 부른 사람을 내가 팔로우하지 않았거나, ArtLink 로 불린 글이면
+  //    운영자의 피드엔 아예 없다. 그래서 피드와 별개로 하나만 받아 온다.
+  const pinnedId = Number(searchParams.get('story')) || null;
+  const { data: pinned, isError: pinnedGone } = useQuery<Story>({
+    queryKey: ['story', pinnedId],
+    queryFn: () => api.get(`/stories/${pinnedId}`).then((r) => r.data),
+    enabled: !!pinnedId,
+  });
+
+  const [refreshing, setRefreshing] = useState(false);
+  /**
+   * 피드를 다시 받는다.
+   * ⚠️ `invalidateQueries` 를 쓰지 말 것 — 무한스크롤로 5쪽을 펼쳐 뒀으면 **5쪽을 전부 다시 받는다.**
+   *    새로고침의 목적은 새 소식을 맨 위에서 보는 것이므로 `resetQueries` 로 1쪽부터 다시 시작한다.
+   *    하이라이트도 함께(다른 기기에서 담았을 수 있다).
+   */
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        qc.resetQueries({ queryKey: ['story-feed'] }),
+        qc.invalidateQueries({ queryKey: ['highlights'] }),
+      ]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally { setRefreshing(false); }
+  };
 
   const stories = data?.pages.flatMap((p) => p.stories) ?? [];
   const followingCount = data?.pages[0]?.followingCount ?? 0;
@@ -455,42 +450,30 @@ export default function FeedPage() {
 
       {/* 본문은 보는 화면 기준 가운데 정렬(max-w-2xl mx-auto) */}
       <div className="max-w-2xl mx-auto px-6">
-        {/* 하이라이트 앨범 */}
-        {myHighlights && (myHighlights.length > 0 || isAuthenticated) && (
-          <div className="mb-6 pb-6 border-b border-gray-100">
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* "+" 버튼 — 새 하이라이트 생성 */}
-              {isAuthenticated && (
-                <button
-                  onClick={() => setShowHighlightModal(true)}
-                  className="flex flex-col items-center gap-1.5"
-                >
-                  <div className="h-16 w-16 rounded-full border-2 border-gray-300 border-dashed flex items-center justify-center hover:border-gray-400 hover:bg-gray-50 transition">
-                    <Plus size={20} className="text-gray-400" />
-                  </div>
-                  <span className="text-xs text-gray-500">추가</span>
-                </button>
-              )}
-              {/* 하이라이트 앨범 */}
-              {myHighlights?.map(h => (
-                <div key={h.id} className="flex flex-col items-center gap-1.5">
-                  <button
-                    className="h-16 w-16 rounded-full border-2 border-gray-200 overflow-hidden hover:border-gray-400 bg-gray-100"
-                    title={h.name}
-                  >
-                    {h.coverImage ? (
-                      <img src={h.coverImage} alt={h.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
-                        {h.name.slice(0, 2)}
-                      </div>
-                    )}
-                  </button>
-                  <span className="text-xs text-gray-600 text-center max-w-16 truncate">{h.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* 새로고침 — 소식은 남이 계속 올리는 화면이라 다시 받을 길이 있어야 한다.
+            ⚠️ 색을 gray-500 보다 옅게 두지 말 것(홈 ArtWorks 와 같은 규칙) — 안 보인다는 지적이 있었다. */}
+        <div className="mb-3 flex justify-end">
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            새로고침
+          </button>
+        </div>
+
+        {/* 하이라이트 앨범 — 공개 홈페이지와 같은 컴포넌트 */}
+        <div className="mb-6 border-b border-gray-100 pb-6">
+          <HighlightRail
+            highlights={myHighlights ?? []}
+            onCreate={() => setShowHighlightModal(true)}
+            onOpen={(h) => setOpenHighlight(h.id)}
+          />
+        </div>
+
+        {openHighlight != null && (
+          <HighlightViewer highlightId={openHighlight} onClose={() => setOpenHighlight(null)} />
         )}
 
         {/* 새 하이라이트 생성 모달 */}
@@ -541,6 +524,33 @@ export default function FeedPage() {
 
         <Composer />
 
+        {/* 알림으로 들어온 소식 — 맨 위에 따로 세워 왜 왔는지 바로 보이게 한다 */}
+        {pinnedId && (
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center justify-between px-1">
+              <p className="text-xs font-medium text-gray-500">알림으로 연 소식</p>
+              <button
+                onClick={() => {
+                  // 들고 있는 객체를 고쳐 그대로 넘기지 말 것 — 다음 렌더가 옛 값을 읽을 수 있다
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('story'); next.delete('comment');
+                  setSearchParams(next, { replace: true });
+                }}
+                className="text-xs text-gray-400 hover:text-gray-700"
+              >
+                피드 전체 보기
+              </button>
+            </div>
+            {pinned
+              ? <StoryCard story={pinned} openComments={!!searchParams.get('comment')} />
+              : pinnedGone
+                ? <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-500">
+                    지워졌거나 볼 수 없는 소식입니다.
+                  </div>
+                : <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-gray-100" />)}</div>
         ) : stories.length === 0 ? (
@@ -554,7 +564,7 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {stories.map((s) => <StoryCard key={s.id} story={s} />)}
+            {stories.filter((s) => s.id !== pinned?.id).map((s) => <StoryCard key={s.id} story={s} />)}
             {hasNextPage && (
               <button
                 onClick={() => fetchNextPage()}

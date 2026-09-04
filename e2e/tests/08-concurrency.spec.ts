@@ -25,7 +25,9 @@ test('정원 1명 공모에 동시 지원 6건 → 최종 수락/접수는 정�
   const tokens: string[] = [];
   for (let i = 0; i < 6; i++) {
     const email = `race_${ex.id}_${i}@test.com`;
-    const r = await api.post(`${API}/auth/signup`, { data: { name: `레이스${i}`, email, password: 'secret123', role: 'ARTIST' } });
+    // ⚠️ 2026-09-04 부터 약관 동의가 **필수**다 — 빼면 400 이 나고 `body.token` 이 undefined 라
+    //    아래 동시 지원이 전부 401 이 된다(정원 초과 회귀 테스트가 아무것도 안 재게 된다).
+    const r = await api.post(`${API}/auth/signup`, { data: { name: `레이스${i}`, email, password: 'secret123', role: 'ARTIST', agreeTerms: true, agreePrivacy: true } });
     const body = await r.json();
     tokens.push(body.token);
   }
