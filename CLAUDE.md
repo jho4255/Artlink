@@ -34,6 +34,12 @@ cd backend && npx tsx prisma/seed.ts    # 시드 데이터 실행
 
 # WSL2 필수: PostgreSQL 재부팅 후 수동 시작
 sudo service postgresql start
+
+# ⚠️ 고친 게 화면에 안 나오면 **dev 서버가 겹쳐 떴는지 먼저 볼 것** (2026-09-04 실제로 겪음)
+#    run_web.sh 를 여러 번 돌리면 vite 가 5173→5174→5175 로 밀려 뜨고, tsx watch 도 여러 개가 된다.
+#    포트 4000 을 잡은 게 옛 프로세스면 **코드를 고쳐도 API 응답이 안 바뀐다** — 고쳤는데 안 고쳐진 것처럼 보인다.
+ss -ltnp | grep -E ':4000|:517'          # 하나씩만 떠 있어야 정상
+pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/frontend/node_modules/.bin/vite'
 ```
 
 ## Architecture

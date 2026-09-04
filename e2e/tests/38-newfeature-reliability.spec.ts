@@ -258,14 +258,22 @@ test('★ 작가가 notice/pinned 를 직접 보내도 조용히 무시된다 (�
   await api.dispose();
 });
 
-test('★ 공지는 익명일 수 없다 — 익명으로 올려도 공지로 올리면 신원이 드러난다', async () => {
+test('★ 공지는 익명일 수 없다 — 단, 벗길 수 있는 건 **자기 글**뿐이다', async () => {
   const api = await pwRequest.newContext();
-  // Admin 이 익명으로 쓰고 공지로 지정 → 익명이 풀려야 한다
-  const p = await makePost(api, { title: `익명공지${Date.now()}`, body: '본문', anonymous: true }, A());
-  await api.patch(`${API}/community/${p.id}/notice`, { headers: A(), data: { notice: true } });
-  const d = await (await api.get(`${API}/community/${p.id}`)).json();
+  // ① 내 익명 글을 공지로 → 내가 내 익명을 푸는 것이니 그대로 풀린다
+  const mine = await makePost(api, { title: `익명공지${Date.now()}`, body: '본문', anonymous: true }, A());
+  await api.patch(`${API}/community/${mine.id}/notice`, { headers: A(), data: { notice: true } });
+  const d = await (await api.get(`${API}/community/${mine.id}`)).json();
   expect(d.notice).toBe(true);
   expect(d.author.name).not.toBe('익명');
+
+  // ② ★ 남의 익명 글은 **거절**한다. 예전엔 여기서도 익명을 강제로 풀어,
+  //    관리자가 공지로 지정하는 순간 작성자 신원이 영구히 드러났다(공지를 풀어도 안 돌아온다).
+  const others = await makePost(api, { title: `남의익명${Date.now()}`, body: '본문', anonymous: true });
+  const r = await api.patch(`${API}/community/${others.id}/notice`, { headers: A(), data: { notice: true } });
+  expect(r.status(), '남의 익명 글이 공지로 올라갔다 — 신원이 드러난다').toBe(400);
+  const still = await (await api.get(`${API}/community/${others.id}`)).json();
+  expect(still.author.id, '익명이 풀렸다').toBeNull();
   await api.dispose();
 });
 
@@ -357,13 +365,19 @@ test('★ 동의 없이는 가입이 안 되고, 동의하면 동의 시각이 �
   //    응답에는 안 실리므로 직접 확인한다 — 안 남으면 나중에 분쟁에서 근거가 없다.
   // ⚠️ **`order by id desc limit 1` 로 읽지 말 것** — 다른 스펙(39·40)이 동시에 사용자를 만들면
   //    마지막 행이 남의 것이라 엉뚱한 메시지로 실패한다. `-v` 로 **이 이메일을 지목**해 읽는다.
-  // ⚠️ 접속정보를 스펙에 박지 말 것 — `DATABASE_URL` 을 쓰고 없을 때만 로컬 기본값.
+  // ⚠️⚠️ **접속정보를 스펙에 적지 말 것.** 로컬 비밀번호라도 `scripts/predeploy-check.sh` 가
+  //    실서버 접속정보로 보고 **push 를 막는다**(구분할 방법이 없으므로 막는 게 맞다).
+  //    `DATABASE_URL` 로 받고, 없으면 **조용히 넘어가지 말고** 왜 못 봤는지 말한다.
+  // ⚠️ `-v` 치환은 **`-c` 에서 안 먹는다** — SQL 을 stdin 으로 넣어야 한다.
+  const dbUrl = process.env.DATABASE_URL;
+  expect(dbUrl, 'DATABASE_URL 이 없어 동의 시각을 확인할 수 없다 — e2e 는 DATABASE_URL 을 명시해 돌릴 것').toBeTruthy();
   const { execFileSync } = await import('child_process');
   const row = execFileSync('psql', [
-    process.env.DATABASE_URL || 'postgresql://artlink:artlink_dev_password@localhost:5432/artlink', '-tA',
-    '-v', `em=${email}`,
-    '-c', `select "termsAgreedAt" is not null, "privacyAgreedAt" is not null from "User" where email = :'em';`,
-  ], { encoding: 'utf-8' }).trim();
+    dbUrl!, '-tA', '-v', `em=${email}`,
+  ], {
+    encoding: 'utf-8',
+    input: `select "termsAgreedAt" is not null, "privacyAgreedAt" is not null from "User" where email = :'em';`,
+  }).trim();
   expect(row, `동의 시각이 DB 에 안 남았다 (email=${email} row=${row})`).toBe('t|t');
   await api.dispose();
 });

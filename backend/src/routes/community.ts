@@ -330,21 +330,26 @@ router.patch('/:id/pin', authenticate, authorize('ADMIN'), async (req, res, next
 router.patch('/:id/notice', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const post = await prisma.post.findUnique({ where: { id }, select: { notice: true, anonymous: true } });
+    const post = await prisma.post.findUnique({ where: { id }, select: { notice: true, anonymous: true, authorId: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
     const want = typeof req.body?.notice === 'boolean' ? req.body.notice : !post.notice;
 
     // ⚠️⚠️ **남의 익명 글을 공지로 올려 신원을 벗기지 말 것.**
-    //   "공지는 익명일 수 없다"는 맞지만, 그건 **글쓴이가 공지로 쓸 때** 얘기다.
-    //   여기서 `anonymous:false` 를 강제하면 관리자가 남의 익명 글을 공지로 지정하는 순간
-    //   작성자의 id·닉네임·역할이 게시판에 **영구히** 드러난다(공지를 풀어도 안 돌아온다).
-    //   익명은 우리가 그 사람에게 한 약속이라 운영 편의로 깰 수 없다 — 익명 글은 **거절**한다.
-    //   공지로 올려야 할 내용이면 운영 계정으로 다시 쓰거나, 글쓴이에게 실명 전환을 요청할 것.
-    if (want && post.anonymous) {
-      throw new AppError('익명 글은 공지로 지정할 수 없습니다. 작성자만 실명으로 바꿀 수 있습니다.', 400);
+    //   "공지는 익명일 수 없다"는 맞지만, 그건 **글쓴이 자신**에게만 적용된다.
+    //   예전엔 무조건 `anonymous:false` 를 강제해서, 관리자가 남의 익명 글을 공지로 지정하는 순간
+    //   작성자의 id·닉네임·역할이 게시판에 **영구히** 드러났다(공지를 풀어도 안 돌아온다).
+    //   익명은 그 사람에게 한 약속이라 운영 편의로 깰 수 없다.
+    //   내 글이면 내가 익명을 푸는 것이니 그대로 두고, **남의 글이면 거절**한다.
+    const mine = post.authorId === req.user!.id;
+    if (want && post.anonymous && !mine) {
+      throw new AppError('남의 익명 글은 공지로 지정할 수 없습니다. 작성자에게 실명 전환을 요청해 주세요.', 400);
     }
 
-    const updated = await prisma.post.update({ where: { id }, data: { notice: want }, select: { notice: true } });
+    const updated = await prisma.post.update({
+      where: { id },
+      data: { notice: want, ...(want && mine ? { anonymous: false } : {}) },
+      select: { notice: true },
+    });
     res.json({ notice: updated.notice });
   } catch (e) { next(e); }
 });

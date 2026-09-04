@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs } from '../lib/helpers';
+import { openAs, tokenFor, authHeader } from '../lib/helpers';
 
 /**
  * ArtStory — @멘션과 하이라이트가 **실제로 동작하는가**.
@@ -36,8 +36,7 @@ test('★ 멘션 목록은 전체 회원 검색이 아니다 — 서로 이웃 �
   const api = await pwRequest.newContext();
 
   // 서버에 직접 물어 규칙을 확인한다(화면 목록의 출처가 이 응답이다)
-  const token = await page.evaluate(() => JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.token);
-  const r = await api.get(`${API}/mentions`, { headers: { Authorization: `Bearer ${token}` } });
+  const r = await api.get(`${API}/mentions`, { headers: authHeader(tokenFor('artist')) });
   expect(r.status()).toBe(200);
   const labels = (await r.json()).map((t: any) => t.label);
 
@@ -72,11 +71,16 @@ test('하이라이트: 만들고 → 소식을 담고 → 눌러서 본다', asy
   await expect(page.getByText('하이라이트에 추가했어요.')).toBeVisible();
 
   // ④ ★ 동그라미를 누르면 실제로 열린다 (예전엔 onClick 이 없어 아무 일도 없었다)
+  //    ⚠️ 뒤 피드에도 같은 글이 그대로 있으므로 **뷰어 안에서** 찾아야 한다.
   await page.getByRole('button', { name }).first().click();
-  await expect(page.getByText(caption)).toBeVisible();
+  const viewer = page.getByRole('dialog', { name: '하이라이트' });
+  await expect(viewer).toBeVisible();
+  await expect(viewer.getByText(caption)).toBeVisible();
 
-  // 인스타처럼 한 장씩 넘기는 화면이라 닫기가 있어야 한다
-  await page.getByRole('button', { name: '닫기' }).click();
+  // 인스타처럼 한 장씩 넘기는 화면이다 — 넘기기·닫기가 있어야 한다
+  await expect(viewer.getByRole('button', { name: '다음' })).toBeVisible();
+  await viewer.getByRole('button', { name: '닫기' }).click();
+  await expect(viewer).toBeHidden();
 
   await ctx.close();
 });

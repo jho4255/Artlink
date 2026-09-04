@@ -83,7 +83,9 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
   const cur = frames[i];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+    // 뒤 화면에 같은 글이 그대로 있으므로(피드 카드) 이 창을 가리킬 수 있어야 한다 —
+    // 접근성에도 맞고 테스트가 범위를 잡는 데도 쓴다
+    <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="하이라이트">
       {/* ── 진행바 ── */}
       <div className="flex shrink-0 gap-1 px-3 pt-3">
         {frames.map((f, n) => (

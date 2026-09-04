@@ -492,7 +492,7 @@ describe('글 수정 (PATCH /:id)', () => {
 describe('★ 익명은 운영도 벗길 수 없다', () => {
   beforeEach(async () => { await cleanDb(); await seedUsers(); });
 
-  it('익명 글은 공지로 지정할 수 없다 (400)', async () => {
+  it('★ 남의 익명 글은 공지로 지정할 수 없다 (400)', async () => {
     // 예전엔 공지로 올리면서 `anonymous:false` 를 강제해, 관리자가 남의 익명 글을 공지로
     // 만드는 순간 작성자 신원이 **영구히** 드러났다(공지를 풀어도 안 돌아왔다).
     const p = await createPost(a1, { anonymous: true });
@@ -500,6 +500,12 @@ describe('★ 익명은 운영도 벗길 수 없다', () => {
       .set('Authorization', `Bearer ${admin}`).send({ notice: true });
     expect(r.status).toBe(400);
     expect((await request.get(`/api/community/${p.body.id}`)).body.author.id).toBeNull();  // 여전히 익명
+  });
+
+  it('★ 자기 익명 글은 자기가 풀 수 있다 (Admin 이 자기 글을 공지로)', async () => {
+    const p = await createPost(admin, { anonymous: true });
+    expect((await request.patch(`/api/community/${p.body.id}/notice`).set('Authorization', `Bearer ${admin}`).send({ notice: true })).status).toBe(200);
+    expect((await request.get(`/api/community/${p.body.id}`)).body.author.id).toBe(4);   // 익명이 풀렸다
   });
 
   it('실명 글은 공지로 지정된다', async () => {
