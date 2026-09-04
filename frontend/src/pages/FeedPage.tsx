@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send } from 'lucide-react';
+import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
@@ -31,7 +31,29 @@ function Composer() {
   const [images, setImages] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<'PUBLIC' | 'NEIGHBORS'>('NEIGHBORS');
   const [uploading, setUploading] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 멘션 사용자 검색
+  const { data: mentionUsers } = useQuery<StoryAuthor[]>({
+    queryKey: ['mention-users', mentionQuery],
+    queryFn: () => mentionQuery ? api.get('/users/search', { params: { q: mentionQuery } }).then(r => r.data) : Promise.resolve([]),
+    enabled: mentionQuery.length > 0,
+  });
+
+  const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    setCaption(text);
+    // @ 이후의 텍스트 추출
+    const match = text.match(/@(\w*)$/);
+    setMentionQuery(match ? match[1] : '');
+  };
+
+  const insertMention = (user: StoryAuthor) => {
+    const parts = caption.split(/@\w*$/);
+    setCaption(parts[0] + `@${user.nickname || user.name} `);
+    setMentionQuery('');
+  };
 
   const create = useMutation({
     mutationFn: () => api.post('/stories', { caption: caption.trim(), images, visibility }).then((r) => r.data),
@@ -71,12 +93,28 @@ function Composer() {
 
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-      <textarea
-        value={caption}
-        onChange={(e) => setCaption(e.target.value.slice(0, 1000))}
-        placeholder="작업 소식을 남겨보세요. 오늘 작업실은 어떤가요?"
-        className="min-h-[72px] w-full resize-none text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
-      />
+      <div className="relative">
+        <textarea
+          value={caption}
+          onChange={(e) => {
+            const text = e.target.value.slice(0, 1000);
+            handleCaptionChange({ ...e, target: { ...e.target, value: text } } as any);
+          }}
+          placeholder="작업 소식을 남겨보세요. @를 쳐서 사람을 멘션할 수 있습니다."
+          className="min-h-[72px] w-full resize-none text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
+        />
+        {/* 멘션 자동완성 */}
+        {mentionQuery && mentionUsers && mentionUsers.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white shadow-md z-10">
+            {mentionUsers.slice(0, 5).map(u => (
+              <button key={u.id} onClick={() => insertMention(u)}
+                className="block w-full px-3 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg">
+                @{u.nickname || u.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {images.length > 0 && (
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -128,11 +166,47 @@ function Composer() {
 
 function StoryCard({ story }: { story: Story }) {
   const qc = useQueryClient();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const [showComments, setShowComments] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
   const a = story.author;
+
+  // 본인의 하이라이트 목록
+  const { data: myHighlights } = useQuery<any[]>({
+    queryKey: ['my-highlights'],
+    queryFn: () => user?.id ? api.get(`/stories/highlights/${user.id}`).then((r) => r.data) : Promise.resolve([]),
+    enabled: showHighlightPicker && !!user?.id,
+  });
+
+  // 멘션 사용자 검색
+  const { data: mentionUsers } = useQuery<StoryAuthor[]>({
+    queryKey: ['mention-users', mentionQuery],
+    queryFn: () => mentionQuery ? api.get('/users/search', { params: { q: mentionQuery } }).then(r => r.data) : Promise.resolve([]),
+    enabled: mentionQuery.length > 0,
+  });
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value;
+    setCommentText(text);
+    const match = text.match(/@(\w*)$/);
+    setMentionQuery(match ? match[1] : '');
+  };
+
+  const insertMention = (u: StoryAuthor) => {
+    const parts = commentText.split(/@\w*$/);
+    setCommentText(parts[0] + `@${u.nickname || u.name} `);
+    setMentionQuery('');
+  };
+
+  // 스토리를 하이라이트에 추가
+  const addToHighlight = useMutation({
+    mutationFn: (highlightId: number) => api.post(`/stories/highlights/${highlightId}/stories/${story.id}`),
+    onSuccess: () => { toast.success('하이라이트에 추가했어요.'); setShowHighlightPicker(false); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '추가 실패'),
+  });
 
   const { data: likers } = useQuery<StoryAuthor[]>({
     queryKey: ['story-likers', story.id],
@@ -218,7 +292,7 @@ function StoryCard({ story }: { story: Story }) {
         </div>
       )}
 
-      {/* 좋아요 · 댓글 */}
+      {/* 좋아요 · 댓글 · 하이라이트 */}
       <div className="mt-3 flex items-center gap-4 border-t border-gray-50 pt-2.5 text-sm">
         <button onClick={onLike} className={`inline-flex items-center gap-1 ${story.liked ? 'text-[#dc3545]' : 'text-gray-500 hover:text-gray-800'}`}>
           <Heart size={16} className={story.liked ? 'fill-[#dc3545]' : ''} /> {story.likeCount > 0 && story.likeCount}
@@ -226,12 +300,36 @@ function StoryCard({ story }: { story: Story }) {
         <button onClick={() => setShowComments((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
           <MessageCircle size={16} /> {story.commentCount > 0 && story.commentCount}
         </button>
+        {story.mine && isAuthenticated && (
+          <button onClick={() => setShowHighlightPicker((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
+            ⭐ 하이라이트
+          </button>
+        )}
         {story.likeCount > 0 && (
           <button onClick={() => setShowLikers((v) => !v)} className="ml-auto text-xs text-gray-400 hover:text-gray-700">
             좋아요 누른 사람
           </button>
         )}
       </div>
+
+      {/* 하이라이트 선택 */}
+      {showHighlightPicker && (
+        <div className="mt-2 rounded-lg bg-gray-50 p-2.5">
+          {myHighlights && myHighlights.length > 0 ? (
+            <div className="space-y-1">
+              {myHighlights.map(h => (
+                <button key={h.id} onClick={() => addToHighlight.mutate(h.id)}
+                  className="block w-full text-left rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-200"
+                  disabled={addToHighlight.isPending}>
+                  {h.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">하이라이트가 없습니다. 프로필 편집에서 만들어보세요.</p>
+          )}
+        </div>
+      )}
 
       {showLikers && story.likeCount > 0 && (
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 rounded-lg bg-gray-50 p-2.5">
@@ -267,16 +365,29 @@ function StoryCard({ story }: { story: Story }) {
             </div>
           ))}
           {isAuthenticated && (
-            <div className="flex items-center gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value.slice(0, 1000))}
-                onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate(); }}
-                placeholder="댓글 달기…"
-                className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-              />
-              <button onClick={() => commentText.trim() && addComment.mutate()} disabled={!commentText.trim() || addComment.isPending}
-                aria-label="댓글 등록" className="text-gray-500 hover:text-gray-900 disabled:text-gray-300"><Send size={16} /></button>
+            <div className="space-y-1">
+              <div className="relative flex items-center gap-2">
+                <input
+                  value={commentText}
+                  onChange={handleCommentChange}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate(); }}
+                  placeholder="댓글 달기… (@를 쳐서 멘션)"
+                  className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
+                />
+                <button onClick={() => commentText.trim() && addComment.mutate()} disabled={!commentText.trim() || addComment.isPending}
+                  aria-label="댓글 등록" className="text-gray-500 hover:text-gray-900 disabled:text-gray-300"><Send size={16} /></button>
+                {/* 멘션 자동완성 */}
+                {mentionQuery && mentionUsers && mentionUsers.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white shadow-md z-10 max-h-40 overflow-y-auto">
+                    {mentionUsers.slice(0, 5).map(u => (
+                      <button key={u.id} onClick={() => insertMention(u)}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg">
+                        @{u.nickname || u.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -286,7 +397,11 @@ function StoryCard({ story }: { story: Story }) {
 }
 
 export default function FeedPage() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const qc = useQueryClient();
+  const [showHighlightModal, setShowHighlightModal] = useState(false);
+  const [highlightName, setHighlightName] = useState('');
+  const [highlightIsPublic, setHighlightIsPublic] = useState(true);
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['story-feed'],
@@ -294,6 +409,25 @@ export default function FeedPage() {
     initialPageParam: 1,
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
     enabled: isAuthenticated,
+  });
+
+  // 로그인한 사용자의 하이라이트 불러오기
+  const { data: myHighlights } = useQuery<any[]>({
+    queryKey: ['my-highlights'],
+    queryFn: () => user?.id ? api.get(`/stories/highlights/${user.id}`).then(r => r.data) : Promise.resolve([]),
+    enabled: !!user?.id,
+  });
+
+  const createHighlight = useMutation({
+    mutationFn: (data: { name: string; isPublic: boolean }) =>
+      api.post('/stories/highlights', data).then(r => r.data),
+    onSuccess: () => {
+      setHighlightName('');
+      setShowHighlightModal(false);
+      qc.invalidateQueries({ queryKey: ['my-highlights'] });
+      toast.success('하이라이트가 생성되었습니다.');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '생성에 실패했습니다.'),
   });
 
   const stories = data?.pages.flatMap((p) => p.stories) ?? [];
@@ -321,6 +455,86 @@ export default function FeedPage() {
 
       {/* 본문은 보는 화면 기준 가운데 정렬(max-w-2xl mx-auto) */}
       <div className="max-w-2xl mx-auto px-6">
+        {/* 하이라이트 앨범 */}
+        {myHighlights && (myHighlights.length > 0 || isAuthenticated) && (
+          <div className="mb-6 pb-6 border-b border-gray-100">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* "+" 버튼 — 새 하이라이트 생성 */}
+              {isAuthenticated && (
+                <button
+                  onClick={() => setShowHighlightModal(true)}
+                  className="flex flex-col items-center gap-1.5"
+                >
+                  <div className="h-16 w-16 rounded-full border-2 border-gray-300 border-dashed flex items-center justify-center hover:border-gray-400 hover:bg-gray-50 transition">
+                    <Plus size={20} className="text-gray-400" />
+                  </div>
+                  <span className="text-xs text-gray-500">추가</span>
+                </button>
+              )}
+              {/* 하이라이트 앨범 */}
+              {myHighlights?.map(h => (
+                <div key={h.id} className="flex flex-col items-center gap-1.5">
+                  <button
+                    className="h-16 w-16 rounded-full border-2 border-gray-200 overflow-hidden hover:border-gray-400 bg-gray-100"
+                    title={h.name}
+                  >
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 text-white text-xs font-bold">
+                      {h.name.slice(0, 2)}
+                    </div>
+                  </button>
+                  <span className="text-xs text-gray-600 text-center max-w-16 truncate">{h.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 새 하이라이트 생성 모달 */}
+        {showHighlightModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHighlightModal(false)}>
+            <div className="bg-white rounded-lg shadow-lg p-6 w-96 max-w-full mx-3" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-semibold mb-4">새 하이라이트</h2>
+              <input
+                type="text"
+                value={highlightName}
+                onChange={e => setHighlightName(e.target.value)}
+                placeholder="하이라이트 이름"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 mb-4"
+              />
+              <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={highlightIsPublic}
+                  onChange={e => setHighlightIsPublic(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-600">공개</span>
+              </label>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setShowHighlightModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => {
+                    if (highlightName.trim()) {
+                      createHighlight.mutate({ name: highlightName.trim(), isPublic: highlightIsPublic });
+                    } else {
+                      toast.error('하이라이트 이름을 입력하세요.');
+                    }
+                  }}
+                  disabled={!highlightName.trim() || createHighlight.isPending}
+                  className="px-4 py-2 text-sm bg-gray-950 text-white hover:bg-gray-900 disabled:opacity-50 rounded-lg"
+                >
+                  {createHighlight.isPending ? '생성 중...' : '생성'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Composer />
 
         {isLoading ? (
