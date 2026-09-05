@@ -119,7 +119,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     돌고 있었다. 2026-09-04 에 돌린 뒤 실서버를 R2 공개 주소로 재 보니 —
     **작품은 t240·t800 둘 다 84/84 인데 갤러리·전시·공모 이미지는 0/5, 아바타도 없었다.**
     t800 은 작품 격자 전용이라 그래도 맞지만, **t240 은 목록이라 온갖 종류가 섞이므로** 작품만 채워선 못 켠다.
-    그래서 `SOURCES` 13개(작품·갤러리·전시·공모·전시사진·홍보사진·아바타·소식·게시글·리뷰·히어로·광고·혜택)로 확장했다.
+    그래서 `SOURCES` 를 18개로 확장했다.
+    ⚠️⚠️ **컬럼 이름만 grep 해서 목록을 만들지 말 것** — `imageUrl`·`url` 로 훑어 13개를 넣었는데,
+    이름이 다르거나 **JSON 안에** 든 다섯이 빠졌다: `Gallery.mainImage` · `Show.posterImage` ·
+    `ExhibitionSubmission.artworkList`(JSON `[{image}]`) · `Application.artworkImages`(JSON `[url]`) ·
+    `ChatMessage.attachmentUrl`. 하필 `artworkList` 가 **운영페이지**(`<Thumb src={w.image}>`)의 그림이다 —
+    **이미지 149건·96MB 라는 `Thumb` 을 만든 바로 그 화면**인데 정작 백필에서 빠져 있었다.
     ⚠️ **이미지를 들고 있는 모델을 새로 만들면 `SOURCES` 에도 추가할 것** — 빠뜨리면 그 종류만 조용히 원본을 받는다.
     ⚠️ 첨부파일·포트폴리오 파일(PDF/HWP/ZIP)은 넣지 말 것 — 썸네일을 만들 수 없어 원본만 헛되이 내려받는다.
     ⚠️ **확인 없이 플래그를 켜지 말 것.** 켜도 화면은 폴백 덕에 멀쩡해 보여서, 요청이 두 배가 된 걸 눈으로는 못 잡는다.

@@ -20,6 +20,14 @@
  * (CLAUDE.md 21b). 그래서 `SOURCES` 에 url 을 가진 모델을 전부 넣는다.
  * ⚠️ 새로 이미지를 들고 있는 모델을 만들면 **여기에도 추가할 것.** 빠뜨리면 그 종류만 조용히 느려진다.
  *
+ * ⚠️⚠️ **컬럼 이름만 훑어 목록을 만들지 말 것** (2026-09-05, 같은 날 두 번 당했다).
+ * `imageUrl`·`url` 로 grep 해서 13개를 넣었더니 이름이 다르거나 JSON 안에 든 다섯이 빠졌다 —
+ * `Gallery.mainImage` · `Show.posterImage` · `ExhibitionSubmission.artworkList`(JSON `[{image}]`) ·
+ * `Application.artworkImages`(JSON `[url]`) · `ChatMessage.attachmentUrl`.
+ * 하필 `artworkList` 가 **운영페이지**(`<Thumb src={w.image}>`)의 그림이다 — 이미지 149건·96MB 라는
+ * `Thumb` 을 만든 바로 그 화면인데 정작 백필에서 빠져 있었다.
+ * 확인은 스키마가 아니라 **결과로** 한다: 실서버 이미지 주소에 `/t240/` 을 끼워 `curl -I` 가 200 인지 본다.
+ *
  * ## 어디서 돌리나
  * R2 자격증명이 있어야 한다 → **Render 셸에서** 돌리는 게 맞다(로컬은 디스크 저장 모드라 R2 키가 없다).
  *   cd backend && npx tsx scripts/backfill-thumbs.ts            # 실제 실행
@@ -84,10 +92,27 @@ async function exists(key: string): Promise<boolean> {
  * ⚠️ 첨부파일(`attachmentUrl`)·포트폴리오 파일(`portfolioFileUrl`)·외부 링크(`linkUrl`)는 **넣지 않는다**.
  *    PDF·HWP·ZIP 이라 썸네일을 만들 수 없고(makeThumb 가 null), 헛되이 원본만 내려받는다.
  */
+/**
+ * JSON 컬럼에 박힌 이미지 주소를 꺼낸다.
+ * ⚠️ 옛 행에는 깨진 JSON·다른 모양이 섞여 있을 수 있다 — 하나가 실패해도 나머지는 돌아야 하므로 통째로 감싼다.
+ */
+function fromJson(raw: string | null, pick: (v: any) => unknown): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(pick).filter((u): u is string => typeof u === 'string' && u.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 // null 을 그대로 받는다 — nullable 컬럼(avatar·imageUrl)이 섞여 있고, 걸러내는 건 collectUrls 한 곳이다
 const SOURCES: { label: string; load: () => Promise<(string | null)[]> }[] = [
   { label: 'PortfolioImage', load: () => prisma.portfolioImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
   { label: 'GalleryImage', load: () => prisma.galleryImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'Gallery.mainImage', load: () => prisma.gallery.findMany({ select: { mainImage: true } }).then(r => r.map(x => x.mainImage)) },
+  { label: 'Show.posterImage', load: () => prisma.show.findMany({ select: { posterImage: true } }).then(r => r.map(x => x.posterImage)) },
   { label: 'ExhibitionImage', load: () => prisma.exhibitionImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
   { label: 'Exhibition.imageUrl', load: () => prisma.exhibition.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
   { label: 'ShowImage', load: () => prisma.showImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
@@ -99,6 +124,24 @@ const SOURCES: { label: string; load: () => Promise<(string | null)[]> }[] = [
   { label: 'HeroSlide', load: () => prisma.heroSlide.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
   { label: 'AdBanner', load: () => prisma.adBanner.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
   { label: 'Benefit', load: () => prisma.benefit.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+  // ⚠️ JSON 안에 든 것 — 운영페이지가 `<Thumb src={w.image}>` 로 그리는 자리다.
+  //    Thumb 을 만든 계기(이미지 149건·96MB)가 바로 이 화면인데 정작 백필에서 빠져 있었다(2026-09-05).
+  {
+    label: 'Submission.artworkList',
+    load: () => prisma.exhibitionSubmission.findMany({ select: { artworkList: true } })
+      .then(r => r.flatMap(x => fromJson(x.artworkList, (a) => a?.image))),
+  },
+  {
+    label: 'Application.artworkImages',
+    load: () => prisma.application.findMany({ select: { artworkImages: true } })
+      .then(r => r.flatMap(x => fromJson(x.artworkImages, (a) => a))),
+  },
+  // 대화 첨부는 IMAGE 만 — VIDEO·FILE 은 썸네일을 만들 수 없다
+  {
+    label: 'ChatMessage(IMAGE)',
+    load: () => prisma.chatMessage.findMany({ where: { attachmentType: 'IMAGE' }, select: { attachmentUrl: true } })
+      .then(r => r.map(x => x.attachmentUrl)),
+  },
 ];
 
 /** 모든 출처에서 주소를 모아 **중복 없이** 돌려준다. 어느 출처에서 처음 나왔는지도 함께 센다. */
@@ -121,7 +164,7 @@ async function collectUrls(): Promise<string[]> {
       urls.push(u);
       added++;
     }
-    console.log(`  ${src.label.padEnd(20)} ${String(rows.filter(Boolean).length).padStart(5)}건 → 새 주소 ${added}`);
+    console.log(`  ${src.label.padEnd(26)} ${String(rows.filter(Boolean).length).padStart(5)}건 → 새 주소 ${added}`);
   }
   return urls;
 }
