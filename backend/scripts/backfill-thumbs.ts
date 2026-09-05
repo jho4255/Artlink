@@ -12,6 +12,14 @@
  * 원본을 받아 t240·t800 을 만들어 **없는 것만** 올린다. 원본은 읽기만 하고 절대 건드리지 않는다.
  * 중간에 죽어도 다시 돌리면 이미 있는 것은 건너뛴다(멱등).
  *
+ * ## ⚠️ 대상은 PortfolioImage 만이 아니다 (2026-09-05 확장)
+ * 처음엔 `PortfolioImage` 만 돌았다. 그래서 2026-09-04 백필 후 실서버를 재 보니
+ * **작품은 84/84 인데 갤러리·전시·공모 이미지는 0/5**, 아바타도 없었다.
+ * `Thumb` 의 `THUMB_SIZES.list.backfilled` 를 켜려면 목록에 뜨는 **모든** 종류가 채워져 있어야 한다 —
+ * 한 종류라도 비면 그 이미지마다 **404(약 27KB) 를 쏘고 나서 원본을 또 받아** 요청이 두 배가 된다
+ * (CLAUDE.md 21b). 그래서 `SOURCES` 에 url 을 가진 모델을 전부 넣는다.
+ * ⚠️ 새로 이미지를 들고 있는 모델을 만들면 **여기에도 추가할 것.** 빠뜨리면 그 종류만 조용히 느려진다.
+ *
  * ## 어디서 돌리나
  * R2 자격증명이 있어야 한다 → **Render 셸에서** 돌리는 게 맞다(로컬은 디스크 저장 모드라 R2 키가 없다).
  *   cd backend && npx tsx scripts/backfill-thumbs.ts            # 실제 실행
@@ -68,13 +76,61 @@ async function exists(key: string): Promise<boolean> {
   }
 }
 
+/**
+ * 썸네일을 만들 이미지가 들어 있는 곳 전부.
+ *
+ * ⚠️ 한 주소가 여러 곳에 있을 수 있다(예: `Exhibition.imageUrl` 은 첫 `ExhibitionImage.url` 과 같은 값이다).
+ *    아래에서 주소로 dedupe 하므로 겹쳐 적어도 두 번 처리되지 않는다 — 빠뜨리는 것보다 겹치는 게 낫다.
+ * ⚠️ 첨부파일(`attachmentUrl`)·포트폴리오 파일(`portfolioFileUrl`)·외부 링크(`linkUrl`)는 **넣지 않는다**.
+ *    PDF·HWP·ZIP 이라 썸네일을 만들 수 없고(makeThumb 가 null), 헛되이 원본만 내려받는다.
+ */
+// null 을 그대로 받는다 — nullable 컬럼(avatar·imageUrl)이 섞여 있고, 걸러내는 건 collectUrls 한 곳이다
+const SOURCES: { label: string; load: () => Promise<(string | null)[]> }[] = [
+  { label: 'PortfolioImage', load: () => prisma.portfolioImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'GalleryImage', load: () => prisma.galleryImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'ExhibitionImage', load: () => prisma.exhibitionImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'Exhibition.imageUrl', load: () => prisma.exhibition.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+  { label: 'ShowImage', load: () => prisma.showImage.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'PromoPhoto', load: () => prisma.promoPhoto.findMany({ select: { url: true } }).then(r => r.map(x => x.url)) },
+  { label: 'User.avatar', load: () => prisma.user.findMany({ select: { avatar: true } }).then(r => r.map(x => x.avatar)) },
+  { label: 'Story.images', load: () => prisma.story.findMany({ select: { images: true } }).then(r => r.flatMap(x => x.images)) },
+  { label: 'Post.images', load: () => prisma.post.findMany({ select: { images: true } }).then(r => r.flatMap(x => x.images)) },
+  { label: 'Review.imageUrl', load: () => prisma.review.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+  { label: 'HeroSlide', load: () => prisma.heroSlide.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+  { label: 'AdBanner', load: () => prisma.adBanner.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+  { label: 'Benefit', load: () => prisma.benefit.findMany({ select: { imageUrl: true } }).then(r => r.map(x => x.imageUrl)) },
+];
+
+/** 모든 출처에서 주소를 모아 **중복 없이** 돌려준다. 어느 출처에서 처음 나왔는지도 함께 센다. */
+async function collectUrls(): Promise<string[]> {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const src of SOURCES) {
+    let rows: (string | null)[];
+    try {
+      rows = await src.load();
+    } catch (e) {
+      // 모델이 없는 옛 스키마에서도 나머지는 돌아야 한다
+      console.warn(`  ${src.label}: 읽기 실패 — 건너뜁니다 (${(e as Error).message})`);
+      continue;
+    }
+    let added = 0;
+    for (const u of rows) {
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      urls.push(u);
+      added++;
+    }
+    console.log(`  ${src.label.padEnd(20)} ${String(rows.filter(Boolean).length).padStart(5)}건 → 새 주소 ${added}`);
+  }
+  return urls;
+}
+
 async function main() {
-  const images = await prisma.portfolioImage.findMany({
-    select: { id: true, url: true },
-    orderBy: { id: 'asc' },
-    ...(LIMIT ? { take: LIMIT } : {}),
-  });
-  console.log(`대상 ${images.length}장${DRY ? ' (dry-run — 아무것도 올리지 않습니다)' : ''}\n`);
+  console.log('출처별 수집');
+  const all = await collectUrls();
+  const images = (LIMIT ? all.slice(0, LIMIT) : all).map((url) => ({ url }));
+  console.log(`\n대상 ${images.length}장 (중복 제거 후 전체 ${all.length})${DRY ? ' — dry-run, 아무것도 올리지 않습니다' : ''}\n`);
 
   const stat = { done: 0, skipped: 0, notR2: 0, fetchFail: 0, makeFail: 0, bytesIn: 0, bytesOut: 0 };
 
