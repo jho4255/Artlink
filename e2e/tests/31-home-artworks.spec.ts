@@ -37,7 +37,11 @@ function watchHighlight(page: Page) {
 }
 
 test.describe('홈 구성', () => {
-  test('★ 화면 맨 위 섹션이 ArtWorks 다 (히어로보다 위)', async ({ page }) => {
+  /**
+   * 순서는 [배너] → [ArtWorks] → [나머지] 다 (2026-09-05 에 앞의 둘을 맞바꿨다).
+   * ⚠️ 배너는 슬라이드가 하나도 없어도 스켈레톤으로 자리를 지키므로 **항상** 잴 수 있다.
+   */
+  test('★ 맨 위가 배너, 그 아래가 ArtWorks', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
 
@@ -46,8 +50,14 @@ test.describe('홈 구성', () => {
         const el = Array.from(document.querySelectorAll('h2')).find(h => h.textContent?.trim().startsWith(sel));
         return el ? el.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY;
       };
-      return { artworks: y('ArtWorks'), gotm: y('Gallery of the Month') };
+      const hero = document.querySelector('[data-testid="home-hero"]');
+      return {
+        hero: hero ? hero.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY,
+        artworks: y('ArtWorks'),
+        gotm: y('Gallery of the Month'),
+      };
     });
+    expect(order.hero).toBeLessThan(order.artworks);
     expect(order.artworks).toBeLessThan(order.gotm);
   });
 

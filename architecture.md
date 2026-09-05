@@ -373,7 +373,7 @@ ArtLink/
 
 | 페이지 | 주요 기능 | 관련 코드 |
 |--------|----------|-----------|
-| HomePage | ArtWorks → Hero 슬라이더 → GotM (2026-08-27 개편, 퀵액션 삭제) | `components/home/*` |
+| HomePage | Hero 슬라이더 → ArtWorks → 인기글·진행중전시·마감임박공모·GotM (2026-09-05 배너를 맨 위로) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |

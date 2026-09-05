@@ -307,8 +307,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   `e2e/tests/50-feed-mention-highlight.spec.ts`. ⚠️ 그 e2e 는 예전에 "입력칸이 보이는가"만 봐서, 멘션이 **없는 API**를
   부르고 하이라이트에 `onClick` 이 없던 동안에도 **통과했다**. 보이는지가 아니라 눌러서 무슨 일이 나는지를 볼 것.
 
-### 홈 레이아웃 (2026-08-29)
-- ArtWorks → 배너(HeroSlider) → **1행 [좌 인기글 / 우 진행중인 전시]** → **2행 [좌 마감임박 공모 / 우 주목할 갤러리] 1:1**.
+### 홈 레이아웃 (2026-08-29, 순서는 2026-09-05 갱신)
+- 배너(HeroSlider) → ArtWorks → **1행 [좌 인기글 / 우 진행중인 전시]** → **2행 [좌 마감임박 공모 / 우 주목할 갤러리] 1:1**.
+  ⚠️ 2026-08-27~09-04 는 **작품이 맨 위**였다(아래 '홈 구성' 항목 참고). 2026-09-05 사용자 요청으로 배너를 맨 위로 되돌렸다.
+  ⚠️ 배너가 맨 위일 땐 **위쪽 테두리를 두지 말 것** — Navbar 가 이미 `border-b` 라 선이 두 줄로 보인다(`border-y` → `border-b`).
+  ⚠️ ArtWorks 는 **공개 작품이 0점이면 `null` 을 돌려준다** — 감싼 `<section>` 의 `py` 만 남아 빈 띠가 된다.
+  로컬에서 배너 아래가 휑하면 레이아웃이 아니라 **데이터**를 먼저 볼 것(`GET /api/explore/highlight` 가 `images:[]`).
 - 진행중인 전시(`OngoingShows`) = `/shows?showStatus=ongoing` + `getShowStatus==='ongoing'`. 마감임박 공모(`ClosingSoonExhibitions`) = `/exhibitions?scope=open`(이미 마감일 오름차순)에서 dday≥0 앞부터. 둘 다 좁은 레일, 썸네일은 `Thumb`.
 - **히어로 배너**(`HeroSlider`, 스크롤-스냅 슬라이딩): 자동 전환 **10초**, 슬라이드 애니메이션 rAF 900ms ease-in-out(브라우저 smooth 는 속도를 못 정한다). 좌우 화살표는 호버 때만 또렷이. (가로 split-flap 플립을 시도했다가 **롤백** — 슬라이딩이 낫다는 판단, 2026-08-29)
 - **광고 슬롯**(`AdBanner`, `routes/ad.ts`, `AdSlot`): Admin 이 [광고 관리] 탭에서 등록. 사이드바 **로그아웃 아래**에 활성 배너 1개(position 순). 이미지·링크는 우리 저장소·안전 스킴만. 우상단 'AD' 라벨.
@@ -1285,8 +1289,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **모바일(lg↓)은 가운데 5메뉴를 하단 고정 탭바로 내렸다(2026-08-29, `components/layout/BottomTabBar.tsx`, catch 앱 방식).**
       정의는 **`lib/navLinks.ts` 하나** — 데스크톱 상단 중앙과 하단 탭바가 공유(아이콘 포함). `Layout` 이 본문에 `pb`(바 높이+safe-area)를 줘 가림 방지.
       그래서 모바일 [메뉴](햄버거)에는 이제 **마이페이지 탭 + 로그아웃만** 들어가고, 햄버거 자체가 **로그인 시에만** 뜬다(비로그인은 하단바+[로그인]으로 충분).
-- **홈 구성 (2026-08-27 개편)**: `ArtWorks` → `Hero 슬라이더` → `Gallery of the Month`. 이 순서다.
-    - **최상단은 작품이다.** 예전엔 히어로 배너가 맨 위, 작품(구 Favorites)이 맨 아래였다.
+- **홈 구성 (2026-09-05 현재)**: `Hero 슬라이더` → `ArtWorks` → 나머지. 이 순서다.
+    - **최상단은 배너다.** 2026-08-27~09-04 사이에는 작품(ArtWorks)이 맨 위였고, 2026-09-05 사용자 요청으로 되돌렸다.
+      (그 이전, 2026-08-27 개편 전에도 배너가 맨 위였다 — 즉 한 바퀴 돌아 원래대로다.)
+      맞바꾸는 건 `HomePage.tsx` 의 두 블록뿐이다.
     - 히어로와 GOTM 사이에 있던 **퀵 내비게이션(QuickActionCards)은 Navbar와 중복이라 삭제**했다(파일도 제거).
 - **ArtWorks 섹션** (`components/home/ArtWorks.tsx`, 구 `ExploreHighlight` = 구 'Favorites'):
     - 제목은 **ArtLink 로고와 같은 색 규칙** — `Art`(gray-900) + `Works`(#dc3545). 로고와 짝이 맞아야 브랜드 이름처럼 읽힌다. **부제는 두지 않는다.**
