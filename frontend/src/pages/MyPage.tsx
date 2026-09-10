@@ -1451,7 +1451,6 @@ function FavoritesSection() {
             const img = fav.gallery?.mainImage || fav.show?.posterImage || null;
             const title = fav.gallery?.name || fav.exhibition?.title || fav.show?.title || '';
             const sub = fav.exhibition?.gallery?.name || fav.show?.gallery?.name || null;
-            const rating = fav.gallery?.rating;
             const link = fav.galleryId ? `/galleries/${fav.galleryId}` : fav.exhibitionId ? `/exhibitions/${fav.exhibitionId}` : `/shows/${fav.showId}`;
 
             return (
@@ -1465,17 +1464,12 @@ function FavoritesSection() {
                   <div>
                     <h4 className="text-base font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">{title}</h4>
                     {sub && <p className="text-sm text-gray-400 mt-0.5">{sub}</p>}
-                    {/* 리뷰 0건이면 ★0.0 대신 '아직 리뷰 없음' */}
-                    {rating != null && (
+                    {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10). 갤러리 찜에만 해당된다 */}
+                    {fav.gallery && (
                       <div className="flex items-center gap-1 mt-1">
-                        {(fav.gallery?.reviewCount ?? 0) > 0 ? (
-                          <>
-                            <Star size={13} className="text-[#c4302b] fill-[#c4302b]" />
-                            <span className="text-sm text-[#c4302b]">{rating.toFixed(1)}</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-gray-400">아직 리뷰 없음</span>
-                        )}
+                        <span className="text-sm text-gray-400">
+                          {(fav.gallery.reviewCount ?? 0) > 0 ? `리뷰 ${fav.gallery.reviewCount}개` : '아직 리뷰 없음'}
+                        </span>
                       </div>
                     )}
                   </div>

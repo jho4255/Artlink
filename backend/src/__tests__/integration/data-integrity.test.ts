@@ -1,6 +1,7 @@
 /**
  * 데이터 정합성 복합 시나리오 테스트
- * - 리뷰 → 별점 재계산 → GotM 반영 체인
+ * - 리뷰 → 리뷰 개수 재계산 → GotM 반영 체인
+ *   ⚠️ **별점은 2026-09-10 에 없앴다** — 이 체인은 이제 '개수' 로 흐른다.
  * - Cascade 삭제 정합성
  * - 찜 상태 일관성 (Gallery + Exhibition + Show)
  * - 승인 상태 전환 정합성
@@ -22,9 +23,9 @@ describe('데이터 정합성 복합 시나리오', () => {
   });
 
   // ============================================================
-  // 시나리오 1: 리뷰 → 별점 재계산 → GotM 반영 → 리뷰 삭제 → 별점 재계산 체인
+  // 시나리오 1: 리뷰 → 리뷰 개수 재계산 → GotM 반영 → 리뷰 삭제 → 개수 재계산 체인
   // ============================================================
-  describe('시나리오 1: 리뷰-별점-GotM 연쇄 정합성', () => {
+  describe('시나리오 1: 리뷰-개수-GotM 연쇄 정합성', () => {
     beforeEach(async () => {
       // 부분 정리 (리뷰, 찜, GotM, 전시, 공모, 갤러리)
       await testPrisma.galleryOfMonth.deleteMany();
@@ -39,7 +40,7 @@ describe('데이터 정합성 복합 시나리오', () => {
       await testPrisma.gallery.deleteMany();
     });
 
-    it('Artist1 리뷰(5점) → Artist2 리뷰(3점) → GotM 등록 → Artist1 삭제 → 별점 갱신 체인', async () => {
+    it('★ Artist1 리뷰 → Artist2 리뷰 → GotM 등록 → Artist1 삭제 → 리뷰 개수 갱신 체인', async () => {
       // 승인된 갤러리 생성
       const gallery = await testPrisma.gallery.create({
         data: {
@@ -67,27 +68,23 @@ describe('데이터 정합성 복합 시나리오', () => {
       });
       await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex2.id, status: 'ACCEPTED' } });
 
-      // 1) Artist1이 별점 5 리뷰 작성
+      // 1) Artist1 리뷰 작성
       const review1Res = await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, exhibitionId: ex1.id, rating: 5, content: '최고의 갤러리!' });
+        .send({ galleryId: gallery.id, exhibitionId: ex1.id, content: '최고의 갤러리!' });
       expect(review1Res.status).toBe(201);
       const review1Id = review1Res.body.id;
 
-      // 갤러리 rating=5 확인
       const g1 = await testPrisma.gallery.findUnique({ where: { id: gallery.id } });
-      expect(g1!.rating).toBe(5);
       expect(g1!.reviewCount).toBe(1);
 
-      // 2) Artist2가 별점 3 리뷰 작성
+      // 2) Artist2 리뷰 작성
       const review2Res = await request.post('/api/reviews')
         .set('Authorization', artist2Token)
-        .send({ galleryId: gallery.id, exhibitionId: ex2.id, rating: 3, content: '보통입니다' });
+        .send({ galleryId: gallery.id, exhibitionId: ex2.id, content: '보통입니다' });
       expect(review2Res.status).toBe(201);
 
-      // 갤러리 rating=4 ((5+3)/2) 확인
       const g2 = await testPrisma.gallery.findUnique({ where: { id: gallery.id } });
-      expect(g2!.rating).toBe(4);
       expect(g2!.reviewCount).toBe(2);
 
       // 3) Admin이 이달의 갤러리 등록
@@ -99,28 +96,26 @@ describe('데이터 정합성 복합 시나리오', () => {
         });
       expect(gotmRes.status).toBe(201);
 
-      // GET /gallery-of-month에서 rating=4 확인
+      // GET /gallery-of-month 에서 리뷰 2개 확인
       const gotmList1 = await request.get('/api/gallery-of-month');
       expect(gotmList1.status).toBe(200);
       const gotmEntry1 = gotmList1.body.find((g: any) => g.galleryId === gallery.id);
       expect(gotmEntry1).toBeDefined();
-      expect(gotmEntry1.gallery.rating).toBe(4);
+      expect(gotmEntry1.gallery.reviewCount).toBe(2);
 
-      // 4) Artist1이 리뷰 삭제 → rating=3
+      // 4) Artist1 이 리뷰 삭제 → 개수 1
       const deleteRes = await request.delete(`/api/reviews/${review1Id}`)
         .set('Authorization', artist1Token);
       expect(deleteRes.status).toBe(200);
 
-      // DB에서 rating=3 확인
       const g3 = await testPrisma.gallery.findUnique({ where: { id: gallery.id } });
-      expect(g3!.rating).toBe(3);
       expect(g3!.reviewCount).toBe(1);
 
-      // 5) GET /gallery-of-month에서 rating=3 반영 확인
+      // 5) GET /gallery-of-month 에도 반영
       const gotmList2 = await request.get('/api/gallery-of-month');
       const gotmEntry2 = gotmList2.body.find((g: any) => g.galleryId === gallery.id);
       expect(gotmEntry2).toBeDefined();
-      expect(gotmEntry2.gallery.rating).toBe(3);
+      expect(gotmEntry2.gallery.reviewCount).toBe(1);
     });
   });
 
@@ -184,7 +179,7 @@ describe('데이터 정합성 복합 시나리오', () => {
       await testPrisma.application.create({ data: { userId: 1, exhibitionId: exhibition.id, status: 'ACCEPTED' } });
       await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, exhibitionId: exhibition.id, rating: 4, content: 'Cascade 리뷰' });
+        .send({ galleryId: gallery.id, exhibitionId: exhibition.id, content: 'Cascade 리뷰' });
 
       // Favorite 생성 (Gallery, Exhibition, Show 각각)
       await request.post('/api/favorites/toggle')
@@ -496,7 +491,7 @@ describe('데이터 정합성 복합 시나리오', () => {
       await testPrisma.gallery.deleteMany();
     });
 
-    it('Artist1/2 동시 리뷰 → 별점 평균 정밀도, 독립적 찜 상태', async () => {
+    it('★ Artist1/2 동시 리뷰 → 리뷰 개수 정합성, 독립적 찜 상태', async () => {
       // 승인된 갤러리 생성
       const gallery = await testPrisma.gallery.create({
         data: {
@@ -524,26 +519,26 @@ describe('데이터 정합성 복합 시나리오', () => {
       });
       await testPrisma.application.create({ data: { userId: 2, exhibitionId: exB.id, status: 'ACCEPTED' } });
 
-      // Artist1: 별점 4 리뷰
+      // Artist1 리뷰
       const r1 = await request.post('/api/reviews')
         .set('Authorization', artist1Token)
-        .send({ galleryId: gallery.id, exhibitionId: exA.id, rating: 4, content: '좋아요' });
+        .send({ galleryId: gallery.id, exhibitionId: exA.id, content: '좋아요' });
       expect(r1.status).toBe(201);
 
-      // Artist2: 별점 3 리뷰
+      // Artist2 리뷰
       const r2 = await request.post('/api/reviews')
         .set('Authorization', artist2Token)
-        .send({ galleryId: gallery.id, exhibitionId: exB.id, rating: 3, content: '괜찮아요' });
+        .send({ galleryId: gallery.id, exhibitionId: exB.id, content: '괜찮아요' });
       expect(r2.status).toBe(201);
 
-      // 별점 평균 = (4+3)/2 = 3.5 (소수점 정밀도)
+      // 리뷰 개수 = 2
       const g = await testPrisma.gallery.findUnique({ where: { id: gallery.id } });
-      expect(g!.rating).toBe(3.5);
+      expect(g!.reviewCount).toBe(2);
       expect(g!.reviewCount).toBe(2);
 
-      // API 응답에서도 rating 확인
+      // API 응답에서도 개수 확인
       const galDetail = await request.get(`/api/galleries/${gallery.id}`);
-      expect(galDetail.body.rating).toBe(3.5);
+      expect(galDetail.body.reviewCount).toBe(2);
 
       // Artist1 찜
       const fav1 = await request.post('/api/favorites/toggle')
@@ -587,9 +582,9 @@ describe('데이터 정합성 복합 시나리오', () => {
       });
       expect(favCount).toBe(1);
 
-      // 별점은 영향 없음 (여전히 3.5)
+      // 찜은 리뷰 개수에 영향 없음 (여전히 2개)
       const gFinal = await testPrisma.gallery.findUnique({ where: { id: gallery.id } });
-      expect(gFinal!.rating).toBe(3.5);
+      expect(gFinal!.reviewCount).toBe(2);
     });
   });
 });

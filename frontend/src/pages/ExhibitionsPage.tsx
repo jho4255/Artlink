@@ -28,8 +28,7 @@ export default function ExhibitionsPage() {
   };
   const selectedRegion = searchParams.get('region');
   const setSelectedRegion = (v: string | null) => setParam('region', v);
-  const minGalleryRating = searchParams.get('minGalleryRating') ? Number(searchParams.get('minGalleryRating')) : null;
-  const setMinGalleryRating = (v: number | null) => setParam('minGalleryRating', v);
+  // ⚠️ 갤러리 별점 필터는 2026-09-10 에 없앴다(별점 자체를 없앴다). 서버도 무시한다.
   const selectedType = searchParams.get('type');
   const setSelectedType = (v: string | null) => setParam('type', v);
   // 마감된 공고를 볼지 — URL 에 실어야 뒤로가기·주소 공유에서 탭이 유지된다
@@ -43,12 +42,11 @@ export default function ExhibitionsPage() {
   const closedTab = scope === 'closed';
 
   const { data: exhibitions = [], isLoading, isError, refetch } = useQuery<Exhibition[]>({
-    queryKey: ['exhibitions', scope, selectedRegion, minGalleryRating, selectedType, appliedSearch],
+    queryKey: ['exhibitions', scope, selectedRegion, selectedType, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (scope === 'closed') params.set('scope', 'closed');
       if (selectedRegion) params.set('region', selectedRegion);
-      if (minGalleryRating) params.set('minGalleryRating', String(minGalleryRating));
       if (selectedType) params.set('type', selectedType);
       if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/exhibitions?${params}`).then(r => r.data);
@@ -57,7 +55,7 @@ export default function ExhibitionsPage() {
     refetchOnMount: 'always',
   });
 
-  const currentQueryKey = ['exhibitions', scope, selectedRegion, minGalleryRating, selectedType, appliedSearch] as const;
+  const currentQueryKey = ['exhibitions', scope, selectedRegion, selectedType, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (exhibitionId: number) => api.post('/favorites/toggle', { exhibitionId }),
     onMutate: async (exhibitionId: number) => {
@@ -83,9 +81,6 @@ export default function ExhibitionsPage() {
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
     activeFilters.push({ label: regionLabels[selectedRegion], onRemove: () => setSelectedRegion(null) });
-  }
-  if (minGalleryRating) {
-    activeFilters.push({ label: `갤러리 ${minGalleryRating}점+`, onRemove: () => setMinGalleryRating(null) });
   }
   if (selectedType) {
     activeFilters.push({ label: exhibitionTypeLabels[selectedType], onRemove: () => setSelectedType(null) });

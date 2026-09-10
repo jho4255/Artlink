@@ -368,6 +368,7 @@ ArtLink/
 | / | HomePage | X |
 | /galleries | GalleriesPage | X |
 | /galleries/:id | GalleryDetailPage | X |
+| /artists | ArtistsPage | X |
 | /exhibitions | ExhibitionsPage | X |
 | /exhibitions/:id | ExhibitionDetailPage | X |
 | /shows | ShowsPage | X |
@@ -385,6 +386,7 @@ ArtLink/
 | HomePage | Hero 슬라이더 → ArtWorks → 인기글·진행중전시·마감임박공모·GotM (2026-09-05 배너를 맨 위로) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
+| ArtistsPage | [작가] 탭 — 좌 작가 목록(누르면 `/portfolio/:id`) / 우 작품 격자 | `pages/ArtistsPage.tsx` |
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |
 | ExhibitionDetailPage | 공모 상세, 지원하기(+이메일), 홍보사진, 삭제(오너/Admin) | `pages/ExhibitionDetailPage.tsx` |
 | ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
@@ -586,6 +588,29 @@ cd frontend && npm run dev
 - 미설정 시 콘솔 로그 출력 (개발 환경)
 - 전송 실패해도 지원 자체는 성공 처리 (best-effort)
 - 구현: `backend/src/lib/mailer.ts`
+
+## 별점 제거 (2026-09-10)
+
+갤러리 리뷰에서 **점수만** 뺐다. 리뷰 글·사진·익명은 그대로다.
+
+- `Review.rating` → **nullable**(마이그레이션 `20260910160000_review_rating_optional`). 컬럼은 지우지 않는다 —
+  그 전에 쓰인 점수는 실제 사용자가 남긴 기록이다. 신규 리뷰는 null.
+- `Gallery.rating` → **동결**. 더 이상 갱신하지 않는다(새 점수가 null 이라 계속 평균을 내면 옛 표본의 평균이 된다).
+  `Gallery.reviewCount` 는 **계속 갱신**한다 — 별점과 무관한 '리뷰 개수'다(`routes/review.ts` 의 `syncReviewCount`).
+- 없앤 것: 작성 폼의 별 선택 · 목록/상세/홈/찜목록의 별점 표시 · 갤러리 [별점 필터]·[별점순 정렬] ·
+  공모 목록 [갤러리 별점 필터] · SEO 설명의 별점.
+- ⚠️ 필터·정렬 쿼리는 **400 이 아니라 무시**한다(옛 주소·북마크가 죽지 않게).
+- ⚠️ 되살아나기 쉬워서 `frontend/src/__tests__/noRatingUi.test.ts` 가 소스를 훑어 감시한다.
+
+## [작가] 탭 / ArtistsPage (2026-09-10)
+
+Navbar 가운데 **홈과 갤러리 사이**. 좌 작가 목록 / 우 작품 격자.
+
+- 작가 목록: `GET /api/explore/artists?seed=N` → `[{ id, name, avatar, workCount }]`.
+  **공개 작품이 있는 작가만**, 탈퇴 작가 제외. **순서는 시드 랜덤**(시드 없으면 `dailySeed()` — 하루 고정).
+  `workCount` 는 응답에만 있고 **화면에는 안 그린다**(목록 필터의 근거라 남겨 둔다).
+- 이름 클릭 → `/portfolio/:id`(그 작가의 공개 홈페이지). 격자를 거르지는 않는다.
+- 작품 격자는 홈 `ArtWorks` 와 같은 `GET /explore/highlight`(여기는 24장, 홈은 8장).
 
 ## HeroSlider 구현 방식
 

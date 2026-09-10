@@ -19,7 +19,11 @@ export interface Gallery {
   description: string;
   detailDesc?: string;
   region: string;
-  rating: number;
+  /**
+   * ⚠️ **별점은 2026-09-10 에 없앴다** — 이 필드는 그 시점 값에서 동결된 레거시라 화면에 쓰지 말 것.
+   *    타입에서 아예 빼서 실수로 다시 그리는 걸 컴파일 단계에서 막는다(서버도 안 내려준다).
+   *    리뷰 자체는 그대로 있고, 개수(`reviewCount`)만 쓴다.
+   */
   reviewCount: number;
   viewCount?: number; // 상세 조회수 (Admin 전용 노출)
   status: string;
@@ -94,7 +98,7 @@ export interface Exhibition {
   canOperate?: boolean;
   // reviewCount는 상세 API(include)에서만 내려옴 — 목록 API(select)에는 없어 optional
   // ⚠️ **null 일 수 있다** — 아트링크가 갤러리를 안 끼고 여는 공모. 반드시 `gallery?.` 로 읽을 것
-  gallery: (Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'> & { reviewCount?: number }) | null;
+  gallery: (Pick<Gallery, 'id' | 'name' | 'mainImage' | 'region'> & { reviewCount?: number }) | null;
   promoPhotos?: PromoPhoto[];
   isFavorited?: boolean;
 }
@@ -124,7 +128,7 @@ export interface HeroSlide {
 
 export interface Review {
   id: number;
-  rating: number;
+  // ⚠️ 별점(rating)은 2026-09-10 에 없앴다 — 서버가 받지도 내려주지도 않는다.
   content: string;
   imageUrl?: string;
   anonymous: boolean;
@@ -140,7 +144,7 @@ export interface Favorite {
   galleryId?: number;
   exhibitionId?: number;
   showId?: number;
-  gallery?: Pick<Gallery, 'id' | 'name' | 'mainImage' | 'rating'> & { reviewCount?: number };
+  gallery?: Pick<Gallery, 'id' | 'name' | 'mainImage'> & { reviewCount?: number };
   exhibition?: { id: number; title: string; gallery: { name: string } };
   show?: { id: number; title: string; posterImage: string; gallery: { name: string } };
 }

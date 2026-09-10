@@ -4,17 +4,20 @@
  * 기능:
  *  - 갤러리 목록을 반응형 그리드로 표시
  *  - 지역 필터 (서울/경기북부/경기남부/대전/부산)
- *  - 별점 필터 (3점 이상 / 4점 이상)
- *  - 별점순 정렬 토글
- *  - 각 갤러리 카드: 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 별점
+ *  - 리뷰순 정렬 토글
+ *  - 각 갤러리 카드: 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 리뷰 개수
  *  - 갤러리 클릭 시 상세 페이지(/galleries/:id) 이동
  *
- * API: GET /api/galleries?region=SEOUL&minRating=3&sortBy=rating
+ * ⚠️ **별점은 2026-09-10 에 없앴다** — 별점 필터(3점+/4점+)와 별점순 정렬도 함께 뺐다.
+ *    점수를 화면에 안 보여주면서 그걸로 거르게 하면 **기준을 알 수 없는 필터**가 된다.
+ *    서버도 `minRating`·`sortBy=rating` 을 무시한다.
+ *
+ * API: GET /api/galleries?region=SEOUL&sortBy=reviewCount
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Star, Heart, Phone, MapPin, X, Plus, Search } from 'lucide-react';
+import { Heart, Phone, MapPin, X, Plus, Search, MessageSquare } from 'lucide-react';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
@@ -24,12 +27,6 @@ import type { Gallery } from '@/types';
 
 // 지역 필터 옵션
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
-
-// 별점 필터 옵션
-const ratingFilters = [
-  { label: '3점 이상', value: 3 },
-  { label: '4점 이상', value: 4 },
-];
 
 export default function GalleriesPage() {
   const queryClient = useQueryClient();
@@ -47,8 +44,6 @@ export default function GalleriesPage() {
   };
   const selectedRegion = searchParams.get('region');
   const setSelectedRegion = (v: string | null) => setParam('region', v);
-  const minRating = searchParams.get('minRating') ? Number(searchParams.get('minRating')) : null;
-  const setMinRating = (v: number | null) => setParam('minRating', v);
   const sortBy = searchParams.get('sortBy');
   const setSortBy = (v: string | null) => setParam('sortBy', v);
   const appliedSearch = searchParams.get('q') ?? '';
@@ -57,11 +52,10 @@ export default function GalleriesPage() {
 
   // 갤러리 목록 조회
   const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
-    queryKey: ['galleries', selectedRegion, minRating, sortBy, appliedSearch],
+    queryKey: ['galleries', selectedRegion, sortBy, appliedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedRegion) params.set('region', selectedRegion);
-      if (minRating) params.set('minRating', String(minRating));
       if (sortBy) params.set('sortBy', sortBy);
       if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/galleries?${params}`).then(r => r.data);
@@ -71,7 +65,7 @@ export default function GalleriesPage() {
   });
 
   // 찜하기 토글 - 낙관적 업데이트
-  const currentQueryKey = ['galleries', selectedRegion, minRating, sortBy, appliedSearch] as const;
+  const currentQueryKey = ['galleries', selectedRegion, sortBy, appliedSearch] as const;
   const favMutation = useMutation({
     mutationFn: (galleryId: number) => api.post('/favorites/toggle', { galleryId }),
     onMutate: async (galleryId: number) => {
@@ -102,12 +96,6 @@ export default function GalleriesPage() {
     activeFilters.push({
       label: regionLabels[selectedRegion] || selectedRegion,
       onRemove: () => setSelectedRegion(null),
-    });
-  }
-  if (minRating) {
-    activeFilters.push({
-      label: `${minRating}점 이상`,
-      onRemove: () => setMinRating(null),
     });
   }
   if (appliedSearch) {
@@ -172,24 +160,6 @@ export default function GalleriesPage() {
           ))}
         </div>
 
-        {/* 별점 */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="text-gray-700 text-sm font-medium w-10">별점</span>
-          {ratingFilters.map(rf => (
-            <button
-              key={rf.value}
-              onClick={() => setMinRating(minRating === rf.value ? null : rf.value)}
-              className={`cursor-pointer transition-colors ${
-                minRating === rf.value
-                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
-                  : 'text-gray-400 hover:text-gray-900'
-              }`}
-            >
-              {rf.label}
-            </button>
-          ))}
-        </div>
-
       </div>
 
       {/* 적용된 필터 */}
@@ -214,16 +184,6 @@ export default function GalleriesPage() {
 
       {/* 정렬 — 우측 정렬 (패딩으로 터치 히트영역 확보, 시각 위치는 네거티브 마진으로 유지) */}
       <div className="flex justify-end items-center gap-1 mb-8 text-sm">
-        <button
-          onClick={() => setSortBy(sortBy === 'rating' ? null : 'rating')}
-          className={`px-2.5 py-2.5 -my-2.5 cursor-pointer transition-colors ${
-            sortBy === 'rating'
-              ? 'text-gray-900 underline underline-offset-4 decoration-1'
-              : 'text-gray-400 hover:text-gray-900'
-          }`}
-        >
-          별점순
-        </button>
         <button
           onClick={() => setSortBy(sortBy === 'reviewCount' ? null : 'reviewCount')}
           className={`px-2.5 py-2.5 -my-2.5 -mr-2.5 cursor-pointer transition-colors ${
@@ -291,14 +251,12 @@ export default function GalleriesPage() {
                   )}
                 </div>
 
-                {/* 별점 — 리뷰 0건이면 '아직 리뷰 없음' (신규 갤러리가 최하점처럼 보이지 않도록) */}
+                {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10). 0건이면 '아직 리뷰 없음' */}
                 <div className="flex items-center gap-1.5 mt-1.5">
                   {gallery.reviewCount > 0 ? (
-                    <>
-                      <Star size={15} className="text-[#c4302b] fill-[#c4302b]" />
-                      <span className="text-base font-medium text-[#c4302b]">{gallery.rating.toFixed(1)}</span>
-                      <span className="text-sm text-gray-400">({gallery.reviewCount})</span>
-                    </>
+                    <span className="flex items-center gap-1 text-sm text-gray-600">
+                      <MessageSquare size={14} /> 리뷰 {gallery.reviewCount}개
+                    </span>
                   ) : (
                     <span className="text-sm text-gray-400">아직 리뷰 없음</span>
                   )}

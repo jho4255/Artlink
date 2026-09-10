@@ -248,7 +248,7 @@ describe('Workflow Reliability', () => {
       const filteredBusan = await request.get('/api/galleries?region=BUSAN');
       expect(filteredBusan.body.find((g: any) => g.id === galleryId)).toBeUndefined();
 
-      // 3. sortBy=rating 정렬
+      // 3. 정렬 — 별점순은 2026-09-10 에 없앴다. 옛 쿼리가 와도 에러 없이 기본 정렬로 답한다.
       const sortedRes = await request.get('/api/galleries?sortBy=rating');
       expect(sortedRes.status).toBe(200);
 
@@ -264,7 +264,7 @@ describe('Workflow Reliability', () => {
         .set('Authorization', artistToken);
       expect(favList1.body.some((f: any) => f.galleryId === galleryId)).toBe(true);
 
-      // 6. Gallery 리뷰 작성 (별점, 내용, anonymous) — 공모 + ACCEPTED 지원 필요
+      // 6. Gallery 리뷰 작성 (내용, anonymous) — 공모 + ACCEPTED 지원 필요. 별점은 없앴다.
       const reviewExh = await testPrisma.exhibition.create({
         data: {
           title: '리뷰용 공모', type: 'SOLO', deadline: new Date('2099-12-31'),
@@ -275,13 +275,13 @@ describe('Workflow Reliability', () => {
       await testPrisma.application.create({ data: { userId: 1, exhibitionId: reviewExh.id, status: 'ACCEPTED' } });
       const reviewRes = await request.post('/api/reviews')
         .set('Authorization', artistToken)
-        .send({ galleryId, exhibitionId: reviewExh.id, rating: 4, content: '좋은 갤러리입니다.', anonymous: true });
+        .send({ galleryId, exhibitionId: reviewExh.id, content: '좋은 갤러리입니다.', anonymous: true });
       expect(reviewRes.status).toBe(201);
       expect(reviewRes.body.anonymous).toBe(true);
 
-      // 7. 갤러리 rating 갱신 확인
+      // 7. 갤러리 리뷰 개수 갱신 확인 (별점 평균은 더 이상 갱신하지 않는다)
       const galleryDetail = await request.get(`/api/galleries/${galleryId}`);
-      expect(galleryDetail.body.rating).toBe(4);
+      expect(galleryDetail.body.reviewCount).toBe(1);
       expect(galleryDetail.body.reviewCount).toBe(1);
 
       // 8. Exhibition 조회 (D-day 필터: deadline >= now 만 노출)
@@ -398,7 +398,7 @@ describe('Workflow Reliability', () => {
     it('Gallery 유저가 리뷰 작성 → 403', async () => {
       const res = await request.post('/api/reviews')
         .set('Authorization', galleryToken)
-        .send({ galleryId, exhibitionId: 99999, rating: 5, content: 'Gallery trying review' });
+        .send({ galleryId, exhibitionId: 99999, content: 'Gallery trying review' });
       expect(res.status).toBe(403);
     });
 
@@ -433,7 +433,7 @@ describe('Workflow Reliability', () => {
 
     it('비로그인 사용자가 리뷰 작성 시도 → 401', async () => {
       const res = await request.post('/api/reviews')
-        .send({ galleryId, exhibitionId: 99999, rating: 5, content: 'no auth' });
+        .send({ galleryId, exhibitionId: 99999, content: 'no auth' });
       expect(res.status).toBe(401);
     });
 

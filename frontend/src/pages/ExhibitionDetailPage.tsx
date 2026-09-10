@@ -22,7 +22,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical, ImageOff } from 'lucide-react';
+import { Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -60,7 +60,6 @@ type ExhibitionDetail = Exhibition & {
   gallery: {
     id: number;
     name: string;
-    rating: number;
     mainImage?: string;
     region: string;
     ownerId?: number;
@@ -410,7 +409,7 @@ export default function ExhibitionDetailPage() {
           </div>
           {isAdminHosted(exhibition) ? (
             /* 아트링크 주최 공모 — 주최는 아트링크이고 갤러리들은 다같이 참여하는 것이라
-               특정 갤러리를 대표로 세우지 않는다(별점·리뷰도 이 공모의 것이 아니라 붙이지 않는다). */
+               특정 갤러리를 대표로 세우지 않는다(리뷰도 이 공모의 것이 아니라 붙이지 않는다). */
             /* ⚠️ 갤러리를 하나도 안 낀 공모가 있다(2026-09-10) — 그때 '참여 갤러리 :' 만 덩그러니
                   남으면 데이터가 빠진 것처럼 보인다. 아예 다른 문구를 쓴다. */
             (exhibition.managerGalleries ?? []).length > 0 ? (
@@ -435,15 +434,10 @@ export default function ExhibitionDetailPage() {
               className="text-gray-500 hover:underline text-sm mt-1 py-2.5 -my-2.5 flex items-center gap-1"
             >
               {exhibition.gallery?.name}
-              {/* 리뷰 0건이면 ★0.0 대신 '리뷰 없음' — 신규 갤러리가 최하점처럼 보이지 않도록 */}
-              {(exhibition.gallery?.reviewCount ?? 0) > 0 ? (
-                <div className="flex items-center gap-0.5 ml-2">
-                  <Star size={12} className="text-[#c4302b] fill-[#c4302b]" />
-                  <span className="text-xs text-gray-500">{exhibition.gallery?.rating?.toFixed(1)}</span>
-                </div>
-              ) : (
-                <span className="text-xs text-gray-400 ml-2">리뷰 없음</span>
-              )}
+              {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10) */}
+              <span className="ml-2 text-xs text-gray-400">
+                {(exhibition.gallery?.reviewCount ?? 0) > 0 ? `리뷰 ${exhibition.gallery?.reviewCount}개` : '리뷰 없음'}
+              </span>
             </button>
           )}
           {/* 메시지 — 공모를 보고 있는 자리에서 바로 갤러리와 대화를 연다(갠톡 길목 중 하나) */}

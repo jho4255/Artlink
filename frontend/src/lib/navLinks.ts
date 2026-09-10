@@ -1,4 +1,4 @@
-import { Home, Building2, Image, Megaphone, MessageSquare, type LucideIcon } from 'lucide-react';
+import { Home, Palette, Building2, Image, Megaphone, MessageSquare, type LucideIcon } from 'lucide-react';
 
 /**
  * 가운데 내비게이션 정의 — **한 곳**에서만 관리한다.
@@ -16,6 +16,9 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { path: '/', label: '홈', icon: Home },
+  // [작가] — 홈과 갤러리 사이. 작가 목록 + 작품 격자(`/artists`, 2026-09-10 신설).
+  // ⚠️ 홈의 ArtWorks 섹션으로 보내지 말 것 — [홈]과 같은 주소가 되어 탭이 둘일 이유가 없어진다.
+  { path: '/artists', label: '작가', icon: Palette },
   { path: '/galleries', label: '갤러리', icon: Building2 },
   { path: '/shows', label: '전시', icon: Image },
   { path: '/exhibitions', label: '모집공고', icon: Megaphone },

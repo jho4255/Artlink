@@ -41,7 +41,8 @@ router.get('/', optionalAuth, async (req, res, next) => {
     }
 
     if (region) where.region = region;
-    if (minRating) where.rating = { gte: parseFloat(minRating as string) };
+    // ⚠️ 별점 필터(minRating)는 2026-09-10 에 없앴다 — 별점을 화면에 안 보여주면서
+    //    그걸로 거르게 하면 **기준을 알 수 없는 필터**가 된다. 쿼리로 와도 무시한다.
 
     // 키워드 검색 (이름/주소/소개)
     const q = ((req.query.q as string) || '').trim();
@@ -53,7 +54,8 @@ router.get('/', optionalAuth, async (req, res, next) => {
       ];
     }
 
-    const orderBy: any = sortBy === 'rating' ? { rating: 'desc' } : sortBy === 'reviewCount' ? { reviewCount: 'desc' } : { createdAt: 'desc' };
+    // 별점순은 없앴다(위 참고). 리뷰 **개수**순은 별점과 무관하므로 남긴다.
+    const orderBy: any = sortBy === 'reviewCount' ? { reviewCount: 'desc' } : { createdAt: 'desc' };
 
     const galleries = await prisma.gallery.findMany({
       where,

@@ -65,6 +65,16 @@ async function notifyArtworkLike(imageId: number, likerId: number): Promise<void
   }
 }
 
+/**
+ * 시드가 없을 때 쓰는 **날짜 시드** — 하루 동안 같은 순서.
+ *
+ * ⚠️ 매 요청 무작위로 두지 말 것. 같은 화면을 다시 열 때마다 순서가 바뀌면 방금 본 것을 못 찾고,
+ *    목록이 이유 없이 흔들리는 것처럼 보인다. 새로고침은 **버튼으로만** 일어나야 한다.
+ */
+function dailySeed(now: Date = new Date()): number {
+  return now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
+}
+
 // 시드 기반 결정적 PRNG (mulberry32) — seed가 다르면 전혀 다른 난수열(매번/새로고침 시 랜덤 정렬).
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -139,6 +149,69 @@ function shuffleNoAdjacent(
   }
   return arrangeNoAdjacent(base, c => c.portfolio.userId, rand).map(c => c.id);
 }
+
+/**
+ * GET /artists — **작품을 공개한 작가 목록** (인증 불필요, 2026-09-10)
+ *
+ * [작가] 탭(`/artists`)의 왼쪽 목록이 쓴다. 누르면 그 작가의 공개 홈페이지(`/portfolio/:id`)로 간다.
+ *
+ * ⚠️ **공개 작품이 한 장이라도 있는 작가만** 내려보낸다. 가입만 하고 아무것도 안 올린 계정까지
+ *    실으면 목록이 회원 명부가 되고, 눌러 들어가면 **텅 빈 홈페이지**가 나온다.
+ * ⚠️ 탈퇴(`deletedAt`) 작가는 뺀다 — 탐색 피드(`GET /`)와 같은 기준이어야 한다.
+ *    두 화면이 다른 작가 집합을 보여주면 "왜 여기만 없지" 가 된다.
+ * ## 순서는 **랜덤** (2026-09-10 사용자 요청으로 가나다순에서 변경)
+ * `?seed=N` 으로 섞는다 — 화면이 들어올 때마다 새 시드를 만들고, [작가 새로고침]이 시드만 갈아끼운다
+ * (홈 ArtWorks·둘러보기와 같은 규칙이라 세 화면에서 누른 느낌이 같다).
+ *   ⚠️ 가나다순으로 되돌리지 말 것 — 고정 순서면 'ㄱ' 으로 시작하는 작가만 늘 맨 위에 걸리고
+ *      뒤쪽 작가는 스크롤을 내려야만 보인다. 노출을 골고루 돌리는 쪽을 택했다.
+ *   ⚠️ 정렬을 DB 에 맡기지도 말 것 — 이름순이던 시절에도 Postgres 기본 콜레이션이 한글 자모 순서를
+ *      보장하지 않아 서버 로케일에 따라 목록이 달라졌다. 순서는 항상 여기서 정한다.
+ *   ⚠️ seed 가 없거나 이상하면 **날짜 시드**로 떨어진다(하루 동안 고정). 매 요청 무작위로 두면
+ *      같은 화면을 다시 열 때마다 순서가 바뀌어 방금 본 작가를 못 찾는다.
+ */
+router.get('/artists', async (req, res, next) => {
+  try {
+    // 작가별 공개 작품 수를 한 번에 — 작가 수만큼 쿼리를 돌지 않는다(N+1)
+    const grouped = await prisma.portfolioImage.groupBy({
+      by: ['portfolioId'],
+      where: { showInExplore: true, portfolio: { user: { deletedAt: null } } },
+      _count: { portfolioId: true },
+    });
+    if (grouped.length === 0) return res.json([]);
+
+    const portfolios = await prisma.portfolio.findMany({
+      where: { id: { in: grouped.map((g) => g.portfolioId) } },
+      select: {
+        id: true,
+        user: { select: { id: true, name: true, nickname: true, avatar: true } },
+      },
+    });
+    const countBy = new Map(grouped.map((g) => [g.portfolioId, g._count.portfolioId]));
+
+    const artists = portfolios
+      .filter((pf) => pf.user)
+      .map((pf) => ({
+        id: pf.user!.id,
+        name: publicName(pf.user),
+        avatar: pf.user!.avatar,
+        // 화면에는 안 그린다(2026-09-10). 이 목록에 **왜** 들어왔는지를 말해 주는 값이라 남겨 둔다 —
+        // 0 이면 애초에 걸러졌어야 하므로, 회귀 테스트가 이 값으로 필터를 검증한다.
+        workCount: countBy.get(pf.id) ?? 0,
+      }));
+
+    // 시드 랜덤 — 같은 시드면 같은 순서(새로고침 전까지 목록이 안 흔들린다)
+    const seed = (Math.abs(parseInt(req.query.seed as string)) || dailySeed()) >>> 0;
+    const rand = mulberry32(seed);
+    // id 로 한 번 고정한 뒤 섞는다 — DB 반환 순서에 기대면 같은 시드로도 결과가 달라진다
+    artists.sort((a, b) => a.id - b.id);
+    for (let i = artists.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [artists[i], artists[j]] = [artists[j]!, artists[i]!];
+    }
+
+    res.json(artists);
+  } catch (err) { next(err); }
+});
 
 // GET / — 공개 탐색 피드 (Explore)
 //   sort=random&seed=N : 시드 기반 랜덤 + 같은 작가 연속 방지 (기본)
@@ -270,9 +343,7 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
 
       if (basis === 'random') {
         // 날짜 시드 — 하루 동안 같은 순서(첫 진입마다 바뀌면 홈이 산만해진다)
-        const today = new Date();
-        const seed = today.getUTCFullYear() * 10000 + (today.getUTCMonth() + 1) * 100 + today.getUTCDate();
-        orderedIds = shuffleNoAdjacent(candidates, seed);
+        orderedIds = shuffleNoAdjacent(candidates, dailySeed());
       } else {
         orderedIds = candidates
           .map(c => ({ id: c.id, total: allCnt.get(c.id) || 0, week: weekCnt.get(c.id) || 0 }))

@@ -77,10 +77,12 @@ describe('Favorite API (Show)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
 
-      // 갤러리 찜에는 평점 표시용 rating·reviewCount가 포함되어야 함 (리뷰 0건 UI 분기용)
+      // 갤러리 찜에는 리뷰 개수가 포함되어야 함 (리뷰 0건 UI 분기용)
+      // ⚠️ **별점(rating)은 실려 나가면 안 된다** — 2026-09-10 에 없앤 값이라, 응답에 남아 있으면
+      //    화면이 다시 그리기 쉬워지고 동결된 옛 숫자가 되살아난다.
       const galleryFav = res.body.find((f: { galleryId: number | null }) => f.galleryId === gallery.id);
       expect(galleryFav.gallery).toMatchObject({ id: gallery.id });
-      expect(galleryFav.gallery).toHaveProperty('rating');
+      expect(galleryFav.gallery).not.toHaveProperty('rating');
       expect(galleryFav.gallery).toHaveProperty('reviewCount');
     });
   });

@@ -187,17 +187,18 @@ async function fetchSeoFields(kind: SeoKind, id: number): Promise<SeoFields | nu
         name: true,
         description: true,
         region: true,
-        rating: true,
         reviewCount: true,
         mainImage: true,
         images: { select: { url: true }, orderBy: { order: 'asc' }, take: 1 },
       },
     });
     if (!g) return null;
-    const rating = g.reviewCount > 0 ? `별점 ${g.rating.toFixed(1)}(${g.reviewCount})` : undefined;
+    // 별점은 2026-09-10 에 없앴다 — 검색결과·카톡 미리보기에도 안 싣는다(있는 척하면 안 된다).
+    // 리뷰 **개수**는 별점과 무관하므로 남긴다.
+    const reviews = g.reviewCount > 0 ? `리뷰 ${g.reviewCount}개` : undefined;
     return {
       title: `${g.name} | 갤러리 - ArtLink`,
-      description: joinParts([regionLabel(g.region), rating, g.description]),
+      description: joinParts([regionLabel(g.region), reviews, g.description]),
       image: g.mainImage || g.images[0]?.url || null,
       path: `/galleries/${id}`,
     };

@@ -9,18 +9,35 @@ import { maskAnonymousReviews } from '../lib/sanitize';
 const reviewCreateSchema = z.object({
   galleryId: z.number().int().positive('유효한 갤러리 ID가 필요합니다.'),
   exhibitionId: z.number().int().positive('공모를 선택해주세요.'),
-  rating: z.number().int().min(1, '별점은 1~5 사이여야 합니다.').max(5, '별점은 1~5 사이여야 합니다.'),
+  // ⚠️ 별점은 2026-09-10 에 없앴다 — 보내와도 **받지 않는다**(zod 가 걸러낸다).
+  //    옛 리뷰의 점수는 DB에 그대로 있고, 화면 어디에도 표시하지 않는다.
   content: z.string().min(1, '리뷰 내용을 입력해주세요.').max(2000, '리뷰는 2000자 이내로 작성해주세요.'),
   imageUrl: z.string().optional(),
   anonymous: z.boolean().optional(),
 });
 
 const reviewUpdateSchema = z.object({
-  rating: z.number().int().min(1).max(5).optional(),
   content: z.string().min(1).max(2000).optional(),
   imageUrl: z.string().optional(),
   anonymous: z.boolean().optional(),
 });
+
+/**
+ * 갤러리의 **리뷰 개수**를 다시 센다.
+ *
+ * ⚠️ 예전엔 여기서 별점 평균(`Gallery.rating`)도 같이 갱신했다. 2026-09-10 에 별점을 없애면서
+ *    평균은 **더 이상 건드리지 않는다** — 새 리뷰의 점수가 null 이라 계속 계산하면 옛 점수만
+ *    남은 표본의 평균이 되어 실제와 멀어진다. 그 컬럼은 그 시점 값에서 동결된 레거시다.
+ * ⚠️ 개수는 반드시 `_count: { _all: true }` 로 셀 것 — 예전 코드처럼 별점 컬럼으로 세면
+ *    **null 을 빼고 세므로**, 별점 없는 새 리뷰만 쌓인 갤러리가 '리뷰 0개' 로 보인다.
+ */
+async function syncReviewCount(
+  tx: { review: { aggregate: typeof prisma.review.aggregate }; gallery: { update: typeof prisma.gallery.update } },
+  galleryId: number,
+) {
+  const agg = await tx.review.aggregate({ where: { galleryId }, _count: { _all: true } });
+  await tx.gallery.update({ where: { id: galleryId }, data: { reviewCount: agg._count._all } });
+}
 
 const router = Router();
 
@@ -90,7 +107,7 @@ router.get('/reviewable/:galleryId', authenticate, authorize('ARTIST'), async (r
 // 리뷰 작성 (Artist 전용)
 router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema), async (req, res, next) => {
   try {
-    const { galleryId, exhibitionId, rating, content, imageUrl, anonymous } = req.body;
+    const { galleryId, exhibitionId, content, imageUrl, anonymous } = req.body;
 
     // 1) 해당 공모가 이 갤러리의 공모인지 확인
     const exhibition = await prisma.exhibition.findUnique({
@@ -134,21 +151,12 @@ router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema)
           userId: req.user!.id,
           galleryId,
           exhibitionId,
-          rating,
           content,
           imageUrl,
           anonymous: anonymous || false
         }
       });
-      const agg = await tx.review.aggregate({
-        where: { galleryId },
-        _avg: { rating: true },
-        _count: { rating: true }
-      });
-      await tx.gallery.update({
-        where: { id: galleryId },
-        data: { rating: agg._avg.rating || 0, reviewCount: agg._count.rating }
-      });
+      await syncReviewCount(tx, galleryId);
       return review;
     });
 
@@ -163,34 +171,9 @@ router.patch('/:id', authenticate, validate(reviewUpdateSchema), async (req, res
     if (!review) throw new AppError('리뷰를 찾을 수 없습니다.', 404);
     if (review.userId !== req.user!.id) throw new AppError('본인 리뷰만 수정할 수 있습니다.', 403);
 
-    const { rating, content, imageUrl, anonymous } = req.body;
+    const { content, imageUrl, anonymous } = req.body;
 
-    // rating 변경 시 트랜잭션으로 atomic 보장
-    if (rating !== undefined) {
-      const updated = await prisma.$transaction(async (tx) => {
-        const updated = await tx.review.update({
-          where: { id: review.id },
-          data: {
-            ...(rating !== undefined && { rating }),
-            ...(content !== undefined && { content }),
-            ...(imageUrl !== undefined && { imageUrl }),
-            ...(anonymous !== undefined && { anonymous }),
-          }
-        });
-        const agg = await tx.review.aggregate({
-          where: { galleryId: review.galleryId },
-          _avg: { rating: true },
-          _count: { rating: true }
-        });
-        await tx.gallery.update({
-          where: { id: review.galleryId },
-          data: { rating: agg._avg.rating || 0, reviewCount: agg._count.rating }
-        });
-        return updated;
-      });
-      return res.json(updated);
-    }
-
+    // 별점이 없어져 수정이 갤러리 집계에 영향을 주지 않는다 — 트랜잭션이 필요 없다
     const updated = await prisma.review.update({
       where: { id: review.id },
       data: {
@@ -214,18 +197,10 @@ router.delete('/:id', authenticate, async (req, res, next) => {
       throw new AppError('권한이 없습니다.', 403);
     }
 
-    // 트랜잭션으로 삭제 + 평점 재계산 atomic 보장
+    // 삭제 + 리뷰 개수 재계산을 atomic 하게
     await prisma.$transaction(async (tx) => {
       await tx.review.delete({ where: { id: review.id } });
-      const agg = await tx.review.aggregate({
-        where: { galleryId: review.galleryId },
-        _avg: { rating: true },
-        _count: { rating: true }
-      });
-      await tx.gallery.update({
-        where: { id: review.galleryId },
-        data: { rating: agg._avg.rating || 0, reviewCount: agg._count.rating }
-      });
+      await syncReviewCount(tx, review.galleryId);
     });
 
     res.json({ message: '리뷰가 삭제되었습니다.' });

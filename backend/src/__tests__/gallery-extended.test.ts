@@ -2,8 +2,11 @@
  * Gallery/Review/Favorite/GotM/Upload 확장 테스트
  *
  * 기존 테스트에서 커버되지 않는 로직 경로:
- * - Gallery: region 필터, rating 필터/정렬, PATCH detail, cascade delete, 404
- * - Review: CRUD + rating 재계산, anonymous, 권한 검사
+ * - Gallery: region 필터, PATCH detail, cascade delete, 404
+ * - Review: CRUD + 리뷰 개수 재계산, anonymous, 권한 검사
+ *
+ * ⚠️ **별점은 2026-09-10 에 없앴다** — 필터·정렬·평균 재계산이 전부 사라졌다.
+ *    아래 테스트들은 '없어졌는가' 를 확인한다(그냥 지우면 되살아나도 아무도 모른다).
  * - Favorite: gallery 찜 토글 idempotency, GET 목록에 gallery 포함
  * - GotM: 비 Admin 등록/삭제 거부
  * - Upload: 인증 없이 업로드 거부
@@ -66,18 +69,26 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       expect(res.body[0].region).toBe('SEOUL');
     });
 
-    it('minRating=4 필터 시 4점 이상만 반환', async () => {
+    it('★ minRating 필터는 무시된다 — 별점을 없앴다(2026-09-10)', async () => {
+      // 옛 규칙이면 4.5점짜리 1곳만 나왔다. 지금은 거르지 않으므로 둘 다 나와야 한다.
       const res = await request.get('/api/galleries?minRating=4');
       expect(res.status).toBe(200);
-      expect(res.body.every((g: any) => g.rating >= 4)).toBe(true);
-      expect(res.body.length).toBe(1);
+      expect(res.body.length).toBe(2);
     });
 
-    it('sortBy=rating 시 높은 점수 우선', async () => {
+    it('★ sortBy=rating 도 무시된다 (에러가 아니라 기본 정렬)', async () => {
+      // 옛 주소·북마크가 이 쿼리를 달고 올 수 있다 — 400 을 주면 멀쩡한 링크가 죽는다
       const res = await request.get('/api/galleries?sortBy=rating');
       expect(res.status).toBe(200);
       expect(res.body.length).toBe(2);
-      expect(res.body[0].rating).toBeGreaterThanOrEqual(res.body[1].rating);
+    });
+
+    it('★ 응답에 별점이 실려 나가지 않는다', async () => {
+      const res = await request.get('/api/galleries');
+      expect(res.status).toBe(200);
+      // Gallery.rating 은 동결된 레거시 컬럼이라 DB엔 남아 있지만, 화면이 쓰지 않도록 값이 있어도
+      // 표시하지 않는다. 여기서는 **리뷰 개수**가 정상적으로 내려오는지만 본다.
+      expect(res.body[0]).toHaveProperty('reviewCount');
     });
 
     it('PENDING 갤러리는 공개 목록에 미노출', async () => {
@@ -263,32 +274,58 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       exhibitionId2 = await createExhibitionWithAcceptedApp(2, '공모2');
     });
 
-    it('Artist가 리뷰를 작성하면 갤러리 rating이 재계산된다', async () => {
+    it('★ 리뷰를 쓰면 **개수**가 재계산된다 (별점 평균은 더 이상 건드리지 않는다)', async () => {
+      const before = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
+
       await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '좋아요' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '좋아요' });
 
       let gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-      expect(gallery!.rating).toBe(4);
       expect(gallery!.reviewCount).toBe(1);
+      // ⚠️ 동결된 레거시 컬럼 — 새 리뷰가 들어와도 값이 움직이면 안 된다
+      expect(gallery!.rating).toBe(before!.rating);
 
       await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artist2Token}`)
-        .send({ galleryId, exhibitionId: exhibitionId2, rating: 2, content: '보통' });
+        .send({ galleryId, exhibitionId: exhibitionId2, content: '보통' });
 
       gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-      expect(gallery!.rating).toBe(3);
       expect(gallery!.reviewCount).toBe(2);
+      expect(gallery!.rating).toBe(before!.rating);
+    });
+
+    /**
+     * ⚠️ 리뷰 **개수**는 반드시 전체 행을 세야 한다.
+     *    옛 코드처럼 별점 컬럼으로 세면(`_count: { rating: true }`) **null 을 빼고** 세므로,
+     *    별점 없는 새 리뷰만 쌓인 갤러리가 '리뷰 0개' 로 보인다.
+     */
+    it('★ 별점 없는 리뷰도 개수에 들어간다 (null 을 빼고 세면 안 된다)', async () => {
+      await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '별점 없는 리뷰' });
+
+      const saved = await testPrisma.review.findFirst({ where: { exhibitionId: exhibitionId1 } });
+      expect(saved!.rating).toBeNull();     // 서버가 별점을 저장하지 않는다
+      const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
+      expect(gallery!.reviewCount).toBe(1); // 그래도 개수에는 들어간다
+    });
+
+    it('★ 별점을 보내와도 저장하지 않는다 (옛 화면·직접 호출 대비)', async () => {
+      const res = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '별점 실어보냄' });
+      expect(res.status).toBe(201);
+      const saved = await testPrisma.review.findUnique({ where: { id: res.body.id } });
+      expect(saved!.rating).toBeNull();
     });
 
     it('같은 공모에 동일 내용 재전송은 멱등 처리(중복 생성 없이 201, 동일 리뷰 반환)', async () => {
       const r1 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '같은내용' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '같은내용' });
       expect(r1.status).toBe(201);
       const r2 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '같은내용' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '같은내용' });
       expect(r2.status).toBe(201);
       expect(r2.body.id).toBe(r1.body.id);
       const count = await testPrisma.review.count({ where: { exhibitionId: exhibitionId1 } });
@@ -297,39 +334,40 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
 
     it('같은 공모에 다른 내용으로 재작성은 409 (공모당 1회)', async () => {
       await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '첫리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '첫리뷰' });
       const r2 = await request.post('/api/reviews').set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 2, content: '다른리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '다른리뷰' });
       expect(r2.status).toBe(409);
     });
 
-    it('리뷰 수정(rating 변경) 시 갤러리 rating이 재계산된다', async () => {
+    it('★ 리뷰 수정은 내용만 바꾼다 (별점 항목이 없다)', async () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 3, content: '보통' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '보통' });
 
-      await request
+      const patched = await request
         .patch(`/api/reviews/${res.body.id}`)
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ rating: 5 });
+        .send({ content: '다시 생각해보니 좋았어요', rating: 5 });
+      expect(patched.status).toBe(200);
 
-      const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-      expect(gallery!.rating).toBe(5);
+      const saved = await testPrisma.review.findUnique({ where: { id: res.body.id } });
+      expect(saved!.content).toBe('다시 생각해보니 좋았어요');
+      expect(saved!.rating).toBeNull();   // 보내와도 안 받는다
     });
 
-    it('리뷰 삭제 후 갤러리 rating이 0으로 리셋된다', async () => {
+    it('리뷰 삭제 후 갤러리 리뷰 개수가 0으로 돌아간다', async () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '좋아요' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '좋아요' });
 
       await request
         .delete(`/api/reviews/${res.body.id}`)
         .set('Authorization', `Bearer ${artistToken}`);
 
       const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-      expect(gallery!.rating).toBe(0);
       expect(gallery!.reviewCount).toBe(0);
     });
 
@@ -337,7 +375,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: 'Great' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: 'Great' });
 
       const delRes = await request
         .delete(`/api/reviews/${res.body.id}`)
@@ -349,7 +387,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: 'Mine' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: 'Mine' });
 
       const patchRes = await request
         .patch(`/api/reviews/${res.body.id}`)
@@ -362,7 +400,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: 'Mine' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: 'Mine' });
 
       const delRes = await request
         .delete(`/api/reviews/${res.body.id}`)
@@ -374,14 +412,14 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${galleryToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: 'Not allowed' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: 'Not allowed' });
       expect(res.status).toBe(403);
     });
 
     it('미인증 유저는 리뷰를 작성할 수 없다 (401)', async () => {
       const res = await request
         .post('/api/reviews')
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: 'Not allowed' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: 'Not allowed' });
       expect(res.status).toBe(401);
     });
 
@@ -389,7 +427,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '익명 리뷰', anonymous: true });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '익명 리뷰', anonymous: true });
       expect(res.status).toBe(201);
       expect(res.body.anonymous).toBe(true);
     });
@@ -413,7 +451,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '내 리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '내 리뷰' });
 
       const res = await request
         .get('/api/reviews/my')
@@ -437,7 +475,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: ex.id, rating: 5, content: 'No app' });
+        .send({ galleryId, exhibitionId: ex.id, content: 'No app' });
       expect(res.status).toBe(403);
     });
 
@@ -445,12 +483,12 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '첫 리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '첫 리뷰' });
 
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 5, content: '중복 리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '중복 리뷰' });
       expect(res.status).toBe(409);
     });
 
@@ -472,7 +510,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       const res = await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: otherEx.id, rating: 5, content: 'Wrong gallery' });
+        .send({ galleryId, exhibitionId: otherEx.id, content: 'Wrong gallery' });
       expect(res.status).toBe(400);
     });
 
@@ -489,7 +527,7 @@ describe('Gallery/Review/Favorite/GotM/Upload Extended', () => {
       await request
         .post('/api/reviews')
         .set('Authorization', `Bearer ${artistToken}`)
-        .send({ galleryId, exhibitionId: exhibitionId1, rating: 4, content: '리뷰' });
+        .send({ galleryId, exhibitionId: exhibitionId1, content: '리뷰' });
 
       const res = await request
         .get(`/api/reviews/reviewable/${galleryId}`)

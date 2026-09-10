@@ -270,7 +270,11 @@ model Gallery {
   description             String
   detailDesc              String? // 상세 소개 (승인 후 수정 가능)
   region                  String // SEOUL, GYEONGGI_NORTH, GYEONGGI_SOUTH, DAEJEON, BUSAN
+  // 별점 평균 — 2026-09-10 이후로 **갱신하지 않는다**(리뷰에서 별점을 없앴다).
+  // 옛 값이 그대로 남은 **동결된 레거시**다. 화면 어디에서도 읽지 말 것 —
+  // 새 리뷰가 쌓일수록 실제와 멀어지는 숫자라, 다시 표시하면 곧 거짓말이 된다.
   rating                  Float     @default(0)
+  // 리뷰 개수 — 별점과 무관하게 계속 갱신한다('리뷰 N개' 표시와 '리뷰 없음' 판정에 쓴다)
   reviewCount             Int       @default(0)
   viewCount               Int       @default(0) // 상세 페이지 조회수 (Admin 통계용, 비-관리자/비-소유자 조회 시 증가)
   status                  String    @default("PENDING") // PENDING, APPROVED, REJECTED
@@ -456,7 +460,11 @@ model GalleryOfMonth {
 // 리뷰
 model Review {
   id        Int      @id @default(autoincrement())
-  rating    Int // 1-5
+  // 별점 — 2026-09-10 부터 **받지 않는다**(사용자 요청으로 리뷰에서 별점을 없앴다).
+  // ⚠️ 컬럼을 지우지 않고 nullable 로만 바꿨다. 그 전에 쓰인 점수는 실제 사용자가 남긴 기록이라
+  //    되돌릴 수 없게 지울 이유가 없다. 신규 리뷰는 null 이고 화면 어디에도 표시하지 않는다.
+  //    다시 켜려면 이 필드를 필수로 되돌리고 Gallery.rating 재계산을 살리면 된다.
+  rating    Int? // 1-5 (레거시 — 신규 리뷰는 null)
   content   String
   imageUrl  String?
   anonymous Boolean  @default(false)

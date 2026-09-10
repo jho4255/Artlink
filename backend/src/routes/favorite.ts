@@ -21,7 +21,8 @@ router.get('/', authenticate, async (req, res, next) => {
     const favorites = await prisma.favorite.findMany({
       where: { userId: req.user!.id },
       include: {
-        gallery: { select: { id: true, name: true, mainImage: true, rating: true, reviewCount: true, status: true } },
+        // ⚠️ 별점(rating)은 2026-09-10 에 없앴다 — 응답에 싣지 않는다(화면이 다시 그리지 못하게)
+        gallery: { select: { id: true, name: true, mainImage: true, reviewCount: true, status: true } },
         exhibition: {
           select: { id: true, title: true, status: true, gallery: { select: { name: true } } }
         },

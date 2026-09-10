@@ -237,19 +237,15 @@ router.get('/', optionalAuth, async (req, res, next) => {
       where,
       include: {
         gallery: {
-          select: { id: true, name: true, rating: true, mainImage: true, region: true }
+          select: { id: true, name: true, mainImage: true, region: true }
         }
       },
       // 모집 중은 임박한 순, 마감분은 최근에 끝난 순 (오래된 공모가 위로 오면 볼 이유가 없다)
       orderBy: { deadline: scope === 'closed' ? 'desc' : 'asc' }
     });
 
-    // 갤러리 별점 필터 (DB 레벨에서 어려우므로 앱 레벨 필터)
-    let filtered = exhibitions;
-    if (minGalleryRating) {
-      // 갤러리 없는 아트링크 주최 공모는 '갤러리 별점' 필터에서 빠진다 — 별점이 없는 걸 있는 척할 수 없다
-      filtered = exhibitions.filter(e => (e.gallery?.rating ?? -1) >= parseFloat(minGalleryRating as string));
-    }
+    // ⚠️ '갤러리 별점' 필터는 2026-09-10 에 없앴다(별점 자체를 없앴다). 쿼리로 와도 무시한다.
+    const filtered = exhibitions;
 
     // customFields 파싱
     const withParsed = filtered.map((e: any) => ({
@@ -283,7 +279,7 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
       include: {
         exhibition: {
           include: {
-            gallery: { select: { id: true, name: true, rating: true } },
+            gallery: { select: { id: true, name: true } },
             // 이 작가가 자료를 냈는지 / 갤러리가 정산을 시작했는지 — 마이페이지 [내 전시] 의
             // '다음 일정' 과 진행중·종료 분류에 쓴다. 목록 한 번에 같이 담아 N+1 을 만들지 않는다.
             submissions: { where: { userId }, select: { artworkList: true, cv: true, note: true } },

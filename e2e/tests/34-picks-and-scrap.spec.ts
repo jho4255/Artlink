@@ -98,7 +98,7 @@ test.describe('[내 리뷰] 탭은 없앴지만 리뷰 수정·삭제는 살아 
     }
     const made = await api.post(`${API}/reviews`, {
       headers: { Authorization: `Bearer ${tok}` },
-      data: { galleryId: gallery.id, exhibitionId: reviewable[0].id, rating: 5, content: `E2E 리뷰 ${Date.now()}`, anonymous: false },
+      data: { galleryId: gallery.id, exhibitionId: reviewable[0].id, content: `E2E 리뷰 ${Date.now()}`, anonymous: false },
     });
     expect([200, 201]).toContain(made.status());
     await api.dispose();

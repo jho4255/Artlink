@@ -1,7 +1,7 @@
 /**
  * Exhibition Extended Tests
  *
- * 커버리지 보완: 필터(region/type/rating), PATCH description,
+ * 커버리지 보완: 필터(region/type), PATCH description,
  * DELETE, 상세 조회, 지원(중복/만료/권한), 찜 토글, 내 목록 등
  *
  * 각 테스트에서 필요한 데이터를 직접 생성하여 다른 테스트 파일과의 격리 보장
@@ -99,13 +99,14 @@ describe('Exhibition filters (GET /exhibitions)', () => {
     await testPrisma.exhibition.deleteMany({ where: { id: { in: [solo.id, group.id] } } });
   });
 
-  it('minGalleryRating 필터 — 평점 미달 시 빈 배열', async () => {
+  it('★ minGalleryRating 필터는 무시된다 — 별점을 없앴다(2026-09-10)', async () => {
     const ex = await createExhibition({ title: 'Rating Filter Test' });
 
-    // gallery rating 기본 0 → 4점 이상 필터 시 해당 공모 미포함
+    // 옛 규칙이면 갤러리 별점 0 이라 걸러졌다. 지금은 거르지 않으므로 그대로 나와야 한다.
+    // ⚠️ 400 으로 막지 않는 이유: 옛 주소·북마크가 이 쿼리를 달고 올 수 있다.
     const res = await request.get('/api/exhibitions?minGalleryRating=4');
     expect(res.status).toBe(200);
-    expect(res.body.find((e: any) => e.id === ex.id)).toBeUndefined();
+    expect(res.body.find((e: any) => e.id === ex.id)).toBeDefined();
 
     await testPrisma.exhibition.delete({ where: { id: ex.id } });
   });

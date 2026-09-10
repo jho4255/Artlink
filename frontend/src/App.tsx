@@ -39,6 +39,7 @@ const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
 const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
 const SupportPage = lazyWithReload(() => import('@/pages/SupportPage'));
 const ExplorePage = lazyWithReload(() => import('@/pages/ExplorePage'));
+const ArtistsPage = lazyWithReload(() => import('@/pages/ArtistsPage'));
 const MessagesPage = lazyWithReload(() => import('@/pages/MessagesPage'));
 const CommunityPage = lazyWithReload(() => import('@/pages/CommunityPage'));
 const CommunityWritePage = lazyWithReload(() => import('@/pages/CommunityWritePage'));
@@ -70,6 +71,8 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/explore" element={<ExplorePage />} />
+        {/* Navbar [작가] 탭 — 좌 작가 목록 / 우 작품 격자 (2026-09-10) */}
+        <Route path="/artists" element={<ArtistsPage />} />
         <Route path="/galleries" element={<GalleriesPage />} />
         <Route path="/galleries/new" element={<ProtectedRoute><GalleryRegisterPage /></ProtectedRoute>} />
         <Route path="/galleries/:id" element={<GalleryDetailPage />} />

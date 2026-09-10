@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Star, MapPin } from 'lucide-react';
+import { MapPin, MessageSquare } from 'lucide-react';
 import api from '@/lib/axios';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { GalleryOfMonth } from '@/types';
@@ -41,9 +41,10 @@ export default function GalleryOfMonthSection({ variant = 'grid' }: { variant?: 
               />
               <div className="min-w-0">
                 <h3 className="truncate font-serif text-[15px] text-gray-900 group-hover:underline">{item.gallery.name}</h3>
+                {/* 별점은 2026-09-10 에 없앴다 — 남은 건 리뷰가 몇 개 있느냐뿐이다 */}
                 {(item.gallery.reviewCount ?? 0) > 0 ? (
-                  <span className="mt-0.5 flex items-center gap-1 text-xs text-[#c4302b]">
-                    <Star size={12} className="fill-[#c4302b]" /> {item.gallery.rating?.toFixed(1)}
+                  <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+                    <MessageSquare size={11} /> 리뷰 {item.gallery.reviewCount}개
                   </span>
                 ) : (
                   <span className="mt-0.5 block text-xs text-gray-400">아직 리뷰 없음</span>
@@ -84,15 +85,12 @@ export default function GalleryOfMonthSection({ variant = 'grid' }: { variant?: 
 
             {/* 정보 */}
             <div className="mt-3">
-              {/* 별점 — 유일한 컬러 포인트. 리뷰 0건이면 '아직 리뷰 없음' */}
+              {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10). 0건이면 '아직 리뷰 없음' */}
               <div className="flex items-center gap-1.5 mb-2">
                 {(item.gallery.reviewCount ?? 0) > 0 ? (
-                  <>
-                    <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
-                    <span className="text-base font-medium text-[#c4302b]">
-                      {item.gallery.rating?.toFixed(1)}
-                    </span>
-                  </>
+                  <span className="flex items-center gap-1 text-sm text-gray-600">
+                    <MessageSquare size={14} /> 리뷰 {item.gallery.reviewCount}개
+                  </span>
                 ) : (
                   <span className="text-sm text-gray-400">아직 리뷰 없음</span>
                 )}

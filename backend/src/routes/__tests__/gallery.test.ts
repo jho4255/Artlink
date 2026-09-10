@@ -37,11 +37,13 @@ describe('Gallery Routes', () => {
     res.body.forEach((g: any) => expect(g.region).toBe('SEOUL'));
   });
 
-  // 별점 필터
-  it('GET /api/galleries?minRating=4 — 4점 이상만', async () => {
+  // 별점 필터는 2026-09-10 에 없앴다 — 쿼리가 와도 무시하고 200 으로 답한다
+  // (옛 주소·북마크가 이 쿼리를 달고 올 수 있어 400 으로 막지 않는다)
+  it('★ GET /api/galleries?minRating=4 — 필터는 무시된다', async () => {
+    const all = await request.get('/api/galleries');
     const res = await request.get('/api/galleries?minRating=4');
     expect(res.status).toBe(200);
-    res.body.forEach((g: any) => expect(g.rating).toBeGreaterThanOrEqual(4));
+    expect(res.body.length).toBe(all.body.length);
   });
 
   // 상세 조회

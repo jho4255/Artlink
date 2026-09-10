@@ -21,7 +21,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, X, Search, Trash2, Building2, Users, Star, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates } from '@/lib/utils';
@@ -35,7 +35,7 @@ import type { CustomField } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
-interface PickedGallery { id: number; name: string; region?: string; rating?: number }
+interface PickedGallery { id: number; name: string; region?: string }
 
 const emptyForm = {
   title: '',
@@ -83,7 +83,7 @@ function GalleryPicker({
       .slice(0, 8);
   }, [galleries, keyword, selectedIds]);
 
-  const add = (g: any) => onChange([...selected, { id: g.id, name: g.name, region: g.region, rating: g.rating }]);
+  const add = (g: any) => onChange([...selected, { id: g.id, name: g.name, region: g.region }]);
   const remove = (id: number) => onChange(selected.filter(g => g.id !== id));
   // 주관 갤러리 지정 = 목록 맨 앞으로 이동
   const makeHost = (id: number) => {
@@ -162,11 +162,7 @@ function GalleryPicker({
               >
                 <Building2 size={14} className="shrink-0 text-gray-400" />
                 <span className="min-w-0 flex-1 truncate text-sm text-gray-800">{g.name}</span>
-                {g.rating > 0 && (
-                  <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
-                    <Star size={10} className="fill-current" />{g.rating.toFixed(1)}
-                  </span>
-                )}
+                {/* 별점 칩은 2026-09-10 에 뺐다 — 별점 자체를 없앴다 */}
                 <span className="text-[11px] text-gray-400">{regionLabels[g.region] ?? g.region}</span>
                 <Plus size={14} className="shrink-0 text-gray-400" />
               </button>

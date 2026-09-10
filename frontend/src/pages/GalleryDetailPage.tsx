@@ -4,11 +4,12 @@
  * 기능:
  *  - 상단 이미지 슬라이더 (좌우 화살표 네비게이션)
  *  - 우상단 찜하기(하트) 버튼
- *  - 갤러리 기본정보: 이름, 주소, 별점, 한줄소개
+ *  - 갤러리 기본정보: 이름, 주소, 리뷰 개수, 한줄소개
+ *    ⚠️ **별점은 2026-09-10 에 없앴다** — 리뷰 글은 그대로 두고 점수만 뺐다(서버도 안 받는다).
  *  - 상세소개: 갤러리 오너만 수정 버튼 표시
  *  - 진행중인 공모 목록 (D-day 표시)
  *  - 리뷰 섹션:
- *    - Artist 전용 리뷰 작성 폼 (별점, 텍스트, 사진 옵션, 익명 체크박스)
+ *    - Artist 전용 리뷰 작성 폼 (텍스트, 사진 옵션, 익명 체크박스)
  *    - 익명 리뷰 시 "익명의 예술가 N" 표기
  *    - Admin은 리뷰 삭제 버튼 표시
  *
@@ -28,7 +29,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Star, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Camera, X, Edit3, Instagram, Mail, Plus, Loader2 } from 'lucide-react';
+import { Heart, ChevronLeft, ChevronRight, MapPin, Phone, Clock, Trash2, Camera, X, Edit3, Instagram, Mail, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
@@ -85,7 +86,6 @@ export default function GalleryDetailPage() {
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   // 리뷰 작성/수정 폼 상태
-  const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
   const [reviewImageUrl, setReviewImageUrl] = useState('');
@@ -172,7 +172,7 @@ export default function GalleryDetailPage() {
 
   // 리뷰 작성 (Artist 전용)
   const reviewMutation = useMutation({
-    mutationFn: (data: { galleryId: number; exhibitionId: number; rating: number; content: string; anonymous: boolean; imageUrl?: string }) =>
+    mutationFn: (data: { galleryId: number; exhibitionId: number; content: string; anonymous: boolean; imageUrl?: string }) =>
       api.post('/reviews', data),
     retry: false,
     onSuccess: () => {
@@ -181,7 +181,6 @@ export default function GalleryDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['reviewable-exhibitions', id] });
       // 폼 초기화
       setReviewContent('');
-      setReviewRating(5);
       setReviewAnonymous(false);
       setReviewImageUrl('');
       setSelectedExhibitionId(null);
@@ -192,15 +191,14 @@ export default function GalleryDetailPage() {
 
   // 리뷰 수정 (작성자 본인)
   const updateReviewMutation = useMutation({
-    mutationFn: (data: { reviewId: number; rating: number; content: string; anonymous: boolean; imageUrl?: string }) =>
-      api.patch(`/reviews/${data.reviewId}`, { rating: data.rating, content: data.content, anonymous: data.anonymous, imageUrl: data.imageUrl }),
+    mutationFn: (data: { reviewId: number; content: string; anonymous: boolean; imageUrl?: string }) =>
+      api.patch(`/reviews/${data.reviewId}`, { content: data.content, anonymous: data.anonymous, imageUrl: data.imageUrl }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery', id] });
       queryClient.invalidateQueries({ queryKey: ['gallery-of-month'] });
       queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
       setEditingReviewId(null);
       setReviewContent('');
-      setReviewRating(5);
       setReviewAnonymous(false);
       setReviewImageUrl('');
       toast.success('리뷰가 수정되었습니다.');
@@ -363,14 +361,10 @@ export default function GalleryDetailPage() {
             <h1 className="text-2xl font-medium">{gallery.name}</h1>
             <ViewCountBadge count={gallery.viewCount} className="mt-1 shrink-0" />
           </div>
-          {/* 리뷰 0건이면 ★0.0 대신 '아직 리뷰 없음' */}
+          {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10) */}
           <div className="flex items-center gap-2 mt-2">
             {gallery.reviewCount > 0 ? (
-              <>
-                <Star size={16} className="text-[#c4302b] fill-[#c4302b]" />
-                <span className="font-medium">{gallery.rating.toFixed(1)}</span>
-                <span className="text-gray-400 text-sm">({gallery.reviewCount}개 리뷰)</span>
-              </>
+              <span className="text-gray-600 text-sm">리뷰 {gallery.reviewCount}개</span>
             ) : (
               <span className="text-gray-500 text-sm">아직 리뷰 없음</span>
             )}
@@ -752,17 +746,6 @@ export default function GalleryDetailPage() {
                       ))}
                     </select>
                   </div>
-                  {/* 별점 선택 (1~5) */}
-                  <div className="flex gap-1 mb-3">
-                    {[1, 2, 3, 4, 5].map(s => (
-                      <button key={s} onClick={() => setReviewRating(s)}>
-                        <Star
-                          size={20}
-                          className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'}
-                        />
-                      </button>
-                    ))}
-                  </div>
                   {/* 리뷰 텍스트 */}
                   <textarea
                     value={reviewContent}
@@ -821,13 +804,6 @@ export default function GalleryDetailPage() {
                       // 수정 모드
                       <div className="space-y-3">
                         <p className="text-sm font-medium">리뷰 수정</p>
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4, 5].map(s => (
-                            <button key={s} onClick={() => setReviewRating(s)}>
-                              <Star size={18} className={s <= reviewRating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300'} />
-                            </button>
-                          ))}
-                        </div>
                         <textarea
                           value={reviewContent}
                           onChange={e => setReviewContent(e.target.value)}
@@ -844,7 +820,6 @@ export default function GalleryDetailPage() {
                               if (!reviewContent.trim()) { toast.error('리뷰 내용을 입력해주세요.'); return; }
                               updateReviewMutation.mutate({
                                 reviewId: review.id,
-                                rating: reviewRating,
                                 content: reviewContent,
                                 anonymous: reviewAnonymous,
                                 imageUrl: reviewImageUrl || undefined,
@@ -856,7 +831,7 @@ export default function GalleryDetailPage() {
                             수정 완료
                           </button>
                           <button
-                            onClick={() => { setEditingReviewId(null); setReviewContent(''); setReviewRating(5); setReviewAnonymous(false); setReviewImageUrl(''); }}
+                            onClick={() => { setEditingReviewId(null); setReviewContent(''); setReviewAnonymous(false); setReviewImageUrl(''); }}
                             className="px-4 py-2 text-sm text-gray-500"
                           >
                             취소
@@ -874,11 +849,6 @@ export default function GalleryDetailPage() {
                                 <span className="text-xs text-gray-400">{review.exhibition.title}</span>
                               )}
                             </div>
-                            <div className="flex gap-0.5 mt-1">
-                              {[1, 2, 3, 4, 5].map(s => (
-                                <Star key={s} size={12} className={s <= review.rating ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-200'} />
-                              ))}
-                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-400">
@@ -890,7 +860,6 @@ export default function GalleryDetailPage() {
                                 <button
                                   onClick={() => {
                                     setEditingReviewId(review.id);
-                                    setReviewRating(review.rating);
                                     setReviewContent(review.content);
                                     setReviewAnonymous(review.anonymous);
                                     setReviewImageUrl(review.imageUrl || '');
@@ -972,7 +941,6 @@ export default function GalleryDetailPage() {
           reviewMutation.mutate({
             galleryId: Number(id),
             exhibitionId: selectedExhibitionId!,
-            rating: reviewRating,
             content: reviewContent,
             anonymous: reviewAnonymous,
             imageUrl: reviewImageUrl || undefined,

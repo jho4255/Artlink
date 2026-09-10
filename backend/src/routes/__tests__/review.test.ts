@@ -56,14 +56,14 @@ describe('Review Routes', () => {
       galleryId, exhibitionId: exhId1, rating: 5, content: '훌륭한 갤러리입니다', anonymous: false,
     });
     expect(res.status).toBe(201);
-    expect(res.body.rating).toBe(5);
+    // ⚠️ 별점은 2026-09-10 에 없앴다 — 보내와도 저장하지 않는다
+    expect(res.body.rating).toBeNull();
     reviewId = res.body.id;
   });
 
-  // 별점 자동 재계산 확인
-  it('리뷰 작성 후 갤러리 rating이 정확히 재계산됨', async () => {
+  // 리뷰 개수 자동 재계산 확인 (별점 평균은 더 이상 갱신하지 않는다)
+  it('★ 리뷰 작성 후 갤러리 리뷰 개수가 재계산됨', async () => {
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-    expect(gallery!.rating).toBe(5);
     expect(gallery!.reviewCount).toBe(1);
   });
 
@@ -78,14 +78,13 @@ describe('Review Routes', () => {
     expect(gallery!.reviewCount).toBe(1); // 리뷰 수 변화 없음
   });
 
-  // 두 번째 리뷰로 평균 변화 확인 (다른 공모)
-  it('두 번째 리뷰 추가 후 평균 별점 변화', async () => {
+  // 두 번째 리뷰로 개수 변화 확인 (다른 공모)
+  it('★ 두 번째 리뷰 추가 후 리뷰 개수 변화', async () => {
     const token = authToken(2, 'ARTIST');
     await request.post('/api/reviews').set('Authorization', `Bearer ${token}`).send({
       galleryId, exhibitionId: exhId2, rating: 3, content: '보통이에요', anonymous: true,
     });
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-    expect(gallery!.rating).toBe(4); // (5+3)/2 = 4
     expect(gallery!.reviewCount).toBe(2);
   });
 
@@ -118,9 +117,10 @@ describe('Review Routes', () => {
       .send({ rating: 4, content: '수정된 리뷰' });
     expect(res.status).toBe(200);
     expect(res.body.content).toBe('수정된 리뷰');
-    // 별점 재계산: (4+3+4)/3 = 3.67
+    // ⚠️ 별점을 실어 보내도 저장되지 않는다. 개수도 수정으로는 변하지 않는다.
+    expect(res.body.rating).toBeNull();
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-    expect(gallery!.rating).toBeCloseTo(3.67, 1);
+    expect(gallery!.reviewCount).toBe(3);
   });
 
   // Gallery 유저는 리뷰 작성 불가
@@ -133,13 +133,12 @@ describe('Review Routes', () => {
   });
 
   // Admin이 삭제
-  it('DELETE /api/reviews/:id — Admin 삭제 + 별점 재계산', async () => {
+  it('★ DELETE /api/reviews/:id — Admin 삭제 + 리뷰 개수 재계산', async () => {
     const token = authToken(4, 'ADMIN');
     const res = await request.delete(`/api/reviews/${reviewId}`).set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     const gallery = await testPrisma.gallery.findUnique({ where: { id: galleryId } });
-    // 리뷰 2개 남음: Artist2(3) + Artist1 '두 번째 방문 후기'(4)
-    expect(gallery!.rating).toBe(3.5);
+    // 리뷰 2개 남음: Artist2 + Artist1 '두 번째 방문 후기'
     expect(gallery!.reviewCount).toBe(2);
   });
 });
