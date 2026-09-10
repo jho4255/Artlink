@@ -41,6 +41,7 @@ import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSectio
 import KanbanSection from '@/components/admin/KanbanSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
+import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
 import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -2370,7 +2371,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
   }, [initialViewMode]);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
@@ -2404,8 +2405,9 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     deadline: form.deadline,
     exhibitStartDate: form.exhibitStartDate || undefined,
     exhibitDate: form.exhibitDate,
-    submissionDeadline: form.submissionDeadline || undefined,
-  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline]);
+    // 공모만 진행하면 자료제출 단계가 없다 — 남아 있는 입력값으로 순서 검사를 하면 안 된다
+    submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
+  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
 
   // 폼 열기 (draft 복원)
   const openExForm = () => {
@@ -2560,6 +2562,16 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
           ) : (
             <>
               <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
+
+              {/* 어디까지 진행할지 — 이걸 정해야 아래 '자료제출 마감일' 칸이 필요한지가 갈린다 */}
+              <ExhibitionScopePicker
+                recruitOnly={form.recruitOnly}
+                onChange={(next) => {
+                  setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '' } : {}) });
+                  setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; });
+                }}
+              />
+
               <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
                 <HeroImageEdit value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} className="w-full aspect-[16/9]" label="공모 대표 이미지" />
                 <div className="p-5 space-y-3">
@@ -2609,7 +2621,9 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다.
                       min/max 로 달력 자체를 막아, 틀린 날짜를 고르고 저장 버튼에서 튕기는 일이 없게 한다.
                     */}
-                    <div className="col-span-2">
+                    {/* ⚠️ 공모만 진행하면 이 단계가 없다 — 비활성이 아니라 칸 자체를 없앤다.
+                        회색으로 남겨 두면 "왜 못 쓰지" 를 묻게 되고, 서버는 400 으로 막는다. */}
+                    <div className={`col-span-2 ${form.recruitOnly ? 'hidden' : ''}`}>
                       <label className={`text-xs ${formErrors.has('submissionDeadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>작가 자료제출 마감일 *</label>
                       <input type="date" value={form.submissionDeadline} onChange={e => { setForm({...form, submissionDeadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; }); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('submissionDeadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
                       <p className="mt-1 text-[11px] text-gray-400">수락된 작가가 출품작·약력·작가노트를 내야 하는 날짜입니다. 공모 마감일과 전시 시작일 사이로 정해주세요.</p>
@@ -2650,7 +2664,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
                     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
                     if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
-                    if (!form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
+                    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
                     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
                     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
                     const cleanedCustomFields = sanitizeCustomFields(form.customFields);

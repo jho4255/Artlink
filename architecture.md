@@ -61,6 +61,10 @@ ArtLink/
 - **Gallery** — 갤러리 (승인 워크플로우: PENDING → APPROVED / REJECTED)
 - **GalleryImage** — 갤러리 이미지 (1:N)
 - **Exhibition** — 공모 (승인 워크플로우)
+  - `galleryId Int?` — 주관 갤러리. **아트링크(Admin) 주최 공모는 null 일 수 있다**(2026-09-10, 갤러리를 안 끼고 여는 공모).
+    갤러리 주최 공모는 항상 값이 있다. 읽는 쪽은 전부 `gallery?.` — 알림은 `exhibitionNotifyTargets`(비면 Admin 전원).
+  - `recruitOnly Boolean @default(false)` — **공모만 진행**(수락에서 끝). true 면 자료제출·확정·종료·판매·정산 단계가 없고
+    `submissionDeadline` 은 항상 null. 판정은 `lib/exhibitionStage.ts` 한 곳(`assertFullExhibition`).
 - **PromoPhoto** — 전시 종료 후 홍보 사진
 - **Show** — 전시 (갤러리의 실제 전시/행사, 승인 워크플로우)
 - **ShowImage** — 전시 추가 이미지 (1:N)
@@ -82,6 +86,11 @@ ArtLink/
 - **SettlementApproval.snapshot** — 작가가 **응답할 때 본 금액**의 지문. 갤러리가 그 작가 금액을 고치면 어긋나 자동으로 재확인 대상이 된다(`lib/settlementFingerprint.ts`). null=옛 데이터/미응답
 - **Exhibition** 상태필드: recruitmentClosed(모집마감), confirmed(확정·작가수정잠금/전시시작일경과시자동), ended(전시종료)
   - **라이프사이클 순서 강제** (오너 한정, Admin은 우회): 모집마감 → 확정 → 전시종료. 확정은 모집마감 후, 전시종료는 확정 후에만 가능. 역순 해제는 뒷 단계부터.
+  - ⚠️ **`recruitOnly` 공모는 단계가 모집마감 하나뿐**이다. `PATCH /operations/:id/lifecycle` 이 `confirmed`/`ended` 만 400 으로
+    막고 `recruitmentClosed` 는 통과시킨다(라우트 전체를 막으면 모집마감을 못 한다). 화면 스텝퍼(`StatusPanel`)도
+    `steps`/`nodes`/`maxAdvance` 로 길이를 바꾼다 — 단계 수를 상수(3·4)로 박아 두지 말 것.
+  - ⚠️ `confirmed` 는 전시 시작일이 지나면 **자동 true** 다(`computeConfirmed`). `recruitOnly` 화면에서는 이 값을 보면
+    있지도 않은 '전시 확정' 이 뜬다 — `StatusPanel`·`getOperationStage`·`exhibitionStage` 모두 `recruitOnly` 를 먼저 본다.
 - **ExhibitionImage** — 공모 다중 사진 (url, order, exhibitionId Cascade). 첫 사진(order 최소)이 대표 `imageUrl`과 동기화. 기존 `imageUrl`만 있던 공모는 상세 GET 시 lazy 백필. 상세 페이지 인라인 관리(추가/삭제(최소1장)/드래그 순서변경, 최대 20장)
   - API: `POST /api/exhibitions/:id/images`, `DELETE /api/exhibitions/:id/images/:imageId`(최소1장 400), `PATCH /api/exhibitions/:id/images/reorder`{orderedIds}
 - **지원자 관리**: 공모 상세에서 분리된 별도 페이지 `/exhibitions/:id/applicants` (ApplicantsPage). 연락처(닉네임·전화·이메일)는 지원 시점부터 오너에게 노출(상태 무관). 지원서 PDF 다운로드(지원자별 `공모명_작가명_지원서.pdf` + 전체 ZIP `공모명_지원서.zip`). 기존 CSV 내보내기 제거. (`operationPdf.ts`: downloadApplicationPdf / downloadAllApplicationsZip)
@@ -411,7 +420,9 @@ ArtLink/
 | MyReviewsSection | Artist | 작성 리뷰 목록 |
 | ApplicationsSection | Artist | 지원한 공고 목록 |
 | MyGalleriesSection | Gallery | 갤러리 등록 요청, 상태 확인, Instagram 연동/토글 |
-| MyExhibitionsSection | Gallery | 공모 등록 요청 (승인된 갤러리 선택), 공모 삭제 |
+| MyExhibitionsSection | Gallery | 공모 등록 요청 (진행 범위 · 승인된 갤러리 선택), 공모 삭제 |
+| ExhibitionScopePicker | Gallery/Admin | 진행 범위 [전시까지 진행 / 공모만 진행] — 갤러리 폼과 아트링크 주최 폼 **공용** (`components/shared/ExhibitionScopePicker.tsx`) |
+| HostedExhibitionsSection | Admin | 아트링크 주최 공모 등록·운영 갤러리 지정. **운영 갤러리는 선택** — 비우면 관리자가 직접 운영 |
 | MyShowsSection | Gallery | 전시 등록 (갤러리 선택, 작가 연동/검색, 다중 이미지), 목록/상태/삭제 |
 | ApprovalsSection | Admin | 승인 큐 (갤러리/공모/전시 승인/거절+사유), 등록 관리 (삭제) |
 | (등록 폼 WYSIWYG) | Gallery | 갤러리·공고·전시 등록 폼을 상세페이지 디자인 그대로 인라인 편집 (`components/shared/EditableField.tsx`: EditableText/HeroImageEdit). 제출 전 실제 노출 모습 확인 |
@@ -583,6 +594,11 @@ cd frontend && npm run dev
 - `scrollTo({ behavior: 'smooth' })`로 슬라이드 이동
 - 3초 자동 슬라이드, `current` 변경 시 타이머 리셋
 - `scrollbar-hide` CSS 유틸리티로 스크롤바 숨김
+- **높이는 사진의 원래 비율을 따른다**(2026-09-10). 틀 `aspectRatio` = 로드된 사진 중 **가장 세로로 긴 것**(비율 최소,
+  [1.2, 3.4] 로 클램프) + `object-contain`. 예전엔 `aspect-[4/3] sm:aspect-[16/9]` + `object-cover` 라 창이 좁아지면
+  **사진이 잘렸다** — 실서버 배너 2000×667(3:1)이 375px 화면에서 가로의 44% 만 보였다.
+- **얇은 배너(높이 200px 미만)는 글씨를 사진 아래로 내린다** — `ResizeObserver` 로 실제 높이를 재서 판정.
+  사진 위에 얹으면 배너 자체 디자인과 겹쳐 둘 다 안 읽힌다.
 - 구현: `frontend/src/components/home/HeroSlider.tsx`
 
 ## 갤러리 상세 이미지 캐러셀 (GalleryImageCarousel)

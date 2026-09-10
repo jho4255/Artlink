@@ -30,6 +30,7 @@ import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
+import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
 import type { CustomField } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -44,6 +45,7 @@ const emptyForm = {
   exhibitStartDate: '',
   exhibitDate: '',
   submissionDeadline: '',
+  recruitOnly: false,
   capacity: 1,
   region: 'SEOUL',
   description: '',
@@ -93,13 +95,20 @@ function GalleryPicker({
   return (
     <div className={`rounded-xl border p-3 ${error ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
       <div className="flex items-center justify-between">
-        <p className={`text-xs font-medium ${error ? 'text-red-600' : 'text-gray-500'}`}>운영 갤러리 *</p>
+        <p className={`text-xs font-medium ${error ? 'text-red-600' : 'text-gray-500'}`}>운영 갤러리 <span className="font-normal text-gray-400">(선택)</span></p>
         <p className="text-[11px] text-gray-400">{selected.length}곳 선택</p>
       </div>
       <p className="mt-1 text-[11px] text-gray-400">
         지정된 갤러리는 이 공모를 자기 공모처럼 운영합니다 (지원자 관리 · 작가 초대 · 전시 확정 · 정산).
         맨 앞 갤러리가 <b>주관</b>이 되어 목록 카드에 표시됩니다.
       </p>
+      {/* 갤러리를 안 끼는 것도 정상적인 선택이다(2026-09-10) — 비워 두면 아무 일도 안 일어나는 게 아니라
+          '아트링크가 직접 운영' 이라는 뜻이라는 걸 여기서 말해 준다. */}
+      {selected.length === 0 && (
+        <p className="mt-1 text-[11px] text-gray-500">
+          비워 두면 <b>아트링크(관리자)가 직접 운영</b>합니다. 지원 알림도 관리자에게 갑니다.
+        </p>
+      )}
 
       {/* 선택된 갤러리 */}
       {selected.length > 0 && (
@@ -251,9 +260,10 @@ export default function HostedExhibitionsSection() {
     deadlineStart: form.deadlineStart || undefined,
     deadline: form.deadline,
     exhibitStartDate: form.exhibitStartDate || undefined,
-    submissionDeadline: form.submissionDeadline || undefined,
+    // 공모만 진행하면 자료제출 단계가 없다 — 남아 있는 입력값으로 순서 검사를 하면 안 된다
+    submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
     exhibitDate: form.exhibitDate,
-  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline]);
+  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
 
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
     queryKey: ['hosted-exhibitions'],
@@ -292,12 +302,12 @@ export default function HostedExhibitionsSection() {
   const submit = () => {
     const missing: string[] = [];
     const errorFields = new Set<string>();
-    if (managerGalleries.length === 0) { missing.push('운영 갤러리'); errorFields.add('galleries'); }
+    // ⚠️ 운영 갤러리는 **필수가 아니다**(2026-09-10) — 아트링크가 갤러리를 안 끼고 직접 열 수 있다
     if (!form.title) { missing.push('제목'); errorFields.add('title'); }
     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
     if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
-    if (!form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
+    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
     setFormErrors(errorFields);
@@ -340,6 +350,11 @@ export default function HostedExhibitionsSection() {
           <h4 className="text-sm font-medium">주최 공모 등록</h4>
           <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요.</p>
 
+          <ExhibitionScopePicker
+            recruitOnly={form.recruitOnly}
+            onChange={(next) => setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '' } : {}) })}
+          />
+
           <GalleryPicker selected={managerGalleries} onChange={(next) => { setManagerGalleries(next); clearError('galleries'); }} error={formErrors.has('galleries')} />
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
@@ -377,14 +392,15 @@ export default function HostedExhibitionsSection() {
                   <input type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-gray-200 p-2 text-sm" />
                 </div>
                 <div />
-                {([
+                {(([
                   ['deadlineStart', '공모 시작일'],
                   ['deadline', '공모 마감일'],
                   ['exhibitStartDate', '전시 시작일'],
                   ['exhibitDate', '전시 종료일'],
-                  // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이
-                  ['submissionDeadline', '작가 자료제출 마감일'],
-                ] as const).map(([key, label]) => (
+                  // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이.
+                  // ⚠️ 공모만 진행하면 그 단계가 없으므로 칸 자체를 그리지 않는다(비활성이 아니라 없앤다).
+                  ...(form.recruitOnly ? [] : [['submissionDeadline', '작가 자료제출 마감일'] as const]),
+                ] as const)).map(([key, label]) => (
                   <div key={key}>
                     <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-red-500' : 'text-gray-500'}`}>{label} *</label>
                     <input
@@ -436,7 +452,16 @@ export default function HostedExhibitionsSection() {
       <ConfirmDialog
         open={confirmSubmit}
         title="주최 공모 등록"
-        message={`이 내용으로 등록하시겠습니까?\n승인 절차 없이 바로 공고에 노출되며, 선택한 갤러리 ${managerGalleries.length}곳이 운영 권한을 갖습니다.`}
+        message={[
+          '이 내용으로 등록하시겠습니까?',
+          '승인 절차 없이 바로 공고에 노출됩니다.',
+          managerGalleries.length > 0
+            ? `선택한 갤러리 ${managerGalleries.length}곳이 운영 권한을 갖습니다.`
+            : '운영 갤러리를 지정하지 않았습니다 — 아트링크(관리자)가 직접 운영합니다.',
+          form.recruitOnly
+            ? '진행 범위: 공모만 진행 (지원자 수락까지, 자료제출·전시·정산 없음)'
+            : '진행 범위: 전시까지 진행',
+        ].join('\n')}
         confirmText="등록"
         onConfirm={() => {
           setConfirmSubmit(false);

@@ -13,6 +13,11 @@
  *    정산은 작가 확인을 거쳐야 하므로 아래 정산 섹션의 [정산 완료]로만 도달한다.
  *    그래서 `LIFECYCLE_STEPS`(버튼이 쓰는 배열)는 3개 그대로 두고, 그리기용 노드만 4개로 만든다.
  *    여기를 합치면 [다음 단계로] 버튼이 정산을 건너뛰고 마감시켜 버린다.
+ *
+ * ── 공모만 진행하는 공고 (2026-09-10) ───────────────────────
+ * `access.recruitOnly` 면 단계가 **모집중 → 모집마감** 둘뿐이다. 확정·전시종료·정산은
+ * 그 공고에 존재하지 않는 단계라 서버도 400 으로 막는다(`lib/exhibitionStage.ts`).
+ * ⚠️ 단계 수를 상수(3·4)로 박아 두지 말 것 — 아래 `maxAdvance`/`nodes` 로만 판정한다.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, ArrowRight, Undo2, Lock } from 'lucide-react';
@@ -51,22 +56,34 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
 
   const settled = !!access.settled;
   const locked = settled && !access.isAdmin;   // 관리자는 완료 후에도 수정 가능
+  const recruitOnly = !!access.recruitOnly;
+
+  // 공모만 진행하면 버튼으로 넘어갈 단계가 '모집마감' 하나뿐이다
+  const steps = recruitOnly ? LIFECYCLE_STEPS.slice(0, 1) : LIFECYCLE_STEPS;
+  const nodes = recruitOnly ? ['모집마감'] : STEP_NODES;
+  const last = nodes.length;
+  /** 버튼으로 도달할 수 있는 마지막 단계 (전시까지 진행=3 / 공모만=1) */
+  const maxAdvance = steps.length;
+
   // 현재 단계: 0=모집중, 1=모집마감, 2=확정, 3=전시종료, 4=정산 완료(마감)
-  const stage = settled ? 4 : access.ended ? 3 : access.confirmed ? 2 : access.recruitmentClosed ? 1 : 0;
+  // ⚠️ 공모만 진행하면 `access.confirmed` 가 전시 시작일 경과로 자동 true 가 된다 — 보면 안 된다.
+  const stage = recruitOnly
+    ? (access.recruitmentClosed ? 1 : 0)
+    : settled ? 4 : access.ended ? 3 : access.confirmed ? 2 : access.recruitmentClosed ? 1 : 0;
   const stageLabel = ['모집중', '모집마감', '확정', '전시종료', '정산 완료'][stage];
 
   const goNext = () => {
-    if (stage >= 3) return;
-    const step = LIFECYCLE_STEPS[stage]!;
+    if (stage >= maxAdvance) return;
+    const step = steps[stage]!;
     if (step.next.ended && !window.confirm('전시를 종료하고 정산 단계로 넘어갈까요?')) return;
     mutation.mutate(step.next);
   };
   // 전시 시작일 경과 등으로 자동 확정된 '확정' 단계는 되돌리기가 백엔드에서 거부됨 → 버튼 비활성
   const cannotUndoConfirm = stage === 2 && access.confirmed && !access.manualConfirmed;
   const goPrev = () => {
-    if (stage <= 0 || stage > 3) return;
+    if (stage <= 0 || stage > maxAdvance) return;
     if (cannotUndoConfirm) return;
-    mutation.mutate(LIFECYCLE_STEPS[stage - 1]!.back);
+    mutation.mutate(steps[stage - 1]!.back);
   };
 
   return (
@@ -82,11 +99,12 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
 
       {/* 스텝퍼 — 마지막 노드(정산 완료)는 settledAt 으로만 채워진다 */}
       <div className="flex items-center">
-        {STEP_NODES.map((label, i) => {
+        {nodes.map((label, i) => {
           const idx = i + 1;                 // 이 노드가 나타내는 단계
           const done = stage >= idx;         // 도달 완료
           const target = stage + 1 === idx;  // 다음에 진행할 단계
-          const isFinal = idx === LAST;
+          // '정산 완료'(초록 마감 표시)는 전시까지 진행하는 공모에만 있다
+          const isFinal = !recruitOnly && idx === last;
           return (
             <div key={label} className="flex items-center flex-1 last:flex-none">
               <div className="flex flex-col items-center">
@@ -102,8 +120,8 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
                     : done || target ? 'text-gray-900 font-medium'
                     : 'text-gray-400'}`}>{label}</span>
               </div>
-              {i < STEP_NODES.length - 1 && (
-                <div className={`h-0.5 flex-1 mx-2 mb-5 rounded-full transition-colors ${stage >= idx + 1 ? (idx + 1 === LAST ? 'bg-green-600' : 'bg-gray-900') : 'bg-gray-200'}`} />
+              {i < nodes.length - 1 && (
+                <div className={`h-0.5 flex-1 mx-2 mb-5 rounded-full transition-colors ${stage >= idx + 1 ? (!recruitOnly && idx + 1 === last ? 'bg-green-600' : 'bg-gray-900') : 'bg-gray-200'}`} />
               )}
             </div>
           );
@@ -112,12 +130,14 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
 
       {/* 현재 상태 + 안내 */}
       <p className="text-xs text-gray-500 mt-4 leading-relaxed">
-        현재 <b className={stage === LAST ? 'text-green-700' : 'text-gray-900'}>{stageLabel}</b> 단계입니다.
-        {stage < 3 && <> 다음 단계: <b className="text-gray-900">{LIFECYCLE_STEPS[stage]!.label}</b> — {LIFECYCLE_STEPS[stage]!.desc}</>}
+        현재 <b className={!recruitOnly && stage === last ? 'text-green-700' : 'text-gray-900'}>{stageLabel}</b> 단계입니다.
+        {stage < maxAdvance && <> 다음 단계: <b className="text-gray-900">{steps[stage]!.label}</b> — {steps[stage]!.desc}</>}
+        {/* 공모만 진행하는 공고는 모집마감이 곧 끝이다 — 다음에 뭘 해야 하는지 찾아 헤매지 않게 못 박아 준다 */}
+        {recruitOnly && stage >= maxAdvance && <> 지원자 수락까지가 이 공고의 마지막 단계입니다. 자료제출·전시·정산 단계는 없습니다.</>}
         {/* 전시종료 상태에서는 다음이 버튼이 아니라 정산 절차라는 걸 알려준다.
             이미 요청을 보낸 뒤인지에 따라 할 일이 다르므로 문구를 나눈다 —
             전원 수락해 놓고 "확인 요청을 보내세요" 라고 하면 뭘 더 해야 하는지 알 수 없다. */}
-        {stage === 3 && (access.settlementRequested
+        {!recruitOnly && stage === 3 && (access.settlementRequested
           ? <> 다음 단계: <b className="text-gray-900">정산 완료</b> — 작가 확인이 끝나면 아래 정산에서 [정산 완료]를 누르면 마감됩니다.</>
           : <> 다음 단계: <b className="text-gray-900">정산 완료</b> — 아래 정산에서 [정산 확인 요청]을 보내고 작가 확인을 받으면 마감됩니다.</>)}
         {stage === 2 && access.confirmed && !access.manualConfirmed && <span className="text-gray-400"> (전시 시작일 경과로 자동 확정됨)</span>}
@@ -130,6 +150,8 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
         정산을 이미 시작했으면 정리 대상이 아니라 띄우지 않는다.
       */}
       {(() => {
+        // 공모만 진행하는 공고엔 정산이 없다 — "판매·정산 입력이 없으면 정리됩니다" 는 할 수 없는 일을 요구하는 안내다
+        if (recruitOnly) return null;
         if (settled || access.settlementStarted) return null;
         if (!access.exhibitDate || !access.autoCloseDays) return null;
         // ⚠️ `access.ended` 로 거르면 안 된다 — 이 안내가 필요한 대표적인 대상이
@@ -157,17 +179,17 @@ export default function StatusPanel({ exhibitionId, access, className = 'mb-8 bo
         <p className="text-xs text-gray-500 mt-3">· <b className="text-green-700">정산이 완료되어 마감된 공모</b>입니다. 내용은 계속 열람할 수 있지만 수정할 수 없습니다.</p>
       ) : (
         <div className="flex items-center gap-2 mt-4">
-          {stage < 3 && (
+          {stage < maxAdvance && (
             <button
               onClick={goNext}
               disabled={mutation.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 cursor-pointer"
             >
-              다음 단계로 — {LIFECYCLE_STEPS[stage]!.label}
+              다음 단계로 — {steps[stage]!.label}
               <ArrowRight size={15} />
             </button>
           )}
-          {stage > 0 && stage <= 3 && !cannotUndoConfirm && (
+          {stage > 0 && stage <= maxAdvance && !cannotUndoConfirm && (
             <button
               onClick={goPrev}
               disabled={mutation.isPending}

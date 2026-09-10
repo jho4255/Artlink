@@ -10,9 +10,15 @@ export interface GalleryApplicationStat {
  * 특정 갤러리에 대해, 주어진 작가들의 "지원 횟수/순번/첫지원여부"를 지원 ID별로 계산.
  * - 갤러리 단위 = 해당 갤러리에 속한 모든 공모(exhibition)를 합산
  * - 반환: Map<applicationId, GalleryApplicationStat>
+ *
+ * ⚠️ `galleryId` 가 null 이면 **빈 Map** 을 돌려준다 — 아트링크 주최 공모는 주관 갤러리 없이 열 수 있고
+ *    (2026-09-10), 그러면 "이 갤러리에 몇 번째 지원인가" 라는 물음 자체가 성립하지 않는다.
+ *    호출부는 이미 `stats.get(id) ?? {count:1, order:1, isFirst:true}` 로 받으므로 화면은 '첫 지원'으로 뜬다.
+ *    ⚠️ 여기서 임의로 전체 공모를 합산하지 말 것 — 갤러리 단위 통계가 아닌 다른 숫자가 같은 라벨로 나간다.
  */
-export async function galleryApplicationStats(galleryId: number, userIds: number[]): Promise<Map<number, GalleryApplicationStat>> {
+export async function galleryApplicationStats(galleryId: number | null | undefined, userIds: number[]): Promise<Map<number, GalleryApplicationStat>> {
   const stats = new Map<number, GalleryApplicationStat>();
+  if (galleryId == null) return stats;
   const uniqueUserIds = [...new Set(userIds)];
   if (uniqueUserIds.length === 0) return stats;
 

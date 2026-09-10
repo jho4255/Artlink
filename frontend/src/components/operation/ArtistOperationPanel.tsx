@@ -22,11 +22,18 @@ import { NoticesSection, MySubmissionSection, MyArtistSettlementSection } from '
  *   - 자료를 아직 안 냈으면 → 제출자료
  *   - 갤러리가 정산 확인을 요청했으면 → 정산
  * 전부 펼치면 카드 하나가 수천 px 이 되어 목록이 목록 구실을 못 한다.
+ *
+ * ## 공모만 진행하는 공고 (2026-09-10)
+ * `exhibition.recruitOnly` 면 **공지 하나만** 남는다. 제출자료·정산은 그 공고에 없는 단계라
+ * 서버가 400 으로 막는다(`lib/exhibitionStage.ts`) — 블록을 남겨 두면 작가가 열자마자
+ * 이유 없는 에러를 보고, 안 열더라도 **내지도 못할 자료를 기다리게** 된다.
  */
 interface Props {
   exhibitionId: number;
   /** `/exhibitions/my-applications` 가 주는 exhibition 객체 */
   exhibition: {
+    /** true = 공모만 진행(수락까지) — 제출자료·정산 단계가 없다 */
+    recruitOnly?: boolean;
     confirmed?: boolean;
     ended?: boolean;
     manualConfirmed?: boolean;
@@ -71,8 +78,9 @@ export default function ArtistOperationPanel({ exhibitionId, exhibition, submiss
   const { user } = useAuthStore();
   const id = String(exhibitionId);
 
+  const recruitOnly = !!exhibition.recruitOnly;
   // 전시가 끝나기 전까지는 자료를 내는 게 할 일이다
-  const needsSubmission = !submissionComplete && !exhibition.ended;
+  const needsSubmission = !recruitOnly && !submissionComplete && !exhibition.ended;
   // 갤러리가 확인을 요청했고 아직 정산이 확정되지 않았으면 작가가 답할 차례
   const needsSettlement = !!exhibition.settlementRequestedAt && !exhibition.settledAt;
 
@@ -82,6 +90,14 @@ export default function ArtistOperationPanel({ exhibitionId, exhibition, submiss
         <NoticesSection exhibitionId={id} canManage={false} />
       </Block>
 
+      {/* 공모만 진행하는 공고엔 제출자료 단계가 없다 — 여기까지가 끝이라고 말해 준다.
+          아무 말 없이 블록만 사라지면 "자료를 언제 내나" 하고 기다리게 된다. */}
+      {recruitOnly ? (
+        <p className="border-t border-gray-100 pt-3 text-xs leading-relaxed text-gray-500">
+          공모만 진행하는 공고입니다. <b className="text-gray-700">수락으로 절차가 완료</b>되었으며,
+          자료제출·전시 운영·정산 단계는 없습니다. 이후 안내는 위 [운영 공지]로 전달됩니다.
+        </p>
+      ) : (
       <Block
         icon={<FileText size={14} />}
         title="제출 자료"
@@ -96,9 +112,10 @@ export default function ArtistOperationPanel({ exhibitionId, exhibition, submiss
           manualConfirmed={!!exhibition.manualConfirmed}
         />
       </Block>
+      )}
 
       {/* 정산은 전시가 끝나야 생긴다 — 그전엔 블록 자체를 그리지 않는다 */}
-      {exhibition.ended && (
+      {!recruitOnly && exhibition.ended && (
         <Block
           icon={<Wallet size={14} />}
           title="정산 확인"

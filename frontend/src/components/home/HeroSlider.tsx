@@ -42,6 +42,47 @@ export default function HeroSlider() {
     });
   }, []);
 
+  /**
+   * 배너 높이는 **사진의 원래 비율**을 따른다 (2026-09-10).
+   *
+   * 예전엔 `aspect-[4/3] sm:aspect-[16/9]` 로 틀을 고정해 놓고 `object-cover` 라,
+   * 창이 좁아지면 사진이 **잘렸다**. 실서버 배너는 2000×667(**3:1**)인데 모바일 틀이 4/3(1.33)이라
+   * **가로의 56% 가 잘려 나갔다**(보이는 건 44%). 창을 줄이면 사진도 같이 작아져야지 잘리면 안 된다.
+   *
+   * ⚠️ 슬라이드는 한 트랙을 공유하므로 높이도 하나뿐이다. **가장 세로로 긴 사진**(=비율 최소)에 맞춘다 —
+   *    그래야 나머지가 위아래로 넘치지 않는다. 남는 자리는 `object-contain` + 띠 배경색(dominant color)이 먹는다.
+   * ⚠️ 극단적인 업로드를 대비해 [1.2, 3.4] 로 묶는다. 세로 사진 한 장 때문에 배너가 화면을 삼키면 안 된다.
+   */
+  const [ratio, setRatio] = useState<number | null>(null);
+  const noteRatio = useCallback((w: number, h: number) => {
+    if (!w || !h) return;
+    const r = Math.min(3.4, Math.max(1.2, w / h));
+    setRatio((prev) => (prev === null ? r : Math.min(prev, r)));
+  }, []);
+  // 아직 한 장도 못 쟀으면 실서버 배너 비율(3:1)로 시작한다 — 뜨자마자 튀는 걸 줄인다
+  const trackRatio = ratio ?? 3;
+
+  /**
+   * 띠가 얇으면 **글씨를 사진 위에 얹지 않는다** (2026-09-10).
+   *
+   * 사진을 안 자르게 되니 3:1 배너는 375px 화면에서 높이가 **125px** 밖에 안 된다.
+   * 거기에 흰 제목을 얹으면 배너가 이미 갖고 있는 디자인·글씨와 겹쳐 둘 다 안 읽힌다
+   * (2026-08-15 에 하단 그래디언트를 뺀 것과 같은 이유 — 배너엔 이미 디자인이 다 들어 있다).
+   * 그럴 땐 제목·바로가기를 **사진 아래 띠 색 위로** 내린다.
+   *
+   * ⚠️ 화면 폭이 아니라 **실제 높이**로 판정할 것 — 같은 폭이라도 배너 비율에 따라 높이가 다르다.
+   */
+  const [trackH, setTrackH] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => setTrackH(entry!.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [slides.length]);
+  const compact = trackH > 0 && trackH < 200;
+  const currentSlide = slides[current];
+
   // 슬라이드 이미지에서 색상 추출
   useEffect(() => {
     if (slides.length === 0) return;
@@ -156,7 +197,11 @@ export default function HeroSlider() {
     return (
       <div className="w-full bg-gray-100">
         <div className="max-w-7xl mx-auto">
-          <div className="aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[46vh] bg-gray-100 animate-pulse" />
+          {/* 스켈레톤도 본체와 같은 규칙으로 — 다르면 뜨는 순간 높이가 튄다 */}
+          <div
+            style={{ aspectRatio: String(trackRatio) }}
+            className="max-h-[70vh] md:max-h-[46vh] bg-gray-100 animate-pulse"
+          />
         </div>
       </div>
     );
@@ -176,9 +221,12 @@ export default function HeroSlider() {
           onMouseEnter={() => { isHovered.current = true; }}
           onMouseLeave={() => { isHovered.current = false; }}
         >
+          {/* 높이는 `aspectRatio`(사진 원래 비율)가 정한다. min/max 는 극단만 막는 안전선이고,
+              그 구간에 걸려 틀이 사진보다 넓어져도 `object-contain` 이라 **잘리지는 않는다**(띠 배경이 채운다). */}
           <div
             ref={containerRef}
-            className="flex w-full aspect-[4/3] sm:aspect-[16/9] md:aspect-auto md:h-[46vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+            style={{ aspectRatio: String(trackRatio) }}
+            className="flex w-full max-h-[70vh] md:max-h-[46vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -194,12 +242,17 @@ export default function HeroSlider() {
                 {!loadedImages.has(i) && (
                   <div className="absolute inset-0 bg-gray-100 animate-pulse" />
                 )}
+                {/* ⚠️ `object-cover` 로 되돌리지 말 것 — 창이 좁아지면 사진이 잘린다(위 `ratio` 주석 참고) */}
                 <img
                   src={slide.imageUrl}
                   alt={slide.title}
-                  onLoad={() => markLoaded(i)}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    noteRatio(img.naturalWidth, img.naturalHeight);
+                    markLoaded(i);
+                  }}
                   onError={() => markLoaded(i)}
-                  className={`w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
+                  className={`w-full h-full object-contain pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
                   draggable={false}
                   loading={i === 0 ? 'eager' : 'lazy'}
                 />
@@ -207,7 +260,7 @@ export default function HeroSlider() {
                     하단 그래디언트는 뺐다(2026-08-15) — 배너 이미지에 이미 디자인이 다 들어 있는데
                     어둡게 덮어서 아래쪽이 안 보였다. 대신 **글자에만** 그림자를 줘서 밝은 이미지 위에서도
                     읽히게 한다. 배경을 덮지 않으니 같은 문제가 다시 생기지 않는다. */}
-                <div className="absolute bottom-12 md:bottom-16 left-5 md:left-10 right-5 md:right-auto max-w-xl pointer-events-none [text-shadow:0_1px_4px_rgba(0,0,0,0.55)]">
+                <div className={`absolute bottom-12 md:bottom-16 left-5 md:left-10 right-5 md:right-auto max-w-xl pointer-events-none [text-shadow:0_1px_4px_rgba(0,0,0,0.55)] ${compact ? 'hidden' : ''}`}>
                   {slide.description && (
                     <p className="hidden sm:block text-[11px] md:text-xs tracking-[0.15em] uppercase text-white/80 mb-2">
                       {slide.description}
@@ -219,7 +272,7 @@ export default function HeroSlider() {
                 </div>
 
                 {/* 바로가기 */}
-                {slide.linkUrl && (
+                {slide.linkUrl && !compact && (
                   <button
                     onClick={() => handleLink(slide.linkUrl)}
                     // p-3 + 네거티브 마진: 시각 위치는 유지하면서 터치 히트영역만 확대
@@ -258,8 +311,9 @@ export default function HeroSlider() {
             </>
           )}
 
-          {/* 인디케이터 — 시각은 2px 라인 유지, 버튼 패딩으로 터치 히트영역만 확대 */}
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex z-10">
+          {/* 인디케이터 — 시각은 2px 라인 유지, 버튼 패딩으로 터치 히트영역만 확대.
+              얇은 배너에서는 사진 위에 점이 얹히면 그림을 가리므로 아래 캡션 줄로 옮긴다. */}
+          <div className={`absolute bottom-1.5 left-1/2 -translate-x-1/2 flex z-10 ${compact ? 'hidden' : ''}`}>
             {slides.map((_, i) => (
               <button
                 key={i}
@@ -276,6 +330,45 @@ export default function HeroSlider() {
             ))}
           </div>
         </div>
+
+        {/*
+          얇은 배너의 캡션 줄 — 사진 **아래**, 띠 색 위에 놓는다.
+          사진 위에 얹으면 배너 자체 디자인과 겹쳐 둘 다 안 읽힌다(위 `compact` 주석 참고).
+          ⚠️ 여기 글씨는 띠 색(dominant color) 위에 놓이므로 흰색 + 그림자로 고정한다 —
+             띠 색이 밝을 수도 있어 그림자를 빼면 대비가 무너진다.
+        */}
+        {compact && currentSlide && (
+          <div className="flex items-center gap-3 px-5 pb-2.5 pt-2 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+            <div className="min-w-0 flex-1">
+              {currentSlide.description && (
+                <p className="truncate text-[10px] uppercase tracking-[0.14em] text-white/75">{currentSlide.description}</p>
+              )}
+              <h2 className="truncate text-sm font-semibold text-white">{currentSlide.title}</h2>
+            </div>
+            {slides.length > 1 && (
+              <div className="flex shrink-0 items-center">
+                {slides.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => scrollToSlide(i)}
+                    aria-label={`${i + 1}번째 슬라이드로 이동`}
+                    className="flex min-h-[44px] cursor-pointer items-center px-1 py-4"
+                  >
+                    <span className={`block h-[2px] rounded-full transition-all ${i === current ? 'w-5 bg-white' : 'w-2.5 bg-white/40'}`} />
+                  </button>
+                ))}
+              </div>
+            )}
+            {currentSlide.linkUrl && (
+              <button
+                onClick={() => handleLink(currentSlide.linkUrl)}
+                className="-m-2 shrink-0 cursor-pointer p-2 text-xs tracking-wide text-white underline decoration-white/60 underline-offset-4 hover:decoration-white"
+              >
+                자세히 보기 →
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

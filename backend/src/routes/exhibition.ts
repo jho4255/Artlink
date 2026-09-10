@@ -7,6 +7,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { galleryApplicationStats } from '../lib/applicationStats';
+import { assertFullExhibition } from '../lib/exhibitionStage';
 import { getSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { safeFileUrl } from '../lib/safeUrl';
 import { maskGallery } from '../lib/sanitize';
@@ -25,6 +26,7 @@ import {
   canOperateExhibition,
   operableExhibitionWhere,
   operatorUserIds,
+  exhibitionNotifyTargets,
 } from '../lib/exhibitionAccess';
 
 // 커스텀 필드 스키마 (공모 등록 시 질문 항목)
@@ -54,8 +56,14 @@ const exhibitionCreateSchema = z.object({
   deadlineStart: z.string().optional().nullable(),
   exhibitDate: z.string().min(1, '전시 종료일을 입력해주세요.'),
   exhibitStartDate: z.string().optional().nullable(),
-  // 신규 등록은 필수. 옛 공모(값 없음)는 상세 화면에서 따로 채운다 — `PATCH /:id/submission-deadline`
-  submissionDeadline: z.string().min(1, '자료제출 마감일을 입력해주세요.'),
+  /**
+   * 자료제출 마감일.
+   * - 전시까지 진행하는 공모: **필수** (옛 공모는 값이 없어 상세 화면에서 따로 채운다 — `PATCH /:id/submission-deadline`)
+   * - 공모만 진행(`recruitOnly`): 자료제출 단계가 아예 없으므로 **안 받는다**. 아래 refine 이 판정한다.
+   */
+  submissionDeadline: z.string().optional().nullable(),
+  /** true = 공모만 진행(수락까지). 안 보내면 지금까지대로 전시까지 진행한다 — lib/exhibitionStage.ts */
+  recruitOnly: z.boolean().optional().default(false),
   capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.'),
   region: z.string().min(1, '지역을 선택해주세요.'),
   description: z.string().min(1, '공모 소개를 입력해주세요.'),
@@ -63,6 +71,20 @@ const exhibitionCreateSchema = z.object({
   imageUrl: z.string().optional().nullable(),
   customFields: z.array(customFieldSchema).optional().nullable(),
 });
+
+/**
+ * 진행 범위에 따라 달라지는 필수 항목을 검사한다.
+ *
+ * ⚠️ `exhibitionCreateSchema` 자체에 `.refine` 을 달면 `ZodEffects` 가 되어 **`.omit()`·`.extend()` 를 못 쓴다**
+ *    (아트링크 주최용 스키마가 그걸로 만들어진다). 그래서 완성된 스키마마다 마지막에 한 번씩 씌운다.
+ */
+const withStageRules = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
+  schema.superRefine((v: any, ctx) => {
+    // 공모만 진행하면 자료제출 단계가 없다 — 날짜를 받지도, 요구하지도 않는다
+    if (!v.recruitOnly && !v.submissionDeadline) {
+      ctx.addIssue({ code: 'custom', path: ['submissionDeadline'], message: '자료제출 마감일을 입력해주세요.' });
+    }
+  });
 
 const router = Router();
 
@@ -90,6 +112,18 @@ function assertSubmissionDeadline(submissionDeadline: Date, deadline: Date, exhi
 /** 알림 문구용 주최자 이름 — 아트링크 주최 공모는 주관 갤러리명 대신 '아트링크' */
 function hostLabel(ex: { hostType?: string | null; gallery?: { name?: string } | null }): string {
   return ex.hostType === 'ADMIN' ? '아트링크' : (ex.gallery?.name ?? '갤러리');
+}
+
+/**
+ * `include: { gallery: { include: { owner: … } } }` 로 읽은 공모에서 **주관 갤러리 오너**만 꺼낸다.
+ *
+ * ⚠️ 이 라우트는 `as any` 를 많이 쓰는데, 그러면 **주관 갤러리가 null 인 걸 타입이 못 잡는다**
+ *    (아트링크가 갤러리 없이 여는 공모, 2026-09-10). `(ex.gallery as any).owner` 처럼 바로 꺼내면
+ *    `null.owner` 로 **500 이 난다** — 공모 상세가 통째로 안 열린다. 한 곳으로 모아 둔다.
+ */
+function exhibitionOwner(ex: { gallery?: unknown }): { ownerId: number } | null {
+  const owner = (ex.gallery as any)?.owner;
+  return owner?.id ? { ownerId: owner.id } : null;
 }
 
 // customFields JSON 파싱 헬퍼 (DB string → object array)
@@ -213,7 +247,8 @@ router.get('/', optionalAuth, async (req, res, next) => {
     // 갤러리 별점 필터 (DB 레벨에서 어려우므로 앱 레벨 필터)
     let filtered = exhibitions;
     if (minGalleryRating) {
-      filtered = exhibitions.filter(e => e.gallery.rating >= parseFloat(minGalleryRating as string));
+      // 갤러리 없는 아트링크 주최 공모는 '갤러리 별점' 필터에서 빠진다 — 별점이 없는 걸 있는 척할 수 없다
+      filtered = exhibitions.filter(e => (e.gallery?.rating ?? -1) >= parseFloat(minGalleryRating as string));
     }
 
     // customFields 파싱
@@ -757,12 +792,19 @@ router.get('/:id/invites', authenticate, authorize('GALLERY', 'ADMIN'), async (r
 // 운영 위임은 이 경로로 만든 공모(hostType='ADMIN')에서만 생긴다.
 // ==========================================================================
 
-/** 주관 갤러리(galleryId)는 목록에서 첫 번째. 기존 코드 전부가 exhibition.gallery 를 전제로 하므로 반드시 1곳 필요. */
+/**
+ * 주관 갤러리(`galleryId`)는 목록의 **첫 번째**, 나머지는 운영 위임 갤러리다.
+ *
+ * ⚠️ **비워도 된다** (2026-09-10). 아트링크가 갤러리를 끼지 않고 직접 여는 공모 —
+ *    그러면 `galleryId` 가 null 이고 운영자는 Admin 뿐이다. 지원 알림도 Admin 에게 간다
+ *    (`exhibitionNotifyTargets`). 예전엔 "기존 코드가 exhibition.gallery 를 전제하므로 1곳 필수" 였다.
+ */
 const adminHostedCreateSchema = exhibitionCreateSchema.omit({ galleryId: true }).extend({
   galleryIds: z
     .array(z.number().int().positive())
-    .min(1, '운영 갤러리를 1곳 이상 선택해주세요.')
-    .max(20, '운영 갤러리는 최대 20곳까지 지정할 수 있습니다.'),
+    .max(20, '운영 갤러리는 최대 20곳까지 지정할 수 있습니다.')
+    .optional()
+    .default([]),
 });
 
 /** 선택한 갤러리들이 실제로 존재하고 승인 상태인지 확인 후, 중복 제거된 순서 유지 목록 반환 */
@@ -819,13 +861,16 @@ router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) =
 // 아트링크 주최 공모 등록 (Admin 전용) — 승인 절차 없이 바로 게시
 router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCreateSchema), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
 
     const galleries = await verifyManagerGalleries(galleryIds);
-    const hostGallery = galleries[0]!; // 주관 갤러리
+    const hostGallery = galleries[0] ?? null; // 주관 갤러리 — 없으면 아트링크가 직접 운영한다
 
-    const subDeadline = new Date(submissionDeadline);
-    assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    // 공모만 진행하면 자료제출 단계가 없다 → 날짜를 저장하지 않는다(있는 척하면 화면에 기한이 뜬다)
+    const subDeadline = recruitOnly ? null : new Date(submissionDeadline);
+    if (subDeadline) {
+      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    }
 
     const safeImageUrl = safeFileUrl(imageUrl);
     const exhibition = await prisma.exhibition.create({
@@ -836,8 +881,9 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCre
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
         submissionDeadline: subDeadline,
+        recruitOnly,
         capacity, region, description,
-        galleryId: hostGallery.id,
+        galleryId: hostGallery?.id ?? null,
         imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         hostType: 'ADMIN',
@@ -865,8 +911,9 @@ router.patch('/:id/managers', authenticate, authorize('ADMIN'), async (req, res,
       throw new AppError('아트링크 주최 공모에만 운영 갤러리를 지정할 수 있습니다.', 400);
     }
 
-    const parsed = z.array(z.number().int().positive()).min(1).max(20).safeParse(req.body?.galleryIds);
-    if (!parsed.success) throw new AppError('운영 갤러리를 1곳 이상 선택해주세요.', 400);
+    // 빈 배열도 받는다 — 갤러리를 전부 떼고 아트링크가 직접 운영하는 상태로 되돌리는 경로다
+    const parsed = z.array(z.number().int().positive()).max(20).safeParse(req.body?.galleryIds ?? []);
+    if (!parsed.success) throw new AppError('운영 갤러리 목록이 올바르지 않습니다.', 400);
 
     const galleries = await verifyManagerGalleries(parsed.data);
     const before = new Set(exhibition.managers.map((m) => m.galleryId));
@@ -876,8 +923,9 @@ router.patch('/:id/managers', authenticate, authorize('ADMIN'), async (req, res,
       prisma.exhibitionManager.createMany({
         data: galleries.map((g) => ({ exhibitionId, galleryId: g.id })),
       }),
-      // 주관 갤러리도 함께 옮긴다 — 목록 카드/지원 통계가 이 값을 쓴다
-      prisma.exhibition.update({ where: { id: exhibitionId }, data: { galleryId: galleries[0]!.id } }),
+      // 주관 갤러리도 함께 옮긴다 — 목록 카드/지원 통계가 이 값을 쓴다.
+      // ⚠️ 비우면 null 이다. 옛 갤러리를 그대로 두면 화면에서 뗀 갤러리 이름이 카드에 계속 남는다.
+      prisma.exhibition.update({ where: { id: exhibitionId }, data: { galleryId: galleries[0]?.id ?? null } }),
     ]);
 
     // 새로 추가된 갤러리에만 알림 (기존 갤러리에 중복 발송하지 않는다)
@@ -915,8 +963,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // 화이트리스트(APPROVED 만 통과)로 둔 이유: 나중에 상태가 늘어도 기본이 '숨김'이 되게.
     if (exhibition.status !== 'APPROVED') {
       const viewer = req.user;
+      // ⚠️ `as any` 라 타입이 안 잡아 준다 — 주관 갤러리는 null 일 수 있으므로 `?.` 로 꺼낼 것
       const isOperator = !!viewer && canOperateExhibition(
-        { hostType: exhibition.hostType, gallery: { ownerId: (exhibition.gallery as any).owner?.id }, managers: (exhibition as any).managers },
+        { hostType: exhibition.hostType, gallery: exhibitionOwner(exhibition), managers: (exhibition as any).managers },
         viewer.id
       );
       // 탈퇴(WITHDRAWN)는 종전대로 Admin 만 — 소유자에게도 다시 열지 않는다
@@ -948,7 +997,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     }
 
     // 상세 조회수 증가 (Admin 통계용, 비-관리자/비-소유자만)
-    await bumpViewCount('exhibition', exhibition.id, (exhibition.gallery as any).owner?.id, req.user);
+    await bumpViewCount('exhibition', exhibition.id, exhibitionOwner(exhibition)?.ownerId, req.user);
 
     // 이 공모에 초대받은 작가인지 (상세 페이지에서 '간편 지원' 버튼으로 전환하기 위함).
     // 본인 것만 조회하므로 다른 사람의 초대 여부는 응답에 섞이지 않는다.
@@ -969,18 +1018,25 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 
     // ownerId를 gallery 객체에 포함하여 프론트엔드에서 권한 체크 가능하도록.
     // maskGallery로 Instagram 토큰 등 서버 전용 비밀 제거 (공개 엔드포인트).
-    const { owner, ...galleryRest } = exhibition.gallery as any;
+    // ⚠️ 주관 갤러리는 **null 일 수 있다**(아트링크가 갤러리 없이 여는 공모) — 바로 구조분해하면 500 이다.
+    //    화면은 `exhibition.gallery` 를 이미 `?.` 로 읽고 있으므로 null 을 그대로 내려보내면 된다.
+    const galleryRaw = exhibition.gallery as any;
+    let gallery: any = null;
+    if (galleryRaw) {
+      const { owner, ...galleryRest } = galleryRaw;
+      gallery = maskGallery({ ...galleryRest, ownerId: owner?.id });
+    }
     const managerGalleries = (exhibition as any).managers.map((m: any) => m.gallery);
     res.json({
       ...exhibition,
       customFields: parseCustomFields(exhibition.customFields),
-      gallery: maskGallery({ ...galleryRest, ownerId: owner?.id }),
+      gallery,
       // 아트링크 주최 공모의 운영 갤러리 목록 (갤러리 주최면 빈 배열)
       managers: undefined,
       managerGalleries: managerGalleries.map((g: any) => ({ id: g.id, name: g.name })),
       // 화면에서 "운영자 전용" UI 노출 판단용 — 갤러리 오너 비교를 프론트에서 재구현하지 않게 서버가 계산해 내려준다
       canOperate: !!req.user && canOperateExhibition(
-        { hostType: exhibition.hostType, gallery: { ownerId: owner?.id }, managers: (exhibition as any).managers },
+        { hostType: exhibition.hostType, gallery: exhibitionOwner(exhibition), managers: (exhibition as any).managers },
         req.user.id
       ),
       isFavorited,
@@ -990,9 +1046,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 });
 
 // 공모 등록 요청 (Gallery 유저 전용)
-router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSchema), async (req, res, next) => {
+router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exhibitionCreateSchema)), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -1000,8 +1056,11 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
       throw new AppError('본인 소유의 갤러리만 선택할 수 있습니다.', 403);
     }
 
-    const subDeadline = new Date(submissionDeadline);
-    assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    // 공모만 진행하면 자료제출 단계가 없다 → 날짜를 저장하지 않는다
+    const subDeadline = recruitOnly ? null : new Date(submissionDeadline);
+    if (subDeadline) {
+      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    }
 
     const safeImageUrl = safeFileUrl(imageUrl);
     const exhibition = await prisma.exhibition.create({
@@ -1012,6 +1071,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(exhibitionCreateSc
         exhibitDate: new Date(exhibitDate),
         exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
         submissionDeadline: subDeadline,
+        recruitOnly,
         capacity, region, description, galleryId, imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
@@ -1054,6 +1114,8 @@ router.patch('/:id/submission-deadline', authenticate, async (req, res, next) =>
       include: { gallery: { select: { ownerId: true } }, managers: { select: { gallery: { select: { ownerId: true } } } } },
     });
     if (!exhibition) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    // 공모만 진행하는 공고에는 자료제출 단계가 없다 — 날짜를 넣으면 작가 화면에 없는 기한이 뜬다
+    assertFullExhibition(exhibition);
 
     const isAdmin = req.user!.role === 'ADMIN';
     if (!isAdmin && !canOperateExhibition(exhibition as any, req.user!.id)) {
@@ -1195,7 +1257,9 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         where: { id: exhibitionId },
         include: { ...OPERATOR_INCLUDE, gallery: { select: { ownerId: true, name: true } } },
       });
-      const receivers = operatorUserIds(target as any);
+      // ⚠️ `operatorUserIds` 가 아니라 이걸 쓸 것 — 갤러리를 안 낀 아트링크 주최 공모는 운영자 목록이
+      //    비어서, 새 지원자가 들어와도 **아무에게도 알림이 안 갔다**. 그럴 땐 Admin 에게 보낸다.
+      const receivers = await exhibitionNotifyTargets(target as any);
       if (receivers.length) {
         await prisma.notification.createMany({
           data: receivers.map((uid) => ({
@@ -1205,7 +1269,7 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
               ? `초대한 작가(${req.user!.name})가 "${exhibitionData.title}" 공모에 지원했습니다. 수락 여부를 결정해주세요.`
               : (target as any).hostType === 'ADMIN'
                 ? `아트링크 주최 "${exhibitionData.title}" 공모에 새로운 지원자(${req.user!.name})가 있습니다.`
-                : `"${(target as any).gallery.name}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
+                : `"${(target as any).gallery?.name ?? '갤러리'}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
             linkUrl: `/exhibitions/${exhibitionId}`,
           })),
         });
@@ -1269,7 +1333,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     // 소유권 확인: Gallery 오너 또는 Admin만 삭제 가능.
     // 아트링크 주최 공모는 운영을 위임받았을 뿐이므로 갤러리가 지울 수 없다 — 주최자(Admin)만 삭제한다.
     const isAdmin = req.user!.role === 'ADMIN';
-    const isOwner = exhibition.hostType !== 'ADMIN' && exhibition.gallery.ownerId === req.user!.id;
+    const isOwner = exhibition.hostType !== 'ADMIN' && exhibition.gallery?.ownerId === req.user!.id;
     if (!isOwner && !isAdmin) {
       throw new AppError(
         exhibition.hostType === 'ADMIN'

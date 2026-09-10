@@ -681,7 +681,7 @@ describe('공모 초대 (갤러리 → 작가)', () => {
         { followerId: 3, followingId: u.id }, { followerId: u.id, followingId: 3 },
       ] });
     }
-    const ex2 = await seedExhibition((await testPrisma.exhibition.findUnique({ where: { id: exhibitionId } }))!.galleryId);
+    const ex2 = await seedExhibition((await testPrisma.exhibition.findUnique({ where: { id: exhibitionId } }))!.galleryId!);
     await testPrisma.exhibition.update({ where: { id: ex2.id }, data: { capacity: 50 } });
     for (const u of others) {
       const r = await request.post(`/api/exhibitions/${ex2.id}/invite`)

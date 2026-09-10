@@ -249,4 +249,43 @@ describe('exhibitionStage', () => {
   it('공모 정보가 없으면 null (배지를 그리지 않는다)', () => {
     expect(exhibitionStage(null)).toBeNull();
   });
+
+  /**
+   * 공모만 진행하는 공고 (`recruitOnly`, 2026-09-10) — 단계가 **모집중 → 선정 완료** 둘뿐이다.
+   *
+   * ⚠️ 여기가 어긋나면 작가에게 **없는 일이 있는 것처럼** 보인다. 그 공고엔 전시 운영·정산
+   *    단계가 아예 없는데(서버가 400 으로 막는다) 배지가 '전시 진행중'·'확정' 이라고 말하면,
+   *    작가는 참여할 전시가 열린 줄 알고 자료 제출 안내를 기다린다.
+   */
+  describe('★ 공모만 진행하는 공고', () => {
+    it('모집중 → 선정 완료', () => {
+      expect(label({ recruitOnly: true, exhibitStartDate: future })).toBe('모집중');
+      expect(label({ recruitOnly: true, exhibitStartDate: future, recruitmentClosed: true })).toBe('선정 완료');
+    });
+
+    it('전시 시작일이 지나도 [전시 진행중] 이 되지 않는다', () => {
+      expect(label({ recruitOnly: true, exhibitStartDate: past, recruitmentClosed: true })).toBe('선정 완료');
+    });
+
+    it('confirmed 가 켜져 있어도 [확정] 이 되지 않는다 (서버가 전시 시작일 경과로 자동 true 를 준다)', () => {
+      expect(label({ recruitOnly: true, exhibitStartDate: past, confirmed: true })).toBe('모집중');
+    });
+
+    it('자동 정리되면 [종료]', () => {
+      expect(label({ recruitOnly: true, exhibitStartDate: past, recruitmentClosed: true, closed: true })).toBe('종료');
+    });
+  });
+});
+
+/**
+ * '다음 일정' — 공모만 진행하는 공고에는 자료제출 마감일이 **없다**(서버가 저장하지 않는다).
+ * 없는 값이 들어와도 줄이 생기지 않는 게 맞다.
+ */
+describe('★ 공모만 진행 — 다음 일정에 자료제출 줄이 없다', () => {
+  const dday = (d: string | Date) => Math.ceil((new Date(d).getTime() - new Date('2026-01-01').getTime()) / 86400000);
+
+  it('submissionDeadline 이 null 이면 전시시작 줄만 남는다', () => {
+    const rows = nextSchedule({ submissionDeadline: null, exhibitStartDate: '2026-03-01', exhibitDate: '2026-03-20' }, false, dday);
+    expect(rows.map(r => r.label)).toEqual(['전시시작']);
+  });
 });

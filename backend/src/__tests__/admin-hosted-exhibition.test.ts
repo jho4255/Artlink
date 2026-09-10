@@ -94,9 +94,67 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
     expect(res.status).toBe(403);
   });
 
-  it('운영 갤러리를 하나도 고르지 않으면 400', async () => {
+  /**
+   * ⚠️ 2026-09-10 에 규칙이 **뒤집혔다** — 예전엔 "운영 갤러리 1곳 이상 필수(아니면 400)" 였다.
+   *    지금은 아트링크가 갤러리를 아예 안 끼고 직접 여는 공모를 허용한다.
+   */
+  it('★ 운영 갤러리를 하나도 안 골라도 등록된다 — 주관 갤러리 없이 아트링크가 직접 연다', async () => {
     const res = await createHosted([]);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+
+    const saved = await testPrisma.exhibition.findUnique({
+      where: { id: res.body.id },
+      include: { managers: true },
+    });
+    expect(saved!.galleryId).toBeNull();
+    expect(saved!.managers).toHaveLength(0);
+    expect(saved!.hostType).toBe('ADMIN');
+    expect(saved!.status).toBe('APPROVED');   // 주최자가 관리자라 승인 절차 없음(종전과 동일)
+  });
+
+  it('★ 갤러리 없는 공모도 상세가 열린다 — gallery: null (예전엔 여기서 500이 났다)', async () => {
+    const { body: created } = await createHosted([]);
+    const res = await request.get(`/api/exhibitions/${created.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.gallery).toBeNull();
+    expect(res.body.managerGalleries).toEqual([]);
+  });
+
+  it('★ 갤러리 없는 공모의 새 지원자 알림은 Admin 에게 간다 (아무에게도 안 가면 안 된다)', async () => {
+    await testPrisma.notification.deleteMany();
+    await testPrisma.portfolio.create({ data: { userId: ARTIST, biography: 'b' } });
+    const { body: created } = await createHosted([]);
+    const res = await request.post(`/api/exhibitions/${created.id}/apply`)
+      .set('Authorization', `Bearer ${artistToken}`)
+      .send({
+        biography: '약력입니다',
+        artworkImages: ['https://example.com/a.jpg'],
+        termsAgreed: true,
+        termsVersion: 'artist_apply_2026-07-03',
+      });
+    expect(res.status).toBe(201);
+
+    const notes = await testPrisma.notification.findMany({ where: { type: 'NEW_APPLICANT' } });
+    expect(notes.map((n) => n.userId)).toContain(ADMIN);
+  });
+
+  it('★ 갤러리 없는 공모의 지원자 목록도 열린다 (갤러리 단위 통계는 첫 지원으로)', async () => {
+    await testPrisma.portfolio.create({ data: { userId: ARTIST, biography: 'b' } });
+    const { body: created } = await createHosted([]);
+    await request.post(`/api/exhibitions/${created.id}/apply`)
+      .set('Authorization', `Bearer ${artistToken}`)
+      .send({
+        biography: '약력입니다',
+        artworkImages: ['https://example.com/a.jpg'],
+        termsAgreed: true,
+        termsVersion: 'artist_apply_2026-07-03',
+      });
+
+    const res = await request.get(`/api/exhibitions/${created.id}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].isFirstApplication).toBe(true);
   });
 
   it('승인되지 않은 갤러리는 운영 갤러리로 지정할 수 없다', async () => {
@@ -398,10 +456,30 @@ describe('PATCH /api/exhibitions/:id/managers', () => {
     expect(res.status).toBe(403);
   });
 
-  it('빈 목록으로는 바꿀 수 없다 — 주관 갤러리가 사라지면 안 된다', async () => {
+  /**
+   * ⚠️ 2026-09-10 에 규칙이 **뒤집혔다** — 예전엔 "빈 목록 불가(주관 갤러리가 사라지면 안 된다)" 였다.
+   *    지금은 갤러리를 전부 떼고 아트링크가 직접 운영하는 상태로 되돌릴 수 있다.
+   *    ⚠️ 주관 갤러리(`galleryId`)도 **함께 null 이 돼야** 한다 — 안 그러면 뗀 갤러리 이름이 카드에 남는다.
+   */
+  it('★ 빈 목록으로 바꾸면 갤러리가 전부 떨어지고 주관도 null 이 된다', async () => {
     const res = await request.patch(`/api/exhibitions/${exId}/managers`)
       .set('Authorization', `Bearer ${adminToken}`).send({ galleryIds: [] });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(res.body.managerGalleries).toEqual([]);
+
+    const saved = await testPrisma.exhibition.findUnique({
+      where: { id: exId }, include: { managers: true },
+    });
+    expect(saved!.galleryId).toBeNull();
+    expect(saved!.managers).toHaveLength(0);
+  });
+
+  it('갤러리를 뗀 뒤에는 그 갤러리가 더 이상 운영할 수 없다', async () => {
+    await request.patch(`/api/exhibitions/${exId}/managers`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ galleryIds: [] });
+    const res = await request.get(`/api/exhibitions/${exId}/applications`)
+      .set('Authorization', `Bearer ${aToken}`);
+    expect(res.status).toBe(403);
   });
 });
 

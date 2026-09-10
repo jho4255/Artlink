@@ -1,4 +1,5 @@
 import prisma from './prisma';
+import { exhibitionNotifyTargets } from './exhibitionAccess';
 
 /**
  * 대화(갠톡·단톡) 공용 로직.
@@ -100,7 +101,7 @@ export async function ensureExhibitionChat(exhibitionId: number): Promise<number
   const ex = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },
     select: {
-      id: true, title: true, status: true,
+      id: true, title: true, status: true, hostType: true,
       gallery: { select: { ownerId: true } },
       managers: { select: { gallery: { select: { ownerId: true } } } },
       applications: { where: { status: 'ACCEPTED' }, select: { userId: true } },
@@ -108,9 +109,10 @@ export async function ensureExhibitionChat(exhibitionId: number): Promise<number
   });
   if (!ex || ex.status !== 'APPROVED') return null;
 
-  const memberIds = new Set<number>();
-  if (ex.gallery?.ownerId) memberIds.add(ex.gallery.ownerId);
-  for (const m of ex.managers) if (m.gallery?.ownerId) memberIds.add(m.gallery.ownerId);
+  // ⚠️ 운영자가 **반드시 방에 있어야** 한다. 아트링크가 갤러리를 안 끼고 여는 공모(2026-09-10)는
+  //    갤러리 오너도 위임 갤러리도 없어서, 그냥 두면 **작가들만 있는 방**이 된다 —
+  //    주최자가 공지도 못 하고 작가가 물어볼 곳도 없다. 그럴 때만 Admin 이 들어간다.
+  const memberIds = new Set<number>(await exhibitionNotifyTargets(ex as any));
   for (const a of ex.applications) memberIds.add(a.userId);
 
   const chat = await prisma.chat.upsert({

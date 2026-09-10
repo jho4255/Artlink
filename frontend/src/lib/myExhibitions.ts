@@ -186,6 +186,17 @@ export function defaultBucket(apps: MyApplicationLike[]): MyExhibitionBucket {
 export function exhibitionStage(ex: any): { label: string; cls: string } | null {
   if (!ex) return null;
   const startPassed = ex.exhibitStartDate && new Date(ex.exhibitStartDate) <= new Date();
+  /**
+   * 공모만 진행하는 공고(2026-09-10)는 단계가 **모집중 → 선정 완료** 둘뿐이다.
+   * ⚠️ 아래 분기를 그대로 태우면 안 된다 — 전시 시작일이 지났다고 '전시 진행중' 이라고 하면
+   *    작가는 자기가 참여하는 전시가 열린 줄 안다. 그 공고엔 전시 운영 단계가 없다.
+   */
+  if (ex.recruitOnly) {
+    if (ex.closed) return { label: '종료', cls: 'bg-gray-200 text-gray-600' };
+    return ex.recruitmentClosed
+      ? { label: '선정 완료', cls: 'bg-sky-100 text-sky-700' }
+      : { label: '모집중', cls: 'bg-amber-100 text-amber-700' };
+  }
   if (ex.settledAt) return { label: '정산완료', cls: 'bg-green-100 text-green-700' };
   // 자동 정리된 방치 공모 — 갤러리가 종료를 누르지 않았으므로 ended 로는 잡히지 않는다
   if (ex.closed && !ex.ended) return { label: '종료(자동)', cls: 'bg-gray-200 text-gray-600' };

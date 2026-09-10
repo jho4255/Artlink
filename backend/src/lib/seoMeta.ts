@@ -172,7 +172,8 @@ async function fetchSeoFields(kind: SeoKind, id: number): Promise<SeoFields | nu
     if (!ex) return null;
     const typeLabel = ex.type === 'ART_FAIR' ? '아트페어' : ex.type === 'GROUP' ? '단체전' : '개인전';
     return {
-      title: `${ex.title} | ${ex.gallery.name} 작가 모집 - ArtLink`,
+      // 아트링크 주최 공모는 주관 갤러리가 없을 수 있다(2026-09-10)
+      title: `${ex.title} | ${ex.gallery?.name ?? '아트링크'} 작가 모집 - ArtLink`,
       description: joinParts([regionLabel(ex.region), typeLabel, `마감 ${fmtKst(ex.deadline)}`, ex.description]),
       image: ex.imageUrl || ex.images[0]?.url || null,
       path: `/exhibitions/${id}`,

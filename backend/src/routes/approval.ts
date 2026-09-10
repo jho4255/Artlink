@@ -118,17 +118,21 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
     });
 
     // 승인/거절 → Gallery 오너에게 알림
-    try {
-      const statusLabel = status === 'APPROVED' ? '승인' : '거절';
-      await prisma.notification.create({
-        data: {
-          userId: exhibition.gallery.ownerId,
-          type: 'APPROVAL_RESULT',
-          message: `공모 "${exhibition.title}"이(가) ${statusLabel}되었습니다.${rejectReason ? ` (사유: ${rejectReason})` : ''}`,
-          linkUrl: `/exhibitions/${exhibition.id}`,
-        },
-      });
-    } catch { /* best-effort */ }
+    // 주관 갤러리가 없으면 알릴 사람이 없다 — 아트링크 주최 공모는 애초에 승인 절차를 안 타므로
+    // (등록 즉시 APPROVED) 여기까지 오지 않지만, 오더라도 조용히 넘어간다.
+    if (exhibition.gallery) {
+      try {
+        const statusLabel = status === 'APPROVED' ? '승인' : '거절';
+        await prisma.notification.create({
+          data: {
+            userId: exhibition.gallery.ownerId,
+            type: 'APPROVAL_RESULT',
+            message: `공모 "${exhibition.title}"이(가) ${statusLabel}되었습니다.${rejectReason ? ` (사유: ${rejectReason})` : ''}`,
+            linkUrl: `/exhibitions/${exhibition.id}`,
+          },
+        });
+      } catch { /* best-effort */ }
+    }
 
     // 승인된 공모에는 단톡방을 만들어 둔다 — 갤러리와 수락 작가가 자동 참여자가 된다(lib/chat.ts).
     // 실패해도 승인은 성공이어야 하므로 best-effort.
@@ -205,7 +209,8 @@ async function assertEditRequestOwnership(type: string, targetId: number, userId
   } else {
     const ex = await prisma.exhibition.findUnique({ where: { id: targetId }, select: { gallery: { select: { ownerId: true } } } });
     if (!ex) throw new AppError('수정 대상 공모를 찾을 수 없습니다.', 404);
-    if (ex.gallery.ownerId !== userId) throw new AppError('본인 소유의 공모만 수정 요청할 수 있습니다.', 403);
+    // 주관 갤러리가 없는 공모(아트링크 주최)는 갤러리 오너가 없으므로 아무도 통과 못 한다 — 의도된 동작
+    if (ex.gallery?.ownerId !== userId) throw new AppError('본인 소유의 공모만 수정 요청할 수 있습니다.', 403);
   }
 }
 

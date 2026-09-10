@@ -16,7 +16,8 @@ import { buildCaptionHwp, CAPTION_MAX_WORKS } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
 import { pushToUser } from '../lib/sse';
 import { hasSubmissionContent } from '../lib/submission';
-import { canOperateExhibition, operatorUserIds } from '../lib/exhibitionAccess';
+import { canOperateExhibition, operatorUserIds, exhibitionNotifyTargets } from '../lib/exhibitionAccess';
+import { assertFullExhibition } from '../lib/exhibitionStage';
 import { fingerprintsOf, settlementFingerprint, feeUnits, cardFeeAmount } from '../lib/settlementFingerprint';
 import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
@@ -45,7 +46,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
   const exhibition = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },
     select: {
-      id: true, title: true, galleryId: true, hostType: true,
+      id: true, title: true, galleryId: true, hostType: true, recruitOnly: true,
       recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true, exhibitDate: true,
       cardFeeRate: true,
       gallery: { select: { ownerId: true, name: true } },
@@ -68,6 +69,22 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
   return { exhibition, isOwner, isAdmin, isAcceptedArtist, isConfirmed };
 }
 
+/**
+ * `getAccess` + **뒷 단계가 있는 공모인가** 검사.
+ *
+ * 자료제출·전시확정/종료·판매·정산 라우트는 전부 이걸 쓴다. 공모만 진행하는 공고
+ * (`recruitOnly`)면 400 으로 막는다 — 화면에서 버튼만 감추면 옛 알림·주소로 그대로 들어와
+ * **아무도 안 보는 자료·정산 데이터**가 생긴다(lib/exhibitionStage.ts 주석 참고).
+ *
+ * ⚠️ 공지(`/notices`)와 접근정보(`/access`)는 여기를 쓰지 않는다 — 공모만 진행해도 필요하다.
+ */
+async function getStageAccess(exhibitionId: number, userId: number, role: string) {
+  const access = await getAccess(exhibitionId, userId, role);
+  assertFullExhibition(access.exhibition);
+  return access;
+}
+
+
 const idOf = (s: any) => parseInt(s, 10);
 
 // ── 접근 정보 (페이지 부트스트랩) ──
@@ -80,9 +97,12 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
       title: exhibition.title,
       // 아트링크 주최 공모는 gallery 가 '주관' 갤러리일 뿐이라, 위임받은 갤러리가 보면 남의 이름이 뜬다.
       // 화면에 쓸 이름은 주최자 기준으로 내려준다(주관 갤러리명은 hostGalleryName 으로 따로).
-      galleryName: exhibition.hostType === 'ADMIN' ? '아트링크 주최' : exhibition.gallery.name,
-      hostGalleryName: exhibition.gallery.name,
+      // ⚠️ 주관 갤러리는 없을 수 있다 — 아트링크가 갤러리를 안 끼고 직접 여는 공모(2026-09-10)
+      galleryName: exhibition.hostType === 'ADMIN' ? '아트링크 주최' : (exhibition.gallery?.name ?? '아트링크'),
+      hostGalleryName: exhibition.gallery?.name ?? null,
       hostType: exhibition.hostType,
+      // 공모만 진행하는 공고인가 — 화면이 자료제출·전시·정산 블록을 통째로 감추는 근거(lib/exhibitionStage.ts)
+      recruitOnly: exhibition.recruitOnly,
       isOwner, isAdmin, isAcceptedArtist,
       recruitmentClosed: exhibition.recruitmentClosed,
       confirmed: isConfirmed,        // 수동 확정 또는 전시 시작일 경과
@@ -248,7 +268,7 @@ function withProxyFlag<T extends object | null>(sub: T, artistUserId: number): T
 router.get('/:id/me', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isAcceptedArtist } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isAcceptedArtist } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 접근할 수 있습니다.', 403);
     const sub = await prisma.exhibitionSubmission.findUnique({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
@@ -283,7 +303,7 @@ function submissionDataFrom(body: any) {
 router.put('/:id/me', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isAcceptedArtist, isConfirmed } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isAcceptedArtist, isConfirmed } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
     // 본인이 직접 저장 → 대신 입력 표시가 있었다면 여기서 사라진다
@@ -303,7 +323,7 @@ router.put('/:id/me', authenticate, async (req, res, next) => {
 router.get('/:id/submissions', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
     // 수락된 작가 목록
@@ -327,7 +347,7 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
 router.post('/:id/submission-reminders', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { exhibition, isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { exhibition, isOwner, isAdmin } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     if (exhibition.ended && !isAdmin) throw new AppError('전시 종료 후에는 자료 제출 안내를 보낼 수 없습니다.', 400);
@@ -406,7 +426,7 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
     const targetUserId = idOf(req.params.userId);
-    const { exhibition, isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { exhibition, isOwner, isAdmin } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     const isSelf = req.user!.id === targetUserId;
     if (!isOwner && !isAdmin && !isSelf) throw new AppError('권한이 없습니다.', 403);
 
@@ -465,7 +485,7 @@ router.get('/:id/submissions/:userId/edit', authenticate, async (req, res, next)
   try {
     const exhibitionId = idOf(req.params.id);
     const targetUserId = idOf(req.params.userId);
-    const { isOwner, isAdmin } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     await assertProxyTarget(exhibitionId, targetUserId);
 
@@ -480,7 +500,7 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
     const targetUserId = idOf(req.params.userId);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     // 종료 후에는 판매 기록이 출품목록 위치에 묶여 있어 고치면 정산이 엉뚱한 작품을 가리킨다
     if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 제출 자료를 수정할 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
@@ -523,7 +543,7 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
 router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
     const accepted = await prisma.application.findMany({
@@ -577,6 +597,9 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
       }
       data.recruitmentClosed = recruitmentClosed;
     }
+    // ⚠️ 라우트 전체를 막지 말 것 — **모집마감은 공모만 진행하는 공고에도 필요하다**.
+    //    없는 건 그 뒤(확정·전시종료)뿐이라 거기만 막는다.
+    if (confirmed !== undefined || ended !== undefined) assertFullExhibition(exhibition);
     if (typeof confirmed === 'boolean') {
       if (confirmed) {
         // 확정은 모집마감 이후에만
@@ -750,7 +773,7 @@ function computeSettlement(rows: { user: any; artworkList: any[] }[], sales: any
 router.get('/:id/settlement', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
     // 스케줄러 대신 화면을 열 때 훑는다 (알림 TTL 정리와 같은 방식)
@@ -798,7 +821,7 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
     const userId = req.user!.id;
-    const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
+    const { isAcceptedArtist, exhibition } = await getStageAccess(exhibitionId, userId, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 조회할 수 있습니다.', 403);
 
     await autoApproveOverdue(exhibition);
@@ -840,7 +863,7 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
 router.put('/:id/settlement', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     // 전시 종료 후에만 판매 입력 가능 — 종료 전에는 작가가 출품 목록을 고칠 수 있어
     // 위치 기반 artworkIndex가 다른 작품을 가리키게 된다 (작가 편집은 확정 시점에 잠김)
@@ -944,7 +967,7 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
 router.post('/:id/settlement/complete', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (!exhibition.ended) throw new AppError('전시 종료 후에 정산을 완료할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
@@ -1005,7 +1028,7 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
 router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (!exhibition.ended) throw new AppError('전시 종료 후에 정산 확인을 요청할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
@@ -1074,7 +1097,7 @@ router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async 
   try {
     const exhibitionId = idOf(req.params.id);
     const artistUserId = idOf(req.params.artistUserId);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
     if (!exhibition.settlementRequestedAt) throw new AppError('먼저 [정산 확인 요청]을 보내주세요.', 400);
@@ -1113,7 +1136,7 @@ router.post('/:id/settlement/request/artist/:artistUserId', authenticate, async 
 router.post('/:id/settlement/reminders', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (!exhibition.ended) throw new AppError('전시 종료 후 사용할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
@@ -1187,7 +1210,7 @@ router.post('/:id/settlement/reminders', authenticate, async (req, res, next) =>
 router.post('/:id/settlement/request/cancel', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
     if (!exhibition.settlementRequestedAt) throw new AppError('진행 중인 정산 확인 요청이 없습니다.', 400);
@@ -1206,7 +1229,7 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
     const userId = req.user!.id;
-    const { isAcceptedArtist, exhibition } = await getAccess(exhibitionId, userId, req.user!.role);
+    const { isAcceptedArtist, exhibition } = await getStageAccess(exhibitionId, userId, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 응답할 수 있습니다.', 403);
     if (!exhibition.settlementRequestedAt) throw new AppError('진행 중인 정산 확인 요청이 없습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);

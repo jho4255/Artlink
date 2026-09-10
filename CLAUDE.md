@@ -131,7 +131,20 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     검증은 R2 공개 주소로: `curl -I <원본주소를 /t240/ 끼워 넣은 것>` 이 **200** 이어야 한다(404 면 아직).
 
 21. **목록 썸네일은 `Thumb` 컴포넌트로** (`components/shared/Thumb.tsx`) — 목록이 원본을 받아 한 페이지에 96MB를 쓰던 문제. 업로드 시 `t240/`에 240px를 함께 생성(`backend/src/lib/thumb.ts`), 없으면 원본 폴백. **확대·라이트박스·PDF는 원본 유지**(키우면 뭉개짐). 썸네일 키를 `String.replace`로 만들지 말 것 — 디렉터리가 중복돼 **R2에서만 조용히** 깨진다
-22. **공모 운영 권한은 `lib/exhibitionAccess.ts`로만 판정** — 아트링크(Admin) 주최 공모(`hostType='ADMIN'`)는 admin이 지정한 여러 갤러리(`ExhibitionManager`)가 오너처럼 운영한다. **위임은 `hostType==='ADMIN'`일 때만 인정**할 것 — 갤러리 주최 공모에 위임 행이 섞여도 권한을 주면 **남의 공모 지원자 개인정보가 통째로** 열린다. 새 엔드포인트에서 `gallery.ownerId !== req.user.id` 를 직접 쓰지 말고 `assertCanManageExhibition`(Admin 포함)/`operableExhibitionWhere` 를 쓸 것. **지원자 관리·초대·홍보사진 라우트에 `authorize('GALLERY')` 만 걸면 Admin이 막힌다** — 실제로 관리자가 수락/거절을 못 했다. `galleryId`(주관 갤러리)는 기존 코드 79곳이 전제하므로 nullable로 바꾸지 말 것
+22. **공모 운영 권한은 `lib/exhibitionAccess.ts`로만 판정** — 아트링크(Admin) 주최 공모(`hostType='ADMIN'`)는 admin이 지정한 여러 갤러리(`ExhibitionManager`)가 오너처럼 운영한다. **위임은 `hostType==='ADMIN'`일 때만 인정**할 것 — 갤러리 주최 공모에 위임 행이 섞여도 권한을 주면 **남의 공모 지원자 개인정보가 통째로** 열린다. 새 엔드포인트에서 `gallery.ownerId !== req.user.id` 를 직접 쓰지 말고 `assertCanManageExhibition`(Admin 포함)/`operableExhibitionWhere` 를 쓸 것. **지원자 관리·초대·홍보사진 라우트에 `authorize('GALLERY')` 만 걸면 Admin이 막힌다** — 실제로 관리자가 수락/거절을 못 했다.
+    ⚠️⚠️ **`galleryId` 는 2026-09-10 부터 nullable 이다** (그 전 문구 "nullable 로 바꾸지 말 것" 은 폐기).
+    아트링크가 **갤러리를 아예 안 끼고** 여는 공모를 허용한다 — `POST /exhibitions/hosted` 에 `galleryIds: []`,
+    `PATCH /:id/managers` 에 빈 배열이면 주관도 함께 null 이 된다. **갤러리 주최(`hostType='GALLERY'`) 공모는 여전히 항상 값이 있다.**
+    - ⚠️ 읽는 쪽은 전부 **`gallery?.`** 로 볼 것. 타입이 다 잡아 주지 않는다 — `exhibition.ts` 는 `as any` 가 많아
+      `(exhibition.gallery as any).owner` 같은 코드가 **컴파일은 통과하고 런타임에 500** 을 낸다(공모 상세가 통째로 안 열린다).
+      그 라우트에서는 `exhibitionOwner()` 헬퍼 한 곳으로 모아 뒀다.
+    - ⚠️ 프론트에서 **로컬 타입으로 non-null 을 덮어쓰지 말 것** — `ExhibitionDetailPage` 가 `gallery` 를 다시 선언해
+      두는 바람에, 전역 타입을 nullable 로 바꿔도 **그 화면만 검사를 빠져나갔다**.
+    - ⚠️⚠️ **알림은 `operatorUserIds` 가 아니라 `exhibitionNotifyTargets` 로 보낼 것.** 갤러리를 안 낀 공모는
+      운영자 목록이 비어서, 그대로 두면 새 지원자가 들어와도 **아무에게도 알림이 안 간다**. 그럴 때만 Admin 전원에게 보낸다.
+      단톡방(`ensureExhibitionChat`)도 같은 함수를 쓴다 — 안 그러면 **작가들만 있는 방**이 되어 주최자가 공지도 못 한다.
+    - ⚠️ 갤러리 단위 지원 통계(`galleryApplicationStats`)는 `galleryId` 가 null 이면 **빈 Map**. 전체 공모를 합산해
+      메우려 하지 말 것 — 갤러리 단위가 아닌 숫자가 같은 라벨로 나간다
 23. **공개 상세 라우트는 `status !== 'APPROVED'` 를 먼저 막을 것** — 목록만 거르고 상세를 열어두면 목록에 없는 심사중·반려 항목이 **주소로 id 만 치면 비로그인에게 다 보인다**(2026-08-15 수정). 당사자·Admin 만 열고 **404**로 응답(403은 존재를 알려준다). 탈퇴(WITHDRAWN)는 Admin 전용 유지. 새 공개 상세를 만들면 `private-detail.test.ts` 에 케이스를 추가할 것
 24. **공개 목록에 마감분을 노출할 땐 `status: 'APPROVED'` 를 절대 빼지 말 것** — `GET /exhibitions?scope=closed`(마감된 공고 탭)는 수동마감·전시종료·마감일경과를 모으는데, 승인 필터가 빠지면 심사중·반려·탈퇴 공모가 **공개된다**(23번과 같은 사고). 검색어가 있으면 `where.OR` 가 `AND` 로 감싸지므로 scope 조건이 유지되는지 함께 확인할 것.
     **상세의 지원 차단을 마감일로만 판정하지 말 것** — `recruitmentClosed`/`ended` 를 빼면 마감일이 남은 채 마감된 공고에 [지원하기]가 뜬다(`?apply=1` 자동 오픈 경로 포함). 서버는 4중으로 막고 있으니 데이터는 안전하지만, 눌러보고 400 을 받는 화면이 된다
@@ -321,6 +334,32 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   `e2e/tests/50-feed-mention-highlight.spec.ts`. ⚠️ 그 e2e 는 예전에 "입력칸이 보이는가"만 봐서, 멘션이 **없는 API**를
   부르고 하이라이트에 `onClick` 이 없던 동안에도 **통과했다**. 보이는지가 아니라 눌러서 무슨 일이 나는지를 볼 것.
 
+### 공모 진행 범위 — 전시까지 / 공모만 (2026-09-10)
+- 공고마다 어디까지 진행할지 고른다(`Exhibition.recruitOnly`, 마이그레이션 `20260910100000_exhibition_optional_gallery_and_recruit_only`).
+    - **전시까지 진행**(기본, `false`) — 지원 → 수락 → 자료제출 → 전시 확정 → 전시 종료 → 판매·정산. 지금까지의 동작 그대로.
+    - **공모만 진행**(`true`) — **수락에서 끝**. 자료제출·확정·종료·판매·정산 단계가 아예 없다.
+- 판정은 **`backend/src/lib/exhibitionStage.ts` 한 곳**에서만 한다(`assertFullExhibition` / `hasExhibitionStages`).
+- ⚠️⚠️ **화면에서 버튼만 감추면 안 된다 — 서버가 400 으로 막는다.** 옛 알림·주소로 그대로 들어오면
+  공모만 하기로 한 공고에 자료제출·정산 데이터가 생기고, 갤러리는 그런 걸 만든 적이 없으니 아무도 안 본다.
+  **작가만 자료를 내고 기다리는, 에러 없이 조용히 어긋나는 상태**가 된다.
+  막는 곳: `operation.ts` 의 `getStageAccess`(자료제출·정산 라우트 17곳) · `PATCH /:id/lifecycle` 의 확정·종료 ·
+  `PATCH /exhibitions/:id/submission-deadline`.
+- ⚠️ **`lifecycle` 라우트를 통째로 막지 말 것** — **모집마감은 공모만 진행하는 공고에도 필요하다**. 없는 건 그 뒤뿐이다.
+  운영 공지(`/notices`)와 접근정보(`/access`)도 그대로 열어 둔다(수락 작가에게 안내할 일이 있다).
+- ⚠️ **`recruitOnly` 일 때 `access.confirmed` 를 믿지 말 것.** 서버가 전시 시작일 경과로 **자동 true** 를 준다
+  (`computeConfirmed`). 그대로 그리면 있지도 않은 '전시 확정' 이 화면에 뜬다 —
+  `StatusPanel`·`getOperationStage`·`exhibitionStage` 세 곳 모두 `recruitOnly` 를 먼저 본다.
+- ⚠️ **뒷 단계 쿼리를 끄는 것도 잊지 말 것**(`OperationPage` 의 `enabled: … && !recruitOnly`). 화면만 감추고
+  쿼리를 두면 서버가 400 을 주고 화면엔 이유 없는 에러만 남는다.
+- ⚠️ 자료제출 마감일은 **받지도 저장하지도 않는다**(항상 null). 보내와도 무시한다 — 없는 단계의 기한이
+  작가 화면에 뜨면 안 된다. 등록 폼도 칸을 **비활성이 아니라 아예 없앤다**(회색으로 남기면 "왜 못 쓰지" 를 묻게 된다).
+- ⚠️ 정산 재촉 스윕(`lib/settlementReminder.ts`)의 후보에서 `recruitOnly: false` 로 거를 것 — 없는 일을 하라는 재촉이 된다.
+- 고르는 칸은 **`components/shared/ExhibitionScopePicker.tsx` 하나**를 갤러리 폼과 아트링크 주최 폼이 같이 쓴다.
+  ⚠️ **고르면 무엇이 사라지는지 적어 줄 것** — 이름만 봐서는 자료제출·정산이 통째로 없어지는 선택인 줄 모른다.
+- 회귀: `backend/src/__tests__/exhibition-recruit-only.test.ts`(25개) · `admin-hosted-exhibition.test.ts`(46개) ·
+  `frontend/src/__tests__/myExhibitions.test.ts` · `e2e/tests/51-exhibition-scope-and-hostless.spec.ts`(4개, **폼으로 만들고
+  payload 를 가로채 확인**한다 — 화면과 서버가 다른 이름을 쓰는 사고가 이 저장소에서 반복됐다).
+
 ### 홈 레이아웃 (2026-08-29, 순서는 2026-09-05 갱신)
 - 배너(HeroSlider) → ArtWorks → **1행 [좌 인기글 / 우 진행중인 전시]** → **2행 [좌 마감임박 공모 / 우 주목할 갤러리] 1:1**.
   ⚠️ 2026-08-27~09-04 는 **작품이 맨 위**였다(아래 '홈 구성' 항목 참고). 2026-09-05 사용자 요청으로 배너를 맨 위로 되돌렸다.
@@ -329,6 +368,18 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   로컬에서 배너 아래가 휑하면 레이아웃이 아니라 **데이터**를 먼저 볼 것(`GET /api/explore/highlight` 가 `images:[]`).
 - 진행중인 전시(`OngoingShows`) = `/shows?showStatus=ongoing` + `getShowStatus==='ongoing'`. 마감임박 공모(`ClosingSoonExhibitions`) = `/exhibitions?scope=open`(이미 마감일 오름차순)에서 dday≥0 앞부터. 둘 다 좁은 레일, 썸네일은 `Thumb`.
 - **히어로 배너**(`HeroSlider`, 스크롤-스냅 슬라이딩): 자동 전환 **10초**, 슬라이드 애니메이션 rAF 900ms ease-in-out(브라우저 smooth 는 속도를 못 정한다). 좌우 화살표는 호버 때만 또렷이. (가로 split-flap 플립을 시도했다가 **롤백** — 슬라이딩이 낫다는 판단, 2026-08-29)
+    - ⚠️⚠️ **배너 사진을 자르지 말 것** (2026-09-10 수정). 예전엔 틀을 `aspect-[4/3] sm:aspect-[16/9]` 로 못박고
+      `object-cover` 라, 창이 좁아지면 사진이 잘렸다 — 실서버 배너가 2000×667(**3:1**)인데 모바일 틀이 4/3(1.33)이라
+      **가로의 56% 가 잘려 나갔다**(실측: 375px 에서 보이는 건 **44%**). 창을 줄이면 사진도 같이 **작아져야** 한다.
+      지금은 `<img>` 의 `naturalWidth/Height` 를 재서 **틀의 `aspectRatio` 를 사진 비율에 맞추고** `object-contain` 을 쓴다.
+      ⚠️ 슬라이드는 트랙 하나를 공유하므로 높이도 하나다 — **가장 세로로 긴 사진**(비율 최소)에 맞추고 [1.2, 3.4] 로 묶는다
+      (세로 사진 한 장 때문에 배너가 화면을 삼키면 안 된다). 남는 자리는 띠 배경색(dominant color)이 먹는다.
+    - ⚠️⚠️ **얇은 배너에는 글씨를 사진 위에 얹지 말 것.** 안 자르게 되니 3:1 배너는 375px 화면에서 높이가 **125px** 다.
+      거기에 흰 제목을 얹으면 배너가 이미 갖고 있는 디자인·글씨와 겹쳐 둘 다 안 읽힌다(2026-08-15 에 하단
+      그래디언트를 뺀 것과 같은 이유). 띠 높이를 `ResizeObserver` 로 재서 **200px 미만이면** 제목·바로가기·인디케이터를
+      **사진 아래 띠 색 위로** 내린다. ⚠️ 화면 폭이 아니라 **실제 높이**로 판정할 것 — 같은 폭이라도 비율에 따라 높이가 다르다.
+    - 데스크톱에서 흰 배너 위 흰 제목이 잘 안 읽히는 건 **이 변경 전부터 있던 일**이다(배너 이미지가 밝으면 늘 그랬다).
+      배너에 이미 제목이 들어 있으면 등록할 때 제목 칸을 비우는 게 낫다.
 - **광고 슬롯**(`AdBanner`, `routes/ad.ts`, `AdSlot`): Admin 이 [광고 관리] 탭에서 등록. 사이드바 **로그아웃 아래**에 활성 배너 1개(position 순). 이미지·링크는 우리 저장소·안전 스킴만. 우상단 'AD' 라벨.
 - **커뮤니티·스토리 이미지는 `Thumb`** 로 — 목록 t240 / 상세·피드 t800. 업로드(`/upload/image`)가 두 썸네일을 함께 생성하므로 추가 작업 없음.
 - **작가 약력도 `text-justify`**(양쪽맞춤) — 작가노트와 동일(`HomepageView`).
@@ -1537,7 +1588,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **Gallery 유저**:
     - **등록 진입점은 전용 페이지**(2026-08-29) — 목록(갤러리/전시/모집공고)·마이페이지의 [등록] 버튼은 **`/galleries/new`·`/exhibitions/new`·`/shows/new`** 로 이동한다(커뮤니티 글쓰기처럼 화면 전환, 새 탭 아님). 이 페이지들은 `MyPage.tsx` 의 `MyGalleriesSection`/`MyExhibitionsSection`/`MyShowsSection` 을 **`createOnly` 모드**(폼만·목록/헤더 숨김)로 렌더하는 export 래퍼(`GalleryRegisterPage` 등, GALLERY 전용). 제출 성공 시 `/mypage?tab=my-...` 로, 취소/뒤로가기는 이전 화면으로. 버튼 스타일은 옅은 빨강 아웃라인 알약(커뮤니티 [글쓰기]와 통일).
     - **갤러리 등록**: [이름, 주소, 소개, 대표자명, 전화번호, 대표 이미지, 지역 태그] 승인 요청.
-    - **공모 등록**: [대상 갤러리 선택, 제목, 구분(개인전/아트페어), 공모시작일, 공모마감일, 전시시작일, 전시종료일, 모집인원, 지역, 소개] 승인 요청. **4개 날짜 필드 모두 필수.**
+    - **공모 등록**: [**진행 범위**, 대상 갤러리 선택, 제목, 구분(개인전/아트페어), 공모시작일, 공모마감일, 전시시작일, 전시종료일, 모집인원, 지역, 소개] 승인 요청. **4개 날짜 필드 모두 필수.**
+      - **진행 범위**(2026-09-10): [전시까지 진행] / [공모만 진행]. **공모만 진행하면 자료제출 마감일 칸이 사라지고**,
+        수락 이후 단계(자료제출·전시·정산)가 생기지 않는다. 자세한 규칙은 위 「공모 진행 범위」 절.
       - **검증 강화**: 미입력 필수 항목을 구체적으로 표시 (줄바꿈 toast + 빨간 테두리/라벨 하이라이트). 입력 시 즉시 에러 해제.
     - **공모 추가정보 (커스텀 필드)**: 공모 등록 시 지원자에게 추가 요청할 정보 설정 가능.
       - 필드 타입: **텍스트**(text, 글자수 제한 설정 가능 / maxLength > 200이면 textarea로 자동 렌더링), **선택형**(select, maxSelect로 단일/복수 제어: 1=단일선택 라디오버튼, 2+=최대N개 체크박스, 0=무제한 체크박스), **파일 업로드**(file)
@@ -1554,6 +1607,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **수정 정책**: 승인 후 상세 내용만 수정 가능. 초기 정보 수정은 Admin에게 수정 요청 기능 사용.
 - **Admin 유저**:
     - **승인 큐**: 갤러리/공모 등록 및 수정 요청 승인/거절(**거절 시 사유 작성 필수**).
+    - **아트링크 주최 공모**: 마이페이지 [주최 공모] 탭. 승인 절차 없이 바로 게시된다.
+      **운영 갤러리는 선택**이다(2026-09-10) — 비워 두면 주관 갤러리 없이 아트링크(관리자)가 직접 운영하고,
+      지원 알림도 관리자에게 간다. 등록 후에도 [운영 갤러리 변경]에서 전부 떼어낼 수 있다.
     - **운영 관리**: Hero Section, 혜택 목록 관리 시 **[등록 전 미리보기]** 기능 제공.
     - **이달의 갤러리**: 갤러리 검색 선정 및 **등록 기한 만료 시 자동 제거** 로직 구현.
     - **할 일 보드**: 마이페이지 '할 일 보드' 탭 (`components/admin/KanbanSection.tsx`). Admin 계정끼리 회의 내용·할 일 정리.

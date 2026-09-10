@@ -10,10 +10,12 @@
  * `ExhibitionManager` 행 자체를 만들지 않지만, 혹시 남아 있더라도 여기서 `hostType` 을 먼저 보고
  * 무시한다 — 데이터가 새더라도 권한이 새지 않게 이중으로 막는 것.
  *
- * ## 주관 갤러리(`galleryId`)는 그대로 남는다
- * 목록 카드의 갤러리명, 지원 통계(`galleryApplicationStats`), 정산, SEO 등 기존 코드 전부가
- * `exhibition.gallery` 를 전제로 한다. 그래서 admin 주최 공모도 **주관 갤러리 1곳을 반드시 지정**하고,
- * 그 갤러리는 운영 갤러리 목록에도 함께 들어간다. 화면에서는 `hostType` 을 보고 "아트링크 주최"로 표기한다.
+ * ## 주관 갤러리(`galleryId`)는 **선택값이다** (2026-09-10 변경)
+ * 예전엔 "기존 코드가 `exhibition.gallery` 를 전제하므로 admin 주최도 주관 갤러리 1곳 필수" 였다.
+ * 지금은 **갤러리를 아예 안 끼고** 아트링크가 직접 여는 공모를 허용한다 — 목록 카드는 주최 배지로,
+ * 지원 통계는 갤러리가 있을 때만, 알림은 `exhibitionNotifyTargets` 로 Admin 에게 간다.
+ * ⚠️ 갤러리 주최(`hostType='GALLERY'`) 공모의 `galleryId` 는 **여전히 항상 있다** — 라우트가 강제한다.
+ *    즉 null 을 볼 수 있는 건 아트링크 주최 공모뿐이지만, 읽는 쪽은 그냥 `gallery?.` 로 쓸 것.
  *
  * ## 쓰는 법
  *   단건 판정  : `const ex = await assertCanManageExhibition(id, req.user!)`  (Admin 포함)
@@ -56,6 +58,23 @@ export function operatorUserIds(ex: OperatorShape | null | undefined): number[] 
     for (const m of ex.managers ?? []) if (m?.gallery?.ownerId) ids.add(m.gallery.ownerId);
   }
   return [...ids];
+}
+
+/**
+ * 알림을 **실제로 받을 사람** — `operatorUserIds` 가 비면 운영자(Admin)에게 보낸다.
+ *
+ * ⚠️ 아트링크 주최 공모는 2026-09-10 부터 **갤러리를 아예 안 낄 수 있다**(주관도 위임도 없음).
+ *    그러면 `operatorUserIds` 가 빈 배열이라, 그대로 두면 새 지원자가 들어와도 **아무에게도 안 간다** —
+ *    운영자가 지원 사실 자체를 모른다. 그 공모의 운영자는 아트링크 자신이므로 Admin 전원에게 보낸다.
+ *    (멘션의 ArtLink 규칙과 같은 발상 — 운영자가 여럿일 수 있으니 전원)
+ * ⚠️ 갤러리 주최 공모는 폴백하지 않는다. 거긴 오너가 반드시 있고, 없다면 그건 데이터 사고지
+ *    Admin 이 대신 받을 일이 아니다(남의 공모 지원자 정보가 관리자 알림으로 새면 안 된다).
+ */
+export async function exhibitionNotifyTargets(ex: OperatorShape | null | undefined): Promise<number[]> {
+  const direct = operatorUserIds(ex);
+  if (direct.length || ex?.hostType !== 'ADMIN') return direct;
+  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+  return admins.map((a) => a.id);
 }
 
 /**

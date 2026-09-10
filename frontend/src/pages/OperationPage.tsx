@@ -58,6 +58,14 @@ const stageToneClasses: Record<string, string> = {
 };
 
 function getOperationStage(access: OperationAccess) {
+  // ⚠️ 공모만 진행하는 공고엔 확정·종료·정산 단계가 **없다**. 그런데 `access.confirmed` 는
+  //    전시 시작일이 지나면 서버가 자동으로 true 를 준다(computeConfirmed) — 그대로 두면
+  //    있지도 않은 '전시 확정' 이 표시된다.
+  if (access.recruitOnly) {
+    return access.recruitmentClosed
+      ? { key: 'closed', label: '모집 마감', order: 1 }
+      : { key: 'recruiting', label: '모집 중', order: 0 };
+  }
   if (access.settled) return { key: 'settled', label: '정산 완료', order: 4 };
   if (access.ended) return { key: 'ended', label: '전시 종료', order: 3 };
   if (access.confirmed) return { key: 'confirmed', label: '전시 확정', order: 2 };
@@ -66,6 +74,7 @@ function getOperationStage(access: OperationAccess) {
 }
 
 function operationSummaryText(access: OperationAccess) {
+  if (access.recruitOnly) return access.recruitmentClosed ? '지원자 선정 마무리' : '지원자 검토 진행';
   if (access.settled) return '정산 결과 공유 완료';
   if (access.settlementRequested) return '작가 정산 확인 대기';
   if (access.ended) return '판매 내역과 정산 입력';
@@ -126,11 +135,17 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
   });
 
   const canManage = !!access && (access.isOwner || access.isAdmin);
+  /**
+   * 공모만 진행하는 공고 — 자료제출·전시·정산 단계가 없다.
+   * ⚠️ 화면에서 감추는 것만으로 끝내지 말 것. 아래 쿼리들도 **끄지 않으면** 서버가 400 을 주고
+   *    (`lib/exhibitionStage.ts`) 화면엔 이유 없는 에러만 남는다.
+   */
+  const recruitOnly = !!access?.recruitOnly;
 
   const { data: submissionSummary = [] } = useQuery<{ user: any; submission: OperationSubmission }[]>({
     queryKey: ['operation-submissions', id],
     queryFn: () => api.get(`/operations/${id}/submissions`).then(r => r.data),
-    enabled: !!id && canManage,
+    enabled: !!id && canManage && !recruitOnly,
     staleTime: 0,
   });
 
@@ -143,7 +158,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
   }>({
     queryKey: ['operation-settlement', id],
     queryFn: () => api.get(`/operations/${id}/settlement`).then(r => r.data),
-    enabled: !!id && canManage && !!access?.ended,
+    enabled: !!id && canManage && !!access?.ended && !recruitOnly,
     staleTime: 0,
   });
   useEffect(() => {
@@ -236,12 +251,17 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
   const settlementPendingRows = settlementSummary?.artists.filter(a => a.approval?.status !== 'APPROVED') ?? [];
   const settlementUnansweredRows = settlementSummary?.artists.filter(a => (a.approval?.status || 'PENDING') === 'PENDING') ?? [];
 
-  const managerSections = [
-    { id: 'operation-stage', label: '진행 단계', value: stage.label },
-    { id: 'operation-notices', label: '운영 공지사항', value: '공유' },
-    { id: 'operation-submissions', label: '작가 자료', value: `${completeArtists}/${submissionSummary.length}` },
-    ...(access.ended ? [{ id: 'operation-settlement', label: '정산', value: access.settled ? '완료' : access.settlementRequested ? '확인 중' : '준비' }] : []),
-  ];
+  const managerSections = recruitOnly
+    ? [
+        { id: 'operation-stage', label: '진행 단계', value: stage.label },
+        { id: 'operation-notices', label: '운영 공지사항', value: '공유' },
+      ]
+    : [
+        { id: 'operation-stage', label: '진행 단계', value: stage.label },
+        { id: 'operation-notices', label: '운영 공지사항', value: '공유' },
+        { id: 'operation-submissions', label: '작가 자료', value: `${completeArtists}/${submissionSummary.length}` },
+        ...(access.ended ? [{ id: 'operation-settlement', label: '정산', value: access.settled ? '완료' : access.settlementRequested ? '확인 중' : '준비' }] : []),
+      ];
 
   const incompleteArtists = Math.max(0, submissionSummary.length - completeArtists);
   // 자료 제출 챙김은 '전시 확정 ~ 전시 종료 전' 구간에서만 의미가 있음 (그 전엔 라인업 미확정, 종료 후엔 이미 늦음)
@@ -358,13 +378,19 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
             <button onClick={() => navigate(`/exhibitions/${id}`)} className="inline-flex min-h-10 items-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">
               공모 상세
             </button>
-            <button onClick={() => { setActiveWorkPanel('submissions'); window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
-              자료 확인
-            </button>
+            {/* 공모만 진행하는 공고엔 '작가 자료' 화면이 없다 — 눌러도 갈 데가 없는 버튼을 두지 않는다 */}
+            {!recruitOnly && (
+              <button onClick={() => { setActiveWorkPanel('submissions'); window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
+                자료 확인
+              </button>
+            )}
           </div>
         </header>
         )}
 
+        {/* 자료제출·정산·판매는 '전시까지 진행' 하는 공모의 숫자다. 공모만 진행하면 전부 '-' 가 되는데,
+            빈 표를 보여 주는 건 정보가 아니라 고장으로 읽힌다 — 줄째로 뺀다. */}
+        {!recruitOnly && (
         <section className="mb-5 grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)] sm:grid-cols-3">
           <div className="border-b border-gray-200 p-4 sm:border-b-0 sm:border-r">
             <span className="block text-xs text-gray-500">자료 제출</span>
@@ -379,6 +405,18 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
             <strong className="mt-1 block text-2xl leading-8 text-gray-950">{won(totalSales)}</strong>
           </div>
         </section>
+        )}
+
+        {/* 왜 이 페이지가 짧은지 한 줄로 알려 준다 — 없는 걸 찾아 헤매지 않게 */}
+        {recruitOnly && (
+          <section className="mb-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <p className="text-sm font-medium text-gray-900">공모만 진행하는 공고입니다</p>
+            <p className="mt-1 text-sm text-gray-500">
+              지원자 수락까지만 진행합니다. 자료제출·전시 운영·정산 단계는 없습니다.
+              지원자 확인과 수락은 <b>내 공모 &gt; 지원자 관리</b>에서 하세요.
+            </p>
+          </section>
+        )}
 
         <section className="mb-5 grid gap-4 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div>
@@ -438,6 +476,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
               <NoticesSection exhibitionId={id!} canManage={true} />
             </div>
 
+            {!recruitOnly && (
             <section className="min-w-0">
               <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -476,6 +515,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
                 )}
               </div>
             </section>
+            )}
 
           </section>
 
@@ -505,6 +545,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
               </div>
             </section>
 
+            {!recruitOnly && (
             <section className="rounded-2xl border border-gray-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
               <div className="border-b border-gray-200 px-4 py-4">
                 <h2 className="text-lg font-semibold text-gray-950">운영 도우미</h2>
@@ -530,6 +571,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
                 ))}
               </div>
             </section>
+            )}
 
           </aside>
         </div>

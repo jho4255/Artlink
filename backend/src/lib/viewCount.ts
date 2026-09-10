@@ -10,7 +10,8 @@ type Viewer = { id: number; role: string } | undefined;
 export async function bumpViewCount(
   model: 'gallery' | 'exhibition' | 'show',
   id: number,
-  ownerId: number,
+  // 주인이 없을 수 있다 — 아트링크가 갤러리를 안 끼고 여는 공모(2026-09-10). 그럼 '본인 조회 제외'가 없을 뿐이다.
+  ownerId: number | null | undefined,
   viewer: Viewer
 ): Promise<void> {
   if (viewer && (viewer.role === 'ADMIN' || viewer.id === ownerId)) return;

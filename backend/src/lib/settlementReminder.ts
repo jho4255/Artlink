@@ -62,6 +62,7 @@ export async function sweepSettlementReminders(now: Date = new Date()): Promise<
         status: 'APPROVED',
         settledAt: null,
         settlementRequestedAt: null,   // 정산을 시작했으면 재촉할 이유가 없다
+        recruitOnly: false,            // 공모만 진행하는 공고엔 정산 단계가 없다 — 재촉하면 없는 일을 하라는 소리다
         exhibitDate: { gte: from, lt: to },
       },
       select: {

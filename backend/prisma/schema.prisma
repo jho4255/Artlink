@@ -340,9 +340,15 @@ model Exhibition {
   status                String    @default("PENDING") // PENDING, APPROVED, REJECTED (승인 상태)
   rejectReason          String?
   hostType              String    @default("GALLERY") // GALLERY(갤러리 주최, 기본) | ADMIN(아트링크 주최 — 운영은 managers 갤러리들에게 위임)
+  // 공모만 진행할 것인가 (2026-09-10).
+  //   false(기본) — 지원 → 수락 → 자료제출 → 전시 → 정산 까지 전부 (지금까지의 동작)
+  //   true         — **수락까지가 끝**. 자료제출·확정·전시종료·판매·정산 단계가 아예 없다.
+  // 기본값 false 라 기존 공모는 전부 그대로다. 판정은 반드시 lib/exhibitionStage.ts 를 거칠 것.
+  recruitOnly           Boolean   @default(false)
   // 작가가 출품자료(출품리스트·약력·노트)를 내야 하는 마감일. 지원마감 < 이 날짜 < 전시시작.
   // 신규 등록은 필수지만, 2026-08-19 이전에 올라간 공모는 값이 없어 nullable 이다
   // (갤러리가 공모 상세에서 한 번 채워 넣고, 그 뒤로는 Admin 만 고칠 수 있다).
+  // ⚠️ `recruitOnly` 공모에는 자료제출 단계가 없으므로 **등록 때 받지 않는다**(항상 null).
   submissionDeadline    DateTime?
   recruitmentClosed     Boolean   @default(false) // 모집마감 (수동 내림 → 목록 비노출)
   confirmed             Boolean   @default(false) // 확정 (작가 전시정보 수정 잠금). 전시 시작일 경과 시 자동 확정 처리
@@ -355,8 +361,13 @@ model Exhibition {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  galleryId           Int
-  gallery             Gallery                @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  // 주관 갤러리. **아트링크(Admin) 주최 공모는 갤러리를 아예 안 낄 수 있어 nullable 이다**(2026-09-10).
+  // ⚠️ 갤러리 주최 공모(hostType='GALLERY')에는 **항상 값이 있다** — 라우트가 그렇게 강제한다.
+  //    null 을 만들 수 있는 경로는 `POST /exhibitions/hosted` 와 `PATCH /:id/managers` 둘뿐이고,
+  //    둘 다 Admin 전용 + hostType='ADMIN' 검사를 거친다.
+  // ⚠️ 읽는 쪽은 반드시 `gallery?.` 로 볼 것 — 옛 코드가 `exhibition.gallery.name` 처럼 바로 꺼내고 있었다.
+  galleryId           Int?
+  gallery             Gallery?               @relation(fields: [galleryId], references: [id], onDelete: Cascade)
   managers            ExhibitionManager[]
   applications        Application[]
   favorites           Favorite[]

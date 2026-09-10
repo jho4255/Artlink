@@ -79,15 +79,22 @@ export interface Exhibition {
   description: string;
   status: string;
   viewCount?: number; // 상세 조회수 (Admin 전용 노출)
-  galleryId: number;
+  /** 주관 갤러리 id. **아트링크 주최 공모는 갤러리를 안 낄 수 있어 null 이다**(2026-09-10) */
+  galleryId: number | null;
   /** 'GALLERY'(갤러리 주최, 기본) | 'ADMIN'(아트링크 주최 — 운영은 managerGalleries 가 맡는다) */
   hostType?: 'GALLERY' | 'ADMIN';
+  /**
+   * true = **공모만 진행**(지원 → 수락에서 끝). 자료제출·전시·정산 단계가 없다.
+   * 기본값 false 라 기존 공모는 전부 전시까지 진행한다.
+   */
+  recruitOnly?: boolean;
   /** 아트링크 주최 공모의 운영 갤러리. 첫 번째가 주관(= gallery). 갤러리 주최면 빈 배열 */
   managerGalleries?: { id: number; name: string }[];
   /** 이 공모를 운영할 수 있는 계정인지 — 서버가 계산해 내려준다(상세 API 전용) */
   canOperate?: boolean;
   // reviewCount는 상세 API(include)에서만 내려옴 — 목록 API(select)에는 없어 optional
-  gallery: Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'> & { reviewCount?: number };
+  // ⚠️ **null 일 수 있다** — 아트링크가 갤러리를 안 끼고 여는 공모. 반드시 `gallery?.` 로 읽을 것
+  gallery: (Pick<Gallery, 'id' | 'name' | 'rating' | 'mainImage' | 'region'> & { reviewCount?: number }) | null;
   promoPhotos?: PromoPhoto[];
   isFavorited?: boolean;
 }
@@ -287,6 +294,12 @@ export interface OperationAccess {
   isOwner: boolean;
   isAdmin: boolean;
   isAcceptedArtist: boolean;
+  /**
+   * true = **공모만 진행**하는 공고 — 자료제출·전시확정/종료·판매·정산 단계가 없다.
+   * ⚠️ 그때 `confirmed` 는 믿지 말 것. 서버가 전시 시작일 경과로 자동 true 를 주는데(computeConfirmed),
+   *    그 단계 자체가 없으므로 화면에 '전시 확정' 이 뜨면 거짓말이다.
+   */
+  recruitOnly?: boolean;
   recruitmentClosed: boolean;
   confirmed: boolean;        // 수동 확정 또는 전시 시작일 경과
   manualConfirmed: boolean;  // 수동 확정 플래그

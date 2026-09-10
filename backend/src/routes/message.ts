@@ -123,7 +123,7 @@ router.get('/recipients', authenticate, authorize('ARTIST', 'GALLERY'), async (r
         .map(ex => ({
           exhibitionId: ex.id,
           exhibitionTitle: ex.title,
-          galleryName: ex.gallery.name,
+          galleryName: ex.gallery?.name ?? '아트링크',
           applicants: ex.applications.map(a => ({
             userId: a.user.id,
             name: a.user.nickname || a.user.name,

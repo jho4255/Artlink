@@ -52,6 +52,11 @@ const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-07-03';
 
 
 type ExhibitionDetail = Exhibition & {
+  /**
+   * ⚠️ **null 일 수 있다** — 아트링크가 갤러리를 안 끼고 직접 여는 공모(2026-09-10).
+   *    예전엔 여기서 non-null 로 덮어써서, 전역 타입을 nullable 로 바꿔도 이 화면만
+   *    타입 검사가 통과했다. 반드시 `gallery?.` 로 읽을 것.
+   */
   gallery: {
     id: number;
     name: string;
@@ -59,7 +64,7 @@ type ExhibitionDetail = Exhibition & {
     mainImage?: string;
     region: string;
     ownerId?: number;
-  };
+  } | null;
   promoPhotos?: PromoPhoto[];
   /** 이 공모에 초대받은 작가인지 (본인 기준) — 지원 버튼을 '간편 지원'으로 바꾼다 */
   invited?: boolean;
@@ -406,17 +411,23 @@ export default function ExhibitionDetailPage() {
           {isAdminHosted(exhibition) ? (
             /* 아트링크 주최 공모 — 주최는 아트링크이고 갤러리들은 다같이 참여하는 것이라
                특정 갤러리를 대표로 세우지 않는다(별점·리뷰도 이 공모의 것이 아니라 붙이지 않는다). */
-            <p className="mt-1 text-sm text-gray-500">
-              참여 갤러리 :{' '}
-              {(exhibition.managerGalleries ?? []).map((g, i) => (
-                <span key={g.id}>
-                  {i > 0 && ', '}
-                  <button onClick={() => navigate(`/galleries/${g.id}`)} className="hover:underline">
-                    {g.name}
-                  </button>
-                </span>
-              ))}
-            </p>
+            /* ⚠️ 갤러리를 하나도 안 낀 공모가 있다(2026-09-10) — 그때 '참여 갤러리 :' 만 덩그러니
+                  남으면 데이터가 빠진 것처럼 보인다. 아예 다른 문구를 쓴다. */
+            (exhibition.managerGalleries ?? []).length > 0 ? (
+              <p className="mt-1 text-sm text-gray-500">
+                참여 갤러리 :{' '}
+                {(exhibition.managerGalleries ?? []).map((g, i) => (
+                  <span key={g.id}>
+                    {i > 0 && ', '}
+                    <button onClick={() => navigate(`/galleries/${g.id}`)} className="hover:underline">
+                      {g.name}
+                    </button>
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-gray-500">아트링크가 직접 진행합니다.</p>
+            )
           ) : (
             <button
               onClick={() => navigate(`/galleries/${exhibition.gallery?.id}`)}
@@ -486,6 +497,20 @@ export default function ExhibitionDetailPage() {
             값이 없는 옛 공모에는 운영자에게만 [입력] 버튼을 보인다.
           */}
           <SubmissionDeadlineRow exhibition={exhibition} canEdit={canEdit} isAdmin={isAdmin} />
+          {/* 공모만 진행하는 공고는 **지원자에게 미리 알린다** — 수락 뒤에 아무 안내가 없으면
+              작가는 자료제출·정산을 기다리게 된다. 전시까지 가는 공모는 이게 기본이라 안 적는다. */}
+          {exhibition.recruitOnly && (
+            <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+              <ClipboardList size={16} className="text-gray-400 flex-none" />
+              <div>
+                <p className="text-sm text-gray-400">진행 범위</p>
+                <p className="text-base">공모만 진행</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  지원자 선정(수락)까지 진행합니다. 자료제출·전시 운영·정산 단계는 없습니다.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-3 py-4 border-b border-gray-100">
             <Calendar size={16} className="text-gray-400 flex-none" />
             <div>
@@ -891,7 +916,7 @@ export default function ExhibitionDetailPage() {
         <InviteApplyModal
           exhibitionId={exhibition.id}
           exhibitionTitle={exhibition.title}
-          galleryName={exhibition.gallery.name}
+          galleryName={exhibition.gallery?.name ?? '아트링크'}
           customFields={exhibition.customFields}
           onClose={() => setShowInviteApply(false)}
         />
@@ -1129,7 +1154,9 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
 
   const start = exhibition.exhibitStartDate || exhibition.exhibitDate;
   const started = new Date(start) <= new Date();
-  const canFill = canEdit && (!exhibition.submissionDeadline || isAdmin) && (!started || isAdmin);
+  // ⚠️ 공모만 진행하는 공고에는 자료제출 단계가 **없다** — 서버도 400 으로 막는다.
+  //    [입력] 버튼을 남겨두면 눌러보고 에러를 받는 함정이 된다.
+  const canFill = !exhibition.recruitOnly && canEdit && (!exhibition.submissionDeadline || isAdmin) && (!started || isAdmin);
 
   const save = useMutation({
     mutationFn: () => api.patch(`/exhibitions/${exhibition.id}/submission-deadline`, { submissionDeadline: value }),

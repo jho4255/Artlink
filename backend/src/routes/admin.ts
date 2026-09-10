@@ -141,7 +141,8 @@ router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), as
     });
 
     // 갤러리 단위 지원 횟수/순번/첫지원 여부
-    const stats = await galleryApplicationStats(exhibition.gallery.id, applications.map(a => a.userId));
+    // 갤러리 없는 아트링크 주최 공모면 빈 Map (갤러리 단위 통계가 성립하지 않는다)
+    const stats = await galleryApplicationStats(exhibition.gallery?.id, applications.map(a => a.userId));
 
     const safe = (raw: string | null, fb: any) => { if (!raw) return fb; try { return JSON.parse(raw); } catch { return fb; } };
     const parsed = applications.map((app: any) => ({
