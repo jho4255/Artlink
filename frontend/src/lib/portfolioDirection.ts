@@ -41,7 +41,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'ivory', ink: 'charcoal', accent: 'plum', font: 'noto',
       page: 'a4-portrait', coverLayout: 'matted', worksLayout: 'hero',
-      desc: 'short', worksCaption: 'below', proseAlign: 'left',
+      desc: 'full', worksCaption: 'below', proseAlign: 'left',
     },
   },
   {
@@ -61,7 +61,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'white', ink: 'charcoal', accent: 'red', font: 'myeongjo',
       page: 'a4-portrait', coverLayout: 'side', worksLayout: 'feature',
-      desc: 'short', worksCaption: 'left', proseAlign: 'left',
+      desc: 'full', worksCaption: 'left', proseAlign: 'left',
     },
   },
   {
@@ -81,7 +81,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'ink', ink: 'white', accent: 'orange', font: 'plex',
       page: 'a4-landscape', coverLayout: 'split', worksLayout: 'hero',
-      desc: 'short', worksCaption: 'below', proseAlign: 'left',
+      desc: 'full', worksCaption: 'below', proseAlign: 'left',
     },
   },
   {

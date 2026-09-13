@@ -132,7 +132,17 @@ export const themeById = (id?: string | null): PortfolioTheme =>
 // ⚠️ 색은 **높이에 영향이 없어** overflow 위험 0. applyDesign 은 파생 테마만 만들고 레이아웃 코드는 안 건드린다.
 export type PageKey = 'a4-portrait' | 'a4-landscape' | 'wide';
 export type Density = 1 | 2 | 4;
-export type DescDepth = 'none' | 'short' | 'full';
+/**
+ * 작품 설명을 싣는가 — **싣거나 안 싣거나 둘뿐이다**.
+ *
+ * ⚠️⚠️ **'요약(short)' 을 되살리지 말 것** (2026-09-13 삭제, 사용자 지적).
+ * 포트폴리오는 작가가 자기 작업을 설명하는 문서다. 거기서 작가가 쓴 글을 2줄에 맞춰 잘라내고
+ * `…` 를 붙이는 건 **말이 안 된다** — 문장 한가운데서 끊긴 설명은 없느니만 못하다.
+ * 지면이 모자라면 자르는 게 아니라 **뒤 「〇〇 이야기」 장으로 잇는다**(넘침 없이 전문 노출).
+ * 그래서 설명은 **한 장에 작품 한 점**인 구성(1점 크게·뮤지엄 라벨)에서만 싣는다 —
+ * 격자에서 4점의 설명을 각각 뒤로 이으면 책이 글 페이지로 뒤덮인다.
+ */
+export type DescDepth = 'none' | 'full';
 /**
  * 작품 페이지 레이아웃(도록 스타일).
  *   hero:대형 단독 / label:뮤지엄 라벨(작품+옆 캡션) / full:전면 /
@@ -258,7 +268,8 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
     // 작품 레이아웃 — 명시값 없으면 hero(대형 단독). 옛 density(1/2/4) → hero/duo/grid 마이그레이션.
     worksLayout: inList(['hero', 'label', 'full', 'feature', 'duo', 'grid', 'index'] as const, o.worksLayout) ? o.worksLayout
       : (o.density === 1 ? 'hero' : o.density === 4 ? 'grid' : o.density === 2 ? 'duo' : 'hero'),
-    desc: (['none', 'short', 'full'] as const).includes(o.desc) ? o.desc : 'none',
+    // 옛 '짧게(short)' 는 **전체로 올린다** — 잘린 글을 그대로 두느니 전문을 싣는 게 낫다
+    desc: o.desc === 'full' || o.desc === 'short' ? 'full' : 'none',
     worksCaption: (['below', 'left', 'minimal'] as const).includes(o.worksCaption) ? o.worksCaption : 'below',
     coverLayout,
     coverEyebrow: o.coverEyebrow !== false,
@@ -270,7 +281,9 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
     coverImageIds: Array.isArray(o.coverImageIds)
       ? o.coverImageIds.filter((n: unknown): n is number => typeof n === 'number')
       : (typeof o.coverImageId === 'number' ? [o.coverImageId] : []), // 옛 단일값 마이그레이션
-    proseAlign: (['justify', 'left', 'right'] as const).includes(o.proseAlign) ? o.proseAlign : 'left',
+    // ⚠️ 기본값은 **양쪽맞춤**이다(2026-09-13). 공개 홈페이지의 작가노트·약력이 이미 양쪽맞춤이라
+    //    같은 글이 PDF 에서만 들쭉날쭉하면 두 화면이 다른 문서처럼 보인다. 고른 적 있으면 그 값을 지킨다.
+    proseAlign: (['justify', 'left', 'right'] as const).includes(o.proseAlign) ? o.proseAlign : 'justify',
     // ⚠️ 하위호환: **이미 저장된 설정이 있으면 auto 를 켜지 않는다.** 그 사람은 배치를 직접 골랐고,
     //    갑자기 다른 배치로 바뀌면 "내가 만든 게 사라졌다"가 된다. 아무것도 저장 안 된 새 사용자만 auto.
     auto: typeof o.auto === 'boolean' ? o.auto : !hasSavedChoice(o),
@@ -357,11 +370,86 @@ const contactList = (u: PortfolioBookData['user']) =>
 /** 한글은 글자 하나가 거의 1em을 먹는다. 라틴/공백이 섞이면 더 좁아지므로 이 값이면 보수적이다. */
 const CHAR_W_RATIO = 0.95;
 
+/**
+ * 산문 한 줄의 **글자 수 상한** (2026-09-13).
+ *
+ * 줄이 길면 눈이 다음 줄 첫머리를 못 찾는다. 본문 폭을 그대로 쓰면 A4 세로에서 한 줄이 63자,
+ * 가로 판형에서는 **69자**까지 간다(실측). 한글 산문은 **35~45자**가 읽기 좋고, 인쇄물의
+ * 오랜 관례도 그 근처다. ⚠️ 상한은 **폭이 아니라 글자 수**로 둔다 — 판형·글꼴 크기가 달라져도
+ * 읽는 조건이 같아야 한다.
+ * ⚠️ 재는 폭(`colW`)과 그리는 폭(`max-width`)이 **같아야** 한다. 다르면 높이 추정이 틀려
+ * 글이 조용히 잘린다(§19).
+ */
+const PROSE_MAX_CHARS = 46;
+const proseColW = (fontPx: number, contentW: number) =>
+  Math.min(contentW, Math.round(fontPx * CHAR_W_RATIO * PROSE_MAX_CHARS));
+
 /** 문단 하나의 높이 추정 (줄바꿈 포함) */
 export function estimateParaH(text: string, fontPx: number, lineH: number, colW: number, gap: number): number {
   const perLine = Math.max(1, Math.floor(colW / (fontPx * CHAR_W_RATIO)));
   const lines = text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0);
   return lines * lineH + gap;
+}
+
+/** 목록으로 보이는 줄 — "2024 개인전 …" 처럼 연도로 시작한다 */
+const YEAR_LINE = /^\s*(?:19|20)\d{2}\s*[.\-–~/년]?/;
+
+/**
+ * 작가가 입력창에서 친 **단일 줄바꿈**을 산문에서는 공백으로 잇는다 (2026-09-13).
+ *
+ * ## 왜
+ * 많은 작가가 글을 쓸 때 문장마다 엔터를 친다. 그대로 `<br/>` 로 내보내면 지면에서
+ * "형상화한다." "언어이며," 같은 **한 단어짜리 행**이 생겨 글이 부서져 보인다.
+ * 실데이터(실서버): 박기량 작가노트 246자에 단일 개행 5 · 빈 줄 0, 오무 약력 1246자에 단일 개행 21 · 빈 줄 0.
+ *
+ * ## 왜 "빈 줄만 문단"으로 단순화하면 안 되나
+ * 위 두 사람은 빈 줄이 **하나도 없다**. 그 규칙만 넣으면 1246자가 통째로 한 문단이 된다.
+ * 반대로 줄바꿈을 다 살리면 지금처럼 부서진다. 그래서 **글의 모양을 보고 가른다** —
+ * 연도로 시작하는 줄이 많거나 줄이 짧으면 **목록**(학력·전시 이력을 줄 나눠 적은 것)이라
+ * 그대로 두고, 아니면 **산문**이라 이어 붙인다.
+ *
+ * ⚠️ **높이 추정과 렌더가 같은 문자열을 봐야 한다**(§19). 그래서 이 함수는 그리기 직전이 아니라
+ *    **문단으로 쪼개기 전에** 통과시킨다 — 한쪽만 고치면 추정이 틀려 글이 조용히 잘린다.
+ * ⚠️ 저장된 원문은 건드리지 않는다. 화면(공개 홈페이지)은 작가가 친 그대로 보여준다 —
+ *    여기서 합치는 건 **인쇄 지면**에서 한 단어짜리 행을 막기 위해서다.
+ */
+export function proseText(text: string | null | undefined): string {
+  const raw = String(text ?? '');
+  const body = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (body.length < 2) return raw;
+  const yearish = body.filter((l) => YEAR_LINE.test(l)).length;
+  const shortish = body.filter((l) => [...l].length <= 24).length;
+  // 목록으로 보이면 줄을 그대로 지킨다
+  if (yearish >= body.length * 0.4 || shortish >= body.length * 0.6) return raw;
+  return raw
+    .split(/\n{2,}/)
+    .map((p) => p.split('\n').map((l) => l.trim()).filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/**
+ * **마지막 장에 두세 줄만 남는 것을 막는다** (2026-09-13).
+ *
+ * 나누는 함수들은 앞 장을 꽉 채우고 남은 걸 뒤로 넘긴다. 그래서 딱 몇 줄이 넘치면
+ * 그 몇 줄만 든 장이 생긴다 — 실측(실서버 작가 5명): `CV (계속)` 이 지면의 **30% · 30% · 17%**,
+ * `약력 (계속)` 이 **16%**. 보는 사람에게 이건 부주의로 읽힌다.
+ *
+ * 쪽수를 **늘리지 않으면서** 고르게 펴는 방법은 하나다 — 같은 쪽수를 유지하는 **가장 작은 용량**을
+ * 찾는 것. 용량을 줄이면 앞 장이 덜 담고 그만큼 뒤로 밀려, 마지막 장이 채워진다.
+ * 용량↓ ⇒ 쪽수↑ 는 단조라 이분탐색이 된다(순수 문자열 계산이라 열 번 돌려도 공짜다).
+ */
+function evenPages<T>(make: (capScale: number) => T[]): T[] {
+  const full = make(1);
+  if (full.length <= 1) return full;
+  const n = full.length;
+  let lo = 0.4, hi = 1;                       // hi 는 늘 n 장. lo 는 n 장보다 많을 수 있다.
+  if (make(lo).length === n) return make(lo);  // 더 줄여도 안 늘어나면 제일 고른 쪽
+  for (let i = 0; i < 8; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (make(mid).length === n) hi = mid; else lo = mid;
+  }
+  return make(hi);
 }
 
 /**
@@ -467,7 +555,20 @@ interface Chrome {
   running?: string;
   /** 러닝 요소를 아예 끄는 페이지(표지 등) */
   bare?: boolean;
+  /** 쪽번호를 끄는 페이지(표지) */
+  folio?: false;
 }
+
+/**
+ * 쪽번호 자리표 — `page()` 가 심어 두고 `buildPortfolioPages` 가 **마지막에** 실제 번호로 바꾼다.
+ *
+ * ⚠️ 왜 자리표인가: `page()` 는 자기가 몇 번째 장인지 모른다(장은 여러 빌더가 제각각 만든다).
+ *    번호를 인자로 넘기려면 모든 빌더의 시그니처를 바꿔야 하고, 한 군데만 빠뜨리면 **그 장만
+ *    번호가 없다**. 자리표는 빠뜨릴 수가 없다.
+ * ⚠️ 20~30쪽 문서에서 심사자가 "12쪽 작품"이라고 부를 수 없으면 그건 문서가 아니라 이미지 묶음이다.
+ *    표지는 1쪽으로 세되 **찍지 않는다**(인쇄 관례).
+ */
+const FOLIO = '<!--FOLIO-->';
 
 /**
  * 판형별 본문 영역(패딩). 페이지 안 내용의 세로 크기는 반드시 이 값에서 계산해야 한다 —
@@ -526,10 +627,13 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
   const shell = (content: string, bg = theme.bg) =>
     `<div style="position:relative;width:${w}px;height:${h}px;background:${bg};font-family:${theme.bodyFont ?? SANS};color:${theme.ink};overflow:hidden;box-sizing:border-box">${content}</div>`;
 
-  if (chrome.bare) return shell(inner);
+  const p = PAD(theme);
+  const folio = chrome.folio === false ? ''
+    : `<div style="position:absolute;left:0;right:0;bottom:${Math.max(18, Math.round(p.bottom * 0.42))}px;text-align:center;font-size:11px;letter-spacing:0.18em;color:${theme.sub}">${FOLIO}</div>`;
+
+  if (chrome.bare) return shell(inner + folio);
 
   const name = displayName(data.user);
-  const p = PAD(theme);
   let deco = '';
   let pad = `padding:${p.top}px ${p.x}px ${p.bottom}px`;
 
@@ -579,7 +683,7 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
       </div>`;
   }
 
-  return shell(`${deco}<div style="position:relative;width:${w}px;height:${h}px;box-sizing:border-box;${pad};display:flex;flex-direction:column">${inner}</div>`);
+  return shell(`${deco}<div style="position:relative;width:${w}px;height:${h}px;box-sizing:border-box;${pad};display:flex;flex-direction:column">${inner}</div>${folio}`);
 }
 
 // ── 표지 = 디자인된 레이아웃(20종) ──
@@ -619,13 +723,30 @@ const titleCss = (theme: PortfolioTheme, px: number, color: string, ls: string) 
 const heroBox = (hero: string, x: string, panel?: string) =>
   `<div style="position:absolute;${x};display:flex;align-items:center;justify-content:center;box-sizing:border-box">
      ${panelBox(panel, fillImg(hero))}</div>`;
-// 여러 작품 그리드 셀 — contain(크롭 금지), 소프트 패널 위에. url 이 비면 **빈 칸**(패널만).
+// 여러 작품 그리드 셀 — contain(크롭 금지). url 이 비면 **빈 칸**(패널만 그려 자리를 표시한다).
+// ⚠️ **그림이 있는 칸 뒤에는 패널을 깔지 않는다** — 아래 `softPanel` 주석 참고.
 const gridCell = (theme: PortfolioTheme, url: string) =>
-  `<div style="display:flex;align-items:center;justify-content:center;overflow:hidden">${panelBox(softPanel(theme), url ? fillImg(url) : '')}</div>`;
+  `<div style="display:flex;align-items:center;justify-content:center;overflow:hidden">${panelBox(url ? undefined : softPanel(theme), url ? fillImg(url) : '')}</div>`;
 
 type CoverRender = (theme: PortfolioTheme, data: PortfolioBookData, v: CoverArgs) => string;
 
-// 소프트 패널색 — 이미지 뒤에 까는 옅은 면(배경과 살짝 다르게). 글자색을 배경에 5% 섞는다.
+/**
+ * 소프트 패널색 — 글자색을 배경에 5% 섞은 옅은 면.
+ *
+ * ⚠️⚠️ **작품 그림 뒤에 깔지 말 것** (2026-09-13 전수 제거).
+ * 그림은 자르지 않으므로(§18 `object-fit:contain`) 슬롯 비율과 그림 비율이 다른 만큼 **판이 드러난다**.
+ * 실측(실서버 작가 5명 렌더): 표지 4점 격자는 판의 **30%** 만 그림이 덮었고(70% 가 회색),
+ * 사진 오른쪽 38% · 반색반사진 62% · **전면 배치 작품 페이지는 65%** 였다 —
+ * 27쪽 내내 좌우로 회색 띠가 붙었다. 매트처럼 보이지도 않는다(사방이 균등해야 매트인데
+ * 한 축만 뜬다). 보는 사람은 **파일이 깨졌다**고 읽는다.
+ * 이미 격자(`gridWorksPage`)는 칸을 비율대로 잡아 판이 안 보이는데(실측 덮음 100%),
+ * 그 개정이 **표지와 전면 배치에는 안 갔던 것**이다(§45 정렬 격자와 같은 문제).
+ *
+ * 지금 이 색을 쓰는 곳은 둘뿐이다:
+ *   ① `coverFullTint` 의 **전면 틴트 배경**(그림 뒤가 아니라 지면 전체가 그 색인 디자인)
+ *   ② 표지 편집에서 **비운 칸**(`gridCell(url='')`) — 그림이 없으니 판이 곧 '여기 자리가 있다'는 표시다
+ * 새로 쓸 일이 생기면 **그림 뒤인지** 먼저 볼 것. 그림 뒤면 답은 '깔지 않는다'다.
+ */
 // ⚠️ **CSS `color-mix()` 로 쓰지 말 것.** 크롬은 이걸 `color(srgb …)` 로 계산해 내리는데
 //    html2canvas 1.4.1 이 `color()` 를 파싱하다 던져 **PDF 저장이 통째로 실패**한다
 //    (표지 21종 중 13종 · 작품 레이아웃 6종 중 4종이 이 함수를 쓴다 = 조합의 87%).
@@ -635,7 +756,7 @@ const softPanel = (theme: PortfolioTheme) => mixHex(theme.ink, theme.bg, 0.95);
 const nc = (theme: PortfolioTheme, v: CoverArgs) => (v.nameAccent ? theme.accent : theme.ink);
 const metaLine = (v: CoverArgs) => [v.showEyebrow ? esc(v.eyebrow) : '', v.showYear ? esc(v.year) : ''].filter(Boolean).join(' · ');
 const shell = (theme: PortfolioTheme, data: PortfolioBookData, inner: string) =>
-  page(theme, data, `<div style="position:absolute;inset:0;background:${theme.bg}"></div>${inner}`, { bare: true });
+  page(theme, data, `<div style="position:absolute;inset:0;background:${theme.bg}"></div>${inner}`, { bare: true, folio: false });
 
 // ── 타이포(이미지 없음) ──
 const coverSerifCenter: CoverRender = (t, d, v) => { const { w } = t.page; const px = ft(v, 92, w - 260, 2);
@@ -674,7 +795,7 @@ const coverBandTop: CoverRender = (t, d, v) => { const { w, h } = t.page; const 
   return shell(t, d, `
     <div style="position:absolute;left:${P}px;right:${P}px;top:${top}px;bottom:${bot}px;display:flex;flex-direction:column">
       <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
-        ${v.hero ? panelBox(softPanel(t), fillImg(v.hero)) : ''}
+        ${v.hero ? panelBox(undefined, fillImg(v.hero)) : ''}
       </div>
       <div style="flex:0 0 auto;margin-top:56px">
         <div style="width:56px;height:4px;background:${t.accent};margin-bottom:22px"></div>
@@ -689,7 +810,7 @@ const coverBandBottom: CoverRender = (t, d, v) => { const { w, h } = t.page; con
       ${v.showEyebrow ? `<div style="font-size:12px;letter-spacing:0.5em;color:${t.sub};margin-bottom:24px">${esc(v.eyebrow)}</div>` : ''}
       <div style="${titleCss(t, px, nc(t, v), '0.06em')};text-align:center">${esc(v.name)}</div>
       <div style="margin:26px auto 0;width:56px;height:2px;background:${t.accent}"></div></div>
-    ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${Math.round(h * 0.42)}px;bottom:110px`, softPanel(t)) : ''}
+    ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${Math.round(h * 0.42)}px;bottom:110px`) : ''}
     ${v.showYear ? `<div style="position:absolute;left:0;right:0;bottom:60px;text-align:center;font-size:13px;letter-spacing:0.4em;color:${t.sub}">${esc(v.year)}</div>` : ''}`); };
 
 const coverMatted: CoverRender = (t, d, v) => { const px = ft(v, 70, t.page.w - 200, 2);
@@ -705,12 +826,12 @@ const coverFullTint: CoverRender = (t, d, v) => { const px = ft(v, 72, t.page.w 
     ${v.hero ? `<div style="position:absolute;left:0;right:0;top:60px;bottom:260px;display:flex;align-items:center;justify-content:center">${cImg(v.hero, 82, 100)}</div>` : ''}
     <div style="position:absolute;left:0;right:0;bottom:110px;text-align:center;padding:0 110px;box-sizing:border-box">
       <div style="${titleCss(t, px, nc(t, v), '0.06em')};text-align:center">${esc(v.name)}</div>
-      ${metaLine(v) ? `<div style="margin-top:18px;font-size:13px;letter-spacing:0.42em;color:${t.sub}">${metaLine(v)}</div>` : ''}</div>`, { bare: true }); };
+      ${metaLine(v) ? `<div style="margin-top:18px;font-size:13px;letter-spacing:0.42em;color:${t.sub}">${metaLine(v)}</div>` : ''}</div>`, { bare: true, folio: false }); };
 
 const coverSquareHero: CoverRender = (t, d, v) => { const { w, h } = t.page; const P = 96, px = ft(v, 60, w - 200, 2);
   const areaH = h - 96 - 320; const sq = Math.round(Math.max(200, Math.min(w - 2 * P, areaH)) * coverImgScale);
   return shell(t, d, `
-    ${v.hero ? `<div style="position:absolute;left:0;right:0;top:96px;bottom:320px;display:flex;align-items:center;justify-content:center"><div style="width:${sq}px;height:${sq}px;background:${softPanel(t)};display:flex;align-items:center;justify-content:center">${fillImg(v.hero)}</div></div>` : ''}
+    ${v.hero ? `<div style="position:absolute;left:0;right:0;top:96px;bottom:320px;display:flex;align-items:center;justify-content:center"><div style="width:${sq}px;height:${sq}px;display:flex;align-items:center;justify-content:center">${fillImg(v.hero)}</div></div>` : ''}
     <div style="position:absolute;left:0;right:0;bottom:60px;height:236px;text-align:center;padding:0 100px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">
       <div style="${titleCss(t, px, nc(t, v), '0.08em')};text-align:center">${esc(v.name)}</div>
       <div style="margin:20px auto 0;width:54px;height:2px;background:${t.accent}"></div>
@@ -719,7 +840,7 @@ const coverSquareHero: CoverRender = (t, d, v) => { const { w, h } = t.page; con
 
 const coverSide: CoverRender = (t, d, v) => { const { w, h } = t.page; const iw = Math.round(w * 0.52); const slotW = Math.round(w * 0.4) - 6; const px = ft(v, 74, slotW, 3);
   return shell(t, d, `
-    ${v.hero ? heroBox(v.hero, `right:0;top:0;height:${h}px;width:${iw}px;padding:60px`, softPanel(t)) : ''}
+    ${v.hero ? heroBox(v.hero, `right:0;top:0;height:${h}px;width:${iw}px;padding:60px`) : ''}
     <div style="position:absolute;left:90px;width:${Math.round(w * 0.4)}px;top:50%;transform:translateY(-50%)">
       ${v.showEyebrow ? `<div style="font-size:12px;letter-spacing:0.42em;color:${t.accent};font-weight:700;margin-bottom:20px">${esc(v.eyebrow)}</div>` : ''}
       <div style="${titleCss(t, px, nc(t, v), '0.02em')};line-height:1.04">${esc(v.name)}</div>
@@ -741,7 +862,7 @@ const coverGrid2x2: CoverRender = (t, d, v) => { const P = 96, px = ft(v, 56, t.
 const coverMosaic: CoverRender = (t, d, v) => { const P = 96, px = ft(v, 60, t.page.w - 2 * P, 2); const g = v.images.slice(0, 3);
   return shell(t, d, `
     <div style="position:absolute;left:${P}px;right:${P}px;top:96px;bottom:300px;display:grid;grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;gap:16px">
-      <div style="grid-row:1 / span 2;overflow:hidden;display:flex;align-items:center;justify-content:center">${panelBox(softPanel(t), g[0] ? fillImg(g[0]) : '')}</div>
+      <div style="grid-row:1 / span 2;overflow:hidden;display:flex;align-items:center;justify-content:center">${panelBox(g[0] ? undefined : softPanel(t), g[0] ? fillImg(g[0]) : '')}</div>
       ${gridCell(t, g[1] ?? '')}${gridCell(t, g[2] ?? '')}</div>
     <div style="position:absolute;left:${P}px;right:${P}px;bottom:60px;height:210px;display:flex;flex-direction:column;justify-content:center">
       <div style="${titleCss(t, px, nc(t, v), '0.02em')}">${esc(v.name)}</div>
@@ -756,14 +877,14 @@ const coverAccentField: CoverRender = (t, d, v) => { const px = ft(v, 92, t.page
       <div style="margin-top:36px;${titleCss(t, px, t.bg, '0.1em')};text-align:center">${esc(v.name)}</div>
       <div style="margin:34px auto 0;width:60px;height:2px;background:${t.bg};opacity:.8"></div>
       ${v.showYear ? `<div style="margin-top:30px;font-size:14px;letter-spacing:0.4em;opacity:.9">${esc(v.year)}</div>` : ''}
-</div>`, { bare: true }); };
+</div>`, { bare: true, folio: false }); };
 
 const coverColorBand: CoverRender = (t, d, v) => { const { w, h } = t.page; const P = 90, bandH = Math.round(h * 0.32), px = ft(v, 80, w - 2 * P, 2);
   return shell(t, d, `
     <div style="position:absolute;left:0;top:0;width:${w}px;height:${bandH}px;background:${t.accent};color:${t.bg};display:flex;flex-direction:column;justify-content:center;padding:0 ${P}px;box-sizing:border-box">
       ${metaLine(v) ? `<div style="font-size:12px;letter-spacing:0.4em;opacity:.9;margin-bottom:16px">${metaLine(v)}</div>` : ''}
       <div style="${titleCss(t, px, t.bg, '0.02em')}">${esc(v.name)}</div></div>
-    ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${bandH + 56}px;bottom:90px`, softPanel(t)) : ''}`); };
+    ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${bandH + 56}px;bottom:90px`) : ''}`); };
 
 const coverSplit: CoverRender = (t, d, v) => { const { w, h } = t.page; const lw = Math.round(w * 0.46); const px = ft(v, 74, lw - 120, 3);
   return shell(t, d, `
@@ -772,7 +893,7 @@ const coverSplit: CoverRender = (t, d, v) => { const { w, h } = t.page; const lw
       <div style="${titleCss(t, px, t.bg, '0.02em')};line-height:1.05">${esc(v.name)}</div>
       <div style="margin-top:28px;width:56px;height:3px;background:${t.bg};opacity:.85"></div>
       ${v.showYear ? `<div style="margin-top:22px;font-size:13px;letter-spacing:0.4em;opacity:.9">${esc(v.year)}</div>` : ''}</div>
-    ${v.hero ? heroBox(v.hero, `right:0;top:0;height:${h}px;left:${lw}px;padding:56px`, softPanel(t)) : ''}`); };
+    ${v.hero ? heroBox(v.hero, `right:0;top:0;height:${h}px;left:${lw}px;padding:56px`) : ''}`); };
 
 // ── 미니멀 ──
 
@@ -858,8 +979,8 @@ function prosePages(
   const lineH = Math.round(fontPx * 2.05);
   const bodyStyle = `margin:0 0 20px;font-size:${fontPx}px;line-height:2.05;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}`;
   const contentW = theme.page.w - PAD(theme).x * 2;
-  const colW = theme.id === 'archive' ? contentW : Math.min(1080, contentW);
-  const maxW = theme.id === 'archive' ? '100%' : '1080px';
+  const colW = proseColW(fontPx, contentW);
+  const maxW = `${colW}px`;
 
   // 첫 장은 아이브로우 + 제목 + 룰이 자리를 먹는다. 이어지는 장은 작은 머리말만.
   // 여유분 24px — 추정이 맞아떨어져도 기기·글꼴 버전에 따라 몇 px씩 어긋난다. 마지막 줄이 가장자리에
@@ -867,7 +988,7 @@ function prosePages(
   const SAFETY = 24;
   const firstCap = availH(theme) - (18 + 16 + 46 + 22 + 3 + 34) - SAFETY;
   const restCap = availH(theme) - (18 + 16 + 30 + 24) - SAFETY;
-  const paras = String(body).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const paras = proseText(body).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
 
   // ── 짧은 글은 '장을 여는 페이지'로 ──────────────────────────────────
   // ⚠️ 예전엔 시리즈 소개 한 문장이 **본문 크기(15px)** 그대로 지면 가운데 놓였다. 세로 중앙
@@ -893,7 +1014,7 @@ function prosePages(
     }];
   }
 
-  const pageParas = splitParagraphs(paras, firstCap, restCap, fontPx, lineH, colW, 20);
+  const pageParas = evenPages((k) => splitParagraphs(paras, firstCap * k, restCap * k, fontPx, lineH, colW, 20));
   const multi = pageParas.length > 1;
 
   return pageParas.map((ps, i) => ({
@@ -915,10 +1036,10 @@ function prosePages(
 // 작가노트 — 짧으면 세로 중앙 + 대형 인용(우아하게), 길면 읽기 좋은 컬럼(prosePages 폴백).
 // 예전엔 짧은 노트도 상단에 붙어 페이지 90%가 텅 비었다.
 function statementPages(theme: PortfolioTheme, data: PortfolioBookData, statement: string): PortfolioPage[] {
-  const paras = statement.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const paras = proseText(statement).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
   const px = PAD(theme).x;
   const fontPx = 18, lineH = 38;
-  const colW = theme.page.w - px * 2 - 160;         // 우아하게 좁은 폭(가운데 정렬)
+  const colW = proseColW(fontPx, theme.page.w - px * 2 - 160);   // 우아하게 좁은 폭(가운데 정렬) + 줄 길이 상한
   const totalH = paras.reduce((h, p) => h + estimateParaH(p, fontPx, lineH, colW, 24), 0);
   const room = availH(theme) - 240;                 // 머리말+룰+여백 예약(넉넉히 — 넘치면 폴백)
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
@@ -1000,22 +1121,42 @@ function captionHtml(theme: PortfolioTheme, a: PortfolioImage, align: 'center' |
 const DESC_LINE_H = 21;
 
 /** 짧은 설명(2줄) — 폭 기준 글자수로 잘라 2줄을 넘지 않게(조용한 잘림 방지).
- *  `block` = 글상자 위치(center 면 좁은 상자 가운데). **글자 정렬은 본문 정렬(proseAlign)을 따른다** —
+ *  `block` = 글상자 위치(center 면 좁은 상자 가운데).
+ *  ⚠️⚠️ **설명은 본문 정렬(proseAlign)을 따르지 않는다** (2026-09-13). 캡션의 일부지 읽는 글이 아니다.
+ *     ① 가운데 캡션인데 설명만 왼쪽이면 **그 한 줄만 페이지 중심에서 밀려 보인다**
+ *        (가운데 놓인 640px 상자 안에서 왼쪽에 붙기 때문).
+ *     ② 양쪽맞춤을 따르게 두면 **300px 짜리 옆 캡션 칸에서 낱말 사이가 벌어진다** —
+ *        양쪽맞춤은 한 줄이 충분히 길 때만 예쁘다.
+ *     그래서 캡션이 가운데면 가운데, 아니면 왼쪽. 본문 정렬은 산문 페이지·라벨 설명에서만 쓴다.
+ *  옛 주석은
  *  양쪽맞춤 선택이 작품설명에 안 먹던 문제(세로 지적). 캡션(제목·재료)은 별도(worksCaption). */
 const DESC_FONT = 12.5;
-function shortDescHtml(theme: PortfolioTheme, a: PortfolioImage, cellW: number, block: 'center' | 'left' = 'left'): string {
-  const desc = String(a.description ?? '').trim();
-  if (!desc) return '';
-  // ⚠️ 글자폭을 `13 * 0.62`(=8.06px)로 잡았는데 **실측은 12.1px** 이었다(12.5px 한글).
-  //    55% 과대평가라 "2줄" 컷이 실제로는 3줄을 통과시켰다 — 전 판형 실측에서 60px(예약 42px의 1.43배).
-  //    넘침이 안 났던 건 SAFETY 24px 쿠션이 그 초과분을 먹고 있었기 때문이다. 즉 글꼴 버전
-  //    편차용 쿠션이 산수 오류에 이미 소진돼 있었다. 글 전체가 쓰는 CHAR_W_RATIO 로 통일한다.
-  const perLine = Math.max(8, Math.floor(cellW / (DESC_FONT * CHAR_W_RATIO)));
-  const max = perLine * 2;
-  const one = desc.replace(/\s*\n\s*/g, ' ');
-  const clipped = one.length > max ? one.slice(0, max - 1).trimEnd() + '…' : one;
+/**
+ * 작품 설명을 **자르지 않고 나눈다** — 들어가는 만큼만 돌려주고 남는 건 `rest` 로 넘긴다.
+ * 부르는 쪽이 `rest` 를 뒤 글 페이지로 잇는다. 옛 `shortDescHtml` 은 2줄로 **잘라 `…`** 를 붙였다.
+ */
+function descSplit(text: string | null | undefined, cellW: number, maxLines: number): { head: string; rest: string; lines: number } {
+  const t = String(text ?? '').trim();
+  if (!t) return { head: '', rest: '', lines: 0 };
+  const paras = proseText(t).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const pages = splitParagraphs(paras, Math.max(1, maxLines) * DESC_LINE_H, 1e9, DESC_FONT, DESC_LINE_H, cellW, 4);
+  const head = (pages[0] ?? []).join('\n\n');
+  const rest = pages.slice(1).flat().join('\n\n');
+  const lines = head ? Math.ceil(estimateParaH(head, DESC_FONT, DESC_LINE_H, cellW, 0) / DESC_LINE_H) : 0;
+  return { head, rest, lines };
+}
+
+/**
+ * 설명 블록. ⚠️ 정렬은 **본문 정렬(proseAlign)을 따르지 않는다** — 캡션의 일부지 읽는 글이 아니다.
+ *  ①가운데 캡션인데 설명만 왼쪽이면 그 한 줄만 페이지 중심에서 밀려 보인다
+ *  ②양쪽맞춤을 따르면 300px 짜리 옆 캡션 칸에서 낱말 사이가 벌어진다
+ */
+function descHtml(theme: PortfolioTheme, text: string, block: 'center' | 'left' = 'left'): string {
+  if (!text) return '';
   const box = block === 'center' ? 'margin-left:auto;margin-right:auto;max-width:min(100%,640px);' : '';
-  return `<div style="margin-top:8px;${box}font-size:${DESC_FONT}px;line-height:1.6;color:${theme.sub};text-align:${theme.proseAlign ?? 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(clipped)}</div>`;
+  const body = text.split('\n\n').map((t) =>
+    `<p style="margin:0 0 6px;font-size:${DESC_FONT}px;line-height:1.6;color:${theme.sub};text-align:${block === 'center' ? 'center' : 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('');
+  return `<div style="margin-top:${CAP_DESC_TOP}px;${box}">${body}</div>`;
 }
 
 /**
@@ -1071,19 +1212,23 @@ function solveGrid(per: number, theme: PortfolioTheme, design: PdfDesign, geom: 
   const landscape = theme.page.w >= theme.page.h;
   const colGap = landscape ? 56 : 44;
   const rowGap = Math.max(20, Math.round(40 * (theme.page.h / 1414)));
-  const descOn = design.desc !== 'none' && !forceMinimal;
+  // ⚠️ **4점 이상 격자에는 설명을 싣지 않는다** (2026-09-13). 칸마다 요약 두 줄을 예약하면
+  //    행마다 48px 이 더 붙는데, 가로 판형 2행이면 그것만으로 **지면 높이의 47%** 가 캡션 예약이
+  //    된다(실측: 그래서 4점 격자의 작품 지면점유가 14.9% 였다). 설명은 1점·2점 구성에서 읽는다 —
+  //    4점 칸에서 두 줄 요약은 어차피 읽히지도 않는다.
+  // ⚠️ **격자에는 설명을 싣지 않는다.** 자르지 않는 게 원칙인데(§DescDepth) 4점의 설명을 각각
+  //    뒤 장으로 이으면 책이 글 페이지로 뒤덮인다. 설명은 한 장에 한 점인 구성에서만 싣는다.
   const detail: CaptionDetail = (design.worksCaption === 'minimal' || forceMinimal) ? 'minimal' : per >= 4 ? 'compact' : 'full';
   const minimalCap = detail === 'minimal';
 
   const estCaptionH = (a: PortfolioImage, w: number) => {
     const p = captionParts(a, detail);
-    if (p.empty && !(descOn && String(a.description ?? '').trim())) return 0;
+    if (p.empty) return 0;
     // 제목 줄 수 — 목록(메타 없음)은 렌더가 한 줄로 자르므로 추정도 한 줄이다
     const tCap = p.meta.length === 0 ? 1 : 3;
     const tLines = p.title ? Math.min(tCap, Math.max(1, Math.ceil((artworkTitle(a).length * 18) / w))) : p.titleLines;
     const mLines = Math.min(5, p.meta.reduce((n, l) => n + Math.max(1, Math.ceil((l.length * 13) / w)), 0));
-    return CAP_TOP + tLines * CAP_TITLE_LINE + mLines * CAP_META_LINE
-      + (descOn ? CAP_DESC_TOP + DESC_LINE_H * 2 : 0) + 24; // +24 SAFETY 쿠션
+    return CAP_TOP + tLines * CAP_TITLE_LINE + mLines * CAP_META_LINE + 24; // +24 SAFETY 쿠션
   };
 
   const arrange = (capH: number) => {
@@ -1142,7 +1287,6 @@ function gridWorksPage(
   const rowGap = Math.max(20, Math.round(40 * (theme.page.h / 1414)));
   // 인덱스(6점)는 칸이 작아 캡션은 제목만·설명 없음(강제 minimal)
   const isIndex = composition === 'index';
-  const descOn = design.desc !== 'none' && !isIndex;
   const capAlign: 'center' | 'left' = design.worksCaption === 'left' ? 'left' : 'center';
   // ⚠️ 배열·칸 높이·캡션 예약은 **정원(per) 기준으로 한 번만** 푼다(장마다 다시 풀면 쪽마다
   //    작품 크기가 달라진다, §27). 자동 편집이 구성을 고를 때도 **이 함수를 그대로** 부른다.
@@ -1150,16 +1294,12 @@ function gridWorksPage(
   // 행 자체를 균형 있게 나눈다 — 3열 격자에 4점이면 [3,1] 이 아니라 [2,2].
   const rowsItems = take(items, balancedSplit(items.length, cols));
 
-  // ⚠️ 상자와 작품 비율이 같으면 패널은 안 보인다(작품이 정확히 채운다). 그래도 남겨 두는 이유:
-  //    비율을 모르는 작품(사진 미측정)은 정사각으로 가정하므로 그때 남는 자리를 받아 준다.
-  const panel = softPanel(theme);
   const cell = (a: PortfolioImage, w: number, h: number) => `
     <div style="flex:0 0 ${Math.round(w)}px;max-width:${Math.round(w)}px;min-width:0;display:flex;flex-direction:column;justify-content:flex-start">
-      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center;background:${panel}">
+      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:100%;max-height:100%;object-fit:contain;display:block`)}
       </div>
       ${captionHtml(theme, a, capAlign, detail)}
-      ${descOn ? shortDescHtml(theme, a, Math.round(w), capAlign) : ''}
     </div>`;
 
   // ── 세로 기준선(칼럼)에 맞춘다 ────────────────────────────────────────
@@ -1171,17 +1311,27 @@ function gridWorksPage(
   //    (칸을 채우는 게 아니라 칸 안에 놓는다) 위계는 그대로다.
   // ⚠️ 칸보다 넓어지는 작품이 있으면 **그 행만** 높이를 낮춰 칸에 들어오게 한다.
   //    행 전체를 늘려 맞추면(justify) 다시 이음매가 어긋난다.
-  const rowHtml = (r: PortfolioImage[]) => {
-    // 칸 폭은 **그 행의 점수**로 본문 폭을 똑같이 나눈 값. 행이 덜 찼으면(2점만 남은 4점 격자 등)
-    // 남은 칸을 비워 두지 않고 나눠 갖는다 — 그래도 좌우가 대칭이라 중앙선은 그대로 맞는다.
-    // 높이는 여전히 기준 H 를 넘지 않으므로 마지막 한 점이 혼자 커지지 않는다.
-    const trackW = (availW - (r.length - 1) * colGap) / r.length;
-    const widest = Math.max(...r.map(geom.aspectOf));
-    const h = Math.max(60, Math.min(H, trackW / Math.max(0.01, widest)));
-    return `<div style="display:flex;gap:${colGap}px;align-items:flex-start;justify-content:center;width:100%">${
-      r.map((a) => `<div style="flex:0 0 ${Math.round(trackW)}px;max-width:${Math.round(trackW)}px;display:flex;justify-content:center">${
-        cell(a, h * geom.aspectOf(a), h)}</div>`).join('')}</div>`;
-  };
+  // ⚠️⚠️ **칸 폭을 똑같이 나누지 말 것 — 그 행에서 제일 넓은 작품이 나머지를 다 끌어내린다.**
+  //    예전엔 본문 폭을 점수로 균등 분할하고(`trackW`) 행 높이를 `trackW / 제일넓은비율` 로 잡았다.
+  //    그러면 파노라마 한 점이 섞인 행은 **모두가 그 점에 맞춰 납작해지고**, 좁은 작품 옆에는
+  //    쓰지 않는 폭이 그대로 남는다. 실측(실서버 3명 × 판형 3): 4점 격자의 작품 지면점유가
+  //    **13~33%** 였다(골든 56%). 가로 판형 한 행에 4점이면 8% 까지 떨어졌다.
+  //    ⚠️ 그렇다고 **행마다 비율 합으로 폭을 나누면 안 된다** — 그건 2026-08-31 에 사용자가
+  //    "삐뚤빼뚤하다"고 지적한 그 구성이다(행마다 총 폭이 달라 좌우 끝과 이음매가 제각각).
+  //    그래서 **열 폭을 페이지 단위로 한 번** 정한다: 각 열의 폭은 그 열에 오는 작품들의
+  //    **최대 비율**을 따른다. 모든 행이 같은 열 폭을 쓰므로 이음매·좌우 끝은 그대로 맞고,
+  //    폭이 비율을 따르므로 낭비가 사라진다(실측 33% → 40%, 가로 8% → 18%).
+  const colAspect: number[] = [];
+  for (const r of rowsItems) r.forEach((a, i) => { colAspect[i] = Math.max(colAspect[i] ?? 0, geom.aspectOf(a)); });
+  const sumAspect = colAspect.reduce((s, v) => s + v, 0) || 1;
+  const rowH = Math.max(60, Math.min(H, (availW - (colAspect.length - 1) * colGap) / sumAspect));
+  const rowHtml = (r: PortfolioImage[]) => `
+    <div style="display:flex;gap:${colGap}px;align-items:flex-start;justify-content:center;width:100%">${
+      r.map((a, i) => {
+        const track = Math.round((colAspect[i] ?? 1) * rowH);
+        return `<div style="flex:0 0 ${track}px;max-width:${track}px;display:flex;justify-content:center">${
+          cell(a, rowH * geom.aspectOf(a), rowH)}</div>`;
+      }).join('')}</div>`;
   const inner = `
     <div style="display:flex;flex-direction:column;gap:${rowGap}px;height:${avail}px;justify-content:center">
       ${rowsItems.map(rowHtml).join('')}
@@ -1212,7 +1362,7 @@ function seriesOpenerPage(
   const availW = theme.page.w - PAD(theme).x * 2;
   const landscape = theme.page.w >= theme.page.h;
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  const paras = note.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const paras = proseText(note).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
 
   const colW = landscape ? Math.round(availW * 0.34) : Math.min(620, availW);
   const titlePx = fitTitle(name, landscape ? 44 : 54, colW, 3, 28);
@@ -1231,7 +1381,7 @@ function seriesOpenerPage(
 
   const shot = (w: number, h: number) => `
     <div style="width:${Math.round(w)}px;display:flex;flex-direction:column">
-      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center;background:${softPanel(theme)}">
+      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center">
         ${img(work.url, 'max-width:100%;max-height:100%;object-fit:contain;display:block')}
       </div>
       ${captionHtml(theme, work, 'center')}
@@ -1295,10 +1445,9 @@ function featureWorksPage(
     return CAP_TOP + tLines * CAP_TITLE_LINE + Math.min(5, mLines) * CAP_META_LINE + 12;
   };
 
-  const panel = softPanel(theme);
   const box = (a: PortfolioImage, w: number, h: number, cap: number) => `
     <div style="flex:0 0 ${Math.round(w)}px;max-width:${Math.round(w)}px;min-width:0;display:flex;flex-direction:column">
-      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center;background:${panel}">
+      <div style="height:${Math.round(h)}px;width:100%;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:100%;max-height:100%;object-fit:contain;display:block`)}
       </div>
       ${cap > 0 ? captionHtml(theme, a, capAlign, minimalCap) : ''}
@@ -1560,11 +1709,45 @@ function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
   const descOn = design.desc !== 'none';
   const capW = theme.page.w - PAD(theme).x * 2;
   const cp = captionParts(a, false);
-  const hasDesc = descOn && !!String(a.description ?? '').trim();
-  const capH = cp.empty && !hasDesc ? 0
+  // 작품 **아래** 설명은 지면의 22% 까지만 — 주인공은 작품이다. 넘는 글은 자르지 않고 뒤 장으로 잇는다.
+  const raw = descOn ? String(a.description ?? '').trim() : '';
+  const below = descSplit(raw, capW, Math.max(2, Math.floor((avail * 0.22) / DESC_LINE_H)));
+  const capH = cp.empty && !below.head ? 0
     : CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE
-      + (descOn ? CAP_DESC_TOP + DESC_LINE_H * 2 : 0) + 24;
+      + (below.lines ? CAP_DESC_TOP + below.lines * DESC_LINE_H : 0) + 24;
   const imgH = Math.max(120, avail - capH);
+
+  // ── 가로 지면 + 세로 작품이면 캡션을 **옆으로** ────────────────────────────
+  // ⚠️ 캡션을 아래 두면 그림이 **높이에서 먼저 걸린다**. 가로 지면(1414×1000)에서 세로 작품은
+  //    그림이 지면의 22~24% 밖에 못 쓰는데(골든 42~56%), 좌우는 텅 빈다 — 지면 모양과 작품
+  //    모양이 어긋난 만큼을 캡션 자리까지 더 빼앗기는 것이다. 옆에 두면 그림이 높이를 다 쓴다
+  //    (실측 24% → 33%, 같은 작품·같은 판형). 가로 작품에는 적용하지 않는다 — 그쪽은 폭에서
+  //    걸리므로 캡션을 옆에 두면 오히려 그림이 좁아진다.
+  const landscape = theme.page.w >= theme.page.h;
+  const aspect = Math.min(4, Math.max(0.25, artworkFacts(a, data.aspects ?? null).aspect));
+  const sideGap = 48, sideCapW = 300;
+  const sideImgW = Math.min(capW - sideGap - sideCapW, avail * aspect);
+  // 그림이 이보다 좁아지면 옆 캡션이 그림을 눌러 버린다 — 그럴 바엔 아래가 낫다.
+  const sideCap = landscape && capH > 0 && aspect < 1.15 && sideImgW > 260;
+  // 옆 칸은 지면 높이를 통째로 쓸 수 있고 **설명을 늘려도 작품이 작아지지 않는다**(그림 폭은 이미 정해져 있다).
+  const side = descSplit(raw, sideCapW, Math.max(2, Math.floor(
+    (avail - (CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE + 24)) / DESC_LINE_H)));
+  if (sideCap) {
+    const sideInner = `
+      <div style="height:${avail}px;display:flex;align-items:center;gap:${sideGap}px">
+        <div style="flex:0 0 ${Math.round(sideImgW)}px;display:flex;align-items:center;justify-content:center">
+          ${img(a.url, `max-width:100%;max-height:${avail}px;object-fit:contain;display:block`)}
+        </div>
+        <div style="flex:1;min-width:0">
+          ${captionHtml(theme, a, 'left')}${descHtml(theme, side.head, 'left')}
+        </div>
+      </div>`;
+    const sidePage: PortfolioPage = { label, html: page(theme, data, sideInner, { running: running || undefined }) };
+    return side.rest
+      ? [sidePage, ...prosePages(theme, data, 'NOTE', artworkTitle(a), side.rest, `${artworkTitle(a)} 이야기`)]
+      : [sidePage];
+  }
+
   // ⚠️ 이미지 상자에 `height` 를 못박지 말 것 — **`max-height` 여야 한다.**
   //    정사각·가로 작품은 폭에서 먼저 걸리므로(세로 지면에서 흔하다) 고정 높이 상자 안에서
   //    위아래로 뜨고, 그만큼 캡션이 작품에서 멀어진다. 실데이터 실측(2026-08-31):
@@ -1576,13 +1759,12 @@ function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
       <div style="max-height:${imgH}px;width:100%;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:100%;max-height:${imgH}px;object-fit:contain;display:block`)}
       </div>
-      <div style="width:100%">${captionHtml(theme, a, 'center')}${descOn ? shortDescHtml(theme, a, capW, 'center') : ''}</div>
+      <div style="width:100%">${captionHtml(theme, a, 'center')}${descHtml(theme, below.head, 'center')}</div>
     </div>`;
   const first: PortfolioPage = { label, html: page(theme, data, inner, { running: running || undefined }) };
-  // 전체 설명 → 요약 2줄이 다 못 담는 긴 글은 뒤 글 페이지로(넘침 없이 전문 노출).
-  const desc = design.desc === 'full' ? String(a.description ?? '').trim() : '';
-  return desc
-    ? [first, ...prosePages(theme, data, 'NOTE', artworkTitle(a), desc, `${artworkTitle(a)} 이야기`)]
+  // 지면에 못 담은 나머지는 **자르지 않고** 뒤 글 페이지로 잇는다.
+  return below.rest
+    ? [first, ...prosePages(theme, data, 'NOTE', artworkTitle(a), below.rest, `${artworkTitle(a)} 이야기`)]
     : [first];
 }
 
@@ -1592,7 +1774,7 @@ function fullWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
   // ⚠️ `artworkTitle()` 을 그대로 쓰면 제목 없는 작품에 '무제' 가 찍힌다 — 실데이터의 97% 다.
   const meta = [hasTitle(a) ? artworkTitle(a) : '', a.year].filter(Boolean).join(' · ');
   const inner = `
-    <div style="position:absolute;left:64px;right:64px;top:64px;bottom:96px;background:${softPanel(theme)};display:flex;align-items:center;justify-content:center">
+    <div style="position:absolute;left:64px;right:64px;top:64px;bottom:96px;display:flex;align-items:center;justify-content:center">
       ${img(a.url, `max-width:100%;max-height:100%;object-fit:contain;display:block`)}
     </div>
     <div style="position:absolute;left:64px;bottom:52px;font-size:12px;letter-spacing:0.08em;color:${theme.sub};overflow-wrap:anywhere">${esc(meta)}</div>`;
@@ -1605,8 +1787,16 @@ function labelWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portf
   const { w } = theme.page;
   const avail = availH(theme);
   const px = PAD(theme).x;
-  const imgW = Math.round((w - px * 2) * 0.56);
-  const colW = w - px * 2 - imgW - 56;
+  const contentW = w - px * 2;
+  // ⚠️⚠️ **세로 지면에서는 라벨을 옆이 아니라 아래에 둔다** (2026-09-13).
+  //    옆에 두면 작품이 본문 폭의 56% 안에 갇히고, 세로 작품은 **지면 높이의 절반도 못 쓴다** —
+  //    실측(실서버 3명): 세로 판형 뮤지엄 라벨의 작품 지면점유가 **15.5%** 였다(골든 42%).
+  //    아래에 두면 작품이 폭을 다 쓰고 남는 높이를 가져간다(실측 15.5% → 36%).
+  //    실제 미술관 라벨도 작품 옆이 아니라 **작품 아래**에 붙는다. 가로 지면에서는 반대다 —
+  //    거긴 높이가 먼저 걸리므로 옆에 두는 게 맞다(그래서 판형으로 가른다).
+  const stackLabel = theme.page.h > theme.page.w;
+  const imgW = stackLabel ? contentW : Math.round(contentW * 0.56);
+  const colW = stackLabel ? contentW : contentW - imgW - 56;
   const st = statusLabel(a);
   const lines = captionLines(a);
   const desc = design.desc !== 'none' ? String(a.description ?? '').trim() : '';
@@ -1614,9 +1804,12 @@ function labelWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portf
   // ⚠️ 제목이 없으면 그 줄을 안 그리므로 예약도 빼야 한다(안 그러면 헛자리가 남는다).
   const showTitle = hasTitle(a);
   const CAP_BLOCK = 60 + (showTitle ? 26 : 0) + lines.length * 30 + (st ? 24 : 0);
-  const room = Math.max(0, avail - CAP_BLOCK - 40);
+  // 아래에 둘 땐 라벨이 지면을 너무 먹지 않게 한정한다 — 주인공은 작품이다.
+  const room = stackLabel ? Math.max(0, Math.round(avail * 0.34) - CAP_BLOCK) : Math.max(0, avail - CAP_BLOCK - 40);
+  // 라벨을 아래 두면 설명이 본문 폭을 다 써서 한 줄이 88자가 된다 — 산문 상한을 건다.
+  const descW = stackLabel ? proseColW(14, colW) : colW;
   const parts = desc
-    ? splitParagraphs(desc.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), room, 1e9, 14, 27, colW, 14)
+    ? splitParagraphs(proseText(desc).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), room, 1e9, 14, 27, descW, 14)
     : [[]];
   const head = parts[0] ?? [];
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
@@ -1625,10 +1818,21 @@ function labelWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portf
     ${showTitle ? `<div style="font-family:${theme.display};font-size:26px;font-weight:${isSerif ? 400 : 700};letter-spacing:0.02em;line-height:1.3;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere">${esc(artworkTitle(a))}</div>` : ''}
     ${lines.length ? `<div style="margin-top:18px;font-size:14px;line-height:2.0;color:${theme.sub}">${lines.map((l) => esc(l)).join('<br/>')}</div>` : ''}
     ${st ? `<div style="margin-top:10px;font-size:13px;font-weight:700;color:${theme.accent};letter-spacing:0.04em">● ${esc(st)}</div>` : ''}
-    ${head.length ? `<div style="margin-top:26px;padding-top:22px;border-top:1px solid ${theme.line}">
+    ${head.length ? `<div style="margin-top:26px;padding-top:22px;border-top:1px solid ${theme.line};max-width:${descW}px">
       ${head.map((t) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.9;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}
     </div>` : ''}`;
-  const inner = `
+  const gap = 34;
+  const descH = head.reduce((h2, t) => h2 + estimateParaH(t, 14, 27, descW, 12), 0) + (head.length ? 48 : 0);
+  const imgH = Math.max(200, avail - CAP_BLOCK - descH - gap);
+  const inner = stackLabel
+    ? `
+    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:center;gap:${gap}px">
+      <div style="display:flex;align-items:center;justify-content:center">
+        ${img(a.url, `max-width:100%;max-height:${imgH}px;object-fit:contain;display:block`)}
+      </div>
+      <div>${capBlock}</div>
+    </div>`
+    : `
     <div style="display:flex;gap:56px;align-items:center;height:${avail}px">
       <div style="width:${imgW}px;height:${avail}px;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:${imgW}px;max-height:${avail}px;object-fit:contain;display:block`)}
@@ -1712,7 +1916,7 @@ export function splitCvColumns(
 function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[] {
   const c = normalizeCareer(data.career);
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  const bio = String(data.biography ?? '').trim();
+  const bio = proseText(data.biography).trim();
   const sections = CV_ORDER
     .filter(({ key }) => (c[key] ?? []).length > 0)
     .map(({ key, label, en }) => ({ key, label, en, entries: (c[key] ?? []).map(careerLineText).filter(Boolean) }));
@@ -1737,7 +1941,8 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   // 90~136px 씩 모자랐고, 그만큼 경력이 아래로 넘쳐 **잘려 나갔다**(4개 포맷 전부, 실측).
   // 글 페이지가 쓰는 estimateParaH 와 같은 규칙으로 통일한다.
   const BIO_FONT = 14, BIO_LINE = 27, BIO_GAP = 16;
-  const bioW = twoCol ? 900 : contentW;
+  // 약력도 산문이다 — 본문 폭을 다 쓰면 가로 판형에서 한 줄이 69자가 된다(실측).
+  const bioW = proseColW(BIO_FONT, twoCol ? 900 : contentW);
   const bioH = bio ? estimateParaH(bio, BIO_FONT, BIO_LINE, bioW, BIO_GAP) : 0;
 
   // 약력이 길어 첫 장에 경력 칸이 쓸 만큼 안 남으면, 약력을 글 페이지로 빼고 경력은 다음 장부터 시작한다.
@@ -1756,7 +1961,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   // **약력이 통째로 사라졌다**(경력 미입력 작가는 PDF에 약력이 아예 안 찍혔다).
   const laid = sections.length === 0
     ? (bioOwnPage ? [] : [[]])
-    : splitCvColumns(sections, contColH, colW, cols, firstColH);
+    : evenPages((k) => splitCvColumns(sections, contColH * k, colW, cols, firstColH * k));
 
   const blockHtml = (b: CvChunk) => `
     <div style="margin-bottom:${CV_SEC_GAP}px">
@@ -1775,7 +1980,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
       <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">CURRICULUM VITAE${pi > 0 ? ' (계속)' : ''}</div>
       ${pi === 0
         ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 800};font-family:${theme.display}">${esc(displayName(data.user))}</div>
-           ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:${theme.ink};max-width:${twoCol ? '900px' : '100%'};word-break:keep-all;overflow-wrap:anywhere">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
+           ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:${theme.ink};max-width:${bioW}px;text-align:${theme.proseAlign ?? 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
         : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
       <div style="margin-top:30px;display:flex;gap:${gap}px;align-items:flex-start">
         ${Array.from({ length: cols }, (_, ci) =>
@@ -1806,8 +2011,11 @@ function contactHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
             <span style="font-size:17px;color:${theme.ink};overflow-wrap:anywhere">${esc(v)}</span>
           </div>`).join('')}
       </div>
-      <div style="margin-top:52px;font-size:11.5px;letter-spacing:0.24em;color:${theme.sub}">MADE WITH ARTLINK · artlink.cc</div>
     </div>`);
+  // ⚠️ **'MADE WITH ARTLINK · artlink.cc' 를 되살리지 말 것** (2026-09-13 삭제).
+  //    이 PDF 는 작가가 갤러리·공모에 내는 **작가의 문서**다. 거기에 우리 이름을 박는 건
+  //    남의 제출물을 우리 홍보물로 쓰는 것이고, 받는 쪽에는 '무료 툴로 만들었다'는 신호로 읽힌다.
+  //    끄는 옵션을 두는 것도 답이 아니다 — 기본값이 켜져 있으면 대부분 그대로 나간다.
   // ⚠️ bare를 쓰면 안 된다. bare는 패딩·flex 래퍼 없이 배경만 깐 껍데기라 안쪽의 `flex:1`이 먹지 않고
   //    내용이 위로 쏠린다(화이트 갤러리 마지막 장이 실제로 그랬다). 세로 중앙 정렬이 필요한 페이지는 일반 경로로.
 }
@@ -1855,7 +2063,8 @@ export function buildPortfolioPages(
   if (hasCv) pages.push(...cvPages(theme, data).map((p) => ({ ...p, kind: 'cv' as const })));
 
   pages.push({ label: '연락처', html: contactHtml(theme, data), kind: 'contact' });
-  return pages;
+  // 쪽번호를 여기서 채운다 — 장을 만드는 곳이 여럿이라 각자 세게 하면 반드시 어긋난다.
+  return pages.map((pg, i) => ({ ...pg, html: pg.html.split(FOLIO).join(String(i + 1)) }));
 }
 
 /** PDF에 실릴 모든 이미지 주소 (prefetch 대상) */

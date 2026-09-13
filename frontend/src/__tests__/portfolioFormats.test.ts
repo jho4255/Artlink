@@ -7,9 +7,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   PORTFOLIO_THEMES, buildPortfolioPages, bookImageUrls, estimateParaH, splitCvColumns, splitParagraphs, themeById,
-  normalizePdfDesign, applyDesign, PAGE_DIMS, COVER_LAYOUTS,
+  normalizePdfDesign, applyDesign, PAGE_DIMS, COVER_LAYOUTS, proseText,
   type PortfolioBookData,
 } from '../lib/portfolioFormats';
+import { mixHex } from '../lib/portfolioColors';
 import type { PortfolioImage } from '../types';
 
 const img = (p: Partial<PortfolioImage>): PortfolioImage =>
@@ -588,7 +589,8 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
   // 기본 = 디자인 레이아웃(bandTop) + 글요소 전부 표시
   const DEFAULT_DESIGN = {
     bg: 'white', ink: 'black', accent: 'red', font: 'myeongjo', page: 'a4-portrait',
-    worksLayout: 'hero', desc: 'none', worksCaption: 'below', proseAlign: 'left',
+    // 본문 정렬 기본값은 **양쪽맞춤**(2026-09-13) — 공개 홈페이지의 작가노트·약력과 맞춘다
+    worksLayout: 'hero', desc: 'none', worksCaption: 'below', proseAlign: 'justify',
     coverLayout: 'bandTop', coverEyebrow: true, coverEyebrowText: null, coverYear: true, coverNameAccent: false,
     coverImageIds: [], coverImageScale: 1, coverTextScale: 1,
     auto: true, direction: null,
@@ -848,16 +850,18 @@ describe('실데이터가 비었을 때의 구성', () => {
     const empty = workPages(bare, { worksLayout: 'label' })[0]!.html;
     const filled = workPages({ ...bare, images: [img({ id: 1, title: '달빛', medium: 'Oil' })] },
       { worksLayout: 'label' })[0]!.html;
-    // 라벨은 작품(좌)+캡션(우) 2단이라 gap 이 있고, hero 는 세로 한 줄이다
-    expect(empty).not.toContain('gap:56px');
-    expect(filled).toContain('gap:56px');
+    // 라벨 블록은 짧은 강조 룰(44×3)로 시작한다 — hero 에는 없다.
+    // ⚠️ 예전엔 `gap:56px`(좌우 2단)로 판정했는데, 2026-09-13 부터 **세로 지면은 라벨을 아래**에
+    //    두므로 그 문자열이 안 나온다. 배치 방식이 아니라 **라벨이 그려졌는가**로 볼 것.
+    expect(empty).not.toContain('width:44px;height:3px');
+    expect(filled).toContain('width:44px;height:3px');
   });
 
   it('정보를 채운 작품은 그대로 뮤지엄 라벨이다 (전환이 과하지 않다)', () => {
     const html = workPages({ ...bare, images: [img({ id: 1, medium: 'Oil on canvas' })] },
       { worksLayout: 'label' })[0]!.html;
     expect(html).toContain('Oil on canvas');
-    expect(html).toContain('gap:56px');
+    expect(html).toContain('width:44px;height:3px');
   });
 });
 
@@ -885,3 +889,258 @@ describe('표지 구성 균형', () => {
     expect(Math.abs(a.bottom - w.bottom)).toBeLessThan(0.01);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════
+//  2026-09-13 — 실서버 작가 5명 렌더를 실측해 고친 것들
+// ════════════════════════════════════════════════════════════════════════
+
+const many: PortfolioBookData = {
+  ...base,
+  images: Array.from({ length: 8 }, (_, i) =>
+    img({ id: i + 1, title: `작품 ${i + 1}`, medium: '캔버스에 아크릴', sizeText: '60.6 × 50 cm', year: '2025' })),
+};
+
+describe('작가의 문서에 우리 이름을 넣지 않는다', () => {
+  // 이 PDF 는 작가가 갤러리에 내는 **작가의 문서**다. 거기 우리 배지가 박혀 있으면
+  // 받는 쪽에는 '무료 툴로 만들었다'는 신호로 읽힌다.
+  it('어느 포맷·판형에도 MADE WITH ARTLINK / artlink.cc 가 없다', () => {
+    for (const t of PORTFOLIO_THEMES) {
+      for (const page of ['a4-portrait', 'a4-landscape', 'wide'] as const) {
+        const html = buildPortfolioPages(many, t, { design: normalizePdfDesign({ page }) })
+          .map((p) => p.html).join('');
+        expect(html, `${t.id}/${page}`).not.toMatch(/MADE WITH ARTLINK/i);
+        expect(html, `${t.id}/${page}`).not.toMatch(/artlink\.cc/i);
+      }
+    }
+  });
+});
+
+describe('그림 뒤에 연회색 판을 깔지 않는다', () => {
+  // 그림은 자르지 않으므로 슬롯 비율과 그림 비율이 다른 만큼 판이 드러난다.
+  // 실측: 표지 4점 격자는 판의 30% 만 그림이 덮었고, 전면 배치 작품 페이지는 65% 였다.
+  const panelOf = (design: unknown) => {
+    const th = applyDesign(themeById('archive'), normalizePdfDesign(design));
+    return `background:${mixHex(th.ink, th.bg, 0.95)}`;
+  };
+  const count = (html: string, needle: string) => html.split(needle).length - 1;
+
+  it('표지 15종 — 판이 남는 건 전면 틴트 표지 하나뿐', () => {
+    for (const c of COVER_LAYOUTS) {
+      const design = normalizePdfDesign({ coverLayout: c.key });
+      const cover = buildPortfolioPages(many, themeById('archive'), { design })[0]!.html;
+      // 전면 틴트는 '그림 뒤'가 아니라 지면 전체가 그 색인 디자인이라 그대로 둔다
+      expect(count(cover, panelOf(design)), c.key).toBe(c.key === 'fullTint' ? 1 : 0);
+    }
+  });
+
+  it('작품 배치 7종 — 어디에도 판이 없다', () => {
+    for (const worksLayout of ['hero', 'label', 'full', 'feature', 'duo', 'grid', 'index'] as const) {
+      const design = normalizePdfDesign({ worksLayout, coverLayout: 'serifCenter' });
+      const works = buildPortfolioPages(many, themeById('archive'), { design })
+        .filter((p) => p.kind === 'works').map((p) => p.html).join('');
+      expect(works.length, worksLayout).toBeGreaterThan(0);
+      expect(count(works, panelOf(design)), worksLayout).toBe(0);
+    }
+  });
+
+  it('표지에서 비운 칸은 판으로 자리를 표시한다 (전부 비워도 격자 유지)', () => {
+    const design = normalizePdfDesign({ coverLayout: 'grid2x2', coverImageIds: [0, 0, 0, 0] });
+    const cover = buildPortfolioPages(many, themeById('archive'), { design })[0]!.html;
+    expect(count(cover, panelOf(design))).toBe(4);
+  });
+});
+
+describe('쪽번호', () => {
+  it('표지엔 없고, 그다음 장부터 제 번호가 찍힌다', () => {
+    const pages = buildPortfolioPages(many, themeById('archive'));
+    const folio = (html: string) => html.match(/letter-spacing:0\.18em[^>]*>(\d+)</)?.[1];
+    expect(folio(pages[0]!.html)).toBeUndefined();          // 표지는 1쪽으로 세되 찍지 않는다
+    expect(folio(pages[1]!.html)).toBe('2');
+    expect(folio(pages[pages.length - 1]!.html)).toBe(String(pages.length));
+  });
+
+  it('자리표가 그대로 남지 않는다 (모든 포맷·판형·배치)', () => {
+    for (const t of PORTFOLIO_THEMES) {
+      for (const worksLayout of ['hero', 'full', 'grid'] as const) {
+        const html = buildPortfolioPages(many, t, { design: normalizePdfDesign({ worksLayout }) })
+          .map((p) => p.html).join('');
+        expect(html, `${t.id}/${worksLayout}`).not.toContain('<!--FOLIO-->');
+      }
+    }
+  });
+});
+
+describe('산문 줄바꿈 정리 (proseText)', () => {
+  // 실데이터: 박기량 작가노트 246자에 단일 개행 5·빈 줄 0, 오무 약력 1246자에 단일 개행 21·빈 줄 0.
+  // "빈 줄만 문단" 규칙을 그대로 넣으면 이 둘이 통째로 한 덩어리가 된다 — 글의 모양을 보고 가른다.
+  it('문장마다 엔터를 친 산문은 한 문단으로 잇는다', () => {
+    const src = '전통 민화의 평면적 구성과 채색 감각을 바탕으로,\n동시대인의 감정을 상징적인 존재와 풍경으로 형상화한다.\n작품 속 감정은 사라지지 않고 다른 모습으로 순환한다.';
+    expect(proseText(src)).not.toContain('\n');
+    expect(proseText(src)).toContain('바탕으로, 동시대인의');
+  });
+
+  it('★ 연도로 시작하는 목록은 줄을 지킨다 (경력을 줄 나눠 적는 흔한 형태)', () => {
+    const src = '2024 개인전 《여름》 서울\n2023 단체전 《바다》 부산\n2022 아트페어 참가';
+    expect(proseText(src)).toBe(src);
+  });
+
+  it('★ 짧은 줄이 이어지면 목록으로 본다', () => {
+    const src = '홍익대학교 회화과\n동 대학원 졸업\n한국미술협회 회원';
+    expect(proseText(src)).toBe(src);
+  });
+
+  it('빈 줄(문단 구분)은 지킨다', () => {
+    const src = '작업은 매일의 관찰에서 시작한다. 같은 자리를 여러 번 지나며 기다린다.\n빛이 달라지는 순간을 붙잡아 화면에 옮기는 일이 나에게는 그리는 일이다.\n\n둘째 문단이다. 색을 겹쳐 올리면 그만큼의 시간이 화면에 쌓인다고 믿는다.';
+    const out = proseText(src);
+    expect(out.split('\n\n')).toHaveLength(2);
+    expect(out.split('\n\n')[0]).not.toContain('\n');
+  });
+
+  it('★ 글자를 지우지 않는다 (줄바꿈만 공백이 된다)', () => {
+    const src = '문장 하나입니다.\n둘입니다.\n셋입니다.';
+    expect(proseText(src).replace(/\s/g, '')).toBe(src.replace(/\s/g, ''));
+  });
+
+  it('한 줄짜리·빈 글에는 아무 일도 하지 않는다', () => {
+    expect(proseText('한 줄')).toBe('한 줄');
+    expect(proseText('')).toBe('');
+    expect(proseText(null)).toBe('');
+  });
+});
+
+describe('이어지는 장에 몇 줄만 남기지 않는다', () => {
+  // 실측(실서버 5명): CV (계속) 이 지면의 30%·30%·17%, 약력 (계속) 이 16% 였다.
+  const bodyLen = (html: string) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, '').length;
+
+  it('★ 두 장으로 나뉜 글은 뒷장도 충분히 찬다 (쪽수는 그대로)', () => {
+    // 앞장을 꽉 채우고 조금 넘치는 길이 — 예전 방식이면 뒷장에 몇 줄만 남는다
+    const para = '작업은 매일의 관찰에서 시작한다. 같은 자리를 여러 번 지나며 빛이 달라지는 순간을 기다린다. '.repeat(60);
+    const pages = buildPortfolioPages({ ...many, statement: para }, themeById('archive'))
+      .filter((p) => p.kind === 'prose');
+    expect(pages.length).toBeGreaterThan(1);
+    const lens = pages.map((p) => bodyLen(p.html));
+    const avg = lens.reduce((a, b) => a + b, 0) / lens.length;
+    expect(Math.min(...lens)).toBeGreaterThan(avg * 0.45);
+  });
+
+  it('★ 경력이 넘칠 때도 마지막 CV 장이 텅 비지 않는다', () => {
+    const solo = Array.from({ length: 46 }, (_, i) => ({ year: `${2026 - i}`, content: `개인전 《전시 제목 ${i}》 · 어느 갤러리, 서울` }));
+    const pages = buildPortfolioPages({ ...many, career: { artFair: [], solo, group: [] } }, themeById('archive'))
+      .filter((p) => p.kind === 'cv');
+    expect(pages.length).toBeGreaterThan(1);
+    const lens = pages.map((p) => bodyLen(p.html));
+    expect(Math.min(...lens)).toBeGreaterThan((lens.reduce((a, b) => a + b, 0) / lens.length) * 0.45);
+  });
+});
+
+describe('가로 판형에서 세로 작품은 캡션을 옆에 둔다', () => {
+  // 캡션을 아래 두면 그림이 높이에서 먼저 걸려 지면의 22~24% 밖에 못 쓴다(골든 42~56%).
+  const portrait = (id: number) => img({ id, title: `작품 ${id}`, medium: '캔버스에 유채', sizeText: '90.9 × 116.8 cm', year: '2025' });
+  const data: PortfolioBookData = { ...many, images: [portrait(1), portrait(2)], seriesInfo: [] };
+
+  it('가로 판형 + 세로 작품이면 캡션이 그림 옆 칸으로 간다', () => {
+    const html = buildPortfolioPages(data, themeById('archive'), {
+      design: normalizePdfDesign({ worksLayout: 'hero', page: 'a4-landscape' }),
+    }).find((p) => p.kind === 'works')!.html;
+    expect(html).toMatch(/display:flex;align-items:center;gap:48px/);
+  });
+
+  it('세로 판형에서는 그대로 아래에 둔다 (폭에서 걸리므로 옆에 두면 그림이 좁아진다)', () => {
+    const html = buildPortfolioPages(data, themeById('archive'), {
+      design: normalizePdfDesign({ worksLayout: 'hero', page: 'a4-portrait' }),
+    }).find((p) => p.kind === 'works')!.html;
+    expect(html).not.toMatch(/display:flex;align-items:center;gap:48px/);
+  });
+});
+
+describe('산문 한 줄이 너무 길어지지 않는다', () => {
+  // 줄이 길면 눈이 다음 줄 첫머리를 못 찾는다. 본문 폭을 그대로 쓰면 가로 판형에서 69자까지 갔다(실측).
+  // ⚠️ 재는 폭과 그리는 폭이 같아야 한다 — 다르면 높이 추정이 틀려 글이 조용히 잘린다.
+  const longBio = '작업은 매일의 관찰에서 시작한다. 같은 자리를 여러 번 지나며 빛이 달라지는 순간을 기다린다. '.repeat(8);
+
+  it('작가노트·CV 의 글 상자에 폭 상한이 걸린다 (판형 무관)', () => {
+    for (const page of ['a4-portrait', 'a4-landscape', 'wide'] as const) {
+      const html = buildPortfolioPages({ ...many, statement: longBio, biography: longBio }, themeById('archive'),
+        { design: normalizePdfDesign({ page }) }).map((p) => p.html).join('');
+      const widths = [...html.matchAll(/max-width:(\d+)px/g)].map((m) => Number(m[1]));
+      // 15px 글자 기준 46자 ≈ 655px. 그보다 넓은 글 상자가 있으면 줄이 길어진 것이다.
+      const proseBoxes = widths.filter((w) => w > 200);
+      expect(Math.max(...proseBoxes, 0), page).toBeLessThanOrEqual(800);   // 18px 작가노트 = 46자 ≈ 787px
+    }
+  });
+});
+
+describe('본문 정렬 — 양쪽맞춤', () => {
+  const 약력 = '작업은 매일의 관찰에서 시작한다. 같은 자리를 여러 번 지나며 빛이 달라지는 순간을 기다린다. '.repeat(4);
+
+  it('★ CV 약력도 본문 정렬을 따른다 (예전엔 text-align 이 아예 없어 설정을 무시했다)', () => {
+    const html = buildPortfolioPages({ ...many, biography: 약력 }, themeById('archive'))
+      .find((p) => p.kind === 'cv')!.html;
+    expect(html).toMatch(/text-align:justify[^"]*"[^>]*>작업은/);
+  });
+
+  it('본문 정렬을 왼쪽으로 고르면 그대로 따른다', () => {
+    const html = buildPortfolioPages({ ...many, biography: 약력 }, themeById('archive'),
+      { design: normalizePdfDesign({ proseAlign: 'left' }) }).find((p) => p.kind === 'cv')!.html;
+    expect(html).not.toMatch(/text-align:justify[^"]*"[^>]*>작업은/);
+  });
+});
+
+describe('작품 설명 — 자르지 않는다', () => {
+  // ⚠️ '요약 2줄(short)' 옵션은 없앴다(2026-09-13). 포트폴리오에서 작가가 쓴 설명을 문장 한가운데서
+  //    끊고 '…' 를 붙이는 건 말이 안 된다. 지면이 모자라면 뒤 「〇〇 이야기」 장으로 잇는다.
+  const long = '작품 속 복슬복슬한 연갈색 포메라니안은 지친 마음 결을 지켜주는 작고 사랑스러운 수호신과 같은 존재다. '.repeat(20)
+    + '강아지 머리 위에 자리한 유니콘 튜브는 시리즈에서 반복해서 등장하는 쉼의 상징이다.';
+  const one = img({ id: 1, title: '파란 것', medium: '캔버스에 유채', sizeText: '86.4 × 72.7 cm', year: '2026',
+    description: '형태를 설명하지 않는다. 두꺼운 물감이 지나간 자리와 남겨 둔 바탕 사이에서 무엇인가가 서 있을 뿐이다.' });
+  const pages = (im: PortfolioImage, design: Record<string, unknown>) =>
+    buildPortfolioPages({ ...many, images: [im], seriesInfo: [] }, themeById('archive'), { design: normalizePdfDesign(design) });
+
+  it('★ 어디에도 생략 부호를 찍지 않는다', () => {
+    for (const page of ['a4-portrait', 'a4-landscape', 'wide'] as const) {
+      const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+        { worksLayout: 'hero', page, desc: 'full' }).map((p) => p.html).join('');
+      expect(html, page).not.toContain('…');
+    }
+  });
+
+  it('★ 지면에 못 담은 설명은 뒤 글 페이지로 이어진다 (사라지지 않는다)', () => {
+    const out = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+      { worksLayout: 'hero', page: 'a4-portrait', desc: 'full' });
+    const all = out.map((p) => p.html).join('').replace(/<[^>]+>/g, '');
+    expect(out.some((p) => /이야기$/.test(p.label))).toBe(true);
+    expect(all).toContain('쉼의 상징이다');   // 마지막 문장까지 실린다
+  });
+
+  it("★ 옛 '짧게(short)' 설정은 '전체'로 올라온다 (잘린 글을 그대로 두지 않는다)", () => {
+    expect(normalizePdfDesign({ desc: 'short' }).desc).toBe('full');
+    expect(normalizePdfDesign({ desc: 'none' }).desc).toBe('none');
+  });
+
+  it('★ 격자 계열에는 설명을 싣지 않는다 (여러 점의 설명을 뒤로 이으면 책이 글로 뒤덮인다)', () => {
+    for (const worksLayout of ['duo', 'grid', 'index', 'feature', 'full'] as const) {
+      const html = buildPortfolioPages({ ...many, images: many.images.map((im) => ({ ...im, description: long })) },
+        themeById('archive'), { design: normalizePdfDesign({ worksLayout, desc: 'full' }) })
+        .filter((p) => p.kind === 'works').map((p) => p.html).join('');
+      expect(html, worksLayout).not.toContain('수호신과 같은 존재다');
+    }
+  });
+
+  it('캡션이 가운데면 설명도 가운데 — 본문 정렬과 무관', () => {
+    for (const proseAlign of ['left', 'justify'] as const) {
+      const html = pages(one, { worksLayout: 'hero', page: 'a4-portrait', desc: 'full', proseAlign })
+        .find((p) => p.kind === 'works')!.html;
+      expect(html, proseAlign).toMatch(/margin-left:auto;margin-right:auto;/);
+      expect(html, proseAlign).toMatch(/text-align:center[^"]*"[^>]*>형태를/);
+    }
+  });
+
+  it('★ 옆 캡션(좁은 칸)에서는 양쪽맞춤을 쓰지 않는다 — 낱말 사이가 벌어진다', () => {
+    const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+      { worksLayout: 'hero', page: 'a4-landscape', desc: 'full', proseAlign: 'justify' })
+      .find((p) => p.kind === 'works')!.html;
+    expect(html).toMatch(/display:flex;align-items:center;gap:48px/);   // 옆 캡션 배치인지 먼저 확인
+    expect(html).not.toMatch(/text-align:justify[^"]*"[^>]*>작품 속/);
+  });
+});
+

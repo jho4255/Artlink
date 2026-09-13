@@ -103,6 +103,12 @@ __pycache__/
 scratchpad/pf/engine.mjs
 scratchpad/pf/*.png
 scratchpad/pf/*.json
+# 지면점유 회귀 기준선은 코드의 일부다 — 이것만 추적한다(coverage.mjs 머리말)
+!scratchpad/pf/coverage-baseline.json
+# 실제 가입자 작품으로 뽑은 조합 결과물·원본 캐시 — 절대 커밋 금지(combos.mjs 머리말)
+scratchpad/pf/combos/
+scratchpad/pf/cache/
+scratchpad/pf/ba/
 scratchpad/vt/matrix_r9/
 
 # 원본 자산 보관함 — 추출 결과만 커밋한다(gptsamplecase/ 와 같은 규칙)

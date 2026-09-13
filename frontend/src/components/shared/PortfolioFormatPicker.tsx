@@ -94,7 +94,9 @@ const WORKS_LAYOUTS: readonly [WorksLayout, string][] = [
   ['hero', '1점 크게'], ['label', '작품+설명'], ['full', '꽉 채우기'],
   ['feature', '크게+작게'], ['duo', '2점씩'], ['grid', '4점씩'], ['index', '6점 목록'],
 ];
-const DESCS: readonly [DescDepth, string][] = [['none', '설명 없음'], ['short', '짧게'], ['full', '전체']];
+// ⚠️ '짧게(요약 2줄)' 는 없앴다 — 작가가 쓴 설명을 잘라내는 옵션이 포트폴리오에 있으면 안 된다.
+//    지면이 모자라면 자르지 않고 뒤 「〇〇 이야기」 장으로 잇는다.
+const DESCS: readonly [DescDepth, string][] = [['none', '싣지 않음'], ['full', '작품 설명 싣기']];
 const WORKS_CAPTIONS: readonly [WorksCaption, string][] = [['below', '아래 가운데'], ['left', '아래 왼쪽'], ['minimal', '제목만']];
 const PROSE_ALIGNS: readonly [ProseAlign, string][] = [['justify', '양쪽맞춤'], ['left', '왼쪽'], ['right', '오른쪽']];
 const COVER_GROUPS = ['사진 없이', '대표작 1점', '여러 작품', '색 배경', '심플'] as const;
@@ -103,10 +105,9 @@ const PAGE_LABELS: Record<PageKey, string> = { 'a4-portrait': '세로 A4', 'a4-l
 // ── 작품 페이지 레이아웃별로 어떤 본문 설정이 실제 반영되는가 ──
 function bodyApplicability(wl: WorksLayout) {
   return {
-    // 작품 설명: full(꽉채우기)·index(6점목록)에선 안 나온다
-    descApplies: wl !== 'full' && wl !== 'index',
-    // '전체(긴 설명 전문)'는 한 장에 작품 1점인 레이아웃에서만 뒤 글 페이지로 이어 실을 수 있다
-    descFullDiffers: wl === 'hero' || wl === 'label',
+    // 작품 설명은 **한 장에 작품 한 점**인 구성에서만 싣는다 — 자르지 않는 게 원칙이라
+    // 격자에서 여러 점의 설명을 각각 뒤 장으로 이으면 책이 글 페이지로 뒤덮인다.
+    descApplies: wl === 'hero' || wl === 'label',
     // 작품 정보 위치(캡션 정렬): 격자에서만 고를 수 있다(나머지는 자동 배치)
     captionApplies: wl === 'duo' || wl === 'grid' || wl === 'feature',
   };
@@ -542,7 +543,7 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
     }`;
   const toggleSec = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const rules = bodyApplicability(design.worksLayout);
-  const descOptions = rules.descFullDiffers ? DESCS : DESCS.filter(([v]) => v !== 'full');
+  const descOptions = DESCS;
 
   // 전체 구성 한 줄 (§24) — 무엇이 몇 장인지 열어보지 않고 알 수 있게
   const overview = useMemo(() => {
@@ -601,7 +602,7 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
                     <button key={m.key} type="button" title={m.label}
                       onClick={() => {
                         const r = bodyApplicability(m.key);
-                        patch({ worksLayout: m.key, auto: false, ...(design.desc === 'full' && !r.descFullDiffers ? { desc: 'short' as DescDepth } : {}) });
+                        patch({ worksLayout: m.key, auto: false, ...(design.desc !== 'none' && !r.descApplies ? { desc: 'none' as DescDepth } : {}) });
                       }}
                       className={`flex flex-col items-center gap-0.5 rounded-md border p-1 transition-colors ${on ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-400'} ${design.auto ? 'opacity-60' : ''}`}>
                       <div className={`w-full overflow-hidden rounded-sm ring-1 ${on ? 'ring-gray-900' : 'ring-black/10'}`}>
@@ -713,10 +714,8 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
                   ))}
                 </div>
                 {!design.auto && !rules.descApplies
-                  ? <p className="mt-1 text-[11px] text-gray-400">‘꽉 채우기·6점 목록’ 레이아웃에는 작품 설명이 들어가지 않습니다.</p>
-                  : rules.descFullDiffers
-                    ? <p className="mt-1 text-[11px] text-gray-400">‘전체’는 긴 설명을 다 싣고, 넘치면 다음 글 페이지로 이어집니다.</p>
-                    : <p className="mt-1 text-[11px] text-gray-400">설명은 작품 옆에 2줄로 요약됩니다.</p>}
+                  ? <p className="mt-1 text-[11px] text-gray-400">작품 설명은 한 장에 한 점인 구성(1점 크게·작품+설명)에서만 실립니다.</p>
+                  : <p className="mt-1 text-[11px] text-gray-400">설명은 <b>자르지 않습니다</b>. 지면이 모자라면 다음 글 페이지로 이어집니다.</p>}
               </div>
               <div className={rules.captionApplies || design.auto ? '' : 'opacity-45'}>
                 <p className="mb-1.5 text-xs text-gray-500">작품 정보 위치 <span className="text-gray-300">(제목·재료)</span></p>
