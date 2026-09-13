@@ -129,7 +129,7 @@ test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => 
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/explore');
+    await page.goto('/artists');
     await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
     const target = page.locator(`button:has(img[src="${created.url}"])`).first();
     await expect(target).toBeVisible({ timeout: 10000 });

@@ -1517,7 +1517,7 @@ function LikedArtworks() {
       <div className="text-center py-16">
         <Heart size={32} className="mx-auto text-gray-200 mb-3" />
         <p className="text-gray-400 mb-4">아직 좋아요한 작품이 없습니다.</p>
-        <button onClick={() => navigate('/explore')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
+        <button onClick={() => navigate('/artists')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
           둘러보기에서 작품 보기
         </button>
       </div>
@@ -1585,7 +1585,7 @@ function ArtworkScrapsSection() {
       <div className="text-center py-16">
         <Heart size={32} className="mx-auto text-gray-200 mb-3" />
         <p className="text-gray-400 mb-4">하트를 누른 작품이 없습니다.</p>
-        <button onClick={() => navigate('/explore')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
+        <button onClick={() => navigate('/artists')} className="text-sm text-gray-900 underline underline-offset-4 cursor-pointer">
           둘러보기에서 작가 찾기
         </button>
       </div>

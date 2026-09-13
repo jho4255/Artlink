@@ -21,10 +21,10 @@ import type { ExploreImage } from '@/types';
  *   - 좋아요순으로 고정하면 홈에 걸리는 작품이 늘 같은 얼굴이라, 좋아요가 적은 작가는
  *     아무리 기다려도 홈에 안 나온다. 노출을 골고루 돌리는 쪽을 택했다.
  *   - 대신 "좋아요가 홈 노출을 정한다"는 참여 동기는 사라진다 — 하트 배지는 그대로 찍히고,
- *     좋아요순으로 보려면 [모두 모아보기] → 둘러보기의 [좋아요순] 탭이다.
+ *     좋아요순으로 보려면 [모두 모아보기] → [작가] 탭(`/artists`)의 [좋아요순] 이다.
  *   - 서버는 seed 없이 부르면 여전히 좋아요순이다(그 경로도 테스트로 남아 있다).
  *
- * [새로고침]은 둘러보기(/explore)의 그것과 **같은 동작**(랜덤 재정렬 + 같은 작가 연속 방지).
+ * [새로고침]은 [작가] 탭(`/artists`)의 그것과 **같은 동작**(랜덤 재정렬 + 같은 작가 연속 방지).
  * 작품 클릭 시 둘러보기와 동일한 확대 모달을 띄운다(어디서 눌러도 같은 경험).
  *
  * 백엔드 `GET /api/explore/highlight` 참고.
@@ -112,7 +112,7 @@ export default function ArtWorks() {
           작품을 다 본 **뒤에** 나오는 게 자연스러워 격자 우측 하단에 둔다. */}
       <div className="mt-4 flex justify-end">
         <button
-          onClick={() => navigate('/explore')}
+          onClick={() => navigate('/artists')}
           className="flex items-center gap-0.5 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
         >
           모두 모아보기 <ArrowRight size={13} />

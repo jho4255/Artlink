@@ -141,11 +141,15 @@ test.describe('ArtWorks 컨트롤', () => {
     }
   });
 
-  test('[모두 모아보기] → 둘러보기로 간다', async ({ page }) => {
+  /** 2026-09-13 통합 — 둘러보기가 [작가] 탭으로 합쳐져서 여기도 `/artists` 로 간다 */
+  test('[모두 모아보기] → 작품 화면(/artists)으로 간다', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '모두 모아보기' }).click();
-    await page.waitForURL(/\/explore/, { timeout: 10000 });
+    await page.waitForURL(/\/artists$/, { timeout: 10000 });
     await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 10000 });
+    // 합친 화면이 맞는지 — 작가 색인과 [좋아요순]이 함께 있어야 한다
+    await expect(page.locator('aside button[aria-expanded]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: '좋아요순' })).toBeVisible({ timeout: 10000 });
   });
 
   test('★ 새로 들어올 때마다 랜덤 — 네 번 들어와 한 번이라도 달라진다', async ({ page }) => {
@@ -160,17 +164,38 @@ test.describe('ArtWorks 컨트롤', () => {
   });
 });
 
-test.describe('둘러보기(/explore) — 홈과 같은 이름·같은 컨트롤', () => {
-  test('★ 제목이 ArtWorks 고 설명 문구는 없다', async ({ page }) => {
+test.describe('둘러보기(/explore)는 [작가] 탭으로 합쳐졌다 (2026-09-13)', () => {
+  /**
+   * ⚠️ **404 로 만들지 말 것** — 옛 링크·북마크·마이페이지 안내가 이 주소를 들고 있다.
+   *    작품 화면이 `/explore` 와 `/artists` 둘이었고 **제목이 둘 다 `ArtWorks`** 라
+   *    "왜 다르지?" 가 됐다(사용자 신고). 하나로 합치고 옛 주소는 보내 준다.
+   */
+  test('★ /explore 로 들어오면 /artists 로 보낸다', async ({ page }) => {
     await page.goto('/explore');
+    await page.waitForURL(/\/artists$/, { timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+  });
+
+  test('★ 제목이 ArtWorks 고 설명 문구는 없다', async ({ page }) => {
+    await page.goto('/artists');
     await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('body')).not.toContainText('둘러보기');
   });
 
   test('★ 알약 [랜덤]/[좋아요순] 대신 [작품 새로고침] + [좋아요순]', async ({ page }) => {
-    await page.goto('/explore');
+    await page.goto('/artists');
     await expect(page.getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: '좋아요순' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /^랜덤$/ })).toHaveCount(0);
+  });
+
+  /** 합치면서 가져온 것 — 이게 빠지면 "합쳤다"가 거짓말이 된다 */
+  test('★ 기간 필터는 [좋아요순]일 때만 나온다', async ({ page }) => {
+    await page.goto('/artists');
+    await expect(page.getByRole('button', { name: '좋아요순' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: '일주일' })).toHaveCount(0);
+    await page.getByRole('button', { name: '좋아요순' }).click();
+    await expect(page.getByRole('button', { name: '일주일' })).toBeVisible({ timeout: 10000 });
   });
 });
 

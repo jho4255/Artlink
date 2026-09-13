@@ -1,12 +1,19 @@
 /**
- * ArtistsPage — Navbar [작가] 탭 (2026-09-10)
+ * ArtistsPage — `/artists` · Navbar [작가] 탭 (2026-09-10, 둘러보기 흡수 2026-09-13)
  *
- * 왼쪽에 **작가 목록**, 오른쪽에 **작품 격자**. 작가 이름을 누르면 그 작가의 공개 홈페이지
- * (`/portfolio/:id`)로 간다. 홈의 `ArtWorks` 섹션이 맛보기였다면 여기가 본판이다.
+ * 왼쪽에 **작가 색인**, 오른쪽에 **작품 격자**. 작가 이름을 누르면 그 작가의 공개 홈페이지
+ * (`/portfolio/:id`)로 간다. 홈의 `ArtWorks` 섹션이 맛보기였다면 **여기가 본판**이다.
  *
- * ## 왜 별도 페이지인가
- * `ArtWorks` 는 홈 안의 한 섹션이라 [작가] 탭이 갈 곳이 마땅치 않았다. 홈으로 보내면
- * [홈]과 [작가]가 같은 주소가 되어 탭이 둘일 이유가 없어진다.
+ * ## 둘러보기(`/explore`)를 여기로 합쳤다 (2026-09-13 사용자 요청)
+ * 예전엔 작품을 보는 화면이 **둘**이었고 **제목이 `ArtWorks` 로 똑같았다** — `/explore` 와 `/artists`.
+ * 홈 [모두 모아보기]는 `/explore` 로, [작가] 탭은 `/artists` 로 갔고, `/artists` 안의
+ * [모두 모아보기]가 다시 `/explore` 로 보냈다. 같은 이름의 화면이 아무 설명 없이
+ * 작가 목록이 사라지고 열 수가 바뀌고 [좋아요순]이 생기니 "왜 다르지?" 가 됐다(사용자 신고).
+ *   - 지금은 **작품 화면이 하나뿐**이다. `/explore` 는 여기로 **리다이렉트**한다(404 아님 —
+ *     옛 링크·북마크·알림이 죽지 않게, 혜택 페이지와 같은 방식).
+ *   - 그래서 이 화면이 둘러보기가 갖고 있던 것을 전부 갖는다: **무한스크롤 · [좋아요순] · 기간 필터**.
+ *   - ⚠️ **[모두 모아보기] 버튼은 없앴다** — 여기가 끝이라 갈 곳이 없다. 되살리지 말 것.
+ *   - ⚠️ 이름(`ArtWorks`)은 **그대로 둔다**(2026-09-13 사용자 지정). 화면이 하나가 됐으므로 겹치지 않는다.
  *
  * ## 목록에 누가 들어가나
  * **공개 작품이 한 장이라도 있는 작가만** (`GET /explore/artists`). 가입만 한 계정까지 실으면
@@ -34,11 +41,11 @@
  *
  * @see backend/src/routes/explore.ts — GET /explore/artists · GET /explore/highlight
  */
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import { Heart, RefreshCw, ArrowRight, ChevronDown } from 'lucide-react';
+import { Heart, RefreshCw, ChevronDown } from 'lucide-react';
 import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import { groupByInitial, initiallyExpanded } from '@/lib/artistIndex';
@@ -56,18 +63,35 @@ interface ArtistEntry {
   workCount: number;
 }
 
-interface HighlightResponse {
+/** `GET /explore` 한 쪽. `total`·`limit` 으로 다음 쪽이 있는지 판정한다. */
+interface WorksPage {
   images: ExploreImage[];
-  basis: 'all' | 'random';
+  page: number;
+  limit: number;
+  total: number;
 }
+
+/** 기간은 [좋아요순]일 때만 뜻이 있다 — 랜덤 정렬에 기간을 걸면 아무 일도 안 일어난다. */
+const PERIODS = [
+  { key: 'day', label: '하루' },
+  { key: 'week', label: '일주일' },
+  { key: 'month', label: '한달' },
+  { key: 'year', label: '1년' },
+  { key: 'all', label: '전체' },
+] as const;
+type SortMode = 'random' | 'popular';
+type Period = (typeof PERIODS)[number]['key'];
+
+const PAGE_SIZE = 30;
 
 /** 서버가 0·음수·문자를 'seed 없음'으로 보므로 반드시 1 이상이어야 한다. */
 const newSeed = () => Math.floor(Math.random() * 1_000_000_000) + 1;
 
 export default function ArtistsPage() {
-  const navigate = useNavigate();
   const [selected, setSelected] = useState<ExploreImage | null>(null);
   const [seed, setSeed] = useState(newSeed);
+  const [sort, setSort] = useState<SortMode>('random');
+  const [period, setPeriod] = useState<Period>('all');
 
   const { data: artists = [], isLoading: artistsLoading } = useQuery<ArtistEntry[]>({
     queryKey: ['explore-artists'],
@@ -94,13 +118,39 @@ export default function ArtistsPage() {
       return next;
     });
 
-  const { data, isFetching } = useQuery<HighlightResponse>({
-    queryKey: ['explore-highlight', seed, 'artists-page'],
-    // 홈보다 넓은 화면이라 더 많이 받는다(홈은 8장)
-    queryFn: () => api.get('/explore/highlight', { params: { limit: 24, seed } }).then((r) => r.data),
-    placeholderData: (prev) => prev,
+  /* ── 작품 격자 — 무한스크롤 (둘러보기에서 가져왔다) ─────────────────
+     ⚠️ 정렬·기간·시드가 **쿼리 키에 들어가야** 바뀔 때 1쪽부터 다시 받는다.
+        빼면 [좋아요순]을 눌러도 이미 받아 둔 랜덤 페이지가 그대로 남는다. */
+  const {
+    data: works,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: worksLoading,
+    isFetching: worksFetching,
+  } = useInfiniteQuery<WorksPage>({
+    queryKey: ['explore', sort, period, seed],
+    queryFn: ({ pageParam = 1 }) =>
+      api
+        .get('/explore', { params: { page: pageParam, limit: PAGE_SIZE, sort, seed, period } })
+        .then((r) => r.data),
+    getNextPageParam: (last) =>
+      last.page + 1 <= Math.ceil(last.total / last.limit) ? last.page + 1 : undefined,
+    initialPageParam: 1,
   });
-  const images = data?.images ?? [];
+  const images: ExploreImage[] = works?.pages.flatMap((p) => p.images) ?? [];
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const io = new IntersectionObserver(
+      ([e]) => { if (e?.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage(); },
+      { threshold: 0.1 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
@@ -187,60 +237,101 @@ export default function ArtistsPage() {
           )}
         </aside>
 
-        {/* ── 오른쪽: 작품 격자 ───────────────────────────── */}
+        {/* ── 오른쪽: 작품 격자 (둘러보기를 흡수 — 무한스크롤·좋아요순·기간) ───── */}
         <section className="min-w-0">
-          <div className="mb-5 flex items-center justify-end">
+          {/* 컨트롤은 [작품 새로고침] 위, [좋아요순] 아래 — 홈 ArtWorks 와 같은 글자 버튼 모양이라
+              두 화면에서 누른 느낌이 같다. 알약 모양 [랜덤]/[좋아요순] 으로 되돌리지 말 것
+              (랜덤이 기본이라 '랜덤' 은 버튼일 이유가 없다). */}
+          <div className="mb-5 flex flex-col items-end">
             <button
-              onClick={() => setSeed(newSeed())}
+              onClick={() => { setSort('random'); setSeed(newSeed()); }}
               title="다른 작품 보기 (랜덤 재정렬)"
-              className="flex shrink-0 cursor-pointer items-center gap-1.5 py-2 text-sm text-gray-500 transition-colors hover:text-gray-900"
+              className="flex cursor-pointer items-center gap-1.5 py-1 text-sm text-gray-500 transition-colors hover:text-gray-900"
             >
-              <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} />
+              <RefreshCw size={15} className={worksFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
               작품 새로고침
+            </button>
+            <button
+              onClick={() => setSort(sort === 'popular' ? 'random' : 'popular')}
+              aria-pressed={sort === 'popular'}
+              className={`flex cursor-pointer items-center gap-1.5 py-1 text-sm transition-colors ${
+                sort === 'popular' ? 'font-medium text-gray-900' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <Heart size={15} className={sort === 'popular' ? 'fill-[#c4302b] text-[#c4302b]' : ''} />
+              좋아요순
             </button>
           </div>
 
-          {images.length === 0 ? (
-            <p className="py-16 text-center text-sm text-gray-400">공개된 작품이 아직 없습니다.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
-              {images.map((img) => (
+          {/* 기간은 좋아요순일 때만 의미가 있다 */}
+          {sort === 'popular' && (
+            <div className="mb-5 flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-xs text-gray-400">기간</span>
+              {PERIODS.map((p) => (
                 <button
-                  key={img.id}
-                  onClick={() => setSelected(img)}
-                  className="group relative aspect-square cursor-pointer overflow-hidden"
-                  aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
+                  className={`cursor-pointer rounded-full px-2.5 py-1 text-xs transition-colors ${
+                    period === p.key ? 'bg-[#c4302b] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
                 >
-                  <SkeletonImage
-                    src={img.url}
-                    className="absolute inset-0"
-                    imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
-                    loading="lazy"
-                  />
-                  {/* 그라데이션에 pointer-events-none 필수 — 없으면 아래 버튼 클릭을 막는다(CLAUDE.md 8번) */}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-2">
-                    <span className="truncate text-xs text-white/90">{displayName(img.artist)}</span>
-                    {img.likeCount > 0 && (
-                      <span className="flex shrink-0 items-center gap-1 text-xs text-white">
-                        <Heart size={11} className="fill-white" />
-                        {img.likeCount}
-                      </span>
-                    )}
-                  </div>
+                  {p.label}
                 </button>
               ))}
             </div>
           )}
 
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => navigate('/explore')}
-              className="flex cursor-pointer items-center gap-0.5 py-2 text-sm text-gray-500 transition-colors hover:text-gray-900"
-            >
-              모두 모아보기 <ArrowRight size={13} />
-            </button>
-          </div>
+          {worksLoading ? (
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="aspect-square animate-pulse bg-gray-100" />
+              ))}
+            </div>
+          ) : images.length === 0 ? (
+            <p className="py-16 text-center text-sm text-gray-400">공개된 작품이 아직 없습니다.</p>
+          ) : (
+            <>
+{/* ⚠️ 넓은 화면에서 4열로 갈 것 — 왼쪽 색인이 220px 을 먹어도 `xl` 이면 칸이 220px 이라
+                  합치기 전 둘러보기(4열)와 밀도가 같다. 3열로 두면 칸이 300px 이라 훑기 화면이 성겨진다. */}
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
+                {images.map((img) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setSelected(img)}
+                    className="group relative aspect-square cursor-pointer overflow-hidden"
+                    aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
+                  >
+                    <SkeletonImage
+                      src={img.url}
+                      className="absolute inset-0"
+                      imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
+                      loading="lazy"
+                    />
+                    {/* 그라데이션에 pointer-events-none 필수 — 없으면 아래 버튼 클릭을 막는다(CLAUDE.md 8번) */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-2">
+                      <span className="truncate text-xs text-white/90">{displayName(img.artist)}</span>
+                      {img.likeCount > 0 && (
+                        <span className="flex shrink-0 items-center gap-1 text-xs text-white">
+                          <Heart size={11} className="fill-white" />
+                          {img.likeCount}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* 무한스크롤 sentinel — ⚠️ 격자 **밖**에 둘 것. 안에 두면 격자 칸 하나로 잡혀
+                  마지막 줄에 빈 칸이 생기고, 그 칸 높이(aspect-square)만큼 미리 당겨진다. */}
+              <div ref={sentinelRef} className="h-10" />
+              {isFetchingNextPage && (
+                <div className="flex justify-center py-6">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+                </div>
+              )}
+            </>
+          )}
         </section>
       </div>
 

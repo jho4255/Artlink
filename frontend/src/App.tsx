@@ -38,7 +38,6 @@ const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
 const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
 const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
 const SupportPage = lazyWithReload(() => import('@/pages/SupportPage'));
-const ExplorePage = lazyWithReload(() => import('@/pages/ExplorePage'));
 const ArtistsPage = lazyWithReload(() => import('@/pages/ArtistsPage'));
 const MessagesPage = lazyWithReload(() => import('@/pages/MessagesPage'));
 const CommunityPage = lazyWithReload(() => import('@/pages/CommunityPage'));
@@ -70,7 +69,10 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
-        <Route path="/explore" element={<ExplorePage />} />
+        {/* 둘러보기는 [작가] 탭으로 합쳤다(2026-09-13) — 작품 화면이 둘이고 제목이 둘 다
+            `ArtWorks` 라 "왜 다르지?" 가 됐다. ⚠️ **404 로 두지 말 것**: 옛 링크·북마크·
+            마이페이지 안내가 이 주소를 들고 있다(혜택 페이지와 같은 방식). */}
+        <Route path="/explore" element={<Navigate to="/artists" replace />} />
         {/* Navbar [작가] 탭 — 좌 작가 목록 / 우 작품 격자 (2026-09-10) */}
         <Route path="/artists" element={<ArtistsPage />} />
         <Route path="/galleries" element={<GalleriesPage />} />

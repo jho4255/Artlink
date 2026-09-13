@@ -27,7 +27,7 @@ import type { PortfolioImage, PublicPortfolio, StoryHighlight } from '@/types';
 export default function PortfolioPage() {
   const { userId } = useParams();
   // 새 탭·공유 링크로 들어오면 뒤로 갈 기록이 없어 navigate(-1) 이 아무 일도 안 한다
-  const goBack = useGoBack('/explore');
+  const goBack = useGoBack('/artists');
   const navigate = useNavigate();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);

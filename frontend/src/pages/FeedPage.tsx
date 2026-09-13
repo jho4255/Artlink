@@ -560,7 +560,7 @@ export default function FeedPage() {
                 ? '관심 있는 작가를 이웃으로 추가하면 여기에 소식이 모입니다.'
                 : '아직 올라온 소식이 없습니다. 첫 소식을 남겨보세요.'}
             </p>
-            <Link to="/explore" className="mt-3 inline-block text-sm font-medium text-[#dc3545] hover:underline">작가 둘러보기 →</Link>
+            <Link to="/artists" className="mt-3 inline-block text-sm font-medium text-[#dc3545] hover:underline">작가 둘러보기 →</Link>
           </div>
         ) : (
           <div className="space-y-3">

@@ -22,7 +22,7 @@ test('포트폴리오 이미지 공개 토글 → 탐색 피드 노출 + 좋아�
 
   // UI: 탐색 피드에 이미지 노출
   const { page, ctx } = await openAs(browser, 'artist');
-  await page.goto('/explore');
+  await page.goto('/artists');
   await expect(page.locator('img').first()).toBeVisible({ timeout: 10000 });
   const feedCount = await page.locator('img').count();
   expect(feedCount, '탐색 피드에 공개 이미지가 1개 이상').toBeGreaterThan(0);

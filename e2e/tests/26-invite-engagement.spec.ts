@@ -93,7 +93,7 @@ test('A. 홈 ArtWorks — 작품 확대 → 좋아요 → 재오픈 시 하트 �
 
   /* 좋아요 → 재오픈 검증은 **둘러보기(전체 목록)** 에서 한다.
      홈 ArtWorks 는 들어올 때마다 랜덤 8점이라 그 작품이 이번 화면에 없을 수 있다. */
-  await page.goto('/explore');
+  await page.goto('/artists');
   await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 10000 });
   const target = page.locator(`button:has(img[src="${mine.url}"])`).first();
   await expect(target, '방금 만든 작품이 둘러보기에 없다').toBeVisible({ timeout: 10000 });
@@ -209,7 +209,7 @@ test('D. 갤러리 관심은 이제 하트(공개) — 저장(스크랩) 버튼�
 
   // 갤러리: 작품 모달에 저장(북마크) 버튼이 없다(하트로 대체)
   const g = await openAs(browser, 'gallery');
-  await g.page.goto('/explore');
+  await g.page.goto('/artists');
   await g.page.getByRole('button', { name: /작가의 작품 — 크게 보기/ }).first().click();
   await expect(g.page.getByRole('button', { name: /관심 작품 저장|관심 작품 해제/ }), '스크랩 버튼은 없어졌다').toHaveCount(0);
   // ⚠️ '바로 공모 초대' 버튼도 2026-08-29 에 **의도적으로 없앴다** — 초대는 공모 쪽에서만 한다.

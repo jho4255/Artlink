@@ -369,6 +369,7 @@ ArtLink/
 | /galleries | GalleriesPage | X |
 | /galleries/:id | GalleryDetailPage | X |
 | /artists | ArtistsPage | X |
+| /explore | → `/artists` 리다이렉트 (2026-09-13 통합) | X |
 | /exhibitions | ExhibitionsPage | X |
 | /exhibitions/:id | ExhibitionDetailPage | X |
 | /shows | ShowsPage | X |
@@ -386,7 +387,7 @@ ArtLink/
 | HomePage | Hero 슬라이더 → ArtWorks → 인기글·진행중전시·마감임박공모·GotM (2026-09-05 배너를 맨 위로) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
-| ArtistsPage | [작가] 탭 — 좌 작가 목록(누르면 `/portfolio/:id`) / 우 작품 격자 | `pages/ArtistsPage.tsx` |
+| ArtistsPage | [작가] 탭 — 좌 작가 색인(누르면 `/portfolio/:id`) / 우 작품 격자(무한스크롤·좋아요순·기간). **둘러보기를 흡수** | `pages/ArtistsPage.tsx` |
 | ExhibitionsPage | 공모 목록, 필터, 카드 클릭→상세 이동, 빠른 지원 | `pages/ExhibitionsPage.tsx` |
 | ExhibitionDetailPage | 공모 상세, 지원하기(+이메일), 홍보사진, 삭제(오너/Admin) | `pages/ExhibitionDetailPage.tsx` |
 | ShowsPage | 전시 목록, 지역/상태 필터, 찜 (optimistic) | `pages/ShowsPage.tsx` |
@@ -606,6 +607,9 @@ cd frontend && npm run dev
 
 Navbar 가운데 **홈과 갤러리 사이**. 좌 작가 목록 / 우 작품 격자.
 
+- **둘러보기(`/explore`)를 흡수했다**(2026-09-13) — 작품 화면이 둘인데 제목이 둘 다 `ArtWorks` 라
+  "왜 다르지?" 가 됐다. `ExplorePage.tsx` 삭제, `/explore` 는 `/artists` 로 리다이렉트(404 아님).
+  작품 격자는 `GET /api/explore`(무한스크롤 30장/쪽) + [좋아요순] + 기간 필터를 그대로 쓴다.
 - 작가 목록: `GET /api/explore/artists` → `[{ id, name, avatar, initial, workCount }]`.
   **공개 작품이 있는 작가만**, 탈퇴 작가 제외.
   `workCount` 는 응답에만 있고 **화면에는 안 그린다**(목록 필터의 근거라 남겨 둔다).
@@ -1001,7 +1005,7 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 - **API**: `POST /explore/:imageId/scrap`(토글) · `GET /explore/scraps` · `PATCH /explore/scraps/:id`(메모) · `POST /exhibitions/:id/invite` · `GET /exhibitions/:id/invites` · `GET /exhibitions/invites/received` · `PATCH /exhibitions/invites/:id`(숨김)
 - **초대는 알림일 뿐 자동 지원이 아니다** — 공모마다 커스텀 질문이 다르므로 작가가 직접 지원해야 한다(단, 초대 수락 = 바로 참가 경로는 별도, `POST /invites/:id/accept`).
 - **초대 방어**: 소유 갤러리만 / `APPROVED` + 모집중(`recruitmentClosed·confirmed·ended` 아님) + 마감 전(KST) / 이미 지원한 작가 400 / 중복 초대 409 / 탈퇴·비ARTIST 404 / **공모당 100명·계정당 하루 50명 상한**
-- **초대 진입 2방향**(2026-08-28): 작가 고정+공모 선택(`InviteModal` — 작품 모달·관심 작품 탭), 공모 고정+작가 선택(`ExhibitionInviteModal` — 내 공모 지원자 관리 패널, 대상은 하트 저장 작가). UI: ExplorePage/홈 모달, MyPage GALLERY **"관심 작품"**(=하트 보드), MyPage ARTIST **[내 전시] 초대받은 전시 탭**.
+- **초대 진입 2방향**(2026-08-28): 작가 고정+공모 선택(`InviteModal` — 작품 모달·관심 작품 탭), 공모 고정+작가 선택(`ExhibitionInviteModal` — 내 공모 지원자 관리 패널, 대상은 하트 저장 작가). UI: ArtistsPage(구 ExplorePage)/홈 모달, MyPage GALLERY **"관심 작품"**(=하트 보드), MyPage ARTIST **[내 전시] 초대받은 전시 탭**.
 
 ### 초대 간편 지원 (자동 수락 아님)
 갤러리가 작품을 보고 직접 부른 것이므로 지원서를 다시 쓰게 하지 않는다.
