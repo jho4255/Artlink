@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import logger from '../lib/logger';
+import { sortByInitialThenName } from '../lib/hangulIndex';
 
 const router = Router();
 
@@ -159,17 +160,17 @@ function shuffleNoAdjacent(
  *    실으면 목록이 회원 명부가 되고, 눌러 들어가면 **텅 빈 홈페이지**가 나온다.
  * ⚠️ 탈퇴(`deletedAt`) 작가는 뺀다 — 탐색 피드(`GET /`)와 같은 기준이어야 한다.
  *    두 화면이 다른 작가 집합을 보여주면 "왜 여기만 없지" 가 된다.
- * ## 순서는 **랜덤** (2026-09-10 사용자 요청으로 가나다순에서 변경)
- * `?seed=N` 으로 섞는다 — 화면이 들어올 때마다 새 시드를 만들고, [작가 새로고침]이 시드만 갈아끼운다
- * (홈 ArtWorks·둘러보기와 같은 규칙이라 세 화면에서 누른 느낌이 같다).
- *   ⚠️ 가나다순으로 되돌리지 말 것 — 고정 순서면 'ㄱ' 으로 시작하는 작가만 늘 맨 위에 걸리고
- *      뒤쪽 작가는 스크롤을 내려야만 보인다. 노출을 골고루 돌리는 쪽을 택했다.
- *   ⚠️ 정렬을 DB 에 맡기지도 말 것 — 이름순이던 시절에도 Postgres 기본 콜레이션이 한글 자모 순서를
- *      보장하지 않아 서버 로케일에 따라 목록이 달라졌다. 순서는 항상 여기서 정한다.
- *   ⚠️ seed 가 없거나 이상하면 **날짜 시드**로 떨어진다(하루 동안 고정). 매 요청 무작위로 두면
- *      같은 화면을 다시 열 때마다 순서가 바뀌어 방금 본 작가를 못 찾는다.
+ * ## 순서는 **가나다순 + 초성 색인** (2026-09-13 사용자 요청으로 랜덤에서 되돌림)
+ * 응답마다 `initial`(ㄱ·ㄴ·ㄷ… / `A–Z` / `#`)이 실리고, 목록은 **칸 순서 → 이름순**으로 정렬돼 있다.
+ * 화면은 이어진 같은 `initial` 끼리 묶어 전화번호부처럼 접었다 편다.
+ *   ⚠️ **정렬과 초성 판정을 갈라 놓지 말 것** — `lib/hangulIndex.ts` 한 곳이 둘 다 한다.
+ *      화면이 따로 초성을 계산하면 규칙이 둘이 되어, 한쪽만 고치는 순간 'ㄱ' 칸에 'ㄴ' 이름이 섞인다.
+ *   ⚠️ 정렬을 DB 에 맡기지 말 것 — Postgres 기본 콜레이션은 한글 자모 순서를 보장하지 않아
+ *      서버 로케일에 따라 목록이 달라진다. 순서는 항상 여기서 정한다.
+ *   ⚠️ `?seed=` 는 **받되 무시한다**(2026-09-10~09-13 사이 랜덤이던 시절의 흔적). 400 으로 막으면
+ *      그때 만들어진 링크·캐시가 죽는다 — 규칙 24 와 같은 이유다.
  */
-router.get('/artists', async (req, res, next) => {
+router.get('/artists', async (_req, res, next) => {
   try {
     // 작가별 공개 작품 수를 한 번에 — 작가 수만큼 쿼리를 돌지 않는다(N+1)
     const grouped = await prisma.portfolioImage.groupBy({
@@ -199,17 +200,8 @@ router.get('/artists', async (req, res, next) => {
         workCount: countBy.get(pf.id) ?? 0,
       }));
 
-    // 시드 랜덤 — 같은 시드면 같은 순서(새로고침 전까지 목록이 안 흔들린다)
-    const seed = (Math.abs(parseInt(req.query.seed as string)) || dailySeed()) >>> 0;
-    const rand = mulberry32(seed);
-    // id 로 한 번 고정한 뒤 섞는다 — DB 반환 순서에 기대면 같은 시드로도 결과가 달라진다
-    artists.sort((a, b) => a.id - b.id);
-    for (let i = artists.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [artists[i], artists[j]] = [artists[j]!, artists[i]!];
-    }
-
-    res.json(artists);
+    // 칸(초성) 순서 → 이름순. `initial` 을 함께 실어 화면이 묶을 수 있게 한다
+    res.json(sortByInitialThenName(artists));
   } catch (err) { next(err); }
 });
 

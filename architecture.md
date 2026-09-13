@@ -602,15 +602,35 @@ cd frontend && npm run dev
 - ⚠️ 필터·정렬 쿼리는 **400 이 아니라 무시**한다(옛 주소·북마크가 죽지 않게).
 - ⚠️ 되살아나기 쉬워서 `frontend/src/__tests__/noRatingUi.test.ts` 가 소스를 훑어 감시한다.
 
-## [작가] 탭 / ArtistsPage (2026-09-10)
+## [작가] 탭 / ArtistsPage (2026-09-10, 색인 2026-09-13)
 
 Navbar 가운데 **홈과 갤러리 사이**. 좌 작가 목록 / 우 작품 격자.
 
-- 작가 목록: `GET /api/explore/artists?seed=N` → `[{ id, name, avatar, workCount }]`.
-  **공개 작품이 있는 작가만**, 탈퇴 작가 제외. **순서는 시드 랜덤**(시드 없으면 `dailySeed()` — 하루 고정).
+- 작가 목록: `GET /api/explore/artists` → `[{ id, name, avatar, initial, workCount }]`.
+  **공개 작품이 있는 작가만**, 탈퇴 작가 제외.
   `workCount` 는 응답에만 있고 **화면에는 안 그린다**(목록 필터의 근거라 남겨 둔다).
 - 이름 클릭 → `/portfolio/:id`(그 작가의 공개 홈페이지). 격자를 거르지는 않는다.
 - 작품 격자는 홈 `ArtWorks` 와 같은 `GET /explore/highlight`(여기는 24장, 홈은 8장).
+
+### 가나다순 + ㄱ/ㄴ/ㄷ 색인 (2026-09-13, 랜덤 정렬에서 되돌림)
+
+```
+backend/src/lib/hangulIndex.ts     초성 판정 + 정렬   ← 규칙은 여기 한 곳뿐
+  initialOf(name)                  → 'ㄱ'…'ㅎ'(14) | 'A–Z' | '#'
+  sortByInitialThenName(items)     → 칸 순서 → 이름순, `initial` 을 붙여 돌려준다
+        ↓ GET /api/explore/artists (이미 정렬된 목록 + initial)
+frontend/src/lib/artistIndex.ts    묶기만 한다      ← 초성을 다시 계산하지 않는다
+  groupByInitial(artists)          → [{ initial, artists }]  (서버 순서 그대로)
+  initiallyExpanded(groups, n)     → 처음 펼쳐 둘 칸 (n ≤ AUTO_EXPAND_MAX 면 전부)
+        ↓
+frontend/src/pages/ArtistsPage.tsx 칸 머리말(button[aria-expanded]) + [모두 펼치기/접기]
+```
+
+- **왜 서버가 정하나**: 순서와 칸이 어긋나면 'ㄱ' 칸을 폈는데 'ㄴ' 이름이 나오거나 같은 칸이
+  목록에 두 번 뜬다. 한 곳에서 정하면 구조적으로 불가능하다.
+- **칸은 14개**(쌍자음은 홑자음에 합침) + `A–Z`(대소문자 한 칸) + `#`(숫자·기호·한자·모음).
+- 왼쪽 칸에 그리는 글자는 **칸 이름과 [모두 펼치기] 뿐** — 인원수·'가나다순' 안내는 두지 않는다(2026-09-13).
+- 자세한 함정(서로게이트 쌍·`w-7` 줄바꿈·effect 의존성·e2e 의 한 칸 문제)은 CLAUDE.md 「[작가] 탭」 절.
 
 ## HeroSlider 구현 방식
 

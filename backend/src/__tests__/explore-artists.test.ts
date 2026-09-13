@@ -6,9 +6,12 @@
  *      눌러 들어가면 텅 빈 홈페이지가 나온다.
  *   2. **탈퇴 작가는 뺀다.** 탐색 피드(`GET /explore`)와 같은 기준이어야 한다 —
  *      두 화면이 다른 작가 집합을 보여주면 "왜 여기만 없지" 가 된다.
- *   3. **랜덤 순서**(2026-09-10 사용자 요청으로 가나다순에서 변경). 같은 시드면 같은 순서,
- *      시드가 다르면 다른 순서. 시드가 없으면 **하루 동안 고정**된다 — 매 요청 바뀌면
- *      같은 화면을 다시 열 때마다 순서가 달라져 방금 본 작가를 못 찾는다.
+ *   3. **가나다순 + 초성 칸**(2026-09-13 사용자 요청으로 랜덤에서 되돌림). 목록은 칸 순서 →
+ *      이름순이고 이름마다 `initial` 이 실린다. 화면(`ArtistsPage`)은 **이어진 같은 `initial`
+ *      끼리 묶기만** 하므로, 정렬과 칸이 어긋나면 'ㄱ' 칸을 폈는데 'ㄴ' 이름이 나온다.
+ *
+ * 초성 판정 자체(쌍자음 접기·영문·기호…)는 `lib/__tests__/hangulIndex.test.ts` 가 본다.
+ * 여기서는 **라우트가 그 규칙을 실제로 태우는지**만 본다.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { request, cleanDb, seedUsers, testPrisma } from './helpers';
@@ -72,36 +75,58 @@ describe('GET /api/explore/artists', () => {
     expect(names(res.body)).toEqual(['남은작가']);
   });
 
-  /** 시드 랜덤 — 순서만 다르고 **구성원은 같아야** 한다(섞다가 빠지면 안 된다) */
-  it('★ 같은 시드는 같은 순서, 다른 시드는 다른 순서', async () => {
+  it('★ 가나다순으로 내려준다 (2026-09-13 랜덤에서 되돌림)', async () => {
     for (const [id, name] of [[1, '한서아'], [2, '강민서'], [5, '박지훈'], [6, '김하윤'], [7, '마은영'], [8, '정하경']] as const) {
       await seedArtist({ id, name, publicWorks: 1 });
     }
-
-    const a1 = await request.get('/api/explore/artists?seed=12345');
-    const a2 = await request.get('/api/explore/artists?seed=12345');
-    expect(names(a1.body)).toEqual(names(a2.body));   // 같은 시드 → 같은 순서
-
-    // 다른 시드로 여러 번 시도해 **한 번이라도** 순서가 달라지면 섞이는 것이다.
-    // (6명이면 한 시드가 우연히 같은 순서를 낼 확률이 있어 한 번만 보고 판정하면 깜빡인다)
-    const others = await Promise.all(
-      [1, 2, 3, 4, 5, 6].map((n) => request.get(`/api/explore/artists?seed=${n * 7777}`)),
-    );
-    expect(others.some((r) => names(r.body).join() !== names(a1.body).join())).toBe(true);
-
-    // ⚠️ 순서만 바뀌고 사람이 사라지면 안 된다
-    for (const r of [a1, ...others]) {
-      expect([...names(r.body)].sort()).toEqual(['강민서', '김하윤', '마은영', '박지훈', '정하경', '한서아']);
-    }
+    const res = await request.get('/api/explore/artists');
+    expect(names(res.body)).toEqual(['강민서', '김하윤', '마은영', '박지훈', '정하경', '한서아']);
   });
 
-  it('★ 시드가 없으면 하루 동안 고정된다 (열 때마다 흔들리지 않게)', async () => {
+  it('★ 열 때마다 같은 순서다 (방금 본 작가를 다시 찾을 수 있어야 한다)', async () => {
     for (const [id, name] of [[1, '한서아'], [2, '강민서'], [5, '박지훈'], [6, '김하윤']] as const) {
       await seedArtist({ id, name, publicWorks: 1 });
     }
     const a = await request.get('/api/explore/artists');
     const b = await request.get('/api/explore/artists');
     expect(names(a.body)).toEqual(names(b.body));
+  });
+
+  /**
+   * ⚠️ 순서와 칸이 **어긋나면** 'ㄱ' 칸을 폈는데 'ㄴ' 이름이 나오거나, 같은 칸이 목록에 두 번 뜬다.
+   *    화면은 이어진 같은 `initial` 끼리 묶기만 하므로, 그 전제를 여기서 못박는다.
+   */
+  it('★ initial 이 함께 오고, 같은 칸끼리 **이어져** 있다', async () => {
+    for (const [id, name] of [[1, '한서아'], [2, '강민서'], [5, '김하윤'], [6, 'Zoe'], [7, '나윤호'], [8, '12번방']] as const) {
+      await seedArtist({ id, name, publicWorks: 1 });
+    }
+    const res = await request.get('/api/explore/artists');
+
+    expect(res.body.map((a: any) => `${a.initial}:${a.name}`)).toEqual([
+      'ㄱ:강민서', 'ㄱ:김하윤', 'ㄴ:나윤호', 'ㅎ:한서아', 'A–Z:Zoe', '#:12번방',
+    ]);
+
+    // 같은 칸이 두 번 나타나지 않는다 = 이어져 있다
+    const initials: string[] = res.body.map((a: any) => a.initial);
+    const runs = initials.filter((v, i) => initials[i - 1] !== v);
+    expect(new Set(initials).size).toBe(runs.length);
+  });
+
+  it('★ 닉네임으로 보여주면 **닉네임 기준**으로 정렬·색인한다 (본명 기준이면 칸이 어긋난다)', async () => {
+    await seedArtist({ id: 1, name: '하본명', nickname: '가닉네임', publicWorks: 1 });
+    await seedArtist({ id: 2, name: '가본명', nickname: '하닉네임', publicWorks: 1 });
+
+    const res = await request.get('/api/explore/artists');
+    expect(res.body.map((a: any) => [a.name, a.initial])).toEqual([['가닉네임', 'ㄱ'], ['하닉네임', 'ㅎ']]);
+  });
+
+  it('옛 `?seed=` 는 무시한다 — 400 으로 막으면 그때 만들어진 링크가 죽는다', async () => {
+    await seedArtist({ id: 1, name: '강민서', publicWorks: 1 });
+    await seedArtist({ id: 2, name: '한서아', publicWorks: 1 });
+
+    const withSeed = await request.get('/api/explore/artists?seed=999');
+    expect(withSeed.status).toBe(200);
+    expect(names(withSeed.body)).toEqual(['강민서', '한서아']);
   });
 
   it('★ 공개 작품 수만 센다 (비공개는 빼고)', async () => {
