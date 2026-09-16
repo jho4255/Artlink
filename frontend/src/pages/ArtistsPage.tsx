@@ -51,11 +51,14 @@ import { displayName } from '@/lib/utils';
 import { groupByInitial, initiallyExpanded } from '@/lib/artistIndex';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
+import { artistPath } from '@/lib/handle';
 import type { ExploreImage } from '@/types';
 
 interface ArtistEntry {
   id: number;
   name: string;
+  /** 홈페이지 주소 — 있으면 `/@handle` 로 링크한다(2026-09-16) */
+  handle?: string | null;
   avatar: string | null;
   /** 서버가 정해 준 색인 칸 (ㄱ~ㅎ · `A–Z` · `#`) — 화면에서 다시 계산하지 않는다 */
   initial: string;
@@ -160,7 +163,7 @@ export default function ArtistsPage() {
         {/* ── 왼쪽: 작가 목록 ─────────────────────────────── */}
         <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           <h1 className="font-serif text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
-            Art<span className="text-[#dc3545]">Works</span>
+            Art<span className="text-accent">Works</span>
           </h1>
           {/* ⚠️ 작가 수·'가나다순' 안내는 **두지 않는다**(2026-09-13 사용자 요청) — 목록을 보면 아는 것이라
               적어 두면 잔소리다. 남기는 건 실제로 누를 것 하나뿐이다. */}
@@ -220,7 +223,7 @@ export default function ArtistsPage() {
                           {g.artists.map((a) => (
                             <li key={a.id} className="min-w-0">
                               <Link
-                                to={`/portfolio/${a.id}`}
+                                to={artistPath(a)}
                                 className="flex min-h-[34px] items-center text-sm text-gray-600 hover:text-gray-900 hover:underline hover:underline-offset-4"
                               >
                                 <span className="truncate">{a.name}</span>
@@ -258,7 +261,7 @@ export default function ArtistsPage() {
                 sort === 'popular' ? 'font-medium text-gray-900' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
-              <Heart size={15} className={sort === 'popular' ? 'fill-[#c4302b] text-[#c4302b]' : ''} />
+              <Heart size={15} className={sort === 'popular' ? 'fill-accent text-accent' : ''} />
               좋아요순
             </button>
           </div>
@@ -272,7 +275,7 @@ export default function ArtistsPage() {
                   key={p.key}
                   onClick={() => setPeriod(p.key)}
                   className={`cursor-pointer rounded-full px-2.5 py-1 text-xs transition-colors ${
-                    period === p.key ? 'bg-[#c4302b] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    period === p.key ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {p.label}

@@ -142,7 +142,7 @@ export default function InviteApplyModal({
                 <div key={field.id}>
                   <label className="block text-sm text-gray-700 mb-1.5">
                     {field.label}
-                    {field.required && <span className="text-[#c4302b] ml-0.5">*</span>}
+                    {field.required && <span className="text-accent ml-0.5">*</span>}
                   </label>
 
                   {field.type === 'select' && (field.maxSelect ?? 1) === 1 ? (

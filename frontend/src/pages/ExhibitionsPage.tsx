@@ -101,7 +101,7 @@ export default function ExhibitionsPage() {
         {user?.role === 'GALLERY' && (
           <Link
             to="/exhibitions/new"
-            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors whitespace-nowrap"
+            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5 transition-colors whitespace-nowrap"
           >
             <Plus size={15} /> 공모 등록
           </Link>
@@ -255,7 +255,7 @@ export default function ExhibitionsPage() {
                       {isClosed ? (
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">마감</span>
                       ) : (
-                        <span className={`text-sm font-medium ${dday <= 7 ? 'text-[#c4302b]' : 'text-gray-500'}`}>
+                        <span className={`text-sm font-medium ${dday <= 7 ? 'text-accent' : 'text-gray-500'}`}>
                           D-{dday}
                         </span>
                       )}
@@ -265,7 +265,7 @@ export default function ExhibitionsPage() {
                           className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer"
                           aria-label={ex.isFavorited ? '찜 해제' : '찜하기'}
                         >
-                          <Heart size={16} className={ex.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                          <Heart size={16} className={ex.isFavorited ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'} />
                         </button>
                       )}
                     </div>
@@ -301,7 +301,7 @@ export default function ExhibitionsPage() {
                         e.stopPropagation();
                         navigate(`/exhibitions/${ex.id}`);
                       }}
-                      className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-[#c4302b] transition-colors cursor-pointer"
+                      className="mt-3 text-sm text-gray-900 underline underline-offset-4 decoration-1 hover:text-accent transition-colors cursor-pointer"
                     >
                       지원하기 →
                     </button>

@@ -97,11 +97,11 @@ export default function CareerEditor({ value, onChange, categories = APPLY_CATEG
             key={key}
             className={cn(
               'rounded-lg border p-3',
-              hasError ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200',
+              hasError ? 'border-accent ring-1 ring-accent/40' : 'border-gray-200',
             )}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className={cn('text-sm font-medium', hasError ? 'text-red-600' : 'text-gray-700')}>
+              <span className={cn('text-sm font-medium', hasError ? 'text-accent' : 'text-gray-700')}>
                 {label}
               </span>
               {showNone && (

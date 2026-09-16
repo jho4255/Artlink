@@ -14,7 +14,7 @@ import type { ExploreImage } from '@/types';
  *
  * 홈에 처음 보이는 것이 **작품**이어야 한다 — 예전엔 히어로 배너가 최상단이었다.
  *
- * 제목은 ArtLink 로고와 같은 규칙(앞은 검정, 뒤는 빨강 #dc3545)으로 찍는다 —
+ * 제목은 ArtLink 로고와 같은 규칙(앞은 검정, 뒤는 빨강 #c4302b)으로 찍는다 —
  * Art**Link** ↔ Art**Works**. 로고와 짝이 맞아야 브랜드 이름처럼 읽힌다. 부제는 두지 않는다.
  *
  * **첫 진입도 랜덤**이다(2026-08-27). 매번 시드를 새로 만들어 `?seed=N` 으로 부른다.
@@ -62,7 +62,7 @@ export default function ArtWorks() {
             눌려 보이면 안 된다. 아래 Gallery of the Month 제목(24/30px)보다도 작지만,
             여긴 바로 밑에 작품 그리드가 시선을 받으므로 제목이 조용해도 된다. */}
         <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-          Art<span className="text-[#dc3545]">Works</span>
+          Art<span className="text-accent">Works</span>
         </h2>
 
         {/* 제목보다는 작지만 **읽히긴 해야 한다** — gray-300/400 으로 뒀더니 안 보인다는 얘기가 나왔다.

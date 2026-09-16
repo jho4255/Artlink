@@ -9,7 +9,7 @@ import HighlightRail from '@/components/shared/HighlightRail';
 import HighlightViewer from '@/components/shared/HighlightViewer';
 import { useMention, MentionSuggest } from '@/components/shared/MentionSuggest';
 import { useAuthStore } from '@/stores/authStore';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, roleLabel } from '@/lib/utils';
 import type { StoryHighlight } from '@/types';
 
 /**
@@ -27,7 +27,6 @@ interface Story {
 interface StoryComment { id: number; body: string; createdAt: string; author: StoryAuthor; mine: boolean }
 interface FeedPage { stories: Story[]; page: number; hasMore: boolean; followingCount: number }
 
-const roleLabel = (role: string) => (role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : '');
 
 function Composer() {
   const qc = useQueryClient();
@@ -240,7 +239,7 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
           </div>
         </div>
         {story.mine && (
-          <button onClick={() => del.mutate()} disabled={del.isPending} aria-label="삭제" className="text-gray-300 hover:text-red-500">
+          <button onClick={() => del.mutate()} disabled={del.isPending} aria-label="삭제" className="text-gray-300 hover:text-accent">
             <Trash2 size={16} />
           </button>
         )}
@@ -261,8 +260,8 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
 
       {/* 좋아요 · 댓글 · 하이라이트 */}
       <div className="mt-3 flex items-center gap-4 border-t border-gray-50 pt-2.5 text-sm">
-        <button onClick={onLike} className={`inline-flex items-center gap-1 ${story.liked ? 'text-[#dc3545]' : 'text-gray-500 hover:text-gray-800'}`}>
-          <Heart size={16} className={story.liked ? 'fill-[#dc3545]' : ''} /> {story.likeCount > 0 && story.likeCount}
+        <button onClick={onLike} className={`inline-flex items-center gap-1 ${story.liked ? 'text-accent' : 'text-gray-500 hover:text-gray-800'}`}>
+          <Heart size={16} className={story.liked ? 'fill-accent' : ''} /> {story.likeCount > 0 && story.likeCount}
         </button>
         <button onClick={() => setShowComments((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
           <MessageCircle size={16} /> {story.commentCount > 0 && story.commentCount}
@@ -335,7 +334,7 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
                 <p className="whitespace-pre-wrap text-[13px] leading-snug text-gray-800 [overflow-wrap:anywhere]">{c.body}</p>
               </div>
               {(c.mine || story.mine) && (
-                <button onClick={() => delComment.mutate(c.id)} aria-label="댓글 삭제" className="text-gray-300 hover:text-red-500"><X size={13} /></button>
+                <button onClick={() => delComment.mutate(c.id)} aria-label="댓글 삭제" className="text-gray-300 hover:text-accent"><X size={13} /></button>
               )}
             </div>
           ))}
@@ -444,7 +443,7 @@ export default function FeedPage() {
       {/* 제목(ArtStory) 왼쪽 끝은 Navbar 의 ArtLink 로고와 맞춘다(max-w-7xl 왼쪽 끝) */}
       <div className="max-w-7xl mx-auto px-6 md:px-12 mb-6">
         <h1 className="text-xl font-bold tracking-tight font-serif text-gray-900 md:text-2xl">
-          Art<span className="text-[#dc3545]">Story</span>
+          Art<span className="text-accent">Story</span>
         </h1>
       </div>
 
@@ -560,7 +559,7 @@ export default function FeedPage() {
                 ? '관심 있는 작가를 이웃으로 추가하면 여기에 소식이 모입니다.'
                 : '아직 올라온 소식이 없습니다. 첫 소식을 남겨보세요.'}
             </p>
-            <Link to="/artists" className="mt-3 inline-block text-sm font-medium text-[#dc3545] hover:underline">작가 둘러보기 →</Link>
+            <Link to="/artists" className="mt-3 inline-block text-sm font-medium text-accent hover:underline">작가 둘러보기 →</Link>
           </div>
         ) : (
           <div className="space-y-3">

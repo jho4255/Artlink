@@ -1,16 +1,22 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Lock, Trash2, CornerDownRight, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, roleLabel } from '@/lib/utils';
+import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 
 /**
- * 방명록 — 작가 홈페이지(`/portfolio/:userId`) 하단.
- *   · 읽기는 공개, 쓰기는 로그인. 비밀글은 방 주인·작성자만 본문을 본다.
+ * 방명록 — 작가 홈페이지(`/@handle`) 하단.
+ *   · 읽기는 공개, 쓰기는 로그인.
+ *   · ⚠️ **새 글에는 비밀글이 없다**(2026-09-16 사용자 결정) — 방명록은 남에게 보이라고 쓰는 글이라
+ *     체크박스를 없앴다. 다만 **예전에 비밀로 남긴 글은 그대로 가려 둔다** — 쓴 사람은 안 보이는 줄 알고
+ *     남겼으므로, 기능을 없앴다고 그 약속을 깨면 안 된다. 그래서 읽기 쪽(`locked`)은 손대지 않았다.
  *   · 답글은 **방 주인만** 단다.
+ *   · 색은 **페이지 테마를 물려받는다**(2026-09-16) — 작가가 어두운 배경을 골라도 여기만 흰 상자로 튀지 않게
+ *     회색 클래스 대신 `currentColor` 의 투명도로 그린다.
  */
 interface GbAuthor { id: number; name: string; avatar: string | null; role: string }
 interface GbEntry {
@@ -19,23 +25,22 @@ interface GbEntry {
 }
 interface GbData { entries: GbEntry[]; isOwner: boolean }
 
-const roleLabel = (role: string) => (role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : '');
 
 function Avatar({ a }: { a: GbAuthor }) {
   return (
     <Link to={`/portfolio/${a.id}`} className="shrink-0">
       {a.avatar
         ? <img src={a.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
-        : <div className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">{a.name.slice(0, 1)}</div>}
+        : <div className="grid h-8 w-8 place-items-center rounded-full bg-current/10 text-xs font-semibold opacity-70">{a.name.slice(0, 1)}</div>}
     </Link>
   );
 }
 
 export default function Guestbook({ userId }: { userId: number }) {
   const { isAuthenticated } = useAuthStore();
+  const location = useLocation();
   const qc = useQueryClient();
   const [body, setBody] = useState('');
-  const [secret, setSecret] = useState(false);
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [replyBody, setReplyBody] = useState('');
 
@@ -45,10 +50,10 @@ export default function Guestbook({ userId }: { userId: number }) {
   });
 
   const post = useMutation({
-    mutationFn: (payload: { body: string; secret?: boolean; parentId?: number }) =>
+    mutationFn: (payload: { body: string; parentId?: number }) =>
       api.post(`/guestbook/${userId}`, payload).then((r) => r.data),
     onSuccess: () => {
-      setBody(''); setSecret(false); setReplyTo(null); setReplyBody('');
+      setBody(''); setReplyTo(null); setReplyBody('');
       qc.invalidateQueries({ queryKey: ['guestbook', userId] });
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '등록에 실패했습니다.'),
@@ -62,28 +67,30 @@ export default function Guestbook({ userId }: { userId: number }) {
 
   const isOwner = data?.isOwner ?? false;
   const entries = data?.entries ?? [];
+  const textarea = 'w-full resize-none border bg-transparent p-2 text-sm text-current border-current/20 placeholder:text-current/40 focus:outline-none focus:border-current/50 [overflow-wrap:anywhere]';
+  const primaryBtn = 'border border-current px-4 py-1.5 text-sm font-medium hover:bg-current/10 disabled:opacity-30 cursor-pointer';
 
   const Row = ({ e, isReply = false }: { e: GbEntry; isReply?: boolean }) => (
-    <div className={isReply ? 'ml-8 mt-2 flex gap-2.5 rounded-lg bg-gray-50 p-3' : 'flex gap-2.5'}>
-      {isReply && <CornerDownRight size={15} className="mt-1 shrink-0 text-gray-300" />}
+    <div className={isReply ? 'ml-8 mt-2 flex gap-2.5 bg-current/5 p-3' : 'flex gap-2.5'}>
+      {isReply && <CornerDownRight size={15} className="mt-1 shrink-0 opacity-30" />}
       <Avatar a={e.author} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-          <Link to={`/portfolio/${e.author.id}`} className="font-semibold text-gray-700 hover:underline">{e.author.name}</Link>
+        <div className="flex items-center gap-1.5 text-xs opacity-60">
+          <Link to={`/portfolio/${e.author.id}`} className="font-semibold hover:underline">{e.author.name}</Link>
           {roleLabel(e.author.role) && <span>· {roleLabel(e.author.role)}</span>}
           <span>·</span>
           <span>{timeAgo(e.createdAt)}</span>
           {(e.mine || isOwner) && (
-            <button onClick={() => del.mutate(e.id)} aria-label="삭제" className="ml-1 text-gray-300 hover:text-red-500">
+            <button onClick={() => del.mutate(e.id)} aria-label="삭제" className="ml-1 hover:text-accent">
               <Trash2 size={13} />
             </button>
           )}
         </div>
         {e.locked ? (
-          <p className="mt-1 inline-flex items-center gap-1 text-sm text-gray-400"><Lock size={13} /> 비밀글입니다.</p>
+          <p className="mt-1 inline-flex items-center gap-1 text-sm opacity-50"><Lock size={13} /> 비밀글입니다.</p>
         ) : (
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-800 [overflow-wrap:anywhere]">
-            {e.secret && <Lock size={12} className="mr-1 inline text-gray-400" />}{e.body}
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]">
+            {e.secret && <Lock size={12} className="mr-1 inline opacity-50" />}{e.body}
           </p>
         )}
 
@@ -95,20 +102,20 @@ export default function Guestbook({ userId }: { userId: number }) {
                 value={replyBody}
                 onChange={(ev) => setReplyBody(ev.target.value.slice(0, 1000))}
                 placeholder="답글을 남겨보세요."
-                className="w-full resize-none rounded-lg border border-gray-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 [overflow-wrap:anywhere]"
+                className={textarea}
                 rows={2}
               />
-              <div className="mt-1 flex justify-end gap-2 text-sm">
-                <button onClick={() => { setReplyTo(null); setReplyBody(''); }} className="text-gray-400 hover:text-gray-700">취소</button>
+              <div className="mt-1 flex justify-end gap-3 text-sm">
+                <button onClick={() => { setReplyTo(null); setReplyBody(''); }} className="opacity-60 hover:opacity-100">취소</button>
                 <button
                   onClick={() => replyBody.trim() && post.mutate({ body: replyBody.trim(), parentId: e.id })}
                   disabled={!replyBody.trim() || post.isPending}
-                  className="font-medium text-[#dc3545] disabled:text-gray-300"
+                  className="font-medium underline underline-offset-4 disabled:opacity-30"
                 >답글</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => { setReplyTo(e.id); setReplyBody(''); }} className="mt-1 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700">
+            <button onClick={() => { setReplyTo(e.id); setReplyBody(''); }} className="mt-1 inline-flex items-center gap-1 text-xs opacity-60 hover:opacity-100">
               <MessageSquare size={12} /> 답글
             </button>
           )
@@ -118,46 +125,45 @@ export default function Guestbook({ userId }: { userId: number }) {
   );
 
   return (
-    <section id="guestbook" className="mt-16 scroll-mt-20 border-t border-gray-100 pt-10">
-      <h2 className="mb-5 text-lg font-bold tracking-tight font-serif text-gray-900">
-        방명록<span className="text-[#dc3545]"> Guestbook</span>
-        {entries.length > 0 && <span className="ml-2 align-middle text-sm font-normal text-gray-400">{entries.length}</span>}
+    <section id="guestbook" className="mt-16 scroll-mt-20 border-t border-current/15 pt-6">
+      <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.22em] opacity-60">
+        방명록{entries.length > 0 && <span className="ml-2 font-normal tracking-normal">{entries.length}</span>}
       </h2>
 
       {/* 작성 */}
       {isAuthenticated ? (
-        <div className="mb-6 rounded-xl border border-gray-200 p-3">
+        <div className="mb-6 border border-current/20 p-3">
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value.slice(0, 1000))}
             placeholder={isOwner ? '내 방명록에 글을 남길 수 있어요.' : '작가에게 응원의 한마디를 남겨보세요.'}
-            className="min-h-[56px] w-full resize-none text-sm leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
+            className="min-h-[56px] w-full resize-none bg-transparent text-sm leading-relaxed text-current placeholder:text-current/40 focus:outline-none [overflow-wrap:anywhere]"
           />
-          <div className="mt-1 flex items-center justify-between border-t border-gray-100 pt-2">
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-500">
-              <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} className="accent-gray-900" />
-              <Lock size={12} /> 비밀글
-            </label>
+          <div className="mt-1 flex items-center justify-end border-t border-current/10 pt-2">
             <button
-              onClick={() => body.trim() && post.mutate({ body: body.trim(), secret })}
+              onClick={() => body.trim() && post.mutate({ body: body.trim() })}
               disabled={!body.trim() || post.isPending}
-              className="rounded-full bg-gray-950 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:bg-gray-200"
+              className={primaryBtn}
             >
               {post.isPending ? '남기는 중…' : '남기기'}
             </button>
           </div>
         </div>
       ) : (
-        <p className="mb-6 rounded-xl border border-dashed border-gray-200 py-4 text-center text-sm text-gray-400">
-          <Link to="/login" className="font-medium text-[#dc3545] hover:underline">로그인</Link> 후 방명록을 남길 수 있어요.
+        <p className="mb-6 border border-dashed border-current/25 py-4 text-center text-sm opacity-80">
+          <Link
+            to="/login"
+            onClick={() => setPostLoginRedirect(location.pathname + location.search)}
+            className="font-medium underline underline-offset-4"
+          >로그인</Link> 후 방명록을 남길 수 있어요.
         </p>
       )}
 
       {/* 목록 */}
       {isLoading ? (
-        <div className="space-y-3">{[0, 1].map((i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-100" />)}</div>
+        <div className="space-y-3">{[0, 1].map((i) => <div key={i} className="h-14 animate-pulse bg-current/5" />)}</div>
       ) : entries.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-400">아직 방명록이 없습니다. 첫 글을 남겨보세요.</p>
+        <p className="py-8 text-center text-sm opacity-50">아직 방명록이 없습니다. 첫 글을 남겨보세요.</p>
       ) : (
         <div className="space-y-5">
           {entries.map((e) => (

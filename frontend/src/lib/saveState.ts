@@ -13,7 +13,7 @@ export type SaveState = 'empty' | 'unsaved' | 'draft' | 'saved';
 export const STATE_UI: Record<SaveState, { box: string; text: string; label: string }> = {
   // 갓 추가해 아직 아무것도 안 쓴 칸 — 색으로 경고할 게 없다
   empty: { box: 'border-gray-200 bg-white', text: 'text-gray-400', label: '작성 전' },
-  unsaved: { box: 'border-red-300 bg-red-50/40', text: 'text-red-600', label: '저장 안 됨' },
+  unsaved: { box: 'border-accent/40 bg-accent/5', text: 'text-accent', label: '저장 안 됨' },
   draft: { box: 'border-amber-300 bg-amber-50/50', text: 'text-amber-700', label: '임시저장 · 갤러리 비공개' },
   saved: { box: 'border-green-200 bg-green-50/30', text: 'text-green-700', label: '✓ 저장됨' },
 };

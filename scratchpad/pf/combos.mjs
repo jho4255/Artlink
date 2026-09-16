@@ -95,7 +95,10 @@ for (const job of jobs) {
       const { measureAspects, aspectMap } = await import('/src/lib/artworkAnalysis.ts');
       await measureAspects(data.images.map((i) => i.url));      // 배치가 비율을 알아야 지면을 채운다
       window.__PF = window.__PF || {};
-      window.__PF[uid] = { ...data, aspects: aspectMap(data.images) };
+      // 마지막 장의 QR·주소 — 화면(MyPage)이 넘기는 것과 같은 규칙(핸들이 있으면 /@handle)
+      const u = data.user ?? {};
+      const homepageUrl = `https://artlink.cc${u.handle ? `/@${u.handle}` : `/portfolio/${uid}`}`;
+      window.__PF[uid] = { ...data, aspects: aspectMap(data.images), homepageUrl };
     }, { uid: job.uid, data });
     loaded.add(job.uid);
     console.log(`  · ${job.uid} ${ARTISTS[job.uid].name} 로드 (작품 ${data.images.length}점, 채운 칸 ${filled})`);

@@ -4,7 +4,7 @@ import { Menu, X, Bell, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { cn } from '@/lib/utils';
+import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
 import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
 import { NAV_LINKS as navLinks } from '@/lib/navLinks';
@@ -127,7 +127,7 @@ export default function Navbar() {
               (로고 30/36px vs ArtWorks 20/24px, components/home/ArtWorks.tsx)
               ⚠️ lg 미만에서 네비바는 h-16(64px)뿐이다. 확대는 바가 h-20(80px)이 되는 lg 부터. */}
           <Link to="/" className="flex-none text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 font-serif">
-            Art<span className="text-[#dc3545]">Link</span>
+            Art<span className="text-accent">Link</span>
           </Link>
 
           {/* 데스크탑 네비게이션 — 네비바 **전체 폭의 정중앙**.
@@ -165,7 +165,7 @@ export default function Navbar() {
               >
                 <Mail size={20} className="text-gray-600" />
                 {unreadMsgCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#c4302b] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-accent text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                     {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                   </span>
                 )}
@@ -180,7 +180,7 @@ export default function Navbar() {
                 >
                   <Bell size={20} className="text-gray-600" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-accent text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
@@ -238,7 +238,7 @@ export default function Navbar() {
             {isAuthenticated ? (
               <>
                 <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
-                  {user?.name} ({user?.role})
+                  {user?.name} ({roleLabel(user?.role) || user?.role})
                 </span>
                 {/* [마이페이지] 버튼은 없다 — 우측 세로 사이드바(MyPageSideMenu)가 각 탭으로 바로 보낸다 */}
                 {/* 로그아웃은 여기 없다 — 우측 세로 사이드바 **맨 아래**로 옮겼다(MyPageSideMenu).
@@ -272,7 +272,7 @@ export default function Navbar() {
               >
                 <Mail size={20} />
                 {unreadMsgCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-[#c4302b] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-accent text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
                     {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                   </span>
                 )}
@@ -287,7 +287,7 @@ export default function Navbar() {
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-accent text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
@@ -384,7 +384,7 @@ export default function Navbar() {
                             {Icon && <Icon size={16} className="shrink-0" />}
                             <span className="min-w-0 truncate">
                               {link.brand
-                                ? (<span className="font-bold tracking-tight font-serif">{link.brand[0]}<span className="text-[#dc3545]">{link.brand[1]}</span></span>)
+                                ? (<span className="font-bold tracking-tight font-serif">{link.brand[0]}<span className="text-accent">{link.brand[1]}</span></span>)
                                 : link.label}
                               {link.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{link.note}</span>}
                             </span>
@@ -421,7 +421,7 @@ export default function Navbar() {
                         <Icon size={16} className="shrink-0" />
                         <span className="min-w-0 truncate">
                           {tab.brand
-                  ? (<span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-[#dc3545]">{tab.brand[1]}</span></span>)
+                  ? (<span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-accent">{tab.brand[1]}</span></span>)
                   : tab.label}
                           {tab.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{tab.note}</span>}
                         </span>

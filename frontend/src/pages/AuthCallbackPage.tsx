@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
+import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
+import { roleLabel, VISITOR_ROLE_HINT } from '@/lib/utils';
 
 export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [searchParams] = useSearchParams();
@@ -18,7 +19,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'ARTIST' | 'GALLERY'>('ARTIST');
+  const [role, setRole] = useState<'ARTIST' | 'GALLERY' | 'VISITOR'>('ARTIST');
   // 가입 필수 동의 — 이용약관 · 개인정보 처리방침. 서버도 true 가 아니면 400 으로 막는다
   // (화면에서만 막으면 API 를 직접 부르는 순간 미동의 가입이 된다).
   const [agreeTerms, setAgreeTerms] = useState(false);
@@ -26,11 +27,12 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const allAgreed = agreeTerms && agreePrivacy;
   const [error, setError] = useState('');
 
-  const handleSuccess = (data: { token: string; user: any }) => {
+  const handleSuccess = async (data: { token: string; user: any }) => {
     queryClient.clear();
     login(data.token, data.user);
-    // 로그인/가입 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지
-    navigate(consumePostLoginRedirect() || '/mypage', { replace: true });
+    // 로그인/가입 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지.
+    // 막 가입한(작품 0점) 작가는 홈페이지 편집(온보딩)으로 — 업로드가 첫 행동이어야 한다.
+    navigate(await resolvePostLoginPath(data.user?.role, () => api.get('/portfolio').then((r) => r.data)), { replace: true });
   };
 
   const oauthMutation = useMutation({
@@ -102,7 +104,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center gap-3">
         {error ? (
-          <p className="text-red-500 text-sm">{error}</p>
+          <p className="text-accent text-sm">{error}</p>
         ) : (
           <>
             <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
@@ -163,10 +165,14 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
 
           <div className="pt-1">
             <p className="text-xs text-gray-500 mb-2">역할 선택</p>
-            <div className="grid grid-cols-2 gap-2">
+            {/* 일반(VISITOR, 2026-09-16): 작품을 보고 저장하고 작가에게 메시지를 보내는 사람. 지원·등록은 못 한다.
+                ⚠️ 이름이 '관람객'이면 전시를 보러 온 사람으로만 들려, 실제로 이 역할이 필요한
+                컬렉터·디렉터·기획자가 "내 자리가 아니다" 로 읽는다(2026-09-16 사용자 지적). */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {([
-                { value: 'ARTIST' as const, label: '아티스트', desc: '포트폴리오 · 공모 지원' },
+                { value: 'ARTIST' as const, label: '아티스트', desc: '홈페이지 · 포트폴리오 · 공모 지원' },
                 { value: 'GALLERY' as const, label: '갤러리', desc: '갤러리 · 공모 운영' },
+                { value: 'VISITOR' as const, label: roleLabel('VISITOR'), desc: `${VISITOR_ROLE_HINT} · 작품 감상 · 찜 · 메시지` },
               ]).map((opt) => (
                 <button
                   key={opt.value}
@@ -222,7 +228,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
             </label>
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-accent">{error}</p>}
 
           <button
             type="submit"

@@ -6,6 +6,8 @@ interface User {
   id: number;
   name: string;
   nickname?: string | null;
+  /** 홈페이지 주소 /@handle (작가). 없으면 숫자 주소 */
+  handle?: string | null;
   email: string;
   role: string;
   avatar?: string;

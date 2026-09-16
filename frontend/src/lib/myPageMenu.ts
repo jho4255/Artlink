@@ -103,10 +103,21 @@ const ADMIN_TABS: MyPageTab[] = [
   ARTSTORY_TAB,
 ];
 
+/**
+ * 관람객(컬렉터, 2026-09-16) — 작품을 보고 찜·좋아요하고 작가에게 메시지를 보내는 역할.
+ * 지원·등록 탭이 없다. 찜 목록은 작가와 같은 화면(찜한 갤러리·공모·전시 + 좋아요한 작품).
+ */
+const VISITOR_TABS: MyPageTab[] = [
+  { id: 'profile', label: '프로필', icon: Camera },
+  { id: 'favorites', label: '찜 목록', icon: Heart },
+  ARTSTORY_TAB,
+];
+
 export function myPageTabs(role?: MyPageRole | null): MyPageTab[] {
   if (role === 'ARTIST') return ARTIST_TABS;
   if (role === 'GALLERY') return GALLERY_TABS;
   if (role === 'ADMIN') return ADMIN_TABS;
+  if (role === 'VISITOR') return VISITOR_TABS;
   return [];
 }
 

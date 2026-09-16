@@ -24,7 +24,7 @@ const displayName = (u: { name: string; nickname: string | null }) => u.nickname
 
 const writeSchema = z.object({
   body: z.string().trim().min(1, '내용을 입력해주세요.').max(1000, '방명록은 1000자까지입니다.'),
-  secret: z.boolean().optional().default(false),
+  // secret 은 더 이상 받지 않는다(2026-09-16). 옛 화면이 보내와도 zod 가 조용히 버린다 — 400 으로 막으면 그 화면이 죽는다.
   parentId: z.number().int().optional(),
 });
 
@@ -83,8 +83,12 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
     const targetUser = await prisma.user.findFirst({ where: { id: target, deletedAt: null }, select: { id: true } });
     if (!targetUser) throw new AppError('대상을 찾을 수 없습니다.', 404);
 
-    const { body, secret } = req.body;
+    const { body } = req.body;
     const parentId: number | undefined = req.body.parentId;
+    // ⚠️ **새 글은 비밀글로 만들 수 없다** (2026-09-16 사용자 결정).
+    //    방명록은 작가 홈페이지에 남기는 응원이라 '비밀글입니다' 줄이 섞이면 공개 페이지가 지저분해진다.
+    //    보낸 사람만 읽히는 말은 메시지(ArtTalk)가 할 일이다. `secret` 컬럼과 **이미 쓰인 비밀글은 그대로 둔다** —
+    //    남이 작가에게만 보이라고 쓴 글을 뒤늦게 공개로 뒤집을 수는 없다. 그래서 읽기 경로(serializeEntry)는 안 건드린다.
 
     if (parentId != null) {
       // 답글 — **방 주인만**. 최상위 글에만 달 수 있다.
@@ -93,7 +97,7 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
       if (!parent || parent.targetUserId !== target || parent.parentId !== null) throw new AppError('원 글을 찾을 수 없습니다.', 404);
 
       const entry = await prisma.guestbookEntry.create({
-        data: { targetUserId: target, authorId: me, body: body.trim(), secret: !!secret, parentId },
+        data: { targetUserId: target, authorId: me, body: body.trim(), parentId },
         include: { author: authorSelect },
       });
       // 원 글쓴이에게 알림 (자기 글에 자기가 답하면 알림 없음)
@@ -110,7 +114,7 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
 
     // 최상위 글
     const entry = await prisma.guestbookEntry.create({
-      data: { targetUserId: target, authorId: me, body: body.trim(), secret: !!secret },
+      data: { targetUserId: target, authorId: me, body: body.trim() },
       include: { author: authorSelect },
     });
     // 방 주인에게 알림 (자기 방에 자기가 쓰면 알림 없음)

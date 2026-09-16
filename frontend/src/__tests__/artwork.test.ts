@@ -64,18 +64,23 @@ describe('화면용 판매상태 배지 (statusBadge)', () => {
   });
 });
 
-describe('크기 입력', () => {
-  it('가로/세로를 한 형식으로 합성한다', () => {
-    expect(composeSize('72.7', '90.9')).toBe('72.7×90.9 cm');
+describe('크기 입력 — 세로×가로 (관례, 2026-09-16)', () => {
+  it('세로/가로를 한 형식으로 합성한다 — 높이가 먼저', () => {
+    expect(composeSize('90.9', '72.7')).toBe('90.9×72.7 cm');
     expect(composeSize('50', '')).toBe('50 cm');
     expect(composeSize('', '')).toBe('');
   });
 
-  it('저장된 문자열에서 가로/세로를 되읽는다 (x, ×, * 모두)', () => {
-    expect(splitSize('72.7×90.9 cm')).toEqual({ w: '72.7', h: '90.9' });
-    expect(splitSize('30 x 20')).toEqual({ w: '30', h: '20' });
-    expect(splitSize('가변 설치')).toEqual({ w: '', h: '' });
-    expect(splitSize(null)).toEqual({ w: '', h: '' });
+  it('저장된 문자열에서 세로/가로를 되읽는다 (x, ×, * 모두) — 첫 수가 세로', () => {
+    expect(splitSize('90.9×72.7 cm')).toEqual({ h: '90.9', w: '72.7' });
+    expect(splitSize('30 x 20')).toEqual({ h: '30', w: '20' });
+    expect(splitSize('가변 설치')).toEqual({ h: '', w: '' });
+    expect(splitSize(null)).toEqual({ h: '', w: '' });
+  });
+
+  it('★ 합성과 되읽기가 서로 역함수다 (한쪽만 바뀌면 그림 방향이 뒤집힌다)', () => {
+    const { h, w } = splitSize(composeSize('116.8', '91'));
+    expect([h, w]).toEqual(['116.8', '91']);
   });
 });
 

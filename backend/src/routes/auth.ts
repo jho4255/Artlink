@@ -8,6 +8,7 @@ import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { deleteUploadedFile } from '../lib/storage';
 import { safeFileUrl } from '../lib/safeUrl';
+import { handleTaken, normalizeHandle, validateHandle } from '../lib/handle';
 
 const router = Router();
 import { JWT_SECRET } from '../lib/jwt';
@@ -20,8 +21,8 @@ function generateToken(user: { id: number; role: string }) {
   return jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null; nickname?: string | null; phone?: string | null; instagramUrl?: string | null }) {
-  return { id: user.id, name: user.name, nickname: user.nickname ?? null, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone ?? null, instagramUrl: user.instagramUrl ?? null };
+function safeUser(user: { id: number; name: string; email: string; role: string; avatar: string | null; nickname?: string | null; handle?: string | null; phone?: string | null; instagramUrl?: string | null }) {
+  return { id: user.id, name: user.name, nickname: user.nickname ?? null, handle: user.handle ?? null, email: user.email, role: user.role, avatar: user.avatar, phone: user.phone ?? null, instagramUrl: user.instagramUrl ?? null };
 }
 
 // ========== 카카오 OAuth ==========
@@ -107,7 +108,8 @@ const consentFields = {
 
 const completeSchema = z.object({
   tempToken: z.string().min(1),
-  role: z.enum(['ARTIST', 'GALLERY']),
+  // VISITOR = 관람객(컬렉터, 2026-09-16). 찜·좋아요·메시지·이웃·소식만 — 지원·등록은 authorize 가 막는다
+  role: z.enum(['ARTIST', 'GALLERY', 'VISITOR']),
   name: z.string().min(1, '이름을 입력해주세요.').max(50),
   email: z.string().email('유효한 이메일을 입력해주세요.'),
   phone: z.string().regex(/^01[0-9]-?\d{3,4}-?\d{4}$/, '올바른 휴대폰 번호를 입력해주세요.'),
@@ -163,7 +165,8 @@ const signupSchema = z.object({
   name: z.string().min(1, '이름을 입력해주세요.').max(50),
   email: z.string().email('유효한 이메일을 입력해주세요.'),
   password: z.string().min(6, '비밀번호는 6자 이상이어야 합니다.').max(100),
-  role: z.enum(['ARTIST', 'GALLERY']),
+  // VISITOR = 관람객(컬렉터, 2026-09-16). 찜·좋아요·메시지·이웃·소식만 — 지원·등록은 authorize 가 막는다
+  role: z.enum(['ARTIST', 'GALLERY', 'VISITOR']),
   // ⚠️ 화면은 카카오 가입만 쓰지만 이 API 도 열려 있다. 한쪽만 막으면 뚫린 채로 남는다.
   ...consentFields,
 });
@@ -219,7 +222,7 @@ router.get('/me', authenticate, async (req, res, next) => {
     // avatar 포함해 최신 사용자 정보 반환 (authenticate가 채우는 req.user엔 avatar가 없음)
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true, phone: true, instagramUrl: true },
+      select: { id: true, name: true, nickname: true, handle: true, email: true, role: true, avatar: true, phone: true, instagramUrl: true },
     });
     res.json({ user });
   } catch (error) { next(error); }
@@ -268,6 +271,35 @@ router.put('/me/nickname', authenticate, validate(nicknameSchema), async (req, r
       where: { id: req.user!.id },
       data: { nickname },
       select: { id: true, name: true, nickname: true, email: true, role: true, avatar: true },
+    });
+    res.json(user);
+  } catch (error) { next(error); }
+});
+
+// ========== 홈페이지 주소(@handle) ==========
+// 규칙은 lib/handle.ts 한 곳. 여기서는 중복만 본다. 인스타 아이디에서의 자동 제안은 공개 페이지가 열릴 때
+// `ensureHandle` 이 한다(routes/portfolio.ts) — 프로필에서 바꾸면 그게 우선이다.
+router.get('/handle-check', authenticate, async (req, res, next) => {
+  try {
+    const handle = normalizeHandle(req.query.handle);
+    const reason = validateHandle(handle);
+    if (reason) return res.json({ available: false, reason });
+    // 갤러리 주소와 **같은 이름 공간**이라 양쪽을 함께 본다
+    res.json({ available: !(await handleTaken(handle, { userId: req.user!.id })), handle });
+  } catch (error) { next(error); }
+});
+
+const handleSchema = z.object({ handle: z.string().trim().max(60) });
+router.put('/me/handle', authenticate, validate(handleSchema), async (req, res, next) => {
+  try {
+    const handle = normalizeHandle(req.body.handle);
+    const reason = validateHandle(handle);
+    if (reason) throw new AppError(reason, 400);
+    if (await handleTaken(handle, { userId: req.user!.id })) throw new AppError('이미 사용 중인 주소입니다.', 409);
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { handle },
+      select: { id: true, name: true, nickname: true, handle: true, email: true, role: true, avatar: true },
     });
     res.json(user);
   } catch (error) { next(error); }
@@ -328,7 +360,9 @@ router.get('/dev-users', async (req, res, next) => {
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
-        ...(role === 'ARTIST' || role === 'GALLERY' || role === 'ADMIN' ? { role } : {}),
+        // ⚠️ 새 역할을 만들면 여기에도 넣을 것 — 빠지면 그 역할만 필터가 조용히 무시돼
+        //    "같은 역할의 실제 계정으로 대체"가 엉뚱한 사람을 고른다(2026-09-16 VISITOR 추가).
+        ...(role === 'ARTIST' || role === 'GALLERY' || role === 'ADMIN' || role === 'VISITOR' ? { role } : {}),
         ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { email: { contains: q, mode: 'insensitive' as const } }] } : {}),
       },
       select: {

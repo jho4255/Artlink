@@ -317,7 +317,7 @@ export default function MessagesPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       <h1 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900 mb-6">
-        Art<span className="text-[#dc3545]">Talk</span>
+        Art<span className="text-accent">Talk</span>
       </h1>
 
       <div className="grid gap-0 md:grid-cols-[300px_1fr] rounded-2xl border border-gray-200 overflow-hidden bg-white">
@@ -357,7 +357,7 @@ export default function MessagesPage() {
                       </span>
                       {/* 안 읽은 게 있으면 개수 배지 */}
                       {c.unread > 0 && (
-                        <span className="shrink-0 rounded-full bg-[#c4302b] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">
                           {c.unread > 99 ? '99+' : c.unread}
                         </span>
                       )}
@@ -450,7 +450,7 @@ export default function MessagesPage() {
                             {/* 갠톡 '읽음' / 단톡 안 읽은 사람 수 — 내 말에만 붙는다 */}
                             {mine && chat.kind === 'DIRECT' && m.read && <b className="font-medium text-gray-400">읽음</b>}
                             {mine && chat.kind === 'GROUP' && (m.unreadBy ?? 0) > 0 && (
-                              <b className="font-medium text-[#c4302b]">{m.unreadBy}</b>
+                              <b className="font-medium text-accent">{m.unreadBy}</b>
                             )}
                             {timeLabel(m.createdAt)}
                           </span>

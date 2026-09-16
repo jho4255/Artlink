@@ -110,7 +110,9 @@ describe('작품 페이지 레이아웃 (design.worksLayout)', () => {
   });
 
   it('설명 전체 — hero 는 긴 설명 전문을 뒤 글 페이지로 잇는다(none 이면 안 잇는다)', () => {
-    const one = { ...d, images: [img({ id: 1, series: 'S', title: '무제', description: '가'.repeat(1200) })] };
+    // ⚠️ 2026-09-16 부터 그림을 지면의 55% 까지 양보해 설명을 먼저 흡수한다(두세 줄 넘쳐 빈 장이 생기던 병).
+    //    1,200자는 한 장에 들어가므로 **정말 긴 글**(4,000자)로 잇기를 확인한다.
+    const one = { ...d, images: [img({ id: 1, series: 'S', title: '무제', description: '가'.repeat(4000) })] };
     const full = buildPortfolioPages(one, PORTFOLIO_THEMES[0], { design: { worksLayout: 'hero', desc: 'full' } });
     expect(full.some((p) => p.label.includes('이야기'))).toBe(true);
     const none = buildPortfolioPages(one, PORTFOLIO_THEMES[0], { design: { worksLayout: 'hero', desc: 'none' } });
@@ -257,9 +259,10 @@ describe('표지 = 디자인 레이아웃 15종', () => {
   });
 
   it('이름 강조색 on/off', () => {
+    // 기본 강조색은 무채(2026-09-16)라 빨강을 명시해 확인한다
     const accentHex = '#C4302B';
-    expect(cover({ coverLayout: 'serifCenter', coverNameAccent: true })).toContain(accentHex);
-    expect(cover({ coverLayout: 'serifCenter', coverNameAccent: false })).toContain('color:#1A1A1A'); // ink
+    expect(cover({ coverLayout: 'serifCenter', coverNameAccent: true, accent: 'red' })).toContain(accentHex);
+    expect(cover({ coverLayout: 'serifCenter', coverNameAccent: false, accent: 'red' })).toContain('color:#1A1A1A'); // ink
   });
 
   it('긴 이름은 자동 축소된다 (fitTitle — 슬롯을 넘지 않게)', () => {
@@ -587,12 +590,15 @@ describe('긴 무공백 글 줄바꿈 (회귀 방지 — 작가노트/약력/경
 // ── 가이드형 디자인 (색: 배경/글자/강조) ──
 describe('색 (normalizePdfDesign / applyDesign)', () => {
   // 기본 = 디자인 레이아웃(bandTop) + 글요소 전부 표시
+  // ⚠️ 기본 강조색은 **무채**(2026-09-16 사용자 결정) — 색은 작품이 갖고 지면은 물러난다.
   const DEFAULT_DESIGN = {
-    bg: 'white', ink: 'black', accent: 'red', font: 'myeongjo', page: 'a4-portrait',
+    bg: 'white', ink: 'black', accent: 'mono', font: 'myeongjo', page: 'a4-portrait',
     // 본문 정렬 기본값은 **양쪽맞춤**(2026-09-13) — 공개 홈페이지의 작가노트·약력과 맞춘다
     worksLayout: 'hero', desc: 'none', worksCaption: 'below', proseAlign: 'justify',
     coverLayout: 'bandTop', coverEyebrow: true, coverEyebrowText: null, coverYear: true, coverNameAccent: false,
     coverImageIds: [], coverImageScale: 1, coverTextScale: 1,
+    // 캡션은 국내식(작품명, 연도 / 재료 / 크기) · 프로필 사진 · 작품 목록은 기본 켬
+    captionStyle: 'kr', artistPhoto: true, worksIndex: true,
     auto: true, direction: null,
   };
 
@@ -603,7 +609,7 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     expect(normalizePdfDesign({ bg: 'neon', ink: 'zz', accent: 'qq', worksLayout: 'zz', desc: 'x', page: 'z', font: 'z', worksCaption: 'zz', coverLayout: 'zz' }))
       .toEqual({ ...DEFAULT_DESIGN, auto: false });
     // 명시값 그대로 보존(round-trip)
-    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, auto: false, direction: 'gallery' };
+    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, captionStyle: 'intl', artistPhoto: false, worksIndex: false, auto: false, direction: 'gallery' };
     expect(normalizePdfDesign(explicit)).toEqual(explicit);
     // 옛 단일값(coverImageId) → 배열 마이그레이션
     expect(normalizePdfDesign({ coverImageId: 7 }).coverImageIds).toEqual([7]);
@@ -850,18 +856,18 @@ describe('실데이터가 비었을 때의 구성', () => {
     const empty = workPages(bare, { worksLayout: 'label' })[0]!.html;
     const filled = workPages({ ...bare, images: [img({ id: 1, title: '달빛', medium: 'Oil' })] },
       { worksLayout: 'label' })[0]!.html;
-    // 라벨 블록은 짧은 강조 룰(44×3)로 시작한다 — hero 에는 없다.
-    // ⚠️ 예전엔 `gap:56px`(좌우 2단)로 판정했는데, 2026-09-13 부터 **세로 지면은 라벨을 아래**에
-    //    두므로 그 문자열이 안 나온다. 배치 방식이 아니라 **라벨이 그려졌는가**로 볼 것.
-    expect(empty).not.toContain('width:44px;height:3px');
-    expect(filled).toContain('width:44px;height:3px');
+    // 라벨 블록은 짧은 잉크 룰(44×2)로 시작한다 — hero 에는 없다. (2026-09-16 강조색 3px 막대 → 잉크 2px)
+    // ⚠️ 예전엔 `gap:56px`(좌우 2단)로 판정했는데, 라벨이 옆인지 아래인지는 그림 모양이 정하므로
+    //    그 문자열로 볼 수 없다. 배치 방식이 아니라 **라벨이 그려졌는가**로 볼 것.
+    expect(empty).not.toContain('width:44px;height:2px');
+    expect(filled).toContain('width:44px;height:2px');
   });
 
   it('정보를 채운 작품은 그대로 뮤지엄 라벨이다 (전환이 과하지 않다)', () => {
     const html = workPages({ ...bare, images: [img({ id: 1, medium: 'Oil on canvas' })] },
       { worksLayout: 'label' })[0]!.html;
     expect(html).toContain('Oil on canvas');
-    expect(html).toContain('width:44px;height:3px');
+    expect(html).toContain('width:44px;height:2px');
   });
 });
 
@@ -1035,7 +1041,8 @@ describe('이어지는 장에 몇 줄만 남기지 않는다', () => {
 
 describe('가로 판형에서 세로 작품은 캡션을 옆에 둔다', () => {
   // 캡션을 아래 두면 그림이 높이에서 먼저 걸려 지면의 22~24% 밖에 못 쓴다(골든 42~56%).
-  const portrait = (id: number) => img({ id, title: `작품 ${id}`, medium: '캔버스에 유채', sizeText: '90.9 × 116.8 cm', year: '2025' });
+  // 크기 문자열은 세로×가로 — 세로 116.8 · 가로 90.9 = 세로 그림
+  const portrait = (id: number) => img({ id, title: `작품 ${id}`, medium: '캔버스에 유채', sizeText: '116.8 × 90.9 cm', year: '2025' });
   const data: PortfolioBookData = { ...many, images: [portrait(1), portrait(2)], seriesInfo: [] };
 
   it('가로 판형 + 세로 작품이면 캡션이 그림 옆 칸으로 간다', () => {
@@ -1089,7 +1096,9 @@ describe('본문 정렬 — 양쪽맞춤', () => {
 describe('작품 설명 — 자르지 않는다', () => {
   // ⚠️ '요약 2줄(short)' 옵션은 없앴다(2026-09-13). 포트폴리오에서 작가가 쓴 설명을 문장 한가운데서
   //    끊고 '…' 를 붙이는 건 말이 안 된다. 지면이 모자라면 뒤 「〇〇 이야기」 장으로 잇는다.
-  const long = '작품 속 복슬복슬한 연갈색 포메라니안은 지친 마음 결을 지켜주는 작고 사랑스러운 수호신과 같은 존재다. '.repeat(20)
+  // ⚠️ 2026-09-16 부터 그림을 55% 까지 양보해 설명을 먼저 흡수한다 — 1,100자는 한 장에 들어간다.
+  //    '잇기'를 확인하려면 **한 장을 확실히 넘는 길이**(≈3,300자)여야 한다.
+  const long = '작품 속 복슬복슬한 연갈색 포메라니안은 지친 마음 결을 지켜주는 작고 사랑스러운 수호신과 같은 존재다. '.repeat(60)
     + '강아지 머리 위에 자리한 유니콘 튜브는 시리즈에서 반복해서 등장하는 쉼의 상징이다.';
   const one = img({ id: 1, title: '파란 것', medium: '캔버스에 유채', sizeText: '86.4 × 72.7 cm', year: '2026',
     description: '형태를 설명하지 않는다. 두꺼운 물감이 지나간 자리와 남겨 둔 바탕 사이에서 무엇인가가 서 있을 뿐이다.' });
@@ -1098,14 +1107,14 @@ describe('작품 설명 — 자르지 않는다', () => {
 
   it('★ 어디에도 생략 부호를 찍지 않는다', () => {
     for (const page of ['a4-portrait', 'a4-landscape', 'wide'] as const) {
-      const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+      const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '40.9 × 31.8 cm', year: '2026', description: long }),
         { worksLayout: 'hero', page, desc: 'full' }).map((p) => p.html).join('');
       expect(html, page).not.toContain('…');
     }
   });
 
   it('★ 지면에 못 담은 설명은 뒤 글 페이지로 이어진다 (사라지지 않는다)', () => {
-    const out = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+    const out = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '40.9 × 31.8 cm', year: '2026', description: long }),
       { worksLayout: 'hero', page: 'a4-portrait', desc: 'full' });
     const all = out.map((p) => p.html).join('').replace(/<[^>]+>/g, '');
     expect(out.some((p) => /이야기$/.test(p.label))).toBe(true);
@@ -1136,7 +1145,7 @@ describe('작품 설명 — 자르지 않는다', () => {
   });
 
   it('★ 옆 캡션(좁은 칸)에서는 양쪽맞춤을 쓰지 않는다 — 낱말 사이가 벌어진다', () => {
-    const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '31.8 × 40.9 cm', year: '2026', description: long }),
+    const html = pages(img({ id: 1, title: 'Comma', medium: '순지에 채색', sizeText: '40.9 × 31.8 cm', year: '2026', description: long }),
       { worksLayout: 'hero', page: 'a4-landscape', desc: 'full', proseAlign: 'justify' })
       .find((p) => p.kind === 'works')!.html;
     expect(html).toMatch(/display:flex;align-items:center;gap:48px/);   // 옆 캡션 배치인지 먼저 확인

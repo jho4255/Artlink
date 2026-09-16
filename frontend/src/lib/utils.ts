@@ -283,3 +283,20 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/**
+ * 역할 표시 이름 — Navbar·목록에 (ARTIST) 같은 코드 대신 한글로 (2026-09-16).
+ *
+ * ⚠️ VISITOR 는 **'일반'** 이다(2026-09-16 사용자 결정). '관람객'은 전시를 보러 온 사람으로만 들려서,
+ * 실제로 이 역할로 가입하는 컬렉터·디렉터·기획자를 다 담지 못한다. 가입 화면에서는 '일반' 아래에
+ * `VISITOR_ROLE_HINT`(디렉터 · 관람객)로 누구를 뜻하는지 밝힌다.
+ *
+ * ⚠️ 이 함수를 각 화면에 복사하지 말 것 — 예전엔 같은 삼항식이 여섯 곳에 흩어져 있어
+ * 이름을 바꾸려면 여섯 군데를 고쳐야 했다(하나만 빠져도 한 화면에서만 옛 이름이 남는다).
+ */
+export function roleLabel(role?: string | null): string {
+  return role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : role === 'VISITOR' ? '일반' : '';
+}
+
+/** 가입 화면에서 '일반'이 누구인지 밝히는 부제 */
+export const VISITOR_ROLE_HINT = '디렉터 · 관람객';

@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
+import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
@@ -13,9 +14,14 @@ import { useAuthStore } from '@/stores/authStore';
  */
 interface Status { following: boolean; followerCount: number; followingCount: number; isMe: boolean }
 
-export default function FollowButton({ userId, className = '', iconOnly = false }: { userId: number; className?: string; iconOnly?: boolean }) {
+export default function FollowButton({ userId, className = '', iconOnly = false, variant = 'pill' }: {
+  userId: number; className?: string; iconOnly?: boolean;
+  /** `text` — 작가 홈페이지 마스트헤드처럼 색을 물려받는 글자 링크(테마 배경 위에서 검정 알약이 안 어울린다) */
+  variant?: 'pill' | 'text';
+}) {
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
 
   const { data } = useQuery<Status>({
@@ -42,9 +48,18 @@ export default function FollowButton({ userId, className = '', iconOnly = false 
 
   const following = data?.following ?? false;
   const onClick = () => {
-    if (!isAuthenticated) { toast.error('로그인이 필요합니다.'); navigate('/login'); return; }
+    // 비로그인 — 로그인하고 나면 **이 페이지로** 돌아오게 한다(홈으로 튕기면 왜 왔는지 잊는다)
+    if (!isAuthenticated) { setPostLoginRedirect(location.pathname + location.search); toast.error('로그인이 필요합니다.'); navigate('/login'); return; }
     mut.mutate(!following);
   };
+
+  if (variant === 'text') {
+    return (
+      <button onClick={onClick} disabled={mut.isPending} className={`inline-flex min-h-[44px] items-center gap-1.5 text-sm hover:underline underline-offset-4 disabled:opacity-40 cursor-pointer ${className}`}>
+        {following ? <><UserCheck size={14} /> 이웃</> : <><UserPlus size={14} /> 이웃 추가</>}
+      </button>
+    );
+  }
 
   // 아이콘 변형 — 작품 모달 액션줄처럼 "아이콘만" 얹어야 하는 자리용. 이웃이면 채워진 하늘색, 아니면 회색.
   if (iconOnly) {

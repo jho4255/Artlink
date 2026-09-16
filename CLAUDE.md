@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **1829 tests**: Backend 1197 (supertest, `artlink_test` DB 순차), Frontend 632 (jsdom)
+- **2095 tests** (2026-09-16): Backend 1361 (supertest, `artlink_test` DB 순차), Frontend 734 (jsdom)
 - **E2E**: `e2e/` Playwright 41개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
@@ -243,7 +243,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **방명록**(`routes/guestbook.ts`) = **작가 홈페이지**(`/portfolio/:id`) 하단. 공개, 답글은 방 주인만.
 - **이웃 = 단방향 팔로우**(`routes/follow.ts`, `Follow`). 수락 불필요, 추가하면 상대에게 **알림**(`NEIGHBOR_FOLLOW`, 내 프로필로). 멱등 — 두 번 눌러도 알림 1건. 역할 무관(작가↔갤러리도).
 - ⚠️ **스토리 공개범위는 글마다** (`PUBLIC` | `NEIGHBORS`). [소식] 피드는 내가 팔로우한 사람 것을 **공개범위 무관하게** 다 보여준다(팔로우 = 이웃이므로). 판정은 **작가 홈페이지 조회**(`/stories/user/:id`)에서만 갈린다 — 비팔로워는 PUBLIC 만.
-- ⚠️ **방명록 비밀글은 본문만 가린다 — 신원은 보인다**(`locked` 플래그). 방 주인·작성자만 본문을 읽는다. 답글(`parentId`)은 **방 주인만**, 최상위 글에만(1단계). 삭제는 글쓴이·방 주인·Admin.
+- ⚠️⚠️ **방명록에 비밀글은 이제 없다**(2026-09-16 사용자 결정) — 남에게 보이라고 쓰는 글이라 체크박스를 없앴다.
+  서버는 `secret` 을 받아도 **조용히 무시**한다(400 으로 막지 않는다 — 옛 화면·북마크가 그 필드를 달고 올 수 있고 막으면 글 자체를 못 남긴다).
+  ⚠️ **읽기 쪽(`locked`)은 절대 지우지 말 것** — 기능을 없애기 전에 남긴 비밀글이 DB 에 남아 있다.
+  쓴 사람은 안 보이는 줄 알고 남겼으므로, 기능을 없앴다고 그 약속을 깨면 안 된다. **본문만 가리고 신원은 보인다**(방 주인·작성자만 본문을 읽는다).
+  답글(`parentId`)은 **방 주인만**, 최상위 글에만(1단계). 삭제는 글쓴이·방 주인·Admin. 회귀는 `guestbook.test.ts` 가 두 방향을 다 본다.
 - **글/스토리 사진은 우리 저장소 주소만** — `ownImageUrls`(community.ts·story.ts)가 `safeFileUrl` + (`/uploads/` | `matchR2Base`)로 외부 URL 을 거른다(주입 방지).
 - [소식] 진입점은 **마이페이지 사이드바 맨 아래 링크**(`MYPAGE_FOOTER_LINKS`) — 로그인 필요라 Navbar 가운데 메뉴엔 못 둔다(비로그인이 눌렀다 튕긴다).
 - **스토리에도 좋아요·댓글**(`StoryLike`/`StoryComment`, 비정규화 카운트). 댓글 달면 스토리 주인에게 `STORY_COMMENT` 알림(/feed). 댓글 삭제는 작성자·스토리 주인·Admin.
@@ -1385,6 +1389,205 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️⚠️ **회귀 임계를 '5xx 만 아니면 통과' 로 두지 말 것.** 실제로 나던 건 **400** 이었다 —
       500 만 보면 사용자가 겪던 증상을 통째로 놓친다. 지금은 `!== 200` 이면 실패다.
 
+47. **빨강은 `--color-accent`(#c4302b) 하나다 — 클래스는 `text-accent`** (2026-09-16, 사용자 결정)
+    전수 조사에서 빨강이 셋이었다: 로고·화면 이름 `#dc3545` 37곳 / 토큰·D-day·판매완료 `#c4302b` 57곳 /
+    오류·삭제·알림 배지 Tailwind `red-500/600` 86곳. 나란히 놓이면 다른 색으로 보인다(로고 옆 D-day).
+    **로고까지 `#c4302b` 로** 통일했고, 오류·삭제 버튼도 같은 색이다(빨강이 둘이면 통일이 아니다).
+    - 값은 `frontend/src/index.css` 의 `@theme --color-accent` **한 곳**. 화면은 `text-accent`·`bg-accent/10`·
+      `border-accent/40`·`fill-accent` 같은 **토큰 클래스**로만 쓴다. `text-[#c4302b]`·`text-red-500` 을 쓰면
+      `frontend/src/__tests__/singleAccent.test.ts` 가 소스를 훑어 잡는다(`noRatingUi` 와 같은 방식).
+    - ⚠️ PDF 엔진(`lib/portfolio*.ts`)은 예외 — 작가가 고르는 인쇄 팔레트라 16진수를 직접 든다
+      (html2canvas 는 CSS 변수를 못 읽는다). 기본 강조색도 `#c4302b` 라 화면과 같다.
+    - 문서에 남은 `#dc3545` 언급은 전부 `#c4302b` 로 바꿨다. **되돌리지 말 것.**
+
+48. **배너 슬라이드는 모바일 전용 이미지를 따로 받는다** (`HeroSlide.mobileImageUrl`, 2026-09-16)
+    3:1 배너는 375px 폰에서 높이 **125px** 로 줄어 포스터 안 글씨가 안 읽힌다 — 어떤 카드 레이아웃으로도
+    포스터에 **구워진** 글씨는 못 살린다. 답은 아트디렉션: 관리자가 세로형(4:5 권장)을 따로 올린다.
+    - `HeroSlider` 가 `<picture>` + `<source media="(max-width: 639px)">` 로 고른다. 경계는 Tailwind `sm` 과 같은
+      `HERO_MOBILE_MEDIA` 상수 하나 — media 문자열과 `useMediaQuery` 가 **같은 값**을 써야 비율 하한이 맞는다.
+    - ⚠️ 트랙 비율은 **슬라이드별로** 들고 최솟값을 매번 다시 구한다. 창 폭이 경계를 넘으면 브라우저가 소스를
+      바꿔 onLoad 가 다시 오는데, 누적 min 으로 두면 옛 소스(가로 3:1)의 비율이 남아 세로 이미지가 갇힌다.
+      비율 하한도 다르다 — 데스크톱 1.2, 모바일 0.8(4:5).
+    - ⚠️ 트랙은 하나라 **가장 세로로 긴 슬라이드**가 높이를 정한다. 한 슬라이드에만 모바일 이미지를 올리면
+      나머지 가로 배너는 그 높이 안에서 위아래 띠가 생긴다 — 올리려면 **전부** 올리는 게 맞다.
+    - 모바일 이미지가 없고 띠가 얇으면(<200px) 제목·설명·바로가기를 사진 **아래 카드**로 내린다(종전 동작 +
+      제목 두 줄 허용). 이건 폴백이지 해결이 아니다.
+    - 관리자 [히어로 관리] 폼에 두 번째 업로드 칸. 삭제 때 모바일 파일도 함께 지운다(orphan 방지).
+      회귀: `backend/src/routes/__tests__/hero.test.ts`.
+
+49. **작가 홈페이지 v2 — 작품이 먼저, 이름이 마스트헤드, `/@핸들`** (2026-09-16, 사용자 결정. 실서버 작가 31명 센서스 뒤)
+    작가들이 공개 페이지를 자기 홈페이지처럼 쓰고 싶어 하는데, v1 은 ArtLink 'HomePage' 라벨 → 작은 이름 → 약력 →
+    경력 → 작품 순이라 **ArtLink 안의 프로필**로 읽혔다. `components/shared/HomepageView.tsx` 를 다시 짰다.
+    - **순서**: 이름(큰 글자, 테마 글꼴) + 한 줄 소개 + 액션 줄 → **대표작**(미술관 벽처럼 작품 왼쪽·라벨 오른쪽 아래) →
+      작품(시리즈별 **정렬 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
+      상단바는 사용자 결정으로 **그대로**(축소·제거 안 함).
+    - **정렬 격자**(`lib/justifiedRows.ts`): 한 행이 같은 높이, 폭은 비율만큼. 정사각 칸 + contain 은 칸의 30~40% 가 흰
+      여백이었다. 비율은 **서버가 업로드 때 잰 `PortfolioImage.width/height`**(`lib/imageDims.ts`, sharp, EXIF 회전 반영).
+      옛 작품은 null → 화면이 로드 후 재서 다시 놓는다(튄다). **Render 셸에서 `scripts/backfill-image-dims.ts` 를 돌릴 것.**
+    - **미술관식 캡션** `museumCaption()`: `작품명, 연도 / 재료 / 크기`. 종전 한 줄(크기 / 재료 / 연도)은 순서가 거꾸로였다.
+      PDF 캡션(`captionParts`)은 그대로다 — 인쇄 관례를 실측해 맞춘 것이라 여기 규칙을 그쪽에 옮기지 말 것.
+    - **테마**(`lib/homepageTheme.ts`): `designConfig` 의 bg/ink/accent/font 를 PDF 와 **같은 함수**(`portfolioColors.resolvePalette`,
+      `portfolioFonts.FONT_PRESETS`)로 푼다 — 한 디자인, 두 출력. 안 골랐으면 사이트 기본 톤(흰·검정·accent·Pretendard).
+      ⚠️ 안쪽 부품은 **`var(--hp-…)` 만** 쓴다. `text-gray-500` 을 쓰면 어두운 배경에서 안 보인다(방명록도 `currentColor` 투명도로 바꿨다).
+      ⚠️ PDF 기본 글꼴은 명조, 웹 기본은 고딕 — **고르기 전까지는** 각자 제 기본이고 고르면 둘이 같다.
+      대표작은 `designConfig.heroImageId`(없으면 첫 작품). `coverImageIds` 를 쓰지 말 것 — 그건 표지 **칸** 배열이라
+      `[id]` 하나만 넣으면 4칸 표지가 세 칸 비어 나간다. 글꼴 프리셋은 `lib/portfolioFonts.ts` 로 분리했다(웹이 2,000줄 PDF 엔진을 안 물게).
+    - **주소 `/@handle`**(`User.handle`, 마이그레이션 `20260916120000_handle_and_image_dims`). 규칙은 `backend/src/lib/handle.ts`
+      **한 곳**(인스타 아이디 규칙: 소문자·숫자·`.`·`_` 3~30자, 예약어). 프론트 `lib/handle.ts` 는 **같은 정규식의 거울** — 바꾸면 둘 다.
+      ⚠️⚠️ **작가와 갤러리가 이름공간 하나를 나눠 쓴다**(2026-09-16, 갤러리 홈페이지도 `/@handle` 이 되면서).
+      `/@x` 는 작가일 수도 갤러리일 수도 있으므로 **한쪽이 쓰면 다른 쪽은 못 쓴다** — 안 그러면 그 주소가 누구를 가리키는지 정해지지 않는다.
+      중복 검사는 `handleTaken(handle, { userId? , galleryId? })` **한 함수**가 `User` 와 `Gallery` 를 **둘 다** 본다.
+      새로 핸들을 주는 곳을 만들면 반드시 이걸 쓸 것 — `prisma.user.findUnique` 로 직접 보면 갤러리 쪽이 안 걸려
+      **둘 다 같은 주소를 갖고 있는데 에러가 없다**(먼저 조회되는 쪽만 열리고 나머지는 영영 안 열린다).
+      `GET /api/handles/:handle`(`routes/handle.ts` → `resolveHandle`)이 `{kind:'artist'|'gallery', id}` 를 돌려주고
+      `App.tsx` 의 `HandleRoute` 가 그걸로 어느 화면을 그릴지 고른다(작가 먼저, 없으면 갤러리).
+      ⚠️ **공개 페이지가 열릴 때 인스타 아이디로 한 번 자동 생성**(`ensureHandle`, lazy). 남이 먼저 쓰면 만들지 않는다.
+      ⚠️ React Router 는 `/@:handle` 을 못 가른다(세그먼트 안 접두). `App.tsx` 의 `HandleRoute` 가 `/:handleSeg` 를 받아
+      `@` 를 확인한다. 서버 SEO 라우트는 Express 가 `/@:handle` 을 그대로 받는다(`index.ts`).
+      주인 판정은 URL 이 아니라 **응답의 `user.id`** 로(핸들 주소엔 숫자가 없다). 링크는 `artistPath(user)`.
+    - **작품 고유 주소 `?work=<id>`**: 라이트박스로 열고, 넘기면 주소가 따라간다(replace). 서버 `seoMeta` 가 그 작품을
+      og:image·제목으로 만든다(`parseSeoWork`). ⚠️ `ImageLightbox` 의 `onIndexChange` 는 **ref + index 의존성**으로만 부른다 —
+      부모가 매 렌더 새 콜백을 주면 "알림 → setState → 새 콜백 → 알림" 무한 루프가 난다(실제로 났다). 부모의 `setSearchParams` 는 함수형.
+    - **비로그인 방문자에게도 이웃·메시지·방명록 버튼을 보여준다.** 누르면 `setPostLoginRedirect` 로 이 페이지를 기억하고 로그인으로.
+      v1 은 버튼을 숨겨 뭘 할 수 있는지조차 몰랐다. 공유(Web Share → 클립보드)·QR(`QrModal`, `qrcode`) 추가.
+    - 편집: [홈페이지] 편집 화면 맨 위 `HomepageStylePicker`(배경·글자·강조·글꼴·대표작, PDF 피커와 같은 추천 규칙),
+      [프로필] 탭에 홈페이지 주소 칸(중복확인·인스타 아이디 채우기). 미리보기는 `compact` 로 같은 컴포넌트.
+    - ⚠️ **숫자 주소는 죽이지 않는다 — 정식 주소로 갈아끼운다.** `/portfolio/:id`·`/galleries/:id` 로 들어와 핸들이 있으면
+      `navigate(..., {replace:true})` 로 `/@handle` 이 된다(`location.search` 유지). 앱 안의 링크를 전부 고치는 것보다 이게 확실하다 —
+      목록·전시·알림·옛 북마크가 숫자 주소를 들고 있고, 목록 API 가 `handle` 을 안 실어 주면 링크만 고쳐서는 조용히 빠진다.
+      (실제로 `/artists` 목록이 `handle` 을 안 내려줘서 눌러도 주소가 안 바뀌었다 — `explore.ts` 의 select 에 추가했다.)
+    - 회귀: `backend/src/__tests__/handle.test.ts`(20) · `gallery-archive.test.ts`(공유 이름공간 양방향) ·
+      `frontend/src/__tests__/homepageV2.test.ts`(16: 정렬 격자·캡션·주소·테마).
+      ⚠️ jsdom 은 레이아웃을 못 잰다 — 격자는 `scratchpad` 하니스로 실제 작가 데이터를 로컬 DB 에 씌워(`import-real.mjs`) 눈으로 봤다.
+
+50. **갤러리 홈페이지 v2 — 작가 페이지와 같은 위계, '함께한 작가' 공개** (2026-09-16, 사용자 결정)
+    `pages/GalleryDetailPage.tsx`: 사진 전폭(둥근 모서리·글로우 그림자 삭제 — DESIGN.md 위반이었다) → 이름 마스트헤드(4xl/5xl) →
+    지역·리뷰 수 → 연락처 → 이웃·메시지(**비로그인에게도** 보이고 로그인 뒤 돌아온다) → 한 줄 소개(리드) → 소개 → **모집 중 공모
+    포스터 카드**(목록 페이지와 같은 210:297) → **함께한 작가** → 지난 전시·아트페어 → 리뷰. 섹션 머리는 작가 페이지와 같은 작은 대문자 라벨.
+    - ⚠️ **비어 있는 섹션은 방문자에게 그리지 않는다.** 예전엔 한 페이지에 "등록되지 않았습니다" 가 셋이었다. 주인에게만 채우라는 자리가 보인다.
+    - **함께한 작가**는 서버 집계(`GET /galleries/:id` 의 `artists`): 이 갤러리가 운영한 공모(위임받은 아트링크 공모 포함)에 **수락된**
+      작가, 최근 순 중복 제거, 탈퇴·비작가 제외, 커버는 포트폴리오 첫 작품. 갤러리 주인·Admin 은 `PATCH /galleries/:id/artists/:artistId`
+      `{hidden}` 으로 숨긴다(`Gallery.hiddenArtistIds Int[]`, 마이그레이션 `20260916130000_gallery_hidden_artists`).
+      ⚠️ `hiddenArtistIds` 는 응답에 싣지 않는다 — 주인에겐 `artists[].hidden` 으로 온다. 지원 기록은 건드리지 않는다.
+    - **갤러리도 `/@handle` 을 갖는다**(`Gallery.handle`, 마이그레이션 `20260916150000_gallery_handle_and_archive`).
+      작가와 **같은 이름공간**이다 — 규칙 49 참고. `PUT /galleries/:id/handle`(409 중복) · `GET /galleries/:id/handle-check`,
+      고치는 자리는 **연락처 편집 안**(따로 버튼을 두면 저장한 줄 모른다). `GET /galleries/:id` 는 숫자와 `@handle` 을 둘 다 받는다.
+      ⚠️ **자동 생성은 없다** — 상호가 한글이면 로마자로 옮길 방법이 없다(작가는 인스타 아이디에서 가져온다). 주인이 직접 정한다.
+    - **[이웃 추가]·[메시지]는 갤러리명과 같은 줄 오른쪽 끝**에 작게(2026-09-16 사용자 지정). 아래 블록에 크게 두면
+      이름 다음에 읽히는 게 연락처가 아니라 버튼이 된다.
+    - **지난 활동 기록**(`GalleryArchive`) — 갤러리가 **아트링크 밖에서** 해 온 전시·아트페어를 사후에 적는다
+      (제목만 필수, 기간은 자유 텍스트 "2025 가을", 정렬용 날짜·장소·참여 작가·본문·사진 12장은 선택).
+      `POST/PATCH/DELETE /galleries/:id/archives[/:archiveId]`, 화면은 `components/gallery/GalleryArchiveRow|Form`.
+      ⚠️ 공개 페이지에서 **아트링크 공모와 한 줄로 섞어** 날짜 내림차순으로 그린다 — 어디서 한 것인지 배지로 가르지 않는다.
+      보는 사람에겐 둘 다 "이 갤러리가 해 온 일"이고, 작가가 갤러리를 고를 때 읽는 이력이다.
+      ⚠️ 사진은 `ownImageUrls` 로 **우리 저장소 주소만**(`/uploads/` 또는 `matchR2Base`) — 커뮤니티·스토리와 같은 주입 방지.
+      ⚠️ 수정·삭제는 **기록의 `galleryId` 가 내 갤러리인지** 다시 본다(404) — 안 보면 남의 기록을 내 갤러리 id 로 고칠 수 있다(IDOR).
+    - 회귀: `backend/src/__tests__/gallery-artists.test.ts`(4) · `gallery-archive.test.ts`(13).
+
+51. **작가 온보딩 — 업로드가 첫 행동, 그다음 5칸 완성도** (2026-09-16)
+    가입 직후 프로필 폼에 떨어지고, 무엇이 비었는지 알려주는 화면이 없었다(캡션 전부 빈 작품 76%, 공개 작품 있는 작가 31/81).
+    - **가는 곳**: `lib/postLoginRedirect.ts` 의 `resolvePostLoginPath(role, fetchPortfolio)` — 기억해 둔 곳 > 작품 0점 작가는
+      `/mypage?tab=homepage-edit` > 마이페이지. `LoginPage`·`AuthCallbackPage` 둘 다 이걸 쓴다(가입 완료도 같은 함수).
+    - **`components/shared/ArtistChecklist.tsx`**: 작품 0점이면 3단계 환영 패널(작품 올리기 → 한 줄 소개 → 홈페이지 보기),
+      있으면 5칸 체크리스트(작품 3점 · 작품 정보 · 작가노트 · 약력 · [작가] 탭 공개). 판정은 `lib/completeness.ts` 순수 함수.
+      다 채우면 스스로 사라진다. [나중에]는 **세션에서만** 접는다(완성 전까지 잊히면 안 된다). 작가의 '만드는' 탭(프로필·홈페이지
+      편집·포트폴리오·ArtLook) 위에만 붙는다.
+      ⚠️ 항목을 늘리지 말 것 — 3~5개가 활성화 체크리스트의 관례다. 링크 `#artworks` 는 `PortfolioSection` 의 작품 관리 anchor.
+    - 회귀: `frontend/src/__tests__/completeness.test.ts`.
+
+52. **'일반'(VISITOR) 역할** (2026-09-16, 사용자 결정) — 작가 홈페이지의 방문자가 실제 대중이 되는 시작점.
+    작품 문의를 '로그인 후 메시지'로 받기로 했는데 가입 역할이 작가·갤러리뿐이라 컬렉터가 가입할 길이 없었다.
+    - 가입(`/auth/signup`·`/auth/complete-registration`)의 `role` enum 에 `VISITOR` 추가. 가입 화면 세 번째 카드.
+    - ⚠️⚠️ **화면 이름은 '관람객'이 아니라 '일반'이다**(2026-09-16 사용자 지적). '관람객'은 전시를 보러 온 사람으로만 들려서,
+      정작 이 역할이 필요한 **컬렉터·디렉터·기획자**가 "내 자리가 아니다"로 읽는다. 가입 카드에서만 부제
+      `VISITOR_ROLE_HINT`(= '디렉터 · 관람객')로 누구를 뜻하는지 밝힌다. enum 값(`VISITOR`)은 그대로다 — DB·API 를 건드릴 이유가 없다.
+      ⚠️ **역할 이름은 `lib/utils.ts` 의 `roleLabel()` 하나**다. 예전엔 같은 삼항식이 여섯 곳에 복사돼 있어
+      이름을 바꾸려면 여섯 군데를 고쳐야 했다(하나만 빠져도 그 화면에서만 옛 이름이 남는다). 새 화면도 이걸 import 할 것.
+    - **개발자 로그인에 '일반' 계정**(`visitor@artlink.com`, seed). ⚠️ `auth.ts` 의 `/dev-users` **역할 필터 화이트리스트에도**
+      새 역할을 넣을 것 — 빠지면 그 역할만 필터가 조용히 무시돼 '같은 역할의 실제 계정으로 대체'가 엉뚱한 사람을 고른다.
+    - **되는 것**: 찜·작품 좋아요·이웃·갠톡·방명록·소식·커뮤니티 — 전부 원래 `authenticate` 만 걸린 라우트라 서버 변경이 없다.
+      **안 되는 것**: 공모 지원·갤러리 등록·리뷰·작품 등록 — `authorize('ARTIST'|'GALLERY')` 가 그대로 막는다(403).
+      관람객에겐 포트폴리오 페이지가 없다(`/portfolio/:id` 404).
+    - 화면: `myPageMenu.ts` 의 `VISITOR_TABS`(프로필·찜 목록·ArtStory). 프로필의 연락처 칸은 작가·관람객, 홈페이지 주소 칸은 작가만.
+      갤러리 상세의 찜·메시지는 이 역할에게도 보인다. Navbar 는 `roleLabel()` 로 한글 역할명.
+    - ⚠️ 새 라우트를 만들 때 "작가가 아니면 갤러리" 식 이분법을 쓰지 말 것 — 이 역할이 갤러리 취급을 받는다.
+      역할별 분기는 `authorize(...)` 화이트리스트로.
+    - 회귀: `backend/src/__tests__/visitor-role.test.ts`(5).
+
+53. **단체전 도록** (`frontend/src/lib/boothKit.ts`, 2026-09-16)
+    갤러리 운영 페이지 [작가 제출 정보] 아래 `BoothKitBar` — 수락 작가의 제출자료(출품리스트·CV·노트·대표작)로 **A5 도록 PDF** 를 만든다.
+    표지 → 전시 소개·참여 작가(차례) → 작가마다 [대표작·작가노트·작품·약력] → 뒷표지.
+    - ⚠️⚠️ **처음엔 네 가지였다가 도록만 남겼다**(2026-09-16 사용자 결정). 뺀 것은 **엽서 · 가격표 · QR 캡션** 셋인데,
+      이유가 하나다 — **작품 캡션(.hwp)이 이미 그 일을 한다.** 제목·재료·크기·연도·가격이 거기 다 있고, 부스에 붙이는 건 그 캡션이다.
+      같은 정보를 네 가지 인쇄물로 나눠 내보내면 만드는 쪽만 고르기 어려워진다. QR 시트도 붙일 자리가 이미 캡션에 없다.
+      되살리려면 git 에서 가져올 것 — `postcardFrontHtml`·`priceListHtml`·`qrCaptionCellHtml` 이 그 이름이다.
+    - ⚠️ **HWP 캡션에 QR 을 넣는 건 기술적으로 불가**(2026-09-16 확인, 사용자 판단 "그냥 두어라").
+      캡션 생성은 원본 템플릿의 **바이트를 바꿔치기**하는 방식이라 **글자만** 바꿀 수 있다 — 그림을 넣으려면 CFB 에 새 스트림을 끼워야 하는데
+      그러면 한글이 파일을 거부한다. 빈 자리도 없다. 시도하지 말 것.
+    - **새 렌더러를 만들지 않았다.** 고정 크기 장이라 `renderPagesToPdf` 를 쓴다. 작가 장은 **포트폴리오 엔진**(`buildPortfolioPages`)을
+      `page:'a5-portrait'` · `folioStart` · `skipContact` · `runningHead:'CATALOGUE'` 로 부른다 —
+      작가가 고른 대표작(`representativeIndex`)이 `coverImageIds[0]` 로 작가 첫 장이 된다.
+    - ⚠️ **A5 는 픽셀을 A4 의 72%(720×1018)로** 잡았다. A4 와 같은 1000px 로 두면 인쇄 글자가 5.9pt 로 줄어 못 읽는다.
+      `PAGE_DIMS` 에 있지만 작가 화면 판형 선택지에는 안 보인다(`PortfolioFormatPicker` 의 목록에 없음).
+    - ⚠️ 작품은 어디서도 자르지 않는다(§18) — 표지 대표 이미지도 contain 이다.
+    - 작가 장은 **차례를 채우려고 먼저** 만든다(각 작가의 시작 쪽을 알아야 한다). 이미지는 `prefetchImages` 로 모아 blob: 주소로 —
+      못 받은 장 수를 토스트로 알린다(조용히 빈 칸 금지).
+    - 회귀: `frontend/src/__tests__/boothKit.test.ts`(7, 순수 빌더). 렌더는 `scratchpad` 하니스로 실제 PDF 를 뽑아 pymupdf 로 확인했다.
+
+54. **포트폴리오 PDF v3 — 지면 체계 · 벡터 PDF · 세로×가로 · 버전** (2026-09-16, 사용자 결정 넷)
+    출발점은 **미적 비평**이었다 — 실작가 6명 데이터로 뽑은 20권을 실제 작가 포트폴리오 5권(골든, `portfolio/`, 커밋 금지)과
+    같은 배율로 나란히 놓고 봤다. 우리 결과물이 지는 지점은 다섯: ①**자신감이 없다**(표지·작품 사진이 사방 여백 안에 작게)
+    ②**전부 가운데에 떠 있다**([대문자 머리말 → 제목 → 강조색 막대 → 글] 한 관용구가 15장 넘게 반복 = 템플릿 냄새)
+    ③**기준선이 없다**(캡션이 그림 높이에 따라 장마다 딴 자리) ④**강조색이 잡음**(빨간 막대·빨간 CV 제목이 전 장에)
+    ⑤**행간 205%**(웹 문법. 한글 단행본은 165~180%). 정량으로는 20권 390쪽 중 **거의 빈 장 13.1%**(연락처 전권·시리즈 소개·
+    설명 넘침 장). 조사 두 편(공모·레지던시 요강 40여 건 / 경쟁 도구 12종)은 `scratchpad` 밖 세션 산출물 — 요약은 architecture.md.
+    - **지면 체계 v2** (`lib/portfolioFormats.ts`)
+        - ⚠️ **캡션 기준선**: 대형 단독 장은 캡션 칸(`geom.heroCapZone` = 문서에서 가장 긴 캡션)을 **바닥에 고정**하고 그림은 그 위 상자에
+          가운데. 짧은 캡션은 칸 안에서 바닥에 붙어(flex-end) 마지막 줄이 전 장 같은 높이에 온다 — 골든(ERICA)의 문법.
+        - ⚠️ **글 장은 윗선에 걸고 왼쪽에 맞춘다**(`eyebrowCss`·`proseTitleCss`·`proseParaCss`). 머리말은 회색 소문자 라벨, 강조색 막대 없음,
+          행간 1.8(`PROSE_LINE` 27). `prosePages` 의 '여는 장' 모드(가운데 큰 글)는 **없앴다**. 이어짐 장은 `{ continuation: true }` 로 `· 계속`.
+        - 작가노트 = 글 칸 + **프로필 사진**(오른쪽, 3:4, `photoBlock` — `<img>` 가 아니라 배경이라 작품 contain 검사와 섞이지 않는다).
+          `design.artistPhoto`(기본 켬, 사진 있을 때만 의미). 마지막 장 = 연락처 + **홈페이지 QR**(`qrSvg`, `qrcode.create` 동기) + 사진.
+          ⚠️ QR 주소는 `PortfolioBookData.homepageUrl` 로 **부르는 쪽이** 만든다(빌더는 origin 을 모른다). 우리 이름은 여전히 안 적는다(§45b).
+        - **시리즈 여는 장**: 자동 편집은 [소개 + 대표작](기존), **수동 편집은 [소개 + 그 시리즈 썸네일 차례]**(`seriesIndexPage`, 최대 12점 2줄
+          고르게). 예전엔 제목+한 줄만 있는 빈 장이었다.
+        - **뮤지엄 라벨의 옆/아래는 판형이 아니라 그림 모양으로** 가른다 — 그림을 지면 높이로 세웠을 때 옆에 ≥300px 남으면 옆 칸.
+        - **설명 흡수**: 그림을 55% 까지 양보하고, 그래도 몇 줄 남아 새 장이 생길 판이면 40% 까지 한 번 더(hero·label 공통). 두세 줄짜리
+          이어짐 장(실측: 27점 → 47쪽)이 이걸로 사라졌다. 그래도 남는 글만 뒤 장으로(자르지 않는다 §45b).
+        - 자동 편집에서 **남은 3점은 '크게+작게'**, **남은 2점은 '2점씩'**(`fitComposition(want, n, auto)`). 수동은 고른 배치 존중(§32).
+        - **작품 목록**(`worksIndexPages`, `kind:'index'`, 6점 이상·`design.worksIndex`): 썸네일·번호·쪽번호. 열 수는 **한 장에 다 드는 가장 적은 열**
+          (27점 4열이면 둘째 장에 7점만 남았다). `PortfolioPage.workIds` 로 쪽번호를 안다 — 그래서 CV **앞**에 온다.
+        - 표지: `matted` 사진 키움(여백 최소), `grid2x2`·`mosaic` 칸을 **그림 비율**(`CoverArgs.aspects`)로 잡아 정렬, `stacked` 에
+          `SELECTED WORKS 2021–2026`(제작연도 범위). ⚠️ 표지도 **자르지 않는다**(사용자 결정 — 디테일 크롭 표지 제안은 기각).
+        - ⚠️ **기본 강조색은 무채(`mono`)**. 색을 고른 사람은 그대로. `DESIGN_DIRECTIONS` 의 명시 색도 그대로.
+        - **캡션 관례** `design.captionStyle`: `kr`(기본) = **작품명, 연도 / 재료 / 크기**(홈페이지 `museumCaption` 과 같다), `intl` = 작품명 / 재료 / 크기 / 연도.
+          `captionParts` 하나가 정하고 렌더·높이 추정이 같이 본다. 연도는 `displayYear`("2024년" → "2024"). 캡션 자간을 넓히지 않는다.
+        - 실측(1~9권): 거의 빈 장 13.5% → **2.0%**(남은 4장 = 사진 없는 작가의 닫는 장). 하니스 `scratchpad/pf/emptypages.py`.
+    - **벡터 PDF** (`lib/portfolioPrint.ts`) — [PDF 저장]은 **브라우저 인쇄 → 'PDF 로 저장'**. 같은 페이지 HTML 을 `@page{size:mm;margin:0}` 상자에
+      `transform:scale` 로 앉힌 문서를 숨은 iframe 에 써 넣고 `print()`. 글자가 글자로 남고(검색·복사), 글꼴 내장, 용량 작음.
+        - ⚠️ 판형은 `@page size` 와 `.pg` 크기를 **둘 다 mm** 로 — px 환산 반올림이면 빈 장이 끼어든다. 배경은 `print-color-adjust: exact`.
+        - ⚠️ 인쇄 경로는 `<img>` 원본을 그대로 내장한다(실험 20.6MB). `shrinkToBudget` 이 사진을 canvas 로 줄여(긴 변 2000→1200px 사다리)
+          **9.4MB 예산**(국내 공모 10MB) 안에 맞추고 화면이 "N px 로 줄였다"고 알린다. 첫 단계로 재고 비율로 단계를 바로 고른다(매 단계 재굽기는 20초).
+        - 옛 래스터 경로(`downloadPortfolioBook`)는 '이미지형 PDF' 링크로 남긴다(인쇄 대화상자가 막힌 인앱 브라우저용).
+        - ⚠️ 헤드리스에서는 `print()` 를 못 누른다 — `e2e/_pfprint.mjs` 가 **같은 문서**를 `page.pdf()` 로 뽑아 쪽수·용량·텍스트·글꼴을 잰다.
+          실측(박기량 27점 19쪽): 텍스트 5,179자, 글꼴 NanumMyeongjo 내장, 빈 장 0, 7.9MB(1400px).
+    - **크기 표기는 세로×가로** (`lib/artwork.ts composeSize(h,w)`·`splitSize→{h,w}`, `artworkAnalysis.parseAspect`, ArtLook `parseSizeCm`,
+      운영페이지 출품리스트 폼) — 국내·해외 관례 공통(현대미술의 이해 "세로×가로"·Chicago "height, width"). 그 전까지 폼이 가로→세로로 받아
+      **가로×세로**로 저장했다(심사자가 보면 그림 방향이 뒤집힌 오류). ⚠️ 네 곳이 **같은 순서**를 읽어야 한다 — 한쪽만 바꾸면 비율이 거꾸로.
+        - 기존 데이터: `backend/scripts/migrate-size-order.ts`(판정은 `src/lib/sizeOrder.ts`, 테스트 9개). 사진 비율(width/height)이 있으면 그것으로
+          판정(관례대로 적어 둔 사람 보호), 없으면 폼 관례였다고 보고 뒤집는다. ⚠️ **두 번 돌리면 비율 없는 행이 되뒤집힌다** → `AppSetting
+          sizeOrderMigratedAt` 으로 잠금(`--force` 해제). **프론트 배포와 같은 때 Render 셸에서 한 번** 돌릴 것. 로컬은 2026-09-16 에 돌렸다.
+    - **버전** (`PortfolioVersion`, 마이그레이션 `20260916170000_portfolio_versions`) — 작품 선택·순서·디자인을 이름 붙여 저장. 국내 공모는
+      10점 이내·A4 24장처럼 장수를 제한해(조사 A2·A3) 27점짜리 책 하나로는 제출 요건을 못 맞춘다.
+        - `GET /portfolio` 에 `versions[]`, `POST/PATCH/DELETE /portfolio/versions[/:id]`. **내 포트폴리오 작품 id 만** 남기고(남의 것·없는 것 조용히 버림),
+          남의 버전은 404, 12개 상한. **홈페이지 작품 순서는 건드리지 않는다**.
+        - 화면(`MyPage PortfolioFormatSection`): 칩 [기본 N점][버전들][+ 버전], 버전 행 [작품 고르기·이름 바꾸기·복제·삭제]. 작품 고르기는
+          `components/shared/PortfolioWorkPicker.tsx`(누른 순서 = 실릴 순서, ← → 로 옮김). `lib/portfolioVersions.ts` 의 `versionWorks` 가
+          **실제 작품과 교집합**(지운 작품 id 가 배열에 남는다). 피커는 `key={version.id}` 로 버전을 바꿀 때 디자인 상태를 리셋한다.
+    - 회귀: `frontend/src/__tests__/portfolioFormats.test.ts`·`portfolioArtDirection.test.ts`·`artwork.test.ts`·`artlookScene.test.ts`·
+      `portfolioVersions.test.ts` · `backend/src/lib/__tests__/sizeOrder.test.ts`·`src/__tests__/portfolio-versions.test.ts`(6) ·
+      하니스 `scratchpad/pf/combos.mjs`(20권 실데이터)·`emptypages.py` · `e2e/_pfprint.mjs`·`_pfversions.mjs`(로컬 전용).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -1520,7 +1723,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       맞바꾸는 건 `HomePage.tsx` 의 두 블록뿐이다.
     - 히어로와 GOTM 사이에 있던 **퀵 내비게이션(QuickActionCards)은 Navbar와 중복이라 삭제**했다(파일도 제거).
 - **ArtWorks 섹션** (`components/home/ArtWorks.tsx`, 구 `ExploreHighlight` = 구 'Favorites'):
-    - 제목은 **ArtLink 로고와 같은 색 규칙** — `Art`(gray-900) + `Works`(#dc3545). 로고와 짝이 맞아야 브랜드 이름처럼 읽힌다. **부제는 두지 않는다.**
+    - 제목은 **ArtLink 로고와 같은 색 규칙** — `Art`(gray-900) + `Works`(#c4302b). 로고와 짝이 맞아야 브랜드 이름처럼 읽힌다. **부제는 두지 않는다.**
     - 우측 상단에 [⟳ 새로고침]과 [모두 모아보기 →]. 제목보다 작게 두되 **색은 gray-500 아래로 내리지 말 것** —
       gray-300/400 으로 뒀더니 "안 보인다"는 지적이 나왔다(흰 배경에서 gray-300 은 대비 1.5:1 수준으로 사실상 배경이다).
       현재 대비 4.84:1(AA 통과). 옅게 만들고 싶으면 크기로 조절할 것.
@@ -1571,7 +1774,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **포트폴리오**: [작가 약력, 작가노트, 한 줄 소개, 경력(학력/개인전/단체전/아트페어/수상), 작품 사진(최대 30장)] 관리.
       - **작품 정보**: 사진을 누르면 [작품명, 시리즈, 크기(가로×세로), 재료, 제작연도, 판매상태, 작품 설명] 입력. 실제 작가 포트폴리오는 예외 없이 작품마다 캡션을 붙이므로 이 정보가 없으면 포맷 PDF에서 캡션이 통째로 빠진다 — 미입력 작품엔 '정보 없음' 배지 표시.
       - **시리즈**: 작품에 붙인 시리즈명으로 자동으로 묶이고, 시리즈마다 소개 글을 넣으면 PDF에 소개 페이지가 생긴다.
-      - **화면 이름은 ArtLink 로고 규칙을 따른다**(앞 검정 + 뒤 빨강 #dc3545) — Art**Link** / Art**Works**(홈 섹션·둘러보기) /
+      - **화면 이름은 ArtLink 로고 규칙을 따른다**(앞 검정 + 뒤 빨강 #c4302b) — Art**Link** / Art**Works**(홈 섹션·둘러보기) /
         Home**Page**(공개 작가 페이지) / Port**Folio**(포트폴리오 탭) / Art**Look**(액자 걸기) / My**Picks**(찜 목록) / Art**Talk**(대화).
         **화면 좌측 상단**에 둔다 — 사이드바 메뉴 라벨은 평범한 한글 그대로다(ArtLook 만 예외: 기능 이름이 곧 브랜드라 메뉴에도 색을 준다).
         메뉴 항목에 색을 넣을 땐 `MyPageTab.brand: ['Art','Look']`, 옆 설명은 `note` (그냥 기능 이름에 색을 넣으면 로고 규칙이 헐거워진다).

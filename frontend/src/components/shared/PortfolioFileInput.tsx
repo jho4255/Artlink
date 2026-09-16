@@ -65,7 +65,7 @@ export default function PortfolioFileInput({ value, onChange, disabled }: Portfo
             type="button"
             onClick={() => onChange(null)}
             aria-label="파일 삭제"
-            className="shrink-0 p-1 text-gray-400 hover:text-red-500 cursor-pointer"
+            className="shrink-0 p-1 text-gray-400 hover:text-accent cursor-pointer"
           >
             <X size={16} />
           </button>

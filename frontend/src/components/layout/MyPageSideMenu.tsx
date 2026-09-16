@@ -67,7 +67,7 @@ export default function MyPageSideMenu() {
               {/* 브랜드 이름(ArtLook)은 로고와 같은 색 규칙으로, 설명은 옆에 작게 */}
               <span className="min-w-0 truncate">
                 {tab.brand
-                  ? (<span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-[#dc3545]">{tab.brand[1]}</span></span>)
+                  ? (<span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-accent">{tab.brand[1]}</span></span>)
                   : tab.label}
                 {tab.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{tab.note}</span>}
               </span>
@@ -92,7 +92,7 @@ export default function MyPageSideMenu() {
               <Icon size={16} className="shrink-0" />
               <span className="min-w-0 truncate">
                 {l.brand
-                  ? <span className="font-bold tracking-tight font-serif">{l.brand[0]}<span className="text-[#dc3545]">{l.brand[1]}</span></span>
+                  ? <span className="font-bold tracking-tight font-serif">{l.brand[0]}<span className="text-accent">{l.brand[1]}</span></span>
                   : l.label}
                 {l.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{l.note}</span>}
               </span>
@@ -124,7 +124,7 @@ export default function MyPageSideMenu() {
                 <Icon size={16} className="shrink-0" />
                 <span className="min-w-0 truncate">
                   {l.brand
-                    ? <span className="font-bold tracking-tight font-serif">{l.brand[0]}<span className="text-[#dc3545]">{l.brand[1]}</span></span>
+                    ? <span className="font-bold tracking-tight font-serif">{l.brand[0]}<span className="text-accent">{l.brand[1]}</span></span>
                     : l.label}
                   {l.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{l.note}</span>}
                 </span>

@@ -23,10 +23,11 @@ import { esc, proxied, safeName, triggerDownload } from '@/lib/operationPdf';
 import { prefetchImages, recoverFailed } from '@/lib/imageFetch';
 import { resolvePalette, bestTextKey, isBgKey, isTextKey, isAccentKey, mixHex } from '@/lib/portfolioColors';
 import {
-  artworkTitle, captionInline, captionLines, careerLineText, hasTitle,
+  artworkTitle, careerLineText, displayYear, hasTitle,
   groupBySeries, normalizeCareer, statusLabel,
 } from '@/lib/artwork';
 import { artworkFacts } from '@/lib/artworkAnalysis';
+import QRCode from 'qrcode';
 import type { CareerKey, PortfolioImage, PublicPortfolio, SeriesInfo } from '@/types';
 
 export type PortfolioThemeId = 'gallery' | 'studio' | 'story' | 'archive';
@@ -56,31 +57,10 @@ export interface PortfolioTheme {
   proseAlign?: 'justify' | 'left' | 'right';
 }
 
-const SANS = `'Pretendard Variable',Pretendard,system-ui,sans-serif`;
-// 명조는 index.html에서 Nanum Myeongjo를 함께 받는다. 못 받은 환경에서도 무너지지 않게 시스템 명조로 폴백.
-const SERIF = `'Nanum Myeongjo','Apple SD Gothic Neo',Georgia,'Times New Roman',serif`;
-
-// ── 글꼴 프리셋 (제목 + 본문 페어링) ──
-// 추가 한글 웹폰트(노토명조·고운바탕·플렉스·나눔고딕)는 화면(PortfolioFormatPicker)이 열릴 때 지연 로드한다.
-const F_NOTO_SERIF = `'Noto Serif KR','Nanum Myeongjo',serif`;
-const F_GOWUN = `'Gowun Batang','Nanum Myeongjo',serif`;
-const F_PLEX = `'IBM Plex Sans KR',Pretendard,sans-serif`;
-const F_NANUM_GOTHIC = `'Nanum Gothic',Pretendard,sans-serif`;
-
-export type FontKey = 'myeongjo' | 'gothic' | 'noto' | 'gowun' | 'plex' | 'nanum';
-export interface FontPreset { key: FontKey; label: string; title: string; body: string; serif: boolean }
-export const FONT_PRESETS: FontPreset[] = [
-  { key: 'myeongjo', label: '명조',   title: SERIF,        body: SANS,          serif: true },
-  { key: 'gothic',   label: '고딕',   title: SANS,         body: SANS,          serif: false },
-  { key: 'noto',     label: '노토명조', title: F_NOTO_SERIF, body: F_NOTO_SERIF,  serif: true },
-  { key: 'gowun',    label: '고운바탕', title: F_GOWUN,      body: SANS,          serif: true },
-  { key: 'plex',     label: '플렉스',  title: F_PLEX,       body: F_PLEX,        serif: false },
-  { key: 'nanum',    label: '나눔고딕', title: F_NANUM_GOTHIC, body: F_NANUM_GOTHIC, serif: false },
-];
-const FONT_BY_KEY: Record<string, FontPreset> = Object.fromEntries(FONT_PRESETS.map((p) => [p.key, p]));
-/** 화면에서 지연 로드할 구글 폰트 (Pretendard·Nanum Myeongjo 는 index.html 에 이미 있음) */
-export const PORTFOLIO_FONT_HREF =
-  'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;600;700&family=Nanum+Gothic:wght@400;700;800&display=swap';
+// 글꼴 프리셋은 웹 작가 홈페이지와 같이 쓰므로 `lib/portfolioFonts.ts` 로 뺐다(2026-09-16). 이름은 그대로 다시 내보낸다.
+import { SANS, SERIF, FONT_PRESETS, FONT_BY_KEY, PORTFOLIO_FONT_HREF, type FontKey, type FontPreset } from './portfolioFonts';
+export { FONT_PRESETS, PORTFOLIO_FONT_HREF };
+export type { FontKey, FontPreset };
 
 export const PORTFOLIO_THEMES: PortfolioTheme[] = [
   {
@@ -130,7 +110,8 @@ export const themeById = (id?: string | null): PortfolioTheme =>
 
 // ── 가이드형 디자인: 색(배경·글자·강조) · 표지 · 글꼴 · 판형 · 밀도 · 설명 ──────
 // ⚠️ 색은 **높이에 영향이 없어** overflow 위험 0. applyDesign 은 파생 테마만 만들고 레이아웃 코드는 안 건드린다.
-export type PageKey = 'a4-portrait' | 'a4-landscape' | 'wide';
+/** `a5-portrait` 는 갤러리 도록(부스 툴킷, 2026-09-16)용 — 작가 화면의 판형 선택지에는 안 보인다 */
+export type PageKey = 'a4-portrait' | 'a4-landscape' | 'wide' | 'a5-portrait';
 export type Density = 1 | 2 | 4;
 /**
  * 작품 설명을 싣는가 — **싣거나 안 싣거나 둘뿐이다**.
@@ -153,6 +134,8 @@ export type WorksLayout = 'hero' | 'label' | 'full' | 'feature' | 'duo' | 'grid'
 export type WorksCaption = 'below' | 'left' | 'minimal';
 /** 본문(산문) 정렬 — 작가노트·약력·시리즈 소개 등 읽는 글 전체 */
 export type ProseAlign = 'justify' | 'left' | 'right';
+/** 캡션 표기 관례 — kr(작품명, 연도 / 재료 / 크기) | intl(작품명 / 재료 / 크기 / 연도) */
+export type CaptionStyle = 'kr' | 'intl';
 // ── 표지 = 디자인된 레이아웃(구성) + 자유 재스타일(색·글꼴·글요소 표시) ──
 // ⚠️ "자유 축 조합"(이미지 배치/글 위치/정렬을 독립 축으로)은 **폐기**했다 — 대부분 조합이 구성이 죽어
 //    "존나 병신같은" 표지가 나왔다(사용자 실측 지적). 표지는 손으로 구성한 레이아웃이 책임진다.
@@ -201,6 +184,17 @@ export interface PdfDesign {
   coverImageIds: number[];
   /** 본문(산문) 정렬 — 전체 읽는 글에 적용 */
   proseAlign: ProseAlign;
+  /**
+   * 캡션 표기 관례 (2026-09-16).
+   *   kr   국내: **작품명, 제작연도 / 재료 / 크기** — 연도가 재료·크기 앞. 공개 홈페이지(`museumCaption`)와 같다.
+   *   intl 해외: 작품명 / 재료 / 크기 / 연도 — 연도가 뒤.
+   * 한 문서 안에서는 하나만 쓴다(조사: 심사자가 꼽는 결함 "캡션 형식이 장마다 다름").
+   */
+  captionStyle: CaptionStyle;
+  /** 작가노트·마지막 장에 프로필 사진을 싣는가 (사진이 있을 때만 의미 있다). 골든 5권 중 3권이 넣는다 */
+  artistPhoto: boolean;
+  /** 마지막에 작품 목록(썸네일·쪽번호)을 붙이는가 — 도록의 List of Works. 작품이 6점 이상일 때만 만든다 */
+  worksIndex: boolean;
   // ── 아트디렉션 ────────────────────────────────────────────────────
   /**
    * 자동 편집(아트디렉션) 여부.
@@ -222,6 +216,9 @@ export const PAGE_DIMS: Record<PageKey, PortfolioTheme['page']> = {
   'a4-portrait':  { w: 1000, h: 1414, mmW: 210, mmH: 297 },
   'a4-landscape': { w: 1414, h: 1000, mmW: 297, mmH: 210 },
   'wide':         { w: 1600, h: 900,  mmW: 297, mmH: 167 },
+  // A5 도록 — 픽셀을 A4 의 72% 로 잡아 글자(px 고정)가 인쇄에서 A4 와 같은 물리 크기(≈8pt)가 되게 한다.
+  // A4 와 같은 1000px 로 두면 인쇄 시 글자가 5.9pt 로 줄어 못 읽는다. 여백·격자는 판형 비례라 그대로 따라온다.
+  'a5-portrait':  { w: 720,  h: 1018, mmW: 148, mmH: 210 },
 };
 
 /** 저장값(문자열/객체/null/오염) → 항상 유효한 PdfDesign. 알 수 없으면 기본값. 옛 `palette`(white/ivory/dark)도 마이그레이션. */
@@ -262,9 +259,12 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
   return {
     bg,
     ink: isTextKey(o.ink) ? o.ink : (mig?.ink ?? bestTextKey(bg)),
-    accent: isAccentKey(o.accent) ? o.accent : 'red',
+    // ⚠️ 기본 강조색은 **무채**(글자색과 같게)다 (2026-09-16 사용자 결정). 색은 작품이 갖고 지면은 물러난다 —
+    //    골든(실제 작가 포트폴리오 5권)은 지면에 색을 거의 안 쓰고, 조사도 '흰 배경·검은 글자·장식 없이'가 관례였다.
+    //    예전 기본 빨강은 머리말·막대·CV 제목이 전 장에서 빨갛게 나와 템플릿 냄새의 주범이었다. 고른 사람의 색은 그대로다.
+    accent: isAccentKey(o.accent) ? o.accent : 'mono',
     font: (typeof o.font === 'string' && o.font in FONT_BY_KEY) ? o.font : (o.font === 'sans' ? 'gothic' : 'myeongjo'),
-    page: (['a4-portrait', 'a4-landscape', 'wide'] as const).includes(o.page) ? o.page : 'a4-portrait',
+    page: (['a4-portrait', 'a4-landscape', 'wide', 'a5-portrait'] as const).includes(o.page) ? o.page : 'a4-portrait',
     // 작품 레이아웃 — 명시값 없으면 hero(대형 단독). 옛 density(1/2/4) → hero/duo/grid 마이그레이션.
     worksLayout: inList(['hero', 'label', 'full', 'feature', 'duo', 'grid', 'index'] as const, o.worksLayout) ? o.worksLayout
       : (o.density === 1 ? 'hero' : o.density === 4 ? 'grid' : o.density === 2 ? 'duo' : 'hero'),
@@ -284,6 +284,9 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
     // ⚠️ 기본값은 **양쪽맞춤**이다(2026-09-13). 공개 홈페이지의 작가노트·약력이 이미 양쪽맞춤이라
     //    같은 글이 PDF 에서만 들쭉날쭉하면 두 화면이 다른 문서처럼 보인다. 고른 적 있으면 그 값을 지킨다.
     proseAlign: (['justify', 'left', 'right'] as const).includes(o.proseAlign) ? o.proseAlign : 'justify',
+    captionStyle: o.captionStyle === 'intl' ? 'intl' : 'kr',
+    artistPhoto: o.artistPhoto !== false,
+    worksIndex: o.worksIndex !== false,
     // ⚠️ 하위호환: **이미 저장된 설정이 있으면 auto 를 켜지 않는다.** 그 사람은 배치를 직접 골랐고,
     //    갑자기 다른 배치로 바뀌면 "내가 만든 게 사라졌다"가 된다. 아무것도 저장 안 된 새 사용자만 auto.
     auto: typeof o.auto === 'boolean' ? o.auto : !hasSavedChoice(o),
@@ -310,7 +313,16 @@ export const WORKS_PER_PAGE: Record<WorksLayout, number> = { hero: 1, label: 1, 
 
 // ── 입력 데이터 ──
 export interface PortfolioBookData {
-  user: { name: string; nickname?: string | null; email?: string | null; phone?: string | null; instagramUrl?: string | null };
+  user: {
+    name: string; nickname?: string | null; email?: string | null; phone?: string | null; instagramUrl?: string | null;
+    /** 프로필 사진 — 작가노트·마지막 장에 실린다(`design.artistPhoto`). 없으면 그 자리를 안 만든다 */
+    avatar?: string | null;
+  };
+  /**
+   * 작가 홈페이지 주소(절대 URL, 예 `https://artlink.cc/@kiiryang`). 마지막 장의 QR·주소 줄이 쓴다.
+   * 빌더는 순수 함수라 origin 을 모르므로 **부르는 쪽이 만들어 넘긴다**(없으면 QR 도 없다).
+   */
+  homepageUrl?: string | null;
   tagline?: string | null;
   statement?: string | null;
   biography?: string | null;
@@ -337,11 +349,13 @@ export interface PortfolioPage {
    * 이 장이 어떤 성격인가 — 화면의 **전체 구성 보기**(§24)와 "왜 이렇게 배치했는지"(§25) 안내에 쓴다.
    * 페이지 HTML 을 다시 파싱해 알아내는 건 못 미덥다(빌더가 아는 사실을 그대로 넘긴다).
    */
-  kind?: 'cover' | 'prose' | 'works' | 'cv' | 'contact';
+  kind?: 'cover' | 'prose' | 'works' | 'index' | 'cv' | 'contact';
   /** 이 장에 실린 작품 수 (kind==='works' 또는 시리즈 여는 장) */
   works?: number;
   /** 쓰인 배치 이름 (kind==='works') */
   composition?: WorksLayout;
+  /** 이 장에 실린 작품 id — 마지막 '작품 목록'이 쪽번호를 찾는 데 쓴다 */
+  workIds?: number[];
 }
 
 const CV_ORDER: { key: CareerKey; label: string; en: string }[] = [
@@ -622,6 +636,9 @@ const CAP_TITLE_LINE = 27;   // 제목 한 줄 (명조 26 + 1)
 const CAP_META_LINE = 22;    // 보조 한 줄 (17 + 위 여백 5)
 const CAP_DESC_TOP = 8;      // 설명 블록 위 여백
 
+/** 러닝 머리말 기본 문구. 포트폴리오는 'PORTFOLIO', 갤러리 도록은 buildPortfolioPages 의 `runningHead` 로 바꾼다(2026-09-16) */
+let runningHeadDefault = 'PORTFOLIO';
+
 function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chrome: Chrome = {}): string {
   const { w, h } = theme.page;
   const shell = (content: string, bg = theme.bg) =>
@@ -678,7 +695,7 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
     deco = `
       <div style="position:absolute;top:${runTop(theme, 56)}px;left:${p.x}px;right:${p.x}px;display:flex;justify-content:space-between;
                   border-bottom:1px solid ${theme.line};padding-bottom:12px;font-size:11.5px;letter-spacing:0.2em;color:${theme.sub}">
-        <span>${esc((chrome.running || 'PORTFOLIO').toUpperCase())}</span>
+        <span>${esc((chrome.running || runningHeadDefault).toUpperCase())}</span>
         <span>${esc(name)}</span>
       </div>`;
   }
@@ -697,6 +714,10 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
 interface CoverArgs {
   name: string; year: string; hero?: string; images: string[]; eyebrow: string;
   showEyebrow: boolean; showYear: boolean; nameAccent: boolean; textScale: number;
+  /** `images` 와 나란한 가로/세로 비율(모르면 1) — 여러 작품 표지가 칸을 그림 모양에 맞추는 데 쓴다 */
+  aspects: number[];
+  /** 실린 작품의 제작연도 범위("2021–2026"). 없으면 '' */
+  yearRange: string;
 }
 
 const EYEBROW = 'ARTWORK PORTFOLIO';
@@ -772,7 +793,7 @@ const coverStacked: CoverRender = (t, d, v) => { const P = 96, px = ft(v, 118, t
     ${v.showEyebrow ? `<div style="position:absolute;left:${P}px;right:${P}px;top:120px;font-size:12px;letter-spacing:0.5em;color:${t.sub}">${esc(v.eyebrow)}</div>` : ''}
     <div style="position:absolute;left:${P}px;right:${P}px;top:46%;transform:translateY(-50%);text-align:center"><div style="${titleCss(t, px, nc(t, v), '0.14em')};text-align:center">${esc(v.name)}</div>
 </div>
-    <div style="position:absolute;left:${P}px;right:${P}px;bottom:120px;display:flex;justify-content:space-between;font-size:13px;letter-spacing:0.34em;color:${t.sub}"><span>SELECTED WORKS</span>${v.showYear ? `<span>${esc(v.year)}</span>` : '<span></span>'}</div>`); };
+    <div style="position:absolute;left:${P}px;right:${P}px;bottom:120px;display:flex;justify-content:space-between;font-size:13px;letter-spacing:0.34em;color:${t.sub}"><span>SELECTED WORKS${v.yearRange ? ` ${esc(v.yearRange)}` : ''}</span>${v.showYear ? `<span>${esc(v.year)}</span>` : '<span></span>'}</div>`); };
 
 
 const coverNameplate: CoverRender = (t, d, v) => { const px = ft(v, 72, t.page.w - 400, 2);
@@ -813,13 +834,15 @@ const coverBandBottom: CoverRender = (t, d, v) => { const { w, h } = t.page; con
     ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${Math.round(h * 0.42)}px;bottom:110px`) : ''}
     ${v.showYear ? `<div style="position:absolute;left:0;right:0;bottom:60px;text-align:center;font-size:13px;letter-spacing:0.4em;color:${t.sub}">${esc(v.year)}</div>` : ''}`); };
 
-const coverMatted: CoverRender = (t, d, v) => { const px = ft(v, 70, t.page.w - 200, 2);
+// ⚠️ 액자 표지의 사진은 크게 — 예전엔 좌우 160px·위 420px 을 비워 사진이 지면의 30% 였다(실측 G 와 같은 병: 자신감 없음).
+//    골든은 표지 사진을 지면 끝까지 밀어붙인다. 자르지는 않되(사용자 결정) 여백을 최소로 줄인다.
+const coverMatted: CoverRender = (t, d, v) => { const { w, h } = t.page; const P = Math.round(w * 0.1); const px = ft(v, 70, w - 200, 2);
   return shell(t, d, `
-    <div style="position:absolute;left:0;right:0;top:130px;text-align:center;padding:0 100px;box-sizing:border-box">
-      ${v.showEyebrow ? `<div style="font-size:12px;letter-spacing:0.5em;color:${t.sub};margin-bottom:22px">${esc(v.eyebrow)}</div>` : ''}
+    <div style="position:absolute;left:0;right:0;top:${Math.round(h * 0.075)}px;text-align:center;padding:0 100px;box-sizing:border-box">
+      ${v.showEyebrow ? `<div style="font-size:12px;letter-spacing:0.5em;color:${t.sub};margin-bottom:20px">${esc(v.eyebrow)}</div>` : ''}
       <div style="${titleCss(t, px, nc(t, v), '0.08em')};text-align:center">${esc(v.name)}</div></div>
-    ${v.hero ? heroBox(v.hero, `left:160px;right:160px;top:420px;bottom:200px;border:1px solid ${t.line};padding:44px`) : ''}
-    ${v.showYear ? `<div style="position:absolute;left:0;right:0;bottom:110px;text-align:center;font-size:14px;letter-spacing:0.4em;color:${t.sub}">${esc(v.year)}</div>` : ''}`); };
+    ${v.hero ? heroBox(v.hero, `left:${P}px;right:${P}px;top:${Math.round(h * 0.235)}px;bottom:${Math.round(h * 0.11)}px;border:1px solid ${t.line};padding:${Math.round(w * 0.032)}px`) : ''}
+    ${v.showYear ? `<div style="position:absolute;left:0;right:0;bottom:${Math.round(h * 0.055)}px;text-align:center;font-size:14px;letter-spacing:0.4em;color:${t.sub}">${esc(v.year)}</div>` : ''}`); };
 
 const coverFullTint: CoverRender = (t, d, v) => { const px = ft(v, 72, t.page.w - 220, 2);
   return page(t, d, `<div style="position:absolute;inset:0;background:${softPanel(t)}"></div>
@@ -849,22 +872,41 @@ const coverSide: CoverRender = (t, d, v) => { const { w, h } = t.page; const iw 
 </div>`); };
 
 
-const coverGrid2x2: CoverRender = (t, d, v) => { const P = 96, px = ft(v, 56, t.page.w - 2 * P, 2); const g = v.images.slice(0, 4);
+// ⚠️ 여러 작품 표지의 칸은 **그림 모양에 맞춰** 잡는다 (2026-09-16). 예전엔 칸을 `1fr` 로 균등 분할해서
+//    가로 그림 넷이면 칸의 위아래가, 세로 그림이면 좌우가 비어 격자가 성겨 보였다(실측 G: 사진이 작고 위쪽 몰림).
+//    칸 높이를 네 그림의 중앙 비율로 정하고 격자 덩어리를 영역 안에서 가운데 두면 칸과 그림이 맞는다(자르지 않고).
+const coverGrid2x2: CoverRender = (t, d, v) => { const { w, h } = t.page; const P = 96, gap = 16, px = ft(v, 56, w - 2 * P, 2); const g = v.images.slice(0, 4);
+  const areaTop = Math.round(h * 0.068), areaBottom = Math.round(h * 0.21);
+  const areaW = w - 2 * P, areaH = h - areaTop - areaBottom;
+  const asp = v.aspects.slice(0, 4).filter((a) => a > 0).sort((a, b) => a - b);
+  const median = asp.length ? asp[Math.floor(asp.length / 2)]! : 1;
+  const cellW = (areaW - gap) / 2;
+  const cellH = Math.min(cellW / median, (areaH - gap) / 2);
   return shell(t, d, `
-    <div style="position:absolute;left:${P}px;right:${P}px;top:96px;bottom:300px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:16px">${g.map((u) => gridCell(t, u)).join('')}</div>
-    <div style="position:absolute;left:${P}px;right:${P}px;bottom:60px;height:210px;display:flex;flex-direction:column;justify-content:center">
+    <div style="position:absolute;left:${P}px;right:${P}px;top:${areaTop}px;height:${areaH}px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:${Math.round(cellH)}px ${Math.round(cellH)}px;gap:${gap}px;align-content:center">${g.map((u) => gridCell(t, u)).join('')}</div>
+    <div style="position:absolute;left:${P}px;right:${P}px;bottom:${Math.round(h * 0.045)}px;height:${Math.round(h * 0.15)}px;display:flex;flex-direction:column;justify-content:center">
       <div style="width:56px;height:4px;background:${t.accent};margin-bottom:18px"></div>
       <div style="${titleCss(t, px, nc(t, v), '0.02em')}">${esc(v.name)}</div>
       ${metaLine(v) ? `<div style="margin-top:14px;font-size:12px;letter-spacing:0.42em;color:${t.sub}">${metaLine(v)}</div>` : ''}
 </div>`); };
 
-
-const coverMosaic: CoverRender = (t, d, v) => { const P = 96, px = ft(v, 60, t.page.w - 2 * P, 2); const g = v.images.slice(0, 3);
+// 1점 크게 + 2점 — 큰 칸의 높이가 작은 두 칸을 합친 높이와 **정확히 같아야** 한 덩어리로 읽힌다.
+// 칸 폭은 각 그림의 비율에서 나온다(큰 칸 = H×a₁, 작은 열 = (H−gap)/2 × max(a₂,a₃)). 그림이 칸을 채우므로 정렬이 맞는다(실측 I 수정).
+const coverMosaic: CoverRender = (t, d, v) => { const { w, h } = t.page; const P = 96, gap = 16, px = ft(v, 60, w - 2 * P, 2); const g = v.images.slice(0, 3);
+  const areaTop = Math.round(h * 0.068), areaBottom = Math.round(h * 0.21);
+  const areaW = w - 2 * P, areaH = h - areaTop - areaBottom;
+  const a1 = v.aspects[0] ?? 1, aS = Math.max(v.aspects[1] ?? 1, v.aspects[2] ?? 1);
+  // W(H) = H·a1 + gap + (H−gap)/2·aS ≤ areaW
+  const H = Math.min(areaH, (areaW - gap + (gap * aS) / 2) / (a1 + aS / 2));
+  const bigW = Math.round(H * a1), smallH = Math.round((H - gap) / 2), colW = Math.round(smallH * aS);
   return shell(t, d, `
-    <div style="position:absolute;left:${P}px;right:${P}px;top:96px;bottom:300px;display:grid;grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;gap:16px">
-      <div style="grid-row:1 / span 2;overflow:hidden;display:flex;align-items:center;justify-content:center">${panelBox(g[0] ? undefined : softPanel(t), g[0] ? fillImg(g[0]) : '')}</div>
-      ${gridCell(t, g[1] ?? '')}${gridCell(t, g[2] ?? '')}</div>
-    <div style="position:absolute;left:${P}px;right:${P}px;bottom:60px;height:210px;display:flex;flex-direction:column;justify-content:center">
+    <div style="position:absolute;left:${P}px;right:${P}px;top:${areaTop}px;height:${areaH}px;display:flex;align-items:center;justify-content:center">
+      <div style="display:grid;grid-template-columns:${bigW}px ${colW}px;grid-template-rows:${smallH}px ${smallH}px;gap:${gap}px">
+        <div style="grid-row:1 / span 2;overflow:hidden;display:flex;align-items:center;justify-content:center">${panelBox(g[0] ? undefined : softPanel(t), g[0] ? fillImg(g[0]) : '')}</div>
+        ${gridCell(t, g[1] ?? '')}${gridCell(t, g[2] ?? '')}
+      </div>
+    </div>
+    <div style="position:absolute;left:${P}px;right:${P}px;bottom:${Math.round(h * 0.045)}px;height:${Math.round(h * 0.15)}px;display:flex;flex-direction:column;justify-content:center">
       <div style="${titleCss(t, px, nc(t, v), '0.02em')}">${esc(v.name)}</div>
       ${metaLine(v) ? `<div style="margin-top:14px;font-size:12px;letter-spacing:0.42em;color:${t.sub}">${metaLine(v)}</div>` : ''}
 </div>`); };
@@ -950,12 +992,19 @@ function coverHtml(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDe
     images = data.images.map((i) => i.url).filter(Boolean);
     if (images.length < need) key = images.length >= 1 ? 'bandTop' : 'serifCenter';
   }
+  // 표지 칸을 그림 모양에 맞추기 위한 비율(url → aspect). 비율을 모르면 정사각으로 본다(옛 동작).
+  const aspectByUrl = new Map(data.images.map((i) => [i.url, Math.min(4, Math.max(0.25, artworkFacts(i, data.aspects ?? null).aspect))] as const));
+  // 제작연도 범위 — "SELECTED WORKS 2021–2026" 처럼 실제 도록·포트폴리오가 쓰는 표기. 연도가 하나뿐이면 그 해만.
+  const years = data.images.map((i) => displayYear(i.year)).map((y) => /^(19|20)\d{2}$/.test(y) ? Number(y) : NaN).filter((n) => !isNaN(n));
+  const yearRange = years.length ? (Math.min(...years) === Math.max(...years) ? String(years[0]) : `${Math.min(...years)}–${Math.max(...years)}`) : '';
   const v: CoverArgs = {
     name: displayName(data.user),
     year: data.year || String(new Date().getFullYear()),
     eyebrow: (design.coverEyebrowText ?? '').trim() || EYEBROW,
     hero: images[0] || '',
     images,
+    aspects: images.map((u) => aspectByUrl.get(u) ?? 1),
+    yearRange,
     showEyebrow: design.coverEyebrow, showYear: design.coverYear,
     nameAccent: design.coverNameAccent, textScale: design.coverTextScale,
   };
@@ -966,94 +1015,96 @@ function coverHtml(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDe
   return out;
 }
 
-// ── 글 페이지 (작가노트 / 시리즈 소개) ──
+// ── 글 장의 공통 문법 (2026-09-16 지면 체계 v2) ──────────────────────────────
+// ⚠️ 예전 글 장은 전부 [작은 대문자 머리말 → 제목 → 강조색 막대 → 글] 을 지면 **가운데**에 쌓았다.
+//    작가노트·시리즈 소개·연락처·CV 가 같은 관용구라 15장 넘게 반복됐고, 그게 곧 '템플릿 냄새'였다
+//    (골든 5권과 나란히 놓고 본 미적 비평). 지금은 **윗선에 걸고**(top-anchored) 왼쪽에 맞추며,
+//    머리말은 회색 소문자 라벨로 물러나고 강조색 막대는 쓰지 않는다 — 위계는 크기와 위치가 만든다.
+//    행간도 205% → 180%: 한글 단행본 관례(165~180%)에 맞춘다(205% 는 웹 문법이라 글이 성겨 보였다).
+const PROSE_FONT = 15;
+const PROSE_LINE = 27;      // 15 × 1.8
+const eyebrowCss = (theme: PortfolioTheme) => `font-size:11px;letter-spacing:0.28em;color:${theme.sub}`;
+const proseTitleCss = (theme: PortfolioTheme, px: number) => {
+  const isSerif = theme.titleSerif ?? (theme.display === SERIF);
+  return `font-family:${theme.display};font-size:${px}px;line-height:1.2;font-weight:${isSerif ? 400 : 700};letter-spacing:${isSerif ? '0.02em' : '-0.02em'};color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere`;
+};
+const proseParaCss = (theme: PortfolioTheme, fontPx = PROSE_FONT, lineH = PROSE_LINE, gap = 18) =>
+  `margin:0 0 ${gap}px;font-size:${fontPx}px;line-height:${lineH}px;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}`;
+
+// ── 글 페이지 (시리즈 소개 · 이어지는 이야기 · 긴 작가노트) ──
 function prosePages(
   theme: PortfolioTheme, data: PortfolioBookData,
   eyebrow: string, title: string, body: string, label: string,
+  opts: { continuation?: boolean } = {},
 ): PortfolioPage[] {
-  const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  const titleStyle = (isSerif
-    ? `font-family:${theme.display};font-size:38px;letter-spacing:0.04em`
-    : `font-size:36px;font-weight:800;letter-spacing:-0.02em`) + ';overflow-wrap:anywhere';
-  const fontPx = theme.id === 'archive' ? 15 : 17;
-  const lineH = Math.round(fontPx * 2.05);
-  const bodyStyle = `margin:0 0 20px;font-size:${fontPx}px;line-height:2.05;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}`;
+  const titlePx = 34;
   const contentW = theme.page.w - PAD(theme).x * 2;
-  const colW = proseColW(fontPx, contentW);
-  const maxW = `${colW}px`;
+  const colW = proseColW(PROSE_FONT, contentW);
 
-  // 첫 장은 아이브로우 + 제목 + 룰이 자리를 먹는다. 이어지는 장은 작은 머리말만.
+  // 첫 장은 머리말 + 제목이 자리를 먹는다. 이어지는 장은 머리말 + 작은 제목만.
   // 여유분 24px — 추정이 맞아떨어져도 기기·글꼴 버전에 따라 몇 px씩 어긋난다. 마지막 줄이 가장자리에
   // 딱 붙으면 그런 오차에 바로 잘리므로 쿠션을 둔다(쪽수가 조금 늘어나는 건 감수).
   const SAFETY = 24;
-  const firstCap = availH(theme) - (18 + 16 + 46 + 22 + 3 + 34) - SAFETY;
-  const restCap = availH(theme) - (18 + 16 + 30 + 24) - SAFETY;
+  const firstCap = availH(theme) - (14 + 12 + Math.round(titlePx * 1.2) + 30) - SAFETY;
+  const restCap = availH(theme) - (14 + 12 + 24 + 30) - SAFETY;
   const paras = proseText(body).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  const pageParas = evenPages((k) => splitParagraphs(paras, firstCap * k, restCap * k, PROSE_FONT, PROSE_LINE, colW, 18));
 
-  // ── 짧은 글은 '장을 여는 페이지'로 ──────────────────────────────────
-  // ⚠️ 예전엔 시리즈 소개 한 문장이 **본문 크기(15px)** 그대로 지면 가운데 놓였다. 세로 중앙
-  //    정렬은 돼 있었지만 글이 작아서 A4 한 장의 90% 가 아무것도 아닌 채로 남았다 —
-  //    실측(마은영 시리즈 5개): 소개 5장이 전부 그랬다. 빈 자리를 장식으로 메우는 게 아니라
-  //    (§17) **글자를 지면에 맞게 키워** 그 자리가 '여는 장'이라는 뜻을 갖게 한다(§11 리듬).
-  //    긴 글은 그대로 읽는 컬럼(아래)으로 간다 — 크게 만들면 쪽수만 늘어난다.
-  const openerBodyPx = theme.id === 'archive' ? 19 : 20;
-  const openerH = paras.reduce((h, t) => h + estimateParaH(t, openerBodyPx, Math.round(openerBodyPx * 2), Math.min(660, colW), 22), 0);
-  if (openerH > 0 && openerH <= availH(theme) * 0.4) {
-    const titlePx = fitTitle(title, theme.id === 'archive' ? 62 : 72, Math.min(760, colW), 2, 30);
-    return [{
-      label,
+  return pageParas.map((ps, i) => {
+    const cont = i > 0 || !!opts.continuation;
+    return {
+      label: i === 0 ? label : `${label} (${i + 1})`,
       html: page(theme, data, `
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-          <div style="font-size:12px;letter-spacing:0.5em;color:${theme.accent};font-weight:${isSerif ? 400 : 700}">${esc(eyebrow)}</div>
-          <div style="margin-top:34px;${titleCss(theme, titlePx, theme.ink, isSerif ? '0.04em' : '-0.02em')};text-align:center;max-width:${Math.min(760, colW)}px">${esc(title)}</div>
-          <div style="margin:36px auto 0;width:56px;height:2px;background:${theme.accent}"></div>
-          <div style="margin-top:36px;max-width:${Math.min(660, colW)}px;width:100%">
-            ${paras.map((t) => `<p style="margin:0 0 22px;font-size:${openerBodyPx}px;line-height:2.0;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}
-          </div>
-        </div>`),
-    }];
-  }
-
-  const pageParas = evenPages((k) => splitParagraphs(paras, firstCap * k, restCap * k, fontPx, lineH, colW, 20));
-  const multi = pageParas.length > 1;
-
-  return pageParas.map((ps, i) => ({
-    label: i === 0 ? label : `${label} (${i + 1})`,
-    html: page(theme, data, `
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:${multi ? 'flex-start' : 'center'}">
-        <div style="max-width:${maxW};margin:0 auto;width:100%">
-          <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">${esc(eyebrow)}${i > 0 ? ' (계속)' : ''}</div>
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start">
+        <div style="max-width:${colW}px;width:100%">
+          <div style="${eyebrowCss(theme)}">${esc(eyebrow)}${cont ? ' · 계속' : ''}</div>
           ${i === 0
-            ? `<div style="margin-top:16px;${titleStyle}">${esc(title)}</div>
-               <div style="margin-top:22px;width:64px;height:3px;background:${theme.accent}"></div>`
-            : `<div style="margin-top:16px;font-size:20px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display};color:${theme.sub};overflow-wrap:anywhere">${esc(title)}</div>`}
-          <div style="margin-top:34px">${ps.map((t) => `<p style="${bodyStyle}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
+            ? `<div style="margin-top:12px;${proseTitleCss(theme, titlePx)}">${esc(title)}</div>`
+            : `<div style="margin-top:12px;font-size:18px;line-height:1.3;font-family:${theme.display};color:${theme.sub};overflow-wrap:anywhere">${esc(title)}</div>`}
+          <div style="margin-top:30px">${ps.map((t) => `<p style="${proseParaCss(theme)}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
         </div>
       </div>`),
-  }));
+    };
+  });
 }
 
-// 작가노트 — 짧으면 세로 중앙 + 대형 인용(우아하게), 길면 읽기 좋은 컬럼(prosePages 폴백).
-// 예전엔 짧은 노트도 상단에 붙어 페이지 90%가 텅 비었다.
-function statementPages(theme: PortfolioTheme, data: PortfolioBookData, statement: string): PortfolioPage[] {
+/** 프로필 사진 블록 — 작품이 아니라 사진이므로 잘라 채워도 된다(3:4). `<img>` 가 아니라 배경으로 그려 작품 규칙(contain) 검사와 섞이지 않게 한다 */
+function photoBlock(url: string, w: number, h: number): string {
+  const src = imgMode === 'pdf' ? proxied(url) : url;
+  return `<div style="width:${Math.round(w)}px;height:${Math.round(h)}px;flex:0 0 ${Math.round(w)}px;background-image:url('${esc(src)}');background-size:cover;background-position:center"></div>`;
+}
+
+// 작가노트 — 윗선에 걸린 글 칸 + (있으면) 오른쪽에 프로필 사진. 길면 읽는 컬럼(prosePages)으로.
+// ⚠️ 예전엔 짧은 노트를 지면 한가운데 작은 덩어리로 띄웠다(실측 B: 작은 회색 글 덩어리만 있는 장).
+//    골든은 글을 위에 걸고 옆에 사진을 두어 지면이 **한 쌍**으로 읽힌다(ERICA·김잔디·THALIA — 5권 중 3권이 작가 사진).
+function statementPages(theme: PortfolioTheme, data: PortfolioBookData, statement: string, design: PdfDesign): PortfolioPage[] {
   const paras = proseText(statement).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
   const px = PAD(theme).x;
-  const fontPx = 18, lineH = 38;
-  const colW = proseColW(fontPx, theme.page.w - px * 2 - 160);   // 우아하게 좁은 폭(가운데 정렬) + 줄 길이 상한
-  const totalH = paras.reduce((h, p) => h + estimateParaH(p, fontPx, lineH, colW, 24), 0);
-  const room = availH(theme) - 240;                 // 머리말+룰+여백 예약(넉넉히 — 넘치면 폴백)
-  const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  if (totalH <= room) {
-    // 블록은 가운데(좁은 컬럼·세로중앙)로 우아하게, 글 정렬은 proseAlign 을 따른다.
-    const align = theme.proseAlign ?? 'left';
-    return [{ label: '작가노트', html: page(theme, data, `
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
-        <div style="font-size:12px;letter-spacing:0.5em;color:${theme.accent};font-weight:${isSerif ? 400 : 700}">ARTIST STATEMENT</div>
-        <div style="margin:40px auto;width:56px;height:2px;background:${theme.line}"></div>
-        <div style="max-width:${colW}px;width:100%">${paras.map((p) => `<p style="margin:0 0 24px;font-size:${fontPx}px;line-height:2.1;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${align}">${esc(p).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
-      </div>`) }];
+  const contentW = theme.page.w - px * 2;
+  const avail = availH(theme);
+  const landscape = theme.page.w >= theme.page.h;
+  const photo = design.artistPhoto ? tx(data.user.avatar) : '';
+  const fontPx = 16, lineH = 29;                 // 16 × 1.8
+  // 사진은 글 칸과 균형이 맞게 넉넉히(세로 지면 360px ≈ 지면 높이의 40%). 작으면 구석의 명함 사진으로 읽힌다.
+  const photoW = photo ? Math.round(Math.min(contentW * 0.42, landscape ? 340 : 360)) : 0;
+  const gap = photo ? 64 : 0;
+  const colW = proseColW(fontPx, contentW - photoW - gap);
+  const titlePx = 36;
+  const headH = 14 + 12 + Math.round(titlePx * 1.2) + 34;
+  const totalH = paras.reduce((h, p) => h + estimateParaH(p, fontPx, lineH, colW, 20), 0);
+  if (totalH > avail - headH - 24) {
+    return prosePages(theme, data, 'ARTIST STATEMENT', '작가노트', statement, '작가노트');
   }
-  return prosePages(theme, data, 'ARTIST STATEMENT', '작가노트', statement, '작가노트');
+  const photoH = Math.min(Math.round(photoW * 4 / 3), avail);
+  return [{ label: '작가노트', html: page(theme, data, `
+    <div style="flex:1;display:flex;align-items:flex-start;gap:${gap}px">
+      <div style="flex:1;min-width:0;max-width:${colW}px">
+        <div style="${eyebrowCss(theme)}">ARTIST STATEMENT</div>
+        <div style="margin-top:12px;${proseTitleCss(theme, titlePx)}">작가노트</div>
+        <div style="margin-top:34px">${paras.map((p) => `<p style="${proseParaCss(theme, fontPx, lineH, 20)}">${esc(p).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
+      </div>
+      ${photo ? photoBlock(photo, photoW, photoH) : ''}
+    </div>`) }];
 }
 
 // ── 캡션 ──
@@ -1074,13 +1125,42 @@ function statementPages(theme: PortfolioTheme, data: PortfolioBookData, statemen
  */
 export type CaptionDetail = 'full' | 'compact' | 'minimal';
 
+/** 문서 전체의 캡션 표기 관례 — `buildPortfolioPages` 가 시작할 때 정하고 그 동기 실행 동안만 유효(imgMode 와 같은 방식) */
+let captionStyle: CaptionStyle = 'kr';
+const tx = (v?: string | null) => String(v ?? '').trim();
+
+/**
+ * 캡션 조각 — 렌더와 높이 추정이 **같은 규칙**을 보게 하는 단일 출처.
+ *
+ *   head   첫 줄. 국내식이면 **"작품명, 연도"**(둘 다 있을 때), 해외식이면 작품명. 제목이 없으면 연도(국내식)만.
+ *   meta   보조 줄들. 국내식 [재료, 크기] / 해외식 [재료, 크기, 연도]. compact 는 그걸 한 줄로(" · ").
+ *   status 판매 상태(Sold/비매). 제목도 연도도 없고 상태만 있으면 상태가 첫 줄 자리를 대신한다.
+ *
+ * ⚠️ 국내 관례(creative-canvas·월간미술)는 연도가 재료·크기 **앞**이다. 공개 홈페이지 `museumCaption` 과 같은 순서라
+ *    두 화면이 같은 캡션을 낸다. 해외 공모용은 `design.captionStyle='intl'`.
+ */
 function captionParts(a: PortfolioImage, detail: CaptionDetail | boolean) {
   const d: CaptionDetail = detail === true ? 'minimal' : detail === false ? 'full' : detail;
-  const title = hasTitle(a);
+  const title = tx(a.title), year = displayYear(a.year), medium = tx(a.medium), size = tx(a.sizeText);
+  const kr = captionStyle === 'kr';
+  const head = kr ? (title && year ? `${title}, ${year}` : title || year) : title;
   const status = !!statusLabel(a);
-  const meta = d === 'minimal' ? [] : d === 'compact' ? [captionInline(a)].filter(Boolean) : captionLines(a);
-  // 제목이 없고 상태만 있으면 상태가 제목 줄 자리를 대신한다(빈 줄을 남기지 않게).
-  return { title, status, meta, titleLines: title || status ? 1 : 0, empty: !title && !status && meta.length === 0 };
+  const fullMeta = (kr ? [medium, size] : [medium, size, year]).filter(Boolean);
+  const meta = d === 'minimal' ? [] : d === 'compact' ? (fullMeta.length ? [fullMeta.join(' · ')] : []) : fullMeta;
+  // 제목 줄을 그리는가 — head 가 있거나(상태만 있으면 상태가 그 자리)
+  return { head, title: !!head, status, meta, titleLines: head || status ? 1 : 0, empty: !head && !status && meta.length === 0 };
+}
+
+/** 라벨 블록(뮤지엄 라벨)용 줄 — 제목은 따로 크게 쓰고, 나머지를 관례 순서로 */
+function labelLines(a: PortfolioImage): string[] {
+  const year = displayYear(a.year), medium = tx(a.medium), size = tx(a.sizeText);
+  return (captionStyle === 'kr' ? [year, medium, size] : [medium, size, year]).filter(Boolean);
+}
+
+/** 캡션 블록(제목·보조 줄) 높이 — 격자·대형·옆칸이 같은 산수를 본다 */
+function captionBlockH(a: PortfolioImage): number {
+  const cp = captionParts(a, false);
+  return cp.empty ? 0 : CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE;
 }
 
 function captionHtml(theme: PortfolioTheme, a: PortfolioImage, align: 'center' | 'left', detail: CaptionDetail | boolean = 'full'): string {
@@ -1103,15 +1183,16 @@ function captionHtml(theme: PortfolioTheme, a: PortfolioImage, align: 'center' |
   const oneLine = p.meta.length === 0
     ? 'display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;'
     : '';
+  // 글자 사이를 벌리지 않는다 — 넓은 자간의 작은 회색 글은 '템플릿'으로 읽힌다(2026-09-16 미적 비평).
   const titleLine = p.title
-    ? `<div style="${oneLine}font-size:18px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display};letter-spacing:${isSerif ? '0.06em' : '-0.01em'};overflow-wrap:anywhere">
-        ${esc(artworkTitle(a))}${badge ? `<span style="margin-left:10px">${badge}</span>` : ''}
+    ? `<div style="${oneLine}font-size:17px;font-weight:${isSerif ? 400 : 600};font-family:${theme.display};letter-spacing:${isSerif ? '0.02em' : '-0.01em'};overflow-wrap:anywhere">
+        ${esc(p.head)}${badge ? `<span style="margin-left:10px">${badge}</span>` : ''}
       </div>`
     : (badge ? `<div>${badge}</div>` : '');
   const meta = p.meta
-    .map((l) => `<div style="margin-top:5px;font-size:13px;color:${theme.sub};letter-spacing:${isSerif ? '0.12em' : '0.02em'}">${esc(l)}</div>`)
+    .map((l) => `<div style="margin-top:5px;font-size:13px;color:${theme.sub};letter-spacing:0.01em">${esc(l)}</div>`)
     .join('');
-  return `<div style="text-align:${align};margin-top:18px">${titleLine}${meta}</div>`;
+  return `<div style="text-align:${align};margin-top:${CAP_TOP}px">${titleLine}${meta}</div>`;
 }
 
 // ── 작품 페이지 ──
@@ -1168,6 +1249,11 @@ export interface GridGeometry {
   aspectOf: (a: PortfolioImage) => number;
   /** 전체 작품의 중앙 비율 — 칸 높이의 기준 */
   median: number;
+  /**
+   * 대형 단독 장의 **캡션 기준선 칸** 높이 — 문서 전체에서 가장 긴 캡션(제목·보조 줄) 높이.
+   * 장마다 제 캡션만큼 잡으면 캡션 위치가 장마다 달라진다(§캡션 기준선). 한 번 재서 전 장이 같이 쓴다.
+   */
+  heroCapZone: number;
   /**
    * 포트폴리오의 **모든** 작품. 캡션 예약 높이를 전체에서 뽑으려고 들고 있다.
    * ⚠️ 페이지의 작품만 보고 예약하면 **장마다 작품 크기가 달라진다** — 실측에서 같은
@@ -1226,7 +1312,7 @@ function solveGrid(per: number, theme: PortfolioTheme, design: PdfDesign, geom: 
     if (p.empty) return 0;
     // 제목 줄 수 — 목록(메타 없음)은 렌더가 한 줄로 자르므로 추정도 한 줄이다
     const tCap = p.meta.length === 0 ? 1 : 3;
-    const tLines = p.title ? Math.min(tCap, Math.max(1, Math.ceil((artworkTitle(a).length * 18) / w))) : p.titleLines;
+    const tLines = p.title ? Math.min(tCap, Math.max(1, Math.ceil((p.head.length * 17) / w))) : p.titleLines;
     const mLines = Math.min(5, p.meta.reduce((n, l) => n + Math.max(1, Math.ceil((l.length * 13) / w)), 0));
     return CAP_TOP + tLines * CAP_TITLE_LINE + mLines * CAP_META_LINE + 24; // +24 SAFETY 쿠션
   };
@@ -1364,20 +1450,21 @@ function seriesOpenerPage(
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
   const paras = proseText(note).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
 
-  const colW = landscape ? Math.round(availW * 0.34) : Math.min(620, availW);
-  const titlePx = fitTitle(name, landscape ? 44 : 54, colW, 3, 28);
-  const noteH = paras.reduce((h, t) => h + estimateParaH(t, 15, 30, colW, 18), 0);
-  const headH = 18 + 20 + Math.ceil((name.length * titlePx) / colW) * Math.round(titlePx * 1.14) + 26 + noteH + 24;
+  const colW = landscape ? Math.round(availW * 0.34) : proseColW(PROSE_FONT, availW);
+  const titlePx = fitTitle(name, landscape ? 44 : 50, colW, 3, 28);
+  const noteH = paras.reduce((h, t) => h + estimateParaH(t, PROSE_FONT, PROSE_LINE, colW, 16), 0);
+  const headH = 14 + 16 + Math.ceil((name.length * titlePx) / colW) * Math.round(titlePx * 1.2) + 26 + noteH + 16;
 
   const cp = captionParts(work, false);
   const capH = cp.empty ? 0 : CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE + 16;
   const gap = landscape ? 56 : 40;
 
+  // 머리 — 회색 라벨 · 제목 · 소개. 강조색 막대는 쓰지 않는다(글 장 공통 문법).
   const head = `
-    <div style="font-size:12px;letter-spacing:0.5em;color:${theme.accent};font-weight:${isSerif ? 400 : 700}">SERIES</div>
-    <div style="margin-top:20px;${titleCss(theme, titlePx, theme.ink, isSerif ? '0.03em' : '-0.02em')}">${esc(name)}</div>
-    <div style="margin-top:26px;width:48px;height:2px;background:${theme.accent}"></div>
-    <div style="margin-top:24px">${paras.map((t) => `<p style="margin:0 0 16px;font-size:15px;line-height:2.0;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>`;
+    <div style="${eyebrowCss(theme)}">SERIES</div>
+    <div style="margin-top:16px;${proseTitleCss(theme, titlePx)}">${esc(name)}</div>
+    <div style="margin-top:26px">${paras.map((t) => `<p style="${proseParaCss(theme, PROSE_FONT, PROSE_LINE, 16)}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>`;
+  void isSerif;
 
   const shot = (w: number, h: number) => `
     <div style="width:${Math.round(w)}px;display:flex;flex-direction:column">
@@ -1392,19 +1479,82 @@ function seriesOpenerPage(
     const imgW = availW - colW - gap;
     const h = Math.min(avail - capH, imgW / a);
     if (h < 200) return null;
+    // 글은 윗선에 걸고, 그림은 오른쪽 칸 가운데
     return { label: `${name} 소개`, html: page(theme, data, `
-      <div style="display:flex;gap:${gap}px;align-items:center;height:${avail}px">
+      <div style="display:flex;gap:${gap}px;align-items:flex-start;height:${avail}px">
         <div style="width:${colW}px;flex:0 0 ${colW}px">${head}</div>
-        <div style="flex:1;min-width:0;display:flex;justify-content:center">${shot(Math.min(imgW, h * a), h)}</div>
+        <div style="flex:1;min-width:0;height:${avail}px;display:flex;align-items:center;justify-content:center">${shot(Math.min(imgW, h * a), h)}</div>
       </div>`, { running: name }) };
   }
   const h = Math.min(avail - headH - gap - capH, availW / a);
   // 그림이 이만큼도 안 남으면 여는 장으로 삼을 이유가 없다 — 글 페이지로 돌린다.
   if (h < 260) return null;
   return { label: `${name} 소개`, html: page(theme, data, `
-    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:center;gap:${gap}px">
+    <div style="height:${avail}px;display:flex;flex-direction:column;gap:${gap}px">
       <div>${head}</div>
-      <div style="display:flex;justify-content:center">${shot(Math.min(availW, h * a), h)}</div>
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${shot(Math.min(availW, h * a), h)}</div>
+    </div>`, { running: name }) };
+}
+
+/**
+ * 시리즈 여는 장 — **수동 편집용**: 제목·소개 + 그 시리즈 작품의 **썸네일 띠**.
+ *
+ * 수동 편집은 사용자가 고른 배치가 곧 의도라 첫 작품을 대표작으로 빼내지 않는다(§32). 그렇다고 예전처럼
+ * 제목 한 줄 + 소개 한 문장만 둔 장을 만들면 지면의 90% 가 빈다(실측 C — 20권에서 거의 빈 장의 두 번째 원인).
+ * 도록이 장을 열 때 쓰는 문법이 이것이다: **제목 + 그 장에 실릴 도판의 차례**(콘택트시트). 보는 사람은
+ * "이 시리즈에 몇 점이 있고 어떤 얼굴인지"를 한눈에 얻고, 뒤 장에서 하나씩 크게 본다.
+ * 썸네일은 최대 12점(2줄). 작품 수를 세어 적지는 않는다 — 보이는 걸 다시 말하는 건 잔소리다.
+ */
+function seriesIndexPage(
+  theme: PortfolioTheme, data: PortfolioBookData, name: string, note: string,
+  works: PortfolioImage[], geom: GridGeometry, numberOf: (a: PortfolioImage) => number,
+): PortfolioPage | null {
+  const shown = works.filter((w) => w.url).slice(0, 12);
+  if (shown.length === 0) return null;
+  const avail = availH(theme);
+  const availW = theme.page.w - PAD(theme).x * 2;
+  const landscape = theme.page.w >= theme.page.h;
+  const paras = proseText(note).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+
+  const colW = proseColW(PROSE_FONT, landscape ? Math.round(availW * 0.6) : availW);
+  const titlePx = fitTitle(name, landscape ? 44 : 50, colW, 3, 28);
+  const noteH = paras.reduce((h, t) => h + estimateParaH(t, PROSE_FONT, PROSE_LINE, colW, 16), 0);
+  const headH = 14 + 16 + Math.ceil((name.length * titlePx) / colW) * Math.round(titlePx * 1.2) + 26 + noteH;
+  const gap = 40;
+  // 띠는 지면의 40% 까지 — 머리와 띠 사이 남는 자리가 이 장의 여백이다(빈 게 아니라 쉼).
+  const stripMax = Math.round(avail * 0.4);
+  const stripH = Math.min(stripMax, avail - headH - gap);
+  if (stripH < 120) return null;   // 소개가 너무 길면 글 장으로 — 억지로 넣으면 잘린다
+
+  // 6점까지 한 줄, 그 이상은 두 줄로 **고르게**(7점 → 4+3, 6+1 로 두면 둘째 줄에 한 점이 고아가 된다).
+  const rows = shown.length <= 6 ? 1 : 2;
+  const cols = Math.ceil(shown.length / rows);
+  const rowSizes = balancedSplit(shown.length, cols);
+  const thumbGap = 18, capH = 20;
+  const rowH = (stripH - (rows - 1) * thumbGap) / rows - capH;
+  const cellW = (availW - (cols - 1) * thumbGap) / cols;
+  const cell = (a: PortfolioImage) => {
+    const aspect = Math.min(4, Math.max(0.25, geom.aspectOf(a)));
+    const w = Math.min(cellW, rowH * aspect);
+    return `
+      <div style="flex:0 0 ${Math.round(cellW)}px;max-width:${Math.round(cellW)}px;display:flex;flex-direction:column;align-items:flex-start">
+        <div style="height:${Math.round(rowH)}px;width:${Math.round(w)}px;display:flex;align-items:flex-end">
+          ${img(a.url, `max-width:100%;max-height:${Math.round(rowH)}px;object-fit:contain;display:block`)}
+        </div>
+        <div style="margin-top:6px;font-size:11px;line-height:14px;color:${theme.sub};letter-spacing:0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${numberOf(a)}${hasTitle(a) ? ` · ${esc(artworkTitle(a))}` : ''}</div>
+      </div>`;
+  };
+  const rowsHtml = take(shown, rowSizes).map((r) => `
+    <div style="display:flex;gap:${thumbGap}px;align-items:flex-end">${r.map(cell).join('')}</div>`).join('');
+
+  return { label: `${name} 소개`, html: page(theme, data, `
+    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:space-between">
+      <div style="max-width:${colW}px">
+        <div style="${eyebrowCss(theme)}">SERIES</div>
+        <div style="margin-top:16px;${proseTitleCss(theme, titlePx)}">${esc(name)}</div>
+        <div style="margin-top:26px">${paras.map((t) => `<p style="${proseParaCss(theme, PROSE_FONT, PROSE_LINE, 16)}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:${thumbGap}px">${rowsHtml}</div>
     </div>`, { running: name }) };
 }
 
@@ -1424,7 +1574,7 @@ function featureWorksPage(
 ): PortfolioPage[] {
   const [main, ...rest] = items;
   if (!main) return [];
-  if (rest.length === 0) return heroWorksPage(theme, data, main, label, running, design);
+  if (rest.length === 0) return heroWorksPage(theme, data, main, label, running, design, geom);
 
   const avail = availH(theme);
   const availW = theme.page.w - PAD(theme).x * 2;
@@ -1440,7 +1590,7 @@ function featureWorksPage(
   const capOf = (a: PortfolioImage, w: number, maxMeta: number) => {
     const p = captionParts(a, minimalCap ? 'minimal' : 'full');
     if (p.empty) return 0;
-    const tLines = p.title ? Math.min(3, Math.max(1, Math.ceil((artworkTitle(a).length * 18) / Math.max(80, w)))) : p.titleLines;
+    const tLines = p.title ? Math.min(3, Math.max(1, Math.ceil((p.head.length * 17) / Math.max(80, w)))) : p.titleLines;
     const mLines = p.meta.slice(0, maxMeta).reduce((n, l) => n + Math.max(1, Math.ceil((l.length * 13) / Math.max(80, w))), 0);
     return CAP_TOP + tLines * CAP_TITLE_LINE + Math.min(5, mLines) * CAP_META_LINE + 12;
   };
@@ -1542,7 +1692,8 @@ export function gridGeometry(data: PortfolioBookData): GridGeometry {
   };
   const sorted = data.images.map(aspectOf).sort((x, y) => x - y);
   const median = sorted.length ? sorted[Math.floor(sorted.length / 2)]! : 1;
-  return { aspectOf, median, all: data.images };
+  const heroCapZone = Math.max(0, ...data.images.map(captionBlockH));
+  return { aspectOf, median, heroCapZone, all: data.images };
 }
 
 /**
@@ -1578,10 +1729,18 @@ const take = (items: PortfolioImage[], sizes: number[]): PortfolioImage[][] => {
  *    실측 지면점유 27%. 같은 두 점을 '크게+작게'로 놓으면 32% 이고 무엇보다 **의도가 보인다**.
  *    사용자가 '2점씩'을 직접 고른 경우(want==='duo')는 그대로 존중한다(§32).
  */
-const fitComposition = (want: WorksLayout, n: number): WorksLayout =>
+/**
+ * ⚠️ 남은 3점을 4점 격자에 넣지 말 것 — 2+1 로 나뉘어 **아래 한 점이 고아**가 된다(실측 자동 편집 18쪽 중 2장).
+ *    3점은 '크게+작게'가 정확히 그 수를 위한 구성이다.
+ * ⚠️ 자동 편집에서 남은 2점은 **'2점씩'(나란히/위아래 격자)** 으로 — '크게+작게'를 두 점에 쓰면 큰 것 하나와
+ *    작은 것 하나가 세로로 쌓여 좌우가 통째로 비고(실측 F), 왜 한 점만 작은지 읽히지 않는다.
+ *    사용자가 '크게+작게'를 **직접** 골랐으면 그대로 존중한다(§32).
+ */
+const fitComposition = (want: WorksLayout, n: number, auto = false): WorksLayout =>
   n >= WORKS_PER_PAGE[want] ? want
     : n === 1 ? (want === 'label' || want === 'full' ? want : 'hero')
-      : n === 2 ? (want === 'duo' ? 'duo' : 'feature') : want;
+      : n === 2 ? (want === 'duo' || auto ? 'duo' : want === 'feature' ? 'feature' : 'duo')
+        : n === 3 ? (auto && (want === 'grid' || want === 'index') ? 'feature' : want) : want;
 
 /**
  * 이 지면·이 작품 비율에서 **작품이 가장 크게 실리는 격자**를 재서 고른다.
@@ -1658,7 +1817,7 @@ export function planWorkPages(
     const per = WORKS_PER_PAGE[want];
     // 남은 게 정원보다 적으면 남은 수에 맞는 구성으로 — 빈 칸이 생기지 않게.
     if (rest.length < per) {
-      plans.push({ composition: fitComposition(want, rest.length), items: rest });
+      plans.push({ composition: fitComposition(want, rest.length, true), items: rest });
       break;
     }
     // 정원대로 담으면 **다음 장에 1점만** 남는 경우: 이번 장을 한 점 줄여 2+2 로 나눈다.
@@ -1667,7 +1826,7 @@ export function planWorkPages(
     const n = (leftover === 1 && per >= 2 && rest.length >= 3) ? per - 1
       : (leftover > 0 && leftover < nextPer * 0.5 && per >= 2) ? Math.max(2, Math.ceil(rest.length / 2))
         : per;
-    plans.push({ composition: fitComposition(want, n), items: rest.slice(0, n) });
+    plans.push({ composition: fitComposition(want, n, true), items: rest.slice(0, n) });
     rest = rest.slice(n);
   }
   return plans;
@@ -1687,10 +1846,10 @@ function worksPages(theme: PortfolioTheme, data: PortfolioBookData, items: Portf
 
   const out = ((): PortfolioPage[] => {
     switch (composition) {
-      case 'hero': return heroWorksPage(theme, data, items[0]!, label, running, design);
+      case 'hero': return heroWorksPage(theme, data, items[0]!, label, running, design, geom);
       case 'label': return labelHasContent(items[0]!)
-        ? labelWorksPage(theme, data, items[0]!, label, running, design)
-        : heroWorksPage(theme, data, items[0]!, label, running, design);
+        ? labelWorksPage(theme, data, items[0]!, label, running, design, geom)
+        : heroWorksPage(theme, data, items[0]!, label, running, design, geom);
       case 'full': return fullWorksPage(theme, data, items[0]!, label, running);
       case 'feature': return featureWorksPage(theme, data, items, label, running, design, geom);
       default: return gridWorksPage(theme, data, items, label, running, composition, design, geom);
@@ -1698,24 +1857,30 @@ function worksPages(theme: PortfolioTheme, data: PortfolioBookData, items: Portf
   })();
   // 첫 장이 작품 장이고, 뒤따르는 '이야기' 장은 글이다.
   return out.map((p, i) => (i === 0
-    ? { ...p, kind: 'works' as const, works: items.length, composition }
+    ? { ...p, kind: 'works' as const, works: items.length, composition, workIds: items.map((x) => x.id) }
     : { ...p, kind: 'prose' as const }));
 }
 
-// 대형 단독 — 회화 한 점을 크게 세로 중앙, 캡션(+설명옵션)은 아래.
-// 설명 '전체'는 작품 페이지엔 2줄 요약을 두고 **다음 글 페이지**로 전문을 잇는다(뮤지엄 라벨과 동일, 잘림 방지).
-function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: PortfolioImage, label: string, running: string | undefined, design: PdfDesign): PortfolioPage[] {
+// 대형 단독 — 회화 한 점을 크게, 캡션은 **아래 기준선**에.
+//
+// ## 캡션 기준선 (2026-09-16 지면 체계 v2)
+// 예전엔 그림+캡션을 한 덩어리로 세로 가운데 정렬했다. 그러면 캡션 위치가 **그림 높이에 따라 장마다 달라진다**
+// — 세로 그림 장에서는 아래쪽에, 가로 그림 장에서는 한가운데에. 골든(ERICA)은 캡션을 아래 여백의 **한 줄에 고정**해
+// 책 전체가 한 선으로 꿰어진다. 그게 '일관성'이 눈에 보이는 방식이다.
+// 그래서 캡션 칸(`capZone`)을 **문서 전체에서 가장 긴 캡션** 높이로 잡아 바닥에 고정하고, 그림은 그 위 상자에서
+// 가운데 정렬한다. 캡션이 짧은 장은 칸 안에서 바닥에 붙어(justify-content:flex-end) 마지막 줄이 같은 높이에 온다.
+//
+// ## 설명이 길 때
+// 설명은 캡션 아래에 잇되, **그림을 지면의 55% 까지만 양보**하고 그래도 남으면 뒤 글 장으로 넘긴다(자르지 않는다).
+// 예전 상한(22%)은 두세 줄만 넘쳐도 새 장을 만들어 27점이 47쪽이 됐다(실측 A: 두 줄짜리 빈 장 7개).
+function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: PortfolioImage, label: string, running: string | undefined, design: PdfDesign, geom: GridGeometry): PortfolioPage[] {
   const avail = availH(theme);
   const descOn = design.desc !== 'none';
   const capW = theme.page.w - PAD(theme).x * 2;
-  const cp = captionParts(a, false);
-  // 작품 **아래** 설명은 지면의 22% 까지만 — 주인공은 작품이다. 넘는 글은 자르지 않고 뒤 장으로 잇는다.
   const raw = descOn ? String(a.description ?? '').trim() : '';
-  const below = descSplit(raw, capW, Math.max(2, Math.floor((avail * 0.22) / DESC_LINE_H)));
-  const capH = cp.empty && !below.head ? 0
-    : CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE
-      + (below.lines ? CAP_DESC_TOP + below.lines * DESC_LINE_H : 0) + 24;
-  const imgH = Math.max(120, avail - capH);
+  const ownCap = captionBlockH(a);
+  const landscape = theme.page.w >= theme.page.h;
+  const aspect = Math.min(4, Math.max(0.25, geom.aspectOf(a)));
 
   // ── 가로 지면 + 세로 작품이면 캡션을 **옆으로** ────────────────────────────
   // ⚠️ 캡션을 아래 두면 그림이 **높이에서 먼저 걸린다**. 가로 지면(1414×1000)에서 세로 작품은
@@ -1723,48 +1888,66 @@ function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
   //    모양이 어긋난 만큼을 캡션 자리까지 더 빼앗기는 것이다. 옆에 두면 그림이 높이를 다 쓴다
   //    (실측 24% → 33%, 같은 작품·같은 판형). 가로 작품에는 적용하지 않는다 — 그쪽은 폭에서
   //    걸리므로 캡션을 옆에 두면 오히려 그림이 좁아진다.
-  const landscape = theme.page.w >= theme.page.h;
-  const aspect = Math.min(4, Math.max(0.25, artworkFacts(a, data.aspects ?? null).aspect));
-  const sideGap = 48, sideCapW = 300;
-  const sideImgW = Math.min(capW - sideGap - sideCapW, avail * aspect);
+  const sideGap = 48;
+  let sideCapW = 300;
+  let sideImgW = Math.min(capW - sideGap - sideCapW, avail * aspect);
   // 그림이 이보다 좁아지면 옆 캡션이 그림을 눌러 버린다 — 그럴 바엔 아래가 낫다.
-  const sideCap = landscape && capH > 0 && aspect < 1.15 && sideImgW > 260;
+  const sideCap = landscape && (ownCap > 0 || !!raw) && aspect < 1.15 && sideImgW > 260;
   // 옆 칸은 지면 높이를 통째로 쓸 수 있고 **설명을 늘려도 작품이 작아지지 않는다**(그림 폭은 이미 정해져 있다).
-  const side = descSplit(raw, sideCapW, Math.max(2, Math.floor(
-    (avail - (CAP_TOP + cp.titleLines * CAP_TITLE_LINE + cp.meta.length * CAP_META_LINE + 24)) / DESC_LINE_H)));
-  if (sideCap) {
+  const sideLines = Math.max(2, Math.floor((avail - ownCap - 24) / DESC_LINE_H));
+  let side = sideCap ? descSplit(raw, sideCapW, sideLines) : null;
+  // 300px 칸(한 줄 22자)에서 몇 줄이 넘치면 칸을 지면의 46% 까지 넓혀 본다 — 그림이 조금 좁아지는 쪽이 두 줄짜리 이어짐 장보다 낫다
+  if (side?.rest) {
+    const wideCol = Math.round(capW * 0.46);
+    const wider = descSplit(raw, wideCol, sideLines);
+    if (!wider.rest) { side = wider; sideCapW = wideCol; sideImgW = Math.min(capW - sideGap - sideCapW, avail * aspect); }
+  }
+  // ── 아래 캡션(기준선) — 옆 칸에서 설명이 넘치면 아래 배치로 갈아타 한 장에 담을 수 있는지도 본다 ──
+  const zone = Math.max(geom.heroCapZone, ownCap);
+  const gap = 8, SAFETY = 24;
+  // 그림은 지면의 55% 까지만 양보한다. 다만 **그래도 몇 줄이 남아 새 장이 생길 판이면** 40% 까지 한 번 더 양보해
+  // 한 장에 다 담는다 — 두세 줄짜리 이어짐 장이 그림 15% 보다 훨씬 나쁘다(실측: 27점 중 3점이 그랬다).
+  // 40% 로도 안 들어가는 글은 진짜 긴 글이라 뒤 장으로 잇는다(그 장은 충분히 찬다).
+  const linesFor = (floorRatio: number) =>
+    Math.max(2, Math.floor((avail - zone - gap - SAFETY - Math.round(avail * floorRatio) - CAP_DESC_TOP) / DESC_LINE_H));
+  let below = descSplit(raw, capW, linesFor(0.55));
+  if (below.rest) { const deeper = descSplit(raw, capW, linesFor(0.40)); if (!deeper.rest) below = deeper; }
+
+  if (side && (!side.rest || below.rest)) {
+    // 캡션 칸은 그림과 같은 높이로 두고 글을 **그림 바닥선**에 맞춘다 — 한가운데 떠 있는 글보다 그림에 붙어 읽힌다.
+    const shownH = Math.round(Math.min(avail, sideImgW / aspect));
     const sideInner = `
       <div style="height:${avail}px;display:flex;align-items:center;gap:${sideGap}px">
         <div style="flex:0 0 ${Math.round(sideImgW)}px;display:flex;align-items:center;justify-content:center">
           ${img(a.url, `max-width:100%;max-height:${avail}px;object-fit:contain;display:block`)}
         </div>
-        <div style="flex:1;min-width:0">
+        <div style="flex:1;min-width:0;height:${shownH}px;display:flex;flex-direction:column;justify-content:flex-end">
           ${captionHtml(theme, a, 'left')}${descHtml(theme, side.head, 'left')}
         </div>
       </div>`;
     const sidePage: PortfolioPage = { label, html: page(theme, data, sideInner, { running: running || undefined }) };
     return side.rest
-      ? [sidePage, ...prosePages(theme, data, 'NOTE', artworkTitle(a), side.rest, `${artworkTitle(a)} 이야기`)]
+      ? [sidePage, ...prosePages(theme, data, 'NOTE', artworkTitle(a), side.rest, `${artworkTitle(a)} 이야기`, { continuation: true })]
       : [sidePage];
   }
 
-  // ⚠️ 이미지 상자에 `height` 를 못박지 말 것 — **`max-height` 여야 한다.**
-  //    정사각·가로 작품은 폭에서 먼저 걸리므로(세로 지면에서 흔하다) 고정 높이 상자 안에서
-  //    위아래로 뜨고, 그만큼 캡션이 작품에서 멀어진다. 실데이터 실측(2026-08-31):
-  //    작품 아래 **145~185px** 이 비어 캡션이 따로 노는 글처럼 보였다 — 미술관 캡션은
-  //    작품 바로 아래 붙는다. 상자를 내용 높이로 두면 바깥 flex 가 작품+캡션을 **한 덩어리로**
-  //    가운데 정렬한다. 넘침은 `max-height` 가 그대로 막는다.
+  const descH = below.lines ? CAP_DESC_TOP + below.lines * DESC_LINE_H : 0;
+  const imgH = Math.max(120, avail - zone - descH - gap - SAFETY);
+  const capAlign: 'center' | 'left' = design.worksCaption === 'left' ? 'left' : 'center';
+
   const inner = `
-    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px">
-      <div style="max-height:${imgH}px;width:100%;display:flex;align-items:center;justify-content:center">
+    <div style="height:${avail}px;display:flex;flex-direction:column">
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:100%;max-height:${imgH}px;object-fit:contain;display:block`)}
       </div>
-      <div style="width:100%">${captionHtml(theme, a, 'center')}${descHtml(theme, below.head, 'center')}</div>
+      <div style="flex:0 0 auto;min-height:${zone}px;width:100%;display:flex;flex-direction:column;justify-content:flex-end">
+        ${captionHtml(theme, a, capAlign)}${descHtml(theme, below.head, capAlign)}
+      </div>
     </div>`;
   const first: PortfolioPage = { label, html: page(theme, data, inner, { running: running || undefined }) };
   // 지면에 못 담은 나머지는 **자르지 않고** 뒤 글 페이지로 잇는다.
   return below.rest
-    ? [first, ...prosePages(theme, data, 'NOTE', artworkTitle(a), below.rest, `${artworkTitle(a)} 이야기`)]
+    ? [first, ...prosePages(theme, data, 'NOTE', artworkTitle(a), below.rest, `${artworkTitle(a)} 이야기`, { continuation: true })]
     : [first];
 }
 
@@ -1772,7 +1955,9 @@ function heroWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
 function fullWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: PortfolioImage, label: string, running?: string): PortfolioPage[] {
   const { w, h } = theme.page;
   // ⚠️ `artworkTitle()` 을 그대로 쓰면 제목 없는 작품에 '무제' 가 찍힌다 — 실데이터의 97% 다.
-  const meta = [hasTitle(a) ? artworkTitle(a) : '', a.year].filter(Boolean).join(' · ');
+  //    첫 줄 규칙(제목, 연도)은 captionParts 하나가 정한다.
+  const cp = captionParts(a, 'minimal');
+  const meta = captionStyle === 'kr' ? cp.head : [cp.head, displayYear(a.year)].filter(Boolean).join(' · ');
   const inner = `
     <div style="position:absolute;left:64px;right:64px;top:64px;bottom:96px;display:flex;align-items:center;justify-content:center">
       ${img(a.url, `max-width:100%;max-height:100%;object-fit:contain;display:block`)}
@@ -1782,67 +1967,87 @@ function fullWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
   return [{ label, html: page(theme, data, inner, { running, bare: true }) }];
 }
 
-// 뮤지엄 라벨 — 작품(좌) + 캡션 블록(우: 제목 크게·재료·크기·연도·상태·설명). 긴 설명은 뒤 글페이지로 넘긴다.
-function labelWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: PortfolioImage, label: string, running: string | undefined, design: PdfDesign): PortfolioPage[] {
+// 뮤지엄 라벨 — 작품 + 캡션 블록(제목 크게·연도·재료·크기·상태·설명). 긴 설명은 뒤 글페이지로 넘긴다.
+//
+// ## 라벨을 옆에 둘지 아래에 둘지는 **판형이 아니라 그림 모양**으로 가른다 (2026-09-16)
+// 2026-09-13 규칙("세로 지면은 아래, 가로 지면은 옆")은 세로 지면의 **세로 작품**에서 틀렸다 — 그림을 지면 높이만큼
+// 세우면 오른쪽에 300px 넘는 빈 칸이 남는데, 라벨을 아래에 두느라 그 칸은 비우고 그림은 34% 칸에 밀린 설명 때문에
+// 줄어들었고, 두세 줄 넘친 설명이 **빈 장**을 만들었다(실측 A: 27점 → 47쪽). 그림을 세워도 옆에 ≥300px 이 남으면
+// 옆 칸을 쓴다 — 그러면 설명이 길어져도 그림이 안 줄고, 넘침 장이 거의 사라진다. 가로 그림은 예전처럼 아래.
+function labelWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: PortfolioImage, label: string, running: string | undefined, design: PdfDesign, geom: GridGeometry): PortfolioPage[] {
   const { w } = theme.page;
   const avail = availH(theme);
   const px = PAD(theme).x;
   const contentW = w - px * 2;
-  // ⚠️⚠️ **세로 지면에서는 라벨을 옆이 아니라 아래에 둔다** (2026-09-13).
-  //    옆에 두면 작품이 본문 폭의 56% 안에 갇히고, 세로 작품은 **지면 높이의 절반도 못 쓴다** —
-  //    실측(실서버 3명): 세로 판형 뮤지엄 라벨의 작품 지면점유가 **15.5%** 였다(골든 42%).
-  //    아래에 두면 작품이 폭을 다 쓰고 남는 높이를 가져간다(실측 15.5% → 36%).
-  //    실제 미술관 라벨도 작품 옆이 아니라 **작품 아래**에 붙는다. 가로 지면에서는 반대다 —
-  //    거긴 높이가 먼저 걸리므로 옆에 두는 게 맞다(그래서 판형으로 가른다).
-  const stackLabel = theme.page.h > theme.page.w;
-  const imgW = stackLabel ? contentW : Math.round(contentW * 0.56);
-  const colW = stackLabel ? contentW : contentW - imgW - 56;
+  const aspect = Math.min(4, Math.max(0.25, geom.aspectOf(a)));
+  const sideGap = 56, minCol = 300;
+  const sideFits = avail * aspect + sideGap + minCol <= contentW;
+  let stackLabel = !sideFits;
+  let imgW = stackLabel ? contentW : Math.round(Math.min(avail * aspect, contentW - sideGap - minCol));
+  let colW = stackLabel ? contentW : contentW - imgW - sideGap;
   const st = statusLabel(a);
-  const lines = captionLines(a);
+  const lines = labelLines(a);
   const desc = design.desc !== 'none' ? String(a.description ?? '').trim() : '';
   // 캡션 블록(제목·메타·상태) 높이 대략 예약 후, 남는 만큼 설명을 담고 나머지는 글페이지로.
   // ⚠️ 제목이 없으면 그 줄을 안 그리므로 예약도 빼야 한다(안 그러면 헛자리가 남는다).
   const showTitle = hasTitle(a);
-  const CAP_BLOCK = 60 + (showTitle ? 26 : 0) + lines.length * 30 + (st ? 24 : 0);
-  // 아래에 둘 땐 라벨이 지면을 너무 먹지 않게 한정한다 — 주인공은 작품이다.
-  const room = stackLabel ? Math.max(0, Math.round(avail * 0.34) - CAP_BLOCK) : Math.max(0, avail - CAP_BLOCK - 40);
+  const CAP_BLOCK = 44 + (showTitle ? 34 : 0) + lines.length * 28 + (st ? 24 : 0);
+  const DESC_L = 25; // 14 × 1.8
+  const descParas = desc ? proseText(desc).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean) : [];
+  // 아래에 둘 땐 라벨이 지면을 너무 먹지 않게 한정한다 — 주인공은 작품이다. 그림은 55% 까지만 양보한다.
   // 라벨을 아래 두면 설명이 본문 폭을 다 써서 한 줄이 88자가 된다 — 산문 상한을 건다.
-  const descW = stackLabel ? proseColW(14, colW) : colW;
-  const parts = desc
-    ? splitParagraphs(proseText(desc).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), room, 1e9, 14, 27, descW, 14)
-    : [[]];
+  const stackedRoom = (floor: number) => Math.max(0, Math.round(avail * (1 - floor)) - CAP_BLOCK);
+  const stackedW = proseColW(14, contentW);
+  const splitInto = (room: number, w: number) => (desc ? splitParagraphs(descParas, room, 1e9, 14, DESC_L, w, 14) : [[]]);
+  let descW = stackLabel ? stackedW : colW;
+  const sideRoom = Math.max(0, avail - CAP_BLOCK - 40);
+  let parts = splitInto(stackLabel ? stackedRoom(0.55) : sideRoom, descW);
+  // 몇 줄이 남아 새 장이 생길 판이면 순서대로 양보한다 — 두세 줄짜리 이어짐 장이 그림 조금 줄어드는 것보다 훨씬 나쁘다.
+  //  ① 옆 칸이면 **칸을 지면의 46% 까지 넓힌다**(그림은 그만큼만 좁아진다; 300px 칸은 한 줄 22자라 금방 넘친다)
+  //  ② 그래도 안 되면 **아래 배치로 갈아타고 그림을 40% 까지** 양보한다(대형 단독과 같은 규칙)
+  if (parts.length > 1 && !stackLabel) {
+    const wideCol = Math.round(contentW * 0.46);
+    const wider = splitInto(sideRoom, wideCol);
+    if (wider.length === 1) { parts = wider; colW = wideCol; descW = wideCol; imgW = contentW - wideCol - sideGap; }
+  }
+  if (parts.length > 1) {
+    const deeper = splitInto(stackedRoom(0.4), stackedW);
+    if (deeper.length === 1) { parts = deeper; stackLabel = true; imgW = contentW; colW = contentW; descW = stackedW; }
+  }
   const head = parts[0] ?? [];
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
+  // 라벨 표식 — 짧은 잉크 룰 하나. 강조색 막대(3px)는 지면에 색을 뿌려 템플릿으로 읽혔다(2026-09-16).
   const capBlock = `
-    <div style="width:44px;height:3px;background:${theme.accent};margin-bottom:22px"></div>
-    ${showTitle ? `<div style="font-family:${theme.display};font-size:26px;font-weight:${isSerif ? 400 : 700};letter-spacing:0.02em;line-height:1.3;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere">${esc(artworkTitle(a))}</div>` : ''}
-    ${lines.length ? `<div style="margin-top:18px;font-size:14px;line-height:2.0;color:${theme.sub}">${lines.map((l) => esc(l)).join('<br/>')}</div>` : ''}
-    ${st ? `<div style="margin-top:10px;font-size:13px;font-weight:700;color:${theme.accent};letter-spacing:0.04em">● ${esc(st)}</div>` : ''}
-    ${head.length ? `<div style="margin-top:26px;padding-top:22px;border-top:1px solid ${theme.line};max-width:${descW}px">
-      ${head.map((t) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.9;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${theme.proseAlign ?? 'left'}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}
+    <div style="width:44px;height:2px;background:${theme.ink};margin-bottom:20px"></div>
+    ${showTitle ? `<div style="font-family:${theme.display};font-size:24px;font-weight:${isSerif ? 400 : 600};letter-spacing:0.01em;line-height:1.3;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere">${esc(artworkTitle(a))}</div>` : ''}
+    ${lines.length ? `<div style="margin-top:14px;font-size:14px;line-height:2.0;color:${theme.sub}">${lines.map((l) => esc(l)).join('<br/>')}</div>` : ''}
+    ${st ? `<div style="margin-top:10px;font-size:13px;font-weight:600;color:${theme.accent};letter-spacing:0.02em">● ${esc(st)}</div>` : ''}
+    ${head.length ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid ${theme.line};max-width:${descW}px">
+      ${head.map((t) => `<p style="margin:0 0 12px;font-size:14px;line-height:${DESC_L}px;color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere;text-align:${stackLabel ? (theme.proseAlign ?? 'left') : 'left'}">${esc(t).replace(/\n/g, '<br/>')}</p>`).join('')}
     </div>` : ''}`;
   const gap = 34;
-  const descH = head.reduce((h2, t) => h2 + estimateParaH(t, 14, 27, descW, 12), 0) + (head.length ? 48 : 0);
+  const descH = head.reduce((h2, t) => h2 + estimateParaH(t, 14, DESC_L, descW, 12), 0) + (head.length ? 44 : 0);
   const imgH = Math.max(200, avail - CAP_BLOCK - descH - gap);
+  const shownH = Math.round(Math.min(avail, imgW / aspect));
   const inner = stackLabel
     ? `
-    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:center;gap:${gap}px">
-      <div style="display:flex;align-items:center;justify-content:center">
+    <div style="height:${avail}px;display:flex;flex-direction:column;justify-content:flex-end;gap:${gap}px">
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:100%;max-height:${imgH}px;object-fit:contain;display:block`)}
       </div>
       <div>${capBlock}</div>
     </div>`
     : `
-    <div style="display:flex;gap:56px;align-items:center;height:${avail}px">
-      <div style="width:${imgW}px;height:${avail}px;display:flex;align-items:center;justify-content:center">
+    <div style="display:flex;gap:${sideGap}px;align-items:center;height:${avail}px">
+      <div style="flex:0 0 ${imgW}px;height:${avail}px;display:flex;align-items:center;justify-content:center">
         ${img(a.url, `max-width:${imgW}px;max-height:${avail}px;object-fit:contain;display:block`)}
       </div>
-      <div style="flex:1;min-width:0">${capBlock}</div>
+      <div style="flex:1;min-width:0;height:${shownH}px;display:flex;flex-direction:column;justify-content:flex-end">${capBlock}</div>
     </div>`;
   const firstHtml = page(theme, data, inner, { running: running || undefined });
   const rest = parts.slice(1).flat();
   return rest.length
-    ? [{ label, html: firstHtml }, ...prosePages(theme, data, 'NOTE', artworkTitle(a), rest.join('\n\n'), `${artworkTitle(a)} 이야기`)]
+    ? [{ label, html: firstHtml }, ...prosePages(theme, data, 'NOTE', artworkTitle(a), rest.join('\n\n'), `${artworkTitle(a)} 이야기`, { continuation: true })]
     : [{ label, html: firstHtml }];
 }
 
@@ -1940,7 +2145,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   // 화면에는 `\n`이 `<br/>`로 그대로 나가므로 짧은 줄이 여럿인 약력(학력/수상을 줄 나눠 적는 흔한 형태)에서
   // 90~136px 씩 모자랐고, 그만큼 경력이 아래로 넘쳐 **잘려 나갔다**(4개 포맷 전부, 실측).
   // 글 페이지가 쓰는 estimateParaH 와 같은 규칙으로 통일한다.
-  const BIO_FONT = 14, BIO_LINE = 27, BIO_GAP = 16;
+  const BIO_FONT = 14, BIO_LINE = 25, BIO_GAP = 16;   // 14 × 1.8 — 산문 행간 규칙과 같다
   // 약력도 산문이다 — 본문 폭을 다 쓰면 가로 판형에서 한 줄이 69자가 된다(실측).
   const bioW = proseColW(BIO_FONT, twoCol ? 900 : contentW);
   const bioH = bio ? estimateParaH(bio, BIO_FONT, BIO_LINE, bioW, BIO_GAP) : 0;
@@ -1977,11 +2182,11 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   return [...bioPages, ...laid.map((cols2, pi) => ({
     label: pi === 0 ? 'CV' : `CV (${pi + 1})`,
     html: page(theme, data, `
-      <div style="font-size:12px;letter-spacing:0.34em;color:${theme.accent};font-weight:700">CURRICULUM VITAE${pi > 0 ? ' (계속)' : ''}</div>
+      <div style="${eyebrowCss(theme)}">CURRICULUM VITAE${pi > 0 ? ' · 계속' : ''}</div>
       ${pi === 0
-        ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 800};font-family:${theme.display}">${esc(displayName(data.user))}</div>
-           ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:14px;line-height:1.9;color:${theme.ink};max-width:${bioW}px;text-align:${theme.proseAlign ?? 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
-        : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
+        ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display}">${esc(displayName(data.user))}</div>
+           ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:${BIO_FONT}px;line-height:${BIO_LINE}px;color:${theme.ink};max-width:${bioW}px;text-align:${theme.proseAlign ?? 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
+        : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 600};font-family:${theme.display};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
       <div style="margin-top:30px;display:flex;gap:${gap}px;align-items:flex-start">
         ${Array.from({ length: cols }, (_, ci) =>
           `<div style="flex:1;min-width:0">${(cols2[ci] ?? []).map(blockHtml).join('')}</div>`).join('')}
@@ -1989,33 +2194,124 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   }))];
 }
 
-// ── 연락처 (마지막 장) ──
-function contactHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
+// ── 작품 목록 (List of Works) ──
+/**
+ * 도록의 관례 — 마지막에 실린 작품을 **썸네일·번호·쪽번호**로 한 번 더 보여준다.
+ * 심사자가 "12번 작품" 이라고 부를 수 있고, 27점을 한 장에 훑을 수 있다(골든: 아라야조 마지막 장).
+ * 작품이 6점 미만이면 만들지 않는다(훑을 것이 없다). 쪽번호는 앞 장들이 확정된 뒤에 안다 — 그래서 CV 앞에 온다.
+ */
+function worksIndexPages(theme: PortfolioTheme, data: PortfolioBookData, pageOf: Map<number, number>, geom: GridGeometry): PortfolioPage[] {
+  const works = data.images.filter((w) => w.url);
+  if (works.length < 6) return [];
+  const avail = availH(theme);
+  const availW = theme.page.w - PAD(theme).x * 2;
+  const landscape = theme.page.w >= theme.page.h;
+  const gap = landscape ? 28 : 24, rowGap = 26;
+  const capH = 36;                      // 번호·제목 한 줄 + 쪽 한 줄
+  const headH = 14 + 12 + 40 + 30;
+  // 열 수는 **한 장에 다 들어가는 가장 적은 열**로 — 27점을 4열로 두면 둘째 장에 7점만 남아 헐거워진다(실측).
+  // 6열이면 5줄로 한 장에 든다. 그래도 안 들어가면(작품이 아주 많으면) 기본 열로 나눈다.
+  const fitCols = (cols: number) => {
+    const cw = (availW - (cols - 1) * gap) / cols;
+    const th = Math.round(cw * 0.82);
+    const rows = Math.max(1, Math.floor((avail - headH + rowGap) / (th + capH + rowGap)));
+    return { cols, cellW: cw, thumbH: th, perPage: rows * cols };
+  };
+  const baseCols = landscape ? 6 : 4;
+  const onePage = [baseCols, baseCols + 1, baseCols + 2, baseCols + 3].map(fitCols).find((f) => f.perPage >= works.length);
+  const { cols, cellW, thumbH, perPage } = onePage ?? fitCols(baseCols);
+  const chunks: PortfolioImage[][] = [];
+  for (let i = 0; i < works.length; i += perPage) chunks.push(works.slice(i, i + perPage));
+
+  const cell = (a: PortfolioImage, n: number) => {
+    const aspect = Math.min(4, Math.max(0.25, geom.aspectOf(a)));
+    const w = Math.min(cellW, thumbH * aspect);
+    const p = pageOf.get(a.id);
+    return `
+      <div style="flex:0 0 ${Math.round(cellW)}px;max-width:${Math.round(cellW)}px;display:flex;flex-direction:column">
+        <div style="height:${thumbH}px;width:${Math.round(w)}px;display:flex;align-items:flex-end">
+          ${img(a.url, `max-width:100%;max-height:${thumbH}px;object-fit:contain;display:block`)}
+        </div>
+        <div style="margin-top:8px;font-size:11px;line-height:14px;color:${theme.ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n}${captionParts(a, 'minimal').head ? ` · ${esc(captionParts(a, 'minimal').head)}` : ''}</div>
+        <div style="font-size:10.5px;line-height:14px;color:${theme.sub}">${p ? `p. ${p}` : ''}</div>
+      </div>`;
+  };
+  let n = 0;
+  return chunks.map((chunk, pi) => {
+    const rows: string[] = [];
+    for (let i = 0; i < chunk.length; i += cols) {
+      rows.push(`<div style="display:flex;gap:${gap}px;align-items:flex-start">${chunk.slice(i, i + cols).map((a) => cell(a, ++n)).join('')}</div>`);
+    }
+    return {
+      label: pi === 0 ? '작품 목록' : `작품 목록 (${pi + 1})`,
+      kind: 'index' as const,
+      html: page(theme, data, `
+        <div style="${eyebrowCss(theme)}">LIST OF WORKS${pi > 0 ? ' · 계속' : ''}</div>
+        <div style="margin-top:12px;${proseTitleCss(theme, 30)}">작품 목록</div>
+        <div style="margin-top:30px;display:flex;flex-direction:column;gap:${rowGap}px">${rows.join('')}</div>`),
+    };
+  });
+}
+
+// ── QR (동기 SVG) ──
+// `qrcode` 의 toDataURL 은 비동기라 순수 빌더에서 못 쓴다. 모듈 행렬만 동기로 뽑아(`create`) SVG 로 그린다.
+// html2canvas·인쇄 경로 둘 다 인라인 SVG 를 그린다. 실패하면 빈 문자열 — QR 없이도 장은 나온다.
+function qrSvg(text: string, color: string, sizePx: number): string {
+  try {
+    const q = QRCode.create(text, { errorCorrectionLevel: 'M' });
+    const n = q.modules.size;
+    const d = q.modules.data;
+    let path = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (d[r * n + c]) path += `M${c} ${r}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" width="${sizePx}" height="${sizePx}" shape-rendering="crispEdges" style="display:block"><path d="${path}" fill="${color}"/></svg>`;
+  } catch { return ''; }
+}
+
+// ── 마지막 장 — 연락처 · 홈페이지 QR · (있으면) 프로필 사진 ──
+/**
+ * 예전엔 이름 하나가 빈 지면 한가운데 떠 있었다(실측 D — 20권 전부의 마지막 장이 '거의 빈 장'). 골든(ERICA·THALIA)은
+ * 마지막 장을 이름·연락처·사진 두 칸으로 놓아 **닫는 장**으로 만든다. 여기서 홈페이지 QR 이 PDF 와 ArtLink 홈페이지를
+ * 잇는다 — 심사자가 종이에서 화면으로 건너오는 길. 우리 이름은 여전히 적지 않는다(아래 ⚠️).
+ */
+function contactHtml(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDesign): string {
   const name = displayName(data.user);
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
+  const home = tx(data.homepageUrl);
   const rows = [
     ['E-mail', data.user.email],
     ['Phone', data.user.phone],
     ['Instagram', igLabel(data.user.instagramUrl)],
+    ['Web', home.replace(/^https?:\/\//, '')],
   ].filter(([, v]) => String(v ?? '').trim()) as [string, string][];
+  const photo = design.artistPhoto ? tx(data.user.avatar) : '';
+  const contentW = theme.page.w - PAD(theme).x * 2;
+  const landscape = theme.page.w >= theme.page.h;
+  const photoW = photo ? Math.round(Math.min(contentW * 0.36, landscape ? 340 : 320)) : 0;
+  const photoH = Math.min(Math.round(photoW * 4 / 3), Math.round(availH(theme) * 0.7));
+  const qr = home ? qrSvg(home, theme.ink, 108) : '';
 
+  // 사진이 없으면 글 덩어리를 지면 가운데 폭 520px 로 모은다 — 왼쪽에만 몰려 있으면 반쪽 장으로 읽힌다.
   return page(theme, data, `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-      <div style="font-size:12px;letter-spacing:0.4em;color:${theme.accent};font-weight:700">CONTACT</div>
-      <div style="margin-top:26px;font-size:${isSerif ? 52 : 46}px;font-weight:${isSerif ? 400 : 800};font-family:${theme.display};letter-spacing:${isSerif ? '0.06em' : '-0.02em'}">${esc(name)}</div>
-      <div style="margin-top:30px;width:56px;height:3px;background:${theme.accent}"></div>
-      <div style="margin-top:34px">
-        ${rows.map(([k, v]) => `
-          <div style="display:flex;gap:20px;justify-content:center;align-items:baseline;margin-bottom:12px">
-            <span style="width:96px;text-align:right;font-size:11.5px;letter-spacing:0.2em;color:${theme.sub}">${esc(k.toUpperCase())}</span>
-            <span style="font-size:17px;color:${theme.ink};overflow-wrap:anywhere">${esc(v)}</span>
-          </div>`).join('')}
+    <div style="flex:1;display:flex;align-items:center;justify-content:${photo ? 'space-between' : 'center'};gap:64px">
+      <div style="${photo ? 'flex:1;min-width:0' : 'width:100%;max-width:520px'}">
+        <div style="${eyebrowCss(theme)}">CONTACT</div>
+        <div style="margin-top:14px;font-size:${isSerif ? 46 : 42}px;line-height:1.15;font-weight:${isSerif ? 400 : 700};font-family:${theme.display};letter-spacing:${isSerif ? '0.04em' : '-0.02em'};color:${theme.ink};word-break:keep-all;overflow-wrap:anywhere">${esc(name)}</div>
+        <div style="margin-top:36px;display:flex;flex-direction:column;gap:12px">
+          ${rows.map(([k, v]) => `
+            <div style="display:flex;gap:18px;align-items:baseline">
+              <span style="flex:0 0 84px;font-size:11px;letter-spacing:0.18em;color:${theme.sub}">${esc(k.toUpperCase())}</span>
+              <span style="font-size:16px;color:${theme.ink};overflow-wrap:anywhere">${esc(v)}</span>
+            </div>`).join('')}
+        </div>
+        ${qr ? `<div style="margin-top:40px;display:flex;align-items:flex-end;gap:16px">${qr}<div style="font-size:11px;line-height:16px;color:${theme.sub};max-width:220px;overflow-wrap:anywhere">작품과 소식을 홈페이지에서<br/>${esc(home.replace(/^https?:\/\//, ''))}</div></div>` : ''}
       </div>
+      ${photo ? photoBlock(photo, photoW, photoH) : ''}
     </div>`);
   // ⚠️ **'MADE WITH ARTLINK · artlink.cc' 를 되살리지 말 것** (2026-09-13 삭제).
   //    이 PDF 는 작가가 갤러리·공모에 내는 **작가의 문서**다. 거기에 우리 이름을 박는 건
   //    남의 제출물을 우리 홍보물로 쓰는 것이고, 받는 쪽에는 '무료 툴로 만들었다'는 신호로 읽힌다.
   //    끄는 옵션을 두는 것도 답이 아니다 — 기본값이 켜져 있으면 대부분 그대로 나간다.
+  //    홈페이지 QR·주소는 다르다 — **작가의** 홈페이지 주소이고, 작가가 자기 문서에 자기 주소를 적는 것이다.
   // ⚠️ bare를 쓰면 안 된다. bare는 패딩·flex 래퍼 없이 배경만 깐 껍데기라 안쪽의 `flex:1`이 먹지 않고
   //    내용이 위로 쏠린다(화이트 갤러리 마지막 장이 실제로 그랬다). 세로 중앙 정렬이 필요한 페이지는 일반 경로로.
 }
@@ -2027,49 +2323,77 @@ function contactHtml(theme: PortfolioTheme, data: PortfolioBookData): string {
 export function buildPortfolioPages(
   data: PortfolioBookData,
   baseTheme: PortfolioTheme,
-  opts?: { forPdf?: boolean; design?: unknown },
+  opts?: {
+    forPdf?: boolean; design?: unknown;
+    /** 쪽번호 시작값(기본 1). 갤러리 도록이 작가 여럿의 장을 이어 붙일 때 번호를 잇는다(2026-09-16) */
+    folioStart?: number;
+    /** 연락처 장을 만들지 않는다 — 도록에서는 작가마다 연락처 장이 붙으면 안 된다 */
+    skipContact?: boolean;
+    /** 러닝 머리말 문구(기본 'PORTFOLIO'). 도록은 'CATALOGUE' */
+    runningHead?: string;
+  },
 ): PortfolioPage[] {
   imgMode = opts?.forPdf ? 'pdf' : 'display';
+  runningHeadDefault = opts?.runningHead ?? 'PORTFOLIO';
   // 디자인(색·판형·밀도·설명)을 입힌 파생 테마 — 아래 빌더 전부 이 theme + design 을 쓴다
   const design = normalizePdfDesign(opts?.design ?? null);
+  captionStyle = design.captionStyle;
   // 본문(여백·러닝요소)은 표지와 무관하게 **항상 일관**(archive 기준). 판형·색·글꼴은 design 이 override. 표지는 별도 레지스트리.
   const theme = applyDesign(themeById('archive'), design);
   const pages: PortfolioPage[] = [{ label: '표지', html: coverHtml(theme, data, design), kind: 'cover' }];
 
   const statement = String(data.statement ?? '').trim();
-  if (statement) pages.push(...statementPages(theme, data, statement).map((p) => ({ ...p, kind: 'prose' as const })));
+  if (statement) pages.push(...statementPages(theme, data, statement, design).map((p) => ({ ...p, kind: 'prose' as const })));
 
   // 격자 기하는 **포트폴리오 전체**에서 한 번 뽑는다 — 페이지마다 계산하면 장마다 작품
   // 크기가 달라져 책이 흔들린다(§27). 비율을 모르면 정사각(1.0)으로 본다 = 옛 동작.
   const geom = gridGeometry(data);
+  // 작품 번호 = 문서 전체 순서(시리즈 소개 띠·작품 목록이 같은 번호를 쓴다)
+  const numberOf = (a: PortfolioImage) => data.images.findIndex((x) => x.id === a.id) + 1;
 
   for (const g of groupBySeries(data.images, data.seriesInfo)) {
     let works = g.images;
     let opened = false;
     if (g.name && g.note) {
-      // 자동 편집이면 [소개 + 대표작]을 한 장으로 — 소개만 있는 빈 장을 만들지 않는다.
-      const merged = design.auto ? seriesOpenerPage(theme, data, g.name, g.note, works[0], design, geom) : null;
-      if (merged) { pages.push({ ...merged, kind: 'prose', works: 1 }); works = works.slice(1); opened = true; }
-      else pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
+      if (design.auto) {
+        // 자동 편집이면 [소개 + 대표작]을 한 장으로 — 소개만 있는 빈 장을 만들지 않는다.
+        const merged = seriesOpenerPage(theme, data, g.name, g.note, works[0], design, geom);
+        if (merged) { pages.push({ ...merged, kind: 'prose', works: 1, workIds: works[0] ? [works[0].id] : [] }); works = works.slice(1); opened = true; }
+        else pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
+      } else {
+        // 수동 편집이면 [소개 + 썸네일 띠] — 고른 배치는 그대로 두고, 여는 장이 그 시리즈의 차례가 된다.
+        const idx = seriesIndexPage(theme, data, g.name, g.note, works, geom, numberOf);
+        if (idx) pages.push({ ...idx, kind: 'prose' });
+        else pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
+      }
     }
     for (const plan of planWorkPages(works, design, data.images.length, { theme, geom, opened })) {
       pages.push(...worksPages(theme, data, plan.items, g.name || '작품', g.name || undefined, plan.composition, design, geom));
     }
   }
 
+  // 작품 목록 — 작품 장들이 확정된 뒤라 쪽번호를 알 수 있다(표지가 1쪽).
+  const start = opts?.folioStart ?? 1;
+  if (design.worksIndex) {
+    const pageOf = new Map<number, number>();
+    pages.forEach((pg, i) => (pg.workIds ?? []).forEach((id) => { if (!pageOf.has(id)) pageOf.set(id, i + start); }));
+    pages.push(...worksIndexPages(theme, data, pageOf, geom));
+  }
 
   const c = normalizeCareer(data.career);
   const hasCv = String(data.biography ?? '').trim() || CV_ORDER.some(({ key }) => (c[key] ?? []).length > 0);
   if (hasCv) pages.push(...cvPages(theme, data).map((p) => ({ ...p, kind: 'cv' as const })));
 
-  pages.push({ label: '연락처', html: contactHtml(theme, data), kind: 'contact' });
+  if (!opts?.skipContact) pages.push({ label: '연락처', html: contactHtml(theme, data, design), kind: 'contact' });
   // 쪽번호를 여기서 채운다 — 장을 만드는 곳이 여럿이라 각자 세게 하면 반드시 어긋난다.
-  return pages.map((pg, i) => ({ ...pg, html: pg.html.split(FOLIO).join(String(i + 1)) }));
+  return pages.map((pg, i) => ({ ...pg, html: pg.html.split(FOLIO).join(String(i + start)) }));
 }
 
-/** PDF에 실릴 모든 이미지 주소 (prefetch 대상) */
+/** PDF에 실릴 모든 이미지 주소 (prefetch 대상) — 작품 + 프로필 사진(작가노트·마지막 장) */
 export function bookImageUrls(data: PortfolioBookData): string[] {
-  return data.images.map((i) => i.url).filter(Boolean);
+  const urls = data.images.map((i) => i.url).filter(Boolean);
+  const avatar = String(data.user.avatar ?? '').trim();
+  return avatar ? [...urls, avatar] : urls;
 }
 
 export type BookPhase = 'images' | 'retry' | 'render';

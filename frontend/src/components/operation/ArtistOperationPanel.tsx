@@ -66,7 +66,7 @@ function Block({
         <span className="text-gray-300 shrink-0">{icon}</span>
         <span className="text-sm font-medium text-gray-700 group-hover:text-gray-950">{title}</span>
         {/* 할 일이 있으면 접혀 있어도 알 수 있어야 한다 */}
-        {hint && <span className="text-[11px] text-[#c4302b] whitespace-nowrap">{hint}</span>}
+        {hint && <span className="text-[11px] text-accent whitespace-nowrap">{hint}</span>}
         <ChevronDown size={14} className={`ml-auto shrink-0 text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && <div className="pt-2">{children}</div>}

@@ -33,11 +33,15 @@ import { groupBySeries, hasCaption } from '@/lib/artwork';
 
 // ── 비율 ──────────────────────────────────────────────────────────────
 
-/** 실치수 문자열 → 가로/세로 비율. "72.7×90.9 cm" → 0.80. 못 읽으면 null */
+/**
+ * 실치수 문자열 → 가로/세로 비율. **문자열은 세로×가로**(높이 먼저, 관례·2026-09-16). "90.9×72.7 cm" → 0.80.
+ * ⚠️ `lib/artwork.ts` 의 `composeSize`·ArtLook `parseSizeCm` 과 같은 순서를 읽어야 한다 — 한쪽만 바꾸면 비율이 거꾸로 된다.
+ * 못 읽으면 null
+ */
 export function parseAspect(sizeText?: string | null): number | null {
   const m = String(sizeText ?? '').match(/([\d.]+)\s*[x×X*]\s*([\d.]+)/);
   if (!m) return null;
-  const w = parseFloat(m[1]!), h = parseFloat(m[2]!);
+  const h = parseFloat(m[1]!), w = parseFloat(m[2]!);
   if (!(w > 0) || !(h > 0)) return null;
   const a = w / h;
   // 말도 안 되는 값(오타)은 버린다 — 파노라마도 5:1 을 잘 안 넘는다

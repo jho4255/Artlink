@@ -11,7 +11,7 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-3">1. 수집하는 개인정보 항목</h2>
           <p className="mb-2">ArtLink는 서비스 제공을 위해 아래와 같은 정보를 수집합니다.</p>
           <ul className="list-disc list-inside space-y-1 text-gray-600">
-            <li>회원가입 시(이메일 가입): 이메일 주소, 비밀번호(암호화 저장), 이름, 휴대폰번호, 역할(아티스트/갤러리)</li>
+            <li>회원가입 시(이메일 가입): 이메일 주소, 비밀번호(암호화 저장), 이름, 휴대폰번호, 역할(아티스트 · 갤러리 · 일반)</li>
             <li>소셜 로그인(카카오) 시: 카카오 회원 식별자, 닉네임, 이메일, 프로필 이미지(제공에 동의한 항목)</li>
             <li>갤러리 등록 시: 갤러리명, 주소, 전화번호, 대표자명, 대표 이미지, (선택)이메일·인스타그램 주소</li>
             <li>포트폴리오 등록 시: 전시 이력, 작가 약력, 작품 사진</li>

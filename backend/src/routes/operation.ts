@@ -329,7 +329,7 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
     // 수락된 작가 목록
     const accepted = await prisma.application.findMany({
       where: { exhibitionId, status: 'ACCEPTED' },
-      include: { user: { select: { id: true, name: true, nickname: true, email: true, avatar: true } } },
+      include: { user: { select: { id: true, name: true, nickname: true, handle: true, email: true, avatar: true } } },
       orderBy: { createdAt: 'asc' },
     });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });

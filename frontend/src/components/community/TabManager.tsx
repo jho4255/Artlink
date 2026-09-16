@@ -109,7 +109,7 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
                 <button
                   onClick={() => patch.mutate({ id: t.id, writeAdminOnly: !t.writeAdminOnly })}
                   title={t.writeAdminOnly ? '관리자만 쓰기 — 눌러서 누구나 쓰기로' : '누구나 쓰기 — 눌러서 관리자만 쓰기로'}
-                  className={`shrink-0 p-1 ${t.writeAdminOnly ? 'text-[#c4302b]' : 'text-gray-300 hover:text-gray-700'}`}
+                  className={`shrink-0 p-1 ${t.writeAdminOnly ? 'text-accent' : 'text-gray-300 hover:text-gray-700'}`}
                 >
                   {t.writeAdminOnly ? <Lock size={14} /> : <LockOpen size={14} />}
                 </button>
@@ -120,7 +120,7 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
                 >
                   {t.active ? <Eye size={14} /> : <EyeOff size={14} />}
                 </button>
-                <button onClick={() => setConfirmDel(t)} title="탭 삭제" className="shrink-0 p-1 text-gray-300 hover:text-[#c4302b]">
+                <button onClick={() => setConfirmDel(t)} title="탭 삭제" className="shrink-0 p-1 text-gray-300 hover:text-accent">
                   <Trash2 size={14} />
                 </button>
               </li>
@@ -135,14 +135,14 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
         </p>
 
         {confirmDel && (
-          <div className="mt-4 rounded-xl border border-[#c4302b]/30 bg-[#c4302b]/5 p-3">
+          <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-3">
             <p className="text-sm text-gray-800">
               <b>{confirmDel.name}</b> 탭을 지울까요?
               {confirmDel.postCount > 0 && <> 글 <b>{confirmDel.postCount}개</b>가 ‘미분류’로 옮겨집니다.</>}
             </p>
             <div className="mt-2 flex gap-2">
               <button onClick={() => remove.mutate(confirmDel.id)} disabled={remove.isPending}
-                className="rounded-lg bg-[#c4302b] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">지우기</button>
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">지우기</button>
               <button onClick={() => setConfirmDel(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600">취소</button>
             </div>
           </div>

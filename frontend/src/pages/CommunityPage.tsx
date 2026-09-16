@@ -8,7 +8,7 @@ import Thumb from '@/components/shared/Thumb';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import TabManager, { type CommunityTab } from '@/components/community/TabManager';
 import { useAuthStore } from '@/stores/authStore';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, roleLabel } from '@/lib/utils';
 
 /**
  * 커뮤니티 (Community) — 블라인드식 글로벌 게시판.
@@ -33,8 +33,6 @@ interface PostRow {
   author: PostAuthor;
 }
 
-const roleLabel = (role: string | null) =>
-  role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : '';
 const authorLine = (a: PostAuthor) =>
   a.anonymous ? '익명' : `${a.name}${roleLabel(a.role) ? ` · ${roleLabel(a.role)}` : ''}`;
 
@@ -146,7 +144,7 @@ export default function CommunityPage() {
         <div className="flex items-center gap-2">
           {isAuthenticated && filterBtn('mine', '내 글')}
           {isAuthenticated && filterBtn('commented', '내 댓글')}
-          <button onClick={goWrite} className={`${pill} border-[#dc3545]/40 font-medium text-[#dc3545] hover:bg-[#dc3545]/5`}>
+          <button onClick={goWrite} className={`${pill} border-accent/40 font-medium text-accent hover:bg-accent/5`}>
             <PenLine size={13} /> 글쓰기
           </button>
         </div>
@@ -165,7 +163,7 @@ export default function CommunityPage() {
               <button onClick={() => navigate(`/community/${p.id}`)} className="flex w-full items-start gap-3 py-4 text-left hover:bg-gray-50">
                 <div className="min-w-0 flex-1">
                   <h3 className="flex items-center gap-1.5 text-base font-medium text-gray-900">
-                    {p.notice && <span className="shrink-0 rounded bg-[#c4302b] px-1.5 py-0.5 text-[10px] font-semibold text-white">공지</span>}
+                    {p.notice && <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">공지</span>}
                     {p.pinned && <Pin size={12} className="shrink-0 text-amber-600" aria-label="고정됨" />}
                     {/* 탭 배지 — 전체 보기에서만. ⚠️ 공지 배지와 **같은 글자면 안 그린다**
                         (관리자가 탭 이름을 '공지'로 지으면 한 줄에 '공지'가 두 번 떠 고장처럼 보인다) */}
@@ -203,7 +201,7 @@ export default function CommunityPage() {
                   <button
                     onClick={() => setDelTarget(p)}
                     title="글 삭제 (관리자)"
-                    className="rounded-md bg-white/90 p-1.5 text-gray-500 shadow-sm ring-1 ring-gray-200 hover:text-[#c4302b]"
+                    className="rounded-md bg-white/90 p-1.5 text-gray-500 shadow-sm ring-1 ring-gray-200 hover:text-accent"
                   >
                     <Trash2 size={13} />
                   </button>

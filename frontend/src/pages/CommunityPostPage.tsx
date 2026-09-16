@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, roleLabel } from '@/lib/utils';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 
 interface Author { id: number | null; name: string; avatar: string | null; role: string | null; anonymous: boolean; mine: boolean }
@@ -19,8 +19,6 @@ interface PostDetail {
   author: Author; comments: Comment[];
 }
 
-const roleLabel = (role: string | null) =>
-  role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : '';
 
 /** 작성자 줄 — 익명이면 신원 숨김, 실명이면 아바타+닉네임+역할. 본인 페이지 이동은 실명일 때만. */
 function AuthorRow({ a, navigate }: { a: Author; navigate: (to: string) => void }) {
@@ -138,7 +136,7 @@ export default function CommunityPostPage() {
       <article>
         {(post.notice || post.pinned || post.category) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            {post.notice && <span className="rounded bg-[#c4302b] px-1.5 py-0.5 text-[11px] font-semibold text-white">공지</span>}
+            {post.notice && <span className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-semibold text-white">공지</span>}
             {post.pinned && <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"><Pin size={11} /> 고정</span>}
             {post.category && !(post.notice && post.category.name === '공지') && (
               <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">{post.category.name}</span>
@@ -152,7 +150,7 @@ export default function CommunityPostPage() {
             {isAdmin && (
               <>
                 <button onClick={() => toggleNotice.mutate()} title={post.notice ? '공지 해제' : '공지로 지정'}
-                  className={`p-1 ${post.notice ? 'text-[#c4302b]' : 'text-gray-300 hover:text-[#c4302b]'}`}>
+                  className={`p-1 ${post.notice ? 'text-accent' : 'text-gray-300 hover:text-accent'}`}>
                   <Megaphone size={16} />
                 </button>
                 <button onClick={() => togglePin.mutate()} title={post.pinned ? '고정 해제' : '맨 위에 고정'}
@@ -172,7 +170,7 @@ export default function CommunityPostPage() {
             {(post.author.mine || isAdmin) && (
               <button onClick={() => setDeleteOpen(true)} aria-label="삭제"
                 title={post.author.mine ? '삭제' : '글 삭제 (관리자)'}
-                className="p-1 text-gray-300 hover:text-[#c4302b]"><Trash2 size={16} /></button>
+                className="p-1 text-gray-300 hover:text-accent"><Trash2 size={16} /></button>
             )}
           </div>
         </div>
@@ -196,9 +194,9 @@ export default function CommunityPostPage() {
         <div className="mt-6 flex items-center gap-3 border-y border-gray-100 py-3">
           <button
             onClick={() => !requireLogin() && like.mutate()}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${post.liked ? 'border-[#c4302b] text-[#c4302b]' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${post.liked ? 'border-accent text-accent' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
           >
-            <Heart size={15} className={post.liked ? 'fill-[#c4302b]' : ''} /> {post.likeCount}
+            <Heart size={15} className={post.liked ? 'fill-accent' : ''} /> {post.likeCount}
           </button>
           <span className="text-sm text-gray-400">댓글 {post.commentCount}</span>
         </div>
@@ -222,7 +220,7 @@ export default function CommunityPostPage() {
                   {(c.author.mine || isAdmin) && (
                     <button onClick={() => removeComment.mutate(c.id)}
                       title={c.author.mine ? '삭제' : '댓글 삭제 (관리자)'}
-                      className="ml-auto text-xs text-gray-300 hover:text-[#c4302b]">삭제</button>
+                      className="ml-auto text-xs text-gray-300 hover:text-accent">삭제</button>
                   )}
                 </div>
                 <p className="mt-0.5 whitespace-pre-wrap break-keep text-sm text-gray-700 [overflow-wrap:anywhere]">{c.body}</p>

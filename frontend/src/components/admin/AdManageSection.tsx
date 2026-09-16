@@ -104,7 +104,7 @@ export default function AdManageSection() {
             </div>
             <button onClick={() => toggle.mutate(ad)} aria-label="활성 토글" className="p-1.5 text-gray-400 hover:text-gray-900">{ad.active ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             <button onClick={() => startEdit(ad)} aria-label="수정" className="p-1.5 text-gray-400 hover:text-gray-900"><Pencil size={16} /></button>
-            <button onClick={() => del.mutate(ad.id)} aria-label="삭제" className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+            <button onClick={() => del.mutate(ad.id)} aria-label="삭제" className="p-1.5 text-gray-400 hover:text-accent"><Trash2 size={16} /></button>
           </div>
         ))}
         {ads.length === 0 && <p className="py-8 text-center text-sm text-gray-400">등록된 광고가 없습니다.</p>}

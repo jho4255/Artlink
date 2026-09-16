@@ -2748,12 +2748,12 @@ function updateSceneNote(){
       + '포트폴리오에 가로×세로를 입력하면 <b>실제 크기</b>로 걸립니다.';
   } else if(lastFitNote && lastFitNote.ok===false){
     el.style.display='block';
-    el.innerHTML=`⚠️ <b>${cm[0]}×${cm[1]}cm</b> — 이 장면의 자리보다 커서 줄여 걸었습니다. 다른 장면을 골라 보세요.`;
+    el.innerHTML=`⚠️ <b>${cm[1]}×${cm[0]}cm</b> — 이 장면의 자리보다 커서 줄여 걸었습니다. 다른 장면을 골라 보세요.`;
   } else if(lastFitNote && lastFitNote.enlarged>1.05){
     // 실치수대로 걸면 안 보이는 소품 — 부풀린 사실을 **반드시** 알린다.
     // (실측: 갤러리 살롱에서 12×12cm 는 화면의 0.2%, 짧은 변 40px 이었다)
     el.style.display='block';
-    el.innerHTML=`💡 <b>${cm[0]}×${cm[1]}cm</b> — 실제 비율대로 걸면 너무 작아서 `
+    el.innerHTML=`💡 <b>${cm[1]}×${cm[0]}cm</b> — 실제 비율대로 걸면 너무 작아서 `
       + `<b>${lastFitNote.enlarged.toFixed(1)}배</b> 크게 걸었습니다. `
       + `실제 비율에 가깝게 보려면 벽 장면(화이트 브릭·베이지 스투코 등)을 골라 보세요.`;
   } else {

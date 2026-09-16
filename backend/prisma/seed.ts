@@ -136,6 +136,14 @@ async function main() {
     create: { email: 'admin@artlink.com', name: 'Admin', role: 'ADMIN', provider: 'LOCAL' },
   });
 
+  // 일반(VISITOR) — 작가도 갤러리도 아닌 사람이 보는 화면을 확인하려면 계정이 있어야 한다(2026-09-16).
+  // ⚠️ **반드시 admin 뒤에** 만들 것 — id 1~4(artist1·artist2·gallery·admin)는 테스트·E2E 가 숫자로 붙잡고 있다.
+  await prisma.user.upsert({
+    where: { email: 'visitor@artlink.com' },
+    update: { provider: 'LOCAL' },
+    create: { email: 'visitor@artlink.com', name: '일반 사용자', role: 'VISITOR', provider: 'LOCAL' },
+  });
+
   // ━━━ 갤러리 (비즈니스 키: name + ownerId) ━━━
   const gallery1 = await upsertByKey(
     prisma.gallery,

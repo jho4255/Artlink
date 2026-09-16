@@ -80,7 +80,7 @@ export function MentionSuggest({ options, onPick }: { options?: MentionOption[];
                 {o.label.slice(0, 1)}
               </span>}
           <span className="min-w-0 flex-1 truncate text-sm text-gray-800">@{o.label}</span>
-          {o.id === null && <span className="shrink-0 text-[11px] font-medium text-[#dc3545]">운영</span>}
+          {o.id === null && <span className="shrink-0 text-[11px] font-medium text-accent">운영</span>}
         </button>
       ))}
     </div>

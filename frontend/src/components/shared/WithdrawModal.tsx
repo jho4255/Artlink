@@ -82,7 +82,7 @@ export default function WithdrawModal({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-1.5">
-            <AlertTriangle size={18} className="text-red-500" /> 회원 탈퇴
+            <AlertTriangle size={18} className="text-accent" /> 회원 탈퇴
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700" aria-label="닫기"><X size={20} /></button>
         </div>
@@ -107,14 +107,14 @@ export default function WithdrawModal({ onClose }: { onClose: () => void }) {
 
             {/* 갤러리 보유 시 영향 안내 + 책임 고지 */}
             {hasGalleries && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-                <p className="font-medium text-red-700">보유하신 갤러리·공모가 함께 비공개 처리됩니다.</p>
-                <ul className="text-xs text-red-700/90 list-disc pl-4 space-y-0.5">
+              <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-2">
+                <p className="font-medium text-accent">보유하신 갤러리·공모가 함께 비공개 처리됩니다.</p>
+                <ul className="text-xs text-accent list-disc pl-4 space-y-0.5">
                   <li>갤러리 {info!.galleries.length}개 — {info!.galleries.map((g) => g.name).join(', ')}</li>
                   <li>진행 중인 공고 {info!.ongoingExhibitions}건이 마감 처리됩니다.</li>
                   <li>처리 대기 중인 지원자 {info!.activeApplicants}명의 관리가 불가능해집니다.</li>
                 </ul>
-                <p className="text-xs text-red-700">
+                <p className="text-xs text-accent">
                   진행 중인 공고와 지원자가 있다면 <strong>정리 후 탈퇴</strong>를 권장합니다.
                   탈퇴를 진행할 경우 <strong>진행 중 공고·지원자에 대한 모든 책임은 본인에게 있습니다.</strong>
                 </p>
@@ -134,18 +134,18 @@ export default function WithdrawModal({ onClose }: { onClose: () => void }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="현재 비밀번호"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
               </div>
             ) : (
               <div>
-                <label className="block font-medium text-gray-700 mb-1">확인을 위해 <span className="text-red-600 font-semibold">탈퇴</span> 를 입력하세요.</label>
+                <label className="block font-medium text-gray-700 mb-1">확인을 위해 <span className="text-accent font-semibold">탈퇴</span> 를 입력하세요.</label>
                 <input
                   type="text"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
                   placeholder="탈퇴"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
               </div>
             )}
@@ -157,7 +157,7 @@ export default function WithdrawModal({ onClose }: { onClose: () => void }) {
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 py-2.5 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? '처리 중...' : '탈퇴하기'}
               </button>

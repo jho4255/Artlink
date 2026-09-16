@@ -1,5 +1,7 @@
 import { Suspense, lazy, type ComponentType } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/axios';
 import Layout from '@/components/layout/Layout';
 import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
@@ -48,6 +50,30 @@ const GalleryRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m
 const ExhibitionRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ExhibitionRegisterPage })));
 const ShowRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ShowRegisterPage })));
 const NotFoundPage = lazyWithReload(() => import('@/pages/NotFoundPage'));
+
+/**
+ * 주소 `/@handle` (2026-09-16). React Router 는 `/@:handle` 처럼 세그먼트 안에 접두 글자를 둔 패턴을 못 가르므로
+ * 세그먼트 하나를 통째로 받아 여기서 `@` 를 확인한다. 정적 라우트(`/artists` 등)가 항상 먼저 잡히므로 겹치지 않는다.
+ * 서버 SEO 라우트(`backend/src/index.ts` 의 `/@:handle`)와 짝.
+ *
+ * ⚠️ **작가와 갤러리가 같은 이름 공간을 쓴다** — `/@x` 만 봐서는 어느 페이지인지 모른다. 서버에 한 번 물어본다
+ *    (`GET /api/handles/:handle`). 판정을 화면에서 따로 하면 서버 SEO 와 다른 페이지를 가리키게 된다.
+ */
+function HandleRoute() {
+  const { handleSeg } = useParams();
+  const handle = handleSeg?.startsWith('@') ? handleSeg.slice(1) : '';
+  const { data, isLoading, isError } = useQuery<{ kind: 'artist' | 'gallery'; id: number }>({
+    queryKey: ['handle', handle],
+    queryFn: () => api.get(`/handles/${encodeURIComponent(handle)}`).then((r) => r.data),
+    enabled: !!handle,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  if (!handle) return <NotFoundPage />;
+  if (isLoading) return <div className="mx-auto max-w-7xl px-6 py-10 md:px-12"><div className="h-64 animate-pulse bg-gray-100" /></div>;
+  if (isError || !data) return <NotFoundPage />;
+  return data.kind === 'gallery' ? <GalleryDetailPage galleryId={data.id} /> : <PortfolioPage artistId={data.id} />;
+}
 const AuthCallbackPage = lazyWithReload(() => import('@/pages/AuthCallbackPage'));
 const PrivacyPage = lazyWithReload(() => import('@/pages/PrivacyPage'));
 const TermsPage = lazyWithReload(() => import('@/pages/TermsPage'));
@@ -91,6 +117,8 @@ export default function App() {
         <Route path="/shows/new" element={<ProtectedRoute><ShowRegisterPage /></ProtectedRoute>} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />
         <Route path="/portfolio/:userId" element={<PortfolioPage />} />
+        {/* 작가 주소 `/@handle`(2026-09-16) — HandleRoute 가 '@' 를 확인한다. 숫자 주소 `/portfolio/:id` 도 계속 유효하다 */}
+        <Route path="/:handleSeg" element={<HandleRoute />} />
         {/* 혜택 비활성화 — 기존 링크·북마크·검색결과가 죽지 않게 404 대신 홈으로 */}
         <Route path="/benefits" element={<Navigate to="/" replace />} />
         <Route path="/login" element={<LoginPage />} />

@@ -29,3 +29,20 @@ export function consumePostLoginRedirect(): string | null {
   sessionStorage.removeItem(KEY);
   return isSafeInternalPath(path) ? path : null;
 }
+
+/**
+ * 로그인·가입 직후 갈 곳 (2026-09-16, 온보딩).
+ * 기억해 둔 곳이 있으면 거기(예: 작가 홈페이지에서 [이웃 추가]를 눌러 로그인한 경우).
+ * 없으면 마이페이지인데, **작품이 0점인 작가는 홈페이지 편집 화면**으로 — 프로필 폼이 아니라 업로드가 첫 행동이어야 한다.
+ * 확인 API 가 실패하면 조용히 마이페이지(온보딩은 거기서도 보인다).
+ */
+export async function resolvePostLoginPath(role: string | undefined, fetchPortfolio: () => Promise<{ images?: unknown[] } | null>): Promise<string> {
+  const remembered = consumePostLoginRedirect();
+  if (remembered) return remembered;
+  if (role !== 'ARTIST') return '/mypage';
+  try {
+    const p = await fetchPortfolio();
+    if (!p || !p.images || p.images.length === 0) return '/mypage?tab=homepage-edit';
+  } catch { /* 판단 못 하면 기본 */ }
+  return '/mypage';
+}

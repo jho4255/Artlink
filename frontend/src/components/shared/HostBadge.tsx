@@ -16,7 +16,7 @@ import { isAdminHosted, type HostLike } from '@/lib/exhibitionHost';
 export function ArtLinkWordmark({ className = '' }: { className?: string }) {
   return (
     <span className={`font-serif font-bold tracking-tight text-gray-900 ${className}`}>
-      Art<span className="text-[#dc3545]">Link</span>
+      Art<span className="text-accent">Link</span>
     </span>
   );
 }

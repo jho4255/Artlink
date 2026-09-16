@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 import api from '@/lib/axios';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, roleLabel } from '@/lib/utils';
 
 /**
  * 홈 좌측 — 커뮤니티 인기글.
@@ -18,8 +18,6 @@ interface PopularPost {
   author: { name: string; role: string | null; anonymous: boolean };
 }
 
-const roleLabel = (role: string | null) =>
-  role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'ADMIN' ? '운영' : '';
 
 export default function PopularPosts() {
   const navigate = useNavigate();

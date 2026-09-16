@@ -4,11 +4,39 @@ export interface User {
   id: number;
   name: string;
   nickname?: string | null;
+  /** 홈페이지 주소 `/@handle` (작가). 없으면 숫자 주소 */
+  handle?: string | null;
   email: string;
-  role: 'ARTIST' | 'GALLERY' | 'ADMIN';
+  /** VISITOR = 관람객(컬렉터, 2026-09-16): 찜·좋아요·메시지·이웃·소식만 */
+  role: 'ARTIST' | 'GALLERY' | 'ADMIN' | 'VISITOR';
   avatar?: string;
   phone?: string | null;
   instagramUrl?: string | null;
+}
+
+export interface GalleryArtist {
+  id: number;
+  name: string;
+  nickname?: string | null;
+  handle?: string | null;
+  avatar?: string | null;
+  /** 대표 작품(포트폴리오 첫 작품) — 없으면 아바타/이니셜 */
+  cover: { url: string; width?: number | null; height?: number | null } | null;
+  hidden: boolean;
+}
+
+/** 갤러리가 직접 적는 지난 활동 기록 (2026-09-16) — 아트링크 밖에서 해 온 전시·아트페어 */
+export interface GalleryArchive {
+  id: number;
+  title: string;
+  venue?: string | null;
+  period?: string | null;
+  /** 정렬용 날짜(ISO). 없으면 등록 순서 */
+  date?: string | null;
+  artists?: string | null;
+  body?: string | null;
+  images: string[];
+  createdAt: string;
 }
 
 export interface Gallery {
@@ -34,6 +62,12 @@ export interface Gallery {
   email?: string;
   ownerId: number;
   images: GalleryImage[];
+  /** 함께한 작가 — 이 갤러리 공모에 수락된 작가(서버 집계, 2026-09-16). 주인·Admin 에겐 숨긴 작가도 `hidden: true` 로 온다 */
+  artists?: GalleryArtist[];
+  /** 갤러리가 직접 적은 지난 활동 기록 (2026-09-16) */
+  archives?: GalleryArchive[];
+  /** 홈페이지 주소 `/@handle` — 작가와 같은 이름 공간 */
+  handle?: string | null;
   isFavorited?: boolean;
 }
 
@@ -122,6 +156,8 @@ export interface HeroSlide {
   title: string;
   description?: string;
   imageUrl: string;
+  /** 좁은 화면 전용 이미지(세로형). 없으면 imageUrl */
+  mobileImageUrl?: string | null;
   linkUrl?: string;
   order: number;
 }
@@ -171,6 +207,9 @@ export type ArtworkStatus = 'AVAILABLE' | 'SOLD' | 'NFS';
 export interface PortfolioImage {
   id: number;
   url: string;
+  /** 사진 픽셀 크기 — 업로드 때 서버가 잰다(2026-09-16). 옛 작품은 null → 화면이 로드 후 잰다 */
+  width?: number | null;
+  height?: number | null;
   order: number;
   showInExplore?: boolean;
   /** 받은 좋아요 수 (내 포트폴리오 조회 시 포함) */
@@ -381,6 +420,22 @@ export interface Portfolio {
   seriesInfo?: SeriesInfo[] | null;
   designConfig?: unknown; // 포트폴리오 PDF 가이드형 디자인(색감 팔레트 등) — normalizePdfDesign 통과시켜 사용
   images: PortfolioImage[];
+  /** PDF 버전(작품 선택·순서·디자인 묶음). 내 포트폴리오 조회에만 실린다 (2026-09-16) */
+  versions?: PortfolioVersion[];
+}
+
+/**
+ * 포트폴리오 PDF 버전 — "공모용 10점"·"갤러리용 전체" 처럼 보내는 곳마다 다른 책.
+ * `workIds` 는 실릴 순서. 빈 배열이면 전체 작품을 홈페이지 순서로. `design` 이 null 이면 기본 디자인(`Portfolio.designConfig`).
+ * ⚠️ 지운 작품 id 가 남아 있을 수 있다 — 화면은 항상 실제 작품과 교집합을 취한다(`versionWorks`).
+ */
+export interface PortfolioVersion {
+  id: number;
+  name: string;
+  workIds: number[];
+  design: unknown;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ExploreImage {
@@ -444,7 +499,7 @@ export interface PublicPortfolio {
   seriesInfo?: SeriesInfo[] | null;
   designConfig?: unknown;
   images: PortfolioImage[];
-  user: { id: number; name: string; nickname?: string | null; avatar?: string; instagramUrl?: string | null };
+  user: { id: number; name: string; nickname?: string | null; handle?: string | null; avatar?: string; instagramUrl?: string | null };
 }
 
 export interface Show {

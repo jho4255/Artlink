@@ -13,6 +13,9 @@ model User {
   email        String    @unique
   name         String
   nickname     String?   @unique // 공개 표시명 (설정 시 이름 대신 노출), 중복 불가
+  /// 홈페이지 주소 `/@handle` (소문자·숫자·`.`·`_` 3~30자, 인스타그램 아이디 규칙). 없으면 인스타 아이디에서
+  /// 한 번 자동으로 만든다(lib/handle.ts `ensureHandle`, 2026-09-16). 숫자 주소 `/portfolio/:id` 는 계속 유효.
+  handle       String?   @unique
   role         String // ARTIST, GALLERY, ADMIN
   avatar       String?
   phone        String? // 가입 시 입력받는 연락처 (기존 유저는 null 허용)
@@ -287,6 +290,13 @@ model Gallery {
   instagramFeedVisible    Boolean   @default(false) // 피드 공개 여부
   instagramProfileVisible Boolean   @default(false) // 프로필 링크 공개 여부
   email                   String? // 갤러리 이메일 주소
+  /// 갤러리 페이지 '함께한 작가'(이 갤러리 공모에 수락된 작가)에서 **숨긴** 작가 id (2026-09-16).
+  /// 자동 집계라 갤러리가 특정 작가를 빼고 싶을 수 있다. 빈 배열이 기본. 응답에는 싣지 않는다(artists[].hidden 으로).
+  hiddenArtistIds         Int[]     @default([])
+  /// 갤러리 홈페이지 주소 `/@handle` (2026-09-16). **`User.handle` 과 같은 이름 공간**을 쓴다 —
+  /// `/@x` 하나로 작가·갤러리를 다 가리키므로 양쪽에 같은 값이 있으면 안 된다(lib/handle.ts `handleTaken`).
+  /// 갤러리는 상호가 한글이라 자동 생성을 하지 않는다 — 주인이 직접 정한다. 숫자 주소 `/galleries/:id` 는 계속 유효.
+  handle                  String?   @unique
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -294,6 +304,7 @@ model Gallery {
   ownerId            Int
   owner              User                @relation(fields: [ownerId], references: [id])
   images             GalleryImage[]
+  archives           GalleryArchive[]
   exhibitions        Exhibition[]
   managedExhibitions ExhibitionManager[] // 아트링크 주최 공모 중 이 갤러리가 운영을 위임받은 것
   shows              Show[]
@@ -428,6 +439,9 @@ model HeroSlide {
   title       String
   description String?
   imageUrl    String
+  // 좁은 화면(모바일) 전용 이미지. 3:1 배너는 375px 에서 높이 125px 로 줄어 안에 든 글씨가 안 읽히므로
+  // 세로형(4:5 권장)을 따로 받는다. 없으면 imageUrl 을 그대로 쓴다(2026-09-16).
+  mobileImageUrl String?
   linkUrl     String?
   order       Int      @default(0)
   createdAt   DateTime @default(now())
@@ -520,13 +534,36 @@ model Portfolio {
   userId            Int              @unique
   user              User             @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
+  versions          PortfolioVersion[]
   updatedAt         DateTime         @updatedAt
+}
+
+/// 포트폴리오 PDF **버전** — 작품 선택·순서·디자인을 묶어 이름 붙여 저장 (2026-09-16).
+/// "공모용 10점"·"갤러리용 전체" 처럼 보내는 곳마다 다른 책을 만든다(국내 공모는 A4 24장·이미지 10점 같은 장수 제한이 흔하다).
+/// 홈페이지의 작품 순서(`PortfolioImage.order`)는 건드리지 않는다 — 버전은 그 위에 얹는 **선택**이다.
+model PortfolioVersion {
+  id          Int       @id @default(autoincrement())
+  portfolioId Int
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  name        String
+  /// 실을 작품 id, 실릴 순서대로. 빈 배열이면 전체 작품을 홈페이지 순서로.
+  workIds     Int[]     @default([])
+  /// PdfDesign JSON. null 이면 Portfolio.designConfig(기본 디자인)를 쓴다.
+  design      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([portfolioId])
 }
 
 // 포트폴리오 이미지
 model PortfolioImage {
   id            Int                  @id @default(autoincrement())
   url           String
+  /// 사진의 실제 픽셀 크기 — 업로드 때 sharp 로 잰다(lib/imageDims.ts). 배치(정렬 격자·PDF·ArtLook)가 비율을
+  /// 미리 알아야 화면이 안 튄다. 옛 행은 `scripts/backfill-image-dims.ts`(Render 셸). null 이면 화면이 로드 후 잰다.
+  width         Int?
+  height        Int?
   order         Int                  @default(0)
   showInExplore Boolean              @default(false)
   // ── 작품 정보 ──
@@ -990,4 +1027,33 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([chatId, createdAt])
+}
+
+/// 갤러리가 직접 적는 **지난 활동 기록** (2026-09-16)
+///
+/// `Exhibition`(아트링크 공모)·`Show`(전시 등록)와 다르다 — 그 둘은 우리 플랫폼에서 **진행한** 것이고,
+/// 이건 아트링크와 무관하게 갤러리가 해 온 전시·아트페어를 **사후에 적어 두는 기록**이다.
+/// 승인 절차가 없고(지원·정산 같은 뒷단계가 없으므로), 공개 갤러리 페이지의 '지난 전시·아트페어'에
+/// 아트링크 공모와 **한 줄로 섞여** 날짜순으로 나온다. 작가가 갤러리를 고를 때 보는 이력이다.
+model GalleryArchive {
+  id        Int      @id @default(autoincrement())
+  galleryId Int
+  gallery   Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  title     String
+  /// 장소 — "서울 코엑스", "갤러리 엠 2층". 갤러리 자기 공간이면 비워 둔다.
+  venue     String?
+  /// 기간 표기 — 자유 텍스트("2026.10.1 – 10.4", "2025 가을"). 화면에 그대로 찍힌다.
+  period    String?
+  /// 정렬용 날짜(대개 시작일). 없으면 만든 순서로 내려간다.
+  date      DateTime?
+  /// 참여 작가 — 자유 텍스트(회원이 아닌 작가도 적는다)
+  artists   String?
+  /// 후기·설명
+  body      String?
+  /// 사진 — **우리 저장소 주소만**(routes/gallery.ts 가 검증). 외부 URL 주입 방지.
+  images    String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([galleryId, date])
 }

@@ -184,7 +184,7 @@ router.get('/artists', async (_req, res, next) => {
       where: { id: { in: grouped.map((g) => g.portfolioId) } },
       select: {
         id: true,
-        user: { select: { id: true, name: true, nickname: true, avatar: true } },
+        user: { select: { id: true, name: true, nickname: true, handle: true, avatar: true } },
       },
     });
     const countBy = new Map(grouped.map((g) => [g.portfolioId, g._count.portfolioId]));
@@ -194,6 +194,8 @@ router.get('/artists', async (_req, res, next) => {
       .map((pf) => ({
         id: pf.user!.id,
         name: publicName(pf.user),
+        // 목록에서 바로 `/@handle` 로 링크하려고 (2026-09-16) — 없으면 화면이 숫자 주소를 쓴다
+        handle: pf.user!.handle,
         avatar: pf.user!.avatar,
         // 화면에는 안 그린다(2026-09-10). 이 목록에 **왜** 들어왔는지를 말해 주는 값이라 남겨 둔다 —
         // 0 이면 애초에 걸러졌어야 하므로, 회귀 테스트가 이 값으로 필터를 검증한다.

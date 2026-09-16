@@ -26,9 +26,9 @@ SPACE 건축 매거진(spacem.org) 레퍼런스 기반. UI는 흑백, 콘텐츠 
 | 필터 카테고리 | `text-gray-700 font-medium` | #374151 | "지역", "별점" 라벨 |
 | 배경 | `bg-white` | #ffffff | 전체 기본 |
 | 구분선 | `border-gray-200` | #e5e7eb | 섹션 간 1px 선 |
-| 포인트 빨강 | `text-[#c4302b]` | #c4302b | 별점, D-day(≤7), 진행중 상태 |
-| 로고 Link | `text-[#dc3545]` | #dc3545 | Art(검정) + Link(빨강) |
-| 찜 하트 (활성) | `text-[#c4302b] fill-[#c4302b]` | | 포인트 빨강과 통일 |
+| 포인트 빨강 | `text-accent` (`--color-accent`) | #c4302b | D-day(≤7), 진행중 상태, 오류·삭제까지 **빨강은 이것 하나** |
+| 로고 Link | `text-accent` | #c4302b | Art(검정) + Link(빨강). 2026-09-16 까지는 `#dc3545` 였다 — 되돌리지 말 것 |
+| 찜 하트 (활성) | `text-accent fill-accent` | | 포인트 빨강과 통일 |
 | 히어로 배경 | 동적 | | 이미지 dominant color 추출 (×0.6 보정) |
 
 ### 컬러 원칙
@@ -97,7 +97,8 @@ max-w-7xl mx-auto px-6 md:px-12
 | `whileHover={{ scale: 1.03 }}` | 사용 안 함 |
 | Lucide 아이콘 + 컬러 원형 배경 | 아이콘 최소, 텍스트로 해결 |
 | `motion.div` 카드 래핑 | 일반 `article` 태그 |
-| `bg-blue-50 text-blue-600` 상태 뱃지 | 텍스트 색상만 (`text-[#c4302b]`, `text-gray-900`, `text-gray-400`) |
+| `bg-blue-50 text-blue-600` 상태 뱃지 | 텍스트 색상만 (`text-accent`, `text-gray-900`, `text-gray-400`) |
+| `text-[#c4302b]` · `text-red-500` 처럼 색을 클래스에 박기 | 토큰 클래스 `text-accent` / `bg-accent/10` / `border-accent/40`. 값은 `index.css` 의 `--color-accent` 한 곳. 가드: `__tests__/singleAccent.test.ts` |
 
 ### 이미지
 - 비율: `aspect-[4/3]` (갤러리, 공모) 또는 `aspect-[3/4]` (전시 포스터)
@@ -110,7 +111,7 @@ max-w-7xl mx-auto px-6 md:px-12
 
 ### 텍스트 링크
 - 버튼 대신 텍스트 링크 선호: `"자세히 보기 →"`, `"지원하기 →"`
-- 스타일: `underline underline-offset-4 decoration-1 hover:text-[#c4302b]`
+- 스타일: `underline underline-offset-4 decoration-1 hover:text-accent`
 
 ### 별점
 - `<Star size={15} className="text-[#c4302b] fill-[#c4302b]" />`
@@ -141,7 +142,7 @@ max-w-7xl mx-auto px-6 md:px-12
 sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100
 높이: h-16 md:h-20
 ```
-- 로고: `Art` (`text-gray-900`) + `Link` (`text-[#dc3545]`)
+- 로고: `Art` (`text-gray-900`) + `Link` (`text-[#c4302b]`)
 - 메뉴: `text-base font-medium`
 - 활성 탭: `text-gray-900 border-b-2 border-gray-900`
 - 비활성: `text-gray-500 hover:text-gray-900`

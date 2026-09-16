@@ -4,7 +4,9 @@
  * 지켜야 하는 것:
  *  ① 읽기는 공개, 쓰기는 로그인 / 새 글은 방 주인에게 알림
  *  ② 답글은 **방 주인만** (남이 남의 방명록에 답글 못 단다)
- *  ③ 비밀글은 방 주인·작성자만 본문을 본다(그 외엔 가림, 신원은 보임)
+ *  ③ **새 글에는 비밀글이 없다**(2026-09-16 사용자 결정) — `secret` 을 보내도 조용히 무시한다.
+ *     다만 **예전에 남긴 비밀글은 계속 가려야 한다**: 쓴 사람은 안 보이는 줄 알고 남겼으므로,
+ *     기능을 없앴다고 그 약속을 깨면 안 된다. 그래서 읽기 쪽(`locked`)은 그대로다.
  *  ④ 삭제는 글쓴이 · 방 주인 · Admin
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -67,8 +69,20 @@ describe('방명록', () => {
     expect((await write(a1, 1, { body: '답답글', parentId: reply.id })).status).toBe(404);
   });
 
-  it('★ 비밀글은 방 주인·작성자만 본문을 본다', async () => {
-    const { body: entry } = await write(a2, 1, { body: '둘만 아는 이야기', secret: true });
+  it('★ 새 글은 비밀글이 될 수 없다 — secret 을 보내도 무시한다', async () => {
+    // 400 으로 막지 않는다. 옛 화면·북마크가 그 필드를 달고 올 수 있고, 막으면 글 자체를 못 남긴다.
+    const r = await write(a2, 1, { body: '공개 글', secret: true });
+    expect(r.status).toBe(201);
+    const saved = await testPrisma.guestbookEntry.findUnique({ where: { id: r.body.id } });
+    expect(saved!.secret).toBe(false);
+    expect(r.body.locked).toBe(false);
+  });
+
+  it('★ 예전에 남긴 비밀글은 그대로 가린다 — 방 주인·작성자만 본문을 본다', async () => {
+    // 쓰기 경로가 더는 secret 을 만들지 않으므로 **옛 데이터를 흉내 내** DB 에 직접 넣는다.
+    const entry = await testPrisma.guestbookEntry.create({
+      data: { targetUserId: 1, authorId: 2, body: '둘만 아는 이야기', secret: true },
+    });
     // 남(gallery)이 보면 본문 가림 + locked, 신원은 보임
     const asOther = await request.get('/api/guestbook/1').set('Authorization', `Bearer ${gallery}`);
     const seenByOther = asOther.body.entries.find((e: any) => e.id === entry.id);

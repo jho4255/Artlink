@@ -30,6 +30,7 @@ import adminRoutes from './routes/admin';
 import kanbanRoutes from './routes/kanban';
 import chatRoutes from './routes/chat';
 import communityRoutes from './routes/community';
+import handleRoutes from './routes/handle';
 import followRoutes from './routes/follow';
 import storyRoutes from './routes/story';
 import mentionRoutes from './routes/mention';
@@ -113,6 +114,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/community', communityRoutes);
+// 주소 `/@handle` 이 작가인지 갤러리인지 (2026-09-16)
+app.use('/api/handles', handleRoutes);
 app.use('/api/follow', followRoutes);
 app.use('/api/stories', storyRoutes);
 app.use('/api/mentions', mentionRoutes);
@@ -191,6 +194,8 @@ if (process.env.NODE_ENV === 'production') {
     ['/galleries/:id', 'gallery'],
     ['/shows/:id', 'show'],
     ['/portfolio/:id', 'portfolio'],
+    // 작가 핸들 주소(2026-09-16). 프론트 라우트 `/@:handle` 과 짝.
+    ['/@:handle', 'portfolio'],
   ];
   for (const [route, kind] of SEO_ROUTES) {
     app.get(route, seoLimiter, createSeoHandler(kind, loadSeoTemplate));

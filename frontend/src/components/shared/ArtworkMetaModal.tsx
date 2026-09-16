@@ -50,20 +50,20 @@ interface Props {
  *
  * 레퍼런스 포트폴리오는 예외 없이 작품마다 [제목/재료/크기/연도]를 붙인다. 우리 쪽엔 이 정보가
  * 아예 없어서 PDF를 만들면 캡션이 통째로 빠진 "이미지 더미"가 나왔다. 여기서 그 값을 받는다.
- * 크기는 가로·세로 숫자로만 받아 `composeSize`로 한 형식(72.7×90.9 cm)으로 합성한다.
+ * 크기는 **세로·가로** 숫자로만 받아 `composeSize`로 한 형식(90.9×72.7 cm)으로 합성한다 — 관례가 높이 먼저다(2026-09-16).
  */
 export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave, onClose }: Props) {
   const [d, setD] = useState<ArtworkMetaDraft>(() => toDraft(image));
   const parsed = useMemo(() => splitSize(d.sizeText), [d.sizeText]);
-  const [w, setW] = useState(parsed.w);
   const [h, setH] = useState(parsed.h);
+  const [w, setW] = useState(parsed.w);
 
   // 다른 작품으로 갈아끼우면 폼도 그 작품 값으로 새로 채운다
   useEffect(() => {
     const next = toDraft(image);
     setD(next);
     const p = splitSize(next.sizeText);
-    setW(p.w); setH(p.h);
+    setH(p.h); setW(p.w);
   }, [image.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
   }, [onClose]);
 
   const set = (patch: Partial<ArtworkMetaDraft>) => setD((prev) => ({ ...prev, ...patch }));
-  const setSize = (nw: string, nh: string) => { setW(nw); setH(nh); set({ sizeText: composeSize(nw, nh) }); };
+  const setSize = (nh: string, nw: string) => { setH(nh); setW(nw); set({ sizeText: composeSize(nh, nw) }); };
 
   return createPortal(
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
@@ -112,11 +112,11 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
             </div>
 
             <div>
-              <label className={label}>크기</label>
+              <label className={label}>크기 <span className="font-normal text-gray-400">— 세로 × 가로 (관례)</span></label>
               <div className="flex items-center gap-2">
-                <input value={w} onChange={(e) => setSize(e.target.value, h)} placeholder="가로" inputMode="decimal" className={`${field} text-center`} />
+                <input value={h} onChange={(e) => setSize(e.target.value, w)} placeholder="세로" inputMode="decimal" className={`${field} text-center`} />
                 <span className="text-gray-400 text-sm">×</span>
-                <input value={h} onChange={(e) => setSize(w, e.target.value)} placeholder="세로" inputMode="decimal" className={`${field} text-center`} />
+                <input value={w} onChange={(e) => setSize(h, e.target.value)} placeholder="가로" inputMode="decimal" className={`${field} text-center`} />
                 <span className="text-xs text-gray-500 shrink-0">cm</span>
               </div>
             </div>
@@ -148,7 +148,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
             </div>
 
             <div>
-              <label className={label}>작품 설명 <span className="font-normal text-gray-400">— 포맷 C에서 작품 옆에 실립니다</span></label>
+              <label className={label}>작품 설명 <span className="font-normal text-gray-400">— 포트폴리오 PDF 에서 작품과 함께 실립니다</span></label>
               <textarea
                 value={d.description}
                 onChange={(e) => set({ description: e.target.value })}

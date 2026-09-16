@@ -23,9 +23,9 @@ const works = (n: number, p: Partial<PortfolioImage> = {}) =>
   Array.from({ length: n }, (_, i) => img({ id: i + 1, series: 'S', ...p }));
 
 describe('작품 분석 — 비율', () => {
-  it('실치수에서 비율·면적을 읽는다', () => {
-    expect(parseAspect('72.7×90.9 cm')).toBeCloseTo(0.8, 2);
-    expect(parseAspect('116.8 x 57.0 cm')).toBeCloseTo(2.05, 2);
+  it('실치수에서 비율·면적을 읽는다 — 문자열은 세로×가로(관례, 2026-09-16)', () => {
+    expect(parseAspect('90.9×72.7 cm')).toBeCloseTo(0.8, 2);      // 세로 90.9 · 가로 72.7 → 세로 그림
+    expect(parseAspect('57.0 x 116.8 cm')).toBeCloseTo(2.05, 2);  // 세로 57 · 가로 116.8 → 파노라마
     expect(parseAreaCm2('100×80 cm')).toBe(8000);
   });
 
@@ -59,8 +59,8 @@ describe('작품 분석 — 비율', () => {
   it('포트폴리오 성격을 집계한다', () => {
     const c = analyzePortfolio({
       images: [
-        img({ id: 1, sizeText: '50×100 cm', title: '가', description: '설명입니다'.repeat(6) }),
-        img({ id: 2, sizeText: '100×50 cm' }),
+        img({ id: 1, sizeText: '100×50 cm', title: '가', description: '설명입니다'.repeat(6) }),   // 세로 100 → portrait
+        img({ id: 2, sizeText: '50×100 cm' }),                                                    // 세로 50 → landscape
         img({ id: 3, sizeText: '80×80 cm', title: '나' }),
       ],
       statement: '작가노트', biography: '', careerCount: 0,
@@ -112,7 +112,7 @@ describe('디자인 방향', () => {
   });
 
   it('가로 작품이 많으면 가로 지면 방향을 추천한다', () => {
-    const c = analyzePortfolio({ images: works(12, { sizeText: '120×60 cm' }) });
+    const c = analyzePortfolio({ images: works(12, { sizeText: '60×120 cm' }) });   // 세로 60 · 가로 120
     const keys = recommendDirections(c).map((r) => r.direction.key);
     expect(keys).toContain('artwork');
     expect(directionByKey('artwork')!.design.page).toBe('a4-landscape');

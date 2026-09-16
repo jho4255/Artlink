@@ -93,9 +93,9 @@ function GalleryPicker({
   };
 
   return (
-    <div className={`rounded-xl border p-3 ${error ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
+    <div className={`rounded-xl border p-3 ${error ? 'border-accent bg-accent/5' : 'border-gray-200 bg-white'}`}>
       <div className="flex items-center justify-between">
-        <p className={`text-xs font-medium ${error ? 'text-red-600' : 'text-gray-500'}`}>운영 갤러리 <span className="font-normal text-gray-400">(선택)</span></p>
+        <p className={`text-xs font-medium ${error ? 'text-accent' : 'text-gray-500'}`}>운영 갤러리 <span className="font-normal text-gray-400">(선택)</span></p>
         <p className="text-[11px] text-gray-400">{selected.length}곳 선택</p>
       </div>
       <p className="mt-1 text-[11px] text-gray-400">
@@ -127,7 +127,7 @@ function GalleryPicker({
                   주관으로
                 </button>
               )}
-              <button type="button" onClick={() => remove(g.id)} className="text-gray-400 hover:text-red-500" aria-label={`${g.name} 제외`}>
+              <button type="button" onClick={() => remove(g.id)} className="text-gray-400 hover:text-accent" aria-label={`${g.name} 제외`}>
                 <X size={14} />
               </button>
             </li>
@@ -323,7 +323,7 @@ export default function HostedExhibitionsSection() {
   const statusColors: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-700',
     APPROVED: 'bg-green-100 text-green-700',
-    REJECTED: 'bg-red-100 text-red-700',
+    REJECTED: 'bg-accent/10 text-accent',
   };
 
   return (
@@ -398,18 +398,18 @@ export default function HostedExhibitionsSection() {
                   ...(form.recruitOnly ? [] : [['submissionDeadline', '작가 자료제출 마감일'] as const]),
                 ] as const)).map(([key, label]) => (
                   <div key={key}>
-                    <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-red-500' : 'text-gray-500'}`}>{label} *</label>
+                    <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-accent' : 'text-gray-500'}`}>{label} *</label>
                     <input
                       type="date"
                       value={form[key]}
                       onChange={e => { setForm({ ...form, [key]: e.target.value }); clearError(key); }}
-                      className={`mt-0.5 w-full rounded-lg border p-2 text-sm ${formErrors.has(key) ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                      className={`mt-0.5 w-full rounded-lg border p-2 text-sm ${formErrors.has(key) ? 'border-accent bg-accent/5' : 'border-gray-200'}`}
                     />
                   </div>
                 ))}
               </div>
               {dateError && (
-                <p className="flex items-center gap-1 text-xs text-red-500"><AlertTriangle size={12} /> {dateError}</p>
+                <p className="flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} /> {dateError}</p>
               )}
 
               <div className="border-t border-gray-100 pt-3">
@@ -558,7 +558,7 @@ export default function HostedExhibitionsSection() {
                       <button onClick={() => navigate(`/exhibitions/${ex.id}/operation/new`)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
                         운영 페이지
                       </button>
-                      <button onClick={() => setDeleteTarget(ex)} className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">
+                      <button onClick={() => setDeleteTarget(ex)} className="flex items-center gap-1 rounded-lg border border-accent/30 px-3 py-1.5 text-xs text-accent hover:bg-accent/5">
                         <Trash2 size={12} /> 삭제
                       </button>
                     </div>

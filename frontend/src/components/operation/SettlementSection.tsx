@@ -48,7 +48,7 @@ function ApprovalBadge({ status, autoApproved }: { status?: string; autoApproved
   // 자동 수락은 사람이 누른 수락과 반드시 구분해서 보여준다 — 나중에 다툼이 생기면 이 구분이 근거다
   if (status === 'APPROVED' && autoApproved) return <span className={`${base} bg-gray-100 text-gray-600`}>자동 수락</span>;
   if (status === 'APPROVED') return <span className={`${base} bg-green-100 text-green-700`}>수락</span>;
-  if (status === 'ISSUE') return <span className={`${base} bg-red-100 text-red-700`}>문제 제기</span>;
+  if (status === 'ISSUE') return <span className={`${base} bg-accent/10 text-accent`}>문제 제기</span>;
   if (status === 'PENDING') return <span className={`${base} bg-gray-100 text-gray-500`}>대기중</span>;
   return null;
 }
@@ -253,7 +253,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">저장 안 된 변경 있음</span>
           )}
           {!locked && (
-            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className={`px-3 py-1.5 text-white text-sm rounded-lg disabled:opacity-50 ${dirty ? 'bg-[#c4302b] hover:bg-[#a82822]' : 'bg-gray-900'}`}>{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
+            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className={`px-3 py-1.5 text-white text-sm rounded-lg disabled:opacity-50 ${dirty ? 'bg-accent hover:bg-[#a82822]' : 'bg-gray-900'}`}>{saveMutation.isPending ? '저장 중...' : '정산 저장'}</button>
           )}
           {!settled && !requested && (
             <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">정산 확인 요청</button>
@@ -324,12 +324,12 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
       {/* 판매작 홍보 CTA — ArtLook 연결 */}
       {soldWorks.length > 0 && (
-        <div className="mb-4 rounded-xl border border-[#c4302b]/25 bg-[#fff5f4] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="mb-4 rounded-xl border border-accent/25 bg-[#fff5f4] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900">판매한 작품들을 홍보해보세요</p>
             <p className="text-xs text-gray-500 mt-0.5">판매된 {soldWorks.length}점을 액자·전시 공간에 담아 SNS 홍보 이미지를 만들 수 있어요.</p>
           </div>
-          <button onClick={() => { if (openArtLook(soldWorks) === 0) toast.error('홍보할 판매 작품 이미지가 없습니다.'); }} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-[#c4302b] rounded-lg hover:bg-[#a82822] cursor-pointer">
+          <button onClick={() => { if (openArtLook(soldWorks) === 0) toast.error('홍보할 판매 작품 이미지가 없습니다.'); }} className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-[#a82822] cursor-pointer">
             <Megaphone size={15} /> ArtLook으로 홍보 이미지 만들기
           </button>
         </div>
@@ -395,7 +395,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
                 {/* 문제 제기는 접혀 있어도 보여준다 — 갤러리가 지금 조치해야 하는 유일한 항목 */}
                 {appr?.status === 'ISSUE' && appr.comment && (
-                  <div className="mt-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">문제 제기: {appr.comment}</div>
+                  <div className="mt-2 rounded-lg bg-accent/5 border border-accent/20 px-3 py-2 text-xs text-accent">문제 제기: {appr.comment}</div>
                 )}
 
                 {/*

@@ -25,7 +25,7 @@ export function EditableText({ value, onChange, placeholder, multiline, classNam
   const base = cn(
     'w-full bg-transparent rounded-md px-2 py-1 -mx-2 transition-colors outline-none',
     'border border-dashed',
-    error ? 'border-red-400 bg-red-50/40' : 'border-transparent hover:border-gray-300 focus:border-gray-400 focus:bg-gray-50',
+    error ? 'border-accent bg-accent/5' : 'border-transparent hover:border-gray-300 focus:border-gray-400 focus:bg-gray-50',
     'placeholder:text-gray-300 placeholder:font-normal',
     className,
   );
@@ -93,7 +93,7 @@ export function HeroImageEdit({ value, onChange, onRemove, className, label = '�
 
   return (
     <div
-      className={cn('relative group bg-gray-100 overflow-hidden', error && 'ring-2 ring-red-300', dragOver && 'ring-2 ring-gray-500', className)}
+      className={cn('relative group bg-gray-100 overflow-hidden', error && 'ring-2 ring-accent/40', dragOver && 'ring-2 ring-gray-500', className)}
       onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
       onDrop={onDrop}
@@ -107,7 +107,7 @@ export function HeroImageEdit({ value, onChange, onRemove, className, label = '�
               <Upload size={13} /> 변경
             </button>
             {onRemove && (
-              <button type="button" onClick={onRemove} className="px-3 min-h-[40px] bg-white/90 text-red-500 text-xs rounded-lg flex items-center gap-1">
+              <button type="button" onClick={onRemove} className="px-3 min-h-[40px] bg-white/90 text-accent text-xs rounded-lg flex items-center gap-1">
                 <X size={13} /> 삭제
               </button>
             )}

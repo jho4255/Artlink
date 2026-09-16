@@ -93,7 +93,7 @@ export default function ShowsPage() {
         {user?.role === 'GALLERY' && (
           <Link
             to="/shows/new"
-            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors whitespace-nowrap"
+            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5 transition-colors whitespace-nowrap"
           >
             <Plus size={15} /> 전시 등록
           </Link>
@@ -214,7 +214,7 @@ export default function ShowsPage() {
                     </h3>
                     <div className="flex items-center gap-2 flex-none">
                       <span className={`text-xs font-medium px-2 py-0.5 ${
-                        status === 'ongoing' ? 'text-[#c4302b]' :
+                        status === 'ongoing' ? 'text-accent' :
                         status === 'upcoming' ? 'text-gray-900' :
                         'text-gray-400'
                       }`}>
@@ -231,7 +231,7 @@ export default function ShowsPage() {
                           className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer"
                           aria-label={show.isFavorited ? '찜 해제' : '찜하기'}
                         >
-                          <Heart size={16} className={show.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'} />
+                          <Heart size={16} className={show.isFavorited ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'} />
                         </button>
                       )}
                     </div>

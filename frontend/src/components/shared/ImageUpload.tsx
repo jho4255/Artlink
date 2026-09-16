@@ -61,7 +61,7 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
               aria-label="이미지 삭제"
               className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             >
-              <span className="p-1 bg-red-500 text-white rounded-full shadow"><X size={14} /></span>
+              <span className="p-1 bg-accent text-white rounded-full shadow"><X size={14} /></span>
             </button>
           )}
         </div>
@@ -169,7 +169,7 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
               aria-label="이미지 삭제"
               className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             >
-              <span className="p-1 bg-red-500 text-white rounded-full shadow"><X size={12} /></span>
+              <span className="p-1 bg-accent text-white rounded-full shadow"><X size={12} /></span>
             </button>
           </div>
         ))}

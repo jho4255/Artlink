@@ -40,7 +40,7 @@ export default function ClosingSoonExhibitions() {
                   className="h-full w-full object-cover group-hover:opacity-80 transition-opacity" loading="lazy" />
               </div>
               <div className="min-w-0">
-                <span className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${urgent ? 'bg-[#dc3545] text-white' : 'bg-gray-100 text-gray-600'}`}>
+                <span className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${urgent ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600'}`}>
                   {ddayLabel(d)}
                 </span>
                 <h3 className="mt-0.5 truncate font-serif text-[15px] text-gray-900 group-hover:underline">{ex.title}</h3>

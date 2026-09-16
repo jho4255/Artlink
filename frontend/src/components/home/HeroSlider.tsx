@@ -6,6 +6,9 @@
  * - IntersectionObserver로 현재 슬라이드 추적
  * - 3초 자동 슬라이드, current 변경 시 타이머 리셋
  * - 이미지 dominant color 추출 → 배경 그라데이션 적용
+ * - 슬라이드마다 **모바일 전용 이미지**(`mobileImageUrl`, 세로형)를 둘 수 있다 (2026-09-16).
+ *   `<picture>` 가 화면 폭(sm 미만)에 따라 소스를 고른다. 없으면 가로 배너를 그대로 쓰되,
+ *   띠가 얇으면(<200px) 제목·설명·바로가기를 사진 **아래 카드**로 내린다.
  *
  * @see CLAUDE.md - Hero Section 스펙
  */
@@ -16,6 +19,22 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import type { HeroSlide } from '@/types';
+
+/** 모바일 이미지 분기 폭 — Tailwind `sm`(640px) 과 같은 경계. `<picture>` 의 media 와 **반드시 같아야** 한다. */
+export const HERO_MOBILE_MEDIA = '(max-width: 639px)';
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && 'matchMedia' in window && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('matchMedia' in window)) return;
+    const mq = window.matchMedia(query);
+    const sync = () => setMatches(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, [query]);
+  return matches;
+}
 
 export default function HeroSlider() {
   const navigate = useNavigate();
@@ -53,14 +72,24 @@ export default function HeroSlider() {
    *    그래야 나머지가 위아래로 넘치지 않는다. 남는 자리는 `object-contain` + 띠 배경색(dominant color)이 먹는다.
    * ⚠️ 극단적인 업로드를 대비해 [1.2, 3.4] 로 묶는다. 세로 사진 한 장 때문에 배너가 화면을 삼키면 안 된다.
    */
-  const [ratio, setRatio] = useState<number | null>(null);
-  const noteRatio = useCallback((w: number, h: number) => {
+  /*
+   * 좁은 화면에서는 세로형 모바일 이미지가 올 수 있으므로 비율 하한이 다르다 — 데스크톱 1.2, 모바일 0.8(4:5).
+   * ⚠️ 비율은 **슬라이드별로** 들고 있다가 매번 최솟값을 구한다. 창 폭이 경계를 넘으면 브라우저가 `<picture>`
+   *    소스를 바꿔 onLoad 가 다시 오는데, 누적 min 으로 두면 옛 소스(가로 3:1)의 비율이 그대로 남아
+   *    세로 이미지가 위아래로 잘린 틀에 갇힌다.
+   */
+  const isNarrow = useMediaQuery(HERO_MOBILE_MEDIA);
+  const [ratios, setRatios] = useState<Record<number, number>>({});
+  const noteRatio = useCallback((i: number, w: number, h: number) => {
     if (!w || !h) return;
-    const r = Math.min(3.4, Math.max(1.2, w / h));
-    setRatio((prev) => (prev === null ? r : Math.min(prev, r)));
+    const r = w / h;
+    setRatios((prev) => (prev[i] === r ? prev : { ...prev, [i]: r }));
   }, []);
+  const measured = Object.values(ratios);
   // 아직 한 장도 못 쟀으면 실서버 배너 비율(3:1)로 시작한다 — 뜨자마자 튀는 걸 줄인다
-  const trackRatio = ratio ?? 3;
+  const trackRatio = measured.length
+    ? Math.min(3.4, Math.max(isNarrow ? 0.8 : 1.2, Math.min(...measured)))
+    : 3;
 
   /**
    * 띠가 얇으면 **글씨를 사진 위에 얹지 않는다** (2026-09-10).
@@ -243,19 +272,23 @@ export default function HeroSlider() {
                   <div className="absolute inset-0 bg-gray-100 animate-pulse" />
                 )}
                 {/* ⚠️ `object-cover` 로 되돌리지 말 것 — 창이 좁아지면 사진이 잘린다(위 `ratio` 주석 참고) */}
-                <img
-                  src={slide.imageUrl}
-                  alt={slide.title}
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    noteRatio(img.naturalWidth, img.naturalHeight);
-                    markLoaded(i);
-                  }}
-                  onError={() => markLoaded(i)}
-                  className={`w-full h-full object-contain pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
-                  draggable={false}
-                  loading={i === 0 ? 'eager' : 'lazy'}
-                />
+                {/* 모바일 전용 이미지가 있으면 좁은 화면에서 그걸 고른다. 고른 소스의 실제 크기가 onLoad 로 들어온다. */}
+                <picture className="block w-full h-full">
+                  {slide.mobileImageUrl && <source media={HERO_MOBILE_MEDIA} srcSet={slide.mobileImageUrl} />}
+                  <img
+                    src={slide.imageUrl}
+                    alt={slide.title}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      noteRatio(i, img.naturalWidth, img.naturalHeight);
+                      markLoaded(i);
+                    }}
+                    onError={() => markLoaded(i)}
+                    className={`w-full h-full object-contain pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
+                    draggable={false}
+                    loading={i === 0 ? 'eager' : 'lazy'}
+                  />
+                </picture>
                 {/* 텍스트
                     하단 그래디언트는 뺐다(2026-08-15) — 배너 이미지에 이미 디자인이 다 들어 있는데
                     어둡게 덮어서 아래쪽이 안 보였다. 대신 **글자에만** 그림자를 줘서 밝은 이미지 위에서도
@@ -337,13 +370,14 @@ export default function HeroSlider() {
           ⚠️ 여기 글씨는 띠 색(dominant color) 위에 놓이므로 흰색 + 그림자로 고정한다 —
              띠 색이 밝을 수도 있어 그림자를 빼면 대비가 무너진다.
         */}
+        {/* 카드로 내릴 땐 제목을 한 줄로 자르지 않는다 — 얇은 배너에서는 이 글이 배너의 전부다(포스터 속 글씨는 이미 안 읽힌다). */}
         {compact && currentSlide && (
-          <div className="flex items-center gap-3 px-5 pb-2.5 pt-2 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center gap-3 px-5 pb-3 pt-2.5 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
             <div className="min-w-0 flex-1">
               {currentSlide.description && (
-                <p className="truncate text-[10px] uppercase tracking-[0.14em] text-white/75">{currentSlide.description}</p>
+                <p className="line-clamp-1 text-[10px] uppercase tracking-[0.14em] text-white/75">{currentSlide.description}</p>
               )}
-              <h2 className="truncate text-sm font-semibold text-white">{currentSlide.title}</h2>
+              <h2 className="line-clamp-2 text-[15px] font-semibold leading-snug text-white">{currentSlide.title}</h2>
             </div>
             {slides.length > 1 && (
               <div className="flex shrink-0 items-center">

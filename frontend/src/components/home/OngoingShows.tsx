@@ -34,7 +34,7 @@ export default function OngoingShows() {
                 className="h-full w-full object-cover group-hover:opacity-80 transition-opacity" loading="lazy" />
             </div>
             <div className="min-w-0">
-              <span className="inline-block rounded-sm bg-[#dc3545]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#dc3545]">진행중</span>
+              <span className="inline-block rounded-sm bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">진행중</span>
               <h3 className="mt-0.5 truncate font-serif text-[15px] text-gray-900 group-hover:underline">{s.title}</h3>
               <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-gray-400">
                 <MapPin size={11} className="shrink-0" />

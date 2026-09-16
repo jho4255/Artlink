@@ -1387,14 +1387,16 @@
   // 포트폴리오의 sizeText 는 작가가 자유롭게 적는다 — '116.8 × 91.0 cm' · '80x60' ·
   // '30호 (90.9×72.7cm)' 처럼 제각각이라 **숫자 두 개만** 뽑는다.
   // 읽지 못하면 null 을 돌려 장면의 기본 채움 비율로 앉게 한다(추측해서 틀리게 거는 것보다 낫다).
+  // 작품 크기 문자열 → [가로cm, 세로cm].
+  // ⚠️ 문자열은 **세로×가로**(높이 먼저) 관례다(2026-09-16, lib/artwork.ts composeSize 와 같은 순서). 반환은 [가로, 세로].
   function parseSizeCm(text) {
     const t = String(text == null ? '' : text);
     const m = t.match(/(\d+(?:\.\d+)?)\s*[x×X*╳]\s*(\d+(?:\.\d+)?)/);
     if (!m) return null;
-    let a = parseFloat(m[1]), b = parseFloat(m[2]);
-    if (!(a > 0 && b > 0)) return null;
-    if (/\bmm\b/i.test(t) || a > 400 || b > 400) { a /= 10; b /= 10; }  // mm 로 적은 경우
-    return [a, b];
+    let h = parseFloat(m[1]), w = parseFloat(m[2]);
+    if (!(h > 0 && w > 0)) return null;
+    if (/\bmm\b/i.test(t) || h > 400 || w > 400) { h /= 10; w /= 10; }  // mm 로 적은 경우
+    return [w, h];
   }
 
   global.ArtLookScene = {

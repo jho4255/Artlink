@@ -82,7 +82,7 @@ export function CustomQuestionBuilder({
                   />
                   필수
                 </label>
-                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto px-2 -my-1 min-h-[44px] inline-flex items-center text-[11px] text-red-500 hover:underline">삭제</button>
+                <button type="button" onClick={() => removeQuestion(index)} className="ml-auto px-2 -my-1 min-h-[44px] inline-flex items-center text-[11px] text-accent hover:underline">삭제</button>
               </div>
               <input
                 value={field.label}
@@ -128,7 +128,7 @@ export function CustomQuestionBuilder({
                         placeholder={`선택지 ${optionIndex + 1}`}
                         className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
                       />
-                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="shrink-0 px-2 min-h-[44px] inline-flex items-center text-xs text-gray-400 hover:text-red-500">삭제</button>
+                      <button type="button" onClick={() => removeOption(index, optionIndex)} className="shrink-0 px-2 min-h-[44px] inline-flex items-center text-xs text-gray-400 hover:text-accent">삭제</button>
                     </div>
                   ))}
                   <button type="button" onClick={() => addOption(index)} className="px-1 min-h-[44px] inline-flex items-center text-xs text-gray-600 hover:underline">+ 선택지 추가</button>

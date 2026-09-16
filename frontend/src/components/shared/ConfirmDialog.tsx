@@ -70,7 +70,7 @@ export default function ConfirmDialog({
   }, [open]);
 
   const confirmBtnClass = variant === 'danger'
-    ? 'bg-red-500 hover:bg-red-600 text-white'
+    ? 'bg-accent hover:bg-accent/90 text-white'
     : 'bg-gray-900 hover:bg-gray-800 text-white';
 
   return createPortal(

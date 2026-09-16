@@ -76,6 +76,14 @@ export function hasTitle(img: Pick<PortfolioImage, 'title'>): boolean {
 }
 
 /**
+ * 연도 표기 정리 — 작가마다 "2024년", "2024.", "2023~2024" 처럼 적는다. 캡션에서는 숫자만 남긴다
+ * (범위 표기는 그대로). 저장값은 건드리지 않는다 — 인쇄·화면 표기용.
+ */
+export function displayYear(y?: string | null): string {
+  return String(y ?? '').trim().replace(/\s*년\s*$/, '').replace(/[.,;]\s*$/, '').trim();
+}
+
+/**
  * 캡션 보조 줄 — [재료, 크기, 연도] 중 채워진 것만.
  * 세로로 쌓는 포맷(화이트 갤러리·스토리)이 쓴다.
  */
@@ -91,23 +99,43 @@ export function captionInline(img: Pick<PortfolioImage, 'medium' | 'sizeText' | 
   return [trimmed(img.sizeText), trimmed(img.medium), trimmed(img.year)].filter(Boolean).join('  /  ');
 }
 
+/**
+ * 미술관식 캡션 (2026-09-16, 작가 홈페이지).
+ * 국내 관례: **작품명, 제작연도 / 재료 / 크기(세로×가로 cm)** 순. 종전 한 줄(크기 / 재료 / 연도)은 순서가 거꾸로였다.
+ * 있는 것만 조립한다 — 제목이 없으면 연도만 첫 줄에, 그것도 없으면 첫 줄을 비운다. 전부 비면 null.
+ */
+export interface MuseumCaption { head: string; medium: string; size: string }
+export function museumCaption(img: Pick<PortfolioImage, 'title' | 'medium' | 'sizeText' | 'year'>): MuseumCaption | null {
+  const title = trimmed(img.title), year = trimmed(img.year), medium = trimmed(img.medium), size = trimmed(img.sizeText);
+  if (!title && !year && !medium && !size) return null;
+  const head = title && year ? `${title}, ${year}` : title || year;
+  return { head, medium, size };
+}
+
 /** 캡션 정보가 하나라도 있는지 — "정보 미입력" 안내 배지를 띄울지 판단 */
 export function hasCaption(img: Pick<PortfolioImage, 'title' | 'medium' | 'sizeText' | 'year'>): boolean {
   return !!(trimmed(img.title) || trimmed(img.medium) || trimmed(img.sizeText) || trimmed(img.year));
 }
 
 // ── 크기 입력 ──
-// 작가에게 "72.7 × 90.9 cm"를 통째로 치게 하면 표기가 제각각이 된다(x/×/X, cm 유무, 공백).
-// 가로·세로 숫자만 받아 한 형식으로 합성하고, 저장은 합성된 문자열 하나로만 한다(캡션·PDF의 단일 출처).
-export function splitSize(s?: string | null): { w: string; h: string } {
+// 작가에게 "90.9 × 72.7 cm"를 통째로 치게 하면 표기가 제각각이 된다(x/×/X, cm 유무, 공백).
+// 세로·가로 숫자만 받아 한 형식으로 합성하고, 저장은 합성된 문자열 하나로만 한다(캡션·PDF의 단일 출처).
+//
+// ⚠️⚠️ **순서는 세로×가로(높이 먼저)다** (2026-09-16 사용자 결정). 국내(현대미술의 이해·월간미술 "세로×가로")·
+//    해외(Chicago "height, width, depth") 관례가 같다. 그 전까지 폼이 가로→세로로 받아 "가로×세로 cm" 로 저장했고 —
+//    심사자가 보면 그림 방향이 뒤집혀 읽히는 오류였다. 기존 데이터는 `backend/scripts/migrate-size-order.ts` 가
+//    사진 비율로 판정해 뒤집었다. `parseAspect`(artworkAnalysis)·ArtLook `parseSizeCm` 도 같은 순서를 읽는다 —
+//    한쪽만 바꾸면 비율이 거꾸로 계산된다.
+export function splitSize(s?: string | null): { h: string; w: string } {
   const m = String(s || '').match(/([\d.]+)\s*[x×X*]\s*([\d.]+)/);
-  return m ? { w: m[1]!, h: m[2]! } : { w: '', h: '' };
+  return m ? { h: m[1]!, w: m[2]! } : { h: '', w: '' };
 }
-export function composeSize(w: string, h: string): string {
-  const ws = (w || '').trim(), hs = (h || '').trim();
-  if (!ws && !hs) return '';
-  if (ws && hs) return `${ws}×${hs} cm`;
-  return `${ws || hs} cm`;
+/** 세로(h)·가로(w) → "세로×가로 cm". 하나만 있으면 그 값만 */
+export function composeSize(h: string, w: string): string {
+  const hs = (h || '').trim(), ws = (w || '').trim();
+  if (!hs && !ws) return '';
+  if (hs && ws) return `${hs}×${ws} cm`;
+  return `${hs || ws} cm`;
 }
 
 // ── 시리즈 ──

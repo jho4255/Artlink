@@ -395,7 +395,7 @@ function BoardSection({ board, members, collapsed, onToggleCollapse, onEdit, onD
 
         <div className="shrink-0 flex gap-0.5 mt-0.5">
           <button onClick={onEdit} aria-label={`${board.title} 수정`} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-200 cursor-pointer"><Pencil size={14} /></button>
-          <button onClick={onDelete} aria-label={`${board.title} 삭제`} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"><Trash2 size={14} /></button>
+          <button onClick={onDelete} aria-label={`${board.title} 삭제`} className="p-1.5 rounded-lg text-gray-400 hover:text-accent hover:bg-accent/5 cursor-pointer"><Trash2 size={14} /></button>
         </div>
       </div>
 
@@ -704,7 +704,7 @@ function SubtaskRow({ subtask, onToggle, onRename, onDelete }: {
       <button
         onClick={onDelete}
         aria-label={`${subtask.title} 삭제`}
-        className="shrink-0 p-0.5 rounded text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+        className="shrink-0 p-0.5 rounded text-gray-300 hover:text-accent opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
       ><X size={12} /></button>
     </div>
   );
@@ -829,7 +829,7 @@ function ItemModal({ item, members, onClose }: {
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          <button onClick={() => setDeleting(true)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-red-600 cursor-pointer">
+          <button onClick={() => setDeleting(true)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-accent cursor-pointer">
             <Trash2 size={14} /> 삭제
           </button>
           <div className="flex items-center gap-2">
@@ -860,7 +860,7 @@ function ItemModal({ item, members, onClose }: {
                   <button
                     onClick={() => commentDeleteMutation.mutate(c.id)}
                     aria-label="댓글 삭제"
-                    className="shrink-0 mt-1 p-1 rounded text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+                    className="shrink-0 mt-1 p-1 rounded text-gray-300 hover:text-accent opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
                   ><X size={13} /></button>
                 )}
               </div>

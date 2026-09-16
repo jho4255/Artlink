@@ -179,7 +179,7 @@ function NoticesSection({ exhibitionId, canManage }: { exhibitionId: string; can
                 {canManage && (
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => startEdit(n)} className="p-1 text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-                    <button onClick={() => { if (window.confirm('이 공지를 삭제할까요?')) deleteMutation.mutate(n.id); }} className="p-1 text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
+                    <button onClick={() => { if (window.confirm('이 공지를 삭제할까요?')) deleteMutation.mutate(n.id); }} className="p-1 text-gray-400 hover:text-accent" aria-label="삭제"><Trash2 size={14} /></button>
                   </div>
                 )}
               </div>
@@ -917,19 +917,19 @@ function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
             </p>
           )}
           {myStatus === 'ISSUE' && (
-            <p className="text-sm text-red-600 mt-2">문제 제기함: “{data.myApproval?.comment}”<br/><span className="text-xs text-gray-500">갤러리가 수정 후 다시 요청하면 재확인할 수 있어요.</span></p>
+            <p className="text-sm text-accent mt-2">문제 제기함: “{data.myApproval?.comment}”<br/><span className="text-xs text-gray-500">갤러리가 수정 후 다시 요청하면 재확인할 수 있어요.</span></p>
           )}
           <div className="flex gap-2 mt-3">
             <button onClick={() => respondMutation.mutate({ approve: true })} disabled={respondMutation.isPending}
               className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">{myStatus === 'APPROVED' ? '수락됨' : '정산 확인(수락)'}</button>
             <button onClick={() => setIssueOpen(v => !v)}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50">문제 제기</button>
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/5">문제 제기</button>
           </div>
           {issueOpen && (
             <div className="mt-2">
               <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2}
                 placeholder="어떤 점이 문제인지 적어주세요 (예: 판매가/정산 비율 오류)"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
               <button onClick={() => comment.trim() ? respondMutation.mutate({ approve: false, comment: comment.trim() }) : toast.error('문제 내용을 입력해주세요.')}
                 disabled={respondMutation.isPending}
                 className="mt-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50">갤러리에 전달</button>
@@ -1001,16 +1001,16 @@ function ArtworkImageCell({ value, onChange, className = '' }: { value?: string;
   );
 }
 
-// 크기 문자열 ↔ 가로/세로 분리 (size는 캡션·PDF용 단일 출처로 유지)
-function splitSize(s: string): { w: string; h: string } {
+// 크기 문자열 ↔ 세로/가로 분리 (size는 캡션·PDF용 단일 출처로 유지). `lib/artwork.ts` 와 같은 규칙 — **세로×가로**(2026-09-16).
+function splitSize(s: string): { h: string; w: string } {
   const m = String(s || '').match(/([\d.]+)\s*[x×X*]\s*([\d.]+)/);
-  return m ? { w: m[1], h: m[2] } : { w: '', h: '' };
+  return m ? { h: m[1], w: m[2] } : { h: '', w: '' };
 }
-function composeSize(w: string, h: string): string {
-  const ws = (w || '').trim(), hs = (h || '').trim();
-  if (!ws && !hs) return '';
-  if (ws && hs) return `${ws}×${hs} cm`;
-  return `${ws || hs} cm`;
+function composeSize(h: string, w: string): string {
+  const hs = (h || '').trim(), ws = (w || '').trim();
+  if (!hs && !ws) return '';
+  if (hs && ws) return `${hs}×${ws} cm`;
+  return `${hs || ws} cm`;
 }
 
 // 숫자 전용 입력 새니타이저 — 가로/세로는 소수점 1개 허용(72.7cm), 제작년도/가격은 정수만
@@ -1103,7 +1103,7 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, onRemoved, stateOf,
                 </button>
               )}
               <span className={unitCol}>
-                <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={16} /></button>
+                <button onClick={() => rm(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Minus size={16} /></button>
               </span>
             </div>
             {/* 모바일: 사진을 위로 쌓는다 (옆에 두면 입력 칸이 짜부라진다) / sm+: 좌측 사진 + 우측 입력 */}
@@ -1125,16 +1125,16 @@ function ArtworkListEditor({ value, onChange, onSaveArtwork, onRemoved, stateOf,
                 </label>
                 <span className={unitCol} />
               </div>
-              {/* 크기: 가로 × 세로 (cm) */}
+              {/* 크기: 세로 × 가로 (cm) — 관례가 높이 먼저다(2026-09-16) */}
               <div className="flex items-end gap-1.5">
                 <label className="w-0 flex-1 min-w-0">
-                  <span className={labelCls}>가로</span>
-                  <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(v, h) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                  <span className={labelCls}>세로</span>
+                  <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(v, w) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
                 </label>
                 <span className="text-gray-400 text-sm shrink-0 pb-1.5">×</span>
                 <label className="w-0 flex-1 min-w-0">
-                  <span className={labelCls}>세로</span>
-                  <input value={h} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { height: v, size: composeSize(w, v) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
+                  <span className={labelCls}>가로</span>
+                  <input value={w} onChange={e => { const v = decimalOnly(e.target.value); upd(i, { width: v, size: composeSize(h, v) }); }} placeholder="0" inputMode="decimal" className={`w-full text-center ${inputCls}`} />
                 </label>
                 <span className={`${unitCol} pb-1.5 items-end text-xs text-gray-500`}>cm</span>
               </div>
@@ -1280,7 +1280,7 @@ function NoteEditor({ value, onChange, artworkList = [], onSaveNote, isSectionDi
                     {/* 상단 우측: 저장 상태 + 삭제 */}
                     <div className="flex items-center justify-end gap-2 h-4">
                       {onSaveNote && <span className={`text-[11px] ${dirty ? 'text-amber-700' : 'text-green-700'}`}>{dirty ? '저장 안 됨' : '✓ 저장됨'}</span>}
-                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Minus size={15} /></button>
+                      <button onClick={() => rmSection(i)} className="min-h-[44px] min-w-[44px] -mx-2 -my-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Minus size={15} /></button>
                     </div>
                     <label className="block">
                       <span className="block text-[11px] text-gray-400 mb-0.5">작품</span>

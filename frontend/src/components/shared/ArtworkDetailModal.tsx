@@ -178,7 +178,7 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
                 <button onClick={handleLike} aria-label={image.isLiked ? '좋아요 취소' : '좋아요'} className="cursor-pointer">
                   <Heart
                     size={20}
-                    className={image.isLiked ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
+                    className={image.isLiked ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'}
                   />
                 </button>
                 {isOwner ? (

@@ -32,7 +32,7 @@ const STATUS_TABS = [
 const statusColors: Record<string, string> = {
   SUBMITTED: 'bg-gray-100 text-gray-600',
   ACCEPTED: 'bg-green-100 text-green-600',
-  REJECTED: 'bg-red-100 text-red-600',
+  REJECTED: 'bg-accent/10 text-accent',
 };
 
 interface Props {

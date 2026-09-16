@@ -8,7 +8,7 @@ import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/ap
 
 const router = Router();
 
-const VALID_ROLES = ['ADMIN', 'ARTIST', 'GALLERY'];
+const VALID_ROLES = ['ADMIN', 'ARTIST', 'GALLERY', 'VISITOR'];
 
 /**
  * 사용자 검색 (ADMIN 전용) — 이메일/이름 부분일치, 최대 100명

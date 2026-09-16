@@ -83,7 +83,7 @@ export default function CommunityWritePage() {
         <button
           onClick={() => create.mutate()}
           disabled={!canSubmit}
-          className={`text-sm font-semibold ${canSubmit ? 'text-[#dc3545]' : 'text-gray-300'}`}
+          className={`text-sm font-semibold ${canSubmit ? 'text-accent' : 'text-gray-300'}`}
         >
           {create.isPending ? '등록 중…' : '등록'}
         </button>
@@ -158,7 +158,7 @@ export default function CommunityWritePage() {
               <input
                 type="checkbox" checked={notice}
                 onChange={(e) => { setNotice(e.target.checked); if (e.target.checked) setAnonymous(false); }}
-                className="accent-[#c4302b]"
+                className="accent-accent"
               />
               공지
             </label>

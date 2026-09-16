@@ -23,12 +23,24 @@ interface ImageLightboxProps {
   images: string[];
   initialIndex: number;
   onClose: () => void;
+  /** 넘길 때마다 알린다 — 작가 홈페이지가 `?work=` 주소를 따라 바꾼다(2026-09-16) */
+  onIndexChange?: (index: number) => void;
 }
 
-export default function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxProps) {
+export default function ImageLightbox({ images, initialIndex, onClose, onIndexChange }: ImageLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const touchStartX = useRef(0);
   const didSwipe = useRef(false); // 스와이프 vs 탭 구분
+
+  // 넘길 때만 알린다. 콜백은 ref 로 들어 부모가 매 렌더 새 함수를 줘도 effect 가 돌지 않는다 —
+  // 안 그러면 "알림 → 부모 setState → 새 콜백 → 알림" 이 무한 반복된다(실제로 났다).
+  const onIndexChangeRef = useRef(onIndexChange);
+  useEffect(() => { onIndexChangeRef.current = onIndexChange; });
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }   // 처음 열릴 때는 이미 그 작품이다
+    onIndexChangeRef.current?.(index);
+  }, [index]);
 
   // 스크롤 잠금
   useEffect(() => {

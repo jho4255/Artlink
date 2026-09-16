@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { consumePostLoginRedirect } from '@/lib/postLoginRedirect';
+import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
 
 /**
  * 로그인 페이지
@@ -15,7 +15,7 @@ const KAKAO_CLIENT_ID = import.meta.env.VITE_KAKAO_CLIENT_ID as string;
 
 interface DevUser {
   id: number; name: string; nickname?: string | null; email: string;
-  role: 'ARTIST' | 'GALLERY' | 'ADMIN'; workCount: number;
+  role: 'ARTIST' | 'GALLERY' | 'ADMIN' | 'VISITOR'; workCount: number;
 }
 
 /**
@@ -30,6 +30,8 @@ const DEV_ACCOUNTS = [
   { email: 'gallery@artlink.com', label: 'Gallery', desc: '갤러리 · 공모', role: 'GALLERY' as const },
   { email: 'artist1@artlink.com', label: 'Artist 1', desc: '포트폴리오 · 지원', role: 'ARTIST' as const },
   { email: 'artist2@artlink.com', label: 'Artist 2', desc: '포트폴리오 · 지원', role: 'ARTIST' as const },
+  // 일반(VISITOR) — 작가도 갤러리도 아닌 사람이 보는 화면 확인용(2026-09-16). 지원·등록·리뷰는 서버가 막는다.
+  { email: 'visitor@artlink.com', label: '일반', desc: '감상 · 찜 · 메시지', role: 'VISITOR' as const },
 ];
 
 export default function LoginPage() {
@@ -45,11 +47,12 @@ export default function LoginPage() {
       + `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
   };
 
-  const enter = (data: any) => {
+  const enter = async (data: any) => {
     queryClient.clear();
     login(data.token, data.user);
-    // 로그인 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지
-    navigate(consumePostLoginRedirect() || '/mypage', { replace: true });
+    // 로그인 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지.
+    // 작품이 0점인 작가는 홈페이지 편집(온보딩)으로 — 프로필 폼이 아니라 업로드가 첫 행동이어야 한다.
+    navigate(await resolvePostLoginPath(data.user?.role, () => api.get('/portfolio').then((r) => r.data)), { replace: true });
   };
 
   const handleDevLogin = async (email: string) => {
@@ -110,7 +113,7 @@ export default function LoginPage() {
         </button>
 
         <p className="text-xs text-gray-400 mt-6 leading-relaxed">
-          처음이시면 카카오 인증 후 역할(아티스트/갤러리)과<br />연락처를 입력해 가입을 완료할 수 있어요.
+          처음이시면 카카오 인증 후 역할(아티스트 · 갤러리 · 일반)과<br />연락처를 입력해 가입을 완료할 수 있어요.
         </p>
 
         {import.meta.env.DEV && (
@@ -144,7 +147,7 @@ export default function LoginPage() {
  */
 function DevAccountPicker({ onPick }: { onPick: (email: string) => void }) {
   const [q, setQ] = useState('');
-  const [role, setRole] = useState<'ARTIST' | 'GALLERY' | 'ADMIN' | ''>('ARTIST');
+  const [role, setRole] = useState<DevUser['role'] | ''>('ARTIST');
   const [users, setUsers] = useState<DevUser[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -185,7 +188,7 @@ function DevAccountPicker({ onPick }: { onPick: (email: string) => void }) {
   return (
     <div className="mt-3 border border-gray-200 rounded-lg p-3">
       <div className="flex gap-1.5 mb-2">
-        {([['ARTIST', '작가'], ['GALLERY', '갤러리'], ['ADMIN', '관리자'], ['', '전체']] as const).map(([v, t]) => (
+        {([['ARTIST', '작가'], ['GALLERY', '갤러리'], ['VISITOR', '일반'], ['ADMIN', '관리자'], ['', '전체']] as const).map(([v, t]) => (
           <button
             key={v || 'all'}
             onClick={() => setRole(v)}
@@ -204,7 +207,7 @@ function DevAccountPicker({ onPick }: { onPick: (email: string) => void }) {
       <div className="mt-2 max-h-64 overflow-y-auto divide-y divide-gray-100">
         {loading && <p className="text-xs text-gray-400 py-3 text-center">불러오는 중…</p>}
         {!loading && users?.length === 0 && (
-          <p className={`text-xs py-3 text-center ${error ? 'text-red-500' : 'text-gray-400'}`}>
+          <p className={`text-xs py-3 text-center ${error ? 'text-accent' : 'text-gray-400'}`}>
             {error ?? '계정이 없습니다.'}
           </p>
         )}

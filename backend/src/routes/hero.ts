@@ -31,6 +31,8 @@ function normalizeLinkUrl(u: string | null | undefined): string | null | undefin
 const heroSchema = z.object({
   title: z.string().min(1, '제목을 입력해주세요.'),
   imageUrl: z.string().min(1, '이미지를 등록해주세요.'),
+  // 모바일 전용 이미지(선택). 빈 문자열은 '지움'으로 받아 null 로 저장한다.
+  mobileImageUrl: z.string().nullish(),
   description: z.string().nullish(),
   linkUrl: z.string().nullish(),
   order: z.number().int().optional(),
@@ -51,11 +53,12 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const parsed = heroSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
-    const { title, imageUrl, description, linkUrl, order } = parsed.data;
+    const { title, imageUrl, mobileImageUrl, description, linkUrl, order } = parsed.data;
     const slide = await prisma.heroSlide.create({
       data: {
         title,
         imageUrl,
+        mobileImageUrl: mobileImageUrl || null,
         description: description ?? null,
         linkUrl: normalizeLinkUrl(linkUrl) ?? null,
         order: order ?? 0,
@@ -70,11 +73,12 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
   try {
     const parsed = heroSchema.partial().safeParse(req.body);
     if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
-    const { title, imageUrl, description, linkUrl, order } = parsed.data;
+    const { title, imageUrl, mobileImageUrl, description, linkUrl, order } = parsed.data;
     // 전달된 필드만 반영 (whitelist)
     const data: any = {};
     if (title !== undefined) data.title = title;
     if (imageUrl !== undefined) data.imageUrl = imageUrl;
+    if (mobileImageUrl !== undefined) data.mobileImageUrl = mobileImageUrl || null;
     if (description !== undefined) data.description = description;
     if (linkUrl !== undefined) data.linkUrl = normalizeLinkUrl(linkUrl);
     if (order !== undefined) data.order = order;
@@ -90,9 +94,12 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
 router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const slide = await prisma.heroSlide.findUnique({ where: { id }, select: { imageUrl: true } });
+    const slide = await prisma.heroSlide.findUnique({ where: { id }, select: { imageUrl: true, mobileImageUrl: true } });
     await prisma.heroSlide.delete({ where: { id } });
-    if (slide) void deleteUploadedFile(slide.imageUrl); // orphan 방지
+    if (slide) {
+      void deleteUploadedFile(slide.imageUrl); // orphan 방지
+      if (slide.mobileImageUrl) void deleteUploadedFile(slide.mobileImageUrl);
+    }
     res.json({ message: '삭제되었습니다.' });
   } catch (error) { next(error); }
 });

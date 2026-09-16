@@ -24,8 +24,8 @@ const ALL_TABLES = [
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
   'StoryHighlight', 'PostCategory',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
-  'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
-  'GalleryImage', 'Gallery', 'HeroSlide', 'Benefit', 'User',
+  'PortfolioVersion', 'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
+  'GalleryImage', 'GalleryArchive', 'Gallery', 'HeroSlide', 'Benefit', 'User',
 ];
 
 /**
@@ -83,6 +83,7 @@ export async function cleanDb() {
     await tx.favorite.deleteMany();
     await tx.review.deleteMany();
     await tx.promoPhoto.deleteMany();
+    await tx.portfolioVersion.deleteMany();
     await tx.portfolioImage.deleteMany();
     await tx.portfolio.deleteMany();
     await tx.galleryOfMonth.deleteMany();
@@ -90,6 +91,7 @@ export async function cleanDb() {
     await tx.show.deleteMany();
     await tx.exhibition.deleteMany();
     await tx.galleryImage.deleteMany();
+    await tx.galleryArchive.deleteMany();
     await tx.gallery.deleteMany();
     await tx.heroSlide.deleteMany();
     await tx.benefit.deleteMany();

@@ -107,6 +107,7 @@ scratchpad/pf/*.json
 !scratchpad/pf/coverage-baseline.json
 # 실제 가입자 작품으로 뽑은 조합 결과물·원본 캐시 — 절대 커밋 금지(combos.mjs 머리말)
 scratchpad/pf/combos/
+scratchpad/pf/combos-before/
 scratchpad/pf/cache/
 scratchpad/pf/ba/
 scratchpad/vt/matrix_r9/

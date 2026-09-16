@@ -22,6 +22,7 @@ import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels } from '@/lib/utils';
+import { galleryPath } from '@/lib/handle';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Gallery } from '@/types';
 
@@ -116,7 +117,7 @@ export default function GalleriesPage() {
         {user?.role === 'GALLERY' && (
           <Link
             to="/galleries/new"
-            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors whitespace-nowrap"
+            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5 transition-colors whitespace-nowrap"
           >
             <Plus size={15} /> 갤러리 등록
           </Link>
@@ -223,7 +224,7 @@ export default function GalleriesPage() {
               imageSrc={gallery.images?.[0]?.url || gallery.mainImage || ''}
               alt={`${gallery.name} 대표 이미지`}
               fallbackLabel={gallery.name}
-              to={`/galleries/${gallery.id}`}
+              to={galleryPath(gallery)}
             >
 
               {/* 갤러리 정보 */}
@@ -245,7 +246,7 @@ export default function GalleriesPage() {
                     >
                       <Heart
                         size={18}
-                        className={gallery.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-300 hover:text-gray-500'}
+                        className={gallery.isFavorited ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'}
                       />
                     </button>
                   )}

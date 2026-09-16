@@ -188,8 +188,8 @@ export function dueBadge(dueDate?: string | null, done = false): { text: string;
 }
 
 export const dueToneClass: Record<DueTone, string> = {
-  overdue: 'bg-red-50 text-red-600 border-red-200',
-  today: 'bg-red-50 text-red-600 border-red-200',
+  overdue: 'bg-accent/5 text-accent border-accent/30',
+  today: 'bg-accent/5 text-accent border-accent/30',
   soon: 'bg-amber-50 text-amber-700 border-amber-200',
   normal: 'bg-gray-50 text-gray-500 border-gray-200',
 };

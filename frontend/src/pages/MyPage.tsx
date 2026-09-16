@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft
+  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft,
+  Image as ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -18,7 +19,13 @@ import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibition
 import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
+import PortfolioWorkPicker from '@/components/shared/PortfolioWorkPicker';
+import { versionWorks, versionDesign, nextVersionName } from '@/lib/portfolioVersions';
 import HomepageView from '@/components/shared/HomepageView';
+import HomepageStylePicker from '@/components/shared/HomepageStylePicker';
+import ArtistChecklist from '@/components/shared/ArtistChecklist';
+import { DEFAULT_THEME_KEYS, themeKeysFrom, type HomepageThemeKeys } from '@/lib/homepageTheme';
+import { artistPath, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
 import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
@@ -42,7 +49,7 @@ import KanbanSection from '@/components/admin/KanbanSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
-import type { Favorite, Portfolio, PortfolioImage, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
+import type { Favorite, Portfolio, PortfolioImage, PortfolioVersion, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
 // 경력(career) 표시용 — 카테고리별 라벨 (학력·수상은 포트폴리오 전용 확장)
@@ -101,7 +108,7 @@ const operationToneClasses: Record<OperationTone, string> = {
   wait: 'bg-amber-50 text-amber-700 border-amber-100',
   accent: 'bg-purple-50 text-purple-700 border-purple-100',
   done: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  danger: 'bg-red-50 text-red-700 border-red-100',
+  danger: 'bg-accent/5 text-accent border-accent/20',
 };
 
 const operationDate = (value?: string | null) => {
@@ -227,7 +234,7 @@ export default function MyPage() {
             }`;
             // [홈페이지]는 탭이 아니라 공개 작가 페이지로 나가는 링크다 — 여기서 selectTab 하면 빈 화면이 된다
             const name = tab.brand
-              ? <span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-[#dc3545]">{tab.brand[1]}</span></span>
+              ? <span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-accent">{tab.brand[1]}</span></span>
               : tab.label;
             return tab.linkTo ? (
               <Link key={tab.id} to={tabHref(tab, user.id)} className={cls}>{name}</Link>
@@ -245,12 +252,14 @@ export default function MyPage() {
       {/* 탭 콘텐츠 */}
       <div>
         <div className="min-w-0">
+          {/* 작가 온보딩·완성도 — 작가의 '만드는' 탭 위에만. 다 채우면 스스로 사라진다 */}
+          {user.role === 'ARTIST' && ['profile', 'homepage-edit', 'portfolio', 'artlook'].includes(currentTab) && <ArtistChecklist />}
           {currentTab === 'profile' && <ProfileSection />}
           {/* 홈페이지 편집 — 메뉴에 없다. 공개 작가 페이지의 [수정](주인만)에서 들어온다 */}
           {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <PortfolioSection />}
           {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioFormatSection />}
           {currentTab === 'artlook' && user.role === 'ARTIST' && <ArtLookSection />}
-          {currentTab === 'favorites' && user.role === 'ARTIST' && <FavoritesSection />}
+          {currentTab === 'favorites' && (user.role === 'ARTIST' || user.role === 'VISITOR') && <FavoritesSection />}
           {currentTab === 'scraps' && user.role === 'GALLERY' && <ArtworkScrapsSection />}
           {currentTab === 'applications' && user.role === 'ARTIST' && <ApplicationsSection />}
           {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
@@ -311,7 +320,7 @@ function ProfileCard() {
     ? 'bg-gray-200 text-gray-700'
     : user?.role === 'GALLERY'
     ? 'bg-green-100 text-green-700'
-    : 'bg-red-100 text-red-700';
+    : 'bg-accent/10 text-accent';
 
   return (
     <div className="bg-gray-50 rounded-2xl p-6 mb-6 min-h-[180px] md:min-h-[240px] flex items-center">
@@ -374,25 +383,58 @@ function ProfileSection() {
   const [saving, setSaving] = useState(false);
   const [checkResult, setCheckResult] = useState<{ available: boolean; reason?: string } | null>(null);
 
-  // 연락처/이메일/인스타 (작가 전용) — /auth/me로 최신값 하이드레이트
+  // 연락처/이메일/인스타 (작가·관람객) — /auth/me로 최신값 하이드레이트. 홈페이지 주소는 작가만.
   const isArtist = user?.role === 'ARTIST';
+  const canEditContact = isArtist || user?.role === 'VISITOR';
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [instagram, setInstagram] = useState(user?.instagramUrl ?? '');
   const [savingContact, setSavingContact] = useState(false);
+  // 홈페이지 주소(@handle, 2026-09-16) — 비어 있으면 인스타 아이디를 제안한다(공개 페이지가 열릴 때 서버도 같은 값을 자동으로 만든다)
+  const [handleInput, setHandleInput] = useState(user?.handle ?? '');
+  const [handleResult, setHandleResult] = useState<{ available: boolean; reason?: string } | null>(null);
+  const [savingHandle, setSavingHandle] = useState(false);
 
   useEffect(() => {
-    if (!isArtist) return;
+    if (!canEditContact) return;
     api.get('/auth/me').then(({ data }) => {
       const u = data.user;
       if (!u) return;
       setEmail(u.email ?? '');
       setPhone(u.phone ?? '');
       setInstagram(u.instagramUrl ?? '');
-      updateUser({ email: u.email, phone: u.phone, instagramUrl: u.instagramUrl });
+      setHandleInput(u.handle ?? '');
+      updateUser({ email: u.email, phone: u.phone, instagramUrl: u.instagramUrl, handle: u.handle ?? null });
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isArtist]);
+  }, [canEditContact]);
+
+  const handleNorm = normalizeHandle(handleInput);
+  const handleReason = handleNorm ? validateHandle(handleNorm) : null;
+  const handleUnchanged = handleNorm === (user?.handle ?? '');
+  const handleSuggestion = !handleNorm ? suggestHandle(instagram || user?.instagramUrl) : null;
+  const checkHandle = async () => {
+    if (handleReason) { setHandleResult({ available: false, reason: handleReason }); return; }
+    try {
+      const res = await api.get('/auth/handle-check', { params: { handle: handleNorm } });
+      setHandleResult(res.data);
+    } catch { toast.error('확인에 실패했습니다.'); }
+  };
+  const saveHandle = async () => {
+    if (handleReason) { toast.error(handleReason); return; }
+    setSavingHandle(true);
+    try {
+      const res = await api.put('/auth/me/handle', { handle: handleNorm });
+      updateUser({ handle: res.data.handle });
+      setHandleInput(res.data.handle);
+      setHandleResult(null);
+      toast.success('홈페이지 주소가 저장되었습니다.');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || '저장에 실패했습니다.';
+      setHandleResult({ available: false, reason: msg });
+      toast.error(msg);
+    } finally { setSavingHandle(false); }
+  };
 
   const contactChanged =
     email.trim() !== (user?.email ?? '') ||
@@ -488,7 +530,7 @@ function ProfileSection() {
           </button>
         </div>
         {checkResult && (
-          <p className={`text-xs mt-1.5 ${checkResult.available ? 'text-green-600' : 'text-red-500'}`}>
+          <p className={`text-xs mt-1.5 ${checkResult.available ? 'text-green-600' : 'text-accent'}`}>
             {checkResult.available ? '사용 가능한 닉네임입니다.' : (checkResult.reason || '이미 사용 중인 닉네임입니다.')}
           </p>
         )}
@@ -501,8 +543,57 @@ function ProfileSection() {
         {saving ? '저장 중...' : '닉네임 저장'}
       </button>
 
-      {/* 연락처 / 인스타 (작가 전용) */}
+      {/* 홈페이지 주소 (작가 전용, 2026-09-16) — 인스타 프로필·명함·QR 에 적을 주소 */}
       {isArtist && (
+        <div className="pt-5 border-t border-gray-100 space-y-2">
+          <label className="block text-sm font-medium text-gray-700">홈페이지 주소</label>
+          <p className="text-xs text-gray-400">영문 소문자·숫자·마침표·밑줄, 3~30자. 인스타그램 아이디를 그대로 쓰면 기억하기 쉽습니다.</p>
+          <div className="flex items-stretch gap-2">
+            <div className="flex min-w-0 flex-1 items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-gray-400">
+              <span className="shrink-0 bg-gray-50 px-2.5 py-2 text-sm text-gray-500 border-r border-gray-200">artlink.cc/@</span>
+              <input
+                type="text"
+                value={handleInput}
+                onChange={(e) => { setHandleInput(e.target.value); setHandleResult(null); }}
+                maxLength={31}
+                placeholder={handleSuggestion ?? 'my_studio'}
+                className="min-w-0 flex-1 px-3 py-2 text-sm focus:outline-none"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </div>
+            <button
+              onClick={checkHandle}
+              disabled={!handleNorm || handleUnchanged}
+              className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            >중복확인</button>
+          </div>
+          {handleSuggestion && (
+            <button onClick={() => { setHandleInput(handleSuggestion); setHandleResult(null); }} className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-900">
+              인스타 아이디로 채우기: @{handleSuggestion}
+            </button>
+          )}
+          {(handleResult || (handleNorm && handleReason)) && (
+            <p className={`text-xs ${handleResult?.available ? 'text-green-600' : 'text-accent'}`}>
+              {handleResult?.available ? '쓸 수 있는 주소입니다.' : (handleResult?.reason || handleReason)}
+            </p>
+          )}
+          {user?.handle && handleUnchanged && (
+            <p className="text-xs text-gray-500">지금 주소: <a href={artistPath({ id: user.id, handle: user.handle })} className="underline underline-offset-2">artlink.cc/@{user.handle}</a></p>
+          )}
+          <button
+            onClick={saveHandle}
+            disabled={savingHandle || !handleNorm || handleUnchanged || !!handleReason}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {savingHandle ? '저장 중...' : '주소 저장'}
+          </button>
+        </div>
+      )}
+
+      {/* 연락처 / 인스타 (작가·관람객) */}
+      {canEditContact && (
         <div className="pt-5 border-t border-gray-100 space-y-4">
           <div>
             <h3 className="text-sm font-medium text-gray-700">내 정보</h3>
@@ -575,6 +666,8 @@ function PortfolioSection() {
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
   const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
+  // 홈페이지 스타일(배경·글자·강조·글꼴·대표작) — PDF 와 같은 designConfig 에 저장된다(2026-09-16)
+  const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
   const [editing, setEditing] = useState(false);
   // 훅은 아래 early return(isLoading)보다 반드시 위에서 호출한다
   const careerColumnCount = useCareerColumns();
@@ -598,7 +691,7 @@ function PortfolioSection() {
         이 화면은 공개 페이지의 [수정]으로만 들어오는 편집 전용 화면이라, 저장 후 남으면
         '나만 보는 옛 관리 화면'에 갇힌 것처럼 보인다(2026-08-28 신고). 온 곳으로 돌려보낸다.
       */
-      if (user?.id) navigate(`/portfolio/${user.id}`);
+      if (user?.id) navigate(artistPath({ id: user.id, handle: user.handle }));
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '홈페이지 저장에 실패했습니다.'),
   });
@@ -686,13 +779,15 @@ function PortfolioSection() {
       portfolioFileUrl: p?.portfolioFileUrl || null,
       seriesNotes: Object.fromEntries((p?.seriesInfo ?? []).map(s => [s.name, s.note])),
     };
+    const designInit = themeKeysFrom(p?.designConfig);
     setBiography(init.biography);
     setStatement(init.statement);
     setTagline(init.tagline);
     setCareer(init.career);
     setPortfolioFileUrl(init.portfolioFileUrl);
     setSeriesNotes(init.seriesNotes);
-    setSnapshot(formSignature(init));
+    setDesign(designInit);
+    setSnapshot(formSignature(init) + '|' + JSON.stringify(designInit));
     setEditing(true);
   }, []);
 
@@ -709,6 +804,14 @@ function PortfolioSection() {
     initForm(portfolio);
   }, [portfolio, initForm]);
 
+  // `#artworks` 로 들어오면(온보딩 체크리스트의 링크) 작품 사진 관리로 내린다 — 데이터가 뜬 뒤라야 그 자리가 있다
+  const { hash: locationHash } = useLocation();
+  useEffect(() => {
+    if (!portfolio || locationHash !== '#artworks') return;
+    const t = setTimeout(() => document.getElementById('artworks')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    return () => clearTimeout(t);
+  }, [portfolio, locationHash]);
+
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const images = portfolio?.images ?? [];
@@ -717,11 +820,11 @@ function PortfolioSection() {
 
   const startEdit = () => initForm(portfolio);
 
-  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) !== snapshot;
+  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) + '|' + JSON.stringify(design) !== snapshot;
 
   // 작품 사진 관리 — 편집 중엔 **왼쪽 열 안**, 아닐 땐 본문 아래에 놓는다(아래 렌더 참고)
   const artworkManager = (
-    <div>
+    <div id="artworks" className="scroll-mt-24">
         <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
           <p className="text-sm font-medium text-gray-500">
             작품 사진 ({images.length}/30)
@@ -760,6 +863,7 @@ function PortfolioSection() {
     portfolioFileUrl,
     seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
     images,
+    designConfig: design,
   };
 
   const handleSave = () => {
@@ -767,6 +871,8 @@ function PortfolioSection() {
       toast.error('작가 약력을 입력해주세요.');
       return;
     }
+    // 디자인은 PDF 설정과 한 객체다 — 색·글꼴·대표작만 덮어쓰고 표지 레이아웃 등 나머지 키는 그대로 둔다
+    const prevDesign = portfolio?.designConfig && typeof portfolio.designConfig === 'object' ? (portfolio.designConfig as Record<string, unknown>) : {};
     mutation.mutate({
       biography: biography.trim(),
       career,
@@ -776,6 +882,7 @@ function PortfolioSection() {
       themeId: portfolio?.themeId ?? null,
       // 작품에 실제로 붙어 있는 시리즈만 저장 (이름을 바꾸면 옛 설명이 유령으로 남는다)
       seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
+      designConfig: { ...prevDesign, ...design },
     });
   };
 
@@ -822,8 +929,9 @@ function PortfolioSection() {
               (2026-08-27 실측: y=800 에서 top -70). 기본값 stretch 로 두어야 왼쪽 열 높이만큼 늘어난다. */
         <div className="lg:flex lg:gap-8">
         <div className="space-y-5 lg:flex-1 lg:min-w-0">
+          <HomepageStylePicker value={design} images={images} onChange={setDesign} />
           <div>
-            <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-red-500">*</span></label>
+            <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-accent">*</span></label>
             <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
@@ -878,6 +986,7 @@ function PortfolioSection() {
                 data={previewData}
                 careerColumns={Math.max(1, careerColumnCount - 1)}
                 emptyText="내용을 입력하면 여기에 홈페이지 모양으로 보입니다."
+                compact
               />
             </div>
           </div>
@@ -966,7 +1075,7 @@ function PortfolioSection() {
           <div className="flex items-center justify-end gap-3 flex-wrap">
             {/* 뭐가 달라졌는지가 아니라 '아직 안 갔다'만 알려주면 된다 */}
             {dirty && !mutation.isPending && (
-              <span className="text-xs text-[#c4302b] mr-auto sm:mr-0">저장되지 않은 변경사항이 있습니다.</span>
+              <span className="text-xs text-accent mr-auto sm:mr-0">저장되지 않은 변경사항이 있습니다.</span>
             )}
             <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-500 cursor-pointer">취소</button>
             <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 cursor-pointer">
@@ -1031,7 +1140,7 @@ function ArtLookSection() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-          Art<span className="text-[#dc3545]">Look</span>
+          Art<span className="text-accent">Look</span>
           <span className="ml-2 align-middle text-sm font-normal text-gray-400">액자 걸기</span>
         </h2>
         {/* 좁은 화면에서 iframe 이 답답할 때를 위한 탈출구 */}
@@ -1083,7 +1192,22 @@ function PortfolioFormatSection() {
     queryFn: () => api.get('/portfolio').then(r => r.data),
   });
 
-  // 디자인(표지·글꼴·판형·밀도·설명·색감) 저장 — designConfig 만 보낸다.
+  // ── 버전 (2026-09-16) ──────────────────────────────────────────────────
+  // '기본' = 전체 작품·홈페이지 순서·designConfig. 버전 = 작품 선택·순서·제 디자인을 이름 붙여 저장한 것.
+  // 국내 공모는 10점 이내·A4 24장처럼 장수를 제한하는 곳이 많아 27점짜리 책 하나로는 제출 요건을 못 맞춘다.
+  const [versionId, setVersionId] = useState<number | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const versions = portfolio?.versions ?? [];
+  // 활성 버전이 사라졌으면(다른 탭에서 지움) null 로 떨어져 자연히 '기본'이 된다 — 상태를 따로 되돌릴 필요가 없다
+  const version = versions.find((v) => v.id === versionId) ?? null;
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+  const onFail = (msg: string) => (err: unknown) =>
+    toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || msg);
+
+  // 기본 디자인 저장 — designConfig 만 보낸다.
   // 백엔드는 designConfig 를 '보냈을 때만' 갱신하므로 홈페이지 내용 저장(전체 교체)이 이 설정을 지우지 않는다.
   // 나머지 필드는 전체 교체라 그대로 실어 보낸다.
   const designMutation = useMutation({
@@ -1098,15 +1222,37 @@ function PortfolioFormatSection() {
         themeId: portfolio?.themeId ?? null,
         designConfig,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
-    onError: (err: any) => toast.error(err.response?.data?.error || '색감 저장에 실패했습니다.'),
+    onSuccess: invalidate,
+    onError: onFail('디자인 저장에 실패했습니다.'),
+  });
+  // 버전의 디자인·이름·작품 저장
+  const patchVersion = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; name?: string; workIds?: number[]; design?: PdfDesign }) =>
+      api.patch(`/portfolio/versions/${id}`, body),
+    onSuccess: () => { invalidate(); setPicking(false); setRenaming(null); },
+    onError: onFail('버전 저장에 실패했습니다.'),
+  });
+  const createVersion = useMutation({
+    mutationFn: (body: { name: string; workIds: number[]; design: unknown }) =>
+      api.post('/portfolio/versions', body).then((r) => r.data as PortfolioVersion),
+    onSuccess: (v) => { invalidate(); setVersionId(v.id); toast.success(`'${v.name}' 을 만들었습니다. 작품을 골라 보세요.`); },
+    onError: onFail('버전을 만들지 못했습니다.'),
+  });
+  const deleteVersion = useMutation({
+    mutationFn: (id: number) => api.delete(`/portfolio/versions/${id}`),
+    onSuccess: () => { invalidate(); setVersionId(null); setDeleting(false); },
+    onError: onFail('버전을 지우지 못했습니다.'),
   });
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
-  const images = portfolio?.images ?? [];
+  const all = portfolio?.images ?? [];
+  const images = versionWorks(all, version);
+  const designValue = versionDesign(version, portfolio?.designConfig);
   const bookData: PortfolioBookData = {
     user: user ?? { name: '' },
+    // 마지막 장의 QR·주소 — 공개 홈페이지의 정식 주소(핸들이 있으면 /@handle)
+    homepageUrl: user ? `${window.location.origin}${artistPath(user)}` : null,
     tagline: portfolio?.tagline,
     statement: portfolio?.statement,
     biography: portfolio?.biography,
@@ -1114,13 +1260,15 @@ function PortfolioFormatSection() {
     seriesInfo: portfolio?.seriesInfo,
     images,
   };
+  const chip = (on: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${on ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`;
 
   // 작품이 없으면 포맷을 골라도 빈 책이 나온다 — 미리보기를 띄우기 전에 어디로 가야 하는지 알려준다
-  if (images.length === 0) {
+  if (all.length === 0) {
     return (
       <div className="space-y-4">
         <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-          Port<span className="text-[#dc3545]">Folio</span>
+          Port<span className="text-accent">Folio</span>
         </h2>
         <div className="rounded-lg border border-gray-200 py-12 text-center">
           <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
@@ -1139,7 +1287,7 @@ function PortfolioFormatSection() {
         <div>
           {/* ArtLink 로고와 같은 색 규칙 — Art(검정) + Link/Works/Folio(빨강) */}
           <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-            Port<span className="text-[#dc3545]">Folio</span>
+            Port<span className="text-accent">Folio</span>
           </h2>
           <p className="text-xs text-gray-400 mt-1">
             홈페이지에 등록해둔 정보 기반으로 작가님만의 Portfolio를 생성합니다.
@@ -1149,10 +1297,81 @@ function PortfolioFormatSection() {
           <Edit3 size={13} /> 내용 수정
         </Link>
       </div>
+
+      {/* 버전 바 — 기본(전체) + 저장한 버전들 + [+ 버전] */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => setVersionId(null)} className={chip(!version)}>
+            기본 <span className={version ? 'text-gray-400' : 'text-white/70'}>{all.length}점</span>
+          </button>
+          {versions.map((v) => (
+            <button key={v.id} type="button" onClick={() => setVersionId(v.id)} className={chip(v.id === versionId)}>
+              {v.name} <span className={v.id === versionId ? 'text-white/70' : 'text-gray-400'}>{versionWorks(all, v).length}점</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={createVersion.isPending || versions.length >= 12}
+            onClick={() => createVersion.mutate({ name: nextVersionName(versions), workIds: images.map((i) => i.id), design: designValue })}
+            title="지금 보는 구성을 새 이름으로 저장해 작품을 따로 고릅니다"
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-gray-500 hover:text-gray-800 disabled:opacity-40"
+          >
+            <Plus size={12} /> 버전
+          </button>
+        </div>
+        {version ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <button type="button" onClick={() => setPicking(true)} className="inline-flex items-center gap-1 font-medium text-gray-800 underline-offset-2 hover:underline">
+              <ImageIcon size={13} /> 작품 고르기 <span className="font-normal text-gray-400">{images.length}/{all.length}점</span>
+            </button>
+            {renaming === null ? (
+              <button type="button" onClick={() => setRenaming(version.name)} className="hover:text-gray-900">이름 바꾸기</button>
+            ) : (
+              <form className="inline-flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); const n = renaming.trim(); if (n) patchVersion.mutate({ id: version.id, name: n }); }}>
+                <input autoFocus value={renaming} maxLength={60} onChange={(e) => setRenaming(e.target.value)}
+                  className="w-40 rounded border border-gray-300 px-2 py-0.5 text-xs focus:border-gray-500 focus:outline-none" />
+                <button type="submit" className="rounded bg-gray-900 px-2 py-0.5 text-white">저장</button>
+                <button type="button" onClick={() => setRenaming(null)} className="px-1 text-gray-400 hover:text-gray-700">취소</button>
+              </form>
+            )}
+            <button type="button" disabled={createVersion.isPending || versions.length >= 12}
+              onClick={() => createVersion.mutate({ name: nextVersionName(versions, `${version.name} 복사`), workIds: version.workIds, design: version.design })}
+              className="hover:text-gray-900 disabled:opacity-40">복제</button>
+            <button type="button" onClick={() => setDeleting(true)} className="text-accent hover:underline">삭제</button>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-400">이 버전의 디자인·작품은 여기서만 바뀌고, 홈페이지 순서는 그대로입니다.</span>
+          </div>
+        ) : all.length >= 6 ? (
+          <p className="text-[11px] text-gray-400">
+            보내는 곳마다 다른 작품을 내려면 <b className="text-gray-500">[+ 버전]</b>으로 작품을 골라 저장하세요. 국내 공모는 10점 이내·A4 24장 같은 제한이 흔합니다.
+          </p>
+        ) : null}
+      </div>
+
       <PortfolioFormatPicker
+        key={version ? `v${version.id}` : 'default'}
         data={bookData}
-        designValue={portfolio?.designConfig}
-        onChangeDesign={(d) => designMutation.mutate(d)}
+        designValue={designValue}
+        onChangeDesign={(d) => (version ? patchVersion.mutate({ id: version.id, design: d }) : designMutation.mutate(d))}
+      />
+
+      {picking && version && (
+        <PortfolioWorkPicker
+          all={all}
+          selected={version.workIds}
+          saving={patchVersion.isPending}
+          onSave={(ids) => patchVersion.mutate({ id: version.id, workIds: ids })}
+          onClose={() => setPicking(false)}
+        />
+      )}
+      <ConfirmDialog
+        open={deleting && !!version}
+        title="버전 삭제"
+        message={`'${version?.name ?? ''}' 버전을 지웁니다. 작품과 홈페이지는 그대로이고, 이 선택·디자인만 사라집니다.`}
+        confirmText="삭제"
+        variant="danger"
+        onConfirm={() => { if (version) deleteVersion.mutate(version.id); }}
+        onCancel={() => setDeleting(false)}
       />
     </div>
   );
@@ -1260,7 +1479,7 @@ function PortfolioImageGrid({
             {/* 삭제 버튼 (우상단) — PC는 hover 시, 터치기기(hover 없음)는 항상 노출 */}
             <button
               onClick={() => onRemove(img.id)}
-              className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+              className="absolute top-1 right-1 p-0.5 bg-accent text-white rounded-full opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
               aria-label="이미지 삭제"
             >
               <X size={12} />
@@ -1284,11 +1503,11 @@ function PortfolioImageGrid({
             {(img._count?.likes ?? 0) > 0 && (
               <button
                 onClick={() => setLikersImageId(img.id)}
-                className="absolute bottom-1 right-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium bg-white/85 text-[#c4302b] ring-1 ring-black/5 shadow-sm hover:bg-white cursor-pointer"
+                className="absolute bottom-1 right-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium bg-white/85 text-accent ring-1 ring-black/5 shadow-sm hover:bg-white cursor-pointer"
                 aria-label={`좋아요 ${img._count?.likes}개 — 누가 눌렀는지 보기`}
                 title="좋아요한 사람 보기"
               >
-                <Heart size={12} className="fill-[#c4302b]" />
+                <Heart size={12} className="fill-accent" />
                 {img._count?.likes}
               </button>
             )}
@@ -1427,7 +1646,7 @@ function FavoritesSection() {
     <div>
       {/* 화면 이름 — ArtLink 로고와 같은 색 규칙(My 검정 + Picks 빨강). 좌측 상단(PortFolio 등과 동일). */}
       <h2 className="mb-6 text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-        My <span className="text-[#dc3545]">Picks</span>
+        My <span className="text-accent">Picks</span>
       </h2>
 
       <div className="flex flex-wrap gap-4 mb-6">
@@ -1476,7 +1695,7 @@ function FavoritesSection() {
                   <button
                     onClick={(e) => { e.stopPropagation(); removeFav.mutate({ galleryId: fav.galleryId || undefined, exhibitionId: fav.exhibitionId || undefined, showId: fav.showId || undefined }); }}
                     aria-label="찜 해제"
-                    className="p-1 text-[#c4302b] hover:text-[#a02620] cursor-pointer flex-none"
+                    className="p-1 text-accent hover:text-[#a02620] cursor-pointer flex-none"
                   >
                     <Heart size={16} className="fill-current" />
                   </button>
@@ -1827,11 +2046,11 @@ function ApplicationsSection() {
     onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
   });
 
-  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
   const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
 
   if (isError) {
-    return <p className="text-red-400 text-center py-8">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
+    return <p className="text-accent text-center py-8">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
@@ -1882,7 +2101,7 @@ function ApplicationsSection() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-[#c4302b]/10 px-2.5 py-1 text-xs font-medium text-[#c4302b]">초대</span>
+                        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">초대</span>
                         {dday !== null && (
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
                             D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
@@ -2010,7 +2229,7 @@ function ApplicationsSection() {
                   */}
                   <div className="mt-4 border-y border-gray-100 py-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                     {rows.length > 0 ? rows.map((r, i) => (
-                      <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-[#c4302b] font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
+                      <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-accent font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
                         {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" />}
                         {r.tone === 'done' && <Check size={11} className="shrink-0" />}
                         {r.label}
@@ -2029,7 +2248,7 @@ function ApplicationsSection() {
                   </div>
 
                   {app.status === 'REJECTED' && (
-                    <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">아쉽게도 이번 지원은 거절되었습니다.</p>
+                    <p className="mt-4 rounded-lg bg-accent/5 px-3 py-2 text-sm text-accent">아쉽게도 이번 지원은 거절되었습니다.</p>
                   )}
 
                   {isExpanded && (
@@ -2075,20 +2294,20 @@ function DeleteConfirmModal({ open, name, description, onConfirm, onCancel, pend
       <div className="bg-white rounded-xl max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-semibold text-gray-900">삭제 확인</h3>
         <p className="text-sm text-gray-600 mt-2"><b>{name}</b> {description}</p>
-        <p className="text-sm text-gray-700 mt-3">계속하려면 아래에 <b className="text-[#c4302b]">삭제</b> 를 입력하세요.</p>
+        <p className="text-sm text-gray-700 mt-3">계속하려면 아래에 <b className="text-accent">삭제</b> 를 입력하세요.</p>
         <input
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="삭제"
           autoFocus
-          className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#c4302b]"
+          className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
         <div className="flex gap-2 justify-end mt-4">
           <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-500">취소</button>
           <button
             onClick={onConfirm}
             disabled={text.trim() !== '삭제' || pending}
-            className="px-4 py-2 text-sm bg-[#c4302b] text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
           >삭제</button>
         </div>
       </div>
@@ -2187,14 +2406,14 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
     onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),
   });
 
-  const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
+  const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-accent/10 text-accent' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
   return (
     <div>
       {!createOnly && (
         <div className="flex justify-between items-center mb-4">
           <p className="text-sm text-gray-400">Admin 승인 후 검색에 노출됩니다.</p>
-          <button onClick={() => navigate('/galleries/new')} className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors">
+          <button onClick={() => navigate('/galleries/new')} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-1.5 text-sm font-medium text-accent hover:bg-accent/5 transition-colors">
             <Plus size={14} /> 갤러리 등록
           </button>
         </div>
@@ -2257,7 +2476,7 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
                     () => (
                       <div className="text-sm">
                         <p className="font-medium mb-1">다음 필수 항목을 입력해주세요:</p>
-                        {missing.map((m, i) => <p key={i} className="text-red-400">• {m}</p>)}
+                        {missing.map((m, i) => <p key={i} className="text-accent">• {m}</p>)}
                       </div>
                     ),
                     { duration: 4000 }
@@ -2319,7 +2538,7 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
                 </span>
               </div>
               {g.status === 'REJECTED' && g.rejectReason && (
-                <p className="text-sm text-red-500 mt-2">거절 사유: {g.rejectReason}</p>
+                <p className="text-sm text-accent mt-2">거절 사유: {g.rejectReason}</p>
               )}
               {/* 승인 완료/거절 건은 삭제 가능 (인스타 주소는 상세 페이지에서 추가/수정) */}
               {(g.status === 'APPROVED' || g.status === 'REJECTED') && (
@@ -2327,7 +2546,7 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
                   <button
                     onClick={() => setDeleteTarget(g)}
                     disabled={deleteGalleryMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent disabled:opacity-50 cursor-pointer"
                   >
                     <Trash2 size={13} /> 갤러리 삭제
                   </button>
@@ -2479,7 +2698,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
   // 지원자 목록/상태변경/ZIP/필터/수락확인/이미지확대는 인라인 <ApplicantManager /> 가 모두 담당(창 이동 없음).
 
-  const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-700' };
+  const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-accent/10 text-accent' };
   const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
   const overviewItems = operationOverview.length > 0
     ? operationOverview
@@ -2536,7 +2755,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
               </button>
             </div>
           )}
-          <button onClick={() => navigate('/exhibitions/new')} className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors">
+          <button onClick={() => navigate('/exhibitions/new')} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-1.5 text-sm font-medium text-accent hover:bg-accent/5 transition-colors">
             <Plus size={14} /> 공모 등록
           </button>
         </div>
@@ -2552,7 +2771,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
             </button>
           </div>
           {approvedGalleries.length === 0 ? (
-            <p className="text-sm text-red-500">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
+            <p className="text-sm text-accent">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
           ) : (
             <>
               <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
@@ -2571,7 +2790,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 <div className="p-5 space-y-3">
                   {/* 갤러리 / 유형 / 지역 */}
                   <div className="flex flex-wrap gap-2 items-center">
-                    <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`text-xs px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${formErrors.has('galleryId') ? 'bg-red-50 text-red-600 ring-1 ring-red-300' : 'bg-gray-900 text-white'}`}>
+                    <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`text-xs px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${formErrors.has('galleryId') ? 'bg-accent/5 text-accent ring-1 ring-accent/40' : 'bg-gray-900 text-white'}`}>
                       <option value={0}>갤러리 선택 *</option>
                       {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
@@ -2594,20 +2813,20 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                     </div>
                     <div></div>
                     <div>
-                      <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
-                      <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
+                      <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
                     <div>
-                      <label className={`text-xs ${formErrors.has('deadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
-                      <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <label className={`text-xs ${formErrors.has('deadline') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
+                      <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
                     <div>
-                      <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
-                      <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
+                      <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
                     <div>
-                      <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
-                      <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
+                      <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
                     {/*
                       작가가 출품자료(출품리스트·약력·노트)를 내야 하는 날짜.
@@ -2618,13 +2837,13 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                     {/* ⚠️ 공모만 진행하면 이 단계가 없다 — 비활성이 아니라 칸 자체를 없앤다.
                         회색으로 남겨 두면 "왜 못 쓰지" 를 묻게 되고, 서버는 400 으로 막는다. */}
                     <div className={`col-span-2 ${form.recruitOnly ? 'hidden' : ''}`}>
-                      <label className={`text-xs ${formErrors.has('submissionDeadline') ? 'text-red-500 font-medium' : 'text-gray-500'}`}>작가 자료제출 마감일 *</label>
-                      <input type="date" value={form.submissionDeadline} onChange={e => { setForm({...form, submissionDeadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; }); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('submissionDeadline') ? 'border-red-400 bg-red-50' : 'border-gray-200'}`} />
+                      <label className={`text-xs ${formErrors.has('submissionDeadline') ? 'text-accent font-medium' : 'text-gray-500'}`}>작가 자료제출 마감일 *</label>
+                      <input type="date" value={form.submissionDeadline} onChange={e => { setForm({...form, submissionDeadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; }); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('submissionDeadline') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                       <p className="mt-1 text-[11px] text-gray-400">수락된 작가가 출품작·약력·작가노트를 내야 하는 날짜입니다. 공모 마감일과 전시 시작일 사이로 정해주세요.</p>
                     </div>
                   </div>
                   {dateError && (
-                    <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} /> {dateError}</p>
+                    <p className="text-xs text-accent flex items-center gap-1"><AlertTriangle size={12} /> {dateError}</p>
                   )}
                   {/* 소개 */}
                   <div className="pt-3 border-t border-gray-100">
@@ -2669,7 +2888,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                         (t) => (
                           <div className="text-sm">
                             <p className="font-medium mb-1">다음 필수 항목을 입력해주세요:</p>
-                            {missing.map((m, i) => <p key={i} className="text-red-400">• {m}</p>)}
+                            {missing.map((m, i) => <p key={i} className="text-accent">• {m}</p>)}
                           </div>
                         ),
                         { duration: 4000 }
@@ -2768,7 +2987,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
               ) : (
                 <>
                   <p className="text-sm text-gray-500">{closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
-                  <button onClick={() => navigate('/exhibitions/new')} className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-2 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5">
+                  <button onClick={() => navigate('/exhibitions/new')} className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5">
                     <Plus size={14} /> 공모 등록
                   </button>
                 </>
@@ -2791,7 +3010,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       <button
                         type="button"
                         onClick={() => setDeleteTarget(item)}
-                        className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-400 hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                        className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-400 hover:border-accent/20 hover:bg-accent/5 hover:text-accent"
                         title="공모 삭제"
                         aria-label="공모 삭제"
                       >
@@ -2818,7 +3037,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                                 {statusLabels[item.status] || item.status}
                               </span>
                               {settlement.issue > 0 && (
-                                <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">정산 이슈 {settlement.issue}</span>
+                                <span className="rounded-full bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent">정산 이슈 {settlement.issue}</span>
                               )}
                               {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
                               <HostBadge exhibition={item} />
@@ -2902,7 +3121,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                         </div>
 
                         {item.status === 'REJECTED' && item.rejectReason && (
-                          <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">반려 사유: {item.rejectReason}</p>
+                          <p className="mt-4 rounded-lg bg-accent/5 px-3 py-2 text-sm text-accent">반려 사유: {item.rejectReason}</p>
                         )}
 
                         {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대)
@@ -3089,7 +3308,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const statusColors: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-700',
     APPROVED: 'bg-green-100 text-green-700',
-    REJECTED: 'bg-red-100 text-red-700',
+    REJECTED: 'bg-accent/10 text-accent',
   };
   const statusLabels: Record<string, string> = {
     PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절',
@@ -3102,7 +3321,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
           <h3 className="font-semibold">내 전시</h3>
           <button
             onClick={() => navigate('/shows/new')}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#dc3545]/40 px-4 py-1.5 text-sm font-medium text-[#dc3545] hover:bg-[#dc3545]/5 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-1.5 text-sm font-medium text-accent hover:bg-accent/5 transition-colors"
           >
             <Plus size={14} /> 전시 등록
           </button>
@@ -3202,7 +3421,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
                   )}
                   {artists.length > 1 && (
                     <button type="button" onClick={() => setArtists(artists.filter((_, i) => i !== idx))}
-                      className="p-2 text-gray-400 hover:text-red-500">
+                      className="p-2 text-gray-400 hover:text-accent">
                       <X size={14} />
                     </button>
                   )}
@@ -3277,14 +3496,14 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
                     {statusLabels[show.status]}
                   </span>
                   <button onClick={() => setDeleteTarget(show)}
-                    className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-red-500"
+                    className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-gray-400 hover:text-accent"
                     aria-label="삭제">
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
               {show.rejectReason && (
-                <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                <p className="text-xs text-accent mt-2 flex items-center gap-1">
                   <AlertTriangle size={12} /> 거절 사유: {show.rejectReason}
                 </p>
               )}
@@ -3470,7 +3689,7 @@ function ApprovalsSection() {
                           deleteGalleryMutation.mutate(g.id);
                         }
                       }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -3498,7 +3717,7 @@ function ApprovalsSection() {
                           deleteExhibitionMutation.mutate(ex.id);
                         }
                       }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -3526,7 +3745,7 @@ function ApprovalsSection() {
                           deleteShowMutation.mutate(s.id);
                         }
                       }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500"
+                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
                       aria-label="삭제"
                     >
                       <Trash2 size={14} />
@@ -3609,14 +3828,14 @@ function ApprovalsSection() {
                 <div className="mt-3 space-y-2">
                   <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="거절 사유를 입력하세요 (필수)" className="w-full h-20 p-2 border border-gray-200 rounded-lg text-sm resize-none" />
                   <div className="flex gap-2">
-                    <button onClick={() => rejectMutation.mutate({ type: item._type, id: item.id, reason: rejectReason })} disabled={!rejectReason.trim() || approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg disabled:opacity-50">거절 확인</button>
+                    <button onClick={() => rejectMutation.mutate({ type: item._type, id: item.id, reason: rejectReason })} disabled={!rejectReason.trim() || approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-accent text-white text-sm rounded-lg disabled:opacity-50">거절 확인</button>
                     <button onClick={() => setRejectingId(null)} className="px-3 py-1.5 text-sm text-gray-500">취소</button>
                   </div>
                 </div>
               ) : (
                 <div className="flex gap-2 mt-3">
                   <button onClick={() => approveMutation.mutate({ type: item._type, id: item.id })} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><Check size={14} /> 승인</button>
-                  <button onClick={() => { setRejectReason(''); setRejectingId({ type: item._type, id: item.id }); }} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-red-50 text-red-500 text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><XCircle size={14} /> 거절</button>
+                  <button onClick={() => { setRejectReason(''); setRejectingId({ type: item._type, id: item.id }); }} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-accent/5 text-accent text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><XCircle size={14} /> 거절</button>
                 </div>
               )}
             </div>
@@ -3633,7 +3852,7 @@ function HeroManageSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', linkUrl: '', order: 0 });
+  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0 });
   const [preview, setPreview] = useState(false);
 
   const { data: slides = [] } = useQuery<any[]>({
@@ -3673,12 +3892,12 @@ function HeroManageSection() {
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setForm({ title: '', description: '', imageUrl: '', linkUrl: '', order: 0 });
+    setForm({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0 });
     setPreview(false);
   };
 
   const startEdit = (s: any) => {
-    setForm({ title: s.title, description: s.description || '', imageUrl: s.imageUrl, linkUrl: s.linkUrl || '', order: s.order });
+    setForm({ title: s.title, description: s.description || '', imageUrl: s.imageUrl, mobileImageUrl: s.mobileImageUrl || '', linkUrl: s.linkUrl || '', order: s.order });
     setEditingId(s.id);
     setShowForm(true);
   };
@@ -3701,6 +3920,12 @@ function HeroManageSection() {
           <input placeholder="링크 URL (선택)" value={form.linkUrl} onChange={e => setForm({...form, linkUrl: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
           <input type="number" placeholder="순서" value={form.order} onChange={e => setForm({...form, order: Number(e.target.value)})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
           <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="슬라이드 이미지 업로드" />
+          {/* 모바일 전용 이미지 — 가로로 긴 배너는 폰에서 높이 125px 로 줄어 안에 든 글씨가 안 읽힌다.
+              세로형(4:5 권장)을 따로 올리면 좁은 화면에서는 이걸 쓰고, 없으면 위 이미지를 카드로 보여준다. */}
+          <div>
+            <ImageUpload value={form.mobileImageUrl} onChange={(url) => setForm({...form, mobileImageUrl: url})} onRemove={() => setForm({...form, mobileImageUrl: ''})} placeholder="모바일 전용 이미지 (선택, 세로형 4:5 권장)" />
+            <p className="mt-1 text-xs text-gray-500">폰 화면에서는 가로 배너가 손가락 두 마디 높이로 줄어듭니다. 세로형 이미지를 따로 올리면 폰에서는 그걸 씁니다.</p>
+          </div>
 
           {/* 미리보기 */}
           <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
@@ -3745,10 +3970,11 @@ function HeroManageSection() {
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">{s.title}</p>
               <p className="text-xs text-gray-500 truncate">{s.description}</p>
+              <p className="text-[11px] text-gray-400">{s.mobileImageUrl ? '모바일 이미지 있음' : '모바일 이미지 없음 · 폰에서는 카드로 표시'}</p>
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(s)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(s.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(s.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -3866,7 +4092,7 @@ function BenefitManageSection() {
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(b)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(b.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제"><Trash2 size={14} /></button>
+              <button onClick={() => deleteMutation.mutate(b.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
@@ -3992,7 +4218,7 @@ function GotmManageSection() {
                 <Calendar size={12} /> 만료: {new Date(item.expiresAt).toLocaleDateString('ko')}
               </p>
             </div>
-            <button onClick={() => deleteMutation.mutate(item.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500" aria-label="삭제">
+            <button onClick={() => deleteMutation.mutate(item.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제">
               <Trash2 size={14} />
             </button>
           </div>
@@ -4066,7 +4292,7 @@ function ReportManageSection() {
               <div className="flex justify-between items-start cursor-pointer" onClick={() => { setAdminNote(''); setExpandedId(expandedId === r.id ? null : r.id); }}>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-[#c4302b]' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
+                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-accent' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
                       {statusLabels[r.status] || r.status}
                     </span>
                     <span className="text-xs text-gray-400">{reasonLabels[r.reason] || r.reason}</span>
@@ -4092,7 +4318,7 @@ function ReportManageSection() {
                       <div className="flex gap-2">
                         <button onClick={() => actionMutation.mutate({ id: r.id, status: 'DISMISSED', adminNote })} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900">반려</button>
                         <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote })} className="px-3 py-1.5 text-sm bg-gray-900 text-white">제재</button>
-                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-[#c4302b] hover:underline">제재 + 삭제</button>
+                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-accent hover:underline">제재 + 삭제</button>
                       </div>
                     </div>
                   )}
@@ -4285,9 +4511,9 @@ function UserManageSection() {
 }
 
 // ========== Admin: 운영 조회 (지원현황/작가이력/갤러리 게시물) ==========
-const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
 const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
-const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-red-100 text-red-600' };
+const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
 const POST_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절' };
 const ovDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('ko') : '-');
 
@@ -4344,7 +4570,7 @@ function DevToolsSection() {
             <p className="text-base font-medium text-gray-900">수락 상태 되돌리기 허용</p>
             <p className="text-sm text-gray-500 mt-1 leading-relaxed">
               켜면 <b>전체 갤러리</b>가 지원자 관리에서 <b>수락한 지원을 거절로</b> 변경할 수 있습니다.<br />
-              거절로 되돌리면 해당 작가의 운영페이지 제출자료(출품리스트·약력·노트)와 판매·정산 기록이 <b className="text-red-600">모두 삭제</b>되고,
+              거절로 되돌리면 해당 작가의 운영페이지 제출자료(출품리스트·약력·노트)와 판매·정산 기록이 <b className="text-accent">모두 삭제</b>되고,
               모집 정원 슬롯이 복구됩니다. (정산 완료된 공모는 되돌리기 불가)
             </p>
           </div>
@@ -4357,13 +4583,13 @@ function DevToolsSection() {
               aria-label="수락 상태 되돌리기 허용"
               disabled={toggleMutation.isPending}
               onClick={() => toggleMutation.mutate(!on)}
-              className={`relative w-12 h-7 rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-50 ${on ? 'bg-red-600' : 'bg-gray-300'}`}
+              className={`relative w-12 h-7 rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-50 ${on ? 'bg-accent' : 'bg-gray-300'}`}
             >
               <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-6' : 'left-1'}`} />
             </button>
           )}
         </div>
-        <p className={`mt-3 text-xs font-medium ${on ? 'text-red-600' : 'text-gray-400'}`}>
+        <p className={`mt-3 text-xs font-medium ${on ? 'text-accent' : 'text-gray-400'}`}>
           {isLoading ? '상태 확인 중...' : on ? '● 현재 활성화됨 — 전체 갤러리에 적용 중' : '○ 현재 비활성화됨 (기본값)'}
         </p>
       </div>

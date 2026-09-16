@@ -201,7 +201,7 @@ export function exhibitionStage(ex: any): { label: string; cls: string } | null 
   // 자동 정리된 방치 공모 — 갤러리가 종료를 누르지 않았으므로 ended 로는 잡히지 않는다
   if (ex.closed && !ex.ended) return { label: '종료(자동)', cls: 'bg-gray-200 text-gray-600' };
   if (ex.ended && ex.settlementStarted) return { label: '정산중', cls: 'bg-indigo-100 text-indigo-700' };
-  if (ex.ended) return { label: '전시종료', cls: 'bg-red-100 text-red-600' };
+  if (ex.ended) return { label: '전시종료', cls: 'bg-accent/10 text-accent' };
   if (startPassed) return { label: '전시 진행중', cls: 'bg-emerald-100 text-emerald-700' };
   if (ex.confirmed) return { label: '확정', cls: 'bg-blue-100 text-blue-700' };
   if (ex.recruitmentClosed) return { label: '전시 준비중', cls: 'bg-sky-100 text-sky-700' };

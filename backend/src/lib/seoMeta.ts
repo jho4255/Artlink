@@ -27,6 +27,7 @@ import fs from 'fs';
 import type { Request, Response, NextFunction } from 'express';
 import prisma from './prisma';
 import logger from './logger';
+import { normalizeHandle, validateHandle } from './handle';
 
 export const SEO_MARKER_START = '<!--SEO_META_START-->';
 export const SEO_MARKER_END = '<!--SEO_META_END-->';
@@ -74,7 +75,22 @@ export function clampText(raw: unknown, max: number): string {
 }
 
 /** 경로 파라미터 검증 — 모든 PK가 Int이므로 정수만 허용 (경로 조작·ReDoS 여지 없음) */
-export function parseSeoId(raw: unknown): number | null {
+/** 숫자 id 또는 작가 핸들(`@kiiryang`). 핸들은 포트폴리오에만 있다(2026-09-16). */
+export type SeoId = number | `@${string}`;
+
+export function parseSeoId(raw: unknown): SeoId | null {
+  const s = String(raw ?? '');
+  if (s.startsWith('@')) {
+    const h = normalizeHandle(s);
+    return validateHandle(h) ? null : (`@${h}` as SeoId);
+  }
+  if (!/^\d{1,9}$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 ? n : null;
+}
+
+/** `?work=<작품 id>` — 작품 하나를 공유할 때. 숫자가 아니면 무시(페이지 기본 메타). */
+export function parseSeoWork(raw: unknown): number | null {
   const s = String(raw ?? '');
   if (!/^\d{1,9}$/.test(s)) return null;
   const n = Number(s);
@@ -154,8 +170,37 @@ const displayName = (u?: { name?: string | null; nickname?: string | null } | nu
  * DB 조회 — 가시성 조건(승인/탈퇴)을 여기서 못 박는다.
  * 노출 필드는 화이트리스트: 제목·지역·기간·한줄소개·대표이미지. 연락처/주소상세/이메일은 제외.
  */
-async function fetchSeoFields(kind: SeoKind, id: number): Promise<SeoFields | null> {
-  if (kind === 'exhibition') {
+/** 갤러리 — 숫자 id 또는 `@handle`. 정식 주소는 핸들이 있으면 `/@handle` (2026-09-16) */
+async function galleryFields(id: SeoId): Promise<SeoFields | null> {
+  const g = await prisma.gallery.findFirst({
+    where: typeof id === 'number' ? { id, status: 'APPROVED' } : { handle: id.slice(1), status: 'APPROVED' },
+    select: {
+      id: true,
+      handle: true,
+      name: true,
+      description: true,
+      region: true,
+      reviewCount: true,
+      mainImage: true,
+      images: { select: { url: true }, orderBy: { order: 'asc' }, take: 1 },
+    },
+  });
+  if (!g) return null;
+  // 별점은 2026-09-10 에 없앴다 — 검색결과·카톡 미리보기에도 안 싣는다(있는 척하면 안 된다).
+  // 리뷰 **개수**는 별점과 무관하므로 남긴다.
+  const reviews = g.reviewCount > 0 ? `리뷰 ${g.reviewCount}개` : undefined;
+  return {
+    title: `${g.name} | 갤러리 - ArtLink`,
+    description: joinParts([regionLabel(g.region), reviews, g.description]),
+    image: g.mainImage || g.images[0]?.url || null,
+    path: g.handle ? `/@${g.handle}` : `/galleries/${g.id}`,
+  };
+}
+
+async function fetchSeoFields(kind: SeoKind, id: SeoId, work: number | null = null): Promise<SeoFields | null> {
+  // 핸들은 포트폴리오에만 있다 — 다른 종류에 `@…` 가 오면 없는 것으로
+  if (kind !== 'portfolio' && typeof id !== 'number') return null;
+  if (kind === 'exhibition' && typeof id === 'number') {
     const ex = await prisma.exhibition.findFirst({
       where: { id, status: 'APPROVED', gallery: { status: 'APPROVED' } },
       select: {
@@ -180,31 +225,9 @@ async function fetchSeoFields(kind: SeoKind, id: number): Promise<SeoFields | nu
     };
   }
 
-  if (kind === 'gallery') {
-    const g = await prisma.gallery.findFirst({
-      where: { id, status: 'APPROVED' },
-      select: {
-        name: true,
-        description: true,
-        region: true,
-        reviewCount: true,
-        mainImage: true,
-        images: { select: { url: true }, orderBy: { order: 'asc' }, take: 1 },
-      },
-    });
-    if (!g) return null;
-    // 별점은 2026-09-10 에 없앴다 — 검색결과·카톡 미리보기에도 안 싣는다(있는 척하면 안 된다).
-    // 리뷰 **개수**는 별점과 무관하므로 남긴다.
-    const reviews = g.reviewCount > 0 ? `리뷰 ${g.reviewCount}개` : undefined;
-    return {
-      title: `${g.name} | 갤러리 - ArtLink`,
-      description: joinParts([regionLabel(g.region), reviews, g.description]),
-      image: g.mainImage || g.images[0]?.url || null,
-      path: `/galleries/${id}`,
-    };
-  }
+  if (kind === 'gallery') return galleryFields(id);
 
-  if (kind === 'show') {
+  if (kind === 'show' && typeof id === 'number') {
     const s = await prisma.show.findFirst({
       where: { id, status: 'APPROVED', gallery: { status: 'APPROVED' } },
       select: {
@@ -232,22 +255,40 @@ async function fetchSeoFields(kind: SeoKind, id: number): Promise<SeoFields | nu
     };
   }
 
-  // portfolio — userId 기준
+  // portfolio — userId 또는 @handle. `?work=` 가 있으면 그 작품이 미리보기의 주인공(카톡·인스타 공유용).
+  if (kind !== 'portfolio') return null;
+  const userWhere = typeof id === 'number' ? { id } : { handle: id.slice(1) };
   const p = await prisma.portfolio.findFirst({
-    where: { userId: id, user: { deletedAt: null } },
+    where: { user: { ...userWhere, deletedAt: null } },
     select: {
       biography: true,
-      user: { select: { name: true, nickname: true } },
-      images: { select: { url: true }, orderBy: { order: 'asc' }, take: 1 },
+      user: { select: { id: true, name: true, nickname: true, handle: true } },
+      images: {
+        select: { id: true, url: true, title: true, medium: true, sizeText: true, year: true },
+        orderBy: { order: 'asc' },
+      },
     },
   });
-  if (!p) return null;
+  // `/@handle` 은 작가일 수도 갤러리일 수도 있다 — 작가가 없으면 갤러리로 넘긴다(routes/handle.ts 와 같은 순서)
+  if (!p) return typeof id === 'number' ? null : galleryFields(id);
   const artist = displayName(p.user);
+  // 정식 주소는 핸들이 있으면 `/@handle` — 공유 링크가 숫자보다 사람에게 남는다
+  const base = p.user.handle ? `/@${p.user.handle}` : `/portfolio/${p.user.id}`;
+  const w = work ? p.images.find((i) => i.id === work) : undefined;
+  if (w) {
+    const caption = joinParts([w.medium, w.sizeText, w.year]);
+    return {
+      title: `${w.title?.trim() || '작품'} — ${artist} | ArtLink`,
+      description: caption || `${artist} 작가의 작품`,
+      image: w.url,
+      path: `${base}?work=${w.id}`,
+    };
+  }
   return {
     title: `${artist} 작가 포트폴리오 - ArtLink`,
     description: p.biography?.trim() || `${artist} 작가의 작품과 이력을 ArtLink에서 확인하세요.`,
     image: p.images[0]?.url || null,
-    path: `/portfolio/${id}`,
+    path: base,
   };
 }
 
@@ -274,13 +315,13 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   }
 }
 
-export async function getSeoFields(kind: SeoKind, id: number): Promise<SeoFields | null> {
-  const key = `${kind}:${id}`;
+export async function getSeoFields(kind: SeoKind, id: SeoId, work: number | null = null): Promise<SeoFields | null> {
+  const key = `${kind}:${id}:${work ?? ''}`;
   const now = Date.now();
   const hit = cache.get(key);
   if (hit && hit.exp > now) return hit.value;
 
-  const value = await withTimeout(fetchSeoFields(kind, id), DB_TIMEOUT_MS);
+  const value = await withTimeout(fetchSeoFields(kind, id, work), DB_TIMEOUT_MS);
 
   if (cache.size >= CACHE_MAX) {
     const oldest = cache.keys().next().value;
@@ -321,13 +362,16 @@ export function createSeoHandler(kind: SeoKind, loadTemplate: () => string | nul
       if (process.env.SEO_META === 'off') return next();
       if ((req as unknown as Record<symbol, unknown>)[SEO_RATE_LIMITED]) return next();
 
-      const id = parseSeoId(req.params.id ?? req.params.userId);
+      // `/@:handle` 라우트는 handle 파라미터로 온다 — `@` 를 붙여 같은 파서를 태운다
+      const raw = req.params.id ?? req.params.userId ?? (req.params.handle !== undefined ? `@${req.params.handle}` : undefined);
+      const id = parseSeoId(raw);
       if (id === null) return next();
 
       const template = loadTemplate();
       if (!template) return next();
 
-      const fields = await getSeoFields(kind, id);
+      const work = kind === 'portfolio' ? parseSeoWork(req.query.work) : null;
+      const fields = await getSeoFields(kind, id, work);
       if (!fields) return next();
 
       const html = injectMeta(template, buildMetaTags(fields));

@@ -377,7 +377,7 @@ export default function ExhibitionDetailPage() {
                       className="absolute top-4 right-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
                       aria-label="찜하기"
                     >
-                      <Heart size={20} className={exhibition.isFavorited ? 'text-[#c4302b] fill-[#c4302b]' : 'text-gray-400'} />
+                      <Heart size={20} className={exhibition.isFavorited ? 'text-accent fill-accent' : 'text-gray-400'} />
                     </button>
                   )}
                   <div className="absolute bottom-4 left-4 z-20">
@@ -655,7 +655,7 @@ export default function ExhibitionDetailPage() {
             <button
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent disabled:opacity-50 cursor-pointer"
               aria-label="공모 삭제"
             >
               <Trash2 size={13} /> 공모 삭제
@@ -708,14 +708,14 @@ export default function ExhibitionDetailPage() {
               <div className="space-y-5">
                 {/* 작가 약력 (필수) */}
                 <div>
-                  <label className={`text-sm font-medium ${bioError ? 'text-red-600' : 'text-gray-700'}`}>
-                    작가 약력 <span className="text-red-500">*</span>
+                  <label className={`text-sm font-medium ${bioError ? 'text-accent' : 'text-gray-700'}`}>
+                    작가 약력 <span className="text-accent">*</span>
                   </label>
                   <textarea
                     value={applyBiography}
                     onChange={e => { setApplyBiography(e.target.value); if (e.target.value.trim()) setBioError(false); }}
                     placeholder="작가 소개·약력을 입력하세요."
-                    className={`w-full mt-1 p-2.5 border rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${bioError ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-200'}`}
+                    className={`w-full mt-1 p-2.5 border rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${bioError ? 'border-accent ring-1 ring-accent/40' : 'border-gray-200'}`}
                   />
                 </div>
 
@@ -733,11 +733,11 @@ export default function ExhibitionDetailPage() {
 
                 {/* 작품 사진 (1장 이상 필수) */}
                 <div>
-                  <label className={`text-sm font-medium block mb-2 ${imgError ? 'text-red-600' : 'text-gray-700'}`}>
-                    작품 사진 <span className="text-red-500">*</span>
+                  <label className={`text-sm font-medium block mb-2 ${imgError ? 'text-accent' : 'text-gray-700'}`}>
+                    작품 사진 <span className="text-accent">*</span>
                     <span className="text-xs text-gray-400 ml-1">({applyImages.length}/10, 1장 이상)</span>
                   </label>
-                  <div className={imgError ? 'rounded-lg ring-1 ring-red-300 p-1' : ''}>
+                  <div className={imgError ? 'rounded-lg ring-1 ring-accent/40 p-1' : ''}>
                     <MultiImageUpload
                       images={applyImages.map(url => ({ url }))}
                       onAdd={(url) => { setApplyImages(prev => [...prev, url].slice(0, 10)); setImgError(false); }}
@@ -778,7 +778,7 @@ export default function ExhibitionDetailPage() {
                           <div key={field.id}>
                             <label className="block text-xs font-medium text-gray-600 mb-1">
                               {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
+                              {field.required && <span className="text-accent ml-1">*</span>}
                             </label>
                             {isMultiChoiceField(field) ? (
                               <div className="space-y-1.5 rounded-lg border border-gray-200 p-2.5">
@@ -872,7 +872,7 @@ export default function ExhibitionDetailPage() {
                         () => (
                           <div className="text-sm">
                             <p className="font-medium mb-1">다음 항목을 확인해주세요:</p>
-                            {errors.map((e, i) => <p key={i} className="text-red-400">• {e}</p>)}
+                            {errors.map((e, i) => <p key={i} className="text-accent">• {e}</p>)}
                           </div>
                         ),
                         { duration: 5000 }
@@ -1095,7 +1095,7 @@ function ExhibitionImageManager({ exhibitionId, images }: { exhibitionId: number
                 </span>
                 <button
                   onClick={() => handleDelete(img.id)}
-                  className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 p-0.5 bg-accent text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   aria-label="삭제"
                 >
                   <X size={12} />

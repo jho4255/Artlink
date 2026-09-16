@@ -8,6 +8,7 @@ import {
   type BookPhase, type PortfolioBookData, type PortfolioPage,
   type PdfDesign, type PageKey, type WorksLayout, type DescDepth, type WorksCaption, type ProseAlign,
 } from '@/lib/portfolioFormats';
+import { printPortfolioBook } from '@/lib/portfolioPrint';
 import { BACKGROUNDS, TEXTS, ACCENTS, recommendedTextKeys, bestTextKey, recommendedAccentKeys, bestAccentKey } from '@/lib/portfolioColors';
 import { measureAspects, aspectMap, analyzePortfolio } from '@/lib/artworkAnalysis';
 import { DESIGN_DIRECTIONS, recommendDirections, directionByKey, type DesignDirection } from '@/lib/portfolioDirection';
@@ -100,7 +101,7 @@ const DESCS: readonly [DescDepth, string][] = [['none', '싣지 않음'], ['full
 const WORKS_CAPTIONS: readonly [WorksCaption, string][] = [['below', '아래 가운데'], ['left', '아래 왼쪽'], ['minimal', '제목만']];
 const PROSE_ALIGNS: readonly [ProseAlign, string][] = [['justify', '양쪽맞춤'], ['left', '왼쪽'], ['right', '오른쪽']];
 const COVER_GROUPS = ['사진 없이', '대표작 1점', '여러 작품', '색 배경', '심플'] as const;
-const PAGE_LABELS: Record<PageKey, string> = { 'a4-portrait': '세로 A4', 'a4-landscape': '가로 A4', 'wide': '와이드 16:9' };
+const PAGE_LABELS: Record<PageKey, string> = { 'a4-portrait': '세로 A4', 'a4-landscape': '가로 A4', 'wide': '와이드 16:9', 'a5-portrait': '세로 A5' };
 
 // ── 작품 페이지 레이아웃별로 어떤 본문 설정이 실제 반영되는가 ──
 function bodyApplicability(wl: WorksLayout) {
@@ -504,7 +505,34 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
     document.head.appendChild(link);
   }, []);
 
+  /**
+   * [PDF 저장] = **벡터 PDF**(브라우저 인쇄 → 'PDF 로 저장'). 글자가 글자로 남고 용량이 작다(§portfolioPrint).
+   * 대화상자가 한 번 열리는 게 값이다 — 무엇을 눌러야 하는지 토스트로 알려준다.
+   */
   const download = async () => {
+    if (works.length === 0) { toast.error('작품 사진을 먼저 등록해주세요.'); return; }
+    setBusy(true);
+    setProgress('');
+    try {
+      const { missing, pages: n, imageBytes, maxEdge } = await printPortfolioBook(book, design, (d, t, phase) => setProgress(phaseLabel(phase, d, t)));
+      const mb = Math.max(0.1, imageBytes / 1048576).toFixed(1);
+      // 10MB 예산에 맞추려고 사진을 더 줄였으면 말해 준다 — 말없이 줄이면 "왜 흐리지"가 된다
+      const shrunk = maxEdge < 2000 ? ` 사진은 공모 한도(10MB)에 맞춰 ${maxEdge.toLocaleString()}px 로 줄였습니다.` : '';
+      if (missing.length > 0) {
+        toast.error(`${n}쪽을 준비했지만 작품 ${missing.length}장을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.`, { duration: 6000 });
+      } else {
+        toast.success(`${n}쪽 · 약 ${mb}MB. 인쇄 창에서 대상을 'PDF로 저장'으로 고르세요.${shrunk}`, { duration: 8000 });
+      }
+    } catch {
+      toast.error('PDF 준비에 실패했습니다.');
+    } finally {
+      setBusy(false);
+      setProgress('');
+    }
+  };
+
+  /** 이미지형 PDF(옛 경로) — 인쇄 대화상자가 막힌 환경(일부 인앱 브라우저)용. 글자 선택은 안 되고 용량이 크다. */
+  const downloadRaster = async () => {
     if (works.length === 0) { toast.error('작품 사진을 먼저 등록해주세요.'); return; }
     setBusy(true);
     setProgress('');
@@ -513,7 +541,7 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
       if (missing.length > 0) {
         toast.error(`${n}쪽으로 저장했지만 작품 ${missing.length}장을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.`, { duration: 6000 });
       } else {
-        toast.success(`저장했습니다. (${n}쪽)`);
+        toast.success(`저장했습니다. (${n}쪽 · 이미지형)`);
       }
     } catch {
       toast.error('PDF 생성에 실패했습니다.');
@@ -566,7 +594,7 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
           </div>
 
           {missingCaption > 0 && (
-            <p className="text-[12px] text-[#c4302b] leading-relaxed">
+            <p className="text-[12px] text-accent leading-relaxed">
               작품 {missingCaption}점에 작품명·재료·크기·연도가 없습니다. 홈페이지에서 정보를 채워 퀄리티를 높여보세요.
             </p>
           )}
@@ -736,6 +764,32 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
                   ))}
                 </div>
               </div>
+              {/* 2026-09-16 — 캡션 관례·프로필 사진·작품 목록 */}
+              <div>
+                <p className="mb-1.5 text-xs text-gray-500">캡션 표기 <span className="text-gray-300">(순서)</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => patch({ captionStyle: 'kr' })} className={chip(design.captionStyle === 'kr')} title="작품명, 연도 / 재료 / 크기">국내식</button>
+                  <button type="button" onClick={() => patch({ captionStyle: 'intl' })} className={chip(design.captionStyle === 'intl')} title="작품명 / 재료 / 크기 / 연도">해외식</button>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">{design.captionStyle === 'kr' ? '작품명, 연도 / 재료 / 크기 — 홈페이지와 같은 순서' : '작품명 / 재료 / 크기 / 연도 — 해외 공모·레지던시용'}</p>
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs text-gray-500">함께 실을 것</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.user.avatar && (
+                    <button type="button" onClick={() => patch({ artistPhoto: !design.artistPhoto })} className={chip(design.artistPhoto)}
+                      title="마이페이지 프로필 카드에 올린 내 프로필 사진">
+                      {design.artistPhoto ? '✓ ' : ''}내 프로필 사진
+                    </button>
+                  )}
+                  <button type="button" onClick={() => patch({ worksIndex: !design.worksIndex })} className={chip(design.worksIndex)} title="마지막에 썸네일·쪽번호 목록(6점 이상일 때)">
+                    {design.worksIndex ? '✓ ' : ''}작품 목록
+                  </button>
+                </div>
+                {data.user.avatar
+                  ? <p className="mt-1 text-[11px] text-gray-400">내 프로필 사진 = 마이페이지 프로필 카드의 사진. 작가노트 장과 마지막 장에 실립니다.</p>
+                  : <p className="mt-1 text-[11px] text-gray-400">마이페이지 프로필 카드에 사진을 올리면 작가노트 장과 마지막 장에 실을 수 있습니다.</p>}
+              </div>
             </Section>
           </div>
 
@@ -744,6 +798,7 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
             <button
               onClick={download}
               disabled={busy || works.length === 0}
+              title="글자가 살아 있는 벡터 PDF — 인쇄 창에서 'PDF로 저장'을 고릅니다"
               className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
@@ -764,6 +819,14 @@ export default function PortfolioFormatPicker({ data, designValue, onChangeDesig
               <Maximize2 size={14} /> 전체화면
             </button>
           </div>
+          <p className="text-[11px] leading-relaxed text-gray-400">
+            PDF 저장은 인쇄 창을 열어 <b className="text-gray-500">'PDF로 저장'</b>을 고르는 방식입니다(글자 선택·검색 가능, 용량 작음).
+            인쇄 창이 안 열리는 환경이면{' '}
+            <button type="button" onClick={downloadRaster} disabled={busy || works.length === 0} className="underline hover:text-gray-700 disabled:opacity-50">
+              이미지형 PDF
+            </button>
+            로 저장하세요.
+          </p>
         </div>
       </div>
 

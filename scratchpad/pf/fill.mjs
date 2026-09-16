@@ -87,7 +87,7 @@ function sizeFrom(aspect, pool, i) {
   const short = pool[i % pool.length];
   const a = aspect && isFinite(aspect) && aspect > 0 ? aspect : 1;
   const [w, h] = a >= 1 ? [round1(short * a), short] : [short, round1(short / a)];
-  return `${fmt(w)} × ${fmt(h)} cm`;
+  return `${fmt(h)} × ${fmt(w)} cm`;   // 세로×가로(관례, 2026-09-16)
 }
 
 /**
