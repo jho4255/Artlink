@@ -74,8 +74,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2095 tests** (2026-09-16): Backend 1361 (supertest, `artlink_test` DB 순차), Frontend 734 (jsdom)
-- **E2E**: `e2e/` Playwright 41개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
+- **2102 tests** (2026-09-17): Backend 1361 (supertest, `artlink_test` DB 순차), Frontend 741 (jsdom)
+- **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
@@ -1430,6 +1430,16 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `portfolioFonts.FONT_PRESETS`)로 푼다 — 한 디자인, 두 출력. 안 골랐으면 사이트 기본 톤(흰·검정·accent·Pretendard).
       ⚠️ 안쪽 부품은 **`var(--hp-…)` 만** 쓴다. `text-gray-500` 을 쓰면 어두운 배경에서 안 보인다(방명록도 `currentColor` 투명도로 바꿨다).
       ⚠️ PDF 기본 글꼴은 명조, 웹 기본은 고딕 — **고르기 전까지는** 각자 제 기본이고 고르면 둘이 같다.
+      ⚠️⚠️ **웹 테마는 작가가 [홈페이지] 편집에서 직접 고른 뒤부터만 적용한다**(`designConfig.webTheme: true`, 2026-09-17 배포 전 점검 → 사용자 결정).
+      이 기능 전에 PDF 제작 화면을 한 번이라도 만진 작가는 그때 값이 designConfig 에 **자동 저장**돼 있다(글꼴은 안 골라도 기본 '명조'가 함께).
+      그대로 읽으면 본인이 고른 적 없는데 공개 홈페이지가 명조·어두운 배경으로 바뀐다. 표식이 없으면 `themeKeysFrom` 이 색·글꼴을 사이트 기본으로 돌려준다.
+      같은 점검에서 나온 저장 경로 결함 둘도 `lib/homepageTheme.ts` 가 막는다 —
+      ① **홈페이지 저장은 스타일을 안 건드렸으면 designConfig 를 아예 안 보낸다**(`themeSavePatch` → null). 예전엔 매번 웹 기본 키 전체
+      (`bg:white·font:gothic·accent:red`)를 써 넣어, 그 작가의 **PDF 가 조용히 바뀌었다**(`bg`·`font` 가 생겨 '저장된 선택'으로 읽히며 자동 편집 꺼짐 · 명조→고딕 · 무채→빨강).
+      처음 고를 땐 **화면에서 본 네 값 전부 + 표식**을 쓴다(바꾼 키만 쓰면 남아 있던 PDF 용 크림색 글자가 아이보리 배경에 얹힌다), 그 뒤로는 바뀐 키만.
+      `auto` 는 저장 시점의 값으로 못박는다. ② **PDF 제작 화면의 저장은 `keepWebOnlyKeys` 로 대표작·표식을 들고 간다** — 서버가 designConfig 를
+      통째로 갈아끼워서, PDF 에서 색 하나만 바꿔도 홈페이지 대표작이 사라졌다. ⚠️ designConfig 에 **웹 전용 키를 새로 만들면 `WEB_ONLY_KEYS` 에 추가할 것.**
+      회귀: `homepageV2.test.ts`(23) · `e2e/tests/53-release-homepage-v2.spec.ts`(13, payload 를 가로채 확인).
       대표작은 `designConfig.heroImageId`(없으면 첫 작품). `coverImageIds` 를 쓰지 말 것 — 그건 표지 **칸** 배열이라
       `[id]` 하나만 넣으면 4칸 표지가 세 칸 비어 나간다. 글꼴 프리셋은 `lib/portfolioFonts.ts` 로 분리했다(웹이 2,000줄 PDF 엔진을 안 물게).
     - **주소 `/@handle`**(`User.handle`, 마이그레이션 `20260916120000_handle_and_image_dims`). 규칙은 `backend/src/lib/handle.ts`

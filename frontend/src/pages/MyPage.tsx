@@ -12,7 +12,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber, roleLabel } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
 import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
@@ -24,7 +24,7 @@ import { versionWorks, versionDesign, nextVersionName } from '@/lib/portfolioVer
 import HomepageView from '@/components/shared/HomepageView';
 import HomepageStylePicker from '@/components/shared/HomepageStylePicker';
 import ArtistChecklist from '@/components/shared/ArtistChecklist';
-import { DEFAULT_THEME_KEYS, themeKeysFrom, type HomepageThemeKeys } from '@/lib/homepageTheme';
+import { DEFAULT_THEME_KEYS, WEB_THEME_FLAG, keepWebOnlyKeys, themeKeysFrom, themeSavePatch, type HomepageThemeKeys } from '@/lib/homepageTheme';
 import { artistPath, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
 import { OperationBody } from '@/pages/OperationPage';
@@ -32,7 +32,7 @@ import Thumb from '@/components/shared/Thumb';
 import { myPageTabs, resolveTab, tabHref, HOMEPAGE_EDIT_HREF } from '@/lib/myPageMenu';
 import { splitIntoColumns } from '@/lib/careerColumns';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
-import type { PortfolioBookData, PdfDesign } from '@/lib/portfolioFormats';
+import { normalizePdfDesign, type PortfolioBookData, type PdfDesign } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -368,7 +368,7 @@ function ProfileCard() {
           <h2 className="text-xl font-semibold truncate">{displayName(user)}</h2>
           {user?.nickname && <p className="text-xs text-gray-400 truncate">{user.name}</p>}
           <p className="text-sm text-gray-500 break-all">{user?.email}</p>
-          <span className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${roleBadgeClass}`}>{user?.role}</span>
+          <span className={`inline-block mt-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${roleBadgeClass}`}>{roleLabel(user?.role)}</span>
         </div>
       </div>
     </div>
@@ -863,7 +863,8 @@ function PortfolioSection() {
     portfolioFileUrl,
     seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
     images,
-    designConfig: design,
+    // 미리보기는 **지금 고르고 있는 값**을 그린다 — 아직 저장 전이라 표식이 없어도 보여야 한다
+    designConfig: { ...design, [WEB_THEME_FLAG]: true },
   };
 
   const handleSave = () => {
@@ -871,8 +872,15 @@ function PortfolioSection() {
       toast.error('작가 약력을 입력해주세요.');
       return;
     }
-    // 디자인은 PDF 설정과 한 객체다 — 색·글꼴·대표작만 덮어쓰고 표지 레이아웃 등 나머지 키는 그대로 둔다
+    // 디자인은 PDF 설정과 한 객체다 — **여기서 바꾼 키만** 얹고 표지 레이아웃 등 나머지 키는 그대로 둔다.
+    // 스타일을 안 건드렸으면 designConfig 를 아예 안 보낸다(서버는 보냈을 때만 갱신한다).
+    // ⚠️ 키 전체를 매번 보내면 웹 기본값(고딕·빨강)이 PDF 로 건너가고 자동 편집이 꺼진다 — `themeSavePatch` 주석 참고.
+    //    `auto` 는 지금 PDF 가 쓰고 있는 값으로 못박는다: `bg`·`font` 가 새로 생겨도 '저장된 선택'으로 오판되지 않게.
     const prevDesign = portfolio?.designConfig && typeof portfolio.designConfig === 'object' ? (portfolio.designConfig as Record<string, unknown>) : {};
+    const stylePatch = themeSavePatch(portfolio?.designConfig, design);
+    const designConfig = stylePatch
+      ? { ...prevDesign, ...stylePatch, auto: normalizePdfDesign(prevDesign).auto }
+      : undefined;
     mutation.mutate({
       biography: biography.trim(),
       career,
@@ -882,7 +890,7 @@ function PortfolioSection() {
       themeId: portfolio?.themeId ?? null,
       // 작품에 실제로 붙어 있는 시리즈만 저장 (이름을 바꾸면 옛 설명이 유령으로 남는다)
       seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
-      designConfig: { ...prevDesign, ...design },
+      ...(designConfig ? { designConfig } : {}),
     });
   };
 
@@ -1220,7 +1228,8 @@ function PortfolioFormatSection() {
         tagline: portfolio?.tagline ?? null,
         seriesInfo: portfolio?.seriesInfo ?? [],
         themeId: portfolio?.themeId ?? null,
-        designConfig,
+        // 서버는 designConfig 를 통째로 갈아끼운다 — 홈페이지에서 고른 대표작·웹 테마 표식을 들고 간다
+        designConfig: keepWebOnlyKeys(designConfig, portfolio?.designConfig),
       }),
     onSuccess: invalidate,
     onError: onFail('디자인 저장에 실패했습니다.'),

@@ -76,14 +76,14 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
     /* 목록의 빨간 개수 배지.
        ⚠️ Navbar 벨/대화 배지도 같은 색 클래스라, 화면 전체에서 찾으면
        그때 감춰져 있는 Navbar 쪽을 집어 "hidden" 으로 실패한다. 대화 목록(ul) 안으로 좁힌다. */
-    const badge = a2.page.locator('ul span.bg-\\[\\#c4302b\\]').first();
+    const badge = a2.page.locator('ul span.bg-accent').first();
     await expect(badge).toBeVisible({ timeout: 10000 });
 
     // 방을 열면 읽음 처리 → 배지 사라짐
     await a2.page.getByText('안읽음 확인용 메시지').first().click();
     await settle(a2.page, 1200);
     await a2.page.goto('/messages');
-    await expect(a2.page.locator('ul span.bg-\\[\\#c4302b\\]')).toHaveCount(0, { timeout: 10000 });
+    await expect(a2.page.locator('ul span.bg-accent')).toHaveCount(0, { timeout: 10000 });
 
     await a1.ctx.close(); await a2.ctx.close();
   });

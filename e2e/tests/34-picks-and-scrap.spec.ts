@@ -36,7 +36,7 @@ test.describe('MyPicks — 찜 목록', () => {
 
     // 로고 색 규칙 — Picks 는 빨강
     const color = await head.locator('span').first().evaluate(el => getComputedStyle(el).color);
-    expect(color.replace(/\s/g, '')).toBe('rgb(220,53,69)');
+    expect(color.replace(/\s/g, '')).toBe('rgb(196,48,43)');
 
     for (const f of ['전체', '갤러리', '공모', '전시', '작품']) {
       await expect(page.getByRole('button', { name: f, exact: true })).toBeVisible();
@@ -135,7 +135,10 @@ test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => 
     await expect(target).toBeVisible({ timeout: 10000 });
 
     /* 모달 열기는 전체 스위트 부하에서 클릭이 한 번 씹히는 일이 있다 — 하트(모달 마커)가 뜰 때까지 재시도 */
-    const likeBtn = page.getByRole('button', { name: '좋아요', exact: true }).first();
+    /* ⚠️ 하트는 **이미 눌린 상태일 수 있다**('좋아요 취소'). [작가] 탭은 랜덤 순서이고 같은 사진(realUploadUrl)을 쓴
+       작품이 앞선 테스트에서 여럿 만들어져(그중엔 갤러리가 하트를 누른 것도 있다) `.first()` 가 그쪽을 집는다.
+       '좋아요' 로만 찾으면 모달이 열렸는데도 못 찾아 열린 모달 위를 계속 누르다 타임아웃 난다(2026-09-17). */
+    const likeBtn = page.getByRole('button', { name: /^좋아요( 취소)?$/ }).first();
     await expect.poll(async () => {
       if (await likeBtn.count() > 0) return true;
       await target.click();

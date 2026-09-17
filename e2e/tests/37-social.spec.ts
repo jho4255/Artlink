@@ -86,18 +86,29 @@ test('★ 방명록 — 남기면 목록에 뜨고, 방 주인만 답글을 단�
   await owner.ctx.close();
 });
 
-test('★ 비밀 방명록은 제3자에게 본문이 가려진다', async ({ browser }) => {
+// 2026-09-16: 방명록 비밀글을 없앴다 — 남에게 보이라고 쓰는 글이다.
+// 서버는 `secret` 을 받아도 400 으로 막지 않고 **조용히 무시**한다(옛 화면이 그 필드를 달고 올 수 있다).
+// ⚠️ 없애기 전에 남긴 비밀글의 읽기 가림(`locked`)은 그대로다 — 그 방향은 backend `guestbook.test.ts` 가 본다(DB 에 직접 심어야 해서).
+test('★ 방명록에 비밀글은 없다 — secret 을 보내도 공개로 저장되고, 화면에 체크박스가 없다', async ({ browser }) => {
   const api = await pwRequest.newContext();
-  const secret = `비밀 ${Date.now()}`;
-  await api.post(`${API}/guestbook/1`, {
+  const text = `공개로 남는 글 ${Date.now()}`;
+  const post = await api.post(`${API}/guestbook/1`, {
     headers: { Authorization: `Bearer ${tokenFor('artist2')}` },
-    data: { body: secret, secret: true },
+    data: { body: text, secret: true },
   });
-  // 제3자(gallery)가 조회 → locked, 본문 없음
+  expect(post.status(), 'secret 을 보냈다고 글 자체를 막으면 안 된다').toBeLessThan(300);
+  // 제3자(gallery)도 본문을 읽는다
   const res = await api.get(`${API}/guestbook/1`, { headers: { Authorization: `Bearer ${tokenFor('gallery')}` } });
-  const body = await res.json();
-  const found = body.entries.find((e: any) => e.locked === true);
-  expect(found).toBeTruthy();
-  expect(found.body).toBe('');
+  const found = (await res.json()).entries.find((e: any) => e.body === text);
+  expect(found, '제3자에게 본문이 안 보인다 — 비밀글이 되살아났다').toBeTruthy();
+  expect(found.locked).toBeFalsy();
   await api.dispose();
+
+  const { page, ctx } = await openAs(browser, 'artist2');
+  await page.goto('/portfolio/1');
+  await expect(page.getByPlaceholder(/응원의 한마디를 남겨보세요/)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#guestbook').getByRole('checkbox')).toHaveCount(0);
+  // ('비밀' 글자로 찾지 말 것 — 36번 스펙이 닉네임을 '비밀닉…' 으로 바꿔 놓아 방명록 작성자 이름에 그 글자가 뜬다)
+  await expect(page.locator('#guestbook').getByText(/비밀글/)).toHaveCount(0);
+  await ctx.close();
 });

@@ -2034,3 +2034,20 @@ operatorUserIds(ex)                알림 발송 대상 전부
 ### 하니스 (`scratchpad/pf/`)
 - `combos.mjs` 20권(실데이터, 커밋 금지) → `combos-before/` 에 v2 이전 PDF 를 남겨 전/후 비교. `emptypages.py` 거의 빈 장 비율(13.1% → 2.0%).
 - 골든 5권(`portfolio/`)과 같은 배율 비교 시트·전/후 시트는 세션 스크래치패드에서 만들어 사용자에게 보냈다(pymupdf+PIL).
+
+## 배포 전 점검 (2026-09-17) — 작가 홈페이지 테마 적용 규칙 · designConfig 저장 경로
+
+`Portfolio.designConfig` 는 PDF 제작 화면과 작가 홈페이지가 **함께 쓰는 한 객체**다. 그 공유에서 결함 셋이 나왔다(전부 에러 없이 조용히 어긋나는 종류).
+
+| 결함 | 원인 | 지금 |
+|---|---|---|
+| 고른 적 없는 테마가 공개 홈페이지에 입혀진다 | PDF 피커가 바꿀 때마다 전체 디자인(기본 글꼴 '명조' 포함)을 자동 저장해 왔고, v2 가 그 키를 그대로 읽었다 | `webTheme: true` 표식이 있을 때만 색·글꼴을 읽는다(`themeKeysFrom`). 대표작은 표식과 무관 |
+| 홈페이지를 저장하면 PDF 가 바뀐다 | `handleSave` 가 매번 웹 기본 키 전체를 designConfig 에 병합 → `hasSavedChoice` 가 참이 되어 자동 편집이 꺼지고 글꼴·강조색이 웹 기본으로 | `themeSavePatch` — 안 건드렸으면 null(=designConfig 미전송), 첫 선택은 네 값+표식, 이후는 바뀐 키만. `auto` 고정 |
+| PDF 에서 디자인을 바꾸면 대표작이 사라진다 | `designMutation` 이 `PdfDesign`(웹 전용 키 없음)을 보내고 서버는 통째로 교체 | `keepWebOnlyKeys(next, saved)` 로 `heroImageId`·`webTheme` 를 옮겨 싣는다 |
+
+- 위치: `frontend/src/lib/homepageTheme.ts`(규칙) · `pages/MyPage.tsx`(`handleSave`, `designMutation`, 편집 미리보기는 `{...design, webTheme:true}`).
+- E2E: `e2e/tests/53-release-homepage-v2.spec.ts` — `/@핸들` 주소 교체·공유 이름공간 409, 테마 규칙 넷(PUT payload 가로채기), 비로그인 액션, '일반' 역할(메뉴·403·찜), 버전, 갤러리 기록.
+  같은 날 낡은 스펙 여섯(`24`·`29`·`30`·`32`·`34`·`37`)을 v2·단일 강조색·비밀 방명록 폐지에 맞췄다.
+  (전체 실행 231개 중 227 통과·4 실패 → 넷 다 스펙이 낡은 것이라 고쳐 재실행 통과, 신규 13개 통과.)
+- 마이페이지 프로필 카드의 역할 배지가 날것의 `ARTIST`/`VISITOR` 를 찍고 있었다 → `roleLabel()`.
+

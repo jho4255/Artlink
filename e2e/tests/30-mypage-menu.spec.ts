@@ -196,7 +196,7 @@ test.describe('화면 이름은 좌측 상단, 로고 색 규칙', () => {
       await expect(head).toBeVisible({ timeout: 12000 });
 
       const color = await head.locator('span').first().evaluate(el => getComputedStyle(el).color);
-      expect(color.replace(/\s/g, '')).toBe('rgb(220,53,69)');
+      expect(color.replace(/\s/g, '')).toBe('rgb(196,48,43)');
 
       await ctx.close();
     });
@@ -214,7 +214,7 @@ test.describe('화면 이름은 좌측 상단, 로고 색 규칙', () => {
     const head = page.getByRole('heading', { name: 'ArtWorks' }).first();
     await expect(head).toBeVisible({ timeout: 12000 });
     const color = await head.locator('span').first().evaluate(el => getComputedStyle(el).color);
-    expect(color.replace(/\s/g, '')).toBe('rgb(220,53,69)');
+    expect(color.replace(/\s/g, '')).toBe('rgb(196,48,43)');
     await ctx.close();
   });
 });

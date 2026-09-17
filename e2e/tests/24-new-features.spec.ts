@@ -85,7 +85,7 @@ test.describe('갤러리 전화번호·주소 무승인 수정', () => {
     await page.getByPlaceholder('갤러리 주소').fill(newAddr);
     await page.getByPlaceholder('예: 02-739-1212').fill(newPhone);
     await page.getByRole('button', { name: '저장' }).click();
-    await expect(page.locator('body')).toContainText('연락처 정보가 수정되었습니다', { timeout: 8000 });
+    await expect(page.locator('body')).toContainText('갤러리 정보가 수정되었습니다', { timeout: 8000 });
     await expect(page.locator('body')).toContainText(newAddr, { timeout: 8000 });
     await ctx.close();
   });

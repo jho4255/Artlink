@@ -34,15 +34,15 @@ async function horizontalOverflow(page: Page) {
 }
 
 test.describe('공개 페이지', () => {
-  test('★ 제목은 HomePage (Page 가 빨강), 이름 아래는 한 줄 소개 → 인스타 순', async ({ page }) => {
+  // v2(2026-09-16): 'HomePage' 라벨을 없애고 **작가 이름이 마스트헤드(h1)** 다 — ArtLink 안의 프로필이 아니라 작가의 홈페이지로 읽혀야 한다
+  test('★ 제목은 작가 이름(h1) — HomePage 라벨도, 자리만 차지하던 문구도 없다', async ({ page }) => {
     const ids = userIds();
     await page.goto(`/portfolio/${ids.artist}`);
-    const head = page.getByRole('heading', { name: 'HomePage' });
+    const head = page.getByRole('heading', { level: 1 });
     await expect(head).toBeVisible({ timeout: 15000 });
-    const color = await head.locator('span').first().evaluate(el => getComputedStyle(el).color);
-    expect(color.replace(/\s/g, '')).toBe('rgb(220,53,69)');
+    await expect(head).toContainText('Artist 1');
 
-    // 예전에 자리만 차지하던 문구
+    await expect(page.getByRole('heading', { name: 'HomePage' })).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('아티스트 포트폴리오');
   });
 
@@ -56,7 +56,7 @@ test.describe('공개 페이지', () => {
 
     const other = await openAs(browser, 'artist2');
     await other.page.goto(`/portfolio/${ids.artist}`);
-    await expect(other.page.getByRole('heading', { name: 'HomePage' })).toBeVisible({ timeout: 15000 });
+    await expect(other.page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
     await expect(other.page.getByRole('link', { name: '수정' })).toHaveCount(0);
     await other.ctx.close();
   });
@@ -90,8 +90,8 @@ test.describe('편집', () => {
     await page.goto('/mypage?tab=homepage-edit');
     await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
 
-    // 미리보기는 공개 페이지와 같은 컴포넌트 → HomePage 제목이 화면 안에 있다
-    await expect(page.getByRole('heading', { name: 'HomePage' })).toBeVisible({ timeout: 10000 });
+    // 미리보기는 공개 페이지와 같은 컴포넌트 → 작가 이름 마스트헤드(h1)가 화면 안에 있다
+    await expect(page.getByRole('heading', { level: 1, name: /Artist 1/ })).toBeVisible({ timeout: 10000 });
 
     const marker = `미리보기확인${Date.now()}`;
     const tagline = page.getByPlaceholder(/동심의 이면|한 줄 소개/).first();
@@ -170,7 +170,7 @@ test.describe('긴 글이 레이아웃을 깨지 않는다', () => {
       const { page, ctx } = await openAs(browser, 'artist');
       await page.setViewportSize({ width: vw, height: 900 });
       await page.goto(`/portfolio/${ids.artist}`);
-      await expect(page.getByRole('heading', { name: 'HomePage' })).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
       await settle(page, 800);
 
       const r = await horizontalOverflow(page);
