@@ -15,7 +15,7 @@ const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEO
 export default function ExhibitionsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAuthenticated, user } = useAuthStore();
+  const { user } = useAuthStore();
   // 필터 상태 — URL 쿼리스트링과 동기화(뒤로가기 시 필터 유지)
   const [searchParams, setSearchParams] = useSearchParams();
   const setParam = (key: string, value: string | number | null) => {
@@ -51,8 +51,6 @@ export default function ExhibitionsPage() {
       if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/exhibitions?${params}`).then(r => r.data);
     },
-    staleTime: 0,
-    refetchOnMount: 'always',
   });
 
   const currentQueryKey = ['exhibitions', scope, selectedRegion, selectedType, appliedSearch] as const;
@@ -80,10 +78,10 @@ export default function ExhibitionsPage() {
 
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
-    activeFilters.push({ label: regionLabels[selectedRegion], onRemove: () => setSelectedRegion(null) });
+    activeFilters.push({ label: regionLabels[selectedRegion] ?? selectedRegion, onRemove: () => setSelectedRegion(null) });   // 주소에 모르는 값이 와도 빈 칩이 되지 않게
   }
   if (selectedType) {
-    activeFilters.push({ label: exhibitionTypeLabels[selectedType], onRemove: () => setSelectedType(null) });
+    activeFilters.push({ label: exhibitionTypeLabels[selectedType] ?? selectedType, onRemove: () => setSelectedType(null) });
   }
   if (appliedSearch) {
     activeFilters.push({ label: `"${appliedSearch}"`, onRemove: () => { setSearch(''); setAppliedSearch(''); } });

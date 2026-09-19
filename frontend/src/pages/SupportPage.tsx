@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ChevronDown, ChevronUp, MessageCircle, Send, HelpCircle, Trash2, Edit3 } from 'lucide-react';
-// HelpCircle 은 아래 FaqSection(현재 화면에서 부르지 않음)이 쓴다 — 되살릴 때를 위해 남겨둔다
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -37,11 +36,16 @@ export default function SupportPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
       {/*
-        머리말('Support / 도움이 필요하신가요')과 [자주 묻는 질문] 탭은 없앴다(2026-08-28).
-        남은 게 1:1 문의 하나뿐이라 탭이 있을 이유가 없고, 화면 이름은 사이드바가 알려준다.
-        ⚠️ FaqSection 과 백엔드 /api/inquiries/faq 는 **그대로 살아 있다** — 되살리려면 여기서 다시 부르면 된다.
+        제목은 다시 둔다(2026-09-19 감사 S28) — "화면 이름은 사이드바가 알려준다"고 뺐었는데 그 사이드바는 lg↑ 전용이라
+        폰에서는 제목 없이 [문의하기] 버튼만 떴다. FAQ 도 되살렸다: 정의만 있고 호출이 없어 Admin 이 FAQ 를 만들 방법조차
+        없었고, 1:1 문의가 전부 사람 손으로 왔다. FAQ 가 0건이면 방문자에게는 그 섹션을 그리지 않는다(빈 안내 금지).
       */}
-      <InquirySection />
+      <h1 className="mb-8 text-3xl font-semibold tracking-tight text-gray-900">고객센터</h1>
+      <FaqSection />
+      <section className="mt-12">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">1:1 문의</h2>
+        <InquirySection />
+      </section>
 
       {/*
         회원 탈퇴 — 프로필을 고치러 들어간 사람 눈앞에 빨간 [회원 탈퇴]가 늘 놓여 있는 게 맞지 않아
@@ -131,8 +135,12 @@ function FaqSection() {
 
   const filtered = faqs.filter(faq => activeCategory === 'ALL' || faq.category === activeCategory);
 
+  // FAQ 가 하나도 없으면 방문자에게 빈 섹션("등록된 FAQ가 없습니다")을 보이지 않는다 — Admin 에게만 만들 자리가 보인다
+  if (!isAdmin && !isLoading && faqs.length === 0) return null;
+
   return (
-    <>
+    <section>
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">자주 묻는 질문</h2>
       {/* 카테고리 탭 */}
       <div className="flex gap-2 mb-5 flex-wrap">
         {(['ALL', 'GENERAL', 'GALLERY', 'ARTIST'] as FaqCategory[]).map(cat => (
@@ -285,7 +293,7 @@ function FaqSection() {
           ))}
         </div>
       )}
-    </>
+    </section>
   );
 }
 

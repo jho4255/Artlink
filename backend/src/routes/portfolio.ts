@@ -40,9 +40,15 @@ function sanitizeDesignConfig(input: unknown): string | null {
     const obj = typeof input === 'string' ? JSON.parse(input) : input;
     if (!obj || typeof obj !== 'object') return null;
     const s = JSON.stringify(obj);
-    return s.length <= 4000 ? s : null;
-  } catch { return null; }
+    // 상한을 넘으면 **조용히 null 로 만들지 않고 400** — 예전엔 디자인 설정이 통째로 사라졌는데 화면은 저장된 줄 알았다
+    if (s.length > DESIGN_CONFIG_MAX) throw new AppError('디자인 설정이 너무 큽니다.', 400);
+    return s;
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    return null;
+  }
 }
+const DESIGN_CONFIG_MAX = 8000;
 
 // 자유 텍스트 정규화 — 빈 문자열은 null로(있는 항목만 캡션에 조립하므로 ''와 null을 구분할 필요가 없다)
 function text(v: unknown, max: number): string | null {
@@ -78,8 +84,12 @@ router.get('/search', authenticate, authorize('GALLERY'), async (req, res, next)
     const q = (req.query.q as string || '').trim();
     if (!q) return res.json([]);
 
+    // 화면에 보이는 이름은 닉네임 우선(`displayName`)이라 본명만 찾으면 "검색 결과가 없습니다"가 된다(감사 M21)
     const users = await prisma.user.findMany({
-      where: { role: 'ARTIST', name: { contains: q, mode: 'insensitive' } },
+      where: {
+        role: 'ARTIST',
+        OR: [{ name: { contains: q, mode: 'insensitive' } }, { nickname: { contains: q, mode: 'insensitive' } }],
+      },
       select: { id: true, name: true, nickname: true, avatar: true },
       take: 10,
     });
@@ -252,12 +262,15 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     const data = 'designConfig' in req.body
       ? { ...base, designConfig: sanitizeDesignConfig(req.body.designConfig) }
       : base;
+    // 포트폴리오 파일(PDF/HWP, 최대 20MB)을 바꾸거나 지우면 옛 파일을 스토리지에서 지운다 — 아바타·작품 사진은 지우는데 여기만 빠져 있었다(감사 M22)
+    const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });
     const portfolio = await prisma.portfolio.upsert({
       where: { userId: req.user!.id },
       update: data,
       create: { userId: req.user!.id, ...data },
       include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
     });
+    if (before?.portfolioFileUrl && before.portfolioFileUrl !== portfolio.portfolioFileUrl) void deleteUploadedFile(before.portfolioFileUrl);
     res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
   } catch (error) { next(error); }
 });
@@ -377,6 +390,7 @@ router.patch('/images/:imageId/explore', authenticate, authorize('ARTIST'), asyn
 router.delete('/images/:imageId', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     const imageId = parseInt(req.params.imageId as string);
+    if (!Number.isFinite(imageId)) throw new AppError('이미지를 찾을 수 없습니다.', 404);   // NaN 이면 Prisma 검증 에러(400)로 뭉개졌다
     // 소유권 확인: 이미지가 요청자 본인의 포트폴리오에 속하는지 검증 (IDOR 차단)
     const image = await prisma.portfolioImage.findUnique({
       where: { id: imageId },
@@ -387,6 +401,16 @@ router.delete('/images/:imageId', authenticate, authorize('ARTIST'), async (req,
     }
     await prisma.portfolioImage.delete({ where: { id: imageId } });
     void deleteUploadedFile(image.url); // orphan 방지
+    // 표지 칸(`designConfig.coverImageIds`)에 든 죽은 id 를 빼낸다 — 남겨 두면 표지에 안내 없는 회색 빈 칸이 생긴다(감사 M14).
+    // 배열이 비면 `[]`(자동 채움)로 돌아간다. 대표작(`heroImageId`)은 화면이 첫 작품으로 폴백하므로 손대지 않는다.
+    try {
+      const pf = await prisma.portfolio.findUnique({ where: { id: image.portfolioId }, select: { designConfig: true } });
+      const cfg = parseDesignConfig(pf?.designConfig);
+      if (cfg && Array.isArray(cfg.coverImageIds) && cfg.coverImageIds.includes(imageId)) {
+        cfg.coverImageIds = cfg.coverImageIds.filter((id: unknown) => id !== imageId);
+        await prisma.portfolio.update({ where: { id: image.portfolioId }, data: { designConfig: JSON.stringify(cfg) } });
+      }
+    } catch { /* 표지 정리는 best-effort — 삭제 자체는 이미 끝났다 */ }
     res.json({ message: '삭제되었습니다.' });
   } catch (error) { next(error); }
 });

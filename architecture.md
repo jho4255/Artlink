@@ -2133,3 +2133,23 @@ operatorUserIds(ex)                알림 발송 대상 전부
 - **홈페이지 라이트박스 캡션·좋아요**: `ImageLightbox` 에 `captions`·`renderExtra` 슬롯. `PortfolioPage` 가 `museumCaption` 과 하트(`POST /explore/:id/like`, 공개 작품만)를 넘긴다.
   `GET /portfolio/:userId` 가 `optionalAuth` 로 바뀌고 `likedImageIds` 를 응답에 싣는다.
 - 공개 상세 `GET /exhibitions/:id`·`/shows/:id` 의 NaN id → 404(갤러리와 통일). 대화 첨부 `attachmentSize` 상한 25MB.
+
+## 전수 버그 감사 P3 수정 — 남은 P3 전부 (2026-09-19)
+- **탭 강조**: `lib/navLinks.ts isNavActive`(홈은 정확 일치, 나머지는 세그먼트 접두) — Navbar·BottomTabBar 공용. 상세 페이지에서 탭이 꺼지던 것(S6).
+- **ArtTalk**: `GET /chats/:id` 는 방을 열 때·폴링이 새 메시지를 실어 왔을 때만 `lastReadAt` 을 쓴다(S11, 조용한 8초 폴링은 DB 무접촉) ·
+  보낸 메시지의 201 응답을 `mergeMessages` 로 바로 합치고 커서를 올린다(S12) · 첨부에 입력 중이던 글을 함께 보낸다(S9) · 빈 대화 안내 문구(S10).
+- **커뮤니티**: 글 본문 @멘션(`POST /community` 도 `resolveMentions/notifyMentions`, S23) · 댓글칸 자동완성 · 정렬·탭·필터를 `?sort=&scope=&tab=` 로(S24) ·
+  탭 이름 칸 `TabNameInput`(controlled, 실패 시 되돌림, S25). **멘션 자동완성 키보드**(↑↓ Enter/Tab Esc, `useMention().onKeyDown` → 호출부 Enter 처리보다 먼저, S18).
+- **ArtStory**: 소식 작성 `resetQueries`, 삭제는 캐시에서 그 글만 제거(S19).
+- **고객센터**: 제목 + FAQ 섹션 복원(Admin 이 FAQ 를 만들 유일한 UI. 방문자에겐 0건이면 안 그림, S28).
+- **마이페이지(작가)**: 닉네임 오류 `data.error`(M1) · 핸들 [중복확인] 진행 중·시퀀스(M2) · 죽은 `themeMutation`/`bookData` 삭제(M4) · ArtLook iframe `key` 를 내용 지문으로(M5) ·
+  작품 0점이면 저장분을 비우고 데모 작품 iframe(M6, `stageArtLookWorks` 가 `removeItem`) · 버전 칩 전환 시 [이름 바꾸기] 닫힘(M8) · 작품 고르기 죽은 id 제거(M9) ·
+  여러 장 업로드가 등록(`POST /portfolio/images`)까지 세고 한 번만 재조회(M12, `onAdd` Promise) · `ArtworkMetaModal` 변경 시 닫기 확인(M23).
+- **마이페이지(갤러리)**: `.catch(() => [])` 제거 + 오류 문구(M18) · 전시 폼 `useFormDraft('draft_show_form')`+이탈 경고(M19) · 작가 검색 드롭다운 바깥 클릭·ESC 닫힘, [연동 해제] 버튼(M20) ·
+  작가 검색 `OR nickname` + `displayName` 표시(M21) · 임베드 `OperationBody` 는 `<main>` 대신 `<div>`(B4).
+- **백엔드 portfolio.ts**: 파일 교체·해제 시 옛 `portfolioFileUrl` 삭제(M22) · 작품 삭제 시 `designConfig.coverImageIds` 정리(M14) · `designConfig` 8000자 초과는 400(조용한 null 금지) · NaN 이미지 id 404.
+- 자잘: `AdSlot` t240·`safeHttpUrl` · `GalleryArchiveRow` key · 목록 페이지 `staleTime:0/refetchOnMount` 제거 · 갤러리 상세 [메시지] 를 Admin 만 제외(갤러리끼리도) ·
+  `/explore` 리다이렉트가 쿼리 유지 · `AuthCallbackPage` `handleSuccess` 반환 · 필터 칩 모르는 값 폴백 · 작품 좋아요가 `['explore']` 를 invalidate 하지 않고 캐시 한 칸만 고침(F22).
+- 회귀: `chat.test.ts`(읽음 쓰기 빈도) · `community.test.ts`(글 본문 멘션 3) · `portfolio-artwork.test.ts`(표지 칸 정리·닉네임 검색·옛 파일 삭제·NaN 404) · `navLinks.test.ts`(isNavActive).
+- 보류(제품 판단 필요): 메시지 신고(규칙 33) · 공개 하이라이트 안의 이웃공개 소식.
+

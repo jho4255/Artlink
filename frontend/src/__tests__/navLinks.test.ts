@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { NAV_LINKS } from '@/lib/navLinks';
+import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
 
 const appSource = readFileSync(join(__dirname, '../App.tsx'), 'utf-8');
 
@@ -63,5 +63,25 @@ describe('NAV_LINKS', () => {
     for (const p of loginOnly) {
       expect(NAV_LINKS.some((l) => l.path.startsWith(p))).toBe(false);
     }
+  });
+});
+
+/**
+ * 탭 강조 — 상세 페이지에서도 켜져 있어야 한다(2026-09-19 감사 S6).
+ * 예전엔 정확 일치라 `/galleries/12` 에 들어가면 [갤러리] 강조가 꺼져 지금 어디 있는지 잃었다.
+ */
+describe('isNavActive', () => {
+  it('★ 상세 페이지도 그 탭이다 — 접두(세그먼트) 일치', () => {
+    expect(isNavActive('/galleries', '/galleries')).toBe(true);
+    expect(isNavActive('/galleries/12', '/galleries')).toBe(true);
+    expect(isNavActive('/exhibitions/3/operation/new', '/exhibitions')).toBe(true);
+  });
+  it('홈은 정확 일치만 — 안 그러면 모든 화면에서 [홈]이 켜진다', () => {
+    expect(isNavActive('/', '/')).toBe(true);
+    expect(isNavActive('/galleries', '/')).toBe(false);
+  });
+  it('세그먼트 경계를 본다 — /artistsfoo 는 [작가]가 아니다', () => {
+    expect(isNavActive('/artistsfoo', '/artists')).toBe(false);
+    expect(isNavActive('/artists', '/galleries')).toBe(false);
   });
 });

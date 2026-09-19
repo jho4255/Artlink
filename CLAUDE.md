@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2122 tests** (2026-09-19): Backend 1373 (supertest, `artlink_test` DB 순차), Frontend 749 (jsdom)
+- **2133 tests** (2026-09-19): Backend 1381 (supertest, `artlink_test` DB 순차), Frontend 752 (jsdom)
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
@@ -227,6 +227,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   배지였고, 며칠 뒤 접속한 작가의 벨은 비어 있었다("갤러리가 문의를 보냈는데 왜 몰랐지"). `lib/chat.ts notifyChatMessage` 가
   **방마다 미읽음 하나**로 합치고(`refKey: chat:<id>`, 작품 좋아요와 같은 방식), 방을 열면(`GET /:id`·`POST /:id/read`)
   `markChatNotificationsRead` 가 읽음 처리한다. ⚠️ 메시지마다 행을 쌓지 말 것 — 단톡 20명 × 메시지 수가 된다.
+  ⚠️ **`GET /:id` 의 읽음 쓰기는 방을 열 때와 폴링이 새 메시지를 실어 왔을 때만** (2026-09-19). 조용한 `?after=` 폴링(빈 배열)은 DB 를 안 건드린다 —
+  예전엔 GET 마다 써서 방을 열어 둔 사용자 1명당 분당 7.5회 쓰기였다. 회귀는 `chat.test.ts` 「읽음 처리 — 조용한 폴링은 쓰지 않는다」.
 - ⚠️ **폴링 GET(`/chats*`·`/notifications/unread-count`)은 전역 rate limit(300/15분)에서 뺀다** (`index.ts`, 2026-09-19).
   메시지 화면만 열어둬도 15분에 232회라 탭 둘이면 정상 사용자가 429 를 맞았다. 폴링만 별도 한도(1,500/15분). 폴링 주기를
   줄이거나 새 폴링을 추가하면 `isPollingRequest` 도 같이 볼 것.

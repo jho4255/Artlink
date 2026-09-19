@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { composeSize, splitSize } from '@/lib/artwork';
@@ -66,17 +66,25 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
     setH(p.h); setW(p.w);
   }, [image.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 값을 바꿨으면 ESC·바깥 클릭·[취소]에서 한 번 묻는다 — 설명은 2000자까지 쓰는 칸이라 확인 없이 닫히면 통째로 잃는다(감사 M23)
+  const dirty = JSON.stringify(d) !== JSON.stringify(toDraft(image));
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const requestClose = () => {
+    if (dirtyRef.current && !window.confirm('작성 중인 내용이 있습니다. 저장하지 않고 닫을까요?')) return;
+    onClose();
+  };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (patch: Partial<ArtworkMetaDraft>) => setD((prev) => ({ ...prev, ...patch }));
   const setSize = (nh: string, nw: string) => { setH(nh); setW(nw); set({ sizeText: composeSize(nh, nw) }); };
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={requestClose}>
       <div
         className="bg-white w-full sm:max-w-lg max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -85,7 +93,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
       >
         <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between">
           <h3 className="font-semibold text-[15px]">작품 정보</h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-900" aria-label="닫기"><X size={18} /></button>
+          <button onClick={requestClose} className="p-1 text-gray-400 hover:text-gray-900" aria-label="닫기"><X size={18} /></button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -167,7 +175,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, saving, onSave,
           >
             {saving && <Loader2 size={14} className="animate-spin" />}저장
           </button>
-          <button onClick={onClose} className="px-5 py-2.5 text-sm text-gray-500">취소</button>
+          <button onClick={requestClose} className="px-5 py-2.5 text-sm text-gray-500">취소</button>
         </div>
       </div>
     </div>,

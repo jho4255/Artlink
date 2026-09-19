@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ComponentType } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import Layout from '@/components/layout/Layout';
@@ -89,6 +89,12 @@ function RouteFallback() {
   );
 }
 
+/** `/explore` → `/artists` — 쿼리스트링(`?seed=`·`?sort=`)을 버리지 않고 넘긴다(감사 사소 항목) */
+function ExploreRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/artists${search}`} replace />;
+}
+
 function LegacyOperationRedirect() {
   const { id } = useParams<{ id: string }>();
   return <Navigate to={`/exhibitions/${id}/operation/new`} replace />;
@@ -102,7 +108,7 @@ export default function App() {
         {/* 둘러보기는 [작가] 탭으로 합쳤다(2026-09-13) — 작품 화면이 둘이고 제목이 둘 다
             `ArtWorks` 라 "왜 다르지?" 가 됐다. ⚠️ **404 로 두지 말 것**: 옛 링크·북마크·
             마이페이지 안내가 이 주소를 들고 있다(혜택 페이지와 같은 방식). */}
-        <Route path="/explore" element={<Navigate to="/artists" replace />} />
+        <Route path="/explore" element={<ExploreRedirect />} />
         {/* Navbar [작가] 탭 — 좌 작가 목록 / 우 작품 격자 (2026-09-10) */}
         <Route path="/artists" element={<ArtistsPage />} />
         <Route path="/galleries" element={<GalleriesPage />} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, MessageCircle, Eye, PenLine, Settings2, Pin, PinOff, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -43,9 +43,22 @@ export default function CommunityPage() {
   const qc = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
-  const [sort, setSort] = useState<'recent' | 'popular'>('recent');
-  const [scope, setScope] = useState<Scope>('all');
-  const [tab, setTab] = useState<string>('');           // '' = 전체, slug = 그 탭
+  // 정렬·필터·탭은 **주소**에 둔다 — 글을 읽고 돌아오면 전체·최신으로 리셋되던 것(감사 S24). 기본값은 주소에 안 남긴다.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sort: 'recent' | 'popular' = searchParams.get('sort') === 'popular' ? 'popular' : 'recent';
+  const rawScope = searchParams.get('scope');
+  const scope: Scope = rawScope === 'mine' || rawScope === 'commented' ? rawScope : 'all';
+  const tab = searchParams.get('tab') ?? '';           // '' = 전체, slug = 그 탭
+  const setParam = (key: string, value: string, def: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === def) next.delete(key); else next.set(key, value);
+      return next;
+    }, { replace: true });
+  };
+  const setSort = (v: 'recent' | 'popular') => setParam('sort', v, 'recent');
+  const setScope = (v: Scope | ((cur: Scope) => Scope)) => setParam('scope', typeof v === 'function' ? v(scope) : v, 'all');
+  const setTab = (v: string) => setParam('tab', v, '');
   const [manageOpen, setManageOpen] = useState(false);
   const [delTarget, setDelTarget] = useState<PostRow | null>(null);
 

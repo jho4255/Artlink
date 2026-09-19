@@ -77,12 +77,24 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
       apply({ ...image, isLiked: newLiked, likeCount: image.likeCount + (newLiked ? 1 : -1) });
       return { newLiked };
     },
-    onSuccess: (_res, _vars, ctx) => {
+    onSuccess: (res, _vars, ctx) => {
       if (ctx?.newLiked) toast.success('작가에게 전달됐어요', { icon: '❤️' });
+      // 하트 하나 때문에 `['explore']` 를 invalidate 하면 펼쳐 둔 무한스크롤 **모든 쪽**이 다시 나간다(감사 F22).
+      //   서버가 돌려준 확정값으로 캐시의 그 작품 한 칸만 고친다 — 목록·홈 ArtWorks 둘 다.
+      const liked: boolean = !!res.data?.liked;
+      const likeCount: number = typeof res.data?.likeCount === 'number' ? res.data.likeCount : image.likeCount;
+      const patchImg = <T extends { id: number }>(im: T): T => (im.id === image.id ? { ...im, isLiked: liked, likeCount } : im);
+      queryClient.setQueriesData<any>({ queryKey: ['explore'] }, (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old.pages)) return { ...old, pages: old.pages.map((p: any) => (Array.isArray(p?.images) ? { ...p, images: p.images.map(patchImg) } : p)) };
+        if (Array.isArray(old.images)) return { ...old, images: old.images.map(patchImg) };
+        return old;
+      });
+      queryClient.setQueriesData<any>({ queryKey: ['explore-highlight'] }, (old: any) =>
+        old && Array.isArray(old.images) ? { ...old, images: old.images.map(patchImg) } : old);
+      apply({ ...image, isLiked: liked, likeCount });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-      queryClient.invalidateQueries({ queryKey: ['explore-highlight'] });
       queryClient.invalidateQueries({ queryKey: ['my-likes'] });
     },
   });

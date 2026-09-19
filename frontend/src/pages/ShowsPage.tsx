@@ -43,8 +43,6 @@ export default function ShowsPage() {
       if (appliedSearch) params.set('q', appliedSearch);
       return api.get(`/shows?${params}`).then(r => r.data);
     },
-    staleTime: 0,
-    refetchOnMount: 'always',
   });
 
   const currentQueryKey = ['shows', selectedRegion, selectedStatus, appliedSearch] as const;
@@ -72,10 +70,10 @@ export default function ShowsPage() {
 
   const activeFilters: { label: string; onRemove: () => void }[] = [];
   if (selectedRegion) {
-    activeFilters.push({ label: regionLabels[selectedRegion], onRemove: () => setSelectedRegion(null) });
+    activeFilters.push({ label: regionLabels[selectedRegion] ?? selectedRegion, onRemove: () => setSelectedRegion(null) });   // 주소에 모르는 값이 와도 빈 칩이 되지 않게
   }
   if (selectedStatus) {
-    activeFilters.push({ label: showStatusLabels[selectedStatus], onRemove: () => setSelectedStatus(null) });
+    activeFilters.push({ label: showStatusLabels[selectedStatus] ?? selectedStatus, onRemove: () => setSelectedStatus(null) });
   }
   if (appliedSearch) {
     activeFilters.push({ label: `"${appliedSearch}"`, onRemove: () => { setSearch(''); setAppliedSearch(''); } });

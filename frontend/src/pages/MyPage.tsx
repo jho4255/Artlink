@@ -415,12 +415,18 @@ function ProfileSection() {
   const handleReason = handleNorm ? validateHandle(handleNorm) : null;
   const handleUnchanged = handleNorm === (user?.handle ?? '');
   const handleSuggestion = !handleNorm ? suggestHandle(instagram || user?.instagramUrl) : null;
+  const [handleChecking, setHandleChecking] = useState(false);
+  const handleCheckSeq = useRef(0);   // 늦게 도착한 응답이 최신 결과를 덮지 않게(감사 M2)
   const checkHandle = async () => {
     if (handleReason) { setHandleResult({ available: false, reason: handleReason }); return; }
+    if (handleChecking) return;
+    const seq = ++handleCheckSeq.current;
+    setHandleChecking(true);
     try {
       const res = await api.get('/auth/handle-check', { params: { handle: handleNorm } });
-      setHandleResult(res.data);
+      if (seq === handleCheckSeq.current) setHandleResult(res.data);
     } catch { toast.error('확인에 실패했습니다.'); }
+    finally { if (seq === handleCheckSeq.current) setHandleChecking(false); }
   };
   const saveHandle = async () => {
     if (handleReason) { toast.error(handleReason); return; }
@@ -502,7 +508,7 @@ function ProfileSection() {
         setCheckResult({ available: false, reason: '이미 사용 중인 닉네임입니다.' });
         toast.error('이미 사용 중인 닉네임입니다.');
       } else {
-        toast.error(err?.response?.data?.message || '닉네임 저장에 실패했습니다.');
+        toast.error(err?.response?.data?.error || '닉네임 저장에 실패했습니다.');   // 서버는 `{ error }` 로만 내려준다(감사 M1)
       }
     } finally {
       setSaving(false);
@@ -567,9 +573,9 @@ function ProfileSection() {
             </div>
             <button
               onClick={checkHandle}
-              disabled={!handleNorm || handleUnchanged}
+              disabled={!handleNorm || handleUnchanged || handleChecking}
               className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-            >중복확인</button>
+            >{handleChecking ? '확인 중…' : '중복확인'}</button>
           </div>
           {handleSuggestion && (
             <button onClick={() => { setHandleInput(handleSuggestion); setHandleResult(null); }} className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-900">
@@ -698,21 +704,6 @@ function PortfolioSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '홈페이지 저장에 실패했습니다.'),
   });
 
-  // 포맷 선택만 조용히 저장 (편집 모드와 무관 — 고른 즉시 기억해 둔다)
-  const themeMutation = useMutation({
-    mutationFn: (themeId: string) =>
-      api.put('/portfolio', {
-        biography: portfolio?.biography ?? '',
-        career: normalizeCareer(portfolio?.career),
-        portfolioFileUrl: portfolio?.portfolioFileUrl ?? null,
-        statement: portfolio?.statement ?? null,
-        tagline: portfolio?.tagline ?? null,
-        seriesInfo: portfolio?.seriesInfo ?? [],
-        themeId,
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
-  });
-
   // 작품 정보 저장
   const metaMutation = useMutation({
     mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft }) =>
@@ -726,13 +717,9 @@ function PortfolioSection() {
   });
 
   // 포트폴리오 이미지 추가
+  // ⚠️ 토스트·재조회는 여기서 하지 않는다 — 여러 장 업로드가 등록 결과를 세어 **한 번에** 알리고 한 번만 재조회한다(감사 M12)
   const addImageMutation = useMutation({
     mutationFn: (url: string) => api.post('/portfolio/images', { url }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-      toast.success('작품 사진이 추가되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '이미지 추가 실패'),
   });
 
   // 작품 순서 바꾸기 — 전체 순서를 통째로 보낸다(부분 갱신은 화면과 DB 가 어긋난다)
@@ -860,7 +847,7 @@ function PortfolioSection() {
         <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
         <PortfolioImageGrid
           images={images}
-          onAdd={(url) => addImageMutation.mutate(url)}
+          onAdd={(url) => addImageMutation.mutateAsync(url)}
           onRemove={(imageId) => setRemoveImageId(imageId)}
           onReorder={(ids) => reorderMutation.mutate(ids)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
@@ -927,15 +914,6 @@ function PortfolioSection() {
   };
 
   const savedCareer = normalizeCareer(portfolio?.career);
-  const bookData: PortfolioBookData = {
-    user: user ?? { name: '' },
-    tagline: portfolio?.tagline,
-    statement: portfolio?.statement,
-    biography: portfolio?.biography,
-    career: portfolio?.career,
-    seriesInfo: portfolio?.seriesInfo,
-    images,
-  };
 
   return (
     <div className="space-y-6">
@@ -1163,15 +1141,18 @@ function ArtLookSection() {
     예전엔 새 탭(window.open)으로 열었는데, 마이페이지 안에서 하는 일이라 왔다갔다 할 이유가 없었다.
     ⚠️ 정적 페이지가 같은 출처라서 iframe 안에서도 localStorage 를 그대로 읽는다(다른 출처면 못 읽는다).
   */
-  const staged = useMemo(() => {
-    if (images.length === 0) return 0;
-    return stageArtLookWorks(images.map(img => ({
+  // 넘긴 내용의 지문 — iframe 의 key. 예전엔 '개수'라 제목·치수를 고치거나 한 장을 지우고 한 장을 올리면
+  //   개수가 같아 재마운트되지 않았고, ArtLook 은 뜰 때 한 번만 읽으므로 옛 목록을 계속 썼다(감사 M5).
+  const stagedKey = useMemo(() => {
+    const works = images.map(img => ({
       url: img.url,
       title: artworkTitle(img),
       artist: displayName(user),
       kind: 'portfolio' as const,
       sizeText: img.sizeText || undefined,   // 장면 모드가 실제 크기대로 건다
-    })));
+    }));
+    stageArtLookWorks(works);   // 0점이면 저장분을 비워 ArtLook 이 데모 작품을 띄운다(규칙 36)
+    return works.map(w => `${w.url}|${w.title}|${w.sizeText ?? ''}`).join('\n');
   }, [images, user]);
 
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
@@ -1184,7 +1165,7 @@ function ArtLookSection() {
           <span className="ml-2 align-middle text-sm font-normal text-gray-400">액자 걸기</span>
         </h2>
         {/* 좁은 화면에서 iframe 이 답답할 때를 위한 탈출구 */}
-        {staged > 0 && (
+        {(
           <a
             href={ARTLOOK_URL}
             target="_blank"
@@ -1196,22 +1177,23 @@ function ArtLookSection() {
         )}
       </div>
 
-      {images.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 py-12 text-center">
-          <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
-          <Link to={HOMEPAGE_EDIT_HREF} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
+      {/* 작품이 0점이어도 iframe 은 그린다 — ArtLook 이 데모 작품으로 체험하게 해 준다(규칙 36). 예전엔 안내 한 줄로 막아
+          "작품이 없으면 데모를 띄운다"는 경로가 마이페이지에서는 영영 안 열렸다(감사 M6). */}
+      {images.length === 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          <span>아직 등록된 작품이 없어 데모 작품으로 보여드립니다.</span>
+          <Link to={HOMEPAGE_EDIT_HREF} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white">
             홈페이지에서 작품 등록하기
           </Link>
         </div>
-      ) : (
-        <iframe
-          key={staged}
-          src={ARTLOOK_EMBED_URL}
-          title="ArtLook"
-          /* 화면 대부분을 쓰되 페이지를 밀지 않게 — 안쪽에서 스크롤한다 */
-          className="w-full h-[calc(100vh-14rem)] min-h-[520px] rounded-lg border border-gray-200 bg-white"
-        />
       )}
+      <iframe
+        key={stagedKey}
+        src={ARTLOOK_EMBED_URL}
+        title="ArtLook"
+        /* 화면 대부분을 쓰되 페이지를 밀지 않게 — 안쪽에서 스크롤한다 */
+        className="w-full h-[calc(100vh-14rem)] min-h-[520px] rounded-lg border border-gray-200 bg-white"
+      />
     </div>
   );
 }
@@ -1222,7 +1204,7 @@ function ArtLookSection() {
  * 작품 30장을 지나 한참 내려가야 나왔고, 있는 줄도 모르는 작가가 많았다.
  *
  * 내용물(약력·작가노트·경력·작품)은 [홈페이지]에서 고친다 — 여기선 그걸 **어떤 판형으로 뽑을지**만 고른다.
- * 포맷 선택은 편집 모드 없이 고른 즉시 저장된다(themeMutation).
+ * 디자인 설정은 편집 모드 없이 고른 즉시 저장된다(`designMutation` — 옛 `themeMutation` 은 2026-09-19 에 지웠다).
  */
 function PortfolioFormatSection() {
   const queryClient = useQueryClient();
@@ -1239,6 +1221,8 @@ function PortfolioFormatSection() {
   const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // 버전을 옮기면 열어 둔 [이름 바꾸기] 칸을 닫는다 — 안 닫으면 A 의 이름을 담은 칸이 B 에 그대로 남아 B 가 그 이름으로 바뀐다(감사 M8)
+  const selectVersion = (id: number | null) => { setRenaming(null); setVersionId(id); };
   const versions = portfolio?.versions ?? [];
   // 활성 버전이 사라졌으면(다른 탭에서 지움) null 로 떨어져 자연히 '기본'이 된다 — 상태를 따로 되돌릴 필요가 없다
   const version = versions.find((v) => v.id === versionId) ?? null;
@@ -1360,11 +1344,11 @@ function PortfolioFormatSection() {
       {/* 버전 바 — 기본(전체) + 저장한 버전들 + [+ 버전] */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => setVersionId(null)} className={chip(!version)}>
+          <button type="button" onClick={() => selectVersion(null)} className={chip(!version)}>
             기본 <span className={version ? 'text-gray-400' : 'text-white/70'}>{all.length}점</span>
           </button>
           {versions.map((v) => (
-            <button key={v.id} type="button" onClick={() => setVersionId(v.id)} className={chip(v.id === versionId)}>
+            <button key={v.id} type="button" onClick={() => selectVersion(v.id)} className={chip(v.id === versionId)}>
               {v.name} <span className={v.id === versionId ? 'text-white/70' : 'text-gray-400'}>{versionWorks(all, v).length}점</span>
             </button>
           ))}
@@ -1448,7 +1432,8 @@ function PortfolioImageGrid({
   gridClassName = 'grid grid-cols-3 sm:grid-cols-4 gap-2',
 }: {
   images: PortfolioImage[];
-  onAdd: (url: string) => void;
+  /** 업로드한 파일 url 을 등록한다. Promise 를 돌려주면 그 결과까지 세어 '실제 등록된 장 수'를 알린다 */
+  onAdd: (url: string) => void | Promise<unknown>;
   onRemove: (imageId: number) => void;
   onToggleExplore: (imageId: number) => void;
   /** 순서 바꾸기 — 전체 id 배열을 새 순서로 넘긴다(`PUT /portfolio/images/order`). 화면에 이 기능이 없어 순서를 바꾸려면 지웠다 다시 올려야 했다(2026-09-19) */
@@ -1458,6 +1443,7 @@ function PortfolioImageGrid({
   /** 편집 화면은 폭이 절반이라 2열로 줄여 넘긴다 */
   gridClassName?: string;
 }) {
+  const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   // 작품별 "좋아요한 사람" 목록 (인스타 방식) — 서버는 이미지 주인에게만 명단을 내려준다
   const [likersImageId, setLikersImageId] = useState<number | null>(null);
@@ -1487,13 +1473,18 @@ function PortfolioImageGrid({
         const res = await api.post('/upload/image', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        onAdd(res.data.url);
+        // 파일 업로드가 아니라 **작품 등록(POST /portfolio/images)** 까지 끝나야 성공이다 — 예전엔 업로드만 세어
+        // 30장 한도에 막혀도 "N장 업로드 완료"가 떴다(감사 M12). 순서대로 기다리므로 한도를 넘기는 동시 요청도 없다.
+        await onAdd(res.data.url);
         successCount++;
-      } catch {
-        toast.error(`${rawFile.name} 업로드 실패`);
+      } catch (err: any) {
+        toast.error(`${rawFile.name}: ${err?.response?.data?.error || '업로드 실패'}`);
       }
     }
-    if (successCount > 0) toast.success(`${successCount}장 업로드 완료`);
+    if (successCount > 0) {
+      toast.success(`${successCount}장 등록 완료`);
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });   // 장마다가 아니라 한 번만
+    }
     setUploading(false);
     setUploadCount(0);
   };
@@ -2457,9 +2448,10 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
     }
   }, [showForm]);
 
-  const { data: galleries = [] } = useQuery<any[]>({
+  // ⚠️ `.catch(() => [])` 로 삼키지 말 것 — 서버 오류가 "등록된 갤러리가 없습니다"(성공한 빈 목록)로 둔갑한다(감사 M18)
+  const { data: galleries = [], isError: galleriesError } = useQuery<any[]>({
     queryKey: ['my-galleries'],
-    queryFn: () => api.get('/galleries?owned=true').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/galleries?owned=true').then(r => r.data),
   });
 
   const createMutation = useMutation({
@@ -2601,7 +2593,7 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
 
       {/* 갤러리 목록 (전용 등록 화면에서는 숨김) */}
       {!createOnly && (galleries.length === 0 && !showForm ? (
-        <p className="text-gray-400 text-center py-8">등록된 갤러리가 없습니다.</p>
+        <p className="text-gray-400 text-center py-8">{galleriesError ? '갤러리 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : '등록된 갤러리가 없습니다.'}</p>
       ) : (
         <div className="space-y-3">
           {galleries.map((g: any) => (
@@ -2737,19 +2729,19 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   // 내 갤러리 목록 (승인된 것만 공모 등록 가능)
   const { data: myGalleries = [] } = useQuery<any[]>({
     queryKey: ['my-galleries'],
-    queryFn: () => api.get('/galleries?owned=true').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/galleries?owned=true').then(r => r.data),
   });
   const approvedGalleries = myGalleries.filter((g: any) => g.status === 'APPROVED');
 
-  // 내 공모 목록
-  const { data: exhibitions = [] } = useQuery<any[]>({
+  // 내 공모 목록 — 조회 실패는 삼키지 않는다(감사 M18). 실패면 아래 빈 화면이 "없습니다" 대신 오류를 말한다.
+  const { data: exhibitions = [], isError: exhibitionsError } = useQuery<any[]>({
     queryKey: ['my-exhibitions'],
-    queryFn: () => api.get('/exhibitions/my-exhibitions').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/exhibitions/my-exhibitions').then(r => r.data),
   });
 
   const { data: operationOverview = [], isLoading: operationOverviewLoading } = useQuery<GalleryOperationOverview[]>({
     queryKey: ['my-operation-overview'],
-    queryFn: () => api.get('/exhibitions/my-operation-overview').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/exhibitions/my-operation-overview').then(r => r.data),
   });
 
   const createMutation = useMutation({
@@ -3074,7 +3066,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 <p className="text-sm text-gray-500">아직 정산까지 끝난 공모가 없습니다.</p>
               ) : (
                 <>
-                  <p className="text-sm text-gray-500">{closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
+                  <p className="text-sm text-gray-500">{exhibitionsError ? '공모 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
                   <button onClick={() => navigate('/exhibitions/new')} className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5">
                     <Plus size={14} /> 공모 등록
                   </button>
@@ -3277,6 +3269,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 }
 
 // ========== Gallery: 내 전시(Show) 관리 ==========
+const emptyShowForm = {
+  title: '', description: '', startDate: '', endDate: '',
+  openingHours: '', admissionFee: '', location: '', region: 'SEOUL',
+  posterImage: '', galleryId: 0,
+  additionalImages: [] as { url: string }[],
+};
 function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -3288,7 +3286,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   // 내 갤러리 (전시 등록 시 선택용) — owned=true로 본인 갤러리 전체 조회 (/galleries/my 라우트는 없음)
   const { data: myGalleries = [] } = useQuery<Gallery[]>({
     queryKey: ['my-galleries'],
-    queryFn: () => api.get('/galleries?owned=true').then(r => r.data).catch(() => []),
+    queryFn: () => api.get('/galleries?owned=true').then(r => r.data),
   });
   const approvedGalleries = myGalleries.filter(g => g.status === 'APPROVED');
 
@@ -3299,17 +3297,39 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   });
 
   // 전시 등록 폼 상태
-  const [form, setForm] = useState({
-    title: '', description: '', startDate: '', endDate: '',
-    openingHours: '', admissionFee: '', location: '', region: 'SEOUL',
-    posterImage: '', galleryId: 0,
-    additionalImages: [] as { url: string }[],
-  });
+  const [form, setForm] = useState({ ...emptyShowForm });
 
   // 작가 목록 (동적)
   const [artists, setArtists] = useState<ArtistEntry[]>([{ name: '' }]);
-  const [searchResults, setSearchResults] = useState<{ id: number; name: string; avatar?: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: number; name: string; nickname?: string | null; avatar?: string }[]>([]);
   const [searchingIdx, setSearchingIdx] = useState<number | null>(null);
+
+  // 이탈 경고·임시저장 — 갤러리·공모 폼엔 있었는데 전시 폼만 없어 포스터·작가 목록까지 채운 뒤 링크 한 번이면 사라졌다(감사 M19)
+  const { hasDraft, autoSave, clearDraft, restoreDraft } = useFormDraft('draft_show_form', { form: emptyShowForm, artists: [{ name: '' }] as ArtistEntry[] });
+  const isDirty = showForm && (JSON.stringify(form) !== JSON.stringify(emptyShowForm) || artists.some(a => a.name.trim() || a.userId));
+  useUnsavedChanges(isDirty);
+  useEffect(() => { if (showForm && isDirty) autoSave({ form, artists }); }, [form, artists, showForm, isDirty, autoSave]);
+  const draftAsked = useRef(false);
+  useEffect(() => {
+    if (!showForm || draftAsked.current) return;
+    draftAsked.current = true;
+    if (!hasDraft) return;
+    const draft = restoreDraft();
+    if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
+      setForm({ ...emptyShowForm, ...draft.form });
+      if (Array.isArray(draft.artists) && draft.artists.length) setArtists(draft.artists);
+    }
+  }, [showForm, hasDraft, restoreDraft]);
+
+  // 검색 드롭다운 — 바깥 클릭·ESC 로 닫는다. 예전엔 작가를 고를 때만 닫혀 검색만 하고 안 고르면 아래 작가 행을 덮었다(감사 M20)
+  useEffect(() => {
+    if (searchingIdx === null) return;
+    const onDown = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.('[data-artist-search]')) setSearchingIdx(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSearchingIdx(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [searchingIdx]);
 
   // 약관 동의
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -3331,9 +3351,10 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
       queryClient.invalidateQueries({ queryKey: ['my-shows'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
       setShowForm(false);
-      setForm({ title: '', description: '', startDate: '', endDate: '', openingHours: '', admissionFee: '', location: '', region: 'SEOUL', posterImage: '', galleryId: 0, additionalImages: [] });
+      setForm({ ...emptyShowForm });
       setArtists([{ name: '' }]);
       setAgreedTerms(false);
+      clearDraft();
       toast.success('전시 등록 요청이 완료되었습니다. Admin 승인을 기다려주세요.');
       if (createOnly) navigate('/mypage?tab=my-shows');
     },
@@ -3484,7 +3505,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
           <div className="space-y-2">
             <label className="text-xs text-gray-500">참여 작가</label>
             {artists.map((artist, idx) => (
-              <div key={idx} className="relative">
+              <div key={idx} data-artist-search className="relative">
                 <div className="flex gap-2">
                   <input
                     placeholder="작가 이름"
@@ -3497,10 +3518,14 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
                     className={`min-w-0 flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-gray-400 bg-gray-50' : 'border-gray-200'}`}
                   />
                   {artist.userId ? (
-                    <button type="button" onClick={() => { const updated = [...artists]; updated[idx] = { name: artist.name }; setArtists(updated); }}
-                      className="px-2 text-xs text-gray-500 border border-gray-300 rounded-lg flex items-center gap-1">
-                      <Check size={12} /> 연동됨
-                    </button>
+                    <span className="flex items-center gap-1 text-xs text-gray-600">
+                      <Check size={12} className="text-green-600" /> 연동됨
+                      {/* 예전엔 '연동됨' 배지 자체가 누르면 풀리는 버튼이었다 — 완료 표시로 읽혀 무슨 일이 나는지 알 수 없었다(감사 M20) */}
+                      <button type="button" onClick={() => { const updated = [...artists]; updated[idx] = { name: artist.name }; setArtists(updated); toast('작가 연동을 해제했습니다.'); }}
+                        className="ml-1 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 hover:border-gray-400 hover:text-gray-900">
+                        연동 해제
+                      </button>
+                    </span>
                   ) : (
                     <button type="button" onClick={() => searchArtist(idx)}
                       className="px-2 text-xs text-gray-500 border border-gray-200 rounded-lg flex items-center gap-1 hover:border-gray-400">
@@ -3521,7 +3546,8 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
                       <button key={u.id} type="button" onClick={() => linkArtist(idx, u)}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
                         {u.avatar ? <img src={u.avatar} className="w-6 h-6 rounded-full object-cover" /> : <div className="w-6 h-6 rounded-full bg-gray-200" />}
-                        {u.name}
+                        {/* 사이트에서 보이는 이름(닉네임)으로 찾고 본명을 곁들인다 — 연동 값은 본명 유지 */}
+                        {displayName(u)}{u.nickname && u.nickname !== u.name ? <span className="text-xs text-gray-400">({u.name})</span> : null}
                       </button>
                     ))}
                   </div>

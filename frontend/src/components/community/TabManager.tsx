@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Plus, Trash2, ArrowUp, ArrowDown, Eye, EyeOff, Lock, LockOpen, Loader2 } from 'lucide-react';
@@ -100,10 +100,9 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
                   <button onClick={() => move(i, 1)} disabled={i === tabs.length - 1} aria-label="아래로"
                     className="p-0.5 text-gray-300 hover:text-gray-700 disabled:opacity-20"><ArrowDown size={13} /></button>
                 </div>
-                <input
-                  defaultValue={t.name} maxLength={20}
-                  onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) patch.mutate({ id: t.id, name: v }); }}
-                  className={`min-w-0 flex-1 rounded border border-transparent px-2 py-1 text-sm hover:border-gray-200 focus:border-gray-400 focus:outline-none ${t.active ? 'text-gray-900' : 'text-gray-400 line-through'}`}
+                <TabNameInput
+                  tab={t}
+                  onCommit={(v) => patch.mutateAsync({ id: t.id, name: v })}
                 />
                 <span className="shrink-0 text-xs tabular-nums text-gray-400">{t.postCount}</span>
                 <button
@@ -150,5 +149,28 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * 탭 이름 칸 — 예전엔 uncontrolled(`defaultValue`)라 저장에 실패해도(같은 이름 409 등) 화면엔 새 이름이 그대로 남아
+ * 바뀐 줄 알았다(감사 S25). 서버 값을 진실로 두고, 실패하면 되돌린다.
+ */
+function TabNameInput({ tab, onCommit }: { tab: CommunityTab; onCommit: (name: string) => Promise<unknown> }) {
+  const [value, setValue] = useState(tab.name);
+  useEffect(() => { setValue(tab.name); }, [tab.name]);
+  const commit = async () => {
+    const v = value.trim();
+    if (!v || v === tab.name) { setValue(tab.name); return; }
+    try { await onCommit(v); } catch { setValue(tab.name); }
+  };
+  return (
+    <input
+      value={value} maxLength={20}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur(); }}
+      className={`min-w-0 flex-1 rounded border border-transparent px-2 py-1 text-sm hover:border-gray-200 focus:border-gray-400 focus:outline-none ${tab.active ? 'text-gray-900' : 'text-gray-400 line-through'}`}
+    />
   );
 }

@@ -462,3 +462,38 @@ describe('메시지 페이지네이션 (증분 폴링)', () => {
     expect(r.body.readers[0]).toHaveProperty('lastReadAt');
   });
 });
+
+/**
+ * 읽음 처리 쓰기 빈도 (2026-09-19 감사 S11).
+ * 화면이 8초마다 `?after=` 로 폴링하는데 예전엔 GET 마다 `lastReadAt` 을 써서 방을 열어 둔 사용자 1명당 분당 7.5회 쓰기였다.
+ * 조용한 폴링(빈 응답)은 DB 를 건드리지 않고, 새 메시지가 실려 오면 그때 쓴다.
+ */
+describe('GET /chats/:id 읽음 처리 — 조용한 폴링은 쓰지 않는다', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+
+  const lastRead = (chatId: number, userId: number) =>
+    testPrisma.chatParticipant.findUnique({ where: { chatId_userId: { chatId, userId } } }).then((p) => p?.lastReadAt?.getTime() ?? 0);
+
+  it('★ 방을 열면 쓰고, 빈 폴링은 안 쓰고, 새 메시지가 오면 다시 쓴다', async () => {
+    const open = await request.post('/api/chats/direct').set('Authorization', `Bearer ${a1}`).send({ userId: 2 });
+    const chatId = open.body.id as number;
+    await request.post(`/api/chats/${chatId}/messages`).set('Authorization', `Bearer ${a2}`).send({ content: '안녕' });
+
+    const first = await request.get(`/api/chats/${chatId}`).set('Authorization', `Bearer ${a1}`);
+    expect(first.status).toBe(200);
+    const lastId = first.body.messages.at(-1).id;
+    const t1 = await lastRead(chatId, 1);
+    expect(t1).toBeGreaterThan(0);
+
+    await new Promise((r) => setTimeout(r, 20));
+    const quiet = await request.get(`/api/chats/${chatId}?after=${lastId}`).set('Authorization', `Bearer ${a1}`);
+    expect(quiet.body.messages).toEqual([]);
+    expect(await lastRead(chatId, 1)).toBe(t1);          // 그대로
+
+    await request.post(`/api/chats/${chatId}/messages`).set('Authorization', `Bearer ${a2}`).send({ content: '새 말' });
+    await new Promise((r) => setTimeout(r, 20));
+    const delta = await request.get(`/api/chats/${chatId}?after=${lastId}`).set('Authorization', `Bearer ${a1}`);
+    expect(delta.body.messages).toHaveLength(1);
+    expect(await lastRead(chatId, 1)).toBeGreaterThan(t1); // 새 것을 받았으니 읽음
+  });
+});

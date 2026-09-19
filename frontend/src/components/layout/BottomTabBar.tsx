@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { NAV_LINKS } from '@/lib/navLinks';
+import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
 
 /**
  * 모바일 전용 하단 고정 탭바 (catch 앱 방식).
@@ -23,7 +23,7 @@ export default function BottomTabBar() {
     >
       <div className="mx-auto flex max-w-lg">
         {NAV_LINKS.map(({ path, label, icon: Icon }) => {
-          const active = pathname === path;
+          const active = isNavActive(pathname, path);
           return (
             <Link
               key={path}

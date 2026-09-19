@@ -40,7 +40,7 @@ export default function GalleryArchiveRow({ archive, canEdit, onEdit, onDelete, 
       {archive.images.length > 0 && (
         <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
           {archive.images.map((url, i) => (
-            <button key={url} onClick={() => onOpenImage(archive.images, i)} className="block cursor-zoom-in">
+            <button key={`${url}-${i}`} onClick={() => onOpenImage(archive.images, i)} className="block cursor-zoom-in">
               {/* 목록 칸이라 t240 이 아니라 t800 — 24px 칸이 아니라 100~160px 이라 240 은 뭉개진다 */}
               <Thumb src={url} size="grid" alt="" loading="lazy" className="h-24 w-full rounded-lg object-cover" />
             </button>

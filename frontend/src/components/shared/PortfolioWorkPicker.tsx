@@ -21,7 +21,12 @@ export default function PortfolioWorkPicker({ all, selected, onSave, onClose, sa
   onClose: () => void;
   saving?: boolean;
 }) {
-  const [ids, setIds] = useState<number[]>(() => (selected.length ? selected : all.map((w) => w.id)));
+  // 지운 작품 id 는 배열에 남아 있다(FK 없음) — 그대로 번호를 매기면 격자 배지와 순서 띠의 번호가 어긋난다(감사 M9)
+  const [ids, setIds] = useState<number[]>(() => {
+    const existing = new Set(all.map((w) => w.id));
+    const kept = selected.filter((id) => existing.has(id));
+    return kept.length ? kept : all.map((w) => w.id);
+  });
   const byId = useMemo(() => new Map(all.map((w) => [w.id, w] as const)), [all]);
   const order = useMemo(() => new Map(ids.map((id, i) => [id, i + 1] as const)), [ids]);
 

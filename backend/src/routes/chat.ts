@@ -131,11 +131,17 @@ router.get('/:id', async (req, res, next) => {
     });
     if (!data) throw new AppError('대화를 찾을 수 없습니다.', 404);
 
-    await prisma.chatParticipant.update({
-      where: { chatId_userId: { chatId, userId: me } },
-      data: { lastReadAt: new Date() },
-    });
-    await markChatNotificationsRead(chatId, me).catch(() => {});   // 응답 전에 끝낸다 — 배지가 방을 본 뒤에도 남지 않게
+    // 읽음 처리는 **방을 열 때**와 **폴링이 새 메시지를 실어 왔을 때**만 쓴다(감사 S11).
+    // 예전엔 GET 마다 썼는데 화면이 8초 폴링이라 방을 열어 둔 사용자 1명당 분당 7.5회 쓰기였다.
+    // 조용한 폴링(`after` 응답이 빈 배열)은 읽을 게 없으니 DB 를 건드릴 이유가 없다.
+    const polling = req.query.after !== undefined;
+    if (!polling || data.messages.length > 0) {
+      await prisma.chatParticipant.update({
+        where: { chatId_userId: { chatId, userId: me } },
+        data: { lastReadAt: new Date() },
+      });
+      await markChatNotificationsRead(chatId, me).catch(() => {});   // 응답 전에 끝낸다 — 배지가 방을 본 뒤에도 남지 않게
+    }
     res.json(data);
   } catch (e) { next(e); }
 });

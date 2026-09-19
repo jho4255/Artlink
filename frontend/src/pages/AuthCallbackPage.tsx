@@ -46,7 +46,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
         setEmail(data.profile.email || '');
         setPhase('register');
       } else {
-        handleSuccess(data);
+        return handleSuccess(data);
       }
     },
     onError: (err: any) => {

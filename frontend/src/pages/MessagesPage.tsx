@@ -227,10 +227,19 @@ export default function MessagesPage() {
     mutationFn: (payload: {
       content?: string;
       attachmentUrl?: string; attachmentType?: AttachmentType; attachmentName?: string; attachmentSize?: number;
-    }) => api.post(`/chats/${openId}/messages`, payload),
-    onSuccess: () => {
+    }) => api.post<ChatMessage>(`/chats/${openId}/messages`, payload),
+    onSuccess: (res) => {
       setDraft('');
-      queryClient.invalidateQueries({ queryKey: ['chat', openId] });
+      // 201 응답(방금 만든 메시지)을 **바로** 누적분에 합친다 — 예전엔 버리고 invalidate 로 다시 받아
+      //   전송 1회에 요청 2회, 느린 망에서는 보낸 말이 몇 초 뒤에야 떴다(감사 S12).
+      //   `mergeMessages` 가 id 로 병합하므로 뒤이은 폴링과 겹쳐도 안전하고, 커서도 함께 올려 두면 폴링이 되받지 않는다.
+      const sent = res.data;
+      if (sent && typeof sent.id === 'number') {
+        setMessages(prev => applyReadState(
+          mergeMessages(prev, [sent]), chat?.kind ?? 'DIRECT', chat?.readers ?? [], myId,
+        ));
+        cursorRef.current = Math.max(cursorRef.current ?? 0, sent.id);
+      }
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread'] });
     },
@@ -299,7 +308,9 @@ export default function MessagesPage() {
       const form = new FormData();
       form.append(spec.field, file);
       const { data } = await api.post(spec.endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
+      // 입력 중이던 글은 첨부와 **함께** 보낸다 — 예전엔 첨부만 나가고 onSuccess 가 draft 를 비워 쓰던 글이 사라졌다(감사 S9)
       send.mutate({
+        content: draft.trim() || undefined,
         attachmentUrl: data.url,
         attachmentType: attachKind,
         attachmentName: attachKind === 'FILE' ? (data.originalName || file.name) : undefined,
@@ -338,7 +349,7 @@ export default function MessagesPage() {
           ) : sorted.length === 0 ? (
             <div className="p-6 text-sm text-gray-400 leading-relaxed">
               아직 대화가 없습니다.<br />
-              둘러보기에서 작가를 보고 [메시지]를 누르거나, 공모에 참여하면 단체 대화가 생깁니다.
+              [작가] 탭에서 작품을 열어 [메시지]를 누르거나, 공모에 참여하면 단체 대화가 생깁니다.
             </div>
           ) : (
             <ul className="max-h-[70vh] overflow-y-auto divide-y divide-gray-50">

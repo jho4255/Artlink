@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
 import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
-import { NAV_LINKS as navLinks } from '@/lib/navLinks';
+import { NAV_LINKS as navLinks, isNavActive } from '@/lib/navLinks';
 
 // 가운데 메뉴 정의는 lib/navLinks.ts 하나뿐 — 데스크톱 상단 중앙과 모바일 하단 탭바(BottomTabBar)가 공유한다.
 // 모바일에서는 이 5개(홈/갤러리/전시/모집공고/커뮤니티)가 **하단 고정 탭바**로 내려갔다(catch 앱 방식).
@@ -140,7 +140,7 @@ export default function Navbar() {
                 to={link.path}
                 className={cn(
                   'px-4 py-2 text-base font-medium transition-all border-b-2',
-                  location.pathname === link.path
+                  isNavActive(location.pathname, link.path)
                     ? 'text-gray-900 border-gray-900'
                     : 'text-gray-500 border-transparent hover:text-gray-900 hover:border-gray-300'
                 )}

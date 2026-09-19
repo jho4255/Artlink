@@ -8,6 +8,7 @@ import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
 import { timeAgo, roleLabel } from '@/lib/utils';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useMention, MentionSuggest } from '@/components/shared/MentionSuggest';
 
 interface Author { id: number | null; name: string; avatar: string | null; role: string | null; anonymous: boolean; mine: boolean }
 interface PostCategory { id: number; name: string; slug: string }
@@ -46,6 +47,7 @@ export default function CommunityPostPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
   const [comment, setComment] = useState('');
+  const mention = useMention(comment, (v) => setComment(v.slice(0, 2000)));
   const [anonComment, setAnonComment] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const isAdmin = user?.role === 'ADMIN';
@@ -233,16 +235,22 @@ export default function CommunityPostPage() {
         {/* 댓글 입력 */}
         <div className="mt-4 border-t border-gray-100 pt-4">
           <div className="mb-2 text-xs text-gray-400">
-            💡 <strong>@닉네임</strong>을 입력하면 사용자를 태그할 수 있습니다.
+            💡 <strong>@</strong>로 서로 이웃이나 ArtLink(운영)를 부를 수 있습니다.
           </div>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value.slice(0, 2000))}
-            rows={2}
-            placeholder={isAuthenticated ? '댓글을 입력하세요 (@닉네임으로 사용자 태그 가능)' : '로그인 후 댓글을 남길 수 있습니다'}
-            disabled={!isAuthenticated}
-            className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none disabled:bg-gray-50"
-          />
+          <div className="relative">
+            <textarea
+              ref={mention.ref as React.Ref<HTMLTextAreaElement>}
+              value={comment}
+              onChange={mention.onChange}
+              onBlur={mention.onBlur}
+              onKeyDown={mention.onKeyDown}
+              rows={2}
+              placeholder={isAuthenticated ? '댓글을 입력하세요 (@로 이웃·ArtLink 부르기)' : '로그인 후 댓글을 남길 수 있습니다'}
+              disabled={!isAuthenticated}
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none disabled:bg-gray-50"
+            />
+            <MentionSuggest {...mention.suggest} />
+          </div>
           <div className="mt-2 flex items-center justify-between">
             <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-500">
               <input type="checkbox" checked={anonComment} onChange={(e) => setAnonComment(e.target.checked)} className="accent-gray-900" /> 익명

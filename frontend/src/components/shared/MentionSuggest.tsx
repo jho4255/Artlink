@@ -7,7 +7,7 @@
  * ⚠️ 목록이 비면 **아무것도 그리지 않는다**(빈 상자가 뜨면 고장으로 보인다).
  *    서로 이웃이 아직 없는 사람에게는 ArtLink 하나만 뜨는 게 정상이다.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { mentionQueryAt, applyMention, type MentionSpan } from '@/lib/mention';
@@ -28,6 +28,8 @@ type Field = HTMLTextAreaElement | HTMLInputElement;
 export function useMention(value: string, setValue: (v: string) => void) {
   const ref = useRef<Field | null>(null);
   const [span, setSpan] = useState<MentionSpan | null>(null);
+  // 키보드로 고르기(감사 S18) — ↑↓ 로 옮기고 Enter/Tab 으로 확정, Esc 로 닫는다. 목록이 바뀌면 첫 줄부터.
+  const [active, setActive] = useState(0);
 
   const { data: options } = useQuery<MentionOption[]>({
     queryKey: ['mentions', span?.query ?? ''],
@@ -36,10 +38,26 @@ export function useMention(value: string, setValue: (v: string) => void) {
     staleTime: 60_000,   // 이웃 목록은 자주 안 바뀐다 — 글자마다 새로 받지 않게
   });
 
+  useEffect(() => { setActive(0); }, [span?.query, options]);
+
   const onChange = (e: React.ChangeEvent<Field>) => {
     const el = e.target;
     setValue(el.value);
     setSpan(mentionQueryAt(el.value, el.selectionStart ?? el.value.length));
+  };
+
+  /**
+   * 입력칸의 onKeyDown 에 붙인다. 목록이 떠 있을 때만 키를 먹고 **true 를 돌려준다** —
+   * 호출부는 그때 자기 Enter 처리(댓글 등록 등)를 건너뛰어야 한다. 한글 조합 중 Enter 는 건드리지 않는다.
+   */
+  const onKeyDown = (e: React.KeyboardEvent<Field>): boolean => {
+    const list = span ? options : undefined;
+    if (!list || list.length === 0 || e.nativeEvent.isComposing) return false;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % list.length); return true; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + list.length) % list.length); return true; }
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(list[Math.min(active, list.length - 1)].label); return true; }
+    if (e.key === 'Escape') { e.preventDefault(); setSpan(null); return true; }
+    return false;
   };
 
   const pick = (label: string) => {
@@ -57,22 +75,25 @@ export function useMention(value: string, setValue: (v: string) => void) {
     onChange,
     /** 목록을 누르는 것도 blur 라 곧바로 닫으면 클릭이 죽는다 — 한 박자 뒤에 닫는다 */
     onBlur: () => setTimeout(() => setSpan(null), 150),
-    suggest: { options: span ? options : undefined, onPick: pick },
+    onKeyDown,
+    suggest: { options: span ? options : undefined, onPick: pick, active },
   };
 }
 
 /** 입력칸 바로 아래 뜨는 목록. 부모에 `relative` 가 있어야 한다. */
-export function MentionSuggest({ options, onPick }: { options?: MentionOption[]; onPick: (label: string) => void }) {
+export function MentionSuggest({ options, onPick, active = 0 }: { options?: MentionOption[]; onPick: (label: string) => void; active?: number }) {
   if (!options || options.length === 0) return null;
   return (
-    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-      {options.map((o) => (
+    <div role="listbox" className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+      {options.map((o, i) => (
         <button
-          key={o.label}
+          key={`${o.id ?? 'artlink'}-${o.label}`}   /* 동명이인이면 label 만으로는 key 가 겹친다 */
           type="button"
+          role="option"
+          aria-selected={i === active}
           onMouseDown={(e) => e.preventDefault()}   // blur 보다 먼저 — 안 그러면 목록이 닫히며 클릭이 사라진다
           onClick={() => onPick(o.label)}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50"
+          className={`flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 ${i === active ? 'bg-gray-50' : ''}`}
         >
           {o.avatar
             ? <img src={o.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />

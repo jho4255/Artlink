@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
+import { safeHttpUrl } from '@/lib/utils';
 
 /**
  * 광고 슬롯 — Admin 이 등록한 자체 배너를 노출(사이드바 하단 등).
@@ -28,15 +29,19 @@ export default function AdSlot({ className = '' }: { className?: string }) {
 
   const go = () => {
     if (!ad.linkUrl) return;
-    if (ad.linkUrl.startsWith('http')) window.open(ad.linkUrl, '_blank', 'noopener');
-    else navigate(ad.linkUrl);
+    // `/...` 는 앱 안 라우팅, http(s) 는 새 창. 그 밖(`javascript:` 등)은 safeHttpUrl 이 null 이라 아무 일도 없다
+    const safe = safeHttpUrl(ad.linkUrl);
+    if (!safe) return;
+    if (safe.startsWith('/')) navigate(safe);
+    else window.open(safe, '_blank', 'noopener');
   };
 
   return (
     <div className={`relative overflow-hidden rounded-lg border border-gray-100 bg-white ${className}`}>
       <button onClick={go} className={`block w-full text-left ${ad.linkUrl ? 'cursor-pointer' : 'cursor-default'}`}>
         <div className="relative">
-          <Thumb src={ad.imageUrl} size="grid" alt={ad.title || '광고'} className="w-full object-cover" />
+          {/* 사이드바 192px 칸 — 목록 크기(t240)면 충분하다. t800 은 작품 격자용(규칙 21b) */}
+          <Thumb src={ad.imageUrl} size="list" alt={ad.title || '광고'} className="w-full object-cover" />
           <span className="absolute right-1 top-1 rounded-sm bg-black/45 px-1 py-0.5 text-[9px] font-medium leading-none text-white/90">AD</span>
         </div>
         {ad.title && <p className="truncate px-2.5 py-2 text-xs text-gray-600">{ad.title}</p>}

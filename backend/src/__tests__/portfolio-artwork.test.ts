@@ -107,12 +107,11 @@ describe('포트폴리오 작품 정보', () => {
       expect(res.body.designConfig).toBeNull();
     });
 
-    it('거대한 designConfig 는 null (4000자 초과 차단)', async () => {
+    it('거대한 designConfig 는 400 — 조용히 null 로 지우지 않는다 (8000자 초과)', async () => {
       const res = await request.put('/api/portfolio')
         .set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
-        .send({ biography: '약력', career: {}, designConfig: { junk: 'x'.repeat(5000) } });
-      expect(res.status).toBe(200);
-      expect(res.body.designConfig).toBeNull();
+        .send({ biography: '약력', career: {}, designConfig: { junk: 'x'.repeat(9000) } });
+      expect(res.status).toBe(400);
     });
   });
 
@@ -306,5 +305,48 @@ describe('GET /api/auth/dev-users — 개발자 로그인 계정 목록', () => 
     expect(found.body.length).toBe(1);
     expect(found.body[0].role).toBe('GALLERY');
     delete process.env.ENABLE_DEV_LOGIN;
+  });
+});
+
+/** 2026-09-19 감사 M14·M21·M22 */
+describe('작품 삭제 → 표지 칸 정리 · 작가 검색 닉네임 · 포트폴리오 파일 교체', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); await myPortfolio(ARTIST); });
+
+  it('숫자가 아닌 작품 id 로 지우면 400 이 아니라 404 다', async () => {
+    const r = await request.delete('/api/portfolio/images/undefined').set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`);
+    expect(r.status).toBe(404);
+  });
+  const artist = () => `Bearer ${authToken(ARTIST, 'ARTIST')}`;
+
+  it('★ 작품을 지우면 designConfig.coverImageIds 에서 그 id 가 빠진다 (빈 표지 칸 방지)', async () => {
+    const a = (await addImage(ARTIST)).body; const b = (await addImage(ARTIST)).body;
+    await request.put('/api/portfolio').set('Authorization', artist())
+      .send({ biography: '약력', career: {}, designConfig: { coverLayout: 'grid2x2', coverImageIds: [a.id, b.id, 0, 0] } });
+    const del = await request.delete(`/api/portfolio/images/${a.id}`).set('Authorization', artist());
+    expect(del.body).toEqual({ message: '삭제되었습니다.' });
+    expect(del.status).toBe(200);
+    const pf = await myPortfolio();
+    expect(pf.designConfig.coverImageIds).toEqual([b.id, 0, 0]);
+    expect(pf.designConfig.coverLayout).toBe('grid2x2');   // 다른 키는 그대로
+  });
+
+  it('★ 작가 검색은 닉네임으로도 찾는다 (화면에 보이는 이름)', async () => {
+    await testPrisma.user.update({ where: { id: ARTIST }, data: { nickname: '달빛화가' } });
+    const r = await request.get('/api/portfolio/search?q=달빛').set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`);
+    expect(r.status).toBe(200);
+    expect(r.body.map((u: any) => u.id)).toContain(ARTIST);
+  });
+
+  it('★ 포트폴리오 파일을 바꾸면 옛 파일이 디스크에서 지워진다', async () => {
+    const fs = await import('fs'); const path = await import('path');
+    const dir = path.join(__dirname, '../../uploads');
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `pf-test-${Date.now()}.pdf`;
+    fs.writeFileSync(path.join(dir, name), 'x');
+    await request.put('/api/portfolio').set('Authorization', artist()).send({ biography: '약력', career: {}, portfolioFileUrl: `/uploads/${name}` });
+    expect(fs.existsSync(path.join(dir, name))).toBe(true);
+    await request.put('/api/portfolio').set('Authorization', artist()).send({ biography: '약력', career: {}, portfolioFileUrl: null });
+    for (let i = 0; i < 20 && fs.existsSync(path.join(dir, name)); i++) await new Promise((r) => setTimeout(r, 25));
+    expect(fs.existsSync(path.join(dir, name))).toBe(false);
   });
 });

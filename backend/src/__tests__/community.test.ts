@@ -545,3 +545,40 @@ describe('숨긴 탭 — 조용히 미분류로 내리지 않는다', () => {
     expect((await request.get(`/api/community/${r.body.id}`)).body.category?.id).toBe(c.body.id);
   });
 });
+
+/**
+ * 글 **본문**의 @멘션 (2026-09-19 감사 S23) — 댓글에는 있었는데 글에는 없어 본문에서 부르면 아무 일도 안 났다.
+ * 규칙은 댓글과 같다: ArtLink 는 누구나, 그 밖에는 서로 이웃만.
+ */
+describe('글 본문 @멘션', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+  const follow = (tok: string, id: number) => request.post(`/api/follow/${id}`).set('Authorization', `Bearer ${tok}`);
+  const mentionsFor = (userId: number) => testPrisma.notification.findMany({ where: { userId, type: 'MENTION' } });
+
+  it('★ 서로 이웃을 본문에서 부르면 알림이 간다 — 링크는 그 글', async () => {
+    await follow(a1, 2); await follow(a2, 1);
+    const u2 = await testPrisma.user.findUnique({ where: { id: 2 } });
+    const name = u2!.nickname || u2!.name;
+    const { body: { id } } = await createPost(a1, { body: `@${name} 이거 봐 줘` });
+    const n = await mentionsFor(2);
+    expect(n).toHaveLength(1);
+    expect(n[0].linkUrl).toBe(`/community/${id}`);
+  });
+
+  it('한쪽만 팔로우한 사이는 불러도 알림이 없다', async () => {
+    await follow(a1, 2);
+    const u2 = await testPrisma.user.findUnique({ where: { id: 2 } });
+    await createPost(a1, { body: `@${u2!.nickname || u2!.name} 이거 봐 줘` });
+    expect(await mentionsFor(2)).toHaveLength(0);
+  });
+
+  it('익명 글이면 알림에 이름을 쓰지 않는다', async () => {
+    await follow(a1, 2); await follow(a2, 1);
+    const u1 = await testPrisma.user.findUnique({ where: { id: 1 } });
+    const u2 = await testPrisma.user.findUnique({ where: { id: 2 } });
+    await createPost(a1, { anonymous: true, body: `@${u2!.nickname || u2!.name} 안녕` });
+    const n = await mentionsFor(2);
+    expect(n).toHaveLength(1);
+    expect(n[0].message).not.toContain(u1!.nickname || u1!.name);
+  });
+});

@@ -359,9 +359,11 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
     return <Navigate to="/mypage?tab=applications" replace />;
   }
 
+  const Body: 'main' | 'div' = embedded ? 'div' : 'main';
   return (
     <div className={embedded ? '' : 'bg-white'}>
-      <main className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8 xl:px-10'}>
+      {/* 마이페이지 카드 안(embedded)에서는 `<main>` 을 두 번 만들지 않는다 — 문서에 main 은 하나여야 한다(감사 B4) */}
+      <Body className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8 xl:px-10'}>
         {/* 머리말(제목·이동 버튼)은 **전용 페이지에서만** — 마이페이지 카드 안에서는 이미 제목·단계·이동이 있어 중복이다 */}
         {!embedded && (
         <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -715,7 +717,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
             </div>
           </div>
         )}
-      </main>
+      </Body>
     </div>
   );
 }

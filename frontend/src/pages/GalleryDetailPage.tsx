@@ -461,7 +461,8 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             <h1 className="min-w-0 text-4xl md:text-5xl font-semibold tracking-[-0.02em] leading-[1.05] break-keep">{gallery.name}</h1>
             <div className="flex shrink-0 items-center gap-4 pt-2 text-sm">
               {!isOwner && <FollowButton userId={gallery.ownerId} variant="text" className="text-gray-500 hover:text-gray-900" />}
-              {!isOwner && (!isAuthenticated || isArtist || user?.role === 'VISITOR') && (
+              {/* 갠톡은 '방에 있는가' 로만 권한을 판정한다 — 갤러리끼리도 열린다. Admin 만 뺀다(운영 계정으로 영업 대화 금지) */}
+              {!isOwner && user?.role !== 'ADMIN' && (
                 <button
                   onClick={() => (isAuthenticated ? openChat.mutate(gallery.ownerId) : requireLogin())}
                   disabled={openChat.isPending}

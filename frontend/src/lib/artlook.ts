@@ -41,7 +41,12 @@ export const ARTLOOK_EMBED_URL = `${ARTLOOK_URL}?embed=1`;
  */
 export function stageArtLookWorks(works: ArtLookWork[]): number {
   const valid = works.filter(w => w.url);
-  if (valid.length === 0) return 0;
+  if (valid.length === 0) {
+    // 넘길 게 없으면 **지난 목록을 지운다** — 남겨 두면 작품을 전부 지운 작가에게 옛 작품이 그대로 뜬다.
+    // 비어 있어야 ArtLook 이 데모 작품으로 떨어진다(규칙 36).
+    try { localStorage.removeItem(ARTLOOK_STORAGE_KEY); } catch { /* 저장이 막힌 환경 */ }
+    return 0;
+  }
   try {
     localStorage.setItem(ARTLOOK_STORAGE_KEY, JSON.stringify(valid));
   } catch {

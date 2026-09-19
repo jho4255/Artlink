@@ -308,6 +308,19 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
       data: { authorId: req.user!.id, title: title.trim(), body: body.trim(), anonymous: anon, images, categoryId, notice, pinnedAt },
       include: { author: authorSelect },
     });
+    // 글 본문의 @멘션 — 댓글에는 있었는데 글에는 없어 본문에서 부르면 아무 일도 안 났다(2026-09-19 감사 S23).
+    // 규칙은 댓글과 같다: 글은 고치지 않고, 부를 수 있는 사람(ArtLink · 서로 이웃)에게만 알림. 익명이면 이름을 안 쓴다.
+    try {
+      const mentions = await resolveMentions(prisma, req.user!.id, post.body);
+      if (mentions.length > 0) {
+        await notifyMentions(prisma, {
+          meId: req.user!.id,
+          meName: anon ? '익명' : (post.author.nickname || post.author.name),
+          targets: mentions,
+          where: '커뮤니티 글', linkUrl: `/community/${post.id}`, refKey: `mention:post:${post.id}`,
+        });
+      }
+    } catch { /* 글은 이미 저장됐다 */ }
     res.status(201).json({ id: post.id, author: serializeAuthor(post.anonymous, post.author, req.user!.id) });
   } catch (e) { next(e); }
 });

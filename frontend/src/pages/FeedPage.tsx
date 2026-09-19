@@ -42,7 +42,8 @@ function Composer() {
     mutationFn: () => api.post('/stories', { caption: caption.trim(), images, visibility }).then((r) => r.data),
     onSuccess: () => {
       setCaption(''); setImages([]); setVisibility('NEIGHBORS');
-      qc.invalidateQueries({ queryKey: ['story-feed'] });
+      // invalidate 는 펼쳐 둔 모든 쪽을 다시 받는다 — 새 글은 맨 위에 오므로 1쪽부터 다시 시작한다(피드 새로고침과 같은 규칙)
+      qc.resetQueries({ queryKey: ['story-feed'] });
       toast.success('소식을 올렸어요.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '올리기에 실패했습니다.'),
@@ -82,6 +83,7 @@ function Composer() {
           value={caption}
           onChange={mention.onChange}
           onBlur={mention.onBlur}
+          onKeyDown={mention.onKeyDown}
           placeholder="작업 소식을 남겨보세요. @로 이웃이나 ArtLink를 부를 수 있습니다."
           className="min-h-[72px] w-full resize-none text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
         />
@@ -192,7 +194,9 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
   const del = useMutation({
     mutationFn: () => api.delete(`/stories/${story.id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['story-feed'] });
+      // 지운 글만 캐시에서 빼낸다 — invalidate 면 펼쳐 둔 쪽을 전부 다시 받는다(감사 S19)
+      qc.setQueryData<{ pages: FeedPage[]; pageParams: unknown[] }>(['story-feed'], (old) =>
+        old ? { ...old, pages: old.pages.map((p) => ({ ...p, stories: p.stories.filter((s) => s.id !== story.id) })) } : old);
       qc.removeQueries({ queryKey: ['story', story.id] });   // 지운 글이 핀으로 남지 않게
       toast.success('삭제했어요.');
     },
@@ -354,7 +358,7 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
                 value={commentText}
                 onChange={mention.onChange}
                 onBlur={mention.onBlur}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !addComment.isPending && commentText.trim()) addComment.mutate(); }}   // 한글 조합 중 Enter 가 두 번 잡혀 중복 등록됐다(2026-09-19)
+                onKeyDown={(e) => { if (mention.onKeyDown(e)) return; if (e.key === 'Enter' && !e.nativeEvent.isComposing && !addComment.isPending && commentText.trim()) addComment.mutate(); }}   // 멘션 목록이 떠 있으면 Enter 는 선택. 한글 조합 중 Enter 가 두 번 잡혀 중복 등록됐다(2026-09-19)
                 placeholder="댓글 달기… (@로 이웃·ArtLink 부르기)"
                 className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
               />
