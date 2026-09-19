@@ -2127,3 +2127,9 @@ operatorUserIds(ex)                알림 발송 대상 전부
 할 일 보드 드롭 표시선 좌표계 통일 · 히어로 미리보기 데스크톱/모바일 두 칸(contain) · 작가 홈페이지 테마 배경 `min-h-[calc(100vh-4rem)]` ·
 작품 모달 비로그인 좋아요 → 로그인 후 그 자리로 · 갤러리 상세 이력에 '전시 중'(모집 끝·전시 진행) 배지 · 리뷰 본문 `overflow-wrap` ·
 갤러리 캐러셀 세로 휠을 브라우저에 맡김(Firefox 3px·Ctrl+휠) · 로그인 상태에서 `/login` → 마이페이지 · Layout 하단 여백 +1px(탭바 테두리) · `AdSlot` 비로그인 미호출.
+
+## 전수 버그 감사 P2 5차 수정 — 남은 P2 4건 (2026-09-19)
+- **작품 순서 바꾸기 UI**: `MyPage PortfolioImageGrid` 에 `onReorder`(사진 위 ←→, `lib/portfolioVersions.moveId`) → `reorderMutation`(낙관적 갱신·롤백) → `PUT /portfolio/images/order`.
+- **홈페이지 라이트박스 캡션·좋아요**: `ImageLightbox` 에 `captions`·`renderExtra` 슬롯. `PortfolioPage` 가 `museumCaption` 과 하트(`POST /explore/:id/like`, 공개 작품만)를 넘긴다.
+  `GET /portfolio/:userId` 가 `optionalAuth` 로 바뀌고 `likedImageIds` 를 응답에 싣는다.
+- 공개 상세 `GET /exhibitions/:id`·`/shows/:id` 의 NaN id → 404(갤러리와 통일). 대화 첨부 `attachmentSize` 상한 25MB.

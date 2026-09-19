@@ -5,7 +5,8 @@ import { AnimatePresence } from 'framer-motion';
 import { Edit3, MessageCircle, MessageSquare, QrCode, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { groupBySeries } from '@/lib/artwork';
+import { groupBySeries, museumCaption } from '@/lib/artwork';
+import { Heart } from 'lucide-react';
 import { artistUrl } from '@/lib/handle';
 import { resolveHomepageTheme, themeCssVars } from '@/lib/homepageTheme';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
@@ -127,6 +128,40 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
 
   const imageUrls = ordered.map(i => i.url);
+  const captionTexts = useMemo(() => ordered.map((i) => {
+    const c = museumCaption(i);
+    return c ? [c.head, c.medium, c.size].filter(Boolean).join(' / ') : null;
+  }), [ordered]);
+  /* 라이트박스 좋아요(2026-09-19) — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다.
+     공개(showInExplore) 작품만 서버가 받는다. 상태는 응답의 likedImageIds + _count.likes 로 시작해 로컬로 갱신한다. */
+  const [likeState, setLikeState] = useState<Record<number, { liked: boolean; count: number }>>({});
+  useEffect(() => {
+    if (!portfolio) return;
+    const liked = new Set<number>(((portfolio as any).likedImageIds ?? []) as number[]);
+    const next: Record<number, { liked: boolean; count: number }> = {};
+    for (const img of portfolio.images) next[img.id] = { liked: liked.has(img.id), count: (img as any)._count?.likes ?? 0 };
+    setLikeState(next);
+  }, [portfolio]);
+  const likeMutation = useMutation({
+    mutationFn: (imageId: number) => api.post(`/explore/${imageId}/like`).then((r) => r.data as { liked: boolean; likeCount: number }),
+    onSuccess: (data, imageId) => setLikeState((prev) => ({ ...prev, [imageId]: { liked: data.liked, count: data.likeCount } })),
+    onError: (e: any) => toast.error(e.response?.data?.error || '좋아요에 실패했습니다.'),
+  });
+  const renderLike = useCallback((idx: number) => {
+    const img = ordered[idx];
+    if (!img || !img.showInExplore) return null;
+    const st = likeState[img.id] ?? { liked: false, count: 0 };
+    const onClick = () => {
+      if (!isAuthenticated) { setPostLoginRedirect(window.location.pathname + window.location.search); navigate('/login'); return; }
+      likeMutation.mutate(img.id);
+    };
+    return (
+      <button onClick={onClick} aria-label={st.liked ? '좋아요 취소' : '좋아요'} className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-sm text-white backdrop-blur hover:bg-white/25">
+        <Heart size={16} className={st.liked ? 'fill-accent text-accent' : ''} />
+        {st.count > 0 && <span>{st.count}</span>}
+      </button>
+    );
+  }, [ordered, likeState, isAuthenticated, navigate, likeMutation]);
   const artistName = displayName(portfolio.user);
   // 주인 판정은 **로그인한 사람의 id 와 페이지 주인의 id 비교** 하나뿐이다(핸들 주소라 URL 의 숫자를 못 믿는다).
   const isOwner = !!viewer && viewer.id === portfolio.user.id;
@@ -206,6 +241,8 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
         {lightboxOpen && (
           <ImageLightbox
             images={imageUrls}
+            captions={captionTexts}
+            renderExtra={renderLike}
             initialIndex={lightboxIndex}
             onIndexChange={(i) => syncWorkParam(i)}
             onClose={() => { setLightboxOpen(false); syncWorkParam(null); }}

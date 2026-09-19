@@ -25,9 +25,13 @@ interface ImageLightboxProps {
   onClose: () => void;
   /** 넘길 때마다 알린다 — 작가 홈페이지가 `?work=` 주소를 따라 바꾼다(2026-09-16) */
   onIndexChange?: (index: number) => void;
+  /** 사진 아래 캡션(작품명·재료·크기) — 작가 홈페이지는 이 라이트박스가 작품 화면의 본체라 [작가] 탭과 같은 정보가 있어야 한다(2026-09-19) */
+  captions?: (string | null | undefined)[];
+  /** 캡션 옆에 그릴 부가 요소(좋아요 등) */
+  renderExtra?: (index: number) => React.ReactNode;
 }
 
-export default function ImageLightbox({ images, initialIndex, onClose, onIndexChange }: ImageLightboxProps) {
+export default function ImageLightbox({ images, initialIndex, onClose, onIndexChange, captions, renderExtra }: ImageLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const touchStartX = useRef(0);
   const didSwipe = useRef(false); // 스와이프 vs 탭 구분
@@ -119,6 +123,14 @@ export default function ImageLightbox({ images, initialIndex, onClose, onIndexCh
         className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
         onClick={e => e.stopPropagation()}
       />
+
+      {/* 캡션 + 부가(좋아요) */}
+      {(captions?.[index] || renderExtra) && (
+        <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 px-5 pb-5 pt-10 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" onClick={e => e.stopPropagation()}>
+          <p className="min-w-0 text-sm text-white/90 break-keep [overflow-wrap:anywhere] pointer-events-auto">{captions?.[index]}</p>
+          {renderExtra && <div className="shrink-0 pointer-events-auto">{renderExtra(index)}</div>}
+        </div>
+      )}
 
       {/* 좌우 화살표 */}
       {images.length > 1 && (

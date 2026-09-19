@@ -154,8 +154,10 @@ router.get('/my-shows', authenticate, authorize('GALLERY'), async (req, res, nex
 // 전시 상세 조회
 router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
+    const showId = parseInt(req.params.id as string);
+    if (!Number.isFinite(showId)) throw new AppError('전시를 찾을 수 없습니다.', 404);   // NaN → 400 이던 것(2026-09-19)
     const show = await prisma.show.findUnique({
-      where: { id: parseInt(req.params.id as string) },
+      where: { id: showId },
       include: {
         gallery: { include: { owner: { select: { id: true } } } },
         images: { orderBy: { order: 'asc' } },

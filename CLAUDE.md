@@ -1486,7 +1486,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ React Router 는 `/@:handle` 을 못 가른다(세그먼트 안 접두). `App.tsx` 의 `HandleRoute` 가 `/:handleSeg` 를 받아
       `@` 를 확인한다. 서버 SEO 라우트는 Express 가 `/@:handle` 을 그대로 받는다(`index.ts`).
       주인 판정은 URL 이 아니라 **응답의 `user.id`** 로(핸들 주소엔 숫자가 없다). 링크는 `artistPath(user)`.
-    - **작품 고유 주소 `?work=<id>`**: 라이트박스로 열고, 넘기면 주소가 따라간다(replace). 서버 `seoMeta` 가 그 작품을
+    - **작품 고유 주소 `?work=<id>`**: 라이트박스로 열고, 넘기면 주소가 따라간다(replace). 라이트박스에 **캡션(`museumCaption`)과 좋아요**가 있다
+      (2026-09-19 — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다). 좋아요 상태는 `GET /portfolio/:id` 의 `likedImageIds`(optionalAuth) + `_count.likes`. 서버 `seoMeta` 가 그 작품을
       og:image·제목으로 만든다(`parseSeoWork`). ⚠️ `ImageLightbox` 의 `onIndexChange` 는 **ref + index 의존성**으로만 부른다 —
       부모가 매 렌더 새 콜백을 주면 "알림 → setState → 새 콜백 → 알림" 무한 루프가 난다(실제로 났다). 부모의 `setSearchParams` 는 함수형.
     - **비로그인 방문자에게도 이웃·메시지·방명록 버튼을 보여준다.** 누르면 `setPostLoginRedirect` 로 이 페이지를 기억하고 로그인으로.
@@ -1811,6 +1812,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
           주인 판정은 **로그인 id 와 주소의 userId 비교**뿐 — 역할(ARTIST)만 보면 남의 페이지에서도 [수정]이 뜬다.
         - **[포트폴리오] 탭 = PDF 포맷 4종**(`PortfolioFormatSection`). 예전엔 편집 화면 **맨 아래**에 붙어 있어
           작품 30장을 지나야 나왔고 있는 줄도 모르는 기능이었다.
+        - **작품 순서는 사진 위 ←→ 버튼으로 바꾼다**(`PortfolioImageGrid onReorder` → `PUT /portfolio/images/order`, 2026-09-19). 그 전엔 서버 API 만 있고
+          화면에 호출처가 0곳이라 순서를 바꾸려면 지웠다 다시 올려야 했다. 이 순서가 홈페이지 첫 작품·PDF 순서다.
         - `?tab=homepage` 로 들어와도 열 화면이 없다 → `resolveTab` 이 **바깥 링크 id 는 절대 돌려주지 않는다**(프로필로 폴백).
     - 🔑 **메뉴 정의는 `frontend/src/lib/myPageMenu.ts` 하나뿐** — 위 세 곳이 같이 쓴다.
       **항목을 추가하면 `MyPage.tsx` 의 `currentTab === '...'` 분기도 함께 추가할 것.**

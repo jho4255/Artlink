@@ -8,6 +8,7 @@ import {
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
   ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft,
   Image as ImageIcon,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -20,7 +21,7 @@ import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames }
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
 import PortfolioWorkPicker from '@/components/shared/PortfolioWorkPicker';
-import { versionWorks, versionDesign, nextVersionName } from '@/lib/portfolioVersions';
+import { versionWorks, versionDesign, nextVersionName, moveId } from '@/lib/portfolioVersions';
 import HomepageView from '@/components/shared/HomepageView';
 import HomepageStylePicker from '@/components/shared/HomepageStylePicker';
 import ArtistChecklist from '@/components/shared/ArtistChecklist';
@@ -734,6 +735,22 @@ function PortfolioSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '이미지 추가 실패'),
   });
 
+  // 작품 순서 바꾸기 — 전체 순서를 통째로 보낸다(부분 갱신은 화면과 DB 가 어긋난다)
+  const reorderMutation = useMutation({
+    mutationFn: (ids: number[]) => api.put('/portfolio/images/order', { ids }),
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: ['portfolio'] });
+      const prev = queryClient.getQueryData<Portfolio>(['portfolio']);
+      if (prev) {
+        const byId = new Map(prev.images.map((i) => [i.id, i]));
+        queryClient.setQueryData<Portfolio>(['portfolio'], { ...prev, images: ids.map((id) => byId.get(id)!).filter(Boolean) });
+      }
+      return { prev };
+    },
+    onError: (err: any, _ids, ctx) => { if (ctx?.prev) queryClient.setQueryData(['portfolio'], ctx.prev); toast.error(err.response?.data?.error || '순서 변경에 실패했습니다.'); },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
+  });
+
   // 포트폴리오 이미지 삭제 — ⚠️ 반드시 확인을 거친다(2026-09-19). 터치기기에선 × 버튼이 항상 보이고,
   // 서버가 원본 파일까지 지우므로(`portfolio.ts`) 되돌릴 수 없다. 이 파일의 다른 삭제는 전부 확인이 있었는데 이것만 없었다.
   const [removeImageId, setRemoveImageId] = useState<number | null>(null);
@@ -845,6 +862,7 @@ function PortfolioSection() {
           images={images}
           onAdd={(url) => addImageMutation.mutate(url)}
           onRemove={(imageId) => setRemoveImageId(imageId)}
+          onReorder={(ids) => reorderMutation.mutate(ids)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
           onEdit={(imageId) => setMetaImageId(imageId)}
           maxCount={30}
@@ -1425,6 +1443,7 @@ function PortfolioImageGrid({
   onRemove,
   onToggleExplore,
   onEdit,
+  onReorder,
   maxCount = 30,
   gridClassName = 'grid grid-cols-3 sm:grid-cols-4 gap-2',
 }: {
@@ -1432,6 +1451,8 @@ function PortfolioImageGrid({
   onAdd: (url: string) => void;
   onRemove: (imageId: number) => void;
   onToggleExplore: (imageId: number) => void;
+  /** 순서 바꾸기 — 전체 id 배열을 새 순서로 넘긴다(`PUT /portfolio/images/order`). 화면에 이 기능이 없어 순서를 바꾸려면 지웠다 다시 올려야 했다(2026-09-19) */
+  onReorder?: (ids: number[]) => void;
   onEdit: (imageId: number) => void;
   maxCount?: number;
   /** 편집 화면은 폭이 절반이라 2열로 줄여 넘긴다 */
@@ -1497,8 +1518,15 @@ function PortfolioImageGrid({
       className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
     >
       <div className={gridClassName}>
-        {images.map((img) => (
+        {images.map((img, idx) => (
           <div key={img.id} className="relative group">
+            {/* 순서 바꾸기 (상단 가운데) — 홈페이지 첫 작품·PDF 순서가 이 순서다 */}
+            {onReorder && images.length > 1 && (
+              <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 flex gap-0.5 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
+                <button type="button" disabled={idx === 0} onClick={() => onReorder(moveId(images.map((i) => i.id), img.id, -1))} aria-label="앞으로" className="h-6 w-6 rounded-full bg-white/85 text-gray-700 ring-1 ring-black/5 shadow-sm disabled:opacity-30 flex items-center justify-center"><ChevronLeft size={12} /></button>
+                <button type="button" disabled={idx === images.length - 1} onClick={() => onReorder(moveId(images.map((i) => i.id), img.id, 1))} aria-label="뒤로" className="h-6 w-6 rounded-full bg-white/85 text-gray-700 ring-1 ring-black/5 shadow-sm disabled:opacity-30 flex items-center justify-center"><ChevronRight size={12} /></button>
+              </div>
+            )}
             {/* 사진 전체가 '작품 정보' 버튼 — 캡션이 비면 포맷 PDF에서 제목 자리가 통째로 빈다 */}
             <button
               onClick={() => onEdit(img.id)}

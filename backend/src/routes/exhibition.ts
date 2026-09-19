@@ -957,6 +957,7 @@ router.patch('/:id/managers', authenticate, authorize('ADMIN'), async (req, res,
 router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
+    if (!Number.isFinite(exhibitionId)) throw new AppError('공모를 찾을 수 없습니다.', 404);   // NaN → Prisma 400 "입력값 형식" 이던 것(2026-09-19)
     let exhibition = await prisma.exhibition.findUnique({
       where: { id: exhibitionId },
       include: {

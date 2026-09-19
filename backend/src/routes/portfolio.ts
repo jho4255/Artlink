@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { safeFileUrl } from '../lib/safeUrl';
 import { deleteUploadedFile } from '../lib/storage';
@@ -88,7 +88,7 @@ router.get('/search', authenticate, authorize('GALLERY'), async (req, res, next)
 });
 
 // 공개 포트폴리오 조회 (인증 불필요)
-router.get('/:userId', async (req, res, next) => {
+router.get('/:userId', optionalAuth, async (req, res, next) => {
   try {
     // 숫자 id 또는 `@handle` (2026-09-16). 핸들이 규칙에 안 맞으면 조회조차 하지 않는다(404).
     const param = String(req.params.userId ?? '');
@@ -134,6 +134,10 @@ router.get('/:userId', async (req, res, next) => {
       seriesInfo: parseSeriesInfo(portfolio?.seriesInfo),
       designConfig: parseDesignConfig(portfolio?.designConfig),
       images: portfolio?.images || [],
+      // 보는 사람이 좋아요한 작품 — 홈페이지 라이트박스의 하트 상태(2026-09-19). 비로그인은 빈 배열.
+      likedImageIds: req.user && portfolio
+        ? (await prisma.portfolioImageLike.findMany({ where: { userId: req.user.id, imageId: { in: portfolio.images.map((i) => i.id) } }, select: { imageId: true } })).map((l) => l.imageId)
+        : [],
       user: userInfo,
     });
   } catch (error) { next(error); }

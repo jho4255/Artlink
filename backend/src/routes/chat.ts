@@ -44,7 +44,7 @@ const sendSchema = z.object({
   attachmentUrl: z.string().max(2048).optional().nullable(),
   attachmentType: z.enum(['IMAGE', 'VIDEO', 'FILE']).optional().nullable(),
   attachmentName: z.string().max(255).optional().nullable(),
-  attachmentSize: z.number().int().nonnegative().max(100 * 1024 * 1024).optional().nullable(),
+  attachmentSize: z.number().int().nonnegative().max(25 * 1024 * 1024).optional().nullable(),   // 표시용 — 실제 상한(동영상 25MB) 너머는 거짓이다(2026-09-19)
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || (d.attachmentUrl && d.attachmentType),
   { message: '내용이나 첨부가 필요합니다.' },
