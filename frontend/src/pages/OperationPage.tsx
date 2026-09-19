@@ -266,7 +266,9 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
 
   const incompleteArtists = Math.max(0, submissionSummary.length - completeArtists);
   // 자료 제출 챙김은 '전시 확정 ~ 전시 종료 전' 구간에서만 의미가 있음 (그 전엔 라인업 미확정, 종료 후엔 이미 늦음)
-  const submissionPhaseActive = access.confirmed && !access.ended;
+  // ⚠️ recruitOnly 를 먼저 본다 — `access.confirmed` 는 전시 시작일이 지나면 서버가 자동 true 를 주므로(computeConfirmed)
+  //    공모만 진행하는 공고에 「작가 제출자료 점검 / 0명 자료 대기」가 뜨고 눌러도 섹션이 없어 no-op 이었다(2026-09-19)
+  const submissionPhaseActive = !recruitOnly && access.confirmed && !access.ended;
   const showSubmissionAlert = submissionPhaseActive && incompleteArtists > 0;
   const settlementArtistCount = settlementSummary?.artists.length ?? 0;
   const nextTasks = access.ended
@@ -284,11 +286,13 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
         },
       ]
     : [
-        {
-          id: access.confirmed ? 'operation-submissions' : 'operation-stage',
-          title: access.confirmed ? '작가 제출자료 점검' : '다음 운영 단계 확인',
-          meta: access.confirmed ? `${incompleteArtists}명 자료 대기` : stage.label,
-        },
+        recruitOnly
+          ? { id: 'operation-stage', title: '지원자 선정 진행', meta: stage.label }
+          : {
+            id: access.confirmed ? 'operation-submissions' : 'operation-stage',
+            title: access.confirmed ? '작가 제출자료 점검' : '다음 운영 단계 확인',
+            meta: access.confirmed ? `${incompleteArtists}명 자료 대기` : stage.label,
+          },
       ];
   const automationCandidates = [
     {
@@ -322,9 +326,11 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
   const priorityTask = nextTasks[0];
   const priorityTitle = showSubmissionAlert
     ? `미완료 작가 ${incompleteArtists}명: 누락 자료를 확인하세요`
-    : access.ended
-      ? settlementArtistCount > 0 ? '판매 및 정산 상태를 확인하세요' : '정산 대상 작가를 먼저 확인하세요'
-      : '현재 운영 단계를 확인하세요';
+    : recruitOnly
+      ? '지원자 선정을 진행하세요'
+      : access.ended
+        ? settlementArtistCount > 0 ? '판매 및 정산 상태를 확인하세요' : '정산 대상 작가를 먼저 확인하세요'
+        : '현재 운영 단계를 확인하세요';
   const priorityDesc = showSubmissionAlert
     ? incompleteSubmissionDetails.slice(0, 3).map(({ user, missing }) => `${nameWithNickname(user)}: ${missing.join(', ') || '누락 항목 확인 필요'}`).join(' · ')
     : priorityTask?.meta || operationSummaryText(access);
@@ -1209,6 +1215,8 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, conf
   const [missing, setMissing] = useState<{ items: string[]; what: string; retry: () => void } | null>(null);
   /** 지금 대신 입력 중인 작가 (null = 보기 모드). 자료를 못 올리는 작가를 갤러리가 도와주는 경로 */
   const [proxyEditId, setProxyEditId] = useState<number | null>(null);
+  // 한 번 열었던 대신입력 폼은 접어도 언마운트하지 않는다 — 입력 중인 내용이 통째로 사라졌다(2026-09-19)
+  const [proxyOpened, setProxyOpened] = useState<Set<number>>(() => new Set());
   // 잠금 기준은 확정이 아니라 **전시종료**다. 확정 잠금은 *작가가* 인쇄 기준을 몰래 바꾸는 걸
   // 막는 장치라, 캡션·엽서를 만드는 갤러리까지 막으면 정작 도와줘야 할 때 못 돕는다.
   // 종료 후는 판매 기록이 출품목록 '위치'에 묶여 있어 반드시 막는다(Admin 만 예외).
@@ -1405,7 +1413,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, conf
                       )}
                       {canProxyEdit && (
                         <button
-                          onClick={() => setProxyEditId(proxyEditId === user.id ? null : user.id)}
+                          onClick={() => { setProxyOpened((prev) => new Set(prev).add(user.id)); setProxyEditId(proxyEditId === user.id ? null : user.id); }}
                           className={`ml-auto shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${proxyEditId === user.id ? 'border-gray-900 bg-gray-950 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                         >
                           <Edit3 size={12} /> {proxyEditId === user.id ? '대신 입력 닫기' : '대신 입력'}
@@ -1417,8 +1425,8 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, conf
                       대신 입력 — 작가 본인이 쓰는 편집기를 그대로 띄운다(검증·임시저장 규칙이 갈라지면 안 된다).
                       자료를 직접 올리기 어려워하는 작가를 갤러리가 도와주는 경로다.
                     */}
-                    {proxyEditId === user.id && (
-                      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-1">
+                    {proxyOpened.has(user.id) && (
+                      <div className={proxyEditId === user.id ? 'mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-1' : 'hidden'}>
                         {/* 확정 후에도 열어두되, 인쇄물이 이미 나갔을 수 있다는 건 반드시 알린다 */}
                         {confirmed && (
                           <p className="m-1 rounded-lg bg-amber-100/70 px-3 py-2 text-xs text-amber-900">

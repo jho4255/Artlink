@@ -821,12 +821,19 @@ export default function ExhibitionDetailPage() {
                                 ))}
                               </select>
                             ) : (
-                              <textarea
-                                value={getAnswerText(applyCustomAnswers, field.id)}
-                                onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                placeholder="답변을 입력해주세요"
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
-                              />
+                              <>
+                                {/* 글자수 제한은 초대 모달(InviteApplyModal)과 같은 규칙 — 여기만 안 걸려 경로에 따라 답변 길이가 달랐다(2026-09-19) */}
+                                <textarea
+                                  value={getAnswerText(applyCustomAnswers, field.id)}
+                                  onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                  maxLength={(field.maxLength ?? 0) > 0 ? field.maxLength : undefined}
+                                  placeholder="답변을 입력해주세요"
+                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                />
+                                {(field.maxLength ?? 0) > 0 && (
+                                  <p className="text-right text-[11px] text-gray-400">{getAnswerText(applyCustomAnswers, field.id).length} / {field.maxLength}</p>
+                                )}
+                              </>
                             )}
                           </div>
                         );

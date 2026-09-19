@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, Eye, PenLine, Settings2, Pin, PinOff, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -54,16 +54,21 @@ export default function CommunityPage() {
     queryFn: () => api.get('/community/categories').then((r) => r.data),
   });
 
-  const { data, isLoading } = useQuery<{ posts: PostRow[] }>({
+  // 서버는 20개씩 `page`/`hasMore` 로 주는데 화면이 첫 쪽만 그려 **최신 20개 너머는 도달할 수 없었다**(2026-09-19) → [더 보기]
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery<{ posts: PostRow[]; page: number; hasMore: boolean }>({
     queryKey: ['community', sort, scope, tab],
-    queryFn: () => api.get('/community', {
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => api.get('/community', {
       params: {
         sort,
+        page: pageParam,
         ...(tab ? { category: tab } : {}),
         ...(scope === 'mine' ? { mine: 'posts' } : scope === 'commented' ? { mine: 'comments' } : {}),
       },
     }).then((r) => r.data),
+    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
   });
+  const posts = data?.pages.flatMap((pg) => pg.posts) ?? [];
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['community'] });
@@ -152,13 +157,13 @@ export default function CommunityPage() {
 
       {isLoading ? (
         <div className="space-y-2">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-16 animate-pulse rounded bg-gray-100" />)}</div>
-      ) : (data?.posts.length ?? 0) === 0 ? (
+      ) : posts.length === 0 ? (
         <p className="py-16 text-center text-sm text-gray-400">
           {scope === 'mine' ? '작성한 글이 없습니다.' : scope === 'commented' ? '댓글을 단 글이 없습니다.' : '아직 글이 없습니다. 첫 글을 남겨보세요.'}
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {data!.posts.map((p) => (
+          {posts.map((p) => (
             <li key={p.id} className={`group relative ${p.pinned ? 'bg-amber-50/40' : ''}`}>
               <button onClick={() => navigate(`/community/${p.id}`)} className="flex w-full items-start gap-3 py-4 text-left hover:bg-gray-50">
                 <div className="min-w-0 flex-1">
@@ -210,6 +215,14 @@ export default function CommunityPage() {
             </li>
           ))}
         </ul>
+      )}
+      {hasNextPage && (
+        <div className="py-4 text-center">
+          <button onClick={() => fetchNextPage()} disabled={isFetchingNextPage}
+            className="rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:border-gray-400 disabled:opacity-50">
+            {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
+          </button>
+        </div>
       )}
 
       {manageOpen && <TabManager tabs={tabs ?? []} onClose={() => setManageOpen(false)} />}

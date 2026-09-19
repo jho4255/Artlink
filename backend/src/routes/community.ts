@@ -373,11 +373,14 @@ router.patch('/:id/category', authenticate, authorize('ADMIN'), async (req, res,
 });
 
 // ── 수정 (작성자만) ──
-router.patch('/:id', authenticate, validate(createSchema), async (req, res, next) => {
+// ⚠️ 수정은 **전용 스키마** — `createSchema` 는 `anonymous` 를 `.default(false)` 로 채우므로 클라이언트가 그 필드를 생략하면
+//    익명 글이 **영구히 벗겨졌다**(옛 번들·직접 호출 하나면 작성자 신원 노출, 2026-09-19 수정). 보낸 것만 반영한다.
+const updateSchema = createSchema.pick({ title: true, body: true }).extend({ anonymous: z.boolean().optional() });
+router.patch('/:id', authenticate, validate(updateSchema), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
     if (!Number.isFinite(id)) throw new AppError('글을 찾을 수 없습니다.', 404);
-    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true, notice: true } });
+    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true, notice: true, anonymous: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
     if (post.authorId !== req.user!.id) {
       throw new AppError('수정 권한이 없습니다.', 403);
@@ -389,7 +392,7 @@ router.patch('/:id', authenticate, validate(createSchema), async (req, res, next
       //    `createSchema` 가 `images` 를 `[]` 로 채워 주므로, 그대로 쓰면 글을 고칠 때마다
       //    **사진이 조용히 전부 지워진다**. 보낸 것과 기본값을 구분할 수 없으니 아예 뺀다.
       // ⚠️ 공지는 익명일 수 없다(누가 공지했는지 모르면 공지가 아니다) — 작성 때와 같은 규칙.
-      data: { title, body, anonymous: post.notice ? false : !!anonymous },
+      data: { title, body, anonymous: post.notice ? false : (anonymous === undefined ? post.anonymous : !!anonymous) },
       include: { author: authorSelect, category: true },
     });
     res.json({

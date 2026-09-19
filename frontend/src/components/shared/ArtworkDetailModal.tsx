@@ -224,6 +224,8 @@ export interface Liker {
   name: string;
   nickname?: string | null;
   avatar?: string | null;
+  /** 작가만 `/portfolio/:id` 로 갈 수 있다 — 갤러리·일반은 404 (2026-09-19) */
+  role?: string;
 }
 
 export function LikerList({ likers, onNavigate }: { likers?: Liker[]; onNavigate: (id: number) => void }) {
@@ -235,8 +237,8 @@ export function LikerList({ likers, onNavigate }: { likers?: Liker[]; onNavigate
       {likers.map((liker) => (
         <button
           key={liker.id}
-          onClick={() => onNavigate(liker.id)}
-          className="flex items-center gap-2 text-sm text-gray-700 hover:underline cursor-pointer"
+          onClick={() => { if (liker.role === 'ARTIST') onNavigate(liker.id); }}
+          className={`flex items-center gap-2 text-sm text-gray-700 ${liker.role === 'ARTIST' ? 'hover:underline cursor-pointer' : 'cursor-default'}`}
         >
           {liker.avatar ? (
             <img src={liker.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />

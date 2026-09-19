@@ -217,9 +217,13 @@ function ManagerEditModal({
           이미 접수된 지원서와 작가 제출자료는 그대로 남습니다.
         </p>
 
+        {/* 전부 떼는 것도 정상 경로다 — 서버가 빈 배열을 받아 아트링크 직접 운영으로 되돌린다(규칙 22). 예전엔 여기서 [저장]이 막혀 있었다(2026-09-19) */}
+        {selected.length === 0 && (
+          <p className="mt-2 text-xs text-gray-500">운영 갤러리를 두지 않으면 아트링크(관리자)가 직접 운영하게 됩니다.</p>
+        )}
         <div className="mt-4 flex gap-2">
           <button
-            disabled={selected.length === 0 || mutation.isPending}
+            disabled={mutation.isPending}
             onClick={() => mutation.mutate()}
             className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
           >

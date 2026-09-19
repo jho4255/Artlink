@@ -54,12 +54,13 @@ function Block({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [mounted, setMounted] = useState(defaultOpen);
   /* 상자를 두르지 않는다 — 카드 안에 상자를 또 넣으면 테두리가 겹쳐 시끄럽다.
      구분선 + 작은 제목 줄만으로 나눈다(갤러리 운영 카드의 안쪽 구획과 같은 방식). */
   return (
     <div className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => { if (!open) setMounted(true); setOpen(!open); }}
         aria-expanded={open}
         className="flex w-full items-center gap-2 py-1 text-left cursor-pointer group"
       >
@@ -69,7 +70,9 @@ function Block({
         {hint && <span className="text-[11px] text-accent whitespace-nowrap">{hint}</span>}
         <ChevronDown size={14} className={`ml-auto shrink-0 text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && <div className="pt-2">{children}</div>}
+      {/* 한 번 펼친 뒤엔 접어도 **언마운트하지 않는다** — 출품작 5점을 입력하다 머리말을 눌러 접으면 폼 state 가 통째로 사라졐다(2026-09-19).
+          처음부터 전부 마운트하진 않는다(카드마다 세 섹션이 쿼리를 돈다). */}
+      {mounted && <div className={open ? 'pt-2' : 'hidden'}>{children}</div>}
     </div>
   );
 }

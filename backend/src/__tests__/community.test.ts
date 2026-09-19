@@ -467,6 +467,18 @@ describe('글 수정 (PATCH /:id)', () => {
     expect((await request.get(`/api/community/${p.body.id}`)).body.body).toBe('새 본문');
   });
 
+  it('★ `anonymous` 를 안 보내면 익명이 유지된다 (2026-09-19 — 옛 스키마의 default(false) 가 익명을 벗겼다)', async () => {
+    const p = await createPost(a1, { anonymous: true });
+    const r = await request.patch(`/api/community/${p.body.id}`)
+      .set('Authorization', `Bearer ${a1}`).send({ title: '제목', body: '고친 본문' });
+    expect(r.status).toBe(200);
+    const row = await testPrisma.post.findUnique({ where: { id: p.body.id } });
+    expect(row?.anonymous).toBe(true);
+    // 명시적으로 보내면 바뀐다
+    await request.patch(`/api/community/${p.body.id}`).set('Authorization', `Bearer ${a1}`).send({ title: '제목', body: '본문', anonymous: false });
+    expect((await testPrisma.post.findUnique({ where: { id: p.body.id } }))?.anonymous).toBe(false);
+  });
+
   it('★ 사진은 지워지지 않는다 — 수정 폼이 사진을 안 보내기 때문', async () => {
     // `createSchema` 가 `images` 를 `[]` 로 채워 주므로 그대로 쓰면 고칠 때마다 사진이 사라진다
     const p = await createPost(a1, { images: ['/uploads/a.png', '/uploads/b.png'] });

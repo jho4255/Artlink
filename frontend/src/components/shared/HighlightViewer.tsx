@@ -12,16 +12,18 @@
  *    스스로 넘어가는 화면은 쫓기는 느낌을 준다.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { X, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { X, ChevronLeft, ChevronRight, Lock, Pencil, Trash2, Eye, EyeOff, MinusCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { timeAgo } from '@/lib/utils';
 
 interface HighlightStory {
   id: number; caption: string; images: string[]; createdAt: string;
   author: { id: number; name: string; avatar: string | null };
 }
-interface HighlightDetail { id: number; name: string; isPublic: boolean; stories: HighlightStory[] }
+interface HighlightDetail { id: number; name: string; isPublic: boolean; mine?: boolean; stories: HighlightStory[] }
 
 /** 진행바 한 칸 = 화면 하나 */
 interface Frame { key: string; story: HighlightStory; image: string | null }
@@ -47,6 +49,36 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
   const [paused, setPaused] = useState(false);
   const total = frames.length;
 
+  /* 주인 관리 — 이름 바꾸기·공개 전환·이 소식 빼기·삭제 (2026-09-19).
+     그 전엔 하이라이트가 **만들면 끝**이라(PATCH/DELETE 라우트는 있는데 화면이 안 불렀다) 이웃공개 소식을 공개
+     하이라이트에 잘못 담아도 되돌릴 방법이 없었다. 관리 중엔 자동 넘김을 멈춘다. */
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['highlight', highlightId] }); qc.invalidateQueries({ queryKey: ['highlights'] }); };
+  const patch = useMutation({
+    mutationFn: (body: { name?: string; isPublic?: boolean }) => api.patch(`/stories/highlights/${highlightId}`, body),
+    onSuccess: refresh,
+    onError: (e: any) => toast.error(e.response?.data?.error || '변경에 실패했습니다.'),
+  });
+  const removeStory = useMutation({
+    mutationFn: (storyId: number) => api.delete(`/stories/highlights/${highlightId}/stories/${storyId}`),
+    onSuccess: () => { toast.success('하이라이트에서 뺐습니다.'); setI((v) => Math.max(0, v - 1)); refresh(); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '빼기에 실패했습니다.'),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/stories/highlights/${highlightId}`),
+    onSuccess: () => { toast.success('하이라이트를 지웠습니다.'); qc.invalidateQueries({ queryKey: ['highlights'] }); onClose(); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),
+  });
+  const rename = () => {
+    const next = window.prompt('하이라이트 이름', data?.name ?? '');
+    if (next == null) return;
+    const t = next.trim();
+    if (!t || t.length > 50) { toast.error('이름은 1~50자입니다.'); return; }
+    if (t !== data?.name) patch.mutate({ name: t });
+  };
+  const managing = confirm !== null;
+
   // ⚠️ 닫기를 `setI` 콜백 **안에서** 부르지 말 것 — 상태 갱신 함수는 순수해야 한다
   //    (React 가 두 번 부를 수 있어 onClose 가 두 번 실행된다). 밖에서 판정한다.
   const next = useCallback(() => {
@@ -57,10 +89,10 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
 
   // 자동 넘김. `i` 가 바뀔 때마다 타이머를 새로 잡는다(눌러서 넘겼으면 5초를 다시 준다).
   useEffect(() => {
-    if (total === 0 || paused || reduced) return;
+    if (total === 0 || paused || reduced || managing) return;   // 확인창이 떠 있으면 넘기지 않는다
     const t = setTimeout(next, FRAME_MS);
     return () => clearTimeout(t);
-  }, [i, total, paused, reduced, next]);
+  }, [i, total, paused, reduced, managing, next]);
 
   // 키보드 — 화살표로 넘기고 Esc 로 닫는다
   useEffect(() => {
@@ -127,6 +159,16 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
             <Lock size={10} /> 비공개
           </span>
         )}
+        {data?.mine && (
+          <div className="flex shrink-0 items-center gap-0.5" onPointerDown={(e) => e.stopPropagation()}>
+            <button onClick={rename} aria-label="이름 바꾸기" title="이름 바꾸기" className="p-1.5 text-white/70 hover:text-white"><Pencil size={16} /></button>
+            <button onClick={() => patch.mutate({ isPublic: !data.isPublic })} aria-label={data.isPublic ? '비공개로' : '공개로'} title={data.isPublic ? '비공개로 바꾸기' : '공개로 바꾸기'} className="p-1.5 text-white/70 hover:text-white">
+              {data.isPublic ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+            {cur && <button onClick={() => setConfirm('remove')} aria-label="이 소식 빼기" title="이 소식을 하이라이트에서 빼기" className="p-1.5 text-white/70 hover:text-white"><MinusCircle size={16} /></button>}
+            <button onClick={() => setConfirm('delete')} aria-label="하이라이트 삭제" title="하이라이트 삭제" className="p-1.5 text-white/70 hover:text-accent"><Trash2 size={16} /></button>
+          </div>
+        )}
         <button onClick={onClose} aria-label="닫기" className="shrink-0 p-1 text-white/70 hover:text-white">
           <X size={22} />
         </button>
@@ -183,6 +225,24 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
           </p>
         </div>
       )}
+      <ConfirmDialog
+        open={confirm === 'remove'}
+        title="이 소식 빼기"
+        message="이 소식을 하이라이트에서 뺍니다. 소식 자체는 그대로 남습니다."
+        confirmText="빼기"
+        variant="danger"
+        onConfirm={() => { if (cur) removeStory.mutate(cur.story.id); setConfirm(null); }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm === 'delete'}
+        title="하이라이트 삭제"
+        message={`'${data?.name ?? ''}' 하이라이트를 지웁니다. 담긴 소식은 그대로 남습니다.`}
+        confirmText="삭제"
+        variant="danger"
+        onConfirm={() => { remove.mutate(); setConfirm(null); }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

@@ -118,7 +118,7 @@ router.get('/:id', async (req, res, next) => {
       where: { chatId_userId: { chatId, userId: me } },
       data: { lastReadAt: new Date() },
     });
-    markChatNotificationsRead(chatId, me).catch(() => {});
+    await markChatNotificationsRead(chatId, me).catch(() => {});   // 응답 전에 끝낸다 — 배지가 방을 본 뒤에도 남지 않게
     res.json(data);
   } catch (e) { next(e); }
 });
@@ -182,7 +182,7 @@ router.post('/:id/read', async (req, res, next) => {
       where: { chatId_userId: { chatId, userId: me } },
       data: { lastReadAt: new Date() },
     });
-    markChatNotificationsRead(chatId, me).catch(() => {});
+    await markChatNotificationsRead(chatId, me).catch(() => {});   // 응답 전에 끝낸다 — 배지가 방을 본 뒤에도 남지 않게
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

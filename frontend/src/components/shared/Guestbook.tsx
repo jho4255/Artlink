@@ -26,7 +26,11 @@ interface GbEntry {
 interface GbData { entries: GbEntry[]; isOwner: boolean }
 
 
+/* 이름·아바타 링크는 **작가일 때만** — `/portfolio/:id` 는 작가가 아니면 404 라, 갤러리·일반 계정이 남긴 글을 누르면 빈 화면이었다(2026-09-19) */
 function Avatar({ a }: { a: GbAuthor }) {
+  if (a.role !== 'ARTIST') return <span className="shrink-0">{a.avatar
+    ? <img src={a.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
+    : <span className="grid h-8 w-8 place-items-center rounded-full bg-current/10 text-xs font-semibold opacity-70">{a.name.slice(0, 1)}</span>}</span>;
   return (
     <Link to={`/portfolio/${a.id}`} className="shrink-0">
       {a.avatar
@@ -76,7 +80,9 @@ export default function Guestbook({ userId }: { userId: number }) {
       <Avatar a={e.author} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-xs opacity-60">
-          <Link to={`/portfolio/${e.author.id}`} className="font-semibold hover:underline">{e.author.name}</Link>
+          {e.author.role === 'ARTIST'
+            ? <Link to={`/portfolio/${e.author.id}`} className="font-semibold hover:underline">{e.author.name}</Link>
+            : <span className="font-semibold">{e.author.name}</span>}
           {roleLabel(e.author.role) && <span>· {roleLabel(e.author.role)}</span>}
           <span>·</span>
           <span>{timeAgo(e.createdAt)}</span>

@@ -2044,7 +2044,9 @@ function ApplicationsSection() {
 
   // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다
   useEffect(() => {
+    // 초대만 받은 작가(지원 0건)는 [초대받은 전시] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
     if (statusFilter === null && apps.length > 0) setStatusFilter(defaultBucket(apps));
+    else if (statusFilter === null && apps.length === 0 && invites.length > 0) setStatusFilter('INVITED');
   }, [apps, statusFilter]);
 
   /*
@@ -2085,7 +2087,7 @@ function ApplicationsSection() {
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
 
   const buckets = groupMyExhibitions(visibleApps);
-  const activeTab: MyExhibitionBucket = statusFilter ?? defaultBucket(visibleApps);
+  const activeTab: MyExhibitionBucket = statusFilter ?? (visibleApps.length === 0 && invites.length > 0 ? 'INVITED' : defaultBucket(visibleApps));
   const filteredApps = buckets[activeTab];
 
   const counts: Record<string, number> = {

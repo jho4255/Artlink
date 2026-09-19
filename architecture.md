@@ -2081,3 +2081,18 @@ operatorUserIds(ex)                알림 발송 대상 전부
 
 - `POST /exhibitions/hosted` 에 `withStageRules` 적용(감사 의심 항목 확정 수정).
 - 프론트 `validateExhibitionDates` 는 `exhibitDate` 없으면 공모 기간만 검사한다.
+
+## 전수 버그 감사 3차 수정 — 남은 P1 (2026-09-19)
+
+| 결함 | 고친 곳 | 회귀 |
+|---|---|---|
+| 이웃공개 소식이 댓글·좋아요·좋아요 명단 경로에서 우회됨 | `routes/story.ts` `visibleStory()` 하나를 네 라우트가 통과(못 보면 404), 댓글 목록 `take:500` | `follow-story.test.ts` |
+| 커뮤니티 글 수정이 `anonymous` 생략 시 익명을 벗김 | `routes/community.ts` `updateSchema`(anonymous optional, 생략 시 유지) | `community.test.ts` |
+| recruitOnly 공고에 「작가 제출자료 점검」 no-op 버튼 | `OperationPage` `submissionPhaseActive`·`nextTasks`·`priorityTitle` 이 `recruitOnly` 먼저 판정 | — |
+| 제출자료·대신입력 폼 접으면 입력 유실 | `ArtistOperationPanel.Block` 한 번 펼치면 `hidden` 토글(언마운트 없음), `OperationPage` `proxyOpened` Set | — |
+| [운영 갤러리 변경]에서 전부 떼기 불가 | `HostedExhibitionsSection` 저장 버튼 `disabled={isPending}` + 0개 안내문 | — |
+| 지원서 추가 질문 글자수 미적용 | `ExhibitionDetailPage` textarea `maxLength`+카운터, 서버 `normalizeCustomAnswers` text 길이 검사 | — |
+| 하이라이트 만들면 끝 | `HighlightViewer` 주인에게 이름 바꾸기·공개 전환·이 소식 빼기·삭제(`ConfirmDialog`), API 응답에 `mine` | — |
+| 커뮤니티 목록 20개 너머 도달 불가 | `CommunityPage` `useInfiniteQuery` + [더 보기] | — |
+| 알림·명단의 사람 링크가 비작가면 404 | `lib/profileLink.ts profileLinkFor(userId)`(역할별 주소; follow/explore 알림), `Guestbook`·`LikerList` 는 작가만 링크(explore likers 에 `role`) | — |
+| 초대만 받은 작가의 [내 전시]가 빈 화면 | `MyPage ApplicationsSection` 기본 탭을 지원 0·초대 있음이면 `INVITED` | — |

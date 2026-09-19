@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { profileLinkFor } from '../lib/profileLink';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import logger from '../lib/logger';
@@ -46,7 +47,7 @@ async function notifyArtworkLike(imageId: number, likerId: number): Promise<void
       : `${publicName(liker)}님이 회원님의 작품을 좋아합니다.`;
 
   const refKey = `artwork-like:${imageId}`;
-  const linkUrl = `/portfolio/${likerId}`; // 누른 사람 프로필 → 맞방문 유도
+  const linkUrl = await profileLinkFor(likerId); // 누른 사람 프로필 → 맞방문 유도 (역할별 — 갤러리가 누르면 갤러리 페이지)
 
   const existing = await prisma.notification.findFirst({
     where: { userId: artistId, refKey, read: false, createdAt: { gte: since } },
@@ -569,7 +570,7 @@ router.get('/:imageId/likes', optionalAuth, async (req, res, next) => {
     if (isOwner) {
       const likers = await prisma.portfolioImageLike.findMany({
         where: { imageId },
-        include: { user: { select: { id: true, name: true, nickname: true, avatar: true } } },
+        include: { user: { select: { id: true, name: true, nickname: true, avatar: true, role: true } } },
         orderBy: { createdAt: 'desc' },
       });
       res.json({ likeCount, likers: likers.map(l => l.user) });

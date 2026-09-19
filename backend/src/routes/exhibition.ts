@@ -162,6 +162,11 @@ function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string;
     if (field.required && empty) {
       throw new AppError(`추가 질문 "${field.label}"에 답변해주세요.`, 400);
     }
+    // 글자수 제한 — 화면이 막아도 서버가 최종 판정한다(초대 경로·직접 호출 모두 같은 규칙)
+    const maxLength = Number.isInteger(field.maxLength) ? Number(field.maxLength) : 0;
+    if (field.type === 'text' && maxLength > 0 && typeof value === 'string' && value.length > maxLength) {
+      throw new AppError(`추가 질문 "${field.label}"은 ${maxLength}자까지 입력할 수 있습니다.`, 400);
+    }
     if ((field.type === 'select' || field.type === 'multiselect') && value) {
       const options = Array.isArray(field.options) ? field.options : [];
       const selected = Array.isArray(value) ? value : [value];

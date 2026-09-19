@@ -7,6 +7,7 @@
  */
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { profileLinkFor } from '../lib/profileLink';
 import { authenticate, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 
@@ -40,7 +41,7 @@ router.post('/:userId', authenticate, async (req, res, next) => {
             userId: target,
             type: 'NEIGHBOR_FOLLOW',
             message: `${meUser ? displayName(meUser) : '누군가'}님이 회원님을 이웃으로 추가했습니다.`,
-            linkUrl: `/portfolio/${me}`,
+            linkUrl: await profileLinkFor(me),   // 역할별 — 갤러리·일반은 /portfolio 가 404 다
             refKey: `follow:${me}->${target}`,
           },
         });

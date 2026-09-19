@@ -132,9 +132,28 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
 });
 
 // ── 좋아요 누른 사람 목록 (스토리는 익명 없음 — 누가 눌렀는지 보인다) ──
+
+/**
+ * 이 소식을 이 사람이 볼 수 있는가 — `GET /:id` 와 **같은 규칙**을 댓글·좋아요·좋아요 명단 라우트도 통과한다 (2026-09-19).
+ * 그 전엔 상세만 404 로 막고 `/:id/comments`·`/:id/likers`·`POST /:id/like`·`POST /:id/comments` 는 존재만 확인해서,
+ * 비로그인도 이웃공개 글의 댓글 전문·좋아요 명단을 읽고, 못 보는 글에 댓글을 달아 주인에게 알림을 밀어넣을 수 있었다(규칙 23).
+ * @returns 볼 수 있으면 스토리 행, 아니면 null (호출부가 404 로 답한다 — 403 은 존재를 알려준다)
+ */
+async function visibleStory(id: number, viewer?: { id: number; role: string }) {
+  if (!Number.isFinite(id)) return null;
+  const s = await prisma.story.findUnique({ where: { id }, select: { id: true, authorId: true, visibility: true } });
+  if (!s) return null;
+  const me = viewer?.id;
+  if (s.authorId === me || s.visibility === 'PUBLIC' || viewer?.role === 'ADMIN') return s;
+  if (!me) return null;
+  const follows = await prisma.follow.findFirst({ where: { followerId: me, followingId: s.authorId }, select: { id: true } });
+  return follows ? s : null;
+}
+
 router.get('/:id/likers', optionalAuth, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
+    if (!(await visibleStory(id, req.user))) throw new AppError('소식을 찾을 수 없습니다.', 404);
     const rows = await prisma.storyLike.findMany({
       where: { storyId: id }, orderBy: { createdAt: 'desc' }, take: 100,
       include: { user: authorSelect },
@@ -148,7 +167,7 @@ router.post('/:id/like', authenticate, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
     const me = req.user!.id;
-    const story = await prisma.story.findUnique({ where: { id }, select: { id: true } });
+    const story = await visibleStory(id, req.user);
     if (!story) throw new AppError('스토리를 찾을 수 없습니다.', 404);
 
     // ⚠️ 연타(더블탭) 경합 — 자세한 이유는 `routes/community.ts` 의 같은 자리 주석 참고.
@@ -179,8 +198,9 @@ router.get('/:id/comments', optionalAuth, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
     const me = req.user?.id;
+    if (!(await visibleStory(id, req.user))) throw new AppError('소식을 찾을 수 없습니다.', 404);
     const rows = await prisma.storyComment.findMany({
-      where: { storyId: id }, orderBy: { createdAt: 'asc' }, include: { author: authorSelect },
+      where: { storyId: id }, orderBy: { createdAt: 'asc' }, include: { author: authorSelect }, take: 500,
     });
     res.json(rows.map((c) => ({
       id: c.id, body: c.body, createdAt: c.createdAt,
@@ -195,7 +215,7 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
   try {
     const id = parseInt(req.params.id as string);
     const me = req.user!.id;
-    const story = await prisma.story.findUnique({ where: { id }, select: { id: true, authorId: true } });
+    const story = await visibleStory(id, req.user);
     if (!story) throw new AppError('스토리를 찾을 수 없습니다.', 404);
 
     const body = req.body.body.trim();
@@ -334,6 +354,7 @@ router.get('/highlights/:id/stories', optionalAuth, async (req, res, next) => {
     const liked = me ? await likedSet(me, ordered.map((s) => s.id)) : new Set<number>();
     res.json({
       id: h.id, name: h.name, isPublic: h.isPublic,
+      mine: h.userId === me,   // 뷰어가 이름 바꾸기·공개 전환·소식 빼기·삭제 버튼을 그릴지 판정한다(2026-09-19)
       stories: ordered.map((s) => serialize(s, s.authorId === me, liked.has(s.id))),
     });
   } catch (e) { next(e); }

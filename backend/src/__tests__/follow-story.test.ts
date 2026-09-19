@@ -120,6 +120,25 @@ describe('스토리 + [소식] 피드', () => {
     expect(caps).not.toContain('갤러리 스토리');
   });
 
+  /* 2026-09-19 — 상세(`GET /:id`)만 막고 댓글·좋아요·좋아요 명단 라우트는 존재만 확인해서, 비로그인도 이웃공개 글의
+     댓글 전문·좋아요 명단을 읽고, 못 보는 글에 댓글을 달아 주인에게 알림을 밀어넣을 수 있었다(규칙 23). */
+  it('★ 이웃공개 글은 댓글·좋아요·좋아요 명단 경로에서도 비팔로워에게 404', async () => {
+    const { body: s } = await makeStory(a1, { caption: '이웃공개', visibility: 'NEIGHBORS' });
+    // 비로그인
+    expect((await request.get(`/api/stories/${s.id}/comments`)).status).toBe(404);
+    expect((await request.get(`/api/stories/${s.id}/likers`)).status).toBe(404);
+    // 비팔로워(gallery)
+    expect((await request.get(`/api/stories/${s.id}/comments`).set('Authorization', `Bearer ${gallery}`)).status).toBe(404);
+    expect((await request.post(`/api/stories/${s.id}/like`).set('Authorization', `Bearer ${gallery}`)).status).toBe(404);
+    expect((await request.post(`/api/stories/${s.id}/comments`).set('Authorization', `Bearer ${gallery}`).send({ body: '몰래' })).status).toBe(404);
+    expect(await testPrisma.notification.count({ where: { userId: 1, type: 'STORY_COMMENT' } }), '알림이 새면 안 된다').toBe(0);
+    // 팔로우하면 전부 열린다
+    await request.post('/api/follow/1').set('Authorization', `Bearer ${gallery}`);
+    expect((await request.get(`/api/stories/${s.id}/comments`).set('Authorization', `Bearer ${gallery}`)).status).toBe(200);
+    expect((await request.post(`/api/stories/${s.id}/like`).set('Authorization', `Bearer ${gallery}`)).status).toBe(200);
+    expect((await request.post(`/api/stories/${s.id}/comments`).set('Authorization', `Bearer ${gallery}`).send({ body: '이웃' })).status).toBe(201);
+  });
+
   it('★ 공개범위는 글마다 — 비팔로워는 PUBLIC 만, 팔로워는 NEIGHBORS 까지', async () => {
     await makeStory(a1, { caption: '전체공개', visibility: 'PUBLIC' });
     await makeStory(a1, { caption: '이웃공개', visibility: 'NEIGHBORS' });
@@ -160,7 +179,8 @@ describe('스토리 + [소식] 피드', () => {
   });
 
   it('★ 좋아요 토글 + 피드에 liked/likeCount 반영', async () => {
-    const { body } = await makeStory(a1, { caption: '좋아요 대상' });
+    // 비팔로워(a2)가 누르는 시나리오라 **공개** 글이어야 한다 — 이웃공개면 2026-09-19 부터 404 가 맞다
+    const { body } = await makeStory(a1, { caption: '좋아요 대상', visibility: 'PUBLIC' });
     const r1 = await request.post(`/api/stories/${body.id}/like`).set('Authorization', `Bearer ${a2}`);
     expect(r1.body).toMatchObject({ liked: true, likeCount: 1 });
     // 두 번 = 취소
@@ -176,7 +196,7 @@ describe('스토리 + [소식] 피드', () => {
 
   it('★ 좋아요 누른 사람 목록이 보인다 (누가 눌렀는지)', async () => {
     await testPrisma.user.update({ where: { id: 2 }, data: { nickname: '눌른이' } });
-    const { body } = await makeStory(a1, { caption: '좋아요 명단' });
+    const { body } = await makeStory(a1, { caption: '좋아요 명단', visibility: 'PUBLIC' });   // 비팔로워가 누르는 시나리오
     await request.post(`/api/stories/${body.id}/like`).set('Authorization', `Bearer ${a2}`);
     await request.post(`/api/stories/${body.id}/like`).set('Authorization', `Bearer ${gallery}`);
     const likers = await request.get(`/api/stories/${body.id}/likers`);
@@ -186,7 +206,7 @@ describe('스토리 + [소식] 피드', () => {
   });
 
   it('★ 댓글 작성/목록/삭제 + 주인 알림', async () => {
-    const { body } = await makeStory(a1, { caption: '댓글 대상' });
+    const { body } = await makeStory(a1, { caption: '댓글 대상', visibility: 'PUBLIC' });   // 비팔로워가 댓글 다는 시나리오
     const c = await request.post(`/api/stories/${body.id}/comments`).set('Authorization', `Bearer ${a2}`).send({ body: '멋져요' });
     expect(c.status).toBe(201);
     // 주인(1)에게 알림
