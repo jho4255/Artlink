@@ -2113,3 +2113,12 @@ operatorUserIds(ex)                알림 발송 대상 전부
 공모 상세 [뒤로가기] 폴백 · 포스터 없으면 라이트박스 안 열림 · 피드 사람 링크 `PersonLink`(작가만) · `extractColor` tainted canvas 방어 ·
 `useFormDraft` `hasDraft` lazy init(임시저장 복원 확인이 이제 뜬다) · 찜 목록·초대 모달 `Thumb` · ArtTalk 404 → [대화 목록으로] ·
 `PortfolioPage` 라이트박스 주소 동기화가 `/@handle` 리다이렉트를 되돌리지 않게 · 홈페이지 편집 이탈 경고+취소 확인 · 비로그인 `/support` 로그인 안내.
+
+## 전수 버그 감사 P2 3차 수정 (2026-09-19)
+- 백엔드: 초대 수락의 정원 검사+생성을 Serializable 트랜잭션으로(`apply` 와 동일) · 리뷰 `imageUrl`·전시 `posterImage/additionalImages` `safeFileUrl` ·
+  `POST /chats/direct` 서버 관문(상대가 작가·갤러리가 아니면 기존 방 또는 서로 이웃일 때만; Admin 예외) · `logger` 비동기 append + 60초 회전 검사 ·
+  커뮤니티 조회수 `lib/viewCount.ts shouldCountView`(같은 사람 30분 창 — 좋아요·댓글 refetch 로 +1 되던 것; 테스트 env 는 통과).
+- 프론트: `/exhibitions/:id/operation`(클래식) → `/operation/new` 리다이렉트(`OperationClassicPage` 라우트 제거) · [내 정보·포트폴리오 불러오기]가
+  `award` 포함·기존 입력 보존 · 빈 작품 칸만 있으면 "출품작을 등록해주세요" · 일괄 상태 변경 pending/이중 클릭 방지 · 추가 질문 maxSelect>선택지 경고 ·
+  `Thumb` 빈 src 방어(홈 `src=""` 경고) · 라이트박스 alt · 하이라이트 뷰어 `pointercancel` · `ProtectedRoute` 가 가려던 곳 기억 ·
+  카카오 state 저장값 없으면 실패 · PDF 디자인 저장 0.8초 디바운스 + 언마운트 flush(`MyPage PortfolioFormatSection`).

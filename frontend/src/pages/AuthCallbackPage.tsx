@@ -78,7 +78,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     }
 
     const savedState = sessionStorage.getItem(`${provider}_state`);
-    if (savedState && state !== savedState) {
+    // ⚠️ 저장값이 없으면 통째로 건너뛰던 것을 막는다(로그인 CSRF, 2026-09-19). 다른 탭에서 시작한 로그인은 실패하지만 다시 누르면 된다.
+    if (!savedState || state !== savedState) {
       setError('보안 검증에 실패했습니다.');
       setTimeout(() => navigate('/login', { replace: true }), 2000);
       return;

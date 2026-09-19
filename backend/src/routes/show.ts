@@ -202,6 +202,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 router.post('/', authenticate, authorize('GALLERY'), validate(showCreateSchema), async (req, res, next) => {
   try {
     const { title, description, startDate, endDate, openingHours, admissionFee, location, region, artists, posterImage, galleryId, additionalImages } = req.body;
+    // 포스터·추가 사진 주소 검증 — `/:id/images` 만 safeFileUrl 을 쓰고 등록 경로는 안 거쳤다(2026-09-19)
+    if (!safeFileUrl(posterImage)) throw new AppError('포스터 이미지 주소가 올바르지 않습니다.', 400);
+    if (Array.isArray(additionalImages) && additionalImages.some((u: unknown) => !safeFileUrl(u))) throw new AppError('추가 이미지 주소가 올바르지 않습니다.', 400);
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -267,7 +270,10 @@ router.patch('/:id', authenticate, async (req, res, next) => {
     const { description, artists, posterImage } = req.body;
     const data: any = {};
     if (description !== undefined) data.description = description;
-    if (posterImage !== undefined && posterImage) data.posterImage = posterImage;
+    if (posterImage !== undefined && posterImage) {
+      if (!safeFileUrl(posterImage)) throw new AppError('포스터 이미지 주소가 올바르지 않습니다.', 400);
+      data.posterImage = posterImage;
+    }
     if (artists !== undefined) {
       const normalized = normalizeArtistsInput(artists);
       data.artists = normalized ? JSON.stringify(normalized) : null;

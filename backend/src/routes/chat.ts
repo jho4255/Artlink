@@ -4,7 +4,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
-import { isParticipant, openDirectChat, listChats, readChat, unreadChatCount, notifyChatMessage, markChatNotificationsRead, attachmentLabel } from '../lib/chat';
+import { isParticipant, openDirectChat, listChats, readChat, unreadChatCount, notifyChatMessage, markChatNotificationsRead, attachmentLabel, directKeyOf } from '../lib/chat';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
 
@@ -82,8 +82,21 @@ router.post('/direct', validate(directSchema), async (req, res, next) => {
     if (other === me) throw new AppError('자기 자신과는 대화할 수 없습니다.', 400);
 
     // 탈퇴한 회원과는 새로 시작할 수 없다 (이미 있는 방은 그대로 읽힌다)
-    const target = await prisma.user.findFirst({ where: { id: other, deletedAt: null }, select: { id: true } });
+    const target = await prisma.user.findFirst({ where: { id: other, deletedAt: null }, select: { id: true, role: true } });
     if (!target) throw new AppError('대화할 수 없는 상대입니다.', 404);
+    // ⚠️ 서버 관문(2026-09-19) — 그 전엔 인증만 되면 임의 id 에 갠톡을 열 수 있어 "아무나 말 걸 수 없다"는 설계가 화면 노출에만 기대고 있었다.
+    //    화면의 진입점은 작가·갤러리 페이지(=공개된 사람)와 서로 이웃뿐이다. 일반(VISITOR)·운영 계정에는 이미 방이 있거나 서로 이웃일 때만.
+    const publicRole = target.role === 'ARTIST' || target.role === 'GALLERY';
+    if (!publicRole && req.user!.role !== 'ADMIN') {
+      const existing = await prisma.chat.findUnique({ where: { directKey: directKeyOf(me, other) }, select: { id: true } });
+      if (!existing) {
+        const [a, b] = await Promise.all([
+          prisma.follow.findFirst({ where: { followerId: me, followingId: other }, select: { id: true } }),
+          prisma.follow.findFirst({ where: { followerId: other, followingId: me }, select: { id: true } }),
+        ]);
+        if (!a || !b) throw new AppError('대화할 수 없는 상대입니다.', 404);
+      }
+    }
 
     const chatId = await openDirectChat(me, other);
     res.json({ id: chatId });

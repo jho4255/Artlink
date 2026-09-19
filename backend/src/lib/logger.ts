@@ -26,23 +26,25 @@ function formatTimestamp(): string {
   return new Date().toISOString();
 }
 
-/** 로그 한 줄을 파일에 append */
+/**
+ * 로그 한 줄을 파일에 append — **비동기**.
+ * 예전엔 줄마다 `statSync` + `appendFileSync` 라, 모든 4xx 가 warn 이라 정상 400/404 하나당 이벤트 루프를 두 번 막았다(2026-09-19).
+ * 회전 검사는 60초에 한 번만.
+ */
+const ROTATE_BYTES = 10 * 1024 * 1024;
+const lastRotateCheck: Partial<Record<LogTarget, number>> = {};
 function writeToFile(target: LogTarget, message: string): void {
   try {
     // 고정된 경로 상수만 사용 (외부 입력이 경로에 들어가지 않음)
     const filePath = LOG_FILES[target];
-
-    // 간단한 로테이션: 파일이 10MB 초과 시 .old로 교체
-    try {
-      const stats = fs.statSync(filePath);
-      if (stats.size > 10 * 1024 * 1024) {
-        fs.renameSync(filePath, filePath + '.old');
-      }
-    } catch {
-      // 파일이 없으면 무시
+    const now = Date.now();
+    if (now - (lastRotateCheck[target] ?? 0) > 60_000) {
+      lastRotateCheck[target] = now;
+      fs.stat(filePath, (err, stats) => {
+        if (!err && stats.size > ROTATE_BYTES) fs.rename(filePath, filePath + '.old', () => { /* best-effort */ });
+      });
     }
-
-    fs.appendFileSync(filePath, message + '\n');
+    fs.appendFile(filePath, message + '\n', () => { /* 로그 기록 실패 시 서비스에 영향 주지 않음 */ });
   } catch {
     // 로그 기록 실패 시 서비스에 영향 주지 않음
   }

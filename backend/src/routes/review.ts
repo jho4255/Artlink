@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { safeFileUrl } from '../lib/safeUrl';
 import { validate } from '../middleware/validate';
 import { maskAnonymousReviews } from '../lib/sanitize';
 
@@ -107,7 +108,10 @@ router.get('/reviewable/:galleryId', authenticate, authorize('ARTIST'), async (r
 // 리뷰 작성 (Artist 전용)
 router.post('/', authenticate, authorize('ARTIST'), validate(reviewCreateSchema), async (req, res, next) => {
   try {
-    const { galleryId, exhibitionId, content, imageUrl, anonymous } = req.body;
+    const { galleryId, exhibitionId, content, anonymous } = req.body;
+    // 외부 도메인·이상한 스킴을 그대로 저장하던 구멍(2026-09-19)
+    const imageUrl = req.body.imageUrl ? safeFileUrl(req.body.imageUrl) : null;
+    if (req.body.imageUrl && !imageUrl) throw new AppError('이미지 주소가 올바르지 않습니다.', 400);
 
     // 1) 해당 공모가 이 갤러리의 공모인지 확인
     const exhibition = await prisma.exhibition.findUnique({
@@ -171,7 +175,9 @@ router.patch('/:id', authenticate, validate(reviewUpdateSchema), async (req, res
     if (!review) throw new AppError('리뷰를 찾을 수 없습니다.', 404);
     if (review.userId !== req.user!.id) throw new AppError('본인 리뷰만 수정할 수 있습니다.', 403);
 
-    const { content, imageUrl, anonymous } = req.body;
+    const { content, anonymous } = req.body;
+    const imageUrl = req.body.imageUrl === undefined ? undefined : (req.body.imageUrl ? safeFileUrl(req.body.imageUrl) : null);
+    if (req.body.imageUrl && !imageUrl) throw new AppError('이미지 주소가 올바르지 않습니다.', 400);
 
     // 별점이 없어져 수정이 갤러리 집계에 영향을 주지 않는다 — 트랜잭션이 필요 없다
     const updated = await prisma.review.update({

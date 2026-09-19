@@ -167,6 +167,9 @@ export function sanitizeCustomFields(fields: CustomField[]): CustomField[] {
 export function validateCustomFields(fields: CustomField[]): string | null {
   const invalid = fields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
   if (invalid) return '객관식 질문은 선택지를 2개 이상 입력해주세요.';
+  // 문서는 "경고 후 차단"인데 sanitize 가 조용히 깎고 있었다(2026-09-19)
+  const over = fields.find((field) => field.type === 'multiselect' && (field.maxSelect ?? 0) > (field.options ?? []).filter((o) => o.trim()).length);
+  if (over) return `"${over.label || '객관식 질문'}"의 최대 선택 수가 선택지 수보다 많습니다.`;
   return null;
 }
 

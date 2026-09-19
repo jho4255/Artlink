@@ -1009,7 +1009,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
   // 캡션에 들어갈 내용(출품작 제목/크기/재료/년도/가격)은 필수 — 비면 저장 차단
   const collectMissing = (): string[] => {
     const missing: string[] = [];
-    if (artworkList.length === 0) {
+    // 갓 추가한 빈 칸만 있어도 '등록된 작품'이 아니다 — 안 그러면 "대표작을 선택해주세요"만 뜨는데 고를 작품이 없는 막다른 길이었다(2026-09-19)
+    if (artworkList.length === 0 || artworkList.every(isBlankArtwork)) {
       missing.push('출품작을 1개 이상 등록해주세요.');
       return missing;
     }
@@ -1074,9 +1075,11 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
         nameKo: prev.nameKo || u?.name || '',
         tel: prev.tel || u?.phone || '',
         email: prev.email || u?.email || '',
-        solo: (c.solo || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
-        group: (c.group || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
-        artFair: (c.artFair || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
+        // ⚠️ 이미 손으로 적어 둔 항목은 덮지 않는다 — 비어 있는 칸만 포트폴리오에서 채운다. `award` 도 가져온다(2026-09-19)
+        solo: prev.solo?.length ? prev.solo : (c.solo || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
+        group: prev.group?.length ? prev.group : (c.group || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
+        artFair: prev.artFair?.length ? prev.artFair : (c.artFair || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
+        award: prev.award?.length ? prev.award : (c.award || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
       }));
       toast.success(proxyFor ? `${proxyFor.name}님의 포트폴리오 약력을 불러왔습니다.` : '내 정보·포트폴리오 약력을 불러왔습니다.');
     } catch {

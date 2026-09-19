@@ -82,6 +82,8 @@ interface Props extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
 
 export default function Thumb({ src, size = 'list', ...rest }: Props) {
   const [fallback, setFallback] = useState(false);
+  // 빈 주소면 <img src=""> 를 그리지 않는다 — 브라우저가 페이지 HTML 을 이미지로 한 번 더 받고 React 경고가 뜬다(2026-09-19)
+  if (!src) return <div className={rest.className} aria-hidden="true" />;
   return (
     <img
       {...rest}

@@ -24,3 +24,22 @@ export async function bumpViewCount(
     // 조회수는 부가 통계이므로 실패해도 무시한다.
   }
 }
+
+/**
+ * 같은 사람(로그인 id 또는 IP)이 같은 대상을 30분 안에 다시 열어도 조회수를 안 센다 — 메모리 창(프로세스당).
+ * 상세 페이지를 refetch 하는 조작(좋아요·댓글)이 조회수를 올리는 것을 막는다. 재시작하면 창이 비지만 통계용이라 충분하다.
+ */
+const VIEW_WINDOW_MS = 30 * 60 * 1000;
+const recentViews = new Map<string, number>();
+export function shouldCountView(target: string, viewer: string | number): boolean {
+  if (process.env.NODE_ENV === 'test') return true;   // 테스트는 같은 사용자로 반복 조회해 조회수를 센다
+  const key = `${target}|${viewer}`;
+  const now = Date.now();
+  if (recentViews.size > 50_000) {
+    for (const [k, t] of recentViews) if (now - t > VIEW_WINDOW_MS) recentViews.delete(k);
+  }
+  const last = recentViews.get(key);
+  if (last && now - last < VIEW_WINDOW_MS) return false;
+  recentViews.set(key, now);
+  return true;
+}

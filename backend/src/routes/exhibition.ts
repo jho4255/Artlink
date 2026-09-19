@@ -628,9 +628,6 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
     const already = await prisma.application.findFirst({ where: { exhibitionId: ex.id, userId }, select: { id: true } });
     if (already) throw new AppError('이미 참여 중인 공모입니다.', 400);
 
-    const counts = await activeApplicationCounts([ex.id]);
-    if ((counts.get(ex.id) ?? 0) >= ex.capacity) throw new AppError('모집 인원이 마감되었습니다.', 400);
-
     const portfolio = await prisma.portfolio.findUnique({
       where: { userId },
       include: { images: { orderBy: { order: 'asc' }, take: 10 } },
@@ -640,20 +637,26 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
       throw new AppError('포트폴리오에 작품 사진이 없어 참여할 수 없습니다. 홈페이지에 작품을 등록한 뒤 다시 시도해주세요.', 400);
     }
 
-    const application = await prisma.application.create({
-      data: {
-        exhibitionId: ex.id,
-        userId,
-        status: 'ACCEPTED',
-        biography: (portfolio?.biography || '').trim() || '(초대 참여 — 작가 포트폴리오 참조)',
-        artworkImages: JSON.stringify(images),
-        career: portfolio?.career ?? null,
-        portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
-        termsAgreedAt: new Date(),
-        termsVersion: ARTIST_APPLY_TERMS_VERSION,
-        termsTextHash: ARTIST_APPLY_TERMS_HASH,   // apply 와 같이 — 어떤 전문에 동의했는지가 분쟁 근거다(2026-09-19)
-      },
-    });
+    // 정원 재확인 + 생성을 **한 트랜잭션**(Serializable)으로 — `apply` 와 같은 패턴. 예전엔 밖에서 세고 그냥 만들어
+    // 마지막 한 자리에 둘이 동시에 수락하면 정원을 넘겨 ACCEPTED 가 됐다(2026-09-19)
+    const application = await prisma.$transaction(async (tx) => {
+      const active = await tx.application.count({ where: { exhibitionId: ex.id, status: { not: 'REJECTED' } } });
+      if (active >= ex.capacity) throw new AppError('모집 인원이 마감되었습니다.', 400);
+      return tx.application.create({
+        data: {
+          exhibitionId: ex.id,
+          userId,
+          status: 'ACCEPTED',
+          biography: (portfolio?.biography || '').trim() || '(초대 참여 — 작가 포트폴리오 참조)',
+          artworkImages: JSON.stringify(images),
+          career: portfolio?.career ?? null,
+          portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
+          termsAgreedAt: new Date(),
+          termsVersion: ARTIST_APPLY_TERMS_VERSION,
+          termsTextHash: ARTIST_APPLY_TERMS_HASH,   // apply 와 같이 — 어떤 전문에 동의했는지가 분쟁 근거다(2026-09-19)
+        },
+      });
+    }, { isolationLevel: 'Serializable' });
     await prisma.exhibitionInvite.update({ where: { id }, data: { status: 'APPLIED' } });
 
     // 운영자에게 알림 + 단톡 합류 (둘 다 best-effort — 참여 자체는 이미 끝났다)

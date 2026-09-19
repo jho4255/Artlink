@@ -180,6 +180,7 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
         onPointerDown={() => setPaused(true)}
         onPointerUp={() => setPaused(false)}
         onPointerLeave={() => setPaused(false)}
+        onPointerCancel={() => setPaused(false)}   /* 스크롤 제스처가 포인터를 가져가면 up 이 안 온다 — 영원히 멈춘 채였다(2026-09-19) */
       >
         {isLoading && <div className="h-full w-full animate-pulse bg-white/5" />}
         {isError && <p className="grid h-full place-items-center px-8 text-center text-sm text-white/70">하이라이트를 열 수 없습니다.</p>}

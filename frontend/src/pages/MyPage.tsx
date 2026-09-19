@@ -1255,6 +1255,24 @@ function PortfolioFormatSection() {
     onSuccess: () => { invalidate(); setPicking(false); setRenaming(null); },
     onError: onFail('버전 저장에 실패했습니다.'),
   });
+
+  /* 디자인 저장 디바운스(2026-09-19) — 피커가 컨트롤을 만질 때마다 부르는데(슬라이더 한 번에 9회) 매번 포트폴리오 전체를 PUT 했고,
+     응답 순서가 뒤집히면 나중 선택이 DB 에서 사라졌다. 마지막 값만 0.8초 뒤에 보내고, 화면을 떠날 때 남은 게 있으면 바로 보낸다. */
+  const designTimer = useRef<number | null>(null);
+  const pendingDesign = useRef<PdfDesign | null>(null);
+  const flushDesign = useCallback(() => {
+    if (designTimer.current) { window.clearTimeout(designTimer.current); designTimer.current = null; }
+    const d = pendingDesign.current;
+    if (!d) return;
+    pendingDesign.current = null;
+    if (version) patchVersion.mutate({ id: version.id, design: d }); else designMutation.mutate(d);
+  }, [version, patchVersion, designMutation]);
+  const saveDesignDebounced = useCallback((d: PdfDesign) => {
+    pendingDesign.current = d;
+    if (designTimer.current) window.clearTimeout(designTimer.current);
+    designTimer.current = window.setTimeout(flushDesign, 800);
+  }, [flushDesign]);
+  useEffect(() => () => { flushDesign(); }, [flushDesign]);
   const createVersion = useMutation({
     mutationFn: (body: { name: string; workIds: number[]; design: unknown }) =>
       api.post('/portfolio/versions', body).then((r) => r.data as PortfolioVersion),
@@ -1375,7 +1393,7 @@ function PortfolioFormatSection() {
         key={version ? `v${version.id}` : 'default'}
         data={bookData}
         designValue={designValue}
-        onChangeDesign={(d) => (version ? patchVersion.mutate({ id: version.id, design: d }) : designMutation.mutate(d))}
+        onChangeDesign={saveDesignDebounced}
       />
 
       {picking && version && (

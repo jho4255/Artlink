@@ -86,8 +86,11 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     onError: (e: any) => toast.error(e.response?.data?.error || '상태 변경 실패'),
   });
 
+  const [batchPending, setBatchPending] = useState(false);
   const batchUpdate = async (status: string) => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || batchPending) return;   // 이중 클릭이면 PATCH 가 두 벌 나갔다(2026-09-19)
+    setBatchPending(true);
+    try {
     const results = await Promise.allSettled(Array.from(selectedIds).map(appId =>
       api.patch(`/exhibitions/${exhibitionId}/applications/${appId}`, { status })));
     invalidate();
@@ -97,6 +100,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     else toast.error(`${ok}건 변경, ${fail}건 실패`);
     setSelectedIds(new Set());
     setBatchStatus('');
+    } finally { setBatchPending(false); }
   };
 
   const handlePdf = async (app: any) => {
@@ -195,7 +199,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
               <option value="ACCEPTED">수락</option>
               <option value="REJECTED">거절</option>
             </select>
-            <button onClick={() => { if (!batchStatus) return; batchStatus === 'ACCEPTED' ? setAcceptTarget({ type: 'batch' }) : batchUpdate(batchStatus); }} disabled={!batchStatus} className="px-3 min-h-[40px] text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30">적용</button>
+            <button onClick={() => { if (!batchStatus) return; batchStatus === 'ACCEPTED' ? setAcceptTarget({ type: 'batch' }) : batchUpdate(batchStatus); }} disabled={!batchStatus || batchPending} className="px-3 min-h-[40px] text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30">{batchPending ? '변경 중...' : '적용'}</button>
           </div>
         )}
       </div>

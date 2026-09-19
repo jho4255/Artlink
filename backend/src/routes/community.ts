@@ -10,6 +10,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { shouldCountView } from '../lib/viewCount';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
@@ -248,8 +249,9 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       : false;
 
     // 조회수 +1 (작성자 본인 조회는 세지 않는다 — 자기 글 새로고침으로 부풀지 않게)
+    // ⚠️ 같은 사람이 30분 안에 다시 열어도 안 센다 — 좋아요·댓글이 상세를 invalidate 해 하트 껐다 켜면 +2 였다(2026-09-19)
     const isAuthor = viewerId != null && viewerId === post.authorId;
-    const viewCount = isAuthor ? post.viewCount : (await prisma.post.update({
+    const viewCount = isAuthor || !shouldCountView(`post:${id}`, viewerId ?? req.ip ?? '') ? post.viewCount : (await prisma.post.update({
       where: { id }, data: { viewCount: { increment: 1 } }, select: { viewCount: true },
     })).viewCount;
 

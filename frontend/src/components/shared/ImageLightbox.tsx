@@ -112,7 +112,7 @@ export default function ImageLightbox({ images, initialIndex, onClose, onIndexCh
       <motion.img
         key={index}
         src={images[index]}
-        alt=""
+        alt={`작품 ${index + 1} / ${images.length}`}
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}

@@ -78,7 +78,6 @@ const AuthCallbackPage = lazyWithReload(() => import('@/pages/AuthCallbackPage')
 const PrivacyPage = lazyWithReload(() => import('@/pages/PrivacyPage'));
 const TermsPage = lazyWithReload(() => import('@/pages/TermsPage'));
 const OperationPage = lazyWithReload(() => import('@/pages/OperationPage'));
-const OperationClassicPage = lazyWithReload(() => import('@/pages/OperationClassicPage'));
 const OperationPrintPage = lazyWithReload(() => import('@/pages/OperationPrintPage'));
 
 // 인쇄 전용 라우트(레이아웃 없음)용 지연 로딩 폴백
@@ -88,6 +87,11 @@ function RouteFallback() {
       <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-400" />
     </div>
   );
+}
+
+function LegacyOperationRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/exhibitions/${id}/operation/new`} replace />;
 }
 
 export default function App() {
@@ -110,9 +114,8 @@ export default function App() {
         <Route path="/exhibitions/:id/operation/new" element={
           <ProtectedRoute><OperationPage /></ProtectedRoute>
         } />
-        <Route path="/exhibitions/:id/operation" element={
-          <ProtectedRoute><OperationClassicPage /></ProtectedRoute>
-        } />
+        {/* 옛 운영페이지 주소 — 2026-09-10 이전 알림이 들고 있다. 복붙본(OperationClassicPage)은 recruitOnly 게이팅이 없어 새 화면으로 보낸다(2026-09-19) */}
+        <Route path="/exhibitions/:id/operation" element={<LegacyOperationRedirect />} />
         <Route path="/shows" element={<ShowsPage />} />
         <Route path="/shows/new" element={<ProtectedRoute><ShowRegisterPage /></ProtectedRoute>} />
         <Route path="/shows/:id" element={<ShowDetailPage />} />
