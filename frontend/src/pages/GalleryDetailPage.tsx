@@ -398,7 +398,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   // 모집 중(D-day 남음)인 공모만 카드로. 지난 것은 아래 '지난 전시·아트페어'에.
   const openCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.deadline) >= 0);
   // 공모만 진행한 공고(exhibitDate null)는 마감일이 지나면 '지난' 것으로 — 전시 일자가 없다
-  const pastCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.exhibitDate ?? e.deadline) < 0);
+  // 모집이 끝난 공모 전부(전시 중 포함) — 예전엔 마감일은 지났는데 전시일은 안 지난 공모가 어느 섹션에도 없었다(2026-09-19)
+  const pastCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.deadline) < 0);
+  const isOngoingCall = (e: { exhibitDate: string | null }) => !!e.exhibitDate && getDday(e.exhibitDate) >= 0;
   const artists = gallery.artists ?? [];
   const archives = gallery.archives ?? [];
   const requireLogin = () => { setPostLoginRedirect(location.pathname); toast('로그인이 필요합니다.'); navigate('/login'); };
@@ -840,7 +842,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                           {exhibitionTypeLabels[ex.type]} · {ex.exhibitDate ? `전시일: ${new Date(ex.exhibitDate).toLocaleDateString('ko')}` : `공모 마감: ${new Date(ex.deadline).toLocaleDateString('ko')}`}
                         </p>
                       </div>
-                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">종료</span>
+                      {isOngoingCall(ex)
+                        ? <span className="text-xs text-accent bg-accent/10 px-2 py-1 rounded">전시 중</span>
+                        : <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">종료</span>}
                     </div>
 
                     {/* 홍보 사진 그리드 (모든 유저에게 표시) */}
@@ -1103,7 +1107,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                             )}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-700 mt-2">{review.content}</p>
+                        <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">{review.content}</p>
                         {review.imageUrl && (
                           <img
                             src={review.imageUrl}
@@ -1259,11 +1263,8 @@ function GalleryImageCarousel({
         e.preventDefault();
         return;
       }
-      // 세로 휠은 캐러셀이 삼키지 않고 페이지가 스크롤되도록 전달
-      if (e.deltaY !== 0) {
-        e.preventDefault();
-        window.scrollBy({ top: e.deltaY, behavior: 'auto' });
-      }
+      // 세로 휠은 **브라우저에 맡긴다** — 직접 scrollBy 하면 Firefox(deltaMode=line, 3px)에서 거의 안 움직이고 Ctrl+휠 확대도 막혔다(2026-09-19).
+      // 캐러셀은 overflow-x 만 스크롤이라 세로 휠을 삼키지 않는다.
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);

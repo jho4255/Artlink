@@ -3992,14 +3992,21 @@ function HeroManageSection() {
             <Eye size={14} /> {preview ? '미리보기 닫기' : '미리보기'}
           </button>
           {preview && form.imageUrl && (
-            <div className="relative w-full h-40 rounded-lg overflow-hidden">
-              <img src={form.imageUrl} alt="" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-              <div className="absolute bottom-3 left-3">
-                <p className="text-white font-bold text-sm">{form.title || '제목'}</p>
-                <p className="text-white/70 text-xs">{form.description || '설명'}</p>
+            /* 실제 배너는 자르지 않고(contain) 폰에서는 모바일 전용 이미지를 쓴다(규칙 48) — 미리보기도 같아야 올린 사진이 어떻게 보일지 안다(2026-09-19) */
+            <div className="grid gap-3 sm:grid-cols-[3fr_1fr]">
+              <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
+                <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />
+                <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">데스크톱</span>
+                <div className="absolute bottom-3 left-3">
+                  <p className="text-white font-bold text-sm drop-shadow">{form.title || '제목'}</p>
+                  <p className="text-white/80 text-xs drop-shadow">{form.description || '설명'}</p>
+                </div>
+                {form.linkUrl && <span className="absolute bottom-3 right-3 text-xs bg-white text-gray-900 px-2 py-1 rounded">바로가기 →</span>}
               </div>
-              {form.linkUrl && <span className="absolute bottom-3 right-3 text-xs bg-white text-gray-900 px-2 py-1 rounded">바로가기 →</span>}
+              <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
+                <img src={form.mobileImageUrl || form.imageUrl} alt="" className="w-full h-full object-contain" />
+                <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">모바일{form.mobileImageUrl ? '' : ' (전용 이미지 없음)'}</span>
+              </div>
             </div>
           )}
           {preview && !form.imageUrl && (

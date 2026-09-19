@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Heart, X, User, MessageCircle } from 'lucide-react';
@@ -96,7 +97,11 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
 
   const handleLike = () => {
     if (!isAuthenticated) {
-      toast.error('로그인이 필요합니다.');
+      // 토스트만 띄우고 끝나면 로그인해도 다른 곳으로 떨어진다 — 이 자리로 돌아오게(2026-09-19)
+      setPostLoginRedirect(window.location.pathname + window.location.search);
+      toast('로그인 후 좋아요를 누를 수 있습니다.');
+      onClose();
+      navigate('/login');
       return;
     }
     likeMutation.mutate();

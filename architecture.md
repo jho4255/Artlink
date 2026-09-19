@@ -2122,3 +2122,8 @@ operatorUserIds(ex)                알림 발송 대상 전부
   `award` 포함·기존 입력 보존 · 빈 작품 칸만 있으면 "출품작을 등록해주세요" · 일괄 상태 변경 pending/이중 클릭 방지 · 추가 질문 maxSelect>선택지 경고 ·
   `Thumb` 빈 src 방어(홈 `src=""` 경고) · 라이트박스 alt · 하이라이트 뷰어 `pointercancel` · `ProtectedRoute` 가 가려던 곳 기억 ·
   카카오 state 저장값 없으면 실패 · PDF 디자인 저장 0.8초 디바운스 + 언마운트 flush(`MyPage PortfolioFormatSection`).
+
+## 전수 버그 감사 P2 4차 수정 (2026-09-19)
+할 일 보드 드롭 표시선 좌표계 통일 · 히어로 미리보기 데스크톱/모바일 두 칸(contain) · 작가 홈페이지 테마 배경 `min-h-[calc(100vh-4rem)]` ·
+작품 모달 비로그인 좋아요 → 로그인 후 그 자리로 · 갤러리 상세 이력에 '전시 중'(모집 끝·전시 진행) 배지 · 리뷰 본문 `overflow-wrap` ·
+갤러리 캐러셀 세로 휠을 브라우저에 맡김(Firefox 3px·Ctrl+휠) · 로그인 상태에서 `/login` → 마이페이지 · Layout 하단 여백 +1px(탭바 테두리) · `AdSlot` 비로그인 미호출.

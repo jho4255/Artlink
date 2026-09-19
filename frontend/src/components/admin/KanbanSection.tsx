@@ -417,9 +417,11 @@ function BoardSection({ board, members, collapsed, onToggleCollapse, onEdit, onD
               <p className="py-4 text-center text-sm text-gray-400">남은 할 일이 없습니다.</p>
             )}
 
+            {/* 표시선 인덱스는 `onDragOverRow` 가 드래그 중인 항목을 **뺀** 배열(rest) 기준으로 넣는다 — 렌더도 같은 좌표계로 봐야
+                끌고 있는 항목이 목표보다 위에 있을 때 한 칸 어긋나지 않는다(2026-09-19) */}
             {openItems.map((item, i) => (
               <div key={item.id}>
-                {draggingId !== null && dropIndex === i && <DropLine />}
+                {draggingId !== null && item.id !== draggingId && dropIndex === openItems.filter((x, k) => k < i && x.id !== draggingId).length && <DropLine />}
                 <ItemRow
                   item={item}
                   dragging={draggingId === item.id}

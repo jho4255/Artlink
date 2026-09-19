@@ -39,6 +39,9 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  // 로그인한 채로 /login 에 오면 로그인 화면이 그대로 떴다(2026-09-19)
+  useEffect(() => { if (isAuthenticated) navigate('/mypage', { replace: true }); }, [isAuthenticated, navigate]);
 
   const handleKakaoLogin = () => {
     const state = crypto.randomUUID();

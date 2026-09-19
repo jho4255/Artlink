@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * 광고 슬롯 — Admin 이 등록한 자체 배너를 노출(사이드바 하단 등).
@@ -14,10 +15,12 @@ interface Ad { id: number; imageUrl: string; title: string; linkUrl: string }
 
 export default function AdSlot({ className = '' }: { className?: string }) {
   const navigate = useNavigate();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { data = [] } = useQuery<Ad[]>({
     queryKey: ['ads'],
     queryFn: () => api.get('/ads').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
+    enabled: isAuthenticated,
   });
 
   const ad = data[0];

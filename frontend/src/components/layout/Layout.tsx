@@ -25,7 +25,7 @@ export default function Layout() {
 
   return (
     // pb — 모바일 하단 고정 탭바(BottomTabBar) 높이만큼 비워 본문·푸터가 가리지 않게 (iOS safe-area 포함)
-    <div className="min-h-screen bg-white flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="min-h-screen bg-white flex flex-col pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] lg:pb-0">
       <Navbar />
       {/* 본문 + 우측 세로 메뉴(lg↑, 로그인 시에만).
           min-w-0 필수 — 없으면 안쪽 표·긴 제목의 min-content 가 폭을 밀어 메뉴를 화면 밖으로 낸다(CLAUDE.md 27번) */}

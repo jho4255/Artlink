@@ -166,7 +166,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   );
 
   return (
-    <div style={themeCssVars(theme)} className="min-h-[70vh]">
+    <div style={themeCssVars(theme)} className="min-h-[calc(100vh-4rem)]">   {/* 어두운 테마에서 아래쪽 흰 띠가 남았다 — Layout 의 main 이 flex-1 이라도 이 div 가 늘어나야 한다(2026-09-19) */}
       <div className="max-w-7xl mx-auto px-6 md:px-12 pt-8 pb-14 md:pt-12 md:pb-20">
         {/* 하이라이트 앨범 — ArtStory 와 같은 컴포넌트를 쓴다(따로 만들면 어긋난다) */}
         {highlights && highlights.length > 0 && (
