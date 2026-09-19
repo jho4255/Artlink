@@ -76,8 +76,15 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 // Rate limiting (보안: 과도한 요청 방지, 테스트 시 비활성화)
 // 15분에 300회로 완화 (기존 100회 → SPA 특성상 페이지 로드에 다수 API 호출 필요)
 // DISABLE_RATE_LIMIT=true 시 비활성화 (로컬 E2E 전용 — 운영에선 절대 설정하지 않음)
+// ⚠️ 배경 폴링은 전역 한도에서 뺀다 (2026-09-19). 로그인 사용자가 메시지 화면만 열어둬도 15분에
+//    방 8초(112) + 목록 15초(60) + 대화 배지 30초(30) + 알림 배지 30초(30) = **232회** 라 300 을 거의 다 먹었고,
+//    탭 둘이면 정상 사용자가 429 를 맞았다. IP 키라 같은 NAT 뒤 사용자끼리 한 버킷을 나누므로 더 빨리 터진다.
+//    폴링 GET 만 넉넉한 별도 한도(1,500/15분 ≈ 탭 6개)로 두고, 쓰기·나머지 API 는 종전 300 그대로.
+const isPollingRequest = (req: express.Request) =>
+  req.method === 'GET' && (/^\/chats(\/|$)/.test(req.path) || req.path === '/notifications/unread-count');
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
-  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: isPollingRequest }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));
   app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
 }
 

@@ -2652,8 +2652,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   const dateError = useMemo(() => validateExhibitionDates({
     deadlineStart: form.deadlineStart || undefined,
     deadline: form.deadline,
-    exhibitStartDate: form.exhibitStartDate || undefined,
-    exhibitDate: form.exhibitDate,
+    exhibitStartDate: form.recruitOnly ? undefined : (form.exhibitStartDate || undefined),
+    exhibitDate: form.recruitOnly ? undefined : (form.exhibitDate || undefined),
     // 공모만 진행하면 자료제출 단계가 없다 — 남아 있는 입력값으로 순서 검사를 하면 안 된다
     submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
   }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
@@ -2816,7 +2816,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
               <ExhibitionScopePicker
                 recruitOnly={form.recruitOnly}
                 onChange={(next) => {
-                  setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '' } : {}) });
+                  setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) });
                   setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; });
                 }}
               />
@@ -2856,11 +2856,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       <label className={`text-xs ${formErrors.has('deadline') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
                       <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
-                    <div>
+                    {/* ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자 칸도 그리지 않는다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
+                    <div className={form.recruitOnly ? 'hidden' : ''}>
                       <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
                       <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
-                    <div>
+                    <div className={form.recruitOnly ? 'hidden' : ''}>
                       <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
                       <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
                     </div>
@@ -2912,9 +2913,9 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                     if (!form.title) { missing.push('제목'); errorFields.add('title'); }
                     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
                     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
-                    if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+                    if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
                     if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
-                    if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
+                    if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
                     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
                     const cleanedCustomFields = sanitizeCustomFields(form.customFields);
                     const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);

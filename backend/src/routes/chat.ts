@@ -4,7 +4,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
-import { isParticipant, openDirectChat, listChats, readChat, unreadChatCount } from '../lib/chat';
+import { isParticipant, openDirectChat, listChats, readChat, unreadChatCount, notifyChatMessage, markChatNotificationsRead, attachmentLabel } from '../lib/chat';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
 
@@ -118,6 +118,7 @@ router.get('/:id', async (req, res, next) => {
       where: { chatId_userId: { chatId, userId: me } },
       data: { lastReadAt: new Date() },
     });
+    markChatNotificationsRead(chatId, me).catch(() => {});
     res.json(data);
   } catch (e) { next(e); }
 });
@@ -159,6 +160,12 @@ router.post('/:id/messages', validate(sendSchema), async (req, res, next) => {
       }),
     ]);
 
+    // 알림 벨에도 남긴다 — best-effort (lib/chat.ts notifyChatMessage 참고)
+    try {
+      const preview = content || attachmentLabel(attachmentType);
+      await notifyChatMessage(chatId, me, message.sender.nickname || message.sender.name || '회원', preview);
+    } catch { /* 메시지는 이미 저장됐다 */ }
+
     res.status(201).json(message);
   } catch (e) { next(e); }
 });
@@ -175,6 +182,7 @@ router.post('/:id/read', async (req, res, next) => {
       where: { chatId_userId: { chatId, userId: me } },
       data: { lastReadAt: new Date() },
     });
+    markChatNotificationsRead(chatId, me).catch(() => {});
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

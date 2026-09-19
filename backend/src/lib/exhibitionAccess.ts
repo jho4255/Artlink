@@ -73,7 +73,8 @@ export function operatorUserIds(ex: OperatorShape | null | undefined): number[] 
 export async function exhibitionNotifyTargets(ex: OperatorShape | null | undefined): Promise<number[]> {
   const direct = operatorUserIds(ex);
   if (direct.length || ex?.hostType !== 'ADMIN') return direct;
-  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+  // deletedAt — 탈퇴한 관리자가 알림을 받고 공모 단톡 참여자로 영구 등록되던 구멍(2026-09-19)
+  const admins = await prisma.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true } });
   return admins.map((a) => a.id);
 }
 

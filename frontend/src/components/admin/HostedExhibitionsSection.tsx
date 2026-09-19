@@ -255,10 +255,10 @@ export default function HostedExhibitionsSection() {
   const dateError = useMemo(() => validateExhibitionDates({
     deadlineStart: form.deadlineStart || undefined,
     deadline: form.deadline,
-    exhibitStartDate: form.exhibitStartDate || undefined,
+    exhibitStartDate: form.recruitOnly ? undefined : (form.exhibitStartDate || undefined),
     // 공모만 진행하면 자료제출 단계가 없다 — 남아 있는 입력값으로 순서 검사를 하면 안 된다
     submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
-    exhibitDate: form.exhibitDate,
+    exhibitDate: form.recruitOnly ? undefined : (form.exhibitDate || undefined),
   }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
 
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
@@ -302,9 +302,10 @@ export default function HostedExhibitionsSection() {
     if (!form.title) { missing.push('제목'); errorFields.add('title'); }
     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
-    if (!form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+    // ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자를 요구하지 않는다(2026-09-19)
+    if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
     if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
-    if (!form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
+    if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
     if (!form.description) { missing.push('소개'); errorFields.add('description'); }
     setFormErrors(errorFields);
     if (missing.length > 0) {
@@ -348,7 +349,7 @@ export default function HostedExhibitionsSection() {
 
           <ExhibitionScopePicker
             recruitOnly={form.recruitOnly}
-            onChange={(next) => setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '' } : {}) })}
+            onChange={(next) => setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) })}
           />
 
           <GalleryPicker selected={managerGalleries} onChange={(next) => { setManagerGalleries(next); clearError('galleries'); }} error={formErrors.has('galleries')} />
@@ -391,8 +392,8 @@ export default function HostedExhibitionsSection() {
                 {(([
                   ['deadlineStart', '공모 시작일'],
                   ['deadline', '공모 마감일'],
-                  ['exhibitStartDate', '전시 시작일'],
-                  ['exhibitDate', '전시 종료일'],
+                  // ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자 칸도 그리지 않는다(2026-09-19)
+                  ...(form.recruitOnly ? [] : [['exhibitStartDate', '전시 시작일'] as const, ['exhibitDate', '전시 종료일'] as const]),
                   // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이.
                   // ⚠️ 공모만 진행하면 그 단계가 없으므로 칸 자체를 그리지 않는다(비활성이 아니라 없앤다).
                   ...(form.recruitOnly ? [] : [['submissionDeadline', '작가 자료제출 마감일'] as const]),

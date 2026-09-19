@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2114 tests** (2026-09-19): Backend 1365 (supertest, `artlink_test` DB 순차), Frontend 749 (jsdom)
+- **2120 tests** (2026-09-19): Backend 1371 (supertest, `artlink_test` DB 순차), Frontend 749 (jsdom)
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
@@ -145,6 +145,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️⚠️ **알림은 `operatorUserIds` 가 아니라 `exhibitionNotifyTargets` 로 보낼 것.** 갤러리를 안 낀 공모는
       운영자 목록이 비어서, 그대로 두면 새 지원자가 들어와도 **아무에게도 알림이 안 간다**. 그럴 때만 Admin 전원에게 보낸다.
       단톡방(`ensureExhibitionChat`)도 같은 함수를 쓴다 — 안 그러면 **작가들만 있는 방**이 되어 주최자가 공지도 못 한다.
+      ⚠️ 2026-09-19 전수 감사에서 **세 곳이 빠져 있었다** — 정산 이의(`operation.ts respond`, 이의가 와도 몰라 정산이 영구 정지),
+      정산 재촉·D+20 자동종료 스윕(`lib/settlementReminder.ts`), 초대 수락(`exhibition.ts`, `ex.gallery?.ownerId` 한 명만).
+      `operatorUserIds` 를 알림 대상으로 쓰는 코드가 남아 있으면 그게 다음 사고다 — `grep operatorUserIds` 로 훑을 것.
+      회귀는 `admin-hosted-exhibition.test.ts`(갤러리 없는 공모의 지원·초대 수락 알림이 Admin 에게).
     - ⚠️ 갤러리 단위 지원 통계(`galleryApplicationStats`)는 `galleryId` 가 null 이면 **빈 Map**. 전체 공모를 합산해
       메우려 하지 말 것 — 갤러리 단위가 아닌 숫자가 같은 라벨로 나간다
 23. **공개 상세 라우트는 `status !== 'APPROVED'` 를 먼저 막을 것** — 목록만 거르고 상세를 열어두면 목록에 없는 심사중·반려 항목이 **주소로 id 만 치면 비로그인에게 다 보인다**(2026-08-15 수정). 당사자·Admin 만 열고 **404**로 응답(403은 존재를 알려준다). 탈퇴(WITHDRAWN)는 Admin 전용 유지. 새 공개 상세를 만들면 `private-detail.test.ts` 에 케이스를 추가할 것
@@ -219,6 +223,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       **같아야 한다** — 어긋나면 화면과 서버가 다른 답을 낸다(회귀는 `chatView.test.ts`).
     - ⚠️ 맨 아래로 스크롤하는 조건을 **개수**로 두지 말 것 — [이전 메시지]로 위를 채웠을 때도 맨 아래로 튕긴다.
       **마지막 메시지 id** 를 본다. 위에 붙일 땐 늘어난 높이만큼 `scrollTop` 을 되돌려 보던 자리를 지킨다.
+- **새 메시지는 알림 벨에도 남는다** (`CHAT_MESSAGE`, 2026-09-19). 그 전엔 ArtTalk 에 알림이 아예 없어 유일한 신호가 30초 폴링
+  배지였고, 며칠 뒤 접속한 작가의 벨은 비어 있었다("갤러리가 문의를 보냈는데 왜 몰랐지"). `lib/chat.ts notifyChatMessage` 가
+  **방마다 미읽음 하나**로 합치고(`refKey: chat:<id>`, 작품 좋아요와 같은 방식), 방을 열면(`GET /:id`·`POST /:id/read`)
+  `markChatNotificationsRead` 가 읽음 처리한다. ⚠️ 메시지마다 행을 쌓지 말 것 — 단톡 20명 × 메시지 수가 된다.
+- ⚠️ **폴링 GET(`/chats*`·`/notifications/unread-count`)은 전역 rate limit(300/15분)에서 뺀다** (`index.ts`, 2026-09-19).
+  메시지 화면만 열어둬도 15분에 232회라 탭 둘이면 정상 사용자가 429 를 맞았다. 폴링만 별도 한도(1,500/15분). 폴링 주기를
+  줄이거나 새 폴링을 추가하면 `isPollingRequest` 도 같이 볼 것.
 - ⚠️ **안읽음을 방마다 세지 말 것(N+1)** (2026-09-04). `unreadChatCount` 는 **로그인한 모든 사용자가 30초마다**
   (Navbar 배지), `listChats` 는 15초마다 부른다. 예전엔 둘 다 방 수만큼 쿼리를 돌아, 방이 늘고 사용자가 늘수록
   **배경 폴링이 DB 커넥션을 다 먹는** 구조였다(실측 방1 13ms → 방17 25ms). 기준 시각(`lastReadAt`)이 방마다
@@ -255,6 +266,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   답글(`parentId`)은 **방 주인만**, 최상위 글에만(1단계). 삭제는 글쓴이·방 주인·Admin. 회귀는 `guestbook.test.ts` 가 두 방향을 다 본다.
 - **글/스토리 사진은 우리 저장소 주소만** — `ownImageUrls`(community.ts·story.ts)가 `safeFileUrl` + (`/uploads/` | `matchR2Base`)로 외부 URL 을 거른다(주입 방지).
 - [소식] 진입점은 **마이페이지 사이드바 맨 아래 링크**(`MYPAGE_FOOTER_LINKS`) — 로그인 필요라 Navbar 가운데 메뉴엔 못 둔다(비로그인이 눌렀다 튕긴다).
+  ⚠️ 같은 자리의 **[1:1 문의]는 사이드바가 `hidden lg:block` 이라 모바일·비로그인에겐 길이 없었다**(2026-09-19). 지금은 `Layout` 푸터
+  (개인정보처리방침·이용약관 옆 [고객센터], 전 화면·비로그인 포함)와 모바일 햄버거(로그아웃 위 [1:1 문의])에도 있다.
 - **스토리에도 좋아요·댓글**(`StoryLike`/`StoryComment`, 비정규화 카운트). 댓글 달면 스토리 주인에게 `STORY_COMMENT` 알림(/feed). 댓글 삭제는 작성자·스토리 주인·Admin.
 - **소식 탭 이름은 ArtStory** (로고 규칙: Art**Story**, 사이드바 픽토그램은 사람 상반신 `User`). 진입점은 사이드바 footer 링크.
 - **커뮤니티 탭·공지·고정 — 전부 Admin 전용** (2026-09-04, `PostCategory` + `Post.notice`/`pinnedAt`,
@@ -454,6 +467,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   쿼리를 두면 서버가 400 을 주고 화면엔 이유 없는 에러만 남는다.
 - ⚠️ 자료제출 마감일은 **받지도 저장하지도 않는다**(항상 null). 보내와도 무시한다 — 없는 단계의 기한이
   작가 화면에 뜨면 안 된다. 등록 폼도 칸을 **비활성이 아니라 아예 없앤다**(회색으로 남기면 "왜 못 쓰지" 를 묻게 된다).
+- ⚠️⚠️ **전시 시작·종료일도 같다** (2026-09-19 사용자 지적 → `Exhibition.exhibitDate` **nullable**, 마이그레이션 `20260919120000_exhibit_date_optional`).
+  공모만 진행하면 전시가 없는데 폼이 전시 일자를 필수로 받고 있었다. 지금은 `withStageRules` 가 `recruitOnly` 가 아닐 때만
+  `exhibitDate` 를 요구하고, `recruitOnly` 면 보내와도 **저장하지 않는다**(있는 척하면 상세에 '전시 기간'이 뜬다). 두 등록 폼은
+  칸을 없애고 토글 때 값을 비운다. **읽는 쪽은 전부 `exhibitDate` 가 null 일 수 있다고 봐야 한다** — 프론트 타입이 `string | null`
+  이라 tsc 가 잡지만 백엔드는 `as any` 가 많다(`grep exhibitDate`). 상세는 줄을 안 그리고, 갤러리 페이지의 '지난 공모' 판정은
+  `exhibitDate ?? deadline`. 회귀는 `exhibition-recruit-only.test.ts` 「전시 일자를 받지 않는다」 4개.
+  ⚠️ 아트링크 주최 등록(`POST /hosted`)에도 `withStageRules` 를 씌웠다 — 그 전엔 갤러리용에만 있어 스키마 주석과 어긋났다.
 - ⚠️ 정산 재촉 스윕(`lib/settlementReminder.ts`)의 후보에서 `recruitOnly: false` 로 거를 것 — 없는 일을 하라는 재촉이 된다.
 - 고르는 칸은 **`components/shared/ExhibitionScopePicker.tsx` 하나**를 갤러리 폼과 아트링크 주최 폼이 같이 쓴다.
   ⚠️ **고르면 무엇이 사라지는지 적어 줄 것** — 이름만 봐서는 자료제출·정산이 통째로 없어지는 선택인 줄 모른다.

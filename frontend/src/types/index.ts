@@ -100,8 +100,9 @@ export interface Exhibition {
   type: 'SOLO' | 'GROUP' | 'ART_FAIR';
   deadline: string;
   deadlineStart?: string;
-  exhibitDate: string;
-  exhibitStartDate?: string;
+  /** 전시 종료일 — ⚠️ 공모만 진행(`recruitOnly`)이면 전시가 없어 **null** (2026-09-19). 반드시 있는지 보고 그릴 것 */
+  exhibitDate: string | null;
+  exhibitStartDate?: string | null;
   /**
    * 마감 판정에 필요 — **마감일과 별개다.** 마감일이 남았는데 갤러리가 수동으로 모집을 닫거나
    * 전시를 종료한 경우가 있어, 마감일만 보면 그런 공고에 지원 경로가 열린 채로 남는다.

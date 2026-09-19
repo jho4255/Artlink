@@ -44,6 +44,45 @@ async function createApproved(extra: Record<string, unknown>) {
   return { status: res.status, body: res.body, id: res.body.id as number };
 }
 
+describe('공모만 진행하면 전시 일자를 받지 않는다 (2026-09-19 사용자 지적)', () => {
+  it('★ recruitOnly 는 전시 시작·종료일 없이 등록되고 exhibitDate 가 null 로 남는다', async () => {
+    const res = await request.post('/api/exhibitions')
+      .set('Authorization', `Bearer ${galleryToken}`)
+      .send({ ...basePayload(), galleryId, recruitOnly: true, exhibitStartDate: undefined, exhibitDate: undefined });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const row = await testPrisma.exhibition.findUnique({ where: { id: res.body.id } });
+    expect(row?.exhibitDate).toBeNull();
+    expect(row?.exhibitStartDate).toBeNull();
+    // 공개 상세도 그대로 열린다(null 로 500 이 나면 안 된다)
+    await testPrisma.exhibition.update({ where: { id: res.body.id }, data: { status: 'APPROVED' } });
+    const detail = await request.get(`/api/exhibitions/${res.body.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.exhibitDate).toBeNull();
+  });
+  it('★ recruitOnly 인데 전시 일자를 보내도 저장하지 않는다 (있는 척하면 화면에 기간이 뜬다)', async () => {
+    const res = await request.post('/api/exhibitions')
+      .set('Authorization', `Bearer ${galleryToken}`)
+      .send({ ...basePayload(), galleryId, recruitOnly: true });
+    expect(res.status).toBe(201);
+    const row = await testPrisma.exhibition.findUnique({ where: { id: res.body.id } });
+    expect(row?.exhibitDate).toBeNull();
+  });
+  it('전시까지 진행하면 전시 종료일은 여전히 필수 → 400', async () => {
+    const res = await request.post('/api/exhibitions')
+      .set('Authorization', `Bearer ${galleryToken}`)
+      .send({ ...basePayload(), galleryId, recruitOnly: false, submissionDeadline: future(30), exhibitDate: undefined });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('전시 종료일');
+  });
+  it('아트링크 주최 공모도 같다 — recruitOnly 면 전시 일자 없이 등록', async () => {
+    const res = await request.post('/api/exhibitions/hosted')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ...basePayload(), galleryIds: [], recruitOnly: true, exhibitStartDate: undefined, exhibitDate: undefined });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect((await testPrisma.exhibition.findUnique({ where: { id: res.body.id } }))?.exhibitDate).toBeNull();
+  });
+});
+
 async function applyAndAccept(exhibitionId: number) {
   await testPrisma.portfolio.upsert({
     where: { userId: ARTIST }, update: {}, create: { userId: ARTIST, biography: 'b' },

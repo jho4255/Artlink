@@ -54,7 +54,8 @@ const exhibitionCreateSchema = z.object({
   type: z.enum(['SOLO', 'GROUP', 'ART_FAIR'], { message: '유효한 전시 유형을 선택해주세요.' }),
   deadline: z.string().min(1, '마감일을 입력해주세요.'),
   deadlineStart: z.string().optional().nullable(),
-  exhibitDate: z.string().min(1, '전시 종료일을 입력해주세요.'),
+  /** 전시 종료일 — 전시까지 진행하면 **필수**, 공모만 진행(`recruitOnly`)이면 전시가 없으므로 받지 않는다(아래 `withStageRules`) */
+  exhibitDate: z.string().optional().nullable(),
   exhibitStartDate: z.string().optional().nullable(),
   /**
    * 자료제출 마감일.
@@ -80,9 +81,12 @@ const exhibitionCreateSchema = z.object({
  */
 const withStageRules = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
   schema.superRefine((v: any, ctx) => {
-    // 공모만 진행하면 자료제출 단계가 없다 — 날짜를 받지도, 요구하지도 않는다
+    // 공모만 진행하면 자료제출 단계도, 전시 자체도 없다 — 날짜를 받지도, 요구하지도 않는다 (2026-09-19: 전시 일자도)
     if (!v.recruitOnly && !v.submissionDeadline) {
       ctx.addIssue({ code: 'custom', path: ['submissionDeadline'], message: '자료제출 마감일을 입력해주세요.' });
+    }
+    if (!v.recruitOnly && !v.exhibitDate) {
+      ctx.addIssue({ code: 'custom', path: ['exhibitDate'], message: '전시 종료일을 입력해주세요.' });
     }
   });
 
@@ -606,7 +610,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
     const userId = req.user!.id;
     const invite = await prisma.exhibitionInvite.findUnique({
       where: { id },
-      include: { exhibition: { select: { id: true, title: true, capacity: true, deadline: true, status: true, recruitmentClosed: true, confirmed: true, ended: true, gallery: { select: { ownerId: true } } } } },
+      include: { exhibition: { select: { id: true, title: true, capacity: true, deadline: true, status: true, recruitmentClosed: true, confirmed: true, ended: true, hostType: true, gallery: { select: { ownerId: true } }, managers: { select: { gallery: { select: { ownerId: true } } } } } } },
     });
     if (!invite || invite.artistId !== userId) throw new AppError('초대를 찾을 수 없습니다.', 404);
 
@@ -646,17 +650,20 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
     });
     await prisma.exhibitionInvite.update({ where: { id }, data: { status: 'APPLIED' } });
 
-    // 갤러리에게 알림 + 단톡 합류 (둘 다 best-effort — 참여 자체는 이미 끝났다)
+    // 운영자에게 알림 + 단톡 합류 (둘 다 best-effort — 참여 자체는 이미 끝났다)
+    // ⚠️ `exhibitionNotifyTargets` — 예전엔 `ex.gallery?.ownerId` 한 명이라 갤러리 없는 아트링크 주최 공모는 0건,
+    //    운영 갤러리가 여럿이면 주관 1곳만 받았다. 지원 경로(`apply`)와 같은 규칙으로(2026-09-19 수정, 규칙 22).
     try {
-      if (ex.gallery?.ownerId) {
+      const receivers = await exhibitionNotifyTargets(ex as any);
+      if (receivers.length) {
         const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, nickname: true } });
-        await prisma.notification.create({
-          data: {
-            userId: ex.gallery.ownerId,
+        await prisma.notification.createMany({
+          data: receivers.map((uid) => ({
+            userId: uid,
             type: 'NEW_APPLICANT',
             message: `"${ex.title}" 초대를 ${me?.nickname || me?.name || '작가'}님이 수락해 참여합니다.`,
             linkUrl: operationLink(ex.id),
-          },
+          })),
         });
       }
     } catch { /* best-effort */ }
@@ -855,7 +862,7 @@ router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) =
 });
 
 // 아트링크 주최 공모 등록 (Admin 전용) — 승인 절차 없이 바로 게시
-router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCreateSchema), async (req, res, next) => {
+router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules(adminHostedCreateSchema)), async (req, res, next) => {
   try {
     const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
 
@@ -864,8 +871,11 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCre
 
     // 공모만 진행하면 자료제출 단계가 없다 → 날짜를 저장하지 않는다(있는 척하면 화면에 기한이 뜬다)
     const subDeadline = recruitOnly ? null : new Date(submissionDeadline);
-    if (subDeadline) {
-      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    // 공모만 진행하면 전시 자체가 없다 — 전시 일자도 저장하지 않는다(2026-09-19). 전시까지 진행하면 스키마가 exhibitDate 를 요구한다.
+    const exhibitEnd = recruitOnly || !exhibitDate ? null : new Date(exhibitDate);
+    const exhibitStart = recruitOnly || !exhibitStartDate ? null : new Date(exhibitStartDate);
+    if (subDeadline && exhibitEnd) {
+      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStart, exhibitEnd);
     }
 
     const safeImageUrl = safeFileUrl(imageUrl);
@@ -874,8 +884,8 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(adminHostedCre
         title, type,
         deadline: new Date(deadline),
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
-        exhibitDate: new Date(exhibitDate),
-        exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        exhibitDate: exhibitEnd,
+        exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
         capacity, region, description,
@@ -1054,8 +1064,11 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
 
     // 공모만 진행하면 자료제출 단계가 없다 → 날짜를 저장하지 않는다
     const subDeadline = recruitOnly ? null : new Date(submissionDeadline);
-    if (subDeadline) {
-      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStartDate ? new Date(exhibitStartDate) : null, new Date(exhibitDate));
+    // 공모만 진행하면 전시 자체가 없다 — 전시 일자도 저장하지 않는다(2026-09-19). 전시까지 진행하면 스키마가 exhibitDate 를 요구한다.
+    const exhibitEnd = recruitOnly || !exhibitDate ? null : new Date(exhibitDate);
+    const exhibitStart = recruitOnly || !exhibitStartDate ? null : new Date(exhibitStartDate);
+    if (subDeadline && exhibitEnd) {
+      assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStart, exhibitEnd);
     }
 
     const safeImageUrl = safeFileUrl(imageUrl);
@@ -1064,8 +1077,8 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
         title, type,
         deadline: new Date(deadline),
         deadlineStart: deadlineStart ? new Date(deadlineStart) : null,
-        exhibitDate: new Date(exhibitDate),
-        exhibitStartDate: exhibitStartDate ? new Date(exhibitStartDate) : null,
+        exhibitDate: exhibitEnd,
+        exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
         capacity, region, description, galleryId, imageUrl: safeImageUrl,
@@ -1122,6 +1135,7 @@ router.patch('/:id/submission-deadline', authenticate, async (req, res, next) =>
     }
 
     const start = exhibition.exhibitStartDate ?? exhibition.exhibitDate;
+    if (!start) throw new AppError('전시 일정이 없는 공모입니다.', 400);   // recruitOnly 는 위 assertFullExhibition 이 먼저 막지만 타입상 null 이 남는다
     if (!isAdmin && start <= new Date()) {
       throw new AppError('전시가 시작된 공모에는 자료제출 마감일을 설정할 수 없습니다.', 400);
     }
@@ -1129,7 +1143,7 @@ router.patch('/:id/submission-deadline', authenticate, async (req, res, next) =>
     const raw = req.body?.submissionDeadline;
     if (typeof raw !== 'string' || !raw.trim()) throw new AppError('자료제출 마감일을 입력해주세요.', 400);
     const next = new Date(raw);
-    assertSubmissionDeadline(next, exhibition.deadline, exhibition.exhibitStartDate, exhibition.exhibitDate);
+    assertSubmissionDeadline(next, exhibition.deadline, exhibition.exhibitStartDate, start);
 
     const updated = await prisma.exhibition.update({
       where: { id },

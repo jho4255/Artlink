@@ -138,6 +138,20 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
     expect(notes.map((n) => n.userId)).toContain(ADMIN);
   });
 
+  /* 2026-09-19 — 지원 경로만 고쳐져 있었고 초대 수락은 `ex.gallery?.ownerId` 한 명이라 갤러리 없는 공모에서 0건이었다 */
+  it('★ 갤러리 없는 공모의 초대 수락 알림도 Admin 에게 간다', async () => {
+    await testPrisma.notification.deleteMany();
+    // 초대 수락은 포트폴리오에서 작품을 가져오므로 사진이 한 장은 있어야 한다
+    const pf = await testPrisma.portfolio.create({ data: { userId: ARTIST, biography: 'b' } });
+    await testPrisma.portfolioImage.create({ data: { portfolioId: pf.id, url: '/uploads/inv.jpg', order: 0 } });
+    const { body: created } = await createHosted([]);
+    const inv = await testPrisma.exhibitionInvite.create({ data: { exhibitionId: created.id, artistId: ARTIST, senderId: ADMIN, message: '함께해요' } });
+    const res = await request.post(`/api/exhibitions/invites/${inv.id}/accept`).set('Authorization', `Bearer ${artistToken}`).send({});
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const notes = await testPrisma.notification.findMany({ where: { type: 'NEW_APPLICANT' } });
+    expect(notes.map((n) => n.userId)).toContain(ADMIN);
+  });
+
   it('★ 갤러리 없는 공모의 지원자 목록도 열린다 (갤러리 단위 통계는 첫 지원으로)', async () => {
     await testPrisma.portfolio.create({ data: { userId: ARTIST, biography: 'b' } });
     const { body: created } = await createHosted([]);

@@ -397,7 +397,8 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
 
   // 모집 중(D-day 남음)인 공모만 카드로. 지난 것은 아래 '지난 전시·아트페어'에.
   const openCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.deadline) >= 0);
-  const pastCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.exhibitDate) < 0);
+  // 공모만 진행한 공고(exhibitDate null)는 마감일이 지나면 '지난' 것으로 — 전시 일자가 없다
+  const pastCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.exhibitDate ?? e.deadline) < 0);
   const artists = gallery.artists ?? [];
   const archives = gallery.archives ?? [];
   const requireLogin = () => { setPostLoginRedirect(location.pathname); toast('로그인이 필요합니다.'); navigate('/login'); };
@@ -826,7 +827,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                   ),
                 })),
                 ...pastCalls.map(ex => ({
-                  sort: new Date(ex.exhibitDate).getTime(),
+                  sort: new Date(ex.exhibitDate ?? ex.deadline).getTime(),
                   node: (
                   <div key={ex.id} className="py-4 border-b border-gray-200">
                     <div className="flex justify-between items-start mb-2">
@@ -836,7 +837,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                           <HostBadge exhibition={ex} />
                         </div>
                         <p className="text-sm text-gray-500">
-                          {exhibitionTypeLabels[ex.type]} · 전시일: {new Date(ex.exhibitDate).toLocaleDateString('ko')}
+                          {exhibitionTypeLabels[ex.type]} · {ex.exhibitDate ? `전시일: ${new Date(ex.exhibitDate).toLocaleDateString('ko')}` : `공모 마감: ${new Date(ex.deadline).toLocaleDateString('ko')}`}
                         </p>
                       </div>
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">종료</span>

@@ -2068,3 +2068,16 @@ operatorUserIds(ex)                알림 발송 대상 전부
 
 남은 P1(갤러리 없는 주최 공모 알림 3곳, ArtTalk 새 메시지 알림, rate limit, 스토리 이웃공개 우회, 커뮤니티 수정 익명, recruitOnly 제출 버튼, 폼 접기 유실,
 운영 갤러리 전부 떼기, 지원서 글자수, 모바일 고객센터 링크, 하이라이트 수정/삭제, 커뮤니티 페이지네이션, 알림 링크 404, 초대만 받은 작가 빈 화면)은 감사 파일 참고.
+
+## 전수 버그 감사 2차 수정 + 공모만 진행 시 전시 일자 제거 (2026-09-19)
+
+| 결함 | 고친 곳 | 회귀 |
+|---|---|---|
+| 갤러리 없는 아트링크 주최 공모 알림 3곳 누락(정산 이의·재촉/자동종료·초대 수락) | `operation.ts respond`·`lib/settlementReminder.ts`·`exhibition.ts invites/accept` → `exhibitionNotifyTargets`; `exhibitionAccess.ts` Admin 조회에 `deletedAt:null` | `admin-hosted-exhibition.test.ts` 초대 수락 알림 |
+| ArtTalk 새 메시지 알림 없음 | `lib/chat.ts notifyChatMessage`(방마다 미읽음 하나, `refKey chat:<id>`) + `markChatNotificationsRead`(`GET /:id`·`POST /:id/read`) | `chat.test.ts` |
+| 폴링이 전역 rate limit 소진 | `index.ts` `isPollingRequest` → 전역 300 에서 skip, 폴링 전용 1,500 | — |
+| 모바일·비로그인 고객센터 링크 없음 | `Layout` 푸터 [고객센터], Navbar 햄버거 [1:1 문의] | — |
+| **공모만 진행인데 전시 일자 필수** | `Exhibition.exhibitDate` nullable(마이그레이션), `withStageRules` 조건부 필수, 두 폼 칸 제거·값 비움, 상세/갤러리 페이지 null 처리, `types.Exhibition.exhibitDate: string \| null` | `exhibition-recruit-only.test.ts` 4개 |
+
+- `POST /exhibitions/hosted` 에 `withStageRules` 적용(감사 의심 항목 확정 수정).
+- 프론트 `validateExhibitionDates` 는 `exhibitDate` 없으면 공모 기간만 검사한다.

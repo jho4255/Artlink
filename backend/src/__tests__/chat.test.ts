@@ -66,6 +66,25 @@ describe('갠톡 (1:1)', () => {
     expect(after.body.messages[0].read).toBe(true);
   });
 
+  /* 2026-09-19 — 그 전엔 ArtTalk 에 알림이 아예 없어 며칠 뒤 접속한 사람의 알림 벨이 비어 있었다. */
+  it('★ 새 메시지는 받는 사람 알림 벨에 남고(방마다 하나로 합침), 방을 열면 읽음이 된다', async () => {
+    const { body: { id } } = await openDirect(a1, 2);
+    await request.post(`/api/chats/${id}/messages`).set('Authorization', `Bearer ${a1}`).send({ content: '첫 번째' });
+    await request.post(`/api/chats/${id}/messages`).set('Authorization', `Bearer ${a1}`).send({ content: '두 번째 말' });
+
+    const rows = await testPrisma.notification.findMany({ where: { userId: 2, type: 'CHAT_MESSAGE' } });
+    expect(rows, '방 하나에 알림은 하나').toHaveLength(1);
+    expect(rows[0].linkUrl).toBe(`/messages?chat=${id}`);
+    expect(rows[0].message).toContain('두 번째 말');
+    expect(rows[0].read).toBe(false);
+    // 보낸 사람 본인에게는 없다
+    expect(await testPrisma.notification.count({ where: { userId: 1, type: 'CHAT_MESSAGE' } })).toBe(0);
+
+    await request.get(`/api/chats/${id}`).set('Authorization', `Bearer ${a2}`);   // 방을 열었다
+    const after = await testPrisma.notification.findFirst({ where: { userId: 2, type: 'CHAT_MESSAGE' } });
+    expect(after?.read).toBe(true);
+  });
+
   it('받은 사람의 안읽음에 잡히고, 열면 사라진다', async () => {
     const { body: { id } } = await openDirect(a1, 2);
     await request.post(`/api/chats/${id}/messages`).set('Authorization', `Bearer ${a1}`).send({ content: 'hi' });

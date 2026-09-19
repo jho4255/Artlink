@@ -233,7 +233,8 @@ export function validateExhibitionDates(dates: {
   deadlineStart?: string;
   deadline: string;
   exhibitStartDate?: string;
-  exhibitDate: string;
+  /** 공모만 진행(recruitOnly)이면 전시가 없어 비운다 — 그땐 공모 기간만 검사한다 */
+  exhibitDate?: string;
   /** 작가 자료제출 마감일 — 공모 마감과 전시 시작 사이여야 한다 */
   submissionDeadline?: string;
 }): string | null {

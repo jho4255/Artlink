@@ -111,6 +111,36 @@ export async function sendDirectNotice(fromUserId: number, toUserId: number, tex
 }
 
 /**
+ * 새 메시지 알림 — 보낸 사람을 뺀 참여자에게 `CHAT_MESSAGE` (2026-09-19).
+ *
+ * 그 전까지 ArtTalk 은 **알림이 전혀 없었다** — 유일한 신호가 Navbar 의 30초 폴링 배지라 브라우저를 열어둘 때만 보였고,
+ * 며칠 뒤 접속한 작가의 알림 벨은 비어 있었다("갤러리가 문의를 보냈는데 왜 몰랐지").
+ * ⚠️ 방마다 **미읽음 알림 하나**로 합친다(`refKey: chat:<id>`, 작품 좋아요와 같은 방식) — 단톡에서 말이 오갈 때마다
+ *    참여자 20명 × 메시지 수만큼 행이 쌓이면 안 된다. 방을 열면 `markChatNotificationsRead` 가 읽음 처리한다.
+ * best-effort — 실패해도 메시지 전송은 이미 끝났다.
+ */
+export async function notifyChatMessage(chatId: number, senderId: number, senderName: string, preview: string): Promise<void> {
+  const others = await prisma.chatParticipant.findMany({ where: { chatId, userId: { not: senderId } }, select: { userId: true } });
+  if (others.length === 0) return;
+  const refKey = `chat:${chatId}`;
+  const linkUrl = `/messages?chat=${chatId}`;
+  const message = `${senderName}님의 새 메시지: ${preview.replace(/\s+/g, ' ').slice(0, 60)}`;
+  for (const { userId } of others) {
+    const existing = await prisma.notification.findFirst({ where: { userId, refKey, read: false }, select: { id: true } });
+    if (existing) {
+      await prisma.notification.update({ where: { id: existing.id }, data: { message, linkUrl, createdAt: new Date() } });
+    } else {
+      await prisma.notification.create({ data: { userId, type: 'CHAT_MESSAGE', message, linkUrl, refKey } });
+    }
+  }
+}
+
+/** 방을 읽었으면 그 방의 새 메시지 알림도 읽은 것이다 — 안 그러면 벨 배지가 방을 이미 본 뒤에도 남는다 */
+export async function markChatNotificationsRead(chatId: number, userId: number): Promise<void> {
+  await prisma.notification.updateMany({ where: { userId, refKey: `chat:${chatId}`, read: false }, data: { read: true } });
+}
+
+/**
  * 공모 단톡을 만들거나(없으면) 참여자를 최신 상태로 맞춘다.
  *
  * 참여자 = 운영자(갤러리 오너 + 아트링크 주최면 운영 갤러리 오너들 + 초대한 Admin은 제외) + **수락된 작가**.

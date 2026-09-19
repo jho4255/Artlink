@@ -59,6 +59,8 @@ export default function Layout() {
           <div className="mt-2 flex gap-2">
             <Link to="/privacy" className="text-[11px] text-gray-300 hover:text-gray-500 min-h-[44px] -my-3 inline-flex items-center px-1.5 -ml-1.5">개인정보처리방침</Link>
             <Link to="/terms" className="text-[11px] text-gray-300 hover:text-gray-500 min-h-[44px] -my-3 inline-flex items-center px-1.5">이용약관</Link>
+            {/* 고객센터 — 예전엔 로그인 사용자의 사이드바(lg↑ 전용) 푸터 링크가 유일해서 **모바일과 비로그인은 갈 길이 없었다**(2026-09-19) */}
+            <Link to="/support" className="text-[11px] text-gray-300 hover:text-gray-500 min-h-[44px] -my-3 inline-flex items-center px-1.5">고객센터</Link>
           </div>
         </div>
       </footer>

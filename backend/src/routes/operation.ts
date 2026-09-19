@@ -1240,9 +1240,11 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
       try {
         const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, nickname: true } });
         const who = me?.nickname || me?.name || '작가';
-        // 아트링크 주최 공모는 위임받은 운영 갤러리들도 정산 담당이므로 모두에게 보낸다
+        // 아트링크 주최 공모는 위임받은 운영 갤러리들도 정산 담당이므로 모두에게 보낸다.
+        // ⚠️ `operatorUserIds` 가 아니라 `exhibitionNotifyTargets` — 갤러리를 안 낀 아트링크 주최 공모는 운영자 목록이 비어
+        //    이의가 들어와도 **아무도 몰라 정산이 영구히 멈췄다**(2026-09-19 수정, 규칙 22).
         await prisma.notification.createMany({
-          data: operatorUserIds(exhibition).map((uid) => ({
+          data: (await exhibitionNotifyTargets(exhibition)).map((uid) => ({
             userId: uid,
             type: 'SETTLEMENT_ISSUE',
             message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,

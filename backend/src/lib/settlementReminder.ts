@@ -21,7 +21,7 @@
 import prisma from './prisma';
 import { operationLink } from './notifyLinks';
 import { startOfTodayKstAsUtc } from './kstDate';
-import { operatorUserIds } from './exhibitionAccess';
+import { exhibitionNotifyTargets } from './exhibitionAccess';
 import { STALE_AFTER_DAYS } from './exhibitionLifecycle';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -76,6 +76,7 @@ export async function sweepSettlementReminders(now: Date = new Date()): Promise<
     let sent = 0;
     for (const ex of candidates) {
       if (ex._count.sales > 0) continue;   // 금액을 입력했으면 이미 시작한 것
+      if (!ex.exhibitDate) continue;   // where 가 gte/lt 로 걸러 null 은 안 오지만 타입상 남는다
       const days = daysSinceExhibit(ex.exhibitDate, now);
       const plan = reminderFor(days);
       if (!plan) continue;
@@ -91,7 +92,9 @@ export async function sweepSettlementReminders(now: Date = new Date()): Promise<
         ? `"${ex.title}" 전시가 종료된 지 ${STALE_AFTER_DAYS}일이 지나 종료된 공모로 정리되었습니다. 정산은 [종료된 공모] 탭에서 이어서 하실 수 있습니다.`
         : `"${ex.title}" 전시가 끝났습니다. 판매·정산 내역을 입력해주세요. ${plan.left}일 뒤에는 종료된 공모로 정리됩니다.`;
 
-      const targets = operatorUserIds(ex as any);
+      // ⚠️ `exhibitionNotifyTargets` — 갤러리를 안 낀 아트링크 주최 공모는 `operatorUserIds` 가 빈 배열이라 재촉도
+      //    D+20 자동 종료 통보도 아무에게도 안 갔다(2026-09-19 수정, 규칙 22). 그때만 Admin 전원에게 간다.
+      const targets = await exhibitionNotifyTargets(ex as any);
       if (targets.length === 0) continue;
       await prisma.notification.createMany({
         data: targets.map((userId) => ({

@@ -344,7 +344,7 @@ model Exhibition {
   type                  String // SOLO, GROUP, ART_FAIR
   deadline              DateTime // 공모 마감일
   deadlineStart         DateTime? // 공모 시작일
-  exhibitDate           DateTime // 전시 종료일
+  exhibitDate           DateTime? // 전시 종료일 — ⚠️ 공모만 진행(recruitOnly)이면 전시가 없으므로 null (2026-09-19)
   exhibitStartDate      DateTime? // 전시 시작일
   capacity              Int
   region                String

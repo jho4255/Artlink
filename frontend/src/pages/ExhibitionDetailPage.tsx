@@ -505,16 +505,19 @@ export default function ExhibitionDetailPage() {
               </div>
             </div>
           )}
-          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
-            <Calendar size={16} className="text-gray-400 flex-none" />
-            <div>
-              <p className="text-sm text-gray-400">전시 기간</p>
-              <p className="text-base">
-                {exhibition.exhibitStartDate ? `${new Date(exhibition.exhibitStartDate).toLocaleDateString('ko')} ~ ` : ''}
-                {new Date(exhibition.exhibitDate).toLocaleDateString('ko')}
-              </p>
+          {/* 공모만 진행하는 공고에는 전시 일정이 없다(null) — 줄 자체를 그리지 않는다 */}
+          {exhibition.exhibitDate && (
+            <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+              <Calendar size={16} className="text-gray-400 flex-none" />
+              <div>
+                <p className="text-sm text-gray-400">전시 기간</p>
+                <p className="text-base">
+                  {exhibition.exhibitStartDate ? `${new Date(exhibition.exhibitStartDate).toLocaleDateString('ko')} ~ ` : ''}
+                  {new Date(exhibition.exhibitDate).toLocaleDateString('ko')}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* 설명 (갤러리 오너만 수정 가능) */}
@@ -1147,7 +1150,7 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
   const [value, setValue] = useState('');
 
   const start = exhibition.exhibitStartDate || exhibition.exhibitDate;
-  const started = new Date(start) <= new Date();
+  const started = start ? new Date(start) <= new Date() : false;
   // ⚠️ 공모만 진행하는 공고에는 자료제출 단계가 **없다** — 서버도 400 으로 막는다.
   //    [입력] 버튼을 남겨두면 눌러보고 에러를 받는 함정이 된다.
   const canFill = !exhibition.recruitOnly && canEdit && (!exhibition.submissionDeadline || isAdmin) && (!started || isAdmin);
@@ -1183,7 +1186,7 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
               value={value}
               onChange={(e) => setValue(e.target.value)}
               min={dayShift(exhibition.deadline, 1)}
-              max={dayShift(start, -1)}
+              max={start ? dayShift(start, -1) : undefined}
               className="min-h-10 rounded-lg border border-gray-300 px-2 py-1 text-sm"
             />
             <button onClick={() => save.mutate()} disabled={!value || save.isPending}

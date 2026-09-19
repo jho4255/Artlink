@@ -428,9 +428,17 @@ export default function Navbar() {
                       </Link>
                     );
                   })}
+                  {/* 사이드바(lg↑)의 푸터 링크(1:1 문의)와 짝 — 없으면 모바일에서 고객센터로 가는 길이 없다(2026-09-19) */}
+                  <Link
+                    to="/support"
+                    onClick={() => setIsOpen(false)}
+                    className="block px-4 py-3 mt-1 text-sm text-gray-500 hover:text-gray-900 border-t border-gray-100"
+                  >
+                    1:1 문의
+                  </Link>
                   <button
                     onClick={handleLogout}
-                    className="block w-full text-left px-4 py-3 mt-1 text-sm font-medium text-gray-500 hover:text-gray-900 border-t border-gray-100"
+                    className="block w-full text-left px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-900 border-t border-gray-100"
                   >
                     로그아웃
                   </button>
