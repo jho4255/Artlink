@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
+import { roleLabel } from '@/lib/utils';
 
 /**
  * 로그인 페이지
@@ -221,7 +222,7 @@ function DevAccountPicker({ onPick }: { onPick: (email: string) => void }) {
             <span className="text-sm text-gray-900 truncate flex-1 min-w-0">
               {u.name}
               {u.nickname && u.nickname !== u.name && <span className="text-gray-400"> ({u.nickname})</span>}
-              <span className="text-[11px] text-gray-400 ml-1.5">{u.role === 'ARTIST' ? '작가' : u.role === 'GALLERY' ? '갤러리' : '관리자'}</span>
+              <span className="text-[11px] text-gray-400 ml-1.5">{roleLabel(u.role)}</span>
             </span>
             {u.role === 'ARTIST' && <span className="text-[11px] text-gray-400 flex-none">작품 {u.workCount}</span>}
           </button>

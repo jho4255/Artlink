@@ -11,6 +11,7 @@ import { useMention, MentionSuggest } from '@/components/shared/MentionSuggest';
 import { useAuthStore } from '@/stores/authStore';
 import { timeAgo, roleLabel } from '@/lib/utils';
 import type { StoryHighlight } from '@/types';
+import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 
 /**
  * 소식 (Story Feed) — 커뮤니티(글로벌 게시판)와 **다른** 개인 피드.
@@ -135,9 +136,16 @@ function Composer() {
   );
 }
 
+/** 사람 링크 — `/portfolio/:id` 는 작가만 열린다(갤러리·일반·운영은 404). 작가가 아니면 링크 없이 그린다(2026-09-19) */
+function PersonLink({ user, className, children }: { user: { id: number; role?: string }; className?: string; children: React.ReactNode }) {
+  if (user.role !== 'ARTIST') return <span className={className}>{children}</span>;
+  return <Link to={`/portfolio/${user.id}`} className={className}>{children}</Link>;
+}
+
 function StoryCard({ story, openComments = false }: { story: Story; openComments?: boolean }) {
   const qc = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
   const [showComments, setShowComments] = useState(openComments);
   const [showLikers, setShowLikers] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -221,15 +229,15 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
   return (
     <article className="rounded-2xl border border-gray-100 bg-white p-4">
       <div className="flex items-center gap-3">
-        <Link to={`/portfolio/${a.id}`} className="shrink-0">
+        <PersonLink user={a} className="shrink-0">
           {a.avatar
             ? <img src={a.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
             : <div className="grid h-9 w-9 place-items-center rounded-full bg-gray-100 text-sm font-semibold text-gray-500">{a.name.slice(0, 1)}</div>}
-        </Link>
+        </PersonLink>
         <div className="min-w-0 flex-1">
-          <Link to={`/portfolio/${a.id}`} className="text-sm font-semibold text-gray-900 hover:underline">
+          <PersonLink user={a} className="text-sm font-semibold text-gray-900 hover:underline">
             {a.name}{roleLabel(a.role) && <span className="ml-1 text-xs font-normal text-gray-400">· {roleLabel(a.role)}</span>}
-          </Link>
+          </PersonLink>
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <span>{timeAgo(story.createdAt)}</span>
             <span>·</span>
@@ -238,10 +246,11 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
             </span>
           </div>
         </div>
-        {story.mine && (
-          <button onClick={() => del.mutate()} disabled={del.isPending} aria-label="삭제" className="text-gray-300 hover:text-accent">
+        {/* 서버는 작성자·Admin 둘 다 허용 — 화면이 mine 만 봐서 관리자가 못 지웠다(커뮤니티에서 겪은 그 사고, 2026-09-19). 확인창도 붙였다 — 사진까지 통째로 사라진다 */}
+        {(story.mine || isAdmin) && (
+          <ConfirmDeleteButton onConfirm={() => del.mutate()} disabled={del.isPending} title="소식 삭제" message="이 소식을 지웁니다. 사진과 댓글도 함께 사라지며 되돌릴 수 없습니다." className="text-gray-300 hover:text-accent">
             <Trash2 size={16} />
-          </button>
+          </ConfirmDeleteButton>
         )}
       </div>
 
@@ -308,12 +317,12 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
       {showLikers && story.likeCount > 0 && (
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 rounded-lg bg-gray-50 p-2.5">
           {(likers ?? []).map((u) => (
-            <Link key={u.id} to={`/portfolio/${u.id}`} className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
+            <PersonLink key={u.id} user={u} className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
               {u.avatar
                 ? <img src={u.avatar} alt="" className="h-5 w-5 rounded-full object-cover" />
                 : <span className="grid h-5 w-5 place-items-center rounded-full bg-gray-200 text-[9px] font-semibold text-gray-500">{u.name.slice(0, 1)}</span>}
               {u.name}
-            </Link>
+            </PersonLink>
           ))}
           {!likers && <span className="text-xs text-gray-400">불러오는 중…</span>}
         </div>
@@ -323,18 +332,18 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
         <div className="mt-3 space-y-3 border-t border-gray-50 pt-3">
           {(comments ?? []).map((c) => (
             <div key={c.id} className="flex items-start gap-2 text-sm">
-              <Link to={`/portfolio/${c.author.id}`} className="shrink-0">
+              <PersonLink user={c.author} className="shrink-0">
                 {c.author.avatar
                   ? <img src={c.author.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />
                   : <div className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-500">{c.author.name.slice(0, 1)}</div>}
-              </Link>
+              </PersonLink>
               <div className="min-w-0 flex-1">
                 <span className="text-xs font-semibold text-gray-700">{c.author.name}</span>
                 <span className="ml-1.5 text-[11px] text-gray-300">{timeAgo(c.createdAt)}</span>
                 <p className="whitespace-pre-wrap text-[13px] leading-snug text-gray-800 [overflow-wrap:anywhere]">{c.body}</p>
               </div>
-              {(c.mine || story.mine) && (
-                <button onClick={() => delComment.mutate(c.id)} aria-label="댓글 삭제" className="text-gray-300 hover:text-accent"><X size={13} /></button>
+              {(c.mine || story.mine || isAdmin) && (
+                <ConfirmDeleteButton onConfirm={() => delComment.mutate(c.id)} aria-label="댓글 삭제" title="댓글 삭제" message="이 댓글을 지웁니다." className="text-gray-300 hover:text-accent"><X size={13} /></ConfirmDeleteButton>
               )}
             </div>
           ))}
@@ -345,7 +354,7 @@ function StoryCard({ story, openComments = false }: { story: Story; openComments
                 value={commentText}
                 onChange={mention.onChange}
                 onBlur={mention.onBlur}
-                onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !addComment.isPending && commentText.trim()) addComment.mutate(); }}   // 한글 조합 중 Enter 가 두 번 잡혀 중복 등록됐다(2026-09-19)
                 placeholder="댓글 달기… (@로 이웃·ArtLink 부르기)"
                 className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
               />

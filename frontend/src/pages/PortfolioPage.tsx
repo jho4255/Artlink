@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
@@ -41,7 +41,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   const key = artistId != null ? String(artistId) : String(userId ?? '');
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [openHighlight, setOpenHighlight] = useState<number | null>(null);
@@ -95,14 +95,17 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   }, [portfolio?.id]);
 
   // 함수형 갱신 — `searchParams` 를 의존성에 넣으면 갱신할 때마다 콜백이 새로 만들어져 라이트박스 effect 가 다시 돈다
+  // ⚠️ 정식 주소(`/@handle`)로 갈아끼우는 effect 와 경합한다 — `setSearchParams` 는 **현재 pathname** 에 쿼리를 얹으므로
+  //    숫자 주소에서 라이트박스가 열리면 방금 바꾼 `/@handle` 을 다시 `/portfolio/:id` 로 되돌렸다(2026-09-19 실측 replaceState 3회).
+  //    그래서 pathname 을 정식 주소로 함께 넘긴다(ref — 의존성에 넣으면 콜백이 매번 새로 만들어져 라이트박스 effect 가 다시 돈다).
+  const canonicalRef = useRef<string | null>(null);
   const syncWorkParam = useCallback((idx: number | null) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (idx === null || !ordered[idx]) next.delete('work');
-      else next.set('work', String(ordered[idx]!.id));
-      return next;
-    }, { replace: true });
-  }, [ordered, setSearchParams]);
+    const next = new URLSearchParams(window.location.search);
+    if (idx === null || !ordered[idx]) next.delete('work');
+    else next.set('work', String(ordered[idx]!.id));
+    const search = next.toString();
+    navigate({ pathname: canonicalRef.current ?? window.location.pathname, search: search ? `?${search}` : '' }, { replace: true });
+  }, [ordered, navigate]);
 
   const theme = useMemo(() => resolveHomepageTheme(portfolio?.designConfig), [portfolio?.designConfig]);
 
@@ -114,6 +117,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
     ⚠️ `?work=` 같은 쿼리는 그대로 옮긴다 — 안 그러면 공유 링크로 들어온 사람이 작품을 잃는다.
   */
   const canonical = portfolio?.user.handle ? `/@${portfolio.user.handle}` : null;
+  canonicalRef.current = canonical;
   useEffect(() => {
     if (!canonical || location.pathname === canonical) return;
     navigate({ pathname: canonical, search: location.search }, { replace: true });

@@ -7,6 +7,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { timeAgo, roleLabel } from '@/lib/utils';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
+import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 
 /**
  * 방명록 — 작가 홈페이지(`/@handle`) 하단.
@@ -87,9 +88,9 @@ export default function Guestbook({ userId }: { userId: number }) {
           <span>·</span>
           <span>{timeAgo(e.createdAt)}</span>
           {(e.mine || isOwner) && (
-            <button onClick={() => del.mutate(e.id)} aria-label="삭제" className="ml-1 hover:text-accent">
+            <ConfirmDeleteButton onConfirm={() => del.mutate(e.id)} title="방명록 삭제" message="이 글을 지웁니다. 되돌릴 수 없습니다." className="ml-1 hover:text-accent">
               <Trash2 size={13} />
-            </button>
+            </ConfirmDeleteButton>
           )}
         </div>
         {e.locked ? (

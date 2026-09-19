@@ -43,7 +43,13 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
 
   // Prisma 에러 처리
   if (err.name === 'PrismaClientKnownRequestError') {
-    logger.error('PrismaError', err.message, { ...meta, code: (err as any).code });
+    const code = (err as any).code;
+    // unique 위반은 사용자 입력 충돌이다 — 400 으로 뭉개면 "이미 사용 중" 을 알려줄 수 없다(가입·닉네임·핸들 경합, 2026-09-19)
+    if (code === 'P2002') {
+      logger.warn('PrismaUnique', err.message, meta);
+      return res.status(409).json({ error: '이미 사용 중인 값입니다.' });
+    }
+    logger.error('PrismaError', err.message, { ...meta, code });
     return res.status(400).json({ error: '데이터 처리 중 오류가 발생했습니다.' });
   }
 

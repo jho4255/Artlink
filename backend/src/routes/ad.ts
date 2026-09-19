@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { deleteUploadedFile } from '../lib/storage';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
@@ -91,7 +92,10 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
 router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    await prisma.adBanner.delete({ where: { id } }).catch(() => { throw new AppError('광고를 찾을 수 없습니다.', 404); });
+    const ad = await prisma.adBanner.findUnique({ where: { id }, select: { imageUrl: true } });
+    if (!ad) throw new AppError('광고를 찾을 수 없습니다.', 404);
+    await prisma.adBanner.delete({ where: { id } });
+    void deleteUploadedFile(ad.imageUrl);   // 히어로·혜택과 같이 파일도 지운다 — 안 지우면 R2 에 고아로 남는다(2026-09-19)
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

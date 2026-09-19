@@ -160,7 +160,7 @@ export default function MessagesPage() {
     if (openId) queryClient.removeQueries({ queryKey: ['chat', openId] });
   }, [openId, queryClient]);
 
-  const { data: chat } = useQuery<ChatDetail & { mode: 'init' | 'poll' }>({
+  const { data: chat, isError: chatError } = useQuery<ChatDetail & { mode: 'init' | 'poll' }>({
     queryKey: ['chat', openId],
     queryFn: async () => {
       const after = cursorRef.current;
@@ -375,7 +375,15 @@ export default function MessagesPage() {
 
         {/* 대화 */}
         <div className={`flex flex-col ${openId ? '' : 'hidden md:flex'}`}>
-          {!chat ? (
+          {chatError ? (
+            // 없는 방·남의 방(404) — 모바일에선 목록이 숨겨져 있어 돌아갈 길이 없었다(2026-09-19)
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-sm text-gray-400">
+              <p>대화를 찾을 수 없습니다.</p>
+              <button onClick={() => navigate('/messages')} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50">
+                <ArrowLeft size={14} /> 대화 목록으로
+              </button>
+            </div>
+          ) : !chat ? (
             <div className="flex flex-1 items-center justify-center p-10 text-sm text-gray-400">
               대화를 선택하세요.
             </div>

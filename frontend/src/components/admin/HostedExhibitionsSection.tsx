@@ -191,6 +191,7 @@ function ManagerEditModal({
     mutationFn: () => api.patch(`/exhibitions/${exhibition.id}/managers`, { galleryIds: selected.map(g => g.id) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibition', String(exhibition.id)] });   // 상세는 useParams 문자열 키 — 숫자로 넣으면 무효화가 안 된다(2026-09-19)
       queryClient.invalidateQueries({ queryKey: ['exhibition', exhibition.id] });
       toast.success('운영 갤러리를 변경했습니다.');
       onClose();
@@ -537,6 +538,9 @@ export default function HostedExhibitionsSection() {
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <span className="text-[11px] text-gray-400">운영</span>
+                      {(ex.managerGalleries ?? []).length === 0 && (
+                        <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[11px] text-white">아트링크 직접 운영</span>
+                      )}
                       {(ex.managerGalleries ?? []).map((g: any, i: number) => (
                         <span key={g.id} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 0 ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}>
                           {g.name}{i === 0 ? ' (주관)' : ''}

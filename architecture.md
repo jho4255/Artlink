@@ -2096,3 +2096,20 @@ operatorUserIds(ex)                알림 발송 대상 전부
 | 커뮤니티 목록 20개 너머 도달 불가 | `CommunityPage` `useInfiniteQuery` + [더 보기] | — |
 | 알림·명단의 사람 링크가 비작가면 404 | `lib/profileLink.ts profileLinkFor(userId)`(역할별 주소; follow/explore 알림), `Guestbook`·`LikerList` 는 작가만 링크(explore likers 에 `role`) | — |
 | 초대만 받은 작가의 [내 전시]가 빈 화면 | `MyPage ApplicationsSection` 기본 탭을 지원 0·초대 있음이면 `INVITED` | — |
+
+## 전수 버그 감사 P2 1·2차 수정 (2026-09-19)
+
+**백엔드**: `seed.ts` 별점 평균 재계산 제거(개수는 `_count:{_all}`) · `lib/storage.ts` 원본 삭제 시 t240·t800 썸네일 동반 삭제(R2·디스크) ·
+`ad.ts` 삭제 시 이미지 파일 삭제 · 탈퇴 시 `handle:null`(이름공간 해제) · 초대 수락에 `termsTextHash` · `PATCH /exhibitions/:id/description` zod ·
+대화 첨부 `attachmentUrl`↔`attachmentType` 상호 필수 · 커뮤니티 댓글 → 글쓴이 `POST_COMMENT` 알림 · `listChats` 마지막 메시지 `id` 정렬 ·
+`GET /inquiries/:id` 남의 것 404 · `errorHandler` P2002 → **409** "이미 사용 중인 값입니다"(가입·닉네임·핸들 경합).
+
+**프론트**: `components/shared/ConfirmDeleteButton.tsx`(확인창 품은 삭제 버튼) — 히어로·혜택·이달의 갤러리·광고·방명록·소식·소식 댓글 삭제 ·
+소식/댓글 삭제 버튼을 Admin 에게도 · 소식 댓글·할 일 댓글 Enter 의 `isComposing`/pending 검사 · `queryClient` retry 는 5xx 만 ·
+운영페이지 [이전 단계로] 뒤 「운영 작업」 빈 화면 · 공지 삭제 onError · `#dc2f45` → `bg-accent` · recruitOnly 배너 · 지원서 작품 사진 `Thumb`+contain ·
+홈·[작가] 탭 격자 `object-contain`(규칙 18) · 이달의 갤러리 검색 키 고정·중복 제출 가드 · 운영 갤러리 변경 후 문자열 키 무효화 ·
+갤러리 없는 주최 공모 카드 '아트링크 직접 운영' 칩 · 자료제출 마감 `started` 를 `getDday`(KST) · 공모·전시 본문 `overflow-wrap` ·
+개발자 로그인·관리자 문의 목록 `roleLabel()` · 커뮤니티 관리자 버튼 터치에서 보이게 · `/shows/new` 참여 작가 `min-w-0` ·
+공모 상세 [뒤로가기] 폴백 · 포스터 없으면 라이트박스 안 열림 · 피드 사람 링크 `PersonLink`(작가만) · `extractColor` tainted canvas 방어 ·
+`useFormDraft` `hasDraft` lazy init(임시저장 복원 확인이 이제 뜬다) · 찜 목록·초대 모달 `Thumb` · ArtTalk 404 → [대화 목록으로] ·
+`PortfolioPage` 라이트박스 주소 동기화가 `/@handle` 리다이렉트를 되돌리지 않게 · 홈페이지 편집 이탈 경고+취소 확인 · 비로그인 `/support` 로그인 안내.

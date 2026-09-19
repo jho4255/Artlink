@@ -651,6 +651,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
         portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
         termsAgreedAt: new Date(),
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
+        termsTextHash: ARTIST_APPLY_TERMS_HASH,   // apply 와 같이 — 어떤 전문에 동의했는지가 분쟁 근거다(2026-09-19)
       },
     });
     await prisma.exhibitionInvite.update({ where: { id }, data: { status: 'APPLIED' } });
@@ -1304,7 +1305,8 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
 });
 
 // 공모 소개 수정 (운영 갤러리 또는 Admin)
-router.patch('/:id/description', authenticate, async (req, res, next) => {
+const descriptionSchema = z.object({ description: z.string().trim().min(1, '소개를 입력해주세요.').max(20000, '소개는 20000자까지입니다.') });
+router.patch('/:id/description', authenticate, validate(descriptionSchema), async (req, res, next) => {
   try {
     const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
 

@@ -114,7 +114,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     });
     if (!inquiry) throw new AppError('문의를 찾을 수 없습니다.', 404);
     if (req.user!.role !== 'ADMIN' && inquiry.userId !== req.user!.id) {
-      throw new AppError('권한이 없습니다.', 403);
+      throw new AppError('문의를 찾을 수 없습니다.', 404);   // 403 은 존재를 알려준다(규칙 23)
     }
     res.json(inquiry);
   } catch (err) {

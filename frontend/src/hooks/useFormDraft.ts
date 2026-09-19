@@ -19,7 +19,15 @@ interface DraftData<T> {
 const DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24시간
 
 export function useFormDraft<T>(key: string, initialData: T) {
-  const [hasDraft, setHasDraft] = useState(false);
+  // ⚠️ lazy init — effect 에서 setHasDraft 하면 마운트 직후 openForm() 클로저가 항상 false 를 봐 복원 확인이 한 번도 안 떴다(2026-09-19)
+  const [hasDraft, setHasDraft] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return false;
+      const draft = JSON.parse(raw) as { savedAt?: number };
+      return typeof draft.savedAt === 'number' && Date.now() - draft.savedAt <= DRAFT_EXPIRY_MS;
+    } catch { return false; }
+  });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
 

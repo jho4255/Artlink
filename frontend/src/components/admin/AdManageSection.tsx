@@ -4,6 +4,7 @@ import { Plus, Trash2, Pencil, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import ImageUpload from '@/components/shared/ImageUpload';
+import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 
 /**
  * 광고 관리 (Admin) — 사이드바 하단 광고 슬롯(`AdSlot`)에 뜨는 배너를 등록/수정/삭제.
@@ -104,7 +105,7 @@ export default function AdManageSection() {
             </div>
             <button onClick={() => toggle.mutate(ad)} aria-label="활성 토글" className="p-1.5 text-gray-400 hover:text-gray-900">{ad.active ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             <button onClick={() => startEdit(ad)} aria-label="수정" className="p-1.5 text-gray-400 hover:text-gray-900"><Pencil size={16} /></button>
-            <button onClick={() => del.mutate(ad.id)} aria-label="삭제" className="p-1.5 text-gray-400 hover:text-accent"><Trash2 size={16} /></button>
+            <ConfirmDeleteButton onConfirm={() => del.mutate(ad.id)} title="광고 삭제" message="이 광고를 지웁니다. 이미지 파일도 함께 삭제되어 되돌릴 수 없습니다." className="p-1.5 text-gray-400 hover:text-accent"><Trash2 size={16} /></ConfirmDeleteButton>
           </div>
         ))}
         {ads.length === 0 && <p className="py-8 text-center text-sm text-gray-400">등록된 광고가 없습니다.</p>}

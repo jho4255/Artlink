@@ -467,7 +467,7 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
   try {
     const id = parseInt(req.params.id as string);
     const me = req.user!.id;
-    const post = await prisma.post.findUnique({ where: { id }, select: { id: true } });
+    const post = await prisma.post.findUnique({ where: { id }, select: { id: true, authorId: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
 
     const { body, anonymous } = req.body;
@@ -482,6 +482,15 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req, 
       }),
       prisma.post.update({ where: { id }, data: { commentCount: { increment: 1 } } }),
     ]);
+    // 글쓴이에게 댓글 알림 — 소식·방명록엔 있었는데 커뮤니티만 없었다(2026-09-19). 익명 댓글이면 이름을 안 쓴다.
+    if (post.authorId !== me) {
+      try {
+        const who = anonymous ? '누군가' : await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } }).then((u) => (u ? (u.nickname || u.name) : '누군가'));
+        await prisma.notification.create({
+          data: { userId: post.authorId, type: 'POST_COMMENT', message: `${who}님이 내 글에 댓글을 남겼습니다.`, linkUrl: `/community/${id}` },
+        });
+      } catch { /* best-effort */ }
+    }
     if (mentions.length > 0) {
       // ⚠️ 익명 댓글이어도 **부른 사람에게는 알림이 가야** 멘션이다. 다만 누가 불렀는지는
       //    글에서 이미 가려져 있으므로 알림에도 이름을 쓰지 않는다(익명 신원 역추적 방지).

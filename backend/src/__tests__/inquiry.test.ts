@@ -97,13 +97,13 @@ describe('Inquiry Routes', () => {
     expect(res.body.subject).toBe('문의');
   });
 
-  it('타인 문의 조회 불가 (403)', async () => {
+  it('타인 문의 조회 불가 — 404 (403 은 존재를 알려준다, 규칙 23 · 2026-09-19)', async () => {
     const inq = await testPrisma.inquiry.create({
       data: { subject: '문의', content: '내용', userId: 2 },
     });
     const res = await request.get(`/api/inquiries/${inq.id}`)
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('Admin은 모든 문의 상세 조회 가능', async () => {

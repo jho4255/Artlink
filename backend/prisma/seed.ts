@@ -451,21 +451,13 @@ async function main() {
     { ...showFields2, galleryId: gallery2.id },
   );
 
-  // ━━━ 갤러리 rating 재계산 ━━━
+  // ━━━ 갤러리 리뷰 개수 동기화 ━━━
+  // ⚠️ `Gallery.rating` 은 다시 계산하지 않는다(2026-09-10 별점 제거 — 옛 점수만 남은 표본의 평균이 된다).
+  //    개수는 `_all` 로 센다 — `rating` 컬럼으로 세면 별점 없는 새 리뷰가 빠져 '리뷰 0개' 가 된다(2026-09-19 수정).
   const allGalleries = await prisma.gallery.findMany({ select: { id: true } });
   for (const g of allGalleries) {
-    const agg = await prisma.review.aggregate({
-      where: { galleryId: g.id },
-      _avg: { rating: true },
-      _count: { rating: true },
-    });
-    await prisma.gallery.update({
-      where: { id: g.id },
-      data: {
-        rating: agg._avg.rating || 0,
-        reviewCount: agg._count.rating,
-      },
-    });
+    const agg = await prisma.review.aggregate({ where: { galleryId: g.id }, _count: { _all: true } });
+    await prisma.gallery.update({ where: { id: g.id }, data: { reviewCount: agg._count._all } });
   }
 
   console.log('✅ 시드 데이터 생성 완료!');

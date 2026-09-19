@@ -387,7 +387,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
             </button>
             {/* 공모만 진행하는 공고엔 '작가 자료' 화면이 없다 — 눌러도 갈 데가 없는 버튼을 두지 않는다 */}
             {!recruitOnly && (
-              <button onClick={() => { setActiveWorkPanel('submissions'); window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
+              <button onClick={() => { setActiveWorkPanel('submissions'); window.setTimeout(() => document.getElementById('operation-submissions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); }} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-3 text-sm font-medium text-white hover:bg-[#a82822]">
                 자료 확인
               </button>
             )}
@@ -453,7 +453,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
                 }} className="inline-flex min-h-10 items-center rounded-lg border border-orange-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-orange-100">
                   미완료 작가 보기
                 </button>
-                <button onClick={() => setActiveHelper('submission')} className="inline-flex min-h-10 items-center rounded-lg bg-[#dc2f45] px-3 text-sm font-medium text-white hover:bg-[#b92436]">
+                <button onClick={() => setActiveHelper('submission')} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-3 text-sm font-medium text-white hover:bg-[#a82822]">
                   자료 제출 안내 DM
                 </button>
               </>
@@ -510,7 +510,8 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
                 </div>
               </div>
               <div>
-                {activeWorkPanel === 'submissions' && (
+                {/* 전시종료를 [이전 단계로] 물리면 정산 탭이 사라지므로 그 상태에선 제출자료를 그린다 — 안 그러면 「운영 작업」이 텅 빈다(2026-09-19) */}
+                {(activeWorkPanel === 'submissions' || !access.ended) && (
                   <div id="operation-submissions" className="scroll-mt-24">
                     <AdminSubmissionsSection exhibitionId={id!} exhibitionTitle={access.title} myUserId={user!.id} confirmed={access.confirmed} ended={access.ended} isAdmin={access.isAdmin} />
                   </div>
@@ -753,6 +754,7 @@ export function NoticesSection({ exhibitionId, canManage }: { exhibitionId: stri
   const deleteMutation = useMutation({
     mutationFn: (nid: number) => api.delete(`/operations/${exhibitionId}/notices/${nid}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['operation-notices', exhibitionId] }); toast.success('삭제되었습니다.'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),   // 정산 완료 후 403 이 무음이었다(2026-09-19)
   });
 
   const startEdit = (n: ExhibitionNotice) => { setEditId(n.id); setTitle(n.title); setContent(n.content); setShowForm(true); };

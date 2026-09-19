@@ -10,8 +10,14 @@ export function extractColor(src: string): Promise<string> {
       canvas.height = size;
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve('#1a1a2e'); return; }
-      ctx.drawImage(img, 0, 0, size, size);
-      const data = ctx.getImageData(0, 0, size, size).data;
+      let data: Uint8ClampedArray;
+      try {
+        ctx.drawImage(img, 0, 0, size, size);
+        data = ctx.getImageData(0, 0, size, size).data;
+      } catch {
+        // CORS 가 한 번 어긋나 canvas 가 오염되면 getImageData 가 던진다 — 예전엔 promise 가 영원히 안 끝나 전 슬라이드 색이 죽었다(2026-09-19)
+        resolve('#1a1a2e'); return;
+      }
       let r = 0, g = 0, b = 0, count = 0;
       for (let i = 0; i < data.length; i += 4) {
         r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;

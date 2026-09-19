@@ -84,13 +84,13 @@ export default function ArtWorks() {
           <button
             key={img.id}
             onClick={() => setSelected(img)}
-            className="group relative aspect-square overflow-hidden cursor-pointer"
+            className="group relative aspect-square overflow-hidden cursor-pointer bg-gray-50"
             aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
           >
             <SkeletonImage
               src={img.url}
               className="absolute inset-0"
-              imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
+              imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"   /* 규칙 18 — 작품은 자르지 않는다(2026-09-19) */
               loading="lazy"
             />
             {/* 하단 그라데이션 — 클릭 차단 방지를 위해 pointer-events-none 필수 */}

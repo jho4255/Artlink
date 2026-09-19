@@ -41,6 +41,7 @@ import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 import ArtworkDetailModal, { ArtworkLikersModal, InviteModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import { openArtLook, stageArtLookWorks, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '@/lib/artlook';
@@ -823,6 +824,8 @@ function PortfolioSection() {
   const startEdit = () => initForm(portfolio);
 
   const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) + '|' + JSON.stringify(design) !== snapshot;
+  // 긴 글을 쓰다 탭만 바꿔도 통째로 사라졌다 — 갤러리·공모 폼과 같은 이탈 경고(2026-09-19)
+  useUnsavedChanges(dirty);
 
   // 작품 사진 관리 — 편집 중엔 **왼쪽 열 안**, 아닐 땐 본문 아래에 놓는다(아래 렌더 참고)
   const artworkManager = (
@@ -1096,7 +1099,7 @@ function PortfolioSection() {
             {dirty && !mutation.isPending && (
               <span className="text-xs text-accent mr-auto sm:mr-0">저장되지 않은 변경사항이 있습니다.</span>
             )}
-            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-500 cursor-pointer">취소</button>
+            <button onClick={() => { if (!dirty || window.confirm('저장하지 않은 변경사항이 있습니다. 편집을 취소할까요?')) setEditing(false); }} className="px-4 py-2 text-sm text-gray-500 cursor-pointer">취소</button>
             <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 cursor-pointer">
               {mutation.isPending ? '저장 중...' : '저장'}
             </button>
@@ -1775,7 +1778,7 @@ function LikedArtworks() {
               className="absolute inset-0 w-full h-full cursor-pointer"
               aria-label="작품 크게 보기"
             >
-              <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+              <Thumb src={img.url} size="grid" alt="" className="w-full h-full object-contain bg-gray-50" loading="lazy" />
             </button>
             <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
             {/* 작가 이름 클릭 → 작가 포트폴리오 */}
@@ -1846,7 +1849,7 @@ function ArtworkScrapsSection() {
               className="block w-full aspect-square overflow-hidden cursor-pointer"
               aria-label="작품 크게 보기"
             >
-              <img src={img.url} alt="" className="w-full h-full object-cover hover:opacity-80 transition-opacity" loading="lazy" />
+              <Thumb src={img.url} size="grid" alt="" className="w-full h-full object-contain bg-gray-50 hover:opacity-80 transition-opacity" loading="lazy" />
             </button>
             <div className="flex items-center justify-between gap-2 p-3">
               <button
@@ -1943,7 +1946,7 @@ function ExhibitionInviteModal({ exhibitionId, exhibitionTitle, onClose }: { exh
                     selected === a.id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  <img src={a.url} alt="" className="h-9 w-9 rounded object-cover shrink-0" loading="lazy" />
+                  <Thumb src={a.url} size="list" alt="" className="h-9 w-9 rounded object-contain bg-gray-50 shrink-0" loading="lazy" />
                   <span className="min-w-0 truncate text-left">{a.name}</span>
                 </button>
               ))}
@@ -3445,7 +3448,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
                       updated[idx] = { name: e.target.value };
                       setArtists(updated);
                     }}
-                    className={`flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-gray-400 bg-gray-50' : 'border-gray-200'}`}
+                    className={`min-w-0 flex-1 p-2 border rounded-lg text-sm ${artist.userId ? 'border-gray-400 bg-gray-50' : 'border-gray-200'}`}
                   />
                   {artist.userId ? (
                     <button type="button" onClick={() => { const updated = [...artists]; updated[idx] = { name: artist.name }; setArtists(updated); }}
@@ -4013,7 +4016,7 @@ function HeroManageSection() {
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(s)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(s.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Trash2 size={14} /></button>
+              <ConfirmDeleteButton onConfirm={() => deleteMutation.mutate(s.id)} title="슬라이드 삭제" message="이 배너 슬라이드를 지웁니다. 이미지 파일도 함께 삭제되어 되돌릴 수 없습니다." className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"><Trash2 size={14} /></ConfirmDeleteButton>
             </div>
           </div>
         ))}
@@ -4131,7 +4134,7 @@ function BenefitManageSection() {
             </div>
             <div className="flex gap-1 flex-none">
               <button onClick={() => startEdit(b)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <button onClick={() => deleteMutation.mutate(b.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제"><Trash2 size={14} /></button>
+              <ConfirmDeleteButton onConfirm={() => deleteMutation.mutate(b.id)} title="혜택 삭제" message="이 혜택을 지웁니다. 되돌릴 수 없습니다." className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"><Trash2 size={14} /></ConfirmDeleteButton>
             </div>
           </div>
         ))}
@@ -4156,7 +4159,7 @@ function GotmManageSection() {
 
   // 갤러리 검색
   const { data: searchResults = [] } = useQuery<any[]>({
-    queryKey: ['galleries-search', searchQuery],
+    queryKey: ['galleries', 'picker'],   // 검색어를 키에 넣으면 타자마다 전체 목록을 다시 받아 깜빡였다(필터는 클라이언트, 2026-09-19)
     queryFn: () => api.get('/galleries').then(r => r.data),
     enabled: showForm,
   });
@@ -4240,8 +4243,9 @@ function GotmManageSection() {
                 if (!selectedGalleryId || !expiresAt) { toast.error('갤러리와 기한을 선택해주세요.'); return; }
                 createMutation.mutate();
               }}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
-            >선정</button>
+              disabled={createMutation.isPending}
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+            >{createMutation.isPending ? '선정 중...' : '선정'}</button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
           </div>
         </div>
@@ -4257,9 +4261,9 @@ function GotmManageSection() {
                 <Calendar size={12} /> 만료: {new Date(item.expiresAt).toLocaleDateString('ko')}
               </p>
             </div>
-            <button onClick={() => deleteMutation.mutate(item.id)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent" aria-label="삭제">
+            <ConfirmDeleteButton onConfirm={() => deleteMutation.mutate(item.id)} title="이달의 갤러리 해제" message="이 갤러리를 이달의 갤러리에서 내립니다." confirmText="해제" className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent">
               <Trash2 size={14} />
-            </button>
+            </ConfirmDeleteButton>
           </div>
         ))}
       </div>

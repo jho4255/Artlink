@@ -301,13 +301,13 @@ export default function ArtistsPage() {
                   <button
                     key={img.id}
                     onClick={() => setSelected(img)}
-                    className="group relative aspect-square cursor-pointer overflow-hidden"
+                    className="group relative aspect-square cursor-pointer overflow-hidden bg-gray-50"
                     aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
                   >
                     <SkeletonImage
                       src={img.url}
                       className="absolute inset-0"
-                      imgClassName="object-cover group-hover:opacity-80 transition-opacity duration-300"
+                      imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"   /* 규칙 18 — 작품은 자르지 않는다(2026-09-19) */
                       loading="lazy"
                     />
                     {/* 그라데이션에 pointer-events-none 필수 — 없으면 아래 버튼 클릭을 막는다(CLAUDE.md 8번) */}

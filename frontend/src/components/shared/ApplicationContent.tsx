@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react';
 import { safeHttpUrl } from '@/lib/utils';
 import { isCareerEmpty, normalizeCareer } from '@/lib/artwork';
 import type { Career, CareerKey, CustomAnswer, CustomField } from '@/types';
+import Thumb from '@/components/shared/Thumb';
 
 // 표시용 — 작가가 포트폴리오에 학력·수상을 적었으면 지원서에도 실려 오므로 함께 보여준다
 // (지원 시 '필수'로 요구하는 항목은 ExhibitionDetailPage의 APP_CAREER_LABELS 3종 그대로)
@@ -88,14 +89,11 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
           <p className="text-xs text-gray-400">없음</p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
+            {/* 규칙 18·21 — 작품은 자르지 않고(contain), 목록은 썸네일로. 예전엔 원본을 정사각 크롭했다(2026-09-19) */}
             {images.map((url, idx) => (
-              <img
-                key={idx}
-                src={url}
-                alt={`작품 ${idx + 1}`}
-                className="w-full aspect-square object-cover rounded cursor-pointer hover:opacity-80"
-                onClick={() => onImageClick?.(images, idx)}
-              />
+              <button key={idx} type="button" onClick={() => onImageClick?.(images, idx)} className="w-full aspect-square rounded bg-gray-50 cursor-pointer hover:opacity-80">
+                <Thumb src={url} size="grid" alt={`작품 ${idx + 1}`} className="w-full h-full object-contain" />
+              </button>
             ))}
           </div>
         )}

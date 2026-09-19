@@ -195,7 +195,7 @@ export default function CommunityPage() {
 
               {/* 관리자 조작 — 목록에서 바로. 카드 클릭(상세 이동)과 겹치지 않게 버튼을 위에 띄운다 */}
               {isAdmin && (
-                <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
                   <button
                     onClick={() => togglePin.mutate(p)}
                     title={p.pinned ? '고정 해제' : '맨 위에 고정'}

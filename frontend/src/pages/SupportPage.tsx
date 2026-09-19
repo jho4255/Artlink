@@ -6,8 +6,11 @@ import { Plus, ChevronDown, ChevronUp, MessageCircle, Send, HelpCircle, Trash2, 
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
+import { useNavigate } from 'react-router-dom';
+import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import WithdrawModal from '@/components/shared/WithdrawModal';
 import type { Inquiry } from '@/types';
+import { roleLabel } from '@/lib/utils';
 
 interface Faq {
   id: number;
@@ -289,6 +292,7 @@ function FaqSection() {
 // ===== 1:1 문의 섹션 =====
 function InquirySection() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'ADMIN';
 
@@ -301,6 +305,7 @@ function InquirySection() {
 
   const { data: inquiries = [], isLoading } = useQuery<Inquiry[]>({
     queryKey: ['inquiries', statusFilter],
+    enabled: !!user,   // 비로그인은 401 을 네 번 맞고 있었다(2026-09-19)
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
@@ -356,8 +361,15 @@ function InquirySection() {
 
   return (
     <>
-      {/* 문의하기 버튼 (Artist/Gallery) */}
-      {!isAdmin && (
+      {/* 비로그인 — 예전엔 폼이 그대로 보이고 [등록]에서 401 이 났다(2026-09-19). 로그인 뒤 이 화면으로 돌아온다 */}
+      {!user && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          <span>1:1 문의는 로그인 후 남길 수 있습니다.</span>
+          <button onClick={() => { setPostLoginRedirect('/support'); navigate('/login'); }} className="rounded-lg bg-gray-900 px-3 py-1.5 text-white">로그인</button>
+        </div>
+      )}
+      {/* 문의하기 버튼 (Artist/Gallery/일반) */}
+      {user && !isAdmin && (
         <div className="flex justify-end mb-4">
           <button
             onClick={() => setShowForm(!showForm)}
@@ -461,7 +473,7 @@ function InquirySection() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                    {isAdmin && <span className="text-gray-600">{inq.user?.name} ({inq.user?.role})</span>}
+                    {isAdmin && <span className="text-gray-600">{inq.user?.name} ({roleLabel(inq.user?.role)})</span>}
                     <span>{formatDate(inq.createdAt)}</span>
                   </div>
                 </div>

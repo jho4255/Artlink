@@ -365,7 +365,7 @@ export default function ExhibitionDetailPage() {
               {i === 0 && (
                 <>
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(-1); }}
+                    onClick={(e) => { e.stopPropagation(); if ((window.history.state?.idx ?? 0) > 0) navigate(-1); else navigate('/exhibitions'); }}   /* 공유 링크로 들어왔으면 뒤로 갈 곳이 사이트 밖이다(2026-09-19) */
                     className="absolute top-4 left-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"
                     aria-label="뒤로가기"
                   >
@@ -551,7 +551,7 @@ export default function ExhibitionDetailPage() {
               </div>
             </div>
           ) : (
-            <p className="text-gray-700 whitespace-pre-wrap">{exhibition.description}</p>
+            <p className="text-gray-700 whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">{exhibition.description}</p>
           )}
         </div>
 
@@ -1157,7 +1157,7 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
   const [value, setValue] = useState('');
 
   const start = exhibition.exhibitStartDate || exhibition.exhibitDate;
-  const started = start ? new Date(start) <= new Date() : false;
+  const started = start ? getDday(start) <= 0 : false;   // KST 달력 날짜 기준(규칙 14) — 순수 Date 비교는 당일 09시에 어긋난다
   // ⚠️ 공모만 진행하는 공고에는 자료제출 단계가 **없다** — 서버도 400 으로 막는다.
   //    [입력] 버튼을 남겨두면 눌러보고 에러를 받는 함정이 된다.
   const canFill = !exhibition.recruitOnly && canEdit && (!exhibition.submissionDeadline || isAdmin) && (!started || isAdmin);

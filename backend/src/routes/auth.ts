@@ -511,6 +511,7 @@ router.delete('/me', authenticate, validate(withdrawSchema), async (req, res, ne
           name: '탈퇴한 회원',
           email: `deleted_${userId}@artlink.invalid`,
           nickname: null,
+          handle: null,   // 안 비우면 죽은 `/@handle` 이 이름공간(작가·갤러리 공용)을 영구히 점유한다(2026-09-19)
           phone: null,
           avatar: null,
           instagramUrl: null,

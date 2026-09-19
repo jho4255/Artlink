@@ -867,13 +867,13 @@ function ItemModal({ item, members, onClose }: {
             ))}
           </div>
           <form
-            onSubmit={e => { e.preventDefault(); const t = comment.trim(); if (!t) return; commentMutation.mutate(t); }}
+            onSubmit={e => { e.preventDefault(); const t = comment.trim(); if (!t || commentMutation.isPending) return; commentMutation.mutate(t); }}
             className="mt-2 flex items-end gap-2"
           >
             <textarea
               value={comment} onChange={e => setComment(e.target.value)} rows={2} maxLength={2000}
               placeholder="댓글 남기기"
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
               className="min-w-0 flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none focus:outline-none focus:border-gray-900"
             />
             <button type="submit" disabled={commentMutation.isPending} className="shrink-0 px-3 py-2 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 cursor-pointer">등록</button>

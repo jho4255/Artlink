@@ -48,6 +48,10 @@ const sendSchema = z.object({
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || (d.attachmentUrl && d.attachmentType),
   { message: '내용이나 첨부가 필요합니다.' },
+).refine(
+  // 주소와 종류는 함께 와야 한다 — 종류만 빠지면 첨부가 **조용히 사라진** 텍스트 메시지가 됐다(2026-09-19)
+  (d) => !!d.attachmentUrl === !!d.attachmentType,
+  { message: '첨부 주소와 종류를 함께 보내주세요.' },
 );
 const directSchema = z.object({
   userId: z.number().int().positive(),

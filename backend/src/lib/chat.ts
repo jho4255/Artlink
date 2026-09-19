@@ -214,7 +214,7 @@ export async function listChats(userId: number): Promise<ChatSummary[]> {
     orderBy: { lastMessageAt: 'desc' },
     include: {
       participants: { include: participantSelect },
-      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      messages: { orderBy: { id: 'desc' }, take: 1 },   // readChat 과 같이 id — createdAt 은 동시 삽입에서 어긋난다
     },
   });
   if (rows.length === 0) return [];

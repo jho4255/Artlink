@@ -132,7 +132,7 @@ export default function ShowDetailPage() {
               fallbackLabel={show.title}
               className="w-full min-h-40 cursor-pointer"
               imgClassName="object-contain !h-auto block"
-              onClick={() => { setLightboxIndex(0); setLightboxOpen(true); }}
+              onClick={() => { if (!show.posterImage) return; setLightboxIndex(0); setLightboxOpen(true); }}   /* 포스터가 없으면 빈 검은 화면이 열렸다(2026-09-19) */
             />
             {/* 추가 이미지 썸네일 */}
             {allImages.length > 1 && (
@@ -305,7 +305,7 @@ export default function ShowDetailPage() {
             </div>
           </div>
         ) : (
-          <p className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed">{show.description}</p>
+          <p className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed break-keep [overflow-wrap:anywhere]">{show.description}</p>
         )}
       </div>
 
