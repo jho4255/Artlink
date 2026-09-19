@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2102 tests** (2026-09-17): Backend 1361 (supertest, `artlink_test` DB 순차), Frontend 741 (jsdom)
+- **2114 tests** (2026-09-19): Backend 1365 (supertest, `artlink_test` DB 순차), Frontend 749 (jsdom)
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
@@ -92,7 +92,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 4. **seed.ts upsert 규칙**: 스키마에 새 필드 추가 시 `update` 블록에도 반드시 해당 필드 포함 (Render DB는 유지되므로 기존 레코드는 update 경로를 탐. 로컬 migrate reset에서는 드러나지 않음)
 5. **architecture.md 업데이트** — 코드 변경 시 반드시 갱신
 6. **승인 거절 시 rejectReason 필수** — 없으면 400 에러
-7. **Admin은 찜 버튼 미표시** — GalleriesPage, GalleryDetailPage, ExhibitionsPage, ExhibitionDetailPage, ShowsPage, ShowDetailPage에서 `!isAdmin` 조건
+7. **Admin은 찜 버튼 미표시** — 판정은 `lib/utils.ts` 의 **`canFavorite(user)` 하나**(= 로그인 && Admin 아님). GalleriesPage, GalleryDetailPage, ExhibitionsPage, ExhibitionDetailPage, ShowsPage, ShowDetailPage 여섯 곳이 다 이걸 쓴다.
+   ⚠️ `role === 'ARTIST' &&` 식 화이트리스트로 하트를 가르지 말 것 — 2026-09-16 에 '일반' 역할을 넣을 때 갤러리 상세 한 곳만 늘려서, 같은 갤러리가 **목록엔 하트가 없고 상세엔 있는** 화면이 됐다(2026-09-19 수정). 서버 `POST /favorites/toggle` 은 역할 제한이 없다. `__tests__/favoriteButtons.test.ts` 가 소스를 훑어 막는다.
+   ⚠️ 서버 토글은 `deleteMany` + `createMany({skipDuplicates})` 다(규칙 46). 예전 `findUnique → create` 는 더블탭에서 400 을 냈다(동시 4회 → 성공 1).
 8. **gradient overlay에 `pointer-events-none` 필수** — `absolute inset-0` 오버레이가 아래 요소 클릭 차단
 9. **Framer Motion drag+animate 동시 사용 금지** — `drag="x"` + `animate={controls}` 이중 x 제어 충돌. AnimatePresence+variants 방식 사용
 10. **찜 연동은 invalidate만으로 부족** — cross-cache `setQueriesData`로 즉시 수정해야 stale 깜빡임 방지
@@ -234,6 +236,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **수락 = 지원 없이 바로 참가** (`POST /exhibitions/invites/:id/accept`) — `status='ACCEPTED'` 지원이 만들어져
   그대로 진행 프로세스(자료 제출 → 전시 → 정산)에 들어간다. 약력·작품은 포트폴리오에서 가져온다.
   ⚠️ **정원·마감은 그대로 지킨다** — 초대가 있었다고 정원을 넘겨 받을 수는 없다.
+- ⚠️ **[거절]은 `ConfirmDialog` 를 거친다**(2026-09-19). 유니크 제약 때문에 거절하면 **갤러리가 같은 작가를 다시 초대할 수 없다** —
+  [참여하기] 바로 옆 버튼이라 오터치가 영구 손실이었다. 같은 이유로 **작품 사진 삭제**(`PortfolioImageGrid` 의 ×)도 확인을 거친다
+  (터치기기에선 × 가 항상 보이고 서버가 원본 파일까지 지운다). 되돌릴 수 없는 버튼에 확인 없이 `mutate` 를 바로 걸지 말 것.
 - `MyExhibitionBucket` 에 `INVITED` 가 있지만 `groupMyExhibitions` 는 **채우지 않는다**(목록 API 가 다르다).
 
 ### 커뮤니티 · 소셜 (2026-08-28~29)
@@ -487,6 +492,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     ArtTalk 은 `Chat` 만 읽으므로 **그 글을 아무도 볼 수 없었다** — 에러가 없어 아무도 몰랐다(2026-08-28 수정).
     주소가 문자열이라 타입도 테스트도 못 잡는다. 그래서 소스를 훑는 가드 테스트를 둔다.
     같은 파일이 **갠톡 진입점 목록**도 고정한다 — 방을 여는 곳이 늘면 "아무나 말 걸 수 없다"는 설계가 조용히 무너진다.
+    ⚠️⚠️ **그 가드는 프론트만 본다 — 서버가 내부에서 옛 `Message` 에 쓰는 경로는 못 잡는다** (2026-09-19 발견·수정).
+    운영페이지의 [자료 제출 안내 DM]·[정산 확인 재안내] 두 라우트(`routes/operation.ts`)가 `prisma.message.create` 로 남아 있어
+    갤러리는 "N명에게 보냈습니다"를 보는데 **작가는 그 글을 볼 방법이 없었다**(정산 금액 설명까지 유실). 알림 링크도 ArtTalk 이
+    해석 못 하는 `/messages?partner=` 였다. 지금은 `lib/chat.ts` 의 **`sendDirectNotice`** 로 작가별 **갠톡**에 넣고 링크는 `/messages?chat=<id>`
+    (단톡이면 "누가 안 냈는지"가 전원에 노출된다). 서버에서 사용자에게 글을 보내는 새 경로를 만들면 반드시 `Chat`/`ChatMessage` 로.
+    회귀는 `operation.test.ts` 가 `ChatMessage` 에 실제로 들어갔는지 본다.
 33. **⚠️ 메시지 신고가 화면에서 끊겨 있다** (2026-08-28 발견, 미해결) —
     `routes/report.ts` 는 여전히 옛 `Message` 의 `messageId` 만 받는데 화면 대화는 `ChatMessage` 로 바뀌었고
     **말풍선에 신고 버튼이 없다.** 즉 지금은 부적절한 메시지를 **신고할 방법이 없고**, Admin '신고 관리' 탭에는
@@ -1515,7 +1526,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       이름을 바꾸려면 여섯 군데를 고쳐야 했다(하나만 빠져도 그 화면에서만 옛 이름이 남는다). 새 화면도 이걸 import 할 것.
     - **개발자 로그인에 '일반' 계정**(`visitor@artlink.com`, seed). ⚠️ `auth.ts` 의 `/dev-users` **역할 필터 화이트리스트에도**
       새 역할을 넣을 것 — 빠지면 그 역할만 필터가 조용히 무시돼 '같은 역할의 실제 계정으로 대체'가 엉뚱한 사람을 고른다.
-    - **되는 것**: 찜·작품 좋아요·이웃·갠톡·방명록·소식·커뮤니티 — 전부 원래 `authenticate` 만 걸린 라우트라 서버 변경이 없다.
+    - **되는 것**: 찜·작품 좋아요·이웃·갠톡·방명록·소식·커뮤니티·**1:1 문의** — 전부 원래 `authenticate` 만 걸린 라우트라 서버 변경이 없다.
+      ⚠️ 문의(`POST /inquiries`)만 `authorize('ARTIST','GALLERY')` 화이트리스트라 빠져 있었다 — 화면엔 폼이 보이는데 제출하면 403 (2026-09-19 수정).
+      역할 화이트리스트를 쓴 라우트를 grep 해 새 역할을 넣을 것(`report.ts:23` 도 같은 이분법이지만 신고 진입점이 없어 보류, 규칙 33).
+    - ⚠️ 관리자 [사용자 관리] 탭·역할 `<select>` 에도 새 역할을 넣을 것 — VISITOR 가 빠져 관리자가 일반 회원을 검색조차 못 했다(2026-09-19 수정).
       **안 되는 것**: 공모 지원·갤러리 등록·리뷰·작품 등록 — `authorize('ARTIST'|'GALLERY')` 가 그대로 막는다(403).
       관람객에겐 포트폴리오 페이지가 없다(`/portfolio/:id` 404).
     - 화면: `myPageMenu.ts` 의 `VISITOR_TABS`(프로필·찜 목록·ArtStory). 프로필의 연락처 칸은 작가·관람객, 홈페이지 주소 칸은 작가만.
@@ -1726,6 +1740,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **로그아웃 버튼은 Navbar에만 둔다** — 예전엔 마이페이지 본문 우상단에도 있어 한 화면에 두 개가 보였다.
     - **모바일(lg↓)은 가운데 5메뉴를 하단 고정 탭바로 내렸다(2026-08-29, `components/layout/BottomTabBar.tsx`, catch 앱 방식).**
       정의는 **`lib/navLinks.ts` 하나** — 데스크톱 상단 중앙과 하단 탭바가 공유(아이콘 포함). `Layout` 이 본문에 `pb`(바 높이+safe-area)를 줘 가림 방지.
+      ⚠️ **탭바는 `z-40` — 모달(`fixed inset-0 z-50`)보다 아래여야 한다** (2026-09-19 실측 수정). 앱의 모달 대부분이 포털을 안 써 DOM 상 탭바보다
+      앞에 오므로 같은 z-50 이면 탭바가 이겨 **공모 지원 모달의 [지원하기]·[취소]** 와 하이라이트 뷰어 하단을 덮었다. 모달마다 z 를 올리지 말고
+      화면 부속을 한 단계 아래에 둔다. `favoriteButtons.test.ts` 가 z-40 을 고정한다.
       그래서 모바일 [메뉴](햄버거)에는 이제 **마이페이지 탭 + 로그아웃만** 들어가고, 햄버거 자체가 **로그인 시에만** 뜬다(비로그인은 하단바+[로그인]으로 충분).
 - **홈 구성 (2026-09-05 현재)**: `Hero 슬라이더` → `ArtWorks` → 나머지. 이 순서다.
     - **최상단은 배너다.** 2026-08-27~09-04 사이에는 작품(ArtWorks)이 맨 위였고, 2026-09-05 사용자 요청으로 되돌렸다.

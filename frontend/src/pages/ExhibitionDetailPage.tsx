@@ -27,7 +27,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -371,7 +371,7 @@ export default function ExhibitionDetailPage() {
                   >
                     <ArrowLeft size={20} />
                   </button>
-                  {isArtist && (
+                  {canFavorite(user) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); favMutation.mutate(); }}
                       className="absolute top-4 right-4 z-20 p-2 bg-white/80 backdrop-blur-sm rounded-full cursor-pointer"

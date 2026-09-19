@@ -37,7 +37,7 @@ import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import FollowButton from '@/components/shared/FollowButton';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
 import ImageUpload from '@/components/shared/ImageUpload';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
@@ -432,7 +432,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             setImgIndex={setImgIndex}
             onImageClick={(index) => { if (hasImage) setLightbox({ images, index }); }}
             isFavorited={!!gallery.isFavorited}
-            showFavorite={user?.role === 'ARTIST' || user?.role === 'VISITOR'}
+            showFavorite={canFavorite(user)}
             onFavoriteClick={() => favMutation.mutate()}
           />
         </div>

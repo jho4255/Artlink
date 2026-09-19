@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
+import { regionLabels, getShowStatus, showStatusLabels, canFavorite } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
@@ -216,7 +216,7 @@ export default function ShowDetailPage() {
           }`}>
             {showStatusLabels[status]}
           </span>
-          {user?.role === 'ARTIST' && (
+          {canFavorite(user) && (
             <button onClick={() => favMutation.mutate()} className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer" aria-label={show.isFavorited ? '찜 해제' : '찜하기'}>
               <Heart size={20} className={show.isFavorited ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'} />
             </button>

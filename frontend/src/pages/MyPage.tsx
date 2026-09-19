@@ -733,7 +733,9 @@ function PortfolioSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '이미지 추가 실패'),
   });
 
-  // 포트폴리오 이미지 삭제
+  // 포트폴리오 이미지 삭제 — ⚠️ 반드시 확인을 거친다(2026-09-19). 터치기기에선 × 버튼이 항상 보이고,
+  // 서버가 원본 파일까지 지우므로(`portfolio.ts`) 되돌릴 수 없다. 이 파일의 다른 삭제는 전부 확인이 있었는데 이것만 없었다.
+  const [removeImageId, setRemoveImageId] = useState<number | null>(null);
   const removeImageMutation = useMutation({
     mutationFn: (imageId: number) => api.delete(`/portfolio/images/${imageId}`),
     onSuccess: () => {
@@ -839,11 +841,20 @@ function PortfolioSection() {
         <PortfolioImageGrid
           images={images}
           onAdd={(url) => addImageMutation.mutate(url)}
-          onRemove={(imageId) => removeImageMutation.mutate(imageId)}
+          onRemove={(imageId) => setRemoveImageId(imageId)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
           onEdit={(imageId) => setMetaImageId(imageId)}
           maxCount={30}
           gridClassName={editing ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 sm:grid-cols-4 gap-2'}
+        />
+        <ConfirmDialog
+          open={removeImageId !== null}
+          title="작품 사진 삭제"
+          message="이 작품 사진을 지웁니다. 원본 파일도 함께 삭제되어 되돌릴 수 없습니다."
+          confirmText="삭제"
+          variant="danger"
+          onConfirm={() => { if (removeImageId !== null) removeImageMutation.mutate(removeImageId); setRemoveImageId(null); }}
+          onCancel={() => setRemoveImageId(null)}
         />
     </div>
   );
@@ -2014,9 +2025,15 @@ function ApplicationsSection() {
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '참여 처리에 실패했습니다.'),
   });
+  /* 거절은 확인을 거친다(2026-09-19) — 유니크 제약 때문에 **갤러리가 같은 작가를 다시 초대할 수 없어** 오터치가 영구 손실이다.
+     [참여하기] 바로 옆 버튼이라 더 그렇다. */
+  const [decliningInviteId, setDecliningInviteId] = useState<number | null>(null);
   const declineInvite = useMutation({
     mutationFn: (id: number) => api.patch(`/exhibitions/invites/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['received-invites'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
+      toast.success('초대를 거절했습니다.');
+    },
     onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
   });
 
@@ -2095,6 +2112,16 @@ function ApplicationsSection() {
         ))}
       </div>
 
+      <ConfirmDialog
+        open={decliningInviteId !== null}
+        title="초대 거절"
+        message="이 초대를 거절합니다. 거절하면 같은 공모에 다시 초대받을 수 없습니다."
+        confirmText="거절"
+        variant="danger"
+        onConfirm={() => { if (decliningInviteId !== null) declineInvite.mutate(decliningInviteId); setDecliningInviteId(null); }}
+        onCancel={() => setDecliningInviteId(null)}
+      />
+
       {/* 초대 탭 — 카드 얼개는 아래 지원 카드와 같게 두되, 버튼만 [참여하기]/[거절] 이다 */}
       {activeTab === 'INVITED' ? (
         invites.length === 0 ? (
@@ -2128,7 +2155,7 @@ function ApplicationsSection() {
                         className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                         <Check size={14} /> 참여하기
                       </button>
-                      <button type="button" onClick={() => declineInvite.mutate(inv.id)} disabled={declineInvite.isPending}
+                      <button type="button" onClick={() => setDecliningInviteId(inv.id)} disabled={declineInvite.isPending}
                         className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                         거절
                       </button>
@@ -4344,12 +4371,14 @@ function ReportManageSection() {
 
 // ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
 const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
+// ⚠️ 역할이 늘면 여기와 아래 <select> 옵션에 함께 넣을 것 — VISITOR('일반', 2026-09-16)가 빠져 있어 관리자가 일반 회원을
+//    검색조차 못 했다(2026-09-19 수정). 라벨은 `roleLabel()` 하나를 쓴다(규칙 52).
 const ADMIN_USER_ROLE_TABS = [
   { role: 'GALLERY', label: '갤러리 유저' },
   { role: 'ARTIST', label: '아티스트 유저' },
+  { role: 'VISITOR', label: '일반 유저' },
   { role: 'ADMIN', label: 'admin 유저' },
 ] as const;
-const ADMIN_USER_ROLE_LABELS: Record<string, string> = { ARTIST: '아티스트', GALLERY: '갤러리', ADMIN: '관리자' };
 const adminUserDate = (value?: string | null) => {
   if (!value) return '기록 없음';
   return new Date(value).toLocaleDateString('ko-KR', {
@@ -4457,7 +4486,7 @@ function UserManageSection() {
                 </div>
                 <div className="flex flex-none items-center gap-2">
                   <span className="hidden sm:inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">
-                    {ADMIN_USER_ROLE_LABELS[u.role] || u.role}
+                    {roleLabel(u.role) || u.role}
                   </span>
                   {isArtist && (
                     <button
@@ -4503,6 +4532,7 @@ function UserManageSection() {
                   >
                     <option value="ARTIST">아티스트</option>
                     <option value="GALLERY">갤러리</option>
+                    <option value="VISITOR">일반</option>
                     <option value="ADMIN">관리자</option>
                   </select>
                 </div>

@@ -31,6 +31,11 @@ describe('VISITOR 역할', () => {
     expect(res.body.user.role).toBe('VISITOR');
   });
 
+  it('할 수 있는 것: 1:1 문의 (2026-09-19 — 화이트리스트에서 빠져 화면엔 폼이 보이는데 제출하면 403 이었다)', async () => {
+    const res = await request.post('/api/inquiries').set(auth()).send({ subject: '문의', content: '내용입니다' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+  });
+
   it('할 수 있는 것: 찜 · 작품 좋아요 · 이웃 · 갠톡 · 방명록', async () => {
     expect((await request.post('/api/favorites/toggle').set(auth()).send({ galleryId })).status).toBe(200);
     expect((await request.post(`/api/explore/${imageId}/like`).set(auth())).status).toBe(200);

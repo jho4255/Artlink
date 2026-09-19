@@ -123,7 +123,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /inquiries — 문의 작성 (Artist, Gallery만)
-router.post('/', authenticate, authorize('ARTIST', 'GALLERY'), validate(inquiryCreateSchema), async (req, res, next) => {
+// ⚠️ '일반'(VISITOR) 도 문의를 남길 수 있어야 한다 — 2026-09-16 역할 추가 때 여기만 빠져 화면엔 폼이 보이는데 제출하면 403 이 났다(2026-09-19 수정)
+router.post('/', authenticate, authorize('ARTIST', 'GALLERY', 'VISITOR'), validate(inquiryCreateSchema), async (req, res, next) => {
   try {
     const { subject, content } = req.body;
     const inquiry = await prisma.inquiry.create({

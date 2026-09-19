@@ -14,7 +14,8 @@ import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { buildCaptionHwp, CAPTION_MAX_WORKS } from '../lib/captionHwp';
 import { toManWon } from '../lib/format';
-import { pushToUser } from '../lib/sse';
+import { sendDirectNotice } from '../lib/chat';
+import { baseUrl } from '../lib/seoMeta';
 import { hasSubmissionContent } from '../lib/submission';
 import { canOperateExhibition, operatorUserIds, exhibitionNotifyTargets } from '../lib/exhibitionAccess';
 import { assertFullExhibition } from '../lib/exhibitionStage';
@@ -86,6 +87,9 @@ async function getStageAccess(exhibitionId: number, userId: number, role: string
 
 
 const idOf = (s: any) => parseInt(s, 10);
+/** 안내 DM 본문에 적는 작가용 바로가기 — 대화 말풍선은 평문이라 **절대 주소**여야 눌러서 열 수 있다.
+ *  옛 문구(`/exhibitions/:id/operation/new`)는 작가가 가면 마이페이지로 되튕기는 주소였다. */
+const artistNoticeLink = (exhibitionId: number) => `${baseUrl()}${artistExhibitionLink(exhibitionId)}`;
 
 // ── 접근 정보 (페이지 부트스트랩) ──
 router.get('/:id/access', authenticate, async (req, res, next) => {
@@ -377,26 +381,15 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
       '전시 운영을 위해 작품 정보, 작가 약력, 작가노트 제출이 필요합니다.',
       '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
       '',
-      `바로가기: /exhibitions/${exhibitionId}/operation/new`,
+      `바로가기: ${artistNoticeLink(exhibitionId)}`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
 
-    const messages = await prisma.$transaction(
-      targets.map((target) => prisma.message.create({
-        data: {
-          senderId: req.user!.id,
-          receiverId: target.userId,
-          subject,
-          content,
-          exhibitionId,
-        },
-        include: {
-          sender: { select: { id: true, name: true, nickname: true, role: true } },
-          receiver: { select: { id: true, name: true, nickname: true, role: true } },
-          exhibition: { select: { id: true, title: true } },
-        },
-      })),
-    );
+    // ArtTalk 갠톡으로 보낸다 — 옛 `Message` 테이블에 쓰면 작가가 볼 수 없다(`lib/chat.ts sendDirectNotice` 참고)
+    const chatIds = new Map<number, number>();
+    for (const target of targets) {
+      chatIds.set(target.userId, await sendDirectNotice(req.user!.id, target.userId, `${subject}\n\n${content}`));
+    }
 
     try {
       await prisma.notification.createMany({
@@ -404,15 +397,11 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
           userId: target.userId,
           type: 'SUBMISSION_REMINDER',
           message: `"${exhibition.title}" 전시 자료 제출 안내가 도착했습니다.`,
-          linkUrl: `/messages?partner=${req.user!.id}&exhibition=${exhibitionId}&subject=${encodeURIComponent(subject)}`,
+          linkUrl: `/messages?chat=${chatIds.get(target.userId)}`,
         })),
       });
-      for (const message of messages) {
-        pushToUser(message.receiverId, 'message', message);
-        pushToUser(req.user!.id, 'message', message);
-      }
     } catch {
-      // 메시지는 이미 생성되었으므로 알림/SSE 실패는 무시합니다.
+      // 대화는 이미 생성되었으므로 알림 실패는 무시합니다.
     }
 
     res.json({
@@ -1161,26 +1150,15 @@ router.post('/:id/settlement/reminders', authenticate, async (req, res, next) =>
       '정산 내역 확인 요청을 다시 안내드립니다.',
       '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
       '',
-      `바로가기: /exhibitions/${exhibitionId}/operation/new`,
+      `바로가기: ${artistNoticeLink(exhibitionId)}`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
 
-    const messages = await prisma.$transaction(
-      targets.map((target) => prisma.message.create({
-        data: {
-          senderId: req.user!.id,
-          receiverId: target.id,
-          subject,
-          content,
-          exhibitionId,
-        },
-        include: {
-          sender: { select: { id: true, name: true, nickname: true, role: true } },
-          receiver: { select: { id: true, name: true, nickname: true, role: true } },
-          exhibition: { select: { id: true, title: true } },
-        },
-      })),
-    );
+    // ArtTalk 갠톡으로 보낸다 — 옛 `Message` 테이블에 쓰면 작가가 볼 수 없다(`lib/chat.ts sendDirectNotice` 참고)
+    const chatIds = new Map<number, number>();
+    for (const target of targets) {
+      chatIds.set(target.id, await sendDirectNotice(req.user!.id, target.id, `${subject}\n\n${content}`));
+    }
 
     try {
       await prisma.notification.createMany({
@@ -1188,15 +1166,11 @@ router.post('/:id/settlement/reminders', authenticate, async (req, res, next) =>
           userId: target.id,
           type: 'SETTLEMENT_CONFIRM_REQUEST',
           message: `"${exhibition.title}" 정산 확인 재안내가 도착했습니다. 확인 후 수락해주세요.`,
-          linkUrl: `/messages?partner=${req.user!.id}&exhibition=${exhibitionId}&subject=${encodeURIComponent(subject)}`,
+          linkUrl: `/messages?chat=${chatIds.get(target.id)}`,
         })),
       });
-      for (const message of messages) {
-        pushToUser(message.receiverId, 'message', message);
-        pushToUser(req.user!.id, 'message', message);
-      }
     } catch {
-      // 메시지는 이미 생성되었으므로 알림/SSE 실패는 무시합니다.
+      // 대화는 이미 생성되었으므로 알림 실패는 무시합니다.
     }
 
     res.json({

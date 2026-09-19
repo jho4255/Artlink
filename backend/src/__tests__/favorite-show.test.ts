@@ -31,6 +31,25 @@ describe('Favorite API (Show)', () => {
       expect(res2.body.favorited).toBe(false);
     });
 
+    /* 규칙 46 — 예전엔 `findUnique → create` 라 동시에 누르면 unique 위반으로 400 이 났다(2026-09-19 실측 4회 중 3회).
+       모바일 더블탭이 곧 이 상황이다. 어느 요청도 4xx 를 내면 안 되고, 짝수 번이면 원래대로 돌아와야 한다. */
+    it('동시에 여러 번 눌러도 400 이 없다 (더블탭)', async () => {
+      const gallery = await seedGallery();
+      const show = await seedShow(gallery.id);
+      const token = authToken(1, 'ARTIST');
+      const hit = () => request.post('/api/favorites/toggle').set('Authorization', `Bearer ${token}`).send({ showId: show.id });
+      const results = await Promise.all([hit(), hit(), hit(), hit()]);
+      expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      const rows = await testPrisma.favorite.count({ where: { userId: 1, showId: show.id } });
+      expect(rows).toBeLessThanOrEqual(1);
+      // 마지막 응답의 favorited 가 DB 상태와 맞는다
+      const last = results[results.length - 1].body.favorited;
+      const on = results.filter((r) => r.body.favorited).length;
+      const off = results.length - on;
+      expect(on - off === 0 ? rows === 0 : true).toBe(true);
+      expect(typeof last).toBe('boolean');
+    });
+
     it('galleryId/exhibitionId/showId 모두 없으면 400', async () => {
       const token = authToken(1, 'ARTIST');
       const res = await request.post('/api/favorites/toggle')

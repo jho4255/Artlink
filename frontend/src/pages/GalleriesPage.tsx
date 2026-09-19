@@ -21,7 +21,7 @@ import { Heart, Phone, MapPin, X, Plus, Search, MessageSquare } from 'lucide-rea
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels } from '@/lib/utils';
+import { regionLabels, canFavorite } from '@/lib/utils';
 import { galleryPath } from '@/lib/handle';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Gallery } from '@/types';
@@ -233,7 +233,7 @@ export default function GalleriesPage() {
                   <h3 className="min-w-0 text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
                     {gallery.name}
                   </h3>
-                  {user?.role === 'ARTIST' && (
+                  {canFavorite(user) && (
                     <button
                       onClick={(e) => {
                         // Link(앵커) 내부 버튼: 기본 이동 차단 + 버블링 차단

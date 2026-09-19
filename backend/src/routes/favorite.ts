@@ -42,73 +42,42 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 찜 토글
+/**
+ * 찜 토글 — '확인하고 만들지' 않는다 (CLAUDE.md 규칙 46, 2026-09-19 수정).
+ *
+ * 예전엔 `$transaction` 안에서 `findUnique → create` 였는데, 기본 격리수준(ReadCommitted)에서는 동시 요청 둘 다
+ * "없음"을 보고 들어가 `@@unique` 위반(P2002) → 400 "데이터 처리 중 오류" 가 났다. 모바일 더블탭에서 흔했고,
+ * 화면의 낙관적 갱신이 조용히 롤백돼 "눌렀는데 안 눌림" 이 됐다(2026-09-19 실측: 동시 4회 → 200 1건 + 400 3건).
+ * 좋아요·이웃(`community.ts`·`story.ts`·`follow.ts`)은 이미 이 패턴인데 찜만 빠져 있었다.
+ *
+ * `deleteMany` 는 없는 걸 지워도, `createMany({skipDuplicates})` 는 있는 걸 만들어도 던지지 않는다.
+ * 지운 행이 있으면 '취소', 없으면 '추가' — 어느 쪽이든 200 이고 두 번 누르면 원래대로 돌아온다.
+ */
 router.post('/toggle', authenticate, validate(favoriteToggleSchema), async (req, res, next) => {
   try {
     const { galleryId, exhibitionId, showId } = req.body;
+    const userId = req.user!.id;
 
-    // 트랜잭션으로 찜 토글 atomic 보장 (race condition 방지)
-    if (galleryId) {
-      const result = await prisma.$transaction(async (tx) => {
-        const existing = await tx.favorite.findUnique({
-          where: { userId_galleryId: { userId: req.user!.id, galleryId } }
-        });
-        if (existing) {
-          await tx.favorite.delete({ where: { id: existing.id } });
-          return { favorited: false };
-        }
-        // 신규 찜: 대상이 존재하고 승인된 상태여야 함 (미승인/탈퇴 대상 찜 방지)
-        const gallery = await tx.gallery.findUnique({ where: { id: galleryId }, select: { status: true } });
-        if (!gallery || gallery.status !== 'APPROVED') {
-          throw new AppError('대상을 찾을 수 없습니다.', 404);
-        }
-        await tx.favorite.create({ data: { userId: req.user!.id, galleryId } });
-        return { favorited: true };
-      });
-      return res.json(result);
-    }
+    const target: { key: { galleryId?: number; exhibitionId?: number; showId?: number }; approved: () => Promise<boolean> } | null =
+      galleryId ? {
+        key: { galleryId },
+        approved: async () => (await prisma.gallery.findUnique({ where: { id: galleryId }, select: { status: true } }))?.status === 'APPROVED',
+      } : exhibitionId ? {
+        key: { exhibitionId },
+        approved: async () => (await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { status: true } }))?.status === 'APPROVED',
+      } : showId ? {
+        key: { showId },
+        approved: async () => (await prisma.show.findUnique({ where: { id: showId }, select: { status: true } }))?.status === 'APPROVED',
+      } : null;
+    if (!target) return res.status(400).json({ error: 'galleryId, exhibitionId 또는 showId가 필요합니다.' });
 
-    if (exhibitionId) {
-      const result = await prisma.$transaction(async (tx) => {
-        const existing = await tx.favorite.findUnique({
-          where: { userId_exhibitionId: { userId: req.user!.id, exhibitionId } }
-        });
-        if (existing) {
-          await tx.favorite.delete({ where: { id: existing.id } });
-          return { favorited: false };
-        }
-        // 신규 찜: 대상이 존재하고 승인된 상태여야 함 (미승인/탈퇴 대상 찜 방지)
-        const exhibition = await tx.exhibition.findUnique({ where: { id: exhibitionId }, select: { status: true } });
-        if (!exhibition || exhibition.status !== 'APPROVED') {
-          throw new AppError('대상을 찾을 수 없습니다.', 404);
-        }
-        await tx.favorite.create({ data: { userId: req.user!.id, exhibitionId } });
-        return { favorited: true };
-      });
-      return res.json(result);
-    }
+    const removed = await prisma.favorite.deleteMany({ where: { userId, ...target.key } });
+    if (removed.count > 0) return res.json({ favorited: false });
 
-    if (showId) {
-      const result = await prisma.$transaction(async (tx) => {
-        const existing = await tx.favorite.findUnique({
-          where: { userId_showId: { userId: req.user!.id, showId } }
-        });
-        if (existing) {
-          await tx.favorite.delete({ where: { id: existing.id } });
-          return { favorited: false };
-        }
-        // 신규 찜: 대상이 존재하고 승인된 상태여야 함 (미승인/탈퇴 대상 찜 방지)
-        const show = await tx.show.findUnique({ where: { id: showId }, select: { status: true } });
-        if (!show || show.status !== 'APPROVED') {
-          throw new AppError('대상을 찾을 수 없습니다.', 404);
-        }
-        await tx.favorite.create({ data: { userId: req.user!.id, showId } });
-        return { favorited: true };
-      });
-      return res.json(result);
-    }
-
-    res.status(400).json({ error: 'galleryId, exhibitionId 또는 showId가 필요합니다.' });
+    // 신규 찜: 대상이 존재하고 승인된 상태여야 함 (미승인/탈퇴 대상 찜 방지)
+    if (!(await target.approved())) throw new AppError('대상을 찾을 수 없습니다.', 404);
+    await prisma.favorite.createMany({ data: [{ userId, ...target.key }], skipDuplicates: true });
+    res.json({ favorited: true });
   } catch (error) { next(error); }
 });
 

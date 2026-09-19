@@ -171,7 +171,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
       '전시 운영을 위해 아직 제출되지 않은 자료 확인을 부탁드립니다.',
       '운영 페이지에서 누락된 항목을 확인한 뒤 제출해 주세요.',
       '',
-      `바로가기: /exhibitions/${id}/operation/new`,
+      `바로가기: ${window.location.origin}/mypage?tab=applications&ex=${id}`,
     ].join('\n'));
     setSettlementReminderSubject(`[${access.title}] 정산 확인 부탁드립니다`);
     setSettlementReminderContent([
@@ -180,7 +180,7 @@ export function OperationBody({ id: idProp, embedded = false }: { id?: string; e
       '정산 내역 확인 요청을 다시 안내드립니다.',
       '운영 페이지에서 정산 금액을 확인한 뒤 수락 또는 문의를 남겨주세요.',
       '',
-      `바로가기: /exhibitions/${id}/operation/new`,
+      `바로가기: ${window.location.origin}/mypage?tab=applications&ex=${id}`,
     ].join('\n'));
   }, [access?.title, id]);
 

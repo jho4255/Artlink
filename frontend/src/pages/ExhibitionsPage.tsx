@@ -5,7 +5,7 @@ import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import { getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, canFavorite } from '@/lib/utils';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted } from '@/lib/exhibitionHost';
 import type { Exhibition } from '@/types';
@@ -259,7 +259,7 @@ export default function ExhibitionsPage() {
                           D-{dday}
                         </span>
                       )}
-                      {user?.role === 'ARTIST' && (
+                      {canFavorite(user) && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); favMutation.mutate(ex.id); }}
                           className="min-h-[44px] min-w-[44px] -m-3 flex items-center justify-center cursor-pointer"

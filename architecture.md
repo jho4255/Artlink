@@ -2051,3 +2051,20 @@ operatorUserIds(ex)                알림 발송 대상 전부
   (전체 실행 231개 중 227 통과·4 실패 → 넷 다 스펙이 낡은 것이라 고쳐 재실행 통과, 신규 13개 통과.)
 - 마이페이지 프로필 카드의 역할 배지가 날것의 `ARTIST`/`VISITOR` 를 찍고 있었다 → `roleLabel()`.
 
+
+## 전수 버그 감사 1차 수정 (2026-09-19)
+감사 결과 정본은 `scratchpad/bug-audit-2026-09-18.md`(P0 1 · P1 21 · P2 ~90). 사용자 지정 순서로 8건을 먼저 고쳤다.
+
+| # | 결함 | 고친 곳 | 회귀 |
+|---|---|---|---|
+| 1 | 운영 DM(자료 제출 안내·정산 재안내)이 폐기된 `Message` 테이블에 쓰여 작가가 못 봄 | `lib/chat.ts sendDirectNotice`(갠톡 + `lastMessageAt` + 발신자 읽음), `routes/operation.ts` 두 라우트, 알림 링크 `/messages?chat=<id>`, 안내 본문 바로가기를 절대 주소 `baseUrl()+artistExhibitionLink` 로 | `operation.test.ts` "ArtTalk 갠톡에 들어간다"·"같은 방에 쌓인다" |
+| 6 | 찜 더블탭 400 | `routes/favorite.ts` `deleteMany`+`createMany({skipDuplicates})` | `favorite-show.test.ts` 동시 4회 전부 200 |
+| 7 | 모바일 탭바가 지원 모달·하이라이트 뷰어 위를 덮음 | `BottomTabBar` z-50 → **z-40** (모달은 z-50 유지) | `favoriteButtons.test.ts` |
+| 4 | 작품 사진 삭제 무확인 | `MyPage PortfolioSection` `removeImageId` + `ConfirmDialog` | — |
+| 5 | 초대 [거절] 무확인(재초대 불가) | `MyPage ApplicationsSection` `decliningInviteId` + `ConfirmDialog` + 성공 토스트 | — |
+| 11 | VISITOR 1:1 문의 403 | `routes/inquiry.ts` `authorize(...,'VISITOR')` | `visitor-role.test.ts` |
+| 12 | VISITOR 찜 버튼이 목록·전시/공모 상세에 없음 | `lib/utils.ts canFavorite(user)` 하나로 6화면 통일 | `favoriteButtons.test.ts`(소스 가드) |
+| 13 | 관리자 [사용자 관리]에 VISITOR 탭·옵션 없음 | `MyPage` `ADMIN_USER_ROLE_TABS` + `<option>`, 라벨은 `roleLabel()` | — |
+
+남은 P1(갤러리 없는 주최 공모 알림 3곳, ArtTalk 새 메시지 알림, rate limit, 스토리 이웃공개 우회, 커뮤니티 수정 익명, recruitOnly 제출 버튼, 폼 접기 유실,
+운영 갤러리 전부 떼기, 지원서 글자수, 모바일 고객센터 링크, 하이라이트 수정/삭제, 커뮤니티 페이지네이션, 알림 링크 404, 초대만 받은 작가 빈 화면)은 감사 파일 참고.

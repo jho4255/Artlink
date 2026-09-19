@@ -89,6 +89,28 @@ export async function openDirectChat(a: number, b: number): Promise<number> {
 }
 
 /**
+ * 운영자가 작가 한 명에게 갠톡으로 안내를 보낸다 — 자료 제출 안내·정산 확인 재안내(`routes/operation.ts`).
+ *
+ * ⚠️ 2026-09-19 까지 이 두 안내는 폐기된 `Message`(옛 쪽지) 테이블에 쓰였다. ArtTalk 은 `Chat` 만 읽으므로
+ *    갤러리는 "N명에게 보냈습니다" 를 보는데 **작가는 그 글을 볼 방법이 없었다**(정산 금액 설명까지 유실).
+ *    `retiredApis.test.ts` 는 프론트 소스만 훑어 서버가 내부적으로 옛 모델에 쓰는 이 경로를 못 잡았다 —
+ *    회귀는 `operation.test.ts` 가 `ChatMessage` 에 실제로 들어갔는지 본다.
+ * ⚠️ 단톡이 아니라 **갠톡**이다 — 단톡에 보내면 "누가 아직 안 냈는지" 가 전원에게 드러난다.
+ * @returns 방 id (알림 링크 `/messages?chat=<id>` 에 쓴다)
+ */
+export async function sendDirectNotice(fromUserId: number, toUserId: number, text: string): Promise<number> {
+  const chatId = await openDirectChat(fromUserId, toUserId);
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.chatMessage.create({ data: { chatId, senderId: fromUserId, content: text } }),
+    prisma.chat.update({ where: { id: chatId }, data: { lastMessageAt: now } }),
+    // 보낸 사람은 읽은 것이다 — 안 하면 자기 안내가 안읽음으로 잡힌다(`routes/chat.ts` 와 같은 규칙)
+    prisma.chatParticipant.update({ where: { chatId_userId: { chatId, userId: fromUserId } }, data: { lastReadAt: now } }),
+  ]);
+  return chatId;
+}
+
+/**
  * 공모 단톡을 만들거나(없으면) 참여자를 최신 상태로 맞춘다.
  *
  * 참여자 = 운영자(갤러리 오너 + 아트링크 주최면 운영 갤러리 오너들 + 초대한 Admin은 제외) + **수락된 작가**.

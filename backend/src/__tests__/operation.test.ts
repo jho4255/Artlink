@@ -246,6 +246,34 @@ describe('공모 운영 페이지 API', () => {
       expect(r.body.sentCount).toBe(1);
       expect(r.body.targets[0].id).toBe(1);
     });
+    /* 2026-09-19 까지 이 안내는 폐기된 `Message`(옛 쪽지) 테이블에 쓰여서 갤러리는 "보냈습니다"를 보는데
+       작가는 ArtTalk(`Chat`)에서 영영 볼 수 없었다. 작가가 실제로 읽는 자리에 들어갔는지 본다. */
+    it('안내는 ArtTalk 갠톡(ChatMessage)에 들어가고, 알림 링크가 그 방을 가리킨다', async () => {
+      const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`)
+        .send({ subject: '자료 부탁', content: '본문입니다' });
+      expect(r.status).toBe(200);
+      const msgs = await testPrisma.chatMessage.findMany({ include: { chat: { include: { participants: true } } } });
+      expect(msgs).toHaveLength(1);
+      expect(msgs[0].senderId).toBe(3);
+      expect(msgs[0].content).toContain('자료 부탁');
+      expect(msgs[0].content).toContain('본문입니다');
+      expect(msgs[0].chat.kind).toBe('DIRECT');
+      expect(msgs[0].chat.participants.map((p) => p.userId).sort()).toEqual([1, 3]);
+      // 작가 쪽 ArtTalk 목록에 실제로 뜬다
+      const list = await request.get('/api/chats').set('Authorization', `Bearer ${artist1Tok}`);
+      expect(list.body.some((c: any) => c.id === msgs[0].chatId)).toBe(true);
+      // 알림은 그 방으로 보낸다(옛 `/messages?partner=` 는 ArtTalk 이 해석하지 못했다)
+      const noti = await testPrisma.notification.findFirst({ where: { userId: 1, type: 'SUBMISSION_REMINDER' } });
+      expect(noti?.linkUrl).toBe(`/messages?chat=${msgs[0].chatId}`);
+      // 옛 쪽지 테이블에는 아무것도 안 쓴다
+      expect(await testPrisma.message.count()).toBe(0);
+    });
+    it('두 번 보내도 같은 갠톡에 쌓인다(방이 늘지 않는다)', async () => {
+      await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`).send({ subject: 'a', content: 'b' });
+      await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`).send({ subject: 'c', content: 'd' });
+      expect(await testPrisma.chat.count()).toBe(1);
+      expect(await testPrisma.chatMessage.count()).toBe(2);
+    });
     it('전시 종료 후 오너가 발송 시도 → 400', async () => {
       await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
       const r = await request.post(`/api/operations/${exId}/submission-reminders`).set('Authorization', `Bearer ${ownerTok}`)

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import { regionLabels, getShowStatus, showStatusLabels } from '@/lib/utils';
+import { regionLabels, getShowStatus, showStatusLabels, canFavorite } from '@/lib/utils';
 import type { Show } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -220,7 +220,7 @@ export default function ShowsPage() {
                       }`}>
                         {showStatusLabels[status]}
                       </span>
-                      {user?.role === 'ARTIST' && (
+                      {canFavorite(user) && (
                         <button
                           onClick={(e) => {
                             e.preventDefault();

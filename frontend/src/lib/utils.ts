@@ -300,3 +300,15 @@ export function roleLabel(role?: string | null): string {
 
 /** 가입 화면에서 '일반'이 누구인지 밝히는 부제 */
 export const VISITOR_ROLE_HINT = '디렉터 · 관람객';
+
+/**
+ * 찜(하트) 버튼을 그릴 것인가 — **역할 화이트리스트가 아니라 Admin 제외**로 판정한다 (CLAUDE.md 규칙 7).
+ *
+ * 2026-09-16 에 '일반'(VISITOR) 역할을 넣으면서 갤러리 상세 한 곳만 `role === 'ARTIST' || 'VISITOR'` 로 늘렸고
+ * 목록 4곳·전시/공모 상세는 `role === 'ARTIST'` 로 남아 **같은 갤러리가 목록에선 하트가 없고 상세에선 있는** 화면이 됐다
+ * (2026-09-19 실측). 서버 `POST /favorites/toggle` 은 `authenticate` 만 걸어 역할 제한이 없다.
+ * 역할이 또 늘어도 여기 한 곳만 보면 된다. 비로그인은 false — 각 화면이 로그인 안내를 따로 한다.
+ */
+export function canFavorite(user?: { role?: string | null } | null): boolean {
+  return !!user && user.role !== 'ADMIN';
+}
