@@ -74,7 +74,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2133 tests** (2026-09-19): Backend 1381 (supertest, `artlink_test` DB 순차), Frontend 752 (jsdom)
+- **2134 tests** (2026-09-19): Backend 1381 (supertest, `artlink_test` DB 순차), Frontend 753 (jsdom)
+- ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
+  작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`

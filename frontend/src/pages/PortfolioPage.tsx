@@ -124,10 +124,8 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
     navigate({ pathname: canonical, search: location.search }, { replace: true });
   }, [canonical, location.pathname, location.search, navigate]);
 
-  if (isLoading) return <div className="max-w-7xl mx-auto px-6 md:px-12 py-10"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
-  if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
-
-  const imageUrls = ordered.map(i => i.url);
+  /* ⚠️ 아래 훅들은 반드시 early return **위**에 있어야 한다. 2026-09-19 배포에서 로딩 분기 아래에 두었다가
+     포트폴리오가 도착하는 순간 훅 개수가 늘어 React #310 으로 작가 홈페이지 전체가 '화면을 불러오지 못했어요'가 됐다(2026-09-21 수정). */
   const captionTexts = useMemo(() => ordered.map((i) => {
     const c = museumCaption(i);
     return c ? [c.head, c.medium, c.size].filter(Boolean).join(' / ') : null;
@@ -162,6 +160,11 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
       </button>
     );
   }, [ordered, likeState, isAuthenticated, navigate, likeMutation]);
+  if (isLoading) return <div className="max-w-7xl mx-auto px-6 md:px-12 py-10"><div className="h-64 bg-gray-100 animate-pulse" /></div>;
+  if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
+
+
+  const imageUrls = ordered.map(i => i.url);
   const artistName = displayName(portfolio.user);
   // 주인 판정은 **로그인한 사람의 id 와 페이지 주인의 id 비교** 하나뿐이다(핸들 주소라 URL 의 숫자를 못 믿는다).
   const isOwner = !!viewer && viewer.id === portfolio.user.id;

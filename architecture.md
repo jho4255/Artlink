@@ -2153,3 +2153,12 @@ operatorUserIds(ex)                알림 발송 대상 전부
 - 회귀: `chat.test.ts`(읽음 쓰기 빈도) · `community.test.ts`(글 본문 멘션 3) · `portfolio-artwork.test.ts`(표지 칸 정리·닉네임 검색·옛 파일 삭제·NaN 404) · `navLinks.test.ts`(isNavActive).
 - 보류(제품 판단 필요): 메시지 신고(규칙 33) · 공개 하이라이트 안의 이웃공개 소식.
 
+## 핫픽스 — 작가 홈페이지·홈페이지 편집 탭 React #310 (2026-09-21)
+2026-09-19 P2 5차(라이트박스 캡션·좋아요)와 P2 1·2차(홈페이지 편집 이탈 경고)에서 훅을 `if (isLoading) return` **아래**에 두었다.
+로딩 중엔 훅이 적고 데이터가 오면 늘어 "Rendered more hooks than during the previous render" → ErrorBoundary 가
+"화면을 불러오지 못했어요"를 띄웠다. 실서버 작가 홈페이지 전체(`/portfolio/:id`·`/@handle`)와 마이페이지 홈페이지 편집 탭이 죽었다(사용자 신고).
+jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 스모크도 갤러리 상세만 봤다.
+- 수정: `PortfolioPage`·`MyPage PortfolioSection` 의 훅을 early return 위로.
+- 가드: `frontend/src/__tests__/hooksBeforeReturn.test.ts` — pages/·components/ 전수에서 최상위 `if (...) return` 뒤의 `useXxx(` 를 실패로 잡는다(옛 코드에서 정확히 두 파일 5곳을 잡는 것을 확인).
+- 교훈: **배포 후 스모크에 데이터가 늦게 오는 화면(작가 홈페이지·마이페이지 탭)을 반드시 넣을 것.**
+

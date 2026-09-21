@@ -819,6 +819,11 @@ function PortfolioSection() {
     return () => clearTimeout(t);
   }, [portfolio, locationHash]);
 
+  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) + '|' + JSON.stringify(design) !== snapshot;
+  // 긴 글을 쓰다 탭만 바꿔도 통째로 사라졌다 — 갤러리·공모 폼과 같은 이탈 경고(2026-09-19)
+  // ⚠️ 훅이라 아래 `isLoading` early return **위**에 있어야 한다 — 아래 두었더니 조회가 끝나는 순간 훅 개수가 늘어 React #310 으로 탭이 통째로 죽었다(2026-09-21)
+  useUnsavedChanges(dirty);
+
   if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
 
   const images = portfolio?.images ?? [];
@@ -826,10 +831,6 @@ function PortfolioSection() {
   const metaImage = images.find((i) => i.id === metaImageId) ?? null;
 
   const startEdit = () => initForm(portfolio);
-
-  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) + '|' + JSON.stringify(design) !== snapshot;
-  // 긴 글을 쓰다 탭만 바꿔도 통째로 사라졌다 — 갤러리·공모 폼과 같은 이탈 경고(2026-09-19)
-  useUnsavedChanges(dirty);
 
   // 작품 사진 관리 — 편집 중엔 **왼쪽 열 안**, 아닐 땐 본문 아래에 놓는다(아래 렌더 참고)
   const artworkManager = (
