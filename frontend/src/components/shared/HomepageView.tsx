@@ -152,11 +152,11 @@ function Hero({ img, artistName, onOpen, compact }: { img: PortfolioImage; artis
 }
 
 /**
- * 작품 격자 한 묶음(시리즈 하나) — **같은 폭의 열**(`lib/columnGrid.ts`, 2026-09-22).
- * 데스크톱 3열 · 좁은 폭(<640) 2열. 열 폭이 컨테이너에서 한 번 정해지므로 이음매와 오른쪽 끝이 전 시리즈에서 같은 자리에 온다.
- * 칸 높이는 그 행에서 가장 높은 그림, 그림은 칸 **바닥**에 붙여 놓는다 — 그래야 캡션이 그림 바로 아래에서 한 줄로 맞는다
- * (가운데 두면 낮은 가로 그림과 캡션 사이가 벌어진다). 비율을 모르는 작품은 정사각으로 두고 로드 후 재서 다시 놓는다.
- * ⚠️ 2026-09-16~22 는 정렬 격자(justified rows)였다 — 되돌린 이유는 columnGrid.ts 머리말.
+ * 작품 격자 한 묶음(시리즈 하나) — **같은 크기의 정사각 칸**(`lib/columnGrid.ts`, 2026-09-22).
+ * 데스크톱 3열 · 좁은 폭(<640) 2열. 열 폭이 컨테이너에서 한 번 정해지고 칸 높이 = 열 폭이라 이음매·오른쪽 끝·윗선·아랫선·캡션 줄이
+ * 전 시리즈에서 같은 자리에 온다. 그림은 칸 **가운데**(미술관이 작품 중심선을 맞추고 라벨을 같은 높이에 붙이는 방식) —
+ * 가로 그림 아래 남는 자리는 칸에 배경이 없어 매트처럼 읽힌다. 비율을 모르는 작품은 정사각으로 두고 로드 후 재서 다시 놓는다.
+ * ⚠️ 2026-09-16~22 는 정렬 격자(justified rows), 같은 날 잠시 '행 최대 높이 + 바닥 정렬'이었다 — 둘 다 윗선이나 이음매가 어긋났다.
  */
 function ColumnGridView({ images, artistName, onOpen }: {
   images: PortfolioImage[]; artistName: string; onOpen?: (img: PortfolioImage) => void;
@@ -203,8 +203,8 @@ function ColumnGridView({ images, artistName, onOpen }: {
             );
             return (
               <figure key={img.id} style={{ width: colW }} className="min-w-0 shrink-0">
-                {/* 칸: 행 높이로 고정, 그림은 바닥 가운데 — 칸 폭은 figure 가 정하므로 이음매가 행마다 같다 */}
-                <div className="flex items-end justify-center" style={{ height: row.height }}>
+                {/* 칸: 정사각(행 높이 = 열 폭), 그림은 정가운데 — 칸 폭은 figure 가 정하므로 이음매가 행마다 같다 */}
+                <div className="flex items-center justify-center" style={{ height: row.height }}>
                   {onOpen ? (
                     <button onClick={() => onOpen(img)} className="block cursor-zoom-in">{picture}</button>
                   ) : picture}

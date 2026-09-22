@@ -2182,3 +2182,5 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   칸을 행 높이로 고정하고 그림을 바닥 가운데에 둔다 — 캡션이 그림 바로 아래 한 줄로 맞는다.
 - `lib/justifiedRows.ts` 삭제(홈페이지만 쓰던 것). PDF 엔진의 정렬 격자는 `portfolioFormats.ts` 안의 별개 구현이라 무관.
 - 테스트: `columnGrid.test.ts`(7) 신설, `homepageV2.test.ts` 의 justifyRows 묶음 제거. 회귀 방지 요지는 CLAUDE.md 49번.
+- **2차(같은 날)**: 사용자가 옛 정사각 칸 방식을 다시 골랐다. `columnGrid` 기본이 **칸 높이 = 열 폭**(정사각), 그림은 칸 정가운데(contain).
+  첫 번째 안(행 최대 높이 + 바닥 정렬)은 행마다 높이가 달라 윗선이 어긋났다. `maxRowRatio` 를 넘기면 첫 번째 안으로 동작한다(쓰는 곳 없음).

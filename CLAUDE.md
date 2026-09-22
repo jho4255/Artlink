@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2147 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 754 (jsdom)
+- **2148 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 755 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1454,11 +1454,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     작가들이 공개 페이지를 자기 홈페이지처럼 쓰고 싶어 하는데, v1 은 ArtLink 'HomePage' 라벨 → 작은 이름 → 약력 →
     경력 → 작품 순이라 **ArtLink 안의 프로필**로 읽혔다. `components/shared/HomepageView.tsx` 를 다시 짰다.
     - **순서**: 이름(큰 글자, 테마 글꼴) + 한 줄 소개 + 액션 줄 → **대표작**(미술관 벽처럼 작품 왼쪽·라벨 오른쪽 아래) →
-      작품(시리즈별 **같은 폭의 열 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
+      작품(시리즈별 **정사각 칸 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
       상단바는 사용자 결정으로 **그대로**(축소·제거 안 함).
-    - **작품 격자는 같은 폭의 열**(`lib/columnGrid.ts`, 2026-09-22 사용자 결정 "오와열을 맞춰라"). 데스크톱 3열·좁은 폭(<640) 2열,
-      열 폭은 컨테이너에서 **한 번** 정한다. 칸 높이는 그 행에서 가장 높은 그림(상한 열 폭×1.3), 그림은 칸 안에 비율대로(contain) **바닥**에 붙인다
-      (캡션이 그림 바로 아래 한 줄로 맞게). 비율은 **서버가 업로드 때 잰 `PortfolioImage.width/height`**(`lib/imageDims.ts`, sharp, EXIF 회전 반영).
+    - **작품 격자는 같은 크기의 정사각 칸**(`lib/columnGrid.ts`, 2026-09-22 사용자 결정 "오와열을 맞춰라"). 데스크톱 3열·좁은 폭(<640) 2열,
+      열 폭은 컨테이너에서 **한 번** 정하고 **칸 높이 = 열 폭**. 그림은 칸 안에 비율대로(contain) **정가운데** — 가로 그림은 위아래가, 세로 그림은
+      좌우가 빈다. 칸에 배경·테두리가 없어 빈 자리는 상자가 아니라 매트처럼 읽히고, 이음매·오른쪽 끝·윗선·아랫선·캡션 줄이 전부 맞는다.
+      ⚠️ 같은 날 첫 번째 안은 '칸 높이 = 행에서 가장 높은 그림(상한 1.3배) + 바닥 정렬'이었다 — 캡션 줄은 맞았지만 행 높이가 달라 윗선이 어긋났고,
+      사용자가 옛 정사각 칸 방식을 다시 꺼냈다(`maxRowRatio` 옵션으로 남아 있다, 기본 1). 비율은 **서버가 업로드 때 잰 `PortfolioImage.width/height`**(`lib/imageDims.ts`, sharp, EXIF 회전 반영).
       옛 작품은 null → 화면이 로드 후 재서 다시 놓는다(튄다). **Render 셸에서 `scripts/backfill-image-dims.ts` 를 돌릴 것.**
       ⚠️ **2026-09-16~22 는 정렬 격자(justified rows — 행 높이 같고 폭은 비율만큼)였다가 되돌렸다.** 세로 이음매가 행마다 다른 자리에 오고
       마지막 행은 키우지 않아 오른쪽 끝이 들쭉날쭉했다(실측 이음매 369/441·348/372·370/394, 오른쪽 끝 1007·1232·1062). 시리즈마다 격자를

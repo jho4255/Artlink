@@ -8,9 +8,11 @@
  * 실서버 작품은 대부분 정사각 근처라 비율대로 폭을 줘서 얻는 여백 절약도 거의 없었다 — 장점은 안 나오고 단점만 보였다.
  *
  * ## 규칙
- * - 열 폭은 컨테이너에서 **한 번** 정한다(`(폭 - 간격) / 열 수`). 모든 행이 같은 열 폭을 쓰므로 이음매·오른읽 끝이 전 시리즈에서 한 자리에 온다.
- * - 칸 높이는 **그 행에서 가장 높은 그림**에 맞춘다. 그림은 칸 안에 비율대로(contain) 들어간다 — 자르지도 늘리지도 않는다(CLAUDE.md 18).
- * - 세로로 아주 긴 그림이 행을 통째로 키우지 않게 칸 높이는 `열 폭 × maxRowRatio`(기본 1.3)까지만. 넘는 그림은 높이에서 걸려 폭이 줄어든다.
+ * - 열 폭은 컨테이너에서 **한 번** 정한다(`(폭 - 간격) / 열 수`). 모든 행이 같은 열 폭을 쓰므로 이음매·오른쪽 끝이 전 시리즈에서 한 자리에 온다.
+ * - **칸은 정사각**(높이 = 열 폭, 같은 날 2차 사용자 결정 — 첫 번째 안 "행 최대 높이"는 행마다 높이가 달라 윗선이 어긋났다).
+ *   그림은 칸 안에 비율대로(contain) **가운데** 들어간다 — 자르지도 늘리지도 않는다(CLAUDE.md 18). 가로 그림은 위아래가, 세로 그림은
+ *   좌우가 빈다. 칸에 배경·테두리가 없어 빈 자리는 '빈 상자'가 아니라 액자 매트처럼 읽힌다. 윗선·아랫선·캡션 줄이 전부 맞는다.
+ * - `maxRowRatio` 를 넘기면 칸 높이를 열 폭 × 그 값까지 늘려 **행에서 가장 높은 그림**에 맞춘다(첫 번째 안). 기본은 1 = 정사각.
  * - 비율을 모르는 작품은 정사각으로 본다(화면이 로드 후 재서 다시 부른다).
  *
  * 순수 함수 — jsdom 에서 테스트한다(`__tests__/columnGrid.test.ts`). PDF 엔진의 정렬 격자(`justifiedRows.ts`)는 별개다 — 거긴 그대로.
@@ -28,7 +30,7 @@ export interface ColumnGridOptions {
   containerWidth: number;
   columns: number;
   gap: number;
-  /** 행 높이 상한 = 열 폭 × 이 값. 기본 1.3 */
+  /** 칸 높이 상한 = 열 폭 × 이 값. 기본 1 = 정사각 칸(행 높이가 그림에 따라 변하지 않는다) */
   maxRowRatio?: number;
 }
 
@@ -44,17 +46,17 @@ export function columnGrid<T>(inputs: ColumnInput<T>[], opts: ColumnGridOptions)
   const cols = Math.max(1, Math.floor(opts.columns));
   const colW = columnWidth({ ...opts, columns: cols });
   if (colW <= 0 || inputs.length === 0) return [];
-  const maxH = colW * (opts.maxRowRatio ?? 1.3);
+  const maxH = colW * Math.max(1, opts.maxRowRatio ?? 1);
   const rows: ColumnRow<T>[] = [];
   for (let i = 0; i < inputs.length; i += cols) {
     const chunk = inputs.slice(i, i + cols).map(({ item, aspect }) => ({ item, aspect: clampAspect(aspect) }));
-    // 폭을 다 쓸 때의 높이 — 그 행에서 가장 높은 것이 칸 높이, 단 상한까지
+    // 폭을 다 쓸 때의 높이. 칸은 정사각(열 폭)이 기본이고, 상한을 열어 두었을 때만 행에서 가장 높은 그림까지 커진다
     const natural = chunk.map((c) => colW / c.aspect);
-    const height = Math.min(maxH, Math.max(...natural));
+    const height = Math.min(maxH, Math.max(colW, ...natural));
     rows.push({
       height,
       cells: chunk.map((c, k) => {
-        const h = Math.min(natural[k], height);       // 상한에 걸린 세로 그림은 높이에서 잘려 폭이 줄어든다
+        const h = Math.min(natural[k], height);       // 칸보다 높은 세로 그림은 높이에서 걸려 폭이 줄어든다
         return { item: c.item, aspect: c.aspect, width: h * c.aspect, height: h };
       }),
     });
