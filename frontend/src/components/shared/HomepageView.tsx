@@ -3,7 +3,7 @@ import { FileText, Instagram } from 'lucide-react';
 import { displayName, safeHttpUrl, instagramHandle } from '@/lib/utils';
 import {
   artworkGridSignature, artworkTitle, careerLineText, groupBySeries, hasTitle, isCareerEmpty, museumCaption,
-  normalizeCareer, statusBadge,
+  normalizeCareer, statusBadge, ungroupedLabel,
 } from '@/lib/artwork';
 import { reflowProse } from '@/lib/prose';
 import { splitIntoColumns } from '@/lib/careerColumns';
@@ -232,17 +232,21 @@ const ArtworkSection = memo(function ArtworkSection({ groups, total, artistName,
     <section className="border-t pt-6" style={LINE}>
       <SectionLabel count={total}>작품</SectionLabel>
       <div className="flex flex-col gap-14">
-        {groups.map((g, gi) => (
-          <div key={g.name || `__${gi}`}>
-            {g.name && (
-              <div className="mb-5 max-w-3xl">
-                <p className="text-lg font-medium" style={{ fontFamily: 'var(--hp-title-font)' }}>{g.name}</p>
-                {g.note && <p className="mt-1.5 text-[14px] leading-relaxed whitespace-pre-wrap break-keep [overflow-wrap:anywhere]" style={SUB}>{g.note}</p>}
-              </div>
-            )}
-            <ColumnGridView images={g.images} artistName={artistName} onOpen={onOpenImage} />
-          </div>
-        ))}
+        {groups.map((g, gi) => {
+          // 시리즈 없는 묶음도 시리즈가 하나라도 있으면 머리말을 단다 — 안 그러면 앞 시리즈의 계속으로 읽힌다(lib/artwork.ts ungroupedLabel)
+          const heading = g.name || ungroupedLabel(groups);
+          return (
+            <div key={g.name || `__${gi}`}>
+              {heading && (
+                <div className="mb-5 max-w-3xl">
+                  <p className="text-lg font-medium" style={{ fontFamily: 'var(--hp-title-font)', ...(g.name ? {} : SUB) }}>{heading}</p>
+                  {g.note && <p className="mt-1.5 text-[14px] leading-relaxed whitespace-pre-wrap break-keep [overflow-wrap:anywhere]" style={SUB}>{g.note}</p>}
+                </div>
+              )}
+              <ColumnGridView images={g.images} artistName={artistName} onOpen={onOpenImage} />
+            </div>
+          );
+        })}
       </div>
     </section>
   );

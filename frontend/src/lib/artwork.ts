@@ -174,6 +174,19 @@ export function groupBySeries(images: PortfolioImage[], seriesInfo?: SeriesInfo[
   return [...groups.filter((g) => g.name), ...groups.filter((g) => !g.name)];
 }
 
+/**
+ * 시리즈 없는 작품 묶음의 머리말 (2026-09-23).
+ * 시리즈가 하나라도 있으면 시리즈 없는 작품들도 머리말을 달아야 한다 — 없으면 앞 시리즈 격자 바로 아래에 이어져
+ * **그 시리즈의 계속**으로 읽힌다(양현서: '의자 시리즈' 2점 아래 5점이 전부 의자 시리즈처럼 보였다).
+ * 시리즈가 하나도 없으면 머리말이 필요 없다(묶음이 하나라 구분할 게 없다) → ''.
+ */
+export const UNGROUPED_SERIES_LABEL = '그 밖의 작품';
+export function ungroupedLabel(groups: { name: string }[]): string {
+  const hasNamed = groups.some((g) => g.name);
+  const hasUnnamed = groups.some((g) => !g.name);
+  return hasNamed && hasUnnamed ? UNGROUPED_SERIES_LABEL : '';
+}
+
 /** 포트폴리오에 등록된 시리즈명 목록 (중복 제거, 등장 순서) */
 export function seriesNames(images: PortfolioImage[]): string[] {
   const seen = new Set<string>();

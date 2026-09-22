@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2148 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 755 (jsdom)
+- **2152 tests** (2026-09-23): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 759 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1467,6 +1467,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       따로 짜니 3~4점짜리 시리즈에선 **거의 모든 행이 마지막 행**이었고, 실서버 작품이 대부분 정사각 근처라 비율대로 폭을 줘서 얻는
       여백 절약도 거의 없었다. 되살리지 말 것 — 사진이 수십 장 이어지는 화면(피드)이라면 맞지만 시리즈별 3~4점 벽에는 안 맞는다.
       PDF 엔진의 정렬 격자(`portfolioFormats.ts`, 규칙 45·45b)는 **별개**다 — 거긴 열 폭을 페이지 단위로 정해 이음매를 맞춘다.
+      ⚠️ **시리즈 없는 작품 묶음에도 머리말을 단다**(`lib/artwork.ts ungroupedLabel` → '그 밖의 작품', 2026-09-23 사용자 지적). 시리즈가 하나라도 있으면
+      시리즈 없는 작품들이 앞 시리즈 격자 바로 아래에 이어져 **그 시리즈의 계속**으로 읽혔다(양현서: '의자 시리즈' 2점 아래 5점). 시리즈가 하나도 없으면 머리말 없음.
     - **미술관식 캡션** `museumCaption()`: `작품명, 연도 / 재료 / 크기`. 종전 한 줄(크기 / 재료 / 연도)은 순서가 거꾸로였다.
       PDF 캡션(`captionParts`)은 그대로다 — 인쇄 관례를 실측해 맞춘 것이라 여기 규칙을 그쪽에 옮기지 말 것.
     - **테마**(`lib/homepageTheme.ts`): `designConfig` 의 bg/ink/accent/font 를 PDF 와 **같은 함수**(`portfolioColors.resolvePalette`,

@@ -2,10 +2,36 @@
  * 작가 홈페이지 v2 순수 함수 — 미술관식 캡션 (격자는 columnGrid.test.ts) · 주소 규칙 · 테마 (2026-09-16)
  */
 import { describe, it, expect } from 'vitest';
-import { museumCaption } from '@/lib/artwork';
+import { museumCaption, ungroupedLabel, groupBySeries, UNGROUPED_SERIES_LABEL } from '@/lib/artwork';
+import type { PortfolioImage } from '@/types';
 import { normalizeHandle, validateHandle, suggestHandle, artistPath, artistUrl } from '@/lib/handle';
 import { resolveHomepageTheme, themeKeysFrom, pickHeroImage, changedThemeKeys, themeSavePatch, keepWebOnlyKeys } from '@/lib/homepageTheme';
 import { normalizePdfDesign } from '@/lib/portfolioFormats';
+
+describe('ungroupedLabel — 시리즈 없는 작품 묶음의 머리말 (2026-09-23)', () => {
+  const img = (id: number, series: string | null): PortfolioImage => ({ id, url: `u${id}`, series } as unknown as PortfolioImage);
+
+  it('시리즈가 하나라도 있고 시리즈 없는 작품도 있으면 "그 밖의 작품" — 앞 시리즈의 계속으로 읽히지 않게', () => {
+    const groups = groupBySeries([img(1, '의자 시리즈'), img(2, '의자 시리즈'), img(3, null), img(4, '')]);
+    expect(groups.map((g) => g.name)).toEqual(['의자 시리즈', '']);
+    expect(ungroupedLabel(groups)).toBe(UNGROUPED_SERIES_LABEL);
+  });
+
+  it('시리즈가 하나도 없으면 머리말 없음 — 묶음이 하나라 구분할 게 없다', () => {
+    expect(ungroupedLabel(groupBySeries([img(1, null), img(2, null)]))).toBe('');
+  });
+
+  it('전부 시리즈에 들어 있으면 시리즈 없는 묶음 자체가 없다', () => {
+    const groups = groupBySeries([img(1, 'A'), img(2, 'B')]);
+    expect(groups.every((g) => g.name)).toBe(true);
+    expect(ungroupedLabel(groups)).toBe('');
+  });
+
+  it('시리즈 없는 묶음은 항상 시리즈들 뒤에 온다 (머리말이 뒤에 붙는 근거)', () => {
+    const groups = groupBySeries([img(1, null), img(2, 'A')]);
+    expect(groups.map((g) => g.name)).toEqual(['A', '']);
+  });
+});
 
 describe('museumCaption — 작품명, 연도 / 재료 / 크기', () => {
   it('전부 있으면 세 줄', () => {
