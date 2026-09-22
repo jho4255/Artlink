@@ -9,6 +9,13 @@
  */
 import type { Career, CareerEntry, FullCareer, PortfolioImage, SeriesInfo } from '@/types';
 
+/**
+ * 작가 한 명의 작품 사진 한도 (2026-09-22: 30 → **150**).
+ * ⚠️ 서버 `backend/src/lib/portfolioLimits.ts` 의 `PORTFOLIO_IMAGE_MAX` 와 같은 값이어야 한다 — 화면이 먼저 막고 서버가
+ *    최종 판정하므로 어긋나면 한쪽에서만 막힌다. 서버 테스트(`portfolio-artwork.test.ts`)가 이 파일을 읽어 대조한다.
+ */
+export const PORTFOLIO_IMAGE_MAX = 150;
+
 // ── 경력 ──
 // 기존에는 MyPage/PortfolioPage/ExhibitionDetailPage/ApplicationContent 4곳에 같은 함수가 복붙돼 있었다.
 // 항목(학력·수상)이 늘어나면서 한 곳만 고치면 나머지가 조용히 옛 형태로 남으므로 여기로 합친다.

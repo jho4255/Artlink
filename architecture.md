@@ -1165,7 +1165,7 @@ ArtLook 장면 21개 × 2바퀴에 WebGL 컨텍스트 **1개** 유지·손실 0�
 | 경로 | 이미지 규모 | 반환 |
 |---|---|---|
 | 작가별/전체 정산서 | 판매작 수 | `{ missing: string[] }` |
-| 지원서 1건 | 작가당 최대 30장 | `{ missing: number }` |
+| 지원서 1건 | 작가당 최대 150장(2026-09-22 전엔 30) | `{ missing: number }` |
 | 전체 지원서 ZIP | 지원자 × 30장 (**가장 큼**) | `{ count, missing: string[] }` |
 
 ### ⚠️ 이 작업 중 발견 — 직접 경로가 조용히 죽어 있었다 (브라우저 캐시 CORS 오염)
@@ -2162,3 +2162,13 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 가드: `frontend/src/__tests__/hooksBeforeReturn.test.ts` — pages/·components/ 전수에서 최상위 `if (...) return` 뒤의 `useXxx(` 를 실패로 잡는다(옛 코드에서 정확히 두 파일 5곳을 잡는 것을 확인).
 - 교훈: **배포 후 스모크에 데이터가 늦게 오는 화면(작가 홈페이지·마이페이지 탭)을 반드시 넣을 것.**
 
+
+## 업로드 PNG → JPEG q90 · 작품 한도 150장 (2026-09-22)
+사용자 결정 둘. ① 공격적 마케팅을 위해 작가별 작품 사진 한도를 30 → **150** 으로. ② PNG 로 올라온 사진은 서버가 **JPEG q90** 으로 바꿔 저장.
+- 실측(로컬 uploads PNG 23장): 30.2MB → 4.6MB(15%). PSNR 36~43dB, 3배 확대 비교에서 구분 불가. 목록·격자는 이미 JPEG 썸네일이라 변화 없고,
+  원본을 여는 라이트박스·ArtLook·PDF(원본 내장, 예산 9.4MB)에서 4~12배 빨라진다. 비용 이득은 미미(R2 GB 당 월 0.015달러) — 속도가 목적.
+- `backend/src/lib/imageNormalize.ts` `normalizeUploadImage(buf, ext, mime)` 한 곳. 투명 픽셀이 실제로 있는 PNG·APNG·JPEG/WebP/GIF 는 그대로,
+  JPEG 가 더 커지면 PNG 유지, 실패하면 원본. `routes/upload.ts` 의 `uploadToR2`(R2) 와 `normalizeDiskFile`(디스크) 둘 다 이걸 타고 그 결과 버퍼로 썸네일을 만든다.
+- 한도: `backend/src/lib/portfolioLimits.ts` · `frontend/src/lib/artwork.ts` 의 `PORTFOLIO_IMAGE_MAX`(둘 다 150, 테스트가 대조).
+- 백필: `backend/scripts/convert-png-to-jpg.ts`(PortfolioImage 만, Render 셸, `--dry-run`/`--limit`). 옛 PNG 는 지원서·제출자료 JSON 이 참조하므로 **지우지 않는다**.
+- 테스트: `imageNormalize.test.ts`(7) · `upload.test.ts`(+3) · `portfolio-artwork.test.ts`(+2). 자세한 함정은 CLAUDE.md 55번.

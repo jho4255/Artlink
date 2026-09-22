@@ -6,6 +6,7 @@ import { safeFileUrl } from '../lib/safeUrl';
 import { deleteUploadedFile } from '../lib/storage';
 import { ensureHandle, isHandleParam, normalizeHandle, validateHandle } from '../lib/handle';
 import { readImageDims } from '../lib/imageDims';
+import { PORTFOLIO_IMAGE_MAX } from '../lib/portfolioLimits';
 
 const router = Router();
 
@@ -275,7 +276,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// 포트폴리오 이미지 추가 (최대 30장)
+// 포트폴리오 이미지 추가 (최대 PORTFOLIO_IMAGE_MAX 장 — 2026-09-22 에 30 → 150, lib/portfolioLimits.ts)
 router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     const portfolio = await prisma.portfolio.findUnique({
@@ -285,8 +286,8 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
     if (!portfolio) {
       throw new AppError('포트폴리오를 먼저 생성해주세요.', 400);
     }
-    if (portfolio.images.length >= 30) {
-      throw new AppError('작품 사진은 최대 30장까지 등록 가능합니다.', 400);
+    if (portfolio.images.length >= PORTFOLIO_IMAGE_MAX) {
+      throw new AppError(`작품 사진은 최대 ${PORTFOLIO_IMAGE_MAX}장까지 등록 가능합니다.`, 400);
     }
 
     const url = safeFileUrl(req.body.url);

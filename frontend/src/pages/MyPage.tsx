@@ -17,7 +17,7 @@ import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, g
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
 import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
-import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames } from '@/lib/artwork';
+import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames, PORTFOLIO_IMAGE_MAX } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
 import PortfolioWorkPicker from '@/components/shared/PortfolioWorkPicker';
@@ -853,7 +853,7 @@ function PortfolioSection() {
           onReorder={(ids) => reorderMutation.mutate(ids)}
           onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
           onEdit={(imageId) => setMetaImageId(imageId)}
-          maxCount={30}
+          maxCount={PORTFOLIO_IMAGE_MAX}
           gridClassName={editing ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 sm:grid-cols-4 gap-2'}
         />
         <ConfirmDialog
@@ -1429,7 +1429,7 @@ function PortfolioImageGrid({
   onToggleExplore,
   onEdit,
   onReorder,
-  maxCount = 30,
+  maxCount = PORTFOLIO_IMAGE_MAX,
   gridClassName = 'grid grid-cols-3 sm:grid-cols-4 gap-2',
 }: {
   images: PortfolioImage[];

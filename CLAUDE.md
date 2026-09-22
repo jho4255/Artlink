@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2134 tests** (2026-09-19): Backend 1381 (supertest, `artlink_test` DB 순차), Frontend 753 (jsdom)
+- **2146 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 753 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1637,6 +1637,24 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `portfolioVersions.test.ts` · `backend/src/lib/__tests__/sizeOrder.test.ts`·`src/__tests__/portfolio-versions.test.ts`(6) ·
       하니스 `scratchpad/pf/combos.mjs`(20권 실데이터)·`emptypages.py` · `e2e/_pfprint.mjs`·`_pfversions.mjs`(로컬 전용).
 
+55. **업로드 PNG 사진은 JPEG q90 으로 바꿔 저장한다 · 작품 한도 150장** (2026-09-22, 사용자 결정 둘)
+    - **왜**: PNG 는 무손실이라 회화 촬영본에서 거의 안 줄어든다. 실측(로컬 uploads, 100KB 초과 PNG 23장) PNG 30.2MB → JPEG q90 4.6MB(**15%**),
+      한 장 1.95MB → 0.44MB. 화질은 PSNR 36~43dB · 최대 픽셀 차이 46/255 — 3배 확대해 나란히 놓아도 구분 안 됨. 프론트 `compressImage` 는
+      2MB·2000px 을 **넘는** 것만 JPEG 로 다시 굽기 때문에 그 아래 PNG(정확히 그 1.9MB 짜리들)가 그대로 서버까지 온다.
+    - **어디서 이득**: 목록·격자는 이미 JPEG 썸네일(t240·t800)이라 변화 없음. 원본을 여는 **라이트박스·ArtLook·포트폴리오 PDF**(원본 내장, 예산 9.4MB — PNG 5장이면 넘친다).
+      돈은 아니다 — R2 저장은 GB 당 월 0.015달러, 전송료 0. 한도를 풀어도 PNG 유지의 비용 손해는 월 수만 원 이하다.
+    - **규칙**(`backend/src/lib/imageNormalize.ts` **한 곳**, R2·디스크 모드 둘 다 이걸 탄다):
+      투명 픽셀이 **실제로** 있는 PNG 는 그대로(알파 채널이 있어도 전부 불투명이면 변환 — 캡처 도구가 헛 알파를 붙인다) ·
+      APNG 그대로 · JPEG/WebP/GIF 는 손대지 않음(다시 구우면 화질만 깎이고 GIF 는 애니메이션이 깨진다) · JPEG 가 더 커지면 PNG 유지 · 실패하면 원본 그대로(업로드는 막지 않는다).
+      색은 4:4:4 — 기본 4:2:0 이면 빨강·파랑 경계가 번진다. 확장자·ContentType 이 `.jpg`/`image/jpeg` 로 바뀐다. 픽셀 크기는 그대로(`imageDims` 무관).
+    - ⚠️ 기존 PNG 작품은 `backend/scripts/convert-png-to-jpg.ts` 로 **Render 셸에서** 바꾼다(`--dry-run` 먼저). **옛 PNG 파일은 지우지 않는다** —
+      `Application.artworkImages`·`ExhibitionSubmission.artworkList` 가 지원 시점 주소를 JSON 으로 복사해 들고 있어 지우면 운영페이지 그림이 깨진다.
+    - **작품 한도 30 → 150**: 서버 `lib/portfolioLimits.ts` · 프론트 `lib/artwork.ts` 의 `PORTFOLIO_IMAGE_MAX` — **같은 값**이어야 한다(`portfolio-artwork.test.ts` 가 프론트 소스를 읽어 대조).
+      ⚠️ 0(무제한)으로 두지 말 것 — 봇·실수로 수천 장이 들어와도 막을 게 없다.
+      ⚠️ 한도를 더 올릴 땐 **업로드 메모리**를 먼저 볼 것 — R2 모드는 multer 메모리 저장이라 한 요청 10장 × 15MB = 150MB 에 sharp 까지 겹친다(Render Starter 램 512MB).
+    - 회귀: `backend/src/__tests__/imageNormalize.test.ts`(7, 실제 픽셀) · `upload.test.ts`「PNG 사진은 JPEG 로 저장」(3, 라우트가 디스크의 `.png` 를 `.jpg` 로 갈아 쓰는지) ·
+      `portfolio-artwork.test.ts`(한도 150 경계 + 프론트 대조). ⚠️ 테스트 이미지는 **그라디언트+약한 노이즈** — 순수 랜덤 노이즈는 JPEG 도 못 줄여 사진을 대신하지 못하고, 단색은 PNG 가 더 작다.
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -1825,7 +1843,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       회귀는 `frontend/src/__tests__/myPageMenu.test.ts` 가 MyPage.tsx 소스를 직접 대조해 양방향으로 잡는다.
 - **인증**: 비로그인 시 로그인 창 노출. 로그아웃 시 로그인 페이지 이동. **프로필 사진 변경 기능** 포함.
 - **Artist 유저**:
-    - **포트폴리오**: [작가 약력, 작가노트, 한 줄 소개, 경력(학력/개인전/단체전/아트페어/수상), 작품 사진(최대 30장)] 관리.
+    - **포트폴리오**: [작가 약력, 작가노트, 한 줄 소개, 경력(학력/개인전/단체전/아트페어/수상), 작품 사진(최대 **150장**, 2026-09-22 에 30 → 150)] 관리.
       - **작품 정보**: 사진을 누르면 [작품명, 시리즈, 크기(가로×세로), 재료, 제작연도, 판매상태, 작품 설명] 입력. 실제 작가 포트폴리오는 예외 없이 작품마다 캡션을 붙이므로 이 정보가 없으면 포맷 PDF에서 캡션이 통째로 빠진다 — 미입력 작품엔 '정보 없음' 배지 표시.
       - **시리즈**: 작품에 붙인 시리즈명으로 자동으로 묶이고, 시리즈마다 소개 글을 넣으면 PDF에 소개 페이지가 생긴다.
       - **화면 이름은 ArtLink 로고 규칙을 따른다**(앞 검정 + 뒤 빨강 #c4302b) — Art**Link** / Art**Works**(홈 섹션·둘러보기) /

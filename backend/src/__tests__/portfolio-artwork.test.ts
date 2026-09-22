@@ -6,7 +6,10 @@
  * 저장·조회 경로를 확실히 잠가둔다.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { request, authToken, cleanDb, seedUsers, testPrisma } from './helpers';
+import { PORTFOLIO_IMAGE_MAX } from '../lib/portfolioLimits';
 
 const ARTIST = 1;
 const OTHER_ARTIST = 2;
@@ -133,6 +136,28 @@ describe('포트폴리오 작품 정보', () => {
       expect(res.status).toBe(201);
       expect(res.body.title).toBeNull();
       expect(res.body.medium).toBeNull();
+    });
+
+    // 2026-09-22: 30 → 150 (사용자 결정). 화면(`maxCount`)과 서버가 같은 숫자여야 한쪽만 막히는 일이 없다.
+    it(`한도는 ${PORTFOLIO_IMAGE_MAX}장 — 그 수에 닿으면 400, 그 전(옛 한도 30 넘김)은 201`, async () => {
+      const me = await myPortfolio(ARTIST);
+      await testPrisma.portfolioImage.createMany({
+        data: Array.from({ length: PORTFOLIO_IMAGE_MAX - 1 }, (_, i) => ({
+          portfolioId: me.id, url: `https://example.com/w${i}.jpg`, order: i,
+        })),
+      });
+      const last = await addImage();          // 149 → 150 번째: 옛 한도(30)라면 여기서 막혔어야 한다
+      expect(last.status).toBe(201);
+      const over = await addImage();          // 151 번째
+      expect(over.status).toBe(400);
+      expect(over.body.error).toContain(`${PORTFOLIO_IMAGE_MAX}장`);
+    });
+
+    it('프론트 lib/artwork.ts 의 PORTFOLIO_IMAGE_MAX 가 서버와 같은 값이다 (소스 대조)', () => {
+      const src = fs.readFileSync(path.join(__dirname, '../../../frontend/src/lib/artwork.ts'), 'utf8');
+      const m = src.match(/export const PORTFOLIO_IMAGE_MAX\s*=\s*(\d+)/);
+      expect(m, 'frontend/src/lib/artwork.ts 에 PORTFOLIO_IMAGE_MAX 가 있어야 한다').not.toBeNull();
+      expect(Number(m![1])).toBe(PORTFOLIO_IMAGE_MAX);
     });
   });
 

@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { r2CanonicalBase, matchR2Base } from '../lib/r2Urls';
 import { makeThumb, thumbKey, thumbDiskPath, THUMB_SPECS } from '../lib/thumb';
+import { normalizeUploadImage } from '../lib/imageNormalize';
 
 const router = Router();
 
@@ -60,20 +61,21 @@ const upload = multer({
 } as multer.Options & { defParamCharset: string });
 
 async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promise<string> {
-  const ext = path.extname(file.originalname);
-  const key = `${folder}/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  // PNG 사진은 JPEG q90 으로 바꿔 저장한다(투명·애니메이션은 그대로 — lib/imageNormalize.ts). 확장자·MIME 도 함께 바뀐다.
+  const img = await normalizeUploadImage(file.buffer, path.extname(file.originalname), file.mimetype);
+  const key = `${folder}/${Date.now()}-${Math.round(Math.random() * 1e9)}${img.ext}`;
 
   await s3.send(new PutObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
     Key: key,
-    Body: file.buffer,
-    ContentType: file.mimetype,
+    Body: img.buf,
+    ContentType: img.mime,
   }));
 
   // 썸네일 두 종(t240 목록용 · t800 작품 격자용)을 함께 올린다 (lib/thumb.ts 참고).
   // ⚠️ 실패해도 업로드는 성공으로 둔다. 사진이 올라가는 게 우선이고, 화면은 썸네일이 없으면 원본으로 되돌린다.
   for (const spec of THUMB_SPECS) {
-    void makeThumb(file.buffer, spec)
+    void makeThumb(img.buf, spec)
       .then((thumb) => thumb && s3.send(new PutObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME!,
         Key: thumbKey(key, spec.dir),
@@ -85,6 +87,30 @@ async function uploadToR2(file: Express.Multer.File, folder = 'artlink'): Promis
 
   // 여러 도메인이 설정돼 있으면 첫 번째가 정식 주소 (lib/r2Urls.ts 참고)
   return `${r2CanonicalBase()}/${key}`;
+}
+
+/**
+ * 디스크 저장 모드(로컬)의 PNG → JPEG 변환. multer 가 이미 `.png` 로 써 둔 뒤라 읽어서 다시 쓰고 원본을 지운다.
+ * 바뀌면 `file.filename`·`path`·`mimetype` 을 새 값으로 고쳐 두므로, 뒤의 썸네일·응답 url 은 그대로 그걸 쓴다.
+ * R2 모드와 **같은 함수**(normalizeUploadImage)를 타야 로컬에서 본 동작이 실서버와 같다.
+ */
+async function normalizeDiskFile(file: Express.Multer.File): Promise<void> {
+  try {
+    const fs = await import('fs/promises');
+    const uploadsDir = path.join(__dirname, '../../uploads');
+    const src = path.join(uploadsDir, file.filename);
+    const img = await normalizeUploadImage(await fs.readFile(src), path.extname(file.filename), file.mimetype);
+    if (!img.converted) return;
+    const newName = file.filename.replace(/\.[^.]+$/, '') + img.ext;
+    await fs.writeFile(path.join(uploadsDir, newName), img.buf);
+    await fs.unlink(src).catch(() => { /* 새 파일이 우선 — 옛 파일이 남는 건 고아일 뿐이다 */ });
+    file.filename = newName;
+    file.path = path.join(uploadsDir, newName);
+    file.mimetype = img.mime;
+    file.size = img.buf.length;
+  } catch (e) {
+    console.error('[Upload] PNG→JPEG 변환 실패(원본 그대로 저장):', file.filename, (e as Error)?.message);
+  }
 }
 
 // 디스크 저장 모드(로컬)에서도 같은 규칙으로 썸네일을 만들어 둔다 — 로컬에서 화면 동작이 실서버와 달라지지 않게.
@@ -111,7 +137,7 @@ router.post('/image', authenticate, upload.single('image'), async (req, res, nex
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
     let url: string;
     if (useR2) url = await uploadToR2(req.file);
-    else { url = `/uploads/${req.file.filename}`; void writeDiskThumb(req.file); }
+    else { await normalizeDiskFile(req.file); url = `/uploads/${req.file.filename}`; void writeDiskThumb(req.file); }
     res.json({ url });
   } catch (err) {
     next(err);
@@ -125,7 +151,11 @@ router.post('/images', authenticate, upload.array('images', 10), async (req, res
     if (!files?.length) return res.status(400).json({ error: '파일이 필요합니다.' });
     let urls: string[];
     if (useR2) urls = await Promise.all(files.map(f => uploadToR2(f)));
-    else { urls = files.map(f => `/uploads/${f.filename}`); files.forEach(f => void writeDiskThumb(f)); }
+    else {
+      await Promise.all(files.map(f => normalizeDiskFile(f)));
+      urls = files.map(f => `/uploads/${f.filename}`);
+      files.forEach(f => void writeDiskThumb(f));
+    }
     res.json({ urls });
   } catch (err) {
     next(err);
