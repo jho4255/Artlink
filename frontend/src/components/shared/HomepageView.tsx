@@ -7,7 +7,7 @@ import {
 } from '@/lib/artwork';
 import { reflowProse } from '@/lib/prose';
 import { splitIntoColumns } from '@/lib/careerColumns';
-import { aspectOf, justifyRows } from '@/lib/justifiedRows';
+import { aspectOf, columnGrid, columnWidth } from '@/lib/columnGrid';
 import { pickHeroImage, resolveHomepageTheme, themeCssVars } from '@/lib/homepageTheme';
 import { ensurePortfolioFonts, needsWebFont } from '@/lib/portfolioFonts';
 import Thumb from '@/components/shared/Thumb';
@@ -23,8 +23,9 @@ import type { PortfolioImage, Career, CareerKey, SeriesInfo } from '@/types';
  * - **작품이 먼저, 작가 이름이 마스트헤드.** v1 은 ArtLink 의 'HomePage' 라벨 → 작은 이름 → 약력 → 경력 → 작품 순이라
  *   작가의 홈페이지가 아니라 ArtLink 안의 프로필로 읽혔다. 이제 이름(큰 글자) → 대표작 → 작품 → 작가노트 → 약력·경력.
  *   'HomePage' 라벨은 뺐다. 작가 사이트 구조의 업계 관례(대표작 → 작품 → 소개·CV → 연락처)를 따른다.
- * - **정렬 격자.** 정사각 칸 + contain 은 칸의 30~40% 가 흰 여백이었다. 한 행의 작품이 같은 높이로 서고 폭은 비율만큼
- *   가져간다(`lib/justifiedRows`). 비율은 서버가 업로드 때 잰 `width/height`, 없으면 로드 후 재서 다시 놓는다.
+ * - **같은 폭의 열 격자**(`lib/columnGrid`, 2026-09-22). 데스크톱 3열·모바일 2열, 열 폭은 컨테이너에서 한 번 정해 이음매와
+ *   오른쪽 끝이 전 시리즈에서 같은 자리에 온다. 그림은 칸 안에 비율대로(contain). 비율은 서버가 업로드 때 잰 `width/height`,
+ *   없으면 로드 후 재서 다시 놓는다. (2026-09-16~22 의 정렬 격자는 이음매·오른쪽 끝이 행마다 달라 되돌렸다)
  * - **미술관식 캡션.** `작품명, 연도 / 재료 / 크기` 순(국내 관례). 종전 한 줄(크기 / 재료 / 연도)은 순서가 거꾸로였다.
  * - **테마.** `designConfig` 의 배경·글자·강조·글꼴이 PDF 와 똑같이 적용된다(`lib/homepageTheme`). 안쪽 부품은
  *   `var(--hp-…)` 만 본다 — 회색 클래스(`text-gray-500`)를 쓰면 어두운 배경에서 안 보인다.
@@ -80,7 +81,7 @@ interface Props {
   compact?: boolean;
 }
 
-/** 컨테이너 폭 — 정렬 격자가 행을 나누려면 실제 픽셀 폭을 알아야 한다 */
+/** 컨테이너 폭 — 열 폭을 정하려면 실제 픽셀 폭을 알아야 한다 */
 function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
@@ -151,28 +152,34 @@ function Hero({ img, artistName, onOpen, compact }: { img: PortfolioImage; artis
 }
 
 /**
- * 정렬 격자 한 묶음(시리즈 하나). 비율을 모르는 작품은 정사각으로 두고 로드 후 재서 다시 놓는다.
+ * 작품 격자 한 묶음(시리즈 하나) — **같은 폭의 열**(`lib/columnGrid.ts`, 2026-09-22).
+ * 데스크톱 3열 · 좁은 폭(<640) 2열. 열 폭이 컨테이너에서 한 번 정해지므로 이음매와 오른쪽 끝이 전 시리즈에서 같은 자리에 온다.
+ * 칸 높이는 그 행에서 가장 높은 그림, 그림은 칸 **바닥**에 붙여 놓는다 — 그래야 캡션이 그림 바로 아래에서 한 줄로 맞는다
+ * (가운데 두면 낮은 가로 그림과 캡션 사이가 벌어진다). 비율을 모르는 작품은 정사각으로 두고 로드 후 재서 다시 놓는다.
+ * ⚠️ 2026-09-16~22 는 정렬 격자(justified rows)였다 — 되돌린 이유는 columnGrid.ts 머리말.
  */
-function JustifiedGrid({ images, artistName, onOpen, compact }: {
-  images: PortfolioImage[]; artistName: string; onOpen?: (img: PortfolioImage) => void; compact: boolean;
+function ColumnGridView({ images, artistName, onOpen }: {
+  images: PortfolioImage[]; artistName: string; onOpen?: (img: PortfolioImage) => void;
 }) {
   const [ref, width] = useContainerWidth<HTMLDivElement>();
   const [measured, setMeasured] = useState<Record<string, number>>({});
   const narrow = width > 0 && width < 640;
   const gap = narrow ? 12 : 24;
+  const columns = narrow ? 2 : 3;
+  const colW = columnWidth({ containerWidth: width, columns, gap });
   const rows = useMemo(() => {
     if (width <= 0) return [];
-    return justifyRows(
+    return columnGrid(
       images.map((img) => ({ item: img, aspect: aspectOf(img, measured[img.url]) })),
-      { containerWidth: width, targetHeight: narrow ? 180 : compact ? 210 : 320, gap, maxPerRow: narrow ? 2 : undefined },
+      { containerWidth: width, columns, gap },
     );
-  }, [images, width, measured, narrow, compact, gap]);
+  }, [images, width, measured, columns, gap]);
 
   return (
     <div ref={ref} className="flex flex-col" style={{ gap: narrow ? 20 : 32 }}>
       {rows.map((row, ri) => (
         <div key={ri} className="flex items-start" style={{ gap }}>
-          {row.map((cell) => {
+          {row.cells.map((cell) => {
             const img = cell.item;
             const alt = hasTitle(img) ? artworkTitle(img) : `${artistName} 작품`;
             const picture = (
@@ -195,10 +202,13 @@ function JustifiedGrid({ images, artistName, onOpen, compact }: {
               />
             );
             return (
-              <figure key={img.id} style={{ width: cell.width }} className="min-w-0 shrink-0">
-                {onOpen ? (
-                  <button onClick={() => onOpen(img)} className="block cursor-zoom-in">{picture}</button>
-                ) : picture}
+              <figure key={img.id} style={{ width: colW }} className="min-w-0 shrink-0">
+                {/* 칸: 행 높이로 고정, 그림은 바닥 가운데 — 칸 폭은 figure 가 정하므로 이음매가 행마다 같다 */}
+                <div className="flex items-end justify-center" style={{ height: row.height }}>
+                  {onOpen ? (
+                    <button onClick={() => onOpen(img)} className="block cursor-zoom-in">{picture}</button>
+                  ) : picture}
+                </div>
                 <Caption img={img} size="grid" />
               </figure>
             );
@@ -230,7 +240,7 @@ const ArtworkSection = memo(function ArtworkSection({ groups, total, artistName,
                 {g.note && <p className="mt-1.5 text-[14px] leading-relaxed whitespace-pre-wrap break-keep [overflow-wrap:anywhere]" style={SUB}>{g.note}</p>}
               </div>
             )}
-            <JustifiedGrid images={g.images} artistName={artistName} onOpen={onOpenImage} compact={compact} />
+            <ColumnGridView images={g.images} artistName={artistName} onOpen={onOpenImage} />
           </div>
         ))}
       </div>

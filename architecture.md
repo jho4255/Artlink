@@ -2172,3 +2172,13 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 한도: `backend/src/lib/portfolioLimits.ts` · `frontend/src/lib/artwork.ts` 의 `PORTFOLIO_IMAGE_MAX`(둘 다 150, 테스트가 대조).
 - 백필: `backend/scripts/convert-png-to-jpg.ts`(PortfolioImage 만, Render 셸, `--dry-run`/`--limit`). 옛 PNG 는 지원서·제출자료 JSON 이 참조하므로 **지우지 않는다**.
 - 테스트: `imageNormalize.test.ts`(7) · `upload.test.ts`(+3) · `portfolio-artwork.test.ts`(+2). 자세한 함정은 CLAUDE.md 55번.
+
+## 작가 홈페이지 작품 격자 — 정렬 격자 → 같은 폭의 열 (2026-09-22)
+사용자 지적 "작품들 오와열이 안 맞는 느낌". 실측(김다은, 1280px)으로 확인: 정렬 격자(justified rows)는 세로 이음매가 행마다
+다른 x 에 오고(369/441 · 348/372 · 370/394), 마지막 행을 키우지 않아 오른쪽 끝이 1007 · 1232 · 1062 로 들쭉날쭉했다. 시리즈마다
+격자를 따로 짜서 3~4점 시리즈에선 거의 모든 행이 마지막 행이었다. 사용자 결정으로 **같은 폭의 열**로 바꿨다.
+- `frontend/src/lib/columnGrid.ts` `columnGrid()`/`columnWidth()`/`aspectOf()`: 데스크톱 3열·<640px 2열, 열 폭 한 번 계산,
+  칸 높이 = 행 최대 그림 높이(상한 열 폭×1.3), 그림은 contain(자르지도 늘리지도 않음 §18). `HomepageView` 의 `ColumnGridView` 가
+  칸을 행 높이로 고정하고 그림을 바닥 가운데에 둔다 — 캡션이 그림 바로 아래 한 줄로 맞는다.
+- `lib/justifiedRows.ts` 삭제(홈페이지만 쓰던 것). PDF 엔진의 정렬 격자는 `portfolioFormats.ts` 안의 별개 구현이라 무관.
+- 테스트: `columnGrid.test.ts`(7) 신설, `homepageV2.test.ts` 의 justifyRows 묶음 제거. 회귀 방지 요지는 CLAUDE.md 49번.

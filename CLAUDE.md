@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2146 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 753 (jsdom)
+- **2147 tests** (2026-09-22): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 754 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1454,11 +1454,17 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     작가들이 공개 페이지를 자기 홈페이지처럼 쓰고 싶어 하는데, v1 은 ArtLink 'HomePage' 라벨 → 작은 이름 → 약력 →
     경력 → 작품 순이라 **ArtLink 안의 프로필**로 읽혔다. `components/shared/HomepageView.tsx` 를 다시 짰다.
     - **순서**: 이름(큰 글자, 테마 글꼴) + 한 줄 소개 + 액션 줄 → **대표작**(미술관 벽처럼 작품 왼쪽·라벨 오른쪽 아래) →
-      작품(시리즈별 **정렬 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
+      작품(시리즈별 **같은 폭의 열 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
       상단바는 사용자 결정으로 **그대로**(축소·제거 안 함).
-    - **정렬 격자**(`lib/justifiedRows.ts`): 한 행이 같은 높이, 폭은 비율만큼. 정사각 칸 + contain 은 칸의 30~40% 가 흰
-      여백이었다. 비율은 **서버가 업로드 때 잰 `PortfolioImage.width/height`**(`lib/imageDims.ts`, sharp, EXIF 회전 반영).
+    - **작품 격자는 같은 폭의 열**(`lib/columnGrid.ts`, 2026-09-22 사용자 결정 "오와열을 맞춰라"). 데스크톱 3열·좁은 폭(<640) 2열,
+      열 폭은 컨테이너에서 **한 번** 정한다. 칸 높이는 그 행에서 가장 높은 그림(상한 열 폭×1.3), 그림은 칸 안에 비율대로(contain) **바닥**에 붙인다
+      (캡션이 그림 바로 아래 한 줄로 맞게). 비율은 **서버가 업로드 때 잰 `PortfolioImage.width/height`**(`lib/imageDims.ts`, sharp, EXIF 회전 반영).
       옛 작품은 null → 화면이 로드 후 재서 다시 놓는다(튄다). **Render 셸에서 `scripts/backfill-image-dims.ts` 를 돌릴 것.**
+      ⚠️ **2026-09-16~22 는 정렬 격자(justified rows — 행 높이 같고 폭은 비율만큼)였다가 되돌렸다.** 세로 이음매가 행마다 다른 자리에 오고
+      마지막 행은 키우지 않아 오른쪽 끝이 들쭉날쭉했다(실측 이음매 369/441·348/372·370/394, 오른쪽 끝 1007·1232·1062). 시리즈마다 격자를
+      따로 짜니 3~4점짜리 시리즈에선 **거의 모든 행이 마지막 행**이었고, 실서버 작품이 대부분 정사각 근처라 비율대로 폭을 줘서 얻는
+      여백 절약도 거의 없었다. 되살리지 말 것 — 사진이 수십 장 이어지는 화면(피드)이라면 맞지만 시리즈별 3~4점 벽에는 안 맞는다.
+      PDF 엔진의 정렬 격자(`portfolioFormats.ts`, 규칙 45·45b)는 **별개**다 — 거긴 열 폭을 페이지 단위로 정해 이음매를 맞춘다.
     - **미술관식 캡션** `museumCaption()`: `작품명, 연도 / 재료 / 크기`. 종전 한 줄(크기 / 재료 / 연도)은 순서가 거꾸로였다.
       PDF 캡션(`captionParts`)은 그대로다 — 인쇄 관례를 실측해 맞춘 것이라 여기 규칙을 그쪽에 옮기지 말 것.
     - **테마**(`lib/homepageTheme.ts`): `designConfig` 의 bg/ink/accent/font 를 PDF 와 **같은 함수**(`portfolioColors.resolvePalette`,
@@ -1503,7 +1509,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       목록·전시·알림·옛 북마크가 숫자 주소를 들고 있고, 목록 API 가 `handle` 을 안 실어 주면 링크만 고쳐서는 조용히 빠진다.
       (실제로 `/artists` 목록이 `handle` 을 안 내려줘서 눌러도 주소가 안 바뀌었다 — `explore.ts` 의 select 에 추가했다.)
     - 회귀: `backend/src/__tests__/handle.test.ts`(20) · `gallery-archive.test.ts`(공유 이름공간 양방향) ·
-      `frontend/src/__tests__/homepageV2.test.ts`(16: 정렬 격자·캡션·주소·테마).
+      `frontend/src/__tests__/homepageV2.test.ts`(17: 캡션·주소·테마) · `columnGrid.test.ts`(7: 열 격자).
       ⚠️ jsdom 은 레이아웃을 못 잰다 — 격자는 `scratchpad` 하니스로 실제 작가 데이터를 로컬 DB 에 씌워(`import-real.mjs`) 눈으로 봤다.
 
 50. **갤러리 홈페이지 v2 — 작가 페이지와 같은 위계, '함께한 작가' 공개** (2026-09-16, 사용자 결정)

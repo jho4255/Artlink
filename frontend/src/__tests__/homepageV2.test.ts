@@ -1,63 +1,11 @@
 /**
- * 작가 홈페이지 v2 순수 함수 — 정렬 격자 · 미술관식 캡션 · 주소 규칙 · 테마 (2026-09-16)
+ * 작가 홈페이지 v2 순수 함수 — 미술관식 캡션 (격자는 columnGrid.test.ts) · 주소 규칙 · 테마 (2026-09-16)
  */
 import { describe, it, expect } from 'vitest';
-import { justifyRows } from '@/lib/justifiedRows';
 import { museumCaption } from '@/lib/artwork';
 import { normalizeHandle, validateHandle, suggestHandle, artistPath, artistUrl } from '@/lib/handle';
 import { resolveHomepageTheme, themeKeysFrom, pickHeroImage, changedThemeKeys, themeSavePatch, keepWebOnlyKeys } from '@/lib/homepageTheme';
 import { normalizePdfDesign } from '@/lib/portfolioFormats';
-
-const W = 1000, GAP = 20, H = 300;
-const sumWidth = (row: { width: number }[]) => row.reduce((s, c) => s + c.width, 0) + GAP * (row.length - 1);
-
-describe('justifyRows — 정렬 격자', () => {
-  it('꽉 찬 행은 폭에 정확히 맞고 한 행의 높이는 같다', () => {
-    const items = [1.5, 0.8, 1, 1.2, 0.7, 1.3, 1].map((aspect, i) => ({ item: i, aspect }));
-    const rows = justifyRows(items, { containerWidth: W, targetHeight: H, gap: GAP });
-    expect(rows.length).toBeGreaterThan(1);
-    for (const row of rows.slice(0, -1)) {
-      expect(Math.abs(sumWidth(row) - W)).toBeLessThan(0.5);
-      const hs = new Set(row.map((c) => Math.round(c.height * 100)));
-      expect(hs.size).toBe(1);
-      expect(row[0]!.height).toBeLessThanOrEqual(H + 0.5);
-    }
-  });
-
-  it('마지막 행은 늘리지 않는다 — 한 점만 남아도 혼자 커지지 않는다', () => {
-    const items = [1, 1, 1, 1].map((aspect, i) => ({ item: i, aspect }));
-    const rows = justifyRows(items, { containerWidth: W, targetHeight: H, gap: GAP });
-    const last = rows[rows.length - 1]!;
-    expect(last[0]!.height).toBeLessThanOrEqual(H + 0.5);
-    if (last.length === 1) expect(last[0]!.width).toBeLessThanOrEqual(H + 0.5);
-  });
-
-  it('파노라마 한 점은 행을 혼자 차지하고 폭에 맞춰 낮아진다', () => {
-    const rows = justifyRows([{ item: 'pano', aspect: 4 }, { item: 'a', aspect: 1 }], { containerWidth: W, targetHeight: H, gap: GAP });
-    expect(rows[0]!.length).toBe(1);
-    expect(rows[0]![0]!.width).toBeCloseTo(W, 0);
-    expect(rows[0]![0]!.height).toBeCloseTo(W / 4, 0);
-  });
-
-  it('비율을 모르면 정사각으로 본다 · 이상한 값은 상한·하한으로 묶는다', () => {
-    const rows = justifyRows([{ item: 1 }, { item: 2, aspect: 0 }, { item: 3, aspect: 99 }], { containerWidth: W, targetHeight: H, gap: GAP });
-    const cells = rows.flat();
-    expect(cells.find((c) => c.item === 1)!.aspect).toBe(1);
-    expect(cells.find((c) => c.item === 2)!.aspect).toBe(1);
-    expect(cells.find((c) => c.item === 3)!.aspect).toBe(6);
-  });
-
-  it('maxPerRow — 모바일은 한 행에 둘까지', () => {
-    const items = [0.7, 0.7, 0.7, 0.7, 0.7].map((aspect, i) => ({ item: i, aspect }));
-    const rows = justifyRows(items, { containerWidth: 360, targetHeight: 200, gap: 12, maxPerRow: 2 });
-    expect(rows.every((r) => r.length <= 2)).toBe(true);
-  });
-
-  it('빈 입력·폭 0 은 빈 결과', () => {
-    expect(justifyRows([], { containerWidth: W, targetHeight: H, gap: GAP })).toEqual([]);
-    expect(justifyRows([{ item: 1, aspect: 1 }], { containerWidth: 0, targetHeight: H, gap: GAP })).toEqual([]);
-  });
-});
 
 describe('museumCaption — 작품명, 연도 / 재료 / 크기', () => {
   it('전부 있으면 세 줄', () => {
