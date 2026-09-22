@@ -8,6 +8,9 @@
  *   npx tsx scripts/backfill-image-dims.ts --limit 50 # 앞에서 50장만(시험)
  *
  * 실패한 행은 그대로 둔다(null). 다시 돌리면 그것만 다시 시도한다 — 멱등.
+ *
+ * ⚠️ 받기 제한은 60초, 실패하면 한 번 더 (2026-09-22). 처음엔 readImageDims 기본값(업로드용 4초)을 그대로 써서
+ *    실서버 451장 중 **37장이 시간 초과로 실패**했다 — 파일은 전부 200 이었고 R2 가 600KB 한 장에 8초 걸리는 때가 있었을 뿐이다.
  */
 import { PrismaClient } from '@prisma/client';
 import { readImageDims } from '../src/lib/imageDims';
@@ -16,6 +19,12 @@ const prisma = new PrismaClient();
 const limitArg = process.argv.indexOf('--limit');
 const LIMIT = limitArg > -1 ? Number(process.argv[limitArg + 1]) : undefined;
 const CONCURRENCY = 4;
+const FETCH_TIMEOUT_MS = 60_000;
+
+/** 한 번 실패하면 한 번 더 — 일시적으로 느린 응답을 실패로 남기지 않는다 */
+async function readWithRetry(url: string) {
+  return (await readImageDims(url, FETCH_TIMEOUT_MS)) ?? (await readImageDims(url, FETCH_TIMEOUT_MS));
+}
 
 async function main() {
   const rows = await prisma.portfolioImage.findMany({
@@ -28,7 +37,7 @@ async function main() {
   let ok = 0, fail = 0;
   for (let i = 0; i < rows.length; i += CONCURRENCY) {
     await Promise.all(rows.slice(i, i + CONCURRENCY).map(async (row) => {
-      const dims = await readImageDims(row.url);
+      const dims = await readWithRetry(row.url);
       if (!dims) { fail += 1; console.log(`  ✗ #${row.id} ${row.url}`); return; }
       await prisma.portfolioImage.update({ where: { id: row.id }, data: dims });
       ok += 1;

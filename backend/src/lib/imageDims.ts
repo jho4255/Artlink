@@ -19,7 +19,7 @@ const FETCH_TIMEOUT_MS = 4000;
 
 export interface ImageDims { width: number; height: number }
 
-async function loadBytes(url: string): Promise<Buffer | null> {
+async function loadBytes(url: string, timeoutMs: number): Promise<Buffer | null> {
   if (url.startsWith('/uploads/')) {
     const safe = path.basename(url.slice('/uploads/'.length));
     if (!safe) return null;
@@ -27,7 +27,7 @@ async function loadBytes(url: string): Promise<Buffer | null> {
   }
   if (matchR2Base(url)) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const r = await fetch(url, { signal: ctrl.signal });
       if (!r.ok) return null;
@@ -53,7 +53,11 @@ export async function dimsFromBuffer(buf: Buffer): Promise<ImageDims | null> {
   }
 }
 
-export async function readImageDims(url: string): Promise<ImageDims | null> {
-  const buf = await loadBytes(url);
+/**
+ * `timeoutMs` 기본 4초는 **업로드 응답용**이다. 백필처럼 응답을 기다리는 사람이 없는 자리에서는 넉넉히 줄 것 —
+ * 2026-09-22 실서버 백필 451장 중 37장이 이 4초에 걸려 실패했다(R2 에서 600KB 한 장이 8초 걸리는 때가 있다. 파일은 전부 멀쩡했다).
+ */
+export async function readImageDims(url: string, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<ImageDims | null> {
+  const buf = await loadBytes(url, timeoutMs);
   return buf ? dimsFromBuffer(buf) : null;
 }
