@@ -155,3 +155,13 @@ describe('hasTitle', () => {
     expect(hasTitle(untitled)).toBe(false);        // 공개 화면 판정
   });
 });
+
+describe('작품 한도 표시', () => {
+  it('편집 화면의 "작품 사진 (N/한도)" 는 상수를 쓴다 — 한도를 150 으로 올린 뒤에도 "/30" 이 남아 있었다(2026-09-25)', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const src = readFileSync(resolve(__dirname, '../pages/MyPage.tsx'), 'utf8');
+    expect(src).toContain('작품 사진 ({images.length}/{PORTFOLIO_IMAGE_MAX})');
+    expect(src).not.toMatch(/작품 사진 \(\{images\.length\}\/\d+\)/);
+  });
+});

@@ -41,7 +41,11 @@ function Avatar({ a }: { a: GbAuthor }) {
   );
 }
 
-export default function Guestbook({ userId }: { userId: number }) {
+/**
+ * @param bare 작가 홈페이지 [방명록] **탭 안**에 들어갈 때(2026-09-25) — 탭이 제목·개수를 이미 들고 있어 머리 라벨·윗줄을 뺀다.
+ *             글줄이 1,200px 로 퍼지면 읽기 어려워 폭도 본문 글(max-w-3xl)과 맞춘다.
+ */
+export default function Guestbook({ userId, bare = false }: { userId: number; bare?: boolean }) {
   const { isAuthenticated } = useAuthStore();
   const location = useLocation();
   const qc = useQueryClient();
@@ -132,10 +136,12 @@ export default function Guestbook({ userId }: { userId: number }) {
   );
 
   return (
-    <section id="guestbook" className="mt-16 scroll-mt-20 border-t border-current/15 pt-6">
-      <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.22em] opacity-60">
-        방명록{entries.length > 0 && <span className="ml-2 font-normal tracking-normal">{entries.length}</span>}
-      </h2>
+    <section id="guestbook" className={bare ? 'max-w-3xl' : 'mt-16 scroll-mt-20 border-t border-current/15 pt-6'}>
+      {!bare && (
+        <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.22em] opacity-60">
+          방명록{entries.length > 0 && <span className="ml-2 font-normal tracking-normal">{entries.length}</span>}
+        </h2>
+      )}
 
       {/* 작성 */}
       {isAuthenticated ? (

@@ -38,7 +38,8 @@ describe('방명록', () => {
     expect(r.body.author.id).toBe(2);
     const notis = await testPrisma.notification.findMany({ where: { userId: 1, type: 'GUESTBOOK_NEW' } });
     expect(notis.length).toBe(1);
-    expect(notis[0].linkUrl).toBe('/portfolio/1');
+    // 방명록은 작가 홈페이지의 탭이다(2026-09-25) — 쿼리 없이 보내면 [작품] 탭이 열려 글이 안 보인다
+    expect(notis[0].linkUrl).toBe('/portfolio/1?tab=guestbook');
     // 목록에 뜬다
     const list = await request.get('/api/guestbook/1');
     expect(list.body.entries.map((e: any) => e.body)).toContain('작품 잘 봤어요');

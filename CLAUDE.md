@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2152 tests** (2026-09-23): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 759 (jsdom)
+- **2170 tests** (2026-09-25): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 777 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -508,7 +508,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **광고 슬롯**(`AdBanner`, `routes/ad.ts`, `AdSlot`): Admin 이 [광고 관리] 탭에서 등록. 사이드바 **로그아웃 아래**에 활성 배너 1개(position 순). 이미지·링크는 우리 저장소·안전 스킴만. 우상단 'AD' 라벨.
 - **커뮤니티·스토리 이미지는 `Thumb`** 로 — 목록 t240 / 상세·피드 t800. 업로드(`/upload/image`)가 두 썸네일을 함께 생성하므로 추가 작업 없음.
 - **작가 약력도 `text-justify`**(양쪽맞춤) — 작가노트와 동일(`HomepageView`).
-- **방명록 discoverability**: 작가 홈페이지 헤더에 [방명록] 버튼(→ `#guestbook` 스크롤), 방명록 제목 옆 글 수 배지.
+- **방명록 discoverability**: 작가 홈페이지 **[방명록] 탭**(글 수 표시, 규칙 56). 예전의 헤더 [방명록] 버튼(→ `#guestbook` 스크롤)은 탭과 겹쳐 2026-09-25 에 없앴다.
 
 32. **화면에서만 뗀 API 는 소스로 감시할 것** (`frontend/src/__tests__/retiredApis.test.ts`) —
     대화가 옛 쪽지(`Message`)에서 ArtTalk(`Chat`)으로 바뀐 뒤에도 **갤러리 상세·공모 상세의 [쪽지 보내기]가
@@ -1454,7 +1454,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     작가들이 공개 페이지를 자기 홈페이지처럼 쓰고 싶어 하는데, v1 은 ArtLink 'HomePage' 라벨 → 작은 이름 → 약력 →
     경력 → 작품 순이라 **ArtLink 안의 프로필**로 읽혔다. `components/shared/HomepageView.tsx` 를 다시 짰다.
     - **순서**: 이름(큰 글자, 테마 글꼴) + 한 줄 소개 + 액션 줄 → **대표작**(미술관 벽처럼 작품 왼쪽·라벨 오른쪽 아래) →
-      작품(시리즈별 **정사각 칸 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
+      작품(시리즈별 **정사각 칸 격자**) → 작가노트 → 약력 → 경력 → 파일 → 방명록. ⚠️ 2026-09-25 부터 이 순서가 **탭**이다(규칙 56). 'HomePage' 라벨·붉은 세로줄·뒤로가기 삭제.
       상단바는 사용자 결정으로 **그대로**(축소·제거 안 함).
     - **작품 격자는 같은 크기의 정사각 칸**(`lib/columnGrid.ts`, 2026-09-22 사용자 결정 "오와열을 맞춰라"). 데스크톱 3열·좁은 폭(<640) 2열,
       열 폭은 컨테이너에서 **한 번** 정하고 **칸 높이 = 열 폭**. 그림은 칸 안에 비율대로(contain) **정가운데** — 가로 그림은 위아래가, 세로 그림은
@@ -1665,6 +1665,39 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: `backend/src/__tests__/imageNormalize.test.ts`(7, 실제 픽셀) · `upload.test.ts`「PNG 사진은 JPEG 로 저장」(3, 라우트가 디스크의 `.png` 를 `.jpg` 로 갈아 쓰는지) ·
       `portfolio-artwork.test.ts`(한도 150 경계 + 프론트 대조). ⚠️ 테스트 이미지는 **그라디언트+약한 노이즈** — 순수 랜덤 노이즈는 JPEG 도 못 줄여 사진을 대신하지 못하고, 단색은 PNG 가 더 작다.
 
+56. **작가 홈페이지는 탭이다 · 포트폴리오 PDF 는 페이지 안에서 펼친다** (2026-09-25, 사용자 요청)
+    예전엔 작품 → 작가노트 → 약력 → 경력 → 파일 → 방명록이 한 페이지에 세로로 이어져, 작품 30점 아래 방명록까지 몇 화면을 내려가야 했고
+    포트폴리오 파일은 [파일 보기] 링크 하나(= 내려받기)였다.
+    - **탭** [작품 · 작가노트 · 약력 · 포트폴리오 · 방명록] — 판정은 `frontend/src/lib/homepageTabs.ts` 한 곳(`homepageTabs`·`resolveHomepageTab`·`tabParamFor`).
+      마스트헤드(이름·소개·액션) 바로 아래에 붙고, 상단바 아래로 **sticky**(`top-16 lg:top-20` = Navbar 높이). 대표작은 [작품] 탭 맨 위.
+      - **비어 있는 탭은 만들지 않는다**(방명록만 예외 — 글을 쓰러 가는 곳). **약력(줄글)과 경력(학력·개인전…)은 한 탭 [약력]** — 둘 다 이력이고
+        약력 칸에 경력을 줄글로 적는 작가가 많다(45b). 나누고 싶으면 `homepageTabs` 만 고치면 된다.
+      - 주소 `?tab=note|cv|file|guestbook`, 첫 탭은 쿼리 없음. **replace** 로 바꾼다(뒤로가기가 탭을 거꾸로 훑지 않게). 모르는 값·지금 없는 탭은 첫 탭(404·빈 화면 금지 —
+        파일을 지운 뒤에도 옛 `?tab=file` 링크가 돈다). ⚠️ pathname 은 `syncWorkParam` 처럼 **정식 주소(canonicalRef)** 로 — 숫자 주소를 되살리지 않게.
+      - ⚠️⚠️ **방명록 알림 링크는 `?tab=guestbook`**(`routes/guestbook.ts`). 쿼리가 없으면 [작품] 탭이 열려 알림을 눌러도 글이 안 보인다. 옛 알림(쿼리 없음)은 [작품] 탭으로 떨어진다(허용).
+        머리말의 [방명록] 버튼(→ `#guestbook` 스크롤)은 **없앴다** — 바로 아래 탭에 같은 게 있다. `Guestbook` 은 탭 안에서 `bare`(머리 라벨·윗줄 없음, `max-w-3xl`).
+        방명록 글 수는 `PortfolioPage` 가 `Guestbook` 과 **같은 쿼리 키** `['guestbook', id]` 로 읽는다(한 번만 받는다).
+      - 편집 화면 미리보기(`compact`)도 같은 탭을 쓰되 sticky 가 아니고, **지금 손대는 칸의 탭을 따라 연다**(`MyPage` `followPreview` — 필드 묶음의 `onFocusCapture`,
+        사파리는 버튼 클릭에 포커스를 안 줘서 파일·작품 칸은 `onPointerDownCapture` 도). **저장하면 그 탭으로 돌아간다**(`?tab=<previewTab>`) —
+        약력을 고쳤는데 [작품] 탭이 뜨면 저장이 안 된 것처럼 보인다(규칙 31 의 연장).
+    - **포트폴리오 PDF 뷰어** `components/shared/PdfViewer.tsx`(pdfjs-dist **legacy** 빌드, `lazy` — 탭을 열 때만 본체 0.5MB + 워커 1.3MB 를 받는다).
+      - ⚠️ **iframe 으로 되돌리지 말 것** — 안드로이드 크롬은 iframe 안 PDF 를 안 그리고(내려받기로 넘어간다) iOS 사파리는 첫 쪽만 그림처럼 보인다.
+        방문자 대부분이 인스타 링크로 들어오는 휴대폰이라 "페이지에서 보여준다"가 통째로 깨진다. legacy 빌드는 인앱 브라우저(옛 OS) 때문.
+      - ⚠️ **PDF 를 직접 fetch 해서 bytes 로 넘긴다**(pdf.js 에 url 을 주지 않는다) — 규칙 16 과 같은 함정: 옛 [파일 보기] 링크로 같은 파일을 연 브라우저엔 CORS 정보 없는
+        캐시가 남아 CORS fetch 가 막힌다. 평소처럼 받고, 실패하면 `cache:'reload'` 로 한 번 더. 덕분에 진행률(MB)도 보인다.
+      - ⚠️ **화면에서 멀어진 쪽의 캔버스는 비운다**(IntersectionObserver `rootMargin 150%`, 자리 높이는 유지) + 한 장 **800만 px 상한**(`pdfRenderScale`, 배율 ≤2).
+        iOS 는 캔버스 메모리가 작아 전 쪽을 2배로 그려 두면 뒤쪽이 흰 판이 된다. 실측 19쪽 문서에서 동시에 그려진 쪽 최대 5.
+      - 쪽 폭은 `pdfPageWidth`: **한 쪽이 한 화면에** 들어오게 높이에 맞추되 하한 640px(A4 세로를 노트북 높이에 맞추면 글씨 8px) · 상한 1000px · 컨테이너 이하(휴대폰 = 화면 폭).
+        테두리 1px×2 를 컨테이너 폭에서 빼 둘 것 — 안 빼면 휴대폰에서 2px 가로로 밀린다.
+      - v6 API: 문서는 `loadingTask.destroy()` 로 닫는다(`PDFDocumentProxy.destroy` 없음), `isEvalSupported` 옵션 없음. CMap·표준 글꼴·wasm·ICC 는 **jsDelivr(버전 고정)** 에서
+        필요할 때만(한글 글꼴을 안 심은 PDF 대비). 캔버스만 그린다 — 링크·주석·폼·스크립트 없음. 부르는 쪽은 `key={url}`(파일이 바뀌면 처음부터).
+      - PWA: `vite.config.ts` 의 `globIgnores: ['**/pdf-*.js']` — pdf.js 본체를 모든 설치자에게 precache 하지 않는다(워커 `.mjs` 는 패턴에 원래 안 걸린다).
+      - **PDF 만 펼친다.** HWP·DOC·ZIP 은 브라우저가 못 그려 내려받기 카드(`FileDownloadCard`). 판정은 주소 확장자(`lib/portfolioFile.ts portfolioFileKind`).
+        편집 화면 업로드 칸 아래에 "PDF 로 올리면 바로 보인다"(PDF 가 아니면 빨간 경고)를 적는다.
+    - 회귀: `frontend/src/__tests__/homepageTabs.test.ts`(17 — 탭 구성·폴백·쪽 폭·캔버스 상한·**알림 링크 소스 대조**) · `backend guestbook.test.ts`(linkUrl) ·
+      `e2e/tests/54-homepage-tabs.spec.ts`(7 — 탭 주소·새로고침·폴백·**진짜 PDF 를 올려 캔버스에 글자 픽셀이 찍혔는지**·HWP 카드·알림→방명록 탭·미리보기 따라가기) ·
+      `32`·`37`·`10` 스펙은 `?tab=` 로 들어가게 고쳤다. ⚠️ jsdom 은 캔버스를 못 그린다 — PDF 는 e2e 와 브라우저 하니스로만 확인된다.
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -1718,7 +1751,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 | `['story-feed']` | FeedPage(ArtStory) | 스토리 작성/삭제, 좋아요, 댓글, 이웃 추가 |
 | `['story-comments', storyId]` | 스토리 카드 댓글 | 댓글 작성/삭제 |
 | `['story-likers', storyId]` | 스토리 좋아요 누른 사람 | 좋아요 토글 |
-| `['guestbook', userId]` | 작가 홈페이지 방명록 | 방명록 작성/답글/삭제 |
+| `['guestbook', userId]` | 작가 홈페이지 방명록 · 방명록 탭 글 수(PortfolioPage) | 방명록 작성/답글/삭제 |
 | `['ads']` | AdSlot(사이드바 광고) | (5분 staleTime) Admin 광고 CUD |
 | `['ads-all']` | Admin 광고 관리 | 광고 CUD |
 

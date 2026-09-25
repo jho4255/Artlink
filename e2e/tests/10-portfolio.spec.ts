@@ -31,6 +31,8 @@ test('작가 약력/경력 수정 후 저장 → 공개 홈페이지에 남는�
 
   // 저장하면 공개 페이지로 돌아간다 (편집 전용 화면에 갇히지 않게)
   await page.waitForURL(new RegExp(`/portfolio/${ids.artist}`), { timeout: 15000 });
+  // 홈페이지가 탭으로 나뉜 뒤(2026-09-25) — 저장하면 **방금 고치던 탭**(경력 → [약력])이 열린다
+  await expect(page).toHaveURL(/[?&]tab=cv/);
   await expect(page.getByText(BIO, { exact: false })).toBeVisible({ timeout: 10000 });
   await expect(page.getByText(CAREER, { exact: false })).toBeVisible({ timeout: 10000 });
 

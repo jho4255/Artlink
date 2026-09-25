@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Edit3, MessageCircle, MessageSquare, QrCode, Share2 } from 'lucide-react';
+import { Edit3, MessageCircle, QrCode, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { groupBySeries, museumCaption } from '@/lib/artwork';
@@ -65,6 +65,13 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
     onError: (e: any) => toast.error(e.response?.data?.error || '대화를 열지 못했습니다.'),
   });
 
+  // 방명록 글 수 — 탭 이름 옆에 적는다. `Guestbook` 과 **같은 쿼리 키**라 한 번만 받는다
+  const { data: guestbookData } = useQuery<{ entries: unknown[] }>({
+    queryKey: ['guestbook', ownerId],
+    queryFn: () => api.get(`/guestbook/${ownerId}`).then(r => r.data),
+    enabled: !!ownerId,
+  });
+
   // 공개 하이라이트 목록 (작가 프로필 아래에 표시)
   const { data: highlights } = useQuery<StoryHighlight[]>({
     queryKey: ['highlights', ownerId],
@@ -109,6 +116,20 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   }, [ordered, navigate]);
 
   const theme = useMemo(() => resolveHomepageTheme(portfolio?.designConfig), [portfolio?.designConfig]);
+
+  /*
+    탭(2026-09-25) — `?tab=note|cv|file|guestbook`, 첫 탭(대개 작품)은 쿼리 없음. 주소에 두는 이유: 방명록 알림이
+    `?tab=guestbook` 으로 바로 들어오고, 작가가 "제 포트폴리오 보세요" 하며 `?tab=file` 링크를 보낼 수 있다.
+    replace — 탭을 누를 때마다 뒤로가기 기록이 쌓이면 [뒤로]가 탭을 거꾸로 훑는다.
+    ⚠️ `syncWorkParam` 처럼 pathname 은 정식 주소로(위 canonicalRef 설명과 같은 이유).
+  */
+  const tabParam = searchParams.get('tab');
+  const onTabChange = useCallback((_id: string, param: string | null) => {
+    const next = new URLSearchParams(window.location.search);
+    if (param) next.set('tab', param); else next.delete('tab');
+    const search = next.toString();
+    navigate({ pathname: canonicalRef.current ?? window.location.pathname, search: search ? `?${search}` : '' }, { replace: true });
+  }, [navigate]);
 
   /*
     정식 주소로 바꿔 준다 (2026-09-16) — 숫자 주소 `/portfolio/526` 으로 들어왔는데 이 작가에게 핸들이 있으면
@@ -195,9 +216,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
       )}
       <button onClick={share} className={actionClass}><Share2 size={14} /> 공유</button>
       <button onClick={() => setQrOpen(true)} className={actionClass}><QrCode size={14} /> QR</button>
-      <button onClick={() => document.getElementById('guestbook')?.scrollIntoView({ behavior: 'smooth' })} className={actionClass}>
-        <MessageSquare size={14} /> 방명록
-      </button>
+      {/* [방명록] 버튼은 없앴다(2026-09-25) — 바로 아래 탭 막대에 [방명록]이 있어 한 화면에 같은 버튼이 둘이었다 */}
       {/* 주인 본인에게만 — 남에게 보여줄 홈페이지라 도구는 조용해야 한다 */}
       {isOwner && <Link to={HOMEPAGE_EDIT_HREF} className={actionClass}><Edit3 size={14} /> 수정</Link>}
     </>
@@ -228,10 +247,11 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
           onOpenImage={openAt}
           careerColumns={careerColumnCount}
           actions={actions}
+          tab={tabParam}
+          onTabChange={onTabChange}
+          // 방명록 — [방명록] 탭. 테마 색을 물려받는다
+          guestbook={{ count: guestbookData?.entries.length, content: <Guestbook userId={portfolio.user.id} bare /> }}
         />
-
-        {/* 방명록 — 공개 홈페이지 하단. 테마 색을 물려받는다 */}
-        <Guestbook userId={portfolio.user.id} />
       </div>
 
       {openHighlight != null && (

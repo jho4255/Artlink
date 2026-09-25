@@ -101,11 +101,12 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
         include: { author: authorSelect },
       });
       // 원 글쓴이에게 알림 (자기 글에 자기가 답하면 알림 없음)
+      // ⚠️ `?tab=guestbook` 필수 — 방명록은 작가 홈페이지의 탭이라(2026-09-25) 쿼리가 없으면 [작품] 탭이 열려 글이 안 보인다
       if (parent.authorId !== me) {
         try {
           const meUser = await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });
           await prisma.notification.create({
-            data: { userId: parent.authorId, type: 'GUESTBOOK_REPLY', message: `${meUser ? displayName(meUser) : '방 주인'}님이 방명록에 답글을 남겼습니다.`, linkUrl: `/portfolio/${target}` },
+            data: { userId: parent.authorId, type: 'GUESTBOOK_REPLY', message: `${meUser ? displayName(meUser) : '방 주인'}님이 방명록에 답글을 남겼습니다.`, linkUrl: `/portfolio/${target}?tab=guestbook` },
           });
         } catch { /* best-effort */ }
       }
@@ -122,7 +123,7 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
       try {
         const meUser = await prisma.user.findUnique({ where: { id: me }, select: { name: true, nickname: true } });
         await prisma.notification.create({
-          data: { userId: target, type: 'GUESTBOOK_NEW', message: `${meUser ? displayName(meUser) : '누군가'}님이 방명록을 남겼습니다.`, linkUrl: `/portfolio/${target}` },
+          data: { userId: target, type: 'GUESTBOOK_NEW', message: `${meUser ? displayName(meUser) : '누군가'}님이 방명록을 남겼습니다.`, linkUrl: `/portfolio/${target}?tab=guestbook` },
         });
       } catch { /* best-effort */ }
     }

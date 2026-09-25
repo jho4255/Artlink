@@ -2186,3 +2186,24 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   첫 번째 안(행 최대 높이 + 바닥 정렬)은 행마다 높이가 달라 윗선이 어긋났다. `maxRowRatio` 를 넘기면 첫 번째 안으로 동작한다(쓰는 곳 없음).
 - **시리즈 없는 묶음 머리말**(2026-09-23): `ungroupedLabel(groups)` 가 시리즈가 하나라도 있을 때만 '그 밖의 작품'을 돌려주고 `ArtworkSection` 이 시리즈명
   자리에 회색으로 그린다. 없으면 시리즈 격자 아래 5점이 그 시리즈로 읽혔다(양현서 실서버). 테스트 `homepageV2.test.ts` +4.
+
+## 작가 홈페이지 탭 · 포트폴리오 PDF 펼쳐 보기 (2026-09-25)
+사용자 요청 둘: ① 첨부한 포트폴리오 파일을 내려받게 하지 말고 페이지 안에서 그대로 보여 달라 ② 작품·약력·경력·파일·방명록을 탭으로 나눠 페이지가 너무 길어지지 않게.
+- **탭** — `frontend/src/lib/homepageTabs.ts`(구성·폴백·주소 값) → `components/shared/HomepageView.tsx`(`TabBar`, 패널 하나만 렌더).
+  [작품(대표작+시리즈 격자) · 작가노트 · 약력(약력 줄글 + 경력) · 포트폴리오 · 방명록]. 빈 탭은 안 만든다(방명록 제외). 마스트헤드 아래 sticky.
+  공개 페이지(`pages/PortfolioPage.tsx`)는 `?tab=` 로 탭을 쥐고(replace, 정식 주소 유지), 편집 미리보기(`MyPage` PortfolioSection)는 포커스한 칸의 탭을 따라 연다.
+  방명록은 `guestbook={{ count, content: <Guestbook bare /> }}` 로 들어간다. 방명록 알림 `linkUrl` = `/portfolio/:id?tab=guestbook`(`routes/guestbook.ts`).
+- **PDF 뷰어** — `components/shared/PdfViewer.tsx`(lazy). 흐름: `fetch`(실패 시 `cache:'reload'` 재시도, 진행률) → pdfjs-dist 6 legacy `getDocument({data})`
+  → 전 쪽 크기 선계산(자리 확보) → 쪽마다 IntersectionObserver 로 가까울 때만 캔버스에 그리고 멀어지면 비운다. 폭·배율은 `lib/portfolioFile.ts`
+  (`pdfPageWidth`: 한 화면에 한 쪽, 640~1000px, 컨테이너 이하 / `pdfRenderScale`: 배율 ≤2, 한 장 ≤800만 px). 워커는 `?url` 로 번들, CMap·글꼴·wasm 은 jsDelivr.
+  PDF 가 아니면(HWP·DOC·ZIP) `FileDownloadCard`. 편집 화면 업로드 칸에 PDF 권장 안내.
+- 자잘: 편집 화면 "작품 사진 (N/30)" 이 150 한도 변경 뒤에도 30 으로 남아 있던 표시를 `PORTFOLIO_IMAGE_MAX` 로(`artwork.test.ts` 가 소스 대조).
+- 테스트: `homepageTabs.test.ts`(17) · `artwork.test.ts`(+1) · backend `guestbook.test.ts`(linkUrl) · e2e `54-homepage-tabs.spec.ts`(7) 신설, `10`·`32`·`37` 스펙을 `?tab=` 로 갱신.
+  실측: 박기량 A4 19쪽 7.9MB 첫 쪽 2.2초(로컬), 스크롤 중 동시 렌더 최대 5쪽, 390px 가로 넘침 0. 자세한 함정은 CLAUDE.md 56번.
+- **전체 E2E(2026-09-25, 로컬 데모 DB)**: 233 통과 / 18 실패 / 4 건너뜀. 실패 18건은 이번 변경과 무관한 **낡은 스펙**이다(원인을 하나씩 확인함) —
+  9-19 감사 수정 뒤로 E2E 가 따라가지 못했다: `12-support`(FAQ 복원 4f2ff73) · `21`·`22`·`24`(×5)·`28`(옛 `/operation` 주소가 새 운영 화면으로 리다이렉트 1c3e3ec,
+  작가는 마이페이지로 돌아간다) · `26` B(좋아요 알림 링크가 누른 사람 역할별 프로필 — `profileLink.ts`) · `26` F2(초대 거절 확인창) · `50`(멘션 자동완성이 listbox/option) ·
+  `51`(공모만 진행이면 전시 일자 칸이 사라진다) · `53` 핸들 2건(36번 스펙이 작가 1 닉네임을 바꿔 둔 순서 의존) · `00-smoke` desktop(숨은 가로 탭을 라벨로 집음, 규칙 35) ·
+  `38` 동의 시각(DATABASE_URL 에 Prisma 쿼리 파라미터가 붙으면 psql 이 못 읽는다 — `?connection_limit` 없이 넘기면 통과).
+  `32` 경력 배치 1건은 `/portfolio/1` → `/@핸들` 재마운트 경합이라 스펙을 고쳤다(요소가 보일 때까지 기다린다).
+

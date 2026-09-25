@@ -169,8 +169,10 @@ test.describe('긴 글이 레이아웃을 깨지 않는다', () => {
     for (const vw of [375, 768, 1440]) {
       const { page, ctx } = await openAs(browser, 'artist');
       await page.setViewportSize({ width: vw, height: 900 });
-      await page.goto(`/portfolio/${ids.artist}`);
+      // 작가노트는 [작가노트] 탭에 있다(2026-09-25) — 첫 탭(작품)만 재면 긴 글을 한 번도 그리지 않는다
+      await page.goto(`/portfolio/${ids.artist}?tab=note`);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('body')).toContainText('작가노트가공백없이', { timeout: 10000 });
       await settle(page, 800);
 
       const r = await horizontalOverflow(page);
@@ -212,8 +214,10 @@ test.describe('경력 배치', () => {
 
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/portfolio/${ids.artist}`);
-    await expect(page.locator('body')).toContainText('단체전', { timeout: 15000 });
+    await page.goto(`/portfolio/${ids.artist}?tab=cv`);   // 경력은 [약력] 탭(2026-09-25)
+    // ⚠️ body 글자로 기다리지 말 것 — 핸들이 있으면 `/portfolio/1` → `/@핸들` 로 갈아끼우며 한 번 다시 그려져,
+    //    그 사이에 재면 요소가 없다(전체 실행에서만 드러났다: 앞 스펙이 인스타 주소를 넣어 핸들이 생긴다)
+    await expect(page.locator('li', { hasText: '개인전 하나' })).toBeVisible({ timeout: 15000 });
 
     const sizes = await page.evaluate(() => {
       // 항목 이름은 <p> 안에 아이콘(svg)과 함께 있다 — 'children 이 없는 요소' 로 찾으면 못 찾는다
@@ -237,8 +241,10 @@ test.describe('경력 배치', () => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/portfolio/${ids.artist}`);
-    await expect(page.locator('body')).toContainText('수상', { timeout: 15000 });
+    await page.goto(`/portfolio/${ids.artist}?tab=cv`);
+    // (위 테스트와 같은 이유로 실제 요소가 뜰 때까지 기다린다)
+    await expect(page.locator('p', { hasText: /^수상/ })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('p', { hasText: /^개인전$/ })).toBeVisible();
 
     const gap = await page.evaluate(() => {
       const ps = Array.from(document.querySelectorAll('p')) as HTMLElement[];

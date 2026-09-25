@@ -64,7 +64,7 @@ test('★ 방명록 — 남기면 목록에 뜨고, 방 주인만 답글을 단�
 
   // artist2 가 artist(=id 1) 홈페이지 방명록에 글을 남긴다
   const { page, ctx } = await openAs(browser, 'artist2');
-  await page.goto('/portfolio/1');
+  await page.goto('/portfolio/1?tab=guestbook');   // 방명록은 작가 홈페이지의 탭이다(2026-09-25)
   const box = page.getByPlaceholder(/응원의 한마디를 남겨보세요/);
   await expect(box).toBeVisible({ timeout: 15000 });
   await box.fill(msg);
@@ -76,7 +76,7 @@ test('★ 방명록 — 남기면 목록에 뜨고, 방 주인만 답글을 단�
 
   // 방 주인(artist=id 1)이 자기 홈페이지에서 답글
   const owner = await openAs(browser, 'artist');
-  await owner.page.goto('/portfolio/1');
+  await owner.page.goto('/portfolio/1?tab=guestbook');
   await expect(owner.page.locator('body')).toContainText(msg, { timeout: 15000 });
   await owner.page.getByRole('button', { name: '답글' }).first().click();
   const reply = `고마워요 ${stamp}`;
@@ -105,7 +105,7 @@ test('★ 방명록에 비밀글은 없다 — secret 을 보내도 공개로 �
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'artist2');
-  await page.goto('/portfolio/1');
+  await page.goto('/portfolio/1?tab=guestbook');   // 방명록은 작가 홈페이지의 탭이다(2026-09-25)
   await expect(page.getByPlaceholder(/응원의 한마디를 남겨보세요/)).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#guestbook').getByRole('checkbox')).toHaveCount(0);
   // ('비밀' 글자로 찾지 말 것 — 36번 스펙이 닉네임을 '비밀닉…' 으로 바꿔 놓아 방명록 작성자 이름에 그 글자가 뜬다)

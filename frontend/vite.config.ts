@@ -35,6 +35,9 @@ export default defineConfig({
       injectManifest: {
         // precache 대상: 앱셸/번들/아이콘 (generateSW 기본과 동등하게 유지)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // pdf.js 본체(0.5MB)는 작가 홈페이지 [포트폴리오] 탭에서만 쓴다 — 설치하는 모든 사람에게 미리 받게 하지 않는다.
+        // (워커 .mjs 1.3MB 는 위 패턴에 애초에 안 걸린다. 빠진 파일은 sw.js 가 가로채지 않아 평소처럼 네트워크로 받는다)
+        globIgnores: ['**/pdf-*.js'],
       },
       manifest: {
         name: 'ArtLink',

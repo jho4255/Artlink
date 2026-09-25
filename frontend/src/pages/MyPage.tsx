@@ -35,6 +35,7 @@ import { splitIntoColumns } from '@/lib/careerColumns';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
 import { normalizePdfDesign, type PortfolioBookData, type PdfDesign } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
+import { portfolioFileKind } from '@/lib/portfolioFile';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
@@ -673,6 +674,15 @@ function PortfolioSection() {
   const [tagline, setTagline] = useState('');
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
+  /* 미리보기 탭(2026-09-25) — 홈페이지가 탭으로 나뉘어, 작가노트를 고치는데 미리보기는 [작품] 탭에 머물러 있으면
+     고친 게 안 보인다. **지금 손대는 칸의 탭을 미리보기가 따라 연다**(아래 onFocusCapture). 미리보기 탭을 직접 눌러도 된다. */
+  const [previewTab, setPreviewTab] = useState<string | null>(null);
+  const previewBoxRef = useRef<HTMLDivElement>(null);
+  const followPreview = (id: string) => {
+    if (previewTab === id) return;
+    setPreviewTab(id);
+    if (previewBoxRef.current) previewBoxRef.current.scrollTop = 0; // 새 탭의 첫머리부터
+  };
   const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
   // 홈페이지 스타일(배경·글자·강조·글꼴·대표작) — PDF 와 같은 designConfig 에 저장된다(2026-09-16)
   const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
@@ -699,7 +709,11 @@ function PortfolioSection() {
         이 화면은 공개 페이지의 [수정]으로만 들어오는 편집 전용 화면이라, 저장 후 남으면
         '나만 보는 옛 관리 화면'에 갇힌 것처럼 보인다(2026-08-28 신고). 온 곳으로 돌려보낸다.
       */
-      if (user?.id) navigate(artistPath({ id: user.id, handle: user.handle }));
+      // 홈페이지가 탭으로 나뉜 뒤(2026-09-25)로는 **방금 고치던 탭**을 열어 준다 — 약력을 고쳤는데 [작품] 탭이 뜨면 저장이 안 된 것처럼 보인다
+      if (user?.id) {
+        const home = artistPath({ id: user.id, handle: user.handle });
+        navigate(previewTab && previewTab !== 'works' ? `${home}?tab=${previewTab}` : home);
+      }
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '홈페이지 저장에 실패했습니다.'),
   });
@@ -837,7 +851,7 @@ function PortfolioSection() {
     <div id="artworks" className="scroll-mt-24">
         <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
           <p className="text-sm font-medium text-gray-500">
-            작품 사진 ({images.length}/30)
+            작품 사진 ({images.length}/{PORTFOLIO_IMAGE_MAX})
             <span className="text-xs text-gray-500 ml-2 font-normal">
               <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
             </span>
@@ -949,11 +963,11 @@ function PortfolioSection() {
         <div className="lg:flex lg:gap-8">
         <div className="space-y-5 lg:flex-1 lg:min-w-0">
           <HomepageStylePicker value={design} images={images} onChange={setDesign} />
-          <div>
+          <div onFocusCapture={() => followPreview('cv')}>
             <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-accent">*</span></label>
             <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
-          <div>
+          <div onFocusCapture={() => followPreview('note')}>
             <label className="text-sm font-medium text-gray-700">작가노트</label>
             <textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="예: 나의 작업은 시간의 흐름 속에서 휘발되는 기억과, 그 자리에 남은 감정의 잔상을 기록하는 과정이다…" className="w-full h-36 p-3 border border-gray-200 rounded-lg text-sm resize-y leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
@@ -962,7 +976,7 @@ function PortfolioSection() {
             <input value={tagline} onChange={e => setTagline(e.target.value)} maxLength={200} placeholder="예: 동심의 이면을 과잉된 에너지로 시각화하는 감각의 연출자" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           {foundSeries.length > 0 && (
-            <div>
+            <div onFocusCapture={() => followPreview('works')}>
               <label className="text-sm font-medium text-gray-700">시리즈 소개</label>
               <div className="space-y-2">
                 {foundSeries.map(name => (
@@ -980,18 +994,25 @@ function PortfolioSection() {
               </div>
             </div>
           )}
-          <div>
+          <div onFocusCapture={() => followPreview('cv')}>
             <label className="text-sm font-medium text-gray-700 block mb-2">경력</label>
             <CareerEditor value={career} onChange={setCareer} categories={PORTFOLIO_CATEGORIES} />
           </div>
-          <div>
+          {/* 사파리는 버튼을 눌러도 포커스를 안 준다 — pointerdown 도 함께 본다 */}
+          <div onFocusCapture={() => followPreview('file')} onPointerDownCapture={() => followPreview('file')}>
             <label className="text-sm font-medium text-gray-700 block mb-2">포트폴리오 파일 (PDF / DOC / HWP)</label>
             <PortfolioFileInput value={portfolioFileUrl} onChange={setPortfolioFileUrl} />
+            {/* 홈페이지 [포트폴리오] 탭은 PDF 만 페이지 안에서 펼친다(2026-09-25) — 올리기 전에 알려야 PDF 로 바꿔 올린다 */}
+            <p className={`mt-1.5 text-xs ${portfolioFileUrl && portfolioFileKind(portfolioFileUrl) !== 'pdf' ? 'text-accent' : 'text-gray-400'}`}>
+              {portfolioFileUrl && portfolioFileKind(portfolioFileUrl) !== 'pdf'
+                ? '이 파일은 홈페이지에서 펼쳐 보이지 않고 내려받기로만 나옵니다. PDF 로 올리면 페이지 안에서 바로 보입니다.'
+                : 'PDF 로 올리면 홈페이지 [포트폴리오] 탭에서 내려받지 않고 바로 볼 수 있습니다.'}
+            </p>
           </div>
           {/* 저장/취소는 이 폼이 아니라 **섹션 맨 끝의 고정 저장바**에 있다(아래 참고) */}
 
           {/* 작품 사진 관리도 왼쪽 열 안에 — 그래야 이 아래로 스크롤해도 오른쪽 미리보기가 계속 붙어 있다 */}
-          {artworkManager}
+          <div onFocusCapture={() => followPreview('works')} onPointerDownCapture={() => followPreview('works')}>{artworkManager}</div>
         </div>
 
         {/* 미리보기 — 공개 페이지와 **같은 컴포넌트**(HomepageView)라 실제와 어긋나지 않는다.
@@ -1000,12 +1021,14 @@ function PortfolioSection() {
           <div className="lg:sticky lg:top-24">
             <p className="text-xs font-medium tracking-widest text-gray-400 uppercase mb-2">Preview</p>
             {/* 실제 홈페이지 폭보다 좁으므로 살짝 줄여 담는다(글 크기 비율은 그대로 유지) */}
-            <div className="rounded-lg border border-gray-200 bg-white p-4 max-h-[calc(100vh-9rem)] overflow-y-auto">
+            <div ref={previewBoxRef} className="rounded-lg border border-gray-200 bg-white p-4 max-h-[calc(100vh-9rem)] overflow-y-auto">
               <HomepageView
                 data={previewData}
                 careerColumns={Math.max(1, careerColumnCount - 1)}
                 emptyText="내용을 입력하면 여기에 홈페이지 모양으로 보입니다."
                 compact
+                tab={previewTab}
+                onTabChange={(id) => setPreviewTab(id)}
               />
             </div>
           </div>
