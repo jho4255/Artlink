@@ -41,6 +41,8 @@ import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import PageTabBar from '@/components/shared/PageTabBar';
+import RichText from '@/components/shared/RichText';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import { galleryTabs, resolveGalleryTab, galleryTabParam, type GalleryTabId } from '@/lib/galleryTabs';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
@@ -753,16 +755,20 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             </div>
           )}
           {isEditingDetail ? (
-            <div className="space-y-2">
-              <textarea
+            <div className="max-w-3xl space-y-2">
+              {/* 서식 있는 글(2026-09-28) — 제목·굵게·목록·링크 등. 옛 평범한 글은 문단으로 바뀌어 들어온다 */}
+              <LazyRichTextEditor
                 value={detailDesc}
-                onChange={e => setDetailDesc(e.target.value)}
-                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
+                onChange={setDetailDesc}
+                placeholder="공간의 성격, 주로 다루는 작업, 함께 일하고 싶은 작가에 대해 적어 주세요."
+                maxLength={5000}
+                minHeight={220}
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => detailMutation.mutate(detailDesc)}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
+                  disabled={detailMutation.isPending}
+                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
                 >
                   저장
                 </button>
@@ -775,9 +781,13 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
               </div>
             </div>
           ) : (
-            <p className="max-w-3xl whitespace-pre-wrap text-[15px] leading-[1.9] text-gray-700 break-keep [overflow-wrap:anywhere] text-justify">
-              {gallery.detailDesc || <span className="text-gray-400">소개를 적어 주세요 — 공간의 성격, 주로 다루는 작업, 함께 일하고 싶은 작가에 대해. 방문자에게는 비어 있는 동안 보이지 않습니다.</span>}
-            </p>
+            gallery.detailDesc ? (
+              <RichText value={gallery.detailDesc} className="max-w-3xl text-[15px] leading-[1.9] text-gray-700 break-keep [overflow-wrap:anywhere] text-justify" />
+            ) : (
+              <p className="max-w-3xl text-[15px] leading-[1.9] text-gray-400">
+                소개를 적어 주세요 — 공간의 성격, 주로 다루는 작업, 함께 일하고 싶은 작가에 대해. 제목·굵게·목록·링크 같은 서식을 쓸 수 있습니다. 방문자에게는 비어 있는 동안 보이지 않습니다.
+              </p>
+            )
           )}
         </div>
         )}

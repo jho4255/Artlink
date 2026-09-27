@@ -11,6 +11,7 @@ import { bumpViewCount } from '../lib/viewCount';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import { handleTaken, isHandleParam, normalizeHandle, validateHandle } from '../lib/handle';
 import { matchR2Base } from '../lib/r2Urls';
+import { richTextPlain, sanitizeRichText } from '../lib/richText';
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -328,13 +329,19 @@ router.put('/:id/handle', authenticate, async (req, res, next) => {
  * ⚠️ 사진은 **우리 저장소 주소만** 받는다(커뮤니티·스토리와 같은 규칙) — 외부 URL 주입 방지.
  */
 const ARCHIVE_MAX_IMAGES = 12;
+/** 서식 있는 글의 한도 — 글자는 보이는 글 기준, HTML 은 태그까지(태그가 글자 수를 몇 배로 부풀린다) */
+const ARCHIVE_BODY_MAX_TEXT = 4000;
+const DETAIL_DESC_MAX_TEXT = 5000;
+const DETAIL_DESC_MAX_HTML = 40000;
 const archiveSchema = z.object({
   title: z.string().trim().min(1, '제목을 입력해주세요.').max(120),
   venue: z.string().trim().max(120).nullish(),
   period: z.string().trim().max(60).nullish(),
   date: z.string().trim().nullish(),
   artists: z.string().trim().max(500).nullish(),
-  body: z.string().trim().max(4000).nullish(),
+  // 서식 있는 글(HTML) — 태그 몫까지 받고, 보이는 글자 수는 아래 refine 이 본다
+  body: z.string().trim().max(ARCHIVE_BODY_MAX_TEXT * 10).nullish()
+    .refine((v) => !v || richTextPlain(v).length <= ARCHIVE_BODY_MAX_TEXT, `본문은 ${ARCHIVE_BODY_MAX_TEXT.toLocaleString()}자까지 쓸 수 있습니다.`),
   images: z.array(z.string()).max(ARCHIVE_MAX_IMAGES).optional(),
 });
 
@@ -363,7 +370,7 @@ const archiveData = (body: any) => ({
   period: body.period?.trim() || null,
   date: body.date ? new Date(body.date) : null,
   artists: body.artists?.trim() || null,
-  body: body.body?.trim() || null,
+  body: sanitizeRichText(body.body),   // 서식 있는 글 — 허용 목록만(lib/richText.ts)
   images: ownImageUrls(body.images),
 });
 
@@ -423,7 +430,16 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
     if (gallery.ownerId !== req.user!.id) throw new AppError('권한이 없습니다.', 403);
 
     const data: any = {};
-    if (req.body.detailDesc !== undefined) data.detailDesc = req.body.detailDesc;
+    // 소개는 서식 있는 글(2026-09-28) — 편집기가 보낸 HTML 을 허용 목록으로 걸러 저장한다(lib/richText.ts).
+    // ⚠️ 그대로 넣지 말 것 — 화면이 HTML 로 그리므로 여기서 안 거르면 저장형 XSS 다(화면도 한 번 더 거른다).
+    if (req.body.detailDesc !== undefined) {
+      const v = req.body.detailDesc;
+      if (v !== null && typeof v !== 'string') throw new AppError('소개 형식이 올바르지 않습니다.', 400);
+      if (typeof v === 'string' && v.length > DETAIL_DESC_MAX_HTML) throw new AppError('소개가 너무 깁니다.', 400);
+      const clean = sanitizeRichText(v);
+      if (clean && richTextPlain(clean).length > DETAIL_DESC_MAX_TEXT) throw new AppError(`소개는 ${DETAIL_DESC_MAX_TEXT.toLocaleString()}자까지 쓸 수 있습니다.`, 400);
+      data.detailDesc = clean;
+    }
     if (req.body.description !== undefined) data.description = req.body.description;
     // 전화번호·주소는 갤러리 주인이 승인 없이 즉시 수정 가능
     if (req.body.phone !== undefined) {

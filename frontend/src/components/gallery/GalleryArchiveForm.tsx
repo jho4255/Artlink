@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import { ARCHIVE_MAX_IMAGES, type ArchiveDraft } from '@/lib/galleryArchive';
 
 /**
@@ -49,12 +50,13 @@ export default function GalleryArchiveForm({ draft, onChange, onSubmit, onCancel
         </button>
       )}
 
-      <textarea
+      {/* 본문은 서식 있는 글(2026-09-28) — 서버가 허용 목록으로 거르고, 한도는 보이는 글자 4,000자 */}
+      <LazyRichTextEditor
         value={draft.body}
-        onChange={(e) => set({ body: e.target.value.slice(0, 4000) })}
+        onChange={(html) => set({ body: html })}
         placeholder="어떤 전시였는지, 어떻게 진행됐는지 적어 주세요. (선택)"
-        rows={4}
-        className={`${field} resize-y leading-relaxed [overflow-wrap:anywhere]`}
+        maxLength={4000}
+        minHeight={120}
       />
 
       <div>

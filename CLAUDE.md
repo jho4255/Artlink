@@ -1526,6 +1526,15 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       첫 탭은 쿼리 없음, replace · 모르는 값은 첫 탭). 리뷰 탭은 늘 있다(쓰러 오는 곳). 주인에겐 소개·지난 전시가 비어도 보인다(채우러 들어갈 자리).
       막대는 `components/shared/PageTabBar.tsx`(작가 쪽 TabBar 와 같은 모양, 테마 색 대신 사이트 기본 색). 탭 이름이 곧 섹션 머리라 안에서 머리말을 다시 달지 않는다.
       ⚠️ 갤러리 페이지로 보내는 링크가 특정 섹션을 뜻하면 `?tab=` 을 붙일 것(리뷰 → `?tab=reviews`, 기록 → `?tab=history`). 지금은 승인 알림(갤러리 전체)뿐이라 없다.
+    - **소개·지난 활동 기록 본문은 서식 있는 글**(2026-09-28, 사용자 요청 "기본적인 워드 형태") — TipTap 편집기(`RichTextEditor`, [수정]을 누를 때만
+      받는 lazy 청크, PWA precache 제외) + 도구 막대(제목·소제목·굵게·기울임·밑줄·목록·번호·인용·링크·구분선·되돌리기). 저장은 HTML.
+      ⚠️⚠️ **HTML 은 두 번 거른다** — 서버 `lib/richText.ts sanitizeRichText`(sanitize-html 허용 목록, 저장 전)와 화면 `lib/richText.ts sanitizeRich`
+      (DOMPurify, 그리기 전). 허용 목록 `RICH_TAGS` 는 두 곳이 같아야 한다(프론트 테스트가 서버 소스와 대조). 글꼴·색·크기·style·이미지는 **받지 않는다**
+      (워드에서 붙여 넣은 서식이 페이지 디자인을 깨고, 이미지는 외부 주소 주입 통로). 링크는 http·https·mailto 만, 새 창 + rel.
+      ⚠️ 옛 평범한 글은 HTML 로 바꾸지 않는다 — `isRichHtml`(블록 태그로 시작하는가)이 false 면 예전처럼 줄바꿈을 살려 그린다. 편집기에 넣을 때만 문단으로.
+      한도는 **보이는 글자 수**(소개 5,000 · 기록 4,000, 태그 제외). ⚠️ 편집기에서 마운트 직후 `editor.getText()` 를 부르면 스키마가 없어 페이지가 죽는다(실제로 났다).
+      모양은 `index.css .rich-text` 한 곳 — 편집기 안과 공개 화면이 같은 클래스라 쓰는 모양 = 보이는 모양. 회귀: backend `richText.test.ts`(7) ·
+      `gallery-archive.test.ts` 서식 4 · frontend `richText.test.ts`(5) · e2e `58-gallery-richtext.spec.ts`(3 — 도구 막대로 쓰고 방문자 화면의 요소를 센다, API 로 넣은 스크립트가 실행 안 되는지).
     - **함께한 작가**는 서버 집계(`GET /galleries/:id` 의 `artists`): 이 갤러리가 운영한 공모(위임받은 아트링크 공모 포함)에 **수락된**
       작가, 최근 순 중복 제거, 탈퇴·비작가 제외, 커버는 포트폴리오 첫 작품. 갤러리 주인·Admin 은 `PATCH /galleries/:id/artists/:artistId`
       `{hidden}` 으로 숨긴다(`Gallery.hiddenArtistIds Int[]`, 마이그레이션 `20260916130000_gallery_hidden_artists`).

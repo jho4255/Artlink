@@ -40,3 +40,30 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+  서식 있는 글 (2026-09-28) — 갤러리 소개·지난 활동 기록 본문. 공개 화면(RichText)과 편집기(TipTap) 가 **같은 클래스**를 쓴다
+  — 쓰는 모양이 곧 보이는 모양이어야 워드처럼 느껴진다. 글 크기·줄 간격·색은 감싸는 쪽이 정하고, 여기는 블록 사이 간격과 모양만.
+*/
+.rich-text > :first-child { margin-top: 0; }
+.rich-text > :last-child { margin-bottom: 0; }
+.rich-text p { margin: 0 0 0.9em; }
+.rich-text h2 { margin: 1.6em 0 0.5em; font-size: 1.2em; font-weight: 600; line-height: 1.45; color: var(--color-gray-900, #111827); }
+.rich-text h3 { margin: 1.3em 0 0.4em; font-size: 1.05em; font-weight: 600; line-height: 1.5; color: var(--color-gray-900, #111827); }
+.rich-text strong, .rich-text b { font-weight: 600; }
+.rich-text ul { list-style: disc; padding-left: 1.4em; margin: 0 0 0.9em; }
+.rich-text ol { list-style: decimal; padding-left: 1.5em; margin: 0 0 0.9em; }
+.rich-text li > p { margin: 0; }
+.rich-text li + li { margin-top: 0.2em; }
+.rich-text blockquote { margin: 0 0 0.9em; padding-left: 1em; border-left: 2px solid #d1d5db; color: #4b5563; }
+.rich-text a { text-decoration: underline; text-underline-offset: 3px; }
+.rich-text hr { margin: 1.6em 0; border: 0; border-top: 1px solid #e5e7eb; }
+/* 편집기 — 빈 문단의 안내 문구(TipTap Placeholder) */
+.rich-text p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #9ca3af;
+  pointer-events: none;
+}
+.rich-text.ProseMirror hr.ProseMirror-selectednode { border-top-color: #111827; }

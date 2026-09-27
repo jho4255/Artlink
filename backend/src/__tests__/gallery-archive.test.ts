@@ -129,4 +129,41 @@ describe('갤러리 홈페이지 주소 · 지난 활동 기록', () => {
       expect((await request.post(`/api/galleries/${galleryId}/archives`).set('Authorization', `Bearer ${owner}`).send({ ...body, images: many })).status).toBe(400);
     });
   });
+  describe('서식 있는 글 (2026-09-28) — 소개·기록 본문', () => {
+    it('★ 소개 저장 — 서식은 남고 스크립트·이벤트 속성은 걸러진다, 공개 응답도 걸러진 값', async () => {
+      const r = await request.patch(`/api/galleries/${galleryId}/detail`).set('Authorization', `Bearer ${owner}`)
+        .send({ detailDesc: '<h2>공간</h2><p><strong>굵게</strong><img src=x onerror=alert(1)></p><script>alert(1)</script>' });
+      expect(r.status).toBe(200);
+      const g = await request.get(`/api/galleries/${galleryId}`);
+      expect(g.body.detailDesc).toContain('<h2>공간</h2>');
+      expect(g.body.detailDesc).toContain('<strong>굵게</strong>');
+      expect(g.body.detailDesc).not.toMatch(/script|onerror|<img/i);
+    });
+
+    it('소개에 평범한 글을 보내면 그대로(줄바꿈 유지), 빈 편집기 값이면 비운다', async () => {
+      await request.patch(`/api/galleries/${galleryId}/detail`).set('Authorization', `Bearer ${owner}`).send({ detailDesc: '첫 줄\n둘째 줄' });
+      expect((await request.get(`/api/galleries/${galleryId}`)).body.detailDesc).toBe('첫 줄\n둘째 줄');
+      await request.patch(`/api/galleries/${galleryId}/detail`).set('Authorization', `Bearer ${owner}`).send({ detailDesc: '<p></p>' });
+      expect((await request.get(`/api/galleries/${galleryId}`)).body.detailDesc).toBeNull();
+    });
+
+    it('소개 글자 수 한도는 보이는 글 기준(태그 제외) — 넘으면 400', async () => {
+      const long = `<p>${'가'.repeat(5001)}</p>`;
+      const r = await request.patch(`/api/galleries/${galleryId}/detail`).set('Authorization', `Bearer ${owner}`).send({ detailDesc: long });
+      expect(r.status).toBe(400);
+      const ok = await request.patch(`/api/galleries/${galleryId}/detail`).set('Authorization', `Bearer ${owner}`)
+        .send({ detailDesc: `<p>${'<strong>가</strong>'.repeat(2000)}</p>` });
+      expect(ok.status).toBe(200);
+    });
+
+    it('★ 기록 본문도 같은 규칙으로 걸러진다', async () => {
+      const r = await request.post(`/api/galleries/${galleryId}/archives`).set('Authorization', `Bearer ${owner}`)
+        .send({ title: '서식 기록', body: '<p><em>기울임</em><a href="javascript:alert(1)">x</a></p><ul><li><p>하나</p></li></ul>' });
+      expect(r.status).toBe(201);
+      const row = await testPrisma.galleryArchive.findFirst({ where: { galleryId, title: '서식 기록' } });
+      expect(row!.body).toContain('<em>기울임</em>');
+      expect(row!.body).toContain('<ul>');
+      expect(row!.body).not.toMatch(/javascript:/i);
+    });
+  });
 });

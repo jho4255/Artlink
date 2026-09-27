@@ -2233,4 +2233,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   (중간 실패 시 올라간 만큼 목록에서 빼고 알린다). `GET /galleries/:id` 의 `promoPhotos` 정렬 desc → **asc**(올린 순서).
 - **갤러리 홈페이지 탭** (`GalleryDetailPage` + `lib/galleryTabs.ts` + `components/shared/PageTabBar.tsx`) — 소개·모집 중·함께한 작가·지난 전시·리뷰,
   `?tab=`(첫 탭 생략, replace, 모르는 값은 첫 탭). 숨긴 작가는 관리자에게 [숨긴 작가] 상자로 따로(되돌리기 버튼 또렷). e2e `57-gallery-tabs`.
+- **서식 있는 글** (2026-09-28) — 갤러리 소개(`detailDesc`)·지난 활동 기록 본문(`GalleryArchive.body`). 편집 `components/shared/RichTextEditor.tsx`(TipTap, lazy
+  via `LazyRichTextEditor`) · 보기 `RichText.tsx` · 규칙 `frontend/src/lib/richText.ts` ↔ `backend/src/lib/richText.ts`(허용 목록 거울, 서버 sanitize-html + 화면 DOMPurify).
+  `PATCH /galleries/:id/detail` 과 기록 POST/PATCH 가 저장 전에 거르고, 보이는 글자 수로 한도를 본다. 옛 평범한 글은 그대로(줄바꿈).
 

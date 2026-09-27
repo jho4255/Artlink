@@ -42,9 +42,10 @@ test('★ 탭을 누르면 내용과 주소가 바뀌고, 새로고침해도 그
   await page.goto(`/galleries/${gid}`);
   const tablist = page.getByRole('tablist', { name: '갤러리 메뉴' });
   await expect(tablist).toBeVisible({ timeout: 15000 });
-  const names = await tablist.getByRole('tab').allInnerTexts();
-  expect(names.some((n) => n.startsWith('함께한 작가'))).toBe(true);
-  expect(names.some((n) => n.startsWith('리뷰')), '리뷰는 늘 있다(쓰러 오는 곳)').toBe(true);
+  // ⚠️ 한 번에 읽지 말고 기다리는 단언으로 — 갤러리에 핸들이 있으면 `/galleries/3` → `/@핸들` 로 갈아끼우며 다시 그려져,
+  //    그 순간 목록을 읽으면 빈 배열이다(앞 스펙 53 이 핸들을 만든 뒤에만 드러났다)
+  await expect(tablist.getByRole('tab', { name: /^함께한 작가/ })).toBeVisible({ timeout: 15000 });
+  await expect(tablist.getByRole('tab', { name: /^리뷰/ }), '리뷰는 늘 있다(쓰러 오는 곳)').toBeVisible();
   // 방문자에겐 비어 있는 채우기 탭이 없다 — 첫 탭이 무엇이든 선택된 채로 열린다
   await expect(tablist.getByRole('tab', { selected: true })).toHaveCount(1);
 
@@ -75,9 +76,9 @@ test('★ 주인이 숨긴 작가는 [숨긴 작가]에 모이고, [다시 보�
   await expect(visible).toContainText(artistName, { timeout: 15000 });
 
   // 주인에겐 비어 있어도 채울 탭(소개·지난 전시)이 보인다
-  const tabs = await page.getByRole('tablist', { name: '갤러리 메뉴' }).getByRole('tab').allInnerTexts();
-  expect(tabs.some((n) => n.startsWith('소개'))).toBe(true);
-  expect(tabs.some((n) => n.startsWith('지난 전시'))).toBe(true);
+  const tablist = page.getByRole('tablist', { name: '갤러리 메뉴' });
+  await expect(tablist.getByRole('tab', { name: /^소개/ })).toBeVisible();
+  await expect(tablist.getByRole('tab', { name: /^지난 전시/ })).toBeVisible();
 
   // 숨기기
   await visible.locator(':scope > div', { hasText: artistName }).getByRole('button', { name: '숨기기' }).click();

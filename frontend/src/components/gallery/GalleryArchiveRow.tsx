@@ -1,5 +1,6 @@
 import { Edit3, Trash2 } from 'lucide-react';
 import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
+import RichText from '@/components/shared/RichText';
 import type { GalleryArchive } from '@/types';
 
 /**
@@ -34,7 +35,7 @@ export default function GalleryArchiveRow({ archive, canEdit, onEdit, onDelete, 
       </div>
 
       {archive.body && (
-        <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-gray-700 break-keep [overflow-wrap:anywhere]">{archive.body}</p>
+        <RichText value={archive.body} className="mt-2 max-w-3xl text-sm leading-relaxed text-gray-700 break-keep [overflow-wrap:anywhere]" />
       )}
 
       {/* 사진은 작가 홈페이지 작품 격자와 같은 정사각 칸 — 자르지 않는다 */}
