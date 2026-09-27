@@ -2231,4 +2231,6 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   `MultiImageUpload` 미리보기도 정사각 + contain, 칸 아래 슬롯 `renderBelow`(홍보 사진 설명 입력).
 - **여러 장 업로드**: 기록 폼 `onChange` 를 updater 전용으로(연달아 오는 onAdd 가 앞 장을 덮던 결함). 홍보 사진은 여러 장 + 사진별 설명을 차례로 POST
   (중간 실패 시 올라간 만큼 목록에서 빼고 알린다). `GET /galleries/:id` 의 `promoPhotos` 정렬 desc → **asc**(올린 순서).
+- **갤러리 홈페이지 탭** (`GalleryDetailPage` + `lib/galleryTabs.ts` + `components/shared/PageTabBar.tsx`) — 소개·모집 중·함께한 작가·지난 전시·리뷰,
+  `?tab=`(첫 탭 생략, replace, 모르는 값은 첫 탭). 숨긴 작가는 관리자에게 [숨긴 작가] 상자로 따로(되돌리기 버튼 또렷). e2e `57-gallery-tabs`.
 

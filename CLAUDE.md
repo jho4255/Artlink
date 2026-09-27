@@ -1521,10 +1521,18 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     지역·리뷰 수 → 연락처 → 이웃·메시지(**비로그인에게도** 보이고 로그인 뒤 돌아온다) → 한 줄 소개(리드) → 소개 → **모집 중 공모
     포스터 카드**(목록 페이지와 같은 210:297) → **함께한 작가** → 지난 전시·아트페어 → 리뷰. 섹션 머리는 작가 페이지와 같은 작은 대문자 라벨.
     - ⚠️ **비어 있는 섹션은 방문자에게 그리지 않는다.** 예전엔 한 페이지에 "등록되지 않았습니다" 가 셋이었다. 주인에게만 채우라는 자리가 보인다.
+    - **탭**(2026-09-27, 사용자 요청 "작가 홈페이지처럼") — 마스트헤드 아래 [소개 · 모집 중 · 함께한 작가 · 지난 전시 · 리뷰].
+      판정은 `lib/galleryTabs.ts` 한 곳(작가 `homepageTabs` 와 같은 규칙: 빈 탭은 방문자에게 없음 · `?tab=calls|artists|history|reviews`,
+      첫 탭은 쿼리 없음, replace · 모르는 값은 첫 탭). 리뷰 탭은 늘 있다(쓰러 오는 곳). 주인에겐 소개·지난 전시가 비어도 보인다(채우러 들어갈 자리).
+      막대는 `components/shared/PageTabBar.tsx`(작가 쪽 TabBar 와 같은 모양, 테마 색 대신 사이트 기본 색). 탭 이름이 곧 섹션 머리라 안에서 머리말을 다시 달지 않는다.
+      ⚠️ 갤러리 페이지로 보내는 링크가 특정 섹션을 뜻하면 `?tab=` 을 붙일 것(리뷰 → `?tab=reviews`, 기록 → `?tab=history`). 지금은 승인 알림(갤러리 전체)뿐이라 없다.
     - **함께한 작가**는 서버 집계(`GET /galleries/:id` 의 `artists`): 이 갤러리가 운영한 공모(위임받은 아트링크 공모 포함)에 **수락된**
       작가, 최근 순 중복 제거, 탈퇴·비작가 제외, 커버는 포트폴리오 첫 작품. 갤러리 주인·Admin 은 `PATCH /galleries/:id/artists/:artistId`
       `{hidden}` 으로 숨긴다(`Gallery.hiddenArtistIds Int[]`, 마이그레이션 `20260916130000_gallery_hidden_artists`).
       ⚠️ `hiddenArtistIds` 는 응답에 싣지 않는다 — 주인에겐 `artists[].hidden` 으로 온다. 지원 기록은 건드리지 않는다.
+      ⚠️ **숨긴 작가는 관리자(주인·Admin)에게 [숨긴 작가] 상자로 따로 모인다** — 예전엔 같은 격자에서 칸 전체를 opacity-40 으로 흐려
+      [다시 보이기](11px 회색)가 사실상 안 보였다("숨긴 뒤 되돌리는 곳이 없다" 2026-09-27 신고). 그림만 흐리고 버튼은 또렷하게.
+      숨긴 작가만 남아도 관리자에겐 탭이 있어야 한다(`galleryTabs` 의 `canManageArtists`). 버튼도 서버와 같이 **Admin 에게도** 보인다.
     - **갤러리도 `/@handle` 을 갖는다**(`Gallery.handle`, 마이그레이션 `20260916150000_gallery_handle_and_archive`).
       작가와 **같은 이름공간**이다 — 규칙 49 참고. `PUT /galleries/:id/handle`(409 중복) · `GET /galleries/:id/handle-check`,
       고치는 자리는 **연락처 편집 안**(따로 버튼을 두면 저장한 줄 모른다). `GET /galleries/:id` 는 숫자와 `@handle` 을 둘 다 받는다.
@@ -1548,6 +1556,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       (desc 면 한 묶음이 거꾸로 섰다). 홍보 사진 삭제는 확인을 거친다(× 가 터치 기기에서 늘 보이고 서버가 파일까지 지운다).
       업로드 칸 미리보기도 정사각 + contain(지원서 작품 사진 포함 — 예전엔 가운데만 잘라 보였다).
     - 회귀: `backend/src/__tests__/gallery-artists.test.ts`(4) · `gallery-archive.test.ts`(13) · `exhibition-extended.test.ts`「올린 순서대로」 ·
+      `frontend galleryTabs.test.ts`(5) · e2e `57-gallery-tabs.spec.ts`(2 — 탭 주소·새로고침·폴백, 숨기기→[숨긴 작가]→다시 보이기, 방문자 응답·화면에서 빠지는지) ·
       e2e `56-gallery-photos.spec.ts`(2 — **다섯 장을 한 번에 골라 다섯 장이 남는지 · 칸이 같은 크기 정사각이고 열·행이 맞는지**를 잰다).
 
 51. **작가 온보딩 — 업로드가 첫 행동, 그다음 5칸 완성도** (2026-09-16)

@@ -38,7 +38,7 @@ test('★ 수락된 작가가 리뷰 작성 → 노출 + 갤러리 리뷰 개수
   const { page, ctx } = await openAs(browser, 'artist');
   const CONTENT = '정말 좋은 전시 경험이었습니다 ' + Date.now();
 
-  await page.goto(`/galleries/${galleryId}`);
+  await page.goto(`/galleries/${galleryId}?tab=reviews`);   // 리뷰는 [리뷰] 탭(2026-09-27)
   // 리뷰 작성 폼: 공모 선택 + 내용 (별점 칸은 없다)
   await expect(page.getByText('리뷰 작성', { exact: false }).first()).toBeVisible({ timeout: 10000 });
   await page.locator('select').filter({ has: page.getByRole('option', { name: exTitle }) }).selectOption({ label: exTitle });

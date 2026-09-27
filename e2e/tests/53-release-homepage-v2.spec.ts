@@ -270,7 +270,7 @@ test.describe('갤러리 홈페이지 — 지난 활동 기록', () => {
     const title = `E2E 아트페어 ${Date.now()}`;
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/galleries/${gid}`);
+    await page.goto(`/galleries/${gid}?tab=history`);   // 지난 활동 기록은 [지난 전시] 탭(2026-09-27)
     await page.getByRole('button', { name: /기록 추가/ }).click({ timeout: 15000 });
     await page.getByPlaceholder('전시·행사 이름 *').fill(title);
     await page.getByPlaceholder(/^기간/).fill('2025 가을');
@@ -279,7 +279,7 @@ test.describe('갤러리 홈페이지 — 지난 활동 기록', () => {
     await ctx.close();
 
     const anon = await browser.newPage();
-    await anon.goto(`/galleries/${gid}`);
+    await anon.goto(`/galleries/${gid}?tab=history`);
     await expect(anon.locator('body')).toContainText(title, { timeout: 15000 });
     await expect(anon.locator('body')).toContainText('2025 가을');
     // 방문자에게는 채우라는 자리·버튼이 보이지 않는다

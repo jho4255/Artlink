@@ -97,7 +97,7 @@ test.describe('갤러리 지난 전시·아트페어 사진', () => {
     const title = `E2E 사진 기록 ${Date.now()}`;
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/galleries/${gid}`);
+    await page.goto(`/galleries/${gid}?tab=history`);   // [지난 전시] 탭(2026-09-27)
     await page.getByRole('button', { name: /기록 추가/ }).click({ timeout: 15000 });
     await page.getByPlaceholder('전시·행사 이름 *').fill(title);
 
@@ -131,7 +131,7 @@ test.describe('갤러리 지난 전시·아트페어 사진', () => {
     // 방문자에게도 같은 격자
     const anon = await browser.newPage();
     await anon.setViewportSize(DESKTOP);
-    await anon.goto(`/galleries/${gid}`);
+    await anon.goto(`/galleries/${gid}?tab=history`);
     const anonGrid = anon.locator('div.border-b', { hasText: title }).getByTestId('square-photo-grid');
     await expectAlignedSquares(anon, anonGrid, 5, 3);
     await expect(anonGrid.getByRole('button', { name: '사진 삭제' })).toHaveCount(0);
@@ -159,7 +159,7 @@ test.describe('갤러리 지난 전시·아트페어 사진', () => {
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/galleries/${gid}`);
+    await page.goto(`/galleries/${gid}?tab=history`);
     const row = page.locator('div.border-b', { hasText: title });
     await row.getByRole('button', { name: /홍보 사진 추가/ }).click({ timeout: 15000 });
 

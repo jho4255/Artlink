@@ -40,6 +40,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
+import PageTabBar from '@/components/shared/PageTabBar';
+import { galleryTabs, resolveGalleryTab, galleryTabParam, type GalleryTabId } from '@/lib/galleryTabs';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
@@ -59,11 +61,11 @@ type GalleryDetail = Gallery & {
 };
 
 /**
- * 갤러리 홈페이지 v2 (2026-09-16) — 작가 홈페이지와 같은 위계·같은 섹션 머리.
- * 사진 전폭(둥근 모서리·글로우 없음) → 이름 마스트헤드 → 소개 → 모집 중 공모(포스터 카드) → 함께한 작가 →
- * 지난 전시·아트페어 → 리뷰. 비어 있는 섹션은 방문자에게 그리지 않는다(주인에게만 채우라고 보인다).
+ * 갤러리 홈페이지 v2 (2026-09-16) — 작가 홈페이지와 같은 위계.
+ * 사진 전폭(둥근 모서리·글로우 없음) → 이름 마스트헤드 → **탭**(2026-09-27, `lib/galleryTabs.ts`):
+ * 소개 · 모집 중(포스터 카드) · 함께한 작가 · 지난 전시(아트페어·기록 포함) · 리뷰.
+ * 비어 있는 탭은 방문자에게 만들지 않는다(주인에게만 채우라고 보인다). 예전엔 이 다섯이 한 페이지에 세로로 이어졌다.
  */
-const SECTION_LABEL = 'text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400';
 
 /** 홍보 사진을 한 번에 올릴 수 있는 장수 — 한 번에 너무 많이 고르면 업로드가 길어져 중간에 창을 닫기 쉽다 */
 const PROMO_BATCH_MAX = 20;
@@ -116,6 +118,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   // 리뷰 공모 선택 + 확인 다이얼로그 상태
   const [selectedExhibitionId, setSelectedExhibitionId] = useState<number | null>(null);
   const [reviewConfirmOpen, setReviewConfirmOpen] = useState(false);
+
+  /** 탭 막대 바로 위 표지 — 막대가 상단에 붙은 채 탭을 바꾸면 새 내용의 첫머리로 올려 준다(작가 홈페이지와 같다) */
+  const tabAnchorRef = useRef<HTMLDivElement>(null);
 
   // 지난 활동 기록(아트링크 밖 전시·아트페어) 작성/수정 상태 — null 이면 폼이 닫힌 것
   const [archiveDraft, setArchiveDraft] = useState<ArchiveDraft | null>(null);
@@ -424,6 +429,76 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   const archives = gallery.archives ?? [];
   const requireLogin = () => { setPostLoginRedirect(location.pathname); toast('로그인이 필요합니다.'); navigate('/login'); };
 
+  /*
+    탭 (2026-09-27, 사용자 요청 "작가 홈페이지처럼") — 소개 · 모집 중 · 함께한 작가 · 지난 전시 · 리뷰.
+    규칙은 `lib/galleryTabs.ts` 한 곳(작가 홈페이지 `homepageTabs` 와 같다). 주소 `?tab=`, 첫 탭은 쿼리 없음, replace.
+    ⚠️ 숨긴 작가는 **주인·Admin 에게만** 내려온다(서버 canManage). 숨긴 작가만 남아도 관리자에겐 탭이 있어야 되돌릴 수 있다.
+  */
+  const canManageArtists = isOwner || isAdmin;
+  const visibleArtists = artists.filter(a => !a.hidden);
+  const hiddenArtists = artists.filter(a => a.hidden);
+  const tabs = galleryTabs({
+    hasAbout: !!gallery.detailDesc,
+    openCallCount: openCalls.length,
+    visibleArtistCount: visibleArtists.length,
+    hiddenArtistCount: hiddenArtists.length,
+    historyCount: pastCalls.length + archives.length,
+    reviewCount: gallery.reviews?.length ?? 0,
+    isOwner,
+    canManageArtists,
+  });
+  const activeTab = resolveGalleryTab(new URLSearchParams(location.search).get('tab'), tabs);
+  const selectTab = (tab: GalleryTabId) => {
+    const a = tabAnchorRef.current;
+    if (a) {
+      const top = a.getBoundingClientRect().top;
+      const stick = window.innerWidth >= 1024 ? 80 : 64;   // 상단바 높이(Navbar h-16 / lg:h-20)
+      if (top < stick) window.scrollTo({ top: window.scrollY + top - stick });
+    }
+    const next = new URLSearchParams(location.search);
+    const param = galleryTabParam(tab, tabs);
+    if (param) next.set('tab', param); else next.delete('tab');
+    const search = next.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true });
+  };
+
+  /** 함께한 작가 칸 하나 — 숨긴 작가는 그림만 흐리고 버튼은 또렷하게(예전엔 칸 전체가 opacity-40 이라 [다시 보이기]가 안 보였다) */
+  const artistCard = (a: (typeof artists)[number]) => (
+    <div key={a.id} className="group min-w-0">
+      <Link to={artistPath(a)} className="block">
+        <div className={`flex aspect-square items-center justify-center bg-gray-50 ${a.hidden ? 'opacity-40' : ''}`}>
+          {a.cover ? (
+            <Thumb src={a.cover.url} size="grid" alt="" loading="lazy" className="h-full w-full object-contain" />
+          ) : a.avatar ? (
+            <img src={a.avatar} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-2xl text-gray-300">{displayName(a).slice(0, 1)}</span>
+          )}
+        </div>
+        <p className={`mt-2 truncate text-sm group-hover:underline underline-offset-4 ${a.hidden ? 'text-gray-400' : 'text-gray-900'}`}>{displayName(a)}</p>
+      </Link>
+      {canManageArtists && (
+        a.hidden ? (
+          <button
+            onClick={() => hideArtistMutation.mutate({ artistId: a.id, hidden: false })}
+            disabled={hideArtistMutation.isPending}
+            className="mt-1.5 inline-flex min-h-[32px] items-center rounded-md border border-gray-300 px-2.5 text-xs text-gray-700 hover:border-gray-900 hover:text-gray-900 disabled:opacity-50"
+          >
+            다시 보이기
+          </button>
+        ) : (
+          <button
+            onClick={() => hideArtistMutation.mutate({ artistId: a.id, hidden: true })}
+            disabled={hideArtistMutation.isPending}
+            className="mt-1 min-h-[32px] text-xs text-gray-500 underline-offset-4 hover:text-gray-900 hover:underline disabled:opacity-50"
+          >
+            숨기기
+          </button>
+        )
+      )}
+    </div>
+  );
+
   /**
    * 익명 리뷰어 이름 생성
    * - 익명이 아닌 경우: 실명 표시
@@ -658,21 +733,25 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
           )}
         </div>
 
-        {/* === 소개 — 비어 있으면 방문자에겐 안 그린다("등록되지 않았습니다" 셋이 한 페이지에 있었다) === */}
-        {(gallery.detailDesc || isOwner) && (
-        <div className="border-t border-gray-200 pt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className={SECTION_LABEL}>소개</h2>
-            {/* 갤러리 오너만 수정 버튼 표시 */}
-            {isOwner && !isEditingDetail && (
+        {/* === 탭 (2026-09-27) — 마스트헤드 아래로 붙고, 상단바 아래에 걸린다. 탭 이름이 곧 섹션 머리라 안에서 머리말을 다시 달지 않는다 === */}
+        <div ref={tabAnchorRef}>
+        <PageTabBar tabs={tabs} active={activeTab} onSelect={selectTab} idPrefix="gallery" label="갤러리 메뉴" />
+        <div role="tabpanel" id={`gallery-panel-${activeTab}`} aria-labelledby={`gallery-tab-${activeTab}`} className="pt-8 md:pt-10">
+
+        {/* === 소개 — 비어 있으면 방문자에겐 탭이 없다("등록되지 않았습니다" 셋이 한 페이지에 있었다) === */}
+        {activeTab === 'about' && (
+        <div>
+          {/* 갤러리 오너만 수정 버튼 표시 */}
+          {isOwner && !isEditingDetail && (
+            <div className="mb-4 flex justify-end">
               <button
                 onClick={() => { setDetailDesc(gallery.detailDesc || ''); setIsEditingDetail(true); }}
                 className="text-sm text-gray-400 hover:text-gray-900"
               >
                 수정
               </button>
-            )}
-          </div>
+            </div>
+          )}
           {isEditingDetail ? (
             <div className="space-y-2">
               <textarea
@@ -704,9 +783,8 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
         )}
 
         {/* === 모집 중 공모 — 목록 페이지와 같은 포스터 카드 === */}
-        {openCalls.length > 0 && (
-          <div className="border-t border-gray-200 pt-6">
-            <h2 className={`${SECTION_LABEL} mb-5`}>모집 중 공모 <span className="ml-1 font-normal tracking-normal">{openCalls.length}</span></h2>
+        {activeTab === 'calls' && (
+          <div>
             {/*
               ⚠️ **포스터를 크게 그리지 말 것** (2026-09-16 신고). 예전엔 `grid-cols-2 md:grid-cols-3` 이라
                  1280px 에서 카드 하나가 379×596px, 공모 4건에 섹션 높이가 1285px 이었다 — 갤러리 페이지가
@@ -763,36 +841,26 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
           </div>
         )}
 
-        {/* === 함께한 작가 — 이 갤러리 공모에 수락된 작가(서버 집계, 주인은 숨길 수 있다) === */}
-        {artists.length > 0 && (
-          <div className="border-t border-gray-200 pt-6">
-            <h2 className={`${SECTION_LABEL} mb-5`}>함께한 작가 <span className="ml-1 font-normal tracking-normal">{artists.filter(a => !a.hidden).length}</span></h2>
-            <div className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-6">
-              {artists.map(a => (
-                <div key={a.id} className={`group min-w-0 ${a.hidden ? 'opacity-40' : ''}`}>
-                  <Link to={artistPath(a)} className="block">
-                    <div className="flex aspect-square items-center justify-center bg-gray-50">
-                      {a.cover ? (
-                        <Thumb src={a.cover.url} size="grid" alt="" loading="lazy" className="max-h-full max-w-full object-contain" />
-                      ) : a.avatar ? (
-                        <img src={a.avatar} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-2xl text-gray-300">{displayName(a).slice(0, 1)}</span>
-                      )}
-                    </div>
-                    <p className="mt-2 truncate text-sm text-gray-900 group-hover:underline underline-offset-4">{displayName(a)}</p>
-                  </Link>
-                  {isOwner && (
-                    <button
-                      onClick={() => hideArtistMutation.mutate({ artistId: a.id, hidden: !a.hidden })}
-                      className="mt-0.5 text-[11px] text-gray-400 hover:text-gray-900"
-                    >
-                      {a.hidden ? '다시 보이기' : '숨기기'}
-                    </button>
-                  )}
+        {/* === 함께한 작가 — 이 갤러리 공모에 수락된 작가(서버 집계, 주인·Admin 은 숨길 수 있다) ===
+            숨긴 작가는 방문자 목록에서 빠지고 관리자에게만 **아래 따로** 모인다(2026-09-27 신고 — 숨긴 뒤 되돌릴 자리를 못 찾았다). */}
+        {activeTab === 'artists' && (
+          <div>
+            {visibleArtists.length > 0 ? (
+              <div data-testid="gallery-artists" className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-6">
+                {visibleArtists.map(artistCard)}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">방문자에게 보이는 작가가 없습니다.</p>
+            )}
+            {canManageArtists && hiddenArtists.length > 0 && (
+              <div data-testid="hidden-artists" className="mt-10 rounded-lg border border-dashed border-gray-300 p-4 md:p-5">
+                <p className="text-sm font-medium text-gray-900">숨긴 작가 <span className="ml-1 font-normal text-gray-500">{hiddenArtists.length}</span></p>
+                <p className="mt-0.5 text-xs text-gray-500">방문자에게는 보이지 않습니다. [다시 보이기]를 누르면 위 목록으로 돌아갑니다. 지원 기록은 그대로입니다.</p>
+                <div className="mt-4 grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-6">
+                  {hiddenArtists.map(artistCard)}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -800,15 +868,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             아트링크에서 진행한 공모(홍보 사진 포함)와 **갤러리가 직접 적은 기록**(아트링크 밖의 전시·아트페어)을
             한 줄로 섞어 날짜순으로 보여 준다(2026-09-16). 보는 사람에겐 둘 다 "이 갤러리가 해 온 일"이라
             어디서 한 것인지 배지로 가르지 않는다. */}
-        {(pastCalls.length > 0 || archives.length > 0 || isOwner) && (
-          <div className="border-t border-gray-200 pt-6">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <h2 className={SECTION_LABEL}>
-                지난 전시·아트페어
-                {pastCalls.length + archives.length > 0 && (
-                  <span className="ml-1 font-normal tracking-normal">{pastCalls.length + archives.length}</span>
-                )}
-              </h2>
+        {activeTab === 'history' && (
+          <div>
+            <div className="mb-5 flex items-center justify-end gap-3 empty:hidden">
               {isOwner && !archiveDraft && (
                 <button onClick={() => { setArchiveEditId(null); setArchiveDraft(emptyArchiveDraft()); }} className="text-xs text-gray-500 underline underline-offset-4 hover:text-gray-900">
                   + 기록 추가
@@ -941,9 +1003,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
           </div>
         )}
 
-        {/* === 리뷰 === */}
-        <div className="border-t border-gray-200 pt-6">
-          <h2 className={`${SECTION_LABEL} mb-5`}>리뷰 {gallery.reviews?.length > 0 && <span className="ml-1 font-normal tracking-normal">{gallery.reviews.length}</span>}</h2>
+        {/* === 리뷰 — 탭은 늘 있다(작가가 쓰러 오는 곳, 방명록과 같다) === */}
+        {activeTab === 'reviews' && (
+        <div>
 
           {/* 리뷰 작성 폼 (Artist 전용) */}
           {isArtist && (
@@ -1129,6 +1191,10 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             </div>
           )}
         </div>
+        )}
+
+        </div>{/* tabpanel */}
+        </div>{/* 탭 */}
       </div>
 
       {/* 갤러리 삭제는 마이페이지(내 갤러리)에서만 가능 — 상세 페이지에서는 제거 */}

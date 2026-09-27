@@ -105,7 +105,7 @@ test.describe('[내 리뷰] 탭은 없앴지만 리뷰 수정·삭제는 살아 
 
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/galleries/${gallery.id}`);
+    await page.goto(`/galleries/${gallery.id}?tab=reviews`);   // 리뷰는 [리뷰] 탭(2026-09-27)
     await expect(page.locator('body')).toContainText('E2E 리뷰', { timeout: 15000 });
     await expect(page.getByRole('button', { name: /수정/ }).first()).toBeVisible();
     await ctx.close();
