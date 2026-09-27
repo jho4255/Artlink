@@ -711,58 +711,58 @@ describe('공모 초대 (갤러리 → 작가)', () => {
     expect(r.status).toBe(201);
   });
 
-  it('정원이 찬 공모에는 초대할 수 없다(400)', async () => {
+  // 2026-09-27 — 정원은 '선정 인원'(수락된 수)이다. 지원만으로는 자리를 차지하지 않는다.
+  /** 작가2가 지원하고 갤러리가 수락해 자리 하나를 채운다 */
+  async function fillSeatWithArtist2() {
+    const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
+    const r = await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`)
+      .set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
+    expect(r.status).toBe(200);
+  }
+
+  it('선정 인원이 찬 공모에는 초대할 수 없다(400)', async () => {
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
+    await fillSeatWithArtist2();
     const r = await invite(galleryTok, { artistId: 1 });
     expect(r.status).toBe(400);
-    expect(r.body.error).toContain('모집 인원');
+    expect(r.body.error).toContain('선정 인원');
   });
 
-  it('정원이 차면 받은 초대 목록에서 자동으로 사라진다', async () => {
+  it('지원만 들어온 건 자리를 차지하지 않는다 — 초대할 수 있고 초대도 목록에 남는다', async () => {
+    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
+    await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
+    expect((await invite(galleryTok, { artistId: 1 })).status).toBe(201);
+    const r = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
+    expect(r.body.invites).toHaveLength(1);
+    expect(r.body.invites[0].full).toBe(false);
+  });
+
+  it('선정 인원이 차면 받은 초대 목록에서 자동으로 사라진다', async () => {
     await invite(galleryTok, { artistId: 1 });
     const before = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
     expect(before.body.invites).toHaveLength(1);
 
-    // 다른 작가들이 지원해 정원을 채운다
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
+    await fillSeatWithArtist2();
 
     const after = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
     expect(after.body.invites).toHaveLength(0);
-    // DB에서 지운 게 아니라 목록에서만 감춘 것 (거절로 슬롯이 복구되면 다시 보여야 하므로)
+    // DB에서 지운 게 아니라 목록에서만 감춘 것 (수락이 되돌려지면 다시 보여야 하므로)
     expect(await testPrisma.exhibitionInvite.count({ where: { artistId: 1, status: 'SENT' } })).toBe(1);
   });
 
-  it('정원이 찼다가 거절로 슬롯이 복구되면 초대가 다시 보인다', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
-    expect((await request.get('/api/exhibitions/invites/received')
-      .set('Authorization', `Bearer ${artist1Tok}`)).body.invites).toHaveLength(0);
-
-    // 갤러리가 거절 → 정원 슬롯 복구
-    const apps = await request.get(`/api/exhibitions/${exhibitionId}/applications`).set('Authorization', `Bearer ${galleryTok}`);
-    await request.patch(`/api/exhibitions/${exhibitionId}/applications/${apps.body[0].id}`)
-      .set('Authorization', `Bearer ${galleryTok}`).send({ status: 'REJECTED' });
-
-    const after = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(after.body.invites).toHaveLength(1);
-  });
-
-  it('이미 지원한 초대는 정원이 차도 목록에 남는다(상태 확인 필요)', async () => {
+  it('이미 지원한 초대는 선정 인원이 차도 목록에 남는다(상태 확인 필요)', async () => {
     const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
     await testPrisma.portfolioImage.create({
       data: { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0 },
     });
     await invite(galleryTok, { artistId: 1 });
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
+    const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
       .set('Authorization', `Bearer ${artist1Tok}`)
       .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+    await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`)
+      .set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
 
     const r = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
     expect(r.body.invites).toHaveLength(1);
@@ -770,14 +770,13 @@ describe('공모 초대 (갤러리 → 작가)', () => {
     expect(r.body.invites[0].full).toBe(true);
   });
 
-  it('정원이 차면 공모 상세의 invited도 false가 된다(간편 지원 버튼 숨김)', async () => {
+  it('선정 인원이 차면 공모 상세의 invited도 false가 된다(간편 지원 버튼 숨김)', async () => {
     await invite(galleryTok, { artistId: 1 });
     expect((await request.get(`/api/exhibitions/${exhibitionId}`)
       .set('Authorization', `Bearer ${artist1Tok}`)).body.invited).toBe(true);
 
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
+    await fillSeatWithArtist2();
 
     expect((await request.get(`/api/exhibitions/${exhibitionId}`)
       .set('Authorization', `Bearer ${artist1Tok}`)).body.invited).toBe(false);

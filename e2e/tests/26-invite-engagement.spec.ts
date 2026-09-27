@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ownedGalleryId, exhibitionDates , realUploadUrl, seedGalleryLike } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ownedGalleryId, exhibitionDates , realUploadUrl, seedGalleryLike, applyTermsVersion } from '../lib/helpers';
 
 /**
  * 둘러보기 참여 + 초대/간편지원 (2026-08 신규 기능) E2E
@@ -153,7 +153,8 @@ test('B. 좋아요 알림 집계 + 포트폴리오에서 좋아요한 사람 명
   expect(likeNotis.length, '같은 작품 알림은 1건으로 집계').toBe(1);
   expect(likeNotis[0].type).toBe('ARTWORK_LIKE');
   expect(likeNotis[0].message).toContain('외 1명');
-  expect(likeNotis[0].linkUrl, '누른 사람 프로필로 이동').toMatch(/^\/portfolio\/\d+$/);
+  // 마지막으로 누른 사람이 갤러리라 그 갤러리 페이지로 간다(역할별 링크 — 2026-09-19 감사 3차 `profileLinkFor`)
+  expect(likeNotis[0].linkUrl, '누른 사람 프로필로 이동').toMatch(/^\/galleries\/\d+$/);
 
   // 작가 마이페이지 포트폴리오 → 좋아요 뱃지 → 명단 모달
   const { page, ctx } = await openAs(browser, 'artist');
@@ -344,9 +345,11 @@ test('F2. 초대 거절 — 목록에서 사라지고 재초대는 막힌다', a
   await page.getByRole('button', { name: '받은 초대' }).click();
   await expect(page.locator('body')).toContainText(ex.title, { timeout: 10000 });
 
-  /* [삭제] + 확인 다이얼로그였던 것이 [거절] 한 번으로 바뀌었다(2026-08-28).
-     초대 탭은 [참여하기]/[거절] 두 버튼만 둔다 — 목록에서 사라지는 건 동일하다. */
+  /* 초대 탭은 [참여하기]/[거절] 두 버튼만 둔다. [거절]은 확인을 거친다(2026-09-19) — 거절하면 같은 공모에
+     다시 초대받을 수 없어서, [참여하기] 바로 옆 버튼의 오터치가 영구 손실이었다. */
   await page.getByRole('button', { name: '거절', exact: true }).first().click();
+  await expect(page.getByText('거절하면 같은 공모에 다시 초대받을 수 없습니다', { exact: false })).toBeVisible({ timeout: 8000 });
+  await page.getByRole('button', { name: '거절', exact: true }).last().click();
   await expect(page.locator('body')).not.toContainText(ex.title, { timeout: 10000 });
 
   // 삭제해도 갤러리는 재초대 불가 (스팸 방지) — 유니크 제약이 살아있어야 한다
@@ -359,7 +362,8 @@ test('F2. 초대 거절 — 목록에서 사라지고 재초대는 막힌다', a
   await ctx.close();
 });
 
-test('F3. 정원 마감 — 초대 차단 + 받은 초대에서 자동 제거 + 거절 시 복구', async () => {
+test('F3. 정원(선정 인원) — 지원은 자리를 안 차지하고, 수락으로 차면 초대 차단 + 받은 초대에서 자동 제거', async () => {
+  // 2026-09-27: 정원은 '지원할 수 있는 사람 수'가 아니라 '선정(수락)할 수 있는 사람 수'다(CLAUDE.md 규칙 57).
   const api = await pwRequest.newContext();
   await ensurePublicArtworks(api, aTok(), 3);
   const ex = await createApprovedExhibition(api, { capacity: 1, title: `정원1 ${Date.now()}` });
@@ -373,38 +377,39 @@ test('F3. 정원 마감 — 초대 차단 + 받은 초대에서 자동 제거 + 
   let inv = await (await api.get(`${API}/exhibitions/invites/received`, { headers: auth(aTok()) })).json();
   expect(inv.invites.some((i: any) => i.exhibition.id === ex.id), '초대 노출').toBe(true);
 
-  // artist2가 지원해 정원 1명을 채움
+  // artist2가 지원 — 지원만으로는 자리를 차지하지 않는다
   const applied = await api.post(`${API}/exhibitions/${ex.id}/apply`, {
     headers: auth(a2Tok()),
     data: {
       biography: 'E2E 약력', artworkImages: ['https://example.com/a.jpg'],
-      termsAgreed: true, termsVersion: 'artist_apply_2026-07-03',
+      termsAgreed: true, termsVersion: applyTermsVersion(),
     },
   });
   expect(applied.status()).toBe(201);
+  let detail = await (await api.get(`${API}/exhibitions/${ex.id}`, { headers: auth(aTok()) })).json();
+  expect(detail.invited, '지원 1건(정원 1) — 아직 선정 0명이라 초대 유효').toBe(true);
 
-  // ① 정원이 찬 공모에는 초대 자체가 차단
+  // 갤러리가 artist2 를 수락 → 선정 1/1
+  const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: auth(gTok()) })).json();
+  const acc = await api.patch(`${API}/exhibitions/${ex.id}/applications/${apps[0].id}`, {
+    headers: auth(gTok()), data: { status: 'ACCEPTED' },
+  });
+  expect(acc.status()).toBe(200);
+
+  // ① 선정 인원이 찬 공모에는 초대 자체가 차단 (자리 판정이 작가 조회보다 먼저다)
   const blocked = await api.post(`${API}/exhibitions/${ex.id}/invite`, {
     headers: auth(gTok()), data: { artistId: userIds().admin },
   });
-  expect(blocked.status(), '정원 마감 → 초대 400').toBe(400);
-  expect((await blocked.json()).error).toContain('모집 인원');
+  expect(blocked.status(), '선정 인원 마감 → 초대 400').toBe(400);
+  expect((await blocked.json()).error).toContain('선정 인원');
 
   // ② 기존 초대는 받은 초대 목록에서 자동 제거
   inv = await (await api.get(`${API}/exhibitions/invites/received`, { headers: auth(aTok()) })).json();
-  expect(inv.invites.some((i: any) => i.exhibition.id === ex.id), '정원 마감 → 목록에서 제거').toBe(false);
+  expect(inv.invites.some((i: any) => i.exhibition.id === ex.id), '선정 마감 → 목록에서 제거').toBe(false);
 
   // ③ 상세의 간편 지원 버튼도 사라짐
-  const detail = await (await api.get(`${API}/exhibitions/${ex.id}`, { headers: auth(aTok()) })).json();
-  expect(detail.invited, '정원 마감 → invited=false').toBe(false);
-
-  // ④ 갤러리가 거절 → 슬롯 복구 → 초대가 다시 보임
-  const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: auth(gTok()) })).json();
-  await api.patch(`${API}/exhibitions/${ex.id}/applications/${apps[0].id}`, {
-    headers: auth(gTok()), data: { status: 'REJECTED' },
-  });
-  inv = await (await api.get(`${API}/exhibitions/invites/received`, { headers: auth(aTok()) })).json();
-  expect(inv.invites.some((i: any) => i.exhibition.id === ex.id), '슬롯 복구 → 초대 재노출').toBe(true);
+  detail = await (await api.get(`${API}/exhibitions/${ex.id}`, { headers: auth(aTok()) })).json();
+  expect(detail.invited, '선정 마감 → invited=false').toBe(false);
 
   await api.dispose();
 });

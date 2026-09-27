@@ -77,6 +77,7 @@ export async function cleanDb() {
     await tx.inquiry.deleteMany();
     await tx.notification.deleteMany();
     await tx.exhibitionInvite.deleteMany();
+    await tx.exhibitionJoinCode.deleteMany();
     await tx.artworkScrap.deleteMany();
     await tx.application.deleteMany();
     await tx.approvalRequest.deleteMany();

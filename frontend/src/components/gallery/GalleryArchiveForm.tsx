@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
-import type { ArchiveDraft } from '@/lib/galleryArchive';
+import { ARCHIVE_MAX_IMAGES, type ArchiveDraft } from '@/lib/galleryArchive';
 
 /**
  * 지난 활동 기록 작성·수정 (2026-09-16, 갤러리 주인 전용).
@@ -11,13 +11,17 @@ import type { ArchiveDraft } from '@/lib/galleryArchive';
  */
 export default function GalleryArchiveForm({ draft, onChange, onSubmit, onCancel, saving }: {
   draft: ArchiveDraft;
-  onChange: (next: ArchiveDraft) => void;
+  /**
+   * ⚠️ 함수형 갱신만 받는다. 사진을 여러 장 고르면 업로더가 한 장마다 연달아 부르는데, 렌더 시점의 draft 에 붙이면
+   * 앞 장들이 덮여 **마지막 한 장만 남았다**(2026-09-27 신고 "여러 장 한 번에 추가가 안 된다").
+   */
+  onChange: (update: (prev: ArchiveDraft) => ArchiveDraft) => void;
   onSubmit: () => void;
   onCancel: () => void;
   saving: boolean;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(!!(draft.venue || draft.date || draft.artists));
-  const set = (patch: Partial<ArchiveDraft>) => onChange({ ...draft, ...patch });
+  const set = (patch: Partial<ArchiveDraft>) => onChange((prev) => ({ ...prev, ...patch }));
   const field = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
 
   return (
@@ -54,12 +58,12 @@ export default function GalleryArchiveForm({ draft, onChange, onSubmit, onCancel
       />
 
       <div>
-        <p className="mb-1.5 text-xs text-gray-500">사진 (최대 12장)</p>
+        <p className="mb-1.5 text-xs text-gray-500">사진 (최대 {ARCHIVE_MAX_IMAGES}장 · 여러 장을 한 번에 골라도 됩니다)</p>
         <MultiImageUpload
           images={draft.images.map((url) => ({ url }))}
-          onAdd={(url) => set({ images: [...draft.images, url] })}
-          onRemove={(i) => set({ images: draft.images.filter((_, idx) => idx !== i) })}
-          maxCount={12}
+          onAdd={(url) => onChange((prev) => ({ ...prev, images: [...prev.images, url].slice(0, ARCHIVE_MAX_IMAGES) }))}
+          onRemove={(i) => onChange((prev) => ({ ...prev, images: prev.images.filter((_, idx) => idx !== i) }))}
+          maxCount={ARCHIVE_MAX_IMAGES}
         />
       </div>
 

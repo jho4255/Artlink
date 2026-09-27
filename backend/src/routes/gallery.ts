@@ -107,7 +107,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
         exhibitions: {
           where: { status: 'APPROVED' },
           orderBy: { deadline: 'asc' },
-          include: { promoPhotos: { orderBy: { createdAt: 'desc' } } }
+          // 홍보 사진은 올린 순서대로(2026-09-27) — 여러 장을 한 번에 올리면 고른 순서가 곧 앨범 순서다. desc 면 한 묶음이 거꾸로 선다
+          include: { promoPhotos: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } }
         },
         reviews: {
           include: {
@@ -165,7 +166,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
         managers: { some: { galleryId: gallery.id } },
       },
       orderBy: { deadline: 'asc' },
-      include: { promoPhotos: { orderBy: { createdAt: 'desc' } } },
+      include: { promoPhotos: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
     });
     const exhibitions = [...gallery.exhibitions, ...managedExhibitions]
       .sort((a, b) => a.deadline.getTime() - b.deadline.getTime()); // relation 과 같은 정렬 유지

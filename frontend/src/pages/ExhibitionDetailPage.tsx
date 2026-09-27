@@ -31,6 +31,7 @@ import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_B
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import CareerEditor from '@/components/shared/CareerEditor';
 import { normalizeCareer } from '@/lib/artwork';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
@@ -48,7 +49,7 @@ const APP_CAREER_LABELS: { key: keyof Career; label: string }[] = [
   { key: 'solo', label: '개인전' },
   { key: 'group', label: '단체전' },
 ];
-const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-07-03';
+const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-09-27'; // backend/src/lib/terms.ts 와 같아야 한다(terms-consistency.test.ts)
 
 
 type ExhibitionDetail = Exhibition & {
@@ -133,6 +134,8 @@ export default function ExhibitionDetailPage() {
   const [applyImages, setApplyImages] = useState<string[]>([]);
   const [applyFile, setApplyFile] = useState<string | null>(null);
   const [applyFileNone, setApplyFileNone] = useState(false);
+  // 초대 코드 입력칸(접어 둔다) — 이미 선정된 작가용 보조 입구(2026-09-27)
+  const [showCodeInput, setShowCodeInput] = useState(false);
   const [applyCustomAnswers, setApplyCustomAnswers] = useState<CustomAnswerDraft>({});
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [bioError, setBioError] = useState(false);
@@ -186,6 +189,8 @@ export default function ExhibitionDetailPage() {
 
   // 지원 모달 열기 — 폼 초기화
   const openApplyModal = () => {
+    // 이미 지원했으면 폼을 열지 않는다(`?apply=1` 로 돌아온 경우 포함) — 다 쓰고 나서 400 을 받게 하지 않는다
+    if (exhibition?.myApplication) { toast('이미 지원한 공모입니다. 내 전시에서 확인하세요.'); return; }
     setApplyBiography('');
     setApplyCareer(EMPTY_CAREER);
     setApplyCareerNone({ artFair: false, solo: false, group: false });
@@ -224,10 +229,12 @@ export default function ExhibitionDetailPage() {
       setApplyBiography(data.biography || '');
       const c = normalizeCareer(data.career);
       setApplyCareer(c);
-      setApplyCareerNone({ artFair: false, solo: false, group: false });
+      // 포트폴리오에 없는 경력·파일은 '없음'으로 미리 체크한다(2026-09-27) — 안 그러면 불러온 뒤에도 '없음'을 네 번 눌러야 제출된다.
+      // 채우고 싶으면 '없음'을 풀면 된다 — 그 칸의 입력창이 다시 열린다(CareerEditor)
+      setApplyCareerNone({ artFair: c.artFair.length === 0, solo: c.solo.length === 0, group: c.group.length === 0 });
       setApplyImages((data.images || []).map((img: any) => img.url).slice(0, 10));
       setApplyFile(data.portfolioFileUrl || null);
-      setApplyFileNone(false);
+      setApplyFileNone(!data.portfolioFileUrl);
       setBioError(false);
       setImgError(false);
       setCareerErrorKeys(new Set());
@@ -581,8 +588,29 @@ export default function ExhibitionDetailPage() {
 
         {/* 액션 버튼 */}
         <div className="space-y-3 pt-2">
+          {/* 이미 지원한 작가 — [지원하기] 대신 상태를 보여 준다(2026-09-27). 예전엔 버튼이 그대로라 다 쓰고 나서 400 을 받았다 */}
+          {isArtist && exhibition.myApplication && (() => {
+            const st = exhibition.myApplication.status;
+            const head = st === 'ACCEPTED' ? '선정되었습니다' : st === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요' : '지원 완료';
+            const sub = st === 'ACCEPTED'
+              ? (exhibition.recruitOnly ? '이 공모는 선정까지 진행합니다.' : '내 전시에서 작품 자료 제출·전시·정산을 이어서 진행하세요.')
+              : st === 'REJECTED' ? '다음 공모에서 다시 만나요.' : '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.';
+            return (
+              <div className={`rounded-xl border px-4 py-3 ${st === 'ACCEPTED' ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                <p className={`text-sm font-semibold ${st === 'ACCEPTED' ? 'text-green-700' : 'text-gray-900'}`}>{head}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
+                <button
+                  onClick={() => navigate(`/mypage?tab=applications&ex=${exhibition.id}`)}
+                  className="mt-3 inline-flex min-h-[40px] items-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                >
+                  내 전시에서 보기
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Artist 지원하기 — 초대받은 작가는 '간편 지원'으로 바뀐다 */}
-          {isArtist && !isExpired && (
+          {isArtist && !exhibition.myApplication && !isExpired && (
             exhibition.invited ? (
               <>
                 <button
@@ -624,6 +652,18 @@ export default function ExhibitionDetailPage() {
               </button>
               <p className="text-center text-xs text-gray-400">작가 계정으로 로그인하면 지원할 수 있어요.</p>
             </>
+          )}
+
+          {/* 초대 코드 — 이미 선정돼 갤러리에게 코드를 받은 작가용 보조 입구. 모집 마감 뒤에도 전시 종료 전까지 쓴다(서버와 같은 기준).
+              누르면 `/join/코드` 로 가서 어떤 공모인지 확인하고 참여한다 */}
+          {((isArtist && !exhibition.myApplication) || !isAuthenticated) && !exhibition.ended && (
+            showCodeInput ? (
+              <JoinCodeInput compact />
+            ) : (
+              <button onClick={() => setShowCodeInput(true)} className="w-full text-center text-xs text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline">
+                이미 선정되어 초대 코드를 받으셨나요?
+              </button>
+            )
           )}
 
           {/* 로그인했지만 작가 계정이 아닌 경우(갤러리·관리자 제외) — 지원 불가 안내 */}

@@ -38,7 +38,8 @@ import FollowButton from '@/components/shared/FollowButton';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
-import ImageUpload from '@/components/shared/ImageUpload';
+import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
+import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
@@ -63,6 +64,9 @@ type GalleryDetail = Gallery & {
  * 지난 전시·아트페어 → 리뷰. 비어 있는 섹션은 방문자에게 그리지 않는다(주인에게만 채우라고 보인다).
  */
 const SECTION_LABEL = 'text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400';
+
+/** 홍보 사진을 한 번에 올릴 수 있는 장수 — 한 번에 너무 많이 고르면 업로드가 길어져 중간에 창을 닫기 쉽다 */
+const PROMO_BATCH_MAX = 20;
 
 export default function GalleryDetailPage({ galleryId }: { galleryId?: number } = {}) {
   const params = useParams<{ id: string }>();
@@ -96,8 +100,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
 
   // 홍보 사진 업로드 폼 상태 (전시 종료 후, 갤러리 오너 전용)
   const [promoExhibitionId, setPromoExhibitionId] = useState<number | null>(null);
-  const [promoUrl, setPromoUrl] = useState('');
-  const [promoCaption, setPromoCaption] = useState('');
+  // 홍보 사진은 여러 장을 한 번에 올리고 사진마다 설명을 붙인다(2026-09-27) — 예전엔 한 장씩 [등록]을 눌러야 했다
+  const [promoDrafts, setPromoDrafts] = useState<{ url: string; caption: string }[]>([]);
+  const [deletePromo, setDeletePromo] = useState<{ exhibitionId: number; photoId: number } | null>(null);
 
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
@@ -262,18 +267,32 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
     onError: () => toast.error('리뷰 삭제에 실패했습니다.'),
   });
 
-  // 홍보 사진 등록 (Gallery 오너 전용, 전시 종료 후)
+  // 홍보 사진 등록 (Gallery 오너 전용, 전시 종료 후) — 고른 사진을 차례로 올린다. 중간에 실패해도 앞의 것은 남는다
   const promoPhotoMutation = useMutation({
-    mutationFn: (data: { exhibitionId: number; url: string; caption: string }) =>
-      api.post(`/exhibitions/${data.exhibitionId}/promo-photos`, { url: data.url, caption: data.caption }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gallery', id] });
-      setPromoExhibitionId(null);
-      setPromoUrl('');
-      setPromoCaption('');
-      toast.success('홍보 사진이 등록되었습니다.');
+    mutationFn: async ({ exhibitionId, photos }: { exhibitionId: number; photos: { url: string; caption: string }[] }) => {
+      let saved = 0;
+      try {
+        for (const p of photos) {
+          await api.post(`/exhibitions/${exhibitionId}/promo-photos`, { url: p.url, caption: p.caption.trim() || undefined });
+          saved++;
+        }
+      } catch (e) {
+        throw Object.assign(new Error('partial'), { saved, cause: e });
+      }
+      return saved;
     },
-    onError: () => toast.error('홍보 사진 등록에 실패했습니다.'),
+    onSuccess: (saved) => {
+      setPromoExhibitionId(null);
+      setPromoDrafts([]);
+      toast.success(`사진 ${saved}장을 등록했습니다.`);
+    },
+    onError: (e: Error) => {
+      // 앞에서 올라간 사진은 화면 목록에서 빼 둔다 — 다시 [등록]을 눌러도 같은 사진이 두 번 올라가지 않게
+      const saved = (e as Error & { saved?: number }).saved ?? 0;
+      if (saved) setPromoDrafts((prev) => prev.slice(saved));
+      toast.error(saved ? `${saved}장까지 등록하고 나머지는 실패했습니다. 다시 눌러 주세요.` : '사진 등록에 실패했습니다.');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['gallery', id] }),
   });
 
   // 공모 삭제 (Gallery 오너 또는 Admin)
@@ -800,7 +819,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             {isOwner && archiveDraft && (
               <GalleryArchiveForm
                 draft={archiveDraft}
-                onChange={setArchiveDraft}
+                onChange={(update) => setArchiveDraft((prev) => (prev ? update(prev) : prev))}
                 onSubmit={() => archiveMutation.mutate({ id: archiveEditId, draft: archiveDraft })}
                 onCancel={() => { setArchiveDraft(null); setArchiveEditId(null); }}
                 saving={archiveMutation.isPending}
@@ -848,69 +867,54 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                         : <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">종료</span>}
                     </div>
 
-                    {/* 홍보 사진 그리드 (모든 유저에게 표시) */}
+                    {/* 홍보 사진 — 작가 홈페이지 작품 격자와 같은 정사각 칸(자르지 않는다). 모든 유저에게 표시 */}
                     {ex.promoPhotos && ex.promoPhotos.length > 0 && (
-                      <div className="grid grid-cols-3 gap-2 mt-3">
-                        {ex.promoPhotos.map((photo: PromoPhoto, photoIdx: number) => (
-                          <div key={photo.id} className="relative group">
-                            <img
-                              src={photo.url}
-                              alt={photo.caption || '홍보 사진'}
-                              className="w-full h-24 object-cover rounded-lg cursor-pointer"
-                              onClick={() => setLightbox({
-                                images: ex.promoPhotos!.map((p: PromoPhoto) => p.url),
-                                index: photoIdx,
-                              })}
-                            />
-                            {photo.caption && (
-                              <p className="text-xs text-gray-500 mt-1 truncate">{photo.caption}</p>
-                            )}
-                            {/* 오너만 삭제 버튼 표시 */}
-                            {isOwner && (
-                              <button
-                                onClick={() => deletePromoPhotoMutation.mutate({ exhibitionId: ex.id, photoId: photo.id })}
-                                className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                aria-label="삭제"
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <SquarePhotoGrid
+                        className="mt-4"
+                        photos={ex.promoPhotos.map((photo: PromoPhoto) => ({ url: photo.url, caption: photo.caption, key: photo.id }))}
+                        onOpen={(i) => setLightbox({ images: ex.promoPhotos!.map((p: PromoPhoto) => p.url), index: i })}
+                        onRemove={isOwner ? (i) => setDeletePromo({ exhibitionId: ex.id, photoId: ex.promoPhotos![i].id }) : undefined}
+                      />
                     )}
 
                     {/* 오너 전용: 홍보 사진 추가 버튼 및 업로드 폼 */}
                     {isOwner && (
                       <>
                         {promoExhibitionId === ex.id ? (
-                          <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
-                            <ImageUpload
-                              value={promoUrl}
-                              onChange={(url: string) => setPromoUrl(url)}
-                              onRemove={() => setPromoUrl('')}
-                              placeholder="홍보 사진 업로드"
-                            />
-                            <input
-                              type="text"
-                              value={promoCaption}
-                              onChange={e => setPromoCaption(e.target.value)}
-                              placeholder="사진 설명 (선택)"
-                              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                          <div className="mt-3 space-y-3 rounded-lg bg-gray-50 p-3">
+                            <p className="text-xs text-gray-500">여러 장을 한 번에 골라도 됩니다. 사진마다 설명을 붙일 수 있어요(선택).</p>
+                            <MultiImageUpload
+                              images={promoDrafts}
+                              onAdd={(url) => setPromoDrafts((prev) => [...prev, { url, caption: '' }].slice(0, PROMO_BATCH_MAX))}
+                              onRemove={(i) => setPromoDrafts((prev) => prev.filter((_, idx) => idx !== i))}
+                              maxCount={PROMO_BATCH_MAX}
+                              renderBelow={(i) => (
+                                <input
+                                  type="text"
+                                  value={promoDrafts[i]?.caption ?? ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value.slice(0, 100);
+                                    setPromoDrafts((prev) => prev.map((p, idx) => (idx === i ? { ...p, caption: v } : p)));
+                                  }}
+                                  placeholder="사진 설명 (선택)"
+                                  aria-label={`사진 ${i + 1} 설명`}
+                                  className="mt-1.5 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-400"
+                                />
+                              )}
                             />
                             <div className="flex gap-2">
                               <button
                                 onClick={() => {
-                                  if (!promoUrl.trim()) { toast.error('사진을 업로드해주세요.'); return; }
-                                  promoPhotoMutation.mutate({ exhibitionId: ex.id, url: promoUrl, caption: promoCaption });
+                                  if (promoDrafts.length === 0) { toast.error('사진을 올려주세요.'); return; }
+                                  promoPhotoMutation.mutate({ exhibitionId: ex.id, photos: promoDrafts });
                                 }}
-                                disabled={promoPhotoMutation.isPending}
+                                disabled={promoPhotoMutation.isPending || promoDrafts.length === 0}
                                 className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
                               >
-                                등록
+                                {promoPhotoMutation.isPending ? '등록 중…' : promoDrafts.length > 0 ? `${promoDrafts.length}장 등록` : '등록'}
                               </button>
                               <button
-                                onClick={() => { setPromoExhibitionId(null); setPromoUrl(''); setPromoCaption(''); }}
+                                onClick={() => { setPromoExhibitionId(null); setPromoDrafts([]); }}
                                 className="px-3 py-1.5 text-sm text-gray-500"
                               >
                                 취소
@@ -919,7 +923,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                           </div>
                         ) : (
                           <button
-                            onClick={() => setPromoExhibitionId(ex.id)}
+                            onClick={() => { setPromoExhibitionId(ex.id); setPromoDrafts([]); }}
                             className="mt-3 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-900"
                           >
                             <Camera size={14} /> 홍보 사진 추가
@@ -1156,6 +1160,16 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
         confirmText="삭제"
         onConfirm={() => deleteArchiveMutation.mutate(deleteArchiveId!)}
         onCancel={() => setDeleteArchiveId(null)}
+      />
+      {/* 홍보 사진 삭제 — 서버가 파일까지 지워 되돌릴 수 없다. × 가 터치 기기에서 늘 보이므로 확인을 거친다 */}
+      <ConfirmDialog
+        open={deletePromo !== null}
+        title="사진 삭제"
+        message="이 사진을 삭제하시겠습니까? 되돌릴 수 없습니다."
+        variant="danger"
+        confirmText="삭제"
+        onConfirm={() => { if (deletePromo) deletePromoPhotoMutation.mutate(deletePromo); setDeletePromo(null); }}
+        onCancel={() => setDeletePromo(null)}
       />
       <ConfirmDialog
         open={reviewConfirmOpen}

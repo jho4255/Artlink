@@ -20,6 +20,7 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
+import JoinCodePanel from '@/components/shared/JoinCodePanel';
 import { downloadApplicationPdf, downloadAllApplicationsZip } from '@/lib/operationPdf';
 import type { CustomField } from '@/types';
 
@@ -77,6 +78,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
     queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
     queryClient.invalidateQueries({ queryKey: ['operation-submissions'] });
+    queryClient.invalidateQueries({ queryKey: ['join-code', exhibitionId] }); // 초대 코드 상자의 '선정 N/M명'
   };
 
   const updateStatus = useMutation({
@@ -96,8 +98,10 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     invalidate();
     const ok = results.filter(r => r.status === 'fulfilled').length;
     const fail = results.length - ok;
+    // 실패 이유도 같이 — 일괄 수락이 선정 인원(정원)에 걸리면 '몇 건 실패'만으로는 왜인지 모른다(2026-09-27)
+    const reason = (results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined)?.reason?.response?.data?.error;
     if (fail === 0) toast.success(`${ok}명의 상태를 변경했습니다.`);
-    else toast.error(`${ok}건 변경, ${fail}건 실패`);
+    else toast.error(`${ok}건 변경, ${fail}건 실패${reason ? ` — ${reason}` : ''}`, { duration: 6000 });
     setSelectedIds(new Set());
     setBatchStatus('');
     } finally { setBatchPending(false); }
@@ -146,10 +150,17 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
 
   if (isLoading) return <div className="h-24 bg-gray-100 animate-pulse rounded-xl" />;
   if (isError) return <p className="text-sm text-gray-400 py-6 text-center">지원자 목록을 불러오지 못했습니다.</p>;
-  if (applicants.length === 0) return <p className="text-sm text-gray-400 py-6 text-center">아직 지원자가 없습니다.</p>;
+  // 초대 코드 상자는 지원자가 0명일 때도 보여야 한다 — 옮겨 온 공모는 코드를 돌리기 전엔 늘 0명이다
+  if (applicants.length === 0) return (
+    <div>
+      <JoinCodePanel exhibitionId={exhibitionId} />
+      <p className="text-sm text-gray-400 py-6 text-center">아직 지원자가 없습니다.</p>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
+      <JoinCodePanel exhibitionId={exhibitionId} />
       {/* 상단: 필터 + 전체 ZIP */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex gap-1.5 flex-wrap">
@@ -232,6 +243,10 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                     {/* 내가 둘러보기에서 초대한 작가 — 지원서 없이 포트폴리오로 간편 지원한 건이라 구분해서 보여준다 */}
                     {app.invited && (
                       <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-900 text-white whitespace-nowrap">초대한 작가</span>
+                    )}
+                    {/* 초대 코드로 들어온 작가 — 지원서 없이 곧바로 수락된 건이라 약력·작품이 비어 있을 수 있다 */}
+                    {app.joinedVia === 'CODE' && (
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 whitespace-nowrap">코드 참여</span>
                     )}
                   </div>
                   <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:shrink-0">

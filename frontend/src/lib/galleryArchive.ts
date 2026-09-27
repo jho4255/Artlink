@@ -7,6 +7,9 @@ import type { GalleryArchive } from '@/types';
  * 내보내면 Fast Refresh 가 그 파일 전체를 통째로 다시 만든다(eslint `react-refresh/only-export-components`).
  * 순수 함수라 화면과 분리해 두는 게 맞다.
  */
+/** 기록 하나에 넣을 수 있는 사진 수 — 서버 `routes/gallery.ts` 의 ARCHIVE_MAX_IMAGES 와 같은 값(넘으면 서버가 400) */
+export const ARCHIVE_MAX_IMAGES = 12;
+
 export interface ArchiveDraft {
   title: string; venue: string; period: string; date: string; artists: string; body: string; images: string[];
 }

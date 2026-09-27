@@ -49,10 +49,14 @@ test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 �
   const cnt = await nones.count();
   for (let i = 0; i < cnt; i++) await nones.nth(i).click();
 
-  // 5) 제출 → 확인 다이얼로그 → 지원하기
-  await page.getByRole('button', { name: '지원하기' }).last().click();
+  // 5) 제출 — 확인 다이얼로그는 없다. 예전엔 여기서 한 번 더 눌렀는데, 그 클릭은 지원 뒤에도 남아 있던
+  //    상세 페이지의 [지원하기]를 누르고 있었다(2026-09-27 부터 지원한 작가에겐 그 버튼 대신 상태를 보여준다).
   await page.getByRole('button', { name: '지원하기' }).last().click();
   await expect(page.locator('body')).toContainText(/지원이 완료|지원.*완료/, { timeout: 10000 });
+
+  // 지원한 뒤에는 [지원하기] 대신 상태가 보인다 — 지원서를 다 쓰고 나서야 "이미 지원한 공모" 400 을 받지 않게
+  await expect(page.getByText('지원 완료', { exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole('button', { name: '지원하기' })).toHaveCount(0);
 
   // 지원 내역 반영
   // 예전 [지원 내역] 탭은 [내 전시]로 이름이 바뀌었다 (초대·진행·정산까지 한 곳에서 본다)

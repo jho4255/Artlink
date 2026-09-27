@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">개인정보처리방침</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 7월 7일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 9월 27일</p>
 
       <div className="space-y-10 text-gray-700 text-sm leading-relaxed">
 
@@ -15,7 +15,7 @@ export default function PrivacyPage() {
             <li>소셜 로그인(카카오) 시: 카카오 회원 식별자, 닉네임, 이메일, 프로필 이미지(제공에 동의한 항목)</li>
             <li>갤러리 등록 시: 갤러리명, 주소, 전화번호, 대표자명, 대표 이미지, (선택)이메일·인스타그램 주소</li>
             <li>포트폴리오 등록 시: 전시 이력, 작가 약력, 작품 사진</li>
-            <li>공모 지원 시: 작가 약력, 경력, 작품 사진, 포트폴리오 파일, 공모별 추가 답변</li>
+            <li>공모 지원 시: 작가 약력, 경력, 작품 사진, 포트폴리오 파일, 공모별 추가 답변 (초대 수락·초대 코드 참여 시에는 홈페이지(포트폴리오)에 등록된 약력·경력·작품 사진·포트폴리오 파일)</li>
             <li>서비스 이용 과정에서 자동 생성: 접속 로그, 조회 기록</li>
           </ul>
         </section>
@@ -47,7 +47,14 @@ export default function PrivacyPage() {
             <li>Cloudflare (Cloudflare, Inc. — R2): 업로드 이미지·파일 저장</li>
             <li>Kakao (주식회사 카카오): 소셜 로그인 인증</li>
           </ul>
-          <p className="mt-3 text-gray-600">위 위탁 외에는 원칙적으로 이용자의 개인정보를 제3자에게 제공하지 않으며, 이용자의 동의가 있거나 법령에 의한 경우에 한해 예외로 합니다.</p>
+          <p className="mt-3 mb-2 text-gray-600">작가 회원이 공모에 지원하거나 초대 수락·초대 코드로 참여하면, 작가 지원 약관에 대한 동의에 따라 아래와 같이 제공됩니다.</p>
+          <ul className="list-disc list-inside space-y-1 text-gray-600">
+            <li>제공받는 자: 해당 공모를 등록한 갤러리 회원(아트링크가 주최하는 공모는 운영을 맡은 갤러리 회원)</li>
+            <li>제공 항목: 닉네임, 이름, 이메일, 휴대폰번호, 약력, 경력, 작품 사진, 포트폴리오 파일, 공모별 추가 답변</li>
+            <li>이용 목적: 지원자 검토·선정·연락, 전시 운영 및 정산</li>
+            <li>보유 기간: 해당 공모의 운영 및 정산이 끝날 때까지(분쟁 대응을 위한 기록은 3항에 따릅니다)</li>
+          </ul>
+          <p className="mt-3 text-gray-600">위 위탁과 제공 외에는 원칙적으로 이용자의 개인정보를 제3자에게 제공하지 않으며, 이용자의 동의가 있거나 법령에 의한 경우에 한해 예외로 합니다.</p>
         </section>
 
         <section>

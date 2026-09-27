@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import type { CustomField, CustomAnswer } from '@/types';
 
-const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-07-03';
+const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-09-27'; // backend/src/lib/terms.ts 와 같아야 한다(terms-consistency.test.ts)
 
 /**
  * 초대 간편 지원 모달

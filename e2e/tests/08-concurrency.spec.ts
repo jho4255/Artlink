@@ -2,12 +2,12 @@ import { test, expect, request as pwRequest } from '@playwright/test';
 import { tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
 
 /**
- * 동시성: 정원 1명 공모에 여러 명이 "동시에" 지원하면 정원 초과 생성되는지(TOCTOU 경합).
- * KI-2 수정이 count-then-create 라 경합에 취약할 수 있어 검증.
+ * 동시성: 정원 1명 공모에서 여러 지원을 "동시에" 수락하면 정원을 넘겨 선정되는지(TOCTOU 경합).
+ * 2026-09-27 부터 정원은 '선정 인원'이라 지원은 전부 받고, 수락이 한 트랜잭션에서 세고 바꾼다(lib/inviteCode.ts withSeatLock).
  */
 const API = 'http://localhost:4000/api';
 
-test('정원 1명 공모에 동시 지원 6건 → 최종 수락/접수는 정원(1) 이하여야', async () => {
+test('정원 1명 공모에 지원 6건을 동시에 수락 → 선정은 정원(1)을 넘지 않는다', async () => {
   const api = await pwRequest.newContext();
   const gTok = tokenFor('gallery');
   const adminTok = tokenFor('admin');
@@ -32,19 +32,24 @@ test('정원 1명 공모에 동시 지원 6건 → 최종 수락/접수는 정�
     tokens.push(body.token);
   }
 
-  // 6명 동시 지원 (Promise.all)
+  // 6명 동시 지원 — 정원은 선정 인원이라 전부 받는다
   const results = await Promise.all(tokens.map(t =>
-    applyToExhibition(api, ex.id, t).then(res => res.status())
+    applyToExhibition(api, ex.id, t).then(async res => ({ status: res.status(), id: res.ok() ? (await res.json()).id : null }))
   ));
-  const accepted = results.filter(s => s === 201).length;
-  console.log('동시 지원 결과 상태들:', results.join(','), '→ 201 개수:', accepted);
+  console.log('동시 지원 결과 상태들:', results.map(r => r.status).join(','));
+  expect(results.every(r => r.status === 201), '지원은 정원과 무관하게 받아야 함').toBe(true);
 
-  // 서버에 실제 저장된 지원 수 확인 (gallery 오너)
+  // 6건을 동시에 수락(일괄 수락과 같은 모양) → 정원 1 만 성공
+  const accepts = await Promise.all(results.map(r =>
+    api.patch(`${API}/exhibitions/${ex.id}/applications/${r.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } }).then(x => x.status())
+  ));
+  console.log('동시 수락 결과 상태들:', accepts.join(','));
+
   const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
-  const stored = (apps.applications || apps).length;
+  const selected = (apps.applications || apps).filter((a: any) => a.status === 'ACCEPTED').length;
   await api.dispose();
 
-  console.log('실제 저장된 지원 수:', stored, '(정원 1)');
-  // 정원(1)을 넘는 지원이 저장되면 경합 버그
-  expect(stored, '정원 초과 저장(TOCTOU 경합) 발생').toBeLessThanOrEqual(1);
+  console.log('실제 선정 수:', selected, '(정원 1)');
+  expect(selected, '정원 초과 선정(TOCTOU 경합) 발생').toBe(1);
+  expect(accepts.filter(s => s === 200)).toHaveLength(1);
 });

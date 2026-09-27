@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2170 tests** (2026-09-25): Backend 1393 (supertest, `artlink_test` DB 순차), Frontend 777 (jsdom)
+- **2170+ tests** (2026-09-27): Backend 1393+ (supertest, `artlink_test` DB 순차), Frontend 781 (jsdom)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -250,7 +250,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - [받은 초대] 메뉴 탭은 없앴다. **[내 전시]의 첫 탭 '초대받은 전시'** 로 합쳤다(초대도 내 전시의 한 단계다).
 - **수락 = 지원 없이 바로 참가** (`POST /exhibitions/invites/:id/accept`) — `status='ACCEPTED'` 지원이 만들어져
   그대로 진행 프로세스(자료 제출 → 전시 → 정산)에 들어간다. 약력·작품은 포트폴리오에서 가져온다.
-  ⚠️ **정원·마감은 그대로 지킨다** — 초대가 있었다고 정원을 넘겨 받을 수는 없다.
+  ⚠️ **정원·마감은 그대로 지킨다** — 초대가 있었다고 정원을 넘겨 받을 수는 없다. 정원은 **선정 인원**(수락된 수)이다(규칙 57).
 - ⚠️ **[거절]은 `ConfirmDialog` 를 거친다**(2026-09-19). 유니크 제약 때문에 거절하면 **갤러리가 같은 작가를 다시 초대할 수 없다** —
   [참여하기] 바로 옆 버튼이라 오터치가 영구 손실이었다. 같은 이유로 **작품 사진 삭제**(`PortfolioImageGrid` 의 ×)도 확인을 거친다
   (터치기기에선 × 가 항상 보이고 서버가 원본 파일까지 지운다). 되돌릴 수 없는 버튼에 확인 없이 `mutate` 를 바로 걸지 말 것.
@@ -1538,7 +1538,17 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       보는 사람에겐 둘 다 "이 갤러리가 해 온 일"이고, 작가가 갤러리를 고를 때 읽는 이력이다.
       ⚠️ 사진은 `ownImageUrls` 로 **우리 저장소 주소만**(`/uploads/` 또는 `matchR2Base`) — 커뮤니티·스토리와 같은 주입 방지.
       ⚠️ 수정·삭제는 **기록의 `galleryId` 가 내 갤러리인지** 다시 본다(404) — 안 보면 남의 기록을 내 갤러리 id 로 고칠 수 있다(IDOR).
-    - 회귀: `backend/src/__tests__/gallery-artists.test.ts`(4) · `gallery-archive.test.ts`(13).
+    - **지난 전시·아트페어 사진은 정사각 칸 격자**(`components/shared/SquarePhotoGrid.tsx`, 2026-09-27 사용자 신고 "무슨 크기냐").
+      기록 사진·홍보 사진 둘 다 작가 홈페이지 작품 격자와 **같은 규칙** — 3열(좁은 화면 2열) · 같은 크기 정사각 칸 · 사진은 contain 정가운데.
+      ⚠️ 예전 `h-24 w-full object-cover` 로 되돌리지 말 것 — 폭만 늘고 높이는 96px 라 넓은 화면에서 사진이 가로 띠로 잘렸다(CLAUDE.md 18).
+      비율을 미리 몰라도 되는 자리라 JS 측정 없이 CSS(aspect-square + object-contain)로 칸을 잡는다.
+    - **사진은 여러 장을 한 번에 올린다.** ⚠️ `MultiImageUpload` 는 여러 장을 고르면 `onAdd` 를 **연달아** 부른다 — 받는 쪽은 반드시
+      함수형 갱신으로 붙일 것. 기록 폼이 렌더 시점의 `draft` 에 붙여서 **마지막 한 장만 남았다**(`GalleryArchiveForm` 의 `onChange` 는 이제 updater 만 받는다).
+      홍보 사진은 한 장씩 [등록]이던 것을 여러 장 + 사진마다 설명(`renderBelow`)으로 바꿨고, 고른 순서대로 올린다 — 서버도 **올린 순서(createdAt asc)** 로 내려준다
+      (desc 면 한 묶음이 거꾸로 섰다). 홍보 사진 삭제는 확인을 거친다(× 가 터치 기기에서 늘 보이고 서버가 파일까지 지운다).
+      업로드 칸 미리보기도 정사각 + contain(지원서 작품 사진 포함 — 예전엔 가운데만 잘라 보였다).
+    - 회귀: `backend/src/__tests__/gallery-artists.test.ts`(4) · `gallery-archive.test.ts`(13) · `exhibition-extended.test.ts`「올린 순서대로」 ·
+      e2e `56-gallery-photos.spec.ts`(2 — **다섯 장을 한 번에 골라 다섯 장이 남는지 · 칸이 같은 크기 정사각이고 열·행이 맞는지**를 잰다).
 
 51. **작가 온보딩 — 업로드가 첫 행동, 그다음 5칸 완성도** (2026-09-16)
     가입 직후 프로필 폼에 떨어지고, 무엇이 비었는지 알려주는 화면이 없었다(캡션 전부 빈 작품 76%, 공개 작품 있는 작가 31/81).
@@ -1697,6 +1707,54 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: `frontend/src/__tests__/homepageTabs.test.ts`(17 — 탭 구성·폴백·쪽 폭·캔버스 상한·**알림 링크 소스 대조**) · `backend guestbook.test.ts`(linkUrl) ·
       `e2e/tests/54-homepage-tabs.spec.ts`(7 — 탭 주소·새로고침·폴백·**진짜 PDF 를 올려 캔버스에 글자 픽셀이 찍혔는지**·HWP 카드·알림→방명록 탭·미리보기 따라가기) ·
       `32`·`37`·`10` 스펙은 `?tab=` 로 들어가게 고쳤다. ⚠️ jsdom 은 캔버스를 못 그린다 — PDF 는 e2e 와 브라우저 하니스로만 확인된다.
+
+57. **정원 = 선정 인원 · 공모 초대 코드** (2026-09-27, 사용자 결정 셋)
+    - ⚠️⚠️ **정원(`capacity`)은 '뽑을 수 있는 사람 수'다 — 지원을 막지 않는다.** 예전(KI-2, 2026-07)엔 거절 안 된 지원 수로 막아
+      정원 5명이면 **선착순 5명만 지원서를 낼 수 있었다**(실제 테스트에서 6번째 작가가 "모집 인원이 마감되었습니다"). 사용자 결정으로 뒤집었다.
+      지금은 지원은 마감일까지 무제한이고, **수락된(ACCEPTED) 수**로 네 곳이 막는다 — 지원 상태 변경→수락(`PATCH /:id/applications/:appId`) ·
+      1:1 초대 보내기 · 초대 수락 · 초대 코드 참여. 판정은 `backend/src/lib/inviteCode.ts` 의 `countSelected`/`selectedCounts` **한 곳**.
+      ⚠️ 수락하는 쪽은 **`withSeatLock`**(Serializable + P2034 재시도 2회) 안에서 센다 — 일괄 수락은 화면이 한 건씩 동시에 보내서, 밖에서 세면
+      정원을 넘긴다. 재시도가 없으면 진 쪽이 `errorHandler` 의 '데이터 처리 중 오류'(400)를 받는다(정원 안내가 아니라).
+      화면: 등록 폼 '모집 작가 수' 옆에 "지원은 제한 없이 받고, 이 인원까지 수락(선정)" · 갤러리 카드 `수락 N/정원` · 일괄 수락 실패 토스트에 서버 이유.
+      약관 제8조·이용약관 문구도 같이 바꿨다(아래).
+    - **초대 코드**: 이미 선정이 끝난 공모를 옮겨 올 때 — 갤러리가 공모당 코드 하나(8자리, 0·O·1·I·L 제외)를 만들어 선정 작가 단톡방에 돌리면
+      코드를 넣은 작가는 **지원서 없이 곧바로 ACCEPTED**(`Application.joinedVia='CODE'`) 되어 자료제출 → 전시 → 정산을 그대로 밟는다.
+      공모는 **그대로 공개되고 지원도 그대로 받는다**(사용자 결정: 초대 코드 전용·비공개 모드는 만들지 않음).
+      - ⚠️⚠️ **코드를 Exhibition 컬럼에 두지 말 것 — `ExhibitionJoinCode` 테이블이다.** 공모 상세·목록이 행을 통째로(`...exhibition`) 내려주므로
+        컬럼이면 **공개 응답에 코드가 그대로 실린다**(코드 = 수락 권한). 처음에 컬럼으로 만들었다가 이걸 보고 옮겼다. `invite-code.test.ts` 가
+        상세·목록 응답에 코드 문자열이 없는지 본다.
+      - 만드는 곳: 운영자의 **[지원자 관리] 맨 위 `JoinCodePanel`**(갤러리 [내 공모]·관리자 [주최 공모] 둘 다 `ApplicantManager` 를 쓰므로 한 번에).
+        지원자 0명일 때도 그린다(옮겨 온 공모는 늘 0명에서 시작). [코드 복사]·[참여 링크 복사]·[새로 발급](옛 코드 즉시 무효)·[끄기](행 삭제).
+        API `GET/POST/DELETE /exhibitions/:id/join-code`(`assertCanManageExhibition` — 위임 갤러리·Admin 포함). 승인 전·전시 종료 뒤엔 못 만든다.
+      - 들어오는 곳: **링크 `/join/:code`**(`JoinExhibitionPage`)가 기본 — 어떤 공모인지 먼저 보여 주고 [참여하기]를 누르게 한다
+        (잘못 받은 코드로 엉뚱한 공모에 수락되면 되돌릴 길이 없다). 비로그인은 `setPostLoginRedirect('/join/코드')` → 로그인 → 돌아온다.
+        코드만 받은 작가용 입력칸 `JoinCodeInput` 이 [내 전시] 맨 위(목록이 비어도)와 공모 상세('이미 선정되어 초대 코드를 받으셨나요?')에 있다 —
+        둘 다 바로 참여시키지 않고 `/join/코드` 로 보낸다. ⚠️ `/join/:code`(GET)은 `/:id` 보다 **먼저** 선언할 것.
+      - 규칙(`POST /exhibitions/join`, 판정은 미리보기와 같은 `joinBlockReason`): 작가만 · **작품 0점이어도 된다**(1:1 초대 수락과 다름 —
+        작품은 자료제출에서 낸다) · 이미 '접수'면 수락으로 올림 · 이미 수락이면 200 `alreadyJoined`(두 번 눌러도 에러 아님) ·
+        ⚠️ **거절된 지원이 있으면 400** — 코드가 단톡방에 도므로 갤러리가 거절한 사람이 코드로 결정을 뒤집으면 안 된다 ·
+        정원(선정 인원) 초과 400 · **모집 마감 뒤에도 전시 종료 전까지는 된다**(이미 선정된 작가용) · 약관은 참여 행위로 동의(약관 제8조 ④) ·
+        운영자 알림(`exhibitionNotifyTargets`, 규칙 22)·단톡 합류(`ensureExhibitionChat`)·남은 1:1 초대는 APPLIED.
+      - 형식 규칙은 백엔드 `lib/inviteCode.ts` ↔ 프론트 `lib/inviteCode.ts` 거울(프론트 테스트가 글자 집합을 소스로 대조).
+    - **공모 상세 `myApplication`**: 지원한 작가에게 [지원하기] 대신 상태(지원 완료·선정·미선정)+[내 전시에서 보기]. 예전엔 지원 뒤에도 버튼이 그대로라
+      지원서를 다 쓰고 나서야 "이미 지원한 공모입니다" 400 을 받았다. `?apply=1` 자동 열기도 막는다.
+    - 지원서 [포트폴리오 불러오기]는 **비어 있는 경력·파일을 '없음'으로 미리 체크**한다(예전엔 불러온 뒤에도 '없음'을 네 번 눌러야 제출됐다).
+    - 갤러리 카드: [공모만 진행]은 작가 자료·판매/정산 칸·전시 일정 줄을 안 그린다 · 다음 할 일이 '작가 자료 수집'이 아니다 ·
+      '승인 대기' 배지가 단계 배지와 같으면 한 번만 · 수락 0명일 때 '0/0 제출 확인 완료' 대신 '수락한 작가가 아직 없어요'.
+    - ⚠️⚠️ **약관 원문을 고치면 버전과 해시를 같이 올릴 것** (`backend/src/lib/terms.ts`, 프론트 두 곳의 `ARTIST_APPLY_TERMS_VERSION`).
+      2026-09-05 에 제7조(정산 무응답 3일 자동 수락)·제8조를 넣으며 둘 다 그대로 둬서, **그 뒤 3주간 동의 기록이 제7조 없는 7월 원문을 가리켰다**(에러 없음).
+      이번에 제4조(초대·코드 참여 때 홈페이지 정보가 간다)·제8조(정원 = 선정 인원 · 초대 코드)를 고치며 `artist_apply_2026-09-27` 로 올렸다.
+      **과거 동의 기록은 고쳐 쓰지 않았다** — 대신 판본 전문을 `docs/terms-history/`(+ `artist_apply.json`)에 보관하고, 9-05~9-27 기록이
+      실제로는 어느 판본을 가리키는지 README 에 적었다. `terms-consistency.test.ts` 가 파일 해시 = 상수, 프론트 버전 = 서버 버전,
+      보관본 해시 = 목록, 마지막 보관본 = 현재 상수를 대조한다. **판본을 올리면 보관본도 추가할 것.**
+    - 같은 날 함께 고친 약관: 갤러리 공모 등록 약관 제8조(정원·초대 코드 관리 책임, 버전 기록 없는 체크박스 약관이라 새 등록부터 적용) ·
+      이용약관 [변경 이력] 신설 + 최종 수정일(제3조가 적용일자·변경사유를 알리라고 한다 — 9-05 변경도 기록) ·
+      개인정보처리방침 4항에 **갤러리 회원에게 제공**(항목·목적·기간)을 명시(그 전엔 '제3자 제공 없음'만 있었다) ·
+      `/join/:code` 화면이 [참여하기] 전에 무엇이 갤러리에 전달되는지 적는다.
+    - 회귀: `backend invite-code.test.ts`(20) · `known-issues-fixes.test.ts` KI-2 묶음(정원 = 선정 인원, 동시 수락) · `explore-engagement.test.ts`(초대·정원) ·
+      `dev-settings-revert.test.ts`(되돌리면 선정 자리 복구) · `terms-consistency.test.ts`(3) · `frontend inviteCode.test.ts`(4) ·
+      e2e `55-invite-code.spec.ts`(3) · `06`·`08` 스펙을 새 의미로(지원은 받고 수락이 정원까지, 동시 수락 6건 → 1건) ·
+      `17`(지원 뒤 [지원하기] 대신 '지원 완료') · `26` F3(지원은 자리를 안 차지, 수락으로 차면 초대 차단).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

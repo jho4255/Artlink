@@ -3,7 +3,7 @@ export default function TermsPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">이용약관</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 7월 7일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 9월 27일</p>
 
       <div className="space-y-10 text-gray-700 text-sm leading-relaxed">
 
@@ -116,8 +116,8 @@ export default function TermsPage() {
               공개 목록에서 즉시 제외됩니다.
             </li>
             <li>
-              <b className="text-gray-900">정원 및 마감</b> — 모집 정원이 찼거나 마감일이 지난 공모에는 지원할 수 없으며,
-              동시에 여러 건이 접수되면 정원을 초과하는 지원은 접수되지 않습니다. 초대를 받은 경우에도 동일하게 적용됩니다.
+              <b className="text-gray-900">정원 및 마감</b> — 마감일이 지났거나 모집이 마감된 공모에는 지원할 수 없습니다.
+              모집 정원은 선정(수락)할 수 있는 작가 수이며, 정원이 모두 선정된 뒤에는 초대·초대 코드 참여를 포함해 추가로 선정되지 않습니다.
             </li>
           </ul>
           <p className="mt-3 text-sm text-gray-500">
@@ -143,6 +143,23 @@ export default function TermsPage() {
             이 약관은 대한민국 법령에 따라 규율되고 해석되며, 서비스 이용과 관련하여 분쟁이 발생한 경우 회사의 본점 소재지를
             관할하는 법원을 관할 법원으로 합니다.
           </p>
+        </section>
+
+        {/* 변경 이력 — 제3조(적용일자와 변경사유를 알린다). 약관 문구를 바꾸면 여기 한 줄 더하고 최종 수정일도 고칠 것.
+            작가 지원 약관의 옛 전문은 docs/terms-history/ 에 보관한다. */}
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">변경 이력</h2>
+          <ul className="space-y-2 text-gray-600 list-disc pl-5">
+            <li>
+              <b className="text-gray-900">2026년 9월 27일</b> — 모집 정원을 ‘선정(수락)할 수 있는 작가 수’로 명확히 하고, 갤러리 회원이
+              발급한 초대 코드로 참여하는 방식을 추가했습니다(제9조 정원 및 마감). 사유: 이미 선정을 마친 공모를 플랫폼에서
+              이어서 운영할 수 있도록 하기 위함.
+            </li>
+            <li>
+              <b className="text-gray-900">2026년 9월 5일</b> — 자동으로 처리되는 사항(제9조: 정산 무응답 3일 자동 수락, 방치 공모 자동 정리,
+              읽은 알림 삭제 등)을 신설했습니다. 사유: 자동 처리 기준을 약관에 명시하기 위함.
+            </li>
+          </ul>
         </section>
 
         <section>

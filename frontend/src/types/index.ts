@@ -131,6 +131,11 @@ export interface Exhibition {
   managerGalleries?: { id: number; name: string }[];
   /** 이 공모를 운영할 수 있는 계정인지 — 서버가 계산해 내려준다(상세 API 전용) */
   canOperate?: boolean;
+  /**
+   * 로그인한 작가 본인의 지원(상세 API 전용, 2026-09-27). 없으면 null.
+   * 있으면 [지원하기] 대신 상태를 보여 준다 — 예전엔 지원한 뒤에도 버튼이 그대로라 지원서를 다 쓰고 나서야 400 을 받았다.
+   */
+  myApplication?: { status: 'SUBMITTED' | 'ACCEPTED' | 'REJECTED' } | null;
   // reviewCount는 상세 API(include)에서만 내려옴 — 목록 API(select)에는 없어 optional
   // ⚠️ **null 일 수 있다** — 아트링크가 갤러리를 안 끼고 여는 공모. 반드시 `gallery?.` 로 읽을 것
   gallery: (Pick<Gallery, 'id' | 'name' | 'mainImage' | 'region'> & { reviewCount?: number }) | null;

@@ -11,6 +11,7 @@
  *   4. 기본값(`recruitOnly` 미지정)은 종전과 완전히 같다.
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 import { request, authToken, cleanDb, seedUsers, testPrisma } from './helpers';
 
 const GALLERY_OWNER = 3;
@@ -93,7 +94,7 @@ async function applyAndAccept(exhibitionId: number) {
       biography: '약력입니다',
       artworkImages: ['https://example.com/a.jpg'],
       termsAgreed: true,
-      termsVersion: 'artist_apply_2026-07-03',
+      termsVersion: ARTIST_APPLY_TERMS_VERSION,
     });
   expect(applied.status).toBe(201);
   const patched = await request.patch(`/api/exhibitions/${exhibitionId}/applications/${applied.body.id}`)

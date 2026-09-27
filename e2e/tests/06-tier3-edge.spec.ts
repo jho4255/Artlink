@@ -4,15 +4,15 @@ import { openAs, tokenFor, applyToExhibition, exhibitionDates } from '../lib/hel
 const API = 'http://localhost:4000/api';
 
 /**
- * Tier3 엣지: 정원 초과 지원(알려진 갭) + 권한 매트릭스(UI 레벨).
+ * Tier3 엣지: 정원(=선정 인원) + 권한 매트릭스(UI 레벨).
  */
 
-test('정원(capacity) 초과 지원은 서버에서 차단된다 (KI-2 수정)', async () => {
+// 2026-09-27 — 정원은 '선정 인원'이다(사용자 결정). 지원은 무제한, 수락이 정원까지만 된다.
+test('정원(capacity)은 선정 인원 — 지원은 넘겨도 받고, 수락은 정원까지만', async () => {
   const api = await pwRequest.newContext();
   const gTok = tokenFor('gallery'); const adminTok = tokenFor('admin');
   const aTok = tokenFor('artist'); const a2Tok = tokenFor('artist2');
 
-  // 정원 1명짜리 공모 생성 + 승인
   const gal = await (await api.get(`${API}/galleries?owned=true`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
   const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
   const created = await (await api.post(`${API}/exhibitions`, {
@@ -21,13 +21,17 @@ test('정원(capacity) 초과 지원은 서버에서 차단된다 (KI-2 수정)'
   })).json();
   await api.patch(`${API}/approvals/exhibition/${created.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
 
-  // 1명 지원(정원 충족)
   const first = await applyToExhibition(api, created.id, aTok);
-  expect(first.ok()).toBeTruthy();
-  // 2번째 지원 → 정원 초과이므로 차단(400)되어야 함
   const second = await applyToExhibition(api, created.id, a2Tok);
+  expect(first.status()).toBe(201);
+  expect(second.status(), '정원 1명이어도 두 번째 지원은 받는다').toBe(201);
+
+  const accept = (appId: number) => api.patch(`${API}/exhibitions/${created.id}/applications/${appId}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
+  expect((await accept((await first.json()).id)).status()).toBe(200);
+  const over = await accept((await second.json()).id);
+  expect(over.status(), '정원(1명)을 넘는 수락은 막혀야 함').toBe(400);
+  expect((await over.json()).error).toContain('선정 인원');
   await api.dispose();
-  expect(second.status(), '정원 초과 2번째 지원은 막혀야 함').toBe(400);
 });
 
 test('권한 매트릭스: Admin은 갤러리 목록에서 찜 버튼이 없다', async ({ browser }) => {

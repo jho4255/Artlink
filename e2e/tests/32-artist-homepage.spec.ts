@@ -219,7 +219,9 @@ test.describe('경력 배치', () => {
     //    그 사이에 재면 요소가 없다(전체 실행에서만 드러났다: 앞 스펙이 인스타 주소를 넣어 핸들이 생긴다)
     await expect(page.locator('li', { hasText: '개인전 하나' })).toBeVisible({ timeout: 15000 });
 
-    const sizes = await page.evaluate(() => {
+    // ⚠️ 한 번만 재지 말 것 — `/portfolio/1` → `/@핸들` 로 갈아끼우며 다시 그려지는 순간에 재면 null 이다(전체 실행에서만,
+    //    앞 스펙이 핸들을 만든 뒤에 드러났다 · 2026-09-27). 잡힐 때까지 다시 잰다.
+    const measure = () => page.evaluate(() => {
       // 항목 이름은 <p> 안에 아이콘(svg)과 함께 있다 — 'children 이 없는 요소' 로 찾으면 못 찾는다
       const label = Array.from(document.querySelectorAll('p'))
         .find(e => e.textContent?.trim() === '개인전') as HTMLElement | undefined;
@@ -232,6 +234,8 @@ test.describe('경력 배치', () => {
         weight: getComputedStyle(label).fontWeight,
       };
     });
+    await expect.poll(measure, { timeout: 10000, message: '경력 항목 이름을 화면에서 못 찾았다' }).not.toBeNull();
+    const sizes = await measure();
     expect(sizes, '경력 항목 이름을 화면에서 못 찾았다').not.toBeNull();
     expect(sizes!.label, '항목 이름이 내용보다 작다 — 어디서 개인전이 끝나는지 안 읽힌다').toBeGreaterThan(sizes!.line);
     await ctx.close();
@@ -246,13 +250,15 @@ test.describe('경력 배치', () => {
     await expect(page.locator('p', { hasText: /^수상/ })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('p', { hasText: /^개인전$/ })).toBeVisible();
 
-    const gap = await page.evaluate(() => {
+    const measureGap = () => page.evaluate(() => {
       const ps = Array.from(document.querySelectorAll('p')) as HTMLElement[];
       const solo = ps.find(e => e.textContent?.trim() === '개인전');
       const award = ps.find(e => /^수상/.test(e.textContent?.trim() || ''));
       if (!solo || !award) return null;
       return award.getBoundingClientRect().top - solo.getBoundingClientRect().bottom;
     });
+    await expect.poll(measureGap, { timeout: 10000, message: '경력 항목을 못 찾았다' }).not.toBeNull();
+    const gap = await measureGap();
     expect(gap, '경력 항목을 못 찾았다').not.toBeNull();
     expect(gap!, `개인전과 수상이 ${Math.round(gap!)}px 떨어져 있다 — 무게 기반 배치가 안 걸렸다`).toBeLessThan(400);
     await ctx.close();

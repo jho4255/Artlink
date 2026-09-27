@@ -1,0 +1,27 @@
+{
+  "_readme": "작가 지원 약관의 판본 목록. 동의 기록(Application.termsVersion·termsTextHash·termsAgreedAt)으로 그 작가가 실제로 본 전문을 찾는 곳이다. 새 판본은 맨 뒤에 추가하고 file 의 SHA-256 을 hash 에 적는다(backend/src/__tests__/terms-consistency.test.ts 가 대조한다). 자세한 사정은 README.md.",
+  "versions": [
+    {
+      "version": "artist_apply_2026-07-03",
+      "hash": "b6cbfa5e3c43cc61b1b6639dd253bcca71884cd463e94c101a99d24ded3bb2fb",
+      "file": "artist_apply_2026-07-03.txt",
+      "shown": "2026-07-04 ~ 2026-09-05 배포 전",
+      "note": "제1~6조"
+    },
+    {
+      "version": null,
+      "hash": "9308d78ac9c71b566a82498f557d188f84e1a2edbd811af3364132b39482f400",
+      "file": "artist_apply_2026-09-05.txt",
+      "shown": "2026-09-05 배포 ~ 2026-09-27 배포 전",
+      "recordedAs": { "version": "artist_apply_2026-07-03", "hash": "b6cbfa5e3c43cc61b1b6639dd253bcca71884cd463e94c101a99d24ded3bb2fb" },
+      "note": "제7조(정산 무응답 3일 자동 수락)·제8조(정원 및 마감) 추가. 버전·해시를 올리지 않아 이 기간의 동의 기록은 7월 판본을 가리킨다 — 기록된 시각으로 이 판본을 찾을 것"
+    },
+    {
+      "version": "artist_apply_2026-09-27",
+      "hash": "d35984a537b2b610891499f4109ad39d8632b200d3aa38d64f9740900a858f1f",
+      "file": "artist_apply_2026-09-27.txt",
+      "shown": "2026-09-27 배포 ~",
+      "note": "제4조(초대·초대 코드 참여 시 제공 정보)·제8조(정원 = 선정 인원, 초대 코드) 개정"
+    }
+  ]
+}

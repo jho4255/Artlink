@@ -4,7 +4,7 @@ import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 /**
  * known-issues.md 일괄 수정 검증
- * - KI-2: 공모 정원 초과 지원 차단
+ * - KI-2: 공모 정원 초과 — 2026-09-27 부터 정원은 '선정 인원'(지원은 무제한, 수락에서 막는다)
  * - KI-3: 삭제된 대상의 수정요청 승인 시 친절한 404
  */
 describe('Known issues 수정', () => {
@@ -26,41 +26,52 @@ describe('Known issues 수정', () => {
       });
     }
 
-    it('정원이 찬 뒤 추가 지원하면 400', async () => {
+    // 2026-09-27 — 정원은 '선정 인원'이다(사용자 결정). 예전(KI-2, 2026-07)엔 지원 수로 막아 정원 5명이면 선착순 5명만 지원할 수 있었다.
+    //   지금은 지원은 무제한, 정원은 **수락**에서 지킨다. 테스트 이름의 KI-2 는 '정원을 넘겨 선정되지 않는다'로 이어진다.
+    const apply = (exId: number, artistId: number) => request.post(`/api/exhibitions/${exId}/apply`)
+      .set('Authorization', `Bearer ${authToken(artistId, 'ARTIST')}`)
+      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+    const setStatus = (exId: number, appId: number, status: string) => request.patch(`/api/exhibitions/${exId}/applications/${appId}`)
+      .set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ status });
+    async function extraArtist(n: number) {
+      const u = await testPrisma.user.create({ data: { email: `cap${n}@test.local`, name: `정원작가${n}`, role: 'ARTIST', provider: 'LOCAL' } });
+      return u.id;
+    }
+
+    it('정원을 넘겨도 지원은 받는다(201) — 정원은 지원자 수가 아니다', async () => {
       const ex = await makeExhibition(1);
-      const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      expect(r1.status).toBe(201);
-      const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      expect(r2.status).toBe(400);
-      expect(r2.body.error).toContain('마감');
+      expect((await apply(ex.id, 1)).status).toBe(201);
+      expect((await apply(ex.id, 2)).status).toBe(201);
+      const extra = await extraArtist(1);
+      expect((await apply(ex.id, extra)).status).toBe(201);
     });
 
-    it('정원이 남아있으면 정상 지원(201)', async () => {
+    it('선정 인원이 찬 뒤 수락하면 400', async () => {
+      const ex = await makeExhibition(1);
+      const a1 = await apply(ex.id, 1); const a2 = await apply(ex.id, 2);
+      expect((await setStatus(ex.id, a1.body.id, 'ACCEPTED')).status).toBe(200);
+      const r = await setStatus(ex.id, a2.body.id, 'ACCEPTED');
+      expect(r.status).toBe(400);
+      expect(r.body.error).toContain('선정 인원(1명)');
+      // 거절로는 바꿀 수 있다 — 정원과 무관
+      expect((await setStatus(ex.id, a2.body.id, 'REJECTED')).status).toBe(200);
+    });
+
+    it('거절된 지원은 선정 인원에 들어가지 않는다', async () => {
+      const ex = await makeExhibition(1);
+      const a1 = await apply(ex.id, 1); const a2 = await apply(ex.id, 2);
+      expect((await setStatus(ex.id, a1.body.id, 'REJECTED')).status).toBe(200);
+      expect((await setStatus(ex.id, a2.body.id, 'ACCEPTED')).status).toBe(200);
+    });
+
+    it('동시에 수락해도 정원을 넘기지 않는다(일괄 수락은 한 건씩 동시에 들어온다)', async () => {
       const ex = await makeExhibition(2);
-      const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      expect(r1.status).toBe(201);
-      expect(r2.status).toBe(201);
-    });
-
-    it('거절된 지원은 정원에서 제외되어 슬롯이 복구됨', async () => {
-      const ex = await makeExhibition(1);
-      // 작가1 지원 → 정원 참
-      const r1 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      expect(r1.status).toBe(201);
-      // 갤러리 오너(3)가 작가1 거절
-      const rej = await request.patch(`/api/exhibitions/${ex.id}/applications/${r1.body.id}`)
-        .set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ status: 'REJECTED' });
-      expect(rej.status).toBe(200);
-      // 작가2는 이제 지원 가능해야 함 (거절이 슬롯을 점유하지 않음)
-      const r2 = await request.post(`/api/exhibitions/${ex.id}/apply`)
-        .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`).send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-      expect(r2.status).toBe(201);
+      const ids: number[] = [];
+      for (const artist of [1, 2, await extraArtist(2), await extraArtist(3), await extraArtist(4)]) ids.push((await apply(ex.id, artist)).body.id);
+      const results = await Promise.all(ids.map((id) => setStatus(ex.id, id, 'ACCEPTED')));
+      expect(results.filter((r) => r.status === 200)).toHaveLength(2);
+      for (const r of results.filter((x) => x.status !== 200)) expect(r.body.error).toContain('선정 인원');
+      expect(await testPrisma.application.count({ where: { exhibitionId: ex.id, status: 'ACCEPTED' } })).toBe(2);
     });
   });
 

@@ -35,6 +35,7 @@ import { splitIntoColumns } from '@/lib/careerColumns';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
 import { normalizePdfDesign, type PortfolioBookData, type PdfDesign } from '@/lib/portfolioFormats';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
+import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import { portfolioFileKind } from '@/lib/portfolioFile';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -85,6 +86,10 @@ interface GalleryOperationOverview {
   status: string;
   /** 'ADMIN'이면 아트링크 주최 공모 — 우리 갤러리는 운영만 위임받았다 */
   hostType?: 'GALLERY' | 'ADMIN';
+  /** 공모만 진행 — 작가 자료·판매/정산 칸을 그리지 않는다 */
+  recruitOnly?: boolean;
+  /** 선정 인원(정원). 지원은 무제한이고 수락이 이 수를 넘지 못한다(2026-09-27) */
+  capacity?: number;
   rejectReason?: string | null;
   deadlineStart?: string | null;
   deadline?: string | null;
@@ -2161,10 +2166,15 @@ function ApplicationsSection() {
     CLOSED: buckets.CLOSED.length,
   };
 
+  // 초대 코드 입력칸은 **목록이 비어 있어도** 보인다 — 코드를 받고 막 가입한 작가는 여기가 첫 화면이다(2026-09-27)
   return visibleApps.length === 0 && invites.length === 0 ? (
-    <p className="text-gray-400 text-center py-8">아직 지원하거나 참여한 전시가 없습니다.</p>
+    <div className="space-y-3">
+      <JoinCodeInput />
+      <p className="text-gray-400 text-center py-8">아직 지원하거나 참여한 전시가 없습니다.</p>
+    </div>
   ) : (
     <div className="space-y-3">
+      <JoinCodeInput />
       {/* 진행상태 필터 탭 — 심사중 / 진행중 / 진행종료 */}
       <div className="flex gap-1.5 flex-wrap">
         {MY_EXHIBITION_TABS.map(f => (
@@ -2914,7 +2924,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       <label className="text-xs text-gray-500">모집 작가 수</label>
                       <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full mt-0.5 p-2 border border-gray-200 rounded-lg text-sm" />
                     </div>
-                    <div></div>
+                    {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
+                    <p className="self-end pb-2 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
                     <div>
                       <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
                       <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
@@ -3137,9 +3148,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                                   D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
                                 </span>
                               )}
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusClass}`}>
-                                {statusLabels[item.status] || item.status}
-                              </span>
+                              {/* 승인 대기·반려는 단계 배지와 글자가 같다 — 두 번 찍지 않는다(2026-09-27) */}
+                              {(statusLabels[item.status] || item.status) !== item.stage.label && (
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusClass}`}>
+                                  {statusLabels[item.status] || item.status}
+                                </span>
+                              )}
                               {settlement.issue > 0 && (
                                 <span className="rounded-full bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent">정산 이슈 {settlement.issue}</span>
                               )}
@@ -3200,26 +3214,32 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                         </div>
 
                         <div className="mt-4 border-y border-gray-100 py-4">
-                          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                          {/* 공모만 진행하면 작가 자료·판매/정산 단계가 없다 — 칸을 그리지 않는다(2026-09-27, 예전엔 '0/0 제출 확인 완료'가 떴다) */}
+                          <div className={`grid gap-4 sm:grid-cols-2 ${item.recruitOnly ? '' : 'xl:grid-cols-4'}`}>
                             <div>
                               <p className="text-xs text-gray-400">지원자</p>
                               <p className="mt-1 text-lg font-semibold text-gray-950">{apps.total}명</p>
-                              <p className="text-xs text-gray-500">수락 {apps.accepted} · 대기 {apps.submitted + apps.reviewed} · 거절 {apps.rejected}</p>
+                              {/* 정원 = 선정 인원 — 수락이 몇 자리 남았는지 여기서 보인다 */}
+                              <p className="text-xs text-gray-500">수락 {apps.accepted}{item.capacity ? `/${item.capacity}` : ''} · 대기 {apps.submitted + apps.reviewed} · 거절 {apps.rejected}</p>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-400">작가 자료</p>
-                              <p className="mt-1 text-lg font-semibold text-gray-950">{submissions.complete}/{submissions.required}</p>
-                              <p className="text-xs text-gray-500">{submissionTodo > 0 ? `${submissionTodo}명 자료 대기` : '제출 확인 완료'}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-400">판매/정산</p>
-                              <p className="mt-1 text-lg font-semibold text-gray-950">{item.counts.sales.total}건</p>
-                              <p className="text-xs text-gray-500">승인 {settlement.approved} · 대기 {settlement.pending}</p>
-                            </div>
+                            {!item.recruitOnly && (
+                              <div>
+                                <p className="text-xs text-gray-400">작가 자료</p>
+                                <p className="mt-1 text-lg font-semibold text-gray-950">{submissions.required > 0 ? `${submissions.complete}/${submissions.required}` : '—'}</p>
+                                <p className="text-xs text-gray-500">{submissions.required === 0 ? '수락한 작가가 아직 없어요' : submissionTodo > 0 ? `${submissionTodo}명 자료 대기` : '제출 확인 완료'}</p>
+                              </div>
+                            )}
+                            {!item.recruitOnly && (
+                              <div>
+                                <p className="text-xs text-gray-400">판매/정산</p>
+                                <p className="mt-1 text-lg font-semibold text-gray-950">{item.counts.sales.total}건</p>
+                                <p className="text-xs text-gray-500">승인 {settlement.approved} · 대기 {settlement.pending}</p>
+                              </div>
+                            )}
                             <div>
                               <p className="text-xs text-gray-400">일정</p>
                               <p className="mt-1 text-sm font-medium text-gray-950">공모 {operationRange(item.deadlineStart, item.deadline)}</p>
-                              <p className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</p>
+                              {!item.recruitOnly && <p className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</p>}
                             </div>
                           </div>
                         </div>

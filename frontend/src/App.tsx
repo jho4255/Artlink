@@ -49,6 +49,7 @@ const FeedPage = lazyWithReload(() => import('@/pages/FeedPage'));
 const GalleryRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.GalleryRegisterPage })));
 const ExhibitionRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ExhibitionRegisterPage })));
 const ShowRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ShowRegisterPage })));
+const JoinExhibitionPage = lazyWithReload(() => import('@/pages/JoinExhibitionPage'));
 const NotFoundPage = lazyWithReload(() => import('@/pages/NotFoundPage'));
 
 /**
@@ -117,6 +118,8 @@ export default function App() {
         <Route path="/exhibitions" element={<ExhibitionsPage />} />
         <Route path="/exhibitions/new" element={<ProtectedRoute><ExhibitionRegisterPage /></ProtectedRoute>} />
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
+        {/* 초대 코드 참여(2026-09-27) — 비로그인도 공모를 먼저 본다. 참여는 페이지 안에서 로그인 게이팅 */}
+        <Route path="/join/:code" element={<JoinExhibitionPage />} />
         <Route path="/exhibitions/:id/operation/new" element={
           <ProtectedRoute><OperationPage /></ProtectedRoute>
         } />

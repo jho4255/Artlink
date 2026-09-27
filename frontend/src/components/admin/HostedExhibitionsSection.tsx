@@ -393,7 +393,8 @@ export default function HostedExhibitionsSection() {
                   <label className="text-xs text-gray-500">모집 작가 수</label>
                   <input type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-gray-200 p-2 text-sm" />
                 </div>
-                <div />
+                {/* 정원 = 선정 인원(2026-09-27) — 갤러리 등록 폼과 같은 안내 */}
+                <p className="self-end pb-2 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
                 {(([
                   ['deadlineStart', '공모 시작일'],
                   ['deadline', '공모 마감일'],

@@ -1019,8 +1019,8 @@ PC/모바일 × 4계정 Playwright 전수 점검에서 나온 항목 일괄 반�
 
 ### 초대 남용 방지 / 정원 연동
 - **하루 10명 상한**(갤러리 계정 기준 24시간 롤링, 공모를 나눠 보내도 합산).
-- **정원이 찬 공모**는 ① 초대 자체가 400 ② 받은 초대 목록에서 자동 제외 ③ 상세 `invited=false`.
-  ⚠️ **DB에서 지우지 않고 조회 시점 계산으로 감춘다** — 거절이 나오면 슬롯이 복구되므로(거절은 정원에서 제외) 그때 다시 유효해져야 한다. 이미 지원한 건은 상태 확인이 필요하므로 정원과 무관하게 남긴다. 세 지점 모두 지원 API와 **동일한 계산식**(`status != 'REJECTED'`, 공용 헬퍼 `activeApplicationCounts`)을 쓴다.
+- **선정 인원(수락 수)이 찬 공모**는 ① 초대 자체가 400 ② 받은 초대 목록에서 자동 제외 ③ 상세 `invited=false`. (2026-09-27 부터 정원 = 선정 인원 — 아래 「정원 = 선정 인원 · 초대 코드」)
+  ⚠️ **DB에서 지우지 않고 조회 시점 계산으로 감춘다** — 수락이 되돌려지면(개발자 도구) 자리가 다시 생기므로 그때 다시 유효해져야 한다. 이미 지원한 건은 상태 확인이 필요하므로 정원과 무관하게 남긴다. 계산은 `lib/inviteCode.ts` 의 `countSelected`/`selectedCounts`(`status = 'ACCEPTED'`) 한 곳 — 옛 `activeApplicationCounts`(거절 제외 전체)는 지웠다.
 - 작가의 초대 **삭제**(`PATCH /invites/:id`)는 행을 지우지 않고 `status='DECLINED'` — 유니크 제약(exhibitionId+artistId)이 살아 있어야 **재초대 스팸**이 막힌다. 작가 목록에서는 완전히 사라진다.
 
 ### 검증
@@ -2206,4 +2206,29 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   `51`(공모만 진행이면 전시 일자 칸이 사라진다) · `53` 핸들 2건(36번 스펙이 작가 1 닉네임을 바꿔 둔 순서 의존) · `00-smoke` desktop(숨은 가로 탭을 라벨로 집음, 규칙 35) ·
   `38` 동의 시각(DATABASE_URL 에 Prisma 쿼리 파라미터가 붙으면 psql 이 못 읽는다 — `?connection_limit` 없이 넘기면 통과).
   `32` 경력 배치 1건은 `/portfolio/1` → `/@핸들` 재마운트 경합이라 스펙을 고쳤다(요소가 보일 때까지 기다린다).
+
+## 정원 = 선정 인원 · 공모 초대 코드 (2026-09-27)
+사용자 결정 셋: ① 지원은 제한 없이 받고 정원은 선정(수락) 인원 ② 이미 선정이 끝난 공모를 옮겨 올 수 있게 **공모당 초대 코드 하나**(작가가 넣으면 곧바로 수락)
+③ 공모는 그대로 공개(코드 전용 비공개 모드 없음). 같은 날 테스트에서 찾은 화면 문제 다섯(아래)도 함께 고쳤다.
+- **정원** — `backend/src/lib/inviteCode.ts` `countSelected`/`selectedCounts`(ACCEPTED 수), `withSeatLock`(Serializable + P2034 재시도).
+  지원(`POST /:id/apply`)은 정원 검사를 없애고 중복만 DB unique(P2002 → '이미 지원한 공모입니다')로 막는다. 막는 곳 넷: 수락 상태 변경 · 1:1 초대 · 초대 수락 · 코드 참여.
+- **초대 코드** — 모델 `ExhibitionJoinCode { exhibitionId @id, code @unique, createdAt }`(Exhibition 컬럼 아님 — 공개 응답 유출 방지), `Application.joinedVia`(null·INVITE·CODE).
+  마이그레이션 `20260927120000_exhibition_invite_code`. API: 운영자 `GET/POST/DELETE /exhibitions/:id/join-code`, 공개 `GET /exhibitions/join/:code`(미리보기, optionalAuth),
+  작가 `POST /exhibitions/join {code}`. 화면: `components/shared/JoinCodePanel.tsx`(ApplicantManager 맨 위) · `JoinCodeInput.tsx`([내 전시]·공모 상세) ·
+  `pages/JoinExhibitionPage.tsx`(`/join/:code`) · 지원자 목록 '코드 참여' 배지.
+- **화면 수정** — 공모 상세 `myApplication`(지원한 작가에게 상태) · 지원서 불러오기 때 빈 경력·파일 '없음' 자동 · 갤러리 카드([공모만 진행] 칸 정리, 중복 배지, `수락 N/정원`, 0/0 문구) ·
+  일괄 수락 실패 토스트에 서버 이유 · 등록 폼 정원 안내.
+- **약관** — 제8조를 정원 = 선정 인원 · 초대 코드 동의로 고치고 버전 `artist_apply_2026-09-27`·해시를 올렸다. 9-05 에 제7조를 넣으며 버전을 안 올린 문제를 발견(과거 기록은 유지).
+  `terms-consistency.test.ts` 로 재발 방지. 이용약관(`TermsPage`) 자동 처리 절의 정원 문구도 같이.
+- 테스트: `invite-code.test.ts`(20) · KI-2 묶음 재작성 · `explore-engagement`·`dev-settings-revert` 정원 케이스 갱신 · `terms-consistency.test.ts`(3) · 프론트 `inviteCode.test.ts`(4) ·
+  e2e `55-invite-code.spec.ts`(3) · `06`·`08` 재작성. 로컬 실측: 갤러리 코드 생성 → 비로그인 링크 → 로그인 복귀 → 작가 2명(링크·입력칸) 참여 → 갤러리 '코드 참여' 2 · 수락 2/5, 콘솔·API 오류 0.
+
+### 2026-09-27 추가 — 약관 판본 보관 · 갤러리 지난 활동 사진
+- **약관**: 작가 지원 약관 제4조 ②(초대·초대 코드 참여 시 홈페이지 정보 제공) 추가, 해시 재계산. 판본 전문 보관소 `docs/terms-history/`
+  (`artist_apply.json` 목록 + 판본별 txt + README — 2026-09-05~09-27 동의 기록은 버전이 7월로 남아 있으나 실제로 본 글은 09-05 판본).
+  갤러리 공모 등록 약관 제8조, 이용약관 [변경 이력]·최종 수정일, 개인정보처리방침 4항(갤러리 회원 제공)·1항(초대·코드 참여 시 수집 항목).
+- **사진 격자** `components/shared/SquarePhotoGrid.tsx` — 갤러리 페이지 지난 활동 기록 사진·지난 공모 홍보 사진. 3열(<640 2열), 정사각 칸, contain.
+  `MultiImageUpload` 미리보기도 정사각 + contain, 칸 아래 슬롯 `renderBelow`(홍보 사진 설명 입력).
+- **여러 장 업로드**: 기록 폼 `onChange` 를 updater 전용으로(연달아 오는 onAdd 가 앞 장을 덮던 결함). 홍보 사진은 여러 장 + 사진별 설명을 차례로 POST
+  (중간 실패 시 올라간 만큼 목록에서 빼고 알린다). `GET /galleries/:id` 의 `promoPhotos` 정렬 desc → **asc**(올린 순서).
 

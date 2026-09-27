@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
 import api from '@/lib/axios';
 import toast from 'react-hot-toast';
@@ -96,13 +96,21 @@ export default function ImageUpload({ value, onChange, onRemove, className = '',
 
 interface MultiImageUploadProps {
   images: { id?: number; url: string }[];
+  /**
+   * 한 장 올릴 때마다 부른다. ⚠️ 여러 장을 한꺼번에 고르면 **연달아 여러 번** 불리므로, 부르는 쪽은 반드시
+   * 함수형 갱신(`setX(prev => [...prev, url])`)으로 받을 것 — 렌더 시점의 배열에 붙이면 마지막 한 장만 남는다
+   * (갤러리 지난 활동 기록이 그랬다, 2026-09-27).
+   */
   onAdd: (url: string) => void;
   onRemove: (index: number) => void;
   maxCount?: number;
+  /** 사진 칸 아래에 붙일 것(예: 사진마다 설명 입력칸). 있으면 칸이 넓어지도록 열 수를 줄인다 */
+  renderBelow?: (index: number) => ReactNode;
 }
 
 // 다중 이미지 업로드 컴포넌트 (한번에 여러 장 선택 가능)
-export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: MultiImageUploadProps) {
+// 미리보기 칸은 정사각 + contain — 자르지 않는다(CLAUDE.md 18). 예전엔 h-24 + object-cover 라 세로 작품이 가운데만 보였다.
+export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30, renderBelow }: MultiImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
   const [dragOver, setDragOver] = useState(false);
@@ -159,25 +167,28 @@ export function MultiImageUpload({ images, onAdd, onRemove, maxCount = 30 }: Mul
       onDrop={handleDrop}
       className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
     >
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+      <div className={`grid gap-2 ${renderBelow ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-3 sm:grid-cols-4'}`}>
         {images.map((img, i) => (
-          <div key={i} className="relative group">
-            <img src={img.url} alt="" className="w-full h-24 object-cover rounded-lg" />
-            {/* 터치 기기에는 hover가 없으므로 항상 노출(md 이상에서만 hover 게이트), 히트 영역 44px */}
-            <button
-              onClick={() => onRemove(i)}
-              aria-label="이미지 삭제"
-              className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-            >
-              <span className="p-1 bg-accent text-white rounded-full shadow"><X size={12} /></span>
-            </button>
+          <div key={img.id ?? `${img.url}-${i}`} className="min-w-0">
+            <div className="relative group aspect-square rounded-lg bg-gray-50">
+              <img src={img.url} alt="" className="h-full w-full object-contain" />
+              {/* 터치 기기에는 hover가 없으므로 항상 노출(md 이상에서만 hover 게이트), 히트 영역 44px */}
+              <button
+                onClick={() => onRemove(i)}
+                aria-label="이미지 삭제"
+                className="absolute top-0 right-0 min-h-[44px] min-w-[44px] flex items-start justify-end p-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+              >
+                <span className="p-1 bg-accent text-white rounded-full shadow"><X size={12} /></span>
+              </button>
+            </div>
+            {renderBelow?.(i)}
           </div>
         ))}
         {images.length < maxCount && (
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className={`h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 text-gray-600 bg-gray-50' : 'border-gray-200 text-gray-400 hover:border-gray-400'}`}
+            className={`aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 text-gray-600 bg-gray-50' : 'border-gray-200 text-gray-400 hover:border-gray-400'}`}
           >
             {uploading ? (
               <>

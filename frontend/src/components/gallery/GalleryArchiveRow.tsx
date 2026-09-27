@@ -1,5 +1,5 @@
 import { Edit3, Trash2 } from 'lucide-react';
-import Thumb from '@/components/shared/Thumb';
+import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import type { GalleryArchive } from '@/types';
 
 /**
@@ -37,16 +37,12 @@ export default function GalleryArchiveRow({ archive, canEdit, onEdit, onDelete, 
         <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-gray-700 break-keep [overflow-wrap:anywhere]">{archive.body}</p>
       )}
 
-      {archive.images.length > 0 && (
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-          {archive.images.map((url, i) => (
-            <button key={`${url}-${i}`} onClick={() => onOpenImage(archive.images, i)} className="block cursor-zoom-in">
-              {/* 목록 칸이라 t240 이 아니라 t800 — 24px 칸이 아니라 100~160px 이라 240 은 뭉개진다 */}
-              <Thumb src={url} size="grid" alt="" loading="lazy" className="h-24 w-full rounded-lg object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
+      {/* 사진은 작가 홈페이지 작품 격자와 같은 정사각 칸 — 자르지 않는다 */}
+      <SquarePhotoGrid
+        className="mt-4"
+        photos={archive.images.map((url, i) => ({ url, key: `${url}-${i}` }))}
+        onOpen={(i) => onOpenImage(archive.images, i)}
+      />
     </div>
   );
 }

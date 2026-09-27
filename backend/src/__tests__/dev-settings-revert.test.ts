@@ -132,20 +132,22 @@ describe('수락→거절 되돌리기 (토글 ON 시)', () => {
     expect(r.body.error).toContain('정산');
   });
 
-  it('되돌리기 후 정원 슬롯 복구 — 정원 1명 공모에 다른 작가가 지원 가능', async () => {
+  it('되돌리기 후 선정 자리 복구 — 정원 1명 공모에 다른 작가를 수락할 수 있다', async () => {
     await setRevertFlag(true);
     await testPrisma.exhibition.update({ where: { id: exId }, data: { capacity: 1 } });
 
-    // 정원 찬 상태에서는 지원 불가
+    // 지원은 정원과 무관하게 받는다(2026-09-27 — 정원 = 선정 인원). 자리가 찬 상태에서는 수락이 막힌다
     const artist2Tok = authToken(2, 'ARTIST');
     const applyPayload = { biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
-    const before = await request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(applyPayload);
-    expect(before.status).toBe(400);
+    const applied = await request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(applyPayload);
+    expect(applied.status).toBe(201);
+    const acceptOther = () => request.patch(`/api/exhibitions/${exId}/applications/${applied.body.id}`)
+      .set('Authorization', `Bearer ${ownerTok}`).send({ status: 'ACCEPTED' });
+    expect((await acceptOther()).status).toBe(400);
 
-    // 되돌리면 슬롯 복구 → 지원 성공
+    // 되돌리면 자리 복구 → 수락 성공
     expect((await patch('REJECTED')).status).toBe(200);
-    const after = await request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(applyPayload);
-    expect(after.status).toBe(201);
+    expect((await acceptOther()).status).toBe(200);
   });
 
   it('되돌리기 시 작가에게 상태변경 알림 발송', async () => {

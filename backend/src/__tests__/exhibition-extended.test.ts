@@ -478,6 +478,22 @@ describe('Promo photos', () => {
     await testPrisma.exhibition.delete({ where: { id: ex.id } });
   });
 
+  it('여러 장을 차례로 올리면 갤러리 페이지에 올린 순서대로 나온다 (한 번에 고른 사진이 거꾸로 서지 않게)', async () => {
+    const ex = await createExhibition({ title: 'Promo Order Test' });
+    for (const n of [1, 2, 3]) {
+      const r = await request
+        .post(`/api/exhibitions/${ex.id}/promo-photos`)
+        .set('Authorization', `Bearer ${galleryToken}`)
+        .send({ url: `https://example.com/p${n}.jpg`, caption: `사진${n}` });
+      expect(r.status).toBe(201);
+    }
+    const g = await request.get(`/api/galleries/${galleryId}`);
+    const mine = g.body.exhibitions.find((e: { id: number }) => e.id === ex.id);
+    expect(mine.promoPhotos.map((p: { caption: string }) => p.caption)).toEqual(['사진1', '사진2', '사진3']);
+
+    await testPrisma.exhibition.delete({ where: { id: ex.id } });
+  });
+
   it('비Gallery 역할 홍보 사진 등록 → 403', async () => {
     const ex = await createExhibition({ title: 'Promo 403 Test' });
     const res = await request

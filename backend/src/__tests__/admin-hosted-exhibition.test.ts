@@ -7,6 +7,7 @@
  *      권한이 새면 안 된다 — 남의 공모 지원자(개인정보)가 통째로 열리는 사고가 된다.
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 import { request, authToken, cleanDb, seedUsers, testPrisma } from './helpers';
 
 const ADMIN = 4;
@@ -130,7 +131,7 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
         biography: '약력입니다',
         artworkImages: ['https://example.com/a.jpg'],
         termsAgreed: true,
-        termsVersion: 'artist_apply_2026-07-03',
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
     expect(res.status).toBe(201);
 
@@ -161,7 +162,7 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
         biography: '약력입니다',
         artworkImages: ['https://example.com/a.jpg'],
         termsAgreed: true,
-        termsVersion: 'artist_apply_2026-07-03',
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
 
     const res = await request.get(`/api/exhibitions/${created.id}/applications`)
@@ -285,7 +286,7 @@ describe('운영 갤러리 위임', () => {
         biography: '약력입니다',
         artworkImages: ['https://example.com/a.jpg'],
         termsAgreed: true,
-        termsVersion: 'artist_apply_2026-07-03',
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
     expect(res.status).toBe(201);
     const notis = await testPrisma.notification.findMany({ where: { type: 'NEW_APPLICANT' } });
@@ -565,7 +566,7 @@ describe('공개 화면 회귀', () => {
         biography: '약력입니다',
         artworkImages: ['https://example.com/a.jpg'],
         termsAgreed: true,
-        termsVersion: 'artist_apply_2026-07-03',
+        termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
     expect(res.status).toBe(201);
   });

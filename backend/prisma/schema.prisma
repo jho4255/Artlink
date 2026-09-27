@@ -9,28 +9,28 @@ datasource db {
 
 // 사용자 모델
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  name         String
-  nickname     String?   @unique // 공개 표시명 (설정 시 이름 대신 노출), 중복 불가
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  name            String
+  nickname        String?   @unique // 공개 표시명 (설정 시 이름 대신 노출), 중복 불가
   /// 홈페이지 주소 `/@handle` (소문자·숫자·`.`·`_` 3~30자, 인스타그램 아이디 규칙). 없으면 인스타 아이디에서
   /// 한 번 자동으로 만든다(lib/handle.ts `ensureHandle`, 2026-09-16). 숫자 주소 `/portfolio/:id` 는 계속 유효.
-  handle       String?   @unique
-  role         String // ARTIST, GALLERY, ADMIN
-  avatar       String?
-  phone        String? // 가입 시 입력받는 연락처 (기존 유저는 null 허용)
-  instagramUrl String? // 작가 프로필 인스타그램 주소 (선택)
-  password     String? // bcrypt hash (LOCAL auth only)
-  provider     String    @default("LOCAL") // LOCAL, KAKAO, NAVER, GOOGLE
-  providerId   String? // OAuth provider user ID
-  deletedAt    DateTime? // 회원탈퇴(소프트 삭제) 시각. null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'
-  lastSeenAt   DateTime? // 최근 인증된 접속 시각. 기존 유저는 다음 접속 전까지 null
+  handle          String?   @unique
+  role            String // ARTIST, GALLERY, ADMIN
+  avatar          String?
+  phone           String? // 가입 시 입력받는 연락처 (기존 유저는 null 허용)
+  instagramUrl    String? // 작가 프로필 인스타그램 주소 (선택)
+  password        String? // bcrypt hash (LOCAL auth only)
+  provider        String    @default("LOCAL") // LOCAL, KAKAO, NAVER, GOOGLE
+  providerId      String? // OAuth provider user ID
+  deletedAt       DateTime? // 회원탈퇴(소프트 삭제) 시각. null 아니면 로그인 차단 + 공개 표시 '탈퇴한 회원'
+  lastSeenAt      DateTime? // 최근 인증된 접속 시각. 기존 유저는 다음 접속 전까지 null
   /// 가입 시 약관 동의 시각. **동의한 사실과 시점을 남긴다** — 분쟁 시 근거가 된다.
   /// null = 이 기능(2026-09-04) 이전에 가입한 회원. 소급해서 동의한 것으로 치지 않는다.
   termsAgreedAt   DateTime?
   privacyAgreedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Relations
   galleries             Gallery[]
@@ -62,8 +62,8 @@ model User {
   posts                 Post[]                 @relation("postAuthor")
   postComments          PostComment[]          @relation("postCommentAuthor")
   postLikes             PostLike[]             @relation("postLiker")
-  following             Follow[]               @relation("follower")   // 내가 이웃 추가한 사람들
-  followers             Follow[]               @relation("following")  // 나를 이웃 추가한 사람들
+  following             Follow[]               @relation("follower") // 내가 이웃 추가한 사람들
+  followers             Follow[]               @relation("following") // 나를 이웃 추가한 사람들
   stories               Story[]                @relation("storyAuthor")
   storyLikes            StoryLike[]            @relation("storyLiker")
   storyComments         StoryComment[]         @relation("storyCommentAuthor")
@@ -116,7 +116,7 @@ model Story {
   caption      String         @default("")
   images       String[]       @default([])
   visibility   String         @default("NEIGHBORS") // PUBLIC | NEIGHBORS
-  likeCount    Int            @default(0)  // 비정규화 카운트
+  likeCount    Int            @default(0) // 비정규화 카운트
   commentCount Int            @default(0)
   likes        StoryLike[]
   comments     StoryComment[]
@@ -151,21 +151,21 @@ model StoryComment {
 
 // ── 스토리 하이라이트 (인스타그램 하이라이트처럼 프로필에 영구 보존) ──
 model StoryHighlight {
-  id              Int      @id @default(autoincrement())
-  userId          Int
-  user            User     @relation("storyHighlights", fields: [userId], references: [id], onDelete: Cascade)
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation("storyHighlights", fields: [userId], references: [id], onDelete: Cascade)
   /// 하이라이트 이름 (e.g., "좋아요", "여행")
-  name            String
+  name         String
   /// 이 하이라이트에 포함된 Story id 배열
-  storyIds        Int[]    @default([])
+  storyIds     Int[]    @default([])
   /// 커버 사진으로 사용할 Story (첫 번째 스토리 또는 선택한 스토리)
-  coverStoryId    Int?
+  coverStoryId Int?
   /// 공개 여부 (기본값: true)
-  isPublic        Boolean  @default(true)
+  isPublic     Boolean  @default(true)
   /// 프로필에서 표시 순서
-  order           Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, name])
   @@index([userId, order])
@@ -178,7 +178,7 @@ model AdBanner {
   title     String   @default("")
   linkUrl   String   @default("")
   active    Boolean  @default(true)
-  position  Int      @default(0)   // 정렬(작을수록 먼저)
+  position  Int      @default(0) // 정렬(작을수록 먼저)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -189,47 +189,47 @@ model AdBanner {
 /// 커뮤니티 탭(말머리) — **Admin 만** 만들고 고친다.
 /// 탭을 지워도 글은 안 지운다(onDelete: SetNull → '미분류'로 내려온다).
 model PostCategory {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
   /// 목록 쿼리(?category=)와 주소에 쓰는 키. 한글 이름과 별개로 안정적이어야 한다.
-  slug      String   @unique
+  slug           String   @unique
   /// 탭 순서 (작을수록 앞). 같으면 id 순
-  order     Int      @default(0)
+  order          Int      @default(0)
   /// 끄면 탭이 안 보인다 — 글은 그대로 남는다(삭제 대신 쓰는 안전한 숨기기)
-  active    Boolean  @default(true)
+  active         Boolean  @default(true)
   /// 켜면 **Admin 만 이 탭에 글을 쓸 수 있다**(공지 탭 등). 읽기는 그대로 공개.
   /// ⚠️ 탭 이름이 '공지'인지로 판단하지 않는다 — 이름을 '안내'로 바꾸는 순간 조용히 풀린다.
-  writeAdminOnly Boolean @default(false)
-  createdAt DateTime @default(now())
-  posts     Post[]
+  writeAdminOnly Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  posts          Post[]
 
   @@index([order])
 }
 
 model Post {
-  id        Int      @id @default(autoincrement())
-  authorId  Int
-  author    User     @relation("postAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  id           Int           @id @default(autoincrement())
+  authorId     Int
+  author       User          @relation("postAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   /// 어느 탭의 글인가. null 이면 '미분류'(전체 탭에만 뜬다)
-  categoryId Int?
-  category   PostCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId   Int?
+  category     PostCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   /// 공지글 — Admin 만 지정. 목록에서 배지가 붙는다
-  notice    Boolean  @default(false)
+  notice       Boolean       @default(false)
   /// 고정 시각. null 이면 고정 아님. **Boolean 이 아니라 시각인 이유**: 고정 글이 여럿일 때
   /// 순서가 있어야 한다(최근에 고정한 것이 위). Admin 만 바꾼다
-  pinnedAt  DateTime?
-  title     String
-  body      String
+  pinnedAt     DateTime?
+  title        String
+  body         String
   // 첨부 사진 (우리 저장소 주소만). 순서 유지.
-  images    String[] @default([])
+  images       String[]      @default([])
   // 글마다 실명(닉네임+역할)/익명 선택 — true 면 응답에서 작성자 신원을 가린다
-  anonymous Boolean  @default(false)
+  anonymous    Boolean       @default(false)
   // 랭킹·목록을 매번 집계하지 않으려고 비정규화해서 들고 있는다
-  likeCount    Int   @default(0)
-  commentCount Int   @default(0)
-  viewCount    Int   @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  likeCount    Int           @default(0)
+  commentCount Int           @default(0)
+  viewCount    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   comments PostComment[]
   likes    PostLike[]
@@ -397,6 +397,7 @@ model Exhibition {
   settlementApprovals SettlementApproval[]
   invites             ExhibitionInvite[]
   chat                Chat?
+  joinCode            ExhibitionJoinCode?
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -435,17 +436,17 @@ model PromoPhoto {
 
 // 히어로 슬라이드
 model HeroSlide {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String?
-  imageUrl    String
+  id             Int      @id @default(autoincrement())
+  title          String
+  description    String?
+  imageUrl       String
   // 좁은 화면(모바일) 전용 이미지. 3:1 배너는 375px 에서 높이 125px 로 줄어 안에 든 글씨가 안 읽히므로
   // 세로형(4:5 권장)을 따로 받는다. 없으면 imageUrl 을 그대로 쓴다(2026-09-16).
   mobileImageUrl String?
-  linkUrl     String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  linkUrl        String?
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // 혜택
@@ -521,7 +522,7 @@ model Favorite {
 
 // 포트폴리오
 model Portfolio {
-  id                Int              @id @default(autoincrement())
+  id                Int                @id @default(autoincrement())
   biography         String?
   exhibitionHistory String? // (구) 전시이력 단일 텍스트 — career로 대체, 하위호환 위해 컬럼 유지
   career            String? // 경력 JSON: { artFair:[{year,content}], solo:[...], group:[...], education?, award? }
@@ -531,11 +532,11 @@ model Portfolio {
   themeId           String? // 마지막으로 고른 포트폴리오 포맷 (gallery|studio|story|archive)
   seriesInfo        String? // 시리즈 설명 JSON: [{ name, note }]
   designConfig      String? // 가이드형 디자인 JSON: { theme, works, sections:[{id,enabled}] }. null=기본(현재 모습)
-  userId            Int              @unique
-  user              User             @relation(fields: [userId], references: [id])
+  userId            Int                @unique
+  user              User               @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
   versions          PortfolioVersion[]
-  updatedAt         DateTime         @updatedAt
+  updatedAt         DateTime           @updatedAt
 }
 
 /// 포트폴리오 PDF **버전** — 작품 선택·순서·디자인을 묶어 이름 붙여 저장 (2026-09-16).
@@ -613,6 +614,9 @@ model Application {
   termsTextHash    String? // 동의한 약관 전문의 해시(SHA-256)
   status           String     @default("SUBMITTED") // SUBMITTED, REVIEWED, ACCEPTED, REJECTED
   rejectionAckedAt DateTime? // 거절을 작가가 '확인'한 시각. non-null이면 지원내역 목록에서 숨김
+  // 어떻게 들어왔나(2026-09-27) — null = 지원서를 내서, 'INVITE' = 1:1 초대 수락, 'CODE' = 초대 코드 입력.
+  // 갤러리 지원자 목록이 '코드 참여' 배지를 단다. 그 전의 초대 수락 행은 null 로 남아 있다(소급하지 않는다).
+  joinedVia        String?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @default(now()) @updatedAt // 상태 변경(수락/거절 등) 시각 추적
 
@@ -1012,19 +1016,19 @@ model ChatParticipant {
 }
 
 model ChatMessage {
-  id        Int      @id @default(autoincrement())
-  chatId    Int
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  senderId  Int
-  sender    User     @relation("chatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  id             Int      @id @default(autoincrement())
+  chatId         Int
+  chat           Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId       Int
+  sender         User     @relation("chatSender", fields: [senderId], references: [id], onDelete: Cascade)
   // 첨부만 있는 메시지(사진/동영상/파일)는 본문이 빈 문자열일 수 있다
-  content   String   @default("")
+  content        String   @default("")
   // 첨부 (사진/동영상/파일 한 건). 없으면 모두 null.
   attachmentUrl  String? // 업로드된 파일 주소
   attachmentType String? // IMAGE | VIDEO | FILE
   attachmentName String? // 원본 파일명 (FILE 다운로드 표시용)
   attachmentSize Int? // 바이트 (용량 표시용)
-  createdAt DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([chatId, createdAt])
 }
@@ -1036,9 +1040,9 @@ model ChatMessage {
 /// 승인 절차가 없고(지원·정산 같은 뒷단계가 없으므로), 공개 갤러리 페이지의 '지난 전시·아트페어'에
 /// 아트링크 공모와 **한 줄로 섞여** 날짜순으로 나온다. 작가가 갤러리를 고를 때 보는 이력이다.
 model GalleryArchive {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   galleryId Int
-  gallery   Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  gallery   Gallery   @relation(fields: [galleryId], references: [id], onDelete: Cascade)
   title     String
   /// 장소 — "서울 코엑스", "갤러리 엠 2층". 갤러리 자기 공간이면 비워 둔다.
   venue     String?
@@ -1051,9 +1055,21 @@ model GalleryArchive {
   /// 후기·설명
   body      String?
   /// 사진 — **우리 저장소 주소만**(routes/gallery.ts 가 검증). 외부 URL 주입 방지.
-  images    String[] @default([])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  images    String[]  @default([])
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([galleryId, date])
+}
+
+// 공모 초대 코드 (2026-09-27) — 이미 선정이 끝난 공모를 ArtLink 로 옮겨 올 때, 갤러리가 코드 하나를 선정 작가들에게 돌리면
+// 코드를 넣은 작가가 **지원서 없이 곧바로 수락(ACCEPTED)** 된다. 공모당 하나, 행이 없으면 코드 없음(끔).
+// 새로 발급하면 옛 코드는 그 순간 죽는다. 형식·판정은 lib/inviteCode.ts 한 곳. 정원(=선정 인원)은 그대로 지킨다.
+// ⚠️⚠️ **Exhibition 컬럼으로 두지 말 것.** 공모 상세·목록 라우트가 행을 통째로(`...exhibition`) 내려주므로 컬럼이면
+//    공개 응답에 코드가 그대로 실린다 — 코드는 곧 수락 권한이다. 별도 테이블은 `include` 하지 않는 한 절대 딸려 나가지 않는다.
+model ExhibitionJoinCode {
+  exhibitionId Int        @id
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  code         String     @unique
+  createdAt    DateTime   @default(now())
 }
