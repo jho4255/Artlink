@@ -50,6 +50,7 @@ import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import { openArtLook, stageArtLookWorks, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '@/lib/artlook';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
 import KanbanSection from '@/components/admin/KanbanSection';
+import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
@@ -273,6 +274,7 @@ export default function MyPage() {
           {currentTab === 'my-galleries' && user.role === 'GALLERY' && <MyGalleriesSection />}
           {currentTab === 'my-exhibitions' && user.role === 'GALLERY' && <MyExhibitionsSection />}
           {currentTab === 'my-shows' && user.role === 'GALLERY' && <MyShowsSection />}
+          {currentTab === 'stats' && user.role === 'ADMIN' && <AdminStatsSection />}
           {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
           {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
           {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}

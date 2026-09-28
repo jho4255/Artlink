@@ -11,7 +11,7 @@
  */
 import {
   Camera, FileText, Heart, Star, Ticket, Building2, Bookmark, Home,
-  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone,
+  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone, BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -89,6 +89,8 @@ const GALLERY_TABS: MyPageTab[] = [
 
 const ADMIN_TABS: MyPageTab[] = [
   { id: 'profile', label: '프로필', icon: Camera },
+  // 통계(2026-09-28) — 일간 방문자(회원/비회원)부터. 한눈에 보는 곳이라 위쪽에 둔다. 새 지표는 이 탭 안에 섹션으로 더한다
+  { id: 'stats', label: '통계', icon: BarChart3 },
   { id: 'approvals', label: '승인 관리', icon: Check },
   { id: 'hosted-exhibitions', label: '주최 공모', icon: FileText },
   { id: 'hero-manage', label: '히어로 관리', icon: Eye },

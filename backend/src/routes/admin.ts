@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errorHandler';
 import { isExhibitionClosed } from '../lib/exhibitionLifecycle';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
+import { dailyVisitorStats } from '../lib/visitStats';
 
 const router = Router();
 
@@ -309,6 +310,19 @@ router.get('/view-stats', authenticate, authorize('ADMIN'), async (_req, res, ne
 });
 
 // ========== 개발자 도구 (ADMIN 전용): 런타임 전역 플래그 토글 ==========
+
+/**
+ * GET /api/admin/stats/visitors?days=30 — 일간 방문자(회원/비회원). Admin [통계] 탭(2026-09-28).
+ * 오늘(KST) 포함 최근 N일(1~180), 기록 없는 날은 0. `since` 는 집계를 시작한 날(그 전은 '기록 없음').
+ * 세는 규칙은 `lib/visitStats.ts`(기기×날짜 한 줄, 회원=서로 다른 userId, Admin 제외).
+ */
+router.get('/stats/visitors', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const days = Number(req.query.days ?? 30);
+    if (!Number.isFinite(days) || days < 1) throw new AppError('기간이 올바르지 않습니다.', 400);
+    res.json(await dailyVisitorStats(days));
+  } catch (error) { next(error); }
+});
 
 /**
  * 개발자 도구 설정 조회

@@ -6,6 +6,8 @@ import Layout from '@/components/layout/Layout';
 import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
+import { useVisitBeacon } from '@/lib/visitBeacon';
+import { useAuthStore } from '@/stores/authStore';
 
 // 새 배포로 청크 파일명(해시)이 바뀌면 예전 청크 import가 404 → 모바일에서 흰 화면 원인.
 // 이때 한 번만 새로고침해 최신 index.html + 청크를 받게 한다(무한 새로고침 방지 가드).
@@ -102,6 +104,9 @@ function LegacyOperationRedirect() {
 }
 
 export default function App() {
+  // 일간 방문 기록(2026-09-28, Admin [통계]) — 하루 한 번 + 로그인·로그아웃 때 한 번. 어느 화면으로 들어와도 걸리도록 맨 위에 둔다
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  useVisitBeacon(userId);
   return (
     <Routes>
       <Route element={<Layout />}>

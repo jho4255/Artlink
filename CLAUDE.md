@@ -1774,6 +1774,26 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e `55-invite-code.spec.ts`(3) · `06`·`08` 스펙을 새 의미로(지원은 받고 수락이 정원까지, 동시 수락 6건 → 1건) ·
       `17`(지원 뒤 [지원하기] 대신 '지원 완료') · `26` F3(지원은 자리를 안 차지, 수락으로 차면 초대 차단).
 
+58. **Admin [통계] 탭 — 일간 방문자(회원/비회원)** (2026-09-28, 사용자 요청)
+    - **세는 법**(`backend/src/lib/visitStats.ts` 한 곳): `DailyVisit` 한 줄 = **기기 × KST 날짜**(unique). 기기 id 는 브라우저가 만든 무작위 값
+      (`frontend/src/lib/visitBeacon.ts`, localStorage) — IP·주소·브라우저 정보는 안 남긴다. 화면이 **하루 한 번 + 로그인·로그아웃 때 한 번** `POST /api/visits`
+      (App 맨 위 `useVisitBeacon`). 로그인해 있으면 그 줄에 userId 가 붙는다 → **비회원으로 들어와 로그인하면 회원 1명**(두 번 안 센다).
+      회원 = 그날 서로 다른 userId(**Admin 제외** — 관리 화면을 열어 두는 게 방문자를 부풀리지 않게), 비회원 = userId 없는 기기 수.
+    - ⚠️ 날짜는 **서버가 KST 로** 정한다(규칙 14). 기기 시계를 믿지 말 것. 화면의 날짜는 '다시 보낼지' 판단용일 뿐이다.
+    - ⚠️ 기록 쓰기는 **확인하고 만들지 말 것**(규칙 46) — `createMany({skipDuplicates})` + 로그인 시 `updateMany(userId:null→id)`. 동시 두 번도 한 줄.
+    - ⚠️ `POST /api/visits` 는 **optionalAuth** 라 만료된 토큰이면 비회원으로 받는다(401 이 아니다) — 401 이면 axios 인터셉터가 **로그아웃시킨다**.
+      통계 요청 때문에 사용자가 튕기면 안 된다. 실패는 화면에서 조용히 삼킨다.
+    - 조회 `GET /api/admin/stats/visitors?days=N`(1~180, Admin) — 기록 없는 날도 0 으로 채운 날짜열 + `since`(집계 시작일).
+      ⚠️ 화면은 **`since` 전의 날을 그리지 않는다** — 그 0 은 '방문 0' 이 아니라 '아직 세지 않음'이다. **과거 방문은 없다**(2026-09-28 배포부터 쌓인다).
+    - 화면 `components/admin/AdminStatsSection.tsx`: KPI(오늘(지금까지)·어제·최근 7일 평균) + 쌓은 막대(회원 아래·비회원 위, 2px 틈) + 표 보기, 기간 7/30/90일.
+      색은 dataviz 검증기로 통과한 2계열(파랑 #2a78d6·주황 #eb6834) — 빨강(accent)은 상태 색이라 안 쓴다(규칙 47).
+      ⚠️ **오늘을 어제와 빼서 비교하지 말 것** — 오늘은 진행 중이라 아침마다 '어제보다 -8명' 으로 읽힌다(처음에 넣었다가 뺐다).
+      새 지표는 이 탭 안에 섹션으로 더한다(`myPageMenu.ts` 의 `stats`).
+    - JS 를 안 돌리는 크롤러는 요청을 안 보내 자연히 빠진다. localStorage 가 막힌 기기는 새로 열 때마다 새 기기로 셀 수 있다(메모리로 한 세션은 버틴다).
+    - 개인정보처리방침 1항에 '방문자 집계용 기기 식별값(무작위, 개인과 연결하지 않음)'을 적었다.
+    - 회귀: backend `visit-stats.test.ts`(8 — 하루 한 줄·동시 요청·비회원→회원·사람 단위·Admin 제외·KST 경계·0 채우기·권한) ·
+      frontend `visitStats.test.ts`(7) · e2e `59-admin-stats.spec.ts`(4 — **실제 브라우저가 들어오면 세어지는지**를 전후 차이로 잰다, 여러 화면을 다녀도 요청 한 번).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".

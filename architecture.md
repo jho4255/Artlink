@@ -2237,3 +2237,9 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   via `LazyRichTextEditor`) · 보기 `RichText.tsx` · 규칙 `frontend/src/lib/richText.ts` ↔ `backend/src/lib/richText.ts`(허용 목록 거울, 서버 sanitize-html + 화면 DOMPurify).
   `PATCH /galleries/:id/detail` 과 기록 POST/PATCH 가 저장 전에 거르고, 보이는 글자 수로 한도를 본다. 옛 평범한 글은 그대로(줄바꿈).
 
+### 2026-09-28 — Admin [통계] 탭 · 일간 방문자
+- 모델 `DailyVisit { day @db.Date(KST), visitorId, userId?, @@unique([day, visitorId]) }` · 마이그레이션 `20260928120000_daily_visit`.
+- 기록 `POST /api/visits { visitorId }`(optionalAuth, 204) ← 화면 `lib/visitBeacon.ts useVisitBeacon`(App 맨 위, 하루 한 번 + 신원이 바뀔 때).
+- 조회 `GET /api/admin/stats/visitors?days=N` → `{ rows:[{date,members,guests,total}], since }`(`lib/visitStats.ts dailyVisitorStats`, 회원=서로 다른 userId·Admin 제외, 비회원=userId 없는 기기).
+- 화면 `components/admin/AdminStatsSection.tsx`(마이페이지 Admin 탭 `stats`) + 계산 `lib/visitStatsView.ts`.
+

@@ -38,6 +38,7 @@ import guestbookRoutes from './routes/guestbook';
 import adRoutes from './routes/ad';
 import operationRoutes from './routes/operation';
 import settingsRoutes from './routes/settings';
+import visitRoutes from './routes/visit';
 import seoRoutes from './routes/seo';
 import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
 import type { SeoKind } from './lib/seoMeta';
@@ -130,6 +131,7 @@ app.use('/api/guestbook', guestbookRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/visits', visitRoutes);   // 일간 방문 기록(2026-09-28, Admin [통계])
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {
