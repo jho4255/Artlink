@@ -93,7 +93,7 @@ describe('일간 방문자', () => {
     expect(rows.map((r) => r.date)).toEqual(['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28']);
     expect(rows.find((r) => r.date === '2026-09-25')).toMatchObject({ members: 0, guests: 1 });
     expect(rows.find((r) => r.date === '2026-09-26')).toMatchObject({ members: 0, guests: 0, total: 0 });
-    expect(rows.at(-1)).toMatchObject({ date: '2026-09-28', members: 1, guests: 0 });
+    expect(rows[rows.length - 1]).toMatchObject({ date: '2026-09-28', members: 1, guests: 0 });
     expect(since).toBe('2026-09-25');
     expect((await dailyVisitorStats(1000, now)).rows).toHaveLength(180);
   });
