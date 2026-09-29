@@ -1,5 +1,6 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitionDates, openGallerySubmissions } from '../lib/helpers';
+import type { Page } from '@playwright/test';
 
 /**
  * 운영페이지 일괄 다운로드 (2026-08 성능 사고 대응) E2E
@@ -9,7 +10,15 @@ import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitio
  * 여기서는 UI 동작(진행률 문구·완료·실패 안내)과 실제 다운로드가 나가는지를 검증한다.
  *
  * 이미지는 **실제 R2 원본 URL**을 쓴다(R2 CORS가 열려 localhost에서도 직접 로드 가능).
+ *
+ * 2026-09-29: 버튼 넷이 [출품 자료] 구역의 **[내려받기 ▾] 메뉴** 하나로 합쳐졌다. 진행률은 그 버튼 라벨에 뜬다
+ * ('이미지 N/M장' · 'PDF N/M'). 옛 `/operation` 은 `/operation/new` 로 리다이렉트된다.
  */
+/** [내려받기 ▾] 를 열고 항목을 누른다 — 메뉴는 누를 때마다 닫힌다 */
+async function pickDownload(page: Page, item: RegExp) {
+  await page.getByRole('button', { name: '내려받기' }).first().click();
+  await page.getByRole('menuitem', { name: item }).click();
+}
 const API = 'http://localhost:4000/api';
 const auth = (tok: string) => ({ Authorization: `Bearer ${tok}` });
 
@@ -68,11 +77,10 @@ test('작품 원본(ZIP) — 진행률 표시 후 실제 파일이 내려온다'
   const { exId, urls } = await seedOperation(api, 8);
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
-  await expect(page.getByRole('button', { name: /작품 원본/ }).first()).toBeVisible({ timeout: 20000 });
+  await openGallerySubmissions(page, exId);
 
   const downloadPromise = page.waitForEvent('download', { timeout: 90_000 });
-  await page.getByRole('button', { name: /작품 원본/ }).first().click();
+  await pickDownload(page, /작품 원본/);
 
   // 진행률 문구("N/M장 모으는 중") 또는 곧바로 완료 — 멈춘 것처럼 보이지 않아야 한다
   await expect(page.locator('body')).toContainText(/모으는 중|ZIP 다운로드 시작/, { timeout: 30_000 });
@@ -93,12 +101,10 @@ test('전체 제출물 PDF(ZIP) — 이미지 선수집 진행률 후 완료', a
   const { exId } = await seedOperation(api, 4);
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: /전체 PDF|전체 제출물/ }).first();
-  await expect(btn).toBeVisible({ timeout: 20000 });
+  await openGallerySubmissions(page, exId);
 
   const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
-  await btn.click();
+  await pickDownload(page, /전체 출품 자료 PDF/);
   await expect(page.locator('body')).toContainText(/불러오는 중|만드는 중|ZIP 다운로드/, { timeout: 60_000 });
 
   const dl = await downloadPromise;
@@ -128,8 +134,8 @@ test('이미지를 못 받으면 조용히 빠지지 않고 실패 목록을 알
   });
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
-  await page.getByRole('button', { name: /작품 원본/ }).first().click();
+  await openGallerySubmissions(page, exId);
+  await pickDownload(page, /작품 원본/);
 
   await expect(page.locator('body')).toContainText('실패 1개', { timeout: 90_000 });
   await expect(page.locator('body'), '실패한 작품명을 알려준다').toContainText('실패작품', { timeout: 15_000 });
@@ -150,12 +156,10 @@ test('★ 진행률은 버튼에 표시되어 작업 내내 끊기지 않는다 
     await route.continue();
   });
 
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: /작품 원본/ }).first();
-  await expect(btn).toBeVisible({ timeout: 20000 });
-  await btn.click();
+  await openGallerySubmissions(page, exId);
+  await pickDownload(page, /작품 원본/);
 
-  // 진행 중에는 버튼 라벨이 "이미지 N/M장"으로 바뀐다(토스트와 달리 사라질 수 없다)
+  // 진행 중에는 [내려받기] 버튼 라벨이 "이미지 N/M장"으로 바뀐다(토스트와 달리 사라질 수 없다)
   const working = page.locator('button', { hasText: /이미지 \d+\/\d+장|모으는 중/ });
   await expect(working.first()).toBeVisible({ timeout: 20_000 });
 
@@ -183,7 +187,7 @@ test('★ 진행률은 버튼에 표시되어 작업 내내 끊기지 않는다 
 
   await expect(page.locator('body')).toContainText('ZIP 다운로드 시작', { timeout: 60_000 });
   // 끝나면 원래 라벨로 복귀
-  await expect(page.getByRole('button', { name: '작품 원본(ZIP)' }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: '내려받기' }).first()).toBeVisible({ timeout: 15_000 });
 
   await api.dispose();
   await ctx.close();
@@ -208,10 +212,8 @@ test('★ 전체 PDF(ZIP) — 이미지를 못 받으면 누락 사실과 작품
   });
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: /전체 PDF|전체 제출물/ }).first();
-  await expect(btn).toBeVisible({ timeout: 20000 });
-  await btn.click();
+  await openGallerySubmissions(page, exId);
+  await pickDownload(page, /전체 출품 자료 PDF/);
 
   await expect(page.locator('body'), '누락 개수 안내').toContainText('이미지 1개 누락', { timeout: 120_000 });
   await expect(page.locator('body'), '누락된 작품명 안내').toContainText('PDF누락작품', { timeout: 15_000 });

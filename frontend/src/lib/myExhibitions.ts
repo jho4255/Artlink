@@ -25,18 +25,19 @@
  */
 export type MyExhibitionBucket = 'INVITED' | 'REVIEWING' | 'ONGOING' | 'CLOSED';
 
+/** 탭 이름은 갤러리 [내 공모]의 '진행 중 · 종료' 와 같은 말을 쓴다(2026-09-29 — 예전엔 '진행중·진행종료') */
 export const MY_EXHIBITION_TABS: { key: MyExhibitionBucket; label: string }[] = [
   { key: 'INVITED', label: '받은 초대' },
-  { key: 'REVIEWING', label: '심사중' },
-  { key: 'ONGOING', label: '진행중' },
-  { key: 'CLOSED', label: '진행종료' },
+  { key: 'REVIEWING', label: '심사 중' },
+  { key: 'ONGOING', label: '진행 중' },
+  { key: 'CLOSED', label: '종료' },
 ];
 
 export const MY_EXHIBITION_EMPTY: Record<MyExhibitionBucket, string> = {
-  INVITED: '받은 초대가 없습니다.',
-  REVIEWING: '결과를 기다리는 지원이 없습니다.',
-  ONGOING: '진행 중인 전시가 없습니다.',
-  CLOSED: '정산까지 끝난 전시가 없습니다.',
+  INVITED: '받은 초대가 없어요.',
+  REVIEWING: '결과를 기다리는 지원이 없어요.',
+  ONGOING: '진행 중인 전시가 없어요.',
+  CLOSED: '정산까지 끝난 전시가 없어요.',
 };
 
 /** 분류에 필요한 최소 정보 */
@@ -167,44 +168,9 @@ export function defaultBucket(apps: MyApplicationLike[]): MyExhibitionBucket {
   return 'ONGOING';
 }
 
-/**
- * 공모 진행 단계 배지 ([내 전시] 표시용)
- *
- *   모집중 → 전시 준비중 → 확정 → 전시 진행중 → 전시종료 → 정산중 → 정산완료
- *                                              └ 종료(자동)
- *
- * '모집마감' 이 아니라 '전시 준비중' 이다 — 그건 갤러리가 누르는 **동작** 이름이고,
- * 수락된 작가에게는 그때부터 전시를 준비하는 기간이다. 갤러리 운영페이지의 단계 이름은 그대로 둔다.
- *
- * ⚠️ **'확정' 과 '전시 진행중' 을 구분한다.** 예전엔 전시가 이미 열렸는데도 '확정' 이라
- *    작가 입장에서 지금 전시가 하는 중인지 알 수 없었다.
- * ⚠️ **'전시종료' 와 '정산중' 을 구분한다.** 둘 다 '전시종료' 로만 뜨면 진행중 탭에 있는
- *    이유를 알 수 없다 — 정산이 돌아가고 있다는 게 진행중에 남아 있는 근거다.
- * ⚠️ **'종료(자동)'** 은 갤러리가 [전시종료]를 누른 적조차 없이 20일이 지나 정리된 것.
- *    실제로는 종료됐는데 `ended` 플래그가 false 라 그냥 두면 '확정' 으로 잘못 뜬다.
+/*
+ * 공모 진행 단계 배지는 `lib/flowLabels.ts` 의 `stageOf` 로 옮겼다(2026-09-29) — 갤러리 카드·운영 화면·작가 카드가
+ * 같은 이름을 써야 해서다. 예전 `exhibitionStage` 가 지키던 규칙(전시 중 ≠ 확정, 정산 중 ≠ 전시 종료,
+ * 자동 정리 = 종료, 공모만 진행은 모집 중 → 선정 완료)은 그대로 옮겼고 `flowLabels.test.ts` 가 지킨다.
  */
-export function exhibitionStage(ex: any): { label: string; cls: string } | null {
-  if (!ex) return null;
-  const startPassed = ex.exhibitStartDate && new Date(ex.exhibitStartDate) <= new Date();
-  /**
-   * 공모만 진행하는 공고(2026-09-10)는 단계가 **모집중 → 선정 완료** 둘뿐이다.
-   * ⚠️ 아래 분기를 그대로 태우면 안 된다 — 전시 시작일이 지났다고 '전시 진행중' 이라고 하면
-   *    작가는 자기가 참여하는 전시가 열린 줄 안다. 그 공고엔 전시 운영 단계가 없다.
-   */
-  if (ex.recruitOnly) {
-    if (ex.closed) return { label: '종료', cls: 'bg-gray-200 text-gray-600' };
-    return ex.recruitmentClosed
-      ? { label: '선정 완료', cls: 'bg-sky-100 text-sky-700' }
-      : { label: '모집중', cls: 'bg-amber-100 text-amber-700' };
-  }
-  if (ex.settledAt) return { label: '정산완료', cls: 'bg-green-100 text-green-700' };
-  // 자동 정리된 방치 공모 — 갤러리가 종료를 누르지 않았으므로 ended 로는 잡히지 않는다
-  if (ex.closed && !ex.ended) return { label: '종료(자동)', cls: 'bg-gray-200 text-gray-600' };
-  if (ex.ended && ex.settlementStarted) return { label: '정산중', cls: 'bg-indigo-100 text-indigo-700' };
-  if (ex.ended) return { label: '전시종료', cls: 'bg-accent/10 text-accent' };
-  if (startPassed) return { label: '전시 진행중', cls: 'bg-emerald-100 text-emerald-700' };
-  if (ex.confirmed) return { label: '확정', cls: 'bg-blue-100 text-blue-700' };
-  if (ex.recruitmentClosed) return { label: '전시 준비중', cls: 'bg-sky-100 text-sky-700' };
-  return { label: '모집중', cls: 'bg-amber-100 text-amber-700' };
-}
 

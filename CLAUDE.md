@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2170+ tests** (2026-09-27): Backend 1393+ (supertest, `artlink_test` DB 순차), Frontend 781 (jsdom)
+- **2270+ tests** (2026-09-29): Backend 1440 (supertest, `artlink_test` DB 순차), Frontend 832 (jsdom) · E2E 276(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙)·`53`(실행 순서 의존) 뿐)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1793,6 +1793,36 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 개인정보처리방침 1항에 '방문자 집계용 기기 식별값(무작위, 개인과 연결하지 않음)'을 적었다.
     - 회귀: backend `visit-stats.test.ts`(8 — 하루 한 줄·동시 요청·비회원→회원·사람 단위·Admin 제외·KST 경계·0 채우기·권한) ·
       frontend `visitStats.test.ts`(7) · e2e `59-admin-stats.spec.ts`(4 — **실제 브라우저가 들어오면 세어지는지**를 전후 차이로 잰다, 여러 화면을 다녀도 요청 한 번).
+
+59. **공모 흐름 화면(등록·지원·지원자 관리·출품 자료·운영·정산)의 규칙** (2026-09-29, 사용자 결정 — DESIGN.md 비참조, 이 흐름 화면만)
+    처음 온 사람이 "그래서 뭘 누르지?" 에서 막히던 것을 고쳤다. 상세는 architecture.md 「공모 흐름 UX 개편」.
+    - **말은 `frontend/src/lib/flowLabels.ts` 한 곳** — 단계 이름(`stageOf`), 지원 상태(갤러리: 검토 대기·수락됨·거절 / 작가: 심사 중·선정·미선정),
+      카드의 '지금 할 일'(`galleryNextTask`·`artistNextTask`), `SUBMISSION_TERM='출품 자료'`. ⚠️ 화면에 단계·상태 문자열을 새로 적지 말 것 —
+      예전엔 같은 자료를 '작가 자료·제출 자료·내 전시 정보·작가 제출 정보' 로 여섯 가지로 불렀고, '확정' 이 지원 수락과 전시 단계 두 뜻이었다.
+    - **디자인 부품은 `components/flow/`** — 칩은 `StatusChip` 3종(neutral·attention·done), 안내는 `Notice` 2종, 단계는 `ProgressSteps`(단색),
+      접힌 구역은 `Disclosure`. 색은 흑백 + accent 하나(지금 할 일·위험). 파랑·노랑·초록 상자, 영문 eyebrow, 이모지를 되살리지 말 것.
+      **한 구역에 주 버튼(검정)은 하나**, 나머지는 테두리 버튼·밑줄 글자.
+    - ⚠️ **되돌리기 어려운 단계 전환은 전부 `ConfirmDialog details`(무엇이 바뀌는지 줄 목록)를 거친다** — 모집 마감·전시 확정·전시 종료·이전 단계로·수락·거절·정산 완료.
+      예전엔 [다음 단계로 — 모집마감]이 확인 없이 공고를 내렸다(전시 종료만 물었다). `ConfirmDialog` 는 이제 `role="dialog"`(이름 = 제목).
+    - **작가 출품 자료의 버튼은 [임시저장]·[갤러리에 제출] 둘뿐** — 작품 카드별 [저장]·대표작 [저장]·노트 섹션 [저장]을 되살리지 말 것
+      (예전: [저장] → "대표작을 선택하세요" → 대표작은 '저장한 작품만' 이라 비활성 → 카드의 [저장]을 먼저 → 순환). 대표작은 카드의 [☆ 대표작](저장 전에도).
+    - **지원자 일괄 선택은 '검토 대기' 줄에만**(2026-09-29 로컬 확인 중 지적) — 수락·거절 탭에 체크박스·[선택 수락]이 뜨면 이미 수락한 작가를 바꿀 수 있는 것처럼 보인다.
+      상태 칩은 이름 옆(▾ 옆에 두면 옛 상태 드롭다운처럼 읽힌다). 일괄 처리 대상·확인창 숫자는 **아직 검토 대기인 것만** 센다.
+    - **초대 코드는 접어 둔다** — 갤러리는 지원자 목록 아래 한 줄, 작가는 [내 전시]의 '초대 코드가 있나요?' 한 줄(목록이 비면 펼침). 맨 위로 되돌리지 말 것(소수 상황용).
+    - ⚠️ **'지금 할 일' 버튼 이름을 그 구역의 진짜 버튼과 같게 짓지 말 것** — 할 일 버튼은 구역으로 데려갈 뿐이다. '정산 완료' 로 같았다가
+      한 화면에 [정산 완료]가 둘(하나는 이동, 하나는 확정)이 됐다 → '정산 마무리하기'(E2E 60 이 잡았다). 단계 버튼도 '모집 마감' ↔ '모집 마감하기' 로 다르다.
+    - **정산 문구는 확인 현황을 본다** — 작가가 모두 확인했으면 '확인하고 있어요' 가 아니라 '모두 확인했어요 → [정산 완료]', 단계도 정산 완료 차례(2026-09-29 지적).
+      `StatusPanel` 은 `settlement` prop(확인 수·전체·이의)을 받아야 이걸 가른다 — access 응답엔 없다.
+    - **지원서는 전용 페이지** `/exhibitions/:id/apply`(`pages/ApplyPage.tsx`) — 옛 `?apply=1` 은 여기로 보낸다. 경력·파일 '없음' 체크를 되살리지 말 것(서버는 빈 경력을 받는다).
+      ⚠️ 약관 버전 상수가 `ApplyPage.tsx`·`InviteApplyModal.tsx` 두 곳이다(`terms-consistency.test.ts` 가 둘 다 본다).
+    - **등록 폼 임시저장(갤러리·공모·전시)은 `lib/formDraft.ts`** — 만료 없음, 저장된 초안이 있으면 폼 위 `DraftNotice`([이어서 쓰기]·[새로 쓰기]),
+      ⚠️ **고르기 전엔 자동저장·[임시저장]·제출 뒤 정리 모두 그 칸에 쓰지 않는다.** 예전엔 `window.confirm` 에서 [취소]를 누르고 입력하면 3초 만에 옛 초안이 덮였고,
+      24시간이 지나면 말없이 사라졌다. 칸은 폼마다 하나·이 브라우저에만(여러 개·다른 기기는 서버 저장이 필요 — 하지 않았다).
+    - ⚠️ grid 안 카드에 `min-w-0`(규칙 27) — [내 공모] 카드가 빠져 390px 화면이 408~472px 로 가로로 밀렸다(통계 칸 1fr 두 개가 글자 폭만큼).
+    - 확인용 데이터: `cd backend && npx tsx scripts/seed-flow-stages.ts`(단계마다 공모 하나, gallery@artlink.com · Artist 1, 로컬 데모 DB 전용, `--clean`).
+    - 회귀: 프론트 `flowLabels.test.ts`·`submissionFlow.test.ts`·`hooks/__tests__/useFormDraft.test.ts` · e2e `60-flow-ux.spec.ts`(A~F: 지원자 선택·단계 확인창·
+      한 번 제출·지원서 페이지·정산 0%/모두 확인·임시저장). E2E 헬퍼 `openApplicantManager`·`applicantRow`·`acceptApplicant`·`cardToggle`·`openSection`·
+      `openGallerySubmissions`·`openArtistExhibition`(`e2e/lib/helpers.ts`) — ⚠️ `filter({ has })` 안쪽 로케이터는 **페이지 기준**으로 만들 것(카드 기준이면 늘 빈다).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

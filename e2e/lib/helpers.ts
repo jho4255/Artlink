@@ -78,11 +78,96 @@ export async function applyToExhibition(
 export async function openApplicantManager(page: Page, exhibitionTitle: string) {
   await page.goto('/mypage?tab=my-exhibitions');
   await expect(page.locator('body')).toContainText(exhibitionTitle, { timeout: 15000 });
-  const card = page.locator('div')
-    .filter({ hasText: exhibitionTitle })
-    .filter({ has: page.getByRole('button', { name: '지원자 관리' }) })
-    .last();
-  await card.getByRole('button', { name: '지원자 관리' }).click();
+  const card = exhibitionCard(page, exhibitionTitle);
+  await cardToggle(card, 'applicants').click();
+  // 패널 머리의 정원 줄('수락 N/M명')이 뜨면 목록까지 받은 것이다
+  await expect(card.getByText(/수락 \d+/).first()).toBeVisible({ timeout: 15000 });
+  return card;
+}
+
+/** 갤러리 [내 공모]의 공모 카드 — 제목으로 특정한다 */
+export function exhibitionCard(page: Page, exhibitionTitle: string) {
+  return page.locator('article').filter({ hasText: exhibitionTitle }).first();
+}
+
+/**
+ * 지원자 한 줄 — 체크박스 이름(`<이름> 선택`)으로 특정한다.
+ * ⚠️ 줄 버튼 이름으로 찾지 말 것 — 'Artist 1' 이 'Artist 10…19' 에도 걸린다.
+ */
+export function applicantRow(scope: import('@playwright/test').Locator | Page, name: string) {
+  // 줄은 체크박스('<이름> 선택') 또는 펼침 버튼(이름으로 시작)으로 찾는다 — 수락·거절한 줄엔 체크박스가 없다(2026-09-29).
+  // 닉네임이 있으면 '이름 (닉네임)' 이 된다. 'Artist 1' 이 'Artist 10' 에 걸리지 않게 뒤를 막는다.
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 이름 칸은 칩과 붙어 있어("Artist 1검토 대기") 줄 전체 글자로는 끝을 못 막는다 — 이름만 든 요소를 찾는다
+  const who = new RegExp(`^${esc}(?: \\([^)]*\\))?$`);
+  // ⚠️ filter({ has }) 의 안쪽 로케이터는 **페이지 기준**이어야 한다 — 카드 로케이터로 만들면 '행 안에서 카드를' 찾아 늘 빈다
+  const root: Page = typeof (scope as { page?: unknown }).page === 'function' ? (scope as import('@playwright/test').Locator).page() : (scope as Page);
+  return scope.locator('li').filter({ has: root.getByText(who) }).first();
+}
+
+/**
+ * 지원자 수락 — 줄을 펼쳐 [수락하기] → 확인창 [수락하기] (2026-09-29, 예전엔 줄의 `<select>`).
+ * 펼친 줄이 아니면 [수락하기] 가 없다.
+ */
+export async function acceptApplicant(page: Page, scope: import('@playwright/test').Locator | Page, name: string) {
+  const row = applicantRow(scope, name);
+  const accept = row.getByRole('button', { name: '수락하기', exact: true });
+  if (!(await accept.isVisible().catch(() => false))) {
+    await row.locator('button[aria-expanded]').first().click();
+  }
+  await accept.click();
+  await page.getByRole('dialog').getByRole('button', { name: '수락하기', exact: true }).click();
+  await expect(row).toContainText('수락됨', { timeout: 10000 });
+}
+
+/**
+ * 운영 화면의 접힌 구역(운영 공지 · 출품 자료 · 정산)을 펼친다 — 이미 펼쳐져 있으면 그대로 둔다.
+ * ⚠️ 무작정 누르면 기본으로 펼쳐져 있던 구역(현재 단계의 것)이 **접힌다**.
+ */
+export function sectionToggle(scope: import('@playwright/test').Locator | Page, title: string) {
+  // ⚠️ 이름만으로 찾지 말 것 — '지금 할 일' 줄("출품 자료를 제출해 주세요")·할 일 버튼("정산하기")도 같은 글자로 시작한다.
+  //    접힌 구역의 머리 버튼만 aria-controls + aria-expanded 를 함께 갖는다(메뉴 버튼은 aria-controls 가 없다).
+  return scope.locator('button[aria-controls][aria-expanded]').filter({ hasText: new RegExp(`^${title}`) }).first();
+}
+
+export async function openSection(scope: import('@playwright/test').Locator | Page, title: string) {
+  const toggle = sectionToggle(scope, title);
+  await expect(toggle).toBeVisible({ timeout: 15000 });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  return toggle;
+}
+
+/**
+ * 갤러리 운영 페이지(`/exhibitions/:id/operation/new`)에서 [출품 자료] 구역을 연다.
+ * (옛 `/operation` 은 이 주소로 리다이렉트된다 — 작가는 마이페이지로)
+ */
+export async function openGallerySubmissions(page: Page, exhibitionId: number) {
+  await page.goto(`/exhibitions/${exhibitionId}/operation/new`);
+  await expect(page.getByText('진행 단계').first()).toBeVisible({ timeout: 15000 });
+  await openSection(page, '출품 자료');
+}
+
+/**
+ * 작가 [내 전시]에서 그 전시 카드를 펼친다 — 알림이 쓰는 딥링크(`?tab=applications&ex=<id>`)로 간다.
+ * 카드 안에 운영 공지 · 출품 자료 · 정산 확인이 들어 있다(작가는 운영 페이지로 가지 않는다).
+ */
+export async function openArtistExhibition(page: Page, exhibitionId: number) {
+  await page.goto(`/mypage?tab=applications&ex=${exhibitionId}`);
+  // 카드 id 는 지원(Application) id 라 공모 id 로는 못 집는다 — 딥링크가 펼쳐 둔 카드 = [닫기] 가 있는 카드
+  const expanded = page.locator('article').filter({ has: page.getByRole('button', { name: '닫기', exact: true }) }).first();
+  await expect(expanded).toBeVisible({ timeout: 15000 });
+  return expanded;
+}
+
+/**
+ * 카드 아래 줄의 [지원자 N] / [운영] 토글(2026-09-29 — 예전 [지원자 관리]/[상세 운영] 버튼).
+ * ⚠️ 이름을 `/^지원자/` 로 찾지 말 것 — 카드의 '지금 할 일' 줄("지원자 3명이 검토를…")도 지원자로 시작하는 버튼이다.
+ */
+export function cardToggle(card: import('@playwright/test').Locator, tab: 'applicants' | 'operation') {
+  return tab === 'applicants'
+    ? card.getByRole('button', { name: /^지원자 \d+$/ })
+    : card.getByRole('button', { name: '운영', exact: true });
 }
 
 /** 백엔드 uploads 폴더에 실제 존재하는 이미지 URL (404 이미지는 SkeletonImage가 <img>를 렌더하지 않는다) */

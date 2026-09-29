@@ -10,9 +10,12 @@ import type { CustomField } from '@/types';
 export function CustomQuestionBuilder({
   fields,
   onChange,
+  bare = false,
 }: {
   fields: CustomField[];
   onChange: (updater: (fields: CustomField[]) => CustomField[]) => void;
+  /** 등록 폼처럼 바깥에 이미 '추가 질문' 제목이 있을 때 — 윗줄·제목을 빼고 추가 버튼만(2026-09-29) */
+  bare?: boolean;
 }) {
   const isChoiceField = (field: CustomField) => field.type === 'select' || field.type === 'multiselect';
   const addQuestion = (type: 'textarea' | 'select') => {
@@ -50,15 +53,17 @@ export function CustomQuestionBuilder({
   };
 
   return (
-    <div className="pt-3 border-t border-gray-100">
+    <div className={bare ? '' : 'pt-3 border-t border-gray-100'}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-gray-500">추가 질문</p>
-          <p className="text-[11px] text-gray-400">작가 지원서에 객관식/주관식 질문을 추가할 수 있습니다.</p>
-        </div>
+        {!bare && (
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-gray-500">추가 질문</p>
+            <p className="text-[11px] text-gray-400">작가 지원서에 객관식/주관식 질문을 추가할 수 있습니다.</p>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 shrink-0">
-          <button type="button" onClick={() => addQuestion('textarea')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">주관식</button>
-          <button type="button" onClick={() => addQuestion('select')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">객관식</button>
+          <button type="button" onClick={() => addQuestion('textarea')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">{bare ? '+ 주관식 질문' : '주관식'}</button>
+          <button type="button" onClick={() => addQuestion('select')} className="px-3 min-h-[40px] text-xs border border-gray-200 rounded-lg hover:bg-gray-50 whitespace-nowrap">{bare ? '+ 객관식 질문' : '객관식'}</button>
         </div>
       </div>
       {fields.length === 0 ? (

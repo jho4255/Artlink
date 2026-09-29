@@ -33,16 +33,19 @@ export default function ExhibitionScopePicker({
   recruitOnly,
   onChange,
   disabled,
+  bare = false,
 }: {
   recruitOnly: boolean;
   onChange: (next: boolean) => void;
   /** 등록 뒤에는 못 바꾼다 — 이미 진행 중인 단계를 없애면 작가가 낸 자료가 갈 곳을 잃는다 */
   disabled?: boolean;
+  /** 바깥에 이미 '진행 범위' 제목이 있을 때(갤러리 등록 폼, 2026-09-29) — 테두리 상자와 제목을 뺀다 */
+  bare?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3">
-      <p className="text-xs font-medium text-gray-500">진행 범위 *</p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+    <div className={bare ? '' : 'rounded-xl border border-gray-200 bg-white p-3'}>
+      {!bare && <p className="text-xs font-medium text-gray-500">진행 범위 *</p>}
+      <div className={bare ? 'grid gap-2 sm:grid-cols-2' : 'mt-2 grid gap-2 sm:grid-cols-2'}>
         {OPTIONS.map((opt) => {
           const active = opt.value === recruitOnly;
           const Icon = opt.icon;

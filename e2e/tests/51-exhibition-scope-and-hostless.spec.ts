@@ -76,7 +76,7 @@ test.describe('아트링크가 갤러리를 안 끼고 여는 공모', () => {
 
 // ───────────────────────────────────────────── ② 공모만 진행
 test.describe('공모만 진행하는 공고', () => {
-  test('★ 갤러리 등록 폼에서 [공모만 진행] 을 고르면 자료제출 마감일 칸이 사라지고, 그대로 등록된다', async ({ browser }) => {
+  test('★ 갤러리 등록 폼에서 [공모만 진행] 을 고르면 자료제출 마감일·전시 일자 칸이 사라지고, 그대로 등록된다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     const title = `E2E 공모만진행 ${Date.now()}`;
     const d = exhibitionDates();
@@ -84,30 +84,33 @@ test.describe('공모만 진행하는 공고', () => {
     await page.goto('/exhibitions/new');
     await settle(page, 800);
 
-    // 기본값은 '전시까지 진행' — 그때는 자료제출 마감일이 필수 칸으로 보인다
-    const subLabel = page.getByText('작가 자료제출 마감일', { exact: false });
-    await expect(subLabel).toBeVisible({ timeout: 10000 });
+    // 기본값은 '전시까지 진행' — 그때는 자료제출 마감일·전시 일자 칸이 보인다
+    const sub = page.locator('#ex-submission');
+    await expect(sub).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#ex-show-start')).toBeVisible();
 
     await page.getByRole('button', { name: /공모만 진행/ }).click();
-    // ⚠️ 비활성이 아니라 **없어져야** 한다 — 회색으로 남으면 "왜 못 쓰지" 를 묻게 된다
-    await expect(subLabel).toBeHidden();
+    // ⚠️ 비활성이 아니라 **없어져야** 한다 — 회색으로 남으면 "왜 못 쓰지" 를 묻게 된다(전시 일자도, 2026-09-19)
+    await expect(sub).toBeHidden();
+    await expect(page.locator('#ex-show-start')).toBeHidden();
+    await expect(page.locator('#ex-show-end')).toBeHidden();
 
     const posted = page.waitForRequest(
       (r) => r.url().endsWith('/api/exhibitions') && r.method() === 'POST',
     );
 
-    await page.locator('select').first().selectOption({ index: 1 });   // 갤러리 선택
-    await page.getByPlaceholder('공모 제목').fill(title);
-    await page.locator('input[type="date"]').nth(0).fill(d.deadlineStart);
-    await page.locator('input[type="date"]').nth(1).fill(d.deadline);
-    await page.locator('input[type="date"]').nth(2).fill(d.exhibitStartDate);
-    await page.locator('input[type="date"]').nth(3).fill(d.exhibitDate);
-    await page.getByPlaceholder('공모 소개').fill('지원자 선정까지만 진행합니다.');
-    await page.getByRole('checkbox').last().check();                   // 약관 동의
+    // 칸은 id 로 채운다 — 순서로 집으면 칸이 빠지거나 옮겨질 때마다 엉뚱한 칸에 들어간다(2026-09-29 순서 변경)
+    await page.locator('#ex-gallery').selectOption({ index: 1 });
+    await page.locator('#ex-title').fill(title);
+    await page.locator('#ex-start').fill(d.deadlineStart);
+    await page.locator('#ex-deadline').fill(d.deadline);
+    await page.locator('#ex-desc').fill('지원자 선정까지만 진행합니다.');
+    await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
     await page.getByRole('button', { name: '등록 요청', exact: true }).click();
-    // ⚠️ 여기도 확인 모달을 거친다 (확인 버튼 라벨이 폼 버튼과 같아 `.last()` 로 모달 쪽을 집는다)
-    await expect(page.getByText('이 내용으로 공모 등록을 요청하시겠습니까?')).toBeVisible();
-    await page.getByRole('button', { name: '등록 요청', exact: true }).last().click();
+    // 확인창(role=dialog) 안의 [등록 요청]
+    const dialog = page.getByRole('dialog', { name: '공모 등록을 요청할까요?' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: '등록 요청', exact: true }).click();
 
     const req = await posted;
     const body = req.postDataJSON();

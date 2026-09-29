@@ -5,7 +5,7 @@
  * 특히 기본 탭 선택은 빈 화면을 그대로 보여주게 되는 지점이라 테스트로 묶어 둔다.
  */
 import { describe, it, expect } from 'vitest';
-import { bucketOf, groupMyExhibitions, defaultBucket, nextSchedule, shortDate, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY} from '@/lib/myExhibitions';
+import { bucketOf, groupMyExhibitions, defaultBucket, nextSchedule, shortDate, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY} from '@/lib/myExhibitions';
 
 const app = (status: string, settledAt: string | null = null) => ({
   status,
@@ -86,9 +86,10 @@ describe('defaultBucket — 처음 열었을 때 빈 화면이 되면 안 된다
 });
 
 describe('탭 정의', () => {
-  it('초대받은 전시 / 심사중 / 진행중 / 진행종료 네 개, 전체 탭은 없다', () => {
-    // '초대받은 전시'가 맨 앞 — 예전 [받은 초대] 메뉴 탭을 여기로 합쳤다(2026-08-28)
-    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['받은 초대', '심사중', '진행중', '진행종료']);
+  it('받은 초대 / 심사 중 / 진행 중 / 종료 네 개, 전체 탭은 없다', () => {
+    // '받은 초대'가 맨 앞 — 예전 [받은 초대] 메뉴 탭을 여기로 합쳤다(2026-08-28)
+    // 갤러리 [내 공모]의 '진행 중 · 종료' 와 같은 말(2026-09-29)
+    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['받은 초대', '심사 중', '진행 중', '종료']);
   });
 
   it('★ INVITED 는 지원 분류가 채우지 않는다 (초대는 Application 이 아니다)', () => {
@@ -199,81 +200,6 @@ describe('종료 판정은 서버 값을 따른다', () => {
   it('closed 가 없는 옛 응답은 정산 완료로만 판정한다', () => {
     expect(bucketOf({ status: 'ACCEPTED', exhibition: { settledAt: '2026-08-01' } })).toBe('CLOSED');
     expect(bucketOf({ status: 'ACCEPTED', exhibition: { settledAt: null } })).toBe('ONGOING');
-  });
-});
-
-/**
- * 진행 단계 배지 (exhibitionStage)
- *
- * 배지가 뭉뚱그려지면 작가가 지금 무슨 상황인지 알 수 없다. 실제로 두 번 어긋났다:
- *  ① 전시가 이미 열렸는데 '확정' 으로 떠서 지금 전시 중인지 알 수 없었다
- *  ② 20일 규칙으로 자동 정리된 공모가 '확정' 으로 떠 있었다 (ended 플래그가 false 라서)
- */
-describe('exhibitionStage', () => {
-  const past = '2020-01-01', future = '2099-01-01';
-  const label = (ex: any) => exhibitionStage(ex)?.label;
-
-  /** '모집마감' 은 갤러리가 누르는 동작 이름이다 — 수락된 작가에게는 전시를 준비하는 기간이다 */
-  it('모집중 → 전시 준비중 → 확정 순서', () => {
-    expect(label({ exhibitStartDate: future })).toBe('모집중');
-    expect(label({ exhibitStartDate: future, recruitmentClosed: true })).toBe('전시 준비중');
-    expect(label({ exhibitStartDate: future, recruitmentClosed: true, confirmed: true })).toBe('확정');
-  });
-
-  it('전시 시작일이 지나면 확정이 아니라 [전시 진행중]', () => {
-    expect(label({ exhibitStartDate: past, confirmed: true })).toBe('전시 진행중');
-  });
-
-  it('전시종료와 정산중을 구분한다 — 진행중 탭에 남아 있는 이유가 보여야 한다', () => {
-    expect(label({ exhibitStartDate: past, ended: true })).toBe('전시종료');
-    expect(label({ exhibitStartDate: past, ended: true, settlementStarted: true })).toBe('정산중');
-  });
-
-  it('정산이 끝나면 정산완료', () => {
-    expect(label({ ended: true, settlementStarted: true, settledAt: '2026-08-01' })).toBe('정산완료');
-  });
-
-  /** 갤러리가 [전시종료]를 누른 적이 없어 ended=false 인 채로 20일이 지난 경우 */
-  it('자동 정리된 방치 공모는 [종료(자동)] — 확정으로 뜨면 안 된다', () => {
-    expect(label({ exhibitStartDate: past, confirmed: true, ended: false, closed: true })).toBe('종료(자동)');
-  });
-
-  it('갤러리가 직접 종료를 누른 공모는 자동 표기를 쓰지 않는다', () => {
-    expect(label({ exhibitStartDate: past, ended: true, closed: true })).toBe('전시종료');
-  });
-
-  it('정산 완료가 자동 정리보다 우선한다', () => {
-    expect(label({ ended: false, closed: true, settledAt: '2026-08-01' })).toBe('정산완료');
-  });
-
-  it('공모 정보가 없으면 null (배지를 그리지 않는다)', () => {
-    expect(exhibitionStage(null)).toBeNull();
-  });
-
-  /**
-   * 공모만 진행하는 공고 (`recruitOnly`, 2026-09-10) — 단계가 **모집중 → 선정 완료** 둘뿐이다.
-   *
-   * ⚠️ 여기가 어긋나면 작가에게 **없는 일이 있는 것처럼** 보인다. 그 공고엔 전시 운영·정산
-   *    단계가 아예 없는데(서버가 400 으로 막는다) 배지가 '전시 진행중'·'확정' 이라고 말하면,
-   *    작가는 참여할 전시가 열린 줄 알고 자료 제출 안내를 기다린다.
-   */
-  describe('★ 공모만 진행하는 공고', () => {
-    it('모집중 → 선정 완료', () => {
-      expect(label({ recruitOnly: true, exhibitStartDate: future })).toBe('모집중');
-      expect(label({ recruitOnly: true, exhibitStartDate: future, recruitmentClosed: true })).toBe('선정 완료');
-    });
-
-    it('전시 시작일이 지나도 [전시 진행중] 이 되지 않는다', () => {
-      expect(label({ recruitOnly: true, exhibitStartDate: past, recruitmentClosed: true })).toBe('선정 완료');
-    });
-
-    it('confirmed 가 켜져 있어도 [확정] 이 되지 않는다 (서버가 전시 시작일 경과로 자동 true 를 준다)', () => {
-      expect(label({ recruitOnly: true, exhibitStartDate: past, confirmed: true })).toBe('모집중');
-    });
-
-    it('자동 정리되면 [종료]', () => {
-      expect(label({ recruitOnly: true, exhibitStartDate: past, recruitmentClosed: true, closed: true })).toBe('종료');
-    });
   });
 });
 

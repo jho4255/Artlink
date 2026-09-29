@@ -20,7 +20,8 @@ describe('작가 지원 약관 일관성', () => {
   });
 
   it('화면이 보내는 버전 = 서버 버전 (다르면 모든 지원이 400)', () => {
-    for (const f of ['frontend/src/pages/ExhibitionDetailPage.tsx', 'frontend/src/components/shared/InviteApplyModal.tsx']) {
+    // 지원서는 2026-09-29 부터 전용 페이지(ApplyPage) — 예전 공모 상세 모달에서 옮겼다
+    for (const f of ['frontend/src/pages/ApplyPage.tsx', 'frontend/src/components/shared/InviteApplyModal.tsx']) {
       const src = readFileSync(resolve(root, f), 'utf8');
       const m = src.match(/const ARTIST_APPLY_TERMS_VERSION = '([^']+)'/);
       expect(m?.[1], f).toBe(ARTIST_APPLY_TERMS_VERSION);

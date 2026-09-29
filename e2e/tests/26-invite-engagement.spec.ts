@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ownedGalleryId, exhibitionDates , realUploadUrl, seedGalleryLike, applyTermsVersion } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ownedGalleryId, exhibitionDates , realUploadUrl, seedGalleryLike, applyTermsVersion, openApplicantManager } from '../lib/helpers';
 
 /**
  * 둘러보기 참여 + 초대/간편지원 (2026-08 신규 기능) E2E
@@ -262,7 +262,7 @@ test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락
 
   const a = await openAs(browser, 'artist');
   await a.page.goto('/mypage?tab=applications');  // [받은 초대] 탭은 [내 전시] 첫 탭으로 합쳐졌다
-  await a.page.getByRole('button', { name: '받은 초대' }).click();
+  await a.page.getByRole('tab', { name: /^받은 초대/ }).click();
   await expect(a.page.locator('body')).toContainText(ex.title, { timeout: 10000 });
   await expect(a.page.locator('body')).toContainText('E2E 초대 메시지');
 
@@ -281,17 +281,10 @@ test('E. 복합 — 발견→스크랩→초대→알림→간편지원→수락
   expect((app.artworkImages || []).length, '포트폴리오 작품 자동 첨부').toBeGreaterThan(0);
   expect((app.biography || '').length, '약력 자동 첨부').toBeGreaterThan(0);
 
-  // 5) 갤러리 UI(마이페이지 내 공모 → 지원자 관리 인라인): '초대한 작가' 배지 확인
-  await g.page.goto('/mypage?tab=my-exhibitions');
-  await expect(g.page.locator('body')).toContainText(ex.title, { timeout: 15000 });
-  // 제목과 '지원자 관리' 버튼을 함께 가진 가장 안쪽 컨테이너 = 해당 공모 카드
-  const card = g.page.locator('div')
-    .filter({ hasText: ex.title })
-    .filter({ has: g.page.getByRole('button', { name: '지원자 관리' }) })
-    .last();
-  await card.getByRole('button', { name: '지원자 관리' }).click();
-  await expect(g.page.locator('body')).toContainText('Artist 1', { timeout: 15000 });
-  await expect(g.page.locator('body'), '초대한 작가 배지').toContainText('초대한 작가');
+  // 5) 갤러리 UI(마이페이지 내 공모 → 카드의 [지원자] 인라인): 줄에 '초대한 작가' 표시
+  const card = await openApplicantManager(g.page, ex.title);
+  await expect(card).toContainText('Artist 1', { timeout: 15000 });
+  await expect(card, '초대한 작가 표시').toContainText('초대한 작가');
 
   // 이미 ACCEPTED 지만(초대 수락) 멱등이라 그대로 둔다 — 아래 운영페이지 진입 조건을 명시적으로 만든다
   await api.patch(`${API}/exhibitions/${ex.id}/applications/${app.id}`, {
@@ -342,7 +335,7 @@ test('F2. 초대 거절 — 목록에서 사라지고 재초대는 막힌다', a
 
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/mypage?tab=applications');  // [받은 초대] 탭은 [내 전시] 첫 탭으로 합쳐졌다
-  await page.getByRole('button', { name: '받은 초대' }).click();
+  await page.getByRole('tab', { name: /^받은 초대/ }).click();
   await expect(page.locator('body')).toContainText(ex.title, { timeout: 10000 });
 
   /* 초대 탭은 [참여하기]/[거절] 두 버튼만 둔다. [거절]은 확인을 거친다(2026-09-19) — 거절하면 같은 공모에

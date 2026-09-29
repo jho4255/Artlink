@@ -2,14 +2,17 @@ import { test, expect, request as pwRequest } from '@playwright/test';
 import { openAs, tokenFor, openMyPageTab, exhibitionDates } from '../lib/helpers';
 
 /**
- * 지원 모달(고정 양식): 작가약력(필수) + 경력 + 작품사진(1장 이상 필수) + 포트폴리오 파일.
- * - 빈 제출 → 검증 차단
- * - 약력 + 작품사진 + 경력/파일 '없음' → 제출 성공 → 지원 내역 반영
+ * 지원서(고정 양식): 작가약력(필수) + 경력 + 작품사진(1장 이상 필수) + 포트폴리오 파일 + 약관.
+ *
+ * 2026-09-29 부터 **모달이 아니라 전용 페이지**(`/exhibitions/:id/apply`)다.
+ *  - 열면 홈페이지(포트폴리오) 내용으로 미리 채운다(비었으면 그렇다고 말한다)
+ *  - 경력·파일 '없음' 체크는 없앴다 — 비워 두면 그대로 '없음'으로 간다
+ *  - [지원하기]는 늘 눌린다. 빠진 게 있으면 **무엇이 남았는지** 말하고 그 칸으로 데려간다
  */
 const API = 'http://localhost:4000/api';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
-test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 반영', async ({ browser }) => {
+test('지원서 페이지: 남은 것 안내 → 정상 제출 → 지원 내역 반영', async ({ browser }) => {
   // 공모 생성 + 승인 (customFields 없음 — 제거된 기능)
   const api = await pwRequest.newContext();
   const gTok = tokenFor('gallery'); const adminTok = tokenFor('admin');
@@ -24,43 +27,55 @@ test('고정 양식 지원: 검증 차단 → 정상 제출 → 지원 내역 �
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await api.dispose();
 
-  const { page, ctx } = await openAs(browser, 'artist2'); // artist2: 포트폴리오 비어있어 깨끗한 폼
+  const { page, ctx } = await openAs(browser, 'artist2'); // artist2: 포트폴리오가 비어 있을 수 있다(둘 다 견딘다)
   await page.goto(`/exhibitions/${ex.id}`);
 
-  // 지원하기 → 모달
+  // 지원하기 → 지원서 **페이지**
   await page.getByRole('button', { name: '지원하기' }).first().click();
-  await expect(page.getByText('지원서 작성', { exact: false })).toBeVisible({ timeout: 8000 });
+  await page.waitForURL(new RegExp(`/exhibitions/${ex.id}/apply$`), { timeout: 10000 });
+  await expect(page.getByRole('heading', { level: 1, name: ex.title })).toBeVisible({ timeout: 10000 });
+  // 홈페이지로 채웠는지 한 줄로 알려 준다 (채웠든 비었든)
+  await expect(page.getByText(/홈페이지\(포트폴리오\)에 적은|홈페이지에 아직 적은 내용이 없어요/)).toBeVisible({ timeout: 10000 });
 
-  // 1) 빈 제출 → 검증 토스트
-  // 제출 버튼은 '약관 동의' 전까지 disabled → 먼저 동의한 뒤 빈 상태로 제출해 검증을 확인한다
-  await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-  await page.getByRole('button', { name: '지원하기' }).last().click();
-  await expect(page.locator('body')).toContainText('다음 항목을 확인해주세요', { timeout: 8000 });
+  // 1) 약력을 비우고 누르면 → 무엇이 남았는지 말하고 제출하지 않는다
+  const bio = page.getByPlaceholder('작가 소개·약력을 입력하세요.');
+  await bio.fill('');
+  await page.getByRole('button', { name: '지원하기' }).click();
+  await expect(page.locator('body')).toContainText('아직 채울 것', { timeout: 8000 });
+  await expect(page.getByText('약력을 적어 주세요.')).toBeVisible();
+  await expect(page).toHaveURL(/\/apply$/);
 
   // 2) 약력 입력
-  await page.getByPlaceholder('작가 소개·약력을 입력하세요.').fill('E2E 지원 약력');
+  await bio.fill('E2E 지원 약력');
 
-  // 3) 작품사진 1장 업로드 (image 파일 input)
-  await page.locator('input[type="file"][accept="image/*"]').first().setInputFiles({ name: 'art.png', mimeType: 'image/png', buffer: PNG });
-  await expect(page.locator('img[src*="/uploads/"]').first()).toBeVisible({ timeout: 12000 });
+  // 3) 작품사진 — 홈페이지로 채워졌으면 그대로, 비었으면 1장 올린다
+  const images = page.locator('#apply-images img');
+  if (await images.count() === 0) {
+    await page.locator('#apply-images input[type="file"]').first().setInputFiles({ name: 'art.png', mimeType: 'image/png', buffer: PNG });
+    await expect(page.locator('#apply-images img[src*="/uploads/"]').first()).toBeVisible({ timeout: 12000 });
+  }
 
-  // 4) 경력 3종 + 포트폴리오 파일 '없음' 체크 (빈칸 제출 게이트 통과)
-  const nones = page.getByText('없음', { exact: true });
-  const cnt = await nones.count();
-  for (let i = 0; i < cnt; i++) await nones.nth(i).click();
+  // 4) '없음' 체크는 없다 — 비워 둔 경력·파일은 그대로 '없음'으로 간다(예전엔 네 번을 눌러야 제출됐다)
+  await expect(page.getByText('없음', { exact: true })).toHaveCount(0);
 
-  // 5) 제출 — 확인 다이얼로그는 없다. 예전엔 여기서 한 번 더 눌렀는데, 그 클릭은 지원 뒤에도 남아 있던
-  //    상세 페이지의 [지원하기]를 누르고 있었다(2026-09-27 부터 지원한 작가에겐 그 버튼 대신 상태를 보여준다).
-  await page.getByRole('button', { name: '지원하기' }).last().click();
-  await expect(page.locator('body')).toContainText(/지원이 완료|지원.*완료/, { timeout: 10000 });
+  // 5) 약관 동의 → 하단 줄이 '다 채웠어요' 로 바뀐다 → 제출
+  await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
+  await expect(page.getByText(/다 채웠어요/)).toBeVisible();
+  await page.getByRole('button', { name: '지원하기' }).click();
 
-  // 지원한 뒤에는 [지원하기] 대신 상태가 보인다 — 지원서를 다 쓰고 나서야 "이미 지원한 공모" 400 을 받지 않게
+  // 공모 상세로 돌아와 [지원하기] 대신 상태가 보인다 — 지원서를 다 쓰고 나서야 "이미 지원한 공모" 400 을 받지 않게
+  await page.waitForURL(new RegExp(`/exhibitions/${ex.id}$`), { timeout: 10000 });
+  await expect(page.locator('body')).toContainText('지원했어요', { timeout: 10000 });
   await expect(page.getByText('지원 완료', { exact: true })).toBeVisible({ timeout: 8000 });
   await expect(page.getByRole('button', { name: '지원하기' })).toHaveCount(0);
 
-  // 지원 내역 반영
-  // 예전 [지원 내역] 탭은 [내 전시]로 이름이 바뀌었다 (초대·진행·정산까지 한 곳에서 본다)
+  // 지원서 주소로 다시 와도 두 번 쓰게 두지 않는다 — 상세로 돌려보낸다
+  await page.goto(`/exhibitions/${ex.id}/apply`);
+  await page.waitForURL(new RegExp(`/exhibitions/${ex.id}$`), { timeout: 10000 });
+
+  // 지원 내역 반영 — [내 전시] '심사 중'
   await openMyPageTab(page, '내 전시');
+  await page.getByRole('tab', { name: /^심사 중/ }).click();
   await expect(page.getByText('고정양식공모', { exact: false }).first()).toBeVisible({ timeout: 8000 });
   await ctx.close();
 });

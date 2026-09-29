@@ -31,8 +31,18 @@ interface Props {
 
 /**
  * 지원서 제출 내용 표시 — 작가 약력 / 경력(아트페어·개인전·단체전) / 작품 사진 / 포트폴리오 파일.
- * 갤러리 지원자 관리 + Admin 오버사이트 공용.
+ * 갤러리 지원자 관리 + 작가 [내 전시]의 '내가 낸 지원서' + Admin 오버사이트 공용.
+ * (2026-09-29: 회색 상자·📋 를 빼고 작은 제목 + 본문의 목록으로 — 카드 안에 상자를 또 넣으면 테두리가 겹쳐 시끄럽다)
  */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs text-gray-500">{label}</p>
+      {children}
+    </div>
+  );
+}
+
 export default function ApplicationContent({ app, customFields, onImageClick }: Props) {
   const career = normalizeCareer(app.career);
   const images = app.artworkImages ?? [];
@@ -50,29 +60,25 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
   const orphanAnswers = safeAnswers.filter((answer) => !currentFieldIds.has(answer.fieldId));
 
   return (
-    <div className="space-y-2 bg-gray-50 rounded-lg p-3">
-      <p className="text-xs font-medium text-gray-600">📋 지원서 내용</p>
-
+    <div className="space-y-4 text-sm">
       {/* 작가 약력 */}
-      <div>
-        <p className="text-xs text-gray-400 mb-0.5">작가 약력</p>
-        <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{app.biography || '-'}</p>
-      </div>
+      <Field label="작가 약력">
+        <p className="whitespace-pre-wrap break-words leading-relaxed text-gray-800">{app.biography || '—'}</p>
+      </Field>
 
       {/* 경력 */}
-      <div>
-        <p className="text-xs text-gray-400 mb-0.5">경력</p>
+      <Field label="경력">
         {careerEmpty ? (
-          <p className="text-xs text-gray-400">없음</p>
+          <p className="text-gray-400">없음</p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-2">
             {LABELS.map(({ key, label }) => career[key].length > 0 && (
               <div key={key}>
-                <p className="text-[11px] font-medium text-gray-500">{label}</p>
-                <ul className="space-y-0.5">
+                <p className="text-xs font-medium text-gray-700">{label}</p>
+                <ul className="mt-0.5 space-y-0.5">
                   {career[key].map((e, i) => (
-                    <li key={i} className="text-xs text-gray-700">
-                      <span className="text-gray-400 mr-1.5">{e.year}</span>{e.content}
+                    <li key={i} className="text-gray-800">
+                      {e.year && <span className="mr-1.5 tabular-nums text-gray-400">{e.year}</span>}{e.content}
                     </li>
                   ))}
                 </ul>
@@ -80,47 +86,44 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
             ))}
           </div>
         )}
-      </div>
+      </Field>
 
       {/* 작품 사진 */}
-      <div>
-        <p className="text-xs text-gray-400 mb-1">작품 사진 ({images.length}장)</p>
+      <Field label={`작품 사진 ${images.length}장`}>
         {images.length === 0 ? (
-          <p className="text-xs text-gray-400">없음</p>
+          <p className="text-gray-400">없음</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
             {/* 규칙 18·21 — 작품은 자르지 않고(contain), 목록은 썸네일로. 예전엔 원본을 정사각 크롭했다(2026-09-19) */}
             {images.map((url, idx) => (
-              <button key={idx} type="button" onClick={() => onImageClick?.(images, idx)} className="w-full aspect-square rounded bg-gray-50 cursor-pointer hover:opacity-80">
-                <Thumb src={url} size="grid" alt={`작품 ${idx + 1}`} className="w-full h-full object-contain" />
+              <button key={idx} type="button" onClick={() => onImageClick?.(images, idx)} aria-label={`작품 ${idx + 1} 크게 보기`} className="aspect-square w-full cursor-pointer rounded bg-gray-50 hover:opacity-80">
+                <Thumb src={url} size="grid" alt={`작품 ${idx + 1}`} className="h-full w-full object-contain" />
               </button>
             ))}
           </div>
         )}
-      </div>
+      </Field>
 
       {/* 포트폴리오 파일 */}
-      <div>
-        <p className="text-xs text-gray-400 mb-0.5">포트폴리오 파일</p>
+      <Field label="포트폴리오 파일">
         {safeHttpUrl(app.portfolioFileUrl) ? (
-          <a href={safeHttpUrl(app.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-1 -mx-1 min-h-[44px] text-xs text-gray-700 hover:underline">
-            <FileText size={13} /> 파일 보기
+          <a href={safeHttpUrl(app.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="-mx-1 inline-flex min-h-[40px] items-center gap-1 px-1 text-gray-800 underline-offset-4 hover:underline">
+            <FileText size={14} aria-hidden /> 파일 보기
           </a>
         ) : (
-          <p className="text-xs text-gray-400">없음</p>
+          <p className="text-gray-400">없음</p>
         )}
-      </div>
+      </Field>
 
       {((customFields?.length ?? 0) > 0 || orphanAnswers.length > 0) && (
-        <div>
-          <p className="text-xs text-gray-400 mb-1">갤러리 추가 질문</p>
-          <div className="space-y-1.5">
+        <Field label="갤러리 추가 질문">
+          <dl className="divide-y divide-gray-100 border-y border-gray-100">
             {(customFields ?? []).map((field) => {
               const value = formatAnswer(answerMap.get(field.id));
               return (
-                <div key={field.id} className="rounded-md bg-white border border-gray-100 px-2.5 py-2">
-                  <p className="text-[11px] font-medium text-gray-500">{field.label}</p>
-                  <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{value || '-'}</p>
+                <div key={field.id} className="py-2">
+                  <dt className="text-xs text-gray-500">{field.label}</dt>
+                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-gray-800">{value || '—'}</dd>
                 </div>
               );
             })}
@@ -128,14 +131,14 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
             {orphanAnswers.map((answer) => {
               const value = formatAnswer(answer.value);
               return (
-                <div key={answer.fieldId} className="rounded-md bg-white border border-gray-100 px-2.5 py-2">
-                  <p className="text-[11px] font-medium text-gray-400">삭제된 질문</p>
-                  <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{value || '-'}</p>
+                <div key={answer.fieldId} className="py-2">
+                  <dt className="text-xs text-gray-400">삭제된 질문</dt>
+                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-gray-800">{value || '—'}</dd>
                 </div>
               );
             })}
-          </div>
-        </div>
+          </dl>
+        </Field>
       )}
     </div>
   );

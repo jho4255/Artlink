@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates, openGallerySubmissions, openSection } from '../lib/helpers';
 
 /**
  * 다운로드 실패 회수 + 그동안 커버리지가 없던 PDF 경로 (2026-08-04)
@@ -109,14 +109,12 @@ test('★ 처음 실패한 이미지를 자동 회수해 결국 전부 받는다
     },
   );
 
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: /작품 원본/ }).first();
-  await expect(btn).toBeVisible({ timeout: 20000 });
+  await openGallerySubmissions(page, exId);
 
   const dlPromise = page.waitForEvent('download', { timeout: 150_000 });
-  await btn.click();
+  await pickDownload(page, /작품 원본/);
 
-  // 자동 회수 단계가 실제로 돌았는지 — 버튼 라벨이 '재시도 n/m'으로 바뀐다
+  // 자동 회수 단계가 실제로 돌았는지 — [내려받기] 버튼 라벨이 '재시도 n/m'으로 바뀐다
   await expect(page.locator('body'), '자동 회수 단계 노출').toContainText(/재시도 \d+\/\d+/, { timeout: 60_000 });
 
   const dl = await dlPromise;
@@ -135,6 +133,15 @@ test('★ 처음 실패한 이미지를 자동 회수해 결국 전부 받는다
   await api.dispose();
   await ctx.close();
 });
+
+/**
+ * 출품 자료 구역의 [내려받기 ▾] 메뉴에서 항목 하나를 누른다(2026-09-29 — 예전엔 버튼 넷이 늘어서 있었다).
+ * 메뉴는 누를 때마다 닫히므로 매번 다시 연다.
+ */
+async function pickDownload(page: import('@playwright/test').Page, item: RegExp) {
+  await page.getByRole('button', { name: '내려받기' }).first().click();
+  await page.getByRole('menuitem', { name: item }).click();
+}
 
 // ─────────────────────────────────────────────────────────────
 // ② 수동 재시도 + ③ ZIP 자기기록
@@ -161,12 +168,10 @@ test('★ 끝내 못 받으면 배너로 남고, [다시 받기]로 완전한 ZI
     },
   );
 
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: /작품 원본/ }).first();
-  await expect(btn).toBeVisible({ timeout: 20000 });
+  await openGallerySubmissions(page, exId);
 
   const firstDl = page.waitForEvent('download', { timeout: 200_000 });
-  await btn.click();
+  await pickDownload(page, /작품 원본/);
   const dl1 = await firstDl;
 
   // 배너: 사라지는 토스트가 아니라 계속 남아 있어야 한다
@@ -221,11 +226,11 @@ test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원
   await submitArtworksAs(api, exId, urls.slice(2, 4), tokenFor('artist2')); // artist2: 2점
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
+  await openGallerySubmissions(page, exId);
 
   // ① 작품 원본 ZIP
   const imgDl = page.waitForEvent('download', { timeout: 150_000 });
-  await page.getByRole('button', { name: /작품 원본/ }).first().click();
+  await pickDownload(page, /작품 원본/);
   const imgNames = await zipEntries((await (await imgDl).path())!);
   expect(imgNames).toHaveLength(4);
   const imgFolders = new Set(imgNames.map((n) => n.split('/')[0]));
@@ -236,7 +241,7 @@ test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원
 
   // ② 전체 제출물 PDF ZIP — 작가마다 3문서
   const pdfDl = page.waitForEvent('download', { timeout: 150_000 });
-  await page.getByRole('button', { name: /전체 PDF/ }).first().click();
+  await pickDownload(page, /전체 출품 자료 PDF/);
   const pdfNames = await zipEntries((await (await pdfDl).path())!);
   const pdfFolders = new Set(pdfNames.map((n) => n.split('/')[0]));
   expect(pdfFolders.size, `작가 2명 → 폴더 2개. 실제: ${JSON.stringify(pdfNames)}`).toBe(2);
@@ -276,12 +281,15 @@ test('정산서 PDF — 이미지를 선수집해 백엔드 중계 없이 내려
   const proxied: string[] = [];
   page.on('request', (r) => { if (r.url().includes('/api/upload/image-proxy')) proxied.push(r.url()); });
 
-  await page.goto(`/exhibitions/${exId}/operation`);
-  const btn = page.getByRole('button', { name: '전체 정산 PDF' }).first();
-  await expect(btn).toBeVisible({ timeout: 30_000 });
+  await page.goto(`/exhibitions/${exId}/operation/new`);
+  await openSection(page, '정산');
+  // 구역 머리의 [정산서 ▾] 메뉴(작가 줄마다 있는 것과 이름이 같다 — 첫 번째가 구역 것)
+  const menu = page.getByRole('button', { name: '정산서' }).first();
+  await expect(menu).toBeVisible({ timeout: 30_000 });
 
   const dlPromise = page.waitForEvent('download', { timeout: 120_000 });
-  await btn.click();
+  await menu.click();
+  await page.getByRole('menuitem', { name: '전체 정산서 PDF' }).click();
   const dl = await dlPromise;
 
   expect(dl.suggestedFilename()).toMatch(/전체정산서\.pdf$/);
@@ -306,7 +314,7 @@ test('지원서 전체 ZIP — 작품 사진을 선수집하고 실제 파일이
   page.on('request', (r) => { if (r.url().includes('/api/upload/image-proxy')) proxyHits += 1; });
 
   await openApplicantManager(page, title);
-  const zipBtn = page.getByRole('button', { name: '전체 지원서 ZIP' }).first();
+  const zipBtn = page.getByRole('button', { name: /지원서 전체 받기/ }).first();
   await expect(zipBtn).toBeVisible({ timeout: 30_000 });
 
   const dlPromise = page.waitForEvent('download', { timeout: 150_000 });
@@ -334,7 +342,7 @@ test('★ 지원서 사진을 못 받으면 배너로 알리고 다시 받게 �
 
   const { page, ctx } = await openAs(browser, 'gallery');
   await openApplicantManager(page, title);
-  const zipBtn = page.getByRole('button', { name: '전체 지원서 ZIP' }).first();
+  const zipBtn = page.getByRole('button', { name: /지원서 전체 받기/ }).first();
   await expect(zipBtn).toBeVisible({ timeout: 30_000 });
 
   const dlPromise = page.waitForEvent('download', { timeout: 150_000 });

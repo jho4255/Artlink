@@ -21,7 +21,8 @@ test('멘션: @를 치면 부를 수 있는 사람만 뜬다 (ArtLink 는 누구
   await box.type('@');
 
   // ArtLink(운영)는 이웃이 없어도 부를 수 있다 — 문의·신고 창구
-  const artlink = page.getByRole('button', { name: '@ArtLink' });
+  // 목록 항목은 role="option" 이다(2026-09-19 키보드 자동완성 — 예전 button). 이름엔 머리글자·'운영' 표시도 붙는다
+  const artlink = page.getByRole('option', { name: /@ArtLink/ });
   await expect(artlink).toBeVisible({ timeout: 5000 });
 
   // 골라 넣으면 본문에 들어간다

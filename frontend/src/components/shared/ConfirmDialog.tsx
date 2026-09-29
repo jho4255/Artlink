@@ -8,14 +8,19 @@
  *
  * @see Phase 4 - 폼 UX 개선
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  message: string;
+  message?: string;
+  /**
+   * 누르면 **무엇이 바뀌는지** 한 줄씩 (2026-09-29). 운영 단계 전환처럼 되돌리기 어려운 동작은
+   * "정말 하시겠습니까?" 대신 결과를 적어 준다 — 처음 쓰는 사람은 무엇을 묻는지부터 모른다.
+   */
+  details?: string[];
   confirmText?: string;
   cancelText?: string;
   variant?: 'default' | 'danger';
@@ -27,12 +32,15 @@ export default function ConfirmDialog({
   open,
   title,
   message,
+  details,
   confirmText = '확인',
   cancelText = '취소',
   variant = 'default',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // role="dialog" 의 이름 = 제목. 화면 낭독기가 "모집을 마감할까요? 대화상자" 로 읽는다(테스트도 이 이름으로 집는다)
+  const titleId = useId();
   // 확인 버튼 더블클릭 시 중복 제출 방지 — 다이얼로그가 열릴 때마다 리셋
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -88,11 +96,24 @@ export default function ConfirmDialog({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             className="bg-white rounded-xl p-5 sm:p-6 mx-4 max-w-sm w-full max-h-[85vh] overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold mb-2">{title}</h3>
-            <p className="text-sm text-gray-600 mb-6 whitespace-pre-wrap">{message}</p>
+            <h3 id={titleId} className="text-lg font-bold mb-2">{title}</h3>
+            {message && <p className={`text-sm text-gray-600 whitespace-pre-wrap ${details?.length ? 'mb-3' : 'mb-6'}`}>{message}</p>}
+            {details && details.length > 0 && (
+              <ul className="mb-6 space-y-2 text-sm leading-relaxed text-gray-600">
+                {details.map((d) => (
+                  <li key={d} className="flex gap-2.5">
+                    <span aria-hidden className="mt-[0.6em] h-1 w-1 shrink-0 rounded-full bg-gray-400" />
+                    <span>{d}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={onCancel}

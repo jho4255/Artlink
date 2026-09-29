@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react';
+
 /**
  * 페이지 안 탭 막대 — 갤러리 홈페이지(2026-09-27). 작가 홈페이지의 탭 막대(`HomepageView` 의 TabBar)와 **같은 모양**이다:
  * 글자 탭 + 밑줄, 강조색 없음(빨강은 D-day·판매완료 같은 '상태'에 아껴 둔다), 넘치면 가로로 밀어 본다(줄바꿈하면 막대 높이가 튄다).
@@ -5,7 +7,13 @@
  *
  * `sticky` 면 상단바 바로 아래(h-16 / lg:h-20)에 붙는다. 부모 컨테이너의 좌우 여백(px-6 md:px-12)만큼 넓혀 배경이 끝까지 찬다.
  */
-export interface PageTab<T extends string> { id: T; label: string; count?: number }
+export interface PageTab<T extends string> {
+  id: T;
+  label: string;
+  count?: number;
+  /** 다 채운 탭에 ✓ (출품 자료 편집기의 출품리스트·약력·작가노트, 2026-09-29) */
+  done?: boolean;
+}
 
 export default function PageTabBar<T extends string>({ tabs, active, onSelect, sticky = true, idPrefix, label }: {
   tabs: PageTab<T>[];
@@ -34,6 +42,7 @@ export default function PageTabBar<T extends string>({ tabs, active, onSelect, s
             >
               {t.label}
               {typeof t.count === 'number' && <span className="ml-1.5 text-[12px] font-normal tabular-nums text-gray-400">{t.count}</span>}
+              {t.done && <Check size={13} strokeWidth={2.5} aria-label="채움" className="ml-1 inline-block -translate-y-px text-gray-400" />}
               {on && <span aria-hidden className="absolute inset-x-0 -bottom-px h-[2px] bg-gray-900" />}
             </button>
           );

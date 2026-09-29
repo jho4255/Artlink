@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, createExhibition, seedGalleryLike, settle } from '../lib/helpers';
+import { openAs, tokenFor, userIds, createExhibition, seedGalleryLike, settle, cardToggle } from '../lib/helpers';
 
 /**
  * 갤러리 [내 공모] 카드 — 2026-08-28 개편분.
@@ -7,6 +7,8 @@ import { openAs, tokenFor, userIds, createExhibition, seedGalleryLike, settle } 
  *  · [상세 운영]은 **페이지 이동이 아니라 카드 안에서 접었다폈다**(OperationBody 를 임베드).
  *  · [추가 질문] 수정은 카드 상단 버튼에서 빼고 **[지원자 관리] 패널 안**으로 옮겼다.
  *  · [작가 초대]: 관심 작품(하트)을 저장한 작가를 이 공모에 바로 초대 — 지원자 관리 패널 안.
+ *  · 2026-09-29: 두 버튼이 카드 아래 줄의 토글 [지원자 N] · [운영] 이 됐다(`aria-expanded`). 전용 운영 페이지의
+ *    머리말은 '상세 운영' 이 아니라 **공모 제목**이다.
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1440, height: 900 };
@@ -31,24 +33,27 @@ test.describe('상세 운영 인라인', () => {
     await api.dispose();
   });
 
-  test('★ [상세 운영]은 페이지 이동 없이 카드 안에서 펼쳐진다', async ({ browser }) => {
+  test('★ [운영]은 페이지 이동 없이 카드 안에서 펼쳐진다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=my-exhibitions');
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
     const card = cardFor(page, title);
-    await card.getByRole('button', { name: '상세 운영', exact: true }).click();
+    const toggle = cardToggle(card, 'operation');
+    await toggle.click();
 
     // 주소는 그대로 마이페이지 (operation 페이지로 안 나간다)
     await expect(page).toHaveURL(/\/mypage/);
-    // 카드 안에 운영 화면 내용(운영 공지)이 들어온다
-    await expect(card.getByRole('button', { name: '상세 운영 닫기' })).toBeVisible({ timeout: 10000 });
-    await expect(card).toContainText('운영 공지', { timeout: 15000 });
+    // 카드 안에 운영 화면 내용(진행 단계·운영 공지)이 들어온다
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(card).toContainText('진행 단계', { timeout: 15000 });
+    await expect(card).toContainText('운영 공지');
 
     // 다시 누르면 접힌다
-    await card.getByRole('button', { name: '상세 운영 닫기' }).click();
+    await toggle.click();
     await settle(page, 500);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(card).not.toContainText('운영 공지');
     await ctx.close();
   });
@@ -64,7 +69,9 @@ test.describe('상세 운영 인라인', () => {
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.goto(`/exhibitions/${ex.id}/operation/new`);
-    await expect(page.getByRole('heading', { name: '상세 운영' })).toBeVisible({ timeout: 15000 });
+    // 머리말은 공모 제목, 그 아래에 카드와 같은 진행 단계
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('진행 단계').first()).toBeVisible();
     await ctx.close();
   });
 });
@@ -92,8 +99,8 @@ test.describe('지원자 관리 패널 안의 도구들', () => {
     await expect(card.getByRole('button', { name: /추가 질문/ })).toHaveCount(0);
     await expect(card.getByRole('button', { name: '작가 초대' })).toHaveCount(0);
 
-    // 지원자 관리를 펼치면 안에서 나타난다
-    await card.getByRole('button', { name: '지원자 관리' }).click();
+    // [지원자] 를 펼치면 안에서 나타난다
+    await cardToggle(card, 'applicants').click();
     await expect(card.getByRole('button', { name: /추가 질문 수정/ })).toBeVisible({ timeout: 10000 });
     await expect(card.getByRole('button', { name: '작가 초대' })).toBeVisible();
     await ctx.close();
@@ -106,7 +113,7 @@ test.describe('지원자 관리 패널 안의 도구들', () => {
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
     const card = cardFor(page, title);
-    await card.getByRole('button', { name: '지원자 관리' }).click();
+    await cardToggle(card, 'applicants').click();
     await card.getByRole('button', { name: '작가 초대' }).click();
 
     await expect(page.getByRole('heading', { name: '작가 초대' })).toBeVisible({ timeout: 8000 });

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, exhibitionDates, openSection } from '../lib/helpers';
 
 /**
  * 공모 상태(모집마감/확정/전시종료) + 정산.
@@ -106,8 +106,14 @@ test('UI: 전시종료 후 갤러리 운영 페이지에 정산 섹션 표시', 
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await page.goto(`/exhibitions/${exId}/operation`);
-  await expect(page.getByText('정산', { exact: false }).first()).toBeVisible({ timeout: 10000 });
+  // 옛 `/operation` 은 `/operation/new` 로 리다이렉트된다 — 새 주소로 바로 간다
+  await page.goto(`/exhibitions/${exId}/operation/new`);
+  // 전시가 끝났으니 [정산] 구역이 열려 있다(현재 단계 구역만 펼쳐 시작) — 접혀 있으면 연다
+  await openSection(page, '정산');
+  // 정산 단계 표시(판매 입력 → 작가 확인 → 정산 완료)와, 작가가 둘 이하라 펼쳐진 작가 줄의 출품작
+  await expect(page.getByRole('list', { name: '정산 단계' })).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('작품X', { exact: false }).first()).toBeVisible({ timeout: 8000 });
+  // 판매를 입력하기 전의 주 버튼은 [작가에게 확인 요청] 하나
+  await expect(page.getByRole('button', { name: '작가에게 확인 요청' })).toBeVisible();
   await ctx.close();
 });

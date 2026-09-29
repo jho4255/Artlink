@@ -2243,3 +2243,30 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 조회 `GET /api/admin/stats/visitors?days=N` → `{ rows:[{date,members,guests,total}], since }`(`lib/visitStats.ts dailyVisitorStats`, 회원=서로 다른 userId·Admin 제외, 비회원=userId 없는 기기).
 - 화면 `components/admin/AdminStatsSection.tsx`(마이페이지 Admin 탭 `stats`) + 계산 `lib/visitStatsView.ts`.
 
+
+## 공모 흐름 UX 개편 — 등록 · 지원 · 지원자 관리 · 출품 자료 · 정산 (2026-09-29)
+로컬에서 5단계(공모 등록 → 지원 → 지원자 관리 → 출품 자료 → 정산)를 데스크톱·모바일로 끝까지 밟아 보고 "처음 온 사람이 다음에 뭘 눌러야 하는지 모른다"를
+핵심 문제로 잡았다. **백엔드 API·스키마 변경 없음**(화면만). 사용자 결정: DESIGN.md 는 참고하지 않고 이 흐름 화면만, 지원서는 전용 페이지.
+- **디자인 언어**(흐름 화면 공통, `components/flow/`): `StatusChip`(neutral·attention·done 셋) · `Notice`(neutral·attention 둘) · `ProgressSteps`(단색, nodes/inline) ·
+  `Disclosure`(접힌 구역 · 링크형 한 줄) · `MenuButton`(내려받기 같은 도구 모음) · `FormParts`(`FormSection`·`FormField`) · `DraftNotice`(작성하던 초안).
+  카드 `rounded-2xl border`·그림자 없음, 색은 흑백 + 빨강(accent) 하나(지금 할 일·위험), 한 구역에 주 버튼 하나, 탭은 `PageTabBar sticky={false}`.
+- **어휘 한 곳** `frontend/src/lib/flowLabels.ts` — `stageOf`(공모 단계 이름·칩), `applicationStatusView`(갤러리: 검토 대기·수락됨·거절 / 작가: 심사 중·선정·미선정),
+  `galleryNextTask`·`artistNextTask`(카드의 '지금 할 일' 한 줄과 누르면 열 구역), `SUBMISSION_TERM='출품 자료'`, `ddayText('마감', d)`.
+- **[내 공모] 카드**(`MyPage MyExhibitionsSection`): 칩 · '지금 할 일' 줄 · 통계 · 카드 아래 토글 [지원자 N]/[운영](한 번에 하나). 딥링크 `?ex=&panel=applicants|operation`.
+- **지원자 관리**(`ApplicantManager`): 줄을 펼쳐 지원서 아래 [수락하기]·[거절](확인창). 일괄 선택은 **검토 대기 줄에만**(수락·거절 탭엔 체크박스 없음).
+  초대 코드는 목록 아래 한 줄(`이미 선정한 작가를 초대 코드로 데려오기`)로 접었다.
+- **운영**(`OperationBody`): 진행 단계(`StatusPanel`, 모든 단계 전환에 결과를 적은 `ConfirmDialog details`) → 할 일 → 접힌 구역 셋(운영 공지·출품 자료·정산, 현재 단계 것만 펼쳐 시작).
+  전용 페이지 머리말은 공모 제목. 정산 확인 현황(`settlement` prop)을 받아 '모두 확인' 을 구분한다.
+- **작가 출품 자료**(`MySubmissionSection`): 버튼은 [임시저장]·[갤러리에 제출] 둘, 대표작은 작품 카드의 [☆ 대표작](저장 전에도), 체크리스트 한 줄
+  (`lib/submissionChecklist.ts`, 서버 `hasSubmissionContent` 와 같은 기준). 약력·노트가 비면 막지 않고 한 번 묻는다([출품작만 먼저 제출]).
+- **정산**(`SettlementSection`): 단계 판매 입력 → 작가 확인 → 정산 완료, 상황별 주 버튼 하나, 갤러리 몫 0% 로 요청하면 확인창, 작가가 모두 확인하면 단계·문구가 '정산 완료 차례'로.
+- **지원서 페이지** `pages/ApplyPage.tsx`(`/exhibitions/:id/apply`, 옛 `?apply=1` 은 여기로) — 홈페이지로 미리 채움, 경력·파일 '없음' 체크 없음, 하단 고정 줄이 '남은 것'을 말한다.
+- **등록 폼**: 일정 칸을 일어나는 순서대로, 아래 한 줄 요약(`lib/scheduleSummary.ts`), [등록 요청]은 늘 눌리고 빠진 곳으로 데려간다.
+- **등록 폼 임시저장**(`lib/formDraft.ts` + `hooks/useFormDraft.ts` + `DraftNotice`) — 갤러리·공모·전시 공통. 만료 없음(예전 24시간),
+  저장된 초안이 있으면 폼 위에 [이어서 쓰기]·[새로 쓰기](되묻기), **고르기 전엔 자동저장·[임시저장]·제출 정리 모두 그 칸에 쓰지 않는다**(예전엔 복원 팝업에서 [취소] 후
+  입력하면 3초 만에 옛 초안이 덮였다). 칸은 폼마다 하나, 이 브라우저에만.
+- **공용 수정**: `ConfirmDialog` 에 `role="dialog"`·`aria-labelledby`, `details`. `PageTabBar` 에 `done`. 카드 `min-w-0`(390px 에서 408~472px 로 밀리던 것).
+- **확인용 데이터** `backend/scripts/seed-flow-stages.ts` — 단계마다 공모 하나(승인 대기 ~ 정산 완료, 공모만 진행 둘). 로컬 데모 DB 전용, `--clean`.
+- 테스트: 프론트 `flowLabels.test.ts`(28) · `submissionFlow.test.ts`(13) · `hooks/__tests__/useFormDraft.test.ts`(10) · e2e `60-flow-ux.spec.ts`(A~F) ·
+  옛 운영 페이지를 열던 `21`·`22`·`24`·`28` 을 새 화면으로 옮겼고 `03`·`15`·`17`·`23`·`33`·`35`·`55` 를 새 조작으로 고쳤다(헬퍼 `openApplicantManager`·`applicantRow`·
+  `acceptApplicant`·`cardToggle`·`openSection`·`openGallerySubmissions`·`openArtistExhibition`).

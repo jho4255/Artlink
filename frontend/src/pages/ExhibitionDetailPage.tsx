@@ -5,12 +5,12 @@
  *  - 전시 상세 정보 (제목, 갤러리, 타입, 날짜, 인원, 지역, D-day, 설명)
  *  - 상단 다중 사진 캐러셀 + 오너 인라인 사진 관리(추가/삭제(최소1장)/드래그 순서변경)
  *  - 홍보 사진 표시 (종료된 전시)
- *  - Artist: "지원하기" 버튼 + 찜(ARTIST 전용)
- *  - Gallery 오너: [지원자 관리](별도 페이지) / [운영 페이지] 버튼, 우측 하단 소형 삭제
+ *  - Artist: [지원하기] → 지원서 페이지(/exhibitions/:id/apply, 2026-09-29 — 예전엔 이 페이지 위 모달) + 찜
+ *  - Gallery 오너: [지원자 보기] / [운영] → 마이페이지 [내 공모]의 그 카드로, 우측 하단 소형 삭제
  *
  * API:
  *  - GET /api/exhibitions/:id - 공모 상세 조회 (images 포함)
- *  - POST /api/exhibitions/:id/apply - 지원하기
+ *  - 지원(POST /api/exhibitions/:id/apply)은 `pages/ApplyPage.tsx`
  *  - POST|DELETE|PATCH /api/exhibitions/:id/images[...] - 사진 추가/삭제/순서변경
  *  - DELETE /api/exhibitions/:id - 공모 삭제
  *  - 지원자 관리는 마이페이지 '내 공모'의 인라인 ApplicantManager로 통합(별도 페이지 없음)
@@ -21,7 +21,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { Clock, Users, MapPin, Send, Trash2, ArrowLeft, Heart, Edit3, X, FileText, Calendar, Mail, ClipboardList, ChevronRight, Camera, Plus, GripVertical, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -32,24 +32,14 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
-import CareerEditor from '@/components/shared/CareerEditor';
-import { normalizeCareer } from '@/lib/artwork';
-import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
-import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted, canOperate, canManage, canDelete } from '@/lib/exhibitionHost';
-import type { Exhibition, PromoPhoto, Career, ExhibitionImage, CustomAnswer, CustomField } from '@/types';
-import { EMPTY_CAREER } from '@/types';
+import type { Exhibition, PromoPhoto, ExhibitionImage } from '@/types';
+import StatusChip from '@/components/flow/StatusChip';
+import { applicationStatusView } from '@/lib/flowLabels';
 
-// 경력 표시용 라벨
-const APP_CAREER_LABELS: { key: keyof Career; label: string }[] = [
-  { key: 'artFair', label: '아트페어' },
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-];
-const ARTIST_APPLY_TERMS_VERSION = 'artist_apply_2026-09-27'; // backend/src/lib/terms.ts 와 같아야 한다(terms-consistency.test.ts)
 
 
 type ExhibitionDetail = Exhibition & {
@@ -81,35 +71,6 @@ type ExhibitionDetail = Exhibition & {
   submissionDeadline?: string | null;
 };
 
-type CustomAnswerDraft = Record<string, string | string[]>;
-
-function isMultiChoiceField(field: CustomField): boolean {
-  return field.type === 'multiselect' || (field.type === 'select' && field.maxSelect !== undefined && field.maxSelect !== 1);
-}
-
-function getAnswerText(values: CustomAnswerDraft, fieldId: string): string {
-  const value = values[fieldId];
-  return Array.isArray(value) ? value.join('\n') : value ?? '';
-}
-
-function getAnswerList(values: CustomAnswerDraft, fieldId: string): string[] {
-  const value = values[fieldId];
-  return Array.isArray(value) ? value : value ? [value] : [];
-}
-
-function buildCustomAnswers(fields: CustomField[] | null | undefined, values: CustomAnswerDraft): CustomAnswer[] {
-  return (fields ?? [])
-    .map((field) => {
-      const value = values[field.id];
-      if (Array.isArray(value)) {
-        const selected = Array.from(new Set(value.map((v) => v.trim()).filter(Boolean)));
-        return { fieldId: field.id, value: selected };
-      }
-      return { fieldId: field.id, value: (value ?? '').trim() };
-    })
-    .filter((answer) => Array.isArray(answer.value) ? answer.value.length > 0 : answer.value);
-}
-
 export default function ExhibitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -122,43 +83,11 @@ export default function ExhibitionDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
-  // 지원 모달 상태 (고정 양식: 약력/경력/작품사진/포트폴리오 파일)
-  const [showApplyModal, setShowApplyModal] = useState(false);
-  // 초대받은 공모는 지원서 없이 포트폴리오로 지원(간편 지원). 초대 안 받은 작가는 기존 지원 모달 그대로.
+  // 초대받은 공모는 지원서 없이 포트폴리오로 지원(간편 지원). 초대 안 받은 작가는 지원서 페이지로.
   const [showInviteApply, setShowInviteApply] = useState(false);
-  const [applyTerms, setApplyTerms] = useState('');
-  const [applyAgreed, setApplyAgreed] = useState(false);
-  const [applyBiography, setApplyBiography] = useState('');
-  const [applyCareer, setApplyCareer] = useState<Career>(EMPTY_CAREER);
-  const [applyCareerNone, setApplyCareerNone] = useState({ artFair: false, solo: false, group: false });
-  const [applyImages, setApplyImages] = useState<string[]>([]);
-  const [applyFile, setApplyFile] = useState<string | null>(null);
-  const [applyFileNone, setApplyFileNone] = useState(false);
   // 초대 코드 입력칸(접어 둔다) — 이미 선정된 작가용 보조 입구(2026-09-27)
   const [showCodeInput, setShowCodeInput] = useState(false);
-  const [applyCustomAnswers, setApplyCustomAnswers] = useState<CustomAnswerDraft>({});
-  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
-  const [bioError, setBioError] = useState(false);
-  const [imgError, setImgError] = useState(false);
-  const [careerErrorKeys, setCareerErrorKeys] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-
-  // 지원 약관 텍스트 로드
-  useEffect(() => {
-    fetch('/terms/artist_apply_real.txt')
-      .then(r => {
-        if (!r.ok || r.headers.get('content-type')?.includes('text/html')) {
-          throw new Error('not text');
-        }
-        return r.text();
-      })
-      .then(text => {
-        if (!text.trimStart().startsWith('<!') && !text.trimStart().startsWith('<html')) {
-          setApplyTerms(text);
-        }
-      })
-      .catch(() => setApplyTerms('이 공모에 지원하시겠습니까? 포트폴리오가 갤러리에 전송됩니다.'));
-  }, []);
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -170,82 +99,19 @@ export default function ExhibitionDetailPage() {
   });
 
 
-  // 지원하기 (고정 양식 payload)
-  const applyMutation = useMutation({
-    mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null; customAnswers?: CustomAnswer[]; termsAgreed: boolean; termsVersion: string }) =>
-      api.post(`/exhibitions/${id}/apply`, payload),
-    onSuccess: () => {
-      toast.success('지원이 완료되었습니다! 지원서가 갤러리에 전송됩니다.');
-      queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
-      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
-      queryClient.invalidateQueries({ queryKey: ['my-applications'] });
-      setShowApplyModal(false);
-      setApplyAgreed(false);
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || '지원 중 오류가 발생했습니다.');
-    },
-  });
-
-  // 지원 모달 열기 — 폼 초기화
-  const openApplyModal = () => {
-    // 이미 지원했으면 폼을 열지 않는다(`?apply=1` 로 돌아온 경우 포함) — 다 쓰고 나서 400 을 받게 하지 않는다
-    if (exhibition?.myApplication) { toast('이미 지원한 공모입니다. 내 전시에서 확인하세요.'); return; }
-    setApplyBiography('');
-    setApplyCareer(EMPTY_CAREER);
-    setApplyCareerNone({ artFair: false, solo: false, group: false });
-    setApplyImages([]);
-    setApplyFile(null);
-    setApplyFileNone(false);
-    setApplyCustomAnswers({});
-    setApplyAgreed(false);
-    setBioError(false);
-    setImgError(false);
-    setCareerErrorKeys(new Set());
-    setShowApplyModal(true);
-  };
-
-  // 로그인 후 복귀 진입점: '로그인하고 지원하기' → 로그인 → 이 페이지로 ?apply=1 복귀 시
-  // 작가이고 마감 전이면 지원 모달을 자동으로 연다. 처리 후 파라미터를 제거해 새로고침 시 재오픈 방지.
+  // 옛 로그인 복귀 주소(`?apply=1`) — 예전엔 지원 모달을 자동으로 열었다. 지금은 지원서 페이지로 보낸다.
+  // 작가이고 마감 전이 아니면 파라미터만 지운다(새로고침 때 다시 걸리지 않게).
   useEffect(() => {
     if (!exhibition || searchParams.get('apply') !== '1') return;
-    const isArtistUser = user?.role === 'ARTIST';
     // 마감일뿐 아니라 수동 모집마감·전시종료도 봐야 한다 — 마감일이 남은 채 마감된 공고가 있다
     const open = getDday(exhibition.deadline) >= 0 && !exhibition.recruitmentClosed && !exhibition.ended;
-    if (isArtistUser && open) openApplyModal();
+    if (user?.role === 'ARTIST' && open && !exhibition.myApplication) { navigate(`/exhibitions/${id}/apply`, { replace: true }); return; }
     setSearchParams(
       (prev) => { const next = new URLSearchParams(prev); next.delete('apply'); return next; },
       { replace: true },
     );
-    // openApplyModal은 매 렌더 새로 생성되지만 의존성에 넣으면 불필요한 재실행을 유발하므로 제외
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exhibition, user, searchParams]);
-
-  // 포트폴리오 불러오기 — 내 포트폴리오를 지원서 폼에 채움
-  const loadMyPortfolio = async () => {
-    setLoadingPortfolio(true);
-    try {
-      const { data } = await api.get('/portfolio');
-      setApplyBiography(data.biography || '');
-      const c = normalizeCareer(data.career);
-      setApplyCareer(c);
-      // 포트폴리오에 없는 경력·파일은 '없음'으로 미리 체크한다(2026-09-27) — 안 그러면 불러온 뒤에도 '없음'을 네 번 눌러야 제출된다.
-      // 채우고 싶으면 '없음'을 풀면 된다 — 그 칸의 입력창이 다시 열린다(CareerEditor)
-      setApplyCareerNone({ artFair: c.artFair.length === 0, solo: c.solo.length === 0, group: c.group.length === 0 });
-      setApplyImages((data.images || []).map((img: any) => img.url).slice(0, 10));
-      setApplyFile(data.portfolioFileUrl || null);
-      setApplyFileNone(!data.portfolioFileUrl);
-      setBioError(false);
-      setImgError(false);
-      setCareerErrorKeys(new Set());
-      toast.success('포트폴리오를 불러왔습니다. 필요하면 수정 후 지원하세요.');
-    } catch {
-      toast.error('포트폴리오를 불러오지 못했습니다.');
-    } finally {
-      setLoadingPortfolio(false);
-    }
-  };
-
 
   // 찜하기 토글 - 낙관적 업데이트로 즉시 반영
   const favMutation = useMutation({
@@ -591,17 +457,21 @@ export default function ExhibitionDetailPage() {
           {/* 이미 지원한 작가 — [지원하기] 대신 상태를 보여 준다(2026-09-27). 예전엔 버튼이 그대로라 다 쓰고 나서 400 을 받았다 */}
           {isArtist && exhibition.myApplication && (() => {
             const st = exhibition.myApplication.status;
-            const head = st === 'ACCEPTED' ? '선정되었습니다' : st === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요' : '지원 완료';
+            const view = applicationStatusView(st, 'artist');
+            const head = st === 'ACCEPTED' ? '선정되었어요' : st === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요' : '지원 완료';
             const sub = st === 'ACCEPTED'
-              ? (exhibition.recruitOnly ? '이 공모는 선정까지 진행합니다.' : '내 전시에서 작품 자료 제출·전시·정산을 이어서 진행하세요.')
+              ? (exhibition.recruitOnly ? '이 공모는 선정까지 진행해요.' : '내 전시에서 출품 자료 제출·전시·정산을 이어서 진행하세요.')
               : st === 'REJECTED' ? '다음 공모에서 다시 만나요.' : '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.';
             return (
-              <div className={`rounded-xl border px-4 py-3 ${st === 'ACCEPTED' ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
-                <p className={`text-sm font-semibold ${st === 'ACCEPTED' ? 'text-green-700' : 'text-gray-900'}`}>{head}</p>
-                <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
+              <div className="rounded-xl border border-gray-200 px-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusChip variant={view.variant}>{view.label}</StatusChip>
+                  <p className="text-sm font-semibold text-gray-900">{head}</p>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">{sub}</p>
                 <button
                   onClick={() => navigate(`/mypage?tab=applications&ex=${exhibition.id}`)}
-                  className="mt-3 inline-flex min-h-[40px] items-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                  className="mt-3 inline-flex min-h-[40px] items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
                 >
                   내 전시에서 보기
                 </button>
@@ -623,21 +493,22 @@ export default function ExhibitionDetailPage() {
                   초대받은 공모예요. 지원서 작성 없이 내 포트폴리오로 지원됩니다.
                 </p>
                 <button
-                  onClick={openApplyModal}
-                  disabled={applyMutation.isPending}
+                  onClick={() => navigate(`/exhibitions/${id}/apply`)}
                   className="w-full text-center text-xs text-gray-400 hover:text-gray-700 underline underline-offset-2 cursor-pointer"
                 >
                   지원서를 직접 작성해서 지원하기
                 </button>
               </>
             ) : (
-              <button
-                onClick={openApplyModal}
-                disabled={applyMutation.isPending}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-              >
-                <Send size={16} /> 지원하기
-              </button>
+              <>
+                <button
+                  onClick={() => navigate(`/exhibitions/${id}/apply`)}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
+                >
+                  <Send size={16} /> 지원하기
+                </button>
+                <p className="text-center text-xs text-gray-400">홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요.</p>
+              </>
             )
           )}
 
@@ -645,7 +516,7 @@ export default function ExhibitionDetailPage() {
           {!isAuthenticated && !isExpired && (
             <>
               <button
-                onClick={() => { setPostLoginRedirect(`/exhibitions/${id}?apply=1`); navigate('/login'); }}
+                onClick={() => { setPostLoginRedirect(`/exhibitions/${id}/apply`); navigate('/login'); }}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
               >
                 <Send size={16} /> 로그인하고 지원하기
@@ -671,18 +542,26 @@ export default function ExhibitionDetailPage() {
             <p className="text-center text-sm text-gray-400">작가 계정만 지원할 수 있습니다.</p>
           )}
 
-          {/* Gallery 오너: 지원자 관리는 마이페이지 '내 공모'에서 인라인으로 — 해당 탭으로 이동 */}
+          {/* Gallery 오너: 지원자·운영은 마이페이지 [내 공모]의 **이 공모 카드**에서 — 그 카드를 펼친 채로 보낸다(예전엔 목록 맨 위로만 갔다) */}
           {isGalleryOwner && (
-            <button
-              onClick={() => navigate('/mypage?tab=my-exhibitions')}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
-            >
-              <Users size={16} /> 내 공모로 이동
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => navigate(`/mypage?tab=my-exhibitions&ex=${id}&panel=applicants`)}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
+              >
+                <Users size={16} /> 지원자 보기
+              </button>
+              <button
+                onClick={() => navigate(`/mypage?tab=my-exhibitions&ex=${id}&panel=operation`)}
+                className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 text-gray-800 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                <ClipboardList size={16} /> 운영 · 출품 자료 · 정산
+              </button>
+            </div>
           )}
 
-          {/* 운영 갤러리 / Admin 운영 페이지 */}
-          {canEdit && (
+          {/* Admin(갤러리 계정이 아닌 운영자) — 마이페이지에 [내 공모]가 없어 운영 화면으로 */}
+          {canEdit && !isGalleryOwner && (
             <button
               onClick={() => navigate(`/exhibitions/${id}/operation/new`)}
               className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 text-gray-800 rounded-xl text-sm font-medium hover:bg-gray-50"
@@ -718,242 +597,6 @@ export default function ExhibitionDetailPage() {
         onConfirm={() => { setDeleteConfirm(false); deleteMutation.mutate(); }}
         onCancel={() => setDeleteConfirm(false)}
       />
-
-      {/* 지원 모달 (고정 양식: 약력/경력/작품사진/포트폴리오 파일) */}
-      <AnimatePresence>
-        {showApplyModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-            onClick={() => setShowApplyModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-xl p-6 mx-4 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xl font-medium">지원서 작성</h3>
-                <button
-                  onClick={loadMyPortfolio}
-                  disabled={loadingPortfolio}
-                  className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-                >
-                  {loadingPortfolio ? '불러오는 중...' : '포트폴리오 불러오기'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mb-4">내 포트폴리오를 불러온 뒤 수정해서 지원할 수 있어요.</p>
-
-              <div className="space-y-5">
-                {/* 작가 약력 (필수) */}
-                <div>
-                  <label className={`text-sm font-medium ${bioError ? 'text-accent' : 'text-gray-700'}`}>
-                    작가 약력 <span className="text-accent">*</span>
-                  </label>
-                  <textarea
-                    value={applyBiography}
-                    onChange={e => { setApplyBiography(e.target.value); if (e.target.value.trim()) setBioError(false); }}
-                    placeholder="작가 소개·약력을 입력하세요."
-                    className={`w-full mt-1 p-2.5 border rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${bioError ? 'border-accent ring-1 ring-accent/40' : 'border-gray-200'}`}
-                  />
-                </div>
-
-                {/* 경력 */}
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-2">경력</label>
-                  <CareerEditor
-                    value={applyCareer}
-                    onChange={(c) => { setApplyCareer(c); setCareerErrorKeys(new Set()); }}
-                    none={applyCareerNone}
-                    onNoneChange={(n) => { setApplyCareerNone((prev) => ({ ...prev, ...n })); setCareerErrorKeys(new Set()); }}
-                    errorKeys={careerErrorKeys}
-                  />
-                </div>
-
-                {/* 작품 사진 (1장 이상 필수) */}
-                <div>
-                  <label className={`text-sm font-medium block mb-2 ${imgError ? 'text-accent' : 'text-gray-700'}`}>
-                    작품 사진 <span className="text-accent">*</span>
-                    <span className="text-xs text-gray-400 ml-1">({applyImages.length}/10, 1장 이상)</span>
-                  </label>
-                  <div className={imgError ? 'rounded-lg ring-1 ring-accent/40 p-1' : ''}>
-                    <MultiImageUpload
-                      images={applyImages.map(url => ({ url }))}
-                      onAdd={(url) => { setApplyImages(prev => [...prev, url].slice(0, 10)); setImgError(false); }}
-                      onRemove={(index) => setApplyImages(prev => prev.filter((_, i) => i !== index))}
-                      maxCount={10}
-                    />
-                  </div>
-                </div>
-
-                {/* 포트폴리오 파일 */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700">포트폴리오 파일 (PDF / DOC / HWP)</label>
-                    <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={applyFileNone}
-                        onChange={e => { setApplyFileNone(e.target.checked); if (e.target.checked) setApplyFile(null); }}
-                      />
-                      없음
-                    </label>
-                  </div>
-                  {applyFileNone ? (
-                    <p className="text-xs text-gray-400">없음으로 표시됩니다.</p>
-                  ) : (
-                    <PortfolioFileInput value={applyFile} onChange={setApplyFile} />
-                  )}
-                </div>
-
-                {(exhibition.customFields?.length ?? 0) > 0 && (
-                  <div className="pt-4 border-t border-gray-100">
-                    <p className="text-sm font-medium text-gray-700 mb-2">갤러리 추가 질문</p>
-                    <div className="space-y-3">
-                      {exhibition.customFields!.map((field) => {
-                        const selectedValues = getAnswerList(applyCustomAnswers, field.id);
-                        const maxSelect = field.maxSelect ?? 0;
-                        return (
-                          <div key={field.id}>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              {field.label}
-                              {field.required && <span className="text-accent ml-1">*</span>}
-                            </label>
-                            {isMultiChoiceField(field) ? (
-                              <div className="space-y-1.5 rounded-lg border border-gray-200 p-2.5">
-                                {(field.options ?? []).map((option) => {
-                                  const checked = selectedValues.includes(option);
-                                  const disabled = !checked && maxSelect > 0 && selectedValues.length >= maxSelect;
-                                  return (
-                                    <label key={option} className={`flex items-center gap-2 text-sm ${disabled ? 'text-gray-300' : 'text-gray-700'}`}>
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        disabled={disabled}
-                                        onChange={(e) => setApplyCustomAnswers((prev) => {
-                                          const current = getAnswerList(prev, field.id);
-                                          const next = e.target.checked
-                                            ? [...current, option]
-                                            : current.filter((value) => value !== option);
-                                          return { ...prev, [field.id]: next };
-                                        })}
-                                        className="rounded"
-                                      />
-                                      {option}
-                                    </label>
-                                  );
-                                })}
-                                {maxSelect > 0 && <p className="text-[11px] text-gray-400">최대 {maxSelect}개 선택 가능</p>}
-                              </div>
-                            ) : field.type === 'select' ? (
-                              <select
-                                value={getAnswerText(applyCustomAnswers, field.id)}
-                                onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                              >
-                                <option value="">선택해주세요</option>
-                                {(field.options ?? []).map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <>
-                                {/* 글자수 제한은 초대 모달(InviteApplyModal)과 같은 규칙 — 여기만 안 걸려 경로에 따라 답변 길이가 달랐다(2026-09-19) */}
-                                <textarea
-                                  value={getAnswerText(applyCustomAnswers, field.id)}
-                                  onChange={(e) => setApplyCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                                  maxLength={(field.maxLength ?? 0) > 0 ? field.maxLength : undefined}
-                                  placeholder="답변을 입력해주세요"
-                                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                />
-                                {(field.maxLength ?? 0) > 0 && (
-                                  <p className="text-right text-[11px] text-gray-400">{getAnswerText(applyCustomAnswers, field.id).length} / {field.maxLength}</p>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 약관 동의 */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{applyTerms || '약관 로딩 중...'}</div>
-                  <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
-                    <input type="checkbox" checked={applyAgreed} onChange={e => setApplyAgreed(e.target.checked)} className="rounded" />
-                    위 약관에 동의합니다
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-6 justify-end">
-                <button onClick={() => setShowApplyModal(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
-                <button
-                  onClick={() => {
-                    const errors: string[] = [];
-                    if (!applyBiography.trim()) { errors.push('작가 약력을 입력해주세요.'); setBioError(true); }
-                    if (applyImages.length < 1) { errors.push('작품 사진을 1장 이상 첨부해주세요.'); setImgError(true); }
-                    const careerErr = new Set<string>();
-                    for (const { key, label } of APP_CAREER_LABELS) {
-                      if ((applyCareer[key] ?? []).length === 0 && !applyCareerNone[key as keyof typeof applyCareerNone]) {
-                        errors.push(`${label} 경력을 입력하거나 '없음'을 체크해주세요.`);
-                        careerErr.add(key as string);
-                      }
-                    }
-                    setCareerErrorKeys(careerErr);
-                    if (!applyFile && !applyFileNone) {
-                      errors.push("포트폴리오 파일을 첨부하거나 '없음'을 체크해주세요.");
-                    }
-                    for (const field of exhibition.customFields ?? []) {
-                      const value = applyCustomAnswers[field.id];
-                      const empty = Array.isArray(value) ? value.length === 0 : !(value ?? '').trim();
-                      if (field.required && empty) {
-                        errors.push(`추가 질문 "${field.label}"에 답변해주세요.`);
-                      }
-                    }
-                    if (errors.length > 0) {
-                      toast.error(
-                        () => (
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">다음 항목을 확인해주세요:</p>
-                            {errors.map((e, i) => <p key={i} className="text-accent">• {e}</p>)}
-                          </div>
-                        ),
-                        { duration: 5000 }
-                      );
-                      return;
-                    }
-                    const cleanedCareer: Career = {
-                      artFair: applyCareerNone.artFair ? [] : applyCareer.artFair.filter(e => e.year.trim() || e.content.trim()),
-                      solo: applyCareerNone.solo ? [] : applyCareer.solo.filter(e => e.year.trim() || e.content.trim()),
-                      group: applyCareerNone.group ? [] : applyCareer.group.filter(e => e.year.trim() || e.content.trim()),
-                    };
-                    applyMutation.mutate({
-                      biography: applyBiography.trim(),
-                      career: cleanedCareer,
-                      artworkImages: applyImages,
-                      portfolioFileUrl: applyFileNone ? null : applyFile,
-                      customAnswers: buildCustomAnswers(exhibition.customFields, applyCustomAnswers),
-                      termsAgreed: true,
-                      termsVersion: ARTIST_APPLY_TERMS_VERSION,
-                    });
-                  }}
-                  disabled={applyMutation.isPending || !applyAgreed}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {applyMutation.isPending ? '지원 중...' : '지원하기'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* 초대 간편 지원 모달 */}
       {showInviteApply && (

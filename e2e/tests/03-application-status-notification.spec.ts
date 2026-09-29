@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, exhibitionDates } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, acceptApplicant, applicantRow, exhibitionDates } from '../lib/helpers';
 
 /**
  * 멀티유저 지속 상호작용: 작가 지원 → 갤러리가 상태를 단계별로 올림 → 작가에게 알림 누적 + 상태배지 갱신.
@@ -49,26 +49,28 @@ test('지원 상태 단계별 변경 → 작가 알림 누적 + 상태배지 갱
     return (list.notifications || list).filter((n: any) => n.type === 'APPLICATION_STATUS').length;
   };
 
-  // 갤러리: 마이페이지 '내 공모' → 지원자 관리 인라인 펼치기
-  await openApplicantManager(gallery.page, exTitle);
-  await expect(gallery.page.getByText('Artist 1', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-  const statusSelect = gallery.page.locator('select').filter({ has: gallery.page.getByRole('option', { name: '수락' }) }).first();
+  // 갤러리: 마이페이지 '내 공모' → 카드의 [지원자] 펼치기
+  const card = await openApplicantManager(gallery.page, exTitle);
+  const row = applicantRow(card, 'Artist 1');
+  await expect(row).toContainText('검토 대기', { timeout: 10000 });
 
-  // ── 접수 → 수락 (검토중 REVIEWED는 폐지됨: 접수/수락/거절 3상태) ──
+  // ── 검토 대기 → 수락 — 줄을 펼쳐 [수락하기] → 확인창 (2026-09-29 전엔 줄의 <select>) ──
   const before = await statusNotifCount();
-  await statusSelect.selectOption({ value: 'ACCEPTED' });
-  // 수락은 되돌릴 수 없어 확인 다이얼로그를 거친다
-  const confirmBtn = gallery.page.getByRole('button', { name: /수락|확인/ }).last();
-  if (await confirmBtn.isVisible().catch(() => false)) await confirmBtn.click();
+  await acceptApplicant(gallery.page, card, 'Artist 1');
   await expect.poll(statusNotifCount, { timeout: 10000 }).toBe(before + 1);
 
-  // 작가: 지원 내역에서 '수락' 확인
+  // 작가: [내 전시] '진행 중' 탭에 들어오고, 첫 할 일은 출품 자료 제출이다
   await artist.page.goto('/mypage?tab=applications');
-  await expect(artist.page.getByText('수락', { exact: false }).first()).toBeVisible({ timeout: 10000 });
+  await artist.page.getByRole('tab', { name: /^진행 중/ }).click();
+  const artistCard = artist.page.locator('article').filter({ hasText: exTitle }).first();
+  await expect(artistCard).toBeVisible({ timeout: 10000 });
+  await expect(artistCard).toContainText('출품 자료를 제출해 주세요');
 
-  // ── 신뢰성: 수락은 최종 — 갤러리 화면에서 '수락 (확정)' 잠금 배지로 바뀐다 ──
+  // ── 신뢰성: 수락은 최종 — 줄에 [수락하기]·[거절] 대신 '수락됨' 만 남는다(되돌리기는 개발자 플래그일 때만) ──
   await settle(gallery.page, 800);
-  await expect(gallery.page.locator('body')).toContainText('수락 (확정)', { timeout: 10000 });
+  await expect(row).toContainText('수락됨');
+  await expect(row.getByRole('button', { name: '수락하기', exact: true })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: '거절', exact: true })).toHaveCount(0);
   // 서버 상태도 ACCEPTED 유지 + 알림도 더 늘지 않음
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, {
     headers: { Authorization: `Bearer ${tokenFor('gallery')}` },

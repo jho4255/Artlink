@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, openApplicantManager, openMyPageTab, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, openApplicantManager, applicantRow, openMyPageTab, exhibitionDates } from '../lib/helpers';
 
 /**
  * 지원서(고정 양식) 갤러리 열람 + 등록 폼 약관(placeholder 아님) 검증.
@@ -21,12 +21,14 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await openApplicantManager(page, ex.title);
-  await expect(page.getByText('Artist 1', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-  // 지원자 펼치기 (이름 클릭은 포트폴리오 이동이므로 행의 펼치기 chevron 클릭) → 지원서 내용 표시
-  await page.locator('svg.lucide-chevron-down').first().click();
-  await expect(page.getByText('지원서 내용', { exact: false }).first()).toBeVisible({ timeout: 8000 });
-  await expect(page.getByText('E2E_제출약력_표시확인', { exact: false })).toBeVisible({ timeout: 8000 });
+  const card = await openApplicantManager(page, ex.title);
+  const row = applicantRow(card, 'Artist 1');
+  await expect(row).toBeVisible({ timeout: 10000 });
+  // 줄을 누르면 펼쳐진다 → 지원서(작가 약력·경력·작품 사진…)와 그 아래 [수락하기]·[거절]
+  await row.locator('button[aria-expanded]').first().click();
+  await expect(row.getByText('작가 약력', { exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(row.getByText('E2E_제출약력_표시확인', { exact: false })).toBeVisible({ timeout: 8000 });
+  await expect(row.getByRole('button', { name: '수락하기', exact: true })).toBeVisible();
   await ctx.close();
 });
 

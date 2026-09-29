@@ -1,62 +1,71 @@
 /**
- * ApplicantManager - 지원자 관리 (Gallery 오너 전용, 인라인 공용 컴포넌트)
+ * ApplicantManager - 지원자 관리 (갤러리 오너·위임 갤러리·Admin, 인라인 공용 컴포넌트)
  *
- * MyPage '내 공모'(운영/클래식 뷰) 안에서 창 이동 없이 지원자를 전부 관리한다.
- * 기능: 상태 필터 탭 / 일괄 선택·상태변경 / 수락 확인(되돌릴 수 없음) /
- *       지원자별 지원서 PDF + 전체 ZIP / 첫지원·N번째 뱃지 / 연락처(닉네임·전화·이메일) /
- *       작품 사진 클릭 확대(원본 비율) / 커스텀 추가질문 답변.
+ * MyPage '내 공모' 카드의 [지원자] 탭과 Admin [주최 공모] 안에서 창 이동 없이 지원자를 전부 관리한다.
+ * 기능: 상태 탭 / 일괄 선택·수락·거절 / 수락 확인(되돌릴 수 없음) / 지원자별 지원서 PDF + 전체 ZIP /
+ *       첫 지원·N번째 표시 / 연락처 / 작품 사진 클릭 확대(원본 비율) / 추가 질문 답변 / 초대 코드(접어 둠).
+ *
+ * ── 2026-09-29 개편 ─────────────────────────────────────────
+ *  - 수락·거절이 각 줄의 '접수 ▾' 드롭다운에 숨어 있었다 — 처음 보면 **상태 표시**로 읽혔고, 지원서를 펼치지 않고도
+ *    수락됐다. 지금은 지원서를 펼친 아래에 **[수락하기]·[거절]** 버튼. 거절도 확인을 거친다(작가에게 결과 알림이 간다).
+ *  - '수락 (확정)' → '수락됨' — '확정' 은 전시 단계 이름이다(`lib/flowLabels.ts`).
+ *  - 초대 코드 상자가 목록 **맨 위**를 차지했다(이미 선정이 끝난 공모를 옮겨 올 때만 쓰는 기능). 목록 아래 한 줄로 접었다.
+ *  - 노랑(첫 지원)·파랑(선택)·검정(초대)·파랑(코드) 배지 → 글자.
+ *  - **고를 수 있는 건 '검토 대기'뿐** — 수락·거절 탭에도 체크박스와 [선택 수락]·[선택 거절]이 떠서 이미 수락한 작가를
+ *    다시 바꿀 수 있는 것처럼 보였다(2026-09-29 로컬 확인 중 지적). 일괄 처리는 결정을 내리는 도구라 결정할 게 남은 줄에만 둔다.
+ *    상태 칩도 ▾ 바로 옆에 두면 옛 상태 드롭다운('접수 ▾')처럼 읽혀 이름 옆으로 옮겼다.
  *
  * API: GET /exhibitions/:id/applications, PATCH /exhibitions/:id/applications/:appId
+ *  - 서버 규칙: 접수 → 수락/거절, 거절 → 수락만, 수락 → (개발자 도구 켜짐일 때만) 거절
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, FileText, FileArchive, Loader2 } from 'lucide-react';
+import { ChevronDown, FileText, FileArchive, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { nameWithNickname } from '@/lib/utils';
+import { nameWithNickname, cn } from '@/lib/utils';
+import { applicationStatusView } from '@/lib/flowLabels';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 import JoinCodePanel from '@/components/shared/JoinCodePanel';
+import PageTabBar from '@/components/shared/PageTabBar';
+import StatusChip from '@/components/flow/StatusChip';
+import Disclosure from '@/components/flow/Disclosure';
 import { downloadApplicationPdf, downloadAllApplicationsZip } from '@/lib/operationPdf';
 import type { CustomField } from '@/types';
 
-const STATUS_TABS = [
-  { key: 'ALL', label: '전체' },
-  { key: 'SUBMITTED', label: '접수' },
-  { key: 'ACCEPTED', label: '수락' },
-  { key: 'REJECTED', label: '거절' },
-];
-const statusColors: Record<string, string> = {
-  SUBMITTED: 'bg-gray-100 text-gray-600',
-  ACCEPTED: 'bg-green-100 text-green-600',
-  REJECTED: 'bg-accent/10 text-accent',
-};
+type StatusTab = 'ALL' | 'SUBMITTED' | 'ACCEPTED' | 'REJECTED';
+const isPending = (s: string) => s === 'SUBMITTED' || s === 'REVIEWED';
 
 interface Props {
   exhibitionId: number;
   exhibitionTitle: string;
   customFields?: CustomField[] | null;
+  /** 선정 인원(정원) — '수락 3/5 · 2자리 남음'. 모르면 숫자만 */
+  capacity?: number | null;
+  /** 도구 줄 오른쪽에 붙일 것(작가 초대·추가 질문 수정) — 부르는 화면마다 다르다 */
+  toolbar?: ReactNode;
 }
 
-export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields }: Props) {
+export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields, capacity, toolbar }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<StatusTab>('ALL');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [batchStatus, setBatchStatus] = useState('');
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [pdfBusy, setPdfBusy] = useState<number | 'all' | null>(null);
   // 진행률은 토스트가 아니라 **버튼 라벨**에 넣는다(토스트는 사라져서 "멈춘 줄" 알게 된다는 신고, 2026-08)
   const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   // 사진을 못 받은 지원자 — 배너로 남겨 [다시 받기]로 이어지게 한다
   const [missingPhotos, setMissingPhotos] = useState<string[]>([]);
-  const [acceptTarget, setAcceptTarget] = useState<{ type: 'single'; appId: number } | { type: 'batch' } | null>(null);
+  const [acceptTarget, setAcceptTarget] = useState<{ type: 'single'; appId: number; name: string } | { type: 'batch' } | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<{ type: 'single'; appId: number; name: string } | { type: 'batch' } | null>(null);
   const [revertTarget, setRevertTarget] = useState<number | null>(null);
 
   const { data: applicants = [], isLoading, isError } = useQuery<any[]>({
@@ -72,6 +81,13 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   });
   const allowRevert = !!flags?.allowAcceptedRevert;
 
+  // 초대 코드가 켜져 있는지 — 접힌 줄에서도 보이게(JoinCodePanel 과 같은 쿼리 키라 한 번만 받는다)
+  const { data: joinCodeState } = useQuery<{ code: string | null }>({
+    queryKey: ['join-code', exhibitionId],
+    queryFn: () => api.get(`/exhibitions/${exhibitionId}/join-code`).then(r => r.data),
+    staleTime: 60_000,
+  });
+
   // 상태 변경 후 목록/카운트(운영 오버뷰·공모 목록·운영페이지 제출정보)까지 갱신
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['exhibition-applicants', exhibitionId] });
@@ -84,26 +100,28 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const updateStatus = useMutation({
     mutationFn: ({ appId, status }: { appId: number; status: string }) =>
       api.patch(`/exhibitions/${exhibitionId}/applications/${appId}`, { status }),
-    onSuccess: () => { invalidate(); toast.success('상태가 변경되었습니다.'); },
+    onSuccess: (_d, v) => { invalidate(); toast.success(v.status === 'ACCEPTED' ? '수락했습니다. 작가에게 알림이 갑니다.' : v.status === 'REJECTED' ? '거절했습니다. 작가에게 결과 알림이 갑니다.' : '상태를 바꿨습니다.'); },
     onError: (e: any) => toast.error(e.response?.data?.error || '상태 변경 실패'),
   });
 
   const [batchPending, setBatchPending] = useState(false);
-  const batchUpdate = async (status: string) => {
-    if (selectedIds.size === 0 || batchPending) return;   // 이중 클릭이면 PATCH 가 두 벌 나갔다(2026-09-19)
+  const batchUpdate = async (status: 'ACCEPTED' | 'REJECTED') => {
+    if (selectedCount === 0 || batchPending) return;   // 이중 클릭이면 PATCH 가 두 벌 나갔다(2026-09-19)
     setBatchPending(true);
     try {
-    const results = await Promise.allSettled(Array.from(selectedIds).map(appId =>
-      api.patch(`/exhibitions/${exhibitionId}/applications/${appId}`, { status })));
-    invalidate();
-    const ok = results.filter(r => r.status === 'fulfilled').length;
-    const fail = results.length - ok;
-    // 실패 이유도 같이 — 일괄 수락이 선정 인원(정원)에 걸리면 '몇 건 실패'만으로는 왜인지 모른다(2026-09-27)
-    const reason = (results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined)?.reason?.response?.data?.error;
-    if (fail === 0) toast.success(`${ok}명의 상태를 변경했습니다.`);
-    else toast.error(`${ok}건 변경, ${fail}건 실패${reason ? ` — ${reason}` : ''}`, { duration: 6000 });
-    setSelectedIds(new Set());
-    setBatchStatus('');
+      // 검토 대기인 것만 — 골라 둔 뒤 한 줄씩 수락·거절한 지원이 섞여 있으면 건너뛴다
+      //   (그대로 보내면 '같은 상태' 400·수락 되돌리기 403 이 실패로 세어져 헷갈린다)
+      const targets = applicants.filter(a => selectedIds.has(a.id) && isPending(a.status)).map(a => a.id);
+      const results = await Promise.allSettled(targets.map(appId =>
+        api.patch(`/exhibitions/${exhibitionId}/applications/${appId}`, { status })));
+      invalidate();
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      const fail = results.length - ok;
+      // 실패 이유도 같이 — 일괄 수락이 선정 인원(정원)에 걸리면 '몇 건 실패'만으로는 왜인지 모른다(2026-09-27)
+      const reason = (results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined)?.reason?.response?.data?.error;
+      if (fail === 0) toast.success(`${ok}명을 ${status === 'ACCEPTED' ? '수락' : '거절'}했습니다.`);
+      else toast.error(`${ok}건 처리, ${fail}건 실패${reason ? ` — ${reason}` : ''}`, { duration: 6000 });
+      setSelectedIds(new Set());
     } finally { setBatchPending(false); }
   };
 
@@ -134,58 +152,99 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     finally { setPdfBusy(null); setProgress(null); }
   };
 
-  const filtered = statusFilter === 'ALL' ? applicants : applicants.filter(a => a.status === statusFilter);
-  const allFilteredSelected = filtered.length > 0 && filtered.every(a => selectedIds.has(a.id));
+  const counts = {
+    ALL: applicants.length,
+    SUBMITTED: applicants.filter(a => isPending(a.status)).length,
+    ACCEPTED: applicants.filter(a => a.status === 'ACCEPTED').length,
+    REJECTED: applicants.filter(a => a.status === 'REJECTED').length,
+  };
+  const filtered = statusFilter === 'ALL' ? applicants
+    : statusFilter === 'SUBMITTED' ? applicants.filter(a => isPending(a.status))
+      : applicants.filter(a => a.status === statusFilter);
+  // 일괄 선택은 **검토 대기**만 — 수락·거절한 지원은 한 줄씩 펼쳐서 다룬다(되돌리기 규칙이 서로 다르다)
+  const selectable = filtered.filter(a => isPending(a.status));
+  const anySelectable = selectable.length > 0;
+  const allFilteredSelected = anySelectable && selectable.every(a => selectedIds.has(a.id));
   const toggleSelectAll = () => {
     const next = new Set(selectedIds);
-    if (allFilteredSelected) filtered.forEach(a => next.delete(a.id));
-    else filtered.forEach(a => next.add(a.id));
+    if (allFilteredSelected) selectable.forEach(a => next.delete(a.id));
+    else selectable.forEach(a => next.add(a.id));
     setSelectedIds(next);
   };
   const toggleSelect = (appId: number) => {
     const next = new Set(selectedIds);
-    next.has(appId) ? next.delete(appId) : next.add(appId);
+    if (next.has(appId)) next.delete(appId); else next.add(appId);
     setSelectedIds(next);
   };
 
-  if (isLoading) return <div className="h-24 bg-gray-100 animate-pulse rounded-xl" />;
-  if (isError) return <p className="text-sm text-gray-400 py-6 text-center">지원자 목록을 불러오지 못했습니다.</p>;
-  // 초대 코드 상자는 지원자가 0명일 때도 보여야 한다 — 옮겨 온 공모는 코드를 돌리기 전엔 늘 0명이다
+  // 고른 것 중 아직 검토 대기인 것 — 화면의 'N명 선택'·확인창 숫자가 실제로 처리될 수와 같아야 한다
+  const selectedCount = applicants.filter(a => selectedIds.has(a.id) && isPending(a.status)).length;
+  const accepted = counts.ACCEPTED;
+  const left = capacity != null ? Math.max(0, capacity - accepted) : null;
+
+  // 초대 코드 — 목록 아래 한 줄로 접어 둔다. 지원자 0명이어도 보여야 한다(옮겨 온 공모는 코드를 돌리기 전엔 늘 0명이다)
+  const joinCode = (
+    <div className="border-t border-gray-100 pt-3">
+      <Disclosure variant="link" title="이미 선정한 작가를 초대 코드로 데려오기" meta={joinCodeState?.code ? '코드 켜짐' : undefined}>
+        <JoinCodePanel exhibitionId={exhibitionId} bare />
+      </Disclosure>
+    </div>
+  );
+
+  if (isLoading) return <div className="h-24 animate-pulse rounded-xl bg-gray-100" />;
+  if (isError) return <p className="py-6 text-center text-sm text-gray-400">지원자 목록을 불러오지 못했습니다.</p>;
+
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-gray-600">
+        수락 <b className="font-semibold tabular-nums text-gray-950">{accepted}{capacity != null ? `/${capacity}` : ''}</b>명
+        {left != null && <span className="text-gray-400"> · {left > 0 ? `${left}자리 남음` : '정원이 찼어요'}</span>}
+        {counts.SUBMITTED > 0 && <span className="text-gray-400"> · 검토 대기 {counts.SUBMITTED}명</span>}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {toolbar}
+        {applicants.length > 0 && (
+          <button
+            type="button"
+            onClick={handleZip}
+            disabled={pdfBusy !== null}
+            className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950 disabled:opacity-50"
+          >
+            {pdfBusy === 'all' ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <FileArchive size={13} aria-hidden />}
+            {pdfBusy === 'all' && progress ? `${progress.label} ${progress.done}/${progress.total}` : '지원서 전체 받기 (ZIP)'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   if (applicants.length === 0) return (
-    <div>
-      <JoinCodePanel exhibitionId={exhibitionId} />
-      <p className="text-sm text-gray-400 py-6 text-center">아직 지원자가 없습니다.</p>
+    <div className="space-y-4">
+      {header}
+      <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">
+        아직 지원자가 없어요. 공고가 모집공고 목록에 올라가 있고, 마감일까지 지원을 받습니다.
+      </p>
+      {joinCode}
     </div>
   );
 
   return (
-    <div className="space-y-3">
-      <JoinCodePanel exhibitionId={exhibitionId} />
-      {/* 상단: 필터 + 전체 ZIP */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-1.5 flex-wrap">
-          {STATUS_TABS.map(f => {
-            const count = f.key === 'ALL' ? applicants.length : applicants.filter(a => a.status === f.key).length;
-            return (
-              <button
-                key={f.key}
-                onClick={() => { setStatusFilter(f.key); setSelectedIds(new Set()); }}
-                className={`px-3 min-h-[40px] inline-flex items-center text-xs rounded-full transition-colors ${statusFilter === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {f.label} {count > 0 ? `(${count})` : ''}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={handleZip}
-          disabled={pdfBusy !== null}
-          className="flex-none flex items-center gap-1.5 px-3 min-h-[40px] border border-gray-300 text-gray-800 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-        >
-          {pdfBusy === 'all' ? <Loader2 size={13} className="animate-spin" /> : <FileArchive size={13} />}
-          {pdfBusy === 'all' && progress ? `${progress.label} ${progress.done}/${progress.total}` : '전체 지원서 ZIP'}
-        </button>
-      </div>
+    <div className="space-y-4">
+      {header}
+
+      <PageTabBar<StatusTab>
+        sticky={false}
+        idPrefix={`applicants-${exhibitionId}`}
+        label="지원자 상태"
+        active={statusFilter}
+        onSelect={(t) => { setStatusFilter(t); setSelectedIds(new Set()); }}
+        tabs={[
+          { id: 'ALL', label: '전체', count: counts.ALL },
+          { id: 'SUBMITTED', label: '검토 대기', count: counts.SUBMITTED },
+          { id: 'ACCEPTED', label: '수락', count: counts.ACCEPTED },
+          { id: 'REJECTED', label: '거절', count: counts.REJECTED },
+        ]}
+      />
 
       {/* 사진 누락 배너 — 토스트와 달리 사라지지 않는다. 다시 받기는 이미 받은 사진을 재사용하므로 금방 끝난다. */}
       <MissingImagesBanner
@@ -196,117 +255,137 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         onDismiss={() => setMissingPhotos([])}
       />
 
-      {/* 일괄 액션 */}
-      <div className="flex items-center justify-between flex-wrap gap-2 bg-gray-50 rounded-xl px-3 py-2">
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="rounded" />
-          전체 선택 {selectedIds.size > 0 && <span className="text-gray-900 font-medium">({selectedIds.size}명)</span>}
-        </label>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2">
-            <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-xs px-2 min-h-[40px] border border-gray-200 rounded-lg">
-              <option value="">상태 변경</option>
-              <option value="SUBMITTED">접수</option>
-              <option value="ACCEPTED">수락</option>
-              <option value="REJECTED">거절</option>
-            </select>
-            <button onClick={() => { if (!batchStatus) return; batchStatus === 'ACCEPTED' ? setAcceptTarget({ type: 'batch' }) : batchUpdate(batchStatus); }} disabled={!batchStatus || batchPending} className="px-3 min-h-[40px] text-xs bg-gray-900 text-white rounded-lg disabled:opacity-30">{batchPending ? '변경 중...' : '적용'}</button>
-          </div>
-        )}
-      </div>
+      {/* 일괄 선택 — 결정할 게 남은(검토 대기) 줄이 있을 때만 */}
+      {anySelectable && (
+        <div className="flex min-h-[44px] flex-wrap items-center justify-between gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="h-4 w-4 rounded" />
+            {selectedCount > 0
+              ? <span className="font-medium text-gray-900">{selectedCount}명 선택</span>
+              : statusFilter === 'SUBMITTED' ? '전체 선택' : `검토 대기 ${selectable.length}명 모두 선택`}
+          </label>
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setAcceptTarget({ type: 'batch' })} disabled={batchPending} className="min-h-[36px] rounded-lg bg-gray-900 px-3 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-40">
+                {batchPending ? '처리 중…' : '선택 수락'}
+              </button>
+              <button type="button" onClick={() => setRejectTarget({ type: 'batch' })} disabled={batchPending} className="min-h-[36px] rounded-lg border border-gray-200 px-3 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                선택 거절
+              </button>
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="min-h-[36px] px-1 text-xs text-gray-500 hover:text-gray-900">해제</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 목록 */}
-      <div className="space-y-2">
-        {filtered.map(app => {
-          const isExpanded = expandedId === app.id;
-          const isSelected = selectedIds.has(app.id);
-          return (
-            <div key={app.id} className={`border rounded-xl overflow-hidden transition-colors ${isSelected ? 'border-blue-300 bg-blue-50/30' : app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
-              <div className="p-3 flex items-start gap-2 sm:items-center">
-                <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(app.id)} className="rounded shrink-0 w-5 h-5 mt-0.5 sm:mt-0 sm:w-4 sm:h-4" />
-                {/* 모바일: 2줄(이름 / 날짜·뱃지·액션)로 접힘 — 한 줄이면 360px 뷰포트를 넘겨 액션이 화면 밖으로 밀림 */}
-                <div className="min-w-0 flex-1 flex flex-col gap-2 cursor-pointer sm:flex-row sm:justify-between sm:items-center" onClick={() => setExpandedId(isExpanded ? null : app.id)}>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-                    {app.user?.avatar && <img src={app.user.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />}
-                    <span
-                      className="text-sm font-medium text-gray-900 hover:underline cursor-pointer truncate min-w-0 flex-1 sm:flex-none sm:max-w-[16rem]"
-                      onClick={e => { e.stopPropagation(); navigate(`/portfolio/${app.user?.id}`); }}
-                    >
-                      {nameWithNickname(app.user)}
+      {filtered.length === 0 ? (
+        <p className="py-4 text-sm text-gray-400">이 상태의 지원자가 없어요.</p>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map(app => {
+            const isExpanded = expandedId === app.id;
+            const isSelected = selectedIds.has(app.id);
+            const view = applicationStatusView(app.status, 'gallery');
+            const name = nameWithNickname(app.user);
+            const meta = [
+              new Date(app.createdAt).toLocaleDateString('ko'),
+              app.isFirstApplication ? '이 갤러리 첫 지원' : app.galleryApplicationOrder ? `이 갤러리 ${app.galleryApplicationOrder}번째 지원` : null,
+              // 내가 둘러보기에서 초대한 작가 — 지원서 없이 포트폴리오로 간편 지원한 건이라 구분해서 보여준다
+              app.invited ? '초대한 작가' : null,
+              // 초대 코드로 들어온 작가 — 지원서 없이 곧바로 수락된 건이라 약력·작품이 비어 있을 수 있다
+              app.joinedVia === 'CODE' ? '초대 코드로 참여' : null,
+            ].filter(Boolean).join(' · ');
+            return (
+              <li key={app.id} className={cn('rounded-xl border transition-colors', isSelected ? 'border-gray-400 bg-gray-50' : 'border-gray-200')}>
+                <div className="flex items-center gap-3 px-3 py-2 sm:px-4">
+                  {/* 체크박스는 검토 대기 줄에만. 같은 목록에 섞여 있으면 빈 자리를 둬 이름 줄이 어긋나지 않게 */}
+                  {isPending(app.status)
+                    ? <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(app.id)} aria-label={`${name} 선택`} className="h-5 w-5 shrink-0 rounded sm:h-4 sm:w-4" />
+                    : anySelectable && <span aria-hidden className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                    aria-expanded={isExpanded}
+                    className="flex min-h-[48px] min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    {app.user?.avatar && <img src={app.user.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />}
+                    <span className="min-w-0 flex-1">
+                      {/* 상태는 이름 옆 — ▾ 옆에 두면 옛 상태 드롭다운처럼 보였다 */}
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-medium text-gray-900">{name}</span>
+                        <StatusChip variant={view.variant} className="shrink-0">{view.label}</StatusChip>
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-gray-500">{meta}</span>
                     </span>
-                    <span className="text-xs text-gray-400 shrink-0">{new Date(app.createdAt).toLocaleDateString('ko')}</span>
-                    {app.isFirstApplication ? (
-                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">★ 첫 지원</span>
-                    ) : (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">이 갤러리 {app.galleryApplicationOrder}번째</span>
-                    )}
-                    {/* 내가 둘러보기에서 초대한 작가 — 지원서 없이 포트폴리오로 간편 지원한 건이라 구분해서 보여준다 */}
-                    {app.invited && (
-                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-900 text-white whitespace-nowrap">초대한 작가</span>
-                    )}
-                    {/* 초대 코드로 들어온 작가 — 지원서 없이 곧바로 수락된 건이라 약력·작품이 비어 있을 수 있다 */}
-                    {app.joinedVia === 'CODE' && (
-                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 whitespace-nowrap">코드 참여</span>
-                    )}
-                  </div>
-                  <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:shrink-0">
-                    {app.status === 'ACCEPTED' && !allowRevert ? (
-                      <span className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-600 font-medium">수락 (확정)</span>
-                    ) : (
-                      <select
-                        value={app.status}
-                        onClick={e => e.stopPropagation()}
-                        onChange={e => {
-                          e.stopPropagation();
-                          const v = e.target.value;
-                          if (v === app.status) return;
-                          if (app.status === 'ACCEPTED' && v === 'REJECTED') setRevertTarget(app.id);
-                          else if (v === 'ACCEPTED') setAcceptTarget({ type: 'single', appId: app.id });
-                          else updateStatus.mutate({ appId: app.id, status: v });
-                        }}
-                        className={`text-xs px-2 rounded-lg border-0 cursor-pointer min-h-[44px] sm:min-h-0 sm:py-1 ${statusColors[app.status] || ''}`}
-                      >
-                        {app.status === 'SUBMITTED' && <option value="SUBMITTED">접수</option>}
-                        <option value="ACCEPTED">수락</option>
-                        <option value="REJECTED">거절</option>
-                      </select>
-                    )}
-                    {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                  </div>
+                    <ChevronDown size={16} aria-hidden className={cn('shrink-0 text-gray-400 transition-transform', isExpanded && 'rotate-180')} />
+                  </button>
                 </div>
-              </div>
 
-              {isExpanded && (
-                <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3 ml-0 sm:ml-7">
-                  {/* 연락처(좌) + 개별 지원서 PDF 다운로드(우측 상단, 상태 선택 아래·연락처 높이) */}
-                  <div className="flex items-start justify-between gap-2 pt-2">
-                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
-                      <span>🪪 {nameWithNickname(app.user)}</span>
-                      {app.user?.phone && <span>📞 {app.user.phone}</span>}
-                      {app.user?.email && <span className="break-all">📧 {app.user.email}</span>}
+                {isExpanded && (
+                  <div className="space-y-4 border-t border-gray-100 px-3 pb-4 pt-3 sm:px-4 sm:pl-11">
+                    {/* 연락처 + 개별 지원서 PDF */}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="min-w-0 text-sm text-gray-600">
+                        <button type="button" onClick={() => navigate(`/portfolio/${app.user?.id}`)} className="font-medium text-gray-900 underline-offset-4 hover:underline">{name}</button>
+                        {app.user?.phone && <> · {app.user.phone}</>}
+                        {app.user?.email && <> · <span className="break-all">{app.user.email}</span></>}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handlePdf(app)}
+                        disabled={pdfBusy !== null}
+                        className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950 disabled:opacity-50"
+                      >
+                        {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <FileText size={13} aria-hidden />}
+                        {pdfBusy === app.id && progress ? `${progress.label} ${progress.done}/${progress.total}` : '지원서 PDF'}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handlePdf(app)}
-                      disabled={pdfBusy !== null}
-                      className="shrink-0 flex items-center gap-1.5 px-3 min-h-[40px] text-xs border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {pdfBusy === app.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-                      {pdfBusy === app.id && progress ? `${progress.label} ${progress.done}/${progress.total}` : '지원서 PDF'}
-                    </button>
+
+                    <ApplicationContent app={app} customFields={customFields} onImageClick={(images, index) => setLightbox({ images, index })} />
+
+                    {/* 결정 — 지원서를 읽은 자리에서 한다 */}
+                    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                      {isPending(app.status) && (
+                        <>
+                          <button type="button" onClick={() => setAcceptTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[44px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40">수락하기</button>
+                          <button type="button" onClick={() => setRejectTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40">거절</button>
+                        </>
+                      )}
+                      {app.status === 'REJECTED' && (
+                        <>
+                          <span className="text-sm text-gray-500">거절한 지원이에요.</span>
+                          <button type="button" onClick={() => setAcceptTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[40px] rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40">수락으로 바꾸기</button>
+                        </>
+                      )}
+                      {app.status === 'ACCEPTED' && (
+                        <>
+                          <span className="text-sm text-gray-600">수락한 작가예요. [운영] 탭의 출품 자료에서 이 작가의 자료를 볼 수 있어요.</span>
+                          {allowRevert && (
+                            <button type="button" onClick={() => setRevertTarget(app.id)} className="min-h-[40px] px-1 text-xs text-gray-500 underline-offset-4 hover:text-accent hover:underline">거절로 되돌리기</button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <ApplicationContent app={app} customFields={customFields} onImageClick={(images, index) => setLightbox({ images, index })} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {joinCode}
 
       {/* 수락 확인 (되돌릴 수 없음) */}
       <ConfirmDialog
         open={acceptTarget !== null}
-        title="지원자 수락"
-        message={`수락하면 더 이상 상태를 변경할 수 없습니다.\n수락 시 지원자에게 알림이 전송되고 운영 페이지 참여가 활성화됩니다.\n\n정말 수락하시겠습니까?`}
+        title={acceptTarget?.type === 'single' ? `${acceptTarget.name} 님을 수락할까요?` : `${selectedCount}명을 수락할까요?`}
+        details={[
+          '수락하면 되돌릴 수 없어요.',
+          '작가에게 선정 알림이 가고, 작가는 출품 자료를 내기 시작해요.',
+          ...(capacity != null ? [`정원 ${capacity}명 중 지금 ${accepted}명이 수락되어 있어요.`] : []),
+        ]}
         confirmText="수락하기"
         onConfirm={() => {
           if (acceptTarget?.type === 'single') updateStatus.mutate({ appId: acceptTarget.appId, status: 'ACCEPTED' });
@@ -316,11 +395,30 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         onCancel={() => setAcceptTarget(null)}
       />
 
+      {/* 거절 확인 — 작가에게 결과 알림이 가므로 잘못 눌러선 안 된다 */}
+      <ConfirmDialog
+        open={rejectTarget !== null}
+        title={rejectTarget?.type === 'single' ? `${rejectTarget.name} 님의 지원을 거절할까요?` : `${selectedCount}명을 거절할까요?`}
+        details={['작가에게 결과 알림이 가요.', '나중에 마음이 바뀌면 [수락으로 바꾸기]로 수락할 수 있어요.']}
+        confirmText="거절"
+        onConfirm={() => {
+          if (rejectTarget?.type === 'single') updateStatus.mutate({ appId: rejectTarget.appId, status: 'REJECTED' });
+          else if (rejectTarget?.type === 'batch') batchUpdate('REJECTED');
+          setRejectTarget(null);
+        }}
+        onCancel={() => setRejectTarget(null)}
+      />
+
       {/* 수락 → 거절 되돌리기 확인 (개발자 도구 활성화 시에만 진입 가능) */}
       <ConfirmDialog
         open={revertTarget !== null}
         title="수락을 거절로 되돌리기"
-        message={`수락을 거절로 되돌리면:\n\n· 해당 작가가 운영 페이지에 제출한 자료(출품리스트·작가약력·작가노트)가 모두 삭제됩니다.\n· 해당 작가의 판매·정산 기록도 함께 삭제됩니다.\n· 모집 정원 슬롯이 복구됩니다.\n\n삭제된 자료는 복구할 수 없습니다. 계속하시겠습니까?`}
+        details={[
+          '이 작가가 낸 출품 자료(출품리스트·약력·작가노트)가 모두 삭제돼요.',
+          '이 작가의 판매·정산 기록도 함께 삭제돼요.',
+          '정원 자리가 하나 다시 비어요.',
+          '삭제된 자료는 복구할 수 없어요.',
+        ]}
         confirmText="거절로 되돌리기"
         variant="danger"
         onConfirm={() => {

@@ -32,6 +32,7 @@ const GalleriesPage = lazyWithReload(() => import('@/pages/GalleriesPage'));
 const GalleryDetailPage = lazyWithReload(() => import('@/pages/GalleryDetailPage'));
 const ExhibitionsPage = lazyWithReload(() => import('@/pages/ExhibitionsPage'));
 const ExhibitionDetailPage = lazyWithReload(() => import('@/pages/ExhibitionDetailPage'));
+const ApplyPage = lazyWithReload(() => import('@/pages/ApplyPage'));
 const ShowsPage = lazyWithReload(() => import('@/pages/ShowsPage'));
 const ShowDetailPage = lazyWithReload(() => import('@/pages/ShowDetailPage'));
 const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
@@ -123,6 +124,8 @@ export default function App() {
         <Route path="/exhibitions" element={<ExhibitionsPage />} />
         <Route path="/exhibitions/new" element={<ProtectedRoute><ExhibitionRegisterPage /></ProtectedRoute>} />
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
+        {/* 지원서(2026-09-29) — 예전엔 상세 위 모달이었다. 로그인 전이면 ProtectedRoute 가 로그인 뒤 여기로 돌려보낸다 */}
+        <Route path="/exhibitions/:id/apply" element={<ProtectedRoute><ApplyPage /></ProtectedRoute>} />
         {/* 초대 코드 참여(2026-09-27) — 비로그인도 공모를 먼저 본다. 참여는 페이지 안에서 로그인 게이팅 */}
         <Route path="/join/:code" element={<JoinExhibitionPage />} />
         <Route path="/exhibitions/:id/operation/new" element={

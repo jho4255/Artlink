@@ -4,19 +4,30 @@ import { Link, Navigate, useNavigate, useSearchParams, useLocation } from 'react
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Heart, FileText, Send, Building2, Star, X, Plus, Check, XCircle,
+  Heart, FileText, Building2, Star, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronDown, ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft,
+  ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
   Image as ImageIcon,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber, roleLabel } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
+import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type NextTask, type TaskTarget } from '@/lib/flowLabels';
+import { scheduleSummary } from '@/lib/scheduleSummary';
+import StatusChip from '@/components/flow/StatusChip';
+import Notice from '@/components/flow/Notice';
+import DraftNotice from '@/components/flow/DraftNotice';
+import { savedAtLabel } from '@/lib/formDraft';
+import ProgressSteps from '@/components/flow/ProgressSteps';
+import Disclosure from '@/components/flow/Disclosure';
+import PageTabBar from '@/components/shared/PageTabBar';
+import { FormSection, FormField } from '@/components/flow/FormParts';
+import { formInputCls } from '@/lib/formStyles';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
-import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, exhibitionStage, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
+import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
 import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames, PORTFOLIO_IMAGE_MAX } from '@/lib/artwork';
 import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
@@ -101,6 +112,8 @@ interface GalleryOperationOverview {
   ended?: boolean;
   settlementRequestedAt?: string | null;
   settledAt?: string | null;
+  /** 서버가 계산한 종료(정산 완료 또는 전시 종료 20일 경과) */
+  closed?: boolean;
   gallery?: { id: number; name: string };
   stage: { key: string; label: string; tone: OperationTone };
   nextAction: { label: string; description: string; route: string };
@@ -111,14 +124,6 @@ interface GalleryOperationOverview {
     settlement: { total: number; pending: number; approved: number; issue: number };
   };
 }
-
-const operationToneClasses: Record<OperationTone, string> = {
-  active: 'bg-blue-50 text-blue-700 border-blue-100',
-  wait: 'bg-amber-50 text-amber-700 border-amber-100',
-  accent: 'bg-purple-50 text-purple-700 border-purple-100',
-  done: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  danger: 'bg-accent/5 text-accent border-accent/20',
-};
 
 const operationDate = (value?: string | null) => {
   if (!value) return '-';
@@ -2048,22 +2053,8 @@ function ExhibitionInviteModal({ exhibitionId, exhibitionTitle, onClose }: { exh
 }
 
 /** 참고용 내용을 접어두는 상자 — ArtistOperationPanel 의 블록과 같은 모양으로 맞춘다 */
-function CollapsibleBox({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-gray-100 pt-3">
-      <button onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex w-full items-center gap-2 py-1 text-left cursor-pointer group">
-        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-950">{title}</span>
-        <ChevronDown size={14} className={`ml-auto shrink-0 text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && <div className="pt-2">{children}</div>}
-    </div>
-  );
-}
-
-// ========== Artist: 내 전시 (지원 → 수락 → 자료제출 → 전시 → 정산) ==========
-// 분류 규칙은 lib/myExhibitions.ts 참고 (심사중 / 진행중 / 진행종료)
+// ========== Artist: 내 전시 (지원 → 선정 → 출품 자료 → 전시 → 정산) ==========
+// 분류 규칙은 lib/myExhibitions.ts, 단계·상태 이름과 할 일은 lib/flowLabels.ts
 function ApplicationsSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -2072,6 +2063,8 @@ function ApplicationsSection() {
   // (전체 탭을 없앴으므로 기본값을 고정하면 가진 게 있는데도 빈 화면이 될 수 있다)
   const [statusFilter, setStatusFilter] = useState<MyExhibitionBucket | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  /** 카드의 할 일 줄을 눌렀을 때 펼칠 구역(출품 자료·정산) */
+  const [focus, setFocus] = useState<{ appId: number; target: TaskTarget; seq: number } | null>(null);
   // 알림에서 온 전시(`?ex=`) — 한 번만 열고 그 뒤엔 사용자가 접었다 폈다 하도록 둔다
   const deepLinkExId = Number(searchParams.get('ex')) || null;
   const deepLinkDone = useRef(false);
@@ -2084,7 +2077,7 @@ function ApplicationsSection() {
   const invites = (inviteData?.invites ?? []).filter((i: any) => !i.applied && !i.closed);
 
   /* 초대 수락 = **지원 없이 바로 참가**. 갤러리가 이미 작품을 보고 부른 것이라
-     지원서를 다시 쓰게 하지 않는다(서버가 포트폴리오에서 채운다). 곧바로 '진행중' 탭으로 옮겨간다. */
+     지원서를 다시 쓰게 하지 않는다(서버가 포트폴리오에서 채운다). 곧바로 '진행 중' 탭으로 옮겨간다. */
   const acceptInvite = useMutation({
     mutationFn: (id: number) => api.post(`/exhibitions/invites/${id}/accept`),
     onSuccess: () => {
@@ -2092,7 +2085,7 @@ function ApplicationsSection() {
       queryClient.invalidateQueries({ queryKey: ['my-applications'] });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       setStatusFilter('ONGOING');
-      toast.success('전시에 참여하게 되었습니다. 제출 자료를 확인해주세요.');
+      toast.success('전시에 참여하게 되었습니다. 출품 자료를 준비해 주세요.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '참여 처리에 실패했습니다.'),
   });
@@ -2115,13 +2108,13 @@ function ApplicationsSection() {
 
   // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다
   useEffect(() => {
-    // 초대만 받은 작가(지원 0건)는 [초대받은 전시] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
+    // 초대만 받은 작가(지원 0건)는 [받은 초대] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
     if (statusFilter === null && apps.length > 0) setStatusFilter(defaultBucket(apps));
     else if (statusFilter === null && apps.length === 0 && invites.length > 0) setStatusFilter('INVITED');
   }, [apps, statusFilter]);
 
   /*
-    알림을 눌러 들어오면(`?ex=<id>`) **그 전시를 [전시 관리] 누른 상태로** 보여준다.
+    알림을 눌러 들어오면(`?ex=<id>`) **그 전시를 펼친 채로** 보여준다.
     목록에서 다시 찾아 누르게 하면 알림으로 보낸 의미가 없다.
 
     ⚠️ 그 전시가 들어 있는 **탭까지 함께 바꿔야** 한다 — 기본 탭이 다르면 카드가 아예 안 보인다.
@@ -2136,23 +2129,21 @@ function ApplicationsSection() {
     const bucket = (Object.keys(buckets) as MyExhibitionBucket[]).find(k => buckets[k].some((a: any) => a.id === target.id));
     if (bucket) setStatusFilter(bucket);
     setExpandedId(target.id);
+    window.setTimeout(() => document.getElementById(`app-card-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
   }, [apps, deepLinkExId]);
 
-  // 거절 확인 — '확인'을 눌러야 목록에서 제거 (그전까지는 '심사중' 탭에 남는다)
+  // 거절 확인 — '확인'을 눌러야 목록에서 제거 (그전까지는 '심사 중' 탭에 남는다)
   const ackRejectionMutation = useMutation({
     mutationFn: (appId: number) => api.post(`/exhibitions/applications/${appId}/acknowledge-rejection`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my-applications'] }); },
     onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
   });
 
-  const statusColors: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
-  const statusLabelsLocal: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
-
   if (isError) {
-    return <p className="text-accent text-center py-8">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
+    return <p className="py-8 text-center text-accent">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
+  if (isLoading) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
 
   // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
@@ -2161,34 +2152,60 @@ function ApplicationsSection() {
   const activeTab: MyExhibitionBucket = statusFilter ?? (visibleApps.length === 0 && invites.length > 0 ? 'INVITED' : defaultBucket(visibleApps));
   const filteredApps = buckets[activeTab];
 
-  const counts: Record<string, number> = {
+  const counts: Record<MyExhibitionBucket, number> = {
     INVITED: invites.length,
     REVIEWING: buckets.REVIEWING.length,
     ONGOING: buckets.ONGOING.length,
     CLOSED: buckets.CLOSED.length,
   };
+  const empty = visibleApps.length === 0 && invites.length === 0;
 
-  // 초대 코드 입력칸은 **목록이 비어 있어도** 보인다 — 코드를 받고 막 가입한 작가는 여기가 첫 화면이다(2026-09-27)
-  return visibleApps.length === 0 && invites.length === 0 ? (
-    <div className="space-y-3">
-      <JoinCodeInput />
-      <p className="text-gray-400 text-center py-8">아직 지원하거나 참여한 전시가 없습니다.</p>
-    </div>
-  ) : (
-    <div className="space-y-3">
-      <JoinCodeInput />
-      {/* 진행상태 필터 탭 — 심사중 / 진행중 / 진행종료 */}
-      <div className="flex gap-1.5 flex-wrap">
-        {MY_EXHIBITION_TABS.map(f => (
-          <button
-            key={f.key}
-            onClick={() => setStatusFilter(f.key)}
-            className={`px-2.5 py-1 text-xs rounded-full transition-colors ${activeTab === f.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          >
-            {f.label} {counts[f.key] ? `(${counts[f.key]})` : ''}
-          </button>
-        ))}
+  // 초대 코드 입력은 드물게 쓰는 입구라 한 줄로 접어 둔다 — 예전엔 목록 **맨 위** 큰 상자라 모든 작가가
+  // "이걸 먼저 해야 하나?" 로 읽었다. 목록이 비어 있으면(코드를 받고 막 가입한 작가의 첫 화면) 펼쳐 둔다.
+  const joinCode = (
+    <Disclosure variant="link" title="초대 코드가 있나요?" defaultOpen={empty}>
+      <div className="max-w-md pb-1">
+        <p className="mb-2 text-xs text-gray-500">이미 선정된 공모라면 갤러리에게 받은 코드를 넣으세요. 지원서 없이 바로 참여해요.</p>
+        <JoinCodeInput compact />
       </div>
+    </Disclosure>
+  );
+
+  if (empty) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
+          <p className="mt-1 text-sm text-gray-500">지원한 공모와 참여하는 전시를 여기서 이어서 진행해요.</p>
+        </div>
+        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-12 text-center">
+          <p className="text-sm text-gray-600">아직 지원하거나 참여한 전시가 없어요.</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-gray-400">모집공고에서 지원하면, 선정 결과부터 출품 자료 제출·정산 확인까지 여기서 이어서 할 수 있어요.</p>
+          <button type="button" onClick={() => navigate('/exhibitions')} className="mt-5 inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-900 hover:bg-gray-50">
+            모집공고 보기 <ArrowRight size={14} aria-hidden />
+          </button>
+        </div>
+        {joinCode}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
+        <p className="mt-1 text-sm text-gray-500">지원한 공모와 참여하는 전시를 여기서 이어서 진행해요.</p>
+      </div>
+
+      {/* 진행 상태 탭 — 받은 초대 / 심사 중 / 진행 중 / 종료 */}
+      <PageTabBar<MyExhibitionBucket>
+        sticky={false}
+        idPrefix="my-applications"
+        label="내 전시 분류"
+        active={activeTab}
+        onSelect={setStatusFilter}
+        tabs={MY_EXHIBITION_TABS.map(t => ({ id: t.key, label: t.label, count: counts[t.key] || undefined }))}
+      />
 
       <ConfirmDialog
         open={decliningInviteId !== null}
@@ -2200,199 +2217,200 @@ function ApplicationsSection() {
         onCancel={() => setDecliningInviteId(null)}
       />
 
-      {/* 초대 탭 — 카드 얼개는 아래 지원 카드와 같게 두되, 버튼만 [참여하기]/[거절] 이다 */}
+      {/* 받은 초대 — 카드 얼개는 아래 지원 카드와 같게 두되, 버튼만 [참여하기]/[거절] 이다 */}
       {activeTab === 'INVITED' ? (
         invites.length === 0 ? (
-          <p className="text-gray-400 text-center py-4 text-sm">{MY_EXHIBITION_EMPTY.INVITED}</p>
+          <p className="py-4 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY.INVITED}</p>
         ) : invites.map((inv: any) => {
           const ex = inv.exhibition ?? {};
-          const dday = ex.deadline ? getDday(ex.deadline) : null;
+          const deadlineLabel = ddayText('마감', ex.deadline);
           return (
-            <article key={inv.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-              {/* 왼쪽 포스터 이미지 제거(2026-08-28) — 지원 카드와 동일. D-day 는 배지 줄로. */}
-              <div className="grid gap-0">
-                <div className="p-5 min-w-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">초대</span>
-                        {dday !== null && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
-                            D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
-                          </span>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)}
-                        className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline">
-                        {ex.title}
-                      </button>
-                      <p className="mt-1 text-sm text-gray-500">{ex.gallery?.name || 'Gallery'}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                      <button type="button" onClick={() => acceptInvite.mutate(inv.id)} disabled={acceptInvite.isPending}
-                        className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-                        <Check size={14} /> 참여하기
-                      </button>
-                      <button type="button" onClick={() => setDecliningInviteId(inv.id)} disabled={declineInvite.isPending}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                        거절
-                      </button>
-                    </div>
+            <article key={inv.id} className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip variant="attention">초대</StatusChip>
+                    {deadlineLabel && <span className="text-xs font-medium tabular-nums text-gray-500">{deadlineLabel}</span>}
                   </div>
-
-                  {/* 갤러리가 적어 보낸 말 — 초대에서 가장 중요한 내용이라 접지 않는다 */}
-                  {inv.message && (
-                    <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">
-                      {inv.message}
-                    </p>
-                  )}
-                  <p className="mt-3 text-xs text-gray-400">
-                    참여하면 지원서 없이 바로 참가자로 등록되며, 작가 약력·작품은 홈페이지에서 자동으로 가져옵니다.
-                  </p>
+                  <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)}
+                    className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline">
+                    {ex.title}
+                  </button>
+                  <p className="mt-1 text-sm text-gray-500">{ex.gallery?.name || '아트링크'}</p>
                 </div>
               </div>
+
+              {/* 갤러리가 적어 보낸 말 — 초대에서 가장 중요한 내용이라 접지 않는다 */}
+              {inv.message && (
+                <p className="mt-4 whitespace-pre-wrap break-keep rounded-xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-700 [overflow-wrap:anywhere]">
+                  {inv.message}
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => acceptInvite.mutate(inv.id)} disabled={acceptInvite.isPending}
+                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+                  <Check size={15} aria-hidden /> 참여하기
+                </button>
+                <button type="button" onClick={() => setDecliningInviteId(inv.id)} disabled={declineInvite.isPending}
+                  className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  거절
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                참여하면 지원서 없이 바로 참가자로 등록되고, 약력·작품은 홈페이지에서 가져와요.
+              </p>
             </article>
           );
         })
       ) : filteredApps.length === 0 ? (
-        <p className="text-gray-400 text-center py-4 text-sm">{MY_EXHIBITION_EMPTY[activeTab]}</p>
+        <p className="py-4 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY[activeTab]}</p>
       ) : (
         filteredApps.map((app: any) => {
           const isExpanded = expandedId === app.id;
           const ex = app.exhibition ?? {};
-          const stage = isRejected(app) ? null : exhibitionStage(ex);
-          const dday = ex.exhibitStartDate ? getDday(ex.exhibitStartDate) : null;
+          const accepted = app.status === 'ACCEPTED';
+          const stage = accepted ? stageOf(ex) : null;
+          const statusView = !accepted ? applicationStatusView(app.status, 'artist') : null;
           const rows = activeTab === 'ONGOING' ? nextSchedule(ex, !!app.submissionComplete, getDday) : [];
+          const task = artistNextTask({
+            status: app.status,
+            recruitOnly: !!ex.recruitOnly,
+            confirmed: !!ex.confirmed,
+            ended: !!ex.ended,
+            settled: !!ex.settledAt,
+            settlementRequested: !!ex.settlementRequestedAt,
+            submissionComplete: !!app.submissionComplete,
+            submissionDeadline: ex.submissionDeadline,
+            exhibitStartDate: ex.exhibitStartDate,
+          });
+          const taskTarget = task?.target ?? null;
+          const goTask = taskTarget && accepted
+            ? () => { setExpandedId(app.id); setFocus({ appId: app.id, target: taskTarget, seq: Date.now() }); }
+            : undefined;
 
-          /* 갤러리 [내 공모 운영] 카드와 **같은 얼개**다 — 배지·제목·버튼, 그 아래 일정 요약, 펼치면 작업 영역.
-             왼쪽 220px 포스터 이미지는 없앴다(2026-08-28) — 갤러리 카드와 마찬가지로 펼쳤을 때 정신없었다.
-             D-day 는 상태 배지 줄로 옮겼다. */
+          /* 갤러리 [내 공모] 카드와 **같은 얼개**다 — 칩·제목·버튼, 할 일 줄, 일정, 펼치면 작업 영역. */
           return (
-            <article key={app.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-              <div className="grid gap-0">
-                {/* min-w-0 필수 — 없으면 제목 min-content 가 컬럼을 밀어 truncate 가 무력해진다 */}
-                <div className="p-5 min-w-0">
-                  {/* 버튼은 **어느 폭에서든 카드 우측 상단**. 예전엔 xl 미만에서 제목 아래로 내려가
-                      카드마다 버튼 위치가 달랐다. 제목은 min-w-0 + truncate 로 줄어든다. */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {stage && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stage.cls}`}>{stage.label}</span>}
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusColors[app.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {statusLabelsLocal[app.status] || app.status}
-                        </span>
-                        {dday !== null && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
-                            D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
-                        className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
-                      >
-                        {ex.title}
-                      </button>
-                      <p className="mt-1 text-sm text-gray-500">
-                        {ex.gallery?.name || 'Gallery'} · 지원일 {new Date(app.createdAt).toLocaleDateString('ko')}
-                      </p>
+            <article key={app.id} id={`app-card-${app.id}`} className="min-w-0 scroll-mt-24 rounded-2xl border border-gray-200 bg-white">
+              {/* min-w-0 필수 — 없으면 제목 min-content 가 컬럼을 밀어 truncate 가 무력해진다 */}
+              <div className="min-w-0 p-5 md:p-6">
+                {/* 버튼은 **어느 폭에서든 카드 우측 상단**. 제목은 min-w-0 + truncate 로 줄어든다. */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {stage && <StatusChip variant={stage.variant}>{stage.label}</StatusChip>}
+                      {statusView && <StatusChip variant={statusView.variant}>{statusView.label}</StatusChip>}
                     </div>
-
-                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                      {app.status === 'ACCEPTED' && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : app.id)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
-                        >
-                          <ClipboardList size={14} /> {isExpanded ? '닫기' : '전시 관리'}
-                        </button>
-                      )}
-                      {app.status !== 'ACCEPTED' && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : app.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        >
-                          <Eye size={14} /> {isExpanded ? '닫기' : '지원서 보기'}
-                        </button>
-                      )}
-                      {/* [공모 상세] 버튼은 없다 — 제목과 이미지를 누르면 그리로 간다(같은 곳으로 가는 길이 셋일 이유가 없다) */}
-                      {/* 거절: '확인'을 눌러야 목록에서 사라진다 */}
-                      {app.status === 'REJECTED' && (
-                        <button
-                          type="button"
-                          onClick={() => ackRejectionMutation.mutate(app.id)}
-                          disabled={ackRejectionMutation.isPending}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          확인
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
+                      className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                    >
+                      {ex.title}
+                    </button>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {ex.gallery?.name || '아트링크'} · 지원일 {new Date(app.createdAt).toLocaleDateString('ko')}
+                    </p>
                   </div>
 
-                  {/*
-                    일정 줄은 **항상** 그린다.
-                    남은 일정이 없을 때 줄째로 빼면 카드 높이가 제각각이 된다 —
-                    실측 130px vs 188px 로, 목록에서 한 카드만 작아 보였다(2026-08-28).
-                    남은 일정이 없으면 대신 전시 기간을 적는다(빈 줄로 자리만 채우지 않는다).
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    {accepted ? (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                        aria-expanded={isExpanded}
+                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
+                      >
+                        {isExpanded ? <>닫기 <ChevronUp size={14} aria-hidden /></> : <><ClipboardList size={14} aria-hidden /> 전시 관리</>}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                        aria-expanded={isExpanded}
+                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <Eye size={14} aria-hidden /> {isExpanded ? '닫기' : '지원서 보기'}
+                      </button>
+                    )}
+                    {/* 미선정: '확인'을 눌러야 목록에서 사라진다 */}
+                    {app.status === 'REJECTED' && (
+                      <button
+                        type="button"
+                        onClick={() => ackRejectionMutation.mutate(app.id)}
+                        disabled={ackRejectionMutation.isPending}
+                        className="min-h-[40px] rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        확인
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                    마감이 지났어도 줄을 지우지 않는다 — 늦었어도 내야 하는 일이라 숨기면 모른다.
-                  */}
-                  <div className="mt-4 border-y border-gray-100 py-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                {/* 지금 할 일 — 할 일이 있을 때만(작가 카드엔 일정 줄이 있어 없는 할 일을 또 적으면 잔소리다) */}
+                {task && <TaskLine task={task} onClick={goTask} />}
+
+                {app.status === 'REJECTED' && (
+                  <p className="mt-4 text-sm text-gray-600">이번 공모에서는 선정되지 않았어요. [확인]을 누르면 목록에서 사라져요.</p>
+                )}
+
+                {/*
+                  일정 줄은 진행 중 탭에서 **항상** 그린다 — 남은 일정이 없을 때 줄째로 빼면 카드 높이가 제각각이 된다.
+                  남은 일정이 없으면 대신 전시 기간을 적는다. 마감이 지났어도 줄을 지우지 않는다(늦었어도 내야 하는 일).
+                */}
+                {(activeTab === 'ONGOING' || rows.length > 0) && (
+                  <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-100 pt-3">
                     {rows.length > 0 ? rows.map((r, i) => (
-                      <span key={i} className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${r.tone === 'urgent' ? 'text-accent font-medium' : r.tone === 'done' ? 'text-green-700' : 'text-gray-600'}`}>
-                        {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" />}
-                        {r.tone === 'done' && <Check size={11} className="shrink-0" />}
+                      <span key={i} className={cn('inline-flex items-center gap-1 whitespace-nowrap text-xs', r.tone === 'urgent' ? 'font-medium text-accent' : r.tone === 'done' ? 'text-gray-500' : 'text-gray-600')}>
+                        {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" aria-hidden />}
+                        {r.tone === 'done' && <Check size={11} className="shrink-0" aria-hidden />}
                         {r.label}
                         {r.dday && <b className="tabular-nums">{r.dday}</b>}
-                        <span className="text-gray-400 tabular-nums">({r.date})</span>
+                        <span className="tabular-nums text-gray-400">({r.date})</span>
                       </span>
                     )) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                        <Calendar size={11} className="shrink-0 text-gray-400" />
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-gray-500">
+                        <Calendar size={11} className="shrink-0 text-gray-400" aria-hidden />
                         전시 기간
-                        <span className="text-gray-400 tabular-nums">
+                        <span className="tabular-nums text-gray-400">
                           ({[ex.exhibitStartDate, ex.exhibitDate].filter(Boolean).map((v: string) => new Date(v).toLocaleDateString('ko', { month: 'numeric', day: 'numeric' })).join(' ~ ') || '미정'})
                         </span>
                       </span>
                     )}
                   </div>
-
-                  {app.status === 'REJECTED' && (
-                    <p className="mt-4 rounded-lg bg-accent/5 px-3 py-2 text-sm text-accent">아쉽게도 이번 지원은 거절되었습니다.</p>
-                  )}
-
-                  {isExpanded && (
-                    <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
-                      {/* 할 일이 맨 위 — 지원서(수십 줄)를 먼저 두면 정작 해야 할 게 아래로 밀린다 */}
-                      {app.status === 'ACCEPTED' && (
-                        <ArtistOperationPanel
-                          exhibitionId={app.exhibitionId}
-                          exhibition={ex}
-                          submissionComplete={app.submissionComplete}
-                        />
-                      )}
-                      {app.status === 'ACCEPTED' ? (
-                        <CollapsibleBox title="내가 제출한 지원서">
-                          <ApplicationContent app={app} customFields={ex.customFields} />
-                        </CollapsibleBox>
-                      ) : (
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 mb-1.5">내가 제출한 지원서</p>
-                          <ApplicationContent app={app} customFields={ex.customFields} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
+
+              {isExpanded && (
+                <div className="border-t border-gray-100 px-5 md:px-6">
+                  {/* 할 일이 맨 위 — 지원서(수십 줄)를 먼저 두면 정작 해야 할 게 아래로 밀린다 */}
+                  <div className="divide-y divide-gray-100">
+                    {accepted && (
+                      <ArtistOperationPanel
+                        exhibitionId={app.exhibitionId}
+                        exhibition={ex}
+                        submissionComplete={app.submissionComplete}
+                        focus={focus && focus.appId === app.id ? { target: focus.target, seq: focus.seq } : null}
+                      />
+                    )}
+                    {accepted ? (
+                      <Disclosure title="내가 낸 지원서">
+                        <ApplicationContent app={app} customFields={ex.customFields} />
+                      </Disclosure>
+                    ) : (
+                      <div className="py-5">
+                        <p className="mb-3 text-sm font-semibold text-gray-950">내가 낸 지원서</p>
+                        <ApplicationContent app={app} customFields={ex.customFields} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </article>
           );
         })
       )}
+
+      <div className="border-t border-gray-100 pt-3">{joinCode}</div>
     </div>
   );
 }
@@ -2448,7 +2466,7 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   // 임시저장 훅
-  const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_gallery_form', emptyForm);
+  const { pending: draftPending, savedAt: draftSavedAt, resume: resumeDraft, discard: discardDraft, save: saveDraft, clear: clearDraft, autoSave } = useFormDraft<typeof emptyForm>('draft_gallery_form');
 
   // 폼 변경 감지 (이탈 경고용)
   const isDirty = showForm && JSON.stringify(form) !== JSON.stringify(emptyForm);
@@ -2459,16 +2477,8 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
     if (showForm && isDirty) autoSave(form);
   }, [form, showForm, isDirty, autoSave]);
 
-  // 폼 열 때 draft 복원 확인
-  const openForm = () => {
-    if (hasDraft) {
-      const draft = restoreDraft();
-      if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
-        setForm(draft);
-      }
-    }
-    setShowForm(true);
-  };
+  // 폼 열기 — 작성하던 게 있으면 폼 위 안내(DraftNotice)에서 이어 쓸지 고른다(예전 window.confirm)
+  const openForm = () => setShowForm(true);
 
   // 전용 등록 화면(/galleries/new)에서는 폼만 연 채로 시작한다(목록·헤더 숨김).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2539,10 +2549,26 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
           <div className="flex justify-between items-center">
             <h4 className="font-medium text-sm">갤러리 등록 요청</h4>
-            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
-              <Save size={12} /> 임시저장
-            </button>
+            <span className="flex items-center gap-3">
+              {draftSavedAt && <span className="text-xs text-gray-400">{savedAtLabel(draftSavedAt)} 저장됨</span>}
+              <button onClick={() => {
+                if (saveDraft(form)) toast.success('임시저장했어요. 이 브라우저에 남아 있어요.');
+                else toast.error(draftPending ? '작성하던 내용을 먼저 [이어서 쓰기] 또는 [새로 쓰기]로 정해 주세요.' : '임시저장하지 못했어요.');
+              }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900">
+                <Save size={12} /> 임시저장
+              </button>
+            </span>
           </div>
+          {draftPending && (
+            <DraftNotice
+              title="작성하던 갤러리 등록 요청이 있어요"
+              summary={draftPending.data.name}
+              savedAt={draftPending.savedAt}
+              onResume={() => { const d = resumeDraft(); if (d) setForm({ ...emptyForm, ...d }); }}
+              onDiscard={discardDraft}
+              className="bg-white"
+            />
+          )}
           {/* WYSIWYG: 실제 갤러리 상세 페이지 모습으로 편집 */}
           <p className="text-xs text-gray-400">아래는 실제 갤러리 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
           <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
@@ -2686,13 +2712,35 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
 }
 
 // ========== Gallery: 내 공모 ==========
+/** 카드의 '지금 할 일' 한 줄 — 누르면 그 탭·구역으로 데려간다 */
+function TaskLine({ task, onClick }: { task: NextTask; onClick?: () => void }) {
+  const tone = task.tone;
+  const body = (
+    <>
+      <span aria-hidden className={cn('mt-[0.5em] h-1.5 w-1.5 shrink-0 rounded-full', tone === 'attention' ? 'bg-accent' : tone === 'done' ? 'bg-gray-300' : 'bg-gray-400')} />
+      <span className={cn('min-w-0 flex-1 text-sm leading-relaxed', tone === 'attention' ? 'font-medium text-gray-950' : 'text-gray-600')}>{task.text}</span>
+      {onClick && (
+        <span className="inline-flex shrink-0 items-center gap-0.5 self-center text-sm font-medium text-gray-900">
+          {task.action}<ArrowRight size={14} aria-hidden />
+        </span>
+      )}
+    </>
+  );
+  const cls = cn('mt-4 flex w-full items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-left', tone === 'attention' ? 'bg-accent/5' : 'bg-gray-50');
+  // data-task-line — E2E 가 카드 높이를 잴 때 이 줄을 뺀다(할 일이 있는 카드만 한 줄 높다. 그건 들쭉날쭉이 아니라 정보다)
+  return onClick
+    ? <button type="button" data-task-line onClick={onClick} className={cn(cls, 'transition-colors hover:bg-gray-100')}>{body}</button>
+    : <div data-task-line className={cls}>{body}</div>;
+}
+
 function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initialViewMode?: ExhibitionViewMode; createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   // 전용 등록 화면(/exhibitions/new)에서는 폼만 연 채로 시작한다.
   useEffect(() => { if (createOnly) setShowForm(true); }, [createOnly]);
-  // 항상 '진행중'으로 시작한다. 선택을 저장해두면 다음에 열었을 때 종료 탭이 떠 있어
+  // 항상 '진행 중'으로 시작한다. 선택을 저장해두면 다음에 열었을 때 종료 탭이 떠 있어
   // "내 공모가 다 사라졌다"로 읽힌다 — 필터는 기억하지 않는 편이 안전하다.
   const [exhibitionViewMode, setExhibitionViewMode] = useState<ExhibitionViewMode>(initialViewMode ?? 'active');
 
@@ -2703,20 +2751,23 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
+  const [termsError, setTermsError] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
-  // 지원자 관리 상태 — 인라인 ApplicantManager 를 펼칠 공모 id
-  const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
-  // 상세 운영 상태 — 인라인 OperationBody 를 펼칠 공모 id (페이지 이동 대신 카드 안에서 접었다폈다)
-  const [manageOpsExId, setManageOpsExId] = useState<number | null>(null);
+  /** 카드에서 펼친 곳 — 한 번에 한 카드의 한 탭만(두 탭을 동시에 펴면 카드 하나가 화면 몇 장이 된다) */
+  const [openPanel, setOpenPanel] = useState<{ id: number; tab: 'applicants' | 'operation' } | null>(null);
+  /** [운영] 탭에서 열고 스크롤할 구역 — 카드의 할 일 줄을 눌렀을 때 */
+  const [opsFocus, setOpsFocus] = useState<{ target: TaskTarget; seq: number } | null>(null);
   // 작가 초대 대상 공모 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대한다
   const [inviteEx, setInviteEx] = useState<{ id: number; title: string } | null>(null);
-  // 추가 질문 수정 대상 공모 (게시 후 수정) — 지원자 관리 패널 안에서 연다
+  // 추가 질문 수정 대상 공모 (게시 후 수정) — 지원자 탭 안에서 연다
   const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
+  const termsRef = useRef<HTMLDivElement>(null);
+  const deepLinkDone = useRef(false);
 
   // 임시저장 훅
-  const { hasDraft, autoSave, saveDraft, clearDraft, restoreDraft } = useFormDraft('draft_exhibition_form', emptyExForm);
+  const { pending: draftPending, savedAt: draftSavedAt, resume: resumeDraft, discard: discardDraft, save: saveDraft, clear: clearDraft, autoSave } = useFormDraft<typeof emptyExForm>('draft_exhibition_form');
 
   // 폼 변경 감지
   const isDirty = showForm && JSON.stringify(form) !== JSON.stringify(emptyExForm);
@@ -2737,16 +2788,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
   }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
 
-  // 폼 열기 (draft 복원)
-  const openExForm = () => {
-    if (hasDraft) {
-      const draft = restoreDraft();
-      if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
-        setForm(draft);
-      }
-    }
-    setShowForm(true);
-  };
+  // 폼 열기 — 작성하던 공고가 있으면 폼 위 안내(DraftNotice)에서 이어 쓸지 고른다(예전 window.confirm)
+  const openExForm = () => setShowForm(true);
 
   // 전용 등록 화면(/exhibitions/new)에서는 폼만 연 채로 시작한다.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2790,7 +2833,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
       setExhibitionAgreed(false);
       setFormErrors(new Set());
       clearDraft();
-      toast.success('공모 등록 요청이 제출되었습니다.');
+      toast.success('공모 등록 요청이 제출되었습니다. 관리자 승인 뒤 모집공고에 올라가요.');
       if (createOnly) navigate('/mypage?tab=my-exhibitions');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
@@ -2811,32 +2854,14 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   // 공모 삭제 이중확인 ("삭제" 입력)
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
-  // 지원자 목록/상태변경/ZIP/필터/수락확인/이미지확대는 인라인 <ApplicantManager /> 가 모두 담당(창 이동 없음).
-
-  const statusColors: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-700', REJECTED: 'bg-accent/10 text-accent' };
-  const statusLabels: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인 완료', REJECTED: '승인 거절' };
   const overviewItems = operationOverview.length > 0
     ? operationOverview
     : exhibitions.map(makeFallbackOperationOverview);
   const customFieldsByExId = useMemo(() => new Map(exhibitions.map((ex: any) => [ex.id, ex.customFields ?? null])), [exhibitions]);
-  const overviewSummary = overviewItems.reduce((acc, item) => {
-    acc.total += 1;
-    acc.action += item.status === 'APPROVED' && !item.settledAt ? 1 : 0;
-    acc.applications += item.counts.applications.total;
-    acc.accepted += item.counts.applications.accepted;
-    acc.submissionTodo += Math.max(0, item.counts.submissions.required - item.counts.submissions.complete);
-    acc.settlementTodo += item.ended && !item.settledAt ? 1 : 0;
-    return acc;
-  }, { total: 0, action: 0, applications: 0, accepted: 0, submissionTodo: 0, settlementTodo: 0 });
-
-  const switchExhibitionView = (mode: ExhibitionViewMode) => {
-    setExhibitionViewMode(mode);
-    setManageAppsExId(null);   // 필터를 바꾸면 열려 있던 지원자 목록은 닫는다
-  };
 
   // 종료 판정은 서버가 한다(`lib/exhibitionLifecycle.ts`) — 정산 완료 **또는**
-  // 전시 종료 20일 경과(단, 정산을 시작했으면 진행중 유지).
-  // 갤러리가 [전시종료]조차 안 누른 공모가 영원히 '진행중' 으로 쌓이는 걸 막는다.
+  // 전시 종료 20일 경과(단, 정산을 시작했으면 진행 중 유지).
+  // 갤러리가 [전시종료]조차 안 누른 공모가 영원히 '진행 중' 으로 쌓이는 걸 막는다.
   // 옛 응답(closed 없음)은 예전 규칙(정산 완료)으로 떨어진다.
   const isClosedItem = (x: any) => x.closed ?? !!x.settledAt;
   const activeExhibitions = overviewItems.filter((x) => !isClosedItem(x));
@@ -2846,182 +2871,235 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     .sort((a: any, b: any) => new Date(b.settledAt ?? b.exhibitDate ?? 0).getTime() - new Date(a.settledAt ?? a.exhibitDate ?? 0).getTime());
   const shownExhibitions = exhibitionViewMode === 'closed' ? closedExhibitions : activeExhibitions;
 
+  /*
+    다른 화면에서 한 카드를 가리켜 들어오면(`?ex=<id>&panel=applicants|operation`) 그 카드를 펼쳐 보여 준다.
+    공모 상세의 [지원자 보기]·운영 화면의 [내 공모]·[지원자 보기] 가 이 주소를 쓴다.
+    ⚠️ 딱 한 번만(`deepLinkDone`) — refetch 때마다 걸리면 사용자가 접어도 다시 열린다.
+  */
+  useEffect(() => {
+    const exId = Number(searchParams.get('ex')) || null;
+    if (!exId || deepLinkDone.current || overviewItems.length === 0) return;
+    const item = overviewItems.find((x) => x.id === exId);
+    if (!item) return;
+    deepLinkDone.current = true;
+    if (isClosedItem(item)) setExhibitionViewMode('closed');
+    if (item.status === 'APPROVED') setOpenPanel({ id: exId, tab: searchParams.get('panel') === 'applicants' ? 'applicants' : 'operation' });
+    window.setTimeout(() => document.getElementById(`ex-card-${exId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }, [overviewItems, searchParams]);
+
+  const switchExhibitionView = (mode: ExhibitionViewMode) => {
+    setExhibitionViewMode(mode);
+    setOpenPanel(null);   // 필터를 바꾸면 열려 있던 탭은 닫는다
+  };
+
+  const clearError = (key: string) => setFormErrors(prev => { if (!prev.has(key)) return prev; const n = new Set(prev); n.delete(key); return n; });
+
+  /** [등록 요청] — 비어 있는 칸을 표시하고, 약관 동의가 없으면 약관으로 데려간다 */
+  const requestSubmit = () => {
+    // 필수 항목 구체적 검증 + 빨간 테두리 하이라이트
+    const missing: string[] = [];
+    const errorFields = new Set<string>();
+    if (!form.galleryId) { missing.push('갤러리'); errorFields.add('galleryId'); }
+    if (!form.title) { missing.push('제목'); errorFields.add('title'); }
+    if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+    if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
+    if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
+    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
+    if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
+    if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
+    const cleanedCustomFields = sanitizeCustomFields(form.customFields);
+    const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
+    setFormErrors(errorFields);
+    if (missing.length > 0) {
+      toast.error(
+        () => (
+          <div className="text-sm">
+            <p className="mb-1 font-medium">다음 필수 항목을 입력해주세요:</p>
+            {missing.map((m, i) => <p key={i} className="text-accent">• {m}</p>)}
+          </div>
+        ),
+        { duration: 4000 }
+      );
+      window.setTimeout(() => document.querySelector<HTMLElement>('[data-form-error="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
+    if (dateError) {
+      toast.error(dateError);
+      return;
+    }
+    if (invalidSelect) {
+      toast.error('객관식 질문은 선택지를 2개 이상 입력해주세요.');
+      return;
+    }
+    // 예전엔 약관에 동의하지 않으면 [등록 요청]이 이유 없이 회색이었다 — 누르면 약관으로 데려간다
+    if (!exhibitionAgreed) {
+      setTermsError(true);
+      termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast.error('약관에 동의해 주세요.');
+      return;
+    }
+    setForm({ ...form, customFields: cleanedCustomFields });
+    setConfirmAction('submit');
+  };
+
+  const summary = scheduleSummary(form);
+  const flowSteps = form.recruitOnly
+    ? ['등록 요청', '관리자 승인', '지원 모집', '작가 선정']
+    : ['등록 요청', '관리자 승인', '지원 모집', '작가 선정', '출품 자료', '전시', '정산'];
+
   return (
     <div>
-      {!createOnly && (
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <p className="text-sm text-gray-400">Admin 승인 후 공고에 노출됩니다.</p>
-        <div className="flex flex-wrap items-center gap-2">
-          {!showForm && (
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-              <button
-                type="button"
-                onClick={() => switchExhibitionView('active')}
-                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'active' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-              >
-                진행중인 공모 {activeExhibitions.length > 0 && <span className="text-gray-400">{activeExhibitions.length}</span>}
-              </button>
-              <button
-                type="button"
-                onClick={() => switchExhibitionView('closed')}
-                className={`rounded-md px-3 py-1.5 text-sm transition ${exhibitionViewMode === 'closed' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-              >
-                종료된 공모 {closedExhibitions.length > 0 && <span className="text-gray-400">{closedExhibitions.length}</span>}
-              </button>
-            </div>
-          )}
-          <button onClick={() => navigate('/exhibitions/new')} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-1.5 text-sm font-medium text-accent hover:bg-accent/5 transition-colors">
-            <Plus size={14} /> 공모 등록
-          </button>
-        </div>
-      </div>
-      )}
-
       {showForm && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-          <div className="flex justify-between items-center">
-            <h4 className="font-medium text-sm">공모 등록 요청</h4>
-            <button onClick={() => { saveDraft(form); toast.success('임시저장되었습니다.'); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-900">
-              <Save size={12} /> 임시저장
-            </button>
+        <div className="space-y-8">
+          {/* 작성하던 공고 — 고를 때까지 아무것도 덮어쓰지 않는다(lib/formDraft.ts) */}
+          {draftPending && (
+            <DraftNotice
+              title="작성하던 공고가 있어요"
+              summary={draftPending.data.title}
+              savedAt={draftPending.savedAt}
+              onResume={() => { const d = resumeDraft(); if (d) setForm({ ...emptyExForm, ...d }); }}
+              onDiscard={discardDraft}
+            />
+          )}
+          {/* 전체 순서 — 처음 등록하는 갤러리가 끝까지 무엇이 있는지 여기서 본다 */}
+          <div className="rounded-xl bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium text-gray-500">공모는 이렇게 진행돼요</p>
+            <ProgressSteps variant="inline" steps={flowSteps} current={0} label="공모 진행 순서" className="mt-1.5" />
           </div>
+
           {approvedGalleries.length === 0 ? (
-            <p className="text-sm text-accent">승인된 갤러리가 없습니다. 먼저 갤러리를 등록해주세요.</p>
+            <Notice
+              tone="attention"
+              title="승인된 갤러리가 없어요"
+              action={<button type="button" onClick={() => navigate('/galleries/new')} className="min-h-[40px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">갤러리 등록하기</button>}
+            >
+              공모는 승인된 갤러리 이름으로 올라가요. 먼저 갤러리를 등록하고 승인을 받아 주세요.
+            </Notice>
           ) : (
             <>
-              <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요. (제출 후 관리자 승인 시 공개)</p>
-
-              {/* 어디까지 진행할지 — 이걸 정해야 아래 '자료제출 마감일' 칸이 필요한지가 갈린다 */}
-              <ExhibitionScopePicker
-                recruitOnly={form.recruitOnly}
-                onChange={(next) => {
-                  setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) });
-                  setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; });
-                }}
-              />
-
-              <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
-                <HeroImageEdit value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} className="w-full aspect-[16/9]" label="공모 대표 이미지" />
-                <div className="p-5 space-y-3">
-                  {/* 갤러리 / 유형 / 지역 */}
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <select value={form.galleryId} onChange={e => { setForm({...form, galleryId: Number(e.target.value)}); setFormErrors(prev => { const n = new Set(prev); n.delete('galleryId'); return n; }); }} className={`text-xs px-2.5 py-1 rounded-full cursor-pointer focus:outline-none ${formErrors.has('galleryId') ? 'bg-accent/5 text-accent ring-1 ring-accent/40' : 'bg-gray-900 text-white'}`}>
-                      <option value={0}>갤러리 선택 *</option>
-                      {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                    <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
-                      <option value="SOLO">개인전</option>
-                      <option value="GROUP">단체전</option>
-                      <option value="ART_FAIR">아트페어</option>
-                    </select>
-                    <select value={form.region} onChange={e => setForm({...form, region: e.target.value})} className="text-xs px-2.5 py-1 bg-gray-100 rounded-full text-gray-600 cursor-pointer focus:outline-none">
-                      {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-                    </select>
-                  </div>
-                  {/* 제목 */}
-                  <EditableText value={form.title} onChange={v => { setForm({...form, title: v}); setFormErrors(prev => { const n = new Set(prev); n.delete('title'); return n; }); }} placeholder="공모 제목" className="text-2xl font-serif text-gray-900" error={formErrors.has('title')} />
-                  {/* 메타: 모집인원 + 일정 */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
-                    <div>
-                      <label className="text-xs text-gray-500">모집 작가 수</label>
-                      <input type="number" min={1} value={form.capacity} onChange={e => setForm({...form, capacity: Number(e.target.value)})} className="w-full mt-0.5 p-2 border border-gray-200 rounded-lg text-sm" />
-                    </div>
-                    {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
-                    <p className="self-end pb-2 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
-                    <div>
-                      <label className={`text-xs ${formErrors.has('deadlineStart') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 시작일 *</label>
-                      <input type="date" value={form.deadlineStart} onChange={e => { setForm({...form, deadlineStart: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadlineStart'); return n; }); }} max={form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadlineStart') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
-                    </div>
-                    <div>
-                      <label className={`text-xs ${formErrors.has('deadline') ? 'text-accent font-medium' : 'text-gray-500'}`}>공모 마감일 *</label>
-                      <input type="date" value={form.deadline} onChange={e => { setForm({...form, deadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('deadline'); return n; }); }} min={form.deadlineStart || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('deadline') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
-                    </div>
-                    {/* ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자 칸도 그리지 않는다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
-                    <div className={form.recruitOnly ? 'hidden' : ''}>
-                      <label className={`text-xs ${formErrors.has('exhibitStartDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 시작일 *</label>
-                      <input type="date" value={form.exhibitStartDate} onChange={e => { setForm({...form, exhibitStartDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitStartDate'); return n; }); }} min={form.deadline || undefined} max={form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitStartDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
-                    </div>
-                    <div className={form.recruitOnly ? 'hidden' : ''}>
-                      <label className={`text-xs ${formErrors.has('exhibitDate') ? 'text-accent font-medium' : 'text-gray-500'}`}>전시 종료일 *</label>
-                      <input type="date" value={form.exhibitDate} onChange={e => { setForm({...form, exhibitDate: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('exhibitDate'); return n; }); }} min={form.exhibitStartDate || form.deadline || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('exhibitDate') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
-                    </div>
-                    {/*
-                      작가가 출품자료(출품리스트·약력·노트)를 내야 하는 날짜.
-                      공모 마감과 전시 시작 사이에 있어야 한다 — 지원도 안 끝났는데 자료를 받을 수 없고,
-                      전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다.
-                      min/max 로 달력 자체를 막아, 틀린 날짜를 고르고 저장 버튼에서 튕기는 일이 없게 한다.
-                    */}
-                    {/* ⚠️ 공모만 진행하면 이 단계가 없다 — 비활성이 아니라 칸 자체를 없앤다.
-                        회색으로 남겨 두면 "왜 못 쓰지" 를 묻게 되고, 서버는 400 으로 막는다. */}
-                    <div className={`col-span-2 ${form.recruitOnly ? 'hidden' : ''}`}>
-                      <label className={`text-xs ${formErrors.has('submissionDeadline') ? 'text-accent font-medium' : 'text-gray-500'}`}>작가 자료제출 마감일 *</label>
-                      <input type="date" value={form.submissionDeadline} onChange={e => { setForm({...form, submissionDeadline: e.target.value}); setFormErrors(prev => { const n = new Set(prev); n.delete('submissionDeadline'); return n; }); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={`w-full mt-0.5 p-2 border rounded-lg text-sm ${formErrors.has('submissionDeadline') ? 'border-accent bg-accent/5' : 'border-gray-200'}`} />
-                      <p className="mt-1 text-[11px] text-gray-400">수락된 작가가 출품작·약력·작가노트를 내야 하는 날짜입니다. 공모 마감일과 전시 시작일 사이로 정해주세요.</p>
-                    </div>
-                  </div>
-                  {dateError && (
-                    <p className="text-xs text-accent flex items-center gap-1"><AlertTriangle size={12} /> {dateError}</p>
-                  )}
-                  {/* 소개 */}
-                  <div className="pt-3 border-t border-gray-100">
-                    <p className="text-xs font-medium text-gray-400 mb-1">공모 소개</p>
-                    <EditableText multiline rows={3} value={form.description} onChange={v => { setForm({...form, description: v}); setFormErrors(prev => { const n = new Set(prev); n.delete('description'); return n; }); }} placeholder="공모 소개" className="text-sm text-gray-700" error={formErrors.has('description')} />
-                  </div>
-                  <CustomQuestionBuilder
-                    fields={form.customFields}
-                    onChange={(updateCustomFields) => setForm((prev) => ({ ...prev, customFields: updateCustomFields(prev.customFields) }))}
-                  />
-                </div>
-              </div>
-
-              {/* 약관 동의 */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="max-h-40 overflow-y-auto p-3 bg-white text-xs text-gray-600 whitespace-pre-wrap">{exhibitionTerms || '약관 로딩 중...'}</div>
-                <label className="flex items-center gap-2 p-3 bg-gray-100 border-t border-gray-200 cursor-pointer text-sm">
-                  <input type="checkbox" checked={exhibitionAgreed} onChange={e => setExhibitionAgreed(e.target.checked)} className="rounded" />
-                  위 약관에 동의합니다
-                </label>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  disabled={createMutation.isPending || !exhibitionAgreed || !!dateError}
-                  onClick={() => {
-                    // 필수 항목 구체적 검증 + 빨간 테두리 하이라이트
-                    const missing: string[] = [];
-                    const errorFields = new Set<string>();
-                    if (!form.galleryId) { missing.push('갤러리'); errorFields.add('galleryId'); }
-                    if (!form.title) { missing.push('제목'); errorFields.add('title'); }
-                    if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
-                    if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
-                    if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
-                    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
-                    if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
-                    if (!form.description) { missing.push('소개'); errorFields.add('description'); }
-                    const cleanedCustomFields = sanitizeCustomFields(form.customFields);
-                    const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
-                    setFormErrors(errorFields);
-                    if (missing.length > 0) {
-                      toast.error(
-                        (t) => (
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">다음 필수 항목을 입력해주세요:</p>
-                            {missing.map((m, i) => <p key={i} className="text-accent">• {m}</p>)}
-                          </div>
-                        ),
-                        { duration: 4000 }
-                      );
-                      return;
-                    }
-                    if (invalidSelect) {
-                      toast.error('객관식 질문은 선택지를 2개 이상 입력해주세요.');
-                      return;
-                    }
-                    setForm({ ...form, customFields: cleanedCustomFields });
-                    setConfirmAction('submit');
+              <FormSection n={1} title="진행 범위" description="어디까지 이 페이지에서 진행할지 골라 주세요. 등록한 뒤에는 바꿀 수 없어요.">
+                {/* 어디까지 진행할지 — 이걸 정해야 아래 '자료 제출 마감일' 칸이 필요한지가 갈린다 */}
+                <ExhibitionScopePicker
+                  bare
+                  recruitOnly={form.recruitOnly}
+                  onChange={(next) => {
+                    setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) });
+                    ['submissionDeadline', 'exhibitStartDate', 'exhibitDate'].forEach(clearError);
                   }}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </FormSection>
+
+              <FormSection n={2} title="공고 내용" description="모집공고 목록과 상세 페이지에 그대로 보여요.">
+                <div className="grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]">
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium text-gray-800">포스터</p>
+                    <HeroImageEdit value={form.imageUrl} onChange={(url) => setForm({ ...form, imageUrl: url })} onRemove={() => setForm({ ...form, imageUrl: '' })} className="aspect-[210/297] w-full max-w-[168px] rounded-lg" label="포스터" />
+                    <p className="mt-1.5 text-xs leading-relaxed text-gray-500">세로형(A4 비율)을 권해요. 목록 카드에 이 비율로 보여요.</p>
+                  </div>
+                  <div className="min-w-0 space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <FormField label="갤러리 *" error={formErrors.has('galleryId')} htmlFor="ex-gallery">
+                        <select id="ex-gallery" data-form-error={formErrors.has('galleryId') || undefined} value={form.galleryId} onChange={e => { setForm({ ...form, galleryId: Number(e.target.value) }); clearError('galleryId'); }} className={formInputCls(formErrors.has('galleryId'))}>
+                          <option value={0}>갤러리 선택</option>
+                          {approvedGalleries.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="구분" htmlFor="ex-type">
+                        <select id="ex-type" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className={formInputCls()}>
+                          <option value="SOLO">개인전</option>
+                          <option value="GROUP">단체전</option>
+                          <option value="ART_FAIR">아트페어</option>
+                        </select>
+                      </FormField>
+                      <FormField label="지역" htmlFor="ex-region">
+                        <select id="ex-region" value={form.region} onChange={e => setForm({ ...form, region: e.target.value })} className={formInputCls()}>
+                          {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                        </select>
+                      </FormField>
+                    </div>
+                    <FormField label="공모 제목 *" error={formErrors.has('title')} htmlFor="ex-title">
+                      <input id="ex-title" data-form-error={formErrors.has('title') || undefined} value={form.title} onChange={e => { setForm({ ...form, title: e.target.value }); clearError('title'); }} placeholder="공모 제목" className={formInputCls(formErrors.has('title'))} />
+                    </FormField>
+                    {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
+                    <FormField label="모집 작가 수" htmlFor="ex-capacity" hint="지원은 제한 없이 받고, 이 인원까지 수락할 수 있어요.">
+                      <input id="ex-capacity" type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} className={cn(formInputCls(), 'max-w-[140px]')} />
+                    </FormField>
+                  </div>
+                </div>
+                <FormField label="공모 소개 *" error={formErrors.has('description')} htmlFor="ex-desc" className="mt-5">
+                  <textarea id="ex-desc" data-form-error={formErrors.has('description') || undefined} rows={6} value={form.description} onChange={e => { setForm({ ...form, description: e.target.value }); clearError('description'); }} placeholder="공모 소개" className={cn(formInputCls(formErrors.has('description')), 'resize-y leading-relaxed')} />
+                </FormField>
+              </FormSection>
+
+              <FormSection n={3} title="일정">
+                {/* 칸 순서가 곧 시간 순서다 — 예전엔 공모 → 전시 → 자료 제출 순이라 위부터 채우면 순서 오류가 났다.
+                    min/max 로 달력 자체를 막아, 틀린 날짜를 고르고 저장에서 튕기는 일이 없게 한다. */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField label="공모 시작일 *" error={formErrors.has('deadlineStart')} htmlFor="ex-start" hint="이날부터 지원을 받아요.">
+                    <input id="ex-start" type="date" data-form-error={formErrors.has('deadlineStart') || undefined} value={form.deadlineStart} onChange={e => { setForm({ ...form, deadlineStart: e.target.value }); clearError('deadlineStart'); }} max={form.deadline || undefined} className={formInputCls(formErrors.has('deadlineStart'))} />
+                  </FormField>
+                  <FormField label="공모 마감일 *" error={formErrors.has('deadline')} htmlFor="ex-deadline" hint="이날이 지나면 지원이 닫혀요.">
+                    <input id="ex-deadline" type="date" data-form-error={formErrors.has('deadline') || undefined} value={form.deadline} onChange={e => { setForm({ ...form, deadline: e.target.value }); clearError('deadline'); }} min={form.deadlineStart || undefined} max={form.submissionDeadline || form.exhibitStartDate || form.exhibitDate || undefined} className={formInputCls(formErrors.has('deadline'))} />
+                  </FormField>
+                  {/* ⚠️ 공모만 진행하면 자료 제출·전시가 없다 — 비활성이 아니라 칸 자체를 없앤다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
+                  {!form.recruitOnly && (
+                    <>
+                      <FormField className="sm:col-span-2" label="작가 자료 제출 마감일 *" error={formErrors.has('submissionDeadline')} htmlFor="ex-submission" hint="수락한 작가가 출품작·약력·작가노트를 내는 기한이에요. 공모 마감일과 전시 시작일 사이로 정해 주세요.">
+                        <input id="ex-submission" type="date" data-form-error={formErrors.has('submissionDeadline') || undefined} value={form.submissionDeadline} onChange={e => { setForm({ ...form, submissionDeadline: e.target.value }); clearError('submissionDeadline'); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={cn(formInputCls(formErrors.has('submissionDeadline')), 'sm:max-w-[calc(50%-0.5rem)]')} />
+                      </FormField>
+                      <FormField label="전시 시작일 *" error={formErrors.has('exhibitStartDate')} htmlFor="ex-show-start" hint="이날이 되면 전시가 자동으로 확정되고, 작가는 출품 자료를 더 고칠 수 없어요.">
+                        <input id="ex-show-start" type="date" data-form-error={formErrors.has('exhibitStartDate') || undefined} value={form.exhibitStartDate} onChange={e => { setForm({ ...form, exhibitStartDate: e.target.value }); clearError('exhibitStartDate'); }} min={form.submissionDeadline || form.deadline || undefined} max={form.exhibitDate || undefined} className={formInputCls(formErrors.has('exhibitStartDate'))} />
+                      </FormField>
+                      <FormField label="전시 종료일 *" error={formErrors.has('exhibitDate')} htmlFor="ex-show-end" hint="전시가 끝나면 판매 내역을 입력해 정산해요.">
+                        <input id="ex-show-end" type="date" data-form-error={formErrors.has('exhibitDate') || undefined} value={form.exhibitDate} onChange={e => { setForm({ ...form, exhibitDate: e.target.value }); clearError('exhibitDate'); }} min={form.exhibitStartDate || form.deadline || undefined} className={formInputCls(formErrors.has('exhibitDate'))} />
+                      </FormField>
+                    </>
+                  )}
+                </div>
+                {summary && <p className="mt-5 text-sm text-gray-700"><span className="text-gray-400">한눈에 · </span>{summary}</p>}
+                {dateError && (
+                  <p className="mt-2 flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} aria-hidden /> {dateError}</p>
+                )}
+              </FormSection>
+
+              <FormSection n={4} title="추가 질문 (선택)" description="지원서에 더 물어볼 게 있으면 넣으세요. 설치 가능 일정, 작품 운송 방식 같은 것들이에요.">
+                <CustomQuestionBuilder
+                  bare
+                  fields={form.customFields}
+                  onChange={(updateCustomFields) => setForm((prev) => ({ ...prev, customFields: updateCustomFields(prev.customFields) }))}
+                />
+              </FormSection>
+
+              <FormSection n={5} title="약관">
+                <div ref={termsRef} className={cn('overflow-hidden rounded-xl border', termsError && !exhibitionAgreed ? 'border-accent' : 'border-gray-200')}>
+                  <div className="max-h-40 overflow-y-auto whitespace-pre-wrap bg-white p-3 text-xs leading-relaxed text-gray-600">{exhibitionTerms || '약관 로딩 중...'}</div>
+                  <label className="flex min-h-[48px] cursor-pointer items-center gap-2 border-t border-gray-200 bg-gray-50 px-3 text-sm">
+                    <input type="checkbox" checked={exhibitionAgreed} onChange={e => { setExhibitionAgreed(e.target.checked); setTermsError(false); }} className="h-4 w-4 rounded" />
+                    위 약관에 동의합니다
+                  </label>
+                </div>
+                {termsError && !exhibitionAgreed && <p className="mt-1.5 text-xs text-accent">약관에 동의해야 등록을 요청할 수 있어요.</p>}
+              </FormSection>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
+                <button
+                  type="button"
+                  disabled={createMutation.isPending}
+                  onClick={requestSubmit}
+                  className="min-h-[44px] rounded-lg bg-gray-900 px-5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
                 >{createMutation.isPending ? '등록 중...' : '등록 요청'}</button>
-                <button onClick={() => { if (isDirty) { setConfirmAction('cancel'); } else if (createOnly) { navigate(-1); } else { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); } }} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                <button type="button" onClick={() => {
+                  if (saveDraft(form)) toast.success('임시저장했어요. 이 브라우저에 남아 있어요.');
+                  else {
+                    toast.error(draftPending ? '작성하던 공고를 먼저 [이어서 쓰기] 또는 [새로 쓰기]로 정해 주세요.' : '임시저장하지 못했어요.');
+                    if (draftPending) window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }} className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50">
+                  <Save size={14} aria-hidden /> 임시저장
+                </button>
+                <button type="button" onClick={() => { if (isDirty) { setConfirmAction('cancel'); } else if (createOnly) { navigate(-1); } else { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); } }} className="min-h-[44px] px-3 text-sm text-gray-500 hover:text-gray-900">취소</button>
+                {draftSavedAt && <span className="text-xs text-gray-400">{savedAtLabel(draftSavedAt)} 저장됨</span>}
+                <p className="w-full text-xs text-gray-500">등록을 요청하면 관리자가 확인한 뒤 모집공고에 올려요. 승인되면 알림으로 알려 드려요. 쓰던 내용은 이 브라우저에 자동으로 저장돼요.</p>
               </div>
             </>
           )}
@@ -3051,8 +3129,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
       {/* 등록/취소 확인 모달 */}
       <ConfirmDialog
         open={confirmAction === 'submit'}
-        title="공모 등록"
-        message="이 내용으로 공모 등록을 요청하시겠습니까?"
+        title="공모 등록을 요청할까요?"
+        details={[
+          '관리자가 내용을 확인한 뒤 모집공고에 올려요. 승인되면 알림으로 알려 드려요.',
+          ...(summary ? [`일정 · ${summary}`] : []),
+          '승인 뒤에는 공고 소개·포스터·추가 질문을 고칠 수 있어요. 날짜를 바꿔야 하면 관리자에게 수정 요청을 보내 주세요.',
+        ]}
         confirmText="등록 요청"
         onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, customFields: sanitizeCustomFields(form.customFields) }); }}
         onCancel={() => setConfirmAction(null)}
@@ -3069,43 +3151,45 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
       {!showForm && (
         <div className="space-y-5">
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-            <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-400">Gallery operation hub</p>
-                <h3 className="mt-1 text-2xl font-semibold text-gray-950">내 공모 운영</h3>
-                <p className="mt-1 text-sm text-gray-500">공모별 지원자, 작가 제출자료, 판매 및 정산 상태를 한 화면에서 확인합니다.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-5 md:min-w-[620px]">
-                {[
-                  ['전체 공모', overviewSummary.total],
-                  ['운영 중', overviewSummary.action],
-                  ['전체 지원', overviewSummary.applications],
-                  ['확정 작가', overviewSummary.accepted],
-                  ['정산 대기', overviewSummary.settlementTodo],
-                ].map(([label, value]) => (
-                  <div key={label} className="border-t border-gray-100 pt-2 md:border-l md:border-t-0 md:pl-4 md:pt-0">
-                    <p className="text-xs text-gray-400">{label}</p>
-                    <p className="mt-1 text-xl font-semibold text-gray-950">{value}</p>
-                  </div>
-                ))}
-              </div>
+          {/* 머리 — 이 탭이 무엇을 하는 곳인지 한 줄 */}
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-2xl font-semibold text-gray-950">내 공모</h2>
+              <p className="mt-1 text-sm text-gray-500">공고를 올리고, 지원자를 뽑고, 전시와 정산까지 여기서 이어서 진행해요.</p>
             </div>
+            <button onClick={() => navigate('/exhibitions/new')} className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-accent/40 px-4 text-sm font-medium text-accent transition-colors hover:bg-accent/5">
+              <Plus size={14} aria-hidden /> 공모 등록
+            </button>
           </div>
+
+          <PageTabBar<ExhibitionViewMode>
+            sticky={false}
+            idPrefix="my-exhibitions"
+            label="공모 목록"
+            active={exhibitionViewMode}
+            onSelect={switchExhibitionView}
+            tabs={[
+              { id: 'active', label: '진행 중', count: activeExhibitions.length },
+              { id: 'closed', label: '종료', count: closedExhibitions.length },
+            ]}
+          />
 
           {operationOverviewLoading ? (
             <div className="grid gap-4">
-              {[0, 1].map(i => <div key={i} className="h-56 rounded-2xl bg-gray-100 animate-pulse" />)}
+              {[0, 1].map(i => <div key={i} className="h-56 animate-pulse rounded-2xl bg-gray-100" />)}
             </div>
           ) : shownExhibitions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
+            <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-14 text-center">
               {exhibitionViewMode === 'closed' ? (
-                <p className="text-sm text-gray-500">아직 정산까지 끝난 공모가 없습니다.</p>
+                <p className="text-sm text-gray-500">아직 정산까지 끝난 공모가 없어요.</p>
               ) : (
                 <>
-                  <p className="text-sm text-gray-500">{exhibitionsError ? '공모 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : closedExhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '등록된 공모가 없습니다.'}</p>
-                  <button onClick={() => navigate('/exhibitions/new')} className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5">
-                    <Plus size={14} /> 공모 등록
+                  <p className="text-sm text-gray-500">{exhibitionsError ? '공모 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : closedExhibitions.length > 0 ? '진행 중인 공모가 없어요.' : '아직 올린 공모가 없어요.'}</p>
+                  {!exhibitionsError && closedExhibitions.length === 0 && (
+                    <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-gray-400">공모를 등록하면 관리자 승인 뒤 모집공고에 올라가고, 지원자 선정·출품 자료·전시·정산까지 이 탭에서 이어서 진행해요.</p>
+                  )}
+                  <button onClick={() => navigate('/exhibitions/new')} className="mt-5 inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-accent/40 px-4 text-sm font-medium text-accent hover:bg-accent/5">
+                    <Plus size={14} aria-hidden /> 공모 등록
                   </button>
                 </>
               )}
@@ -3116,183 +3200,183 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 const apps = item.counts.applications;
                 const submissions = item.counts.submissions;
                 const settlement = item.counts.settlement;
-                const dday = item.deadline ? getDday(item.deadline) : null;
-                const submissionTodo = Math.max(0, submissions.required - submissions.complete);
-                const statusClass = statusColors[item.status] || 'bg-gray-100 text-gray-600';
+                const pending = apps.submitted + apps.reviewed;
+                const incomplete = Math.max(0, submissions.required - submissions.complete);
+                const isApproved = item.status === 'APPROVED';
+                const archived = !!item.settledAt || isClosedItem(item);
+                const stage = stageOf({ ...item, settlementStarted: item.counts.sales.total > 0 || !!item.settlementRequestedAt })!;
+                const deadlineLabel = isApproved && !item.recruitmentClosed ? ddayText('마감', item.deadline) : null;
+                const task = galleryNextTask({
+                  status: item.status,
+                  recruitOnly: !!item.recruitOnly,
+                  recruitmentClosed: !!item.recruitmentClosed,
+                  confirmed: !!item.confirmed,
+                  ended: !!item.ended,
+                  settled: !!item.settledAt,
+                  settlementRequested: !!item.settlementRequestedAt,
+                  deadline: item.deadline,
+                  exhibitStartDate: item.exhibitStartDate,
+                  exhibitDate: item.exhibitDate,
+                  pending,
+                  accepted: apps.accepted,
+                  submissionsIncomplete: incomplete,
+                  sales: item.counts.sales.total,
+                  approvals: { total: settlement.total, approved: settlement.approved, issue: settlement.issue },
+                });
+                const panel = openPanel?.id === item.id ? openPanel.tab : null;
+                const openTab = (tab: 'applicants' | 'operation') => setOpenPanel({ id: item.id, tab });
+                const goTask = () => {
+                  if (!task.target) return;
+                  if (task.target === 'applicants') { openTab('applicants'); return; }
+                  openTab('operation');
+                  setOpsFocus({ target: task.target, seq: Date.now() });
+                };
+                // 작가 초대는 **모집 중에만** — 서버도 recruitmentClosed·confirmed·ended 를 막는다(눌러서 400 을 받는 버튼 금지)
+                const canInvite = isApproved && !item.recruitmentClosed && !item.confirmed && !item.ended;
+                const deletable = item.hostType !== 'ADMIN' && !item.settledAt;
                 return (
-                  <article key={item.id} className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                    {/* 삭제는 카드 **우측 상단 모서리**에 따로 둔다 — 지원자 관리·상세 운영 옆에 있으면 잘못 눌러 공모가 지워질 수 있다.
-                        아트링크 주최 공모(위임 운영)·정산 완료 건은 지울 수 없다(서버도 403/400). */}
-                    {item.hostType !== 'ADMIN' && !item.settledAt && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(item)}
-                        className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/80 text-gray-400 hover:border-accent/20 hover:bg-accent/5 hover:text-accent"
-                        title="공모 삭제"
-                        aria-label="공모 삭제"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                    {/* 왼쪽 포스터 이미지를 없앴다(2026-08-28) — 패널을 펼치면 옆에 큰 세로 이미지가 정신없었다.
-                        D-day 는 이미지 배지 대신 아래 상태 배지 줄로 옮겼다. */}
-                    <div className="grid gap-0">
-                      <div className="p-5 min-w-0">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                          <div className="min-w-0">
-                            {/* 우측 상단 삭제 버튼과 겹치지 않게 배지 줄에만 우측 여백(모바일). xl 은 액션줄이 따로라 불필요 */}
-                            <div className="flex flex-wrap items-center gap-2 pr-9 xl:pr-0">
-                              <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${operationToneClasses[item.stage.tone]}`}>
-                                {item.stage.label}
-                              </span>
-                              {dday !== null && (
-                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
-                                  D{dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`}
-                                </span>
-                              )}
-                              {/* 승인 대기·반려는 단계 배지와 글자가 같다 — 두 번 찍지 않는다(2026-09-27) */}
-                              {(statusLabels[item.status] || item.status) !== item.stage.label && (
-                                <span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${statusClass}`}>
-                                  {statusLabels[item.status] || item.status}
-                                </span>
-                              )}
-                              {settlement.issue > 0 && (
-                                <span className="rounded-full bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent">정산 이슈 {settlement.issue}</span>
-                              )}
-                              {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
-                              <HostBadge exhibition={item} />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/exhibitions/${item.id}`)}
-                              className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
-                            >
-                              {item.title}
-                            </button>
-                            <p className="mt-1 text-sm text-gray-500">
-                              {item.gallery?.name || 'Gallery'} · {exhibitionTypeLabels[item.type] || item.type} · {regionLabels[item.region] || item.region}
-                            </p>
+                  // ⚠️ min-w-0 필수(규칙 27) — 이 카드는 grid 아이템이라, 없으면 안쪽 통계 칸(1fr 두 칸)이 글자 폭만큼 카드를 밀어
+                  //    390px 화면에서 페이지가 가로로 408~472px 까지 밀렸다(2026-09-29 실측).
+                  <article key={item.id} id={`ex-card-${item.id}`} className="min-w-0 scroll-mt-24 rounded-2xl border border-gray-200 bg-white">
+                    <div className="p-5 md:p-6">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusChip variant={stage.variant}>{stage.label}</StatusChip>
+                            {deadlineLabel && <span className="text-xs font-medium tabular-nums text-gray-500">{deadlineLabel}</span>}
+                            {settlement.issue > 0 && !item.settledAt && <StatusChip variant="attention">정산 이의 {settlement.issue}</StatusChip>}
+                            {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
+                            <HostBadge exhibition={item} />
                           </div>
-
-                          <div className="flex flex-wrap gap-2 xl:justify-end xl:pr-12">
-                            {(() => {
-                              // 검정 버튼 = '지원자 관리' 전용. 승인된 공모면 어느 단계든(모집중~정산) 인라인 지원자 관리를 펼친다.
-                              // 자료 확인·정산서 등 운영 작업은 옆의 '상세 운영' 버튼/페이지에서 처리(중복 방지).
-                              const isApproved = item.status === 'APPROVED';
-                              const open = manageAppsExId === item.id;
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!isApproved) { navigate(item.nextAction.route); return; }
-                                    const next = open ? null : item.id;
-                                    setManageAppsExId(next);
-                                    if (next) setManageOpsExId(null); // 한 번에 하나만 — 상세 운영이 열려 있으면 닫는다
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white"
-                                >
-                                  <Send size={14} /> {isApproved ? (open ? '지원자 닫기' : '지원자 관리') : item.nextAction.label}
-                                </button>
-                              );
-                            })()}
-                            {/* 상세 운영 — 페이지 이동 대신 카드 안에서 접었다폈다(승인된 공모만).
-                                운영 화면(OperationBody)을 그대로 임베드하므로 공지·자료·정산을 여기서 다 한다.
-                                추가 질문 수정은 여기 top-level 버튼에서 빼고 지원자 관리 패널 안으로 옮겼다. */}
-                            {item.status === 'APPROVED' && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = manageOpsExId === item.id ? null : item.id;
-                                  setManageOpsExId(next);
-                                  if (next) setManageAppsExId(null); // 한 번에 하나만 — 지원자 관리가 열려 있으면 닫는다
-                                }}
-                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                              >
-                                <FileText size={14} /> {manageOpsExId === item.id ? '상세 운영 닫기' : '상세 운영'}
-                              </button>
-                            )}
-                            {/* 공모 삭제 버튼은 카드 우측 상단 모서리로 옮겼다(오조작 방지) */}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/exhibitions/${item.id}`)}
+                            className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                          >
+                            {item.title}
+                          </button>
+                          <p className="mt-1 text-sm text-gray-500">
+                            {item.gallery?.name || '아트링크'} · {exhibitionTypeLabels[item.type] || item.type} · {regionLabels[item.region] || item.region}
+                          </p>
                         </div>
-
-                        <div className="mt-4 border-y border-gray-100 py-4">
-                          {/* 공모만 진행하면 작가 자료·판매/정산 단계가 없다 — 칸을 그리지 않는다(2026-09-27, 예전엔 '0/0 제출 확인 완료'가 떴다) */}
-                          <div className={`grid gap-4 sm:grid-cols-2 ${item.recruitOnly ? '' : 'xl:grid-cols-4'}`}>
-                            <div>
-                              <p className="text-xs text-gray-400">지원자</p>
-                              <p className="mt-1 text-lg font-semibold text-gray-950">{apps.total}명</p>
-                              {/* 정원 = 선정 인원 — 수락이 몇 자리 남았는지 여기서 보인다 */}
-                              <p className="text-xs text-gray-500">수락 {apps.accepted}{item.capacity ? `/${item.capacity}` : ''} · 대기 {apps.submitted + apps.reviewed} · 거절 {apps.rejected}</p>
-                            </div>
-                            {!item.recruitOnly && (
-                              <div>
-                                <p className="text-xs text-gray-400">작가 자료</p>
-                                <p className="mt-1 text-lg font-semibold text-gray-950">{submissions.required > 0 ? `${submissions.complete}/${submissions.required}` : '—'}</p>
-                                <p className="text-xs text-gray-500">{submissions.required === 0 ? '수락한 작가가 아직 없어요' : submissionTodo > 0 ? `${submissionTodo}명 자료 대기` : '제출 확인 완료'}</p>
-                              </div>
-                            )}
-                            {!item.recruitOnly && (
-                              <div>
-                                <p className="text-xs text-gray-400">판매/정산</p>
-                                <p className="mt-1 text-lg font-semibold text-gray-950">{item.counts.sales.total}건</p>
-                                <p className="text-xs text-gray-500">승인 {settlement.approved} · 대기 {settlement.pending}</p>
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-xs text-gray-400">일정</p>
-                              <p className="mt-1 text-sm font-medium text-gray-950">공모 {operationRange(item.deadlineStart, item.deadline)}</p>
-                              {!item.recruitOnly && <p className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</p>}
-                            </div>
-                          </div>
-                        </div>
-
-                        {item.status === 'REJECTED' && item.rejectReason && (
-                          <p className="mt-4 rounded-lg bg-accent/5 px-3 py-2 text-sm text-accent">반려 사유: {item.rejectReason}</p>
+                        {/* 삭제는 카드 **우측 상단 모서리**에 따로 둔다 — 다른 버튼 옆에 있으면 잘못 눌러 공모가 지워질 수 있다.
+                            아트링크 주최 공모(위임 운영)·정산 완료 건은 지울 수 없다(서버도 403/400). */}
+                        {deletable && !archived && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(item)}
+                            className="-mr-2 -mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-gray-300 hover:bg-accent/5 hover:text-accent"
+                            title="공모 삭제"
+                            aria-label="공모 삭제"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         )}
+                      </div>
 
-                        {/* 지원자 관리 — 전 기능 인라인(필터·일괄·수락확인·개별PDF·ZIP·이미지확대)
-                            + 게시 후 추가 질문 수정(정산 완료 전까지) */}
-                        {manageAppsExId === item.id && (
-                          <div className="mt-4 border-t border-gray-100 pt-4">
-                            <div className="mb-3 flex flex-wrap justify-end gap-2">
-                              {/* 관심 작품(하트)을 저장한 작가를 이 공모에 직접 초대 —
-                                  **확정 전(모집 중)까지만**. 서버도 recruitmentClosed·confirmed·ended 를 막으므로
-                                  버튼도 같은 창에서만 띄운다(안 그러면 눌러서 400 을 받는 죽은 버튼이 된다) */}
-                              {item.status === 'APPROVED' && !item.recruitmentClosed && !item.confirmed && !item.ended && (
-                                <button
-                                  type="button"
-                                  onClick={() => setInviteEx({ id: item.id, title: item.title })}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
-                                >
-                                  <Mail size={13} /> 작가 초대
-                                </button>
-                              )}
-                              {!item.settledAt && (
-                                <button
-                                  type="button"
-                                  onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                                >
-                                  <Edit3 size={13} /> 추가 질문 수정
-                                </button>
-                              )}
-                            </div>
+                      {/* 지금 할 일 — 처음 쓰는 갤러리가 "그래서 뭘 누르지?" 에서 막히던 자리 */}
+                      <TaskLine task={task} onClick={isApproved && task.target ? goTask : undefined} />
+
+                      {item.status === 'REJECTED' && item.rejectReason && (
+                        <Notice tone="attention" title="반려 사유" className="mt-3">{item.rejectReason}</Notice>
+                      )}
+
+                      {/* 공모만 진행하면 출품 자료·판매/정산 단계가 없다 — 칸을 그리지 않는다(2026-09-27) */}
+                      <dl className={cn('mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-gray-100 pt-4', !item.recruitOnly && 'md:grid-cols-4')}>
+                        <div className="min-w-0">
+                          <dt className="text-xs text-gray-500">지원자</dt>
+                          <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{apps.total}명</dd>
+                          {/* 정원 = 선정 인원 — 수락이 몇 자리 남았는지 여기서 보인다 */}
+                          <dd className="text-xs tabular-nums text-gray-500">수락 {apps.accepted}{item.capacity ? `/${item.capacity}` : ''} · 검토 대기 {pending}</dd>
+                        </div>
+                        {!item.recruitOnly && (
+                          <div className="min-w-0">
+                            <dt className="text-xs text-gray-500">출품 자료</dt>
+                            <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{submissions.required > 0 ? `${submissions.complete}/${submissions.required}` : '—'}</dd>
+                            <dd className="text-xs text-gray-500">{submissions.required === 0 ? '수락한 작가가 생기면 모여요' : incomplete > 0 ? `${incomplete}명 미제출` : '모두 제출'}</dd>
+                          </div>
+                        )}
+                        {!item.recruitOnly && (
+                          <div className="min-w-0">
+                            <dt className="text-xs text-gray-500">판매·정산</dt>
+                            <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{item.ended ? `${item.counts.sales.total}건` : '—'}</dd>
+                            <dd className="text-xs tabular-nums text-gray-500">
+                              {!item.ended ? '전시가 끝나면 열려요' : item.settledAt ? '정산 완료' : item.settlementRequestedAt ? `작가 확인 ${settlement.approved}/${settlement.total}` : '정산 전'}
+                            </dd>
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <dt className="text-xs text-gray-500">일정</dt>
+                          <dd className="mt-1 text-sm font-medium text-gray-950">공모 {operationRange(item.deadlineStart, item.deadline)}</dd>
+                          {!item.recruitOnly && <dd className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</dd>}
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* 카드 안 탭 — [지원자] / [운영]. 한 번에 하나만 펼친다(예전 두 버튼은 이유 없이 서로를 닫았다) */}
+                    {isApproved && (
+                      <>
+                        <div className="flex items-center gap-6 border-t border-gray-100 px-5 md:px-6">
+                          {(['applicants', 'operation'] as const).map(tab => {
+                            const on = panel === tab;
+                            return (
+                              <button
+                                key={tab}
+                                type="button"
+                                aria-expanded={on}
+                                aria-controls={`ex-${item.id}-${tab}`}
+                                onClick={() => setOpenPanel(on ? null : { id: item.id, tab })}
+                                className={cn('relative min-h-[48px] whitespace-nowrap text-sm', on ? 'font-semibold text-gray-950' : 'text-gray-500 hover:text-gray-900')}
+                              >
+                                {tab === 'applicants'
+                                  ? <>지원자 <span className="ml-0.5 text-xs font-normal tabular-nums text-gray-400">{apps.total}</span></>
+                                  : '운영'}
+                                {on && <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] bg-gray-900" />}
+                              </button>
+                            );
+                          })}
+                          {panel && (
+                            <button type="button" onClick={() => setOpenPanel(null)} className="ml-auto inline-flex min-h-[40px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900">
+                              접기 <ChevronUp size={14} aria-hidden />
+                            </button>
+                          )}
+                        </div>
+
+                        {panel === 'applicants' && (
+                          <div id={`ex-${item.id}-applicants`} className="border-t border-gray-100 p-5 md:p-6">
                             <ApplicantManager
                               exhibitionId={item.id}
                               exhibitionTitle={item.title}
                               customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
+                              capacity={item.capacity ?? null}
+                              toolbar={(
+                                <>
+                                  {/* 관심 작품(하트)을 저장한 작가를 이 공모에 직접 초대 — 모집 중에만 */}
+                                  {canInvite && (
+                                    <button type="button" onClick={() => setInviteEx({ id: item.id, title: item.title })} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950">
+                                      <Mail size={13} aria-hidden /> 작가 초대
+                                    </button>
+                                  )}
+                                  {/* 게시 후 추가 질문 수정 — 정산 완료 전까지 */}
+                                  {!item.settledAt && (
+                                    <button type="button" onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950">
+                                      <Edit3 size={13} aria-hidden /> 추가 질문 수정
+                                    </button>
+                                  )}
+                                </>
+                              )}
                             />
                           </div>
                         )}
 
-                        {/* 상세 운영 — 페이지 이동 없이 카드 안에서(공지·자료·정산). 운영 화면 코드를 그대로 임베드 */}
-                        {manageOpsExId === item.id && (
-                          <div className="mt-4 border-t border-gray-100 pt-4">
-                            <OperationBody id={String(item.id)} embedded />
+                        {/* 운영 — 페이지 이동 없이 카드 안에서(진행 단계 · 공지 · 출품 자료 · 정산). 운영 화면 코드를 그대로 임베드 */}
+                        {panel === 'operation' && (
+                          <div id={`ex-${item.id}-operation`} className="border-t border-gray-100 p-5 md:p-6">
+                            <OperationBody id={String(item.id)} embedded focus={opsFocus} />
                           </div>
                         )}
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </article>
                 );
               })}
@@ -3351,21 +3435,17 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const [searchingIdx, setSearchingIdx] = useState<number | null>(null);
 
   // 이탈 경고·임시저장 — 갤러리·공모 폼엔 있었는데 전시 폼만 없어 포스터·작가 목록까지 채운 뒤 링크 한 번이면 사라졌다(감사 M19)
-  const { hasDraft, autoSave, clearDraft, restoreDraft } = useFormDraft('draft_show_form', { form: emptyShowForm, artists: [{ name: '' }] as ArtistEntry[] });
+  const { pending: draftPending, savedAt: draftSavedAt, resume: resumeDraft, discard: discardDraft, clear: clearDraft, autoSave } = useFormDraft<{ form: typeof emptyShowForm; artists: ArtistEntry[] }>('draft_show_form');
   const isDirty = showForm && (JSON.stringify(form) !== JSON.stringify(emptyShowForm) || artists.some(a => a.name.trim() || a.userId));
   useUnsavedChanges(isDirty);
   useEffect(() => { if (showForm && isDirty) autoSave({ form, artists }); }, [form, artists, showForm, isDirty, autoSave]);
-  const draftAsked = useRef(false);
-  useEffect(() => {
-    if (!showForm || draftAsked.current) return;
-    draftAsked.current = true;
-    if (!hasDraft) return;
-    const draft = restoreDraft();
-    if (draft && window.confirm('이전에 작성하던 내용이 있습니다. 복원하시겠습니까?')) {
-      setForm({ ...emptyShowForm, ...draft.form });
-      if (Array.isArray(draft.artists) && draft.artists.length) setArtists(draft.artists);
-    }
-  }, [showForm, hasDraft, restoreDraft]);
+  // 작성하던 전시가 있으면 폼 위 안내(DraftNotice)에서 이어 쓸지 고른다(예전 window.confirm)
+  const resumeShowDraft = () => {
+    const d = resumeDraft();
+    if (!d) return;
+    setForm({ ...emptyShowForm, ...d.form });
+    if (Array.isArray(d.artists) && d.artists.length) setArtists(d.artists);
+  };
 
   // 검색 드롭다운 — 바깥 클릭·ESC 로 닫는다. 예전엔 작가를 고를 때만 닫혀 검색만 하고 안 고르면 아래 작가 행을 덮었다(감사 M20)
   useEffect(() => {
@@ -3486,6 +3566,16 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
       {/* 등록 폼 */}
       {showForm && (
         <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
+          {draftPending && (
+            <DraftNotice
+              title="작성하던 전시가 있어요"
+              summary={draftPending.data.form?.title}
+              savedAt={draftPending.savedAt}
+              onResume={resumeShowDraft}
+              onDiscard={discardDraft}
+              className="bg-white"
+            />
+          )}
           <p className="text-xs text-gray-400">실제 전시 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요.</p>
           <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
             <HeroImageEdit value={form.posterImage} onChange={(url) => setForm({ ...form, posterImage: url })} onRemove={() => setForm({ ...form, posterImage: '' })} className="w-full aspect-[4/3]" label="포스터 이미지" />
@@ -3634,6 +3724,9 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
           >
             {createMutation.isPending ? '등록 중...' : '전시 등록 요청'}
           </button>
+          <p className="text-center text-xs text-gray-400">
+            쓰던 내용은 이 브라우저에 자동으로 저장돼요{draftSavedAt ? ` · ${savedAtLabel(draftSavedAt)} 저장됨` : ''}
+          </p>
         </div>
       )}
 

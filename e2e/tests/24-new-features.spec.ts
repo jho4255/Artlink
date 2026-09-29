@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, openGallerySubmissions, openArtistExhibition } from '../lib/helpers';
 import { applyToExhibition } from '../lib/helpers';
 
 /**
@@ -7,6 +7,11 @@ import { applyToExhibition } from '../lib/helpers';
  *  1) 갤러리 전화번호·주소 무승인 수정 (API 권한/검증 + UI)
  *  2) 엽서 대표작(representativeIndex) 저장/범위검증/뱃지 (API + UI)
  *  3) 운영 페이지 갤러리 다운로드 버튼(캡션 시트 / 작품 원본 ZIP / 전체 PDF) 노출 + 캡션 PDF 생성
+ *
+ * 2026-09-29: 옛 `/operation` 화면을 여는 UI 테스트를 새 화면으로 옮겼다 —
+ *  · 작가는 운영 페이지가 아니라 **[내 전시] 카드 안**에서 낸다(`?tab=applications&ex=`). 버튼은 [임시저장]·[갤러리에 제출] 둘.
+ *  · 대표작은 작품 카드의 **[☆ 대표작]** 토글(예전 '엽서 대표작' 썸네일 띠 + [저장]).
+ *  · 갤러리 다운로드는 [출품 자료] 구역의 **[내려받기 ▾]** 메뉴 하나(예전 버튼 넷).
  */
 const API = 'http://localhost:4000/api';
 
@@ -141,44 +146,58 @@ test.describe('엽서 대표작(representativeIndex)', () => {
     await api.dispose();
   });
 
-  test('UI: 작가가 대표작 선택→저장, 갤러리 열람뷰에 뱃지 노출', async ({ browser }) => {
-    // 작가: 운영 페이지에서 대표작 선택 후 저장
+  test('UI: 작가가 작품 카드의 [☆ 대표작]으로 바꿔 제출 → 갤러리 열람뷰에 대표작 표시', async ({ browser }) => {
+    // 작가: [내 전시] 카드 안의 출품 자료 — API 로 작품A·B 를 넣고 대표작은 B(1) 로 둔 상태
     const artist = await openAs(browser, 'artist');
-    await artist.page.goto(`/exhibitions/${exId}/operation`);
-    await expect(artist.page.getByText('엽서 대표작', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-    // 대표작 후보 버튼(썸네일) 중 첫 번째 선택
-    const repSection = artist.page.locator('text=엽서 대표작').first();
-    await expect(repSection).toBeVisible();
-    // 작품B(두번째) 라벨이 들어간 버튼 클릭
-    await artist.page.getByRole('button', { name: /작품B|작품 2/ }).first().click();
-    await artist.page.getByRole('button', { name: '저장', exact: true }).first().click();
-    await expect(artist.page.locator('body')).toContainText('전시 정보가 저장', { timeout: 8000 });
+    const card = await openArtistExhibition(artist.page, exId);
+    const workA = card.locator('[id$="-art-0"]');
+    const workB = card.locator('[id$="-art-1"]');
+    await expect(workB.getByRole('button', { name: '대표작', exact: true })).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
+
+    // A 로 바꾼다 — 저장 전인데도 고를 수 있다(예전엔 '저장한 작품만' 이라 비활성이었다)
+    await workA.getByRole('button', { name: '대표작', exact: true }).click();
+    await expect(workA.getByRole('button', { name: '대표작', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(workB.getByRole('button', { name: '대표작', exact: true })).toHaveAttribute('aria-pressed', 'false');
+
+    // [갤러리에 제출] — 약력·작가노트가 비어 있으니 한 번 묻는다 → 출품작만 먼저 제출
+    await card.getByRole('button', { name: '갤러리에 제출' }).click();
+    await artist.page.getByRole('dialog').getByRole('button', { name: '출품작만 먼저 제출' }).click();
+    await expect(artist.page.locator('body')).toContainText('갤러리에 제출했어요', { timeout: 8000 });
     await artist.ctx.close();
 
-    // 갤러리: 제출 정보 열람뷰에 '엽서 대표작' 뱃지
+    // 서버에도 대표작 0(작품A)
+    const api = await pwRequest.newContext();
+    const me = await (await api.get(`${API}/operations/${exId}/me`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` } })).json();
+    expect(me.representativeIndex).toBe(0);
+    await api.dispose();
+
+    // 갤러리: 출품 자료에서 작가 줄을 펼치면 대표작 표시가 작품A 에 붙어 있다
     const gallery = await openAs(browser, 'gallery');
-    await gallery.page.goto(`/exhibitions/${exId}/operation`);
-    await expect(gallery.page.getByText('작가 제출 정보', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-    // 작가 카드 펼치기
-    await gallery.page.getByRole('button', { name: /출품 2/ }).first().click();
-    await expect(gallery.page.getByText('엽서 대표작', { exact: false }).first()).toBeVisible({ timeout: 8000 });
+    await openGallerySubmissions(gallery.page, exId);
+    await gallery.page.getByRole('button', { name: /출품작 2점/ }).first().click();
+    // 열람뷰의 작품 줄은 제목 칸에 title 속성이 있다 — 그 줄에만 '대표작' 표시가 붙는다
+    // 작가 줄(li)이 작품 줄(li)을 품고 있어 둘 다 걸린다 — 가장 안쪽(마지막) 것이 작품 줄
+    await expect(gallery.page.locator('li:has(span[title="작품A"])').last()).toContainText('대표작', { timeout: 8000 });
+    await expect(gallery.page.locator('li:has(span[title="작품B"])').last()).not.toContainText('대표작');
     await gallery.ctx.close();
   });
 });
 
 // ─────────────────────────── 3) 운영 다운로드 버튼 ───────────────────────────
 test.describe('운영 페이지 갤러리 다운로드', () => {
-  test('UI: 캡션(한글) / 작품 원본(ZIP) / 전체 PDF 버튼 노출 + 캡션 HWP 다운로드', async ({ browser }) => {
+  test('UI: [내려받기] 메뉴에 캡션(한글) / 작품 원본(ZIP) / 전체 PDF / 도록 + 캡션 HWP 다운로드', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
-    await page.goto(`/exhibitions/${exId}/operation`);
-    await expect(page.getByRole('button', { name: /캡션/ })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('button', { name: /작품 원본/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /전체 PDF/ })).toBeVisible();
+    await openGallerySubmissions(page, exId);
+    await page.getByRole('button', { name: '내려받기' }).first().click();
+    await expect(page.getByRole('menuitem', { name: /작품 캡션/ })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('menuitem', { name: /작품 원본/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /전체 출품 자료 PDF/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /단체전 도록/ })).toBeVisible();
 
     // 캡션 한글파일(.hwp) 서버 생성 → 다운로드
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 30000 }),
-      page.getByRole('button', { name: /캡션/ }).click(),
+      page.getByRole('menuitem', { name: /작품 캡션/ }).click(),
     ]);
     const fn = download.suggestedFilename();
     expect(fn).toContain('작품캡션');
@@ -197,8 +216,9 @@ test.describe('운영 페이지 갤러리 다운로드', () => {
 
   test('UI: 작품 원본 ZIP — 이미지 없는 출품작은 안내 토스트', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
-    await page.goto(`/exhibitions/${exId}/operation`);
-    await page.getByRole('button', { name: /작품 원본/ }).click();
+    await openGallerySubmissions(page, exId);
+    await page.getByRole('button', { name: '내려받기' }).first().click();
+    await page.getByRole('menuitem', { name: /작품 원본/ }).click();
     // 본 공모 출품작은 image:'' 이므로 다운로드 대상 없음
     await expect(page.locator('body')).toContainText('다운로드 가능한 작품 이미지가 없습니다', { timeout: 15000 });
     await ctx.close();
@@ -207,19 +227,19 @@ test.describe('운영 페이지 갤러리 다운로드', () => {
 
 // ─────────────────────────── 4) 제출물 저장 검증 ───────────────────────────
 test.describe('제출물 저장 검증(캡션 필수항목)', () => {
-  test('UI: 캡션 항목(제목) 비우면 저장 차단 + 무엇이 비었는지 안내', async ({ browser }) => {
+  test('UI: 캡션 항목(제목) 비우면 제출 차단 + 무엇이 비었는지 카드에 표시', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
-    await page.goto(`/exhibitions/${exId}/operation`);
-    /* 출품리스트 탭(기본) — 첫 작품 제목 비우기.
+    const card = await openArtistExhibition(page, exId);
+    /* 첫 작품 제목 비우기.
        ⚠️ placeholder 가 '작품명' → '예: 푸른 밤의 정원' 으로 바뀌었다(라벨이 '작품명' 을 맡는다).
        라벨로 찾으면 문구가 또 바뀌어도 안 깨진다. */
-    const titleInput = page.locator('label').filter({ hasText: '작품명' }).first().locator('input');
+    const titleInput = card.locator('label').filter({ hasText: '작품명' }).first().locator('input');
     await expect(titleInput).toBeVisible({ timeout: 10000 });
     await titleInput.fill('');
-    await page.getByRole('button', { name: '저장', exact: true }).first().click();
-    // 저장 차단 + 안내 토스트
-    await expect(page.locator('body')).toContainText('저장할 수 없습니다', { timeout: 8000 });
-    await expect(page.locator('body')).toContainText('제목', { timeout: 8000 });
+    await card.getByRole('button', { name: '갤러리에 제출' }).click();
+    // 제출 차단 + 안내 토스트 + 그 작품 카드에 빠진 칸
+    await expect(page.locator('body')).toContainText('빨간 칸을 채워 주세요', { timeout: 8000 });
+    await expect(card.locator('[id$="-art-0"]')).toContainText('채워 주세요: 작품명');
     await ctx.close();
   });
 

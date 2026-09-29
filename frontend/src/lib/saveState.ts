@@ -1,21 +1,22 @@
 /**
- * 작가 제출물(출품작·작가노트)의 저장 상태 3단계와 표시 규칙.
+ * 작가 제출물(출품작·작가노트)의 저장 상태와 표시 규칙.
  *
- *  - unsaved(빨강): 아직 서버에 안 보냄. 새로고침하면 사라진다.
- *  - draft(노랑)  : 임시저장됨. 서버에 남지만 **갤러리·관리자에게는 보이지 않는다**
- *                   (백엔드 operation.ts의 publicSubmission/publishedArtworks가 걸러낸다).
- *  - saved(초록)  : 정식 저장. 갤러리에 공개되고 PDF·정산에 포함된다.
+ *  - unsaved : 아직 서버에 안 보냄. 새로고침하면 사라진다(빨간 글자 — 지금 할 일이 있다).
+ *  - draft   : 임시저장됨. 서버에 남지만 **갤러리·관리자에게는 보이지 않는다**
+ *              (백엔드 operation.ts의 publicSubmission/publishedArtworks가 걸러낸다).
+ *  - saved   : 제출됨. 갤러리에 보이고 캡션·PDF·정산에 들어간다.
  *
- * 색을 바꿀 땐 여기만 고치면 두 운영 페이지(신규/클래식)에 함께 반영된다.
+ * 2026-09-29: 카드 배경을 빨강·노랑·초록으로 칠하던 것을 글자로만 바꿨다(공모 흐름 화면은 흑백 + 빨강 하나).
+ * `box` 는 옛 클래식 운영 페이지(OperationClassicPage, 라우트에 연결돼 있지 않다)가 아직 읽어서 남겨 둔다 — 모두 중립색.
  */
 export type SaveState = 'empty' | 'unsaved' | 'draft' | 'saved';
 
 export const STATE_UI: Record<SaveState, { box: string; text: string; label: string }> = {
-  // 갓 추가해 아직 아무것도 안 쓴 칸 — 색으로 경고할 게 없다
+  // 갓 추가해 아직 아무것도 안 쓴 칸 — 경고할 게 없다
   empty: { box: 'border-gray-200 bg-white', text: 'text-gray-400', label: '작성 전' },
-  unsaved: { box: 'border-accent/40 bg-accent/5', text: 'text-accent', label: '저장 안 됨' },
-  draft: { box: 'border-amber-300 bg-amber-50/50', text: 'text-amber-700', label: '임시저장 · 갤러리 비공개' },
-  saved: { box: 'border-green-200 bg-green-50/30', text: 'text-green-700', label: '✓ 저장됨' },
+  unsaved: { box: 'border-gray-200 bg-white', text: 'text-accent', label: '저장 안 됨' },
+  draft: { box: 'border-gray-200 bg-white', text: 'text-gray-500', label: '임시저장 · 갤러리에 안 보임' },
+  saved: { box: 'border-gray-200 bg-white', text: 'text-gray-500', label: '✓ 제출됨' },
 };
 
 /** 작품 칸이 완전히 비었는지 (추가만 하고 아직 아무 입력도 없는 상태) */

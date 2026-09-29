@@ -577,7 +577,7 @@ export default function HostedExhibitionsSection() {
 
                 {manageAppsExId === ex.id && (
                   <div className="border-t border-gray-100 p-4">
-                    <ApplicantManager exhibitionId={ex.id} exhibitionTitle={ex.title} customFields={ex.customFields} />
+                    <ApplicantManager exhibitionId={ex.id} exhibitionTitle={ex.title} customFields={ex.customFields} capacity={ex.capacity} />
                   </div>
                 )}
               </article>

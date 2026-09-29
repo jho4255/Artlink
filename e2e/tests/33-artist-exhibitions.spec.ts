@@ -9,6 +9,8 @@ import { openAs, tokenFor, userIds, applyToExhibition, settle, createExhibition,
  *  · 수락된 전시는 카드 안에서 **운영 공지·제출 자료·정산 확인**까지 끝낸다(운영페이지 왕복 없음).
  *  · 카드 우측 상단은 [전시 관리] 하나 — [공모 상세] 버튼은 없앴다.
  *  · 일정 줄은 **항상** 그린다 (없다고 빼면 카드 높이가 제각각이 된다).
+ *  · 2026-09-29: 탭이 밑줄 탭(`role="tab"`)이 되고 이름이 갤러리 [내 공모]와 같아졌다 —
+ *    받은 초대 · 심사 중 · 진행 중 · 종료 (예전 '심사중·진행중·진행종료').
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1440, height: 900 };
@@ -54,8 +56,10 @@ test.beforeAll(async () => {
 
 const gotoMyExhibitions = async (page: Page) => {
   await page.goto('/mypage?tab=applications');
-  await expect(page.getByRole('button', { name: '받은 초대' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('tab', { name: /받은 초대/ })).toBeVisible({ timeout: 15000 });
 };
+/** 탭 이름 뒤에 개수가 붙는다('진행 중3') — 이름만으로 찾는다 */
+const tab = (page: Page, name: string) => page.getByRole('tablist', { name: '내 전시 분류' }).getByRole('tab', { name: new RegExp(`^${name}`) });
 
 test.describe('탭 구성', () => {
   test('★ 첫 탭이 [받은 초대] 다 (별도 메뉴 탭은 없앴다)', async ({ browser }) => {
@@ -63,12 +67,10 @@ test.describe('탭 구성', () => {
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
 
-    /* 탭 라벨 뒤에는 개수가 붙는다 — '받은 초대 (2)'. 개수를 떼고 비교한다
-       (그냥 비교하면 개수가 0 인 탭만 걸려 목록이 뒤죽박죽으로 보인다). */
-    const tabs = await page.locator('main button').evaluateAll(bs =>
-      bs.map(b => b.textContent!.trim().replace(/\s*\(\d+\)$/, ''))
-        .filter(t => ['받은 초대', '심사중', '진행중', '진행종료'].includes(t)));
-    expect(tabs.slice(0, 4)).toEqual(['받은 초대', '심사중', '진행중', '진행종료']);
+    /* 탭 이름 뒤에는 개수가 따로 붙는다(`<span>`) — 첫 글자 마디(이름)만 읽어 비교한다 */
+    const tabs = await page.getByRole('tablist', { name: '내 전시 분류' }).getByRole('tab').evaluateAll(bs =>
+      bs.map(b => (b.firstChild?.textContent ?? '').trim()));
+    expect(tabs).toEqual(['받은 초대', '심사 중', '진행 중', '종료']);
 
     // 사이드바에는 없어야 한다
     await expect(page.locator('aside nav')).not.toContainText('받은 초대');
@@ -95,7 +97,7 @@ test.describe('초대 → 바로 참가', () => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
-    await page.getByRole('button', { name: '받은 초대' }).click();
+    await tab(page, '받은 초대').click();
     await expect(page.locator('body')).toContainText(title, { timeout: 12000 });
 
     /* ⚠️ 초대가 여럿일 수 있다(다른 테스트가 남긴 것). `.first()` 로 아무거나 누르면 엉뚱한 초대를 수락한다.
@@ -106,7 +108,7 @@ test.describe('초대 → 바로 참가', () => {
     await settle(page, 2000);
 
     // 진행중 탭에 수락 상태로 들어와 있어야 한다
-    await page.getByRole('button', { name: '진행중' }).click();
+    await tab(page, '진행 중').click();
     await expect(page.locator('body')).toContainText(title, { timeout: 12000 });
     await ctx.close();
 
@@ -167,7 +169,7 @@ test.describe('수락된 전시 카드 — 운영페이지 안 들어가고 처�
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
-    await page.getByRole('button', { name: '진행중' }).click();
+    await tab(page, '진행 중').click();
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
     const card = page.locator('article').filter({ hasText: title }).first();
@@ -180,7 +182,7 @@ test.describe('수락된 전시 카드 — 운영페이지 안 들어가고 처�
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
-    await page.getByRole('button', { name: '진행중' }).click();
+    await tab(page, '진행 중').click();
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
     const card = page.locator('article').filter({ hasText: title }).first();
@@ -217,11 +219,17 @@ test.describe('수락된 전시 카드 — 운영페이지 안 들어가고 처�
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
-    await page.getByRole('button', { name: '진행중' }).click();
+    await tab(page, '진행 중').click();
     await settle(page, 1500);
 
+    /* '지금 할 일' 줄(`data-task-line`)은 **할 일이 있는 카드에만** 있다 — 그건 들쭉날쭉이 아니라 정보라서 빼고 잰다.
+       여기서 잡으려는 건 일정 줄처럼 **데이터가 없다고 빠지는** 줄이다. */
     const heights = await page.locator('article').evaluateAll(els =>
-      els.map(e => Math.round(e.getBoundingClientRect().height)).filter(h => h > 50));
+      els.map(e => {
+        const t = e.querySelector('[data-task-line]') as HTMLElement | null;
+        const th = t ? t.getBoundingClientRect().height + parseFloat(getComputedStyle(t).marginTop) : 0;
+        return Math.round(e.getBoundingClientRect().height - th);
+      }).filter(h => h > 50));
     if (heights.length >= 2) {
       const spread = Math.max(...heights) - Math.min(...heights);
       expect(spread, `카드 높이가 ${heights.join('/')} 로 벌어졌다 — 일정 줄이 빠진 카드가 있다`).toBeLessThan(60);

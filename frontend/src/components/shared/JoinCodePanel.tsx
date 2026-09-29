@@ -28,7 +28,11 @@ async function copy(text: string, label: string) {
   }
 }
 
-export default function JoinCodePanel({ exhibitionId }: { exhibitionId: number }) {
+/**
+ * `bare`(2026-09-29) — [지원자] 목록 아래 접힌 줄 안에 들어갈 때. 바깥 상자·제목을 빼고,
+ * '선정 N/M명' 도 뺀다(목록 머리가 이미 '수락 N/M명' 을 말한다).
+ */
+export default function JoinCodePanel({ exhibitionId, bare = false }: { exhibitionId: number; bare?: boolean }) {
   const queryClient = useQueryClient();
   const key = ['join-code', exhibitionId];
   const [confirm, setConfirm] = useState<'regenerate' | 'off' | null>(null);
@@ -50,28 +54,32 @@ export default function JoinCodePanel({ exhibitionId }: { exhibitionId: number }
     onError,
   });
 
-  if (!data) return null;
+  if (!data) return bare ? <div className="h-10 animate-pulse rounded-lg bg-gray-100" /> : null;
   // 만들 수 없는 공모(승인 전·전시 종료)에 코드가 없으면 상자 자체를 그리지 않는다 — 눌러서 400 을 받는 버튼이 된다
-  if (!data.code && data.blocked) return null;
+  if (!data.code && data.blocked) {
+    return bare ? <p className="text-sm text-gray-400">{data.blocked}</p> : null;
+  }
 
   const link = data.code ? `${window.location.origin}${joinPath(data.code)}` : '';
   const busy = generate.isPending || turnOff.isPending;
 
   return (
-    <section className="mb-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4" aria-label="초대 코드">
+    <section className={bare ? 'rounded-xl bg-gray-50 p-4' : 'mb-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4'} aria-label="초대 코드">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-start gap-2">
           <KeyRound size={16} className="mt-0.5 shrink-0 text-gray-500" />
           <div>
-            <p className="text-sm font-medium text-gray-900">초대 코드</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              이미 선정한 작가에게 보내면 지원서 없이 바로 수락됩니다. 선정 인원({data.capacity}명)까지만 들어올 수 있어요.
+            {!bare && <p className="text-sm font-medium text-gray-900">초대 코드</p>}
+            <p className={bare ? 'text-sm text-gray-600' : 'mt-0.5 text-xs text-gray-500'}>
+              공모 밖에서 이미 선정한 작가에게 코드(또는 링크)를 보내면, 지원서 없이 바로 수락돼요. 정원({data.capacity}명)까지만 들어올 수 있어요.
             </p>
           </div>
         </div>
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-200">
-          선정 {data.selected}/{data.capacity}명
-        </span>
+        {!bare && (
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-200">
+            선정 {data.selected}/{data.capacity}명
+          </span>
+        )}
       </div>
 
       {data.code ? (
