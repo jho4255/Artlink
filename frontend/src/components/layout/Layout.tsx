@@ -4,6 +4,7 @@ import Navbar from './Navbar';
 import BottomTabBar from './BottomTabBar';
 import MyPageSideMenu from './MyPageSideMenu';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
+import HomepageNudge from '@/components/shared/HomepageNudge';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -66,6 +67,8 @@ export default function Layout() {
       </footer>
       {/* 모바일 전용 하단 탭바 — 상단 가운데 5메뉴를 아래로(catch 앱 방식). lg↑ 는 상단 네비 유지 */}
       <BottomTabBar />
+      {/* 작가 로그인 뒤 '홈페이지에 빈 곳이 있어요' 팝업 — 어느 화면에 내려도 뜬다(lib/homepageNudge.ts) */}
+      <HomepageNudge />
     </div>
   );
 }

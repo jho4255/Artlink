@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { queryClient } from '@/lib/queryClient';
+import { disarmHomepageNudge } from '@/lib/homepageNudge';
 
 interface User {
   id: number;
@@ -39,6 +40,7 @@ export const useAuthStore = create<AuthState>()(
       },
       logout: () => {
         queryClient.clear();
+        disarmHomepageNudge(); // 예약해 둔 '홈페이지 완성' 팝업은 그 계정의 것이다
         set({ token: null, user: null, isAuthenticated: false });
       },
       updateUser: (partial) => set((state) => ({

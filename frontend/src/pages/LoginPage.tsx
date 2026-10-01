@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
+import { armHomepageNudge } from '@/lib/homepageNudge';
 import { roleLabel } from '@/lib/utils';
 
 /**
@@ -56,7 +57,10 @@ export default function LoginPage() {
     login(data.token, data.user);
     // 로그인 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지.
     // 작품이 0점인 작가는 홈페이지 편집(온보딩)으로 — 프로필 폼이 아니라 업로드가 첫 행동이어야 한다.
-    navigate(await resolvePostLoginPath(data.user?.role, () => api.get('/portfolio').then((r) => r.data)), { replace: true });
+    const path = await resolvePostLoginPath(data.user?.role, () => api.get('/portfolio').then((r) => r.data));
+    // 홈페이지에 빈 곳이 있는 작가에게 팝업을 예약한다 — 갈 곳을 정한 뒤에 켜야 중간 화면에서 번쩍이지 않는다(lib/homepageNudge.ts)
+    armHomepageNudge(data.user);
+    navigate(path, { replace: true });
   };
 
   const handleDevLogin = async (email: string) => {

@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2270+ tests** (2026-09-29): Backend 1440 (supertest, `artlink_test` DB 순차), Frontend 832 (jsdom) · E2E 276(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙)·`53`(실행 순서 의존) 뿐)
+- **2280+ tests** (2026-10-01): Backend 1440 (supertest, `artlink_test` DB 순차), Frontend 849 (jsdom) · E2E 284(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙)·`53`(실행 순서 의존) 뿐)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 42개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1448,6 +1448,19 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 모바일 이미지가 없고 띠가 얇으면(<200px) 제목·설명·바로가기를 사진 **아래 카드**로 내린다(종전 동작 +
       제목 두 줄 허용). 이건 폴백이지 해결이 아니다.
     - 관리자 [히어로 관리] 폼에 두 번째 업로드 칸. 삭제 때 모바일 파일도 함께 지운다(orphan 방지).
+    - ⚠️⚠️ **크기를 정하는 상자와 트랙을 한 요소에 합치지 말 것 — 사파리에서 사진이 잘린다** (2026-10-01 신고 "모바일에서 사진이 자꾸 짤려").
+      트랙 하나에 `aspect-ratio` + `max-h` 를 걸고 슬라이드·사진을 `h-full` 로 잡았더니, WebKit 이 그 `height:100%` 를
+      **max-height 로 깎이기 전 높이**로 계산했다. 상한에 걸리는 화면마다 사진 칸이 트랙보다 커져 `object-contain` 이 지킬 상자가
+      없어지고 **아래가 잘렸다**(트랙이 세로로 스크롤되기까지). 실측(WebKit): PC 사파리 1280×720 에서 3:1 배너의 **77.6%** 만 보임 ·
+      아이폰 13 가로 95.7% · **4:5 모바일 이미지를 올린 아이폰 13 세로 95.3%** · 16:9 배너는 46~57%. **크롬은 전부 100%** 라
+      개발 중엔 한 번도 안 보였다. 지금은 바깥 상자(`data-hero-frame`)가 비율·상한만 정하고 트랙과 `<img>` 는 `absolute inset-0` —
+      절대 위치는 퍼센트 높이 해석에 기대지 않는다.
+      ⚠️ **E2E 는 크롬만 돌아 이걸 못 잡는다.** 배너를 고치면 `scratchpad/hero/matrix.js`(크롬+WebKit × 화면 8 × 구성 8 = 128조합,
+      보임 100%·세로 스크롤 없음·가로 넘침 없음)를 돌릴 것. WebKit 은 `bash scratchpad/hero/setup-webkit.sh` 로 **sudo 없이** 띄운다
+      (`npx playwright install-deps` 는 root 가 필요해 이 WSL 에서 못 쓴다 — 라이브러리를 `~/.cache/wk-deps` 에 풀고 래퍼로 실행).
+      구조는 `frontend/src/__tests__/heroSlider.test.ts` 가 소스로 고정한다.
+    - ⚠️ **적을 게 없는 캡션 줄은 그리지 않는다** — 배너에 글씨가 다 들어 있어 제목을 공백으로 둔 한 장짜리(2026-10 실서버)에서
+      사진 아래에 빈 색 띠만 남았다. 제목·설명(공백 제외)·바로가기·넘길 슬라이드 중 하나라도 있을 때만 그린다.
       회귀: `backend/src/routes/__tests__/hero.test.ts`.
 
 49. **작가 홈페이지 v2 — 작품이 먼저, 이름이 마스트헤드, `/@핸들`** (2026-09-16, 사용자 결정. 실서버 작가 31명 센서스 뒤)
@@ -1578,6 +1591,20 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       편집·포트폴리오·ArtLook) 위에만 붙는다.
       ⚠️ 항목을 늘리지 말 것 — 3~5개가 활성화 체크리스트의 관례다. 링크 `#artworks` 는 `PortfolioSection` 의 작품 관리 anchor.
     - 회귀: `frontend/src/__tests__/completeness.test.ts`.
+    - **로그인 팝업** `components/shared/HomepageNudge.tsx` (2026-10-01, 사용자 요청) — 체크리스트는 마이페이지에 들어가야만 보여서,
+      로그인한 작가가 홈·공모만 보고 나가면 작품 정보가 비었다는 걸 알 길이 없었다. **홈페이지를 덜 채운 작가가 로그인하면 한 번** 팝업으로
+      비어 있는 항목만 보여준다(줄을 누르면 채우는 자리로). 무엇이 비었는지는 **체크리스트와 같은 `computeCompleteness`** — 두 화면이 다른 답을 내면 안 된다.
+      언제 띄우는지는 `lib/homepageNudge.ts` 한 곳:
+        - 로그인(가입 포함) 한 번에 한 번(sessionStorage 예약). 닫으면 다음 로그인까지 조용하다 — 토큰이 7일이라 적어도 주 1회는 다시 묻는다.
+        - [7일 동안 보지 않기] 는 계정별·이 브라우저(localStorage). 그 기간엔 로그인해도 예약하지 않는다.
+        - **하던 일을 끊지 않는다** — 지원서(`/exhibitions/:id/apply`)·초대 코드(`/join/:code`)·로그인 화면에서는 기다렸다가 나오면 뜬다(`nudgePlace`).
+        - 이미 홈페이지 편집 화면이면 띄우지 않고 끝낸다. 그래서 **작품 0점 작가에게는 안 뜬다**(곧바로 편집 화면의 '시작하기' 안내로 간다).
+      ⚠️ `armHomepageNudge` 는 **갈 곳을 정한 뒤 navigate 직전에**(LoginPage·AuthCallbackPage 두 곳) 부를 것 — `authStore.login` 안에서 켜면
+      로그인 직후 잠깐 거치는 `/mypage` 에서 떴다가 목적지에서 닫히며 번쩍인다. 화면도 주소가 0.6초 머문 뒤에 띄운다.
+      ⚠️ 로그인 경로를 새로 만들면(다른 OAuth 등) 거기서도 예약할 것 — `homepageNudge.test.ts` 가 두 경로의 호출 순서를 소스로 대조한다.
+      ⚠️ E2E 의 `openAs`(세션 주입)는 로그인 화면을 안 거쳐 **팝업이 예약되지 않는다** — 다른 스펙에 팝업이 끼어들지 않는 이유이자,
+      팝업을 보려면 로그인 화면의 [개발자 로그인]으로 실제 로그인해야 하는 이유다(`e2e/tests/61-homepage-nudge.spec.ts` 8개).
+      로컬 확인 계정: `cd backend && npx tsx scripts/seed-nudge-demo.ts`(일부만 채운 작가·작품 0점 작가, `--clean`) — 데모 작가는 전부 완성 상태라 팝업이 안 뜬다.
 
 52. **'일반'(VISITOR) 역할** (2026-09-16, 사용자 결정) — 작가 홈페이지의 방문자가 실제 대중이 되는 시작점.
     작품 문의를 '로그인 후 메시지'로 받기로 했는데 가입 역할이 작가·갤러리뿐이라 컬렉터가 가입할 길이 없었다.

@@ -2270,3 +2270,31 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 테스트: 프론트 `flowLabels.test.ts`(28) · `submissionFlow.test.ts`(13) · `hooks/__tests__/useFormDraft.test.ts`(10) · e2e `60-flow-ux.spec.ts`(A~F) ·
   옛 운영 페이지를 열던 `21`·`22`·`24`·`28` 을 새 화면으로 옮겼고 `03`·`15`·`17`·`23`·`33`·`35`·`55` 를 새 조작으로 고쳤다(헬퍼 `openApplicantManager`·`applicantRow`·
   `acceptApplicant`·`cardToggle`·`openSection`·`openGallerySubmissions`·`openArtistExhibition`).
+
+## 작가 로그인 팝업(홈페이지 완성) · 홈 배너 사파리 잘림 (2026-10-01)
+
+### 로그인 팝업 — "홈페이지에 아직 빈 곳이 있어요"
+- **왜**: 완성도 체크리스트(`ArtistChecklist`)는 마이페이지의 '만드는' 탭에만 있다. 로그인한 작가가 다른 화면만 보고 나가면
+  작품 정보·작가노트가 비어 있다는 걸 알 수 없었다(실서버: 캡션이 전부 빈 작품 76%).
+- **구성**
+  - `frontend/src/lib/homepageNudge.ts` — 언제 띄우는가(순수 함수 + 저장소 래퍼). `armHomepageNudge`(로그인 시 예약, 작가만·'보지 않기' 기간 제외) ·
+    `disarmHomepageNudge` · `snoozeHomepageNudge`(7일) · `nudgePlace(pathname, search)` → `show | wait | done`.
+  - `frontend/src/components/shared/HomepageNudge.tsx` — `Layout` 에 한 번. `useSyncExternalStore` 로 예약을 읽고, `['portfolio']` 쿼리(마이페이지와 공유)로
+    `computeCompleteness` 를 계산해 **비어 있는 항목만** 보여준다. 모바일은 아래에서 올라오는 시트, sm↑ 는 가운데 카드. ESC·배경 클릭·[나중에]로 닫는다.
+  - 예약하는 곳: `LoginPage.enter` · `AuthCallbackPage.handleSuccess`(둘 다 `resolvePostLoginPath` 뒤, `navigate` 앞). 지우는 곳: `authStore.logout`.
+- **판정 흐름**: 예약됨 && 작가 && `nudgePlace==='show'` && 포트폴리오를 받아 보니 미완성 && 그 주소에 0.6초 머묾 → 열림.
+  `done`(홈페이지 편집 화면) 이거나 받아 보니 완성이면 예약을 지운다. `wait`(지원서·초대 코드·로그인)에서는 예약을 둔 채 기다린다.
+- **서버 변경 없음.** 저장은 브라우저에만(sessionStorage 예약 · localStorage '보지 않기').
+- 확인: 프론트 `homepageNudge.test.ts`(13) · e2e `61-homepage-nudge.spec.ts` A~D · 로컬 계정 `backend/scripts/seed-nudge-demo.ts`.
+
+### 홈 배너 — 사파리에서 잘리던 사진
+- **증상**: 사파리(WebKit)에서 배너 높이가 상한(`max-h-[70vh]`/`md:max-h-[46vh]`)에 걸리면 사진 아래가 잘렸다. 크롬은 정상.
+  실측 — PC 사파리 1280×720: 3:1 배너의 77.6% · 아이폰 13 가로 95.7% · 4:5 모바일 이미지 + 아이폰 13 세로 95.3% · 16:9 배너 46~57%.
+- **원인**: 트랙 한 요소에 `aspect-ratio` 와 `max-height` 를 함께 걸고 자식을 `height:100%` 로 잡았다. WebKit 은 그 퍼센트를
+  max-height 적용 전 높이로 푼다 → 사진 칸이 트랙보다 커져 넘친 만큼 잘린다(`overflow-x:auto` 라 세로 스크롤까지 생겼다).
+- **수정**(`HeroSlider.tsx`): 크기 상자(`data-hero-frame`: aspect-ratio + max-h, relative) ▸ 트랙(`absolute inset-0`, 가로 스크롤·`overflow-y-hidden`) ▸
+  슬라이드 ▸ `<img className="absolute inset-0 … object-contain">`. 크롬의 배치는 픽셀 단위로 그대로다(128조합 전후 비교).
+- **덤**: 제목·설명·바로가기가 모두 비고 슬라이드가 한 장이면 얇은 배너 아래 캡션 줄을 그리지 않는다(빈 색 띠 제거).
+- **하니스**: `scratchpad/hero/`(README) — `matrix.js` 가 크롬+WebKit × 화면 8 × 슬라이드 구성 8 을 잰다. `setup-webkit.sh` 는 WebKit 을 sudo 없이 띄운다.
+  회귀: 프론트 `heroSlider.test.ts`(4, 구조 고정) · e2e `61` E(크롬).
+

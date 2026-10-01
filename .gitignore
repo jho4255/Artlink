@@ -118,3 +118,6 @@ frameit_test_assets*.zip
 test-results/
 # 개인 파일 (파일명에 비밀번호가 들어 있다)
 *_포트폴리오.pptx
+
+# 히어로 배너 하니스 산출물
+scratchpad/hero/out/

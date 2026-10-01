@@ -111,6 +111,9 @@ export default function HeroSlider() {
   }, [slides.length]);
   const compact = trackH > 0 && trackH < 200;
   const currentSlide = slides[current];
+  // 사진 아래 캡션 줄에 실제로 그릴 것이 있는가 — 제목·설명(공백 제외), 바로가기, 또는 넘길 슬라이드(인디케이터)
+  const captionHasContent = !!currentSlide
+    && (!!currentSlide.title?.trim() || !!currentSlide.description?.trim() || !!currentSlide.linkUrl || slides.length > 1);
 
   // 슬라이드 이미지에서 색상 추출
   useEffect(() => {
@@ -251,11 +254,24 @@ export default function HeroSlider() {
           onMouseLeave={() => { isHovered.current = false; }}
         >
           {/* 높이는 `aspectRatio`(사진 원래 비율)가 정한다. min/max 는 극단만 막는 안전선이고,
-              그 구간에 걸려 틀이 사진보다 넓어져도 `object-contain` 이라 **잘리지는 않는다**(띠 배경이 채운다). */}
+              그 구간에 걸려 틀이 사진보다 넓어져도 `object-contain` 이라 **잘리지는 않는다**(띠 배경이 채운다).
+
+              ⚠️⚠️ **크기를 정하는 상자와 트랙을 한 요소에 합치지 말 것** (2026-10-01, 사파리에서 실제로 잘렸다).
+              예전엔 트랙 하나에 `aspect-ratio` + `max-h` 를 걸고 슬라이드·사진을 `h-full` 로 내려 잡았다.
+              사파리(WebKit)는 그 `height:100%` 를 **max-height 로 깎이기 전 높이**로 계산한다 — 그래서 상한에 걸리는 순간
+              사진 칸이 트랙보다 커지고 `object-contain` 이 지킬 상자가 없어져 **아래가 잘렸다**(트랙이 세로로 스크롤되기까지 했다).
+              실측: PC 사파리 1280×720 에서 3:1 배너의 77.6% 만 보임 · 아이폰 가로 95.7% · 세로형(4:5) 모바일 이미지를 올린
+              아이폰 13 세로 95.3% · 16:9 배너는 46~57%. 크롬은 전부 100% 라 눈으로는 못 찾는다.
+              지금은 바깥 상자가 크기만 정하고, 트랙과 사진은 `absolute inset-0` 으로 **실제 상자**에 붙는다 —
+              절대 위치는 퍼센트 높이 해석에 기대지 않는다. 회귀는 `scratchpad/hero/matrix.js`(크롬+WebKit 128조합). */}
+          <div
+            data-hero-frame
+            style={{ aspectRatio: String(trackRatio) }}
+            className="relative w-full max-h-[70vh] md:max-h-[46vh]"
+          >
           <div
             ref={containerRef}
-            style={{ aspectRatio: String(trackRatio) }}
-            className="flex w-full max-h-[70vh] md:max-h-[46vh] overflow-x-auto snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
+            className="absolute inset-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide cursor-grab select-none"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -273,7 +289,8 @@ export default function HeroSlider() {
                 )}
                 {/* ⚠️ `object-cover` 로 되돌리지 말 것 — 창이 좁아지면 사진이 잘린다(위 `ratio` 주석 참고) */}
                 {/* 모바일 전용 이미지가 있으면 좁은 화면에서 그걸 고른다. 고른 소스의 실제 크기가 onLoad 로 들어온다. */}
-                <picture className="block w-full h-full">
+                {/* ⚠️ 사진은 `absolute inset-0` — 흐름 안에 두고 `h-full` 로 잡으면 사파리에서 칸 밖으로 넘친다(위 주석) */}
+                <picture>
                   {slide.mobileImageUrl && <source media={HERO_MOBILE_MEDIA} srcSet={slide.mobileImageUrl} />}
                   <img
                     src={slide.imageUrl}
@@ -284,7 +301,7 @@ export default function HeroSlider() {
                       markLoaded(i);
                     }}
                     onError={() => markLoaded(i)}
-                    className={`w-full h-full object-contain pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
+                    className={`absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-500 ${loadedImages.has(i) ? 'opacity-100' : 'opacity-0'}`}
                     draggable={false}
                     loading={i === 0 ? 'eager' : 'lazy'}
                   />
@@ -316,6 +333,7 @@ export default function HeroSlider() {
                 )}
               </div>
             ))}
+          </div>
           </div>
 
           {/* 좌우 화살표 — 세련되게. 평소엔 옅게, 호버 때만 또렷이(그림을 가리지 않게).
@@ -371,8 +389,10 @@ export default function HeroSlider() {
              띠 색이 밝을 수도 있어 그림자를 빼면 대비가 무너진다.
         */}
         {/* 카드로 내릴 땐 제목을 한 줄로 자르지 않는다 — 얇은 배너에서는 이 글이 배너의 전부다(포스터 속 글씨는 이미 안 읽힌다). */}
-        {compact && currentSlide && (
-          <div className="flex items-center gap-3 px-5 pb-3 pt-2.5 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+        {/* ⚠️ 적을 게 없으면 줄째로 그리지 않는다 (2026-10-01) — 배너에 글씨가 이미 다 들어 있어 제목을 공백으로 둔
+            슬라이드 한 장짜리(실서버가 그랬다)에서, 사진 아래에 **빈 색 띠**만 남았다. */}
+        {compact && currentSlide && captionHasContent && (
+          <div data-hero-caption className="flex items-center gap-3 px-5 pb-3 pt-2.5 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
             <div className="min-w-0 flex-1">
               {currentSlide.description && (
                 <p className="line-clamp-1 text-[10px] uppercase tracking-[0.14em] text-white/75">{currentSlide.description}</p>
