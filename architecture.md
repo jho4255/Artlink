@@ -1973,7 +1973,8 @@ operatorUserIds(ex)                알림 발송 대상 전부
 ## 작가 온보딩 · 완성도 (2026-09-16)
 
 - `frontend/src/lib/completeness.ts` `computeCompleteness({images, statement, biography})` → 5칸(작품 3점 · 작품 정보 · 작가노트 · 약력 · 공개) + percent.
-- `components/shared/ArtistChecklist.tsx` — 작품 0점: 환영 패널 / 있음: 체크리스트. `MyPage` 작가 탭 위. sessionStorage `artlink-checklist-dismissed`.
+- ~~`components/shared/ArtistChecklist.tsx`~~ — 작품 0점: 환영 패널 / 있음: 체크리스트 상자. **2026-10-02 에 없앴다**(아래 「작가 홈페이지 편집 화면 개편」의 '완성도 안내').
+  지금은 `CompletenessLine`(한 줄)을 편집 화면과 [프로필] 탭(`ArtistHomepageLine`)이 쓴다.
 - `lib/postLoginRedirect.ts` `resolvePostLoginPath` — 로그인·가입 후 작품 0점 작가는 `/mypage?tab=homepage-edit`. `PortfolioSection` 은 `#artworks` 해시로 작품 관리로 스크롤.
 
 ## '일반'(VISITOR) 역할 (2026-09-16)
@@ -2274,7 +2275,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 ## 작가 로그인 팝업(홈페이지 완성) · 홈 배너 사파리 잘림 (2026-10-01)
 
 ### 로그인 팝업 — "홈페이지에 아직 빈 곳이 있어요"
-- **왜**: 완성도 체크리스트(`ArtistChecklist`)는 마이페이지의 '만드는' 탭에만 있다. 로그인한 작가가 다른 화면만 보고 나가면
+- **왜**: 완성도 안내는 마이페이지에만 있다(당시엔 상자형 체크리스트 `ArtistChecklist` — 2026-10-02 에 [프로필] 탭의 한 줄로 바꿨다). 로그인한 작가가 다른 화면만 보고 나가면
   작품 정보·작가노트가 비어 있다는 걸 알 수 없었다(실서버: 캡션이 전부 빈 작품 76%).
 - **구성**
   - `frontend/src/lib/homepageNudge.ts` — 언제 띄우는가(순수 함수 + 저장소 래퍼). `armHomepageNudge`(로그인 시 예약, 작가만·'보지 않기' 기간 제외) ·
@@ -2298,3 +2299,52 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **하니스**: `scratchpad/hero/`(README) — `matrix.js` 가 크롬+WebKit × 화면 8 × 슬라이드 구성 8 을 잰다. `setup-webkit.sh` 는 WebKit 을 sudo 없이 띄운다.
   회귀: 프론트 `heroSlider.test.ts`(4, 구조 고정) · e2e `61` E(크롬).
 
+
+## 작가 홈페이지 편집 화면 개편 · 운영자 링크 (2026-10-02)
+
+### 홈페이지 편집 화면 — 묶음 다섯, 작품이 첫 화면
+- **왜**: 새 작가 계정으로 가입 직후부터 밟아 보니(PC 1280 · 아이폰 13 · 픽셀 7) 첫 화면에 작품 올리기가 없고(업로드 칸이 PC 2,518px · 모바일 2,747px 아래,
+  앞에 입력칸 8·버튼 33개), 모바일은 [저장] 바가 하단 탭바 밑에 깔려 페이지 맨 끝에서만 보였고, 약력을 안 쓰면 한 줄 소개조차 저장되지 않았다(서버는 요구하지 않는다).
+  실서버 복제본 집계: 작가 97명 중 작품 0점 50명 · 작품 있는 47명 중 작품 정보가 전부 빈 작가 38명 · 작가노트 8명 · 올린 작품이 전부 '비공개'라 [작가] 탭에 없는 작가 16명.
+- **사용자 결정**: 편집 화면은 묶음(탭) · [작가] 탭 노출은 기본 꺼짐 유지 + 올린 직후 한 번 묻기 · 작품 정보는 지금의 창 + [저장하고 다음 작품] · 공개 홈페이지의 주인 화면은 지금처럼.
+- **구성** (`frontend/src/components/homepage-edit/`, 옛 `MyPage.tsx PortfolioSection`·`PortfolioImageGrid` 를 대체 — MyPage 5,222 → 4,530행)
+  - `HomepageEditor.tsx` — 머리(제목·[내 홈페이지 보기]·주소 복사) → 완성도 한 줄(남은 항목 칩, 누르면 그 자리로) → 묶음 탭 `PageTabBar`(sticky, 채운 묶음 ✓)
+    → 묶음 + 넓은 화면(lg↑)은 오른쪽 미리보기 → 저장 바. 폼 값(약력·작가노트·한 줄 소개·경력·파일·시리즈 소개·스타일·주소)은 전부 여기서 든다.
+  - `WorksSection.tsx` — 올리기(0점이면 큰 구역, 있으면 한 줄) · '지금 할 일'(정보 없는 작품 N점) · "방금 올린 N점을 [작가] 탭에도 소개할까요" · 격자.
+    전부 **누르는 즉시 저장**. 묶음을 바꿔도 떼어 내지 않고 `hidden` 으로 감춘다(올리는 중 상태 보존) + `memo`.
+  - `sections.tsx` — `IntroSection`(한 줄 소개·작가노트·시리즈 소개) · `CvSection`(약력 글 + 항목별 경력, 하나만 써도 된다) · `FileSection` · `StyleSection`(주소·대표작·색·글꼴).
+  - `PreviewSheet.tsx` — 좁은 화면의 미리보기(전체 화면 시트, 저장 전 값 그대로).
+  - `components/shared/ArtworkMetaModal.tsx` — 캡션 미리보기(`museumCaption`) · 칸 순서 = 캡션 순서 · '선택' 구분 · 전에 쓴 재료·연도 칩 · [저장하고 다음 작품].
+    Enter 는 다음 칸(저장이 아니다), 마지막 칸에서만 주 버튼(마우스·키보드 화면), Ctrl/⌘+Enter 는 어디서든 주 버튼.
+  - `components/shared/HomepageAddressField.tsx` — 주소(@) 칸. 프로필 탭과 [꾸미기] 가 같은 부품.
+  - `components/flow/TaskLine.tsx` — '지금 할 일' 한 줄(MyPage 에서 꺼내 공용으로).
+- **순수 함수** `frontend/src/lib/homepageEdit.ts` — `EDIT_SECTIONS` · `editHref(section, {focus, info})` · `resolveEditEntry(search)` · `editSectionForTab(tab)` ·
+  `sectionDone` · `previewTabFor` · `uncaptionedCount` · `nextUncaptionedId` · `recentValues` · `tileLabel`. `lib/completeness.ts` 는 링크를 `editHref` 로 만들고,
+  약력은 **약력 글 또는 항목별 경력**이 있으면 완료, 칩용 짧은 이름 `short` 를 갖는다.
+- **저장**: 글·꾸미기·주소는 저장 바 하나(`PUT /auth/me/handle`(바뀌었을 때만) → `PUT /portfolio`). designConfig 는 스타일을 건드렸을 때만(`themeSavePatch`, 규칙 49).
+  저장하면 공개 홈페이지의 그 묶음 탭으로 가고(규칙 31), 거기서 [수정] 을 누르면 같은 묶음으로 돌아온다. 고친 게 없으면 [저장] 대신 [내 홈페이지 보기].
+  바는 모바일에서 하단 탭바 위(`bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] lg:bottom-0 z-30`), 한 줄.
+- **서버**: `PUT /api/portfolio/images/explore { ids, show }` 신설 — 내 작품만(남의 id 가 섞이면 404), `updateMany`, 멱등. "N점 소개"를 토글 N번으로 하지 않는다(규칙 46 의 취지).
+  토글(`PATCH /portfolio/images/:id/explore`)은 그대로 남아 있다. 스키마 변경 없음.
+- **라벨**: '공개/비공개' → '작가 탭에도/홈페이지에만'. 그 단추가 정하는 건 [작가] 탭·홈 화면 노출뿐이고, 작품은 올리는 순간 내 홈페이지에 보인다(비로그인 실측 4/4).
+- **주변**: 공개 홈페이지의 [수정] 은 보던 탭의 묶음으로(`editSectionForTab`) · 빈 홈페이지는 주인에게 [작품 올리기] · 사이드바 [포트폴리오] 옆에 'PDF 만들기' ·
+  로그인 팝업의 항목이 그 묶음·그 칸으로(`focus=`) · MyPage 는 이 탭에서 프로필 카드·가로 탭바를 그리지 않는다.
+- **완성도 안내**(같은 날 로컬 확인 중 사용자 지적 → 결정): 상자형 체크리스트(`ArtistChecklist` — 진행 막대 + 5칸 목록, 프로필·포트폴리오·ArtLook 세 탭 위)를 없앴다.
+  입력 유도는 로그인 팝업이 맡고, 마이페이지에는 **[프로필] 탭에만 한 줄**(`components/shared/ArtistHomepageLine.tsx`)이 남는다 —
+  작품이 있으면 `CompletenessLine`("N/5 완료 · 남은 것" + 남은 항목 칩, 편집 화면의 줄과 같은 부품. 여기선 칩이 링크),
+  0점이면 `TaskLine`("아직 올린 작품이 없어요 → 작품 올리기", `to` prop 을 새로 받는다). `completeness.ts` 의 `why`(상자의 툴팁)는 쓰는 곳이 없어져 뺐다.
+- **문구**: [소개] 묶음 작가노트 칸 설명 → "홈페이지 [작가노트] 탭에 나옵니다. 작업물과 작가님에 대한 이야기를 채워주세요."(사용자 문구).
+- **확인**: 프론트 `homepageEdit.test.ts`(21) · `homepageEditor.test.ts`(22, 소스 가드) · `completeness.test.ts`(7) · 백엔드 `portfolio-artwork.test.ts`(일괄 노출 5 + 약력 없이 저장 1) ·
+  e2e `62-homepage-editor.spec.ts`(18, A~G) · `10`·`25`·`30`·`32`·`53`·`54`·`61` 을 새 화면으로(헬퍼 `openHomepageEditor`·`openEditSection`·`editSectionTab`·`editorSave`·`previewTab`) ·
+  하니스 `scratchpad/homepage-edit/walk.js`(크롬+WebKit × 7화면 × 18항목 = 252 확인, README).
+
+### 운영자 링크 — 역할마다 다른 '일터'
+- **증상**(2026-10-02 신고): 관리자가 [운영 조회] → [운영 페이지] → [지원자 보기] 를 누르면 프로필(닉네임 입력 칸)이 떴다.
+- **원인**: 운영 화면(`OperationPage`)의 [← 내 공모]·[지원자 보기]·할 일 버튼이 전부 갤러리 전용 탭 주소(`/mypage?tab=my-exhibitions…`)였다. 관리자에겐 그 탭이 없어
+  `resolveTab` 이 프로필로 폴백했다. 2026-09-29 개편 전의 [내 공모 운영] 버튼도 같은 주소라 관리자에겐 그 전부터 그랬다.
+  **갤러리는 영향이 없었다**(자기 공모·종료된 공모·위임받은 아트링크 주최 공모 × PC·모바일을 고치기 전후로 눌러 확인) — 그 탭이 자기 일터라서다.
+- **수정**: `frontend/src/lib/operationLinks.ts operatorWorkspace(role, hostType, exhibitionId)` 가 역할에 맞는 주소·이름을 준다 —
+  갤러리 → [내 공모] 그 카드(지원자 탭) / 관리자·아트링크 주최 → [주최 공모] 그 카드(지원자 관리 열림) / 관리자·갤러리 주최 → [운영 조회] 그 공모(조회 전용).
+  `OperationAccess.hostType`(서버는 원래 내려주고 있었다)으로 가른다. `HostedExhibitionsSection`·`OvExhibitions` 가 `?ex=&panel=` 딥링크를 받는다.
+- **안전망**: `lib/myPageMenu.ts aliasTab` — 관리자가 갤러리의 `tab=my-exhibitions` 주소로 들어오면 [운영 조회] 로(주소도 고쳐 쓴다, `ex` 유지).
+- **확인**: 프론트 `operationLinks.test.ts`(20 — 여러 역할이 들어오는 화면에 역할 전용 탭 주소를 손으로 적지 못하게 소스를 훑는다) · e2e `63-operator-links.spec.ts`(8).

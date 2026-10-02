@@ -1,14 +1,15 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, openHomepageEditor, openEditSection, editSectionTab, editorSave, PUBLIC_HOMEPAGE_URL } from '../lib/helpers';
 
 /**
  * 작가 홈페이지 (공개 페이지 + 편집) — 2026-08-27~28 개편분.
  *
  *  · 메뉴 [홈페이지] → 공개 작가 페이지. 편집은 그 페이지의 [수정](주인만).
- *  · [수정]을 누르면 **바로 편집 모드** (읽기 화면을 거쳐 또 누르게 하지 않는다).
+ *  · [수정]을 누르면 **바로 편집 화면** (읽기 화면을 거쳐 또 누르게 하지 않는다).
  *  · 저장하면 **공개 페이지로 돌아간다** (편집 전용 화면에 갇히지 않게).
  *  · 편집 중 우측에 **공개 페이지와 같은 컴포넌트**로 실시간 미리보기.
- *  · 저장/취소는 하단 고정 저장바의 **우측 하단**.
+ *  · 저장/취소는 하단 고정 저장바의 **우측 하단** — 고친 게 있을 때만 나온다.
+ *  · 2026-10-02 부터 편집 화면은 묶음 [작품 · 소개 · 약력 · 파일 · 꾸미기] 이다(상세는 62번 스펙).
  *  · 긴 무공백 글이 들어가도 페이지가 가로로 밀리지 않는다.
  */
 const API = 'http://localhost:4000/api';
@@ -71,7 +72,7 @@ test.describe('공개 페이지', () => {
 });
 
 test.describe('편집', () => {
-  test('★ [수정] 한 번으로 바로 편집 모드에 들어간다', async ({ browser }) => {
+  test('★ [수정] 한 번으로 바로 편집 화면에 들어간다 — 첫 화면은 작품 올리기다', async ({ browser }) => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
@@ -79,34 +80,41 @@ test.describe('편집', () => {
     await page.getByRole('link', { name: '수정' }).click();
     await page.waitForURL(/tab=homepage-edit/, { timeout: 10000 });
 
-    // 입력 폼이 이미 열려 있어야 한다 — [수정]을 또 누르게 하지 않는다
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    // 곧바로 고칠 수 있다 — [수정]을 또 누르게 하지 않는다. 묶음 탭이 있고 [작품] 이 열려 있으며 올리기 버튼이 보인다
+    await expect(editSectionTab(page, '작품')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+    for (const s of ['소개', '약력', '파일', '꾸미기'] as const) await expect(editSectionTab(page, s)).toBeVisible();
+    await expect(page.getByRole('button', { name: '작품 사진 올리기' })).toBeVisible();
     await ctx.close();
   });
 
   test('★ 편집 중 우측에 실시간 미리보기가 있고 입력이 바로 반영된다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    await openHomepageEditor(page, '소개');
 
     // 미리보기는 공개 페이지와 같은 컴포넌트 → 작가 이름 마스트헤드(h1)가 화면 안에 있다
     await expect(page.getByRole('heading', { level: 1, name: /Artist 1/ })).toBeVisible({ timeout: 10000 });
 
     const marker = `미리보기확인${Date.now()}`;
-    const tagline = page.getByPlaceholder(/동심의 이면|한 줄 소개/).first();
-    await tagline.fill(marker);
-    await expect(page.locator('body')).toContainText(marker, { timeout: 5000 });
+    await page.getByPlaceholder(/동심의 이면|한 줄 소개/).first().fill(marker);
+    // 입력칸의 값은 textContent 가 아니다 — 본문에 이 글자가 보이면 미리보기가 그린 것이다
+    await expect(page.getByRole('complementary', { name: '홈페이지 미리보기' })).toContainText(marker, { timeout: 5000 });
 
     await ctx.close();
   });
 
-  test('★ 저장/취소는 우측 하단 고정 저장바에 있다', async ({ browser }) => {
+  test('★ 고친 게 없으면 [저장] 이 없고, 고치면 우측 하단 고정 바에 [취소]·[저장] 이 나온다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    const save = page.getByRole('button', { name: '저장' });
-    await expect(save).toBeVisible({ timeout: 15000 });
+    await openHomepageEditor(page, '소개');
+    // 저장할 게 없는데 저장 버튼이 있으면 눌러야 하나 싶다 — 그 자리에 [내 홈페이지 보기]
+    await expect(editorSave(page)).toHaveCount(0);
+
+    await page.getByPlaceholder(/동심의 이면|한 줄 소개/).first().fill(`바 확인 ${Date.now()}`);
+    const save = editorSave(page);
+    await expect(save).toBeVisible();
+    await expect(page.locator('[data-save-bar]')).toContainText('저장하지 않은 변경이 있어요');
+    await expect(page.locator('[data-save-bar]').getByRole('button', { name: '취소' })).toBeVisible();
 
     const geom = await save.evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -117,35 +125,41 @@ test.describe('편집', () => {
     });
     expect(geom.sticky, '저장바가 sticky 가 아니다 — 길게 쓰면 저장이 화면 밖으로 나간다').toBe(true);
     expect(geom.right).toBeGreaterThan(geom.vw * 0.5);   // 우측
+    await ctx.close();
   });
 
-  test('★ 아래 작품 사진 관리까지 스크롤해도 저장바가 살아 있다', async ({ browser }) => {
+  test('★ 맨 아래까지 내려도, 다른 묶음으로 가도 저장 바가 살아 있다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    await openHomepageEditor(page, '약력');   // 경력 5칸이 있어 가장 긴 묶음
+    await page.getByPlaceholder('작가 소개·약력을 입력하세요.').fill(`바 확인 ${Date.now()}`);
+    await expect(editorSave(page)).toBeVisible();
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await settle(page, 800);
-    const box = await page.getByRole('button', { name: '저장' }).boundingBox();
+    const box = await editorSave(page).boundingBox();
     expect(box, '스크롤을 내렸더니 저장바가 사라졌다 — 저장 안 된 변경을 안은 채로').not.toBeNull();
     expect(box!.y).toBeGreaterThan(0);
     expect(box!.y).toBeLessThan(900);
+
+    // 묶음을 바꿔도 쓰던 글과 저장 바는 그대로다(값은 편집 화면이 들고 있다)
+    await openEditSection(page, '작품');
+    await expect(editorSave(page)).toBeVisible();
+    await openEditSection(page, '약력');
+    await expect(page.getByPlaceholder('작가 소개·약력을 입력하세요.')).toHaveValue(/^바 확인 \d+$/);
     await ctx.close();
   });
 
   test('★ 저장하면 공개 홈페이지로 돌아간다 (편집 화면에 갇히지 않게)', async ({ browser }) => {
-    const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    await openHomepageEditor(page, '소개');
 
     const marker = `저장확인${Date.now()}`;
     await page.getByPlaceholder(/동심의 이면|한 줄 소개/).first().fill(marker);
-    await page.getByRole('button', { name: '저장' }).click();
+    await editorSave(page).click();
 
-    await page.waitForURL(new RegExp(`/portfolio/${ids.artist}`), { timeout: 15000 });
+    await page.waitForURL(PUBLIC_HOMEPAGE_URL, { timeout: 15000 });
     // 방금 저장한 내용이 보여야 한다 (옛 캐시가 뜨면 안 된다)
     await expect(page.locator('body')).toContainText(marker, { timeout: 10000 });
     await ctx.close();
@@ -184,8 +198,9 @@ test.describe('긴 글이 레이아웃을 깨지 않는다', () => {
   test('★ 편집 화면 미리보기도 같이 견딘다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    // 긴 작가노트는 [소개] 묶음의 입력칸과 미리보기 [작가노트] 탭에 함께 그려진다
+    await openHomepageEditor(page, '소개');
+    await expect(page.getByRole('complementary', { name: '홈페이지 미리보기' })).toContainText('작가노트가공백없이', { timeout: 10000 });
     await settle(page, 1000);
     const r = await horizontalOverflow(page);
     expect(r.over, `편집 화면이 ${r.over}px 밀렸다 (${r.culprit})`).toBeLessThanOrEqual(1);

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Browser, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ownedGalleryId, ensurePublicArtworks, createExhibition } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ownedGalleryId, ensurePublicArtworks, createExhibition, openHomepageEditor, editorSave } from '../lib/helpers';
 
 /**
  * 2026-09-16 배포분(작가·갤러리 홈페이지 v2 · `/@핸들` · '일반' 역할 · 포트폴리오 버전)을 **눌러서** 본다.
@@ -101,15 +101,14 @@ test.describe('작가 홈페이지 테마 — 직접 고른 뒤부터 적용', (
     const before = await savedDesign();
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    await openHomepageEditor(page, '소개');
 
     const sent: Record<string, unknown>[] = [];
     page.on('request', (req) => {
       if (req.method() === 'PUT' && /\/api\/portfolio$/.test(new URL(req.url()).pathname)) sent.push(req.postDataJSON());
     });
     await page.getByPlaceholder(/동심의 이면|한 줄 소개/).first().fill(`스타일 안 건드림 ${Date.now()}`);
-    await page.getByRole('button', { name: '저장' }).click();
+    await editorSave(page).click();
     await expect.poll(() => sent.length, { timeout: 10000 }).toBeGreaterThan(0);
     expect('designConfig' in sent[0]!, 'designConfig 가 실려 나갔다 — 웹 기본값이 PDF 로 건너간다').toBe(false);
     expect(await savedDesign()).toEqual(before);
@@ -119,13 +118,13 @@ test.describe('작가 홈페이지 테마 — 직접 고른 뒤부터 적용', (
   test('★ 배경을 고르면 본 그대로 저장되고(네 값+표식), 공개 홈페이지에 적용된다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=homepage-edit');
-    await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
+    // 색·글꼴은 [꾸미기] 묶음에 있다(2026-10-02 — 예전엔 편집 화면 맨 위였다)
+    await openHomepageEditor(page, '꾸미기');
 
     await page.getByRole('button', { name: '아이보리', exact: true }).click();
     // 미리보기에 곧바로 — 저장 전이라 표식이 없어도 보여야 한다
     await expect.poll(() => themeBg(page), { timeout: 5000 }).toBe('rgb(250,247,240)');
-    await page.getByRole('button', { name: '저장' }).click();
+    await editorSave(page).click();
     await page.waitForURL(/\/(portfolio\/\d+|@)/, { timeout: 15000 });
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
     await expect.poll(() => themeBg(page), { timeout: 10000 }).toBe('rgb(250,247,240)');

@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { editSectionTab } from '../lib/helpers';
 
 /**
  * 작가 로그인 뒤 '홈페이지 완성' 팝업 + 홈 배너 (2026-10-01)
@@ -84,7 +85,7 @@ test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => 
     await expect(dlg).toContainText('홈페이지 완성도 2/5');
     await expect(dlg.getByRole('button', { name: /작품 정보 채우기/ })).toContainText('2/4');
     await expect(dlg.getByRole('button', { name: /작가노트 쓰기/ })).toBeVisible();
-    await expect(dlg.getByRole('button', { name: /\[작가\] 탭에 공개하기/ })).toContainText('0/4');
+    await expect(dlg.getByRole('button', { name: /\[작가\] 탭에도 소개하기/ })).toContainText('0/4');
     await expect(dlg.getByRole('button', { name: /작품 3점 이상 올리기/ })).toHaveCount(0);
     await expect(dlg.getByRole('button', { name: /약력 쓰기/ })).toHaveCount(0);
 
@@ -93,6 +94,8 @@ test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => 
 
     await dlg.getByRole('button', { name: '나중에' }).click();
     await expect(dlg).toHaveCount(0);
+    // 팝업을 닫아도 [프로필] 탭에는 남은 일이 **한 줄**로 남아 있다 — 같은 판정이다(2026-10-02: 상자는 없앴다)
+    await expect(page.getByRole('region', { name: '홈페이지 완성도' })).toContainText('2/5 완료');
 
     // 다른 화면으로 가도, 새로고침해도 다시 안 뜬다
     await page.goto('/exhibitions');
@@ -113,10 +116,26 @@ test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => 
     const dlg = nudge(page);
     await expect(dlg).toBeVisible();
     await dlg.getByRole('button', { name: /작품 정보 채우기/ }).click();
-    await expect(page).toHaveURL(/\/mypage\?tab=homepage-edit#artworks$/);
     await expect(dlg).toHaveCount(0);
-    // 그 화면엔 같은 판정의 체크리스트가 있다 — 두 화면이 다른 답을 내지 않는다
+    // 편집 화면의 [작품] 묶음으로 가고, **정보 없는 첫 작품의 입력 창이 열려 있다**(2026-10-02) — 격자만 보여 주면 어디를 눌러야 할지 다시 찾아야 한다
+    await expect(page).toHaveURL(/\/mypage\?tab=homepage-edit&section=works$/);   // 한 번 쓰는 값(do=info)은 주소에서 걷어 낸다
+    await expect(editSectionTab(page, '작품')).toHaveAttribute('aria-selected', 'true');
+    const meta = page.getByRole('dialog', { name: '작품 정보' });
+    await expect(meta).toBeVisible();
+    await expect(meta.getByTestId('meta-remaining')).toContainText('정보 없는 작품 1점');   // 4점 중 2점이 비었다 — 이 작품 말고 1점
+    // 그 화면엔 같은 판정의 완성도 줄이 있다 — 두 화면이 다른 답을 내지 않는다
     await expect(page.getByRole('region', { name: '홈페이지 완성도' })).toContainText('2/5 완료');
+  });
+
+  test('★ [작가노트 쓰기] 를 누르면 [소개] 묶음의 그 칸에 커서가 놓인다', async ({ page }) => {
+    await loginViaUi(page, partial);
+    const dlg = nudge(page);
+    await expect(dlg).toBeVisible();
+    await dlg.getByRole('button', { name: /작가노트 쓰기/ }).click();
+    await expect(dlg).toHaveCount(0);
+    await expect(editSectionTab(page, '소개')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+    await expect(page.getByPlaceholder(/나의 작업은 시간의 흐름/)).toBeFocused();
+    await expect(page.getByPlaceholder(/나의 작업은 시간의 흐름/)).toBeInViewport();
   });
 
   test('[지금 채우기] 는 첫 번째 빈 항목으로 간다 · ESC 로도 닫힌다', async ({ page }) => {
@@ -171,11 +190,12 @@ test.describe('C. 띄우면 안 되는 사람', () => {
     await page.waitForTimeout(2500);
     await expect(dlg).toHaveCount(0);
 
-    // 작품 0점 — 팝업 대신 곧바로 홈페이지 편집 화면(시작하기 안내)
+    // 작품 0점 — 팝업 대신 곧바로 홈페이지 편집 화면. 첫 화면이 작품 올리기다(2026-10-02 — 예전엔 '시작하기' 상자 아래로 3천 px 를 내려가야 올릴 수 있었다)
     await signOut(page);
     await loginViaUi(page, empty);
     await expect(page).toHaveURL(/\/mypage\?tab=homepage-edit/);
-    await expect(page.getByRole('region', { name: '시작하기' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '작품 사진을 올리면 홈페이지가 바로 생깁니다' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '작품 사진 올리기' })).toBeInViewport();
     await page.waitForTimeout(2500);
     await expect(dlg).toHaveCount(0);
     // 편집 화면에서 예약이 끝났으므로 다른 화면으로 가도 안 뜬다

@@ -257,6 +257,72 @@ describe('포트폴리오 작품 정보', () => {
     });
   });
 
+  describe('PUT /api/portfolio/images/explore — [작가] 탭 노출을 한 번에 정한다', () => {
+    const put = (body: unknown, userId = ARTIST) =>
+      request.put('/api/portfolio/images/explore').set('Authorization', `Bearer ${authToken(userId, 'ARTIST')}`).send(body as object);
+    const shown = async (userId = ARTIST) =>
+      ((await myPortfolio(userId)).images as { id: number; showInExplore: boolean }[]).filter((i) => i.showInExplore).map((i) => i.id).sort((a, b) => a - b);
+
+    it('새로 올린 작품은 내 홈페이지에만 보인다(기본 꺼짐) — 고른 작품만 켠다', async () => {
+      const a = (await addImage()).body.id, b = (await addImage()).body.id, c = (await addImage()).body.id;
+      expect(await shown()).toEqual([]);
+      const res = await put({ ids: [a, c], show: true });
+      expect(res.status).toBe(200);
+      expect(res.body.updated).toBe(2);
+      expect(await shown()).toEqual([a, c]);
+      expect(b).toBeGreaterThan(0);
+    });
+
+    it('★ 몇 번을 불러도 결과가 같다 — 토글처럼 거꾸로 꺼지지 않는다', async () => {
+      const a = (await addImage()).body.id, b = (await addImage()).body.id;
+      await put({ ids: [a, b], show: true });
+      await put({ ids: [a, b, a], show: true });   // 같은 요청을 다시(중복 id 포함)
+      expect(await shown()).toEqual([a, b]);
+      await put({ ids: [a], show: false });
+      await put({ ids: [a], show: false });
+      expect(await shown()).toEqual([b]);
+    });
+
+    it('★ 남의 작품이 하나라도 섞이면 전체를 거절한다(404) — 내 것도 안 바뀐다', async () => {
+      const mine = (await addImage(ARTIST)).body.id;
+      const theirs = (await addImage(OTHER_ARTIST)).body.id;
+      const res = await put({ ids: [mine, theirs], show: true });
+      expect(res.status).toBe(404);
+      expect(await shown(ARTIST)).toEqual([]);
+      expect(await shown(OTHER_ARTIST)).toEqual([]);
+    });
+
+    it('빈 목록은 아무것도 안 하고 200 · 형식이 틀리면 400 · 작가가 아니면 403', async () => {
+      expect((await put({ ids: [], show: true })).body).toEqual({ updated: 0 });
+      expect((await put({ ids: 'all', show: true })).status).toBe(400);
+      expect((await put({ ids: [1.5], show: true })).status).toBe(400);
+      const a = (await addImage()).body.id;
+      expect((await put({ ids: [a] })).status).toBe(400);            // show 없음
+      expect((await put({ ids: [a], show: 'yes' })).status).toBe(400);
+      const asGallery = await request.put('/api/portfolio/images/explore').set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ ids: [a], show: true });
+      expect(asGallery.status).toBe(403);
+      expect(await shown()).toEqual([]);
+    });
+
+    it('낱개 토글(PATCH …/:id/explore)은 그대로 동작한다', async () => {
+      const a = (await addImage()).body.id;
+      const res = await request.patch(`/api/portfolio/images/${a}/explore`).set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`);
+      expect(res.status).toBe(200);
+      expect(await shown()).toEqual([a]);
+    });
+  });
+
+  describe('PUT /api/portfolio — 약력은 필수가 아니다', () => {
+    it('★ 약력 없이 한 줄 소개만 저장된다 (화면이 약력을 강제하던 것을 2026-10-02 에 풀었다)', async () => {
+      const res = await request.put('/api/portfolio').set('Authorization', `Bearer ${authToken(ARTIST, 'ARTIST')}`)
+        .send({ biography: '', career: { artFair: [], solo: [], group: [] }, portfolioFileUrl: null, statement: null, tagline: '빛이 머무는 자리', seriesInfo: [] });
+      expect(res.status).toBe(200);
+      const pf = await myPortfolio();
+      expect(pf.tagline).toBe('빛이 머무는 자리');
+      expect(pf.biography ?? '').toBe('');
+    });
+  });
+
   describe('GET /api/portfolio/:userId — 공개 조회', () => {
     it('작품 정보와 작가노트·시리즈 설명을 공개로 내려준다', async () => {
       await request

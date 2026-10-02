@@ -83,6 +83,8 @@ interface Props {
   careerColumns?: number;
   /** 미리보기에서 '아직 비어 있다' 안내를 다르게 하고 싶을 때 */
   emptyText?: string;
+  /** 비어 있을 때 안내 아래에 놓는 버튼 — 공개 페이지가 **주인에게만** [작품 올리기] 를 준다 */
+  emptyAction?: ReactNode;
   /** 마스트헤드 오른쪽 액션(이웃·메시지·공유·QR·수정). 페이지가 넣는다 — 미리보기에는 없다 */
   actions?: ReactNode;
   /** 편집 화면 미리보기(폭이 절반) — 글자·행 높이를 줄인다 */
@@ -329,7 +331,7 @@ const ArtworkSection = memo(function ArtworkSection({ groups, artistName, onOpen
 }, (a, b) => a.signature === b.signature && a.compact === b.compact && a.onOpenImage === b.onOpenImage && a.artistName === b.artistName);
 
 export default function HomepageView({
-  data, onOpenImage, careerColumns = 3, emptyText, actions, compact = false, tab, onTabChange, guestbook,
+  data, onOpenImage, careerColumns = 3, emptyText, emptyAction, actions, compact = false, tab, onTabChange, guestbook,
 }: Props) {
   const { user, images, seriesInfo } = data;
   const artistName = displayName(user);
@@ -464,7 +466,10 @@ export default function HomepageView({
       </header>
 
       {isEmpty && (
-        <div className="py-16 text-center" style={SUB}>{emptyText ?? '아직 포트폴리오가 등록되지 않았습니다.'}</div>
+        <div className="py-16 text-center" style={SUB}>
+          <p className="break-keep">{emptyText ?? '아직 준비 중인 홈페이지입니다.'}</p>
+          {emptyAction && <div className="mt-5">{emptyAction}</div>}
+        </div>
       )}
 
       {tabs.length > 0 && (

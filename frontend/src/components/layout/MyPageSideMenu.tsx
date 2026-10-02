@@ -68,7 +68,7 @@ export default function MyPageSideMenu() {
               <span className="min-w-0 truncate">
                 {tab.brand
                   ? (<span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-accent">{tab.brand[1]}</span></span>)
-                  : tab.label}
+                  : <span>{tab.label}</span>}
                 {tab.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{tab.note}</span>}
               </span>
             </Link>

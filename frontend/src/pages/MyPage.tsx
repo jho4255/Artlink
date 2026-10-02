@@ -1,20 +1,20 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Heart, FileText, Building2, Star, X, Plus, Check, XCircle,
+  Heart, Building2, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
-  ChevronUp, Upload, Loader2, EyeOff, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
+  ChevronUp, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
   Image as ImageIcon,
-  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, safeHttpUrl, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
-import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type NextTask, type TaskTarget } from '@/lib/flowLabels';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
+import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type TaskTarget } from '@/lib/flowLabels';
+import TaskLine from '@/components/flow/TaskLine';
 import { scheduleSummary } from '@/lib/scheduleSummary';
 import StatusChip from '@/components/flow/StatusChip';
 import Notice from '@/components/flow/Notice';
@@ -26,28 +26,23 @@ import PageTabBar from '@/components/shared/PageTabBar';
 import { FormSection, FormField } from '@/components/flow/FormParts';
 import { formInputCls } from '@/lib/formStyles';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
-import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
 import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
-import { artworkTitle, hasCaption, isCareerEmpty, normalizeCareer, seriesNames, PORTFOLIO_IMAGE_MAX } from '@/lib/artwork';
-import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
+import { artworkTitle, normalizeCareer } from '@/lib/artwork';
 import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
 import PortfolioWorkPicker from '@/components/shared/PortfolioWorkPicker';
-import { versionWorks, versionDesign, nextVersionName, moveId } from '@/lib/portfolioVersions';
-import HomepageView from '@/components/shared/HomepageView';
-import HomepageStylePicker from '@/components/shared/HomepageStylePicker';
-import ArtistChecklist from '@/components/shared/ArtistChecklist';
-import { DEFAULT_THEME_KEYS, WEB_THEME_FLAG, keepWebOnlyKeys, themeKeysFrom, themeSavePatch, type HomepageThemeKeys } from '@/lib/homepageTheme';
+import { versionWorks, versionDesign, nextVersionName } from '@/lib/portfolioVersions';
+import HomepageEditor from '@/components/homepage-edit/HomepageEditor';
+import HomepageAddressField from '@/components/shared/HomepageAddressField';
+import ArtistHomepageLine from '@/components/shared/ArtistHomepageLine';
+import { keepWebOnlyKeys } from '@/lib/homepageTheme';
 import { artistPath, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
 import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
-import { myPageTabs, resolveTab, tabHref, HOMEPAGE_EDIT_HREF } from '@/lib/myPageMenu';
-import { splitIntoColumns } from '@/lib/careerColumns';
-import { useCareerColumns } from '@/hooks/useCareerColumns';
-import { normalizePdfDesign, type PortfolioBookData, type PdfDesign } from '@/lib/portfolioFormats';
-import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
+import { myPageTabs, resolveTab, aliasTab, tabHref } from '@/lib/myPageMenu';
+import { editHref } from '@/lib/homepageEdit';
+import type { PortfolioBookData, PdfDesign } from '@/lib/portfolioFormats';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
-import { portfolioFileKind } from '@/lib/portfolioFile';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
@@ -56,7 +51,7 @@ import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
-import ArtworkDetailModal, { ArtworkLikersModal, InviteModal } from '@/components/shared/ArtworkDetailModal';
+import ArtworkDetailModal, { InviteModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import { openArtLook, stageArtLookWorks, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '@/lib/artlook';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
@@ -65,17 +60,7 @@ import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
-import type { Favorite, Portfolio, PortfolioImage, PortfolioVersion, Gallery, Exhibition, Show, ArtistEntry, Career, CareerKey, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
-import { EMPTY_CAREER } from '@/types';
-
-// 경력(career) 표시용 — 카테고리별 라벨 (학력·수상은 포트폴리오 전용 확장)
-const CAREER_LABELS: { key: CareerKey; label: string }[] = [
-  { key: 'education', label: '학력' },
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어' },
-  { key: 'award', label: '수상 및 선정' },
-];
+import type { Favorite, Portfolio, PortfolioVersion, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
@@ -189,6 +174,17 @@ export default function MyPage() {
     // 옛 딥링크(?tab=my-exhibitions-classic) 호환 — 클래식 목록은 없어졌으므로 '내 공모' 로만 보낸다
     if (rawTab === 'my-exhibitions-classic') { setSearchParams({ tab: 'my-exhibitions' }, { replace: true }); return; }
     /*
+      다른 역할의 탭 주소로 들어왔으면(관리자가 갤러리의 [내 공모] 링크를 열었다) 같은 일을 하는 탭으로 주소를 갈아끼운다.
+      `resolveTab` 이 내용은 이미 그 탭으로 그리지만, 주소가 옛 값으로 남으면 새로고침·공유 때 헷갈린다. `ex=` 등 나머지는 그대로 둔다.
+    */
+    const alias = aliasTab(user?.role, rawTab);
+    if (alias) {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', alias);
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    /*
       ⚠️ `?tab=` 이 **없을 때도** 반드시 되돌려야 한다.
       예전엔 `if (t && ...)` 라 값이 없으면 아무것도 안 했다 → 사이드바에서 [프로필](= `/mypage`, 쿼리 없음)을
       누르면 주소만 바뀌고 화면은 이전 탭에 머물렀다(갤러리 계정에서 프로필↔내 갤러리 왕복 시 신고, 2026-08-28).
@@ -226,21 +222,26 @@ export default function MyPage() {
   // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백.
   // 사이드바도 같은 resolveTab 을 써야 강조와 내용이 어긋나지 않는다.
   const currentTab = resolveTab(user.role, activeTab);
+  /** 한 가지 일에 집중하는 화면인가 — 지금은 작가의 홈페이지 편집뿐 */
+  const focused = currentTab === 'homepage-edit' && user.role === 'ARTIST';
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+    <div className={cn('max-w-7xl mx-auto px-6 md:px-12', focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16')}>
       {/* 'My Page' 제목은 두지 않는다 — 우측 사이드바가 현재 위치를 알려주고,
           각 탭이 제 이름을 갖는다(예: 포트폴리오 탭의 PortFolio).
           로그아웃도 여기 없다 — Navbar 우측으로 일원화 */}
-      {/* 프로필 카드 */}
-      <ProfileCard />
+      {/*
+        홈페이지 편집 화면은 **그 일만 하는 화면**이다(2026-10-02) — 프로필 카드(240px)와 가로 탭바를 그 위에 두면
+        가입 직후 도착한 작가의 첫 화면이 작품 올리기가 아니라 내 이메일이 된다. 다른 메뉴는 상단 [메뉴]·우측 사이드바로 간다.
+      */}
+      {!focused && <ProfileCard />}
 
       {/*
         메뉴는 **lg(1024px) 이상에서만 우측 세로 사이드바**, 그 아래는 기존 가로 탭바.
         375px 폭에 224px 사이드바를 붙이면 본문이 150px밖에 안 남는다 — 좁은 화면에서는
         가로 스크롤 탭이 유일하게 쓸 만한 형태다(참고한 artspoon 도 좁아지면 사이드바를 접는다).
       */}
-      <div className="relative mb-8 lg:hidden">
+      <div className={cn('relative mb-8 lg:hidden', focused && 'hidden')}>
         <div ref={tabBarRef} className="flex gap-4 overflow-x-auto pb-2 border-b border-gray-200 scrollbar-hide">
           {tabs.map(tab => {
             const cls = `px-1 py-2 text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
@@ -266,11 +267,13 @@ export default function MyPage() {
       {/* 탭 콘텐츠 */}
       <div>
         <div className="min-w-0">
-          {/* 작가 온보딩·완성도 — 작가의 '만드는' 탭 위에만. 다 채우면 스스로 사라진다 */}
-          {user.role === 'ARTIST' && ['profile', 'homepage-edit', 'portfolio', 'artlook'].includes(currentTab) && <ArtistChecklist />}
+          {/* 홈페이지에 남은 일 — **[프로필] 탭에만, 한 줄**(2026-10-02 사용자 결정). 다 채우면 스스로 사라진다.
+              예전엔 상자가 프로필·포트폴리오·ArtLook 세 탭 위에 붙어 있었다 — 로그인 팝업과 같은 말을 두 번 했고,
+              PDF 를 만들러 온 [포트폴리오] 탭에서는 본 내용을 밀어냈다. 편집 화면은 제 완성도 줄을 갖는다(HomepageEditor). */}
+          {user.role === 'ARTIST' && currentTab === 'profile' && <ArtistHomepageLine />}
           {currentTab === 'profile' && <ProfileSection />}
           {/* 홈페이지 편집 — 메뉴에 없다. 공개 작가 페이지의 [수정](주인만)에서 들어온다 */}
-          {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <PortfolioSection />}
+          {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <HomepageEditor />}
           {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioFormatSection />}
           {currentTab === 'artlook' && user.role === 'ARTIST' && <ArtLookSection />}
           {currentTab === 'favorites' && (user.role === 'ARTIST' || user.role === 'VISITOR') && <FavoritesSection />}
@@ -406,8 +409,9 @@ function ProfileSection() {
   const [instagram, setInstagram] = useState(user?.instagramUrl ?? '');
   const [savingContact, setSavingContact] = useState(false);
   // 홈페이지 주소(@handle, 2026-09-16) — 비어 있으면 인스타 아이디를 제안한다(공개 페이지가 열릴 때 서버도 같은 값을 자동으로 만든다)
+  // 입력·중복확인은 `HomepageAddressField`(홈페이지 편집 › [꾸미기] 와 같은 칸)가 한다. 여기서는 저장만.
   const [handleInput, setHandleInput] = useState(user?.handle ?? '');
-  const [handleResult, setHandleResult] = useState<{ available: boolean; reason?: string } | null>(null);
+  const [handleError, setHandleError] = useState<string | null>(null);
   const [savingHandle, setSavingHandle] = useState(false);
 
   useEffect(() => {
@@ -427,20 +431,7 @@ function ProfileSection() {
   const handleNorm = normalizeHandle(handleInput);
   const handleReason = handleNorm ? validateHandle(handleNorm) : null;
   const handleUnchanged = handleNorm === (user?.handle ?? '');
-  const handleSuggestion = !handleNorm ? suggestHandle(instagram || user?.instagramUrl) : null;
-  const [handleChecking, setHandleChecking] = useState(false);
-  const handleCheckSeq = useRef(0);   // 늦게 도착한 응답이 최신 결과를 덮지 않게(감사 M2)
-  const checkHandle = async () => {
-    if (handleReason) { setHandleResult({ available: false, reason: handleReason }); return; }
-    if (handleChecking) return;
-    const seq = ++handleCheckSeq.current;
-    setHandleChecking(true);
-    try {
-      const res = await api.get('/auth/handle-check', { params: { handle: handleNorm } });
-      if (seq === handleCheckSeq.current) setHandleResult(res.data);
-    } catch { toast.error('확인에 실패했습니다.'); }
-    finally { if (seq === handleCheckSeq.current) setHandleChecking(false); }
-  };
+  const handleSuggestion = suggestHandle(instagram || user?.instagramUrl);
   const saveHandle = async () => {
     if (handleReason) { toast.error(handleReason); return; }
     setSavingHandle(true);
@@ -448,11 +439,11 @@ function ProfileSection() {
       const res = await api.put('/auth/me/handle', { handle: handleNorm });
       updateUser({ handle: res.data.handle });
       setHandleInput(res.data.handle);
-      setHandleResult(null);
+      setHandleError(null);
       toast.success('홈페이지 주소가 저장되었습니다.');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || '저장에 실패했습니다.';
-      setHandleResult({ available: false, reason: msg });
+      setHandleError(msg);
       toast.error(msg);
     } finally { setSavingHandle(false); }
   };
@@ -567,42 +558,16 @@ function ProfileSection() {
       {/* 홈페이지 주소 (작가 전용, 2026-09-16) — 인스타 프로필·명함·QR 에 적을 주소 */}
       {isArtist && (
         <div className="pt-5 border-t border-gray-100 space-y-2">
-          <label className="block text-sm font-medium text-gray-700">홈페이지 주소</label>
+          <label htmlFor="profile-handle" className="block text-sm font-medium text-gray-700">홈페이지 주소</label>
           <p className="text-xs text-gray-400">영문 소문자·숫자·마침표·밑줄, 3~30자. 인스타그램 아이디를 그대로 쓰면 기억하기 쉽습니다.</p>
-          <div className="flex items-stretch gap-2">
-            <div className="flex min-w-0 flex-1 items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-gray-400">
-              <span className="shrink-0 bg-gray-50 px-2.5 py-2 text-sm text-gray-500 border-r border-gray-200">artlink.cc/@</span>
-              <input
-                type="text"
-                value={handleInput}
-                onChange={(e) => { setHandleInput(e.target.value); setHandleResult(null); }}
-                maxLength={31}
-                placeholder={handleSuggestion ?? 'my_studio'}
-                className="min-w-0 flex-1 px-3 py-2 text-sm focus:outline-none"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </div>
-            <button
-              onClick={checkHandle}
-              disabled={!handleNorm || handleUnchanged || handleChecking}
-              className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-            >{handleChecking ? '확인 중…' : '중복확인'}</button>
-          </div>
-          {handleSuggestion && (
-            <button onClick={() => { setHandleInput(handleSuggestion); setHandleResult(null); }} className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-900">
-              인스타 아이디로 채우기: @{handleSuggestion}
-            </button>
-          )}
-          {(handleResult || (handleNorm && handleReason)) && (
-            <p className={`text-xs ${handleResult?.available ? 'text-green-600' : 'text-accent'}`}>
-              {handleResult?.available ? '쓸 수 있는 주소입니다.' : (handleResult?.reason || handleReason)}
-            </p>
-          )}
-          {user?.handle && handleUnchanged && (
-            <p className="text-xs text-gray-500">지금 주소: <a href={artistPath({ id: user.id, handle: user.handle })} className="underline underline-offset-2">artlink.cc/@{user.handle}</a></p>
-          )}
+          <HomepageAddressField
+            inputId="profile-handle"
+            value={handleInput}
+            onChange={(v) => { setHandleInput(v); setHandleError(null); }}
+            current={user?.handle}
+            suggestion={handleSuggestion}
+            error={handleError}
+          />
           <button
             onClick={saveHandle}
             disabled={savingHandle || !handleNorm || handleUnchanged || !!handleReason}
@@ -661,493 +626,6 @@ function ProfileSection() {
       )}
 
       {/* 회원 탈퇴는 여기 없다 — 고객센터(SupportPage) 우측 하단으로 옮겼다 */}
-    </div>
-  );
-}
-
-// ========== Artist: 포트폴리오 관리 ==========
-// 폼 지문 — 값이 하나라도 달라지면 문자열이 달라진다(하단 저장바의 '저장되지 않은 변경사항' 표시용)
-const formSignature = (v: {
-  biography: string; statement: string; tagline: string;
-  career: Career; portfolioFileUrl: string | null; seriesNotes: Record<string, string>;
-}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes]);
-
-function PortfolioSection() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { user } = useAuthStore();
-  const { data: portfolio, isLoading } = useQuery<Portfolio>({
-    queryKey: ['portfolio'],
-    queryFn: () => api.get('/portfolio').then(r => r.data),
-  });
-
-  const [biography, setBiography] = useState('');
-  const [statement, setStatement] = useState('');
-  const [tagline, setTagline] = useState('');
-  const [career, setCareer] = useState<Career>(EMPTY_CAREER);
-  const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
-  /* 미리보기 탭(2026-09-25) — 홈페이지가 탭으로 나뉘어, 작가노트를 고치는데 미리보기는 [작품] 탭에 머물러 있으면
-     고친 게 안 보인다. **지금 손대는 칸의 탭을 미리보기가 따라 연다**(아래 onFocusCapture). 미리보기 탭을 직접 눌러도 된다. */
-  const [previewTab, setPreviewTab] = useState<string | null>(null);
-  const previewBoxRef = useRef<HTMLDivElement>(null);
-  const followPreview = (id: string) => {
-    if (previewTab === id) return;
-    setPreviewTab(id);
-    if (previewBoxRef.current) previewBoxRef.current.scrollTop = 0; // 새 탭의 첫머리부터
-  };
-  const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
-  // 홈페이지 스타일(배경·글자·강조·글꼴·대표작) — PDF 와 같은 designConfig 에 저장된다(2026-09-16)
-  const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
-  const [editing, setEditing] = useState(false);
-  // 훅은 아래 early return(isLoading)보다 반드시 위에서 호출한다
-  const careerColumnCount = useCareerColumns();
-  // 자동 편집 진입을 딱 한 번만 하기 위한 표시 (아래 useEffect 주석 참고)
-  const autoEditedRef = useRef(false);
-  // 편집 시작 시점의 폼 지문. 하단 저장바의 '저장되지 않은 변경사항' 판정에만 쓴다.
-  const [snapshot, setSnapshot] = useState('');
-  // 열려 있는 작품 정보 모달. id로 들고 있어야 저장 후 최신 데이터로 다시 그려진다(객체로 들면 옛 값이 남는다)
-  const [metaImageId, setMetaImageId] = useState<number | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: (data: Partial<Portfolio> & { career: Career }) => api.put('/portfolio', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-      // 공개 페이지 캐시도 갈아끼운다 — 안 하면 방금 저장한 내용이 아니라 옛 화면이 뜬다
-      if (user?.id) queryClient.invalidateQueries({ queryKey: ['portfolio', String(user.id)] });
-      setEditing(false);
-      toast.success('홈페이지가 저장되었습니다.');
-      /*
-        저장하면 **홈페이지로 돌아간다.**
-        이 화면은 공개 페이지의 [수정]으로만 들어오는 편집 전용 화면이라, 저장 후 남으면
-        '나만 보는 옛 관리 화면'에 갇힌 것처럼 보인다(2026-08-28 신고). 온 곳으로 돌려보낸다.
-      */
-      // 홈페이지가 탭으로 나뉜 뒤(2026-09-25)로는 **방금 고치던 탭**을 열어 준다 — 약력을 고쳤는데 [작품] 탭이 뜨면 저장이 안 된 것처럼 보인다
-      if (user?.id) {
-        const home = artistPath({ id: user.id, handle: user.handle });
-        navigate(previewTab && previewTab !== 'works' ? `${home}?tab=${previewTab}` : home);
-      }
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '홈페이지 저장에 실패했습니다.'),
-  });
-
-  // 작품 정보 저장
-  const metaMutation = useMutation({
-    mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft }) =>
-      api.patch(`/portfolio/images/${imageId}`, { ...draft, status: draft.status || null }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-      toast.success('작품 정보를 저장했습니다. 아래 포맷 미리보기와 공개 포트폴리오에 바로 반영됩니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '작품 정보 저장에 실패했습니다.'),
-  });
-
-  // 포트폴리오 이미지 추가
-  // ⚠️ 토스트·재조회는 여기서 하지 않는다 — 여러 장 업로드가 등록 결과를 세어 **한 번에** 알리고 한 번만 재조회한다(감사 M12)
-  const addImageMutation = useMutation({
-    mutationFn: (url: string) => api.post('/portfolio/images', { url }),
-  });
-
-  // 작품 순서 바꾸기 — 전체 순서를 통째로 보낸다(부분 갱신은 화면과 DB 가 어긋난다)
-  const reorderMutation = useMutation({
-    mutationFn: (ids: number[]) => api.put('/portfolio/images/order', { ids }),
-    onMutate: async (ids) => {
-      await queryClient.cancelQueries({ queryKey: ['portfolio'] });
-      const prev = queryClient.getQueryData<Portfolio>(['portfolio']);
-      if (prev) {
-        const byId = new Map(prev.images.map((i) => [i.id, i]));
-        queryClient.setQueryData<Portfolio>(['portfolio'], { ...prev, images: ids.map((id) => byId.get(id)!).filter(Boolean) });
-      }
-      return { prev };
-    },
-    onError: (err: any, _ids, ctx) => { if (ctx?.prev) queryClient.setQueryData(['portfolio'], ctx.prev); toast.error(err.response?.data?.error || '순서 변경에 실패했습니다.'); },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['portfolio'] }),
-  });
-
-  // 포트폴리오 이미지 삭제 — ⚠️ 반드시 확인을 거친다(2026-09-19). 터치기기에선 × 버튼이 항상 보이고,
-  // 서버가 원본 파일까지 지우므로(`portfolio.ts`) 되돌릴 수 없다. 이 파일의 다른 삭제는 전부 확인이 있었는데 이것만 없었다.
-  const [removeImageId, setRemoveImageId] = useState<number | null>(null);
-  const removeImageMutation = useMutation({
-    mutationFn: (imageId: number) => api.delete(`/portfolio/images/${imageId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-      toast.success('작품 사진이 삭제되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '작품 사진 삭제에 실패했습니다.'),
-  });
-
-  // 둘러보기 공개 토글 — 낙관적 업데이트
-  const exploreToggleMutation = useMutation({
-    mutationFn: (imageId: number) => api.patch(`/portfolio/images/${imageId}/explore`),
-    onMutate: async (imageId) => {
-      await queryClient.cancelQueries({ queryKey: ['portfolio'] });
-      const prev = queryClient.getQueryData<Portfolio>(['portfolio']);
-      if (prev) {
-        queryClient.setQueryData(['portfolio'], {
-          ...prev,
-          images: prev.images.map(img =>
-            img.id === imageId ? { ...img, showInExplore: !img.showInExplore } : img
-          ),
-        });
-      }
-      return { prev };
-    },
-    onError: (_err, _id, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['portfolio'], ctx.prev);
-      toast.error('설정 변경에 실패했습니다.');
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-      queryClient.invalidateQueries({ queryKey: ['explore'] });
-    },
-  });
-
-  /** 저장된 값으로 편집 폼을 채운다 (수동 [수정] · 자동 진입 공용) */
-  const initForm = useCallback((p?: Portfolio) => {
-    const init = {
-      biography: p?.biography || '',
-      statement: p?.statement || '',
-      tagline: p?.tagline || '',
-      career: normalizeCareer(p?.career),
-      portfolioFileUrl: p?.portfolioFileUrl || null,
-      seriesNotes: Object.fromEntries((p?.seriesInfo ?? []).map(s => [s.name, s.note])),
-    };
-    const designInit = themeKeysFrom(p?.designConfig);
-    setBiography(init.biography);
-    setStatement(init.statement);
-    setTagline(init.tagline);
-    setCareer(init.career);
-    setPortfolioFileUrl(init.portfolioFileUrl);
-    setSeriesNotes(init.seriesNotes);
-    setDesign(designInit);
-    setSnapshot(formSignature(init) + '|' + JSON.stringify(designInit));
-    setEditing(true);
-  }, []);
-
-  /*
-    이 탭은 공개 홈페이지의 [수정] 버튼으로만 들어온다 — 들어오자마자 **바로 편집 모드**여야 한다.
-    예전엔 읽기 화면이 먼저 떠서 [수정]을 한 번 더 눌러야 했다.
-
-    ⚠️ **딱 한 번만** 실행한다(autoEditedRef). 저장하면 invalidate → portfolio 재조회가 일어나는데,
-       매번 걸리면 저장하자마자 결과를 볼 새도 없이 편집 모드로 다시 튕기고, [취소]도 무력화된다.
-  */
-  useEffect(() => {
-    if (!portfolio || autoEditedRef.current) return;
-    autoEditedRef.current = true;
-    initForm(portfolio);
-  }, [portfolio, initForm]);
-
-  // `#artworks` 로 들어오면(온보딩 체크리스트의 링크) 작품 사진 관리로 내린다 — 데이터가 뜬 뒤라야 그 자리가 있다
-  const { hash: locationHash } = useLocation();
-  useEffect(() => {
-    if (!portfolio || locationHash !== '#artworks') return;
-    const t = setTimeout(() => document.getElementById('artworks')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-    return () => clearTimeout(t);
-  }, [portfolio, locationHash]);
-
-  const dirty = editing && formSignature({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes }) + '|' + JSON.stringify(design) !== snapshot;
-  // 긴 글을 쓰다 탭만 바꿔도 통째로 사라졌다 — 갤러리·공모 폼과 같은 이탈 경고(2026-09-19)
-  // ⚠️ 훅이라 아래 `isLoading` early return **위**에 있어야 한다 — 아래 두었더니 조회가 끝나는 순간 훅 개수가 늘어 React #310 으로 탭이 통째로 죽었다(2026-09-21)
-  useUnsavedChanges(dirty);
-
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
-
-  const images = portfolio?.images ?? [];
-  const foundSeries = seriesNames(images);
-  const metaImage = images.find((i) => i.id === metaImageId) ?? null;
-
-  const startEdit = () => initForm(portfolio);
-
-  // 작품 사진 관리 — 편집 중엔 **왼쪽 열 안**, 아닐 땐 본문 아래에 놓는다(아래 렌더 참고)
-  const artworkManager = (
-    <div id="artworks" className="scroll-mt-24">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
-          <p className="text-sm font-medium text-gray-500">
-            작품 사진 ({images.length}/{PORTFOLIO_IMAGE_MAX})
-            <span className="text-xs text-gray-500 ml-2 font-normal">
-              <Eye size={11} className="inline mb-0.5" /> '공개'로 설정한 작품만 둘러보기 탭에 노출됩니다
-            </span>
-          </p>
-          {/* [액자에 걸어보기] 는 여기 없다 — 편집과 무관한 기능인데 '수정'에 들어가야만 보였다.
-              메뉴 [ArtLook] 탭으로 옮겼다(ArtLookSection). */}
-        </div>
-        <p className="text-xs text-gray-400 mb-2">사진을 누르면 작품명·재료·크기·연도를 입력할 수 있습니다.</p>
-        <PortfolioImageGrid
-          images={images}
-          onAdd={(url) => addImageMutation.mutateAsync(url)}
-          onRemove={(imageId) => setRemoveImageId(imageId)}
-          onReorder={(ids) => reorderMutation.mutate(ids)}
-          onToggleExplore={(imageId) => exploreToggleMutation.mutate(imageId)}
-          onEdit={(imageId) => setMetaImageId(imageId)}
-          maxCount={PORTFOLIO_IMAGE_MAX}
-          gridClassName={editing ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 sm:grid-cols-4 gap-2'}
-        />
-        <ConfirmDialog
-          open={removeImageId !== null}
-          title="작품 사진 삭제"
-          message="이 작품 사진을 지웁니다. 원본 파일도 함께 삭제되어 되돌릴 수 없습니다."
-          confirmText="삭제"
-          variant="danger"
-          onConfirm={() => { if (removeImageId !== null) removeImageMutation.mutate(removeImageId); setRemoveImageId(null); }}
-          onCancel={() => setRemoveImageId(null)}
-        />
-    </div>
-  );
-
-  /*
-    미리보기에 넘길 데이터 — **저장 전 입력값**을 그대로 쓴다(그래야 보면서 쓸 수 있다).
-    작품 사진은 편집 대상이 아니라 따로 즉시 저장되므로 저장된 것을 그대로 보여준다.
-    ⚠️ HomepageView 가 작품 격자를 내용 지문으로 memo 하므로, 여기서 객체를 매번 새로 만들어도
-       타이핑 때 30장이 다시 그려지지는 않는다(참조가 아니라 내용으로 판단한다).
-  */
-  const previewData = {
-    user: user ?? { name: '' },
-    tagline,
-    statement,
-    biography,
-    career,
-    portfolioFileUrl,
-    seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
-    images,
-    // 미리보기는 **지금 고르고 있는 값**을 그린다 — 아직 저장 전이라 표식이 없어도 보여야 한다
-    designConfig: { ...design, [WEB_THEME_FLAG]: true },
-  };
-
-  const handleSave = () => {
-    if (!biography.trim()) {
-      toast.error('작가 약력을 입력해주세요.');
-      return;
-    }
-    // 디자인은 PDF 설정과 한 객체다 — **여기서 바꾼 키만** 얹고 표지 레이아웃 등 나머지 키는 그대로 둔다.
-    // 스타일을 안 건드렸으면 designConfig 를 아예 안 보낸다(서버는 보냈을 때만 갱신한다).
-    // ⚠️ 키 전체를 매번 보내면 웹 기본값(고딕·빨강)이 PDF 로 건너가고 자동 편집이 꺼진다 — `themeSavePatch` 주석 참고.
-    //    `auto` 는 지금 PDF 가 쓰고 있는 값으로 못박는다: `bg`·`font` 가 새로 생겨도 '저장된 선택'으로 오판되지 않게.
-    const prevDesign = portfolio?.designConfig && typeof portfolio.designConfig === 'object' ? (portfolio.designConfig as Record<string, unknown>) : {};
-    const stylePatch = themeSavePatch(portfolio?.designConfig, design);
-    const designConfig = stylePatch
-      ? { ...prevDesign, ...stylePatch, auto: normalizePdfDesign(prevDesign).auto }
-      : undefined;
-    mutation.mutate({
-      biography: biography.trim(),
-      career,
-      portfolioFileUrl,
-      statement: statement.trim() || null,
-      tagline: tagline.trim() || null,
-      themeId: portfolio?.themeId ?? null,
-      // 작품에 실제로 붙어 있는 시리즈만 저장 (이름을 바꾸면 옛 설명이 유령으로 남는다)
-      seriesInfo: foundSeries.map(name => ({ name, note: (seriesNotes[name] || '').trim() })).filter(s => s.note),
-      ...(designConfig ? { designConfig } : {}),
-    });
-  };
-
-  const savedCareer = normalizeCareer(portfolio?.career);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center gap-3">
-        <h3 className="font-semibold">포트폴리오</h3>
-        {!editing && (
-          <div className="flex items-center gap-4">
-            {/* 편집 화면에서 '갤러리에게 이렇게 보인다'를 바로 확인할 길이 없었다.
-                예전엔 target="_blank" 로 새 탭에 띄웠는데, 새 탭에는 뒤로 갈 기록이 없어
-                공개페이지의 '뒤로가기'가 아무 일도 하지 않았다 → 같은 탭에서 이동한다.
-                Link(클라이언트 이동)라 뒤로가기가 즉시 마이페이지로 돌아온다. */}
-            <Link
-              to={`/portfolio/${user?.id}`}
-              className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
-            >
-              <ExternalLink size={13} /> 홈페이지 보기
-            </Link>
-            <button onClick={startEdit} className="text-sm text-gray-400 hover:text-gray-900">수정</button>
-          </div>
-        )}
-      </div>
-
-      {editing ? (
-        /*
-          좌: 입력 / 우: 홈페이지 모양 미리보기 (lg 1024px 이상).
-          그 아래 폭에서는 미리보기가 입력란 밑으로 내려간다 — 375px 을 반으로 가르면 둘 다 못 쓴다.
-          ⚠️ 두 칸 모두 `min-w-0` — 없으면 미리보기 안의 작품 격자·긴 제목이 폭을 밀어낸다(CLAUDE.md 27번).
-        */
-        /* ⚠️ `items-start` 를 주면 안 된다 — 오른쪽 열이 제 내용 높이로 줄어들어
-              sticky 미리보기가 **움직일 여지가 0** 이 되고, 조금만 내려도 화면 밖으로 나간다
-              (2026-08-27 실측: y=800 에서 top -70). 기본값 stretch 로 두어야 왼쪽 열 높이만큼 늘어난다. */
-        <div className="lg:flex lg:gap-8">
-        <div className="space-y-5 lg:flex-1 lg:min-w-0">
-          <HomepageStylePicker value={design} images={images} onChange={setDesign} />
-          <div onFocusCapture={() => followPreview('cv')}>
-            <label className="text-sm font-medium text-gray-700">작가 약력 <span className="text-accent">*</span></label>
-            <textarea value={biography} onChange={e => setBiography(e.target.value)} placeholder="작가 소개·약력을 입력하세요." className="w-full h-24 p-3 mt-1 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400" />
-          </div>
-          <div onFocusCapture={() => followPreview('note')}>
-            <label className="text-sm font-medium text-gray-700">작가노트</label>
-            <textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="예: 나의 작업은 시간의 흐름 속에서 휘발되는 기억과, 그 자리에 남은 감정의 잔상을 기록하는 과정이다…" className="w-full h-36 p-3 border border-gray-200 rounded-lg text-sm resize-y leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-400" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">한 줄 소개</label>
-            <input value={tagline} onChange={e => setTagline(e.target.value)} maxLength={200} placeholder="예: 동심의 이면을 과잉된 에너지로 시각화하는 감각의 연출자" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
-          </div>
-          {foundSeries.length > 0 && (
-            <div onFocusCapture={() => followPreview('works')}>
-              <label className="text-sm font-medium text-gray-700">시리즈 소개</label>
-              <div className="space-y-2">
-                {foundSeries.map(name => (
-                  <div key={name} className="rounded-lg border border-gray-200 p-3">
-                    <p className="text-sm font-medium text-gray-700 mb-1.5">{name}</p>
-                    <textarea
-                      value={seriesNotes[name] ?? ''}
-                      onChange={e => setSeriesNotes(prev => ({ ...prev, [name]: e.target.value }))}
-                      placeholder="이 시리즈가 어떤 작업인지 적어주세요. (선택)"
-                      rows={3}
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm resize-y leading-relaxed focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div onFocusCapture={() => followPreview('cv')}>
-            <label className="text-sm font-medium text-gray-700 block mb-2">경력</label>
-            <CareerEditor value={career} onChange={setCareer} categories={PORTFOLIO_CATEGORIES} />
-          </div>
-          {/* 사파리는 버튼을 눌러도 포커스를 안 준다 — pointerdown 도 함께 본다 */}
-          <div onFocusCapture={() => followPreview('file')} onPointerDownCapture={() => followPreview('file')}>
-            <label className="text-sm font-medium text-gray-700 block mb-2">포트폴리오 파일 (PDF / DOC / HWP)</label>
-            <PortfolioFileInput value={portfolioFileUrl} onChange={setPortfolioFileUrl} />
-            {/* 홈페이지 [포트폴리오] 탭은 PDF 만 페이지 안에서 펼친다(2026-09-25) — 올리기 전에 알려야 PDF 로 바꿔 올린다 */}
-            <p className={`mt-1.5 text-xs ${portfolioFileUrl && portfolioFileKind(portfolioFileUrl) !== 'pdf' ? 'text-accent' : 'text-gray-400'}`}>
-              {portfolioFileUrl && portfolioFileKind(portfolioFileUrl) !== 'pdf'
-                ? '이 파일은 홈페이지에서 펼쳐 보이지 않고 내려받기로만 나옵니다. PDF 로 올리면 페이지 안에서 바로 보입니다.'
-                : 'PDF 로 올리면 홈페이지 [포트폴리오] 탭에서 내려받지 않고 바로 볼 수 있습니다.'}
-            </p>
-          </div>
-          {/* 저장/취소는 이 폼이 아니라 **섹션 맨 끝의 고정 저장바**에 있다(아래 참고) */}
-
-          {/* 작품 사진 관리도 왼쪽 열 안에 — 그래야 이 아래로 스크롤해도 오른쪽 미리보기가 계속 붙어 있다 */}
-          <div onFocusCapture={() => followPreview('works')} onPointerDownCapture={() => followPreview('works')}>{artworkManager}</div>
-        </div>
-
-        {/* 미리보기 — 공개 페이지와 **같은 컴포넌트**(HomepageView)라 실제와 어긋나지 않는다.
-            sticky 로 붙여 아래쪽 입력란을 채우는 동안에도 계속 보인다. */}
-        <div className="mt-8 lg:mt-0 lg:w-[46%] lg:min-w-0 lg:shrink-0">
-          <div className="lg:sticky lg:top-24">
-            <p className="text-xs font-medium tracking-widest text-gray-400 uppercase mb-2">Preview</p>
-            {/* 실제 홈페이지 폭보다 좁으므로 살짝 줄여 담는다(글 크기 비율은 그대로 유지) */}
-            <div ref={previewBoxRef} className="rounded-lg border border-gray-200 bg-white p-4 max-h-[calc(100vh-9rem)] overflow-y-auto">
-              <HomepageView
-                data={previewData}
-                careerColumns={Math.max(1, careerColumnCount - 1)}
-                emptyText="내용을 입력하면 여기에 홈페이지 모양으로 보입니다."
-                compact
-                tab={previewTab}
-                onTabChange={(id) => setPreviewTab(id)}
-              />
-            </div>
-          </div>
-        </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-gray-500">한 줄 소개</p>
-            <p className="text-sm text-gray-700 mt-1 break-keep">
-              {portfolio?.tagline || <span className="text-gray-400">등록된 한 줄 소개가 없습니다. 포트폴리오 표지와 공개 페이지의 이름 아래에 들어갑니다.</span>}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500">작가 약력</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.biography || '등록된 약력이 없습니다.'}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500">작가노트</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">{portfolio?.statement || '등록된 작가노트가 없습니다.'}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500 mb-1">경력</p>
-            {isCareerEmpty(savedCareer) ? (
-              <p className="text-sm text-gray-400">등록된 경력이 없습니다.</p>
-            ) : (
-              /* 공개 작가 페이지와 같은 라운드로빈 배치(lib/careerColumns.ts).
-                 grid 는 한 행의 높이가 제일 긴 칸(단체전)에 맞춰져 '수상 및 선정'이 개인전에서 한참 떨어진다. */
-              <div className="flex gap-x-8 items-start">
-                {splitIntoColumns(
-                  CAREER_LABELS.filter(({ key }) => (savedCareer[key] ?? []).length > 0),
-                  careerColumnCount,
-                  // 무게 = 그 항목의 줄 수. 긴 단체전 아래로 다른 항목이 밀리지 않게 한다
-                  ({ key }) => (savedCareer[key] ?? []).length,
-                ).map((column, ci) => (
-                  <div key={ci} className="flex-1 min-w-0 space-y-4">
-                    {column.map(({ key, label }) => (
-                      <div key={key}>
-                        <p className="text-xs font-medium text-gray-400">{label}</p>
-                        <ul className="mt-0.5 space-y-0.5">
-                          {(savedCareer[key] ?? []).map((e, i) => (
-                            <li key={i} className="text-sm text-gray-700">
-                              <span className="text-gray-400 mr-2">{e.year}</span>{e.content}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-500 mb-1">포트폴리오 파일</p>
-            {safeHttpUrl(portfolio?.portfolioFileUrl) ? (
-              <a href={safeHttpUrl(portfolio?.portfolioFileUrl)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:underline">
-                <FileText size={15} /> 파일 보기
-              </a>
-            ) : (
-              <p className="text-sm text-gray-400">등록된 파일이 없습니다.</p>
-            )}
-          </div>
-
-          {/* 읽기 화면에서는 본문 아래에 그대로 */}
-          {artworkManager}
-        </div>
-      )}
-
-
-      {/* 포맷 선택·미리보기·PDF 는 여기 없다 — 메뉴 [포트폴리오] 탭(PortfolioFormatSection)으로 옮겼다.
-          편집 화면 맨 아래에 붙어 있어서 있는 줄도 모르는 기능이었다. */}
-
-      {/*
-        하단 고정 저장바 — 폼이 길어서 [저장]이 화면 밖으로 나가 있었다(약력·노트·한줄소개·시리즈·경력 5칸·파일).
-
-        ⚠️ **폼 안이 아니라 섹션 맨 끝에 둔다.** 폼 안에 두면 sticky 가 폼 높이 안에서만 동작해서,
-           아래 '작품 사진 관리'로 스크롤을 내리는 순간 **저장 안 된 변경을 안은 채 바가 사라진다**
-           (2026-08-27 실측: 맨 아래에서 y=-299). 섹션 전체를 부모로 삼아야 끝까지 따라온다.
-        ⚠️ `sticky bottom-0` 은 스크롤 조상이 있으면 그 안에 갇힌다 — 조상에 `overflow:auto` 를 주면 조용히 깨진다.
-        ⚠️ 뒤에 내용이 이어지므로 배경을 반드시 칠한다(투명하면 글자가 겹쳐 읽힌다).
-      */}
-      {editing && (
-        <div className="sticky bottom-0 z-20 -mx-1 px-1 pb-2 pt-3 bg-white border-t border-gray-200">
-          {/* 버튼은 **우측 하단**. 안내는 그 왼쪽에 붙여 눈이 왼→오로 읽고 바로 누르게 한다 */}
-          <div className="flex items-center justify-end gap-3 flex-wrap">
-            {/* 뭐가 달라졌는지가 아니라 '아직 안 갔다'만 알려주면 된다 */}
-            {dirty && !mutation.isPending && (
-              <span className="text-xs text-accent mr-auto sm:mr-0">저장되지 않은 변경사항이 있습니다.</span>
-            )}
-            <button onClick={() => { if (!dirty || window.confirm('저장하지 않은 변경사항이 있습니다. 편집을 취소할까요?')) setEditing(false); }} className="px-4 py-2 text-sm text-gray-500 cursor-pointer">취소</button>
-            <button onClick={handleSave} disabled={mutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50 cursor-pointer">
-              {mutation.isPending ? '저장 중...' : '저장'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {metaImage && (
-        <ArtworkMetaModal
-          image={metaImage}
-          seriesOptions={foundSeries}
-          saving={metaMutation.isPending}
-          onSave={(draft) => metaMutation.mutate({ imageId: metaImage.id, draft }, { onSuccess: () => setMetaImageId(null) })}
-          onClose={() => setMetaImageId(null)}
-        />
-      )}
     </div>
   );
 }
@@ -1218,7 +696,7 @@ function ArtLookSection() {
       {images.length === 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
           <span>아직 등록된 작품이 없어 데모 작품으로 보여드립니다.</span>
-          <Link to={HOMEPAGE_EDIT_HREF} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white">
+          <Link to={editHref('works')} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white">
             홈페이지에서 작품 등록하기
           </Link>
         </div>
@@ -1352,7 +830,7 @@ function PortfolioFormatSection() {
         <div className="rounded-lg border border-gray-200 py-12 text-center">
           <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
           <p className="text-xs text-gray-400 mt-1">작품을 올리면 포맷을 골라 PDF로 뽑을 수 있습니다.</p>
-          <Link to={HOMEPAGE_EDIT_HREF} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
+          <Link to={editHref('works')} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
             홈페이지에서 작품 등록하기
           </Link>
         </div>
@@ -1372,7 +850,7 @@ function PortfolioFormatSection() {
             홈페이지에 등록해둔 정보 기반으로 작가님만의 Portfolio를 생성합니다.
           </p>
         </div>
-        <Link to={HOMEPAGE_EDIT_HREF} className="shrink-0 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
+        <Link to={editHref()} className="shrink-0 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
           <Edit3 size={13} /> 내용 수정
         </Link>
       </div>
@@ -1452,199 +930,6 @@ function PortfolioFormatSection() {
         onConfirm={() => { if (version) deleteVersion.mutate(version.id); }}
         onCancel={() => setDeleting(false)}
       />
-    </div>
-  );
-}
-
-// ========== 포트폴리오 이미지 그리드 (둘러보기 공개 체크박스 포함) ==========
-function PortfolioImageGrid({
-  images,
-  onAdd,
-  onRemove,
-  onToggleExplore,
-  onEdit,
-  onReorder,
-  maxCount = PORTFOLIO_IMAGE_MAX,
-  gridClassName = 'grid grid-cols-3 sm:grid-cols-4 gap-2',
-}: {
-  images: PortfolioImage[];
-  /** 업로드한 파일 url 을 등록한다. Promise 를 돌려주면 그 결과까지 세어 '실제 등록된 장 수'를 알린다 */
-  onAdd: (url: string) => void | Promise<unknown>;
-  onRemove: (imageId: number) => void;
-  onToggleExplore: (imageId: number) => void;
-  /** 순서 바꾸기 — 전체 id 배열을 새 순서로 넘긴다(`PUT /portfolio/images/order`). 화면에 이 기능이 없어 순서를 바꾸려면 지웠다 다시 올려야 했다(2026-09-19) */
-  onReorder?: (ids: number[]) => void;
-  onEdit: (imageId: number) => void;
-  maxCount?: number;
-  /** 편집 화면은 폭이 절반이라 2열로 줄여 넘긴다 */
-  gridClassName?: string;
-}) {
-  const queryClient = useQueryClient();
-  const [uploading, setUploading] = useState(false);
-  // 작품별 "좋아요한 사람" 목록 (인스타 방식) — 서버는 이미지 주인에게만 명단을 내려준다
-  const [likersImageId, setLikersImageId] = useState<number | null>(null);
-  const [uploadCount, setUploadCount] = useState(0);
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleUploadMultiple = async (files: FileList) => {
-    const remaining = maxCount - images.length;
-    if (remaining <= 0) {
-      toast.error(`이미지는 최대 ${maxCount}장까지 등록 가능합니다.`);
-      return;
-    }
-    const fileArray = Array.from(files).slice(0, remaining);
-    setUploading(true);
-    setUploadCount(fileArray.length);
-    let successCount = 0;
-    for (const rawFile of fileArray) {
-      try {
-        const file = await compressImage(rawFile);
-        if (file.size > MAX_IMAGE_BYTES) {
-          toast.error(`${rawFile.name}: 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
-          continue;
-        }
-        const formData = new FormData();
-        formData.append('image', file);
-        const res = await api.post('/upload/image', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        // 파일 업로드가 아니라 **작품 등록(POST /portfolio/images)** 까지 끝나야 성공이다 — 예전엔 업로드만 세어
-        // 30장 한도에 막혀도 "N장 업로드 완료"가 떴다(감사 M12). 순서대로 기다리므로 한도를 넘기는 동시 요청도 없다.
-        await onAdd(res.data.url);
-        successCount++;
-      } catch (err: any) {
-        toast.error(`${rawFile.name}: ${err?.response?.data?.error || '업로드 실패'}`);
-      }
-    }
-    if (successCount > 0) {
-      toast.success(`${successCount}장 등록 완료`);
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });   // 장마다가 아니라 한 번만
-    }
-    setUploading(false);
-    setUploadCount(0);
-  };
-
-  // 드래그앤드롭으로 떨어뜨린 이미지 파일들 업로드
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (files.length) {
-      const dt = new DataTransfer();
-      files.forEach(f => dt.items.add(f));
-      handleUploadMultiple(dt.files);
-    } else if (e.dataTransfer.files.length) toast.error('이미지 파일만 업로드할 수 있습니다.');
-  };
-
-  return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
-      onDrop={handleDrop}
-      className={dragOver ? 'rounded-lg ring-2 ring-gray-400 ring-offset-2' : ''}
-    >
-      <div className={gridClassName}>
-        {images.map((img, idx) => (
-          <div key={img.id} className="relative group">
-            {/* 순서 바꾸기 (상단 가운데) — 홈페이지 첫 작품·PDF 순서가 이 순서다 */}
-            {onReorder && images.length > 1 && (
-              <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 flex gap-0.5 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
-                <button type="button" disabled={idx === 0} onClick={() => onReorder(moveId(images.map((i) => i.id), img.id, -1))} aria-label="앞으로" className="h-6 w-6 rounded-full bg-white/85 text-gray-700 ring-1 ring-black/5 shadow-sm disabled:opacity-30 flex items-center justify-center"><ChevronLeft size={12} /></button>
-                <button type="button" disabled={idx === images.length - 1} onClick={() => onReorder(moveId(images.map((i) => i.id), img.id, 1))} aria-label="뒤로" className="h-6 w-6 rounded-full bg-white/85 text-gray-700 ring-1 ring-black/5 shadow-sm disabled:opacity-30 flex items-center justify-center"><ChevronRight size={12} /></button>
-              </div>
-            )}
-            {/* 사진 전체가 '작품 정보' 버튼 — 캡션이 비면 포맷 PDF에서 제목 자리가 통째로 빈다 */}
-            <button
-              onClick={() => onEdit(img.id)}
-              className="block w-full aspect-square bg-gray-50"
-              aria-label="작품 정보 입력"
-              title="작품 정보 입력"
-            >
-              {/* 작품은 자르지 않는다 — 정사각 썸네일에 맞추려고 object-cover를 쓰면 세로로 긴 작품이 잘려 보인다 */}
-              <Thumb src={img.url} alt="내 포트폴리오 작품" className="w-full h-full object-contain" />
-            </button>
-            {/* 캡션 상태 배지 (좌상단) — 정보가 없으면 눈에 띄게 알린다 */}
-            {hasCaption(img) ? (
-              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-white/85 text-gray-700 text-[10px] font-medium ring-1 ring-black/5 pointer-events-none max-w-[80%] truncate">
-                {artworkTitle(img)}
-              </span>
-            ) : (
-              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-400 text-amber-950 text-[10px] font-semibold pointer-events-none">정보 없음</span>
-            )}
-            {/* 삭제 버튼 (우상단) — PC는 hover 시, 터치기기(hover 없음)는 항상 노출 */}
-            <button
-              onClick={() => onRemove(img.id)}
-              className="absolute top-1 right-1 p-0.5 bg-accent text-white rounded-full opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-              aria-label="이미지 삭제"
-            >
-              <X size={12} />
-            </button>
-            {/* 둘러보기 공개 토글 (하단 좌측, 항상 노출) — 상태는 색+아이콘+라벨로 구분 */}
-            <button
-              onClick={() => onToggleExplore(img.id)}
-              className={`absolute bottom-1 left-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium shadow-sm transition-colors ${
-                img.showInExplore
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white/85 text-gray-600 hover:bg-white ring-1 ring-black/5'
-              }`}
-              aria-pressed={img.showInExplore}
-              aria-label={img.showInExplore ? '둘러보기에 공개 중 — 탭하면 비공개로 전환' : '비공개 상태 — 탭하면 둘러보기에 공개'}
-              title={img.showInExplore ? '둘러보기에 공개 중 (탭하면 비공개)' : '비공개 (탭하면 둘러보기에 공개)'}
-            >
-              {img.showInExplore ? <Eye size={12} /> : <EyeOff size={12} />}
-              {img.showInExplore ? '공개' : '비공개'}
-            </button>
-            {/* 좋아요 수 (하단 우측) — 탭하면 누가 눌렀는지 명단이 열리고, 각 사람의 포트폴리오로 이동 */}
-            {(img._count?.likes ?? 0) > 0 && (
-              <button
-                onClick={() => setLikersImageId(img.id)}
-                className="absolute bottom-1 right-1 h-6 pl-1.5 pr-2 rounded-full flex items-center gap-1 text-[11px] font-medium bg-white/85 text-accent ring-1 ring-black/5 shadow-sm hover:bg-white cursor-pointer"
-                aria-label={`좋아요 ${img._count?.likes}개 — 누가 눌렀는지 보기`}
-                title="좋아요한 사람 보기"
-              >
-                <Heart size={12} className="fill-accent" />
-                {img._count?.likes}
-              </button>
-            )}
-          </div>
-        ))}
-        {images.length < maxCount && (
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className={`aspect-square border-2 border-dashed flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-gray-500 text-gray-600 bg-gray-50' : 'border-gray-200 text-gray-400 hover:border-gray-400'}`}
-          >
-            {uploading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                <span className="text-xs mt-1">{uploadCount}장 처리중</span>
-              </>
-            ) : (
-              <>
-                <Upload size={18} />
-                <span className="text-xs mt-1">{dragOver ? '여기에 놓기' : `${images.length}/${maxCount}`}</span>
-              </>
-            )}
-          </button>
-        )}
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = e.target.files;
-          if (files && files.length > 0) handleUploadMultiple(files);
-          e.target.value = '';
-        }}
-      />
-
-      {likersImageId !== null && (
-        <ArtworkLikersModal imageId={likersImageId} onClose={() => setLikersImageId(null)} />
-      )}
     </div>
   );
 }
@@ -2712,27 +1997,6 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
 }
 
 // ========== Gallery: 내 공모 ==========
-/** 카드의 '지금 할 일' 한 줄 — 누르면 그 탭·구역으로 데려간다 */
-function TaskLine({ task, onClick }: { task: NextTask; onClick?: () => void }) {
-  const tone = task.tone;
-  const body = (
-    <>
-      <span aria-hidden className={cn('mt-[0.5em] h-1.5 w-1.5 shrink-0 rounded-full', tone === 'attention' ? 'bg-accent' : tone === 'done' ? 'bg-gray-300' : 'bg-gray-400')} />
-      <span className={cn('min-w-0 flex-1 text-sm leading-relaxed', tone === 'attention' ? 'font-medium text-gray-950' : 'text-gray-600')}>{task.text}</span>
-      {onClick && (
-        <span className="inline-flex shrink-0 items-center gap-0.5 self-center text-sm font-medium text-gray-900">
-          {task.action}<ArrowRight size={14} aria-hidden />
-        </span>
-      )}
-    </>
-  );
-  const cls = cn('mt-4 flex w-full items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-left', tone === 'attention' ? 'bg-accent/5' : 'bg-gray-50');
-  // data-task-line — E2E 가 카드 높이를 잴 때 이 줄을 뺀다(할 일이 있는 카드만 한 줄 높다. 그건 들쭉날쭉이 아니라 정보다)
-  return onClick
-    ? <button type="button" data-task-line onClick={onClick} className={cn(cls, 'transition-colors hover:bg-gray-100')}>{body}</button>
-    : <div data-task-line className={cls}>{body}</div>;
-}
-
 function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initialViewMode?: ExhibitionViewMode; createOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -4884,9 +4148,16 @@ function OversightSection() {
 // --- 공모 지원현황 ---
 function OvExhibitions() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [submitted, setSubmitted] = useState('');
-  const [selId, setSelId] = useState<number | null>(null);
+  /*
+    `?ex=<id>` 로 들어오면 그 공모를 고른 채로 연다(2026-10-02) — 운영 화면의 [← 운영 조회]·[지원자 보기] 가 이 주소를 쓴다
+    (lib/operationLinks.ts). 관리자가 갤러리 주최 공모의 지원자를 보는 곳은 여기다(조회 전용).
+    처음 한 번만 읽는다(초깃값) — 그 뒤로는 관리자가 누른 대로 따른다.
+  */
+  const linkedExId = useRef(Number(searchParams.get('ex')) || null).current;
+  const [selId, setSelId] = useState<number | null>(linkedExId);
   const [expanded, setExpanded] = useState<number | null>(null);
   // 진행/종료 필터 — 갤러리 마이페이지(내 공모)와 **같은 기준**을 쓴다.
   // 판정은 서버(`lib/exhibitionLifecycle.ts`)가 내려주는 `closed`: 정산 완료 또는
@@ -4908,6 +4179,30 @@ function OvExhibitions() {
 
   // 검색 결과 안에서 나눈다 — 검색어를 지운 채 탭만 바꾸면 전체가 다시 갈린다
   const isClosedEx = (ex: any) => ex.closed ?? !!ex.settledAt;
+  // 가리켜 들어온 공모가 '종료' 쪽이면 그 목록으로 바꿔 준다(안 그러면 고른 줄이 목록에 없다). 한 번만.
+  const scopeSynced = useRef(false);
+  useEffect(() => {
+    if (!linkedExId || scopeSynced.current || exhibitions.length === 0) return;
+    scopeSynced.current = true;
+    const hit = exhibitions.find((ex: any) => ex.id === linkedExId);
+    if (hit && isClosedEx(hit)) setScope('closed');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exhibitions, linkedExId]);
+  // 지원 현황은 목록(최대 100줄) 아래에 있다 — 가리켜 들어왔으면 거기로 내려 준다. 한 번만.
+  // ⚠️ '했다' 표시는 **실제로 내린 뒤에**(타이머 안에서) 세운다. 먼저 세우면 개발 모드(StrictMode)가 effect 를 두 번 돌릴 때
+  //    첫 번째가 표시만 남긴 채 타이머를 치우고, 두 번째는 표시를 보고 그냥 나간다 — 캐시가 따뜻할 때(운영 조회 → 운영 페이지 → 돌아옴)만 안 내려간다.
+  const detailRef = useRef<HTMLDivElement>(null);
+  const detailScrolled = useRef(false);
+  useEffect(() => {
+    // 목록까지 받은 뒤에 내린다 — 지원 현황이 먼저 오면, 뒤늦게 그려지는 목록(최대 100줄)이 그걸 다시 화면 밖으로 밀어낸다
+    if (!linkedExId || detailScrolled.current || !detail || isLoading || selId !== linkedExId) return;
+    const t = window.setTimeout(() => {
+      if (!detailRef.current) return;
+      detailScrolled.current = true;
+      detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [detail, selId, linkedExId, isLoading]);
   const activeList = exhibitions.filter((ex) => !isClosedEx(ex));
   const closedList = exhibitions
     .filter(isClosedEx)
@@ -4961,7 +4256,7 @@ function OvExhibitions() {
       )}
 
       {selId && detail && (
-        <div className="border-t border-gray-200 pt-4 space-y-3">
+        <div ref={detailRef} data-testid="ov-ex-detail" className="scroll-mt-24 border-t border-gray-200 pt-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-gray-900">{detail.exhibition.title} — 지원 현황</p>
             <button

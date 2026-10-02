@@ -36,6 +36,7 @@ import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted, canOperate, canManage, canDelete } from '@/lib/exhibitionHost';
+import { operatorWorkspace, galleryOperationHref } from '@/lib/operationLinks';
 import type { Exhibition, PromoPhoto, ExhibitionImage } from '@/types';
 import StatusChip from '@/components/flow/StatusChip';
 import { applicationStatusView } from '@/lib/flowLabels';
@@ -546,13 +547,13 @@ export default function ExhibitionDetailPage() {
           {isGalleryOwner && (
             <div className="grid gap-2 sm:grid-cols-2">
               <button
-                onClick={() => navigate(`/mypage?tab=my-exhibitions&ex=${id}&panel=applicants`)}
+                onClick={() => navigate(operatorWorkspace(user?.role, exhibition.hostType, id)?.applicantsHref ?? '/mypage')}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
               >
                 <Users size={16} /> 지원자 보기
               </button>
               <button
-                onClick={() => navigate(`/mypage?tab=my-exhibitions&ex=${id}&panel=operation`)}
+                onClick={() => navigate(galleryOperationHref(id!))}
                 className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 text-gray-800 rounded-xl text-sm font-medium hover:bg-gray-50"
               >
                 <ClipboardList size={16} /> 운영 · 출품 자료 · 정산

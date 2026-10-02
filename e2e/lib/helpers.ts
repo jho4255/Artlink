@@ -2,6 +2,7 @@ import { Browser, BrowserContext, Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
+import zlib from 'zlib';
 
 export type Role = 'artist' | 'artist2' | 'gallery' | 'admin';
 
@@ -168,6 +169,74 @@ export function cardToggle(card: import('@playwright/test').Locator, tab: 'appli
   return tab === 'applicants'
     ? card.getByRole('button', { name: /^지원자 \d+$/ })
     : card.getByRole('button', { name: '운영', exact: true });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   작가 홈페이지 편집 화면 (2026-10-02 개편) — 묶음 [작품 · 소개 · 약력 · 파일 · 꾸미기]
+   ───────────────────────────────────────────────────────────── */
+export type EditSection = '작품' | '소개' | '약력' | '파일' | '꾸미기';
+const EDIT_SECTION_ID: Record<EditSection, string> = { '작품': 'works', '소개': 'intro', '약력': 'cv', '파일': 'file', '꾸미기': 'style' };
+
+/**
+ * 편집 화면의 묶음 탭.
+ * ⚠️ `page.getByRole('tab', { name: '작품' })` 로 집지 말 것 — 오른쪽 **미리보기에도 같은 이름의 탭**(홈페이지 메뉴)이 있다.
+ *    반드시 tablist 이름('홈페이지 편집')으로 좁힌다. 미리보기 쪽은 `previewTab()`.
+ */
+export const editSectionTab = (page: Page, section: EditSection) =>
+  page.getByRole('tablist', { name: '홈페이지 편집' }).getByRole('tab', { name: new RegExp(`^${section}`) });
+/** 미리보기(공개 페이지와 같은 컴포넌트)의 탭 — 넓은 화면에서만 옆에 있다 */
+export const previewTab = (page: Page, name: string | RegExp) =>
+  page.getByRole('tablist', { name: '홈페이지 메뉴' }).getByRole('tab', { name });
+
+/**
+ * 작가 홈페이지 편집 화면을 그 묶음까지 연 채로 연다.
+ * ⚠️ 준비됐는지를 **[저장] 버튼으로 기다리지 말 것** — 고친 게 없으면 저장 버튼이 없다(그 자리에 [내 홈페이지 보기]).
+ *    묶음 탭이 선택된 것으로 기다린다.
+ */
+export async function openHomepageEditor(page: Page, section: EditSection = '작품') {
+  await page.goto(`/mypage?tab=homepage-edit${section === '작품' ? '' : `&section=${EDIT_SECTION_ID[section]}`}`);
+  await expect(editSectionTab(page, section)).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+}
+export async function openEditSection(page: Page, section: EditSection) {
+  await editSectionTab(page, section).click();
+  await expect(editSectionTab(page, section)).toHaveAttribute('aria-selected', 'true');
+}
+/** 저장 바의 [저장] — 글·꾸미기를 고쳐야 나타난다. 작품 정보 창에도 [저장]이 있어 바 안으로 좁힌다 */
+export const editorSave = (page: Page) => page.locator('[data-save-bar]').getByRole('button', { name: '저장', exact: true });
+/** 저장한 뒤 도착하는 공개 홈페이지 주소 — 주소(@)가 있으면 `/@handle`, 없으면 `/portfolio/:id` */
+export const PUBLIC_HOMEPAGE_URL = /\/(portfolio\/\d+|@[a-z0-9._]+)(\?|$)/;
+
+/**
+ * 단색 PNG 한 장을 굽는다(의존성 없이) — 파일 선택 창으로 **실제 업로드**를 태울 때 쓴다.
+ * `setInputFiles([{ name, mimeType: 'image/png', buffer: solidPng(600, 400, [200, 60, 60]) }])`
+ */
+export function solidPng(w: number, h: number, rgb: [number, number, number]): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const c = Buffer.alloc(4); c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  const row = Buffer.alloc(1 + w * 3);
+  for (let x = 0; x < w; x++) row.set(rgb, 1 + x * 3);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 /** 백엔드 uploads 폴더에 실제 존재하는 이미지 URL (404 이미지는 SkeletonImage가 <img>를 렌더하지 않는다) */

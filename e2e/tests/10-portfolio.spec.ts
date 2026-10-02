@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, userIds } from '../lib/helpers';
+import { openAs, userIds, openHomepageEditor, editorSave, PUBLIC_HOMEPAGE_URL } from '../lib/helpers';
 
 /**
  * 작가 홈페이지 내용 저장 — 약력 + 경력(개인전) 이 저장되고 공개 페이지에 남는가.
@@ -17,9 +17,8 @@ test('작가 약력/경력 수정 후 저장 → 공개 홈페이지에 남는�
   const BIO = 'E2E 약력 ' + Date.now();
   const CAREER = 'E2E 개인전 ' + Date.now();
 
-  await page.goto('/mypage?tab=homepage-edit');
-
-  // 들어오자마자 편집 모드 — [수정]을 다시 누를 필요가 없다
+  // 편집 화면은 묶음으로 나뉜다(2026-10-02) — 약력·경력은 [약력] 묶음. 들어오자마자 고칠 수 있다([수정]을 다시 누르지 않는다)
+  await openHomepageEditor(page, '약력');
   const bio = page.getByPlaceholder('작가 소개·약력을 입력하세요.');
   await expect(bio).toBeVisible({ timeout: 15000 });
   await bio.fill(BIO);
@@ -27,11 +26,12 @@ test('작가 약력/경력 수정 후 저장 → 공개 홈페이지에 남는�
   // 경력: 개인전은 자유 입력 textarea (한 줄 = 한 건)
   await page.locator('textarea[placeholder*="개인전"]').first().fill(CAREER);
 
-  await page.getByRole('button', { name: '저장' }).click();
+  await editorSave(page).click();
 
   // 저장하면 공개 페이지로 돌아간다 (편집 전용 화면에 갇히지 않게)
-  await page.waitForURL(new RegExp(`/portfolio/${ids.artist}`), { timeout: 15000 });
-  // 홈페이지가 탭으로 나뉜 뒤(2026-09-25) — 저장하면 **방금 고치던 탭**(경력 → [약력])이 열린다
+  await page.waitForURL(PUBLIC_HOMEPAGE_URL, { timeout: 15000 });
+  expect(page.url(), `작가 ${ids.artist} 의 홈페이지가 아니다`).toMatch(new RegExp(`/portfolio/${ids.artist}|/@`));
+  // 홈페이지가 탭으로 나뉜 뒤(2026-09-25) — 저장하면 **방금 고치던 묶음의 탭**([약력])이 열린다
   await expect(page).toHaveURL(/[?&]tab=cv/);
   await expect(page.getByText(BIO, { exact: false })).toBeVisible({ timeout: 10000 });
   await expect(page.getByText(CAREER, { exact: false })).toBeVisible({ timeout: 10000 });

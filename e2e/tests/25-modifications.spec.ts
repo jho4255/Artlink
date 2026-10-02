@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, exhibitionDates, openHomepageEditor } from '../lib/helpers';
 
 /**
  * 2026-06-10 수정사항 검증 (항목 1·2·11·12·15·16·17 중심)
@@ -169,8 +169,9 @@ test('#16 (UI) 전시 등록 폼에 사진 7장 드롭 → 7장 모두 반영', 
 test('#13 (UI) 포트폴리오 아트페어 경력은 가이드 placeholder의 textarea', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
   /* 내용 편집은 `?tab=homepage-edit` 로 옮겼고(2026-08-27), **들어오자마자 편집 모드**다.
-     `?tab=portfolio` 는 이제 PDF 포맷 고르는 화면이라 [수정] 버튼이 없다. */
-  await page.goto('/mypage?tab=homepage-edit');
+     `?tab=portfolio` 는 이제 PDF 포맷 고르는 화면이라 [수정] 버튼이 없다.
+     2026-10-02 부터 편집 화면이 묶음으로 나뉘어, 경력은 [약력] 묶음에 있다. */
+  await openHomepageEditor(page, '약력');
   /* ⚠️ '아트링크 주관 아트페어' 는 **지원서용** 예시다(APPLY_CATEGORIES).
      포트폴리오(PORTFOLIO_CATEGORIES)의 아트페어 예시는 '화랑미술제' 다 — 둘을 헷갈리면 못 찾는다. */
   const ta = page.locator('textarea[placeholder*="화랑미술제"]');

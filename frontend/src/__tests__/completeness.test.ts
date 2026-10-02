@@ -35,6 +35,33 @@ describe('computeCompleteness — 작가 홈페이지 완성도', () => {
     expect(c.percent).toBe(100);
   });
 
+  it('약력 글이 없어도 항목별 경력이 있으면 약력은 쓴 것 — 홈페이지 [약력] 탭이 그렇게 생긴다', () => {
+    const by = (career: Parameters<typeof computeCompleteness>[0]['career']) =>
+      computeCompleteness({ images: [], statement: '', biography: '', career }).items.find((i) => i.key === 'biography')!.done;
+    expect(by({ solo: [{ year: '', content: '2025 개인전 〈빛〉' }], group: [], artFair: [] })).toBe(true);
+    expect(by({ solo: [], group: [], artFair: [], education: [], award: [] })).toBe(false);
+    expect(by(null)).toBe(false);
+  });
+
+  it('★ 줄을 누르면 그걸 채우는 묶음으로 간다 — 전부 같은 주소로 떨어지지 않는다', () => {
+    const c = computeCompleteness({ images: [work(), work()], statement: '', biography: '' });
+    const href = Object.fromEntries(c.items.map((i) => [i.key, i.href]));
+    expect(href.works).toBe('/mypage?tab=homepage-edit&section=works');
+    // 정보 없는 첫 작품의 입력 창을 바로 연다
+    expect(href.captions).toBe('/mypage?tab=homepage-edit&section=works&do=info');
+    expect(href.statement).toBe('/mypage?tab=homepage-edit&section=intro&focus=statement');
+    expect(href.biography).toBe('/mypage?tab=homepage-edit&section=cv&focus=biography');
+    expect(href.public).toBe('/mypage?tab=homepage-edit&section=works');
+    // 작품이 0점이면 열 창이 없다
+    expect(computeCompleteness({ images: [] }).items.find((i) => i.key === 'captions')!.href).toBe('/mypage?tab=homepage-edit&section=works');
+  });
+
+  it("'공개'라고 부르지 않는다 — 작품은 올리는 순간 내 홈페이지에 보인다", () => {
+    const labels = computeCompleteness({ images: [] }).items.map((i) => i.label).join(' ');
+    expect(labels).toContain('[작가] 탭에도 소개하기');
+    expect(labels).not.toContain('공개');
+  });
+
   it('공백만 있는 글은 안 쓴 것', () => {
     const c = computeCompleteness({ images: [], statement: '   ', biography: '\n' });
     expect(c.items.find((i) => i.key === 'statement')!.done).toBe(false);

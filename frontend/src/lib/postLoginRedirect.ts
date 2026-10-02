@@ -12,6 +12,8 @@
  *  - 저장: ExhibitionDetailPage '로그인하고 지원하기' 버튼
  *  - 소비: LoginPage(개발자 로그인), AuthCallbackPage(카카오 로그인/가입 완료)
  */
+import { HOMEPAGE_EDIT_HREF } from './myPageMenu';
+
 const KEY = 'post_login_redirect';
 
 function isSafeInternalPath(path: string | null): path is string {
@@ -42,7 +44,7 @@ export async function resolvePostLoginPath(role: string | undefined, fetchPortfo
   if (role !== 'ARTIST') return '/mypage';
   try {
     const p = await fetchPortfolio();
-    if (!p || !p.images || p.images.length === 0) return '/mypage?tab=homepage-edit';
+    if (!p || !p.images || p.images.length === 0) return HOMEPAGE_EDIT_HREF;
   } catch { /* 판단 못 하면 기본 */ }
   return '/mypage';
 }

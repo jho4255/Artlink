@@ -41,7 +41,7 @@ export function FormField({ label, hint, error, htmlFor, className, children }: 
     <div className={className}>
       <label htmlFor={htmlFor} className={cn('mb-1.5 block text-sm font-medium', error ? 'text-accent' : 'text-gray-800')}>{label}</label>
       {children}
-      {hint && <p className="mt-1.5 text-xs leading-relaxed text-gray-500">{hint}</p>}
+      {hint && <p className="mt-1.5 break-keep text-xs leading-relaxed text-gray-500">{hint}</p>}
     </div>
   );
 }

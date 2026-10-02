@@ -363,6 +363,37 @@ router.put('/images/order', authenticate, authorize('ARTIST'), async (req, res, 
   } catch (error) { next(error); }
 });
 
+// PUT /images/explore — 여러 작품의 [작가] 탭·홈 화면 노출을 **한 번에 정한다** (2026-10-02)
+// body: { ids: number[], show: boolean }
+// 편집 화면이 업로드 직후 "방금 올린 N점을 [작가] 탭에도 소개할까요?" 를 한 번 묻는다(기본은 내 홈페이지에만).
+// ⚠️ 아래 토글(PATCH)을 N번 부르지 않는 이유: 토글은 '지금 상태의 반대'라, 탭 두 개에서 누르거나 화면이 옛 상태를 들고 있으면
+//    소개하려던 작품이 거꾸로 내려간다. 여기는 **원하는 상태를 적어 보내므로** 몇 번을 불러도 결과가 같다(규칙 46 과 같은 취지).
+// ⚠️ 남의 작품 id 가 하나라도 섞이면 전체를 거절한다(순서 저장과 같은 규칙 — 일부만 반영되는 애매한 상태 금지).
+// (나중에 `PUT /images/:imageId` 를 만들게 되면 이 고정 경로와 `PUT /images/order` 가 그 **위**에 있어야 한다.)
+router.put('/images/explore', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const raw = req.body?.ids;
+    const ids: number[] | null = Array.isArray(raw) ? ([...new Set(raw.map((v: unknown) => Number(v)))] as number[]) : null;
+    if (!ids || ids.some((n) => !Number.isInteger(n) || n <= 0)) throw new AppError('유효하지 않은 작품 목록입니다.', 400);
+    if (typeof req.body?.show !== 'boolean') throw new AppError('노출 여부를 정해 주세요.', 400);
+    if (ids.length > PORTFOLIO_IMAGE_MAX) throw new AppError('한 번에 바꿀 수 있는 작품 수를 넘었습니다.', 400);
+    if (ids.length === 0) return res.json({ updated: 0 });
+
+    const portfolio = await prisma.portfolio.findUnique({
+      where: { userId: req.user!.id },
+      include: { images: { select: { id: true } } },
+    });
+    const mine = new Set((portfolio?.images ?? []).map((i) => i.id));
+    if (ids.some((id) => !mine.has(id))) throw new AppError('이미지를 찾을 수 없습니다.', 404);
+
+    const r = await prisma.portfolioImage.updateMany({
+      where: { id: { in: ids }, portfolioId: portfolio!.id },
+      data: { showInExplore: req.body.show },
+    });
+    res.json({ updated: r.count });
+  } catch (err) { next(err); }
+});
+
 // PATCH /images/:imageId/explore — showInExplore 토글 (ARTIST 본인 전용)
 router.patch('/images/:imageId/explore', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {

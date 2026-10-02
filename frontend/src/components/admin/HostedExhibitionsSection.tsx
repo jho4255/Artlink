@@ -18,9 +18,9 @@
  *   PATCH  /exhibitions/:id/managers    운영 갤러리 변경 (전체 교체)
  *   DELETE /exhibitions/:id             삭제 (주최자인 Admin만)
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -271,6 +271,25 @@ export default function HostedExhibitionsSection() {
     queryFn: () => api.get('/exhibitions/hosted').then(r => r.data).catch(() => []),
   });
 
+  /*
+    운영 화면의 [← 주최 공모]·[지원자 보기] 가 `?ex=<id>&panel=applicants` 로 이 카드를 가리켜 들어온다(lib/operationLinks.ts, 2026-10-02).
+    그 전엔 관리자도 갤러리의 [내 공모] 주소로 보내져 프로필이 떴다. 딱 한 번만 — refetch 때마다 걸리면 닫아도 다시 열린다.
+  */
+  const [searchParams] = useSearchParams();
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    const exId = Number(searchParams.get('ex')) || null;
+    if (!exId || deepLinkDone.current || !exhibitions.some((e: any) => e.id === exId)) return;
+    // ⚠️ '했다' 표시는 타이머 안에서 세운다 — 먼저 세우면 개발 모드(StrictMode)의 두 번째 effect 가 그냥 나가서
+    //    목록이 캐시에 있을 때(주최 공모 → 운영 페이지 → 돌아옴) 카드로 내려가지 않는다.
+    const t = window.setTimeout(() => {
+      deepLinkDone.current = true;
+      if (searchParams.get('panel') === 'applicants') setManageAppsExId(exId);
+      document.getElementById(`hosted-ex-${exId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [exhibitions, searchParams]);
+
   const resetForm = () => {
     setForm(emptyForm);
     setManagerGalleries([]);
@@ -512,7 +531,7 @@ export default function HostedExhibitionsSection() {
           {exhibitions.map((ex: any) => {
             const dday = ex.deadline ? getDday(ex.deadline) : null;
             return (
-              <article key={ex.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <article key={ex.id} id={`hosted-ex-${ex.id}`} className="scroll-mt-24 overflow-hidden rounded-2xl border border-gray-200 bg-white">
                 <div className="grid gap-0 sm:grid-cols-[160px_1fr]">
                   <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)} className="relative min-h-[120px] bg-gray-100 text-left">
                     {ex.imageUrl ? (

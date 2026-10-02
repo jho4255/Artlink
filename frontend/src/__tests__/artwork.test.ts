@@ -157,11 +157,15 @@ describe('hasTitle', () => {
 });
 
 describe('작품 한도 표시', () => {
-  it('편집 화면의 "작품 사진 (N/한도)" 는 상수를 쓴다 — 한도를 150 으로 올린 뒤에도 "/30" 이 남아 있었다(2026-09-25)', async () => {
+  it('편집 화면의 "N/한도점" 은 상수를 쓴다 — 한도를 150 으로 올린 뒤에도 "/30" 이 남아 있었다(2026-09-25)', async () => {
     const { readFileSync } = await import('fs');
     const { resolve } = await import('path');
-    const src = readFileSync(resolve(__dirname, '../pages/MyPage.tsx'), 'utf8');
-    expect(src).toContain('작품 사진 ({images.length}/{PORTFOLIO_IMAGE_MAX})');
-    expect(src).not.toMatch(/작품 사진 \(\{images\.length\}\/\d+\)/);
+    // 2026-10-02 — 작품 격자가 MyPage 에서 홈페이지 편집 화면의 [작품] 묶음으로 옮겨 갔다
+    const src = readFileSync(resolve(__dirname, '../components/homepage-edit/WorksSection.tsx'), 'utf8');
+    expect(src).toContain('{total}</span>/{PORTFOLIO_IMAGE_MAX}점');
+    expect(src).toContain("from '@/lib/artwork'");
+    // 한도를 숫자로 적어 넣지 않는다(안내문·오류 문구 포함)
+    expect(src).not.toMatch(/\/\s*(30|150)\s*(점|장)/);
+    expect(src).not.toMatch(/최대\s*(30|150)\s*장/);
   });
 });

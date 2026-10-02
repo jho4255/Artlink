@@ -30,6 +30,7 @@ import { nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, ko
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
 import { artworkMissing, hasContent, hasNoteContent, serverStatus, submissionChecklist } from '@/lib/submissionChecklist';
 import { galleryNextTask, stageOf, SUBMISSION_TERM, type TaskTarget } from '@/lib/flowLabels';
+import { operatorWorkspace } from '@/lib/operationLinks';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import StatusPanel from '@/components/operation/StatusPanel';
 import { useBoothCatalogue, CATALOGUE_LABEL } from '@/components/operation/BoothKitBar';
@@ -236,8 +237,13 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
     sales: 0,
     approvals: { total: approvals.length, approved, issue: issues },
   });
+  /*
+    이 화면에서 '목록으로'·'지원자 보기' 가 가는 곳 — **보는 사람의 역할에 따라 다르다**(lib/operationLinks.ts).
+    예전엔 전부 갤러리의 [내 공모] 주소였는데, 관리자에겐 그 탭이 없어 프로필(닉네임 입력 칸)로 떨어졌다(2026-10-02).
+  */
+  const workspace = operatorWorkspace(user?.role, access.hostType, id);
   const goTask = () => {
-    if (task.target === 'applicants') { navigate(`/mypage?tab=my-exhibitions&ex=${id}&panel=applicants`); return; }
+    if (task.target === 'applicants') { navigate(workspace?.applicantsHref ?? `/exhibitions/${id}`); return; }
     if (task.target && task.target !== 'stage') setSection(task.target, true);
     window.setTimeout(() => document.getElementById(`op-${id}-${task.target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   };
@@ -257,14 +263,14 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
       <Body className={embedded ? 'w-full' : 'mx-auto w-full max-w-3xl px-6 py-8 md:px-12 md:py-12'}>
         {!embedded && (
           <header className="mb-8">
-            <Link to={`/mypage?tab=my-exhibitions&ex=${id}`} className="inline-flex min-h-[40px] items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
-              <ArrowLeft size={15} aria-hidden /> 내 공모
+            <Link to={workspace?.listHref ?? `/exhibitions/${id}`} className="inline-flex min-h-[40px] items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
+              <ArrowLeft size={15} aria-hidden /> {workspace?.label ?? '공고'}
             </Link>
             <p className="mt-2 text-sm text-gray-500">공모 운영 · {access.galleryName}</p>
             <h1 className="mt-1 break-keep text-2xl font-semibold leading-tight text-gray-950 md:text-3xl">{access.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
               {stage && <StatusChip variant={stage.variant}>{stage.label}</StatusChip>}
-              <Link to={`/mypage?tab=my-exhibitions&ex=${id}&panel=applicants`} className="text-gray-600 underline-offset-4 hover:text-gray-950 hover:underline">지원자 보기</Link>
+              {workspace && <Link to={workspace.applicantsHref} className="text-gray-600 underline-offset-4 hover:text-gray-950 hover:underline">지원자 보기</Link>}
               <Link to={`/exhibitions/${id}`} className="text-gray-600 underline-offset-4 hover:text-gray-950 hover:underline">공고 보기</Link>
             </div>
           </header>
@@ -296,7 +302,11 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
         {recruitOnly && (
           <Notice className="mt-6">
             공모만 진행하는 공고예요 — 지원자 수락까지만 진행하고, 출품 자료·전시·정산 단계는 없어요.
-            {embedded ? ' 지원자 확인과 수락은 위 [지원자] 탭에서 하세요.' : ' 지원자 확인과 수락은 [내 공모 › 지원자]에서 하세요.'}
+            {embedded
+              ? ' 지원자 확인과 수락은 위 [지원자] 탭에서 하세요.'
+              : workspace?.canDecide
+                ? ` 지원자 확인과 수락은 [${workspace.label} › ${workspace.label === '내 공모' ? '지원자' : '지원자 관리'}]에서 하세요.`
+                : ' 지원 현황은 [운영 조회]에서 볼 수 있어요(수락·거절은 운영 갤러리가 합니다).'}
           </Notice>
         )}
 

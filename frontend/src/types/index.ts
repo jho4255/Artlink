@@ -340,6 +340,8 @@ export interface OperationAccess {
   exhibitionId: number;
   title: string;
   galleryName: string;
+  /** 'ADMIN' = 아트링크 주최. 관리자가 [지원자 보기]로 갈 곳이 이 값으로 갈린다(lib/operationLinks.ts) */
+  hostType?: 'GALLERY' | 'ADMIN' | string;
   isOwner: boolean;
   isAdmin: boolean;
   isAcceptedArtist: boolean;

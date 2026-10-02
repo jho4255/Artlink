@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import api from '@/lib/axios';
 import { computeCompleteness } from '@/lib/completeness';
+import { editHref } from '@/lib/homepageEdit';
 import {
   armedHomepageNudgeUserId, disarmHomepageNudge, nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
 } from '@/lib/homepageNudge';
@@ -15,7 +16,7 @@ import type { Portfolio } from '@/types';
 /**
  * 작가 로그인 뒤 "홈페이지에 아직 빈 곳이 있어요" 팝업 (2026-10-01, 사용자 요청)
  *
- * 언제 뜨는지는 `lib/homepageNudge.ts`, 무엇이 비었는지는 `lib/completeness.ts`(마이페이지 체크리스트와 같은 판정).
+ * 언제 뜨는지는 `lib/homepageNudge.ts`, 무엇이 비었는지는 `lib/completeness.ts`(프로필 탭·편집 화면의 완성도 한 줄과 같은 판정).
  * `Layout` 에 한 번 놓여 어느 화면에 내려도 뜬다. 작가가 아니거나 홈페이지를 다 채웠으면 아무것도 그리지 않는다.
  *
  * - 비어 있는 항목만 보여준다. 줄을 누르면 그걸 채우는 자리로 간다.
@@ -34,14 +35,14 @@ export default function HomepageNudge() {
   const armed = !!user && user.role === 'ARTIST' && armedId === user.id;
   const place = nudgePlace(location.pathname, location.search);
 
-  // 마이페이지·체크리스트와 같은 쿼리 — 그 화면에서 뜨면 요청이 늘지 않는다
+  // 마이페이지(프로필 탭의 완성도 한 줄·편집 화면)와 같은 쿼리 — 그 화면에서 뜨면 요청이 늘지 않는다
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: ['portfolio'],
     queryFn: () => api.get('/portfolio').then((r) => r.data),
     enabled: armed && place === 'show',
   });
   const c = portfolio
-    ? computeCompleteness({ images: portfolio.images ?? [], statement: portfolio.statement, biography: portfolio.biography })
+    ? computeCompleteness({ images: portfolio.images ?? [], statement: portfolio.statement, biography: portfolio.biography, career: portfolio.career })
     : null;
 
   // 이 주소에 머문 지 SETTLE_MS 가 지났는가
@@ -137,7 +138,7 @@ export default function HomepageNudge() {
               </button>
               <button
                 type="button"
-                onClick={() => go(missing[0]?.href ?? '/mypage?tab=homepage-edit')}
+                onClick={() => go(missing[0]?.href ?? editHref())}
                 className="min-h-[44px] rounded-lg bg-gray-900 px-5 text-sm font-medium text-white hover:bg-gray-800"
               >
                 지금 채우기

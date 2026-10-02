@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ensurePublicArtworks } from '../lib/helpers';
+import { openAs, tokenFor, userIds, settle, ensurePublicArtworks, openHomepageEditor, openEditSection, previewTab } from '../lib/helpers';
 
 /**
  * 작가 홈페이지 탭 + 포트폴리오 PDF 펼쳐 보기 (2026-09-25).
@@ -151,19 +151,26 @@ test('★ 머리말에 [방명록] 버튼을 따로 두지 않는다 — 바로 
   await expect(page.getByRole('button', { name: '방명록' })).toHaveCount(0);
 });
 
-test('★ 편집 화면 미리보기는 지금 손대는 칸의 탭을 따라 연다', async ({ browser }) => {
+test('★ 편집 화면 미리보기는 지금 손대는 묶음·칸의 탭을 따라 연다', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/mypage?tab=homepage-edit');
-  await expect(page.getByRole('button', { name: '저장' })).toBeVisible({ timeout: 15000 });
-  await expect(selectedTab(page)).toContainText('작품');
+  await openHomepageEditor(page);
+  // 편집 화면에도 탭(묶음)이 있다 — 미리보기의 탭만 본다
+  const previewSelected = page.getByRole('tablist', { name: '홈페이지 메뉴' }).locator('[role=tab][aria-selected=true]');
+  await expect(previewSelected).toContainText('작품');
 
+  // 묶음을 바꾸면 미리보기도 그 내용이 보이는 탭으로 간다
+  await openEditSection(page, '소개');
+  await expect(previewSelected).toContainText('작가노트');
+  await openEditSection(page, '약력');
+  await expect(previewSelected).toContainText('약력');
+  // 한 줄 소개는 탭이 아니라 이름 아래에 있다 — 그 칸에 가도 보던 탭을 그대로 둔다
+  await openEditSection(page, '소개');
+  await previewTab(page, /작품/).click();   // 미리보기 안에서 탭을 직접 눌러도 된다
+  await expect(previewSelected).toContainText('작품');
+  await page.getByPlaceholder(/동심의 이면|한 줄 소개/).first().click();
+  await expect(previewSelected).toContainText('작품');
   await page.getByPlaceholder(/나의 작업은 시간의 흐름/).click();
-  await expect(selectedTab(page)).toContainText('작가노트');
-  await page.getByPlaceholder('작가 소개·약력을 입력하세요.').click();
-  await expect(selectedTab(page)).toContainText('약력');
-  // 미리보기 안에서 탭을 직접 눌러도 된다
-  await page.getByRole('tab', { name: /작품/ }).click();
-  await expect(selectedTab(page)).toContainText('작품');
+  await expect(previewSelected).toContainText('작가노트');
   await ctx.close();
 });

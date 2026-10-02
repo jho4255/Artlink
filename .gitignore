@@ -121,3 +121,5 @@ test-results/
 
 # 히어로 배너 하니스 산출물
 scratchpad/hero/out/
+# 홈페이지 편집 화면 하니스 산출물(데모 계정 화면 스크린샷)
+scratchpad/homepage-edit/out/

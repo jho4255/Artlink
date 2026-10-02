@@ -56,7 +56,9 @@ const ARTIST_TABS: MyPageTab[] = [
   // 어떻게 보이는지 반드시 한 번 보게 된다. 편집은 그 페이지의 [수정] 버튼(주인만)으로.
   { id: 'homepage', label: '홈페이지', icon: Home, linkTo: (userId) => `/portfolio/${userId}` },
   // PDF로 뽑는 포맷 4종. 예전엔 편집 화면 맨 아래에 붙어 있어 있는 줄도 몰랐다.
-  { id: 'portfolio', label: '포트폴리오', icon: FileText },
+  // '포트폴리오'가 세 곳(이 메뉴 · 공개 홈페이지의 [포트폴리오] 탭 · 편집 화면의 파일 올리기)에서 다른 뜻으로 쓰여,
+  // 여기가 무엇을 하는 곳인지 옆에 적는다(ArtLook '액자 걸기' 와 같은 방식, 2026-10-02).
+  { id: 'portfolio', label: '포트폴리오', icon: FileText, note: 'PDF 만들기' },
   // [받은 초대] 탭은 없앴다 — 초대도 결국 '내 전시'의 한 단계라 [내 전시] 첫 탭(초대받은 전시)으로 합쳤다.
   // 좋아요한 작품은 [찜 목록] 안의 '작품' 필터로 들어갔다(둘 다 '모아둔 것'이라 탭을 나눌 이유가 없었다).
   { id: 'favorites', label: '찜 목록', icon: Heart },
@@ -133,11 +135,32 @@ export function isMyPageTab(role: MyPageRole | null | undefined, tab?: string | 
 }
 
 /**
+ * **다른 역할의 탭 주소**로 들어왔을 때, 그 역할에서 같은 일을 하는 탭 (2026-10-02).
+ *
+ * 갤러리의 [내 공모] 주소(`?tab=my-exhibitions&ex=7`)를 관리자가 열면 — 갤러리가 "이 공모 좀 봐 주세요" 하며 보낸 링크,
+ * 옛 화면이 만든 링크 — 프로필(닉네임 입력 칸)로 떨어졌다. 관리자가 남의 공모를 보는 곳은 [운영 조회]다.
+ * `ex=` 는 그대로 남아 그 공모가 선택된 채로 열린다.
+ * ⚠️ 여기는 **안전망**이다. 새 링크는 처음부터 역할에 맞게 만들 것(`lib/operationLinks.ts`).
+ */
+const TAB_ALIASES: Record<string, Record<string, string>> = {
+  ADMIN: { 'my-exhibitions': 'oversight' },
+};
+
+/** 그 역할에 없는 탭인데 같은 일을 하는 탭이 있으면 그 id, 없으면 null */
+export function aliasTab(role: MyPageRole | null | undefined, tab?: string | null): string | null {
+  if (!tab || isMyPageTab(role, tab)) return null;
+  const alias = TAB_ALIASES[String(role)]?.[tab];
+  return alias && isMyPageTab(role, alias) ? alias : null;
+}
+
+/**
  * 역할과 맞지 않는 `?tab=` 값으로 들어오면 빈 화면이 되므로 첫 유효 탭으로 폴백한다.
  * 사이드바(어느 페이지에서든 뜬다)와 MyPage 본문이 **같은 규칙**을 써야 강조와 내용이 어긋나지 않는다.
  */
 export function resolveTab(role: MyPageRole | null | undefined, tab?: string | null): string {
   if (isMyPageTab(role, tab)) return tab as string;
+  const alias = aliasTab(role, tab);
+  if (alias) return alias;
   return myPageTabs(role).find(t => !t.linkTo)?.id ?? 'profile';
 }
 
