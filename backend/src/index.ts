@@ -40,6 +40,7 @@ import adRoutes from './routes/ad';
 import operationRoutes from './routes/operation';
 import settingsRoutes from './routes/settings';
 import visitRoutes from './routes/visit';
+import guestActivityRoutes from './routes/guestActivity';
 import seoRoutes from './routes/seo';
 import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
 import type { SeoKind } from './lib/seoMeta';
@@ -105,9 +106,13 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 //    폴링 GET 만 넉넉한 별도 한도(1,500/15분 ≈ 탭 6개)로 두고, 쓰기·나머지 API 는 종전 300 그대로.
 const isPollingRequest = (req: express.Request) =>
   req.method === 'GET' && (/^\/chats(\/|$)/.test(req.path) || req.path === '/notifications/unread-count');
+// 비회원 둘러보기 기록(2026-10-03) — 화면을 옮길 때마다 보내므로 전역 300 에서 빼 별도 한도로 센다(비회원의 화면 요청 몫을 먹지 않게).
+// 탭 하나는 많아야 5초에 한 번(15분 180회)이라 300 이면 같은 IP 의 탭 둘까지 넉넉하다. 넘치면 429 — 화면은 조용히 버린다(기록만 빠진다).
+const isGuestBeacon = (req: express.Request) => req.method === 'POST' && req.path === '/guest-activity';
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
-  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: isPollingRequest }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => isPollingRequest(req) || isGuestBeacon(req) }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => !isGuestBeacon(req) }));
   // 로그인·가입 시도만 엄하게(15분 30회). 예전엔 `/api/auth` 전체였는데 마이페이지·PDF 만들기·홈페이지 편집이 열 때마다 `/auth/me` 를,
   // 주소·닉네임 입력이 중복 확인을 부르는 것까지 세어, 같은 와이파이의 여러 명이 쓰면 **15분간 로그인이 막혔다**(2026-10-03 점검 P2-17).
   // 그 조회들은 위의 전역 한도(300)로 센다.
@@ -159,6 +164,7 @@ app.use('/api/ads', adRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/visits', visitRoutes);   // 일간 방문 기록(2026-09-28, Admin [통계])
+app.use('/api/guest-activity', guestActivityRoutes);   // 비회원 둘러보기(2026-10-03, Admin [통계])
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {

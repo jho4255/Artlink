@@ -4,9 +4,11 @@ import api from '@/lib/axios';
 import {
   dayLabel, fmtAvg, niceMax, summarizeExports, summarizeVisitors, trimBeforeSince, type ExportRow, type VisitorRow,
 } from '@/lib/visitStatsView';
+import { fmtDuration, pct, stepText, visitEnd, visitTime, type GuestStats, type GuestVisitRow } from '@/lib/guestStatsView';
 
 /**
- * Admin [통계] 탭 (2026-09-28) — **일간 방문자(회원/비회원)** · **포트폴리오 PDF 저장**(2026-10-03). 새 지표는 이 탭 안에 섹션으로 더한다.
+ * Admin [통계] 탭 (2026-09-28) — **일간 방문자(회원/비회원)** · **비회원 둘러보기**(2026-10-03) · **포트폴리오 PDF 저장**(2026-10-03).
+ * 새 지표는 이 탭 안에 섹션으로 더한다.
  * 기간(7·30·90일)은 맨 위에서 한 번 고르고 모든 섹션이 따른다 — 섹션마다 따로 두면 같은 이름의 버튼이 여러 벌 생긴다.
  *
  * 세는 규칙은 서버 `backend/src/lib/visitStats.ts`: 기기×KST 날짜 한 줄, 회원 = 그날 서로 다른 회원 수(관리자 제외),
@@ -86,8 +88,193 @@ export default function AdminStatsSection() {
         )}
       </section>
 
+      <GuestSection days={days} />
+
       <ExportSection days={days} />
     </div>
+  );
+}
+
+/**
+ * 비회원 둘러보기 (2026-10-03, 사용자 요청 — 광고로 들어온 비회원의 가입이 적은 이유를 보려고).
+ * 로그인하지 않은 방문이 **무엇을 보고 얼마나 머물렀는지**. 들어온 경로(광고·검색)는 남기지 않는다(사용자 결정).
+ * 숫자는 서버 `backend/src/lib/guestActivity.ts` 가 세고, 화면 이름·공모 제목·작가 이름도 서버가 붙여 준다.
+ * 색은 일간 방문자 그래프의 '비회원' 주황 하나 — 같은 대상(비회원 방문)이라 같은 색이다(색은 대상을 따른다).
+ */
+function GuestSection({ days }: { days: number }) {
+  const [showAll, setShowAll] = useState(false);
+  const { data, isLoading, isError } = useQuery<GuestStats>({
+    queryKey: ['admin-guest-stats', days],
+    queryFn: () => api.get(`/admin/stats/guests?days=${days}`).then((r) => r.data),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+  const sum = data?.summary;
+  const tile = (label: string, value: string, unit: string, sub: string) => (
+    <div className="min-w-0 rounded-xl bg-gray-50 px-4 py-3">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{value}<span className="ml-0.5 text-sm font-normal text-gray-500">{unit}</span></p>
+      <p className="mt-0.5 text-xs tabular-nums text-gray-600">{sub}</p>
+    </div>
+  );
+  const recent = data?.recent ?? [];
+  const shown = showAll ? recent : recent.slice(0, 8);
+  const maxLanding = Math.max(1, ...(data?.landings ?? []).map((l) => l.visits));
+  const maxPage = Math.max(1, ...(data?.pages ?? []).map((p) => p.visits));
+
+  return (
+    <section className="rounded-2xl border border-gray-200 p-4 md:p-6" aria-labelledby="stats-guests">
+      <h3 id="stats-guests" className="text-base font-medium text-gray-900">비회원 둘러보기</h3>
+      <p className="mt-0.5 text-sm text-gray-500">로그인하지 않은 방문이 무엇을 보고 얼마나 머물렀는지. 들어온 경로(광고·검색)는 남기지 않습니다.</p>
+
+      {isLoading ? (
+        <div className="mt-5 h-64 animate-pulse rounded-xl bg-gray-50" />
+      ) : isError ? (
+        <p className="mt-5 text-sm text-accent">통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>
+      ) : !data?.since || !sum ? (
+        <p className="mt-5 rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+          아직 기록이 없습니다. 로그인하지 않은 방문이 생기면 여기에 쌓입니다.
+        </p>
+      ) : sum.visits === 0 ? (
+        <p className="mt-5 rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">이 기간에는 비회원 방문이 없습니다.</p>
+      ) : (
+        <>
+          <div data-testid="guest-kpis" className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {tile('방문', String(sum.visits), '회', `한 방문 평균 ${fmtAvg(sum.avgViews)}화면`)}
+            {tile('바로 나감', String(pct(sum.bounced, sum.visits)), '%', `${sum.bounced}회 · 화면 하나만 30초 안에`)}
+            {tile('한 방문에 머문 시간', fmtDuration(sum.medianSeconds), '', '중간값 — 절반은 이보다 짧다')}
+            {tile('가입', String(sum.signup), '회', `로그인 ${sum.login}회(이미 회원)`)}
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="min-w-0">
+              <h4 className="text-sm font-medium text-gray-900">처음 본 화면</h4>
+              <p className="mt-0.5 text-xs text-gray-500">들어오자마자 본 화면 — 광고가 보낸 곳입니다.</p>
+              <table data-testid="guest-landings" className="mt-2 w-full table-fixed text-sm tabular-nums">
+                <thead className="text-xs text-gray-500">
+                  <tr className="border-b border-gray-100">
+                    <th className="py-1.5 pr-2 text-left font-medium">화면</th>
+                    <th className="w-[34%] py-1.5 pr-2 text-left font-medium">방문</th>
+                    <th className="w-[19%] py-1.5 text-right font-medium">바로 나감</th>
+                    <th className="w-[11%] py-1.5 text-right font-medium">가입</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.landings.map((l) => (
+                    <tr key={`${l.label}|${l.detail ?? ''}`} className="border-b border-gray-50 align-top">
+                      <td className="min-w-0 py-1.5 pr-2 text-gray-800">
+                        <span className="block truncate" title={l.detail ? `${l.label} 「${l.detail}」` : l.label}>
+                          {l.label}{l.detail && <span className="text-gray-500"> 「{l.detail}」</span>}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-2"><Bar value={l.visits} max={maxLanding} /></td>
+                      <td className="py-1.5 text-right text-gray-900">{pct(l.bounced, l.visits)}%</td>
+                      <td className="py-1.5 text-right text-gray-900">{l.signups}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-medium text-gray-900">많이 본 화면</h4>
+              <p className="mt-0.5 text-xs text-gray-500">그 화면을 한 번이라도 본 방문 수와, 한 번 볼 때 머문 평균 시간.</p>
+              <table data-testid="guest-pages" className="mt-2 w-full table-fixed text-sm tabular-nums">
+                <thead className="text-xs text-gray-500">
+                  <tr className="border-b border-gray-100">
+                    <th className="py-1.5 pr-2 text-left font-medium">화면</th>
+                    <th className="w-[38%] py-1.5 pr-2 text-left font-medium">본 방문</th>
+                    <th className="w-[24%] py-1.5 text-right font-medium">평균 머문 시간</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.pages.map((p) => (
+                    <tr key={p.label} className="border-b border-gray-50">
+                      <td className="py-1.5 pr-2 text-gray-800"><span className="block truncate">{p.label}</span></td>
+                      <td className="py-1.5 pr-2"><Bar value={p.visits} max={maxPage} /></td>
+                      <td className="py-1.5 text-right text-gray-900">{fmtDuration(p.avgSeconds)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {data.exits.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-medium text-gray-900">둘러보다 나간 곳</h4>
+              <p className="mt-0.5 text-xs text-gray-500">바로 나가지 않고 둘러본 방문이 마지막으로 본 화면(가입·로그인한 방문은 빼고).</p>
+              <ul data-testid="guest-exits" className="mt-2 flex flex-wrap gap-2 text-sm">
+                {data.exits.map((e) => (
+                  <li key={e.label} className="rounded-full border border-gray-200 px-3 py-1 text-gray-700">
+                    {e.label} <span className="tabular-nums text-gray-900">{e.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-6">
+            <h4 className="text-sm font-medium text-gray-900">최근 방문</h4>
+            <p className="mt-0.5 text-xs text-gray-500">본 순서대로 — 화면 이름 옆 숫자는 그 화면에 머문 시간입니다.</p>
+            <ol data-testid="guest-recent" className="mt-2 divide-y divide-gray-100 border-y border-gray-100">
+              {shown.map((v, i) => <GuestVisitItem key={`${v.startedAt}-${i}`} v={v} />)}
+            </ol>
+            {recent.length > 8 && (
+              <button type="button" onClick={() => setShowAll((x) => !x)} className="mt-2 min-h-[40px] text-sm text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline">
+                {showAll ? '접기' : `더 보기 (${recent.length - 8})`}
+              </button>
+            )}
+          </div>
+
+          <p className="mt-4 text-xs leading-relaxed text-gray-400">
+            방문 = 탭 하나(30분 넘게 쉬면 새 방문) · 머문 시간은 화면이 보이는 동안만(한 화면 최대 30분) · 바로 나감 = 화면 하나만 보고 30초 안에 나감 ·
+            이 브라우저로 로그인한 적이 있으면 세지 않습니다 · 계정·IP 와 잇지 않고 90일 뒤 지웁니다 · 1분마다 다시 셉니다 · 집계 시작 {data.since}
+            {data.capped && ' · 방문이 많아 이 기간의 최근 5만 건만 셌습니다'}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 표 안 가로 막대 — 값의 크기만(한 색). 숫자는 막대 옆 글자로 */
+function Bar({ value, max }: { value: number; max: number }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-2 min-w-0 flex-1">
+        <span className="block h-2 rounded-r-[4px]" style={{ width: `${Math.max(4, (value / max) * 100)}%`, background: GUEST }} />
+      </span>
+      <span className="w-8 shrink-0 text-right text-gray-900">{value}</span>
+    </span>
+  );
+}
+
+function GuestVisitItem({ v }: { v: GuestVisitRow }) {
+  const end = visitEnd(v);
+  return (
+    <li className="py-3">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums text-gray-500">
+        <span className="text-gray-700">{visitTime(v.startedAt)}</span>
+        <span>· {fmtDuration(v.seconds)}</span>
+        <span>· 화면 {v.views}개</span>
+        {v.outcome === 'SIGNUP' && <span className="rounded-full border border-gray-900 px-2 py-px text-[11px] font-medium text-gray-900">가입</span>}
+        {v.outcome === 'LOGIN' && <span className="rounded-full border border-gray-300 px-2 py-px text-[11px] text-gray-600">로그인</span>}
+        {v.bounced && !v.ongoing && <span className="rounded-full bg-gray-100 px-2 py-px text-[11px] text-gray-600">바로 나감</span>}
+      </p>
+      {/* 낱말 안에서 끊지 않는다(keep-all) — '모집공고'가 '모\n집공고'로 갈라졌다. 띄어쓰기 없는 긴 이름만 anywhere 로(규칙 30).
+          화살표·시간은 바로 앞뒤 낱말과 붙여 둔다(줄 끝에 화살표만 남지 않게) */}
+      <p className="mt-1 text-sm leading-relaxed break-keep [overflow-wrap:anywhere]">
+        {v.steps.map((s, i) => (
+          <span key={i}>
+            {i > 0 && <span aria-hidden className="text-gray-300">{' →\u00a0'}</span>}
+            <span className="text-gray-900">{stepText(s)}</span>
+            <span className="text-gray-400">{`\u00a0${fmtDuration(s.seconds)}`}</span>
+          </span>
+        ))}
+        <span aria-hidden className="text-gray-300">{' →\u00a0'}</span>
+        <span className={v.outcome === 'SIGNUP' ? 'font-medium text-gray-900' : 'text-gray-500'}>{end}</span>
+      </p>
+    </li>
   );
 }
 

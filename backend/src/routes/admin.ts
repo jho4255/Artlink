@@ -7,6 +7,7 @@ import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { dailyVisitorStats } from '../lib/visitStats';
 import { dailyExportStats } from '../lib/exportStats';
+import { guestStats } from '../lib/guestActivity';
 
 const router = Router();
 
@@ -334,6 +335,18 @@ router.get('/stats/portfolio-exports', authenticate, authorize('ADMIN'), async (
     const days = Number(req.query.days ?? 30);
     if (!Number.isFinite(days) || days < 1) throw new AppError('기간이 올바르지 않습니다.', 400);
     res.json(await dailyExportStats(days));
+  } catch (error) { next(error); }
+});
+
+/**
+ * GET /api/admin/stats/guests?days=30 — 비회원 둘러보기(무엇을 보고 얼마나 머물렀는가). Admin [통계] 탭(2026-10-03).
+ * 오늘(KST) 포함 최근 N일(1~90 — 기록은 90일만 둔다). 규칙은 `lib/guestActivity.ts`.
+ */
+router.get('/stats/guests', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const days = Number(req.query.days ?? 30);
+    if (!Number.isFinite(days) || days < 1) throw new AppError('기간이 올바르지 않습니다.', 400);
+    res.json(await guestStats(days));
   } catch (error) { next(error); }
 });
 

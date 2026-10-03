@@ -5,6 +5,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
 import { armHomepageNudge } from '@/lib/homepageNudge';
+import { noteGuestSignup, noteGuestStep } from '@/lib/guestActivity';
 import { roleLabel, VISITOR_ROLE_HINT } from '@/lib/utils';
 
 export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
@@ -44,6 +45,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
       api.post(`/auth/${provider}`, body).then((r) => r.data),
     onSuccess: (data) => {
       if (data.needsRegistration) {
+        // 비회원 둘러보기 — 주소는 그대로라 '가입 정보 입력' 단계를 따로 남긴다(여기서 그만두는 사람이 가입 전환의 핵심)
+        noteGuestStep('/auth/register');
         setTempToken(data.tempToken);
         setProfile(data.profile);
         setName(data.profile.name || '');
@@ -63,7 +66,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const registerMutation = useMutation({
     mutationFn: (body: { tempToken: string; role: string; name: string; email: string; phone: string; agreeTerms: boolean; agreePrivacy: boolean }) =>
       api.post('/auth/complete-registration', body).then((r) => r.data),
-    onSuccess: handleSuccess,
+    onSuccess: (data) => { noteGuestSignup(); return handleSuccess(data); },
     onError: (err: any) => setError(err.response?.data?.error || '가입에 실패했습니다.'),
   });
 

@@ -39,6 +39,8 @@ sudo service postgresql start
 #    run_web.sh 를 여러 번 돌리면 vite 가 5173→5174→5175 로 밀려 뜨고, tsx watch 도 여러 개가 된다.
 #    포트 4000 을 잡은 게 옛 프로세스면 **코드를 고쳐도 API 응답이 안 바뀐다** — 고쳤는데 안 고쳐진 것처럼 보인다.
 ss -ltnp | grep -E ':4000|:517'          # 하나씩만 떠 있어야 정상
+#    ⚠️ 떠 있는 게 하나여도 **그 프로세스가 고친 파일을 놓쳤을 수 있다**(2026-10-03: 4001 의 tsx watch 가 admin.ts 수정을 못 받아 옛 코드로 500 —
+#       vitest 는 새로 읽으니 통과했다). 서버 로그의 마지막 '서버 실행 중' 시각과 파일 수정 시각을 비교하고, 늦었으면 그 서버를 다시 띄울 것.
 pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/frontend/node_modules/.bin/vite'
 ```
 
@@ -74,10 +76,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2570+ tests** (2026-10-03): Backend 1526 (supertest, `artlink_test` DB 순차), Frontend 1048 (jsdom) · E2E 355(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 352개 시점 345 통과 · 4 건너뜀, 그 뒤 추가한 `67` 3개는 따로 통과)
+- **2600+ tests** (2026-10-04): Backend 1540 (supertest, `artlink_test` DB 순차), Frontend 1068 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
-- **E2E**: `e2e/` Playwright 59개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
+- **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
@@ -1830,6 +1832,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       새 지표는 이 탭 안에 섹션으로 더한다(`myPageMenu.ts` 의 `stats`).
     - JS 를 안 돌리는 크롤러는 요청을 안 보내 자연히 빠진다. localStorage 가 막힌 기기는 새로 열 때마다 새 기기로 셀 수 있다(메모리로 한 세션은 버틴다).
     - 개인정보처리방침 1항에 '방문자 집계용 기기 식별값(무작위, 개인과 연결하지 않음)'을 적었다.
+    - 비회원이 **무엇을 보고 얼마나 머물렀는지**는 같은 탭의 '비회원 둘러보기'(규칙 64) — 기기 번호와 다른 값으로 묶는다.
     - 회귀: backend `visit-stats.test.ts`(8 — 하루 한 줄·동시 요청·비회원→회원·사람 단위·Admin 제외·KST 경계·0 채우기·권한) ·
       frontend `visitStats.test.ts`(7) · e2e `59-admin-stats.spec.ts`(4 — **실제 브라우저가 들어오면 세어지는지**를 전후 차이로 잰다, 여러 화면을 다녀도 요청 한 번).
 
@@ -2039,6 +2042,50 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: 백엔드 `flow-fixes.test.ts`(40) · `submission-schema.test.ts`(7) · `rich-descriptions.test.ts`(9) · 프론트 `flowFixes.test.ts`(13) · `flowLabels.test.ts` ·
       `richText.test.ts`(richToText·소스 가드) · e2e `66-flow-fixes.spec.ts`(11) · `67-rich-descriptions.spec.ts`(3 — 공모·전시 상세에서 도구 막대로 쓰고 방문자 화면의 요소 · API 로 넣은 위험한 HTML).
 
+64. **Admin [통계] 탭 — 비회원 둘러보기(무엇을 보고 얼마나 머물렀나)** (2026-10-03, 사용자 요청 — 광고로 들어온 비회원이 왜 가입을 안 하는지 보려고)
+    - **남기는 것**: 로그인하지 않은 방문이 본 화면의 순서 + 그 화면이 **보이는 동안** 머문 시간 + 로그인·가입으로 이어졌는지. **들어온 경로(광고·검색·이전 사이트)는 남기지 않는다**(사용자 결정).
+      계정·IP·기기 정보·검색어 없음. 표 `GuestVisit`(id = 화면이 방문마다 새로 만드는 무작위 값 — 일간 방문자의 기기 번호와 **다른 값**이라 계정과 이어지지 않는다)
+      + `GuestPageView`((visitId, seq) unique). 90일 뒤 지운다(`pruneGuestActivity` — 스케줄러 없이 기록·통계 요청 때 시간당 한 번).
+    - 규칙은 서버 `backend/src/lib/guestActivity.ts` · 화면 `frontend/src/lib/guestActivity.ts`(`useGuestActivity(isAuthenticated)`, App 맨 위 — 라우터 안이어야 한다).
+      방문 = 탭 하나(sessionStorage, 30분 쉬면 새 방문) · 머문 시간은 보이는 동안만(가려지면 멈춤, 한 화면 최대 30분) · 0.7초 미만으로 넘어간 화면(리다이렉트)은 안 남긴다.
+      보내기는 `navigator.sendBeacon` + `text/plain`(헤더를 못 단다 — 서버 라우트가 `express.text` 로 받아 JSON.parse) — 화면 이동(5초 묶음)·가려짐·`pagehide`·문서 첫 화면 3·15·35초.
+    - ⚠️ **주소는 경로 + `tab`·`work` 만** — 카카오 로그인 뒤 주소에 인증 코드(`?code=`)가 실려 온다. 화면 `guestPath` 와 서버 `normalizeGuestPath` 가 같은 규칙(프론트 테스트가 서버 소스와 대조).
+    - ⚠️ 같은 화면을 여러 번 보낸다 — 머문 시간은 **더 큰 값으로만** 고친다(`updateMany … durationMs lt`, 규칙 46).
+    - ⚠️ **'떠남'(`leftAt`, pagehide)은 새 화면이 들어오면 지운다**(새로고침·카카오에서 돌아옴 = 같은 방문). 판정은 시간 갱신이 아니라 **새로 들어간 행 수**(`createMany().count`) —
+      늦게 도착한 가려짐 신호가 떠남을 지우면 안 된다. 떠남이 없으면 마지막 기록 뒤 30분은 '아직 보는 중일 수 있음'(처음엔 이게 없어 방금 끝난 방문이 전부 '보는 중'으로 보였다).
+    - 로그인하면 그 방문을 LOGIN 으로 닫고 멈춘다. 카카오 가입을 마쳤으면 SIGNUP — `AuthCallbackPage` 가 **login 전에** `noteGuestSignup()`. 가입 정보 입력 단계는 주소가 그대로라
+      `noteGuestStep('/auth/register')` 로 따로 남긴다(서버가 '가입 정보 입력'으로 읽는다 — 거기서 그만두는 사람이 가입 전환의 핵심). 새 로그인 경로를 만들면 이 둘을 볼 것.
+    - ⚠️ **이 브라우저로 로그인한 적이 있으면 기록하지 않는다**(localStorage `artlink-member-device`) — 회원이 로그아웃한 채 둘러보는 걸 비회원으로 세지 않으려고.
+      그래서 **운영자가 자기 브라우저로 확인하면 아무것도 안 쌓인다 — 시크릿 창으로 볼 것.** E2E 의 `openAs`(세션 주입)도 이 표시를 남긴다. 검색 로봇 UA 도 뺀다(HeadlessChrome 은 안 뺀다).
+    - **부하·고장 대비**(2026-10-03 배포 전 점검, 하니스 `scratchpad/guest-activity/load.mjs`):
+      - 요청은 전역 한도(300/15분)에서 빼 **별도 300/15분**(`index.ts isGuestBeacon`) — 비회원의 화면 요청 몫을 먹지 않는다. 탭 하나는 많아야 5초에 한 번이다.
+      - ⚠️ 로그인 없이 쓰는 길이라 **요청 하나가 쌓는 줄 수를 묶는다** — 한 요청 화면 10개(`GUEST_MAX_BATCH`, 화면도 10개씩 나눠 보낸다 — 프론트 테스트가 두 값을 대조) ·
+        본문 16KB · 방문당 화면 300. 키우지 말 것: 줄 수 × IP 당 한도가 곧 한 IP 가 DB 에 쌓을 수 있는 양이다.
+      - ⚠️⚠️ **통계를 방문째로 한 번에 올리지 말 것.** 처음엔 기간 안 방문을 화면째로(`include views`) 한 번에 읽었는데 2만 방문(화면 12만 줄)에서 요청 하나가
+        서버 메모리를 **약 450MB** 더 썼다(실측 228 → 673MB — 운영 서버는 512MB). 관리자가 통계 탭을 여는 순간 서버가 죽을 수 있었다.
+        지금은 `GUEST_STATS_BATCH`(2,000) 개씩 커서로 나눠 읽는다(시작 시각↓·id↓) → 2만 방문 1.1초·+90MB, 10만 방문 6초·+138MB.
+        세는 방문은 최근 **5만**까지(`GUEST_STATS_CAP` — 운영 CPU 0.5 라 시간 상한, 넘으면 화면이 "최근 5만 건만" 이라 밝힌다) · 같은 기간은 **1분 저장**(`GUEST_STATS_CACHE_MS`).
+        이름 찾기에 쓸 주소는 `groupBy(path)` 로 DB 가 묶는다(화면 줄을 끌어오지 않는다).
+      - **끄개 `GUEST_ACTIVITY=off`**(Render 환경 변수) — 받기만 하고 204, 아무것도 안 쓴다. 통계 화면은 그대로 열린다. 부하·저장 공간이 문제면 코드 배포 없이 끈다.
+      - ⚠️⚠️ **화면 쪽은 무슨 일이 있어도 던지지 않는다**(`safely`) — App 맨 위 effect 라 던지면 ErrorBoundary 까지 올라가 **사이트 전체**가 죽는다.
+        effect 둘·이벤트 셋(visibilitychange·pagehide·pageshow)·타이머·보내기를 전부 감쌌다(프론트 테스트가 소스로 지킨다). 저장소(sessionStorage)가 막혀도 메모리로 버틴다.
+      - 실측(로컬 개발 서버): 비콘 600 방문(3,929 요청)을 50개씩 동시에 — 초당 607 · p50 77ms · p99 211ms · 실패 0. 방문 하나에 요청 약 1 + 본 화면 수.
+        저장은 줄당 약 290B(색인 포함) → 90일 보관이면 하루 100 방문 ≈ 18MB · 1,000 방문 ≈ 180MB · 10,000 방문 ≈ 1.8GB(그쯤이면 끄개나 보관 기간을 볼 것).
+    - 화면 `AdminStatsSection.tsx GuestSection`: KPI(방문 · 바로 나감 % · 한 방문에 머문 시간(중간값) · 가입(로그인)) · **처음 본 화면**(공모 제목·작가 이름까지 — 광고가 보낸 곳,
+      바로 나감 %·가입) · 많이 본 화면(본 방문·평균 머문 시간) · 둘러보다 나간 곳(바로 나감·가입/로그인 제외) · 최근 방문 경로(8개 + 더 보기, 최대 40).
+      '바로 나감' = 화면 하나·30초 미만·로그인/가입 없음(`BOUNCE_MS`). 화면 이름·상세 이름은 **서버가** 붙인다(`guestPageKind` + `resolveRefs` — `@주소`는 작가/갤러리를 가른다,
+      익명 글은 제목만). ⚠️ **새 공개 화면을 만들면 `guestPageKind` 에 이름을 더할 것** — 빠지면 '기타'로 뭉친다.
+      색은 일간 방문자 그래프의 '비회원' 주황 하나(같은 대상 = 같은 색). 경로 줄은 `break-keep [overflow-wrap:anywhere]` + 화살표·시간을 `\u00a0` 로 앞뒤 낱말에 붙인다
+      (휴대폰에서 '모\n집공고'·'나\n감'으로 갈라졌다). 끝맺음은 '로그인 완료'·'가입 완료'(그냥 '로그인'이면 앞 화면 이름과 겹쳐 '로그인 3초 → 로그인').
+    - ⚠️ 새 표의 id 가 문자열(시퀀스 없음)이면 `helpers.ts` 의 `ALL_TABLES`(시퀀스 리셋 목록)에 넣지 말 것 — `"GuestVisit_id_seq" does not exist` 로 cleanDb 가 터진다. 지우기는 트랜잭션의 `deleteMany`.
+    - 개인정보처리방침 1항(수집 항목)·3항(90일 뒤 자동 삭제)에 적었다.
+    - 확인: `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문 다섯 — 바로 나감·로그인 앞에서 그만둠·작가·갤러리·커뮤니티, `ENGINE=webkit` 사파리 엔진, `--login` 은 **데모 DB 전용**) ·
+      `shot.js`(통계 칸 PC·모바일) · `load.mjs`(부하·용량 — 데모 DB 전용, 만든 줄은 `clean`).
+    - ⚠️ **Playwright 는 sendBeacon 을 `ping` 으로 보여 주고 본문을 주지 않는다**(postData null) — E2E 는 요청 **수**만 세고, 무엇이 남았는지는 통계 API 로 본다.
+      통계는 1분 저장이라 테스트마다 **다른 기간(days)** 으로 물을 것.
+    - 회귀: backend `guest-activity.test.ts`(14 — 한도·끄개·저장 포함) · frontend `guestActivity.test.ts`(20 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
+      e2e `68-guest-activity.spec.ts`(5 — 둘러본 화면이 통계에 남고 떠나면 '나감' · 로그인한 사람은 0 · 로그인하면 닫힘 · 500/끊김/저장소 막힘에도 화면 멀쩡 · 빠른 이동에 요청 ≤4).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -2096,6 +2143,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 | `['ads']` | AdSlot(사이드바 광고) | (5분 staleTime) Admin 광고 CUD |
 | `['ads-all']` | Admin 광고 관리 | 광고 CUD |
 | `['admin-export-stats', days]` | Admin [통계] 탭 '포트폴리오 PDF 저장' | (invalidate 없음 — 들어올 때 받는다) |
+| `['admin-guest-stats', days]` | Admin [통계] 탭 '비회원 둘러보기' | (invalidate 없음 — 들어올 때 받는다) |
 
 ## Deployment (Render.com)
 

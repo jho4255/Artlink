@@ -7,6 +7,7 @@ import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 import { useVisitBeacon } from '@/lib/visitBeacon';
+import { useGuestActivity } from '@/lib/guestActivity';
 import { useAuthStore } from '@/stores/authStore';
 
 // 새 배포로 청크 파일명(해시)이 바뀌면 예전 청크 import가 404 → 모바일에서 흰 화면 원인.
@@ -108,6 +109,9 @@ export default function App() {
   // 일간 방문 기록(2026-09-28, Admin [통계]) — 하루 한 번 + 로그인·로그아웃 때 한 번. 어느 화면으로 들어와도 걸리도록 맨 위에 둔다
   const userId = useAuthStore((s) => s.user?.id ?? null);
   useVisitBeacon(userId);
+  // 비회원 둘러보기(2026-10-03, Admin [통계]) — 로그인 안 한 방문이 무엇을 보고 얼마나 머물렀는지. 로그인하면 그 방문을 닫고 멈춘다
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  useGuestActivity(isAuthenticated);
   return (
     <Routes>
       <Route element={<Layout />}>

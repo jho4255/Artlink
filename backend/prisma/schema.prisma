@@ -1092,6 +1092,38 @@ model DailyVisit {
   @@index([day])
 }
 
+/// 비회원 둘러보기 — 방문 하나 (2026-10-03, Admin [통계] 탭). 로그인하지 않은 방문이 무엇을 보고 얼마나 머물렀는지.
+/// ⚠️ 사람을 알아볼 수 있는 값은 없다 — id 는 화면이 **방문마다 새로** 만드는 무작위 값이다(기기 번호 `DailyVisit.visitorId` 와 다른 값,
+///    탭을 닫거나 30분 쉬면 새로 만든다). 계정·IP 와 연결하지 않고 90일 뒤 지운다. 규칙은 `lib/guestActivity.ts`.
+model GuestVisit {
+  id         String          @id
+  startedAt  DateTime        @default(now())
+  lastSeenAt DateTime        @default(now())
+  /// 이 방문이 로그인·가입으로 이어졌는가 — LOGIN | SIGNUP (계정 번호는 남기지 않는다)
+  outcome    String?
+  /// 창을 닫거나 다른 사이트로 떠난 때(pagehide). 같은 방문이 이어지면(새로고침·카카오에서 돌아옴) 다시 비운다 —
+  /// 이게 없으면 마지막 기록 뒤 30분 동안은 나갔는지 보는 중인지 가를 수 없다
+  leftAt     DateTime?
+  views      GuestPageView[]
+
+  @@index([startedAt])
+  @@index([lastSeenAt])
+}
+
+/// 비회원 둘러보기 — 본 화면 하나. 경로는 검색어 등을 뺀 것(허용한 `tab`·`work` 만 남긴다), 머문 시간은 화면이 보이는 동안만(상한 30분).
+model GuestPageView {
+  id         Int        @id @default(autoincrement())
+  visitId    String
+  visit      GuestVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  /// 방문 안에서 몇 번째 화면인가(0부터) — 같은 화면을 다시 보내면 머문 시간만 늘린다
+  seq        Int
+  path       String
+  durationMs Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  @@unique([visitId, seq])
+}
+
 /// 포트폴리오 PDF 저장 기록 (2026-10-03, Admin [통계] 탭) — 만들기 화면에서 저장할 때마다 한 줄.
 /// 파일은 브라우저가 만들고 서버에 남지 않는다. 날짜·작가·쪽수·방식만 적는다(몇 명이 이 기능을 쓰는지 알 길이 없었다).
 /// 규칙은 `lib/exportStats.ts`.

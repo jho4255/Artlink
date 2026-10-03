@@ -2247,6 +2247,28 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 조회 `GET /api/admin/stats/visitors?days=N` → `{ rows:[{date,members,guests,total}], since }`(`lib/visitStats.ts dailyVisitorStats`, 회원=서로 다른 userId·Admin 제외, 비회원=userId 없는 기기).
 - 화면 `components/admin/AdminStatsSection.tsx`(마이페이지 Admin 탭 `stats`) + 계산 `lib/visitStatsView.ts`.
 
+### 2026-10-03 — Admin [통계] 탭 · 비회원 둘러보기 (무엇을 보고 얼마나 머물렀나)
+사용자 요청: 광고로 들어온 비회원의 가입이 적은 이유를 보려고. **들어온 경로(광고·검색·이전 사이트)는 남기지 않는다**(사용자 결정) — 들어와서 본 것과 머문 시간만.
+- 모델 `GuestVisit { id(화면이 방문마다 만드는 무작위 값), startedAt, lastSeenAt, outcome(LOGIN|SIGNUP)?, leftAt? }` ·
+  `GuestPageView { visitId, seq, path, durationMs, @@unique([visitId, seq]) }`(cascade) · 마이그레이션 `20261003200000_guest_activity`. 90일 뒤 지운다.
+- 기록 `POST /api/guest-activity { visitId, views:[{seq,path,ms}], outcome?, left? }`(204, 인증 없음 — 계정과 잇지 않는다, `text/plain` 본문도 받는다) ←
+  화면 `lib/guestActivity.ts useGuestActivity(isAuthenticated)`(App 맨 위). 기록기 `GuestTracker` 는 시계·저장소·전송을 `deps` 로 받는 상태 기계(테스트가 시계를 돌린다).
+  - 방문 = 탭 하나(sessionStorage) · 30분 쉬면 새 방문 · 머문 시간은 보이는 동안만(한 화면 최대 30분) · 0.7초 미만 화면(리다이렉트)은 버림 · 300화면까지.
+  - 보내는 때: 화면 이동(5초 묶음) · 가려짐 · `pagehide`(= 떠남 `left`) · 문서 첫 화면 3·15·35초 · bfcache 복귀(`pageshow persisted`)는 같은 화면을 새 순번으로.
+  - 로그인하면 LOGIN, 카카오 가입을 마쳤으면 SIGNUP 으로 닫고 멈춘다(`noteGuestSignup` → login). 가입 정보 입력 단계는 `noteGuestStep('/auth/register')`.
+  - 로그인한 적 있는 브라우저(`artlink-member-device`)·검색 로봇 UA 는 기록하지 않는다.
+- 서버 `lib/guestActivity.ts` — `normalizeGuestPath`(경로 + `tab`·`work` 만) · `recordGuestActivity`(createMany skipDuplicates · 시간은 더 큰 값으로만 ·
+  떠남은 **새 화면이 들어오면** 지움) · `pruneGuestActivity`(시간당 한 번) · `guestStats(days)`(요약 · 처음 본 화면 · 많이 본 화면 · 둘러보다 나간 곳 · 최근 방문 40,
+  화면 이름과 공모 제목·작가/갤러리 이름은 `guestPageKind` + `resolveRefs` 가 붙인다 — `@주소`는 작가/갤러리를 가른다).
+- 조회 `GET /api/admin/stats/guests?days=N`(1~90, Admin). 화면 `AdminStatsSection` 의 `GuestSection` + 글자 `lib/guestStatsView.ts`.
+- 요청 한도: 전역 300/15분에서 빼고 별도 300/15분(`index.ts isGuestBeacon`) · 한 요청 화면 10개(`GUEST_MAX_BATCH`, 화면이 10개씩 나눠 보냄) · 본문 16KB · 방문당 300화면.
+- 끄개 `GUEST_ACTIVITY=off` — 기록 라우트가 받기만 하고 204(아무것도 안 쓴다). 통계는 그대로.
+- 통계는 방문을 2,000개씩 커서로 나눠 읽는다(한 번에 올리면 2만 방문에서 +450MB — 운영 512MB), 최근 5만 방문까지(`capped`), 같은 기간 1분 저장.
+- 화면 쪽 기록기는 effect·이벤트·타이머·보내기를 전부 `safely` 로 감싼다(App 맨 위라 던지면 사이트 전체가 죽는다).
+- 개인정보처리방침 1항(수집 항목)·3항(90일).
+- 테스트: 백엔드 `guest-activity.test.ts`(14) · 프론트 `guestActivity.test.ts`(20) · e2e `68-guest-activity.spec.ts`(5) ·
+  하니스 `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문, 크롬·WebKit)·`shot.js`·`load.mjs`(부하·용량).
+
 
 ## 공모 흐름 UX 개편 — 등록 · 지원 · 지원자 관리 · 출품 자료 · 정산 (2026-09-29)
 로컬에서 5단계(공모 등록 → 지원 → 지원자 관리 → 출품 자료 → 정산)를 데스크톱·모바일로 끝까지 밟아 보고 "처음 온 사람이 다음에 뭘 눌러야 하는지 모른다"를
