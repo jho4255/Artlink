@@ -41,7 +41,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'ivory', ink: 'charcoal', accent: 'plum', font: 'noto',
       page: 'a4-portrait', coverLayout: 'matted', worksLayout: 'hero',
-      desc: 'full', worksCaption: 'below', proseAlign: 'left',
+      desc: 'full', worksCaption: 'below', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
   {
@@ -51,7 +51,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'white', ink: 'black', accent: 'mono', font: 'gowun',
       page: 'a4-portrait', coverLayout: 'ruleFrame', worksLayout: 'hero',
-      desc: 'none', worksCaption: 'below', proseAlign: 'left',
+      desc: 'none', worksCaption: 'below', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
   {
@@ -61,7 +61,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'white', ink: 'charcoal', accent: 'red', font: 'myeongjo',
       page: 'a4-portrait', coverLayout: 'side', worksLayout: 'feature',
-      desc: 'full', worksCaption: 'left', proseAlign: 'left',
+      desc: 'full', worksCaption: 'left', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
   {
@@ -71,7 +71,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'white', ink: 'black', accent: 'mono', font: 'gothic',
       page: 'a4-landscape', coverLayout: 'fullTint', worksLayout: 'full',
-      desc: 'none', worksCaption: 'minimal', proseAlign: 'left',
+      desc: 'none', worksCaption: 'minimal', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
   {
@@ -81,7 +81,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'ink', ink: 'white', accent: 'orange', font: 'plex',
       page: 'a4-landscape', coverLayout: 'split', worksLayout: 'hero',
-      desc: 'full', worksCaption: 'below', proseAlign: 'left',
+      desc: 'full', worksCaption: 'below', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
   {
@@ -91,7 +91,7 @@ export const DESIGN_DIRECTIONS: DesignDirection[] = [
     design: {
       bg: 'white', ink: 'charcoal', accent: 'mono', font: 'plex',
       page: 'a4-portrait', coverLayout: 'grid2x2', worksLayout: 'grid',
-      desc: 'none', worksCaption: 'below', proseAlign: 'left',
+      desc: 'none', worksCaption: 'below', proseAlign: 'left', worksProseAlign: 'left',
     },
   },
 ];

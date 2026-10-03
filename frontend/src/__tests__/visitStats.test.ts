@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { dayLabel, fmtAvg, niceMax, summarizeVisitors, trimBeforeSince, type VisitorRow } from '@/lib/visitStatsView';
+import { dayLabel, fmtAvg, niceMax, summarizeExports, summarizeVisitors, trimBeforeSince, type ExportRow, type VisitorRow } from '@/lib/visitStatsView';
 import { claimVisitSlot, kstToday, visitorId } from '@/lib/visitBeacon';
 import { myPageTabs } from '@/lib/myPageMenu';
 
@@ -61,5 +61,35 @@ describe('[통계] 탭', () => {
     const ids = (role: 'ADMIN' | 'ARTIST' | 'GALLERY' | 'VISITOR') => myPageTabs(role).map((t) => t.id);
     expect(ids('ADMIN')).toContain('stats');
     for (const r of ['ARTIST', 'GALLERY', 'VISITOR'] as const) expect(ids(r)).not.toContain('stats');
+  });
+});
+
+/** Admin [통계] — 포트폴리오 PDF 저장 (2026-10-03). 서버 규칙은 backend `portfolio-export.test.ts` 가 본다. */
+describe('포트폴리오 PDF 저장 화면 계산', () => {
+  const ex = (date: string, download: number, print: number, pptx: number, artists: number, uploaded = 0): ExportRow =>
+    ({ date, total: download + print + pptx, artists, download, print, pptx, uploaded });
+
+  it('기간 합계 — 방식별·홈페이지에 올린 횟수', () => {
+    const s = summarizeExports([ex('2026-10-01', 2, 1, 0, 2, 1), ex('2026-10-02', 0, 0, 0, 0), ex('2026-10-03', 3, 0, 1, 2, 2)]);
+    expect(s).toMatchObject({ total: 7, download: 5, print: 1, pptx: 1, uploaded: 3, last7: 7 });
+  });
+
+  it('최근 7일은 마지막 7줄만 센다', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ex(`2026-10-${String(i + 1).padStart(2, '0')}`, 1, 0, 0, 1));
+    expect(summarizeExports(rows)).toMatchObject({ total: 10, last7: 7 });
+  });
+
+  it('★ 작가 수는 더하지 않는다 — 이틀에 걸쳐 저장한 한 사람이 2명이 된다(전체 작가 수는 서버가 따로 센다)', () => {
+    expect(summarizeExports([ex('2026-10-01', 1, 0, 0, 1), ex('2026-10-02', 1, 0, 0, 1)])).not.toHaveProperty('artists');
+  });
+
+  it('집계 시작일 전의 날은 방문자와 같은 함수로 뺀다', () => {
+    const rows = [ex('2026-10-01', 0, 0, 0, 0), ex('2026-10-02', 0, 0, 0, 0), ex('2026-10-03', 1, 0, 0, 1)];
+    expect(trimBeforeSince(rows, '2026-10-03').map((r) => r.date)).toEqual(['2026-10-03']);
+    expect(trimBeforeSince(rows, null)).toEqual([]);
+  });
+
+  it('기록이 없으면 전부 0', () => {
+    expect(summarizeExports([])).toEqual({ total: 0, download: 0, print: 0, pptx: 0, uploaded: 0, last7: 0 });
   });
 });

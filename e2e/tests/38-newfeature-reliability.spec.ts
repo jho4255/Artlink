@@ -465,17 +465,30 @@ test('★ 포트폴리오 제작 화면 — 설정을 연달아 바꿔도 미리
   page.on('pageerror', (e) => errors.push(String(e)));
 
   await page.goto('/mypage?tab=portfolio');
-  // 제작 화면이 뜬다 (표지 미리보기가 그려질 때까지)
-  await expect(page.locator('body')).toContainText(/표지|판형|글꼴/, { timeout: 40000 });
+  // 제작 화면이 뜬다 (미리보기 첫 쪽이 그려질 때까지)
+  await expect(page.locator('[data-book-preview] [data-page-index="0"]')).toBeVisible({ timeout: 40000 });
 
-  // 탭 3개를 오가며 값을 여러 번 바꾼다 — 리렌더 폭주·크래시 확인
+  // 편집 묶음을 오가며 값을 여러 번 바꾼다 — 리렌더 폭주·크래시 확인 (2026-10-03 새 화면)
+  // 휴대폰은 아래 바의 탭 줄로 연다(넓은 화면은 패널이 처음부터 열려 있다)
+  await page.locator('[data-maker-bar]').getByRole('group', { name: '편집' }).getByRole('button', { name: '표지', exact: true }).click();
+  const panel = page.locator('[data-customize]');
+  const tab = (name: string) => page.getByRole('tablist', { name: '꾸미기' }).getByRole('tab', { name, exact: true });
   for (let round = 0; round < 3; round++) {
-    for (const label of ['표지', '색', '작품']) {
-      const t = page.getByRole('button', { name: new RegExp(label) }).first();
-      if (await t.count()) { await t.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(150); }
-    }
+    await tab('표지').click();
+    await panel.getByRole('button', { name: round % 2 ? '사진 위·이름 아래' : '가운데 액자', exact: true }).click();
+    await tab('작품').click();
+    await panel.getByRole('radio', { name: round % 2 ? /알아서 배치/ : /한 가지로/ }).click();
+    await tab('색·글꼴').click();
+    await panel.getByRole('button', { name: round % 2 ? '화이트' : '아이보리', exact: true }).click();
+    await tab('약력').click();
+    await panel.getByRole('button', { name: round % 2 ? '작품 뒤' : '작품 앞', exact: true }).click();
+    // 용지는 맨 위에서 따로 고른다(편집 탭이 아니다)
+    await page.getByRole('radiogroup', { name: '용지' }).getByRole('radio', { name: round % 2 ? '세로 A4' : '가로 A4', exact: true }).click();
+    await page.waitForTimeout(150);
   }
   await page.waitForTimeout(800);
+  // 미리보기가 살아 있다 — 쪽이 그대로 그려져 있다
+  expect(await page.locator('[data-book-preview] [data-page-index]').count()).toBeGreaterThan(1);
   expect(errors, `제작 화면에서 JS 에러: ${errors.join(' | ')}`).toHaveLength(0);
   await ctx.close();
 });

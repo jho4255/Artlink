@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PORTFOLIO_THEMES, buildPortfolioPages, bookImageUrls, estimateParaH, splitCvColumns, splitParagraphs, themeById,
   normalizePdfDesign, applyDesign, PAGE_DIMS, COVER_LAYOUTS, proseText,
+  portfolioName, portfolioFileName, contactRows, hasContactPage,
   type PortfolioBookData,
 } from '../lib/portfolioFormats';
 import { mixHex } from '../lib/portfolioColors';
@@ -599,6 +600,12 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     coverImageIds: [], coverImageScale: 1, coverTextScale: 1,
     // 캡션은 국내식(작품명, 연도 / 재료 / 크기) · 프로필 사진 · 작품 목록은 기본 켬
     captionStyle: 'kr', artistPhoto: true, worksIndex: true,
+    // 문서에 찍는 이름은 실명 · 연락처는 전부 싣는다(2026-10-03 사용자 결정)
+    nameSource: 'real', contact: { email: true, phone: true, instagram: true, web: true },
+    // 쪽마다 따로(2026-10-03): 작품 쪽 글 정렬 · 약력 탭(전부 싣기 · 작품 뒤 · 자동 단 · 영문 머리말) · 마지막 장 사진
+    worksProseAlign: 'justify',
+    cvShow: { statement: true, bio: true, education: true, solo: true, group: true, artFair: true, award: true },
+    cvPosition: 'after', cvColumns: 'auto', cvEnglish: true, contactPhoto: true,
     auto: true, direction: null,
   };
 
@@ -609,7 +616,9 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     expect(normalizePdfDesign({ bg: 'neon', ink: 'zz', accent: 'qq', worksLayout: 'zz', desc: 'x', page: 'z', font: 'z', worksCaption: 'zz', coverLayout: 'zz' }))
       .toEqual({ ...DEFAULT_DESIGN, auto: false });
     // 명시값 그대로 보존(round-trip)
-    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, captionStyle: 'intl', artistPhoto: false, worksIndex: false, auto: false, direction: 'gallery' };
+    const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, captionStyle: 'intl', artistPhoto: false, worksIndex: false, nameSource: 'nickname', contact: { email: true, phone: false, instagram: false, web: true }, auto: false, direction: 'gallery',
+      worksProseAlign: 'left', cvShow: { statement: false, bio: true, education: true, solo: true, group: false, artFair: true, award: false },
+      cvPosition: 'before', cvColumns: 'two', cvEnglish: false, contactPhoto: true };
     expect(normalizePdfDesign(explicit)).toEqual(explicit);
     // 옛 단일값(coverImageId) → 배열 마이그레이션
     expect(normalizePdfDesign({ coverImageId: 7 }).coverImageIds).toEqual([7]);
@@ -1150,6 +1159,263 @@ describe('작품 설명 — 자르지 않는다', () => {
       .find((p) => p.kind === 'works')!.html;
     expect(html).toMatch(/display:flex;align-items:center;gap:48px/);   // 옆 캡션 배치인지 먼저 확인
     expect(html).not.toMatch(/text-align:justify[^"]*"[^>]*>작품 속/);
+  });
+});
+
+
+// ── 이름 · 연락처 (2026-10-03, 포트폴리오 만들기 화면 개편) ──
+// 예전엔 표지 이름이 늘 닉네임 우선이었고, 마지막 장에는 이메일·전화번호·인스타·홈페이지 QR 이 전부 자동으로 실렸다.
+// 실서버 작가 47명 중 18명은 닉네임이 실명과 다르고 47명 전원이 전화번호를 등록해 두었는데, 무엇이 찍히는지는 저장한 뒤에야 알았다.
+describe('문서에 찍는 이름 — 실명이 기본', () => {
+  const d: PortfolioBookData = {
+    ...base,
+    user: { ...base.user, name: '홍길동', nickname: 'moonriver' },
+    homepageUrl: 'https://artlink.cc/@moonriver',
+  };
+  const text = (design?: Record<string, unknown>) =>
+    buildPortfolioPages(d, themeById('archive'), { design }).map((p) => p.html.replace(/<[^>]+>/g, ' ')).join(' ');
+
+  it('★ 기본은 실명 — 표지·머리말·CV·마지막 장 어디에도 닉네임이 찍히지 않는다', () => {
+    const pages = buildPortfolioPages(d, themeById('archive'));
+    for (const p of pages) expect(p.html, p.label).toContain('홍길동');
+    // 닉네임은 마지막 장의 홈페이지 주소(@moonriver)로만 나온다 — 이름 자리에는 없다
+    const t = text().replace(/artlink\.cc\/@moonriver/g, '');
+    expect(t).not.toContain('moonriver');
+  });
+
+  it('닉네임을 고르면 모든 장이 닉네임으로 바뀐다', () => {
+    const pages = buildPortfolioPages(d, themeById('archive'), { design: { nameSource: 'nickname' } });
+    expect(pages[0]!.html).toContain('moonriver');
+    for (const p of pages) expect(p.html, p.label).not.toContain('홍길동');
+  });
+
+  it('닉네임이 없으면 닉네임을 골라도 실명이다 (빈 표지 금지)', () => {
+    expect(portfolioName({ name: '홍길동', nickname: null }, 'nickname')).toBe('홍길동');
+    expect(portfolioName({ name: '홍길동', nickname: '  ' }, 'nickname')).toBe('홍길동');
+    expect(portfolioName({ name: '홍길동', nickname: 'moon' }, 'nickname')).toBe('moon');
+    expect(portfolioName({ name: '홍길동', nickname: 'moon' })).toBe('홍길동');
+    expect(portfolioName({ name: '', nickname: 'moon' }, 'real')).toBe('moon');
+  });
+
+  it('내려받는 파일 이름도 같은 규칙을 따른다', () => {
+    expect(portfolioFileName(d, null)).toBe('홍길동_포트폴리오');
+    expect(portfolioFileName(d, { nameSource: 'nickname' })).toBe('moonriver_포트폴리오');
+  });
+
+  it('옛 저장값(키 없음)은 실명 · 연락처 전부 켬으로 읽힌다', () => {
+    const n = normalizePdfDesign({ bg: 'ivory', coverLayout: 'matted' });
+    expect(n.nameSource).toBe('real');
+    expect(n.contact).toEqual({ email: true, phone: true, instagram: true, web: true });
+    expect(normalizePdfDesign({ contact: { phone: false } }).contact).toEqual({ email: true, phone: false, instagram: true, web: true });
+    expect(normalizePdfDesign({ contact: 'x', nameSource: 'x' })).toMatchObject({ nameSource: 'real', contact: { email: true, phone: true, instagram: true, web: true } });
+  });
+});
+
+describe('마지막 장의 연락처 — 항목마다 켜고 끈다', () => {
+  const d: PortfolioBookData = { ...base, homepageUrl: 'https://artlink.cc/@handle' };
+  const last = (design?: Record<string, unknown>) => {
+    const pages = buildPortfolioPages(d, themeById('archive'), { design });
+    return pages[pages.length - 1]!;
+  };
+
+  it('기본은 전부 싣는다 (이메일·전화번호·인스타·홈페이지 + QR)', () => {
+    const p = last();
+    expect(p.kind).toBe('contact');
+    expect(p.html).toContain('a@b.com');
+    expect(p.html).toContain('010-0000-0000');
+    expect(p.html).toContain('@handle');
+    expect(p.html).toContain('artlink.cc/@handle');
+    expect(p.html).toContain('<svg');   // QR
+  });
+
+  it('★ 끈 항목은 찍히지 않는다 — 전화번호만 끄면 전화번호만 빠진다', () => {
+    const p = last({ contact: { phone: false } });
+    expect(p.html).not.toContain('010-0000-0000');
+    expect(p.html).toContain('a@b.com');
+    expect(p.html).toContain('artlink.cc/@handle');
+  });
+
+  it('홈페이지 주소를 끄면 QR 도 함께 빠진다 (같은 것을 가리킨다)', () => {
+    const p = last({ contact: { web: false } });
+    expect(p.html).not.toContain('artlink.cc/@handle');
+    expect(p.html).not.toContain('<svg');
+    expect(p.html).toContain('a@b.com');
+  });
+
+  it('★ 전부 끄고 프로필 사진도 없으면 마지막 장을 만들지 않는다 (이름만 뜬 빈 장 금지)', () => {
+    const off = { contact: { email: false, phone: false, instagram: false, web: false } };
+    const pages = buildPortfolioPages(d, themeById('archive'), { design: off });
+    expect(pages.some((p) => p.kind === 'contact')).toBe(false);
+    expect(pages[pages.length - 1]!.kind).toBe('cv');
+    expect(hasContactPage(d, normalizePdfDesign(off))).toBe(false);
+    // 프로필 사진이 있으면 그 장은 남는다(사진이 닫는 장을 채운다)
+    const withPhoto = { ...d, user: { ...d.user, avatar: 'https://x/me.jpg' } };
+    expect(hasContactPage(withPhoto, normalizePdfDesign(off))).toBe(true);
+    expect(hasContactPage(withPhoto, normalizePdfDesign({ ...off, artistPhoto: false }))).toBe(false);
+  });
+
+  it('contactRows — 값이 있는 것만, 지면에 놓이는 순서대로 (화면의 체크 목록과 같은 출처)', () => {
+    expect(contactRows(d).map((r) => r.key)).toEqual(['email', 'phone', 'instagram', 'web']);
+    expect(contactRows({ user: { name: '가', email: 'a@b.com' }, homepageUrl: null }).map((r) => r.key)).toEqual(['email']);
+    expect(contactRows(d).find((r) => r.key === 'web')!.value).toBe('artlink.cc/@handle');
+    expect(contactRows(d).find((r) => r.key === 'instagram')!.value).toBe('@handle');
+  });
+});
+
+// ── 미리보기 사진 (2026-10-03) ──
+// 제작 화면이 탭을 열 때마다 원본을 전부 받고 있었다(실측: 실제 작가 8점 5.7MB · 30점 23.5MB).
+// 미리보기는 작품 격자와 같은 800px 썸네일을 쓴다 — 다만 **배치는 PDF 와 한 글자도 달라선 안 된다**(미리보기 = 결과물이라는 약속).
+describe('미리보기는 썸네일로 그린다 — 배치는 PDF 와 같다', () => {
+  const srcOnly = (h: string) => h.replace(/ data-full="[^"]*"/g, '').replace(/ crossorigin="anonymous"/g, '')
+    .replace(/ loading="lazy" decoding="async"/g, '').replace(/src="[^"]*"/g, 'src=""');
+  const designs: Record<string, unknown>[] = [{}, { auto: false, worksLayout: 'grid' }, { auto: false, worksLayout: 'label', desc: 'full' }, { coverLayout: 'grid2x2', page: 'a4-landscape' }];
+
+  it('★ 사진 주소를 빼면 미리보기·화면·PDF 의 HTML 이 같다', () => {
+    for (const design of designs) {
+      const display = buildPortfolioPages(base, themeById('archive'), { design });
+      const preview = buildPortfolioPages(base, themeById('archive'), { design, preview: true });
+      const pdf = buildPortfolioPages(base, themeById('archive'), { design, forPdf: true });
+      expect(preview.length, JSON.stringify(design)).toBe(display.length);
+      preview.forEach((p, i) => {
+        expect(srcOnly(p.html), `${JSON.stringify(design)} ${p.label}`).toBe(srcOnly(display[i]!.html));
+        expect(srcOnly(p.html), `${JSON.stringify(design)} ${p.label} (pdf)`).toBe(srcOnly(pdf[i]!.html));
+      });
+    }
+  });
+
+  it('미리보기의 사진은 t800 썸네일 + 원본 주소(data-full, 썸네일이 없을 때 되돌릴 곳)', () => {
+    const html = buildPortfolioPages(base, themeById('archive'), { preview: true }).map((p) => p.html).join('');
+    expect(html).toContain('src="https://x/t800/1.jpg"');
+    expect(html).toContain('data-full="https://x/1.jpg"');
+    expect(html).not.toMatch(/src="https:\/\/x\/\d+\.jpg"/);   // 원본을 직접 싣는 img 가 없다
+  });
+
+  it('화면(크게 보기)·PDF 는 원본을 쓴다 — 썸네일을 늘리면 뭉개진다', () => {
+    const html = buildPortfolioPages(base, themeById('archive')).map((p) => p.html).join('');
+    expect(html).toContain('src="https://x/1.jpg"');
+    expect(html).not.toContain('/t800/');
+  });
+
+  it('data: 주소(목업의 자리표시 그림)는 건드리지 않는다', () => {
+    const gray = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3C/svg%3E";
+    const html = buildPortfolioPages({ ...base, images: [img({ id: 1, url: gray })] }, themeById('archive'), { preview: true }).map((p) => p.html).join('');
+    expect(html).not.toContain('t800');
+    expect(html).not.toContain('data-full');
+  });
+});
+
+/**
+ * 한 탭의 옵션은 그 쪽만 바꾼다 — [약력] 탭 신설 (2026-10-03 사용자 결정).
+ * 예전엔 '글 정렬' 하나가 작가노트·시리즈 소개·약력을, '프로필 사진' 하나가 작가노트·마지막 장을 함께 바꿨다. 약력 쪽에는 고를 것이 없었다.
+ */
+describe('약력 탭 · 쪽마다 따로', () => {
+  const withAvatar: PortfolioBookData = {
+    ...base,
+    user: { ...base.user, avatar: '/uploads/me.jpg' },
+    career: {
+      education: [{ year: '2015', content: '한국예술종합학교 졸업' }],
+      solo: [{ year: '2025', content: '개인전 〈산〉' }],
+      group: [{ year: '2024', content: '단체전 〈물〉' }],
+      artFair: [{ year: '2023', content: '화랑미술제' }],
+      award: [{ year: '2022', content: '신진작가상' }],
+    },
+  };
+  const build = (design: Record<string, unknown>, d: PortfolioBookData = withAvatar) => buildPortfolioPages(d, themeById('archive'), { design });
+  const cvHtml = (design: Record<string, unknown>, d?: PortfolioBookData) => build(design, d).filter((p) => p.kind === 'cv').map((p) => p.html).join('');
+
+  it('싣는 항목 — 끈 항목만 빠지고 나머지는 그대로', () => {
+    const all = cvHtml({});
+    for (const t of ['한국예술종합학교 졸업', '개인전 〈산〉', '단체전 〈물〉', '화랑미술제', '신진작가상', '약력 본문']) expect(all, t).toContain(t);
+    const noAward = cvHtml({ cvShow: { award: false } });
+    expect(noAward).not.toContain('신진작가상');
+    expect(noAward).not.toContain('수상 및 선정');
+    expect(noAward).toContain('화랑미술제');
+    const noBio = cvHtml({ cvShow: { bio: false } });
+    expect(noBio).not.toContain('약력 본문');
+    expect(noBio).toContain('개인전 〈산〉');
+  });
+
+  it('작가노트를 끄면 작가노트 쪽이 없다 · 약력을 다 끄면 약력 쪽이 없다(머리말만 남은 빈 쪽을 만들지 않는다)', () => {
+    expect(build({}).some((p) => p.part === 'statement')).toBe(true);
+    expect(build({ cvShow: { statement: false } }).some((p) => p.part === 'statement' || p.label === '작가노트')).toBe(false);
+    const none = build({ cvShow: { bio: false, education: false, solo: false, group: false, artFair: false, award: false } });
+    expect(none.some((p) => p.kind === 'cv')).toBe(false);
+    expect(none[none.length - 1]!.kind).toBe('contact');
+  });
+
+  it('약력 자리 — 작품 뒤(기본) | 작품 앞(작가노트 다음). 작품 목록의 쪽번호는 옮긴 뒤의 번호다', () => {
+    const many: PortfolioBookData = { ...withAvatar, seriesInfo: [], images: Array.from({ length: 7 }, (_, i) => img({ id: i + 1, title: `작품 ${i + 1}` })) };
+    const after = build({ worksIndex: true }, many);
+    const firstWorks = (ps: typeof after) => ps.findIndex((p) => p.kind === 'works');
+    expect(after.findIndex((p) => p.kind === 'cv')).toBeGreaterThan(firstWorks(after));
+    const before = build({ worksIndex: true, cvPosition: 'before' }, many);
+    const cvAt = before.findIndex((p) => p.kind === 'cv');
+    expect(cvAt).toBeLessThan(firstWorks(before));
+    expect(before[cvAt - 1]!.part).toBe('statement');      // 작가노트 바로 다음
+    // 작품 목록이 가리키는 쪽 = 그 작품이 실제로 실린 쪽(1부터)
+    const idx = before.find((p) => p.kind === 'index')!;
+    const realPage = before.findIndex((p) => (p.workIds ?? []).includes(1)) + 1;
+    expect(idx.html).toContain(`p. ${realPage}<`);
+    expect(idx.html).not.toContain(`p. ${realPage - 1}<`);   // 약력 쪽을 앞에 넣기 전의 번호가 아니다
+    expect(before.length).toBe(after.length);
+  });
+
+  it('경력 단 수 — 자동은 용지를 따르고, 한 단·두 단은 고른 대로', () => {
+    const cols = (html: string) => (html.match(/<div style="flex:1;min-width:0">/g) ?? []).length;
+    expect(cols(cvHtml({ page: 'a4-portrait' }))).toBe(1);
+    expect(cols(cvHtml({ page: 'a4-landscape' }))).toBe(2);
+    expect(cols(cvHtml({ page: 'a4-portrait', cvColumns: 'two' }))).toBe(2);
+    expect(cols(cvHtml({ page: 'a4-landscape', cvColumns: 'one' }))).toBe(1);
+  });
+
+  it('영문 머리말을 끄면 EDUCATION 같은 영문이 빠지고 한글 이름은 남는다', () => {
+    expect(cvHtml({})).toContain('SOLO EXHIBITIONS');
+    const off = cvHtml({ cvEnglish: false });
+    expect(off).not.toContain('SOLO EXHIBITIONS');
+    expect(off).not.toContain('EDUCATION');
+    expect(off).toContain('개인전');
+  });
+
+  it('★ 글 정렬은 쪽마다 따로 — 작가노트·약력은 [약력] 탭, 시리즈 소개는 [작품] 탭', () => {
+    const ps = build({ proseAlign: 'right', worksProseAlign: 'left' });
+    const statement = ps.find((p) => p.part === 'statement')!.html;
+    const series = ps.find((p) => p.label === '산 소개')!.html;
+    const cv = ps.find((p) => p.kind === 'cv')!.html;
+    expect(statement).toContain('text-align:right');
+    expect(cv).toContain('text-align:right');
+    expect(series).not.toContain('text-align:right');
+    // 반대로도
+    const ps2 = build({ proseAlign: 'left', worksProseAlign: 'right' });
+    expect(ps2.find((p) => p.label === '산 소개')!.html).toContain('text-align:right');
+    expect(ps2.find((p) => p.part === 'statement')!.html).not.toContain('text-align:right');
+  });
+
+  it('★ 프로필 사진은 쪽마다 따로 — 작가노트 쪽(artistPhoto)과 마지막 장(contactPhoto)', () => {
+    const photo = (html: string) => html.includes('background-image');
+    const a = build({ artistPhoto: false, contactPhoto: true });
+    expect(photo(a.find((p) => p.part === 'statement')!.html)).toBe(false);
+    expect(photo(a.find((p) => p.kind === 'contact')!.html)).toBe(true);
+    const b = build({ artistPhoto: true, contactPhoto: false });
+    expect(photo(b.find((p) => p.part === 'statement')!.html)).toBe(true);
+    expect(photo(b.find((p) => p.kind === 'contact')!.html)).toBe(false);
+  });
+
+  it('옛 저장값은 하나였던 값을 둘 다 물려받는다 — 모양이 바뀌지 않게', () => {
+    const d = normalizePdfDesign({ proseAlign: 'left', artistPhoto: false });
+    expect(d.worksProseAlign).toBe('left');
+    expect(d.contactPhoto).toBe(false);
+    // 새 값이 있으면 그것
+    expect(normalizePdfDesign({ proseAlign: 'left', worksProseAlign: 'right' }).worksProseAlign).toBe('right');
+    expect(normalizePdfDesign({ artistPhoto: false, contactPhoto: true }).contactPhoto).toBe(true);
+    // 깨진 값은 기본
+    const bad = normalizePdfDesign({ cvPosition: 'middle', cvColumns: 3, cvShow: 'x' });
+    expect(bad.cvPosition).toBe('after');
+    expect(bad.cvColumns).toBe('auto');
+    expect(Object.values(bad.cvShow).every(Boolean)).toBe(true);
+  });
+
+  it('기본값으로는 예전과 같은 책이 나온다(쪽 구성·순서)', () => {
+    expect(labels(base)).toEqual(['표지', '작가노트', '산 소개', '산', '작품', 'CV', '연락처']);
   });
 });
 

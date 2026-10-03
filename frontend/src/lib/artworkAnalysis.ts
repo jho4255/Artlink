@@ -72,27 +72,43 @@ export const measuredAspect = (url: string): number | undefined => measured.get(
 /**
  * 사진 비율을 잰다 — `naturalWidth/Height` 만 읽으므로 **CORS 와 무관**하다(픽셀을 안 읽는다).
  * 이미 잰 주소는 건너뛴다. 새로 잰 게 하나라도 있으면 true.
+ *
+ * `via` 를 주면 그 주소(작은 썸네일)를 대신 받아 잰다 — 비율은 같고 받는 양이 수십 분의 일이다.
+ * 썸네일이 없으면(404) 원본으로 한 번 더 잰다. 캐시의 열쇠는 늘 **원본 주소**다.
  */
-export async function measureAspects(urls: string[]): Promise<boolean> {
+export async function measureAspects(urls: string[], via?: (url: string) => string): Promise<boolean> {
   const todo = [...new Set(urls.filter((u) => u && !measured.has(u) && !failed.has(u)))];
   if (todo.length === 0) return false;
   await Promise.all(todo.map((url) => new Promise<void>((done) => {
     const im = new Image();
+    const first = via ? via(url) : url;
     im.onload = () => {
       if (im.naturalWidth > 0 && im.naturalHeight > 0) measured.set(url, im.naturalWidth / im.naturalHeight);
       else failed.add(url);
       done();
     };
-    im.onerror = () => { failed.add(url); done(); };
-    im.src = url;
+    im.onerror = () => {
+      if (first !== url && !im.dataset.retried) { im.dataset.retried = '1'; im.src = url; return; }
+      failed.add(url); done();
+    };
+    im.src = first;
   })));
   return todo.some((u) => measured.has(u));
 }
 
-/** 지금까지 잰 값들을 엔진에 넘길 형태로 (url → aspect) */
-export function aspectMap(images: Pick<PortfolioImage, 'url'>[]): Record<string, number> {
+/**
+ * 서버가 업로드 때 잰 픽셀 크기(`PortfolioImage.width/height`, 2026-09-16) → 비율. 없으면 null.
+ * 이게 있으면 사진을 받아 볼 필요가 없다 — 제작 화면이 비율을 재려고 원본을 전부 받고 있었다(2026-10-02 실측 30점 23.5MB).
+ */
+export function dimsAspect(a: Pick<PortfolioImage, 'width' | 'height'>): number | null {
+  const w = Number(a.width), h = Number(a.height);
+  return w > 0 && h > 0 ? w / h : null;
+}
+
+/** 지금 아는 비율들을 엔진에 넘길 형태로 (url → aspect) — 사진 실측이 먼저, 없으면 서버가 잰 크기 */
+export function aspectMap(images: Pick<PortfolioImage, 'url' | 'width' | 'height'>[]): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const i of images) { const a = measured.get(i.url); if (a) out[i.url] = a; }
+  for (const i of images) { const a = measured.get(i.url) ?? dimsAspect(i); if (a) out[i.url] = a; }
   return out;
 }
 
@@ -114,7 +130,7 @@ export interface ArtworkFacts {
 
 export function artworkFacts(a: PortfolioImage, aspects?: Record<string, number> | null): ArtworkFacts {
   const bySize = parseAspect(a.sizeText);
-  const byImage = aspects?.[a.url] ?? measured.get(a.url) ?? null;
+  const byImage = aspects?.[a.url] ?? measured.get(a.url) ?? dimsAspect(a);
   const aspect = byImage ?? bySize ?? 1;
   return {
     aspect,

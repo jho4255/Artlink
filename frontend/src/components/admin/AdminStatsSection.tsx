@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
-import { dayLabel, fmtAvg, niceMax, summarizeVisitors, trimBeforeSince, type VisitorRow } from '@/lib/visitStatsView';
+import {
+  dayLabel, fmtAvg, niceMax, summarizeExports, summarizeVisitors, trimBeforeSince, type ExportRow, type VisitorRow,
+} from '@/lib/visitStatsView';
 
 /**
- * Admin [통계] 탭 (2026-09-28) — 지금은 **일간 방문자(회원/비회원)** 하나. 새 지표는 이 탭 안에 섹션으로 더한다.
+ * Admin [통계] 탭 (2026-09-28) — **일간 방문자(회원/비회원)** · **포트폴리오 PDF 저장**(2026-10-03). 새 지표는 이 탭 안에 섹션으로 더한다.
+ * 기간(7·30·90일)은 맨 위에서 한 번 고르고 모든 섹션이 따른다 — 섹션마다 따로 두면 같은 이름의 버튼이 여러 벌 생긴다.
  *
  * 세는 규칙은 서버 `backend/src/lib/visitStats.ts`: 기기×KST 날짜 한 줄, 회원 = 그날 서로 다른 회원 수(관리자 제외),
  * 비회원 = 로그인 안 한 기기 수. 비회원으로 들어와 로그인하면 회원 1명.
@@ -19,6 +22,7 @@ const PERIODS = [7, 30, 90] as const;
 const CHART_H = 180;
 
 interface VisitorStats { rows: VisitorRow[]; since: string | null }
+interface ExportStats { rows: ExportRow[]; since: string | null; totals: { saves: number; artists: number } }
 
 export default function AdminStatsSection() {
   const [days, setDays] = useState<(typeof PERIODS)[number]>(30);
@@ -34,28 +38,29 @@ export default function AdminStatsSection() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-serif text-gray-900">통계</h2>
-        <p className="mt-1 text-sm text-gray-500">사이트를 찾은 사람 수를 날마다 셉니다. 날짜는 한국 시간 기준입니다.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-serif text-gray-900">통계</h2>
+          <p className="mt-1 text-sm text-gray-500">날마다 셉니다. 날짜는 한국 시간 기준입니다.</p>
+        </div>
+        <div role="group" aria-label="기간" className="flex rounded-lg border border-gray-200 p-0.5 text-sm">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              aria-pressed={days === p}
+              onClick={() => setDays(p)}
+              className={`min-h-[36px] rounded-md px-3 ${days === p ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'}`}
+            >
+              {p}일
+            </button>
+          ))}
+        </div>
       </div>
 
       <section className="rounded-2xl border border-gray-200 p-4 md:p-6" aria-labelledby="stats-daily-visitors">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 id="stats-daily-visitors" className="text-base font-medium text-gray-900">일간 방문자</h3>
-          <div role="group" aria-label="기간" className="flex rounded-lg border border-gray-200 p-0.5 text-sm">
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                aria-pressed={days === p}
-                onClick={() => setDays(p)}
-                className={`min-h-[36px] rounded-md px-3 ${days === p ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                {p}일
-              </button>
-            ))}
-          </div>
-        </div>
+        <h3 id="stats-daily-visitors" className="text-base font-medium text-gray-900">일간 방문자</h3>
+        <p className="mt-0.5 text-sm text-gray-500">사이트를 찾은 사람 수.</p>
 
         {isLoading ? (
           <div className="mt-5 h-64 animate-pulse rounded-xl bg-gray-50" />
@@ -80,7 +85,157 @@ export default function AdminStatsSection() {
           </>
         )}
       </section>
+
+      <ExportSection days={days} />
     </div>
+  );
+}
+
+/**
+ * 포트폴리오 PDF 저장 (2026-10-03) — 작가가 [포트폴리오] 탭에서 PDF 를 저장할 때마다 한 줄씩 쌓인다(`backend/src/lib/exportStats.ts`).
+ * 만들기 화면을 고친 효과를 보려고 만들었다 — 그 전에는 몇 명이 이 기능을 쓰는지 알 길이 없었다.
+ * 계열이 하나라 범례를 두지 않는다(제목이 곧 이름). 방식별 숫자는 표에서 본다.
+ * ⚠️ '작가 수'를 날짜끼리 더하지 말 것 — 이틀에 걸쳐 저장한 한 사람이 2명이 된다. 전체 작가 수는 서버가 따로 센다(`totals.artists`).
+ */
+function ExportSection({ days }: { days: number }) {
+  const { data, isLoading, isError } = useQuery<ExportStats>({
+    queryKey: ['admin-export-stats', days],
+    queryFn: () => api.get(`/admin/stats/portfolio-exports?days=${days}`).then((r) => r.data),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+  const rows = trimBeforeSince(data?.rows ?? [], data?.since ?? null);
+  const sum = summarizeExports(rows);
+  const tile = (label: string, value: string, unit: string, sub: string) => (
+    <div className="min-w-0 rounded-xl bg-gray-50 px-4 py-3">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{value}<span className="ml-0.5 text-sm font-normal text-gray-500">{unit}</span></p>
+      <p className="mt-0.5 text-xs tabular-nums text-gray-600">{sub}</p>
+    </div>
+  );
+
+  return (
+    <section className="rounded-2xl border border-gray-200 p-4 md:p-6" aria-labelledby="stats-pdf-exports">
+      <h3 id="stats-pdf-exports" className="text-base font-medium text-gray-900">포트폴리오 PDF 저장</h3>
+      <p className="mt-0.5 text-sm text-gray-500">작가가 [포트폴리오] 탭에서 PDF·PPT 를 저장한 횟수.</p>
+
+      {isLoading ? (
+        <div className="mt-5 h-48 animate-pulse rounded-xl bg-gray-50" />
+      ) : isError ? (
+        <p className="mt-5 text-sm text-accent">통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>
+      ) : !data?.since ? (
+        <p className="mt-5 rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+          아직 기록이 없습니다. 작가가 포트폴리오 PDF 를 저장하면 여기에 하루 단위로 쌓입니다.
+        </p>
+      ) : (
+        <>
+          <div data-testid="export-kpis" className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {tile('최근 7일', String(sum.last7), '회', `이 기간(${rows.length}일) 합계 ${sum.total}회`)}
+            {tile('지금까지', String(data.totals.saves), '회', `저장한 작가 ${data.totals.artists}명`)}
+            {tile('홈페이지에도 올림', String(sum.uploaded), '회', `이 기간 저장의 ${sum.total ? Math.round((sum.uploaded / sum.total) * 100) : 0}%`)}
+          </div>
+          <ExportChart rows={rows} />
+          <p className="mt-3 text-xs leading-relaxed text-gray-400">
+            저장할 때마다 1회(같은 작가가 여러 번 저장하면 여러 번) · 인쇄 창은 창을 연 횟수(그 안에서 실제로 저장했는지는 알 수 없습니다) · 집계 시작 {data.since}
+          </p>
+          <details className="mt-4 text-sm">
+            <summary className="cursor-pointer select-none text-gray-500 hover:text-gray-900">표로 보기</summary>
+            <div className="mt-3 max-h-80 overflow-auto rounded-lg border border-gray-100">
+              <table data-testid="export-table" className="w-full text-sm tabular-nums">
+                <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">날짜</th>
+                    <th className="px-3 py-2 text-right font-medium">저장</th>
+                    <th className="px-3 py-2 text-right font-medium">작가</th>
+                    <th className="px-3 py-2 text-right font-medium">내려받기</th>
+                    <th className="px-3 py-2 text-right font-medium">인쇄 창</th>
+                    <th className="px-3 py-2 text-right font-medium">PPT</th>
+                    <th className="px-3 py-2 text-right font-medium">홈페이지에 올림</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...rows].reverse().map((r) => (
+                    <tr key={r.date} className="border-t border-gray-100">
+                      <td className="whitespace-nowrap px-3 py-1.5 text-gray-700">{r.date} ({dayLabel(r.date).weekday})</td>
+                      <td className="px-3 py-1.5 text-right font-medium text-gray-900">{r.total}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-900">{r.artists}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-900">{r.download}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-900">{r.print}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-900">{r.pptx}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-900">{r.uploaded}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 날짜별 저장 횟수 — 막대 하나짜리(계열 1개). 올리거나 누르면 그날의 횟수·작가 수가 뜬다 */
+function ExportChart({ rows }: { rows: ExportRow[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const H = 140;
+  const max = niceMax(Math.max(0, ...rows.map((r) => r.total)));
+  const every = rows.length <= 10 ? 1 : rows.length <= 40 ? 7 : 14;
+  const h = (n: number) => (n / max) * H;
+  const tip = hover !== null ? rows[hover] : null;
+  return (
+    <figure className="mt-6" aria-label="날짜별 포트폴리오 PDF 저장 막대 그래프">
+      <div className="flex">
+        <div className="relative mr-2 w-8 shrink-0 text-right text-[11px] tabular-nums text-gray-400" style={{ height: H }}>
+          {[max, max / 2, 0].map((v, i) => (
+            <span key={i} className="absolute right-0 -translate-y-1/2" style={{ top: H - h(v) }}>{fmtAvg(v)}</span>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1">
+          {[max, max / 2].map((v, i) => (
+            <div key={i} aria-hidden className="absolute inset-x-0 border-t border-dashed border-gray-200" style={{ top: H - h(v) }} />
+          ))}
+          <div aria-hidden className="absolute inset-x-0 border-t border-gray-300" style={{ top: H }} />
+          <div data-testid="export-bars" className="relative flex items-end" style={{ height: H }} onMouseLeave={() => setHover(null)}>
+            {rows.map((r, i) => {
+              const { md, weekday } = dayLabel(r.date);
+              return (
+                <button
+                  key={r.date}
+                  type="button"
+                  aria-label={`${md}(${weekday}) 저장 ${r.total}회 · 작가 ${r.artists}명`}
+                  onMouseEnter={() => setHover(i)}
+                  onFocus={() => setHover(i)}
+                  onBlur={() => setHover(null)}
+                  onClick={() => setHover(i)}
+                  className={`flex h-full min-w-0 flex-1 cursor-default flex-col-reverse items-center px-[1px] focus:outline-none ${hover === i ? 'bg-gray-100/70' : ''}`}
+                >
+                  {r.total > 0 && <span className="block w-[70%] max-w-[28px] rounded-t-[4px]" style={{ height: h(r.total), background: MEMBER }} />}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-1.5 flex text-[11px] tabular-nums text-gray-400">
+            {rows.map((r, i) => {
+              const show = i === rows.length - 1 || (rows.length - 1 - i) % every === 0;
+              return <span key={r.date} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center">{show ? dayLabel(r.date).md : ''}</span>;
+            })}
+          </div>
+          {tip && hover !== null && (
+            // role="status" 를 쓰지 않는다 — 방문자 차트의 풍선과 같은 화면에 둘이 되면 낭독기·테스트가 어느 것인지 가릴 수 없다
+            <div
+              data-testid="export-tip"
+              className="pointer-events-none absolute top-0 z-10 w-max -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm"
+              style={{ left: `clamp(56px, ${((hover + 0.5) / rows.length) * 100}%, calc(100% - 56px))` }}
+            >
+              <p className="font-medium text-gray-900">{dayLabel(tip.date).md} ({dayLabel(tip.date).weekday})</p>
+              <p className="mt-1 flex text-gray-600">저장 <b className="ml-auto pl-3 tabular-nums text-gray-900">{tip.total}회</b></p>
+              <p className="flex text-gray-600">작가 <b className="ml-auto pl-3 tabular-nums text-gray-900">{tip.artists}명</b></p>
+            </div>
+          )}
+        </div>
+      </div>
+    </figure>
   );
 }
 

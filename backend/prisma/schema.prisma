@@ -40,6 +40,7 @@ model User {
   applications          Application[]
   notifications         Notification[]
   dailyVisits           DailyVisit[]
+  portfolioExports      PortfolioExport[]
   inquiries             Inquiry[]
   portfolioImageLikes   PortfolioImageLike[]
   sentMessages          Message[]              @relation("sentMessages")
@@ -1089,4 +1090,24 @@ model DailyVisit {
 
   @@unique([day, visitorId])
   @@index([day])
+}
+
+/// 포트폴리오 PDF 저장 기록 (2026-10-03, Admin [통계] 탭) — 만들기 화면에서 저장할 때마다 한 줄.
+/// 파일은 브라우저가 만들고 서버에 남지 않는다. 날짜·작가·쪽수·방식만 적는다(몇 명이 이 기능을 쓰는지 알 길이 없었다).
+/// 규칙은 `lib/exportStats.ts`.
+model PortfolioExport {
+  id        Int      @id @default(autoincrement())
+  day       DateTime @db.Date // KST 달력 날짜 — 서버가 정한다
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// download(바로 내려받기) | print(인쇄 창 — 글자가 살아 있는 PDF) | pptx
+  method    String
+  pages     Int
+  works     Int
+  /// 내 홈페이지 [포트폴리오] 탭에도 올렸는가
+  uploaded  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([day])
+  @@index([userId, day])
 }

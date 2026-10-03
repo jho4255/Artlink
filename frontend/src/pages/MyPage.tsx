@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,6 @@ import {
   Heart, Building2, X, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Ticket,
   ChevronUp, Megaphone, ClipboardList, MapPin, Phone, Mail, User as UserIcon, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
-  Image as ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -27,21 +26,17 @@ import { FormSection, FormField } from '@/components/flow/FormParts';
 import { formInputCls } from '@/lib/formStyles';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
-import { artworkTitle, normalizeCareer } from '@/lib/artwork';
-import PortfolioFormatPicker from '@/components/shared/PortfolioFormatPicker';
-import PortfolioWorkPicker from '@/components/shared/PortfolioWorkPicker';
-import { versionWorks, versionDesign, nextVersionName } from '@/lib/portfolioVersions';
+import { artworkTitle } from '@/lib/artwork';
+import PortfolioMaker from '@/components/portfolio-maker/PortfolioMaker';
 import HomepageEditor from '@/components/homepage-edit/HomepageEditor';
 import HomepageAddressField from '@/components/shared/HomepageAddressField';
 import ArtistHomepageLine from '@/components/shared/ArtistHomepageLine';
-import { keepWebOnlyKeys } from '@/lib/homepageTheme';
-import { artistPath, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
+import { normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
 import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
 import { myPageTabs, resolveTab, aliasTab, tabHref } from '@/lib/myPageMenu';
 import { editHref } from '@/lib/homepageEdit';
-import type { PortfolioBookData, PdfDesign } from '@/lib/portfolioFormats';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -60,7 +55,7 @@ import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
-import type { Favorite, Portfolio, PortfolioVersion, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
 
@@ -222,8 +217,12 @@ export default function MyPage() {
   // 역할과 맞지 않는 ?tab= 값으로 진입하면 빈 화면이 되므로 첫 유효 탭(프로필)으로 폴백.
   // 사이드바도 같은 resolveTab 을 써야 강조와 내용이 어긋나지 않는다.
   const currentTab = resolveTab(user.role, activeTab);
-  /** 한 가지 일에 집중하는 화면인가 — 지금은 작가의 홈페이지 편집뿐 */
-  const focused = currentTab === 'homepage-edit' && user.role === 'ARTIST';
+  /**
+   * 한 가지 일에 집중하는 화면인가 — 작가의 홈페이지 편집 · 포트폴리오 PDF 만들기(2026-10-03).
+   * 둘 다 **아래에 붙는 바**가 있고 첫 화면에 결과물이 보여야 하는 화면이다. 프로필 카드(240px)·가로 탭바를 위에 두면
+   * 포트폴리오 화면의 미리보기가 첫 화면 밖으로 밀렸다(PC y894 · 휴대폰 y1375).
+   */
+  const focused = (currentTab === 'homepage-edit' || currentTab === 'portfolio') && user.role === 'ARTIST';
 
   return (
     <div className={cn('max-w-7xl mx-auto px-6 md:px-12', focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16')}>
@@ -274,7 +273,8 @@ export default function MyPage() {
           {currentTab === 'profile' && <ProfileSection />}
           {/* 홈페이지 편집 — 메뉴에 없다. 공개 작가 페이지의 [수정](주인만)에서 들어온다 */}
           {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <HomepageEditor />}
-          {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioFormatSection />}
+          {/* 포트폴리오 PDF 만들기 — 화면은 `components/portfolio-maker/`(2026-10-03 개편) */}
+          {currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioMaker />}
           {currentTab === 'artlook' && user.role === 'ARTIST' && <ArtLookSection />}
           {currentTab === 'favorites' && (user.role === 'ARTIST' || user.role === 'VISITOR') && <FavoritesSection />}
           {currentTab === 'scraps' && user.role === 'GALLERY' && <ArtworkScrapsSection />}
@@ -707,228 +707,6 @@ function ArtLookSection() {
         title="ArtLook"
         /* 화면 대부분을 쓰되 페이지를 밀지 않게 — 안쪽에서 스크롤한다 */
         className="w-full h-[calc(100vh-14rem)] min-h-[520px] rounded-lg border border-gray-200 bg-white"
-      />
-    </div>
-  );
-}
-
-// ========== Artist: 포트폴리오 (PDF 포맷 4종) ==========
-/**
- * 메뉴 [포트폴리오] 탭. 예전엔 홈페이지 편집 화면 **맨 아래**에 붙어 있어서
- * 작품 30장을 지나 한참 내려가야 나왔고, 있는 줄도 모르는 작가가 많았다.
- *
- * 내용물(약력·작가노트·경력·작품)은 [홈페이지]에서 고친다 — 여기선 그걸 **어떤 판형으로 뽑을지**만 고른다.
- * 디자인 설정은 편집 모드 없이 고른 즉시 저장된다(`designMutation` — 옛 `themeMutation` 은 2026-09-19 에 지웠다).
- */
-function PortfolioFormatSection() {
-  const queryClient = useQueryClient();
-  const { user } = useAuthStore();
-  const { data: portfolio, isLoading } = useQuery<Portfolio>({
-    queryKey: ['portfolio'],
-    queryFn: () => api.get('/portfolio').then(r => r.data),
-  });
-
-  // ── 버전 (2026-09-16) ──────────────────────────────────────────────────
-  // '기본' = 전체 작품·홈페이지 순서·designConfig. 버전 = 작품 선택·순서·제 디자인을 이름 붙여 저장한 것.
-  // 국내 공모는 10점 이내·A4 24장처럼 장수를 제한하는 곳이 많아 27점짜리 책 하나로는 제출 요건을 못 맞춘다.
-  const [versionId, setVersionId] = useState<number | null>(null);
-  const [picking, setPicking] = useState(false);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  // 버전을 옮기면 열어 둔 [이름 바꾸기] 칸을 닫는다 — 안 닫으면 A 의 이름을 담은 칸이 B 에 그대로 남아 B 가 그 이름으로 바뀐다(감사 M8)
-  const selectVersion = (id: number | null) => { setRenaming(null); setVersionId(id); };
-  const versions = portfolio?.versions ?? [];
-  // 활성 버전이 사라졌으면(다른 탭에서 지움) null 로 떨어져 자연히 '기본'이 된다 — 상태를 따로 되돌릴 필요가 없다
-  const version = versions.find((v) => v.id === versionId) ?? null;
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['portfolio'] });
-  const onFail = (msg: string) => (err: unknown) =>
-    toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || msg);
-
-  // 기본 디자인 저장 — designConfig 만 보낸다.
-  // 백엔드는 designConfig 를 '보냈을 때만' 갱신하므로 홈페이지 내용 저장(전체 교체)이 이 설정을 지우지 않는다.
-  // 나머지 필드는 전체 교체라 그대로 실어 보낸다.
-  const designMutation = useMutation({
-    mutationFn: (designConfig: PdfDesign) =>
-      api.put('/portfolio', {
-        biography: portfolio?.biography ?? '',
-        career: normalizeCareer(portfolio?.career),
-        portfolioFileUrl: portfolio?.portfolioFileUrl ?? null,
-        statement: portfolio?.statement ?? null,
-        tagline: portfolio?.tagline ?? null,
-        seriesInfo: portfolio?.seriesInfo ?? [],
-        themeId: portfolio?.themeId ?? null,
-        // 서버는 designConfig 를 통째로 갈아끼운다 — 홈페이지에서 고른 대표작·웹 테마 표식을 들고 간다
-        designConfig: keepWebOnlyKeys(designConfig, portfolio?.designConfig),
-      }),
-    onSuccess: invalidate,
-    onError: onFail('디자인 저장에 실패했습니다.'),
-  });
-  // 버전의 디자인·이름·작품 저장
-  const patchVersion = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; name?: string; workIds?: number[]; design?: PdfDesign }) =>
-      api.patch(`/portfolio/versions/${id}`, body),
-    onSuccess: () => { invalidate(); setPicking(false); setRenaming(null); },
-    onError: onFail('버전 저장에 실패했습니다.'),
-  });
-
-  /* 디자인 저장 디바운스(2026-09-19) — 피커가 컨트롤을 만질 때마다 부르는데(슬라이더 한 번에 9회) 매번 포트폴리오 전체를 PUT 했고,
-     응답 순서가 뒤집히면 나중 선택이 DB 에서 사라졌다. 마지막 값만 0.8초 뒤에 보내고, 화면을 떠날 때 남은 게 있으면 바로 보낸다. */
-  const designTimer = useRef<number | null>(null);
-  const pendingDesign = useRef<PdfDesign | null>(null);
-  const flushDesign = useCallback(() => {
-    if (designTimer.current) { window.clearTimeout(designTimer.current); designTimer.current = null; }
-    const d = pendingDesign.current;
-    if (!d) return;
-    pendingDesign.current = null;
-    if (version) patchVersion.mutate({ id: version.id, design: d }); else designMutation.mutate(d);
-  }, [version, patchVersion, designMutation]);
-  const saveDesignDebounced = useCallback((d: PdfDesign) => {
-    pendingDesign.current = d;
-    if (designTimer.current) window.clearTimeout(designTimer.current);
-    designTimer.current = window.setTimeout(flushDesign, 800);
-  }, [flushDesign]);
-  useEffect(() => () => { flushDesign(); }, [flushDesign]);
-  const createVersion = useMutation({
-    mutationFn: (body: { name: string; workIds: number[]; design: unknown }) =>
-      api.post('/portfolio/versions', body).then((r) => r.data as PortfolioVersion),
-    onSuccess: (v) => { invalidate(); setVersionId(v.id); toast.success(`'${v.name}' 을 만들었습니다. 작품을 골라 보세요.`); },
-    onError: onFail('버전을 만들지 못했습니다.'),
-  });
-  const deleteVersion = useMutation({
-    mutationFn: (id: number) => api.delete(`/portfolio/versions/${id}`),
-    onSuccess: () => { invalidate(); setVersionId(null); setDeleting(false); },
-    onError: onFail('버전을 지우지 못했습니다.'),
-  });
-
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
-
-  const all = portfolio?.images ?? [];
-  const images = versionWorks(all, version);
-  const designValue = versionDesign(version, portfolio?.designConfig);
-  const bookData: PortfolioBookData = {
-    user: user ?? { name: '' },
-    // 마지막 장의 QR·주소 — 공개 홈페이지의 정식 주소(핸들이 있으면 /@handle)
-    homepageUrl: user ? `${window.location.origin}${artistPath(user)}` : null,
-    tagline: portfolio?.tagline,
-    statement: portfolio?.statement,
-    biography: portfolio?.biography,
-    career: portfolio?.career,
-    seriesInfo: portfolio?.seriesInfo,
-    images,
-  };
-  const chip = (on: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${on ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`;
-
-  // 작품이 없으면 포맷을 골라도 빈 책이 나온다 — 미리보기를 띄우기 전에 어디로 가야 하는지 알려준다
-  if (all.length === 0) {
-    return (
-      <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-          Port<span className="text-accent">Folio</span>
-        </h2>
-        <div className="rounded-lg border border-gray-200 py-12 text-center">
-          <p className="text-sm text-gray-500">아직 등록된 작품이 없습니다.</p>
-          <p className="text-xs text-gray-400 mt-1">작품을 올리면 포맷을 골라 PDF로 뽑을 수 있습니다.</p>
-          <Link to={editHref('works')} className="mt-4 inline-flex items-center gap-1 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
-            홈페이지에서 작품 등록하기
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          {/* ArtLink 로고와 같은 색 규칙 — Art(검정) + Link/Works/Folio(빨강) */}
-          <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-            Port<span className="text-accent">Folio</span>
-          </h2>
-          <p className="text-xs text-gray-400 mt-1">
-            홈페이지에 등록해둔 정보 기반으로 작가님만의 Portfolio를 생성합니다.
-          </p>
-        </div>
-        <Link to={editHref()} className="shrink-0 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
-          <Edit3 size={13} /> 내용 수정
-        </Link>
-      </div>
-
-      {/* 버전 바 — 기본(전체) + 저장한 버전들 + [+ 버전] */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => selectVersion(null)} className={chip(!version)}>
-            기본 <span className={version ? 'text-gray-400' : 'text-white/70'}>{all.length}점</span>
-          </button>
-          {versions.map((v) => (
-            <button key={v.id} type="button" onClick={() => selectVersion(v.id)} className={chip(v.id === versionId)}>
-              {v.name} <span className={v.id === versionId ? 'text-white/70' : 'text-gray-400'}>{versionWorks(all, v).length}점</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            disabled={createVersion.isPending || versions.length >= 12}
-            onClick={() => createVersion.mutate({ name: nextVersionName(versions), workIds: images.map((i) => i.id), design: designValue })}
-            title="지금 보는 구성을 새 이름으로 저장해 작품을 따로 고릅니다"
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-gray-500 hover:text-gray-800 disabled:opacity-40"
-          >
-            <Plus size={12} /> 버전
-          </button>
-        </div>
-        {version ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-            <button type="button" onClick={() => setPicking(true)} className="inline-flex items-center gap-1 font-medium text-gray-800 underline-offset-2 hover:underline">
-              <ImageIcon size={13} /> 작품 고르기 <span className="font-normal text-gray-400">{images.length}/{all.length}점</span>
-            </button>
-            {renaming === null ? (
-              <button type="button" onClick={() => setRenaming(version.name)} className="hover:text-gray-900">이름 바꾸기</button>
-            ) : (
-              <form className="inline-flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); const n = renaming.trim(); if (n) patchVersion.mutate({ id: version.id, name: n }); }}>
-                <input autoFocus value={renaming} maxLength={60} onChange={(e) => setRenaming(e.target.value)}
-                  className="w-40 rounded border border-gray-300 px-2 py-0.5 text-xs focus:border-gray-500 focus:outline-none" />
-                <button type="submit" className="rounded bg-gray-900 px-2 py-0.5 text-white">저장</button>
-                <button type="button" onClick={() => setRenaming(null)} className="px-1 text-gray-400 hover:text-gray-700">취소</button>
-              </form>
-            )}
-            <button type="button" disabled={createVersion.isPending || versions.length >= 12}
-              onClick={() => createVersion.mutate({ name: nextVersionName(versions, `${version.name} 복사`), workIds: version.workIds, design: version.design })}
-              className="hover:text-gray-900 disabled:opacity-40">복제</button>
-            <button type="button" onClick={() => setDeleting(true)} className="text-accent hover:underline">삭제</button>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-400">이 버전의 디자인·작품은 여기서만 바뀌고, 홈페이지 순서는 그대로입니다.</span>
-          </div>
-        ) : all.length >= 6 ? (
-          <p className="text-[11px] text-gray-400">
-            보내는 곳마다 다른 작품을 내려면 <b className="text-gray-500">[+ 버전]</b>으로 작품을 골라 저장하세요. 국내 공모는 10점 이내·A4 24장 같은 제한이 흔합니다.
-          </p>
-        ) : null}
-      </div>
-
-      <PortfolioFormatPicker
-        key={version ? `v${version.id}` : 'default'}
-        data={bookData}
-        designValue={designValue}
-        onChangeDesign={saveDesignDebounced}
-      />
-
-      {picking && version && (
-        <PortfolioWorkPicker
-          all={all}
-          selected={version.workIds}
-          saving={patchVersion.isPending}
-          onSave={(ids) => patchVersion.mutate({ id: version.id, workIds: ids })}
-          onClose={() => setPicking(false)}
-        />
-      )}
-      <ConfirmDialog
-        open={deleting && !!version}
-        title="버전 삭제"
-        message={`'${version?.name ?? ''}' 버전을 지웁니다. 작품과 홈페이지는 그대로이고, 이 선택·디자인만 사라집니다.`}
-        confirmText="삭제"
-        variant="danger"
-        onConfirm={() => { if (version) deleteVersion.mutate(version.id); }}
-        onCancel={() => setDeleting(false)}
       />
     </div>
   );

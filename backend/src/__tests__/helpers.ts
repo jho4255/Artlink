@@ -25,7 +25,7 @@ const ALL_TABLES = [
   'StoryHighlight', 'PostCategory',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioVersion', 'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
-  'GalleryImage', 'GalleryArchive', 'Gallery', 'HeroSlide', 'Benefit', 'DailyVisit', 'User',
+  'GalleryImage', 'GalleryArchive', 'Gallery', 'HeroSlide', 'Benefit', 'DailyVisit', 'PortfolioExport', 'User',
 ];
 
 /**
@@ -97,6 +97,7 @@ export async function cleanDb() {
     await tx.heroSlide.deleteMany();
     await tx.benefit.deleteMany();
     await tx.dailyVisit.deleteMany();   // 통계 탭(2026-09-28) — userId 는 SetNull 이라 user 삭제로 안 지워진다
+    await tx.portfolioExport.deleteMany();   // PDF 저장 기록(2026-10-03) — 같은 이유(SetNull)
     await tx.user.deleteMany();
     await tx.appSetting.deleteMany(); // FK 없음 — 개발자 도구 토글이 테스트 간 누수되지 않도록 명시 삭제
     await tx.adBanner.deleteMany();    // FK 없음(User 캐스케이드 대상 아님) — 명시 삭제

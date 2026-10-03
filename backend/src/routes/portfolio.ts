@@ -7,6 +7,9 @@ import { deleteUploadedFile } from '../lib/storage';
 import { ensureHandle, isHandleParam, normalizeHandle, validateHandle } from '../lib/handle';
 import { readImageDims } from '../lib/imageDims';
 import { PORTFOLIO_IMAGE_MAX } from '../lib/portfolioLimits';
+import { matchR2Base } from '../lib/r2Urls';
+import { EXPORT_METHODS, recordExport, type ExportMethod } from '../lib/exportStats';
+import { LOCK_NS, withKeyLock } from '../lib/keyLock';
 
 const router = Router();
 
@@ -50,6 +53,22 @@ function sanitizeDesignConfig(input: unknown): string | null {
   }
 }
 const DESIGN_CONFIG_MAX = 8000;
+
+/**
+ * 바꾸거나 지운 포트폴리오 파일을 스토리지에서 지운다 — **지원서가 아직 가리키고 있으면 지우지 않는다** (2026-10-03).
+ *
+ * 지원서(`Application.portfolioFileUrl`)는 지원할 때 홈페이지의 파일 **주소를 그대로 복사**해 든다(초대 수락·초대 코드 참여도 같다).
+ * 예전엔 홈페이지 파일을 바꾸면 옛 파일을 무조건 지웠다 — 그 파일로 지원해 둔 공모가 있으면 갤러리 화면의 [포트폴리오 파일] 이 죽은 링크가 된다.
+ * 실서버 복제본(2026-10-02): 파일이 붙은 지원 29건 중 10건이 지금 홈페이지 파일과 **같은 주소**였다(아직 깨진 건 없었다).
+ * 포트폴리오 만들기 화면의 '홈페이지에도 올리기' 가 파일 교체를 훨씬 잦게 만들므로 여기서 막는다.
+ * 지원서가 가리키는 파일은 고아로 남지만 그게 맞다 — 그 지원서의 기록이다.
+ */
+async function deletePortfolioFileIfUnused(url: string): Promise<void> {
+  try {
+    const used = await prisma.application.count({ where: { portfolioFileUrl: url } });
+    if (used === 0) await deleteUploadedFile(url);
+  } catch { /* best-effort — 정리 실패는 본 요청에 영향 없음 */ }
+}
 
 // 자유 텍스트 정규화 — 빈 문자열은 null로(있는 항목만 캡션에 조립하므로 ''와 null을 구분할 필요가 없다)
 function text(v: unknown, max: number): string | null {
@@ -177,6 +196,7 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
 // ── PDF 버전 (2026-09-16) ───────────────────────────────────────────────────
 // 작품 선택·순서·디자인을 묶어 이름 붙여 저장한다. "공모용 10점"·"갤러리용 전체" 처럼 보내는 곳마다 다른 책.
 // ⚠️ 홈페이지 작품 순서(PortfolioImage.order)는 건드리지 않는다 — 버전은 그 위의 선택이다.
+// 화면에서는 '구성' 이라고 부른다(2026-10-03, 포트폴리오 만들기 개편) — 모델·주소는 그대로(version), 작가가 보는 문구만 같은 말로
 const MAX_VERSIONS = 12;
 const versionName = (v: unknown) => text(v, 60);
 /** 내 포트폴리오에 실제로 있는 작품 id 만, 중복 없이, 보낸 순서대로 */
@@ -195,16 +215,15 @@ async function myPortfolioId(userId: number): Promise<number> {
 router.post('/versions', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
     const name = versionName(req.body?.name);
-    if (!name) throw new AppError('버전 이름을 입력해주세요.', 400);
+    if (!name) throw new AppError('구성의 이름을 입력해주세요.', 400);
     const portfolioId = await myPortfolioId(req.user!.id);
-    const count = await prisma.portfolioVersion.count({ where: { portfolioId } });
-    if (count >= MAX_VERSIONS) throw new AppError(`버전은 ${MAX_VERSIONS}개까지 만들 수 있습니다.`, 400);
-    const v = await prisma.portfolioVersion.create({
-      data: {
-        portfolioId, name,
-        workIds: await ownWorkIds(portfolioId, req.body?.workIds),
-        design: 'design' in (req.body ?? {}) ? sanitizeDesignConfig(req.body.design) : null,
-      },
+    const workIds = await ownWorkIds(portfolioId, req.body?.workIds);
+    const design = 'design' in (req.body ?? {}) ? sanitizeDesignConfig(req.body.design) : null;
+    // 세고 나서 만들기를 포트폴리오 단위로 줄 세운다 — 동시에 5개를 보내면 12개 상한을 넘겨 14개가 됐다(e2e 65 R7, lib/keyLock.ts)
+    const v = await withKeyLock(LOCK_NS.portfolioVersions, portfolioId, async (tx) => {
+      const count = await tx.portfolioVersion.count({ where: { portfolioId } });
+      if (count >= MAX_VERSIONS) throw new AppError(`구성은 ${MAX_VERSIONS}개까지 만들 수 있습니다.`, 400);
+      return tx.portfolioVersion.create({ data: { portfolioId, name, workIds, design } });
     });
     res.status(201).json(serializeVersion(v));
   } catch (error) { next(error); }
@@ -216,10 +235,10 @@ router.patch('/versions/:id', authenticate, authorize('ARTIST'), async (req, res
     const portfolioId = await myPortfolioId(req.user!.id);
     // 남의 버전은 404 (403 은 존재를 알려준다 — 규칙 23)
     const cur = await prisma.portfolioVersion.findFirst({ where: { id, portfolioId } });
-    if (!cur) throw new AppError('버전을 찾을 수 없습니다.', 404);
+    if (!cur) throw new AppError('구성을 찾을 수 없습니다.', 404);
     const body = req.body ?? {};
     const data: Record<string, unknown> = {};
-    if ('name' in body) { const n = versionName(body.name); if (!n) throw new AppError('버전 이름을 입력해주세요.', 400); data.name = n; }
+    if ('name' in body) { const n = versionName(body.name); if (!n) throw new AppError('구성의 이름을 입력해주세요.', 400); data.name = n; }
     if ('workIds' in body) data.workIds = await ownWorkIds(portfolioId, body.workIds);
     if ('design' in body) data.design = sanitizeDesignConfig(body.design);
     const v = await prisma.portfolioVersion.update({ where: { id }, data });
@@ -232,7 +251,7 @@ router.delete('/versions/:id', authenticate, authorize('ARTIST'), async (req, re
     const id = parseInt(req.params.id as string);
     const portfolioId = await myPortfolioId(req.user!.id);
     const cur = await prisma.portfolioVersion.findFirst({ where: { id, portfolioId } });
-    if (!cur) throw new AppError('버전을 찾을 수 없습니다.', 404);
+    if (!cur) throw new AppError('구성을 찾을 수 없습니다.', 404);
     await prisma.portfolioVersion.delete({ where: { id } });
     res.json({ message: '삭제되었습니다.' });
   } catch (error) { next(error); }
@@ -253,7 +272,10 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     const base = {
       biography,
       career: careerStr,
-      portfolioFileUrl: safeFileUrl(portfolioFileUrl),
+      // 포트폴리오 파일은 **보냈을 때만** 바꾼다(2026-10-03, designConfig 와 같은 방식). 만들기 화면이 `PUT /portfolio/file` 로 파일을 바꾸게 되면서
+      // 이 필드를 쓰는 곳이 둘이 됐다 — 다른 탭에 열려 있던 편집 화면이 글만 고쳐 저장해도 옛 주소를 다시 보내 **방금 올린 파일을 지우고**
+      // 이미 지워진 옛 파일을 가리키게 됐다(죽은 링크). 편집 화면은 파일을 바꿨을 때만 이 키를 보낸다. 키가 있으면(null 포함) 예전과 같다.
+      ...('portfolioFileUrl' in req.body ? { portfolioFileUrl: safeFileUrl(portfolioFileUrl) } : {}),
       statement: text(statement, 4000),
       tagline: text(tagline, 200),
       themeId: oneOf(themeId, THEME_IDS),
@@ -271,8 +293,72 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       create: { userId: req.user!.id, ...data },
       include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
     });
-    if (before?.portfolioFileUrl && before.portfolioFileUrl !== portfolio.portfolioFileUrl) void deleteUploadedFile(before.portfolioFileUrl);
+    if (before?.portfolioFileUrl && before.portfolioFileUrl !== portfolio.portfolioFileUrl) void deletePortfolioFileIfUnused(before.portfolioFileUrl);
     res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 디자인만 저장 — `PUT /api/portfolio/design { designConfig }` (2026-10-03).
+ *
+ * 포트폴리오 만들기 화면은 색 하나를 바꿀 때마다 `PUT /portfolio` 로 **약력·경력·작가노트·파일까지 전부** 다시 보냈다(그 라우트가 전체 교체라서).
+ * 보내는 값은 그 화면이 들고 있던 캐시라, 다른 탭에서 홈페이지 글을 고친 뒤 여기서 색을 바꾸면 **고친 글이 옛 글로 되돌아갔다**.
+ * 지원서에서 [PDF 만들기] 를 새 탭으로 열게 되면서 탭 둘이 흔해져 이 경로를 따로 냈다 — 여기서는 designConfig 말고 아무것도 건드리지 않는다.
+ * ⚠️ 웹 전용 키(홈페이지 대표작·웹 테마 표식)는 화면이 실어 보낸다(`keepWebOnlyKeys`) — 서버는 받은 것을 통째로 저장한다(규칙 49).
+ */
+router.put('/design', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    if (!('designConfig' in body)) throw new AppError('디자인 설정이 필요합니다.', 400);
+    const designConfig = sanitizeDesignConfig(body.designConfig);
+    // 형태가 깨진 값을 조용히 null(= 기본값으로 초기화)로 저장하지 않는다 — 명시적으로 null 을 보냈을 때만 비운다
+    if (designConfig === null && body.designConfig !== null) throw new AppError('디자인 설정이 올바르지 않습니다.', 400);
+    const portfolio = await prisma.portfolio.upsert({
+      where: { userId: req.user!.id },
+      update: { designConfig },
+      create: { userId: req.user!.id, designConfig },
+      select: { designConfig: true },
+    });
+    res.json({ designConfig: parseDesignConfig(portfolio.designConfig) });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 포트폴리오 파일만 바꾸기 — `PUT /api/portfolio/file { portfolioFileUrl }` (2026-10-03).
+ * 포트폴리오 만들기 화면이 만든 PDF 를 '내 홈페이지 [포트폴리오] 탭에도 올리기' 로 올릴 때 쓴다. 글·디자인은 건드리지 않는다.
+ * ⚠️ **우리 저장소 주소만** 받는다(`/uploads/` 또는 R2) — 이 파일은 공개 홈페이지에 그대로 걸린다(외부 주소 주입 차단. 커뮤니티·스토리와 같은 규칙).
+ *    null 은 받지 않는다 — 파일을 떼는 건 홈페이지 편집의 [파일] 묶음이 한다.
+ */
+router.put('/file', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const url = safeFileUrl(req.body?.portfolioFileUrl);
+    if (!url || !(url.startsWith('/uploads/') || matchR2Base(url))) throw new AppError('파일 주소가 올바르지 않습니다.', 400);
+    const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });
+    const portfolio = await prisma.portfolio.upsert({
+      where: { userId: req.user!.id },
+      update: { portfolioFileUrl: url },
+      create: { userId: req.user!.id, portfolioFileUrl: url },
+      select: { portfolioFileUrl: true },
+    });
+    if (before?.portfolioFileUrl && before.portfolioFileUrl !== portfolio.portfolioFileUrl) void deletePortfolioFileIfUnused(before.portfolioFileUrl);
+    res.json({ portfolioFileUrl: portfolio.portfolioFileUrl });
+  } catch (error) { next(error); }
+});
+
+/**
+ * PDF 저장 기록 — `POST /api/portfolio/exports { method, pages, works, uploaded }` (2026-10-03, Admin [통계] 탭).
+ * 화면이 저장을 끝낸 뒤에 보낸다. 규칙은 `lib/exportStats.ts`. 응답은 204 — 화면이 기다릴 이유가 없다.
+ */
+router.post('/exports', authenticate, authorize('ARTIST'), async (req, res, next) => {
+  try {
+    const { method, pages, works, uploaded } = req.body ?? {};
+    const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : NaN);
+    const p = int(pages), w = int(works);
+    if (!EXPORT_METHODS.includes(method) || !(p >= 1 && p <= 2000) || !(w >= 0 && w <= PORTFOLIO_IMAGE_MAX)) {
+      throw new AppError('잘못된 요청입니다.', 400);
+    }
+    await recordExport(req.user!.id, { method: method as ExportMethod, pages: p, works: w, uploaded: uploaded === true });
+    res.status(204).end();
   } catch (error) { next(error); }
 });
 

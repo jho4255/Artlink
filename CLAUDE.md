@@ -74,7 +74,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2350+ tests** (2026-10-02): Backend 1446 (supertest, `artlink_test` DB 순차), Frontend 915 (jsdom) · E2E 311(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙)·`53`(실행 순서 의존) 뿐)
+- **2490+ tests** (2026-10-03): Backend 1470 (supertest, `artlink_test` DB 순차), Frontend 1024 (jsdom) · E2E 341(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 333 통과 · 4 건너뜀)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 55개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1652,7 +1652,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `page:'a5-portrait'` · `folioStart` · `skipContact` · `runningHead:'CATALOGUE'` 로 부른다 —
       작가가 고른 대표작(`representativeIndex`)이 `coverImageIds[0]` 로 작가 첫 장이 된다.
     - ⚠️ **A5 는 픽셀을 A4 의 72%(720×1018)로** 잡았다. A4 와 같은 1000px 로 두면 인쇄 글자가 5.9pt 로 줄어 못 읽는다.
-      `PAGE_DIMS` 에 있지만 작가 화면 판형 선택지에는 안 보인다(`PortfolioFormatPicker` 의 목록에 없음).
+      `PAGE_DIMS` 에 있지만 작가 화면 용지 선택지에는 안 보인다(`portfolioMaker.ts PAPER_OPTIONS` 에 없음).
     - ⚠️ 작품은 어디서도 자르지 않는다(§18) — 표지 대표 이미지도 contain 이다.
     - 작가 장은 **차례를 채우려고 먼저** 만든다(각 작가의 시작 쪽을 알아야 한다). 이미지는 `prefetchImages` 로 모아 blob: 주소로 —
       못 받은 장 수를 토스트로 알린다(조용히 빈 칸 금지).
@@ -1687,6 +1687,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         - **캡션 관례** `design.captionStyle`: `kr`(기본) = **작품명, 연도 / 재료 / 크기**(홈페이지 `museumCaption` 과 같다), `intl` = 작품명 / 재료 / 크기 / 연도.
           `captionParts` 하나가 정하고 렌더·높이 추정이 같이 본다. 연도는 `displayYear`("2024년" → "2024"). 캡션 자간을 넓히지 않는다.
         - 실측(1~9권): 거의 빈 장 13.5% → **2.0%**(남은 4장 = 사진 없는 작가의 닫는 장). 하니스 `scratchpad/pf/emptypages.py`.
+    - ⚠️ **2026-10-03 부터 [PDF 저장] 의 기본은 바로 내려받기다**(규칙 62, `lib/portfolioExport.ts`). 아래 인쇄 경로는 저장 창의 '다른 형식 → 글자가 살아 있는 PDF' 로 남았다.
     - **벡터 PDF** (`lib/portfolioPrint.ts`) — [PDF 저장]은 **브라우저 인쇄 → 'PDF 로 저장'**. 같은 페이지 HTML 을 `@page{size:mm;margin:0}` 상자에
       `transform:scale` 로 앉힌 문서를 숨은 iframe 에 써 넣고 `print()`. 글자가 글자로 남고(검색·복사), 글꼴 내장, 용량 작음.
         - ⚠️ 판형은 `@page size` 와 `.pg` 크기를 **둘 다 mm** 로 — px 환산 반올림이면 빈 장이 끼어든다. 배경은 `print-color-adjust: exact`.
@@ -1705,9 +1706,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       10점 이내·A4 24장처럼 장수를 제한해(조사 A2·A3) 27점짜리 책 하나로는 제출 요건을 못 맞춘다.
         - `GET /portfolio` 에 `versions[]`, `POST/PATCH/DELETE /portfolio/versions[/:id]`. **내 포트폴리오 작품 id 만** 남기고(남의 것·없는 것 조용히 버림),
           남의 버전은 404, 12개 상한. **홈페이지 작품 순서는 건드리지 않는다**.
-        - 화면(`MyPage PortfolioFormatSection`): 칩 [기본 N점][버전들][+ 버전], 버전 행 [작품 고르기·이름 바꾸기·복제·삭제]. 작품 고르기는
-          `components/shared/PortfolioWorkPicker.tsx`(누른 순서 = 실릴 순서, ← → 로 옮김). `lib/portfolioVersions.ts` 의 `versionWorks` 가
-          **실제 작품과 교집합**(지운 작품 id 가 배열에 남는다). 피커는 `key={version.id}` 로 버전을 바꿀 때 디자인 상태를 리셋한다.
+        - 화면은 2026-10-03 에 바뀌었다(규칙 62) — '버전' 이라 부르지 않고 **구성**, 아래 바 [작품 고르기] 로 만든다(`portfolio-maker/WorkPicker.tsx`, 누른 순서 = 실릴 순서).
+          `lib/portfolioVersions.ts` 의 `versionWorks` 가 **실제 작품과 교집합**(지운 작품 id 가 배열에 남는다).
     - 회귀: `frontend/src/__tests__/portfolioFormats.test.ts`·`portfolioArtDirection.test.ts`·`artwork.test.ts`·`artlookScene.test.ts`·
       `portfolioVersions.test.ts` · `backend/src/lib/__tests__/sizeOrder.test.ts`·`src/__tests__/portfolio-versions.test.ts`(6) ·
       하니스 `scratchpad/pf/combos.mjs`(20권 실데이터)·`emptypages.py` · `e2e/_pfprint.mjs`·`_pfversions.mjs`(로컬 전용).
@@ -1935,6 +1935,62 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: 프론트 `operationLinks.test.ts`(20 — `OperationPage`·`ExhibitionDetailPage` 같은 공용 화면에 역할 전용 탭 주소가 박혀 있지 않은지 소스를 훑는다) ·
       e2e `63-operator-links.spec.ts`(8 — 관리자·갤러리·위임 갤러리가 **눌러서 어디에 도착하는지**).
 
+62. **포트폴리오 만들기(PDF) 화면 — 미리보기가 주인공, 편집은 처음부터 보이고, 저장은 바로 내려받기** (2026-10-03, 사용자 결정 열다섯.
+    `frontend/src/components/portfolio-maker/` · `lib/portfolioMaker.ts`(판단) · `lib/portfolioExport.ts`(내려받기) · 마이페이지 `?tab=portfolio`)
+    새 작가로 밟아 보니 기능은 다 있는데 **처음 온 사람이 쓸 수 있는 화면이 아니었다** — 첫 화면에 결과물도 저장 버튼도 없고(PC 제목 y409 · [PDF 저장] y856 ·
+    미리보기 y894), 설정을 다 펴면 누를 것 68개, [PDF 저장] 은 인쇄 창을 열었고(안 열려도 성공 토스트), 표지에 닉네임·마지막 장에 전화번호가 찍히는 줄은
+    저장한 뒤에야 알았다. 실서버: 작품 있는 작가 47명 중 디자인을 바꿔 본 사람 1명 · 버전 0개.
+    - **화면(위→아래)**: `PortFolio` + [+ 작품·글 추가·수정](홈페이지 편집으로 — '내용 고치기'는 자료를 넣는 곳으로 안 읽혔다) → **용지**(세로 A4·가로 A4·와이드, 맨 위에 따로)
+      → 상태 줄 "작품 N점 · M쪽" + 할 일 한 줄(`TaskLine compact`) → **디자인 6종**(넓은 화면 한 줄, 그 아래는 3×2, **설명 글 없음**, 추천은 순서로만)
+      → 미리보기(t800 썸네일, 쪽을 누르면 크게 보기 — 원본) + **편집**(PC 는 오른쪽 패널이 **열린 채로** 시작 / 휴대폰은 아래 바 위 **탭 줄**이 늘 있고 누르면 시트)
+      → 아래 바 [꾸미기](PC 패널 열고 닫기)·[작품 고르기]·**[PDF 저장]**(화면의 주 버튼 하나). 설명 줄("올려 둔 작품과 글로…")은 없앴다(사용자 요청).
+    - **편집 탭 다섯** [표지 · 작품 · 약력 · 색·글꼴 · 이름·연락처]. ⚠️⚠️ **한 탭의 옵션은 그 쪽만 바꾼다** — 책 전체에 걸리는 건 [색·글꼴]·[이름·연락처]·용지뿐.
+      그래서 둘로 나눈 값이 있다: 글 정렬 `proseAlign`(작가노트·약력) / `worksProseAlign`(시리즈 소개·작품 설명, 엔진은 `worksTheme` 로 그린다),
+      프로필 사진 `artistPhoto`(작가노트 쪽) / `contactPhoto`(마지막 장). 옛 저장값은 하나였던 값을 둘 다 물려받는다(`normalizePdfDesign`).
+      [처음 상태로] 도 **그 탭만**(`resetTab` + `TAB_KEYS`). ⚠️ 디자인 키를 더하면 `TAB_KEYS` 에도 적을 것 — `portfolioMaker.test.ts` 가 모든 키가 정확히 한 탭에
+      속하는지 대조한다(빠지면 어느 탭도 그 값을 못 되돌린다). [이름·연락처] 에는 [처음 상태로] 가 없다(꺼 둔 전화번호가 한 번에 다시 실리면 안 된다).
+    - **용지는 디자인이 아니다** — 디자인 카드(`applyDirection`)·[처음 상태로] 가 용지를 안 바꾼다. 예전엔 '작품 우선'·'다크 룩북' 을 누르면 말없이 가로 A4 가 됐다.
+      `directionMatches` 도 용지를 보지 않는다. 카드 그림은 지금 용지로 그린다(거짓말하지 않게).
+    - **[약력] 탭**(신설) — 싣는 항목(작가노트 · 약력 글 · 학력 · 개인전 · 단체전 · 아트페어 · 수상, `cvShow`) · 약력 자리(작품 앞/뒤, `cvPosition`) ·
+      경력 단 수(자동/한 단/두 단, `cvColumns`) · 영문 머리말(`cvEnglish`) · 글 정렬 · 작가노트 사진. 쪽을 만들지 말지와 그리는 쪽이 **같은 판정**(`cvContent`)을 본다 —
+      다 꺼도 머리말만 있는 빈 쪽이 생기지 않는다. 작품 앞이면 작가노트 바로 다음이고, 작품 목록의 쪽번호는 옮긴 뒤의 번호다.
+    - **이름·연락처**: 문서 이름은 **실명이 기본**(`nameSource`, 닉네임을 고를 수 있다) · 마지막 장 연락처는 항목마다(`contact`, 기본 전부 켬) · 실을 게 없으면
+      마지막 장을 만들지 않는다. 이름 규칙은 `portfolioName` 하나(표지·머리말·약력·마지막 장·파일 이름). 갤러리 도록은 이 설정과 무관하다(`boothKit.test.ts`).
+    - **저장 창**(`SaveDialog`): 누르기 **전에** "이렇게 실립니다"(이름·마지막 장, `printedInfo` — 꾸미기와 같은 함수) → **[PDF 내려받기]**(기본) →
+      창 안에서 진행·결과(토스트 안 씀) → 다음 할 일([모집공고 보러 가기] 등). '다른 형식': 글자가 살아 있는 PDF(인쇄 창 — 누르기 전에 순서를 보여 주고, `beforeprint` 가 안 오면
+      성공이라 하지 않는다) · PPT. **'내 홈페이지 [포트폴리오] 탭에도 올리기'** 는 기본 꺼짐(`PUT /portfolio/file`, 빈 칸 있는 파일·20MB 초과는 올리지 않는다).
+      ⚠️ 2026-09-16 의 "[PDF 저장] = 인쇄 경로(벡터)" 를 **뒤집은** 것이다(규칙 54) — 처음 온 작가가 인쇄 창에서 대상을 바꾸지 못했고, 사이트가 파일을 받을 수도 없었다.
+    - **바로 내려받기**(`lib/portfolioExport.ts`): 쪽을 **한 번만** 굽고(≈240dpi, JPEG 0.9) 9.4MB 를 넘을 때만 구운 JPEG 를 줄여 다시 압축한다(`pickStep` 사다리 —
+      쪽을 다시 그리지 않는다). html2canvas 에 `ignoreElements` 로 앱 화면을 복제하지 않게 해 휴대폰 시간이 절반이 됐다(30점 43.6초 → 19.4초, CPU 4배 느리게).
+    - **디자인 자동 저장**(`useDesignAutosave`): 0.8초 모아 **디자인만**(`PUT /portfolio/design`) · 요청은 줄을 세운다(겹치지 않는다) · 떠날 때 남은 것을 보낸다 ·
+      웹 전용 키는 `keepWebOnlyKeys` 로 싣는다(규칙 49). ⚠️ 이 화면에서 `PUT /portfolio`(전체 교체)를 쓰지 말 것 — 다른 탭에서 고친 글을 옛 글로 되돌렸다.
+      서버도 `PUT /portfolio` 는 `portfolioFileUrl` 을 **보냈을 때만** 바꾸고(편집 화면은 바꿨을 때만 보낸다), 옛 파일은 지원서가 가리키면 지우지 않는다(`deletePortfolioFileIfUnused`).
+    - **구성**(= 서버 `PortfolioVersion`, 화면에서는 '버전' 이라 부르지 않는다): 아래 바 [작품 고르기] → `WorkPicker`("N점 · 약 M쪽", 이름 '제출용 N'). 12개 상한.
+      ⚠️ 보던 구성이 **다른 곳에서 지워지면** 전체 작품으로 돌아온다(저장이 404 → `onGone`, 또는 목록에서 사라짐) — 그대로 두면 고칠 때마다 404 에 갇힌다.
+      판정은 '목록에 **한 번 나타났다가** 사라진 것'만(방금 만든 구성은 캐시 알림이 선택보다 늦게 온다 — `seenVersions`).
+    - ⚠️⚠️ **'세고 나서 만들기' 상한은 `withKeyLock`**(`backend/src/lib/keyLock.ts`, Postgres 트랜잭션 advisory lock) — 구성 12개·저장 기록 하루 100줄.
+      신뢰성 검사(e2e 65)에서 동시 5개 → 14개, 26개씩 5번 → 104줄이 나왔다. Serializable(`withSeatLock`)은 한 사람이 20개를 몰아 보내면 재시도가 바닥나 쓰지 않았다.
+      ⚠️ 잠근 뒤의 읽기·쓰기는 **`tx` 로** 할 것.
+    - **기하 함정**(전부 스크린샷으로는 "괜찮아 보였다" — 하니스가 잡았다):
+      ① Esc 는 맨 위의 것 하나만 닫는다 — `useEscapeKey`(리스너를 한 번만 붙이고 함수는 ref). 부모가 매 렌더 새 `onClose` 를 주면 리스너가 떼어졌다 붙으며
+         처리 중인 Esc 를 놓쳐 **뒤의 패널만 닫혔다**. 패널은 `yieldToModal`(모달 창이 떠 있으면 양보).
+      ② 쪽 위 이름 줄은 쪽마다 40px(`PAGE_LABEL_H`) — 단추 있는 쪽만 높으면 휴대폰 시트가 표지 아랫부분을 가렸다.
+      ③ PC 패널을 연 채로 시작하자 들어오자마자 표지로 스크롤돼 용지가 가려졌다 → 미리보기는 **탭을 누를 때만** 데려간다(`scrollReq`, 0 이면 안 움직인다 — StrictMode 안전).
+      ④ 페이지 맨 위에서 패널 아랫부분이 아래 바 뒤에 깔렸다 → 패널 높이를 보이는 띠에 맞춘다(`CustomizePanel` 의 `fit`). 1024px 에서 마지막 장으로 가면 패널 머리가
+         상단바 뒤로 숨었다 → 마지막 칸을 받쳐 둔다(`BookPreview tailRoom`).
+      ⑤ 아래 바는 모바일에서 탭바 위(`bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))]`), PC 한 줄 · 휴대폰 두 줄(탭 줄 + 버튼 줄).
+      ⑥ 화면 글자 12px 이상 · 누르는 곳 40px 이상(예전: 이름표 9px · 색 단추 28px · 표지 × 16px).
+      아이폰 SE(568px)는 두 줄 바·용지 줄·디자인 3×2 의 대가로 첫 화면에 표지가 안 보인다 — 사용자가 알고 고른 모양이다.
+    - **알리는 곳**: 지원서의 포트폴리오 파일 칸(파일이 없을 때 [PDF 만들기] **새 탭** — 지원서엔 임시저장이 없다 — + [홈페이지에 올린 파일 불러오기]) ·
+      홈페이지 편집을 저장한 직후 공개 홈페이지에 한 줄(작품 3점 이상, 닫거나 PDF 를 한 번 저장하면 다시 안 뜬다).
+    - **사용 기록**: `PortfolioExport`(마이그레이션 `20261003120000_portfolio_export`, 날짜·쪽수·작품 수·방식·홈페이지에 올렸는가, 파일은 남기지 않는다) →
+      `POST /portfolio/exports`(작가만, 실패해도 조용히) → Admin [통계] 탭 "포트폴리오 PDF 저장"(`GET /admin/stats/portfolio-exports`). 개인정보처리방침 1항에 적었다.
+    - 회귀: 프론트 `portfolioMaker.test.ts`(판단) · `portfolioMakerScreen.test.ts`(소스 가드) · `portfolioFormats.test.ts`「약력 탭 · 쪽마다 따로」 · `boothKit.test.ts` ·
+      백엔드 `portfolio-export.test.ts`(디자인만 저장 · 파일 · 기록 · 동시 상한) · `portfolio-versions.test.ts`(동시 12개) ·
+      e2e `64-portfolio-maker.spec.ts`(18, A~K — 눌러서 무슨 일이 나는가) · **`65-portfolio-maker-reliability.spec.ts`(13, R1~R12 — 여러 번·빠르게·동시에·망가진 상황)** ·
+      하니스 `scratchpad/portfolio-maker/walk.js`(크롬+WebKit × 8화면, 720확인, README) · `export.js`(실제 내려받기 시간·용량) · `shrink.js`(용량 맞추기).
+      헬퍼 `openPortfolioMaker`·`openCustomize`(PC 는 패널, 휴대폰은 탭 줄)·`customizeTab`·`customizePanel`·`makerBar`·`paperRadio`·`saveDialog`·`previewPage(OfKind)`.
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -1991,6 +2047,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 | `['guestbook', userId]` | 작가 홈페이지 방명록 · 방명록 탭 글 수(PortfolioPage) | 방명록 작성/답글/삭제 |
 | `['ads']` | AdSlot(사이드바 광고) | (5분 staleTime) Admin 광고 CUD |
 | `['ads-all']` | Admin 광고 관리 | 광고 CUD |
+| `['admin-export-stats', days]` | Admin [통계] 탭 '포트폴리오 PDF 저장' | (invalidate 없음 — 들어올 때 받는다) |
 
 ## Deployment (Render.com)
 
@@ -2110,7 +2167,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         - **편집은 그 공개 페이지의 [수정] 버튼(주인 본인만)** → `/mypage?tab=homepage-edit`(+`section=`). 메뉴에는 없는 숨은 탭이다.
           화면은 `components/homepage-edit/HomepageEditor.tsx` — 묶음 다섯 [작품·소개·약력·파일·꾸미기](규칙 60). 읽기 화면은 없다(2026-10-02 에 없앴다).
           주인 판정은 **로그인 id 와 주소의 userId 비교**뿐 — 역할(ARTIST)만 보면 남의 페이지에서도 [수정]이 뜬다.
-        - **[포트폴리오] 탭 = PDF 포맷 4종**(`PortfolioFormatSection`). 예전엔 편집 화면 **맨 아래**에 붙어 있어
+        - **[포트폴리오] 탭 = 포트폴리오 PDF 만들기**(`components/portfolio-maker/PortfolioMaker.tsx`, 규칙 62). 예전엔 편집 화면 **맨 아래**에 붙어 있어
           작품 30장을 지나야 나왔고 있는 줄도 모르는 기능이었다. 사이드바에서는 옆에 'PDF 만들기' 를 적는다(`note`, 2026-10-02) —
           '포트폴리오' 가 이 메뉴·공개 홈페이지의 [포트폴리오] 탭·편집 화면의 파일 올리기 세 곳에서 다른 뜻이다.
         - **작품 순서는 [순서 바꾸기] 를 누른 뒤 작품 아래 ◀ ▶ 로 바꾼다**(`WorksSection` → `PUT /portfolio/images/order`). 평소엔 화살표가 없다 —
@@ -2154,6 +2211,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         "작품 N점에 작품명·재료·크기·연도가 없습니다. 홈페이지에서 정보를 채워 퀄리티를 높여보세요."
       - **포맷 PDF**: 4종(16:9 / A4가로 / A4가로 / A4세로) 중 골라 미리보기 후 저장. 미리보기는 PDF와 **같은 HTML**을 축소해 보여준다(`components/shared/PortfolioFormatPicker.tsx`, `lib/portfolioFormats.ts`).
         마이페이지 **[포트폴리오] 탭**에 있다(내용은 [홈페이지]에서 고친다).
+      - ⚠️ **아래 「가이드형 디자인」의 화면 설명(`PortfolioFormatPicker`·설정 탭 3개·[표지 편집] 인라인 패널)은 2026-10-03 에 화면째로 바뀌었다** — 지금 화면은 규칙 62.
+        엔진(`portfolioFormats.ts`)에 관한 ⚠️ 들은 그대로 유효하다.
       - **가이드형 디자인 — 제작 화면(2026-08-29)**. `PortfolioFormatPicker` 는 4샘플 그리드가 아니라 **좌측 sticky 설정(탭 3개) / 우측 단일 라이브 미리보기**.
         ⚠️ **설정은 탭 3개**(표지 / 색·글꼴 / 작품·본문)로 묶고 탭 안에서만 스크롤 — 세로로 다 쌓았더니 "설정란이 존나 길어" 못 쓴다는 지적. 저장·전체화면 버튼은 탭 밖 하단 고정.
         ⚠️ **라벨은 디자이너 용어 금지, 눈에 보이는 대로** — "밴드 상단"→"사진 위·이름 아래", "타이포"→"사진 없이", "뮤지엄 라벨"→"작품+설명" 등(작가가 뭘 얻을지 바로 알게).

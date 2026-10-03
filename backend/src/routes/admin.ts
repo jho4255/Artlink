@@ -6,6 +6,7 @@ import { isExhibitionClosed } from '../lib/exhibitionLifecycle';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { dailyVisitorStats } from '../lib/visitStats';
+import { dailyExportStats } from '../lib/exportStats';
 
 const router = Router();
 
@@ -321,6 +322,18 @@ router.get('/stats/visitors', authenticate, authorize('ADMIN'), async (req, res,
     const days = Number(req.query.days ?? 30);
     if (!Number.isFinite(days) || days < 1) throw new AppError('기간이 올바르지 않습니다.', 400);
     res.json(await dailyVisitorStats(days));
+  } catch (error) { next(error); }
+});
+
+/**
+ * GET /api/admin/stats/portfolio-exports?days=30 — 포트폴리오 PDF 저장(날짜별 횟수·작가 수·방식). Admin [통계] 탭(2026-10-03).
+ * 방문자 통계와 같은 모양: 오늘(KST) 포함 최근 N일(1~180), 기록 없는 날은 0, `since` = 집계 시작일. 규칙은 `lib/exportStats.ts`.
+ */
+router.get('/stats/portfolio-exports', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const days = Number(req.query.days ?? 30);
+    if (!Number.isFinite(days) || days < 1) throw new AppError('기간이 올바르지 않습니다.', 400);
+    res.json(await dailyExportStats(days));
   } catch (error) { next(error); }
 });
 

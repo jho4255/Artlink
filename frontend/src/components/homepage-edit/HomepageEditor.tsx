@@ -91,6 +91,8 @@ export default function HomepageEditor() {
   const [tagline, setTagline] = useState('');
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [portfolioFileUrl, setPortfolioFileUrl] = useState<string | null>(null);
+  /** 불러왔을 때의 파일 — 저장할 때 **바꿨을 때만** 파일을 보낸다(아래 save 주석) */
+  const loadedFileUrl = useRef<string | null>(null);
   const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
   // 홈페이지 스타일(배경·글자·강조·글꼴·대표작) — PDF 와 같은 designConfig 에 저장된다
   const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
@@ -128,6 +130,7 @@ export default function HomepageEditor() {
     setTagline(init.tagline);
     setCareer(init.career);
     setPortfolioFileUrl(init.portfolioFileUrl);
+    loadedFileUrl.current = init.portfolioFileUrl;
     setSeriesNotes(init.seriesNotes);
     setDesign(init.design);
     setSnapshot(signatureOf(init));
@@ -222,7 +225,9 @@ export default function HomepageEditor() {
       await api.put('/portfolio', {
         biography: biography.trim(),
         career,
-        portfolioFileUrl,
+        // 파일은 **여기서 바꿨을 때만** 보낸다(서버는 보냈을 때만 바꾼다, 2026-10-03). 포트폴리오 만들기 화면도 이 파일을 바꾸는데
+        // (만든 PDF 를 홈페이지에 올리기), 이 화면이 다른 탭에 열려 있다가 글만 고쳐 저장하면 옛 주소를 다시 보내 방금 올린 파일을 지웠다.
+        ...(portfolioFileUrl !== loadedFileUrl.current ? { portfolioFileUrl } : {}),
         statement: statement.trim() || null,
         tagline: tagline.trim() || null,
         themeId: portfolio?.themeId ?? null,
@@ -243,7 +248,8 @@ export default function HomepageEditor() {
       if (!user) return;
       const home = artistPath({ id: user.id, handle: nextHandle });
       const tab = previewTabFor(section);
-      navigate(tab && tab !== 'works' ? `${home}?tab=${tab}` : home);
+      // `savedHomepage` — 공개 홈페이지가 "이 내용으로 포트폴리오 PDF 도 만들 수 있어요" 를 한 번 알린다(작품 3점 이상, 닫으면 다시 안 뜬다)
+      navigate(tab && tab !== 'works' ? `${home}?tab=${tab}` : home, { state: { savedHomepage: true } });
     },
     onError: (err) => {
       const e = err as Error & { field?: string };

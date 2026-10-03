@@ -8,7 +8,7 @@ export interface VisitorRow { date: string; members: number; guests: number; tot
  * 집계 시작일(`since`) 전의 날은 뺀다 — 그날의 0 은 '아무도 안 왔다'가 아니라 '아직 세지 않았다'다.
  * 그대로 그리면 기능을 켠 첫 주에 "지난 3주 방문자 0명" 처럼 읽힌다.
  */
-export function trimBeforeSince(rows: VisitorRow[], since: string | null): VisitorRow[] {
+export function trimBeforeSince<T extends { date: string }>(rows: T[], since: string | null): T[] {
   if (!since) return [];
   return rows.filter((r) => r.date >= since);
 }
@@ -51,4 +51,27 @@ export function dayLabel(date: string): { md: string; weekday: string } {
 /** 평균 표시 — 정수면 정수로, 아니면 소수 한 자리 */
 export function fmtAvg(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// ── 포트폴리오 PDF 저장 (2026-10-03) ── 서버 `GET /api/admin/stats/portfolio-exports`, 규칙은 backend `lib/exportStats.ts`
+export interface ExportRow { date: string; total: number; artists: number; download: number; print: number; pptx: number; uploaded: number }
+
+export interface ExportSummary {
+  /** 보이는 기간 전체의 합 */
+  total: number;
+  download: number;
+  print: number;
+  pptx: number;
+  uploaded: number;
+  /** 최근 최대 7일(오늘 포함)의 저장 횟수 */
+  last7: number;
+}
+
+/**
+ * 기간 합계. ⚠️ 작가 수(`artists`)는 **더하지 않는다** — 날마다 센 '서로 다른 작가 수'라, 이틀에 걸쳐 저장한 한 사람이 2명이 된다.
+ * 전체 작가 수는 서버가 따로 세어 준다(`totals.artists`).
+ */
+export function summarizeExports(rows: ExportRow[]): ExportSummary {
+  const sum = (k: keyof Omit<ExportRow, 'date'>, list: ExportRow[] = rows) => list.reduce((s, r) => s + r[k], 0);
+  return { total: sum('total'), download: sum('download'), print: sum('print'), pptx: sum('pptx'), uploaded: sum('uploaded'), last7: sum('total', rows.slice(-7)) };
 }

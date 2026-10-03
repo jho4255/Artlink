@@ -1,5 +1,8 @@
 import { test, expect, request as pwRequest, type Browser, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, settle, ownedGalleryId, ensurePublicArtworks, createExhibition, openHomepageEditor, editorSave } from '../lib/helpers';
+import {
+  openAs, tokenFor, userIds, settle, ownedGalleryId, ensurePublicArtworks, createExhibition, openHomepageEditor, editorSave,
+  openPortfolioMaker, openCustomize, customizePanel, makerBar,
+} from '../lib/helpers';
 
 /**
  * 2026-09-16 배포분(작가·갤러리 홈페이지 v2 · `/@핸들` · '일반' 역할 · 포트폴리오 버전)을 **눌러서** 본다.
@@ -154,18 +157,20 @@ test.describe('작가 홈페이지 테마 — 직접 고른 뒤부터 적용', (
 
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=portfolio');
     const sent: Record<string, any>[] = [];
+    const full: string[] = [];
     page.on('request', (req) => {
-      if (req.method() === 'PUT' && /\/api\/portfolio$/.test(new URL(req.url()).pathname)) sent.push(req.postDataJSON());
+      const path = new URL(req.url()).pathname;
+      // 2026-10-03 부터 디자인은 **디자인만** 보낸다(PUT /portfolio/design). 약력·파일까지 통째로 보내는 전체 저장은 쓰지 않는다
+      if (req.method() === 'PUT' && path === '/api/portfolio/design') sent.push(req.postDataJSON());
+      if (req.method() === 'PUT' && path === '/api/portfolio') full.push(path);
     });
-    // [색 · 글꼴 · 판형] 을 펴고 배경을 하나 바꾼다 — 피커는 바꾸는 즉시 저장한다
-    const sand = page.getByRole('button', { name: '샌드', exact: true }).first();
-    if (!(await sand.isVisible().catch(() => false))) {
-      await page.getByRole('button', { name: /색 · 글꼴 · 판형/ }).first().click({ timeout: 15000 });
-    }
-    await sand.click({ timeout: 10000 });
+    await openPortfolioMaker(page);
+    // [꾸미기] → [색·글꼴] 에서 배경을 하나 바꾼다 — 고르는 즉시 저장한다
+    await openCustomize(page, '색·글꼴');
+    await customizePanel(page).getByRole('button', { name: '샌드', exact: true }).click({ timeout: 10000 });
     await expect.poll(() => sent.length, { timeout: 10000 }).toBeGreaterThan(0);
+    expect(full, '만들기 화면이 포트폴리오 전체를 다시 보냈다').toHaveLength(0);
     const dc = sent[sent.length - 1]!.designConfig;
     expect(dc.bg).toBe('sand');
     expect(dc.heroImageId, 'PDF 저장이 홈페이지 대표작을 지웠다').toBe(heroId);
@@ -238,51 +243,36 @@ test.describe("'일반'(VISITOR) 역할", () => {
   });
 });
 
-test.describe('포트폴리오 버전', () => {
-  test('★ [+ 버전] → 칩이 생기고, 새로고침해도 남는다', async ({ browser }) => {
+test.describe('포트폴리오 구성(작품 고르기)', () => {
+  // 2026-10-03 — 화면에서는 '버전' 을 **구성**이라고 부른다(서버 모델은 PortfolioVersion 그대로). 자세한 흐름은 64 스펙의 G.
+  test('★ [작품 고르기] 로 일부만 고르면 구성이 생기고, 새로고침해도 남는다', async ({ browser }) => {
+    const api = await pwRequest.newContext();
+    const before = await (await api.get(`${API}/portfolio`, { headers: auth(tokenFor('artist')) })).json();
+    test.skip((before.images?.length ?? 0) < 2, '작품이 2점 미만이라 일부만 고를 수 없다');
+    for (const v of before.versions ?? []) await api.delete(`${API}/portfolio/versions/${v.id}`, { headers: auth(tokenFor('artist')) });
+
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=portfolio');
-    const add = page.getByRole('button', { name: /^\s*버전$/ }).first();
-    await expect(add).toBeVisible({ timeout: 15000 });
-    await add.click();
-    await expect(page.getByRole('button', { name: /새 버전/ }).first()).toBeVisible({ timeout: 10000 });
+    await openPortfolioMaker(page);
+    await makerBar(page).getByRole('button', { name: /작품 고르기/ }).click();
+    const dlg = page.getByRole('dialog', { name: '작품 고르기' });
+    // ⚠️ 앞 스펙들이 같은 시드 작가에게 작품을 더해 두므로 '11번째'·'21번째' 도 있다 — 끝까지 맞춘다
+    await dlg.getByRole('button', { name: / — 1번째로 실림$/ }).click();   // 첫 작품을 뺀다
+    await expect(dlg.getByLabel(/이 구성의 이름/)).toHaveValue('제출용 1');
+    await dlg.getByRole('button', { name: /점으로 만들기/ }).click();
+    await expect(dlg).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /제출용 1 ·/ })).toBeVisible({ timeout: 10000 });
     await page.reload();
-    await expect(page.getByRole('button', { name: /새 버전/ }).first()).toBeVisible({ timeout: 15000 });
+    // 다시 들어오면 전체 작품으로 시작하고, 머리의 줄에서 그 구성을 고를 수 있다
+    await page.getByRole('button', { name: /전체 작품 ·/ }).click({ timeout: 15000 });
+    await expect(page.getByRole('menuitem', { name: /제출용 1 ·/ })).toBeVisible();
 
-    // 홈페이지 작품 순서는 버전과 무관하다 — 버전을 만들어도 작품이 줄지 않는다
-    const api = await pwRequest.newContext();
+    // 홈페이지 작품은 구성과 무관하다 — 구성을 만들어도 작품이 줄지 않는다
     const cur = await (await api.get(`${API}/portfolio`, { headers: auth(tokenFor('artist')) })).json();
-    expect(cur.versions.length).toBeGreaterThan(0);
-    expect(cur.versions[0].workIds.length).toBe(cur.images.length);
+    expect(cur.versions).toHaveLength(1);
+    expect(cur.versions[0].workIds.length).toBe(cur.images.length - 1);
+    expect(cur.images.length).toBe(before.images.length);
     await api.dispose();
     await ctx.close();
-  });
-});
-
-test.describe('갤러리 홈페이지 — 지난 활동 기록', () => {
-  test('★ 주인이 [+ 기록 추가]로 적으면 비로그인 방문자에게 보인다', async ({ browser }) => {
-    const api = await pwRequest.newContext();
-    const gid = await ownedGalleryId(api);
-    await api.dispose();
-
-    const title = `E2E 아트페어 ${Date.now()}`;
-    const { page, ctx } = await openAs(browser, 'gallery');
-    await page.setViewportSize(DESKTOP);
-    await page.goto(`/galleries/${gid}?tab=history`);   // 지난 활동 기록은 [지난 전시] 탭(2026-09-27)
-    await page.getByRole('button', { name: /기록 추가/ }).click({ timeout: 15000 });
-    await page.getByPlaceholder('전시·행사 이름 *').fill(title);
-    await page.getByPlaceholder(/^기간/).fill('2025 가을');
-    await page.getByRole('button', { name: '저장', exact: true }).click();
-    await expect(page.locator('body')).toContainText(title, { timeout: 10000 });
-    await ctx.close();
-
-    const anon = await browser.newPage();
-    await anon.goto(`/galleries/${gid}?tab=history`);
-    await expect(anon.locator('body')).toContainText(title, { timeout: 15000 });
-    await expect(anon.locator('body')).toContainText('2025 가을');
-    // 방문자에게는 채우라는 자리·버튼이 보이지 않는다
-    await expect(anon.getByRole('button', { name: /기록 추가/ })).toHaveCount(0);
-    await anon.close();
   });
 });

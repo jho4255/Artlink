@@ -3,7 +3,7 @@
  * 버전은 홈페이지 작품 위에 얹는 **선택과 순서**다. 지운 작품 id 가 배열에 남아도 화면이 죽거나 빈 칸을 그리면 안 된다.
  */
 import { describe, it, expect } from 'vitest';
-import { versionWorks, versionDesign, nextVersionName, moveId } from '../lib/portfolioVersions';
+import { versionWorks, versionDesign, moveId } from '../lib/portfolioVersions';
 import type { PortfolioImage, PortfolioVersion } from '../types';
 
 const img = (id: number): PortfolioImage => ({ id, url: `u${id}`, order: id } as PortfolioImage);
@@ -24,18 +24,13 @@ describe('versionWorks', () => {
   });
 });
 
-describe('versionDesign · nextVersionName · moveId', () => {
+describe('versionDesign · moveId', () => {
   it('버전 디자인이 없으면 기본 디자인', () => {
     expect(versionDesign(ver([1], { bg: 'ink' }), { bg: 'white' })).toEqual({ bg: 'ink' });
     expect(versionDesign(ver([1]), { bg: 'white' })).toEqual({ bg: 'white' });
     expect(versionDesign(null, undefined)).toBeNull();
   });
-  it('새 이름은 겹치지 않는다', () => {
-    expect(nextVersionName([])).toBe('새 버전');
-    expect(nextVersionName([{ name: '새 버전' }])).toBe('새 버전 2');
-    expect(nextVersionName([{ name: '새 버전' }, { name: '새 버전 2' }])).toBe('새 버전 3');
-    expect(nextVersionName([{ name: 'x' }], '공모용 복사')).toBe('공모용 복사');
-  });
+  // 새 구성의 이름('제출용 1' …)은 `portfolioMaker.test.ts` 가 본다(2026-10-03 — '새 버전' 이라는 이름은 없앴다)
   it('순서 옮기기 — 끝에서는 그대로', () => {
     expect(moveId([1, 2, 3], 2, -1)).toEqual([2, 1, 3]);
     expect(moveId([1, 2, 3], 2, 1)).toEqual([1, 3, 2]);

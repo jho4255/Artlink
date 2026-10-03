@@ -42,15 +42,15 @@ test('작가 약력/경력 수정 후 저장 → 공개 홈페이지에 남는�
   await ctx.close();
 });
 
-test('★ [포트폴리오] 탭은 PDF 포맷 고르는 화면이다 (내용 편집이 아니다)', async ({ browser }) => {
+test('★ [포트폴리오] 탭은 PDF 를 만드는 화면이다 (내용 편집이 아니다)', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/mypage?tab=portfolio');
   await expect(page.getByRole('heading', { name: 'PortFolio' })).toBeVisible({ timeout: 15000 });
 
-  // 포맷 카드에는 '포맷 A' 같은 이름과 설명을 두지 않는다 — 단서는 표지 그림과 판형 배지다
+  // '포맷' 이라는 말은 화면에 없다(2026-10-03 개편) — 무엇을 하는 화면인지는 한 문장으로 말한다
   const body = await page.locator('main').innerText();
-  expect(body).not.toContain('포맷 A');
-  expect(body).not.toContain('포맷 B');
+  expect(body).not.toContain('포맷');
+  expect(body).toMatch(/포트폴리오 PDF/);
 
   // 내용 입력칸이 여기 있으면 안 된다
   await expect(page.getByPlaceholder('작가 소개·약력을 입력하세요.')).toHaveCount(0);

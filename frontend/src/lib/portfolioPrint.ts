@@ -26,10 +26,8 @@
  */
 import { PORTFOLIO_FONT_HREF } from './portfolioFonts';
 import { prefetchImages, recoverFailed } from './imageFetch';
-import { displayName } from './utils';
-import { safeName } from './operationPdf';
 import {
-  applyDesign, bookImageUrls, buildPortfolioPages, normalizePdfDesign, themeById,
+  applyDesign, bookImageUrls, buildPortfolioPages, normalizePdfDesign, portfolioFileName, themeById,
   type BookPhase, type PortfolioBookData, type PortfolioPage, type PortfolioTheme,
 } from './portfolioFormats';
 
@@ -154,8 +152,14 @@ html, body { margin: 0; padding: 0; background: ${theme.bg}; }
 </style></head><body>${pages.map((p) => `<div class="pg"><div class="in">${p.html}</div></div>`).join('\n')}</body></html>`;
 }
 
-/** 숨은 iframe 에 문서를 써 넣고 인쇄 대화상자를 연다. 글꼴·사진이 다 뜬 뒤에 연다(안 그러면 폴백 글꼴·빈 칸이 찍힌다) */
-export async function printDocument(html: string): Promise<void> {
+/**
+ * 숨은 iframe 에 문서를 써 넣고 인쇄 대화상자를 연다. 글꼴·사진이 다 뜬 뒤에 연다(안 그러면 폴백 글꼴·빈 칸이 찍힌다).
+ *
+ * 반환값 = **대화상자가 실제로 열렸는가**(`beforeprint` 가 왔는가). 일부 인앱 브라우저(카카오톡·인스타 웹뷰)는 `print()` 가
+ * 아무 일도 하지 않는데, 예전엔 그래도 "인쇄 창에서 'PDF로 저장'을 고르세요" 라는 성공 안내가 떴다(2026-10-02 조사) —
+ * 눌러도 아무 일이 없는데 화면은 됐다고 말하는 셈이었다.
+ */
+export async function printDocument(html: string): Promise<boolean> {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
@@ -171,20 +175,27 @@ export async function printDocument(html: string): Promise<void> {
   const cleanup = () => { frame.remove(); };
   win.addEventListener('afterprint', cleanup, { once: true });
   window.setTimeout(cleanup, 10 * 60 * 1000);
+  let opened = false;
+  win.addEventListener('beforeprint', () => { opened = true; }, { once: true });
   win.focus();
-  win.print();
+  try { win.print(); } catch { /* 막힌 환경 — 아래에서 안 열렸다고 알린다 */ }
+  // 크롬·파이어폭스는 print() 가 대화상자가 닫힐 때까지 돌아오지 않는다(그 전에 beforeprint 가 온다).
+  // 사파리는 바로 돌아오고 이벤트가 조금 늦게 온다 — 잠깐 기다렸다가 판정한다.
+  // 못 열었다고 판정해도 iframe 은 치우지 않는다 — 이벤트가 더 늦게 오는 브라우저에서 열리던 창을 깨뜨릴 수 있다(시한이 치운다).
+  if (!opened) await new Promise((r) => window.setTimeout(r, 600));
+  return opened;
 }
 
 /**
  * 포트폴리오 → 벡터 PDF (인쇄 대화상자).
- * 반환: 못 받은 사진 주소, 쪽수, 내장 사진 용량(MB 안내용).
+ * 반환: 못 받은 사진 주소, 쪽수, 내장 사진 용량(MB 안내용), 인쇄 창이 열렸는가.
  */
 export async function printPortfolioBook(
   data: PortfolioBookData,
   design: unknown,
   onProgress?: (done: number, total: number, phase: BookPhase) => void,
   budget = PRINT_BUDGET_BYTES,
-): Promise<{ missing: string[]; pages: number; imageBytes: number; maxEdge: number }> {
+): Promise<{ missing: string[]; pages: number; imageBytes: number; maxEdge: number; opened: boolean }> {
   const d = normalizePdfDesign(design);
   const theme = applyDesign(themeById('archive'), d);
   const urls = bookImageUrls(data);
@@ -192,6 +203,6 @@ export async function printPortfolioBook(
   if (failed.length) failed = await recoverFailed(failed, (x, t) => onProgress?.(x, t, 'retry'));
   const built = buildPortfolioPages(data, themeById('archive'), { forPdf: true, design });
   const { pages, bytes, spec } = await shrinkToBudget(built, theme.bg, budget, (x, t) => onProgress?.(x, t, 'render'));
-  await printDocument(buildPrintDocument(pages, theme, `${safeName(displayName(data.user))}_포트폴리오`));
-  return { missing: failed, pages: pages.length, imageBytes: bytes, maxEdge: spec.maxEdge };
+  const opened = await printDocument(buildPrintDocument(pages, theme, portfolioFileName(data, design)));
+  return { missing: failed, pages: pages.length, imageBytes: bytes, maxEdge: spec.maxEdge, opened };
 }

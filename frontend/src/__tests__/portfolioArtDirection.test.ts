@@ -256,7 +256,8 @@ describe('작품 비율이 배치에 반영된다', () => {
 
 describe('페이지 성격 표시 (kind/works) — 전체 구성 보기·안내의 근거', () => {
   const d: PortfolioBookData = {
-    user: { name: '작가' }, statement: '노트', biography: '약력',
+    // 마지막 장은 **적을 연락처가 있을 때만** 생긴다(2026-10-03) — 그래서 이메일을 준다
+    user: { name: '작가', email: 'artist@example.com' }, statement: '노트', biography: '약력',
     career: { artFair: [], solo: [{ year: '2025', content: '개인전' }], group: [] },
     seriesInfo: [{ name: 'S', note: '시리즈 소개' }],
     images: works(9, { title: '작품' }),

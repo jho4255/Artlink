@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">개인정보처리방침</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 9월 28일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 10월 3일</p>
 
       <div className="space-y-10 text-gray-700 text-sm leading-relaxed">
 
@@ -16,7 +16,7 @@ export default function PrivacyPage() {
             <li>갤러리 등록 시: 갤러리명, 주소, 전화번호, 대표자명, 대표 이미지, (선택)이메일·인스타그램 주소</li>
             <li>포트폴리오 등록 시: 전시 이력, 작가 약력, 작품 사진</li>
             <li>공모 지원 시: 작가 약력, 경력, 작품 사진, 포트폴리오 파일, 공모별 추가 답변 (초대 수락·초대 코드 참여 시에는 홈페이지(포트폴리오)에 등록된 약력·경력·작품 사진·포트폴리오 파일)</li>
-            <li>서비스 이용 과정에서 자동 생성: 접속 로그, 조회 기록, 일간 방문자 집계를 위한 기기 식별값(브라우저에 저장되는 무작위 값으로, 이름·연락처·IP 주소와 연결하지 않습니다)</li>
+            <li>서비스 이용 과정에서 자동 생성: 접속 로그, 조회 기록, 일간 방문자 집계를 위한 기기 식별값(브라우저에 저장되는 무작위 값으로, 이름·연락처·IP 주소와 연결하지 않습니다), 포트폴리오 PDF 저장 기록(저장한 날짜·쪽수·작품 수·저장 방식 — 만든 파일은 회원이 ‘내 홈페이지에도 올리기’를 고른 경우에만 서버에 보관됩니다)</li>
           </ul>
         </section>
 

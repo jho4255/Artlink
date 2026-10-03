@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RotateCw } from 'lucide-react';
+import { ArrowLeft, ExternalLink, RotateCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -125,6 +125,22 @@ export default function ApplyPage() {
     const r = await refetchPortfolio();
     if (r.data) { fillFrom(r.data); setTouched(false); toast.success('홈페이지 내용으로 다시 채웠어요.'); }
     else toast.error('홈페이지 내용을 불러오지 못했습니다.');
+  };
+
+  /**
+   * [홈페이지에 올린 파일 불러오기] — 포트폴리오 파일 칸이 비어 있을 때(2026-10-03).
+   * [PDF 만들기] 는 **새 탭**으로 연다(지원서에는 임시저장이 없다 — 같은 탭으로 가면 쓰던 지원서를 잃는다).
+   * 그 탭에서 만들며 '내 홈페이지에도 올리기' 를 켰으면 여기서 다시 받아 붙인다. 다른 칸(약력·작품)은 건드리지 않는다.
+   */
+  const [loadingFile, setLoadingFile] = useState(false);
+  const loadHomepageFile = async () => {
+    setLoadingFile(true);
+    try {
+      const r = await refetchPortfolio();
+      const url: string | null = r.data?.portfolioFileUrl || null;
+      if (url) { setFile(url); setTouched(true); toast.success('홈페이지에 올린 포트폴리오 파일을 붙였어요.'); }
+      else toast('홈페이지에 올린 포트폴리오 파일이 아직 없어요.');
+    } finally { setLoadingFile(false); }
   };
 
   // 쓰다가 떠나면 경고 — 지원서는 길다
@@ -265,6 +281,19 @@ export default function ApplyPage() {
 
         <FormSection n={4} title="포트폴리오 파일" description="PDF · DOC · HWP. 없으면 비워 두세요.">
           <PortfolioFileInput value={file} onChange={edit(setFile)} />
+          {/* 파일이 없을 때만 — 올린 작품으로 PDF 를 만들 수 있다는 것을 **쓰일 자리에서** 알린다(예전엔 편집 화면 [파일] 묶음의 링크 한 줄뿐이었다) */}
+          {!file && (
+            <p className="mt-2.5 break-keep text-sm leading-relaxed text-gray-600" data-testid="apply-pdf-hint">
+              아직 만들어 둔 파일이 없나요? 올린 작품으로{' '}
+              <a href="/mypage?tab=portfolio" target="_blank" rel="noopener" className="inline-flex items-center gap-0.5 font-medium text-gray-950 underline underline-offset-4">
+                포트폴리오 PDF 만들기 <ExternalLink size={13} aria-hidden />
+              </a>
+              <span className="text-gray-500"> (새 창) · 만들 때 '내 홈페이지에도 올리기' 를 켰다면{' '}</span>
+              <button type="button" onClick={loadHomepageFile} disabled={loadingFile} className="font-medium text-gray-950 underline underline-offset-4 disabled:opacity-50">
+                {loadingFile ? '불러오는 중…' : '홈페이지에 올린 파일 불러오기'}
+              </button>
+            </p>
+          )}
         </FormSection>
 
         {fields.length > 0 && (

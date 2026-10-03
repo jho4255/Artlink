@@ -3,6 +3,8 @@ import { ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface MenuItem {
+  /** 같은 이름의 항목이 둘일 수 있을 때(사용자가 지은 이름) 구분할 열쇠. 없으면 label */
+  id?: string;
   label: string;
   /** 항목 아래 작은 설명 */
   hint?: string;
@@ -70,7 +72,7 @@ export default function MenuButton({ label, icon, items, busyLabel, align = 'rig
         >
           {items.map((it) => (
             <button
-              key={it.label}
+              key={it.id ?? it.label}
               type="button"
               role="menuitem"
               disabled={it.disabled}

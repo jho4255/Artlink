@@ -18,7 +18,7 @@
  * `imageSrc()`(= proxied)로 blob: URL을 쓴다. 렌더 전에 반드시 prefetch를 돌려야 네트워크가 0이 된다.
  * 안 하면 페이지 수만큼 프록시 요청이 붙어 "안 끝나는" 상태가 된다(operationPdf 주석 참고).
  */
-import { displayName } from '@/lib/utils';
+import { thumbUrl } from '@/components/shared/Thumb';
 import { esc, proxied, safeName, triggerDownload } from '@/lib/operationPdf';
 import { prefetchImages, recoverFailed } from '@/lib/imageFetch';
 import { resolvePalette, bestTextKey, isBgKey, isTextKey, isAccentKey, mixHex } from '@/lib/portfolioColors';
@@ -136,6 +136,24 @@ export type WorksCaption = 'below' | 'left' | 'minimal';
 export type ProseAlign = 'justify' | 'left' | 'right';
 /** 캡션 표기 관례 — kr(작품명, 연도 / 재료 / 크기) | intl(작품명 / 재료 / 크기 / 연도) */
 export type CaptionStyle = 'kr' | 'intl';
+/**
+ * 문서(표지·머리말·CV·마지막 장·파일 이름)에 찍는 이름 (2026-10-03).
+ *   real     실명 — **기본**. 갤러리·공모에 내는 문서라서다(실서버 작가 47명 중 18명이 닉네임과 실명이 다르다).
+ *   nickname 닉네임 — 활동명으로 쓰는 작가가 고른다. 닉네임이 없으면 실명으로 떨어진다.
+ * 예전엔 고를 수 없었고 늘 닉네임 우선이었다(홈페이지의 `displayName` 과 같은 규칙) — 표지에 무엇이 찍히는지 저장한 뒤에야 알았다.
+ */
+export type NameSource = 'real' | 'nickname';
+/** 마지막 장에 실을 연락처 — 항목마다 켜고 끈다. 기본은 전부 켬(2026-10-03 사용자 결정) */
+export interface ContactShow { email: boolean; phone: boolean; instagram: boolean; web: boolean }
+/**
+ * [약력] 탭 — 작가노트·약력 쪽에 **무엇을 싣는가**(2026-10-03 사용자 결정). 기본은 전부 켬 = 예전과 같다.
+ * 작가노트 · 약력(자유 글) · 경력 다섯 항목을 따로 끈다(예: 수상만 빼고 내기). 글이 없는 항목은 켜 둬도 실리지 않는다.
+ */
+export interface CvShow { statement: boolean; bio: boolean; education: boolean; solo: boolean; group: boolean; artFair: boolean; award: boolean }
+/** 약력·경력 쪽의 자리 — 작품 뒤(기본, 마지막 장 앞) | 작품 앞(작가노트 다음) */
+export type CvPosition = 'after' | 'before';
+/** 경력의 단 수 — 자동(세로 용지 한 단 · 가로 용지 두 단, 예전 동작) | 한 단 | 두 단 */
+export type CvColumns = 'auto' | 'one' | 'two';
 // ── 표지 = 디자인된 레이아웃(구성) + 자유 재스타일(색·글꼴·글요소 표시) ──
 // ⚠️ "자유 축 조합"(이미지 배치/글 위치/정렬을 독립 축으로)은 **폐기**했다 — 대부분 조합이 구성이 죽어
 //    "존나 병신같은" 표지가 나왔다(사용자 실측 지적). 표지는 손으로 구성한 레이아웃이 책임진다.
@@ -182,8 +200,22 @@ export interface PdfDesign {
   /** 인라인 편집: 표지 슬롯에 넣을 작품 id를 **순서대로**. 비어 있으면 포트폴리오 순서(자동).
    *  단일 표지는 [0]이 대표작, 여러작품 표지는 앞에서부터 각 칸. 슬롯을 지우면 이 배열에서 빠진다. */
   coverImageIds: number[];
-  /** 본문(산문) 정렬 — 전체 읽는 글에 적용 */
+  /**
+   * 작가노트·약력의 글 정렬 — [약력] 탭.
+   * ⚠️ 2026-10-03 부터 **쪽마다 따로**다(사용자 결정: 한 탭의 옵션은 그 쪽만 바꾼다). 예전엔 이 하나가 작가노트·시리즈 소개·
+   *    작품 이야기·약력을 한꺼번에 바꿨다. 시리즈 소개·작품 설명은 `worksProseAlign`([작품] 탭).
+   */
   proseAlign: ProseAlign;
+  /** 시리즈 소개·작품 설명(이어지는 이야기 쪽 포함)의 글 정렬 — [작품] 탭. 옛 저장값에는 없다 → `proseAlign` 을 물려받는다 */
+  worksProseAlign: ProseAlign;
+  /** [약력] 탭 — 싣는 항목 */
+  cvShow: CvShow;
+  /** [약력] 탭 — 약력·경력 쪽의 자리 */
+  cvPosition: CvPosition;
+  /** [약력] 탭 — 경력의 단 수 */
+  cvColumns: CvColumns;
+  /** [약력] 탭 — 경력 항목 이름 옆의 영문 머리말(EDUCATION · SOLO EXHIBITIONS …) */
+  cvEnglish: boolean;
   /**
    * 캡션 표기 관례 (2026-09-16).
    *   kr   국내: **작품명, 제작연도 / 재료 / 크기** — 연도가 재료·크기 앞. 공개 홈페이지(`museumCaption`)와 같다.
@@ -191,10 +223,19 @@ export interface PdfDesign {
    * 한 문서 안에서는 하나만 쓴다(조사: 심사자가 꼽는 결함 "캡션 형식이 장마다 다름").
    */
   captionStyle: CaptionStyle;
-  /** 작가노트·마지막 장에 프로필 사진을 싣는가 (사진이 있을 때만 의미 있다). 골든 5권 중 3권이 넣는다 */
+  /** 작가노트 쪽에 프로필 사진을 싣는가 (사진이 있을 때만 의미 있다). 골든 5권 중 3권이 넣는다 — [약력] 탭 */
   artistPhoto: boolean;
+  /**
+   * 마지막 장(연락처)에 프로필 사진을 싣는가 — [이름·연락처] 탭.
+   * 2026-10-03 까지는 `artistPhoto` 하나가 작가노트·마지막 장 둘 다 정했다. 쪽마다 따로 고르게 나눴다 — 옛 저장값은 `artistPhoto` 를 물려받는다.
+   */
+  contactPhoto: boolean;
   /** 마지막에 작품 목록(썸네일·쪽번호)을 붙이는가 — 도록의 List of Works. 작품이 6점 이상일 때만 만든다 */
   worksIndex: boolean;
+  /** 문서에 찍는 이름 — 실명(기본) | 닉네임 */
+  nameSource: NameSource;
+  /** 마지막 장에 실을 연락처(항목별). 전부 끄고 프로필 사진도 없으면 마지막 장을 만들지 않는다 */
+  contact: ContactShow;
   // ── 아트디렉션 ────────────────────────────────────────────────────
   /**
    * 자동 편집(아트디렉션) 여부.
@@ -256,6 +297,11 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
   const coverLayout: CoverLayout = inList(layouts, o.coverLayout) ? o.coverLayout
     : (typeof o.coverLayout === 'string' && RETIRED[o.coverLayout]) ? RETIRED[o.coverLayout]
     : (noImage ? 'serifCenter' : 'bandTop');
+  const ALIGNS = ['justify', 'left', 'right'] as const;
+  // ⚠️ 기본값은 **양쪽맞춤**이다(2026-09-13). 공개 홈페이지의 작가노트·약력이 이미 양쪽맞춤이라
+  //    같은 글이 PDF 에서만 들쭉날쭉하면 두 화면이 다른 문서처럼 보인다. 고른 적 있으면 그 값을 지킨다.
+  const proseAlign: ProseAlign = inList(ALIGNS, o.proseAlign) ? o.proseAlign : 'justify';
+  const artistPhoto = o.artistPhoto !== false;
   return {
     bg,
     ink: isTextKey(o.ink) ? o.ink : (mig?.ink ?? bestTextKey(bg)),
@@ -281,17 +327,38 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
     coverImageIds: Array.isArray(o.coverImageIds)
       ? o.coverImageIds.filter((n: unknown): n is number => typeof n === 'number')
       : (typeof o.coverImageId === 'number' ? [o.coverImageId] : []), // 옛 단일값 마이그레이션
-    // ⚠️ 기본값은 **양쪽맞춤**이다(2026-09-13). 공개 홈페이지의 작가노트·약력이 이미 양쪽맞춤이라
-    //    같은 글이 PDF 에서만 들쭉날쭉하면 두 화면이 다른 문서처럼 보인다. 고른 적 있으면 그 값을 지킨다.
-    proseAlign: (['justify', 'left', 'right'] as const).includes(o.proseAlign) ? o.proseAlign : 'justify',
+    proseAlign,
+    // 쪽마다 따로 고르게 나누기 전(2026-10-03)의 저장값은 하나였다 — 그 값을 그대로 물려받아 모양이 바뀌지 않게
+    worksProseAlign: inList(ALIGNS, o.worksProseAlign) ? o.worksProseAlign : proseAlign,
+    cvShow: normalizeCvShow(o.cvShow),
+    cvPosition: o.cvPosition === 'before' ? 'before' : 'after',
+    cvColumns: o.cvColumns === 'one' || o.cvColumns === 'two' ? o.cvColumns : 'auto',
+    cvEnglish: o.cvEnglish !== false,
     captionStyle: o.captionStyle === 'intl' ? 'intl' : 'kr',
-    artistPhoto: o.artistPhoto !== false,
+    artistPhoto,
+    contactPhoto: typeof o.contactPhoto === 'boolean' ? o.contactPhoto : artistPhoto,
     worksIndex: o.worksIndex !== false,
+    // 옛 저장값에는 이 두 키가 없다 → 실명 · 전부 켬
+    nameSource: o.nameSource === 'nickname' ? 'nickname' : 'real',
+    contact: normalizeContact(o.contact),
     // ⚠️ 하위호환: **이미 저장된 설정이 있으면 auto 를 켜지 않는다.** 그 사람은 배치를 직접 골랐고,
     //    갑자기 다른 배치로 바뀌면 "내가 만든 게 사라졌다"가 된다. 아무것도 저장 안 된 새 사용자만 auto.
     auto: typeof o.auto === 'boolean' ? o.auto : !hasSavedChoice(o),
     direction: typeof o.direction === 'string' ? o.direction : null,
   };
+}
+
+function normalizeCvShow(raw: unknown): CvShow {
+  const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    statement: c.statement !== false, bio: c.bio !== false,
+    education: c.education !== false, solo: c.solo !== false, group: c.group !== false, artFair: c.artFair !== false, award: c.award !== false,
+  };
+}
+
+function normalizeContact(raw: unknown): ContactShow {
+  const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return { email: c.email !== false, phone: c.phone !== false, instagram: c.instagram !== false, web: c.web !== false };
 }
 
 /** 사용자가 실제로 뭔가 고른 적이 있는 저장값인가 — auto 기본값 판정용 */
@@ -350,6 +417,8 @@ export interface PortfolioPage {
    * 페이지 HTML 을 다시 파싱해 알아내는 건 못 미덥다(빌더가 아는 사실을 그대로 넘긴다).
    */
   kind?: 'cover' | 'prose' | 'works' | 'index' | 'cv' | 'contact';
+  /** 작가노트 쪽이다(kind 는 다른 글 쪽과 같은 'prose') — 꾸미기의 [약력] 탭이 미리보기를 이 쪽으로 데려간다 */
+  part?: 'statement';
   /** 이 장에 실린 작품 수 (kind==='works' 또는 시리즈 여는 장) */
   works?: number;
   /** 쓰인 배치 이름 (kind==='works') */
@@ -375,6 +444,45 @@ function igLabel(url?: string | null): string {
 
 const contactList = (u: PortfolioBookData['user']) =>
   [u.email, u.phone, igLabel(u.instagramUrl)].map((s) => String(s ?? '').trim()).filter(Boolean);
+
+/**
+ * 문서에 찍는 이름 — **실명이 기본**, 닉네임을 고르면 닉네임(없으면 실명).
+ * 표지·러닝 머리말·CV·마지막 장·파일 이름이 전부 이 함수 하나를 본다 — 한 곳만 `displayName` 으로 남으면 표지와 마지막 장의 이름이 달라진다.
+ * (갤러리 도록은 `user` 에 닉네임을 넘기지 않으므로 어느 쪽이든 넘긴 이름이 그대로 나온다)
+ */
+export function portfolioName(user: { name?: string | null; nickname?: string | null } | null | undefined, source: NameSource = 'real'): string {
+  const real = String(user?.name ?? '').trim();
+  const nick = String(user?.nickname ?? '').trim();
+  return source === 'nickname' ? (nick || real) : (real || nick);
+}
+/** 이번 문서의 이름 규칙 — `buildPortfolioPages` 가 시작할 때 정하고 그 동기 실행 동안만 유효(imgMode·captionStyle 과 같은 방식) */
+let nameSource: NameSource = 'real';
+const bookName = (data: PortfolioBookData) => portfolioName(data.user, nameSource);
+
+export type ContactKey = keyof ContactShow;
+export interface ContactRow { key: ContactKey; label: string; value: string }
+/**
+ * 마지막 장에 적을 수 있는 연락처 — **값이 있는 것만**, 지면에 놓이는 순서대로.
+ * 화면(꾸미기의 [이름·연락처]·저장 창의 '이렇게 실립니다')과 마지막 장이 같은 목록을 본다 — 따로 만들면 화면이 말한 것과 다른 것이 찍힌다.
+ */
+export function contactRows(data: Pick<PortfolioBookData, 'user' | 'homepageUrl'>): ContactRow[] {
+  const rows: ContactRow[] = [
+    { key: 'email', label: 'E-mail', value: String(data.user.email ?? '').trim() },
+    { key: 'phone', label: 'Phone', value: String(data.user.phone ?? '').trim() },
+    { key: 'instagram', label: 'Instagram', value: igLabel(data.user.instagramUrl).trim() },
+    { key: 'web', label: 'Web', value: String(data.homepageUrl ?? '').trim().replace(/^https?:\/\//, '') },
+  ];
+  return rows.filter((r) => r.value);
+}
+/** 실제로 찍히는 줄 — 값이 있고 켜 둔 것 */
+const printedContact = (data: PortfolioBookData, design: PdfDesign) => contactRows(data).filter((r) => design.contact[r.key]);
+/**
+ * 마지막 장을 만드는가 — 적을 연락처도 프로필 사진도 없으면 만들지 않는다.
+ * 전부 끈 작가에게 이름만 한가운데 뜬 장을 붙이면 그게 '거의 빈 장'이다(규칙 54 의 실측 지표가 잡던 것).
+ */
+export function hasContactPage(data: PortfolioBookData, design: PdfDesign): boolean {
+  return printedContact(data, design).length > 0 || (design.contactPhoto && !!String(data.user.avatar ?? '').trim());
+}
 
 // ── 긴 글 나누기 ──
 // 페이지가 고정 크기라 글이 길면 **넘치는 만큼 그대로 잘려 나간다**(표시도 없이).
@@ -547,11 +655,24 @@ export function splitParagraphs(
  *    프록시가 설정 안 된 환경에서는 **사진이 통째로 깨졌다**(로컬에서 실서버 데이터 볼 때).
  *  - 'pdf': prefetch가 만들어 둔 blob(동일 출처 → canvas taint 없음), 없으면 프록시로 폴백.
  */
-let imgMode: 'display' | 'pdf' = 'display';
+let imgMode: 'display' | 'pdf' | 'preview' = 'display';
+/**
+ * 미리보기용 주소 — 작품 격자와 같은 800px 썸네일(t800). 제작 화면이 탭을 열 때마다 원본을 전부 받고 있었다
+ * (실측 2026-10-02: 실제 작가 8점 5.7MB · 30점 23.5MB). 썸네일이 없는 파일은 화면이 `data-full`(원본)로 되돌린다
+ * — `<img onerror>` 를 문자열에 심지 않는다(CSP·dangerouslySetInnerHTML). 받는 쪽은 `portfolio-maker/ScaledPage.tsx`.
+ * data:/blob: 주소(목업의 회색 자리표시)는 그대로 둔다 — 경로를 끼워 넣으면 깨진다.
+ */
+const previewSrc = (url: string) => (/^(data|blob):/i.test(url) ? url : thumbUrl(url, 'grid'));
 // 표지 이미지 채움 비율(0.6~1.0) — 표지 렌더 동안만 설정, 끝나면 1로 복원. heroBox/gridCell/cImg(표지 전용)만 참조.
 let coverImgScale = 1;
 
 const img = (url: string, style: string) => {
+  // 미리보기 — 썸네일 + 원본 주소(폴백용). 배치는 같은 함수가 정하므로 PDF 와 **사진 주소만** 다르다(테스트가 고정한다)
+  if (imgMode === 'preview') {
+    const thumb = previewSrc(url);
+    // loading="lazy" — 화면에 가까워진 쪽의 사진만 받는다(작품 150점짜리 문서도 처음엔 몇 장만 받는다)
+    return `<img src="${esc(thumb)}"${thumb !== url ? ` data-full="${esc(url)}"` : ''} loading="lazy" decoding="async" style="${style};object-fit:contain"/>`;
+  }
   const pdf = imgMode === 'pdf';
   // ⚠️ 미리보기에는 crossorigin을 붙이면 안 된다.
   // 같은 사진을 화면 어딘가(작품 그리드 등)에서 **crossorigin 없는 <img>** 로 먼저 그리면
@@ -650,7 +771,7 @@ function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chr
 
   if (chrome.bare) return shell(inner + folio);
 
-  const name = displayName(data.user);
+  const name = bookName(data);
   let deco = '';
   let pad = `padding:${p.top}px ${p.x}px ${p.bottom}px`;
 
@@ -998,7 +1119,7 @@ function coverHtml(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDe
   const years = data.images.map((i) => displayYear(i.year)).map((y) => /^(19|20)\d{2}$/.test(y) ? Number(y) : NaN).filter((n) => !isNaN(n));
   const yearRange = years.length ? (Math.min(...years) === Math.max(...years) ? String(years[0]) : `${Math.min(...years)}–${Math.max(...years)}`) : '';
   const v: CoverArgs = {
-    name: displayName(data.user),
+    name: bookName(data),
     year: data.year || String(new Date().getFullYear()),
     eyebrow: (design.coverEyebrowText ?? '').trim() || EYEBROW,
     hero: images[0] || '',
@@ -2118,16 +2239,28 @@ export function splitCvColumns(
   return pages;
 }
 
-function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[] {
+/**
+ * 약력·경력 쪽에 실을 것 — [약력] 탭의 '싣는 항목'을 거친 값. 쪽을 만들지 말지(`buildPortfolioPages`)와 그리는 쪽(`cvPages`)이
+ * **같은 판정**을 본다 — 따로 세면 약력을 다 껐는데 머리말만 있는 빈 쪽이 생긴다.
+ */
+function cvContent(data: PortfolioBookData, design: PdfDesign) {
   const c = normalizeCareer(data.career);
-  const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  const bio = proseText(data.biography).trim();
+  const bio = design.cvShow.bio ? proseText(data.biography).trim() : '';
   const sections = CV_ORDER
-    .filter(({ key }) => (c[key] ?? []).length > 0)
-    .map(({ key, label, en }) => ({ key, label, en, entries: (c[key] ?? []).map(careerLineText).filter(Boolean) }));
+    .filter(({ key }) => design.cvShow[key] && (c[key] ?? []).length > 0)
+    .map(({ key, label, en }) => ({ key, label, en, entries: (c[key] ?? []).map(careerLineText).filter(Boolean) }))
+    .filter((s) => s.entries.length > 0);
+  return { bio, sections };
+}
 
-  // 세로 판형은 한 단, 가로 판형은 두 단 (가로에서 한 단이면 줄이 지나치게 길어져 읽기 나쁘다)
-  const twoCol = theme.page.w > theme.page.h;
+function cvPages(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDesign): PortfolioPage[] {
+  const isSerif = theme.titleSerif ?? (theme.display === SERIF);
+  const { bio, sections } = cvContent(data, design);
+
+  // 단 수 — 자동이면 세로 용지는 한 단, 가로 용지는 두 단(가로에서 한 단이면 줄이 지나치게 길어져 읽기 나쁘다).
+  // [약력] 탭에서 한 단·두 단을 직접 고를 수 있다(2026-10-03). 약력 글의 폭은 단 수가 아니라 **용지**를 따른다.
+  const landscape = theme.page.w > theme.page.h;
+  const twoCol = design.cvColumns === 'two' || (design.cvColumns === 'auto' && landscape);
   const cols = twoCol ? 2 : 1;
   const gap = twoCol ? 64 : 0;
   const contentW = theme.page.w - PAD(theme).x * 2;
@@ -2147,7 +2280,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   // 글 페이지가 쓰는 estimateParaH 와 같은 규칙으로 통일한다.
   const BIO_FONT = 14, BIO_LINE = 25, BIO_GAP = 16;   // 14 × 1.8 — 산문 행간 규칙과 같다
   // 약력도 산문이다 — 본문 폭을 다 쓰면 가로 판형에서 한 줄이 69자가 된다(실측).
-  const bioW = proseColW(BIO_FONT, twoCol ? 900 : contentW);
+  const bioW = proseColW(BIO_FONT, landscape ? 900 : contentW);
   const bioH = bio ? estimateParaH(bio, BIO_FONT, BIO_LINE, bioW, BIO_GAP) : 0;
 
   // 약력이 길어 첫 장에 경력 칸이 쓸 만큼 안 남으면, 약력을 글 페이지로 빼고 경력은 다음 장부터 시작한다.
@@ -2155,7 +2288,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
   const MIN_COL_H = 200;
   const bioOwnPage = bioH > 0 && availH(theme) - headBlock - bioH < MIN_COL_H;
   const bioPages = bioOwnPage
-    ? prosePages(theme, data, 'CURRICULUM VITAE', displayName(data.user), bio, '약력')
+    ? prosePages(theme, data, 'CURRICULUM VITAE', bookName(data), bio, '약력')
     : [];
 
   const firstColH = availH(theme) - headBlock - (bioOwnPage ? 0 : bioH) - SAFETY;
@@ -2172,7 +2305,7 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
     <div style="margin-bottom:${CV_SEC_GAP}px">
       <div style="display:flex;align-items:baseline;gap:10px;border-bottom:1px solid ${theme.line};padding-bottom:7px">
         <span style="font-size:${isSerif ? 16 : 15}px;font-weight:${isSerif ? 400 : 800};font-family:${theme.display}">${esc(b.label)}${b.cont ? ' <span style="font-size:11px;font-weight:400;color:' + theme.sub + '">(계속)</span>' : ''}</span>
-        <span style="font-size:10px;letter-spacing:0.22em;color:${theme.sub}">${esc(b.en)}</span>
+        ${design.cvEnglish ? `<span style="font-size:10px;letter-spacing:0.22em;color:${theme.sub}">${esc(b.en)}</span>` : ''}
       </div>
       <div style="margin-top:9px">
         ${b.entries.map((e) => `<div style="font-size:13px;line-height:1.75;color:${theme.ink};overflow-wrap:anywhere">${esc(e)}</div>`).join('')}
@@ -2184,9 +2317,9 @@ function cvPages(theme: PortfolioTheme, data: PortfolioBookData): PortfolioPage[
     html: page(theme, data, `
       <div style="${eyebrowCss(theme)}">CURRICULUM VITAE${pi > 0 ? ' · 계속' : ''}</div>
       ${pi === 0
-        ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display}">${esc(displayName(data.user))}</div>
+        ? `<div style="margin-top:14px;font-size:${isSerif ? 34 : 32}px;font-weight:${isSerif ? 400 : 700};font-family:${theme.display}">${esc(bookName(data))}</div>
            ${bio && !bioOwnPage ? `<div style="margin-top:16px;font-size:${BIO_FONT}px;line-height:${BIO_LINE}px;color:${theme.ink};max-width:${bioW}px;text-align:${theme.proseAlign ?? 'left'};word-break:keep-all;overflow-wrap:anywhere">${esc(bio).replace(/\n/g, '<br/>')}</div>` : ''}`
-        : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 600};font-family:${theme.display};color:${theme.sub}">${esc(displayName(data.user))}</div>`}
+        : `<div style="margin-top:14px;font-size:18px;font-weight:${isSerif ? 400 : 600};font-family:${theme.display};color:${theme.sub}">${esc(bookName(data))}</div>`}
       <div style="margin-top:30px;display:flex;gap:${gap}px;align-items:flex-start">
         ${Array.from({ length: cols }, (_, ci) =>
           `<div style="flex:1;min-width:0">${(cols2[ci] ?? []).map(blockHtml).join('')}</div>`).join('')}
@@ -2274,16 +2407,13 @@ function qrSvg(text: string, color: string, sizePx: number): string {
  * 잇는다 — 심사자가 종이에서 화면으로 건너오는 길. 우리 이름은 여전히 적지 않는다(아래 ⚠️).
  */
 function contactHtml(theme: PortfolioTheme, data: PortfolioBookData, design: PdfDesign): string {
-  const name = displayName(data.user);
+  const name = bookName(data);
   const isSerif = theme.titleSerif ?? (theme.display === SERIF);
-  const home = tx(data.homepageUrl);
-  const rows = [
-    ['E-mail', data.user.email],
-    ['Phone', data.user.phone],
-    ['Instagram', igLabel(data.user.instagramUrl)],
-    ['Web', home.replace(/^https?:\/\//, '')],
-  ].filter(([, v]) => String(v ?? '').trim()) as [string, string][];
-  const photo = design.artistPhoto ? tx(data.user.avatar) : '';
+  // 실을 것은 작가가 항목마다 고른다(2026-10-03) — 예전엔 이메일·전화번호·인스타·홈페이지가 전부 자동으로 실렸고 끌 수 없었다
+  const printed = printedContact(data, design);
+  const home = design.contact.web ? tx(data.homepageUrl) : '';   // 주소 줄을 끄면 QR 도 함께 뺀다(같은 것을 가리킨다)
+  const rows = printed.map((r) => [r.label, r.value] as [string, string]);
+  const photo = design.contactPhoto ? tx(data.user.avatar) : '';
   const contentW = theme.page.w - PAD(theme).x * 2;
   const landscape = theme.page.w >= theme.page.h;
   const photoW = photo ? Math.round(Math.min(contentW * 0.36, landscape ? 340 : 320)) : 0;
@@ -2318,13 +2448,15 @@ function contactHtml(theme: PortfolioTheme, data: PortfolioBookData, design: Pdf
 
 /**
  * 포트폴리오 전체를 페이지 배열로 만든다 (순수 함수 — 미리보기와 PDF가 같은 결과를 쓴다).
- * 순서: 표지 → 작가노트 → [시리즈 소개 → 작품…]× → CV → 연락처
+ * 순서: 표지 → 작가노트 → (약력을 작품 앞에 두면 CV) → [시리즈 소개 → 작품…]× → 작품 목록 → (기본 자리의 CV) → 연락처
  */
 export function buildPortfolioPages(
   data: PortfolioBookData,
   baseTheme: PortfolioTheme,
   opts?: {
     forPdf?: boolean; design?: unknown;
+    /** 화면 미리보기용 — 사진을 800px 썸네일로 싣는다(없으면 화면이 원본으로 되돌린다). 배치는 PDF 와 같다. `forPdf` 가 우선 */
+    preview?: boolean;
     /** 쪽번호 시작값(기본 1). 갤러리 도록이 작가 여럿의 장을 이어 붙일 때 번호를 잇는다(2026-09-16) */
     folioStart?: number;
     /** 연락처 장을 만들지 않는다 — 도록에서는 작가마다 연락처 장이 붙으면 안 된다 */
@@ -2333,17 +2465,26 @@ export function buildPortfolioPages(
     runningHead?: string;
   },
 ): PortfolioPage[] {
-  imgMode = opts?.forPdf ? 'pdf' : 'display';
+  imgMode = opts?.forPdf ? 'pdf' : opts?.preview ? 'preview' : 'display';
   runningHeadDefault = opts?.runningHead ?? 'PORTFOLIO';
   // 디자인(색·판형·밀도·설명)을 입힌 파생 테마 — 아래 빌더 전부 이 theme + design 을 쓴다
   const design = normalizePdfDesign(opts?.design ?? null);
   captionStyle = design.captionStyle;
+  nameSource = design.nameSource;
   // 본문(여백·러닝요소)은 표지와 무관하게 **항상 일관**(archive 기준). 판형·색·글꼴은 design 이 override. 표지는 별도 레지스트리.
   const theme = applyDesign(themeById('archive'), design);
   const pages: PortfolioPage[] = [{ label: '표지', html: coverHtml(theme, data, design), kind: 'cover' }];
 
-  const statement = String(data.statement ?? '').trim();
-  if (statement) pages.push(...statementPages(theme, data, statement, design).map((p) => ({ ...p, kind: 'prose' as const })));
+  const statement = design.cvShow.statement ? String(data.statement ?? '').trim() : '';
+  if (statement) pages.push(...statementPages(theme, data, statement, design).map((p) => ({ ...p, kind: 'prose' as const, part: 'statement' as const })));
+
+  // 약력·경력 — [약력] 탭에서 고른 자리(작품 앞이면 작가노트 바로 다음). 싣는 것이 하나도 없으면 쪽을 만들지 않는다
+  const cv = cvContent(data, design);
+  const cvBlock = (cv.bio || cv.sections.length > 0) ? cvPages(theme, data, design).map((p) => ({ ...p, kind: 'cv' as const })) : [];
+  if (design.cvPosition === 'before') pages.push(...cvBlock);
+
+  // 작품 쪽의 글(시리즈 소개·작품 설명)은 [작품] 탭의 정렬을 따른다 — 작가노트·약력의 정렬과 따로다(한 탭의 옵션은 그 쪽만 바꾼다)
+  const worksTheme: PortfolioTheme = { ...theme, proseAlign: design.worksProseAlign };
 
   // 격자 기하는 **포트폴리오 전체**에서 한 번 뽑는다 — 페이지마다 계산하면 장마다 작품
   // 크기가 달라져 책이 흔들린다(§27). 비율을 모르면 정사각(1.0)으로 본다 = 옛 동작.
@@ -2357,18 +2498,18 @@ export function buildPortfolioPages(
     if (g.name && g.note) {
       if (design.auto) {
         // 자동 편집이면 [소개 + 대표작]을 한 장으로 — 소개만 있는 빈 장을 만들지 않는다.
-        const merged = seriesOpenerPage(theme, data, g.name, g.note, works[0], design, geom);
+        const merged = seriesOpenerPage(worksTheme, data, g.name, g.note, works[0], design, geom);
         if (merged) { pages.push({ ...merged, kind: 'prose', works: 1, workIds: works[0] ? [works[0].id] : [] }); works = works.slice(1); opened = true; }
-        else pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
+        else pages.push(...prosePages(worksTheme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
       } else {
         // 수동 편집이면 [소개 + 썸네일 띠] — 고른 배치는 그대로 두고, 여는 장이 그 시리즈의 차례가 된다.
-        const idx = seriesIndexPage(theme, data, g.name, g.note, works, geom, numberOf);
+        const idx = seriesIndexPage(worksTheme, data, g.name, g.note, works, geom, numberOf);
         if (idx) pages.push({ ...idx, kind: 'prose' });
-        else pages.push(...prosePages(theme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
+        else pages.push(...prosePages(worksTheme, data, 'SERIES', g.name, g.note, `${g.name} 소개`).map((p) => ({ ...p, kind: 'prose' as const })));
       }
     }
     for (const plan of planWorkPages(works, design, data.images.length, { theme, geom, opened })) {
-      pages.push(...worksPages(theme, data, plan.items, g.name || '작품', g.name || undefined, plan.composition, design, geom));
+      pages.push(...worksPages(worksTheme, data, plan.items, g.name || '작품', g.name || undefined, plan.composition, design, geom));
     }
   }
 
@@ -2380,13 +2521,16 @@ export function buildPortfolioPages(
     pages.push(...worksIndexPages(theme, data, pageOf, geom));
   }
 
-  const c = normalizeCareer(data.career);
-  const hasCv = String(data.biography ?? '').trim() || CV_ORDER.some(({ key }) => (c[key] ?? []).length > 0);
-  if (hasCv) pages.push(...cvPages(theme, data).map((p) => ({ ...p, kind: 'cv' as const })));
+  if (design.cvPosition === 'after') pages.push(...cvBlock);
 
-  if (!opts?.skipContact) pages.push({ label: '연락처', html: contactHtml(theme, data, design), kind: 'contact' });
+  if (!opts?.skipContact && hasContactPage(data, design)) pages.push({ label: '연락처', html: contactHtml(theme, data, design), kind: 'contact' });
   // 쪽번호를 여기서 채운다 — 장을 만드는 곳이 여럿이라 각자 세게 하면 반드시 어긋난다.
   return pages.map((pg, i) => ({ ...pg, html: pg.html.split(FOLIO).join(String(i + start)) }));
+}
+
+/** 내려받는 파일 이름(확장자 없이) — 문서에 찍히는 이름과 같은 규칙 */
+export function portfolioFileName(data: Pick<PortfolioBookData, 'user'>, design: unknown): string {
+  return `${safeName(portfolioName(data.user, normalizePdfDesign(design).nameSource))}_포트폴리오`;
 }
 
 /** PDF에 실릴 모든 이미지 주소 (prefetch 대상) — 작품 + 프로필 사진(작가노트·마지막 장) */
@@ -2446,7 +2590,7 @@ export async function renderPagesToPdf(
 }
 
 // 페이지 안 이미지가 다 뜰 때까지 대기 (decode까지 기다려야 캔버스에 빈 칸으로 찍히지 않는다)
-function waitPageImages(host: HTMLElement): Promise<void> {
+export function waitPageImages(host: HTMLElement): Promise<void> {
   const imgs = Array.from(host.querySelectorAll('img'));
   return Promise.all(
     imgs.map((im) =>
@@ -2478,7 +2622,7 @@ export async function downloadPortfolioBook(
 
   const pages = buildPortfolioPages(data, base, { forPdf: true, design });
   const blob = await renderPagesToPdf(pages, theme, (d, t) => onProgress?.(d, t, 'render'));
-  triggerDownload(blob, `${safeName(displayName(data.user))}_포트폴리오.pdf`);
+  triggerDownload(blob, `${portfolioFileName(data, design)}.pdf`);
   return { missing: failed, pages: pages.length };
 }
 
@@ -2723,6 +2867,6 @@ export async function downloadPortfolioPptx(
   if (failed.length) failed = await recoverFailed(failed, (d, t) => onProgress?.(d, t, 'retry'));
 
   const pages = buildPortfolioPages(data, base, { forPdf: true, design });
-  await renderPagesToPptx(pages, theme, `${safeName(displayName(data.user))}_포트폴리오.pptx`, (d, t) => onProgress?.(d, t, 'render'));
+  await renderPagesToPptx(pages, theme, `${portfolioFileName(data, design)}.pptx`, (d, t) => onProgress?.(d, t, 'render'));
   return { missing: failed, pages: pages.length };
 }

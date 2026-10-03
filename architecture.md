@@ -1490,6 +1490,7 @@ contain 되어 **빈 자리가 남았다**(칸 채움률 실측 67~85%). 회색 
 **그 행의 점수**로 나눈다 — 남은 칸을 비워 두면 파노라마가 칸 하나에 갇혀 반쪽이 된다(396 ↔ 836).
 
 ### 제작 화면 — 추천 우선 (`PortfolioFormatPicker`)
+> ⚠️ 이 화면은 2026-10-03 에 통째로 바뀌었다 — 맨 아래 「포트폴리오 만들기(PDF) 화면 개편」. 아래는 당시의 기록이다.
 
 ```
 1단계  추천 3종     (표지 + 작품면을 실제로 그려 보여준다. 왜 추천인지 한 줄)
@@ -2017,7 +2018,8 @@ operatorUserIds(ex)                알림 발송 대상 전부
 ### 벡터 PDF (`frontend/src/lib/portfolioPrint.ts`)
 - `buildPrintDocument(pages, theme, title)` → `@page size mm` 문서. `shrinkPageImages`/`shrinkToBudget`(사다리 2000→1200px, 예산 9.4MB)
   → `printDocument`(숨은 iframe, fonts.ready·이미지 로드 후 `print()`, afterprint 에 정리). `printPortfolioBook` 이 한 번에 묶는다.
-- 화면: `PortfolioFormatPicker` [PDF 저장]=인쇄 경로, 안내문의 [이미지형 PDF]=옛 `downloadPortfolioBook`, [PPT 저장] 그대로.
+- 화면(2026-09-16~10-02): `PortfolioFormatPicker` [PDF 저장]=인쇄 경로, 안내문의 [이미지형 PDF]=옛 `downloadPortfolioBook`, [PPT 저장] 그대로.
+  **2026-10-03 부터** [PDF 저장] 의 기본은 바로 내려받기(`lib/portfolioExport.ts`)이고 인쇄 경로는 저장 창의 '글자가 살아 있는 PDF' 다.
 - 검증: `e2e/_pfprint.mjs`(page.pdf 로 같은 문서를 뽑아 pymupdf 로 쪽수·텍스트·글꼴·용량 확인).
 
 ### 세로×가로
@@ -2031,6 +2033,7 @@ operatorUserIds(ex)                알림 발송 대상 전부
   · `PATCH /portfolio/versions/:id {name?, workIds?, design?}` · `DELETE`. `ownWorkIds` 가 내 작품 id 만 남긴다. 남의 것은 404.
 - 프론트: `types.PortfolioVersion`, `lib/portfolioVersions.ts`(`versionWorks`·`versionDesign`·`nextVersionName`·`moveId`), `components/shared/PortfolioWorkPicker.tsx`,
   `MyPage PortfolioFormatSection` 버전 바. 기본 디자인은 여전히 `Portfolio.designConfig`, 버전 디자인은 `PortfolioVersion.design`.
+  (2026-10-03: 화면 이름은 **구성**, 아래 바 [작품 고르기] → `portfolio-maker/WorkPicker.tsx`. 12개 상한은 `withKeyLock` 안에서 센다)
 
 ### 하니스 (`scratchpad/pf/`)
 - `combos.mjs` 20권(실데이터, 커밋 금지) → `combos-before/` 에 v2 이전 PDF 를 남겨 전/후 비교. `emptypages.py` 거의 빈 장 비율(13.1% → 2.0%).
@@ -2348,3 +2351,73 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   `OperationAccess.hostType`(서버는 원래 내려주고 있었다)으로 가른다. `HostedExhibitionsSection`·`OvExhibitions` 가 `?ex=&panel=` 딥링크를 받는다.
 - **안전망**: `lib/myPageMenu.ts aliasTab` — 관리자가 갤러리의 `tab=my-exhibitions` 주소로 들어오면 [운영 조회] 로(주소도 고쳐 쓴다, `ex` 유지).
 - **확인**: 프론트 `operationLinks.test.ts`(20 — 여러 역할이 들어오는 화면에 역할 전용 탭 주소를 손으로 적지 못하게 소스를 훑는다) · e2e `63-operator-links.spec.ts`(8).
+
+## 포트폴리오 만들기(PDF) 화면 개편 (2026-10-03)
+
+### 왜
+마이페이지 [포트폴리오] 탭을 새 작가 계정으로 밟아 봤다(2026-10-02 조사, PC·아이폰·픽셀 · 크롬+WebKit).
+- 첫 화면에 결과물도 저장 버튼도 없었다 — 프로필 카드 아래로 제목 y409 · [PDF 저장] y856 · 미리보기 y894(PC 1280×800), 휴대폰 미리보기 y1375.
+- 설정 묶음은 안쪽 스크롤 상자(PC 420px · SE 188px)에 1,126px 내용 · 다 펴면 누를 것 68개 · 글자의 47% 가 11px 이하.
+- [PDF 저장] 은 인쇄 창을 열었고(대상 바꾸기 안내는 11px 회색), 인쇄가 막힌 브라우저에서도 성공 토스트가 떴다.
+- 표지 이름은 닉네임 우선, 마지막 장엔 전화번호까지 자동으로 실렸고 끄는 곳도 알림도 없었다.
+- 탭을 열면 원본 사진을 받았다(8점 5.7MB · 30점 23.5MB). 실서버: 작품 있는 작가 47명 중 디자인을 바꿔 본 사람 1명 · 버전 0개.
+
+### 사용자 결정 (계획 8 + 로컬 검토 뒤 7)
+미리보기 중심 한 화면 · 바로 내려받기가 기본 · 이름은 작가가 고르게(기본 실명) · 연락처 항목별(기본 전부 켬) · 만든 PDF 는 저장할 때 '홈페이지에도 올리기'(기본 꺼짐) ·
+버전 → [작품 고르기]/구성 · 알리는 곳 = 지원서 파일 칸 + 홈페이지 편집 저장 직후 · PDF 저장 횟수 기록.
+로컬 검토 뒤: '내용 고치기' → '작품·글 추가·수정' · 설명 줄 삭제 · 편집이 처음부터 보이게(PC 패널 열림 / 휴대폰 탭 줄) · '작품 쪽' → '작품' ·
+용지를 맨 위에 따로 · [약력] 탭 신설 · 한 탭의 옵션은 그 쪽만(색·글꼴만 공통) · 디자인 6종 다 보이게(설명 없음, 휴대폰 3×2).
+
+### 구성 (`frontend/src/components/portfolio-maker/`)
+| 파일 | 하는 일 |
+|---|---|
+| `PortfolioMaker.tsx` | 조회·빈 화면(`PortfolioMaker`) + 화면 본체(`MakerScreen`): 머리(제목·[+ 작품·글 추가·수정]·`PaperPicker`·상태·할 일·구성 고르기) → `DesignRow` → `BookPreview` + `CustomizePanel` → `MakerBar` → 창들 |
+| `DesignRow.tsx` | 디자인 6종(추천을 앞에) — 표지를 이 작가의 작품으로 실제로 그린 카드, 지금 용지로. ✓ 는 `directionMatches`. [되돌리기] |
+| `BookPreview.tsx` | 쪽 목록(t800, `previewScale`), 쪽 클릭 = 크게 보기, 표지·마지막 장에 [고치기], `PAGE_LABEL_H`·`tailRoom` |
+| `PageViewer.tsx` | 크게 보기(원본 사진, 맞춤/크게, ← →, Esc) |
+| `CustomizePanel.tsx` + `customizeTabs.tsx` | 편집 탭 다섯(`CoverTab`·`WorksTab`·`CvTab`·`StyleTab`·`InfoTab`). PC 오른쪽 패널(보이는 띠에 높이 맞춤) / 휴대폰 시트(52%, 뒤 화면 안 잠금). 탭별 [처음 상태로] + 되돌리기 |
+| `MakerBar.tsx` | 아래 바 — 휴대폰 탭 줄 + [작품 고르기]·저장 상태·[PDF 저장] (PC 는 [꾸미기]) |
+| `SaveDialog.tsx` | 저장 창 — 이렇게 실립니다 · 홈페이지에도 올리기 · [PDF 내려받기] · 다른 형식(인쇄·PPT) · 진행/결과/다음 할 일 · 인앱 브라우저 안내 |
+| `WorkPicker.tsx` | 작품 고르기(구성) — "N점 · 약 M쪽", 이름, 44px 화살표, 구성 지우기 |
+| `ScaledPage.tsx` | 쪽 HTML 축소 렌더(썸네일 없으면 원본으로 되돌림) · `PageMock` |
+| `useDesignAutosave.ts` | 0.8초 디바운스 · 줄 세운 저장 · 떠날 때 flush · 지워진 구성(404) → `onGone` |
+
+순수 함수 `lib/portfolioMaker.ts`: `CUSTOMIZE_TABS`·`TAB_KEYS`·`resetTab`·`pageIndexForTab`·`customizeTabForPage`·`PAPER_OPTIONS`·`cvItems`·`printedInfo`·`applyDirection`·
+`directionMatches`·`previewScale`·`EXPORT_LADDER`/`pickStep`·`isDefaultSelection`·`nextSelectionName`·`inAppBrowserName`·`pdfHintDismissed`.
+훅 `hooks/useEscapeKey.ts`(맨 위의 것 하나만 닫기) · `useElementWidth.ts` · `useViewport.ts`.
+
+### 엔진 (`lib/portfolioFormats.ts`)
+- `PdfDesign` 새 키: `nameSource` · `contact` · `contactPhoto` · `worksProseAlign` · `cvShow` · `cvPosition` · `cvColumns` · `cvEnglish`. 옛 저장값은 기본값(실명·전부 켬·작품 뒤·자동·영문 켬),
+  `worksProseAlign`/`contactPhoto` 는 옛 `proseAlign`/`artistPhoto` 를 물려받는다.
+- `portfolioName(user, source)` 하나로 문서 이름 · `contactRows`/`hasContactPage` · `cvContent`(약력 쪽에 실을 것 — 만들지 말지와 그리기가 같은 판정) ·
+  작품 쪽은 `worksTheme`(proseAlign = worksProseAlign)로 그린다 · 작가노트 쪽은 `part: 'statement'`.
+- `buildPortfolioPages(…, { preview: true })` — 사진을 t800 썸네일로(`data-full` 에 원본), 배치는 PDF 와 같다.
+- 순서: 표지 → 작가노트 → (약력, 작품 앞일 때) → 시리즈·작품 → 작품 목록 → (약력, 기본) → 연락처.
+
+### 저장 (`lib/portfolioExport.ts`)
+- `exportPortfolioPdf(book, design, {budget=9.4MB, onProgress})`: 사진 미리 받기(`prefetchImages`·`recoverFailed`) → 쪽마다 html2canvas 한 번(≈240dpi, JPEG 0.9,
+  `ignoreElements` 로 앱 DOM 복제 생략) → 예산을 넘으면 0단계 JPEG 를 `pickStep` 단계로 다시 압축(쪽을 다시 그리지 않는다) → jsPDF.
+  실측: 12점 11쪽 크롬 5.8초 5.7MB · WebKit 8.7초 6.0MB · 30점 12쪽 휴대폰(CPU 4배 느리게) 19.4초.
+- `uploadPortfolioPdf` → `POST /upload/file` · `setHomepagePortfolioFile` → `PUT /portfolio/file` · `logExport` → `POST /portfolio/exports`(실패해도 조용히).
+
+### 서버
+- `PUT /api/portfolio/design { designConfig }` — 디자인만(전체 교체 경로가 다른 탭의 글을 되돌리던 것). 형태가 깨지면 400, null 을 명시하면 비운다.
+- `PUT /api/portfolio/file { portfolioFileUrl }` — 우리 저장소 주소만. `PUT /api/portfolio` 는 `portfolioFileUrl` 을 **보냈을 때만** 바꾼다.
+  옛 파일은 `deletePortfolioFileIfUnused` — `Application.portfolioFileUrl` 이 가리키면 지우지 않는다(지원서가 그 주소를 복사해 들고 있다).
+- `POST /api/portfolio/exports`(작가만, 204) + `GET /api/admin/stats/portfolio-exports?days=N`(Admin) — `lib/exportStats.ts`, 모델 `PortfolioExport`
+  (마이그레이션 `20261003120000_portfolio_export`). 하루 100줄 상한.
+- `lib/keyLock.ts withKeyLock(ns, key, fn)` — Postgres 트랜잭션 advisory lock 으로 '세고 나서 만들기'를 줄 세운다. 구성 12개(key=portfolioId)·저장 기록 100줄(key=userId).
+  신뢰성 검사에서 동시 5개 → 14개, 26개씩 5번 → 104줄이 나와 넣었다.
+
+### 알리는 곳 · 통계
+- `ApplyPage` 포트폴리오 파일 칸(파일 없을 때) — [PDF 만들기] 새 탭 + [홈페이지에 올린 파일 불러오기].
+- `PortfolioPage` — 홈페이지 편집 저장 직후(`location.state.savedHomepage`) 주인·작품 3점 이상이면 한 줄, 닫거나 PDF 를 저장하면 다시 안 뜬다(localStorage).
+- `AdminStatsSection` — '포트폴리오 PDF 저장' 섹션(KPI · 날짜별 막대 · 표), 기간 버튼은 방문자와 공용.
+
+### 검증
+- 프론트 `portfolioMaker.test.ts` · `portfolioMakerScreen.test.ts` · `portfolioFormats.test.ts`「약력 탭 · 쪽마다 따로」 · `visitStats.test.ts`(저장 요약) · `boothKit.test.ts`.
+- 백엔드 `portfolio-export.test.ts`(디자인만 · 파일 · 기록 · 통계 · 동시 상한) · `portfolio-versions.test.ts`(동시 12개).
+- e2e `64-portfolio-maker.spec.ts`(18) · `65-portfolio-maker-reliability.spec.ts`(13 — 빠른 연속 변경 · 저장 실패와 복구 · 떠날 때 flush · 탭 둘 · 연속 저장과 메모리 ·
+  홈페이지 3번 올리기 · 구성 동시 생성 · 30점 · 기록 상한 · 지워진 구성 · 휴대폰 창 반복 · 창 크기 변경).
+- 하니스 `scratchpad/portfolio-maker/`(walk.js 크롬+WebKit 8화면 · export.js · shrink.js · shot.js, README).
+

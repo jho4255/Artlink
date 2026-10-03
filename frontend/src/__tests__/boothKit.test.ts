@@ -72,6 +72,22 @@ describe('도록', () => {
     expect(data.user.name).toBe('박기량');
     expect(data.biography).toBe('1990, Suncheon');
   });
+  it('작가 이름은 포트폴리오 만들기의 이름 설정(실명/닉네임)을 따르지 않는다 — 도록은 제출자료의 이름을 쓴다', () => {
+    // 2026-10-03: 포트폴리오 PDF 는 작가가 실명/닉네임을 고른다(기본 실명). 도록은 갤러리가 만드는 문서라 그 설정과 무관해야 한다 —
+    // 엔진에 닉네임을 넘기지 않으므로 어느 쪽을 골라도 같은 이름이 찍힌다.
+    const r = row({}, { name: '박기량', nickname: 'kiryang' });
+    const { data } = artistBookData(r);
+    expect(data.user.name).toBe('kiryang');   // CV 에 이름이 없으면 화면에 보이던 이름(닉네임 우선) — 예전 그대로
+    expect('nickname' in data.user).toBe(false);
+    for (const nameSource of ['real', 'nickname'] as const) {
+      const pages = buildPortfolioPages(data, themeById('archive'), { forPdf: true, design: { page: 'a5-portrait', nameSource }, skipContact: true });
+      expect(pages[0]!.html, nameSource).toContain('kiryang');
+      expect(pages[0]!.html, nameSource).not.toContain('박기량');
+    }
+    // CV 에 적은 이름이 있으면 그것이 먼저다
+    const cv = { nameKo: '박 기량', nameEn: '', birth: '', tel: '', email: '', education: [], solo: [], group: [], artFair: [], award: [] };
+    expect(artistBookData(row({ cv }, { nickname: 'kiryang' })).data.user.name).toBe('박 기량');
+  });
   it('엔진 — folioStart 로 쪽번호가 이어지고 skipContact 로 연락처 장이 빠진다', () => {
     const { data } = artistBookData(row());
     const pages = buildPortfolioPages(data, themeById('archive'), { forPdf: true, design: { page: 'a5-portrait' }, folioStart: 7, skipContact: true });

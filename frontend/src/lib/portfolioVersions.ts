@@ -3,6 +3,9 @@
  *
  * 버전은 홈페이지 작품 위에 얹는 **선택과 순서**다. 국내 공모는 A4 24장·이미지 10점처럼 장수를 제한하는 곳이 많아,
  * 27점 전부를 싣는 책 하나로는 제출 요건을 못 맞춘다(조사 A3). 그래서 "공모용 10점"·"갤러리용 전체" 를 따로 저장한다.
+ *
+ * 화면에서는 2026-10-03 부터 **'구성'** 이라고 부른다(포트폴리오 만들기 개편 — '버전' 은 무엇의 버전인지 안 읽혔다).
+ * 모델·주소(`PortfolioVersion`, `/portfolio/versions`)와 이 파일의 이름은 그대로다. 새 구성의 이름은 `lib/portfolioMaker.ts nextSelectionName`.
  */
 import type { PortfolioImage, PortfolioVersion } from '@/types';
 
@@ -25,14 +28,6 @@ export function versionWorks(all: PortfolioImage[], version: PortfolioVersion | 
 /** 버전이 쓰는 디자인 — 제 것이 없으면 기본 디자인 */
 export function versionDesign(version: PortfolioVersion | null | undefined, defaultDesign: unknown): unknown {
   return version?.design ?? defaultDesign ?? null;
-}
-
-/** 새 버전 이름 — 겹치지 않게 "새 버전 2" 처럼 */
-export function nextVersionName(existing: { name: string }[], base = '새 버전'): string {
-  const names = new Set(existing.map((v) => v.name));
-  if (!names.has(base)) return base;
-  for (let i = 2; i < 100; i++) if (!names.has(`${base} ${i}`)) return `${base} ${i}`;
-  return `${base} ${Date.now()}`;
 }
 
 /** 선택 목록에서 한 칸 옮기기(순서 바꾸기). 범위를 벗어나면 그대로 */

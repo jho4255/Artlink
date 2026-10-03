@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Edit3, MessageCircle, QrCode, Share2, Upload } from 'lucide-react';
+import { Edit3, MessageCircle, QrCode, Share2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { groupBySeries, museumCaption } from '@/lib/artwork';
@@ -21,6 +21,7 @@ import QrModal from '@/components/shared/QrModal';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
 import { useAuthStore } from '@/stores/authStore';
 import { editHref, editSectionForTab } from '@/lib/homepageEdit';
+import { PDF_HINT_MIN_WORKS, dismissPdfHint, pdfHintDismissed } from '@/lib/portfolioMaker';
 import type { PortfolioImage, PublicPortfolio, StoryHighlight } from '@/types';
 
 /**
@@ -47,6 +48,13 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [openHighlight, setOpenHighlight] = useState<number | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
+  /*
+    홈페이지 편집을 **저장한 직후**에만 한 번 — "이 내용으로 포트폴리오 PDF 도 만들 수 있어요" (2026-10-03, 사용자 결정).
+    PDF 만들기 기능을 알려 주는 곳이 편집 화면 [파일] 묶음의 링크 한 줄뿐이라 있는 줄 모르는 작가가 많았다(작품 있는 47명 중 써 본 흔적 1명).
+    평소 방문에는 띄우지 않는다 — 공개 홈페이지의 주인 화면은 조용해야 한다(2026-10-02 결정). 닫거나 PDF 를 한 번 저장하면 다시 안 뜬다.
+    처음 들어올 때의 값을 state 로 들고 있는다 — 탭을 바꾸면 주소를 갈아끼우며(replace) location.state 가 사라진다.
+  */
+  const [pdfHint, setPdfHint] = useState(() => !!(location.state as { savedHomepage?: boolean } | null)?.savedHomepage);
   // 훅은 아래 early return(로딩/에러)보다 반드시 위에서 호출한다
   const careerColumnCount = useCareerColumns();
   const { user: viewer, isAuthenticated } = useAuthStore();
@@ -234,6 +242,27 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   return (
     <div style={themeCssVars(theme)} className="min-h-[calc(100vh-4rem)]">   {/* 어두운 테마에서 아래쪽 흰 띠가 남았다 — Layout 의 main 이 flex-1 이라도 이 div 가 늘어나야 한다(2026-09-19) */}
       <div className="max-w-7xl mx-auto px-6 md:px-12 pt-8 pb-14 md:pt-12 md:pb-20">
+        {isOwner && pdfHint && portfolio.images.length >= PDF_HINT_MIN_WORKS && !pdfHintDismissed(portfolio.user.id) && (
+          <div
+            data-testid="pdf-hint"
+            className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 border px-4 py-2.5 text-sm"
+            style={{ borderColor: 'color-mix(in srgb, var(--hp-ink) 25%, transparent)', color: 'var(--hp-ink)' }}
+          >
+            <span className="min-w-0 flex-1 break-keep">홈페이지를 저장했어요. 이 내용으로 갤러리·공모에 낼 <b className="font-semibold">포트폴리오 PDF</b> 도 만들 수 있어요.</span>
+            <Link to="/mypage?tab=portfolio" onClick={() => dismissPdfHint(portfolio.user.id)} className="inline-flex min-h-[40px] shrink-0 items-center font-medium underline underline-offset-4">
+              PDF 만들기
+            </Link>
+            <button
+              type="button"
+              aria-label="안내 닫기"
+              onClick={() => { dismissPdfHint(portfolio.user.id); setPdfHint(false); }}
+              className="-mr-2 grid h-10 w-10 shrink-0 place-items-center opacity-60 hover:opacity-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* 하이라이트 앨범 — ArtStory 와 같은 컴포넌트를 쓴다(따로 만들면 어긋난다) */}
         {highlights && highlights.length > 0 && (
           <div className="mb-8">

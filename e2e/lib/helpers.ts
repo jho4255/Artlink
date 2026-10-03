@@ -206,6 +206,49 @@ export const editorSave = (page: Page) => page.locator('[data-save-bar]').getByR
 /** 저장한 뒤 도착하는 공개 홈페이지 주소 — 주소(@)가 있으면 `/@handle`, 없으면 `/portfolio/:id` */
 export const PUBLIC_HOMEPAGE_URL = /\/(portfolio\/\d+|@[a-z0-9._]+)(\?|$)/;
 
+/* ─────────────────────────────────────────────────────────────
+   포트폴리오 PDF 만들기 화면 (2026-10-03 개편) — 미리보기 + 아래 바 [꾸미기 · 작품 고르기 · PDF 저장]
+   넓은 화면은 편집 패널이 **연 채로** 시작하고, 좁은 화면은 아래 바 위에 편집 탭 줄이 늘 있다(누르면 시트).
+   ───────────────────────────────────────────────────────────── */
+export type CustomizeTabLabel = '표지' | '작품' | '약력' | '색·글꼴' | '이름·연락처';
+
+/** 만들기 화면을 열고 미리보기 첫 쪽이 그려질 때까지 기다린다 */
+export async function openPortfolioMaker(page: Page) {
+  await page.goto('/mypage?tab=portfolio');
+  await expect(page.getByTestId('portfolio-maker')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('[data-book-preview] [data-page-index="0"]')).toBeVisible({ timeout: 20000 });
+}
+/** 아래 바 — [꾸미기]·[작품 고르기]·[PDF 저장]. 같은 이름의 버튼이 크게 보기·저장 창에도 있어 바 안으로 좁힌다 */
+export const makerBar = (page: Page) => page.locator('[data-maker-bar]');
+/** 미리보기의 n 번째 쪽(0부터) */
+export const previewPage = (page: Page, index: number) => page.locator(`[data-book-preview] [data-page-index="${index}"]`);
+/** 미리보기에서 그 성격의 쪽 — cover · works · cv · contact … */
+export const previewPageOfKind = (page: Page, kind: string) => page.locator(`[data-book-preview] [data-page-kind="${kind}"]`);
+/**
+ * 꾸미기의 묶음 탭.
+ * ⚠️ 탭 이름으로만 집지 말 것 — 공개 홈페이지·편집 화면에도 '표지'·'작품' 같은 탭이 있다. tablist 이름('꾸미기')으로 좁힌다.
+ */
+export const customizeTab = (page: Page, label: CustomizeTabLabel) =>
+  page.getByRole('tablist', { name: '꾸미기' }).getByRole('tab', { name: label, exact: true });
+/**
+ * 편집을 열고 그 묶음으로 간다. 넓은 화면은 오른쪽 패널(처음부터 열려 있다), 좁은 화면은 아래 시트 — 어느 쪽이든 `[data-customize]`.
+ * 좁은 화면은 아래 바의 탭 줄(`group` '편집')로 연다 — 거기에는 [꾸미기] 단추가 없다.
+ */
+export async function openCustomize(page: Page, label: CustomizeTabLabel) {
+  if (!(await page.locator('[data-customize]').count())) {
+    const row = makerBar(page).getByRole('group', { name: '편집' });
+    if (await row.isVisible()) await row.getByRole('button', { name: label, exact: true }).click();
+    else await makerBar(page).getByRole('button', { name: '꾸미기' }).click();
+  }
+  await customizeTab(page, label).click();
+  await expect(customizeTab(page, label)).toHaveAttribute('aria-selected', 'true');
+}
+export const customizePanel = (page: Page) => page.locator('[data-customize]');
+export const saveDialog = (page: Page) => page.getByRole('dialog', { name: 'PDF 저장' });
+/** 맨 위의 용지 고르기 — 세로 A4 · 가로 A4 · 와이드 16:9 */
+export const paperRadio = (page: Page, label: '세로 A4' | '가로 A4' | '와이드 16:9') =>
+  page.getByRole('radiogroup', { name: '용지' }).getByRole('radio', { name: label, exact: true });
+
 /**
  * 단색 PNG 한 장을 굽는다(의존성 없이) — 파일 선택 창으로 **실제 업로드**를 태울 때 쓴다.
  * `setInputFiles([{ name, mimeType: 'image/png', buffer: solidPng(600, 400, [200, 60, 60]) }])`

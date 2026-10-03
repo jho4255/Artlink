@@ -88,6 +88,20 @@ describe('포트폴리오 PDF 버전', () => {
     expect((await request.post('/api/portfolio/versions').set('Authorization', `Bearer ${artist}`).send({ name: 'v13' })).status).toBe(400);
   });
 
+  it('★ 동시에 만들어도 12개를 넘지 않는다 — 세고 나서 만드는 경합(e2e 65 R7 실측: 동시 5개 → 14개)', async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await request.post('/api/portfolio/versions').set('Authorization', `Bearer ${artist}`).send({ name: `채움 ${i}` })).status).toBe(201);
+    }
+    const codes = (await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      request.post('/api/portfolio/versions').set('Authorization', `Bearer ${artist}`).send({ name: `동시 ${i}` })))).map((r) => r.status);
+    expect(codes.filter((c) => c === 201)).toHaveLength(2);
+    expect(codes.filter((c) => c === 400)).toHaveLength(4);   // 정원 안내(400) — '데이터 처리 중 오류'가 아니다
+    const p = await testPrisma.portfolio.findUnique({ where: { userId: 1 }, select: { id: true } });
+    expect(await testPrisma.portfolioVersion.count({ where: { portfolioId: p!.id } })).toBe(12);
+    // 다른 작가는 기다리지 않는다(잠금은 포트폴리오 단위)
+    expect((await request.post('/api/portfolio/versions').set('Authorization', `Bearer ${other}`).send({ name: '남의 것' })).status).toBe(201);
+  });
+
   it('작품을 지우면 버전에서도 빠져야 한다 — 지운 작품 id 가 남아 있어도 조회 쪽이 거른다', async () => {
     // 서버는 workIds 를 저장할 때만 검사한다. 지운 뒤에도 배열엔 id 가 남으므로 **화면이 실제 작품과 교집합**을 취한다.
     // 여기서는 서버가 죽지 않고 그대로 내려주는지만 본다(화면 쪽 규칙은 프론트 테스트가 잠근다).
