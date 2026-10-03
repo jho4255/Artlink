@@ -165,14 +165,14 @@ describe('데이터 정합성 복합 시나리오', () => {
           endDate: new Date(Date.now() + 30 * 86400000),
           openingHours: '10:00-18:00', admissionFee: '무료',
           location: '서울시 강남구', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
           status: 'APPROVED', galleryId: gallery.id,
         },
       });
 
       // ShowImage 생성
       await testPrisma.showImage.create({
-        data: { url: 'https://example.com/show-img.jpg', order: 0, showId: show.id },
+        data: { url: '/uploads/show-img.jpg', order: 0, showId: show.id },
       });
 
       // Review 생성 (Artist1) — 공모 + ACCEPTED 지원 필요
@@ -275,7 +275,7 @@ describe('데이터 정합성 복합 시나리오', () => {
           endDate: new Date(Date.now() + 30 * 86400000),
           openingHours: '10:00-18:00', admissionFee: '무료',
           location: '서울시 서초구', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
           status: 'APPROVED', galleryId: gallery.id,
         },
       });
@@ -405,7 +405,7 @@ describe('데이터 정합성 복합 시나리오', () => {
           endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
           openingHours: '10:00-18:00', admissionFee: '무료',
           location: '서울시 마포구', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
         });
       expect(createShowRes.status).toBe(201);
       const showId = createShowRes.body.id;

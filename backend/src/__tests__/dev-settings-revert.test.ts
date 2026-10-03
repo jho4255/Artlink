@@ -138,7 +138,7 @@ describe('수락→거절 되돌리기 (토글 ON 시)', () => {
 
     // 지원은 정원과 무관하게 받는다(2026-09-27 — 정원 = 선정 인원). 자리가 찬 상태에서는 수락이 막힌다
     const artist2Tok = authToken(2, 'ARTIST');
-    const applyPayload = { biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
+    const applyPayload = { biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
     const applied = await request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(applyPayload);
     expect(applied.status).toBe(201);
     const acceptOther = () => request.patch(`/api/exhibitions/${exId}/applications/${applied.body.id}`)
@@ -155,7 +155,8 @@ describe('수락→거절 되돌리기 (토글 ON 시)', () => {
     await patch('REJECTED');
     const noti = await testPrisma.notification.findFirst({ where: { userId: 1, type: 'APPLICATION_STATUS' } });
     expect(noti).not.toBeNull();
-    expect(noti?.message).toContain('거절');
+    // 결과 알림은 '지원 결과가 나왔어요' 까지만(2026-10-03 사용자 지정) — 결과는 [내 전시] 카드가 말한다
+    expect(noti?.message).toContain('지원 결과가 나왔어요');
   });
 
   it('거절→수락 재수락도 여전히 가능 (기존 규칙 유지)', async () => {

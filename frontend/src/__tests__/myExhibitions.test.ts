@@ -136,23 +136,23 @@ describe('nextSchedule', () => {
   const dday = mkDday('2026-08-19');
   const ex = { submissionDeadline: '2026-08-22', exhibitStartDate: '2026-08-28', exhibitDate: '2026-08-30' };
 
-  it('미제출 + 마감 전 → 자료제출 마감 D-3 / 전시시작 D-9', () => {
+  it('미제출 + 마감 전 → 출품 자료 마감 D-3 / 전시시작 D-9', () => {
     const rows = nextSchedule(ex, false, dday);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ label: '자료제출 마감', dday: 'D-3', date: '8/22' });
+    expect(rows[0]).toMatchObject({ label: '출품 자료 마감', dday: 'D-3', date: '8/22' });
     expect(rows[1]).toMatchObject({ label: '전시시작', dday: 'D-9', date: '8/28' });
   });
 
-  it('제출 완료 → 자료제출 완료 / 전시시작', () => {
+  it('제출 완료 → 출품 자료 제출 완료 / 전시시작', () => {
     const rows = nextSchedule(ex, true, dday);
-    expect(rows[0]).toMatchObject({ label: '자료제출 완료', dday: null, tone: 'done' });
+    expect(rows[0]).toMatchObject({ label: '출품 자료 제출 완료', dday: null, tone: 'done' });
     expect(rows[1]).toMatchObject({ label: '전시시작', dday: 'D-9' });
   });
 
   /** 늦었어도 내야 하는 일이라 줄을 숨기면 안 된다 */
   it('미제출 + 마감 지남 → 줄을 지우지 않고 빨간색으로 남긴다', () => {
     const rows = nextSchedule({ ...ex, submissionDeadline: '2026-08-15' }, false, dday);
-    expect(rows[0]).toMatchObject({ label: '자료제출 마감 지남', dday: null, date: '8/15', tone: 'urgent' });
+    expect(rows[0]).toMatchObject({ label: '출품 자료 마감 지남', dday: null, date: '8/15', tone: 'urgent' });
     expect(rows[1]).toMatchObject({ label: '전시시작' });
   });
 
@@ -175,7 +175,7 @@ describe('nextSchedule', () => {
 
   it('전시가 이미 시작했으면 전시시작 줄은 뺀다 (의미 없는 D-day)', () => {
     const rows = nextSchedule({ submissionDeadline: '2026-08-10', exhibitStartDate: '2026-08-12' }, true, dday);
-    expect(rows.map(r => r.label)).toEqual(['자료제출 완료']);
+    expect(rows.map(r => r.label)).toEqual(['출품 자료 제출 완료']);
   });
 
   it('전시 시작일이 없으면 종료일을 쓴다', () => {

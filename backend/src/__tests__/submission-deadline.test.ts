@@ -63,7 +63,7 @@ describe('자료제출 마감일', () => {
     it('지원 마감일보다 앞이면 400', async () => {
       const r = await create({ submissionDeadline: ymd(days(5)) });
       expect(r.status).toBe(400);
-      expect(r.body.error).toContain('지원 마감일');
+      expect(r.body.error).toContain('공모 마감일보다 뒤');
     });
 
     it('전시 시작일보다 뒤면 400', async () => {

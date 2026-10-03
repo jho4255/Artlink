@@ -232,7 +232,7 @@ describe('공모 운영 페이지 API', () => {
       const fresh = await seedExhibition(galleryId);
       await testPrisma.exhibition.update({ where: { id: fresh.id }, data: { recruitmentClosed: true } });
       const r = await request.post(`/api/exhibitions/${fresh.id}/apply`).set('Authorization', `Bearer ${artist1Tok}`)
-        .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+        .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'] });
       expect(r.status).toBe(400);
       expect(r.body.error).toContain('마감');
     });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -17,6 +17,10 @@ import { richTextLength, toEditorHtml } from '@/lib/richText';
  *
  * `React.lazy` 로만 불러올 것 — TipTap 은 방문자에게 필요 없다(주인이 [수정]을 누를 때만 받는다).
  * 옛 평범한 글은 `toEditorHtml` 이 문단으로 바꿔 넣는다(줄바꿈 유지).
+ *
+ * 2026-10-03 — 공모 소개·전시 소개(등록 폼·상세)도 이 편집기를 쓴다. 등록 폼은 **밖에서 값이 바뀐다**([이어서 쓰기]로 임시저장 복원,
+ * 제출 뒤 비우기) — 예전엔 처음 값만 읽어서 그런 변경이 화면에 안 보였다. 지금은 내가 보낸 값이 아닌 값이 오면 내용을 갈아 끼운다.
+ * `onChange` 는 ref 로 최신 것을 부른다 — 편집기는 처음 만든 콜백을 붙들고 있어, 부모가 매 렌더 새 콜백을 주면 옛 상태를 덮어썼다.
  */
 export default function RichTextEditor({ value, onChange, placeholder, maxLength, minHeight = 160 }: {
   value: string;
@@ -29,6 +33,10 @@ export default function RichTextEditor({ value, onChange, placeholder, maxLength
   // 처음 글자 수는 받은 값에서 센다 — onCreate 에서 세면 'mount 전 setState' 경고가 나고,
   // 마운트 직후 effect 에서 editor.getText() 를 부르면 스키마가 아직 없어 페이지가 통째로 죽는다(둘 다 실제로 났다)
   const [count, setCount] = useState(() => richTextLength(value));
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+  /** 내가 마지막으로 부모에게 보낸 값 — 이것과 다른 값이 들어오면 밖에서 바뀐 것이다 */
+  const lastEmitted = useRef(value);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -52,9 +60,21 @@ export default function RichTextEditor({ value, onChange, placeholder, maxLength
     },
     onUpdate: ({ editor: e }) => {
       setCount(e.getText().trim().length);
-      onChange(e.isEmpty ? '' : e.getHTML());
+      const html = e.isEmpty ? '' : e.getHTML();
+      lastEmitted.current = html;
+      onChangeRef.current(html);
     },
   });
+
+  // 밖에서 값이 바뀌면(임시저장 복원 · 제출 뒤 비우기) 편집기도 따라간다. 내가 방금 보낸 값이면 건드리지 않는다 — 갈아 끼우면 커서가 맨 끝으로 튄다
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || value === lastEmitted.current) return;
+    lastEmitted.current = value;
+    editor.commands.setContent(toEditorHtml(value), { emitUpdate: false });
+    // 바깥(편집기)과 맞추는 자리라 effect 안에서 센다 — emitUpdate 를 켜면 부모에게 정규화한 HTML 을 되돌려 보내 '고친 것'처럼 보인다
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCount(richTextLength(value));
+  }, [value, editor]);
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-gray-400">

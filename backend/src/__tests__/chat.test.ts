@@ -309,7 +309,7 @@ describe('초대 수락 → 바로 참가', () => {
     await testPrisma.exhibition.update({ where: { id: exId }, data: { status: 'APPROVED', capacity: 1 } });
     // 참여하려면 포트폴리오에 작품이 있어야 한다 (약력·작품을 여기서 가져온다)
     const p = await testPrisma.portfolio.create({ data: { userId: 1, biography: '내 약력' } });
-    await testPrisma.portfolioImage.create({ data: { portfolioId: p.id, url: 'https://cdn.example.com/a.jpg', order: 0 } });
+    await testPrisma.portfolioImage.create({ data: { portfolioId: p.id, url: '/uploads/a.jpg', order: 0 } });
   });
 
   it('★ 수락하면 지원서 없이 ACCEPTED 로 등록된다', async () => {

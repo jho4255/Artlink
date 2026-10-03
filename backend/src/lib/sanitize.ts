@@ -11,8 +11,24 @@
  */
 export function maskGallery<T extends Record<string, any>>(g: T | null | undefined): any {
   if (!g) return g;
-  const { instagramAccessToken, instagramTokenExpiresAt, ...rest } = g as any;
+  // hiddenArtistIds — 갤러리가 [함께한 작가]에서 숨긴 작가 id. 숨긴 사람 목록이 공개 응답(공모 상세·전시 상세·목록·이달의 갤러리)에
+  // 그대로 실려 나갔다(2026-10-03 점검 S4). 주인은 갤러리 상세의 `artists[].hidden` 으로 본다(규칙 50).
+  const { instagramAccessToken, instagramTokenExpiresAt, hiddenArtistIds, ...rest } = g as any;
+  void hiddenArtistIds;
   return rest;
+}
+
+/**
+ * 공모를 **운영자가 아닌 사람**에게 내보낼 때 뺄 값 — 정산·심사 내부 정보(2026-10-03 점검 S4).
+ *  - cardFeeRate · settlementRequestedAt : 정산 진행 정보(작가는 자기 정산 화면에서 따로 받는다)
+ *  - rejectReason : 반려 사유(공개 목록은 승인된 것만이라 보통 비어 있지만, 비울 이유가 없다)
+ * 운영자(주관·위임 갤러리)·관리자에게는 그대로 준다 — 공모 상세의 `canOperate` 로 가른다.
+ */
+const EXHIBITION_INTERNAL_KEYS = ['cardFeeRate', 'settlementRequestedAt', 'rejectReason'] as const;
+export function maskExhibition<T extends Record<string, any>>(ex: T): Omit<T, (typeof EXHIBITION_INTERNAL_KEYS)[number]> {
+  const out: Record<string, any> = { ...ex };
+  for (const k of EXHIBITION_INTERNAL_KEYS) delete out[k];
+  return out as any;
 }
 
 type ReviewLike = { anonymous?: boolean; userId?: number | null; user?: any };

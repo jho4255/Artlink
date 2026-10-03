@@ -22,7 +22,7 @@ test('지원서 페이지: 남은 것 안내 → 정상 제출 → 지원 내역
   const future = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '고정양식공모 ' + Date.now(), type: 'SOLO', deadlineStart: today, deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울', description: '고정 양식 지원 테스트', galleryId, ...exhibitionDates() },
+    data: { title: '고정양식공모 ' + Date.now(), type: 'SOLO', deadlineStart: today, deadline: future, exhibitStartDate: future, exhibitDate: future, capacity: 5, region: 'SEOUL', description: '고정 양식 지원 테스트', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await api.dispose();
@@ -58,9 +58,9 @@ test('지원서 페이지: 남은 것 안내 → 정상 제출 → 지원 내역
   // 4) '없음' 체크는 없다 — 비워 둔 경력·파일은 그대로 '없음'으로 간다(예전엔 네 번을 눌러야 제출됐다)
   await expect(page.getByText('없음', { exact: true })).toHaveCount(0);
 
-  // 5) 약관 동의 → 하단 줄이 '다 채웠어요' 로 바뀐다 → 제출
+  // 5) 약관 동의 → 제출. 하단 줄에는 버튼만 있다 — '남은 것 · …'/'다 채웠어요' 문구는 2026-10-03 사용자 요청으로 없앴다
   await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-  await expect(page.getByText(/다 채웠어요/)).toBeVisible();
+  await expect(page.getByText(/남은 것 ·|다 채웠어요/)).toHaveCount(0);
   await page.getByRole('button', { name: '지원하기' }).click();
 
   // 공모 상세로 돌아와 [지원하기] 대신 상태가 보인다 — 지원서를 다 쓰고 나서야 "이미 지원한 공모" 400 을 받지 않게

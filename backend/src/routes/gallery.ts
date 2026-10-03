@@ -4,7 +4,8 @@ import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
-import { maskGallery, maskAnonymousReviews } from '../lib/sanitize';
+import { maskGallery, maskAnonymousReviews, maskExhibition } from '../lib/sanitize';
+import { deleteGalleryWithNotice, galleryBlockReason } from '../lib/deletion';
 import { safeFileUrl } from '../lib/safeUrl';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { bumpViewCount } from '../lib/viewCount';
@@ -205,7 +206,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // hiddenArtistIds 자체는 내부 설정이라 응답에서 뺀다(주인은 artists[].hidden 으로 본다)
     const { hiddenArtistIds: _hiddenIds, ...publicGallery } = gallery;
     void _hiddenIds;
-    res.json(maskInstagram({ ...publicGallery, exhibitions, reviews, isFavorited, artists }));
+    // 공모는 정산·심사 내부 값을 빼고 싣는다(공개 응답 — 2026-10-03 점검 S4)
+    res.json(maskInstagram({ ...publicGallery, exhibitions: exhibitions.map((e) => maskExhibition(e)), reviews, isFavorited, artists }));
   } catch (error) { next(error); }
 });
 
@@ -472,6 +474,18 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/**
+ * 갤러리 계정이 이 갤러리를 직접 지울 수 있는가 — 화면이 [갤러리 삭제]를 누를 때 먼저 묻는다(직접 삭제 창 / 삭제 요청 창).
+ * 규칙은 `lib/deletion.ts` 한 곳. 관리자는 늘 지울 수 있어 `blocked: null`.
+ */
+router.get('/:id/delete-check', authenticate, authorize('ADMIN', 'GALLERY'), async (req, res, next) => {
+  try {
+    const gallery = await prisma.gallery.findUnique({ where: { id: parseInt(req.params.id as string) }, select: { id: true, ownerId: true } });
+    if (!gallery || (req.user!.role === 'GALLERY' && gallery.ownerId !== req.user!.id)) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
+    res.json({ blocked: req.user!.role === 'ADMIN' ? null : await galleryBlockReason(gallery.id) });
+  } catch (error) { next(error); }
+});
+
 // 갤러리 삭제 (Admin 또는 Gallery 오너, cascade로 관련 데이터 자동 삭제)
 router.delete('/:id', authenticate, authorize('ADMIN', 'GALLERY'), async (req, res, next) => {
   try {
@@ -480,11 +494,14 @@ router.delete('/:id', authenticate, authorize('ADMIN', 'GALLERY'), async (req, r
     if (req.user!.role === 'GALLERY' && gallery.ownerId !== req.user!.id) {
       throw new AppError('본인 소유 갤러리만 삭제할 수 있습니다.', 403);
     }
-
-    // 삭제 전 갤러리 직속 이미지 URL 수집 → cascade 삭제 후 실제 파일도 정리(best-effort)
-    const galleryImages = await prisma.galleryImage.findMany({ where: { galleryId: gallery.id }, select: { url: true } });
-    await prisma.gallery.delete({ where: { id: gallery.id } });
-    void deleteUploadedFiles([...galleryImages.map((i) => i.url), gallery.mainImage]);
+    // ⚠️ 갤러리를 지우면 그 갤러리의 공모가 cascade 로 **통째로** 지워진다. 공모 직접 삭제와 같은 규칙으로 막는다(2026-10-03 점검 P1-4 —
+    //    정산 완료 공모는 직접 삭제가 막혀 있었는데 갤러리 삭제로는 판매·정산 기록까지 사라졌다). 막히면 관리자에게 삭제 요청.
+    if (req.user!.role !== 'ADMIN') {
+      const blocked = await galleryBlockReason(gallery.id);
+      if (blocked) throw new AppError(`${blocked} 관리자에게 삭제 요청을 보내 주세요.`, 400);
+    }
+    // cascade 삭제 + 딸린 공모의 작가에게 알림 + 갤러리·공모 사진 파일 정리
+    await deleteGalleryWithNotice(gallery.id);
     res.json({ message: '갤러리가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });

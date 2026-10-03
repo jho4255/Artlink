@@ -153,6 +153,8 @@ export interface GallerySnapshot {
   pending: number;
   /** 수락한 작가 */
   accepted: number;
+  /** 모집 인원(= 뽑을 수 있는 사람 수, 규칙 57). 모르면 null — 정원 안내를 건너뛴다 */
+  capacity?: number | null;
   /** 수락했지만 출품 자료(작품·약력·노트)가 다 차지 않은 작가 */
   submissionsIncomplete: number;
   sales: number;
@@ -176,15 +178,27 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
 
   const deadlinePassed = !!s.deadline && dday(s.deadline) < 0;
   const pendingText = `지원자 ${s.pending}명이 검토를 기다리고 있어요`;
+  /*
+    정원이 찼는데 모집 중 — 더는 수락할 수 없다(서버가 막는다). 검토 대기가 남아 있어도 '검토하세요' 를 띄우면
+    눌러 보고 나서야 정원 안내를 받는다(2026-10-03 점검 P2). 작가 화면·지원은 그대로 둔다(사용자 결정 — 갤러리에게만 알린다).
+    더 뽑으려면 [지원자] 의 [모집 인원 변경] 으로 늘린다.
+  */
+  const full = !!s.capacity && s.capacity > 0 && s.accepted >= s.capacity;
+  const fullTask: NextTask = {
+    text: `정원(${s.capacity}명)이 찼어요. 모집을 마감하세요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
+    tone: 'attention', target: 'stage', action: '모집 마감',
+  };
 
   if (s.recruitOnly) {
     if (s.recruitmentClosed) return { text: '선정을 마쳤어요. 이 공고는 여기까지 진행합니다.', tone: 'done', target: 'applicants', action: '지원자 보기' };
+    if (full) return fullTask;
     if (s.pending > 0) return { text: pendingText, tone: 'attention', target: 'applicants', action: '지원자 보기' };
     if (deadlinePassed) return { text: '모집 기간이 끝났어요. 선정을 마쳤다면 모집을 마감하세요.', tone: 'attention', target: 'stage', action: '모집 마감' };
     return { text: '지원을 받고 있어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
   }
 
   if (!s.recruitmentClosed) {
+    if (full) return fullTask;
     if (s.pending > 0) return { text: pendingText, tone: 'attention', target: 'applicants', action: '지원자 보기' };
     if (deadlinePassed) return { text: '모집 기간이 끝났어요. 모집을 마감하고 전시를 준비하세요.', tone: 'attention', target: 'stage', action: '모집 마감' };
     return { text: '지원을 받고 있어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
@@ -229,6 +243,8 @@ export interface ArtistSnapshot {
   submissionComplete: boolean;
   submissionDeadline?: string | null;
   exhibitStartDate?: string | null;
+  /** 정산 확인 요청에 **내가** 한 답(서버 `mySettlementStatus`). 없으면 아직 답하지 않은 것으로 본다 */
+  mySettlementStatus?: string | null;
 }
 
 /**
@@ -239,7 +255,13 @@ export function artistNextTask(s: ArtistSnapshot, dday: DdayFn = getDday): NextT
   if (s.status === 'REJECTED') return null;
   if (s.status !== 'ACCEPTED') return { text: '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.', tone: 'neutral', target: null };
   if (s.recruitOnly || s.settled) return null;
-  if (s.settlementRequested) return { text: '갤러리가 정산 확인을 요청했어요', tone: 'attention', target: 'settlement', action: '확인하기' };
+  if (s.settlementRequested) {
+    // 이미 답한 작가에게 '확인을 요청했어요' 를 계속 띄우면 확인이 안 된 줄 안다(2026-10-03 점검 P2).
+    // 갤러리가 금액을 고치면 서버가 그 작가만 PENDING 으로 되돌리므로(규칙 26) 그때 다시 빨갛게 뜬다.
+    if (s.mySettlementStatus === 'APPROVED') return null;
+    if (s.mySettlementStatus === 'ISSUE') return { text: '이의를 전달했어요. 갤러리의 수정을 기다리고 있어요', tone: 'neutral', target: 'settlement' };
+    return { text: '갤러리가 정산 확인을 요청했어요', tone: 'attention', target: 'settlement', action: '확인하기' };
+  }
   if (s.ended) return null;
   if (!s.submissionComplete) {
     const locked = s.confirmed || (!!s.exhibitStartDate && dday(s.exhibitStartDate) <= 0);

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle, typeRich } from '../lib/helpers';
 
 /**
  * 공모 두 가지 새 규칙 (2026-09-10)
@@ -38,7 +38,7 @@ test.describe('아트링크가 갤러리를 안 끼고 여는 공모', () => {
     await page.locator('input[type="date"]').nth(2).fill(d.exhibitStartDate);
     await page.locator('input[type="date"]').nth(3).fill(d.exhibitDate);
     await page.locator('input[type="date"]').nth(4).fill(d.submissionDeadline);
-    await page.getByPlaceholder('공모 소개').fill('운영 갤러리 없이 여는 기획 공모입니다.');
+    await typeRich(page, '공모 소개', '운영 갤러리 없이 여는 기획 공모입니다.');   // 서식 있는 글 편집기(2026-10-03)
 
     await page.getByRole('button', { name: '등록', exact: true }).click();
     // ⚠️ 등록은 ConfirmDialog 를 한 번 더 거친다 — 폼 버튼만 누르면 아무 요청도 안 나간다
@@ -104,7 +104,7 @@ test.describe('공모만 진행하는 공고', () => {
     await page.locator('#ex-title').fill(title);
     await page.locator('#ex-start').fill(d.deadlineStart);
     await page.locator('#ex-deadline').fill(d.deadline);
-    await page.locator('#ex-desc').fill('지원자 선정까지만 진행합니다.');
+    await typeRich(page, '공모 소개', '지원자 선정까지만 진행합니다.');
     await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
     await page.getByRole('button', { name: '등록 요청', exact: true }).click();
     // 확인창(role=dialog) 안의 [등록 요청]
@@ -117,6 +117,8 @@ test.describe('공모만 진행하는 공고', () => {
     expect(body.recruitOnly, '폼이 recruitOnly 를 안 보냈다').toBe(true);
     // 자료제출 마감일은 아예 안 보내거나 빈 값이어야 한다(없는 단계의 기한을 만들면 안 된다)
     expect(body.submissionDeadline || '').toBe('');
+    // 공모 소개는 서식 있는 글 편집기가 만든 HTML 로 간다(2026-10-03)
+    expect(body.description).toBe('<p>지원자 선정까지만 진행합니다.</p>');
 
     await ctx.close();
   });

@@ -27,7 +27,7 @@ test.beforeAll(async () => {
     headers: { Authorization: `Bearer ${gTok}` },
     data: {
       title: exTitle, type: 'SOLO', deadlineStart: today, deadline: future,
-      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
+      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: 'SEOUL',
       description: '지원 상태 변경 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adTok}` }, data: { status: 'APPROVED' } });

@@ -28,7 +28,7 @@ import { composeSize, splitSize } from '@/lib/artwork';
 import Thumb from '@/components/shared/Thumb';
 import { nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice, getDday, cn } from '@/lib/utils';
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
-import { artworkMissing, hasContent, hasNoteContent, serverStatus, submissionChecklist } from '@/lib/submissionChecklist';
+import { artworkMissing, hasContent, hasNoteContent, serverStatus, submissionChecklist, CV_SECTIONS } from '@/lib/submissionChecklist';
 import { galleryNextTask, stageOf, SUBMISSION_TERM, type TaskTarget } from '@/lib/flowLabels';
 import { operatorWorkspace } from '@/lib/operationLinks';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
@@ -59,12 +59,6 @@ const UNSAVED_MESSAGE = [
   '저장하지 않고 나가시겠습니까?',
 ].join('\n');
 
-const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어 / 옥션' },
-  { key: 'award', label: '수상 및 선정' },
-];
 
 type SubmissionTab = 'artwork' | 'cv' | 'note';
 
@@ -182,6 +176,22 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
   }
   const setSection = (key: string, open: boolean) => setOpenSections(prev => ({ ...(prev ?? {}), [key]: open }));
 
+  /*
+    [전시 종료하기] 를 누른 직후 — '지금' 문장은 "아래 정산에서…" 라고 하는데 정산 구역이 접힌 채였다(2026-10-03 점검 P3).
+    종료로 **바뀐 순간**에만 펼치고 그 자리로 데려간다(처음부터 종료된 공모는 위 기본값이 이미 펼친다).
+    StrictMode 가 effect 를 두 번 돌려도 두 번째는 prev === 지금 이라 아무 일도 안 한다.
+  */
+  const prevEnded = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!access) return;
+    if (prevEnded.current === false && access.ended && !access.recruitOnly) {
+      setOpenSections(prev => ({ ...(prev ?? {}), settlement: true }));
+      window.setTimeout(() => document.getElementById(`op-${id}-settlement`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    }
+    prevEnded.current = access.ended;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access?.ended]);
+
   // 카드의 '다음 할 일' → 그 구역을 열고 거기로 스크롤
   useEffect(() => {
     if (!focus?.target || !access) return;
@@ -218,6 +228,8 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
   const approvals = settlementSummary?.artists ?? [];
   const approved = approvals.filter(a => a.approval?.status === 'APPROVED').length;
   const issues = approvals.filter(a => a.approval?.status === 'ISSUE').length;
+  // 판매 입력 건수 — 할 일 문장이 '판매된 작품을 입력하고…' / '판매 내역을 확인하고…' 를 가른다(예전엔 0 으로 박혀 있었다)
+  const soldCount = approvals.reduce((n, a) => n + a.works.filter(w => w.sold).length, 0);
 
   const stage = stageOf({ ...access, status: 'APPROVED', exhibitStartDate: dates?.exhibitStartDate ?? null, settledAt: access.settledAt ?? (access.settled ? 'y' : null) });
   const task = galleryNextTask({
@@ -232,9 +244,11 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
     exhibitStartDate: dates?.exhibitStartDate,
     exhibitDate: dates?.exhibitDate ?? access.exhibitDate,
     pending: applicants.filter(a => a.status === 'SUBMITTED' || a.status === 'REVIEWED').length,
-    accepted: submissionSummary.length,
+    // 공모만 진행이면 출품 자료 목록을 받지 않는다 — 수락 수는 지원자 목록에서 센다
+    accepted: applicants.length ? applicants.filter(a => a.status === 'ACCEPTED').length : submissionSummary.length,
+    capacity: dates?.capacity ?? null,
     submissionsIncomplete: incompleteArtists,
-    sales: 0,
+    sales: soldCount,
     approvals: { total: approvals.length, approved, issue: issues },
   });
   /*
@@ -256,11 +270,11 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
         : `작가 확인 ${approved}/${approvals.length}`)   // 이의는 옆의 빨간 표시(hint)가 말한다 — 두 번 적지 않는다
       : '판매 입력 전';
 
-  const Body: 'main' | 'div' = embedded ? 'div' : 'main';
+  // ⚠️ `<main>` 은 Layout 이 이미 하나 갖고 있다 — 전용 페이지도 Layout 안이라 여기서 또 만들면 문서에 main 이 둘이 된다(2026-10-03 점검)
+  const Body = 'div' as const;
   return (
     <div className={embedded ? '' : 'bg-white'}>
-      {/* 마이페이지 카드 안(embedded)에서는 `<main>` 을 두 번 만들지 않는다 — 문서에 main 은 하나여야 한다(감사 B4) */}
-      <Body className={embedded ? 'w-full' : 'mx-auto w-full max-w-3xl px-6 py-8 md:px-12 md:py-12'}>
+      <Body className={embedded ? 'w-full' : 'mx-auto w-full max-w-3xl px-6 py-8 md:px-12 md:py-12'} data-operation-body>
         {!embedded && (
           <header className="mb-8">
             <Link to={workspace?.listHref ?? `/exhibitions/${id}`} className="inline-flex min-h-[40px] items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
@@ -705,7 +719,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
         nameKo: prev.nameKo || u?.name || '',
         tel: prev.tel || u?.phone || '',
         email: prev.email || u?.email || '',
-        // ⚠️ 이미 손으로 적어 둔 항목은 덮지 않는다 — 비어 있는 칸만 포트폴리오에서 채운다. `award` 도 가져온다(2026-09-19)
+        // ⚠️ 이미 손으로 적어 둔 항목은 덮지 않는다 — 비어 있는 칸만 포트폴리오에서 채운다. `award` 도 가져온다(2026-09-19), `education` 도(2026-10-03)
+        education: prev.education?.length ? prev.education : (c.education || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         solo: prev.solo?.length ? prev.solo : (c.solo || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         group: prev.group?.length ? prev.group : (c.group || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
         artFair: prev.artFair?.length ? prev.artFair : (c.artFair || []).map((e: any) => ({ year: e.year || '', content: e.content || '' })),
@@ -882,7 +897,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
 
       {/* 저장 줄 — 화면 아래에 붙어 따라온다(작품이 많으면 위까지 올라가지 않게). 휴대폰에선 하단 탭바 위에 */}
       <div className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-white/95 px-1 py-3 backdrop-blur lg:bottom-0">
-        <p className="mr-auto min-w-0 text-xs text-gray-500">
+        {/* 좁은 화면에선 감춘다 — 두 줄로 꺾여 줄이 높아지고 버튼이 아래로 밀렸다(2026-10-03 점검 P3). 같은 안내가 위 상태 줄에 있다 */}
+        <p className="mr-auto hidden min-w-0 text-xs text-gray-500 sm:block">
           {proxyFor ? '작가 본인이 나중에 직접 고칠 수 있어요.' : '다 못 채웠으면 임시저장해 두세요. 다른 작가는 내 자료를 볼 수 없어요.'}
         </p>
         <button
@@ -1712,7 +1728,7 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
         <label className="block sm:col-span-2"><span className="mb-1 block text-xs text-gray-500">이메일</span><input value={value.email} onChange={e => set({ email: e.target.value })} placeholder="name@example.com" className={inputCls} /></label>
       </div>
       {CV_SECTIONS.map(({ key, label }) => (
-        <EntryListEditor key={key} label={label} value={value[key]} onChange={v => set({ [key]: v } as Partial<ArtistCv>)} />
+        <EntryListEditor key={key} label={label} value={value[key] ?? []} onChange={v => set({ [key]: v } as Partial<ArtistCv>)} />
       ))}
     </div>
   );

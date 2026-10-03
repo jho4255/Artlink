@@ -64,8 +64,8 @@ describe('notifyLinks', () => {
     }
   });
 
-  it('★ 지원 수락 알림도 마이페이지로 (거절은 공모 상세 그대로)', () => {
+  it('★ 지원 결과 알림(선정·미선정)은 마이페이지 [내 전시]의 그 카드로 (2026-10-03 — 미선정도 결과와 [확인]이 거기 있다)', () => {
     const src = read('routes/exhibition.ts');
-    expect(src).toContain('accepted ? artistExhibitionLink(exhibitionId) : `/exhibitions/${exhibitionId}`');
+    expect(src).toMatch(/type: 'APPLICATION_STATUS',\s*message,[\s\S]{0,200}linkUrl: artistExhibitionLink\(exhibitionId\)/);
   });
 });

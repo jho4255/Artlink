@@ -24,8 +24,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX } from '@/lib/utils';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
+import { richTextLength } from '@/lib/richText';
 import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -328,9 +330,10 @@ export default function HostedExhibitionsSection() {
     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
     // ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자를 요구하지 않는다(2026-09-19)
     if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
-    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료제출 마감일'); errorFields.add('submissionDeadline'); }
+    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('출품 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
-    if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+    if (richTextLength(form.description) === 0) { missing.push('소개'); errorFields.add('description'); }
+    if (capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
     setFormErrors(errorFields);
     if (missing.length > 0) {
       toast.error(`다음 항목을 입력해주세요: ${missing.join(', ')}`, { duration: 4000 });
@@ -410,7 +413,15 @@ export default function HostedExhibitionsSection() {
               <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-2">
                 <div>
                   <label className="text-xs text-gray-500">모집 작가 수</label>
-                  <input type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-gray-200 p-2 text-sm" />
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={CAPACITY_MAX}
+                    value={form.capacity || ''}
+                    onChange={e => { setForm({ ...form, capacity: Number(e.target.value) }); clearError('capacity'); }}
+                    className={`mt-0.5 w-full rounded-lg border p-2 text-sm ${formErrors.has('capacity') ? 'border-accent' : 'border-gray-200'}`}
+                  />
                 </div>
                 {/* 정원 = 선정 인원(2026-09-27) — 갤러리 등록 폼과 같은 안내 */}
                 <p className="self-end pb-2 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
@@ -421,7 +432,7 @@ export default function HostedExhibitionsSection() {
                   ...(form.recruitOnly ? [] : [['exhibitStartDate', '전시 시작일'] as const, ['exhibitDate', '전시 종료일'] as const]),
                   // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이.
                   // ⚠️ 공모만 진행하면 그 단계가 없으므로 칸 자체를 그리지 않는다(비활성이 아니라 없앤다).
-                  ...(form.recruitOnly ? [] : [['submissionDeadline', '작가 자료제출 마감일'] as const]),
+                  ...(form.recruitOnly ? [] : [['submissionDeadline', '출품 자료 제출 마감일'] as const]),
                 ] as const)).map(([key, label]) => (
                   <div key={key}>
                     <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-accent' : 'text-gray-500'}`}>{label} *</label>
@@ -439,15 +450,14 @@ export default function HostedExhibitionsSection() {
               )}
 
               <div className="border-t border-gray-100 pt-3">
-                <p className="mb-1 text-xs font-medium text-gray-400">공모 소개</p>
-                <EditableText
-                  multiline
-                  rows={3}
+                <p className={`mb-1 text-xs font-medium ${formErrors.has('description') ? 'text-accent' : 'text-gray-400'}`}>공모 소개</p>
+                {/* 서식 있는 글(2026-10-03, 갤러리 공모 등록과 같은 편집기). 함수형 갱신 — 편집기가 처음 받은 콜백을 붙들 수 있다 */}
+                <LazyRichTextEditor
                   value={form.description}
-                  onChange={v => { setForm({ ...form, description: v }); clearError('description'); }}
+                  onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}
                   placeholder="공모 소개"
-                  className="text-sm text-gray-700"
-                  error={formErrors.has('description')}
+                  maxLength={20000}
+                  minHeight={180}
                 />
               </div>
 
@@ -481,7 +491,7 @@ export default function HostedExhibitionsSection() {
             ? `선택한 갤러리 ${managerGalleries.length}곳이 운영 권한을 갖습니다.`
             : '운영 갤러리를 지정하지 않았습니다 — 아트링크(관리자)가 직접 운영합니다.',
           form.recruitOnly
-            ? '진행 범위: 공모만 진행 (지원자 수락까지, 자료제출·전시·정산 없음)'
+            ? '진행 범위: 공모만 진행 (지원자 수락까지, 출품 자료·전시·정산 없음)'
             : '진행 범위: 전시까지 진행',
         ].join('\n')}
         confirmText="등록"
@@ -596,7 +606,15 @@ export default function HostedExhibitionsSection() {
 
                 {manageAppsExId === ex.id && (
                   <div className="border-t border-gray-100 p-4">
-                    <ApplicantManager exhibitionId={ex.id} exhibitionTitle={ex.title} customFields={ex.customFields} capacity={ex.capacity} />
+                    <ApplicantManager
+                      exhibitionId={ex.id}
+                      exhibitionTitle={ex.title}
+                      customFields={ex.customFields}
+                      capacity={ex.capacity}
+                      recruitOnly={!!ex.recruitOnly}
+                      ended={!!ex.ended || !!ex.settledAt}
+                      capacityEditable
+                    />
                   </div>
                 )}
               </article>

@@ -28,6 +28,7 @@ import {
 import { SANS, SERIF, ensurePortfolioFonts } from '@/lib/portfolioFonts';
 import { aspectMap, measureAspects } from '@/lib/artworkAnalysis';
 import type { ArtworkItem, CvEntry, PortfolioImage } from '@/types';
+import { richToText } from './richText';
 
 // ── 입력 ──────────────────────────────────────────────────────────────────
 export type BoothRow = SubmissionRow & { user: { handle?: string | null } };
@@ -74,7 +75,7 @@ export async function loadBoothContext(exhibitionId: string | number): Promise<B
   return {
     exhibition: {
       id: ex.id, title: ex.title ?? '', typeLabel: exhibitionTypeLabels[ex.type] ?? '',
-      period: periodText(ex.exhibitStartDate, ex.exhibitDate), description: ex.description ?? '',
+      period: periodText(ex.exhibitStartDate, ex.exhibitDate), description: richToText(ex.description ?? ''),   // 공모 소개는 서식 있는 글일 수 있다 — 도록엔 글자로(문단은 살린다)
       poster: ex.imageUrl || ex.images?.[0]?.url || null, url: `${origin}/exhibitions/${ex.id}`,
     },
     gallery,

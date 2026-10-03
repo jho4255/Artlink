@@ -97,6 +97,10 @@ export default function StatusPanel({ exhibitionId, access, incompleteArtists = 
 
   // 전시 시작일이 지나 자동 확정된 상태는 되돌리기가 서버에서 거부된다 → 버튼을 두지 않는다
   const cannotUndoConfirm = stage === 2 && access.confirmed && !access.manualConfirmed;
+  // 판매를 입력했거나 정산 확인을 요청한 뒤에는 전시 종료를 되돌릴 수 없다(서버도 400, 2026-10-03 점검 P1-3) —
+  // 되돌리면 출품 목록이 다시 열리고, 판매는 출품 목록의 **위치**를 가리키므로 순서가 바뀌면 다른 작품에 붙는다. 관리자는 예외.
+  const cannotUndoEnd = stage === 3 && !!access.settlementStarted && !access.isAdmin;
+  const cannotUndo = cannotUndoConfirm || cannotUndoEnd;
   const startDate = exhibitStartDate;
   const started = !!startDate && getDday(startDate) <= 0;
 
@@ -156,15 +160,20 @@ export default function StatusPanel({ exhibitionId, access, incompleteArtists = 
         ],
       });
     } else {
+      // 전시 기간이 아직 남았는데 종료하려 하면 알려 준다(점검 P3 — 10/20 시작 전시를 10/3 에 종료할 수 있었다). 막지는 않는다(조기 종료는 있을 수 있다)
+      const endDay = access.exhibitDate ? getDday(access.exhibitDate) : null;
+      const early = endDay != null && endDay > 0
+        ? [`전시 기간(${startDate ? `${md(startDate)}–` : ''}${md(access.exhibitDate!)})이 아직 끝나지 않았어요.`]
+        : [];
       setPending({
         kind: 'next', body: step.next, title: '전시를 종료할까요?', confirmText: '전시 종료',
-        details: ['정산이 열려요 — 판매된 작품과 판매가를 입력하고 작가에게 확인을 요청하세요.', '작가의 출품 자료는 잠긴 채로 기록이 남아요.', back],
+        details: [...early, '정산이 열려요 — 판매된 작품과 판매가를 입력하고 작가에게 확인을 요청하세요.', '작가의 출품 자료는 잠긴 채로 기록이 남아요.', '판매를 입력하면 전시 종료를 되돌릴 수 없어요.'],
       });
     }
   };
 
   const askBack = () => {
-    if (stage <= 0 || stage > maxAdvance || cannotUndoConfirm) return;
+    if (stage <= 0 || stage > maxAdvance || cannotUndo) return;
     const body = steps[stage - 1]!.back;
     const details = stage === 1
       ? ['모집공고 목록에 다시 올라가고 지원을 다시 받아요.']
@@ -209,7 +218,7 @@ export default function StatusPanel({ exhibitionId, access, incompleteArtists = 
         {now.body}
       </p>
 
-      {!locked && (stage < maxAdvance || (stage > 0 && stage <= maxAdvance && !cannotUndoConfirm)) && (
+      {!locked && (stage < maxAdvance || (stage > 0 && stage <= maxAdvance && !cannotUndo)) && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           {stage < maxAdvance && (
             <button
@@ -222,7 +231,7 @@ export default function StatusPanel({ exhibitionId, access, incompleteArtists = 
               <ArrowRight size={15} aria-hidden />
             </button>
           )}
-          {stage > 0 && stage <= maxAdvance && !cannotUndoConfirm && (
+          {stage > 0 && stage <= maxAdvance && !cannotUndo && (
             <button
               type="button"
               onClick={askBack}
@@ -236,6 +245,9 @@ export default function StatusPanel({ exhibitionId, access, incompleteArtists = 
       )}
       {stage === 2 && cannotUndoConfirm && !locked && (
         <p className="mt-2 text-xs text-gray-400">전시 시작일이 지나 자동으로 확정되었어요 — 되돌릴 수 없어요.</p>
+      )}
+      {cannotUndoEnd && !locked && (
+        <p className="mt-2 text-xs text-gray-500" data-undo-blocked>판매·정산을 시작해서 전시 종료를 되돌릴 수 없어요. 판매 내역은 아래 정산에서 고칠 수 있어요.</p>
       )}
 
       {autoClose && <Notice className="mt-4">{autoClose}</Notice>}

@@ -92,7 +92,7 @@ async function applyAndAccept(exhibitionId: number) {
     .set('Authorization', `Bearer ${artistToken}`)
     .send({
       biography: '약력입니다',
-      artworkImages: ['https://example.com/a.jpg'],
+      artworkImages: ['/uploads/a.jpg'],
       termsAgreed: true,
       termsVersion: ARTIST_APPLY_TERMS_VERSION,
     });
@@ -128,7 +128,7 @@ describe('등록 — 자료제출 마감일 요구가 갈린다', () => {
       .set('Authorization', `Bearer ${galleryToken}`)
       .send({ ...basePayload(), galleryId });   // submissionDeadline 없음
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('자료제출 마감일');
+    expect(res.body.error).toContain('출품 자료 제출 마감일');
   });
 
   it('★ 공모만 진행하면 자료제출 마감일 **없이** 등록된다', async () => {

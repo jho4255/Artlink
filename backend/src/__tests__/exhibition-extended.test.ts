@@ -252,7 +252,8 @@ describe('Exhibition DELETE', () => {
 
     const res = await request.delete(`/api/exhibitions/${ex.id}`).set('Authorization', `Bearer ${galleryToken}`);
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('정산');
+    // 수락한 작가가 있으면 직접 못 지우고 관리자에게 삭제 요청을 보낸다(2026-10-03, lib/deletion.ts)
+    expect(res.body.error).toContain('삭제 요청');
 
     expect(await testPrisma.exhibition.findUnique({ where: { id: ex.id } })).not.toBeNull();
     expect(await testPrisma.artworkSale.count({ where: { exhibitionId: ex.id } })).toBe(1);
@@ -278,13 +279,13 @@ describe('Exhibition apply edge cases', () => {
     const res1 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res1.status).toBe(201);
 
     const res2 = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res2.status).toBe(400);
     expect(res2.body.error).toContain('이미');
 
@@ -300,7 +301,7 @@ describe('Exhibition apply edge cases', () => {
     const res = await request
       .post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('마감');
 
@@ -466,9 +467,9 @@ describe('Promo photos', () => {
     const res1 = await request
       .post(`/api/exhibitions/${ex.id}/promo-photos`)
       .set('Authorization', `Bearer ${galleryToken}`)
-      .send({ url: 'https://example.com/promo.jpg', caption: '사진1' });
+      .send({ url: '/uploads/promo.jpg', caption: '사진1' });
     expect(res1.status).toBe(201);
-    expect(res1.body.url).toBe('https://example.com/promo.jpg');
+    expect(res1.body.url).toBe('/uploads/promo.jpg');
 
     const res2 = await request
       .delete(`/api/exhibitions/${ex.id}/promo-photos/${res1.body.id}`)
@@ -484,7 +485,7 @@ describe('Promo photos', () => {
       const r = await request
         .post(`/api/exhibitions/${ex.id}/promo-photos`)
         .set('Authorization', `Bearer ${galleryToken}`)
-        .send({ url: `https://example.com/p${n}.jpg`, caption: `사진${n}` });
+        .send({ url: `/uploads/p${n}.jpg`, caption: `사진${n}` });
       expect(r.status).toBe(201);
     }
     const g = await request.get(`/api/galleries/${galleryId}`);
@@ -499,7 +500,7 @@ describe('Promo photos', () => {
     const res = await request
       .post(`/api/exhibitions/${ex.id}/promo-photos`)
       .set('Authorization', `Bearer ${artistToken}`)
-      .send({ url: 'https://example.com/hack.jpg' });
+      .send({ url: '/uploads/hack.jpg' });
     expect(res.status).toBe(403);
 
     await testPrisma.exhibition.delete({ where: { id: ex.id } });

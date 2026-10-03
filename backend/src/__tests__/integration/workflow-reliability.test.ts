@@ -132,7 +132,7 @@ describe('Workflow Reliability', () => {
           endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
           openingHours: '10:00-18:00', admissionFee: '무료',
           location: '서울시 종로구', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
           galleryId: galleryId2,
         });
       expect(showRes.status).toBe(201);
@@ -160,7 +160,7 @@ describe('Workflow Reliability', () => {
         .set('Authorization', adminToken)
         .send({
           title: 'WR Hero', description: 'WR 히어로 슬라이드',
-          imageUrl: 'https://example.com/hero.jpg',
+          imageUrl: '/uploads/hero.jpg',
           linkUrl: 'https://example.com', order: 0,
         });
       expect(heroRes.status).toBe(201);
@@ -228,7 +228,7 @@ describe('Workflow Reliability', () => {
           endDate: new Date(Date.now() + 30 * 86400000),
           openingHours: '10:00-18:00', admissionFee: '무료',
           location: '서울시 종로구', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
           status: 'APPROVED', galleryId: g.id,
         },
       });
@@ -302,7 +302,7 @@ describe('Workflow Reliability', () => {
         .send({
           biography: '저는 추상미술을 전공했습니다.',
           career: { artFair: [{ year: '2024', content: '서울 아트페어' }], solo: [], group: [] },
-          artworkImages: ['https://example.com/a.jpg'],
+          artworkImages: ['/uploads/a.jpg'],
           termsAgreed: true,
           termsVersion: ARTIST_APPLY_TERMS_VERSION,
           customAnswers: [{ fieldId: 'q1', value: '추상미술을 전공한 작가입니다.' }],
@@ -314,7 +314,7 @@ describe('Workflow Reliability', () => {
         .set('Authorization', artistToken)
         .send({
           biography: '재지원 시도',
-          artworkImages: ['https://example.com/a.jpg'],
+          artworkImages: ['/uploads/a.jpg'],
           termsAgreed: true,
           termsVersion: ARTIST_APPLY_TERMS_VERSION,
         });
@@ -456,7 +456,7 @@ describe('Workflow Reliability', () => {
         .set('Authorization', galleryToken)
         .send({
           title: 'Hack Hero', description: 'test',
-          imageUrl: 'https://example.com/hack.jpg', order: 0,
+          imageUrl: '/uploads/hack.jpg', order: 0,
         });
       expect(res.status).toBe(403);
     });
@@ -470,7 +470,7 @@ describe('Workflow Reliability', () => {
           endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
           openingHours: '10-18', admissionFee: '무료',
           location: '서울', region: 'SEOUL',
-          posterImage: 'https://example.com/poster.jpg',
+          posterImage: '/uploads/poster.jpg',
           galleryId,
         });
       expect(res.status).toBe(403);

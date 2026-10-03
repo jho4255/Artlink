@@ -1,7 +1,8 @@
 import DOMPurify from 'dompurify';
 
 /**
- * 서식 있는 글 (2026-09-28) — 갤러리 소개·지난 활동 기록 본문. 서버 `backend/src/lib/richText.ts` 의 **거울**이다.
+ * 서식 있는 글 (2026-09-28) — 갤러리 소개·지난 활동 기록 본문, 2026-10-03 부터 **공모 소개·전시 소개**도.
+ * 서버 `backend/src/lib/richText.ts` 의 **거울**이다.
  *
  * - 편집기(`components/shared/RichTextEditor`, TipTap)는 HTML 을 만든다. 서버가 허용 목록으로 걸러 저장하고,
  *   화면은 그릴 때 **한 번 더** 거른다(`sanitizeRich`) — 이 기능 전에 평범한 글로 저장된 값이 우연히 `<p` 로
@@ -52,6 +53,32 @@ export function plainToHtml(text: string): string {
 export function toEditorHtml(value: string | null | undefined): string {
   if (!value) return '';
   return isRichHtml(value) ? value : plainToHtml(value);
+}
+
+/**
+ * 서식 있는 글 → 줄바꿈이 살아 있는 평범한 글 — HTML 을 그릴 수 없는 곳(단체전 도록 PDF 의 전시 소개 등, 2026-10-03).
+ * 문단·제목은 빈 줄, 목록 항목은 '• ', 줄바꿈은 줄바꿈으로. 옛 평범한 글은 그대로.
+ */
+export function richToText(value: string | null | undefined): string {
+  if (!value) return '';
+  if (!isRichHtml(value)) return value;
+  const doc = new DOMParser().parseFromString(sanitizeRich(value), 'text/html');
+  const out: string[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) { out.push(node.textContent ?? ''); return; }
+    if (!(node instanceof Element)) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') { out.push('\n'); return; }
+    if (tag === 'hr') { out.push('\n\n'); return; }
+    if (tag === 'li') out.push('• ');
+    node.childNodes.forEach(walk);
+    if (tag === 'li') out.push('\n');
+    // 목록 항목 안의 문단(편집기는 <li><p>…</p></li> 로 만든다)은 빈 줄을 넣지 않는다 — 항목 사이가 벌어진다
+    const inListItem = tag === 'p' && node.parentElement?.tagName.toLowerCase() === 'li';
+    if (!inListItem && ['p', 'h2', 'h3', 'blockquote', 'ul', 'ol'].includes(tag)) out.push('\n\n');
+  };
+  doc.body.childNodes.forEach(walk);
+  return out.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** 보이는 글자 수 — 한도 안내용(서버도 태그를 빼고 센다) */

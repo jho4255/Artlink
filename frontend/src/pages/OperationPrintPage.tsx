@@ -12,14 +12,9 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { displayName, formatArtworkPrice } from '@/lib/utils';
 import type { OperationSubmission, ArtistCv, CvEntry } from '@/types';
+import { CV_SECTIONS } from '@/lib/submissionChecklist';
 
 const DOC_LABEL: Record<string, string> = { artwork: '출품리스트', cv: '작가약력', note: '작가노트' };
-const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어 / 옥션' },
-  { key: 'award', label: '수상 및 선정' },
-];
 
 interface PrintData {
   exhibitionTitle: string;
@@ -176,7 +171,7 @@ function CvDoc({ submission, artist }: { submission: OperationSubmission; artist
         {cv.tel && <p>Tel  {cv.tel}</p>}
         {cv.email && <p>email  {cv.email}</p>}
       </div>
-      {CV_SECTIONS.map(({ key, label }) => <Section key={key} label={label} items={cv[key]} />)}
+      {CV_SECTIONS.map(({ key, label }) => <Section key={key} label={label} items={cv[key] ?? []} />)}
     </div>
   );
 }

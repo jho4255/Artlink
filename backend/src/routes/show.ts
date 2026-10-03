@@ -8,8 +8,13 @@ import { maskGallery } from '../lib/sanitize';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { bumpViewCount } from '../lib/viewCount';
 import { safeFileUrl } from '../lib/safeUrl';
+import { richField } from '../lib/richText';
 import { startOfTodayKstAsUtc, endOfTodayKstAsUtc } from '../lib/kstDate';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
+
+/** 전시 소개 — 보이는 글자 한도(lib/richText.ts richField). 공모 소개와 같은 값 */
+const SHOW_DESCRIPTION_MAX_TEXT = 20000;
+const cleanShowDescription = (raw: unknown): string => richField(raw, { label: '전시 소개', maxText: SHOW_DESCRIPTION_MAX_TEXT, required: true, emptyMessage: '전시 소개를 입력해주세요.' })!;
 
 // 작가 엔트리: {name, userId?} 형태 or 하위호환 문자열
 const artistEntrySchema = z.object({
@@ -19,7 +24,8 @@ const artistEntrySchema = z.object({
 
 const showCreateSchema = z.object({
   title: z.string().min(1, '전시 제목을 입력해주세요.'),
-  description: z.string().min(1, '전시 소개를 입력해주세요.'),
+  // 서식 있는 글(2026-10-03, 갤러리 소개와 같은 편집기) — 보이는 글자 한도는 핸들러의 richField 가 본다
+  description: z.string().min(1, '전시 소개를 입력해주세요.').max(SHOW_DESCRIPTION_MAX_TEXT * 4 + 10000, '전시 소개가 너무 깁니다.'),
   startDate: z.string().min(1, '시작일을 입력해주세요.'),
   endDate: z.string().min(1, '종료일을 입력해주세요.'),
   openingHours: z.string().min(1, '관람 시간을 입력해주세요.'),
@@ -220,12 +226,14 @@ router.post('/', authenticate, authorize('GALLERY'), validate(showCreateSchema),
     }
 
     const normalizedArtists = normalizeArtistsInput(artists);
+    // 소개는 서식 있는 글 — 허용 목록으로 걸러 저장(⚠️ 화면이 HTML 로 그리므로 그대로 넣으면 저장형 XSS)
+    const cleanDescription = cleanShowDescription(description);
 
     // Show + 추가 이미지를 트랜잭션으로 묶어서 생성
     const show = await prisma.$transaction(async (tx) => {
       const created = await tx.show.create({
         data: {
-          title, description,
+          title, description: cleanDescription,
           startDate: new Date(startDate),
           endDate: new Date(endDate),
           openingHours, admissionFee, location, region,
@@ -271,7 +279,7 @@ router.patch('/:id', authenticate, async (req, res, next) => {
 
     const { description, artists, posterImage } = req.body;
     const data: any = {};
-    if (description !== undefined) data.description = description;
+    if (description !== undefined) data.description = cleanShowDescription(description);
     if (posterImage !== undefined && posterImage) {
       if (!safeFileUrl(posterImage)) throw new AppError('포스터 이미지 주소가 올바르지 않습니다.', 400);
       data.posterImage = posterImage;

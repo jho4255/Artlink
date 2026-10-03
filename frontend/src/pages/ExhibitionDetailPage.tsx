@@ -18,7 +18,7 @@
  * @see /src/types/index.ts - Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
@@ -27,11 +27,16 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { DeleteRequestDialog, DeleteRequestLine } from '@/components/shared/DeleteRequest';
+import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
+import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
+import RichText from '@/components/shared/RichText';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
@@ -89,6 +94,9 @@ export default function ExhibitionDetailPage() {
   // 초대 코드 입력칸(접어 둔다) — 이미 선정된 작가용 보조 입구(2026-09-27)
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  // 직접 지울 수 없을 때(수락한 작가 · 판매·정산 기록) — 관리자에게 삭제 요청. 이유는 서버가 준다(lib/deletion.ts)
+  const [deleteBlocked, setDeleteBlocked] = useState<string | null>(null);
+  const deleteRequestOf = useMyDeleteRequests();
 
   const { data: exhibition, isLoading } = useQuery<ExhibitionDetail>({
     queryKey: ['exhibition', id],
@@ -104,8 +112,9 @@ export default function ExhibitionDetailPage() {
   // 작가이고 마감 전이 아니면 파라미터만 지운다(새로고침 때 다시 걸리지 않게).
   useEffect(() => {
     if (!exhibition || searchParams.get('apply') !== '1') return;
-    // 마감일뿐 아니라 수동 모집마감·전시종료도 봐야 한다 — 마감일이 남은 채 마감된 공고가 있다
-    const open = getDday(exhibition.deadline) >= 0 && !exhibition.recruitmentClosed && !exhibition.ended;
+    // 마감일뿐 아니라 수동 모집마감·전시종료·공모 시작 전도 봐야 한다 — 마감일이 남은 채 마감된 공고가 있다
+    const open = getDday(exhibition.deadline) >= 0 && !exhibition.recruitmentClosed && !exhibition.ended
+      && !(exhibition.deadlineStart && getDday(exhibition.deadlineStart) > 0);
     if (user?.role === 'ARTIST' && open && !exhibition.myApplication) { navigate(`/exhibitions/${id}/apply`, { replace: true }); return; }
     setSearchParams(
       (prev) => { const next = new URLSearchParams(prev); next.delete('apply'); return next; },
@@ -157,7 +166,7 @@ export default function ExhibitionDetailPage() {
       setIsEditingDesc(false);
       toast.success('공모 소개가 수정되었습니다.');
     },
-    onError: () => toast.error('수정에 실패했습니다.'),
+    onError: (e: any) => toast.error(e.response?.data?.error || '수정에 실패했습니다.'),
   });
 
   /* 갠톡 열기 — 이미 있으면 그 방으로 (서버가 판단).
@@ -169,8 +178,14 @@ export default function ExhibitionDetailPage() {
     onError: (err: any) => toast.error(err.response?.data?.error || '대화를 열지 못했습니다.'),
   });
 
-  const handleDelete = () => {
-    setDeleteConfirm(true);
+  const handleDelete = async () => {
+    try {
+      const blocked = await checkDeletable('exhibition', Number(id));
+      if (blocked) setDeleteBlocked(blocked);
+      else setDeleteConfirm(true);
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || '삭제할 수 있는지 확인하지 못했어요.');
+    }
   };
 
   if (isLoading) {
@@ -205,6 +220,9 @@ export default function ExhibitionDetailPage() {
    * 여기서 새도 지원이 되지는 않지만, 눌러보고 400 을 받는 화면은 만들지 않는다.
    */
   const isExpired = dday < 0 || !!exhibition.recruitmentClosed || !!exhibition.ended;
+  /** 공모 시작일 전 — 주소로 들어오면 상세가 열린다(목록엔 안 나온다). 서버도 지원을 400 으로 막는다(2026-10-03 점검 P2) */
+  const startDday = exhibition.deadlineStart ? getDday(exhibition.deadlineStart) : null;
+  const notStarted = startDday !== null && startDday > 0;
   const isArtist = user?.role === 'ARTIST';
   const isAdmin = user?.role === 'ADMIN';
   // 아트링크 주최 공모는 위임받은 운영 갤러리도 오너와 같은 권한을 갖는다 (lib/exhibitionHost.ts)
@@ -213,6 +231,52 @@ export default function ExhibitionDetailPage() {
   // isGalleryOwner 는 '갤러리 계정인가'까지 보므로 편집 판정에 그대로 쓰면 Admin 이 빠진다.
   const canEdit = canManage(exhibition, user);
   const canDeleteExhibition = canDelete(exhibition, user);
+
+  /*
+    따라오는 [지원하기] 줄 — 무엇을 보여 줄지(2026-10-03). 지원할 수 있는 사람(아직 지원 안 한 작가 · 비로그인)에게만.
+    공모 시작 전이면 버튼 없이 날짜만 — 서버가 지원을 막는다.
+  */
+  let applyBar: { note?: ReactNode; primary?: ReactNode; secondary?: ReactNode } | null = null;
+  if (!isExpired && ((isArtist && !exhibition.myApplication) || !isAuthenticated)) {
+    // 휴대폰에선 버튼이 줄을 채운다(한 줄) — 안내 글자와 함께 두 줄로 꺾이면 줄이 95px 가 되어 첫 화면을 크게 먹었다
+    const primaryCls = 'inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-6 text-sm font-medium text-white hover:bg-gray-800 sm:flex-none';
+    if (notStarted) {
+      const opens = new Date(exhibition.deadlineStart!).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' });
+      applyBar = { note: <><b className="font-medium text-gray-900">{opens}부터 지원을 받아요.</b> 지금은 미리 보는 공고예요.</> };
+    } else if (!isAuthenticated) {
+      applyBar = {
+        note: '작가 계정으로 로그인하면 지원할 수 있어요.',
+        primary: (
+          <button type="button" onClick={() => { setPostLoginRedirect(`/exhibitions/${id}/apply`); navigate('/login'); }} className={primaryCls}>
+            <Send size={15} aria-hidden /> 로그인하고 지원하기
+          </button>
+        ),
+      };
+    } else if (exhibition.invited) {
+      applyBar = {
+        note: '초대받은 공모예요. 지원서 없이 내 포트폴리오로 지원돼요.',
+        secondary: (
+          <button type="button" onClick={() => navigate(`/exhibitions/${id}/apply`)} className="min-h-[44px] text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900">
+            지원서 직접 쓰기
+          </button>
+        ),
+        primary: (
+          <button type="button" onClick={() => setShowInviteApply(true)} className={primaryCls}>
+            <Send size={15} aria-hidden /> 간편 지원
+          </button>
+        ),
+      };
+    } else {
+      // 안내 문구 없이 버튼만(2026-10-03 사용자 요청 — '홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요' 삭제)
+      applyBar = {
+        primary: (
+          <button type="button" onClick={() => navigate(`/exhibitions/${id}/apply`)} className={primaryCls}>
+            <Send size={15} aria-hidden /> 지원하기
+          </button>
+        ),
+      };
+    }
+  }
 
   // 상단 캐러셀에 표시할 사진 목록 (다중 → imageUrl → 갤러리 대표 순 폴백)
   const heroImages: string[] = (exhibition.images && exhibition.images.length > 0)
@@ -256,7 +320,7 @@ export default function ExhibitionDetailPage() {
                   )}
                   <div className="absolute bottom-4 left-4 z-20">
                     <span className="text-xs font-medium text-white bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-full">
-                      {isExpired ? '마감' : `D-${dday}`}
+                      {isExpired ? '마감' : notStarted ? '모집 예정' : `D-${dday}`}
                     </span>
                   </div>
                 </>
@@ -374,7 +438,7 @@ export default function ExhibitionDetailPage() {
                 <p className="text-sm text-gray-400">진행 범위</p>
                 <p className="text-base">공모만 진행</p>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  지원자 선정(수락)까지 진행합니다. 자료제출·전시 운영·정산 단계는 없습니다.
+                  지원자 선정(수락)까지 진행합니다. 출품 자료·전시 운영·정산 단계는 없습니다.
                 </p>
               </div>
             </div>
@@ -408,12 +472,15 @@ export default function ExhibitionDetailPage() {
               </button>
             )}
           </div>
+          {/* 서식 있는 글(2026-10-03, 갤러리 소개와 같은 편집기) — 제목·굵게·목록·링크. 서버가 허용 목록으로 걸러 저장하고 화면도 한 번 더 거른다 */}
           {isEditingDesc ? (
             <div className="space-y-2">
-              <textarea
+              <LazyRichTextEditor
                 value={editDesc}
-                onChange={e => setEditDesc(e.target.value)}
-                className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-400"
+                onChange={setEditDesc}
+                placeholder="공모 소개"
+                maxLength={20000}
+                minHeight={220}
               />
               <div className="flex gap-2">
                 <button
@@ -425,31 +492,19 @@ export default function ExhibitionDetailPage() {
               </div>
             </div>
           ) : (
-            <p className="text-gray-700 whitespace-pre-wrap break-keep [overflow-wrap:anywhere]">{exhibition.description}</p>
+            <RichText value={exhibition.description} className="text-gray-700 break-keep [overflow-wrap:anywhere]" />
           )}
         </div>
 
 
-        {/* 홍보 사진 (종료된 전시) */}
+        {/* 홍보 사진 (종료된 전시) — 갤러리 페이지와 같은 정사각 칸 격자. 예전엔 높이 96px 고정에 잘라 채워서 사진이 가로 띠가 됐다(규칙 18·50) */}
         {exhibition.promoPhotos && exhibition.promoPhotos.length > 0 && (
           <div>
             <h2 className="text-xl font-medium mb-3">홍보 사진</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {exhibition.promoPhotos.map((photo, idx) => (
-                <div key={photo.id}>
-                  <img
-                    src={photo.url}
-                    alt={photo.caption || '홍보 사진'}
-                    className="w-full h-24 object-cover rounded-lg cursor-pointer"
-                    onClick={() => setLightbox({
-                      images: exhibition.promoPhotos!.map(p => p.url),
-                      index: idx,
-                    })}
-                  />
-                  {photo.caption && <p className="text-xs text-gray-500 mt-1 truncate">{photo.caption}</p>}
-                </div>
-              ))}
-            </div>
+            <SquarePhotoGrid
+              photos={exhibition.promoPhotos.map((photo) => ({ url: photo.url, caption: photo.caption, key: photo.id }))}
+              onOpen={(idx) => setLightbox({ images: exhibition.promoPhotos!.map(p => p.url), index: idx })}
+            />
           </div>
         )}
 
@@ -480,51 +535,7 @@ export default function ExhibitionDetailPage() {
             );
           })()}
 
-          {/* Artist 지원하기 — 초대받은 작가는 '간편 지원'으로 바뀐다 */}
-          {isArtist && !exhibition.myApplication && !isExpired && (
-            exhibition.invited ? (
-              <>
-                <button
-                  onClick={() => setShowInviteApply(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
-                >
-                  <Send size={16} /> 간편 지원
-                </button>
-                <p className="text-center text-xs text-gray-400">
-                  초대받은 공모예요. 지원서 작성 없이 내 포트폴리오로 지원됩니다.
-                </p>
-                <button
-                  onClick={() => navigate(`/exhibitions/${id}/apply`)}
-                  className="w-full text-center text-xs text-gray-400 hover:text-gray-700 underline underline-offset-2 cursor-pointer"
-                >
-                  지원서를 직접 작성해서 지원하기
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigate(`/exhibitions/${id}/apply`)}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
-                >
-                  <Send size={16} /> 지원하기
-                </button>
-                <p className="text-center text-xs text-gray-400">홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요.</p>
-              </>
-            )
-          )}
-
-          {/* 비로그인: 작은 회색 안내문은 놓치기 쉬워(지원 버튼이 아예 안 보인다는 오해) 눈에 띄는 CTA 버튼으로 안내 */}
-          {!isAuthenticated && !isExpired && (
-            <>
-              <button
-                onClick={() => { setPostLoginRedirect(`/exhibitions/${id}/apply`); navigate('/login'); }}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800"
-              >
-                <Send size={16} /> 로그인하고 지원하기
-              </button>
-              <p className="text-center text-xs text-gray-400">작가 계정으로 로그인하면 지원할 수 있어요.</p>
-            </>
-          )}
+          {/* [지원하기]·[간편 지원]·[로그인하고 지원하기] 는 화면 아래 따라오는 줄로 옮겼다(맨 아래 ApplyBar) */}
 
           {/* 초대 코드 — 이미 선정돼 갤러리에게 코드를 받은 작가용 보조 입구. 모집 마감 뒤에도 전시 종료 전까지 쓴다(서버와 같은 기준).
               누르면 `/join/코드` 로 가서 어떤 공모인지 확인하고 참여한다 */}
@@ -572,8 +583,9 @@ export default function ExhibitionDetailPage() {
           )}
         </div>
 
-        {/* Gallery 오너 / Admin 삭제 — 우측 하단 소형 */}
-        {canDeleteExhibition && (
+        {/* Gallery 오너 / Admin 삭제 — 우측 하단 소형. 삭제 요청을 보내 둔 동안은 버튼 대신 요청 상태 */}
+        {canDeleteExhibition && <DeleteRequestLine request={deleteRequestOf('exhibition', exhibition.id)} kind="exhibition" />}
+        {canDeleteExhibition && deleteRequestOf('exhibition', exhibition.id)?.status !== 'PENDING' && (
           <div className="flex justify-end pt-1">
             <button
               onClick={handleDelete}
@@ -588,15 +600,40 @@ export default function ExhibitionDetailPage() {
 
       </div>
 
+      {/*
+        따라오는 [지원하기] (2026-10-03 점검 P3) — 예전엔 버튼이 포스터·소개 아래(PC y1615 / 모바일 y1403)라 첫 화면에서 보이지 않았다.
+        지원서 화면의 하단 줄과 같은 모양 — 휴대폰은 하단 탭바 위, PC 는 화면 맨 아래.
+        ⚠️ **바깥 래퍼(페이지 맨 위부터 시작)의 자식**이어야 한다. 본문 칸 안에 두면 sticky 가 본문이 시작되는 곳부터만 붙어,
+           포스터만 보이는 첫 화면에서는 줄이 화면 밖에 있다.
+      */}
+      {applyBar && (
+        <div data-apply-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 mt-6 border-t border-gray-100 bg-white/95 backdrop-blur lg:bottom-0">
+          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-end gap-x-4 gap-y-2 px-6 py-3 md:px-12">
+            {/* 버튼이 있으면 좁은 화면에선 안내 글자를 감춘다(버튼 이름이 곧 안내다). 시작 전처럼 버튼이 없으면 글자가 전부라 그대로 */}
+            {applyBar.note && <p className={cn('mr-auto min-w-0 text-xs text-gray-500', applyBar.primary && 'hidden sm:block')}>{applyBar.note}</p>}
+            {applyBar.secondary}
+            {applyBar.primary}
+          </div>
+        </div>
+      )}
+
       {/* 삭제 확인 모달 */}
       <ConfirmDialog
         open={deleteConfirm}
         title="공모 삭제"
-        message="정말 이 공모를 삭제하시겠습니까? 관련 지원 내역도 모두 삭제됩니다."
+        message="정말 이 공모를 삭제하시겠습니까? 관련 지원 내역도 모두 삭제되고, 지원한 작가에게 삭제 알림이 가요."
         variant="danger"
         confirmText="삭제"
         onConfirm={() => { setDeleteConfirm(false); deleteMutation.mutate(); }}
         onCancel={() => setDeleteConfirm(false)}
+      />
+      <DeleteRequestDialog
+        open={!!deleteBlocked}
+        kind="exhibition"
+        targetId={exhibition.id}
+        name={exhibition.title}
+        blockedReason={deleteBlocked ?? ''}
+        onClose={() => setDeleteBlocked(null)}
       />
 
       {/* 초대 간편 지원 모달 */}
@@ -849,7 +886,7 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
   const save = useMutation({
     mutationFn: () => api.patch(`/exhibitions/${exhibition.id}/submission-deadline`, { submissionDeadline: value }),
     onSuccess: () => {
-      toast.success('자료제출 마감일을 저장했습니다.');
+      toast.success('출품 자료 제출 마감일을 저장했습니다.');
       setEditing(false);
       qc.invalidateQueries({ queryKey: ['exhibition', String(exhibition.id)] });
       qc.invalidateQueries({ queryKey: ['exhibition', exhibition.id] });
@@ -867,7 +904,7 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
     <div className="flex items-center gap-3 py-4 border-b border-gray-100">
       <FileText size={16} className="text-gray-400 flex-none" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-400">작가 자료제출 마감일</p>
+        <p className="text-sm text-gray-400">출품 자료 제출 마감일</p>
         {exhibition.submissionDeadline && !editing ? (
           <p className="text-base">{new Date(exhibition.submissionDeadline).toLocaleDateString('ko')}</p>
         ) : editing ? (

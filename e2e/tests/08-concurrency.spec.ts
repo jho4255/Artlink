@@ -17,7 +17,7 @@ test('정원 1명 공모에 지원 6건을 동시에 수락 → 선정은 정원
   const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
   const ex = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '동시성테스트공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: '서울', description: '동시성', galleryId, ...exhibitionDates() },
+    data: { title: '동시성테스트공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: 'SEOUL', description: '동시성', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
 

@@ -10,6 +10,39 @@ import { normalizeUploadImage } from '../lib/imageNormalize';
 
 const router = Router();
 
+/**
+ * 업로드는 **동시에 3개까지만** 처리하고 나머지는 줄을 세운다(2026-10-03 점검 S8).
+ * R2 모드는 multer 가 파일을 메모리에 담고 sharp 가 썸네일 두 장을 더 만든다 — 15MB 사진 여러 장이 한꺼번에 들어오면
+ * Render Starter(램 512MB)가 버티지 못한다. 넘쳐도 실패시키지 않고 기다리게 한다(화면은 여러 장을 한 장씩 차례로 올린다).
+ * 줄이 너무 길면(30) 503 — 그때는 정말 몰린 것이다. 기다리던 요청이 끊기면 줄에서 뺀다.
+ * ⚠️ multer 보다 **앞**에 둘 것 — 뒤에 두면 본문을 이미 메모리에 다 읽은 뒤라 의미가 없다.
+ */
+const UPLOAD_CONCURRENCY = 3;
+const UPLOAD_QUEUE_MAX = 30;
+let uploadsActive = 0;
+const uploadQueue: (() => void)[] = [];
+function uploadSlot(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {
+  const start = () => {
+    uploadsActive++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      uploadsActive--;
+      uploadQueue.shift()?.();
+    };
+    res.on('finish', release);
+    res.on('close', release);
+    next();
+  };
+  if (uploadsActive < UPLOAD_CONCURRENCY) return start();
+  if (uploadQueue.length >= UPLOAD_QUEUE_MAX) return next(new AppError('업로드가 몰리고 있어요. 잠시 후 다시 시도해 주세요.', 503));
+  const waiting = () => { req.off('close', drop); start(); };
+  const drop = () => { const i = uploadQueue.indexOf(waiting); if (i >= 0) uploadQueue.splice(i, 1); };
+  req.on('close', drop);
+  uploadQueue.push(waiting);
+}
+
 // R2 사용 조건: 5개 환경변수가 모두 있어야 함. 일부만 있으면 "undefined/..." URL 저장/500을 유발하므로 비활성화.
 const R2_VARS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'R2_PUBLIC_URL'] as const;
 const useR2 = R2_VARS.every((k) => !!process.env[k]);
@@ -132,7 +165,7 @@ async function writeDiskThumb(file: Express.Multer.File): Promise<void> {
 }
 
 // 단일 이미지 업로드
-router.post('/image', authenticate, upload.single('image'), async (req, res, next) => {
+router.post('/image', authenticate, uploadSlot, upload.single('image'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
     let url: string;
@@ -144,23 +177,8 @@ router.post('/image', authenticate, upload.single('image'), async (req, res, nex
   }
 });
 
-// 다중 이미지 업로드 (최대 10개)
-router.post('/images', authenticate, upload.array('images', 10), async (req, res, next) => {
-  try {
-    const files = req.files as Express.Multer.File[];
-    if (!files?.length) return res.status(400).json({ error: '파일이 필요합니다.' });
-    let urls: string[];
-    if (useR2) urls = await Promise.all(files.map(f => uploadToR2(f)));
-    else {
-      await Promise.all(files.map(f => normalizeDiskFile(f)));
-      urls = files.map(f => `/uploads/${f.filename}`);
-      files.forEach(f => void writeDiskThumb(f));
-    }
-    res.json({ urls });
-  } catch (err) {
-    next(err);
-  }
-});
+// ⚠️ 여러 장 한 번에(`POST /images`, 10장 × 15MB 를 한 요청 메모리에) 는 2026-10-03 에 없앴다 — 화면은 쓰지 않았고(여러 장도 한 장씩 차례로 올린다),
+//    로그인한 계정 몇 개의 동시 요청만으로 서버 메모리를 채울 수 있었다(점검 S8). 되살리지 말 것.
 
 // 파일 업로드 (PDF/DOC/HWP/ZIP, 20MB)
 // 허용 문서 MIME (HWP/ZIP는 브라우저마다 octet-stream으로 보내므로 포함)
@@ -191,7 +209,7 @@ const fileUpload = multer({
   },
 } as multer.Options & { defParamCharset: string });
 
-router.post('/file', authenticate, fileUpload.single('file'), async (req, res, next) => {
+router.post('/file', authenticate, uploadSlot, fileUpload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
     const url = useR2
@@ -221,7 +239,7 @@ const videoUpload = multer({
   },
 } as multer.Options & { defParamCharset: string });
 
-router.post('/video', authenticate, videoUpload.single('video'), async (req, res, next) => {
+router.post('/video', authenticate, uploadSlot, videoUpload.single('video'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: '동영상 파일이 필요합니다.' });
     const url = useR2

@@ -11,7 +11,7 @@ const galleryTok = authToken(3, 'GALLERY');
 const adminTok = authToken(4, 'ADMIN');
 const artist1Tok = authToken(1, 'ARTIST');
 const artist2Tok = authToken(2, 'ARTIST');
-const APPLY_BODY = { biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
+const APPLY_BODY = { biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
 
 let exhibitionId: number;
 const makeCode = () => request.post(`/api/exhibitions/${exhibitionId}/join-code`).set('Authorization', `Bearer ${galleryTok}`);

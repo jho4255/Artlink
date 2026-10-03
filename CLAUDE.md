@@ -74,10 +74,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2490+ tests** (2026-10-03): Backend 1470 (supertest, `artlink_test` DB 순차), Frontend 1024 (jsdom) · E2E 341(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 333 통과 · 4 건너뜀)
+- **2570+ tests** (2026-10-03): Backend 1526 (supertest, `artlink_test` DB 순차), Frontend 1048 (jsdom) · E2E 355(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 352개 시점 345 통과 · 4 건너뜀, 그 뒤 추가한 `67` 3개는 따로 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
-- **E2E**: `e2e/` Playwright 55개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
+- **E2E**: `e2e/` Playwright 59개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
   대상 DB 를 통째로 지운다. `backend/.env` 가 실서버 복제본(`artlink_prod`)을 가리키면 **실제 가입자 데이터가 사라진다**.
   `DATABASE_URL=...localhost:5432/artlink` 를 명시해 로컬 데모 DB 로 돌릴 것(백엔드도 같은 DB 로 띄운다). 자세한 건 `e2e/README.md`
 - **Backend**: `artlink_test` DB 사용, `fileParallelism: false` 순차 실행, `setup.ts`에서 migrate deploy
@@ -1549,6 +1549,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       한도는 **보이는 글자 수**(소개 5,000 · 기록 4,000, 태그 제외). ⚠️ 편집기에서 마운트 직후 `editor.getText()` 를 부르면 스키마가 없어 페이지가 죽는다(실제로 났다).
       모양은 `index.css .rich-text` 한 곳 — 편집기 안과 공개 화면이 같은 클래스라 쓰는 모양 = 보이는 모양. 회귀: backend `richText.test.ts`(7) ·
       `gallery-archive.test.ts` 서식 4 · frontend `richText.test.ts`(5) · e2e `58-gallery-richtext.spec.ts`(3 — 도구 막대로 쓰고 방문자 화면의 요소를 센다, API 로 넣은 스크립트가 실행 안 되는지).
+      **2026-10-03 — 공모 소개(`Exhibition.description`)·전시 소개(`Show.description`)도 같은 편집기·같은 규칙**(사용자 요청). 규칙 63 의 '서식 있는 소개' 참고.
     - **함께한 작가**는 서버 집계(`GET /galleries/:id` 의 `artists`): 이 갤러리가 운영한 공모(위임받은 아트링크 공모 포함)에 **수락된**
       작가, 최근 순 중복 제거, 탈퇴·비작가 제외, 커버는 포트폴리오 첫 작품. 갤러리 주인·Admin 은 `PATCH /galleries/:id/artists/:artistId`
       `{hidden}` 으로 숨긴다(`Gallery.hiddenArtistIds Int[]`, 마이그레이션 `20260916130000_gallery_hidden_artists`).
@@ -1771,6 +1772,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ 수락하는 쪽은 **`withSeatLock`**(Serializable + P2034 재시도 2회) 안에서 센다 — 일괄 수락은 화면이 한 건씩 동시에 보내서, 밖에서 세면
       정원을 넘긴다. 재시도가 없으면 진 쪽이 `errorHandler` 의 '데이터 처리 중 오류'(400)를 받는다(정원 안내가 아니라).
       화면: 등록 폼 '모집 작가 수' 옆에 "지원은 제한 없이 받고, 이 인원까지 수락(선정)" · 갤러리 카드 `수락 N/정원` · 일괄 수락 실패 토스트에 서버 이유.
+      **2026-10-03 부터 모집 인원은 승인 뒤에도 갤러리가 [지원자] 의 [모집 인원 변경]으로 고친다**(규칙 63 — 그 전엔 '수정 요청을 보내라' 고 했는데 보낼 화면이 없었다).
       약관 제8조·이용약관 문구도 같이 바꿨다(아래).
     - **초대 코드**: 이미 선정이 끝난 공모를 옮겨 올 때 — 갤러리가 공모당 코드 하나(8자리, 0·O·1·I·L 제외)를 만들어 선정 작가 단톡방에 돌리면
       코드를 넣은 작가는 **지원서 없이 곧바로 ACCEPTED**(`Application.joinedVia='CODE'`) 되어 자료제출 → 전시 → 정산을 그대로 밟는다.
@@ -1833,6 +1835,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 59. **공모 흐름 화면(등록·지원·지원자 관리·출품 자료·운영·정산)의 규칙** (2026-09-29, 사용자 결정 — DESIGN.md 비참조, 이 흐름 화면만)
     처음 온 사람이 "그래서 뭘 누르지?" 에서 막히던 것을 고쳤다. 상세는 architecture.md 「공모 흐름 UX 개편」.
+    2026-10-03 점검 후속(삭제 요청 · 모집 인원 · 종료 뒤 잠금 · 따라오는 [지원하기] · 미저장 확인)은 **규칙 63**.
     - **말은 `frontend/src/lib/flowLabels.ts` 한 곳** — 단계 이름(`stageOf`), 지원 상태(갤러리: 검토 대기·수락됨·거절 / 작가: 심사 중·선정·미선정),
       카드의 '지금 할 일'(`galleryNextTask`·`artistNextTask`), `SUBMISSION_TERM='출품 자료'`. ⚠️ 화면에 단계·상태 문자열을 새로 적지 말 것 —
       예전엔 같은 자료를 '작가 자료·제출 자료·내 전시 정보·작가 제출 정보' 로 여섯 가지로 불렀고, '확정' 이 지원 수락과 전시 단계 두 뜻이었다.
@@ -1990,6 +1993,51 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e `64-portfolio-maker.spec.ts`(18, A~K — 눌러서 무슨 일이 나는가) · **`65-portfolio-maker-reliability.spec.ts`(13, R1~R12 — 여러 번·빠르게·동시에·망가진 상황)** ·
       하니스 `scratchpad/portfolio-maker/walk.js`(크롬+WebKit × 8화면, 720확인, README) · `export.js`(실제 내려받기 시간·용량) · `shrink.js`(용량 맞추기).
       헬퍼 `openPortfolioMaker`·`openCustomize`(PC 는 패널, 휴대폰은 탭 줄)·`customizeTab`·`customizePanel`·`makerBar`·`paperRadio`·`saveDialog`·`previewPage(OfKind)`.
+
+63. **공모 흐름 점검 후속 — 삭제 요청 · 모집 인원 · 종료 뒤 잠금 · 출품 자료 모양 · 주소 · 보안 헤더** (2026-10-03, 사용자 결정 여덟. 보고서 `scratchpad/flow-audit-2026-10-03.md`,
+    상세 architecture.md 「공모 흐름 점검 후속」). **DB 스키마·Render 환경 변수 변경 없음.**
+    - **삭제** — 판정은 `backend/src/lib/deletion.ts` **한 곳**(서버 DELETE · `GET …/delete-check` · 화면이 같은 답). 공모는 수락 작가·판매·정산 기록이 있으면,
+      갤러리는 그런 공모가 있거나 아트링크 주최 공모의 주관이면 **갤러리가 직접 못 지운다**(관리자는 된다). 대신 **삭제 요청**:
+      `ApprovalRequest` 유형 `EXHIBITION_DELETE`·`GALLERY_DELETE`(`changes={reason,title}`) → 관리자 [승인 관리]에서 [삭제 승인]/[거절]. 같은 대상 대기 요청은 하나(`withKeyLock`).
+      ⚠️ 지우는 본체는 `deleteExhibitionWithNotice`/`deleteGalleryWithNotice` — 직접·갤러리 삭제·요청 승인이 **같이 쓴다**(지원·참여 작가 알림 `EXHIBITION_DELETED`).
+      새 삭제 경로를 만들면 이걸 부를 것. 정산이 끝난 공모는 요청도 받지 않는다(기록 보존 — 1:1 문의).
+    - **모집 인원은 갤러리가 직접** `PATCH /exhibitions/:id/capacity`(화면: [지원자] 머리줄 [모집 인원 변경]). 1~1000(`CAPACITY_MAX`, 프론트 `lib/utils.ts` 와 같은 값) ·
+      아트링크 주최는 관리자만 · 전시 종료 전까지 · 수락 수보다 적게는 400(`withSeatLock`). 정원이 차면 **갤러리 할 일만** "정원(N명)이 찼어요. 모집을 마감하세요"(작가 화면·지원은 그대로).
+      날짜 변경은 여전히 1:1 문의다(지원자가 그 날짜를 보고 지원했다).
+    - **전시 종료 뒤** — 갤러리는 지원 상태를 못 바꾼다(400, 관리자 예외 · 개발자 도구 '수락 되돌리기' 는 그대로) · 판매나 정산 확인 요청이 있으면 **종료를 되돌릴 수 없다**
+      (`StatusPanel` 은 [이전 단계로] 대신 이유 한 줄). 화면은 `ApplicantManager ended` 로 체크박스·버튼·초대 코드 줄을 감춘다.
+    - ⚠️⚠️ **출품 자료는 `lib/submissionSchema.ts` 를 통과한다** — 쓸 때 `parseSubmissionBody`(틀리면 400), 읽을 때 `readArtworkList`·`readCv`·`readNote`(틀린 모양은 건너뛰고 **던지지 않는다** —
+      예전엔 직접 호출로 넣은 이상한 값 하나에 갤러리 출품 자료 목록·캡션이 500).
+      **키 순서를 바꾸거나 빈 키를 채우지 말 것** — 화면의 '저장 안 된 변경' 판정이 보낸 값과 받은 값의 `JSON.stringify` 비교라, 서버가 순서를 바꾸면 저장 직후에도 늘 '미저장' 이 뜬다.
+      ⚠️ 출품 자료에 **새 칸을 만들면 `ARTWORK_KEYS`/`CV_*_KEYS`/`NOTE_KEYS` 에도 추가**할 것 — 빠뜨리면 그 칸이 저장할 때마다 **조용히 사라진다**(`submission-schema.test.ts` 가 프론트 타입과 대조).
+    - **사용자가 올린 파일 주소는 `ownFileUrl`**(`lib/safeUrl.ts`) — 우리 저장소(`/uploads/`·`/demo-art/`·`/images/` 또는 R2 `matchR2Base`)만. `safeFileUrl` 은 `//외부`·`/\` 를 거절한다
+      (`/` 로 시작해도 **다른 호스트**다). 지원서·공모 포스터·홍보 사진·출품 자료·홈페이지 작품/파일에 적용. ⚠️ **테스트 픽스처에 `https://example.com/…` 이미지를 쓰지 말 것** — 400 이다(`/uploads/…`).
+      E2E 공모 픽스처의 지역도 `'SEOUL'` 같은 코드로(`'서울'` 은 400 — 등록 스키마가 지역 enum 을 본다).
+    - **공개 응답은 고른다** — `maskGallery`(`hiddenArtistIds` 제거) · `maskExhibition`(운영자·관리자가 아니면 `cardFeeRate`·`settlementRequestedAt`·`rejectReason` 제거). 공모를 통째로 내려주는 새 공개 경로를 만들면 이걸 통과시킬 것.
+    - **보안 헤더** `helmet`(`index.ts`) — iframe 은 같은 출처만(`frame-ancestors 'self'` — ArtLook 은 같은 출처라 괜찮다) · HSTS(운영만) · nosniff · Referrer-Policy.
+      COOP `same-origin-allow-popups`(카카오 로그인 팝업) · CORP `cross-origin`(이미지 프록시·공유 미리보기). ⚠️ **CSP 전체는 넣지 않았다** — 외부 글꼴·pdf.js(jsDelivr)·카카오·R2 목록부터 만들 것.
+    - **비밀번호 가입·로그인 API 는 운영에서 404**(`NODE_ENV=production` 이고 `ENABLE_PASSWORD_AUTH=true` 가 아니면) — 화면은 카카오만 쓰는데 API 로 남의 이메일을 선점할 수 있었다.
+      로컬·테스트·E2E 는 그대로 열린다. 인증 한도(15분 30회)는 **로그인·가입 POST 에만**(`/auth/me`·중복 확인이 같이 세져 15분간 로그인이 막혔다).
+    - **업로드** — 여러 장 API(`/upload/images`)는 지웠다(화면 미사용). 동시 처리 3개(`uploadSlot`, 넘치면 기다리고 30개 넘게 밀리면 503).
+    - **화면** — 경로가 바뀌면 맨 위로(`ScrollToTop`, **`useLayoutEffect`** — useEffect 면 첫 프레임이 옛 위치로 그려졌다, POP·같은 경로는 그대로) ·
+      화면 안에서 입력을 떼어 내는 동작은 `confirmDiscardUnsaved()` 를 먼저(카드 접기·다른 카드·탭·카드 제목 이동 — 페이지 이동 경고만으론 못 막았다) ·
+      모바일 토스트는 위쪽(`AppToaster`) · 공모 상세의 따라오는 [지원하기] 줄(`data-apply-bar` — **페이지 맨 바깥 래퍼의 자식**이어야 첫 화면부터 붙는다, 휴대폰은 탭바 위) ·
+      지원서·출품 자료 약력은 **5항목**(`PORTFOLIO_CATEGORIES` · `lib/submissionChecklist.ts CV_SECTIONS` 한 곳 — 예전엔 네 군데 복사본에 학력이 없었다) ·
+      '작가 자료 제출 마감일' → **'출품 자료 제출 마감일'** · 작가가 정산에 답했으면 '확인 필요' 를 띄우지 않는다(`mySettlementStatus`) · 공모 시작일 전 지원은 400.
+    - ⚠️ 알림 문구 — 선정 `"<공모명>"에 선정되었어요. [내 전시]에서 출품 자료를 제출해 주세요.`(공모만 진행은 앞 문장만), 미선정 `"<공모명>" 지원 결과가 나왔어요.` **까지만**(사용자 지정).
+    - **지원 줄·지원서에 안내 글자를 두지 않는다**(2026-10-03 사용자 요청) — 공모 상세 따라오는 줄의 '홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요',
+      지원서 하단 줄의 '남은 것 · …'/'다 채웠어요 …', 약력 칸 설명 '어떤 작업을 하는 작가인지…' 를 지웠다. 빈 칸 안내는 [지원하기]를 누를 때(토스트 + 빨간 칸 + 그 칸으로 이동).
+      로그인 안내('작가 계정으로 로그인하면…')·초대 안내('지원서 없이 내 포트폴리오로…')·시작 전 날짜는 남겼다(버튼만으로는 모르는 정보).
+    - ⚠️⚠️ **서식 있는 소개 — 공모 소개·전시 소개**(2026-10-03, 갤러리 소개 규칙 50 과 같은 편집기). 저장하는 길 **다섯** — 갤러리 공모 등록 · 아트링크 주최 등록 ·
+      공모 소개 수정(`PATCH /exhibitions/:id/description`) · 전시 등록/수정 · 수정 요청(`edit-request`, 관리자가 승인하면 그대로 저장되는 길) — 이 전부
+      서버 `lib/richText.ts richField()` 를 탄다(허용 목록 + 보이는 글자 2만 자 + 빈 글 400). **새 저장 경로를 만들면 반드시 여기를 거칠 것** — 화면이 HTML 로 그리므로 안 거르면 저장형 XSS 다.
+      ⚠️ 이 값을 **글자로만** 쓰는 곳은 태그를 벗길 것 — 서버 검색엔진 설명(`seoMeta.ts`)은 `richTextPlain`(문단 경계에 띄어쓰기), 단체전 도록 PDF 는
+      프론트 `richToText`(문단·목록 줄바꿈 유지). 화면에서 그릴 땐 `<RichText>`(공모·전시 상세 · 관리자 [승인 관리]).
+      ⚠️ 편집기(`RichTextEditor`)는 이제 **바깥 값 변경을 따라간다**(임시저장 [이어서 쓰기] · 제출 뒤 비우기 — `lastEmitted` 와 다르면 `setContent`) — 처음 값만 읽던 때라
+      등록 폼에 붙이자 복원한 소개가 안 보였다. 부모의 `onChange` 는 ref 로 최신 것을 부르지만, 폼에서는 **함수형으로 갱신**할 것(`setForm(prev => …)`).
+      E2E 에서 소개 칸은 `typeRich(page, '공모 소개', …)`(`e2e/lib/helpers.ts`) — contenteditable 이라 placeholder 로 못 찾는다.
+    - 회귀: 백엔드 `flow-fixes.test.ts`(40) · `submission-schema.test.ts`(7) · `rich-descriptions.test.ts`(9) · 프론트 `flowFixes.test.ts`(13) · `flowLabels.test.ts` ·
+      `richText.test.ts`(richToText·소스 가드) · e2e `66-flow-fixes.spec.ts`(11) · `67-rich-descriptions.spec.ts`(3 — 공모·전시 상세에서 도구 막대로 쓰고 방문자 화면의 요소 · API 로 넣은 위험한 HTML).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

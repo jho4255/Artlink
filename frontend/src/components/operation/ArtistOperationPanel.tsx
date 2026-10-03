@@ -43,19 +43,27 @@ interface Props {
   };
   /** 출품작·약력·작가노트를 모두 냈는가 (서버 판정과 같은 값) */
   submissionComplete?: boolean;
+  /** 정산 확인 요청에 내가 한 답(PENDING·APPROVED·ISSUE, 요청 전이면 null) — `GET /exhibitions/my-applications` */
+  mySettlementStatus?: string | null;
   /** 카드의 할 일 줄을 눌렀을 때 열 구역 */
   focus?: { target: TaskTarget; seq: number } | null;
 }
 
-export default function ArtistOperationPanel({ exhibitionId, exhibition, submissionComplete, focus }: Props) {
+export default function ArtistOperationPanel({ exhibitionId, exhibition, submissionComplete, mySettlementStatus, focus }: Props) {
   const { user } = useAuthStore();
   const id = String(exhibitionId);
 
   const recruitOnly = !!exhibition.recruitOnly;
   // 전시가 끝나기 전까지는 자료를 내는 게 할 일이다
   const needsSubmission = !recruitOnly && !submissionComplete && !exhibition.ended;
-  // 갤러리가 확인을 요청했고 아직 정산이 확정되지 않았으면 작가가 답할 차례
-  const needsSettlement = !!exhibition.settlementRequestedAt && !exhibition.settledAt;
+  // 갤러리가 확인을 요청했고 아직 정산이 확정되지 않았으면 작가가 답할 차례 — **내가 아직 답하지 않았을 때만**.
+  // 이미 확인·이의를 낸 작가에게 '확인 필요' 를 계속 띄우면 답이 안 들어간 줄 안다(2026-10-03 점검 P2).
+  const answered = mySettlementStatus === 'APPROVED' || mySettlementStatus === 'ISSUE';
+  const needsSettlement = !!exhibition.settlementRequestedAt && !exhibition.settledAt && !answered;
+  const settlementMeta = exhibition.settledAt ? '✓ 정산 완료'
+    : mySettlementStatus === 'APPROVED' ? '✓ 확인했어요'
+    : mySettlementStatus === 'ISSUE' ? '이의를 전달했어요'
+    : undefined;
 
   useEffect(() => {
     if (!focus?.target) return;
@@ -103,7 +111,7 @@ export default function ArtistOperationPanel({ exhibitionId, exhibition, submiss
         <Disclosure
           id={`art-${id}-settlement`}
           title="정산 확인"
-          meta={exhibition.settledAt ? '✓ 정산 완료' : undefined}
+          meta={settlementMeta}
           hint={needsSettlement ? '확인 필요' : undefined}
           defaultOpen={needsSettlement || focus?.target === 'settlement'}
           openSignal={focus?.target === 'settlement' ? focus.seq : null}

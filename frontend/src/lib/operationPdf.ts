@@ -9,15 +9,10 @@ import { displayName, nameWithNickname, formatArtworkPrice } from '@/lib/utils';
 import { cardFeeOf } from '@/lib/settlement';
 import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
+import { CV_SECTIONS } from './submissionChecklist';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
-const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어 / 옥션' },
-  { key: 'award', label: '수상 및 선정' },
-];
 
 export function esc(s: any): string {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
@@ -139,7 +134,7 @@ function cvHtml(sub: OperationSubmission, exTitle: string, artist: string, email
       ${cv.tel ? `<p style="margin:2px 0">Tel  ${esc(cv.tel)}</p>` : ''}
       ${cv.email ? `<p style="margin:2px 0">email  ${esc(cv.email)}</p>` : ''}
     </div>
-    ${CV_SECTIONS.map(({ key, label }) => section(label, cv[key])).join('')}
+    ${CV_SECTIONS.map(({ key, label }) => section(label, cv[key] ?? [])).join('')}
   </div>`;
 }
 

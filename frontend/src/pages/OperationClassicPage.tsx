@@ -29,6 +29,7 @@ import type {
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, SettlementArtist,
 } from '@/types';
 import { EMPTY_CV, EMPTY_NOTE } from '@/types';
+import { CV_SECTIONS } from '@/lib/submissionChecklist';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 
 // 저장 전 이탈 경고 문구 (닫기·새로고침·뒤로가기·앱 내 링크 이동 시)
@@ -40,12 +41,6 @@ const UNSAVED_MESSAGE = [
 ].join('\n');
 
 
-const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어 / 옥션' },
-  { key: 'award', label: '수상 및 선정' },
-];
 
 // 빈 객체({})는 미제출로 판정 — 백엔드 predicate와 동일하게 내용 유무로 판단
 function hasContent(obj: any): boolean {
@@ -1214,7 +1209,7 @@ function CvEditor({ value, onChange }: { value: ArtistCv; onChange: (v: ArtistCv
         <input value={value.email} onChange={e => set({ email: e.target.value })} placeholder="이메일" className="col-span-2 px-2 py-1.5 border border-gray-200 rounded text-sm" />
       </div>
       {CV_SECTIONS.map(({ key, label }) => (
-        <EntryListEditor key={key} label={label} value={value[key]} onChange={v => set({ [key]: v } as Partial<ArtistCv>)} />
+        <EntryListEditor key={key} label={label} value={value[key] ?? []} onChange={v => set({ [key]: v } as Partial<ArtistCv>)} />
       ))}
     </div>
   );

@@ -32,41 +32,41 @@ describe('showStatusLabels', () => {
 describe('validateExhibitionDates', () => {
   it('유효한 날짜 순서 → null 반환', () => {
     expect(validateExhibitionDates({
-      deadlineStart: '2026-03-01',
-      deadline: '2026-03-10',
-      exhibitStartDate: '2026-03-15',
-      exhibitDate: '2026-03-30',
+      deadlineStart: '2099-03-01',
+      deadline: '2099-03-10',
+      exhibitStartDate: '2099-03-15',
+      exhibitDate: '2099-03-30',
     })).toBeNull();
   });
 
   it('공모 시작일 > 마감일 → 에러', () => {
     expect(validateExhibitionDates({
-      deadlineStart: '2026-03-15',
-      deadline: '2026-03-10',
-      exhibitDate: '2026-03-30',
+      deadlineStart: '2099-03-15',
+      deadline: '2099-03-10',
+      exhibitDate: '2099-03-30',
     })).toBe('공모 시작일은 마감일 이전이어야 합니다.');
   });
 
   it('마감일 > 전시 시작일 → 에러', () => {
     expect(validateExhibitionDates({
-      deadline: '2026-03-20',
-      exhibitStartDate: '2026-03-15',
-      exhibitDate: '2026-03-30',
+      deadline: '2099-03-20',
+      exhibitStartDate: '2099-03-15',
+      exhibitDate: '2099-03-30',
     })).toBe('공모 마감일은 전시 시작일 이전이어야 합니다.');
   });
 
   it('전시 시작일 > 종료일 → 에러', () => {
     expect(validateExhibitionDates({
-      deadline: '2026-03-10',
-      exhibitStartDate: '2026-04-01',
-      exhibitDate: '2026-03-30',
+      deadline: '2099-03-10',
+      exhibitStartDate: '2099-04-01',
+      exhibitDate: '2099-03-30',
     })).toBe('전시 시작일은 종료일 이전이어야 합니다.');
   });
 
   it('exhibitStartDate 없이 마감일 > 전시일 → 에러', () => {
     expect(validateExhibitionDates({
-      deadline: '2026-04-01',
-      exhibitDate: '2026-03-30',
+      deadline: '2099-04-01',
+      exhibitDate: '2099-03-30',
     })).toBe('공모 마감일은 전시 종료일 이전이어야 합니다.');
   });
 });

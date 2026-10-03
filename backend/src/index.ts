@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import path from 'path';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 dotenv.config();
 
@@ -64,6 +65,27 @@ const PORT = Number(process.env.PORT) || 4000;
 // Render 등 리버스 프록시 환경에서 X-Forwarded-For 신뢰
 app.set('trust proxy', 1);
 
+/*
+  보안 헤더 (2026-10-03 점검 S5 — 실서버 응답에 HSTS·iframe 차단·nosniff·Referrer-Policy 가 하나도 없었고 `x-powered-by: Express` 가 나갔다)
+  - 남의 사이트가 우리 화면을 iframe 에 넣지 못하게: X-Frame-Options SAMEORIGIN + CSP `frame-ancestors 'self'`.
+    ArtLook(마이페이지 안 iframe)은 같은 출처라 그대로 된다.
+  - ⚠️ CSP 의 나머지 지시어(script-src 등)는 **넣지 않는다** — 외부 글꼴·pdf.js(jsDelivr)·카카오 로그인·R2 이미지 도메인 목록부터
+    만들어야 하고, 하나라도 빠지면 화면이 조용히 깨진다. 그래서 helmet 의 CSP 는 끄고 frame-ancestors 하나만 직접 단다.
+  - COOP `same-origin-allow-popups`(카카오 로그인·공유 창), CORP `cross-origin`(이미지·OG 미리보기를 다른 출처가 읽는다).
+  - HSTS 는 운영에서만, 하위 도메인은 포함하지 않는다(img.artlink.cc 말고 다른 하위 도메인이 있는지 모른다).
+  - 개별 라우트가 다시 정하면 그게 이긴다(예: 이미지 프록시의 `default-src 'none'; sandbox`).
+*/
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  frameguard: { action: 'sameorigin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  strictTransportSecurity: process.env.NODE_ENV === 'production' ? { maxAge: 15552000, includeSubDomains: false } : false,
+}));
+app.use((_req, res, next) => { res.setHeader('Content-Security-Policy', "frame-ancestors 'self'"); next(); });
+
 // 미들웨어 설정
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
@@ -86,7 +108,12 @@ const isPollingRequest = (req: express.Request) =>
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: isPollingRequest }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));
-  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
+  // 로그인·가입 시도만 엄하게(15분 30회). 예전엔 `/api/auth` 전체였는데 마이페이지·PDF 만들기·홈페이지 편집이 열 때마다 `/auth/me` 를,
+  // 주소·닉네임 입력이 중복 확인을 부르는 것까지 세어, 같은 와이파이의 여러 명이 쓰면 **15분간 로그인이 막혔다**(2026-10-03 점검 P2-17).
+  // 그 조회들은 위의 전역 한도(300)로 센다.
+  const isSignInAttempt = (req: express.Request) =>
+    req.method === 'POST' && /^\/(login|signup|kakao|complete-registration|dev-login)$/.test(req.path);
+  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, skip: (req) => !isSignInAttempt(req) }));
 }
 
 // API 응답은 절대 HTTP 캐시하지 않음.

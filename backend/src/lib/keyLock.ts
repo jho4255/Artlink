@@ -17,6 +17,10 @@ export const LOCK_NS = {
   portfolioVersions: 7101,
   /** PDF 저장 기록 하루 100줄 상한 — key = userId */
   portfolioExports: 7102,
+  /** 공모 삭제 요청은 대상당 대기 중 하나 — key = exhibitionId */
+  exhibitionDeleteRequests: 7103,
+  /** 갤러리 삭제 요청은 대상당 대기 중 하나 — key = galleryId */
+  galleryDeleteRequests: 7104,
 } as const;
 
 export async function withKeyLock<T>(ns: number, key: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

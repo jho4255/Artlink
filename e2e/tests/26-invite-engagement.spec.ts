@@ -48,7 +48,7 @@ async function createApprovedExhibition(api: APIRequestContext, opts: { capacity
       title: opts.title ?? `초대검증공모 ${Date.now()}`,
       type: 'SOLO', deadlineStart: today, deadline: future,
       exhibitStartDate: future, exhibitDate: future,
-      capacity: opts.capacity ?? 5, region: '서울', description: '초대/간편지원 E2E',
+      capacity: opts.capacity ?? 5, region: 'SEOUL', description: '초대/간편지원 E2E',
       galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok()), data: { status: 'APPROVED' } });
@@ -374,7 +374,7 @@ test('F3. 정원(선정 인원) — 지원은 자리를 안 차지하고, 수락
   const applied = await api.post(`${API}/exhibitions/${ex.id}/apply`, {
     headers: auth(a2Tok()),
     data: {
-      biography: 'E2E 약력', artworkImages: ['https://example.com/a.jpg'],
+      biography: 'E2E 약력', artworkImages: ['/uploads/e2e-artwork.jpg'],
       termsAgreed: true, termsVersion: applyTermsVersion(),
     },
   });
@@ -437,7 +437,7 @@ test('F4. 하루 초대 상한 10명', async () => {
     headers: auth(newGTok),
     data: {
       title: `상한테스트 ${stamp}`, type: 'SOLO', deadlineStart: today, deadline: future,
-      exhibitStartDate: future, exhibitDate: future, capacity: 50, region: '서울',
+      exhibitStartDate: future, exhibitDate: future, capacity: 50, region: 'SEOUL',
       description: '초대 상한 E2E', galleryId: gal.id, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok()), data: { status: 'APPROVED' } });

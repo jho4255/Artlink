@@ -9,8 +9,10 @@ import { validate } from '../middleware/validate';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { assertFullExhibition } from '../lib/exhibitionStage';
 import { getSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
-import { safeFileUrl } from '../lib/safeUrl';
-import { maskGallery } from '../lib/sanitize';
+import { ownFileUrl } from '../lib/safeUrl';
+import { richField } from '../lib/richText';
+import { maskExhibition, maskGallery } from '../lib/sanitize';
+import { deleteExhibitionWithNotice, exhibitionBlockReason, exhibitionDeleteFacts } from '../lib/deletion';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { ARTIST_APPLY_TERMS_HASH, ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 import { bumpViewCount } from '../lib/viewCount';
@@ -50,25 +52,37 @@ const customFieldSchema = z.object({
   { message: '최대 선택 수는 옵션 개수를 넘을 수 없습니다.' }
 );
 
+/** 지역 — 화면(`lib/utils.ts regionLabels`)·갤러리 라우트와 같은 8곳. 모르는 값이 저장되면 목록 필터에 영영 안 걸린다 */
+export const REGIONS = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'] as const;
+/** 모집 인원(선정 인원) 범위 — DB 정수 범위를 넘는 값이 500 이었다(2026-10-03 점검 S10). 화면 `CAPACITY_MAX` 와 같아야 한다 */
+export const CAPACITY_MAX = 1000;
+/** 공모 소개 — 서식 있는 글(2026-10-03). 한도는 **보이는 글자** 수(lib/richText.ts richField) */
+const DESCRIPTION_MAX_TEXT = 20000;
+// required 라 비면 400 을 던진다 — 돌아오는 값은 늘 문자열
+const cleanDescription = (raw: unknown): string => richField(raw, { label: '공모 소개', maxText: DESCRIPTION_MAX_TEXT, required: true, emptyMessage: '공모 소개를 입력해주세요.' })!;
+const isDateText = (v: string) => !Number.isNaN(new Date(v).getTime());
+const optionalDate = z.string().optional().nullable().refine((v) => !v || isDateText(v), '날짜 형식이 올바르지 않습니다.');
+
 const exhibitionCreateSchema = z.object({
-  title: z.string().min(1, '공모 제목을 입력해주세요.'),
+  title: z.string().trim().min(1, '공모 제목을 입력해주세요.').max(100, '공모 제목은 100자까지 쓸 수 있어요.'),
   type: z.enum(['SOLO', 'GROUP', 'ART_FAIR'], { message: '유효한 전시 유형을 선택해주세요.' }),
-  deadline: z.string().min(1, '마감일을 입력해주세요.'),
-  deadlineStart: z.string().optional().nullable(),
+  deadline: z.string().min(1, '마감일을 입력해주세요.').refine(isDateText, '마감일 형식이 올바르지 않습니다.'),
+  deadlineStart: optionalDate,
   /** 전시 종료일 — 전시까지 진행하면 **필수**, 공모만 진행(`recruitOnly`)이면 전시가 없으므로 받지 않는다(아래 `withStageRules`) */
-  exhibitDate: z.string().optional().nullable(),
-  exhibitStartDate: z.string().optional().nullable(),
+  exhibitDate: optionalDate,
+  exhibitStartDate: optionalDate,
   /**
    * 자료제출 마감일.
    * - 전시까지 진행하는 공모: **필수** (옛 공모는 값이 없어 상세 화면에서 따로 채운다 — `PATCH /:id/submission-deadline`)
    * - 공모만 진행(`recruitOnly`): 자료제출 단계가 아예 없으므로 **안 받는다**. 아래 refine 이 판정한다.
    */
-  submissionDeadline: z.string().optional().nullable(),
+  submissionDeadline: optionalDate,
   /** true = 공모만 진행(수락까지). 안 보내면 지금까지대로 전시까지 진행한다 — lib/exhibitionStage.ts */
   recruitOnly: z.boolean().optional().default(false),
-  capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.'),
-  region: z.string().min(1, '지역을 선택해주세요.'),
-  description: z.string().min(1, '공모 소개를 입력해주세요.'),
+  capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`),
+  region: z.enum(REGIONS, { message: '지역을 선택해주세요.' }),
+  // 서식 있는 글(HTML) — 보이는 글자 한도(2만)는 핸들러의 cleanDescription 이 본다. 여기선 형식과 아주 큰 값만
+  description: z.string().min(1, '공모 소개를 입력해주세요.').max(DESCRIPTION_MAX_TEXT * 4 + 10000, '공모 소개가 너무 깁니다.'),
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
   imageUrl: z.string().optional().nullable(),
   customFields: z.array(customFieldSchema).optional().nullable(),
@@ -84,7 +98,7 @@ const withStageRules = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
   schema.superRefine((v: any, ctx) => {
     // 공모만 진행하면 자료제출 단계도, 전시 자체도 없다 — 날짜를 받지도, 요구하지도 않는다 (2026-09-19: 전시 일자도)
     if (!v.recruitOnly && !v.submissionDeadline) {
-      ctx.addIssue({ code: 'custom', path: ['submissionDeadline'], message: '자료제출 마감일을 입력해주세요.' });
+      ctx.addIssue({ code: 'custom', path: ['submissionDeadline'], message: '출품 자료 제출 마감일을 입력해 주세요.' });
     }
     if (!v.recruitOnly && !v.exhibitDate) {
       ctx.addIssue({ code: 'custom', path: ['exhibitDate'], message: '전시 종료일을 입력해주세요.' });
@@ -104,14 +118,43 @@ const router = Router();
  * 전시 시작일은 선택값이므로, 없으면 전시 종료일을 기준으로 삼는다.
  */
 function assertSubmissionDeadline(submissionDeadline: Date, deadline: Date, exhibitStart: Date | null, exhibitEnd: Date) {
-  if (Number.isNaN(submissionDeadline.getTime())) throw new AppError('자료제출 마감일이 올바르지 않습니다.', 400);
+  if (Number.isNaN(submissionDeadline.getTime())) throw new AppError('출품 자료 제출 마감일이 올바르지 않습니다.', 400);
   const start = exhibitStart ?? exhibitEnd;
   if (submissionDeadline <= deadline) {
-    throw new AppError('자료제출 마감일은 지원 마감일보다 뒤여야 합니다.', 400);
+    throw new AppError('출품 자료 제출 마감일은 공모 마감일보다 뒤여야 합니다.', 400);
   }
   if (submissionDeadline >= start) {
-    throw new AppError('자료제출 마감일은 전시 시작일보다 앞이어야 합니다.', 400);
+    throw new AppError('출품 자료 제출 마감일은 전시 시작일보다 앞이어야 합니다.', 400);
   }
+}
+
+/**
+ * 등록할 때의 날짜 순서 — 화면(`lib/utils.ts validateExhibitionDates`)과 같은 규칙을 서버도 본다(2026-10-03 점검 P2-14).
+ * 예전엔 화면만 막아서, 공모만 진행하는 공고는 화면 검사도 통째로 건너뛰었다 — 시작일이 마감일보다 늦은 공고가 등록돼
+ * **한 번도 목록에 못 뜨고** 끝났고, 이미 지난 마감일로도 등록됐다.
+ * 전시 날짜는 공모만 진행이면 null 로 넘긴다(전시가 없다).
+ */
+function assertExhibitionDates(d: { deadlineStart?: string | null; deadline: string; exhibitStart: Date | null; exhibitEnd: Date | null }) {
+  const dl = new Date(d.deadline);
+  const ds = d.deadlineStart ? new Date(d.deadlineStart) : null;
+  if (ds && ds > dl) throw new AppError('공모 시작일은 마감일 이전이어야 합니다.', 400);
+  if (isDeadlinePassedKst(dl)) throw new AppError('공모 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.', 400);
+  if (d.exhibitStart && d.exhibitEnd && d.exhibitStart > d.exhibitEnd) throw new AppError('전시 시작일은 종료일 이전이어야 합니다.', 400);
+  const showStart = d.exhibitStart ?? d.exhibitEnd;
+  if (showStart && dl > showStart) {
+    throw new AppError(d.exhibitStart ? '공모 마감일은 전시 시작일 이전이어야 합니다.' : '공모 마감일은 전시 종료일 이전이어야 합니다.', 400);
+  }
+}
+
+/**
+ * 포스터·공모 사진 주소 — **우리 저장소 주소만**(lib/safeUrl.ts ownFileUrl). 비어 있으면 null.
+ * 보내 놓고 틀리면 조용히 버리지 않고 400 — 버리면 포스터가 왜 없는지 알 수 없다.
+ */
+function ownImageOrNull(raw: unknown, label = '사진'): string | null {
+  if (raw == null || (typeof raw === 'string' && raw.trim() === '')) return null;
+  const url = ownFileUrl(raw);
+  if (!url) throw new AppError(`${label} 주소가 올바르지 않습니다. 사진을 다시 올려 주세요.`, 400);
+  return url;
 }
 
 /** 알림 문구용 주최자 이름 — 아트링크 주최 공모는 주관 갤러리명 대신 '아트링크' */
@@ -165,6 +208,9 @@ function normalizeCustomAnswers(raw: unknown, fields: any[]): { fieldId: string;
     }
     // 글자수 제한 — 화면이 막아도 서버가 최종 판정한다(초대 경로·직접 호출 모두 같은 규칙)
     const maxLength = Number.isInteger(field.maxLength) ? Number(field.maxLength) : 0;
+    // 제한을 안 정한 질문도 한 답변 5000자까지(2026-10-03 점검 S10 — 몇 MB 짜리 답이 그대로 저장됐다)
+    const answerTexts = Array.isArray(value) ? value : [value ?? ''];
+    if (answerTexts.some((t) => String(t).length > 5000)) throw new AppError(`추가 질문 "${field.label}"의 답변이 너무 길어요(5000자까지).`, 400);
     if (field.type === 'text' && maxLength > 0 && typeof value === 'string' && value.length > maxLength) {
       throw new AppError(`추가 질문 "${field.label}"은 ${maxLength}자까지 입력할 수 있습니다.`, 400);
     }
@@ -257,9 +303,9 @@ router.get('/', optionalAuth, async (req, res, next) => {
     // ⚠️ '갤러리 별점' 필터는 2026-09-10 에 없앴다(별점 자체를 없앴다). 쿼리로 와도 무시한다.
     const filtered = exhibitions;
 
-    // customFields 파싱
+    // customFields 파싱 · 정산·심사 내부 값 빼기(공개 목록이다 — lib/sanitize.ts maskExhibition)
     const withParsed = filtered.map((e: any) => ({
-      ...e,
+      ...maskExhibition(e),
       customFields: parseCustomFields(e.customFields),
     }));
 
@@ -293,6 +339,9 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
             // 이 작가가 자료를 냈는지 / 갤러리가 정산을 시작했는지 — 마이페이지 [내 전시] 의
             // '다음 일정' 과 진행중·종료 분류에 쓴다. 목록 한 번에 같이 담아 N+1 을 만들지 않는다.
             submissions: { where: { userId }, select: { artworkList: true, cv: true, note: true } },
+            // 내가 정산 확인에 답했는가 — 카드가 '확인 필요' 를 **내가 아직 답하지 않았을 때만** 띄운다(2026-10-03 점검 P2-6:
+            // 확인·이의 뒤에도 '갤러리가 정산 확인을 요청했어요 · 확인 필요' 가 남았다)
+            settlementApprovals: { where: { artistUserId: userId }, select: { status: true } },
             _count: { select: { sales: true } },
           }
         }
@@ -311,13 +360,15 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
       const submissionComplete = hasArtwork
         && hasSubmissionContent(safeJson(sub?.cv, null))
         && hasSubmissionContent(safeJson(sub?.note, null));
-      const { submissions: _s, _count, ...exRest } = ex;
+      const { submissions: _s, settlementApprovals: _sa, _count, ...exRest } = ex;
       return {
         ...app,
         career: safeJson(app.career, null),
         artworkImages: safeJson<string[]>(app.artworkImages, []),
         customAnswers: safeJson(app.customAnswers, []),
         submissionComplete,
+        /** 이 작가의 정산 확인 상태(PENDING·APPROVED·ISSUE) — 확인 요청 전이면 null */
+        mySettlementStatus: ex.settlementApprovals?.[0]?.status ?? null,
         exhibition: {
           ...exRest,
           customFields: parseCustomFields(ex.customFields),
@@ -622,7 +673,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
       where: { userId },
       include: { images: { orderBy: { order: 'asc' }, take: 10 } },
     });
-    const images = (portfolio?.images ?? []).map(i => safeFileUrl(i.url)).filter((u): u is string => !!u);
+    const images = (portfolio?.images ?? []).map(i => ownFileUrl(i.url)).filter((u): u is string => !!u);
     if (images.length < 1) {
       throw new AppError('포트폴리오에 작품 사진이 없어 참여할 수 없습니다. 홈페이지에 작품을 등록한 뒤 다시 시도해주세요.', 400);
     }
@@ -640,7 +691,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
           biography: (portfolio?.biography || '').trim() || '(초대 참여 — 작가 포트폴리오 참조)',
           artworkImages: JSON.stringify(images),
           career: portfolio?.career ?? null,
-          portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
+          portfolioFileUrl: ownFileUrl(portfolio?.portfolioFileUrl),
           termsAgreedAt: new Date(),
           termsVersion: ARTIST_APPLY_TERMS_VERSION,
           termsTextHash: ARTIST_APPLY_TERMS_HASH,   // apply 와 같이 — 어떤 전문에 동의했는지가 분쟁 근거다(2026-09-19)
@@ -870,11 +921,12 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules
     // 공모만 진행하면 전시 자체가 없다 — 전시 일자도 저장하지 않는다(2026-09-19). 전시까지 진행하면 스키마가 exhibitDate 를 요구한다.
     const exhibitEnd = recruitOnly || !exhibitDate ? null : new Date(exhibitDate);
     const exhibitStart = recruitOnly || !exhibitStartDate ? null : new Date(exhibitStartDate);
+    assertExhibitionDates({ deadlineStart, deadline, exhibitStart, exhibitEnd });
     if (subDeadline && exhibitEnd) {
       assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStart, exhibitEnd);
     }
 
-    const safeImageUrl = safeFileUrl(imageUrl);
+    const safeImageUrl = ownImageOrNull(imageUrl, '포스터');
     const exhibition = await prisma.exhibition.create({
       data: {
         title, type,
@@ -884,7 +936,7 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules
         exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
-        capacity, region, description,
+        capacity, region, description: cleanDescription(description),
         galleryId: hostGallery?.id ?? null,
         imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
@@ -1033,7 +1085,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
         where: { userId },
         include: { images: { orderBy: { order: 'asc' }, take: 10 } },
       });
-      const images = (portfolio?.images ?? []).map((i) => safeFileUrl(i.url)).filter((u): u is string => !!u);
+      const images = (portfolio?.images ?? []).map((i) => ownFileUrl(i.url)).filter((u): u is string => !!u);
       try {
         await withSeatLock(prisma, async (tx) => {
           if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(SEATS_FULL_MESSAGE(ex.capacity), 400);
@@ -1046,7 +1098,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
               biography: (portfolio?.biography || '').trim() || '(초대 코드로 참여 — 작가 포트폴리오 참조)',
               artworkImages: JSON.stringify(images),
               career: portfolio?.career ?? null,
-              portfolioFileUrl: safeFileUrl(portfolio?.portfolioFileUrl),
+              portfolioFileUrl: ownFileUrl(portfolio?.portfolioFileUrl),
               termsAgreedAt: new Date(),
               termsVersion: ARTIST_APPLY_TERMS_VERSION,
               termsTextHash: ARTIST_APPLY_TERMS_HASH,
@@ -1231,18 +1283,23 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       gallery = maskGallery({ ...galleryRest, ownerId: owner?.id });
     }
     const managerGalleries = (exhibition as any).managers.map((m: any) => m.gallery);
+    // 화면에서 "운영자 전용" UI 노출 판단용 — 갤러리 오너 비교를 프론트에서 재구현하지 않게 서버가 계산해 내려준다
+    const canOperate = !!req.user && canOperateExhibition(
+      { hostType: exhibition.hostType, gallery: exhibitionOwner(exhibition), managers: (exhibition as any).managers },
+      req.user.id
+    );
+    // 운영자·관리자가 아니면 정산·심사 내부 값을 뺀다(2026-10-03 점검 S4 — 비로그인 응답에 카드 수수료율·정산 요청 시각이 실려 있었다).
+    // 주관 갤러리의 반려 사유는 이 화면과 무관하다
+    const body = canOperate || req.user?.role === 'ADMIN' ? exhibition : maskExhibition(exhibition);
+    if (gallery) { const { rejectReason: _r, ...g } = gallery; void _r; gallery = g; }
     res.json({
-      ...exhibition,
+      ...body,
       customFields: parseCustomFields(exhibition.customFields),
       gallery,
       // 아트링크 주최 공모의 운영 갤러리 목록 (갤러리 주최면 빈 배열)
       managers: undefined,
       managerGalleries: managerGalleries.map((g: any) => ({ id: g.id, name: g.name })),
-      // 화면에서 "운영자 전용" UI 노출 판단용 — 갤러리 오너 비교를 프론트에서 재구현하지 않게 서버가 계산해 내려준다
-      canOperate: !!req.user && canOperateExhibition(
-        { hostType: exhibition.hostType, gallery: exhibitionOwner(exhibition), managers: (exhibition as any).managers },
-        req.user.id
-      ),
+      canOperate,
       isFavorited,
       invited,
       myApplication,
@@ -1266,11 +1323,12 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
     // 공모만 진행하면 전시 자체가 없다 — 전시 일자도 저장하지 않는다(2026-09-19). 전시까지 진행하면 스키마가 exhibitDate 를 요구한다.
     const exhibitEnd = recruitOnly || !exhibitDate ? null : new Date(exhibitDate);
     const exhibitStart = recruitOnly || !exhibitStartDate ? null : new Date(exhibitStartDate);
+    assertExhibitionDates({ deadlineStart, deadline, exhibitStart, exhibitEnd });
     if (subDeadline && exhibitEnd) {
       assertSubmissionDeadline(subDeadline, new Date(deadline), exhibitStart, exhibitEnd);
     }
 
-    const safeImageUrl = safeFileUrl(imageUrl);
+    const safeImageUrl = ownImageOrNull(imageUrl, '포스터');
     const exhibition = await prisma.exhibition.create({
       data: {
         title, type,
@@ -1280,7 +1338,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
         exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
-        capacity, region, description, galleryId, imageUrl: safeImageUrl,
+        capacity, region, description: cleanDescription(description), galleryId, imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
         // 대표 이미지를 다중사진 첫 행으로 등록 (이후 상세 페이지에서 추가/삭제/순서변경)
@@ -1330,17 +1388,17 @@ router.patch('/:id/submission-deadline', authenticate, async (req, res, next) =>
       throw new AppError('권한이 없습니다.', 403);
     }
     if (exhibition.submissionDeadline && !isAdmin) {
-      throw new AppError('자료제출 마감일은 한 번만 설정할 수 있습니다. 변경이 필요하면 관리자에게 문의해주세요.', 403);
+      throw new AppError('출품 자료 제출 마감일은 한 번만 정할 수 있어요. 바꿔야 하면 1:1 문의로 알려 주세요.', 403);
     }
 
     const start = exhibition.exhibitStartDate ?? exhibition.exhibitDate;
     if (!start) throw new AppError('전시 일정이 없는 공모입니다.', 400);   // recruitOnly 는 위 assertFullExhibition 이 먼저 막지만 타입상 null 이 남는다
     if (!isAdmin && start <= new Date()) {
-      throw new AppError('전시가 시작된 공모에는 자료제출 마감일을 설정할 수 없습니다.', 400);
+      throw new AppError('전시가 시작된 공모에는 출품 자료 제출 마감일을 정할 수 없어요.', 400);
     }
 
     const raw = req.body?.submissionDeadline;
-    if (typeof raw !== 'string' || !raw.trim()) throw new AppError('자료제출 마감일을 입력해주세요.', 400);
+    if (typeof raw !== 'string' || !raw.trim()) throw new AppError('출품 자료 제출 마감일을 입력해 주세요.', 400);
     const next = new Date(raw);
     assertSubmissionDeadline(next, exhibition.deadline, exhibition.exhibitStartDate, start);
 
@@ -1378,6 +1436,11 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
     if (isDeadlinePassedKst(exhibitionData.deadline)) {
       throw new AppError('모집이 마감된 공모입니다.', 400);
     }
+    // 공모 시작일 전 — 목록에는 안 뜨지만 주소로 들어오면 지원이 됐다(2026-10-03 점검 P2-13). 목록과 같은 경계(시작일 당일부터)
+    if (exhibitionData.deadlineStart && exhibitionData.deadlineStart > endOfTodayKstAsUtc()) {
+      const d = new Date(exhibitionData.deadlineStart.getTime() + 9 * 3600 * 1000);
+      throw new AppError(`${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일부터 지원을 받아요.`, 400);
+    }
 
     // ⚠️ 정원으로 지원을 막지 않는다(2026-09-27) — 정원은 '선정 인원'이다. 지원은 마감일까지 무제한이고,
     //    정원은 수락할 때 지킨다(`PATCH /:id/applications/:appId`, lib/inviteCode.ts countSelected).
@@ -1402,28 +1465,34 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
         include: { images: { orderBy: { order: 'asc' }, take: 10 } },
       });
       images = (portfolio?.images ?? [])
-        .map((i) => safeFileUrl(i.url))
+        .map((i) => ownFileUrl(i.url))
         .filter((u): u is string => !!u);
       if (images.length < 1) {
         throw new AppError('포트폴리오에 작품 사진이 없어 간편 지원할 수 없습니다. 포트폴리오에 작품을 등록한 뒤 다시 시도해주세요.', 400);
       }
       bioValue = (portfolio?.biography || '').trim() || '(초대 지원 — 작가 포트폴리오 참조)';
       careerStr = portfolio?.career ?? null;
-      fileUrl = safeFileUrl(portfolio?.portfolioFileUrl);
+      fileUrl = ownFileUrl(portfolio?.portfolioFileUrl);
     } else {
       // 필수 검증: 작가 약력
       if (!biography || !String(biography).trim()) {
         throw new AppError('작가 약력을 입력해주세요.', 400);
       }
+      if (String(biography).trim().length > 5000) throw new AppError('작가 약력은 5000자까지 쓸 수 있어요.', 400);
       // 필수 검증: 작품 사진 1장 이상 (최대 10장)
+      // ⚠️ 우리 저장소 주소만 — 임의의 http(s)·`//외부` 주소가 그대로 저장돼, 갤러리가 지원서를 여는 순간 외부로 요청이 나갔다(2026-10-03 점검 S3)
       images = (Array.isArray(artworkImages) ? artworkImages : [])
-        .map((u) => safeFileUrl(u))
+        .map((u) => ownFileUrl(u))
         .filter((u): u is string => !!u);
       if (images.length < 1) throw new AppError('작품 사진을 1장 이상 첨부해주세요.', 400);
       if (images.length > 10) throw new AppError('작품 사진은 최대 10장까지 첨부할 수 있습니다.', 400);
       bioValue = String(biography).trim();
       careerStr = career == null ? null : typeof career === 'string' ? career : JSON.stringify(career);
-      fileUrl = safeFileUrl(portfolioFileUrl);
+      if (careerStr && careerStr.length > 50000) throw new AppError('경력이 너무 길어요.', 400);
+      if (portfolioFileUrl != null && portfolioFileUrl !== '' && !ownFileUrl(portfolioFileUrl)) {
+        throw new AppError('포트폴리오 파일 주소가 올바르지 않습니다. 파일을 다시 올려 주세요.', 400);
+      }
+      fileUrl = ownFileUrl(portfolioFileUrl);
     }
     const customFields = parseCustomFields(exhibitionData.customFields) ?? [];
     const normalizedCustomAnswers = normalizeCustomAnswers(customAnswers, customFields);
@@ -1492,14 +1561,43 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
 });
 
 // 공모 소개 수정 (운영 갤러리 또는 Admin)
-const descriptionSchema = z.object({ description: z.string().trim().min(1, '소개를 입력해주세요.').max(20000, '소개는 20000자까지입니다.') });
+// 서식 있는 글(2026-10-03) — 편집기가 보낸 HTML 을 허용 목록으로 걸러 저장한다. ⚠️ 그대로 넣지 말 것 — 화면이 HTML 로 그리므로 저장형 XSS 다
+const descriptionSchema = z.object({ description: z.string().trim().min(1, '소개를 입력해주세요.').max(DESCRIPTION_MAX_TEXT * 4 + 10000, '공모 소개가 너무 깁니다.') });
 router.patch('/:id/description', authenticate, validate(descriptionSchema), async (req, res, next) => {
   try {
     const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
+    const description = richField(req.body.description, { label: '공모 소개', maxText: DESCRIPTION_MAX_TEXT, required: true, emptyMessage: '소개를 입력해주세요.' });
 
     const updated = await prisma.exhibition.update({
       where: { id: exhibition.id },
-      data: { description: req.body.description }
+      data: { description: description! }
+    });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 모집 인원(선정 인원) 바꾸기 (2026-10-03 사용자 결정 — 예전엔 '수정 요청을 보내 주세요' 라고 했지만 요청할 화면이 없었다).
+ *  - 갤러리 주최 공모: 그 갤러리(운영자) · 아트링크 주최 공모: **관리자만**(위임 갤러리는 못 바꾼다 — 정원은 주최자가 정한다)
+ *  - 전시가 끝났거나 정산이 끝난 공모는 못 바꾼다
+ *  - 이미 수락한 인원보다 적게는 못 줄인다. 수락과 동시에 줄이는 경합은 수락과 같은 잠금(`withSeatLock`) 안에서 센다
+ */
+const capacitySchema = z.object({
+  capacity: z.number().int().min(1, '모집 인원은 1명 이상이어야 해요.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`),
+});
+router.patch('/:id/capacity', authenticate, authorize('GALLERY', 'ADMIN'), validate(capacitySchema), async (req, res, next) => {
+  try {
+    const exhibitionId = parseInt(req.params.id as string);
+    const exhibition = await assertCanManageExhibition(exhibitionId, req.user!);
+    if (exhibition.hostType === 'ADMIN' && req.user!.role !== 'ADMIN') {
+      throw new AppError('아트링크 주최 공모의 모집 인원은 아트링크가 정해요. 바꿔야 하면 1:1 문의로 알려 주세요.', 403);
+    }
+    if (exhibition.ended || exhibition.settledAt) throw new AppError('전시가 끝난 공모는 모집 인원을 바꿀 수 없어요.', 400);
+    const next = req.body.capacity as number;
+    const updated = await withSeatLock(prisma, async (tx) => {
+      const selected = await countSelected(tx, exhibitionId);
+      if (next < selected) throw new AppError(`이미 ${selected}명을 수락해서 그보다 적게 줄일 수 없어요.`, 400);
+      return tx.exhibition.update({ where: { id: exhibitionId }, data: { capacity: next }, select: { id: true, capacity: true } });
     });
     res.json(updated);
   } catch (error) { next(error); }
@@ -1525,6 +1623,23 @@ router.patch('/:id/custom-fields', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/**
+ * 갤러리가 이 공모를 직접 지울 수 있는가 — 화면이 [공모 삭제]를 누를 때 먼저 묻는다(직접 삭제 창 / 삭제 요청 창).
+ * 규칙은 `lib/deletion.ts` 한 곳(서버 DELETE 와 같은 판정). 관리자는 늘 지울 수 있어 `blocked: null`.
+ */
+router.get('/:id/delete-check', authenticate, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const exhibition = Number.isFinite(id)
+      ? await prisma.exhibition.findUnique({ where: { id }, select: { id: true, hostType: true, gallery: { select: { ownerId: true } } } })
+      : null;
+    const isAdmin = req.user!.role === 'ADMIN';
+    const isOwner = !!exhibition && exhibition.hostType !== 'ADMIN' && exhibition.gallery?.ownerId === req.user!.id;
+    if (!exhibition || (!isAdmin && !isOwner)) throw new AppError('공모를 찾을 수 없습니다.', 404);
+    res.json({ blocked: isAdmin ? null : exhibitionBlockReason(await exhibitionDeleteFacts(exhibition.id)) });
+  } catch (error) { next(error); }
+});
+
 // 공모 삭제 (Gallery 오너 또는 Admin)
 router.delete('/:id', authenticate, async (req, res, next) => {
   try {
@@ -1547,23 +1662,17 @@ router.delete('/:id', authenticate, async (req, res, next) => {
       );
     }
 
-    // 정산이 완료된 공모는 갤러리가 지울 수 없다.
-    // cascade 가 ArtworkSale·ArtistSettlement·SettlementApproval·ExhibitionSubmission 을 통째로 지우는데,
-    // 그건 **작가와 갤러리가 합의를 끝낸 금전 기록**이다. 버튼 한 번으로 사라지면
-    // 나중에 지급액 다툼이 생겨도 근거가 남지 않는다. (수락 되돌리기를 막는 규칙과 같은 선)
+    // 수락한 작가가 있거나 판매·정산 기록이 있으면 갤러리는 직접 지울 수 없다 — 관리자에게 **삭제 요청**을 보낸다(lib/deletion.ts).
+    // cascade 가 지원·출품 자료·판매·정산 확인 기록을 통째로 지우는데, 그건 작가가 이미 일을 시작했거나 금전 합의가 걸린 기록이다.
+    // (예전엔 정산 완료만 막아서, 수락 작가가 자료를 내고 있는 공모도 말없이 지워졌다 — 2026-10-03 점검 P2-16)
     // Admin 은 예외 — 잘못 만들어진 데이터를 치울 통로는 남겨둔다.
-    if (exhibition.settledAt && !isAdmin) {
-      throw new AppError('정산이 완료된 공모는 삭제할 수 없습니다. 판매·정산 기록이 함께 사라집니다.', 400);
+    if (!isAdmin) {
+      const blocked = exhibitionBlockReason(await exhibitionDeleteFacts(exhibition.id));
+      if (blocked) throw new AppError(`${blocked} 관리자에게 삭제 요청을 보내 주세요.`, 400);
     }
 
-    // 삭제 전 직속 이미지/홍보사진 URL 수집 → cascade 삭제 후 실제 파일 정리(best-effort)
-    const [exImgs, promos] = await Promise.all([
-      prisma.exhibitionImage.findMany({ where: { exhibitionId: exhibition.id }, select: { url: true } }),
-      prisma.promoPhoto.findMany({ where: { exhibitionId: exhibition.id }, select: { url: true } }),
-    ]);
-    // cascade로 Application, PromoPhoto, Favorite도 자동 삭제 (schema에 onDelete: Cascade 설정됨)
-    await prisma.exhibition.delete({ where: { id: exhibition.id } });
-    void deleteUploadedFiles([...exImgs.map((i) => i.url), ...promos.map((p) => p.url), (exhibition as any).imageUrl]);
+    // cascade 삭제 + 진행 중이던 작가에게 알림 + 사진 파일 정리
+    await deleteExhibitionWithNotice(exhibition.id);
     res.json({ message: '공모가 삭제되었습니다.' });
   } catch (error) { next(error); }
 });
@@ -1661,6 +1770,12 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
         throw new AppError('거절한 지원은 수락으로만 변경할 수 있습니다.', 400);
       }
     }
+    // 전시가 끝난 뒤에는 선정을 바꾸지 않는다(2026-10-03 사용자 결정) — 정산 중에 거절 → 수락이 되면 정산 대상이 늘어
+    // 모두 확인한 정산을 완료할 수 없게 되고, 수락 → 거절은 판매 기록이 남은 작가를 빼 버린다.
+    // 관리자는 예외, 개발자 도구의 '수락 되돌리기'(위 acceptedRevert)는 그대로 둔다.
+    if (exhibition.ended && req.user!.role !== 'ADMIN' && !acceptedRevert) {
+      throw new AppError('전시가 종료된 공모는 지원 상태를 바꿀 수 없어요.', 400);
+    }
 
     let updated;
     if (acceptedRevert) {
@@ -1687,7 +1802,11 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
       // 끼어들지 않게 한 트랜잭션에서(일괄 수락은 화면이 한 건씩 보내므로 동시에 여러 개가 들어온다)
       updated = await withSeatLock(prisma, async (tx) => {
         if (await countSelected(tx, exhibitionId, appId) >= exhibition.capacity) {
-          throw new AppError(`${SEATS_FULL_MESSAGE(exhibition.capacity)} 더 뽑으려면 모집 인원 수정을 요청해주세요.`, 400);
+          // 모집 인원은 갤러리가 직접 늘린다(2026-10-03 사용자 결정) — 아트링크 주최 공모는 관리자만 바꿀 수 있다
+          const how = exhibition.hostType === 'ADMIN' && req.user!.role !== 'ADMIN'
+            ? '더 뽑으려면 아트링크에 모집 인원 변경을 요청해 주세요.'
+            : '더 뽑으려면 [모집 인원 변경]으로 늘려 주세요.';
+          throw new AppError(`${SEATS_FULL_MESSAGE(exhibition.capacity)} ${how}`, 400);
         }
         return tx.application.update({ where: { id: appId }, data: { status, rejectionAckedAt: null } });
       });
@@ -1699,21 +1818,23 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
       });
     }
 
-    // 지원 상태 변경 → Artist에게 알림
-    const statusLabels: Record<string, string> = { SUBMITTED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
-    // 수락 시: 운영 페이지에서 전시정보 입력 안내 + 운영 페이지로 바로 이동
+    // 지원 상태 변경 → Artist에게 알림 (2026-10-03 문구 — 작가 화면의 말 '선정·미선정' 과 같게, `lib/flowLabels.ts`)
+    //  - 선정: 출품 자료가 있는 공모면 그 다음 할 일까지 / 공모만 진행이면 선정으로 끝난다(옛 문구 '운영 페이지에서 전시정보 입력' 은 없는 단계였다)
+    //  - 미선정: '지원 결과가 나왔어요' 까지만(사용자 지정) — 결과는 [내 전시] 카드가 말한다
     const accepted = status === 'ACCEPTED';
     const message = accepted
-      ? `"${exhibition.title}" 공모에 수락되었습니다! 운영 페이지에서 전시 정보를 입력해주세요.`
-      : `"${exhibition.title}" 공모 지원 상태가 '${statusLabels[status] || status}'(으)로 변경되었습니다.`;
+      ? (exhibition.recruitOnly
+        ? `"${exhibition.title}"에 선정되었어요.`
+        : `"${exhibition.title}"에 선정되었어요. [내 전시]에서 출품 자료를 제출해 주세요.`)
+      : `"${exhibition.title}" 지원 결과가 나왔어요.`;
     try {
       await prisma.notification.create({
         data: {
           userId: application.userId,
           type: 'APPLICATION_STATUS',
           message,
-          // 수락되면 마이페이지 [내 전시] 로 — 거기서 공지·제출자료·정산을 다 처리한다
-          linkUrl: accepted ? artistExhibitionLink(exhibitionId) : `/exhibitions/${exhibitionId}`,
+          // 마이페이지 [내 전시]의 그 카드로 — 선정이면 공지·출품 자료·정산을, 미선정이면 결과와 [확인]을 거기서 본다
+          linkUrl: artistExhibitionLink(exhibitionId),
         },
       });
     } catch { /* best-effort */ }
@@ -1733,8 +1854,9 @@ router.post('/:id/promo-photos', authenticate, authorize('GALLERY', 'ADMIN'), as
     const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
 
     const { url, caption } = req.body;
-    const safeUrl = safeFileUrl(url);
+    const safeUrl = ownFileUrl(url);
     if (!safeUrl) throw new AppError('유효한 이미지 URL이 아닙니다.', 400);
+    if (caption != null && (typeof caption !== 'string' || caption.length > 300)) throw new AppError('사진 설명은 300자까지 쓸 수 있어요.', 400);
     const photo = await prisma.promoPhoto.create({
       data: { url: safeUrl, caption, exhibitionId: exhibition.id }
     });
@@ -1789,7 +1911,7 @@ router.post('/:id/images', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = parseInt(req.params.id as string);
     const exhibition = await assertExhibitionOwner(exhibitionId, req.user!);
-    const url = safeFileUrl(req.body?.url);
+    const url = ownFileUrl(req.body?.url);
     if (!url) throw new AppError('유효한 이미지 URL이 아닙니다.', 400);
     let count = await prisma.exhibitionImage.count({ where: { exhibitionId } });
     // 안전망: 기존 대표 imageUrl이 아직 행으로 승격되지 않았다면 먼저 order 0으로 보존

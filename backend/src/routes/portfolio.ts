@@ -2,7 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-import { safeFileUrl } from '../lib/safeUrl';
+import { ownFileUrl } from '../lib/safeUrl';
 import { deleteUploadedFile } from '../lib/storage';
 import { ensureHandle, isHandleParam, normalizeHandle, validateHandle } from '../lib/handle';
 import { readImageDims } from '../lib/imageDims';
@@ -10,6 +10,14 @@ import { PORTFOLIO_IMAGE_MAX } from '../lib/portfolioLimits';
 import { matchR2Base } from '../lib/r2Urls';
 import { EXPORT_METHODS, recordExport, type ExportMethod } from '../lib/exportStats';
 import { LOCK_NS, withKeyLock } from '../lib/keyLock';
+
+/** 포트폴리오 파일 — 비우면 null, 보낸 주소가 우리 저장소가 아니면 400(조용히 지우지 않는다 — 지우면 옛 파일까지 정리된다) */
+function ownFileUrlOrNull(raw: unknown): string | null {
+  if (raw == null || raw === '') return null;
+  const url = ownFileUrl(raw);
+  if (!url) throw new AppError('파일 주소가 올바르지 않습니다. 파일을 다시 올려 주세요.', 400);
+  return url;
+}
 
 const router = Router();
 
@@ -275,7 +283,7 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       // 포트폴리오 파일은 **보냈을 때만** 바꾼다(2026-10-03, designConfig 와 같은 방식). 만들기 화면이 `PUT /portfolio/file` 로 파일을 바꾸게 되면서
       // 이 필드를 쓰는 곳이 둘이 됐다 — 다른 탭에 열려 있던 편집 화면이 글만 고쳐 저장해도 옛 주소를 다시 보내 **방금 올린 파일을 지우고**
       // 이미 지워진 옛 파일을 가리키게 됐다(죽은 링크). 편집 화면은 파일을 바꿨을 때만 이 키를 보낸다. 키가 있으면(null 포함) 예전과 같다.
-      ...('portfolioFileUrl' in req.body ? { portfolioFileUrl: safeFileUrl(portfolioFileUrl) } : {}),
+      ...('portfolioFileUrl' in req.body ? { portfolioFileUrl: ownFileUrlOrNull(portfolioFileUrl) } : {}),
       statement: text(statement, 4000),
       tagline: text(tagline, 200),
       themeId: oneOf(themeId, THEME_IDS),
@@ -331,7 +339,7 @@ router.put('/design', authenticate, authorize('ARTIST'), async (req, res, next) 
  */
 router.put('/file', authenticate, authorize('ARTIST'), async (req, res, next) => {
   try {
-    const url = safeFileUrl(req.body?.portfolioFileUrl);
+    const url = ownFileUrl(req.body?.portfolioFileUrl);
     if (!url || !(url.startsWith('/uploads/') || matchR2Base(url))) throw new AppError('파일 주소가 올바르지 않습니다.', 400);
     const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });
     const portfolio = await prisma.portfolio.upsert({
@@ -376,7 +384,8 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
       throw new AppError(`작품 사진은 최대 ${PORTFOLIO_IMAGE_MAX}장까지 등록 가능합니다.`, 400);
     }
 
-    const url = safeFileUrl(req.body.url);
+    // 우리 저장소 주소만 — 작가 홈페이지 작품은 방문자 모두의 화면에 그려진다(2026-10-03 점검 S3)
+    const url = ownFileUrl(req.body.url);
     if (!url) throw new AppError('유효하지 않은 이미지 URL입니다.', 400);
     // 중간 삭제 후에도 order가 겹치지 않도록 (기존 최대 order) + 1 사용
     const nextOrder = portfolio.images.reduce((max, img) => Math.max(max, img.order), -1) + 1;

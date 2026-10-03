@@ -63,7 +63,7 @@ describe('Exhibition Routes', () => {
     const token = authToken(1, 'ARTIST');
     const res = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('id');
     expect(res.body.termsVersion).toBe(ARTIST_APPLY_TERMS_VERSION);
@@ -86,7 +86,7 @@ describe('Exhibition Routes', () => {
     });
     const res = await request.post(`/api/exhibitions/${ex.id}/apply`)
       .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'] });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'] });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('약관');
   });
@@ -121,7 +121,7 @@ describe('Exhibition Routes', () => {
       .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`)
       .send({
         biography: '약력',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
         customAnswers: [{ fieldId: 'mediums', value: ['회화', '사진'] }],
@@ -156,7 +156,7 @@ describe('Exhibition Routes', () => {
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
       .send({
         biography: '약력',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
         customAnswers: [{ fieldId: 'mediums', value: ['회화', '사진', '설치'] }],

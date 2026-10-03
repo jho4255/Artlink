@@ -159,7 +159,19 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
   } catch (error) { next(error); }
 });
 
-// ========== 일반 회원가입 ==========
+// ========== 일반 회원가입 · 비밀번호 로그인 ==========
+/**
+ * 이메일+비밀번호 가입·로그인은 **운영에서 닫는다**(2026-10-03 사용자 결정, 점검 S6).
+ * 화면은 카카오만 쓰고 실서버 회원 전원이 카카오 가입이다(비밀번호 계정 0). 그런데 이 API 는 열려 있어서
+ * 이메일 확인 없이 계정을 만들 수 있었다 — 남의 이메일을 먼저 등록하면 그 사람은 카카오 가입에서 '이미 사용 중인 이메일' 로 막힌다.
+ * 다시 열려면 Render 환경 변수 `ENABLE_PASSWORD_AUTH=true`. 로컬·테스트는 그대로 열려 있다.
+ * 없는 주소처럼 404 로 답한다(존재를 알릴 이유가 없다).
+ */
+function assertPasswordAuthAllowed() {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_PASSWORD_AUTH !== 'true') {
+    throw new AppError('요청한 API를 찾을 수 없습니다.', 404);
+  }
+}
 
 const signupSchema = z.object({
   name: z.string().min(1, '이름을 입력해주세요.').max(50),
@@ -171,7 +183,7 @@ const signupSchema = z.object({
   ...consentFields,
 });
 
-router.post('/signup', validate(signupSchema), async (req, res, next) => {
+router.post('/signup', (_req, _res, next) => { try { assertPasswordAuthAllowed(); next(); } catch (e) { next(e); } }, validate(signupSchema), async (req, res, next) => {
   try {
     const { name, email, password, role } = req.body;
 
@@ -196,7 +208,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-router.post('/login', validate(loginSchema), async (req, res, next) => {
+router.post('/login', (_req, _res, next) => { try { assertPasswordAuthAllowed(); next(); } catch (e) { next(e); } }, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
 

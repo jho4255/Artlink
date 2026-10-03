@@ -113,9 +113,9 @@ export interface NextScheduleInput {
 /**
  * 진행중인 전시의 다음 일정 두 줄을 만든다.
  *
- *   자료 미제출 · 마감 전  →  자료제출 마감 D-3 (8/15) / 전시시작 D-9 (8/28)
- *   자료 미제출 · 마감 지남 →  ⚠ 자료제출 마감 지남 (8/15) / 전시시작 D-9 (8/28)
- *   자료 제출 완료         →  자료제출 완료 / 전시시작 D-9 (8/28)
+ *   자료 미제출 · 마감 전  →  출품 자료 마감 D-3 (8/15) / 전시시작 D-9 (8/28)
+ *   자료 미제출 · 마감 지남 →  ⚠ 출품 자료 마감 지남 (8/15) / 전시시작 D-9 (8/28)
+ *   자료 제출 완료         →  출품 자료 제출 완료 / 전시시작 D-9 (8/28)
  *
  * ⚠️ D-day 계산은 반드시 `getDday`(KST 달력 날짜)를 쓴다. 순수 `new Date()` 비교를 쓰면
  *    마감일 당일 오전 9시에 '지남' 으로 바뀐다(CLAUDE.md 14).
@@ -131,11 +131,11 @@ export function nextSchedule(
 
   if (ex.submissionDeadline) {
     if (submissionComplete) {
-      rows.push({ label: '자료제출 완료', dday: null, date: shortDate(ex.submissionDeadline), tone: 'done' });
+      rows.push({ label: '출품 자료 제출 완료', dday: null, date: shortDate(ex.submissionDeadline), tone: 'done' });
     } else {
       const d = getDdayFn(ex.submissionDeadline);
       rows.push({
-        label: d < 0 ? '자료제출 마감 지남' : '자료제출 마감',
+        label: d < 0 ? '출품 자료 마감 지남' : '출품 자료 마감',
         dday: d < 0 ? null : ddayLabel(d),
         date: shortDate(ex.submissionDeadline),
         // 마감 지남뿐 아니라 사흘 안쪽도 붉게 — 그때 알려야 아직 낼 수 있다

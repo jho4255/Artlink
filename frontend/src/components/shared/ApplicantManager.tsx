@@ -15,17 +15,25 @@
  *    다시 바꿀 수 있는 것처럼 보였다(2026-09-29 로컬 확인 중 지적). 일괄 처리는 결정을 내리는 도구라 결정할 게 남은 줄에만 둔다.
  *    상태 칩도 ▾ 바로 옆에 두면 옛 상태 드롭다운('접수 ▾')처럼 읽혀 이름 옆으로 옮겼다.
  *
- * API: GET /exhibitions/:id/applications, PATCH /exhibitions/:id/applications/:appId
- *  - 서버 규칙: 접수 → 수락/거절, 거절 → 수락만, 수락 → (개발자 도구 켜짐일 때만) 거절
+ * ── 2026-10-03 공모 흐름 점검 후속 ─────────────────────────────
+ *  - **[모집 인원 변경]** — 정원이 차면 "수정 요청을 보내라" 고 했는데 보낼 곳이 없었다. 갤러리 주최 공모는 그 갤러리가,
+ *    아트링크 주최 공모는 관리자가 여기서 직접 고친다(`capacityEditable`). 수락한 수보다 적게는 못 줄인다(서버가 같은 잠금 안에서 센다).
+ *  - **전시가 끝나면 결정을 잠근다**(`ended`) — 정산 중에 거절 → 수락이 되면 정산 대상이 늘어 완료가 막히고, 수락 → 거절은
+ *    판매 기록이 있는 작가를 빼 버린다. 서버도 400(관리자 예외). 초대 코드 줄도 감춘다(끝난 공모에는 코드를 못 쓴다).
+ *  - **공모만 진행**(`recruitOnly`) 공고에서 '출품 자료' 를 말하지 않는다 — 그 공고엔 그 단계가 없다.
+ *
+ * API: GET /exhibitions/:id/applications, PATCH /exhibitions/:id/applications/:appId, PATCH /exhibitions/:id/capacity
+ *  - 서버 규칙: 접수 → 수락/거절, 거절 → 수락만, 수락 → (개발자 도구 켜짐일 때만) 거절 · 전시 종료 뒤엔 갤러리는 못 바꾼다
  */
-import { useState, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { ChevronDown, FileText, FileArchive, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { nameWithNickname, cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
+import { nameWithNickname, cn, CAPACITY_MAX } from '@/lib/utils';
 import { applicationStatusView } from '@/lib/flowLabels';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -49,11 +57,21 @@ interface Props {
   capacity?: number | null;
   /** 도구 줄 오른쪽에 붙일 것(작가 초대·추가 질문 수정) — 부르는 화면마다 다르다 */
   toolbar?: ReactNode;
+  /** 공모만 진행(수락에서 끝) — 확인창·수락 줄에서 출품 자료를 말하지 않는다 */
+  recruitOnly?: boolean;
+  /** 전시가 끝났는가 — 갤러리는 더 이상 수락·거절할 수 없다(관리자는 예외, 서버와 같은 규칙) */
+  ended?: boolean;
+  /** 여기서 모집 인원을 고칠 수 있는가 — 갤러리 주최 공모의 갤러리 · 아트링크 주최 공모의 관리자 */
+  capacityEditable?: boolean;
 }
 
-export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields, capacity, toolbar }: Props) {
+export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields, capacity, toolbar, recruitOnly = false, ended = false, capacityEditable = false }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAdmin = useAuthStore(s => s.user?.role === 'ADMIN');
+  // 전시가 끝나면 결정을 잠근다(관리자 제외) — 개발자 도구의 '수락 되돌리기'는 서버가 따로 허용하므로 그대로 둔다
+  const decisionsLocked = ended && !isAdmin;
+  const [editingCapacity, setEditingCapacity] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<StatusTab>('ALL');
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -82,7 +100,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const allowRevert = !!flags?.allowAcceptedRevert;
 
   // 초대 코드가 켜져 있는지 — 접힌 줄에서도 보이게(JoinCodePanel 과 같은 쿼리 키라 한 번만 받는다)
-  const { data: joinCodeState } = useQuery<{ code: string | null }>({
+  const { data: joinCodeState } = useQuery<{ code: string | null; blocked?: string | null }>({
     queryKey: ['join-code', exhibitionId],
     queryFn: () => api.get(`/exhibitions/${exhibitionId}/join-code`).then(r => r.data),
     staleTime: 60_000,
@@ -161,8 +179,8 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const filtered = statusFilter === 'ALL' ? applicants
     : statusFilter === 'SUBMITTED' ? applicants.filter(a => isPending(a.status))
       : applicants.filter(a => a.status === statusFilter);
-  // 일괄 선택은 **검토 대기**만 — 수락·거절한 지원은 한 줄씩 펼쳐서 다룬다(되돌리기 규칙이 서로 다르다)
-  const selectable = filtered.filter(a => isPending(a.status));
+  // 일괄 선택은 **검토 대기**만 — 수락·거절한 지원은 한 줄씩 펼쳐서 다룬다(되돌리기 규칙이 서로 다르다). 결정이 잠기면 아무것도 못 고른다
+  const selectable = decisionsLocked ? [] : filtered.filter(a => isPending(a.status));
   const anySelectable = selectable.length > 0;
   const allFilteredSelected = anySelectable && selectable.every(a => selectedIds.has(a.id));
   const toggleSelectAll = () => {
@@ -182,8 +200,9 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const accepted = counts.ACCEPTED;
   const left = capacity != null ? Math.max(0, capacity - accepted) : null;
 
-  // 초대 코드 — 목록 아래 한 줄로 접어 둔다. 지원자 0명이어도 보여야 한다(옮겨 온 공모는 코드를 돌리기 전엔 늘 0명이다)
-  const joinCode = (
+  // 초대 코드 — 목록 아래 한 줄로 접어 둔다. 지원자 0명이어도 보여야 한다(옮겨 온 공모는 코드를 돌리기 전엔 늘 0명이다).
+  // 전시가 끝난 공모에는 코드를 만들 수도 쓸 수도 없다(서버 `joinBlockReason`) — 줄째로 감춘다(점검 P3)
+  const joinCode = ended || joinCodeState?.blocked ? null : (
     <div className="border-t border-gray-100 pt-3">
       <Disclosure variant="link" title="이미 선정한 작가를 초대 코드로 데려오기" meta={joinCodeState?.code ? '코드 켜짐' : undefined}>
         <JoinCodePanel exhibitionId={exhibitionId} bare />
@@ -194,12 +213,20 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   if (isLoading) return <div className="h-24 animate-pulse rounded-xl bg-gray-100" />;
   if (isError) return <p className="py-6 text-center text-sm text-gray-400">지원자 목록을 불러오지 못했습니다.</p>;
 
+  const canEditCapacity = capacityEditable && !ended;
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-gray-600">
         수락 <b className="font-semibold tabular-nums text-gray-950">{accepted}{capacity != null ? `/${capacity}` : ''}</b>명
-        {left != null && <span className="text-gray-400"> · {left > 0 ? `${left}자리 남음` : '정원이 찼어요'}</span>}
+        {left != null && <span className={cn(left > 0 ? 'text-gray-400' : 'font-medium text-gray-900')}> · {left > 0 ? `${left}자리 남음` : '정원이 찼어요'}</span>}
         {counts.SUBMITTED > 0 && <span className="text-gray-400"> · 검토 대기 {counts.SUBMITTED}명</span>}
+        {canEditCapacity && !editingCapacity && (
+          <button
+            type="button"
+            onClick={() => setEditingCapacity(true)}
+            className="ml-2 inline-flex min-h-[36px] items-center text-sm text-gray-600 underline underline-offset-4 hover:text-gray-950"
+          >모집 인원 변경</button>
+        )}
       </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {toolbar}
@@ -218,9 +245,18 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     </div>
   );
 
+  const capacityEditor = canEditCapacity && editingCapacity ? (
+    <CapacityEditor exhibitionId={exhibitionId} capacity={capacity ?? null} accepted={accepted} onDone={() => setEditingCapacity(false)} />
+  ) : null;
+  // 전시가 끝나 결정이 잠겼다는 한 줄 — 버튼만 사라지면 고장처럼 보인다
+  const lockedLine = decisionsLocked ? (
+    <p className="text-sm text-gray-500" data-decisions-locked>전시가 끝난 공모라 지원 결과(수락·거절)를 더 바꿀 수 없어요.</p>
+  ) : null;
+
   if (applicants.length === 0) return (
     <div className="space-y-4">
       {header}
+      {capacityEditor}
       <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">
         아직 지원자가 없어요. 공고가 모집공고 목록에 올라가 있고, 마감일까지 지원을 받습니다.
       </p>
@@ -231,6 +267,8 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   return (
     <div className="space-y-4">
       {header}
+      {capacityEditor}
+      {lockedLine}
 
       <PageTabBar<StatusTab>
         sticky={false}
@@ -300,7 +338,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
               <li key={app.id} className={cn('rounded-xl border transition-colors', isSelected ? 'border-gray-400 bg-gray-50' : 'border-gray-200')}>
                 <div className="flex items-center gap-3 px-3 py-2 sm:px-4">
                   {/* 체크박스는 검토 대기 줄에만. 같은 목록에 섞여 있으면 빈 자리를 둬 이름 줄이 어긋나지 않게 */}
-                  {isPending(app.status)
+                  {isPending(app.status) && !decisionsLocked
                     ? <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(app.id)} aria-label={`${name} 선택`} className="h-5 w-5 shrink-0 rounded sm:h-4 sm:w-4" />
                     : anySelectable && <span aria-hidden className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />}
                   <button
@@ -346,13 +384,16 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
 
                     {/* 결정 — 지원서를 읽은 자리에서 한다 */}
                     <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-                      {isPending(app.status) && (
+                      {decisionsLocked && app.status !== 'ACCEPTED' && (
+                        <span className="text-sm text-gray-500">{isPending(app.status) ? '결정하지 않은 채 전시가 끝났어요.' : '거절한 지원이에요.'}</span>
+                      )}
+                      {!decisionsLocked && isPending(app.status) && (
                         <>
                           <button type="button" onClick={() => setAcceptTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[44px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40">수락하기</button>
                           <button type="button" onClick={() => setRejectTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40">거절</button>
                         </>
                       )}
-                      {app.status === 'REJECTED' && (
+                      {!decisionsLocked && app.status === 'REJECTED' && (
                         <>
                           <span className="text-sm text-gray-500">거절한 지원이에요.</span>
                           <button type="button" onClick={() => setAcceptTarget({ type: 'single', appId: app.id, name })} disabled={updateStatus.isPending} className="min-h-[40px] rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40">수락으로 바꾸기</button>
@@ -360,7 +401,11 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
                       )}
                       {app.status === 'ACCEPTED' && (
                         <>
-                          <span className="text-sm text-gray-600">수락한 작가예요. [운영] 탭의 출품 자료에서 이 작가의 자료를 볼 수 있어요.</span>
+                          <span className="text-sm text-gray-600">
+                            {recruitOnly
+                              ? '수락(선정)한 작가예요. 공모만 진행하는 공고라 여기서 절차가 끝나요.'
+                              : '수락한 작가예요. [운영] 탭의 출품 자료에서 이 작가의 자료를 볼 수 있어요.'}
+                          </span>
                           {allowRevert && (
                             <button type="button" onClick={() => setRevertTarget(app.id)} className="min-h-[40px] px-1 text-xs text-gray-500 underline-offset-4 hover:text-accent hover:underline">거절로 되돌리기</button>
                           )}
@@ -383,7 +428,9 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         title={acceptTarget?.type === 'single' ? `${acceptTarget.name} 님을 수락할까요?` : `${selectedCount}명을 수락할까요?`}
         details={[
           '수락하면 되돌릴 수 없어요.',
-          '작가에게 선정 알림이 가고, 작가는 출품 자료를 내기 시작해요.',
+          recruitOnly
+            ? '작가에게 선정 알림이 가요. 공모만 진행하는 공고라 여기서 절차가 끝나요.'
+            : '작가에게 선정 알림이 가고, 작가는 출품 자료를 내기 시작해요.',
           ...(capacity != null ? [`정원 ${capacity}명 중 지금 ${accepted}명이 수락되어 있어요.`] : []),
         ]}
         confirmText="수락하기"
@@ -435,5 +482,59 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * 모집 인원 직접 고치기 (2026-10-03 사용자 결정). 예전엔 정원이 차면 "모집 인원 수정을 요청해 주세요" 라고만 했는데
+ * 요청할 화면이 없었다. 날짜는 여전히 1:1 문의다(지원자가 이미 그 날짜를 보고 지원했다).
+ * 서버 `PATCH /exhibitions/:id/capacity` 가 권한·하한(수락한 수)·상한(1000)을 다시 본다 — 화면 검사는 헛걸음을 줄일 뿐이다.
+ */
+function CapacityEditor({ exhibitionId, capacity, accepted, onDone }: { exhibitionId: number; capacity: number | null; accepted: number; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState(capacity != null ? String(capacity) : '');
+  const min = Math.max(1, accepted);
+  const n = Number(value);
+  const invalid = value.trim() === '' || !Number.isInteger(n) || n < min || n > CAPACITY_MAX;
+  const save = useMutation({
+    mutationFn: () => api.patch(`/exhibitions/${exhibitionId}/capacity`, { capacity: n }),
+    onSuccess: () => {
+      // 정원을 읽는 곳 — 카드 숫자·할 일 줄(내 공모·주최 공모), 운영 화면(공모 상세 캐시), 초대 코드 상자, 공개 목록
+      for (const queryKey of [
+        ['exhibition-applicants', exhibitionId], ['my-exhibitions'], ['my-operation-overview'], ['hosted-exhibitions'],
+        ['join-code', exhibitionId], ['exhibition', String(exhibitionId)], ['exhibition', exhibitionId], ['exhibitions'],
+      ]) queryClient.invalidateQueries({ queryKey });
+      toast.success(`모집 인원을 ${n}명으로 바꿨어요.`);
+      onDone();
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '모집 인원을 바꾸지 못했어요.'),
+  });
+  const submit = (e: FormEvent) => { e.preventDefault(); if (!invalid && !save.isPending) save.mutate(); };
+  return (
+    <form onSubmit={submit} className="rounded-xl border border-gray-200 p-4" data-capacity-editor>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-sm text-gray-800">
+          모집 인원
+          <input
+            type="number"
+            inputMode="numeric"
+            min={min}
+            max={CAPACITY_MAX}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+            className={cn('h-10 w-24 rounded-lg border px-3 text-right text-sm tabular-nums focus:outline-none', invalid && value !== '' ? 'border-accent' : 'border-gray-200 focus:border-gray-400')}
+          />
+          명
+        </label>
+        <button type="submit" disabled={invalid || save.isPending} className="min-h-[40px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40">
+          {save.isPending ? '저장 중…' : '저장'}
+        </button>
+        <button type="button" onClick={onDone} className="min-h-[40px] px-2 text-sm text-gray-500 hover:text-gray-900">취소</button>
+      </div>
+      <p className={cn('mt-2 text-xs', invalid && value !== '' ? 'text-accent' : 'text-gray-500')}>
+        {accepted > 0 ? `이미 수락한 ${accepted}명보다 적게는 줄일 수 없어요. ` : ''}지원은 그대로 받고, 이 인원까지 수락할 수 있어요(최대 {CAPACITY_MAX}명).
+      </p>
+    </form>
   );
 }

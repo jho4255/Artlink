@@ -23,7 +23,7 @@ async function addImage(userId = ARTIST, body: Record<string, unknown> = {}) {
   const res = await request
     .post('/api/portfolio/images')
     .set('Authorization', `Bearer ${authToken(userId, 'ARTIST')}`)
-    .send({ url: 'https://example.com/a.jpg', ...body });
+    .send({ url: '/uploads/a.jpg', ...body });
   return res;
 }
 
@@ -143,7 +143,7 @@ describe('포트폴리오 작품 정보', () => {
       const me = await myPortfolio(ARTIST);
       await testPrisma.portfolioImage.createMany({
         data: Array.from({ length: PORTFOLIO_IMAGE_MAX - 1 }, (_, i) => ({
-          portfolioId: me.id, url: `https://example.com/w${i}.jpg`, order: i,
+          portfolioId: me.id, url: `/uploads/w${i}.jpg`, order: i,
         })),
       });
       const last = await addImage();          // 149 → 150 번째: 옛 한도(30)라면 여기서 막혔어야 한다

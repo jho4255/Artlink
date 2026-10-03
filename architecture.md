@@ -2421,3 +2421,76 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   홈페이지 3번 올리기 · 구성 동시 생성 · 30점 · 기록 상한 · 지워진 구성 · 휴대폰 창 반복 · 창 크기 변경).
 - 하니스 `scratchpad/portfolio-maker/`(walk.js 크롬+WebKit 8화면 · export.js · shrink.js · shot.js, README).
 
+## 공모 흐름 점검 후속 — 버그·보안 (2026-10-03)
+
+### 왜
+공모 등록 → 지원 → 지원자 관리 → 출품 자료 → 전시 → 정산 → 종료를 PC·모바일 × 작가·갤러리로 끝까지 밟고(데모 DB, 크롬+WebKit), 실서버 복제본(9/13)으로 숫자를 대조했다.
+보고서 `scratchpad/flow-audit-2026-10-03.md`(P1 5 · P2 12 · P3 · 보안 S1~S12), 하니스 `scratchpad/flow-audit/`. 계획 `~/.claude/plans/flow-fixes-2026-10.md`.
+**DB 스키마 변경 없음 · Render 환경 변수 추가 없음.**
+
+### 사용자 결정
+수락 작가가 생기면 갤러리가 직접 못 지운다 → **관리자에게 삭제 요청**(승인 관리) · 정원이 차면 **갤러리에게만** 알린다 · **모집 인원은 갤러리가 직접** 고친다(날짜는 1:1 문의) ·
+지원서·출품 자료 약력 **5항목** · 비밀번호 가입·로그인 API 는 **운영에서 닫는다** · 한 번에 배포 · 공모 상세의 **따라오는 [지원하기]** · **전시 종료 뒤 수락·거절 잠금** ·
+미선정 알림은 `"<공모명>" 지원 결과가 나왔어요.` 까지만. 넣지 않은 것: 정산 수락 확인창 · 닉네임 작가 실명 빼기.
+
+### 서버
+| 무엇 | 어디 | 규칙 |
+|---|---|---|
+| 삭제 규칙 | `lib/deletion.ts` | 공모 = 수락 작가 · 판매 · 정산 기록이 있으면 갤러리 직접 삭제 불가(관리자는 가능). 갤러리 = 그런 공모가 있거나 아트링크 주최 공모의 주관이면 불가. 삭제 본체 `deleteExhibitionWithNotice`/`deleteGalleryWithNotice` 를 세 경로(직접 · 갤러리 삭제 · 요청 승인)가 같이 쓰고, 지원·참여 작가에게 `EXHIBITION_DELETED` 알림 |
+| 삭제 요청 | `routes/approval.ts` | `ApprovalRequest` 유형 `EXHIBITION_DELETE`·`GALLERY_DELETE`, `changes={reason,title}`. `POST /approvals/delete-request`(갤러리 · 본인 소유 · 사유 5~1000자 · 같은 대상 대기 중 하나 — `withKeyLock`) · `GET /approvals/my-delete-requests` · `DELETE /approvals/delete-request/:id`(취소) · `PATCH /approvals/delete-request/:id`(관리자 승인 = 삭제 / 거절 = 사유 필수). `GET /approvals` 가 대상 요약을 붙인다. `GET /exhibitions|galleries/:id/delete-check` |
+| 모집 인원 | `PATCH /exhibitions/:id/capacity` | 1~1000(`CAPACITY_MAX`) · 갤러리 주최 = 그 갤러리, 아트링크 주최 = 관리자만(403) · 전시 종료 전까지 · `withSeatLock` 안에서 수락 수보다 적게는 400 |
+| 종료 뒤 결정 잠금 | `PATCH /:id/applications/:appId` | `ended` 면 갤러리는 400(관리자 예외, 개발자 도구 '수락 되돌리기' 는 그대로) |
+| 종료 되돌리기 | `operation.ts` lifecycle | `ended:false` 는 판매나 정산 확인 요청이 있으면 400(관리자 예외). [대신 입력] 도 판매 기록이 있는 작가는 막는다 |
+| 출품 자료 모양 | `lib/submissionSchema.ts` | 쓸 때 `parseSubmissionBody`(작품 ≤100 · 칸 길이 · 사진은 `ownFileUrl` · 모르는 키 제거, **키 순서 유지·기본값 없음** — 화면의 미저장 판정이 JSON 비교라서), 읽을 때 `readArtworkList`·`readCv`·`readNote`(틀린 모양은 건너뛴다, 던지지 않는다). 키는 프론트 타입과 대조(`submission-schema.test.ts`) |
+| 정산 입력 | `operation.ts` settlement | 판매가 1~20억 · 작품 번호가 그 작가의 출품 목록 안 · 같은 작품 두 번 400 |
+| 날짜 | `assertExhibitionDates` | 시작 ≤ 마감 · 지난 마감일 400 · 전시 시작 ≤ 종료 · 마감 ≤ 전시 시작(공모만 진행도 공모 기간은 본다). 지원은 공모 시작일 전 400("N월 N일부터 지원을 받아요") |
+| 길이·범위 | 공모 zod · 공지 · 이의 · DM · 지원서 | 제목 ≤100 · 소개 ≤20000 · 지역 enum · 공지 제목 100/본문 5000 · 이의 1000 · DM 2000 · 약력 5000 · 큰 수가 500 대신 400 |
+| 주소 | `lib/safeUrl.ts ownFileUrl` | 우리 저장소(`/uploads/`·`/demo-art/`·`/images/` 또는 `matchR2Base`)만. `safeFileUrl` 은 `//`·`/\` 거절. 지원서 사진·파일 · 공모 포스터·사진 · 홍보 사진 · 출품 자료 · 작가 홈페이지 작품·파일에 적용(프로필 사진·대화 첨부는 `safeFileUrl` 그대로) |
+| 공개 응답 | `lib/sanitize.ts` | `maskGallery` 가 `hiddenArtistIds` 를 뺀다. `maskExhibition` — 운영자·관리자가 아니면 `cardFeeRate`·`settlementRequestedAt`·`rejectReason` 을 뺀다(목록·상세·갤러리 상세의 공모) |
+| 보안 헤더 | `index.ts` helmet 8 | X-Frame-Options SAMEORIGIN + `frame-ancestors 'self'` · HSTS(운영만, 180일) · nosniff · Referrer-Policy · COOP `same-origin-allow-popups` · CORP `cross-origin` · `x-powered-by` 끔. **CSP 전체는 안 했다** |
+| 비밀번호 인증 | `routes/auth.ts` | 운영(`NODE_ENV=production`)에서 `/signup`·`/login` 404 — `ENABLE_PASSWORD_AUTH=true` 면 다시 열린다. 실서버 회원 103명 전원 카카오 |
+| 인증 한도 | `index.ts` | 15분 30회는 로그인·가입 POST 에만(`isSignInAttempt`). `/auth/me`·중복 확인은 전역 한도 |
+| 업로드 | `routes/upload.ts` | `/upload/images`(여러 장, 화면 미사용) 삭제 · `uploadSlot` 동시 3개(대기 30, 넘치면 503) |
+| 알림 문구 | `exhibition.ts` | 선정 `"<공모명>"에 선정되었어요. [내 전시]에서 출품 자료를 제출해 주세요.`(공모만 진행은 앞 문장만) · 미선정 `"<공모명>" 지원 결과가 나왔어요.` · 링크는 그 전시를 연 [내 전시] |
+| 내 정산 답 | `GET /exhibitions/my-applications` | `mySettlementStatus`(PENDING·APPROVED·ISSUE) |
+| 의존성 | `npm audit fix`(호환 범위) | backend 운영 의존성 0건(multer 2.4 · sharp 0.35.5 · path-to-regexp 8.4 · qs 6.16 …, Prisma 5.22 그대로). frontend axios 1.20 · react-router 7.18 · vite 7.3.6. 남은 것: `pptxgenjs → image-size` 1건(상위가 고쳐야 한다 — PPT 내보내기에서 사용자 자신의 이미지를 읽을 때만) |
+
+### 화면
+- **경로가 바뀌면 맨 위로** `components/layout/ScrollToTop.tsx` — 라우터 안·App 앞, POP·같은 경로(쿼리·해시)는 건드리지 않는다. **`useLayoutEffect`**(useEffect 면 첫 프레임이 옛 위치로 그려졌다).
+- **저장 전 입력 지키기** `hooks/useUnsavedChanges.ts` 의 `confirmDiscardUnsaved()` — 페이지 이동만 막던 경고를 화면 안 동작(카드 접기·다른 카드·탭·카드 제목 이동)에도.
+  갤러리 카드의 [지원자]↔[운영] 은 한 번 연 패널을 `hidden` 으로 남긴다. 정산 입력에도 이탈 경고(`SettlementSection`).
+- **모바일 토스트는 위쪽** `components/layout/AppToaster.tsx`(lg 미만 top-center, 상단바 아래) — 하단 저장 줄의 버튼을 가렸다.
+- **공모 상세** — 따라오는 [지원하기]/[간편 지원]/[로그인하고 지원하기] 줄(`data-apply-bar`, 바깥 래퍼의 자식이라 첫 화면부터 붙는다, 휴대폰은 탭바 위) ·
+  시작 전이면 날짜만 · 홍보 사진 `SquarePhotoGrid` · 삭제는 `checkDeletable` → 직접 확인창 또는 삭제 요청 창.
+- **지원자 관리** `ApplicantManager` — `recruitOnly`(출품 자료를 말하지 않는다) · `ended`(결정 잠금 + 한 줄, 체크박스·일괄·초대 코드 줄 없음) ·
+  `capacityEditable` → [모집 인원 변경](`CapacityEditor`). 호출: [내 공모] 카드(아트링크 주최면 고칠 수 없음) · 관리자 [주최 공모].
+- **삭제 요청** `components/shared/DeleteRequest.tsx` — `checkDeletable` · `DeleteRequestDialog`(사유 5자 이상) · `useMyDeleteRequests` · `DeleteRequestLine`([요청 취소] · 반려 사유).
+  [내 공모] 카드 · [내 갤러리] · 공모 상세. 관리자 [승인 관리]에 '공모/갤러리 삭제 요청'(요청자 · 사유 · 지워질 것) → [삭제 승인](확인창) / [거절](사유).
+- **할 일** `lib/flowLabels.ts` — 갤러리: 모집 중인데 수락 ≥ 정원이면 "정원(N명)이 찼어요. 모집을 마감하세요 · 검토 대기 M명" ·
+  작가: 정산에 `APPROVED` 면 할 일 없음, `ISSUE` 면 "이의를 전달했어요. 갤러리의 수정을 기다리고 있어요"(회색). `ArtistOperationPanel` 의 '확인 필요' 도 같은 기준.
+- **운영 화면** `OperationBody` — 전시 종료로 바뀐 순간 정산 구역을 펼치고 그 자리로 · 할 일 문장이 실제 판매 건수·정원을 본다 · `<main>` 중첩 제거.
+  `StatusPanel` — 판매·정산을 시작했으면 [이전 단계로] 대신 이유 한 줄(`data-undo-blocked`), 전시 기간 전 [전시 종료]에 날짜 경고.
+- **[내 전시]** — 첫 탭은 지원·초대 두 목록이 다 온 뒤에 정한다 · [닫기]·다른 카드·탭 전환은 미저장 확인 · 카드 제목·토글 44px.
+- **약력 5항목** — 지원서 `CareerEditor categories={PORTFOLIO_CATEGORIES}` 로 다섯을 그리고 보낸다. 출품 자료 약력 항목은 `lib/submissionChecklist.ts CV_SECTIONS` **한 곳**
+  (편집기·읽기·약력 PDF·인쇄·옛 운영 화면, 예전엔 네 군데 복사본에 학력이 없었다). [홈페이지에서 불러오기]도 학력을 가져온다.
+- **등록 폼** — 모집 인원 1~1000 검사(`capacityError`) · `validateExhibitionDates` 가 공모만 진행도 보고 지난 마감일을 막는다 · 확인창 "승인 뒤에는 공고 소개·포스터·추가 질문·모집 인원을 고칠 수 있어요. 날짜를 바꿔야 하면 1:1 문의로 알려 주세요."
+- **용어** — '작가 자료(제출) 마감일' → **'출품 자료 제출 마감일'**(폼·상세·서버 문구·일정 칩 '출품 자료 마감').
+
+### 검증
+- 백엔드 `flow-fixes.test.ts`(40) · `lib/__tests__/submission-schema.test.ts`(7) · 외부 이미지 주소를 쓰던 픽스처 16파일을 `/uploads/` 로.
+- 프론트 `flowFixes.test.ts`(13, 순수 함수 + 소스 가드) · `flowLabels.test.ts`(정원 · 정산 답) · 날짜 검증 테스트는 2099 년 날짜로.
+- e2e `66-flow-fixes.spec.ts`(11 — 맨 위에서 열림 · 휴대폰 따라오는 버튼 hit-test · 시작 전 · 5항목이 갤러리까지 · 정산/출품 자료 미저장 확인 · 종료 되돌리기 400 · 삭제 요청 → 승인 → 알림 ·
+  모집 인원 변경 → 수락 · 종료 뒤 잠금 · 정산 답한 뒤). 헬퍼 `applyToExhibition` 의 작품 사진을 `/uploads/e2e-artwork.jpg` 로, 공모 픽스처의 지역 `'서울'` → `'SEOUL'`.
+
+### 2026-10-03 추가 — 지원 안내 문구 정리 · 공모·전시 소개 서식 있는 글 (사용자 요청)
+- **지원 줄·지원서 문구 삭제** — 공모 상세 따라오는 줄의 '홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요'(버튼만 남김), 지원서 하단 줄의
+  '남은 것 · …'/'다 채웠어요 …'(버튼만, 휴대폰에선 줄을 채움), 약력 칸 설명. 빈 칸 안내는 [지원하기]를 누를 때 토스트 + 빨간 칸 + 그 칸으로 이동.
+- **공모 소개·전시 소개 = 서식 있는 글** — 갤러리 소개(2026-09-28)와 같은 TipTap 편집기·같은 허용 목록.
+  - 서버: `lib/richText.ts richField(input, {label, maxText, required, emptyMessage})` — 저장 경로 다섯(공모 등록 · 아트링크 주최 등록 · `PATCH /exhibitions/:id/description` ·
+    `POST/PATCH /shows` · `POST /approvals/edit-request` 의 소개 칸)이 전부 탄다. 한도는 보이는 글자 2만 자(zod 는 HTML 원문을 넉넉히만 본다).
+    `richTextPlain` 은 문단 경계에 띄어쓰기를 넣고 벗긴다 → 검색엔진·공유 미리보기 설명(`seoMeta.ts`).
+  - 화면: 공모 상세·전시 상세(보기 `RichText`, [수정] `LazyRichTextEditor`, 실패 시 서버 문구), 등록 폼 셋(갤러리 공모 · 아트링크 주최 공모 · 전시 —
+    `richTextLength` 로 빈 글 판정, 함수형 `setForm`), 관리자 [승인 관리](`RichText`), 단체전 도록(`richToText` — 문단·목록 줄바꿈).
+  - `RichTextEditor` 가 바깥 값 변경을 따라간다(`lastEmitted` 와 다른 값이면 `setContent(…, { emitUpdate: false })`), `onChange` 는 ref.
+  - 테스트: 백엔드 `rich-descriptions.test.ts`(9) · 프론트 `richText.test.ts`(+richToText·소스 가드) · e2e `67-rich-descriptions.spec.ts`(3) ·
+    `15`·`51`·`60` 은 `typeRich` 로(60 F 는 [이어서 쓰기] 뒤 편집기에 복원된 소개가 보이는지까지).

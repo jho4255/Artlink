@@ -36,6 +36,6 @@ export function hasExhibitionStages(ex: StageShape | null | undefined): boolean 
  */
 export function assertFullExhibition(ex: StageShape | null | undefined): void {
   if (!hasExhibitionStages(ex)) {
-    throw new AppError('공모만 진행하는 공고입니다. 지원자 수락까지만 진행되며 자료제출·전시·정산 단계가 없습니다.', 400);
+    throw new AppError('공모만 진행하는 공고입니다. 지원자 수락까지만 진행되며 출품 자료·전시·정산 단계가 없습니다.', 400);
   }
 }

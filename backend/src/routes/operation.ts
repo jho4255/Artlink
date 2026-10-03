@@ -22,6 +22,7 @@ import { assertFullExhibition } from '../lib/exhibitionStage';
 import { fingerprintsOf, settlementFingerprint, feeUnits, cardFeeAmount } from '../lib/settlementFingerprint';
 import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
+import { parseSubmissionBody, readArtworkList, readCv, readNote } from '../lib/submissionSchema';
 
 const router = Router();
 
@@ -87,6 +88,11 @@ async function getStageAccess(exhibitionId: number, userId: number, role: string
 
 
 const idOf = (s: any) => parseInt(s, 10);
+/** 사람이 쓰는 글의 길이 상한 — 없으면 공지·이의·안내 DM 에 몇 MB 짜리 글이 들어간다(2026-10-03 점검 S10) */
+const TEXT_LIMITS = { noticeTitle: 100, noticeBody: 5000, dmSubject: 200, dmBody: 2000, issue: 1000 } as const;
+function assertLength(v: string, max: number, label: string) {
+  if (v.length > max) throw new AppError(`${label}은(는) ${max}자까지 쓸 수 있어요.`, 400);
+}
 /** 안내 DM 본문에 적는 작가용 바로가기 — 대화 말풍선은 평문이라 **절대 주소**여야 눌러서 열 수 있다.
  *  옛 문구(`/exhibitions/:id/operation/new`)는 작가가 가면 마이페이지로 되튕기는 주소였다. */
 const artistNoticeLink = (exhibitionId: number) => `${baseUrl()}${artistExhibitionLink(exhibitionId)}`;
@@ -147,7 +153,9 @@ router.post('/:id/notices', authenticate, async (req, res, next) => {
     if (!isOwner && !isAdmin) throw new AppError('공지 작성 권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { title, content } = req.body || {};
-    if (!title?.trim() || !content?.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
+    if (typeof title !== 'string' || typeof content !== 'string' || !title.trim() || !content.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
+    assertLength(title.trim(), TEXT_LIMITS.noticeTitle, '공지 제목');
+    assertLength(content.trim(), TEXT_LIMITS.noticeBody, '공지 내용');
     const exhibitionId = idOf(req.params.id);
     const notice = await prisma.exhibitionNotice.create({
       data: { exhibitionId, title: title.trim(), content: content.trim() },
@@ -185,7 +193,9 @@ router.patch('/:id/notices/:noticeId', authenticate, async (req, res, next) => {
     const existing = await prisma.exhibitionNotice.findUnique({ where: { id: noticeId } });
     if (!existing || existing.exhibitionId !== idOf(req.params.id)) throw new AppError('공지를 찾을 수 없습니다.', 404);
     const { title, content } = req.body || {};
-    if (!title?.trim() || !content?.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
+    if (typeof title !== 'string' || typeof content !== 'string' || !title.trim() || !content.trim()) throw new AppError('제목과 내용을 입력해주세요.', 400);
+    assertLength(title.trim(), TEXT_LIMITS.noticeTitle, '공지 제목');
+    assertLength(content.trim(), TEXT_LIMITS.noticeBody, '공지 내용');
     const updated = await prisma.exhibitionNotice.update({
       where: { id: noticeId },
       data: { title: title.trim(), content: content.trim() },
@@ -208,12 +218,16 @@ router.delete('/:id/notices/:noticeId', authenticate, async (req, res, next) => 
 });
 
 // ── 작가 본인 제출정보 ──
+/**
+ * 저장된 출품 자료 → 응답. 틀린 모양(옛 자료·직접 호출로 들어간 값)은 **건너뛴다** — 작가 한 명의 이상한 자료가
+ * 갤러리의 출품 자료 목록·캡션·정산을 통째로 500 으로 만들던 것(2026-10-03 점검 P1-5). 규칙은 `lib/submissionSchema.ts`.
+ */
 function parseSubmission(s: any) {
   return s ? {
     ...s,
-    artworkList: safeJson(s.artworkList, []),
-    cv: safeJson(s.cv, null),
-    note: safeJson(s.note, null),
+    artworkList: readArtworkList(safeJson(s.artworkList, [])),
+    cv: readCv(safeJson(s.cv, null)),
+    note: readNote(safeJson(s.note, null)),
     representativeIndex: s.representativeIndex ?? null,
   } : null;
 }
@@ -228,9 +242,8 @@ const EMPTY_SUB = { artworkList: [], cv: null, note: null, representativeIndex: 
  */
 /** 캡션·정산처럼 출품작 배열만 필요한 곳 — 임시저장(draft) 제외 */
 function publishedArtworks(s: any): any[] {
-  const list = safeJson<any[]>(s?.artworkList, []);
-  // DB에 배열이 아닌 JSON이 저장돼 있어도(구버전/비정상 클라이언트) 갤러리 화면 전체가 500으로 죽지 않게
-  return Array.isArray(list) ? list.filter((a) => !a?.draft) : [];
+  // DB에 배열이 아닌 JSON·모양이 틀린 작품이 저장돼 있어도(구버전/비정상 클라이언트) 갤러리 화면 전체가 500으로 죽지 않게
+  return readArtworkList(safeJson(s?.artworkList, [])).filter((a) => !a.draft);
 }
 
 function publicSubmission(s: any) {
@@ -241,17 +254,17 @@ function publicSubmission(s: any) {
   let repIndex: number | null = null;
   const draftTitles = new Set<string>();
   raw.forEach((a, i) => {
-    if (a?.draft) { if (a?.title?.trim()) draftTitles.add(a.title.trim()); return; }
+    if (a?.draft) { if (typeof a?.title === 'string' && a.title.trim()) draftTitles.add(a.title.trim()); return; }
     if (parsed.representativeIndex === i) repIndex = kept.length;
     kept.push(a);
   });
   // 노트의 작품별 상세설명도 draft 작품 것은 감춘다 — 작품은 숨겼는데
   // 설명 본문으로 제목·내용이 새는 것을 막기 위해 (공개 작품과 제목이 겹치면 유지)
-  const publishedTitles = new Set(kept.map((a) => a?.title?.trim()).filter(Boolean));
+  const publishedTitles = new Set(kept.map((a) => (typeof a?.title === 'string' ? a.title.trim() : '')).filter(Boolean));
   let note = parsed.note;
   if (note?.sections?.length) {
     const sections = note.sections.filter((sec: any) => {
-      const t = sec?.title?.trim();
+      const t = typeof sec?.title === 'string' ? sec.title.trim() : '';
       return !t || !draftTitles.has(t) || publishedTitles.has(t);
     });
     if (sections.length !== note.sections.length) note = { ...note, sections };
@@ -287,13 +300,14 @@ router.get('/:id/me', authenticate, async (req, res, next) => {
  * 대신 입력 경로로 이상한 값이 들어와 갤러리 쪽 조회가 통째로 죽는다.
  */
 function submissionDataFrom(body: any) {
-  const { artworkList, cv, note, representativeIndex } = body || {};
-  // 배열이 아닌 artworkList는 거부 — 저장되면 갤러리 쪽 모든 조회가 500으로 죽는다
-  if (artworkList != null && !Array.isArray(artworkList)) throw new AppError('출품 목록 형식이 올바르지 않습니다.', 400);
+  // 모양·길이·사진 주소를 한 번에 본다(lib/submissionSchema.ts) — 틀린 값이 저장되면 갤러리 쪽 조회·캡션이 500 으로 죽는다
+  const parsed = parseSubmissionBody(body);
+  if (!parsed.ok) throw new AppError(parsed.error, 400);
+  const { artworkList, cv, note, representativeIndex } = parsed.data;
   // 대표작 인덱스: artworkList 범위 내 정수만 허용, 그 외 null
   const listLen = Array.isArray(artworkList) ? artworkList.length : 0;
   let repIdx: number | null = null;
-  if (Number.isInteger(representativeIndex) && representativeIndex >= 0 && representativeIndex < listLen) {
+  if (typeof representativeIndex === 'number' && Number.isInteger(representativeIndex) && representativeIndex >= 0 && representativeIndex < listLen) {
     repIdx = representativeIndex;
   }
   return {
@@ -310,6 +324,7 @@ router.put('/:id/me', authenticate, async (req, res, next) => {
     const { isAcceptedArtist, isConfirmed } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
+    await assertNoSalesFor(exhibitionId, req.user!.id);
     // 본인이 직접 저장 → 대신 입력 표시가 있었다면 여기서 사라진다
     const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
     const sub = await prisma.exhibitionSubmission.upsert({
@@ -384,6 +399,8 @@ router.post('/:id/submission-reminders', authenticate, async (req, res, next) =>
       `바로가기: ${artistNoticeLink(exhibitionId)}`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
+    assertLength(subject, TEXT_LIMITS.dmSubject, '제목');
+    assertLength(content, TEXT_LIMITS.dmBody, '내용');
 
     // ArtTalk 갠톡으로 보낸다 — 옛 `Message` 테이블에 쓰면 작가가 볼 수 없다(`lib/chat.ts sendDirectNotice` 참고)
     const chatIds = new Map<number, number>();
@@ -462,6 +479,16 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
  * 편집용 조회는 `publicSubmission` 이 아니라 **원본**을 준다 — 임시저장(draft)까지 보여야
  * 갤러리가 작가가 쓰다 만 내용을 모르고 날리지 않는다.
  */
+/**
+ * 이 작가의 판매 기록이 있으면 출품 목록을 고칠 수 없다 — 판매(`ArtworkSale.artworkIndex`)는 출품 목록의 **위치**를 가리키므로
+ * 순서를 바꾸거나 작품을 빼면 판매·정산이 다른 작품에 붙는다(2026-10-03 점검 P1-3: 전시 종료를 되돌린 뒤 순서를 바꾸자
+ * 120만 원 판매가 '이른 아침' 에서 '창밖의 오후' 로 옮겨 갔다). 관리자는 예외 — 다른 잠금들도 관리자는 통과시킨다.
+ */
+async function assertNoSalesFor(exhibitionId: number, artistUserId: number) {
+  const sold = await prisma.artworkSale.count({ where: { exhibitionId, artistUserId } });
+  if (sold > 0) throw new AppError('이 작가의 판매 기록이 있어 출품 목록을 고칠 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
+}
+
 async function assertProxyTarget(exhibitionId: number, targetUserId: number) {
   const app = await prisma.application.findUnique({
     where: { userId_exhibitionId: { userId: targetUserId, exhibitionId } },
@@ -494,6 +521,7 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
     // 종료 후에는 판매 기록이 출품목록 위치에 묶여 있어 고치면 정산이 엉뚱한 작품을 가리킨다
     if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 제출 자료를 수정할 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
     await assertProxyTarget(exhibitionId, targetUserId);
+    if (!isAdmin) await assertNoSalesFor(exhibitionId, targetUserId);
 
     const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
     const sub = await prisma.exhibitionSubmission.upsert({
@@ -545,7 +573,7 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
     const works: any[] = [];
     for (const a of accepted) {
       for (const w of (byUser.get(a.userId) || [])) {
-        works.push({ title: w.title, size: w.size, medium: w.medium, year: w.year, price: toManWon(w.price) });
+        works.push({ title: w.title ?? '', size: w.size ?? '', medium: w.medium ?? '', year: w.year ?? '', price: toManWon(w.price) });
       }
     }
     if (works.length === 0) throw new AppError('등록된 출품작이 없습니다.', 400);
@@ -620,6 +648,13 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
           throw new AppError('확정 후에 전시를 종료할 수 있습니다.', 400);
         }
         data.recruitmentClosed = true; // 종료 시 모집도 자동 마감
+      } else if (curEnded && !isAdmin) {
+        // 전시 종료를 되돌리면 작가 출품 목록이 다시 열린다(갤러리 [대신 입력]·확정 취소 뒤 작가 저장). 판매는 출품 목록의 **위치**를
+        // 가리키므로 그 사이에 순서가 바뀌면 판매·정산이 다른 작품에 붙는다(2026-10-03 점검 P1-3). 확정 취소와 같은 규칙으로 막는다.
+        const saleCount = await prisma.artworkSale.count({ where: { exhibitionId } });
+        if (saleCount > 0 || exhibition.settlementRequestedAt) {
+          throw new AppError('판매·정산 기록이 있어 전시 종료를 되돌릴 수 없습니다. 먼저 정산 확인 요청을 취소하고 판매 내역을 비워주세요.', 400);
+        }
       }
       data.ended = ended;
     }
@@ -893,6 +928,21 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
         soldPrice: Math.max(0, Math.round(Number(s.soldPrice) || 0)),
         paymentMethod: s.paymentMethod === 'CASH' ? 'CASH' : 'CARD',
       }));
+    // 판매 행 검사(2026-10-03 점검 S10·P2-12) — ①판매가는 1원~20억 원(0원이면 '판매됨' 인데 금액이 없는 정산이 작가에게 나간다,
+    // 너무 큰 수는 DB 정수 범위를 넘어 500 이었다) ②작품 번호는 그 작가의 출품 목록 안(없는 작품의 판매가 지문에만 들어갔다)
+    // ③같은 작품이 두 번(unique 위반이 '이미 사용 중인 값' 409 로 나갔다).
+    const MAX_SOLD_PRICE = 2_000_000_000;
+    const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId }, select: { userId: true, artworkList: true } });
+    const publishedCount = new Map(subs.map((s) => [s.userId, publishedArtworks(s).length]));
+    const seenSale = new Set<string>();
+    for (const s of saleData) {
+      if (s.soldPrice < 1) throw new AppError(`판매가를 입력해 주세요${s.title ? ` — ${s.title}` : ''}.`, 400);
+      if (s.soldPrice > MAX_SOLD_PRICE) throw new AppError('판매가는 20억 원까지 입력할 수 있어요.', 400);
+      if (s.artworkIndex < 0 || s.artworkIndex >= (publishedCount.get(s.artistUserId) ?? 0)) throw new AppError('출품 목록에 없는 작품의 판매는 저장할 수 없어요.', 400);
+      const key = `${s.artistUserId}:${s.artworkIndex}`;
+      if (seenSale.has(key)) throw new AppError('같은 작품이 판매 목록에 두 번 들어 있어요.', 400);
+      seenSale.add(key);
+    }
     const ratioData = ratioRows
       .filter((r: any) => Number.isInteger(r.artistUserId) && acceptedSet.has(r.artistUserId))
       .map((r: any) => ({
@@ -1153,6 +1203,8 @@ router.post('/:id/settlement/reminders', authenticate, async (req, res, next) =>
       `바로가기: ${artistNoticeLink(exhibitionId)}`,
     ].join('\n')).trim();
     if (!subject || !content) throw new AppError('DM 제목과 내용을 입력해주세요.', 400);
+    assertLength(subject, TEXT_LIMITS.dmSubject, '제목');
+    assertLength(content, TEXT_LIMITS.dmBody, '내용');
 
     // ArtTalk 갠톡으로 보낸다 — 옛 `Message` 테이블에 쓰면 작가가 볼 수 없다(`lib/chat.ts sendDirectNotice` 참고)
     const chatIds = new Map<number, number>();
@@ -1211,6 +1263,7 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
     const approve = req.body?.approve === true;
     const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
     if (!approve && !comment) throw new AppError('문제 내용을 입력해주세요.', 400);
+    if (!approve) assertLength(comment, TEXT_LIMITS.issue, '문제 내용');
 
     // 응답한 **그 금액**을 지문으로 남긴다 — 이후 갤러리가 이 작가 금액을 고치면 지문이 어긋나
     // 자동으로 재확인 대상이 되고, 안 고치면 재요청해도 수락이 유지된다.

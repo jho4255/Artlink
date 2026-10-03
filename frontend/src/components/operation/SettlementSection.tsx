@@ -40,7 +40,22 @@ import StatusChip from '@/components/flow/StatusChip';
 import Notice from '@/components/flow/Notice';
 import MenuButton from '@/components/flow/MenuButton';
 import DmComposeModal from '@/components/operation/DmComposeModal';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import type { Settlement, SettlementArtist } from '@/types';
+
+/** 정산 입력을 저장하지 않고 떠날 때 — 페이지 이동·카드 접기 모두 이 문구로 묻는다 */
+const UNSAVED_SETTLEMENT = [
+  '저장하지 않은 정산 입력이 있습니다.',
+  '이 페이지를 벗어나면 작성 중인 내용이 사라집니다.',
+  '',
+  '그래도 나가시겠습니까?',
+].join('\n');
+
+/** 희망가 — 숫자만 적혀 있으면 '1,500,000원', 그 밖(비매·협의)은 적힌 그대로 */
+function listPriceText(v: string): string {
+  const t = String(v ?? '').trim();
+  return /^\d+$/.test(t) ? `${Number(t).toLocaleString('ko')}원` : t;
+}
 
 type Approval = {
   status: string;
@@ -205,6 +220,24 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
     && settlementFormSignature(artists, feeNum) !== settlementFormSignature(data.artists, data.cardFeeRate ?? 0);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  // 저장 전에 떠나면 묻는다(2026-10-03 점검 P1-2) — 예전엔 판매가를 적다가 카드의 다른 탭을 누르거나 메뉴로 가면 경고 없이 사라졌다
+  useUnsavedChanges(dirty && !locked, UNSAVED_SETTLEMENT);
+
+  /**
+   * 판매에 체크했는데 판매가가 비었는가 — 0원으로 작가에게 확인 요청이 나가던 것(점검 P2-12). 서버도 400 으로 막는다.
+   * 그 작가를 펼치고 칸을 빨갛게 보여 준다.
+   */
+  const [priceMissing, setPriceMissing] = useState<Set<string>>(new Set());
+  const checkPrices = (): boolean => {
+    const missing = new Set<string>();
+    artists.forEach(a => a.works.forEach(w => { if (w.sold && !(w.soldPrice > 0)) missing.add(`${a.user.id}:${w.index}`); }));
+    setPriceMissing(missing);
+    if (missing.size === 0) return true;
+    const ids = new Set([...missing].map(k => Number(k.split(':')[0])));
+    setOpenIds(prev => new Set([...(prev ?? []), ...ids]));
+    toast.error('판매에 체크한 작품의 판매가를 적어 주세요.');
+    return false;
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => persist(),
@@ -262,6 +295,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
   /** [작가에게 확인 요청] — 갤러리 몫 0% 로 판매가 잡힌 작가가 있으면 먼저 묻는다(기본값이 0% 라 모르고 요청되던 일) */
   const askRequest = () => {
+    if (!checkPrices()) return;
     const zero = artists.filter(a => a.galleryRatio === 0 && a.works.some(w => w.sold)).map(a => nameWithNickname(a.user));
     if (zero.length) { setZeroRatio(zero); return; }
     requestMutation.mutate();
@@ -289,9 +323,9 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
   // 상황별 주 버튼 하나
   const primary: { label: string; onClick: () => void; busy: boolean; disabled?: boolean } | null = locked ? null
-    : settled ? (dirty ? { label: '변경 저장', onClick: () => saveMutation.mutate(), busy: saveMutation.isPending } : null)
+    : settled ? (dirty ? { label: '변경 저장', onClick: () => { if (checkPrices()) saveMutation.mutate(); }, busy: saveMutation.isPending } : null)
       : !requested ? { label: '작가에게 확인 요청', onClick: askRequest, busy: requestMutation.isPending, disabled: artists.length === 0 }
-        : dirty ? { label: '변경 저장', onClick: () => saveMutation.mutate(), busy: saveMutation.isPending }
+        : dirty ? { label: '변경 저장', onClick: () => { if (checkPrices()) saveMutation.mutate(); }, busy: saveMutation.isPending }
           : allApproved ? { label: '정산 완료', onClick: () => setConfirmOpen(true), busy: completeMutation.isPending }
             : null;
 
@@ -322,7 +356,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
           </button>
         )}
         {!locked && !requested && !settled && dirty && (
-          <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+          <button type="button" onClick={() => { if (checkPrices()) saveMutation.mutate(); }} disabled={saveMutation.isPending} className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             저장만 하기
           </button>
         )}
@@ -457,7 +491,7 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
                       {requested && !settled && (
                         <button
                           type="button"
-                          onClick={() => reaskMutation.mutate(a.user.id)}
+                          onClick={() => { if (checkPrices()) reaskMutation.mutate(a.user.id); }}
                           disabled={reaskMutation.isPending}
                           className="inline-flex min-h-[32px] items-center gap-1 text-xs text-gray-600 underline-offset-4 hover:text-gray-900 hover:underline disabled:opacity-50"
                         >
@@ -485,21 +519,22 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
                                 )}
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-medium text-gray-900">{w.title || '(제목 없음)'}</span>
-                                  <span className="block truncate text-xs text-gray-500">{[w.size, w.medium, w.year].filter(Boolean).join(' · ')}{w.listPrice ? ` · 희망가 ${w.listPrice}` : ''}</span>
+                                  <span className="block truncate text-xs text-gray-500">{[w.size, w.medium, w.year].filter(Boolean).join(' · ')}{w.listPrice ? ` · 희망가 ${listPriceText(w.listPrice)}` : ''}</span>
                                 </span>
                               </label>
-                              {/* 판매가 + 결제수단(카드/현금) */}
+                              {/* 판매가 + 결제수단(카드/현금) — 누르는 곳 40px(2026-10-03 기하 하니스: 32px 였다) */}
                               {w.sold && (
                                 <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
-                                  <div className="flex overflow-hidden rounded-lg border border-gray-200 text-[11px]" role="group" aria-label="결제 방법">
+                                  <div className="flex overflow-hidden rounded-lg border border-gray-200 text-xs" role="group" aria-label="결제 방법">
                                     <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CARD' })} aria-pressed={w.paymentMethod !== 'CASH'}
-                                      className={cn('min-h-[32px] px-2.5 disabled:opacity-60', w.paymentMethod !== 'CASH' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500')}>카드</button>
+                                      className={cn('min-h-[40px] px-3 disabled:opacity-60', w.paymentMethod !== 'CASH' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500')}>카드</button>
                                     <button type="button" disabled={locked} onClick={() => updWork(ai, wi, { paymentMethod: 'CASH' })} aria-pressed={w.paymentMethod === 'CASH'}
-                                      className={cn('min-h-[32px] px-2.5 disabled:opacity-60', w.paymentMethod === 'CASH' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500')}>현금</button>
+                                      className={cn('min-h-[40px] px-3 disabled:opacity-60', w.paymentMethod === 'CASH' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500')}>현금</button>
                                   </div>
                                   <input type="text" inputMode="numeric" disabled={locked} value={w.soldPrice ? w.soldPrice.toLocaleString('ko') : ''}
-                                    onChange={e => updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 })}
-                                    placeholder="판매가" aria-label="판매가" className="min-h-[32px] w-28 rounded-lg border border-gray-300 bg-white px-2 text-right text-sm tabular-nums disabled:bg-gray-100" />
+                                    onChange={e => { updWork(ai, wi, { soldPrice: parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0 }); setPriceMissing(prev => { const k = `${a.user.id}:${w.index}`; if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; }); }}
+                                    placeholder="판매가" aria-label="판매가" aria-invalid={priceMissing.has(`${a.user.id}:${w.index}`) || undefined}
+                                    className={cn('min-h-[40px] w-28 rounded-lg border bg-white px-2 text-right text-sm tabular-nums disabled:bg-gray-100', priceMissing.has(`${a.user.id}:${w.index}`) ? 'border-accent bg-accent/5' : 'border-gray-300')} />
                                   <span className="text-xs text-gray-500">원</span>
                                 </div>
                               )}

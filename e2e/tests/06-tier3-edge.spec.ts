@@ -17,7 +17,7 @@ test('정원(capacity)은 선정 인원 — 지원은 넘겨도 받고, 수락�
   const galleryId = (gal.galleries || gal).find((g: any) => g.status === 'APPROVED').id;
   const created = await (await api.post(`${API}/exhibitions`, {
     headers: { Authorization: `Bearer ${gTok}` },
-    data: { title: '정원1명공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: '서울', description: '정원 테스트', galleryId, ...exhibitionDates() },
+    data: { title: '정원1명공모', type: 'SOLO', deadline: '2027-12-31', exhibitDate: '2028-01-31', capacity: 1, region: 'SEOUL', description: '정원 테스트', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${created.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
 

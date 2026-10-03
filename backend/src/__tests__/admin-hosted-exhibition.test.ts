@@ -129,7 +129,7 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
       .set('Authorization', `Bearer ${artistToken}`)
       .send({
         biography: '약력입니다',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
@@ -160,7 +160,7 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
       .set('Authorization', `Bearer ${artistToken}`)
       .send({
         biography: '약력입니다',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
@@ -284,7 +284,7 @@ describe('운영 갤러리 위임', () => {
       .set('Authorization', `Bearer ${authToken(2, 'ARTIST')}`)
       .send({
         biography: '약력입니다',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });
@@ -564,7 +564,7 @@ describe('공개 화면 회귀', () => {
       .set('Authorization', `Bearer ${artistToken}`)
       .send({
         biography: '약력입니다',
-        artworkImages: ['https://example.com/a.jpg'],
+        artworkImages: ['/uploads/a.jpg'],
         termsAgreed: true,
         termsVersion: ARTIST_APPLY_TERMS_VERSION,
       });

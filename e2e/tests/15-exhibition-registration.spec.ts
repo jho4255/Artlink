@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab } from '../lib/helpers';
+import { openAs, openMyPageTab, typeRich } from '../lib/helpers';
 
 /**
  * 공모 등록 풀 UI 폼: 갤러리선택 + 제목 + 4개 날짜 + 소개 + 약관동의 → 등록요청
@@ -13,12 +13,13 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
   // 갤러리: 공모 등록 폼
   await gallery.page.goto('/mypage');
   await openMyPageTab(gallery.page, '내 공모', 'gallery');
-  await gallery.page.getByRole('button', { name: '공모 등록' }).click();
+  // 공모가 하나도 없으면 빈 화면에도 [공모 등록]이 있다(둘) — 먼저 실행되면 그렇다. 머리의 것을 누른다
+  await gallery.page.getByRole('button', { name: '공모 등록' }).first().click();
 
   // 갤러리 선택(승인된 시드 갤러리) — 칸마다 라벨과 id 가 있다(2026-09-29)
   await gallery.page.locator('#ex-gallery').selectOption({ label: '서울 현대 갤러리' });
   await gallery.page.getByPlaceholder('공모 제목').fill(TITLE);
-  await gallery.page.getByPlaceholder('공모 소개').fill('E2E 공모 소개입니다');
+  await typeRich(gallery.page, '공모 소개', 'E2E 공모 소개입니다');   // 서식 있는 글 편집기(2026-10-03)
 
   /* 날짜 5칸 — 2026-08-19 에 **[작가 자료제출 마감일]이 필수로 추가**됐다.
      순서 규칙: 공모마감 < 자료제출마감 < 전시시작 (서버가 검사한다).

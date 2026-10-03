@@ -26,6 +26,8 @@ export function safeHttpUrl(url?: string | null): string | null {
   if (!url) return null;
   const t = String(url).trim();
   if (!t) return null;
+  // `//host/…`·`/\host/…` 는 '/' 로 시작해도 **다른 호스트**다(프로토콜 상대 주소) — 같은 출처 경로로 보면 안 된다(2026-10-03 점검 S3)
+  if (t.startsWith('//') || t.startsWith('/\\')) return null;
   if (t.startsWith('/')) return t; // 동일 출처 상대경로(업로드)
   try {
     const u = new URL(t, window.location.origin);
@@ -228,44 +230,55 @@ export const showStatusLabels: Record<string, string> = {
 };
 
 // 공모/전시 날짜 순서 검증
-// 올바른 순서: 공모시작 ≤ 공모마감 ≤ 전시시작 ≤ 전시종료
+// 올바른 순서: 공모시작 ≤ 공모마감 ≤ 전시시작 ≤ 전시종료. 서버 `assertExhibitionDates`(routes/exhibition.ts)와 같은 규칙·같은 순서·같은 문구.
+//
+// ⚠️ 예전엔 `if (!deadline || !exhibitDate) return null` 이 맨 위라 **공모만 진행**(전시 일자 없음)이면 검사를 통째로 건너뛰었다 —
+//    시작일이 마감일보다 늦은 공고가 등록돼 목록에 한 번도 못 떴다(2026-10-03 점검 P2). 공모 기간은 늘 본다.
+// ⚠️ 지난 마감일도 막는다 — 등록하자마자 마감된 공고가 된다. KST 달력 기준(규칙 14), 마감일 당일은 된다.
 export function validateExhibitionDates(dates: {
   deadlineStart?: string;
   deadline: string;
   exhibitStartDate?: string;
   /** 공모만 진행(recruitOnly)이면 전시가 없어 비운다 — 그땐 공모 기간만 검사한다 */
   exhibitDate?: string;
-  /** 작가 자료제출 마감일 — 공모 마감과 전시 시작 사이여야 한다 */
+  /** 출품 자료 제출 마감일 — 공모 마감과 전시 시작 사이여야 한다 */
   submissionDeadline?: string;
-}): string | null {
+}, dday: (d: string) => number = getDday): string | null {
   const { deadlineStart, deadline, exhibitStartDate, exhibitDate, submissionDeadline } = dates;
-  if (!deadline || !exhibitDate) return null;
+  if (!deadline) return null;
 
-  // 자료제출 마감일: 지원도 안 끝났는데 자료를 받을 수 없고,
+  const dl = new Date(deadline);
+  if (deadlineStart && new Date(deadlineStart) > dl) return '공모 시작일은 마감일 이전이어야 합니다.';
+  if (dday(deadline) < 0) return '공모 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.';
+  if (!exhibitDate) return null;
+
+  const ed = new Date(exhibitDate);
+  if (exhibitStartDate) {
+    const es = new Date(exhibitStartDate);
+    if (es > ed) return '전시 시작일은 종료일 이전이어야 합니다.';
+    if (dl > es) return '공모 마감일은 전시 시작일 이전이어야 합니다.';
+  } else if (dl > ed) {
+    return '공모 마감일은 전시 종료일 이전이어야 합니다.';
+  }
+
+  // 출품 자료 제출 마감일: 지원도 안 끝났는데 자료를 받을 수 없고,
   // 전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다. 백엔드와 같은 규칙(경계 포함 금지).
   if (submissionDeadline) {
     const sd = new Date(submissionDeadline);
-    if (sd <= new Date(deadline)) return '자료제출 마감일은 공모 마감일보다 뒤여야 합니다.';
-    const start = new Date(exhibitStartDate || exhibitDate);
-    if (sd >= start) return '자료제출 마감일은 전시 시작일보다 앞이어야 합니다.';
+    if (sd <= dl) return '출품 자료 제출 마감일은 공모 마감일보다 뒤여야 합니다.';
+    if (sd >= new Date(exhibitStartDate || exhibitDate)) return '출품 자료 제출 마감일은 전시 시작일보다 앞이어야 합니다.';
   }
 
-  const dl = new Date(deadline);
-  const ed = new Date(exhibitDate);
+  return null;
+}
 
-  if (deadlineStart) {
-    const ds = new Date(deadlineStart);
-    if (ds > dl) return '공모 시작일은 마감일 이전이어야 합니다.';
-  }
+/** 모집 인원(= 뽑을 수 있는 사람 수) 상한 — 서버 `CAPACITY_MAX`(routes/exhibition.ts)와 같은 값 */
+export const CAPACITY_MAX = 1000;
 
-  if (exhibitStartDate) {
-    const es = new Date(exhibitStartDate);
-    if (dl > es) return '공모 마감일은 전시 시작일 이전이어야 합니다.';
-    if (es > ed) return '전시 시작일은 종료일 이전이어야 합니다.';
-  } else {
-    if (dl > ed) return '공모 마감일은 전시 종료일 이전이어야 합니다.';
-  }
-
+/** 모집 인원 칸 검사 — 비었거나 0 이면 예전엔 확인창까지 가서 서버 오류를 받았다(2026-10-03 점검) */
+export function capacityError(n: unknown): string | null {
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) return '모집 작가 수를 1명 이상으로 정해 주세요.';
+  if (n > CAPACITY_MAX) return `모집 작가 수는 최대 ${CAPACITY_MAX}명이에요.`;
   return null;
 }
 

@@ -30,7 +30,7 @@ describe('Known issues 수정', () => {
     //   지금은 지원은 무제한, 정원은 **수락**에서 지킨다. 테스트 이름의 KI-2 는 '정원을 넘겨 선정되지 않는다'로 이어진다.
     const apply = (exId: number, artistId: number) => request.post(`/api/exhibitions/${exId}/apply`)
       .set('Authorization', `Bearer ${authToken(artistId, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     const setStatus = (exId: number, appId: number, status: string) => request.patch(`/api/exhibitions/${exId}/applications/${appId}`)
       .set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ status });
     async function extraArtist(n: number) {

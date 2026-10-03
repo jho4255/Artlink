@@ -13,6 +13,8 @@ import SkeletonImage from '@/components/shared/SkeletonImage';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { HeroImageEdit } from '@/components/shared/EditableField';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
+import RichText from '@/components/shared/RichText';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import type { Show } from '@/types';
 
 export default function ShowDetailPage() {
@@ -59,6 +61,8 @@ export default function ShowDetailPage() {
       setEditingDesc(false);
       toast.success('소개가 수정되었습니다.');
     },
+    // 빈 소개·글자 수 초과는 서버가 400 으로 이유를 준다 — 예전엔 실패해도 아무 말이 없었다
+    onError: (e: any) => toast.error(e.response?.data?.error || '수정에 실패했습니다.'),
   });
 
   const deleteMutation = useMutation({
@@ -289,10 +293,10 @@ export default function ShowDetailPage() {
             </button>
           )}
         </div>
+        {/* 서식 있는 글(2026-10-03, 갤러리 소개와 같은 편집기) — 서버가 허용 목록으로 걸러 저장하고 화면도 한 번 더 거른다 */}
         {editingDesc ? (
           <div className="space-y-3">
-            <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
-              className="w-full p-3 border border-gray-200 text-base min-h-[120px] focus:outline-none focus:ring-1 focus:ring-gray-400" />
+            <LazyRichTextEditor value={editDesc} onChange={setEditDesc} placeholder="전시 소개" maxLength={20000} minHeight={200} />
             <div className="flex gap-2">
               <button onClick={() => descMutation.mutate(editDesc)}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-gray-900 text-white cursor-pointer">
@@ -305,7 +309,7 @@ export default function ShowDetailPage() {
             </div>
           </div>
         ) : (
-          <p className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed break-keep [overflow-wrap:anywhere]">{show.description}</p>
+          <RichText value={show.description} className="text-base text-gray-600 leading-relaxed break-keep [overflow-wrap:anywhere]" />
         )}
       </div>
 

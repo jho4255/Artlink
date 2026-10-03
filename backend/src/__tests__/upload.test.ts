@@ -76,15 +76,10 @@ describe('POST /api/upload/image — PNG 사진은 JPEG 로 저장', () => {
     expect(r.body.url).toMatch(/\.png$/);
   });
 
-  it('다중 업로드(/images)도 같은 규칙', async () => {
+  it('다중 업로드(/images)는 없앴다 — 한 요청에 10장×15MB 를 메모리에 담았다(2026-10-03 점검 S8). 화면은 한 장씩 올린다', async () => {
     const r = await request.post('/api/upload/images')
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
-      .attach('images', await photoPng(), { filename: 'a.png', contentType: 'image/png' })
-      .attach('images', await photoPng(true), { filename: 'b.png', contentType: 'image/png' });
-    expect(r.status).toBe(200);
-    (r.body.urls ?? []).forEach((u: string) => made.push(path.basename(u)));
-    expect(r.body.urls).toHaveLength(2);
-    expect(r.body.urls[0]).toMatch(/\.jpg$/);
-    expect(r.body.urls[1]).toMatch(/\.png$/);
+      .attach('images', await photoPng(), { filename: 'a.png', contentType: 'image/png' });
+    expect(r.status).toBe(404);
   });
 });

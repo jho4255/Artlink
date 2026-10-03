@@ -38,7 +38,7 @@ async function seedExhibition(api: APIRequestContext, title: string) {
     headers: gAuth(),
     data: {
       title: fullTitle, type: 'SOLO', deadlineStart: today, deadline: future,
-      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
+      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: 'SEOUL',
       description: '다운로드 회수 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(tokenFor('admin')), data: { status: 'APPROVED' } });

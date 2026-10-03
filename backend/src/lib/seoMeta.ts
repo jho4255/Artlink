@@ -28,6 +28,7 @@ import type { Request, Response, NextFunction } from 'express';
 import prisma from './prisma';
 import logger from './logger';
 import { normalizeHandle, validateHandle } from './handle';
+import { richTextPlain } from './richText';
 
 export const SEO_MARKER_START = '<!--SEO_META_START-->';
 export const SEO_MARKER_END = '<!--SEO_META_END-->';
@@ -219,7 +220,8 @@ async function fetchSeoFields(kind: SeoKind, id: SeoId, work: number | null = nu
     return {
       // 아트링크 주최 공모는 주관 갤러리가 없을 수 있다(2026-09-10)
       title: `${ex.title} | ${ex.gallery?.name ?? '아트링크'} 작가 모집 - ArtLink`,
-      description: joinParts([regionLabel(ex.region), typeLabel, `마감 ${fmtKst(ex.deadline)}`, ex.description]),
+      // 공모 소개는 서식 있는 글(HTML)일 수 있다 — 태그를 벗겨 글자만(2026-10-03)
+      description: joinParts([regionLabel(ex.region), typeLabel, `마감 ${fmtKst(ex.deadline)}`, richTextPlain(ex.description)]),
       image: ex.imageUrl || ex.images[0]?.url || null,
       path: `/exhibitions/${id}`,
     };
@@ -248,7 +250,7 @@ async function fetchSeoFields(kind: SeoKind, id: SeoId, work: number | null = nu
         regionLabel(s.region),
         `${fmtKst(s.startDate)}~${fmtKst(s.endDate)}`,
         s.location,
-        s.description,
+        richTextPlain(s.description),   // 서식 있는 글 — 태그를 벗겨서
       ]),
       image: s.posterImage || null,
       path: `/shows/${id}`,

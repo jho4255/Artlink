@@ -22,9 +22,31 @@ import { useEffect } from 'react';
 const DEFAULT_MESSAGE = '저장하지 않은 내용이 있습니다.\n이 페이지를 벗어나면 작성 중인 내용이 사라집니다.\n\n그래도 나가시겠습니까?';
 const GUARD = '__unsavedGuard';
 
+/**
+ * 지금 화면에 떠 있는 '저장 안 된 입력' — 페이지를 떠나지 않고 **화면 안에서** 입력을 떼어 내는 동작(카드 접기·다른 카드 열기·
+ * 목록 필터 바꾸기)이 먼저 묻게 한다(2026-10-03 공모 흐름 점검 P1-2). 위 세 경로는 페이지 이동만 막아서, 정산 판매가·출품 자료를
+ * 적다가 카드를 접으면 경고 없이 사라졌다.
+ */
+const active = new Set<{ message: string }>();
+
+/** 저장 안 된 입력이 있는가 */
+export function hasUnsavedChanges(): boolean {
+  return active.size > 0;
+}
+
+/** 버려도 되는가 — 저장 안 된 입력이 없으면 바로 true, 있으면 묻는다(문구는 그 입력의 것) */
+export function confirmDiscardUnsaved(): boolean {
+  const first = active.values().next().value as { message: string } | undefined;
+  if (!first) return true;
+  // eslint-disable-next-line no-alert
+  return window.confirm(first.message.replace('이 페이지를 벗어나면', '닫으면').replace('그래도 나가시겠습니까?', '그래도 닫을까요?'));
+}
+
 export function useUnsavedChanges(isDirty: boolean, message: string = DEFAULT_MESSAGE) {
   useEffect(() => {
     if (!isDirty) return;
+    const entry = { message };
+    active.add(entry);
 
     let leaving = false; // 뒤로가기 confirm 수락 후 재진입 방지
 
@@ -68,6 +90,7 @@ export function useUnsavedChanges(isDirty: boolean, message: string = DEFAULT_ME
     document.addEventListener('click', onClick, true);
 
     return () => {
+      active.delete(entry);
       window.removeEventListener('beforeunload', onBeforeUnload);
       window.removeEventListener('popstate', onPopState);
       document.removeEventListener('click', onClick, true);

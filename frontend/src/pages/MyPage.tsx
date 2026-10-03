@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
 import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type TaskTarget } from '@/lib/flowLabels';
 import TaskLine from '@/components/flow/TaskLine';
 import { scheduleSummary } from '@/lib/scheduleSummary';
@@ -43,7 +43,12 @@ import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
-import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import { useUnsavedChanges, confirmDiscardUnsaved } from '@/hooks/useUnsavedChanges';
+import { DeleteRequestDialog, DeleteRequestLine } from '@/components/shared/DeleteRequest';
+import RichText from '@/components/shared/RichText';
+import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
+import { richTextLength } from '@/lib/richText';
+import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 import ArtworkDetailModal, { InviteModal } from '@/components/shared/ArtworkDetailModal';
@@ -1133,7 +1138,7 @@ function ApplicationsSection() {
   const deepLinkDone = useRef(false);
 
   // 받은 초대 — 예전 [받은 초대] 탭이 여기 첫 탭으로 들어왔다 (목록 API 는 그대로)
-  const { data: inviteData } = useQuery<{ invites: any[] }>({
+  const { data: inviteData, isFetched: invitesFetched } = useQuery<{ invites: any[] }>({
     queryKey: ['received-invites'],
     queryFn: () => api.get('/exhibitions/invites/received').then(r => r.data),
   });
@@ -1164,17 +1169,37 @@ function ApplicationsSection() {
     onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
   });
 
-  const { data: apps = [], isLoading, isError } = useQuery<any[]>({
+  const { data: apps = [], isLoading, isError, isFetched: appsFetched } = useQuery<any[]>({
     queryKey: ['my-applications'],
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
 
   // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다
   useEffect(() => {
-    // 초대만 받은 작가(지원 0건)는 [받은 초대] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
-    if (statusFilter === null && apps.length > 0) setStatusFilter(defaultBucket(apps));
-    else if (statusFilter === null && apps.length === 0 && invites.length > 0) setStatusFilter('INVITED');
-  }, [apps, statusFilter]);
+    /*
+      ⚠️ **두 목록이 다 온 뒤에** 정한다(2026-10-03 점검 P2). 초대 목록이 먼저 오면 '지원 0건' 으로 보고 [받은 초대]로 굳어서
+      같은 계정이 PC 에선 [진행 중], 휴대폰에선 [받은 초대]로 열렸다.
+      초대만 받은 작가(지원 0건)는 [받은 초대] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
+    */
+    if (statusFilter !== null || !appsFetched || !invitesFetched) return;
+    if (apps.length > 0) setStatusFilter(defaultBucket(apps));
+    else if (invites.length > 0) setStatusFilter('INVITED');
+  }, [apps, invites.length, statusFilter, appsFetched, invitesFetched]);
+
+  /*
+    저장 안 된 출품 자료·정산 입력을 지킨다(2026-10-03 점검 P1) — 카드를 닫거나 다른 카드를 열거나 탭을 바꾸면
+    펼친 카드의 입력 칸이 통째로 사라지는데, 이탈 경고(`useUnsavedChanges`)는 **페이지를 떠날 때만** 묻는다.
+    그래서 화면 안에서 떼어 내는 동작은 먼저 `confirmDiscardUnsaved()` 를 거친다(같은 확인창 문구).
+  */
+  const toggleCard = (appId: number) => {
+    if (expandedId !== null && !confirmDiscardUnsaved()) return;
+    setExpandedId(expandedId === appId ? null : appId);
+  };
+  const openCardFor = (appId: number, target: TaskTarget) => {
+    if (expandedId !== null && expandedId !== appId && !confirmDiscardUnsaved()) return;
+    setExpandedId(appId);
+    setFocus({ appId, target, seq: Date.now() });
+  };
 
   /*
     알림을 눌러 들어오면(`?ex=<id>`) **그 전시를 펼친 채로** 보여준다.
@@ -1206,7 +1231,8 @@ function ApplicationsSection() {
     return <p className="py-8 text-center text-accent">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
-  if (isLoading) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
+  // 초대 목록도 기다린다 — 먼저 그리면 탭이 [진행 중] → [받은 초대] 로 한 번 튄다
+  if (isLoading || !invitesFetched) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
 
   // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
@@ -1266,7 +1292,13 @@ function ApplicationsSection() {
         idPrefix="my-applications"
         label="내 전시 분류"
         active={activeTab}
-        onSelect={setStatusFilter}
+        onSelect={(t) => {
+          if (t === activeTab) return;
+          // 펼친 카드가 이 탭에 있으면 탭을 바꾸는 순간 입력이 사라진다
+          if (expandedId !== null && !confirmDiscardUnsaved()) return;
+          setExpandedId(null);
+          setStatusFilter(t);
+        }}
         tabs={MY_EXHIBITION_TABS.map(t => ({ id: t.key, label: t.label, count: counts[t.key] || undefined }))}
       />
 
@@ -1345,10 +1377,11 @@ function ApplicationsSection() {
             submissionComplete: !!app.submissionComplete,
             submissionDeadline: ex.submissionDeadline,
             exhibitStartDate: ex.exhibitStartDate,
+            mySettlementStatus: app.mySettlementStatus,
           });
           const taskTarget = task?.target ?? null;
           const goTask = taskTarget && accepted
-            ? () => { setExpandedId(app.id); setFocus({ appId: app.id, target: taskTarget, seq: Date.now() }); }
+            ? () => openCardFor(app.id, taskTarget)
             : undefined;
 
           /* 갤러리 [내 공모] 카드와 **같은 얼개**다 — 칩·제목·버튼, 할 일 줄, 일정, 펼치면 작업 영역. */
@@ -1365,10 +1398,10 @@ function ApplicationsSection() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => navigate(`/exhibitions/${app.exhibitionId}`)}
-                      className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                      onClick={() => { if (confirmDiscardUnsaved()) navigate(`/exhibitions/${app.exhibitionId}`); }}
+                      className="mt-1.5 flex min-h-[44px] max-w-full items-center text-left text-xl font-semibold text-gray-950 hover:underline"
                     >
-                      {ex.title}
+                      <span className="truncate">{ex.title}</span>
                     </button>
                     <p className="mt-1 text-sm text-gray-500">
                       {ex.gallery?.name || '아트링크'} · 지원일 {new Date(app.createdAt).toLocaleDateString('ko')}
@@ -1379,18 +1412,18 @@ function ApplicationsSection() {
                     {accepted ? (
                       <button
                         type="button"
-                        onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                        onClick={() => toggleCard(app.id)}
                         aria-expanded={isExpanded}
-                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
+                        className="inline-flex min-h-[44px] items-center gap-1 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
                       >
                         {isExpanded ? <>닫기 <ChevronUp size={14} aria-hidden /></> : <><ClipboardList size={14} aria-hidden /> 전시 관리</>}
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                        onClick={() => toggleCard(app.id)}
                         aria-expanded={isExpanded}
-                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50"
+                        className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50"
                       >
                         <Eye size={14} aria-hidden /> {isExpanded ? '닫기' : '지원서 보기'}
                       </button>
@@ -1452,6 +1485,7 @@ function ApplicationsSection() {
                         exhibitionId={app.exhibitionId}
                         exhibition={ex}
                         submissionComplete={app.submissionComplete}
+                        mySettlementStatus={app.mySettlementStatus ?? null}
                         focus={focus && focus.appId === app.id ? { target: focus.target, seq: focus.seq } : null}
                       />
                     )}
@@ -1527,6 +1561,18 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
   });
   // 갤러리 삭제 이중확인 ("삭제" 입력)
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  // 직접 지울 수 없는 갤러리 — 관리자에게 삭제 요청(작가가 참여 중이거나 정산 기록이 있는 공모가 있으면, 서버 lib/deletion.ts)
+  const [requestTarget, setRequestTarget] = useState<{ id: number; name: string; reason: string } | null>(null);
+  const deleteRequestOf = useMyDeleteRequests();
+  const askDeleteGallery = async (g: any) => {
+    try {
+      const blocked = await checkDeletable('gallery', g.id);
+      if (blocked) setRequestTarget({ id: g.id, name: g.name, reason: blocked });
+      else setDeleteTarget(g);
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || '삭제할 수 있는지 확인하지 못했어요.');
+    }
+  };
 
   // 임시저장 훅
   const { pending: draftPending, savedAt: draftSavedAt, resume: resumeDraft, discard: discardDraft, save: saveDraft, clear: clearDraft, autoSave } = useFormDraft<typeof emptyForm>('draft_gallery_form');
@@ -1744,16 +1790,22 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
               {g.status === 'REJECTED' && g.rejectReason && (
                 <p className="text-sm text-accent mt-2">거절 사유: {g.rejectReason}</p>
               )}
-              {/* 승인 완료/거절 건은 삭제 가능 (인스타 주소는 상세 페이지에서 추가/수정) */}
+              {/* 승인 완료/거절 건은 삭제 가능 (인스타 주소는 상세 페이지에서 추가/수정).
+                  작가가 참여 중이거나 정산 기록이 있는 공모가 있으면 누를 때 서버가 막고 삭제 요청 창을 연다 */}
               {(g.status === 'APPROVED' || g.status === 'REJECTED') && (
-                <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={() => setDeleteTarget(g)}
-                    disabled={deleteGalleryMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent disabled:opacity-50 cursor-pointer"
-                  >
-                    <Trash2 size={13} /> 갤러리 삭제
-                  </button>
+                <div className="mt-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                  <DeleteRequestLine request={deleteRequestOf('gallery', g.id)} kind="gallery" />
+                  {deleteRequestOf('gallery', g.id)?.status !== 'PENDING' && (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => askDeleteGallery(g)}
+                        disabled={deleteGalleryMutation.isPending}
+                        className="flex min-h-[40px] items-center gap-1 text-xs text-gray-400 hover:text-accent disabled:opacity-50 cursor-pointer"
+                      >
+                        <Trash2 size={13} /> 갤러리 삭제
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1764,10 +1816,18 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
       <DeleteConfirmModal
         open={!!deleteTarget}
         name={deleteTarget?.name ?? ''}
-        description="갤러리를 삭제하면 등록된 공모·전시·리뷰도 함께 삭제되며 되돌릴 수 없습니다."
+        description="갤러리를 삭제하면 등록된 공모·전시·리뷰도 함께 삭제되며 되돌릴 수 없습니다. 지원한 작가에게 삭제 알림이 가요."
         pending={deleteGalleryMutation.isPending}
         onConfirm={() => { deleteGalleryMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <DeleteRequestDialog
+        open={!!requestTarget}
+        kind="gallery"
+        targetId={requestTarget?.id ?? 0}
+        name={requestTarget?.name ?? ''}
+        blockedReason={requestTarget?.reason ?? ''}
+        onClose={() => setRequestTarget(null)}
       />
 
     </div>
@@ -1798,7 +1858,20 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   /** 카드에서 펼친 곳 — 한 번에 한 카드의 한 탭만(두 탭을 동시에 펴면 카드 하나가 화면 몇 장이 된다) */
-  const [openPanel, setOpenPanel] = useState<{ id: number; tab: 'applicants' | 'operation' } | null>(null);
+  const [openPanel, setOpenPanelRaw] = useState<{ id: number; tab: 'applicants' | 'operation' } | null>(null);
+  /**
+   * 그 카드에서 한 번 연 탭 — [지원자]↔[운영] 을 오가도 **떼지 않고 숨기기만** 한다(2026-10-03 점검 P1-2).
+   * 예전엔 탭을 바꾸면 패널이 통째로 떼어져, 정산 판매가를 적다가 [지원자]를 한 번 눌렀다 오면 입력이 경고 없이 사라졌다.
+   * 카드를 접거나 다른 카드를 열 때는 떼어 내므로 그때는 저장 안 된 입력이 있는지 먼저 묻는다(`confirmDiscardUnsaved`).
+   */
+  const [visitedTabs, setVisitedTabs] = useState<('applicants' | 'operation')[]>([]);
+  const setOpenPanel = (next: { id: number; tab: 'applicants' | 'operation' } | null): boolean => {
+    const sameCard = !!next && !!openPanel && next.id === openPanel.id;
+    if (!sameCard && openPanel && !confirmDiscardUnsaved()) return false;
+    setOpenPanelRaw(next);
+    setVisitedTabs(prev => (!next ? [] : sameCard ? (prev.includes(next.tab) ? prev : [...prev, next.tab]) : [next.tab]));
+    return true;
+  };
   /** [운영] 탭에서 열고 스크롤할 구역 — 카드의 할 일 줄을 눌렀을 때 */
   const [opsFocus, setOpsFocus] = useState<{ target: TaskTarget; seq: number } | null>(null);
   // 작가 초대 대상 공모 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대한다
@@ -1895,6 +1968,18 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
   // 공모 삭제 이중확인 ("삭제" 입력)
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  // 직접 지울 수 없는 공모 — 관리자에게 삭제 요청(수락한 작가 · 판매·정산 기록이 있으면, 서버 lib/deletion.ts)
+  const [requestTarget, setRequestTarget] = useState<{ id: number; name: string; reason: string } | null>(null);
+  const deleteRequestOf = useMyDeleteRequests();
+  const askDelete = async (item: any) => {
+    try {
+      const blocked = await checkDeletable('exhibition', item.id);
+      if (blocked) setRequestTarget({ id: item.id, name: item.title, reason: blocked });
+      else setDeleteTarget(item);
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || '삭제할 수 있는지 확인하지 못했어요.');
+    }
+  };
 
   const overviewItems = operationOverview.length > 0
     ? operationOverview
@@ -1930,8 +2015,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   }, [overviewItems, searchParams]);
 
   const switchExhibitionView = (mode: ExhibitionViewMode) => {
+    if (!setOpenPanel(null)) return;   // 필터를 바꾸면 열려 있던 탭은 닫는다 — 저장 안 된 입력이 있으면 먼저 묻는다
     setExhibitionViewMode(mode);
-    setOpenPanel(null);   // 필터를 바꾸면 열려 있던 탭은 닫는다
   };
 
   const clearError = (key: string) => setFormErrors(prev => { if (!prev.has(key)) return prev; const n = new Set(prev); n.delete(key); return n; });
@@ -1943,12 +2028,13 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     const errorFields = new Set<string>();
     if (!form.galleryId) { missing.push('갤러리'); errorFields.add('galleryId'); }
     if (!form.title) { missing.push('제목'); errorFields.add('title'); }
-    if (!form.description) { missing.push('소개'); errorFields.add('description'); }
+    if (richTextLength(form.description) === 0) { missing.push('소개'); errorFields.add('description'); }
     if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
     if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
-    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('작가 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
+    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('출품 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
     if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
+    if (capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
     const cleanedCustomFields = sanitizeCustomFields(form.customFields);
     const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
     setFormErrors(errorFields);
@@ -2063,13 +2149,33 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       <input id="ex-title" data-form-error={formErrors.has('title') || undefined} value={form.title} onChange={e => { setForm({ ...form, title: e.target.value }); clearError('title'); }} placeholder="공모 제목" className={formInputCls(formErrors.has('title'))} />
                     </FormField>
                     {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
-                    <FormField label="모집 작가 수" htmlFor="ex-capacity" hint="지원은 제한 없이 받고, 이 인원까지 수락할 수 있어요.">
-                      <input id="ex-capacity" type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} className={cn(formInputCls(), 'max-w-[140px]')} />
+                    <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="ex-capacity" hint="지원은 제한 없이 받고, 이 인원까지 수락할 수 있어요. 승인 뒤에도 [지원자]에서 바꿀 수 있어요.">
+                      <input
+                        id="ex-capacity"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={CAPACITY_MAX}
+                        data-form-error={formErrors.has('capacity') || undefined}
+                        value={form.capacity || ''}
+                        onChange={e => { setForm({ ...form, capacity: Number(e.target.value) }); clearError('capacity'); }}
+                        className={cn(formInputCls(formErrors.has('capacity')), 'max-w-[140px]')}
+                      />
                     </FormField>
                   </div>
                 </div>
-                <FormField label="공모 소개 *" error={formErrors.has('description')} htmlFor="ex-desc" className="mt-5">
-                  <textarea id="ex-desc" data-form-error={formErrors.has('description') || undefined} rows={6} value={form.description} onChange={e => { setForm({ ...form, description: e.target.value }); clearError('description'); }} placeholder="공모 소개" className={cn(formInputCls(formErrors.has('description')), 'resize-y leading-relaxed')} />
+                {/* 서식 있는 글(2026-10-03, 갤러리 소개와 같은 편집기) — 제목·굵게·목록·링크. 서버가 허용 목록으로 걸러 저장한다.
+                    ⚠️ 값은 함수형으로 갱신할 것 — 편집기가 처음 받은 콜백을 붙들 수 있어, `{ ...form }` 이면 그사이 고친 다른 칸을 되돌린다 */}
+                <FormField label="공모 소개 *" error={formErrors.has('description')} className="mt-5" hint="제목·굵게·목록·링크 같은 서식을 쓸 수 있어요.">
+                  <div id="ex-desc" data-form-error={formErrors.has('description') || undefined} className={cn('rounded-lg', formErrors.has('description') && 'ring-1 ring-accent')}>
+                    <LazyRichTextEditor
+                      value={form.description}
+                      onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}
+                      placeholder="공모 소개"
+                      maxLength={20000}
+                      minHeight={200}
+                    />
+                  </div>
                 </FormField>
               </FormSection>
 
@@ -2086,7 +2192,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                   {/* ⚠️ 공모만 진행하면 자료 제출·전시가 없다 — 비활성이 아니라 칸 자체를 없앤다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
                   {!form.recruitOnly && (
                     <>
-                      <FormField className="sm:col-span-2" label="작가 자료 제출 마감일 *" error={formErrors.has('submissionDeadline')} htmlFor="ex-submission" hint="수락한 작가가 출품작·약력·작가노트를 내는 기한이에요. 공모 마감일과 전시 시작일 사이로 정해 주세요.">
+                      <FormField className="sm:col-span-2" label="출품 자료 제출 마감일 *" error={formErrors.has('submissionDeadline')} htmlFor="ex-submission" hint="수락한 작가가 출품작·약력·작가노트를 내는 기한이에요. 공모 마감일과 전시 시작일 사이로 정해 주세요.">
                         <input id="ex-submission" type="date" data-form-error={formErrors.has('submissionDeadline') || undefined} value={form.submissionDeadline} onChange={e => { setForm({ ...form, submissionDeadline: e.target.value }); clearError('submissionDeadline'); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={cn(formInputCls(formErrors.has('submissionDeadline')), 'sm:max-w-[calc(50%-0.5rem)]')} />
                       </FormField>
                       <FormField label="전시 시작일 *" error={formErrors.has('exhibitStartDate')} htmlFor="ex-show-start" hint="이날이 되면 전시가 자동으로 확정되고, 작가는 출품 자료를 더 고칠 수 없어요.">
@@ -2175,7 +2281,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
         details={[
           '관리자가 내용을 확인한 뒤 모집공고에 올려요. 승인되면 알림으로 알려 드려요.',
           ...(summary ? [`일정 · ${summary}`] : []),
-          '승인 뒤에는 공고 소개·포스터·추가 질문을 고칠 수 있어요. 날짜를 바꿔야 하면 관리자에게 수정 요청을 보내 주세요.',
+          '승인 뒤에는 공고 소개·포스터·추가 질문·모집 인원을 고칠 수 있어요. 날짜를 바꿔야 하면 1:1 문의로 알려 주세요.',
         ]}
         confirmText="등록 요청"
         onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, customFields: sanitizeCustomFields(form.customFields) }); }}
@@ -2261,6 +2367,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                   exhibitDate: item.exhibitDate,
                   pending,
                   accepted: apps.accepted,
+                  capacity: item.capacity ?? null,
                   submissionsIncomplete: incomplete,
                   sales: item.counts.sales.total,
                   approvals: { total: settlement.total, approved: settlement.approved, issue: settlement.issue },
@@ -2275,7 +2382,9 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 };
                 // 작가 초대는 **모집 중에만** — 서버도 recruitmentClosed·confirmed·ended 를 막는다(눌러서 400 을 받는 버튼 금지)
                 const canInvite = isApproved && !item.recruitmentClosed && !item.confirmed && !item.ended;
-                const deletable = item.hostType !== 'ADMIN' && !item.settledAt;
+                // 정산이 끝난 공모는 기록을 남긴다 — 직접 삭제도 삭제 요청도 없다. 그 밖엔 버튼을 누르면 서버가 직접 삭제 / 요청 중 하나를 고른다
+                const deleteRequest = deleteRequestOf('exhibition', item.id);
+                const deletable = item.hostType !== 'ADMIN' && !item.settledAt && deleteRequest?.status !== 'PENDING';
                 return (
                   // ⚠️ min-w-0 필수(규칙 27) — 이 카드는 grid 아이템이라, 없으면 안쪽 통계 칸(1fr 두 칸)이 글자 폭만큼 카드를 밀어
                   //    390px 화면에서 페이지가 가로로 408~472px 까지 밀렸다(2026-09-29 실측).
@@ -2290,12 +2399,13 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                             {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
                             <HostBadge exhibition={item} />
                           </div>
+                          {/* 누르는 곳 44px(점검 P3 — 28px 였다). 저장 안 된 정산·출품 자료 입력이 있으면 먼저 묻는다 */}
                           <button
                             type="button"
-                            onClick={() => navigate(`/exhibitions/${item.id}`)}
-                            className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline"
+                            onClick={() => { if (confirmDiscardUnsaved()) navigate(`/exhibitions/${item.id}`); }}
+                            className="mt-1.5 flex min-h-[44px] max-w-full items-center text-left text-xl font-semibold text-gray-950 hover:underline"
                           >
-                            {item.title}
+                            <span className="truncate">{item.title}</span>
                           </button>
                           <p className="mt-1 text-sm text-gray-500">
                             {item.gallery?.name || '아트링크'} · {exhibitionTypeLabels[item.type] || item.type} · {regionLabels[item.region] || item.region}
@@ -2306,7 +2416,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                         {deletable && !archived && (
                           <button
                             type="button"
-                            onClick={() => setDeleteTarget(item)}
+                            onClick={() => askDelete(item)}
                             className="-mr-2 -mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-gray-300 hover:bg-accent/5 hover:text-accent"
                             title="공모 삭제"
                             aria-label="공모 삭제"
@@ -2318,6 +2428,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
                       {/* 지금 할 일 — 처음 쓰는 갤러리가 "그래서 뭘 누르지?" 에서 막히던 자리 */}
                       <TaskLine task={task} onClick={isApproved && task.target ? goTask : undefined} />
+                      <DeleteRequestLine request={deleteRequest} kind="exhibition" />
 
                       {item.status === 'REJECTED' && item.rejectReason && (
                         <Notice tone="attention" title="반려 사유" className="mt-3">{item.rejectReason}</Notice>
@@ -2368,7 +2479,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                                 aria-expanded={on}
                                 aria-controls={`ex-${item.id}-${tab}`}
                                 onClick={() => setOpenPanel(on ? null : { id: item.id, tab })}
-                                className={cn('relative min-h-[48px] whitespace-nowrap text-sm', on ? 'font-semibold text-gray-950' : 'text-gray-500 hover:text-gray-900')}
+                                className={cn('relative min-h-[48px] min-w-[44px] whitespace-nowrap text-sm', on ? 'font-semibold text-gray-950' : 'text-gray-500 hover:text-gray-900')}
                               >
                                 {tab === 'applicants'
                                   ? <>지원자 <span className="ml-0.5 text-xs font-normal tabular-nums text-gray-400">{apps.total}</span></>
@@ -2384,13 +2495,18 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                           )}
                         </div>
 
-                        {panel === 'applicants' && (
-                          <div id={`ex-${item.id}-applicants`} className="border-t border-gray-100 p-5 md:p-6">
+                        {/* 한 번 연 탭은 숨기기만 한다(위 visitedTabs) — 입력 중이던 정산·출품 자료가 탭을 오가도 남게 */}
+                        {openPanel?.id === item.id && visitedTabs.includes('applicants') && (
+                          <div id={`ex-${item.id}-applicants`} hidden={panel !== 'applicants'} className="border-t border-gray-100 p-5 md:p-6">
                             <ApplicantManager
                               exhibitionId={item.id}
                               exhibitionTitle={item.title}
                               customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
                               capacity={item.capacity ?? null}
+                              recruitOnly={!!item.recruitOnly}
+                              ended={!!item.ended || !!item.settledAt}
+                              // 아트링크 주최 공모의 모집 인원은 아트링크(관리자)가 정한다 — 위임 갤러리는 못 고친다(서버 403)
+                              capacityEditable={item.hostType !== 'ADMIN'}
                               toolbar={(
                                 <>
                                   {/* 관심 작품(하트)을 저장한 작가를 이 공모에 직접 초대 — 모집 중에만 */}
@@ -2412,8 +2528,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                         )}
 
                         {/* 운영 — 페이지 이동 없이 카드 안에서(진행 단계 · 공지 · 출품 자료 · 정산). 운영 화면 코드를 그대로 임베드 */}
-                        {panel === 'operation' && (
-                          <div id={`ex-${item.id}-operation`} className="border-t border-gray-100 p-5 md:p-6">
+                        {openPanel?.id === item.id && visitedTabs.includes('operation') && (
+                          <div id={`ex-${item.id}-operation`} hidden={panel !== 'operation'} className="border-t border-gray-100 p-5 md:p-6">
                             <OperationBody id={String(item.id)} embedded focus={opsFocus} />
                           </div>
                         )}
@@ -2431,10 +2547,18 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
       <DeleteConfirmModal
         open={!!deleteTarget}
         name={deleteTarget?.title ?? ''}
-        description="공모를 삭제하면 지원 내역도 함께 삭제되며 되돌릴 수 없습니다."
+        description="공모를 삭제하면 지원 내역도 함께 삭제되며 되돌릴 수 없습니다. 지원한 작가에게 삭제 알림이 가요."
         pending={deleteMutation.isPending}
         onConfirm={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <DeleteRequestDialog
+        open={!!requestTarget}
+        kind="exhibition"
+        targetId={requestTarget?.id ?? 0}
+        name={requestTarget?.name ?? ''}
+        blockedReason={requestTarget?.reason ?? ''}
+        onClose={() => setRequestTarget(null)}
       />
     </div>
   );
@@ -2562,7 +2686,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   };
 
   const handleSubmit = () => {
-    if (!form.title || !form.description || !form.startDate || !form.endDate || !form.openingHours || !form.admissionFee || !form.location || !form.posterImage || !form.galleryId) {
+    if (!form.title || richTextLength(form.description) === 0 || !form.startDate || !form.endDate || !form.openingHours || !form.admissionFee || !form.location || !form.posterImage || !form.galleryId) {
       toast.error('모든 필수 항목을 입력해주세요.');
       return;
     }
@@ -2675,7 +2799,8 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
               </div>
               <div className="pt-3 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-400 mb-1">전시 소개</p>
-                <EditableText multiline rows={3} value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="전시 소개" className="text-sm text-gray-700" />
+                {/* 서식 있는 글(2026-10-03, 공모 소개와 같은 편집기). 함수형 갱신 — 위 공모 폼의 ⚠️ 와 같은 이유 */}
+                <LazyRichTextEditor value={form.description} onChange={(v) => setForm(prev => ({ ...prev, description: v }))} placeholder="전시 소개" maxLength={20000} minHeight={160} />
               </div>
             </div>
           </div>
@@ -2850,6 +2975,8 @@ function ApprovalsSection() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectingId, setRejectingId] = useState<{ type: string; id: number } | null>(null);
   const [adminTab, setAdminTab] = useState<'pending' | 'manage'>('pending');
+  // 삭제 요청 승인 확인 — 무엇이 사라지는지 적은 창을 거친다(되돌릴 수 없다)
+  const [approvingDelete, setApprovingDelete] = useState<any>(null);
 
   const { data, isLoading } = useQuery<{ pendingGalleries: any[]; pendingExhibitions: any[]; pendingShows: any[]; pendingRequests: any[] }>({
     queryKey: ['approvals'],
@@ -2892,9 +3019,12 @@ function ApprovalsSection() {
   const approveMutation = useMutation({
     mutationFn: ({ type, id }: { type: string; id: number }) =>
       api.patch(`/approvals/${type}/${id}`, { status: 'APPROVED' }),
-    onSuccess: () => {
+    onSuccess: (res: any, v) => {
       invalidateAllRelated();
-      toast.success('승인되었습니다.');
+      if (v.type === 'delete-request') {
+        queryClient.invalidateQueries({ queryKey: ['my-operation-overview'], refetchType: 'all' });
+        toast.success(res?.data?.alreadyGone ? '이미 지워진 대상이라 요청만 정리했습니다.' : '삭제 요청을 승인해 삭제했습니다. 요청한 갤러리와 참여 작가에게 알림이 갑니다.');
+      } else toast.success('승인되었습니다.');
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '승인에 실패했습니다.'),
   });
@@ -2948,8 +3078,19 @@ function ApprovalsSection() {
     ...(data?.pendingGalleries?.map(g => ({ ...g, _type: 'gallery' })) || []),
     ...(data?.pendingExhibitions?.map(e => ({ ...e, _type: 'exhibition' })) || []),
     ...(data?.pendingShows?.map(s => ({ ...s, _type: 'show' })) || []),
-    ...(data?.pendingRequests?.map(r => ({ ...r, _type: 'edit-request' })) || []),
+    // 삭제 요청(2026-10-03)은 같은 표(ApprovalRequest)에 들어오지만 처리하는 길이 다르다 — `/approvals/delete-request/:id`
+    ...(data?.pendingRequests?.map(r => ({ ...r, _type: r.type === 'EXHIBITION_DELETE' || r.type === 'GALLERY_DELETE' ? 'delete-request' : 'edit-request' })) || []),
   ];
+  const deleteRequestDetails = (item: any): string[] => {
+    const t = item?.target;
+    if (!t || t.gone) return ['이미 지워진 대상이에요. 요청만 정리합니다.'];
+    const lines = item.type === 'EXHIBITION_DELETE'
+      ? [`공모 「${t.name}」${t.galleryName ? ` (${t.galleryName})` : ''}을 지웁니다.`]
+      : [`갤러리 「${t.name}」와 그 갤러리의 공모 ${t.exhibitions}건을 지웁니다.`];
+    lines.push(`수락한 작가 ${t.accepted}명 · 출품 자료 ${t.submissions}건 · 판매 ${t.sales}건${t.settled ? ` · 정산 완료 ${typeof t.settled === 'number' ? `${t.settled}건` : ''}` : t.settlementRequested ? ' · 정산 확인 진행 중' : ''}이 함께 사라져요.`);
+    lines.push('참여 작가와 요청한 갤러리에게 알림이 가요. 되돌릴 수 없어요.');
+    return lines;
+  };
 
   return (
     <div>
@@ -3062,9 +3203,10 @@ function ApprovalsSection() {
           {allPending.map(item => (
             <div key={`${item._type}-${item.id}`} className="p-4 border border-gray-100 rounded-xl">
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : item._type === 'show' ? '전시' : '수정 요청'}
+                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : item._type === 'show' ? '전시'
+                  : item._type === 'delete-request' ? (item.type === 'EXHIBITION_DELETE' ? '공모 삭제 요청' : '갤러리 삭제 요청') : '수정 요청'}
               </span>
-              <h4 className="font-medium mt-1">{item.name || item.title}</h4>
+              <h4 className="font-medium mt-1">{item.name || item.title || item.target?.name || String(parseApprovalChanges(item.changes).title ?? '') || `#${item.targetId}`}</h4>
               {item._type === 'gallery' && (
                 <div className="text-sm text-gray-500 space-y-0.5 mt-1">
                   <p>주소: {item.address}</p>
@@ -3093,6 +3235,20 @@ function ApprovalsSection() {
                   {item.posterImage && <img src={item.posterImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
                 </div>
               )}
+              {item._type === 'delete-request' && (
+                <div className="mt-1 space-y-1 text-sm text-gray-500">
+                  <p>요청자: {item.requester?.name || `User #${item.requesterId}`}{item.requester?.email ? ` (${item.requester.email})` : ''} · {new Date(item.createdAt).toLocaleString('ko')}</p>
+                  <p className="whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-2 text-gray-700">사유: {String(parseApprovalChanges(item.changes).reason ?? '') || '—'}</p>
+                  {item.target?.gone ? (
+                    <p className="text-xs text-gray-500">이미 지워진 대상이에요 — [삭제 승인]을 누르면 요청만 정리해요.</p>
+                  ) : (
+                    <p className="text-xs text-gray-600">
+                      지우면 함께 사라지는 것 · 수락한 작가 {item.target?.accepted ?? 0}명 · 출품 자료 {item.target?.submissions ?? 0}건 · 판매 {item.target?.sales ?? 0}건
+                      {item.type === 'GALLERY_DELETE' ? ` · 공모 ${item.target?.exhibitions ?? 0}건` : ''}
+                    </p>
+                  )}
+                </div>
+              )}
               {item._type === 'edit-request' && (
                 <div className="text-sm text-gray-500 space-y-1 mt-1">
                   <p>유형: {approvalRequestTypeLabel(item.type)} · 대상 ID: {item.targetId}</p>
@@ -3117,7 +3273,8 @@ function ApprovalsSection() {
                   </div>
                 </div>
               )}
-              {item.description && <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{item.description}</p>}
+              {/* 공모·전시 소개는 서식 있는 글일 수 있다(2026-10-03) — 걸러서 그린다. 옛 평범한 글은 줄바꿈 그대로 */}
+              {item.description && <RichText value={item.description} className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded" />}
 
               {rejectingId?.type === item._type && rejectingId?.id === item.id ? (
                 <div className="mt-3 space-y-2">
@@ -3129,7 +3286,7 @@ function ApprovalsSection() {
                 </div>
               ) : (
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => approveMutation.mutate({ type: item._type, id: item.id })} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><Check size={14} /> 승인</button>
+                  <button onClick={() => (item._type === 'delete-request' ? setApprovingDelete(item) : approveMutation.mutate({ type: item._type, id: item.id }))} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><Check size={14} /> {item._type === 'delete-request' ? '삭제 승인' : '승인'}</button>
                   <button onClick={() => { setRejectReason(''); setRejectingId({ type: item._type, id: item.id }); }} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-accent/5 text-accent text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><XCircle size={14} /> 거절</button>
                 </div>
               )}
@@ -3138,6 +3295,15 @@ function ApprovalsSection() {
         </div>
       )}
       </>}
+      <ConfirmDialog
+        open={!!approvingDelete}
+        title={approvingDelete?.type === 'GALLERY_DELETE' ? '갤러리를 삭제할까요?' : '공모를 삭제할까요?'}
+        details={deleteRequestDetails(approvingDelete)}
+        confirmText="삭제 승인"
+        variant="danger"
+        onConfirm={() => { const it = approvingDelete; setApprovingDelete(null); if (it) approveMutation.mutate({ type: 'delete-request', id: it.id }); }}
+        onCancel={() => setApprovingDelete(null)}
+      />
     </div>
   );
 }

@@ -78,7 +78,7 @@ describe('Notification Routes', () => {
     // Artist1이 지원
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
 
     // Gallery 오너가 상태 변경
     const app = await testPrisma.application.findFirst({ where: { userId: 1 } });
@@ -89,7 +89,8 @@ describe('Notification Routes', () => {
     // Artist에게 알림 확인
     const notifs = await testPrisma.notification.findMany({ where: { userId: 1, type: 'APPLICATION_STATUS' } });
     expect(notifs.length).toBeGreaterThanOrEqual(1);
-    expect(notifs.some(n => n.message.includes('수락'))).toBe(true);
+    // 작가 화면의 말과 같게 '선정'(2026-10-03 — 예전 '수락되었습니다! 운영 페이지에서…')
+    expect(notifs.some(n => n.message.includes('선정되었어요'))).toBe(true);
   });
 
   it('새 지원자 시 Gallery 오너에게 알림 생성', async () => {
@@ -98,7 +99,7 @@ describe('Notification Routes', () => {
 
     await request.post(`/api/exhibitions/${exhibition.id}/apply`)
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
-      .send({ biography: '약력', artworkImages: ['https://example.com/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
 
     const notifs = await testPrisma.notification.findMany({ where: { userId: 3, type: 'NEW_APPLICANT' } });
     expect(notifs.length).toBeGreaterThanOrEqual(1);

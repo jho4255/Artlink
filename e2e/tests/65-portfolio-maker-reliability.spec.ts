@@ -275,7 +275,7 @@ test('★ R6 홈페이지에 3번 올리기 — 옛 파일은 지워지고 지�
       // 첫 파일로 지원서를 낸다 — 지원서는 그 주소를 복사해 들고 있다
       const r = await api.post(`${API}/exhibitions/${exId}/apply`, {
         headers: auth(a),
-        data: { biography: '신뢰성 약력', artworkImages: ['https://example.com/a.jpg'], portfolioFileUrl: url, termsAgreed: true, termsVersion: applyTermsVersion() },
+        data: { biography: '신뢰성 약력', artworkImages: ['/uploads/e2e-artwork.jpg'], portfolioFileUrl: url, termsAgreed: true, termsVersion: applyTermsVersion() },
       });
       expect(r.status(), await r.text()).toBe(201);
     } else {

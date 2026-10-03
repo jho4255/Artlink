@@ -155,6 +155,20 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
     expect(task({ status: 'PENDING' })).toMatchObject({ tone: 'neutral', target: null });
   });
 
+  // 2026-10-03 점검 P2 — 수락 2/2 인데 '지원을 받고 있어요' 였다. 작가 화면·지원은 그대로(사용자 결정: 갤러리에게만 알린다)
+  it('★ 정원이 찼는데 모집 중이면 → 모집 마감 (검토 대기가 남아 있어도 — 더는 수락할 수 없다)', () => {
+    expect(task({ capacity: 2, accepted: 2 })).toMatchObject({ tone: 'attention', target: 'stage', action: '모집 마감' });
+    const t = task({ capacity: 2, accepted: 2, pending: 3 });
+    expect(t.text).toContain('정원(2명)');
+    expect(t.text).toContain('검토 대기 3명');
+    expect(task({ recruitOnly: true, capacity: 1, accepted: 1, pending: 1 })).toMatchObject({ target: 'stage', action: '모집 마감' });
+    // 정원을 모르면(null) 건너뛴다 · 자리가 남았으면 그대로 검토가 할 일
+    expect(task({ accepted: 2, pending: 1 })).toMatchObject({ target: 'applicants' });
+    expect(task({ capacity: 5, accepted: 2, pending: 1 })).toMatchObject({ target: 'applicants' });
+    // 모집을 마감한 뒤엔 정원 문구가 아니다
+    expect(task({ capacity: 2, accepted: 2, recruitmentClosed: true }).text).not.toContain('정원');
+  });
+
   it('★ 공모만 진행: 선정 뒤로는 할 일이 없다(출품 자료·정산으로 보내지 않는다)', () => {
     expect(task({ recruitOnly: true, recruitmentClosed: true, accepted: 3, submissionsIncomplete: 3 })).toMatchObject({ tone: 'done' });
     expect(task({ recruitOnly: true, pending: 2 })).toMatchObject({ target: 'applicants' });
@@ -174,6 +188,14 @@ describe('artistNextTask — 작가는 할 일이 있을 때만', () => {
   });
   it('정산 확인 요청이 오면 그게 할 일', () => {
     expect(artistNextTask({ ...base, ended: true, submissionComplete: true, settlementRequested: true }, dday)).toMatchObject({ target: 'settlement', tone: 'attention' });
+  });
+  // 2026-10-03 점검 P2 — 확인·이의를 낸 뒤에도 '갤러리가 정산 확인을 요청했어요 [확인하기]' 가 남아 답이 안 들어간 줄 알았다
+  it('★ 정산에 이미 답했으면 — 확인: 할 일 없음 / 이의: 기다림(회색) / 아직이면 빨강', () => {
+    const req = { ...base, ended: true, submissionComplete: true, settlementRequested: true };
+    expect(artistNextTask({ ...req, mySettlementStatus: 'APPROVED' }, dday)).toBeNull();
+    expect(artistNextTask({ ...req, mySettlementStatus: 'ISSUE' }, dday)).toMatchObject({ tone: 'neutral', target: 'settlement' });
+    expect(artistNextTask({ ...req, mySettlementStatus: 'PENDING' }, dday)).toMatchObject({ tone: 'attention' });
+    expect(artistNextTask({ ...req, mySettlementStatus: null }, dday)).toMatchObject({ tone: 'attention' });
   });
   it('심사 중이면 안내만(누를 곳 없음), 미선정이면 없음', () => {
     expect(artistNextTask({ ...base, status: 'SUBMITTED' }, dday)).toMatchObject({ tone: 'neutral', target: null });

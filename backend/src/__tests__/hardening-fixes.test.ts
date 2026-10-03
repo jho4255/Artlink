@@ -189,6 +189,8 @@ describe('하드닝 수정 검증', () => {
       await testPrisma.exhibition.update({ where: { id: ex.id }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
       await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED' } });
       await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex.id, status: 'SUBMITTED' } });
+      // 판매는 그 작가의 출품 목록 안의 작품만 저장된다(2026-10-03) — 작품 하나를 내 둔다
+      await testPrisma.exhibitionSubmission.create({ data: { exhibitionId: ex.id, userId: 1, artworkList: JSON.stringify([{ title: 'A' }]) } });
       const res = await request.put(`/api/operations/${ex.id}/settlement`).set('Authorization', `Bearer ${OWNER()}`).send({
         sales: [
           { artistUserId: 1, artworkIndex: 0, title: 'A', soldPrice: 100 },

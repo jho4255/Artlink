@@ -44,7 +44,7 @@ async function seedOperation(api: APIRequestContext, artworkCount: number) {
     headers: auth(gTok),
     data: {
       title: `ZIP검증 ${Date.now()}`, type: 'SOLO', deadlineStart: today, deadline: future,
-      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: '서울',
+      exhibitStartDate: future, exhibitDate: future, capacity: 5, region: 'SEOUL',
       description: '일괄 다운로드 E2E', galleryId, ...exhibitionDates() },
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: auth(adTok), data: { status: 'APPROVED' } });

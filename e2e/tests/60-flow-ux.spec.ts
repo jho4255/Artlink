@@ -180,7 +180,6 @@ test.describe('D. 지원서 페이지', () => {
     const bio = page.getByPlaceholder('작가 소개·약력을 입력하세요.');
     if (!(await bio.inputValue()).trim()) await bio.fill('E2E 약력');
     await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-    await expect(page.getByText(/다 채웠어요/)).toBeVisible();
     await page.getByRole('button', { name: '지원하기' }).click();
     await page.waitForURL(new RegExp(`/exhibitions/${exId}$`), { timeout: 10000 });
     await expect(page.getByText('지원 완료', { exact: true })).toBeVisible({ timeout: 10000 });
@@ -266,6 +265,8 @@ test.describe('F. 등록 폼 임시저장', () => {
 
     await page.getByRole('button', { name: '이어서 쓰기' }).click();
     await expect(page.locator('#ex-title')).toHaveValue('겨울 소품전(쓰다 만 것)');
+    // 소개는 서식 있는 글 편집기(2026-10-03) — 처음 값만 읽던 편집기라 복원한 소개가 안 보일 뻔했다. 바깥 값 변경을 따라가야 한다
+    await expect(page.getByRole('textbox', { name: '공모 소개' })).toContainText('쓰다 만 소개', { timeout: 15000 });
     await expect(page.getByText('작성하던 공고가 있어요')).toHaveCount(0);
     // 이제부터는 저장된다
     await page.locator('#ex-title').fill('겨울 소품전');

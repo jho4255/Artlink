@@ -12,6 +12,20 @@
 import { isBlankArtwork } from '@/lib/saveState';
 import type { ArtistCv, ArtistNote, ArtworkItem } from '@/types';
 
+/**
+ * 출품 자료 약력(`ArtistCv`)의 항목 — 편집기·읽기 화면·약력 PDF·인쇄 화면이 **같은 목록**을 쓴다(2026-10-03).
+ * 예전엔 네 파일에 따로 적혀 있었고 넷 다 학력이 빠져 있었다 — 타입과 도록(`boothKit`)은 `education` 을 읽는데
+ * 넣을 칸이 없었다(2026-10-03 점검 P2). 순서는 홈페이지 경력·포트폴리오 CV 와 같다(학력 → 개인전 → 단체전 → 아트페어 → 수상).
+ * ⚠️ 옛 자료에는 `education` 이 없을 수 있다 — 읽을 땐 `cv[key] ?? []`.
+ */
+export const CV_SECTIONS: { key: keyof Pick<ArtistCv, 'education' | 'solo' | 'group' | 'artFair' | 'award'>; label: string }[] = [
+  { key: 'education', label: '학력' },
+  { key: 'solo', label: '개인전' },
+  { key: 'group', label: '단체전' },
+  { key: 'artFair', label: '아트페어 / 옥션' },
+  { key: 'award', label: '수상 및 선정' },
+];
+
 /** 빈 객체({})·빈 배열·공백 문자열은 '없음' — 서버 `lib/submission.ts hasSubmissionContent` 와 같은 판정 */
 export function hasContent(obj: unknown): boolean {
   if (!obj || typeof obj !== 'object') return false;

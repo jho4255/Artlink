@@ -9,8 +9,9 @@
  *  - 전용 페이지 — 맨 위에 공모명·갤러리·마감을 적고, 번호 붙은 구역(약력 · 경력 · 작품 사진 · 포트폴리오 파일 · 추가 질문 · 약관)
  *  - **열리면 홈페이지(포트폴리오) 내용으로 채운다** — 대부분의 작가는 고칠 것만 고치고 낸다
  *  - '없음' 체크 없음 — 비워 두면 없는 것이다(서버는 원래 빈 경력·파일을 받는다)
- *  - 필수는 약력 · 작품 사진 1장 · 필수 추가 질문 · 약관뿐. 하단 고정 줄이 **아직 남은 것**을 말하고,
- *    [지원하기]를 누르면 비어 있는 칸으로 데려간다(예전엔 약관 동의 전까지 버튼이 이유 없이 회색이었다)
+ *  - 필수는 약력 · 작품 사진 1장 · 필수 추가 질문 · 약관뿐. [지원하기]를 누르면 비어 있는 칸을 빨갛게 표시하고
+ *    그리로 데려간다(예전엔 약관 동의 전까지 버튼이 이유 없이 회색이었다).
+ *    ⚠️ 하단 줄에 '남은 것 · …'/'다 채웠어요' 를 적지 않는다(2026-10-03 사용자 요청 — 버튼 하나만)
  *
  * ⚠️ 약관 버전은 서버와 같아야 한다 — `backend/src/lib/terms.ts`, 검사는 `terms-consistency.test.ts`.
  * ⚠️ 이미 지원했거나 마감됐거나 작가가 아니면 상세로 되돌린다(서버도 400 으로 막는다) — 다 쓰고 나서 400 을 받게 하지 않는다.
@@ -27,7 +28,7 @@ import { getDday, cn } from '@/lib/utils';
 import { isCareerEmpty, normalizeCareer } from '@/lib/artwork';
 import { ddayText } from '@/lib/flowLabels';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
-import CareerEditor from '@/components/shared/CareerEditor';
+import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
 import Notice from '@/components/flow/Notice';
@@ -171,9 +172,11 @@ export default function ApplyPage() {
       </div>
     );
   }
-  // 지원할 수 없는 경우 — 상세로(상세가 이유를 보여 준다: 이미 지원함 / 마감 / 작가 계정만)
+  // 지원할 수 없는 경우 — 상세로(상세가 이유를 보여 준다: 이미 지원함 / 마감 / 아직 시작 전 / 작가 계정만)
   const expired = getDday(exhibition.deadline) < 0 || !!exhibition.recruitmentClosed || !!exhibition.ended;
-  if (user.role !== 'ARTIST' || exhibition.myApplication || expired) {
+  // 공모 시작일 전 — 서버도 400(2026-10-03 점검 P2: 주소로 들어오면 지원서가 열리고 201 이었다)
+  const notStarted = !!exhibition.deadlineStart && getDday(exhibition.deadlineStart) > 0;
+  if (user.role !== 'ARTIST' || exhibition.myApplication || expired || notStarted) {
     return <Navigate to={`/exhibitions/${id}`} replace />;
   }
 
@@ -204,7 +207,13 @@ export default function ApplyPage() {
     applyMutation.mutate({
       biography: biography.trim(),
       // 비어 있는 경력은 '없음' — 예전처럼 따로 체크하게 하지 않는다
-      career: { artFair: clean(career.artFair), solo: clean(career.solo), group: clean(career.group) },
+      career: {
+        education: clean(career.education ?? []),
+        solo: clean(career.solo),
+        group: clean(career.group),
+        artFair: clean(career.artFair),
+        award: clean(career.award ?? []),
+      },
       artworkImages: images,
       portfolioFileUrl: file,
       customAnswers: buildCustomAnswers(fields, answers),
@@ -252,7 +261,7 @@ export default function ApplyPage() {
       </div>
 
       <div className="mt-8 space-y-8">
-        <FormSection n={1} id="apply-bio" title="작가 약력 *" description="어떤 작업을 하는 작가인지, 갤러리가 가장 먼저 읽는 글이에요.">
+        <FormSection n={1} id="apply-bio" title="작가 약력 *">
           <textarea
             value={biography}
             onChange={(e) => edit(setBiography)(e.target.value)}
@@ -263,8 +272,10 @@ export default function ApplyPage() {
           {bad('bio') && <p className="mt-1.5 text-xs text-accent">약력을 적어 주세요.</p>}
         </FormSection>
 
+        {/* 홈페이지와 같은 5항목(학력·개인전·단체전·아트페어·수상) — 예전엔 셋만 그리고 셋만 보내 학력·수상이 빠졌다(2026-10-03 점검 P2).
+            초대·초대 코드로 들어온 작가는 홈페이지 경력을 통째로 가져가서 다섯이 다 갔다 — 일반 지원만 빠졌다 */}
         <FormSection n={2} title="경력" description="한 줄에 한 건씩. 없는 항목은 비워 두면 '없음'으로 보내요.">
-          <CareerEditor value={career} onChange={edit(setCareer)} />
+          <CareerEditor value={career} onChange={edit(setCareer)} categories={PORTFOLIO_CATEGORIES} />
         </FormSection>
 
         <FormSection n={3} id="apply-images" title="작품 사진 *" description={`1장 이상, 최대 ${MAX_IMAGES}장. 갤러리가 지원서와 함께 보는 대표 작품이에요.`}>
@@ -377,19 +388,15 @@ export default function ApplyPage() {
         </FormSection>
       </div>
 
-      {/* 제출 줄 — 화면 아래에 붙어 따라온다. 휴대폰에선 하단 탭바 위에. 아직 남은 것을 말한다 */}
+      {/* 제출 줄 — 화면 아래에 붙어 따라온다. 휴대폰에선 하단 탭바 위에, 버튼이 줄을 채운다(공모 상세의 지원 줄과 같은 모양).
+          빈 칸 안내는 [지원하기]를 누를 때 한다(토스트 + 빨간 칸 + 그 칸으로 이동) — 줄에 '남은 것' 을 적지 않는다(2026-10-03 사용자 요청) */}
       <div className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 -mx-6 mt-10 border-t border-gray-100 bg-white/95 px-6 py-3 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0">
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-          <p className="mr-auto min-w-0 text-xs text-gray-500">
-            {missing.length === 0
-              ? <>다 채웠어요. 지원하면 {hostName}에 지원서가 전달돼요.</>
-              : <>남은 것 · <span className={validated ? 'text-accent' : 'text-gray-700'}>{missing.map((m) => m.label).join(' · ')}</span></>}
-          </p>
+        <div className="flex items-center justify-end">
           <button
             type="button"
             onClick={submit}
             disabled={applyMutation.isPending}
-            className="min-h-[44px] rounded-lg bg-gray-900 px-6 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            className="min-h-[44px] flex-1 rounded-lg bg-gray-900 px-6 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:flex-none"
           >
             {applyMutation.isPending ? '지원 중...' : '지원하기'}
           </button>

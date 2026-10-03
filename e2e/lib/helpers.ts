@@ -62,7 +62,7 @@ export async function applyToExhibition(
     data: {
       biography: 'E2E 작가 약력',
       career: { artFair: [{ year: '2025', content: 'E2E 아트페어' }], solo: [], group: [] },
-      artworkImages: ['https://example.com/e2e-artwork.jpg'],
+      artworkImages: ['/uploads/e2e-artwork.jpg'],
       portfolioFileUrl: null,
       termsAgreed: true,
       termsVersion: applyTermsVersion(),
@@ -554,4 +554,15 @@ export function realUploadPath(kind: 'image' | 'pdf' = 'image'): string {
   const f = fs.readdirSync(dir).find(n => rx.test(n));
   if (!f) throw new Error(`backend/uploads 에 ${kind} 파일이 없습니다.`);
   return path.join(dir, f);
+}
+
+/**
+ * 서식 있는 글 편집기(TipTap)에 글 쓰기 — 공모 소개·전시 소개·갤러리 소개(2026-10-03).
+ * 편집기는 `<textarea>` 가 아니라 contenteditable 이라 placeholder 로 못 찾는다 — 역할(textbox) + 이름(placeholder 와 같은 aria-label)으로 찾는다.
+ */
+export async function typeRich(page: Page, name: string | RegExp, text: string) {
+  const editor = page.getByRole('textbox', { name });
+  await expect(editor).toBeVisible({ timeout: 15000 });   // 편집기는 필요할 때 받는 청크다
+  await editor.click();
+  await page.keyboard.type(text);
 }

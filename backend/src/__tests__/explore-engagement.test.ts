@@ -18,7 +18,7 @@ const galleryTok = authToken(3, 'GALLERY');
 /** 공모 지원 최소 본문 (약력 + 작품사진 1장 + 약관동의 필수) */
 const APPLY_BODY = {
   biography: '테스트 약력',
-  artworkImages: ['https://cdn.example.com/apply-1.jpg'],
+  artworkImages: ['/uploads/apply-1.jpg'],
   termsAgreed: true,
   termsVersion: ARTIST_APPLY_TERMS_VERSION,
 };
@@ -34,7 +34,7 @@ async function seedImages(userId = 1, count = 3, showInExplore = true) {
   for (let i = 0; i < count; i++) {
     created.push(
       await testPrisma.portfolioImage.create({
-        data: { portfolioId: portfolio.id, url: `https://cdn.example.com/${userId}-${i}.jpg`, order: i, showInExplore },
+        data: { portfolioId: portfolio.id, url: `/uploads/${userId}-${i}.jpg`, order: i, showInExplore },
       })
     );
   }
@@ -565,8 +565,8 @@ describe('공모 초대 (갤러리 → 작가)', () => {
     });
     await testPrisma.portfolioImage.createMany({
       data: [
-        { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0, showInExplore: true },
-        { portfolioId: portfolio.id, url: 'https://cdn.example.com/p2.jpg', order: 1, showInExplore: true },
+        { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0, showInExplore: true },
+        { portfolioId: portfolio.id, url: '/uploads/p2.jpg', order: 1, showInExplore: true },
       ],
     });
     await invite(galleryTok, { artistId: 1 });
@@ -587,7 +587,7 @@ describe('공모 초대 (갤러리 → 작가)', () => {
   it('간편 지원해도 약관 동의는 필수다', async () => {
     const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
     await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0 },
+      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
     });
     await invite(galleryTok, { artistId: 1 });
     const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
@@ -617,7 +617,7 @@ describe('공모 초대 (갤러리 → 작가)', () => {
   it('초대받은 작가가 지원하면 갤러리에 "초대한 작가가 지원" 알림이 간다', async () => {
     const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
     await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0 },
+      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
     });
     await invite(galleryTok, { artistId: 1 });
     await request.post(`/api/exhibitions/${exhibitionId}/apply`)
@@ -654,7 +654,7 @@ describe('공모 초대 (갤러리 → 작가)', () => {
   it('지원자 목록에 초대 여부(invited)가 표시된다', async () => {
     const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
     await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0 },
+      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
     });
     await invite(galleryTok, { artistId: 1 });
     await request.post(`/api/exhibitions/${exhibitionId}/apply`)
@@ -754,7 +754,7 @@ describe('공모 초대 (갤러리 → 작가)', () => {
   it('이미 지원한 초대는 선정 인원이 차도 목록에 남는다(상태 확인 필요)', async () => {
     const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
     await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: 'https://cdn.example.com/p1.jpg', order: 0 },
+      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
     });
     await invite(galleryTok, { artistId: 1 });
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });

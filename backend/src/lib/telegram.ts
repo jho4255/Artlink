@@ -1,6 +1,6 @@
 import logger from './logger';
 
-type ApprovalKind = 'gallery' | 'exhibition' | 'show' | 'edit-request';
+type ApprovalKind = 'gallery' | 'exhibition' | 'show' | 'edit-request' | 'delete-request';
 
 interface ApprovalNotificationInput {
   kind: ApprovalKind;
@@ -16,6 +16,7 @@ const kindLabels: Record<ApprovalKind, string> = {
   exhibition: '공모 등록',
   show: '전시 등록',
   'edit-request': '수정 요청',
+  'delete-request': '삭제 요청',
 };
 
 function appBaseUrl(): string {
