@@ -2083,6 +2083,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 개인정보처리방침 1항(수집 항목)·3항(90일 뒤 자동 삭제)에 적었다.
     - 확인: `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문 다섯 — 바로 나감·로그인 앞에서 그만둠·작가·갤러리·커뮤니티, `ENGINE=webkit` 사파리 엔진, `--login` 은 **데모 DB 전용**) ·
       `shot.js`(통계 칸 PC·모바일) · `load.mjs`(부하·용량 — 데모 DB 전용, 만든 줄은 `clean`).
+    - ⚠️⚠️ **실서버에 브라우저 점검을 돌릴 땐 `page.route` 로 기록을 막았다고 믿지 말 것** (2026-10-04) — 페이지를 떠날 때(pagehide·`page.close()`·다른 주소로 `goto`)
+      나가는 sendBeacon 은 `page.route` 를 거치지 않는다. 그래서 배포 점검을 돌릴 때마다 '커뮤니티 2초 → 나감'·'모집공고 16초 → 나감' 같은 **가짜 방문 9개가
+      실서버 통계에 남았다**(사용자가 '기현상'으로 발견). 페이지 안에서 `navigator.sendBeacon` 을 바꿔 끼워 기록 주소로는 보내지 않게 할 것 —
+      `scratchpad/guest-activity/prod-smoke.mjs` 의 `BEACON_TRAP`(실서버에서 새 방문 0개 확인).
     - ⚠️ **Playwright 는 sendBeacon 을 `ping` 으로 보여 주고 본문을 주지 않는다**(postData null) — E2E 는 요청 **수**만 세고, 무엇이 남았는지는 통계 API 로 본다.
       통계는 1분 저장이라 테스트마다 **다른 기간(days)** 으로 물을 것.
     - 회귀: backend `guest-activity.test.ts`(15 — 한도·끄개·저장·새로고침 합치기 포함) · frontend `guestActivity.test.ts`(21 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·

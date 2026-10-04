@@ -1,8 +1,11 @@
 // 배포 뒤 실서버 확인 — **DB 에 아무것도 쓰지 않는다** (2026-10-03)
 //   cd e2e && node ../scratchpad/guest-activity/prod-smoke.mjs [https://artlink.cc]
 // - 기록 라우트: 형식이 틀린 본문(400) · 화면 없는 본문(204 — 서버가 DB 에 닿기 전에 돌려보낸다)만 보낸다.
-// - 브라우저: 비회원으로 몇 화면을 열되 /api/guest-activity 와 /api/visits 는 **막는다**(내 확인이 방문으로 세어지지 않게).
-//   막힌 요청이 '시도됐다'는 것으로 새 화면 코드가 올라갔는지 본다.
+// - 브라우저: 비회원으로 몇 화면을 열되 기록은 **브라우저 밖으로 내보내지 않는다**(내 확인이 방문으로 세어지지 않게).
+//   보내려 한 횟수로 새 화면 코드가 올라갔는지 본다.
+//   ⚠️⚠️ `page.route` 로 막는 것만으로는 새어 나간다(2026-10-04 실서버에서 확인) — 창을 닫거나 다른 주소로 떠날 때(pagehide) 나가는
+//   마지막 sendBeacon 은 가로채지지 않아, 이 점검을 돌릴 때마다 '커뮤니티 2초 → 나감' 같은 가짜 방문이 실서버 통계에 남았다.
+//   그래서 페이지 안에서 `navigator.sendBeacon` 을 바꿔 끼워 기록 주소로는 아무것도 보내지 않는다(아래 BEACON_TRAP).
 import path from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -27,6 +30,15 @@ check('빈 기록은 쓰지 않고 204', noop.status === 204, String(noop.status
 const stats = await http('GET', '/api/admin/stats/guests');
 check('통계는 로그인 필요(401)', stats.status === 401, String(stats.status));
 
+// 페이지가 뜨기 전에 심는다 — 기록 주소로 가는 sendBeacon 은 보낸 척만 하고(true → fetch 대체 경로도 안 탄다) 횟수만 센다
+const BEACON_TRAP = () => {
+  const orig = navigator.sendBeacon ? navigator.sendBeacon.bind(navigator) : null;
+  navigator.sendBeacon = (url, data) => {
+    if (String(url).includes('/api/guest-activity')) { try { window.__beaconSeen?.(); } catch {} return true; }
+    return orig ? orig(url, data) : false;
+  };
+};
+
 const browser = await chromium.launch();
 for (const [label, viewport, ua] of [
   ['PC', { width: 1280, height: 900 }, undefined],
@@ -35,6 +47,9 @@ for (const [label, viewport, ua] of [
   const ctx = await browser.newContext({ viewport, userAgent: ua, baseURL: BASE });
   const page = await ctx.newPage();
   const tried = { guest: 0, visit: 0 };
+  await page.exposeBinding('__beaconSeen', () => { tried.guest++; });
+  await page.addInitScript(BEACON_TRAP);
+  // 보조 — 그래도 새는 요청이 있으면 막고 센다(일간 방문자는 페이지가 떠 있을 때 보내므로 이걸로 막힌다)
   await page.route('**/api/guest-activity', (r) => { tried.guest++; return r.abort(); });
   await page.route('**/api/visits', (r) => { tried.visit++; return r.abort(); });
   const errors = [];
