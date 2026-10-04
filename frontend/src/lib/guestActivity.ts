@@ -6,7 +6,9 @@ import { useLocation } from 'react-router-dom';
  * 서버 규칙·집계는 `backend/src/lib/guestActivity.ts`. 들어온 경로(광고·검색·이전 사이트)는 남기지 않는다(사용자 결정).
  *
  * - **방문 하나 = 이 탭**. 방문 id 는 방문마다 새로 만드는 무작위 값(sessionStorage) — 기기 번호(`visitBeacon` 의 localStorage id)와
- *   다른 값이라 이 기록은 계정과 이어지지 않는다. 30분 넘게 쉬었다 돌아오면 새 방문.
+ *   다른 값이라 이 기록은 계정과 이어지지 않는다. **탭이 열려 있는 한 같은 방문이다** — 띄워 둔 탭으로 몇 시간 뒤 돌아와도, 새로고침해도 이어진다.
+ *   ⚠️ 쉬는 시간으로 방문을 끊지 말 것(2026-10-04 사용자 결정). 예전엔 30분 쉬면 새 방문이었는데, 띄워 둔 탭으로 돌아왔을 때 보고 있던 화면
+ *   (모집공고 등)이 새 방문의 '처음 본 화면'이 되어 실제로 들어온 화면과 섞였다.
  * - **화면 하나 = 주소(경로 + `tab`·`work` 만) + 그 화면이 보이는 동안 머문 시간.** 창이 가려지면 시간을 멈춘다.
  *   0.7초도 안 머물고 넘어간 화면(주소 정리·로그인으로 보내기 같은 자동 이동)은 남기지 않는다.
  * - 보내는 때: 화면을 옮겼을 때(5초에 한 번까지) · 창이 가려지거나 닫힐 때(sendBeacon — 닫는 순간에도 간다) · 첫 화면은 3·15·35초에 한 번씩
@@ -23,7 +25,6 @@ const VISIT_KEY = 'artlink-guest-visit';
 const SIGNUP_KEY = 'artlink-guest-signup';
 const MEMBER_KEY = 'artlink-member-device';
 const ENDPOINT = '/api/guest-activity';
-export const GUEST_IDLE_MS = 30 * 60 * 1000;
 /** 이보다 짧게 머문 화면은 자동 이동으로 보고 남기지 않는다 */
 export const MIN_VIEW_MS = 700;
 const FLUSH_GAP_MS = 5000;
@@ -87,15 +88,7 @@ export class GuestTracker {
   navigate(path: string) {
     if (!this.active || this.cur?.path === path) return;
     const now = this.deps.now();
-    // 30분 넘게 아무 일 없었다 — 앞 방문을 닫고(지금 화면까지) 새 방문으로
-    let resume = true;
-    if (this.visit && now - this.visit.last > GUEST_IDLE_MS) {
-      this.endView(now);
-      this.flush(now);
-      this.visit = null;
-      resume = false;   // 방금 닫은 방문을 저장소에서 다시 집어 오지 않게(flush 가 마지막 시각을 지금으로 고쳐 놓았다)
-    }
-    const first = this.ensureVisit(now, resume);
+    const first = this.ensureVisit(now);
     // 첫 화면이 곧바로 다른 주소로 넘어갔으면(`/explore` → `/artists`) 넘어간 화면이 그 '첫 화면' 몫을 이어받는다
     const prev = this.cur;
     const inheritEarly = !!prev && prev.early && prev.seq == null && this.elapsed(prev, now) < MIN_VIEW_MS;
@@ -132,21 +125,10 @@ export class GuestTracker {
     this.armEarly();
   }
 
-  /** 다시 보인다 — 30분 넘게 쉬었으면 지금 화면을 첫 화면으로 새 방문을 연다 */
+  /** 다시 보인다 — 얼마나 쉬었든 같은 방문의 같은 화면을 이어서 센다(머문 시간은 보이는 동안만이라 쉰 시간은 안 들어간다) */
   shown() {
     if (!this.active || !this.cur) return;
     const now = this.deps.now();
-    if (this.visit && now - this.visit.last > GUEST_IDLE_MS) {
-      const path = this.cur.path;
-      this.cur = null;
-      this.queue = [];
-      this.visit = null;
-      this.ensureVisit(now, false);
-      this.cur = { seq: null, path, acc: 0, since: now, early: true };
-      this.touch(now);
-      this.armEarly();
-      return;
-    }
     if (this.cur.since == null) this.cur.since = now;
     this.touch(now);
   }
@@ -170,11 +152,11 @@ export class GuestTracker {
     this.earlyTimers = [];
   }
 
-  /** 방문이 없으면 연다. 새로 열었으면 true. `resume` 이면 이 탭에 남은 방문(새로고침·카카오에서 돌아옴)을 30분 안이면 잇는다 */
-  private ensureVisit(now: number, resume = true): boolean {
+  /** 방문이 없으면 연다. 새로 열었으면 true. 이 탭에 남은 방문(새로고침·카카오에서 돌아옴·오래 띄워 둔 탭)이 있으면 언제든 잇는다 */
+  private ensureVisit(now: number): boolean {
     if (this.visit) return false;
-    const stored = resume ? this.deps.load() : null;
-    if (stored && now - stored.last <= GUEST_IDLE_MS) { this.visit = stored; return false; }
+    const stored = this.deps.load();
+    if (stored) { this.visit = stored; return false; }
     this.visit = { id: this.deps.newId(), seq: 0, last: now };
     this.deps.save(this.visit);
     return true;

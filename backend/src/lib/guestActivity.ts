@@ -7,7 +7,7 @@ import { dayKey, kstDay } from './visitStats';
  * 사용자 요청: 광고로 들어온 비회원의 가입이 적은 이유를 보려고. 들어온 경로(광고·검색·추천 주소)는 일부러 **남기지 않는다**(사용자 결정).
  *
  * ## 남기는 것 / 남기지 않는 것
- * - 방문 하나 = 화면이 **방문마다 새로** 만드는 무작위 id(탭 하나, 30분 쉬면 새로). 일간 방문자의 기기 번호(`DailyVisit.visitorId`)와
+ * - 방문 하나 = 화면이 **방문마다 새로** 만드는 무작위 id(탭 하나 — 탭이 열려 있는 한 같은 방문, 쉬는 시간으로 끊지 않는다. 2026-10-04 사용자 결정). 일간 방문자의 기기 번호(`DailyVisit.visitorId`)와
  *   **다른 값**이라 나중에 그 기기로 로그인해도 이 기록은 계정과 이어지지 않는다. 계정 번호·IP·기기 정보·입력 내용·검색어는 남기지 않는다.
  * - 화면 하나 = 경로(+ 허용한 `tab`·`work` 만) + 그 화면이 **보이는 동안** 머문 시간(상한 30분 — 창을 띄워 둔 채 자리를 비운 시간은 빼려고).
  *   ⚠️ 쿼리를 통째로 남기지 말 것 — 카카오 로그인 뒤 주소(`/auth/kakao/callback?code=…`)에 인증 코드가 실려 온다. 화면도 똑같이 거른다.
@@ -46,8 +46,11 @@ export const GUEST_VIEW_MAX_MS = 30 * 60 * 1000;
 export const GUEST_KEEP_DAYS = 90;
 /** '바로 나감' — 화면 하나만 보고 이 시간 안에 나갔고 로그인·가입으로 이어지지 않은 방문(사용자와 정한 기본값 30초) */
 export const BOUNCE_MS = 30_000;
-/** 마지막 기록 뒤 이만큼 안 지났으면 '아직 보는 중일 수 있다' — 화면의 방문 단위(30분 쉬면 새 방문)와 같다 */
-export const GUEST_IDLE_MS = 30 * 60 * 1000;
+/**
+ * 마지막 기록 뒤 이만큼 안 지났으면 '아직 보는 중일 수 있다'고 표시만 한다. 방문을 끊는 기준이 **아니다** — 그 탭에서 나중에 이어지면
+ * 같은 방문에 붙고 표시도 다시 바뀐다(방문은 탭이 열려 있는 한 하나, 화면 `frontend/src/lib/guestActivity.ts`).
+ */
+export const GUEST_ONGOING_MS = 30 * 60 * 1000;
 export const GUEST_STATS_MAX_DAYS = GUEST_KEEP_DAYS;
 export const GUEST_OUTCOMES = ['LOGIN', 'SIGNUP'] as const;
 export type GuestOutcome = (typeof GUEST_OUTCOMES)[number];
@@ -410,7 +413,7 @@ async function computeGuestStats(n: number, now: Date, recentLimit: number): Pro
           views: views.length,
           outcome: (v.outcome as GuestOutcome | null) ?? null,
           bounced: b,
-          ongoing: !v.outcome && !v.leftAt && now.getTime() - v.lastSeenAt.getTime() < GUEST_IDLE_MS,
+          ongoing: !v.outcome && !v.leftAt && now.getTime() - v.lastSeenAt.getTime() < GUEST_ONGOING_MS,
           steps: stepsOf(views),
         });
       }

@@ -2254,7 +2254,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   `GuestPageView { visitId, seq, path, durationMs, @@unique([visitId, seq]) }`(cascade) · 마이그레이션 `20261003200000_guest_activity`. 90일 뒤 지운다.
 - 기록 `POST /api/guest-activity { visitId, views:[{seq,path,ms}], outcome?, left? }`(204, 인증 없음 — 계정과 잇지 않는다, `text/plain` 본문도 받는다) ←
   화면 `lib/guestActivity.ts useGuestActivity(isAuthenticated)`(App 맨 위). 기록기 `GuestTracker` 는 시계·저장소·전송을 `deps` 로 받는 상태 기계(테스트가 시계를 돌린다).
-  - 방문 = 탭 하나(sessionStorage) · 30분 쉬면 새 방문 · 머문 시간은 보이는 동안만(한 화면 최대 30분) · 0.7초 미만 화면(리다이렉트)은 버림 · 300화면까지.
+  - 방문 = 탭 하나(sessionStorage) · 탭이 열려 있는 한 같은 방문(2026-10-04 — 예전 '30분 쉬면 새 방문'은 띄워 둔 탭의 화면을 '처음 본 화면'에 섞어 없앴다. '보는 중일 수 있음' 표시만 마지막 기록 뒤 30분 기준) · 머문 시간은 보이는 동안만(한 화면 최대 30분) · 0.7초 미만 화면(리다이렉트)은 버림 · 300화면까지.
   - 보내는 때: 화면 이동(5초 묶음) · 가려짐 · `pagehide`(= 떠남 `left`) · 문서 첫 화면 3·15·35초 · bfcache 복귀(`pageshow persisted`)는 같은 화면을 새 순번으로.
   - 로그인하면 LOGIN, 카카오 가입을 마쳤으면 SIGNUP 으로 닫고 멈춘다(`noteGuestSignup` → login). 가입 정보 입력 단계는 `noteGuestStep('/auth/register')`.
   - 로그인한 적 있는 브라우저(`artlink-member-device`)·검색 로봇 UA 는 기록하지 않는다.
@@ -2269,7 +2269,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 통계는 **바로 이어진 같은 주소를 한 화면으로 친 뒤에** 센다(`mergeRepeatedViews`, 머문 시간은 더함) — 새로고침이 '화면 둘'로 세어져 '바로 나감'이 빠졌다(2026-10-04).
   첫 방문자의 페이지가 서비스워커 설치 때 7초쯤 저절로 새로고침되던 게 원인이었다(아래 PWA 항목, `lib/swUpdate.ts`).
 - 개인정보처리방침 1항(수집 항목)·3항(90일).
-- 테스트: 백엔드 `guest-activity.test.ts`(15) · 프론트 `guestActivity.test.ts`(20) · `swUpdate.test.ts`(3) · e2e `68-guest-activity.spec.ts`(5) ·
+- 테스트: 백엔드 `guest-activity.test.ts`(15) · 프론트 `guestActivity.test.ts`(21) · `swUpdate.test.ts`(3) · e2e `68-guest-activity.spec.ts`(5) ·
   하니스 `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문, 크롬·WebKit)·`shot.js`·`load.mjs`(부하·용량).
 
 

@@ -2,13 +2,13 @@
  * 비회원 둘러보기 — 화면 쪽 기록기(`lib/guestActivity.ts`)와 통계 글자(`lib/guestStatsView.ts`) (2026-10-03)
  *
  * 기록기는 시계·저장소·전송을 `deps` 로 받으므로 여기서 시계를 돌려 본다(브라우저 없이).
- * 지켜야 하는 것: 머문 시간은 보이는 동안만 · 곧바로 넘어간 화면은 남기지 않음 · 30분 쉬면 새 방문 · 로그인하면 닫고 멈춤 ·
+ * 지켜야 하는 것: 머문 시간은 보이는 동안만 · 곧바로 넘어간 화면은 남기지 않음 · 탭이 열려 있는 한 같은 방문(쉬는 시간으로 끊지 않는다) · 로그인하면 닫고 멈춤 ·
  * 닫을 때 '떠남' · 주소는 tab·work 만.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { GuestTracker, guestPath, guestTrackingAllowed, GUEST_IDLE_MS, MAX_BATCH, MAX_VIEWS, type GuestBeacon, type GuestVisit, type TrackerDeps } from '@/lib/guestActivity';
+import { GuestTracker, guestPath, guestTrackingAllowed, MAX_BATCH, MAX_VIEWS, type GuestBeacon, type GuestVisit, type TrackerDeps } from '@/lib/guestActivity';
 import { fmtDuration, pct, stepText, visitEnd, visitTime } from '@/lib/guestStatsView';
 
 /** 가짜 시계·타이머·저장소 */
@@ -106,17 +106,25 @@ describe('GuestTracker — 기록기', () => {
     expect(home.ms).toBe(10_000);
   });
 
-  it('30분 넘게 쉬었다 돌아오면 새 방문 — 지금 화면이 그 첫 화면', () => {
+  it('띄워 둔 탭으로 몇 시간 뒤 돌아와도 같은 방문 — 그 화면을 새 첫 화면으로 치지 않는다', () => {
+    // 2026-10-04 사용자 결정: 예전엔 30분 쉬면 새 방문이라, 돌아와서 보던 화면(모집공고)이 '처음 본 화면'에 섞였다
     const { t, sent, advance, setVisible } = rig();
-    t.navigate('/galleries');
+    t.navigate('/exhibitions/7');
     advance(4000);
+    t.navigate('/exhibitions');
+    advance(3000);
     setVisible(false); t.hidden();
-    advance(GUEST_IDLE_MS + 60_000);
+    advance(5 * 3600_000);
     setVisible(true); t.shown();
-    advance(3500);
-    const ids = [...new Set(sent.map((b) => b.visitId))];
-    expect(ids).toHaveLength(2);
-    expect(sent.filter((b) => b.visitId === ids[1]).flatMap((b) => b.views).map((v) => [v.seq, v.path])).toEqual([[0, '/galleries']]);
+    advance(8000);
+    t.navigate('/artists');
+    advance(6000);
+    t.hidden(true);
+    expect(new Set(sent.map((b) => b.visitId)).size).toBe(1);
+    const bySeq = new Map<number, { path: string; ms: number }>();
+    for (const v of lastViews(sent)) bySeq.set(v.seq, v);
+    expect([...bySeq.entries()].sort((a, b) => a[0] - b[0]).map(([s, v]) => [s, v.path])).toEqual([[0, '/exhibitions/7'], [1, '/exhibitions'], [2, '/artists']]);
+    expect(bySeq.get(1)!.ms).toBe(11_000);   // 쉰 다섯 시간은 안 들어가고 보인 시간(3초 + 8초)만
   });
 
   it('로그인하면 마지막 화면과 함께 \'로그인\'으로 닫고, 그 뒤 화면은 남기지 않는다', () => {
@@ -165,7 +173,7 @@ describe('GuestTracker — 기록기', () => {
     expect(sent[n + 1]).toMatchObject({ views: [], left: true });
   });
 
-  it('새로고침·카카오에서 돌아오면 같은 방문을 잇는다(30분 안) — 순번이 이어지고 첫 화면을 미리 보낸다', () => {
+  it('새로고침·카카오에서 돌아오면 같은 방문을 잇는다 — 순번이 이어지고 첫 화면을 미리 보낸다', () => {
     const { t, sent, advance } = rig({ stored: { id: 'visit-kept0000000000', seq: 3, last: 1_000_000 - 60_000 } });
     t.navigate('/auth/kakao/callback');
     advance(3500);
@@ -174,6 +182,13 @@ describe('GuestTracker — 기록기', () => {
     advance(20_000);
     t.finish('SIGNUP');
     expect(sent[sent.length - 1]).toMatchObject({ outcome: 'SIGNUP', views: [{ seq: 4, path: '/auth/register' }] });
+  });
+
+  it('오래 띄워 둔 탭을 새로고침해도 같은 방문을 잇는다(쉬는 시간으로 끊지 않는다)', () => {
+    const { t, sent, advance } = rig({ stored: { id: 'visit-kept0000000000', seq: 2, last: 1_000_000 - 3 * 86400_000 } });
+    t.navigate('/exhibitions');
+    advance(3500);
+    expect(sent[0]).toMatchObject({ visitId: 'visit-kept0000000000', views: [{ seq: 2, path: '/exhibitions' }] });
   });
 
   it('뒤로가기 캐시에서 되살아나면 같은 화면을 새 순번으로 — 서버가 떠남을 지울 수 있게', () => {

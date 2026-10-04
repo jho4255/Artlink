@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-04): Backend 1541 (supertest, `artlink_test` DB 순차), Frontend 1071 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2600+ tests** (2026-10-04): Backend 1541 (supertest, `artlink_test` DB 순차), Frontend 1072 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2047,7 +2047,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       계정·IP·기기 정보·검색어 없음. 표 `GuestVisit`(id = 화면이 방문마다 새로 만드는 무작위 값 — 일간 방문자의 기기 번호와 **다른 값**이라 계정과 이어지지 않는다)
       + `GuestPageView`((visitId, seq) unique). 90일 뒤 지운다(`pruneGuestActivity` — 스케줄러 없이 기록·통계 요청 때 시간당 한 번).
     - 규칙은 서버 `backend/src/lib/guestActivity.ts` · 화면 `frontend/src/lib/guestActivity.ts`(`useGuestActivity(isAuthenticated)`, App 맨 위 — 라우터 안이어야 한다).
-      방문 = 탭 하나(sessionStorage, 30분 쉬면 새 방문) · 머문 시간은 보이는 동안만(가려지면 멈춤, 한 화면 최대 30분) · 0.7초 미만으로 넘어간 화면(리다이렉트)은 안 남긴다.
+      방문 = 탭 하나(sessionStorage) — **탭이 열려 있는 한 같은 방문**(띄워 둔 탭에 몇 시간 뒤 돌아와도·새로고침해도 이어진다. 2026-10-04 사용자 결정 —
+      예전엔 30분 쉬면 새 방문이라 돌아와서 보던 화면(모집공고 등)이 '처음 본 화면'에 섞였다. 쉬는 시간으로 끊는 규칙을 되살리지 말 것) · 머문 시간은 보이는 동안만(가려지면 멈춤, 한 화면 최대 30분) · 0.7초 미만으로 넘어간 화면(리다이렉트)은 안 남긴다.
       보내기는 `navigator.sendBeacon` + `text/plain`(헤더를 못 단다 — 서버 라우트가 `express.text` 로 받아 JSON.parse) — 화면 이동(5초 묶음)·가려짐·`pagehide`·문서 첫 화면 3·15·35초.
     - ⚠️ **주소는 경로 + `tab`·`work` 만** — 카카오 로그인 뒤 주소에 인증 코드(`?code=`)가 실려 온다. 화면 `guestPath` 와 서버 `normalizeGuestPath` 가 같은 규칙(프론트 테스트가 서버 소스와 대조).
     - ⚠️ 같은 화면을 여러 번 보낸다 — 머문 시간은 **더 큰 값으로만** 고친다(`updateMany … durationMs lt`, 규칙 46).
@@ -2084,7 +2085,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `shot.js`(통계 칸 PC·모바일) · `load.mjs`(부하·용량 — 데모 DB 전용, 만든 줄은 `clean`).
     - ⚠️ **Playwright 는 sendBeacon 을 `ping` 으로 보여 주고 본문을 주지 않는다**(postData null) — E2E 는 요청 **수**만 세고, 무엇이 남았는지는 통계 API 로 본다.
       통계는 1분 저장이라 테스트마다 **다른 기간(days)** 으로 물을 것.
-    - 회귀: backend `guest-activity.test.ts`(15 — 한도·끄개·저장·새로고침 합치기 포함) · frontend `guestActivity.test.ts`(20 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
+    - 회귀: backend `guest-activity.test.ts`(15 — 한도·끄개·저장·새로고침 합치기 포함) · frontend `guestActivity.test.ts`(21 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
       e2e `68-guest-activity.spec.ts`(5 — 둘러본 화면이 통계에 남고 떠나면 '나감' · 로그인한 사람은 0 · 로그인하면 닫힘 · 500/끊김/저장소 막힘에도 화면 멀쩡 · 빠른 이동에 요청 ≤4).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
