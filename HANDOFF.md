@@ -583,7 +583,7 @@ git push
 | 파일 | 변경 |
 |------|------|
 | `frontend/vite.config.ts` | workbox `skipWaiting: true` + `clientsClaim: true` 추가 |
-| `frontend/src/main.tsx` | `controllerchange` 이벤트 감지 → `window.location.reload()` 자동 새로고침 |
+| `frontend/src/main.tsx` | `controllerchange` 이벤트 감지 → `window.location.reload()` 자동 새로고침 — 새 버전으로 바뀔 때만, 처음 설치는 제외(`lib/swUpdate.ts`, 2026-10-04) |
 
 - `skipWaiting` — 새 서비스워커가 대기 없이 즉시 활성화
 - `clientsClaim` — 활성화 즉시 모든 탭의 제어권 획득

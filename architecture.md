@@ -708,7 +708,8 @@ frontend/src/pages/ArtistsPage.tsx 칸 머리말(button[aria-expanded]) + [모�
 ## PWA 자동 캐시 갱신 & HTTP 캐시 정책
 
 - `vite.config.ts`: workbox `skipWaiting: true` + `clientsClaim: true`
-- `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침
+- `main.tsx`: `controllerchange` → `window.location.reload()` 자동 새로고침 — **새 버전으로 바뀔 때만**(`lib/swUpdate.ts controllerChangeReloader`).
+  ⚠️ 처음 설치(관리자 없던 페이지 → `clientsClaim`)는 업데이트가 아니다. 구분하지 않던 때 첫 방문자의 페이지가 들어온 지 7초쯤에 저절로 다시 불러와졌다(2026-10-04 실서버 실측 PC 7.4초·휴대폰 6.5초)
 - 배포 후 수동 Clear site data 불필요
 
 ### 서비스워커 등록 — 버전 쿼리로 CDN 엣지 캐시 우회 (2026-07 사고 재발 방지)
@@ -2265,8 +2266,10 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 끄개 `GUEST_ACTIVITY=off` — 기록 라우트가 받기만 하고 204(아무것도 안 쓴다). 통계는 그대로.
 - 통계는 방문을 2,000개씩 커서로 나눠 읽는다(한 번에 올리면 2만 방문에서 +450MB — 운영 512MB), 최근 5만 방문까지(`capped`), 같은 기간 1분 저장.
 - 화면 쪽 기록기는 effect·이벤트·타이머·보내기를 전부 `safely` 로 감싼다(App 맨 위라 던지면 사이트 전체가 죽는다).
+- 통계는 **바로 이어진 같은 주소를 한 화면으로 친 뒤에** 센다(`mergeRepeatedViews`, 머문 시간은 더함) — 새로고침이 '화면 둘'로 세어져 '바로 나감'이 빠졌다(2026-10-04).
+  첫 방문자의 페이지가 서비스워커 설치 때 7초쯤 저절로 새로고침되던 게 원인이었다(아래 PWA 항목, `lib/swUpdate.ts`).
 - 개인정보처리방침 1항(수집 항목)·3항(90일).
-- 테스트: 백엔드 `guest-activity.test.ts`(14) · 프론트 `guestActivity.test.ts`(20) · e2e `68-guest-activity.spec.ts`(5) ·
+- 테스트: 백엔드 `guest-activity.test.ts`(15) · 프론트 `guestActivity.test.ts`(20) · `swUpdate.test.ts`(3) · e2e `68-guest-activity.spec.ts`(5) ·
   하니스 `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문, 크롬·WebKit)·`shot.js`·`load.mjs`(부하·용량).
 
 

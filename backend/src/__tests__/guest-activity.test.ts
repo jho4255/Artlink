@@ -183,6 +183,31 @@ describe('비회원 둘러보기 — 통계', () => {
     expect(s.since).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it('새로고침으로 같은 화면이 이어서 두 번 남아도 한 화면이다 — 바로 나감·화면 수가 흔들리지 않는다', async () => {
+    const old = new Date(Date.now() - 3 * 3600_000);
+    // V1: 모집공고 7초 → (새로고침) 모집공고 10초 → 나감 = 화면 하나 17초 → 바로 나감
+    await recordGuestActivity(V1, { views: [
+      { seq: 0, path: '/exhibitions', ms: 7_000 }, { seq: 1, path: '/exhibitions', ms: 10_000 },
+    ] }, old);
+    // V2: 모집공고 → (새로고침) 모집공고 → 작가 → 모집공고 = 화면 셋(떨어진 같은 화면은 합치지 않는다)
+    await recordGuestActivity(V2, { views: [
+      { seq: 0, path: '/exhibitions', ms: 7_000 }, { seq: 1, path: '/exhibitions', ms: 4_000 },
+      { seq: 2, path: '/artists', ms: 5_000 }, { seq: 3, path: '/exhibitions', ms: 3_000 },
+    ] }, old);
+    const s = await stats();
+    expect(s.summary).toMatchObject({ visits: 2, bounced: 1, avgViews: 2 });   // (1 + 3) / 2
+    expect(s.landings.find((l: any) => l.label === '모집공고')).toMatchObject({ visits: 2, bounced: 1 });
+    expect(s.pages.find((p: any) => p.label === '모집공고')).toMatchObject({ visits: 2, views: 3 });
+    const v1 = s.recent.find((r: any) => r.bounced);
+    expect(v1).toMatchObject({ views: 1, seconds: 17 });
+    expect(v1.steps).toEqual([expect.objectContaining({ label: '모집공고', repeat: 1, seconds: 17 })]);   // ×2 로 그리지 않는다
+    const v2 = s.recent.find((r: any) => !r.bounced);
+    expect(v2.views).toBe(3);
+    expect(v2.steps.map((st: any) => [st.label, st.seconds])).toEqual([['모집공고', 11], ['작가', 5], ['모집공고', 3]]);
+    // 가장 많이 본 곳은 모집공고 — 새로고침 몫은 머문 시간에만 더해진다(평균 = (17 + 11 + 3) / 3)
+    expect(s.pages.find((p: any) => p.label === '모집공고').avgSeconds).toBe(10);
+  });
+
   it('기간 밖 방문은 빼고 · 방금 기록된 방문은 \'보는 중일 수 있음\'', async () => {
     await recordGuestActivity(V1, { views: [{ seq: 0, path: '/', ms: 5_000 }] }, new Date(Date.now() - 10 * 86400_000));
     await recordGuestActivity(V2, { views: [{ seq: 0, path: '/artists', ms: 5_000 }] });

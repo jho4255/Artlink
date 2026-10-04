@@ -281,8 +281,24 @@ const isBounce = (views: { durationMs: number }[], outcome: string | null) =>
   views.length === 1 && views[0].durationMs < BOUNCE_MS && !outcome;
 
 /**
+ * 바로 이어진 **같은 주소**는 한 화면으로 친다(머문 시간은 더한다) — 새로고침은 화면을 하나 더 본 게 아니다.
+ * ⚠️ 이걸 거치지 않고 세면 '바로 나감'이 빠진다(2026-10-04 실측). 첫 방문자의 페이지는 서비스워커가 설치되며 7초쯤에 한 번
+ * 다시 불러와졌고(그 새로고침은 `main.tsx` 에서 막았다), 사용자가 직접 당겨서 새로고침해도 같다 — 같은 화면이 두 줄이 되어
+ * 화면 하나·30초 미만인 방문이 '화면 둘'로 세어졌다. 주소가 다르면 합치지 않는다(작품을 넘겨 본 `?work=` 셋은 셋이다).
+ */
+export function mergeRepeatedViews<T extends { path: string; durationMs: number }>(views: T[]): T[] {
+  const out: T[] = [];
+  for (const pv of views) {
+    const prev = out[out.length - 1];
+    if (prev && prev.path === pv.path) out[out.length - 1] = { ...prev, durationMs: prev.durationMs + pv.durationMs };
+    else out.push(pv);
+  }
+  return out;
+}
+
+/**
  * 최근 `days` 일(오늘 포함, KST) 비회원 방문 집계 + 최근 방문 경로.
- * '바로 나감' = 화면 하나 · `BOUNCE_MS` 미만 · 로그인/가입 없음.
+ * '바로 나감' = 화면 하나 · `BOUNCE_MS` 미만 · 로그인/가입 없음. 화면 수는 이어진 같은 주소를 하나로 친 뒤에 센다(`mergeRepeatedViews`).
  *
  * ⚠️⚠️ **방문을 한 번에 다 올리지 말 것 — `GUEST_STATS_BATCH` 개씩 나눠 읽는다.** 처음엔 기간 안 방문을 화면째로(`include views`) 한 번에
  * 읽었는데, 2만 방문(화면 12만 줄)에서 요청 하나가 서버 메모리를 **약 450MB** 더 썼다(실측 228 → 673MB, 운영 서버는 512MB) —
@@ -358,8 +374,9 @@ async function computeGuestStats(n: number, now: Date, recentLimit: number): Pro
     }
 
     for (const v of batch) {
-      const views = byVisit.get(v.id);
-      if (!views?.length) continue;
+      const raw = byVisit.get(v.id);
+      if (!raw?.length) continue;
+      const views = mergeRepeatedViews(raw);
       counted++;
       const total = views.reduce((sum, pv) => sum + pv.durationMs, 0);
       totals.push(total);

@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-04): Backend 1540 (supertest, `artlink_test` DB 순차), Frontend 1068 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2600+ tests** (2026-10-04): Backend 1541 (supertest, `artlink_test` DB 순차), Frontend 1071 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2073,7 +2073,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         저장은 줄당 약 290B(색인 포함) → 90일 보관이면 하루 100 방문 ≈ 18MB · 1,000 방문 ≈ 180MB · 10,000 방문 ≈ 1.8GB(그쯤이면 끄개나 보관 기간을 볼 것).
     - 화면 `AdminStatsSection.tsx GuestSection`: KPI(방문 · 바로 나감 % · 한 방문에 머문 시간(중간값) · 가입(로그인)) · **처음 본 화면**(공모 제목·작가 이름까지 — 광고가 보낸 곳,
       바로 나감 %·가입) · 많이 본 화면(본 방문·평균 머문 시간) · 둘러보다 나간 곳(바로 나감·가입/로그인 제외) · 최근 방문 경로(8개 + 더 보기, 최대 40).
-      '바로 나감' = 화면 하나·30초 미만·로그인/가입 없음(`BOUNCE_MS`). 화면 이름·상세 이름은 **서버가** 붙인다(`guestPageKind` + `resolveRefs` — `@주소`는 작가/갤러리를 가른다,
+      '바로 나감' = 화면 하나·30초 미만·로그인/가입 없음(`BOUNCE_MS`). ⚠️ 화면 수는 **바로 이어진 같은 주소를 하나로 친 뒤에** 센다(`mergeRepeatedViews`, 시간은 더함) —
+      새로고침이 '화면 둘'이 되어 바로 나감이 빠졌다(2026-10-04: 첫 방문 자동 새로고침, 위 Deployment 의 PWA 항목). 경로의 '×N' 은 이제 다른 주소의 같은 종류(작품 셋을 넘겨 봄)만. 화면 이름·상세 이름은 **서버가** 붙인다(`guestPageKind` + `resolveRefs` — `@주소`는 작가/갤러리를 가른다,
       익명 글은 제목만). ⚠️ **새 공개 화면을 만들면 `guestPageKind` 에 이름을 더할 것** — 빠지면 '기타'로 뭉친다.
       색은 일간 방문자 그래프의 '비회원' 주황 하나(같은 대상 = 같은 색). 경로 줄은 `break-keep [overflow-wrap:anywhere]` + 화살표·시간을 `\u00a0` 로 앞뒤 낱말에 붙인다
       (휴대폰에서 '모\n집공고'·'나\n감'으로 갈라졌다). 끝맺음은 '로그인 완료'·'가입 완료'(그냥 '로그인'이면 앞 화면 이름과 겹쳐 '로그인 3초 → 로그인').
@@ -2083,7 +2084,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `shot.js`(통계 칸 PC·모바일) · `load.mjs`(부하·용량 — 데모 DB 전용, 만든 줄은 `clean`).
     - ⚠️ **Playwright 는 sendBeacon 을 `ping` 으로 보여 주고 본문을 주지 않는다**(postData null) — E2E 는 요청 **수**만 세고, 무엇이 남았는지는 통계 API 로 본다.
       통계는 1분 저장이라 테스트마다 **다른 기간(days)** 으로 물을 것.
-    - 회귀: backend `guest-activity.test.ts`(14 — 한도·끄개·저장 포함) · frontend `guestActivity.test.ts`(20 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
+    - 회귀: backend `guest-activity.test.ts`(15 — 한도·끄개·저장·새로고침 합치기 포함) · frontend `guestActivity.test.ts`(20 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
       e2e `68-guest-activity.spec.ts`(5 — 둘러본 화면이 통계에 남고 떠나면 '나감' · 로그인한 사람은 0 · 로그인하면 닫힘 · 500/끊김/저장소 막힘에도 화면 멀쩡 · 빠른 이동에 요청 ≤4).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
@@ -2155,6 +2156,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload
+  ⚠️ 새로고침은 **새 버전으로 바뀔 때만**이다(`lib/swUpdate.ts`) — `clientsClaim` 은 처음 설치 때도 `controllerchange` 를 내서, 구분하지 않던 때
+  **첫 방문자의 페이지가 들어온 지 7초쯤에 저절로 다시 불러와졌다**(2026-10-04 실서버 실측, 비회원 통계에 첫 화면이 '×2'로 남아 드러났다).
+  E2E 는 개발 서버라 서비스워커가 없어 못 잡는다 — 바꾸면 프로덕션 빌드(`vite preview`)에서 새 브라우저로 load 횟수를 셀 것
 - **요금제(Starter)**: 2026-07 무료→Starter 전환. **스핀다운/콜드스타트 없음**, PostgreSQL **90일 자동삭제 없음**(영구 유지). 백업 보존은 대시보드에서 확인 권장(별도 pg_dump→R2 오프사이트 백업 미구성)
 - **재배포**: `git checkout deploy/render && git merge main && git push`
 - 🔒 **배포 전 데이터 유출 점검 필수** — `bash scripts/predeploy-check.sh`
