@@ -2269,7 +2269,18 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 통계는 **바로 이어진 같은 주소를 한 화면으로 친 뒤에** 센다(`mergeRepeatedViews`, 머문 시간은 더함) — 새로고침이 '화면 둘'로 세어져 '바로 나감'이 빠졌다(2026-10-04).
   첫 방문자의 페이지가 서비스워커 설치 때 7초쯤 저절로 새로고침되던 게 원인이었다(아래 PWA 항목, `lib/swUpdate.ts`).
 - 개인정보처리방침 1항(수집 항목)·3항(90일).
-- 테스트: 백엔드 `guest-activity.test.ts`(15) · 프론트 `guestActivity.test.ts`(21) · `swUpdate.test.ts`(3) · e2e `68-guest-activity.spec.ts`(5) ·
+- **카카오 인증 뒤 콜백이 다른 탭에서 열린다**(2026-10-04 실서버 기록 `카카오 로그인 → 로그인 → 카카오 로그인 → 가입 정보 입력 → 가입 완료` — 콜백에서 시작한 방문).
+  원인은 기록기가 아니라 로그인 흐름: 콜백 탭의 sessionStorage 가 비어 OAuth state 검증이 실패('보안 검증 실패' 2초 → `/login`)했고, 다시 눌러야 가입됐다.
+  로그인 뒤 갈 곳(`post_login_redirect`)도 원래 탭에 남아 마이페이지로 떨어졌고, 원래 방문(광고 → 공모 → 로그인)은 '나감'으로 따로 남았다.
+  - `frontend/src/lib/oauthState.ts` — state 를 탭(`kakao_state`, 옛 키) + 브라우저(`artlink-oauth-pending`: `[{state, provider, at, returnTo?}]`, 최근 5개 · 30분)에 적고,
+    콜백이 `checkOAuthState` 로 맞춘다(한 번 쓰면 양쪽에서 지움). 이 브라우저가 적지 않은 state 는 거절(로그인 CSRF 방어 유지). 다른 탭이면 `returnTo` 를 그 탭에 되살린다.
+  - 다른 브라우저(저장소가 다르다)는 못 맞춘다 → `AuthCallbackPage` 의 `elsewhere` 단계: [카카오로 계속하기](사용자 동작으로만 — 자동 재시도 안 함).
+  - 카카오로 보내는 길은 `lib/kakaoLogin.ts startKakaoLogin`(+ `components/shared/KakaoLoginButton.tsx`) 하나 — state 저장 → `noteGuestOAuthStart(state)` → 이동.
+  - 기록기: `GuestTracker.handoff()` 가 `{id, seq + HANDOFF_SEQ_GAP(20)}` 을 주고 `noteGuestOAuthStart` 가 localStorage `artlink-guest-handoff`(`{state, id, seq, at}`, 30분)에 적는다.
+    새 탭의 `load()` 가 `readHandoff`(콜백 주소 + 같은 state 일 때만)로 그 방문을 이어받는다. 같은 탭으로 돌아오면 넘긴 값은 지워진다. 방문 번호는 카카오로 보내지 않는다.
+  - 서버 변경 없음(순번이 건너뛰어도 본 순서대로 정렬된다). 재현 하니스 `scratchpad/oauth-newtab/repro.js`(MODE=newtab|otherctx|sametab, ENGINE=webkit, 데모 DB 전용) ·
+    COOP 헤더 왕복 실측 `coop.js`(크롬·WebKit 둘 다 sessionStorage 유지 — 원인 아님).
+- 테스트: 백엔드 `guest-activity.test.ts`(16) · 프론트 `guestActivity.test.ts`(26) · `oauthState.test.ts`(11) · `swUpdate.test.ts`(3) · e2e `68-guest-activity.spec.ts`(5) ·
   하니스 `scratchpad/guest-activity/browse.js`(실제 브라우저로 비회원 방문, 크롬·WebKit)·`shot.js`·`load.mjs`(부하·용량).
 
 

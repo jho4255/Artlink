@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { resolvePostLoginPath } from '@/lib/postLoginRedirect';
+import { peekPostLoginRedirect, resolvePostLoginPath, setPostLoginRedirect } from '@/lib/postLoginRedirect';
+import { checkOAuthState } from '@/lib/oauthState';
+import KakaoLoginButton from '@/components/shared/KakaoLoginButton';
 import { armHomepageNudge } from '@/lib/homepageNudge';
 import { noteGuestSignup, noteGuestStep } from '@/lib/guestActivity';
 import { roleLabel, VISITOR_ROLE_HINT } from '@/lib/utils';
@@ -14,7 +16,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
 
-  const [phase, setPhase] = useState<'loading' | 'register'>('loading');
+  // elsewhere — 이 브라우저가 적어 둔 state 가 아니다(다른 브라우저로 돌아왔거나 · 이미 쓴 콜백을 다시 열었거나 · 30분이 지났다). 한 번 더 누르게 한다(`lib/oauthState.ts`)
+  const [phase, setPhase] = useState<'loading' | 'register' | 'elsewhere'>('loading');
   const [tempToken, setTempToken] = useState('');
   const [profile, setProfile] = useState<{ name: string; email: string | null; avatar: string | null }>({ name: '', email: null, avatar: null });
 
@@ -84,14 +87,17 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
       return;
     }
 
-    const savedState = sessionStorage.getItem(`${provider}_state`);
-    // ⚠️ 저장값이 없으면 통째로 건너뛰던 것을 막는다(로그인 CSRF, 2026-09-19). 다른 탭에서 시작한 로그인은 실패하지만 다시 누르면 된다.
-    if (!savedState || state !== savedState) {
-      setError('보안 검증에 실패했습니다.');
-      setTimeout(() => navigate('/login', { replace: true }), 2000);
+    // ⚠️ 이 브라우저가 적어 둔 state 가 아니면 받지 않는다(로그인 CSRF, 2026-09-19 — 저장값이 없을 때 통째로 건너뛰던 것을 막았다).
+    // 같은 브라우저의 **다른 탭**에서 시작한 로그인은 맞춰진다(2026-10-04 — 카카오 인증 뒤 새 탭으로 돌아오는 일이 실제로 있었다. lib/oauthState.ts).
+    const check = checkOAuthState(provider, state);
+    if (!check.ok) {
+      // 다른 브라우저로 돌아왔다(등) — 옛날처럼 '보안 검증 실패' 2초 뒤 로그인 화면으로 튕기지 않고, 여기서 한 번 더 누르게 한다.
+      // ⚠️ 자동으로 카카오에 다시 보내지 말 것 — 휴대폰에서 카카오톡 앱을 여는 데 사용자 동작이 필요하다(lib/kakaoLogin.ts)
+      setPhase('elsewhere');
       return;
     }
-    sessionStorage.removeItem(`${provider}_state`);
+    // 다른 탭으로 돌아왔으면 로그인 뒤 갈 곳(지원하려던 공모 등)은 원래 탭에 두고 왔다 — 떠날 때 함께 적어 둔 것을 이 탭에 되살린다
+    if (check.returnTo && !peekPostLoginRedirect()) setPostLoginRedirect(check.returnTo);
 
     const redirectUri = `${window.location.origin}/auth/${provider}/callback`;
     oauthMutation.mutate({ code, redirectUri });
@@ -107,6 +113,22 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
     if (!agreePrivacy) return setError('개인정보 처리방침에 동의해주세요.');
     registerMutation.mutate({ tempToken, role, name: name.trim(), email: email.trim(), phone: phone.trim(), agreeTerms, agreePrivacy });
   };
+
+  if (phase === 'elsewhere') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="text-xl font-medium mb-2 font-serif">로그인을 마무리해 주세요</h1>
+          {/* 예: 인스타그램 같은 앱 안에서 시작해 카카오톡 인증 뒤 다른 브라우저(사파리·크롬)로 돌아왔다. 새로고침·뒤로가기로 다시 열린 콜백(이미 쓴 state)도 여기로 온다 */}
+          <p className="text-sm text-gray-500 mb-8 leading-relaxed break-keep">
+            로그인을 시작한 창과 다른 곳에서 열렸거나 시간이 지나 이어서 처리하지 못했어요. 아래 버튼을 한 번 더 누르면 바로 이어집니다.
+          </p>
+          <KakaoLoginButton label="카카오로 계속하기" />
+          <Link to="/" replace className="mt-5 inline-block text-xs text-gray-400 underline">처음 화면으로</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'loading') {
     return (

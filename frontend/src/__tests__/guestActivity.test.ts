@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { GuestTracker, guestPath, guestTrackingAllowed, MAX_BATCH, MAX_VIEWS, type GuestBeacon, type GuestVisit, type TrackerDeps } from '@/lib/guestActivity';
+import { GuestTracker, guestPath, guestTrackingAllowed, HANDOFF_SEQ_GAP, HANDOFF_TTL_MS, MAX_BATCH, MAX_VIEWS, readHandoff, type GuestBeacon, type GuestVisit, type TrackerDeps } from '@/lib/guestActivity';
 import { fmtDuration, pct, stepText, visitEnd, visitTime } from '@/lib/guestStatsView';
 
 /** 가짜 시계·타이머·저장소 */
@@ -242,6 +242,77 @@ describe('GuestTracker — 기록기', () => {
   });
 });
 
+describe('카카오 인증 뒤 콜백이 다른 탭에서 열려도 같은 방문 (2026-10-04)', () => {
+  // 실서버에 '카카오 로그인 3초 → 로그인 1초 → 카카오 로그인 1초 → 가입 정보 입력 → 가입 완료' — 콜백에서 시작한 방문이 남았다.
+  // 새 탭은 sessionStorage 가 비어 새 방문을 열었고, 광고로 들어와 공모를 본 원래 방문은 '로그인 앞에서 나감'으로 따로 남았다.
+  const STATE = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const T = 1_800_000_000_000;
+
+  it('handoff — 떠나는 탭 몫을 남기고 그 뒤 순번을 넘긴다 · 이 탭은 그대로(같은 탭으로 돌아오면 순번을 건너뛰지 않는다)', () => {
+    const { t, sent, advance, stored } = rig();
+    t.navigate('/exhibitions/7'); advance(4000);
+    t.navigate('/login'); advance(1500);
+    const h = t.handoff()!;
+    expect(h.id).toBe(stored()!.id);
+    expect(h.seq).toBe(stored()!.seq + HANDOFF_SEQ_GAP);
+    t.hidden(true);   // 카카오로 떠난다
+    // 같은 탭으로 돌아왔다(보통) — 저장된 방문을 그대로 잇는다
+    const back = rig({ stored: stored() });
+    back.t.navigate('/auth/kakao/callback'); back.advance(3500);
+    const loginSeq = lastViews(sent).find((v) => v.path === '/login')!.seq;
+    expect(back.sent[0].views[0]).toMatchObject({ seq: loginSeq + 1, path: '/auth/kakao/callback' });
+  });
+
+  it('다른 탭이 이어받으면 같은 방문 번호 · 순번은 로그인 화면 뒤 · 가입으로 닫힌다', () => {
+    const tab1 = rig();
+    tab1.t.navigate('/exhibitions/7'); tab1.advance(4000);
+    tab1.t.navigate('/login'); tab1.advance(1500);
+    const h = tab1.t.handoff()!;
+    tab1.t.hidden(true);
+    const raw = JSON.stringify({ state: STATE, id: h.id, seq: h.seq, at: T });
+    const adopted = readHandoff(raw, '/auth/kakao/callback', `?code=x&state=${STATE}`, T + 30_000);
+    expect(adopted.drop).toBe(true);
+    const tab2 = rig({ stored: adopted.visit });   // 새 탭 — 자기 방문이 없어 넘겨 둔 방문을 읽는다
+    tab2.t.navigate('/auth/kakao/callback'); tab2.advance(1200);
+    tab2.t.navigate('/auth/register'); tab2.advance(23_000);
+    tab2.t.finish('SIGNUP');
+    const all = [...tab1.sent, ...tab2.sent];
+    expect(new Set(all.map((b) => b.visitId))).toEqual(new Set([h.id]));
+    const bySeq = new Map<number, string>();
+    for (const v of all.flatMap((b) => b.views)) bySeq.set(v.seq, v.path);
+    expect([...bySeq.entries()].sort((a, b) => a[0] - b[0]).map(([, p]) => p)).toEqual(['/exhibitions/7', '/login', '/auth/kakao/callback', '/auth/register']);
+    expect(Math.max(...[...bySeq.keys()].filter((k) => bySeq.get(k) === '/login'))).toBeLessThan(h.seq);
+    expect(tab2.sent[tab2.sent.length - 1].outcome).toBe('SIGNUP');
+  });
+
+  it('readHandoff — 그 로그인의 콜백(state 가 같다)에서만 이어받는다 · 다른 화면에선 그대로 둔다 · 오래됐거나 망가졌으면 지운다', () => {
+    const raw = JSON.stringify({ state: STATE, id: 'visit-kept0000000000', seq: 21, at: T });
+    expect(readHandoff(raw, '/auth/kakao/callback', `?code=x&state=${STATE}`, T + 1000)).toEqual({ visit: { id: 'visit-kept0000000000', seq: 21, last: T + 1000 }, drop: true });
+    // 남이 만든 콜백 주소(다른 state) · state 없음 — 이어받지 않는다(아직 카카오에 가 있을 수 있으니 지우지도 않는다)
+    expect(readHandoff(raw, '/auth/kakao/callback', '?code=x&state=other-state-000000', T)).toEqual({ visit: null, drop: false });
+    expect(readHandoff(raw, '/auth/kakao/callback', '?code=x', T)).toEqual({ visit: null, drop: false });
+    // 콜백이 아닌 화면 — 다른 탭을 새로 열었다
+    expect(readHandoff(raw, '/exhibitions', `?state=${STATE}`, T)).toEqual({ visit: null, drop: false });
+    // 오래됐다 · 망가졌다 · 방문 번호 형식이 아니다 · 순번이 범위 밖
+    expect(readHandoff(raw, '/auth/kakao/callback', `?state=${STATE}`, T + HANDOFF_TTL_MS + 1)).toEqual({ visit: null, drop: true });
+    expect(readHandoff('{oops', '/auth/kakao/callback', `?state=${STATE}`, T)).toEqual({ visit: null, drop: true });
+    expect(readHandoff(JSON.stringify({ state: STATE, id: '<script>', seq: 1, at: T }), '/auth/kakao/callback', `?state=${STATE}`, T).visit).toBeNull();
+    expect(readHandoff(JSON.stringify({ state: STATE, id: 'visit-kept0000000000', seq: MAX_VIEWS, at: T }), '/auth/kakao/callback', `?state=${STATE}`, T).visit).toBeNull();
+    expect(readHandoff(null, '/auth/kakao/callback', `?state=${STATE}`, T)).toEqual({ visit: null, drop: false });
+  });
+
+  it(`순번이 끝에 가까우면(${MAX_VIEWS} - ${HANDOFF_SEQ_GAP} 이상) 넘기지 않는다 · 방문이 없거나 멈췄으면 null`, () => {
+    const near = rig({ stored: { id: 'visit-kept0000000000', seq: MAX_VIEWS - HANDOFF_SEQ_GAP, last: 1_000_000 } });
+    near.t.navigate('/login'); near.advance(1000);
+    expect(near.t.handoff()).toBeNull();
+    const fresh = rig();
+    expect(fresh.t.handoff()).toBeNull();   // 아직 본 화면이 없다
+    fresh.t.navigate('/login'); fresh.advance(1000);
+    fresh.t.finish('LOGIN');
+    expect(fresh.t.handoff()).toBeNull();
+  });
+});
+
 describe('붙이는 곳 — 소스 가드', () => {
   const read = (p: string) => readFileSync(resolve(__dirname, '..', p), 'utf8');
   it('App 맨 위에서 로그인 상태를 넘겨 부른다 · 그 effect·이벤트·타이머는 전부 safely 로 감싼다(던지면 화면 전체가 죽는다)', () => {
@@ -250,6 +321,15 @@ describe('붙이는 곳 — 소스 가드', () => {
     expect(src.match(/useEffect\(\(\) => safely\(/g)?.length).toBe(2);
     expect(src).toContain('setTimeout(() => safely(fn), ms)');
     for (const ev of ["'visibilitychange', () => safely(", "'pagehide', () => safely(", "'pageshow', (e) => safely("]) expect(src).toContain(ev);
+  });
+  it('카카오로 떠나기 직전 방문을 넘기고(startKakaoLogin), 새 탭은 콜백에서 그걸 읽는다 — 방문 번호는 브라우저 저장소에만(카카오로 보내지 않는다)', () => {
+    const src = read('lib/guestActivity.ts');
+    expect(src).toMatch(/readHandoff\(storageGet\(local, HANDOFF_KEY\), window\.location\.pathname, window\.location\.search, Date\.now\(\)\)/);
+    expect(src).toContain('return memoryVisit ?? handoff.visit;');
+    expect(read('lib/kakaoLogin.ts')).toContain('noteGuestOAuthStart(state)');
+    // 카카오로 보내는 주소에 방문 번호가 실리지 않는다 — 주소는 state·돌아올 주소만으로 만든다(oauthState.test 가 쿼리 이름을 센다)
+    expect(read('lib/kakaoLogin.ts')).toMatch(/kakaoAuthorizeUrl\(state, window\.location\.origin\)/);
+    expect(read('lib/kakaoLogin.ts')).not.toMatch(/artlink-guest|\.handoff\(/);
   });
   it('카카오 가입: 가입 정보 입력 단계를 남기고, 가입을 마치면 로그인보다 먼저 표시한다', () => {
     const src = read('pages/AuthCallbackPage.tsx');

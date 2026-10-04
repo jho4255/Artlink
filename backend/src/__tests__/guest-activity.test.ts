@@ -208,6 +208,36 @@ describe('비회원 둘러보기 — 통계', () => {
     expect(s.pages.find((p: any) => p.label === '모집공고').avgSeconds).toBe(10);
   });
 
+  it('카카오 인증 뒤 콜백이 다른 탭에서 열려도 한 방문 — 순번이 건너뛰어도(넘겨준 몫) 본 순서대로, 떠남은 풀리고 가입이 원래 들어온 화면에 붙는다', async () => {
+    // 2026-10-04 실서버: 콜백에서 시작한 방문(카카오 로그인 → 로그인 → 카카오 로그인 → 가입 정보 입력 → 가입)이 남고,
+    // 광고로 들어온 원래 방문은 '로그인 앞에서 나감'으로 따로 남았다. 화면이 방문을 넘겨주면(frontend lib/guestActivity.ts handoff) 이렇게 온다
+    const g = await seedGallery();
+    const ex = await seedExhibition(g.id);
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { title: '가을 신진 공모' } });
+    // 원래 탭: 공모 상세 → 로그인 → 카카오로 떠남(pagehide)
+    await beacon({ visitId: V1, views: [{ seq: 0, path: `/exhibitions/${ex.id}`, ms: 25_000 }] });
+    await beacon({ visitId: V1, views: [{ seq: 1, path: '/login', ms: 1_500 }], left: true });
+    expect((await testPrisma.guestVisit.findUnique({ where: { id: V1 } }))!.leftAt).not.toBeNull();
+    // 새 탭: 같은 방문 번호, 순번은 21 부터(떠나는 탭 몫 20 을 남겨 둔다)
+    await beacon({ visitId: V1, views: [{ seq: 21, path: '/auth/kakao/callback?code=SECRET&state=abc', ms: 1_200 }] });
+    expect((await testPrisma.guestVisit.findUnique({ where: { id: V1 } }))!.leftAt).toBeNull();
+    await beacon({ visitId: V1, views: [{ seq: 22, path: '/auth/register', ms: 23_000 }], outcome: 'SIGNUP' });
+    // 다른 브라우저로 돌아와 한 번 더 누른 방문 — 콜백이 두 번 이어져도 한 화면
+    await beacon({ visitId: V2, views: [
+      { seq: 0, path: '/auth/kakao/callback', ms: 3_000 }, { seq: 1, path: '/auth/kakao/callback', ms: 1_000 }, { seq: 2, path: '/auth/register', ms: 20_000 },
+    ], outcome: 'SIGNUP' });
+
+    const s = await stats();
+    expect(s.summary).toMatchObject({ visits: 2, signup: 2 });
+    const v1 = s.recent.find((r: any) => r.views === 4);
+    expect(v1.steps.map((st: any) => [st.label, st.seconds])).toEqual([['공모 상세', 25], ['로그인', 2], ['카카오 로그인', 1], ['가입 정보 입력', 23]]);
+    expect(v1).toMatchObject({ outcome: 'SIGNUP', bounced: false });
+    // 가입이 광고가 보낸 화면(공모 상세)에 붙는다
+    expect(s.landings.find((l: any) => l.label === '공모 상세')).toMatchObject({ detail: '가을 신진 공모', visits: 1, signups: 1 });
+    const v2 = s.recent.find((r: any) => r.views === 2);
+    expect(v2.steps.map((st: any) => [st.label, st.seconds])).toEqual([['카카오 로그인', 4], ['가입 정보 입력', 20]]);
+  });
+
   it('기간 밖 방문은 빼고 · 방금 기록된 방문은 \'보는 중일 수 있음\'', async () => {
     await recordGuestActivity(V1, { views: [{ seq: 0, path: '/', ms: 5_000 }] }, new Date(Date.now() - 10 * 86400_000));
     await recordGuestActivity(V2, { views: [{ seq: 0, path: '/artists', ms: 5_000 }] });

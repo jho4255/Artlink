@@ -52,6 +52,10 @@ cd frontend && npm test    # 46 통과
 - ⚠️ 알려진 flaky 테스트 1건: `exhibition-extended.test.ts > 상세 조회 시 gallery 정보 포함` — 동시성 테스트 데이터 누수로 가끔 실패. 단독 재실행하면 통과(회귀 아님).
 
 ### 0-6. 최근 변경 이력 (이번 인계 직전 세션들, 최신순)
+- (2026-10-04, 미커밋) **카카오 로그인 콜백이 다른 탭에서 열릴 때 가입이 한 번 튕기던 문제**: 비회원 통계에 콜백에서 시작한 방문
+  (`카카오 로그인 3초 → 로그인 1초 → 카카오 로그인 1초 → 가입 정보 입력 → 가입 완료`)이 남아 드러났다. 콜백 탭의 sessionStorage 가 비어 state 검증 실패 →
+  로그인 화면으로 튕김 · 지원하려던 공모로 못 돌아감 · 광고로 온 원래 방문과 가입이 끊김. state 를 브라우저 저장소에도 적고(`lib/oauthState.ts`),
+  다른 브라우저면 [카카오로 계속하기] 한 번, 비회원 방문은 state 에 묶어 넘긴다(`noteGuestOAuthStart`). 서버·스키마 변경 없음. 상세는 CLAUDE.md 규칙 64.
 - (2026-07-16) **크롬 외 브라우저 에러 화면 사고 해결**: Cloudflare 엣지가 7/8자 `sw.js`·`registerSW.js`를 1년 immutable로 캐시(옛 헤더 시절) → 오리진에 수정이 배포돼도 전 사용자에게 옛 워커가 서빙되고, Safari/삼성인터넷은 CacheStorage 소실 시 "화면을 불러오지 못했어요"로 죽음. 대응: ① SW 등록을 `main.tsx`에서 `/sw.js?v=BUILD_ID`(빌드마다 새 URL → CF 캐시 키 우회)로 직접, `registerSW.js` 생성 중단(`injectRegister: null`) ② 네비게이션을 precache 바인딩→**네트워크 우선**으로 전환(`1ce07ea` injectManifest 커스텀 `frontend/src/sw.js` — NetworkOnly 5s + 오프라인만 precache 폴백, 캐시 소실 내성) ③ 고정 파일명 응답 `no-cache`→**no-store**. **잔여 조치**: 크롬 사용자 복구를 위해 Cloudflare 대시보드에서 캐시 퍼지 + Browser Cache TTL="Respect Existing Headers" 권장(architecture.md 캐시 정책 절 참고).
 - `8b2f627` **지원 상태 전이 규칙 정비**: 수락=최종(변경 불가, UI "수락(확정)" 잠금 배지), 거절→수락만 허용(거절→접수 차단), **검토중(REVIEWED) 폐지**(기존 데이터는 접수로 환원 마이그레이션). 거절 시 작가가 **"확인"** 눌러야 지원내역에서 제거(`Application.rejectionAckedAt` + `POST /exhibitions/applications/:appId/acknowledge-rejection`).
 - `f1dd47e` **인스타 OAuth/피드 연동 전면 제거**(인증 어려움). 인스타 **주소(instagramUrl)는 유지** — 갤러리 등록 폼/상세 페이지에서 직접 입력, 상세에 링크 표시. `maskGallery`는 토큰만 가림. 개인정보처리방침에서 인스타 OAuth 항목 삭제. 갤러리 삭제는 마이페이지에서만(상세 페이지 삭제 제거), **갤러리/공모/전시 삭제 시 "삭제" 입력 이중확인 모달**(`DeleteConfirmModal`). 승인완료/거절 갤러리 삭제 가능.
@@ -348,6 +352,10 @@ ApprovalRequest (type, targetId, changes[JSON], status, rejectReason, requesterI
 6. authorize('ADMIN') → req.user.role 체크
 7. 401 응답 → axios interceptor → authStore.logout() → /login 이동
 ```
+
+카카오 로그인(실서버): `KakaoLoginButton` → `lib/kakaoLogin.ts startKakaoLogin` (state 를 탭 + 브라우저 저장소에 적음, `lib/oauthState.ts`) →
+kauth.kakao.com → `/auth/kakao/callback?code&state` (`AuthCallbackPage` 가 `checkOAuthState` — 같은 브라우저면 다른 탭이어도 맞춤, 다른 브라우저면
+[카카오로 계속하기] 한 번 더) → `POST /api/auth/kakao` → 가입이 필요하면 `POST /api/auth/complete-registration`. (2026-10-04)
 
 ---
 

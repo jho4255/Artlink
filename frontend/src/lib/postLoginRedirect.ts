@@ -6,7 +6,10 @@
  *
  * - sessionStorage를 쓰는 이유: 카카오 OAuth 왕복(외부 → /auth/kakao/callback)과
  *   신규 가입 단계까지 같은 탭에서 값이 유지되기 때문. (kakao_state와 동일한 메커니즘)
+ *   ⚠️ 카카오 인증 뒤 **다른 탭**으로 돌아오면 이 값이 없다(2026-10-04) — 그래서 카카오로 떠날 때 state 와 함께
+ *   브라우저 저장소에도 적어 두고(`lib/oauthState.ts`), 콜백 화면이 그 탭에 되살린다.
  * - 오픈 리다이렉트 방지: 내부 절대경로("/...")만 허용하고 프로토콜상대경로("//...")는 차단.
+ * - 저장소가 막힌 환경에서도 던지지 않는다 — 로그인 직후 여기서 던지면 '로그인 처리 중'에서 멈춘다.
  *
  * 사용처:
  *  - 저장: ExhibitionDetailPage '로그인하고 지원하기' 버튼
@@ -22,14 +25,22 @@ function isSafeInternalPath(path: string | null): path is string {
 
 /** 로그인 후 돌아갈 앱 내부 경로 저장 (내부 절대경로만 허용) */
 export function setPostLoginRedirect(path: string): void {
-  if (isSafeInternalPath(path)) sessionStorage.setItem(KEY, path);
+  if (!isSafeInternalPath(path)) return;
+  try { sessionStorage.setItem(KEY, path); } catch { /* 막힌 환경 — 돌아갈 곳만 잃는다 */ }
+}
+
+/** 저장된 복귀 경로를 지우지 않고 본다(카카오로 떠날 때 함께 적어 두려고). 없거나 유효하지 않으면 null */
+export function peekPostLoginRedirect(): string | null {
+  let path: string | null = null;
+  try { path = sessionStorage.getItem(KEY); } catch { /* 조용히 */ }
+  return isSafeInternalPath(path) ? path : null;
 }
 
 /** 저장된 복귀 경로를 읽고 즉시 삭제. 없거나 유효하지 않으면 null */
 export function consumePostLoginRedirect(): string | null {
-  const path = sessionStorage.getItem(KEY);
-  sessionStorage.removeItem(KEY);
-  return isSafeInternalPath(path) ? path : null;
+  const path = peekPostLoginRedirect();
+  try { sessionStorage.removeItem(KEY); } catch { /* 조용히 */ }
+  return path;
 }
 
 /**

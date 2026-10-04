@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-04): Backend 1541 (supertest, `artlink_test` DB 순차), Frontend 1073 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2600+ tests** (2026-10-04): Backend 1542 (supertest, `artlink_test` DB 순차), Frontend 1089 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2059,6 +2059,21 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       늦게 도착한 가려짐 신호가 떠남을 지우면 안 된다. 떠남이 없으면 마지막 기록 뒤 30분은 '아직 보는 중일 수 있음'(처음엔 이게 없어 방금 끝난 방문이 전부 '보는 중'으로 보였다).
     - 로그인하면 그 방문을 LOGIN 으로 닫고 멈춘다. 카카오 가입을 마쳤으면 SIGNUP — `AuthCallbackPage` 가 **login 전에** `noteGuestSignup()`. 가입 정보 입력 단계는 주소가 그대로라
       `noteGuestStep('/auth/register')` 로 따로 남긴다(서버가 '가입 정보 입력'으로 읽는다 — 거기서 그만두는 사람이 가입 전환의 핵심). 새 로그인 경로를 만들면 이 둘을 볼 것.
+    - ⚠️⚠️ **카카오 인증 뒤 콜백이 다른 탭에서 열린다 — 통계 문제가 아니라 가입 흐름의 구멍이었다** (2026-10-04 실서버 기록
+      `카카오 로그인 3초 → 로그인 1초 → 카카오 로그인 1초 → 가입 정보 입력 23초 → 가입 완료`). 방문이 콜백에서 시작했다 = 그 콜백이 **sessionStorage 가 빈 곳**에서 열렸다
+      (방문 번호도 OAuth state 도 그 저장소에 있다). 그래서 state 를 못 찾아 '보안 검증 실패' 2초 → 로그인 화면 → 다시 눌러서야 가입됐고(3초 = 2초 대기 + 화면 로드,
+      서버 교환 실패라면 5초 대기다), 지원하려던 공모로 돌아갈 길(`post_login_redirect`)도 원래 탭에 두고 와 마이페이지로 떨어졌으며, 광고 → 공모 상세 → 로그인까지 본
+      원래 방문은 '로그인 앞에서 나감'으로 따로 남았다. 로컬 재현(같은 브라우저 새 탭·다른 브라우저 둘 다 같은 줄이 나온다): `scratchpad/oauth-newtab/repro.js`.
+      어느 환경이었는지는 기록에 없다(기기 정보를 안 남긴다) — 휴대폰에서 카카오톡 앱 인증 뒤 새 탭·다른 브라우저로 돌아오는 경우로 본다. COOP 헤더는 원인이 아니다(크롬·WebKit 실측, 왕복 뒤 sessionStorage 유지).
+      - **state 는 탭 + 브라우저(localStorage) 양쪽에** 적는다(`lib/oauthState.ts`, 30분 · 한 번 쓰면 양쪽에서 지움 · 로그인 뒤 갈 곳도 함께 → 콜백이 그 탭에 되살린다).
+        이 브라우저가 적지 않은 state 는 여전히 거절한다(로그인 CSRF 방어 그대로 — state 없이 받아들이지 말 것).
+      - **다른 브라우저**(인앱 → 사파리·크롬)는 저장소가 달라 못 맞춘다 → 튕기지 않고 그 자리에서 [카카오로 계속하기] 를 한 번 더 누르게 한다.
+        ⚠️ 자동으로 카카오에 다시 보내지 말 것 — 사용자 동작 없이 부르면 휴대폰에서 카카오톡 앱 실행이 막힌다.
+      - **카카오로 보내는 길은 `lib/kakaoLogin.ts startKakaoLogin` 하나**(`KakaoLoginButton`) — 거기서 `noteGuestOAuthStart(state)` 가 방문 번호를 **그 state 에 묶어**
+        브라우저 저장소에 넘겨 두고(`artlink-guest-handoff`, 30분), state 가 같은 콜백 탭이 이어받는다(`readHandoff`). 이어받는 탭은 순번을 `HANDOFF_SEQ_GAP`(20) 건너뛴 곳부터
+        쓴다(떠나는 탭이 마저 보낼 로그인 화면 몫 — 같은 순번이면 서버가 버린다). 같은 탭으로 돌아오면(보통) 넘긴 값은 지워지고 순번도 건너뛰지 않는다.
+        ⚠️ **방문 번호를 카카오로 보내지 말 것**(state 에 섞지 말 것) — 계정과 잇지 않는다는 약속이 깨진다. 그래서 다른 브라우저로 돌아온 방문은 여전히 콜백에서 시작한다.
+      - 회귀: frontend `oauthState.test.ts`(11) · `guestActivity.test.ts` 「다른 탭에서 열려도 같은 방문」(4)+소스 가드 · backend `guest-activity.test.ts` 「다른 탭에서 열려도 한 방문」.
     - ⚠️ **이 브라우저로 로그인한 적이 있으면 기록하지 않는다**(localStorage `artlink-member-device`) — 회원이 로그아웃한 채 둘러보는 걸 비회원으로 세지 않으려고.
       그래서 **운영자가 자기 브라우저로 확인하면 아무것도 안 쌓인다 — 시크릿 창으로 볼 것.** E2E 의 `openAs`(세션 주입)도 이 표시를 남긴다. 검색 로봇 UA 도 뺀다(HeadlessChrome 은 안 뺀다).
     - **부하·고장 대비**(2026-10-03 배포 전 점검, 하니스 `scratchpad/guest-activity/load.mjs`):
@@ -2092,7 +2107,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `scratchpad/guest-activity/prod-smoke.mjs` 의 `BEACON_TRAP`(실서버에서 새 방문 0개 확인).
     - ⚠️ **Playwright 는 sendBeacon 을 `ping` 으로 보여 주고 본문을 주지 않는다**(postData null) — E2E 는 요청 **수**만 세고, 무엇이 남았는지는 통계 API 로 본다.
       통계는 1분 저장이라 테스트마다 **다른 기간(days)** 으로 물을 것.
-    - 회귀: backend `guest-activity.test.ts`(15 — 한도·끄개·저장·새로고침 합치기 포함) · frontend `guestActivity.test.ts`(21 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
+    - 회귀: backend `guest-activity.test.ts`(16 — 한도·끄개·저장·새로고침 합치기·다른 탭 이어받기 포함) · frontend `guestActivity.test.ts`(26 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
       e2e `68-guest-activity.spec.ts`(5 — 둘러본 화면이 통계에 남고 떠나면 '나감' · 로그인한 사람은 0 · 로그인하면 닫힘 · 500/끊김/저장소 막힘에도 화면 멀쩡 · 빠른 이동에 요청 ≤4).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판

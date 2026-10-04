@@ -16,6 +16,12 @@ import { useLocation } from 'react-router-dom';
  * - 창을 닫거나 다른 사이트로 떠날 때(pagehide)는 '떠남'(`left`)을 함께 보낸다 — 그래야 마지막 기록 뒤 30분을 기다리지 않고
  *   '나감'으로 확정된다. 앱 전환(가려짐만)은 떠남이 아니다. 같은 방문이 이어지면(새로고침·카카오에서 돌아옴) 서버가 떠남을 지운다.
  * - **로그인하면 그 방문을 '로그인'(가입을 마쳤으면 '가입')으로 닫고 멈춘다.** 로그인한 뒤의 화면은 남기지 않는다.
+ * - ⚠️ **카카오 인증 뒤 콜백이 다른 탭에서 열려도 같은 방문이다**(2026-10-04). 실서버에 `카카오 로그인 → 로그인 → 카카오 로그인 → 가입 정보 입력 → 가입 완료`
+ *   처럼 **콜백에서 시작한 방문**이 남았다 — 새 탭은 sessionStorage 가 비어 있어 새 방문을 열었고, 광고로 들어와 공모를 본 원래 방문은 '로그인 앞에서 나감'으로
+ *   따로 남았다(가입이 엉뚱한 방문에 붙어 "광고로 온 사람이 가입했다"를 못 이었다). 그래서 카카오로 떠나기 직전에 방문 번호를 **그 로그인의 state 에 묶어**
+ *   브라우저 저장소에 잠깐 적어 두고(`noteGuestOAuthStart`), state 가 맞는 콜백 탭이 그 방문을 이어받는다(`readHandoff`). 30분 뒤·한 번 쓰면 지운다.
+ *   방문 번호는 **카카오에 보내지 않는다**(state 는 카카오를 거쳐 오지만 방문 번호는 우리 브라우저 저장소에만 있다 — 계정과 잇지 않는다는 약속 그대로).
+ *   다른 **브라우저**로 돌아온 경우(인앱 → 사파리·크롬)는 저장소가 달라 잇지 못한다 — 그 방문은 여전히 콜백에서 시작한다.
  * - **이 브라우저로 로그인한 적이 있으면 기록하지 않는다**(`artlink-member-device`) — 회원이 로그아웃한 채 둘러보는 걸 비회원으로 세지 않으려고.
  *   ⚠️ 그래서 운영자가 자기 브라우저로 확인하면 아무것도 안 쌓인다 — 시크릿 창으로 볼 것.
  * - 실패해도 조용히 — 통계 때문에 화면이 흔들리면 안 된다. 다시 보내지도 않는다.
@@ -24,6 +30,17 @@ import { useLocation } from 'react-router-dom';
 const VISIT_KEY = 'artlink-guest-visit';
 const SIGNUP_KEY = 'artlink-guest-signup';
 const MEMBER_KEY = 'artlink-member-device';
+/** 카카오로 떠나며 넘겨 두는 방문(localStorage) — `{ state, id, seq, at }`. 콜백 탭이 이어받거나 30분 뒤 버린다 */
+const HANDOFF_KEY = 'artlink-guest-handoff';
+export const HANDOFF_TTL_MS = 30 * 60 * 1000;
+/**
+ * 넘길 때 비워 두는 순번 수 — 떠나는 탭이 마저 보낼 화면(지금 보던 로그인 화면)과, 혹시 그 탭으로 돌아와 볼 화면 몫.
+ * 두 탭이 같은 순번을 쓰면 서버가 뒤에 온 화면을 버린다((visitId, seq) unique). 콜백이 같은 탭으로 돌아오면(보통) 이 값은 쓰이지 않는다.
+ */
+export const HANDOFF_SEQ_GAP = 20;
+/** 콜백 주소 — 넘겨 둔 방문은 여기서만 이어받는다 */
+const CALLBACK_RE = /^\/auth\/[a-z]+\/callback\/?$/;
+const VISIT_ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 const ENDPOINT = '/api/guest-activity';
 /** 이보다 짧게 머문 화면은 자동 이동으로 보고 남기지 않는다 */
 export const MIN_VIEW_MS = 700;
@@ -133,6 +150,18 @@ export class GuestTracker {
     this.touch(now);
   }
 
+  /**
+   * 카카오 로그인으로 떠나기 직전 — 콜백이 **다른 탭**에서 열려도 이 방문을 이어 가게 넘길 값(`noteGuestOAuthStart` 가 적는다).
+   * 이 탭이 떠나며 마저 보낼 화면 몫으로 순번 `HANDOFF_SEQ_GAP` 개를 남겨 두고 그 뒤부터 준다 — 이어받은 탭의 화면은 그 뒤 순번이라
+   * 통계에서 로그인 화면 다음에 온다. 이 탭의 상태는 바꾸지 않는다(같은 탭으로 돌아오면 순번을 건너뛰지 않고 그대로 잇는다).
+   */
+  handoff(): GuestVisit | null {
+    if (!this.active || !this.visit) return null;
+    const seq = this.visit.seq + HANDOFF_SEQ_GAP;
+    if (seq >= MAX_VIEWS) return null;
+    return { id: this.visit.id, seq, last: this.deps.now() };
+  }
+
   /** 로그인·가입으로 이 방문을 닫는다 — 그 뒤로는 아무것도 남기지 않는다 */
   finish(outcome: 'LOGIN' | 'SIGNUP') {
     if (!this.active) return;
@@ -239,6 +268,25 @@ export class GuestTracker {
   }
 }
 
+/**
+ * 넘겨 둔 방문 읽기 — 지금 주소가 **그 로그인의 콜백**(state 가 같다)이면 이어받을 방문을 준다.
+ * `drop` = 저장소에서 지울 것(이어받았거나 · 같은 탭으로 돌아와 필요 없어졌거나 · 오래됐거나 · 망가졌다). 다른 화면이면 그대로 둔다(아직 카카오에 가 있다).
+ */
+export function readHandoff(raw: string | null, pathname: string, search: string, now: number): { visit: GuestVisit | null; drop: boolean } {
+  if (!raw) return { visit: null, drop: false };
+  let h: { state?: unknown; id?: unknown; seq?: unknown; at?: unknown };
+  try { h = JSON.parse(raw); } catch { return { visit: null, drop: true }; }
+  const ok = !!h && typeof h.state === 'string' && h.state.length > 0 && typeof h.id === 'string' && VISIT_ID_RE.test(h.id)
+    && typeof h.seq === 'number' && Number.isInteger(h.seq) && h.seq >= 0 && h.seq < MAX_VIEWS
+    && typeof h.at === 'number' && Number.isFinite(h.at) && now - h.at <= HANDOFF_TTL_MS && h.at - now <= 60_000;
+  if (!ok) return { visit: null, drop: true };
+  if (!CALLBACK_RE.test(pathname)) return { visit: null, drop: false };
+  let state: string | null = null;
+  try { state = new URLSearchParams(search).get('state'); } catch { /* 아래로 */ }
+  if (!state || state !== h.state) return { visit: null, drop: false };
+  return { visit: { id: h.id as string, seq: h.seq as number, last: now }, drop: true };
+}
+
 /* ───────────── 브라우저에 붙이기 ───────────── */
 
 function storageGet(s: () => Storage, key: string): string | null { try { return s().getItem(key); } catch { return null; } }
@@ -280,14 +328,17 @@ function browserTracker(): GuestTracker {
     visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
     send: sendBeaconBody,
     load: () => {
+      // 카카오로 떠나며 넘겨 둔 방문 — 이 탭이 그 로그인의 콜백이면 이어받는다(이 탭에 방문이 이미 있으면 같은 탭으로 돌아온 것이라 지우기만)
+      const handoff = readHandoff(storageGet(local, HANDOFF_KEY), window.location.pathname, window.location.search, Date.now());
+      if (handoff.drop) storageDel(local, HANDOFF_KEY);
       const raw = storageGet(session, VISIT_KEY);
       if (raw) {
         try {
           const v = JSON.parse(raw);
-          if (v && typeof v.id === 'string' && /^[A-Za-z0-9-]{16,64}$/.test(v.id) && Number.isInteger(v.seq) && Number.isFinite(v.last)) return v as GuestVisit;
+          if (v && typeof v.id === 'string' && VISIT_ID_RE.test(v.id) && Number.isInteger(v.seq) && Number.isFinite(v.last)) return v as GuestVisit;
         } catch { /* 망가진 값 — 새 방문 */ }
       }
-      return memoryVisit;
+      return memoryVisit ?? handoff.visit;
     },
     save: (v) => { memoryVisit = { ...v }; storageSet(session, VISIT_KEY, JSON.stringify(v)); },
     newId: newVisitId,
@@ -307,8 +358,23 @@ export function guestTrackingAllowed(ua: string, memberDevice: boolean): boolean
   return !memberDevice && !BOT_RE.test(ua);
 }
 
-/** 가입을 마쳤다 — 로그인으로 바뀌는 순간 이 방문을 '가입'으로 닫는다(`AuthCallbackPage` 가입 완료에서 부른다) */
-export function noteGuestSignup() { storageSet(session, SIGNUP_KEY, '1'); }
+/** 가입을 마쳤다 — 로그인으로 바뀌는 순간 이 방문을 '가입'으로 닫는다(`AuthCallbackPage` 가입 완료에서 부른다).
+ *  저장소가 막혀도 '로그인'으로 잘못 닫지 않게 메모리에도 둔다(같은 문서에서 곧바로 로그인으로 바뀐다) */
+let signupNoted = false;
+export function noteGuestSignup() { signupNoted = true; storageSet(session, SIGNUP_KEY, '1'); }
+
+/**
+ * 카카오로 떠나기 직전(`lib/kakaoLogin.ts startKakaoLogin`) — 콜백이 다른 탭에서 열려도 이 방문을 잇도록 **그 로그인의 state 에 묶어** 넘겨 둔다.
+ * 브라우저 저장소에만 적는다 — 방문 번호는 카카오로 보내지 않는다. 로그인 경로를 새로 만들면 여기도 부를 것.
+ */
+export function noteGuestOAuthStart(state: string) {
+  safely(() => {
+    if (!state || !tracker?.active) return;
+    const h = tracker.handoff();
+    if (!h) return;
+    storageSet(local, HANDOFF_KEY, JSON.stringify({ state, id: h.id, seq: h.seq, at: Date.now() }));
+  });
+}
 
 /**
  * 주소는 그대로인데 단계가 바뀌었다 — 카카오 로그인 뒤 **가입 정보 입력**(`/auth/register`).
@@ -329,7 +395,8 @@ export function useGuestActivity(isAuthenticated: boolean) {
     if (isAuthenticated) {
       storageSet(local, MEMBER_KEY, '1');
       if (tracker?.active) {
-        const signup = storageGet(session, SIGNUP_KEY) === '1';
+        const signup = signupNoted || storageGet(session, SIGNUP_KEY) === '1';
+        signupNoted = false;
         storageDel(session, SIGNUP_KEY);
         tracker.finish(signup ? 'SIGNUP' : 'LOGIN');
       }
