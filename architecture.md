@@ -2485,7 +2485,8 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **저장 전 입력 지키기** `hooks/useUnsavedChanges.ts` 의 `confirmDiscardUnsaved()` — 페이지 이동만 막던 경고를 화면 안 동작(카드 접기·다른 카드·탭·카드 제목 이동)에도.
   갤러리 카드의 [지원자]↔[운영] 은 한 번 연 패널을 `hidden` 으로 남긴다. 정산 입력에도 이탈 경고(`SettlementSection`).
 - **모바일 토스트는 위쪽** `components/layout/AppToaster.tsx`(lg 미만 top-center, 상단바 아래) — 하단 저장 줄의 버튼을 가렸다.
-- **공모 상세** — 따라오는 [지원하기]/[간편 지원]/[로그인하고 지원하기] 줄(`data-apply-bar`, 바깥 래퍼의 자식이라 첫 화면부터 붙는다, 휴대폰은 탭바 위) ·
+- **공모 상세** — 따라오는 [지원하기]/[간편 지원]/[로그인하고 지원하기] 줄(`data-apply-bar`, 바깥 래퍼의 자식이라 첫 화면부터 붙는다, 휴대폰은 탭바 위.
+  비회원에겐 버튼 아래 "작가 회원은 아트링크의 모든 서비스를 무료로 이용해요" 한 줄 — `data-apply-sub`, 2026-10-04) ·
   시작 전이면 날짜만 · 홍보 사진 `SquarePhotoGrid` · 삭제는 `checkDeletable` → 직접 확인창 또는 삭제 요청 창.
 - **지원자 관리** `ApplicantManager` — `recruitOnly`(출품 자료를 말하지 않는다) · `ended`(결정 잠금 + 한 줄, 체크박스·일괄·초대 코드 줄 없음) ·
   `capacityEditable` → [모집 인원 변경](`CapacityEditor`). 호출: [내 공모] 카드(아트링크 주최면 고칠 수 없음) · 관리자 [주최 공모].

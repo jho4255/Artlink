@@ -236,7 +236,7 @@ export default function ExhibitionDetailPage() {
     따라오는 [지원하기] 줄 — 무엇을 보여 줄지(2026-10-03). 지원할 수 있는 사람(아직 지원 안 한 작가 · 비로그인)에게만.
     공모 시작 전이면 버튼 없이 날짜만 — 서버가 지원을 막는다.
   */
-  let applyBar: { note?: ReactNode; primary?: ReactNode; secondary?: ReactNode } | null = null;
+  let applyBar: { note?: ReactNode; primary?: ReactNode; secondary?: ReactNode; sub?: ReactNode } | null = null;
   if (!isExpired && ((isArtist && !exhibition.myApplication) || !isAuthenticated)) {
     // 휴대폰에선 버튼이 줄을 채운다(한 줄) — 안내 글자와 함께 두 줄로 꺾이면 줄이 95px 가 되어 첫 화면을 크게 먹었다
     const primaryCls = 'inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 px-6 text-sm font-medium text-white hover:bg-gray-800 sm:flex-none';
@@ -251,6 +251,9 @@ export default function ExhibitionDetailPage() {
             <Send size={15} aria-hidden /> 로그인하고 지원하기
           </button>
         ),
+        // 버튼 바로 아래 한 줄(2026-10-04 사용자 요청) — 광고로 처음 온 작가가 가입을 망설이지 않게.
+        // ⚠️ 주어를 '아트링크'로 둘 것 — 공모마다 갤러리가 받는 참여비가 있어, '모든 서비스 무료'만 쓰면 그 공모가 무료라고 읽힌다
+        sub: <>작가 회원은 아트링크의 모든 서비스를 <b className="font-semibold text-accent">무료</b>로 이용해요</>,
       };
     } else if (exhibition.invited) {
       applyBar = {
@@ -612,7 +615,13 @@ export default function ExhibitionDetailPage() {
             {/* 버튼이 있으면 좁은 화면에선 안내 글자를 감춘다(버튼 이름이 곧 안내다). 시작 전처럼 버튼이 없으면 글자가 전부라 그대로 */}
             {applyBar.note && <p className={cn('mr-auto min-w-0 text-xs text-gray-500', applyBar.primary && 'hidden sm:block')}>{applyBar.note}</p>}
             {applyBar.secondary}
-            {applyBar.primary}
+            {applyBar.sub ? (
+              // 버튼과 그 아래 한 줄을 한 덩어리로 — 휴대폰은 줄을 꽉 채우고 가운데, PC 는 버튼 폭 그대로 오른쪽 정렬
+              <div className="flex flex-1 flex-col gap-1.5 sm:flex-none sm:items-end">
+                {applyBar.primary}
+                <p data-apply-sub className="text-center text-xs text-gray-500 sm:text-right">{applyBar.sub}</p>
+              </div>
+            ) : applyBar.primary}
           </div>
         </div>
       )}

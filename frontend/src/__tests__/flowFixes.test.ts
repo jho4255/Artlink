@@ -91,6 +91,15 @@ describe('소스 가드 — 화면에서 되돌리기 쉬운 한 줄', () => {
     expect(detail).not.toMatch(/<Send size=\{16\} \/> 지원하기/);
   });
 
+  it('비회원의 [로그인하고 지원하기] 아래에 무료 안내 한 줄 — 주어는 아트링크(공모 참여비와 헷갈리지 않게)', () => {
+    const detail = read('pages/ExhibitionDetailPage.tsx');
+    // 비회원 분기에만 있다(로그인한 작가의 [지원하기]·초대 간편 지원에는 없다)
+    const guest = detail.slice(detail.indexOf('} else if (!isAuthenticated) {'), detail.indexOf('} else if (exhibition.invited) {'));
+    expect(guest).toMatch(/sub: <>작가 회원은 아트링크의 모든 서비스를 <b[^>]*>무료<\/b>로 이용해요<\/>/);
+    expect(detail.match(/sub: </g)).toHaveLength(1);
+    expect(detail).toContain('data-apply-sub');
+  });
+
   it('공모 상세 홍보 사진은 자르지 않는다(정사각 칸 + contain)', () => {
     const detail = read('pages/ExhibitionDetailPage.tsx');
     expect(detail).toContain('<SquarePhotoGrid');
