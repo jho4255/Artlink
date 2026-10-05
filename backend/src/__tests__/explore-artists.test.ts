@@ -2,8 +2,9 @@
  * GET /api/explore/artists — Navbar [작가] 탭(`/artists`)의 왼쪽 작가 목록 (2026-09-10)
  *
  * 여기서 지켜야 하는 것:
- *   1. **공개 작품이 있는 작가만.** 가입만 한 계정까지 실으면 목록이 회원 명부가 되고,
- *      눌러 들어가면 텅 빈 홈페이지가 나온다.
+ *   1. **작품이 있는 작가만.** 가입만 한 계정까지 실으면 목록이 회원 명부가 되고,
+ *      눌러 들어가면 텅 빈 홈페이지가 나온다. ⚠️ '작가 탭에도'(showInExplore)는 보지 않는다 —
+ *      그건 오른쪽 작품 격자의 일이다(2026-10-05, 작품이 전부 '홈페이지에만'인 작가가 명단에서 빠졌다).
  *   2. **탈퇴 작가는 뺀다.** 탐색 피드(`GET /explore`)와 같은 기준이어야 한다 —
  *      두 화면이 다른 작가 집합을 보여주면 "왜 여기만 없지" 가 된다.
  *   3. **가나다순 + 초성 칸**(2026-09-13 사용자 요청으로 랜덤에서 되돌림). 목록은 칸 순서 →
@@ -59,12 +60,26 @@ describe('GET /api/explore/artists', () => {
     expect(names(res.body)).toEqual(['강민서']);
   });
 
-  it('★ 공개 작품이 없는 작가는 목록에 없다 — 눌러도 빈 홈페이지가 나온다', async () => {
+  it('★ 작품이 없는 작가는 목록에 없다 — 눌러도 빈 홈페이지가 나온다', async () => {
     await seedArtist({ id: 1, name: '있는사람', publicWorks: 2 });
-    await seedArtist({ id: 2, name: '없는사람', publicWorks: 0, privateWorks: 3 });
+    await seedArtist({ id: 2, name: '없는사람', publicWorks: 0 });
 
     const res = await request.get('/api/explore/artists');
     expect(names(res.body)).toEqual(['있는사람']);
+  });
+
+  it('★★ 작품을 전부 \'홈페이지에만\' 둔 작가도 명단에는 있다 — 그 값은 작품 격자만 가른다 (2026-10-05)', async () => {
+    // 실서버 @beeen_2: 작품 2점이 전부 '홈페이지에만'(새 작품의 기본)이라 홈페이지가 있는데도 [작가] 탭 명단에 없었다
+    await seedArtist({ id: 1, name: '강민서', publicWorks: 1 });
+    await seedArtist({ id: 2, name: '빈', nickname: '빈성은', publicWorks: 0, privateWorks: 2 });
+
+    const res = await request.get('/api/explore/artists');
+    expect(res.body.map((a: any) => `${a.initial}:${a.name}`)).toEqual(['ㄱ:강민서', 'ㅂ:빈성은']);
+    // 작품 격자(탐색 피드)는 여전히 '작가 탭에도' 작품만 — 빈성은의 작품은 거기 없다
+    const feed = await request.get('/api/explore');
+    const feedUrls: string[] = (feed.body.images ?? feed.body).map((i: any) => i.url);
+    expect(feedUrls.some((u) => u.includes('/p2-'))).toBe(false);
+    expect(feedUrls.some((u) => u.includes('/a1-'))).toBe(true);
   });
 
   it('★ 탈퇴 작가는 뺀다 (탐색 피드와 같은 기준)', async () => {
@@ -129,10 +144,10 @@ describe('GET /api/explore/artists', () => {
     expect(names(withSeed.body)).toEqual(['강민서', '한서아']);
   });
 
-  it('★ 공개 작품 수만 센다 (비공개는 빼고)', async () => {
+  it('작품 수는 홈페이지에 있는 작품 전부를 센다 (\'홈페이지에만\' 포함)', async () => {
     await seedArtist({ id: 1, name: '강민서', publicWorks: 3, privateWorks: 4 });
     const res = await request.get('/api/explore/artists');
-    expect(res.body[0].workCount).toBe(3);
+    expect(res.body[0].workCount).toBe(7);
   });
 
   it('닉네임이 있으면 닉네임으로 보여준다 (공개 노출 규칙)', async () => {

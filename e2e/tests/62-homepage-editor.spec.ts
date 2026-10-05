@@ -132,10 +132,21 @@ test.describe('A. 첫 화면', () => {
 });
 
 test.describe('B. 올리기와 [작가] 탭 소개', () => {
-  test('★ 올리면 한 번 묻는다 → [작가 탭에도 소개] → 작가 목록에 나온다 (요청 한 번, 상태를 적어 보낸다)', async ({ browser }) => {
+  test('★ 올리면 한 번 묻는다 → [작가 탭에도 소개] → 작품 격자에 나온다 (요청 한 번, 상태를 적어 보낸다)', async ({ browser }) => {
     const api = await pwRequest.newContext();
+    // 명단(왼쪽)은 작품이 있으면 늘 들어간다(2026-10-05). '작가 탭에도' 가 가르는 건 작품 격자(탐색 피드)다
     const listed = async () => ((await (await api.get(`${API}/explore/artists`)).json()) as { id: number }[]).some((x) => x.id === uploader.id);
-    expect(await listed()).toBe(false);
+    const inGrid = async () => {
+      const mine = new Set(((await myPortfolio(api, uploader)).images as { id: number }[]).map((i) => i.id));
+      let n = 0;
+      for (let page = 1; page <= 20; page++) {
+        const body = await (await api.get(`${API}/explore?limit=60&page=${page}`)).json();
+        n += (body.images as { id: number }[]).filter((i) => mine.has(i.id)).length;
+        if (page * 60 >= body.total) break;
+      }
+      return n;
+    };
+    expect(await listed()).toBe(false);   // 작품이 없으면 명단에도 없다
 
     const { page, ctx } = await openFor(browser, uploader);
     await openHomepageEditor(page);
@@ -154,12 +165,13 @@ test.describe('B. 올리기와 [작가] 탭 소개', () => {
     await expect(page.getByText('방금 올린 3점은 지금 내 홈페이지에만 보여요')).toBeVisible();
     await expect(grid.getByRole('button', { name: /내 홈페이지에만 보임/ })).toHaveCount(3);
     await expect(grid.locator('li').first()).toContainText('홈페이지에만');
-    expect(await listed()).toBe(false);   // 묻기 전에 내보내지 않는다
+    expect(await inGrid()).toBe(0);           // 묻기 전에 작품 격자에 내보내지 않는다
+    expect(await listed()).toBe(true);        // 그래도 명단에는 있다 — 홈페이지에 작품이 있으니까(@beeen_2 신고)
 
     await page.getByRole('button', { name: '작가 탭에도 소개', exact: true }).click();
     await expect(grid.getByRole('button', { name: /작가 탭에도 소개 중/ })).toHaveCount(3);
     await expect(page.getByText('방금 올린')).toHaveCount(0);
-    await expect.poll(listed, { timeout: 10000 }).toBe(true);
+    await expect.poll(inGrid, { timeout: 10000 }).toBe(3);
     expect(puts, '한 번의 요청으로 세 점을 함께').toHaveLength(1);
     expect(puts[0]!.show).toBe(true);
     expect(puts[0]!.ids).toHaveLength(3);

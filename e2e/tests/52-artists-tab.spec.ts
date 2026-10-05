@@ -41,7 +41,7 @@ async function seedKoreanArtists(api: import('@playwright/test').APIRequestConte
 }
 
 test.beforeAll(async () => {
-  // 작가 목록이 나오려면 **공개 작품**이 있어야 한다(그게 목록의 조건이다)
+  // 작품 격자에 나오려면 **'작가 탭에도'** 작품이 있어야 한다(명단은 작품만 있으면 된다 — 2026-10-05)
   const api = await pwRequest.newContext();
   for (const role of ['artist', 'artist2'] as const) {
     await ensurePublicArtworks(api, tokenFor(role), 4);
@@ -197,12 +197,12 @@ test('★ [순서 바꾸기]는 없앴다 — 작품 새로고침은 작가 목�
   await ctx.close();
 });
 
-test('작품을 공개한 작가만 목록에 들어간다 (API)', async () => {
+test('작품이 있는 작가만 목록에 들어간다 (API) — \'작가 탭에도\' 여부와 무관', async () => {
   const api = await pwRequest.newContext();
   const artists = await (await api.get(`${API}/explore/artists`)).json();
   expect(Array.isArray(artists)).toBe(true);
   for (const a of artists) {
-    expect(a.workCount, `${a.name} 이 공개 작품 없이 목록에 있다`).toBeGreaterThan(0);
+    expect(a.workCount, `${a.name} 이 작품 없이 목록에 있다`).toBeGreaterThan(0);
     expect(a.id).toBeGreaterThan(0);
     // 화면이 이 값으로 칸을 묶는다 — 없으면 전부 '#' 한 칸으로 쏟아진다
     expect(a.initial, `${a.name} 에 색인 칸(initial)이 없다`).toBeTruthy();

@@ -153,12 +153,16 @@ function shuffleNoAdjacent(
 }
 
 /**
- * GET /artists — **작품을 공개한 작가 목록** (인증 불필요, 2026-09-10)
+ * GET /artists — **홈페이지에 작품이 있는 작가 목록** (인증 불필요, 2026-09-10)
  *
  * [작가] 탭(`/artists`)의 왼쪽 목록이 쓴다. 누르면 그 작가의 공개 홈페이지(`/portfolio/:id`)로 간다.
  *
- * ⚠️ **공개 작품이 한 장이라도 있는 작가만** 내려보낸다. 가입만 하고 아무것도 안 올린 계정까지
+ * ⚠️ **작품이 한 장이라도 있는 작가만** 내려보낸다. 가입만 하고 아무것도 안 올린 계정까지
  *    실으면 목록이 회원 명부가 되고, 눌러 들어가면 **텅 빈 홈페이지**가 나온다.
+ * ⚠️⚠️ **'작가 탭에도'(`showInExplore`)는 보지 않는다** (2026-10-05 사용자 결정). 그 값은 오른쪽 **작품 격자**에
+ *    내보낼지만 정한다. 예전엔 명단도 그 값으로 걸러서, 새 작품의 기본이 '홈페이지에만'(규칙 60)인 탓에 작품 2점을 올리고
+ *    홈페이지까지 있는 작가(@beeen_2)가 명단에 아예 없었다 — 작품 있는 작가 47명 중 16명이 그랬다(2026-10-02 복제본).
+ *    작품을 홈페이지에만 둔 작가도 홈페이지는 공개라, 이름을 누르면 작품이 보인다.
  * ⚠️ 탈퇴(`deletedAt`) 작가는 뺀다 — 탐색 피드(`GET /`)와 같은 기준이어야 한다.
  *    두 화면이 다른 작가 집합을 보여주면 "왜 여기만 없지" 가 된다.
  * ## 순서는 **가나다순 + 초성 색인** (2026-09-13 사용자 요청으로 랜덤에서 되돌림)
@@ -173,10 +177,10 @@ function shuffleNoAdjacent(
  */
 router.get('/artists', async (_req, res, next) => {
   try {
-    // 작가별 공개 작품 수를 한 번에 — 작가 수만큼 쿼리를 돌지 않는다(N+1)
+    // 작가별 작품 수를 한 번에 — 작가 수만큼 쿼리를 돌지 않는다(N+1). showInExplore 는 보지 않는다(위 ⚠️⚠️)
     const grouped = await prisma.portfolioImage.groupBy({
       by: ['portfolioId'],
-      where: { showInExplore: true, portfolio: { user: { deletedAt: null } } },
+      where: { portfolio: { user: { deletedAt: null } } },
       _count: { portfolioId: true },
     });
     if (grouped.length === 0) return res.json([]);
