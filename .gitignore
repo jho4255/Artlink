@@ -131,3 +131,5 @@ scratchpad/flow-audit/out/
 # 비회원 둘러보기 하니스 결과(2026-10-03) — 통계 화면 사진
 scratchpad/guest-activity/out/
 scratchpad/artlook-ux/out/
+# 히어로 글자 색 하니스의 테스트 배너(make-tone-images.py 로 다시 만든다)
+scratchpad/hero/img/

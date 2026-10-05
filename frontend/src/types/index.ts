@@ -166,6 +166,8 @@ export interface HeroSlide {
   mobileImageUrl?: string | null;
   linkUrl?: string;
   order: number;
+  /** 사진 위 글자 색 고정 — 'black'(검정) · 'white'(흰색). null 이면 자동(그 자리 밝기로, lib/heroTone.ts) */
+  textTone?: 'black' | 'white' | null;
 }
 
 export interface Review {

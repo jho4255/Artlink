@@ -446,6 +446,9 @@ model HeroSlide {
   // 세로형(4:5 권장)을 따로 받는다. 없으면 imageUrl 을 그대로 쓴다(2026-09-16).
   mobileImageUrl String?
   linkUrl        String?
+  // 사진 위 글자 색 고정(2026-10-05). null = 자동(글자가 놓인 자리의 밝기로 검정/흰색, frontend lib/heroTone.ts),
+  // 'black' · 'white' = 관리자가 고정 — 자동이 사진 속 그림(연필 등)에 걸려 틀릴 때 쓴다
+  textTone       String?
   order          Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

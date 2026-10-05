@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-05): Backend 1558 (supertest, `artlink_test` DB 순차), Frontend 1124 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2700+ tests** (2026-10-05): Backend 1560 (supertest, `artlink_test` DB 순차), Frontend 1144 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1454,7 +1454,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       나머지 가로 배너는 그 높이 안에서 위아래 띠가 생긴다 — 올리려면 **전부** 올리는 게 맞다.
     - 모바일 이미지가 없고 띠가 얇으면(<200px) 제목·설명·바로가기를 사진 **아래 카드**로 내린다(종전 동작 +
       제목 두 줄 허용). 이건 폴백이지 해결이 아니다.
-    - 관리자 [히어로 관리] 폼에 두 번째 업로드 칸. 삭제 때 모바일 파일도 함께 지운다(orphan 방지).
+    - 관리자 [히어로 관리] 폼에 두 번째 업로드 칸. 삭제 때 모바일 파일도 함께 지운다(orphan 방지). 그 아래 [사진 위 글자 색] 칸(`components/admin/HeroToneField.tsx`) —
+      자동이면 "이 사진이면 [자세히 보기]는 검은 글자, 제목은 …" 을 미리 알려 준다(`autoTones`, 사진 좌표로 어림한 자리).
     - ⚠️⚠️ **크기를 정하는 상자와 트랙을 한 요소에 합치지 말 것 — 사파리에서 사진이 잘린다** (2026-10-01 신고 "모바일에서 사진이 자꾸 짤려").
       트랙 하나에 `aspect-ratio` + `max-h` 를 걸고 슬라이드·사진을 `h-full` 로 잡았더니, WebKit 이 그 `height:100%` 를
       **max-height 로 깎이기 전 높이**로 계산했다. 상한에 걸리는 화면마다 사진 칸이 트랙보다 커져 `object-contain` 이 지킬 상자가
@@ -1466,6 +1467,15 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       보임 100%·세로 스크롤 없음·가로 넘침 없음)를 돌릴 것. WebKit 은 `bash scratchpad/hero/setup-webkit.sh` 로 **sudo 없이** 띄운다
       (`npx playwright install-deps` 는 root 가 필요해 이 WSL 에서 못 쓴다 — 라이브러리를 `~/.cache/wk-deps` 에 풀고 래퍼로 실행).
       구조는 `frontend/src/__tests__/heroSlider.test.ts` 가 소스로 고정한다.
+    - **사진 위 글자 색은 그 자리 밝기로 검정/흰색을 고른다**(2026-10-05 사용자 결정, `lib/heroTone.ts`). 예전엔 흰색 고정이라 실서버 이벤트 배너(밝은 종이색)에서
+      [자세히 보기]가 **1.1:1**(사실상 안 보임)이었다. 기준: 요소가 **실제로 놓인 상자**(DOM 으로 잰다)의 픽셀 → 흰 글자는 가장 밝은 10%, 검은 글자는 가장 어두운 10% 대비로
+      명암비(WCAG)가 큰 쪽(`pickTone`). 픽셀은 업로드 때 만든 **t240 썸네일**로 잰다(원본을 다시 안 받는다, 없으면 원본 · `fetchImage` 경로 — 규칙 16). 못 읽으면 흰색(예전 모습).
+      관리자가 슬라이드마다 '자동/검정/흰색'으로 고정할 수 있다(`HeroSlide.textTone`, 마이그레이션 `20261005120000_hero_text_tone`, null = 자동) — 사진 위 글자 전부에 걸리고,
+      얇은 배너의 아래 줄(띠 색 위, 단색이라 늘 자동이 맞다)에는 안 건다. 띠 색도 같은 썸네일 평균으로 만든다(`bandColor`, 예전 `extractColor` 와 같은 0.6배).
+      ⚠️ **[자세히 보기]는 사진의 오른쪽 위**, 제목은 사진의 왼쪽 아래 — **틀이 아니라 사진**(contain 자리, `containRect`) 기준이다. 비회원 1280·1366px 은 사진 양옆에 88~110px
+      여백(`bg-gray-100`)이 생겨, 틀 기준이면 글자가 사진과 여백에 반씩 걸쳐 어느 색도 안 읽힌다. ⚠️ 여백 색은 `colorLum`(1px 캔버스)으로 읽을 것 — Tailwind v4 는 `oklch()` 라
+      rgb 파서로는 못 읽어 연회색 여백 위에 흰 글자를 골랐다. 한 장뿐이면 사진 위 넘김 표시를 그리지 않는다.
+      실측은 `scratchpad/hero/tone.js`+`tone_check.py`(크롬+WebKit 63장, 스크린샷 픽셀로 다시 잰다): 잘못 고른 자리 77 → 0. 회귀 `heroTone.test.ts`(20) · 백엔드 `hero.test.ts`.
     - ⚠️ **적을 게 없는 캡션 줄은 그리지 않는다** — 배너에 글씨가 다 들어 있어 제목을 공백으로 둔 한 장짜리(2026-10 실서버)에서
       사진 아래에 빈 색 띠만 남았다. 제목·설명(공백 제외)·바로가기·넘길 슬라이드 중 하나라도 있을 때만 그린다.
       회귀: `backend/src/routes/__tests__/hero.test.ts`.

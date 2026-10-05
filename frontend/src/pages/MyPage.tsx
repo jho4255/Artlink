@@ -36,6 +36,8 @@ import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
 import { myPageTabs, resolveTab, aliasTab, tabHref } from '@/lib/myPageMenu';
 import { editHref } from '@/lib/homepageEdit';
+import HeroToneField, { useHeroAutoTones, type HeroToneChoice } from '@/components/admin/HeroToneField';
+import { TONE_CLASS } from '@/lib/heroTone';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
@@ -3340,8 +3342,11 @@ function HeroManageSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0 });
+  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0, textTone: 'auto' as HeroToneChoice });
   const [preview, setPreview] = useState(false);
+  // 미리보기 글자 색 — 고정했으면 그 색, 자동이면 사진 밝기로 어림(실제 배너는 글자 상자를 재서 고른다)
+  const autoTone = useHeroAutoTones(form.imageUrl);
+  const previewTone = (k: 'btn' | 'title') => TONE_CLASS[form.textTone !== 'auto' ? form.textTone : autoTone?.[k] ?? 'white'];
 
   const { data: slides = [] } = useQuery<any[]>({
     queryKey: ['hero-slides'],
@@ -3380,12 +3385,12 @@ function HeroManageSection() {
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setForm({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0 });
+    setForm({ title: '', description: '', imageUrl: '', mobileImageUrl: '', linkUrl: '', order: 0, textTone: 'auto' });
     setPreview(false);
   };
 
   const startEdit = (s: any) => {
-    setForm({ title: s.title, description: s.description || '', imageUrl: s.imageUrl, mobileImageUrl: s.mobileImageUrl || '', linkUrl: s.linkUrl || '', order: s.order });
+    setForm({ title: s.title, description: s.description || '', imageUrl: s.imageUrl, mobileImageUrl: s.mobileImageUrl || '', linkUrl: s.linkUrl || '', order: s.order, textTone: s.textTone ?? 'auto' });
     setEditingId(s.id);
     setShowForm(true);
   };
@@ -3414,6 +3419,7 @@ function HeroManageSection() {
             <ImageUpload value={form.mobileImageUrl} onChange={(url) => setForm({...form, mobileImageUrl: url})} onRemove={() => setForm({...form, mobileImageUrl: ''})} placeholder="모바일 전용 이미지 (선택, 세로형 4:5 권장)" />
             <p className="mt-1 text-xs text-gray-500">폰 화면에서는 가로 배너가 손가락 두 마디 높이로 줄어듭니다. 세로형 이미지를 따로 올리면 폰에서는 그걸 씁니다.</p>
           </div>
+          <HeroToneField value={form.textTone} onChange={(v) => setForm({ ...form, textTone: v })} imageUrl={form.imageUrl} />
 
           {/* 미리보기 */}
           <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
@@ -3425,11 +3431,12 @@ function HeroManageSection() {
               <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
                 <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />
                 <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">데스크톱</span>
-                <div className="absolute bottom-3 left-3">
-                  <p className="text-white font-bold text-sm drop-shadow">{form.title || '제목'}</p>
-                  <p className="text-white/80 text-xs drop-shadow">{form.description || '설명'}</p>
+                <div className={`absolute bottom-3 left-3 ${previewTone('title').shadow}`}>
+                  <p className={`font-bold text-sm ${previewTone('title').text}`}>{form.title || '제목'}</p>
+                  <p className={`text-xs ${previewTone('title').sub}`}>{form.description || '설명'}</p>
                 </div>
-                {form.linkUrl && <span className="absolute bottom-3 right-3 text-xs bg-white text-gray-900 px-2 py-1 rounded">바로가기 →</span>}
+                {/* 실제 배너와 같은 자리·모양 — 사진 오른쪽 위, 밑줄 글자(2026-10-05) */}
+                {form.linkUrl && <span className={`absolute top-3 right-3 text-xs underline underline-offset-4 ${previewTone('btn').link} ${previewTone('btn').shadow}`}>자세히 보기 →</span>}
               </div>
               <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
                 <img src={form.mobileImageUrl || form.imageUrl} alt="" className="w-full h-full object-contain" />

@@ -36,7 +36,10 @@ const heroSchema = z.object({
   description: z.string().nullish(),
   linkUrl: z.string().nullish(),
   order: z.number().int().optional(),
+  // 사진 위 글자 색 — 'auto'(또는 빈 값)는 자동이라 null 로 저장한다
+  textTone: z.enum(['auto', 'black', 'white']).nullish(),
 });
+const toneOf = (t: 'auto' | 'black' | 'white' | null | undefined) => (t === 'black' || t === 'white' ? t : null);
 
 const router = Router();
 
@@ -53,7 +56,7 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const parsed = heroSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
-    const { title, imageUrl, mobileImageUrl, description, linkUrl, order } = parsed.data;
+    const { title, imageUrl, mobileImageUrl, description, linkUrl, order, textTone } = parsed.data;
     const slide = await prisma.heroSlide.create({
       data: {
         title,
@@ -62,6 +65,7 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
         description: description ?? null,
         linkUrl: normalizeLinkUrl(linkUrl) ?? null,
         order: order ?? 0,
+        textTone: toneOf(textTone),
       }
     });
     res.status(201).json(slide);
@@ -73,7 +77,7 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
   try {
     const parsed = heroSchema.partial().safeParse(req.body);
     if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400);
-    const { title, imageUrl, mobileImageUrl, description, linkUrl, order } = parsed.data;
+    const { title, imageUrl, mobileImageUrl, description, linkUrl, order, textTone } = parsed.data;
     // 전달된 필드만 반영 (whitelist)
     const data: any = {};
     if (title !== undefined) data.title = title;
@@ -82,6 +86,7 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
     if (description !== undefined) data.description = description;
     if (linkUrl !== undefined) data.linkUrl = normalizeLinkUrl(linkUrl);
     if (order !== undefined) data.order = order;
+    if (textTone !== undefined) data.textTone = toneOf(textTone);
     const slide = await prisma.heroSlide.update({
       where: { id: parseInt(req.params.id as string) },
       data

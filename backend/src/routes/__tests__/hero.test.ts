@@ -66,6 +66,38 @@ describe('Hero Slide Routes', () => {
     expect(row?.mobileImageUrl).toBeNull();
   });
 
+  // 사진 위 글자 색(2026-10-05): null = 자동, 'black'·'white' = 관리자가 고정. 'auto' 는 null 로 저장
+  it('글자 색 — 고정했다가 자동으로 되돌릴 수 있다', async () => {
+    const token = authToken(4, 'ADMIN');
+    const created = await request.post('/api/hero-slides').set('Authorization', `Bearer ${token}`).send({
+      title: 'Hero tone', imageUrl: '/img/tone.jpg', textTone: 'black',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.textTone).toBe('black');
+
+    const white = await request.patch(`/api/hero-slides/${created.body.id}`).set('Authorization', `Bearer ${token}`).send({ textTone: 'white' });
+    expect(white.body.textTone).toBe('white');
+    // 다른 칸만 고치면 글자 색은 그대로
+    const other = await request.patch(`/api/hero-slides/${created.body.id}`).set('Authorization', `Bearer ${token}`).send({ title: 'Hero tone 2' });
+    expect(other.body.textTone).toBe('white');
+
+    const auto = await request.patch(`/api/hero-slides/${created.body.id}`).set('Authorization', `Bearer ${token}`).send({ textTone: 'auto' });
+    expect(auto.body.textTone).toBeNull();
+
+    const list = await request.get('/api/hero-slides');
+    expect(list.body.find((s: any) => s.id === created.body.id)).toHaveProperty('textTone', null);
+  });
+
+  it('글자 색 — 정해진 값이 아니면 400, 안 보내면 자동(null)', async () => {
+    const token = authToken(4, 'ADMIN');
+    const bad = await request.post('/api/hero-slides').set('Authorization', `Bearer ${token}`).send({
+      title: 'Hero bad', imageUrl: '/img/bad.jpg', textTone: 'red',
+    });
+    expect(bad.status).toBe(400);
+    const plain = await request.post('/api/hero-slides').set('Authorization', `Bearer ${token}`).send({ title: 'Hero plain', imageUrl: '/img/plain.jpg' });
+    expect(plain.body.textTone).toBeNull();
+  });
+
   it('DELETE /api/hero-slides/:id — Admin이 삭제', async () => {
     const token = authToken(4, 'ADMIN');
     const res = await request.delete(`/api/hero-slides/${slideId}`)

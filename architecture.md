@@ -2580,3 +2580,16 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 프론트 `artlookScreen.test.ts`(19) · `artlook.test.ts`(24) · `artlookScene.test.ts`(화면 가드를 ui.js 로) · `homepageEdit.test.ts`(work) · 백엔드 `static-cache.test.ts`(8) ·
   e2e `69-artlook-ux.spec.ts`(9) · `41-load-artlook` 은 탭을 열고 고르게.
 
+## 히어로 배너 — 글자 색과 [자세히 보기] 자리 (2026-10-05)
+
+- **요청**: [자세히 보기]를 오른쪽 위로, 글자는 그 자리 배경에 맞춰 검정/흰색. 사용자와 정한 기준 넷 — ①자동(그 자리를 실제로 잰다) + 관리자 고정
+  ②사진의 오른쪽 위(틀이 아니라) ③얇은 배너(<200px)는 지금처럼 사진 아래 줄 ④사진 위 글자·표시 전부.
+- **판정**(`frontend/src/lib/heroTone.ts`): `loadHeroAnalysis(url)` 가 t240 썸네일(없으면 원본)을 `fetchImage` 로 받아 240px 이하 밝기 표(`HeroAnalysis`)를 만든다(주소당 한 번).
+  `HeroSlider` 가 렌더 뒤 rAF 에서 `[data-tone-key]` 요소들의 상자를 재고(`data-tone-slide` 가 있으면 그 슬라이드, 없으면 지금 슬라이드 — 화살표·넘김 표시),
+  `containRect` 로 사진 자리를 구해 `sampleBox` → `pickTone`(흰=1 대 p90, 검=0 대 p10 명암비 비교). 사진 밖은 슬라이드 칸 배경색(`colorLum`). 색만 바뀌어 effect 가 스스로 다시 돌지 않는다.
+  클래스는 `TONE_CLASS[tone]`(통째 문자열 — Tailwind 가 소스를 훑는다). 우선순위: `slide.textTone`(관리자) > 잰 값 > 흰색.
+- **자리**: 버튼 `top = 사진 위 + 20(md)/12`, `right = 사진 오른쪽 여백 + 28/16`. 제목 `left = 사진 왼쪽 + 40/20`, `bottom = 사진 아래 여백 + 64/48`.
+- **데이터**: `HeroSlide.textTone String?`('black'|'white', null = 자동). API 는 `'auto'` 를 받아 null 로 저장, 그 밖의 값은 400.
+- **관리 화면**: `components/admin/HeroToneField.tsx`(세 칸 선택 + 자동 결과 미리 알림), 미리보기의 [자세히 보기]도 오른쪽 위.
+- **검증**: `scratchpad/hero/tone.js`(크롬+WebKit × 7화면 × 8구성) + `tone_check.py`(스크린샷 픽셀로 명암비) — 잘못 고른 자리 77 → 0. `matrix.js`(잘림 128조합) 0건 유지.
+
