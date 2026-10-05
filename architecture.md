@@ -150,6 +150,10 @@ ArtLink/
 - `GET /admin/galleries/:id/posts` — 갤러리가 올린 공모+전시 전체(상태 무관)
 - `GET /admin/view-stats` — 상세 페이지 조회수 통계 API: `{galleries, exhibitions, shows, totals}` 각 항목 viewCount 내림차순 (Admin 대시보드용, 현재 UI 미연결·테스트 존재)
 - **조회수(viewCount)**: 갤러리/공모/전시 상세 `GET /:id` 응답에 `viewCount` 포함. 각 상세 페이지에서 **ADMIN에게만** 배지로 노출(`components/shared/ViewCountBadge`, GalleryDetail/ExhibitionDetail/ShowDetailPage 제목 옆)
+  - **공모는 2026-10-05 부터 올린 갤러리도 본다** — `lib/viewCount.ts canSeeExhibitionViews`(Admin 또는 `hostType='GALLERY'` 의 주관 갤러리 주인. 위임 운영 갤러리 ✗).
+    그 밖의 사람에게는 공모 응답에서 `viewCount` 를 뺀다(`maskExhibition` — 공개 목록·갤러리 상세의 공모 목록, 공모 상세, 작가 `my-applications`).
+    올린 갤러리는 공모 상세의 배지(`ViewCountBadge owner`)와 [내 공모] 카드의 '조회 N'(`my-operation-overview.viewCount`, 볼 수 없으면 null)으로 본다.
+    갤러리·전시 상세의 `viewCount` 는 아직 응답에 실린다(화면은 Admin 만).
   - 누적: `lib/viewCount.ts`의 `bumpViewCount`가 상세 조회 시 `viewCount` +1 (best-effort). **관리자·소유자 본인 조회는 집계 제외**. 스키마: Gallery/Exhibition/Show.viewCount Int @default(0) (migration ..._add_view_count)
 - `Application.updatedAt`(@updatedAt) 추가로 수락/거절 결정 시각 추적 (migration 20260603000000)
 - 지원서 고정 양식 컬럼 추가: Portfolio.career/portfolioFileUrl, Application.biography/career/artworkImages/portfolioFileUrl (migration 20260607060000_artist_profile_fields)

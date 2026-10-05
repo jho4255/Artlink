@@ -15,7 +15,7 @@ import { maskExhibition, maskGallery } from '../lib/sanitize';
 import { deleteExhibitionWithNotice, exhibitionBlockReason, exhibitionDeleteFacts } from '../lib/deletion';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { ARTIST_APPLY_TERMS_HASH, ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
-import { bumpViewCount } from '../lib/viewCount';
+import { bumpViewCount, canSeeExhibitionViews } from '../lib/viewCount';
 import { startOfTodayKstAsUtc, endOfTodayKstAsUtc, isDeadlinePassedKst } from '../lib/kstDate';
 import { hasSubmissionContent } from '../lib/submission';
 import { isExhibitionClosed, isSettlementStarted } from '../lib/exhibitionLifecycle';
@@ -371,6 +371,7 @@ router.get('/my-applications', authenticate, authorize('ARTIST'), async (req, re
         mySettlementStatus: ex.settlementApprovals?.[0]?.status ?? null,
         exhibition: {
           ...exRest,
+          viewCount: undefined,   // 조회수는 공모를 올린 갤러리·관리자만 본다(lib/viewCount.ts canSeeExhibitionViews)
           customFields: parseCustomFields(ex.customFields),
           closed: isExhibitionClosed({ ...ex, saleCount: _count?.sales ?? 0 }),
           // 배지를 '전시종료' 와 '정산중' 으로 가르는 값 — 갤러리가 정산에 손을 댔는가
@@ -407,13 +408,15 @@ router.get('/my-exhibitions', authenticate, authorize('GALLERY'), async (req, re
     const exhibitions = await prisma.exhibition.findMany({
       where: operableExhibitionWhere(req.user!.id),
       include: {
-        gallery: { select: { id: true, name: true } },
+        gallery: { select: { id: true, name: true, ownerId: true } },   // ownerId — 조회수를 볼 수 있는가(내가 올린 공모인가)
         managers: { select: { gallery: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' }
     });
     res.json(exhibitions.map((e: any) => ({
       ...e,
+      // 조회수는 내가 올린 공모만 — 운영만 위임받은 아트링크 주최 공모는 뺀다(lib/viewCount.ts canSeeExhibitionViews)
+      viewCount: canSeeExhibitionViews(e, req.user) ? e.viewCount : undefined,
       customFields: parseCustomFields(e.customFields),
       managerGalleries: e.managers.map((m: any) => m.gallery),
       managers: undefined,
@@ -429,7 +432,7 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
     const exhibitions = await prisma.exhibition.findMany({
       where: operableExhibitionWhere(req.user!.id),
       include: {
-        gallery: { select: { id: true, name: true } }
+        gallery: { select: { id: true, name: true, ownerId: true } }   // ownerId — 조회수를 볼 수 있는가
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -570,6 +573,8 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
         // 갤러리가 [전시종료]조차 안 누른 공모가 영원히 '진행중' 으로 쌓이는 걸 막는다.
         closed: isExhibitionClosed({ ...exhibition, saleCount }),
         gallery: exhibition.gallery,
+        // 상세 조회수 — 내가 올린 공모만(운영만 위임받은 아트링크 주최 공모는 없음, lib/viewCount.ts)
+        viewCount: canSeeExhibitionViews(exhibition, req.user) ? exhibition.viewCount : null,
         stage: getStage(exhibition),
         nextAction: getNextAction(exhibition, apps.accepted ?? 0, subs.complete, saleCount, settlement),
         counts: {
@@ -1292,8 +1297,11 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // 주관 갤러리의 반려 사유는 이 화면과 무관하다
     const body = canOperate || req.user?.role === 'ADMIN' ? exhibition : maskExhibition(exhibition);
     if (gallery) { const { rejectReason: _r, ...g } = gallery; void _r; gallery = g; }
+    // 조회수는 운영 권한과 기준이 다르다 — 공모를 올린 갤러리 주인·관리자만(위임 갤러리·다른 갤러리 ✗, lib/viewCount.ts)
+    const seeViews = canSeeExhibitionViews({ hostType: exhibition.hostType, gallery: exhibitionOwner(exhibition) }, req.user);
     res.json({
       ...body,
+      viewCount: seeViews ? exhibition.viewCount : undefined,
       customFields: parseCustomFields(exhibition.customFields),
       gallery,
       // 아트링크 주최 공모의 운영 갤러리 목록 (갤러리 주최면 빈 배열)

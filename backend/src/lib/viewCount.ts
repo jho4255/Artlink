@@ -26,6 +26,21 @@ export async function bumpViewCount(
 }
 
 /**
+ * 공모 조회수를 볼 수 있는 사람 — **그 공모를 올린 갤러리 주인**과 관리자뿐(2026-10-05 사용자 요청).
+ * 다른 갤러리·작가·비회원에게는 응답에서 뺀다(`maskExhibition` 이 `viewCount` 를 지운다).
+ * ⚠️ 아트링크 주최 공모(`hostType='ADMIN'`)는 운영을 위임받은 갤러리라도 보지 못한다 — 올린 곳이 아트링크다.
+ *    `canOperateExhibition`(운영 권한)과 다른 기준이라 그걸로 판정하지 말 것.
+ */
+export function canSeeExhibitionViews(
+  ex: { hostType?: string | null; gallery?: { ownerId?: number | null } | null },
+  viewer: Viewer | null,
+): boolean {
+  if (!viewer) return false;
+  if (viewer.role === 'ADMIN') return true;
+  return ex.hostType !== 'ADMIN' && ex.gallery?.ownerId != null && ex.gallery.ownerId === viewer.id;
+}
+
+/**
  * 같은 사람(로그인 id 또는 IP)이 같은 대상을 30분 안에 다시 열어도 조회수를 안 센다 — 메모리 창(프로세스당).
  * 상세 페이지를 refetch 하는 조작(좋아요·댓글)이 조회수를 올리는 것을 막는다. 재시작하면 창이 비지만 통계용이라 충분하다.
  */

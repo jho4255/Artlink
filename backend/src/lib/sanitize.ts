@@ -22,9 +22,11 @@ export function maskGallery<T extends Record<string, any>>(g: T | null | undefin
  * 공모를 **운영자가 아닌 사람**에게 내보낼 때 뺄 값 — 정산·심사 내부 정보(2026-10-03 점검 S4).
  *  - cardFeeRate · settlementRequestedAt : 정산 진행 정보(작가는 자기 정산 화면에서 따로 받는다)
  *  - rejectReason : 반려 사유(공개 목록은 승인된 것만이라 보통 비어 있지만, 비울 이유가 없다)
+ *  - viewCount : 상세 조회수(2026-10-05) — 공모를 올린 갤러리와 관리자만 본다. 공모 상세는 `canSeeExhibitionViews`
+ *    (lib/viewCount.ts)로 따로 되돌려 준다 — 운영 권한(`canOperate`)과 기준이 다르다(위임 갤러리는 못 본다).
  * 운영자(주관·위임 갤러리)·관리자에게는 그대로 준다 — 공모 상세의 `canOperate` 로 가른다.
  */
-const EXHIBITION_INTERNAL_KEYS = ['cardFeeRate', 'settlementRequestedAt', 'rejectReason'] as const;
+const EXHIBITION_INTERNAL_KEYS = ['cardFeeRate', 'settlementRequestedAt', 'rejectReason', 'viewCount'] as const;
 export function maskExhibition<T extends Record<string, any>>(ex: T): Omit<T, (typeof EXHIBITION_INTERNAL_KEYS)[number]> {
   const out: Record<string, any> = { ...ex };
   for (const k of EXHIBITION_INTERNAL_KEYS) delete out[k];

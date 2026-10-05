@@ -346,7 +346,8 @@ export default function ExhibitionDetailPage() {
               <HostBadge exhibition={exhibition} className="block mb-1" />
               <h1 className="text-2xl font-medium">{exhibition.title}</h1>
             </div>
-            <ViewCountBadge count={exhibition.viewCount} className="mt-1 shrink-0" />
+            {/* 조회수는 서버가 공모를 올린 갤러리·관리자에게만 싣는다(백엔드 canSeeExhibitionViews) — 값이 왔으면 그린다 */}
+            <ViewCountBadge count={exhibition.viewCount} owner className="mt-1 shrink-0" />
           </div>
           {isAdminHosted(exhibition) ? (
             /* 아트링크 주최 공모 — 주최는 아트링크이고 갤러리들은 다같이 참여하는 것이라

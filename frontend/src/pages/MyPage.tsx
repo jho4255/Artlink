@@ -100,6 +100,8 @@ interface GalleryOperationOverview {
   /** 서버가 계산한 종료(정산 완료 또는 전시 종료 20일 경과) */
   closed?: boolean;
   gallery?: { id: number; name: string };
+  /** 상세 조회수 — 내가 올린 공모만 온다(운영만 위임받은 아트링크 주최 공모는 null) */
+  viewCount?: number | null;
   stage: { key: string; label: string; tone: OperationTone };
   nextAction: { label: string; description: string; route: string };
   counts: {
@@ -2414,6 +2416,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusChip variant={stage.variant}>{stage.label}</StatusChip>
                             {deadlineLabel && <span className="text-xs font-medium tabular-nums text-gray-500">{deadlineLabel}</span>}
+                            {/* 공모 상세 조회수 — 내가 올린 공모만(서버가 값을 싣는다). 우리 갤러리·관리자의 조회는 세지 않는다 */}
+                            {isApproved && item.viewCount != null && (
+                              <span className="inline-flex items-center gap-1 text-xs tabular-nums text-gray-500" title="공모 상세 페이지 조회수 · 우리 갤러리에만 보여요">
+                                <Eye size={12} aria-hidden /> 조회 {item.viewCount.toLocaleString('ko')}
+                              </span>
+                            )}
                             {settlement.issue > 0 && !item.settledAt && <StatusChip variant="attention">정산 이의 {settlement.issue}</StatusChip>}
                             {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
                             <HostBadge exhibition={item} />

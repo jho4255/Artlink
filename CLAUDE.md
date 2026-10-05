@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-05): Backend 1551 (supertest, `artlink_test` DB 순차), Frontend 1119 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2600+ tests** (2026-10-05): Backend 1558 (supertest, `artlink_test` DB 순차), Frontend 1124 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2022,6 +2022,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       (`/` 로 시작해도 **다른 호스트**다). 지원서·공모 포스터·홍보 사진·출품 자료·홈페이지 작품/파일에 적용. ⚠️ **테스트 픽스처에 `https://example.com/…` 이미지를 쓰지 말 것** — 400 이다(`/uploads/…`).
       E2E 공모 픽스처의 지역도 `'SEOUL'` 같은 코드로(`'서울'` 은 400 — 등록 스키마가 지역 enum 을 본다).
     - **공개 응답은 고른다** — `maskGallery`(`hiddenArtistIds` 제거) · `maskExhibition`(운영자·관리자가 아니면 `cardFeeRate`·`settlementRequestedAt`·`rejectReason` 제거). 공모를 통째로 내려주는 새 공개 경로를 만들면 이걸 통과시킬 것.
+    - **공모 조회수(`viewCount`)는 그 공모를 올린 갤러리 주인과 관리자만 본다**(2026-10-05 사용자 요청 — "다른 갤러리 것은 못 보게").
+      판정은 `lib/viewCount.ts canSeeExhibitionViews` 한 곳: Admin, 또는 `hostType='GALLERY'` 이고 주관 갤러리 주인. ⚠️ **운영 권한(`canOperate`)과 기준이 다르다** —
+      아트링크 주최 공모를 위임받아 운영하는 갤러리는 못 본다(올린 곳이 아트링크다). `maskExhibition` 이 `viewCount` 를 지우고(공개 목록·갤러리 상세의 공모 목록),
+      공모 상세·`my-exhibitions`·`my-operation-overview` 는 이 함수로 되돌려 싣는다. 작가의 `my-applications` 에도 싣지 않는다.
+      화면은 공모 상세의 `ViewCountBadge owner`(값이 왔으면 그린다)와 [내 공모] 카드의 '조회 N'. 올린 갤러리·관리자의 조회는 원래 세지 않는다(`bumpViewCount`).
+      ⚠️ 갤러리·전시(Show) 상세의 `viewCount` 는 아직 누구에게나 응답에 실린다(화면은 관리자만) — 같은 규칙을 원하면 거기도 서버에서 뺄 것. 회귀: `view-count.test.ts`「공모 조회수는 올린 갤러리·관리자만 본다」(7) · 프론트 `viewCountBadge.test.ts`(5).
     - **보안 헤더** `helmet`(`index.ts`) — iframe 은 같은 출처만(`frame-ancestors 'self'` — ArtLook 은 같은 출처라 괜찮다) · HSTS(운영만) · nosniff · Referrer-Policy.
       COOP `same-origin-allow-popups`(카카오 로그인 팝업) · CORP `cross-origin`(이미지 프록시·공유 미리보기). ⚠️ **CSP 전체는 넣지 않았다** — 외부 글꼴·pdf.js(jsDelivr)·카카오·R2 목록부터 만들 것.
     - **비밀번호 가입·로그인 API 는 운영에서 404**(`NODE_ENV=production` 이고 `ENABLE_PASSWORD_AUTH=true` 가 아니면) — 화면은 카카오만 쓰는데 API 로 남의 이메일을 선점할 수 있었다.

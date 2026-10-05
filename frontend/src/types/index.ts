@@ -117,7 +117,7 @@ export interface Exhibition {
   region: string;
   description: string;
   status: string;
-  viewCount?: number; // 상세 조회수 (Admin 전용 노출)
+  viewCount?: number; // 상세 조회수 — 공모를 올린 갤러리·Admin 에게만 서버가 싣는다(백엔드 canSeeExhibitionViews)
   /** 주관 갤러리 id. **아트링크 주최 공모는 갤러리를 안 낄 수 있어 null 이다**(2026-09-10) */
   galleryId: number | null;
   /** 'GALLERY'(갤러리 주최, 기본) | 'ADMIN'(아트링크 주최 — 운영은 managerGalleries 가 맡는다) */
