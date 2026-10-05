@@ -28,7 +28,7 @@ p.on('pageerror', (e) => errs.push(e.message));
 // 가르는 유일한 방법이다(7차 syncheck 와 같은 논리).
 const qs = [process.env.SYN != null ? `syn=${process.env.SYN}` : '',
   process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : ''].filter(Boolean).join('&');
-await p.goto('http://localhost:5173/artlook/index.html' + (qs ? '?' + qs : ''), { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (qs ? '&' + qs : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 await p.evaluate(() => {
   window.__vtLoad = (f) => new Promise((res, rej) => {

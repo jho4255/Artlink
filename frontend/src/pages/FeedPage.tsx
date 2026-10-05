@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send, Star, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { timeAgo, roleLabel } from '@/lib/utils';
 import type { StoryHighlight } from '@/types';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
+import { readComposeImages } from '@/lib/artlook';
 
 /**
  * 소식 (Story Feed) — 커뮤니티(글로벌 게시판)와 **다른** 개인 피드.
@@ -36,7 +37,26 @@ function Composer() {
   const [visibility, setVisibility] = useState<'PUBLIC' | 'NEIGHBORS'>('NEIGHBORS');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const mention = useMention(caption, (v) => setCaption(v.slice(0, 1000)));
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // ArtLook 의 [ArtStory에 올리기] 로 왔다 — 마이페이지가 이미지를 올려 두고 그 주소를 라우터 state 로 넘긴다(lib/artlook.ts).
+  // 사진을 실은 채로 글쓰기 칸을 열고, state 는 바로 비운다(새로고침·뒤로가기에 다시 붙지 않게).
+  // ⚠️ 개발 모드(StrictMode)는 이 effect 를 두 번 돌린다 — 같은 주소는 한 번만 붙인다(중복을 걸러서).
+  useEffect(() => {
+    const incoming = readComposeImages(location.state);
+    if (!incoming.length) return;
+    setImages((prev) => [...prev, ...incoming.filter((u) => !prev.includes(u))].slice(0, 10));
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    window.setTimeout(() => {
+      boxRef.current?.scrollIntoView({ block: 'center' });
+      mention.ref.current?.focus({ preventScroll: true });
+    }, 60);
+    toast.success('ArtLook 이미지를 담았어요. 글을 쓰고 [올리기]를 눌러 주세요.', { id: 'artlook-compose' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   const create = useMutation({
     mutationFn: () => api.post('/stories', { caption: caption.trim(), images, visibility }).then((r) => r.data),
@@ -76,7 +96,7 @@ function Composer() {
   const canSubmit = (!!caption.trim() || images.length > 0) && !create.isPending && !uploading;
 
   return (
-    <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
+    <div ref={boxRef} className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
       <div className="relative">
         <textarea
           ref={mention.ref as React.Ref<HTMLTextAreaElement>}

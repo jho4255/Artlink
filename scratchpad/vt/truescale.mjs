@@ -4,7 +4,7 @@ const { chromium } = pw;
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = []; p.on('pageerror', (e) => errs.push(e.message));
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 await p.evaluate(() => { window.__vtLoad = (f) => new Promise((r, j) => {
   const im = new Image(); im.onload = () => { state.img = capToCanvas(im); r(1); }; im.onerror = j;

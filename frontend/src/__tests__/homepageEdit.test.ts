@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  EDIT_SECTIONS, editHref, editSectionForTab, nextUncaptionedId, previewTabFor, recentValues, resolveEditEntry, sectionDone, tileLabel, uncaptionedCount,
+  entryInfoImageId, EDIT_SECTIONS, editHref, editSectionForTab, nextUncaptionedId, previewTabFor, recentValues, resolveEditEntry, sectionDone, tileLabel, uncaptionedCount,
 } from '@/lib/homepageEdit';
 
 const w = (id: number, over: Partial<{ title: string; medium: string; sizeText: string; year: string }> = {}) =>
@@ -20,7 +20,7 @@ describe('묶음 — 작품이 첫 화면이다', () => {
   });
 
   it('주소에 묶음이 없거나 모르는 값이면 작품으로 — 빈 화면을 만들지 않는다', () => {
-    expect(resolveEditEntry('?tab=homepage-edit')).toEqual({ section: 'works', focus: null, info: false });
+    expect(resolveEditEntry('?tab=homepage-edit')).toEqual({ section: 'works', focus: null, info: false, work: null });
     expect(resolveEditEntry('?tab=homepage-edit&section=nope').section).toBe('works');
     expect(resolveEditEntry('').section).toBe('works');
   });
@@ -31,11 +31,11 @@ describe('묶음 — 작품이 첫 화면이다', () => {
   });
 
   it('칸을 지정하면 묶음은 칸에서 정해진다(작가노트 → 소개, 약력 → 약력, 주소 → 꾸미기)', () => {
-    expect(resolveEditEntry(searchOf(editHref('works', { focus: 'statement' })))).toEqual({ section: 'intro', focus: 'statement', info: false });
-    expect(resolveEditEntry(searchOf(editHref(undefined, { focus: 'biography' })))).toEqual({ section: 'cv', focus: 'biography', info: false });
-    expect(resolveEditEntry(searchOf(editHref(undefined, { focus: 'handle' })))).toEqual({ section: 'style', focus: 'handle', info: false });
+    expect(resolveEditEntry(searchOf(editHref('works', { focus: 'statement' })))).toEqual({ section: 'intro', focus: 'statement', info: false, work: null });
+    expect(resolveEditEntry(searchOf(editHref(undefined, { focus: 'biography' })))).toEqual({ section: 'cv', focus: 'biography', info: false, work: null });
+    expect(resolveEditEntry(searchOf(editHref(undefined, { focus: 'handle' })))).toEqual({ section: 'style', focus: 'handle', info: false, work: null });
     // 모르는 칸은 무시
-    expect(resolveEditEntry('?tab=homepage-edit&section=cv&focus=zzz')).toEqual({ section: 'cv', focus: null, info: false });
+    expect(resolveEditEntry('?tab=homepage-edit&section=cv&focus=zzz')).toEqual({ section: 'cv', focus: null, info: false, work: null });
     // 객체에 원래 있는 이름(toString 등)을 칸으로 착각하지 않는다
     expect(resolveEditEntry('?tab=homepage-edit&focus=toString').focus).toBeNull();
   });
@@ -44,6 +44,28 @@ describe('묶음 — 작품이 첫 화면이다', () => {
     expect(resolveEditEntry(searchOf(editHref('works', { info: true }))).info).toBe(true);
     expect(editHref('intro', { info: true })).not.toContain('do=info');
     expect(resolveEditEntry('?tab=homepage-edit&section=cv&do=info').info).toBe(false);
+  });
+
+  it('그 작품의 정보 창 — ArtLook [크기 입력하기] (2026-10-04)', () => {
+    const href = editHref('works', { info: true, work: 42 });
+    expect(href).toBe('/mypage?tab=homepage-edit&section=works&do=info&work=42');
+    expect(resolveEditEntry(searchOf(href))).toEqual({ section: 'works', focus: null, info: true, work: 42 });
+    // info 없이 work 만 붙지 않는다 · 이상한 번호는 버린다
+    expect(editHref('works', { work: 42 })).not.toContain('work=');
+    expect(resolveEditEntry('?tab=homepage-edit&do=info&work=-3').work).toBeNull();
+    expect(resolveEditEntry('?tab=homepage-edit&do=info&work=1.5').work).toBeNull();
+    expect(resolveEditEntry('?tab=homepage-edit&work=7').work).toBeNull();   // 창을 열 때만 뜻이 있다
+  });
+
+  it('들어오며 열 작품 — 고른 작품이 있으면 그것, 지워졌으면 정보 없는 첫 작품', () => {
+    const imgs = [
+      { id: 1, title: '봄', medium: null, sizeText: null, year: null },
+      { id: 2, title: null, medium: null, sizeText: null, year: null },
+      { id: 3, title: '여름', medium: '유채', sizeText: '30×30', year: '2024' },
+    ] as never[];
+    expect(entryInfoImageId(imgs, 3)).toBe(3);      // 정보가 다 있어도 고른 작품이면 그것
+    expect(entryInfoImageId(imgs, 99)).toBe(2);     // 없는 작품 → 정보 없는 첫 작품
+    expect(entryInfoImageId(imgs, null)).toBe(2);
   });
 });
 

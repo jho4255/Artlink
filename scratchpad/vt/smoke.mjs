@@ -4,7 +4,7 @@ const p = await b.newPage({ viewport: { width: 1100, height: 900 } });
 const errs = [];
 p.on('pageerror', e => errs.push('JS: ' + e.message));
 p.on('console', m => { if (m.type() === 'error') errs.push('C: ' + m.text().slice(0, 160)); });
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
 await p.waitForTimeout(4000);
 const r = await p.evaluate(() => ({
   frames: FRAMES.map(f => f.name),

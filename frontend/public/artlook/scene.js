@@ -1350,32 +1350,46 @@
   // ==========================================================================
   //  장면 레지스트리 — scenes/scenes.json (없으면 장면 모드를 감춘다)
   // ==========================================================================
-  function loadScenes(url, onReady) {
+  // ⚠️ 사진은 **그 장면을 고를 때** 받는다(`ensureScene`). 예전엔 목록이 오자마자 21장을 전부 받았고(벽 사진 27.6MB),
+  //    한 장 도착할 때마다 화면을 다시 그렸다 — 탭을 열면 32번(2026-10-04 실측, 헤드리스 기준 첫 그림 15~18초).
+  //    `opts.preloadAll` 이면 예전처럼 전부 받는다 — 화질 하니스(`scratchpad/vt`)가 장면을 코드로 갈아 끼우며 잰다(`?preload=all`).
+  // 레이어 이름은 그대로다: 사진 `img`/`loaded` · 폐색 `occImg`/`occLoaded` · 반사 `refImg`/`refLoaded` · 전경 `fgImg`/`fgLoaded`.
+  // 못 받으면 `failed`(사진) 또는 레이어별 `…Failed` — 기다리던 쪽이 영원히 기다리지 않게 한다.
+  const SCENE_LAYERS = [
+    ['src', 'img', 'loaded', 'failed'],
+    ['occlusion', 'occImg', 'occLoaded', 'occFailed'],
+    ['reflection', 'refImg', 'refLoaded', 'refFailed'],
+    ['foreground', 'fgImg', 'fgLoaded', 'fgFailed'],
+  ];
+  /** 그 장면을 그릴 준비가 됐나 — 있는 레이어가 전부 도착했거나 실패했다 */
+  function sceneReady(s) {
+    if (!s) return false;
+    return SCENE_LAYERS.every(([src, , ok, bad]) => !s[src] || !!s[ok] || !!s[bad]);
+  }
+  /** 그 장면의 사진을 받기 시작한다(한 번만). 한 레이어가 도착·실패할 때마다 onEach(s) */
+  function ensureScene(s, onEach) {
+    if (!s) return false;
+    if (!s._requested) {
+      s._requested = true;
+      SCENE_LAYERS.forEach(([src, img, ok, bad]) => {
+        if (!s[src]) return;
+        const im = new Image();
+        im.onload = () => { s[ok] = true; if (onEach) onEach(s); };
+        im.onerror = () => { s[bad] = true; if (onEach) onEach(s); };
+        im.src = s[src];
+        s[img] = im;
+      });
+    }
+    return sceneReady(s);
+  }
+  function loadScenes(url, onReady, opts) {
+    const all = !!(opts && opts.preloadAll);
     fetch(url, { cache: 'no-cache' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const list = (j && Array.isArray(j.scenes)) ? j.scenes : [];
-        list.forEach((s) => {
-          s.loaded = false;
-          s.img = new Image();
-          s.img.onload = () => { s.loaded = true; if (onReady) onReady(s); };
-          s.img.src = s.src;
-          if (s.occlusion) {
-            s.occImg = new Image();
-            s.occImg.onload = () => { s.occLoaded = true; if (onReady) onReady(s); };
-            s.occImg.src = s.occlusion;
-          }
-          if (s.reflection) {
-            s.refImg = new Image();
-            s.refImg.onload = () => { s.refLoaded = true; if (onReady) onReady(s); };
-            s.refImg.src = s.reflection;
-          }
-          if (s.foreground) {
-            s.fgImg = new Image();
-            s.fgImg.onload = () => { s.fgLoaded = true; if (onReady) onReady(s); };
-            s.fgImg.src = s.foreground;
-          }
-        });
+        list.forEach((s) => { s.loaded = false; });
+        if (all) list.forEach((s) => ensureScene(s, (x) => { if (onReady) onReady(x); }));
         if (onReady) onReady(null, list);
       })
       .catch(() => { if (onReady) onReady(null, []); });
@@ -1401,7 +1415,7 @@
 
   global.ArtLookScene = {
     parseSizeCm,
-    supported, warp, buildInsert, composeScene, loadScenes, sceneLightModel,
+    supported, warp, buildInsert, composeScene, loadScenes, ensureScene, sceneReady, sceneLightModel,
     homographyUnitToQuad, inv3, quadSize, fitScene, mapQuad, placeInRegion,
   };
 })(window);

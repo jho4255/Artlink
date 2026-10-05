@@ -30,7 +30,7 @@ const makerCode = makerFiles.map(code).join('\n');
 describe('화면 틀 — 미리보기가 주인공', () => {
   it('★ 마이페이지는 이 화면에서 프로필 카드·가로 탭바를 그리지 않는다(편집 화면과 같은 focused)', () => {
     const my = read('pages/MyPage.tsx');
-    expect(my).toMatch(/const focused = \(currentTab === 'homepage-edit' \|\| currentTab === 'portfolio'\) && user\.role === 'ARTIST'/);
+    expect(my).toMatch(/const focused = \(currentTab === 'homepage-edit' \|\| currentTab === 'portfolio'( \|\| currentTab === 'artlook')?\) && user\.role === 'ARTIST'/);
     expect(my).toContain("{currentTab === 'portfolio' && user.role === 'ARTIST' && <PortfolioMaker />}");
   });
 

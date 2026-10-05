@@ -10,6 +10,7 @@ dotenv.config();
 
 import { errorHandler } from './middleware/errorHandler';
 import logger from './lib/logger';
+import { staticCacheControl } from './lib/staticCache';
 import authRoutes from './routes/auth';
 import heroRoutes from './routes/hero';
 import galleryRoutes from './routes/gallery';
@@ -191,27 +192,15 @@ app.use('/', seoRoutes);
 // 프론트엔드 정적 파일 제공 (프로덕션)
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../frontend/dist');
-  // 캐시 만료 정책 (명시적):
-  //  - 해시된 번들(assets/*-[hash].js/css 등): 파일명이 곧 버전이므로 1년 immutable 장기 캐시
-  //  - 앱셸/서비스워커/매니페스트: 파일명이 고정이라 캐시되면 신버전을 못 받음 → 항상 재검증(no-cache).
-  //    특히 sw.js가 immutable로 캐시되면 서비스워커가 영영 갱신되지 않아 흰 화면·데이터 미갱신의 원인이 됨.
-  const NO_CACHE_FILES = new Set([
-    'index.html',
-    'sw.js',
-    'registerSW.js',
-    'manifest.webmanifest',
-  ]);
+  // 캐시 만료 정책은 `lib/staticCache.ts` 한 곳 — 해시 번들(assets/)만 1년 immutable, 앱 셸은 no-store,
+  // 그 밖의 고정 이름 파일(ArtLook·회사 정보 등)은 no-cache(ETag 재확인).
+  // ⚠️ 예전엔 assets 가 아닌 것까지 1년 immutable 이라 ArtLook 의 scene.js 가 엣지에 옛 판으로 굳어 있었다(2026-10-04).
   app.use(express.static(distPath, {
-    maxAge: '1y',
-    immutable: true,
     index: false,
+    // 헤더는 setHeaders 가 전부 정한다 — maxAge·immutable 을 주면 serve-static 이 먼저 1년을 적는다
+    cacheControl: false,
     setHeaders: (res, filePath) => {
-      if (NO_CACHE_FILES.has(path.basename(filePath))) {
-        // no-store: CDN(Cloudflare) 엣지가 아예 저장하지 못하게 한다.
-        // no-cache는 엣지 설정(Browser Cache TTL 등)에 따라 덮어써질 수 있고,
-        // 실제로 sw.js가 엣지에 1년 immutable로 굳어 신버전이 배포되지 않는 사고 발생(2026-07).
-        res.setHeader('Cache-Control', 'no-store');
-      }
+      res.setHeader('Cache-Control', staticCacheControl(path.relative(distPath, filePath)));
     },
   }));
   // ── 상세 페이지 SEO 메타 주입 ──────────────────────────────────────────

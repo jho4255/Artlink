@@ -2,256 +2,260 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ArtLook : 예술의 완성</title>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ArtLook · 액자 걸기</title>
+<script>
+  // 마이페이지 [ArtLook] 탭은 이 페이지를 iframe 으로 품는다(같은 출처라 localStorage 가 그대로 읽힌다).
+  // 그때는 바깥(MyPage)이 이미 제목을 그리므로 머리말을 감춘다 — 첫 그림부터 감추려고 <head> 에서 정한다.
+  if (/[?&]embed=1(&|$)/.test(location.search) && window.parent !== window) document.documentElement.classList.add('embed');
+</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
-  :root{ --accent:#c4302b; --line:#e5e3dd; --ink:#1c1c1c; --muted:#7a766e; --panel:#fbfaf7; }
-  *{box-sizing:border-box;}
-  body{ margin:0; font-family:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Segoe UI",sans-serif;
-        color:var(--ink); background:#f3f1ec; }
-  header{ padding:16px 22px; background:#fff; border-bottom:1px solid var(--line); }
-  header h1{ margin:0; font-size:25px; font-weight:800; letter-spacing:-.5px;
-             font-family:'Pretendard Variable','Pretendard',system-ui,sans-serif; color:var(--ink); }
-  header h1 b{ color:var(--accent); font-weight:800; }
-  header h1 .tagline{ font-size:.58em; font-weight:600; color:var(--muted); letter-spacing:.2px; margin-left:6px; }
-  header p{ margin:5px 0 0; font-size:12px; color:var(--muted); }
-  .wrap{ display:grid; grid-template-columns:340px 1fr; gap:0; min-height:calc(100vh - 56px); }
-  @media(max-width:860px){
-    .wrap{ grid-template-columns:1fr; }
-    /* 좁은 화면은 패널·스테이지가 세로로 쌓이므로 높이 고정을 푼다(페이지 스크롤) */
-    html,body{ height:auto; }
-    body{ display:block; }
-    .wrap{ min-height:calc(100vh - 56px); }
-    .panel,.stage{ overflow:visible; }
-    .actions{ position:static; box-shadow:none; }
+  /* ── ArtLook 화면 (2026-10-04 개편, CLAUDE.md 규칙 65) ───────────────────────────────
+     한 구조, 두 배치 — 미리보기 + 탭 줄 [작품 · 액자 · 매트 · 배경 · 조명 · 비율] + 그 탭의 내용 + [이미지 저장].
+       · 좁은 칸(860px 미만 — 휴대폰·태블릿·1024px 노트북의 탭 안): 미리보기가 위에서 남는 높이를 전부 쓰고,
+         아래에 탭 줄 · 옆으로 미는 칩 한 줄 · [저장]. 칩 칸의 높이는 **고정** — 탭을 바꿀 때 미리보기가 들썩이지 않게.
+       · 넓은 칸: 왼쪽 미리보기 / 오른쪽 360px 패널(탭 줄 · 격자 · 맨 아래 [저장]).
+     ⚠️ **좁은 칸 규칙을 먼저, 넓은 칸 미디어 쿼리를 뒤에** 둘 것. 예전엔 `@media(max-width:860px)` 가 같은 선택자의 기본 규칙보다
+        **앞에** 있어서 한 번도 적용되지 않았다 — 휴대폰에서 설정 1,611px 를 141px 틈으로 넘겼다(2026-10-04 실측). 소스 가드가 순서를 본다.
+     색·모양은 앱의 다른 화면(포트폴리오 만들기)과 같다 — 흑백, 고른 것은 진한 테두리, 검정 채움은 [이미지 저장] 하나, 그림자 없음.
+     누르는 곳 40px·글자 12px 이상. */
+  :root{
+    --ink:#111827; --text:#1f2937; --sub:#6b7280; --faint:#9ca3af;
+    --line:#e5e7eb; --line-strong:#d1d5db; --soft:#f3f4f6;
+    --stage:#f2f1ee;               /* 미리보기 바탕 — 벽 사진이 놓일 자리라 아주 옅은 웜 그레이 */
+    --accent:#c4302b;              /* 사이트 빨강 — '지금 할 일'(크기 입력하기)에만 */
+    --bg:#ffffff;
+    --tabs-h:44px; --pane-h:144px;   /* 좁은 칸의 칩 칸 높이 — 탭마다 내용이 이 안에 들어가게 맞췄다(scratchpad/artlook-ux/walk.js 가 잘림을 잰다) */
   }
-  /* 설정이 세로로 1764px까지 늘어나 900px 화면에서 두 번 스크롤해야 했다(실측).
-     오른쪽 스테이지는 미리보기(616px)만 쓰고 좌우 242px씩 놀고 있었으므로,
-     넓은 화면에서는 그 여백을 패널로 돌려 **2열로 접는다** → 대부분 한 화면에 들어온다.
-     좁은 화면(<1200px)은 미리보기가 더 중요하므로 종전 1열 그대로. */
-  .panel{ background:var(--panel); border-right:1px solid var(--line); padding:16px; overflow-y:auto; }
-  /* 패널을 **진짜 독립 스크롤 영역**으로 만든다.
-     원래 .panel 에 overflow-y:auto 가 있었지만 .wrap 이 min-height 라 패널이 콘텐츠만큼 늘어나
-     결국 페이지 전체가 스크롤됐다 → 설정을 내리면 미리보기도 같이 사라졌다.
-     높이를 화면에 고정하면 ① 미리보기가 항상 보이고 ② 아래 sticky 저장 버튼이 실제로 붙는다.
-     (헤더 높이가 바뀌어도 안전하도록 flex 로 잡는다) */
-  html,body{ height:100%; }
-  body{ display:flex; flex-direction:column; }
-  header{ flex:none; }
-  .wrap{ flex:1; min-height:0; }
-  .panel{ min-height:0; }
-  .stage{ overflow:auto; min-height:0; }
-  /* 저장 버튼은 패널 하단에 고정 — 화면 높이는 제각각이라 '스크롤을 없애는' 대신
-     **어느 크기에서도 저장에 바로 닿게** 한다. 좁은 화면에서 특히 크게 작용한다. */
-  .actions{ position:sticky; bottom:0; z-index:2; background:var(--panel);
-            padding:8px 0 4px; margin-top:4px; box-shadow:0 -8px 12px -8px rgba(0,0,0,.12); }
-  .stage{ display:flex; align-items:center; justify-content:center; padding:24px; }
-  .stage-inner{ max-width:100%; }
-  canvas#preview{ max-width:100%; max-height:calc(100vh - 130px); box-shadow:0 10px 40px rgba(0,0,0,.18);
-                  background:
-                    linear-gradient(45deg,#ddd 25%,transparent 25%),
-                    linear-gradient(-45deg,#ddd 25%,transparent 25%),
-                    linear-gradient(45deg,transparent 75%,#ddd 75%),
-                    linear-gradient(-45deg,transparent 75%,#ddd 75%);
-                  background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0; }
-  .empty{ color:var(--muted); font-size:14px; text-align:center; padding:60px 20px; border:2px dashed var(--line);
-          border-radius:12px; background:#fff; }
-  .sec{ margin-bottom:18px; }
-  .sec > label{ display:block; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;
-                letter-spacing:.6px; margin-bottom:8px; }
-  .drop{ border:2px dashed var(--line); border-radius:10px; padding:14px; text-align:center; font-size:13px;
-         color:var(--muted); background:#fff; cursor:pointer; transition:.15s; }
-  .drop.over{ border-color:var(--accent); background:#fff5f4; color:var(--accent); }
-  .samples{ display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-top:8px; }
-  .samples img{ width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; cursor:pointer; border:2px solid transparent; }
-  .samples img:hover{ border-color:var(--accent); }
-  .chips{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
-  .chip{ cursor:pointer; border:2px solid transparent; border-radius:8px; padding:4px; background:#fff; text-align:center; }
-  .chip.active{ border-color:var(--accent); }
-  .chip canvas, .chip img{ width:100%; display:block; border-radius:4px; }
-  .chip img{ height:46px; object-fit:cover; }
-  .chip span{ display:block; font-size:10px; color:var(--muted); margin-top:3px; line-height:1.2; }
-  .walls{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
-  .row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-  .row label{ width:64px; font-size:12px; color:var(--muted); flex:none; }
-  .row input[type=range]{ flex:1; accent-color:var(--accent); }
-  .row .val{ width:38px; text-align:right; font-size:12px; color:var(--ink); font-variant-numeric:tabular-nums; }
-  .row input[type=checkbox]{ accent-color:var(--accent); width:16px; height:16px; }
-  .swatches{ display:flex; gap:6px; flex-wrap:wrap; }
-  .sw{ width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); }
-  .sw.active{ box-shadow:0 0 0 2px var(--accent); }
-  input[type=color]{ width:34px; height:28px; border:1px solid var(--line); border-radius:6px; background:#fff; padding:2px; cursor:pointer; }
-  .toggle{ display:flex; gap:6px; }
-  .toggle button, .ratios button{ flex:1; padding:8px 6px; font-size:12px; border:1px solid var(--line); background:#fff;
-                   border-radius:8px; cursor:pointer; color:var(--ink); }
-  .toggle button.active, .ratios button.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
-  .ratios{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-  .dl{ width:100%; padding:12px; font-size:14px; font-weight:700; color:#fff; background:var(--accent);
-       border:none; border-radius:10px; cursor:pointer; margin-top:6px; }
-  .dl:disabled{ opacity:.4; cursor:not-allowed; }
-  .back{ width:100%; padding:11px; font-size:13px; font-weight:600; color:var(--ink); background:#fff;
-         border:1px solid var(--line); border-radius:10px; cursor:pointer; margin-top:8px; }
-  .back:hover{ background:#f3f1ec; }
-  .works{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
-  .works img{ width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; cursor:pointer; border:2px solid transparent; background:#fff; }
-  .works img:hover{ border-color:var(--accent); }
-  .works img.active{ border-color:var(--accent); box-shadow:0 0 0 2px rgba(196,48,43,.3); }
-/* 작품이 많으면 목록이 세로로 길어져 아래 액자·배경 설정이 화면 밖으로 밀린다 → 9장씩 끊는다 */
-.pager{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
-.pager button{ width:30px; height:30px; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; color:#333; }
-.pager button:hover:not(:disabled){ border-color:var(--accent); color:var(--accent); }
-.pager button:disabled{ opacity:.3; cursor:default; }
-.pager span{ font-size:12px; color:#666; min-width:52px; text-align:center; }
-  .hint{ font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
-  code{ background:#efe; padding:1px 5px; border-radius:4px; font-size:11px; }
-  @media(min-width:1200px){
-    .wrap{ grid-template-columns:660px 1fr; }
-    .cols{ column-count:2; column-gap:18px; }
-    .cols .sec{ break-inside:avoid; }   /* 섹션이 열 경계에서 쪼개지지 않게 */
-    .tail{ margin-bottom:16px; }
-    .tail .ratios{ grid-template-columns:repeat(6,1fr); }   /* 660px 폭이면 6개가 한 줄 */
-    /* 칩 라벨이 두 줄로 접히면 프레임 3행·배경 4행에서만 100px 가까이 먹는다 → 한 줄로 고정.
-       잘린 이름은 title 툴팁으로 확인할 수 있다(buildChips 에서 넣는다). */
-    .chip span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    /* ⚠️ nowrap 을 주면 셀의 min-content 가 라벨 길이가 되어 1fr 이 그 아래로 못 줄고
-       2열 안에서 그리드가 컨테이너를 **넘어 잘린다**. minmax(0,1fr) 로 0까지 줄 수 있게 한다. */
-    .chips, .walls, .works{ grid-template-columns:repeat(5,minmax(0,1fr)); }
-    .works{ grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .tail{ padding-bottom:4px; }
-    .tail .ratios{ grid-template-columns:repeat(6,minmax(0,1fr)); }
-    .cols .sec{ margin-bottom:14px; }
-    .panel .hint{ margin-top:6px; line-height:1.4; }
-    /* 저장·완료를 한 줄로 — 세로로 쌓으면 그것만 92px 을 쓴다 */
-    .actions{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
-    .actions .dl, .actions .back{ margin:0; }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5;
+       color:var(--text);background:var(--bg);-webkit-text-size-adjust:100%;overscroll-behavior:none}
+  button{font:inherit;color:inherit}
+  [hidden]{display:none!important}
+  :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .app{height:100%;display:flex;flex-direction:column;min-height:0}
+
+  /* 머리 — 새 탭(갤러리의 판매작 홍보)에서만. 임베드는 바깥이 그린다 */
+  .top{flex:none;display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 16px;
+       padding-top:calc(8px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--line)}
+  .embed .top{display:none}
+  .top h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.02em;color:var(--ink);white-space:nowrap}
+  .top h1 b{color:var(--accent);font-weight:700}
+  .top .sub{margin:0;flex:1;min-width:0;font-size:13px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* 미리보기 */
+  .stage{position:relative;flex:1 1 auto;min-height:150px;background:var(--stage);display:flex;align-items:center;
+         justify-content:center;padding:10px;overflow:hidden;touch-action:pinch-zoom}
+  .canvas-wrap{position:relative;line-height:0}
+  #preview{display:block;touch-action:none;box-shadow:0 0 0 1px rgba(17,24,39,.06);cursor:default}
+  #preview.movable{cursor:grab}
+  #preview.dragging{cursor:grabbing}
+  .zoom{position:absolute;left:8px;bottom:8px;display:flex;gap:6px;line-height:1}
+  .zoom button{width:40px;height:40px;display:grid;place-items:center;padding:0;border:1px solid rgba(17,24,39,.14);
+               border-radius:999px;background:rgba(255,255,255,.94);color:var(--ink);cursor:pointer}
+  .zoom button:hover{background:#fff;border-color:rgba(17,24,39,.3)}
+  .zoom svg{width:18px;height:18px}
+  .stage-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:calc(100% - 32px);margin:0;
+             font-size:13px;color:var(--sub);text-align:center;line-height:1.5}
+  .stage-msg.over{top:12px;transform:translateX(-50%);padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.94);
+                  color:var(--text);box-shadow:0 0 0 1px rgba(17,24,39,.08)}
+  .stage-msg.warn{color:var(--text)}
+  .toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:calc(100% - 32px);margin:0;padding:8px 14px;
+         border-radius:999px;background:var(--ink);color:#fff;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;
+         text-overflow:ellipsis;pointer-events:none}
+
+  /* 패널 */
+  .panel{flex:none;display:flex;flex-direction:column;min-height:0;background:var(--bg);border-top:1px solid var(--line)}
+  .tabs{flex:none;display:flex;height:var(--tabs-h);padding:0 6px;border-bottom:1px solid var(--line);overflow-x:auto;
+        scrollbar-width:none;touch-action:pan-x pinch-zoom}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs [role=tab]{flex:1 0 auto;min-width:48px;height:100%;padding:0 10px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;
+                   background:none;color:var(--faint);font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
+  .tabs [role=tab]:hover{color:var(--text)}
+  .tabs [role=tab][aria-selected=true]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+  .panes{flex:none;height:var(--pane-h);overflow:hidden;touch-action:pan-x pinch-zoom}
+  .pane{height:100%;display:flex;flex-direction:column;gap:6px;padding:8px 16px 6px;min-height:0}
+
+  /* 칩 한 줄 — 옆으로 민다(좁은 칸) */
+  .row{display:flex;align-items:flex-start;gap:8px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+       scrollbar-width:none;touch-action:pan-x pinch-zoom;margin:-3px;padding:3px;flex:none}
+  .row::-webkit-scrollbar{display:none}
+  .chip{flex:none;width:66px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px;border:1px solid transparent;
+        border-radius:10px;background:none;cursor:pointer;text-align:center}
+  .chip:hover{border-color:var(--line-strong)}
+  .chip[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+  .chip .thumb{display:block;width:100%;aspect-ratio:1/1;border-radius:6px;background:var(--soft);object-fit:contain}
+  .chip.work{width:68px}
+  .chip.work .thumb{background:var(--soft)}
+  .chip.broken .thumb{opacity:.3}
+  .chip.frame{width:60px}
+  .chip.frame .thumb{aspect-ratio:72/88;background:none}
+  .chip.scene .thumb{object-fit:cover}         /* 배경 사진은 칩에 맞춰 잘라 보인다(작품이 아니다 — 규칙 18 대상 아님) */
+  .chip .name{display:block;max-width:100%;font-size:12px;line-height:16px;color:var(--text);white-space:nowrap;overflow:hidden;
+              text-overflow:ellipsis}
+  .group{flex:none;align-self:stretch;display:flex;align-items:center;padding:0 2px 0 6px;font-size:12px;color:var(--sub);
+         writing-mode:vertical-rl;letter-spacing:.1em;border-left:1px solid var(--line)}
+  .group:first-child{border-left:0;padding-left:0}
+
+  /* 고르기(여럿 중 하나) */
+  .seg{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+  .seg button{min-height:40px;min-width:56px;padding:0 14px;border:1px solid var(--line-strong);border-radius:8px;background:var(--bg);
+              color:var(--text);font-size:14px;cursor:pointer}
+  .seg button:hover{border-color:var(--sub)}
+  .seg button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink);font-weight:600}
+  .seg button:disabled{opacity:.4;cursor:default}
+  .swatches{display:flex;gap:8px;flex:none}
+  .sw{width:40px;height:40px;padding:0;border-radius:999px;border:1px solid var(--line-strong);cursor:pointer}
+  .sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
+  .slider{display:flex;align-items:center;gap:12px;min-height:40px;flex:none}
+  .slider label{font-size:14px;color:var(--text);white-space:nowrap}
+  .slider input{flex:1;min-width:0;height:40px;accent-color:var(--ink)}
+  .slider output{width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+
+  /* 고른 것 설명 한 줄 — 좁은 칸은 칩 아래, 넓은 칸은 위 */
+  .line{order:2;margin:0;display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.45;color:var(--sub)}
+  .line .txt{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;
+             overflow-wrap:anywhere}
+  .line b{color:var(--text);font-weight:600}
+  #framesLine .txt{-webkit-line-clamp:1}   /* 칩이 키가 커서 설명은 한 줄 — 넓은 칸에선 다 보인다 */
+  .line .act{flex:none;min-height:40px;padding:0 12px;border:1px solid var(--accent);border-radius:8px;background:var(--bg);
+             color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+
+  /* 저장 */
+  .actions{flex:none;display:flex;gap:8px;padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
+           border-top:1px solid var(--line);touch-action:pinch-zoom}
+  .btn-primary{flex:1;min-height:44px;padding:0 16px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-size:15px;
+               font-weight:600;cursor:pointer}
+  .btn-primary:hover:not(:disabled){background:#1f2937}
+  .btn-primary:disabled{opacity:.35;cursor:default}
+  .btn-line{flex:none;min-height:44px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--bg);
+            color:var(--ink);font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
+  .btn-line:hover:not(:disabled){border-color:var(--sub)}
+  .btn-line:disabled{opacity:.5;cursor:default}
+  .top .btn-line{min-height:40px}
+
+  /* 인앱 브라우저(카카오톡·인스타그램) — 내려받기가 막히는 곳. 이미지를 띄워 길게 눌러 저장하게 한다 */
+  .sheet{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(17,24,39,.72)}
+  .sheet-box{width:100%;max-width:520px;max-height:100%;display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:14px;
+             background:var(--bg)}
+  .sheet-box p{margin:0;font-size:15px;font-weight:600;color:var(--ink);text-align:center}
+  .sheet-box img{display:block;width:100%;min-height:0;max-height:65vh;object-fit:contain;background:var(--stage);border-radius:6px;
+                 -webkit-touch-callout:default}
+  .sheet-box .btn-line{align-self:center;min-width:120px}
+
+  /* 마우스로 쓰는 좁은 칸(1024px 노트북의 탭 안) — 칩 줄이 옆으로 넘친다는 걸 보이게 얇은 스크롤바를 둔다(휠도 가로로 넘긴다, ui.js) */
+  @media (pointer:fine){ .row{scrollbar-width:thin;padding-bottom:6px} .row::-webkit-scrollbar{display:block;height:6px}
+    .row::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px} }
+  /* 낮은 화면(아이폰 SE 등) — 칩 칸은 그대로(줄이면 설명이 잘린다), 미리보기 여백만 줄인다 */
+  @media (max-height:560px){ .stage{padding:6px} }
+
+  /* ── 넓은 칸 — 오른쪽 패널 ── (⚠️ 반드시 위의 기본 규칙 **뒤에**) */
+  @media (min-width:860px){
+    .app{display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr)}
+    .top{grid-column:1/-1}
+    .stage{grid-column:1;grid-row:2;min-height:0;padding:24px;touch-action:auto}
+    .panel{grid-column:2;grid-row:2;border-top:0;border-left:1px solid var(--line)}
+    .panes{flex:1 1 auto;height:auto;min-height:0;overflow-y:auto;touch-action:pan-y pinch-zoom}
+    .pane{height:auto;padding:14px 16px 16px;gap:12px}
+    .line{order:-1;min-height:0}
+    .line .txt,#framesLine .txt{-webkit-line-clamp:unset;display:block}
+    .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:visible;touch-action:auto;margin:0;padding:0}
+    .row.works{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .chip,.chip.work,.chip.frame{width:auto}
+    /* 넓은 칸은 칩이 작아(약 76px) 이름이 잘린다('베이지 플라…') — 두 줄까지 */
+    .chip .name{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:keep-all;line-height:15px}
+    .group{grid-column:1/-1;writing-mode:horizontal-tb;letter-spacing:0;padding:6px 0 0;border-left:0;font-weight:600;color:var(--text)}
+    .group:first-child{padding-top:0}
   }
+  @media (prefers-reduced-motion:reduce){ *{scroll-behavior:auto!important} }
 </style>
 </head>
 <body>
-<!--
-  머리말은 **새 탭으로 띄웠을 때만** 보인다.
-  마이페이지 [ArtLook] 탭은 이 페이지를 iframe 으로 품는데(같은 출처라 localStorage 가 그대로 읽힌다),
-  그때는 바깥 화면에 이미 'ArtLook 액자 걸기' 제목이 있어 여기 머리말이 겹친다.
-  임베드 쪽에서 `?embed=1` 을 붙여 알려준다.
--->
-<header id="page-header">
-  <h1>Art<b>Look</b><span class="tagline">: 예술의 완성</span></h1>
-  <p>작품을 액자와 전시 공간에 담아 SNS 홍보 이미지를 만들어 보세요</p>
-</header>
-<script>
-  if (new URLSearchParams(location.search).get('embed') === '1') {
-    document.getElementById('page-header').style.display = 'none';
-  }
-</script>
+<div class="app" id="app">
+  <header class="top">
+    <h1>Art<b>Look</b></h1>
+    <p class="sub">작품을 액자와 공간에 걸어 SNS에 올릴 이미지를 만듭니다</p>
+    <button type="button" class="btn-line" id="close">닫기</button>
+  </header>
 
-<div class="wrap">
-  <div class="panel">
-    <div class="cols">
-    <!-- 1. 판매 작품 (운영페이지에서 전달됨) -->
-    <div class="sec">
-      <label>1 · 작품</label>
-      <div class="works" id="works"></div>
-      <div class="pager" id="worksPager" style="display:none;">
-        <button type="button" id="worksPrev" aria-label="이전 작품 목록">‹</button>
-        <span id="worksPage">1 / 1</span>
-        <button type="button" id="worksNext" aria-label="다음 작품 목록">›</button>
+  <main class="stage" id="stage" aria-label="미리보기">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="preview" role="img" aria-label="액자에 건 작품 미리보기" hidden></canvas>
+      <div class="zoom" id="zoom" role="group" aria-label="작품 크기" hidden>
+        <button type="button" id="zoomOut" aria-label="작게"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        <button type="button" id="zoomIn" aria-label="크게"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button" id="zoomReset" aria-label="처음 자리·크기로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
       </div>
-      <div class="hint" id="worksEmpty" style="display:none;">불러온 작품이 없습니다. 마이페이지 &gt; 포트폴리오의 [액자에 걸어보기] 또는 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]로 들어와 주세요.</div>
     </div>
+    <p class="stage-msg" id="busy" role="status">불러오는 중…</p>
+    <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
+  </main>
 
-    <!-- 2. 프레임 스타일 -->
-    <div class="sec">
-      <label>2 · 프레임 스타일</label>
-      <div class="chips" id="frames"></div>
-      <!-- 매트(대지) — 액자와 작품 사이의 여백. 경쟁사 결과물의 '고급스럽다'는 인상의
-           상당 부분이 여기서 온다. 캔버스 랩만 빼고 전 스타일에서 쓴다(`updateMatRow`). -->
-      <div class="row" id="matRow" style="margin-top:8px;">
-        <label>매트</label>
-        <div class="toggle" id="matSel" style="flex:1">
-          <button data-mat="0">없음</button>
-          <button data-mat="0.05" class="active">좁게</button>
-          <button data-mat="0.10">넓게</button>
+  <section class="panel" aria-label="꾸미기">
+    <div class="tabs" role="tablist" aria-label="꾸미기">
+      <button type="button" role="tab" id="tab-works" aria-controls="pane-works" aria-selected="true">작품</button>
+      <button type="button" role="tab" id="tab-frames" aria-controls="pane-frames" aria-selected="false" tabindex="-1">액자</button>
+      <button type="button" role="tab" id="tab-mat" aria-controls="pane-mat" aria-selected="false" tabindex="-1">매트</button>
+      <button type="button" role="tab" id="tab-scenes" aria-controls="pane-scenes" aria-selected="false" tabindex="-1">배경</button>
+      <button type="button" role="tab" id="tab-light" aria-controls="pane-light" aria-selected="false" tabindex="-1">조명</button>
+      <button type="button" role="tab" id="tab-ratio" aria-controls="pane-ratio" aria-selected="false" tabindex="-1">비율</button>
+    </div>
+    <div class="panes" id="panes">
+      <div class="pane" id="pane-works" role="tabpanel" aria-labelledby="tab-works">
+        <div class="row works" id="works" role="group" aria-label="작품"></div>
+        <p class="line" id="worksLine"></p>
+        <!-- 작품이 넘어오지 않았을 때(작품 0점·주소로 직접) — 데모 작품 안내. 테스트가 이 id 를 본다 -->
+        <p class="line" id="worksEmpty" hidden></p>
+      </div>
+      <div class="pane" id="pane-frames" role="tabpanel" aria-labelledby="tab-frames" hidden>
+        <div class="row" id="frames" role="group" aria-label="액자"></div>
+        <p class="line" id="framesLine"></p>
+      </div>
+      <div class="pane" id="pane-mat" role="tabpanel" aria-labelledby="tab-mat" hidden>
+        <!-- 매트(대지) — 액자와 작품 사이의 종이 여백. 캔버스 랩만 빼고 전 스타일(규칙 44·44e) -->
+        <div class="seg" id="matSel" role="group" aria-label="매트 폭">
+          <button type="button" data-mat="0">없음</button>
+          <button type="button" data-mat="0.05">좁게</button>
+          <button type="button" data-mat="0.10">넓게</button>
         </div>
+        <div class="swatches" id="matColors" role="group" aria-label="매트 색"></div>
+        <p class="line" id="matHint"></p>
       </div>
-      <div class="hint" id="matHint" style="display:none;margin-top:4px;">캔버스 랩은 액자가 없어 매트를 받칠 곳이 없습니다. 다른 액자를 고르면 켜집니다.</div>
-      <div class="row" id="matColorRow" style="display:none;">
-        <label>매트 색</label>
-        <div class="sw-row" id="matColors" style="display:flex;gap:8px;flex:1;"></div>
+      <div class="pane" id="pane-scenes" role="tabpanel" aria-labelledby="tab-scenes" hidden>
+        <div class="row" id="scenes" role="group" aria-label="배경"></div>
+        <!-- WebGL2 가 없을 때만 — 옛 평면 합성 경로의 벽 목록 -->
+        <div class="row" id="walls" role="group" aria-label="배경" hidden></div>
+        <p class="line" id="sceneNote"></p>
       </div>
-    </div>
-
-    <!-- 3. 두께 / 매트 / 효과 -->
-    <div class="sec">
-      <label>3 · 조명</label>
-      <!-- 두께·매트여백·매트색·유리반사·캔버스질감은 화면에서 뺐다(2026-08-15).
-           프레임 스타일(2번)이 이미 모양을 정하고, 세부 조절은 거의 쓰이지 않으면서 세로를 크게 먹었다.
-           값은 state 기본값(두께 3% / 매트 4% 등)으로 고정되어 렌더링은 종전과 같다. -->
-      <!-- ⚠️ 종류(없음/스포트/소프트) 선택은 없앴다(2026-08-31). 세 값이 실제로는
-           **같은 일의 강약**이었고, 게다가 옛 라이팅맵은 장면 모드에서 아예 호출되지
-           않아 무엇을 골라도 화면이 그대로였다. 강도 0 이 곧 '없음'이다. -->
-      <div class="row">
-        <label>조명 강도</label>
-        <input type="range" id="lightOp" min="0" max="100" step="5" value="0" />
-        <span class="val" id="lightOpv">0%</span>
+      <div class="pane" id="pane-light" role="tabpanel" aria-labelledby="tab-light" hidden>
+        <!-- 조명은 종류 없이 강도 하나(0 = 없음, 규칙 43) -->
+        <div class="slider"><label for="lightOp">조명</label><input type="range" id="lightOp" min="0" max="100" step="5" value="0" /><output id="lightOpv" for="lightOp">0%</output></div>
+        <p class="line"><span class="txt">이 공간의 빛이 오는 쪽에서 비춰요. 올릴수록 주변 벽이 어두워져 작품이 돋보여요.</span></p>
       </div>
-      <div class="hint" style="margin-top:4px;">이 장면의 광원 방향으로 스포트라이트를 겁니다. 올릴수록 주변 벽이 어두워지고 액자 쪽이 밝아집니다.</div>
-    </div>
-
-    <!-- 4. 배경 / 벽 -->
-    <div class="sec">
-      <label>4 · 배경</label>
-      <!-- 장면(프리미엄)은 실사 공간에 원근을 맞춰 끼우는 방식이라 결과가 다르다.
-           장면 목록이 없거나 WebGL2 가 없으면 이 토글 자체를 감춘다(빈 탭을 보여주지 않는다). -->
-      <div class="row" id="bgModeRow" style="display:none;">
-        <div class="toggle" id="bgMode" style="flex:1">
-          <button data-bg="wall" class="active">기본 벽</button>
-          <button data-bg="scene">장면</button>
-        </div>
-      </div>
-      <div class="walls" id="walls"></div>
-      <!-- 배경은 성격이 둘로 갈린다 — **평면 벽 매크로 사진**(정면·크게 찍은 벽면)과
-           **실내 공간 사진**(방 전체가 보인다). 고르는 기준이 다르고 결과 인상도 다르므로
-           한 줄에 16개를 늘어놓지 않고 탭으로 나눈다. 실내는 `maxLong` 이 걸려 있어
-           같은 비율로 걸어도 훨씬 작게 나온다(44c) — 섞어 두면 크기가 들쭉날쭉해 보인다. -->
-      <div class="row" id="sceneGroupRow" style="display:none;">
-        <div class="toggle" id="sceneGroup" style="flex:1">
-          <button data-sg="wall">벽</button>
-          <button data-sg="space">공간</button>
-        </div>
-      </div>
-      <div class="walls" id="scenes" style="display:none;"></div>
-      <div class="hint" id="sceneNote" style="display:none;margin-top:6px;"></div>
-      <div class="hint" id="wallHint" style="margin-top:6px;">💡 <b>액자 드래그</b>=위치 이동 · <b>마우스휠</b>=크기 조절 · <b>더블클릭</b>=원위치</div>
-    </div>
-
-    </div><!-- /.cols -->
-
-    <!-- 5·6 은 2열 밖(패널 전체 폭)에 나란히 — 6개 비율 버튼이 한 줄에 들어가 세로를 아낀다 -->
-    <div class="tail">
-      <div class="sec" style="margin-bottom:0;">
-        <label>5 · 출력 비율</label>
-        <div class="ratios" id="ratios"></div>
+      <div class="pane" id="pane-ratio" role="tabpanel" aria-labelledby="tab-ratio" hidden>
+        <div class="seg" id="ratios" role="group" aria-label="이미지 비율"></div>
       </div>
     </div>
-
-    <div class="hint" style="margin-top:0;margin-bottom:8px;">저장한 이미지는 인스타그램 등 SNS에 올려 홍보하실 수 있습니다.</div>
     <div class="actions">
-      <button class="dl" id="dl" disabled>홍보 이미지 저장 (PNG)</button>
-      <button class="back" id="back">완료</button>
+      <button type="button" class="btn-primary" id="dl" disabled>이미지 저장</button>
+      <button type="button" class="btn-line" id="toStory" hidden>ArtStory에 올리기</button>
     </div>
-  </div>
+  </section>
+</div>
 
-  <div class="stage">
-    <div class="stage-inner">
-      <div class="empty" id="empty">왼쪽에서 작품을 선택하면 미리보기가 표시됩니다.</div>
-      <canvas id="preview" style="display:none;"></canvas>
-    </div>
+<div class="sheet" id="saveSheet" role="dialog" aria-modal="true" aria-labelledby="saveSheetTitle" hidden>
+  <div class="sheet-box">
+    <p id="saveSheetTitle">이미지를 길게 눌러 사진에 저장하세요</p>
+    <img id="saveSheetImg" alt="저장할 이미지" />
+    <button type="button" class="btn-line" id="saveSheetClose">닫기</button>
   </div>
 </div>
 
-<script src="scene.js"></script>
+<script src="scene.js?v=__ARTLOOK_BUILD__"></script>
 <script>
 /* ============================================================
    FrameIt POC v3
@@ -261,6 +265,18 @@
      cover-fit 변환을 거쳐 캔버스에 매핑 + 이중 그림자 + 톤매칭
    전부 클라이언트 Canvas. 외부 의존성 0.
    ============================================================ */
+
+// ── 자산 불러오기 (2026-10-04, CLAUDE.md 규칙 65) ───────────────────────────────
+// 액자 사진·결 텍스처·장면 사진은 **지금 고른 것만** 받는다(ensureFrameAssets · ArtLookScene.ensureScene · ensureWall).
+// 예전엔 탭을 열자마자 벽 사진 23장·액자 사진 8장을 전부 받았고(실제 작가 30점 기준 41.5MB), 한 장 올 때마다 화면을
+// 처음부터 다시 그렸다(32번 — 그동안 마이페이지까지 굳었다). 기다렸다가 한 번 그리는 일은 화면(ui.js)이 한다.
+// `?preload=all` — 예전처럼 전부 미리 받는다. 화질 하니스(scratchpad/vt)가 상태를 코드로 갈아 끼우며 재기 때문이다.
+const PRELOAD_ALL=/[?&]preload=all(&|$)/.test(location.search);
+// 빌드가 바꿔 끼우는 빌드 ID(frontend/vite.config.ts 의 artlook-build-id). 개발 서버에선 글자 그대로 — 쿼리라 상관없다.
+// 고정 이름 파일(목록 JSON)이 브라우저·CDN 에 1년 굳어 있던 사본을 건너뛰려고 붙인다(backend lib/staticCache.ts).
+const BUILD='__ARTLOOK_BUILD__';
+/** 자산이 도착했거나 실패했다 — 화면(ui.js)이 그걸 기다리던 중이면 다시 그린다 */
+function assetArrived(key){ if(typeof window.onAssetArrived==='function') window.onAssetArrived(key); }
 
 // roundRect 폴리필
 if(!CanvasRenderingContext2D.prototype.roundRect){
@@ -1090,11 +1106,19 @@ const MATS = {
 Object.entries(MATS).forEach(([k,m])=>{
   // 색 보정은 hex 와 텍스처 **둘 다** 먹여야 한다 — 하나만 하면 밴드 색과 결이 어긋난다
   ['light','base','dark','back'].forEach(f=>{ if(m[f]) m[f]=gradeHex(m[f],k); });
-  if(!m.texture) return;
-  const raw=new Image();
-  raw.onload=()=>{ m.img=gradeImage(raw,k); render(); };
-  raw.src=m.texture;
 });
+// 결 텍스처는 **그 재질의 액자를 고를 때** 받는다(ensureFrameAssets). 예전엔 6장을 전부 받고 한 장마다 다시 그렸다.
+// 못 받아도 `ready` 는 세운다 — drawTextureSide 가 텍스처 없이 그라디언트로 그린다(예전에도 그 폴백이었다).
+function ensureMatTexture(k){
+  const m=MATS[k];
+  if(!m || !m.texture || m._requested) return;
+  m._requested=true;
+  const raw=new Image();
+  raw.onload=()=>{ m.img=gradeImage(raw,k); m.ready=true; assetArrived('mat:'+k); };
+  raw.onerror=()=>{ m.ready=true; assetArrived('mat:'+k); };
+  raw.src=m.texture;
+}
+if(PRELOAD_ALL) Object.keys(MATS).forEach(ensureMatTexture);
 function fillRectBand(ctx,W,H,b,fill){
   ctx.save();
   ctx.fillStyle=fill;
@@ -1512,19 +1536,48 @@ function assetLightOf(style){
   return ASSET_NEUTRAL;   // 절차적 액자는 텍스처가 타일링돼 방향이 없다 — 우리가 전부 만든다
 }
 
-fetch('frames/photo/frames.json').then(r=>r.ok?r.json():null).then(j=>{
-  if(!j) return;
-  PHOTO_META = j;
-  Object.keys(j).forEach(k=>{
-    const im=new Image();
-    // 로드 때 한 번만 색 보정을 구워 둔다(FRAME_GRADE 주석 참고)
-    im.onload=()=>{ PHOTO_FRAMES[k]=gradeImage(im,k);
-      // ⚠️ 반드시 **보정된 뒤** 재야 한다 — 우리가 실제로 그리는 픽셀이 그것이다
-      PHOTO_LIGHT[k]=measureAssetLight(PHOTO_FRAMES[k], j[k]);
-      buildFrameChips(); render(); };
-    im.src='frames/photo/'+j[k].file;
-  });
-}).catch(()=>{});
+// 사진 액자 — 목록(frames.json, 1KB)은 바로 받고 사진(장당 0.2~1.1MB)은 **그 액자를 고를 때** 받는다(ensurePhotoFrame).
+// 예전엔 목록이 오자마자 8장(5.5MB)을 전부 받고, 한 장 올 때마다 칩을 다시 굽고 화면을 다시 그렸다.
+// 칩 그림은 이제 미리 구워 둔 파일이다(frames/chips/<id>.webp — frontend/scripts/build-artlook-thumbs.mjs).
+let PHOTO_META_READY=false;
+const PHOTO_STATE={};   // 액자 키 → 'loading' | 'ready' | 'failed'
+function ensurePhotoFrame(k){
+  if(!PHOTO_META || !PHOTO_META[k] || PHOTO_STATE[k]) return;
+  PHOTO_STATE[k]='loading';
+  const im=new Image();
+  // 로드 때 한 번만 색 보정을 구워 둔다(FRAME_GRADE 주석 참고)
+  im.onload=()=>{ PHOTO_FRAMES[k]=gradeImage(im,k);
+    // ⚠️ 반드시 **보정된 뒤** 재야 한다 — 우리가 실제로 그리는 픽셀이 그것이다
+    PHOTO_LIGHT[k]=measureAssetLight(PHOTO_FRAMES[k], PHOTO_META[k]);
+    PHOTO_STATE[k]='ready'; assetArrived('photo:'+k); };
+  im.onerror=()=>{ PHOTO_STATE[k]='failed'; assetArrived('photo:'+k); };
+  im.src='frames/photo/'+PHOTO_META[k].file;
+}
+fetch('frames/photo/frames.json?v='+BUILD).then(r=>r.ok?r.json():null).then(j=>{
+  PHOTO_META = j || {};
+  PHOTO_META_READY = true;
+  if(PRELOAD_ALL) Object.keys(PHOTO_META).forEach(ensurePhotoFrame);
+  assetArrived('frames.json');
+}).catch(()=>{ PHOTO_META = {}; PHOTO_META_READY = true; assetArrived('frames.json'); });
+
+/** 그 액자를 그릴 자산이 다 왔나 — 못 받은 것도 '끝남'으로 친다(엔진이 폴백으로 그린다) */
+function frameAssetsReady(style){
+  if(!style) return true;
+  if(style.kind==='photo'){
+    if(!PHOTO_META_READY) return false;
+    if(!PHOTO_META[style.photo]) return true;
+    const st=PHOTO_STATE[style.photo];
+    return st==='ready' || st==='failed';
+  }
+  if(style.material){ const m=MATS[style.material]; return !m || !m.texture || !!m.ready; }
+  return true;
+}
+/** 그 액자의 자산을 받기 시작한다(이미 받는 중이면 아무것도 안 한다) */
+function ensureFrameAssets(style){
+  if(!style) return;
+  if(style.kind==='photo'){ if(PHOTO_META_READY) ensurePhotoFrame(style.photo); return; }
+  if(style.material) ensureMatTexture(style.material);
+}
 
 // 9-slice: 모서리(살 두께 사방)는 그대로, 변은 늘린다
 function drawNineSlice(ctx, im, meta, dx, dy, dw, dh, kIn){
@@ -1552,39 +1605,41 @@ function drawNineSlice(ctx, im, meta, dx, dy, dw, dh, kIn){
 
 // ---- 프레임 스타일 10종 (frameit식: 얇은 플로터 / 플랫 / 매트) ----
 const FRAMES=[
+  // ⚠️ `id` 는 바꾸지 말 것 — 칩 그림 파일(frames/chips/<id>.webp)과 마지막 선택 기억(artlook:prefs)이 이걸로 찾는다.
+  //    액자를 더하면 칩도 구울 것(node frontend/scripts/build-artlook-thumbs.mjs) — 테스트가 파일이 있는지 본다.
   // ⚠️ 살 두께는 **조각 폭 대비 4~6%** 로 둘 것. FrameIt 실물 5장 실측이 2.8~7.6%(평균 4.5)인데
   //    우리는 6.5% 라 액자가 주인공처럼 굵었다. 홍보 이미지의 주인공은 작품이다.
   //    (여기 값은 '작품 짧은 변' 대비이므로 조각 대비로는 rail/(1+2·rail) 이 된다)
   // ⚠️ 이름에 '(사진)' 을 붙이지 말 것 — 고르는 사람에게 **구현 방식**은 알 바 아니다.
   //    옆의 절차적 액자와 나란히 놓이는 칩이라 '(사진)' 은 설명이 아니라 잡음이었다.
   //    구현 구분은 `kind:'photo'` 로 이미 명확하다.
-  { name:'오크',         kind:'photo', photo:'oak', rail:0.055 },
-  { name:'블랙',         kind:'photo', photo:'black', rail:0.052 },
-  { name:'화이트',       kind:'photo', photo:'white', rail:0.052 },
-  { name:'월넛',         kind:'photo', photo:'walnut', rail:0.055 },
-  { name:'골드',         kind:'photo', photo:'gold', rail:0.052 },
+  { id:'oak', name:'오크',         kind:'photo', photo:'oak', rail:0.055 },
+  { id:'black', name:'블랙',         kind:'photo', photo:'black', rail:0.052 },
+  { id:'white', name:'화이트',       kind:'photo', photo:'white', rail:0.052 },
+  { id:'walnut', name:'월넛',         kind:'photo', photo:'walnut', rail:0.055 },
+  { id:'gold', name:'골드',         kind:'photo', photo:'gold', rail:0.052 },
   // 얇은 몰딩 3종 (2026-09-01). 자산의 native 살이 5.0~5.7% 로 위 5종(9.0~9.8%)의 절반이라
   // **같은 재질의 다른 제품**이다 — 그래서 `oak-thin` 처럼 한정어를 붙여 따로 추출한다
   // (`extract-photo-frames.py` 의 QUALS). 이름의 '얇은'은 구현이 아니라 **살 두께**라
   // 고르는 사람에게 뜻이 있다(44e 가 뗀 '(사진)' 과 다르다).
   // ⚠️ 이 3종은 개구부를 **흰 판**으로 촬영해 안쪽 립이 회색판 자산보다 더 밝다.
   //    44h 의 한쪽 방향 보정(min(1, 목표/자산))이 그대로 상쇄한다 — 따로 손댈 것 없음.
-  { name:'얇은 오크',     kind:'photo', photo:'oak-thin', rail:0.035 },
-  { name:'얇은 월넛',     kind:'photo', photo:'walnut-thin', rail:0.032 },
-  { name:'얇은 실버',     kind:'photo', photo:'silver-thin', rail:0.032 },
-  { name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.011 },
-  { name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.011 },
-  { name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.011 },
-  { name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.010 },
-  { name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.010 },
-  { name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.010 },
-  { name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024 },
-  { name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028 },
-  { name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028 },
-  { name:'블랙 슬림',     kind:'flat',    material:'black',  border:.020 },
-  { name:'실버 슬림',     kind:'flat',    material:'silver', border:.020 },
-  { name:'화이트 매트',   kind:'mat',     material:'ivory',  border:.014 },
-  { name:'캔버스 랩',   kind:'canvas' },
+  { id:'oak-thin', name:'얇은 오크',     kind:'photo', photo:'oak-thin', rail:0.035 },
+  { id:'walnut-thin', name:'얇은 월넛',     kind:'photo', photo:'walnut-thin', rail:0.032 },
+  { id:'silver-thin', name:'얇은 실버',     kind:'photo', photo:'silver-thin', rail:0.032 },
+  { id:'floater-champagne', name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.011 },
+  { id:'floater-oak', name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.011 },
+  { id:'floater-walnut', name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.011 },
+  { id:'floater-black', name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.010 },
+  { id:'floater-silver', name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.010 },
+  { id:'box-ivory', name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.010 },
+  { id:'slim-champagne', name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024 },
+  { id:'slim-oak', name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028 },
+  { id:'slim-walnut', name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028 },
+  { id:'slim-black', name:'블랙 슬림',     kind:'flat',    material:'black',  border:.020 },
+  { id:'slim-silver', name:'실버 슬림',     kind:'flat',    material:'silver', border:.020 },
+  { id:'white-mat', name:'화이트 매트',   kind:'mat',     material:'ivory',  border:.014 },
+  { id:'canvas-wrap', name:'캔버스 랩',   kind:'canvas' },
 ];
 
 // ============================================================
@@ -1940,14 +1995,18 @@ const WALLS=[
   { name:'샌드',          src:'walls/wall09.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.88, tone:.10 },
   { name:'그레이 브릭',    src:'walls/wall10.jpg', art:{cx:.50,cy:.43,w:.40,h:.50}, shadow:.92, tone:.10 },
 ];
-// 사진 프리로드 (로드 완료 시 현재 벽이면 다시 렌더) + 사용자 조정값(adj) 초기화
-WALLS.forEach(w=>{
-  w.adj={dx:0,dy:0,s:1};
+// 사용자 조정값(adj) 초기화. 사진은 **그 벽을 고를 때** 받는다(ensureWall) — 이 목록은 WebGL2 가 없을 때의
+// 폴백 경로에서만 쓰는데, 예전엔 그것까지 17장을 전부 미리 받았다.
+WALLS.forEach(w=>{ w.adj={dx:0,dy:0,s:1}; });
+function ensureWall(w){
+  if(!w || w._requested) return;
+  w._requested=true;
   w.img=new Image();
-  w.img.onload=()=>{ w.loaded=true;
-    if(state.mode==='wall' && WALLS[state.wallIdx]===w) render(); };
+  w.img.onload=()=>{ w.loaded=true; assetArrived('wall'); };
+  w.img.onerror=()=>{ w.failed=true; assetArrived('wall'); };
   w.img.src=w.src;
-});
+}
+if(PRELOAD_ALL) WALLS.forEach(ensureWall);
 
 // 배치 영역 주변의 사진 평균색 (톤매칭/그림자 방향용). 실패(taint 등) 시 null
 function sampleAvg(img, fx, fy, fw, fh){
@@ -2298,7 +2357,10 @@ function compose(){
   const out=document.getElementById('preview');
   out.width=OW; out.height=OH;
   // 합성은 여기서 — 출력보다 크게 잡고 맨 마지막에 한 번만 줄인다(SUPERSAMPLE 주석 참고)
-  const SS=Math.max(1, Math.min(SUPERSAMPLE, STAGE_MAX/Math.max(OW,OH)));
+  // `state.draft` — 끌기·두 손가락·휠·조명 막대를 움직이는 **동안만** 합성 배율을 1로 둔다(픽셀 4분의 1 — 손가락을 따라온다).
+  //   손을 떼면 ui.js 가 원래 배율로 한 번 더 그린다. 기하는 배율과 무관하다(아래 maxSrcScale·grainScale 이 SS 를 곱해 넘긴다).
+  //   ⚠️ 저장은 늘 원래 배율로 — ui.js 의 저장이 draft 를 끄고 다시 그린 뒤 내보낸다.
+  const SS=state.draft ? 1 : Math.max(1, Math.min(SUPERSAMPLE, STAGE_MAX/Math.max(OW,OH)));
   const W=Math.round(OW*SS), H=Math.round(OH*SS);
   const ctx=stageCanvas(W,H).getContext('2d');
   ctx.clearRect(0,0,W,H);
@@ -2525,7 +2587,7 @@ function compose(){
 // 항상 찍는다(끌 수 없음). 이 도구를 여는 유일한 이유가 유입이라 워터마크가 빠지면 남는 게 없다.
 // 대신 크기를 절제하고(긴 변의 2.6%) 미리보기에도 그대로 보여준다 — 저장하고 나서 발견하면 배신감이 든다.
 //
-// 색: Navbar 로고와 같은 'Art'(흰) + 'Link'(#dc3545). 벽 배경이 화이트큐브부터
+// 색: Navbar 로고와 같은 'Art'(흰) + 'Link'(#c4302b — 2026-10-04 까지 옛 로고 색 #dc3545 였다). 벽 배경이 화이트큐브부터
 // 호텔라운지까지 밝기가 제각각이라 그림자로 대비를 확보한다(배경을 덮지 않는다).
 // 렌즈 비네팅 — **화면 전체**에 아주 완만하게. 실제 사진에는 반드시 있고, 없으면
 // 조각이 균일하게 칠해진 판으로 보인다(골든 살 길이방향 변화 8.5~104%, 우리는 3% 였다).
@@ -2573,39 +2635,19 @@ function drawWatermark(ctx,W,H){
   ctx.shadowBlur=Math.round(fs*0.35); ctx.shadowOffsetY=Math.round(fs*0.06);
   ctx.fillStyle = onLight ? '#1f1f1f' : '#ffffff';
   ctx.fillText('Art',x,y);
-  ctx.fillStyle='#dc3545';   // 브랜드 빨강은 밝기와 무관하게 유지
+  ctx.fillStyle='#c4302b';   // 브랜드 빨강은 밝기와 무관하게 유지 — 사이트 빨강 하나(규칙 47). 예전 #dc3545 는 로고 옛 색이었다
   ctx.fillText('Link',x+wArt,y);
   ctx.restore();
 }
 
-function render(){
-  const empty=document.getElementById('empty'), prev=document.getElementById('preview');
-  if(!state.img){ empty.style.display='block'; prev.style.display='none';
-    document.getElementById('dl').disabled=true; return; }
-  empty.style.display='none'; prev.style.display='block';
-  compose();
-  updateSceneNote();
-  document.getElementById('dl').disabled=false;
-}
-
-// ---- 이미지 로드 ----
+// ---- 이미지 로드 ---- (화면과 하니스가 함께 쓴다)
 function capToCanvas(srcImg){
   const w=srcImg.naturalWidth||srcImg.width, h=srcImg.naturalHeight||srcImg.height;
   const s=Math.min(1,LONG/Math.max(w,h));
   const c=document.createElement('canvas'); c.width=Math.round(w*s); c.height=Math.round(h*s);
   c.getContext('2d').drawImage(srcImg,0,0,c.width,c.height); return c;
 }
-function loadFromSrc(src){
-  const im=new Image();
-  im.crossOrigin='anonymous';   // 캔버스 저장(toBlob) 위해 CORS 허용 로드 (동일 출처면 무영향)
-  im.onload=()=>{ state.img=capToCanvas(im); render(); };
-  im.onerror=()=>{ const e=document.getElementById('empty'); if(e){ e.style.display='block'; e.textContent='작품 이미지를 불러오지 못했습니다.'; } };
-  im.src=src;
-}
-
-// ============================================================
-//  UI 빌드
-// ============================================================
+// 칩 그림(frames/chips/)을 구울 때 액자에 끼우는 가짜 그림 — 개인정보가 아니다
 function dummyArt(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h;
   const x=c.getContext('2d'); const g=x.createLinearGradient(0,0,w,h);
   g.addColorStop(0,'#a9bdd4'); g.addColorStop(.5,'#ded3c0'); g.addColorStop(1,'#c5a78f');
@@ -2614,368 +2656,14 @@ function dummyArt(w,h){ const c=document.createElement('canvas'); c.width=w; c.h
   x.fillStyle='rgba(90,70,60,.25)'; x.beginPath(); x.arc(w*.3,h*.75,w*.28,0,7); x.fill();
   return c; }
 
-// 프레임 칩
-const framesEl=document.getElementById('frames');
-function buildFrameChips(){
-framesEl.innerHTML='';
-FRAMES.forEach((f,i)=>{
-  const chip=document.createElement('div'); chip.className='chip'+(i===state.frameIdx?' active':'');
-  const cv=document.createElement('canvas'); cv.width=72; cv.height=88;
-  // 칩은 **그 스타일이 무엇인가**를 보여주는 자리다 — 매트가 정체성인 스타일에만 매트를 준다
-  // (현재 매트 설정을 반영하면 칩 18개가 전부 같은 모양이 되어 고를 단서가 사라진다).
-  const framed=buildFramedCore(dummyArt(46,58), f,
-    { frame:.075, matWidth: f.kind==='canvas' ? 0 : .06,
-      frameColor:'#46362a', matteColor:'#f2eee4', glass:false });
-  const ctx=cv.getContext('2d');
-  const s=Math.min(66/framed.width,82/framed.height);
-  ctx.drawImage(framed,(72-framed.width*s)/2,(88-framed.height*s)/2,framed.width*s,framed.height*s);
-  const span=document.createElement('span'); span.textContent=f.name;
-  chip.title=f.name;   // 라벨이 한 줄로 잘리므로 전체 이름은 툴팁으로
-  chip.appendChild(cv); chip.appendChild(span);
-  chip.onclick=()=>{ state.frameIdx=i; updateMatRow(); [...framesEl.children].forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active'); render(); };
-  framesEl.appendChild(chip);
-});
-}
-buildFrameChips();
-
-// 벽 칩 (실사 썸네일)
-updateMatRow();   // 처음 그릴 때도 액자 종류에 맞춰 매트 줄을 정리한다
-
-const wallsEl=document.getElementById('walls');
-WALLS.forEach((w,i)=>{
-  const chip=document.createElement('div'); chip.className='chip'+(i===0?' active':'');
-  const im=document.createElement('img'); im.src=w.src; im.loading='lazy';
-  im.onerror=()=>{ im.style.background='#ddd'; };
-  const span=document.createElement('span'); span.textContent=w.name;
-  chip.title=w.name;
-  chip.appendChild(im); chip.appendChild(span);
-  chip.onclick=()=>{ state.wallIdx=i; [...wallsEl.children].forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active'); render(); };
-  wallsEl.appendChild(chip);
-});
-
-// ============================================================
-//  장면(프리미엄) — scenes/scenes.json
-// ============================================================
-// 목록이 비었거나 WebGL2 가 없으면 토글을 아예 안 띄운다. 빈 탭을 보여주면
-// 고장난 것처럼 보이고, 폴백으로 기본 벽이 그대로 있으니 잃는 게 없다.
+// 화면(ui.js)과 엔진이 함께 쓰는 상태 — 엔진이 compose() 에서 읽고 화면이 채운다
+// ⚠️ `state.sceneIdx` 는 **이 전체 목록의 인덱스**다(규칙 44j). 걸러진 목록의 인덱스로 바꾸지 말 것.
 let SCENES=[];
-const scenesEl=document.getElementById('scenes');
-const bgModeRow=document.getElementById('bgModeRow');
-
-function buildSceneChips(){
-  scenesEl.innerHTML='';
-  // ⚠️ `state.sceneIdx` 는 **전체 목록의 인덱스**다. 걸러진 목록의 인덱스로 바꾸지 말 것 —
-  //    탭을 옮길 때마다 가리키는 장면이 달라진다.
-  SCENES.forEach((s,i)=>{
-    if((s.group||'wall')!==state.sceneGroup) return;
-    const chip=document.createElement('div'); chip.className='chip'+(i===state.sceneIdx?' active':'');
-    const im=document.createElement('img'); im.src=s.src; im.loading='lazy';
-    im.onerror=()=>{ im.style.background='#ddd'; };
-    const span=document.createElement('span'); span.textContent=s.name;
-    chip.title=s.name;
-    chip.appendChild(im); chip.appendChild(span);
-    chip.onclick=()=>{ state.sceneIdx=i; [...scenesEl.children].forEach(c=>c.classList.remove('active'));
-      chip.classList.add('active'); render(); };
-    scenesEl.appendChild(chip);
-  });
-}
-
-function syncSceneGroupTabs(){
-  document.querySelectorAll('#sceneGroup button').forEach(b=>
-    b.classList.toggle('active', b.dataset.sg===state.sceneGroup));
-}
-document.querySelectorAll('#sceneGroup button').forEach(b=>{
-  b.onclick=()=>{ state.sceneGroup=b.dataset.sg; syncSceneGroupTabs(); buildSceneChips(); };
-});
-
-// ⚠️ **기본 벽과 장면을 나누지 말 것** (2026-08-30). 예전엔 [기본 벽]이 옛 평면 합성
-// 경로를 그대로 쓰고 [장면]만 새 엔진을 타서, 실제로 대부분이 쓰는 기본 벽이 훨씬 나빴다
-// ("기본벽에서 입체감이 존나 부족하다" 신고). 같은 벽 사진을 두 경로로 그릴 이유가 없다.
-// 이제 **장면 목록이 벽 목록을 대체**하고, 옛 경로는 WebGL2 가 없을 때만 폴백으로 남는다.
-if(window.ArtLookScene && ArtLookScene.supported()){
-  ArtLookScene.loadScenes('scenes/scenes.json',(one,all)=>{
-    if(all){                                   // 목록 도착
-      SCENES=all.filter(s=>s && s.src && (s.region||s.opening));
-      SCENES.forEach(s=>{ s.adj={dx:0,dy:0,s:1}; });
-      if(SCENES.length){
-        state.mode='scene';
-        // 처음 열 때는 **지금 고른 장면이 속한 탭**을 편다 — 활성 칩이 안 보이는 탭에서
-        // 시작하면 아무것도 안 고른 것처럼 보인다.
-        state.sceneGroup=(SCENES[state.sceneIdx]||SCENES[0]).group||'wall';
-        syncSceneGroupTabs();
-        document.getElementById('sceneGroupRow').style.display='';
-        buildSceneChips();
-        document.getElementById('walls').style.display='none';
-        scenesEl.style.display='';
-        bgModeRow.style.display='none';        // 고를 이유가 없어졌다
-        render();
-      }
-      return;
-    }
-    if(one && state.mode==='scene') render();  // 사진이 늦게 도착하면 다시 그린다
-  });
-}
-
-document.querySelectorAll('#bgMode button').forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll('#bgMode button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    state.mode = b.dataset.bg==='scene' ? 'scene' : 'wall';
-    const isScene = state.mode==='scene';
-    document.getElementById('walls').style.display = isScene? 'none':'';
-    scenesEl.style.display = isScene? '':'none';
-    document.getElementById('wallHint').style.display = isScene? 'none':'';
-    render();
-  };
-});
-
-// 크기 안내 — 경쟁 앱 리뷰의 최다 불만이 "크기를 바꿔도 숫자를 안 보여준다"였다.
-// 크기 모드는 **실제 크기 하나뿐**이다(2026-08-31). 고를 게 없으므로 '실제 크기입니다'
-// 류의 안내도 두지 않는다 — 아무 선택지도 없는데 상태를 설명하면 잔소리다.
-// 남기는 건 둘: ①크기를 아직 입력 안 했을 때의 안내 ②장면 자리보다 작품이 커서 줄여
-// 걸었을 때의 경고(다른 장면을 고르라는 실행 가능한 정보라 남긴다).
-function updateSceneNote(){
-  const el=document.getElementById('sceneNote');
-  if(state.mode!=='scene'){ el.style.display='none'; return; }
-  const cm=artCmOf(selectedWork);
-  if(!cm){
-    el.style.display='block';
-    // ⚠️ 가정한 값을 말해 줄 것 — 크기를 모를 때 우리가 **30호로 놓고** 걸기 때문이다.
-    //    안 알리면 "왜 이 크기지?" 를 알 길이 없고, 예전처럼 최대치로 거는 것과 구분도 안 된다.
-    el.innerHTML='💡 크기를 몰라 <b>30호(73×91cm)</b> 크기로 걸었습니다. '
-      + '포트폴리오에 가로×세로를 입력하면 <b>실제 크기</b>로 걸립니다.';
-  } else if(lastFitNote && lastFitNote.ok===false){
-    el.style.display='block';
-    el.innerHTML=`⚠️ <b>${cm[1]}×${cm[0]}cm</b> — 이 장면의 자리보다 커서 줄여 걸었습니다. 다른 장면을 골라 보세요.`;
-  } else if(lastFitNote && lastFitNote.enlarged>1.05){
-    // 실치수대로 걸면 안 보이는 소품 — 부풀린 사실을 **반드시** 알린다.
-    // (실측: 갤러리 살롱에서 12×12cm 는 화면의 0.2%, 짧은 변 40px 이었다)
-    el.style.display='block';
-    el.innerHTML=`💡 <b>${cm[1]}×${cm[0]}cm</b> — 실제 비율대로 걸면 너무 작아서 `
-      + `<b>${lastFitNote.enlarged.toFixed(1)}배</b> 크게 걸었습니다. `
-      + `실제 비율에 가깝게 보려면 벽 장면(화이트 브릭·베이지 스투코 등)을 골라 보세요.`;
-  } else {
-    el.style.display='none';
-  }
-}
-
-// ---- 매트(대지) ----
-const MAT_COLORS=['#f6f4ee','#ffffff','#efe7d8','#e4e0d6','#2b2b2b'];
-const matColorsEl=document.getElementById('matColors');
-MAT_COLORS.forEach((c,i)=>{
-  const b=document.createElement('div');
-  b.className='sw'+(i===0?' active':''); b.style.background=c; b.title=c;
-  b.onclick=()=>{ state.matteColor=c;
-    [...matColorsEl.children].forEach(x=>x.classList.remove('active')); b.classList.add('active');
-    render(); };
-  matColorsEl.appendChild(b);
-});
-document.querySelectorAll('#matSel button').forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll('#matSel button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    state.matWidth=parseFloat(b.dataset.mat)||0;
-    updateMatRow();   // '없음'이면 매트 색 줄은 고를 게 없다 — 접는다
-    render();
-  };
-});
-// 매트는 평면 액자에서만 의미가 있다 — 플로터·캔버스랩에서는 줄째로 감춘다
-// ⚠️ **줄째로 감추지 말 것.** 기본 액자가 플로터라 감췄더니 사용자가 매트 기능이
-// 있는지도 모르고 "매트 설정이 없다"고 했다(2026-08-30). 항상 보이되, 못 쓰는 조합에서는
-// **비활성 + 이유**를 적는다. Frame / Mat / Effect 세 축이 늘 같은 자리에 있어야 한다.
-// ⚠️ **캔버스 랩만 예외다.** 예전엔 플로터도 막아 뒀는데 막을 이유가 없었다(위 `matW` 주석).
-//    캔버스 랩은 액자가 아예 없어서 매트를 **물리적으로 잡아 줄 것이 없다** — 넣으면 벽에
-//    흰 종이가 혼자 떠 있는 그림이 된다. 이건 못 고치는 제약이라 이유를 적어 비활성으로 둔다.
-function updateMatRow(){
-  const k=(FRAMES[state.frameIdx]||{}).kind;
-  const on = k!=='canvas';
-  const row=document.getElementById('matRow'), hint=document.getElementById('matHint');
-  row.style.display='flex';
-  row.style.opacity = on ? '1' : '.42';
-  row.style.pointerEvents = on ? 'auto' : 'none';
-  hint.style.display = on ? 'none' : 'block';
-  // 매트 색은 **매트가 있을 때만** 뜻이 있다 — '없음'에서 색을 고르게 두면 아무 일도
-  // 안 일어나는 컨트롤이 되어 고장으로 보인다(44e 가 반대 방향으로 지적한 것과 같은 문제).
-  document.getElementById('matColorRow').style.display =
-    (on && (state.matWidth||0) > 0) ? 'flex' : 'none';
-}
-
-// 판매 작품 목록 (운영페이지에서 localStorage로 전달: [{url,title,artist,exhibition}])
-const worksEl=document.getElementById('works');
-let SOLD_WORKS=[];
-try{ SOLD_WORKS = JSON.parse(localStorage.getItem('artlook:works')||'[]'); }catch{ SOLD_WORKS=[]; }
-
-// 넘어온 작품이 없으면(주소로 직접 들어온 경우) **데모 작품**을 띄운다.
-// 예전엔 '불러온 작품이 없습니다' 한 줄만 남아 아무것도 못 해 보고 나갔다.
-// 데모 그림은 절차적으로 그린 것이라 개인정보가 아니고, 크기(sizeText)도 실제 호수 규격이라
-// 장면 모드의 '실제 치수대로 걸린다'를 바로 확인할 수 있다.
-// ⚠️ 절대경로(`/demo-art/…`)를 쓴다 — 이 페이지는 마이페이지 안 iframe 으로도 뜨고,
-//    시드 스크립트(backend/scripts/seed-demo-portfolio.ts)도 같은 파일을 가리킨다.
-const DEMO_WORKS=[
-  { url:'/demo-art/dawn-window.jpg',   title:'새벽의 창',   sizeText:'72.7 × 90.9 cm',   artist:'데모' },
-  { url:'/demo-art/long-summer.jpg',   title:'긴 여름',     sizeText:'162.1 × 130.3 cm', artist:'데모' },
-  { url:'/demo-art/square-garden.jpg', title:'사각의 정원', sizeText:'100 × 100 cm',     artist:'데모' },
-  { url:'/demo-art/horizon.jpg',       title:'수평선',      sizeText:'145.5 × 60.6 cm',  artist:'데모' },
-  { url:'/demo-art/small-room.jpg',    title:'작은 방',     sizeText:'24.2 × 33.4 cm',   artist:'데모' },
-  { url:'/demo-art/blue-wall.jpg',     title:'푸른 벽',     sizeText:'130.3 × 162.1 cm', artist:'데모' },
-];
-const IS_DEMO = !(Array.isArray(SOLD_WORKS) && SOLD_WORKS.length);
-if(IS_DEMO) SOLD_WORKS = DEMO_WORKS.map(w=>({...w, kind:'portfolio'}));
-// 외부 도메인(R2) 이미지는 동일출처 프록시로 중계 → 캔버스 taint 방지(PNG 저장 가능).
-// 상대경로(로컬 /images, /uploads)는 이미 동일출처라 그대로 사용.
-// `immutable=1` — 프록시에 7일 캐시를 요청한다. 작품 주소는 `타임스탬프-난수.jpg`라 내용이 바뀌지 않고,
-// 새 작품은 새 주소가 생기므로 캐시가 새 작품을 가리지 않는다. 작품 '정보'(제목·크기·상태)는
-// API(no-store)에서 매번 새로 오므로 이 캐시와 무관하다.
-function resolveSrc(url){ return /^https?:\/\//i.test(url) ? '/api/upload/image-proxy?url='+encodeURIComponent(url)+'&immutable=1' : url; }
-let selectedWork=null;
-// 작품 목록 — 한 화면에 9장(3×3)씩 끊어 넘긴다.
-// 30장을 한 번에 깔면 목록이 세로로 길어져 **아래 액자·배경 설정이 화면 밖으로 밀린다**(실사용 신고).
-// 곁들여 프록시 요청도 전체가 아니라 현재 페이지분만 나간다.
-const PER_PAGE=9;
-let worksPage=0, selectedIndex=0;
-
-function renderWorks(){
-  const total=SOLD_WORKS.length;
-  const pages=Math.max(1, Math.ceil(total/PER_PAGE));
-  worksPage=Math.min(Math.max(0,worksPage), pages-1);
-  worksEl.innerHTML='';
-  SOLD_WORKS.slice(worksPage*PER_PAGE, worksPage*PER_PAGE+PER_PAGE).forEach((w,j)=>{
-    const idx=worksPage*PER_PAGE+j;
-    const img=document.createElement('img');
-    img.src=resolveSrc(w.url); img.loading='lazy'; img.title=w.title||'';
-    img.crossOrigin='anonymous';
-    if(idx===selectedIndex) img.classList.add('active');   // 페이지를 넘겨도 선택 표시가 유지된다
-    img.onclick=()=>{
-      selectedIndex=idx; selectedWork=w;
-      [...worksEl.children].forEach(x=>x.classList.remove('active'));
-      img.classList.add('active');
-      loadFromSrc(resolveSrc(w.url));
-    };
-    img.onerror=()=>{ img.style.opacity='.3'; };
-    worksEl.appendChild(img);
-  });
-  const pager=document.getElementById('worksPager');
-  pager.style.display = pages>1 ? 'flex' : 'none';   // 9장 이하면 페이저를 숨긴다
-  document.getElementById('worksPage').textContent = (worksPage+1)+' / '+pages;
-  document.getElementById('worksPrev').disabled = worksPage===0;
-  document.getElementById('worksNext').disabled = worksPage>=pages-1;
-}
-
-document.getElementById('worksPrev').onclick=()=>{ worksPage--; renderWorks(); };
-document.getElementById('worksNext').onclick=()=>{ worksPage++; renderWorks(); };
-renderWorks();
-selectedWork=SOLD_WORKS[0];
-loadFromSrc(resolveSrc(SOLD_WORKS[0].url)); // 첫 작품 자동 로드
-if(IS_DEMO){
-  const e=document.getElementById('worksEmpty');
-  e.style.display='block';
-  e.innerHTML='둘러보기용 <b>데모 작품</b>입니다. 마이페이지 &gt; 포트폴리오의 [ArtLook] 또는 운영 페이지의 [ArtLook으로 홍보 이미지 만들기]로 들어오면 내 작품이 뜹니다.';
-}
-
-// 다운로드 파일명: 작가_작품명_공모명_판매작.png (없는 항목은 생략)
-function sanitizeName(s){ return String(s==null?'':s).replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim(); }
-function downloadFileName(){
-  const w=selectedWork||{};
-  const parts=[w.artist, w.title, w.exhibition].map(sanitizeName).filter(Boolean);
-  // '판매작' 접미사는 운영페이지에서 넘어온 판매작에만. 포트폴리오 작품에 붙으면 사실과 다르다.
-  if(w.kind!=='portfolio') parts.push('판매작');
-  if(!parts.length) parts.push('ArtLook');
-  return parts.join('_')+'.png';
-}
-
-// 비율 버튼
-const ratiosEl=document.getElementById('ratios');
-RATIOS.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.name;
-  if(r.id===state.ratio) b.classList.add('active');
-  b.onclick=()=>{ state.ratio=r.id; [...ratiosEl.children].forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); render(); }; ratiosEl.appendChild(b); });
-
-// 컬러 피커 / 토글
-
-// 웹폰트(Pretendard)가 도착하기 전에 캔버스에 글자를 그리면 시스템 기본 글꼴로 찍힌다.
-// 화면 텍스트와 달리 캔버스는 나중에 다시 그려지지 않으므로 폰트를 기다렸다가 한 번 더 렌더한다.
-// (포트폴리오 PDF에서 표지 큰 글씨가 폴백 글꼴로 나갔던 것과 같은 함정)
-if(document.fonts && document.fonts.ready){ document.fonts.ready.then(()=>{ if(state.img) render(); }); }
-
-// 조명 강도 — 0 이 곧 '없음'이다(종류 선택은 없앴다)
-const lo=document.getElementById('lightOp'), lov=document.getElementById('lightOpv');
-lo.oninput=()=>{ state.light=lo.value/100; lov.textContent=lo.value+'%'; render(); };
-
-
-// (파일 첨부/드래그드롭은 제거됨 — 판매 작품 목록에서만 선택)
-
-// ---- 벽·장면 모드: 액자 드래그 이동 / 휠 크기 / 더블클릭 리셋 ----
-const pv=document.getElementById('preview');
-let dragging=null;
-function canvasPoint(e){
-  const r=pv.getBoundingClientRect();
-  return { x:(e.clientX-r.left)*pv.width/r.width, y:(e.clientY-r.top)*pv.height/r.height };
-}
-// 조절 대상 — 벽이면 그 벽, 장면이면 그 장면.
-// ⚠️ 사진에 액자가 박혀 있는 장면(opening)은 **움직일 수 없다** — 액자가 고정이므로
-//    작품만 옮기면 액자 밖으로 삐져나온다. 그때는 null 을 돌려 조작을 막는다.
-function adjTarget(){
-  if(state.mode==='wall') return WALLS[state.wallIdx].adj;
-  const s=SCENES[state.sceneIdx];
-  return (s && s.region) ? s.adj : null;
-}
-// 드래그 한 픽셀이 몇 '단위' 인지 — 벽은 캔버스 기준, 장면은 영역 기준이라 다르다
-function adjScale(){
-  if(state.mode==='wall') return {x:pv.width,y:pv.height};
-  const r=lastRegionPx;
-  return r && r.w>4 && r.h>4 ? {x:r.w,y:r.h} : {x:pv.width,y:pv.height};
-}
-pv.addEventListener('pointerdown',e=>{
-  if(!state.img||!lastArt||!adjTarget()) return;
-  const p=canvasPoint(e); const m=Math.max(20,lastArt.fw*.06);
-  if(p.x<lastArt.x-m||p.x>lastArt.x+lastArt.fw+m||p.y<lastArt.y-m||p.y>lastArt.y+lastArt.fh+m) return;
-  const adj=adjTarget();
-  dragging={px:p.x,py:p.y,dx0:adj.dx,dy0:adj.dy};
-  pv.setPointerCapture(e.pointerId); e.preventDefault();
-});
-pv.addEventListener('pointermove',e=>{
-  if(!dragging) return;
-  const adj=adjTarget(); if(!adj) return;
-  const p=canvasPoint(e), k=adjScale();
-  adj.dx=dragging.dx0+(p.x-dragging.px)/k.x;
-  adj.dy=dragging.dy0+(p.y-dragging.py)/k.y;
-  render();
-});
-['pointerup','pointercancel'].forEach(ev=>pv.addEventListener(ev,()=>{ dragging=null; }));
-pv.addEventListener('wheel',e=>{
-  const adj=adjTarget(); if(!state.img||!adj) return;
-  e.preventDefault();
-  adj.s=Math.max(.35, Math.min(2.5, adj.s*(e.deltaY<0?1.06:0.94)));
-  render();
-},{passive:false});
-pv.addEventListener('dblclick',()=>{
-  const adj=adjTarget(); if(!adj) return;
-  adj.dx=0; adj.dy=0; adj.s=1; render();
-});
-
-// 다운로드
-document.getElementById('dl').onclick=()=>{
-  const c=document.getElementById('preview');
-  try{
-    c.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b);
-      a.download=downloadFileName(); a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-      try{ localStorage.setItem('artlook:done', String(Date.now())); }catch(e){}
-    },'image/png');
-  }catch(err){ alert('이미지 저장에 실패했습니다. 작품 이미지가 외부 출처라 보안 제약이 있을 수 있습니다.'); }
-};
-
-// 완료 · ArtLink로 돌아가기 (스크립트로 연 탭은 자동 닫힘)
-document.getElementById('back').onclick=()=>{
-  try{ localStorage.setItem('artlook:done', String(Date.now())); }catch(e){}
-  window.close();
-  setTimeout(()=>{ if(!window.closed) alert('이 탭을 닫고 ArtLink 화면으로 돌아가 주세요.'); }, 300);
-};
+let selectedWork=null;   // 고른 작품 — 실치수(sizeText)로 거는 데 쓴다(artCmOf)
 
 installDebugHook();
-render();
 </script>
+<!-- 화면(탭·칩·저장)은 따로 — 엔진의 전역(state·FRAMES·SCENES·compose…)을 쓴다 -->
+<script src="ui.js?v=__ARTLOOK_BUILD__"></script>
 </body>
 </html>

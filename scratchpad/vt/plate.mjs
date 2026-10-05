@@ -3,7 +3,7 @@
 import pw from '/home/jho4255/ArtLink/e2e/node_modules/playwright/index.js';
 const b = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
-await p.goto('http://localhost:5173/artlook/index.html' + (process.env.Q ? '?' + process.env.Q : ''), { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (process.env.Q ? '&' + process.env.Q : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3500);
 const out = await p.evaluate(async (names) => {
   const load = (f) => new Promise((res, rej) => { const im = new Image();

@@ -32,6 +32,7 @@
    "id": "gallery-salon",
    "name": "갤러리 살롱",
    "src": "walls/wall15-gallery-salon.jpg",
+   "thumb": "walls/thumbs/wall15-gallery-salon.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -77,6 +78,7 @@
    "id": "boutique",
    "name": "부티크 갤러리",
    "src": "walls/wall16-boutique-gallery.jpg",
+   "thumb": "walls/thumbs/wall16-boutique-gallery.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -122,6 +124,7 @@
    "id": "collector-salon",
    "name": "컬렉터 살롱",
    "src": "walls/wall17-collector-salon.jpg",
+   "thumb": "walls/thumbs/wall17-collector-salon.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -167,6 +170,7 @@
    "id": "gallery-living",
    "name": "갤러리 리빙",
    "src": "walls/wall11-gallery-living.jpg",
+   "thumb": "walls/thumbs/wall11-gallery-living.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -212,6 +216,7 @@
    "id": "white-cube",
    "name": "화이트 큐브",
    "src": "walls/wall12-white-cube.jpg",
+   "thumb": "walls/thumbs/wall12-white-cube.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -257,6 +262,7 @@
    "id": "collector-home",
    "name": "컬렉터 홈",
    "src": "walls/wall14-collector-home.jpg",
+   "thumb": "walls/thumbs/wall14-collector-home.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -302,6 +308,7 @@
    "id": "hotel-lounge",
    "name": "호텔 라운지",
    "src": "walls/wall13-hotel-lounge.jpg",
+   "thumb": "walls/thumbs/wall13-hotel-lounge.jpg",
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -347,6 +354,7 @@
    "id": "concrete",
    "name": "콘크리트",
    "src": "walls/wall01.jpg",
+   "thumb": "walls/thumbs/wall01.jpg",
    "frameless": true,
    "region": [
     [
@@ -391,6 +399,7 @@
    "id": "travertine",
    "name": "트래버틴",
    "src": "walls/wall03.jpg",
+   "thumb": "walls/thumbs/wall03.jpg",
    "frameless": true,
    "region": [
     [
@@ -435,6 +444,7 @@
    "id": "cream-stone",
    "name": "크림 스톤",
    "src": "walls/wall04.jpg",
+   "thumb": "walls/thumbs/wall04.jpg",
    "frameless": true,
    "region": [
     [
@@ -479,6 +489,7 @@
    "id": "white-brick",
    "name": "화이트 브릭",
    "src": "walls/wall05.jpg",
+   "thumb": "walls/thumbs/wall05.jpg",
    "frameless": true,
    "region": [
     [
@@ -522,6 +533,7 @@
    "id": "beige-plaster",
    "name": "베이지 플라스터",
    "src": "walls/wall06.jpg",
+   "thumb": "walls/thumbs/wall06.jpg",
    "frameless": true,
    "region": [
     [
@@ -566,6 +578,7 @@
    "id": "warm-concrete",
    "name": "웜 콘크리트",
    "src": "walls/wall07.jpg",
+   "thumb": "walls/thumbs/wall07.jpg",
    "frameless": true,
    "region": [
     [
@@ -610,6 +623,7 @@
    "id": "taupe-plaster",
    "name": "토프 플라스터",
    "src": "walls/wall08.jpg",
+   "thumb": "walls/thumbs/wall08.jpg",
    "frameless": true,
    "region": [
     [
@@ -654,6 +668,7 @@
    "id": "sand",
    "name": "샌드",
    "src": "walls/wall09.jpg",
+   "thumb": "walls/thumbs/wall09.jpg",
    "frameless": true,
    "region": [
     [
@@ -699,6 +714,7 @@
    "name": "차콜",
    "group": "wall",
    "src": "walls/wall21-charcoal.jpg",
+   "thumb": "walls/thumbs/wall21-charcoal.jpg",
    "frameless": true,
    "region": [
     [
@@ -742,6 +758,7 @@
    "name": "올리브",
    "group": "wall",
    "src": "walls/wall22-olive.jpg",
+   "thumb": "walls/thumbs/wall22-olive.jpg",
    "frameless": true,
    "region": [
     [
@@ -785,6 +802,7 @@
    "name": "월넛 패널",
    "group": "wall",
    "src": "walls/wall23-walnut-panel.jpg",
+   "thumb": "walls/thumbs/wall23-walnut-panel.jpg",
    "frameless": true,
    "region": [
     [
@@ -830,6 +848,7 @@
    "name": "테라코타",
    "group": "wall",
    "src": "walls/wall24-terracotta.jpg",
+   "thumb": "walls/thumbs/wall24-terracotta.jpg",
    "frameless": true,
    "region": [
     [
@@ -873,6 +892,7 @@
    "name": "블루 그레이",
    "group": "wall",
    "src": "walls/wall25-blue-grey.jpg",
+   "thumb": "walls/thumbs/wall25-blue-grey.jpg",
    "frameless": true,
    "region": [
     [
@@ -916,6 +936,7 @@
    "name": "화이트 플라스터",
    "group": "wall",
    "src": "walls/wall26-white-plaster.jpg",
+   "thumb": "walls/thumbs/wall26-white-plaster.jpg",
    "frameless": true,
    "region": [
     [

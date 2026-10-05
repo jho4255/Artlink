@@ -11,7 +11,7 @@ const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsaf
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 
 const SCENES_UNDER_TEST = ['white-brick', 'stone', 'grey-brick', 'travertine',

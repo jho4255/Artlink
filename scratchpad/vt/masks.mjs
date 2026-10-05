@@ -18,7 +18,7 @@ const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsaf
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
-await p.goto('http://localhost:5173/artlook/index.html?debug=1', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all&debug=1', { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 await p.evaluate(() => {
   window.__vtLoad = (f) => new Promise((res, rej) => {

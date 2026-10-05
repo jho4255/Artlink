@@ -23,7 +23,7 @@ p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 1
 //   SYN=0 SYNDIR=0 node render.mjs renders_off   → 사진 액자 원본만
 const qs = [process.env.SYN != null ? `syn=${process.env.SYN}` : '',
   process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : ''].filter(Boolean).join('&');
-await p.goto('http://localhost:5173/artlook/index.html' + (qs ? '?' + qs : ''), { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (qs ? '&' + qs : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 
 // 데모 작품을 직접 심는다 — 로그인/포트폴리오에 기대면 장비마다 결과가 달라진다

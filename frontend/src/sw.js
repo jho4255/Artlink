@@ -51,6 +51,7 @@ registerRoute(
         return Response.error();
       }
     },
-    { denylist: [/^\/api\//, /^\/uploads\//] }
+    // /artlook/ — 마이페이지 [ArtLook] 탭의 iframe 도 '페이지 이동'이다. 5초 넘게 걸리면 앱 셸이 iframe 안에 대신 뜬다(2026-10-04)
+    { denylist: [/^\/api\//, /^\/uploads\//, /^\/artlook\//] }
   )
 );

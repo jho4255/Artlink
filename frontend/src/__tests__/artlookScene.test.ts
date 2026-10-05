@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
@@ -289,6 +289,8 @@ describe('사진 액자 기하 — 네 살 폭이 같아야 한다', () => {
 // 주소·호출부가 문자열이라 타입도 못 잡으므로 소스를 훑어 고정한다.
 describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
   const html = readFileSync(resolve(__dirname, '../../public/artlook/index.html'), 'utf-8');
+  // 화면(탭·칩·매트 줄·안내)은 2026-10-04 부터 ui.js 에 있다 — 엔진은 그대로 index.html
+  const ui = readFileSync(resolve(__dirname, '../../public/artlook/ui.js'), 'utf-8');
 
   it('액자 이름에 구현 방식(사진)을 적지 않는다', () => {
     // 고르는 사람에게 '사진 9-slice 인가 절차적인가'는 알 바가 아니다. 칩 라벨은 재질 이름만.
@@ -298,7 +300,7 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
   });
 
   it('매트는 없음/좁게/넓게 — 캔버스 랩만 예외 (2026-09-01, 44e 의 필수화를 되돌림)', () => {
-    expect(html).toMatch(/const on\s*=\s*k\s*!==\s*'canvas'/);
+    expect(ui).toMatch(/const on\s*=\s*k\s*!==\s*'canvas'/);
     // ⚠️ 44e 의 **진짜 값**은 '필수'가 아니라 **한 곳에서만 정한다**였다. 예전엔 사진 액자
     //    분기가 `o.matWidth` 를 따로 읽어서, 규칙을 바꾸면 한쪽만 바뀌었다(사진 액자 5종에서만
     //    매트가 안 나왔다). '없음'을 되살려도 그 구조는 그대로 지킨다.
@@ -343,7 +345,7 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
   });
 
   it('매트 색은 매트가 있을 때만 뜬다 — 아무 일도 안 하는 컨트롤을 남기지 않는다', () => {
-    expect(html).toMatch(/\(on && \(state\.matWidth\|\|0\) > 0\) \? 'flex' : 'none'/);
+    expect(ui).toMatch(/matColorsEl\.hidden = !\(on && \(state\.matWidth\|\|0\) > 0\)/);
   });
 
   it('조명은 종류 선택 없이 강도 0~100 하나로만 조절한다', () => {
@@ -457,7 +459,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(js).toMatch(/FLOOR \+ \(KNEE - FLOOR\) \* \(reach \/ KNEE\)/);
     // 부풀렸으면 화면에 알린다
     expect(js).toMatch(/fitNote\.enlarged = enlarged/);
-    expect(html).toMatch(/lastFitNote\.enlarged>1\.05/);
+    expect(fs.readFileSync(resolve(__dirname, '../../public/artlook/ui.js'), 'utf-8')).toMatch(/lastFitNote\.enlarged>1\.05/);
   });
 
   it('조각의 긴 변은 화면의 70% 를 넘지 않는다 (2026-08-31 요청)', () => {
@@ -612,13 +614,15 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
     expect(html).toMatch(/const rt=Math\.min\(assetRel\(A,td,s\), trough\);/);
   });
 
-  it('배경은 벽/공간 탭으로 나뉜다 — 인덱스는 전체 목록 기준을 유지한다', () => {
-    expect(html).toMatch(/id="sceneGroupRow"/);
-    expect(html).toMatch(/data-sg="wall"[\s\S]*data-sg="space"/);
-    // ⚠️ 걸러진 목록의 인덱스로 바꾸면 탭을 옮길 때마다 가리키는 장면이 달라진다
-    expect(html).toMatch(/if\(\(s\.group\|\|'wall'\)!==state\.sceneGroup\) return;/);
-    // 처음 열 때는 지금 고른 장면이 속한 탭을 편다(활성 칩이 안 보이면 안 고른 것처럼 보인다)
-    expect(html).toMatch(/state\.sceneGroup=\(SCENES\[state\.sceneIdx\]\|\|SCENES\[0\]\)\.group/);
+  it('배경은 벽/공간 무리로 나뉜다 — 인덱스는 전체 목록 기준을 유지한다', () => {
+    // 2026-10-04: 토글([벽]/[공간])을 **무리 이름**으로 바꿨다 — 칩 줄은 옆으로 밀면 되고, 토글 한 줄이 휴대폰에서 미리보기 높이를 먹었다
+    const ui = fs.readFileSync(resolve(__dirname, '../../public/artlook/ui.js'), 'utf-8');
+    expect(ui).toMatch(/label\.textContent=g==='space' \? '공간' : '벽'/);
+    // ⚠️ 걸러진 목록의 인덱스로 바꾸면 무리를 옮길 때마다 가리키는 장면이 달라진다 — 칩은 전체 목록의 인덱스를 들고 있다
+    expect(ui).toMatch(/if\(\(s\.group\|\|'wall'\)!==g\) return;/);
+    expect(ui).toMatch(/b\.dataset\.idx=String\(i\)/);
+    // 고른 칩이 보이게 — 처음 탭을 열 때·탭을 바꿀 때(예전엔 '고른 장면이 속한 탭을 편다')
+    expect(ui).toMatch(/function revealSelected\(\)/);
   });
 
   it('리베이트 곡선은 꺾이지 않는다 — 오목한 곡면이지 두 평면이 만나는 각이 아니다', () => {

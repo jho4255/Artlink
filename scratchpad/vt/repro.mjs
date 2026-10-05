@@ -5,7 +5,7 @@ const b=await pw.chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-
 const p=await b.newPage({viewport:{width:1400,height:900}});
 const errs=[]; p.on('pageerror',e=>errs.push(e.message));
 p.on('console',m=>{ if(m.type()==='error') errs.push(m.text().slice(0,120)); });
-await p.goto('http://localhost:5173/artlook/index.html',{waitUntil:'networkidle'});
+await p.goto('http://localhost:5173/artlook/index.html?preload=all',{waitUntil:'networkidle'});
 await p.waitForTimeout(3600);
 const info=await p.evaluate(async(u)=>{
   const src='/api/upload/image-proxy?url='+encodeURIComponent(u);

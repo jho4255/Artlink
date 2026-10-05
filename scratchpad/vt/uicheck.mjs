@@ -4,7 +4,7 @@ const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe
 const p = await b.newPage({ viewport:{width:1240,height:1000} });
 const errs=[]; p.on('pageerror',e=>errs.push(e.message));
 p.on('console',m=>{ if(m.type()==='error') errs.push(m.text().slice(0,160)); });
-await p.goto('http://localhost:5173/artlook/index.html',{waitUntil:'networkidle'});
+await p.goto('http://localhost:5173/artlook/index.html?preload=all',{waitUntil:'networkidle'});
 await p.waitForTimeout(4000);
 const names = await p.evaluate(()=>FRAMES.map(f=>f.name));
 console.log('액자 이름:', names.join(' / '));

@@ -25,7 +25,7 @@ const LDS = [['좌상', [-1, -1]], ['우상', [0.94, -0.33]], ['좌상수평', [
 async function measure(syn, syndir) {
   const b = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
-  await p.goto(`http://localhost:5173/artlook/index.html?syn=${syn}&syndir=${syndir}`,
+  await p.goto(`http://localhost:5173/artlook/index.html?preload=all&syn=${syn}&syndir=${syndir}`,
     { waitUntil: 'networkidle' });
   await p.waitForTimeout(3800);
   const rows = await p.evaluate(async ({ LDS }) => {

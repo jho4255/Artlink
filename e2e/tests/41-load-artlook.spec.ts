@@ -40,6 +40,11 @@ async function canvasStats(page: Page) {
   });
 }
 
+/** 설정 탭 — 2026-10-04 개편부터 작품·액자·매트·배경·조명·비율이 탭으로 나뉘어 있다(규칙 65). 그 탭을 열어야 칩이 보인다 */
+async function tab(page: Page, id: 'works' | 'frames' | 'mat' | 'scenes' | 'light' | 'ratio') {
+  await page.locator(`#tab-${id}`).click();
+}
+
 /** 렌더가 끝나 미리보기가 보일 때까지 */
 async function waitRender(page: Page) {
   await expect(page.locator('#preview')).toBeVisible({ timeout: 30000 });
@@ -80,7 +85,9 @@ test('★ 장면 전 종류를 두 바퀴 돌아도 WebGL 컨텍스트가 하나
   test.setTimeout(300_000);
   const errors = await bootArtLook(page);
 
-  // ⚠️ 장면은 [벽]/[공간] **두 탭**으로 나뉜다(규칙 44j). 한 탭만 돌면 절반을 안 본다.
+  // 배경은 [배경] 탭 안에 [공간]·[벽] 두 무리로 이어져 있다(2026-10-04 — 예전 [벽]/[공간] 토글은 무리 이름이 됐다).
+  // 토글이 있던 시절의 코드도 그대로 돈다(groups 가 0 이면 한 번에 전부).
+  await tab(page, 'scenes');
   const groups = page.locator('#sceneGroup button');
   const gN = Math.max(await groups.count(), 1);
   const chips = page.locator('#scenes .chip');
@@ -146,11 +153,15 @@ test('★ 액자·매트·조명을 반복해서 바꿔도 렌더가 살아 있�
   const blanks: string[] = [];
   for (let round = 0; round < 2; round++) {
     for (let i = 0; i < fN; i++) {
+      await tab(page, 'frames');
       await frames.nth(i).click();
+      // 액자 사진·결 텍스처는 고를 때 받는다 — 그려질 때까지(불러오는 중 표시가 사라질 때까지)
+      await page.waitForFunction(() => document.getElementById('busy')!.hidden, null, { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(220);
 
-      // 매트 없음/좁게/넓게 를 돌린다 — 매트 분기가 액자마다 다르게 타는 자리
-      const matBtns = page.locator('#matSel button');
+      // 매트 없음/좁게/넓게 를 돌린다 — 매트 분기가 액자마다 다르게 타는 자리(캔버스 랩이면 비활성이라 건너뛴다)
+      await tab(page, 'mat');
+      const matBtns = page.locator('#matSel button:not([disabled])');
       if (await matBtns.count()) {
         await matBtns.nth((i + round) % (await matBtns.count())).click().catch(() => {});
         await page.waitForTimeout(150);
@@ -162,6 +173,7 @@ test('★ 액자·매트·조명을 반복해서 바꿔도 렌더가 살아 있�
 
   // 조명 슬라이더를 끝까지 밀어도 작품이 하얗게 날아가지 않아야 한다
   const before = await canvasStats(page);
+  await tab(page, 'light');
   await page.locator('#lightOp').fill('100');
   await page.waitForTimeout(900);
   const after = await canvasStats(page);
@@ -181,7 +193,7 @@ test('★ 작품을 바꿔가며 30번 렌더해도 메모리가 폭주하지 �
 
   const works = page.locator('#works img');
   const wN = await works.count();
-  const chips = page.locator('#scenes .chip');
+  const chips = page.locator('#scenes .chip');   // 숨은 탭이어도 센다(count 는 보이는지 안 따진다)
   const sN = await chips.count();
   expect(wN).toBeGreaterThan(0);
 
@@ -189,8 +201,9 @@ test('★ 작품을 바꿔가며 30번 렌더해도 메모리가 폭주하지 �
   const m0 = await mem();
 
   for (let i = 0; i < 30; i++) {
+    await tab(page, 'works');
     await works.nth(i % wN).click();
-    if (sN > 0) await chips.nth(i % sN).click();
+    if (sN > 0) { await tab(page, 'scenes'); await chips.nth(i % sN).click(); }
     await page.waitForTimeout(180);
   }
   await page.waitForTimeout(1500);

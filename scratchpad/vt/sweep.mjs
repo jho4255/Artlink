@@ -12,7 +12,7 @@ const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
 p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 140)); });
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 await p.evaluate(() => {
   window.__vtLoad = (f) => new Promise((res, rej) => {

@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
+import fs from 'fs';
+import type { Plugin } from 'vite';
 
 // DEV_HTTPS=true 로 띄우면 self-signed HTTPS (인스타 OAuth redirect 로컬 테스트용)
 const useHttps = process.env.DEV_HTTPS === 'true';
@@ -13,6 +15,28 @@ const useHttps = process.env.DEV_HTTPS === 'true';
 // 실제로 발생(2026-07). 쿼리가 캐시 키에 포함되므로 빌드마다 반드시 오리진에서 새로 받는다.
 const BUILD_ID = Date.now().toString(36);
 
+/**
+ * ArtLook(`public/artlook/`)은 번들 밖 정적 페이지라 파일 이름에 해시가 없다. 그래서 그 index.html 이 부르는
+ * 코드(scene.js·ui.js)와 목록(scenes.json·frames.json) 주소에 `?v=__ARTLOOK_BUILD__` 를 적어 두고, 빌드가 끝나면
+ * 여기서 빌드 ID 로 바꾼다. 쿼리는 브라우저·Cloudflare 캐시 키에 들어가므로 배포마다 새로 받는다.
+ * ⚠️ 2026-10-04: 예전엔 그 파일들이 1년 immutable 이라 Cloudflare 가 9/4 판 scene.js 를 30일째 내보내고 있었다
+ *    (서버 쪽 규칙은 `backend/src/lib/staticCache.ts`). 이미 1년짜리로 받아 간 사본은 서버 헤더를 바꿔도 다시 묻지 않는다 —
+ *    주소를 바꾸는 수밖에 없다. 개발 서버에서는 글자 그대로 나가는데, 쿼리라 아무 문제 없다.
+ */
+function artlookBuildId(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'artlook-build-id',
+    apply: 'build',
+    configResolved(c) { outDir = path.resolve(c.root, c.build.outDir); },
+    closeBundle() {
+      const f = path.join(outDir, 'artlook', 'index.html');
+      if (!fs.existsSync(f)) return;
+      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split('__ARTLOOK_BUILD__').join(BUILD_ID));
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
@@ -20,6 +44,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    artlookBuildId(),
     ...(useHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
@@ -38,7 +63,9 @@ export default defineConfig({
         // pdf.js 본체(0.5MB)는 작가 홈페이지 [포트폴리오] 탭에서만 쓴다 — 설치하는 모든 사람에게 미리 받게 하지 않는다.
         // (워커 .mjs 1.3MB 는 위 패턴에 애초에 안 걸린다. 빠진 파일은 sw.js 가 가로채지 않아 평소처럼 네트워크로 받는다)
         // 서식 편집기(TipTap)도 같은 이유 — 갤러리 주인이 [수정]을 누를 때만 받는다(2026-09-28)
-        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js'],
+        // ArtLook(액자 사진 8장 5.5MB · 화면 코드)도 뺀다 — 예전엔 모든 방문자가 설치 때 미리 받았다(미리받기 8.2MB 의 67%, 2026-10-04).
+        // [ArtLook] 탭을 여는 작가만 그때 받는다. 고정 이름 파일이라 서버가 no-cache 로 내준다(backend lib/staticCache.ts).
+        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', 'artlook/**'],
       },
       manifest: {
         name: 'ArtLink',

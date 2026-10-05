@@ -55,17 +55,26 @@ const isFocus = (v: string | null): v is EditFocus => !!v && Object.prototype.ha
  * 편집 화면 주소.
  *  - `focus` : 그 칸에 커서를 둔다(묶음은 칸에서 정해진다)
  *  - `info`  : 작품 묶음에서 정보 없는 첫 작품의 입력 창을 바로 연다("작품 정보 채우기"를 눌러 온 사람)
+ *  - `work`  : `info` 와 함께 — **그 작품**의 입력 창을 연다(ArtLook 의 [크기 입력하기], 2026-10-04).
+ *              제목만 있고 크기가 없는 작품은 '정보 없는 작품'이 아니라서, 없으면 엉뚱한 작품의 창이 열린다.
  */
-export function editHref(section?: EditSectionId, opts: { focus?: EditFocus; info?: boolean } = {}): string {
+export function editHref(section?: EditSectionId, opts: { focus?: EditFocus; info?: boolean; work?: number } = {}): string {
   const sec = opts.focus ? FOCUS_SECTION[opts.focus] : section;
   let href = HOMEPAGE_EDIT_BASE;
   if (sec) href += `&section=${sec}`;
   if (opts.focus) href += `&focus=${opts.focus}`;
-  if (opts.info && (sec ?? 'works') === 'works') href += '&do=info';
+  if (opts.info && (sec ?? 'works') === 'works') {
+    href += '&do=info';
+    if (Number.isInteger(opts.work) && (opts.work as number) > 0) href += `&work=${opts.work}`;
+  }
   return href;
 }
 
-export interface EditEntry { section: EditSectionId; focus: EditFocus | null; info: boolean }
+export interface EditEntry {
+  section: EditSectionId; focus: EditFocus | null; info: boolean;
+  /** `info` 로 열 작품 — 없으면 정보 없는 첫 작품 */
+  work?: number | null;
+}
 
 /**
  * 주소에서 "어느 묶음으로 들어왔는가"를 읽는다. 모르는 값이면 첫 묶음(작품) — 빈 화면을 만들지 않는다.
@@ -80,7 +89,9 @@ export function resolveEditEntry(search: string): EditEntry {
     ? FOCUS_SECTION[focus]
     : isSection(rawSection) ? rawSection
     : 'works';
-  return { section, focus, info: section === 'works' && q.get('do') === 'info' };
+  const info = section === 'works' && q.get('do') === 'info';
+  const w = Number(q.get('work'));
+  return { section, focus, info, work: info && Number.isInteger(w) && w > 0 ? w : null };
 }
 
 /**
@@ -123,6 +134,14 @@ type Captionable = Pick<PortfolioImage, 'id' | 'title' | 'medium' | 'sizeText' |
 /** 작품 정보(작품명·재료·크기·연도)가 하나도 없는 작품 수 */
 export function uncaptionedCount(images: Captionable[]): number {
   return images.filter((i) => !hasCaption(i)).length;
+}
+
+/**
+ * 들어오며 열 작품 정보 창 — 주소가 고른 작품(`work`)이 있으면 그것, 없거나 지워졌으면 정보 없는 첫 작품.
+ */
+export function entryInfoImageId(images: Captionable[], work: number | null | undefined): number | null {
+  if (work != null && images.some((i) => i.id === work)) return work;
+  return nextUncaptionedId(images, null);
 }
 
 /**

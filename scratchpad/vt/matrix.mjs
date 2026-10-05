@@ -55,7 +55,7 @@ p.on('pageerror', (e) => errs.push(e.message));
 p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 140)); });
 const qs = [process.env.SYN != null ? `syn=${process.env.SYN}` : '',
   process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : ''].filter(Boolean).join('&');
-await p.goto('http://localhost:5173/artlook/index.html' + (qs ? '?' + qs : ''), { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (qs ? '&' + qs : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 await p.evaluate(() => {
   window.__vtLoad = (f) => new Promise((res, rej) => {

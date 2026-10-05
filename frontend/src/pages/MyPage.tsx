@@ -26,7 +26,6 @@ import { FormSection, FormField } from '@/components/flow/FormParts';
 import { formInputCls } from '@/lib/formStyles';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
-import { artworkTitle } from '@/lib/artwork';
 import PortfolioMaker from '@/components/portfolio-maker/PortfolioMaker';
 import HomepageEditor from '@/components/homepage-edit/HomepageEditor';
 import HomepageAddressField from '@/components/shared/HomepageAddressField';
@@ -53,7 +52,8 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 import ArtworkDetailModal, { InviteModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
-import { openArtLook, stageArtLookWorks, ARTLOOK_URL, ARTLOOK_EMBED_URL, type ArtLookWork } from '@/lib/artlook';
+import { stageArtLookWorks, portfolioArtLookWorks, readArtLookMessage, COMPOSE_STATE_KEY, ARTLOOK_EMBED_URL } from '@/lib/artlook';
+import { useFillHeight } from '@/hooks/useFillHeight';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
 import KanbanSection from '@/components/admin/KanbanSection';
 import AdminStatsSection from '@/components/admin/AdminStatsSection';
@@ -227,10 +227,12 @@ export default function MyPage() {
    * 둘 다 **아래에 붙는 바**가 있고 첫 화면에 결과물이 보여야 하는 화면이다. 프로필 카드(240px)·가로 탭바를 위에 두면
    * 포트폴리오 화면의 미리보기가 첫 화면 밖으로 밀렸다(PC y894 · 휴대폰 y1375).
    */
-  const focused = (currentTab === 'homepage-edit' || currentTab === 'portfolio') && user.role === 'ARTIST';
+  const focused = (currentTab === 'homepage-edit' || currentTab === 'portfolio' || currentTab === 'artlook') && user.role === 'ARTIST';
+  /** 화면을 끝까지 채우는 도구 — ArtLook(2026-10-04). 휴대폰은 좌우 여백도 없이 가장자리까지(미리보기를 한 치라도 더) */
+  const fill = currentTab === 'artlook' && user.role === 'ARTIST';
 
   return (
-    <div className={cn('max-w-7xl mx-auto px-6 md:px-12', focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16')}>
+    <div className={cn('max-w-7xl mx-auto', fill ? 'px-0 sm:px-6 lg:px-8 sm:pt-6' : 'px-6 md:px-12', !fill && (focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16'))}>
       {/* 'My Page' 제목은 두지 않는다 — 우측 사이드바가 현재 위치를 알려주고,
           각 탭이 제 이름을 갖는다(예: 포트폴리오 탭의 PortFolio).
           로그아웃도 여기 없다 — Navbar 우측으로 일원화 */}
@@ -637,82 +639,99 @@ function ProfileSection() {
 
 // ========== Artist: ArtLook (액자 걸기) ==========
 /**
- * 내 작품을 액자·전시 공간에 얹어 SNS 홍보 이미지를 만드는 도구.
+ * 내 작품을 액자·전시 공간에 걸어 SNS 홍보 이미지를 만드는 도구.
  *
- * 예전엔 홈페이지 편집 화면 안의 버튼이라 **'수정'에 들어가야만** 보였다 — 편집과 아무 상관 없는
- * 기능인데도. 메뉴로 꺼내 놓으면 있는 줄 알고 쓴다.
+ * 화면은 `/artlook/index.html`(정적 페이지, 화면 코드는 같은 폴더의 ui.js)을 **이 탭 안 iframe** 으로 품는다.
+ * 작품 목록은 localStorage 로 넘긴다(`lib/artlook.ts`) — 같은 출처라 iframe 안에서도 그대로 읽힌다.
  *
- * 화면 자체는 `/artlook/index.html` 이라는 **별도 정적 페이지**다. 작품 목록은 localStorage 로
- * 넘기고 새 탭에서 연다(`lib/artlook.ts`). 여기서는 무엇을 넘길지만 정한다.
+ * 2026-10-04 개편(CLAUDE.md 규칙 65): 프로필 카드·탭 줄 없이(`focused`) **상단바 아래부터 하단 탭바 위까지** 화면 전체를 쓴다.
+ * 예전엔 프로필 카드 밑 y436 에서 시작해 휴대폰 첫 화면에 미리보기가 0px 였다. 높이는 상자의 실제 위치로 잰다(useFillHeight).
+ * iframe 과는 postMessage 로 이야기한다 — [작품 올리기]/[크기 입력하기] → 편집 화면, [ArtStory에 올리기] → 올리고 글쓰기 칸.
+ * ⚠️ 보낸 쪽은 **이 iframe 의 창**이고 같은 출처여야 한다 — 다른 창이 보낸 말로 페이지를 옮기거나 올리면 안 된다.
  */
 function ArtLookSection() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const { data: portfolio, isLoading } = useQuery<Portfolio>({
     queryKey: ['portfolio'],
     queryFn: () => api.get('/portfolio').then(r => r.data),
   });
-
   const images = useMemo(() => portfolio?.images ?? [], [portfolio]);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // 아이폰 SE(568px)도 하단 탭바 위에서 끝나게 — 그보다 낮은 화면(가로로 눕힌 휴대폰)은 바깥 페이지가 스크롤된다
+  const height = useFillHeight(boxRef, { min: 340 });
 
   /*
     작품 목록을 **iframe 을 그리기 전에** localStorage 에 올려둔다 —
     ArtLook 은 뜰 때 한 번만 읽으므로 순서가 뒤바뀌면 빈 화면이 된다.
-    예전엔 새 탭(window.open)으로 열었는데, 마이페이지 안에서 하는 일이라 왔다갔다 할 이유가 없었다.
-    ⚠️ 정적 페이지가 같은 출처라서 iframe 안에서도 localStorage 를 그대로 읽는다(다른 출처면 못 읽는다).
+    넘긴 내용의 지문이 iframe 의 key — 예전엔 '개수'라 제목·치수를 고치거나 한 장을 지우고 한 장을 올리면
+    개수가 같아 재마운트되지 않았고, ArtLook 은 옛 목록을 계속 썼다(감사 M5).
   */
-  // 넘긴 내용의 지문 — iframe 의 key. 예전엔 '개수'라 제목·치수를 고치거나 한 장을 지우고 한 장을 올리면
-  //   개수가 같아 재마운트되지 않았고, ArtLook 은 뜰 때 한 번만 읽으므로 옛 목록을 계속 썼다(감사 M5).
   const stagedKey = useMemo(() => {
-    const works = images.map(img => ({
-      url: img.url,
-      title: artworkTitle(img),
-      artist: displayName(user),
-      kind: 'portfolio' as const,
-      sizeText: img.sizeText || undefined,   // 장면 모드가 실제 크기대로 건다
-    }));
+    const works = portfolioArtLookWorks(images, displayName(user));
     stageArtLookWorks(works);   // 0점이면 저장분을 비워 ArtLook 이 데모 작품을 띄운다(규칙 36)
-    return works.map(w => `${w.url}|${w.title}|${w.sizeText ?? ''}`).join('\n');
+    return works.map(w => `${w.id}|${w.url}|${w.title ?? ''}|${w.sizeText ?? ''}`).join('\n');
   }, [images, user]);
 
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
+  useEffect(() => {
+    const send = (data: object) => frameRef.current?.contentWindow?.postMessage(data, window.location.origin);
+    const toStory = async (blob: Blob, name: string) => {
+      const id = toast.loading('ArtStory에 올릴 이미지를 준비하고 있어요…');
+      try {
+        const form = new FormData();
+        form.append('image', new File([blob], name, { type: blob.type || 'image/jpeg' }));
+        const { data } = await api.post('/upload/image', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        toast.dismiss(id);
+        // 글쓰기 칸이 사진을 실은 채로 열린다(FeedPage Composer 가 state 를 한 번 읽고 지운다)
+        navigate('/feed', { state: { [COMPOSE_STATE_KEY]: [data.url] } });
+      } catch (err) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        toast.error(msg || '이미지를 올리지 못했어요. 잠시 후 다시 해 보세요.', { id });
+        send({ type: 'artlook:story-failed' });
+      }
+    };
+    const onMessage = (e: MessageEvent) => {
+      const win = frameRef.current?.contentWindow;
+      if (!win || e.source !== win || e.origin !== window.location.origin) return;
+      const msg = readArtLookMessage(e.data);
+      if (!msg) return;
+      if (msg.type === 'goto') navigate(msg.to === 'size' ? editHref('works', { info: true, work: msg.id }) : editHref('works'));
+      else void toStory(msg.blob, msg.name);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [navigate]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+    <div>
+      {/* 제목 줄 — 화면 이름은 좌측 상단(로고 색 규칙). 휴대폰은 한 줄로 */}
+      <div className="flex min-w-0 items-baseline gap-2.5 px-4 py-2 sm:px-0 sm:pb-3 sm:pt-0">
+        <h2 className="shrink-0 text-lg sm:text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
           Art<span className="text-accent">Look</span>
-          <span className="ml-2 align-middle text-sm font-normal text-gray-400">액자 걸기</span>
         </h2>
-        {/* 좁은 화면에서 iframe 이 답답할 때를 위한 탈출구 */}
-        {(
-          <a
-            href={ARTLOOK_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-gray-400 hover:text-gray-900 inline-flex items-center gap-1"
-          >
-            <ExternalLink size={12} /> 새 탭에서 열기
-          </a>
+        <p className="min-w-0 truncate text-sm text-gray-500">작품을 액자와 공간에 걸어 SNS에 올릴 이미지를 만듭니다</p>
+      </div>
+      {/* 작품이 0점이어도 iframe 은 그린다 — ArtLook 이 데모 작품으로 체험하게 하고, 그 안에서 [작품 올리기]로 보낸다(규칙 36) */}
+      <div
+        ref={boxRef}
+        style={height ? { height } : undefined}
+        className="h-[70vh] overflow-hidden border-y border-gray-200 bg-white sm:rounded-lg sm:border"
+      >
+        {isLoading ? (
+          <div className="h-full animate-pulse bg-gray-100" />
+        ) : (
+          <iframe
+            ref={frameRef}
+            key={stagedKey}
+            src={ARTLOOK_EMBED_URL}
+            title="ArtLook"
+            /* 휴대폰 저장은 공유 창(Web Share) — 같은 출처라 기본으로 허용되지만 적어 둔다 */
+            allow="web-share; clipboard-write"
+            className="block h-full w-full"
+          />
         )}
       </div>
-
-      {/* 작품이 0점이어도 iframe 은 그린다 — ArtLook 이 데모 작품으로 체험하게 해 준다(규칙 36). 예전엔 안내 한 줄로 막아
-          "작품이 없으면 데모를 띄운다"는 경로가 마이페이지에서는 영영 안 열렸다(감사 M6). */}
-      {images.length === 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-          <span>아직 등록된 작품이 없어 데모 작품으로 보여드립니다.</span>
-          <Link to={editHref('works')} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white">
-            홈페이지에서 작품 등록하기
-          </Link>
-        </div>
-      )}
-      <iframe
-        key={stagedKey}
-        src={ARTLOOK_EMBED_URL}
-        title="ArtLook"
-        /* 화면 대부분을 쓰되 페이지를 밀지 않게 — 안쪽에서 스크롤한다 */
-        className="w-full h-[calc(100vh-14rem)] min-h-[520px] rounded-lg border border-gray-200 bg-white"
-      />
     </div>
   );
 }

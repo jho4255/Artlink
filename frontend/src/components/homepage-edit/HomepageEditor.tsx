@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { normalizeCareer, seriesNames } from '@/lib/artwork';
 import { computeCompleteness, type CompletenessItem } from '@/lib/completeness';
 import {
-  EDIT_SECTIONS, nextUncaptionedId, previewTabFor, resolveEditEntry, sectionDone, uncaptionedCount,
+  EDIT_SECTIONS, entryInfoImageId, previewTabFor, resolveEditEntry, sectionDone, uncaptionedCount,
   type EditEntry, type EditField, type EditFocus, type EditSectionId,
 } from '@/lib/homepageEdit';
 import {
@@ -82,7 +82,8 @@ export default function HomepageEditor() {
   const [section, setSection] = useState<EditSectionId>(() => resolveEditEntry(location.search).section);
   /** 들어오며 받은 '이 칸으로'·'작품 정보 창 열기' — 데이터가 온 뒤에 한 번만 쓴다 */
   const pendingFocus = useRef<EditFocus | null>(null);
-  const pendingInfo = useRef(false);
+  /** 들어오며 열 작품 정보 창 — false: 없음 · true: 정보 없는 첫 작품 · 숫자: 그 작품(ArtLook 의 [크기 입력하기]) */
+  const pendingInfo = useRef<boolean | number>(false);
   const [entrySeq, setEntrySeq] = useState(0);
 
   // ── 폼(글·꾸미기·주소) — 아래 [저장] 한 번에 함께 저장된다 ──
@@ -156,7 +157,7 @@ export default function HomepageEditor() {
     const t = previewTabFor(e.section, e.focus);
     if (t) setPreviewTab(t);
     if (e.focus) pendingFocus.current = e.focus;
-    if (e.info) pendingInfo.current = true;
+    if (e.info) pendingInfo.current = e.work ?? true;
     if (e.focus || e.info) {
       setEntrySeq((n) => n + 1);
       // 한 번 쓰고 버리는 값이다 — 주소에 남기면 새로고침할 때마다 창이 다시 열린다.
@@ -164,6 +165,7 @@ export default function HomepageEditor() {
       const q = new URLSearchParams(location.search);
       q.delete('focus');
       q.delete('do');
+      q.delete('work');
       q.set('section', e.section);
       navigate({ pathname: location.pathname, search: `?${q.toString()}` }, { replace: true });
     }
@@ -172,9 +174,10 @@ export default function HomepageEditor() {
 
   useEffect(() => {
     if (!portfolio || snapshot === null) return;
-    if (pendingInfo.current) {
+    if (pendingInfo.current !== false) {
+      const want = pendingInfo.current;
       pendingInfo.current = false;
-      const id = nextUncaptionedId(portfolio.images ?? [], null);
+      const id = entryInfoImageId(portfolio.images ?? [], typeof want === 'number' ? want : null);
       if (id != null) setMetaImageId(id);
     }
     const f = pendingFocus.current;
@@ -301,7 +304,7 @@ export default function HomepageEditor() {
   /** 그 묶음·그 칸으로 — 주소로 들어올 때(`resolveEditEntry`)와 같은 일을 화면 안에서 한다 */
   const goEntry = (e: EditEntry) => {
     selectSection(e.section);
-    if (e.info) { const id = nextUncaptionedId(images, null); if (id != null) setMetaImageId(id); }
+    if (e.info) { const id = entryInfoImageId(images, e.work); if (id != null) setMetaImageId(id); }
     if (e.focus) { pendingFocus.current = e.focus; setEntrySeq((n) => n + 1); }
   };
   /** 완성도 줄의 항목 — 링크가 아니라 **그 자리에서** 묶음을 바꾼다(링크면 쓰던 글 때문에 이탈 경고가 뜬다) */

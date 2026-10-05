@@ -15,7 +15,7 @@ for (const L of [0, 1, 2, 3]) {
   const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
-  await p.goto(`http://localhost:5173/artlook/index.html?level=${L}`, { waitUntil: 'networkidle' });
+  await p.goto(`http://localhost:5173/artlook/index.html?preload=all&level=${L}`, { waitUntil: 'networkidle' });
   await p.waitForTimeout(3600);
   const r = await p.evaluate(async ({ FRAME, SCENE }) => {
     await new Promise((res, rej) => {

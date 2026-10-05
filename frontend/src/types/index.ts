@@ -367,13 +367,7 @@ export interface OperationAccess {
   settlementStarted?: boolean;
 }
 
-// ArtLook(작품 액자/목업) 홍보용 핸드오프 payload (localStorage 'artlook:works')
-export interface ArtLookWork {
-  url: string;
-  title: string;
-  artist?: string;      // 작가 표시명 (다운로드 파일명용)
-  exhibition?: string;  // 공모명 (다운로드 파일명용)
-}
+// ArtLook 으로 넘기는 작품의 모양은 `lib/artlook.ts` 의 ArtLookWork 하나다(여기 있던 사본은 아무도 안 써서 지웠다)
 
 // 정산: 작가 작품 1개
 export interface SettlementWork {

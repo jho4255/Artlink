@@ -18,7 +18,7 @@ import { writeFileSync } from 'node:fs';
 
 const b = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
-await p.goto('http://localhost:5173/artlook/index.html', { waitUntil: 'networkidle' });
+await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 
 const rows = await p.evaluate(async () => {

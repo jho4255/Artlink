@@ -30,7 +30,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileDown, ImageOff, ChevronDown, RotateCcw, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import Thumb from '@/components/shared/Thumb';
+import Thumb, { thumbUrl } from '@/components/shared/Thumb';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { nameWithNickname, cn } from '@/lib/utils';
 import { openArtLook, type ArtLookWork } from '@/lib/artlook';
@@ -305,7 +305,8 @@ export default function SettlementSection({ exhibitionId, isAdmin, className = '
 
   const grand = buildSettlement().grand;
   // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
-  const soldWorks: ArtLookWork[] = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle, kind: 'sold' as const })));
+  // thumb — ArtLook 의 목록 칸(68px)에 원본을 받지 않게(못 받으면 ArtLook 이 원본으로 한 번 더 시도한다)
+  const soldWorks: ArtLookWork[] = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, thumb: thumbUrl(w.image as string, 'grid'), title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle, kind: 'sold' as const })));
 
   const artistCount = data?.artists.length ?? 0;
   const issueCount = data?.artists.filter(x => x.approval?.status === 'ISSUE').length ?? 0;
