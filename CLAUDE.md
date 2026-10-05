@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2600+ tests** (2026-10-04): Backend 1542 (supertest, `artlink_test` DB 순차), Frontend 1089 (jsdom) · E2E 360(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2600+ tests** (2026-10-05): Backend 1551 (supertest, `artlink_test` DB 순차), Frontend 1119 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -391,9 +391,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   (`pages/ArtistsPage.tsx`, louisethewomen.org/members 참고).
 - **작가 이름을 누르면 그 작가의 공개 홈페이지**(`/portfolio/:id`)로 간다.
   ⚠️ **격자를 거르지 않는다** — 눌렀을 때 할 일이 두 가지면 무엇이 일어날지 예측이 안 된다.
-- 목록은 `GET /api/explore/artists` — **공개 작품이 한 장이라도 있는 작가만**. 가입만 한 계정까지
-  실으면 목록이 회원 명부가 되고, 눌러 들어가면 **텅 빈 홈페이지**가 나온다. 탈퇴 작가는 뺀다
-  (탐색 피드와 같은 기준 — 두 화면이 다른 집합을 보이면 "왜 여기만 없지" 가 된다).
+- 목록은 `GET /api/explore/artists` — **홈페이지에 작품이 한 장이라도 있는 작가만**. 가입만 한 계정까지
+  실으면 목록이 회원 명부가 되고, 눌러 들어가면 **텅 빈 홈페이지**가 나온다. 탈퇴 작가는 뺀다.
+  ⚠️⚠️ **명단은 '작가 탭에도'(`showInExplore`)를 보지 않는다** (2026-10-05 사용자 결정 — "작품에는 안 뜨더라도 명단에는 들어가야지").
+  그 값은 오른쪽 **작품 격자**(탐색 피드)에 내보낼지만 정한다. 예전엔 명단도 그 값으로 걸러서, 새 작품의 기본이
+  '홈페이지에만'(규칙 60)인 탓에 작품 2점과 홈페이지가 있는 작가(@beeen_2 '빈성은')가 ㅂ 칸에 아예 없었다
+  (2026-10-02 복제본 기준 작품 있는 작가 47명 중 16명). 회귀: `explore-artists.test.ts` 「★★ 작품을 전부 '홈페이지에만' 둔 작가도 명단에는 있다」.
 - ⚠️⚠️ **둘러보기(`/explore`)를 여기로 합쳤다** (2026-09-13 사용자 신고 → 통합).
   작품을 보는 화면이 **둘**인데 **제목이 둘 다 `ArtWorks`** 였다 — 홈 [모두 모아보기]는 `/explore` 로,
   [작가] 탭은 `/artists` 로 갔고, `/artists` 안의 [모두 모아보기]가 다시 `/explore` 로 보냈다.
@@ -440,7 +443,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       여전히 별개 축이라, 작가를 훑던 중에 작품이 통째로 바뀌면 보던 자리를 잃는다.
     - ⚠️ `?seed=` 는 **받되 무시한다**. 400 으로 막으면 랜덤이던 사흘 동안 만들어진 링크·캐시가 죽는다.
 - ⚠️ **작품 수는 화면에 안 그린다**(2026-09-10 요청). 응답에는 `workCount` 가 남아 있다 —
-  그 값이 0 이면 애초에 목록에 없어야 하므로 회귀 테스트가 그걸로 필터를 검증한다.
+  그 값(작품 수 — '홈페이지에만' 포함)이 0 이면 애초에 목록에 없어야 하므로 회귀 테스트가 그걸로 필터를 검증한다.
 - ⚠️ **홈의 ArtWorks 섹션으로 보내지 말 것** — [홈]과 같은 주소가 되어 탭이 둘일 이유가 없어진다.
   홈 섹션은 맛보기로 그대로 두고, 여기가 본판이다(작품도 8장 → 24장).
 - 회귀: `backend/src/lib/__tests__/hangulIndex.test.ts`(15개, 초성 판정 자체) ·
@@ -1233,6 +1236,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       편다(활성 칩이 안 보이는 탭에서 시작하면 아무것도 안 고른 것처럼 보인다).
       ⚠️ 회귀 테스트는 파일명이 아니라 **`group` 으로** 실내를 가른다 — 정규식(`wall1[1-7]`)이었을 때
       새 장면 `wall18` 이 조용히 검사 밖으로 빠졌다.
+      ⚠️ 2026-10-04: 토글([벽]/[공간])은 **무리 이름**이 됐다(칩 줄 안 세로 글자 · 넓은 칸은 제목, 규칙 65). `group` 과 '전체 목록 인덱스' 규칙은 그대로다.
 
 44k. **어두운 벽·색 있는 벽 6종 추가 + 크기가 거짓말하던 두 곳** (2026-09-03)
     벽 6종(`wall21~26`: 차콜·올리브·월넛슬랫·테라코타·블루그레이·화이트플라스터)을 넣고,
@@ -1890,7 +1894,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **'공개/비공개' 라고 부르지 말 것 — '작가 탭에도 / 홈페이지에만'.** `showInExplore` 가 정하는 건 [작가] 탭·홈 화면에 내보낼지뿐이고,
       작품은 올리는 순간 **내 홈페이지에 다 보인다**(비로그인 실측 4/4). '비공개' 라 적힌 작품이 홈페이지에 보이는 화면이었다.
       새 작품의 기본은 '홈페이지에만'(사용자 결정) — 대신 **올린 직후 한 번 묻는다**("방금 올린 N점은 지금 내 홈페이지에만 보여요 [작가 탭에도 소개] [홈페이지에만 두기]").
-      작품은 있는데 소개한 작품이 0점이면 같은 자리에 [모두 소개하기](실서버 47명 중 16명이 전부 꺼진 채라 작가 목록에 없었다).
+      작품은 있는데 소개한 작품이 0점이면 같은 자리에 [모두 소개하기](실서버 47명 중 16명이 전부 꺼진 채라 작가 목록에 없었다 —
+      2026-10-05 부터 명단은 이 값과 무관하다. '작가 탭에도' 는 작품 격자에만 걸린다).
       ⚠️ 노출은 **상태를 적어 보낸다** — `PUT /portfolio/images/explore { ids, show }`(멱등, 남의 id 가 섞이면 404). 토글(PATCH)을 N번 부르면 탭 둘에서 거꾸로 꺼진다(규칙 46 의 취지).
     - **작품 칸**: 사진 위에 겹치는 단추는 **삭제(44px)·좋아요뿐**. 순서는 [순서 바꾸기] 를 눌렀을 때만 사진 아래 ◀ ▶. 칸 아래 한 줄은 `tileLabel`(캡션 첫 줄) 또는 빨간 '작품 정보 입력'.
       ⚠️ `artworkTitle()` 을 쓰지 말 것 — 빈 제목에 '무제' 를 돌려줘 정보를 안 넣은 작품이 넣은 것처럼 보인다.
@@ -2110,6 +2115,53 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: backend `guest-activity.test.ts`(16 — 한도·끄개·저장·새로고침 합치기·다른 탭 이어받기 포함) · frontend `guestActivity.test.ts`(26 — 가짜 시계로 기록기 상태 기계 · 나눠 보내기 · 던지지 않기 · 서버 규칙 대조 · 붙이는 곳 소스 가드) ·
       e2e `68-guest-activity.spec.ts`(5 — 둘러본 화면이 통계에 남고 떠나면 '나감' · 로그인한 사람은 0 · 로그인하면 닫힘 · 500/끊김/저장소 막힘에도 화면 멀쩡 · 빠른 이동에 요청 ≤4).
 
+65. **ArtLook(액자 걸기) 화면 — 탭 안 화면 전체 · 고른 것만 받기 · 한 번만 그리기 · 저장 뒤** (2026-10-04, 사용자 결정 다섯. 조사 보고서
+    https://claude.ai/artifact/N14Ln33D4mvv7zr1gaoK4H · 메모리 `artlook-ux-audit-2026-10.md`). 합성 엔진(규칙 36~44k)은 **한 픽셀도 바꾸지 않았다** — 바꾼 건 화면 틀·불러오는 순서·끝맺음이다
+    (기준 렌더 10장 픽셀 대조 0, 워터마크 빨강만 #dc3545 → #c4302b). 고치기 전: 휴대폰 첫 화면 미리보기 0px · 설정 1,611px 를 141px 틈으로 · 탭을 열면 41.5MB·32번 다시 그림 ·
+    저장해도 표시 없음 · [완료]는 탭 안에서 경고창 · 끌면 화면이 같이 밀림 · 실서버는 9/4 판 scene.js 가 1년 캐시로 굳어 있었다.
+    - **파일**: `public/artlook/index.html`(스타일·마크업·**엔진**) + `ui.js`(**화면** — 탭·칩·끌기·저장, IIFE. 엔진 전역 `state`·`FRAMES`·`SCENES`·`compose` 를 쓰고
+      `render`·`requestRender`·`onAssetArrived` 만 window 에 내보낸다) + `scene.js`(장면 엔진). ⚠️ 엔진의 최상위 `let`/`const` 는 window 속성이 아니다 — 테스트·하니스는 맨 이름으로 읽는다.
+    - **자리**: 마이페이지 [ArtLook] 탭 그대로, 대신 **화면 전체**(`MyPage` 의 `focused` + `fill` — 프로필 카드·탭 줄 없음, 휴대폰은 좌우 여백도 없음).
+      iframe 높이는 `hooks/useFillHeight.ts` 가 상자의 실제 위치로 잰다(상단바 아래 ~ 하단 탭바 위). 바깥 제목 줄(ArtLook + 한 문장)은 남긴다 — 화면 이름 규칙(e2e 30).
+      전용 주소 분리는 고르지 않았다. [새 탭에서 열기] 링크는 없앴다.
+    - **한 구조, 두 배치**: 미리보기 + 탭 [작품 · 액자 · 매트 · 배경 · 조명 · 비율] + [이미지 저장]. 칸 폭 860px 미만(휴대폰·태블릿·1024px 노트북의 탭 안)은 미리보기 위 · 탭 줄 ·
+      **옆으로 미는 칩 한 줄**(고정 높이 `--pane-h` 144px — 탭을 바꿔도 미리보기가 안 들썩인다) · 저장. 넓은 칸은 오른쪽 360px 패널(격자, 위아래 스크롤).
+      ⚠️⚠️ **좁은 칸 규칙을 먼저, `@media (min-width:860px)` 를 뒤에** — 예전엔 `max-width:860px` 쿼리가 같은 선택자의 기본 규칙보다 **앞**에 있어 한 번도 안 먹었다(소스 가드).
+      ⚠️ 칩 칸이 고정 높이라 안에 넣는 줄이 늘면 **아래로 잘린다** — `scratchpad/artlook-ux/walk.js` 가 탭마다 잰다(이번에도 2~5px 잘린 걸 잡았다).
+      ⚠️ 마우스로 쓰는 좁은 칸(1024px 노트북)은 휠이 위아래로만 굴러 칩 줄을 넘길 수 없었다 — 줄이 넘칠 때 세로 휠을 가로로 바꾼다(ui.js) + 얇은 스크롤바.
+      배경의 [벽]/[공간] 토글은 **무리 이름**이 됐다(칩 줄 안의 세로 글자 / 넓은 칸은 제목) — 토글 한 줄이 휴대폰에서 미리보기 높이를 먹었다(44j 참고).
+      출력 비율의 용도 설명(피드·스토리)은 **넣지 않는다**(사용자 결정).
+    - **고른 것만 받는다**: 장면 사진은 `ArtLookScene.ensureScene`(고를 때) · 액자 사진 `ensurePhotoFrame` · 결 텍스처 `ensureMatTexture` · 옛 벽 `ensureWall`(WebGL2 없을 때만).
+      칩은 **미리 구운 파일**(`frames/chips/<id>.webp` 56KB · `walls/thumbs/*.jpg` 155KB) — `node frontend/scripts/build-artlook-thumbs.mjs`(같은 엔진으로 결과물 크기에 그려 두 번 나눠 줄인다.
+      칩 크기에 바로 그리면 매트 결이 반짝이 무늬가 된다). ⚠️ **액자·장면을 더하면 이걸 돌릴 것** — `artlookScreen.test.ts` 가 파일이 다 있는지 본다. `FRAMES[].id` 는 바꾸지 말 것(칩 파일·기억이 이걸로 찾는다).
+      작품 목록 칸은 넘겨받은 `thumb`(t800, `portfolioArtLookWorks`) → 못 받으면 원본 한 번 더. 실측: ArtLook 자산 34.5MB → **1.37MB**.
+      ⚠️ **`?preload=all`** 이면 예전처럼 전부 받는다 — 상태를 코드로 갈아 끼우는 화질 하니스(`scratchpad/vt/*.mjs` 18개)는 전부 이걸 붙였다. 새 하니스도 붙일 것.
+    - **한 번만 그린다**: 자산이 오면 `assetArrived` → 화면이 **기다리던 중일 때만** `requestRender()`(한 프레임에 하나). 지금 고른 작품·액자·배경이 다 와야 `compose()` 를 부른다
+      (액자 자산은 15초 넘게 안 오면 엔진 폴백으로 그린다, 배경은 끝까지 — 못 받으면 '이 배경을 불러오지 못했어요'). 첫 그림은 워터마크 글꼴을 `document.fonts.load` 로 콕 집어 기다린다(최대 1.5초).
+      `window.__artlookRenders` = 그린 횟수(e2e·하니스가 본다). 실측: 열 때 32번 → **1번**.
+      끄는 동안(끌기·두 손가락·휠·조명 막대)은 `state.draft` — 합성 배율 1로 빠르게, 손을 떼면 원래 배율로 한 번 더. ⚠️ 저장은 `flushRender()` 로 초안을 정리한 뒤.
+    - **조작**: 미리보기 `touch-action:none` + 끌기 · **두 손가락으로 크기** · [−][+][원위치](40px, 액자가 박힌 장면이면 감춘다) · PC 휠 · 두 번 눌러 원위치. "마우스휠" 안내는 없앴다.
+      패널·칩 줄은 `touch-action: pan-x/pan-y pinch-zoom` — 끄는 동안 바깥 페이지가 안 밀린다(실측 63~73px → 0).
+    - **저장 뒤**: PC = 내려받기 → "저장했어요 · 파일 이름" · 휴대폰 = **공유 창**(누른 그 순간 — `toDataURL` 로 동기로 만든다. 사용자 동작이 식으면 막힌다) ·
+      앱 안 브라우저(카카오톡·인스타그램)는 이미지를 띄워 **길게 눌러 저장**. 파일 이름 `작가_작품명_[공모명]_액자_배경[_판매작].png`(여러 장이 (1)(2) 로 겹쳤다).
+      [완료]·`artlook:done`·경고창은 없앴다. 새 탭(갤러리 판매작 홍보)에만 [닫기].
+    - **[ArtStory에 올리기]**(저장 뒤, 탭 안에서만 — 판매작 화면엔 없다): iframe 이 JPEG Blob 을 `postMessage` → `ArtLookSection` 이 `/upload/image` 로 올리고
+      `/feed` 로 `state.composeImages` → `FeedPage Composer` 가 **한 번** 받아 사진을 실은 채로 열고 state 를 비운다(새로고침에 다시 안 붙는다, StrictMode 두 번 실행에도 한 장).
+    - **iframe ↔ 바깥** 말은 `lib/artlook.ts` `readArtLookMessage` 가 읽는다: `artlook:goto {to:'upload'}`(작품 0점 → 편집 화면) · `{to:'size', id}`(크기를 몰라 30호로 건 작품 →
+      **그 작품**의 정보 창 — `editHref('works', {info, work})`, 제목만 있고 크기가 없는 작품은 '정보 없는 작품'이 아니라 work 가 없으면 엉뚱한 창이 열린다) · `artlook:story {blob, name}`.
+      ⚠️ 받는 쪽은 **`e.source === 그 iframe 의 창 && e.origin === location.origin`** 을 본다 — 다른 창이 보낸 말로 페이지를 옮기거나 올리면 안 된다.
+    - 마지막 선택(액자·매트·색·배경·비율·조명)은 `localStorage artlook:prefs`(이 브라우저만). 작품은 기억하지 않는다. 로그아웃하면 넘겨 둔 작품 목록(`artlook:works`)을 지운다
+      (같은 컴퓨터의 다음 사람에게 앞사람 작품이 떴다). 크기 안내는 '높이 90cm(30호 정도)로 걸었어요' + [크기 입력하기](예전 '포트폴리오에 가로×세로' 는 틀린 안내였다).
+    - **캐시**(서버 `lib/staticCache.ts`): 해시 번들(`assets/`)만 1년 immutable · 앱 셸 no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).
+      ⚠️⚠️ 고정 이름 파일을 immutable 로 되돌리지 말 것 — Cloudflare 가 9/4 판 scene.js 를 30일째 내보냈다. 이미 1년짜리로 받아 간 사본은 서버 헤더를 바꿔도 다시 묻지 않으므로
+      index.html 이 `scene.js?v=__ARTLOOK_BUILD__`·`ui.js?v=…`·`frames.json?v=`·`scenes.json?v=` 로 부르고, 빌드가 끝나면 `vite.config.ts` 의 `artlook-build-id` 가 빌드 ID 로 바꾼다.
+      서비스워커 미리받기에서 `artlook/**` 를 뺐다(8.2MB → 2.7MB — 모든 방문자가 액자 PNG 5.5MB 를 받았다) · NavigationRoute denylist 에 `/artlook/`(iframe 도 페이지 이동이다).
+    - 하지 않은 것: 새 진입로(작품에서 바로·올린 직후·작가의 판매작 — 사용자 결정 '지금 유지') · 인스타 태그 안내 · 비율 용도 설명 · 엔진 변경 · React 로 옮기기 · 사용 기록.
+    - 회귀: 프론트 `artlookScreen.test.ts`(19 — 고른 것만·한 번만·칩 파일·미디어 쿼리 순서·경고창 없음·캐시 주소·서비스워커) · `artlook.test.ts`(24 — 넘기는 모양·메시지·글쓰기 사진·로그아웃) ·
+      `artlookScene.test.ts`(화면 가드를 ui.js 로) · `homepageEdit.test.ts`(work) · 백엔드 `static-cache.test.ts`(8) ·
+      e2e `69-artlook-ux.spec.ts`(9 — 첫 화면 PC·휴대폰 · 받는 것·그리는 횟수 · 끌기·두 손가락 · 저장→ArtStory · 크기 입력하기 · 작품 0점 · 기억 · 판매작) · `41` 은 탭을 열고 고르게 고쳤다 ·
+      하니스 `scratchpad/artlook-ux/walk.js`(크롬 138 + 사파리 120 확인, README).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -2178,7 +2230,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - ⚠️ **배포 전 검증은 `npm run build`로** — `tsc --noEmit`은 테스트 파일을 검사하지 않아 통과하지만, 실제 빌드는 `tsc -b && vite build`라 테스트까지 검사한다. 실제로 테스트의 타입 오류로 배포가 실패한 적 있다(2026-08-03).
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
-- **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload
+- **정적 파일 캐시**(`backend/src/lib/staticCache.ts`, 2026-10-04): 해시 번들 `assets/` 만 1년 immutable · 앱 셸(index.html·sw.js…) no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).
+  ⚠️ 예전엔 assets 가 아닌 것까지 1년 immutable 이라 ArtLook scene.js 가 Cloudflare 에 옛 판으로 30일 굳어 있었고, 푸터 회사 정보도 고쳐도 안 바뀌었다(규칙 65).
+- **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload. 미리받기에서 `artlook/**` 는 뺀다(규칙 65)
   ⚠️ 새로고침은 **새 버전으로 바뀔 때만**이다(`lib/swUpdate.ts`) — `clientsClaim` 은 처음 설치 때도 `controllerchange` 를 내서, 구분하지 않던 때
   **첫 방문자의 페이지가 들어온 지 7초쯤에 저절로 다시 불러와졌다**(2026-10-04 실서버 실측, 비회원 통계에 첫 화면이 '×2'로 남아 드러났다).
   E2E 는 개발 서버라 서비스워커가 없어 못 잡는다 — 바꾸면 프로덕션 빌드(`vite preview`)에서 새 브라우저로 load 횟수를 셀 것
@@ -2319,10 +2373,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         '수정'에 들어가야만 보였다 — 편집과 무관한 기능인데도. 이름이 ArtLink 와 헷갈려 옆에 '액자 걸기'를 작게 적는다.
         메뉴 글씨체도 로고와 맞춘다(`font-bold tracking-tight font-serif`), 아이콘은 액자(`Frame`).
       - **ArtLook 은 새 탭이 아니라 그 탭 안 `iframe`** 이다(2026-08-28). 마이페이지 안에서 하는 일이라 왕복할 이유가 없다.
+        2026-10-04 부터 **화면 전체**를 쓴다(프로필 카드·탭 줄 없이, 하단 탭바 위까지) — 화면 규칙은 **규칙 65**.
         ⚠️ 작품 목록은 **iframe 을 그리기 전에** `stageArtLookWorks()` 로 localStorage 에 올려야 한다 —
         ArtLook 은 뜰 때 **한 번만** 읽으므로 순서가 뒤바뀌면 빈 화면이 된다. (같은 출처라 iframe 안에서도 읽힌다)
         ⚠️ 임베드는 `?embed=1` 로 페이지 머리말을 감춘다 — 바깥에 이미 제목이 있어 겹친다.
-        새 탭(운영페이지 정산 > 판매작 홍보)에서는 머리말이 그대로 나온다.
+        새 탭(운영페이지 정산 > 판매작 홍보)에서는 머리말과 [닫기]가 나온다.
       - **작가 알림은 그 전시를 열어둔 채로 보낸다** — `artistExhibitionLink(id)` → `?tab=applications&ex=<id>`.
         `ApplicationsSection` 이 그 값을 읽어 **탭까지 바꾸고** 해당 카드를 펼친다(다른 탭이면 카드가 아예 안 보인다).
         딱 한 번만 실행할 것(`deepLinkDone`) — refetch 마다 걸리면 사용자가 접어도 다시 열린다.

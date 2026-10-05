@@ -221,7 +221,7 @@ ArtLink/
   - **Admin 운영 조회(마이페이지 > 운영 조회 > 공모 지원현황)도 같은 분리** — `GET /admin/exhibitions` 가 `ended`·`settledAt` 을 함께 내려주고 화면에서 [진행중인 공모 / 종료된 공모] 로 나눈다. **기준은 갤러리 쪽과 같아야 한다**(종료 = `settledAt`) — 갈리면 두 화면의 숫자가 달라진다. 목록 줄에 `정산 단계`(주황)·`정산 완료`(초록) 배지. 검색 결과 안에서 나눈다. ⚠️ 응답에서 두 필드가 빠지면 화면이 **에러 없이 전부 진행중으로** 보인다 — 회귀 `admin-oversight.test.ts`
   - **진행 단계 스텝퍼에 4번째 '정산 완료'** (`components/operation/StatusPanel.tsx`, 두 운영 뷰 공용) — 예전엔 전시종료에서 끝나 완전히 마감됐는지 알 수 없었다. ⚠️ 앞 3단계와 달리 **버튼으로 넘어가는 단계가 아니다**(작가 확인을 거쳐야 함). `LIFECYCLE_STEPS`(버튼용 3개)와 `STEP_NODES`(표시용 4개)를 분리해 둔 이유 — 합치면 [다음 단계로]가 정산을 건너뛰고 마감시킨다. 마감 시 초록 체크 + [🔒 마감됨] 배지
 - **ArtLook** (`frontend/public/artlook/` 정적 페이지, 구 poc/frameit) — 작품 액자·전시공간 목업 합성(클라이언트 Canvas). 운영페이지 정산 섹션 [ArtLook으로 홍보 이미지 만들기]가 판매작을 `localStorage 'artlook:works'`([{url,title,artist,exhibition}])로 넘겨 `/artlook/index.html` 새 탭으로 염. 다운로드 파일명 `작가_작품명_공모명_판매작.png`. 첨부 없음(판매작만). 운영(R2 외부도메인) 이미지는 캔버스 taint 방지 위해 `GET /api/upload/image-proxy?url=`(R2_PUBLIC_URL 화이트리스트, SSRF가드)로 동일출처 중계
-- **ArtLook 진입 경로 2개** (2026-08-15): ① 운영페이지 정산 > 판매작 홍보 ② 마이페이지 > 포트폴리오 > [액자에 걸어보기].
+- **ArtLook 진입 경로 2개** (2026-08-15): ① 운영페이지 정산 > 판매작 홍보 ② 마이페이지 > 포트폴리오 > [액자에 걸어보기]. (→ 지금은 ② 가 마이페이지 [ArtLook] 탭(iframe, 화면 전체)이다 — 맨 아래 「ArtLook(액자 걸기) 화면 개편 (2026-10-04)」)
   핸드오프는 `frontend/src/lib/artlook.ts` 로 공용화했고, payload 에 `kind`('sold'|'portfolio')를 실어
   **파일명에서 '판매작' 접미사를 판매작에만** 붙인다(포트폴리오 작품에 붙으면 사실과 다르다). `kind` 없는 옛 payload 는 판매작으로 본다.
   작품 카드는 네 모서리(캡션·삭제·공개토글·좋아요)가 이미 차 있어 카드마다 버튼을 얹지 않고 **섹션 헤더에 하나** 두고 전체를 넘긴다 — 고르는 건 ArtLook 안에서.
@@ -611,7 +611,8 @@ Navbar 가운데 **홈과 갤러리 사이**. 좌 작가 목록 / 우 작품 격
   "왜 다르지?" 가 됐다. `ExplorePage.tsx` 삭제, `/explore` 는 `/artists` 로 리다이렉트(404 아님).
   작품 격자는 `GET /api/explore`(무한스크롤 30장/쪽) + [좋아요순] + 기간 필터를 그대로 쓴다.
 - 작가 목록: `GET /api/explore/artists` → `[{ id, name, avatar, initial, workCount }]`.
-  **공개 작품이 있는 작가만**, 탈퇴 작가 제외.
+  **작품이 있는 작가만**('작가 탭에도'/`showInExplore` 와 무관 — 2026-10-05, 작품을 전부 홈페이지에만 둔 작가가 명단에서 빠졌다), 탈퇴 작가 제외.
+  `showInExplore` 는 오른쪽 작품 격자(`GET /api/explore`)에만 걸린다.
   `workCount` 는 응답에만 있고 **화면에는 안 그린다**(목록 필터의 근거라 남겨 둔다).
 - 이름 클릭 → `/portfolio/:id`(그 작가의 공개 홈페이지). 격자를 거르지는 않는다.
 - 작품 격자는 홈 `ArtWorks` 와 같은 `GET /explore/highlight`(여기는 24장, 홈은 8장).
@@ -2531,3 +2532,47 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   - `RichTextEditor` 가 바깥 값 변경을 따라간다(`lastEmitted` 와 다른 값이면 `setContent(…, { emitUpdate: false })`), `onChange` 는 ref.
   - 테스트: 백엔드 `rich-descriptions.test.ts`(9) · 프론트 `richText.test.ts`(+richToText·소스 가드) · e2e `67-rich-descriptions.spec.ts`(3) ·
     `15`·`51`·`60` 은 `typeRich` 로(60 F 는 [이어서 쓰기] 뒤 편집기에 복원된 소개가 보이는지까지).
+
+## ArtLook(액자 걸기) 화면 개편 (2026-10-04)
+
+### 왜
+2026-10-04 조사(보고서 https://claude.ai/artifact/N14Ln33D4mvv7zr1gaoK4H)에서 — 휴대폰 첫 화면 미리보기 0px · 좁은 화면 CSS 가 죽어(미디어 쿼리가 기본 규칙보다 앞) 설정 1,611px 를
+141px 틈으로 · 탭을 열면 41.5MB(벽 23장·액자 8장·작품 원본) · 미리보기를 32번 다시 그림 · 저장해도 표시 없음 · [완료]는 경고창 · 끌면 화면이 같이 밀림.
+실서버는 고정 이름 파일이 1년 immutable 이라 Cloudflare 가 9/4 판 scene.js 를 30일째 내보냈고, 서비스워커가 모든 방문자에게 액자 PNG 5.5MB 를 미리 받게 했다.
+
+### 사용자 결정
+탭 안 화면 전체(전용 주소 분리 X) · 휴대폰은 미리보기 위 + 탭 줄 + 옆으로 미는 칩 한 줄 · 저장 뒤 = 저장 확인 + 공유 창 + [ArtStory에 올리기] ·
+알리는 곳 지금 그대로 · 출력 비율 용도 설명 없음.
+
+### 구성
+- `frontend/public/artlook/index.html` — 스타일·마크업·**엔진**(합성은 그대로). 불러오기만 바뀌었다: `ensurePhotoFrame`·`ensureMatTexture`·`ensureWall`·`frameAssetsReady`·
+  `assetArrived` · `PRELOAD_ALL`(`?preload=all`) · `BUILD`(빌드 ID) · `state.draft`(끄는 동안 합성 배율 1) · `FRAMES[].id` · 워터마크 #c4302b.
+- `frontend/public/artlook/ui.js`(신규) — **화면**: 탭 6 · 칩(미리 구운 그림) · 고른 것 설명 줄 · 끌기·두 손가락·휠·[−][+][원위치] · 저장(PC 내려받기 / 휴대폰 공유 창 /
+  앱 안 브라우저 길게 눌러 저장) · [ArtStory에 올리기] · 마지막 선택 기억(`artlook:prefs`) · `requestRender`(기다리던 자산이 오면 한 프레임에 한 번).
+- `frontend/public/artlook/scene.js` — `ensureScene`·`sceneReady`(장면 사진은 고를 때), `loadScenes(url, cb, {preloadAll})`.
+- `frontend/scripts/build-artlook-thumbs.mjs`(신규) — 같은 엔진으로 칩(`frames/chips/<id>.webp` 21개 56KB)·배경 썸네일(`walls/thumbs/` 23개 155KB)을 굽고 scenes.json 에 `thumb`.
+- `frontend/src/lib/artlook.ts` — `portfolioArtLookWorks`(t800 썸네일·id·빈 제목은 비움) · `clearArtLookWorks`(로그아웃) · `readArtLookMessage`(iframe 말) ·
+  `readComposeImages`/`COMPOSE_STATE_KEY`(글쓰기 칸 사진).
+- `frontend/src/pages/MyPage.tsx` `ArtLookSection` — `focused`+`fill`(프로필 카드·탭 줄 없음, 휴대폰 좌우 여백 없음) · `hooks/useFillHeight.ts`(상단바 아래~하단 탭바 위) ·
+  message 를 받아 편집 화면(`editHref('works', {info, work})`)·ArtStory(`/upload/image` → `/feed` state)로.
+- `frontend/src/pages/FeedPage.tsx` `Composer` — `location.state.composeImages` 를 한 번 받아 사진을 싣고 state 를 비운다.
+- `frontend/src/lib/homepageEdit.ts` — `editHref` 의 `work`, `resolveEditEntry().work`, `entryInfoImageId`(그 작품의 정보 창).
+- `backend/src/lib/staticCache.ts`(신규) — dist 정적 파일 Cache-Control(해시 번들만 immutable · 앱 셸 no-store · 나머지 no-cache). `index.ts` 가 `cacheControl:false` + 이 함수.
+- `frontend/vite.config.ts` — `artlook-build-id` 플러그인(dist/artlook/index.html 의 `__ARTLOOK_BUILD__` → 빌드 ID) · `globIgnores` 에 `artlook/**`. `src/sw.js` denylist `/artlook/`.
+
+### 실측 (데모 DB, 헤드리스 — GPU 없음)
+| | 고치기 전 | 지금 |
+|---|---|---|
+| 열 때 그리는 횟수 | 31~32 | **1** |
+| ArtLook 자산(작가 탭을 열 때) | 34.5MB | **1.37MB** |
+| 서비스워커 미리받기 | 8.2MB(액자 5.5MB) | **2.7MB** |
+| 아이폰 13 첫 화면 미리보기 | 0px | 234px 통째로 |
+| PC 1280 첫 화면 미리보기·저장 | 278/444px · 저장 화면 밖 | 577px 통째로 · 저장 보임 |
+| 끌 때 바깥이 밀린 거리 | 63~73px | 0 |
+
+### 검증
+- 화질: `scratchpad/vt` 기준 렌더 10장 — 바꾸기 전과 **픽셀 단위로 같다**(전부 미리 받는 하니스 경로 · 고른 것만 받는 실제 경로 둘 다). 워터마크 색만 그 글자 자리에서 다르다.
+- 하니스 `scratchpad/artlook-ux/walk.js`(크롬 138 + 사파리 120 확인) — 좁은 칸 칩 칸 2~5px 잘림을 잡았다.
+- 프론트 `artlookScreen.test.ts`(19) · `artlook.test.ts`(24) · `artlookScene.test.ts`(화면 가드를 ui.js 로) · `homepageEdit.test.ts`(work) · 백엔드 `static-cache.test.ts`(8) ·
+  e2e `69-artlook-ux.spec.ts`(9) · `41-load-artlook` 은 탭을 열고 고르게.
+
