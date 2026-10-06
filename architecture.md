@@ -2593,3 +2593,14 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **관리 화면**: `components/admin/HeroToneField.tsx`(세 칸 선택 + 자동 결과 미리 알림), 미리보기의 [자세히 보기]도 오른쪽 위.
 - **검증**: `scratchpad/hero/tone.js`(크롬+WebKit × 7화면 × 8구성) + `tone_check.py`(스크린샷 픽셀로 명암비) — 잘못 고른 자리 77 → 0. `matrix.js`(잘림 128조합) 0건 유지.
 
+## 작품 격자 노출 순서 — 홈페이지를 채운 작가 먼저 (2026-10-06)
+
+- **요청**: 홈 ArtWorks와 [작가] 탭 작품 격자에서 홈페이지 정보를 다 입력한 작가의 작품이 먼저 올라오게. 사용자와 정한 기준 —
+  ①완성도 4항목(작품 3점 이상 · 모든 작품에 작품 정보 · 작가노트 · 약력) ②그중 **3개 이상** 채운 작가 우선 ③[좋아요순]에는 적용 안 함.
+- **서버**: `backend/src/lib/artistCompleteness.ts` — `filledCount`(0~4) · `priorityArtistIds`(후보 작가의 포트폴리오·작품 캡션 칸을 쿼리 한 번에 읽어 3칸 이상인 id).
+  `routes/explore.ts prioritizedShuffle` 가 후보를 [앞 묶음 | 뒤 묶음]으로 나눠 각각 `shuffleNoAdjacent`(시드 랜덤 + 같은 작가 연속 방지) 후 이어 붙인다.
+  두 묶음은 작가가 겹치지 않으므로 이음매에서도 연속이 없다. 쓰는 곳: `GET /explore`(sort=random) · `GET /explore/highlight`(seed 있을 때 · 좋아요 0일 때의 날짜 시드).
+  좋아요순(`sort=popular`, highlight 의 좋아요 정렬)은 그대로.
+- **판정의 짝**: 프론트 `lib/completeness.ts computeCompleteness` 의 앞 네 칸과 같은 규칙(작품 정보 = 작품명·재료·크기·연도 중 하나 · 약력 = 글 또는 항목별 경력).
+- 회귀: `backend/src/__tests__/explore-priority.test.ts`(판정 4 · 격자/홈/페이지 경계/좋아요순/채운 작가 없음 6).
+

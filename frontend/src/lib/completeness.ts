@@ -9,6 +9,8 @@
  * (`CompletenessLine`). 예전의 상자형 체크리스트(프로필·포트폴리오·ArtLook 탭 위)는 없앴다.
  *
  * ⚠️ 항목을 늘리지 말 것 — 3~5개가 활성화 체크리스트의 관례다(그 이상은 숙제 목록이 된다).
+ * ⚠️ 앞 네 칸(작품 3점·작품 정보·작가노트·약력)은 서버 `backend/src/lib/artistCompleteness.ts` 에 거울이 있다 — 그 수가 3 이상인 작가의 작품이
+ *    홈 ArtWorks·[작가] 탭 격자에서 먼저 나온다(2026-10-06). 판정을 바꾸면 **둘 다** 고칠 것(안 그러면 다 채웠는데 안 올라간다).
  */
 import { hasCaption, isCareerEmpty } from './artwork';
 import { editHref } from './homepageEdit';

@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2700+ tests** (2026-10-05): Backend 1560 (supertest, `artlink_test` DB 순차), Frontend 1144 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2700+ tests** (2026-10-06): Backend 1570 (supertest, `artlink_test` DB 순차), Frontend 1144 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -442,6 +442,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ **[순서 바꾸기]는 없앴다**(랜덤 시절의 버튼). [작품 새로고침]은 그대로 — 작가 목록과 작품은
       여전히 별개 축이라, 작가를 훑던 중에 작품이 통째로 바뀌면 보던 자리를 잃는다.
     - ⚠️ `?seed=` 는 **받되 무시한다**. 400 으로 막으면 랜덤이던 사흘 동안 만들어진 링크·캐시가 죽는다.
+- **작품 격자(랜덤)는 홈페이지를 채운 작가 먼저**(2026-10-06 사용자 결정) — 완성도 4항목(작품 3점 이상 · 모든 작품에 작품 정보 · 작가노트 · 약력)
+  중 **3개 이상** 채운 작가의 작품을 앞 묶음에, 나머지를 뒤 묶음에 두고 각 묶음 안은 지금처럼 시드 랜덤 + 같은 작가 연속 방지(`explore.ts prioritizedShuffle`).
+  **홈 ArtWorks(`/explore/highlight`)도 같은 함수**다. [좋아요순]은 그대로(보는 사람이 고른 정렬). 왼쪽 작가 명단(가나다순)도 그대로.
+  판정은 서버 `lib/artistCompleteness.ts` — 작가가 보는 완성도(프론트 `lib/completeness.ts`)의 앞 네 칸과 **같은 규칙**이어야 한다
+  ("채우면 위로 올라간다"고 말할 수 있으려면). ⚠️ 한쪽을 고치면 다른 쪽도. 다섯째 칸('작가 탭에도')은 격자에 나온 것 자체가 채운 것이라 뺐다.
+  작품 수는 '홈페이지에만' 작품까지 센다. 2026-08-30 복제본 기준 격자 작가 31명 중 6명(작품 79/240점)이 앞 묶음 — 첫 쪽(30장)·홈 8칸이 그 작가들로 찬다.
+  회귀: `explore-priority.test.ts`(10).
 - ⚠️ **작품 수는 화면에 안 그린다**(2026-09-10 요청). 응답에는 `workCount` 가 남아 있다 —
   그 값(작품 수 — '홈페이지에만' 포함)이 0 이면 애초에 목록에 없어야 하므로 회귀 테스트가 그걸로 필터를 검증한다.
 - ⚠️ **홈의 ArtWorks 섹션으로 보내지 말 것** — [홈]과 같은 주소가 되어 탭이 둘일 이유가 없어진다.
@@ -2332,6 +2339,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       **대신 "좋아요가 홈 노출을 정한다"는 참여 동기는 사라졌다**(하트 배지는 그대로, 좋아요순은 둘러보기의 [좋아요순] 탭).
       서버는 seed 없이 부르면 **여전히 좋아요순**이고 그 경로도 테스트에 남아 있다 — 되돌리려면 프론트에서 시드만 빼면 된다.
     - [새로고침]은 둘러보기의 그것과 **같은 동작**(랜덤 재정렬 + 같은 작가 연속 방지). 시드만 갈아끼운다.
+      홈페이지를 채운 작가(완성도 3/4 이상)의 작품이 먼저 온다(2026-10-06, 「[작가] 탭」 절).
       백엔드는 seed가 있으면 좋아요 집계 쿼리 2개를 건너뛴다 — 연타되는 버튼이라.
     - 재정렬 중에도 **이전 작품을 그대로 둔다**(`placeholderData: prev => prev`). 안 그러면 `images.length === 0 → null` 때문에 섹션이 통째로 사라졌다 나타나 홈이 위로 튄다.
 - **둘러보기(`/explore`)는 Navbar 메뉴에서 뺐고**(2026-08-27), **2026-09-13 에 [작가] 탭(`/artists`)으로 합쳤다.**

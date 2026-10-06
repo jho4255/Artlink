@@ -5,6 +5,7 @@ import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import logger from '../lib/logger';
 import { sortByInitialThenName } from '../lib/hangulIndex';
+import { priorityArtistIds } from '../lib/artistCompleteness';
 
 const router = Router();
 
@@ -153,6 +154,23 @@ function shuffleNoAdjacent(
 }
 
 /**
+ * 랜덤 정렬 + **홈페이지를 채운 작가 먼저** (2026-10-06 사용자 결정).
+ * 완성도 4항목(작품 3점 · 작품 정보 · 작가노트 · 약력) 중 3개 이상 채운 작가의 작품을 앞에 모으고, 나머지를 뒤에 둔다.
+ * 각 무리 안은 지금까지와 같은 시드 랜덤 + 같은 작가 연속 방지 — 두 무리는 작가가 겹치지 않으므로 이음매에서도 연속이 안 생긴다.
+ * 판정은 `lib/artistCompleteness.ts`(작가가 보는 완성도와 같은 규칙). ⚠️ [좋아요순]에는 쓰지 않는다 — 보는 사람이 고른 정렬이다.
+ * 홈 ArtWorks 와 [작가] 탭 격자가 **같은 함수**를 써야 두 화면이 같은 약속을 한다.
+ */
+async function prioritizedShuffle(
+  candidates: { id: number; portfolio: { userId: number } }[],
+  seed: number,
+): Promise<number[]> {
+  const priority = await priorityArtistIds(candidates.map(c => c.portfolio.userId));
+  const first = candidates.filter(c => priority.has(c.portfolio.userId));
+  const rest = candidates.filter(c => !priority.has(c.portfolio.userId));
+  return [...shuffleNoAdjacent(first, seed), ...shuffleNoAdjacent(rest, seed)];
+}
+
+/**
  * GET /artists — **홈페이지에 작품이 있는 작가 목록** (인증 불필요, 2026-09-10)
  *
  * [작가] 탭(`/artists`)의 왼쪽 목록이 쓴다. 누르면 그 작가의 공개 홈페이지(`/portfolio/:id`)로 간다.
@@ -213,7 +231,7 @@ router.get('/artists', async (_req, res, next) => {
 });
 
 // GET / — 공개 탐색 피드 (Explore)
-//   sort=random&seed=N : 시드 기반 랜덤 + 같은 작가 연속 방지 (기본)
+//   sort=random&seed=N : 시드 기반 랜덤 + 같은 작가 연속 방지 (기본) — 홈페이지를 채운 작가(완성도 3/4+) 먼저(prioritizedShuffle)
 //   sort=popular&period=day|week|month|year|all : 기간 내 받은 좋아요 수 내림차순
 // 정렬/분산은 전체 후보 기준으로 계산 후 페이지 슬라이스 → 무한스크롤 페이지 경계에서도 규칙 유지.
 router.get('/', optionalAuth, async (req, res, next) => {
@@ -252,7 +270,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         .sort((a, b) => b.c - a.c || b.id - a.id) // 좋아요 많은 순, 동수는 최신(id) 순
         .map(x => x.id);
     } else {
-      orderedIds = shuffleNoAdjacent(candidates, seed);
+      orderedIds = await prioritizedShuffle(candidates, seed);
     }
 
     const pageIds = orderedIds.slice(skip, skip + limit);
@@ -297,7 +315,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
  *     random : 좋아요가 전무 → 날짜 시드 랜덤(하루 동안 고정)
  *
  * seed=N (홈 ArtWorks 의 [새로고침] 버튼):
- *   그 시드로 랜덤 재정렬 + 같은 작가 연속 방지 — 둘러보기(/explore)의 새로고침과 같은 규칙이라
+ *   그 시드로 랜덤 재정렬 + 같은 작가 연속 방지 + 홈페이지를 채운 작가 먼저(prioritizedShuffle) — [작가] 탭 격자와 같은 규칙이라
  *   두 화면에서 누른 느낌이 같다. basis 는 'random'.
  *   ⚠️ 좋아요 집계 쿼리 2개를 건너뛴다 — 새로고침은 연타되는 버튼이라 매번 전체 집계를 돌릴 이유가 없다.
  */
@@ -334,7 +352,7 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
 
     if (reshuffleSeed > 0) {
       basis = 'random';
-      orderedIds = shuffleNoAdjacent(candidates, reshuffleSeed);
+      orderedIds = await prioritizedShuffle(candidates, reshuffleSeed);
     } else {
       const allCnt = await countLikes(null);
       const weekCnt = await countLikes(new Date(Date.now() - 7 * 86400000));
@@ -342,7 +360,7 @@ router.get('/highlight', optionalAuth, async (req, res, next) => {
 
       if (basis === 'random') {
         // 날짜 시드 — 하루 동안 같은 순서(첫 진입마다 바뀌면 홈이 산만해진다)
-        orderedIds = shuffleNoAdjacent(candidates, dailySeed());
+        orderedIds = await prioritizedShuffle(candidates, dailySeed());
       } else {
         orderedIds = candidates
           .map(c => ({ id: c.id, total: allCnt.get(c.id) || 0, week: weekCnt.get(c.id) || 0 }))
