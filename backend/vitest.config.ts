@@ -8,7 +8,8 @@ export default defineConfig({
     // 단일 스레드 강제 — 모든 테스트가 하나의 워커에서 실행 (DB 커넥션 공유)
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },
-    setupFiles: ['./src/__tests__/setup.ts'],
+    // setup-mail: 테스트에서 메일을 보내지 않는다(2026-10-08) · setup: 테스트 DB·마이그레이션
+    setupFiles: ['./src/__tests__/setup-mail.ts', './src/__tests__/setup.ts'],
     testTimeout: 15000,
     include: ['src/**/__tests__/**/*.test.ts'],
   },
