@@ -2604,3 +2604,49 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **판정의 짝**: 프론트 `lib/completeness.ts computeCompleteness` 의 앞 네 칸과 같은 규칙(작품 정보 = 작품명·재료·크기·연도 중 하나 · 약력 = 글 또는 항목별 경력).
 - 회귀: `backend/src/__tests__/explore-priority.test.ts`(판정 4 · 격자/홈/페이지 경계/좋아요순/채운 작가 없음 6).
 
+
+## 이메일 가입 · 메일 발송 · 로그인/회원가입 · 가입 약관 · 공모 첨부파일 (2026-10-08)
+
+- **요청**: ①갤러리·관리자가 모집 공고를 올릴 때 첨부파일도 ②갤러리는 이메일·비밀번호로도 가입 — 입력한 메일로 인증번호를 보내 맞으면 가입.
+  관리자는 갤러리 등록을 승인할 때 그 메일이 갤러리 메일인지 본다. 사용자와 정한 것 셋 — 카카오 가입은 그대로 두고 이메일 가입을 **추가** ·
+  첨부는 **누구나**(비회원 포함) 내려받는다 · **비밀번호 찾기**도 같이.
+  로컬 확인 중 더 정한 것 — ④이메일 가입은 갤러리만이 아니라 **아티스트·일반도** ⑤로그인 화면은 역할을 묻지 않고 **[회원가입]을 따로** 둔다(역할은 가입에서 고른다 —
+  잠깐 '로그인에서 역할 먼저'였다가 "어짜피 공통이니" 로 되돌렸다) ⑥가입 약관은 회색 요약 문구를 지우고 **전문을 끝까지 읽어야 체크**된다.
+- **메일 발송**(`backend/src/lib/mailer.ts`): nodemailer → Gmail SMTP(465). 환경 변수 `SMTP_HOST·SMTP_PORT·SMTP_USER·SMTP_PASS·MAIL_FROM·MAIL_REPLY_TO`
+  (`MAIL_TRANSPORT=log` 면 보내지 않는다). 테스트는 절대 안 보낸다(보관함 `devOutbox` 만). 운영에서 설정이 없으면 503.
+  로컬은 실제로 보내되 **테스트용 주소**(예약 도메인 + 시드·테스트가 쓰는 남의 도메인 — `isDevFakeAddress`)는 보관함으로만. 보관함은 `GET /api/auth/dev-mails`(개발자 로그인과 같은 이중 차단)로 본다 — E2E 70 이 인증번호를 여기서 읽는다.
+  지금 보내는 메일은 **인증번호뿐**이다(광고·소식 없음 → 수신 동의 없음).
+- **인증번호**(`lib/emailCode.ts`, 표 `EmailCode` — 번호는 HMAC 해시로만): 6자리 · 10분 · 5번 틀리면 끝(맞혀 보기 **전에** 횟수를 먼저 올려 동시 시도도 5번까지) ·
+  다시 받기 1분 · 주소당 1시간 5번(advisory lock `LOCK_NS.emailCodes` 로 '세고 나서 만들기' 경합을 막는다) · 가장 최근 번호만 · 하루 지난 줄은 지운다.
+  **하루 전체 300통**(`DAILY_SEND_MAX`) + **IP 당 1시간 10번**(index.ts) — Gmail 하루 한도(약 500, 갤러리 홍보 메일 발송기와 같은 계정)를 남이 바닥내지 못하게. 넘으면 503.
+  로그인·가입 한도의 IP 는 `CF-Connecting-IP` 먼저(`clientKey` — Render 앞단이 Cloudflare 라 `req.ip` 가 엣지일 수 있다). 로그인은 **이메일별로도** 센다
+  (`lib/loginThrottle.ts`, 15분 10번 → 15분 막힘, 재설정하면 풀림) — IP 판정이 틀려도 비밀번호 무차별 대입을 막는다.
+  맞히면 **인증 토큰**(JWT `kind:'email-verified'`, 30분)을 주고, 가입·재설정이 그 토큰으로 줄을 **한 번만** 쓴다(`consumeEmailCode`, 같은 트랜잭션).
+  ⚠️ '인증된 줄이 있나' 만 보고 이메일 주소로 가입시키면, 맞힌 사람보다 먼저 남이 같은 주소로 가입 요청을 보내 자기 비밀번호로 계정을 만들 수 있다 — 그래서 토큰.
+- **라우트**(`routes/auth.ts`): `POST /email/code {email, purpose:'signup'|'reset'}` · `POST /email/verify` · `POST /email-signup {verificationToken, role, password, name, phone, 동의}`
+  (역할 ARTIST·GALLERY·VISITOR — ADMIN 은 400, `emailVerifiedAt` 기록, 바로 로그인) · `POST /password/reset {verificationToken, password}`(바로 로그인).
+  `POST /login` 은 **운영에서도 열렸다**(비밀번호 있는 계정만 · 대소문자 무시 · 존재 여부 타이밍 방어는 그대로). 확인 없는 옛 `POST /signup` 만 계속 운영에서 404.
+  가입·찾기의 '이미 가입된 주소'·'카카오 계정' 안내는 그대로 말한다(다음 할 일이 들어 있다) — 대신 IP 한도(로그인·가입 15분 30회에 새 경로 넷을 더했다)와 주소별 한도가 막는다.
+  비밀번호 규칙: 8~72바이트 · 영문+숫자(서버 `passwordProblem` ↔ 프론트 `lib/emailAuth.ts`). 이메일로 로그인하는 계정은 프로필에서 이메일을 못 바꾼다(400).
+- **보안 수정**: 카카오 가입 완료(`POST /complete-registration`)가 임시 토큰의 provider 를 확인하지 않아, **로그인 토큰을 그 자리에 넣으면** Prisma 가 undefined 조건을 빼고
+  '아무 회원'(첫 행)을 찾아 그 회원의 로그인 토큰을 돌려줬다(테스트로 재현 — 작가 2의 토큰 → 회원 1 로그인). `provider==='KAKAO' && providerId` 를 확인한다.
+- **화면**: 로그인 `/login` = [카카오로 로그인] · 이메일 로그인(이 브라우저에서 쓴 주소를 채워 둔다) · [비밀번호 찾기] · [회원가입] — **역할을 묻지 않는다**(가입했던 계정 그대로).
+  회원가입 `/signup`(`SignupPage`) = [아티스트 · 갤러리 · 일반](`components/shared/RoleChoice.tsx`) → [카카오로 가입하기](고른 역할을 30분 localStorage 에 적고 떠난다 →
+  '회원 정보 입력'이 골라 둔다, `lib/signupRole.ts`) / [이메일로 가입하기](`/signup/email?role=`). 지원·초대 코드로 온 길이면 아티스트를 골라 둔다.
+  이메일 가입 `/signup/email`(`EmailSignupPage` — 역할 칸(바꿀 수 있다) · 인증번호 · 비밀번호 · 이름 · 연락처 · 약관) · 비밀번호 찾기 `/password/reset`(`PasswordResetPage`).
+  인증 칸은 `components/shared/EmailVerifyField.tsx`.
+  가입하면 로그인 전에 온 곳 > 갤러리는 `/galleries/new` > 그 밖에는 로그인과 같은 규칙. 관리자 [승인 관리]의 갤러리 카드에 **가입 계정 · 이메일 · '이메일 인증됨'/'카카오 가입 · 이메일 미확인'** 과 갤러리 이메일이 같으면 '(가입 계정과 같음)'.
+- **가입 약관**(`components/shared/SignupConsent.tsx`, 카카오 가입·이메일 가입 공용): 이용약관·개인정보 처리방침 **전문**을 칸(높이 160px)에 띄우고 맨 아래까지 내려야 그 항목·전체 동의가 체크된다.
+  읽기 전에 누르면 체크하지 않고 "끝까지 읽어야 체크할 수 있어요" 를 보이며 그 칸으로 데려간다(`aria-disabled` — 진짜 disabled 면 이유를 못 보여 준다). 예전의 회색 요약 두 줄은 지웠다.
+  전문은 `/terms`·`/privacy` 화면과 같은 컴포넌트(`TermsBody`·`PrivacyBody`의 `compact`)라 문구가 한 곳에서 바뀐다.
+- **첨부파일**: `Exhibition.attachments` JSON `[{url, name, size}]`(마이그레이션 `20261008120000_gallery_email_auth_and_attachments`). 규칙 `lib/exhibitionAttachments.ts` —
+  우리 저장소 주소만(`ownFileUrl`) · 10개 · 이름은 NFC·경로문자 제거 · 읽을 땐 이상한 줄을 건너뛴다. 쓰는 곳: `POST /exhibitions`·`POST /exhibitions/hosted`·`PATCH /exhibitions/:id/attachments`
+  (공모 소개와 같은 권한, 승인 없이 바로). 업로드는 전용 `POST /api/upload/attachment`(갤러리·관리자, PDF·한글·워드·엑셀·파워포인트·ZIP·JPG·PNG, 20MB) —
+  **받은 그대로** 저장(PNG→JPEG·썸네일 없음), R2 에는 원래 이름을 `Content-Disposition`(ASCII 대체 + UTF-8 `filename*`)으로 함께 적는다(R2 는 다른 출처라 `<a download>` 가 안 먹는다).
+  뺀 파일·지운 공고의 첨부 파일은 **지우지 않는다**(주소만 알면 다른 공고에 같은 주소를 넣을 수 있어 지우면 남의 첨부가 깨진다).
+  화면: 갤러리 등록 폼 [2 공고 내용]·아트링크 주최 폼의 첨부 칸(`AttachmentEditor`, 여러 파일을 차례로, 함수형 갱신, 올리는 중엔 등록을 막는다) · 공고 상세 [첨부파일] 구역(누구나 · 운영자 [편집]/[추가]) ·
+  관리자 승인 화면의 공고 카드.
+- 회귀: backend `email-auth.test.ts`(36) · `exhibition-attachments.test.ts`(14) · `flow-fixes.test.ts`(운영 로그인) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` ·
+  e2e `70-email-signup-and-attachments.spec.ts`(10 — 로그인 → [회원가입] → 갤러리 이메일 가입·약관 끝까지 읽기·번호 틀림/맞음 · 아티스트 이메일 가입 → 홈페이지 편집 ·
+  이메일 로그인(역할 칸 없음) · 비밀번호 찾기 · 회원가입에서 역할(카카오로 떠났다 돌아오면 역할이 골라져 있다) · 지원으로 오면 아티스트 · 카카오 주소 안내 ·
+  상세에서 붙이고 비회원이 받기 · 등록 폼 payload · 승인 화면).

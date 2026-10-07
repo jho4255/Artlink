@@ -113,6 +113,8 @@ export interface Exhibition {
   imageUrl?: string;
   images?: ExhibitionImage[];
   customFields?: CustomField[] | null;
+  /** 첨부파일(2026-10-08) — 상세 API 가 늘 배열로 준다(누구나 내려받는다). 목록 API 에는 원본 JSON 이 실릴 수 있어 `normalizeAttachments` 로 읽을 것 */
+  attachments?: import('@/lib/attachments').ExhibitionAttachment[] | null;
   capacity: number;
   region: string;
   description: string;

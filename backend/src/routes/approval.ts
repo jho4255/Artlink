@@ -9,6 +9,7 @@ import { validate } from '../middleware/validate';
 import { notifyApprovalRequest } from '../lib/telegram';
 import { LOCK_NS, withKeyLock } from '../lib/keyLock';
 import { deleteExhibitionWithNotice, deleteGalleryWithNotice, exhibitionDeleteFacts } from '../lib/deletion';
+import { readAttachments } from '../lib/exhibitionAttachments';
 
 const router = Router();
 
@@ -16,10 +17,12 @@ const router = Router();
 router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     // 갤러리 승인 대기 (상세 정보 포함)
+    // 가입 계정의 이메일과 **인증 여부**를 함께 — 관리자가 승인할 때 그 갤러리 메일이 맞는지 판단한다(2026-10-08).
+    // emailVerifiedAt = 이메일 가입(인증번호 확인) · provider = 카카오 가입이면 이메일은 본인이 적은 값이다
     const pendingGalleries = await prisma.gallery.findMany({
       where: { status: 'PENDING' },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, provider: true, emailVerifiedAt: true } },
         images: { orderBy: { order: 'asc' }, take: 3 }
       }
     });
@@ -60,7 +63,13 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
       ...(isDeleteType(request.type) ? { target: await deleteTargetSummary(request.type, request.targetId) } : {}),
     })));
 
-    res.json({ pendingGalleries, pendingExhibitions, pendingShows, pendingRequests });
+    res.json({
+      pendingGalleries,
+      // 첨부파일은 승인 전에 관리자가 열어 볼 수 있게 — 이상한 줄은 건너뛰고 늘 배열로
+      pendingExhibitions: pendingExhibitions.map((e) => ({ ...e, attachments: readAttachments(e.attachments) })),
+      pendingShows,
+      pendingRequests,
+    });
   } catch (error) { next(error); }
 });
 

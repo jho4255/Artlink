@@ -134,7 +134,8 @@ describe('붙이는 곳 — 소스 가드', () => {
     // 카카오 인증 주소를 다른 곳에서 손으로 만들지 않는다
     const offenders = all(resolve(__dirname, '..')).filter((p) => !p.endsWith('kakaoLogin.ts') && readFileSync(p, 'utf8').includes('kauth.kakao.com'));
     expect(offenders).toEqual([]);
-    expect(read('pages/LoginPage.tsx')).toContain('<KakaoLoginButton />');
+    // 로그인 화면도 같은 버튼으로 떠난다(2026-10-08 부터 이름이 '카카오로 로그인' — 회원가입 화면은 고른 역할을 적는 onStart 를 붙인다, lib/signupRole.ts)
+    expect(read('pages/LoginPage.tsx')).toMatch(/<KakaoLoginButton\b/);
   });
   it('콜백 화면 — 탭 저장소만 보지 않고 checkOAuthState 로 맞춘다 · 못 맞추면 튕기지 않고 한 번 더 누르게 한다(자동으로 카카오에 보내지 않는다)', () => {
     const src = read('pages/AuthCallbackPage.tsx');

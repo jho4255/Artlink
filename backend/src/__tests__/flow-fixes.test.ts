@@ -117,8 +117,10 @@ describe('공개 응답 — 운영용 값은 운영자에게만 (점검 S4)', ()
   });
 });
 
-describe('이메일+비밀번호 가입·로그인 — 운영에서 닫힌다 (점검 S6)', () => {
-  it('★ 운영(production)에서는 404, ENABLE_PASSWORD_AUTH=true 면 열린다', async () => {
+describe('확인 없는 이메일+비밀번호 가입 — 운영에서 닫힌다 (점검 S6)', () => {
+  // 2026-10-08: 로그인은 운영에서도 열렸다 — 갤러리가 인증번호로 이메일을 확인하고 가입한다(gallery-email-auth.test.ts).
+  //             확인 없는 옛 가입(/auth/signup)만 그대로 닫혀 있다. 없는 계정 로그인은 404 가 아니라 401.
+  it('★ 운영(production)에서는 옛 가입이 404, ENABLE_PASSWORD_AUTH=true 면 열린다 · 로그인은 열려 있다', async () => {
     const prev = process.env.NODE_ENV;
     const prevFlag = process.env.ENABLE_PASSWORD_AUTH;
     try {
@@ -126,7 +128,7 @@ describe('이메일+비밀번호 가입·로그인 — 운영에서 닫힌다 (�
       delete process.env.ENABLE_PASSWORD_AUTH;
       const body = { name: 'n', email: 'pw@test.com', password: 'secret123', role: 'ARTIST', agreeTerms: true, agreePrivacy: true };
       expect((await request.post('/api/auth/signup').send(body)).status).toBe(404);
-      expect((await request.post('/api/auth/login').send({ email: 'pw@test.com', password: 'secret123' })).status).toBe(404);
+      expect((await request.post('/api/auth/login').send({ email: 'pw@test.com', password: 'secret123' })).status).toBe(401);
       process.env.ENABLE_PASSWORD_AUTH = 'true';
       expect((await request.post('/api/auth/signup').send(body)).status).toBe(201);
     } finally {

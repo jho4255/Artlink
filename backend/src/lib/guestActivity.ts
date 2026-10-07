@@ -189,6 +189,9 @@ export function guestPageKind(path: string): PageKind {
   if (p === '/login') return { label: '로그인' };
   if (p === '/auth/kakao/callback') return { label: '카카오 로그인' };
   if (p === '/auth/register') return { label: '가입 정보 입력' };
+  if (p === '/signup') return { label: '회원가입' };   // 2026-10-08 — 역할을 고르고 카카오/이메일
+  if (p === '/signup/email') return { label: '이메일 가입' };
+  if (p === '/password/reset') return { label: '비밀번호 찾기' };
   if (p === '/support') return { label: '고객센터' };
   if (p === '/terms' || p === '/privacy') return { label: '약관·개인정보' };
   if (/^\/join\/[^/]+$/.test(p)) return { label: '초대 코드' };

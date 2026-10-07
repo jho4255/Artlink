@@ -9,6 +9,11 @@ import { AppError } from '../middleware/errorHandler';
 import { deleteUploadedFile } from '../lib/storage';
 import { safeFileUrl } from '../lib/safeUrl';
 import { handleTaken, normalizeHandle, validateHandle } from '../lib/handle';
+import {
+  consumeEmailCode, issueEmailCode, normalizeEmail, passwordProblem, readVerificationToken, verifyEmailCode, type EmailCodePurpose,
+} from '../lib/emailCode';
+import { devOutbox } from '../lib/mailer';
+import { clearLoginFailures, loginBlocked, noteLoginFailure } from '../lib/loginThrottle';
 
 const router = Router();
 import { JWT_SECRET } from '../lib/jwt';
@@ -98,8 +103,8 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
  *
  * ⚠️ `z.boolean()` 이 아니라 **true 를 강제**한다. optional 로 두면 화면이 값을 안 보내는 순간
  *    조용히 미동의 가입이 된다 — 동의를 받은 적 없는 회원이 생기고, 그건 나중에 되돌릴 수 없다.
- * ⚠️ 마케팅 수신 동의는 두지 않는다. 우리는 메일을 보내지 않는다(2026-07 mailer 삭제).
- *    하지도 않을 일에 동의를 받아 두는 건 그 자체가 문제다.
+ * ⚠️ 마케팅 수신 동의는 두지 않는다. 우리가 보내는 메일은 **이메일 인증번호뿐**이다(2026-10-08 — 갤러리 이메일 가입·비밀번호 찾기).
+ *    하지도 않을 일에 동의를 받아 두는 건 그 자체가 문제다. 광고·소식 메일을 보내게 되면 그때 따로 동의를 받을 것.
  */
 const consentFields = {
   agreeTerms: z.boolean().refine((v) => v === true, '이용약관에 동의해주세요.'),
@@ -126,8 +131,16 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
     } catch {
       throw new AppError('등록 세션이 만료되었습니다. 다시 로그인해주세요.', 400);
     }
+    // ⚠️⚠️ **카카오 가입 토큰인지 확인할 것**(2026-10-08 발견·수정). 같은 비밀 키로 서명한 다른 토큰(로그인 토큰·이메일 인증 토큰)에는
+    //    provider·providerId 가 없다. 그걸 그대로 아래 findFirst 에 넣으면 Prisma 가 undefined 조건을 **빼 버려서**
+    //    '탈퇴하지 않은 아무 회원' 이 잡혔고, 그 회원의 로그인 토큰을 돌려줬다 — 로그인한 누구나 자기 토큰을 여기 넣어 남의 계정으로 들어갈 수 있었다.
+    //    회귀: gallery-email-auth.test.ts 「로그인 토큰을 카카오 가입 토큰 자리에 넣으면 400」
+    if (payload?.provider !== 'KAKAO' || typeof payload.providerId !== 'string' || !payload.providerId) {
+      throw new AppError('등록 세션이 만료되었습니다. 다시 로그인해주세요.', 400);
+    }
 
-    const emailTaken = await prisma.user.findUnique({ where: { email } });
+    // 대소문자만 다른 주소도 같은 주소로 본다 — 이메일 가입 계정(소문자로 저장)과 겹치지 않게
+    const emailTaken = await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
     if (emailTaken) throw new AppError('이미 사용 중인 이메일입니다.', 409);
 
     const oauthExists = await prisma.user.findFirst({
@@ -161,11 +174,13 @@ router.post('/complete-registration', validate(completeSchema), async (req, res,
 
 // ========== 일반 회원가입 · 비밀번호 로그인 ==========
 /**
- * 이메일+비밀번호 가입·로그인은 **운영에서 닫는다**(2026-10-03 사용자 결정, 점검 S6).
- * 화면은 카카오만 쓰고 실서버 회원 전원이 카카오 가입이다(비밀번호 계정 0). 그런데 이 API 는 열려 있어서
- * 이메일 확인 없이 계정을 만들 수 있었다 — 남의 이메일을 먼저 등록하면 그 사람은 카카오 가입에서 '이미 사용 중인 이메일' 로 막힌다.
- * 다시 열려면 Render 환경 변수 `ENABLE_PASSWORD_AUTH=true`. 로컬·테스트는 그대로 열려 있다.
+ * **확인 없는** 이메일+비밀번호 가입(`POST /signup`)은 운영에서 닫는다(2026-10-03 사용자 결정, 점검 S6).
+ * 이메일 확인 없이 계정을 만들 수 있어서, 남의 이메일을 먼저 등록하면 그 사람은 카카오 가입에서 '이미 사용 중인 이메일' 로 막혔다.
+ * 다시 열려면 Render 환경 변수 `ENABLE_PASSWORD_AUTH=true`. 로컬·테스트는 그대로 열려 있다(E2E·테스트 픽스처가 쓴다).
  * 없는 주소처럼 404 로 답한다(존재를 알릴 이유가 없다).
+ *
+ * 2026-10-08 부터 **인증번호로 이메일을 확인한 뒤에만** 비밀번호로 가입한다(`POST /email-signup`, 아래 — 아티스트·갤러리·일반 모두) —
+ * 그래서 **로그인(`POST /login`)은 운영에서도 열려 있다.** 비밀번호가 있는 계정만 로그인된다.
  */
 function assertPasswordAuthAllowed() {
   if (process.env.NODE_ENV === 'production' && process.env.ENABLE_PASSWORD_AUTH !== 'true') {
@@ -208,22 +223,150 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-router.post('/login', (_req, _res, next) => { try { assertPasswordAuthAllowed(); next(); } catch (e) { next(e); } }, validate(loginSchema), async (req, res, next) => {
+router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
+    // 이메일별 실패 한도(15분 10번) — IP 한도와 따로 센다(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
+    if (loginBlocked(email)) {
+      throw new AppError('로그인을 여러 번 실패했어요. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 해 주세요.', 429);
+    }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // 대소문자는 가리지 않는다(이메일 가입은 소문자로 저장하지만, 사람은 대문자를 섞어 친다). 비밀번호가 있는 계정만 본다 —
+    // 같은 주소의 카카오 계정이 있어도 그 계정으로 로그인되지 않는다.
+    const user = await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' }, password: { not: null }, deletedAt: null } });
     // 계정 부재/OAuth전용/탈퇴 시에도 동일 비용의 bcrypt를 수행해 존재여부 타이밍 노출 방지
     if (!user || !user.password || user.deletedAt) {
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      noteLoginFailure(email);   // 없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다
       throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
     }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+    if (!valid) {
+      noteLoginFailure(email);
+      throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
+    }
 
+    clearLoginFailures(email);
     const token = generateToken(user);
     res.json({ token, user: safeUser(user) });
+  } catch (error) { next(error); }
+});
+
+// ========== 이메일 가입 · 비밀번호 찾기 (2026-10-08) ==========
+/**
+ * 인증번호로 이메일을 확인한 뒤에만 비밀번호 계정을 만든다 — 규칙은 lib/emailCode.ts.
+ *   ① `POST /email/code`   { email, purpose: 'signup' | 'reset' }  → 6자리 번호를 메일로
+ *   ② `POST /email/verify` { email, purpose, code }                → { verificationToken } (30분)
+ *   ③ `POST /email-signup` { verificationToken, role, password, name, phone, 동의 } → 계정 + 로그인
+ *      `POST /password/reset` { verificationToken, password }                       → 새 비밀번호 + 로그인
+ * 역할은 **아티스트·갤러리·일반 모두**(사용자 결정 — 처음엔 갤러리만이었다가 로컬 확인 중 넓혔다). 카카오 가입도 그대로 된다.
+ * 관리자는 갤러리 승인 화면에서 가입 이메일과 '이메일 인증됨'(emailVerifiedAt)을 보고 그 갤러리 메일인지 판단한다.
+ *
+ * ⚠️ 이미 가입된 주소인지는 알려 준다(가입·찾기 화면이 "카카오로 로그인하세요" 를 말해야 해서). 대신 IP 한도(index.ts)와
+ *    주소별 한도(1분 1번 · 1시간 5번)가 함께 걸려 대량 조회는 막힌다. 로그인만은 지금처럼 존재 여부를 드러내지 않는다.
+ */
+const emailField = z.string().trim().min(1, '이메일을 입력해 주세요.').max(254, '이메일이 너무 깁니다.').email('이메일 주소를 확인해 주세요.');
+const purposeField = z.enum(['signup', 'reset'], { message: '잘못된 요청입니다.' });
+const toPurpose = (p: 'signup' | 'reset'): EmailCodePurpose => (p === 'signup' ? 'SIGNUP' : 'RESET');
+
+/** 이 주소로 가입한 (탈퇴하지 않은) 계정 — 대소문자 무시 */
+function findAccountByEmail(email: string) {
+  return prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' }, deletedAt: null },
+    select: { id: true, password: true },
+  });
+}
+
+const sendCodeSchema = z.object({ email: emailField, purpose: purposeField });
+router.post('/email/code', validate(sendCodeSchema), async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const purpose = toPurpose(req.body.purpose);
+    const account = await findAccountByEmail(email);
+    if (purpose === 'SIGNUP' && account) {
+      throw new AppError(
+        account.password
+          ? '이미 이 이메일로 가입한 계정이 있어요. 로그인해 주세요.'
+          : '이미 이 이메일로 가입한 계정이 있어요. 카카오로 가입하셨다면 카카오로 로그인해 주세요.',
+        409,
+      );
+    }
+    if (purpose === 'RESET') {
+      if (!account) throw new AppError('이 이메일로 가입한 계정이 없어요. 주소를 확인해 주세요.', 404);
+      if (!account.password) throw new AppError('카카오로 가입한 계정이에요. 카카오로 로그인해 주세요.', 400);
+    }
+    res.json(await issueEmailCode(email, purpose));
+  } catch (error) { next(error); }
+});
+
+const verifyCodeSchema = z.object({ email: emailField, purpose: purposeField, code: z.string().trim().min(1, '인증번호를 입력해 주세요.').max(20) });
+router.post('/email/verify', validate(verifyCodeSchema), async (req, res, next) => {
+  try {
+    const verificationToken = await verifyEmailCode(normalizeEmail(req.body.email), toPurpose(req.body.purpose), req.body.code);
+    res.json({ verificationToken });
+  } catch (error) { next(error); }
+});
+
+const passwordField = z.string().min(1, '비밀번호를 입력해 주세요.').max(200, '비밀번호가 너무 깁니다.');
+const emailSignupSchema = z.object({
+  verificationToken: z.string().min(1),
+  // VISITOR = 일반(디렉터·관람객). 관리자(ADMIN)는 여기서 만들 수 없다
+  role: z.enum(['ARTIST', 'GALLERY', 'VISITOR'], { message: '역할을 골라 주세요.' }),
+  password: passwordField,
+  name: z.string().trim().min(1, '이름을 입력해 주세요.').max(50),
+  phone: z.string().trim().regex(/^01[0-9]-?\d{3,4}-?\d{4}$/, '올바른 휴대폰 번호를 입력해 주세요.'),
+  ...consentFields,
+});
+router.post('/email-signup', validate(emailSignupSchema), async (req, res, next) => {
+  try {
+    const { email, codeId } = readVerificationToken(req.body.verificationToken, 'SIGNUP');
+    const problem = passwordProblem(req.body.password);
+    if (problem) throw new AppError(problem, 400);
+    const hashed = await bcrypt.hash(req.body.password, 10);
+    const now = new Date();   // 동의·인증 시각은 서버 시각으로 남긴다
+    const user = await prisma.$transaction(async (tx) => {
+      await consumeEmailCode(tx, codeId, email, 'SIGNUP');
+      const taken = await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
+      if (taken) throw new AppError('이미 이 이메일로 가입한 계정이 있어요. 로그인해 주세요.', 409);
+      return tx.user.create({
+        data: {
+          name: req.body.name,
+          email,
+          phone: req.body.phone,
+          role: req.body.role,
+          password: hashed,
+          provider: 'LOCAL',
+          emailVerifiedAt: now,
+          termsAgreedAt: now,
+          privacyAgreedAt: now,
+        },
+      });
+    });
+    res.status(201).json({ token: generateToken(user), user: safeUser(user) });
+  } catch (error) { next(error); }
+});
+
+const passwordResetSchema = z.object({ verificationToken: z.string().min(1), password: passwordField });
+router.post('/password/reset', validate(passwordResetSchema), async (req, res, next) => {
+  try {
+    const { email, codeId } = readVerificationToken(req.body.verificationToken, 'RESET');
+    const problem = passwordProblem(req.body.password);
+    if (problem) throw new AppError(problem, 400);
+    const hashed = await bcrypt.hash(req.body.password, 10);
+    const user = await prisma.$transaction(async (tx) => {
+      await consumeEmailCode(tx, codeId, email, 'RESET');
+      const u = await tx.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, deletedAt: null, password: { not: null } },
+        select: { id: true, emailVerifiedAt: true },
+      });
+      if (!u) throw new AppError('이 이메일로 가입한 계정을 찾지 못했어요.', 404);
+      // 번호를 받아 맞혔으니 이 주소는 확인된 것이다
+      return tx.user.update({ where: { id: u.id }, data: { password: hashed, emailVerifiedAt: u.emailVerifiedAt ?? new Date() } });
+    });
+    clearLoginFailures(email);   // 로그인 실패로 막혀 있었으면 비밀번호를 새로 정한 순간 풀린다
+    res.json({ token: generateToken(user), user: safeUser(user) });
   } catch (error) { next(error); }
 });
 
@@ -331,7 +474,13 @@ router.put('/me/profile', authenticate, validate(profileSchema), async (req, res
     const data: { phone?: string | null; email?: string; instagramUrl?: string | null } = {};
 
     if (email !== undefined) {
-      const taken = await prisma.user.findUnique({ where: { email } });
+      // 이메일로 로그인하는 계정(비밀번호 있음)은 이 주소가 곧 아이디이고 인증번호로 확인한 주소다 — 확인 없이 바꾸면
+      // 남의 주소로 바꿔 둘 수 있고, 관리자가 승인 때 본 '인증된 이메일' 이 조용히 다른 주소가 된다(2026-10-08)
+      const me = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { email: true, password: true } });
+      if (me?.password && normalizeEmail(email) !== normalizeEmail(me.email)) {
+        throw new AppError('이메일로 로그인하는 계정은 여기서 이메일을 바꿀 수 없어요. 1:1 문의로 알려 주세요.', 400);
+      }
+      const taken = await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
       if (taken && taken.id !== req.user!.id) throw new AppError('이미 사용 중인 이메일입니다.', 409);
       data.email = email;
     }
@@ -407,6 +556,19 @@ router.post('/dev-login', validate(devLoginSchema), async (req, res, next) => {
     if (!user) throw new AppError('해당 이메일의 계정이 없습니다.', 404);
     const token = generateToken(user);
     res.json({ token, user: safeUser(user) });
+  } catch (error) { next(error); }
+});
+
+/**
+ * 보내지 않고 남긴 메일 보기 (로컬 전용, 개발자 로그인과 같은 이중 차단) — 2026-10-08.
+ * 로컬에서 SMTP 설정이 없거나 테스트용 주소(@…test·@example.com 등, lib/mailer.ts isDevFakeAddress)면 메일을 보내지 않고 보관함에만 남긴다.
+ * E2E 가 이걸로 인증번호를 읽는다. 운영에서는 404 이고, 운영의 보관함은 늘 비어 있다.
+ */
+router.get('/dev-mails', async (req, res, next) => {
+  try {
+    assertDevLoginAllowed();
+    const to = String(req.query.to ?? '').trim();
+    res.json(devOutbox(to || undefined).slice(0, 10).map((m) => ({ to: m.to, subject: m.subject, text: m.text, at: m.at })));
   } catch (error) { next(error); }
 });
 

@@ -33,6 +33,8 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
+import { AttachmentEditor } from '@/components/shared/ExhibitionAttachments';
+import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
 import type { CustomField } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -53,6 +55,8 @@ const emptyForm = {
   description: '',
   imageUrl: '',
   customFields: [] as CustomField[],
+  /** 첨부파일(2026-10-08) — 모집 요강·지원서 양식. 공고 상세에서 누구나 내려받는다 */
+  attachments: [] as ExhibitionAttachment[],
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -248,6 +252,8 @@ export default function HostedExhibitionsSection() {
   const [managerGalleries, setManagerGalleries] = useState<PickedGallery[]>([]);
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // 첨부파일을 올리는 중 — 다 올라가기 전에 등록하면 그 파일이 빠진다
+  const [attachBusy, setAttachBusy] = useState(false);
   const [editManagersFor, setEditManagersFor] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   // 지원자 관리 — 갤러리 마이페이지와 같은 인라인 <ApplicantManager /> 를 그대로 쓴다(창 이동 없음).
@@ -322,6 +328,10 @@ export default function HostedExhibitionsSection() {
   });
 
   const submit = () => {
+    if (attachBusy) {
+      toast.error('첨부파일을 올리는 중이에요. 다 올라간 뒤에 눌러 주세요.');
+      return;
+    }
     const missing: string[] = [];
     const errorFields = new Set<string>();
     // ⚠️ 운영 갤러리는 **필수가 아니다**(2026-09-10) — 아트링크가 갤러리를 안 끼고 직접 열 수 있다
@@ -461,6 +471,16 @@ export default function HostedExhibitionsSection() {
                 />
               </div>
 
+              <div className="border-t border-gray-100 pt-3">
+                <p className="mb-1 text-xs font-medium text-gray-400">첨부파일 (선택)</p>
+                <AttachmentEditor
+                  value={form.attachments}
+                  onChange={(update) => setForm(prev => ({ ...prev, attachments: update(prev.attachments) }))}
+                  onBusyChange={setAttachBusy}
+                />
+                <p className="mt-1.5 text-[11px] leading-snug text-gray-400">모집 요강·지원서 양식 같은 파일 — 공고 상세에서 누구나 내려받아요. {ATTACHMENT_TYPES_TEXT}, 한 파일 20MB, {ATTACHMENT_MAX}개까지.</p>
+              </div>
+
               <CustomQuestionBuilder
                 fields={form.customFields}
                 onChange={(update) => setForm(prev => ({ ...prev, customFields: update(prev.customFields) }))}
@@ -493,6 +513,7 @@ export default function HostedExhibitionsSection() {
           form.recruitOnly
             ? '진행 범위: 공모만 진행 (지원자 수락까지, 출품 자료·전시·정산 없음)'
             : '진행 범위: 전시까지 진행',
+          ...(form.attachments.length ? [`첨부파일 ${form.attachments.length}개 — 공고 상세에서 누구나 내려받아요.`] : []),
         ].join('\n')}
         confirmText="등록"
         onConfirm={() => {

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { authenticate } from '../middleware/auth';
+import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { r2CanonicalBase, matchR2Base } from '../lib/r2Urls';
 import { makeThumb, thumbKey, thumbDiskPath, THUMB_SPECS } from '../lib/thumb';
 import { normalizeUploadImage } from '../lib/imageNormalize';
+import { attachmentDisposition, cleanAttachmentName } from '../lib/exhibitionAttachments';
 
 const router = Router();
 
@@ -216,6 +217,75 @@ router.post('/file', authenticate, uploadSlot, fileUpload.single('file'), async 
       ? await uploadToR2(req.file, 'artlink/files')
       : `/uploads/${req.file.filename}`;
     res.json({ url, originalName: req.file.originalname, size: req.file.size });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── 공모 첨부파일 (2026-10-08) ─────────────────────────────────────────────
+// 모집 요강·지원서 양식·공간 도면 같은 파일. 문서·압축·이미지, 한 파일 20MB. 공고를 올리는 갤러리·관리자만 쓴다.
+// ⚠️ 파일을 **받은 그대로** 저장한다 — 이미지라도 PNG→JPEG 변환·썸네일을 하지 않는다(내려받는 사람이 갤러리가 올린 바로 그 파일을 받아야 한다).
+// ⚠️ R2 에는 원래 이름을 Content-Disposition 으로 함께 적는다 — R2 는 다른 출처라 화면의 <a download="이름"> 이 먹지 않는다
+//    (lib/exhibitionAttachments.ts attachmentDisposition). 형식 목록은 프론트 `lib/attachments.ts` 와 같아야 한다.
+const ATTACHMENT_EXTS = new Set(['pdf', 'hwp', 'hwpx', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'jpg', 'jpeg', 'png']);
+const attachmentMimes = new Set([
+  ...allowedFileMimes,
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/x-zip',
+  'image/jpeg',
+  'image/png',
+]);
+/** 확장자로 정하는 저장 형식 — 브라우저가 한글·압축 파일을 octet-stream 으로 보내는 일이 흔하다 */
+const ATTACHMENT_CONTENT_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  hwp: 'application/x-hwp',
+  hwpx: 'application/hwp+zip',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  zip: 'application/zip',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+};
+
+const attachmentUpload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  defParamCharset: 'utf8',
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    // 확장자 + 실제 형식(MIME) 둘 다 — 확장자만 바꾼 실행 파일을 막는다
+    if (ATTACHMENT_EXTS.has(ext) && attachmentMimes.has(file.mimetype)) return cb(null, true);
+    cb(new AppError('첨부할 수 있는 파일: PDF·한글·워드·엑셀·파워포인트·ZIP·JPG·PNG', 400));
+  },
+} as multer.Options & { defParamCharset: string });
+
+async function uploadAttachmentToR2(file: Express.Multer.File, name: string): Promise<string> {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const key = `artlink/attachments/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME!,
+    Key: key,
+    Body: file.buffer,
+    ContentType: ATTACHMENT_CONTENT_TYPES[ext.replace('.', '')] ?? 'application/octet-stream',
+    ContentDisposition: attachmentDisposition(name),
+  }));
+  return `${r2CanonicalBase()}/${key}`;
+}
+
+router.post('/attachment', authenticate, authorize('GALLERY', 'ADMIN'), uploadSlot, attachmentUpload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
+    const name = cleanAttachmentName(req.file.originalname) || '첨부파일';
+    const url = useR2 ? await uploadAttachmentToR2(req.file, name) : `/uploads/${req.file.filename}`;
+    res.json({ url, originalName: name, size: req.file.size });
   } catch (err) {
     next(err);
   }

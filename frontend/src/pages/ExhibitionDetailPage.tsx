@@ -38,6 +38,8 @@ import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import RichText from '@/components/shared/RichText';
 import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import ViewCountBadge from '@/components/shared/ViewCountBadge';
+import { AttachmentEditor, AttachmentList } from '@/components/shared/ExhibitionAttachments';
+import { normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted, canOperate, canManage, canDelete } from '@/lib/exhibitionHost';
@@ -500,6 +502,9 @@ export default function ExhibitionDetailPage() {
           )}
         </div>
 
+        {/* 첨부파일(2026-10-08) — 모집 요강·지원서 양식. 누구나(비회원 포함) 내려받는다. 운영자·관리자는 공모 소개처럼 바로 고친다 */}
+        <AttachmentsSection exhibitionId={id!} items={normalizeAttachments(exhibition.attachments)} canEdit={canEdit} />
+
 
         {/* 홍보 사진 (종료된 전시) — 갤러리 페이지와 같은 정사각 칸 격자. 예전엔 높이 96px 고정에 잘라 채워서 사진이 가로 띠가 됐다(규칙 18·50) */}
         {exhibition.promoPhotos && exhibition.promoPhotos.length > 0 && (
@@ -954,5 +959,63 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * 첨부파일 (2026-10-08) — 누구나 내려받는다. 운영 갤러리·관리자는 [편집]으로 바로 고친다(공모 소개와 같은 권한, 승인 없이).
+ * 비어 있으면 방문자에게는 그리지 않는다 — 고칠 수 있는 사람에게만 채울 자리를 보인다.
+ * ⚠️ 버튼 이름에 '수정' 을 넣지 말 것 — 바로 위 [공모 소개]의 [수정] 과 이름이 겹쳐 화면 낭독기·테스트가 둘을 가르지 못한다.
+ */
+function AttachmentsSection({ exhibitionId, items, canEdit }: { exhibitionId: string; items: ExhibitionAttachment[]; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<ExhibitionAttachment[]>([]);
+  const [busy, setBusy] = useState(false);
+  const save = useMutation({
+    mutationFn: (list: ExhibitionAttachment[]) => api.patch(`/exhibitions/${exhibitionId}/attachments`, { attachments: list }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exhibition', exhibitionId] });
+      setEditing(false);
+      toast.success('첨부파일을 저장했어요.');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '저장하지 못했어요.'),
+  });
+
+  if (!editing && items.length === 0 && !canEdit) return null;
+  return (
+    <section aria-labelledby="ex-attachments">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 id="ex-attachments" className="text-xl font-medium">첨부파일</h2>
+        {canEdit && !editing && (
+          <button
+            type="button"
+            onClick={() => { setDraft(items); setEditing(true); }}
+            className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900"
+            aria-label={items.length ? '첨부파일 편집' : '첨부파일 추가'}
+          >
+            {items.length ? <><Edit3 size={14} /> 편집</> : <><Plus size={14} /> 추가</>}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-3">
+          <AttachmentEditor value={draft} onChange={(update) => setDraft((prev) => update(prev))} onBusyChange={setBusy} />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => save.mutate(draft)}
+              disabled={save.isPending || busy}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >저장</button>
+            <button type="button" onClick={() => setEditing(false)} disabled={save.isPending} className="px-4 py-2 text-sm text-gray-500">취소</button>
+          </div>
+        </div>
+      ) : items.length ? (
+        <AttachmentList items={items} />
+      ) : (
+        <p className="text-sm text-gray-400">모집 요강·지원서 양식 같은 파일을 붙이면 누구나 내려받을 수 있어요.</p>
+      )}
+    </section>
   );
 }

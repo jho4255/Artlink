@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { ensureExhibitionChat } from '../lib/chat';
 import { artistExhibitionLink, operationLink } from '../lib/notifyLinks';
@@ -11,6 +12,7 @@ import { assertFullExhibition } from '../lib/exhibitionStage';
 import { getSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { ownFileUrl } from '../lib/safeUrl';
 import { richField } from '../lib/richText';
+import { parseAttachments, readAttachments } from '../lib/exhibitionAttachments';
 import { maskExhibition, maskGallery } from '../lib/sanitize';
 import { deleteExhibitionWithNotice, exhibitionBlockReason, exhibitionDeleteFacts } from '../lib/deletion';
 import { notifyApprovalRequest } from '../lib/telegram';
@@ -86,6 +88,8 @@ const exhibitionCreateSchema = z.object({
   galleryId: z.number().int().positive('갤러리를 선택해주세요.'),
   imageUrl: z.string().optional().nullable(),
   customFields: z.array(customFieldSchema).optional().nullable(),
+  /** 첨부파일 `[{ url, name, size }]` (2026-10-08) — 내용 검사는 핸들러의 parseAttachments(우리 저장소 주소만 · 10개까지) */
+  attachments: z.array(z.unknown()).max(50).optional().nullable(),
 });
 
 /**
@@ -932,6 +936,7 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules
     }
 
     const safeImageUrl = ownImageOrNull(imageUrl, '포스터');
+    const attachments = parseAttachments(req.body.attachments);
     const exhibition = await prisma.exhibition.create({
       data: {
         title, type,
@@ -942,6 +947,7 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules
         submissionDeadline: subDeadline,
         recruitOnly,
         capacity, region, description: cleanDescription(description),
+        ...(attachments.length ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
         galleryId: hostGallery?.id ?? null,
         imageUrl: safeImageUrl,
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
@@ -1303,6 +1309,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       ...body,
       viewCount: seeViews ? exhibition.viewCount : undefined,
       customFields: parseCustomFields(exhibition.customFields),
+      // 첨부파일 — 누구나(비회원 포함) 내려받는다(2026-10-08). 이상한 줄은 건너뛰고 늘 배열로
+      attachments: readAttachments(exhibition.attachments),
       gallery,
       // 아트링크 주최 공모의 운영 갤러리 목록 (갤러리 주최면 빈 배열)
       managers: undefined,
@@ -1337,6 +1345,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
     }
 
     const safeImageUrl = ownImageOrNull(imageUrl, '포스터');
+    const attachments = parseAttachments(req.body.attachments);
     const exhibition = await prisma.exhibition.create({
       data: {
         title, type,
@@ -1347,6 +1356,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
         submissionDeadline: subDeadline,
         recruitOnly,
         capacity, region, description: cleanDescription(description), galleryId, imageUrl: safeImageUrl,
+        ...(attachments.length ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
         // 대표 이미지를 다중사진 첫 행으로 등록 (이후 상세 페이지에서 추가/삭제/순서변경)
@@ -1581,6 +1591,24 @@ router.patch('/:id/description', authenticate, validate(descriptionSchema), asyn
       data: { description: description! }
     });
     res.json(updated);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 첨부파일 고치기 (2026-10-08) — 공모 소개와 **같은 권한**(운영 갤러리·위임 갤러리·Admin, `assertCanManageExhibition`).
+ * 목록 전체를 보낸다(추가·빼기·순서가 한 번에). 승인 뒤에도 관리자 승인 없이 바로 바뀐다 — 모집 요강을 고쳐 다시 올리는 일이 흔하다.
+ * ⚠️ 뺀 파일을 저장소에서 지우지 않는다(lib/exhibitionAttachments.ts 머리말).
+ */
+const attachmentsSchema = z.object({ attachments: z.array(z.unknown()).max(50) });
+router.patch('/:id/attachments', authenticate, validate(attachmentsSchema), async (req, res, next) => {
+  try {
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
+    const attachments = parseAttachments(req.body.attachments);
+    await prisma.exhibition.update({
+      where: { id: exhibition.id },
+      data: { attachments: attachments.length ? (attachments as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
+    });
+    res.json({ attachments });
   } catch (error) { next(error); }
 });
 

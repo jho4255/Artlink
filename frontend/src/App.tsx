@@ -43,6 +43,10 @@ const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
 // const BenefitsPage = lazyWithReload(() => import('@/pages/BenefitsPage'));
 const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
 const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
+// 회원가입(역할을 고르고 카카오/이메일) · 이메일 가입 · 비밀번호 찾기 (2026-10-08) — 인증번호 메일로 이메일을 확인한다
+const SignupPage = lazyWithReload(() => import('@/pages/SignupPage'));
+const EmailSignupPage = lazyWithReload(() => import('@/pages/EmailSignupPage'));
+const PasswordResetPage = lazyWithReload(() => import('@/pages/PasswordResetPage'));
 const SupportPage = lazyWithReload(() => import('@/pages/SupportPage'));
 const ArtistsPage = lazyWithReload(() => import('@/pages/ArtistsPage'));
 const MessagesPage = lazyWithReload(() => import('@/pages/MessagesPage'));
@@ -146,6 +150,9 @@ export default function App() {
         {/* 혜택 비활성화 — 기존 링크·북마크·검색결과가 죽지 않게 404 대신 홈으로 */}
         <Route path="/benefits" element={<Navigate to="/" replace />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup/email" element={<EmailSignupPage />} />
+        <Route path="/password/reset" element={<PasswordResetPage />} />
         <Route path="/auth/kakao/callback" element={<AuthCallbackPage provider="kakao" />} />
         {/* 대화는 역할로 막지 않는다 — 방에 들어가 있으면 누구든 쓴다(Admin 도 단톡 참여자가 될 수 있다) */}
         <Route path="/messages" element={

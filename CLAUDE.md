@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2700+ tests** (2026-10-06): Backend 1570 (supertest, `artlink_test` DB 순차), Frontend 1144 (jsdom) · E2E 369(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2700+ tests** (2026-10-08): Backend 1618 (supertest, `artlink_test` DB 순차), Frontend 1174 (jsdom) · E2E 379(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2047,8 +2047,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ 갤러리·전시(Show) 상세의 `viewCount` 는 아직 누구에게나 응답에 실린다(화면은 관리자만) — 같은 규칙을 원하면 거기도 서버에서 뺄 것. 회귀: `view-count.test.ts`「공모 조회수는 올린 갤러리·관리자만 본다」(7) · 프론트 `viewCountBadge.test.ts`(5).
     - **보안 헤더** `helmet`(`index.ts`) — iframe 은 같은 출처만(`frame-ancestors 'self'` — ArtLook 은 같은 출처라 괜찮다) · HSTS(운영만) · nosniff · Referrer-Policy.
       COOP `same-origin-allow-popups`(카카오 로그인 팝업) · CORP `cross-origin`(이미지 프록시·공유 미리보기). ⚠️ **CSP 전체는 넣지 않았다** — 외부 글꼴·pdf.js(jsDelivr)·카카오·R2 목록부터 만들 것.
-    - **비밀번호 가입·로그인 API 는 운영에서 404**(`NODE_ENV=production` 이고 `ENABLE_PASSWORD_AUTH=true` 가 아니면) — 화면은 카카오만 쓰는데 API 로 남의 이메일을 선점할 수 있었다.
-      로컬·테스트·E2E 는 그대로 열린다. 인증 한도(15분 30회)는 **로그인·가입 POST 에만**(`/auth/me`·중복 확인이 같이 세져 15분간 로그인이 막혔다).
+    - **확인 없는 비밀번호 가입(`POST /auth/signup`)은 운영에서 404**(`NODE_ENV=production` 이고 `ENABLE_PASSWORD_AUTH=true` 가 아니면) — API 로 남의 이메일을 선점할 수 있었다.
+      로컬·테스트·E2E 는 그대로 열린다. ⚠️ **로그인(`POST /auth/login`)은 2026-10-08 부터 운영에서도 열려 있다** — 갤러리가 인증번호로 이메일을 확인하고 가입한다(규칙 66).
+      인증 한도(15분 30회)는 **로그인·가입 POST 에만**(`/auth/me`·중복 확인이 같이 세져 15분간 로그인이 막혔다) — 인증번호 받기·확인·갤러리 가입·비밀번호 재설정도 같은 한도.
     - **업로드** — 여러 장 API(`/upload/images`)는 지웠다(화면 미사용). 동시 처리 3개(`uploadSlot`, 넘치면 기다리고 30개 넘게 밀리면 503).
     - **화면** — 경로가 바뀌면 맨 위로(`ScrollToTop`, **`useLayoutEffect`** — useEffect 면 첫 프레임이 옛 위치로 그려졌다, POP·같은 경로는 그대로) ·
       화면 안에서 입력을 떼어 내는 동작은 `confirmDiscardUnsaved()` 를 먼저(카드 접기·다른 카드·탭·카드 제목 이동 — 페이지 이동 경고만으론 못 막았다) ·
@@ -2184,6 +2185,46 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `artlookScene.test.ts`(화면 가드를 ui.js 로) · `homepageEdit.test.ts`(work) · 백엔드 `static-cache.test.ts`(8) ·
       e2e `69-artlook-ux.spec.ts`(9 — 첫 화면 PC·휴대폰 · 받는 것·그리는 횟수 · 끌기·두 손가락 · 저장→ArtStory · 크기 입력하기 · 작품 0점 · 기억 · 판매작) · `41` 은 탭을 열고 고르게 고쳤다 ·
       하니스 `scratchpad/artlook-ux/walk.js`(크롬 138 + 사파리 120 확인, README).
+
+66. **이메일 가입 · 메일 발송 · 로그인/회원가입 · 가입 약관 · 공모 첨부파일** (2026-10-08, 사용자 결정 — 카카오 가입은 그대로 + 이메일 가입 추가(아티스트·갤러리·일반 모두) · 첨부는 누구나 · 비밀번호 찾기 · 로그인은 역할을 묻지 않고 [회원가입]이 따로 · 약관은 끝까지 읽어야 체크. 상세 architecture.md)
+    - **메일은 `backend/src/lib/mailer.ts` 하나로만 보낸다**(nodemailer → Gmail SMTP 465, 계정 artlink.aws@gmail.com, 보이는 주소 artlink@artlink.cc). 환경 변수 `SMTP_HOST·SMTP_PORT·SMTP_USER·SMTP_PASS·MAIL_FROM·MAIL_REPLY_TO`.
+      ⚠️⚠️ **앱 비밀번호를 저장소·문서·메모리에 적지 말 것** — 로컬은 `backend/.env`(git 제외), 운영은 Render 환경 변수. 운영에서 설정이 없으면 인증번호 받기가 503 이다(조용히 '보냈어요' 라고 하지 않는다).
+      테스트(`NODE_ENV=test`)는 절대 안 보내고(`setup.ts` 가 SMTP 값을 비운다) 로컬은 **테스트용 주소**(`isDevFakeAddress` — @…test·@example.com·시드의 @artlink.com·@test.com 등 남의 도메인)를 보내지 않고 보관함에만 둔다.
+      보관함은 `GET /api/auth/dev-mails`(개발자 로그인과 같은 이중 차단). ⚠️ 새 E2E·시드에 실제 도메인 주소를 쓰지 말 것 — 로컬 백엔드가 진짜로 보낸다.
+      지금 보내는 메일은 **인증번호뿐**이라 수신 동의가 없다 — 소식·광고 메일을 보내게 되면 그때 동의를 따로 받을 것.
+    - **인증번호는 `lib/emailCode.ts`**: 6자리·10분·5번 틀리면 끝·다시 받기 1분·주소당 1시간 5번·가장 최근 번호만·번호는 해시로만.
+      ⚠️ **하루 전체 300통(`DAILY_SEND_MAX`) + IP 당 1시간 10번**(index.ts) — Gmail 개인 계정은 하루 약 500통이고 **갤러리 홍보 메일 발송기와 같은 계정**이다.
+      로그인·가입 한도의 'IP'는 `clientKey`(index.ts) — **`CF-Connecting-IP` 먼저**. 실서버는 Cloudflare(우리 도메인) → Render(이것도 Cloudflare 엣지)를 거쳐
+      `req.ip` 가 엣지 주소일 수 있다 — 그러면 같은 엣지의 여러 사람이 한 칸을 나눠 써 남 때문에 인증번호를 못 받는다. Cloudflare 는 이 헤더를 덮어쓰므로 위조할 수 없다.
+      ⚠️ 그 판단이 틀려도 버티게 **로그인은 이메일별로도 센다**(`lib/loginThrottle.ts` — 15분 10번 틀리면 그 이메일은 15분 막힘, 비밀번호 재설정하면 풀림,
+      없는 계정도 똑같이 센다). 서버 메모리라 인스턴스를 여럿으로 늘리면 DB 로 옮길 것(2026-10-08 자동 보안 검토 지적 반영).
+      아무 주소로 번호를 계속 요청하면 한도가 바닥나 발신 계정이 막힐 수 있어서 넘으면 503 으로 끊는다. 맞히면 **인증 토큰**(JWT `kind:'email-verified'`, 30분)을 주고
+      가입·재설정이 그 토큰으로 줄을 **한 번만** 쓴다. ⚠️ '인증된 줄이 있나' 로만 판정하지 말 것(맞힌 사람보다 먼저 남이 그 주소로 가입할 수 있다).
+    - **이메일 가입은 모든 역할**(`POST /auth/email-signup {verificationToken, role, …}` — 아티스트·갤러리·일반, 관리자는 400. 화면 `/signup/email`, `User.emailVerifiedAt`).
+      처음엔 갤러리만이었다가 로컬 확인 중 사용자가 넓혔다("일반이랑 아티스트도"). 가입 화면에도 역할 칸이 있어 [회원가입]에서 고른 역할(`?role=`)을 거기서 바꿀 수 있다.
+      갈 곳: 로그인 전에 온 곳 > 갤러리는 `/galleries/new` > 그 밖에는 로그인과 같은 규칙(작품 0점 작가 → 홈페이지 편집).
+    - **로그인 화면은 역할을 묻지 않는다 — [회원가입]이 따로다**(2026-10-08 사용자 결정 "어짜피 공통이니 회원가입 버튼만 따로", `lib/signupRole.ts`).
+      로그인(`/login`) = [카카오로 로그인] · 이메일 로그인(이 브라우저에서 쓴 주소를 채워 둔다) · [비밀번호 찾기] · 아래 [회원가입]. 로그인하면 **가입했던 계정 그대로**.
+      카카오로 로그인했는데 아직 가입 안 한 카카오 계정이면 지금처럼 '회원 정보 입력'이 열린다(역할 기본값 아티스트, 바꿀 수 있다).
+      회원가입(`/signup`) = [아티스트 · 갤러리 · 일반](`components/shared/RoleChoice.tsx`) → [카카오로 가입하기] / [이메일로 가입하기](`/signup/email?role=`).
+      카카오로 가입하면 고른 역할을 적어 두고(30분, localStorage — 콜백이 다른 탭일 수 있다) '회원 정보 입력'이 미리 골라 둔다(두 번 고르지 않게).
+      공모 지원/초대 코드로 온 길(`post_login_redirect`)이면 회원가입에 **아티스트**를 골라 둔다(광고 → 공모 → 지원 흐름에 한 번 더 누르지 않게).
+      ⚠️ 잠깐 '로그인 화면에서 역할 먼저'였다가 되돌렸다 — 어느 역할이든 카카오·이메일 둘 다라 로그인에서 고를 이유가 없다. 로그인 화면에 역할 칸을 되살리지 말 것.
+    - **가입 약관은 끝까지 읽어야 체크된다**(2026-10-08 사용자 결정, `components/shared/SignupConsent.tsx` — 카카오 가입·이메일 가입 공용). 전문을 칸 안에 띄우고 그 칸을 맨 아래까지 내려야
+      그 항목(과 전체 동의)이 체크된다. 읽기 전에 누르면 체크하지 않고 "끝까지 읽어야 체크할 수 있어요" + 그 칸으로 데려간다(체크박스는 `aria-disabled` — 진짜 disabled 면 누를 때 이유를 못 보여 준다).
+      전문은 `/terms`·`/privacy` 화면과 **같은 컴포넌트**(`TermsBody`·`PrivacyBody`, `compact`) — 문구를 한 곳에서 고친다.
+      ⚠️ 체크 줄 아래 회색 요약(자동 처리 사항 · 수집 항목)을 되살리지 말 것(사용자가 지웠다). E2E 는 칸을 `scrollTo` 로 내린 뒤 체크한다(`readAndAgreeAll`).
+      관리자 [승인 관리]의 갤러리 카드가 **가입 계정 · 이메일 · '이메일 인증됨'/'카카오 가입 · 이메일 미확인'** 을 보여 준다 — 그 메일이 갤러리 메일인지 관리자가 승인 때 본다.
+      비밀번호 찾기 `POST /auth/password/reset`(같은 인증번호, 바로 로그인). 이메일로 로그인하는 계정은 프로필에서 이메일을 못 바꾼다(400 — 확인 없이 아이디가 바뀐다).
+      비밀번호 규칙은 서버 `passwordProblem` ↔ 프론트 `lib/emailAuth.ts` 같은 규칙(8~72바이트 · 영문+숫자, `emailAuth.test.ts` 가 대조).
+    - ⚠️⚠️ **같은 비밀 키로 서명한 토큰은 종류를 확인하고 받을 것**(2026-10-08 발견·수정). 카카오 가입 완료(`/complete-registration`)가 임시 토큰의 provider 를 안 보고
+      `findFirst({ provider: payload.provider, … })` 를 했다 — 로그인 토큰을 넣으면 provider 가 undefined 라 Prisma 가 조건을 빼고 **아무 회원**을 찾아 그 회원으로 로그인시켰다.
+      지금은 `provider==='KAKAO' && providerId` 확인. 새 토큰 종류를 만들면 `kind` 를 넣고 읽는 쪽이 확인한다. 회귀: `gallery-email-auth.test.ts`「카카오 가입 토큰 자리에 다른 토큰」.
+    - **첨부파일**: `Exhibition.attachments` JSON `[{url,name,size}]` — 규칙 `lib/exhibitionAttachments.ts`(우리 저장소 주소만 · 10개 · 읽을 땐 이상한 줄 건너뜀). 업로드는 전용 `POST /api/upload/attachment`
+      (갤러리·관리자 · 문서·압축·JPG/PNG · 20MB · **받은 그대로** 저장 · R2 에 원래 이름을 Content-Disposition 으로). 고치기 `PATCH /exhibitions/:id/attachments`(공모 소개와 같은 권한, 승인 없이).
+      ⚠️ 뺀 첨부·지운 공고의 파일을 저장소에서 지우지 말 것 — 다른 공고가 같은 주소를 넣을 수 있다. ⚠️ 형식·개수 상수는 서버와 프론트 `lib/attachments.ts` 가 같아야 한다(`attachments.test.ts` 대조).
+      ⚠️ 썸네일 백필 `SOURCES` 에 넣지 말 것(규칙 21b). 공고 상세 [첨부파일]의 버튼 이름에 '수정' 을 쓰지 말 것(바로 위 공모 소개 [수정]과 겹친다 — '편집'·'추가').
+    - 회귀: backend `email-auth.test.ts`(36) · `exhibition-attachments.test.ts`(14) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` · e2e `70-email-signup-and-attachments.spec.ts`(10).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

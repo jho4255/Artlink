@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { peekPostLoginRedirect, resolvePostLoginPath, setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { checkOAuthState } from '@/lib/oauthState';
 import KakaoLoginButton from '@/components/shared/KakaoLoginButton';
+import SignupConsent from '@/components/shared/SignupConsent';
+import { clearSignupRole, peekSignupRole } from '@/lib/signupRole';
 import { armHomepageNudge } from '@/lib/homepageNudge';
 import { noteGuestSignup, noteGuestStep } from '@/lib/guestActivity';
 import { roleLabel, VISITOR_ROLE_HINT } from '@/lib/utils';
@@ -24,7 +26,8 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'ARTIST' | 'GALLERY' | 'VISITOR'>('ARTIST');
+  // [회원가입]에서 고른 역할을 이어받는다(2026-10-08, lib/signupRole.ts) — 두 번 고르지 않게. 여기서 바꿀 수도 있다
+  const [role, setRole] = useState<'ARTIST' | 'GALLERY' | 'VISITOR'>(() => peekSignupRole() ?? 'ARTIST');
   // 가입 필수 동의 — 이용약관 · 개인정보 처리방침. 서버도 true 가 아니면 400 으로 막는다
   // (화면에서만 막으면 API 를 직접 부르는 순간 미동의 가입이 된다).
   const [agreeTerms, setAgreeTerms] = useState(false);
@@ -33,6 +36,7 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [error, setError] = useState('');
 
   const handleSuccess = async (data: { token: string; user: any }) => {
+    clearSignupRole();
     queryClient.clear();
     login(data.token, data.user);
     // 로그인/가입 전에 온 곳(예: 공모 지원)이 있으면 그리로 복귀, 없으면 마이페이지.
@@ -221,42 +225,12 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
             </div>
           </div>
 
-          {/* ── 필수 동의 ──────────────────────────────────────────────
-              ⚠️ 링크는 **새 탭**으로 연다. 같은 탭에서 열면 입력하던 내용과 tempToken 이 날아가고,
-                 돌아왔을 때 '등록 세션이 만료되었습니다' 를 보게 된다.
-              ⚠️ 마케팅 수신 동의는 두지 않는다 — 우리는 메일을 보내지 않는다. */}
-          <div className="pt-1 space-y-2 rounded-lg border border-gray-200 p-3">
-            <label className="flex cursor-pointer items-center gap-2 border-b border-gray-100 pb-2">
-              <input
-                type="checkbox" checked={allAgreed}
-                onChange={(e) => { setAgreeTerms(e.target.checked); setAgreePrivacy(e.target.checked); }}
-                className="h-4 w-4 accent-gray-900"
-              />
-              <span className="text-sm font-medium text-gray-900">전체 동의</span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2">
-              <input type="checkbox" checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} className="mt-0.5 h-4 w-4 accent-gray-900" />
-              <span className="text-sm text-gray-600">
-                <b className="font-medium text-gray-900">[필수]</b>{' '}
-                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-gray-900 underline" onClick={(e) => e.stopPropagation()}>이용약관</a>
-                에 동의합니다
-                <span className="mt-0.5 block text-xs text-gray-400">
-                  정산 무응답 3일 자동 수락, 방치 공모 20일 자동 정리 등 자동으로 처리되는 사항이 포함됩니다.
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2">
-              <input type="checkbox" checked={agreePrivacy} onChange={(e) => setAgreePrivacy(e.target.checked)} className="mt-0.5 h-4 w-4 accent-gray-900" />
-              <span className="text-sm text-gray-600">
-                <b className="font-medium text-gray-900">[필수]</b>{' '}
-                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-gray-900 underline" onClick={(e) => e.stopPropagation()}>개인정보 처리방침</a>
-                에 동의합니다
-                <span className="mt-0.5 block text-xs text-gray-400">
-                  이름·이메일·연락처를 수집하며, 공모 지원 시 해당 갤러리에 제공됩니다.
-                </span>
-              </span>
-            </label>
-          </div>
+          {/* ── 필수 동의 ── 이메일 가입과 같은 부품 — 전문을 끝까지 읽어야 체크된다(components/shared/SignupConsent.tsx) */}
+          <SignupConsent
+            agreeTerms={agreeTerms}
+            agreePrivacy={agreePrivacy}
+            onChange={(next) => { setAgreeTerms(next.agreeTerms); setAgreePrivacy(next.agreePrivacy); }}
+          />
 
           {error && <p className="text-sm text-accent">{error}</p>}
 

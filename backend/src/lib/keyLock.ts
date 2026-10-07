@@ -21,6 +21,8 @@ export const LOCK_NS = {
   exhibitionDeleteRequests: 7103,
   /** 갤러리 삭제 요청은 대상당 대기 중 하나 — key = galleryId */
   galleryDeleteRequests: 7104,
+  /** 이메일 인증번호 — 1분에 한 번 · 1시간에 5번(lib/emailCode.ts). key = 주소의 해시(int32) */
+  emailCodes: 7105,
 } as const;
 
 export async function withKeyLock<T>(ns: number, key: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

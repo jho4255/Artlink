@@ -3,7 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import path from 'path';
 import dotenv from 'dotenv';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
 
 dotenv.config();
@@ -110,6 +110,16 @@ const isPollingRequest = (req: express.Request) =>
 // 비회원 둘러보기 기록(2026-10-03) — 화면을 옮길 때마다 보내므로 전역 300 에서 빼 별도 한도로 센다(비회원의 화면 요청 몫을 먹지 않게).
 // 탭 하나는 많아야 5초에 한 번(15분 180회)이라 300 이면 같은 IP 의 탭 둘까지 넉넉하다. 넘치면 429 — 화면은 조용히 버린다(기록만 빠진다).
 const isGuestBeacon = (req: express.Request) => req.method === 'POST' && req.path === '/guest-activity';
+/**
+ * 로그인·가입 한도를 셀 때의 '한 사람' — Cloudflare 가 붙여 주는 실제 접속 주소(`CF-Connecting-IP`)를 먼저 본다(2026-10-08).
+ * artlink.cc 는 Cloudflare 를 거쳐 Render(이것도 Cloudflare 엣지 — onrender.com 주소도 `server: cloudflare`)로 들어온다.
+ * Render 앞단 프록시가 여러 겹이라 `trust proxy 1` 로 고른 `req.ip` 가 그중 하나의 주소일 수 있어, 그대로 세면 같은 엣지를 지나는
+ * 여러 사람이 한 칸을 나눠 써서 **남 때문에 인증번호를 못 받는** 일이 생긴다. Cloudflare 는 이 헤더를 직접 채우고 클라이언트가 보낸 값을
+ * 덮어쓴다(Render 서비스에는 Cloudflare 를 거치지 않고 닿는 길이 없다). 없으면(로컬) `req.ip`. IPv6 는 `ipKeyGenerator` 가 대역으로 묶는다.
+ * ⚠️ 이 판단이 틀려 헤더를 위조할 수 있더라도 버티게, 로그인은 **이메일별로도** 센다(lib/loginThrottle.ts — 15분 10번),
+ *    인증번호는 번호당 5번·주소당 1시간 5번·하루 300통(lib/emailCode.ts)이 IP 와 무관하게 막는다.
+ */
+const clientKey = (req: express.Request) => ipKeyGenerator(String(req.headers['cf-connecting-ip'] || req.ip || ''));
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => isPollingRequest(req) || isGuestBeacon(req) }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));
@@ -117,9 +127,13 @@ if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true'
   // 로그인·가입 시도만 엄하게(15분 30회). 예전엔 `/api/auth` 전체였는데 마이페이지·PDF 만들기·홈페이지 편집이 열 때마다 `/auth/me` 를,
   // 주소·닉네임 입력이 중복 확인을 부르는 것까지 세어, 같은 와이파이의 여러 명이 쓰면 **15분간 로그인이 막혔다**(2026-10-03 점검 P2-17).
   // 그 조회들은 위의 전역 한도(300)로 센다.
+  // 이메일 인증번호(받기·확인)·이메일 가입·비밀번호 재설정(2026-10-08)도 같은 한도로 센다 — 번호 맞히기·주소 조회를 IP 단위로 막는다
   const isSignInAttempt = (req: express.Request) =>
-    req.method === 'POST' && /^\/(login|signup|kakao|complete-registration|dev-login)$/.test(req.path);
-  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, skip: (req) => !isSignInAttempt(req) }));
+    req.method === 'POST' && /^\/(login|signup|kakao|complete-registration|dev-login|email\/code|email\/verify|email-signup|password\/reset)$/.test(req.path);
+  app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, skip: (req) => !isSignInAttempt(req) }));
+  // 인증번호 메일 보내기는 IP 당 1시간 10번 — 메일 한 통마다 Gmail 하루 한도(약 500, 홍보 메일과 같은 계정)를 쓴다(lib/emailCode.ts DAILY_SEND_MAX 와 함께)
+  app.use('/api/auth/email/code', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, skip: (req) => req.method !== 'POST',
+    message: { error: '인증번호를 너무 여러 번 받았어요. 1시간 뒤에 다시 시도해 주세요.' } }));
 }
 
 // API 응답은 절대 HTTP 캐시하지 않음.

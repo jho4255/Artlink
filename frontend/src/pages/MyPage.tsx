@@ -62,6 +62,8 @@ import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
+import { AttachmentEditor, AttachmentList } from '@/components/shared/ExhibitionAttachments';
+import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
 import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 
 const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
@@ -1872,11 +1874,13 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
   }, [initialViewMode]);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[], attachments: [] as ExhibitionAttachment[] };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
   const [termsError, setTermsError] = useState(false);
+  // 첨부파일을 올리는 중 — 다 올라가기 전에 등록하면 그 파일이 빠진다
+  const [attachBusy, setAttachBusy] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
@@ -2046,6 +2050,10 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
   /** [등록 요청] — 비어 있는 칸을 표시하고, 약관 동의가 없으면 약관으로 데려간다 */
   const requestSubmit = () => {
+    if (attachBusy) {
+      toast.error('첨부파일을 올리는 중이에요. 다 올라간 뒤에 눌러 주세요.');
+      return;
+    }
     // 필수 항목 구체적 검증 + 빨간 테두리 하이라이트
     const missing: string[] = [];
     const errorFields = new Set<string>();
@@ -2108,7 +2116,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
               title="작성하던 공고가 있어요"
               summary={draftPending.data.title}
               savedAt={draftPending.savedAt}
-              onResume={() => { const d = resumeDraft(); if (d) setForm({ ...emptyExForm, ...d }); }}
+              onResume={() => { const d = resumeDraft(); if (d) setForm({ ...emptyExForm, ...d, attachments: normalizeAttachments((d as { attachments?: unknown }).attachments) }); }}
               onDiscard={discardDraft}
             />
           )}
@@ -2199,6 +2207,18 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       minHeight={200}
                     />
                   </div>
+                </FormField>
+                {/* 첨부파일(2026-10-08) — 모집 요강·지원서 양식. 공고 상세에서 누구나 내려받는다. 함수형 갱신(여러 파일을 차례로 올린다) */}
+                <FormField
+                  label="첨부파일 (선택)"
+                  className="mt-5"
+                  hint={`모집 요강·지원서 양식 같은 파일을 붙이면 공고 상세에서 누구나 내려받을 수 있어요. ${ATTACHMENT_TYPES_TEXT}, 한 파일 20MB, ${ATTACHMENT_MAX}개까지.`}
+                >
+                  <AttachmentEditor
+                    value={form.attachments}
+                    onChange={(update) => setForm(prev => ({ ...prev, attachments: update(prev.attachments ?? []) }))}
+                    onBusyChange={setAttachBusy}
+                  />
                 </FormField>
               </FormSection>
 
@@ -2304,7 +2324,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
         details={[
           '관리자가 내용을 확인한 뒤 모집공고에 올려요. 승인되면 알림으로 알려 드려요.',
           ...(summary ? [`일정 · ${summary}`] : []),
-          '승인 뒤에는 공고 소개·포스터·추가 질문·모집 인원을 고칠 수 있어요. 날짜를 바꿔야 하면 1:1 문의로 알려 주세요.',
+          ...(form.attachments.length ? [`첨부파일 ${form.attachments.length}개 — 공고 상세에서 누구나 내려받아요.`] : []),
+          '승인 뒤에는 공고 소개·포스터·첨부파일·추가 질문·모집 인원을 고칠 수 있어요. 날짜를 바꿔야 하면 1:1 문의로 알려 주세요.',
         ]}
         confirmText="등록 요청"
         onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, customFields: sanitizeCustomFields(form.customFields) }); }}
@@ -3238,11 +3259,26 @@ function ApprovalsSection() {
               <h4 className="font-medium mt-1">{item.name || item.title || item.target?.name || String(parseApprovalChanges(item.changes).title ?? '') || `#${item.targetId}`}</h4>
               {item._type === 'gallery' && (
                 <div className="text-sm text-gray-500 space-y-0.5 mt-1">
+                  {/* 가입 계정 — 이메일로 가입한 갤러리는 인증번호로 확인한 주소다(2026-10-08). 이 주소가 그 갤러리 메일인지 보고 승인한다.
+                      카카오 가입은 가입 화면에서 직접 적은 주소라 확인되지 않았다 */}
+                  {item.owner && (
+                    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 break-all">
+                      <span>가입 계정: {item.owner.name} · {item.owner.email}</span>
+                      {item.owner.emailVerifiedAt
+                        ? <StatusChip variant="done">이메일 인증됨</StatusChip>
+                        : <StatusChip>{item.owner.provider === 'KAKAO' ? '카카오 가입 · 이메일 미확인' : '이메일 미확인'}</StatusChip>}
+                    </p>
+                  )}
                   <p>주소: {item.address}</p>
                   <p>전화: {item.phone} · 대표: {item.ownerName}</p>
                   <p>지역: {regionLabels[item.region]}</p>
                   {item.instagramUrl && <p className="break-all">인스타: {item.instagramUrl}</p>}
-                  {item.email && <p className="break-all">이메일: {item.email}</p>}
+                  {item.email && (
+                    <p className="break-all">
+                      갤러리 이메일: {item.email}
+                      {item.owner?.email && item.owner.email.toLowerCase() === String(item.email).trim().toLowerCase() && <span className="text-gray-400"> (가입 계정과 같음)</span>}
+                    </p>
+                  )}
                   {item.mainImage && <img src={item.mainImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
                 </div>
               )}
@@ -3253,6 +3289,13 @@ function ApprovalsSection() {
                   <p>공모 기간: {item.deadlineStart ? new Date(item.deadlineStart).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.deadline).toLocaleDateString('ko')}</p>
                   <p>전시 기간: {item.exhibitStartDate ? new Date(item.exhibitStartDate).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.exhibitDate).toLocaleDateString('ko')}</p>
                   {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
+                  {/* 첨부파일(2026-10-08) — 승인하면 누구나 내려받으므로 먼저 열어 본다 */}
+                  {normalizeAttachments(item.attachments).length > 0 && (
+                    <div className="pt-2">
+                      <p className="mb-1 text-xs text-gray-400">첨부파일 {normalizeAttachments(item.attachments).length}개</p>
+                      <AttachmentList items={normalizeAttachments(item.attachments)} />
+                    </div>
+                  )}
                 </div>
               )}
               {item._type === 'show' && (
