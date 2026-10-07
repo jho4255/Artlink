@@ -13,7 +13,7 @@ import {
   consumeEmailCode, issueEmailCode, normalizeEmail, passwordProblem, readVerificationToken, verifyEmailCode, type EmailCodePurpose,
 } from '../lib/emailCode';
 import { devOutbox } from '../lib/mailer';
-import { clearLoginFailures, loginBlocked, noteLoginFailure } from '../lib/loginThrottle';
+import { clearAllLoginFailures, clearLoginFailures, loginBlock, noteLoginFailure } from '../lib/loginThrottle';
 import { clientIp } from '../lib/clientIp';
 
 const router = Router();
@@ -228,9 +228,15 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
-    // 실패 한도 — 이메일+주소 15분 10번 · 이메일 전체 15분 50번(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
+    // 실패 한도 — 이메일+주소 15분 10번 · 이메일 전체 하루 50번(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
     const ip = clientIp(req);
-    if (loginBlocked(email, ip)) {
+    const block = loginBlock(email, ip);
+    if (block === 'account') {
+      // 하루 동안 남는다 — 기다리라고 하지 않는다. 비밀번호 찾기를 하면 그 자리에서 풀리고 로그인된다.
+      // '이 계정' 이라 하지 않는다 — 없는 이메일도 똑같이 세므로, 그 말이 가입 여부를 아는 척하게 된다
+      throw new AppError('이 이메일로 로그인에 너무 많이 실패해 비밀번호 로그인을 잠시 막았어요. 비밀번호 찾기로 새 비밀번호를 정하면 바로 로그인돼요.', 429);
+    }
+    if (block === 'ip') {
       throw new AppError('로그인을 여러 번 실패했어요. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 해 주세요.', 429);
     }
 
@@ -250,7 +256,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
     }
 
-    clearLoginFailures(email);
+    clearLoginFailures(email, ip);
     const token = generateToken(user);
     res.json({ token, user: safeUser(user) });
   } catch (error) { next(error); }
@@ -367,7 +373,7 @@ router.post('/password/reset', validate(passwordResetSchema), async (req, res, n
       // 번호를 받아 맞혔으니 이 주소는 확인된 것이다
       return tx.user.update({ where: { id: u.id }, data: { password: hashed, emailVerifiedAt: u.emailVerifiedAt ?? new Date() } });
     });
-    clearLoginFailures(email);   // 로그인 실패로 막혀 있었으면 비밀번호를 새로 정한 순간 풀린다
+    clearAllLoginFailures(email);   // 로그인 실패로 막혀 있었으면 비밀번호를 새로 정한 순간 풀린다(주인의 다른 기기까지)
     res.json({ token: generateToken(user), user: safeUser(user) });
   } catch (error) { next(error); }
 });

@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import { request, cleanDb, seedUsers, seedGallery, authToken, testPrisma } from './helpers';
 import { clearDevOutbox, devOutbox, isDevFakeAddress } from '../lib/mailer';
 import { codeMail, DAILY_SEND_MAX, MAX_ATTEMPTS, passwordProblem } from '../lib/emailCode';
-import { LOGIN_FAIL_MAX, LOGIN_FAIL_MAX_PER_EMAIL, loginBlocked, noteLoginFailure, resetLoginThrottle } from '../lib/loginThrottle';
+import { LOGIN_FAIL_MAX, LOGIN_FAIL_MAX_PER_EMAIL, LOGIN_FAIL_MAX_TRACKED, loginBlocked, noteLoginFailure, resetLoginThrottle, trackedLoginRecords } from '../lib/loginThrottle';
 
 const CONSENT = { agreeTerms: true, agreePrivacy: true };
 const PW = 'gallery2026';
@@ -310,14 +310,20 @@ describe('이메일 로그인', () => {
     expect(blocked.body.error).toMatch(/비밀번호 찾기/);
     // 진짜 주인은 다른 곳에서 들어온다 — 남이 일부러 틀려 주인을 막을 수 없다
     expect((await loginFrom('203.0.113.20', 'brute@gallery.test', PW)).status).toBe(200);
+    // 주인이 들어왔다고 남이 넣어 보던 주소의 한도까지 새로 채워 주지 않는다
+    expect((await loginFrom('198.51.100.7', 'brute@gallery.test', PW)).status).toBe(429);
   });
 
-  it('★ 주소를 바꿔 가며 넣어도 이메일 전체로 15분 50번 — 그다음엔 어디서도 막힌다, 비밀번호를 재설정하면 풀린다', async () => {
+  it('★ 주소를 바꿔 가며 넣어도 이메일 전체로 하루 50번 — 그다음엔 어디서도 막힌다, 비밀번호를 재설정하면 풀린다', async () => {
     await makeAccount('spray@gallery.test');
     for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) {
       expect((await loginFrom(`192.0.2.${i}`, 'spray@gallery.test', `wrong${i}pass`)).status).toBe(401);
     }
-    expect((await loginFrom('203.0.113.99', 'spray@gallery.test', PW)).status).toBe(429);
+    const blocked = await loginFrom('203.0.113.99', 'spray@gallery.test', PW);
+    expect(blocked.status).toBe(429);
+    // 하루 동안 남는 잠금이다 — '15분 뒤에' 라고 하지 않고 바로 푸는 길(비밀번호 찾기)을 알려 준다
+    expect(blocked.body.error).toMatch(/비밀번호 찾기/);
+    expect(blocked.body.error).not.toMatch(/15분/);
     const token = await verifiedToken('spray@gallery.test', 'reset');
     expect((await request.post('/api/auth/password/reset').send({ verificationToken: token, password: 'renewed2026' })).status).toBe(200);
     expect((await loginFrom('203.0.113.99', 'spray@gallery.test', 'renewed2026')).status).toBe(200);
@@ -331,6 +337,27 @@ describe('이메일 로그인', () => {
     for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) noteLoginFailure('win2@gallery.test', `10.1.${i}.1`, t0);
     expect(loginBlocked('win2@gallery.test', '10.9.9.9', t0 + 3 * 3600_000)).toBe(true);    // 여러 주소를 돌려 써도 하루 동안
     expect(loginBlocked('win2@gallery.test', '10.9.9.9', t0 + 25 * 3600_000)).toBe(false);
+  });
+
+  it('★ 메모리 상한은 꼭 지킨다 — 서로 다른 이메일로 쏟아부어도 기록 수가 상한을 넘지 않고, 찬 뒤에도 실패마다 전부 훑지 않는다', () => {
+    const t0 = 2_000_000;
+    const started = Date.now();
+    for (let i = 0; i < LOGIN_FAIL_MAX_TRACKED * 2; i++) {
+      noteLoginFailure(`flood${i}@x.test`, '10.2.0.1', t0);
+      if (trackedLoginRecords() > LOGIN_FAIL_MAX_TRACKED) throw new Error(`상한을 넘었다: ${trackedLoginRecords()}`);
+    }
+    // 한 건씩 비우던 때는 상한을 조금 넘게 넣는 데만 100초가 걸렸다(찬 뒤로 실패마다 5만 건을 훑었다)
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('기록이 넘쳐 비울 때도 이메일 전체 기록(무차별 대입 한도)은 이메일+주소 기록보다 나중에 지운다', () => {
+    const t0 = 3_000_000;
+    for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) noteLoginFailure('target@gallery.test', `10.4.0.${i}`, t0);
+    expect(loginBlocked('target@gallery.test', '10.9.9.9', t0)).toBe(true);
+    // 한 이메일로 주소만 바꿔 쏟아부어 기록을 채운다 — 주소 기록만 잔뜩 생긴다
+    for (let i = 0; i < LOGIN_FAIL_MAX_TRACKED; i++) noteLoginFailure('flooder@x.test', `10.5.${i >> 8}.${i & 255}`, t0 + 1);
+    expect(trackedLoginRecords()).toBeLessThanOrEqual(LOGIN_FAIL_MAX_TRACKED);
+    expect(loginBlocked('target@gallery.test', '10.9.9.9', t0 + 2)).toBe(true);
   });
 
   it('없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다', async () => {
