@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import path from 'path';
 import dotenv from 'dotenv';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { clientIp } from './lib/clientIp';
 import helmet from 'helmet';
 
 dotenv.config();
@@ -116,10 +117,10 @@ const isGuestBeacon = (req: express.Request) => req.method === 'POST' && req.pat
  * Render 앞단 프록시가 여러 겹이라 `trust proxy 1` 로 고른 `req.ip` 가 그중 하나의 주소일 수 있어, 그대로 세면 같은 엣지를 지나는
  * 여러 사람이 한 칸을 나눠 써서 **남 때문에 인증번호를 못 받는** 일이 생긴다. Cloudflare 는 이 헤더를 직접 채우고 클라이언트가 보낸 값을
  * 덮어쓴다(Render 서비스에는 Cloudflare 를 거치지 않고 닿는 길이 없다). 없으면(로컬) `req.ip`. IPv6 는 `ipKeyGenerator` 가 대역으로 묶는다.
- * ⚠️ 이 판단이 틀려 헤더를 위조할 수 있더라도 버티게, 로그인은 **이메일별로도** 센다(lib/loginThrottle.ts — 15분 10번),
+ * ⚠️ 이 판단이 틀려 헤더를 위조할 수 있더라도 버티게, 로그인은 **이메일별로도** 센다(lib/loginThrottle.ts — 이메일+주소 10번 · 이메일 전체 50번),
  *    인증번호는 번호당 5번·주소당 1시간 5번·하루 300통(lib/emailCode.ts)이 IP 와 무관하게 막는다.
  */
-const clientKey = (req: express.Request) => ipKeyGenerator(String(req.headers['cf-connecting-ip'] || req.ip || ''));
+const clientKey = (req: express.Request) => ipKeyGenerator(clientIp(req));
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => isPollingRequest(req) || isGuestBeacon(req) }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));

@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import { request, cleanDb, seedUsers, seedGallery, authToken, testPrisma } from './helpers';
 import { clearDevOutbox, devOutbox, isDevFakeAddress } from '../lib/mailer';
 import { codeMail, DAILY_SEND_MAX, MAX_ATTEMPTS, passwordProblem } from '../lib/emailCode';
-import { LOGIN_FAIL_MAX, resetLoginThrottle } from '../lib/loginThrottle';
+import { LOGIN_FAIL_MAX, LOGIN_FAIL_MAX_PER_EMAIL, resetLoginThrottle } from '../lib/loginThrottle';
 
 const CONSENT = { agreeTerms: true, agreePrivacy: true };
 const PW = 'gallery2026';
@@ -296,26 +296,36 @@ describe('이메일 로그인', () => {
     expect((await request.post('/api/auth/login').send({ email: 'nobody@gallery.test', password: PW })).status).toBe(401);
   });
 
-  it('★ 이메일별 실패 한도 — 15분에 10번 틀리면 맞는 비밀번호도 429, 비밀번호를 재설정하면 풀린다(IP 한도와 따로)', async () => {
+  /** Cloudflare 가 붙여 주는 접속 주소를 흉내 낸다(lib/clientIp.ts) */
+  const loginFrom = (ip: string, email: string, password: string) =>
+    request.post('/api/auth/login').set('CF-Connecting-IP', ip).send({ email, password });
+
+  it('★ 한 주소에서 15분에 10번 틀리면 그 주소는 맞는 비밀번호도 429 — 주인의 다른 주소는 그대로 들어온다(잠금 악용 방지)', async () => {
     await makeAccount('brute@gallery.test');
     for (let i = 0; i < LOGIN_FAIL_MAX; i++) {
-      expect((await request.post('/api/auth/login').send({ email: 'brute@gallery.test', password: `wrong${i}pass` })).status).toBe(401);
+      expect((await loginFrom('198.51.100.7', 'brute@gallery.test', `wrong${i}pass`)).status).toBe(401);
     }
-    const blocked = await request.post('/api/auth/login').send({ email: 'BRUTE@gallery.test', password: PW });
+    const blocked = await loginFrom('198.51.100.7', 'BRUTE@gallery.test', PW);
     expect(blocked.status).toBe(429);
     expect(blocked.body.error).toMatch(/비밀번호 찾기/);
-    // 다른 계정은 그대로
-    await makeAccount('other@gallery.test');
-    expect((await request.post('/api/auth/login').send({ email: 'other@gallery.test', password: PW })).status).toBe(200);
-    // 비밀번호를 재설정하면 바로 풀린다
-    const token = await verifiedToken('brute@gallery.test', 'reset');
+    // 진짜 주인은 다른 곳에서 들어온다 — 남이 일부러 틀려 주인을 막을 수 없다
+    expect((await loginFrom('203.0.113.20', 'brute@gallery.test', PW)).status).toBe(200);
+  });
+
+  it('★ 주소를 바꿔 가며 넣어도 이메일 전체로 15분 50번 — 그다음엔 어디서도 막힌다, 비밀번호를 재설정하면 풀린다', async () => {
+    await makeAccount('spray@gallery.test');
+    for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) {
+      expect((await loginFrom(`192.0.2.${i}`, 'spray@gallery.test', `wrong${i}pass`)).status).toBe(401);
+    }
+    expect((await loginFrom('203.0.113.99', 'spray@gallery.test', PW)).status).toBe(429);
+    const token = await verifiedToken('spray@gallery.test', 'reset');
     expect((await request.post('/api/auth/password/reset').send({ verificationToken: token, password: 'renewed2026' })).status).toBe(200);
-    expect((await request.post('/api/auth/login').send({ email: 'brute@gallery.test', password: 'renewed2026' })).status).toBe(200);
+    expect((await loginFrom('203.0.113.99', 'spray@gallery.test', 'renewed2026')).status).toBe(200);
   });
 
   it('없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다', async () => {
-    for (let i = 0; i < LOGIN_FAIL_MAX; i++) await request.post('/api/auth/login').send({ email: 'ghost@gallery.test', password: 'x1234567' });
-    expect((await request.post('/api/auth/login').send({ email: 'ghost@gallery.test', password: 'x1234567' })).status).toBe(429);
+    for (let i = 0; i < LOGIN_FAIL_MAX; i++) await loginFrom('198.51.100.8', 'ghost@gallery.test', 'x1234567');
+    expect((await loginFrom('198.51.100.8', 'ghost@gallery.test', 'x1234567')).status).toBe(429);
   });
 
   it('카카오 계정(비밀번호 없음)은 비밀번호로 들어갈 수 없다', async () => {

@@ -14,6 +14,7 @@ import {
 } from '../lib/emailCode';
 import { devOutbox } from '../lib/mailer';
 import { clearLoginFailures, loginBlocked, noteLoginFailure } from '../lib/loginThrottle';
+import { clientIp } from '../lib/clientIp';
 
 const router = Router();
 import { JWT_SECRET } from '../lib/jwt';
@@ -227,8 +228,9 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
-    // 이메일별 실패 한도(15분 10번) — IP 한도와 따로 센다(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
-    if (loginBlocked(email)) {
+    // 실패 한도 — 이메일+주소 15분 10번 · 이메일 전체 15분 50번(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
+    const ip = clientIp(req);
+    if (loginBlocked(email, ip)) {
       throw new AppError('로그인을 여러 번 실패했어요. 15분 뒤에 다시 시도하거나 비밀번호 찾기를 해 주세요.', 429);
     }
 
@@ -238,13 +240,13 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // 계정 부재/OAuth전용/탈퇴 시에도 동일 비용의 bcrypt를 수행해 존재여부 타이밍 노출 방지
     if (!user || !user.password || user.deletedAt) {
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
-      noteLoginFailure(email);   // 없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다
+      noteLoginFailure(email, ip);   // 없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다
       throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
     }
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
-      noteLoginFailure(email);
+      noteLoginFailure(email, ip);
       throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
     }
 
