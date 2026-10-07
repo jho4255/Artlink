@@ -14,8 +14,13 @@
  *
  * ⚠️ 서버 메모리에 든다 — 실서버는 인스턴스가 하나(Render Starter)라 충분하다. 배포·재시작하면 비워진다(그 정도는 괜찮다).
  *    인스턴스를 여럿으로 늘리면 DB 로 옮길 것.
+ * ⚠️ **비밀번호를 확인하기 전에 센다**(`reserveLoginAttempt`, 자동 보안 검토 지적). 판정만 먼저 하고 틀린 뒤에 세면, 비밀번호를
+ *    확인하는 동안(bcrypt 수십 ms) 같이 들어온 요청이 모두 같은 빈자리를 보고 통과한다 — 동시에 100개를 보내면 100개가 다 확인받는다.
+ *    판정과 세기 사이에 await 가 없게 한 번에 하고, 맞혔으면 `clearLoginFailures` 가 지운다.
  * ⚠️ 기록 수는 `LOGIN_FAIL_MAX_TRACKED` 를 **절대 넘지 않는다**(자동 보안 검토 — 서로 다른 이메일로 쏟아부어 메모리를 늘리는 공격).
- *    차면 한 번에 `LOW_WATER` 까지 비운다: 기한 지난 것 → ① → 그래도 많으면 오래된 것부터 ②까지.
+ *    차면 한 번에 `LOW_WATER` 까지 비운다: 기한 지난 것 → **실패가 적게 쌓인 것부터**(같으면 ① 먼저, 그다음 오래된 것부터).
+ *    ⚠️ '오래된 것부터' 만 보지 말 것 — 서로 다른 이메일로 쏟아부어 공격받는 계정의 ② 기록을 밀어내면 하루 50번이 다시 생긴다
+ *    (자동 보안 검토 지적). 많이 틀린 기록일수록 끝까지 남으므로, 그걸 밀어내려면 그만큼 틀린 기록을 수만 개 만들어야 한다.
  *    ⚠️ 한 건씩만 비우지 말 것 — 찬 뒤로 실패 한 번마다 5만 건을 훑게 된다(실측: 상한 넘게 넣는 테스트가 100초).
  * ⚠️ 없는 계정의 실패도 똑같이 센다 — 다르게 굴면 그 차이로 가입 여부가 드러난다.
  */
@@ -49,14 +54,24 @@ function current(key: string, now: number) {
 
 function makeRoom(now: number) {
   for (const [k, v] of fails) if (now - v.first > windowOf(k)) fails.delete(k);
-  // ②(이메일 전체)는 무차별 대입을 막는 마지막 장치라 ①부터 지운다
-  for (const k of fails.keys()) {
-    if (fails.size <= LOW_WATER) return;
-    if (!isEmailKey(k)) fails.delete(k);
+  if (fails.size <= LOW_WATER) return;
+  // 실패가 적게 쌓인 것부터 — 몇 번 틀린 기록까지 지워야 LOW_WATER 로 내려가는지(cut) 한 번 세고, 그 아래는 모두 지운다
+  const byCount = new Map<number, number>();
+  for (const v of fails.values()) byCount.set(v.count, (byCount.get(v.count) ?? 0) + 1);
+  let need = fails.size - LOW_WATER;
+  let cut = 0;
+  for (const c of [...byCount.keys()].sort((a, b) => a - b)) {
+    cut = c;
+    need -= byCount.get(c)!;
+    if (need <= 0) break;
   }
-  for (const k of fails.keys()) {
-    if (fails.size <= LOW_WATER) return;
-    fails.delete(k);
+  for (const [k, v] of fails) if (v.count < cut) fails.delete(k);
+  // 꼭 cut 번 틀린 것은 ①(이메일+주소)부터, 그다음 ② — ②가 무차별 대입을 막는 마지막 장치다. 각각 오래된 것부터
+  for (const emailWide of [false, true]) {
+    for (const [k, v] of fails) {
+      if (fails.size <= LOW_WATER) return;
+      if (v.count === cut && isEmailKey(k) === emailWide) fails.delete(k);
+    }
   }
 }
 
@@ -87,6 +102,17 @@ export function loginBlocked(email: string, ip: string, now = Date.now()): boole
 export function noteLoginFailure(email: string, ip: string, now = Date.now()): void {
   bump(pairKey(email, ip), now);
   bump(emailKey(email), now);
+}
+
+/**
+ * 비밀번호를 확인하기 **전에** 부른다 — 막혀 있으면 이유를 돌려주고, 아니면 이 시도를 먼저 실패로 센다(맞히면 `clearLoginFailures` 가 지운다).
+ * ⚠️ 부르는 쪽은 이 결과를 받은 뒤에 await 해야 한다 — 판정과 세기 사이에 틈이 있으면 그 사이 들어온 요청이 같은 빈자리를 본다.
+ */
+export function reserveLoginAttempt(email: string, ip: string, now = Date.now()): LoginBlock | null {
+  const block = loginBlock(email, ip, now);
+  if (block) return block;
+  noteLoginFailure(email, ip, now);
+  return null;
 }
 
 /**

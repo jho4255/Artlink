@@ -360,6 +360,28 @@ describe('이메일 로그인', () => {
     expect(loginBlocked('target@gallery.test', '10.9.9.9', t0 + 2)).toBe(true);
   });
 
+  it('★ 서로 다른 이메일로 쏟아부어 기록을 밀어내도, 많이 틀린 이메일의 기록은 남는다(하루 50번 우회 방지)', () => {
+    const t0 = 4_000_000;
+    for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) noteLoginFailure('victim@gallery.test', `10.6.0.${i}`, t0);
+    expect(loginBlocked('victim@gallery.test', '10.9.9.9', t0)).toBe(true);
+    // 오래된 것부터 지우던 때는 이 쏟아붓기로 victim 의 기록이 가장 먼저 밀려나 다시 50번을 넣어 볼 수 있었다
+    for (let i = 0; i < LOGIN_FAIL_MAX_TRACKED * 2; i++) noteLoginFailure(`spray${i}@x.test`, `10.7.${(i >> 8) & 255}.${i & 255}`, t0 + 1);
+    expect(trackedLoginRecords()).toBeLessThanOrEqual(LOGIN_FAIL_MAX_TRACKED);
+    expect(loginBlocked('victim@gallery.test', '10.9.9.9', t0 + 2)).toBe(true);
+  });
+
+  it('★ 동시에 쏟아부어도 한도만큼만 비밀번호를 확인한다 — 확인하는 동안 들어온 요청이 같은 빈자리를 쓰지 못한다', async () => {
+    await makeAccount('race@gallery.test');
+    const same = await Promise.all(Array.from({ length: 25 }, (_, i) => loginFrom('198.51.100.30', 'race@gallery.test', `wrong${i}pass`)));
+    expect(same.filter((r) => r.status === 401)).toHaveLength(LOGIN_FAIL_MAX);
+    expect(same.filter((r) => r.status === 429)).toHaveLength(25 - LOGIN_FAIL_MAX);
+    // 여러 주소에서 한꺼번에 — 이메일 전체(하루 50번)에서 남은 만큼만 확인받는다
+    const spread = await Promise.all(Array.from({ length: 70 }, (_, i) => loginFrom(`192.0.2.${100 + i}`, 'race@gallery.test', `wrong${i}pass`)));
+    expect(spread.filter((r) => r.status === 401)).toHaveLength(LOGIN_FAIL_MAX_PER_EMAIL - LOGIN_FAIL_MAX);
+    // 맞는 비밀번호도 그 뒤에는 막힌다(비밀번호 찾기로 푼다)
+    expect((await loginFrom('203.0.113.77', 'race@gallery.test', PW)).status).toBe(429);
+  });
+
   it('없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다', async () => {
     for (let i = 0; i < LOGIN_FAIL_MAX; i++) await loginFrom('198.51.100.8', 'ghost@gallery.test', 'x1234567');
     expect((await loginFrom('198.51.100.8', 'ghost@gallery.test', 'x1234567')).status).toBe(429);

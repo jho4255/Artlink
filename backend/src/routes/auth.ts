@@ -13,7 +13,7 @@ import {
   consumeEmailCode, issueEmailCode, normalizeEmail, passwordProblem, readVerificationToken, verifyEmailCode, type EmailCodePurpose,
 } from '../lib/emailCode';
 import { devOutbox } from '../lib/mailer';
-import { clearAllLoginFailures, clearLoginFailures, loginBlock, noteLoginFailure } from '../lib/loginThrottle';
+import { clearAllLoginFailures, clearLoginFailures, reserveLoginAttempt } from '../lib/loginThrottle';
 import { clientIp } from '../lib/clientIp';
 
 const router = Router();
@@ -228,9 +228,10 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body.email);
     const { password } = req.body;
-    // 실패 한도 — 이메일+주소 15분 10번 · 이메일 전체 하루 50번(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다
+    // 실패 한도 — 이메일+주소 15분 10번 · 이메일 전체 하루 50번(lib/loginThrottle.ts). 막혀 있으면 비밀번호를 보지도 않는다.
+    // ⚠️ 비밀번호를 보기 **전에** 이 시도를 센다(맞히면 아래에서 지운다) — 확인하는 동안 같이 들어온 요청이 같은 빈자리로 통과하지 못하게
     const ip = clientIp(req);
-    const block = loginBlock(email, ip);
+    const block = reserveLoginAttempt(email, ip);
     if (block === 'account') {
       // 하루 동안 남는다 — 기다리라고 하지 않는다. 비밀번호 찾기를 하면 그 자리에서 풀리고 로그인된다.
       // '이 계정' 이라 하지 않는다 — 없는 이메일도 똑같이 세므로, 그 말이 가입 여부를 아는 척하게 된다
@@ -246,15 +247,12 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // 계정 부재/OAuth전용/탈퇴 시에도 동일 비용의 bcrypt를 수행해 존재여부 타이밍 노출 방지
     if (!user || !user.password || user.deletedAt) {
       await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
-      noteLoginFailure(email, ip);   // 없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다
+      // 없는 계정도 똑같이 센다(위에서 이미 셌다) — 다르게 굴면 가입 여부가 드러난다
       throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
     }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      noteLoginFailure(email, ip);
-      throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);
-    }
+    if (!valid) throw new AppError('이메일 또는 비밀번호가 올바르지 않습니다.', 401);   // 위에서 이미 셌다
 
     clearLoginFailures(email, ip);
     const token = generateToken(user);
