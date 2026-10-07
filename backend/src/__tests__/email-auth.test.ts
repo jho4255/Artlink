@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import { request, cleanDb, seedUsers, seedGallery, authToken, testPrisma } from './helpers';
 import { clearDevOutbox, devOutbox, isDevFakeAddress } from '../lib/mailer';
 import { codeMail, DAILY_SEND_MAX, MAX_ATTEMPTS, passwordProblem } from '../lib/emailCode';
-import { LOGIN_FAIL_MAX, LOGIN_FAIL_MAX_PER_EMAIL, resetLoginThrottle } from '../lib/loginThrottle';
+import { LOGIN_FAIL_MAX, LOGIN_FAIL_MAX_PER_EMAIL, loginBlocked, noteLoginFailure, resetLoginThrottle } from '../lib/loginThrottle';
 
 const CONSENT = { agreeTerms: true, agreePrivacy: true };
 const PW = 'gallery2026';
@@ -321,6 +321,16 @@ describe('이메일 로그인', () => {
     const token = await verifiedToken('spray@gallery.test', 'reset');
     expect((await request.post('/api/auth/password/reset').send({ verificationToken: token, password: 'renewed2026' })).status).toBe(200);
     expect((await loginFrom('203.0.113.99', 'spray@gallery.test', 'renewed2026')).status).toBe(200);
+  });
+
+  it('창의 길이 — 이메일+주소는 15분 뒤 풀리고, 이메일 전체(50번)는 하루 동안 남는다', () => {
+    const t0 = 1_000_000;
+    for (let i = 0; i < LOGIN_FAIL_MAX; i++) noteLoginFailure('win@gallery.test', '10.0.0.1', t0);
+    expect(loginBlocked('win@gallery.test', '10.0.0.1', t0 + 60_000)).toBe(true);
+    expect(loginBlocked('win@gallery.test', '10.0.0.1', t0 + 16 * 60_000)).toBe(false);
+    for (let i = 0; i < LOGIN_FAIL_MAX_PER_EMAIL; i++) noteLoginFailure('win2@gallery.test', `10.1.${i}.1`, t0);
+    expect(loginBlocked('win2@gallery.test', '10.9.9.9', t0 + 3 * 3600_000)).toBe(true);    // 여러 주소를 돌려 써도 하루 동안
+    expect(loginBlocked('win2@gallery.test', '10.9.9.9', t0 + 25 * 3600_000)).toBe(false);
   });
 
   it('없는 계정도 똑같이 센다 — 다르게 굴면 가입 여부가 드러난다', async () => {

@@ -2620,7 +2620,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   다시 받기 1분 · 주소당 1시간 5번(advisory lock `LOCK_NS.emailCodes` 로 '세고 나서 만들기' 경합을 막는다) · 가장 최근 번호만 · 하루 지난 줄은 지운다.
   **하루 전체 300통**(`DAILY_SEND_MAX`) + **IP 당 1시간 10번**(index.ts) — Gmail 하루 한도(약 500, 갤러리 홍보 메일 발송기와 같은 계정)를 남이 바닥내지 못하게. 넘으면 503.
   로그인·가입 한도의 IP 는 `CF-Connecting-IP` 먼저(`lib/clientIp.ts` — Render 앞단이 Cloudflare 라 `req.ip` 가 엣지일 수 있다). 로그인은 **이메일별로도** 센다
-  (`lib/loginThrottle.ts` — 이메일+주소 15분 10번 · 이메일 전체 15분 50번, 재설정하면 풀림) — IP 판정이 틀려도 무차별 대입을 막고, 남이 일부러 틀려 주인을 막지도 못한다.
+  (`lib/loginThrottle.ts` — 이메일+주소 15분 10번 · 이메일 전체 하루 50번, 재설정하면 풀림) — IP 판정이 틀려도 무차별 대입을 막고, 남이 일부러 틀려 주인을 막지도 못한다.
   맞히면 **인증 토큰**(JWT `kind:'email-verified'`, 30분)을 주고, 가입·재설정이 그 토큰으로 줄을 **한 번만** 쓴다(`consumeEmailCode`, 같은 트랜잭션).
   ⚠️ '인증된 줄이 있나' 만 보고 이메일 주소로 가입시키면, 맞힌 사람보다 먼저 남이 같은 주소로 가입 요청을 보내 자기 비밀번호로 계정을 만들 수 있다 — 그래서 토큰.
 - **라우트**(`routes/auth.ts`): `POST /email/code {email, purpose:'signup'|'reset'}` · `POST /email/verify` · `POST /email-signup {verificationToken, role, password, name, phone, 동의}`
@@ -2646,7 +2646,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   뺀 파일·지운 공고의 첨부 파일은 **지우지 않는다**(주소만 알면 다른 공고에 같은 주소를 넣을 수 있어 지우면 남의 첨부가 깨진다).
   화면: 갤러리 등록 폼 [2 공고 내용]·아트링크 주최 폼의 첨부 칸(`AttachmentEditor`, 여러 파일을 차례로, 함수형 갱신, 올리는 중엔 등록을 막는다) · 공고 상세 [첨부파일] 구역(누구나 · 운영자 [편집]/[추가]) ·
   관리자 승인 화면의 공고 카드.
-- 회귀: backend `email-auth.test.ts`(37) · `exhibition-attachments.test.ts`(14) · `flow-fixes.test.ts`(운영 로그인) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` ·
+- 회귀: backend `email-auth.test.ts`(38) · `exhibition-attachments.test.ts`(14) · `flow-fixes.test.ts`(운영 로그인) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` ·
   e2e `70-email-signup-and-attachments.spec.ts`(10 — 로그인 → [회원가입] → 갤러리 이메일 가입·약관 끝까지 읽기·번호 틀림/맞음 · 아티스트 이메일 가입 → 홈페이지 편집 ·
   이메일 로그인(역할 칸 없음) · 비밀번호 찾기 · 회원가입에서 역할(카카오로 떠났다 돌아오면 역할이 골라져 있다) · 지원으로 오면 아티스트 · 카카오 주소 안내 ·
   상세에서 붙이고 비회원이 받기 · 등록 폼 payload · 승인 화면).

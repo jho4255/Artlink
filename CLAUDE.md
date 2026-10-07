@@ -2196,7 +2196,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ **하루 전체 300통(`DAILY_SEND_MAX`) + IP 당 1시간 10번**(index.ts) — Gmail 개인 계정은 하루 약 500통이고 **갤러리 홍보 메일 발송기와 같은 계정**이다.
       로그인·가입 한도의 'IP'는 `clientKey`(index.ts) — **`CF-Connecting-IP` 먼저**. 실서버는 Cloudflare(우리 도메인) → Render(이것도 Cloudflare 엣지)를 거쳐
       `req.ip` 가 엣지 주소일 수 있다 — 그러면 같은 엣지의 여러 사람이 한 칸을 나눠 써 남 때문에 인증번호를 못 받는다. Cloudflare 는 이 헤더를 덮어쓰므로 위조할 수 없다.
-      ⚠️ 그 판단이 틀려도 버티게 **로그인은 이메일별로도 센다**(`lib/loginThrottle.ts`, 접속 주소는 `lib/clientIp.ts`) — ①이메일+주소 15분 10번 ②이메일 전체 15분 50번.
+      ⚠️ 그 판단이 틀려도 버티게 **로그인은 이메일별로도 센다**(`lib/loginThrottle.ts`, 접속 주소는 `lib/clientIp.ts`) — ①이메일+주소 15분 10번 ②이메일 전체 **하루** 50번(15분 창이면 하루 4,800번이라 흔한 비밀번호가 뚫린다).
       이메일 하나로만(10번) 세면 **남이 일부러 틀려 주인을 막는다**(잠금 악용) — 주인의 주소는 ①에 안 걸린다. 비밀번호를 재설정하면 풀리고, 없는 계정도 똑같이 센다.
       서버 메모리라 인스턴스를 여럿으로 늘리면 DB 로 옮길 것(2026-10-08 자동 보안 검토 지적 반영).
       아무 주소로 번호를 계속 요청하면 한도가 바닥나 발신 계정이 막힐 수 있어서 넘으면 503 으로 끊는다. 맞히면 **인증 토큰**(JWT `kind:'email-verified'`, 30분)을 주고
@@ -2225,7 +2225,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       (갤러리·관리자 · 문서·압축·JPG/PNG · 20MB · **받은 그대로** 저장 · R2 에 원래 이름을 Content-Disposition 으로). 고치기 `PATCH /exhibitions/:id/attachments`(공모 소개와 같은 권한, 승인 없이).
       ⚠️ 뺀 첨부·지운 공고의 파일을 저장소에서 지우지 말 것 — 다른 공고가 같은 주소를 넣을 수 있다. ⚠️ 형식·개수 상수는 서버와 프론트 `lib/attachments.ts` 가 같아야 한다(`attachments.test.ts` 대조).
       ⚠️ 썸네일 백필 `SOURCES` 에 넣지 말 것(규칙 21b). 공고 상세 [첨부파일]의 버튼 이름에 '수정' 을 쓰지 말 것(바로 위 공모 소개 [수정]과 겹친다 — '편집'·'추가').
-    - 회귀: backend `email-auth.test.ts`(37) · `exhibition-attachments.test.ts`(14) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` · e2e `70-email-signup-and-attachments.spec.ts`(10).
+    - 회귀: backend `email-auth.test.ts`(38) · `exhibition-attachments.test.ts`(14) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` · e2e `70-email-signup-and-attachments.spec.ts`(10).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
