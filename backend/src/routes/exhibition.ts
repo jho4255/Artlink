@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { REGIONS } from '../lib/regions';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -54,8 +55,8 @@ const customFieldSchema = z.object({
   { message: '최대 선택 수는 옵션 개수를 넘을 수 없습니다.' }
 );
 
-/** 지역 — 화면(`lib/utils.ts regionLabels`)·갤러리 라우트와 같은 8곳. 모르는 값이 저장되면 목록 필터에 영영 안 걸린다 */
-export const REGIONS = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'] as const;
+/** 지역 — 갤러리·전시와 같은 목록(lib/regions.ts 한 곳). 모르는 값이 저장되면 목록 필터에 영영 안 걸린다 */
+export { REGIONS };
 /** 모집 인원(선정 인원) 범위 — DB 정수 범위를 넘는 값이 500 이었다(2026-10-03 점검 S10). 화면 `CAPACITY_MAX` 와 같아야 한다 */
 export const CAPACITY_MAX = 1000;
 /** 공모 소개 — 서식 있는 글(2026-10-03). 한도는 **보이는 글자** 수(lib/richText.ts richField) */
@@ -1634,6 +1635,27 @@ router.patch('/:id/capacity', authenticate, authorize('GALLERY', 'ADMIN'), valid
       const selected = await countSelected(tx, exhibitionId);
       if (next < selected) throw new AppError(`이미 ${selected}명을 수락해서 그보다 적게 줄일 수 없어요.`, 400);
       return tx.exhibition.update({ where: { id: exhibitionId }, data: { capacity: next }, select: { id: true, capacity: true } });
+    });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 지역 바꾸기 (2026-10-08 사용자 요청 — 올린 뒤에 지역을 고칠 길이 없었다).
+ * 권한은 모집 인원과 같다: 갤러리 주최 공모는 그 갤러리(운영자) · 아트링크 주최 공모는 **관리자만**(위임 갤러리는 못 바꾼다 — 주최자가 정한다).
+ * 지원·선정과 얽히지 않는 값이라 승인 없이, 전시가 끝난 뒤에도 바꿀 수 있다(목록 필터에만 쓰인다).
+ */
+const regionSchema = z.object({ region: z.enum(REGIONS, { message: '지역을 선택해주세요.' }) });
+router.patch('/:id/region', authenticate, authorize('GALLERY', 'ADMIN'), validate(regionSchema), async (req, res, next) => {
+  try {
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
+    if (exhibition.hostType === 'ADMIN' && req.user!.role !== 'ADMIN') {
+      throw new AppError('아트링크 주최 공모의 지역은 아트링크가 정해요. 바꿔야 하면 1:1 문의로 알려 주세요.', 403);
+    }
+    const updated = await prisma.exhibition.update({
+      where: { id: exhibition.id },
+      data: { region: req.body.region },
+      select: { id: true, region: true },
     });
     res.json(updated);
   } catch (error) { next(error); }

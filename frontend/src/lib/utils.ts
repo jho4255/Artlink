@@ -195,7 +195,9 @@ export function getDday(deadline: string | Date): number {
   return kstDayNumber(deadline) - kstDayNumber(new Date());
 }
 
-// 지역 라벨 매핑
+// 지역 라벨 매핑 — 갤러리·공모·전시가 같은 목록을 쓴다(2026-10-08 경북·경남·전북·전남 추가).
+// ⚠️ 서버 `backend/src/lib/regions.ts` 의 REGIONS 와 같은 값·같은 순서여야 한다(regions.test.ts 가 대조).
+//    한쪽에만 넣으면 화면엔 보이는데 저장이 400 이다. 화면마다 지역 배열을 따로 적지 말고 REGION_CODES 를 쓸 것.
 export const regionLabels: Record<string, string> = {
   SEOUL: '서울',
   INCHEON: '인천',
@@ -205,7 +207,13 @@ export const regionLabels: Record<string, string> = {
   DAEGU: '대구',
   BUSAN: '부산',
   ULSAN: '울산',
+  GYEONGBUK: '경북',
+  GYEONGNAM: '경남',
+  JEONBUK: '전북',
+  JEONNAM: '전남',
 };
+/** 고르는 칸·필터에 늘어놓을 지역 코드(위 표의 순서) */
+export const REGION_CODES: string[] = Object.keys(regionLabels);
 
 // 전시 타입 라벨
 export const exhibitionTypeLabels: Record<string, string> = {

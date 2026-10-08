@@ -24,7 +24,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES } from '@/lib/utils';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import { richTextLength } from '@/lib/richText';
@@ -37,7 +37,7 @@ import { AttachmentEditor } from '@/components/shared/ExhibitionAttachments';
 import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
 import type { CustomField } from '@/types';
 
-const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
+const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 
 interface PickedGallery { id: number; name: string; region?: string }
 

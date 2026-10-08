@@ -21,13 +21,13 @@ import { Heart, Phone, MapPin, X, Plus, Search, MessageSquare } from 'lucide-rea
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, canFavorite } from '@/lib/utils';
+import { regionLabels, canFavorite, REGION_CODES } from '@/lib/utils';
 import { galleryPath } from '@/lib/handle';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import type { Gallery } from '@/types';
 
 // 지역 필터 옵션
-const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
+const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 
 export default function GalleriesPage() {
   const queryClient = useQueryClient();

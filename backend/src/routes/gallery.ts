@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { isRegion } from '../lib/regions';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
@@ -457,8 +458,7 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
     // 지역도 갤러리 주인이 승인 없이 즉시 수정 가능 (허용된 지역 코드만)
     if (req.body.region !== undefined) {
       const region = String(req.body.region).trim();
-      const ALLOWED = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
-      if (!ALLOWED.includes(region)) throw new AppError('유효하지 않은 지역입니다.', 400);
+      if (!isRegion(region)) throw new AppError('유효하지 않은 지역입니다.', 400);   // 목록은 lib/regions.ts 한 곳
       data.region = region;
     }
     // 인스타그램 주소 — 갤러리 주인이 직접 입력/수정 (빈 값이면 제거)

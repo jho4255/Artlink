@@ -5,12 +5,12 @@ import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import { getDday, regionLabels, exhibitionTypeLabels, canFavorite } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, canFavorite, REGION_CODES } from '@/lib/utils';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted } from '@/lib/exhibitionHost';
 import type { Exhibition } from '@/types';
 
-const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
+const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 
 export default function ExhibitionsPage() {
   const navigate = useNavigate();

@@ -24,6 +24,7 @@
  *  마커가 없으면(구버전 빌드 등) 주입하지 않는다. → 프론트 테스트가 마커 존재를 검사한다.
  */
 import fs from 'fs';
+import { regionLabel } from './regions';
 import type { Request, Response, NextFunction } from 'express';
 import prisma from './prisma';
 import logger from './logger';
@@ -107,14 +108,7 @@ export function safeImageUrl(raw: unknown): string | null {
   return null;
 }
 
-const REGION_LABEL: Record<string, string> = {
-  SEOUL: '서울',
-  GYEONGGI_NORTH: '경기 북부',
-  GYEONGGI_SOUTH: '경기 남부',
-  DAEJEON: '대전',
-  BUSAN: '부산',
-};
-const regionLabel = (r?: string | null) => (r ? REGION_LABEL[r] || r : '');
+// 지역 이름은 lib/regions.ts 한 곳 — 여기 따로 적어 둔 표에 인천·대구·울산이 빠져 공유 미리보기에 'INCHEON' 이 그대로 찍혔다
 
 /** KST 달력 날짜 표기 (날짜 경계는 KST 기준 — CLAUDE.md Critical Constraints 14) */
 function fmtKst(d?: Date | null): string {

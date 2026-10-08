@@ -6,10 +6,10 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import { regionLabels, getShowStatus, showStatusLabels, canFavorite } from '@/lib/utils';
+import { regionLabels, getShowStatus, showStatusLabels, canFavorite, REGION_CODES } from '@/lib/utils';
 import type { Show } from '@/types';
 
-const regions = ['SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH', 'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN'];
+const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 const statusFilters = ['ongoing', 'upcoming', 'ended'] as const;
 
 export default function ShowsPage() {

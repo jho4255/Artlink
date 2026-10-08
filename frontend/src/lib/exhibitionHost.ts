@@ -48,6 +48,16 @@ export function canManage(ex: HostLike | null | undefined, user: UserLike | null
   return canOperate(ex, user);
 }
 
+/**
+ * 지역을 바꿀 수 있는가 (2026-10-08) — 서버 `PATCH /exhibitions/:id/region` 과 같은 규칙(모집 인원과 같다).
+ * 갤러리 주최 공모는 그 갤러리 · 아트링크 주최 공모는 Admin 만(위임 갤러리는 운영만 맡았다 — 주최자가 정한다).
+ */
+export function canChangeRegion(ex: HostLike | null | undefined, user: UserLike | null | undefined): boolean {
+  if (!ex || !user) return false;
+  if (user.role === 'ADMIN') return true;
+  return canOperate(ex, user) && !isAdminHosted(ex);
+}
+
 /** 삭제 가능한가 — 아트링크 주최 공모는 주최자(Admin)만. 갤러리는 운영만 위임받았다. */
 export function canDelete(ex: HostLike | null | undefined, user: UserLike | null | undefined): boolean {
   if (!ex || !user) return false;

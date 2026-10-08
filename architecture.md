@@ -2652,3 +2652,16 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   e2e `70-email-signup-and-attachments.spec.ts`(10 — 로그인 → [회원가입] → 갤러리 이메일 가입·약관 끝까지 읽기·번호 틀림/맞음 · 아티스트 이메일 가입 → 홈페이지 편집 ·
   이메일 로그인(역할 칸 없음) · 비밀번호 찾기 · 회원가입에서 역할(카카오로 떠났다 돌아오면 역할이 골라져 있다) · 지원으로 오면 아티스트 · 카카오 주소 안내 ·
   상세에서 붙이고 비회원이 받기 · 등록 폼 payload · 승인 화면).
+
+## 지역 12곳 · 올린 공모의 지역 바꾸기 · 추가 질문 창 (2026-10-08)
+
+사용자 요청: "모집공고 올릴 때 지역에 경남·경북·전남·전북도 추가 · 이미 올린 것 지역 수정 · 아트링크 주최 공모에서 추가 질문 수정·삭제가 제대로 안 됨(갤러리도 검증)".
+
+- **지역 목록 한 곳** — 서버 `lib/regions.ts`(`REGIONS` 12곳 · `REGION_LABELS` · `isRegion` · `regionLabel`)를 공모 등록 스키마(`routes/exhibition.ts`)·갤러리 지역 수정(`routes/gallery.ts PATCH /:id/detail`)·검색엔진 설명(`lib/seoMeta.ts`)이 같이 쓴다.
+  화면은 `lib/utils.ts` 의 `regionLabels`·`REGION_CODES` 하나를 등록 폼(갤러리·공모·전시·아트링크 주최)·목록 필터(갤러리·공모·전시)가 같이 쓴다. 두 목록은 테스트가 소스로 대조한다.
+  갤러리·전시 등록 스키마는 예전처럼 문자열만 본다(이번에 좁히지 않았다).
+- **지역 바꾸기** — `PATCH /exhibitions/:id/region { region }`. `assertCanManageExhibition` + 아트링크 주최면 관리자만(모집 인원 `PATCH /:id/capacity` 와 같은 규칙).
+  승인 상태·종료 여부와 무관하게 바로 바뀐다. 화면은 공고 상세의 [지역] 줄 → [변경] → 고르기 → [저장](`RegionRow`, `canChangeRegion`).
+- **추가 질문 창** — 원인: `CustomQuestionsEditModal` 이 저장 뒤 `['my-exhibitions']`·`['exhibition', id]`·`['exhibitions']` 만 무효화하고, 관리자 [주최 공모]가 쓰는 `['hosted-exhibitions']` 는 건드리지 않았다.
+  그래서 관리자가 질문을 고치거나 지워도 다시 열면 옛 질문이 보였다(서버 저장은 정상 · 갤러리 쪽은 정상 — 재현으로 확인). 지금은 받은 값을 두 목록 캐시에 바로 써 넣고(`setQueriesData`) 무효화도 한다.
+- 검증: backend `exhibition-region.test.ts`(7) + 관련 17파일 352개 · frontend 1179개 · e2e `71`(4, A 는 옛 코드에서 실패) + 관련 `07`·`09`·`35`·`51`·`63` 26개 · 휴대폰 390px·PC 1280px 가로 넘침 없음.

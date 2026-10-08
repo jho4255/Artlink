@@ -197,10 +197,23 @@ export default function CustomQuestionsEditModal({
 
   const saveMutation = useMutation({
     mutationFn: (customFields: CustomField[]) =>
-      api.patch(`/exhibitions/${exhibitionId}/custom-fields`, { customFields }),
-    onSuccess: () => {
-      // 상세/내 공모 목록 모두 갱신 (공용 모달이므로 관련 캐시 전부 무효화)
+      api.patch(`/exhibitions/${exhibitionId}/custom-fields`, { customFields }).then((r) => r.data),
+    onSuccess: (data: { customFields?: CustomField[] | null }, sent) => {
+      /*
+        이 창을 여는 목록이 둘이다 — 갤러리 [내 공모](`my-exhibitions`) · 관리자 [주최 공모](`hosted-exhibitions`).
+        ⚠️ 여는 곳의 목록 캐시를 **곧바로** 고쳐 둘 것(2026-10-08). 예전엔 주최 공모 목록을 무효화하지 않아,
+           관리자가 질문을 고치거나 지우고 저장해도 다시 열면 옛 질문이 그대로 떠 저장이 안 된 것처럼 보였다(서버는 저장돼 있었다).
+           무효화만 하면 다시 받는 사이(수백 ms)에 열어도 옛 질문이 뜬다 — 그래서 받은 값을 먼저 써 넣는다.
+      */
+      const saved = data?.customFields ?? (sent.length ? sent : null);
+      const patchList = (old: unknown) => Array.isArray(old)
+        ? old.map((ex: any) => (ex?.id === exhibitionId ? { ...ex, customFields: saved } : ex))
+        : old;
+      queryClient.setQueriesData({ queryKey: ['hosted-exhibitions'] }, patchList);
+      queryClient.setQueriesData({ queryKey: ['my-exhibitions'] }, patchList);
+      queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibition', String(exhibitionId)] });
+      queryClient.invalidateQueries({ queryKey: ['exhibition', exhibitionId] });
       queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       toast.success('추가 질문이 저장되었습니다.');

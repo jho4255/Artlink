@@ -27,7 +27,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn } from '@/lib/utils';
+import { getDday, regionLabels, REGION_CODES, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -42,7 +42,7 @@ import { AttachmentEditor, AttachmentList } from '@/components/shared/Exhibition
 import { normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
-import { isAdminHosted, canOperate, canManage, canDelete } from '@/lib/exhibitionHost';
+import { isAdminHosted, canOperate, canManage, canDelete, canChangeRegion } from '@/lib/exhibitionHost';
 import { operatorWorkspace, galleryOperationHref } from '@/lib/operationLinks';
 import type { Exhibition, PromoPhoto, ExhibitionImage } from '@/types';
 import StatusChip from '@/components/flow/StatusChip';
@@ -412,13 +412,7 @@ export default function ExhibitionDetailPage() {
               <p className="text-base">{exhibition.capacity}명</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 py-4 border-b border-gray-100">
-            <MapPin size={16} className="text-gray-400 flex-none" />
-            <div>
-              <p className="text-sm text-gray-400">지역</p>
-              <p className="text-base">{regionLabels[exhibition.region]}</p>
-            </div>
-          </div>
+          <RegionRow exhibition={exhibition} canChange={canChangeRegion(exhibition, user)} />
           <div className="flex items-center gap-3 py-4 border-b border-gray-100">
             <Clock size={16} className="text-gray-400 flex-none" />
             <div>
@@ -956,6 +950,69 @@ function SubmissionDeadlineRow({ exhibition, canEdit, isAdmin }: { exhibition: E
           className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
         >
           <Edit3 size={12} /> {exhibition.submissionDeadline ? '수정' : '입력'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 지역 (2026-10-08) — 올린 뒤에도 바꿀 수 있다. 갤러리 주최 공모는 그 갤러리, 아트링크 주최 공모는 관리자만(`canChangeRegion`).
+ * 목록 필터에만 쓰이는 값이라 승인 없이 바로 바뀐다(서버 `PATCH /exhibitions/:id/region`).
+ */
+function RegionRow({ exhibition, canChange }: { exhibition: ExhibitionDetail; canChange: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(exhibition.region);
+
+  const save = useMutation({
+    mutationFn: () => api.patch(`/exhibitions/${exhibition.id}/region`, { region: value }),
+    onSuccess: () => {
+      toast.success('지역을 바꿨습니다.');
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ['exhibition', String(exhibition.id)] });
+      qc.invalidateQueries({ queryKey: ['exhibition', exhibition.id] });
+      qc.invalidateQueries({ queryKey: ['exhibitions'] });
+      qc.invalidateQueries({ queryKey: ['my-exhibitions'] });
+      qc.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || '저장에 실패했습니다.'),
+  });
+
+  return (
+    <div className="flex items-center gap-3 py-4 border-b border-gray-100">
+      <MapPin size={16} className="text-gray-400 flex-none" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-gray-400">지역</p>
+        {editing ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <select
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              aria-label="지역 고르기"
+              className="min-h-10 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
+            >
+              {REGION_CODES.map((r) => <option key={r} value={r}>{regionLabels[r]}</option>)}
+            </select>
+            <button onClick={() => save.mutate()} disabled={value === exhibition.region || save.isPending}
+              className="min-h-10 rounded-lg bg-gray-900 px-3 text-sm text-white hover:bg-gray-800 disabled:opacity-50">
+              {save.isPending ? '저장 중...' : '저장'}
+            </button>
+            <button onClick={() => setEditing(false)} className="min-h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50">
+              취소
+            </button>
+          </div>
+        ) : (
+          <p className="text-base">{regionLabels[exhibition.region] ?? exhibition.region}</p>
+        )}
+      </div>
+      {canChange && !editing && (
+        <button
+          onClick={() => { setValue(exhibition.region); setEditing(true); }}
+          aria-label="지역 변경"
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <Edit3 size={12} /> 변경
         </button>
       )}
     </div>
