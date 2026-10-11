@@ -2360,6 +2360,11 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   - `PreviewSheet.tsx` — 좁은 화면의 미리보기(전체 화면 시트, 저장 전 값 그대로).
   - `components/shared/ArtworkMetaModal.tsx` — 캡션 미리보기(`museumCaption`) · 칸 순서 = 캡션 순서 · '선택' 구분 · 전에 쓴 재료·연도 칩 · [저장하고 다음 작품].
     Enter 는 다음 칸(저장이 아니다), 마지막 칸에서만 주 버튼(마우스·키보드 화면), Ctrl/⌘+Enter 는 어디서든 주 버튼.
+  - **다 올리면 방금 올린 첫 작품의 정보 창이 바로 열린다**(2026-10-11, 사용자 결정). 실서버 10/4~10/10 가입 작가 중 사진을 올린 넷 가운데
+    셋이 정보를 비웠다 — 초원(31점)·박경연(6점)은 올린 직후 첫 화면에 "작품 N점에 정보가 없어요" 가 보였는데도(로컬 재현 PC·아이폰)
+    작가노트를 붙여 넣고 저장한 뒤 다시 오지 않았다. 창 머리말 "방금 올린 N점 — 작품명·크기를 넣으면 홈페이지 작품 아래에 나와요",
+    [취소] 대신 [나중에 하기](닫으면 화면 그대로). 이때는 "올렸어요" 알림을 띄우지 않는다(휴대폰에서 알림이 머리말을 덮었다).
+    ⚠️ 올리기가 끝날 때 **다른 묶음에서 글을 쓰는 중이면 열지 않는다**(`WorksSection` 의 `active`, 끝난 시점 값을 ref 로 읽는다). 회귀 e2e `62` B3.
   - `components/shared/HomepageAddressField.tsx` — 주소(@) 칸. 프로필 탭과 [꾸미기] 가 같은 부품.
   - `components/flow/TaskLine.tsx` — '지금 할 일' 한 줄(MyPage 에서 꺼내 공용으로).
 - **순수 함수** `frontend/src/lib/homepageEdit.ts` — `EDIT_SECTIONS` · `editHref(section, {focus, info})` · `resolveEditEntry(search)` · `editSectionForTab(tab)` ·

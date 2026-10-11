@@ -390,7 +390,7 @@ export default function HomepageEditor() {
             (감춘 동안 글을 쳐도 격자를 다시 그리지 않는다 — WorksSection 이 memo 다)
           */}
           <div hidden={section !== 'works'}>
-            <WorksSection images={images} metaImageId={metaImageId} onMeta={setMetaImageId} />
+            <WorksSection images={images} metaImageId={metaImageId} onMeta={setMetaImageId} active={section === 'works'} />
           </div>
           {section === 'intro' && (
             <IntroSection

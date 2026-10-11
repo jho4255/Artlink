@@ -115,6 +115,14 @@ describe('작품 정보 — 이어서 넣는다', () => {
     expect(read('components/homepage-edit/WorksSection.tsx')).toContain('export default memo(WorksSection)');
   });
 
+  it('★ 다 올리면 방금 올린 첫 작품의 정보 창을 연다 — [작품] 묶음을 보고 있을 때만(2026-10-11)', () => {
+    // 실서버: 올린 직후 '정보가 없어요' 줄이 보였는데도 작가노트부터 쓰고 저장한 뒤 다시 오지 않았다(초원 31점·박경연 6점)
+    expect(works).toMatch(/if \(activeRef\.current && !metaOpenRef\.current\) \{\s*setAfterUpload\(created\.length\);\s*onMeta\(created\[0\]!\);/);
+    expect(strip(read('components/homepage-edit/HomepageEditor.tsx'))).toContain("active={section === 'works'}");
+    // 자동으로 연 창은 왜 떴는지 한 줄 알리고 [나중에 하기] — 손으로 연 창은 예전처럼 [취소]
+    expect(modal).toContain("justUploaded ? '나중에 하기' : '취소'");
+  });
+
   it('홈페이지와 같은 함수로 캡션을 미리 보여 준다 · 전에 쓴 재료·연도를 권한다', () => {
     expect(modal).toContain('museumCaption(d)');
     expect(works).toContain("recentValues(images, 'medium', 3, metaImage.id)");

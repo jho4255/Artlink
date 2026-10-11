@@ -10,6 +10,7 @@ import { editSectionTab, editorSave, openEditSection, openHomepageEditor, settle
  *
  *  A. 첫 화면 — 작품 0점 작가에게 [작품 사진 올리기] 가 화면 안에 있다. 그 앞에 입력칸이 없다.
  *  B. 올리기 → "방금 올린 N점을 [작가] 탭에도 소개할까요?" 한 번 묻는다 → 소개하면 작가 목록에 나온다.
+ *  B3. 다 올리면 방금 올린 첫 작품의 정보 창이 바로 열린다(2026-10-11) — 다른 묶음에서 글을 쓰는 중이면 열지 않는다.
  *  C. 작품 정보 — [저장하고 다음 작품] 으로 창을 닫지 않고 끝까지. 전에 쓴 재료·연도는 한 번 눌러 채운다.
  *  D. 저장 — 약력 없이도 된다 · 모바일에서 [저장] 이 눌린다(탭바에 안 가린다) · 고친 게 없으면 [저장] 이 없다.
  *  E. 길 — 완성도 줄·공개 페이지의 [수정]·빈 홈페이지의 [작품 올리기] 가 그 묶음으로 데려간다. [취소] 는 홈페이지로.
@@ -83,6 +84,13 @@ const hitsItself = (page: Page, selector: string) => page.evaluate((sel) => {
   };
 }, selector);
 const metaDialog = (page: Page) => page.getByRole('dialog', { name: '작품 정보' });
+/** 다 올리자마자 뜬 작품 정보 창을 [나중에 하기] 로 닫는다(B3) */
+async function laterInfo(page: Page) {
+  const dlg = metaDialog(page);
+  await expect(dlg).toBeVisible({ timeout: 30000 });
+  await dlg.getByRole('button', { name: '나중에 하기' }).click();
+  await expect(dlg).toHaveCount(0);
+}
 const completeness = (page: Page) => page.getByRole('region', { name: '홈페이지 완성도' });
 
 let fresh: Seeded, uploader: Seeded, filler: Seeded, writer: Seeded, mover: Seeded, styler: Seeded, taken: Seeded;
@@ -161,6 +169,7 @@ test.describe('B. 올리기와 [작가] 탭 소개', () => {
     await page.getByTestId('works-file-input').setInputFiles(shots(3));
     const grid = page.getByTestId('works-grid');
     await expect(grid.locator('li')).toHaveCount(3, { timeout: 30000 });
+    await laterInfo(page);   // 다 올리면 정보 창이 먼저 뜬다(B3) — 여기선 [작가] 탭 질문을 보려고 미룬다
     // 올린 직후: 지금은 내 홈페이지에만 보인다는 걸 알리고, [작가] 탭에도 낼지 묻는다
     await expect(page.getByText('방금 올린 3점은 지금 내 홈페이지에만 보여요')).toBeVisible();
     await expect(grid.getByRole('button', { name: /내 홈페이지에만 보임/ })).toHaveCount(3);
@@ -200,6 +209,7 @@ test.describe('B. 올리기와 [작가] 탭 소개', () => {
     const { page, ctx } = await openFor(browser, a);
     await openHomepageEditor(page);
     await page.getByTestId('works-file-input').setInputFiles(shots(1));
+    await laterInfo(page);
     await expect(page.getByText('방금 올린 1점은 지금 내 홈페이지에만 보여요')).toBeVisible({ timeout: 30000 });
     await page.getByRole('button', { name: '홈페이지에만 두기' }).click();
     await expect(page.getByText('방금 올린')).toHaveCount(0);
@@ -231,8 +241,76 @@ test.describe('B2. 올리는 중에 묶음을 바꾼다', () => {
     // 예전처럼 묶음을 떼어 냈다면: 돌아왔을 때 올리는 중 표시가 사라지고(버튼이 다시 눌린다) 끝나도 안내가 뜨지 않는다
     await expect(page.getByText('방금 올린 2점은 지금 내 홈페이지에만 보여요')).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId('works-grid').locator('li')).toHaveCount(2);
+    await laterInfo(page);   // [작품] 으로 돌아온 뒤 끝났으므로 정보 창이 떴다(B3)
     await openEditSection(page, '소개');
     await expect(page.getByLabel('한 줄 소개')).toHaveValue('올리는 동안 쓴 글');
+    await ctx.close();
+  });
+});
+
+test.describe('B3. 다 올리면 정보 창이 바로 열린다', () => {
+  // 실서버 초원(31점)·박경연(6점) — 올린 직후 '정보가 없어요' 줄이 보였는데도 작가노트부터 쓰고 저장한 뒤 다시 오지 않았다(2026-10-11)
+  test('★ 방금 올린 첫 작품부터 — [저장하고 다음 작품] 으로 차례로, [나중에 하기] 로 닫으면 화면 그대로', async ({ browser }) => {
+    const api = await pwRequest.newContext();
+    const a = await signupArtist(api, '바로', 'auto');
+    const { page, ctx } = await openFor(browser, a);
+    await openHomepageEditor(page);
+    const patches: { id: string; title: unknown }[] = [];
+    page.on('request', (req) => {
+      const m = new URL(req.url()).pathname.match(/\/api\/portfolio\/images\/(\d+)$/);
+      if (req.method() === 'PATCH' && m) patches.push({ id: m[1]!, title: req.postDataJSON().title });
+    });
+
+    await page.getByTestId('works-file-input').setInputFiles(shots(3));
+    const dlg = metaDialog(page);
+    await expect(dlg).toBeVisible({ timeout: 30000 });
+    await expect(dlg.getByTestId('meta-after-upload')).toContainText('방금 올린 3점');
+    await expect(dlg.getByTestId('meta-remaining')).toContainText('정보 없는 작품 2점');
+    // "올렸어요" 알림은 띄우지 않는다 — 머리말이 같은 말을 하고, 휴대폰에선 알림이 그 머리말을 덮었다
+    await expect(page.getByText('작품 3점을 올렸어요')).toHaveCount(0);
+    // 올린 순서대로 — 첫 창은 첫 작품
+    const ids = ((await myPortfolio(api, a)).images as { id: number }[]).map((i) => String(i.id));
+    await dlg.getByLabel('작품명').fill('첫째');
+    await dlg.getByRole('button', { name: '저장하고 다음 작품' }).click();
+    await expect(dlg.getByTestId('meta-remaining')).toContainText('정보 없는 작품 1점');
+    await expect(dlg.getByTestId('meta-after-upload')).toContainText('방금 올린 3점');
+    await dlg.getByLabel('작품명').fill('둘째');
+    await dlg.getByRole('button', { name: '저장하고 다음 작품' }).click();
+    await expect(dlg.getByTestId('meta-remaining')).toHaveCount(0);
+    // 셋째는 미룬다 — 닫으면 할 일 줄·[작가] 탭 질문이 그대로 남는다
+    await dlg.getByRole('button', { name: '나중에 하기' }).click();
+    await expect(dlg).toHaveCount(0);
+    expect(patches).toEqual([{ id: ids[0], title: '첫째' }, { id: ids[1], title: '둘째' }]);
+    await expect(page.getByRole('button', { name: /작품 1점에 정보가 없어요/ })).toBeVisible();
+    await expect(page.getByText('방금 올린 3점은 지금 내 홈페이지에만 보여요')).toBeVisible();
+
+    // 손으로 연 창은 예전처럼 [취소] · 머리말 없음
+    await page.getByRole('button', { name: /작품 1점에 정보가 없어요/ }).click();
+    await expect(dlg.getByTestId('meta-after-upload')).toHaveCount(0);
+    await expect(dlg.getByRole('button', { name: '취소' })).toBeVisible();
+    await api.dispose();
+    await ctx.close();
+  });
+
+  test('다른 묶음에서 글을 쓰는 중에 올리기가 끝나면 창을 열지 않는다 — 쓰던 글을 끊지 않는다', async ({ browser }) => {
+    const api = await pwRequest.newContext();
+    const a = await signupArtist(api, '안끊', 'nointerrupt');
+    await api.dispose();
+    const { page, ctx } = await openFor(browser, a);
+    await openHomepageEditor(page);
+    await page.route('**/api/upload/image', async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
+    await page.getByTestId('works-file-input').setInputFiles(shots(2));
+    await expect(page.getByRole('button', { name: /올리는 중/ })).toBeDisabled();
+    await openEditSection(page, '소개');
+    await page.getByLabel('한 줄 소개').fill('쓰는 중');
+    await expect(page.getByText('작품 2점을 올렸어요')).toBeVisible({ timeout: 30000 });
+    await page.waitForTimeout(500);
+    await expect(metaDialog(page)).toHaveCount(0);
+    await expect(page.getByLabel('한 줄 소개')).toBeFocused();
+    // [작품] 으로 돌아가면 할 일 줄이 기다리고 있다
+    await openEditSection(page, '작품');
+    await expect(page.getByRole('button', { name: /작품 2점에 정보가 없어요/ })).toBeVisible();
+    await expect(metaDialog(page)).toHaveCount(0);
     await ctx.close();
   });
 });

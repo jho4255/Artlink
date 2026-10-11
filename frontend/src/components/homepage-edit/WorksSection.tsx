@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type DragEvent } from 'react';
+import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Check, ChevronLeft, ChevronRight, Heart, Loader2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -30,6 +30,10 @@ import type { Portfolio, PortfolioImage } from '@/types';
  *  - **사진 위에 겹치는 단추는 삭제·좋아요뿐.** 178px 칸에 단추 다섯(제목·◀▶·삭제·공개·좋아요)이 겹쳐 있었다.
  *    순서는 [순서 바꾸기]를 눌렀을 때만 사진 아래에 ◀ ▶ 가 나온다.
  *  - 작품 정보는 **이어서 넣는다**(`ArtworkMetaModal` 의 [저장하고 다음 작품]).
+ *  - **다 올리면 방금 올린 첫 작품의 정보 창을 바로 연다**(2026-10-11, 사용자 결정). 실서버의 초원(31점)·박경연(6점)은
+ *    올린 직후 첫 화면에 "작품 N점에 정보가 없어요" 가 보였는데도 작가노트(붙여넣기)부터 쓰고 저장한 뒤 다시 오지 않았다 —
+ *    안내가 안 보인 게 아니라 더 쉬운 일에 밀렸다. 닫으면([나중에 하기]) 지금 화면 그대로다.
+ *    ⚠️ 다른 묶음(소개 등)에서 글을 쓰는 중에 올리기가 끝났으면 **열지 않는다** — 쓰던 글을 창으로 끊지 않는다.
  *
  * ⚠️ 올리는 도중에도 이 컴포넌트는 살아 있어야 한다 — 편집 화면이 묶음을 바꿀 때 떼어 내지 않고 `hidden` 으로 감춘다.
  *    떼어 내면 `uploading`·`justUploaded` 가 사라져, 돌아왔을 때 올리던 사진이 없는 것처럼 보인다.
@@ -39,6 +43,8 @@ interface Props {
   /** 작품 정보 창이 열린 작품 — 편집 화면이 들고 있다(완성도 줄·주소의 `do=info` 가 밖에서 연다) */
   metaImageId: number | null;
   onMeta: (id: number | null) => void;
+  /** 지금 [작품] 묶음을 보고 있는가 — 다 올렸을 때 정보 창을 열지 정한다(다른 묶음에서 글을 쓰는 중이면 끊지 않는다) */
+  active: boolean;
 }
 
 const btnSecondary = 'inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50';
@@ -46,7 +52,7 @@ const btnPrimary = 'inline-flex min-h-[44px] items-center justify-center gap-2 r
 const errText = (err: unknown, fallback: string) =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
 
-function WorksSection({ images, metaImageId, onMeta }: Props) {
+function WorksSection({ images, metaImageId, onMeta, active }: Props) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
@@ -56,6 +62,13 @@ function WorksSection({ images, metaImageId, onMeta }: Props) {
   /** 이번 방문에서 '홈페이지에만 두기'를 골랐다 → 곧바로 "소개한 작품이 없어요"를 다시 들이밀지 않는다 */
   const [keptPrivate, setKeptPrivate] = useState(false);
   const [reordering, setReordering] = useState(false);
+  /** 다 올린 뒤 정보 창을 자동으로 열었다 — 방금 올린 점 수(창 머리말·[나중에 하기]). 창을 닫으면 지운다 */
+  const [afterUpload, setAfterUpload] = useState<number | null>(null);
+  useEffect(() => { if (metaImageId == null) setAfterUpload(null); }, [metaImageId]);
+  // 올리기는 몇십 초 걸린다 — 끝난 시점의 '보고 있는 묶음'·'열린 창'을 읽으려고 ref 로 든다(시작할 때 값은 낡았다)
+  const activeRef = useRef(active);
+  const metaOpenRef = useRef(metaImageId != null);
+  useEffect(() => { activeRef.current = active; metaOpenRef.current = metaImageId != null; });
   const [removeId, setRemoveId] = useState<number | null>(null);
   const [likersId, setLikersId] = useState<number | null>(null);
 
@@ -96,9 +109,16 @@ function WorksSection({ images, metaImageId, onMeta }: Props) {
     setUploading(null);
     if (created.length > 0) {
       await queryClient.invalidateQueries({ queryKey: ['portfolio'] });   // 장마다가 아니라 한 번만
-      toast.success(`작품 ${created.length}점을 올렸어요.`);
       setJustUploaded(created);
       setKeptPrivate(false);
+      // 방금 올린 첫 작품부터 정보를 넣게 바로 연다 — [저장하고 다음 작품] 이 나머지를 차례로 이어 준다.
+      // 그때는 "올렸어요" 알림을 띄우지 않는다 — 창 머리말이 같은 말을 하고, 휴대폰에선 알림(위쪽)이 그 머리말을 덮는다
+      if (activeRef.current && !metaOpenRef.current) {
+        setAfterUpload(created.length);
+        onMeta(created[0]!);
+      } else {
+        toast.success(`작품 ${created.length}점을 올렸어요.`);
+      }
     }
   };
   const onDrop = (e: DragEvent) => {
@@ -393,6 +413,7 @@ function WorksSection({ images, metaImageId, onMeta }: Props) {
           suggestions={{ medium: recentValues(images, 'medium', 3, metaImage.id), year: recentValues(images, 'year', 3, metaImage.id) }}
           remaining={uncaptionedCount(images.filter((i) => i.id !== metaImage.id))}
           hasNext={nextUncaptionedId(images, metaImage.id) != null}
+          justUploaded={afterUpload ?? undefined}
           saving={saveMeta.isPending}
           onSave={(draft, next) => saveMeta.mutate({ imageId: metaImage.id, draft, next })}
           onClose={() => onMeta(null)}

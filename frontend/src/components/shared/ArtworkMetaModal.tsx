@@ -51,6 +51,8 @@ interface Props {
   /** 저장하고 이어서 열 작품이 있는가 — 있으면 주 버튼이 [저장하고 다음 작품] 이 된다 */
   hasNext?: boolean;
   saving?: boolean;
+  /** 사진을 다 올리자마자 열린 창이면 방금 올린 점 수 — 왜 창이 떴는지 한 줄 알리고 [취소] 를 [나중에 하기] 로 부른다 */
+  justUploaded?: number;
   /** `next` 가 true 면 저장한 뒤 창을 닫지 않고 다음 작품(정보 없는 것)을 연다 — 부모가 `image` 를 갈아끼운다 */
   onSave: (draft: ArtworkMetaDraft, next: boolean) => void;
   onClose: () => void;
@@ -96,7 +98,7 @@ function Suggest({ values, current, onPick }: { values: string[]; current: strin
  *    마지막 칸(가로)에서만 주 버튼인데, 그것도 마우스·키보드 화면에서만 — 휴대폰 숫자 자판의 [완료] 는 자판을 내리는 키다.
  *    Ctrl/⌘+Enter 는 어느 칸에서든 주 버튼.
  */
-export default function ArtworkMetaModal({ image, seriesOptions, suggestions, remaining = 0, hasNext = false, saving, onSave, onClose }: Props) {
+export default function ArtworkMetaModal({ image, seriesOptions, suggestions, remaining = 0, hasNext = false, saving, justUploaded, onSave, onClose }: Props) {
   const [d, setD] = useState<ArtworkMetaDraft>(() => toDraft(image));
   const parsed = useMemo(() => splitSize(d.sizeText), [d.sizeText]);
   const [h, setH] = useState(parsed.h);
@@ -169,6 +171,9 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
         <div className="shrink-0 border-b border-gray-100 px-5 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-[15px]">작품 정보</h3>
+            {justUploaded ? (
+              <p data-testid="meta-after-upload" className="text-xs text-gray-500 break-keep">방금 올린 {justUploaded}점 — 작품명·크기를 넣으면 홈페이지 작품 아래에 나와요</p>
+            ) : null}
             {remaining > 0 && <p data-testid="meta-remaining" className="text-xs text-gray-500">이 작품 말고 정보 없는 작품 {remaining}점</p>}
           </div>
           <button type="button" onClick={requestClose} className="-m-2 flex h-11 w-11 shrink-0 items-center justify-center text-gray-400 hover:text-gray-900" aria-label="닫기"><X size={18} /></button>
@@ -282,7 +287,7 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
               {saving && <Loader2 size={14} className="animate-spin" />}저장
             </button>
           )}
-          <button type="button" onClick={requestClose} className="min-h-[44px] px-3 text-sm text-gray-500">취소</button>
+          <button type="button" onClick={requestClose} className="min-h-[44px] px-3 text-sm text-gray-500 whitespace-nowrap">{justUploaded ? '나중에 하기' : '취소'}</button>
         </div>
       </form>
     </div>,
