@@ -5,14 +5,16 @@ import { editSectionTab } from '../lib/helpers';
  * 작가 로그인 뒤 '홈페이지 완성' 팝업 + 홈 배너 (2026-10-01)
  *
  *  A. 홈페이지를 덜 채운 작가가 **로그인하면** 팝업이 뜨고 비어 있는 항목만 보인다.
- *     [나중에] 면 그 로그인 동안 다시 안 뜨고, 다시 로그인하면 또 뜬다. 항목을 누르면 채우는 자리로 간다.
+ *     [나중에] 면 **그날은**(KST) 다시 로그인해도 안 뜨고, 다음 날 첫 방문에 또 뜬다. 항목을 누르면 채우는 자리로 간다.
+ *  F. 로그인 없이도 — 이미 로그인된 채로 **하루 첫 방문**(앱을 열 때·숨겼던 탭으로 돌아올 때)에 뜬다(2026-10-11).
+ *     로그인이 7일 유지돼, 로그인할 때만 띄우면 첫 주에 돌아온 작가는 한 번도 못 봤다.
  *  B. [7일 동안 보지 않기] 를 누르면 다시 로그인해도 안 뜬다.
  *  C. 띄우면 안 되는 사람 — 다 채운 작가 · 작품 0점 작가(편집 화면으로 간다) · 갤러리.
  *  D. 하던 일을 끊지 않는다 — 초대 코드 화면에서는 기다렸다가, 다른 화면으로 나오면 뜬다.
  *  E. 홈 배너 — 사진이 통째로 보이고(자르지 않는다), 제목이 공백뿐인 한 장짜리 배너 아래에 빈 띠가 없다.
  *
- * ⚠️ 다른 스펙은 세션을 주입(`openAs`)해서 들어오므로 팝업이 예약되지 않는다 — 팝업은 **로그인 화면을 거칠 때만** 뜬다.
- *    그래서 여기서는 로그인 화면의 [개발자 로그인] 계정 검색으로 실제로 로그인한다.
+ * ⚠️ 다른 스펙은 세션을 주입하면서 팝업을 꺼 둔다(`noNudgeEntry` — [7일 동안 보지 않기] 와 같은 값). 하루 첫 방문에도 뜨기 때문이다.
+ *    여기서는 로그인 화면의 [개발자 로그인] 계정 검색으로 실제로 로그인하고(A~D), F 만 세션을 주입한다(끄지 않고).
  * ⚠️ E 는 크롬만 본다. 2026-10-01 의 잘림은 사파리(WebKit)에서만 났다 — 그건 `scratchpad/hero/matrix.js` 가 잰다.
  */
 const API = 'http://localhost:4000/api';
@@ -61,6 +63,16 @@ async function signOut(page: Page) {
 
 const nudge = (page: Page) => page.getByRole('dialog', { name: '홈페이지에 아직 빈 곳이 있어요' });
 
+/** 하루가 지난 것처럼 — 이 브라우저에 적힌 '오늘 보여 줬다' 날짜를 옛날로 돌린다(시계를 돌리지 않고) */
+async function pretendNextDay(page: Page) {
+  await page.evaluate(() => {
+    const k = 'artlink-homepage-nudge-seen';
+    const all = JSON.parse(localStorage.getItem(k) || '{}');
+    for (const id of Object.keys(all)) all[id] = '2000-01-01';
+    localStorage.setItem(k, JSON.stringify(all));
+  });
+}
+
 let partial: Seeded, snoozer: Seeded, complete: Seeded, empty: Seeded;
 
 test.beforeAll(async () => {
@@ -76,7 +88,7 @@ test.beforeAll(async () => {
 });
 
 test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => {
-  test('★ 비어 있는 항목만 보이고, [나중에] 뒤엔 다시 로그인할 때까지 안 뜬다', async ({ page }) => {
+  test('★ 비어 있는 항목만 보이고, [나중에] 뒤엔 그날은 다시 로그인해도 안 뜬다 — 다음 날 첫 방문에 또 뜬다', async ({ page }) => {
     await loginViaUi(page, partial);
     const dlg = nudge(page);
     await expect(dlg).toBeVisible();
@@ -105,9 +117,14 @@ test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => 
     await page.waitForTimeout(1500);
     await expect(dlg).toHaveCount(0);
 
-    // 다시 로그인하면 또 뜬다
+    // 그날은 다시 로그인해도 안 뜬다(하루 첫 방문에 한 번 — 2026-10-11)
     await signOut(page);
     await loginViaUi(page, partial);
+    await page.waitForTimeout(2500);
+    await expect(dlg).toHaveCount(0);
+    // 다음 날 — 로그인하지 않고 그냥 들어와도 뜬다
+    await pretendNextDay(page);
+    await page.reload();
     await expect(dlg).toBeVisible();
   });
 
@@ -145,8 +162,8 @@ test.describe('A. 덜 채운 작가가 로그인하면 팝업이 뜬다', () => 
     await page.keyboard.press('Escape');
     await expect(dlg).toHaveCount(0);
 
-    await signOut(page);
-    await loginViaUi(page, partial);
+    await pretendNextDay(page);
+    await page.reload();
     await expect(dlg).toBeVisible();
     await dlg.getByRole('button', { name: '지금 채우기' }).click();
     await expect(page).toHaveURL(/\/mypage\?tab=homepage-edit/);
@@ -225,6 +242,42 @@ test.describe('D. 하던 일을 끊지 않는다', () => {
 
     await page.goto('/exhibitions');
     await expect(dlg).toBeVisible();
+  });
+});
+
+test.describe('F. 로그인 없이 — 하루 첫 방문에 뜬다', () => {
+  test('★ 이미 로그인된 채로 들어오면 뜨고, 그날은 새로고침해도 안 뜬다 — 숨겼던 탭으로 다음 날 돌아오면 다시 뜬다', async ({ browser }) => {
+    // 실서버: 초원·박경연은 가입한 날 사진만 올리고 떠났다. 로그인이 7일 유지돼 '로그인할 때만' 이면 첫 주엔 못 봤다
+    const api = await pwRequest.newContext();
+    const me = await (await api.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${partial.token}` } })).json();
+    await api.dispose();
+    const user = me.user ?? me;
+    const ctx = await browser.newContext({
+      storageState: { cookies: [], origins: [{ origin: 'http://localhost:5173', localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: partial.token, user, isAuthenticated: true }, version: 0 }) }] }] },
+    });
+    const page = await ctx.newPage();
+    await page.goto('/exhibitions');
+    const dlg = nudge(page);
+    await expect(dlg).toBeVisible();
+    await expect(dlg.getByRole('button', { name: /작품 정보 채우기/ })).toContainText('2/4');
+    // 보여 준 날은 KST 날짜로 적힌다
+    const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('artlink-homepage-nudge-seen') || '{}'));
+    expect(seen[String(user.id)]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    await dlg.getByRole('button', { name: '나중에' }).click();
+    await expect(dlg).toHaveCount(0);
+    await page.reload();
+    await page.waitForTimeout(2000);
+    await expect(dlg).toHaveCount(0);
+    await page.goto('/');
+    await page.waitForTimeout(2000);
+    await expect(dlg).toHaveCount(0);
+
+    // 탭을 숨겨 두었다가 다음 날 돌아온다 — 새로고침 없이 뜬다
+    await pretendNextDay(page);
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(dlg).toBeVisible();
+    await ctx.close();
   });
 });
 

@@ -2,7 +2,7 @@ import fs from 'fs';
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 import {
   createExhibition, customizePanel, customizeTab, editorSave, makerBar, openCustomize, openHomepageEditor, openPortfolioMaker, ownedGalleryId,
-  paperRadio, previewPage, previewPageOfKind, saveDialog, solidPng, statePath, tokenFor, PUBLIC_HOMEPAGE_URL,
+  paperRadio, previewPage, previewPageOfKind, saveDialog, solidPng, statePath, tokenFor, PUBLIC_HOMEPAGE_URL, noNudgeEntry,
 } from '../lib/helpers';
 
 /**
@@ -94,7 +94,7 @@ async function openFor(browser: Browser, a: Seeded, opts: { desktop?: boolean; p
   const ctx = await browser.newContext({
     ...extra,
     acceptDownloads: true,
-    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }] }] },
+    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }, noNudgeEntry(a.user.id)] }] },
   });
   await ctx.addInitScript((mode) => {
     window.print = function () {

@@ -8,19 +8,19 @@ import api from '@/lib/axios';
 import { computeCompleteness } from '@/lib/completeness';
 import { editHref } from '@/lib/homepageEdit';
 import {
-  armedHomepageNudgeUserId, disarmHomepageNudge, nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
+  armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, markHomepageNudgeSeen, nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
 } from '@/lib/homepageNudge';
 import { useAuthStore } from '@/stores/authStore';
 import type { Portfolio } from '@/types';
 
 /**
- * 작가 로그인 뒤 "홈페이지에 아직 빈 곳이 있어요" 팝업 (2026-10-01, 사용자 요청)
+ * 작가에게 "홈페이지에 아직 빈 곳이 있어요" 팝업 (2026-10-01, 사용자 요청 · 2026-10-11 부터 하루 첫 방문에 한 번)
  *
  * 언제 뜨는지는 `lib/homepageNudge.ts`, 무엇이 비었는지는 `lib/completeness.ts`(프로필 탭·편집 화면의 완성도 한 줄과 같은 판정).
  * `Layout` 에 한 번 놓여 어느 화면에 내려도 뜬다. 작가가 아니거나 홈페이지를 다 채웠으면 아무것도 그리지 않는다.
  *
  * - 비어 있는 항목만 보여준다. 줄을 누르면 그걸 채우는 자리로 간다.
- * - 닫는 길은 셋: [지금 채우기](첫 항목으로) · [나중에](다음 로그인 때 다시) · [7일 동안 보지 않기].
+ * - 닫는 길은 셋: [지금 채우기](첫 항목으로) · [나중에](내일 첫 방문 때 다시) · [7일 동안 보지 않기].
  * - 화면이 자리를 잡은 뒤(0.6초)에 뜬다 — 로그인 직후엔 화면이 한두 번 바뀌는데, 그 사이에 떴다 닫히면 번쩍인다.
  */
 const SETTLE_MS = 600;
@@ -30,6 +30,17 @@ export default function HomepageNudge() {
   const location = useLocation();
   const navigate = useNavigate();
   const titleId = useId();
+
+  // 하루 첫 방문 — 이미 로그인된 채로 앱을 열 때, 숨겼던 탭으로 돌아올 때(날이 바뀌었을 수 있다) 예약한다.
+  // 오늘 이미 보여 줬으면 `armHomepageNudge` 가 건너뛴다. ⚠️ 로그인된 사용자가 바뀔 때마다 걸지 말 것(lib/homepageNudge.ts ⚠️).
+  // ⚠️ 앱 맨 위라 던지면 화면 전체가 죽는다 — 저장소가 막혀도 조용히 넘어간다
+  useEffect(() => {
+    const arm = () => { try { armHomepageNudge(useAuthStore.getState().user); } catch { /* 이번엔 안 띄운다 */ } };
+    arm();
+    const onVisible = () => { if (document.visibilityState === 'visible') arm(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   const armedId = useSyncExternalStore(subscribeHomepageNudge, armedHomepageNudgeUserId, () => null);
   const armed = !!user && user.role === 'ARTIST' && armedId === user.id;
@@ -56,11 +67,18 @@ export default function HomepageNudge() {
   const incomplete = !!c && !c.complete;
   const open = armed && place === 'show' && incomplete && settledAt === here;
 
-  // 띄울 필요가 없어졌으면 예약을 지운다 — 이미 편집 화면에 있거나, 받아 보니 다 채워져 있다
+  // 띄울 필요가 없어졌으면 예약을 지운다 — 이미 편집 화면에 있거나, 받아 보니 다 채워져 있다. 그날은 본 것으로 친다
   const nothingToSay = armed && (place === 'done' || (place === 'show' && !!c && c.complete));
   useEffect(() => {
-    if (nothingToSay) disarmHomepageNudge();
-  }, [nothingToSay]);
+    if (!nothingToSay) return;
+    if (user) markHomepageNudgeSeen(user.id);
+    disarmHomepageNudge();
+  }, [nothingToSay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 보여 줬으면 그날은 다시 띄우지 않는다 — 닫지 않고 새로고침해도 그날은 끝이다
+  useEffect(() => {
+    if (open && user) markHomepageNudgeSeen(user.id);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ESC 로 닫기 + 배경 스크롤 잠금 (ConfirmDialog 와 같은 방식)
   useEffect(() => {

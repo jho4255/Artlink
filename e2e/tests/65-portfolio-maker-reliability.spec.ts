@@ -2,7 +2,7 @@ import fs from 'fs';
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 import {
   applyTermsVersion, createExhibition, customizePanel, customizeTab, editorSave, fireConcurrently, makerBar, openCustomize,
-  openHomepageEditor, openPortfolioMaker, ownedGalleryId, paperRadio, previewPage, saveDialog, solidPng, tokenFor,
+  openHomepageEditor, openPortfolioMaker, ownedGalleryId, paperRadio, previewPage, saveDialog, solidPng, tokenFor, noNudgeEntry,
 } from '../lib/helpers';
 
 /**
@@ -78,7 +78,7 @@ async function openFor(browser: Browser, a: Seeded, opts: { desktop?: boolean } 
   const ctx = await browser.newContext({
     ...extra,
     acceptDownloads: true,
-    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }] }] },
+    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }, noNudgeEntry(a.user.id)] }] },
   });
   const page = await ctx.newPage();
   const errors: string[] = [];

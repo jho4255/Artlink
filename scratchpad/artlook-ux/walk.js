@@ -50,7 +50,7 @@ async function run(engineName, screenName, acc) {
   const s = { ...SCREENS[screenName] }; const min = s.min; delete s.min;
   if (engineName === 'webkit') delete s.isMobile;
   const browser = await pw[engineName].launch(engineName === 'webkit' ? { executablePath: WEBKIT_RUN } : {});
-  const ctx = await browser.newContext({ ...s, serviceWorkers: 'block', acceptDownloads: true, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] } });
+  const ctx = await browser.newContext({ ...s, serviceWorkers: 'block', acceptDownloads: true, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] } });
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', (e) => errors.push(String(e).slice(0, 160)));
   const dialogs = []; page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss().catch(() => {}); });

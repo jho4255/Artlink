@@ -18,7 +18,7 @@ const SCREENS = { pc: { viewport: { width: 1280, height: 800 } }, iphone: device
   for (const [name, dev] of Object.entries(SCREENS)) {
     execSync('npx tsx scripts/seed-nudge-demo.ts', { cwd: BACKEND, stdio: 'pipe' });
     const acc = await (await fetch(`${API}/auth/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'nudge.empty@demo.artlink.local' }) })).json();
-    const ctx = await browser.newContext({ ...dev, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] } });
+    const ctx = await browser.newContext({ ...dev, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] } });
     const page = await ctx.newPage();
     await page.goto(`${BASE}/mypage?tab=homepage-edit`);
     await page.getByRole('button', { name: /작품 사진 올리기/ }).first().waitFor();

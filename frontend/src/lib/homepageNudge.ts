@@ -10,17 +10,23 @@
  * '홈페이지 완성도' 상자는 없앴고, [프로필] 탭에 한 줄(`ArtistHomepageLine`)만 남겼다 — 팝업을 닫은 뒤에도 남은 일이 보이게.
  *
  * 규칙
- *  - 로그인(가입 포함) 한 번에 한 번. 닫으면 다음 로그인 때까지 안 뜬다. 토큰이 7일이라 적어도 주 1회는 다시 묻는다.
- *  - [7일 동안 보지 않기] 를 누르면 그 기간엔 로그인해도 안 뜬다(계정별, 이 브라우저).
+ *  - **하루 첫 방문에 한 번**(2026-10-11, 사용자 결정 — 그 전엔 '로그인할 때 한 번'). 로그인이 7일 유지되므로
+ *    로그인할 때만 띄우면 첫 주에 돌아온 작가는 한 번도 못 봤다(실서버: 사진만 올리고 떠난 초원·박경연).
+ *    예약은 셋 — 로그인할 때(갈 곳을 정한 뒤) · 앱을 열 때(이미 로그인된 채로) · 숨겼던 탭으로 돌아올 때(날이 바뀌었을 수 있다).
+ *    한 번 보여 주면(또는 편집 화면에 이미 와 있으면) 그 KST 날짜를 적어 두고 그날은 다시 띄우지 않는다(계정별, 이 브라우저).
+ *  - [7일 동안 보지 않기] 를 누르면 그 기간엔 안 뜬다(계정별, 이 브라우저).
  *  - 하던 일을 끊지 않는다 — 지원서·초대 코드 참여·로그인 화면에서는 **기다렸다가** 그 일을 마친 뒤 뜬다.
  *  - 이미 홈페이지 편집 화면이면 띄우지 않고 끝낸다(가라고 할 곳에 이미 와 있다. 그 화면엔 완성도 한 줄이 있다).
  *
- * ⚠️ `armHomepageNudge` 는 **갈 곳을 정한 뒤, navigate 직전에** 부를 것(LoginPage·AuthCallbackPage).
+ * ⚠️ 로그인 경로에서는 `armHomepageNudge` 를 **갈 곳을 정한 뒤, navigate 직전에** 부를 것(LoginPage·AuthCallbackPage).
+ *    앱을 열 때의 예약(`HomepageNudge`)은 **마운트 한 번 + 탭으로 돌아올 때**뿐이다 — 로그인된 사용자가 바뀔 때마다 걸면
+ *    로그인 직후 LoginPage 가 잠깐 보내는 /mypage 에서 예약돼 같은 번쩍임이 난다.
  *    `authStore.login` 안에서 켜면 로그인 직후 잠깐 거치는 화면(/mypage)에서 떴다가 목적지에서 닫히며 번쩍인다.
  */
 
 const ARMED_KEY = 'artlink-homepage-nudge'; // sessionStorage: 팝업을 띄울 사용자 id
 const SNOOZE_KEY = 'artlink-homepage-nudge-snooze'; // localStorage: { [userId]: 다시 띄워도 되는 시각(ms) }
+const SEEN_KEY = 'artlink-homepage-nudge-seen'; // localStorage: { [userId]: 마지막으로 보여 준 KST 날짜 'YYYY-MM-DD' }
 
 export const NUDGE_SNOOZE_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,16 +56,47 @@ export function isHomepageNudgeSnoozed(userId: number, now: number = Date.now(),
   return Number.isFinite(until) && until > now;
 }
 
-/** 로그인 직후 — 작가이고 '보지 않기' 기간이 아니면 팝업을 예약한다 */
+/** KST 달력 날짜 'YYYY-MM-DD' — 기기 시간대와 무관하게 한국 날짜로 하루를 가른다(규칙 14) */
+export function kstDay(now: number = Date.now()): string {
+  return new Date(now + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function readSeen(l: KV | null): Record<string, string> {
+  try {
+    const parsed = JSON.parse(l?.getItem(SEEN_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+/** 오늘(KST) 이미 보여 줬는가 */
+export function isHomepageNudgeSeenToday(userId: number, now: number = Date.now(), l: KV | null = local()): boolean {
+  return readSeen(l)[String(userId)] === kstDay(now);
+}
+
+/** 오늘은 보여 줬다 — 그날은 다시 예약하지 않는다. 지난 날짜는 버린다(계정을 바꿔 가며 쓰는 브라우저에서 쌓이지 않게) */
+export function markHomepageNudgeSeen(userId: number, now: number = Date.now(), l: KV | null = local()): void {
+  try {
+    const today = kstDay(now);
+    const all = readSeen(l);
+    for (const k of Object.keys(all)) if (all[k] !== today) delete all[k];
+    all[String(userId)] = today;
+    l?.setItem(SEEN_KEY, JSON.stringify(all));
+  } catch { /* 적지 못하면 그날 다시 뜰 수 있을 뿐이다 */ }
+}
+
+/**
+ * 팝업을 예약한다 — 작가이고, '보지 않기' 기간이 아니고, 오늘 아직 안 보여 줬으면.
+ * 로그인할 때(갈 곳을 정한 뒤) · 앱을 열 때 · 숨겼던 탭으로 돌아올 때 부른다(`HomepageNudge`).
+ */
 export function armHomepageNudge(user: { id: number; role: string } | null | undefined, now: number = Date.now(), s: KV | null = session(), l: KV | null = local()): void {
   try {
-    if (!user || user.role !== 'ARTIST' || isHomepageNudgeSnoozed(user.id, now, l)) s?.removeItem(ARMED_KEY);
+    if (!user || user.role !== 'ARTIST' || isHomepageNudgeSnoozed(user.id, now, l) || isHomepageNudgeSeenToday(user.id, now, l)) s?.removeItem(ARMED_KEY);
     else s?.setItem(ARMED_KEY, String(user.id));
   } catch { /* 저장 못 하면 이번엔 안 띄운다 */ }
   emit();
 }
 
-/** 팝업을 봤거나(닫음·이동) 띄울 필요가 없어졌다 — 다음 로그인까지 조용히 */
+/** 팝업을 봤거나(닫음·이동) 띄울 필요가 없어졌다 — 이 탭에서는 다시 예약될 때까지 조용히(날짜 기록은 `markHomepageNudgeSeen`) */
 export function disarmHomepageNudge(s: KV | null = session()): void {
   try { s?.removeItem(ARMED_KEY); } catch { /* 무시 */ }
   emit();

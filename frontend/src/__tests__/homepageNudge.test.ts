@@ -8,8 +8,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, isHomepageNudgeSnoozed, nudgePlace,
-  snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
+  armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, isHomepageNudgeSeenToday, isHomepageNudgeSnoozed, kstDay,
+  markHomepageNudgeSeen, nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
 } from '@/lib/homepageNudge';
 
 class MemoryStorage {
@@ -38,13 +38,45 @@ describe('팝업 예약 — 로그인한 작가에게만', () => {
     }
   });
 
-  it('닫으면 다음 로그인까지 조용하고, 다시 로그인하면 또 예약된다', () => {
+  it('닫기만 하고 그날 기록을 안 남겼으면(다른 탭 등) 다시 예약된다', () => {
     const s = new MemoryStorage(), l = new MemoryStorage();
     armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW, s, l);
     disarmHomepageNudge(s);
     expect(armedHomepageNudgeUserId(s)).toBeNull();
     armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW + 60_000, s, l);
     expect(armedHomepageNudgeUserId(s)).toBe(7);
+  });
+
+  it('★ 하루 첫 방문에 한 번 — 보여 준 날엔 로그인해도·앱을 다시 열어도 예약되지 않고, 다음 날(KST) 다시 된다', () => {
+    const s = new MemoryStorage(), l = new MemoryStorage();
+    armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW, s, l);
+    markHomepageNudgeSeen(7, NOW, l);
+    disarmHomepageNudge(s);
+    for (const later of [60_000, 5 * 60 * 60 * 1000]) {
+      armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW + later, s, l);
+      expect(armedHomepageNudgeUserId(s)).toBeNull();
+    }
+    expect(isHomepageNudgeSeenToday(7, NOW + 60_000, l)).toBe(true);
+    armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW + DAY, s, l);
+    expect(armedHomepageNudgeUserId(s)).toBe(7);
+  });
+
+  it('날짜는 KST 로 가른다 — UTC 15시(=KST 자정)가 경계, 기기 시간대와 무관', () => {
+    expect(kstDay(Date.UTC(2026, 9, 10, 14, 59))).toBe('2026-10-10');
+    expect(kstDay(Date.UTC(2026, 9, 10, 15, 0))).toBe('2026-10-11');
+    const l = new MemoryStorage();
+    markHomepageNudgeSeen(7, Date.UTC(2026, 9, 10, 14, 0), l);   // KST 23시에 봤다
+    expect(isHomepageNudgeSeenToday(7, Date.UTC(2026, 9, 10, 14, 50), l)).toBe(true);
+    expect(isHomepageNudgeSeenToday(7, Date.UTC(2026, 9, 10, 15, 10), l)).toBe(false);   // KST 자정이 지났다
+  });
+
+  it('본 날짜는 계정별이고, 지난 날짜는 버린다', () => {
+    const s = new MemoryStorage(), l = new MemoryStorage();
+    markHomepageNudgeSeen(7, NOW, l);
+    armHomepageNudge({ id: 8, role: 'ARTIST' }, NOW, s, l);
+    expect(armedHomepageNudgeUserId(s)).toBe(8);
+    markHomepageNudgeSeen(8, NOW + DAY, l);
+    expect(JSON.parse(l.getItem('artlink-homepage-nudge-seen')!)).toEqual({ 8: kstDay(NOW + DAY) });
   });
 
   it('[7일 동안 보지 않기] — 그 기간엔 로그인해도 예약되지 않고, 지나면 다시 된다', () => {
@@ -136,6 +168,15 @@ describe('연결 — 소스 대조', () => {
   it('로그아웃하면 예약을 지우고, 팝업은 Layout 에 한 번 놓인다', () => {
     expect(src('stores/authStore.ts')).toMatch(/logout:[\s\S]{0,120}disarmHomepageNudge\(\)/);
     expect(src('components/layout/Layout.tsx').match(/<HomepageNudge \/>/g)).toHaveLength(1);
+  });
+
+  it('★ 하루 첫 방문 — 앱을 열 때(마운트 한 번)와 숨겼던 탭으로 돌아올 때 예약하고, 보여 주면 그날을 적는다', () => {
+    const s = src('components/shared/HomepageNudge.tsx');
+    // 마운트 한 번(의존성 없음) — 로그인된 사용자가 바뀔 때마다 걸면 LoginPage 가 잠깐 보내는 /mypage 에서 번쩍인다
+    expect(s).toMatch(/armHomepageNudge\(useAuthStore\.getState\(\)\.user\)[\s\S]{0,400}addEventListener\('visibilitychange', onVisible\)[\s\S]{0,200}\}, \[\]\);/);
+    expect(s).toMatch(/if \(open && user\) markHomepageNudgeSeen\(user\.id\)/);
+    // 편집 화면에 와 있거나 다 채웠으면 그날은 본 것으로 친다
+    expect(s).toMatch(/if \(user\) markHomepageNudgeSeen\(user\.id\);\s*disarmHomepageNudge\(\);/);
   });
 
   it('팝업은 체크리스트와 같은 판정(computeCompleteness)을 쓴다', () => {

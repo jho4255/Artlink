@@ -58,7 +58,7 @@ async function devLogin(email) {
   if (!r.ok) throw new Error(`개발자 로그인 실패 ${email} ${r.status} — 백엔드가 데모 DB 로 떠 있는지, 계정이 심어졌는지 확인`);
   return r.json();
 }
-const storage = (acc) => ({ cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] });
+const storage = (acc) => ({ cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] });
 
 /** 그 요소의 한가운데를 눌렀을 때 정말 그 요소가 잡히는가 + 화면 안에 다 들어와 있는가 */
 const hit = (page, selector, nth = 0) => page.evaluate(([sel, n]) => {

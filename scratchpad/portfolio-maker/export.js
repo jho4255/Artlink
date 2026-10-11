@@ -21,7 +21,7 @@ const arg = (k, d) => (process.argv.slice(2).find((a) => a.startsWith(k + '=')) 
   const acc = await (await fetch(`${API}/auth/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: arg('acc', 'jinwoo.seo@demo.artlink.local') }) })).json();
   const browser = engine === 'webkit' ? await webkit.launch({ executablePath: WEBKIT_RUN }) : await chromium.launch();
   const { defaultBrowserType: _dbt, ...opts } = scr === 'pixel' ? devices['Pixel 7'] : scr === 'iphone' ? devices['iPhone 13'] : { viewport: { width: 1280, height: 800 } };
-  const ctx = await browser.newContext({ ...opts, acceptDownloads: true, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] } });
+  const ctx = await browser.newContext({ ...opts, acceptDownloads: true, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] } });
   const page = await ctx.newPage();
   await page.route('**/api/visits', (q) => q.fulfill({ status: 200, body: '{}' }));
   await page.route('**/api/portfolio/design', (q) => q.fulfill({ status: 200, contentType: 'application/json', body: '{"designConfig":{}}' }));

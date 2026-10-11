@@ -9,6 +9,13 @@ export type Role = 'artist' | 'artist2' | 'gallery' | 'admin';
 const AUTH_DIR = path.resolve(process.cwd(), '.auth');
 export const statePath = (role: Role) => path.join(AUTH_DIR, `${role}.json`);
 
+/**
+ * 세션을 주입한 창에 넣는 localStorage 한 줄 — '홈페이지 완성' 팝업을 그 계정에 대해 끈다([7일 동안 보지 않기] 와 같은 값).
+ * 2026-10-11 부터 팝업이 로그인 없이 **하루 첫 방문**에도 뜬다(규칙 51) — 안 넣으면 덜 채운 작가로 여는 모든 스펙에 팝업이 끼어든다.
+ * 팝업 자체는 `61-homepage-nudge` 가 본다(거기선 넣지 않는다). global-setup 에도 같은 값을 직접 적어 두었다.
+ */
+export const noNudgeEntry = (userId: unknown) => ({ name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(userId)]: 8.64e15 }) });
+
 /** global-setup이 저장한 역할별 유저 id */
 export function userIds(): Record<Role, number> {
   return JSON.parse(fs.readFileSync(path.join(AUTH_DIR, 'ids.json'), 'utf-8'));

@@ -146,7 +146,7 @@ async function ensureWalkArtist() {
   pf = (await call('GET', '/portfolio', acc.token)).data;
   return { acc, works: pf.images.length };
 }
-const storage = (acc) => ({ cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] });
+const storage = (acc) => ({ cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] });
 
 // ── 재는 도구(브라우저 안에서 돈다) ───────────────────────────────────────
 /** 그 요소의 한가운데를 눌렀을 때 정말 그 요소가 잡히는가 + 화면 안에 다 들어와 있는가 */

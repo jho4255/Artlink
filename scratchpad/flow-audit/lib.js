@@ -39,7 +39,7 @@ async function open(browser, role, screen = 'pc') {
   const opts = { ...SCREENS[screen], baseURL: BASE, locale: 'ko-KR', timezoneId: 'Asia/Seoul' };
   if (role) {
     const { token, user } = await login(role);
-    opts.storageState = { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token, user, isAuthenticated: true }, version: 0 }) }] }] };
+    opts.storageState = { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token, user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(user.id)]: 8.64e15 }) }] }] };
   }
   const ctx = await browser.newContext(opts);
   const page = await ctx.newPage();

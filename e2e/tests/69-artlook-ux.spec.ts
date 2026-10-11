@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Frame, type Page } from '@playwright/test';
-import { solidPng } from '../lib/helpers';
+import { solidPng, noNudgeEntry } from '../lib/helpers';
 
 /**
  * ArtLook(액자 걸기) 화면 개편 — 2026-10-04, CLAUDE.md 규칙 65. **눌러서 무슨 일이 나는가**를 본다.
@@ -70,7 +70,7 @@ async function openFor(browser: Browser, a: Seeded, opts: { desktop?: boolean } 
   const ctx = await browser.newContext({
     ...extra,
     acceptDownloads: true,
-    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }] }] },
+    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }, noNudgeEntry(a.user.id)] }] },
   });
   const page = await ctx.newPage();
   const dialogs: string[] = [];

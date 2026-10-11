@@ -54,7 +54,11 @@ export default async function globalSetup() {
       cookies: [],
       origins: [{
         origin: FE_ORIGIN,
-        localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token, user, isAuthenticated: true }, version: 0 }) }],
+        localStorage: [
+          { name: 'artlink-auth', value: JSON.stringify({ state: { token, user, isAuthenticated: true }, version: 0 }) },
+          // '홈페이지 완성' 팝업을 끈다 — 하루 첫 방문에도 떠서(2026-10-11) 모든 스펙에 끼어든다. 팝업은 61 이 본다(lib/helpers noNudgeEntry 와 같은 값)
+          { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [u.id]: 8.64e15 }) },
+        ],
       }],
     };
     fs.writeFileSync(path.join(AUTH_DIR, `${u.role}.json`), JSON.stringify(storage, null, 2));

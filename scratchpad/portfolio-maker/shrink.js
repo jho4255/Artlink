@@ -14,7 +14,7 @@ const OUT = path.join(__dirname, 'out');
   const budgets = process.argv.slice(2).map(Number).filter((n) => n > 0);
   const acc = await (await fetch(`${API}/auth/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'jinwoo.seo@demo.artlink.local' }) })).json();
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }] }] } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: acc.token, user: acc.user, isAuthenticated: true }, version: 0 }) }, { name: 'artlink-homepage-nudge-snooze', value: JSON.stringify({ [String(acc.user.id)]: 8.64e15 }) }] }] } });
   const page = await ctx.newPage();
   await page.route('**/api/visits', (q) => q.fulfill({ status: 200, body: '{}' }));
   await page.goto(`${BASE}/mypage?tab=portfolio`);

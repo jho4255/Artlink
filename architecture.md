@@ -2331,6 +2331,11 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   `done`(홈페이지 편집 화면) 이거나 받아 보니 완성이면 예약을 지운다. `wait`(지원서·초대 코드·로그인)에서는 예약을 둔 채 기다린다.
 - **서버 변경 없음.** 저장은 브라우저에만(sessionStorage 예약 · localStorage '보지 않기').
 - 확인: 프론트 `homepageNudge.test.ts`(13) · e2e `61-homepage-nudge.spec.ts` A~D · 로컬 계정 `backend/scripts/seed-nudge-demo.ts`.
+- **2026-10-11 — '로그인할 때 한 번' → '하루 첫 방문에 한 번'**(사용자 결정). 로그인이 7일 유지돼, 가입한 주에 돌아온 작가는 팝업을 못 봤다
+  (실서버: 사진만 올리고 정보를 비운 초원·박경연 — 둘 다 그 뒤 로그인한 적이 없다). 예약하는 곳이 늘었다 — `HomepageNudge` 마운트 한 번(이미 로그인된 채로 앱을 열 때) ·
+  `visibilitychange`(숨겼던 탭으로 돌아올 때). `armHomepageNudge` 가 '오늘(KST) 이미 보여 줬는가'(`artlink-homepage-nudge-seen`)를 보고 건너뛴다.
+  보여 주면 · 편집 화면에 와 있으면 · 다 채웠으면 그날을 적는다(`markHomepageNudgeSeen`, 지난 날짜는 버린다). [나중에] = 내일 첫 방문에 다시.
+  E2E·하니스의 세션 주입은 `noNudgeEntry`(=보지 않기)로 팝업을 끈다. 확인: `homepageNudge.test.ts`(17) · e2e `61` A(같은 날 다시 로그인해도 안 뜬다 → 다음 날 뜬다) · F(로그인 없이).
 
 ### 홈 배너 — 사파리에서 잘리던 사진
 - **증상**: 사파리(WebKit)에서 배너 높이가 상한(`max-h-[70vh]`/`md:max-h-[46vh]`)에 걸리면 사진 아래가 잘렸다. 크롬은 정상.

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
-import { editSectionTab, editorSave, openEditSection, openHomepageEditor, settle, solidPng, PUBLIC_HOMEPAGE_URL } from '../lib/helpers';
+import { editSectionTab, editorSave, openEditSection, openHomepageEditor, settle, solidPng, PUBLIC_HOMEPAGE_URL, noNudgeEntry } from '../lib/helpers';
 
 /**
  * 작가 홈페이지 편집 화면 개편 (2026-10-02)
@@ -59,7 +59,7 @@ const myPortfolio = async (api: APIRequestContext, a: Seeded) => (await api.get(
 async function openFor(browser: Browser, a: Seeded, viewport?: { width: number; height: number }, extra: BrowserContextOptions = {}) {
   const ctx = await browser.newContext({
     ...extra,
-    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }] }] },
+    storageState: { cookies: [], origins: [{ origin: FE, localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: a.token, user: a.user, isAuthenticated: true }, version: 0 }) }, noNudgeEntry(a.user.id)] }] },
   });
   const page = await ctx.newPage();
   if (viewport) await page.setViewportSize(viewport);
