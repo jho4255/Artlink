@@ -67,6 +67,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   loads = 0; const t0 = Date.now();
   await page.goto(BASE + '/');
   const firstHasDaily = await page.evaluate(() => [...document.scripts].map((s) => s.src).join(' '));
+  // ANSWER_EARLY=1 — 처음 뜬 팝업(아직 옛 판)에 곧바로 [나중에]. 새 판으로 바뀐 뒤 다시 뜨면 안 된다(두 번 뜨지 않는다)
+  if (process.env.ANSWER_EARLY) {
+    for (let i = 0; i < 40; i++) { if (await nudge.count()) { await nudge.getByRole('button', { name: '나중에' }).click().catch(() => {}); console.log('   (옛 판에서 바로 [나중에])'); break; } await sleep(250); }
+    await sleep(12000);
+    console.log('   새 판으로 바뀐 뒤 팝업:', await nudge.count(), '(0 이 맞다 — 두 번 뜨지 않는다)');
+    console.log('   타임라인:\n     ' + JSON.parse(await page.evaluate(() => sessionStorage.getItem('trace') || '[]')).join('\n     '));
+    await ctx.close(); stop(srv); fs.rmSync(dir, { recursive: true, force: true }); return;
+  }
   let shownAt = null;
   for (let i = 0; i < 60; i++) { if (await nudge.count()) { shownAt = Date.now() - t0; break; } await sleep(500); }
   await sleep(10000);   // 떴다면 10초 뒤에도 남아 있는가(새로고침이 지우지 않았는가)

@@ -61,6 +61,25 @@ describe('팝업 예약 — 로그인한 작가에게만', () => {
     expect(armedHomepageNudgeUserId(s)).toBe(7);
   });
 
+  it('★ 이 탭에서 띄우고 답하지 않은 채 새로고침되면 — \'봤다\'가 적혀 있어도 다시 뜬다(옛 판이 뜨는 순간 적어 둔 경우)', () => {
+    // 2026-10-12 이전 판: 뜨는 순간 '봤다'를 적고, 예약은 답할 때만 지웠다. 그 판이 먼저 뜨고 새 판으로 바뀌는 새로고침을 재현한다
+    const s = new MemoryStorage(), l = new MemoryStorage();
+    armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW, s, l);   // 옛 판이 예약
+    markHomepageNudgeSeen(7, NOW, l);                          // 옛 판이 뜨는 순간 '봤다'
+    armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW + 20_000, s, l);   // 새 판이 다시 열림
+    expect(armedHomepageNudgeUserId(s)).toBe(7);
+    // 옛 판에서 이미 답했다(예약을 지웠다) → 새 판은 다시 띄우지 않는다(두 번 뜨지 않는다)
+    disarmHomepageNudge(s);
+    armHomepageNudge({ id: 7, role: 'ARTIST' }, NOW + 40_000, s, l);
+    expect(armedHomepageNudgeUserId(s)).toBeNull();
+    // 7일 보지 않기는 예약이 남아 있어도 이긴다
+    armHomepageNudge({ id: 8, role: 'ARTIST' }, NOW, s, l);
+    snoozeHomepageNudge(8, NOW, s, l);
+    s.setItem('artlink-homepage-nudge', '8');
+    armHomepageNudge({ id: 8, role: 'ARTIST' }, NOW + 1000, s, l);
+    expect(armedHomepageNudgeUserId(s)).toBeNull();
+  });
+
   it('날짜는 KST 로 가른다 — UTC 15시(=KST 자정)가 경계, 기기 시간대와 무관', () => {
     expect(kstDay(Date.UTC(2026, 9, 10, 14, 59))).toBe('2026-10-10');
     expect(kstDay(Date.UTC(2026, 9, 10, 15, 0))).toBe('2026-10-11');

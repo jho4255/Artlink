@@ -90,7 +90,13 @@ export function markHomepageNudgeSeen(userId: number, now: number = Date.now(), 
  */
 export function armHomepageNudge(user: { id: number; role: string } | null | undefined, now: number = Date.now(), s: KV | null = session(), l: KV | null = local()): void {
   try {
-    if (!user || user.role !== 'ARTIST' || isHomepageNudgeSnoozed(user.id, now, l) || isHomepageNudgeSeenToday(user.id, now, l)) s?.removeItem(ARMED_KEY);
+    if (!user || user.role !== 'ARTIST' || isHomepageNudgeSnoozed(user.id, now, l)) s?.removeItem(ARMED_KEY);
+    // ⚠️ 이 탭에서 띄웠는데 아직 답하지 않았다(예약이 남아 있다) → '오늘 봤다'가 적혀 있어도 다시 띄운다.
+    //    답하면 예약을 지우므로 이 경우는 '화면만 바뀌었다'(배포 뒤 새 판으로 바뀌는 새로고침)뿐이다.
+    //    2026-10-12 이전 판은 뜨는 순간 '봤다'를 적었다 — 그 판이 휴대폰에 남아 있으면 다음 방문 때 옛 판이 먼저 떠
+    //    적어 두고, 실서버 기준 약 20초 뒤 새 판으로 바뀌면서 지워진다. 그 팝업을 여기서 되살린다(옛 판에서 답했으면 예약이 없어 안 뜬다).
+    else if (armedHomepageNudgeUserId(s) === user.id) s?.setItem(ARMED_KEY, String(user.id));
+    else if (isHomepageNudgeSeenToday(user.id, now, l)) s?.removeItem(ARMED_KEY);
     else s?.setItem(ARMED_KEY, String(user.id));
   } catch { /* 저장 못 하면 이번엔 안 띄운다 */ }
   emit();
