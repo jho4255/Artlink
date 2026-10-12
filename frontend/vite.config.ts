@@ -53,7 +53,7 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js', // 출력도 dist/sw.js (백엔드 no-store 대상·등록 URL과 이름 일치)
-      // 등록 스크립트(registerSW.js)를 생성하지 않음 — main.tsx에서 /sw.js?v=BUILD_ID로 직접 등록.
+      // 등록 스크립트(registerSW.js)를 생성하지 않음 — main.tsx에서 고정 주소 /sw.js 로 직접 등록(빌드 ID 를 붙이지 않는다 — main.tsx ⚠️).
       // (registerSW.js·sw.js는 고정 파일명이라 CDN 엣지에 stale하게 갇히는 사고가 실제 발생(2026-07).
       //  버전 쿼리는 CF 캐시 키에 포함되므로 빌드마다 반드시 오리진에서 새로 받는다)
       injectRegister: null,

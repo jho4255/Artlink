@@ -174,9 +174,27 @@ describe('연결 — 소스 대조', () => {
     const s = src('components/shared/HomepageNudge.tsx');
     // 마운트 한 번(의존성 없음) — 로그인된 사용자가 바뀔 때마다 걸면 LoginPage 가 잠깐 보내는 /mypage 에서 번쩍인다
     expect(s).toMatch(/armHomepageNudge\(useAuthStore\.getState\(\)\.user\)[\s\S]{0,400}addEventListener\('visibilitychange', onVisible\)[\s\S]{0,200}\}, \[\]\);/);
-    expect(s).toMatch(/if \(open && user\) markHomepageNudgeSeen\(user\.id\)/);
+    // ⚠️⚠️ '오늘 봤다'는 사람이 답했을 때만 — 뜨는 순간 적으면 배포 뒤 새로고침이 팝업을 0.5초 만에 지워도 그날은 끝났다(2026-10-12 실서버 '초원')
+    expect(s).not.toMatch(/if \(open && user\) markHomepageNudgeSeen/);
+    expect(s).toMatch(/const dismiss = \(\) => \{\s*if \(user\) markHomepageNudgeSeen\(user\.id\);\s*disarmHomepageNudge\(\);/);
+    expect(s).toMatch(/const go = \(href: string\) => \{ dismiss\(\); navigate\(href\); \}/);
+    expect(s).toMatch(/if \(e\.key === 'Escape'\) dismiss\(\)/);
+    // 다른 탭에서 답하면 이 탭의 팝업도 닫는다(탭 둘에 떠 있던 팝업이 한쪽에 남지 않게)
+    expect(s).toMatch(/addEventListener\('storage', onStorage\)/);
+    expect(s).toMatch(/isHomepageNudgeSeenToday\(u\.id\) \|\| isHomepageNudgeSnoozed\(u\.id\)\)\) disarmHomepageNudge\(\)/);
+    // 닫는 길에서 기록 없이 예약만 지우는 곳이 남아 있지 않다(배경·[나중에]도 dismiss)
+    expect(s).not.toMatch(/onClick=\{\(\) => disarmHomepageNudge\(\)\}/);
     // 편집 화면에 와 있거나 다 채웠으면 그날은 본 것으로 친다
     expect(s).toMatch(/if \(user\) markHomepageNudgeSeen\(user\.id\);\s*disarmHomepageNudge\(\);/);
+  });
+
+  it('★ 서비스워커는 고정 주소(/sw.js)로 등록한다 — 빌드마다 다른 주소면 배포 뒤 새로고침이 두 번 일어나 팝업을 지웠다', () => {
+    const m = src('main.tsx');
+    expect(m).toMatch(/navigator\.serviceWorker\.register\('\/sw\.js', \{ scope: '\/', updateViaCache: 'none' \}\)/);
+    expect(m).not.toMatch(/register\(`\/sw\.js\?v=/);   // (주석은 옛 주소를 설명하느라 그 글자를 담고 있다)
+    expect(m).not.toMatch(/\?v=\$\{__BUILD_ID__\}/);
+    // 고정 주소가 안전한 건 서버가 sw.js 를 저장해 두지 말라고 보내기 때문이다(2026-07 Cloudflare 사고) — 그 규칙이 살아 있는지
+    expect(readFileSync(join(__dirname, '..', '..', '..', 'backend', 'src', 'lib', 'staticCache.ts'), 'utf-8')).toMatch(/sw\.js/);
   });
 
   it('팝업은 체크리스트와 같은 판정(computeCompleteness)을 쓴다', () => {

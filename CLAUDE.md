@@ -1631,7 +1631,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       언제 띄우는지는 `lib/homepageNudge.ts` 한 곳:
         - **하루 첫 방문에 한 번**(2026-10-11 사용자 결정 — 그 전엔 '로그인할 때 한 번'이라, 로그인이 7일 유지되는 동안 돌아온 작가는 못 봤다.
           실서버: 사진만 올리고 떠난 초원·박경연). 예약은 셋 — 로그인할 때 · 이미 로그인된 채로 앱을 열 때 · 숨겼던 탭으로 돌아올 때(`visibilitychange`).
-          보여 주면(또는 편집 화면에 이미 와 있거나 다 채웠으면) 그 **KST 날짜**를 적어 두고(`artlink-homepage-nudge-seen`, 계정별·이 브라우저) 그날은 다시 안 뜬다.
+          **사람이 답하면**(나중에·닫기·ESC·항목·지금 채우기) 또는 편집 화면에 이미 와 있거나 다 채웠으면 그 **KST 날짜**를 적어 두고(`artlink-homepage-nudge-seen`, 계정별·이 브라우저) 그날은 다시 안 뜬다.
+          ⚠️⚠️ **뜨는 순간 적지 말 것**(2026-10-12 사고) — 배포 뒤 처음 들어온 휴대폰은 새 판으로 바뀌며 새로고침되는데, 그게 팝업을 0.5초 만에 지워도
+          '봤다'가 남아 그날은 끝이었다. 실서버 '초원'이 그날 들어와 4시간 머물고 아무것도 안 했다. 답하지 않은 채 사라졌으면 다음 화면에서 다시 뜬다.
         - [7일 동안 보지 않기] 는 계정별·이 브라우저(localStorage). 그 기간엔 로그인해도 예약하지 않는다.
         - **하던 일을 끊지 않는다** — 지원서(`/exhibitions/:id/apply`)·초대 코드(`/join/:code`)·로그인 화면에서는 기다렸다가 나오면 뜬다(`nudgePlace`).
         - 이미 홈페이지 편집 화면이면 띄우지 않고 끝낸다. 그래서 **작품 0점 작가에게는 안 뜬다**(곧바로 편집 화면의 '시작하기' 안내로 간다).
@@ -1641,7 +1643,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ 로그인 경로를 새로 만들면(다른 OAuth 등) 거기서도 예약할 것 — `homepageNudge.test.ts` 가 두 경로의 호출 순서를 소스로 대조한다.
       ⚠️⚠️ **E2E·하니스에서 세션을 주입하면 팝업을 꺼 둘 것** — 하루 첫 방문에도 뜨므로 안 끄면 덜 채운 작가로 여는 모든 스펙에 끼어든다.
       `global-setup` 의 역할별 세션과 스펙의 인라인 세션은 `noNudgeEntry(userId)`(`e2e/lib/helpers.ts`, [7일 동안 보지 않기] 와 같은 값)를 함께 넣는다.
-      팝업 자체는 `e2e/tests/61-homepage-nudge.spec.ts`(10개)가 본다 — A~D 는 [개발자 로그인]으로 실제 로그인, F 는 끄지 않은 세션 주입(하루 첫 방문).
+      팝업 자체는 `e2e/tests/61-homepage-nudge.spec.ts`(10개)가 본다 — A~D 는 [개발자 로그인]으로 실제 로그인, F 는 끄지 않은 세션 주입(하루 첫 방문 · 답하기 전 새로고침엔 다시 뜬다).
+      ⚠️⚠️ **E2E 는 개발 서버라 서비스워커가 없어 '배포 뒤 처음 들어온 사람'을 못 본다** — 팝업·첫 화면·새로고침에 닿는 변경은
+      `scratchpad/homepage-edit/returning-artist.js <옛 빌드> <새 빌드> mobile`(배포용 빌드 두 개를 같은 주소·같은 브라우저 저장소로 바꿔 열고, 로드·팝업 타임라인을 찍는다)로 볼 것.
       로컬 확인 계정: `cd backend && npx tsx scripts/seed-nudge-demo.ts`(일부만 채운 작가·작품 0점 작가, `--clean`) — 데모 작가는 전부 완성 상태라 팝업이 안 뜬다.
 
 52. **'일반'(VISITOR) 역할** (2026-09-16, 사용자 결정) — 작가 홈페이지의 방문자가 실제 대중이 되는 시작점.
@@ -2325,6 +2329,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **정적 파일 캐시**(`backend/src/lib/staticCache.ts`, 2026-10-04): 해시 번들 `assets/` 만 1년 immutable · 앱 셸(index.html·sw.js…) no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).
   ⚠️ 예전엔 assets 가 아닌 것까지 1년 immutable 이라 ArtLook scene.js 가 Cloudflare 에 옛 판으로 30일 굳어 있었고, 푸터 회사 정보도 고쳐도 안 바뀌었다(규칙 65).
 - **PWA 캐시**: workbox `skipWaiting` + `clientsClaim`, `controllerchange` → 자동 reload. 미리받기에서 `artlook/**` 는 뺀다(규칙 65)
+  ⚠️⚠️ **등록 주소는 고정 `/sw.js`**(`main.tsx`, `updateViaCache:'none'`, 2026-10-12) — 빌드마다 다른 주소(`/sw.js?v=빌드ID`)였을 땐 배포 뒤 처음 들어온 사람에게
+  새로고침이 **두 번** 일어났다(옛 판이 옛 주소로 새 워커를 받아 한 번, 새 판이 새 주소로 같은 워커를 또 설치해 한 번). 두 번째가 막 뜬 '홈페이지 완성' 팝업을 지웠다(규칙 51).
+  주소를 고정해도 안전한 건 `sw.js` 가 no-store 로 나가고 Cloudflare 도 BYPASS 이기 때문이다(2026-07 엣지 캐시 사고의 해법은 이제 서버 쪽이다) — `staticCache.ts` 의 `NO_STORE_FILES` 를 지우지 말 것.
   ⚠️ 새로고침은 **새 버전으로 바뀔 때만**이다(`lib/swUpdate.ts`) — `clientsClaim` 은 처음 설치 때도 `controllerchange` 를 내서, 구분하지 않던 때
   **첫 방문자의 페이지가 들어온 지 7초쯤에 저절로 다시 불러와졌다**(2026-10-04 실서버 실측, 비회원 통계에 첫 화면이 '×2'로 남아 드러났다).
   E2E 는 개발 서버라 서비스워커가 없어 못 잡는다 — 바꾸면 프로덕션 빌드(`vite preview`)에서 새 브라우저로 load 횟수를 셀 것

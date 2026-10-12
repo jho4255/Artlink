@@ -12,13 +12,17 @@ import './index.css';
 
 // PWA 서비스워커 등록 + 업데이트 감지 → 자동 새로고침 안내
 if ('serviceWorker' in navigator) {
-  // 등록 URL에 빌드 ID 쿼리를 붙여 CDN(Cloudflare) 엣지 캐시를 우회한다.
-  // 고정 URL(/sw.js)은 엣지에 장기 캐시되면 신버전 워커가 영영 배포되지 않는 사고가
-  // 실제로 발생(2026-07). 쿼리가 캐시 키에 포함되므로 빌드마다 반드시 새로 받는다.
-  // (vite-plugin-pwa의 registerSW.js 자동 생성은 비활성 — vite.config.ts injectRegister: null)
+  // ⚠️⚠️ 등록 주소는 **고정**(/sw.js)이다 — 빌드마다 바뀌는 주소(`/sw.js?v=빌드ID`)로 되돌리지 말 것 (2026-10-12).
+  //    주소가 빌드마다 다르면 배포 뒤 처음 들어온 사람은 새로고침이 **두 번** 일어난다: 옛 판이 옛 주소로 새 워커를 받아 한 번,
+  //    새 판이 새 주소로 같은 워커를 또 설치해 한 번. 두 번째 새로고침이 막 뜬 '홈페이지 완성' 팝업을 0.5초 만에 지웠다
+  //    (실서버 '초원', 재현 scratchpad/homepage-edit/returning-artist.js). 비회원 통계에 첫 화면이 겹쳐 잡히는 것도 같은 원인이다.
+  //    빌드 ID 를 붙였던 이유(2026-07: Cloudflare 가 /sw.js 를 오래 붙잡아 새 워커가 안 퍼졌다)는 이제 서버가 막는다 —
+  //    sw.js 는 no-store 로 나가고(backend lib/staticCache.ts, static-cache.test.ts) Cloudflare 도 BYPASS 다(2026-10-12 실측).
+  //    `updateViaCache: 'none'` 으로 브라우저 HTTP 캐시도 거치지 않고 매번 서버에 묻는다.
+  //    (vite-plugin-pwa의 registerSW.js 자동 생성은 비활성 — vite.config.ts injectRegister: null)
   if (import.meta.env.PROD) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register(`/sw.js?v=${__BUILD_ID__}`, { scope: '/' });
+      navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
     });
   }
 

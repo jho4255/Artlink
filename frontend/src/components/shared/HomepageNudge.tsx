@@ -8,7 +8,8 @@ import api from '@/lib/axios';
 import { computeCompleteness } from '@/lib/completeness';
 import { editHref } from '@/lib/homepageEdit';
 import {
-  armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, markHomepageNudgeSeen, nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
+  armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, isHomepageNudgeSeenToday, isHomepageNudgeSnoozed, markHomepageNudgeSeen,
+  nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
 } from '@/lib/homepageNudge';
 import { useAuthStore } from '@/stores/authStore';
 import type { Portfolio } from '@/types';
@@ -40,6 +41,19 @@ export default function HomepageNudge() {
     const onVisible = () => { if (document.visibilityState === 'visible') arm(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  // 다른 탭에서 답했으면(오늘 봤다 · 7일 보지 않기) 이 탭의 팝업도 닫는다 — 탭 둘에 떠 있던 팝업이 한쪽에만 남지 않게.
+  // 'storage' 이벤트는 같은 브라우저의 **다른** 탭에서만 온다.
+  useEffect(() => {
+    const onStorage = () => {
+      try {
+        const u = useAuthStore.getState().user;
+        if (u && (isHomepageNudgeSeenToday(u.id) || isHomepageNudgeSnoozed(u.id))) disarmHomepageNudge();
+      } catch { /* 저장소를 못 읽으면 이 탭에서 답하면 된다 */ }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   const armedId = useSyncExternalStore(subscribeHomepageNudge, armedHomepageNudgeUserId, () => null);
@@ -75,15 +89,19 @@ export default function HomepageNudge() {
     disarmHomepageNudge();
   }, [nothingToSay]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 보여 줬으면 그날은 다시 띄우지 않는다 — 닫지 않고 새로고침해도 그날은 끝이다
-  useEffect(() => {
-    if (open && user) markHomepageNudgeSeen(user.id);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ⚠️⚠️ '오늘 봤다'는 **사람이 답했을 때만** 적는다(나중에·닫기·ESC·항목·지금 채우기 — 7일 보지 않기는 따로 적는다).
+  //    뜨는 순간 적으면 안 된다 — 배포 뒤 처음 들어온 휴대폰은 새 판으로 바뀌며 새로고침이 일어나는데, 팝업이 뜬 지 0.5초 만에
+  //    그 새로고침이 화면을 지워도 '봤다'가 남아 그날은 다시 안 떴다(2026-10-12 실서버 '초원' — 들어와 4시간 머물고 아무것도 안 했다.
+  //    재현 scratchpad/homepage-edit/returning-artist.js). 답하지 않은 채 사라졌으면 다음 화면에서 다시 뜬다.
+  const dismiss = () => {
+    if (user) markHomepageNudgeSeen(user.id);
+    disarmHomepageNudge();
+  };
 
   // ESC 로 닫기 + 배경 스크롤 잠금 (ConfirmDialog 와 같은 방식)
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') disarmHomepageNudge(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') dismiss(); };
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -96,7 +114,7 @@ export default function HomepageNudge() {
   if (typeof document === 'undefined') return null;
 
   const missing = c ? c.items.filter((it) => !it.done) : [];
-  const go = (href: string) => { disarmHomepageNudge(); navigate(href); };
+  const go = (href: string) => { dismiss(); navigate(href); };
 
   return createPortal(
     <AnimatePresence>
@@ -106,7 +124,7 @@ export default function HomepageNudge() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={() => disarmHomepageNudge()}
+          onClick={dismiss}
         >
           <motion.div
             initial={{ y: 24, opacity: 0 }}
@@ -149,7 +167,7 @@ export default function HomepageNudge() {
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => disarmHomepageNudge()}
+                onClick={dismiss}
                 className="min-h-[44px] rounded-lg px-4 text-sm text-gray-500 hover:text-gray-900"
               >
                 나중에

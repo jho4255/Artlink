@@ -7,6 +7,7 @@ import { editSectionTab } from '../lib/helpers';
  *  A. 홈페이지를 덜 채운 작가가 **로그인하면** 팝업이 뜨고 비어 있는 항목만 보인다.
  *     [나중에] 면 **그날은**(KST) 다시 로그인해도 안 뜨고, 다음 날 첫 방문에 또 뜬다. 항목을 누르면 채우는 자리로 간다.
  *  F. 로그인 없이도 — 이미 로그인된 채로 **하루 첫 방문**(앱을 열 때·숨겼던 탭으로 돌아올 때)에 뜬다(2026-10-11).
+ *  G. 안 사라지는 팝업은 없다 — 탭 둘이면 한쪽에서 답해도 둘 다 닫히고, 뒤로가기 뒤에도 답하면 그날은 끝(2026-10-12).
  *     로그인이 7일 유지돼, 로그인할 때만 띄우면 첫 주에 돌아온 작가는 한 번도 못 봤다.
  *  B. [7일 동안 보지 않기] 를 누르면 다시 로그인해도 안 뜬다.
  *  C. 띄우면 안 되는 사람 — 다 채운 작가 · 작품 0점 작가(편집 화면으로 간다) · 갤러리.
@@ -246,7 +247,7 @@ test.describe('D. 하던 일을 끊지 않는다', () => {
 });
 
 test.describe('F. 로그인 없이 — 하루 첫 방문에 뜬다', () => {
-  test('★ 이미 로그인된 채로 들어오면 뜨고, 그날은 새로고침해도 안 뜬다 — 숨겼던 탭으로 다음 날 돌아오면 다시 뜬다', async ({ browser }) => {
+  test('★ 이미 로그인된 채로 들어오면 뜨고, 답하기 전 새로고침엔 다시 뜨고, 답한 뒤엔 그날 안 뜬다 — 다음 날 탭으로 돌아오면 다시 뜬다', async ({ browser }) => {
     // 실서버: 초원·박경연은 가입한 날 사진만 올리고 떠났다. 로그인이 7일 유지돼 '로그인할 때만' 이면 첫 주엔 못 봤다
     const api = await pwRequest.newContext();
     const me = await (await api.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${partial.token}` } })).json();
@@ -260,12 +261,17 @@ test.describe('F. 로그인 없이 — 하루 첫 방문에 뜬다', () => {
     const dlg = nudge(page);
     await expect(dlg).toBeVisible();
     await expect(dlg.getByRole('button', { name: /작품 정보 채우기/ })).toContainText('2/4');
-    // 보여 준 날은 KST 날짜로 적힌다
-    const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('artlink-homepage-nudge-seen') || '{}'));
-    expect(seen[String(user.id)]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // ★ 답하기 전에는 '봤다'를 적지 않는다 — 떠 있는 채로 새로고침되면(배포 뒤 새 판으로 바뀔 때 실제로 일어난다) 다시 뜬다.
+    //   예전엔 뜨는 순간 적어서, 새로고침이 0.5초 만에 팝업을 지우면 그날은 끝이었다(2026-10-12 실서버 '초원')
+    const seenNow = () => page.evaluate(() => JSON.parse(localStorage.getItem('artlink-homepage-nudge-seen') || '{}'));
+    expect((await seenNow())[String(user.id)]).toBeUndefined();
+    await page.reload();
+    await expect(dlg).toBeVisible();
 
     await dlg.getByRole('button', { name: '나중에' }).click();
     await expect(dlg).toHaveCount(0);
+    // 답하면 그날(KST 날짜)을 적는다
+    expect((await seenNow())[String(user.id)]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await page.reload();
     await page.waitForTimeout(2000);
     await expect(dlg).toHaveCount(0);
@@ -277,6 +283,47 @@ test.describe('F. 로그인 없이 — 하루 첫 방문에 뜬다', () => {
     await pretendNextDay(page);
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(dlg).toBeVisible();
+    await ctx.close();
+  });
+});
+
+test.describe('G. 안 사라지는 팝업은 없다', () => {
+  test('★ 탭 둘에 떠 있어도 한쪽에서 답하면 둘 다 닫히고 · 휴대폰 뒤로가기 뒤에도 답하면 그날은 끝', async ({ browser }) => {
+    const api = await pwRequest.newContext();
+    const me = await (await api.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${partial.token}` } })).json();
+    await api.dispose();
+    const user = me.user ?? me;
+    const ctx = await browser.newContext({
+      storageState: { cookies: [], origins: [{ origin: 'http://localhost:5173', localStorage: [{ name: 'artlink-auth', value: JSON.stringify({ state: { token: partial.token, user, isAuthenticated: true }, version: 0 }) }] }] },
+    });
+    const a = await ctx.newPage();
+    const b = await ctx.newPage();
+    await a.goto('/exhibitions');
+    await b.goto('/artists');
+    await expect(nudge(a)).toBeVisible();
+    await expect(nudge(b)).toBeVisible();
+    await nudge(a).getByRole('button', { name: '나중에' }).click();
+    await expect(nudge(a)).toHaveCount(0);
+    await expect(nudge(b)).toHaveCount(0);   // 다른 탭도 닫힌다
+    await b.reload();
+    await b.waitForTimeout(2000);
+    await expect(nudge(b)).toHaveCount(0);
+
+    // 다음 날 — 답하지 않고 뒤로가기(휴대폰 뒤로 버튼)로 화면만 바꾸면 다시 뜨고, 답하면 끝
+    await pretendNextDay(a);
+    await a.goto('/');
+    await a.goto('/exhibitions');
+    await expect(nudge(a)).toBeVisible();
+    await a.goBack();
+    await expect(nudge(a)).toBeVisible();
+    await a.keyboard.press('Escape');
+    await expect(nudge(a)).toHaveCount(0);
+    await a.goForward();
+    await a.waitForTimeout(1500);
+    await expect(nudge(a)).toHaveCount(0);
+    await a.reload();
+    await a.waitForTimeout(2000);
+    await expect(nudge(a)).toHaveCount(0);
     await ctx.close();
   });
 });
