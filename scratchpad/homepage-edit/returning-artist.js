@@ -43,6 +43,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30000 });
   await sleep(2500);
   console.log('① 처음 판(로그인 유지)으로 연 뒤 — 팝업:', await nudge.count());
+  // LONG_OPEN=1 — 탭을 열어 둔 채로 배포된다(옛 화면이 그대로 열려 있다) → 새 워커가 넘겨받으면 새로고침돼 새 판이어야 한다
+  if (process.env.LONG_OPEN) {
+    const ver = () => page.evaluate(() => [...document.scripts].map((x) => x.src).filter((x) => /assets\/index-/.test(x)).map((x) => x.split('/').pop()).join(','));
+    console.log('   열어 둔 화면:', await ver());
+    stop(srv); await sleep(1500); srv = await preview(NEW_DIST);
+    loads = 0;
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r && r.update()));   // 브라우저가 주기적으로 하는 업데이트 확인
+    for (let i = 0; i < 60 && loads === 0; i++) await sleep(500);
+    await sleep(3000);
+    console.log(`   배포 뒤 — 새로고침 ${loads}번(1 이 맞다) · 지금 화면: ${await ver()}`);
+    await ctx.close(); stop(srv); fs.rmSync(dir, { recursive: true, force: true }); return;
+  }
   // 처음 판에서 팝업이 떴다면 답하지 않고 닫은 셈 치고, 그날 기록은 지운다(③을 '다른 날'로 본다)
   await page.evaluate(() => { localStorage.removeItem('artlink-homepage-nudge-seen'); sessionStorage.clear(); });
   await page.goto('about:blank');
@@ -56,7 +68,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const T0 = Number(sessionStorage.getItem('trace-t0') || Date.now()); sessionStorage.setItem('trace-t0', String(T0));
     const log = (m) => { const a = JSON.parse(sessionStorage.getItem('trace') || '[]'); a.push(`${((Date.now() - T0) / 1000).toFixed(1)}s ${m}`); sessionStorage.setItem('trace', JSON.stringify(a)); };
     const ver = () => [...document.scripts].map((s) => s.src).filter((s) => /assets\/index-/.test(s)).map((s) => s.split('/').pop()).join(',');
-    document.addEventListener('DOMContentLoaded', () => log(`페이지 로드 ${ver()}`));
+    // NEXT-DEPLOY-MARK — 다음 배포 빌드의 index.html 에만 넣어 둔 표시. 있으면 '서버에서 새로 받은 화면', 없으면 '미리 받아 둔 옛 화면'
+    document.addEventListener('DOMContentLoaded', () => log(`페이지 로드 ${ver()} ${document.documentElement.innerHTML.includes('NEXT-DEPLOY-MARK') ? '(새 index — 서버)' : '(옛 index)'}`));
     let shown = false;
     new MutationObserver(() => {
       const on = !!document.querySelector('[data-testid="homepage-nudge"]');
@@ -65,7 +78,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     window.addEventListener('pagehide', () => { if (shown) log('팝업이 떠 있는 채로 페이지가 바뀜'); });
   });
   loads = 0; const t0 = Date.now();
-  await page.goto(BASE + '/');
+  await page.goto(BASE + (process.env.START_PATH || '/'));   // START_PATH=/exhibitions — 첫 주소가 아닌 곳으로 들어올 때
   const firstHasDaily = await page.evaluate(() => [...document.scripts].map((s) => s.src).join(' '));
   // ANSWER_EARLY=1 — 처음 뜬 팝업(아직 옛 판)에 곧바로 [나중에]. 새 판으로 바뀐 뒤 다시 뜨면 안 된다(두 번 뜨지 않는다)
   if (process.env.ANSWER_EARLY) {

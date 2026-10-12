@@ -2334,6 +2334,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   ⚠️⚠️ **등록 주소는 고정 `/sw.js`**(`main.tsx`, `updateViaCache:'none'`, 2026-10-12) — 빌드마다 다른 주소(`/sw.js?v=빌드ID`)였을 땐 배포 뒤 처음 들어온 사람에게
   새로고침이 **두 번** 일어났다(옛 판이 옛 주소로 새 워커를 받아 한 번, 새 판이 새 주소로 같은 워커를 또 설치해 한 번). 두 번째가 막 뜬 '홈페이지 완성' 팝업을 지웠다(규칙 51).
   주소를 고정해도 안전한 건 `sw.js` 가 no-store 로 나가고 Cloudflare 도 BYPASS 이기 때문이다(2026-07 엣지 캐시 사고의 해법은 이제 서버 쪽이다) — `staticCache.ts` 의 `NO_STORE_FILES` 를 지우지 말 것.
+  ⚠️⚠️ **`/` 도 네트워크에서 받는다**(`sw.js` 의 `precacheAndRoute(…, { directoryIndex: null, cleanURLs: false })`, 2026-10-12) — 기본값이면 precache 가 `/` 를
+  `index.html` 로 먼저 잡아 '페이지 이동은 네트워크' 가 **첫 주소에서만** 안 통했다. 배포 뒤 다시 온 사람이 옛 화면을 보다가 새 워커가 파일 95개를 하나씩 다 받은 뒤
+  (실서버 약 18초) 새로고침됐다. 지금은 배포 뒤에도 **첫 화면부터 새 판**이고, 새 워커가 넘겨받을 때 이 페이지가 이미 최신이면 새로고침하지 않는다
+  (`reloadIfStale` — 서버의 지금 `index.html` 이 가리키는 `/assets/index-*.js` 와 비교, 모르면 새로고침). 오래 열어 둔 옛 화면만 새로고침된다.
+  확인은 `scratchpad/homepage-edit/returning-artist.js`(`START_PATH=/`·`/exhibitions`, `LONG_OPEN=1`)와 실서버 `scratchpad/guest-activity/prod-sw-check.mjs`.
   ⚠️ 새로고침은 **새 버전으로 바뀔 때만**이다(`lib/swUpdate.ts`) — `clientsClaim` 은 처음 설치 때도 `controllerchange` 를 내서, 구분하지 않던 때
   **첫 방문자의 페이지가 들어온 지 7초쯤에 저절로 다시 불러와졌다**(2026-10-04 실서버 실측, 비회원 통계에 첫 화면이 '×2'로 남아 드러났다).
   E2E 는 개발 서버라 서비스워커가 없어 못 잡는다 — 바꾸면 프로덕션 빌드(`vite preview`)에서 새 브라우저로 load 횟수를 셀 것

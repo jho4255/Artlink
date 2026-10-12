@@ -24,7 +24,13 @@ clientsClaim();
 
 // 해시된 번들 precache(오프라인 지원) + 이전 배포의 오래된 precache 정리(흰 화면 유발 감소)
 cleanupOutdatedCaches();
-precacheAndRoute(self.__WB_MANIFEST || []);
+// ⚠️⚠️ directoryIndex:null · cleanURLs:false 를 빼지 말 것 (2026-10-12).
+//    기본값이면 precache 라우트가 '/' 를 'index.html' 로 바꿔 먼저 받아 버려서, 아래 '페이지 이동은 네트워크' 규칙이
+//    **첫 주소 '/' 에서만** 통하지 않았다 — 배포 뒤 다시 온 사람은 미리 받아 둔 옛 화면을 보다가, 새 워커가 파일 95개를
+//    하나씩 다 받은 뒤(실서버 약 18초) 새로고침됐다. 그 새로고침이 '홈페이지 완성' 팝업을 지웠다(실서버 '초원').
+//    '/' 도 이제 네트워크에서 최신을 받고, 오프라인·5초 초과일 때만 아래 offlineShell(미리 받아 둔 화면)로 대신한다.
+//    재현: scratchpad/homepage-edit/returning-artist.js(START_PATH=/ 와 /exhibitions 를 비교).
+precacheAndRoute(self.__WB_MANIFEST || [], { directoryIndex: null, cleanURLs: false });
 
 // 오프라인 최종 폴백용 앱셸 핸들러(precache된 index.html). 키가 없으면 SW가 죽지 않도록 가드.
 let offlineShell = null;

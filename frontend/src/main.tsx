@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { queryClient } from '@/lib/queryClient';
-import { controllerChangeReloader } from '@/lib/swUpdate';
+import { controllerChangeReloader, reloadIfStale } from '@/lib/swUpdate';
 import App from './App';
 import ScrollToTop from '@/components/layout/ScrollToTop';
 import AppToaster from '@/components/layout/AppToaster';
@@ -29,9 +29,16 @@ if ('serviceWorker' in navigator) {
   // controllerchange는 registration이 아닌 serviceWorker 컨테이너에서 발생.
   // 새 버전 워커로 바뀌면 페이지 새로고침 — ⚠️ 처음 설치(관리자 없던 페이지)는 업데이트가 아니므로 새로고침하지 않는다.
   // 예전엔 첫 방문자의 페이지가 7초쯤에 저절로 다시 불러와졌다(lib/swUpdate.ts).
+  // ⚠️ 그리고 이 페이지가 이미 최신 판이면(서버의 지금 index.html 과 같은 묶음) 새로고침하지 않는다 — reloadIfStale(2026-10-12).
   navigator.serviceWorker.addEventListener(
     'controllerchange',
-    controllerChangeReloader(!!navigator.serviceWorker.controller, () => window.location.reload()),
+    controllerChangeReloader(!!navigator.serviceWorker.controller, () => {
+      void reloadIfStale(
+        () => fetch('/', { cache: 'no-store', credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))),
+        () => Array.from(document.scripts, (sc) => sc.src),
+        () => window.location.reload(),
+      );
+    }),
   );
 
   navigator.serviceWorker.addEventListener('message', (event) => {
