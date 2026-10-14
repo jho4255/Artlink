@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn, REGION_CODES } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, capacityPayload, capacityLimit, capacityWithLimit, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn, REGION_CODES } from '@/lib/utils';
 import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type TaskTarget } from '@/lib/flowLabels';
 import TaskLine from '@/components/flow/TaskLine';
 import { scheduleSummary } from '@/lib/scheduleSummary';
@@ -41,6 +41,7 @@ import { TONE_CLASS } from '@/lib/heroTone';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
 import ApplicantManager from '@/components/shared/ApplicantManager';
+import CapacityPicker from '@/components/shared/CapacityPicker';
 import CustomQuestionsEditModal, { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import { useFormDraft } from '@/hooks/useFormDraft';
@@ -91,6 +92,8 @@ interface GalleryOperationOverview {
   recruitOnly?: boolean;
   /** 선정 인원(정원). 지원은 무제한이고 수락이 이 수를 넘지 못한다(2026-09-27) */
   capacity?: number;
+  /** 공고에 0명·00명으로 적었는가 — 그럴 때 capacity 는 한도(9·99) */
+  capacityMask?: 'ONE' | 'TWO' | null;
   rejectReason?: string | null;
   deadlineStart?: string | null;
   deadline?: string | null;
@@ -1874,7 +1877,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
   }, [initialViewMode]);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[], attachments: [] as ExhibitionAttachment[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, capacityMask: null as CapacityMask | null, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[], attachments: [] as ExhibitionAttachment[] };
   const [form, setForm] = useState(emptyExForm);
   const [exhibitionTerms, setExhibitionTerms] = useState('');
   const [exhibitionAgreed, setExhibitionAgreed] = useState(false);
@@ -2065,7 +2068,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     if (!form.recruitOnly && !form.submissionDeadline) { missing.push('출품 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
     if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
-    if (capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
+    if (!form.capacityMask && capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
     const cleanedCustomFields = sanitizeCustomFields(form.customFields);
     const invalidSelect = cleanedCustomFields.find((field) => (field.type === 'select' || field.type === 'multiselect') && (field.options ?? []).length < 2);
     setFormErrors(errorFields);
@@ -2180,17 +2183,13 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                       <input id="ex-title" data-form-error={formErrors.has('title') || undefined} value={form.title} onChange={e => { setForm({ ...form, title: e.target.value }); clearError('title'); }} placeholder="공모 제목" className={formInputCls(formErrors.has('title'))} />
                     </FormField>
                     {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
+                    {/* 0명·00명(2026-10-14) — 공고에는 그 글자만, 수락은 9·99명까지(components/shared/CapacityPicker) */}
                     <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="ex-capacity" hint="지원은 제한 없이 받고, 이 인원까지 수락할 수 있어요. 승인 뒤에도 [지원자]에서 바꿀 수 있어요.">
-                      <input
-                        id="ex-capacity"
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={CAPACITY_MAX}
-                        data-form-error={formErrors.has('capacity') || undefined}
-                        value={form.capacity || ''}
-                        onChange={e => { setForm({ ...form, capacity: Number(e.target.value) }); clearError('capacity'); }}
-                        className={cn(formInputCls(formErrors.has('capacity')), 'max-w-[140px]')}
+                      <CapacityPicker
+                        inputId="ex-capacity"
+                        error={formErrors.has('capacity')}
+                        value={{ capacity: form.capacity, capacityMask: form.capacityMask ?? null }}
+                        onChange={(v) => { setForm(prev => ({ ...prev, ...v })); clearError('capacity'); }}
                       />
                     </FormField>
                   </div>
@@ -2328,7 +2327,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
           '승인 뒤에는 공고 소개·포스터·첨부파일·추가 질문·모집 인원을 고칠 수 있어요. 날짜를 바꿔야 하면 1:1 문의로 알려 주세요.',
         ]}
         confirmText="등록 요청"
-        onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, customFields: sanitizeCustomFields(form.customFields) }); }}
+        onConfirm={() => { setConfirmAction(null); createMutation.mutate({ ...form, ...capacityPayload({ capacity: form.capacity, capacityMask: form.capacityMask ?? null }), customFields: sanitizeCustomFields(form.customFields) }); }}
         onCancel={() => setConfirmAction(null)}
       />
       <ConfirmDialog
@@ -2412,6 +2411,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                   pending,
                   accepted: apps.accepted,
                   capacity: item.capacity ?? null,
+                  capacityMask: item.capacityMask ?? null,
                   submissionsIncomplete: incomplete,
                   sales: item.counts.sales.total,
                   approvals: { total: settlement.total, approved: settlement.approved, issue: settlement.issue },
@@ -2490,7 +2490,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                           <dt className="text-xs text-gray-500">지원자</dt>
                           <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{apps.total}명</dd>
                           {/* 정원 = 선정 인원 — 수락이 몇 자리 남았는지 여기서 보인다 */}
-                          <dd className="text-xs tabular-nums text-gray-500">수락 {apps.accepted}{item.capacity ? `/${item.capacity}` : ''} · 검토 대기 {pending}</dd>
+                          <dd className="text-xs tabular-nums text-gray-500">수락 {apps.accepted}{item.capacity ? `/${capacityLimit(item)}` : ''} · 검토 대기 {pending}</dd>
                         </div>
                         {!item.recruitOnly && (
                           <div className="min-w-0">
@@ -2553,6 +2553,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                               exhibitionTitle={item.title}
                               customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
                               capacity={item.capacity ?? null}
+                              capacityMask={item.capacityMask ?? null}
                               recruitOnly={!!item.recruitOnly}
                               ended={!!item.ended || !!item.settledAt}
                               // 아트링크 주최 공모의 모집 인원은 아트링크(관리자)가 정한다 — 위임 갤러리는 못 고친다(서버 403)
@@ -3285,7 +3286,7 @@ function ApprovalsSection() {
               {item._type === 'exhibition' && (
                 <div className="text-sm text-gray-500 space-y-0.5 mt-1">
                   <p>갤러리: {item.gallery?.name} ({regionLabels[item.gallery?.region] || item.region})</p>
-                  <p>유형: {exhibitionTypeLabels[item.type]} · 모집 {item.capacity}명 · 지역: {regionLabels[item.region]}</p>
+                  <p>유형: {exhibitionTypeLabels[item.type]} · 모집 {capacityWithLimit(item)} · 지역: {regionLabels[item.region]}</p>
                   <p>공모 기간: {item.deadlineStart ? new Date(item.deadlineStart).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.deadline).toLocaleDateString('ko')}</p>
                   <p>전시 기간: {item.exhibitStartDate ? new Date(item.exhibitStartDate).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.exhibitDate).toLocaleDateString('ko')}</p>
                   {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}

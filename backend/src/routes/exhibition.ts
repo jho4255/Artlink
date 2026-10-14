@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { REGIONS } from '../lib/regions';
+import { CAPACITY_MAX, resolveCapacity, seatsFullMessage } from '../lib/capacity';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -25,7 +26,7 @@ import { isExhibitionClosed, isSettlementStarted } from '../lib/exhibitionLifecy
 import { sweepSettlementReminders } from '../lib/settlementReminder';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import { canInviteArtist } from '../lib/inviteEligibility';
-import { countSelected, generateInviteCode, normalizeInviteCode, selectedCounts, SEATS_FULL_MESSAGE, withSeatLock } from '../lib/inviteCode';
+import { countSelected, generateInviteCode, normalizeInviteCode, selectedCounts, withSeatLock } from '../lib/inviteCode';
 import {
   OPERATOR_INCLUDE,
   assertCanManageExhibition,
@@ -57,8 +58,8 @@ const customFieldSchema = z.object({
 
 /** 지역 — 갤러리·전시와 같은 목록(lib/regions.ts 한 곳). 모르는 값이 저장되면 목록 필터에 영영 안 걸린다 */
 export { REGIONS };
-/** 모집 인원(선정 인원) 범위 — DB 정수 범위를 넘는 값이 500 이었다(2026-10-03 점검 S10). 화면 `CAPACITY_MAX` 와 같아야 한다 */
-export const CAPACITY_MAX = 1000;
+// 모집 인원 — 숫자 또는 공고에 '0명'·'00명'(2026-10-14). 규칙은 lib/capacity.ts 한 곳
+export { CAPACITY_MAX };
 /** 공모 소개 — 서식 있는 글(2026-10-03). 한도는 **보이는 글자** 수(lib/richText.ts richField) */
 const DESCRIPTION_MAX_TEXT = 20000;
 // required 라 비면 400 을 던진다 — 돌아오는 값은 늘 문자열
@@ -82,7 +83,9 @@ const exhibitionCreateSchema = z.object({
   submissionDeadline: optionalDate,
   /** true = 공모만 진행(수락까지). 안 보내면 지금까지대로 전시까지 진행한다 — lib/exhibitionStage.ts */
   recruitOnly: z.boolean().optional().default(false),
-  capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`),
+  // 0명·00명(`capacityMask`)이면 숫자는 보내지 않아도 된다 — 핸들러의 resolveCapacity 가 한도(9·99)를 채운다
+  capacity: z.number().int().positive('모집인원은 1명 이상이어야 합니다.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`).optional(),
+  capacityMask: z.enum(['ONE', 'TWO'], { message: '모집 인원 표시가 올바르지 않습니다.' }).optional().nullable(),
   region: z.enum(REGIONS, { message: '지역을 선택해주세요.' }),
   // 서식 있는 글(HTML) — 보이는 글자 한도(2만)는 핸들러의 cleanDescription 이 본다. 여기선 형식과 아주 큰 값만
   description: z.string().min(1, '공모 소개를 입력해주세요.').max(DESCRIPTION_MAX_TEXT * 4 + 10000, '공모 소개가 너무 깁니다.'),
@@ -101,6 +104,9 @@ const exhibitionCreateSchema = z.object({
  */
 const withStageRules = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
   schema.superRefine((v: any, ctx) => {
+    if (!v.capacityMask && v.capacity == null) {
+      ctx.addIssue({ code: 'custom', path: ['capacity'], message: '모집인원은 1명 이상이어야 합니다.' });
+    }
     // 공모만 진행하면 자료제출 단계도, 전시 자체도 없다 — 날짜를 받지도, 요구하지도 않는다 (2026-09-19: 전시 일자도)
     if (!v.recruitOnly && !v.submissionDeadline) {
       ctx.addIssue({ code: 'custom', path: ['submissionDeadline'], message: '출품 자료 제출 마감일을 입력해 주세요.' });
@@ -563,6 +569,7 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
         rejectReason: exhibition.rejectReason,
         recruitOnly: exhibition.recruitOnly, // 카드가 없는 단계(작가 자료·판매/정산) 칸을 그리지 않게
         capacity: exhibition.capacity,       // 선정 인원 — 지원자 칸에 '수락 N/정원' 으로
+        capacityMask: exhibition.capacityMask, // 공고에 0명·00명으로 적었는가(lib/capacity.ts)
         deadlineStart: exhibition.deadlineStart,
         deadline: exhibition.deadline,
         exhibitStartDate: exhibition.exhibitStartDate,
@@ -616,6 +623,7 @@ router.get('/invites/received', authenticate, authorize('ARTIST'), async (req, r
             id: true, title: true, type: true, region: true, deadline: true, imageUrl: true,
             status: true, recruitmentClosed: true, confirmed: true, ended: true,
             capacity: true, // 정원이 찬 초대를 목록에서 걷어내기 위해 필요
+            capacityMask: true,
             customFields: true, // 간편 지원 모달에서 갤러리가 물은 추가 질문만 받기 위해 필요
             gallery: { select: { id: true, name: true } },
           },
@@ -666,7 +674,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
     const userId = req.user!.id;
     const invite = await prisma.exhibitionInvite.findUnique({
       where: { id },
-      include: { exhibition: { select: { id: true, title: true, capacity: true, deadline: true, status: true, recruitmentClosed: true, confirmed: true, ended: true, hostType: true, gallery: { select: { ownerId: true } }, managers: { select: { gallery: { select: { ownerId: true } } } } } } },
+      include: { exhibition: { select: { id: true, title: true, capacity: true, capacityMask: true, deadline: true, status: true, recruitmentClosed: true, confirmed: true, ended: true, hostType: true, gallery: { select: { ownerId: true } }, managers: { select: { gallery: { select: { ownerId: true } } } } } } },
     });
     if (!invite || invite.artistId !== userId) throw new AppError('초대를 찾을 수 없습니다.', 404);
 
@@ -691,7 +699,7 @@ router.post('/invites/:id/accept', authenticate, authorize('ARTIST'), async (req
     // 선정 인원 재확인 + 생성을 **한 트랜잭션**(Serializable)으로. 예전엔 밖에서 세고 그냥 만들어
     // 마지막 한 자리에 둘이 동시에 수락하면 정원을 넘겨 ACCEPTED 가 됐다(2026-09-19)
     const application = await withSeatLock(prisma, async (tx) => {
-      if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(SEATS_FULL_MESSAGE(ex.capacity), 400);
+      if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(seatsFullMessage(ex.capacity, ex.capacityMask), 400);
       return tx.application.create({
         data: {
           exhibitionId: ex.id,
@@ -767,7 +775,7 @@ router.post('/:id/invite', authenticate, authorize('GALLERY', 'ADMIN'), async (r
 
     // 선정 인원이 이미 찼으면 초대해도 수락할 자리가 없으므로 애초에 막는다
     if (await countSelected(prisma, exhibitionId) >= exhibition.capacity) {
-      throw new AppError(SEATS_FULL_MESSAGE(exhibition.capacity), 400);
+      throw new AppError(seatsFullMessage(exhibition.capacity, exhibition.capacityMask), 400);
     }
 
     const artist = await prisma.user.findFirst({
@@ -921,7 +929,8 @@ router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) =
 // 아트링크 주최 공모 등록 (Admin 전용) — 승인 절차 없이 바로 게시
 router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules(adminHostedCreateSchema)), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, capacity, region, description, galleryIds, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, region, description, galleryIds, imageUrl, customFields } = req.body;
+    const seats = resolveCapacity(req.body.capacity, req.body.capacityMask);
 
     const galleries = await verifyManagerGalleries(galleryIds);
     const hostGallery = galleries[0] ?? null; // 주관 갤러리 — 없으면 아트링크가 직접 운영한다
@@ -947,7 +956,7 @@ router.post('/hosted', authenticate, authorize('ADMIN'), validate(withStageRules
         exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
-        capacity, region, description: cleanDescription(description),
+        ...seats, region, description: cleanDescription(description),
         ...(attachments.length ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
         galleryId: hostGallery?.id ?? null,
         imageUrl: safeImageUrl,
@@ -1012,7 +1021,7 @@ router.patch('/:id/managers', authenticate, authorize('ADMIN'), async (req, res,
 // ⚠️ 코드는 `ExhibitionJoinCode` 테이블에만 있다. 공모 응답에 섞지 말 것(코드 = 수락 권한).
 
 const JOIN_EXHIBITION_SELECT = {
-  id: true, title: true, imageUrl: true, type: true, region: true, capacity: true, status: true,
+  id: true, title: true, imageUrl: true, type: true, region: true, capacity: true, capacityMask: true, status: true,
   deadlineStart: true, deadline: true, submissionDeadline: true, exhibitStartDate: true, exhibitDate: true,
   recruitOnly: true, ended: true, settledAt: true, hostType: true,
   gallery: { select: { id: true, name: true, ownerId: true } },
@@ -1089,7 +1098,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
     let created = false;
     if (existing) {
       await withSeatLock(prisma, async (tx) => {
-        if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(SEATS_FULL_MESSAGE(ex.capacity), 400);
+        if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(seatsFullMessage(ex.capacity, ex.capacityMask), 400);
         await tx.application.update({ where: { id: existing.id }, data: { status: 'ACCEPTED', joinedVia: 'CODE', rejectionAckedAt: null } });
       });
     } else {
@@ -1100,7 +1109,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
       const images = (portfolio?.images ?? []).map((i) => ownFileUrl(i.url)).filter((u): u is string => !!u);
       try {
         await withSeatLock(prisma, async (tx) => {
-          if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(SEATS_FULL_MESSAGE(ex.capacity), 400);
+          if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(seatsFullMessage(ex.capacity, ex.capacityMask), 400);
           await tx.application.create({
             data: {
               exhibitionId: ex.id,
@@ -1160,6 +1169,7 @@ router.get('/:id/join-code', authenticate, authorize('GALLERY', 'ADMIN'), async 
       code: row?.code ?? null,
       selected: await countSelected(prisma, exhibitionId),
       capacity: ex.capacity,
+      capacityMask: ex.capacityMask,
       blocked: joinBlockReason(ex as any),
     });
   } catch (error) { next(error); }
@@ -1181,7 +1191,7 @@ router.post('/:id/join-code', authenticate, authorize('GALLERY', 'ADMIN'), async
           create: { exhibitionId, code },
           update: { code, createdAt: new Date() },
         });
-        return res.json({ code, selected: await countSelected(prisma, exhibitionId), capacity: ex.capacity, blocked: null });
+        return res.json({ code, selected: await countSelected(prisma, exhibitionId), capacity: ex.capacity, capacityMask: ex.capacityMask, blocked: null });
       } catch (e: any) {
         if (e?.code !== 'P2002') throw e;
       }
@@ -1327,7 +1337,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // 공모 등록 요청 (Gallery 유저 전용)
 router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exhibitionCreateSchema)), async (req, res, next) => {
   try {
-    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, capacity, region, description, galleryId, imageUrl, customFields } = req.body;
+    const { title, type, deadline, deadlineStart, exhibitDate, exhibitStartDate, submissionDeadline, recruitOnly, region, description, galleryId, imageUrl, customFields } = req.body;
+    const seats = resolveCapacity(req.body.capacity, req.body.capacityMask);
 
     // 갤러리 소유권 확인
     const gallery = await prisma.gallery.findUnique({ where: { id: galleryId } });
@@ -1356,7 +1367,7 @@ router.post('/', authenticate, authorize('GALLERY'), validate(withStageRules(exh
         exhibitStartDate: exhibitStart,
         submissionDeadline: subDeadline,
         recruitOnly,
-        capacity, region, description: cleanDescription(description), galleryId, imageUrl: safeImageUrl,
+        ...seats, region, description: cleanDescription(description), galleryId, imageUrl: safeImageUrl,
         ...(attachments.length ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
         customFields: customFields && customFields.length ? JSON.stringify(customFields) : null,
         status: 'PENDING',
@@ -1620,7 +1631,9 @@ router.patch('/:id/attachments', authenticate, validate(attachmentsSchema), asyn
  *  - 이미 수락한 인원보다 적게는 못 줄인다. 수락과 동시에 줄이는 경합은 수락과 같은 잠금(`withSeatLock`) 안에서 센다
  */
 const capacitySchema = z.object({
-  capacity: z.number().int().min(1, '모집 인원은 1명 이상이어야 해요.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`),
+  // 0명·00명으로 바꾸면 숫자는 안 보내도 된다(한도 9·99 를 서버가 채운다 — lib/capacity.ts)
+  capacity: z.number().int().min(1, '모집 인원은 1명 이상이어야 해요.').max(CAPACITY_MAX, `모집 인원은 ${CAPACITY_MAX}명까지 정할 수 있어요.`).optional(),
+  capacityMask: z.enum(['ONE', 'TWO'], { message: '모집 인원 표시가 올바르지 않습니다.' }).optional().nullable(),
 });
 router.patch('/:id/capacity', authenticate, authorize('GALLERY', 'ADMIN'), validate(capacitySchema), async (req, res, next) => {
   try {
@@ -1630,11 +1643,15 @@ router.patch('/:id/capacity', authenticate, authorize('GALLERY', 'ADMIN'), valid
       throw new AppError('아트링크 주최 공모의 모집 인원은 아트링크가 정해요. 바꿔야 하면 1:1 문의로 알려 주세요.', 403);
     }
     if (exhibition.ended || exhibition.settledAt) throw new AppError('전시가 끝난 공모는 모집 인원을 바꿀 수 없어요.', 400);
-    const next = req.body.capacity as number;
+    const next = resolveCapacity(req.body.capacity, req.body.capacityMask);
     const updated = await withSeatLock(prisma, async (tx) => {
       const selected = await countSelected(tx, exhibitionId);
-      if (next < selected) throw new AppError(`이미 ${selected}명을 수락해서 그보다 적게 줄일 수 없어요.`, 400);
-      return tx.exhibition.update({ where: { id: exhibitionId }, data: { capacity: next }, select: { id: true, capacity: true } });
+      if (next.capacity < selected) {
+        throw new AppError(next.capacityMask
+          ? `이미 ${selected}명을 수락해서 '${next.capacityMask === 'ONE' ? '0명' : '00명'}'(최대 ${next.capacity}명)으로 바꿀 수 없어요.`
+          : `이미 ${selected}명을 수락해서 그보다 적게 줄일 수 없어요.`, 400);
+      }
+      return tx.exhibition.update({ where: { id: exhibitionId }, data: next, select: { id: true, capacity: true, capacityMask: true } });
     });
     res.json(updated);
   } catch (error) { next(error); }
@@ -1864,7 +1881,7 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
           const how = exhibition.hostType === 'ADMIN' && req.user!.role !== 'ADMIN'
             ? '더 뽑으려면 아트링크에 모집 인원 변경을 요청해 주세요.'
             : '더 뽑으려면 [모집 인원 변경]으로 늘려 주세요.';
-          throw new AppError(`${SEATS_FULL_MESSAGE(exhibition.capacity)} ${how}`, 400);
+          throw new AppError(`${seatsFullMessage(exhibition.capacity, exhibition.capacityMask)} ${how}`, 400);
         }
         return tx.application.update({ where: { id: appId }, data: { status, rejectionAckedAt: null } });
       });

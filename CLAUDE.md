@@ -2247,9 +2247,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ 썸네일 백필 `SOURCES` 에 넣지 말 것(규칙 21b). 공고 상세 [첨부파일]의 버튼 이름에 '수정' 을 쓰지 말 것(바로 위 공모 소개 [수정]과 겹친다 — '편집'·'추가').
     - 회귀: backend `email-auth.test.ts`(38) · `exhibition-attachments.test.ts`(14) · frontend `emailAuth.test.ts` · `signupRole.test.ts` · `attachments.test.ts` · e2e `70-email-signup-and-attachments.spec.ts`(10).
 
-67. **지역 12곳 · 올린 공모의 지역 바꾸기 · 추가 질문 창의 목록 캐시** (2026-10-08, 사용자 요청)
+67. **지역 15곳 · 올린 공모의 지역 바꾸기 · 추가 질문 창의 목록 캐시** (2026-10-08, 사용자 요청 · 2026-10-14 충북·충남·제주)
     - **지역 목록은 서버 `backend/src/lib/regions.ts`(REGIONS·REGION_LABELS·`isRegion`·`regionLabel`) ↔ 화면 `lib/utils.ts` 의 `regionLabels`·`REGION_CODES`** —
-      같은 값·같은 순서여야 한다(`frontend/src/__tests__/regions.test.ts` 가 서버 소스와 대조). 경북·경남·전북·전남을 더해 12곳. 갤러리·공모·전시가 같은 목록을 쓴다.
+      같은 값·같은 순서여야 한다(`frontend/src/__tests__/regions.test.ts` 가 서버 소스와 대조). 경북·경남·전북·전남(10-08), 충북·충남·제주(10-14)를 더해 15곳. 갤러리·공모·전시가 같은 목록을 쓴다.
       ⚠️ 화면마다 지역 배열을 따로 적지 말 것 — 예전엔 다섯 화면에 같은 배열이 복사돼 있었다(같은 테스트가 소스를 훑어 막는다).
       ⚠️ 코드는 지우지 말 것(그 값으로 저장된 갤러리·공모·전시가 남는다) — 이름만 바꿀 수 있다.
       검색엔진 설명(`seoMeta.ts`)도 `regionLabel` 을 쓴다 — 따로 적어 둔 표에 인천·대구·울산이 빠져 공유 미리보기에 'INCHEON' 이 그대로 찍혔다.
@@ -2258,7 +2258,20 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️⚠️ **추가 질문 수정 창(`CustomQuestionsEditModal`)은 저장한 값을 여는 목록의 캐시에 곧바로 써 넣는다**(`hosted-exhibitions`·`my-exhibitions`, `setQueriesData`).
       예전엔 관리자 [주최 공모] 목록을 무효화하지 않아, 고치거나 지우고 저장해도 다시 열면 **옛 질문이 그대로 떠 저장이 안 된 것처럼 보였다**(서버엔 저장돼 있었다 · 갤러리 [내 공모]는 멀쩡했다).
       무효화만 하면 다시 받는 사이에 열어도 옛 질문이 뜬다. 이 창을 여는 목록을 새로 만들면 그 키도 넣을 것.
-    - 회귀: backend `exhibition-region.test.ts`(7) · frontend `regions.test.ts`(5) · e2e `71-regions-and-questions.spec.ts`(4 — A 는 고치기 전 코드에서 실패하는 것을 확인했다).
+    - 회귀: backend `exhibition-region.test.ts`(8) · frontend `regions.test.ts`(5) · e2e `71-regions-and-questions.spec.ts`(4 — A 는 고치기 전 코드에서 실패하는 것을 확인했다).
+
+68. **모집 인원 '0명'·'00명'** (2026-10-14, 사용자 요청 · 결정: 0명 = 9명까지, 00명 = 99명까지 수락)
+    국내 공고 관례 — 정확한 수를 밝히지 않고 한 자릿수('0명')·두 자릿수('00명')만 알린다. `Exhibition.capacityMask`(NULL = 숫자 · 'ONE' · 'TWO',
+    마이그레이션 `20261014120000_exhibition_capacity_mask`). 규칙은 서버 `backend/src/lib/capacity.ts` ↔ 화면 `lib/utils.ts CAPACITY_MASKS` 거울(`capacityMask.test.ts` 가 대조).
+    - ⚠️⚠️ **수락 한도는 여전히 `capacity` 하나다** — 0명이면 9, 00명이면 99 를 **함께 저장**한다(`resolveCapacity`, 표시가 이기고 보낸 숫자는 무시).
+      그래서 정원을 세는 네 곳(수락·초대·초대 수락·코드 참여, 규칙 57)은 그대로다. 두 칸을 따로 받지 말 것 — 0명인데 capacity 가 5 면 공고와 한도가 다른 말을 한다.
+      수정 요청(`edit-request`)도 같은 함수로 한 쌍을 맞춘다.
+    - ⚠️ **공고에 인원을 적을 땐 `capacityText(ex)`** — `${ex.capacity}명` 이면 0명 공고에 '9명' 이 뜬다(목록·상세·갤러리 페이지·주최 공모·초대 코드 화면).
+      운영자 화면의 '수락 3/5' 는 `capacityLimit`('최대 9'), 정원 안내는 `capacityWithLimit`('0명 — 최대 9명' — 서버 `seatsFullMessage` 와 같은 모양).
+      `capacityMask.test.ts` 가 소스에서 `{ex.capacity}명` 을 막는다.
+    - 고르는 칸은 `components/shared/CapacityPicker.tsx`([숫자로 · 0명 · 00명]) 하나를 갤러리 등록·아트링크 주최 등록·[모집 인원 변경]이 같이 쓴다. 보낼 땐 `capacityPayload`.
+      이미 수락한 수보다 작은 한도(10명 수락 뒤 0명)는 고를 수 없다(서버도 400).
+    - 회귀: backend `exhibition-capacity-mask.test.ts`(7) · frontend `capacityMask.test.ts`(5).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

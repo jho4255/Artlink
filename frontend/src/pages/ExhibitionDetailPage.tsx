@@ -27,7 +27,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, REGION_CODES, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn } from '@/lib/utils';
+import { getDday, regionLabels, REGION_CODES, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn, capacityText } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -409,7 +409,7 @@ export default function ExhibitionDetailPage() {
             <Users size={16} className="text-gray-400 flex-none" />
             <div>
               <p className="text-sm text-gray-400">모집 인원</p>
-              <p className="text-base">{exhibition.capacity}명</p>
+              <p className="text-base">{capacityText(exhibition)}</p>
             </div>
           </div>
           <RegionRow exhibition={exhibition} canChange={canChangeRegion(exhibition, user)} />

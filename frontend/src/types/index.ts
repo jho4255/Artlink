@@ -116,6 +116,8 @@ export interface Exhibition {
   /** 첨부파일(2026-10-08) — 상세 API 가 늘 배열로 준다(누구나 내려받는다). 목록 API 에는 원본 JSON 이 실릴 수 있어 `normalizeAttachments` 로 읽을 것 */
   attachments?: import('@/lib/attachments').ExhibitionAttachment[] | null;
   capacity: number;
+  /** 공고에 적는 모집 인원 — null = 숫자 그대로 · 'ONE' = 0명 · 'TWO' = 00명 (lib/utils.ts capacityText) */
+  capacityMask?: 'ONE' | 'TWO' | null;
   region: string;
   description: string;
   status: string;

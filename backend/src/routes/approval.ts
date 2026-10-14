@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { ensureExhibitionChat } from '../lib/chat';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { resolveCapacity } from '../lib/capacity';
 import { richField } from '../lib/richText';
 import { validate } from '../middleware/validate';
 import { notifyApprovalRequest } from '../lib/telegram';
@@ -204,7 +205,7 @@ router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, nex
 // 인스타 토큰·정산 플래그 등은 절대 수정 대상이 될 수 없다. (admin이 무심코 승인해도 안전)
 const EDIT_TYPES = ['GALLERY_EDIT', 'EXHIBITION_EDIT'] as const;
 const GALLERY_EDIT_FIELDS = ['name', 'address', 'phone', 'description', 'detailDesc', 'region', 'mainImage', 'ownerName', 'instagramUrl', 'email'];
-const EXHIBITION_EDIT_FIELDS = ['title', 'type', 'deadline', 'deadlineStart', 'exhibitDate', 'exhibitStartDate', 'capacity', 'region', 'description', 'imageUrl', 'customFields'];
+const EXHIBITION_EDIT_FIELDS = ['title', 'type', 'deadline', 'deadlineStart', 'exhibitDate', 'exhibitStartDate', 'capacity', 'capacityMask', 'region', 'description', 'imageUrl', 'customFields'];
 
 function pickAllowed(changes: any, allowed: string[]): Record<string, any> {
   const out: Record<string, any> = {};
@@ -248,6 +249,10 @@ router.post('/edit-request', authenticate, authorize('GALLERY'), async (req, res
     // 서식 있는 글 칸은 여기서도 허용 목록으로 거른다 — 관리자가 승인하면 그대로 저장되는 길이라, 안 거르면 이 경로로 HTML 이 들어간다(2026-10-03)
     if (type === 'EXHIBITION_EDIT' && 'description' in safeChanges) {
       safeChanges.description = richField(safeChanges.description, { label: '공모 소개', maxText: 20000, required: true, emptyMessage: '공모 소개를 입력해주세요.' });
+    }
+    // 모집 인원은 두 칸이 한 쌍이다(0명 = 9 · 00명 = 99, lib/capacity.ts) — 하나만 바꾸면 공고 글자와 수락 한도가 다른 말을 한다
+    if (type === 'EXHIBITION_EDIT' && ('capacity' in safeChanges || 'capacityMask' in safeChanges)) {
+      Object.assign(safeChanges, resolveCapacity(safeChanges.capacity, safeChanges.capacityMask));
     }
     if (type === 'GALLERY_EDIT' && 'detailDesc' in safeChanges) {
       safeChanges.detailDesc = richField(safeChanges.detailDesc, { label: '소개', maxText: 5000 });

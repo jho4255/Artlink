@@ -37,7 +37,7 @@ import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import FollowButton from '@/components/shared/FollowButton';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite, capacityText } from '@/lib/utils';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import PageTabBar from '@/components/shared/PageTabBar';
@@ -826,7 +826,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                           <HostBadge exhibition={ex} />
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
-                          {exhibitionTypeLabels[ex.type]} · 모집 {ex.capacity}명{regionLabels[ex.region] ? ` · ${regionLabels[ex.region]}` : ''}
+                          {exhibitionTypeLabels[ex.type]} · 모집 {capacityText(ex)}{regionLabels[ex.region] ? ` · ${regionLabels[ex.region]}` : ''}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">

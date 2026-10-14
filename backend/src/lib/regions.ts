@@ -1,6 +1,6 @@
 /**
  * 지역 — 갤러리·공모(모집공고)·전시가 **같은 목록**을 쓴다.
- * 2026-10-08 사용자 요청으로 경북·경남·전북·전남을 더했다(공모 등록 때 고를 곳이 없었다).
+ * 2026-10-08 사용자 요청으로 경북·경남·전북·전남을, 2026-10-14 충북·충남·제주를 더했다(공모 등록 때 고를 곳이 없었다).
  *
  * ⚠️ 화면의 목록은 `frontend/src/lib/utils.ts` 의 `regionLabels` — **같은 값·같은 순서**여야 한다
  *    (`frontend/src/__tests__/regions.test.ts` 가 이 파일과 대조한다). 한쪽에만 넣으면
@@ -10,7 +10,7 @@
 export const REGIONS = [
   'SEOUL', 'INCHEON', 'GYEONGGI_NORTH', 'GYEONGGI_SOUTH',
   'DAEJEON', 'DAEGU', 'BUSAN', 'ULSAN',
-  'GYEONGBUK', 'GYEONGNAM', 'JEONBUK', 'JEONNAM',
+  'CHUNGBUK', 'CHUNGNAM', 'GYEONGBUK', 'GYEONGNAM', 'JEONBUK', 'JEONNAM', 'JEJU',
 ] as const;
 
 export type Region = (typeof REGIONS)[number];
@@ -24,10 +24,13 @@ export const REGION_LABELS: Record<Region, string> = {
   DAEGU: '대구',
   BUSAN: '부산',
   ULSAN: '울산',
+  CHUNGBUK: '충북',
+  CHUNGNAM: '충남',
   GYEONGBUK: '경북',
   GYEONGNAM: '경남',
   JEONBUK: '전북',
   JEONNAM: '전남',
+  JEJU: '제주',
 };
 
 export function isRegion(v: unknown): v is Region {

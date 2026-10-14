@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import type { AxiosError } from 'axios';
 import api from '@/lib/axios';
 import { formatInviteCode, joinPath } from '@/lib/inviteCode';
+import { capacityLimit, capacityWithLimit } from '@/lib/utils';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 
 /**
@@ -17,7 +18,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
  * - 선정 인원(정원)까지만 들어온다 — 서버가 막고, 여기엔 '선정 N/M명'을 보여 준다.
  * - 승인 전·전시 종료 뒤에는 만들 수 없다(서버 `joinBlockReason` 과 같은 기준) — 그땐 상자를 안 그린다.
  */
-interface JoinCodeState { code: string | null; selected: number; capacity: number; blocked: string | null }
+interface JoinCodeState { code: string | null; selected: number; capacity: number; capacityMask?: 'ONE' | 'TWO' | null; blocked: string | null }
 
 async function copy(text: string, label: string) {
   try {
@@ -71,13 +72,13 @@ export default function JoinCodePanel({ exhibitionId, bare = false }: { exhibiti
           <div>
             {!bare && <p className="text-sm font-medium text-gray-900">초대 코드</p>}
             <p className={bare ? 'text-sm text-gray-600' : 'mt-0.5 text-xs text-gray-500'}>
-              공모 밖에서 이미 선정한 작가에게 코드(또는 링크)를 보내면, 지원서 없이 바로 수락돼요. 정원({data.capacity}명)까지만 들어올 수 있어요.
+              공모 밖에서 이미 선정한 작가에게 코드(또는 링크)를 보내면, 지원서 없이 바로 수락돼요. 정원({capacityWithLimit(data)})까지만 들어올 수 있어요.
             </p>
           </div>
         </div>
         {!bare && (
           <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-200">
-            선정 {data.selected}/{data.capacity}명
+            선정 {data.selected}/{capacityLimit(data)}명
           </span>
         )}
       </div>

@@ -7,7 +7,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { formatInviteCode, joinPath, normalizeInviteCode } from '@/lib/inviteCode';
-import { exhibitionTypeLabels, regionLabels } from '@/lib/utils';
+import { exhibitionTypeLabels, regionLabels, capacityText, capacityWithLimit } from '@/lib/utils';
 import Thumb from '@/components/shared/Thumb';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
 
@@ -23,7 +23,7 @@ import JoinCodeInput from '@/components/shared/JoinCodeInput';
  */
 interface JoinPreview {
   exhibition: {
-    id: number; title: string; imageUrl: string | null; type: string; region: string; capacity: number;
+    id: number; title: string; imageUrl: string | null; type: string; region: string; capacity: number; capacityMask?: 'ONE' | 'TWO' | null;
     deadlineStart: string | null; deadline: string; submissionDeadline: string | null;
     exhibitStartDate: string | null; exhibitDate: string | null; recruitOnly: boolean; galleryName: string | null; hostType: string;
   };
@@ -104,7 +104,7 @@ export default function JoinExhibitionPage() {
   } else if (data.blocked) {
     action = <p className="text-sm text-accent">{data.blocked}</p>;
   } else if (data.full) {
-    action = <p className="text-sm text-accent">선정 인원({ex.capacity}명)이 모두 찼습니다. 갤러리에 문의해주세요.</p>;
+    action = <p className="text-sm text-accent">선정 인원({capacityWithLimit(ex)})이 모두 찼습니다. 갤러리에 문의해주세요.</p>;
   } else if (!isAuthenticated) {
     action = (
       <>
@@ -169,7 +169,7 @@ export default function JoinExhibitionPage() {
           {!ex.recruitOnly && (ex.exhibitStartDate || ex.exhibitDate) && (
             <div className="flex gap-3"><dt className="w-24 shrink-0 pl-5 text-gray-400">전시</dt><dd className="text-gray-800">{range(ex.exhibitStartDate, ex.exhibitDate)}</dd></div>
           )}
-          <div className="flex gap-3"><dt className="flex w-24 shrink-0 items-center gap-1.5 text-gray-400"><Users size={14} /> 선정</dt><dd className="text-gray-800">{data.selected} / {ex.capacity}명</dd></div>
+          <div className="flex gap-3"><dt className="flex w-24 shrink-0 items-center gap-1.5 text-gray-400"><Users size={14} /> 선정</dt><dd className="text-gray-800">{ex.capacityMask ? `${data.selected}명 · 모집 ${capacityText(ex)}` : `${data.selected} / ${capacityText(ex)}`}</dd></div>
         </dl>
         <div className="space-y-3">{action}</div>
         <button onClick={() => navigate(`/exhibitions/${ex.id}`)} className="text-xs text-gray-400 underline-offset-2 hover:text-gray-700 hover:underline">공모 상세 보기</button>

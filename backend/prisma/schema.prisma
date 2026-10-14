@@ -351,7 +351,8 @@ model Exhibition {
   deadlineStart         DateTime? // 공모 시작일
   exhibitDate           DateTime? // 전시 종료일 — ⚠️ 공모만 진행(recruitOnly)이면 전시가 없으므로 null (2026-09-19)
   exhibitStartDate      DateTime? // 전시 시작일
-  capacity              Int
+  capacity              Int // 수락(선정) 한도 — 0명 공고면 9, 00명이면 99 (lib/capacity.ts)
+  capacityMask          String? // 공고에 적는 모집 인원: NULL = 숫자 그대로 · 'ONE' = 0명 · 'TWO' = 00명 (2026-10-14)
   region                String
   description           String
   imageUrl              String? // 공모 대표 이미지

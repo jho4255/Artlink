@@ -1,5 +1,5 @@
 /**
- * 지역 넷 추가(경북·경남·전북·전남) · 올린 공모의 지역 바꾸기 · 관리자 주최 공모의 추가 질문 (2026-10-08 사용자 요청)
+ * 지역 추가(2026-10-08 경북·경남·전북·전남 · 2026-10-14 충북·충남·제주) · 올린 공모의 지역 바꾸기 · 관리자 주최 공모의 추가 질문 (2026-10-08 사용자 요청)
  * 규칙: lib/regions.ts(목록 한 곳) · PATCH /exhibitions/:id/region(모집 인원과 같은 권한)
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -26,10 +26,13 @@ beforeEach(async () => {
   await seedUsers();
 });
 
-describe('지역 목록 — 경북·경남·전북·전남', () => {
-  it('목록 한 곳에 열두 곳이 있고 이름이 붙는다(공유 미리보기에 코드가 그대로 찍히지 않게)', () => {
-    expect(REGIONS).toHaveLength(12);
-    for (const r of ['GYEONGBUK', 'GYEONGNAM', 'JEONBUK', 'JEONNAM']) expect(REGIONS).toContain(r);
+describe('지역 목록 — 경북·경남·전북·전남 · 충북·충남·제주', () => {
+  it('목록 한 곳에 열다섯 곳이 있고 이름이 붙는다(공유 미리보기에 코드가 그대로 찍히지 않게)', () => {
+    expect(REGIONS).toHaveLength(15);
+    for (const r of ['GYEONGBUK', 'GYEONGNAM', 'JEONBUK', 'JEONNAM', 'CHUNGBUK', 'CHUNGNAM', 'JEJU']) expect(REGIONS).toContain(r);
+    expect(regionLabel('CHUNGBUK')).toBe('충북');
+    expect(regionLabel('CHUNGNAM')).toBe('충남');
+    expect(regionLabel('JEJU')).toBe('제주');
     expect(regionLabel('GYEONGNAM')).toBe('경남');
     expect(regionLabel('JEONBUK')).toBe('전북');
     // 예전 검색엔진 설명 표에 빠져 있던 셋
@@ -44,7 +47,7 @@ describe('지역 목록 — 경북·경남·전북·전남', () => {
     const res = await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'GYEONGNAM' });
     expect(res.status).toBe(201);
     expect(res.body.region).toBe('GYEONGNAM');
-    expect((await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'JEJU' })).status).toBe(400);
+    expect((await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'NOWHERE' })).status).toBe(400);
 
     await testPrisma.exhibition.update({ where: { id: res.body.id }, data: { status: 'APPROVED' } });
     const list = await request.get('/api/exhibitions?region=GYEONGNAM');
@@ -53,12 +56,24 @@ describe('지역 목록 — 경북·경남·전북·전남', () => {
     expect(other.body.map((e: any) => e.id)).not.toContain(res.body.id);
   });
 
+  it('★ 충북·충남·제주로 공모를 올리고 바꾸고 목록에서 거른다 (2026-10-14)', async () => {
+    const g = await seedGallery();
+    const base = { title: '제주 공모', type: 'SOLO', deadline: future(10), recruitOnly: true, capacity: 2, description: '<p>x</p>', galleryId: g.id };
+    const res = await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'JEJU' });
+    expect(res.status).toBe(201);
+    await testPrisma.exhibition.update({ where: { id: res.body.id }, data: { status: 'APPROVED' } });
+    expect((await request.get('/api/exhibitions?region=JEJU')).body.map((e: any) => e.id)).toContain(res.body.id);
+    expect((await patchRegion(res.body.id, OWNER(), 'CHUNGBUK')).status).toBe(200);
+    expect((await request.get('/api/exhibitions?region=CHUNGBUK')).body.map((e: any) => e.id)).toContain(res.body.id);
+    expect((await request.patch(`/api/galleries/${g.id}/detail`).set('Authorization', `Bearer ${OWNER()}`).send({ region: 'CHUNGNAM' })).status).toBe(200);
+  });
+
   it('갤러리 지역도 새 네 곳으로 바꿀 수 있다', async () => {
     const g = await seedGallery();
     const res = await request.patch(`/api/galleries/${g.id}/detail`).set('Authorization', `Bearer ${OWNER()}`).send({ region: 'JEONBUK' });
     expect(res.status).toBe(200);
     expect((await testPrisma.gallery.findUnique({ where: { id: g.id } }))!.region).toBe('JEONBUK');
-    expect((await request.patch(`/api/galleries/${g.id}/detail`).set('Authorization', `Bearer ${OWNER()}`).send({ region: 'JEJU' })).status).toBe(400);
+    expect((await request.patch(`/api/galleries/${g.id}/detail`).set('Authorization', `Bearer ${OWNER()}`).send({ region: 'NOWHERE' })).status).toBe(400);
   });
 });
 
@@ -72,7 +87,7 @@ describe('올린 공모의 지역 바꾸기 — PATCH /exhibitions/:id/region', 
     const after = await testPrisma.exhibition.findUnique({ where: { id: ex.id } });
     expect(after!.region).toBe('GYEONGBUK');
     expect(after!.status).toBe('APPROVED');   // 다시 심사로 돌아가지 않는다
-    expect((await patchRegion(ex.id, OWNER(), 'JEJU')).status).toBe(400);
+    expect((await patchRegion(ex.id, OWNER(), 'NOWHERE')).status).toBe(400);
     expect((await patchRegion(ex.id, OWNER(), undefined)).status).toBe(400);
     expect((await patchRegion(ex.id, ARTIST(), 'SEOUL')).status).toBe(403);
   });

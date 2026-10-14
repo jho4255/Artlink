@@ -12,7 +12,7 @@ const root = join(__dirname, '..', '..', '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf-8');
 
 describe('지역 목록 — 서버와 같다', () => {
-  it('★ 화면의 지역 코드 = 서버 REGIONS (값·순서) · 경북·경남·전북·전남이 있다', () => {
+  it('★ 화면의 지역 코드 = 서버 REGIONS (값·순서) · 경북·경남·전북·전남·충북·충남·제주가 있다', () => {
     const src = read('backend/src/lib/regions.ts');
     const m = src.match(/export const REGIONS = \[([\s\S]*?)\] as const;/);
     expect(m).toBeTruthy();
@@ -22,6 +22,10 @@ describe('지역 목록 — 서버와 같다', () => {
     expect(regionLabels.GYEONGNAM).toBe('경남');
     expect(regionLabels.JEONBUK).toBe('전북');
     expect(regionLabels.JEONNAM).toBe('전남');
+    // 2026-10-14 충북·충남·제주
+    expect(regionLabels.CHUNGBUK).toBe('충북');
+    expect(regionLabels.CHUNGNAM).toBe('충남');
+    expect(regionLabels.JEJU).toBe('제주');
   });
 
   it('화면마다 지역 배열을 따로 적지 않는다 — 한 곳만 늘리면 고르는 칸·필터가 서로 달라진다', () => {

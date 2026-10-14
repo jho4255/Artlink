@@ -42,8 +42,8 @@ describe('모집 인원 — 비었거나 0 이면 폼에서 바로 (서버 상�
     expect(capacityError(1)).toBeNull();
     expect(capacityError(1000)).toBeNull();
   });
-  it('서버의 상한과 같다(routes/exhibition.ts CAPACITY_MAX)', () => {
-    const server = readFileSync(join(SRC, '../../backend/src/routes/exhibition.ts'), 'utf8');
+  it('서버의 상한과 같다(lib/capacity.ts CAPACITY_MAX — 2026-10-14 routes/exhibition.ts 에서 옮겼다)', () => {
+    const server = readFileSync(join(SRC, '../../backend/src/lib/capacity.ts'), 'utf8');
     expect(server).toMatch(/const CAPACITY_MAX = 1000;/);
   });
 });

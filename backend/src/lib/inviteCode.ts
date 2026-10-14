@@ -62,7 +62,7 @@ export async function selectedCounts(db: Db, exhibitionIds: number[]): Promise<M
   return new Map(grouped.map((g) => [g.exhibitionId, g._count._all]));
 }
 
-export const SEATS_FULL_MESSAGE = (capacity: number) => `선정 인원(${capacity}명)이 모두 찼습니다.`;
+// 자리가 찼을 때의 문구는 lib/capacity.ts `seatsFullMessage` — 0명·00명 공고면 한도를 함께 밝힌다(2026-10-14)
 
 /**
  * 자리(정원)를 지키는 Serializable 트랜잭션 — 동시에 부딪혀 Postgres 가 한쪽을 되돌리면(P2034) 두 번까지 다시 시도한다.

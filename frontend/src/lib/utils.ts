@@ -195,7 +195,7 @@ export function getDday(deadline: string | Date): number {
   return kstDayNumber(deadline) - kstDayNumber(new Date());
 }
 
-// 지역 라벨 매핑 — 갤러리·공모·전시가 같은 목록을 쓴다(2026-10-08 경북·경남·전북·전남 추가).
+// 지역 라벨 매핑 — 갤러리·공모·전시가 같은 목록을 쓴다(2026-10-08 경북·경남·전북·전남, 2026-10-14 충북·충남·제주 추가).
 // ⚠️ 서버 `backend/src/lib/regions.ts` 의 REGIONS 와 같은 값·같은 순서여야 한다(regions.test.ts 가 대조).
 //    한쪽에만 넣으면 화면엔 보이는데 저장이 400 이다. 화면마다 지역 배열을 따로 적지 말고 REGION_CODES 를 쓸 것.
 export const regionLabels: Record<string, string> = {
@@ -207,10 +207,13 @@ export const regionLabels: Record<string, string> = {
   DAEGU: '대구',
   BUSAN: '부산',
   ULSAN: '울산',
+  CHUNGBUK: '충북',
+  CHUNGNAM: '충남',
   GYEONGBUK: '경북',
   GYEONGNAM: '경남',
   JEONBUK: '전북',
   JEONNAM: '전남',
+  JEJU: '제주',
 };
 /** 고르는 칸·필터에 늘어놓을 지역 코드(위 표의 순서) */
 export const REGION_CODES: string[] = Object.keys(regionLabels);
@@ -280,8 +283,50 @@ export function validateExhibitionDates(dates: {
   return null;
 }
 
-/** 모집 인원(= 뽑을 수 있는 사람 수) 상한 — 서버 `CAPACITY_MAX`(routes/exhibition.ts)와 같은 값 */
+/** 모집 인원(= 뽑을 수 있는 사람 수) 상한 — 서버 `CAPACITY_MAX`(lib/capacity.ts)와 같은 값 */
 export const CAPACITY_MAX = 1000;
+
+/**
+ * 모집 인원을 공고에 '0명'(한 자릿수)·'00명'(두 자릿수)으로만 적기 (2026-10-14 사용자 요청 · 국내 공고 관례).
+ * 수락 한도는 0명 = 9명, 00명 = 99명(사용자 결정) — 서버가 그 수를 `capacity` 에 함께 저장한다.
+ * ⚠️ 서버 `backend/src/lib/capacity.ts` 의 CAPACITY_MASKS 와 같은 값이어야 한다(capacity.test.ts 가 대조).
+ * ⚠️ 공고에 인원을 적을 땐 `${capacity}명` 이 아니라 `capacityText` — 0명 공고에 '9명' 이 뜬다.
+ */
+export const CAPACITY_MASKS = {
+  ONE: { label: '0명', max: 9 },
+  TWO: { label: '00명', max: 99 },
+} as const;
+export type CapacityMask = keyof typeof CAPACITY_MASKS;
+
+type CapacityLike = { capacity?: number | null; capacityMask?: string | null };
+const maskOf = (ex: CapacityLike): CapacityMask | null =>
+  ex.capacityMask === 'ONE' || ex.capacityMask === 'TWO' ? ex.capacityMask : null;
+
+/** 공고에 적는 모집 인원 — '5명' | '0명' | '00명' (작가·방문자가 보는 자리) */
+export function capacityText(ex: CapacityLike): string {
+  const m = maskOf(ex);
+  if (m) return CAPACITY_MASKS[m].label;
+  return ex.capacity != null ? `${ex.capacity}명` : '';
+}
+
+/** 운영자가 보는 수락 한도 — '수락 3/5' 의 뒤쪽. 0명·00명이면 '최대 9' */
+export function capacityLimit(ex: CapacityLike): string {
+  if (ex.capacity == null) return '';
+  return maskOf(ex) ? `최대 ${ex.capacity}` : String(ex.capacity);
+}
+
+/** 정원 안내 문구의 괄호 안 — '5명' | '0명 — 최대 9명' (서버 seatsFullMessage 와 같은 모양) */
+export function capacityWithLimit(ex: CapacityLike): string {
+  const m = maskOf(ex);
+  if (m) return `${CAPACITY_MASKS[m].label} — 최대 ${ex.capacity ?? CAPACITY_MASKS[m].max}명`;
+  return ex.capacity != null ? `${ex.capacity}명` : '';
+}
+
+/** 저장할 때 보낼 두 칸 — 0명·00명이면 숫자는 그 한도(서버도 같은 값으로 덮는다) */
+export function capacityPayload(v: { capacity: number; capacityMask?: CapacityMask | null }): { capacity: number; capacityMask: CapacityMask | null } {
+  const m = v.capacityMask ?? null;
+  return m ? { capacity: CAPACITY_MASKS[m].max, capacityMask: m } : { capacity: v.capacity, capacityMask: null };
+}
 
 /** 모집 인원 칸 검사 — 비었거나 0 이면 예전엔 확인창까지 가서 서버 오류를 받았다(2026-10-03 점검) */
 export function capacityError(n: unknown): string | null {

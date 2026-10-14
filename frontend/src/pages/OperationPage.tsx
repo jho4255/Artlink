@@ -86,6 +86,7 @@ interface ExhibitionDates {
   exhibitStartDate?: string | null;
   exhibitDate?: string | null;
   capacity?: number | null;
+  capacityMask?: string | null;
 }
 
 /**
@@ -247,6 +248,7 @@ export function OperationBody({ id: idProp, embedded = false, focus = null }: {
     // 공모만 진행이면 출품 자료 목록을 받지 않는다 — 수락 수는 지원자 목록에서 센다
     accepted: applicants.length ? applicants.filter(a => a.status === 'ACCEPTED').length : submissionSummary.length,
     capacity: dates?.capacity ?? null,
+    capacityMask: dates?.capacityMask ?? null,
     submissionsIncomplete: incompleteArtists,
     sales: soldCount,
     approvals: { total: approvals.length, approved, issue: issues },

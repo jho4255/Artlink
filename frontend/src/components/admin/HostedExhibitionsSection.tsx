@@ -24,7 +24,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
+import CapacityPicker from '@/components/shared/CapacityPicker';
 import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
 import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import { richTextLength } from '@/lib/richText';
@@ -51,6 +52,8 @@ const emptyForm = {
   submissionDeadline: '',
   recruitOnly: false,
   capacity: 1,
+  /** 공고에 0명·00명으로만 적기(2026-10-14) — null = 숫자 그대로 */
+  capacityMask: null as CapacityMask | null,
   region: 'SEOUL',
   description: '',
   imageUrl: '',
@@ -343,7 +346,7 @@ export default function HostedExhibitionsSection() {
     if (!form.recruitOnly && !form.submissionDeadline) { missing.push('출품 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
     if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
     if (richTextLength(form.description) === 0) { missing.push('소개'); errorFields.add('description'); }
-    if (capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
+    if (!form.capacityMask && capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
     setFormErrors(errorFields);
     if (missing.length > 0) {
       toast.error(`다음 항목을 입력해주세요: ${missing.join(', ')}`, { duration: 4000 });
@@ -421,20 +424,20 @@ export default function HostedExhibitionsSection() {
               />
 
               <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-2">
-                <div>
-                  <label className="text-xs text-gray-500">모집 작가 수</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={CAPACITY_MAX}
-                    value={form.capacity || ''}
-                    onChange={e => { setForm({ ...form, capacity: Number(e.target.value) }); clearError('capacity'); }}
-                    className={`mt-0.5 w-full rounded-lg border p-2 text-sm ${formErrors.has('capacity') ? 'border-accent' : 'border-gray-200'}`}
-                  />
+                {/* 0명·00명(2026-10-14) — 갤러리 등록 폼과 같은 칸(components/shared/CapacityPicker) */}
+                <div className="col-span-2">
+                  <label htmlFor="hosted-capacity" className="text-xs text-gray-500">모집 작가 수</label>
+                  <div className="mt-0.5">
+                    <CapacityPicker
+                      inputId="hosted-capacity"
+                      error={formErrors.has('capacity')}
+                      value={{ capacity: form.capacity, capacityMask: form.capacityMask ?? null }}
+                      onChange={(v) => { setForm(prev => ({ ...prev, ...v })); clearError('capacity'); }}
+                    />
+                  </div>
+                  {/* 정원 = 선정 인원(2026-09-27) — 갤러리 등록 폼과 같은 안내 */}
+                  <p className="mt-1 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
                 </div>
-                {/* 정원 = 선정 인원(2026-09-27) — 갤러리 등록 폼과 같은 안내 */}
-                <p className="self-end pb-2 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
                 {(([
                   ['deadlineStart', '공모 시작일'],
                   ['deadline', '공모 마감일'],
@@ -520,6 +523,7 @@ export default function HostedExhibitionsSection() {
           setConfirmSubmit(false);
           createMutation.mutate({
             ...form,
+            ...capacityPayload({ capacity: form.capacity, capacityMask: form.capacityMask ?? null }),
             customFields: sanitizeCustomFields(form.customFields),
             galleryIds: managerGalleries.map(g => g.id),
           });
@@ -582,7 +586,7 @@ export default function HostedExhibitionsSection() {
                       </span>
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">{exhibitionTypeLabels[ex.type] ?? ex.type}</span>
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">{regionLabels[ex.region] ?? ex.region}</span>
-                      <span className="flex items-center gap-1 text-[11px] text-gray-500"><Users size={11} /> 지원 {ex.applicationCount ?? 0}명 / 모집 {ex.capacity}명</span>
+                      <span className="flex items-center gap-1 text-[11px] text-gray-500"><Users size={11} /> 지원 {ex.applicationCount ?? 0}명 / 모집 {capacityText(ex)}</span>
                     </div>
 
                     <h4 className="mt-1.5 truncate text-lg font-medium text-gray-900">{ex.title}</h4>
@@ -632,6 +636,7 @@ export default function HostedExhibitionsSection() {
                       exhibitionTitle={ex.title}
                       customFields={ex.customFields}
                       capacity={ex.capacity}
+                      capacityMask={ex.capacityMask ?? null}
                       recruitOnly={!!ex.recruitOnly}
                       ended={!!ex.ended || !!ex.settledAt}
                       capacityEditable

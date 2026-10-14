@@ -13,7 +13,7 @@
  *
  * ⚠️ 순수 함수만 둔다(`lib/settlement.ts` 와 같은 이유 — 화면 파일에 두면 fast-refresh 가 입력값을 날린다).
  */
-import { getDday } from '@/lib/utils';
+import { getDday, capacityWithLimit } from '@/lib/utils';
 
 export type ChipVariant = 'neutral' | 'attention' | 'done';
 
@@ -155,6 +155,8 @@ export interface GallerySnapshot {
   accepted: number;
   /** 모집 인원(= 뽑을 수 있는 사람 수, 규칙 57). 모르면 null — 정원 안내를 건너뛴다 */
   capacity?: number | null;
+  /** 공고에 0명·00명으로 적었으면 — 정원 문구에 '0명 — 최대 9명' 으로 */
+  capacityMask?: string | null;
   /** 수락했지만 출품 자료(작품·약력·노트)가 다 차지 않은 작가 */
   submissionsIncomplete: number;
   sales: number;
@@ -185,7 +187,7 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
   */
   const full = !!s.capacity && s.capacity > 0 && s.accepted >= s.capacity;
   const fullTask: NextTask = {
-    text: `정원(${s.capacity}명)이 찼어요. 모집을 마감하세요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
+    text: `정원(${capacityWithLimit(s)})이 찼어요. 모집을 마감하세요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
     tone: 'attention', target: 'stage', action: '모집 마감',
   };
 

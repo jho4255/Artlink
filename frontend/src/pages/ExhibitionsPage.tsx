@@ -5,7 +5,7 @@ import { Heart, Users, MapPin, X, Plus, Search } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import SkeletonImage from '@/components/shared/SkeletonImage';
-import { getDday, regionLabels, exhibitionTypeLabels, canFavorite, REGION_CODES } from '@/lib/utils';
+import { getDday, regionLabels, exhibitionTypeLabels, canFavorite, REGION_CODES, capacityText } from '@/lib/utils';
 import HostBadge from '@/components/shared/HostBadge';
 import { isAdminHosted } from '@/lib/exhibitionHost';
 import type { Exhibition } from '@/types';
@@ -287,7 +287,7 @@ export default function ExhibitionsPage() {
 
                   <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-400">
                     <span>{exhibitionTypeLabels[ex.type]}</span>
-                    <span className="flex items-center gap-1"><Users size={13} /> {ex.capacity}명</span>
+                    <span className="flex items-center gap-1"><Users size={13} /> {capacityText(ex)}</span>
                     <span className="flex items-center gap-1"><MapPin size={13} /> {regionLabels[ex.region]}</span>
                   </div>
 

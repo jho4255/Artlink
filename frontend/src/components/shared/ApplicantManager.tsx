@@ -33,7 +33,8 @@ import { ChevronDown, FileText, FileArchive, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { nameWithNickname, cn, CAPACITY_MAX } from '@/lib/utils';
+import { nameWithNickname, cn, CAPACITY_MAX, capacityLimit, capacityText, capacityWithLimit, capacityPayload, type CapacityMask } from '@/lib/utils';
+import CapacityPicker, { type CapacityValue } from '@/components/shared/CapacityPicker';
 import { applicationStatusView } from '@/lib/flowLabels';
 import ImageLightbox from '@/components/shared/ImageLightbox';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -55,6 +56,8 @@ interface Props {
   customFields?: CustomField[] | null;
   /** 선정 인원(정원) — '수락 3/5 · 2자리 남음'. 모르면 숫자만 */
   capacity?: number | null;
+  /** 공고에 0명·00명으로 적었으면 'ONE'·'TWO' — capacity 는 그 한도(9·99) */
+  capacityMask?: 'ONE' | 'TWO' | null;
   /** 도구 줄 오른쪽에 붙일 것(작가 초대·추가 질문 수정) — 부르는 화면마다 다르다 */
   toolbar?: ReactNode;
   /** 공모만 진행(수락에서 끝) — 확인창·수락 줄에서 출품 자료를 말하지 않는다 */
@@ -65,7 +68,7 @@ interface Props {
   capacityEditable?: boolean;
 }
 
-export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields, capacity, toolbar, recruitOnly = false, ended = false, capacityEditable = false }: Props) {
+export default function ApplicantManager({ exhibitionId, exhibitionTitle, customFields, capacity, capacityMask = null, toolbar, recruitOnly = false, ended = false, capacityEditable = false }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isAdmin = useAuthStore(s => s.user?.role === 'ADMIN');
@@ -217,7 +220,8 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-gray-600">
-        수락 <b className="font-semibold tabular-nums text-gray-950">{accepted}{capacity != null ? `/${capacity}` : ''}</b>명
+        수락 <b className="font-semibold tabular-nums text-gray-950">{accepted}{capacity != null ? `/${capacityLimit({ capacity, capacityMask })}` : ''}</b>명
+        {capacityMask && <span className="text-gray-400"> (공고에는 {capacityText({ capacity, capacityMask })})</span>}
         {left != null && <span className={cn(left > 0 ? 'text-gray-400' : 'font-medium text-gray-900')}> · {left > 0 ? `${left}자리 남음` : '정원이 찼어요'}</span>}
         {counts.SUBMITTED > 0 && <span className="text-gray-400"> · 검토 대기 {counts.SUBMITTED}명</span>}
         {canEditCapacity && !editingCapacity && (
@@ -246,7 +250,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   );
 
   const capacityEditor = canEditCapacity && editingCapacity ? (
-    <CapacityEditor exhibitionId={exhibitionId} capacity={capacity ?? null} accepted={accepted} onDone={() => setEditingCapacity(false)} />
+    <CapacityEditor exhibitionId={exhibitionId} capacity={capacity ?? null} capacityMask={capacityMask} accepted={accepted} onDone={() => setEditingCapacity(false)} />
   ) : null;
   // 전시가 끝나 결정이 잠겼다는 한 줄 — 버튼만 사라지면 고장처럼 보인다
   const lockedLine = decisionsLocked ? (
@@ -431,7 +435,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
           recruitOnly
             ? '작가에게 선정 알림이 가요. 공모만 진행하는 공고라 여기서 절차가 끝나요.'
             : '작가에게 선정 알림이 가고, 작가는 출품 자료를 내기 시작해요.',
-          ...(capacity != null ? [`정원 ${capacity}명 중 지금 ${accepted}명이 수락되어 있어요.`] : []),
+          ...(capacity != null ? [`정원 ${capacityWithLimit({ capacity, capacityMask })} 중 지금 ${accepted}명이 수락되어 있어요.`] : []),
         ]}
         confirmText="수락하기"
         onConfirm={() => {
@@ -490,49 +494,44 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
  * 요청할 화면이 없었다. 날짜는 여전히 1:1 문의다(지원자가 이미 그 날짜를 보고 지원했다).
  * 서버 `PATCH /exhibitions/:id/capacity` 가 권한·하한(수락한 수)·상한(1000)을 다시 본다 — 화면 검사는 헛걸음을 줄일 뿐이다.
  */
-function CapacityEditor({ exhibitionId, capacity, accepted, onDone }: { exhibitionId: number; capacity: number | null; accepted: number; onDone: () => void }) {
+function CapacityEditor({ exhibitionId, capacity, capacityMask, accepted, onDone }: { exhibitionId: number; capacity: number | null; capacityMask: CapacityMask | null; accepted: number; onDone: () => void }) {
   const queryClient = useQueryClient();
-  const [value, setValue] = useState(capacity != null ? String(capacity) : '');
+  // 0명·00명도 고른다(2026-10-14) — 그때 capacity 는 한도(9·99)라 숫자로 바꾸면 그 수가 처음 값으로 남는다
+  const [value, setValue] = useState<CapacityValue>({ capacity: capacity ?? 0, capacityMask });
   const min = Math.max(1, accepted);
-  const n = Number(value);
-  const invalid = value.trim() === '' || !Number.isInteger(n) || n < min || n > CAPACITY_MAX;
+  const sent = capacityPayload(value);
+  const invalid = !Number.isInteger(sent.capacity) || sent.capacity < min || sent.capacity > CAPACITY_MAX;
+  const unchanged = sent.capacity === capacity && sent.capacityMask === capacityMask;
   const save = useMutation({
-    mutationFn: () => api.patch(`/exhibitions/${exhibitionId}/capacity`, { capacity: n }),
+    mutationFn: () => api.patch(`/exhibitions/${exhibitionId}/capacity`, sent),
     onSuccess: () => {
       // 정원을 읽는 곳 — 카드 숫자·할 일 줄(내 공모·주최 공모), 운영 화면(공모 상세 캐시), 초대 코드 상자, 공개 목록
       for (const queryKey of [
         ['exhibition-applicants', exhibitionId], ['my-exhibitions'], ['my-operation-overview'], ['hosted-exhibitions'],
         ['join-code', exhibitionId], ['exhibition', String(exhibitionId)], ['exhibition', exhibitionId], ['exhibitions'],
       ]) queryClient.invalidateQueries({ queryKey });
-      toast.success(`모집 인원을 ${n}명으로 바꿨어요.`);
+      toast.success(sent.capacityMask
+        ? `모집 인원을 '${capacityText(sent)}'(최대 ${sent.capacity}명)으로 바꿨어요.`
+        : `모집 인원을 ${sent.capacity}명으로 바꿨어요.`);
       onDone();
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '모집 인원을 바꾸지 못했어요.'),
   });
-  const submit = (e: FormEvent) => { e.preventDefault(); if (!invalid && !save.isPending) save.mutate(); };
+  const submit = (e: FormEvent) => { e.preventDefault(); if (!invalid && !unchanged && !save.isPending) save.mutate(); };
+  const showError = invalid && value.capacityMask == null && value.capacity !== 0;
   return (
     <form onSubmit={submit} className="rounded-xl border border-gray-200 p-4" data-capacity-editor>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm text-gray-800">
-          모집 인원
-          <input
-            type="number"
-            inputMode="numeric"
-            min={min}
-            max={CAPACITY_MAX}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            autoFocus
-            className={cn('h-10 w-24 rounded-lg border px-3 text-right text-sm tabular-nums focus:outline-none', invalid && value !== '' ? 'border-accent' : 'border-gray-200 focus:border-gray-400')}
-          />
-          명
-        </label>
-        <button type="submit" disabled={invalid || save.isPending} className="min-h-[40px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40">
-          {save.isPending ? '저장 중…' : '저장'}
-        </button>
-        <button type="button" onClick={onDone} className="min-h-[40px] px-2 text-sm text-gray-500 hover:text-gray-900">취소</button>
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <span className="flex min-h-[40px] items-center text-sm text-gray-800">모집 인원</span>
+        <CapacityPicker value={value} onChange={setValue} min={min} error={showError} autoFocus />
+        <div className="flex items-center gap-2">
+          <button type="submit" disabled={invalid || unchanged || save.isPending} className="min-h-[40px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40">
+            {save.isPending ? '저장 중…' : '저장'}
+          </button>
+          <button type="button" onClick={onDone} className="min-h-[40px] px-2 text-sm text-gray-500 hover:text-gray-900">취소</button>
+        </div>
       </div>
-      <p className={cn('mt-2 text-xs', invalid && value !== '' ? 'text-accent' : 'text-gray-500')}>
+      <p className={cn('mt-2 text-xs', showError ? 'text-accent' : 'text-gray-500')}>
         {accepted > 0 ? `이미 수락한 ${accepted}명보다 적게는 줄일 수 없어요. ` : ''}지원은 그대로 받고, 이 인원까지 수락할 수 있어요(최대 {CAPACITY_MAX}명).
       </p>
     </form>
