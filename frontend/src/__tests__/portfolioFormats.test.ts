@@ -606,6 +606,8 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     worksProseAlign: 'justify',
     cvShow: { statement: true, bio: true, education: true, solo: true, group: true, artFair: true, award: true },
     cvPosition: 'after', cvColumns: 'auto', cvEnglish: true, contactPhoto: true,
+    // 작품 가격은 기본으로 싣지 않는다(2026-10-15 사용자 결정 — 홈페이지·PDF 둘 다 기본 꺼짐)
+    showPrice: false,
     auto: true, direction: null,
   };
 
@@ -618,7 +620,7 @@ describe('색 (normalizePdfDesign / applyDesign)', () => {
     // 명시값 그대로 보존(round-trip)
     const explicit = { bg: 'ink', ink: 'white', accent: 'gold', font: 'plex', page: 'wide', worksLayout: 'label', desc: 'full', worksCaption: 'minimal', proseAlign: 'justify', coverLayout: 'matted', coverEyebrow: false, coverEyebrowText: 'SOLO SHOW', coverYear: false, coverNameAccent: true, coverImageIds: [42], coverImageScale: 0.8, coverTextScale: 1.1, captionStyle: 'intl', artistPhoto: false, worksIndex: false, nameSource: 'nickname', contact: { email: true, phone: false, instagram: false, web: true }, auto: false, direction: 'gallery',
       worksProseAlign: 'left', cvShow: { statement: false, bio: true, education: true, solo: true, group: false, artFair: true, award: false },
-      cvPosition: 'before', cvColumns: 'two', cvEnglish: false, contactPhoto: true };
+      cvPosition: 'before', cvColumns: 'two', cvEnglish: false, contactPhoto: true, showPrice: true };
     expect(normalizePdfDesign(explicit)).toEqual(explicit);
     // 옛 단일값(coverImageId) → 배열 마이그레이션
     expect(normalizePdfDesign({ coverImageId: 7 }).coverImageIds).toEqual([7]);

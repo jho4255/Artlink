@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import type { PortfolioImage } from '@/types';
 import Thumb from '@/components/shared/Thumb';
+import SortableArea from '@/components/shared/SortableTiles';
+import { useFinePointer, useJustDropped, useSortableTile } from '@/components/shared/sortableHooks';
 import { artworkTitle, hasTitle } from '@/lib/artwork';
 import { moveId } from '@/lib/portfolioVersions';
 import { isDefaultSelection } from '@/lib/portfolioMaker';
@@ -21,6 +23,7 @@ import { useEscapeKey } from '@/hooks/useEscapeKey';
  *  - 고르는 동안 "N점 · 약 M쪽" 을 보여 준다 — 제한(10점·24장)을 보며 고를 수 있다.
  *  - 이름을 이 창에서 정한다. 구성을 지우는 것도 여기서.
  *  - 순서 화살표 44px(예전 18px).
+ *  - 실릴 순서 줄은 **끌어서도** 옮긴다(2026-10-15, `SortableTiles`) — 마우스는 끌고, 손가락은 길게 눌러 끈다(이 줄은 순서 전용이라 늘 켠다).
  * 홈페이지의 작품 순서는 건드리지 않는다.
  */
 export default function WorkPicker({ all, initial, mode, initialName, saving, countPages, onApply, onDelete, onClose }: {
@@ -65,6 +68,7 @@ export default function WorkPicker({ all, initial, mode, initialName, saving, co
   const canApply = ids.length > 0 && !saving && (untouched || name.trim().length > 0);
 
   const arrow = 'grid h-11 w-10 place-items-center text-gray-500 hover:text-gray-950 disabled:opacity-25';
+  const fine = useFinePointer();
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 sm:items-center sm:p-6" onClick={() => { if (!saving) onClose(); }}>
       <div
@@ -122,28 +126,37 @@ export default function WorkPicker({ all, initial, mode, initialName, saving, co
           </div>
         </div>
 
-        {/* 실릴 순서 — 드래그는 터치에서 안 되므로 버튼으로 옮긴다 */}
+        {/* 실릴 순서 — 끌거나(마우스는 바로, 손가락은 길게 눌러) 화살표로 옮긴다 */}
         <div className="shrink-0 border-t border-gray-200 px-5 pb-1 pt-3">
-          <p className="text-xs font-medium text-gray-600">실릴 순서 <span className="font-normal text-gray-500">— 화살표로 앞뒤로 옮깁니다</span></p>
-          <div className="mt-2 flex gap-1 overflow-x-auto pb-2">
-            {ids.map((id, i) => {
-              const w = byId.get(id);
-              if (!w) return null;
-              return (
-                <div key={id} className="flex shrink-0 flex-col items-center">
-                  <div className="relative h-14 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                    <Thumb src={w.url} size="grid" alt="" className="h-full w-full object-contain" />
-                    <span className="absolute left-0.5 top-0.5 rounded bg-gray-900/85 px-1 text-xs font-medium tabular-nums text-white">{i + 1}</span>
-                  </div>
-                  <div className="flex">
-                    <button type="button" onClick={() => setIds((c) => moveId(c, id, -1))} disabled={i === 0} aria-label={`${i + 1}번째 작품을 앞으로`} className={arrow}><ChevronLeft size={18} /></button>
-                    <button type="button" onClick={() => setIds((c) => moveId(c, id, 1))} disabled={i === ids.length - 1} aria-label={`${i + 1}번째 작품을 뒤로`} className={arrow}><ChevronRight size={18} /></button>
-                  </div>
-                </div>
-              );
-            })}
-            {ids.length === 0 && <p className="py-4 text-sm text-gray-500">작품을 하나 이상 골라 주세요.</p>}
-          </div>
+          <p className="text-xs font-medium text-gray-600">실릴 순서 <span className="font-normal text-gray-500">— {fine ? '끌거나 화살표로 옮깁니다' : '길게 눌러 끌거나 화살표로 옮깁니다'}</span></p>
+          <SortableArea
+            ids={ids}
+            onReorder={setIds}
+            layout="row"
+            touch
+            itemName={(id) => { const w = byId.get(id); return w && hasTitle(w) ? artworkTitle(w) : `${ids.indexOf(id) + 1}번째 작품`; }}
+            overlay={(id) => { const w = byId.get(id); return w ? <OrderThumb url={w.url} n={ids.indexOf(id) + 1} lifted /> : null; }}
+          >
+            <div className="mt-2 flex gap-1 overflow-x-auto pb-2" data-testid="picker-order">
+              {ids.map((id, i) => {
+                const w = byId.get(id);
+                if (!w) return null;
+                return (
+                  <OrderItem
+                    key={id}
+                    id={id}
+                    url={w.url}
+                    n={i + 1}
+                    first={i === 0}
+                    last={i === ids.length - 1}
+                    arrow={arrow}
+                    onMove={(delta) => setIds((c) => moveId(c, id, delta))}
+                  />
+                );
+              })}
+              {ids.length === 0 && <p className="py-4 text-sm text-gray-500">작품을 하나 이상 골라 주세요.</p>}
+            </div>
+          </SortableArea>
         </div>
 
         <div className="shrink-0 border-t border-gray-200 px-5 py-3">
@@ -181,5 +194,34 @@ export default function WorkPicker({ all, initial, mode, initialName, saving, co
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** 실릴 순서 줄의 작은 그림 — 번호는 실릴 순서 */
+function OrderThumb({ url, n, lifted = false }: { url: string; n: number; lifted?: boolean }) {
+  return (
+    <div className={cn('relative h-14 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50', lifted && 'shadow-xl ring-1 ring-black/10')}>
+      <Thumb src={url} size="grid" alt="" draggable={false} className="h-full w-full object-contain" />
+      <span className="absolute left-0.5 top-0.5 rounded bg-gray-900/85 px-1 text-xs font-medium tabular-nums text-white">{n}</span>
+    </div>
+  );
+}
+
+/** 실릴 순서 한 칸 — 그림을 잡고 끌거나 아래 화살표로 옮긴다 */
+function OrderItem({ id, url, n, first, last, arrow, onMove }: {
+  id: number; url: string; n: number; first: boolean; last: boolean; arrow: string; onMove: (delta: -1 | 1) => void;
+}) {
+  const { itemRef, itemStyle, handle } = useSortableTile(id);
+  const justDropped = useJustDropped();
+  return (
+    <div ref={itemRef} style={itemStyle} data-order-id={id} className="flex shrink-0 select-none flex-col items-center [-webkit-touch-callout:none]">
+      <div {...handle} onClickCapture={(e) => { if (justDropped()) e.stopPropagation(); }} onContextMenu={(e) => e.preventDefault()} className="cursor-grab touch-manipulation active:cursor-grabbing">
+        <OrderThumb url={url} n={n} />
+      </div>
+      <div className="flex">
+        <button type="button" onClick={() => onMove(-1)} disabled={first} aria-label={`${n}번째 작품을 앞으로`} className={arrow}><ChevronLeft size={18} /></button>
+        <button type="button" onClick={() => onMove(1)} disabled={last} aria-label={`${n}번째 작품을 뒤로`} className={arrow}><ChevronRight size={18} /></button>
+      </div>
+    </div>
   );
 }

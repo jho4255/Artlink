@@ -292,7 +292,11 @@ const applies = (wl: WorksLayout) => ({
   caption: wl === 'duo' || wl === 'grid' || wl === 'feature',
 });
 
-export function WorksTab({ design, patch, workCount }: { design: PdfDesign; patch: Patch; workCount: number }) {
+export function WorksTab({ design, patch, workCount, pricedCount = 0 }: {
+  design: PdfDesign; patch: Patch; workCount: number;
+  /** 가격을 적은 판매 가능한 작품 수(실릴 작품 기준) — 0 이면 켤 게 없다고 알리고 적으러 가는 길을 준다 */
+  pricedCount?: number;
+}) {
   const dims = pageDims(design);
   const rules = applies(design.worksLayout);
   // 배치 7종 — 그 배치 정원의 두 배만큼 그려야 꽉 찬 쪽이 나온다(6장 고정이면 '4점씩' 이 3점으로 그려진다)
@@ -369,6 +373,22 @@ export function WorksTab({ design, patch, workCount }: { design: PdfDesign; patc
 
       <Group title="작품 정보 순서" note={design.captionStyle === 'kr' ? '작품명, 연도 / 재료 / 크기 — 홈페이지와 같은 순서' : '작품명 / 재료 / 크기 / 연도 — 해외 공모·레지던시에 낼 때'}>
         <Chips label="작품 정보 순서" value={design.captionStyle} options={[['kr', '국내식'], ['intl', '해외식']] as const} onChange={(v) => patch({ captionStyle: v })} />
+      </Group>
+
+      {/* 작품 가격(2026-10-15) — 홈페이지 노출과 따로 켠다(사용자 결정). 갤러리에 낼 PDF 에만 싣고 홈페이지에는 안 보이게 할 수 있다 */}
+      <Group
+        title="작품 가격"
+        note={pricedCount > 0
+          ? `가격을 적은 작품 ${pricedCount}점의 캡션 마지막 줄에 '1,200,000원' 처럼 싣습니다. 판매 완료·비매 작품은 빠져요.`
+          : '가격을 적은 작품이 없어요. 홈페이지 편집의 [작품]에서 작품을 눌러 가격을 적으면 여기서 켤 수 있어요.'}
+      >
+        <CheckRow
+          checked={design.showPrice}
+          onChange={(v) => patch({ showPrice: v })}
+          label="작품 가격 싣기"
+          disabled={pricedCount === 0}
+          hint={pricedCount === 0 ? <Link to={editHref('works')} className="underline underline-offset-2">가격 적으러 가기</Link> : undefined}
+        />
       </Group>
 
       <Group title="작품 목록 쪽" note={workCount >= 6 ? '맨 뒤에 실린 작품을 작은 그림과 쪽번호로 한 번 더 모아 보여 줍니다.' : '작품이 6점 이상일 때 만들어집니다.'}>

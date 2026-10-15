@@ -143,13 +143,17 @@ export function FileSection({ value, onChange }: { value: string | null; onChang
   );
 }
 
-export function StyleSection({ handle, onHandle, currentHandle, handleSuggestion, handleError, design, onDesign, images, onField }: {
+export function StyleSection({ handle, onHandle, currentHandle, handleSuggestion, handleError, design, onDesign, images, showPrice, onShowPrice, pricedCount, onField }: {
   handle: string; onHandle: (v: string) => void;
   currentHandle?: string | null;
   handleSuggestion?: string | null;
   handleError?: string | null;
   design: HomepageThemeKeys; onDesign: (d: HomepageThemeKeys) => void;
   images: PortfolioImage[];
+  /** 홈페이지에 작품 가격 보이기(2026-10-15, 기본 꺼짐) */
+  showPrice: boolean; onShowPrice: (v: boolean) => void;
+  /** 가격을 적은 판매 가능한 작품 수 — 0 이면 켜도 보일 게 없다고 알린다 */
+  pricedCount: number;
   onField: (f: EditField) => void;
 }) {
   return (
@@ -171,6 +175,29 @@ export function StyleSection({ handle, onHandle, currentHandle, handleSuggestion
           홈페이지 맨 위에 나오는 이름(닉네임)과 인스타그램 주소는{' '}
           <Link to="/mypage" className="text-gray-800 underline underline-offset-2">프로필</Link>에서 바꿉니다.
         </p>
+      </div>
+
+      {/* 작품 가격 — 작가가 원할 때만(2026-10-15). 포트폴리오 PDF 는 포트폴리오 만들기 [작품] 탭에서 따로 켠다 */}
+      <div>
+        <p className="mb-1.5 text-sm font-medium text-gray-800">작품 가격</p>
+        <label className="flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
+          <input
+            type="checkbox"
+            checked={showPrice}
+            onChange={(e) => onShowPrice(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-gray-900"
+            data-testid="show-price"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm text-gray-900">홈페이지에 작품 가격 보이기</span>
+            <span className="mt-0.5 block break-keep text-xs leading-relaxed text-gray-500">
+              가격을 적은 작품 아래에 ‘1,200,000원’ 처럼 나옵니다. 판매 완료·비매 작품은 빠져요. 가격은 [작품]에서 작품을 눌러 적고, 포트폴리오 PDF 는 따로 켭니다.
+            </span>
+            {showPrice && pricedCount === 0 && (
+              <span className="mt-1 block break-keep text-xs text-accent">아직 가격을 적은 작품이 없어요 — 켜 두어도 보이는 가격이 없습니다.</span>
+            )}
+          </span>
+        </label>
       </div>
 
       <HomepageStylePicker value={design} images={images} onChange={onDesign} />

@@ -38,7 +38,7 @@ export const CUSTOMIZE_TABS: { id: CustomizeTab; label: string }[] = [
  */
 export const TAB_KEYS: Record<CustomizeTab, readonly (keyof PdfDesign)[]> = {
   cover: ['coverLayout', 'coverEyebrow', 'coverEyebrowText', 'coverImageScale', 'coverTextScale', 'coverYear', 'coverNameAccent', 'coverImageIds'],
-  works: ['auto', 'worksLayout', 'desc', 'worksCaption', 'captionStyle', 'worksIndex', 'worksProseAlign'],
+  works: ['auto', 'worksLayout', 'desc', 'worksCaption', 'captionStyle', 'showPrice', 'worksIndex', 'worksProseAlign'],
   cv: ['cvShow', 'cvPosition', 'cvColumns', 'cvEnglish', 'proseAlign', 'artistPhoto'],
   style: ['bg', 'ink', 'accent', 'font'],
   info: ['nameSource', 'contact', 'contactPhoto'],

@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2700+ tests** (2026-10-08): Backend 1618 (supertest, `artlink_test` DB 순차), Frontend 1174 (jsdom) · E2E 379(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2800+ tests** (2026-10-15): Backend 1649 (supertest, `artlink_test` DB 순차), Frontend 1219 (jsdom) · E2E 379(+ `72` 10개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1784,10 +1784,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         방문자 대부분이 인스타 링크로 들어오는 휴대폰이라 "페이지에서 보여준다"가 통째로 깨진다. legacy 빌드는 인앱 브라우저(옛 OS) 때문.
       - ⚠️ **PDF 를 직접 fetch 해서 bytes 로 넘긴다**(pdf.js 에 url 을 주지 않는다) — 규칙 16 과 같은 함정: 옛 [파일 보기] 링크로 같은 파일을 연 브라우저엔 CORS 정보 없는
         캐시가 남아 CORS fetch 가 막힌다. 평소처럼 받고, 실패하면 `cache:'reload'` 로 한 번 더. 덕분에 진행률(MB)도 보인다.
-      - ⚠️ **화면에서 멀어진 쪽의 캔버스는 비운다**(IntersectionObserver `rootMargin 150%`, 자리 높이는 유지) + 한 장 **800만 px 상한**(`pdfRenderScale`, 배율 ≤2).
+      - ⚠️ **화면에서 멀어진 쪽의 캔버스는 비운다**(IntersectionObserver `rootMargin 150%`, 자리 높이는 유지) + 한 장 **800만 px 상한**(`pdfRenderScale`). 기기 배율은 최대 3, 확대하면 보이는 쪽을 다시 그린다(규칙 70 — 2026-10-15 까지 배율 ≤2 라 3배 화면에서 흐렸다).
         iOS 는 캔버스 메모리가 작아 전 쪽을 2배로 그려 두면 뒤쪽이 흰 판이 된다. 실측 19쪽 문서에서 동시에 그려진 쪽 최대 5.
-      - 쪽 폭은 `pdfPageWidth`: **한 쪽이 한 화면에** 들어오게 높이에 맞추되 하한 640px(A4 세로를 노트북 높이에 맞추면 글씨 8px) · 상한 1000px · 컨테이너 이하(휴대폰 = 화면 폭).
-        테두리 1px×2 를 컨테이너 폭에서 빼 둘 것 — 안 빼면 휴대폰에서 2px 가로로 밀린다.
+      - 쪽 폭은 `pdfPageWidth`: **컨테이너 폭에 맞추되 글자가 사이트 본문보다 커지지 않게**(배율 상한 `PDF_MAX_CSS_PER_PT` = A4 세로 1000px). 휴대폰 = 화면 폭.
+        ⚠️ 2026-10-15 까지는 '한 쪽이 한 화면에'(높이에 맞춤, 하한 640px)였다 — PC 에서 10pt 본문이 7px 라 뭉개졌다(규칙 70). 되돌리지 말 것.
+        테두리 1px×2 를 컨테이너 폭에서 빼 둘 것 — 안 빼면 휴대폰에서 2px 가로로 밀린다. 상자·캔버스 크기는 `pdfPageBox`·`pdfCanvasSize`(규칙 70).
       - v6 API: 문서는 `loadingTask.destroy()` 로 닫는다(`PDFDocumentProxy.destroy` 없음), `isEvalSupported` 옵션 없음. CMap·표준 글꼴·wasm·ICC 는 **jsDelivr(버전 고정)** 에서
         필요할 때만(한글 글꼴을 안 심은 PDF 대비). 캔버스만 그린다 — 링크·주석·폼·스크립트 없음. 부르는 쪽은 `key={url}`(파일이 바뀌면 처음부터).
       - PWA: `vite.config.ts` 의 `globIgnores: ['**/pdf-*.js']` — pdf.js 본체를 모든 설치자에게 precache 하지 않는다(워커 `.mjs` 는 패턴에 원래 안 걸린다).
@@ -1924,7 +1925,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       작품은 있는데 소개한 작품이 0점이면 같은 자리에 [모두 소개하기](실서버 47명 중 16명이 전부 꺼진 채라 작가 목록에 없었다 —
       2026-10-05 부터 명단은 이 값과 무관하다. '작가 탭에도' 는 작품 격자에만 걸린다).
       ⚠️ 노출은 **상태를 적어 보낸다** — `PUT /portfolio/images/explore { ids, show }`(멱등, 남의 id 가 섞이면 404). 토글(PATCH)을 N번 부르면 탭 둘에서 거꾸로 꺼진다(규칙 46 의 취지).
-    - **작품 칸**: 사진 위에 겹치는 단추는 **삭제(44px)·좋아요뿐**. 순서는 [순서 바꾸기] 를 눌렀을 때만 사진 아래 ◀ ▶. 칸 아래 한 줄은 `tileLabel`(캡션 첫 줄) 또는 빨간 '작품 정보 입력'.
+    - **작품 칸**: 사진 위에 겹치는 단추는 **삭제(44px)·좋아요뿐**. 순서는 [순서 바꾸기] 를 눌렀을 때만 사진 아래 ◀ ▶ — 끌어서도 옮긴다(마우스는 늘 · 손가락은 [순서 바꾸기] 에서, 규칙 72). 칸 아래 한 줄은 `tileLabel`(캡션 첫 줄) 또는 빨간 '작품 정보 입력'.
       ⚠️ `artworkTitle()` 을 쓰지 말 것 — 빈 제목에 '무제' 를 돌려줘 정보를 안 넣은 작품이 넣은 것처럼 보인다.
       ⚠️ **[작품] 묶음은 다른 묶음에 가 있어도 떼어 내지 않는다**(`<div hidden>` + `memo`). 사진 열 장을 올리는 20~30초 사이에 [소개] 를 눌러 글을 쓰는 사람이 있다 —
       떼어 내면 올리는 중 표시와 "방금 올린 N점" 안내가 사라지고, 돌아왔을 때 [작품 사진 올리기] 가 다시 눌려 같은 사진을 두 번 올린다.
@@ -2273,6 +2274,82 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       이미 수락한 수보다 작은 한도(10명 수락 뒤 0명)는 고를 수 없다(서버도 400).
     - 회귀: backend `exhibition-capacity-mask.test.ts`(7) · frontend `capacityMask.test.ts`(5).
 
+69. **⚠️⚠️ [PDF 내려받기] 의 글자 기준선 — `index.css` 의 1px GIF 규칙을 지우지 말 것** (2026-10-15, 김현수 작가 신고 "포트폴리오에서 작품 이름이 위아래가 잘린다")
+    html2canvas 는 글자를 그리기 전에 1px GIF(`SMALL_IMAGE`)를 글자 옆에 줄글처럼 놓고 그 위치로 기준선을 잰다(FontMetrics, **원래 문서**에서 잰다).
+    Tailwind 기본값(preflight)의 `img{display:block}` 을 그 GIF 도 받아 다음 줄로 내려가면서 기준선을 '한 줄 높이 + 2px' 로 잘못 쟀다 →
+    **[PDF 내려받기]·단체전 도록·운영 PDF 의 모든 글자가 아래로 밀렸다**(17px 제목 +9px · 11px 목록 +8px). 높이가 딱 맞는 칸 — 맨 뒤 '작품 목록'(작품 6점 이상이면 기본)·
+    캡션이 제목 한 줄일 때(line-clamp) — 에서는 **아래쪽이 잘렸다**. 10-03 에 [PDF 저장] 기본이 이 경로가 된 뒤의 저장 3건(김현수 2 · 신승혜 1 — 신승혜 홈페이지 PDF 의 작품 목록도) 모두 해당.
+    화면 미리보기·인쇄 경로(글자가 살아 있는 PDF)·PPT 는 크롬이 그려 멀쩡해서 아무도 못 봤다.
+    - 고침: `index.css` 최상위(@layer 밖)에 `img[src="data:image/gif;base64,R0lGOD…"]{display:inline}` — 그 GIF 만 되돌린다(다른 img 는 그대로).
+    - ⚠️ **html2canvas 를 올리면** GIF 주소가 바뀔 수 있다 — `__tests__/html2canvasBaseline.test.ts` 가 dist 의 `SMALL_IMAGE` 와 CSS 를 대조해 먼저 깨진다.
+    - ⚠️⚠️ **PDF 하니스는 앱 CSS 를 넣고 돌릴 것.** `scratchpad/pf/harness.html` 은 앱 CSS 없이 돌아 몇 달 동안 이 밀림을 못 봤다(실제 저장은 앱 문서 안에서 그린다).
+      `scratchpad/pf/textshift.mjs`(빌드한 앱 CSS 를 실어 크롬과 html2canvas 의 제목 윗선 비교 — 고친 뒤 313곳 최대 1.6px · `NOFIX=1` 이면 170곳 실패 최대 10.7px) ·
+      e2e `72` D(**실제 앱 화면**에서 html2canvas 로 그린 제목 높이 — 고치기 전 29.7px vs 크롬 20.6px).
+    - ⚠️⚠️ **내려받기 결과를 고치면 `scratchpad/pf/download-check.mjs` + `.py` 를 돌릴 것** — 앱에서 [PDF 저장] → [PDF 내려받기] 를 **실제로 눌러** 받은 파일과,
+      같은 화면 미리보기 쪽을 크롬이 같은 배율로 그린 그림을 쪽마다 맞댄다(쪽 어긋남 · 글자 줄 밀림 · 다른 칸). 2026-10-15: 4개 설정 62쪽 전부 통과
+      (평균 차이 0.4~1.6/255 · 줄 밀림 ≤3 기기 px — html2canvas 와 크롬의 반올림 차이). `NOFIX=1` 로 이 결함을 되살리면 전 쪽이 실패한다(밀림 18px).
+      **왜 그동안 못 잡았나**: 엔진 하니스는 앱 밖에서 돌았고, vitest(jsdom)는 그리지 않고, E2E 는 미리보기(크롬이 그린 것)만 봤다 — '사용자가 받는 파일'을 연 검사가 하나도 없었다.
+    - 이미 만든 PDF 는 저절로 고쳐지지 않는다 — 다시 저장해야 한다.
+
+70. **홈페이지 [포트폴리오] 탭 PDF 화질 — 크게 놓고, 1:1 로 찍고, 확대하면 다시 그린다** (2026-10-15, "홈페이지에서 포트폴리오를 보면 화질이 깨진다 · 글자가 뭉개지고 흐리다", `components/shared/PdfViewer.tsx`)
+    ⚠️⚠️ **같은 날 로컬 확인에서 "아직도 흐리다" 로 다시 왔다 — 배율만 올린 첫 수정은 PC(기기 배율 1)에서 아무것도 바꾸지 못했다.** 진짜 원인 둘을 실측으로 찾았다:
+    - **ⓐ 쪽을 작게 놓았다.** 높이에 맞춰 PC 의 A4 세로가 640px → 10pt 본문이 7px. 그리기는 정확했다(같은 크기로 PyMuPDF 가 그린 것과 같다). → **폭에 맞춘다**(`pdfPageWidth`, A4 세로 ≈1000px · 10pt ≈ 17px).
+    - **ⓑ 캔버스가 상자보다 1px 작았다**(상자 높이는 반올림 1414, 캔버스는 내림 1413) → 브라우저가 **쪽 전체를 보간**해 모든 배율에서 흐렸다(2배 화면 평균 차이 9.1/255).
+      1.25·1.5·1.75 배(윈도 노트북)는 폭도 정수로 안 떨어졌고(999 × 1.25 = 1248.75), 가운데 정렬 때문에 **반 픽셀 위치**에 놓였다.
+      → `pdfPageBox` 가 상자 폭·높이를 배율 분모의 배수로(1.25 = 5/4 → 4의 배수, `ratioFraction` 분모 10 이하), `pdfCanvasSize` 가 캔버스 = 상자 × 배율(반올림만),
+      뷰어가 캔버스 칸을 **기기 픽셀 경계로 1px 미만 옮긴다**(크롬은 소수 CSS 위치를 CSS px 로 반올림한 뒤 배율을 곱한다 — 그 소수만 옮기므로 1·2·3배는 아무것도 안 한다).
+      실측: 크롬 8배율(1 · 1.1 · 1.25 · 1.5 · 1.75 · 2 · 2.625 · 3) × 3쪽 × 스크롤 위치, 사파리 엔진 4배율 — **화면 픽셀 = 캔버스 픽셀(차이 0)**. 하니스는 아래 회귀의 e2e `72` C.
+    - ⚠️ 캔버스 크기를 `Math.floor(viewport.width/height)` 로 되돌리지 말 것(소스 가드가 막는다). 상자 크기를 따로 계산하지 말 것 — 둘은 늘 같은 함수에서 나와야 한다.
+    처음 수정(아래)도 그대로 유효하다:
+    원인 셋이 겹쳤다(실서버 홈페이지 PDF 15개 분석 · 같은 뷰어로 PC·휴대폰 재현): ① 기기 배율을 **2로 묶어** 3배 화면(아이폰·갤럭시)에서 1.5배 늘려 보였다
+    ② 손가락 확대(휴대폰)·Ctrl 확대(PC, 쪽 폭이 640 하한에 걸리면)에서 **다시 그리지 않고** 그린 그림을 늘렸다 — 휴대폰에서 A4 한 쪽은 폭 340px 이라 글자가 6px 남짓이고 읽으려면 확대한다
+    ③ 파일 자체 — 우리 [PDF 내려받기] 는 쪽마다 JPEG 한 장(글자도 그림, ≈240dpi), PPT 에서 그림을 줄여 저장한 파일(15개 중 2개 72dpi).
+    - `pdfRenderScale`: 기기 배율 **최대 3** × 확대 배율 · 한 장 상한 평소 8M px / 확대 중 12M px(iOS 한 장 16.7M 아래). 메모리는 배율을 묶어서가 아니라 픽셀 상한과 '멀어진 쪽은 비운다'로 지킨다.
+    - 확대: `visualViewport` 의 resize·scroll 이 **멈춘 뒤(0.25초)** 배율을 계단(`pdfZoomStep` 1·1.5·2·3·4)으로 올리고, 지금 보이는 쪽(`pagesInView`, 최대 둘)만 다시 그린다. 줄이면 평소로(메모리 반납).
+      기기 배율이 바뀌면(`resolution` 미디어 쿼리) 다시 그린다. 쪽 폭은 `innerHeight` 가 아니라 **레이아웃 뷰포트**(`documentElement.clientHeight`)로 잰다 — 확대하면 innerHeight 가 줄어 쪽이 들썩였다.
+    - 다시 그릴 땐 **새 캔버스에 다 그린 뒤 바꿔 끼운다**(`slot` 은 React 가 자식을 그리지 않는 빈 칸) — 한 캔버스에 다시 그리면 그리는 동안(큰 쪽은 몇 초) 빈 판이 보인다.
+      멀어진 쪽은 IntersectionObserver 콜백에서 캔버스를 떼어 낸다. ⚠️ effect 본문에서 setState 하지 말 것(`react-hooks/set-state-in-effect`).
+    - [PDF 내려받기] 의 '홈페이지에도 올리기' 는 10MB 에 맞추느라 **줄였으면 줄이기 전 판**을 올린다(`exportPortfolioPdf({ forHomepage })` → `homepageBlob`, 20MB 한도 안일 때).
+    - ⚠️ 테스트에서 손가락 확대는 CDP `Emulation.setPageScaleFactor` 로 만든다 — `Input.synthesizePinchGesture` 는 헤드리스에서 확대가 일어나지 않는다.
+    - 그래도 PDF 자체의 해상도보다 선명해지지는 않는다(그림으로 된 PDF 는 그 그림의 픽셀이 끝이다).
+    - 회귀: frontend `homepageTabs.test.ts`(배율·계단·보이는 쪽·**상자 × 배율이 정수 — 8배율 × 8폭 × 4판형**·소스) ·
+      e2e `72` C(**PC 1.25배: 쪽 폭 >900 · 캔버스 = 상자 × 배율 · 화면 픽셀 = 캔버스 픽셀** · 아이폰 13 배율 3 → 캔버스 0.67 → 1.0 · 2배 확대 → 보이는 쪽만 2배 · 줄이면 돌아온다).
+      우리 [PDF 내려받기] 파일(쪽마다 240dpi JPEG)도 이 뷰어에서 고품질 축소(Lanczos)와 같다(평균 차이 0.44).
+
+71. **작품 가격** (2026-10-15, 작가 요청 · 사용자 결정: **숫자(원)** · **홈페이지와 PDF 를 따로 켠다** · 둘 다 기본 꺼짐)
+    - ⚠️⚠️ **가격은 별도 표 `ArtworkPrice`(imageId PK, amount Int 원) — `PortfolioImage` 컬럼으로 옮기지 말 것.** 공개 홈페이지(`GET /portfolio/:id`)와 갤러리의 지원자 목록
+      (`GET /exhibitions/:id/applications`)이 작품 행을 **통째로** 내려준다. 컬럼이면 작가가 꺼 둔 가격이 응답에 실린다(초대 코드 `ExhibitionJoinCode` 와 같은 이유).
+      마이그레이션 `20261015120000_artwork_price`(+ `Portfolio.showPrice Boolean @default(false)`).
+    - 규칙은 서버 `lib/artworkPrice.ts` 한 곳(`parsePrice` 1 ~ `PRICE_MAX`(20억, int 상한 아래) · 쉼표·원은 떼고 받는다 · `priceVisible` · `attachPublicPrices` · `withPrice`) ↔
+      화면 `lib/artwork.ts`(`PRICE_MAX`·`parsePriceInput`·`formatPrice`('1,200,000원' / 해외식 'KRW 1,200,000')·`priceLabel`). 상한은 프론트 테스트가 서버 소스와 대조한다.
+    - **본인 응답에는 늘 싣고**(`GET /portfolio`·`PUT /portfolio`·`PATCH /images/:id`·토글 — PDF 를 본인 화면이 만든다), **공개 홈페이지에는** `showPrice` 가 켜졌을 때
+      **판매완료·비매가 아닌 작품만**(`attachPublicPrices` — 꺼져 있으면 가격 표를 읽지도 않는다). 팔린 그림의 값은 '얼마에 팔렸다' 로 읽힌다.
+      ⚠️ 새 공개 경로가 작품 행을 내려주면 가격 관계를 include 하지 말고 이 함수를 거칠 것.
+    - 저장: 작품 정보 창 '선택' 의 [가격](치는 대로 쉼표 · 20억 초과면 저장 단추가 막힌다 · 칸 아래가 지금 어디에 보이는지 말한다) → `PATCH /portfolio/images/:id { price }`(null 이면 지운다).
+      홈페이지 노출은 편집 화면 [꾸미기] 의 '홈페이지에 작품 가격 보이기'(`showPrice`, 아래 [저장] 에 함께 — `PUT /portfolio` 는 **보냈을 때만** 바꾼다). 미리보기는 저장 전 값을 따른다(`previewImages`).
+      PDF 는 포트폴리오 만들기 [작품] 탭 '작품 가격 싣기'(`PdfDesign.showPrice`, `TAB_KEYS.works`) — 가격 적은 작품이 없으면 비활성 + 적으러 가는 길.
+    - PDF 캡션: 가격은 늘 **마지막 줄**(`captionParts` 의 meta 끝 · 4점씩은 ' · ' 로 한 줄 · '제목만' 이어도 가격은 싣는다 · 뮤지엄 라벨 `labelLines` · 꽉 채우기 한 줄 끝).
+      `captionParts().oneLine` 을 렌더(line-clamp)와 높이 추정(`estCaptionH`)이 같이 본다. 단체전 도록은 가격을 넘기지 않는다.
+    - 홈페이지 캡션의 가격 줄은 크기 줄에서 **살짝 뗀다**(대표작 `mt-2.5` · 격자 `mt-1.5`, 2026-10-15 사용자 지적 "크기 바로 밑에 또 숫자라 중복 같고 구분이 안 된다").
+    - 판매 상태 점(같은 날 사용자 결정): **판매중 = 초록 점**(`AVAILABLE_DOT` #34c759, 흔한 '구매 가능' 관례) · 판매완료 = 강조색 점·글자 · 비매 = 회색. `statusBadge` 의 tone `available`.
+      ⚠️ 글자까지 초록으로 칠하지 말 것 — 대부분이 판매중이라 시끄럽고, 밝은 초록 글자는 흰 바탕에서 안 읽힌다(점만). PDF 캡션은 그대로(판매중은 적지 않는 관례, `statusLabel`).
+    - 회귀: backend `artwork-price.test.ts`(8) · frontend `artworkPrice.test.ts`(10 — 일곱 배치 전부에서 켜면 실리고 끄면 없다) · e2e `72` A(4).
+
+72. **작품 순서 — 끌어서 옮기기** (2026-10-15, 작가 요청 · 사용자 결정: **PC 마우스는 늘 · 휴대폰 손가락은 [순서 바꾸기] 를 눌렀을 때만**)
+    `@dnd-kit/core`·`sortable`(MIT, 마이페이지 청크에만 실린다) — `components/shared/SortableTiles.tsx`(`SortableArea`) + `sortableHooks.ts`(`useSortableTile`·`useJustDropped`·`useFinePointer`).
+    홈페이지 편집 [작품] 격자와 PDF [작품 고르기] 의 '실릴 순서' 줄(그 줄은 순서 전용이라 손가락도 늘)이 같이 쓴다. ◀ ▶ 는 그대로 둔다(키보드·한 칸 옮기기).
+    - 마우스는 6px 움직여야 끌기 시작 — 그냥 누르면 예전처럼 작품 정보 창. 손가락은 0.25초 길게 눌러야 시작(평소에 켜 두면 격자를 훑다 순서가 바뀐다).
+    - ⚠️ 브라우저 기본 끌기(HTML5 drag)를 쓰지 말 것 — 휴대폰에서 안 되고, 작품 사진을 끌면 사진 올리기 구역이 반응한다. 칸의 `<img>` 는 `draggable={false}`.
+    - ⚠️ 놓은 직후의 클릭은 버린다(`useJustDropped`) — 마우스를 뗀 자리가 같은 칸이면 작품 정보 창이 열렸다.
+    - ⚠️⚠️ **놓은 순서는 놓는 그 렌더에서 그릴 것**(`WorksSection` 의 `dropped`, 2026-10-15 "놓는 순간 다른 그림들이 흔들린다"). 순서가 캐시(['portfolio'])에서 오면
+      mutate → onMutate(await) → 알림(setTimeout) 을 거쳐 몇 프레임 늦고, 그 사이 끌기 라이브러리가 칸을 원래 자리로 되돌렸다가 새 순서가 오면 다시 미끄러뜨려 출렁인다
+      (실측: 칸이 48 → -357 → … → 48). 작품 목록이 바뀌면(캐시가 따라왔거나 실패해 되돌렸으면) 버린다. [작품 고르기] 줄은 원래 지역 state 라 괜찮았다.
+    - 놓으면 `moveIdTo`(맞바꾸기가 아니라 **끼워 넣기**)로 만든 전체 순서를 `PUT /portfolio/images/order` 한 번(낙관적 갱신 · 실패하면 되돌린다).
+    - 순서 바꾸는 중에는 길게 눌러도 사진 저장 메뉴(iOS)·글자 선택이 뜨지 않는다(`-webkit-touch-callout:none` · `select-none` · contextmenu 막기).
+    - ⚠️ 테스트에서 손가락 끌기는 CDP `Input.dispatchTouchEvent`(touchStart → 0.45초 → touchMove ×12 → touchEnd) — **두 칸이 화면 안에** 있어야 한다(화면 밖 좌표는 칸이 아니라 바깥을 누른다).
+    - 회귀: frontend `portfolioVersions.test.ts`(moveIdTo) · e2e `72` B(PC 끌기 → 끼워 넣기·**놓는 순간 칸마다 프레임별 위치가 둘을 넘지 않는다**(고치기 전 코드에서 실패 확인)·새로고침 뒤 유지·그냥 누르면 정보 창 ·
+      휴대폰 평소엔 안 바뀌고 [순서 바꾸기] 에서 바뀐다 · [작품 고르기] 줄).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -2467,7 +2544,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         - **[포트폴리오] 탭 = 포트폴리오 PDF 만들기**(`components/portfolio-maker/PortfolioMaker.tsx`, 규칙 62). 예전엔 편집 화면 **맨 아래**에 붙어 있어
           작품 30장을 지나야 나왔고 있는 줄도 모르는 기능이었다. 사이드바에서는 옆에 'PDF 만들기' 를 적는다(`note`, 2026-10-02) —
           '포트폴리오' 가 이 메뉴·공개 홈페이지의 [포트폴리오] 탭·편집 화면의 파일 올리기 세 곳에서 다른 뜻이다.
-        - **작품 순서는 [순서 바꾸기] 를 누른 뒤 작품 아래 ◀ ▶ 로 바꾼다**(`WorksSection` → `PUT /portfolio/images/order`). 평소엔 화살표가 없다 —
+        - **작품 순서는 끌어서(마우스는 늘 · 손가락은 [순서 바꾸기] 에서 길게 눌러, 규칙 72) 또는 [순서 바꾸기] 를 누른 뒤 작품 아래 ◀ ▶ 로 바꾼다**(`WorksSection` → `PUT /portfolio/images/order`). 평소엔 화살표가 없다 —
           178px 칸에 단추 다섯이 겹쳐 있었다(규칙 60). 이 순서가 홈페이지 첫 작품·PDF 순서다.
         - `?tab=homepage` 로 들어와도 열 화면이 없다 → `resolveTab` 이 **바깥 링크 id 는 절대 돌려주지 않는다**(프로필로 폴백).
     - 🔑 **메뉴 정의는 `frontend/src/lib/myPageMenu.ts` 하나뿐** — 위 세 곳이 같이 쓴다.
@@ -2479,7 +2556,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **포트폴리오**: [작가 약력, 작가노트, 한 줄 소개, 경력(학력/개인전/단체전/아트페어/수상), 작품 사진(최대 **150장**, 2026-09-22 에 30 → 150)] 관리.
       ⚠️ **약력은 필수가 아니다**(2026-10-02) — 서버는 원래 요구하지 않았고 화면만 막고 있어, 한 줄 소개만 쓰고 저장하면 "작가 약력을 입력해주세요" 로 아무것도 저장되지 않았다.
       (공모 **지원서**의 약력 필수는 별개다 — 그건 `POST /exhibitions/:id/apply` 가 본다.)
-      - **작품 정보**: 사진을 누르면 [작품명, 제작연도, 재료, 크기(세로×가로)] + 선택[시리즈, 판매상태, 작품 설명] 입력(칸 순서 = 홈페이지 캡션 순서). 실제 작가 포트폴리오는 예외 없이 작품마다 캡션을 붙이므로 이 정보가 없으면 포맷 PDF에서 캡션이 통째로 빠진다 — 미입력 작품은 칸 아래에 빨간 '작품 정보 입력', 묶음 맨 위에 "작품 N점에 정보가 없어요".
+      - **작품 정보**: 사진을 누르면 [작품명, 제작연도, 재료, 크기(세로×가로)] + 선택[시리즈, 판매상태, 가격(원 — 규칙 71), 작품 설명] 입력(칸 순서 = 홈페이지 캡션 순서). 실제 작가 포트폴리오는 예외 없이 작품마다 캡션을 붙이므로 이 정보가 없으면 포맷 PDF에서 캡션이 통째로 빠진다 — 미입력 작품은 칸 아래에 빨간 '작품 정보 입력', 묶음 맨 위에 "작품 N점에 정보가 없어요".
       - **시리즈**: 작품에 붙인 시리즈명으로 자동으로 묶이고, 시리즈마다 소개 글을 넣으면 PDF에 소개 페이지가 생긴다.
       - **화면 이름은 ArtLink 로고 규칙을 따른다**(앞 검정 + 뒤 빨강 #c4302b) — Art**Link** / Art**Works**(홈 섹션·둘러보기) /
         Home**Page**(공개 작가 페이지) / Port**Folio**(포트폴리오 탭) / Art**Look**(액자 걸기) / My**Picks**(찜 목록) / Art**Talk**(대화).

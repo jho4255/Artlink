@@ -49,6 +49,9 @@ export function statusLabel(img: Pick<PortfolioImage, 'status'>): string {
   return '';
 }
 
+/** 판매중 점의 초록 — 흔히 쓰는 '구매 가능' 초록(연두 쪽). 점에만 쓴다(글자 아님). 테마 배경이 어두워도 보이는 밝기 */
+export const AVAILABLE_DOT = '#34c759';
+
 /**
  * 화면용 판매상태 배지 — **판매중까지 전부** 표기한다.
  *
@@ -56,13 +59,46 @@ export function statusLabel(img: Pick<PortfolioImage, 'status'>): string {
  * 작품마다 '판매중'이 찍히면 시끄럽고, 실제 작가 포트폴리오 관례도 Sold/NFS 만 적는다.
  * 반면 공개 포트폴리오는 갤러리가 보는 화면이라 "살 수 있는가"가 정보가 된다.
  *
- * tone: 'sold' 는 강조색, 'muted' 는 회색 — 대부분이 판매중일 텐데 다 강조하면 화면이 시끄러워진다.
+ * tone: 'sold' 는 강조색(점·글자), 'available' 은 **초록 점**(글자는 회색), 'muted' 는 회색.
+ * 판매중을 초록 점으로(2026-10-15 사용자 결정 — 판매 상태를 색으로 가르는 흔한 관례: 빨강 = 팔림, 초록 = 살 수 있음).
+ * 글자까지 초록으로 칠하지 않는다 — 대부분이 판매중이라 다 칠하면 시끄럽고, 밝은 초록 글자는 흰 바탕에서 안 읽힌다.
  */
-export function statusBadge(img: Pick<PortfolioImage, 'status'>): { label: string; tone: 'sold' | 'muted' } | null {
+export function statusBadge(img: Pick<PortfolioImage, 'status'>): { label: string; tone: 'sold' | 'available' | 'muted' } | null {
   if (img.status === 'SOLD') return { label: '판매완료', tone: 'sold' };
   if (img.status === 'NFS') return { label: '비매', tone: 'muted' };
-  if (img.status === 'AVAILABLE') return { label: '판매중', tone: 'muted' };
+  if (img.status === 'AVAILABLE') return { label: '판매중', tone: 'available' };
   return null;   // 미입력
+}
+
+// ── 가격 (2026-10-15, 작가 요청 · 사용자 결정: 숫자(원)로 받아 '1,200,000원' 으로 통일) ──
+// 서버 거울: backend/src/lib/artworkPrice.ts(PRICE_MAX · priceVisible) — 상한이 다르면 화면이 통과시킨 값을 서버가 막는다.
+
+/** 가격 상한(원) — Postgres int 아래 */
+export const PRICE_MAX = 2_000_000_000;
+
+/** 입력칸의 글자 → 저장할 금액. 비우면 null(지우기), 숫자가 아니거나 범위를 벗어나면 'invalid' */
+export function parsePriceInput(raw: string): number | null | 'invalid' {
+  const t = raw.replace(/[,\s원]/g, '');
+  if (t === '') return null;
+  if (!/^\d+$/.test(t)) return 'invalid';
+  const n = Number(t);
+  return n >= 1 && n <= PRICE_MAX ? n : 'invalid';
+}
+
+/** 판매완료·비매 작품의 가격은 남에게 보이지 않는다 — 팔린 그림의 값은 '얼마에 팔렸다' 로 읽힌다 */
+export function priceVisible(img: Pick<PortfolioImage, 'status'>): boolean {
+  return img.status !== 'SOLD' && img.status !== 'NFS';
+}
+
+/** 금액 표기 — 국내식 '1,200,000원' / 해외식 'KRW 1,200,000'(PDF 의 해외식 캡션) */
+export function formatPrice(n: number, style: 'kr' | 'intl' = 'kr'): string {
+  const s = Math.round(n).toLocaleString('en-US');
+  return style === 'intl' ? `KRW ${s}` : `${s}원`;
+}
+
+/** 캡션에 적을 가격 — 가격이 없거나 판매완료·비매면 null */
+export function priceLabel(img: Pick<PortfolioImage, 'price' | 'status'>, style: 'kr' | 'intl' = 'kr'): string | null {
+  return typeof img.price === 'number' && img.price > 0 && priceVisible(img) ? formatPrice(img.price, style) : null;
 }
 
 /** 제목 — 없으면 '무제' (캡션 자리를 비워두면 페이지 정렬이 흔들린다) */
@@ -220,7 +256,7 @@ export function artworkGridSignature(
 ): string {
   return (
     images
-      .map((i) => `${i.id}|${i.url}|${i.title ?? ''}|${i.series ?? ''}|${i.status ?? ''}|${captionInline(i)}`)
+      .map((i) => `${i.id}|${i.url}|${i.title ?? ''}|${i.series ?? ''}|${i.status ?? ''}|${i.price ?? ''}|${captionInline(i)}`)
       .join('§') +
     '¶' +
     JSON.stringify(seriesInfo ?? [])

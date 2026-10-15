@@ -24,7 +24,7 @@ import { prefetchImages, recoverFailed } from '@/lib/imageFetch';
 import { resolvePalette, bestTextKey, isBgKey, isTextKey, isAccentKey, mixHex } from '@/lib/portfolioColors';
 import {
   artworkTitle, careerLineText, displayYear, hasTitle,
-  groupBySeries, normalizeCareer, statusLabel,
+  groupBySeries, normalizeCareer, priceLabel, statusLabel,
 } from '@/lib/artwork';
 import { artworkFacts } from '@/lib/artworkAnalysis';
 import QRCode from 'qrcode';
@@ -232,6 +232,12 @@ export interface PdfDesign {
   contactPhoto: boolean;
   /** 마지막에 작품 목록(썸네일·쪽번호)을 붙이는가 — 도록의 List of Works. 작품이 6점 이상일 때만 만든다 */
   worksIndex: boolean;
+  /**
+   * 작품 가격을 캡션에 싣는가(2026-10-15, 기본 꺼짐 · 사용자 결정 '홈페이지와 PDF 를 따로 켠다') — [작품] 탭.
+   * 가격을 적은 작품만, 판매완료·비매는 빼고(`priceLabel`). 캡션 **마지막 줄**에 국내식 '1,200,000원' / 해외식 'KRW 1,200,000'.
+   * 홈페이지 노출(`Portfolio.showPrice`)과는 따로다 — 갤러리에 낼 PDF 에만 싣고 공개 홈페이지에는 안 보이게 할 수 있다.
+   */
+  showPrice: boolean;
   /** 문서에 찍는 이름 — 실명(기본) | 닉네임 */
   nameSource: NameSource;
   /** 마지막 장에 실을 연락처(항목별). 전부 끄고 프로필 사진도 없으면 마지막 장을 만들지 않는다 */
@@ -338,6 +344,7 @@ export function normalizePdfDesign(raw: unknown): PdfDesign {
     artistPhoto,
     contactPhoto: typeof o.contactPhoto === 'boolean' ? o.contactPhoto : artistPhoto,
     worksIndex: o.worksIndex !== false,
+    showPrice: o.showPrice === true,
     // 옛 저장값에는 이 두 키가 없다 → 실명 · 전부 켬
     nameSource: o.nameSource === 'nickname' ? 'nickname' : 'real',
     contact: normalizeContact(o.contact),
@@ -1248,6 +1255,8 @@ export type CaptionDetail = 'full' | 'compact' | 'minimal';
 
 /** 문서 전체의 캡션 표기 관례 — `buildPortfolioPages` 가 시작할 때 정하고 그 동기 실행 동안만 유효(imgMode 와 같은 방식) */
 let captionStyle: CaptionStyle = 'kr';
+/** 이번 문서가 작품 가격을 싣는가 — captionStyle 과 같은 방식(`buildPortfolioPages` 가 시작할 때 정한다) */
+let showPriceInCaption = false;
 const tx = (v?: string | null) => String(v ?? '').trim();
 
 /**
@@ -1266,16 +1275,25 @@ function captionParts(a: PortfolioImage, detail: CaptionDetail | boolean) {
   const kr = captionStyle === 'kr';
   const head = kr ? (title && year ? `${title}, ${year}` : title || year) : title;
   const status = !!statusLabel(a);
+  // 가격(2026-10-15) — 작가가 [작품] 탭에서 켰을 때만, 판매완료·비매는 빼고. 늘 **마지막 줄**이다(관례: 작품 정보 다음에 가격)
+  const price = showPriceInCaption ? priceLabel(a, captionStyle) : null;
   const fullMeta = (kr ? [medium, size] : [medium, size, year]).filter(Boolean);
-  const meta = d === 'minimal' ? [] : d === 'compact' ? (fullMeta.length ? [fullMeta.join(' · ')] : []) : fullMeta;
+  const meta = d === 'minimal'
+    ? (price ? [price] : [])                                                   // '제목만' 이어도 가격을 켰으면 가격은 싣는다
+    : d === 'compact'
+      ? ([...fullMeta, price].filter(Boolean).length ? [[...fullMeta, price].filter(Boolean).join(' · ')] : [])
+      : [...fullMeta, ...(price ? [price] : [])];
+  // 제목을 한 줄로 자르는가 — 목록('제목만')이거나 보조 줄이 없을 때. 렌더(captionHtml)와 높이 추정이 같이 본다
+  const oneLine = d === 'minimal' || meta.length === 0;
   // 제목 줄을 그리는가 — head 가 있거나(상태만 있으면 상태가 그 자리)
-  return { head, title: !!head, status, meta, titleLines: head || status ? 1 : 0, empty: !head && !status && meta.length === 0 };
+  return { head, title: !!head, status, meta, oneLine, titleLines: head || status ? 1 : 0, empty: !head && !status && meta.length === 0 };
 }
 
-/** 라벨 블록(뮤지엄 라벨)용 줄 — 제목은 따로 크게 쓰고, 나머지를 관례 순서로 */
+/** 라벨 블록(뮤지엄 라벨)용 줄 — 제목은 따로 크게 쓰고, 나머지를 관례 순서로. 가격은 맨 끝 */
 function labelLines(a: PortfolioImage): string[] {
   const year = displayYear(a.year), medium = tx(a.medium), size = tx(a.sizeText);
-  return (captionStyle === 'kr' ? [year, medium, size] : [medium, size, year]).filter(Boolean);
+  const price = showPriceInCaption ? priceLabel(a, captionStyle) : null;
+  return [...(captionStyle === 'kr' ? [year, medium, size] : [medium, size, year]), price].filter((v): v is string => !!v);
 }
 
 /** 캡션 블록(제목·보조 줄) 높이 — 격자·대형·옆칸이 같은 산수를 본다 */
@@ -1301,7 +1319,7 @@ function captionHtml(theme: PortfolioTheme, a: PortfolioImage, align: 'center' |
   // ⚠️ 목록(minimal)에서는 제목을 **한 줄로 잘라야 한다.** 6점 격자는 행이 3줄이라 캡션 높이를
   //    행 수만큼 물고, 긴 제목이 두 줄로 접히면 그것만으로 지면의 7% 가 사라진다(실측: 칸 301→274px).
   //    목록에 붙는 건 도록 캡션이 아니라 **라벨**이라 한 줄이 관례에도 맞다.
-  const oneLine = p.meta.length === 0
+  const oneLine = p.oneLine
     ? 'display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;'
     : '';
   // 글자 사이를 벌리지 않는다 — 넓은 자간의 작은 회색 글은 '템플릿'으로 읽힌다(2026-09-16 미적 비평).
@@ -1431,8 +1449,8 @@ function solveGrid(per: number, theme: PortfolioTheme, design: PdfDesign, geom: 
   const estCaptionH = (a: PortfolioImage, w: number) => {
     const p = captionParts(a, detail);
     if (p.empty) return 0;
-    // 제목 줄 수 — 목록(메타 없음)은 렌더가 한 줄로 자르므로 추정도 한 줄이다
-    const tCap = p.meta.length === 0 ? 1 : 3;
+    // 제목 줄 수 — 목록('제목만'·메타 없음)은 렌더가 한 줄로 자르므로 추정도 한 줄이다(같은 `oneLine`)
+    const tCap = p.oneLine ? 1 : 3;
     const tLines = p.title ? Math.min(tCap, Math.max(1, Math.ceil((p.head.length * 17) / w))) : p.titleLines;
     const mLines = Math.min(5, p.meta.reduce((n, l) => n + Math.max(1, Math.ceil((l.length * 13) / w)), 0));
     return CAP_TOP + tLines * CAP_TITLE_LINE + mLines * CAP_META_LINE + 24; // +24 SAFETY 쿠션
@@ -2078,7 +2096,8 @@ function fullWorksPage(theme: PortfolioTheme, data: PortfolioBookData, a: Portfo
   // ⚠️ `artworkTitle()` 을 그대로 쓰면 제목 없는 작품에 '무제' 가 찍힌다 — 실데이터의 97% 다.
   //    첫 줄 규칙(제목, 연도)은 captionParts 하나가 정한다.
   const cp = captionParts(a, 'minimal');
-  const meta = captionStyle === 'kr' ? cp.head : [cp.head, displayYear(a.year)].filter(Boolean).join(' · ');
+  // 가격을 켰으면 같은 줄 끝에(cp.meta 는 '제목만' 일 때 가격 한 줄뿐이다)
+  const meta = [captionStyle === 'kr' ? cp.head : [cp.head, displayYear(a.year)].filter(Boolean).join(' · '), ...cp.meta].filter(Boolean).join(' · ');
   const inner = `
     <div style="position:absolute;left:64px;right:64px;top:64px;bottom:96px;display:flex;align-items:center;justify-content:center">
       ${img(a.url, `max-width:100%;max-height:100%;object-fit:contain;display:block`)}
@@ -2470,6 +2489,7 @@ export function buildPortfolioPages(
   // 디자인(색·판형·밀도·설명)을 입힌 파생 테마 — 아래 빌더 전부 이 theme + design 을 쓴다
   const design = normalizePdfDesign(opts?.design ?? null);
   captionStyle = design.captionStyle;
+  showPriceInCaption = design.showPrice;
   nameSource = design.nameSource;
   // 본문(여백·러닝요소)은 표지와 무관하게 **항상 일관**(archive 기준). 판형·색·글꼴은 design 이 override. 표지는 별도 레지스트리.
   const theme = applyDesign(themeById('archive'), design);

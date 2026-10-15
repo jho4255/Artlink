@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   artworkTitle, captionInline, captionLines, careerLineText, composeSize, groupBySeries, hasTitle,
-  hasCaption, isCareerEmpty, normalizeCareer, seriesNames, splitSize, statusBadge, statusLabel,
+  AVAILABLE_DOT, hasCaption, isCareerEmpty, normalizeCareer, seriesNames, splitSize, statusBadge, statusLabel,
 } from '../lib/artwork';
 import type { PortfolioImage } from '../types';
 
@@ -43,7 +43,7 @@ describe('화면용 판매상태 배지 (statusBadge)', () => {
   it('세 상태를 모두 표기한다 — 공개 페이지는 갤러리가 "살 수 있는가"를 봐야 한다', () => {
     expect(statusBadge(img({ status: 'SOLD' }))).toEqual({ label: '판매완료', tone: 'sold' });
     expect(statusBadge(img({ status: 'NFS' }))).toEqual({ label: '비매', tone: 'muted' });
-    expect(statusBadge(img({ status: 'AVAILABLE' }))).toEqual({ label: '판매중', tone: 'muted' });
+    expect(statusBadge(img({ status: 'AVAILABLE' }))).toEqual({ label: '판매중', tone: 'available' });
   });
 
   it('미입력은 배지를 달지 않는다 — 없는 정보를 "판매중"으로 단정하면 안 된다', () => {
@@ -55,6 +55,12 @@ describe('화면용 판매상태 배지 (statusBadge)', () => {
     const tones = (['SOLD', 'NFS', 'AVAILABLE'] as const)
       .map(s => statusBadge(img({ status: s }))!.tone);
     expect(tones.filter(t => t === 'sold')).toHaveLength(1);
+  });
+
+  it('판매중은 초록 점(2026-10-15) — 강조색(빨강)이 아니다 · 비매는 회색', () => {
+    expect(statusBadge(img({ status: 'AVAILABLE' }))!.tone).toBe('available');
+    expect(statusBadge(img({ status: 'NFS' }))!.tone).toBe('muted');
+    expect(AVAILABLE_DOT).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it('PDF용 statusLabel 과 규칙이 다르다 — 한쪽을 고쳐도 다른 쪽이 딸려가면 안 된다', () => {

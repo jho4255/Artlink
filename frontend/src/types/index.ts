@@ -234,6 +234,11 @@ export interface PortfolioImage {
   series?: string | null;
   description?: string | null;
   status?: ArtworkStatus | null;
+  /**
+   * 가격(원, 2026-10-15). 본인 조회에는 늘 실리고(PDF 를 본인 화면이 만든다), 공개 홈페이지에는 작가가 홈페이지 가격을 켰을 때
+   * 판매완료·비매가 아닌 작품에만 실린다(서버 lib/artworkPrice.ts). 화면에 쓸 땐 `priceLabel` 을 거칠 것.
+   */
+  price?: number | null;
 }
 
 /** 시리즈 설명 — 포맷 PDF의 시리즈 표지에 실린다 */
@@ -427,6 +432,8 @@ export interface Portfolio {
   themeId?: string | null;     // 마지막으로 고른 포맷
   seriesInfo?: SeriesInfo[] | null;
   designConfig?: unknown; // 포트폴리오 PDF 가이드형 디자인(색감 팔레트 등) — normalizePdfDesign 통과시켜 사용
+  /** 홈페이지에 작품 가격을 보이는가(기본 꺼짐, 2026-10-15) — PDF 는 designConfig.showPrice 가 따로 정한다 */
+  showPrice?: boolean;
   images: PortfolioImage[];
   /** PDF 버전(작품 선택·순서·디자인 묶음). 내 포트폴리오 조회에만 실린다 (2026-09-16) */
   versions?: PortfolioVersion[];

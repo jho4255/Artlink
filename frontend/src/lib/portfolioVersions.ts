@@ -39,3 +39,18 @@ export function moveId(ids: number[], id: number, delta: -1 | 1): number[] {
   [next[i], next[j]] = [next[j]!, next[i]!];
   return next;
 }
+
+/**
+ * 끌어서 놓기 — `id` 를 `targetId` 가 있던 자리로 옮기고 그 사이는 한 칸씩 민다(2026-10-15, `SortableTiles`).
+ * 두 칸을 맞바꾸는 게 아니다 — 30번째를 1번째로 끌면 나머지는 한 칸씩 뒤로 간다(사람이 기대하는 '끼워 넣기').
+ * 없는 id 거나 제자리면 **같은 배열**을 돌려준다(부르는 쪽이 저장을 건너뛴다).
+ */
+export function moveIdTo(ids: number[], id: number, targetId: number): number[] {
+  const from = ids.indexOf(id);
+  const to = ids.indexOf(targetId);
+  if (from < 0 || to < 0 || from === to) return ids;
+  const next = [...ids];
+  next.splice(from, 1);
+  next.splice(to, 0, id);
+  return next;
+}

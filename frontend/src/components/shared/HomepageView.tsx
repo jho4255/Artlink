@@ -2,8 +2,8 @@ import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useS
 import { Download, FileText, Instagram } from 'lucide-react';
 import { displayName, safeHttpUrl, instagramHandle } from '@/lib/utils';
 import {
-  artworkGridSignature, artworkTitle, careerLineText, groupBySeries, hasTitle, isCareerEmpty, museumCaption,
-  normalizeCareer, statusBadge, ungroupedLabel,
+  artworkGridSignature, artworkTitle, careerLineText, groupBySeries, hasTitle, isCareerEmpty, museumCaption, priceLabel,
+  AVAILABLE_DOT, normalizeCareer, statusBadge, ungroupedLabel,
 } from '@/lib/artwork';
 import { reflowProse } from '@/lib/prose';
 import { splitIntoColumns } from '@/lib/careerColumns';
@@ -179,14 +179,18 @@ function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>,
 function Caption({ img, size }: { img: PortfolioImage; size: 'hero' | 'grid' }) {
   const cap = museumCaption(img);
   const st = statusBadge(img);
-  if (!cap && !st) return null;
+  // 가격 — 서버가 작가가 켰을 때만 싣는다(판매완료·비매는 빼고). 여기서도 한 번 더 거른다(priceLabel)
+  const price = priceLabel(img);
+  if (!cap && !st && !price) return null;
   const hero = size === 'hero';
+  // 점 색: 판매완료 = 강조색 · 판매중 = 초록(흔한 관례) · 비매 = 회색. 글자는 판매완료만 강조색이고 나머지는 회색(statusBadge)
   const badge = st && (
     <span
+      data-sale-status={st.tone}
       className={`${hero ? 'text-[11px]' : 'text-[10px]'} font-semibold ${cap?.head ? 'ml-2' : ''}`}
       style={{ color: st.tone === 'sold' ? 'var(--hp-accent)' : 'var(--hp-sub)' }}
     >
-      ● {st.label}
+      <span aria-hidden style={st.tone === 'available' ? { color: AVAILABLE_DOT } : undefined}>●</span> {st.label}
     </span>
   );
   return (
@@ -198,6 +202,8 @@ function Caption({ img, size }: { img: PortfolioImage; size: 'hero' | 'grid' }) 
       )}
       {cap?.medium && <p>{cap.medium}</p>}
       {cap?.size && <p>{cap.size}</p>}
+      {/* 크기 줄과 숫자가 맞붙으면 '크기 다음 줄도 크기' 처럼 읽힌다(2026-10-15 사용자 지적) — 살짝 떼어 다른 묶음으로 보이게 */}
+      {price && <p data-artwork-price className={hero ? 'mt-2.5' : 'mt-1.5'} style={INK}>{price}</p>}
     </figcaption>
   );
 }
@@ -207,7 +213,7 @@ function Caption({ img, size }: { img: PortfolioImage; size: 'hero' | 'grid' }) 
  * 원본을 그대로 받는다(t800 은 이 크기에선 뭉개진다 — CLAUDE.md 21).
  */
 function Hero({ img, artistName, onOpen, compact }: { img: PortfolioImage; artistName: string; onOpen?: (img: PortfolioImage) => void; compact: boolean }) {
-  const hasLabel = !!(museumCaption(img) || statusBadge(img));
+  const hasLabel = !!(museumCaption(img) || statusBadge(img) || priceLabel(img));
   const alt = hasTitle(img) ? artworkTitle(img) : `${artistName} 대표작`;
   const image = (
     <img

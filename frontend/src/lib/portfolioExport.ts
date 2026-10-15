@@ -51,6 +51,12 @@ export interface ExportResult {
   overBudget: boolean;
   /** 끝내 받지 못한 사진 주소 — 그 자리는 빈 칸으로 나간다(조용히 넘어가지 않는다) */
   missing: string[];
+  /**
+   * 내 홈페이지 [포트폴리오] 탭에 올릴 판(`forHomepage` 로 부를 때만). 10MB 에 맞추느라 줄였으면 **줄이기 전 판**이다 —
+   * 홈페이지 한도는 20MB 이고, 줄인 판을 올리면 방문자가 확대할 때 글씨가 먼저 뭉개진다(2026-10-15 "화질이 깨진다").
+   * 줄이기 전 판이 20MB 를 넘으면 줄인 판, 그것도 넘으면 null(올리지 못한다).
+   */
+  homepageBlob?: Blob | null;
 }
 
 const dataUrlBytes = (s: string) => Math.round((s.length - s.indexOf(',') - 1) * 0.75);
@@ -132,7 +138,7 @@ async function recompress(jpegs: string[], step: ExportStep, bg: string, onProgr
  */
 export async function exportPortfolioPdf(
   data: PortfolioBookData, design: unknown,
-  opts: { budget?: number; onProgress?: ExportProgress } = {},
+  opts: { budget?: number; onProgress?: ExportProgress; forHomepage?: boolean } = {},
 ): Promise<ExportResult> {
   const budget = opts.budget ?? EXPORT_BUDGET_BYTES;
   const on = opts.onProgress;
@@ -160,15 +166,24 @@ export async function exportPortfolioPdf(
 
   const { mmW, mmH } = theme.page;
   const fileName = portfolioFileName(data, design);
-  const pdf = new jsPDF({ orientation: mmW > mmH ? 'l' : 'p', unit: 'mm', format: [Math.min(mmW, mmH), Math.max(mmW, mmH)] });
-  pdf.setProperties({ title: fileName });
-  const pw = pdf.internal.pageSize.getWidth();
-  const ph = pdf.internal.pageSize.getHeight();
-  jpegs.forEach((j, i) => {
-    if (i > 0) pdf.addPage();
-    pdf.addImage(j, 'JPEG', 0, 0, pw, ph);
-  });
-  const blob = pdf.output('blob') as Blob;
+  const assemble = (list: string[]): Blob => {
+    const pdf = new jsPDF({ orientation: mmW > mmH ? 'l' : 'p', unit: 'mm', format: [Math.min(mmW, mmH), Math.max(mmW, mmH)] });
+    pdf.setProperties({ title: fileName });
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    list.forEach((j, i) => {
+      if (i > 0) pdf.addPage();
+      pdf.addImage(j, 'JPEG', 0, 0, pw, ph);
+    });
+    return pdf.output('blob') as Blob;
+  };
+  const blob = assemble(jpegs);
+  // 홈페이지에 올릴 판 — 줄였으면 줄이기 전 그림(first)으로 한 벌 더 묶는다(쪽을 다시 그리지 않으니 금방이다)
+  let homepageBlob: Blob | null | undefined;
+  if (opts.forHomepage) {
+    const full = step > 0 ? assemble(first) : blob;
+    homepageBlob = full.size <= UPLOAD_MAX_BYTES ? full : blob.size <= UPLOAD_MAX_BYTES ? blob : null;
+  }
 
   return {
     blob,
@@ -180,6 +195,7 @@ export async function exportPortfolioPdf(
     // 예산(9.4MB)은 한도(10MB)에서 여유를 남긴 값이다 — 진짜 한도를 넘었을 때만 넘었다고 말한다
     overBudget: blob.size > budget * (10 / 9.4),
     missing,
+    homepageBlob,
   };
 }
 

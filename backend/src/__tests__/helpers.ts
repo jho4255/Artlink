@@ -86,6 +86,7 @@ export async function cleanDb() {
     await tx.review.deleteMany();
     await tx.promoPhoto.deleteMany();
     await tx.portfolioVersion.deleteMany();
+    await tx.artworkPrice.deleteMany();   // 작품 가격(2026-10-15) — 작품 삭제로 cascade 되지만 명시. id 가 작품 id 라 시퀀스는 없다(ALL_TABLES 에 넣지 말 것)
     await tx.portfolioImage.deleteMany();
     await tx.portfolio.deleteMany();
     await tx.galleryOfMonth.deleteMany();

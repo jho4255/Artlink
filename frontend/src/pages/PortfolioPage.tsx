@@ -5,7 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Edit3, MessageCircle, QrCode, Share2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { groupBySeries, museumCaption } from '@/lib/artwork';
+import { groupBySeries, museumCaption, priceLabel } from '@/lib/artwork';
 import { Heart } from 'lucide-react';
 import { artistUrl } from '@/lib/handle';
 import { resolveHomepageTheme, themeCssVars } from '@/lib/homepageTheme';
@@ -157,7 +157,9 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
      포트폴리오가 도착하는 순간 훅 개수가 늘어 React #310 으로 작가 홈페이지 전체가 '화면을 불러오지 못했어요'가 됐다(2026-09-21 수정). */
   const captionTexts = useMemo(() => ordered.map((i) => {
     const c = museumCaption(i);
-    return c ? [c.head, c.medium, c.size].filter(Boolean).join(' / ') : null;
+    // 가격은 작가가 홈페이지 가격을 켰을 때만 서버가 싣는다(판매완료·비매 제외) — 크게 보기에도 같은 줄로
+    const parts = [c?.head, c?.medium, c?.size, priceLabel(i)].filter(Boolean);
+    return parts.length ? parts.join(' / ') : null;
   }), [ordered]);
   /* 라이트박스 좋아요(2026-09-19) — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다.
      공개(showInExplore) 작품만 서버가 받는다. 상태는 응답의 likedImageIds + _count.likes 로 시작해 로컬로 갱신한다. */

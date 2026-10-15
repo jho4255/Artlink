@@ -10,6 +10,7 @@ import { PORTFOLIO_IMAGE_MAX } from '../lib/portfolioLimits';
 import { matchR2Base } from '../lib/r2Urls';
 import { EXPORT_METHODS, recordExport, type ExportMethod } from '../lib/exportStats';
 import { LOCK_NS, withKeyLock } from '../lib/keyLock';
+import { OWNER_PRICE_INCLUDE, attachPublicPrices, parsePrice, setArtworkPrice, withPrice } from '../lib/artworkPrice';
 
 /** 포트폴리오 파일 — 비우면 null, 보낸 주소가 우리 저장소가 아니면 400(조용히 지우지 않는다 — 지우면 옛 파일까지 정리된다) */
 function ownFileUrlOrNull(raw: unknown): string | null {
@@ -91,7 +92,7 @@ const oneOf = (v: unknown, allowed: string[]): string | null => {
 
 const THEME_IDS = ['gallery', 'studio', 'story', 'archive'];
 
-// 작품 메타(제목/재료/크기/연도/시리즈/설명/상태) — 생성·수정 공용.
+// 작품 메타(제목/재료/크기/연도/시리즈/설명/상태) — 생성·수정 공용. 가격은 별도 표라 여기 없다(PATCH 가 따로 본다, lib/artworkPrice.ts).
 // `undefined`인 키는 결과에서 빼서 PATCH가 "보낸 필드만" 바꾸도록 한다.
 function artworkMeta(body: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -171,7 +172,8 @@ router.get('/:userId', optionalAuth, async (req, res, next) => {
       themeId: portfolio?.themeId || null,
       seriesInfo: parseSeriesInfo(portfolio?.seriesInfo),
       designConfig: parseDesignConfig(portfolio?.designConfig),
-      images: portfolio?.images || [],
+      // 가격은 작가가 홈페이지 가격을 켰을 때만, 판매완료·비매가 아닌 작품만 붙는다(lib/artworkPrice.ts — 꺼져 있으면 읽지도 않는다)
+      images: await attachPublicPrices(portfolio?.images || [], portfolio?.showPrice === true),
       // 보는 사람이 좋아요한 작품 — 홈페이지 라이트박스의 하트 상태(2026-09-19). 비로그인은 빈 배열.
       likedImageIds: req.user && portfolio
         ? (await prisma.portfolioImageLike.findMany({ where: { userId: req.user.id, imageId: { in: portfolio.images.map((i) => i.id) } }, select: { imageId: true } })).map((l) => l.imageId)
@@ -184,7 +186,7 @@ router.get('/:userId', optionalAuth, async (req, res, next) => {
 // 버전 응답 — design 은 JSON 문자열로 저장하고 객체로 내려준다(designConfig 와 같은 규칙)
 const serializeVersion = (v: { id: number; name: string; workIds: number[]; design: string | null; createdAt: Date; updatedAt: Date }) =>
   ({ id: v.id, name: v.name, workIds: v.workIds, design: parseDesignConfig(v.design), createdAt: v.createdAt, updatedAt: v.updatedAt });
-const VERSION_INCLUDE = { images: { orderBy: { order: 'asc' as const }, include: { _count: { select: { likes: true } } } }, versions: { orderBy: { createdAt: 'asc' as const } } };
+const VERSION_INCLUDE = { images: { orderBy: { order: 'asc' as const }, include: { _count: { select: { likes: true } }, ...OWNER_PRICE_INCLUDE } }, versions: { orderBy: { createdAt: 'asc' as const } } };
 
 // 내 포트폴리오 조회 (+ PDF 버전 목록)
 router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
@@ -195,6 +197,7 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     }
     res.json({
       ...portfolio,
+      images: portfolio.images.map(withPrice),   // 본인에게는 가격을 늘 싣는다(PDF 를 본인 화면이 만든다)
       career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig),
       versions: portfolio.versions.map(serializeVersion),
     });
@@ -290,19 +293,23 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
       seriesInfo: seriesStr,
     };
     // designConfig 는 **보냈을 때만** 갱신한다 — 홈페이지 내용 저장(전체 교체)이 색감 설정을 지우지 않게(독립 필드).
-    const data = 'designConfig' in req.body
-      ? { ...base, designConfig: sanitizeDesignConfig(req.body.designConfig) }
-      : base;
+    // showPrice(홈페이지에 작품 가격 보이기, 2026-10-15)도 같다 — 다른 화면이 이 경로를 불러도 켜 둔 걸 끄지 않는다.
+    if ('showPrice' in req.body && typeof req.body.showPrice !== 'boolean') throw new AppError('가격 표시 설정이 올바르지 않습니다.', 400);
+    const data = {
+      ...base,
+      ...('designConfig' in req.body ? { designConfig: sanitizeDesignConfig(req.body.designConfig) } : {}),
+      ...('showPrice' in req.body ? { showPrice: req.body.showPrice as boolean } : {}),
+    };
     // 포트폴리오 파일(PDF/HWP, 최대 20MB)을 바꾸거나 지우면 옛 파일을 스토리지에서 지운다 — 아바타·작품 사진은 지우는데 여기만 빠져 있었다(감사 M22)
     const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });
     const portfolio = await prisma.portfolio.upsert({
       where: { userId: req.user!.id },
       update: data,
       create: { userId: req.user!.id, ...data },
-      include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } }
+      include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } }, ...OWNER_PRICE_INCLUDE } } }
     });
     if (before?.portfolioFileUrl && before.portfolioFileUrl !== portfolio.portfolioFileUrl) void deletePortfolioFileIfUnused(before.portfolioFileUrl);
-    res.json({ ...portfolio, career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
+    res.json({ ...portfolio, images: portfolio.images.map(withPrice), career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig) });
   } catch (error) { next(error); }
 });
 
@@ -400,7 +407,7 @@ router.post('/images', authenticate, authorize('ARTIST'), async (req, res, next)
         ...artworkMeta(req.body), // 업로드하면서 바로 제목/재료 등을 넘길 수도 있다
       }
     });
-    res.status(201).json(image);
+    res.status(201).json({ ...image, price: null });
   } catch (error) { next(error); }
 });
 
@@ -426,10 +433,14 @@ router.patch('/images/:imageId', authenticate, authorize('ARTIST'), async (req, 
       if (!Number.isFinite(n) || n < 0) throw new AppError('유효하지 않은 순서입니다.', 400);
       data.order = Math.floor(n);
     }
-    if (Object.keys(data).length === 0) throw new AppError('수정할 내용이 없습니다.', 400);
+    // 가격(원) — 보냈을 때만. null·빈 값이면 지운다. 틀린 값은 아무것도 바꾸기 전에 400(lib/artworkPrice.ts)
+    const price = parsePrice(req.body.price);
+    if (Object.keys(data).length === 0 && price === undefined) throw new AppError('수정할 내용이 없습니다.', 400);
 
-    const updated = await prisma.portfolioImage.update({ where: { id: imageId }, data });
-    res.json(updated);
+    if (Object.keys(data).length > 0) await prisma.portfolioImage.update({ where: { id: imageId }, data });
+    if (price !== undefined) await setArtworkPrice(imageId, price);
+    const updated = await prisma.portfolioImage.findUniqueOrThrow({ where: { id: imageId }, include: OWNER_PRICE_INCLUDE });
+    res.json(withPrice(updated));
   } catch (error) { next(error); }
 });
 
@@ -507,9 +518,10 @@ router.patch('/images/:imageId/explore', authenticate, authorize('ARTIST'), asyn
     const updated = await prisma.portfolioImage.update({
       where: { id: imageId },
       data: { showInExplore: !image.showInExplore },
+      include: OWNER_PRICE_INCLUDE,
     });
 
-    res.json(updated);
+    res.json(withPrice(updated));
   } catch (err) { next(err); }
 });
 

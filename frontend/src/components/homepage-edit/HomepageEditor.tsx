@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, ExternalLink, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { normalizeCareer, seriesNames } from '@/lib/artwork';
+import { normalizeCareer, priceLabel, seriesNames } from '@/lib/artwork';
 import { computeCompleteness, type CompletenessItem } from '@/lib/completeness';
 import {
   EDIT_SECTIONS, entryInfoImageId, previewTabFor, resolveEditEntry, sectionDone, uncaptionedCount,
@@ -57,8 +57,8 @@ import { EMPTY_CAREER } from '@/types';
  */
 const signatureOf = (v: {
   biography: string; statement: string; tagline: string; career: Career;
-  portfolioFileUrl: string | null; seriesNotes: Record<string, string>; design: HomepageThemeKeys;
-}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design]);
+  portfolioFileUrl: string | null; seriesNotes: Record<string, string>; design: HomepageThemeKeys; showPrice: boolean;
+}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design, v.showPrice]);
 
 const errText = (err: unknown, fallback: string) =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
@@ -97,6 +97,8 @@ export default function HomepageEditor() {
   const [seriesNotes, setSeriesNotes] = useState<Record<string, string>>({});
   // 홈페이지 스타일(배경·글자·강조·글꼴·대표작) — PDF 와 같은 designConfig 에 저장된다
   const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
+  /** 홈페이지에 작품 가격 보이기([꾸미기], 2026-10-15) — 아래 [저장] 에 함께 실린다 */
+  const [showPrice, setShowPrice] = useState(false);
   const [handle, setHandle] = useState(user?.handle ?? '');
   const handleTouched = useRef(false);
   const [handleError, setHandleError] = useState<string | null>(null);
@@ -125,6 +127,7 @@ export default function HomepageEditor() {
       portfolioFileUrl: portfolio.portfolioFileUrl || null,
       seriesNotes: Object.fromEntries((portfolio.seriesInfo ?? []).map((s) => [s.name, s.note])),
       design: themeKeysFrom(portfolio.designConfig),
+      showPrice: portfolio.showPrice === true,
     };
     setBiography(init.biography);
     setStatement(init.statement);
@@ -134,6 +137,7 @@ export default function HomepageEditor() {
     loadedFileUrl.current = init.portfolioFileUrl;
     setSeriesNotes(init.seriesNotes);
     setDesign(init.design);
+    setShowPrice(init.showPrice);
     setSnapshot(signatureOf(init));
   }, [portfolio]);
 
@@ -195,12 +199,15 @@ export default function HomepageEditor() {
 
   // 조회 전의 빈 배열도 **같은 배열**이어야 한다 — 매 렌더 새 배열이면 memo 한 [작품] 묶음이 글자를 칠 때마다 다시 그려진다
   const images = portfolio?.images ?? NO_IMAGES;
+  // 미리보기는 저장 전 [가격 보이기] 를 따른다 — 꺼 두었으면 가격을 뺀 작품으로(본인 조회에는 가격이 늘 실려 온다)
+  const previewImages = useMemo(() => (showPrice ? images : images.map((i) => (i.price == null ? i : { ...i, price: null }))), [images, showPrice]);
+  const pricedCount = images.filter((i) => priceLabel(i) != null).length;
   const foundSeries = seriesNames(images);
   const handleNorm = normalizeHandle(handle);
   // 비워 두면 '안 바꾼다' — 주소를 없애는 길은 없다(서버도 빈 값을 받지 않는다)
   const handleChanged = handleNorm !== '' && handleNorm !== (user?.handle ?? '');
   const dirty = snapshot !== null
-    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design }) !== snapshot || handleChanged);
+    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design, showPrice }) !== snapshot || handleChanged);
   // 긴 글을 쓰다 다른 메뉴를 눌러도 통째로 사라지지 않게 — 갤러리·공모 폼과 같은 이탈 경고
   useUnsavedChanges(dirty);
 
@@ -237,6 +244,7 @@ export default function HomepageEditor() {
         // 작품에 실제로 붙어 있는 시리즈만 저장 (이름을 바꾸면 옛 설명이 유령으로 남는다)
         seriesInfo: foundSeries.map((name) => ({ name, note: (seriesNotes[name] || '').trim() })).filter((s) => s.note),
         ...(designConfig ? { designConfig } : {}),
+        showPrice,
       });
       return nextHandle;
     },
@@ -329,7 +337,7 @@ export default function HomepageEditor() {
     career,
     portfolioFileUrl,
     seriesInfo: foundSeries.map((name) => ({ name, note: (seriesNotes[name] || '').trim() })).filter((s) => s.note),
-    images,
+    images: previewImages,
     designConfig: previewDesign,
   };
   const previewBg = resolveHomepageTheme(previewDesign).bg;
@@ -390,7 +398,7 @@ export default function HomepageEditor() {
             (감춘 동안 글을 쳐도 격자를 다시 그리지 않는다 — WorksSection 이 memo 다)
           */}
           <div hidden={section !== 'works'}>
-            <WorksSection images={images} metaImageId={metaImageId} onMeta={setMetaImageId} active={section === 'works'} />
+            <WorksSection images={images} metaImageId={metaImageId} onMeta={setMetaImageId} active={section === 'works'} priceOnHomepage={showPrice} />
           </div>
           {section === 'intro' && (
             <IntroSection
@@ -412,6 +420,7 @@ export default function HomepageEditor() {
               handleError={handleError}
               design={design} onDesign={setDesign}
               images={images}
+              showPrice={showPrice} onShowPrice={setShowPrice} pricedCount={pricedCount}
               onField={onField}
             />
           )}

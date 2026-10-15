@@ -22,6 +22,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+  ⚠️ PDF 내려받기(html2canvas)의 글자 기준선 (2026-10-15, 김현수 작가 신고 "포트폴리오에서 작품 이름이 잘린다")
+  html2canvas 는 글자를 그리기 전에 아래 1px GIF 를 글자 옆에 줄글처럼(inline) 놓고 그 위치로 기준선을 잰다(FontMetrics).
+  그런데 Tailwind 기본값(preflight)이 모든 img 를 display:block 으로 바꿔서 그 GIF 가 다음 줄로 내려가고,
+  기준선을 '한 줄 높이 + 2px' 로 잘못 쟀다 → [PDF 내려받기] 의 **모든 글자가 아래로 밀리고**(17px 제목 +9px · 11px 목록 +8px)
+  높이가 딱 맞는 칸(맨 뒤 '작품 목록' · 캡션이 제목 한 줄일 때)에서는 아래가 잘렸다. 화면 미리보기·인쇄 경로·PPT 는 멀쩡해서 눈에 안 띄었다.
+  그 GIF 하나만 원래(inline)로 돌린다 — 다른 img 의 display 는 건드리지 않는다. ⚠️ @layer 안에 넣지 말 것(preflight 를 못 이긴다).
+  회귀: __tests__/html2canvasBaseline.test.ts(이 주소가 html2canvas 의 측정 그림과 같은가) · scratchpad/pf/textshift.mjs(실제로 밀리는가)
+*/
+img[src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"] {
+  display: inline;
+}
+
 /* 스크롤바 숨김 유틸리티 */
 .scrollbar-hide {
   -ms-overflow-style: none;

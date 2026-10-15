@@ -6,6 +6,7 @@ import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { CUSTOMIZE_TABS, type CustomizeTab } from '@/lib/portfolioMaker';
 import type { PdfDesign, PortfolioBookData } from '@/lib/portfolioFormats';
 import type { PortfolioImage } from '@/types';
+import { priceLabel } from '@/lib/artwork';
 import { CoverTab, CvTab, InfoTab, StyleTab, WorksTab } from './customizeTabs';
 
 /** 좁은 화면에서 꾸미기 시트가 차지하는 높이(화면의 비율) — 그 위로 미리보기가 계속 보인다 */
@@ -103,7 +104,7 @@ export default function CustomizePanel({ wide, tab, onTab, onClose, onReset, und
   const content: ReactNode = (
     <>
       {tab === 'cover' && <CoverTab design={design} patch={patch} works={works} />}
-      {tab === 'works' && <WorksTab design={design} patch={patch} workCount={works.length} />}
+      {tab === 'works' && <WorksTab design={design} patch={patch} workCount={works.length} pricedCount={works.filter((w) => priceLabel(w) != null).length} />}
       {tab === 'cv' && <CvTab design={design} patch={patch} book={book} />}
       {tab === 'style' && <StyleTab design={design} patch={patch} />}
       {tab === 'info' && <InfoTab design={design} patch={patch} book={book} />}

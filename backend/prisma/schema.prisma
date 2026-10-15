@@ -544,6 +544,8 @@ model Portfolio {
   themeId           String? // 마지막으로 고른 포트폴리오 포맷 (gallery|studio|story|archive)
   seriesInfo        String? // 시리즈 설명 JSON: [{ name, note }]
   designConfig      String? // 가이드형 디자인 JSON: { theme, works, sections:[{id,enabled}] }. null=기본(현재 모습)
+  /// 홈페이지에 작품 가격을 보이는가(2026-10-15, 기본 꺼짐) — 켜도 판매완료·비매 작품은 안 보인다. PDF 는 designConfig.showPrice 가 따로 정한다
+  showPrice         Boolean            @default(false)
   userId            Int                @unique
   user              User               @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
@@ -589,6 +591,8 @@ model PortfolioImage {
   series        String? // 시리즈명 — 포맷 PDF에서 이 값으로 묶고 시리즈 표지를 만든다
   description   String? // 작품 설명 / 서사
   status        String? // AVAILABLE | SOLD | NFS(비매) — null이면 표기 안 함
+  /// 가격 — **별도 표**(ArtworkPrice). 이 행에 컬럼으로 두면 작품 행을 통째로 내려주는 공개 응답에 그대로 실린다
+  price         ArtworkPrice?
   portfolioId   Int
   portfolio     Portfolio            @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   likes         PortfolioImageLike[]
@@ -1137,6 +1141,18 @@ model GuestPageView {
 /// 포트폴리오 PDF 저장 기록 (2026-10-03, Admin [통계] 탭) — 만들기 화면에서 저장할 때마다 한 줄.
 /// 파일은 브라우저가 만들고 서버에 남지 않는다. 날짜·작가·쪽수·방식만 적는다(몇 명이 이 기능을 쓰는지 알 길이 없었다).
 /// 규칙은 `lib/exportStats.ts`.
+/// 작품 가격(원) — 2026-10-15 작가 요청 "포트폴리오나 홈페이지에 작품 금액도 원할 때 넣게".
+/// ⚠️⚠️ PortfolioImage 의 컬럼으로 옮기지 말 것 — 공개 홈페이지(GET /portfolio/:id)와 갤러리의 지원자 목록이 작품 행을
+/// **통째로** 내려준다. 컬럼이면 작가가 꺼 둔 가격이 응답에 그대로 실린다(초대 코드를 ExhibitionJoinCode 로 뗀 것과 같은 이유).
+/// 공개 쪽은 `Portfolio.showPrice` 가 켜졌을 때 `lib/artworkPrice.ts` 를 거쳐서만 싣는다.
+model ArtworkPrice {
+  imageId   Int            @id
+  image     PortfolioImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  /// 원 단위 정수 — 1 ~ 2,000,000,000(Postgres int 상한 아래)
+  amount    Int
+  updatedAt DateTime       @updatedAt
+}
+
 model PortfolioExport {
   id        Int      @id @default(autoincrement())
   day       DateTime @db.Date // KST 달력 날짜 — 서버가 정한다

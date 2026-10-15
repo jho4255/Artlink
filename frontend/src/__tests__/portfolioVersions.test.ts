@@ -3,7 +3,7 @@
  * 버전은 홈페이지 작품 위에 얹는 **선택과 순서**다. 지운 작품 id 가 배열에 남아도 화면이 죽거나 빈 칸을 그리면 안 된다.
  */
 import { describe, it, expect } from 'vitest';
-import { versionWorks, versionDesign, moveId } from '../lib/portfolioVersions';
+import { versionWorks, versionDesign, moveId, moveIdTo } from '../lib/portfolioVersions';
 import type { PortfolioImage, PortfolioVersion } from '../types';
 
 const img = (id: number): PortfolioImage => ({ id, url: `u${id}`, order: id } as PortfolioImage);
@@ -36,5 +36,24 @@ describe('versionDesign · moveId', () => {
     expect(moveId([1, 2, 3], 2, 1)).toEqual([1, 3, 2]);
     expect(moveId([1, 2, 3], 1, -1)).toEqual([1, 2, 3]);
     expect(moveId([1, 2, 3], 9, 1)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('moveIdTo — 끌어서 놓기(2026-10-15)', () => {
+  it('맞바꾸지 않고 끼워 넣는다 — 사이에 있던 작품은 한 칸씩 민다', () => {
+    expect(moveIdTo([1, 2, 3, 4, 5], 5, 1)).toEqual([5, 1, 2, 3, 4]);   // 맨 뒤 → 맨 앞
+    expect(moveIdTo([1, 2, 3, 4, 5], 1, 4)).toEqual([2, 3, 4, 1, 5]);   // 앞 → 뒤: 놓은 자리(4가 있던 곳)에
+    expect(moveIdTo([1, 2, 3], 2, 3)).toEqual([1, 3, 2]);
+  });
+  it('없는 id·제자리면 같은 배열을 돌려준다(저장을 건너뛴다)', () => {
+    const ids = [1, 2, 3];
+    expect(moveIdTo(ids, 2, 2)).toBe(ids);
+    expect(moveIdTo(ids, 9, 1)).toBe(ids);
+    expect(moveIdTo(ids, 1, 9)).toBe(ids);
+  });
+  it('길이와 구성은 그대로', () => {
+    const out = moveIdTo([10, 20, 30, 40], 30, 10);
+    expect([...out].sort((a, b) => a - b)).toEqual([10, 20, 30, 40]);
+    expect(out).toEqual([30, 10, 20, 40]);
   });
 });

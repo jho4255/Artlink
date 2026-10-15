@@ -37,6 +37,8 @@ node fidelity.mjs       # 미리보기(크롬) vs PDF(html2canvas) 일치
 node capmeasure.mjs     # 캡션 조각별 실제 높이 (글꼴 6종)
 node palette.mjs        # 팔레트 전수 대비 (DOM 불필요)
 node score.mjs          # ★ 시각 품질 채점 100점 (검증 세트 40조합) — 아래 참고
+node textshift.mjs      # ★ [PDF 내려받기] 글자 밀림 — 앱 CSS 를 싣고 크롬 vs html2canvas 제목 윗선(아래 2026-10-15). 먼저 frontend 에서 npm run build
+node download-check.mjs && python3 download-check.py   # ★ 앱에서 실제로 내려받은 PDF ↔ 미리보기, 쪽마다(로컬 데모 DB · 아래 2026-10-15)
 node score.mjs --case rich:auto                              # 한 조합만
 node score.mjs --real ../../../portfolio-samples/data.json   # 실데이터(로컬 전용)
 
@@ -125,3 +127,24 @@ node score.mjs --real ../../../portfolio-samples/data.json   # 실데이터(로�
 - 골든 5권(`../../portfolio/`)과 **같은 높이로 나란히** 놓는 비교 시트가 비평의 시작이었다 — 지표가 다 통과해도 눈에 지는 지점(자신감·가운데 쌓기·
   기준선·강조색·행간)은 이렇게만 보인다. 새 배치를 만들면 반드시 골든 옆에 놓고 볼 것.
 - 벡터 PDF 검증은 `e2e/_pfprint.mjs`(page.pdf), 버전 UI 왕복은 `e2e/_pfversions.mjs`.
+
+
+## 2026-10-15 — ⚠️ 이 하니스들은 앱 CSS 없이 돈다 (`textshift.mjs` 만 예외)
+
+김현수 작가 신고("작품 이름이 위아래가 잘린다")의 원인은 **앱 CSS** 였다 — Tailwind 기본값 `img{display:block}` 을 html2canvas 의
+기준선 측정용 1px GIF 도 받아 [PDF 내려받기] 의 모든 글자가 8~11px 아래로 밀렸다(높이가 딱 맞는 칸에서는 잘렸다).
+`harness.html` 은 엔진 HTML 만 띄우므로 **이 밀림을 한 번도 재현하지 못했다** — 실제 저장은 앱 문서 안에서 그린다.
+
+- `textshift.mjs` 는 빌드한 앱 CSS(`frontend/dist/assets/index-*.css`)를 싣고, 실제 내려받기와 같은 html2canvas 옵션(≈240dpi)으로
+  그린 제목의 윗선을 크롬이 그린 것과 비교한다(2px 넘으면 실패 — 두 그리기의 반올림 차이가 1~2px).
+  고친 뒤 313곳 최대 1.6px · `NOFIX=1`(그 CSS 규칙만 뺀다) 이면 170곳 실패 최대 10.7px.
+- 다른 하니스로 '저장된 PDF 가 어떻게 보이는가'를 판정할 땐 이 차이를 기억할 것 — 앱 CSS 가 그리기를 바꿀 수 있다.
+
+### `download-check.mjs` + `download-check.py` — 사용자가 받는 그 파일을 연다 (2026-10-15)
+위 하니스들은 전부 엔진을 앱 밖에서 돌린다. 이건 **로컬 앱에서 [PDF 저장] → [PDF 내려받기] 를 실제로 눌러** 받은 파일(`out-dl/<이름>.pdf`)과,
+같은 화면의 미리보기 쪽 HTML 을 크롬이 같은 배율로 그린 그림(`out-dl/<이름>-ref-NN.png`)을 쪽마다 맞댄다.
+- 판정: 쪽 전체 어긋남 ≤2 · 글자 줄 밀림 ≤4 기기 px · 64px 칸 평균 차이 ≤60 (html2canvas 와 크롬은 줄마다 2~3 기기 px, 칸 최대 50 정도 다르다 — 실측)
+- 설정 4개(김현수 설정 · 명조 격자+가격 · 가로 뮤지엄 라벨 · 와이드 2점씩), `ONLY=kim` 으로 고른다. 2026-10-15: 62쪽 전부 통과.
+- `NOFIX=1` 은 규칙 69 의 결함을 되살린다(측정 GIF 를 block 으로) — 이 검사가 그걸 잡는지 확인용. 전 쪽 실패(밀림 18 기기 px).
+- ⚠️ **로컬 데모 DB 의 Artist 1** 디자인 설정을 잠깐 바꿨다가 되돌린다. 개발 서버(5173·4000)가 떠 있어야 한다. 실서버에 돌리지 말 것.
+- PDF 의 그림은 `page.get_image_info(xrefs=True)` 로 고를 것 — `get_images()` 는 jsPDF 가 함께 쓰는 그림 목록을 돌려줘 엉뚱한 쪽과 비교한다(처음에 그래서 전 쪽이 '다르다'로 나왔다).

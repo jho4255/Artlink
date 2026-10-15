@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Check, ChevronLeft, ChevronRight, Heart, Loader2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -8,8 +8,10 @@ import { PORTFOLIO_IMAGE_MAX, seriesNames } from '@/lib/artwork';
 import { nextUncaptionedId, recentValues, tileLabel, uncaptionedCount } from '@/lib/homepageEdit';
 import { moveId } from '@/lib/portfolioVersions';
 import Thumb from '@/components/shared/Thumb';
+import SortableArea from '@/components/shared/SortableTiles';
+import { useFinePointer, useJustDropped, useSortableTile } from '@/components/shared/sortableHooks';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import ArtworkMetaModal, { type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
+import ArtworkMetaModal, { draftPrice, type ArtworkMetaDraft } from '@/components/shared/ArtworkMetaModal';
 import { ArtworkLikersModal } from '@/components/shared/ArtworkDetailModal';
 import Notice from '@/components/flow/Notice';
 import TaskLine from '@/components/flow/TaskLine';
@@ -29,6 +31,9 @@ import type { Portfolio, PortfolioImage } from '@/types';
  *  - 노출은 토글(PATCH)이 아니라 **상태를 적어 보낸다**(`PUT /portfolio/images/explore`) — 탭 둘에서 눌러도 거꾸로 꺼지지 않는다.
  *  - **사진 위에 겹치는 단추는 삭제·좋아요뿐.** 178px 칸에 단추 다섯(제목·◀▶·삭제·공개·좋아요)이 겹쳐 있었다.
  *    순서는 [순서 바꾸기]를 눌렀을 때만 사진 아래에 ◀ ▶ 가 나온다.
+ *  - **끌어서 옮기기**(2026-10-15, `SortableTiles`) — 마우스는 늘(6px 움직이면 끌기, 그냥 누르면 작품 정보),
+ *    손가락은 [순서 바꾸기] 를 눌렀을 때만 길게 눌러서(평소에 켜 두면 격자를 훑어 내리다 순서가 바뀐다 — 사용자 결정).
+ *    ◀ ▶ 는 그대로 둔다(키보드·한 칸 옮기기).
  *  - 작품 정보는 **이어서 넣는다**(`ArtworkMetaModal` 의 [저장하고 다음 작품]).
  *  - **다 올리면 방금 올린 첫 작품의 정보 창을 바로 연다**(2026-10-11, 사용자 결정). 실서버의 초원(31점)·박경연(6점)은
  *    올린 직후 첫 화면에 "작품 N점에 정보가 없어요" 가 보였는데도 작가노트(붙여넣기)부터 쓰고 저장한 뒤 다시 오지 않았다 —
@@ -45,6 +50,8 @@ interface Props {
   onMeta: (id: number | null) => void;
   /** 지금 [작품] 묶음을 보고 있는가 — 다 올렸을 때 정보 창을 열지 정한다(다른 묶음에서 글을 쓰는 중이면 끊지 않는다) */
   active: boolean;
+  /** 홈페이지에 작품 가격을 보이도록 켜 두었는가([꾸미기], 저장 전 값) — 작품 정보 창의 가격 안내가 따른다 */
+  priceOnHomepage?: boolean;
 }
 
 const btnSecondary = 'inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50';
@@ -52,7 +59,7 @@ const btnPrimary = 'inline-flex min-h-[44px] items-center justify-center gap-2 r
 const errText = (err: unknown, fallback: string) =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
 
-function WorksSection({ images, metaImageId, onMeta, active }: Props) {
+function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = false }: Props) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
@@ -183,8 +190,11 @@ function WorksSection({ images, metaImageId, onMeta, active }: Props) {
 
   // ── 작품 정보 ──
   const saveMeta = useMutation({
-    mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft; next: boolean }) =>
-      api.patch(`/portfolio/images/${imageId}`, { ...draft, status: draft.status || null }),
+    mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft; next: boolean }) => {
+      const price = draftPrice(draft);
+      if (price === 'invalid') return Promise.reject(new Error('가격을 다시 확인해 주세요.'));   // 창이 이미 막지만 한 번 더
+      return api.patch(`/portfolio/images/${imageId}`, { ...draft, status: draft.status || null, price });
+    },
     onSuccess: (_r, v) => {
       // 다음 작품은 **저장 전 목록**으로 정한다 — 방금 저장한 작품은 빼고 찾으므로 재조회를 기다릴 필요가 없다
       const nextId = v.next ? nextUncaptionedId(images, v.imageId) : null;
@@ -195,7 +205,27 @@ function WorksSection({ images, metaImageId, onMeta, active }: Props) {
     onError: (err) => toast.error(errText(err, '작품 정보를 저장하지 못했습니다.')),
   });
 
-  const total = images.length;
+  /**
+   * ⚠️ 놓은 순서는 **놓는 그 순간** 그린다 (2026-10-15, "놓는 순간 다른 그림들이 흔들린다").
+   * 순서는 캐시(['portfolio'])에서 오는데, 캐시 갱신은 mutate → onMutate(await) → 알림(setTimeout) 을 거쳐 몇 프레임 늦게 온다.
+   * 그 사이 끌기 라이브러리가 칸들을 **원래 자리로 되돌렸다가**, 새 순서가 오면 다시 미끄러져 가서 한 번 출렁였다(실측: 비켜 섰던 칸이 172px 되돌아갔다 140ms 동안 돌아옴).
+   * 놓을 때 새 순서를 여기 들고(`dropped`) 같은 렌더에서 그린다. 작품 목록이 바뀌면(캐시가 따라왔거나 실패해 되돌렸거나) 버린다.
+   */
+  const imagesKey = images.map((i) => i.id).join(',');
+  const [dropped, setDropped] = useState<number[] | null>(null);
+  const [droppedFrom, setDroppedFrom] = useState(imagesKey);
+  if (droppedFrom !== imagesKey) { setDroppedFrom(imagesKey); setDropped(null); }
+  const applyOrder = (next: number[]) => { setDropped(next); reorder.mutate(next); };
+
+  const byId = useMemo(() => new Map(images.map((i) => [i.id, i] as const)), [images]);
+  const shown = useMemo(
+    () => (dropped ? dropped.map((id) => byId.get(id)).filter((i): i is PortfolioImage => !!i) : images),
+    [dropped, byId, images],
+  );
+  const total = shown.length;
+  const ids = useMemo(() => shown.map((i) => i.id), [shown]);
+  const tileName = useCallback((id: number) => { const img = byId.get(id); return (img && tileLabel(img)) || `${ids.indexOf(id) + 1}번째 작품`; }, [byId, ids]);
+  const fine = useFinePointer();
   const noInfo = uncaptionedCount(images);
   const shownCount = images.filter((i) => i.showInExplore).length;
   const pendingAsk = justUploaded.filter((id) => images.some((i) => i.id === id && !i.showInExplore));
@@ -301,8 +331,8 @@ function WorksSection({ images, metaImageId, onMeta, active }: Props) {
             <div className="mb-3 flex items-end justify-between gap-4">
               <p className="min-w-0 flex-1 break-keep text-xs leading-relaxed text-gray-500">
                 {reordering
-                  ? '앞에 있는 작품이 홈페이지에서 먼저 나옵니다.'
-                  : <>사진을 누르면 작품 정보를 넣어요. ‘작가 탭에도’를 켠 작품만 [작가] 탭과 홈 화면에 나옵니다.</>}
+                  ? (fine ? '끌어서 옮기거나 ◀ ▶ 를 누르세요. ' : '작품을 길게 눌러 끌거나 ◀ ▶ 를 누르세요. ') + '앞에 있는 작품이 홈페이지에서 먼저 나옵니다.'
+                  : <>{fine ? '사진을 누르면 작품 정보를 넣고, 끌면 순서가 바뀌어요. ' : '사진을 누르면 작품 정보를 넣어요. '}‘작가 탭에도’를 켠 작품만 [작가] 탭과 홈 화면에 나옵니다.</>}
               </p>
               {total > 1 && (
                 <button
@@ -316,80 +346,31 @@ function WorksSection({ images, metaImageId, onMeta, active }: Props) {
               )}
             </div>
 
-            <ul data-testid="works-grid" className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-x-3 gap-y-5">
-              {images.map((img, idx) => {
-                const text = tileLabel(img);
-                const likes = img._count?.likes ?? 0;
-                return (
-                  <li key={img.id} data-work-id={img.id} className="min-w-0">
-                    <div className="relative">
-                      {/* 작품은 자르지 않는다 — 정사각 칸에 contain(CLAUDE.md 18) */}
-                      <button
-                        type="button"
-                        onClick={() => onMeta(img.id)}
-                        aria-label={text ? `${text} — 작품 정보 수정` : '작품 정보 입력'}
-                        className="block aspect-square w-full bg-gray-50"
-                      >
-                        <Thumb src={img.url} alt="" className="h-full w-full object-contain" />
-                      </button>
-                      {/* 삭제 — 눌리는 자리는 44px, 보이는 건 작은 동그라미 */}
-                      <button
-                        type="button"
-                        onClick={() => setRemoveId(img.id)}
-                        aria-label="작품 사진 삭제"
-                        className="group/x absolute right-0 top-0 flex h-11 w-11 items-start justify-end p-1.5"
-                      >
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 group-hover/x:bg-accent group-hover/x:text-white">
-                          <X size={13} />
-                        </span>
-                      </button>
-                      {likes > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setLikersId(img.id)}
-                          aria-label={`좋아요 ${likes}개 — 누가 눌렀는지 보기`}
-                          title="좋아요한 사람 보기"
-                          className="absolute bottom-1 right-1 flex h-7 items-center gap-1 rounded-full bg-white/90 pl-2 pr-2.5 text-xs font-medium text-accent ring-1 ring-black/10"
-                        >
-                          <Heart size={12} className="fill-accent" /> {likes}
-                        </button>
-                      )}
-                    </div>
-
-                    <button type="button" onClick={() => onMeta(img.id)} tabIndex={-1} aria-hidden className="mt-1.5 block w-full truncate text-left text-[13px] leading-snug">
-                      {text
-                        ? <span className="text-gray-900">{text}</span>
-                        : <span className="font-medium text-accent">작품 정보 입력</span>}
-                    </button>
-
-                    {reordering ? (
-                      <div className="mt-1.5 flex gap-1.5">
-                        <button type="button" disabled={idx === 0} onClick={() => reorder.mutate(moveId(images.map((i) => i.id), img.id, -1))} aria-label="앞으로" className="flex h-11 flex-1 items-center justify-center rounded-lg border border-gray-300 text-gray-900 disabled:opacity-30">
-                          <ChevronLeft size={18} />
-                        </button>
-                        <button type="button" disabled={idx === total - 1} onClick={() => reorder.mutate(moveId(images.map((i) => i.id), img.id, 1))} aria-label="뒤로" className="flex h-11 flex-1 items-center justify-center rounded-lg border border-gray-300 text-gray-900 disabled:opacity-30">
-                          <ChevronRight size={18} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => exposure.mutate({ ids: [img.id], show: !img.showInExplore, quiet: true })}
-                        aria-pressed={!!img.showInExplore}
-                        aria-label={img.showInExplore ? '작가 탭에도 소개 중 — 누르면 내 홈페이지에만' : '내 홈페이지에만 보임 — 누르면 작가 탭에도 소개'}
-                        className={cn(
-                          'mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
-                          img.showInExplore ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 text-gray-600 hover:border-gray-500',
-                        )}
-                      >
-                        {img.showInExplore && <Check size={12} strokeWidth={3} />}
-                        {img.showInExplore ? '작가 탭에도' : '홈페이지에만'}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <SortableArea
+              ids={ids}
+              onReorder={applyOrder}
+              layout="grid"
+              touch={reordering}
+              itemName={tileName}
+              overlay={(id) => { const img = byId.get(id); return img ? <TileOverlay img={img} /> : null; }}
+            >
+              <ul data-testid="works-grid" className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-x-3 gap-y-5">
+                {shown.map((img, idx) => (
+                  <WorkTile
+                    key={img.id}
+                    img={img}
+                    first={idx === 0}
+                    last={idx === total - 1}
+                    reordering={reordering}
+                    onMeta={onMeta}
+                    onRemove={setRemoveId}
+                    onLikers={setLikersId}
+                    onMove={(delta) => applyOrder(moveId(ids, img.id, delta))}
+                    onExposure={(show) => exposure.mutate({ ids: [img.id], show, quiet: true })}
+                  />
+                ))}
+              </ul>
+            </SortableArea>
           </div>
         </>
       )}
@@ -415,10 +396,103 @@ function WorksSection({ images, metaImageId, onMeta, active }: Props) {
           hasNext={nextUncaptionedId(images, metaImage.id) != null}
           justUploaded={afterUpload ?? undefined}
           saving={saveMeta.isPending}
+          priceOnHomepage={priceOnHomepage}
           onSave={(draft, next) => saveMeta.mutate({ imageId: metaImage.id, draft, next })}
           onClose={() => onMeta(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** 작품 한 칸 — 사진(누르면 작품 정보 · 끌면 순서) · 삭제 · 좋아요 / 아래 한 줄 · 노출 칩 또는 ◀ ▶ */
+function WorkTile({ img, first, last, reordering, onMeta, onRemove, onLikers, onMove, onExposure }: {
+  img: PortfolioImage; first: boolean; last: boolean; reordering: boolean;
+  onMeta: (id: number) => void; onRemove: (id: number) => void; onLikers: (id: number) => void;
+  onMove: (delta: -1 | 1) => void; onExposure: (show: boolean) => void;
+}) {
+  const { itemRef, itemStyle, handle } = useSortableTile(img.id);
+  const justDropped = useJustDropped();
+  const text = tileLabel(img);
+  const likes = img._count?.likes ?? 0;
+  return (
+    // 순서 바꾸는 중에는 길게 눌러도 사진 저장 메뉴(iOS)·글자 선택이 뜨지 않게
+    <li ref={itemRef} style={itemStyle} data-work-id={img.id} className={cn('min-w-0', reordering && 'select-none [-webkit-touch-callout:none]')}>
+      <div className="relative">
+        {/* 작품은 자르지 않는다 — 정사각 칸에 contain(CLAUDE.md 18). 이 사진이 끌어서 옮길 때 잡는 곳이다 */}
+        <button
+          type="button"
+          {...handle}
+          onClick={() => { if (!justDropped()) onMeta(img.id); }}
+          onContextMenu={reordering ? (e) => e.preventDefault() : undefined}
+          aria-label={text ? `${text} — 작품 정보 수정` : '작품 정보 입력'}
+          className={cn('block aspect-square w-full bg-gray-50', reordering && 'touch-manipulation')}
+        >
+          <Thumb src={img.url} alt="" draggable={false} className="h-full w-full object-contain" />
+        </button>
+        {/* 삭제 — 눌리는 자리는 44px, 보이는 건 작은 동그라미 */}
+        <button
+          type="button"
+          onClick={() => onRemove(img.id)}
+          aria-label="작품 사진 삭제"
+          className="group/x absolute right-0 top-0 flex h-11 w-11 items-start justify-end p-1.5"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-gray-700 ring-1 ring-black/10 group-hover/x:bg-accent group-hover/x:text-white">
+            <X size={13} />
+          </span>
+        </button>
+        {likes > 0 && (
+          <button
+            type="button"
+            onClick={() => onLikers(img.id)}
+            aria-label={`좋아요 ${likes}개 — 누가 눌렀는지 보기`}
+            title="좋아요한 사람 보기"
+            className="absolute bottom-1 right-1 flex h-7 items-center gap-1 rounded-full bg-white/90 pl-2 pr-2.5 text-xs font-medium text-accent ring-1 ring-black/10"
+          >
+            <Heart size={12} className="fill-accent" /> {likes}
+          </button>
+        )}
+      </div>
+
+      <button type="button" onClick={() => onMeta(img.id)} tabIndex={-1} aria-hidden className="mt-1.5 block w-full truncate text-left text-[13px] leading-snug">
+        {text
+          ? <span className="text-gray-900">{text}</span>
+          : <span className="font-medium text-accent">작품 정보 입력</span>}
+      </button>
+
+      {reordering ? (
+        <div className="mt-1.5 flex gap-1.5">
+          <button type="button" disabled={first} onClick={() => onMove(-1)} aria-label="앞으로" className="flex h-11 flex-1 items-center justify-center rounded-lg border border-gray-300 text-gray-900 disabled:opacity-30">
+            <ChevronLeft size={18} />
+          </button>
+          <button type="button" disabled={last} onClick={() => onMove(1)} aria-label="뒤로" className="flex h-11 flex-1 items-center justify-center rounded-lg border border-gray-300 text-gray-900 disabled:opacity-30">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onExposure(!img.showInExplore)}
+          aria-pressed={!!img.showInExplore}
+          aria-label={img.showInExplore ? '작가 탭에도 소개 중 — 누르면 내 홈페이지에만' : '내 홈페이지에만 보임 — 누르면 작가 탭에도 소개'}
+          className={cn(
+            'mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
+            img.showInExplore ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 text-gray-600 hover:border-gray-500',
+          )}
+        >
+          {img.showInExplore && <Check size={12} strokeWidth={3} />}
+          {img.showInExplore ? '작가 탭에도' : '홈페이지에만'}
+        </button>
+      )}
+    </li>
+  );
+}
+
+/** 끄는 동안 손가락·마우스를 따라오는 사진 — 원래 자리는 흐린 자리표시로 남는다 */
+function TileOverlay({ img }: { img: PortfolioImage }) {
+  return (
+    <div className="aspect-square w-full bg-gray-50 shadow-xl ring-1 ring-black/10">
+      <Thumb src={img.url} alt="" draggable={false} className="h-full w-full object-contain" />
     </div>
   );
 }

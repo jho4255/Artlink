@@ -1,8 +1,10 @@
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
 import { homepageTabs, resolveHomepageTab, tabParamFor } from '@/lib/homepageTabs';
-import { fileExtension, fileTypeLabel, formatBytes, pdfPageWidth, pdfRenderScale, portfolioFileKind } from '@/lib/portfolioFile';
+import {
+  PDF_MAX_PIXELS, PDF_ZOOM_MAX_PIXELS, fileExtension, fileTypeLabel, formatBytes, pagesInView, pdfCanvasSize, pdfPageBox, pdfPageWidth, pdfRenderScale, pdfZoomStep, portfolioFileKind, ratioFraction,
+} from '@/lib/portfolioFile';
 
 const full = { workCount: 12, hasNote: true, hasCv: true, hasFile: true, guestbook: { count: 3 } };
 
@@ -81,51 +83,145 @@ describe('포트폴리오 파일 (lib/portfolioFile)', () => {
     expect(formatBytes(0)).toBe('0KB');
   });
 
-  describe('쪽 폭 — 한 화면에 한 쪽, 다만 글씨가 못 읽을 만큼 작아지지 않게', () => {
-    const A4P = 1 / Math.SQRT2; // A4 세로
-    const A4L = Math.SQRT2;     // A4 가로
-    const WIDE = 16 / 9;        // PPT
+  describe('쪽 폭 — 컨테이너에 맞추되 글자가 사이트 본문보다 커지지는 않게', () => {
+    const A4P = 595, A4L = 842, WIDE = 960; // pt — A4 세로·가로, PPT 16:9
 
     it('휴대폰은 늘 화면 폭(컨테이너)', () => {
-      for (const aspect of [A4P, A4L, WIDE]) {
-        expect(pdfPageWidth({ containerWidth: 327, viewportHeight: 700, aspect })).toBe(327);
-      }
+      for (const pt of [A4P, A4L, WIDE]) expect(pdfPageWidth({ containerWidth: 327, pageWidthPt: pt })).toBe(327);
     });
 
-    it('데스크톱 가로 판형은 높이에 맞춰도 상한 1000px', () => {
-      expect(pdfPageWidth({ containerWidth: 1184, viewportHeight: 900, aspect: WIDE })).toBe(1000);
-      expect(pdfPageWidth({ containerWidth: 1184, viewportHeight: 900, aspect: A4L })).toBe(1000);
+    it('★ PC 의 A4 세로는 1000px — 2026-10-15 까지 높이에 맞춰 640px 이라 10pt 본문이 7px 로 뭉개졌다', () => {
+      expect(pdfPageWidth({ containerWidth: 1184, pageWidthPt: A4P })).toBe(1000);
+      // 10pt 본문의 화면 크기 ≈ 17px (사이트 본문 16px 과 비슷)
+      expect(10 * (1000 / A4P)).toBeGreaterThan(16);
     });
 
-    it('A4 세로는 높이에 맞추면 530px 쯤이라 글씨가 8px 이 된다 — 하한 640px', () => {
-      expect(pdfPageWidth({ containerWidth: 1184, viewportHeight: 900, aspect: A4P })).toBe(640);
-      // 아주 큰 모니터면 높이에 맞춘 값이 하한보다 크다
-      expect(pdfPageWidth({ containerWidth: 1184, viewportHeight: 1400, aspect: A4P })).toBe(Math.floor((1400 - 150) * A4P));
+    it('가로 판형은 같은 글자 크기에서 더 넓다 — 컨테이너까지 쓴다', () => {
+      expect(pdfPageWidth({ containerWidth: 1184, pageWidthPt: A4L })).toBe(1184);
+      expect(pdfPageWidth({ containerWidth: 1184, pageWidthPt: WIDE })).toBe(1184);
+      // 작은 판형(명함 크기 등)은 늘리지 않는다
+      expect(pdfPageWidth({ containerWidth: 1184, pageWidthPt: 300 })).toBe(Math.floor(300 * (1000 / 595)));
     });
 
-    it('컨테이너를 넘지 않는다 · 폭 0 이면 0 · 비율이 이상하면 A4 세로로 본다', () => {
-      expect(pdfPageWidth({ containerWidth: 600, viewportHeight: 900, aspect: A4P })).toBe(600);
-      expect(pdfPageWidth({ containerWidth: 0, viewportHeight: 900, aspect: A4P })).toBe(0);
-      expect(pdfPageWidth({ containerWidth: 1184, viewportHeight: 900, aspect: NaN })).toBe(640);
+    it('컨테이너를 넘지 않는다 · 폭 0 이면 0 · 폭을 모르면 A4 세로로 본다', () => {
+      expect(pdfPageWidth({ containerWidth: 600, pageWidthPt: A4P })).toBe(600);
+      expect(pdfPageWidth({ containerWidth: 0, pageWidthPt: A4P })).toBe(0);
+      expect(pdfPageWidth({ containerWidth: 1184, pageWidthPt: NaN })).toBe(1000);
     });
   });
 
-  describe('캔버스 배율 — iOS 캔버스 메모리 상한', () => {
-    it('화면 폭 × 기기 배율(최대 2)', () => {
-      const s = pdfRenderScale({ cssWidth: 500, pageWidthPt: 595, pageHeightPt: 842, dpr: 2 });
-      expect(s).toBeCloseTo((500 * 2) / 595, 6);
-      const s3 = pdfRenderScale({ cssWidth: 500, pageWidthPt: 595, pageHeightPt: 842, dpr: 3 });
-      expect(s3).toBeCloseTo(s, 6); // 3배 기기도 2배까지만
+  describe('★ 상자와 캔버스는 정확히 배율만큼 — 1px 만 어긋나도 쪽 전체가 보간돼 흐려진다(2026-10-15)', () => {
+    it('배율을 작은 분수로', () => {
+      expect(ratioFraction(1)).toEqual([1, 1]);
+      expect(ratioFraction(2)).toEqual([2, 1]);
+      expect(ratioFraction(1.25)).toEqual([5, 4]);
+      expect(ratioFraction(1.5)).toEqual([3, 2]);
+      expect(ratioFraction(1.75)).toEqual([7, 4]);
+      expect(ratioFraction(1.100000023841858)).toEqual([11, 10]);   // 크롬이 110% 를 이렇게 알려 준다
+      expect(ratioFraction(2.625)).toEqual([21, 8]);
     });
 
-    it('한 장이 800만 px 을 넘지 않는다', () => {
-      const s = pdfRenderScale({ cssWidth: 1000, pageWidthPt: 595, pageHeightPt: 842, dpr: 2 });
-      expect(595 * s * 842 * s).toBeLessThanOrEqual(8_000_000 + 1);
+    it('흔한 배율·폭 전부에서 상자 × 배율이 정수이고, 캔버스가 그 값과 같다', () => {
+      for (const dpr of [1, 1.1, 1.25, 1.5, 1.75, 2, 2.625, 3]) {
+        for (const cssWidth of [327, 340, 360, 599, 640, 999, 1000, 1182]) {
+          for (const [pw, ph] of [[595, 842], [842, 595], [960, 540], [612, 792]] as const) {
+            const box = pdfPageBox({ cssWidth, pageWidthPt: pw, pageHeightPt: ph, dpr });
+            expect(box.w).toBeLessThanOrEqual(cssWidth);
+            expect(cssWidth - box.w).toBeLessThan(10);                       // 분모만큼만 줄어든다
+            expect(Number.isInteger(box.w * ratioFraction(dpr)[0] / ratioFraction(dpr)[1])).toBe(true);
+            expect(Math.abs(box.h - (box.w * ph) / pw)).toBeLessThanOrEqual(ratioFraction(dpr)[1] / 2 + 0.5);   // 비율은 그대로(분모의 절반 px 안)
+            const px = pdfCanvasSize(box, { w: pw, h: ph }, dpr);
+            if (px.w * px.h < PDF_MAX_PIXELS * 0.99) {
+              expect(px.w).toBe(Math.round(box.w * dpr));
+              expect(Math.abs(px.w - box.w * dpr)).toBeLessThan(0.02);
+              expect(Math.abs(px.h - box.h * dpr)).toBeLessThan(0.02);
+            }
+          }
+        }
+      }
+    });
+
+    it('옛 방식의 사고를 다시 내지 않는다 — 높이는 상자를 기준으로(반올림 1414 ↔ 내림 1413 이 아니라)', () => {
+      const box = pdfPageBox({ cssWidth: 999, pageWidthPt: 595.28, pageHeightPt: 841.89, dpr: 1 });
+      const px = pdfCanvasSize(box, { w: 595.28, h: 841.89 }, 1);
+      expect(px.h).toBe(box.h);
+    });
+
+    it('뷰어가 이 둘을 쓰고, 캔버스를 기기 픽셀 경계에 맞춘다(소스)', () => {
+      const src = readFileSync(resolve(__dirname, '../components/shared/PdfViewer.tsx'), 'utf-8');
+      expect(src).toMatch(/pdfPageBox\(/);
+      expect(src).toMatch(/pdfCanvasSize\(/);
+      expect(src).toMatch(/translate\(\$\{dx \/ d\}px, \$\{dy \/ d\}px\)/);
+      // 옛 방식(내림으로 캔버스 크기 정하기)으로 되돌리지 않는다
+      expect(src).not.toMatch(/Math\.floor\(vp\.(width|height)\)/);
+    });
+  });
+
+  describe('캔버스 배율 — 화면 해상도 그대로 · iOS 캔버스 메모리 상한', () => {
+    it('★ 화면 폭 × 기기 배율(최대 3) — 2026-10-15 까지 2로 묶여 3배 휴대폰에서 1.5배 늘려 보였다', () => {
+      const s2 = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 2 });
+      expect(s2).toBeCloseTo((340 * 2) / 595, 6);
+      const s3 = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 3 });
+      expect(s3).toBeCloseTo((340 * 3) / 595, 6);   // 아이폰 13: 340px 칸에 1020px 그림
+      const s4 = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 4 });
+      expect(s4).toBeCloseTo(s3, 6);                // 3배 넘는 화면도 3배까지
+      expect(pdfRenderScale({ cssWidth: 640, pageWidthPt: 595, pageHeightPt: 842, dpr: 1.25 })).toBeCloseTo((640 * 1.25) / 595, 6);
+    });
+
+    it('평소 한 장은 800만 px 을 넘지 않는다', () => {
+      const s = pdfRenderScale({ cssWidth: 1000, pageWidthPt: 595, pageHeightPt: 842, dpr: 3 });
+      expect(595 * s * 842 * s).toBeLessThanOrEqual(PDF_MAX_PIXELS + 1);
+    });
+
+    it('★ 확대하면 그 배율만큼 더 크게 — 확대 중 한 장은 1200만 px 까지(iOS 한 장 상한 16.7M 아래)', () => {
+      const base = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 3 });
+      const z2 = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 3, zoom: 2 });
+      expect(z2).toBeCloseTo(base * 2, 6);           // 2040×2887 = 5.9M px — 상한 안
+      const z4 = pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 3, zoom: 4 });
+      expect(595 * z4 * 842 * z4).toBeLessThanOrEqual(PDF_ZOOM_MAX_PIXELS + 1);
+      expect(PDF_ZOOM_MAX_PIXELS).toBeLessThan(4096 * 4096);
+      expect(pdfRenderScale({ cssWidth: 340, pageWidthPt: 595, pageHeightPt: 842, dpr: 3, zoom: 0.5 })).toBeCloseTo(base, 6);   // 줄여 봐도 평소대로
+    });
+
+    it('확대 배율은 계단으로 — 손가락을 조금 움직일 때마다 다시 그리지 않는다', () => {
+      expect(pdfZoomStep(1)).toBe(1);
+      expect(pdfZoomStep(1.08)).toBe(1);
+      expect(pdfZoomStep(1.2)).toBe(1.5);
+      expect(pdfZoomStep(1.5)).toBe(1.5);
+      expect(pdfZoomStep(1.6)).toBe(2);
+      expect(pdfZoomStep(2.4)).toBe(3);
+      expect(pdfZoomStep(3.5)).toBe(4);
+      expect(pdfZoomStep(8)).toBe(4);
+      expect(pdfZoomStep(NaN)).toBe(1);
+    });
+
+    it('확대 중 다시 그릴 쪽 — 보이는 영역과 겹치는 쪽, 많이 겹치는 순으로 둘까지 · 못 찾으면 가운데에 가까운 쪽', () => {
+      const page = (n: number, top: number) => ({ n, r: { top, bottom: top + 500, left: 20, right: 360 } });
+      const pages = [page(1, 0), page(2, 520), page(3, 1040), page(4, 1560)];
+      // 확대해서 2쪽 아래쪽과 3쪽 위쪽을 보는 중
+      expect(pagesInView(pages, { top: 900, left: 100, width: 130, height: 300 })).toEqual([3, 2]);
+      expect(pagesInView(pages, { top: 600, left: 100, width: 130, height: 200 })).toEqual([2]);
+      expect(pagesInView(pages, { top: 600, left: 100, width: 130, height: 2000 }, 2)).toHaveLength(2);
+      // 좌표가 어긋나 아무것도 안 겹치면 가운데에 가장 가까운 쪽 하나
+      expect(pagesInView(pages, { top: 2600, left: 0, width: 100, height: 100 })).toEqual([4]);
+      expect(pagesInView([], { top: 0, left: 0, width: 100, height: 100 })).toEqual([]);
     });
 
     it('잘못된 입력은 0', () => {
       expect(pdfRenderScale({ cssWidth: 0, pageWidthPt: 595, pageHeightPt: 842, dpr: 2 })).toBe(0);
       expect(pdfRenderScale({ cssWidth: 500, pageWidthPt: 0, pageHeightPt: 842, dpr: 2 })).toBe(0);
     });
+  });
+
+  it('뷰어는 확대·기기 배율이 바뀌면 다시 그리고, 다 그린 뒤에 바꿔 끼운다(소스)', () => {
+    const src = readFileSync(join(__dirname, '..', 'components/shared/PdfViewer.tsx'), 'utf-8');
+    expect(src).toMatch(/visualViewport/);
+    expect(src).toMatch(/matchMedia\(`\(resolution:/);
+    // 렌더 effect 가 dpr·zoom 에 반응한다
+    expect(src).toMatch(/\[near, boxW, boxH, dpr, zoom, doc, pageNo, size\]/);
+    // 같은 캔버스에 다시 그리지 않는다 — 새 캔버스에 그린 뒤 replaceChildren
+    expect(src).toMatch(/replaceChildren\(next\)/);
+    // 2배 상한으로 되돌리지 않는다
+    expect(readFileSync(join(__dirname, '..', 'lib/portfolioFile.ts'), 'utf-8')).not.toMatch(/Math\.max\(dpr \|\| 1, 1\), 2\)/);
   });
 });

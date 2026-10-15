@@ -101,6 +101,7 @@ __pycache__/
 # 포트폴리오 PDF 회귀 하니스 — 코드만 남기고 번들·렌더 결과물은 제외한다.
 # ⚠️ portfolio/ 의 레퍼런스(타인 저작물)는 위 27행에서 이미 제외돼 있다. 여기서 나오는 건 숫자뿐이다.
 scratchpad/pf/engine.mjs
+scratchpad/pf/out-dl/
 scratchpad/pf/*.png
 scratchpad/pf/*.json
 # 지면점유 회귀 기준선은 코드의 일부다 — 이것만 추적한다(coverage.mjs 머리말)

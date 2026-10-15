@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
-import { composeSize, museumCaption, splitSize } from '@/lib/artwork';
+import { PRICE_MAX, composeSize, formatPrice, museumCaption, parsePriceInput, priceVisible, splitSize } from '@/lib/artwork';
 import type { ArtworkStatus, PortfolioImage } from '@/types';
 
 export interface ArtworkMetaDraft {
@@ -12,6 +12,8 @@ export interface ArtworkMetaDraft {
   year: string;
   description: string;
   status: ArtworkStatus | '';
+  /** 가격(원) — 숫자만, 쉼표 없이. 비우면 지운다(2026-10-15) */
+  price: string;
 }
 
 export function toDraft(img: PortfolioImage): ArtworkMetaDraft {
@@ -23,7 +25,13 @@ export function toDraft(img: PortfolioImage): ArtworkMetaDraft {
     year: img.year ?? '',
     description: img.description ?? '',
     status: img.status ?? '',
+    price: typeof img.price === 'number' ? String(img.price) : '',
   };
+}
+
+/** 저장할 때 보내는 모양 — 가격 칸의 글자를 숫자(또는 null)로. 틀린 값이면 'invalid'(창이 저장을 막는다) */
+export function draftPrice(d: ArtworkMetaDraft): number | null | 'invalid' {
+  return parsePriceInput(d.price);
 }
 
 const STATUSES: { value: ArtworkStatus | ''; label: string }[] = [
@@ -56,6 +64,8 @@ interface Props {
   /** `next` 가 true 면 저장한 뒤 창을 닫지 않고 다음 작품(정보 없는 것)을 연다 — 부모가 `image` 를 갈아끼운다 */
   onSave: (draft: ArtworkMetaDraft, next: boolean) => void;
   onClose: () => void;
+  /** 홈페이지에 작품 가격을 보이도록 켜 두었는가([꾸미기]) — 가격 칸 아래 안내와 캡션 미리보기가 이걸 따른다 */
+  priceOnHomepage?: boolean;
 }
 
 /** 전에 쓴 값 — 누르면 그 칸에 채워진다 */
@@ -90,7 +100,8 @@ function Suggest({ values, current, onPick }: { values: string[]; current: strin
  *  - **[저장하고 다음 작품]** — 저장한 뒤 창을 닫지 않고 정보 없는 다음 작품으로 넘어간다.
  *  - **전에 쓴 값** — 같은 재료·같은 해의 작품이 이어지므로 한 번 누르면 채워진다.
  *  - **홈페이지에 이렇게 나옵니다** — 넣는 대로 캡션이 보인다. 칸 순서도 캡션 순서(작품명 · 연도 · 재료 · 크기)다.
- *  - 그 아래는 '선택' — 시리즈·판매 상태·작품 설명. 일곱 칸이 같은 무게로 놓여 있어 어디까지 채워야 하는지 알 수 없었다.
+ *  - 그 아래는 '선택' — 시리즈·판매 상태·가격·작품 설명. 일곱 칸이 같은 무게로 놓여 있어 어디까지 채워야 하는지 알 수 없었다.
+ *  - 가격(2026-10-15)은 원 단위 숫자. 어디에 보일지는 작가가 따로 켠다(홈페이지 [꾸미기] · PDF [작품] 탭) — 칸 아래가 지금 어디에 보이는지 말해 준다.
  *
  * ⚠️ **Enter 는 저장이 아니라 '다음 칸'이다.** Enter 를 주 버튼(저장하고 다음 작품)으로 두면, 작품명만 치고 Enter 를 누른 사람은
  *    연도·재료·크기를 건너뛴 채 사진이 다음 작품으로 바뀐 화면을 본다(아이폰 자판의 [이동] 키도 Enter 다).
@@ -98,7 +109,7 @@ function Suggest({ values, current, onPick }: { values: string[]; current: strin
  *    마지막 칸(가로)에서만 주 버튼인데, 그것도 마우스·키보드 화면에서만 — 휴대폰 숫자 자판의 [완료] 는 자판을 내리는 키다.
  *    Ctrl/⌘+Enter 는 어느 칸에서든 주 버튼.
  */
-export default function ArtworkMetaModal({ image, seriesOptions, suggestions, remaining = 0, hasNext = false, saving, justUploaded, onSave, onClose }: Props) {
+export default function ArtworkMetaModal({ image, seriesOptions, suggestions, remaining = 0, hasNext = false, saving, justUploaded, onSave, onClose, priceOnHomepage = false }: Props) {
   const [d, setD] = useState<ArtworkMetaDraft>(() => toDraft(image));
   const parsed = useMemo(() => splitSize(d.sizeText), [d.sizeText]);
   const [h, setH] = useState(parsed.h);
@@ -143,8 +154,12 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
 
   // 넣는 대로 보이는 캡션 — 홈페이지와 **같은 함수**(museumCaption)라 실제와 어긋나지 않는다
   const cap = museumCaption(d);
+  // 가격 — 숫자만 받아 '1,200,000' 처럼 보여 준다. 틀린 값이면 저장 버튼이 막힌다(서버도 400)
+  const price = draftPrice(d);
+  const priceBad = price === 'invalid';
+  const priceShown = typeof price === 'number' && priceOnHomepage && priceVisible({ status: d.status || null });
   /** 주 버튼 — 다음 작품이 있으면 저장하고 이어서 넣는다 */
-  const primary = () => { if (!saving) onSave(d, hasNext); };
+  const primary = () => { if (!saving && !priceBad) onSave(d, hasNext); };
   const onKeyDown = (e: ReactKeyboardEvent<HTMLFormElement>) => {
     // ⚠️ 한글을 치는 중의 Enter 는 건드리지 않는다 — 조합 중인 마지막 글자가 두 번 들어간다
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
@@ -184,11 +199,12 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
             <img src={image.url} alt="" className="w-24 h-24 object-contain bg-gray-50 rounded-lg flex-none" />
             <div className="flex-1 min-w-0" data-testid="meta-caption-preview">
               <p className="text-xs text-gray-400">홈페이지에 이렇게 나옵니다</p>
-              {cap ? (
+              {cap || priceShown ? (
                 <div className="mt-1 text-[13px] leading-snug text-gray-500 break-keep [overflow-wrap:anywhere]">
-                  {cap.head && <p className="text-sm font-medium text-gray-900">{cap.head}</p>}
-                  {cap.medium && <p>{cap.medium}</p>}
-                  {cap.size && <p>{cap.size}</p>}
+                  {cap?.head && <p className="text-sm font-medium text-gray-900">{cap.head}</p>}
+                  {cap?.medium && <p>{cap.medium}</p>}
+                  {cap?.size && <p>{cap.size}</p>}
+                  {priceShown && <p data-testid="meta-price-preview">{formatPrice(price as number)}</p>}
                 </div>
               ) : (
                 <p className="mt-1 text-[13px] leading-snug text-gray-400 break-keep">아래에 적는 대로 작품 아래에 붙습니다. 아는 것만 채워도 됩니다.</p>
@@ -261,6 +277,33 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
             </div>
 
             <div>
+              <label className={label} htmlFor="meta-price">가격 <span className="font-normal text-gray-400">원 · 비워 두면 표기하지 않아요</span></label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="meta-price"
+                  value={d.price ? Number(d.price).toLocaleString('en-US') : ''}
+                  onChange={(e) => set({ price: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                  placeholder="예: 1,200,000"
+                  inputMode="numeric"
+                  aria-invalid={priceBad || undefined}
+                  aria-describedby="meta-price-note"
+                  className={`${field} text-right tabular-nums ${priceBad ? 'border-accent' : ''}`}
+                  autoComplete="off"
+                />
+                <span className="text-sm text-gray-500 shrink-0">원</span>
+              </div>
+              <p id="meta-price-note" data-testid="meta-price-note" className={`mt-1.5 break-keep text-xs leading-relaxed ${priceBad ? 'text-accent' : 'text-gray-500'}`}>
+                {priceBad
+                  ? `가격은 ${PRICE_MAX.toLocaleString('en-US')}원까지 적을 수 있어요.`
+                  : d.status === 'SOLD' || d.status === 'NFS'
+                    ? '판매 완료·비매 작품은 가격을 보여 주지 않아요.'
+                    : priceOnHomepage
+                      ? '홈페이지 작품 아래에 나옵니다. PDF 에는 포트폴리오 만들기 [작품] 탭에서 켜면 실려요.'
+                      : '지금은 어디에도 보이지 않아요. 홈페이지는 [꾸미기], PDF 는 포트폴리오 만들기 [작품] 탭에서 켭니다.'}
+              </p>
+            </div>
+
+            <div>
               <label className={label} htmlFor="meta-desc">작품 설명 <span className="font-normal text-gray-400">포트폴리오 PDF 에 작품과 함께 실립니다</span></label>
               <textarea
                 id="meta-desc"
@@ -277,13 +320,13 @@ export default function ArtworkMetaModal({ image, seriesOptions, suggestions, re
         <div className="shrink-0 border-t border-gray-100 px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex items-center gap-2">
           {hasNext ? (
             <>
-              <button type="button" onClick={primary} disabled={saving} className="flex-1 min-h-[44px] bg-gray-900 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <button type="button" onClick={primary} disabled={saving || priceBad} className="flex-1 min-h-[44px] bg-gray-900 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
                 {saving && <Loader2 size={14} className="animate-spin" />}저장하고 다음 작품
               </button>
-              <button type="button" disabled={saving} onClick={() => onSave(d, false)} className="min-h-[44px] px-4 text-sm border border-gray-200 rounded-lg text-gray-800 hover:bg-gray-50 disabled:opacity-50">저장</button>
+              <button type="button" disabled={saving || priceBad} onClick={() => onSave(d, false)} className="min-h-[44px] px-4 text-sm border border-gray-200 rounded-lg text-gray-800 hover:bg-gray-50 disabled:opacity-50">저장</button>
             </>
           ) : (
-            <button type="button" onClick={primary} disabled={saving} className="flex-1 min-h-[44px] bg-gray-900 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+            <button type="button" onClick={primary} disabled={saving || priceBad} className="flex-1 min-h-[44px] bg-gray-900 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
               {saving && <Loader2 size={14} className="animate-spin" />}저장
             </button>
           )}

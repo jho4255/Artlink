@@ -69,8 +69,8 @@ export default function SaveDialog({
 }) {
   const [stage, setStage] = useState<Stage>({ kind: 'ready' });
   const [alsoUpload, setAlsoUpload] = useState(false);
-  /** 만든 파일 — [다시 내려받기]·[다시 올리기] 가 다시 굽지 않고 쓴다 */
-  const made = useRef<{ blob: Blob; fileName: string } | null>(null);
+  /** 만든 파일 — [다시 내려받기]·[다시 올리기] 가 다시 굽지 않고 쓴다. `homepage` 는 홈페이지에 올릴 판(줄이기 전, 없으면 내려받은 파일) */
+  const made = useRef<{ blob: Blob; fileName: string; homepage?: Blob | null } | null>(null);
   const working = stage.kind === 'working';
   const info = printedInfo(book, design);
   const inApp = typeof navigator !== 'undefined' ? inAppBrowserName(navigator.userAgent) : null;
@@ -97,7 +97,7 @@ export default function SaveDialog({
     const m = made.current;
     if (!m) return 'failed';
     try {
-      const url = await uploadPortfolioPdf(m.blob, m.fileName);
+      const url = await uploadPortfolioPdf(m.homepage ?? m.blob, m.fileName);
       onUploaded(await setHomepagePortfolioFile(url));
       return 'yes';
     } catch { return 'failed'; }
@@ -107,14 +107,14 @@ export default function SaveDialog({
     setStage({ kind: 'working', method: 'download', label: '준비하는 중', percent: 0 });
     try {
       await beforeExport().catch(() => { /* 디자인 저장이 안 돼도 파일은 만든다 */ });
-      const r = await exportPortfolioPdf(book, design, { onProgress: progress('download') });
-      made.current = { blob: r.blob, fileName: r.fileName };
+      const r = await exportPortfolioPdf(book, design, { onProgress: progress('download'), forHomepage: alsoUpload });
+      made.current = { blob: r.blob, fileName: r.fileName, homepage: r.homepageBlob };
       saveBlob(r.blob, r.fileName);
       let up: Extract<Stage, { method: 'download' }>['upload'] = 'no';
       if (alsoUpload) {
         // 빈 칸이 있는 파일을 공개 홈페이지에 올리지 않는다 · 서버 한도(20MB)를 넘으면 올리지 못한다
         if (r.missing.length > 0) up = 'skipped-missing';
-        else if (r.bytes > UPLOAD_MAX_BYTES) up = 'skipped-large';
+        else if (r.homepageBlob === null || (r.homepageBlob === undefined && r.bytes > UPLOAD_MAX_BYTES)) up = 'skipped-large';
         else {
           setStage({ kind: 'working', method: 'download', label: '내 홈페이지에 올리는 중', percent: 99 });
           up = await upload();
