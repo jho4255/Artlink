@@ -5,6 +5,7 @@ import BottomTabBar from './BottomTabBar';
 import MyPageSideMenu from './MyPageSideMenu';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 import HomepageNudge from '@/components/shared/HomepageNudge';
+import GuestIntro from '@/components/shared/GuestIntro';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -69,6 +70,8 @@ export default function Layout() {
       <BottomTabBar />
       {/* 작가 로그인 뒤 '홈페이지에 빈 곳이 있어요' 팝업 — 어느 화면에 내려도 뜬다(lib/homepageNudge.ts) */}
       <HomepageNudge />
+      {/* 비회원 소개 — 작가가 아트링크에서 하는 네 가지를 한 번 보여 준다(lib/guestIntro.ts). 어느 화면으로 들어와도 뜬다 */}
+      <GuestIntro />
     </div>
   );
 }

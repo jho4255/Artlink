@@ -2760,3 +2760,15 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   쓸 수 없는 주소면 null. `openSiteLink` 가 화면은 `navigate`, 그 밖은 `window.open(url, '_blank', 'noopener')`. `HeroSlider`·`AdSlot` 둘 다 이걸 쓴다.
 - 확인: 크롬·WebKit × PC·휴대폰 — 같은 탭으로 열리고 뒤로가기로 홈에 돌아오며, 기록이 홈 → 모집공고 → 작가 → 갤러리 로 빠짐없이 남는다. 회귀 `siteLink.test.ts`(9).
 
+## 소개 팝업 'Welcome to ArtLink' (2026-10-18)
+- 계기: 광고로 들어온 비회원이 공모 상세 한 화면만 보고 나간다(비회원 둘러보기 통계). 아트링크로 무엇을 할 수 있는지를 첫 화면에서 보여 준다. 같은 날 회원·갤러리로 넓혔다.
+- `frontend/src/lib/guestIntro.ts`(언제·누구에게) + `components/shared/GuestIntro.tsx`(화면, `Layout` 에 한 번). [작가 | 갤러리] 바꾸기 —
+  작가 네 칸(ArtLook · 포트폴리오 PDF · 작가 홈페이지 · 공모 간편지원) / 갤러리 네 칸(ArtLook · 공모 운영 자동화 · 갤러리 홈페이지 · 전시 홍보).
+- 로그인 안 함: 방문(탭)마다 한 번(sessionStorage `artlink-intro-guest-answered` — 닫으면 그 탭에선 새로고침해도 안 뜨고 새 탭·다음 방문엔 다시) · 로그인한 적 있는 브라우저도 포함 · 그 브라우저에서 누가 [다시 보지 않기] 를 눌렀으면 제외.
+  [무료로 시작하기] → `/signup?role=ARTIST|GALLERY`(보고 있던 쪽). 작가 쪽에서 공모 상세로부터 떠나면 `post_login_redirect` 에 그 공모를 적는다(없을 때만).
+- 회원(관리자 제외): 하루 첫 방문에 한 번(`artlink-intro-member-day`) · [다시 보지 않기] → `artlink-intro-hidden[userId]`. 홈페이지 완성 팝업(`homepage-nudge`)이 뜨는 날엔 양보.
+- 공통: 로봇·자동화(`navigator.webdriver`) 제외 · `introAllowedAt` 이 로그인·가입·초대 코드·지원서·운영·약관·마이페이지 등을 뺀다 · 0.6초 머문 뒤(그림을 받는 동안 최대 2초 더) · 다른 `aria-modal` 창이 없을 때.
+  미리보기 `?intro=1` — 조건과 상관없이 띄운다. 닫으면 주소에서 뗀다.
+- 그림은 **실제 화면**(사용자 결정): 샘플 작가·샘플 갤러리·샘플 전시(`backend/scripts/seed-intro-sample.ts`, 사진은 `scratchpad/guest-intro/sample-media.mjs`)·로컬 데모 갤러리 공모로 찍어
+  (`capture.mjs` → `compose.mjs` → `make-assets.py`) `public/intro/` 600×450 webp 여덟(합 약 80KB).
+- 확인: `scratchpad/guest-intro/walk.mjs`·`member-check.mjs`·`preview-check.mjs`(크롬·WebKit) · 회귀 `guestIntro.test.ts`(22) · e2e `73-guest-intro.spec.ts`(17, 기능 + 신뢰성).

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { peekPostLoginRedirect } from '@/lib/postLoginRedirect';
-import { contextSignupRole, stashSignupRole, type SignupRole } from '@/lib/signupRole';
+import { contextSignupRole, isSignupRole, stashSignupRole, type SignupRole } from '@/lib/signupRole';
 import KakaoLoginButton from '@/components/shared/KakaoLoginButton';
 import RoleChoice from '@/components/shared/RoleChoice';
 
@@ -11,13 +11,18 @@ import RoleChoice from '@/components/shared/RoleChoice';
  * 로그인은 역할을 묻지 않고(가입했던 계정 그대로), **역할은 여기서** 고른다 → [카카오로 가입하기] / [이메일로 가입하기].
  *  - 카카오: 고른 역할을 적어 두고 떠난다 → 돌아온 '회원 정보 입력'이 그 역할을 골라 둔다(lib/signupRole.ts). 이미 가입한 카카오 계정이면 그냥 로그인된다.
  *  - 이메일: `/signup/email?role=` (그 화면에서도 역할을 바꿀 수 있다).
- * 공모 지원·초대 코드로 온 길이면 아티스트를 골라 둔다(광고 → 공모 → 지원 흐름에 한 번 더 누르게 하지 않는다). 그 밖에는 고르지 않는다.
+ * 공모 지원·초대 코드로 온 길이면 아티스트를 골라 둔다(광고 → 공모 → 지원 흐름에 한 번 더 누르게 하지 않는다). `?role=` 이 있으면 그것을(비회원 소개 팝업). 그 밖에는 고르지 않는다.
  */
 export default function SignupPage() {
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   useEffect(() => { if (isAuthenticated) navigate('/mypage', { replace: true }); }, [isAuthenticated, navigate]);
-  const [role, setRole] = useState<SignupRole | null>(() => contextSignupRole(peekPostLoginRedirect()));
+  // `?role=` 로 골라 두고 올 수 있다 — 비회원 소개 팝업의 [무료로 시작하기]가 아티스트로(lib/guestIntro.ts). 여기서 바꿀 수 있다
+  const [params] = useSearchParams();
+  const [role, setRole] = useState<SignupRole | null>(() => {
+    const q = params.get('role');
+    return isSignupRole(q) ? q : contextSignupRole(peekPostLoginRedirect());
+  });
 
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-10">
