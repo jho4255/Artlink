@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
-import { safeHttpUrl } from '@/lib/utils';
+import { openSiteLink } from '@/lib/siteLink';
 
 /**
  * 광고 슬롯 — Admin 이 등록한 자체 배너를 노출(사이드바 하단 등).
  *  · `/ads` 의 활성 배너 중 첫 번째를 띄운다(여러 개면 position 순).
- *  · 내부 링크(/...)는 라우팅, 외부(http)면 새 창.
+ *  · 우리 사이트 링크(/... · https://artlink.cc/...)는 라우팅, 바깥 사이트면 새 창.
  *  · 우상단에 작은 'AD' 라벨(광고임을 표시 — 블라인드의 AdChoice 자리).
  * 활성 배너가 없으면 아무것도 그리지 않는다.
  */
@@ -28,12 +28,8 @@ export default function AdSlot({ className = '' }: { className?: string }) {
   if (!ad) return null;
 
   const go = () => {
-    if (!ad.linkUrl) return;
-    // `/...` 는 앱 안 라우팅, http(s) 는 새 창. 그 밖(`javascript:` 등)은 safeHttpUrl 이 null 이라 아무 일도 없다
-    const safe = safeHttpUrl(ad.linkUrl);
-    if (!safe) return;
-    if (safe.startsWith('/')) navigate(safe);
-    else window.open(safe, '_blank', 'noopener');
+    // 우리 사이트 주소(`/...` · https://artlink.cc/…)는 앱 안 라우팅, 바깥 http(s) 는 새 창. `javascript:` 등은 아무 일도 없다 — lib/siteLink.ts
+    if (ad.linkUrl) openSiteLink(ad.linkUrl, navigate);
   };
 
   return (

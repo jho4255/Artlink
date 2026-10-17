@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
+import { openSiteLink } from '@/lib/siteLink';
 import { bandColor, bandLum, colorLum, containRect, loadHeroAnalysis, pickTone, sampleBox, TONE_CLASS, type HeroAnalysis, type TextTone } from '@/lib/heroTone';
 import type { HeroSlide } from '@/types';
 
@@ -281,11 +282,8 @@ export default function HeroSlider() {
 
   const handleLink = (url?: string) => {
     if (!url || dragState.current.didDrag) return;
-    if (url.startsWith('http')) {
-      window.open(url, '_blank');
-    } else {
-      navigate(url);
-    }
+    // 우리 사이트 주소(https://artlink.cc/… 포함)는 같은 탭, 바깥 사이트만 새 창 — lib/siteLink.ts
+    openSiteLink(url, navigate);
   };
 
   const currentBg = bandColor(currentSlide ? analyses[currentSlide.imageUrl] : null);

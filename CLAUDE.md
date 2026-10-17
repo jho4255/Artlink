@@ -1486,6 +1486,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ **적을 게 없는 캡션 줄은 그리지 않는다** — 배너에 글씨가 다 들어 있어 제목을 공백으로 둔 한 장짜리(2026-10 실서버)에서
       사진 아래에 빈 색 띠만 남았다. 제목·설명(공백 제외)·바로가기·넘길 슬라이드 중 하나라도 있을 때만 그린다.
       회귀: `backend/src/routes/__tests__/hero.test.ts`.
+    - ⚠️⚠️ **[자세히 보기]·광고 링크가 우리 사이트면 같은 탭** (2026-10-17, `lib/siteLink.ts` `openSiteLink`). 관리자는 우리 화면도 `https://artlink.cc/exhibitions` 처럼
+      **전체 주소**로 적는다(실서버 배너가 그랬다). 예전엔 `http` 로 시작하면 새 창이라 ① 휴대폰에서 뒤로가기로 홈에 못 돌아왔고 ② `window.open` 이 이 탭의 sessionStorage 를
+      **복사**해 가서 비회원 둘러보기(규칙 64)의 방문 번호·화면 순번이 두 탭에서 겹쳤다 — 원래 탭으로 돌아와 본 화면을 서버가 버렸다(크롬·WebKit 실측:
+      홈 → 새 탭 모집공고 → 닫고 작가 → 갤러리 가 '홈 → 모집공고 → 갤러리' 로 남았다). 우리 주소 = 지금 열린 주소 · `SITE_HOSTS`(artlink.cc · www · onrender).
+      우리 사이트라도 **파일**(`/uploads/`·`/terms/`·`/artlook/`·확장자)은 새 창. 바깥 사이트는 `noopener` 로. 관리자 링크를 여는 곳을 새로 만들면 이걸 쓸 것.
+      회귀: `siteLink.test.ts`(9 — 판정 + 두 화면 소스 가드).
 
 49. **작가 홈페이지 v2 — 작품이 먼저, 이름이 마스트헤드, `/@핸들`** (2026-09-16, 사용자 결정. 실서버 작가 31명 센서스 뒤)
     작가들이 공개 페이지를 자기 홈페이지처럼 쓰고 싶어 하는데, v1 은 ArtLink 'HomePage' 라벨 → 작은 이름 → 약력 →
@@ -2521,7 +2527,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **Hero Section (슬라이더)**: 홈 중간(ArtWorks 아래).
     - Admin이 [사진, 제목, 링크 URL] 등록/수정/삭제 가능.
     - 3초 자동 슬라이드. **사용자가 수동 조작(슬라이드) 시 해당 시점부터 타이머 리셋 후 3초 뒤 다시 자동 시작.**
-    - [바로가기] 버튼 우측 하단 배치: 외부 URL은 브라우저 새 창, 내부 URL은 라우팅 이동.
+    - [자세히 보기] 버튼(사진 오른쪽 위): 바깥 사이트는 새 창, **우리 사이트는 전체 주소(`https://artlink.cc/…`)로 적어도 같은 탭에서 이동**(규칙 48, `lib/siteLink.ts`).
 - ⏸ **혜택(`/benefits`)은 당분간 비활성화**(2026-08-27) — Navbar 메뉴에서 빼고 라우트는 **홈으로 리다이렉트**(404 아님. 기존 링크·북마크·검색결과가 죽지 않게).
     `BenefitsPage.tsx`·백엔드 `/api/benefits`·Admin 마이페이지 '혜택 관리' 탭은 **그대로 살아 있다**(데이터도 유지). 다시 켤 땐 `App.tsx`의 주석 처리된 import·라우트, `Navbar.tsx` navLinks, `e2e/tests/13-admin-content.spec.ts`의 `test.skip` 셋을 되돌리면 된다.
 
