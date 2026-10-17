@@ -125,7 +125,7 @@ describe('소스 가드', () => {
     expect(src).toMatch(/Welcome to <Brand \/>\n/);
     expect(src).not.toMatch(/Welcome to <Brand \/>!/);
     expect(src).toContain('갤러리 회원은 2027년 6월까지 아트링크의 모든 서비스를');
-    for (const t of ['원하는 형식의 포트폴리오를 쉽고 빠르게.', '나만의 홈페이지를 꾸며보세요.', '공모 간편지원', '클릭 한번으로 원하는 공모 지원 끝.',
+    for (const t of ['포트폴리오 자동제작', '원하는 형식의 포트폴리오를 쉽고 빠르게.', '나만의 홈페이지를 꾸며보세요.', '공모 간편지원', '클릭 한번으로 원하는 공모 지원 끝.',
       '공모 운영 자동화', '지원 접수부터 출품 자료·정산까지, 클릭 한번으로.', '갤러리 홈페이지', '갤러리 홈페이지를 꾸미고 소개해주세요.', '전시 홍보', '진행중인 전시를 홍보해보세요.'])
       expect(src).toContain(t);
     expect(read('pages/SignupPage.tsx')).toMatch(/params\.get\('role'\)/);

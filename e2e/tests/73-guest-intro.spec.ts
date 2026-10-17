@@ -54,7 +54,7 @@ test.describe('기능', () => {
     await expect(intro(page).getByRole('heading')).toHaveText('Welcome to ArtLink');
     await expect(intro(page)).toHaveAttribute('data-side', 'artist');
     await expect(intro(page).locator('li')).toHaveCount(4);
-    for (const t of ['ArtLook', '포트폴리오 PDF', '작가 홈페이지', '공모 간편지원']) await expect(intro(page)).toContainText(t);
+    for (const t of ['ArtLook', '포트폴리오 자동제작', '작가 홈페이지', '공모 간편지원']) await expect(intro(page)).toContainText(t);
     await expect(intro(page)).toContainText('작가 회원은 아트링크의 모든 서비스를 무료로 이용해요.');
     // 칸 그림이 다 받아졌다
     await expect.poll(() => intro(page).locator('img').evaluateAll((ims) => ims.every((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0))).toBe(true);

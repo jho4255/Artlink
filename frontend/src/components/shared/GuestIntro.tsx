@@ -34,7 +34,7 @@ const SIDES: Record<IntroSide, { label: string; lead: React.ReactNode; items: It
     lead: <>작가 회원은 아트링크의 모든 서비스를 <b className="font-semibold text-accent">무료</b>로 이용해요.</>,
     items: [
       { key: 'artlook', title: ARTLOOK_TITLE, text: ARTLOOK_TEXT, src: '/intro/artlook.webp' },
-      { key: 'portfolio', title: '포트폴리오 PDF', text: '원하는 형식의 포트폴리오를 쉽고 빠르게.', src: '/intro/portfolio.webp' },
+      { key: 'portfolio', title: '포트폴리오 자동제작', text: '원하는 형식의 포트폴리오를 쉽고 빠르게.', src: '/intro/portfolio.webp' },
       { key: 'homepage', title: '작가 홈페이지', text: '나만의 홈페이지를 꾸며보세요.', src: '/intro/homepage.webp', top: true },
       { key: 'apply', title: '공모 간편지원', text: '클릭 한번으로 원하는 공모 지원 끝.', src: '/intro/apply.webp', top: true },
     ],

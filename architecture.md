@@ -2763,7 +2763,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 ## 소개 팝업 'Welcome to ArtLink' (2026-10-18)
 - 계기: 광고로 들어온 비회원이 공모 상세 한 화면만 보고 나간다(비회원 둘러보기 통계). 아트링크로 무엇을 할 수 있는지를 첫 화면에서 보여 준다. 같은 날 회원·갤러리로 넓혔다.
 - `frontend/src/lib/guestIntro.ts`(언제·누구에게) + `components/shared/GuestIntro.tsx`(화면, `Layout` 에 한 번). [작가 | 갤러리] 바꾸기 —
-  작가 네 칸(ArtLook · 포트폴리오 PDF · 작가 홈페이지 · 공모 간편지원) / 갤러리 네 칸(ArtLook · 공모 운영 자동화 · 갤러리 홈페이지 · 전시 홍보).
+  작가 네 칸(ArtLook · 포트폴리오 자동제작 · 작가 홈페이지 · 공모 간편지원) / 갤러리 네 칸(ArtLook · 공모 운영 자동화 · 갤러리 홈페이지 · 전시 홍보).
 - 로그인 안 함: 방문(탭)마다 한 번(sessionStorage `artlink-intro-guest-answered` — 닫으면 그 탭에선 새로고침해도 안 뜨고 새 탭·다음 방문엔 다시) · 로그인한 적 있는 브라우저도 포함 · 그 브라우저에서 누가 [다시 보지 않기] 를 눌렀으면 제외.
   [무료로 시작하기] → `/signup?role=ARTIST|GALLERY`(보고 있던 쪽). 작가 쪽에서 공모 상세로부터 떠나면 `post_login_redirect` 에 그 공모를 적는다(없을 때만).
 - 회원(관리자 제외): 하루 첫 방문에 한 번(`artlink-intro-member-day`) · [다시 보지 않기] → `artlink-intro-hidden[userId]`. 홈페이지 완성 팝업(`homepage-nudge`)이 뜨는 날엔 양보.
