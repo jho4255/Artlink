@@ -2772,3 +2772,30 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 그림은 **실제 화면**(사용자 결정): 샘플 작가·샘플 갤러리·샘플 전시(`backend/scripts/seed-intro-sample.ts`, 사진은 `scratchpad/guest-intro/sample-media.mjs`)·로컬 데모 갤러리 공모로 찍어
   (`capture.mjs` → `compose.mjs` → `make-assets.py`) `public/intro/` 600×450 webp 여덟(합 약 80KB).
 - 확인: `scratchpad/guest-intro/walk.mjs`·`member-check.mjs`·`preview-check.mjs`(크롬·WebKit) · 회귀 `guestIntro.test.ts`(22) · e2e `73-guest-intro.spec.ts`(17, 기능 + 신뢰성).
+
+## 작가 홈페이지 작품 창 — [사진 | 벽에 걸어 보기] (2026-10-22)
+- 계기: 미미오(mimio.life) 작가 페이지의 [See More] 창은 작품을 회색 벽에 그림자와 함께 걸어 보여 준다(캡션 두 줄 · 공유 · 썸네일 줄). 우리 라이트박스는 검은 바탕에 사진뿐이었다.
+  우리에겐 같은 일을 더 잘하는 ArtLook 엔진이 있어 그걸로 채웠다(CLAUDE.md 규칙 74, 분석·계획 `scratchpad/wall-view/PLAN.md`).
+- 화면 `frontend/src/components/shared/ArtworkViewer.tsx`(작품 전용 — 갤러리·전시 사진의 `ImageLightbox` 는 그대로) ← `PortfolioPage`(`?work=` · 좋아요 · 공유 주소 `artistUrl(user, id)`).
+  위 [몇 번째 · 보기 방식 · (PC) 좋아요·[공유] · 닫기] / 작품(원본, contain, 모서리 그대로) + **바로 아래 가운데 캡션 두 줄** / (휴대폰) 좋아요·[공유] / PC 썸네일 줄(t800, 정사각 + contain).
+  `role="dialog" aria-modal`, 불투명 바탕, Esc·←/→·손가락 넘기기. 캡션은 처음엔 왼쪽 아래 구석이었다가 "안 보인다"는 확인 뒤 작품 아래로 옮겼다(2026-10-22).
+- 벽 그림 `hooks/useWallView.ts` → 화면 밖 iframe `/artlook/index.html?view=1` → `public/artlook/view.js`(ui.js 대신, 그리기 전용).
+  말: `artlook:render {req, blob, ss}`(초안 1 · 완성 2) → `artlook:rendered {req, blob(JPEG 0.95), ratio}` / `artlook:render-failed` / `artlook:view-ready` / `artlook:view-unsupported {reason}`(WebGL 을 잃으면 `gl-lost` → 새 iframe).
+  바깥은 `lib/wallView.ts readWallMessage`(같은 출처 · 그 iframe 의 창에서 온 것만).
+- 그리는 값(2026-10-23 사용자 지정): `charcoal` 장면을 복사(목록은 그대로) · 오크 플로터(`floater-oak`, 결 텍스처 한 장) · 매트 넓게(10%, 미색) · 조명 없음 · 워터마크 없음(`state.watermark=false`) · 실치수 없이(30호 가정) ·
+  합성 배율 완성 **2**(ArtLook 탭 저장과 같은 화질 — 1·0.6 으로 낮췄더니 "아트룩보다 퀄리티가 개쓰레기") · 초안 1 · 작품 사진은 `capToCanvas`(2,600px) ·
+  출력 비율은 작품 방향(4:5·9:16·1:1·5:4·16:9 — 엇갈리면 잘린다) · 작품 사진 긴 변 2,200px 상한.
+- 순서·보관(`lib/wallView.ts`): 지금 작품 초안(t800) → 원본(0.45초 머문 뒤) → 이웃 초안(넘기기 0.7초 멈춘 뒤, 데이터 절약·느린 회선 제외). 한 번에 하나, 일 사이 160ms.
+  그린 그림은 `WallCache`(작품당 가장 좋은 한 장, 12장, 버릴 때 objectURL 해제). 못 그린 작품은 이번 방문에서 다시 안 그린다([다시 시도]).
+  ⚠️ 같은 출처 iframe 은 같은 스레드라 합성 동안 바깥도 멈춘다 — 그래서 위 순서·틈을 둔다.
+- 첫 그림을 빨리(2026-10-23): 작품 사진은 엔진 준비와 **함께** 받고(`useWallView` `source`), view.js 는 준비 신호 전에 벽 사진 해독·광원 측정·벽 텍스처 올리기를 미리 치른다(`warmUp`).
+  [벽에 걸어 보기]에 마우스를 올리거나 누르기 시작하면(`warm`) 엔진을 띄우고 초안 사진을 받아 둔다. 헤드리스 첫 초안 1.15 → 0.8초, 완성(배율 2) 약 2.2초.
+- WebGL 을 잃으면(휴대폰 메모리 등) 워프가 투명한 판을 돌려줘 작품 없이 그림자만 남는다 — view.js 가 그린 뒤 `ArtLookScene.glLost()` 를 보고 그 그림을 버리고 `gl-lost` 로 접는다.
+  훅은 새 iframe 으로 다시 그린다(탭당 2번).
+- 엔진 변경(합성 규칙은 그대로): index.html `VIEW_ONLY` · `.view-only body{display:none}` · `drawWatermark` 가드 · `<script src="view.js?v=__ARTLOOK_BUILD__">` ·
+  scene.js `glLost` 내보내기 / ui.js 첫 줄 반환.
+  `lib/imageFetch.ts` 에 `fetchImageOnce`(쥐지 않는 받기).
+- 실측(헤드리스, GPU 없음): 합성 배율 1 = 0.2~0.6초 · 2 = 1.2~2.3초(캔버스 랩에선 화면 차이가 없었지만 액자·매트는 모서리·결 차이가 드러나 완성은 2로 그린다 — 오크 플로터 완성 약 0.7초) · 캔버스 옆면 없음은 약 절반. 실서버 복제본 작품으로 첫 벽 초안 약 1.4초 · 원본 약 2.3초 ·
+  미리 그린 다음 작품 0.1초. 받는 것: 엔진 파일(index·scene·ui·view·목록 둘) + 벽 사진 1장(차콜 1.7MB) + 오크 결 텍스처(0.3MB) + 작품 t800·원본 — 사진만 보면 0.
+- 확인: `scratchpad/wall-view/walk.mjs`(크롬+WebKit 6화면 · `NOGL=1`) · `extremes.mjs` · `engine-probe.mjs` · `timing.mjs`·`warm.mjs`(첫 그림 시간) · `quality.mjs`(ArtLook 저장과 화질 대조) ·
+  회귀 `wallView.test.ts`(32) · e2e `74-wall-view.spec.ts`(8, 2회 반복 16/16).

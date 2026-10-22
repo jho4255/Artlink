@@ -5,13 +5,13 @@ import { AnimatePresence } from 'framer-motion';
 import { Edit3, MessageCircle, QrCode, Share2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { groupBySeries, museumCaption, priceLabel } from '@/lib/artwork';
+import { groupBySeries } from '@/lib/artwork';
 import { Heart } from 'lucide-react';
 import { artistUrl } from '@/lib/handle';
 import { resolveHomepageTheme, themeCssVars } from '@/lib/homepageTheme';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { displayName } from '@/lib/utils';
-import ImageLightbox from '@/components/shared/ImageLightbox';
+import ArtworkViewer from '@/components/shared/ArtworkViewer';
 import HomepageView from '@/components/shared/HomepageView';
 import FollowButton from '@/components/shared/FollowButton';
 import Guestbook from '@/components/shared/Guestbook';
@@ -155,13 +155,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
 
   /* ⚠️ 아래 훅들은 반드시 early return **위**에 있어야 한다. 2026-09-19 배포에서 로딩 분기 아래에 두었다가
      포트폴리오가 도착하는 순간 훅 개수가 늘어 React #310 으로 작가 홈페이지 전체가 '화면을 불러오지 못했어요'가 됐다(2026-09-21 수정). */
-  const captionTexts = useMemo(() => ordered.map((i) => {
-    const c = museumCaption(i);
-    // 가격은 작가가 홈페이지 가격을 켰을 때만 서버가 싣는다(판매완료·비매 제외) — 크게 보기에도 같은 줄로
-    const parts = [c?.head, c?.medium, c?.size, priceLabel(i)].filter(Boolean);
-    return parts.length ? parts.join(' / ') : null;
-  }), [ordered]);
-  /* 라이트박스 좋아요(2026-09-19) — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다.
+  /* 작품 보기 좋아요(2026-09-19) — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다.
      공개(showInExplore) 작품만 서버가 받는다. 상태는 응답의 likedImageIds + _count.likes 로 시작해 로컬로 갱신한다. */
   const [likeState, setLikeState] = useState<Record<number, { liked: boolean; count: number }>>({});
   useEffect(() => {
@@ -185,7 +179,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
       likeMutation.mutate(img.id);
     };
     return (
-      <button onClick={onClick} aria-label={st.liked ? '좋아요 취소' : '좋아요'} className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-sm text-white backdrop-blur hover:bg-white/25">
+      <button type="button" onClick={onClick} aria-label={st.liked ? '좋아요 취소' : '좋아요'} className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white/15 px-3.5 text-sm text-white backdrop-blur hover:bg-white/25">
         <Heart size={16} className={st.liked ? 'fill-accent text-accent' : ''} />
         {st.count > 0 && <span>{st.count}</span>}
       </button>
@@ -195,7 +189,6 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
   if (error || !portfolio) return <div className="text-center py-16 text-gray-400">포트폴리오를 찾을 수 없습니다.</div>;
 
 
-  const imageUrls = ordered.map(i => i.url);
   const artistName = displayName(portfolio.user);
   // 주인 판정은 **로그인한 사람의 id 와 페이지 주인의 id 비교** 하나뿐이다(핸들 주소라 URL 의 숫자를 못 믿는다).
   const isOwner = !!viewer && viewer.id === portfolio.user.id;
@@ -310,14 +303,15 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
       )}
       {qrOpen && <QrModal url={pageUrl} title={artistName} onClose={() => setQrOpen(false)} />}
 
-      {/* Lightbox — 넘기면 ?work= 도 따라간다 */}
+      {/* 작품 보기 — 넘기면 ?work= 도 따라간다. [사진 | 벽에 걸어 보기] 는 그 안에서(규칙 74) */}
       <AnimatePresence>
         {lightboxOpen && (
-          <ImageLightbox
-            images={imageUrls}
-            captions={captionTexts}
-            renderExtra={renderLike}
+          <ArtworkViewer
+            works={ordered}
             initialIndex={lightboxIndex}
+            artistName={artistName}
+            renderLike={renderLike}
+            shareUrl={(i) => artistUrl(portfolio.user, ordered[i]?.id)}
             onIndexChange={(i) => syncWorkParam(i)}
             onClose={() => { setLightboxOpen(false); syncWorkParam(null); }}
           />

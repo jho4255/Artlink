@@ -207,6 +207,11 @@
   }
 
   const supported = () => !!initGL();
+  /**
+   * WebGL 을 잃었나 — 메모리가 모자란 휴대폰 등에서 브라우저가 컨텍스트를 거둬 간다. 그러면 워프가 **투명한 판**을
+   * 돌려줘 작품 없이 그림자만 남은 그림이 나온다(에러 없이). 작가 홈페이지 작품 창(view.js)이 그리고 나서 보고, 잃었으면 버리고 새로 띄운다.
+   */
+  const glLost = () => !!(_gl && typeof _gl.isContextLost === 'function' && _gl.isContextLost());
 
   /**
    * 판(insert)을 quad 에 원근 워프해 W×H 투명 캔버스로 돌려준다.
@@ -1415,7 +1420,7 @@
 
   global.ArtLookScene = {
     parseSizeCm,
-    supported, warp, buildInsert, composeScene, loadScenes, ensureScene, sceneReady, sceneLightModel,
+    supported, glLost, warp, buildInsert, composeScene, loadScenes, ensureScene, sceneReady, sceneLightModel,
     homographyUnitToQuad, inv3, quadSize, fitScene, mapQuad, placeInRegion,
   };
 })(window);

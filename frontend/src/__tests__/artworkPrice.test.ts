@@ -97,7 +97,8 @@ describe('PDF 캡션 — [작품] 탭 "작품 가격 싣기"', () => {
 describe('공개 응답에 가격이 새지 않게 — 화면이 쓰는 자리', () => {
   it('홈페이지 캡션·크게 보기는 priceLabel 을 거친다(판매완료·비매를 한 번 더 거른다)', () => {
     expect(read('frontend/src/components/shared/HomepageView.tsx')).toMatch(/const price = priceLabel\(img\)/);
-    expect(read('frontend/src/pages/PortfolioPage.tsx')).toMatch(/priceLabel\(i\)/);
+    // 크게 보기는 2026-10-22 부터 작품 전용 창(ArtworkViewer — [사진 | 벽에 걸어 보기], 규칙 74)이 캡션을 만든다
+    expect(read('frontend/src/components/shared/ArtworkViewer.tsx')).toMatch(/priceLabel\(work\)/);
   });
   it('편집 화면 미리보기는 저장 전 [가격 보이기] 를 따른다 — 꺼 두면 가격을 뺀 작품으로 그린다', () => {
     const src = read('frontend/src/components/homepage-edit/HomepageEditor.tsx');

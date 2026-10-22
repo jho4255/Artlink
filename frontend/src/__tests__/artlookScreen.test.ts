@@ -171,6 +171,7 @@ describe('바깥(마이페이지) · 캐시', () => {
   it('주소에 빌드 ID — 1년 굳은 옛 사본(scene.js 9/4 판)을 건너뛴다', () => {
     expect(html).toContain('<script src="scene.js?v=__ARTLOOK_BUILD__"></script>');
     expect(html).toContain('<script src="ui.js?v=__ARTLOOK_BUILD__"></script>');
+    expect(html).toContain('<script src="view.js?v=__ARTLOOK_BUILD__"></script>');
     expect(html).toContain("fetch('frames/photo/frames.json?v='+BUILD)");
     expect(ui).toContain("ArtLookScene.loadScenes('scenes/scenes.json?v='+BUILD");
     const vite = readFileSync(resolve(__dirname, '../../vite.config.ts'), 'utf-8');

@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2900+ tests** (2026-10-18): Backend 1649 (supertest, `artlink_test` DB 순차), Frontend 1251 (jsdom) · E2E 379(+ `72` 10개 · `73` 17개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2900+ tests** (2026-10-23): Backend 1649 (supertest, `artlink_test` DB 순차), Frontend 1283 (jsdom) · E2E 379(+ `72` 10개 · `73` 17개 · `74` 8개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -1543,10 +1543,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ React Router 는 `/@:handle` 을 못 가른다(세그먼트 안 접두). `App.tsx` 의 `HandleRoute` 가 `/:handleSeg` 를 받아
       `@` 를 확인한다. 서버 SEO 라우트는 Express 가 `/@:handle` 을 그대로 받는다(`index.ts`).
       주인 판정은 URL 이 아니라 **응답의 `user.id`** 로(핸들 주소엔 숫자가 없다). 링크는 `artistPath(user)`.
-    - **작품 고유 주소 `?work=<id>`**: 라이트박스로 열고, 넘기면 주소가 따라간다(replace). 라이트박스에 **캡션(`museumCaption`)과 좋아요**가 있다
+    - **작품 고유 주소 `?work=<id>`**: 작품 창으로 열고, 넘기면 주소가 따라간다(replace). 창에 **캡션(`museumCaption`)과 좋아요**가 있다
       (2026-09-19 — 같은 작품을 [작가] 탭에서 열면 눌리는데 홈페이지에선 못 눌렀다). 좋아요 상태는 `GET /portfolio/:id` 의 `likedImageIds`(optionalAuth) + `_count.likes`. 서버 `seoMeta` 가 그 작품을
-      og:image·제목으로 만든다(`parseSeoWork`). ⚠️ `ImageLightbox` 의 `onIndexChange` 는 **ref + index 의존성**으로만 부른다 —
+      og:image·제목으로 만든다(`parseSeoWork`). ⚠️ 작품 창의 `onIndexChange` 는 **ref + index 의존성**으로만 부른다 —
       부모가 매 렌더 새 콜백을 주면 "알림 → setState → 새 콜백 → 알림" 무한 루프가 난다(실제로 났다). 부모의 `setSearchParams` 는 함수형.
+      2026-10-22 부터 작품 창은 `ImageLightbox` 가 아니라 작품 전용 **`ArtworkViewer`**([사진 | 벽에 걸어 보기] — 규칙 74). 갤러리·전시 사진은 그대로 `ImageLightbox`.
     - **비로그인 방문자에게도 이웃·메시지·방명록 버튼을 보여준다.** 누르면 `setPostLoginRedirect` 로 이 페이지를 기억하고 로그인으로.
       v1 은 버튼을 숨겨 뭘 할 수 있는지조차 몰랐다. 공유(Web Share → 클립보드)·QR(`QrModal`, `qrcode`) 추가.
     - 편집: [홈페이지] 편집 화면 맨 위 `HomepageStylePicker`(배경·글자·강조·글꼴·대표작, PDF 피커와 같은 추천 규칙),
@@ -2390,6 +2391,55 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e **`73-guest-intro.spec.ts`(17 — 기능 A~H + 신뢰성 R1~R8: 빠른 화면 이동에도 하나 · 그림 실패·지연 · 저장소 막힘 · 스크롤 잠금 풀림 · 탭 셋 · 열고 닫기 10번 · 다른 창이 떠 있으면 기다림,
       모든 테스트에서 페이지 오류 0)**. ⚠️ 그 스펙은 `Navigator.prototype.webdriver` 를 false 로 바꿔 연다 — 다른 스펙에선 안 뜬다. 2회 반복 34/34 · 61·68·70 회귀 통과(2026-10-18).
       ⚠️ 키가 낮은 화면(≤700px, 아이폰 SE)에선 그림 칸 2:1·간격을 줄인다 — 제목·바꾸기 줄이 붙으며 창 안 스크롤이 생기고 갤러리 쪽 [무료로 시작하기]가 화면 밖으로 밀렸다(walk.mjs 가 양쪽을 잰다).
+
+74. **작가 홈페이지 작품 창 — [사진 | 벽에 걸어 보기]** (2026-10-22, 사용자 요청 — 미미오(mimio.life) 작가 페이지의 [See More] 창(회색 벽 + 그림자)과 견줘 모자란 것을 ArtLook 으로.
+    `components/shared/ArtworkViewer.tsx` · `hooks/useWallView.ts` · `lib/wallView.ts` · `public/artlook/view.js`. 분석·계획 `scratchpad/wall-view/PLAN.md`)
+    - 작품을 누르면 작품 전용 창 — 위 [몇 번째 · 보기 방식 · (PC) 좋아요·공유 · 닫기] / 작품 + **바로 아래 가운데 캡션 두 줄**(`작품명, 연도` / `재료 · 크기 · 가격`) /
+      (휴대폰) 맨 아래 좋아요 · **[공유]**(그 작품 주소 `?work=`) / PC 만 **작품 썸네일 줄**(정사각 칸 + contain).
+      ⚠️⚠️ **캡션을 화면 구석으로 되돌리지 말 것** — 처음엔 왼쪽 아래 구석이라 작품에서 멀어 "작품 정보가 안 보인다"고 했다(2026-10-22 로컬 확인, 미미오도 작품 바로 아래).
+      작품과 캡션을 한 덩어리(flex column)로 가운데 두고, 캡션이 있으면 작품 높이에서 그 자리를 뺀다(`max-h-[calc(100%-5rem)]`). 정보가 하나도 없는 작품(실서버 82%)은 캡션 없이 작품만.
+      좋아요·공유는 **한 벌만** 그리고 자리만 바꾼다(`useSyncExternalStore` + `(min-width: 768px)`) — CSS 로 두 벌을 숨겨 두면 같은 단추가 둘이 된다.
+      사진은 원본, **모서리를 깎지 않는다**(예전 `rounded-lg`, 규칙 18) · 바탕은 불투명(비치면 휴대폰에서 뒤 페이지의 [로그인]이 [닫기] 밑에 겹쳐 보였다) ·
+      `role="dialog" aria-modal`(소개 팝업(73)이 이 창 위로 뜨지 않고 기다린다). ⚠️ 갤러리·전시 사진의 `ImageLightbox` 는 그대로 — 토글·캡션·공유는 작품에만 뜻이 있다.
+    - **벽 보기는 ArtLook 엔진이 그린다 — 엔진은 고치지 않는다.** 작품 창이 화면 밖 iframe(`/artlook/index.html?view=1`)을 띄우면 index.html 이 화면(ui.js) 대신
+      **`view.js`**(그리기 전용)를 쓴다 — 작품 사진(Blob)을 postMessage 로 받아 `compose()` 한 JPEG(0.95)를 돌려준다. 엔진 쪽 변경은 다섯뿐: `VIEW_ONLY` 상수 ·
+      `<html class="view-only">` 가 body 를 감춤(글꼴·칩을 받지 않게) · `drawWatermark` 의 `state.watermark===false` 가드 · `<script src="view.js?v=…">`(ui.js 다음, 평소엔 첫 줄에서 끝) ·
+      scene.js 가 `glLost()`(WebGL 을 잃었나)를 내보낸다. ui.js 는 `VIEW_ONLY` 면 첫 줄에서 돌아간다(ArtLook 탭은 그대로).
+    - 그리는 값: **차콜 벽**(scenes.json `charcoal` 을 **복사해** 쓴다, 목록은 안 바꾼다) · **오크 플로터**(`floater-oak` — 엔진이 그리는 액자, 결 텍스처 `frames/frame-oak-texture.jpg` 0.3MB.
+      엔진의 `ensureFrameAssets` 로 받고 그 자산까지 와야 준비 신호, view.js 가 `window.onAssetArrived` 를 단다) · **매트 넓게**(10%, 미색 `#f5f2ea` — ArtLook 탭 `MAT_WIDTHS`·`MAT_COLORS` 와 같은 값) · 조명 없음 ·
+      (2026-10-23 사용자 지정 — 처음엔 계획서 추천안대로 흰 회벽·캔버스 랩·매트 없음, 그다음 사진 액자 '오크'를 거쳐 오크 플로터) ·
+      **워터마크 없음**(작가의 홈페이지 안 · 저장 단추 없음 — ArtLook 탭·판매작 홍보는 지금처럼 찍는다) · **실치수 없이**(30호 가정 + 자동 프레이밍 — 늘 보기 좋게 크게) ·
+      처음엔 사진, 벽을 고르면 이 탭에서 기억(`sessionStorage artlink-artwork-view`) · 적용은 작가 홈페이지만([작가] 탭 작품 모달은 그대로).
+    - ⚠️⚠️ **출력 비율은 작품 방향**(view.js `ratioFor`: 세로 4:5 · 아주 세로 9:16 · 정사각 1:1 · 가로 5:4 · 아주 가로 16:9). 엔진의 상한(maxLong)이 '조각 긴 변 ≤ 캔버스 **긴 변**의 70%' 라
+      가로 캔버스에 세로 작품을 걸면 **위아래가 잘린다**(16:9 에 세로 작품으로 실측). 두 긴 변의 축이 같아야 안에 든다.
+    - ⚠️⚠️ **완성은 ArtLook 탭 저장과 같은 화질** — 합성 배율 **2**(엔진 기본) · 작품 사진은 엔진의 `capToCanvas`(2,600px) 그대로 · JPEG 0.95(저장 PNG 와 평균 1~2 단계 차이).
+      초안은 t800 · 배율 1(빨리 보여 주는 용도, 머물면 곧 완성으로 바뀐다). ⚠️ **속도를 이유로 낮추지 말 것** — 완성 1 · 초안 0.6(출력보다 작게 그려 키움)으로 했더니
+      "아트룩에서 보던 것보다 퀄리티가 개쓰레기"라는 지적을 받았다(2026-10-23). 캔버스 랩 때는 배율 1·2 차이가 안 보였는데 **액자·매트는 모서리·결이 세밀해서 드러난다**.
+      확인은 `scratchpad/wall-view/quality.mjs`(작품 창이 실제로 쓰는 길 ↔ 같은 상태의 ArtLook 저장 합성을 픽셀로 맞댄다).
+    - ⚠️⚠️ **같은 출처 iframe 은 이 페이지와 같은 스레드다** — `compose()` 가 도는 동안(헤드리스 초안 0.3초 · 완성 0.7초, 실기기는 더 짧다) 바깥 화면도 멈춘다. 그래서
+      ① 무거운 완성(배율 2)은 그 작품에 머문 뒤에만(④) ② **한 번에 하나만**, 지금 작품부터: 초안(t800) → 원본 → 이웃 초안
+      (`lib/wallView.ts wallJobs`) ③ 일 사이 160ms 틈(초안이 먼저 화면에 오르게 — 안 쉬면 초안이 원본과 함께 떴다) ④ 원본은 그 작품에 **0.45초 머문 뒤**에만(빠르게 넘기면 안 그린다)
+      ⑤ 이웃 미리 그리기는 넘기기를 **0.7초 멈춘 뒤**, 데이터 절약·2G·3G 면 안 한다.
+    - **첫 벽 그림을 빨리** (2026-10-23, "벽에 거는 중이 오래 걸린다") — 첫 장의 절반 이상이 '처음 한 번' 비용과 사진 받기였다(헤드리스 프로필: 첫 compose 0.8초 ↔ 둘째부터 0.36초).
+      ① **작품 사진은 엔진 준비와 함께 받는다**(`useWallView` 의 `source` — 예전엔 엔진이 뜬 뒤에 받기 시작해 0.25초 늦었다) ② view.js 가 준비 신호(`view-ready`) **전에** 벽 사진 해독(`img.decode()`, 다른 스레드) ·
+      광원 측정(`sceneLightModel` — 장면에 담긴다) · 벽 텍스처 올리기(`ArtLookScene.warp`, 장면 합성과 **같은 열쇠 `scene.src`** — 다르면 첫 장에서 또 올린다)를 치른다(`warmUp`, 실측 첫 장 0.6 → 0.3초)
+      ③ [벽에 걸어 보기]에 **마우스를 올리거나 누르기 시작하면**(`wall.warm` — pointerenter·pointerdown·focus) 엔진을 띄우고 지금 작품의 초안 사진을 받아 둔다. 버튼에 손이 간 사람만이라 '사진만 보는 방문자는 안 받는다'는 그대로다
+      ④ '벽에 거는 중…' 글자는 0.35초 뒤에(금방 그려지면 번쩍이지 않게 — 흐린 사진만으로도 그리는 중이다).
+      결과(헤드리스, 실서버 복제본 작품, 같은 조건): 누르고 바로 첫 그림 **1.15 → 0.8초** · 완성(배율 2) 약 2.2초. 하니스 `timing.mjs`(단계별 시각) · `warm.mjs`(미리 치를 것별 효과).
+    - ⚠️ **WebGL 을 잃으면 작품 없이 그림자만 남은 그림이 된다 — 에러 없이**(워프가 투명한 판을 돌려준다. 헤드리스에서 한 번 나왔다, 휴대폰 메모리 부족에서도 난다).
+      view.js 가 그린 뒤 `ArtLookScene.glLost()` 를 보고, 잃었으면 그 그림을 보내지 않고 iframe 을 접는다(`gl-lost`). 바깥(useWallView)은 못 그린 것으로 치지 않고
+      새 iframe 으로 다시 그린다(이 탭에서 2번까지, 그 뒤로는 '벽에 걸지 못했어요').
+    - ⚠️ iframe 은 `display:none` 이 아니라 **화면 밖 1px**(감춘 문서는 일을 미룰 수 있다) · view.js 는 `requestAnimationFrame` 을 쓰지 않는다 · 창이 닫히면 iframe 을 걷는다(그린 그림은
+      모듈에 12장까지 — 다시 열면 바로) · **사진만 보는 방문자는 엔진도 벽 사진도 받지 않는다**.
+    - ⚠️ view.js 는 **localStorage(`artlook:works`·`artlook:prefs`)를 읽지도 쓰지도 않는다** — iframe 이 같은 출처라 방문자의 브라우저에 남의 작품 목록이 남는다.
+    - ⚠️ 작품 사진은 `lib/imageFetch.ts` 의 **`fetchImageOnce`**(R2 직접 → 프록시, 결과를 쥐지 않는다)로 받는다. `fetchImage`(ZIP·PDF 용, 페이지가 끝날 때까지 쥔다)를 쓰면
+      넘겨 본 작품마다 원본이 메모리에 쌓인다. R2 CORS 는 `localhost:5173` 을 허용한다 — 다른 포트에서 로컬로 보면 프록시 길로 돌아가 느리다(동작은 같다).
+    - 안 되는 브라우저: WebGL2 생성자가 없으면 토글을 처음부터 감추고, 엔진이 'webgl'·'frame' 으로 답하면 "이 브라우저에서는 벽에 걸어 볼 수 없어요" + 사진 · 이 탭에선 다시 안 띄운다.
+      벽 목록·사진을 못 받았거나 시간이 넘으면(준비 25초·한 장 20초) "벽에 걸지 못했어요 [다시 시도]"(토글은 남는다).
+    - 회귀: `wallView.test.ts`(32 — 기억·말 읽기·그릴 순서·보관·view.js 비율·합성 배율(완성 2)·오크 플로터·차콜·매트·WebGL 잃음·미리 치르기·캡션 자리·소스 가드) · `artlookScreen.test.ts`(view.js 태그) · `artworkPrice.test.ts`(창의 가격) ·
+      e2e **`74-wall-view.spec.ts`(8 — A 창·캡션(작품 바로 아래 가운데)·공유 한 벌 · B 벽·비율 셋·차콜 벽 색·**가운데가 그 작품 색**(작품이 빠진 그림이 아니다) · C 넘김·닫기·다시 열기 · D 받는 것(차콜 1장·액자 사진 0·오크 결 텍스처 1장) · E WebGL 없음 · F 실패→다시 시도 · G 빠른 넘김 · H PC 썸네일·키보드·공유는 위 줄)** ·
+      하니스 `scratchpad/wall-view/walk.mjs`(크롬+WebKit × 6화면 · 화면에 오른 시각 · `NOGL=1`) · `extremes.mjs`(실제 작품 세로 0.5배·가로 2배) · `engine-probe.mjs`(합성 시간·배율) · `quality.mjs`(ArtLook 저장과 화질 대조).
+      2026-10-22 실측(헤드리스, 실서버 복제본 작품): 첫 벽 초안 약 1.4초 · 원본 약 2.3초 · 미리 그려 둔 다음 작품 0.1초 · 다시 열기 0.1초 → 2026-10-23 첫 초안 0.8초 · 완성(배율 2) 2.2초.
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

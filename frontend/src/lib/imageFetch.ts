@@ -164,6 +164,15 @@ async function fetchImageUncached(url: string): Promise<FetchedImage | null> {
   return null;
 }
 
+/**
+ * 이미지 1장 — **쥐고 있지 않는다**(작가 홈페이지 [벽에 걸어 보기], 2026-10-22, 규칙 74).
+ * `fetchImage` 는 ZIP·PDF 가 같은 이미지를 두 번 받지 않게 결과를 페이지가 끝날 때까지 쥐고 있다. 작품을 넘겨 보는 화면에서
+ * 그걸 쓰면 본 작품마다 원본(평균 1MB)이 메모리에 쌓인다. 받는 길(R2 직접 → 동일출처 프록시, 'reload')은 같다.
+ */
+export function fetchImageOnce(url: string): Promise<FetchedImage | null> {
+  return fetchImageUncached(url).catch(() => null);
+}
+
 // URL → 진행 중이거나 완료된 요청. ZIP과 PDF가 같은 이미지를 두 번 받지 않게 공유한다.
 const cache = new Map<string, Promise<FetchedImage | null>>();
 // blob: URL 캐시 (PDF의 <img src>용). 동일출처라 캔버스 taint가 없다.

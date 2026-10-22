@@ -17,6 +17,8 @@
    ============================================================================= */
 (function(){
 'use strict';
+// 보기 전용(`?view=1` — 작가 홈페이지의 [벽에 걸어 보기], 규칙 74)이면 화면을 만들지 않는다. view.js 가 맡는다
+if(typeof VIEW_ONLY!=='undefined' && VIEW_ONLY) return;
 const $=(id)=>document.getElementById(id);
 const Q=new URLSearchParams(location.search);
 /** 마이페이지 [ArtLook] 탭 안 — 바깥(MyPage ArtLookSection)과 postMessage 로 이야기한다 */
