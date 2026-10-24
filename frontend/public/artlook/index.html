@@ -445,44 +445,20 @@ function frameShadowOnMat(ctx,x,y,w,h,depth,ld){
   ctx.restore();
 }
 
-/** 매트 개구부의 45° 코어 사면.
- *  매트보드는 **두께가 있는 판**이라 개구부가 비스듬히 잘려 단면(코어)이 보인다.
- *  코어는 보통 속살이라 표면보다 밝다. 얇은 선 하나로 대신하면 '종이 한 장'으로 보인다.
- *  ⚠️ 네 면의 밝기가 **광원에 따라 달라야** 한다 — 위 사면은 아래를 향해 그늘지고
- *     아래 사면은 위를 향해 밝다. 균일하게 칠하면 그린 테두리가 된다. */
-// ⚠️⚠️ **`shade()` 의 반환값을 다시 `shade()` 에 넣지 말 것.** 반환이 `rgb(…)` 문자열인데
-//    `hexToRgb` 는 16진수만 파싱한다 → NaN → `NaN|0` = 0 → **새까만 검정**이 된다.
-//    실제로 이 실수로 매트 개구부가 통째로 검게 칠해져 '틈'이 오려 낸 구멍처럼 보였다
-//    (실측 낙차 90%, 골든 48%). 밝기 보정은 **한 번에 더해서** 한 번만 호출한다.
-// 매트 개구부 45° 단면의 폭(매트 폭 대비).
-// ⚠️ **'4겹=1.4mm 니까 2~4%' 로 좁히지 말 것 — 실측하면 더 나빠진다.** 2026-09-01 에
-//   물리 치수로 4.5% 까지 좁혀 봤더니 매트→작품 전이가 오히려 급해져
-//   `bevel_abs` 가 47→71 · 96→120 · 74→93 으로 **골든(33)에서 더 멀어졌고**
-//   `gap_pct` 도 64→69 로 밴드를 벗어났다. 넓은 코어가 매트와 작품 사이의 **완충**을
-//   만들어 준다(실제로도 8겹 매트는 3mm 다). 8.5% 는 실측으로 고른 값이라 유지한다.
-const MAT_BEVEL_FRAC=0.085;
-/** vis = **보이는가**(0~1). 브리핑 EFFECT GATING —
- *  ⚠️⚠️ **1px 미만으로 계산된 폭을 바닥값으로 끌어올리지 말 것.** 예전엔
- *    `Math.max(1.5, matPx*.085)` 라, 물리적으로 안 보일 만큼 얇은 매트에서도 **1.5px 짜리
- *    선**을 그렸다. 그게 곧 브리핑이 금지한 "graphic-looking inner ring" 이다.
- *    폭이 모자라면 **알파를 지워** 조용히 사라지게 한다(면이 못 되면 그리지 않는다). */
-function matOpeningBevel(ctx,ax,ay,aw,ah,bw,matColor,ld,vis){
-  const v=vis==null?1:Math.max(0,Math.min(1,vis));
-  if(!(bw>0.5) || v<=0.02) return;
-  const n=Math.hypot(ld[0],ld[1])||1;
-  const faces=[
-    [0, 1, [ax-bw,ay-bw, ax+aw+bw,ay-bw, ax+aw,ay, ax,ay]],           // 위 사면(아래를 향함)
-    [-1,0, [ax+aw+bw,ay-bw, ax+aw+bw,ay+ah+bw, ax+aw,ay+ah, ax+aw,ay]], // 오른쪽
-    [0,-1, [ax-bw,ay+ah+bw, ax,ay+ah, ax+aw,ay+ah, ax+aw+bw,ay+ah+bw]], // 아래
-    [1, 0, [ax-bw,ay-bw, ax,ay, ax,ay+ah, ax-bw,ay+ah+bw]],           // 왼쪽
-  ];
-  for(const [nx,ny,poly] of faces){
-    const lit=(nx*ld[0]+ny*ld[1])/n;
-    // 코어는 매트 속살이라 밝지만(+.10) 면 방향이 지배한다 —
-    // 위 사면은 아래를 향해 그늘지고(음수) 아래 사면은 위를 향해 밝다.
-    // ⚠️ 실측: 이 낙차가 골든 33 인데 우리는 **150** 이었다 — 흰 매트에서 밝은 링으로 보인다.
-    quadFill(ctx,poly, shade(matColor, (.10 + 0.40*lit)*SYN_EDGE*v));
-  }
+/** 작품이 매트(트레이) 위에 떠서 드리우는 그림자 — 플로터와 **매트가 있는 모든 액자**가 같이 쓴다.
+ *  ⚠️⚠️ **매트에 창을 뚫고 작품을 그 뒤에 넣는 방식(45° 사면 + 작품 위 그림자)은 없앴다** (2026-10-25, 사용자 결정).
+ *    같은 매트인데 사진 액자·슬림·화이트 매트만 그 방식이라, 오크 플로터 옆에 두면 매트→작품 경계가 납작했다
+ *    ("그 부분은 오크 플로터랑 동일하게 해도 되잖아"). 사면 밝기·작품 위 그림자를 두 번 고쳐 봤지만 같아지지 않았다 —
+ *    방식이 다르면 아무리 다듬어도 다르게 보인다. 지금은 매트가 있으면 전부 플로트 마운트다.
+ *  ⚠️ 캐스터를 제자리에 칠하지 말 것 — `ax` 가 소수점이면 fillRect 가장자리 1px 이 안티에일리어싱으로 남아 작품 둘레에
+ *    검은 실선이 된다(실측 플로터 틈 바닥 0.0). **캔버스 밖에 두고 shadowOffset 으로 그림자만 끌어온다**(scene.js 벽 그림자와 같은 해법). */
+function floatMountShadow(ctx,ax,ay,aw,ah,base){
+  const AWAY=ctx.canvas.width*2+aw;
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=Math.max(2,base*.010);
+  ctx.shadowOffsetX=base*.0015+AWAY; ctx.shadowOffsetY=base*.0045;
+  ctx.fillStyle='#000'; ctx.fillRect(ax-AWAY,ay,aw,ah);
+  ctx.restore();
 }
 
 function bandPath(ctx,W,H,m){ ctx.beginPath(); ctx.rect(0,0,W,H);
@@ -553,6 +529,25 @@ const LEVEL=(()=>{ try{ const v=parseInt(new URLSearchParams(location.search).ge
   return (v>=0&&v<=3)? v : 3; }catch(e){ return 3; } })();
 const SYN_DIR=LEVEL>=3 ? _synQ('syndir', 0.85) : 0;
 const SYN_EDGE=LEVEL>=2 ? _synQ('syn', 0.35) : 0;
+// 사진 액자의 안쪽 홈(리베이트)을 매트가 있을 때도 '그늘진 홈'으로 그린다 — `?recess=0` 이면 예전 모습(비교용).
+const PHOTO_RECESS=_synQ('recess', 1);
+// 홈 벽 밝기(앞면 대비) = TROUGH + DIR × (그 벽이 빛을 받는 정도). 어두운 재질은 절대 휘도로 바닥(FLOOR)과
+// 빛 받는 벽의 하한(LIT)을 둔다 — 상대값만 쓰면 월넛·블랙의 홈이 그어 놓은 검은 선이 된다. TINT = 홈을 앞면 색으로 물들이는 세기.
+const RECESS_TROUGH=0.32, RECESS_DIR=0.22, RECESS_DIR_SHADOW=0.16, RECESS_FLOOR=15, RECESS_TINT=0.85;
+/** 액자 안쪽 홈 벽의 밝기 — 그 액자 **앞면 대비 비율**. 사진 액자의 안쪽 홈(`shadeFrameProfile` recess)과
+ *  플로터의 갭(`drawFloaterTray`)이 **이 함수 하나**를 쓴다. litIn = 그 벽(안쪽을 향한다)이 빛을 받는 정도(−1~1).
+ *  ⚠️⚠️ **절대값(고정 색·고정 빛)을 섞지 말 것** (2026-10-25). 예전 플로터 갭은 재질과 무관한 고정 색(#352a1e 등)에
+ *    고정 양의 빛(screen 0.24)을 더해, 같은 빛이 밝은 오크에선 그늘(앞면의 0.53배)·어두운 월넛에선 **앞면보다 밝은 띠**
+ *    (1.9배)가 됐다 — "월넛 플로터와 오크 플로터가 왜 다르냐". 기준은 오크 플로터(사용자가 고른 모습)의 비율이다.
+ *  밝은 재질(흰·아이보리)만 얕게 — 홈 안에서 빛이 서로 튕긴다. 바닥(FLOOR)은 순검정만 막는 절대값이다. */
+function recessWall(litIn, faceLum){
+  const f=Math.max(8, faceLum);
+  // 등진 벽은 기울기를 덜 준다 — 오크 플로터의 원래 모습(가장 어두운 벽 ≈ 앞면의 0.2배)을 지킨다
+  let w=Math.max(RECESS_TROUGH+(litIn>=0?RECESS_DIR:RECESS_DIR_SHADOW)*litIn, RECESS_FLOOR/f);
+  return w+(1-w)*0.5*albedoOf(f);
+}
+/** 앞면 휘도로 본 '밝은 재질'의 정도(0 = 200 이하 · 1 = 245 이상) — 흰 액자·실버·아이보리만 1 에 가깝다 */
+function albedoOf(lum){ return Math.max(0,Math.min(1,(lum-200)/45)); }
 // (개구부 립 `LIP` 은 2026-08-31 제거 — 무엇을 해도 1px 밝은 선이 됐다. shadeFrameProfile 주석 참고)
 const FACE_NORMAL=[[0,-1],[1,0],[0,1],[-1,0]];   // s: 0 위 1 오른쪽 2 아래 3 왼쪽
 
@@ -749,13 +744,15 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   // **리베이트만** 얹는다(중복 음영 = 브리핑 ANTI-COMPOUNDING 위반).
   const rebOnly = !!o.rebateOnly;
   const absReb = !!o.noMat && SYN_EDGE>0;
+  // 매트가 있는 사진 액자의 안쪽 홈(아래 recess 분기 주석)
+  const recess = !!o.recess && !o.noMat && !rebOnly && SYN_EDGE>0;
   // ⚠️ rebateOnly 는 **리베이트를 그리려고** 부르는 것이다. 절대 프로파일이 꺼져 있으면
   //    (SYN_EDGE=0, 매트 있음) 할 일이 없다 — 예전엔 아래 매트용 분기로 떨어져 안쪽 끝을
   //    1.12 배 **밝히고** 있었다(합성을 껐는데 밝아지니 차등 측정의 기준선이 거짓이 된다).
   if(rebOnly && !absReb) return;
   // 곱연산 알파 상한. 절대 프로파일은 자산의 3.6배 램프를 상쇄해야 해서 종전 0.85 로는
   // 모자란다(0.85 = 최대 6.7배 감쇠, 필요한 건 12배). 순검정을 피하는 목적은 유지된다.
-  const AMAX = absReb ? 0.93 : 0.85;
+  const AMAX = (absReb||recess) ? 0.93 : 0.85;
   // ── 살 한 변을 **폴리곤 하나 + 다중 스톱 그라디언트 한 쌍**으로 칠한다 ──────────
   // ⚠️⚠️ **맞닿은 밴드를 여러 개 그리지 말 것.** canvas 는 폴리곤 가장자리를 안티에일리어싱
   //   하므로 공유 경계 픽셀을 양쪽이 **절반씩** 덮는다. 곱연산에서 절반 알파를 두 번 거는
@@ -801,7 +798,7 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     ];
     // ── 리베이트(안쪽 사면) 스톱 ────────────────────────────────────────────────
     const d0=FACE_FRONT+e;
-    if(!rebOnly && !absReb) stops.push([FACE_FRONT, fFront*(1-0.14*SYN_DIR*P)]);   // 앞면↔사면 깎인 각
+    if(!rebOnly && !absReb && !recess) stops.push([FACE_FRONT, fFront*(1-0.14*SYN_DIR*P)]);   // 앞면↔사면 깎인 각
     if(absReb){
       // **절대 프로파일**: 렌더 결과가 골든 모양(1 → REB_TROUGH → REB_TIP)이 되게 한다.
       // ⚠️⚠️ **자산을 밝히지는 않는다** — `min(1, …)` 이라 곱은 언제나 ≤1 이다.
@@ -838,7 +835,11 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
       //   양 끝을 함께 1 로 보내면 **V 모양은 유지한 채 세기만** 줄어, 좁을수록 자연히 사라진다.
       //   골든이 그 증거다 — 살 8px 짜리 case_06 은 실제 사진인데도 골이 0.87(=거의 없음)이다.
       const kd=Math.max(0,Math.min(1,(zone-1.5)/8));
-      const trough=1-(1-REB_TROUGH)*kd;
+      // 밝은 재질(흰 액자·실버)은 홈 안에서도 빛이 서로 튕겨 그늘이 얕다. 깊은 골을 그대로 주면
+      // 골 다음 밝은 끝 1px 이 작품 옆 **흰 테두리**로 뜬다(nomat.py 실측 화이트 42.4 · 얇은 실버 49.8,
+      // 골든 최대 27.4 — 합성을 끈 원본보다 +30~47 이 우리가 만든 몫이었다).
+      const ab=faceAlbedo(A);
+      const trough=1-(1-REB_TROUGH)*kd*(1-0.5*ab);
       const td=FF+(1-FF)*REB_TROUGH_U;
       // ⚠️⚠️ **회복은 '실제로 그려질 골' 기준으로 제한할 것.**
       //   결과는 `min(자산, 목표)` 라, 자산이 목표보다 깊으면 골은 **자산의 것**이 된다.
@@ -859,7 +860,9 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
       //      즉 원인은 밝기가 아니라 **폭**이다. 못 그릴 폭이면 회복을 접고 단조로 둔다.
       const recPx=(1-FF)*(1-REB_TROUGH_U)*[t,r,b,l][s]*(o.scale==null?1:o.scale);
       const krec=Math.max(0,Math.min(1,(recPx-2)/2));
-      const tip0=Math.min(1-(1-REB_TIP)*kd, rt+REB_RISE);
+      // 밝은 재질은 회복(골→개구부의 되밝아짐)도 묶는다 — 자산에 제 골이 깊으면(얇은 실버 0.37)
+      // 거기서 0.30 만큼 되올라온 1~2px 이 작품 옆 흰 선이 된다.
+      const tip0=Math.min(1-(1-REB_TIP)*kd*(1-0.5*ab), rt+REB_RISE*(1-0.7*ab));
       const tip=trough+(tip0-trough)*krec;
       const key=[[FF-ez,1],[FF+ez,1-0.07*kd],[td,trough],[1,tip]];
       // ⚠️ 마디를 **직선으로 잇지 말 것.** 리베이트는 두 평면이 만나는 각이 아니라 **오목한
@@ -879,6 +882,33 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
       for(let i=0;i<=REB_N;i++){
         const d=s0+(1-s0)*i/REB_N;
         stops.push([d, Math.min(1, at(d)*dir/Math.max(0.02, assetRel(A,d,s)))]);
+      }
+    } else if(recess){
+      // 사진 액자 + 매트: 자산의 안쪽 띠(촬영용 회색판이 비친 밝은 띠)를 **그늘진 홈**으로.
+      const ds=assetFaceEnd(A,s);
+      const zone=[t,r,b,l][s]*(1-ds)*(o.scale==null?1:o.scale);
+      const kd=Math.max(0,Math.min(1,(zone-1.5)/8));
+      const litIn=-lit;                         // 홈의 벽은 안쪽을 향한다(플로터 트레이와 같은 규칙)
+      const fc=A.faceRGB, fl=fc ? 0.2126*fc[0]+0.7152*fc[1]+0.0722*fc[2] : (A.base||128);
+      const face=Math.max(8, fl*(1+(s===0?A.tb/2:s===2?-A.tb/2:s===3?A.lr/2:-A.lr/2)));
+      let wall=recessWall(litIn, face);          // 플로터 갭과 같은 규칙
+      wall=1-(1-Math.min(1,wall))*kd;
+      const mid=Math.min(1,(1+wall)/2);
+      const key=[[0,1],[0.30,mid],[0.62,wall],[1,wall*1.05]];
+      const at=(u)=>{
+        if(u<=0) return 1;
+        for(let i=1;i<key.length;i++) if(u<=key[i][0]){
+          const a=key[i-1], bb=key[i];
+          const w=(u-a[0])/Math.max(1e-6,bb[0]-a[0]);
+          return a[1]+(bb[1]-a[1])*(w*w*(3-2*w)); }
+        return key[key.length-1][1];
+      };
+      const s0=Math.max(0.3, ds-0.03);
+      for(let i=stops.length-1;i>=0;i--) if(stops[i][0]>=s0) stops.splice(i,1);
+      for(let i=0;i<=REB_N;i++){
+        const d=s0+(1-s0)*i/REB_N;
+        const u=(d-ds)/Math.max(1e-6,1-ds);
+        stops.push([d, Math.min(1, at(u)/Math.max(0.02, assetRel(A,d,s)))]);
       }
     } else {
       stops.push(
@@ -947,6 +977,16 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     ctx.save();
     ctx.globalCompositeOperation='multiply'; quadFill(ctx,poly,gm);
     ctx.globalCompositeOperation='screen';   quadFill(ctx,poly,gs);
+    // 홈은 **그 재질의 그늘진 면**이다 — 자산의 그 자리는 촬영판이 비쳐 회색이라, 밝기만 낮추면
+    // 차가운 회색 홈이 된다(플로터 홈은 나무색). 색만 앞면 색으로 바꾸고 밝기는 그대로 둔다.
+    if((recess || (absReb && !rebOnly)) && A.faceRGB && RECESS_TINT>0){
+      const ds=assetFaceEnd(A,s), s0=Math.max(0.3, ds-0.03);
+      const g=bandAxis(ctx,W,H,s,l,t,r,b,s0,1);
+      const c=A.faceRGB.join(',');
+      g.addColorStop(0,`rgba(${c},0)`); g.addColorStop(Math.min(1,(ds-s0)/(1-s0)+0.15),`rgba(${c},${RECESS_TINT})`);
+      g.addColorStop(1,`rgba(${c},${RECESS_TINT})`);
+      ctx.globalCompositeOperation='color'; quadFill(ctx,mitreBand(W,H,s,l,t,r,b,s0,1),g);
+    }
     ctx.restore();
   }
 }
@@ -1116,12 +1156,28 @@ Object.entries(MATS).forEach(([k,m])=>{
 });
 // 결 텍스처는 **그 재질의 액자를 고를 때** 받는다(ensureFrameAssets). 예전엔 6장을 전부 받고 한 장마다 다시 그렸다.
 // 못 받아도 `ready` 는 세운다 — drawTextureSide 가 텍스처 없이 그라디언트로 그린다(예전에도 그 폴백이었다).
+/** 이미지 평균색 [r,g,b] — 재질 텍스처의 '앞면 색'(플로터 갭을 그 재질의 그늘로 칠할 때 쓴다) */
+function meanRGB(im){
+  try{
+    const w=Math.max(1,Math.min(64,im.naturalWidth||im.width)), h=Math.max(1,Math.min(64,im.naturalHeight||im.height));
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const x=c.getContext('2d',{willReadFrequently:true}); x.drawImage(im,0,0,w,h);
+    const d=x.getImageData(0,0,w,h).data; const a=[0,0,0];
+    for(let i=0;i<d.length;i+=4){ a[0]+=d[i]; a[1]+=d[i+1]; a[2]+=d[i+2]; }
+    return a.map(v=>Math.round(v/(d.length/4)));
+  }catch(e){ return null; }
+}
+/** 재질 앞면 색 — 텍스처를 받았으면 그 평균, 아니면 base 색 */
+function matFaceRGB(m){
+  if(m && m.faceRGB) return m.faceRGB;
+  const c=hexToRgb((m&&m.base)||'#808080'); return [c.r,c.g,c.b];
+}
 function ensureMatTexture(k){
   const m=MATS[k];
   if(!m || !m.texture || m._requested) return;
   m._requested=true;
   const raw=new Image();
-  raw.onload=()=>{ m.img=gradeImage(raw,k); m.ready=true; assetArrived('mat:'+k); };
+  raw.onload=()=>{ m.img=gradeImage(raw,k); m.faceRGB=meanRGB(m.img); m.ready=true; assetArrived('mat:'+k); };
   raw.onerror=()=>{ m.ready=true; assetArrived('mat:'+k); };
   raw.src=m.texture;
 }
@@ -1305,9 +1361,10 @@ function drawTextureSide(ctx,W,H,b,s,c,ld,rebOwn){
   ctx.restore();
 }
 
-function drawFloaterTray(ctx,W,H,b,g,back,ld,innerOcc){
+function drawFloaterTray(ctx,W,H,b,g,face,ld,innerOcc){
   if(g<=0) return;
   const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1;
+  const fl=0.2126*face[0]+0.7152*face[1]+0.0722*face[2];
   for(let s=0;s<4;s++){
     let grad;
     if(s===0) grad=ctx.createLinearGradient(0,b,0,b+g);
@@ -1319,38 +1376,22 @@ function drawFloaterTray(ctx,W,H,b,g,back,ld,innerOcc){
     //    잘라낸 구멍처럼 보이고, 액자의 '두께'가 통째로 사라진다.
     //    앞(액자 쪽)은 밝고 뒤(작품 쪽)로 갈수록 어두워지는 진짜 오목면으로 그린다.
     // ⚠️⚠️ **면 밝기를 손으로 적지 말 것** — 예전엔 `[.16,.02,-.14,.08]` 고정이라
-    //    ①방의 광원과 무관했고(장면 15개 중 10개가 좌상단이 아니다) ②부호가 물리와
-    //    거꾸로였다. 트레이 안쪽 벽은 **안쪽을 향한 면**이라(윗변이면 아래를 향한다)
-    //    위에서 오는 빛에는 **그늘져야** 하는데 위가 가장 밝게(+.16) 칠해져 있었다.
-    //    실측(framelight.mjs): 좌우 광원을 뒤집어도 좌−우 살 밝기차가 그대로였다
-    //    (샴페인/아이보리 sym=1.00 = 광원 무시, 오크 0.97).
-    // ⚠️ 몰딩과 만나는 첫 픽셀을 가장 밝게 두면 어두운 몰딩 안쪽 끝과 붙어 **밝은 선**이
-    //    된다(실측 오크 플로터 165→198, 3px 짜리 봉우리). 실제로는 몰딩이 트레이의 그
-    //    자리에 그늘을 드리운다 — 살짝만 밝게 한다.
-    grad.addColorStop(0, shade(back, .09));
-    grad.addColorStop(.45, shade(back, .03));
-    // ⚠️ **바닥을 검정에 붙이지 말 것.** 예전엔 여기에 더해 `rgba(0,0,0,.68)` 를
-    //    strokeRect 로 둘러 갭 바닥이 휘도 0~1 까지 떨어졌다(실측 오크 플로터 0.0,
-    //    골든 최저는 살 대비 0.110). 그게 "dark inner gap 이 black outline 으로 보인다"
-    //    의 정체다. 작품이 트레이에 드리우는 접지 그림자는 바로 아래에서 따로 그린다.
-    grad.addColorStop(1, shade(back, -.10));
+    //    ①방의 광원과 무관했고 ②부호가 물리와 거꾸로였다. 트레이 안쪽 벽은 **안쪽을 향한 면**이라
+    //    (윗변이면 아래를 향한다) 위에서 오는 빛에는 **그늘져야** 한다.
+    // ⚠️⚠️ **색과 빛을 절대값으로 두지 말 것** (2026-10-25) — 그 벽은 **그 재질**의 그늘진 면이다.
+    //    예전엔 재질마다 손으로 고른 고정 색(#352a1e·#281c12…)에 고정 양의 빛(screen 0.24)을 더해,
+    //    밝은 오크에선 그늘이던 같은 빛이 어두운 월넛에선 앞면보다 밝은 띠가 됐다(앞면의 0.53배 ↔ 1.9배).
+    //    지금은 재질 앞면 색 × `recessWall`(사진 액자의 안쪽 홈과 같은 규칙) — 곱이라 비율이 재질과 무관하다.
+    // ⚠️ 몰딩과 만나는 첫 픽셀을 가장 밝게 두면 몰딩 안쪽 끝과 붙어 **밝은 선**이 된다 — 살짝만 밝게.
+    const nv=FACE_NORMAL[s], litIn=-(nv[0]*d[0]+nv[1]*d[1])/n;   // 안쪽 벽은 안쪽을 향한다
+    const w=recessWall(litIn, fl);
+    const col=(k)=>`rgb(${face.map(v=>Math.max(0,Math.min(255,Math.round(v*w*k)))).join(',')})`;
+    grad.addColorStop(0, col(1.08));
+    grad.addColorStop(.45, col(1.02));
+    // ⚠️ **바닥을 검정에 붙이지 말 것.** 예전엔 `rgba(0,0,0,.68)` strokeRect 로 갭 바닥이 휘도 0~1 까지
+    //    떨어졌다 — "dark inner gap 이 black outline 으로 보인다" 의 정체. 접지 그림자는 아래에서 따로 그린다.
+    grad.addColorStop(1, col(0.88));
     quadFill(ctx, sideBand(W,H,s,b,b+g), grad);
-  }
-  // ── 방향광은 **오목면 프로파일과 분리해서** 곱/스크린으로 얹는다 ─────────────
-  // ⚠️ 밝기를 `shade(back, light+…)` 처럼 색에 더하면 **양 끝에서 뭉갠다**:
-  //    아이보리 트레이(L≈216)는 밝은 쪽이 255 로 붙어 좌우 차이가 사라지고(sym 1.00),
-  //    월넛 트레이(L≈29)는 어두운 쪽이 0 으로 붙는다(sym 0.75). 둘 다 실측된 값이다.
-  //    곱/스크린은 **비율**이라 트레이 색과 무관하게 같은 방향성을 준다.
-  for(let s=0;s<4;s++){
-    const nv=FACE_NORMAL[s], lit=-(nv[0]*d[0]+nv[1]*d[1])/n;   // 안쪽 벽은 안쪽을 향한다
-    if(Math.abs(lit)<0.02) continue;
-    const poly=sideBand(W,H,s,b,b+g);
-    ctx.save();
-    if(lit<0){ ctx.globalCompositeOperation='multiply';
-      quadFill(ctx,poly,`rgba(22,18,14,${(0.30*-lit).toFixed(3)})`); }
-    else { ctx.globalCompositeOperation='screen';
-      quadFill(ctx,poly,`rgba(255,248,236,${(0.24*lit).toFixed(3)})`); }
-    ctx.restore();
   }
   // 갭 안쪽 끝(작품이 얹히는 자리)의 폐색 — **선이 아니라 좁은 그라디언트**로.
   // ⚠️⚠️ **매트가 없으면 그리지 말 것.** 매트가 있으면 이 폐색은 트레이↔매트 이음매에
@@ -1467,6 +1508,13 @@ function measureAssetLight(im, meta){
     const left=mean(0,cy0,ix,cy1), right=mean(ix2+1,cy0,W,cy1);
     if(![top,bot,left,right].every(v=>isFinite(v)&&v>1)) return ASSET_NEUTRAL;
     const base=(top+bot+left+right)/4;
+    // 앞면(살 바깥 45%)의 평균 색 — 안쪽 홈을 그 재질 색으로 물들일 때 쓴다(촬영판 회색 대신)
+    const faceRGB=(()=>{ const acc=[0,0,0]; let n=0;
+      const add=(x0,y0,x1,y1)=>{ x0=Math.max(0,x0|0); y0=Math.max(0,y0|0); x1=Math.min(W,x1|0); y1=Math.min(H,y1|0);
+        for(let yy=y0;yy<y1;yy+=2){ let i=(yy*W+x0)*4;
+          for(let xx=x0;xx<x1;xx+=2,i+=8) if(d[i+3]>200){ acc[0]+=d[i]; acc[1]+=d[i+1]; acc[2]+=d[i+2]; n++; } } };
+      add(cx0,0,cx1,iy*.45); add(cx0,H-iy*.45,cx1,H); add(0,cy0,ix*.45,cy1); add(W-ix*.45,cy0,W,cy1);
+      return n? acc.map(v=>Math.round(v/n)) : null; })();
     // ── 살을 가로지르는 **단면 모양** (네 변 평균, 각자 제 앞면으로 정규화) ──────────
     // ⚠️⚠️ 왜 스칼라 하나로는 안 되는가: 립 보정을 **한 숫자**로 하면 자산의 '올라가는
     //   램프'가 모양 그대로 눌리기만 한다. 실측(2026-09-01, matrix_off): 검정 자산의
@@ -1522,7 +1570,7 @@ function measureAssetLight(im, meta){
     //   실물에서 그 자리에는 작품(대개 더 어둡다)이 있으므로 그 바운스가 없다 —
     //   즉 립이 밝은 건 **촬영 세팅의 흔적**이지 그 액자의 성질이 아니다.
     const lip = (pn && plateau/pn > 1) ? lipMax/(plateau/pn) : 1;
-    return { tb:(top-bot)/base, lr:(left-right)/base, prof4,
+    return { tb:(top-bot)/base, lr:(left-right)/base, prof4, faceRGB,
              // 0.45(=살 평균의 45% 낙차)면 '충분히 모델링된 몰딩'으로 본다.
              // 실측 5종 전부 0.64~2.17 이라 1 로 포화한다 = 우리는 단면을 안 그린다.
              modeled: Math.max(0, Math.min(1, span/0.45)),
@@ -1537,6 +1585,21 @@ function assetRel(A,d,s){
   if(!p||!p.length) return 1;
   const t=Math.max(0,Math.min(1,d))*(p.length-1), i=Math.floor(t), f=t-i;
   return i>=p.length-1 ? p[p.length-1] : p[i]*(1-f)+p[i+1]*f;
+}
+/** 자산 단면에서 **앞면이 끝나는 자리**(d, 0 = 바깥) — 그 안쪽이 홈(리베이트) 띠다.
+ *  살 바깥 40% 이후, 앞면 대비 0.80 아래로 내려가 다음 3칸 안에 0.75 아래까지 가는 첫 자리(나뭇결 흔들림은 무시).
+ *  못 찾으면 FACE_FRONT. 오크 위살은 0.58(자산 단면에서 회색 띠가 살의 42%), 나머지 변은 대부분 0.74. */
+function assetFaceEnd(A,s){
+  const p=A&&A.prof4&&A.prof4[s|0];
+  if(!p||!p.length) return FACE_FRONT;
+  const n=p.length;
+  for(let k=Math.round(n*0.4);k<n-3;k++) if(p[k]<0.80 && Math.min(p[k+1],p[k+2],p[k+3])<0.75) return Math.max(0.45,Math.min(FACE_FRONT,k/n));
+  return FACE_FRONT;
+}
+/** 앞면이 얼마나 밝은 재질인가(0 = 휘도 200 이하 · 1 = 245 이상) — 흰 액자·실버만 1 에 가깝다 */
+function faceAlbedo(A){
+  const c=A&&A.faceRGB; if(!c) return 0;
+  return albedoOf(0.2126*c[0]+0.7152*c[1]+0.0722*c[2]);
 }
 function assetLightOf(style){
   if(style && style.kind==='photo'){ const a=PHOTO_LIGHT[style.photo]; if(a&&a.ok) return a; }
@@ -1775,12 +1838,10 @@ function buildFramedCore(img, style, o){
         //    골든의 같은 자리는 좁고 깊은 V 지 넓은 띠가 아니다.
         frameShadowOnMat(ctx,l,t,W-l-r,H-t-b, Math.max(3,matPx*.20), ld);
       }
+      // 매트가 있으면 작품은 매트 위에 떠 있다 — 플로터와 같은 그림자(floatMountShadow 주석)
+      if(matPx>0) floatMountShadow(ctx,ax,ay,aw,ah,base);
       ctx.drawImage(img,ax,ay,aw,ah);
       if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
-      // 매트 개구부의 45° 코어 사면 — 얇은 선 하나로는 '종이 한 장'으로 보인다
-      // 폭은 **물리 치수에서** 나오고, 1px 을 못 채우면 알파로 사라진다(바닥값 금지)
-      if(matPx>0){ const bw=matPx*MAT_BEVEL_FRAC;
-        matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(bw,0.8), o.matteColor, ld, (bw-0.55)/0.85); }
       // 액자를 따로 한 장에 그려 둔다 — `applyRailGain` 이 그걸 **자기 자신에 더해**
       // 정확한 밝기 배율을 만든다(screen 은 밝은 액자에서 뭉갠다. 그 함수 주석 참고).
       const fc=frameScratch(W,H);
@@ -1788,6 +1849,7 @@ function buildFramedCore(img, style, o){
       ctx.drawImage(fc,0,0);
       // 살에 방향광 — 자산에 **없는 만큼만**. 자산 실측치를 넘겨 잔차로 계산한다.
       shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc, noMat:matPx<=0,
+        recess:PHOTO_RECESS>0,
         scale:o.outLongEst? o.outLongEst/Math.max(W,H) : 1});
       // 리베이트 — 액자(·매트)가 작품에 드리우는 그림자. 작품이 **뒤로 들어가 있다**는 신호는
       // 이것 하나뿐이다. 빛을 향한 변이 진하고 반대편은 옅다(예전엔 사방 동일 + 너무 옅었다).
@@ -1881,7 +1943,7 @@ function buildFramedCore(img, style, o){
       shadeMatSurface(ctx,q,q,W-2*q,H-2*q,ld);
       frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(3,mat*.20), ld);
     }
-    drawFloaterTray(ctx,W,H,border,gap,matC.back,ld, mat>0);
+    drawFloaterTray(ctx,W,H,border,gap,matFaceRGB(matC),ld, mat>0);
   } else if(mat>0){
     // 사진 액자와 **같은 매트 처리**를 쓴다 — 여기만 옛 방식으로 두면 절차적 액자에서만
     // 매트가 색면으로 남는다(실측 그레인 0.93 vs 사진 액자 7.4).
@@ -1892,22 +1954,8 @@ function buildFramedCore(img, style, o){
     frameShadowOnMat(ctx, border, border, W-2*border, H-2*border, Math.max(3,mat*.20), ld);
   }
 
-  // --- 플로터: 캔버스가 트레이 위에 떠 있는 그림자 ---
-  // ⚠️⚠️ **캐스터를 제자리에 칠하지 말 것.** 예전엔 `fillStyle='#000'` 으로 작품
-  //    자리를 그대로 채워 그림자를 만들었다. `ax` 는 `border+gap+mat` 이라 **소수점**
-  //    이고, 그러면 fillRect 의 가장자리 1px 이 안티에일리어싱으로 남는다 — 그 위에
-  //    작품을 같은 소수점 좌표로 얹어도 완전히 덮이지 않아 **작품 둘레에 검은 실선**이
-  //    남았다(실측: 플로터 3종의 틈 바닥 휘도 0.0, 골든 최저는 살 대비 0.110).
-  //    scene.js 가 벽 그림자에서 겪은 것과 같은 함정이다. 해법도 같다 —
-  //    **캐스터를 캔버스 밖에 두고 shadowOffset 으로 그림자만 끌어온다.**
-  if(style.kind==='floater'){
-    const AWAY=W*2+aw;
-    ctx.save();
-    ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=Math.max(2,base*.010);
-    ctx.shadowOffsetX=base*.0015+AWAY; ctx.shadowOffsetY=base*.0045;
-    ctx.fillStyle='#000'; ctx.fillRect(ax-AWAY,ay,aw,ah);
-    ctx.restore();
-  }
+  // --- 작품이 트레이·매트 위에 떠 있는 그림자 — 플로터, 그리고 매트가 있는 모든 액자(floatMountShadow 주석) ---
+  if(style.kind==='floater' || mat>0) floatMountShadow(ctx,ax,ay,aw,ah,base);
 
   // --- 작품 ---
   ctx.drawImage(img,ax,ay,aw,ah);
@@ -1919,12 +1967,6 @@ function buildFramedCore(img, style, o){
   //    ①광원 방향과 무관하게 **늘 위가 밝았다**(장면 15개 중 10개가 좌상단 광이 아니다)
   //    ②**절차적 액자에만** 걸려서, 같은 방에서 액자만 바꿔도 작품 밝기가 달라졌다.
   //    방의 빛이 작품에 얹히는 건 장면 셰이더의 벽 명암(wallAmt)이 담당한다.
-
-  // --- 매트 개구부의 45° 코어 사면 (사진 액자와 같은 함수) ---
-  // ⚠️ 플로터는 **개구부가 없다** — 작품이 매트 보드 위에 얹혀 있지, 매트에 뚫린 창으로
-  //    들여다보는 게 아니다. 여기에 사면을 그리면 있지도 않은 종이 두께가 작품 위에 생긴다.
-  if(mat>0 && style.kind!=='floater'){ const bw=mat*MAT_BEVEL_FRAC;
-    matOpeningBevel(ctx,ax,ay,aw,ah, Math.max(bw,0.8), o.matteColor, ld, (bw-0.55)/0.85); }
 
   // --- 리베이트 — 액자·매트가 작품 위에 드리우는 그림자 ---
   // ⚠️ 예전엔 여기만 **손으로 적은 사방 고정값**(위 .16 / 왼 .10 / 오른 .06 / 아래 .05)

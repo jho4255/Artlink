@@ -22,7 +22,8 @@ p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 1
 // 하니스에서 합성 음영 세기를 바꿔 렌더할 수 있게 (브리핑 9번 전/후 비교)
 //   SYN=0 SYNDIR=0 node render.mjs renders_off   → 사진 액자 원본만
 const qs = [process.env.SYN != null ? `syn=${process.env.SYN}` : '',
-  process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : ''].filter(Boolean).join('&');
+  process.env.SYNDIR != null ? `syndir=${process.env.SYNDIR}` : '',
+  process.env.Q || ''].filter(Boolean).join('&');   // Q=recess=0 처럼 엔진 쿼리를 더 붙인다
 await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (qs ? '&' + qs : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(3800);
 

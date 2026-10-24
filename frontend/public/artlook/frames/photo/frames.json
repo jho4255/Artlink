@@ -15,15 +15,15 @@
   "gold": {
     "file": "gold.png",
     "inner": [
-      93,
-      93,
-      889,
-      889
+      91,
+      91,
+      887,
+      887
     ],
-    "w": 983,
-    "h": 983,
-    "rail": 93,
-    "railPct": 9.5
+    "w": 979,
+    "h": 979,
+    "rail": 91,
+    "railPct": 9.3
   },
   "oak": {
     "file": "oak.png",
@@ -67,40 +67,40 @@
   "oak-thin": {
     "file": "oak-thin.png",
     "inner": [
-      56,
-      56,
-      954,
-      956
+      44,
+      44,
+      942,
+      944
     ],
-    "w": 1011,
-    "h": 1013,
-    "rail": 56,
-    "railPct": 5.5
+    "w": 987,
+    "h": 989,
+    "rail": 44,
+    "railPct": 4.5
   },
   "silver-thin": {
     "file": "silver-thin.png",
     "inner": [
-      49,
-      49,
-      954,
-      961
+      45,
+      45,
+      950,
+      957
     ],
-    "w": 1004,
-    "h": 1011,
-    "rail": 49,
-    "railPct": 4.9
+    "w": 996,
+    "h": 1003,
+    "rail": 45,
+    "railPct": 4.5
   },
   "walnut-thin": {
     "file": "walnut-thin.png",
     "inner": [
-      49,
-      49,
-      952,
-      953
+      45,
+      45,
+      948,
+      949
     ],
-    "w": 1002,
-    "h": 1003,
-    "rail": 49,
-    "railPct": 4.9
+    "w": 994,
+    "h": 995,
+    "rail": 45,
+    "railPct": 4.5
   }
 }

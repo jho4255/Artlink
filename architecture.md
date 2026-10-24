@@ -2799,3 +2799,17 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   미리 그린 다음 작품 0.1초. 받는 것: 엔진 파일(index·scene·ui·view·목록 둘) + 벽 사진 1장(차콜 1.7MB) + 오크 결 텍스처(0.3MB) + 작품 t800·원본 — 사진만 보면 0.
 - 확인: `scratchpad/wall-view/walk.mjs`(크롬+WebKit 6화면 · `NOGL=1`) · `extremes.mjs` · `engine-probe.mjs` · `timing.mjs`·`warm.mjs`(첫 그림 시간) · `quality.mjs`(ArtLook 저장과 화질 대조) ·
   회귀 `wallView.test.ts`(32) · e2e `74-wall-view.spec.ts`(8, 2회 반복 16/16).
+
+### 사진 액자 안쪽 홈 (2026-10-24, CLAUDE.md 44l)
+- 사용자 지적: 사진 액자 '오크'는 '오크 플로터'보다 납작하다. 같은 조건으로 단면을 재 보니 차이는 몰딩 안쪽 — 플로터는 어두운 홈(빛 방향을 따라 한쪽 벽이 밝다), 사진 오크는
+  촬영용 회색판이 비친 **회색 띠**(위살의 42%)였다. 매트가 있을 때는 이 띠를 손대지 않아 [액자 → 회색 테 → 매트] 로 보였다.
+- `public/artlook/index.html` `shadeFrameProfile` — 사진 액자 + 매트면 `recess` 분기: 자산에서 앞면이 끝나는 자리(`assetFaceEnd`)부터 개구부까지를 홈으로
+  (앞면 1 → 중간 → 벽, smoothstep). 벽 밝기 = `RECESS_TROUGH 0.32 + RECESS_DIR 0.22 × litIn`(litIn = 안쪽을 향한 벽이 빛을 받는 정도) · 절대 바닥 15 · 빛 받는 벽 하한 0.30×255×litIn ·
+  밝은 재질은 얕게(`faceAlbedo`). 결과는 `min(자산, 목표)`. 그다음 홈을 앞면 평균색(`measureAssetLight` 의 `faceRGB`)으로 `color` 합성. 매트 없음(`absReb`)도 같은 색 입히기 + 밝은 재질의 얕은 골.
+- 자산: 얇은 액자 3종·골드의 바깥 흰 테를 `frontend/scripts/trim-photo-frame-rims.py` 로 깎고 `symmetrize-photo-frames.py` 로 네 살을 다시 맞췄다(`frames.json` 의 inner·w·h·rail 갱신). 칩 8개 다시 구움.
+- 매트 → 작품 경계(2026-10-25): 매트가 있으면 **모든 액자가 플로트 마운트**다 — `floatMountShadow`(플로터가 쓰던 그림자)를 사진 액자 분기(작품 그리기 직전)와
+  절차적 경로(`style.kind==='floater' || mat>0`)가 같이 부른다. 매트에 창을 뚫는 방식(`matOpeningBevel`·45° 사면)은 지웠다 — 같은 매트인데 오크 플로터 옆에서 경계가 납작했다.
+- 홈 벽 밝기 규칙 `recessWall(litIn, faceLum)`(2026-10-25) — 플로터 갭(`drawFloaterTray`, 재질 앞면 색 `matFaceRGB` × 비율)과 사진 액자 홈(`shadeFrameProfile` recess)이 같이 쓴다.
+  예전 플로터 갭은 고정 색 + 고정 양의 빛이라 어두운 재질(월넛)에서 앞면보다 밝은 띠가 됐다. 기준은 오크 플로터.
+- 비교 쿼리 `?recess=0`. 하니스: `scratchpad/vt/framecmp.mjs`(액자 21종을 같은 작품·벽·매트·저장 화질로) · `framecmp.py`(모서리 시트) · `framezoom.py`(세트끼리 3배 모서리) · `railprof.py`(살 단면).
+

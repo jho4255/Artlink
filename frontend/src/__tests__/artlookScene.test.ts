@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs, { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// jspdf 가 함께 들여오는 PNG 디코더(타입 포함) — 사진 액자 픽셀을 직접 잰다
+import { decode as decodePng } from 'fast-png';
 
 /**
  * ArtLook 장면 엔진 — `public/artlook/scene.js` 의 순수 계산 부분 회귀 테스트.
@@ -281,6 +283,33 @@ describe('사진 액자 기하 — 네 살 폭이 같아야 한다', () => {
   });
 });
 
+describe('사진 액자 둘레 — 흰 배경 테가 없어야 한다', () => {
+  // ⚠️ 얇은 액자 3종은 흰 배경에서 오려 냈는데 가장자리가 흐려 바깥 4~13px 이 **흰색과 섞인 채 불투명**으로
+  //    남아 있었다(oak-thin 위살 248 248 247 … → 앞면 187). 어두운 벽에서 액자 둘레에 흰 테가 떴다(2026-10-24).
+  //    `frontend/scripts/trim-photo-frame-rims.py` 로 깎고 symmetrize 를 다시 돌렸다. 그 스크립트와 **같은 판정**이다 —
+  //    맨 바깥 픽셀이 앞면과 흰색의 중간보다 밝으면 흰 배경이 남은 것이다.
+  const dir = resolve(__dirname, '../../public/artlook/frames/photo');
+  const meta = JSON.parse(readFileSync(resolve(dir, 'frames.json'), 'utf-8')) as Record<string, { file: string }>;
+  it.each(Object.keys(meta))('%s', (name) => {
+    const png = decodePng(readFileSync(resolve(dir, meta[name].file)));
+    const { width: W, height: H, data, channels: C } = png;
+    expect(png.depth).toBe(8);
+    const lum = (x: number, y: number) => { const i = (y * W + x) * C; return 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]; };
+    // 변마다 가운데 40% 의 '바깥에서 depth 번째 줄' 평균
+    const at = (side: number, depth: number) => {
+      let s = 0, n = 0;
+      if (side < 2) for (let x = Math.floor(W * .3); x < W * .7; x++) { s += lum(x, side === 0 ? depth : H - 1 - depth); n++; }
+      else for (let y = Math.floor(H * .3); y < H * .7; y++) { s += lum(side === 2 ? depth : W - 1 - depth, y); n++; }
+      return s / n;
+    };
+    for (let side = 0; side < 4; side++) {
+      const face = [...Array(10)].map((_, i) => at(side, 14 + i)).sort((a, b) => a - b)[5];
+      expect(at(side, 0), `${name} ${'위아래왼오'.slice(side * 1, side * 1 + 1)}쪽 바깥(앞면 ${face.toFixed(0)})`)
+        .toBeLessThan(face + 0.5 * (255 - face));
+    }
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  액자 스타일 · 매트 · 조명 — `public/artlook/index.html` 소스 가드
 // ─────────────────────────────────────────────────────────────────────────────
@@ -291,6 +320,48 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
   const html = readFileSync(resolve(__dirname, '../../public/artlook/index.html'), 'utf-8');
   // 화면(탭·칩·매트 줄·안내)은 2026-10-04 부터 ui.js 에 있다 — 엔진은 그대로 index.html
   const ui = readFileSync(resolve(__dirname, '../../public/artlook/ui.js'), 'utf-8');
+
+  it('매트 있는 사진 액자도 안쪽 홈을 그늘로 그린다 — 촬영판이 비친 회색 띠를 남기지 않는다', () => {
+    // 2026-10-24: 사진 오크가 오크 플로터보다 납작해 보인 원인. 자산 안쪽 띠(오크 위살의 42%)가 촬영용 회색판이
+    // 비쳐 밝은 회색이었고, 매트가 있으면 그 띠를 손대지 않아 [액자 → 회색 띠 → 매트] 로 한 겹이 더 보였다.
+    expect(html).toMatch(/shadeFrameProfile\(ctx,W,H,l,t,r,b,ld,\{asset:assetLightOf\(style\)[^}]*recess:PHOTO_RECESS>0/);
+    expect(html).toMatch(/const recess = !!o\.recess && !o\.noMat/);
+    // 홈은 앞면 색으로 물든다(회색판 색이 아니라 그 재질의 그늘) — 매트 없음도 같은 띠라 같이
+    expect(html).toMatch(/\(recess \|\| \(absReb && !rebOnly\)\) && A\.faceRGB/);
+    expect(html).toMatch(/globalCompositeOperation='color'/);
+    // 밝은 재질(흰 액자)은 골을 얕게 — 깊으면 골 다음 1px 이 작품 옆 흰 선이 된다(nomat 화이트 42.4 → 15)
+    expect(html).toMatch(/const trough=1-\(1-REB_TROUGH\)\*kd\*\(1-0\.5\*ab\)/);
+  });
+
+  it('매트가 있으면 모든 액자가 플로터와 같은 방식이다 — 작품이 매트 위에 떠서 그림자를 드리운다', () => {
+    // 2026-10-25 사용자 결정: "그 부분은 오크 플로터랑 동일하게 해도 되잖아". 사진 액자·슬림·화이트 매트만 매트에 창을 뚫는
+    // 방식(45° 사면 + 작품 위 그림자)이라, 같은 매트인데 오크 플로터 옆에서 경계가 납작했다. 그 방식을 없앴다.
+    expect(html).toMatch(/function floatMountShadow\(/);
+    expect(html).toMatch(/if\(matPx>0\) floatMountShadow\(ctx,ax,ay,aw,ah,base\)/);                       // 사진 액자
+    expect(html).toMatch(/if\(style\.kind==='floater' \|\| mat>0\) floatMountShadow\(ctx,ax,ay,aw,ah,base\)/); // 플로터·슬림·화이트 매트
+    // 그림자는 작품을 그리기 **전에** — 뒤에 그리면 작품을 덮는다
+    const photo = html.slice(html.indexOf("if(style.kind==='photo'){"), html.indexOf("// --- 캔버스 랩"));
+    expect(photo.indexOf('floatMountShadow(')).toBeLessThan(photo.indexOf('ctx.drawImage(img,ax,ay,aw,ah)'));
+    // 창 뚫린 매트의 흔적이 다시 생기면 경계가 둘로 갈린다
+    expect(html).not.toMatch(/matOpeningBevel|matCastShadow/);
+    // 캐스터는 캔버스 밖 + shadowOffset — 제자리에 칠하면 작품 둘레에 1px 테가 남는다
+    const i = html.indexOf('function floatMountShadow(');
+    expect(html.slice(i, html.indexOf('\nfunction ', i + 10))).toMatch(/AWAY/);
+  });
+
+  it('액자 안쪽 홈 벽 밝기는 한 규칙(recessWall)이다 — 플로터 갭과 사진 액자 홈이 같이 쓰고, 앞면 대비 비율로만 정한다', () => {
+    // 2026-10-25 "월넛 플로터와 오크 플로터가 왜 다르냐, 모듈화가 엉망이냐": 플로터 갭은 재질과 무관한 고정 색에
+    // 고정 양의 빛(screen 0.24)을 더해, 같은 빛이 오크에선 그늘(앞면의 0.53배)·월넛에선 앞면보다 밝은 띠(1.9배)였다.
+    // 사진 액자의 홈은 같은 개념을 따로 구현한 두 번째 코드였다.
+    expect(html).toMatch(/function recessWall\(litIn, faceLum\)/);
+    const tray = html.slice(html.indexOf('function drawFloaterTray('), html.indexOf('// 갭 안쪽 끝(작품이 얹히는 자리)의 폐색'))
+      .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');   // 주석의 옛 이야기는 빼고 코드만
+    expect(tray).toMatch(/recessWall\(litIn, fl\)/);
+    expect(tray).not.toMatch(/screen|rgba\(255,248,236/);          // 고정 양의 빛을 더하지 않는다
+    expect(tray).not.toMatch(/shade\(back/);                         // 재질별 고정 트레이 색을 쓰지 않는다
+    expect(html).toMatch(/let wall=recessWall\(litIn, face\);/);    // 사진 액자 홈
+    expect(html).not.toMatch(/RECESS_LIT/);                            // 어두운 재질만 밝히던 절대값 예외
+  });
 
   it('액자 이름에 구현 방식(사진)을 적지 않는다', () => {
     // 고르는 사람에게 '사진 9-slice 인가 절차적인가'는 알 바가 아니다. 칩 라벨은 재질 이름만.
@@ -339,9 +410,9 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
     // 매트가 있으면 트레이 폐색은 트레이↔매트 이음매, 접지 그림자는 작품 경계 — 떨어져 있다.
     // 매트를 빼면 `ax = border+gap` 이라 **같은 자리에 겹쳐** 검은 선이 된다
     // (실측: 샴페인 플로터 10.3 → 19.5 · 아이보리 박스 14.6 → 23.5).
-    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,back,ld,innerOcc\)/);
+    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,face,ld,innerOcc\)/);
     expect(html).toMatch(/if\(innerOcc===false\) return;/);
-    expect(html).toMatch(/drawFloaterTray\(ctx,W,H,border,gap,matC\.back,ld, mat>0\)/);
+    expect(html).toMatch(/drawFloaterTray\(ctx,W,H,border,gap,matFaceRGB\(matC\),ld, mat>0\)/);
   });
 
   it('매트 색은 매트가 있을 때만 뜬다 — 아무 일도 안 하는 컨트롤을 남기지 않는다', () => {
@@ -437,7 +508,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
 
   it('광원 방향을 손으로 적은 자리가 없다 (같은 방 · 같은 카메라)', () => {
     expect(html).not.toMatch(/const light=\[\.16,\.02,-\.14,\.08\]\[s\]/);   // 플로터 트레이
-    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,back,ld,innerOcc\)/);
+    expect(html).toMatch(/function drawFloaterTray\(ctx,W,H,b,g,face,ld,innerOcc\)/);
     expect(html).toMatch(/function drawFrameMiters\(ctx,W,H,b,c,ld\)/);
     // 절차적 액자도 사진 액자와 **같은** 리베이트 함수를 쓴다
     expect(html).toMatch(/rebateShadow\(ctx,ax,ay,aw,ah,base,ld\);/);
@@ -504,7 +575,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(html).toMatch(/const SYN_EDGE=.*_synQ\('syn'/);
     // 테두리·링 계열은 EDGE 로 눌러야 한다 — 사용자가 본 '흰 테두리/검은 선'이 여기서 나온다
     // 각 함수 본문 안에 SYN_EDGE 가 있어야 한다 (함수 단위로 잘라서 본다)
-    for (const fn of ['matOpeningBevel', 'rebateShadow', 'frameShadowOnMat']) {
+    for (const fn of ['rebateShadow', 'frameShadowOnMat']) {   // (매트 개구부 사면은 2026-10-25 에 없앴다 — 매트는 전부 플로트 마운트)
       const i = html.indexOf(`function ${fn}(`);
       expect(i, `${fn} 정의`).toBeGreaterThan(0);
       const body = html.slice(i, html.indexOf('\nfunction ', i + 10));
@@ -594,7 +665,8 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
     expect(html).toMatch(/const kd=Math\.max\(0,Math\.min\(1,\(zone-1\.5\)\/8\)\);/);
     // ⚠️⚠️ 좁아지면 **골만** 얕게 하지 말 것 — 골=끝이 되어 평평한 어두운 띠(=선)가 남는다.
     //    양 끝을 함께 1 로 보내야 V 모양을 지키며 세기만 준다.
-    expect(html).toMatch(/const trough=1-\(1-REB_TROUGH\)\*kd;/);
+    // (2026-10-24 부터 밝은 재질은 골이 얕다 — `*(1-0.5*ab)`. kd 가 0 이면 여전히 1 로 간다)
+    expect(html).toMatch(/const trough=1-\(1-REB_TROUGH\)\*kd(\*\(1-0\.5\*ab\))?;/);
     expect(html).not.toMatch(/trough=REB_TIP-\(REB_TIP-REB_TROUGH\)/);
     // 골 위치는 절대 d 가 아니라 **구간 안의 비율** — 액자마다 앞면이 끝나는 자리가 다르다
     expect(html).toMatch(/const REB_TROUGH_U=0\.62|REB_TROUGH_U=0\.62/);
@@ -683,13 +755,6 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
     expect(html).toMatch(/const SYN_DIR=LEVEL>=3 \?/);
     expect(html).toMatch(/const SYN_EDGE=LEVEL>=2 \?/);
     expect(html).toMatch(/LEVEL<1 \? \{shadow:0, cornerAO:0, wallCalm:0, wallAmt:0\}/);
-  });
-
-  it('매트 사면은 폭이 모자라면 알파로 사라진다 — 바닥값으로 선을 만들지 않는다', () => {
-    // ⚠️ 옛 `Math.max(1.5, matPx*.085)` 는 안 보일 폭에서도 1.5px 짜리 **선**을 그렸다
-    expect(html).not.toMatch(/matOpeningBevel\([^)]*Math\.max\(1\.5,/);
-    expect(html).toMatch(/const MAT_BEVEL_FRAC=0\.085/);
-    expect(html).toMatch(/\(bw-0\.55\)\/0\.85/);
   });
 
   it('액자↔매트 이음매 폐색은 사방 공통 항을 갖는다 (빛 받는 변에서도 남는다)', () => {

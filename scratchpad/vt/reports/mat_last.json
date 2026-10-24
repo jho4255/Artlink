@@ -11,44 +11,44 @@
  },
  "ours": {
   "t02": {
-   "mat_lum": 226.8,
-   "grain_abs": 9.78,
-   "grain_pct": 4.31,
-   "dir_abs": 11.8,
-   "dir_pct": 5.2,
-   "bevel_abs": 53.5,
-   "gap_abs": 110.7,
-   "gap_pct": 48.8
+   "mat_lum": 227.0,
+   "grain_abs": 9.84,
+   "grain_pct": 4.33,
+   "dir_abs": 13.9,
+   "dir_pct": 6.1,
+   "bevel_abs": 61.6,
+   "gap_abs": 120.2,
+   "gap_pct": 53.0
   },
   "t03": {
-   "mat_lum": 226.5,
-   "grain_abs": 6.87,
-   "grain_pct": 3.03,
-   "dir_abs": 22.1,
-   "dir_pct": 9.7,
-   "bevel_abs": 5.1,
-   "gap_abs": 112.1,
-   "gap_pct": 49.5
+   "mat_lum": 228.4,
+   "grain_abs": 5.85,
+   "grain_pct": 2.56,
+   "dir_abs": 9.2,
+   "dir_pct": 4.0,
+   "bevel_abs": 3.8,
+   "gap_abs": 121.9,
+   "gap_pct": 53.4
   },
   "t05": {
-   "mat_lum": 226.9,
-   "grain_abs": 6.79,
-   "grain_pct": 2.99,
-   "dir_abs": 11.0,
-   "dir_pct": 4.8,
-   "bevel_abs": 104.5,
-   "gap_abs": 149.7,
-   "gap_pct": 66.0
+   "mat_lum": 226.5,
+   "grain_abs": 6.84,
+   "grain_pct": 3.02,
+   "dir_abs": 12.8,
+   "dir_pct": 5.6,
+   "bevel_abs": 168.3,
+   "gap_abs": 176.9,
+   "gap_pct": 78.1
   },
   "t09": {
-   "mat_lum": 228.7,
-   "grain_abs": 9.64,
-   "grain_pct": 4.22,
-   "dir_abs": 15.2,
-   "dir_pct": 6.7,
-   "bevel_abs": 7.8,
-   "gap_abs": 134.4,
-   "gap_pct": 58.8
+   "mat_lum": 228.8,
+   "grain_abs": 9.35,
+   "grain_pct": 4.09,
+   "dir_abs": 17.0,
+   "dir_pct": 7.4,
+   "bevel_abs": 7.1,
+   "gap_abs": 141.4,
+   "gap_pct": 61.8
   }
  }
 }
