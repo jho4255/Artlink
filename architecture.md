@@ -2813,3 +2813,9 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   예전 플로터 갭은 고정 색 + 고정 양의 빛이라 어두운 재질(월넛)에서 앞면보다 밝은 띠가 됐다. 기준은 오크 플로터.
 - 비교 쿼리 `?recess=0`. 하니스: `scratchpad/vt/framecmp.mjs`(액자 21종을 같은 작품·벽·매트·저장 화질로) · `framecmp.py`(모서리 시트) · `framezoom.py`(세트끼리 3배 모서리) · `railprof.py`(살 단면).
 
+### Admin [사용자 관리] — 오늘 방문 · 최근 7일 방문한 날 (2026-10-25, CLAUDE.md 58)
+- `GET /api/admin/users` 가 사용자마다 `visitDays7`(최근 7일, 오늘 포함 KST, 방문 기록이 있는 **날** 수) · `visitedToday` · `todayFirstAt` 를 붙인다(`lib/visitStats.ts memberVisitSummary` — 페이지의 회원 id 로 한 번에 읽는다).
+- `?visited=today` 는 오늘 기록이 있는 회원만(Admin 제외 — [통계] 일간 방문자의 '회원'과 같은 사람들), 최근 접속 순. 역할·검색어와 함께 걸 수 있다.
+- 화면 `MyPage.tsx UserManageSection` — 역할 탭 끝에 [오늘 방문](옆 숫자 = `stats/visitors?days=1` 의 회원 수) · 줄마다 '최근 7일 중 N일 방문' · 오늘 탭은 '오늘 처음 HH:MM'. 휴대폰에선 버튼이 아래 줄로 내려간다.
+- 데이터는 `DailyVisit`(기기 × KST 하루 한 줄, 2026-09-28 부터) — 하루에 몇 번 왔는지는 없다.
+

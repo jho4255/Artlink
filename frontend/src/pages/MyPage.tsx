@@ -3884,11 +3884,13 @@ function ReportManageSection() {
 const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
 // ⚠️ 역할이 늘면 여기와 아래 <select> 옵션에 함께 넣을 것 — VISITOR('일반', 2026-09-16)가 빠져 있어 관리자가 일반 회원을
 //    검색조차 못 했다(2026-09-19 수정). 라벨은 `roleLabel()` 하나를 쓴다(규칙 52).
+// 마지막 탭 '오늘 방문'(2026-10-25) — 역할과 무관하게 오늘(KST) 들어온 회원. Admin 은 뺀다([통계] 탭의 '오늘 회원' 수와 같은 사람들).
 const ADMIN_USER_ROLE_TABS = [
   { role: 'GALLERY', label: '갤러리 유저' },
   { role: 'ARTIST', label: '아티스트 유저' },
   { role: 'VISITOR', label: '일반 유저' },
   { role: 'ADMIN', label: 'admin 유저' },
+  { role: 'TODAY', label: '오늘 방문' },
 ] as const;
 const adminUserDate = (value?: string | null) => {
   if (!value) return '기록 없음';
@@ -3898,6 +3900,8 @@ const adminUserDate = (value?: string | null) => {
     day: '2-digit',
   });
 };
+const adminUserTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
 const adminUserDateTime = (value?: string | null) => {
   if (!value) return '기록 없음';
   return new Date(value).toLocaleString('ko-KR', {
@@ -3920,11 +3924,17 @@ function UserManageSection() {
   const { data: users = [], isLoading } = useQuery<any[]>({
     queryKey: ['admin-users', activeRole, submitted],
     queryFn: () => {
-      const params = new URLSearchParams({ role: activeRole });
+      const params = new URLSearchParams(activeRole === 'TODAY' ? { visited: 'today' } : { role: activeRole });
       if (submitted) params.set('q', submitted);
       return api.get(`/admin/users?${params.toString()}`).then(r => r.data);
     },
     staleTime: 0,
+  });
+  // 탭 이름 옆 숫자 — [통계] 탭과 같은 집계(오늘 회원 수)
+  const { data: todayMembers } = useQuery<number>({
+    queryKey: ['admin-today-members'],
+    queryFn: () => api.get('/admin/stats/visitors?days=1').then((r) => r.data?.rows?.[0]?.members ?? 0),
+    staleTime: 60_000,
   });
 
   const roleMutation = useMutation({
@@ -3956,6 +3966,9 @@ function UserManageSection() {
               }`}
             >
               <span>{tab.label}</span>
+              {tab.role === 'TODAY' && todayMembers != null && (
+                <span className={`tabular-nums text-xs ${selected ? 'text-white/70' : 'text-gray-400'}`}>{todayMembers}</span>
+              )}
             </button>
           );
         })}
@@ -3964,7 +3977,7 @@ function UserManageSection() {
       {isLoading ? (
         <div className="h-20 bg-gray-100 animate-pulse rounded-lg" />
       ) : users.length === 0 ? (
-        <p className="text-gray-400 text-center py-8 text-sm">검색 결과가 없습니다.</p>
+        <p className="text-gray-400 text-center py-8 text-sm">{activeRole === 'TODAY' && !submitted ? '오늘 들어온 회원이 아직 없어요.' : '검색 결과가 없습니다.'}</p>
       ) : (
         <div className="space-y-2">
           {users.map((u) => {
@@ -3973,7 +3986,7 @@ function UserManageSection() {
             const isGallery = u.role === 'GALLERY';
             const ownedGalleries = Array.isArray(u.galleries) ? u.galleries : [];
             return (
-              <div key={u.id} className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-lg">
+              <div key={u.id} className="flex flex-col gap-2 p-3 border border-gray-100 rounded-lg sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="min-w-0">
                   <button
                     type="button"
@@ -3994,8 +4007,12 @@ function UserManageSection() {
                   <p className="mt-1 text-xs text-gray-400">
                     가입일 {adminUserDate(u.createdAt)} · 최근 접속 {adminUserDateTime(u.lastSeenAt)}
                   </p>
+                  <p className="text-xs text-gray-400">
+                    <span className={u.visitDays7 > 0 ? 'text-gray-700' : undefined}>최근 7일 중 {u.visitDays7 ?? 0}일 방문</span>
+                    {activeRole === 'TODAY' && u.todayFirstAt && <> · 오늘 처음 {adminUserTime(u.todayFirstAt)}</>}
+                  </p>
                 </div>
-                <div className="flex flex-none items-center gap-2">
+                <div className="flex flex-none flex-wrap items-center gap-2">
                   <span className="hidden sm:inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">
                     {roleLabel(u.role) || u.role}
                   </span>
@@ -4055,6 +4072,7 @@ function UserManageSection() {
 
       <p className="text-xs text-gray-400 mt-4">
         ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 최근 접속은 이 기능 배포 후 인증된 요청이 들어온 시점부터 기록됩니다.
+        방문은 하루 단위로 셉니다(같은 날 여러 번 들어와도 1일) — 2026년 9월 28일부터 기록됐습니다. '오늘 방문'에는 관리자 계정이 빠집니다.
       </p>
     </div>
   );

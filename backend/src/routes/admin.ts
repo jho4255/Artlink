@@ -5,7 +5,7 @@ import { AppError } from '../middleware/errorHandler';
 import { isExhibitionClosed } from '../lib/exhibitionLifecycle';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
-import { dailyVisitorStats } from '../lib/visitStats';
+import { dailyVisitorStats, memberVisitSummary, visitedTodayWhere } from '../lib/visitStats';
 import { dailyExportStats } from '../lib/exportStats';
 import { guestStats } from '../lib/guestActivity';
 
@@ -16,17 +16,21 @@ const VALID_ROLES = ['ADMIN', 'ARTIST', 'GALLERY', 'VISITOR'];
 /**
  * 사용자 검색 (ADMIN 전용) — 이메일/이름 부분일치, 최대 100명
  * GET /api/admin/users?q=검색어&role=ARTIST|GALLERY|ADMIN
+ *     &visited=today  → 오늘(KST) 방문한 회원만(Admin 제외 — [통계] 탭 일간 방문자의 '회원' 수와 같은 사람들), 최근 접속 순
+ * 응답의 사용자마다 `visitDays7`(최근 7일 중 방문한 날 수) · `visitedToday` · `todayFirstAt`(오늘 처음 들어온 시각)을 붙인다.
  */
 router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const q = ((req.query.q as string) || '').trim();
     const role = ((req.query.role as string) || '').trim();
     if (role && !VALID_ROLES.includes(role)) throw new AppError('유효하지 않은 역할입니다.', 400);
+    const visited = ((req.query.visited as string) || '').trim();
+    if (visited && visited !== 'today') throw new AppError('visited 는 today 만 됩니다.', 400);
     // 페이지네이션: 1-based page 쿼리 → skip 적용. page 미지정 시 1페이지처럼 동작(하위호환).
     // 프론트가 순수 배열을 기대하므로 응답 형태는 배열 유지, page만 존중.
     const PAGE_SIZE = 100;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
-    const where: any = {};
+    const where: any = visited === 'today' ? visitedTodayWhere() : {};
     if (role) where.role = role;
     if (q) {
       where.OR = [
@@ -43,11 +47,12 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
           orderBy: { createdAt: 'desc' },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: visited === 'today' ? [{ lastSeenAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }] : { createdAt: 'desc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     });
-    res.json(users);
+    const visits = await memberVisitSummary(users.map((u) => u.id));
+    res.json(users.map((u) => ({ ...u, ...(visits.get(u.id) ?? { visitDays7: 0, visitedToday: false, todayFirstAt: null }) })));
   } catch (error) { next(error); }
 });
 

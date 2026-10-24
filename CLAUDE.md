@@ -1913,7 +1913,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - JS 를 안 돌리는 크롤러는 요청을 안 보내 자연히 빠진다. localStorage 가 막힌 기기는 새로 열 때마다 새 기기로 셀 수 있다(메모리로 한 세션은 버틴다).
     - 개인정보처리방침 1항에 '방문자 집계용 기기 식별값(무작위, 개인과 연결하지 않음)'을 적었다.
     - 비회원이 **무엇을 보고 얼마나 머물렀는지**는 같은 탭의 '비회원 둘러보기'(규칙 64) — 기기 번호와 다른 값으로 묶는다.
-    - 회귀: backend `visit-stats.test.ts`(8 — 하루 한 줄·동시 요청·비회원→회원·사람 단위·Admin 제외·KST 경계·0 채우기·권한) ·
+    - **[사용자 관리]에서도 쓴다**(2026-10-25) — 마지막 탭 **[오늘 방문]**(`GET /admin/users?visited=today`, 오늘 기록이 있는 회원 · Admin 제외 · 최근 접속 순,
+      탭 옆 숫자는 [통계] 와 같은 `stats/visitors?days=1` 의 회원 수)와 회원마다 **'최근 7일 중 N일 방문'**(`visitDays7`) · 오늘 탭에선 '오늘 처음 HH:MM'.
+      규칙은 `lib/visitStats.ts` 의 `memberVisitSummary`·`visitedTodayWhere`. ⚠️ 단위는 **날**이다(기기 × 하루 한 줄이라 하루에 몇 번 왔는지는 모른다) —
+      '방문 횟수'로 부르지 말 것(`adminUserVisits.test.ts` 가 막는다). 횟수가 필요하면 기록 방식부터 바꿔야 한다.
+    - 회귀: backend `visit-stats.test.ts`(11 — 하루 한 줄·동시 요청·비회원→회원·사람 단위·Admin 제외·KST 경계·0 채우기·권한·오늘 방문 회원·7일 방문한 날) · frontend `adminUserVisits.test.ts`(3) ·
       frontend `visitStats.test.ts`(7) · e2e `59-admin-stats.spec.ts`(4 — **실제 브라우저가 들어오면 세어지는지**를 전후 차이로 잰다, 여러 화면을 다녀도 요청 한 번).
 
 59. **공모 흐름 화면(등록·지원·지원자 관리·출품 자료·운영·정산)의 규칙** (2026-09-29, 사용자 결정 — DESIGN.md 비참조, 이 흐름 화면만)

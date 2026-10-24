@@ -108,3 +108,52 @@ describe('일간 방문자', () => {
     expect(ok.body.since).toBeNull();        // 아직 기록 없음
   });
 });
+
+describe('Admin [사용자 관리] — 오늘 방문한 회원 · 회원별 최근 7일 방문한 날 (2026-10-25)', () => {
+  const gallery = authToken(3, 'GALLERY');
+  const users = (qs: string, token = admin) => request.get(`/api/admin/users?${qs}`).set('Authorization', `Bearer ${token}`);
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86400000);
+
+  beforeEach(async () => {
+    await cleanDb();
+    await seedUsers();
+  });
+
+  it('오늘 방문 탭 = 오늘 기록이 있는 회원만, Admin 빼고 — [통계] 의 오늘 회원 수와 같은 사람들', async () => {
+    await visit(DEV_A, artist);
+    await visit(DEV_B, gallery);
+    await visit(DEV_C, admin);
+    await recordVisit('device-yyyyyyyyyyyyyyyy', 2, daysAgo(1));   // 작가 2 는 어제만
+    const r = await users('visited=today');
+    expect(r.status).toBe(200);
+    expect(r.body.map((u: any) => u.id).sort()).toEqual([1, 3]);
+    for (const u of r.body) {
+      expect(u.visitedToday).toBe(true);
+      expect(new Date(u.todayFirstAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
+    }
+    expect((await todayRow()).members).toBe(r.body.length);
+    // 역할 탭과 겹쳐 걸 수 있다(검색도 그 안에서)
+    const onlyArtists = await users('visited=today&role=ARTIST');
+    expect(onlyArtists.body.map((u: any) => u.id)).toEqual([1]);
+    expect((await users('visited=today&q=gallery')).body.map((u: any) => u.id)).toEqual([3]);
+  });
+
+  it('최근 7일 중 방문한 날 수 — 날 단위(같은 날 기기 둘이어도 1일), 8일 전은 빼고, 기록 없으면 0', async () => {
+    await recordVisit('device-1111111111111111', 1);                 // 오늘
+    await recordVisit('device-2222222222222222', 1, daysAgo(1));     // 어제
+    await recordVisit('device-3333333333333333', 1, daysAgo(1));     // 어제 — 다른 기기, 같은 날
+    await recordVisit('device-4444444444444444', 1, daysAgo(6));     // 6일 전 = 7일 안
+    await recordVisit('device-5555555555555555', 1, daysAgo(7));     // 7일 전 = 밖
+    const r = await users('role=ARTIST');
+    const a1 = r.body.find((u: any) => u.id === 1);
+    const a2 = r.body.find((u: any) => u.id === 2);
+    expect(a1).toMatchObject({ visitDays7: 3, visitedToday: true });
+    expect(a2).toMatchObject({ visitDays7: 0, visitedToday: false, todayFirstAt: null });
+  });
+
+  it('Admin 만 · visited 는 today 만', async () => {
+    expect((await users('visited=today', artist)).status).toBe(403);
+    expect((await users('visited=yesterday')).status).toBe(400);
+  });
+});
+

@@ -73,3 +73,44 @@ export async function dailyVisitorStats(days: number, now: Date = new Date()): P
   const first = await prisma.dailyVisit.findFirst({ orderBy: { day: 'asc' }, select: { day: true } });
   return { rows, since: first ? dayKey(first.day) : null };
 }
+
+export const MEMBER_VISIT_DAYS = 7;
+
+export interface MemberVisitSummary { visitDays7: number; visitedToday: boolean; todayFirstAt: Date | null }
+
+/**
+ * 회원별 방문 요약 — Admin [사용자 관리](2026-10-25). 최근 7일(오늘 포함, KST) 중 **방문한 날 수**와 오늘 처음 들어온 시각.
+ * ⚠️ 단위는 '날'이다. 기록이 기기 × 하루 한 줄이라 하루에 몇 번 들어왔는지는 모른다(같은 날 기기 둘이어도 1일).
+ *    '방문 횟수'로 부르지 말 것 — 화면에 '7일 중 N일' 로 쓴다.
+ */
+export async function memberVisitSummary(userIds: number[], now: Date = new Date()): Promise<Map<number, MemberVisitSummary>> {
+  const out = new Map<number, MemberVisitSummary>();
+  if (!userIds.length) return out;
+  const today = kstDay(now);
+  const from = new Date(today.getTime() - (MEMBER_VISIT_DAYS - 1) * 86400000);
+  const rows = await prisma.dailyVisit.findMany({
+    where: { userId: { in: userIds }, day: { gte: from } },
+    select: { userId: true, day: true, createdAt: true },
+  });
+  const days = new Map<number, Set<string>>();
+  for (const r of rows) {
+    if (r.userId == null) continue;
+    const k = dayKey(r.day);
+    if (!days.has(r.userId)) days.set(r.userId, new Set());
+    days.get(r.userId)!.add(k);
+    const cur = out.get(r.userId) ?? { visitDays7: 0, visitedToday: false, todayFirstAt: null };
+    if (k === dayKey(today)) {
+      cur.visitedToday = true;
+      if (!cur.todayFirstAt || r.createdAt < cur.todayFirstAt) cur.todayFirstAt = r.createdAt;
+    }
+    out.set(r.userId, cur);
+  }
+  for (const [id, set] of days) out.get(id)!.visitDays7 = set.size;
+  return out;
+}
+
+/** 오늘(KST) 방문 기록이 있는 회원을 거르는 where 조각 — Admin 은 뺀다(일간 방문자의 '회원' 수와 같은 사람들). */
+export function visitedTodayWhere(now: Date = new Date()) {
+  return { role: { not: 'ADMIN' as const }, dailyVisits: { some: { day: kstDay(now) } } };
+}
+
