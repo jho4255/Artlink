@@ -33,6 +33,7 @@ import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
+import HostedContentEditModal from '@/components/admin/HostedContentEditModal';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
 import { AttachmentEditor } from '@/components/shared/ExhibitionAttachments';
 import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
@@ -264,6 +265,7 @@ export default function HostedExhibitionsSection() {
   const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
   // 추가 질문 수정 — 갤러리 마이페이지와 같은 공용 모달. 주최자가 자기 공고 질문을 못 고치면 안 된다.
   const [editQuestionsEx, setEditQuestionsEx] = useState<any>(null);
+  const [editContentEx, setEditContentEx] = useState<{ id: number; title: string; description?: string | null } | null>(null);
 
   const clearError = (key: string) =>
     setFormErrors(prev => { const n = new Set(prev); n.delete(key); return n; });
@@ -545,6 +547,7 @@ export default function HostedExhibitionsSection() {
         <ManagerEditModal exhibition={editManagersFor} onClose={() => setEditManagersFor(null)} />
       )}
 
+      {editContentEx && <HostedContentEditModal exhibition={editContentEx} onClose={() => setEditContentEx(null)} />}
       {editQuestionsEx && (
         <CustomQuestionsEditModal
           exhibitionId={editQuestionsEx.id}
@@ -609,6 +612,9 @@ export default function HostedExhibitionsSection() {
                         className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white"
                       >
                         {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
+                      </button>
+                      <button onClick={() => setEditContentEx(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+                        제목·소개 수정
                       </button>
                       <button onClick={() => setEditQuestionsEx(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
                         추가 질문

@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **2900+ tests** (2026-10-26): Backend 1649 (supertest, `artlink_test` DB 순차), Frontend 1381 (jsdom) · E2E 379(+ `72` 10개 · `73` 17개 · `74` 8개 · `75` 6개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **2900+ tests** (2026-10-26): Backend 1656 (supertest, `artlink_test` DB 순차), Frontend 1385 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2474,18 +2474,26 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ③ [벽에 걸어 보기]에 **마우스를 올리거나 누르기 시작하면**(`wall.warm` — pointerenter·pointerdown·focus) 엔진을 띄우고 지금 작품의 초안 사진을 받아 둔다. 버튼에 손이 간 사람만이라 '사진만 보는 방문자는 안 받는다'는 그대로다
       ④ '벽에 거는 중…' 글자는 0.35초 뒤에(금방 그려지면 번쩍이지 않게 — 흐린 사진만으로도 그리는 중이다).
       결과(헤드리스, 실서버 복제본 작품, 같은 조건): 누르고 바로 첫 그림 **1.15 → 0.8초** · 완성(배율 2) 약 2.2초. 하니스 `timing.mjs`(단계별 시각) · `warm.mjs`(미리 치를 것별 효과).
+    - ⚠️⚠️ **작품 창을 열면 엔진을 미리 띄운다**(2026-10-26 사용자 결정 — "누를 때 다운하니 너무 느려서". 배포 뒤 실서버 실측: 누르고 첫 그림 1.7초 · 완성 3.4초,
+      그중 약 1.1초가 파일 받기 — 페이지 → 스크립트 → 목록 → 벽·액자 사진이 차례로, 하나하나 Cloudflare 가 Render 에 '바뀌었나'를 묻는다).
+      사진 모드에서 **지금 작품 사진이 다 뜬 뒤**(`onLoad`, 안 뜨면 3초 뒤) 0.3초 + 한가할 때(`requestIdleCallback`) `wall.warm()` — 보고 있는 사진을 받는 동안엔 끼어들지 않는다.
+      넘기면 새 작품의 초안 사진도 받아 둔다(warm 은 여러 번 불러도 된다). **홈페이지만 보고 나가는 방문자는 아무것도 받지 않는다** — 작품을 눌러 본 사람만 약 2.5MB.
+      ⚠️ 데이터 절약·2G·3G(`wallPrefetchAllowed`)면 미리 받지 않는다(그때는 ③대로 버튼에 손이 갈 때) · ⚠️ 창이 닫힌 뒤 늦게 온 warm 은 아무것도 안 한다(`aliveRef` —
+      안 그러면 걷을 사람이 없는 iframe 이 남는다) · 미리 띄운 엔진이 '안 되는 브라우저'라고 하면 누르기 전에 토글을 감춘다.
+      돈은 거의 안 든다 — 벽·액자 파일은 Cloudflare 가 내보내고(`cf-cache-status: REVALIDATED`, Render 는 304 만) 작품 사진은 R2(전송료 0).
+      로컬 실측(`timing.mjs WAIT=4000`): 누르고 첫 그림 0.32~0.39초(엔진은 누르기 3초 전에 준비 끝) — 전엔 0.8초.
     - ⚠️ **WebGL 을 잃으면 작품 없이 그림자만 남은 그림이 된다 — 에러 없이**(워프가 투명한 판을 돌려준다. 헤드리스에서 한 번 나왔다, 휴대폰 메모리 부족에서도 난다).
       view.js 가 그린 뒤 `ArtLookScene.glLost()` 를 보고, 잃었으면 그 그림을 보내지 않고 iframe 을 접는다(`gl-lost`). 바깥(useWallView)은 못 그린 것으로 치지 않고
       새 iframe 으로 다시 그린다(이 탭에서 2번까지, 그 뒤로는 '벽에 걸지 못했어요').
     - ⚠️ iframe 은 `display:none` 이 아니라 **화면 밖 1px**(감춘 문서는 일을 미룰 수 있다) · view.js 는 `requestAnimationFrame` 을 쓰지 않는다 · 창이 닫히면 iframe 을 걷는다(그린 그림은
-      모듈에 12장까지 — 다시 열면 바로) · **사진만 보는 방문자는 엔진도 벽 사진도 받지 않는다**.
+      모듈에 12장까지 — 다시 열면 바로) · **작가 홈페이지만 보는 방문자는 엔진도 벽 사진도 받지 않는다**(작품 창을 열어야 미리 받는다 — 위).
     - ⚠️ view.js 는 **localStorage(`artlook:works`·`artlook:prefs`)를 읽지도 쓰지도 않는다** — iframe 이 같은 출처라 방문자의 브라우저에 남의 작품 목록이 남는다.
     - ⚠️ 작품 사진은 `lib/imageFetch.ts` 의 **`fetchImageOnce`**(R2 직접 → 프록시, 결과를 쥐지 않는다)로 받는다. `fetchImage`(ZIP·PDF 용, 페이지가 끝날 때까지 쥔다)를 쓰면
       넘겨 본 작품마다 원본이 메모리에 쌓인다. R2 CORS 는 `localhost:5173` 을 허용한다 — 다른 포트에서 로컬로 보면 프록시 길로 돌아가 느리다(동작은 같다).
     - 안 되는 브라우저: WebGL2 생성자가 없으면 토글을 처음부터 감추고, 엔진이 'webgl'·'frame' 으로 답하면 "이 브라우저에서는 벽에 걸어 볼 수 없어요" + 사진 · 이 탭에선 다시 안 띄운다.
       벽 목록·사진을 못 받았거나 시간이 넘으면(준비 25초·한 장 20초) "벽에 걸지 못했어요 [다시 시도]"(토글은 남는다).
     - 회귀: `wallView.test.ts`(32 — 기억·말 읽기·그릴 순서·보관·view.js 비율·합성 배율(완성 2)·오크 플로터·차콜·매트·WebGL 잃음·미리 치르기·캡션 자리·소스 가드) · `artlookScreen.test.ts`(view.js 태그) · `artworkPrice.test.ts`(창의 가격) ·
-      e2e **`74-wall-view.spec.ts`(8 — A 창·캡션(작품 바로 아래 가운데)·공유 한 벌 · B 벽·비율 셋·차콜 벽 색·**가운데가 그 작품 색**(작품이 빠진 그림이 아니다) · C 넘김·닫기·다시 열기 · D 받는 것(차콜 1장·액자 사진은 오크 플로터 1장·결 텍스처 0) · E WebGL 없음 · F 실패→다시 시도 · G 빠른 넘김 · H PC 썸네일·키보드·공유는 위 줄)** ·
+      e2e **`74-wall-view.spec.ts`(9 — A 창·캡션(작품 바로 아래 가운데)·공유 한 벌 · B 벽·비율 셋·차콜 벽 색·**가운데가 그 작품 색**(작품이 빠진 그림이 아니다) · C 넘김·닫기·다시 열기 · D 작품 창을 열면 사진이 뜬 뒤 미리 받고 누르면 더 받지 않는다(차콜 1장·오크 플로터 사진 1장·결 텍스처 0) · D2 데이터 절약이면 미리 안 받음 · E WebGL 없음 · F 실패→다시 시도 · G 빠른 넘김 · H PC 썸네일·키보드·공유는 위 줄)** ·
       하니스 `scratchpad/wall-view/walk.mjs`(크롬+WebKit × 6화면 · 화면에 오른 시각 · `NOGL=1`) · `extremes.mjs`(실제 작품 세로 0.5배·가로 2배) · `engine-probe.mjs`(합성 시간·배율) · `quality.mjs`(ArtLook 저장과 화질 대조).
       2026-10-22 실측(헤드리스, 실서버 복제본 작품): 첫 벽 초안 약 1.4초 · 원본 약 2.3초 · 미리 그려 둔 다음 작품 0.1초 · 다시 열기 0.1초 → 2026-10-23 첫 초안 0.8초 · 완성(배율 2) 2.2초.
 
@@ -2584,6 +2592,17 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e `75-artlook-frameit-adds.spec.ts`(A 원형 귀는 벽 + [원 맞추기] 기억 · B 액자 묶음·묶음 설명(넓은 칸)·숨긴 액자 없음·박스 5종 · [원 맞추기] 칩이 원형 칩 바로 옆 · C 리넨 · D 캡션 붙고·기억·빼기 · E 여러 점 [+] 확대·한 점 복귀 초기화 휴대폰·PC) ·
       `scratchpad/vt/leak.mjs`(새 벽 3종 포함) · `nomat.mjs`(박스 5종 포함, 남은 실패는 문서화된 얇은 실버) ·
       하니스 `scratchpad/frameit/`(`boxcmp.mjs`+`sheet.py` — 액자를 같은 작품·벽에 걸어 나란히 · `regress.mjs`+`regress.py` — 커밋된 ArtLook 과 같은 입력으로 전 액자 픽셀 비교). `e2e 69` E 는 작품 칩을 순번이 아니라 `data-i` 로 고른다(맨 앞에 [여러 점] 칩).
+
+76. **아트링크 주최 공모의 제목·소개 — 관리자가 바로 고친다** (2026-10-26 사용자 요청 "admin 주최공모는 admin 이 공모 제목이나 내용 수정 가능하게")
+    - 제목: `PATCH /exhibitions/:id/title {title}` — **관리자만 · `hostType='ADMIN'` 만**(1~100자, 앞뒤 공백 뗌). 승인 절차 없음(아트링크가 주최자다).
+      위임 갤러리는 403(운영만 맡았다) · 갤러리가 올린 공모는 관리자에게도 403 — 그건 지금처럼 갤러리의 수정 요청 → 승인이다(지원자가 그 제목을 보고 지원했다).
+      화면 판정은 `lib/exhibitionHost.ts canEditTitle`(서버와 같은 규칙), 글자 수 `EXHIBITION_TITLE_MAX` 는 서버 스키마와 같아야 한다(테스트가 대조).
+    - 소개: 원래 있던 `PATCH /exhibitions/:id/description`(관리자·운영 갤러리, 서식 있는 글 — 규칙 63).
+    - 고치는 곳 둘: ① [주최 공모] 카드의 **[제목·소개 수정]** 창(`components/admin/HostedContentEditModal.tsx` — 바뀐 것만 보낸다 · 고친 채 닫으면 [버리고 닫기]/[계속 고치기] ·
+      목록 캐시에 곧바로 써 넣는다, 규칙 67 의 추가 질문 창과 같은 이유) ② 공고 상세의 제목 옆 [수정](Enter 저장 · Esc 취소) · 공모 소개 옆 [수정](원래 있던 것).
+    - ⚠️ **공모 단톡방 이름 = 공모 제목**이라 같이 바꾼다(`lib/chat.ts syncExhibitionChatTitle`). 갤러리 수정 요청을 승인해 제목이 바뀔 때도 이제 따라간다(그 전엔 방 이름이 옛 제목으로 남았다).
+      예전에 보낸 알림 글의 제목은 그대로다(보낸 때의 기록).
+    - 회귀: backend `exhibition-title.test.ts`(7) · frontend `exhibitionHost.test.ts`「canEditTitle」(3) · e2e `76-admin-hosted-edit.spec.ts`(2 — 휴대폰·PC 에서 고치고 비회원 화면 · 버릴지 묻기 · 위임 갤러리·갤러리 공모엔 버튼 없음).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.

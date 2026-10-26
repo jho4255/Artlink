@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Share2, X } from 'lucide-react';
 import Thumb from '@/components/shared/Thumb';
 import { AVAILABLE_DOT, artworkTitle, hasTitle, museumCaption, priceLabel, statusBadge } from '@/lib/artwork';
-import { readViewerMode, saveViewerMode, type ViewerMode } from '@/lib/wallView';
+import { readViewerMode, saveViewerMode, wallPrefetchAllowed, type ViewerMode } from '@/lib/wallView';
 import { useWallView } from '@/hooks/useWallView';
 import type { PortfolioImage } from '@/types';
 
@@ -14,7 +14,9 @@ import type { PortfolioImage } from '@/types';
  * 2026-10-22 (CLAUDE.md 규칙 74) — 미미오 작가 페이지의 [See More] 창과 견줘 모자랐던 것을 채웠다.
  *   · [사진 | 벽에 걸어 보기] — 벽 그림은 ArtLook 엔진이 그린다(hooks/useWallView). 처음엔 사진, 벽을 고르면 이 탭에서 기억한다.
  *     WebGL2 가 없거나 엔진이 안 되면 토글을 감춘다. 그리는 동안엔 흐린 사진(잠깐 뒤 '벽에 거는 중…').
- *     [벽에 걸어 보기]에 마우스를 올리거나 누르기 시작하면 엔진을 미리 띄운다(`wall.warm`).
+ *     **엔진은 미리 띄워 둔다**(`wall.warm`, 2026-10-26 사용자 결정 — 누를 때 받으니 너무 느렸다): 사진 모드에서 지금 작품 사진이 다 뜨면
+ *     잠깐 뒤 한가할 때(사진을 받는 동안엔 끼어들지 않는다 — 보고 있는 사진이 늦어진다). 사진이 안 뜨면 WARM_FALLBACK_MS 뒤에.
+ *     데이터 절약·2G·3G 면 미리 받지 않는다(`wallPrefetchAllowed`) — 그때는 버튼에 마우스를 올리거나 누를 때 띄운다(예전 그대로).
  *   · 캡션 두 줄(미술관 라벨: `작품명, 연도` / `재료 · 크기 · 가격`)은 **작품 바로 아래 가운데** — 사진이든 벽이든.
  *     처음엔 화면 왼쪽 아래 구석에 두었더니 작품에서 멀어 "작품 정보가 안 보인다"고 했다(2026-10-22 로컬 확인).
  *   · 작품 공유(그 작품 주소) · 좋아요 — PC 는 위 줄 오른쪽(닫기 옆), 휴대폰은 맨 아래 줄. PC 아래 작품 썸네일 줄.
@@ -37,6 +39,12 @@ function subscribeWide(onChange: () => void): () => void {
   return () => mq.removeEventListener('change', onChange);
 }
 const readWide = () => hasMatchMedia() && window.matchMedia(WIDE_MEDIA).matches;
+
+/** 사진이 다 뜬 뒤 엔진을 미리 띄우기까지 — 여는 효과(0.2초)가 끝나고 */
+const WARM_AFTER_PHOTO_MS = 300;
+/** 사진이 끝내 안 뜨면(느린 원본) 이만큼 뒤에라도 미리 띄운다 */
+const WARM_FALLBACK_MS = 3000;
+type IdleWindow = Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
 
 interface ArtworkViewerProps {
   works: PortfolioImage[];
@@ -65,6 +73,21 @@ export default function ArtworkViewer({ works, initialIndex, artistName, onClose
   const onCloseRef = useRef(onClose);
   const onIndexChangeRef = useRef(onIndexChange);
   useEffect(() => { onCloseRef.current = onClose; onIndexChangeRef.current = onIndexChange; });
+
+  // 엔진 미리 띄우기 — 사진 모드에서 지금 작품 사진이 다 뜬 뒤 한가할 때(위 머리말). 넘기면 새 작품의 초안 사진도 받아 둔다
+  const [shownPhoto, setShownPhoto] = useState<number | null>(null);
+  const currentId = works[index]?.id;
+  const { warm, available: wallAvailable } = wall;
+  useEffect(() => {
+    if (mode !== 'photo' || !wallAvailable || currentId == null || !wallPrefetchAllowed()) return;
+    const w = window as IdleWindow;
+    let idle = 0;
+    const t = window.setTimeout(() => {
+      if (w.requestIdleCallback) idle = w.requestIdleCallback(() => warm(), { timeout: 1000 });
+      else warm();
+    }, shownPhoto === currentId ? WARM_AFTER_PHOTO_MS : WARM_FALLBACK_MS);
+    return () => { window.clearTimeout(t); if (idle) w.cancelIdleCallback?.(idle); };
+  }, [mode, wallAvailable, warm, currentId, shownPhoto]);
 
   // 넘길 때만 알린다 — 처음 열릴 때는 이미 그 작품이다
   const firstRef = useRef(true);
@@ -166,6 +189,8 @@ export default function ArtworkViewer({ works, initialIndex, artistName, onClose
         data-view="photo"
         decoding="async"
         draggable={false}
+        onLoad={() => setShownPhoto(work.id)}
+        onError={() => setShownPhoto(work.id)}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2 }}

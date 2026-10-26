@@ -10,7 +10,8 @@ import { solidPng } from '../lib/helpers';
  *  A. 작품을 누르면 작품 창 — 원본 사진 · 캡션 두 줄(작품명, 연도 / 재료 · 크기) · ?work= · [공유](그 작품 주소)
  *  B. [벽에 걸어 보기] → 차콜 벽에 오크 플로터·넓은 매트로 건 그림 · **작품 방향대로 비율**(세로 4:5 · 가로 5:4 · 정사각 1:1 — 가로 캔버스에 세로 작품을 걸면 잘렸다)
  *  C. 벽에서 넘기면 다음 작품도 벽 · 닫으면 iframe 을 걷는다 · 다시 열면 벽으로 바로(이 탭에서 기억) · 사진으로 돌리면 기억을 지운다
- *  D. 사진만 보면 엔진을 띄우지 않는다 · 벽을 보면 벽 사진 1장 · 액자 사진은 오크 플로터 1장(2026-10-26 사진 액자) · 결 텍스처 0 · 방문자 브라우저에 artlook:* 를 남기지 않는다
+ *  D. 작품 창을 열면 사진이 뜬 뒤 엔진을 미리 띄운다(2026-10-26) · 벽 사진 1장 · 액자 사진은 오크 플로터 1장 · 결 텍스처 0 · 누르면 더 받지 않는다 · 방문자 브라우저에 artlook:* 를 남기지 않는다
+ *  D2. 데이터 절약 모드면 미리 받지 않는다(누를 때 띄운다)
  *  E. 엔진이 안 되는 브라우저(WebGL2 없음) — 안내 한 줄 · 토글이 사라지고 · 사진은 그대로 · 페이지 오류 0
  *  F. 엔진 준비가 실패하면(벽 목록을 못 받음) [다시 시도] — 다시 하면 벽이 뜬다 · 사진 화면은 멀쩡
  *  G. 빠르게 여러 번 넘겨도 지금 작품의 벽 그림이 뜬다(옛 그림이 이기지 않는다)
@@ -195,21 +196,26 @@ test('C. 벽에서 넘기면 다음도 벽 · 닫으면 iframe 을 걷는다 · 
   await ctx.close();
 });
 
-test('D. 사진만 보면 엔진을 띄우지 않는다 · 벽 사진 1장 · 오크 플로터 사진 1장 · 결 텍스처 0 · 방문자 브라우저에 artlook:* 없음', async ({ browser }) => {
+test('D. 작품 창을 열면 사진이 뜬 뒤 엔진을 미리 띄운다 · 벽 사진 1장 · 오크 플로터 사진 1장 · 결 텍스처 0 · 누르면 더 받지 않는다 · artlook:* 없음', async ({ browser }) => {
   const { ctx, page, errors, requests } = await openGuest(browser);
+  await page.waitForTimeout(800);
+  expect(requests.filter((u) => u.includes('/artlook/')), '홈페이지만 봤는데 엔진을 받았다').toEqual([]);
   await openFirst(page);
   const v = viewerOf(page);
   await v.getByRole('button', { name: '다음 작품' }).click();
   await v.getByRole('button', { name: '다음 작품' }).click();
-  await page.waitForTimeout(800);
-  expect(requests.filter((u) => u.includes('/artlook/')), '사진만 봤는데 엔진을 받았다').toEqual([]);
-  await expect(page.locator('iframe[data-wall-view]')).toHaveCount(0);
+  // 2026-10-26 — 사진이 뜨면 미리 띄운다(누를 때 받으니 너무 느렸다). 아직 사진 모드인데 엔진이 떠 있고 벽·액자 사진을 받아 두었다
+  await expect(page.locator('iframe[data-wall-view]')).toHaveCount(1, { timeout: 15000 });
+  await expect.poll(() => requests.filter((u) => /\/walls\/wall21-charcoal\.jpg/.test(u)).length, { timeout: 30000 }).toBe(1);
+  await expect.poll(() => requests.filter((u) => /frames\/photo\/oak-floater\.png/.test(u)).length, { timeout: 30000 }).toBe(1);
+  await expect(page.locator('[data-view="photo"]')).toBeVisible();
 
   await wallToggle(page).click();
   await wallFull(page);
   await page.waitForTimeout(1500);   // 이웃 미리 그리기까지
+  await expect(page.locator('iframe[data-wall-view]'), '미리 띄운 엔진을 그대로 쓴다').toHaveCount(1);
   const art = requests.filter((u) => u.includes('/artlook/'));
-  expect(art.filter((u) => /\/walls\//.test(u)).map((u) => u.split('/').pop()), '벽 사진은 고른 한 장').toEqual(['wall21-charcoal.jpg']);
+  expect(art.filter((u) => /\/walls\//.test(u)).map((u) => u.split('/').pop()), '벽 사진은 고른 한 장(누른 뒤 다시 받지 않는다)').toEqual(['wall21-charcoal.jpg']);
   // 2026-10-26 부터 오크 플로터는 사진 액자 — 그 사진 한 장만 받고, 코드 플로터의 결 텍스처는 받지 않는다
   expect(art.filter((u) => /frames\/photo\/[^/?]+\.png/.test(u)).map((u) => u.split('/').pop()!.split('?')[0]), '액자 사진은 오크 플로터 한 장').toEqual(['oak-floater.png']);
   expect(art.filter((u) => /frames\/frame-[a-z]+-texture\.jpg/.test(u)), '결 텍스처는 받지 않는다').toEqual([]);
@@ -219,6 +225,22 @@ test('D. 사진만 보면 엔진을 띄우지 않는다 · 벽 사진 1장 · �
   // 초안은 t800, 원본은 원본으로 그린다
   const uploads = requests.filter((u) => /\/uploads\//.test(u));
   expect(uploads.some((u) => /\/uploads\/t800\//.test(u))).toBe(true);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
+test('D2. 데이터 절약 모드면 미리 받지 않는다 — 사진만 보면 엔진을 안 띄우고, 누르면 그때 띄운다', async ({ browser }) => {
+  const { ctx, page, errors, requests } = await openGuest(browser, {}, async (c) => {
+    await c.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'connection', { configurable: true, get: () => ({ saveData: true, effectiveType: '4g' }) });
+    });
+  });
+  await openFirst(page);
+  await page.waitForTimeout(4000);   // 사진이 안 떠도 미리 띄우는 시간(3초)보다 길게
+  expect(requests.filter((u) => u.includes('/artlook/')), '데이터 절약인데 엔진을 받았다').toEqual([]);
+  await expect(page.locator('iframe[data-wall-view]')).toHaveCount(0);
+  await wallToggle(page).click();
+  await wallFull(page);
   expect(errors).toEqual([]);
   await ctx.close();
 });

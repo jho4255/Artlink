@@ -338,6 +338,22 @@ describe('화면 연결 — 작가 홈페이지', () => {
     expect(hook).toMatch(/sources\.clear\(\);/);
   });
 
+  it('작품 창을 열면 사진이 다 뜬 뒤 엔진을 미리 띄운다(2026-10-26) — 사진 모드·데이터 절약 아님·창이 닫힌 뒤엔 안 띄운다', () => {
+    const eff = viewer.slice(viewer.indexOf('const [shownPhoto'), viewer.indexOf('// 넘길 때만 알린다'));
+    expect(eff).toMatch(/mode !== 'photo' \|\| !wallAvailable \|\| currentId == null \|\| !wallPrefetchAllowed\(\)\) return;/);
+    expect(eff).toMatch(/shownPhoto === currentId \? WARM_AFTER_PHOTO_MS : WARM_FALLBACK_MS/);
+    expect(eff).toMatch(/requestIdleCallback\(\(\) => warm\(\)/);
+    expect(eff).toMatch(/cancelIdleCallback/);
+    // 사진이 뜬 것은 그 작품의 onLoad(실패해도 기다리지 않는다)
+    expect(viewer).toMatch(/onLoad=\{\(\) => setShownPhoto\(work\.id\)\}/);
+    expect(viewer).toMatch(/onError=\{\(\) => setShownPhoto\(work\.id\)\}/);
+    // 훅 — 창이 닫힌 뒤 늦게 온 warm 은 iframe 을 만들지 않는다(걷을 사람이 없다)
+    const warmFn = hook.slice(hook.indexOf('const warm = useCallback'), hook.indexOf('const retry = useCallback'));
+    expect(warmFn).toMatch(/if \(shared\.unsupported \|\| !aliveRef\.current\) return;/);
+    expect(warmFn).toMatch(/e instanceof Unsupported/);
+    expect(hook).toMatch(/aliveRef\.current = false;/);
+  });
+
   it('작품 사진은 쥐고 있지 않는 받기로(fetchImageOnce) — 넘겨 보는 동안 원본이 쌓이지 않게', () => {
     expect(hook).toMatch(/fetchImageOnce\(src\)/);
     expect(hook).not.toMatch(/\bfetchImage\(/);

@@ -149,6 +149,16 @@ export async function markChatNotificationsRead(chatId: number, userId: number):
  * ⚠️ 사람을 **빼지는 않는다**. 수락이 취소돼도 지난 대화를 읽을 수 있어야 하고,
  *    말없이 방에서 사라지면 남은 사람들이 영문을 모른다.
  */
+/**
+ * 공모 제목이 바뀌면 단톡방 이름도 따라 바꾼다(방 이름 = 공모 제목). 방이 아직 없으면 아무 일도 없다.
+ * 아트링크 주최 공모의 제목 고치기(`PATCH /exhibitions/:id/title`)와 갤러리 수정 요청 승인(approval.ts)이 부른다.
+ */
+export async function syncExhibitionChatTitle(exhibitionId: number, title: string): Promise<void> {
+  try {
+    await prisma.chat.updateMany({ where: { exhibitionId }, data: { title } });
+  } catch { /* best-effort — 방 이름이 늦게 따라와도 공모 제목은 이미 바뀌었다 */ }
+}
+
 export async function ensureExhibitionChat(exhibitionId: number): Promise<number | null> {
   const ex = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },

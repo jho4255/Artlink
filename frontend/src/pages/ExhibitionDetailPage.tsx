@@ -42,7 +42,7 @@ import { AttachmentEditor, AttachmentList } from '@/components/shared/Exhibition
 import { normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import HostBadge from '@/components/shared/HostBadge';
-import { isAdminHosted, canOperate, canManage, canDelete, canChangeRegion } from '@/lib/exhibitionHost';
+import { isAdminHosted, canOperate, canManage, canDelete, canChangeRegion, canEditTitle, EXHIBITION_TITLE_MAX } from '@/lib/exhibitionHost';
 import { operatorWorkspace, galleryOperationHref } from '@/lib/operationLinks';
 import type { Exhibition, PromoPhoto, ExhibitionImage } from '@/types';
 import StatusChip from '@/components/flow/StatusChip';
@@ -88,6 +88,9 @@ export default function ExhibitionDetailPage() {
 
   // 소개 수정 상태
   const [isEditingDesc, setIsEditingDesc] = useState(false);
+  // 제목 고치기 — 아트링크 주최 공모의 관리자만(canEditTitle · 서버 PATCH /:id/title, 2026-10-26)
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
@@ -170,6 +173,24 @@ export default function ExhibitionDetailPage() {
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '수정에 실패했습니다.'),
   });
+
+  const titleMutation = useMutation({
+    mutationFn: (title: string) => api.patch(`/exhibitions/${id}/title`, { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exhibition', id] });
+      queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+      setIsEditingTitle(false);
+      toast.success('공모 제목을 바꿨어요.');
+    },
+    onError: (e: { response?: { data?: { error?: string } } }) => toast.error(e.response?.data?.error || '제목을 바꾸지 못했어요.'),
+  });
+  const saveTitle = () => {
+    const t = editTitle.trim();
+    if (!t) { toast.error('공모 제목을 입력해주세요.'); return; }
+    titleMutation.mutate(t);
+  };
 
   /* 갠톡 열기 — 이미 있으면 그 방으로 (서버가 판단).
      ⚠️ 예전에는 여기서 옛 쪽지 API(`POST /messages`)를 불렀는데, 대화가 ArtTalk 으로 바뀐 뒤로는
@@ -346,7 +367,37 @@ export default function ExhibitionDetailPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <HostBadge exhibition={exhibition} className="block mb-1" />
-              <h1 className="text-2xl font-medium">{exhibition.title}</h1>
+              {isEditingTitle ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); saveTitle(); }
+                      else if (e.key === 'Escape') setIsEditingTitle(false);
+                    }}
+                    maxLength={EXHIBITION_TITLE_MAX}
+                    aria-label="공모 제목"
+                    autoFocus
+                    className="min-w-0 flex-1 basis-64 rounded-lg border border-gray-300 px-3 py-2 text-xl focus:border-gray-900 focus:outline-none"
+                  />
+                  <button onClick={saveTitle} disabled={titleMutation.isPending} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50">저장</button>
+                  <button onClick={() => setIsEditingTitle(false)} className="px-4 py-2 text-sm text-gray-500">취소</button>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-2">
+                  <h1 className="min-w-0 text-2xl font-medium break-keep [overflow-wrap:anywhere]">{exhibition.title}</h1>
+                  {canEditTitle(exhibition, user) && (
+                    <button
+                      onClick={() => { setEditTitle(exhibition.title); setIsEditingTitle(true); }}
+                      className="shrink-0 text-sm text-gray-400 hover:text-gray-900 flex items-center gap-1"
+                      aria-label="제목 수정"
+                    >
+                      <Edit3 size={14} /> 수정
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {/* 조회수는 서버가 공모를 올린 갤러리·관리자에게만 싣는다(백엔드 canSeeExhibitionViews) — 값이 왔으면 그린다 */}
             <ViewCountBadge count={exhibition.viewCount} owner className="mt-1 shrink-0" />

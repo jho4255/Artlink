@@ -2790,6 +2790,9 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   ⚠️ 같은 출처 iframe 은 같은 스레드라 합성 동안 바깥도 멈춘다 — 그래서 위 순서·틈을 둔다.
 - 첫 그림을 빨리(2026-10-23): 작품 사진은 엔진 준비와 **함께** 받고(`useWallView` `source`), view.js 는 준비 신호 전에 벽 사진 해독·광원 측정·벽 텍스처 올리기를 미리 치른다(`warmUp`).
   [벽에 걸어 보기]에 마우스를 올리거나 누르기 시작하면(`warm`) 엔진을 띄우고 초안 사진을 받아 둔다. 헤드리스 첫 초안 1.15 → 0.8초, 완성(배율 2) 약 2.2초.
+- 미리 띄우기(2026-10-26): `ArtworkViewer` 가 사진 모드에서 지금 작품 사진의 `onLoad`(없으면 3초) 뒤 0.3초 + `requestIdleCallback` 으로 `wall.warm()` —
+  데이터 절약·2G·3G 면 안 한다(`wallPrefetchAllowed`). `useWallView` 의 `aliveRef` 가 창이 닫힌 뒤의 warm 을 막고, warm 이 만든 엔진이 `Unsupported` 로 죽으면 토글을 감춘다.
+  실서버 실측(배포 전 코드): 누르고 첫 그림 1.7초 중 파일 받기 약 1.1초 → 미리 받으면 로컬 0.32~0.39초.
 - WebGL 을 잃으면(휴대폰 메모리 등) 워프가 투명한 판을 돌려줘 작품 없이 그림자만 남는다 — view.js 가 그린 뒤 `ArtLookScene.glLost()` 를 보고 그 그림을 버리고 `gl-lost` 로 접는다.
   훅은 새 iframe 으로 다시 그린다(탭당 2번).
 - 엔진 변경(합성 규칙은 그대로): index.html `VIEW_ONLY` · `.view-only body{display:none}` · `drawWatermark` 가드 · `<script src="view.js?v=__ARTLOOK_BUILD__">` ·
@@ -2854,3 +2857,10 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **끄는 동안(초안)** — `draftOf`(작품 긴 변 1000px, WeakMap) · `framedFor`(판 캐시 8개, 키 = 작품·액자·매트·원·광원·해상도 추정 등) · 합성 배율 1. `scene.js warp` 는 판 bbox 만 scissor.
   손을 떼면 `buildFramedCore` 를 바로 부르는 원래 경로로 한 번 더 그린다(최종 그림은 바뀌지 않는다).
 - 검증: HEAD ↔ 지금 픽셀 비교(세션 스크래치 `frameit/regress/`) · 단위 `artlookFrameItAdds.test.ts` · e2e `75-artlook-frameit-adds.spec.ts` · `scratchpad/vt/leak.mjs` · `nomat.mjs`.
+
+### 아트링크 주최 공모의 제목·소개 고치기 (2026-10-26, CLAUDE.md 76)
+- `PATCH /exhibitions/:id/title`(`routes/exhibition.ts`, `authorize('ADMIN')` + `assertCanManageExhibition` + `hostType==='ADMIN'`) → 제목 저장 + `syncExhibitionChatTitle`(`lib/chat.ts`, 단톡방 이름).
+  `approval.ts` 의 수정 요청 승인도 제목이 바뀌면 같은 함수를 부른다. 소개는 기존 `PATCH /:id/description`.
+- 화면: `components/admin/HostedContentEditModal.tsx`([주최 공모] 카드 [제목·소개 수정] — 제목 input + `LazyRichTextEditor`, 바뀐 것만 PATCH, 닫기 전 `ConfirmDialog`) ·
+  `ExhibitionDetailPage` 제목 옆 [수정](`canEditTitle`). 권한 판정 `lib/exhibitionHost.ts canEditTitle` · `EXHIBITION_TITLE_MAX`(100).
+

@@ -4,7 +4,7 @@ import { CAPACITY_MAX, resolveCapacity, seatsFullMessage } from '../lib/capacity
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
-import { ensureExhibitionChat } from '../lib/chat';
+import { ensureExhibitionChat, syncExhibitionChatTitle } from '../lib/chat';
 import { artistExhibitionLink, operationLink } from '../lib/notifyLinks';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
@@ -1602,6 +1602,26 @@ router.patch('/:id/description', authenticate, validate(descriptionSchema), asyn
       where: { id: exhibition.id },
       data: { description: description! }
     });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 공모 제목 고치기 (2026-10-26 사용자 요청) — **아트링크 주최 공모만, 관리자만**.
+ * 아트링크가 주최자라 승인 절차가 없다(올릴 때도 바로 게시된다). 위임 갤러리는 운영만 맡았으므로 못 고친다.
+ * 갤러리가 올린 공모의 제목은 지금처럼 갤러리의 수정 요청 → 관리자 승인으로 바뀐다(지원자가 그 제목을 보고 지원했다).
+ * 공모 단톡방 이름도 같이 바꾼다(방 이름이 공모 제목이다 — lib/chat.ts ensureExhibitionChat).
+ */
+const titleSchema = z.object({ title: z.string().trim().min(1, '공모 제목을 입력해주세요.').max(100, '공모 제목은 100자까지 쓸 수 있어요.') });
+router.patch('/:id/title', authenticate, authorize('ADMIN'), validate(titleSchema), async (req, res, next) => {
+  try {
+    const exhibition = await assertCanManageExhibition(parseInt(req.params.id as string), req.user!);
+    if (exhibition.hostType !== 'ADMIN') {
+      throw new AppError('갤러리가 올린 공모의 제목은 그 갤러리의 수정 요청으로 바꿔요.', 403);
+    }
+    const title = req.body.title as string;
+    const updated = await prisma.exhibition.update({ where: { id: exhibition.id }, data: { title }, select: { id: true, title: true } });
+    await syncExhibitionChatTitle(exhibition.id, title);
     res.json(updated);
   } catch (error) { next(error); }
 });

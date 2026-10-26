@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
-import { ensureExhibitionChat } from '../lib/chat';
+import { ensureExhibitionChat, syncExhibitionChatTitle } from '../lib/chat';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { resolveCapacity } from '../lib/capacity';
@@ -309,7 +309,9 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
       } else if (existingReq.type === 'EXHIBITION_EDIT') {
         const target = await prisma.exhibition.findUnique({ where: { id: existingReq.targetId } });
         if (!target) throw new AppError('수정 대상 공모를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
-        await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: pickAllowed(changes, EXHIBITION_EDIT_FIELDS) });
+        const picked = pickAllowed(changes, EXHIBITION_EDIT_FIELDS);
+        await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: picked });
+        if (typeof picked.title === 'string') await syncExhibitionChatTitle(existingReq.targetId, picked.title);
       }
     }
 

@@ -1,5 +1,5 @@
 // [벽에 걸어 보기] 첫 그림 시간 — 부모·iframe 시각을 맞춰 단계별로(iframe 생성·준비·사진 받기·합성·화면). 실서버 복제본(5173)이 떠 있어야 한다.
-//   node scratchpad/wall-view/timing.mjs   (RUNS=3 · HOVER=400 이면 버튼에 0.4초 올렸다 누른다 · ARTIST=/@핸들 — 기본은 데모 작가)
+//   node scratchpad/wall-view/timing.mjs   (RUNS=3 · HOVER=400 이면 버튼에 0.4초 올렸다 누른다 · WAIT=4000 이면 사진을 4초 보고 누른다 · ARTIST=/@핸들 — 기본은 데모 작가)
 // [벽에 걸어 보기] 첫 그림까지 시간이 어디서 쓰이나 — 부모·iframe 시각을 절대 시각(timeOrigin+now)으로 맞춰 단계별로 잰다
 import pw from '/home/jho4255/ArtLink/e2e/node_modules/playwright/index.js';
 const APP = process.env.APP || 'http://localhost:5183';
@@ -49,7 +49,7 @@ for (let run = 0; run < RUNS; run++) {
   await first.click();
   const viewer = page.getByTestId('artwork-viewer');
   await page.locator('[data-view="photo"]').waitFor({ timeout: 10000 });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(Number(process.env.WAIT || 1200));   // 사진을 보는 시간(WAIT=4000 이면 미리 띄운 엔진이 다 준비된 뒤 누른다)
   const btn = viewer.getByRole('button', { name: '벽에 걸어 보기' });
   if (process.env.HOVER) { await btn.hover(); await page.waitForTimeout(Number(process.env.HOVER)); }
   await btn.click();

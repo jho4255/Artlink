@@ -6,7 +6,9 @@
  *      규칙이 두 벌이 되어 어긋난다.
  */
 import { describe, it, expect } from 'vitest';
-import { isAdminHosted, canOperate, canManage, canDelete } from '../lib/exhibitionHost';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { isAdminHosted, canOperate, canManage, canDelete, canEditTitle, EXHIBITION_TITLE_MAX } from '../lib/exhibitionHost';
 
 const gallery = { id: 7, role: 'GALLERY' };
 const admin = { id: 1, role: 'ADMIN' };
@@ -83,5 +85,36 @@ describe('canDelete', () => {
   it('무관한 갤러리·비로그인은 false', () => {
     expect(canDelete({ hostType: 'GALLERY', gallery: { ownerId: 8 } }, gallery)).toBe(false);
     expect(canDelete({ hostType: 'ADMIN' }, null)).toBe(false);
+  });
+});
+
+describe('canEditTitle — 제목을 바로 고치는 것은 아트링크 주최 공모의 관리자만 (2026-10-26)', () => {
+  it('관리자 × 아트링크 주최만 참 — 위임 갤러리·작가·비로그인·갤러리 주최 공모는 거짓', () => {
+    expect(canEditTitle({ hostType: 'ADMIN' }, admin)).toBe(true);
+    expect(canEditTitle({ hostType: 'ADMIN', canOperate: true }, gallery)).toBe(false);   // 위임 갤러리 — 운영만 맡았다
+    expect(canEditTitle({ hostType: 'ADMIN' }, artist)).toBe(false);
+    expect(canEditTitle({ hostType: 'ADMIN' }, null)).toBe(false);
+    expect(canEditTitle({ hostType: 'GALLERY', gallery: { ownerId: 1 } }, admin)).toBe(false);   // 수정 요청 → 승인 길
+    expect(canEditTitle(undefined, admin)).toBe(false);
+  });
+
+  const src = (p: string) => readFileSync(resolve(__dirname, '..', p), 'utf8');
+  it('글자 수 상한은 서버 스키마와 같은 값', () => {
+    const route = readFileSync(resolve(__dirname, '../../../backend/src/routes/exhibition.ts'), 'utf8');
+    const m = route.match(/const titleSchema = z\.object\(\{ title: z\.string\(\)\.trim\(\)\.min\(1, [^)]+\)\.max\((\d+),/);
+    expect(m?.[1]).toBe(String(EXHIBITION_TITLE_MAX));
+  });
+  it('공고 상세는 canEditTitle 로 [수정]을 그리고, [주최 공모] 카드에 [제목·소개 수정]이 있다', () => {
+    const detail = src('pages/ExhibitionDetailPage.tsx');
+    expect(detail).toMatch(/canEditTitle\(exhibition, user\) && \(/);
+    expect(detail).toMatch(/api\.patch\(`\/exhibitions\/\$\{id\}\/title`/);
+    const hosted = src('components/admin/HostedExhibitionsSection.tsx');
+    expect(hosted).toMatch(/onClick=\{\(\) => setEditContentEx\(ex\)\}[\s\S]{0,160}제목·소개 수정/);
+    const modal = src('components/admin/HostedContentEditModal.tsx');
+    // 바뀐 것만 보낸다 · 고친 게 있으면 닫기 전에 묻는다 · 여는 목록 캐시에 곧바로 써 넣는다
+    expect(modal).toMatch(/if \(titleChanged\) out\.title =/);
+    expect(modal).toMatch(/if \(descChanged\) out\.description =/);
+    expect(modal).toMatch(/if \(dirty\) setAsking\(true\);/);
+    expect(modal).toMatch(/setQueriesData\(\{ queryKey: \['hosted-exhibitions'\] \}/);
   });
 });

@@ -48,6 +48,17 @@ export function canManage(ex: HostLike | null | undefined, user: UserLike | null
   return canOperate(ex, user);
 }
 
+/** 공모 제목 최대 글자 수 — 서버 등록·수정 스키마(`max(100)`)와 같은 값 */
+export const EXHIBITION_TITLE_MAX = 100;
+
+/**
+ * 제목을 바로 고칠 수 있는가 (2026-10-26) — 서버 `PATCH /exhibitions/:id/title` 과 같은 규칙: **관리자 · 아트링크 주최 공모만**.
+ * 갤러리가 올린 공모의 제목은 갤러리의 수정 요청 → 관리자 승인으로 바뀐다(지원자가 그 제목을 보고 지원했다).
+ */
+export function canEditTitle(ex: HostLike | null | undefined, user: UserLike | null | undefined): boolean {
+  return !!ex && user?.role === 'ADMIN' && isAdminHosted(ex);
+}
+
 /**
  * 지역을 바꿀 수 있는가 (2026-10-08) — 서버 `PATCH /exhibitions/:id/region` 과 같은 규칙(모집 인원과 같다).
  * 갤러리 주최 공모는 그 갤러리 · 아트링크 주최 공모는 Admin 만(위임 갤러리는 운영만 맡았다 — 주최자가 정한다).

@@ -9,10 +9,11 @@ import {
  * [벽에 걸어 보기] — 작품을 ArtLook 엔진으로 차콜 벽에 오크 플로터·넓은 매트로 걸어 그린 그림을 준다(2026-10-22, CLAUDE.md 규칙 74).
  * 판단(그릴 순서·보관·말 읽기)은 `lib/wallView.ts`, 여기는 iframe 을 띄우고 하나씩 그리는 일만 한다.
  *
- * - 엔진은 **필요할 때** 띄운다 — 벽 보기를 켜야(active) 화면 밖 iframe(`/artlook/index.html?view=1`)을 만든다.
- *   사진만 보는 방문자는 엔진도 벽 사진(1.7MB)·액자 결 텍스처(0.3MB)도 받지 않는다. 작품 창이 닫히면(이 훅이 내려가면) iframe 도 걷는다.
- *   [벽에 걸어 보기]에 마우스를 올리거나 누르기 시작하면(`warm`) 그때 미리 띄우고 지금 작품의 초안 사진도 받아 둔다 —
- *   누를 때쯤엔 엔진 준비와 사진 받기가 끝나 있어 그리기만 남는다.
+ * - 엔진은 화면 밖 iframe(`/artlook/index.html?view=1`)이다. 벽 보기를 켜면(active) 띄우고, 그 전에 **미리 띄워 둘 수 있다**(`warm`) —
+ *   ① 작품 창을 열어 사진이 다 뜨면(ArtworkViewer, 2026-10-26 사용자 결정 — 누를 때 받으니 너무 느렸다. 데이터 절약·느린 회선이면 안 한다)
+ *   ② [벽에 걸어 보기]에 마우스를 올리거나 누르기 시작하면. warm 은 엔진을 띄우고(벽 사진 1.6MB·오크 플로터 사진 0.8MB를 받고 준비까지)
+ *   지금 작품의 초안 사진도 받아 둔다 — 누를 때쯤엔 그리기만 남는다. 홈페이지만 보고 나가는 방문자는 아무것도 받지 않는다.
+ *   작품 창이 닫히면(이 훅이 내려가면) iframe 도 걷는다 — ⚠️ 그 뒤에 늦게 온 warm 은 아무것도 하지 않는다(aliveRef, 안 그러면 걷을 사람이 없는 iframe 이 남는다).
  * - **한 번에 하나만**, 지금 작품부터: 초안(t800) → 원본 → 이웃 작품 초안(느린 회선·데이터 절약이면 이웃은 안 그린다).
  *   같은 출처 iframe 은 이 페이지와 같은 스레드라 그리는 동안 화면도 멈춘다(lib/wallView.ts 머리말).
  * - ⚠️ 작품 사진은 엔진이 뜨기를 **기다리지 않고 함께** 받는다 — 순서대로 하면 첫 그림이 사진 받는 시간(실측 0.25초)만큼 늦었다.
@@ -179,7 +180,7 @@ export interface WallView {
   quality: WallQuality | null;
   status: 'idle' | 'working' | 'ready' | 'failed';
   retry: () => void;
-  /** 곧 벽 보기를 켤 것 같다(버튼에 마우스를 올렸다·누르기 시작했다) — 엔진을 미리 띄우고 지금 작품의 초안 사진을 받아 둔다 */
+  /** 곧 벽 보기를 켤 것 같다(작품 창의 사진이 떴다 · 버튼에 마우스를 올렸다·누르기 시작했다) — 엔진을 미리 띄우고 지금 작품의 초안 사진을 받아 둔다(여러 번 불러도 된다) */
   warm: () => void;
 }
 
@@ -194,6 +195,7 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
   const navAtRef = useRef(0);
   const doneAtRef = useRef(0);
   const pumpRef = useRef<() => Promise<void>>(async () => {});
+  const aliveRef = useRef(false);
 
   /** 다음 일은 조금 뒤에 — 타이머는 하나만(늦게 잡은 것이 이긴다) */
   const later = useCallback((ms: number) => {
@@ -267,7 +269,9 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
   useEffect(() => {
     const gen = ++genRef.current;
     busyRef.current = false;
+    aliveRef.current = true;
     return () => {
+      aliveRef.current = false;
       if (genRef.current === gen) genRef.current += 1;
       busyRef.current = false;
       window.clearTimeout(timerRef.current);
@@ -287,8 +291,18 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
   }, [urls, index, active, pump]);
 
   const warm = useCallback(() => {
-    if (shared.unsupported) return;
-    if (!frameRef.current || frameRef.current.dead) frameRef.current = new WallFrame();
+    if (shared.unsupported || !aliveRef.current) return;
+    if (!frameRef.current || frameRef.current.dead) {
+      const frame = frameRef.current = new WallFrame();
+      const gen = genRef.current;
+      // 미리 띄운 엔진이 '이 브라우저는 안 된다'고 하면 누르기 전에 토글을 감춘다(그리던 중이면 pump 가 같은 일을 한다)
+      frame.ready().catch((e) => {
+        if (gen !== genRef.current || !(e instanceof Unsupported)) return;
+        shared.unsupported = true;
+        if (frameRef.current === frame) frameRef.current = null;
+        setUnsupported(true);
+      });
+    }
     const { urls, index } = liveRef.current;
     const u = urls[index];
     if (u && !cache.peek(u) && !hardFailed.has(u)) void source(u, 'draft');
