@@ -102,5 +102,223 @@
     "h": 995,
     "rail": 45,
     "railPct": 4.5
+  },
+  "black-deep": {
+    "file": "black-deep.png",
+    "inner": [
+      95,
+      95,
+      891,
+      889
+    ],
+    "w": 987,
+    "h": 985,
+    "rail": 95,
+    "railPct": 9.6,
+    "wallFrom": 0.575
+  },
+  "ivory-deep": {
+    "file": "ivory-deep.png",
+    "inner": [
+      93,
+      93,
+      902,
+      891
+    ],
+    "w": 996,
+    "h": 985,
+    "rail": 93,
+    "railPct": 9.3,
+    "wallFrom": 0.602
+  },
+  "oak-deep": {
+    "file": "oak-deep.png",
+    "inner": [
+      95,
+      95,
+      895,
+      888
+    ],
+    "w": 991,
+    "h": 984,
+    "rail": 95,
+    "railPct": 9.6,
+    "wallFrom": 0.569
+  },
+  "walnut-deep": {
+    "file": "walnut-deep.png",
+    "inner": [
+      94,
+      94,
+      892,
+      889
+    ],
+    "w": 987,
+    "h": 984,
+    "rail": 94,
+    "railPct": 9.5,
+    "wallFrom": 0.565
+  },
+  "white-deep": {
+    "file": "white-deep.png",
+    "inner": [
+      94,
+      94,
+      901,
+      891
+    ],
+    "w": 996,
+    "h": 986,
+    "rail": 94,
+    "railPct": 9.4,
+    "wallFrom": 0.594
+  },
+  "black-floater": {
+    "file": "black-floater.png",
+    "inner": [
+      66,
+      66,
+      933,
+      931
+    ],
+    "w": 1000,
+    "h": 998,
+    "rail": 66,
+    "railPct": 6.6,
+    "wallFrom": 0.604
+  },
+  "black-thin": {
+    "file": "black-thin.png",
+    "inner": [
+      18,
+      18,
+      979,
+      984
+    ],
+    "w": 998,
+    "h": 1003,
+    "rail": 18,
+    "railPct": 1.8
+  },
+  "black-wide": {
+    "file": "black-wide.png",
+    "inner": [
+      130,
+      130,
+      1027,
+      1012
+    ],
+    "w": 1158,
+    "h": 1143,
+    "rail": 130,
+    "railPct": 11.2
+  },
+  "champagne-floater": {
+    "file": "champagne-floater.png",
+    "inner": [
+      64,
+      64,
+      934,
+      931
+    ],
+    "w": 999,
+    "h": 996,
+    "rail": 64,
+    "railPct": 6.4,
+    "wallFrom": 0.626
+  },
+  "maple": {
+    "file": "maple.png",
+    "inner": [
+      93,
+      93,
+      933,
+      931
+    ],
+    "w": 1027,
+    "h": 1025,
+    "rail": 93,
+    "railPct": 9.1
+  },
+  "oak-floater": {
+    "file": "oak-floater.png",
+    "inner": [
+      66,
+      66,
+      934,
+      929
+    ],
+    "w": 1001,
+    "h": 996,
+    "rail": 66,
+    "railPct": 6.6,
+    "wallFrom": 0.601
+  },
+  "silver": {
+    "file": "silver.png",
+    "inner": [
+      91,
+      91,
+      1037,
+      1028
+    ],
+    "w": 1129,
+    "h": 1120,
+    "rail": 91,
+    "railPct": 8.1
+  },
+  "walnut-floater": {
+    "file": "walnut-floater.png",
+    "inner": [
+      67,
+      67,
+      934,
+      930
+    ],
+    "w": 1002,
+    "h": 998,
+    "rail": 67,
+    "railPct": 6.7,
+    "wallFrom": 0.597
+  },
+  "white-floater": {
+    "file": "white-floater.png",
+    "inner": [
+      64,
+      64,
+      937,
+      932
+    ],
+    "w": 1002,
+    "h": 997,
+    "rail": 64,
+    "railPct": 6.4,
+    "wallFrom": 0.654
+  },
+  "white-thin": {
+    "file": "white-thin.png",
+    "inner": [
+      19,
+      19,
+      985,
+      989
+    ],
+    "w": 1005,
+    "h": 1009,
+    "rail": 19,
+    "railPct": 1.9
+  },
+  "white-wide": {
+    "file": "white-wide.png",
+    "inner": [
+      167,
+      167,
+      926,
+      917
+    ],
+    "w": 1094,
+    "h": 1085,
+    "rail": 167,
+    "railPct": 15.3
   }
 }

@@ -125,9 +125,10 @@ test.describe('기능', () => {
     await ctx.close();
   });
 
-  test('D. 띄우지 않는 곳 — 로그인·가입·지원서·초대 코드·약관 · 자동화 브라우저', async ({ browser }) => {
+  test('D. 띄우지 않는 곳 — 로그인·가입·지원서·초대 코드·약관 · 작가 홈페이지 · 자동화 브라우저', async ({ browser }) => {
     const { ctx, page, errors } = await human(browser);
-    for (const path of ['/login', '/signup', '/signup/email', '/join/ABCD2345', '/terms', '/privacy']) {
+    // 작가 홈페이지(/portfolio/:id → 핸들이 있으면 /@핸들) — 작가가 자기 홈페이지로 걸어 두는 링크라 우리 가입 권유를 띄우지 않는다(2026-10-26)
+    for (const path of ['/login', '/signup', '/signup/email', '/join/ABCD2345', '/terms', '/privacy', '/portfolio/1']) {
       await page.goto(path);
       expect(await absent(page, 2200), path).toBe(true);
     }

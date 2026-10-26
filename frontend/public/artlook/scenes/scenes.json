@@ -974,6 +974,272 @@
    "toneAmt": 0.1,
    "exposure": 1.0,
    "depth": 0.03
+  },
+  {
+   "id": "navy",
+   "name": "네이비",
+   "group": "wall",
+   "src": "walls/wall27-navy.jpg",
+   "thumb": "walls/thumbs/wall27-navy.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    0.86,
+    -0.5
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03
+  },
+  {
+   "id": "burgundy",
+   "name": "버건디",
+   "group": "wall",
+   "src": "walls/wall28-burgundy.jpg",
+   "thumb": "walls/thumbs/wall28-burgundy.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    0.93,
+    -0.38
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03
+  },
+  {
+   "id": "forest",
+   "name": "포레스트 그린",
+   "group": "wall",
+   "src": "walls/wall29-forest.jpg",
+   "thumb": "walls/thumbs/wall29-forest.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    0.75,
+    -0.66
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03
+  },
+  {
+   "id": "red-brick",
+   "name": "붉은 벽돌",
+   "group": "wall",
+   "src": "walls/wall30-red-brick.jpg",
+   "thumb": "walls/thumbs/wall30-red-brick.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    97,
+    91
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -0.79,
+    -0.62
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.56
+  },
+  {
+   "id": "fieldstone",
+   "name": "자연석",
+   "group": "wall",
+   "src": "walls/wall31-fieldstone.jpg",
+   "thumb": "walls/thumbs/wall31-fieldstone.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    122,
+    115
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -0.77,
+    -0.64
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03,
+   "wallCalm": 0.68
+  },
+  {
+   "id": "leaf-shadow",
+   "name": "잎 그림자",
+   "group": "wall",
+   "src": "walls/wall32-leaf-shadow.jpg",
+   "thumb": "walls/thumbs/wall32-leaf-shadow.jpg",
+   "frameless": true,
+   "region": [
+    [
+     0.16,
+     0.14
+    ],
+    [
+     0.84,
+     0.14
+    ],
+    [
+     0.84,
+     0.78
+    ],
+    [
+     0.16,
+     0.78
+    ]
+   ],
+   "regionAspect": 1.0625,
+   "regionCm": [
+    150,
+    141
+   ],
+   "focus": [
+    0.5,
+    0.46
+   ],
+   "lightDir": [
+    -0.95,
+    -0.32
+   ],
+   "shadow": 1.0,
+   "wallAmt": 0.3,
+   "toneAmt": 0.1,
+   "exposure": 1.0,
+   "depth": 0.03
   }
  ]
 }

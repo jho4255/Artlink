@@ -70,6 +70,19 @@
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
   // quad 의 대표 가로/세로 — 마주보는 변의 평균(원근이 있으면 위·아래 길이가 다르다)
+  // 단위정사각형의 내접원(중심 .5, 반지름 .5)을 quad 로 옮긴 다각형 — 원형 액자의 그림자 캐스터
+  function circleOnQuad(q, n) {
+    const Hm = homographyUnitToQuad(q);
+    if (!Hm) return q;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / n * Math.PI * 2, x = 0.5 + 0.5 * Math.cos(t), y = 0.5 + 0.5 * Math.sin(t);
+      const w = Hm[6] * x + Hm[7] * y + Hm[8];
+      out.push([(Hm[0] * x + Hm[1] * y + Hm[2]) / w, (Hm[3] * x + Hm[4] * y + Hm[5]) / w]);
+    }
+    return out;
+  }
+
   function quadSize(q) {
     return {
       w: (dist(q[0], q[1]) + dist(q[3], q[2])) / 2,
@@ -101,6 +114,7 @@
   uniform float uWallRef;   // 기준 밝기(구멍 주변 평균) — 이보다 어두우면 작품도 어두워진다
   uniform float uWallLod;   // 벽을 얼마나 흐리게 읽을지 (밉맵 단계)
   uniform float uGrain;     // 사진 그레인 세기
+  uniform float uRound;     // 1 이면 판을 내접원으로 자른다(원형 액자) — 0 이면 아무 일도 없다
   out vec4 fragColor;
 
   // 소프트라이트(Pegtop) — 색을 덮어쓰지 않고 '물들이기'만 한다.
@@ -119,6 +133,12 @@
     vec2 d = min(uv, vec2(1.0) - uv);
     vec2 w = fwidth(uv);
     float a = clamp(min(d.x / max(w.x, 1e-7), d.y / max(w.y, 1e-7)) + 0.5, 0.0, 1.0);
+    // 원형 액자 — 판 좌표에서 원으로 자르고 가장자리를 같은 1px 페더로(원근에서도 타원으로 맞는다)
+    if (uRound > 0.5) {
+      // 가장자리 폭은 위 사각 페더와 같은 w(=fwidth(uv))로 — r 의 미분을 따로 구하지 않는다(중심에서 특이점)
+      float r = length(uv - 0.5) * 2.0;
+      a = min(a, clamp((1.0 - r) / max(2.0 * max(w.x, w.y), 1e-7) + 0.5, 0.0, 1.0));
+    }
     if (a <= 0.002) discard;
 
     vec4 c = texture(uTex, uv);          // 암시적 미분 → 축소 시 밉맵이 먹는다
@@ -198,6 +218,7 @@
         uWallRef: gl.getUniformLocation(prog, 'uWallRef'),
         uWallLod: gl.getUniformLocation(prog, 'uWallLod'),
         uGrain: gl.getUniformLocation(prog, 'uGrain'),
+        uRound: gl.getUniformLocation(prog, 'uRound'),
       };
       return _gl;
     } catch (e) {
@@ -297,11 +318,26 @@
     gl.uniform1f(_loc.uExposure, o.exposure == null ? 1 : o.exposure);
     gl.uniform1f(_loc.uWallAmt, wallAmt);
     gl.uniform1f(_loc.uGrain, o.grain == null ? 0 : o.grain);
+    gl.uniform1f(_loc.uRound, o.round ? 1 : 0);
 
     gl.disable(gl.BLEND);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // `keep` — 앞서 그린 것을 지우지 않고 이어 그린다(여러 점: 칸마다 화면 전체를 돌리고 읽어 오면 끌 때 렉 — 2026-10-25 신고).
+    //   셰이더가 판 밖을 discard 하므로 앞 칸의 픽셀은 그대로 남는다. 읽어 오기(drawImage)는 마지막에 한 번.
+    if (!o.keep) {
+      gl.disable(gl.SCISSOR_TEST);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    // 판이 차지하는 자리만 돌린다 — 화면 전체를 돌리면 판 밖은 전부 discard 될 일을 셰이더가 다 한다
+    const xs = quad.map((p) => p[0]), ys = quad.map((p) => p[1]);
+    const bx0 = Math.max(0, Math.floor(Math.min(...xs)) - 2), bx1 = Math.min(W, Math.ceil(Math.max(...xs)) + 2);
+    const by0 = Math.max(0, Math.floor(Math.min(...ys)) - 2), by1 = Math.min(H, Math.ceil(Math.max(...ys)) + 2);
+    if (bx1 > bx0 && by1 > by0) {
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(bx0, H - by1, bx1 - bx0, by1 - by0);     // GL 은 아래가 0
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.disable(gl.SCISSOR_TEST);
     return _glCanvas;
   }
 
@@ -845,11 +881,57 @@
    * 장면 위에 작품을 끼워 ctx 에 그린다.
    * @returns {quad:[[x,y]×4]} 화면 픽셀 quad (드래그 히트테스트용) 또는 null
    */
+  /** 벽 캡션 카드를 벽 평면에 놓는다 — 단위 영역 좌표(cm/regionCm)에서 자리를 정하고 영역 호모그래피로 옮긴다.
+   *  label = { canvas, wCm, hCm, gapCm }. 그린 자리(4점)를 돌려준다. 자리가 없으면 null */
+  function placeWallLabel(ctx, W, H, scene, fit, piece, label, lightOpts, baseExp, ldn) {
+    const rq = mapQuad(scene.region, fit);
+    const Hr = homographyUnitToQuad(rq);
+    const Hi = Hr && inv3(Hr);
+    if (!Hi) return null;
+    const toU = (p) => { const w = Hi[6] * p[0] + Hi[7] * p[1] + Hi[8];
+      return [(Hi[0] * p[0] + Hi[1] * p[1] + Hi[2]) / w, (Hi[3] * p[0] + Hi[4] * p[1] + Hi[5]) / w]; };
+    const toP = (u) => { const w = Hr[6] * u[0] + Hr[7] * u[1] + Hr[8];
+      return [(Hr[0] * u[0] + Hr[1] * u[1] + Hr[2]) / w, (Hr[3] * u[0] + Hr[4] * u[1] + Hr[5]) / w]; };
+    const pu = piece.map(toU);
+    const right = Math.max(pu[1][0], pu[2][0]), left = Math.min(pu[0][0], pu[3][0]);
+    const bottom = Math.max(pu[2][1], pu[3][1]);
+    const [rw, rh] = scene.regionCm;
+    const cw = label.wCm / rw, ch = label.hCm / rh, gap = (label.gapCm == null ? 9 : label.gapCm) / rw;
+    const y1 = bottom, y0 = bottom - ch;
+    const margin = 0.02 * Math.min(W, H);
+    const fits = (q) => q.every(([x, y]) => x >= margin && x <= W - margin && y >= margin && y <= H - margin);
+    let q = null;
+    for (const x0 of [right + gap, left - gap - cw]) {
+      const c = [[x0, y0], [x0 + cw, y0], [x0 + cw, y1], [x0, y1]].map(toP);
+      if (fits(c)) { q = c; break; }
+    }
+    if (!q) return null;
+    // 카드는 벽에 붙은 얇은 판 — 접지 그림자만 짧게(캐스터는 캔버스 밖, 벽 그림자와 같은 해법)
+    const sz = quadSize(q), AWAY = 2 * W + Math.max(sz.w, sz.h);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.22)';
+    ctx.shadowBlur = Math.max(1, sz.h * 0.05);
+    ctx.shadowOffsetX = -ldn[0] * sz.h * 0.02 + AWAY;
+    ctx.shadowOffsetY = -ldn[1] * sz.h * 0.03;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.moveTo(q[0][0] - AWAY, q[0][1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0] - AWAY, q[i][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    const w = warp(label.canvas, q, W, H, Object.assign({}, lightOpts, { exposure: baseExp }));
+    if (w) ctx.drawImage(w, 0, 0);
+    return q;
+  }
+
   function composeScene(ctx, W, H, scene, art, ui) {
     if (!scene || !scene.img || !scene.loaded || !art) return null;
     const u = ui || {};
     const aw0 = art.naturalWidth || art.width, ah0 = art.naturalHeight || art.height;
 
+    // 벽 캡션 카드를 붙이면 '액자 + 간격 + 카드' 묶음이 가운데 오게 작품을 그 반만큼 왼쪽으로 민다(영역 단위).
+    // 자동 프레이밍의 화면 상한도 묶음 폭으로 잰다 — 안 그러면 액자가 화면을 다 차지해 카드 자리가 없다.
+    const labelU = (u.label && u.label.canvas && scene.region && scene.regionCm && scene.frameless)
+      ? ((u.label.gapCm == null ? 9 : u.label.gapCm) + u.label.wCm) / scene.regionCm[0] : 0;
     // 이 장면에서 작품이 어디에 얼마나 크게 앉는지 계산한다(주어진 프레이밍 기준)
     // adj 를 따로 받는 이유 — 자동 프레이밍은 **사용자 조절 전(중립) 배치**로 정해야 한다(아래).
     const solve = (fit, adj) => {
@@ -862,7 +944,7 @@
           artAspect: aw0 / ah0,
           fill: scene.fill,
           gain: a.gain, fillMax: a.fillMax,
-          scale: a.scale, dx: a.dx, dy: a.dy,
+          scale: a.scale, dx: (a.dx || 0) - labelU / 2, dy: a.dy,
         });
         if (!p) return null;
         p.regionPx = quadSize(mapQuad(scene.region, fit));   // 드래그 환산용
@@ -982,20 +1064,25 @@
         const s0 = solve(fit, { gain }) || neutral;                     // zoom=1 기준
         const q0 = s0.quad;
         const xs0 = q0.map((p) => p[0]), ys0 = q0.map((p) => p[1]);
-        const long0 = Math.max(Math.max(...xs0) - Math.min(...xs0),
-                               Math.max(...ys0) - Math.min(...ys0));
+        const w0 = Math.max(...xs0) - Math.min(...xs0), h0 = Math.max(...ys0) - Math.min(...ys0);
+        // 캡션 카드 몫(간격 + 카드, px). 카드는 실물 크기라 작품을 줄여도 그대로다 — 줄일 땐 작품 몫만 줄인다
+        const lab = labelU > 0 ? labelU * quadSize(mapQuad(scene.region, fit)).w : 0;
+        const long0 = Math.max(w0 + lab, h0);
         if (long0 > 1e-6) {
           zoom = Math.max(1, Math.min(zoom, cap / long0));
           // zoom 을 1 까지 내려도 넘치면 **영역 안에서** 줄인다(카메라로는 더 못 줄인다).
           // 줄이는 건 `gain` 이 아니라 `fillMax` 다 — 위 주석 참고.
           if (long0 > cap && s0.place && s0.place.heightRatio > 0) {
-            fillMax = s0.place.heightRatio * (cap / long0);
+            const k = lab > 0 ? Math.min(cap / h0, Math.max(0.05, (cap - lab) / w0)) : cap / long0;
+            fillMax = s0.place.heightRatio * k;
           }
         }
       }
       if (zoom > 1.02) {
         const nq = (solve(fit, { gain, fillMax }) || neutral).quad;
-        const cx = nq.reduce((s, p) => s + p[0], 0) / 4;
+        // 카드를 붙이면 묶음(작품 + 간격 + 카드)의 가운데로 당긴다
+        const cx = nq.reduce((s, p) => s + p[0], 0) / 4
+          + (labelU > 0 ? labelU * quadSize(mapQuad(scene.region, fit)).w / 2 : 0);
         const cy = nq.reduce((s, p) => s + p[1], 0) / 4;
         const focus = [(cx - fit.dx) / fit.sw, (cy - fit.dy) / fit.sh];
         fit = fitScene(scene.img, W, H, focus, zoom);
@@ -1011,6 +1098,28 @@
     // 프레이밍(gain·zoom)이 정해진 뒤에 사용자 조절을 얹는다
     let got = solve(fit, Object.assign({ gain, fillMax }, userAdj));
     if (!got) return null;
+    // ── 사용자 확대가 벽 한계에 막히면 남은 만큼 **카메라를 당긴다** (2026-10-25) ─────────────────
+    // 작품(묶음)이 이미 벽 영역 폭·화면 상한에 붙어 있으면 [+]·휠·두 손가락이 t 를 못 키워 **아무 일도 안 일어났다**.
+    // 여러 점은 거의 늘 그렇다(실치수로 늘어놓으면 벽보다 넓다) — 확대값만 몰래 쌓였다가 한 점으로 돌아오면 한꺼번에 먹어
+    // "크기가 이상해진다"(사용자 신고). 막힌 몫만큼 카메라를 당기되, 원본 사진을 늘리는 한도(maxSrcScale)의 1.25배까지만.
+    const userS = u.scale == null ? 1 : u.scale;
+    if (userS > 1.001 && scene.region && got.place) {
+      const plain = solve(fit, { gain, fillMax, dx: u.dx, dy: u.dy });          // 사용자 확대 없이
+      const rem = plain && plain.place ? plain.place.heightRatio * userS / Math.max(1e-6, got.place.heightRatio) : 1;
+      if (rem > 1.01) {
+        const iw = scene.img.naturalWidth, ih = scene.img.naturalHeight;
+        const base = Math.max(W / iw, H / ih);
+        const zCap = Math.max(zoom, (u.maxSrcScale == null ? 1.15 : u.maxSrcScale) * 1.25 / base);
+        const z2 = Math.min(zoom * rem, zCap);
+        if (z2 > zoom * 1.005) {
+          const q = got.quad;
+          const cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4;
+          fit = fitScene(scene.img, W, H, [(cx - fit.dx) / fit.sw, (cy - fit.dy) / fit.sh], z2);
+          zoom = z2;
+          got = solve(fit, Object.assign({ gain, fillMax }, userAdj)) || got;
+        }
+      }
+    }
 
     const dbg = u.debug ? {} : null;
     ctx.drawImage(scene.img, fit.dx, fit.dy, fit.sw, fit.sh);
@@ -1038,6 +1147,16 @@
     const quad = got.quad, place = got.place;
     const size = quadSize(quad);
     if (!(size.w > 4 && size.h > 4)) return null;
+    // ── 여러 점(갤러리 월, 2026-10-25) — `art` 는 묶음 전체의 비율만 가진 자리표시이고, 칸(u.group[i].rect, 묶음 0~1 좌표)마다
+    //    판(plate)이 따로 온다. 묶음 quad 의 호모그래피로 칸을 옮기므로 원근이 있는 방에서도 칸끼리 같은 평면에 앉는다.
+    //    그림자·모서리 폐색은 칸마다(액자 사이 벽에도 그림자가 진다). 옆면(두께)은 만들지 않는다(액자는 정면 + 그림자 — 규칙 36).
+    const group = Array.isArray(u.group) && u.group.length ? u.group : null;
+    const Hg = group ? homographyUnitToQuad(quad) : null;
+    const subQuad = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]].map(([x, y]) => {
+      const w = Hg[6] * x + Hg[7] * y + Hg[8];
+      return [(Hg[0] * x + Hg[1] * y + Hg[2]) / w, (Hg[3] * x + Hg[4] * y + Hg[5]) / w];
+    });
+    const groupItems = group && Hg ? group.map((g) => ({ q: subQuad(g.rect), plate: g.plate, round: !!g.round })) : null;
 
     // 판 해상도 — 구멍보다 크게(축소 샘플링이 화질에 유리) 하되 상한을 둔다.
     // ⚠️ **상한을 걸 때 비율을 반드시 유지할 것.** 예전엔 가로·세로에 각각 `min(cap, …)` 을
@@ -1075,7 +1194,7 @@
 
     const matDefault = matAuto != null ? matAuto
       : (scene.region ? 0 : (scene.mat == null ? 0.06 : scene.mat));
-    const ins = buildInsert(art, {
+    const ins = groupItems ? null : buildInsert(art, {
       W: iw, H: ih,
       mat: u.mat == null ? matDefault : u.mat,
       matColor: u.matColor || scene.matColor || '#f4f1ea',
@@ -1106,7 +1225,7 @@
     // 액자가 사진에 이미 있는 장면(frameless=false)은 그림자도 사진에 구워져 있으므로 건너뛴다.
     // ── 두께 — 작품은 벽에서 떠 있는 상자다 (사진에 액자가 없는 장면에서만) ──────
     // 사진에 이미 액자가 있는 장면은 그 액자가 제 두께·그림자를 갖고 있으므로 건드리지 않는다.
-    const depth = scene.frameless
+    const depth = scene.frameless && !groupItems
       ? (u.depth == null ? (scene.depth == null ? 0.055 : scene.depth) : u.depth) : 0;
     const box = boxFaces(quad, { depth, // ⚠️ **빛을 받는 옆면이 보이게 둘 것.** 예전 [-0.58,-0.32] 는 오른쪽·아래 면을 보여
     //   줬는데, 조명이 좌상단이라 그 두 면이 **둘 다 그늘**이었다 — 두께가 어두운 띠로만
@@ -1148,11 +1267,22 @@
       //   파내면 이번엔 조각 둘레에 **그림자가 없는 밝은 띠**가 생긴다 — 파냄은 실루엣보다
       //   조금 크게 해야 검은 테가 안 남는데, 그만큼이 곧 밝은 테가 된다
       //   (실측 2026-08-30: 벽 177 인데 경계 바로 밖이 217. 검은 테를 밝은 테로 바꿨을 뿐).
-      const path = (cx, q, dx) => {
+      // 캐스터 — 한 점이면 그 조각, 여러 점이면 칸마다(한 경로에 모아 **한 번** 칠한다 — 따로 칠하면 겹친 자리가 두 번 어두워진다)
+      const casters = groupItems ? groupItems.map((g) => ({ q: g.q, round: g.round })) : [{ q: quad, round: !!u.round }];
+      const path = (cx, _q, dx) => {
         cx.beginPath();
-        cx.moveTo(q[0][0] + dx, q[0][1]);
-        for (let i = 1; i < 4; i++) cx.lineTo(q[i][0] + dx, q[i][1]);
-        cx.closePath();
+        for (const { q, round } of casters) {
+          if (round) {                       // 원형 액자 — 판의 내접원을 그대로 옮긴다(원근이면 타원)
+            const pts = circleOnQuad(q, 96);
+            cx.moveTo(pts[0][0] + dx, pts[0][1]);
+            for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0] + dx, pts[i][1]);
+            cx.closePath();
+            continue;
+          }
+          cx.moveTo(q[0][0] + dx, q[0][1]);
+          for (let i = 1; i < 4; i++) cx.lineTo(q[i][0] + dx, q[i][1]);
+          cx.closePath();
+        }
       };
       // ⚠️ **접지를 진하게 만들지 말 것.** 같은 흰 벽돌벽에서 FrameIt 은 벽 밝기를
       //   18~22 레벨만 떨어뜨리는데 우리는 73 이었다(실측 2026-08-30). 진한 접지선은
@@ -1267,13 +1397,28 @@
     }
 
     // ── 앞면 ────────────────────────────────────────────────────────────────
-    const warped = warp(ins.canvas, box.front, W, H, Object.assign({}, lightOpts, { exposure: baseExp }));
+    if (groupItems) {
+      // 칸마다 그 칸의 화면 크기에 맞춘 판을 만들어 끼운다(한 점일 때와 같은 buildInsert — 매트·폐색은 액자 판이 이미 갖고 있다).
+      // 한 GL 화면에 이어 그리고(keep) **마지막에 한 번만** 읽어 온다 — 칸마다 읽어 오면 끌 때 칸 수만큼 느려졌다.
+      let wg = null;
+      groupItems.forEach((g, gi0) => {
+        const gs = quadSize(g.q);
+        const kc = Math.min(1, cap / Math.max(gs.w * ss, gs.h * ss));
+        const gi = buildInsert(g.plate, { W: Math.max(8, Math.round(gs.w * ss * kc)), H: Math.max(8, Math.round(gs.h * ss * kc)),
+          mat: 0, innerShadow: 0, bevel: false, glass: 0, lightDir: ld, canvasTexture: false, backing: false });
+        wg = warp(gi.canvas, g.q, W, H, Object.assign({}, lightOpts, { exposure: baseExp, round: g.round, keep: gi0 > 0 })) || wg;
+      });
+      if (!wg) return null;
+      ctx.drawImage(wg, 0, 0);
+    } else {
+    const warped = warp(ins.canvas, box.front, W, H, Object.assign({}, lightOpts, { exposure: baseExp, round: !!u.round }));
     if (!warped) return null;
     ctx.drawImage(warped, 0, 0);
+    }
     // 디버그 마스크 — **본 판과 똑같은 quad** 로 워프한다(조명·톤·벽명암은 끄고).
     // 다시 계산하지 않으므로 마스크가 화면과 어긋날 수 없다.
     if (dbg && u.maskPlate) {
-      const mw = warp(u.maskPlate, box.front, W, H, { exposure: 1 });
+      const mw = warp(u.maskPlate, box.front, W, H, { exposure: 1, round: !!u.round });
       if (mw) dbg.masks = mw;
     }
 
@@ -1321,15 +1466,20 @@
     //    (마이터 이음새의 상호 폐색 + 모서리로 갈수록 줄어드는 반사광).
     // 근거: 골든의 윗살 밝기가 160·183·178·178·166·172·169·176·**155** 로 **양 끝이 어둡다**.
     //    단조 기울기가 아니므로 광원 램프로는 재현되지 않는다(실제로 시도했다가 되돌렸다).
-    const cornerAO = u.cornerAO == null ? 0.18 : u.cornerAO;
+    // 원형 액자에는 모서리(마이터)가 없다 — 걸지 않는다
+    const cornerAO = u.round ? 0 : (u.cornerAO == null ? 0.18 : u.cornerAO);
     if (cornerAO > 0) {
       // ⚠️ 반경·감쇠 모양을 함께 봐야 한다. 넓고 완만하면 **둥근 얼룩**으로 보이고,
       //    좁으면 살 끝(모서리에서 살 폭의 1.4배 지점)에 닿지 않아 아무 효과가 없다.
       //    가까이는 급히 떨어지고 멀리는 아주 옅게 끄는 모양이라야 '폐색'으로 읽힌다.
-      const rr = Math.max(8, Math.min(size.w, size.h) * 0.13);
+      // 여러 점이면 칸마다(원형 칸은 모서리가 없다) — 반경도 그 칸의 크기로
+      const aoSets = groupItems ? groupItems.filter((g) => !g.round).map((g) => ({ pts: g.q, s: quadSize(g.q) }))
+        : [{ pts: box.front, s: size }];
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
-      for (const [px, py] of box.front) {
+      for (const { pts, s: sz } of aoSets) {
+      const rr = Math.max(8, Math.min(sz.w, sz.h) * 0.13);
+      for (const [px, py] of pts) {
         const rg = ctx.createRadialGradient(px, py, 0, px, py, rr);
         rg.addColorStop(0, `rgba(0,0,0,${cornerAO})`);
         rg.addColorStop(0.30, `rgba(0,0,0,${(cornerAO * 0.50).toFixed(3)})`);
@@ -1338,7 +1488,18 @@
         ctx.fillStyle = rg;
         ctx.fillRect(px - rr, py - rr, rr * 2, rr * 2);
       }
+      }
       ctx.restore();
+    }
+
+    // ── 벽 캡션 카드(2026-10-25) — 미술관처럼 작품 오른쪽 벽에 붙인 작은 카드 ─────────────
+    // 크기·간격은 **벽의 실제 축척**(regionCm)으로 정한다 — 카드는 어느 작품 옆에서나 같은 실물 크기(11cm 남짓)라
+    // 작은 작품 옆에선 상대적으로 크고 큰 작품 옆에선 작다. 그게 실제 전시장 모습이다.
+    // 카드도 판과 같은 워프(벽 명암·톤·그레인)를 거친다 — 따로 그리면 카드만 떠 보인다.
+    // 오른쪽에 자리가 없으면 왼쪽, 거기도 없으면 붙이지 않는다(화면 밖으로 잘린 카드는 없느니만 못하다).
+    let labelQuad = null;
+    if (u.label && u.label.canvas && scene.region && scene.regionCm && scene.frameless) {
+      labelQuad = placeWallLabel(ctx, W, H, scene, fit, box.front, u.label, lightOpts, baseExp, ldn);
     }
 
     if (scene.fgImg && scene.fgLoaded) {
@@ -1346,8 +1507,9 @@
     }
     // quad 는 **벽에 닿은 뒷면**(크기 계산의 진실), hitQuad 는 눈에 보이는 앞면(드래그 판정용)
     return {
-      quad, hitQuad: box.front, fit, fitNote, zoom, depth,
-      artRect: ins.artRect, regionPx: place ? place.regionPx : null,
+      quad, hitQuad: box.front, fit, fitNote, zoom, depth, labelQuad,
+      artRect: ins ? ins.artRect : null, regionPx: place ? place.regionPx : null,
+      items: groupItems ? groupItems.map((g) => g.q) : null,   // 여러 점 — 칸마다의 자리(계측·하니스용)
       debug: dbg,
     };
   }

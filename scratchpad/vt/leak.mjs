@@ -19,7 +19,11 @@ const SCENES_UNDER_TEST = ['white-brick', 'stone', 'grey-brick', 'travertine',
   // 2026-09-03 추가 6종. **walnut-panel 이 이 검사의 핵심**이다 — 세로 슬랫이
   // 폭 200px 짜리 주기 무늬라 벽 명암 밉맵(≈11텍셀)을 그냥 통과한다. 규칙 40 의
   // '그림이 투명해져서 벽문양이 비친다'가 재현될 수 있는 유일한 새 자산이다.
-  'charcoal', 'olive', 'walnut-panel', 'terracotta', 'blue-grey', 'white-plaster'];
+  'charcoal', 'olive', 'walnut-panel', 'terracotta', 'blue-grey', 'white-plaster',
+  // 2026-10-25 박물관 색 벽 3종 — 2026-10-26 부터 차콜·테라코타·올리브를 재채색(결 세기가 원본과 같다) — 원본과 비슷한 값이 나와야 한다
+  'navy', 'burgundy', 'forest',
+  // 2026-10-26 GPT 벽 3종 — 벽돌은 주기 무늬라 반드시 잰다(규칙 44k: 월넛 슬랫이 그랬다)
+  'red-brick', 'fieldstone', 'leaf-shadow'];
 
 const shots = await p.evaluate(async (ids) => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));

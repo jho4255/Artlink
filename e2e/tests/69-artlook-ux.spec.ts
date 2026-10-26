@@ -211,7 +211,8 @@ test('E. ★ 크기를 안 적은 작품 → [크기 입력하기] → 편집 �
   const frame = await openArtLook(page);
   const idx = await frame.evaluate((id) => JSON.parse(localStorage.getItem('artlook:works')!).findIndex((w: any) => w.id === id), titledNoSize);
   expect(idx).toBeGreaterThanOrEqual(0);
-  await frame.locator('#works button').nth(idx).click();
+  // 작품 칩은 번호(data-i)로 고른다 — 줄 맨 앞에 [여러 점] 칩이 있어 순번이 작품 번호와 다르다(2026-10-25)
+  await frame.locator(`#works .chip.work[data-i="${idx}"]`).click();
   await expect(frame.locator('#worksLine')).toContainText('높이 90cm', { timeout: 30000 });
   await expect(frame.locator('#worksLine')).toContainText('여름 그늘');
   await frame.getByRole('button', { name: '크기 입력하기' }).click();

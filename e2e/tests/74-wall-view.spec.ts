@@ -10,7 +10,7 @@ import { solidPng } from '../lib/helpers';
  *  A. 작품을 누르면 작품 창 — 원본 사진 · 캡션 두 줄(작품명, 연도 / 재료 · 크기) · ?work= · [공유](그 작품 주소)
  *  B. [벽에 걸어 보기] → 차콜 벽에 오크 플로터·넓은 매트로 건 그림 · **작품 방향대로 비율**(세로 4:5 · 가로 5:4 · 정사각 1:1 — 가로 캔버스에 세로 작품을 걸면 잘렸다)
  *  C. 벽에서 넘기면 다음 작품도 벽 · 닫으면 iframe 을 걷는다 · 다시 열면 벽으로 바로(이 탭에서 기억) · 사진으로 돌리면 기억을 지운다
- *  D. 사진만 보면 엔진을 띄우지 않는다 · 벽을 보면 벽 사진 1장 · 액자 사진 0 · 오크 결 텍스처 1장 · 방문자 브라우저에 artlook:* 를 남기지 않는다
+ *  D. 사진만 보면 엔진을 띄우지 않는다 · 벽을 보면 벽 사진 1장 · 액자 사진은 오크 플로터 1장(2026-10-26 사진 액자) · 결 텍스처 0 · 방문자 브라우저에 artlook:* 를 남기지 않는다
  *  E. 엔진이 안 되는 브라우저(WebGL2 없음) — 안내 한 줄 · 토글이 사라지고 · 사진은 그대로 · 페이지 오류 0
  *  F. 엔진 준비가 실패하면(벽 목록을 못 받음) [다시 시도] — 다시 하면 벽이 뜬다 · 사진 화면은 멀쩡
  *  G. 빠르게 여러 번 넘겨도 지금 작품의 벽 그림이 뜬다(옛 그림이 이기지 않는다)
@@ -195,7 +195,7 @@ test('C. 벽에서 넘기면 다음도 벽 · 닫으면 iframe 을 걷는다 · 
   await ctx.close();
 });
 
-test('D. 사진만 보면 엔진을 띄우지 않는다 · 벽 사진 1장 · 액자 사진 0 · 오크 결 텍스처 1장 · 방문자 브라우저에 artlook:* 없음', async ({ browser }) => {
+test('D. 사진만 보면 엔진을 띄우지 않는다 · 벽 사진 1장 · 오크 플로터 사진 1장 · 결 텍스처 0 · 방문자 브라우저에 artlook:* 없음', async ({ browser }) => {
   const { ctx, page, errors, requests } = await openGuest(browser);
   await openFirst(page);
   const v = viewerOf(page);
@@ -210,8 +210,9 @@ test('D. 사진만 보면 엔진을 띄우지 않는다 · 벽 사진 1장 · �
   await page.waitForTimeout(1500);   // 이웃 미리 그리기까지
   const art = requests.filter((u) => u.includes('/artlook/'));
   expect(art.filter((u) => /\/walls\//.test(u)).map((u) => u.split('/').pop()), '벽 사진은 고른 한 장').toEqual(['wall21-charcoal.jpg']);
-  expect(art.filter((u) => /frames\/photo\/[^/?]+\.png/.test(u)), '액자 사진은 받지 않는다(오크 플로터는 엔진이 그린다)').toEqual([]);
-  expect(art.filter((u) => /frames\/frame-[a-z]+-texture\.jpg/.test(u)).map((u) => u.split('/').pop()), '액자 결 텍스처는 오크 한 장').toEqual(['frame-oak-texture.jpg']);
+  // 2026-10-26 부터 오크 플로터는 사진 액자 — 그 사진 한 장만 받고, 코드 플로터의 결 텍스처는 받지 않는다
+  expect(art.filter((u) => /frames\/photo\/[^/?]+\.png/.test(u)).map((u) => u.split('/').pop()!.split('?')[0]), '액자 사진은 오크 플로터 한 장').toEqual(['oak-floater.png']);
+  expect(art.filter((u) => /frames\/frame-[a-z]+-texture\.jpg/.test(u)), '결 텍스처는 받지 않는다').toEqual([]);
   expect(art.some((u) => /\/view\.js/.test(u))).toBe(true);
   // iframe 이 같은 출처라 localStorage 를 나눠 쓴다 — 작품 목록·선택을 남기면 안 된다
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('artlook:')))).toEqual([]);

@@ -61,6 +61,22 @@ FrameIt 은 원본 자산을 배포하지 않으므로 받아올 수 있는 것�
    확대 한도가 1.34→1.84 배가 된다(규칙 41 의 SCENE_HEADROOM 여유).
    ⚠️ 이 여섯이 **처음으로 어두운 벽(밝기 48~135)과 색 있는 벽**을 연다. 기존 8종은
       157~231 에 전부 중성색이었다.
+
+[추가 2026-10-25 · 다시 2026-10-26] wall27~29 = **기존 GPT 벽(wall21·22·24)의 재채색**(직접 제작). 새 사진이 아니다. 저작권 제약 없음.
+  wall27-navy.jpg 네이비 #2c3a55 ← wall21-charcoal(차콜 미장)
+  wall28-burgundy.jpg 버건디 #5a2328 ← wall24-terracotta(테라코타 라임워시)
+  wall29-forest.jpg 포레스트 그린 #2f4436 ← wall22-olive(올리브 라임워시)
+   `frontend/scripts/recolor-wall.py` — OKLab 에서 원본의 밝기 편차(결·조명 낙차)와 a·b 편차(얼룩의 색 흔들림)를
+   목표 평균색에 더한다. 밝기 편차 배율은 결의 세기(1200px 고주파 표준편차)가 원본과 같아지게 찾는다(1.03~1.10).
+   ⚠️ 2026-10-25 판은 wall26(화이트 플라스터)의 **상대 밝기를 곱해** 만들었는데, 흰 벽의 결은 밝기 대비 몇 % 라
+   짙은 색에서는 결이 거의 사라졌다(고주파 1.2 ↔ 차콜 7.5). "텍스처가 없어서 별로"(사용자) → 결이 짙은 벽에서 다시.
+   광원·영역·축척은 **그 원본 벽**과 같다(scenes.json 에 그대로 옮겼다). FrameIt 벽 목록의 미술관 색 벽을 보고 만들었다.
+
+[추가 2026-10-26] wall30~32 = **GPT 생성**(사용자가 직접 뽑아 준 사진, `~/frames/frames2/`). 저작권 제약 없음.
+  wall30-red-brick.jpg   붉은 벽돌     <- wall_red_brick.png
+  wall31-fieldstone.jpg  자연석        <- wall_fieldstone.png
+  wall32-leaf-shadow.jpg 잎 그림자     <- wall_shadow.png
+   1254×1254 원본을 ×2 LANCZOS 업스케일(wall21~26 과 같은 방식). 프롬프트 `scratchpad/artlook-asset-prompts-2026-10.md` §5.
 ```
 
 ## 사진 액자 (`frontend/public/artlook/frames/photo/`)
@@ -68,12 +84,25 @@ FrameIt 은 원본 자산을 배포하지 않으므로 받아올 수 있는 것�
 ```
 ArtLook 사진 액자 — 출처
 
-전 8종 **GPT 생성**(직접 제작). 저작권 제약 없음.
+전 24종 **GPT 생성**(직접 제작). 저작권 제약 없음.
 원본 보관함은 레포 루트 `gptsamplecase/`(용량이 커서 커밋하지 않는다),
 추출은 `frontend/scripts/extract-photo-frames.py`.
 
   black / gold / oak / walnut / white     1254px 원본, 살 9.0~9.8%
   oak-thin / silver-thin / walnut-thin    1024px 원본, 살 4.9~5.5%   (2026-09-01 추가)
+  oak-deep / walnut-deep / black-deep / white-deep / ivory-deep
+                                          1254px 원본, 살 9.4~9.7%   (2026-10-26 추가 — 박스 액자)
+     사용자가 GPT 로 직접 뽑아 준 사진(정면·빈 회색 뒤판·흰 배경, 안쪽 벽이 보이는 깊은 상자).
+     원본은 `gptsamplecase/frame-*-deep.png`(받은 파일 이름 oak/wallnut/black/white/ivory.png 를 바꿔 넣었다).
+     추출기의 `deep` 규칙(`refine_deep`)으로 개구부를 벽 → 뒤판 계단에서 잡는다.
+  oak-floater / walnut-floater / black-floater / white-floater / champagne-floater
+                                          1254px 원본, 살 6.4~6.7%   (2026-10-26 추가 — 플로터)
+  black-thin / white-thin                 1254px 원본, 살 1.8~1.9%   (2026-10-26 추가 — 슬림)
+  maple / silver / black-wide / white-wide
+                                          1254px 원본, 살 8.1~15.3%  (2026-10-26 추가 — 몰딩)
+     사용자가 GPT 로 직접 뽑아 준 사진(`~/frames/frames2/`, 프롬프트 `scratchpad/artlook-asset-prompts-2026-10.md`).
+     원본은 `gptsamplecase/frame-*.png` 로 이름을 맞춰 넣었다(받은 이름 oak_floater.png 등).
+     ⚠️ 받은 `champagin_thin.png` 는 사진이 미색이라 `white-thin` 으로 썼다.
 
 ⚠️ 얇은 3종을 담아 온 파일 이름이 `frameit_test_assets_updated.zip` 이었다
    (FrameIt 과 비교하려고 그렇게 부른 것이지 FrameIt 자산이 아니다).

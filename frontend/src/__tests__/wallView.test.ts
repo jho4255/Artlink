@@ -213,7 +213,8 @@ describe('엔진(public/artlook) — 보기 전용(view.js)', () => {
     expect(view).toMatch(/FRAMES\.findIndex\(\(f\)=>f\.id===FRAME_ID\)/);
     expect(view).toMatch(/matWidth:MAT_WIDTH, matteColor:MAT_COLOR, light:0/);
     // 고른 값이 엔진 목록에 실제로 있어야 한다(이름을 바꾸면 조용히 다른 그림이 된다)
-    expect(html).toMatch(/\{ id:'floater-oak', name:'오크 플로터',\s+kind:'floater', material:'wood'/);
+    // 2026-10-26 부터 오크 플로터는 사진 액자(oak-floater) — 사진을 못 받으면 코드 플로터(fallback)
+    expect(html).toMatch(/\{ id:'floater-oak', name:'오크 플로터',\s+kind:'photo', photo:'oak-floater', rail:FLOATER_RAIL, deep:true, fallback:\{ kind:'floater', material:'wood'/);
     expect(pub('scenes/scenes.json')).toMatch(/"id": "charcoal"/);
     expect(ui).toMatch(/const MAT_WIDTHS=\[0,0\.05,0\.10\];/);
     expect(ui).toMatch(/const MAT_COLORS=\[\['#f5f2ea','미색'\]/);

@@ -94,6 +94,12 @@
   .chip[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
   .chip .thumb{display:block;width:100%;aspect-ratio:1/1;border-radius:6px;background:var(--soft);object-fit:contain}
   .chip.work{width:68px}
+  .chip{position:relative}
+  /* 여러 점 걸기 — 기능 칩(그림 자리에 선 그림) · 고른 작품의 순서 번호 */
+  .chip.mode .modeicon,.chip.tool .toolicon{display:flex;align-items:center;justify-content:center;color:var(--sub);border:1px dashed var(--line-strong)}
+  .chip.mode[aria-pressed=true] .modeicon{color:var(--ink);border-style:solid;border-color:var(--ink)}
+  .chip .ord{position:absolute;top:6px;left:6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--ink);color:#fff;
+             font-size:12px;line-height:20px;font-weight:600;text-align:center;pointer-events:none}
   .chip.work .thumb{background:var(--soft)}
   .chip.broken .thumb{opacity:.3}
   .chip.frame{width:60px}
@@ -104,6 +110,8 @@
   .group{flex:none;align-self:stretch;display:flex;align-items:center;padding:0 2px 0 6px;font-size:12px;color:var(--sub);
          writing-mode:vertical-rl;letter-spacing:.1em;border-left:1px solid var(--line)}
   .group:first-child{border-left:0;padding-left:0}
+  .group b{font-weight:inherit}
+  .group .gdesc{display:none}   /* 묶음 설명 — 좁은 칸은 이름이 세로라 칩 아래 줄(#framesLine)에 고른 액자의 묶음 설명을 둔다 */
 
   /* 고르기(여럿 중 하나) */
   .seg{display:flex;flex-wrap:wrap;gap:8px;flex:none}
@@ -112,7 +120,10 @@
   .seg button:hover{border-color:var(--sub)}
   .seg button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink);font-weight:600}
   .seg button:disabled{opacity:.4;cursor:default}
-  .swatches{display:flex;gap:8px;flex:none}
+  /* 매트 색 줄 — 리넨·스웨이드까지 9개라 좁은 칸에서 넘친다. 칩 줄처럼 옆으로 민다(넓은 칸은 줄바꿈) */
+  .swatches{display:flex;gap:8px;flex:none;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:none;padding:3px 3px 4px;margin:-3px -3px 0}
+  .swatches::-webkit-scrollbar{display:none}
+  .sw{flex:none;background-size:120px;background-position:center}
   .sw{width:40px;height:40px;padding:0;border-radius:999px;border:1px solid var(--line-strong);cursor:pointer}
   .sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
   .slider{display:flex;align-items:center;gap:12px;min-height:40px;flex:none}
@@ -150,6 +161,10 @@
   .sheet-box img{display:block;width:100%;min-height:0;max-height:65vh;object-fit:contain;background:var(--stage);border-radius:6px;
                  -webkit-touch-callout:default}
   .sheet-box .btn-line{align-self:center;min-width:120px}
+  .sheet-box .sheet-sub{font-size:13px;line-height:1.5;color:var(--sub);text-align:center;word-break:keep-all}
+  .sheet-box canvas{display:block;align-self:center;max-width:100%;border-radius:6px;background:var(--stage);touch-action:none;cursor:move}
+  .sheet-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .sheet-btns .btn-line,.sheet-btns .btn-primary{flex:0 1 auto;min-width:96px;min-height:44px}
 
   /* 마우스로 쓰는 좁은 칸(1024px 노트북의 탭 안) — 칩 줄이 옆으로 넘친다는 걸 보이게 얇은 스크롤바를 둔다(휠도 가로로 넘긴다, ui.js) */
   @media (pointer:fine){ .row{scrollbar-width:thin;padding-bottom:6px} .row::-webkit-scrollbar{display:block;height:6px}
@@ -170,10 +185,15 @@
     .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:visible;touch-action:auto;margin:0;padding:0}
     .row.works{grid-template-columns:repeat(3,minmax(0,1fr))}
     .chip,.chip.work,.chip.frame{width:auto}
+    .swatches{flex-wrap:wrap;overflow:visible}
     /* 넓은 칸은 칩이 작아(약 76px) 이름이 잘린다('베이지 플라…') — 두 줄까지 */
     .chip .name{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:keep-all;line-height:15px}
     .group{grid-column:1/-1;writing-mode:horizontal-tb;letter-spacing:0;padding:6px 0 0;border-left:0;font-weight:600;color:var(--text)}
     .group:first-child{padding-top:0}
+    /* 넓은 칸 — 묶음 이름 옆에 무엇이 다른지 한 줄(2026-10-26). 그래서 고른 액자 설명 줄은 감춘다 */
+    .group{display:block;line-height:1.45}
+    .group .gdesc{display:inline;font-weight:400;color:var(--sub);font-size:12px}
+    #framesLine{display:none}
   }
   @media (prefers-reduced-motion:reduce){ *{scroll-behavior:auto!important} }
 </style>
@@ -249,6 +269,21 @@
       <button type="button" class="btn-line" id="toStory" hidden>ArtStory에 올리기</button>
     </div>
   </section>
+</div>
+
+<!-- 원 맞추기(원형 액자) — 둥근 작품의 가장자리에 원을 맞춘다. 끌어서 옮기고 막대로 크기 -->
+<div class="sheet" id="circleSheet" role="dialog" aria-modal="true" aria-labelledby="circleTitle" hidden>
+  <div class="sheet-box">
+    <p id="circleTitle">원 맞추기</p>
+    <span class="sheet-sub" id="circleSub">작품의 둥근 가장자리에 원을 맞춰 주세요. 원을 끌어 옮기고, 막대로 크기를 바꿔요.</span>
+    <canvas id="circleCv" aria-label="작품 사진과 맞출 원"></canvas>
+    <div class="slider"><label for="circleR">크기</label><input type="range" id="circleR" min="5" max="50" step="0.1" value="50" /><output id="circleRv" for="circleR"></output></div>
+    <div class="sheet-btns">
+      <button type="button" class="btn-line" id="circleAuto">자동으로 찾기</button>
+      <button type="button" class="btn-line" id="circleNext" hidden>다음 작품</button>
+      <button type="button" class="btn-primary" id="circleDone">완료</button>
+    </div>
+  </div>
 </div>
 
 <div class="sheet" id="saveSheet" role="dialog" aria-modal="true" aria-labelledby="saveSheetTitle" hidden>
@@ -384,6 +419,78 @@ function matPaper(ctx,x,y,w,h,px,color){
   ctx.save();
   ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
   ctx.fillStyle=ctx.createPattern(paperTile(`${r},${g},${b}`,px,amp,4242),'repeat');
+  ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+
+// ── 매트 마감(2026-10-25) — 종이(기본) · 리넨 · 스웨이드 ─────────────────────────────
+// FrameIt 매트 결 탭에 천(리넨·트위드)·스웨이드가 있고 우리는 종이 하나였다. 셋 다 **평균이 매트색과 같은 불투명 타일**이라
+// (paperTile 주석 — multiply 로 얹으면 흰 매트가 회색이 된다) 색은 그대로 두고 결만 바뀐다.
+//   리넨   : 굵기가 들쭉날쭉한 실(슬럽)이 위·아래로 엇갈린 평직. 실마다 둥근 단면 명암이 있어야 천으로 읽힌다
+//   스웨이드: 결이 거의 없는 부드러운 털 — 흐린 잡음 + 한쪽으로 쓸린 아주 옅은 결
+const _clothTiles={};
+function linenTile(rgbKey,px,amp,seed){
+  const k='L'+rgbKey+'_'+px+'_'+amp.toFixed(1);
+  if(_clothTiles[k]) return _clothTiles[k];
+  const [r0,g0,b0]=rgbKey.split(',').map(Number);
+  const n=240, P=3;                                   // 실 하나 폭 3px(축소 전)
+  const rnd=prng(seed), cols=[], rows=[];
+  // 실마다 굵기(밝기) 편차 + 슬럽(가끔 굵은 마디)
+  for(let i=0;i<n/P;i++){ cols.push((rnd()-.5)*0.55 + (rnd()<.08 ? 0.5 : 0)); rows.push((rnd()-.5)*0.55 + (rnd()<.08 ? 0.5 : 0)); }
+  const a=document.createElement('canvas'); a.width=a.height=n;
+  const ax=a.getContext('2d'), id=ax.createImageData(n,n);
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
+    const cx=Math.floor(x/P), cy=Math.floor(y/P), over=((cx+cy)&1)===0;
+    const fx=(x%P+.5)/P, fy=(y%P+.5)/P;
+    // 위로 올라온 실의 둥근 단면(가운데 밝고 가장자리 어둡다) + 그 실의 굵기 편차
+    const v= over ? (Math.sin(Math.PI*fx)-0.64)*1.0 + cols[cx%cols.length]
+                  : (Math.sin(Math.PI*fy)-0.64)*1.0 + rows[cy%rows.length];
+    const d=v*amp*0.70 + (rnd()-.5)*amp*0.45;
+    const i=(y*n+x)*4;
+    id.data[i]=clamp255(r0+d); id.data[i+1]=clamp255(g0+d); id.data[i+2]=clamp255(b0+d); id.data[i+3]=255;
+  }
+  ax.putImageData(id,0,0);
+  const s=Math.max(1,Math.round(px));
+  if(s===1){ _clothTiles[k]=a; return a; }
+  const b=document.createElement('canvas'); b.width=b.height=n*s;
+  const bx=b.getContext('2d'); bx.imageSmoothingEnabled=true; bx.drawImage(a,0,0,n*s,n*s);
+  _clothTiles[k]=b; return b;
+}
+function suedeTile(rgbKey,px,amp,seed){
+  const k='S'+rgbKey+'_'+px+'_'+amp.toFixed(1);
+  if(_clothTiles[k]) return _clothTiles[k];
+  const [r0,g0,b0]=rgbKey.split(',').map(Number);
+  const n=256, rnd=prng(seed);
+  // 잡음을 두 번 흐려 털처럼 부드럽게 — 날카로운 점이 남으면 모래알(종이)로 읽힌다
+  const raw=new Float32Array(n*n); for(let i=0;i<raw.length;i++) raw[i]=rnd()-.5;
+  const blur=(src,rx,ry)=>{ const out=new Float32Array(n*n);
+    for(let y=0;y<n;y++) for(let x=0;x<n;x++){ let t=0,c=0;
+      for(let dy=-ry;dy<=ry;dy++) for(let dx=-rx;dx<=rx;dx++){ t+=src[((y+dy+n)%n)*n+((x+dx+n)%n)]; c++; }
+      out[y*n+x]=t/c; } return out; };
+  const soft=blur(raw,1,1), nap=blur(raw,4,0);     // 부드러운 털 + 가로로 쓸린 결
+  const a=document.createElement('canvas'); a.width=a.height=n;
+  const ax=a.getContext('2d'), id=ax.createImageData(n,n);
+  for(let i=0;i<n*n;i++){
+    const d=(soft[i]*2.2 + nap[i]*1.6)*amp;
+    id.data[i*4]=clamp255(r0+d); id.data[i*4+1]=clamp255(g0+d); id.data[i*4+2]=clamp255(b0+d); id.data[i*4+3]=255;
+  }
+  ax.putImageData(id,0,0);
+  const s=Math.max(1,Math.round(px));
+  if(s===1){ _clothTiles[k]=a; return a; }
+  const b=document.createElement('canvas'); b.width=b.height=n*s;
+  const bx=b.getContext('2d'); bx.imageSmoothingEnabled=true; bx.drawImage(a,0,0,n*s,n*s);
+  _clothTiles[k]=b; return b;
+}
+/** 매트 표면 — 마감(texture)에 따라 종이·리넨·스웨이드. 모르는 값이면 종이(예전 그대로) */
+function matSurface(ctx,x,y,w,h,px,color,texture){
+  if(texture!=='linen' && texture!=='suede'){ matPaper(ctx,x,y,w,h,px,color); return; }
+  const {r,g,b}=hexToRgb(color);
+  const lum=r*.2126+g*.7152+b*.0722;
+  const amp = texture==='linen' ? Math.max(9, lum*0.12+8) : Math.max(5, lum*0.05+5);
+  const tile = texture==='linen' ? linenTile(`${r},${g},${b}`,px,amp,5150) : suedeTile(`${r},${g},${b}`,px,amp,7171);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.fillStyle=ctx.createPattern(tile,'repeat');
   ctx.fillRect(x,y,w,h);
   ctx.restore();
 }
@@ -699,6 +806,26 @@ function applyRailGain(ctx,poly,f,plate){
   }
   ctx.restore();
 }
+/** 박스 사진 액자의 안쪽 벽 (2026-10-26) — 자산 벽 밝기의 **평균은 지키고**, 네 벽 사이의 차이만 이 방의 빛 방향으로 다시 나눈다.
+ *  자산은 스튜디오 빛(위·왼쪽)으로 찍혀 있어, 빛이 오른쪽에서 오는 방에서도 왼쪽 벽이 어둡게 남는다. 브리핑 SOURCE-FIRST —
+ *  자산과 이 방의 빛이 같으면 배율은 1 근처라 **아무 일도 안 한다**. 안쪽 벽은 안쪽을 향하므로 litIn = −(바깥 법선·빛)(플로터 갭과 같은 부호).
+ *  wf = 살 폭 대비 벽이 시작하는 자리(frames.json 의 wallFrom — 추출기가 앞면 → 벽 계단에서 잰다). */
+const BOX_WALL_TILT=0.42;   // 빛 받는 벽 = 평균 × 1.42 · 등진 벽 × 0.58 — 코드로 그린 박스(BOX_WALL_DIR/BOX_WALL_BASE)와 같은 비
+function shadeBoxWalls(ctx,W,H,l,t,r,b,ld,A,wf,plate){
+  if(!(wf>0 && wf<1) || !A || !A.prof4) return;
+  const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
+  // 벽 한가운데(벽 폭의 15~85%)만 잰다 — 앞면과의 모서리·뒤판과의 구석 그늘을 빼고
+  const wallOf=(s)=>{ let sum=0; for(let i=0;i<=8;i++) sum+=assetRel(A, wf+(1-wf)*(0.15+0.7*i/8), s); return sum/9; };
+  const walls=[0,1,2,3].map(wallOf);
+  const avg=(walls[0]+walls[1]+walls[2]+walls[3])/4;
+  for(let s=0;s<4;s++){
+    const nv=FACE_NORMAL[s], litIn=-(nv[0]*L[0]+nv[1]*L[1]);
+    // 빛 받는 벽도 앞면(1)보다 밝게 두지 않는다 — 흰 박스는 하양으로 포화돼 결이 사라졌다(실측 250~255)
+    const f0=Math.min(0.98, avg*(1+BOX_WALL_TILT*litIn))/Math.max(0.05,walls[s]);
+    const f=Math.max(0.7, Math.min(1.35, 1+(f0-1)*SYN_DIR));
+    applyRailGain(ctx, mitreBand(W,H,s,l,t,r,b,wf,1), f, plate);
+  }
+}
 function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   const o=opt||{};
   const n=Math.hypot(ld[0],ld[1])||1, L=[ld[0]/n, ld[1]/n];
@@ -743,9 +870,12 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
   // 절차적 액자(슬림 등)는 면 음영을 `drawTextureSide` 가 이미 그린다 — 여기서는
   // **리베이트만** 얹는다(중복 음영 = 브리핑 ANTI-COMPOUNDING 위반).
   const rebOnly = !!o.rebateOnly;
-  const absReb = !!o.noMat && SYN_EDGE>0;
+  // ⚠️ 안쪽 벽이 보이는 사진 액자(o.deep — 박스·플로터)에는 리베이트·홈을 그리지 않는다 — 그 띠가 몰딩의 파인 홈이 아니라
+  //   **빛을 받는 벽**(플로터는 벽 + 어두운 틈)이다. 몰딩 규칙(앞면의 0.3~0.5 로 누름)을 걸면 다시 검은 띠가 된다. 벽 명암은 shadeBoxWalls 가 맡는다.
+  const box = !!o.deep;
+  const absReb = !!o.noMat && SYN_EDGE>0 && !box;
   // 매트가 있는 사진 액자의 안쪽 홈(아래 recess 분기 주석)
-  const recess = !!o.recess && !o.noMat && !rebOnly && SYN_EDGE>0;
+  const recess = !!o.recess && !o.noMat && !rebOnly && SYN_EDGE>0 && !box;
   // ⚠️ rebateOnly 는 **리베이트를 그리려고** 부르는 것이다. 절대 프로파일이 꺼져 있으면
   //    (SYN_EDGE=0, 매트 있음) 할 일이 없다 — 예전엔 아래 매트용 분기로 떨어져 안쪽 끝을
   //    1.12 배 **밝히고** 있었다(합성을 껐는데 밝아지니 차등 측정의 기준선이 거짓이 된다).
@@ -798,7 +928,7 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
     ];
     // ── 리베이트(안쪽 사면) 스톱 ────────────────────────────────────────────────
     const d0=FACE_FRONT+e;
-    if(!rebOnly && !absReb && !recess) stops.push([FACE_FRONT, fFront*(1-0.14*SYN_DIR*P)]);   // 앞면↔사면 깎인 각
+    if(!rebOnly && !absReb && !recess && !box) stops.push([FACE_FRONT, fFront*(1-0.14*SYN_DIR*P)]);   // 앞면↔사면 깎인 각
     if(absReb){
       // **절대 프로파일**: 렌더 결과가 골든 모양(1 → REB_TROUGH → REB_TIP)이 되게 한다.
       // ⚠️⚠️ **자산을 밝히지는 않는다** — `min(1, …)` 이라 곱은 언제나 ≤1 이다.
@@ -910,7 +1040,7 @@ function shadeFrameProfile(ctx,W,H,l,t,r,b,ld,opt){
         const u=(d-ds)/Math.max(1e-6,1-ds);
         stops.push([d, Math.min(1, at(u)/Math.max(0.02, assetRel(A,d,s)))]);
       }
-    } else {
+    } else if(!box) {
       stops.push(
         [d0,    Math.min(1, rb*(1+0.30*P))],
         [0.92,  rb],                          // 가장 깊은 골 — 좁고 **얕게**
@@ -1109,6 +1239,12 @@ const FRAME_GRADE = {
   // 34.2 · silver-thin 4.9). 목표는 위와 같다: FrameIt 실측대(오크 24.5)로 내린다.
   // 실버는 이미 무채색(4.9)이라 손대지 않는다 — 필요 없는 보정은 걸지 않는다.
   'oak-thin':[0.55,0.97], 'walnut-thin':[0.72,1.0], 'silver-thin':[1,1],
+  // 박스 사진 5종(2026-10-26) — 앞면 채도폭 실측 oak-deep 73.1 · walnut-deep 45.1 → 위와 같은 목표대(28~36)로.
+  // 블랙·화이트·아이보리는 0.3 · 6.8 · 16.6 이라 손대지 않는다.
+  'oak-deep':[0.47,0.97], 'walnut-deep':[0.64,1.0],
+  // 2차 사진 11종(2026-10-26) — 오크 플로터 66.7 · 메이플 64.5 · 월넛 플로터 45.2 · 샴페인 플로터 43.9 → 같은 목표대.
+  // 블랙·화이트·실버(플로터·슬림·넓은 몰딩)는 0.2~11 이라 손대지 않는다.
+  'oak-floater':[0.50,0.97], 'walnut-floater':[0.64,1.0], 'champagne-floater':[0.85,1.0], maple:[0.50,0.97],
 };
 // ctx.filter 이 없는 아주 오래된 브라우저에서는 **hex 도 함께 건너뛴다** —
 // 색만 바꾸고 결 텍스처를 그대로 두면 밴드와 결의 색이 어긋난다.
@@ -1145,10 +1281,13 @@ const MATS = {
   gold:   { light:'#f3e2a8', base:'#c9a24b', dark:'#7d5e25', edge:'rgba(255,246,212,.6)',  back:'#2b2721', texture:'frames/frame-gold-texture.jpg' },
   wood:   { light:'#d9bb8c', base:'#a9835a', dark:'#6e4f30', edge:'rgba(255,240,214,.4)',  back:'#352a1e', texture:'frames/frame-oak-texture.jpg' },
   walnut: { light:'#9b6a42', base:'#5b3722', dark:'#21130b', edge:'rgba(224,169,116,.34)', back:'#281c12', texture:'frames/frame-walnut-texture.jpg' },
-  black:  { light:'#3b3b3b', base:'#1f1f1f', dark:'#070707', edge:'rgba(255,255,255,.18)', back:'#1b1b1b', texture:'frames/frame-black-texture.jpg' },
-  silver: { light:'#f2f4f4', base:'#b9bfc2', dark:'#6f777c', edge:'rgba(255,255,255,.66)', back:'#262a2d', texture:'frames/frame-silver-texture.jpg' },
-  ivory:  { light:'#ffffff', base:'#eee8da', dark:'#cfc5b4', edge:'rgba(255,255,255,.72)', back:'#dfd8cc', texture:'frames/frame-ivory-texture.jpg' },
-  white:  { light:'#ffffff', base:'#f3f1ea', dark:'#d6d2c6', edge:'rgba(255,255,255,.7)',  back:'#e9e6dd', texture:'frames/frame-ivory-texture.jpg' },
+  // `calm` (2026-10-25) — 매끈한 도장·금속 마감은 결을 그만큼 눌러 평균색으로 덮는다(drawTextureSide).
+  //   FrameIt 블랙·실버는 매끈한 무광인데 우리 슬림·플로터는 결 사진을 키워 붙여 **얼룩진 낡은 칠 나무**로 보였다(모서리 확대 비교).
+  //   나무(오크·월넛)·골드는 0 — 결이 곧 재질이라 예전 그대로다(그 재질은 픽셀까지 같다).
+  black:  { light:'#3b3b3b', base:'#1f1f1f', dark:'#070707', edge:'rgba(255,255,255,.18)', back:'#1b1b1b', texture:'frames/frame-black-texture.jpg', calm:0.72 },
+  silver: { light:'#f2f4f4', base:'#b9bfc2', dark:'#6f777c', edge:'rgba(255,255,255,.66)', back:'#262a2d', texture:'frames/frame-silver-texture.jpg', calm:0.62 },
+  ivory:  { light:'#ffffff', base:'#eee8da', dark:'#cfc5b4', edge:'rgba(255,255,255,.72)', back:'#dfd8cc', texture:'frames/frame-ivory-texture.jpg', calm:0.78 },
+  white:  { light:'#ffffff', base:'#f3f1ea', dark:'#d6d2c6', edge:'rgba(255,255,255,.7)',  back:'#e9e6dd', texture:'frames/frame-ivory-texture.jpg', calm:0.80 },
 };
 Object.entries(MATS).forEach(([k,m])=>{
   // 색 보정은 hex 와 텍스처 **둘 다** 먹여야 한다 — 하나만 하면 밴드 색과 결이 어긋난다
@@ -1279,6 +1418,41 @@ function clipPoly(ctx,p){
   ctx.closePath(); ctx.clip();
 }
 
+/** 재질 결 띠 한 줄 — 길이 len, 두께 b 의 띠를 (0,0)~(len,b) 에 칠한다(호출부가 변·자리에 맞게 옮겨 둔다).
+ *  액자 앞면(drawTextureSide)과 박스 액자 안쪽 벽(drawBoxWalls)이 같이 쓴다 — 같은 나무가 같은 결로 보이게. */
+function paintMaterialStrip(ctx,c,len,b){
+  const im=c.img;
+  const sh=Math.max(12, Math.min(im.naturalHeight, b*0.5));     // 잘라올 텍스처 높이
+  const sw=Math.max(24, Math.min(im.naturalWidth, sh*3));
+  const tw=Math.max(12, sw*(b/sh));
+  for(let i=0, x=0; x<len; i++, x+=tw){
+    ctx.save();
+    if(i%2){ ctx.translate(x+tw,0); ctx.scale(-1,1); ctx.drawImage(im,0,0,sw,sh,0,0,tw,b); }
+    else ctx.drawImage(im,0,0,sw,sh,x,0,tw,b);
+    ctx.restore();
+  }
+  // 매끈한 마감은 결을 평균색으로 덮어 누른다(MATS `calm` 주석). 평균색이라 밝기·색은 그대로다
+  const calm=c.calm||0;
+  if(calm>0 && c.faceRGB){
+    ctx.save(); ctx.globalAlpha=calm; ctx.fillStyle=`rgb(${c.faceRGB.join(',')})`; ctx.fillRect(0,0,len,b); ctx.restore();
+  }
+  // 절차적 결 — 길이 방향으로 흐르는 미세한 선. 금속이면 더 가늘고 옅게.
+  const metal=(c===MATS.gold||c===MATS.silver);
+  const n=metal?16:9, rnd=prng(c===MATS.wood?3:c===MATS.walnut?5:c===MATS.black?7:11);
+  ctx.save();
+  ctx.lineCap='round';
+  for(let k=0;k<n;k++){
+    const y=(k+0.35+rnd()*0.3)/n*b;
+    const a=(metal?0.05:0.10)*(0.45+rnd())*(1-calm*0.8);
+    ctx.strokeStyle=rnd()<0.55?`rgba(30,18,6,${a})`:`rgba(255,240,214,${a*0.8})`;
+    ctx.lineWidth=Math.max(0.6, b*(metal?0.012:0.022)*(0.5+rnd()));
+    ctx.beginPath(); ctx.moveTo(0,y);
+    const wob=b*0.06;
+    ctx.bezierCurveTo(len*0.3,y+(rnd()-0.5)*wob, len*0.7,y-(rnd()-0.5)*wob, len,y+(rnd()-0.5)*wob*0.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawTextureSide(ctx,W,H,b,s,c,ld,rebOwn){
   if(!c.img || !c.img.complete || !c.img.naturalWidth){
     quadFill(ctx, sideBand(W,H,s,0,b), frameSideGradient(ctx,W,H,b,s,c,ld,rebOwn));
@@ -1296,33 +1470,7 @@ function drawTextureSide(ctx,W,H,b,s,c,ld,rebOwn){
   //     결이 대여섯 줄 보이지 화면 가득 보이지 않는다. 좌우 반전 타일링으로 이음매를 감춘다.
   //  ② 그 위에 **절차적 결**을 얹는다. 판은 최종 화면까지 2~3배 더 축소되므로
   //     사진 결만으로는 또 사라진다. 밴드 폭 기준으로 간격을 정하면 축소돼도 남는다.
-  const tile=(len)=>{
-    const sh=Math.max(12, Math.min(im.naturalHeight, b*0.5));     // 잘라올 텍스처 높이
-    const sw=Math.max(24, Math.min(im.naturalWidth, sh*3));
-    const tw=Math.max(12, sw*(b/sh));
-    for(let i=0, x=0; x<len; i++, x+=tw){
-      ctx.save();
-      if(i%2){ ctx.translate(x+tw,0); ctx.scale(-1,1); ctx.drawImage(im,0,0,sw,sh,0,0,tw,b); }
-      else ctx.drawImage(im,0,0,sw,sh,x,0,tw,b);
-      ctx.restore();
-    }
-    // 절차적 결 — 길이 방향으로 흐르는 미세한 선. 금속이면 더 가늘고 옅게.
-    const metal=(c===MATS.gold||c===MATS.silver);
-    const n=metal?16:9, rnd=prng(c===MATS.wood?3:c===MATS.walnut?5:c===MATS.black?7:11);
-    ctx.save();
-    ctx.lineCap='round';
-    for(let k=0;k<n;k++){
-      const y=(k+0.35+rnd()*0.3)/n*b;
-      const a=(metal?0.05:0.10)*(0.45+rnd());
-      ctx.strokeStyle=rnd()<0.55?`rgba(30,18,6,${a})`:`rgba(255,240,214,${a*0.8})`;
-      ctx.lineWidth=Math.max(0.6, b*(metal?0.012:0.022)*(0.5+rnd()));
-      ctx.beginPath(); ctx.moveTo(0,y);
-      const wob=b*0.06;
-      ctx.bezierCurveTo(len*0.3,y+(rnd()-0.5)*wob, len*0.7,y-(rnd()-0.5)*wob, len,y+(rnd()-0.5)*wob*0.5);
-      ctx.stroke();
-    }
-    ctx.restore();
-  };
+  const tile=(len)=>paintMaterialStrip(ctx,c,len,b);
   if(s===0){ tile(W); }
   else if(s===2){ ctx.translate(0,H-b); tile(W); }
   else if(s===3){ ctx.translate(0,H); ctx.rotate(-Math.PI/2); tile(H); }
@@ -1411,6 +1559,62 @@ function drawFloaterTray(ctx,W,H,b,g,face,ld,innerOcc){
     else grad=ctx.createLinearGradient(q,0,q-k,0);
     grad.addColorStop(0,'rgba(0,0,0,.34)'); grad.addColorStop(1,'rgba(0,0,0,0)');
     quadFill(ctx, sideBand(W,H,s,q-k,q), grad);
+  }
+}
+
+/** 박스 액자의 깊은 안쪽 벽 (2026-10-26) — 플로터의 갭(`drawFloaterTray`)과 **다른 물건**이다.
+ *  ⚠️⚠️ 박스를 플로터 갭으로 그리지 말 것. 플로터의 갭은 액자와 작품 사이의 **좁은 그늘 틈**이라 앞면의 0.17~0.53배로 어둡고
+ *    결이 없는 색면인데, 박스는 그 자리가 **깊은 나무 벽**이다. 갭을 넓혀 박스라 부르니 작품 둘레에 넓은 검은 띠만 남아
+ *    "박스는 왤캐 퀄 구림"(2026-10-26 사용자). 실물 박스 액자를 정면에서 보면 네 벽이 원근으로 다 보이고, 벽은 **앞면과 같은 나무**다.
+ *  그래서 ① 벽에 앞면과 같은 결(`paintMaterialStrip`, 길이 방향) ② 빛을 받는 벽은 앞면에 가깝게 밝고 등진 벽은 어둡게(`BOX_WALL_*`)
+ *  ③ 앞(앞면 쪽)에서 뒤(작품 쪽)로 갈수록 조금 어둡게(구석 폐색) ④ 빛이 오는 쪽 벽이 매트에 그림자를 드리운다(깊을수록 길게).
+ *  밝기는 **곱(검정 알파)** 으로만 내린다 — 흰색을 더하면 어두운 재질이 들린다(규칙 42). */
+const BOX_WALL_BASE=0.64, BOX_WALL_DIR=0.27, BOX_WALL_BACK=0.80;
+function drawBoxWalls(ctx,W,H,b,g,c,ld,innerOcc){
+  if(g<=0) return;
+  const d=ld||[-1,-1], n=Math.hypot(d[0],d[1])||1;
+  const face=matFaceRGB(c), fl=0.2126*face[0]+0.7152*face[1]+0.0722*face[2];
+  const bounce=0.4*albedoOf(fl);                       // 밝은 재질은 상자 안에서 빛이 서로 튕겨 덜 어둡다
+  const textured=c.img && (c.img.complete===undefined || c.img.complete) && (c.img.naturalWidth||c.img.width);
+  for(let s=0;s<4;s++){
+    const band=sideBand(W,H,s,b,b+g);
+    ctx.save();
+    clipPoly(ctx, band);
+    if(textured){
+      if(s===0) ctx.translate(0,b);
+      else if(s===2) ctx.translate(0,H-b-g);
+      else if(s===3){ ctx.translate(b,H); ctx.rotate(-Math.PI/2); }
+      else { ctx.translate(W-b,0); ctx.rotate(Math.PI/2); }
+      paintMaterialStrip(ctx,c,(s===0||s===2)?W:H,g);
+    } else { ctx.fillStyle=`rgb(${face.join(',')})`; ctx.fillRect(0,0,W,H); }
+    ctx.restore();
+    const nv=FACE_NORMAL[s], litIn=-(nv[0]*d[0]+nv[1]*d[1])/n;   // 안쪽 벽은 안쪽을 향한다
+    let f=BOX_WALL_BASE+BOX_WALL_DIR*litIn; f=f+(1-f)*bounce;
+    let grad;
+    if(s===0) grad=ctx.createLinearGradient(0,b,0,b+g);
+    else if(s===1) grad=ctx.createLinearGradient(W-b,0,W-b-g,0);
+    else if(s===2) grad=ctx.createLinearGradient(0,H-b,0,H-b-g);
+    else grad=ctx.createLinearGradient(b,0,b+g,0);
+    const back=f*(BOX_WALL_BACK+(1-BOX_WALL_BACK)*bounce);
+    grad.addColorStop(0, `rgba(0,0,0,${Math.max(0,1-f).toFixed(3)})`);
+    grad.addColorStop(.6, `rgba(0,0,0,${Math.max(0,1-f*0.95).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(0,0,0,${Math.max(0,1-back).toFixed(3)})`);
+    quadFill(ctx, band, grad);
+  }
+  // 벽이 매트에 드리우는 그림자 — 빛이 오는 쪽 벽(그 벽의 안쪽 면은 그늘이다)일수록 길고 진하다. 매트가 없으면
+  //   그리지 않는다(작품 둘레에 접지 그림자와 겹쳐 검은 선이 된다 — drawFloaterTray 의 innerOcc 와 같은 규칙).
+  if(innerOcc===false) return;
+  const q=b+g;
+  for(let s=0;s<4;s++){
+    const nv=FACE_NORMAL[s], sh=Math.max(0, (nv[0]*d[0]+nv[1]*d[1])/n);
+    const k=Math.max(1.5, g*(0.14+0.42*sh)), a=0.16+0.20*sh;
+    let grad;
+    if(s===0) grad=ctx.createLinearGradient(0,q,0,q+k);
+    else if(s===1) grad=ctx.createLinearGradient(W-q,0,W-q-k,0);
+    else if(s===2) grad=ctx.createLinearGradient(0,H-q,0,H-q-k);
+    else grad=ctx.createLinearGradient(q,0,q+k,0);
+    grad.addColorStop(0,`rgba(0,0,0,${a.toFixed(3)})`); grad.addColorStop(.45,`rgba(0,0,0,${(a*0.38).toFixed(3)})`); grad.addColorStop(1,'rgba(0,0,0,0)');
+    quadFill(ctx, sideBand(W,H,s,q,q+k), grad);
   }
 }
 
@@ -1504,8 +1708,11 @@ function measureAssetLight(im, meta){
     // 코너 마이터를 뺀 살 **안쪽 50%** 만 — 코너가 섞이면 변끼리 비교가 흐려진다
     const cx0=ix+(ix2-ix)*.25, cx1=ix+(ix2-ix)*.75;
     const cy0=iy+(iy2-iy)*.25, cy1=iy+(iy2-iy)*.75;
-    const top=mean(cx0,0,cx1,iy), bot=mean(cx0,iy2+1,cx1,H);
-    const left=mean(0,cy0,ix,cy1), right=mean(ix2+1,cy0,W,cy1);
+    // ⚠️ 박스(meta.wallFrom)는 **앞면만** 잰다 — 안쪽 벽까지 넣으면 위벽(아래를 향해 그늘)이 위살 평균을 끌어내려
+    //   '빛이 아래서 온다'로 읽힌다(실측 오크 박스 위벽 0.66 · 아래벽 0.90). 벽 명암은 shadeBoxWalls 가 따로 맞춘다.
+    const fr=meta.wallFrom>0 ? meta.wallFrom : 1;
+    const top=mean(cx0,0,cx1,iy*fr), bot=mean(cx0,H-(H-1-iy2)*fr,cx1,H);
+    const left=mean(0,cy0,ix*fr,cy1), right=mean(W-(W-1-ix2)*fr,cy0,W,cy1);
     if(![top,bot,left,right].every(v=>isFinite(v)&&v>1)) return ASSET_NEUTRAL;
     const base=(top+bot+left+right)/4;
     // 앞면(살 바깥 45%)의 평균 색 — 안쪽 홈을 그 재질 색으로 물들일 때 쓴다(촬영판 회색 대신)
@@ -1674,6 +1881,11 @@ function drawNineSlice(ctx, im, meta, dx, dy, dw, dh, kIn){
 }
 
 // ---- 프레임 스타일 10종 (frameit식: 얇은 플로터 / 플랫 / 매트) ----
+// 박스 사진 액자의 살(앞면 + 안쪽 벽) 두께 — 작품 짧은 변 대비. 몰딩(.052~.055)보다 조금 굵게: 박스는 깊이가 보여야 박스다.
+// 자산의 native 살은 9.5~9.7%(앞면 ≈57% · 벽 ≈43%, frames.json 의 wallFrom).
+const BOX_RAIL=0.062;
+// 사진 플로터의 살(앞면 ≈62% · 안쪽 벽 + 어두운 틈 ≈38%) — 코드 플로터(살 .022 + 틈 .011)와 비슷한 무게로
+const FLOATER_RAIL=0.048;
 const FRAMES=[
   // ⚠️ `id` 는 바꾸지 말 것 — 칩 그림 파일(frames/chips/<id>.webp)과 마지막 선택 기억(artlook:prefs)이 이걸로 찾는다.
   //    액자를 더하면 칩도 구울 것(node frontend/scripts/build-artlook-thumbs.mjs) — 테스트가 파일이 있는지 본다.
@@ -1694,23 +1906,48 @@ const FRAMES=[
   // 고르는 사람에게 뜻이 있다(44e 가 뗀 '(사진)' 과 다르다).
   // ⚠️ 이 3종은 개구부를 **흰 판**으로 촬영해 안쪽 립이 회색판 자산보다 더 밝다.
   //    44h 의 한쪽 방향 보정(min(1, 목표/자산))이 그대로 상쇄한다 — 따로 손댈 것 없음.
-  { id:'oak-thin', name:'얇은 오크',     kind:'photo', photo:'oak-thin', rail:0.035 },
-  { id:'walnut-thin', name:'얇은 월넛',     kind:'photo', photo:'walnut-thin', rail:0.032 },
-  { id:'silver-thin', name:'얇은 실버',     kind:'photo', photo:'silver-thin', rail:0.032 },
-  { id:'floater-champagne', name:'샴페인 플로터', kind:'floater', material:'gold',   border:.018, gap:.011 },
-  { id:'floater-oak', name:'오크 플로터',   kind:'floater', material:'wood',   border:.022, gap:.011 },
-  { id:'floater-walnut', name:'월넛 플로터',   kind:'floater', material:'walnut', border:.024, gap:.011 },
-  { id:'floater-black', name:'블랙 플로터',   kind:'floater', material:'black',  border:.018, gap:.010 },
-  { id:'floater-silver', name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.010 },
-  { id:'box-ivory', name:'아이보리 박스', kind:'floater', material:'ivory',  border:.020, gap:.010 },
-  { id:'slim-champagne', name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024 },
-  { id:'slim-oak', name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028 },
-  { id:'slim-walnut', name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028 },
-  { id:'slim-black', name:'블랙 슬림',     kind:'flat',    material:'black',  border:.020 },
-  { id:'slim-silver', name:'실버 슬림',     kind:'flat',    material:'silver', border:.020 },
+  // ⚠️ 2026-10-26 부터 이 셋이 [슬림] 묶음의 오크·월넛·실버다(같은 재질의 코드 슬림은 숨겼다 — 아래 hidden). 이름도 '오크 슬림'으로.
+  { id:'oak-thin', name:'오크 슬림',     kind:'photo', photo:'oak-thin', rail:0.035 },
+  { id:'walnut-thin', name:'월넛 슬림',     kind:'photo', photo:'walnut-thin', rail:0.032 },
+  { id:'silver-thin', name:'실버 슬림',     kind:'photo', photo:'silver-thin', rail:0.032 },
+  // 플로터 — 2026-10-26 부터 **사진 액자**(GPT 플로터 사진, `*-floater` — 앞면 · 안쪽 벽 · 어두운 틈이 사진에 담겨 있다). 박스와 같은 길(`deep`):
+  //   몰딩의 홈 규칙을 끄고 안쪽 벽 명암만 방의 빛으로(shadeBoxWalls). 사진을 못 받으면 fallback(코드 플로터, drawFloaterTray).
+  //   ⚠️ 작가 홈페이지 [벽에 걸어 보기](view.js)가 floater-oak 를 쓴다 — 그 화면도 사진 플로터가 된다(규칙 74).
+  { id:'floater-champagne', name:'샴페인 플로터', kind:'photo', photo:'champagne-floater', rail:FLOATER_RAIL, deep:true, fallback:{ kind:'floater', material:'gold', border:.018, gap:.011 } },
+  { id:'floater-oak', name:'오크 플로터',   kind:'photo', photo:'oak-floater', rail:FLOATER_RAIL, deep:true, fallback:{ kind:'floater', material:'wood', border:.022, gap:.011 } },
+  { id:'floater-walnut', name:'월넛 플로터',   kind:'photo', photo:'walnut-floater', rail:FLOATER_RAIL, deep:true, fallback:{ kind:'floater', material:'walnut', border:.024, gap:.011 } },
+  { id:'floater-black', name:'블랙 플로터',   kind:'photo', photo:'black-floater', rail:FLOATER_RAIL, deep:true, fallback:{ kind:'floater', material:'black', border:.018, gap:.010 } },
+  // ⚠️ 숨긴 액자(hidden) — 사진 액자로 대신할 수 있는 코드 액자. 번호(하니스)와 기억한 선택 때문에 지우지 않고, 화면은 alias 로 바꿔 보인다(ui.js)
+  { id:'floater-silver', name:'실버 플로터',   kind:'floater', material:'silver', border:.018, gap:.010, hidden:true, alias:'floater-white' },
+  // 박스 — 깊은 상자 액자. 2026-10-26 부터 **사진 액자**(GPT 로 뽑은 박스 사진 5종, `*-deep`). 코드로 그린 박스(플로터 갭을 넓힌 것)는
+  //   "박스 퀄이 구리다"(사용자) — 몰딩만 사진이라 박스가 눈에 띄게 졌다. 사진을 못 받으면 `fallback`(코드로 그린 박스, drawBoxWalls)으로 그린다.
+  //   ⚠️ id 는 그대로 둔다(칩 파일·기억한 선택이 id 로 찾는다). 순서(=번호)도 그대로.
+  { id:'box-ivory', name:'아이보리 박스', kind:'photo', photo:'ivory-deep', rail:BOX_RAIL, box:true, deep:true, fallback:{ kind:'floater', material:'ivory', border:.032, gap:.022, box:true } },
+  { id:'slim-champagne', name:'샴페인 슬림',   kind:'flat',    material:'gold',   border:.024, hidden:true, alias:'silver-thin' },
+  { id:'slim-oak', name:'오크 슬림',     kind:'flat',    material:'wood',   border:.028, hidden:true, alias:'oak-thin' },
+  { id:'slim-walnut', name:'월넛 슬림',     kind:'flat',    material:'walnut', border:.028, hidden:true, alias:'walnut-thin' },
+  { id:'slim-black', name:'블랙 슬림',     kind:'photo', photo:'black-thin', rail:0.020, fallback:{ kind:'flat', material:'black', border:.020 } },
+  { id:'slim-silver', name:'실버 슬림',     kind:'flat',    material:'silver', border:.020, hidden:true, alias:'silver-thin' },
   { id:'white-mat', name:'화이트 매트',   kind:'mat',     material:'ivory',  border:.014 },
   { id:'canvas-wrap', name:'캔버스 랩',   kind:'canvas' },
+  // 원형 2종(2026-10-25) — 맨 뒤에 둔다(앞 항목의 번호를 하니스가 쓴다). buildRoundFramed 주석 참고
+  { id:'round-black', name:'블랙 원형',   kind:'round',   finish:'black', border:.015 },
+  { id:'round-gold', name:'골드 원형',    kind:'round',   finish:'gold',  border:.018 },
+  // 재질 빈칸 채우기(2026-10-25) — 플로터·슬림·박스가 같은 재질(오크·월넛·블랙·화이트…)을 갖게. 화면에서는 종류별로 묶어 보인다(ui.js FRAME_GROUPS)
+  { id:'floater-white', name:'화이트 플로터', kind:'photo', photo:'white-floater', rail:FLOATER_RAIL, deep:true, fallback:{ kind:'floater', material:'white', border:.020, gap:.011 } },
+  { id:'slim-white', name:'화이트 슬림',   kind:'photo', photo:'white-thin', rail:0.020, fallback:{ kind:'flat', material:'white', border:.020 } },
+  { id:'box-oak', name:'오크 박스',       kind:'photo', photo:'oak-deep', rail:BOX_RAIL, box:true, deep:true, fallback:{ kind:'floater', material:'wood', border:.034, gap:.022, box:true } },
+  { id:'box-walnut', name:'월넛 박스',     kind:'photo', photo:'walnut-deep', rail:BOX_RAIL, box:true, deep:true, fallback:{ kind:'floater', material:'walnut', border:.034, gap:.022, box:true } },
+  { id:'box-black', name:'블랙 박스',     kind:'photo', photo:'black-deep', rail:BOX_RAIL, box:true, deep:true, fallback:{ kind:'floater', material:'black', border:.032, gap:.022, box:true } },
+  { id:'box-white', name:'화이트 박스',   kind:'photo', photo:'white-deep', rail:BOX_RAIL, box:true, deep:true, fallback:{ kind:'floater', material:'white', border:.032, gap:.022, box:true } },
+  // 2차 사진 몰딩(2026-10-26) — 메이플(밝은 원목) · 실버(브러시드 알루미늄) · 넓은 블랙/화이트. 맨 뒤에 둔다(앞 번호를 하니스가 쓴다)
+  { id:'maple', name:'메이플',         kind:'photo', photo:'maple', rail:0.055 },
+  { id:'silver', name:'실버',          kind:'photo', photo:'silver', rail:0.050 },
+  { id:'black-wide', name:'넓은 블랙',    kind:'photo', photo:'black-wide', rail:0.068 },
+  { id:'white-wide', name:'넓은 화이트',  kind:'photo', photo:'white-wide', rail:0.085 },
 ];
+// ⚠️ 금테·은테(필릿) 액자 3종은 2026-10-25 에 넣었다가 사용자 요청("일단 빼고")으로 뺐다. 엔진(`drawFilletBand`·`style.fillet`)은
+//    남겨 둔다 — 지금 쓰는 액자가 없어 `fp=0` 이고 사진 액자 판은 예전과 픽셀까지 같다. 되살릴 땐 FRAMES 에 `fillet:'gold'` 를 단 항목만 더하면 된다.
 
 // ============================================================
 //  액자 합성 (frameit식 — 얇은 프레임 / 플로터 갭 / 매트 / 캔버스랩)
@@ -1795,6 +2032,266 @@ function buildMaskPlate(framed){
   return c;
 }
 
+// ============================================================
+//  원형 액자 (2026-10-25) — 둥근 작품(톤도)용. 사용자가 **고른다**.
+// ============================================================
+// 둥근 작품도 사진 파일은 사각이라 작품 모양을 알 수 없다 — 원형 액자를 고르면 사진 **가운데의 원**(짧은 변 지름)이 걸린다.
+// 사각 작품에 고르면 네 귀가 빠진다 — 고른 사람이 그걸 원했다는 뜻이다(액자 설명 한 줄이 미리 말해 준다).
+// 링은 사진 자산이 아니라 **픽셀마다 단면 법선으로 비춘 금속 튜브**다 — 9-slice 는 원을 못 만든다.
+//   finish 'black' = 반원 단면 튜브 하나(무광에 가까운 검은 도장) · 'gold' = 굵은 튜브 + 안쪽 가는 비드(황동)
+// 판 바깥(링 밖)은 **투명**이다. 장면 엔진에 넘길 땐 compose() 가 링 바깥색으로 채워 넘기고 셰이더가 원으로 자른다
+// (투명 둘레를 그대로 넘기면 밉맵이 검정과 섞여 둘레에 검은 테가 생긴다 — 규칙 37).
+const ROUND_LZ=1.25;   // 빛의 정면 성분 — 클수록 정면에서 비춘다(튜브 위 하이라이트가 가운데로)
+const ROUND_FINISH={
+  // [알베도 rgb, 확산, 주변반사, 정반사 세기, 광택 지수, 정반사 색]
+  black:{ alb:[0.040,0.040,0.042], dif:0.12, env:0.10, spec:0.66, shin:32, sc:[1,1,1] },
+  gold: { alb:[0.80,0.63,0.36],    dif:0.42, env:0.50, spec:0.62, shin:30, sc:[1,0.93,0.76] },
+  silver:{ alb:[0.70,0.71,0.72],   dif:0.40, env:0.55, spec:0.58, shin:30, sc:[1,1,1] },
+};
+/** 금속 단면 한 점의 색(0~1) — 원형 링과 금테(필릿)가 같이 쓴다. N = 법선(화면 x·y + 정면 z), occ = 홈 폐색 */
+function metalLight(f,N0,N1,N2,L,Hh,occ){
+  const dif=Math.max(0,N0*L[0]+N1*L[1]+N2*L[2]);
+  const sp=Math.pow(Math.max(0,N0*Hh[0]+N1*Hh[1]+N2*Hh[2]), f.shin);
+  // 주변 반사 — 위(천장·창)는 밝고 아래(바닥)는 어둡다. 반사 벡터의 세로 성분으로 읽는다
+  const ry=2*N2*N1;                         // reflect(-V,N).y (V=(0,0,1))
+  const env=Math.max(0,Math.min(1,0.55-0.45*ry));
+  const k=occ*(0.06+f.dif*dif+f.env*env), q=sp*f.spec*occ;
+  return [f.alb[0]*k+f.sc[0]*q, f.alb[1]*k+f.sc[1]*q, f.alb[2]*k+f.sc[2]*q];
+}
+/** 광원 [x,y] → 금속 조명용 [L, H(하프벡터)] */
+function metalLightVecs(ld){
+  const n=Math.hypot(ld[0],ld[1])||1;
+  let L=[ld[0]/n, ld[1]/n, ROUND_LZ]; const ln=Math.hypot(...L); L=L.map(v=>v/ln);
+  let Hh=[L[0],L[1],L[2]+1]; const hn=Math.hypot(...Hh); Hh=Hh.map(v=>v/hn);
+  return [L,Hh];
+}
+// 단면 — t: 링 안쪽(0) → 바깥(1). 반환 [법선의 반지름 성분(바깥 +), 폐색(0~1)]
+function roundProfile(finish,t){
+  if(finish==='gold'){
+    // 안쪽 가는 비드(0~.30) · 홈(.30~.37) · 바깥 굵은 튜브(.37~1)
+    if(t<0.30){ const x=t/0.30*2-1; return [x*0.92, 1]; }
+    if(t<0.37){ return [0, 0.45]; }
+    const x=(t-0.37)/0.63*2-1; return [x*0.96, 1];
+  }
+  const x=t*2-1; return [x*0.97, 1];
+}
+const _ringCache=new Map();
+/** 링만 그린 투명 캔버스(D×D). 같은 크기·마감·광원이면 다시 계산하지 않는다(작품과 무관하다) */
+function roundRingLayer(D,Ro,Ri,finish,ld){
+  const n=Math.hypot(ld[0],ld[1])||1;
+  const key=[D,Ro.toFixed(1),Ri.toFixed(1),finish,(ld[0]/n).toFixed(2),(ld[1]/n).toFixed(2)].join('|');
+  if(_ringCache.has(key)) return _ringCache.get(key);
+  const f=ROUND_FINISH[finish]||ROUND_FINISH.black;
+  const [L,Hh]=metalLightVecs(ld);
+  const c=document.createElement('canvas'); c.width=c.height=D;
+  const x=c.getContext('2d');
+  const cx=D/2, cy=D/2, x0=Math.max(0,Math.floor(cx-Ro-1)), n2=Math.min(D,Math.ceil(2*Ro+3));
+  const id=x.createImageData(n2,n2), d=id.data;
+  const SS=3, band=Ro-Ri, Ri2=(Ri-1)*(Ri-1), Ro2=(Ro+1)*(Ro+1);
+  for(let j=0;j<n2;j++){
+    const py0=x0+j-cy;
+    for(let i=0;i<n2;i++){
+      const px0=x0+i-cx, rr=px0*px0+py0*py0;
+      if(rr<Ri2 || rr>Ro2) continue;           // 링 근처만 — 나머지는 투명
+      let ar=0,ag=0,ab=0,cov=0;
+      for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
+        const px=px0+(si+0.5)/SS-0.5, py=py0+(sj+0.5)/SS-0.5, r=Math.hypot(px,py);
+        if(r<Ri || r>Ro) continue;
+        const [nr,occ]=roundProfile(finish,(r-Ri)/band);
+        const nz=Math.sqrt(Math.max(0,1-nr*nr)), ux=px/r, uy=py/r;
+        const m=metalLight(f,nr*ux,nr*uy,nz,L,Hh,occ);
+        ar+=m[0]; ag+=m[1]; ab+=m[2]; cov++;
+      }
+      if(!cov) continue;
+      const o=(j*n2+i)*4;
+      d[o]=Math.min(255,ar/cov*255); d[o+1]=Math.min(255,ag/cov*255); d[o+2]=Math.min(255,ab/cov*255);
+      d[o+3]=Math.round(cov/(SS*SS)*255);
+    }
+  }
+  x.putImageData(id,x0,x0);
+  if(_ringCache.size>6) _ringCache.delete(_ringCache.keys().next().value);
+  _ringCache.set(key,c);
+  return c;
+}
+/** 둥근 테두리가 안쪽(작품·매트)에 드리우는 그림자 — 빛을 등진 쪽이 아니라 **빛 쪽 안쪽 가장자리**가 어둡다
+ *  (링이 앞에 있어 빛 반대 방향으로 그림자를 던진다). 링 바깥을 칠한 도형의 그림자만 원 안으로 끌어온다. */
+function roundInnerShadow(ctx,c,R,ld,depth,alpha){
+  const n=Math.hypot(ld[0],ld[1])||1, D=ctx.canvas.width;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(c,c,R,0,Math.PI*2); ctx.clip();
+  for(const [blur,a,k] of [[depth*0.9,alpha*0.55,0.0],[depth*1.6,alpha,0.55]]){
+    ctx.shadowColor=`rgba(0,0,0,${a.toFixed(3)})`; ctx.shadowBlur=Math.max(1,blur);
+    ctx.shadowOffsetX=-ld[0]/n*depth*k; ctx.shadowOffsetY=-ld[1]/n*depth*k;
+    ctx.beginPath(); ctx.rect(-D,-D,D*3,D*3); ctx.arc(c,c,R,0,Math.PI*2,true);
+    ctx.fillStyle='#000'; ctx.fill();
+  }
+  ctx.restore();
+}
+// ── 금테(필릿, 2026-10-25) — 몰딩(또는 매트) 안쪽에서 작품을 두르는 가는 금속 띠 ──────────────
+// FrameIt 인기 액자의 3분의 1이 이 계열(블랙+은테·블랙+금테)이라 넣었다. 작품을 덮지 않는다 — 띠만큼 판이 커진다(규칙 18).
+// 단면은 반원 비드, 네 귀는 45° 마이터. 원형 링과 같은 금속 조명(metalLight)을 쓴다.
+const FILLET_FRAC=0.009;
+function drawFilletBand(ctx,x,y,w,h,fw,finish,ld){
+  const f=ROUND_FINISH[finish]||ROUND_FINISH.gold, [L,Hh]=metalLightVecs(ld);
+  const X0=Math.floor(x-fw), Y0=Math.floor(y-fw), X1=Math.ceil(x+w+fw), Y1=Math.ceil(y+h+fw);
+  const bw=X1-X0, bh=Y1-Y0, id=ctx.getImageData(X0,Y0,bw,bh), d=id.data, SS=3;
+  for(let j=0;j<bh;j++){
+    for(let i=0;i<bw;i++){
+      const qx=X0+i+0.5, qy=Y0+j+0.5;
+      // 띠 근처만(안쪽 작품·바깥은 건너뛴다)
+      if(qx>x+1.5 && qx<x+w-1.5 && qy>y+1.5 && qy<y+h-1.5) continue;
+      let ar=0,ag=0,ab=0,cov=0;
+      for(let sj=0;sj<SS;sj++) for(let si=0;si<SS;si++){
+        const px=X0+i+(si+0.5)/SS, py=Y0+j+(sj+0.5)/SS;
+        const dl=x-px, dr=px-(x+w), dt=y-py, db=py-(y+h);
+        const dd=Math.max(dl,dr,dt,db);
+        if(dd<=0 || dd>fw) continue;
+        // 어느 변인가 — 가장 멀리 나온 쪽(=45° 마이터)
+        let ux=0,uy=0, second=-1e9;
+        if(dd===dl){ ux=-1; second=Math.max(dt,db); } else if(dd===dr){ ux=1; second=Math.max(dt,db); }
+        else if(dd===dt){ uy=-1; second=Math.max(dl,dr); } else { uy=1; second=Math.max(dl,dr); }
+        const nr=(dd/fw*2-1)*0.95, nz=Math.sqrt(Math.max(0,1-nr*nr));
+        const occ=(dd-second)<0.7 ? 0.72 : 1;      // 마이터 이음매
+        const m=metalLight(f,nr*ux,nr*uy,nz,L,Hh,occ);
+        ar+=m[0]; ag+=m[1]; ab+=m[2]; cov++;
+      }
+      if(!cov) continue;
+      const a=cov/(SS*SS), o=(j*bw+i)*4;
+      d[o]  =d[o]  *(1-a)+Math.min(255,ar/cov*255)*a;
+      d[o+1]=d[o+1]*(1-a)+Math.min(255,ag/cov*255)*a;
+      d[o+2]=d[o+2]*(1-a)+Math.min(255,ab/cov*255)*a;
+      d[o+3]=Math.max(d[o+3], Math.round(a*255));
+    }
+  }
+  ctx.putImageData(id,X0,Y0);
+}
+
+// ── 작품의 원(2026-10-25 — "원형은 작품의 원 크기와 테를 맞출 수 있어야") ───────────────────────────────
+// 둥근 작품 사진에는 대개 둘레에 여백(벽·바닥·흰 배경)이 있다. 사진 가운데 원(짧은 변 지름)을 그대로 쓰면 그 여백까지 테 안에 들어간다.
+// 원 = { cx, cy(사진 가로·세로 비율), r(짧은 변 대비) }. 화면(ui.js)이 자동으로 찾은 값이나 사용자가 [원 맞추기]로 맞춘 값을 넘긴다.
+/** 사진 속 둥근 작품을 찾는다 — 배경(사진 가장자리 색)과 다른 덩어리의 외접 사각형이 정사각에 가깝고, 그 네 귀가 배경이면 원으로 본다.
+ *  못 찾으면 null(사진 가운데 원을 쓴다). 가장자리가 어수선하면(그림이 가장자리까지 차 있으면) 찾지 않는다. */
+function detectArtCircle(img){
+  const W0=img.width||img.naturalWidth, H0=img.height||img.naturalHeight; if(!W0||!H0) return null;
+  const k=Math.min(1, 384/Math.max(W0,H0)), w=Math.max(8,Math.round(W0*k)), h=Math.max(8,Math.round(H0*k));
+  let d;
+  try{ const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d',{willReadFrequently:true});
+    x.drawImage(img,0,0,w,h); d=x.getImageData(0,0,w,h).data; }catch(e){ return null; }
+  const at=(xx,yy)=>(yy*w+xx)*4, edge=[];
+  for(let yy=0;yy<h;yy++) for(let xx=0;xx<w;xx++) if(xx<2||yy<2||xx>=w-2||yy>=h-2){ const i=at(xx,yy); edge.push([d[i],d[i+1],d[i+2]]); }
+  const med=(ch)=>{ const v=edge.map((p)=>p[ch]).sort((a,b)=>a-b); return v[v.length>>1]; };
+  const bg=[med(0),med(1),med(2)];
+  const dist=(i)=>Math.abs(d[i]-bg[0])+Math.abs(d[i+1]-bg[1])+Math.abs(d[i+2]-bg[2]);
+  const dev=edge.map((p)=>Math.abs(p[0]-bg[0])+Math.abs(p[1]-bg[1])+Math.abs(p[2]-bg[2])).sort((a,b)=>a-b);
+  const spread=dev[Math.floor(dev.length*0.75)];
+  if(spread>60) return null;
+  const T=Math.max(36, spread*2.5), m=new Uint8Array(w*h), rows=new Int32Array(h), cols=new Int32Array(w);
+  for(let yy=0;yy<h;yy++) for(let xx=0;xx<w;xx++) if(dist(at(xx,yy))>T){ m[yy*w+xx]=1; rows[yy]++; cols[xx]++; }
+  const thR=Math.max(2,w*0.03), thC=Math.max(2,h*0.03);
+  let t=0; while(t<h && rows[t]<thR) t++; let b=h-1; while(b>t && rows[b]<thR) b--;
+  let l=0; while(l<w && cols[l]<thC) l++; let r=w-1; while(r>l && cols[r]<thC) r--;
+  const bw=r-l+1, bh=b-t+1;
+  if(bw<w*0.3 || bh<h*0.3) return null;
+  if(bw/bh>1.18 || bh/bw>1.18) return null;            // 정사각에 가깝지 않으면 원이 아니다
+  if(bw>w*0.97 && bh>h*0.97) return null;              // 여백이 없다 — 사진 가운데 원과 같다
+  const cx=(l+r+1)/2, cy=(t+b+1)/2, rad=(bw+bh)/4;
+  // 원인가 — 외접 사각형의 네 귀(원 밖)는 배경이어야 하고, 원 안은 대부분 그림이어야 한다
+  let inN=0,inM=0,cN=0,cM=0;
+  for(let yy=t;yy<=b;yy++) for(let xx=l;xx<=r;xx++){ const q=Math.hypot(xx+.5-cx,yy+.5-cy)/rad;
+    if(q<0.92){ inN++; inM+=m[yy*w+xx]; } else if(q>1.12){ cN++; cM+=m[yy*w+xx]; } }
+  if(!inN || !cN || inM/inN<0.80 || cM/cN>0.30) return null;
+  // ── 가장자리를 다시 잰다 — 바닥에 진 그림자까지 '그림'으로 잡혀 원이 커지고 한쪽으로 밀린다(실측 반지름 +7.5%) ──
+  // 그림자는 흐릿하고 작품 가장자리는 또렷하다. 어림 원의 안쪽(0.7)에서 바깥(1.3)까지 방향마다 선을 그어 **색이 가장 크게 바뀌는 곳**을
+  // 경계로 잡고, 그 점들에 원을 맞춘다(최소제곱, 많이 벗어난 점은 한 번 버리고 다시).
+  const px=(xx,yy)=>{ const i=at(Math.max(0,Math.min(w-1,Math.round(xx))), Math.max(0,Math.min(h-1,Math.round(yy)))); return [d[i],d[i+1],d[i+2]]; };
+  const pts=[];
+  for(let a=0;a<72;a++){
+    const th=a/72*Math.PI*2, ux=Math.cos(th), uy=Math.sin(th);
+    let best=-1, bt=0;
+    for(let tt=0.70*rad; tt<=1.30*rad; tt+=0.5){
+      const p0=px(cx+ux*(tt-1.5), cy+uy*(tt-1.5)), p1=px(cx+ux*(tt+1.5), cy+uy*(tt+1.5));
+      const g=Math.abs(p0[0]-p1[0])+Math.abs(p0[1]-p1[1])+Math.abs(p0[2]-p1[2]);
+      if(g>best){ best=g; bt=tt; }
+    }
+    if(best>24) pts.push([cx+ux*bt, cy+uy*bt]);
+  }
+  const fit=(P)=>{ // 대수적 원 맞춤(Kasa): x²+y² + Dx + Ey + F = 0
+    let sx=0,sy=0,sxx=0,syy=0,sxy=0,sz=0,sxz=0,syz=0; const n=P.length;
+    for(const [X,Y] of P){ const z=X*X+Y*Y; sx+=X; sy+=Y; sxx+=X*X; syy+=Y*Y; sxy+=X*Y; sz+=z; sxz+=X*z; syz+=Y*z; }
+    const A=[[sxx,sxy,sx],[sxy,syy,sy],[sx,sy,n]], B=[-sxz,-syz,-sz];
+    const det=(m)=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+    const D0=det(A); if(Math.abs(D0)<1e-9) return null;
+    const col=(i)=>A.map((row,r)=>row.map((v,c)=>c===i?B[r]:v));
+    const Dd=det(col(0))/D0, Ee=det(col(1))/D0, Ff=det(col(2))/D0;
+    const X0=-Dd/2, Y0=-Ee/2, R2=X0*X0+Y0*Y0-Ff; return R2>0 ? [X0,Y0,Math.sqrt(R2)] : null;
+  };
+  let f=pts.length>=24 ? fit(pts) : null;
+  if(f){
+    const res=pts.map(([X,Y])=>Math.abs(Math.hypot(X-f[0],Y-f[1])-f[2]));
+    const mr=[...res].sort((a,b)=>a-b)[res.length>>1];
+    const keep=pts.filter((_,i)=>res[i]<=Math.max(1.5, mr*2.5));
+    if(keep.length>=24) f=fit(keep)||f;
+  }
+  // 다시 잰 원이 어림 원과 크게 다르면(무늬를 경계로 잡았다) 어림 원을 쓴다
+  // 반지름은 1% 안쪽으로 — 경계를 한 픽셀이라도 밖으로 잡으면 테 안쪽에 배경이 실처럼 비친다(안쪽은 테가 덮는다)
+  if(f && f[2]>0.75*rad && f[2]<1.05*rad && Math.hypot(f[0]-cx,f[1]-cy)<0.2*rad) return { cx:f[0]/w, cy:f[1]/h, r:f[2]*0.99/Math.min(w,h) };
+  return { cx:cx/w, cy:cy/h, r:rad/Math.min(w,h) };
+}
+/** 원을 사진 안으로 — 원이 사진 밖으로 나가면 그 자리는 빈칸(투명)이 되어 테 안에 벽이 보인다 */
+function clampCircle(c, aw, ah){
+  const M=Math.min(aw,ah);
+  let cx=c && isFinite(c.cx) ? Math.max(0,Math.min(1,c.cx)) : .5, cy=c && isFinite(c.cy) ? Math.max(0,Math.min(1,c.cy)) : .5;
+  let r=c && isFinite(c.r) ? c.r : .5;
+  const maxR=Math.min(cx*aw, (1-cx)*aw, cy*ah, (1-cy)*ah)/M;
+  r=Math.max(0.05, Math.min(r, maxR));
+  return { cx, cy, r };
+}
+
+function buildRoundFramed(img, style, o, matFrac){
+  const aw=img.width, ah=img.height;
+  // 작품의 원(o.circle) — 없으면 사진 가운데 원(짧은 변 지름). S = 그 원의 지름(px)
+  const cir=clampCircle(o.circle, aw, ah), S=2*cir.r*Math.min(aw,ah);
+  const K=Math.max(.3, o.frame/0.035);
+  const ld=o.lightDir||[-1,-1];
+  const ringPx=Math.max(3, S*(style.border||0.02)*K);
+  const matPx=Math.round(matFrac*S);
+  const Rart=S/2, Rmat=Rart+matPx, Ro=Rmat+ringPx, D=Math.ceil(2*Ro);
+  const c=document.createElement('canvas'); c.width=c.height=D;
+  const ctx=c.getContext('2d'), cc=D/2;
+  // 매트(둥근 대지) — 사각 매트와 같은 결·방향광. 작품은 그 위에 떠 있다(플로트 마운트, 규칙 44l)
+  if(matPx>0){
+    ctx.save(); ctx.beginPath(); ctx.arc(cc,cc,Rmat+1,0,Math.PI*2); ctx.clip();
+    ctx.fillStyle=o.matteColor; ctx.fillRect(0,0,D,D);
+    matSurface(ctx,0,0,D,D, Math.max(1,Math.round(S*0.0016)), o.matteColor, o.matTexture);
+    shadeMatSurface(ctx,cc-Rmat,cc-Rmat,2*Rmat,2*Rmat,ld);
+    ctx.restore();
+    roundInnerShadow(ctx,cc,Rmat,ld,Math.max(2,ringPx*0.55),0.30*SYN_EDGE/0.35);
+    // 작품이 대지 위에 떠서 드리우는 그림자(floatMountShadow 와 같은 값, 캐스터는 캔버스 밖)
+    const AWAY=D*2+S;
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=Math.max(2,S*.010);
+    ctx.shadowOffsetX=S*.0015+AWAY; ctx.shadowOffsetY=S*.0045;
+    ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(cc-AWAY,cc,Rart,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  // 작품 — 사진 가운데의 정사각(짧은 변)을 원으로. 늘리지 않는다(규칙 18 — 자르는 건 원형을 고른 사람의 선택)
+  ctx.save(); ctx.beginPath(); ctx.arc(cc,cc,Rart+(matPx>0?0:1),0,Math.PI*2); ctx.clip();
+  ctx.drawImage(img,cir.cx*aw-S/2,cir.cy*ah-S/2,S,S,cc-Rart,cc-Rart,2*Rart,2*Rart);
+  if(o.weave) applyWeave(ctx,cc-Rart,cc-Rart,2*Rart,2*Rart);
+  ctx.restore();
+  // 링이 작품에 드리우는 그늘(매트가 없을 때) — 작품이 링 뒤로 들어가 있다는 신호
+  if(matPx<=0) roundInnerShadow(ctx,cc,Rart,ld,Math.max(2,ringPx*0.6),0.34*SYN_EDGE/0.35);
+  ctx.drawImage(roundRingLayer(D,Ro,Rmat-0.5,style.finish,ld),0,0);
+  c._round=true;
+  c._roundArtPx=S;          // 작품 원의 지름(px) — 실치수 환산에 쓴다(compose·groupPiece)
+  // 링 바깥색 — 장면 엔진에 넘길 때 판 바깥을 이 색으로 채운다(compose 주석 참고)
+  const fin=ROUND_FINISH[style.finish]||ROUND_FINISH.black;
+  c._roundEdge=fin.alb.map(v=>Math.round(Math.min(255,v*0.35*255)));
+  noteLayout(cc-Rart,cc-Rart,2*Rart,2*Rart,ringPx,matPx,
+    {l:ringPx,t:ringPx,r:ringPx,b:ringPx,faceOut:0,faceFront:1});
+  return c;
+}
+
 function buildFramedCore(img, style, o){
   const aw=img.width, ah=img.height, base=Math.min(aw,ah);
   const K=Math.max(.3, o.frame/0.035);          // 두께 슬라이더 (기본 .035 → 1.0배)
@@ -1806,6 +2303,7 @@ function buildFramedCore(img, style, o){
   //    '없음'이 다시 선택지가 됐다. 여전히 **한 곳에서만** 정한다(그게 44e 의 핵심이었다).
   //    캔버스 랩은 여전히 0 고정 — 액자가 없어 매트를 물리적으로 받칠 것이 없다.
   const matFrac = (style.kind==='canvas') ? 0 : Math.max(0, o.matWidth||0);
+  if(style.kind==='round') return buildRoundFramed(img, style, o, matFrac);
 
   // --- 사진 액자 (실사 이미지 9-slice) ---
   // 절차적 액자와 달리 **액자 픽셀이 사진**이라 미세 질감·마이터가 그대로 산다.
@@ -1821,17 +2319,19 @@ function buildFramedCore(img, style, o){
       const kx = railPx/((L+R)/2);
       const l=Math.round(L*kx), t=Math.round(T*kx), r=Math.round(R*kx), b=Math.round(B*kx);
       const matPx = Math.round(matFrac*base);
-      const W=aw+2*matPx+l+r, H=ah+2*matPx+t+b;
+      // 금테(필릿) — 작품을 덮지 않고 띠만큼 판을 키운다(drawFilletBand 주석). 없으면 0 이라 예전과 픽셀까지 같다
+      const fp = style.fillet ? Math.max(3, Math.round(base*FILLET_FRAC)) : 0;
+      const W=aw+2*(matPx+fp)+l+r, H=ah+2*(matPx+fp)+t+b;
       const c=document.createElement('canvas'); c.width=W; c.height=H;
       const ctx=c.getContext('2d');
-      const ax=l+matPx, ay=t+matPx;
+      const ax=l+matPx+fp, ay=t+matPx+fp;
       const ld=o.lightDir||[-1,-1];
       // ── 매트는 '색면'이 아니라 **두께 있는 종이판**이다 ──────────────────────
       // 순서가 중요하다: 결·음영·액자그림자를 **작품을 그리기 전에** 매트에 입혀야
       // 작품이 그 위를 덮는다. 작품 위에 매트 음영을 얹으면 그림 색이 변조된다.
       if(matPx>0){
         ctx.fillStyle=o.matteColor; ctx.fillRect(l,t,W-l-r,H-t-b);
-        matPaper(ctx,l,t,W-l-r,H-t-b, Math.max(1,Math.round(base*0.0016)), o.matteColor);
+        matSurface(ctx,l,t,W-l-r,H-t-b, Math.max(1,Math.round(base*0.0016)), o.matteColor, o.matTexture);
         shadeMatSurface(ctx,l,t,W-l-r,H-t-b,ld);
         // ⚠️ 폭을 넓게 두지 말 것. 매트는 액자 뒤 몇 mm 에 있을 뿐인데 매트 폭의 62%
         //    (실측 28px)를 어둡게 칠하면 **액자와 매트 사이에 검은 띠**가 생겨 층으로 읽힌다.
@@ -1839,9 +2339,10 @@ function buildFramedCore(img, style, o){
         frameShadowOnMat(ctx,l,t,W-l-r,H-t-b, Math.max(3,matPx*.20), ld);
       }
       // 매트가 있으면 작품은 매트 위에 떠 있다 — 플로터와 같은 그림자(floatMountShadow 주석)
-      if(matPx>0) floatMountShadow(ctx,ax,ay,aw,ah,base);
+      if(matPx>0) floatMountShadow(ctx,ax-fp,ay-fp,aw+2*fp,ah+2*fp,base);
       ctx.drawImage(img,ax,ay,aw,ah);
       if(o.weave) applyWeave(ctx,ax,ay,aw,ah);
+      if(fp>0) drawFilletBand(ctx,ax,ay,aw,ah,fp,style.fillet,ld);
       // 액자를 따로 한 장에 그려 둔다 — `applyRailGain` 이 그걸 **자기 자신에 더해**
       // 정확한 밝기 배율을 만든다(screen 은 밝은 액자에서 뭉갠다. 그 함수 주석 참고).
       const fc=frameScratch(W,H);
@@ -1849,17 +2350,19 @@ function buildFramedCore(img, style, o){
       ctx.drawImage(fc,0,0);
       // 살에 방향광 — 자산에 **없는 만큼만**. 자산 실측치를 넘겨 잔차로 계산한다.
       shadeFrameProfile(ctx,W,H,l,t,r,b,ld,{asset:assetLightOf(style), plate:fc, noMat:matPx<=0,
-        recess:PHOTO_RECESS>0,
+        recess:PHOTO_RECESS>0 && !style.deep, deep:!!style.deep,
         scale:o.outLongEst? o.outLongEst/Math.max(W,H) : 1});
+      // 안쪽 벽이 보이는 사진 액자(박스·플로터 — `deep`)는 벽 명암을 방의 빛으로 다시 나눈다
+      if(style.deep) shadeBoxWalls(ctx,W,H,l,t,r,b,ld,assetLightOf(style),meta.wallFrom,fc);
       // 리베이트 — 액자(·매트)가 작품에 드리우는 그림자. 작품이 **뒤로 들어가 있다**는 신호는
       // 이것 하나뿐이다. 빛을 향한 변이 진하고 반대편은 옅다(예전엔 사방 동일 + 너무 옅었다).
       rebateShadow(ctx,ax,ay,aw,ah,base,ld);
       applyLightRamp(ctx,W,H,ld,RAMP_AMT,(l+r)/2,RAMP_CORNER);
-      noteLayout(ax,ay,aw,ah,(l+r)/2,matPx,{l,t,r,b,faceOut:FACE_OUT,faceFront:FACE_FRONT});
+      noteLayout(ax,ay,aw,ah,(l+r)/2,matPx,{l,t,r,b,faceOut:FACE_OUT,faceFront:(style.deep&&meta.wallFrom)||FACE_FRONT});
       return c;
     }
-    // 사진이 아직 안 왔으면 얇은 평면 액자로 대체 (빈 화면 방지)
-    style={ kind:'flat', material:'wood', border:.028 };
+    // 사진이 아직 안 왔으면 대체 — 박스는 코드로 그린 박스(fallback), 나머지는 얇은 평면 액자 (빈 화면 방지)
+    style=style.fallback || { kind:'flat', material:'wood', border:.028 };
   }
 
   // --- 캔버스 랩 (액자 없음, 갤러리 캔버스) ---
@@ -1932,30 +2435,36 @@ function buildFramedCore(img, style, o){
 
   // --- 바탕 ---
   if(style.kind==='floater'){
-    ctx.fillStyle=matC.back; ctx.fillRect(0,0,W,H);          // 트레이(어두운 배경)
+    // 트레이(어두운 배경). ⚠️ 박스는 벽 색으로 — 벽 밴드의 끝이 소수 픽셀이면 그 절반만 덮여 바탕이 비친다.
+    //    트레이 색(오크 #352a1e)이 비치면 밝은 나무 벽과 작품 사이에 검은 선이 된다(nomat 오크 박스 49 — 2026-10-26)
+    ctx.fillStyle=style.box ? `rgb(${matFaceRGB(matC).map((v)=>Math.round(v*BOX_WALL_BASE)).join(',')})` : matC.back;
+    ctx.fillRect(0,0,W,H);
     // 플로트 마운트 — 갭 **안쪽**을 매트 보드로 깐다. 작품은 그 위에 떠서 그림자를 드리운다.
     // ⚠️ 순서를 지킬 것: 보드를 먼저 깔고 갭을 그려야 갭의 안쪽 그늘 선이 보드 위에 얹힌다.
     //    반대로 하면 보드가 갭의 오목면을 덮어 액자가 평평해진다.
     if(mat>0){
       const q=border+gap;
       ctx.fillStyle=o.matteColor; ctx.fillRect(q,q,W-2*q,H-2*q);
-      matPaper(ctx,q,q,W-2*q,H-2*q, Math.max(1,Math.round(base*0.0016)), o.matteColor);
+      matSurface(ctx,q,q,W-2*q,H-2*q, Math.max(1,Math.round(base*0.0016)), o.matteColor, o.matTexture);
       shadeMatSurface(ctx,q,q,W-2*q,H-2*q,ld);
       frameShadowOnMat(ctx,q,q,W-2*q,H-2*q, Math.max(3,mat*.20), ld);
     }
-    drawFloaterTray(ctx,W,H,border,gap,matFaceRGB(matC),ld, mat>0);
+    if(style.box) drawBoxWalls(ctx,W,H,border,gap,matC,ld, mat>0);
+    else drawFloaterTray(ctx,W,H,border,gap,matFaceRGB(matC),ld, mat>0);
   } else if(mat>0){
     // 사진 액자와 **같은 매트 처리**를 쓴다 — 여기만 옛 방식으로 두면 절차적 액자에서만
     // 매트가 색면으로 남는다(실측 그레인 0.93 vs 사진 액자 7.4).
     ctx.fillStyle=o.matteColor; ctx.fillRect(0,0,W,H);
-    matPaper(ctx, border, border, W-2*border, H-2*border,
-             Math.max(1,Math.round(base*0.0016)), o.matteColor);
+    matSurface(ctx, border, border, W-2*border, H-2*border,
+             Math.max(1,Math.round(base*0.0016)), o.matteColor, o.matTexture);
     shadeMatSurface(ctx, border, border, W-2*border, H-2*border, ld);
     frameShadowOnMat(ctx, border, border, W-2*border, H-2*border, Math.max(3,mat*.20), ld);
   }
 
   // --- 작품이 트레이·매트 위에 떠 있는 그림자 — 플로터, 그리고 매트가 있는 모든 액자(floatMountShadow 주석) ---
-  if(style.kind==='floater' || mat>0) floatMountShadow(ctx,ax,ay,aw,ah,base);
+  // ⚠️ 매트 없는 **박스**는 빼라 — 작품이 상자 바닥(뒤판)에 붙어 벽과 맞닿는다. 떠 있지 않은데 그림자를 두르면
+  //    밝은 나무 벽 위에 작품 둘레 검은 선이 된다(nomat: 오크 박스 47.4, 골든 최대 24.7 — 2026-10-26).
+  if((style.kind==='floater' && !(style.box && mat<=0)) || mat>0) floatMountShadow(ctx,ax,ay,aw,ah,base);
 
   // --- 작품 ---
   ctx.drawImage(img,ax,ay,aw,ah);
@@ -2014,7 +2523,7 @@ function buildFramedCore(img, style, o){
 }
 
 // ---- 상태 ----
-const state={ img:null, frameIdx:0, frameColor:'#2b2b2b', matteColor:'#f5f2ea',
+const state={ img:null, frameIdx:0, frameColor:'#2b2b2b', matteColor:'#f5f2ea', matTexture:'paper', caption:false, group:null, groupLayout:'row', circle:null,
   frame:0.044, glass:false, weave:false, mode:'wall', bg:'#ffffff', wallIdx:0, sceneIdx:0,
   ratio:'1:1', light:0, matWidth:0.05, sceneGroup:'wall' };   // 매트는 필수 — 0 은 없다(캔버스 랩만 예외)
 function buildFramed(img){ return buildFramedCore(img, FRAMES[state.frameIdx], state); }
@@ -2305,6 +2814,7 @@ function targetDims(ratio,longSide){
 // ============================================================
 let lastArt=null; // 마지막 렌더의 액자 위치 (드래그 히트테스트)
 let lastFitNote=null;  // 장면 모드에서 실치수가 맞았는지 (화면에 알려준다)
+let lastLabelPlaced=null;  // 벽 캡션을 켰을 때 실제로 붙였나(자리가 없으면 false — 화면이 알려준다)
 let lastRegionPx=null; // 장면 영역의 화면 크기 (드래그 단위 환산용)
 
 // 작품 크기 문자열 → [가로cm, 세로cm]. 파서는 scene.js 에 있다(테스트가 그걸 검사한다).
@@ -2370,6 +2880,165 @@ function installDebugHook(){
   };
 }
 
+// ── 벽 캡션 카드 (2026-10-25) ─────────────────────────────────────────────
+// 미술관 벽에 붙은 작은 카드 — 작가 · 작품명, 연도 · 재료 · 크기. FrameIt 의 같은 자리는 **빈 카드**인데 우리는 작품 정보를 안다.
+// 적을 게 하나도 없으면(작가 이름도 작품명도 없음) 붙이지 않는다 — 빈 카드는 '정보를 안 적었다'로 읽힌다.
+const CAPTION_W_CM=13;                 // 실물 크기 — 국내 미술관 라벨 10~13cm 의 큰 쪽(홍보 이미지에서 읽히게)
+function captionLines(w){
+  if(!w) return [];
+  const t=(v)=>String(v==null?'':v).trim();
+  const title=t(w.title), year=t(w.year), medium=t(w.medium), size=t(w.sizeText), artist=t(w.artist);
+  const head=title && year ? `${title}, ${year}` : (title||year);
+  const out=[];
+  if(artist) out.push({ text:artist, bold:true });
+  if(head) out.push({ text:head });
+  if(medium) out.push({ text:medium, sub:true });
+  if(size) out.push({ text:size, sub:true });
+  return (artist||title) ? out : [];
+}
+const CAPTION_FONT='"Pretendard Variable",Pretendard,system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+let _capCache=null;
+function captionCard(w){
+  const lines=captionLines(w);
+  if(!lines.length) return null;
+  const key=JSON.stringify(lines);
+  if(_capCache && _capCache.key===key) return _capCache.card;
+  const PX=72, Wc=Math.round(CAPTION_W_CM*PX), pad=Math.round(Wc*0.085);
+  const fsB=Math.round(Wc*0.062), fs=Math.round(Wc*0.050), lh=1.45;
+  const c=document.createElement('canvas'); const x=c.getContext('2d');
+  // 글을 먼저 줄바꿈해 카드 높이를 정한다(긴 작품명은 두 줄까지, 넘치면 …)
+  const wrap=(text,font,maxW,maxLines)=>{
+    x.font=font; const out=[]; let cur='';
+    for(const ch of Array.from(text)){
+      if(x.measureText(cur+ch).width>maxW && cur){ out.push(cur); cur=ch; if(out.length===maxLines) break; }
+      else cur+=ch;
+    }
+    if(out.length<maxLines && cur) out.push(cur);
+    else if(out.length===maxLines && cur){ let l=out[maxLines-1]; while(l && x.measureText(l+'…').width>maxW) l=l.slice(0,-1); out[maxLines-1]=l+'…'; }
+    return out;
+  };
+  const rows=[];
+  lines.forEach((ln,i)=>{
+    const font=(ln.bold?'700 ':'400 ')+(ln.bold?fsB:fs)+'px '+CAPTION_FONT;
+    for(const r of wrap(ln.text,font,Wc-2*pad,ln.bold?1:2)) rows.push({ r, font, size:ln.bold?fsB:fs, color:ln.sub?'#5d5a55':'#1f1d1a', gapBefore:i===1?fs*0.35:0 });
+  });
+  const Hc=Math.round(pad*1.7+rows.reduce((h,r)=>h+r.size*lh+r.gapBefore,0));
+  c.width=Wc; c.height=Hc;
+  // 카드 종이 — 아주 옅은 결 + 가장자리 두께(아래·오른쪽이 살짝 어둡다)
+  x.fillStyle='#f8f6f1'; x.fillRect(0,0,Wc,Hc);
+  x.save(); x.globalAlpha=0.5; matPaper(x,0,0,Wc,Hc,1,'#f8f6f1'); x.restore();
+  const g=x.createLinearGradient(0,0,0,Hc); g.addColorStop(0,'rgba(255,255,255,.05)'); g.addColorStop(1,'rgba(0,0,0,.05)');
+  x.fillStyle=g; x.fillRect(0,0,Wc,Hc);
+  x.textBaseline='top'; x.textAlign='left';
+  let y=pad*0.95;
+  for(const r of rows){ y+=r.gapBefore; x.font=r.font; x.fillStyle=r.color; x.fillText(r.r,pad,y); y+=r.size*lh; }
+  const card={ canvas:c, wCm:CAPTION_W_CM, hCm:CAPTION_W_CM*Hc/Wc, gapCm:9 };
+  _capCache={ key, card };
+  return card;
+}
+
+// ── 여러 점 걸기(갤러리 월, 2026-10-25) ─────────────────────────────────────────
+// FrameIt 은 칸 크기가 정해진 틀에 그림을 올려 끼운다. 우리는 작품마다 **실제 크기(cm)** 를 알아서 비례와 간격이 실제처럼 맞는다.
+// 액자·매트는 모두 같은 것(같은 벽에 한 세트로 거는 관례 — FrameIt 도 같다). 간격은 실물 8cm.
+// 배치는 cm 좌표로 정한 뒤 묶음(0~1) 좌표로 바꿔 장면 엔진에 넘긴다(composeScene 의 `group`).
+const GROUP_GAP_CM=8, GROUP_MAX=4;
+const GROUP_LAYOUTS={2:['row','col'],3:['row','big','stairs'],4:['grid','row','big']};
+const GROUP_LAYOUT_NAMES={row:'가로 한 줄',col:'세로 한 줄',grid:'2×2',big:'큰 그림 + 작은 그림',stairs:'계단'};
+/** sizes: [[가로,세로] cm] → { W, H, rects:[{x,y,w,h}] cm }. 가운데 맞춤이 기본(전시 벽의 중심선 맞춤) */
+function groupLayout(sizes, kind, gap){
+  const n=sizes.length, R=[];
+  const sum=(a)=>a.reduce((s,v)=>s+v,0);
+  if(kind==='col'){
+    const Wm=Math.max(...sizes.map(s=>s[0])); let y=0;
+    sizes.forEach(([w,h])=>{ R.push({x:(Wm-w)/2,y,w,h}); y+=h+gap; });
+    return {W:Wm,H:y-gap,rects:R};
+  }
+  if(kind==='grid' && n===4){
+    const cw=[Math.max(sizes[0][0],sizes[2][0]),Math.max(sizes[1][0],sizes[3][0])];
+    const rh=[Math.max(sizes[0][1],sizes[1][1]),Math.max(sizes[2][1],sizes[3][1])];
+    sizes.forEach(([w,h],i)=>{ const c=i%2, r=i>>1;
+      const cx=c? cw[0]+gap : 0, cy=r? rh[0]+gap : 0;
+      R.push({x:cx+(cw[c]-w)/2, y:cy+(rh[r]-h)/2, w, h}); });
+    return {W:cw[0]+gap+cw[1],H:rh[0]+gap+rh[1],rects:R};
+  }
+  if(kind==='big' && n>=3){
+    // 가장 큰(면적) 작품이 왼쪽에, 나머지는 고른 순서대로 오른쪽에 세로로 — 오른쪽 기둥을 큰 작품 높이의 가운데에
+    let bi=0; sizes.forEach((s,i)=>{ if(s[0]*s[1]>sizes[bi][0]*sizes[bi][1]) bi=i; });
+    const [w0,h0]=sizes[bi], restIdx=sizes.map((_,i)=>i).filter(i=>i!==bi), rest=restIdx.map(i=>sizes[i]);
+    const rw=Math.max(...rest.map(s=>s[0])), rH=sum(rest.map(s=>s[1]))+gap*(rest.length-1);
+    const H=Math.max(h0,rH);
+    R[bi]={x:0,y:(H-h0)/2,w:w0,h:h0};
+    let y=(H-rH)/2;
+    restIdx.forEach((i)=>{ const [w,h]=sizes[i]; R[i]={x:w0+gap+(rw-w)/2,y,w,h}; y+=h+gap; });
+    return {W:w0+gap+rw,H,rects:R};
+  }
+  if(kind==='stairs'){
+    // 한 줄이되 한 칸씩 내려간다(계단 위에 거는 방식) — 내려가는 폭은 평균 높이의 30%
+    const step=0.30*sum(sizes.map(s=>s[1]))/n; let x=0;
+    sizes.forEach(([w,h],i)=>{ R.push({x,y:i*step,w,h}); x+=w+gap; });
+    return {W:x-gap,H:Math.max(...R.map(r=>r.y+r.h)),rects:R};
+  }
+  // row — 한 줄, 가운데 높이 맞춤
+  const Hm=Math.max(...sizes.map(s=>s[1])); let x=0;
+  sizes.forEach(([w,h])=>{ R.push({x,y:(Hm-h)/2,w,h}); x+=w+gap; });
+  return {W:x-gap,H:Hm,rects:R};
+}
+/** 작품 한 점의 판(액자 포함)과 그 실치수(cm). 치수를 모르면 엔진과 같은 가정(높이 90cm, 30호 정도) */
+function groupPiece(img0, work, style, circle){
+  const img=draftOf(img0);              // 끄는 동안엔 작은 사진 — 실치수 환산도 이 사진 크기로
+  const framed=framedFor(img, style, circle ? Object.assign({}, state, { circle }) : state);
+  let cm=artCmOf(work);
+  // ⚠️ 높이만 실치수에서, 폭은 **사진 비율**로 — 한 점일 때(placeInRegion: 높이 = artCm[1], 비율 = 사진)와 같은 규칙.
+  //    적힌 가로·세로가 사진과 어긋나면(세로 그림에 가로가 긴 치수) 칸 비율이 사진과 달라져 판이 늘어나 보인다
+  const cmH=cm ? cm[1] : 90;
+  cm=[cmH*img.width/img.height, cmH];
+  if(framed._round){
+    const d=Math.min(cm[0],cm[1]), S=framed._roundArtPx||Math.min(img.width,img.height);
+    cm=[d*framed.width/S, d*framed.height/S];
+  } else cm=[cm[0]*framed.width/img.width, cm[1]*framed.height/img.height];
+  let plate=framed;
+  if(framed._round){   // 한 점일 때와 같이 — 판 바깥을 링 바깥색으로 채워 넘긴다(compose 주석)
+    plate=document.createElement('canvas'); plate.width=framed.width; plate.height=framed.height;
+    const x=plate.getContext('2d'); x.fillStyle=`rgb(${framed._roundEdge.join(',')})`; x.fillRect(0,0,plate.width,plate.height); x.drawImage(framed,0,0);
+  }
+  return { framed, plate, cm, round:!!framed._round };
+}
+
+// ── 끄는 동안(초안)의 판 — 작은 사진으로 만들고 기억해 다시 쓴다 (2026-10-25, 여러 점 끌기 렉 신고) ─────────────
+// 판은 작품 원본(긴 변 최대 2,600px)으로 만들어 칸마다 수십 ms 가 든다. 끄는 동안엔 화면에 작게 보이므로 긴 변 1,000px 사진으로 만들고,
+// 같은 작품·액자·매트·광원이면 기억한 판을 그대로 쓴다. 손을 떼면(draft=false) 원래 해상도로 한 번 다시 그린다.
+// ⚠️ 배치는 비율·실치수(cm)만 쓰므로 판 해상도와 무관하다 — 실치수 환산은 **판을 만든 사진**의 크기로 할 것(compose·groupPiece).
+const DRAFT_LONG=1000;
+const _draftImgs=new WeakMap();
+function draftOf(img){
+  if(!state.draft || Math.max(img.width,img.height)<=DRAFT_LONG) return img;
+  let c=_draftImgs.get(img);
+  if(!c){ const k=DRAFT_LONG/Math.max(img.width,img.height);
+    c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+    const x=c.getContext('2d'); x.imageSmoothingQuality='high'; x.drawImage(img,0,0,c.width,c.height); _draftImgs.set(img,c); }
+  return c;
+}
+const _plateIds=new WeakMap(); let _plateSeq=0;
+const _draftPlates=new Map();
+function framedFor(img, style, o){
+  if(!state.draft) return buildFramedCore(img, style, o);
+  let id=_plateIds.get(img); if(!id){ id=++_plateSeq; _plateIds.set(img,id); }
+  const c=o.circle;
+  const key=[id, style.id, o.matWidth, o.matteColor, o.matTexture, o.frame, o.weave?1:0, o.glass?1:0,
+    (o.lightDir||[]).map((v)=>(+v).toFixed(3)).join(','), Math.round(o.outLongEst||0), c?[c.cx,c.cy,c.r].join(','):'', frameAssetsReady(style)?1:0].join('|');
+  const hit=_draftPlates.get(key);
+  if(hit){ lastFrameLayout=hit.layout; return hit.canvas; }
+  const canvas=buildFramedCore(img, style, o);
+  _draftPlates.set(key, { canvas, layout:lastFrameLayout });
+  if(_draftPlates.size>8) _draftPlates.delete(_draftPlates.keys().next().value);
+  return canvas;
+}
+
+// 그림자 캐스터 — 원형 액자면 원(타원), 아니면 사각형. 장면 엔진이 없을 때의 평면 합성 경로가 쓴다.
+function castShape(ctx,x,y,w,h,round){
+  if(!round){ ctx.fillRect(x,y,w,h); return; }
+  ctx.beginPath(); ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2); ctx.fill();
+}
 function compose(){
   if(!state.img) return null;
   // 액자를 **그 장면의 광원**으로 비춘다.
@@ -2395,7 +3064,8 @@ function compose(){
   // 붙으므로(실측 오크 44px ↔ 추정 44) 한 번의 곱셈으로 충분하다 — 판을 두 번 만들지 않는다.
   state.outLongEst = Math.max(OW,OH) * (sceneNow
     ? (sceneNow.maxLong==null ? 0.70 : sceneNow.maxLong) : 0.70);
-  const framed=buildFramed(state.img);
+  const srcImg=draftOf(state.img);      // 끄는 동안엔 작은 사진(위 draftOf 주석)
+  const framed=framedFor(srcImg, FRAMES[state.frameIdx], state);
   // 장면 모드는 배경 사진의 원본 해상도를 상한으로 삼는다(위 targetDims 주석 참고).
   // ⚠️ **원본 크기 그대로 뽑으면 카메라를 당길 여지가 사라진다** (2026-08-30 실측).
   //    자동 프레이밍은 `zoom × (출력/원본) ≤ 1.15` 안에서만 확대할 수 있는데, 출력을
@@ -2440,7 +3110,19 @@ function compose(){
     // 판(insert)에 액자를 포함시키면 액자도 벽 명암·방 색·그레인·원근을 함께 받는다.
     // 사진에 이미 액자가 있는 장면(opening)에는 우리 액자를 겹치지 않는다.
     const useFramed = !!sc.frameless;
-    const piece = useFramed ? framed : state.img;
+    // 여러 점(갤러리 월) — 액자가 없는 벽 사진에서만(사진에 액자 구멍이 있는 장면은 한 점짜리다)
+    const grp = (useFramed && Array.isArray(state.group) && state.group.length>1) ? state.group : null;
+    // 원형 액자 — 판 바깥(투명)을 링 바깥색으로 채워 넘기고 셰이더가 원으로 자른다(`round`).
+    // ⚠️ 투명한 채로 넘기면 밉맵이 투명(검정)과 섞여 링 둘레에 검은 테가 생긴다(규칙 37 의 같은 함정).
+    const round = useFramed && !!framed._round;
+    let piece = useFramed ? framed : state.img;
+    if(round){
+      const pc=document.createElement('canvas'); pc.width=framed.width; pc.height=framed.height;
+      const px=pc.getContext('2d');
+      px.fillStyle=`rgb(${framed._roundEdge.join(',')})`; px.fillRect(0,0,pc.width,pc.height);
+      px.drawImage(framed,0,0);
+      piece=pc;
+    }
     // ⚠️ **액자에는 3D 옆면을 만들지 않는다.** 액자는 거의 정면으로 보이고 측면은 솔질한
     //    나무 한 줄이라, 가장자리 픽셀을 문질러 옆면을 만들면 **액자 옆에 그림이 번져 나온다**
     //    (2026-08-30 신고, 경쟁사도 액자는 정면 + 그림자만 쓴다).
@@ -2449,11 +3131,27 @@ function compose(){
     const isCanvasWrap = (FRAMES[state.frameIdx]||{}).kind==='canvas';
     // 실치수는 '작품' 기준인데 판은 액자를 포함하므로, 액자 테두리만큼 키워 환산한다
     let cm = artCmOf(selectedWork);
-    if(cm && useFramed && state.img.width && state.img.height){
-      cm = [cm[0]*framed.width/state.img.width, cm[1]*framed.height/state.img.height];
+    if(cm && round){
+      // 원형 — 걸리는 건 사진 가운데의 원(짧은 변 지름)이다. 지름 = 작품의 짧은 변
+      const d=Math.min(cm[0],cm[1]), S=framed._roundArtPx||Math.min(srcImg.width,srcImg.height);
+      cm = [d*framed.width/S, d*framed.height/S];
+    } else if(cm && useFramed && srcImg.width && srcImg.height){
+      cm = [cm[0]*framed.width/srcImg.width, cm[1]*framed.height/srcImg.height];
     }
-    const placed=ArtLookScene.composeScene(ctx,W,H,sc,piece,{
-      artCm: cm,                             // 작품 크기를 알면 벽에서 차지하는 크기에 반영된다
+    let groupOpt=null, groupCm=null, groupArt=null;
+    if(grp){
+      const style=FRAMES[state.frameIdx];
+      const pieces=grp.map((g)=>groupPiece(g.img, g.work, style, g.circle));
+      const kinds=GROUP_LAYOUTS[pieces.length]||['row'];
+      const L=groupLayout(pieces.map(p=>p.cm), kinds.includes(state.groupLayout)? state.groupLayout : kinds[0], GROUP_GAP_CM);
+      groupCm=[L.W, L.H];
+      groupOpt=pieces.map((p,i)=>({ plate:p.plate, round:p.round,
+        rect:{ x:L.rects[i].x/L.W, y:L.rects[i].y/L.H, w:L.rects[i].w/L.W, h:L.rects[i].h/L.H } }));
+      groupArt=document.createElement('canvas'); groupArt.width=1000; groupArt.height=Math.max(8,Math.round(1000*L.H/L.W));   // 비율만 쓴다(그리지 않는다)
+    }
+    const placed=ArtLookScene.composeScene(ctx,W,H,sc,groupArt||piece,{
+      artCm: groupCm || cm,                  // 작품 크기를 알면 벽에서 차지하는 크기에 반영된다
+      group: groupOpt,                       // 여러 점 — 칸마다 판과 자리(묶음 0~1 좌표)
       scale: sc.adj ? sc.adj.s : 1,
       dx: sc.adj ? sc.adj.dx : 0,
       dy: sc.adj ? sc.adj.dy : 0,
@@ -2464,10 +3162,14 @@ function compose(){
       // 조각일 때 걸면 액자 바깥 테두리가 어두워져 잘라 붙인 티가 난다.
       innerShadow: sc.opening ? undefined : 0,
       depth: isCanvasWrap ? undefined : 0,     // 액자는 옆면 없이 정면 + 그림자
+      round,                                   // 원형 액자 — 원으로 자르고 그림자도 원으로(모서리 폐색 없음)
+      label: (state.caption && !grp) ? captionCard(selectedWork) : null,   // 벽 캡션 카드(켰을 때만, 적을 게 있을 때만 · 여러 점에선 없음)
       // ⚠️ **확대 한도는 '최종 출력' 기준이어야 한다.** 합성이 SS 배 크기라 그대로 두면
       //    한도가 SS 배만큼 빡빡해져 액자가 다시 작아진다. SS 를 곱해 최종 배율을 고정한다
       //    (zoom × 합성W/원본 ≤ 1.15·SS  ⇔  zoom × 출력W/원본 ≤ 1.15).
       maxSrcScale: 1.15*SS,
+      // 끄는 동안(초안)은 판도 화면 크기 그대로 — 1.6배로 다시 뽑으면 칸마다 큰 텍스처를 올린다(여러 점 렉)
+      ...(state.draft ? { supersample: 1 } : null),
       // 그레인은 합성 픽셀 단위 잡음이라 축소하면 그만큼 옅어진다 — SS 를 곱해 상쇄한다
       grainScale: SS,
       // 폴백 사다리 — 장면 쪽에서 끌 수 있는 것들(위 LEVEL 주석 참고)
@@ -2491,12 +3193,15 @@ function compose(){
       lastArt=toOut({x:Math.min(...xs),y:Math.min(...ys),fw:Math.max(...xs)-Math.min(...xs),fh:Math.max(...ys)-Math.min(...ys)});
     }
     lastFitNote = placed ? placed.fitNote : null;
+    lastLabelPlaced = state.caption ? !!(placed && placed.labelQuad) : null;
     lastRegionPx = placed && placed.regionPx
       ? {w:placed.regionPx.w/SS, h:placed.regionPx.h/SS} : null;
     // 계측 훅 — 화질 회귀 하니스(scratchpad/vt)가 **조각/작품의 정확한 사각형**을 읽는다.
     // 목업에서 다시 검출하면 그림자·벽무늬 때문에 십수 px 씩 어긋나 측정이 못 쓰게 된다.
     // 그리기에는 아무 영향이 없다.
     window.__artlook = placed ? artlookProbe(placed, framed, SS) : null;
+    if(window.__artlook && placed.labelQuad) window.__artlook.label = placed.labelQuad.map((p)=>[p[0]/SS, p[1]/SS]);   // 벽 캡션 카드 자리(출력 좌표)
+    if(window.__artlook && placed.items) window.__artlook.items = placed.items.map((q)=>q.map((p)=>[p[0]/SS, p[1]/SS]));   // 여러 점 — 칸마다 자리
     // 조명 — **합성이 다 끝난 뒤 화면 전체에.** 조각만 따로 밝히면 그 경계가 마스크 테가 된다.
     // 방향은 이 장면의 측정된 광원(`scenes.json` lightDir), 색은 이 사진의 밝은 쪽 색.
     applyStudioLight(ctx,W,H,state.light,stageArt,state.lightDir,sceneLightColor(sc));
@@ -2577,9 +3282,9 @@ function compose(){
     const sa=wall.shadow??1;
     ctx.save();
     ctx.shadowColor=`rgba(0,0,0,${.24*sa})`; ctx.shadowBlur=fw*.060; ctx.shadowOffsetY=shy; ctx.shadowOffsetX=shx;
-    ctx.fillStyle='#000'; ctx.fillRect(x,y,fw,fh);
+    ctx.fillStyle='#000'; castShape(ctx,x,y,fw,fh,framed._round);
     ctx.shadowColor=`rgba(0,0,0,${.32*sa})`; ctx.shadowBlur=fw*.010; ctx.shadowOffsetY=Math.max(1,shy*.20); ctx.shadowOffsetX=shx*.25;
-    ctx.fillRect(x,y,fw,fh);
+    castShape(ctx,x,y,fw,fh,framed._round);
     ctx.restore();
     // 액자: 아주 살짝만 블러(프레임 경계가 사진과 자연스럽게 맞물리게) — 고해상이라 최소화
     const blurPx=Math.max(.15, Math.min(.7, W*0.00016));
@@ -2618,9 +3323,9 @@ function compose(){
     if(!transparent){
       ctx.save();
       ctx.shadowColor='rgba(0,0,0,.22)'; ctx.shadowBlur=fw*.035; ctx.shadowOffsetY=fh*.018;
-      ctx.fillStyle='#000'; ctx.fillRect(x,y,fw,fh);
+      ctx.fillStyle='#000'; castShape(ctx,x,y,fw,fh,framed._round);
       ctx.shadowColor='rgba(0,0,0,.25)'; ctx.shadowBlur=fw*.008; ctx.shadowOffsetY=fh*.004;
-      ctx.fillRect(x,y,fw,fh);
+      castShape(ctx,x,y,fw,fh,framed._round);
       ctx.restore();
     }
     ctx.drawImage(framed,x,y,fw,fh);

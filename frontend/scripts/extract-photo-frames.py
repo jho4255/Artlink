@@ -37,12 +37,13 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, 'gptsamplecase')
 OUT = os.path.join(ROOT, 'frontend', 'public', 'artlook', 'frames', 'photo')
-KEYS = ['oak', 'black', 'white', 'walnut', 'gold', 'silver', 'floater', 'ivory']
+# ⚠️ 'champagne'·'maple' 은 'floater' **앞**에 둔다 — 순서대로 찾으므로 뒤에 두면 frame-champagne-floater 가 'floater' 로 잡힌다(2026-10-26)
+KEYS = ['oak', 'black', 'white', 'walnut', 'gold', 'silver', 'champagne', 'maple', 'floater', 'ivory']
 
 
 # 같은 재질의 **다른 살 두께**를 함께 두려면 한정어가 필요하다. 2026-09-01 에 들어온
 # 얇은 액자 3종(살 5.0~5.7%, 기존 9.0~9.8%)이 oak/walnut 과 키가 겹쳐 덮어쓸 뻔했다.
-QUALS = ['thin', 'wide', 'deep']
+QUALS = ['thin', 'wide', 'deep', 'floater']   # floater = 사진 플로터(2026-10-26) — 몰딩 키와 겹치지 않게
 
 
 def name_for(path, i):
@@ -62,6 +63,42 @@ def first_run(vals, test, n=4):
         if c >= n:
             return i - n + 1
     return 0
+
+
+def _step(p, lo, hi):
+    """p[lo..hi] 에서 밝기가 가장 크게 바뀌는 자리(앞뒤 2px 차이 기준)"""
+    lo = max(2, lo); hi = min(len(p) - 2, hi)
+    if hi <= lo:
+        return lo
+    d = np.abs(p[lo + 1:hi + 1] - p[lo - 1:hi - 1])
+    return lo + int(np.argmax(d))
+
+
+def refine_deep(a, lo, ro, to, bo, li, ri, ti, bi):
+    """**박스(deep) 액자** — 개구부 경계를 '안쪽 벽 → 뒤판'의 또렷한 계단으로 다시 잡는다 (2026-10-26).
+
+    회색에서 18 넘게 벗어난 첫 자리를 경계로 보는 기본 규칙은 몰딩 액자용이다. 박스 사진은 벽이 뒤판에
+    **그림자**를 드리워 판 가장자리가 30~40px 에 걸쳐 서서히 어두워지는데, 그 그라데이션까지 액자로 잡혀
+    왼쪽·위 살이 오른쪽·아래보다 40~50px 두꺼워졌다(실측 오크: 왼 147 · 위 137 · 아래 98). 그대로
+    symmetrize 를 돌리면 **바깥 앞면을 49px 깎아** 왼쪽 앞면이 통째로 사라진다. 실제로는 네 변 모두
+    [앞면 ~60px | 벽 ~40px] 로 같다 — 벽 → 판 경계는 그라데이션이 아니라 계단이다.
+    판의 그림자는 개구부(투명)로 넘긴다 — 그림자는 엔진이 방에 맞춰 다시 그린다.
+    돌려주는 wall_from = 살 폭 대비 '앞면이 끝나고 벽이 시작하는 자리'(네 변 중앙값)."""
+    g = a.astype(float) @ np.array([0.2126, 0.7152, 0.0722])
+    H, W = g.shape
+    rows = g[int(H * .35):int(H * .65), :].mean(0)
+    cols = g[:, int(W * .35):int(W * .65)].mean(1)
+    prof = {'L': rows[lo:], 'R': rows[::-1][W - 1 - ro:], 'T': cols[to:], 'B': cols[::-1][H - 1 - bo:]}
+    rail = {'L': li - lo, 'R': ro - ri, 'T': ti - to, 'B': bo - bi}
+    rmin = min(rail.values())
+    new, wf = {}, []
+    for k, p in prof.items():
+        e = _step(p, int(rmin * 0.6), rail[k] + 3) + 1      # 계단 다음 픽셀부터 개구부(벽과 판 사이의 어두운 주름도 판 쪽으로)
+        new[k] = e
+        f = _step(p, int(e * 0.3), int(e * 0.8))             # 앞면 → 벽
+        wf.append(f / e)
+    wall_from = float(np.median(wf))
+    return lo + new['L'], ro - new['R'], to + new['T'], bo - new['B'], round(wall_from, 3)
 
 
 def main():
@@ -90,6 +127,10 @@ def main():
         ti = cy - first_run(a[:cy, cx][::-1], off_grey)
         bi = cy + first_run(a[cy:, cx], off_grey)
 
+        wall_from = None
+        # 박스(deep)·플로터(floater)는 안쪽 벽이 보이는 액자 — 개구부를 벽(플로터는 어두운 틈) → 뒤판 계단에서 잡는다
+        if any(q in os.path.basename(f).lower() for q in ('deep', 'floater')):
+            li, ri, ti, bi, wall_from = refine_deep(a, lo, ro, to, bo, li, ri, ti, bi)
         rail = min(li - lo, ro - ri, ti - to, bo - bi)
         if rail < 8 or ri - li < 40 or bi - ti < 40:
             print(f'  ✗ {os.path.basename(f)} — 검출 실패(살 {rail}px). 정면/빈 회색/흰 배경인지 확인')
@@ -109,6 +150,8 @@ def main():
             'w': int(ro - lo + 1 - 2 * E), 'h': int(bo - to + 1 - 2 * E),
             'rail': int(rail), 'railPct': round(rail / (ro - lo) * 100, 1),
         }
+        if wall_from is not None:
+            meta[name]['wallFrom'] = wall_from     # 박스: 살 폭 대비 안쪽 벽이 시작하는 자리(엔진 shadeBoxWalls)
         print(f'  ✓ {name:9s} {ro - lo + 1}×{bo - to + 1}  살 {rail}px ({meta[name]["railPct"]}%)')
 
     with open(os.path.join(OUT, 'frames.json'), 'w', encoding='utf-8') as fp:

@@ -11,9 +11,13 @@ const SRC = resolve(__dirname, '..');
 const read = (f: string) => readFileSync(resolve(SRC, f), 'utf8');
 
 describe('어디서 띄우나', () => {
-  it('광고가 보내는 화면 — 홈·공모·작가·갤러리·전시·홈페이지·커뮤니티', () => {
-    for (const p of ['/', '/exhibitions', '/exhibitions/18', '/artists', '/galleries', '/galleries/3', '/shows/2', '/portfolio/7', '/@my.studio', '/community', '/community/5'])
+  it('광고가 보내는 화면 — 홈·공모·작가·갤러리·전시·커뮤니티', () => {
+    for (const p of ['/', '/exhibitions', '/exhibitions/18', '/artists', '/galleries', '/galleries/3', '/shows/2', '/community', '/community/5'])
       expect(introAllowedAt(p), p).toBe(true);
+  });
+  it('★ 홈페이지 주소에는 안 띄운다 — 작가가 자기 홈페이지로 걸어 두는 링크다(2026-10-26)', () => {
+    for (const p of ['/@my.studio', '/@my.studio/', '/@artlink.gallery', '/portfolio/7', '/portfolio/7/'])
+      expect(introAllowedAt(p), p).toBe(false);
   });
   it('그 일을 하러 온 화면·로그인이 필요한 화면은 뺀다', () => {
     for (const p of ['/login', '/signup', '/signup/email', '/password/reset', '/auth/kakao/callback', '/join/ABCD2345', '/exhibitions/18/apply',

@@ -34,6 +34,9 @@ export interface ArtLookWork {
    * 없으면 높이 90cm(30호 정도)로 가정해 걸고, 화면이 그렇게 걸었다고 알린다.
    */
   sizeText?: string;
+  /** 제작연도·재료 — 벽 캡션 카드(미술관식 라벨)에 적는다. 없으면 그 줄만 빠진다 */
+  year?: string;
+  medium?: string;
   /** 포트폴리오 작품 id — [크기 입력하기] 가 그 작품의 정보 창을 연다 */
   id?: number;
   /**
@@ -57,7 +60,7 @@ export const ARTLOOK_EMBED_URL = `${ARTLOOK_URL}?embed=1`;
  * ⚠️ 썸네일은 t800(`grid`)이다 — t240 은 옛 파일에 백필되지 않아 원본으로 떨어진다(Thumb.tsx THUMB_SIZES).
  */
 export function portfolioArtLookWorks(
-  images: Pick<PortfolioImage, 'id' | 'url' | 'title' | 'sizeText'>[],
+  images: Pick<PortfolioImage, 'id' | 'url' | 'title' | 'sizeText' | 'year' | 'medium'>[],
   artist: string,
 ): ArtLookWork[] {
   return images.filter((img) => !!img.url).map((img) => ({
@@ -68,6 +71,8 @@ export function portfolioArtLookWorks(
     artist,
     kind: 'portfolio' as const,
     sizeText: img.sizeText?.trim() || undefined,
+    year: img.year?.trim() || undefined,
+    medium: img.medium?.trim() || undefined,
   }));
 }
 

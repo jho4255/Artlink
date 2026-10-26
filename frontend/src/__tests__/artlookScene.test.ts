@@ -290,7 +290,10 @@ describe('사진 액자 둘레 — 흰 배경 테가 없어야 한다', () => {
   //    맨 바깥 픽셀이 앞면과 흰색의 중간보다 밝으면 흰 배경이 남은 것이다.
   const dir = resolve(__dirname, '../../public/artlook/frames/photo');
   const meta = JSON.parse(readFileSync(resolve(dir, 'frames.json'), 'utf-8')) as Record<string, { file: string }>;
-  it.each(Object.keys(meta))('%s', (name) => {
+  // ⚠️ 실버(브러시드 알루미늄)는 바깥 모서리가 **둥글게 빛을 받는 하이라이트**다 — 원본 사진에서 흰 배경(255) → 어두운 윤곽선(163) →
+  //    하이라이트(215~238) → 앞면(179) 순이라, 흰 배경이 섞인 테(255 에서 앞면까지 곧장 내려간다)가 아니다. 어두운 벽에서 확대해 확인했다(2026-10-26).
+  const EDGE_HIGHLIGHT = new Set(['silver']);
+  it.each(Object.keys(meta).filter((k) => !EDGE_HIGHLIGHT.has(k)))('%s', (name) => {
     const png = decodePng(readFileSync(resolve(dir, meta[name].file)));
     const { width: W, height: H, data, channels: C } = png;
     expect(png.depth).toBe(8);
@@ -302,8 +305,12 @@ describe('사진 액자 둘레 — 흰 배경 테가 없어야 한다', () => {
       else for (let y = Math.floor(H * .3); y < H * .7; y++) { s += lum(side === 2 ? depth : W - 1 - depth, y); n++; }
       return s / n;
     };
+    // 앞면은 **살 안에서** 잰다 — 살이 19px 인 얇은 액자(white-thin)는 14~23px 이 개구부(투명)라 앞면이 낮게 잡혀 멀쩡한 둘레를 테로 오판했다
+    const [ix, iy, ix2, iy2] = (meta[name] as unknown as { inner: number[] }).inner;
+    const rails = [iy, H - 1 - iy2, ix, W - 1 - ix2];
     for (let side = 0; side < 4; side++) {
-      const face = [...Array(10)].map((_, i) => at(side, 14 + i)).sort((a, b) => a - b)[5];
+      const d0 = Math.min(14, Math.floor(rails[side] * 0.3)), d1 = Math.max(d0 + 1, Math.min(d0 + 10, Math.floor(rails[side] * 0.8)));
+      const face = [...Array(d1 - d0)].map((_, i) => at(side, d0 + i)).sort((a, b) => a - b)[Math.floor((d1 - d0) / 2)];
       expect(at(side, 0), `${name} ${'위아래왼오'.slice(side * 1, side * 1 + 1)}쪽 바깥(앞면 ${face.toFixed(0)})`)
         .toBeLessThan(face + 0.5 * (255 - face));
     }
@@ -337,8 +344,10 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
     // 2026-10-25 사용자 결정: "그 부분은 오크 플로터랑 동일하게 해도 되잖아". 사진 액자·슬림·화이트 매트만 매트에 창을 뚫는
     // 방식(45° 사면 + 작품 위 그림자)이라, 같은 매트인데 오크 플로터 옆에서 경계가 납작했다. 그 방식을 없앴다.
     expect(html).toMatch(/function floatMountShadow\(/);
-    expect(html).toMatch(/if\(matPx>0\) floatMountShadow\(ctx,ax,ay,aw,ah,base\)/);                       // 사진 액자
-    expect(html).toMatch(/if\(style\.kind==='floater' \|\| mat>0\) floatMountShadow\(ctx,ax,ay,aw,ah,base\)/); // 플로터·슬림·화이트 매트
+    // 사진 액자 — 금테(필릿)가 있으면 그림자를 드리우는 건 작품 + 금테 한 덩어리다(fp=0 이면 예전 호출과 같다)
+    expect(html).toMatch(/if\(matPx>0\) floatMountShadow\(ctx,ax-fp,ay-fp,aw\+2\*fp,ah\+2\*fp,base\)/);
+    // 플로터·슬림·화이트 매트 — 매트 없는 박스만 뺀다(작품이 상자 바닥에 붙어 있다, artlookFrameItAdds.test.ts)
+    expect(html).toMatch(/if\(\(style\.kind==='floater' && !\(style\.box && mat<=0\)\) \|\| mat>0\) floatMountShadow\(ctx,ax,ay,aw,ah,base\)/);
     // 그림자는 작품을 그리기 **전에** — 뒤에 그리면 작품을 덮는다
     const photo = html.slice(html.indexOf("if(style.kind==='photo'){"), html.indexOf("// --- 캔버스 랩"));
     expect(photo.indexOf('floatMountShadow(')).toBeLessThan(photo.indexOf('ctx.drawImage(img,ax,ay,aw,ah)'));
@@ -543,7 +552,9 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(js).toMatch(/Math\.max\(\.\.\.xs0\) - Math\.min\(\.\.\.xs0\)/);
     // ⚠️ 넘칠 때 줄이는 건 gain 이 아니라 fillMax 다 — t 가 physMax 에 포화돼 있으면
     //    gain 을 줄여도 결과가 한 픽셀도 안 변한다(실측).
-    expect(js).toMatch(/fillMax = s0\.place\.heightRatio \* \(cap \/ long0\)/);
+    // 벽 캡션 카드를 붙이면 카드 몫(lab)은 그대로 두고 작품 몫만 줄인다 — 붙이지 않으면(lab 0) 예전 그대로 cap / long0
+    expect(js).toMatch(/const k = lab > 0 \? Math\.min\(cap \/ h0, Math\.max\(0\.05, \(cap - lab\) \/ w0\)\) : cap \/ long0;/);
+    expect(js).toMatch(/fillMax = s0\.place\.heightRatio \* k;/);
     expect(js).toMatch(/const hardMax = o\.fillMax != null/);
   });
 
@@ -647,12 +658,13 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
   it('리베이트는 매트가 없을 때만 절대 프로파일 — 매트 쪽은 종전 잔차 곡선 그대로', () => {
     // 브리핑 "MAT AND NO-MAT ARE DIFFERENT PHYSICAL SYSTEMS" + NON-REGRESSION CONTRACT:
     // 매트 있는 렌더는 라운드 9 전후로 **픽셀이 하나도 안 바뀌어야** 한다(실측 확인).
-    expect(html).toMatch(/const absReb = !!o\.noMat && SYN_EDGE>0;/);
+    expect(html).toMatch(/const absReb = !!o\.noMat && SYN_EDGE>0 && !box;/);   // 박스 사진은 그 띠가 홈이 아니라 벽이다(artlookFrameItAdds)
     // 반사광 회복(1.12)은 **매트에서 되돌아오는 빛**이라 매트 분기에만 있어야 한다
     const reb = html.slice(html.indexOf('const d0=FACE_FRONT+e;'),
       html.indexOf('// ── 균일 항'));
-    expect(reb).toMatch(/} else \{[\s\S]*rb\*1\.12/);
-    expect(reb.slice(0, reb.indexOf('} else {'))).not.toMatch(/1\.12/);
+    // (박스 사진은 그 분기를 건너뛴다 — `else if(!box)`, artlookFrameItAdds.test.ts)
+    expect(reb).toMatch(/} else if\(!box\) \{[\s\S]*rb\*1\.12/);
+    expect(reb.slice(0, reb.indexOf('} else if(!box) {'))).not.toMatch(/1\.12/);
   });
 
   it('얇은 액자에는 얕은 리베이트 — 몇 px 안에 표현 못 할 깊이는 그리지 않는다', () => {

@@ -46,7 +46,7 @@ describe('고른 것만 받는다 — 탭을 열 때 41.5MB·32번 다시 그리
 
   it('칩은 미리 구운 작은 파일 — 모든 액자·배경에 파일이 있다(액자·장면을 더하면 build-artlook-thumbs.mjs)', () => {
     const ids = [...html.matchAll(/\{ id:'([a-z-]+)', name:'/g)].map((m) => m[1]);
-    expect(ids.length).toBe(21);
+    expect(ids.length).toBe(33);   // 2026-10-25 원형 2 · 흰 플로터 · 화이트 슬림 · 박스 4 추가(금테 3종은 넣었다가 뺐다) · 10-26 메이플·실버·넓은 블랙·넓은 화이트 (숨긴 액자도 칩은 둔다)
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) expect(existsSync(resolve(PUB, 'frames/chips', `${id}.webp`)), `칩 ${id}`).toBe(true);
     const scenes = JSON.parse(read('scenes/scenes.json')).scenes as { id: string; src: string; thumb?: string }[];
@@ -138,7 +138,10 @@ describe('저장 뒤', () => {
   });
 
   it('파일 이름에 액자·배경 — 여러 장 저장하면 (1)(2) 로 겹쳤다', () => {
-    expect(ui).toMatch(/\[w\.artist, w\.title, w\.exhibition, \(FRAMES\[state\.frameIdx\]\|\|\{\}\)\.name, bg\]/);
+    expect(ui).toMatch(/\[who, what, w\.exhibition, \(FRAMES\[state\.frameIdx\]\|\|\{\}\)\.name, bg\]/);
+    // 한 점이면 작가 · 작품명, 여러 점이면 작가(서로 다르면 모두) · N점 (2026-10-25)
+    expect(ui).toMatch(/const who=many \? .*: w\.artist;/);
+    expect(ui).toMatch(/const what=many \? many\.length\+'점' : w\.title;/);
   });
 
   it('[ArtStory에 올리기] 는 탭 안에서만, 판매작(갤러리가 연 새 탭)에는 없다', () => {

@@ -43,13 +43,20 @@ function savePrefs(patch){
 }
 
 /* ── 매트 색 — 첫 색이 엔진 기본값(state.matteColor)과 같아야 처음 화면과 고른 칩이 맞는다 ── */
-const MAT_COLORS=[['#f5f2ea','미색'],['#ffffff','흰색'],['#efe7d8','크림'],['#e4e0d6','웜그레이'],['#2b2b2b','차콜']];
+// [색, 이름, 마감] — 마감을 적지 않으면 종이. 리넨·스웨이드(2026-10-25)는 색으로 구분되므로 기억(prefs.matColor)은 색 하나로 충분하다
+const MAT_COLORS=[['#f5f2ea','미색'],['#ffffff','흰색'],['#efe7d8','크림'],['#e4e0d6','웜그레이'],['#2b2b2b','차콜'],
+  ['#efebe2','리넨 화이트','linen'],['#d8cfbe','리넨 내추럴','linen'],['#a39684','스웨이드 토프','suede'],['#3d3b38','스웨이드 차콜','suede']];
+const matTextureOf=(c)=>{ const f=MAT_COLORS.find(([x])=>x===c); return (f && f[2]) || 'paper'; };
 const MAT_WIDTHS=[0,0.05,0.10];
 
 { // 기억해 둔 선택 — 엔진 기본값 위에 얹는다(그림을 그리기 전에)
-  const fi=FRAMES.findIndex((f)=>f.id===prefs.frame); if(fi>=0) state.frameIdx=fi;
+  // 숨긴 액자(사진 액자로 대신한 코드 액자, index.html FRAMES 의 hidden)를 골라 둔 사람은 그 대신(alias)으로 연다
+  const remembered=FRAMES.find((f)=>f.id===prefs.frame);
+  const want=remembered && remembered.hidden && remembered.alias ? remembered.alias : prefs.frame;
+  const fi=FRAMES.findIndex((f)=>f.id===want && !f.hidden); if(fi>=0) state.frameIdx=fi;
   if(MAT_WIDTHS.some((m)=>Math.abs(m-prefs.mat)<1e-9)) state.matWidth=prefs.mat;
-  if(MAT_COLORS.some(([c])=>c===prefs.matColor)) state.matteColor=prefs.matColor;
+  if(MAT_COLORS.some(([c])=>c===prefs.matColor)){ state.matteColor=prefs.matColor; state.matTexture=matTextureOf(prefs.matColor); }
+  state.caption=prefs.caption===true;
   if(RATIOS.some((r)=>r.id===prefs.ratio)) state.ratio=prefs.ratio;
   if(Number.isFinite(prefs.light) && prefs.light>=0 && prefs.light<=1) state.light=prefs.light;
 }
@@ -150,6 +157,7 @@ function render(){
   }
   // 첫 그림은 웹폰트를 기다린다(워터마크 글자가 캔버스에 박힌다 — 폴백 글꼴로 찍히면 다시 그려야 한다). 오래는 아니다.
   if(!everComposed && !fontsOk && !fontWaitOver){ setBusy('불러오는 중…'); return; }
+  applyCircles();
   compose();
   composed++; everComposed=true;
   window.__artlookRenders=composed;            // 하니스·E2E 가 '몇 번 그렸나'를 본다
@@ -263,11 +271,91 @@ function setPressed(container, pick){
 }
 
 /* ── 작품 ─────────────────────────────────────────────────────────────── */
+/* ── 여러 점 걸기(갤러리 월, 2026-10-25) — 작품 줄 맨 앞의 [여러 점] 칩으로 켠다 ──────────────────────────
+   켜면 작품 칩이 '골랐다/안 골랐다' 토글이 되고(최대 GROUP_MAX 점, 고른 순서가 번호), 줄 한 줄이 [배치 바꾸기]를 준다.
+   액자·매트·배경은 모두에게 같다(엔진 groupLayout 주석). 사진은 고를 때 받고(imgCache) 다 오면 한 번 그린다.
+   액자 없는 벽 사진(장면)에서만 된다 — WebGL 이 없는 옛 평면 합성에서는 칩을 두지 않는다. */
+let multi=null;                 // 고른 작품 번호(고른 순서) — null 이면 한 점
+const imgCache=new Map();       // 원본 주소 → 캔버스(capToCanvas). 여러 점을 오가도 다시 받지 않는다
+let groupToken=0;
+function multiAvailable(){ return WORKS.length>=2 && !!(window.ArtLookScene && ArtLookScene.supported()); }
+function modeChip(){
+  const b=document.createElement('button');
+  b.type='button'; b.className='chip work mode'; b.id='multiChip';
+  b.setAttribute('aria-pressed', String(!!multi));
+  b.title='여러 작품을 한 벽에 걸어요';
+  // 액자 세 개 그림 — 사진이 아니라 기능 칩이라 선으로만
+  b.innerHTML='<span class="thumb modeicon" aria-hidden="true"><svg viewBox="0 0 48 48" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.2">'+
+    '<rect x="4" y="12" width="15" height="20" rx="1"/><rect x="22" y="9" width="22" height="16" rx="1"/><rect x="22" y="28" width="12" height="12" rx="1"/></svg></span>'+
+    '<span class="name">여러 점</span>';
+  b.addEventListener('click', toggleMultiMode);
+  return b;
+}
+/** 크기·위치 조절을 처음대로 — 한 점 ↔ 여러 점을 오갈 때. 묶음에 맞춘 확대가 한 점에 그대로 먹으면 갑자기 커진다(2026-10-25 신고) */
+function resetAllAdj(){
+  SCENES.forEach((s)=>{ if(s.adj){ s.adj.dx=0; s.adj.dy=0; s.adj.s=1; } });
+  WALLS.forEach((w)=>{ if(w.adj){ w.adj.dx=0; w.adj.dy=0; w.adj.s=1; } });
+}
+function toggleMultiMode(){
+  if(multi){ const first=multi[0], was=!!state.group; multi=null; state.group=null; if(was) resetAllAdj(); newWait(); selectedIndex=-1; selectWork(first); }
+  else{ multi=[Math.max(0,selectedIndex)]; syncGroup(); }
+  refreshWorkChips(); updateWorkLine(); updateSceneLine();
+}
+function refreshWorkChips(){
+  const mc=$('multiChip'); if(mc) mc.setAttribute('aria-pressed', String(!!multi));
+  worksEl.querySelectorAll('.chip.work[data-i]').forEach((b)=>{
+    const i=+b.dataset.i, k=multi ? multi.indexOf(i) : -1;
+    b.setAttribute('aria-pressed', String(multi ? k>=0 : i===selectedIndex));
+    let o=b.querySelector('.ord');
+    if(k>=0){ if(!o){ o=document.createElement('span'); o.className='ord'; b.appendChild(o); } o.textContent=String(k+1); }
+    else if(o) o.remove();
+  });
+}
+function toggleInGroup(i){
+  const k=multi.indexOf(i);
+  if(k>=0){ if(multi.length>1) multi.splice(k,1); }
+  else if(multi.length>=GROUP_MAX){ toast('한 번에 '+GROUP_MAX+'점까지 걸 수 있어요'); return; }
+  else multi.push(i);
+  refreshWorkChips(); syncGroup(); updateWorkLine();
+}
+/** 고른 작품 사진이 다 왔나 — 다 왔으면 엔진에 묶음을 넘기고, 아니면 받는다(받는 동안엔 [저장]을 막는다) */
+function syncGroup(){
+  if(!multi){ state.group=null; return; }
+  const t=++groupToken;
+  selectedWork=WORKS[multi[0]];
+  const missing=multi.filter((i)=>!imgCache.has(WORKS[i].url));
+  if(!missing.length){
+    const was=!!state.group;
+    state.group=multi.length>1 ? multi.map((i)=>({ img:imgCache.get(WORKS[i].url), work:WORKS[i] })) : null;
+    if(was!==!!state.group) resetAllAdj();      // 한 점 ↔ 여러 점이 바뀌었다
+    state.img=imgCache.get(WORKS[multi[0]].url);
+    workPending=false; workError=false; newWait(); requestRender(); return;
+  }
+  workPending=true; requestRender();
+  missing.forEach((i)=>{
+    const w=WORKS[i], im=new Image();
+    im.crossOrigin='anonymous';
+    im.onload=()=>{ imgCache.set(w.url, capToCanvas(im)); if(t===groupToken) syncGroup(); };
+    im.onerror=()=>{ if(t!==groupToken || !multi) return;
+      toast('작품 이미지를 불러오지 못해 빼 두었어요');
+      const k=multi.indexOf(i); if(k>=0 && multi.length>1) multi.splice(k,1);
+      refreshWorkChips(); syncGroup(); updateWorkLine(); };
+    im.src=resolveSrc(w.url);
+  });
+}
+function cycleGroupLayout(){
+  const kinds=GROUP_LAYOUTS[multi.length]||['row'];
+  const cur=kinds.includes(state.groupLayout) ? state.groupLayout : kinds[0];
+  state.groupLayout=kinds[(kinds.indexOf(cur)+1)%kinds.length];
+  updateWorkLine(); requestRender();
+}
+
 function buildWorks(){
   worksEl.textContent='';
+  if(multiAvailable()) worksEl.appendChild(modeChip());
   WORKS.forEach((w, i)=>{
     const b=document.createElement('button');
-    b.type='button'; b.className='chip work';
+    b.type='button'; b.className='chip work'; b.dataset.i=String(i);
     b.setAttribute('aria-pressed', String(i===selectedIndex));
     b.setAttribute('aria-label', (w.title || '제목 없는 작품')+' — '+(i+1)+'번째');
     b.title=w.title || '';
@@ -285,10 +373,11 @@ function buildWorks(){
   });
 }
 function selectWork(i){
+  if(multi){ toggleInGroup(i); return; }
   if(i===selectedIndex && state.img && !workError){ return; }
   selectedIndex=i;
   selectedWork=WORKS[i];
-  setPressed(worksEl, (b)=>b===worksEl.children[i]);
+  refreshWorkChips();
   loadWork(selectedWork);
   updateWorkLine();
 }
@@ -297,10 +386,12 @@ function newWait(){ waitingAssets=false; waitSince=0; }
 function loadWork(w){
   const t=++workToken;
   newWait();
+  // 이미 받은 사진이면(여러 점을 오갔다) 다시 받지 않는다
+  if(imgCache.has(w.url)){ state.img=imgCache.get(w.url); workPending=false; workError=false; requestRender(); return; }
   workPending=true; workError=false;
   const im=new Image();
   im.crossOrigin='anonymous';   // 캔버스 저장(toBlob) 위해 CORS 허용 로드 (동일 출처면 무영향)
-  im.onload=()=>{ if(t!==workToken) return; state.img=capToCanvas(im); workPending=false; requestRender(); };
+  im.onload=()=>{ if(t!==workToken) return; state.img=capToCanvas(im); imgCache.set(w.url, state.img); workPending=false; requestRender(); };
   im.onerror=()=>{ if(t!==workToken) return; workPending=false; workError=true; requestRender(); };
   im.src=resolveSrc(w.url);
   requestRender();
@@ -309,6 +400,19 @@ function loadWork(w){
 /** 작품 탭의 한 줄 — 제목·크기, 크기를 몰라 가정했으면 그렇다고 + [크기 입력하기] */
 function updateWorkLine(){
   const line=$('worksLine'), empty=$('worksEmpty');
+  // 여러 점 — 데모 작품이어도 이 줄이 먼저다(배치 바꾸기가 여기 있다)
+  if(multi){
+    empty.hidden=true; line.hidden=false; line.textContent='';
+    const t=document.createElement('span'); t.className='txt';
+    const b=document.createElement('b'); b.textContent='여러 점'; t.appendChild(b);
+    if(multi.length<2){ t.appendChild(document.createTextNode(' · 함께 걸 작품을 더 골라 주세요(최대 '+GROUP_MAX+'점)')); line.appendChild(t); return; }
+    const kinds=GROUP_LAYOUTS[multi.length]||['row'];
+    const cur=kinds.includes(state.groupLayout) ? state.groupLayout : kinds[0];
+    t.appendChild(document.createTextNode(' · '+multi.length+'점 · '+GROUP_LAYOUT_NAMES[cur]+' · 실제 크기 비율로 8cm 간격'));
+    line.appendChild(t);
+    if(kinds.length>1) line.appendChild(actionButton('배치 바꾸기', cycleGroupLayout));
+    return;
+  }
   if(IS_DEMO){
     line.hidden=true;
     empty.hidden=false;
@@ -357,36 +461,90 @@ function goto(msg){
   try{ window.parent.postMessage(Object.assign({ type:'artlook:goto' }, msg), location.origin); }catch(e){ /* 조용히 */ }
 }
 
+/* ── 작품의 원(원형 액자, 2026-10-25) ─────────────────────────────────────────
+   둥근 작품 사진에는 둘레에 여백이 있다 — 그대로 쓰면 여백까지 테 안에 들어간다. 작품마다 원을 자동으로 찾고(detectArtCircle),
+   안 맞으면 [원 맞추기]로 사용자가 맞춘다. 맞춘 원은 이 브라우저에 작품 주소별로 기억한다(작품 목록과 함께 다니지 않는다). */
+const CIRCLE_KEY='artlook:circles';
+let savedCircles={};
+try{ const v=JSON.parse(localStorage.getItem(CIRCLE_KEY)||'null'); if(v && typeof v==='object') savedCircles=v; }catch(e){ /* 막힌 환경 */ }
+const autoCircles=new Map();     // 주소 → 자동으로 찾은 원(못 찾으면 null)
+function circleFor(w, img){
+  if(!w || !img) return null;
+  if(savedCircles[w.url]) return savedCircles[w.url];
+  if(!autoCircles.has(w.url)) autoCircles.set(w.url, detectArtCircle(img));
+  return autoCircles.get(w.url);
+}
+/** 원형 액자면 그리기 직전에 작품마다 원을 붙인다(한 점 = state.circle, 여러 점 = 칸마다) */
+function applyCircles(){
+  const round=(FRAMES[state.frameIdx]||{}).kind==='round';
+  state.circle = round ? circleFor(selectedWork, state.img) : null;
+  if(state.group) state.group.forEach((g)=>{ g.circle = round ? circleFor(g.work, g.img) : null; });
+}
+
 /* ── 액자 ─────────────────────────────────────────────────────────────── */
 // 고른 액자 설명 한 줄. 이름만으로는 플로터·슬림·캔버스 랩이 무엇인지 알 수 없다(2026-10-04 조사)
-const FRAME_NOTES={
-  oak:'밝은 원목 몰딩 액자', black:'검은 도장 몰딩 액자', white:'흰 도장 몰딩 액자', walnut:'짙은 원목 몰딩 액자',
-  gold:'금박 몰딩 액자', 'oak-thin':'폭이 좁은 원목 몰딩 액자', 'walnut-thin':'폭이 좁은 짙은 원목 몰딩 액자',
-  'silver-thin':'폭이 좁은 은색 몰딩 액자', 'box-ivory':'작품 둘레에 틈을 두고 띄워 거는 아이보리 상자 액자',
-  'white-mat':'흰 대지를 넓게 두른 액자', 'canvas-wrap':'액자 없이 캔버스 옆면이 보이게 거는 방식',
-};
-function frameNote(f){
-  if(FRAME_NOTES[f.id]) return FRAME_NOTES[f.id];
-  if(f.kind==='floater') return '작품 둘레에 틈을 두고 띄워 거는 액자';
-  if(f.kind==='flat') return '얇고 납작한 테두리 액자';
-  return '';
+// 액자는 **종류별로 묶고, 묶음마다 무엇이 다른지 한 줄로** 적는다(2026-10-26 사용자: "다 비슷비슷해 보여서 종류별로 뭐가 다른지 가볍게 —
+//   선택하면 맨 위에 뜨는 것 말고 '몰딩 — 어쩌고' 식으로"). 넓은 칸은 묶음 이름 옆에, 좁은 칸(칩 한 줄)은 이름이 세로라 칩 아래 줄에 고른 액자의 묶음 설명을.
+// FRAMES 의 순서(=번호)는 그대로 둔다 — 하니스가 번호를 쓰고 기억(prefs.frame)은 id 로 찾는다. 여기 없는 액자는 '기타'로 간다(숨긴 액자는 어디에도 안 보인다).
+// ⚠️ 설명은 **20자 안팎** — 휴대폰은 칩 아래 한 줄(이름 포함 약 26자)이라 길면 잘린다(플로터 설명이 그랬다).
+const FRAME_GROUPS=[
+  ['몰딩','나무·도장 테를 두른 가장 기본 액자',['oak','walnut','maple','black','white','silver','gold']],
+  ['넓은 몰딩','테가 넓어 작은 작품도 무게감 있게',['black-wide','white-wide']],
+  ['슬림','테가 가늘어 작품이 가장 돋보이는 액자',['oak-thin','walnut-thin','slim-black','slim-white','silver-thin']],
+  ['플로터','틈을 두고 띄워 거는 캔버스용 액자',['floater-oak','floater-walnut','floater-black','floater-white','floater-champagne']],
+  ['박스','안쪽 벽이 깊은 상자형 입체 액자',['box-oak','box-walnut','box-black','box-white','box-ivory']],
+  ['원형','둥근 작품용, 사진 속 원에 테를 맞춰요',['round-black','round-gold']],
+  ['기타','흰 대지를 두르거나 액자 없이 거는 방식',['white-mat','canvas-wrap']],
+];
+/** [[묶음 이름, 설명, [id…]]] — 없는 id·숨긴 액자는 빼고, 어디에도 없는 액자는 '기타'로 */
+function frameGroups(){
+  const shown=(id)=>FRAMES.some((f)=>f.id===id && !f.hidden);
+  const seen=new Set(), out=FRAME_GROUPS.map(([name, desc, ids])=>[name, desc, ids.filter(shown)]);
+  out.forEach(([, , ids])=>ids.forEach((id)=>seen.add(id)));
+  const rest=FRAMES.filter((f)=>!f.hidden && !seen.has(f.id)).map((f)=>f.id);
+  if(rest.length) out[out.length-1][2].push(...rest);
+  return out.filter(([, , ids])=>ids.length);
 }
+/** 그 액자가 속한 묶음 [이름, 설명] */
+function frameGroupOf(id){ return frameGroups().find(([, , ids])=>ids.includes(id)) || null; }
 function buildFrames(){
   framesEl.textContent='';
-  FRAMES.forEach((f, i)=>{
-    const b=document.createElement('button');
-    b.type='button'; b.className='chip frame'; b.dataset.id=f.id;
-    b.setAttribute('aria-pressed', String(i===state.frameIdx));
-    b.title=f.name;
-    const im=document.createElement('img');
-    im.className='thumb'; im.alt=''; im.loading='lazy'; im.decoding='async';
-    im.src='frames/chips/'+f.id+'.webp';          // 미리 구운 칩(build-artlook-thumbs.mjs) — 액자 사진을 받지 않고도 보인다
-    im.onerror=()=>{ im.remove(); };             // 못 받으면 이름만 남는다
-    const s=document.createElement('span'); s.className='name'; s.textContent=f.name;
-    b.append(im, s);
-    b.addEventListener('click', ()=>selectFrame(i));
-    framesEl.appendChild(b);
+  frameGroups().forEach(([gname, gdesc, ids])=>{
+    const label=document.createElement('span');
+    label.className='group';
+    const nm=document.createElement('b'); nm.textContent=gname; label.appendChild(nm);
+    // 설명은 넓은 칸에서만 보인다(좁은 칸은 이름이 세로라 칩 아래 줄 — updateFrameLine)
+    const ds=document.createElement('span'); ds.className='gdesc'; ds.textContent=' — '+gdesc; label.appendChild(ds);
+    framesEl.appendChild(label);
+    ids.forEach((id)=>{ const i=FRAMES.findIndex((f)=>f.id===id), f=FRAMES[i];
+      const b=document.createElement('button');
+      b.type='button'; b.className='chip frame'; b.dataset.id=f.id;
+      b.setAttribute('aria-pressed', String(i===state.frameIdx));
+      b.title=f.name;
+      const im=document.createElement('img');
+      im.className='thumb'; im.alt=''; im.loading='lazy'; im.decoding='async';
+      im.src='frames/chips/'+f.id+'.webp';          // 미리 구운 칩(build-artlook-thumbs.mjs) — 액자 사진을 받지 않고도 보인다
+      im.onerror=()=>{ im.remove(); };             // 못 받으면 이름만 남는다
+      const s=document.createElement('span'); s.className='name'; s.textContent=f.name;
+      b.append(im, s);
+      b.addEventListener('click', ()=>selectFrame(i));
+      framesEl.appendChild(b);
+    });
+    // [원 맞추기]는 원형 칩 **바로 옆**에(2026-10-25 — 줄 끝의 버튼은 칩과 너무 멀었다). 원형이 아닐 때 누르면 블랙 원형으로 바꾸고 연다
+    if(ids.some((id)=>(FRAMES.find((f)=>f.id===id)||{}).kind==='round')) framesEl.appendChild(circleChip());
   });
+}
+function circleChip(){
+  const b=document.createElement('button');
+  b.type='button'; b.className='chip frame tool'; b.id='circleChip'; b.title='원 맞추기';
+  b.innerHTML='<span class="thumb toolicon" aria-hidden="true"><svg viewBox="0 0 48 48" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.2">'+
+    '<circle cx="24" cy="24" r="15"/><circle cx="24" cy="24" r="9" stroke-dasharray="3 3"/><path d="M24 3v6M24 39v6M3 24h6M39 24h6"/></svg></span>'+
+    '<span class="name">원 맞추기</span>';
+  b.addEventListener('click', ()=>{
+    if((FRAMES[state.frameIdx]||{}).kind!=='round'){ const i=FRAMES.findIndex((f)=>f.kind==='round'); if(i>=0) selectFrame(i); }
+    openCircleSheet();
+  });
+  return b;
 }
 function selectFrame(i){
   state.frameIdx=i;
@@ -397,25 +555,31 @@ function selectFrame(i){
   updateMatRow();
   requestRender();
 }
+/** 좁은 칸(칩 한 줄)에서 칩 아래 줄 — 고른 액자의 **묶음** 설명. 넓은 칸은 묶음 이름 옆에 이미 있어 이 줄을 감춘다(index.html) */
 function updateFrameLine(){
   const f=FRAMES[state.frameIdx]||{};
   const line=$('framesLine'); line.textContent='';
+  const g=frameGroupOf(f.id);
+  if(!g) return;
   const t=document.createElement('span'); t.className='txt';
-  const b=document.createElement('b'); b.textContent=f.name||''; t.appendChild(b);
-  const n=frameNote(f); if(n) t.appendChild(document.createTextNode(' — '+n));
+  const b=document.createElement('b'); b.textContent=g[0]; t.appendChild(b);
+  t.appendChild(document.createTextNode(' — '+g[1]));
   line.appendChild(t);
 }
 
 /* ── 매트 ─────────────────────────────────────────────────────────────── */
 function buildMatColors(){
   matColorsEl.textContent='';
-  MAT_COLORS.forEach(([c, name])=>{
+  MAT_COLORS.forEach(([c, name, tex])=>{
     const b=document.createElement('button');
     b.type='button'; b.className='sw'; b.style.background=c; b.dataset.color=c;
+    // 천 마감은 색만으로는 구분이 안 된다 — 그 결을 칩에 깐다(엔진의 같은 타일)
+    if(tex){ try{ const t=(tex==='linen'?linenTile:suedeTile)(c.slice(1).match(/../g).map((h)=>parseInt(h,16)).join(','),1,tex==='linen'?30:12,tex==='linen'?5150:7171);
+      b.style.backgroundImage='url('+t.toDataURL('image/png')+')'; }catch(e){ /* 색만 */ } }
     b.setAttribute('aria-label', '매트 색 '+name); b.title=name;
     b.setAttribute('aria-pressed', String(c===state.matteColor));
     b.addEventListener('click', ()=>{
-      state.matteColor=c;
+      state.matteColor=c; state.matTexture=tex||'paper';
       setPressed(matColorsEl, (x)=>x.dataset.color===c);
       savePrefs({ matColor:c });
       requestRender();
@@ -445,7 +609,7 @@ function updateMatRow(){
   matColorsEl.hidden = !(on && (state.matWidth||0) > 0);
   const hint=$('matHint'); hint.textContent='';
   const t=document.createElement('span'); t.className='txt';
-  t.textContent = on ? '작품과 액자 사이에 두르는 종이 여백이에요.'
+  t.textContent = on ? '작품과 액자 사이에 두르는 여백이에요. 색 줄 뒤쪽은 리넨·스웨이드 천이에요.'
                      : '캔버스 랩은 액자가 없어 매트를 쓸 수 없어요. 다른 액자를 고르면 켜져요.';
   hint.appendChild(t);
 }
@@ -516,7 +680,17 @@ function updateSceneLine(){
     t.appendChild(document.createTextNode(' · '+note));
     if(lastFitNote && lastFitNote.enlarged>1.05) t.appendChild(document.createTextNode('. 벽 배경을 고르면 실제 비율에 가까워요'));
   }
+  // 벽 캡션 — 장면에 붙일 수 있고(액자 없는 벽 사진) 적을 게 있을 때만 단추를 둔다
+  const sc=state.mode==='scene' ? SCENES[state.sceneIdx] : null;
+  const canCaption=!multi && !!(sc && sc.frameless && sc.region && sc.regionCm) && captionLines(selectedWork).length>0;
+  if(canCaption && state.caption && lastLabelPlaced===false) t.appendChild(document.createTextNode(' · 작품 옆에 자리가 없어 캡션을 붙이지 못했어요'));
   line.appendChild(t);
+  if(canCaption) line.appendChild(actionButton(state.caption ? '벽 캡션 빼기' : '벽 캡션 붙이기', ()=>{
+    state.caption=!state.caption;
+    savePrefs({ caption:state.caption });
+    updateSceneLine();
+    requestRender();
+  }));
 }
 
 /* ── 조명 · 비율 ───────────────────────────────────────────────────────── */
@@ -660,7 +834,11 @@ function sanitizeName(s){ return String(s==null?'':s).replace(/[\\/:*?"<>|]+/g,'
 function downloadFileName(){
   const w=selectedWork||{};
   const bg=state.mode==='scene' ? (SCENES[state.sceneIdx]||{}).name : (WALLS[state.wallIdx]||{}).name;
-  const parts=[w.artist, w.title, w.exhibition, (FRAMES[state.frameIdx]||{}).name, bg].map(sanitizeName).filter(Boolean);
+  // 여러 점 — 작가(서로 다르면 모두) · N점
+  const many=multi && multi.length>1 ? multi.map((i)=>WORKS[i]) : null;
+  const who=many ? [...new Set(many.map((x)=>x.artist).filter(Boolean))].join('·') : w.artist;
+  const what=many ? many.length+'점' : w.title;
+  const parts=[who, what, w.exhibition, (FRAMES[state.frameIdx]||{}).name, bg].map(sanitizeName).filter(Boolean);
   // '판매작' 접미사는 운영페이지에서 넘어온 판매작에만. 포트폴리오 작품에 붙으면 사실과 다르다.
   if(w.kind==='sold') parts.push('판매작');
   if(!parts.length) parts.push('ArtLook');
@@ -714,6 +892,70 @@ dlBtn.addEventListener('click', ()=>{
     }, 'image/png');
   }catch(e){ saveFailed(); }
 });
+
+/* ── 원 맞추기 창 ──────────────────────────────────────────────────────────
+   사진 위에 원을 띄워 끌어 옮기고 막대로 크기를 바꾼다. 여러 점이면 [다음 작품]으로 차례로. [완료]를 눌러야 기억한다(바깥을 누르면 취소). */
+const cSheet=$('circleSheet'), cCv=$('circleCv'), cR=$('circleR'), cRv=$('circleRv');
+let cEdit=null;    // { list:[{work,img,c}], k, view:{s,w,h} }
+function circleTargets(){
+  if(multi && multi.length>1) return multi.map((i)=>({ work:WORKS[i], img:imgCache.get(WORKS[i].url) })).filter((x)=>x.img);
+  return state.img && selectedWork ? [{ work:selectedWork, img:state.img }] : [];
+}
+function openCircleSheet(){
+  const list=circleTargets().map((x)=>Object.assign(x, { c:clampCircle(circleFor(x.work, x.img)||{cx:.5,cy:.5,r:.5}, x.img.width, x.img.height) }));
+  if(!list.length) return;
+  cEdit={ list, k:0 };
+  $('circleNext').hidden=list.length<2;
+  cSheet.hidden=false;
+  drawCircleSheet();
+  cR.focus();
+}
+function drawCircleSheet(){
+  if(!cEdit) return;
+  const it=cEdit.list[cEdit.k], img=it.img, c=it.c;
+  const maxW=Math.min(480, window.innerWidth-64), maxH=Math.max(160, Math.min(window.innerHeight*0.5, 480));
+  const s=Math.min(maxW/img.width, maxH/img.height), w=Math.round(img.width*s), h=Math.round(img.height*s);
+  const dpr=Math.min(2, window.devicePixelRatio||1);
+  cCv.width=Math.round(w*dpr); cCv.height=Math.round(h*dpr); cCv.style.width=w+'px'; cCv.style.height=h+'px';
+  cEdit.view={ s, w, h };
+  const x=cCv.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  x.drawImage(img,0,0,w,h);
+  const M=Math.min(w,h), px=c.cx*w, py=c.cy*h, pr=c.r*M;
+  x.save(); x.beginPath(); x.rect(0,0,w,h); x.arc(px,py,pr,0,Math.PI*2,true); x.fillStyle='rgba(17,24,39,.55)'; x.fill('evenodd'); x.restore();
+  x.lineWidth=2.5; x.strokeStyle='#fff'; x.beginPath(); x.arc(px,py,pr,0,Math.PI*2); x.stroke();
+  x.lineWidth=1; x.strokeStyle='rgba(0,0,0,.6)'; x.beginPath(); x.arc(px,py,pr+1.6,0,Math.PI*2); x.stroke();
+  const maxR=Math.min(c.cx*img.width,(1-c.cx)*img.width,c.cy*img.height,(1-c.cy)*img.height)/Math.min(img.width,img.height);
+  cR.max=String(Math.max(5, Math.round(maxR*1000)/10)); cR.value=String(Math.round(c.r*1000)/10);
+  cRv.textContent=Math.round(c.r*200)+'%';
+  $('circleSub').textContent=(cEdit.list.length>1 ? (cEdit.k+1)+'/'+cEdit.list.length+' · ' : '')+(it.work.title ? '「'+it.work.title+'」 ' : '')+'작품의 둥근 가장자리에 원을 맞춰 주세요. 원을 끌어 옮기고, 막대로 크기를 바꿔요.';
+}
+cR.addEventListener('input', ()=>{ if(!cEdit) return; const it=cEdit.list[cEdit.k];
+  it.c=clampCircle(Object.assign({}, it.c, { r:parseFloat(cR.value)/100 }), it.img.width, it.img.height); drawCircleSheet(); });
+let cDrag=null;
+cCv.addEventListener('pointerdown', (e)=>{ if(!cEdit) return; const it=cEdit.list[cEdit.k];
+  cDrag={ x:e.clientX, y:e.clientY, cx:it.c.cx, cy:it.c.cy }; try{ cCv.setPointerCapture(e.pointerId); }catch(err){ /* */ } e.preventDefault(); });
+cCv.addEventListener('pointermove', (e)=>{ if(!cDrag || !cEdit) return; const it=cEdit.list[cEdit.k], v=cEdit.view;
+  // 원을 옮기되 사진 밖으로는 못 나간다 — 크기는 그대로 두고 가운데만 제한한다
+  const M=Math.min(it.img.width,it.img.height), rx=it.c.r*M/it.img.width, ry=it.c.r*M/it.img.height;
+  const cx=Math.max(rx, Math.min(1-rx, cDrag.cx+(e.clientX-cDrag.x)/v.w)), cy=Math.max(ry, Math.min(1-ry, cDrag.cy+(e.clientY-cDrag.y)/v.h));
+  it.c={ cx, cy, r:it.c.r }; drawCircleSheet(); });
+['pointerup','pointercancel'].forEach((ev)=>cCv.addEventListener(ev, ()=>{ cDrag=null; }));
+$('circleAuto').addEventListener('click', ()=>{ if(!cEdit) return; const it=cEdit.list[cEdit.k];
+  const found=detectArtCircle(it.img);
+  if(!found){ toast('사진에서 둥근 작품을 찾지 못했어요. 원을 직접 맞춰 주세요'); return; }
+  it.c=clampCircle(found, it.img.width, it.img.height); drawCircleSheet(); });
+$('circleNext').addEventListener('click', ()=>{ if(!cEdit) return; cEdit.k=(cEdit.k+1)%cEdit.list.length; drawCircleSheet(); });
+function closeCircleSheet(save){
+  if(save && cEdit){
+    cEdit.list.forEach((it)=>{ savedCircles[it.work.url]={ cx:+it.c.cx.toFixed(4), cy:+it.c.cy.toFixed(4), r:+it.c.r.toFixed(4) }; });
+    try{ localStorage.setItem(CIRCLE_KEY, JSON.stringify(savedCircles)); }catch(e){ /* 기억만 못 한다 */ }
+    requestRender();
+  }
+  cEdit=null; cSheet.hidden=true;
+}
+$('circleDone').addEventListener('click', ()=>closeCircleSheet(true));
+cSheet.addEventListener('click', (e)=>{ if(e.target===cSheet) closeCircleSheet(false); });
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && !cSheet.hidden) closeCircleSheet(false); });
 
 const sheet=$('saveSheet');
 function openSheet(url){

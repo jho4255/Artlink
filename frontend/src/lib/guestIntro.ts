@@ -41,9 +41,13 @@ export function introForced(search: string): boolean {
   try { return new URLSearchParams(search).get('intro') === '1'; } catch { return false; }
 }
 
-/** 이 주소에서 띄워도 되는가. 그 일을 하러 온 화면·로그인이 필요한 화면은 뺀다 */
+/** 이 주소에서 띄워도 되는가. 그 일을 하러 온 화면·로그인이 필요한 화면은 뺀다.
+ *  ⚠️ **홈페이지 주소(`/@핸들` · `/portfolio/:id`)도 뺀다**(2026-10-26 사용자 결정) — 작가가 그 주소를 인스타·명함·자기 사이트에
+ *  '내 홈페이지'로 걸어 둔다. 그 링크로 온 방문자 앞에 아트링크 가입 권유를 띄우면 작가의 홈페이지가 아니라 우리 광고가 된다.
+ *  `/@` 는 갤러리 홈페이지도 같은 이름공간이라 함께 빠진다(규칙 49). 방문자가 거기서 아트링크의 다른 화면으로 넘어가면 그때는 뜬다. */
 export function introAllowedAt(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
+  if (/^\/@[^/]+$/.test(p) || /^\/portfolio\/[^/]+$/.test(p)) return false;
   if (/^\/(login|signup|password|auth|join|terms|privacy|mypage|messages|feed)(\/|$)/.test(p)) return false;
   if (/^\/(galleries|exhibitions|shows)\/new$/.test(p)) return false;
   if (/^\/exhibitions\/[^/]+\/(apply|operation)(\/|$)/.test(p)) return false;

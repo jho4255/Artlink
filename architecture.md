@@ -2767,7 +2767,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 로그인 안 함: 방문(탭)마다 한 번(sessionStorage `artlink-intro-guest-answered` — 닫으면 그 탭에선 새로고침해도 안 뜨고 새 탭·다음 방문엔 다시) · 로그인한 적 있는 브라우저도 포함 · 그 브라우저에서 누가 [다시 보지 않기] 를 눌렀으면 제외.
   [무료로 시작하기] → `/signup?role=ARTIST|GALLERY`(보고 있던 쪽). 작가 쪽에서 공모 상세로부터 떠나면 `post_login_redirect` 에 그 공모를 적는다(없을 때만).
 - 회원(관리자 제외): 하루 첫 방문에 한 번(`artlink-intro-member-day`) · [다시 보지 않기] → `artlink-intro-hidden[userId]`. 홈페이지 완성 팝업(`homepage-nudge`)이 뜨는 날엔 양보.
-- 공통: 로봇·자동화(`navigator.webdriver`) 제외 · `introAllowedAt` 이 로그인·가입·초대 코드·지원서·운영·약관·마이페이지 등을 뺀다 · 0.6초 머문 뒤(그림을 받는 동안 최대 2초 더) · 다른 `aria-modal` 창이 없을 때.
+- 공통: 로봇·자동화(`navigator.webdriver`) 제외 · `introAllowedAt` 이 로그인·가입·초대 코드·지원서·운영·약관·마이페이지 등과 **홈페이지 주소(`/@핸들`·`/portfolio/:id`, 2026-10-26 — 작가가 자기 홈페이지로 걸어 두는 링크)** 를 뺀다 · 0.6초 머문 뒤(그림을 받는 동안 최대 2초 더) · 다른 `aria-modal` 창이 없을 때.
   미리보기 `?intro=1` — 조건과 상관없이 띄운다. 닫으면 주소에서 뗀다.
 - 그림은 **실제 화면**(사용자 결정): 샘플 작가·샘플 갤러리·샘플 전시(`backend/scripts/seed-intro-sample.ts`, 사진은 `scratchpad/guest-intro/sample-media.mjs`)·로컬 데모 갤러리 공모로 찍어
   (`capture.mjs` → `compose.mjs` → `make-assets.py`) `public/intro/` 600×450 webp 여덟(합 약 80KB).
@@ -2819,3 +2819,38 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 화면 `MyPage.tsx UserManageSection` — 역할 탭 끝에 [오늘 방문](옆 숫자 = `stats/visitors?days=1` 의 회원 수) · 줄마다 '최근 7일 중 N일 방문' · 오늘 탭은 '오늘 처음 HH:MM'. 휴대폰에선 버튼이 아래 줄로 내려간다.
 - 데이터는 `DailyVisit`(기기 × KST 하루 한 줄, 2026-09-28 부터) — 하루에 몇 번 왔는지는 없다.
 
+
+### ArtLook — FrameIt 비교 뒤 더한 것 (2026-10-25, CLAUDE.md 75)
+- FrameIt 을 계정·업로드 없이 예시 그림으로 써 보고(인기 액자 약 20종 · 원형 약 35종 · 벽 63장 · 매트 결 약 100종 · 갤러리 월 편집기) 같은 그림으로 우리 엔진과 같은 배율로 맞댔다.
+  결론: 기본 액자(블랙·오크·월넛·화이트·얇은 액자)는 대등 이상, 절차적 금속·아이보리의 결 얼룩·필릿·흰 플로터·원형·박물관 색 벽·천 매트·여러 점이 모자랐다.
+- **원형 액자** — `public/artlook/index.html` `buildRoundFramed`(사진 가운데 정사각 → 원, 원형 매트, 링 `roundRingLayer`: 반원 단면 튜브를 픽셀마다 `metalLight` 로 비춤, 3×3 슈퍼샘플, 캐시 6개).
+  `compose()` 가 판 바깥을 `_roundEdge` 색으로 채워 넘기고 `scene.js` 셰이더 `uRound` 가 내접원으로 자른다. 그림자 캐스터 `circleOnQuad`, cornerAO 없음. 평면 합성 폴백은 `castShape`.
+- **금테·은테** — 사진 액자 + `style.fillet` → `drawFilletBand`(작품 둘레 0.9% 띠, 반원 비드·마이터). 판이 그만큼 커지고 `floatMountShadow` 는 작품 + 띠 단위.
+  액자 3종은 넣었다가 사용자 요청으로 뺐다(엔진만 남음 — 쓰는 액자가 없어 `fp=0`).
+- **작품의 원** — `detectArtCircle`(외접 사각형 → 72 방향 경계 → Kasa 원 맞춤 → 1% 안쪽) · `clampCircle` · `buildRoundFramed` 가 `o.circle` 로 떼어 낸다(`_roundArtPx`).
+  화면 `ui.js` `savedCircles`(localStorage `artlook:circles`)·`autoCircles`·`applyCircles`(그리기 직전) · [원 맞추기] 시트(`#circleSheet`, 끌기·막대·자동·다음 작품·완료).
+  여는 곳은 원형 묶음의 칩들 바로 뒤 `circleChip`(`#circleChip`, 원형이 아니면 원형으로 바꾸고 연다).
+- **액자 묶음·재질** — `ui.js FRAME_GROUPS`/`frameGroups`(화면 순서만, FRAMES 번호는 그대로) · 화이트 플로터·화이트 슬림 · 박스 5종(`box:true`, 살 3.2~3.4% · 갭 2.2%).
+  **박스는 사진 액자**(2026-10-26, `frames/photo/*-deep.png` · `kind:'photo', box:true, rail:BOX_RAIL, fallback`) — 추출기 `refine_deep`(개구부 = 벽 → 뒤판 계단, `wallFrom` = 앞면 → 벽)
+  → `buildFramedCore` 사진 분기가 `shadeFrameProfile({box:true})`(홈·리베이트 끔) 뒤에 `shadeBoxWalls`(자산 벽 평균 유지, 네 벽 차이만 장면 빛으로 · `applyRailGain`).
+  `measureAssetLight` 는 `meta.wallFrom` 이 있으면 앞면만 잰다. 사진을 못 받으면 `style.fallback`(코드 박스):
+  안쪽 벽 `drawBoxWalls`(앞면과 같은 결 `paintMaterialStrip` · 벽마다 `BOX_WALL_BASE ± BOX_WALL_DIR·litIn` · 뒤로 `BOX_WALL_BACK` · 빛 오는 쪽 벽의 매트 그림자).
+  플로터는 그대로 `drawFloaterTray`. 매트 없는 (코드) 박스는 `floatMountShadow` 없음 · 바탕은 벽 색.
+- **2차 사진 액자**(2026-10-26) — 플로터 5종도 사진(`X-floater.png`, `deep:true` — 박스와 같은 `refine_deep`·`shadeBoxWalls` 경로, `rail:FLOATER_RAIL`, 코드 플로터는 `fallback`).
+  `shadeFrameProfile` 은 `o.deep` 을 보고 끈다(이름은 `box` 변수 그대로). 슬림 블랙·화이트 → `black-thin`·`white-thin` 사진 · 몰딩 4종(`maple`·`silver`·`black-wide`·`white-wide`)은 FRAMES 맨 뒤.
+  사진으로 대신한 코드 액자는 `hidden:true, alias` — FRAMES 에 남고(번호·하니스) `ui.js frameGroups` 가 거르며, 기억된 `prefs.frame` 이 숨긴 액자면 `alias` 로.
+  묶음은 `FRAME_GROUPS = [[이름, 설명, ids]]` · `frameGroupOf(id)` · `buildFrames` 가 `<span class="group"><b>이름</b><span class="gdesc"> — 설명</span></span>` ·
+  `updateFrameLine` 이 고른 액자의 묶음 설명(넓은 칸은 CSS 로 `.gdesc` 보이고 `#framesLine` 감춤). 추출기 `KEYS` 에 champagne·maple·floater·ivory, `QUALS` 에 floater.
+- **크기 조절** — `composeScene` 이 사용자 확대가 벽 한계에 막힌 몫을 카메라 확대로(`userS`·`rem`·`zCap`), `ui.js resetAllAdj` 가 한 점 ↔ 여러 점 전환 때 조절을 처음대로.
+- **매끈한 마감** — `MATS[black|silver|ivory|white].calm` 만큼 `drawTextureSide` 가 결을 평균색으로 덮고 결 줄 세기를 줄인다. 화이트 플로터(`floater-white`) 추가.
+- **박물관 색 벽** — `frontend/scripts/recolor-wall.py` 로 네이비 ← wall21 차콜 · 버건디 ← wall24 테라코타 · 포레스트 그린 ← wall22 올리브(OKLab 편차를 목표 평균색에,
+  결의 세기가 원본과 같게). `scenes.json` 에 각 원본 벽 값을 옮겨 3개 추가. (10-25 판은 wall26 상대 밝기 × 목표 색이라 결이 없었다.)
+- **벽 3종**(2026-10-26, GPT) — `wall30-red-brick`·`wall31-fieldstone`·`wall32-leaf-shadow`(×2 업스케일, 썸네일 `walls/thumbs/`). scenes.json 은 화이트 플라스터 항목 복사 + 잰 `lightDir`·`regionCm`·`wallCalm`.
+- **벽 캡션 카드** — `captionLines`/`captionCard`(index.html, 13cm 카드 캔버스, 2줄 넘는 제목은 …) → `composeScene` 의 `label` → `placeWallLabel`(영역 단위 좌표로 오른쪽/왼쪽, 같은 워프).
+  `labelU` 로 묶음 가운데 맞춤·화면 상한. 화면은 [배경] 탭 줄 `actionButton`, `prefs.caption`. 측정 훅 `__artlook.label`.
+- **리넨·스웨이드 매트** — `linenTile`(굵기 편차 있는 평직, 실 단면 명암) · `suedeTile`(두 번 흐린 잡음 + 가로 결) · `matSurface` 가 고른다. 화면은 `MAT_COLORS` 의 세 번째 값.
+- **여러 점** — `groupLayout`(row·col·grid·big·stairs, cm) · `groupPiece`(판 + 실치수: 높이 = 적힌 세로, 폭 = 사진 비율) → `composeScene` 의 `group`(칸마다 `rect` 0~1 · 판 · 원형 여부).
+  엔진은 `groupItems` 로 칸 quad 를 만들어 그림자(한 경로) · 워프(칸마다 `buildInsert`, 한 GL 화면에 `keep` 으로 이어 그리고 한 번 읽음) · cornerAO(칸마다). 화면은 `ui.js` 의 `multi`·`imgCache`·`syncGroup`·`cycleGroupLayout`, 측정 훅 `__artlook.items`.
+- **끄는 동안(초안)** — `draftOf`(작품 긴 변 1000px, WeakMap) · `framedFor`(판 캐시 8개, 키 = 작품·액자·매트·원·광원·해상도 추정 등) · 합성 배율 1. `scene.js warp` 는 판 bbox 만 scissor.
+  손을 떼면 `buildFramedCore` 를 바로 부르는 원래 경로로 한 번 더 그린다(최종 그림은 바뀌지 않는다).
+- 검증: HEAD ↔ 지금 픽셀 비교(세션 스크래치 `frameit/regress/`) · 단위 `artlookFrameItAdds.test.ts` · e2e `75-artlook-frameit-adds.spec.ts` · `scratchpad/vt/leak.mjs` · `nomat.mjs`.
