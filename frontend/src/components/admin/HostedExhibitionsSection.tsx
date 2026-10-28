@@ -26,7 +26,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
 import CapacityPicker from '@/components/shared/CapacityPicker';
-import { EditableText, HeroImageEdit } from '@/components/shared/EditableField';
+import { HeroImageEdit } from '@/components/shared/EditableField';
 import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
 import { richTextLength } from '@/lib/richText';
 import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
@@ -35,8 +35,14 @@ import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
 import HostedContentEditModal from '@/components/admin/HostedContentEditModal';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
+import SchedulePicker from '@/components/shared/SchedulePicker';
+import ProgressSteps from '@/components/flow/ProgressSteps';
+import { FormSection, FormField } from '@/components/flow/FormParts';
+import { formInputCls } from '@/lib/formStyles';
+import { scheduleSummary } from '@/lib/scheduleSummary';
+import { exhibitionSchedule } from '@/lib/scheduleCalendar';
 import { AttachmentEditor } from '@/components/shared/ExhibitionAttachments';
-import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
+import { ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
 import type { CustomField } from '@/types';
 
 const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
@@ -70,10 +76,13 @@ function GalleryPicker({
   selected,
   onChange,
   error,
+  bare = false,
 }: {
   selected: PickedGallery[];
   onChange: (next: PickedGallery[]) => void;
   error?: boolean;
+  /** 등록 폼의 구역(FormSection) 안 — 테두리 상자와 머리말을 빼고 구역 제목을 쓴다(갤러리 공모 등록 폼과 같은 모양, 2026-10-28) */
+  bare?: boolean;
 }) {
   const [keyword, setKeyword] = useState('');
 
@@ -103,19 +112,22 @@ function GalleryPicker({
   };
 
   return (
-    <div className={`rounded-xl border p-3 ${error ? 'border-accent bg-accent/5' : 'border-gray-200 bg-white'}`}>
-      <div className="flex items-center justify-between">
-        <p className={`text-xs font-medium ${error ? 'text-accent' : 'text-gray-500'}`}>운영 갤러리 <span className="font-normal text-gray-400">(선택)</span></p>
-        <p className="text-[11px] text-gray-400">{selected.length}곳 선택</p>
-      </div>
-      <p className="mt-1 text-[11px] text-gray-400">
+    <div className={bare ? '' : `rounded-xl border p-3 ${error ? 'border-accent bg-accent/5' : 'border-gray-200 bg-white'}`}>
+      {!bare && (
+        <div className="flex items-center justify-between">
+          <p className={`text-xs font-medium ${error ? 'text-accent' : 'text-gray-500'}`}>운영 갤러리 <span className="font-normal text-gray-400">(선택)</span></p>
+          <p className="text-[11px] text-gray-400">{selected.length}곳 선택</p>
+        </div>
+      )}
+      {/* 폼 구역(bare)에서는 구역 설명이 같은 말을 한다 — 두 번 쓰지 않는다 */}
+      {!bare && <p className="mt-1 text-[11px] text-gray-400">
         지정된 갤러리는 이 공모를 자기 공모처럼 운영합니다 (지원자 관리 · 작가 초대 · 전시 확정 · 정산).
         맨 앞 갤러리가 <b>주관</b>이 되어 목록 카드에 표시됩니다.
-      </p>
+      </p>}
       {/* 갤러리를 안 끼는 것도 정상적인 선택이다(2026-09-10) — 비워 두면 아무 일도 안 일어나는 게 아니라
           '아트링크가 직접 운영' 이라는 뜻이라는 걸 여기서 말해 준다. */}
       {selected.length === 0 && (
-        <p className="mt-1 text-[11px] text-gray-500">
+        <p className={bare ? 'text-sm text-gray-700' : 'mt-1 text-[11px] text-gray-500'}>
           비워 두면 <b>아트링크(관리자)가 직접 운영</b>합니다. 지원 알림도 관리자에게 갑니다.
         </p>
       )}
@@ -146,7 +158,7 @@ function GalleryPicker({
       )}
 
       {/* 검색 + 추가 */}
-      <div className="mt-2 flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5">
+      <div className={`mt-3 flex items-center gap-2 rounded-lg border px-2.5 ${bare ? 'min-h-[44px] border-gray-200 bg-white' : 'border-gray-200 py-1.5'}`}>
         <Search size={14} className="text-gray-400" />
         <input
           value={keyword}
@@ -363,6 +375,12 @@ export default function HostedExhibitionsSection() {
     setConfirmSubmit(true);
   };
 
+  const summary = scheduleSummary(form);
+  // 아트링크 주최는 승인 단계가 없다 — 갤러리 폼의 순서에서 '관리자 승인'만 빠진다
+  const flowSteps = form.recruitOnly
+    ? ['등록', '지원 모집', '작가 선정']
+    : ['등록', '지원 모집', '작가 선정', '자료 출품', '전시', '정산'];
+
   const statusColors: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-700',
     APPROVED: 'bg-green-100 text-green-700',
@@ -384,124 +402,132 @@ export default function HostedExhibitionsSection() {
         </button>
       </div>
 
+      {/*
+        주최 공모 등록 — 갤러리 공모 등록 폼(MyPage)과 **같은 틀**(2026-10-28 사용자 지적: "갤러리 유저 것은 딱 좋은데 admin 주최 공모 등록은 이렇게 안 돼 있다").
+        번호 붙은 구역 · 왼쪽 포스터(목록 카드 모양) · 칸 이름과 설명 · 일정 달력. 다른 점은 셋뿐 — 갤러리 선택 대신 운영 갤러리(선택, 여러 곳),
+        승인 없이 바로 게시, 약관 없음. 예전엔 '상세 페이지 미리보기 카드'에 칸을 얹은 모양이라 같은 일을 하는 두 폼이 딴판이었다.
+      */}
       {showForm && (
-        <div className="mb-6 space-y-3 rounded-xl bg-gray-50 p-4">
-          <h4 className="text-sm font-medium">주최 공모 등록</h4>
-          <p className="text-xs text-gray-400">실제 모집공고 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요.</p>
+        <div className="mb-8 space-y-8">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-950">주최 공모 등록</h3>
+            <p className="mt-1 text-sm text-gray-500">관리자가 등록하므로 승인 절차 없이 바로 모집공고에 올라가요.</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium text-gray-500">공모는 이렇게 진행돼요</p>
+            <ProgressSteps variant="inline" steps={flowSteps} current={0} label="공모 진행 순서" className="mt-1.5" />
+          </div>
 
-          <ExhibitionScopePicker
-            recruitOnly={form.recruitOnly}
-            onChange={(next) => setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) })}
-          />
-
-          <GalleryPicker selected={managerGalleries} onChange={(next) => { setManagerGalleries(next); clearError('galleries'); }} error={formErrors.has('galleries')} />
-
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            <HeroImageEdit
-              value={form.imageUrl}
-              onChange={(url) => setForm({ ...form, imageUrl: url })}
-              onRemove={() => setForm({ ...form, imageUrl: '' })}
-              className="w-full aspect-[16/9]"
-              label="공모 대표 이미지"
+          <FormSection n={1} title="진행 범위" description="어디까지 이 페이지에서 진행할지 골라 주세요. 등록한 뒤에는 바꿀 수 없어요.">
+            <ExhibitionScopePicker
+              bare
+              recruitOnly={form.recruitOnly}
+              onChange={(next) => {
+                setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) });
+                ['submissionDeadline', 'exhibitStartDate', 'exhibitDate'].forEach(clearError);
+              }}
             />
-            <div className="space-y-3 p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-gray-900 px-2.5 py-1 text-xs text-white">아트링크 주최</span>
-                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="cursor-pointer rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600 focus:outline-none">
-                  <option value="SOLO">개인전</option>
-                  <option value="GROUP">단체전</option>
-                  <option value="ART_FAIR">아트페어</option>
-                </select>
-                <select value={form.region} onChange={e => setForm({ ...form, region: e.target.value })} className="cursor-pointer rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600 focus:outline-none">
-                  {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-                </select>
+          </FormSection>
+
+          <FormSection n={2} title="운영 갤러리 (선택)" description="지정한 갤러리는 이 공모를 자기 공모처럼 운영해요(지원자 관리 · 작가 초대 · 전시 확정 · 정산). 맨 앞 갤러리가 주관이 되어 목록 카드에 표시돼요.">
+            <GalleryPicker bare selected={managerGalleries} onChange={(next) => { setManagerGalleries(next); clearError('galleries'); }} error={formErrors.has('galleries')} />
+          </FormSection>
+
+          <FormSection n={3} title="공고 내용">
+            <div className="grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]">
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-gray-800">포스터</p>
+                {/* 목록 카드와 같은 모양(210:297) — 자르지 않고 남는 자리는 흐린 배경 */}
+                <HeroImageEdit fit="contain" value={form.imageUrl} onChange={(url) => setForm({ ...form, imageUrl: url })} onRemove={() => setForm({ ...form, imageUrl: '' })} className="aspect-[210/297] w-full max-w-[168px]" label="포스터" />
               </div>
-
-              <EditableText
-                value={form.title}
-                onChange={v => { setForm({ ...form, title: v }); clearError('title'); }}
-                placeholder="공모 제목"
-                className="font-serif text-2xl text-gray-900"
-                error={formErrors.has('title')}
-              />
-
-              <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-2">
-                {/* 0명·00명(2026-10-14) — 갤러리 등록 폼과 같은 칸(components/shared/CapacityPicker) */}
-                <div className="col-span-2">
-                  <label htmlFor="hosted-capacity" className="text-xs text-gray-500">모집 작가 수</label>
-                  <div className="mt-0.5">
-                    <CapacityPicker
-                      inputId="hosted-capacity"
-                      error={formErrors.has('capacity')}
-                      value={{ capacity: form.capacity, capacityMask: form.capacityMask ?? null }}
-                      onChange={(v) => { setForm(prev => ({ ...prev, ...v })); clearError('capacity'); }}
-                    />
-                  </div>
-                  {/* 정원 = 선정 인원(2026-09-27) — 갤러리 등록 폼과 같은 안내 */}
-                  <p className="mt-1 text-[11px] leading-snug text-gray-400">지원은 제한 없이 받고, 이 인원까지 수락(선정)할 수 있어요.</p>
+              <div className="min-w-0 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="구분" htmlFor="hosted-type">
+                    <select id="hosted-type" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className={formInputCls()}>
+                      <option value="SOLO">개인전</option>
+                      <option value="GROUP">단체전</option>
+                      <option value="ART_FAIR">아트페어</option>
+                    </select>
+                  </FormField>
+                  <FormField label="지역" htmlFor="hosted-region">
+                    <select id="hosted-region" value={form.region} onChange={e => setForm({ ...form, region: e.target.value })} className={formInputCls()}>
+                      {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                    </select>
+                  </FormField>
                 </div>
-                {(([
-                  ['deadlineStart', '공모 시작일'],
-                  ['deadline', '공모 마감일'],
-                  // ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자 칸도 그리지 않는다(2026-09-19)
-                  ...(form.recruitOnly ? [] : [['exhibitStartDate', '전시 시작일'] as const, ['exhibitDate', '전시 종료일'] as const]),
-                  // 작가가 출품자료를 내야 하는 날짜 — 공모 마감과 전시 시작 사이.
-                  // ⚠️ 공모만 진행하면 그 단계가 없으므로 칸 자체를 그리지 않는다(비활성이 아니라 없앤다).
-                  ...(form.recruitOnly ? [] : [['submissionDeadline', '출품 자료 제출 마감일'] as const]),
-                ] as const)).map(([key, label]) => (
-                  <div key={key}>
-                    <label className={`text-xs ${formErrors.has(key) ? 'font-medium text-accent' : 'text-gray-500'}`}>{label} *</label>
-                    <input
-                      type="date"
-                      value={form[key]}
-                      onChange={e => { setForm({ ...form, [key]: e.target.value }); clearError(key); }}
-                      className={`mt-0.5 w-full rounded-lg border p-2 text-sm ${formErrors.has(key) ? 'border-accent bg-accent/5' : 'border-gray-200'}`}
-                    />
-                  </div>
-                ))}
+                <FormField label="공모 제목 *" error={formErrors.has('title')} htmlFor="hosted-title">
+                  <input id="hosted-title" data-form-error={formErrors.has('title') || undefined} value={form.title} onChange={e => { setForm({ ...form, title: e.target.value }); clearError('title'); }} placeholder="공모 제목" className={formInputCls(formErrors.has('title'))} />
+                </FormField>
+                {/* 정원 = 선정 인원(2026-09-27) · 0명·00명(2026-10-14) — 갤러리 등록 폼과 같은 칸 */}
+                <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="hosted-capacity">
+                  <CapacityPicker
+                    inputId="hosted-capacity"
+                    error={formErrors.has('capacity')}
+                    value={{ capacity: form.capacity, capacityMask: form.capacityMask ?? null }}
+                    onChange={(v) => { setForm(prev => ({ ...prev, ...v })); clearError('capacity'); }}
+                  />
+                </FormField>
               </div>
-              {dateError && (
-                <p className="flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} /> {dateError}</p>
-              )}
-
-              <div className="border-t border-gray-100 pt-3">
-                <p className={`mb-1 text-xs font-medium ${formErrors.has('description') ? 'text-accent' : 'text-gray-400'}`}>공모 소개</p>
-                {/* 서식 있는 글(2026-10-03, 갤러리 공모 등록과 같은 편집기). 함수형 갱신 — 편집기가 처음 받은 콜백을 붙들 수 있다 */}
+            </div>
+            {/* 서식 있는 글(2026-10-03). 함수형 갱신 — 편집기가 처음 받은 콜백을 붙들 수 있다 */}
+            <FormField label="공모 소개 *" error={formErrors.has('description')} className="mt-5">
+              <div data-form-error={formErrors.has('description') || undefined} className={formErrors.has('description') ? 'rounded-lg ring-1 ring-accent' : 'rounded-lg'}>
                 <LazyRichTextEditor
                   value={form.description}
                   onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}
                   placeholder="공모 소개"
                   maxLength={20000}
-                  minHeight={180}
+                  minHeight={200}
                 />
               </div>
-
-              <div className="border-t border-gray-100 pt-3">
-                <p className="mb-1 text-xs font-medium text-gray-400">첨부파일 (선택)</p>
-                <AttachmentEditor
-                  value={form.attachments}
-                  onChange={(update) => setForm(prev => ({ ...prev, attachments: update(prev.attachments) }))}
-                  onBusyChange={setAttachBusy}
-                />
-                <p className="mt-1.5 text-[11px] leading-snug text-gray-400">모집 요강·지원서 양식 같은 파일 — 공고 상세에서 누구나 내려받아요. {ATTACHMENT_TYPES_TEXT}, 한 파일 20MB, {ATTACHMENT_MAX}개까지.</p>
-              </div>
-
-              <CustomQuestionBuilder
-                fields={form.customFields}
-                onChange={(update) => setForm(prev => ({ ...prev, customFields: update(prev.customFields) }))}
+            </FormField>
+            <FormField
+              label="첨부파일 (선택)"
+              className="mt-5"
+              hint={`첨부 가능 형식: ${ATTACHMENT_TYPES_TEXT}`}
+            >
+              <AttachmentEditor
+                value={form.attachments}
+                onChange={(update) => setForm(prev => ({ ...prev, attachments: update(prev.attachments) }))}
+                onBusyChange={setAttachBusy}
               />
-            </div>
-          </div>
+            </FormField>
+          </FormSection>
 
-          <div className="flex gap-2">
+          <FormSection n={4} title="일정">
+            {/* 달력 하나를 칸들이 나눠 쓴다(2026-10-28, 갤러리 공모 등록과 같은 부품 · lib/scheduleCalendar.ts).
+                ⚠️ 공모만 진행하면 전시·자료 제출 칸을 그리지 않는다(2026-09-19) */}
+            <SchedulePicker
+              {...exhibitionSchedule(!!form.recruitOnly, 'hosted')}
+              values={form}
+              errors={formErrors}
+              onChange={(patch) => { setForm(prev => ({ ...prev, ...patch })); Object.keys(patch).forEach(clearError); }}
+            />
+            {summary && <p className="mt-5 text-sm text-gray-700"><span className="text-gray-400">한눈에 · </span>{summary}</p>}
+            {dateError && (
+              <p className="mt-2 flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} aria-hidden /> {dateError}</p>
+            )}
+          </FormSection>
+
+          <FormSection n={5} title="추가 질문 (선택)">
+            <CustomQuestionBuilder
+              bare
+              fields={form.customFields}
+              onChange={(update) => setForm(prev => ({ ...prev, customFields: update(prev.customFields) }))}
+            />
+          </FormSection>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
             <button
+              type="button"
               disabled={createMutation.isPending || !!dateError}
               onClick={submit}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-[44px] rounded-lg bg-gray-900 px-5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {createMutation.isPending ? '등록 중...' : '등록'}
             </button>
-            <button onClick={resetForm} className="px-4 py-2 text-sm text-gray-500">취소</button>
+            <button type="button" onClick={resetForm} className="min-h-[44px] px-3 text-sm text-gray-500 hover:text-gray-900">취소</button>
+            <p className="w-full text-xs text-gray-500">등록하면 바로 모집공고에 등록돼요.</p>
           </div>
         </div>
       )}

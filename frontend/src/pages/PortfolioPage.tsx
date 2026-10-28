@@ -220,19 +220,20 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
       <button onClick={share} className={actionClass}><Share2 size={14} /> 공유</button>
       <button onClick={() => setQrOpen(true)} className={actionClass}><QrCode size={14} /> QR</button>
       {/* [방명록] 버튼은 없앴다(2026-09-25) — 바로 아래 탭 막대에 [방명록]이 있어 한 화면에 같은 버튼이 둘이었다 */}
-      {/* 주인 본인에게만 — 남에게 보여줄 홈페이지라 도구는 조용해야 한다. 다만 공유·QR 과 같은 글자 링크면 '여기서 고친다'가 안 읽혀
-          테두리를 둘렀다(2026-10-02). **보던 탭의 묶음**으로 연다 — 약력 탭에서 누르면 편집 화면의 [약력] 이 열린다. */}
-      {isOwner && (
-        <Link
-          to={editHref(editSectionForTab(tabParam))}
-          className="inline-flex min-h-[40px] items-center gap-1.5 border px-3.5 text-sm font-medium hover:opacity-80"
-          style={{ borderColor: 'var(--hp-ink)', color: 'var(--hp-ink)' }}
-        >
-          <Edit3 size={14} /> 수정
-        </Link>
-      )}
     </>
   );
+  /* 주인 본인에게만 — 남에게 보여줄 홈페이지라 도구는 조용해야 한다. 다만 공유·QR 과 같은 글자 링크면 '여기서 고친다'가 안 읽혀
+     테두리를 둘렀다(2026-10-02). **보던 탭의 묶음**으로 연다 — 약력 탭에서 누르면 편집 화면의 [약력] 이 열린다.
+     자리는 머리말 오른쪽 위(2026-10-28) — 액션 줄에 섞여 있을 땐 휴대폰에서 인스타 바로 밑에 붙어 어색했다. */
+  const ownerAction = isOwner ? (
+    <Link
+      to={editHref(editSectionForTab(tabParam))}
+      className="inline-flex min-h-[40px] items-center gap-1.5 border px-3.5 text-sm font-medium hover:opacity-80"
+      style={{ borderColor: 'var(--hp-ink)', color: 'var(--hp-ink)' }}
+    >
+      <Edit3 size={14} /> 수정
+    </Link>
+  ) : null;
 
   return (
     <div style={themeCssVars(theme)} className="min-h-[calc(100vh-4rem)]">   {/* 어두운 테마에서 아래쪽 흰 띠가 남았다 — Layout 의 main 이 flex-1 이라도 이 div 가 늘어나야 한다(2026-09-19) */}
@@ -276,10 +277,12 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
             seriesInfo: portfolio.seriesInfo,
             images: portfolio.images,
             designConfig: portfolio.designConfig,
+            showAvatar: portfolio.showAvatar === true,
           }}
           onOpenImage={openAt}
           careerColumns={careerColumnCount}
           actions={actions}
+          ownerAction={ownerAction}
           // 아직 아무것도 없는 홈페이지 — 방문자에겐 '준비 중', 주인에겐 무엇을 하면 되는지(작품 올리기)
           emptyText={isOwner ? '작품 사진을 올리면 홈페이지가 바로 생깁니다.' : '아직 준비 중인 홈페이지입니다.'}
           emptyAction={isOwner ? (

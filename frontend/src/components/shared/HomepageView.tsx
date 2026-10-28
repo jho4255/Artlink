@@ -73,6 +73,8 @@ export interface HomepageViewData {
   images: PortfolioImage[];
   /** PDF 와 같은 디자인 설정(색·글꼴·대표작). 없으면 사이트 기본 톤 */
   designConfig?: unknown;
+  /** 이름 위에 프로필 사진(`user.avatar`)을 둥글게 — 작가가 켰을 때만(2026-10-28). 사진이 없으면 켜져 있어도 안 그린다 */
+  showAvatar?: boolean;
 }
 
 interface Props {
@@ -85,8 +87,13 @@ interface Props {
   emptyText?: string;
   /** 비어 있을 때 안내 아래에 놓는 버튼 — 공개 페이지가 **주인에게만** [작품 올리기] 를 준다 */
   emptyAction?: ReactNode;
-  /** 마스트헤드 오른쪽 액션(이웃·메시지·공유·QR·수정). 페이지가 넣는다 — 미리보기에는 없다 */
+  /** 마스트헤드 오른쪽 액션(이웃·메시지·공유·QR). 페이지가 넣는다 — 미리보기에는 없다 */
   actions?: ReactNode;
+  /**
+   * 주인에게만 보이는 [수정] — 머리말 **오른쪽 위**에 따로 둔다(2026-10-28 사용자 지적: 액션 줄에 섞여 휴대폰에서 인스타 바로 밑에 붙어 이상했다).
+   * 휴대폰은 이름 줄 오른쪽 위, PC 는 오른쪽 칸 맨 위(액션 줄은 그 아래 바닥에).
+   */
+  ownerAction?: ReactNode;
   /** 편집 화면 미리보기(폭이 절반) — 글자·행 높이를 줄인다 */
   compact?: boolean;
   /**
@@ -337,11 +344,15 @@ const ArtworkSection = memo(function ArtworkSection({ groups, artistName, onOpen
 }, (a, b) => a.signature === b.signature && a.compact === b.compact && a.onOpenImage === b.onOpenImage && a.artistName === b.artistName);
 
 export default function HomepageView({
-  data, onOpenImage, careerColumns = 3, emptyText, emptyAction, actions, compact = false, tab, onTabChange, guestbook,
+  data, onOpenImage, careerColumns = 3, emptyText, emptyAction, actions, ownerAction, compact = false, tab, onTabChange, guestbook,
 }: Props) {
   const { user, images, seriesInfo } = data;
   const artistName = displayName(user);
   const theme = useMemo(() => resolveHomepageTheme(data.designConfig), [data.designConfig]);
+  // 프로필 사진 — 켰고 사진이 있고 불러와졌을 때만. 못 불러온 주소를 기억해 두면 사진을 바꿨을 때 다시 그린다
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const avatarSrc = typeof user.avatar === 'string' && user.avatar.trim() ? user.avatar : null;
+  const withAvatar = !!data.showAvatar && !!avatarSrc && avatarSrc !== failedAvatar;
 
   // 기본 글꼴(명조·고딕)이 아니면 웹폰트를 한 번 받는다 — 안 받으면 폴백 글꼴로 이름이 찍힌다
   useEffect(() => { if (needsWebFont(theme.keys.font)) ensurePortfolioFonts(); }, [theme.keys.font]);
@@ -449,18 +460,42 @@ export default function HomepageView({
   return (
     <div style={themeCssVars(theme)} className="min-w-0">
       {/* ── 마스트헤드: 작가 이름이 이 페이지의 제목이다 ── */}
-      <header className={`${compact ? 'pb-6' : 'pb-8 md:pb-12'} flex flex-col gap-5 md:flex-row md:items-end md:justify-between`}>
-        <div className="min-w-0">
+      {/* 격자 두 칸 — 왼쪽 이름 덩어리 / 오른쪽 위 [수정](주인만) · 오른쪽 아래 액션 줄(PC). 휴대폰은 액션 줄이 이름 덩어리 아래 한 줄로.
+          [수정] 을 한 요소로만 그린다(화면마다 두 벌을 숨겨 두면 같은 링크가 둘이 된다) */}
+      <header className={`${compact ? 'pb-6' : 'pb-8 md:pb-12'} grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-5 md:gap-x-8 md:gap-y-3`}>
+        <div className="col-start-1 row-start-1 min-w-0 md:row-span-2 md:self-end">
+          {/* 프로필 사진(2026-10-28, 작가가 켰을 때만) — 이름 위 동그라미. 사진이 있으면 이름을 한 단계 줄여 사진·이름·소개가 한 덩어리로 읽히게 한다.
+              ⚠️ 프로필 사진은 원형으로 자른다(object-cover) — 작품이 아니다. 작품은 자르지 않는다(규칙 18) */}
+          {withAvatar && (
+            <img
+              src={avatarSrc!}
+              alt={`${artistName} 프로필 사진`}
+              onError={() => setFailedAvatar(avatarSrc)}
+              className={`block rounded-full object-cover ${compact ? 'mb-4 h-16 w-16' : 'mb-5 h-20 w-20 md:mb-6 md:h-28 md:w-28'}`}
+              style={{ boxShadow: '0 0 0 1px var(--hp-line)' }}
+              data-testid="homepage-avatar"
+            />
+          )}
           <h1
-            className={`break-keep [overflow-wrap:anywhere] leading-[1.05] tracking-[-0.02em] ${compact ? 'text-3xl' : 'text-4xl md:text-6xl'} ${theme.serif ? 'font-medium' : 'font-semibold'}`}
+            className={`break-keep [overflow-wrap:anywhere] leading-[1.05] tracking-[-0.02em] ${
+              withAvatar ? (compact ? 'text-2xl' : 'text-3xl md:text-5xl') : (compact ? 'text-3xl' : 'text-4xl md:text-6xl')
+            } ${theme.serif ? 'font-medium' : 'font-semibold'}`}
             style={{ fontFamily: 'var(--hp-title-font)' }}
           >
             {artistName}
           </h1>
           {/* 한 줄 소개가 없으면 아무것도 쓰지 않는다 — 누구에게나 해당되는 문구로 자리를 채우지 않는다 */}
-          {data.tagline && <p className={`mt-3 break-keep [overflow-wrap:anywhere] ${compact ? 'text-sm' : 'text-base md:text-lg'}`} style={SUB}>{data.tagline}</p>}
+          {data.tagline && (
+            <p
+              className={`break-keep [overflow-wrap:anywhere] ${withAvatar ? (compact ? 'mt-2 text-sm' : 'mt-2.5 text-[15px] md:text-base') : (compact ? 'mt-3 text-sm' : 'mt-3 text-base md:text-lg')}`}
+              style={SUB}
+            >
+              {data.tagline}
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+        {ownerAction && <div className="col-start-2 row-start-1 self-start justify-self-end" data-testid="homepage-owner-action">{ownerAction}</div>}
+        <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm md:col-span-1 md:col-start-2 md:self-end md:justify-self-end">
           {/* 인스타 — 브랜드 핑크 대신 페이지 색을 따른다(강조색이 둘이면 페이지가 시끄럽다) */}
           {ig && (
             <a href={ig} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-1.5 hover:underline underline-offset-4" style={SUB}>

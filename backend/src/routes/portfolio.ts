@@ -174,6 +174,8 @@ router.get('/:userId', optionalAuth, async (req, res, next) => {
       designConfig: parseDesignConfig(portfolio?.designConfig),
       // 가격은 작가가 홈페이지 가격을 켰을 때만, 판매완료·비매가 아닌 작품만 붙는다(lib/artworkPrice.ts — 꺼져 있으면 읽지도 않는다)
       images: await attachPublicPrices(portfolio?.images || [], portfolio?.showPrice === true),
+      // 이름 위 프로필 사진(2026-10-28) — 작가가 켰을 때만. 사진 주소는 user.avatar(꺼져 있어도 다른 화면에서 이미 보이는 값이다)
+      showAvatar: portfolio?.showAvatar === true,
       // 보는 사람이 좋아요한 작품 — 홈페이지 라이트박스의 하트 상태(2026-09-19). 비로그인은 빈 배열.
       likedImageIds: req.user && portfolio
         ? (await prisma.portfolioImageLike.findMany({ where: { userId: req.user.id, imageId: { in: portfolio.images.map((i) => i.id) } }, select: { imageId: true } })).map((l) => l.imageId)
@@ -295,10 +297,13 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     // designConfig 는 **보냈을 때만** 갱신한다 — 홈페이지 내용 저장(전체 교체)이 색감 설정을 지우지 않게(독립 필드).
     // showPrice(홈페이지에 작품 가격 보이기, 2026-10-15)도 같다 — 다른 화면이 이 경로를 불러도 켜 둔 걸 끄지 않는다.
     if ('showPrice' in req.body && typeof req.body.showPrice !== 'boolean') throw new AppError('가격 표시 설정이 올바르지 않습니다.', 400);
+    // showAvatar(이름 위 프로필 사진, 2026-10-28)도 보냈을 때만
+    if ('showAvatar' in req.body && typeof req.body.showAvatar !== 'boolean') throw new AppError('프로필 사진 표시 설정이 올바르지 않습니다.', 400);
     const data = {
       ...base,
       ...('designConfig' in req.body ? { designConfig: sanitizeDesignConfig(req.body.designConfig) } : {}),
       ...('showPrice' in req.body ? { showPrice: req.body.showPrice as boolean } : {}),
+      ...('showAvatar' in req.body ? { showAvatar: req.body.showAvatar as boolean } : {}),
     };
     // 포트폴리오 파일(PDF/HWP, 최대 20MB)을 바꾸거나 지우면 옛 파일을 스토리지에서 지운다 — 아바타·작품 사진은 지우는데 여기만 빠져 있었다(감사 M22)
     const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });

@@ -17,7 +17,7 @@ const OPTIONS = [
     value: false,
     icon: Layers,
     label: '전시까지 진행',
-    desc: '지원 → 수락 → 출품 자료 → 전시 → 정산',
+    desc: '지원 → 수락 → 자료 출품 → 전시 → 정산',
     note: '작가 출품자료를 받고 전시 운영·판매 정산까지 이 페이지에서 합니다.',
   },
   {

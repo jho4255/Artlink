@@ -2864,3 +2864,18 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - 화면: `components/admin/HostedContentEditModal.tsx`([주최 공모] 카드 [제목·소개 수정] — 제목 input + `LazyRichTextEditor`, 바뀐 것만 PATCH, 닫기 전 `ConfirmDialog`) ·
   `ExhibitionDetailPage` 제목 옆 [수정](`canEditTitle`). 권한 판정 `lib/exhibitionHost.ts canEditTitle` · `EXHIBITION_TITLE_MAX`(100).
 
+
+### 공모 일정 달력 · 홈페이지 프로필 사진 (2026-10-28, CLAUDE.md 77)
+- **일정 달력**(Skyscanner 가는 날/오는 날 방식): 판단 `frontend/src/lib/scheduleCalendar.ts`(순수 — `stepMin`·`applyPick`·`monthGrid`·`todayKst`·`exhibitionSchedule`),
+  화면 `components/shared/SchedulePicker.tsx`. 갤러리 공모 등록(`MyPage` 일정 구역)·아트링크 주최 공모 등록(`HostedExhibitionsSection`)이 같이 쓴다.
+  칸 = 버튼(id 는 예전 그대로 `ex-start`…, 주최 `hosted-…`) → 넓은 화면은 칸들 아래 패널(칸 폭 ≥560px 이면 두 달) / 휴대폰(<640px)은 아래에서 올라오는 창(z-50, 한 달).
+  고르면 다음 칸으로(`applyPick` — 순서가 깨진 뒤 칸은 '' 로 비운다), 마지막이면 닫힌다. 고를 수 있는 날 = 한국 오늘 이후 + 앞 칸 + 간격(마감 이후 자료 제출·전시 시작은 다음 날부터).
+  값은 그대로 'YYYY-MM-DD' — 저장·임시저장·서버 검사(`validateExhibitionDates`)는 바뀌지 않았다. E2E 는 `pickSchedule`(e2e/lib/helpers.ts).
+- **프로필 사진**: `Portfolio.showAvatar Boolean @default(false)`(마이그레이션 `20261028120000_portfolio_show_avatar`). `PUT /portfolio` 는 보냈을 때만 바꾸고(boolean 아니면 400),
+  공개 `GET /portfolio/:id` 가 `showAvatar` 를 싣는다(사진 주소는 원래 싣던 `user.avatar`). `HomepageView` 가 켜졌고 사진이 있을 때 이름 위에 원(PC 112px · 휴대폰 80px · 미리보기 64px)을 그리고
+  이름을 한 단계 줄인다(6xl→5xl · 4xl→3xl). 편집은 [소개] 맨 위 `ProfilePhotoField`(sections.tsx) — 업로드는 `lib/avatarUpload.ts uploadAvatar`(프로필 카드와 공용, 즉시 저장), 보이기는 [저장].
+- **포스터 미리보기**(같은 날): `EditableField.tsx HeroImageEdit` 에 `fit` — `contain` 이면 흐린 배경(같은 사진 blur) + `object-contain`(목록 카드 `SkeletonImage blurFill` 과 같은 모양).
+  공모 등록(갤러리)·주최 공모 등록(210:297)·전시 등록(4:3)이 쓴다.
+- **홈페이지 [수정] 자리**: `HomepageView` 의 `ownerAction`(주인만, PortfolioPage 가 넣는다) — 머리말 격자 `grid-cols-[minmax(0,1fr)_auto]` 의 오른쪽 위 칸. 액션 줄은 휴대폰 둘째 줄 · PC 오른쪽 아래.
+- **주최 공모 등록 폼**(같은 날): `HostedExhibitionsSection` 의 폼을 갤러리 공모 등록(MyPage)과 같은 `FormSection`/`FormField`/`formInputCls` 틀로 — 1 진행 범위 · 2 운영 갤러리(`GalleryPicker bare`) ·
+  3 공고 내용(포스터 168px + 구분·지역·제목·모집 인원, 소개, 첨부) · 4 일정(`SchedulePicker` form, 칸 id `hosted-*`) · 5 추가 질문. 등록 로직(`submit`·`createMutation`·확인창)은 그대로.

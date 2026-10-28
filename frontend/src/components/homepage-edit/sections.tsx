@@ -1,5 +1,9 @@
+import { useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Camera } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { formInputCls } from '@/lib/formStyles';
+import { uploadAvatar } from '@/lib/avatarUpload';
 import { cn } from '@/lib/utils';
 import { portfolioFileKind } from '@/lib/portfolioFile';
 import type { EditField } from '@/lib/homepageEdit';
@@ -25,7 +29,80 @@ import type { Career, PortfolioImage } from '@/types';
 export const fieldId = (name: string) => `hpe-field-${name}`;
 const area = (extra: string) => cn(formInputCls(), 'leading-relaxed', extra);
 
-export function IntroSection({ tagline, onTagline, statement, onStatement, series, seriesNotes, onSeriesNote, onField }: {
+/**
+ * 프로필 사진 — 홈페이지 이름 위 동그라미(2026-10-28 사용자 요청, **고를 때만** 보인다).
+ * 사진은 마이페이지 프로필 사진(User.avatar)과 **같은 사진**이다 — 올리면 그 자리에서 바로 바뀐다(작품 사진처럼).
+ * 보일지 말지(`showAvatar`)는 글과 함께 아래 [저장] 으로 정해진다. 여기서 사진을 올리면 보이게 켠다(보이려고 올린 것이다).
+ * 기본 꺼짐인 이유: 카카오로 가입하면 카카오 프로필 사진이 이미 들어 있다 — 작가가 고르지 않은 사진이 홈페이지에 뜨면 안 된다.
+ */
+export function ProfilePhotoField({ avatar, name, show, onShow, onAvatar }: {
+  avatar?: string | null;
+  name: string;
+  show: boolean; onShow: (v: boolean) => void;
+  onAvatar: (url: string) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const upload = async (f: File) => {
+    setBusy(true);
+    try {
+      const url = await uploadAvatar(f);
+      onAvatar(url);
+      onShow(true);
+      toast.success('프로필 사진을 바꿨어요.');
+    } catch (e) {
+      toast.error(e instanceof Error && e.message.startsWith('이미지 용량') ? e.message : '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <p className="mb-1.5 text-sm font-medium text-gray-800">프로필 사진 <span className="font-normal text-gray-400">(선택)</span></p>
+      <div className="flex items-center gap-4">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-xl font-semibold text-gray-400">
+          {avatar ? <img src={avatar} alt="" className="h-full w-full object-cover" /> : name.charAt(0)}
+        </div>
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={busy}
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-300 px-4 text-sm text-gray-800 hover:border-gray-500 disabled:opacity-50"
+        >
+          <Camera size={15} aria-hidden /> {busy ? '올리는 중…' : avatar ? '사진 바꾸기' : '사진 올리기'}
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          data-testid="homepage-avatar-input"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ''; }}
+        />
+      </div>
+      <label className="mt-3 flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
+        <input
+          type="checkbox"
+          checked={show}
+          onChange={(e) => onShow(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 accent-gray-900"
+          data-testid="show-avatar"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm text-gray-900">홈페이지 이름 위에 프로필 사진 보이기</span>
+          <span className="mt-0.5 block break-keep text-xs leading-relaxed text-gray-500">
+            마이페이지 프로필 사진과 같은 사진이에요. 사진은 올리는 즉시 바뀌고, 보일지 말지는 아래 [저장] 으로 정해져요.
+          </span>
+          {show && !avatar && <span className="mt-1 block break-keep text-xs text-accent">아직 사진이 없어요 — 사진을 올려야 홈페이지에 보입니다.</span>}
+        </span>
+      </label>
+    </div>
+  );
+}
+
+export function IntroSection({ tagline, onTagline, statement, onStatement, series, seriesNotes, onSeriesNote, onField, photo }: {
+  /** 맨 위 프로필 사진 칸 — 이름·한 줄 소개와 같은 머리말에 나오므로 여기 둔다 */
+  photo: ReactNode;
   tagline: string; onTagline: (v: string) => void;
   statement: string; onStatement: (v: string) => void;
   /** 작품에 실제로 붙어 있는 시리즈 이름 */
@@ -36,6 +113,7 @@ export function IntroSection({ tagline, onTagline, statement, onStatement, serie
 }) {
   return (
     <div className="space-y-6">
+      {photo}
       <div onFocusCapture={() => onField('tagline')}>
         <FormField label="한 줄 소개" htmlFor={fieldId('tagline')} hint="홈페이지에서 이름 바로 아래에 나옵니다.">
           <input

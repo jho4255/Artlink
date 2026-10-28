@@ -434,6 +434,8 @@ export interface Portfolio {
   designConfig?: unknown; // 포트폴리오 PDF 가이드형 디자인(색감 팔레트 등) — normalizePdfDesign 통과시켜 사용
   /** 홈페이지에 작품 가격을 보이는가(기본 꺼짐, 2026-10-15) — PDF 는 designConfig.showPrice 가 따로 정한다 */
   showPrice?: boolean;
+  /** 홈페이지 이름 위에 프로필 사진(User.avatar)을 보이는가(기본 꺼짐, 2026-10-28) */
+  showAvatar?: boolean;
   images: PortfolioImage[];
   /** PDF 버전(작품 선택·순서·디자인 묶음). 내 포트폴리오 조회에만 실린다 (2026-09-16) */
   versions?: PortfolioVersion[];
@@ -513,6 +515,8 @@ export interface PublicPortfolio {
   themeId?: string | null;
   seriesInfo?: SeriesInfo[] | null;
   designConfig?: unknown;
+  /** 이름 위 프로필 사진을 보이는가(2026-10-28) */
+  showAvatar?: boolean;
   images: PortfolioImage[];
   user: { id: number; name: string; nickname?: string | null; handle?: string | null; avatar?: string; instagramUrl?: string | null };
 }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab, typeRich } from '../lib/helpers';
+import { openAs, openMyPageTab, typeRich, pickSchedule, kstDay } from '../lib/helpers';
 
 /**
  * 공모 등록 풀 UI 폼: 갤러리선택 + 제목 + 4개 날짜 + 소개 + 약관동의 → 등록요청
@@ -24,12 +24,14 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
   /* 날짜 5칸 — 2026-08-19 에 **[작가 자료제출 마감일]이 필수로 추가**됐다.
      순서 규칙: 공모마감 < 자료제출마감 < 전시시작 (서버가 검사한다).
      2026-09-29 부터 칸이 **일어나는 순서대로** 놓인다(예전엔 자료제출 마감이 맨 끝이었다) — 위치 대신 id 로 채운다. */
-  const d = (days: number) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
-  await gallery.page.locator('#ex-start').fill(d(0));        // 공모 시작 = 오늘 (미래면 접수중 목록에 안 뜬다)
-  await gallery.page.locator('#ex-deadline').fill(d(60));    // 공모 마감
-  await gallery.page.locator('#ex-submission').fill(d(75));  // 작가 자료제출 마감 (마감 60 < 75 < 전시시작 90)
-  await gallery.page.locator('#ex-show-start').fill(d(90));  // 전시 시작
-  await gallery.page.locator('#ex-show-end').fill(d(120));   // 전시 종료
+  // 2026-10-28 부터 날짜는 달력으로 고른다 — 하나 고르면 다음 칸으로 넘어간다(pickSchedule)
+  await pickSchedule(gallery.page, '#ex-start', [
+    kstDay(0),    // 공모 시작 = 오늘 (미래면 접수중 목록에 안 뜬다)
+    kstDay(60),   // 공모 마감
+    kstDay(75),   // 작가 자료제출 마감 (마감 60 < 75 < 전시시작 90)
+    kstDay(90),   // 전시 시작
+    kstDay(120),  // 전시 종료
+  ]);
   // 한눈에 보는 일정 줄 — 칸을 채우면 아래에 요약이 뜬다
   await expect(gallery.page.getByText(/지원 \d+\/\d+–\d+\/\d+ · 자료 제출 ~\d+\/\d+ · 전시/)).toBeVisible();
 

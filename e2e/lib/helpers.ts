@@ -370,7 +370,8 @@ export async function myPageMenuVisible(page: Page, label: string): Promise<bool
  *    새 필수 필드가 생기면 여기 한 곳만 고치면 된다.
  */
 export function exhibitionDates(now = Date.now()) {
-  const day = (n: number) => new Date(now + n * 864e5).toISOString().slice(0, 10);
+  // 한국 날짜로(2026-10-28) — 등록 폼의 달력은 한국 오늘보다 이른 날을 못 고른다. UTC 로 두면 한국 0~9시엔 '어제'가 나와 고를 수 없다
+  const day = (n: number) => new Date(now + 9 * 3600e3 + n * 864e5).toISOString().slice(0, 10);
   return {
     deadlineStart: day(0),        // 접수 시작
     deadline: day(30),            // 지원 마감
@@ -572,4 +573,27 @@ export async function typeRich(page: Page, name: string | RegExp, text: string) 
   await expect(editor).toBeVisible({ timeout: 15000 });   // 편집기는 필요할 때 받는 청크다
   await editor.click();
   await page.keyboard.type(text);
+}
+
+/** 한국 날짜 'YYYY-MM-DD' — 오늘에서 n 일 뒤 */
+export const kstDay = (n = 0, now = Date.now()) => new Date(now + 9 * 3600e3 + n * 864e5).toISOString().slice(0, 10);
+
+/**
+ * 공모 등록 폼의 일정 달력으로 날짜를 고른다 (2026-10-28 — 칸이 `<input type="date">` 가 아니라 달력이다, components/shared/SchedulePicker).
+ * `opener` 칸(예: '#ex-start')을 눌러 열고, 날짜를 **순서대로** 누른다 — 하나 고르면 달력이 다음 칸으로 넘어가므로 칸을 다시 누를 필요가 없다.
+ * 보이는 달에 그 날이 없으면 [다음 달] 을 누른다. 마지막 칸을 고르면 달력이 닫힌다.
+ */
+export async function pickSchedule(page: Page, opener: string, dates: string[]) {
+  await page.locator(opener).click();
+  for (const ymd of dates) {
+    for (let i = 0; ; i++) {
+      const day = page.locator(`[data-schedule-day="${ymd}"]`).first();
+      if (await day.isVisible().catch(() => false)) { await day.click(); break; }
+      if (i > 36) throw new Error(`달력에서 ${ymd} 를 찾지 못했다`);
+      await page.getByRole('button', { name: '다음 달' }).click();
+    }
+  }
+  // 칸이 남아 있으면(공모만 진행이 아닌데 두 날짜만 고른 경우 등) 달력이 열려 있다 — 닫는다
+  const done = page.getByRole('button', { name: '완료', exact: true });
+  if (await done.isVisible().catch(() => false)) await done.click();
 }

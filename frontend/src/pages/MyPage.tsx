@@ -11,10 +11,13 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, capacityPayload, capacityLimit, capacityWithLimit, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, roleLabel, cn, REGION_CODES } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, capacityPayload, capacityLimit, capacityWithLimit, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, formatPhoneNumber, roleLabel, cn, REGION_CODES } from '@/lib/utils';
 import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type TaskTarget } from '@/lib/flowLabels';
 import TaskLine from '@/components/flow/TaskLine';
 import { scheduleSummary } from '@/lib/scheduleSummary';
+import { exhibitionSchedule } from '@/lib/scheduleCalendar';
+import SchedulePicker from '@/components/shared/SchedulePicker';
+import { uploadAvatar } from '@/lib/avatarUpload';
 import StatusChip from '@/components/flow/StatusChip';
 import Notice from '@/components/flow/Notice';
 import DraftNotice from '@/components/flow/DraftNotice';
@@ -64,7 +67,7 @@ import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
 import { AttachmentEditor, AttachmentList } from '@/components/shared/ExhibitionAttachments';
-import { ATTACHMENT_MAX, ATTACHMENT_TYPES_TEXT, normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
+import { ATTACHMENT_TYPES_TEXT, normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
 import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
 
 const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
@@ -329,22 +332,11 @@ function ProfileCard() {
   const handleAvatarUpload = async (rawFile: File) => {
     setUploading(true);
     try {
-      const file = await compressImage(rawFile);
-      if (file.size > MAX_IMAGE_BYTES) {
-        toast.error(`이미지 용량이 너무 큽니다. (최대 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)`);
-        return;
-      }
-      const formData = new FormData();
-      formData.append('image', file);
-      const uploadRes = await api.post('/upload/image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const avatarUrl = uploadRes.data.url;
-      await api.put('/auth/me/avatar', { avatar: avatarUrl });
+      const avatarUrl = await uploadAvatar(rawFile);
       updateUser({ avatar: avatarUrl });
       toast.success('프로필 사진이 변경되었습니다.');
-    } catch {
-      toast.error('프로필 사진 변경에 실패했습니다.');
+    } catch (e) {
+      toast.error(e instanceof Error && e.message.startsWith('이미지 용량') ? e.message : '프로필 사진 변경에 실패했습니다.');
     } finally {
       setUploading(false);
     }
@@ -2107,7 +2099,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   const summary = scheduleSummary(form);
   const flowSteps = form.recruitOnly
     ? ['등록 요청', '관리자 승인', '지원 모집', '작가 선정']
-    : ['등록 요청', '관리자 승인', '지원 모집', '작가 선정', '출품 자료', '전시', '정산'];
+    : ['등록 요청', '관리자 승인', '지원 모집', '작가 선정', '자료 출품', '전시', '정산'];
 
   return (
     <div>
@@ -2151,12 +2143,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 />
               </FormSection>
 
-              <FormSection n={2} title="공고 내용" description="모집공고 목록과 상세 페이지에 그대로 보여요.">
+              <FormSection n={2} title="공고 내용">
                 <div className="grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]">
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-gray-800">포스터</p>
-                    <HeroImageEdit value={form.imageUrl} onChange={(url) => setForm({ ...form, imageUrl: url })} onRemove={() => setForm({ ...form, imageUrl: '' })} className="aspect-[210/297] w-full max-w-[168px] rounded-lg" label="포스터" />
-                    <p className="mt-1.5 text-xs leading-relaxed text-gray-500">세로형(A4 비율)을 권해요. 목록 카드에 이 비율로 보여요.</p>
+                    {/* 목록 카드와 같은 모양으로 — 자르지 않고 남는 자리는 흐린 배경(2026-10-28, 예전엔 꽉 채우느라 잘려 보였다) */}
+                    <HeroImageEdit fit="contain" value={form.imageUrl} onChange={(url) => setForm({ ...form, imageUrl: url })} onRemove={() => setForm({ ...form, imageUrl: '' })} className="aspect-[210/297] w-full max-w-[168px]" label="포스터" />
                   </div>
                   <div className="min-w-0 space-y-4">
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -2184,7 +2176,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                     </FormField>
                     {/* 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 갤러리가 '5명만 지원받는다'로 오해하지 않게 적어 둔다 */}
                     {/* 0명·00명(2026-10-14) — 공고에는 그 글자만, 수락은 9·99명까지(components/shared/CapacityPicker) */}
-                    <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="ex-capacity" hint="지원은 제한 없이 받고, 이 인원까지 수락할 수 있어요. 승인 뒤에도 [지원자]에서 바꿀 수 있어요.">
+                    <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="ex-capacity">
                       <CapacityPicker
                         inputId="ex-capacity"
                         error={formErrors.has('capacity')}
@@ -2196,7 +2188,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 </div>
                 {/* 서식 있는 글(2026-10-03, 갤러리 소개와 같은 편집기) — 제목·굵게·목록·링크. 서버가 허용 목록으로 걸러 저장한다.
                     ⚠️ 값은 함수형으로 갱신할 것 — 편집기가 처음 받은 콜백을 붙들 수 있어, `{ ...form }` 이면 그사이 고친 다른 칸을 되돌린다 */}
-                <FormField label="공모 소개 *" error={formErrors.has('description')} className="mt-5" hint="제목·굵게·목록·링크 같은 서식을 쓸 수 있어요.">
+                <FormField label="공모 소개 *" error={formErrors.has('description')} className="mt-5">
                   <div id="ex-desc" data-form-error={formErrors.has('description') || undefined} className={cn('rounded-lg', formErrors.has('description') && 'ring-1 ring-accent')}>
                     <LazyRichTextEditor
                       value={form.description}
@@ -2211,7 +2203,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 <FormField
                   label="첨부파일 (선택)"
                   className="mt-5"
-                  hint={`모집 요강·지원서 양식 같은 파일을 붙이면 공고 상세에서 누구나 내려받을 수 있어요. ${ATTACHMENT_TYPES_TEXT}, 한 파일 20MB, ${ATTACHMENT_MAX}개까지.`}
+                  hint={`첨부 가능 형식: ${ATTACHMENT_TYPES_TEXT}`}
                 >
                   <AttachmentEditor
                     value={form.attachments}
@@ -2223,36 +2215,21 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
 
               <FormSection n={3} title="일정">
                 {/* 칸 순서가 곧 시간 순서다 — 예전엔 공모 → 전시 → 자료 제출 순이라 위부터 채우면 순서 오류가 났다.
-                    min/max 로 달력 자체를 막아, 틀린 날짜를 고르고 저장에서 튕기는 일이 없게 한다. */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField label="공모 시작일 *" error={formErrors.has('deadlineStart')} htmlFor="ex-start" hint="이날부터 지원을 받아요.">
-                    <input id="ex-start" type="date" data-form-error={formErrors.has('deadlineStart') || undefined} value={form.deadlineStart} onChange={e => { setForm({ ...form, deadlineStart: e.target.value }); clearError('deadlineStart'); }} max={form.deadline || undefined} className={formInputCls(formErrors.has('deadlineStart'))} />
-                  </FormField>
-                  <FormField label="공모 마감일 *" error={formErrors.has('deadline')} htmlFor="ex-deadline" hint="이날이 지나면 지원이 닫혀요.">
-                    <input id="ex-deadline" type="date" data-form-error={formErrors.has('deadline') || undefined} value={form.deadline} onChange={e => { setForm({ ...form, deadline: e.target.value }); clearError('deadline'); }} min={form.deadlineStart || undefined} max={form.submissionDeadline || form.exhibitStartDate || form.exhibitDate || undefined} className={formInputCls(formErrors.has('deadline'))} />
-                  </FormField>
-                  {/* ⚠️ 공모만 진행하면 자료 제출·전시가 없다 — 비활성이 아니라 칸 자체를 없앤다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
-                  {!form.recruitOnly && (
-                    <>
-                      <FormField className="sm:col-span-2" label="출품 자료 제출 마감일 *" error={formErrors.has('submissionDeadline')} htmlFor="ex-submission" hint="수락한 작가가 출품작·약력·작가노트를 내는 기한이에요. 공모 마감일과 전시 시작일 사이로 정해 주세요.">
-                        <input id="ex-submission" type="date" data-form-error={formErrors.has('submissionDeadline') || undefined} value={form.submissionDeadline} onChange={e => { setForm({ ...form, submissionDeadline: e.target.value }); clearError('submissionDeadline'); }} min={form.deadline || undefined} max={form.exhibitStartDate || form.exhibitDate || undefined} className={cn(formInputCls(formErrors.has('submissionDeadline')), 'sm:max-w-[calc(50%-0.5rem)]')} />
-                      </FormField>
-                      <FormField label="전시 시작일 *" error={formErrors.has('exhibitStartDate')} htmlFor="ex-show-start" hint="이날이 되면 전시가 자동으로 확정되고, 작가는 출품 자료를 더 고칠 수 없어요.">
-                        <input id="ex-show-start" type="date" data-form-error={formErrors.has('exhibitStartDate') || undefined} value={form.exhibitStartDate} onChange={e => { setForm({ ...form, exhibitStartDate: e.target.value }); clearError('exhibitStartDate'); }} min={form.submissionDeadline || form.deadline || undefined} max={form.exhibitDate || undefined} className={formInputCls(formErrors.has('exhibitStartDate'))} />
-                      </FormField>
-                      <FormField label="전시 종료일 *" error={formErrors.has('exhibitDate')} htmlFor="ex-show-end" hint="전시가 끝나면 판매 내역을 입력해 정산해요.">
-                        <input id="ex-show-end" type="date" data-form-error={formErrors.has('exhibitDate') || undefined} value={form.exhibitDate} onChange={e => { setForm({ ...form, exhibitDate: e.target.value }); clearError('exhibitDate'); }} min={form.exhibitStartDate || form.deadline || undefined} className={formInputCls(formErrors.has('exhibitDate'))} />
-                      </FormField>
-                    </>
-                  )}
-                </div>
+                    달력 하나를 칸들이 나눠 쓴다(2026-10-28, Skyscanner 방식): 고르면 다음 칸으로 넘어가고, 지난 날·앞 칸보다 이른 날은 못 고른다.
+                    ⚠️ 공모만 진행하면 자료 제출·전시가 없다 — 비활성이 아니라 칸 자체를 없앤다(2026-09-19 사용자 지적). 서버도 요구하지 않는다. */}
+                <SchedulePicker
+                  {...exhibitionSchedule(!!form.recruitOnly)}
+                  values={form}
+                  errors={formErrors}
+                  onChange={(patch) => { setForm(prev => ({ ...prev, ...patch })); Object.keys(patch).forEach(clearError); }}
+                />
                 {summary && <p className="mt-5 text-sm text-gray-700"><span className="text-gray-400">한눈에 · </span>{summary}</p>}
                 {dateError && (
                   <p className="mt-2 flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} aria-hidden /> {dateError}</p>
                 )}
               </FormSection>
 
-              <FormSection n={4} title="추가 질문 (선택)" description="지원서에 더 물어볼 게 있으면 넣으세요. 설치 가능 일정, 작품 운송 방식 같은 것들이에요.">
+              <FormSection n={4} title="추가 질문 (선택)">
                 <CustomQuestionBuilder
                   bare
                   fields={form.customFields}
@@ -2289,7 +2266,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                 </button>
                 <button type="button" onClick={() => { if (isDirty) { setConfirmAction('cancel'); } else if (createOnly) { navigate(-1); } else { setShowForm(false); setExhibitionAgreed(false); setFormErrors(new Set()); } }} className="min-h-[44px] px-3 text-sm text-gray-500 hover:text-gray-900">취소</button>
                 {draftSavedAt && <span className="text-xs text-gray-400">{savedAtLabel(draftSavedAt)} 저장됨</span>}
-                <p className="w-full text-xs text-gray-500">등록을 요청하면 관리자가 확인한 뒤 모집공고에 올려요. 승인되면 알림으로 알려 드려요. 쓰던 내용은 이 브라우저에 자동으로 저장돼요.</p>
+                <p className="w-full text-xs text-gray-500">등록을 요청하면 관리자가 확인 후 모집공고에 등록해요.</p>
               </div>
             </>
           )}
@@ -2795,7 +2772,7 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
           )}
           <p className="text-xs text-gray-400">실제 전시 상세 페이지에 보일 모습입니다. 칸을 눌러 바로 입력하세요.</p>
           <div className="rounded-2xl overflow-hidden border border-gray-200 bg-white">
-            <HeroImageEdit value={form.posterImage} onChange={(url) => setForm({ ...form, posterImage: url })} onRemove={() => setForm({ ...form, posterImage: '' })} className="w-full aspect-[4/3]" label="포스터 이미지" />
+            <HeroImageEdit fit="contain" value={form.posterImage} onChange={(url) => setForm({ ...form, posterImage: url })} onRemove={() => setForm({ ...form, posterImage: '' })} className="w-full aspect-[4/3]" label="포스터 이미지" />
             <div className="p-5 space-y-3">
               <div className="flex flex-wrap gap-2 items-center">
                 <select value={form.galleryId} onChange={e => {

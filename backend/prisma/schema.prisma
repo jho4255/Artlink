@@ -546,6 +546,8 @@ model Portfolio {
   designConfig      String? // 가이드형 디자인 JSON: { theme, works, sections:[{id,enabled}] }. null=기본(현재 모습)
   /// 홈페이지에 작품 가격을 보이는가(2026-10-15, 기본 꺼짐) — 켜도 판매완료·비매 작품은 안 보인다. PDF 는 designConfig.showPrice 가 따로 정한다
   showPrice         Boolean            @default(false)
+  /// 홈페이지 이름 위에 프로필 사진(User.avatar)을 보이는가(2026-10-28, 기본 꺼짐) — 카카오 가입이면 카카오 프로필 사진이 들어 있어 작가가 고를 때만 보인다
+  showAvatar        Boolean            @default(false)
   userId            Int                @unique
   user              User               @relation(fields: [userId], references: [id])
   images            PortfolioImage[]

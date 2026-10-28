@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle, typeRich } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle, typeRich, pickSchedule } from '../lib/helpers';
 
 /**
  * 공모 두 가지 새 규칙 (2026-09-10)
@@ -33,11 +33,8 @@ test.describe('아트링크가 갤러리를 안 끼고 여는 공모', () => {
     await expect(page.getByText('아트링크(관리자)가 직접 운영', { exact: false })).toBeVisible();
 
     await page.getByPlaceholder('공모 제목').fill(title);
-    await page.locator('input[type="date"]').nth(0).fill(d.deadlineStart);
-    await page.locator('input[type="date"]').nth(1).fill(d.deadline);
-    await page.locator('input[type="date"]').nth(2).fill(d.exhibitStartDate);
-    await page.locator('input[type="date"]').nth(3).fill(d.exhibitDate);
-    await page.locator('input[type="date"]').nth(4).fill(d.submissionDeadline);
+    // 일정은 달력으로(2026-10-28) — 일어나는 순서대로 고른다
+    await pickSchedule(page, '#hosted-start', [d.deadlineStart, d.deadline, d.submissionDeadline, d.exhibitStartDate, d.exhibitDate]);
     await typeRich(page, '공모 소개', '운영 갤러리 없이 여는 기획 공모입니다.');   // 서식 있는 글 편집기(2026-10-03)
 
     await page.getByRole('button', { name: '등록', exact: true }).click();
@@ -102,8 +99,7 @@ test.describe('공모만 진행하는 공고', () => {
     // 칸은 id 로 채운다 — 순서로 집으면 칸이 빠지거나 옮겨질 때마다 엉뚱한 칸에 들어간다(2026-09-29 순서 변경)
     await page.locator('#ex-gallery').selectOption({ index: 1 });
     await page.locator('#ex-title').fill(title);
-    await page.locator('#ex-start').fill(d.deadlineStart);
-    await page.locator('#ex-deadline').fill(d.deadline);
+    await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline]);   // 공모만 진행 — 두 칸뿐(달력으로, 2026-10-28)
     await typeRich(page, '공모 소개', '지원자 선정까지만 진행합니다.');
     await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
     await page.getByRole('button', { name: '등록 요청', exact: true }).click();

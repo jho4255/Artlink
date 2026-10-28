@@ -16,7 +16,7 @@ import {
 } from '@/lib/homepageTheme';
 import { artistPath, artistUrl, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import { normalizePdfDesign } from '@/lib/portfolioFormats';
-import { cn } from '@/lib/utils';
+import { cn, displayName } from '@/lib/utils';
 import { useCareerColumns } from '@/hooks/useCareerColumns';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import PageTabBar from '@/components/shared/PageTabBar';
@@ -25,7 +25,7 @@ import CompletenessLine from '@/components/shared/CompletenessLine';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import WorksSection from './WorksSection';
 import PreviewSheet from './PreviewSheet';
-import { CvSection, FileSection, IntroSection, StyleSection, fieldId } from './sections';
+import { CvSection, FileSection, IntroSection, ProfilePhotoField, StyleSection, fieldId } from './sections';
 import type { Career, Portfolio, PortfolioImage } from '@/types';
 import { EMPTY_CAREER } from '@/types';
 
@@ -57,8 +57,8 @@ import { EMPTY_CAREER } from '@/types';
  */
 const signatureOf = (v: {
   biography: string; statement: string; tagline: string; career: Career;
-  portfolioFileUrl: string | null; seriesNotes: Record<string, string>; design: HomepageThemeKeys; showPrice: boolean;
-}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design, v.showPrice]);
+  portfolioFileUrl: string | null; seriesNotes: Record<string, string>; design: HomepageThemeKeys; showPrice: boolean; showAvatar: boolean;
+}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design, v.showPrice, v.showAvatar]);
 
 const errText = (err: unknown, fallback: string) =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
@@ -99,6 +99,8 @@ export default function HomepageEditor() {
   const [design, setDesign] = useState<HomepageThemeKeys>(DEFAULT_THEME_KEYS);
   /** 홈페이지에 작품 가격 보이기([꾸미기], 2026-10-15) — 아래 [저장] 에 함께 실린다 */
   const [showPrice, setShowPrice] = useState(false);
+  /** 홈페이지 이름 위 프로필 사진([소개], 2026-10-28) — 아래 [저장] 에 함께 실린다. 사진 자체는 올리는 즉시 바뀐다 */
+  const [showAvatar, setShowAvatar] = useState(false);
   const [handle, setHandle] = useState(user?.handle ?? '');
   const handleTouched = useRef(false);
   const [handleError, setHandleError] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function HomepageEditor() {
       seriesNotes: Object.fromEntries((portfolio.seriesInfo ?? []).map((s) => [s.name, s.note])),
       design: themeKeysFrom(portfolio.designConfig),
       showPrice: portfolio.showPrice === true,
+      showAvatar: portfolio.showAvatar === true,
     };
     setBiography(init.biography);
     setStatement(init.statement);
@@ -138,6 +141,7 @@ export default function HomepageEditor() {
     setSeriesNotes(init.seriesNotes);
     setDesign(init.design);
     setShowPrice(init.showPrice);
+    setShowAvatar(init.showAvatar);
     setSnapshot(signatureOf(init));
   }, [portfolio]);
 
@@ -207,7 +211,7 @@ export default function HomepageEditor() {
   // 비워 두면 '안 바꾼다' — 주소를 없애는 길은 없다(서버도 빈 값을 받지 않는다)
   const handleChanged = handleNorm !== '' && handleNorm !== (user?.handle ?? '');
   const dirty = snapshot !== null
-    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design, showPrice }) !== snapshot || handleChanged);
+    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design, showPrice, showAvatar }) !== snapshot || handleChanged);
   // 긴 글을 쓰다 다른 메뉴를 눌러도 통째로 사라지지 않게 — 갤러리·공모 폼과 같은 이탈 경고
   useUnsavedChanges(dirty);
 
@@ -245,6 +249,7 @@ export default function HomepageEditor() {
         seriesInfo: foundSeries.map((name) => ({ name, note: (seriesNotes[name] || '').trim() })).filter((s) => s.note),
         ...(designConfig ? { designConfig } : {}),
         showPrice,
+        showAvatar,
       });
       return nextHandle;
     },
@@ -339,6 +344,7 @@ export default function HomepageEditor() {
     seriesInfo: foundSeries.map((name) => ({ name, note: (seriesNotes[name] || '').trim() })).filter((s) => s.note),
     images: previewImages,
     designConfig: previewDesign,
+    showAvatar,
   };
   const previewBg = resolveHomepageTheme(previewDesign).bg;
   const wide = careerColumnCount >= 3;   // lg(1024px) 이상 — 미리보기를 옆에 붙인다
@@ -402,6 +408,15 @@ export default function HomepageEditor() {
           </div>
           {section === 'intro' && (
             <IntroSection
+              photo={(
+                <ProfilePhotoField
+                  avatar={user.avatar}
+                  name={displayName(user)}
+                  show={showAvatar}
+                  onShow={setShowAvatar}
+                  onAvatar={(url) => updateUser({ avatar: url })}
+                />
+              )}
               tagline={tagline} onTagline={setTagline}
               statement={statement} onStatement={setStatement}
               series={foundSeries} seriesNotes={seriesNotes}

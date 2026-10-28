@@ -60,10 +60,15 @@ interface HeroImageEditProps {
   className?: string;   // 래퍼 크기/비율 (예: 'aspect-[4/3]')
   label?: string;
   error?: boolean;
+  /**
+   * cover = 칸을 꽉 채운다(잘린다) · contain = **자르지 않고** 남는 자리를 같은 사진을 흐리게 깔아 채운다 — 목록 카드(`SkeletonImage blurFill`)와 같은 모양.
+   * 포스터는 contain 으로 둘 것(2026-10-28 사용자 지적: 공모 등록 창에서만 포스터가 잘려 보여 실제 모습과 달랐다).
+   */
+  fit?: 'cover' | 'contain';
 }
 
 /** 상세 페이지 대표 이미지 자리 — 클릭하면 업로드, 호버 시 변경/삭제 */
-export function HeroImageEdit({ value, onChange, onRemove, className, label = '대표 이미지', error }: HeroImageEditProps) {
+export function HeroImageEdit({ value, onChange, onRemove, className, label = '대표 이미지', error, fit = 'cover' }: HeroImageEditProps) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -100,7 +105,14 @@ export function HeroImageEdit({ value, onChange, onRemove, className, label = '�
     >
       {value ? (
         <>
-          <img src={value} alt="" className="w-full h-full object-cover" />
+          {fit === 'contain' ? (
+            <>
+              <img src={value} alt="" aria-hidden className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl" />
+              <img src={value} alt="" className="relative h-full w-full object-contain" data-testid="hero-image-preview" />
+            </>
+          ) : (
+            <img src={value} alt="" className="w-full h-full object-cover" />
+          )}
           {/* 터치 기기에는 hover가 없으므로 모바일에서는 항상 노출, md 이상에서만 hover 게이트 */}
           <div className="absolute inset-0 bg-black/20 md:bg-black/0 md:group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100">
             <button type="button" onClick={() => inputRef.current?.click()} className="px-3 min-h-[40px] bg-white/90 text-gray-800 text-xs rounded-lg flex items-center gap-1">
