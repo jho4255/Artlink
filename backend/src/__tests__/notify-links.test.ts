@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ARTIST_EXHIBITION_LINK, artistExhibitionLink, operationLink } from '../lib/notifyLinks';
+import { ARTIST_EXHIBITION_LINK, artistExhibitionLink, inquiryLink, operationLink } from '../lib/notifyLinks';
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf-8');
 
@@ -27,6 +27,15 @@ describe('notifyLinks', () => {
   it('운영자 링크는 그 공모의 운영페이지다', () => {
     expect(operationLink(7)).toBe('/exhibitions/7/operation/new');
     expect(operationLink('7')).toBe('/exhibitions/7/operation/new');
+  });
+
+  it('★ 1:1 문의 알림은 그 문의를 가리키고, 화면이 같은 이름의 값을 읽는다', () => {
+    // 주소는 문자열이라 타입이 못 잡는다 — 한쪽 이름만 바뀌면 알림을 눌러도 FAQ 맨 위에 조용히 떨어진다
+    expect(inquiryLink(9)).toBe('/support?inquiry=9');
+    expect(read('../../frontend/src/pages/SupportPage.tsx')).toContain("searchParams.get('inquiry')");
+    const src = read('routes/inquiry.ts');
+    expect(src.match(/linkUrl:\s*inquiryLink\(/g)?.length, '새 문의·답변 알림 둘 다').toBe(2);
+    expect(src).not.toMatch(/linkUrl:\s*['"`]\/support/);
   });
 
   it('★ 알림 코드에 운영페이지 주소를 직접 적지 않는다 (헬퍼로만)', () => {

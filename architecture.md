@@ -95,7 +95,7 @@ ArtLink/
   - API: `POST /api/exhibitions/:id/images`, `DELETE /api/exhibitions/:id/images/:imageId`(최소1장 400), `PATCH /api/exhibitions/:id/images/reorder`{orderedIds}
 - **지원자 관리**: 공모 상세에서 분리된 별도 페이지 `/exhibitions/:id/applicants` (ApplicantsPage). 연락처(닉네임·전화·이메일)는 지원 시점부터 오너에게 노출(상태 무관). 지원서 PDF 다운로드(지원자별 `공모명_작가명_지원서.pdf` + 전체 ZIP `공모명_지원서.zip`). 기존 CSV 내보내기 제거. (`operationPdf.ts`: downloadApplicationPdf / downloadAllApplicationsZip)
 - **찜(Favorite)**: ARTIST 전용 — 갤러리/공모/전시 목록·상세 모든 곳에서 GALLERY·ADMIN 유저는 하트 버튼 미표시
-- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_REPLY, NEIGHBOR_FOLLOW, GUESTBOOK_NEW, GUESTBOOK_REPLY 등)
+- **Notification** — 인앱 알림 (APPLICATION_STATUS, NEW_APPLICANT, APPROVAL_RESULT, INQUIRY_NEW, INQUIRY_REPLY, NEIGHBOR_FOLLOW, GUESTBOOK_NEW, GUESTBOOK_REPLY 등)
 - **Inquiry** — 1:1 문의 (subject, content, reply, status: OPEN/ANSWERED)
 - **ApprovalRequest** — 수정 승인 요청
 - **Post / PostComment / PostLike** — 커뮤니티(글로벌 게시판). 글마다 anonymous, images[], likeCount/commentCount/viewCount 비정규화
@@ -130,7 +130,7 @@ ArtLink/
 | galleryOfMonth | /api/gallery-of-month | 이달의 갤러리 (자동 만료) |
 | upload | /api/upload | 업로드 (Multer): `/image`(15MB)·`/video`(25MB, 대화 첨부용)·`/file`(20MB, PDF/DOC/HWP/ZIP) |
 | notification | /api/notifications | 인앱 알림 (목록/읽음처리/전체읽음/미읽음카운트) |
-| inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변, 답변 시 알림 트리거) |
+| inquiry | /api/inquiries | 1:1 문의 (작성/목록/상세/Admin답변). 작성 → 관리자 전원 `INQUIRY_NEW`, 답변 → 작성자 `INQUIRY_REPLY`, 링크는 `/support?inquiry=<id>` |
 | admin | /api/admin | (ADMIN 전용) 사용자 검색·역할변경 + 운영 조회: 공모 지원현황/작가 지원이력/갤러리 게시물 |
 | kanban | /api/kanban | (ADMIN 전용) 할 일 보드 — 회의 내용·할 일 정리. 보드/항목/댓글 CRUD, 순서 재배치 |
 | chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만). `GET /:id` 는 **최근 150개**만 주고 `?after=<id>`(폴링, 새 것만)·`?before=<id>`(더 보기)·`?limit=` 지원 — 8초 폴링이 방 전체를 다시 받지 않게(2026-09-04) |

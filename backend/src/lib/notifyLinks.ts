@@ -26,3 +26,10 @@ export const artistExhibitionLink = (exhibitionId: number | string): string =>
 /** 갤러리·Admin(운영자)에게 보내는 알림 — 운영페이지 */
 export const operationLink = (exhibitionId: number | string): string =>
   `/exhibitions/${exhibitionId}/operation/new`;
+
+/**
+ * 1:1 문의 알림 — 고객센터에서 **그 문의를 펼쳐 둔 채로** 연다(관리자·작성자 같은 주소).
+ * `?inquiry=` 를 프론트 `SupportPage` 가 읽는다. 그냥 `/support` 면 FAQ 부터 뜨고 문의는 아래에서 다시 찾아 눌러야 한다.
+ */
+export const inquiryLink = (inquiryId: number | string): string =>
+  `/support?inquiry=${inquiryId}`;

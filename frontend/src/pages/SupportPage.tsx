@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ChevronDown, ChevronUp, MessageCircle, Send, HelpCircle, Trash2, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import WithdrawModal from '@/components/shared/WithdrawModal';
 import type { Inquiry } from '@/types';
@@ -20,6 +20,14 @@ interface Faq {
 }
 
 type FaqCategory = 'ALL' | 'GENERAL' | 'GALLERY' | 'ARTIST';
+
+const fetchFaqs = (): Promise<Faq[]> => api.get('/inquiries/faq').then(r => r.data);
+
+const fetchInquiries = (status: string | null): Promise<Inquiry[]> => {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  return api.get(`/inquiries?${params}`).then(r => r.data);
+};
 
 const CATEGORY_LABELS: Record<FaqCategory, string> = {
   ALL: '전체',
@@ -85,7 +93,7 @@ function FaqSection() {
 
   const { data: faqs = [], isLoading } = useQuery<Faq[]>({
     queryKey: ['faqs'],
-    queryFn: () => api.get('/inquiries/faq').then(r => r.data),
+    queryFn: fetchFaqs,
   });
 
   const createMutation = useMutation({
@@ -314,12 +322,38 @@ function InquirySection() {
   const { data: inquiries = [], isLoading } = useQuery<Inquiry[]>({
     queryKey: ['inquiries', statusFilter],
     enabled: !!user,   // 비로그인은 401 을 네 번 맞고 있었다(2026-09-19)
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (statusFilter) params.set('status', statusFilter);
-      return api.get(`/inquiries?${params}`).then(r => r.data);
-    },
+    queryFn: () => fetchInquiries(statusFilter),
   });
+
+  /*
+    알림에서 왔다 — `/support?inquiry=<id>` 면 그 문의를 펼쳐 두고 그 자리로 내려간다(서버 lib/notifyLinks.ts inquiryLink).
+    ⚠️ 목록 캐시(5분)로 열지 말 것 — 답변 알림을 눌렀는데 '대기중'이 뜨고, 관리자는 새 문의가 목록에 없다. 새로 받아서 연다.
+    ⚠️ 주소에서 값을 뗀다 — 남겨 두면 접은 뒤 같은 알림을 다시 눌러도 주소가 그대로라 열리지 않는다.
+    ⚠️ FAQ 를 기다린다 — 문의보다 늦게 뜨면 그만큼 아래로 밀려 다른 곳을 보게 된다.
+  */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetId = Number(searchParams.get('inquiry')) || null;
+  const signedIn = !!user;
+  useEffect(() => {
+    if (!targetId || !signedIn) return;
+    let live = true;
+    (async () => {
+      const [rows] = await Promise.all([
+        queryClient.fetchQuery({ queryKey: ['inquiries', null], queryFn: () => fetchInquiries(null), staleTime: 0 }),
+        queryClient.ensureQueryData({ queryKey: ['faqs'], queryFn: fetchFaqs }).catch(() => null),
+      ]);
+      if (!live) return;   // StrictMode 의 첫 실행 — 받기는 합쳐지고 여는 건 둘째 실행이 한다
+      const hit = rows.find(r => r.id === targetId);
+      if (hit) {
+        setStatusFilter(null);   // '답변완료'를 보던 관리자에겐 새 문의가 목록에 없다
+        setExpandedId(hit.id);
+        setReplyText(hit.reply ?? '');
+        setTimeout(() => document.querySelector(`[data-inquiry="${hit.id}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
+      }
+      setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('inquiry'); return next; }, { replace: true });
+    })().catch(() => { /* 목록을 못 받았다 — 화면은 평소처럼 */ });
+    return () => { live = false; };
+  }, [targetId, signedIn, queryClient, setSearchParams]);
 
   const createMutation = useMutation({
     mutationFn: (data: { subject: string; content: string }) => api.post('/inquiries', data),
@@ -465,7 +499,8 @@ function InquirySection() {
           {inquiries.map((inq, i) => (
             <div
               key={inq.id}
-              className="border-b border-gray-200 overflow-hidden"
+              data-inquiry={inq.id}
+              className="border-b border-gray-200 overflow-hidden scroll-mt-24"
             >
               <button
                 onClick={() => toggleExpand(inq)}

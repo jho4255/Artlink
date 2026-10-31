@@ -141,6 +141,65 @@ describe('Inquiry Routes', () => {
     });
     expect(notifs.length).toBe(1);
     expect(notifs[0].message).toContain('알림테스트');
+    expect(notifs[0].linkUrl).toBe(`/support?inquiry=${inq.id}`);   // 그 문의를 펼쳐 둔 채로 — FAQ 맨 위가 아니라
+  });
+
+  it('★ 답변을 고치면 작성자에게 \'수정\'으로 알린다 · 같은 글자로 다시 저장하면 알리지 않는다', async () => {
+    const inq = await testPrisma.inquiry.create({ data: { subject: '수정테스트', content: '내용', userId: 1 } });
+    const reply = (text: string) => request.patch(`/api/inquiries/${inq.id}/reply`)
+      .set('Authorization', `Bearer ${authToken(4, 'ADMIN')}`)
+      .send({ reply: text });
+    const messages = async () => (await testPrisma.notification.findMany({
+      where: { userId: 1, type: 'INQUIRY_REPLY' }, orderBy: { id: 'asc' },
+    })).map(n => n.message);
+
+    await reply('처음 답변');
+    await reply('처음 답변');
+    expect(await messages()).toEqual(['문의 "수정테스트"에 답변이 등록되었습니다.']);
+    await reply('고친 답변');
+    expect(await messages()).toEqual([
+      '문의 "수정테스트"에 답변이 등록되었습니다.',
+      '문의 "수정테스트"의 답변이 수정되었습니다.',
+    ]);
+  });
+
+  // 새 문의 알림 — 관리자가 모르면 문의가 그대로 묵는다
+  it('★ 새 문의가 들어오면 관리자 전원에게 알림이 간다 · 그 문의로 가는 링크', async () => {
+    await testPrisma.user.create({ data: { id: 50, email: 'admin2@test.com', name: 'Admin 2', role: 'ADMIN' } });
+    const res = await request.post('/api/inquiries')
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ subject: '작품이 안 올라가요', content: '내용' });
+    expect(res.status).toBe(201);
+
+    const notifs = await testPrisma.notification.findMany({ where: { type: 'INQUIRY_NEW' }, orderBy: { userId: 'asc' } });
+    expect(notifs.map(n => n.userId)).toEqual([4, 50]);
+    expect(notifs[0].message).toContain('작품이 안 올라가요');
+    expect(notifs[0].linkUrl).toBe(`/support?inquiry=${res.body.id}`);
+    expect(notifs[0].read).toBe(false);
+  });
+
+  it('★ 갤러리·일반 회원의 문의도 관리자에게 알린다', async () => {
+    await testPrisma.user.create({ data: { id: 51, email: 'visitor@test.com', name: 'Visitor', role: 'VISITOR' } });
+    await request.post('/api/inquiries').set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`).send({ subject: '갤러리 문의', content: '내용' });
+    await request.post('/api/inquiries').set('Authorization', `Bearer ${authToken(51, 'VISITOR')}`).send({ subject: '일반 문의', content: '내용' });
+    const notifs = await testPrisma.notification.findMany({ where: { userId: 4, type: 'INQUIRY_NEW' } });
+    expect(notifs.length).toBe(2);
+  });
+
+  it('★ 관리자 말고는 새 문의 알림을 받지 않는다 · 탈퇴한 관리자도 받지 않는다', async () => {
+    await testPrisma.user.create({ data: { id: 52, email: 'gone@test.com', name: '탈퇴 관리자', role: 'ADMIN', deletedAt: new Date() } });
+    await request.post('/api/inquiries')
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ subject: '문의', content: '내용' });
+    const notifs = await testPrisma.notification.findMany({ where: { type: 'INQUIRY_NEW' } });
+    expect(notifs.map(n => n.userId)).toEqual([4]);
+  });
+
+  it('문의를 잘못 보내면(400) 알림도 없다', async () => {
+    await request.post('/api/inquiries')
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ subject: '', content: '내용' });
+    expect(await testPrisma.notification.count({ where: { type: 'INQUIRY_NEW' } })).toBe(0);
   });
 
   it('비Admin 답변 불가 (403)', async () => {

@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
+import { inquiryLink } from '../lib/notifyLinks';
 
 const inquiryCreateSchema = z.object({
   subject: z.string().min(1, '제목을 입력해주세요.').max(200, '제목은 200자 이내로 작성해주세요.'),
@@ -130,6 +131,21 @@ router.post('/', authenticate, authorize('ARTIST', 'GALLERY', 'VISITOR'), valida
     const inquiry = await prisma.inquiry.create({
       data: { subject, content, userId: req.user!.id },
     });
+
+    // 새 문의 알림 — 답하는 사람이 아무도 모르면 문의가 그대로 묵는다. 운영자가 여럿일 수 있어 전원에게(탈퇴한 관리자 제외).
+    // 문의는 이미 저장됐으므로 알림이 실패해도 작성자에게 에러를 주지 않는다.
+    try {
+      const admins = await prisma.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true } });
+      await prisma.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          type: 'INQUIRY_NEW',
+          message: `새 1:1 문의가 등록되었습니다: "${subject}"`,
+          linkUrl: inquiryLink(inquiry.id),
+        })),
+      });
+    } catch { /* best-effort */ }
+
     res.status(201).json(inquiry);
   } catch (err) {
     next(err);
@@ -147,17 +163,22 @@ router.patch('/:id/reply', authenticate, authorize('ADMIN'), validate(replySchem
       data: { reply: req.body.reply, status: 'ANSWERED', repliedAt: new Date() },
     });
 
-    // 답변 알림
-    try {
-      await prisma.notification.create({
-        data: {
-          userId: inquiry.userId,
-          type: 'INQUIRY_REPLY',
-          message: `문의 "${inquiry.subject}"에 답변이 등록되었습니다.`,
-          linkUrl: '/support',
-        },
-      });
-    } catch { /* best-effort */ }
+    // 답변 알림 — 글자가 그대로면 보내지 않는다(같은 답변을 다시 저장했을 뿐이다).
+    // 고친 답변은 '수정'으로 알린다: 작성자가 이미 읽은 내용이 바뀌었다는 뜻이라 '등록'과 다르다.
+    if (req.body.reply !== inquiry.reply) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: inquiry.userId,
+            type: 'INQUIRY_REPLY',
+            message: inquiry.reply
+              ? `문의 "${inquiry.subject}"의 답변이 수정되었습니다.`
+              : `문의 "${inquiry.subject}"에 답변이 등록되었습니다.`,
+            linkUrl: inquiryLink(inquiry.id),
+          },
+        });
+      } catch { /* best-effort */ }
+    }
 
     res.json(updated);
   } catch (err) {

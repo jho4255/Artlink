@@ -76,7 +76,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **3000+ tests** (2026-10-28): Backend 1663 (supertest, `artlink_test` DB 순차), Frontend 1410 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **3000+ tests** (2026-10-31): Backend 1669 (supertest, `artlink_test` DB 순차), Frontend 1410 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개 · `78` 4개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -2630,6 +2630,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e `77-schedule-and-avatar.spec.ts`(3 — PC 달력 흐름 · 휴대폰 창이 탭바에 안 가림 · 프로필 사진 켜고 끄기) · `15`·`51`·`70` 은 `pickSchedule` 로 바꿨다 ·
       하니스 `scratchpad/schedule-picker/shot.js`(크롬·`ENGINE=webkit`, 데모 5183 전용).
 
+78. **1:1 문의 알림** (2026-10-31 사용자 요청) — 새 문의는 **관리자 전원**에게(`INQUIRY_NEW`, 탈퇴한 관리자 제외), 답변은 **작성자**에게(`INQUIRY_REPLY`, 작가·갤러리·일반 모두). 벨(사이트 안 알림)만이고 메일은 보내지 않는다.
+    - 링크는 둘 다 `lib/notifyLinks.ts inquiryLink` → `/support?inquiry=<id>` — `InquirySection` 이 그 문의를 펼치고 그 자리로 내려간다. 그냥 `/support` 면 FAQ 부터 뜨고 문의를 다시 찾아 눌러야 했다. 값 이름은 서버·화면이 같아야 한다(`notify-links.test.ts` 가 소스로 대조).
+    - ⚠️⚠️ **목록 캐시(5분)로 열지 말 것** — `fetchQuery({ staleTime: 0 })` 로 새로 받아서 연다. 답변 알림을 눌렀는데 '대기중'이 뜨고, 관리자에겐 새 문의가 목록에 없다(e2e `78` B 가 이 결함을 잡는 것을 일부러 망가뜨려 확인했다).
+    - ⚠️ 연 뒤 **주소에서 값을 뗀다** — 남겨 두면 접고 같은 알림을 다시 눌러도 주소가 그대로라 안 열린다. 남의 문의 번호면 열지 않고 값만 뗀다. '답변완료'를 보던 관리자는 전체로 돌아간다. FAQ 가 늦게 뜨면 아래로 밀리므로 FAQ 도 기다린 뒤 내려간다.
+    - 답변을 고치면 '수정되었습니다' 로 알리고, 같은 글자로 다시 저장하면 알리지 않는다.
+    - 회귀: backend `inquiry.test.ts` · `notify-links.test.ts` · e2e `78-inquiry-notifications.spec.ts`(4 — 벨을 눌러 어디에 도착하는가).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -2669,7 +2676,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 | `['approvals']` | MyPage Admin | 승인/거절 |
 | `['notifications']` | Navbar 알림 dropdown | 읽음/전체읽음 |
 | `['unread-count']` | Navbar 벨 뱃지 | 30초 polling, 읽음/전체읽음 |
-| `['inquiries']` | SupportPage | 문의 작성/답변 |
+| `['inquiries', status]` | SupportPage | 문의 작성/답변 · 알림으로 들어오면 `['inquiries', null]` 을 새로 받는다(규칙 78) |
 | `['community', sort, scope]` | CommunityPage 목록(scope=all/mine/commented) | 글쓰기·좋아요·삭제 |
 | `['community','post', id]` | CommunityPostPage 상세 | 좋아요·댓글 CUD |
 | `['community-popular']` | 홈 인기글 위젯 | 글쓰기·좋아요 |
