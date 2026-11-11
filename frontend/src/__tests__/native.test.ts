@@ -333,6 +333,16 @@ describe('소스 가드 — 설계가 조용히 무너지지 않게', () => {
     expect(fn.indexOf('return;')).toBeLessThan(fn.indexOf('super.onReceivedHttpError'));   // 우리 서버 오류(배포 중 502 등)는 그대로 오류 화면
   });
 
+  it('★ intent:// 로 다른 앱을 열 때 권한 넘기기·첨부를 지우고, 기기 안 파일 주소는 열지 않는다(2026-11-11 보안 검토)', () => {
+    const java = read(join(REPO, 'mobile/android/app/src/main/java/cc/artlink/app/ArtLinkShellPlugin.java'));
+    const fn = java.slice(java.indexOf('private void openIntentUrl'));
+    const launch = fn.indexOf('startActivity(intent)');
+    for (const must of ['intent.setFlags(0)', 'intent.setClipData(null)', '"content".equals(dataScheme)', '"file".equals(dataScheme)']) {
+      expect(fn.indexOf(must), must).toBeGreaterThan(0);
+      expect(fn.indexOf(must), must).toBeLessThan(launch);
+    }
+  });
+
   it('개인정보처리방침에 적었다 — 앱 알림 기기 토큰(수집·보관)·알림 발송 위탁(Firebase)', () => {
     const src = read(join(SRC, 'pages/PrivacyPage.tsx'));
     expect(src).toContain('기기 알림 토큰');

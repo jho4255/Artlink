@@ -188,6 +188,15 @@ describe('벨 알림 → 기기 푸시 (Prisma 갈고리 한 곳)', () => {
     expect(bell.message).toBe(`${name}님의 새 메시지: 작품 잘 봤어요`);
   });
 
+  it('★ 7일(로그인 유효기간) 넘게 앱을 열지 않은 기기로는 보내지 않는다 — 남의 폰에 로그인해 두고 잊은 경우', async () => {
+    await putToken(1, 'ARTIST', TOKEN_A);
+    await putToken(1, 'ARTIST', TOKEN_B);
+    await testPrisma.pushToken.update({ where: { token: TOKEN_B }, data: { lastSeenAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) } });
+    await testPrisma.notification.create({ data: { userId: 1, type: 'APPROVAL_RESULT', message: '승인되었습니다', linkUrl: '/' } });
+    await pushIdle();
+    expect(sentMessages().map((m) => m.token)).toEqual([TOKEN_A]);
+  });
+
   it('★ FCM 이 "등록 해제된 토큰"이라고 하면 지운다 — 다른 오류(invalid-argument)로는 지우지 않는다', async () => {
     await putToken(1, 'ARTIST', TOKEN_A);
     await putToken(1, 'ARTIST', TOKEN_B);

@@ -109,6 +109,13 @@ public class ArtLinkShellPlugin extends Plugin {
         intent.addCategory(Intent.CATEGORY_BROWSABLE);
         intent.setComponent(null);
         intent.setSelector(null);
+        // ⚠️ 주소에 실려 온 권한 넘기기(FLAG_GRANT_* — 우리 앱의 파일을 그 앱이 읽게 된다)·첨부(ClipData)는 지운다.
+        //    기기 안 파일을 가리키는 주소(content://·file://)는 열지 않는다(2026-11-11 보안 검토).
+        intent.setFlags(0);
+        intent.setClipData(null);
+        Uri data = intent.getData();
+        String dataScheme = data == null || data.getScheme() == null ? "" : data.getScheme().toLowerCase(Locale.ROOT);
+        if ("content".equals(dataScheme) || "file".equals(dataScheme)) return;
         try {
             getActivity().startActivity(intent);
             return;

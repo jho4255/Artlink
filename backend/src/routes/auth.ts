@@ -372,6 +372,8 @@ router.post('/password/reset', validate(passwordResetSchema), async (req, res, n
       return tx.user.update({ where: { id: u.id }, data: { password: hashed, emailVerifiedAt: u.emailVerifiedAt ?? new Date() } });
     });
     clearAllLoginFailures(email);   // 로그인 실패로 막혀 있었으면 비밀번호를 새로 정한 순간 풀린다(주인의 다른 기기까지)
+    // 비밀번호를 바꿨으면 예전에 로그인한 기기들(남이 쓰던 기기 포함)로는 알림을 더 보내지 않는다 — 주인의 앱은 다음에 열 때 다시 등록한다
+    await prisma.pushToken.deleteMany({ where: { userId: user.id } });
     res.json({ token: generateToken(user), user: safeUser(user) });
   } catch (error) { next(error); }
 });

@@ -25,6 +25,11 @@ export const REPUSH_TYPES = new Set(['CHAT_MESSAGE', 'SUBMISSION_PROXY_EDIT']);
 /** 이 토큰은 더는 쓸 수 없다(앱 삭제·토큰 갱신) — 지운다. ⚠️ invalid-argument 는 넣지 말 것: 우리 메시지가 틀려도 그 코드가 와서 모든 토큰을 지운다 */
 const DEAD_TOKEN_CODES = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 const BODY_MAX = 180;
+/**
+ * 이만큼 앱을 열지 않은 기기로는 보내지 않는다 — 로그인 유효기간(JWT 7일)과 같다. 앱은 열 때마다 토큰을 다시 보내 `lastSeenAt` 을 새로 한다.
+ * 남의 폰에서 로그인하고 로그아웃 없이 두면 그 폰으로 알림이 끝없이 갔다(2026-11-11 보안 검토). 로그인이 끝난 기기는 알림도 끝난다.
+ */
+export const PUSH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * 알림 제목 — 종류별로 (2026-11-11 사용자 결정). 예전엔 늘 'ArtLink' 라 알림 맨 위의 앱 이름과 같은 말이 두 번 보였다.
@@ -176,7 +181,7 @@ async function deliver(raw: PushItem[]): Promise<void> {
   const userIds = [...new Set(items.map((i) => i.userId))];
   // 탈퇴한 사람에겐 보내지 않는다(탈퇴할 때 토큰도 지운다 — 혹시 남은 것까지)
   const tokens = await prisma.pushToken.findMany({
-    where: { userId: { in: userIds }, user: { deletedAt: null } },
+    where: { userId: { in: userIds }, user: { deletedAt: null }, lastSeenAt: { gte: new Date(Date.now() - PUSH_TOKEN_TTL_MS) } },
     select: { token: true, userId: true },
   });
   if (!tokens.length) return;

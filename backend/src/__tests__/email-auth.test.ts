@@ -411,12 +411,16 @@ describe('비밀번호 찾기', () => {
     clearDevOutbox();
     const token = await verifiedToken('Reset@Gallery.test', 'reset');
     expect(devOutbox('reset@gallery.test')[0]!.subject).toMatch(/비밀번호 재설정 인증번호/);
+    const before = await testPrisma.user.findFirstOrThrow({ where: { email: 'reset@gallery.test' } });
+    await testPrisma.pushToken.create({ data: { token: 'tok-old-phone-' + 'x'.repeat(30), userId: before.id, platform: 'android' } });   // 예전에 로그인해 둔 폰
     const res = await request.post('/api/auth/password/reset').send({ verificationToken: token, password: 'newpass2026' });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTruthy();
     expect((await request.post('/api/auth/login').send({ email: 'reset@gallery.test', password: PW })).status).toBe(401);
     expect((await request.post('/api/auth/login').send({ email: 'reset@gallery.test', password: 'newpass2026' })).status).toBe(200);
-    // 같은 인증으로 두 번은 못 바꾼다
+    // 같은 인증으로 두 번은 못 바꾼다(아래) · 바꾸기 전에 로그인해 둔 기기들로는 알림을 더 보내지 않는다(2026-11-11)
+    const owner = await testPrisma.user.findFirstOrThrow({ where: { email: 'reset@gallery.test' } });
+    expect(await testPrisma.pushToken.count({ where: { userId: owner.id } })).toBe(0);
     expect((await request.post('/api/auth/password/reset').send({ verificationToken: token, password: 'again2026x' })).status).toBe(400);
   });
 
