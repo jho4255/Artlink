@@ -7,8 +7,9 @@ android {
         applicationId "cc.artlink.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // 폰에서 어느 판이 깔렸는지 설정 → 앱 → ArtLink 의 버전으로 알 수 있게 — 판을 새로 건넬 때마다 올린다(1.1 = 카카오톡 로그인, 2026-11-11)
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // 카카오 네이티브 앱 키 — 비밀이 아니다(앱에 실려 나가고, 카카오가 앱 서명 키 해시로 진짜 앱인지 본다).
         // 매니페스트(카카오톡에서 돌아오는 주소 kakao<키>://oauth)와 코드(ArtLinkShellPlugin 의 KakaoSdk.init)가 같은 값을 쓴다
