@@ -82,7 +82,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **3000+ tests** (2026-11-11): Backend 1694 (supertest, `artlink_test` DB 순차), Frontend 1460 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개 · `78` 4개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **3000+ tests** (2026-11-11): Backend 1701 (supertest, `artlink_test` DB 순차), Frontend 1464 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개 · `78` 4개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
