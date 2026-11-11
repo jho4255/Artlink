@@ -566,10 +566,8 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle }: { exhibition
       const cd: string = res.headers['content-disposition'] || '';
       const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
       if (m) { try { fname = decodeURIComponent(m[1]); } catch { /* keep default */ } }
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url; a.download = fname; a.click();
-      URL.revokeObjectURL(url);
+      const { triggerDownload } = await import('@/lib/operationPdf'); // 앱에서는 공유 창으로(lib/native.ts)
+      triggerDownload(res.data, fname);
       toast.success('캡션 한글 파일 다운로드를 시작합니다.', { id: t });
     } catch (e: any) {
       const msg = e?.response?.status === 400 ? '등록된 출품작이 없습니다.' : '캡션 생성에 실패했습니다.';

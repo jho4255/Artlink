@@ -684,6 +684,8 @@ router.delete('/me', authenticate, validate(withdrawSchema), async (req, res, ne
           data: { status: 'WITHDRAWN' },
         });
       }
+      // 앱 알림 기기 토큰 — 탈퇴한 사람의 폰으로 알림이 가지 않게(2026-11-09, 규칙 79)
+      await tx.pushToken.deleteMany({ where: { userId } });
       // 2) 개인정보 익명화 + 소프트 삭제 마킹
       await tx.user.update({
         where: { id: userId },

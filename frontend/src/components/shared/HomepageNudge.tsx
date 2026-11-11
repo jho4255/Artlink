@@ -7,6 +7,7 @@ import { ChevronRight } from 'lucide-react';
 import api from '@/lib/axios';
 import { computeCompleteness } from '@/lib/completeness';
 import { editHref } from '@/lib/homepageEdit';
+import { popupHoldVersion, popupsHeldAt, subscribePopupHold } from '@/lib/popupHold';
 import {
   armHomepageNudge, armedHomepageNudgeUserId, disarmHomepageNudge, isHomepageNudgeSeenToday, isHomepageNudgeSnoozed, markHomepageNudgeSeen,
   nudgePlace, snoozeHomepageNudge, subscribeHomepageNudge, NUDGE_SNOOZE_DAYS,
@@ -79,7 +80,10 @@ export default function HomepageNudge() {
   }, [here]);
 
   const incomplete = !!c && !c.complete;
-  const open = armed && place === 'show' && incomplete && settledAt === here;
+  // 앱 알림을 눌러 들어온 화면이면 기다린다 — 그것을 보러 온 사람이다(lib/popupHold.ts, 규칙 79). 떠나면 원래대로
+  useSyncExternalStore(subscribePopupHold, popupHoldVersion, () => 0); // 걸리고 풀릴 때 다시 그린다
+  const held = popupsHeldAt(location.pathname);
+  const open = armed && place === 'show' && incomplete && settledAt === here && !held;
 
   // 띄울 필요가 없어졌으면 예약을 지운다 — 이미 편집 화면에 있거나, 받아 보니 다 채워져 있다. 그날은 본 것으로 친다
   const nothingToSay = armed && (place === 'done' || (place === 'show' && !!c && c.complete));

@@ -52,6 +52,12 @@ cd frontend && npm test    # 46 통과
 - ⚠️ 알려진 flaky 테스트 1건: `exhibition-extended.test.ts > 상세 조회 시 gallery 정보 포함` — 동시성 테스트 데이터 누수로 가끔 실패. 단독 재실행하면 통과(회귀 아님).
 
 ### 0-6. 최근 변경 이력 (이번 인계 직전 세션들, 최신순)
+- (2026-11-11 밤) **ArtTalk 잘림 수정 · 대화방 알림 끄기 · 카카오톡식 알림 · 작품 정보 [다음 작품] 맴돌기 수정 · 화면 전수 점검 하니스(미커밋)** — 로컬 DB 는 실서버 복제본(`artlink_prod`, 9월 말 판)으로
+  다시 올렸다. 백엔드는 `DATABASE_URL=…/artlink_prod npm run dev`(`.env` 는 데모 그대로). 상세 `mobile/PLAN.md` §6.
+- (2026-11-11) **안드로이드 앱 — Firebase 연결, 실제 푸시 수신 확인(미커밋)** — 프로젝트 `artlink-56a2b`, 키 파일은 저장소 밖 `~/firebase/`, 로컬 `backend/.env` 에만 넣었다(Render 는 웹 배포 때).
+  에뮬레이터에서 찾아 고친 것: 알림으로 켠 화면을 소개 팝업이 덮음(`lib/popupHold.ts`) · 문의 제목이 상단바 뒤로 숨음(옛 WebView 가 scroll-margin 무시, `lib/scrollToTarget.ts`). 결과 `mobile/PLAN.md` §6.
+- (2026-11-09) **안드로이드 앱 개발 시작(미배포·미커밋)** — artlink.cc 를 그대로 띄우는 Capacitor 껍데기(`mobile/`) + 푸시 알림. 웹 쪽 분기는 `lib/native.ts` 한 곳, 푸시는 서버 `lib/push.ts` 한 곳(벨 알림이 생기면 기기로도).
+  에뮬레이터는 **윈도우 쪽**(`C:\Android`, AVD `ArtLink_Pixel7`) — 이 PC 의 WSL 에는 가상화가 없다. 다음 단계: Firebase 프로젝트(사용자) → 실제 푸시 수신 확인 → Play 계정. 계획·체크리스트 `mobile/PLAN.md`, 규칙 79.
 - (2026-10-31) **1:1 문의 알림** — 새 문의는 관리자 전원에게(`INQUIRY_NEW`), 답변은 작성자에게. 둘 다 `/support?inquiry=<id>` 로 그 문의가 펼쳐진 채 열린다(목록 캐시가 아니라 새로 받아서). 벨 알림만이고 메일은 없다(CLAUDE.md 78).
 - (2026-10-15) **작가 요청·신고** — ① [PDF 내려받기] 의 모든 글자가 아래로 밀려 제목이 잘리던 문제(김현수 작가 신고 · html2canvas 기준선이 Tailwind `img{display:block}` 을 받았다, `index.css` 한 줄, CLAUDE.md 69) ② 홈페이지 [포트폴리오] 탭 PDF 화질 — 기기 배율 3 · 확대하면 보이는 쪽을 다시 그린다(70) ③ 작품 가격 — 별도 표 `ArtworkPrice`, 홈페이지([꾸미기])·PDF([작품] 탭) 따로 켜기, 기본 꺼짐(71, 마이그레이션 `20261015120000_artwork_price`) ④ 작품 순서 끌어서 옮기기 — dnd-kit, 마우스 늘·손가락은 [순서 바꾸기] 에서(72). 작가노트 쓰기 도움은 사용자 결정으로 나중에. 로컬 확인 뒤 같은 날: 놓는 순간 칸이 출렁이던 것(72) · PC 에서 PDF 가 여전히 흐리던 것(쪽 640px + 캔버스 1px 보간 + 반 픽셀 위치, 70) · 가격 줄 간격(71) · 실제 내려받은 PDF 를 미리보기와 쪽마다 맞대는 `scratchpad/pf/download-check`(69).
 - (2026-10-08) **이메일 가입 · 비밀번호 찾기 · 가입 약관 · 공모 첨부파일** — 아티스트·갤러리·일반 모두 카카오 말고 이메일로도 가입한다(인증번호 6자리 메일, `lib/emailCode.ts`·`lib/mailer.ts`,

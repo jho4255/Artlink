@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">개인정보처리방침</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 10월 8일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 11월 9일</p>
 
       <PrivacyBody />
     </div>
@@ -29,6 +29,7 @@ export function PrivacyBody({ compact = false }: { compact?: boolean }) {
           <li>포트폴리오 등록 시: 전시 이력, 작가 약력, 작품 사진</li>
           <li>공모 지원 시: 작가 약력, 경력, 작품 사진, 포트폴리오 파일, 공모별 추가 답변 (초대 수락·초대 코드 참여 시에는 홈페이지(포트폴리오)에 등록된 약력·경력·작품 사진·포트폴리오 파일)</li>
           <li>서비스 이용 과정에서 자동 생성: 접속 로그, 조회 기록, 일간 방문자 집계를 위한 기기 식별값(브라우저에 저장되는 무작위 값으로, 이름·연락처·IP 주소와 연결하지 않습니다), 포트폴리오 PDF 저장 기록(저장한 날짜·쪽수·작품 수·저장 방식 — 만든 파일은 회원이 ‘내 홈페이지에도 올리기’를 고른 경우에만 서버에 보관됩니다), 로그인하지 않은 방문의 화면 이용 기록(본 화면의 순서와 머문 시간 — 방문마다 새로 만드는 무작위 값으로만 묶고 계정·IP 주소와 연결하지 않으며, 90일 뒤 삭제합니다)</li>
+          <li>모바일 앱에서 알림을 허용한 경우: 알림을 보내기 위한 기기 알림 토큰(앱이 만드는 무작위 값으로, 로그아웃하거나 탈퇴하면 삭제합니다)</li>
         </ul>
       </section>
 
@@ -49,6 +50,7 @@ export function PrivacyBody({ compact = false }: { compact?: boolean }) {
           <li>공모 지원서·전시 운영·판매/정산 기록: 거래 사실 확인 및 분쟁 대응, 관계 법령상 보존 의무를 위해 탈퇴 후에도 필요한 기간 동안 보관될 수 있습니다.</li>
           <li>로그인하지 않은 방문의 화면 이용 기록: 기록한 날부터 90일 뒤 자동 삭제합니다.</li>
           <li>이메일 인증번호 기록: 보낸 날부터 하루 뒤 삭제합니다.</li>
+          <li>앱 알림 기기 토큰: 로그아웃·회원 탈퇴 시, 또는 알림 서비스가 그 기기에 더는 보낼 수 없다고 알린 때 삭제합니다.</li>
           <li>관계 법령(전자상거래법 등)에 따라 보존이 필요한 경우 해당 기간 동안 보관 후 파기합니다.</li>
         </ul>
       </section>
@@ -61,6 +63,7 @@ export function PrivacyBody({ compact = false }: { compact?: boolean }) {
           <li>Cloudflare (Cloudflare, Inc. — R2): 업로드 이미지·파일 저장</li>
           <li>Kakao (주식회사 카카오): 소셜 로그인 인증</li>
           <li>Google (Google LLC — Gmail): 이메일 인증번호 발송</li>
+          <li>Google (Google LLC — Firebase Cloud Messaging): 모바일 앱 알림 발송</li>
         </ul>
         <p className="mt-3 mb-2 text-gray-600">작가 회원이 공모에 지원하거나 초대 수락·초대 코드로 참여하면, 작가 지원 약관에 대한 동의에 따라 아래와 같이 제공됩니다.</p>
         <ul className="list-disc list-inside space-y-1 text-gray-600">

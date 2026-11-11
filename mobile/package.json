@@ -1,0 +1,24 @@
+{
+  "name": "artlink-mobile",
+  "version": "1.0.0",
+  "description": "ArtLink 모바일 앱 껍데기 (Capacitor) — artlink.cc 를 그대로 띄우고 푸시 알림을 붙인다",
+  "scripts": {
+    "sync": "cap sync android && node scripts/post-sync.mjs",
+    "build:debug": "npm run sync && cd android && ./gradlew assembleDebug"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/push-notifications": "8.1.3",
+    "@capacitor/share": "8.0.3",
+    "@capacitor/splash-screen": "8.0.2"
+  }
+}

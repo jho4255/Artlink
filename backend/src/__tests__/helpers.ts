@@ -26,7 +26,7 @@ const ALL_TABLES = [
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioVersion', 'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'GalleryArchive', 'Gallery', 'HeroSlide', 'Benefit', 'DailyVisit', 'PortfolioExport',
-  'GuestPageView', 'EmailCode', 'User',   // GuestVisit 은 id 가 문자열이라 시퀀스가 없다(지우기는 아래 트랜잭션)
+  'GuestPageView', 'EmailCode', 'PushToken', 'User',   // GuestVisit 은 id 가 문자열이라 시퀀스가 없다(지우기는 아래 트랜잭션)
 ];
 
 /**
@@ -102,6 +102,7 @@ export async function cleanDb() {
     await tx.portfolioExport.deleteMany();   // PDF 저장 기록(2026-10-03) — 같은 이유(SetNull)
     await tx.guestVisit.deleteMany();   // 비회원 둘러보기(2026-10-03) — 계정과 무관한 표라 명시 삭제(화면 기록은 cascade)
     await tx.emailCode.deleteMany();    // 이메일 인증번호(2026-10-08) — 계정과 무관한 표(FK 없음)
+    await tx.pushToken.deleteMany();    // 앱 기기 토큰(2026-11-09) — User 캐스케이드로도 지워지지만 명시(시퀀스는 위 목록)
     await tx.user.deleteMany();
     await tx.appSetting.deleteMany(); // FK 없음 — 개발자 도구 토글이 테스트 간 누수되지 않도록 명시 삭제
     await tx.adBanner.deleteMany();    // FK 없음(User 캐스케이드 대상 아님) — 명시 삭제

@@ -42,6 +42,7 @@ model User {
   portfolio             Portfolio?
   applications          Application[]
   notifications         Notification[]
+  pushTokens            PushToken[]
   dailyVisits           DailyVisit[]
   portfolioExports      PortfolioExport[]
   inquiries             Inquiry[]
@@ -695,6 +696,22 @@ model Notification {
   @@index([userId, read])
   @@index([createdAt])
   @@index([userId, refKey])
+}
+
+/// 안드로이드 앱(mobile/)의 푸시 알림 기기 토큰 (2026-11-09, CLAUDE.md 규칙 79).
+/// 벨 알림(Notification)이 생기면 그 사람의 기기들로 보낸다(lib/push.ts — Prisma 미들웨어 한 곳에서, 알림 만드는 34곳은 그대로).
+/// token 이 unique — 같은 기기에서 다른 사람이 로그인하면 줄의 userId 가 바뀐다(upsert). 로그아웃하면 지운다(토큰이 곧 자격 — 인증 없이).
+/// FCM 이 '등록 해제됨'이라고 답한 토큰은 보내면서 지운다.
+model PushToken {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   String // 'android' | 'ios'
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // 자주 묻는 질문 (Admin 작성, 전체 공개)

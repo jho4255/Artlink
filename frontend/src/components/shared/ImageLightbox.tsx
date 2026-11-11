@@ -92,6 +92,10 @@ export default function ImageLightbox({ images, initialIndex, onClose, onIndexCh
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90"
+      // 떠 있는 창이라고 밝힌다 — 안드로이드 앱의 뒤로가기가 이 창만 닫는다(lib/native.ts handleBackButton), 다른 창은 이 동안 기다린다
+      role="dialog"
+      aria-modal="true"
+      aria-label="사진 크게 보기"
       onClick={handleBackdropClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}

@@ -35,6 +35,12 @@ cd backend && npx tsx prisma/seed.ts    # 시드 데이터 실행
 # WSL2 필수: PostgreSQL 재부팅 후 수동 시작
 sudo service postgresql start
 
+# 안드로이드 앱(mobile/, 규칙 79) — 환경을 불러온 뒤 윈도우 쪽 에뮬레이터로
+. mobile/scripts/env.sh                  # JDK 21 · Android SDK · Node 22 (리눅스 쪽 빌드)
+bash mobile/scripts/emu.sh start         # 윈도우 에뮬레이터(ArtLink_Pixel7) 띄우고 부팅 대기
+bash mobile/scripts/emu.sh dev           # 앱이 로컬 개발 서버(localhost:5173)를 보게 빌드·설치·실행
+bash mobile/scripts/emu.sh shot | dump | tapon "<글자>" | pageurl | js "<식>"   # 확인 도구
+
 # ⚠️ 고친 게 화면에 안 나오면 **dev 서버가 겹쳐 떴는지 먼저 볼 것** (2026-09-04 실제로 겪음)
 #    run_web.sh 를 여러 번 돌리면 vite 가 5173→5174→5175 로 밀려 뜨고, tsx watch 도 여러 개가 된다.
 #    포트 4000 을 잡은 게 옛 프로세스면 **코드를 고쳐도 API 응답이 안 바뀐다** — 고쳤는데 안 고쳐진 것처럼 보인다.
@@ -76,7 +82,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **3000+ tests** (2026-10-31): Backend 1669 (supertest, `artlink_test` DB 순차), Frontend 1410 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개 · `78` 4개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
+- **3000+ tests** (2026-11-11): Backend 1694 (supertest, `artlink_test` DB 순차), Frontend 1460 (jsdom) · E2E 382(+ `72` 10개 · `73` 17개 · `74` 9개 · `75` 6개 · `76` 2개 · `77` 3개 · `78` 4개)(전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존) 뿐 — 2026-10-04 360개 중 351 통과 · 4 건너뜀. ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
 - **E2E**: `e2e/` Playwright 60개 파일(부하·신뢰성 4종 포함 — `38-newfeature-reliability`·`39-load-community-story`·`40-load-chat`·`41-load-artlook`). 🚨 **DB 를 확인하고 돌릴 것** — `global-setup` 이 `prisma migrate reset --force` 로
@@ -252,7 +258,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ 첨부 주소는 `safeFileUrl` 로 검증해 저장한다 — `javascript:` 등 이상한 스킴 400. `attachmentType` 은 IMAGE/VIDEO/FILE 만.
     - 본문·첨부 **둘 다 없으면 400**. 첨부만 있으면 텍스트 말풍선을 그리지 않는다(빈 회색 상자 금지). 목록 미리보기는 `[사진]/[동영상]/[파일]`(`lib/chat.ts attachmentLabel`).
 - **방마다 알림 끄기**(`ChatParticipant.muted`, 마이그레이션 `20261111120000_chat_mute`, 2026-11-11 사용자 요청) — 카카오톡처럼. 대화방 머리의 종 버튼 → `PATCH /chats/:id/mute {muted}`(상태를 적어 보낸다 — 토글 아님).
-  끄면 `notifyChatMessage` 가 그 사람을 빼서 **벨 알림이 없다**. 안 읽은 수는 그대로 센다(목록 배지가 회색). 회귀 `chat-mute.test.ts`(3).
+  끄면 `notifyChatMessage` 가 그 사람을 빼서 **벨 알림도 앱 푸시도 없다**. 안 읽은 수는 그대로 센다(목록 배지가 회색). 회귀 `chat-mute.test.ts`(3).
 - 회귀는 `backend/src/__tests__/chat.test.ts`(36개)와 `e2e/tests/29-chat.spec.ts`(14개, 실제 파일 업로드 포함)가 잡는다 — 특히 '남의 방 차단'·'작가↔작가 허용'·첨부.
 
 ### 초대 → 참여 (2026-08-28)
@@ -2644,6 +2650,62 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 답변을 고치면 '수정되었습니다' 로 알리고, 같은 글자로 다시 저장하면 알리지 않는다.
     - 회귀: backend `inquiry.test.ts` · `notify-links.test.ts` · e2e `78-inquiry-notifications.spec.ts`(4 — 벨을 눌러 어디에 도착하는가).
 
+79. **안드로이드 앱 — 실서버를 그대로 띄우는 껍데기(Capacitor) + 푸시** (2026-11-09, 사용자 결정: 웹 그대로 · 알림만 추가 · 안드로이드 먼저. 계획·검증 `mobile/PLAN.md`)
+    - **구조**: `mobile/`(Capacitor 8.6, appId `cc.artlink.app` — 바꾸지 말 것: 스토어·App Links·FCM 이 이 값을 쓴다)의 WebView 가 `https://artlink.cc` 를 그대로 연다(`server.url`).
+      **웹을 배포하면 앱도 바뀐다**(스토어 재심사 없음). 개발은 `bash mobile/scripts/emu.sh dev`(adb reverse 5173 + 앱이 `http://localhost:5173` 을 보게 sync·빌드·설치).
+      ⚠️ 실서버 주소로 sync 한 앱을 열면 [통계] 비회원 둘러보기에 방문이 남는다 — 확인은 dev 로. 출시 빌드 전에는 기본값으로 다시 `npm run sync`(`scripts/post-sync.mjs` 가 경고).
+    - **환경**: 이 PC 는 Windows 10 이라 WSL2 에 가상화(/dev/kvm)가 없다 → **에뮬레이터는 윈도우 쪽**(`C:\Android\Sdk`, AVD `ArtLink_Pixel7` = Android 15 Play 이미지), **빌드는 WSL**
+      (`. mobile/scripts/env.sh` — JDK 21 `~/.local/jdk` · SDK `~/Android/Sdk` · Node 22). 설치는 **윈도우 adb**(`emu.sh` — 리눅스 adb·`gradlew installDebug` 로는 에뮬레이터가 안 보인다).
+      확인 도구 `emu.sh`: `shot`·`dump`·`tapon "<글자>"`·`has`·`top`·`pageurl`·`js "<식>"`(디버그 빌드 WebView 에서 JS — DevTools 를 윈도우 PowerShell 로 붙인다, `scripts/cdp.ps1` 은 **UTF-8 BOM** 필수).
+    - **앱 안에서만 다른 일은 `frontend/src/lib/native.ts` 한 곳** — 판정 `isNativeApp()`(브리지가 심는 `window.Capacitor.isNativePlatform()`). `@capacitor/*` 는 거기서만 **동적 import**
+      (화면이 직접 부르면 `native.test.ts` 가 막는다 · 브라우저 번들은 `capacitor-*` 청크를 안 받는다 — ⚠️ `manualChunks` 로 묶지 말 것: `__vitePreload` 가 끌려가 모든 화면이 그 청크를 받았다).
+      JS 플러그인 버전은 `mobile/package.json` 과 **같아야 한다**(같은 테스트가 대조) — 사용자 폰의 네이티브에 없는 메서드를 부르면 실패한다. 새 네이티브 기능은 `shellInfo().versionCode` 로 가를 것(웹은 매일 바뀌어도 폰의 앱은 그대로다).
+      - **내려받기** — WebView 는 `<a download>` 를 무시한다(눌러도 아무 일 없음). 모든 파일은 `triggerDownload`(`lib/operationPdf.ts`) 한 곳을 지나고 앱이면 `saveFile` → 캐시 폴더에 1MB 씩 쓰고 **안드로이드 공유 창**.
+        ⚠️ 화면에 `a.download = …` 를 새로 만들지 말 것(테스트가 막는다) · pptxgenjs `writeFile` 도 스스로 `<a download>` 를 누른다 → `write({outputType:'blob'})` + triggerDownload.
+        지난 파일은 페이지를 열 때 **한 시간 지난 것만** 지운다(통째로 지우면 새로고침이 공유 중인 파일을 지운다).
+      - **링크 공유** — WebView 에는 `navigator.share` 가 없다 → `shareLinkNative`(작가 홈페이지 [공유] · 작품 창 [공유]).
+      - **뒤로가기** — 떠 있는 창(`[role="dialog"]`·`[aria-modal="true"]`, 그려진 것)이 있으면 그 창에 **Esc 만** 보낸다 · 없으면 이전 화면 · 첫 화면이면 앱을 내린다(종료 아님).
+        ⚠️ 새 창을 만들면 `role="dialog" aria-modal="true"` 와 Esc 닫기를 달 것 — 안 달면 앱 뒤로가기가 창 대신 화면을 넘긴다(사진 크게 보기·작품 보기·초대 창에 이번에 달았다).
+      - **ArtLook**(번들 밖 `ui.js`)은 브리지의 `nativePromise` 로 같은 Filesystem·Share 를 부른다. ⚠️⚠️ **플러그인은 최상위 창(main frame)에서 부른 것만 받는다** — iframe 의 자기 브리지로 부르면
+        "Plugin execution is allowed in Main Frame only" 로 버려지고 Promise 가 영영 안 끝난다(브리지는 iframe 에도 심기므로 '있다'만 보고 쓰면 눌러도 아무 일이 없다) → `window.top.Capacitor`.
+      - ⚠️⚠️ **플러그인 객체(Proxy)를 Promise 로 그대로 돌려주지 말 것** — 아무 속성에나 메서드로 답해 `then` 이 있는 것처럼 보이고, Promise 가 그걸 불러 네이티브에 `then()` 을 보낸다
+        ("ArtLinkShell.then() is not implemented" — 그래서 푸시 등록이 늘 실패했다). `{ plugin }` 으로 감싼다.
+    - **앱 전용 플러그인 `ArtLinkShell`**(`mobile/android/…/ArtLinkShellPlugin.java`, MainActivity 가 `super.onCreate` 전에 등록): `info()` = 판·**push(이 앱에 google-services.json 이 들었나)** ·
+      `intent://`(카카오톡으로 로그인 등) 처리 · WebView 내려받기(첨부 파일·포트폴리오 파일)를 시스템 '열기'로. ⚠️ push=false 인 앱에서 `PushNotifications.register()` 를 부르면 **앱이 죽는다**(플러그인이 예외를 안 잡는다).
+    - **푸시**: 보내는 곳은 `backend/src/lib/push.ts` 하나 — 벨 알림(Notification) 쓰기를 Prisma 미들웨어 갈고리(`lib/prisma.ts setNotificationHook`)가 보고 보낸다. **알림을 만드는 34곳은 그대로**.
+      create·createMany 는 보내고, update 는 message 를 고친 `REPUSH_TYPES`(대화방 새 메시지·대신 입력)만 다시 울린다 — 좋아요 합산·읽음은 안 울린다. 같은 방은 서랍에서 하나로(tag = refKey).
+      ⚠️ 미들웨어는 **클라이언트당 한 번만** 걸고 함수는 자리에 꽂는다(테스트가 클라이언트를 globalThis 로 같이 써서 파일마다 걸면 옛 모듈을 붙잡은 것이 쌓인다).
+      기기 토큰 `PushToken`(마이그레이션 `20261109120000_push_token`) · `PUT /api/push/tokens`(로그인, upsert) · `DELETE /api/push/tokens`(**인증 없이 — 토큰이 곧 자격**: 만료로 자동 로그아웃돼도 지워져야 한다).
+      FCM 이 '등록 해제'라고 한 토큰만 지운다(⚠️ `invalid-argument` 로 지우지 말 것 — 우리 메시지가 틀려도 그 코드가 와서 모든 토큰이 지워진다). 탈퇴하면 토큰도 지운다.
+      권한은 **로그인한 뒤 이 기기에서 처음 한 번**만 묻는다. 꺼짐: `FIREBASE_SERVICE_ACCOUNT` 없음 또는 `PUSH=off`(테스트는 `setup-push.ts` 가 끈다).
+    - **App Links**: `/.well-known/assetlinks.json`(`lib/assetLinks.ts`, `ANDROID_CERT_SHA256` — 없으면 404) + 매니페스트 intent-filter. ⚠️ 경로를 '/' 전체로 열지 말 것 — `/auth/*` 를 앱이 받으면
+      휴대폰 크롬에서 카카오 로그인하던 사람의 콜백이 앱으로 넘어가 로그인이 끊기고(state 는 크롬에 있다, 규칙 64), 파일 주소를 받으면 WebView 가 못 연다. '내용' 화면만(`/@`·`/exhibitions`·`/join/`…).
+    - ⚠️ `allowNavigation` 에 넣은 주소는 WebView 안에서 열릴 뿐 아니라 **앱의 네이티브 통로(androidBridge)도 받는다**(Capacitor `allowedOriginRules`) — 카카오 로그인에 실제로 거치는 곳만
+      (`kauth.kakao.com`·`accounts.kakao.com`·`logins.daum.net`). `*.kakao.com` 으로 넓히지 말 것(테스트가 막는다). 그 밖의 주소는 시스템(브라우저·앱)으로 나간다.
+    - 앱 테마는 **밝은 것으로 고정**(`styles.xml`) — DayNight 면 다크 모드 기기에서 상태표시줄 자리가 검고 WebView 가 우리 화면을 자동으로 어둡게 바꿀 수 있다.
+    - ⚠️ **알림을 눌러 들어온 화면에는 팝업을 띄우지 않는다**(`lib/popupHold.ts`, 2026-11-11) — 꺼진 앱을 알림으로 켜면 '하루 첫 방문'이라 소개 팝업(규칙 73)이
+      그 문의를 덮었다. 그 화면에 있는 동안 소개·홈페이지 팝업(규칙 51)이 기다리고, 떠나면 원래대로 뜬다(답한 것으로 적지 않는다). 새 팝업을 만들면 `popupsHeldAt` 을 볼 것.
+    - ⚠️ **딥링크 스크롤은 `lib/scrollToTarget.ts`** — 크롬 124 WebView(에뮬레이터 실측)는 `overflow:hidden` 요소의 `scroll-margin-top` 을 무시해 `scrollIntoView` 가 맨 위에 붙인다
+      (문의 제목이 상단바 뒤로 숨었다). 기기의 WebView 판은 제각각이고 옛 휴대폰 크롬도 같다 — 그런 요소로 데려갈 땐 여백을 직접 계산하는 이 함수를 쓸 것.
+    - Firebase 프로젝트 `artlink-56a2b`(2026-11-11 연결, FCM 실제 수신 확인). 키 파일은 저장소 밖 `~/firebase/` · 로컬은 `backend/.env` 의 `FIREBASE_SERVICE_ACCOUNT`(base64).
+      ⚠️ 시험할 때 앱을 `am force-stop` 하지 말 것 — 강제 중지된 앱엔 FCM 이 안 온다(안드로이드 규칙). 백그라운드에서 `am kill`.
+    - **대화 푸시는 카카오톡처럼**(`lib/push.ts chatStyle`, 2026-11-11) — 제목 = 보낸 사람(갠톡)·방 이름(단톡), 본문 = 메시지(단톡은 '보낸 사람: 메시지'). 벨 목록 글('○○님의 새 메시지: …')을
+      그대로 보내면 이름이 길 때 정작 메시지가 잘렸다. 글 모양은 `lib/chat.ts chatNoticeMessage`/`splitChatNotice` 한 쌍 — 한쪽만 바꾸지 말 것.
+    - **앱을 보고 있을 때 온 알림 = 위쪽 배너**(`lib/pushBanner.ts` + `components/shared/PushBanner.tsx`, Layout 에 한 번) — 안드로이드는 앱이 앞이면 서랍에 안 띄운다.
+      그 화면(그 대화방·대화 목록)을 보고 있으면 조용히, 아니면 배너(누르면 그 화면, 4.5초). 시스템 알림으로 띄우는 `presentationOptions` 는 쓰지 않는다 — 보고 있는 방의 메시지에도 울린다.
+      대화 알림이 오면 열린 방도 곧바로 다시 받는다(`['chat']` invalidate — 8초 폴링을 기다리지 않게).
+    - 알림 채널(`artlink`)은 **중요도 높음(화면 위 팝업) + 진동**. ⚠️ 채널 설정은 한 번 만들어지면 앱이 못 바꾼다 — 출시 뒤에 바꾸려면 채널 id 를 새로 써야 한다(서버 `PUSH_CHANNEL_ID`·매니페스트·native.ts 세 곳).
+    - **알림 제목은 종류별**(`lib/push.ts PUSH_TITLES` — '문의 답변' · 'ArtTalk' · '새 지원·참여' …, 2026-11-11 사용자 결정). 늘 'ArtLink' 면 알림 머리의 앱 이름과 겹쳤다.
+      ⚠️ 새 알림 종류를 만들면 거기에도 넣을 것(빠지면 'ArtLink', `push.test.ts` 가 소스의 `type: '…'` 를 훑어 막는다). 본문과 같은 말이 겹치지 않게 고를 것.
+    - ⚠️ **바깥 사이트의 HTTP 오류 페이지는 가리지 않는다**(`ArtLinkShellPlugin` 의 WebViewClient, 2026-11-11). Capacitor 는 화면이 4xx·5xx 를 받으면 **어느 사이트든** 오류 화면으로
+      바꿔, 카카오 로그인의 KOE 안내(400)가 '아트링크에 연결하지 못했어요'로 덮였다. 우리 서버의 오류(배포 중 502 등)만 오류 화면으로 바꾼다.
+    - ⚠️ **개발 앱(`emu.sh dev`)의 카카오 로그인은 KOE006** — 돌아올 주소가 `http://localhost:5173/auth/kakao/callback` 인데 카카오 앱에 등록돼 있지 않다(PC 브라우저 로컬도 같다).
+      실서버 앱은 `https://artlink.cc/auth/kakao/callback`(등록됨)이라 해당 없다. 로컬에서 보려면 카카오 개발자 콘솔에 그 주소를 등록할 것.
+    - 로컬에서 실서버 복제본으로 앱을 볼 땐 `.env` 를 바꾸지 말고 `DATABASE_URL=…/artlink_prod npm run dev` 로 띄울 것(E2E 가 `.env` 의 DB 를 지운다). 거기서는 개발자 로그인 버튼이
+      **실제 가입자로 바꿔 들어갈 수 있다** — 점검 계정(`backend/scripts/seed-audit-chat.ts`, '점검' 작가 둘 + 대화방)을 쓸 것.
+    - 회귀: backend `push.test.ts`(18) · `chat-mute.test.ts`(3) · `asset-links.test.ts`(4) · frontend `native.test.ts`(29) · `pushBanner.test.ts`(7) · `popupHold.test.ts`(10) · `scrollToTarget.test.ts`(3). 에뮬레이터 실측 체크리스트는 `mobile/PLAN.md` §3 WP1·WP3, 결과는 §6.
+      개인정보처리방침에 '앱 알림 기기 토큰'(1항 수집 · 3항 보관)과 Firebase Cloud Messaging(4항 위탁)을 적었다 — **최종 수정일은 실제로 배포하는 날로 고칠 것**.
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -2711,6 +2773,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - ⚠️ **Node 버전 고정 필수** — `backend/package.json`의 `engines.node`는 **`24.x`(LTS)**. 예전엔 `">=20"`이라 Render가 매번 **최신 Node**를 골랐고, 2026-08-03 새로 나온 **26.6.0 설치 실패**로 배포가 죽었다(`Unable to install Node.js version 26.6.0`). 범위 지정 금지 — 새 Node가 나올 때마다 무작위로 배포가 깨진다. `.nvmrc`(24)도 함께 둔다.
 - ⚠️ **배포 전 검증은 `npm run build`로** — `tsc --noEmit`은 테스트 파일을 검사하지 않아 통과하지만, 실제 빌드는 `tsc -b && vite build`라 테스트까지 검사한다. 실제로 테스트의 타입 오류로 배포가 실패한 적 있다(2026-08-03).
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
+- **안드로이드 앱(규칙 79)** 환경 변수 — `FIREBASE_SERVICE_ACCOUNT`(Firebase 서비스 계정 JSON 또는 base64 · **저장소·문서에 적지 말 것**, 없으면 푸시 꺼짐) ·
+  `PUSH=off`(코드 배포 없이 푸시 끄기) · `ANDROID_CERT_SHA256`(App Links 지문, 쉼표 구분 — Play 앱 서명 키). 앱 자체는 스토어로 나가고 웹 배포와 따로다
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **정적 파일 캐시**(`backend/src/lib/staticCache.ts`, 2026-10-04): 해시 번들 `assets/` 만 1년 immutable · 앱 셸(index.html·sw.js…) no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).
   ⚠️ 예전엔 assets 가 아닌 것까지 1년 immutable 이라 ArtLook scene.js 가 Cloudflare 에 옛 판으로 30일 굳어 있었고, 푸터 회사 정보도 고쳐도 안 바뀌었다(규칙 65).

@@ -12,6 +12,7 @@ dotenv.config();
 import { errorHandler } from './middleware/errorHandler';
 import logger from './lib/logger';
 import { staticCacheControl } from './lib/staticCache';
+import { assetLinksJson } from './lib/assetLinks';
 import authRoutes from './routes/auth';
 import heroRoutes from './routes/hero';
 import galleryRoutes from './routes/gallery';
@@ -43,6 +44,7 @@ import operationRoutes from './routes/operation';
 import settingsRoutes from './routes/settings';
 import visitRoutes from './routes/visit';
 import guestActivityRoutes from './routes/guestActivity';
+import pushRoutes from './routes/push';
 import seoRoutes from './routes/seo';
 import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
 import type { SeoKind } from './lib/seoMeta';
@@ -181,6 +183,7 @@ app.use('/api/operations', operationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/visits', visitRoutes);   // 일간 방문 기록(2026-09-28, Admin [통계])
 app.use('/api/guest-activity', guestActivityRoutes);   // 비회원 둘러보기(2026-10-03, Admin [통계])
+app.use('/api/push', pushRoutes);   // 앱 기기 토큰(2026-11-09, 규칙 79)
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {
@@ -198,6 +201,14 @@ app.get('/api/health', async (_req, res) => {
 // (그렇지 않으면 오타/미존재 API가 200+HTML로 응답돼 클라이언트가 오작동)
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: '요청한 API를 찾을 수 없습니다.' });
+});
+
+// Android App Links 검증 파일(2026-11-09, 규칙 79 — lib/assetLinks.ts). 운영 블록 밖에 둔다(테스트·개발에서도 확인).
+// ⚠️ SPA 폴백보다 앞이어야 한다 — express.static 은 점(.)으로 시작하는 폴더를 내보내지 않고, 폴백이 HTML 을 주면 검증이 실패한다.
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  const body = assetLinksJson();
+  if (!body) { res.status(404).end(); return; }
+  res.set('Cache-Control', 'no-cache').json(body);
 });
 
 // robots.txt / sitemap.xml (검색엔진 색인 진입로)

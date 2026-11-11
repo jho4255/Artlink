@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 import { useVisitBeacon } from '@/lib/visitBeacon';
 import { useGuestActivity } from '@/lib/guestActivity';
+import { useNativeBridge } from '@/lib/native';
 import { useAuthStore } from '@/stores/authStore';
 
 // 새 배포로 청크 파일명(해시)이 바뀌면 예전 청크 import가 404 → 모바일에서 흰 화면 원인.
@@ -116,6 +117,8 @@ export default function App() {
   // 비회원 둘러보기(2026-10-03, Admin [통계]) — 로그인 안 한 방문이 무엇을 보고 얼마나 머물렀는지. 로그인하면 그 방문을 닫고 멈춘다
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   useGuestActivity(isAuthenticated);
+  // 안드로이드 앱(mobile/) 안에서만 — 뒤로가기·앱 링크·푸시(규칙 79). 브라우저에서는 아무것도 하지 않는다
+  useNativeBridge(userId);
   return (
     <Routes>
       <Route element={<Layout />}>

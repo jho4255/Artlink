@@ -6,6 +6,7 @@ import MyPageSideMenu from './MyPageSideMenu';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
 import HomepageNudge from '@/components/shared/HomepageNudge';
 import GuestIntro from '@/components/shared/GuestIntro';
+import PushBanner from '@/components/shared/PushBanner';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -72,6 +73,8 @@ export default function Layout() {
       <HomepageNudge />
       {/* 비회원 소개 — 작가가 아트링크에서 하는 네 가지를 한 번 보여 준다(lib/guestIntro.ts). 어느 화면으로 들어와도 뜬다 */}
       <GuestIntro />
+      {/* 앱을 보고 있을 때 온 알림 — 카카오톡처럼 위쪽 배너(lib/pushBanner.ts). 브라우저에서는 아무것도 그리지 않는다 */}
+      <PushBanner />
     </div>
   );
 }

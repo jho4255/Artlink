@@ -10,6 +10,7 @@ import api from '@/lib/axios';
 import { displayName, getDday } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import FollowButton from './FollowButton';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import type { ExploreImage } from '@/types';
 
 /**
@@ -125,6 +126,10 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80"
+      // 떠 있는 창이라고 밝힌다 — 안드로이드 앱의 뒤로가기가 이 창만 닫는다(lib/native.ts handleBackButton)
+      role="dialog"
+      aria-modal="true"
+      aria-label="작품 보기"
       onClick={onClose}
     >
       <motion.div
@@ -289,7 +294,7 @@ export function ArtworkLikersModal({ imageId, onClose }: { imageId: number; onCl
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 px-4" role="dialog" aria-modal="true" aria-label="좋아요한 사람" onClick={onClose}>
       <div className="bg-white w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <h3 className="text-sm font-medium text-gray-900">
@@ -326,6 +331,8 @@ interface InvitableExhibition {
 export function InviteModal({ artistId, artistName, onClose }: { artistId: number; artistName: string; onClose: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [message, setMessage] = useState('');
+  // 다른 창들처럼 Esc 로 닫힌다 — 안드로이드 앱의 뒤로가기도 이 길로 온다(lib/native.ts)
+  useEscapeKey(onClose);
 
   // 모집 중인 내 공모만 초대 대상 (마감/확정/종료 제외 — 서버도 같은 규칙으로 막는다)
   const { data: exhibitions = [], isLoading } = useQuery<InvitableExhibition[]>({
@@ -350,7 +357,7 @@ export function InviteModal({ artistId, artistName, onClose }: { artistId: numbe
   });
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true" aria-label="전시 초대" onClick={onClose}>
       <div className="bg-white w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-medium text-gray-900">공모에 초대</h3>

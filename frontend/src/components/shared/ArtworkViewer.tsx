@@ -7,6 +7,7 @@ import { AVAILABLE_DOT, artworkTitle, hasTitle, museumCaption, priceLabel, statu
 import { readViewerMode, saveViewerMode, wallPrefetchAllowed, type ViewerMode } from '@/lib/wallView';
 import { useWallView } from '@/hooks/useWallView';
 import type { PortfolioImage } from '@/types';
+import { shareLinkNative } from '@/lib/native';
 
 /**
  * 작가 홈페이지의 작품 보기 — 대표작·작품 격자를 누르면 열린다(PortfolioPage, `?work=<id>` 고유 주소).
@@ -146,6 +147,7 @@ export default function ArtworkViewer({ works, initialIndex, artistName, onClose
     if (!shareUrl) return;
     const url = shareUrl(index);
     const title = hasTitle(work) ? `${artworkTitle(work)} — ${artistName}` : artistName;
+    if (await shareLinkNative(title, url)) return; // 앱: 안드로이드 공유 창(WebView 엔 navigator.share 가 없다)
     try {
       if (navigator.share) { await navigator.share({ title, url }); return; }
       await navigator.clipboard?.writeText(url);

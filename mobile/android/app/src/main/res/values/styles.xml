@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <!--
+      ⚠️ 밝은 테마로 고정한다(2026-11-09). 템플릿 기본(DayNight)이면 기기가 다크 모드일 때
+      ① 상태표시줄·내비게이션 바 자리(Capacitor SystemBars 가 windowBackground 로 칠한다)가 검게 되고
+      ② WebView 가 다크 앱 테마를 보고 우리 화면(밝은 사이트)을 자동으로 어둡게 바꿀 수 있다.
+      사이트가 밝은 화면만 있으므로 앱도 밝은 것 하나다.
+    -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:forceDarkAllowed" tools:targetApi="29">false</item>
+    </style>
+
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+    </style>
+</resources>

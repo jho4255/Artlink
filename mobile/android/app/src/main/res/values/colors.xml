@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 강조색 하나(CLAUDE.md 규칙 47) — 알림 아이콘 색에 쓴다 -->
+    <color name="artlink_accent">#C4302B</color>
+</resources>

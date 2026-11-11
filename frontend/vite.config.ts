@@ -65,7 +65,8 @@ export default defineConfig({
         // 서식 편집기(TipTap)도 같은 이유 — 갤러리 주인이 [수정]을 누를 때만 받는다(2026-09-28)
         // ArtLook(액자 사진 8장 5.5MB · 화면 코드)도 뺀다 — 예전엔 모든 방문자가 설치 때 미리 받았다(미리받기 8.2MB 의 67%, 2026-10-04).
         // [ArtLook] 탭을 여는 작가만 그때 받는다. 고정 이름 파일이라 서버가 no-cache 로 내준다(backend lib/staticCache.ts).
-        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', 'artlook/**'],
+        // @capacitor 청크는 안드로이드 앱에서만 쓴다(2026-11-09, 규칙 79) — 앱도 처음 쓸 때 네트워크로 받는다
+        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', 'artlook/**', '**/capacitor-*.js'],
       },
       manifest: {
         name: 'ArtLink',
@@ -104,7 +105,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
+        // 안드로이드 앱 전용 코드(@capacitor/* — lib/native.ts 가 앱일 때만 동적으로 불러온다)만으로 된 청크에 'capacitor-' 를 붙인다.
+        // 아래 globIgnores 로 브라우저 설치자에게 미리 받게 하지 않는다.
+        // ⚠️ manualChunks 로 묶지 말 것 — Vite 의 미리받기 도우미(__vitePreload)까지 그 청크로 끌려가 메인 번들이 그걸 정적으로 import 해서
+        //    모든 브라우저가 첫 화면에 capacitor 청크를 받았다(2026-11-09 빌드에서 확인). 이름만 바꾸면 청크 구성은 그대로다.
+        chunkFileNames: (chunk) =>
+          chunk.moduleIds.length > 0 && chunk.moduleIds.every((id) => id.includes('/node_modules/@capacitor/'))
+            ? 'assets/capacitor-[name]-[hash].js'
+            : 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },

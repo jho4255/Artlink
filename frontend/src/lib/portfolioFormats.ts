@@ -2867,7 +2867,9 @@ export async function renderPagesToPptx(
       if (root) serializePage(root, slide, k, wIn, hIn);
       onProgress?.(i + 1, pages.length);
     }
-    await pptx.writeFile({ fileName });
+    // writeFile 은 pptxgenjs 가 스스로 <a download> 를 누른다 — 앱(WebView)에서는 아무 일도 안 일어나서 blob 으로 받아 같은 길로 보낸다
+    const blob = (await pptx.write({ outputType: 'blob' })) as Blob;
+    triggerDownload(blob, /\.pptx$/i.test(fileName) ? fileName : `${fileName}.pptx`);
   } finally {
     document.body.removeChild(host);
   }

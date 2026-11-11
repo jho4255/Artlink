@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ArtLink</string>
+    <string name="title_activity_main">ArtLink</string>
+    <string name="package_name">cc.artlink.app</string>
+    <string name="custom_url_scheme">cc.artlink.app</string>
+</resources>

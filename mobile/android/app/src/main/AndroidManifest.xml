@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              App Links (2026-11-09) — 카카오톡 등에서 누른 artlink.cc 링크가 앱이 깔려 있으면 앱으로 열린다.
+              검증 파일은 서버의 /.well-known/assetlinks.json (backend lib/assetLinks.ts, 환경 변수 ANDROID_CERT_SHA256).
+              ⚠️ 경로를 '/' 전체로 열지 말 것:
+                 · /auth/* — 휴대폰 크롬에서 카카오 로그인하던 사람의 콜백이 앱으로 넘어오면, 로그인 확인값(state)은 크롬에 있어
+                   '다른 브라우저'로 처리되고 크롬의 로그인이 끊긴다(규칙 64). /login·/signup 도 같은 흐름의 일부라 뺀다.
+                 · /uploads/ 같은 파일 주소 — 앱이 받으면 WebView 가 파일을 못 열고(내려받기 없음) 브라우저로도 못 돌려보낸다.
+              그래서 남에게 보내는 '내용' 화면만 연다.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="artlink.cc" />
+                <data android:path="/" />
+                <data android:pathPrefix="/@" />
+                <data android:pathPrefix="/portfolio/" />
+                <data android:pathPrefix="/artists" />
+                <data android:pathPrefix="/galleries" />
+                <data android:pathPrefix="/exhibitions" />
+                <data android:pathPrefix="/shows" />
+                <data android:pathPrefix="/community" />
+                <data android:pathPrefix="/join/" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!-- 푸시 알림(FCM) — 상태표시줄 아이콘은 흰 단색이어야 한다(색이 있으면 회색 네모). 채널은 웹이 앱을 켤 때 만든다(native.ts). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_artlink" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/artlink_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="artlink" />
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 안드로이드 13+ 알림 표시 권한 — 로그인 직후 웹이 한 번 묻는다(native.ts) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

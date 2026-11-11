@@ -10,6 +10,7 @@ import { cardFeeOf } from '@/lib/settlement';
 import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
 import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
 import { CV_SECTIONS } from './submissionChecklist';
+import { isNativeApp, saveFile } from '@/lib/native';
 
 const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
 
@@ -454,7 +455,12 @@ export function overallSettlementHtml(s: Settlement, docLabel = '전체 정산�
     </div></div>`;
 }
 
+/**
+ * 만든 파일을 내려받는다 — 이 앱의 **모든 파일 내려받기가 여기로 모인다**(PDF·ZIP·PPTX·한글 캡션).
+ * 앱(안드로이드 WebView)은 `<a download>` 를 무시하므로 공유 창으로 넘긴다(lib/native.ts saveFile). 새 내려받기도 이걸 쓸 것.
+ */
 export function triggerDownload(blob: Blob, filename: string) {
+  if (isNativeApp()) { void saveFile(blob, filename); return; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

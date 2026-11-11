@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { armedHomepageNudgeUserId } from '@/lib/homepageNudge';
+import { popupHoldVersion, popupsHeldAt, subscribePopupHold } from '@/lib/popupHold';
 import {
   INTRO_IMG_WAIT_MS, INTRO_SETTLE_MS, introAllowedAt, introAudienceHere, introDefaultSide, introForced, introSignupHref,
   hideMemberIntro, markIntroAnswered, markMemberIntroDay, rememberIntroReturn, type IntroSide,
@@ -83,8 +84,11 @@ export default function GuestIntro() {
   // 미리보기 `?intro=1` — 로그인했거나 이미 답했어도 띄운다(운영자가 자기 브라우저로 확인)
   const forced = introForced(location.search);
   const memberId = member?.id ?? null;
+  // 앱 알림을 눌러 들어온 화면이면 기다린다 — 그것을 보러 온 사람이다(lib/popupHold.ts, 규칙 79). 미리보기는 예외
+  useSyncExternalStore(subscribePopupHold, popupHoldVersion, () => 0); // 걸리고 풀릴 때 다시 그린다
+  const held = !forced && popupsHeldAt(location.pathname);
   useEffect(() => {
-    if (open || !allowedHere) return;
+    if (open || !allowedHere || held) return;
     const who = () => { const s = useAuthStore.getState(); return s.isAuthenticated && s.user ? s.user : null; };
     if (!forced && !introAudienceHere(who())) return;
     let t: ReturnType<typeof setTimeout>;
@@ -95,6 +99,7 @@ export default function GuestIntro() {
       if (!alive) return;
       const u = who();
       if (!forced) {
+        if (popupsHeldAt(window.location.pathname)) return;
         if (!introAudienceHere(u)) return;
         if (u) {
           // 홈페이지 완성 팝업(규칙 51)이 뜨는 날엔 그쪽에 양보한다 — 한 번에 팝업 둘은 잔소리다(오늘은 본 것으로 친다)
@@ -108,10 +113,11 @@ export default function GuestIntro() {
     };
     t = setTimeout(() => { void ready.then(tryOpen); }, INTRO_SETTLE_MS);
     return () => { alive = false; clearTimeout(t); };
-  }, [location.pathname, allowedHere, memberId, open, forced]);
+  }, [location.pathname, allowedHere, memberId, open, forced, held]);
 
   // 관리자는 미리보기로만 본다
-  const shown = open && (forced || member?.role !== 'ADMIN');
+  // 이미 떠 있었는데 알림을 눌러 다른 화면으로 왔으면 감추기만 한다(답한 것으로 적지 않는다 — 그 화면을 떠나면 다시 보인다)
+  const shown = open && !held && (forced || member?.role !== 'ADMIN');
 
   // ⚠️ '봤다'는 사람이 답했을 때만 적는다(lib/guestIntro.ts) — 뜨는 순간 적으면 답하기 전에 사라진 사람은 영영 못 본다
   const answer = (hide = false) => {

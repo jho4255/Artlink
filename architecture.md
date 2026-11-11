@@ -2879,3 +2879,43 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **홈페이지 [수정] 자리**: `HomepageView` 의 `ownerAction`(주인만, PortfolioPage 가 넣는다) — 머리말 격자 `grid-cols-[minmax(0,1fr)_auto]` 의 오른쪽 위 칸. 액션 줄은 휴대폰 둘째 줄 · PC 오른쪽 아래.
 - **주최 공모 등록 폼**(같은 날): `HostedExhibitionsSection` 의 폼을 갤러리 공모 등록(MyPage)과 같은 `FormSection`/`FormField`/`formInputCls` 틀로 — 1 진행 범위 · 2 운영 갤러리(`GalleryPicker bare`) ·
   3 공고 내용(포스터 168px + 구분·지역·제목·모집 인원, 소개, 첨부) · 4 일정(`SchedulePicker` form, 칸 id `hosted-*`) · 5 추가 질문. 등록 로직(`submit`·`createMutation`·확인창)은 그대로.
+
+
+## 안드로이드 앱 — Capacitor 껍데기 + 푸시 (2026-11-09, CLAUDE.md 79)
+
+사용자 결정: 지금 모바일 웹과 **똑같은 화면**을 앱으로 싸고 알림만 더한다 · 안드로이드 먼저(iOS 는 Apple 개발자 계정·맥이 생긴 뒤). 계획·검증 체크리스트는 `mobile/PLAN.md`.
+
+```
+ [사용자 폰]                                [Render — artlink.cc]                     [Firebase]
+ ArtLink 앱(cc.artlink.app)                 Express + React 빌드(웹과 같은 것)
+  └ WebView ── https://artlink.cc ────────▶ 페이지·API 그대로
+      └ lib/native.ts(앱일 때만)
+          · 내려받기 → 공유 창                Notification 쓰기 ─▶ Prisma 갈고리 ─▶ lib/push.ts ─▶ FCM ─▶ 폰 알림
+          · 뒤로가기 · 앱 링크                 PUT/DELETE /api/push/tokens (PushToken)
+          · 푸시 토큰 등록/해제               /.well-known/assetlinks.json (App Links)
+  └ ArtLinkShell(앱 전용 Java 플러그인): info()·intent://·내려받기 넘기기
+```
+
+- **`mobile/`** — `capacitor.config.ts`(`server.url` = `ARTLINK_APP_URL` 또는 실서버 · `appendUserAgent: 'ArtLinkApp/1'` · `errorPath: offline.html` · `allowNavigation` 카카오 로그인 3곳 ·
+  SystemBars LIGHT · 스플래시 3초 상한) · `android/`(cap add 산출물 + `ArtLinkShellPlugin.java`·`MainActivity.java`·매니페스트·밝은 테마·아이콘) · `www/offline.html`(첫 화면을 못 불러올 때 — 앱 안의
+  `https://localhost/offline.html` 이라 [다시 시도]가 갈 서버 주소를 `scripts/post-sync.mjs` 가 sync 뒤 채운다) · `scripts/`(env.sh · emu.sh · ui_find.py · cdp.ps1 · make-icons.py · post-sync.mjs) · `assets/`(아이콘·스플래시 원본).
+  npm 스크립트: `sync`(cap sync + post-sync) · `build:debug`.
+- **웹 쪽(`frontend/src/lib/native.ts`)** — `isNativeApp` · `shellInfo`(ArtLinkShell.info, `{plugin}` 으로 감싸 받는다) · `saveFile`(Filesystem 캐시 1MB 조각 → Share) · `shareLinkNative` · `handleBackButton` ·
+  `appPathFor`(앱 링크·알림 주소 → 앱 안 경로, `resolveSiteLink` 재사용) · `registerPush`/`forgetPushToken`/`openNotification`/`onPushReceived` · `cleanOldExports` · `useNativeBridge(userId)`(App.tsx).
+  붙인 곳: `operationPdf.triggerDownload`(모든 파일) · `portfolioFormats` PPTX(blob → triggerDownload) · 캡션 HWP 두 곳 · `PortfolioPage`·`ArtworkViewer` 공유 · `authStore.logout` · ArtLook `ui.js`(nativePromise, `window.top`).
+  모달 세 개(`ImageLightbox`·`ArtworkDetailModal`(+좋아요한 사람·전시 초대)·`InviteApplyModal`)에 `role="dialog" aria-modal` — 앱 뒤로가기가 창만 닫는다.
+- **서버** — `lib/push.ts`(`pushItemsFor` 판정 · `queuePush` 같은 틱 묶음 · `deliver` 토큰 조회(탈퇴 제외) → `sendEach` 500개씩 → 죽은 토큰 정리 · `pushIdle`) ·
+  `lib/prisma.ts`(`$use` 미들웨어 한 번 + `setNotificationHook` 자리) · `routes/push.ts` · `lib/assetLinks.ts` + `index.ts` 의 `/.well-known/assetlinks.json` · 탈퇴(`DELETE /auth/me`)가 토큰 삭제.
+  메시지: 제목 'ArtLink' · 본문 = 알림 문구(180자) · data `{linkUrl, notificationId, type}` · android `{priority high, channelId 'artlink', color #c4302b, tag}`.
+- **빌드 산출물**: 웹 번들에서 `@capacitor/*` 만으로 된 청크는 `capacitor-*.js` 이름(vite `chunkFileNames`) → 서비스워커 미리받기에서 뺀다. 브라우저는 처음부터 끝까지 그 청크를 안 받는다.
+- **확인한 것(에뮬레이터, 로컬 서버)**: 홈·상태표시줄(흰색) · 뒤로가기(창만 닫기 / 이전 화면 / 앱 내리기, 다시 열면 그대로) · 벨 알림 → 그 문의가 펼쳐진 고객센터 · 앱 링크(켜진 채·꺼진 채, 목록 밖 경로는 안 받음) ·
+  사진 선택기로 3장 올리기 · 포트폴리오 PDF(23쪽 6.7MB)·ArtLook PNG → 공유 창(기기에서 꺼내 파일이 온전한지 확인) · 인스타 링크 → 크롬 · 파일 주소 → 시스템 '열기' ·
+  카카오 로그인 화면이 앱 안에서 열림 · 키보드가 입력칸을 가리지 않음. **못 본 것**: 카카오톡 앱 전환 로그인(카카오톡이 깔린 기기) · 실서버 App Links 검증.
+- **FCM 실제 수신(2026-11-11, Firebase `artlink-56a2b`)**: 로그인 직후 허용 창 → 토큰 저장 · 앱을 보는 중엔 시스템 알림 없이 벨 갱신 · 내려 둔 채·프로세스가 죽은 채 상단 알림 → 누르면 그 화면 ·
+  대화 2통 = 2번 울림(서랍 한 칸) · 좋아요 두 사람 = 1번 · 로그아웃 뒤 안 옴. 이때 찾은 것 둘 —
+  **`lib/popupHold.ts`**(알림으로 들어온 화면에선 소개·홈페이지 팝업이 기다린다 — 꺼진 앱을 켜면 '하루 첫 방문'이라 소개 팝업이 그 문의를 덮었다) ·
+  **`lib/scrollToTarget.ts`**(크롬 124 WebView 는 overflow:hidden 요소의 scroll-margin 을 무시해 `scrollIntoView` 가 제목을 상단바 뒤에 붙였다 — 여백을 직접 계산).
+- **카카오톡처럼**(2026-11-11): 대화 푸시는 제목 = 보낸 사람·방 이름, 본문 = 메시지(`lib/push.ts chatStyle` ← `lib/chat.ts splitChatNotice`) · 앱이 앞이면 위쪽 배너
+  (`lib/pushBanner.ts` 판정 + `PushBanner.tsx`, 그 화면을 보고 있으면 안 띄움) · 채널은 중요도 높음 + 진동 · **방마다 알림 끄기**(`ChatParticipant.muted`, `PATCH /chats/:id/mute`).
+- **알림 제목은 종류별**(`lib/push.ts PUSH_TITLES`) · **바깥 사이트의 HTTP 오류 페이지는 그대로**(`ArtLinkShellPlugin` 이 Capacitor WebViewClient 를 바꾼다 — 기본은 어느 사이트든 4xx·5xx 를
+  오류 화면으로 바꿔 카카오 KOE 안내를 가렸다). 개발 앱의 카카오 로그인은 localhost 돌아올 주소가 미등록이라 KOE006(실서버 앱은 해당 없음).

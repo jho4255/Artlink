@@ -121,13 +121,23 @@ export async function sendDirectNotice(fromUserId: number, toUserId: number, tex
  *    참여자 20명 × 메시지 수만큼 행이 쌓이면 안 된다. 방을 열면 `markChatNotificationsRead` 가 읽음 처리한다.
  * best-effort — 실패해도 메시지 전송은 이미 끝났다.
  */
+/** 대화 알림 글 — 벨 목록에 이대로 나온다. 앱 푸시는 `splitChatNotice` 로 다시 갈라 카카오톡처럼(제목 = 보낸 사람) 보낸다 */
+export const chatNoticeMessage = (senderName: string, preview: string): string =>
+  `${senderName}님의 새 메시지: ${preview.replace(/\s+/g, ' ').slice(0, 60)}`;
+
+/** `chatNoticeMessage` 의 짝 — 모양이 다르면 null(그때는 글 그대로 보낸다) */
+export function splitChatNotice(message: string): { sender: string; text: string } | null {
+  const m = /^(.+?)님의 새 메시지: ([\s\S]*)$/.exec(message);
+  return m ? { sender: m[1], text: m[2] } : null;
+}
+
 export async function notifyChatMessage(chatId: number, senderId: number, senderName: string, preview: string): Promise<void> {
-  // 이 방 알림을 끈 사람(`muted`)은 뺀다 — 벨 알림을 만들지 않는다
+  // 이 방 알림을 끈 사람(`muted`)은 뺀다 — 벨 알림이 없으면 앱 푸시도 없다(lib/push.ts 가 벨 알림을 보고 보낸다)
   const others = await prisma.chatParticipant.findMany({ where: { chatId, userId: { not: senderId }, muted: false }, select: { userId: true } });
   if (others.length === 0) return;
   const refKey = `chat:${chatId}`;
   const linkUrl = `/messages?chat=${chatId}`;
-  const message = `${senderName}님의 새 메시지: ${preview.replace(/\s+/g, ' ').slice(0, 60)}`;
+  const message = chatNoticeMessage(senderName, preview);
   for (const { userId } of others) {
     const existing = await prisma.notification.findFirst({ where: { userId, refKey, read: false }, select: { id: true } });
     if (existing) {

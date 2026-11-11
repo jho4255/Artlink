@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { editHref, editSectionForTab } from '@/lib/homepageEdit';
 import { PDF_HINT_MIN_WORKS, dismissPdfHint, pdfHintDismissed } from '@/lib/portfolioMaker';
 import type { PortfolioImage, PublicPortfolio, StoryHighlight } from '@/types';
+import { shareLinkNative } from '@/lib/native';
 
 /**
  * 공개 작가 페이지 — 작가에게는 이게 '내 홈페이지'다. 주소는 `/@handle` 또는 `/portfolio/:id` (2026-09-16).
@@ -200,6 +201,7 @@ export default function PortfolioPage({ artistId }: { artistId?: number } = {}) 
     navigate('/login');
   };
   const share = async () => {
+    if (await shareLinkNative(`${artistName} — ArtLink`, pageUrl)) return; // 앱: 안드로이드 공유 창(WebView 엔 navigator.share 가 없다)
     const nav = typeof navigator !== 'undefined' ? navigator : undefined;
     try {
       if (nav?.share) { await nav.share({ title: `${artistName} — ArtLink`, url: pageUrl }); return; }

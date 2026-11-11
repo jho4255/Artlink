@@ -26,7 +26,39 @@ const EMBED=Q.get('embed')==='1' && window.parent!==window;
 /** 손가락으로 쓰는 화면 — 저장이 '내려받기'가 아니라 공유 창이다 */
 const COARSE=!!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 /** 카카오톡·인스타그램 등 앱 안 브라우저 — 내려받기가 막히는 일이 흔하다. 이미지를 띄워 길게 눌러 저장하게 한다 */
-const IN_APP=/KAKAOTALK|Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|DaumApps|everytimeApp|BAND\//i.test(navigator.userAgent);
+const IN_APP=/KAKAOTALK|Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|DaumApps|everytimeApp|BAND\/|ArtLinkApp/i.test(navigator.userAgent);
+/**
+ * 우리 안드로이드 앱(규칙 79) — WebView 에는 navigator.share 도 내려받기도 없다. 앱 브리지(window.Capacitor)로 파일을 써서 공유 창을 연다.
+ * 이 화면은 React 번들 밖이라 @capacitor/* 를 못 쓴다 — 브리지의 nativePromise 로 같은 Filesystem·Share 플러그인을 부른다(@capacitor/core 의 플러그인 래퍼도 결국 이걸 부른다).
+ * ⚠️⚠️ 앱 플러그인은 **최상위 창(main frame)에서 부른 것만** 받는다 — iframe 안의 브리지로 부르면 Capacitor 가
+ *    "Plugin execution is allowed in Main Frame only" 로 버리고 Promise 가 영영 끝나지 않는다(2026-11-09 에뮬레이터에서 겪음:
+ *    브리지는 iframe 에도 심기므로 '있다'만 보고 쓰면 눌러도 아무 일이 없다). 마이페이지 [ArtLook] 탭은 iframe 이라 같은 출처인 최상위 창의 것을 빌린다.
+ */
+function nativeBridge(){
+  try{
+    const c=window.top && window.top.Capacitor;
+    if(c && c.nativePromise && c.isNativePlatform && c.isNativePlatform()) return c;
+  }catch(e){ /* 최상위가 다른 출처 — 우리 앱이 아니다 */ }
+  return null;
+}
+async function nativeSave(cap, dataUrl, name){
+  const b64=dataUrl.slice(dataUrl.indexOf(',')+1);
+  const path='exports/'+Date.now()+'/'+name.replace(/[\\/:*?"<>|]+/g,'_');
+  const CH=1048576; // 4 의 배수 — 앱이 base64 조각을 따로 풀어 이어 붙여도 원본과 같다(한 번에 넘기면 큰 PNG 에서 메모리를 두 배로 쓴다)
+  const uri=await withTimeout((async ()=>{
+    for(let i=0; i===0 || i<b64.length; i+=CH){
+      const data=b64.slice(i, i+CH);
+      if(i===0) await cap.nativePromise('Filesystem','writeFile',{ path, data, directory:'CACHE', recursive:true });
+      else await cap.nativePromise('Filesystem','appendFile',{ path, data, directory:'CACHE' });
+    }
+    return (await cap.nativePromise('Filesystem','getUri',{ path, directory:'CACHE' })).uri;
+  })(), 45000);
+  await cap.nativePromise('Share','share',{ title:name, files:[uri], dialogTitle:'저장하거나 보낼 곳을 고르세요' });
+}
+/** 앱 쪽에서 답이 안 오면(위 main frame 함정 같은 것) 말없이 멈추지 않게 — 파일 쓰기에 45초면 넉넉하다. 공유 창이 떠 있는 동안은 재지 않는다 */
+function withTimeout(p, ms){
+  return Promise.race([p, new Promise((_, rej)=>setTimeout(()=>rej(new Error('native timeout')), ms))]);
+}
 
 const pv=$('preview'), stage=$('stage'), busyEl=$('busy'), toastEl=$('toast'), zoomEl=$('zoom');
 const worksEl=$('works'), framesEl=$('frames'), scenesEl=$('scenes'), wallsEl=$('walls');
@@ -862,6 +894,15 @@ dlBtn.addEventListener('click', ()=>{
   if(dlBtn.disabled) return;
   flushRender();
   const name=downloadFileName();
+  const cap=nativeBridge();
+  if(cap){
+    let url;
+    try{ url=pv.toDataURL('image/png'); }catch(e){ saveFailed(); return; }
+    nativeSave(cap, url, name)
+      .then(()=>saved('저장·공유했어요'))
+      .catch((err)=>{ if(/cancel/i.test(String((err && err.message) || err))) return; saveFailed(); });
+    return;
+  }
   if(COARSE || IN_APP){
     // ⚠️ 공유 창은 **누른 그 순간에** 열어야 한다(사용자 동작이 식으면 막힌다) — 그래서 비동기 toBlob 이 아니라 toDataURL 로 바로 만든다
     let url;
@@ -1007,7 +1048,7 @@ $('close').addEventListener('click', ()=>{
 
 /* ── 시작 ── */
 // 휴대폰에서 공유 창이 열리는 브라우저면 단추 이름부터 그렇게 — 누르면 내려받기가 아니라 공유 창(사진에 저장·인스타그램·카카오톡)이 뜬다
-if(COARSE && !IN_APP && navigator.share && navigator.canShare) dlBtn.textContent='저장·공유';
+if((COARSE && !IN_APP && navigator.share && navigator.canShare) || nativeBridge()) dlBtn.textContent='저장·공유';
 buildWorks(); buildFrames(); buildMatColors(); buildRatios(); updateMatRow(); lightUI(); updateFrameLine(); updateSceneLine();
 selectTab('works');
 // 워터마크 글꼴 — `fonts.ready` 는 그 순간 받는 중인 글꼴만 기다려서, 캔버스에만 쓰는 굵기는 안 기다릴 수 있다.
