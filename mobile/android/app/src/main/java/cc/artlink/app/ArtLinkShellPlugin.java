@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+import android.widget.Toast;
 import androidx.core.content.pm.PackageInfoCompat;
 import com.getcapacitor.BridgeWebViewClient;
 import com.getcapacitor.JSObject;
@@ -104,7 +105,9 @@ public class ArtLinkShellPlugin extends Plugin {
         if (client.isKakaoTalkLoginAvailable(getActivity())) {
             client.loginWithKakaoTalk(getActivity(), AuthCodeClient.DEFAULT_REQUEST_CODE, null, null, null, (token, error) -> {
                 if (error != null && !isKakaoCancel(error)) {
-                    // 카카오톡에 로그인돼 있지 않은 등 — 카카오 계정 화면으로 이어 간다
+                    // 카카오톡에 로그인돼 있지 않은 등 — 카카오 계정 화면으로 이어 간다.
+                    // 왜 넘어갔는지 짧게 보여 준다(키 해시 미등록 같은 설정 문제를 폰만으로 알아보게 — 2026-11-11 실기기에서 원인을 못 찾았다)
+                    showToast("카카오톡 로그인 실패 → 카카오 계정으로 (" + shortReason(error) + ")");
                     client.loginWithKakaoAccount(getActivity(), null, null, null, null, null, byAccount);
                 } else {
                     finishKakao(call, token, error);
@@ -112,8 +115,20 @@ public class ArtLinkShellPlugin extends Plugin {
                 return Unit.INSTANCE;
             });
         } else {
+            showToast("카카오톡을 찾지 못해 카카오 계정으로 로그인합니다");
             client.loginWithKakaoAccount(getActivity(), null, null, null, null, null, byAccount);
         }
+    }
+
+    private void showToast(String text) {
+        getActivity().runOnUiThread(() -> Toast.makeText(getContext(), text, Toast.LENGTH_LONG).show());
+    }
+
+    /** 오류 이름 + 메시지 앞부분(키 해시 문제면 카카오가 'keyHash' 를 적어 준다) */
+    private static String shortReason(Throwable error) {
+        String msg = error.getMessage() == null ? "" : error.getMessage().replaceAll("\\s+", " ");
+        String text = error.getClass().getSimpleName() + (msg.isEmpty() ? "" : ": " + msg);
+        return text.length() > 120 ? text.substring(0, 120) + "…" : text;
     }
 
     private static boolean isKakaoCancel(Throwable error) {
