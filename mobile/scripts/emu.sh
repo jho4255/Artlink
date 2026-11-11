@@ -5,6 +5,8 @@
 #   wait       부팅 완료 대기
 #   dev        앱이 WSL 개발 서버(http://localhost:5173)를 보게: adb reverse + cap sync + 빌드·설치·실행
 #   prod       앱이 실서버(https://artlink.cc)를 보게 다시 sync + 빌드·설치·실행  ⚠️ 비회원 통계에 방문이 남는다
+#   apk [경로]  **폰에 줄 APK** — 실서버 주소로 sync·빌드하고, APK 안의 주소가 https://artlink.cc 인지 확인해 [경로](기본 ~/firebase/ArtLink-test.apk)로
+#              ⚠️ 2026-11-11: `dev` 뒤에 빌드 산출물을 그대로 복사해 localhost:5173 을 보는 APK 를 건넸다(폰에선 '연결하지 못했어요'만) — 꼭 이걸로
 #   run        앱 실행(이미 설치돼 있을 때)
 #   shot [이름] 스크린샷 → $OUT/<이름>.png (기본 shot-<시각>)
 #   dump       화면 접근성 트리(XML) — WebView 글자·버튼도 들어 있어 "무엇이 보이는가" 판정에 쓴다
@@ -50,6 +52,14 @@ case "$cmd" in
   prod)
     (cd "$HERE" && npm run -s sync 2>&1 | tail -2)
     build_install_run ;;
+  apk)
+    dest="${1:-$HOME/firebase/ArtLink-test.apk}"
+    (cd "$HERE" && npm run -s sync 2>&1 | grep 'post-sync')
+    (cd "$HERE/android" && ./gradlew assembleDebug -q 2>&1 | { grep -v -E '^\s*$|unchecked|Recompile|deprecated|SDK processing' || true; } | tail -5)
+    apk="$HERE/android/app/build/outputs/apk/debug/app-debug.apk"
+    url="$(unzip -p "$apk" assets/capacitor.config.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["server"]["url"])')"
+    [ "$url" = "https://artlink.cc" ] || { echo "✗ APK 가 $url 을 본다 — 실서버가 아니다. 멈춤" >&2; exit 1; }
+    cp "$apk" "$dest" && echo "✓ $dest ($(stat -c %s "$dest") bytes, $url)" ;;
   run) "$ADB" shell am start -n "$PKG/.MainActivity" | tr -d '\r' ;;
   shot) f="$OUT/${1:-shot-$(date +%H%M%S)}.png"; "$ADB" exec-out screencap -p > "$f"; echo "$f" ;;
   dump) "$ADB" exec-out uiautomator dump /dev/tty 2>/dev/null | tr -d '\r' | sed 's/UI hierchary dumped to: \/dev\/tty//' ;;
