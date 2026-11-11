@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">개인정보처리방침</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 11월 9일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 11월 11일</p>
 
       <PrivacyBody />
     </div>

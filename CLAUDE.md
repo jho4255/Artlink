@@ -2710,7 +2710,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 로컬에서 실서버 복제본으로 앱을 볼 땐 `.env` 를 바꾸지 말고 `DATABASE_URL=…/artlink_prod npm run dev` 로 띄울 것(E2E 가 `.env` 의 DB 를 지운다). 거기서는 개발자 로그인 버튼이
       **실제 가입자로 바꿔 들어갈 수 있다** — 점검 계정(`backend/scripts/seed-audit-chat.ts`, '점검' 작가 둘 + 대화방)을 쓸 것.
     - 회귀: backend `kakao-login.test.ts`(6) · `push.test.ts`(19) · `chat-mute.test.ts`(3) · `asset-links.test.ts`(4) · frontend `native.test.ts`(29) · `pushBanner.test.ts`(7) · `popupHold.test.ts`(10) · `scrollToTarget.test.ts`(3). 에뮬레이터 실측 체크리스트는 `mobile/PLAN.md` §3 WP1·WP3, 결과는 §6.
-      개인정보처리방침에 '앱 알림 기기 토큰'(1항 수집 · 3항 보관)과 Firebase Cloud Messaging(4항 위탁)을 적었다 — **최종 수정일은 실제로 배포하는 날로 고칠 것**.
+      개인정보처리방침에 '앱 알림 기기 토큰'(1항 수집 · 3항 보관)과 Firebase Cloud Messaging(4항 위탁)을 적었다 — 최종 수정일 2026-11-11(앱 브랜치를 실서버에 배포한 날).
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
