@@ -15,6 +15,14 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.kakao.sdk.auth.AuthCodeClient;
+import com.kakao.sdk.auth.model.OAuthToken;
+import com.kakao.sdk.common.KakaoSdk;
+import com.kakao.sdk.common.model.ClientError;
+import com.kakao.sdk.common.model.ClientErrorCause;
+import com.kakao.sdk.user.UserApiClient;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function2;
 import java.net.URISyntaxException;
 import java.util.Locale;
 
@@ -30,6 +38,9 @@ public class ArtLinkShellPlugin extends Plugin {
 
     @Override
     public void load() {
+        // 카카오 SDK — 키는 app/build.gradle 한 곳(resValue). 로그인 버튼을 누르기 전에 한 번만
+        KakaoSdk.init(getContext(), getContext().getString(R.string.kakao_native_app_key), null, null);
+
         // WebView 는 내려받기를 하지 않는다(첨부 파일·포트폴리오 파일이 눌러도 아무 일 없음) — 주소를 시스템(브라우저)에 넘긴다.
         // blob:/data: 는 여기 오기 전에 웹이 직접 처리한다(native.ts saveFile).
         WebView webView = getBridge().getWebView();
@@ -75,6 +86,49 @@ public class ArtLinkShellPlugin extends Plugin {
             ret.put("versionCode", 0);
         }
         ret.put("push", hasFirebaseConfig());
+        // 이 앱은 kakaoLogin() 을 안다 — 없는 옛 앱이면 웹은 예전처럼 카카오 웹 로그인으로(lib/native.ts)
+        ret.put("kakao", true);
+        call.resolve(ret);
+    }
+
+    /**
+     * 카카오 로그인 — 폰의 카카오톡으로 바로(없거나 거기서 실패하면 카카오 계정 화면). 앱 안 웹 화면(WebView)에서는 카카오 웹 로그인이
+     * 카카오톡으로 넘어갔다 돌아올 수 없어 이메일·비밀번호만 보였다(2026-11-11 실기기). 결과는 카카오 접근 토큰 —
+     * 웹이 서버 POST /api/auth/kakao/native 로 넘기고, 서버가 우리 카카오 앱에서 나온 토큰인지 확인한 뒤 로그인시킨다.
+     * 사용자가 취소하면 code=CANCELLED 로 실패(웹은 조용히 멈춘다).
+     */
+    @PluginMethod
+    public void kakaoLogin(PluginCall call) {
+        UserApiClient client = UserApiClient.Companion.getInstance();
+        Function2<OAuthToken, Throwable, Unit> byAccount = (token, error) -> { finishKakao(call, token, error); return Unit.INSTANCE; };
+        if (client.isKakaoTalkLoginAvailable(getActivity())) {
+            client.loginWithKakaoTalk(getActivity(), AuthCodeClient.DEFAULT_REQUEST_CODE, null, null, null, (token, error) -> {
+                if (error != null && !isKakaoCancel(error)) {
+                    // 카카오톡에 로그인돼 있지 않은 등 — 카카오 계정 화면으로 이어 간다
+                    client.loginWithKakaoAccount(getActivity(), null, null, null, null, null, byAccount);
+                } else {
+                    finishKakao(call, token, error);
+                }
+                return Unit.INSTANCE;
+            });
+        } else {
+            client.loginWithKakaoAccount(getActivity(), null, null, null, null, null, byAccount);
+        }
+    }
+
+    private static boolean isKakaoCancel(Throwable error) {
+        return error instanceof ClientError && ((ClientError) error).getReason() == ClientErrorCause.Cancelled;
+    }
+
+    private static void finishKakao(PluginCall call, OAuthToken token, Throwable error) {
+        if (error != null) {
+            if (isKakaoCancel(error)) call.reject("카카오 로그인을 취소했어요.", "CANCELLED");
+            else call.reject(error.getMessage() == null ? "카카오 로그인에 실패했어요." : error.getMessage(), "FAILED");
+            return;
+        }
+        if (token == null) { call.reject("카카오 로그인에 실패했어요.", "FAILED"); return; }
+        JSObject ret = new JSObject();
+        ret.put("accessToken", token.getAccessToken());
         call.resolve(ret);
     }
 

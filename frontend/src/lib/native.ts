@@ -42,10 +42,13 @@ export interface ShellInfo {
   versionCode: number;
   /** 이 앱에 Firebase 설정(google-services.json)이 들어 있는가 — false 면 푸시를 등록하지 않는다(부르면 앱이 죽는다) */
   push: boolean;
+  /** 앱 카카오 로그인(폰의 카카오톡으로 바로)이 되는 판인가 — 2026-11-11. 없는 옛 앱이면 웹 카카오 로그인으로 */
+  kakao?: boolean;
 }
 
 interface ArtLinkShellPlugin {
   info(): Promise<ShellInfo>;
+  kakaoLogin(): Promise<{ accessToken: string }>;
 }
 
 let shellPromise: Promise<{ plugin: ArtLinkShellPlugin }> | null = null;
@@ -60,6 +63,28 @@ export function shellInfo(): Promise<ShellInfo | null> {
   if (!isNativeApp()) return Promise.resolve(null);
   // 옛 앱(이 플러그인이 없는 판)이면 실패 — 아무 기능도 없는 것으로 친다
   return (infoPromise ??= shell().then((s) => s.plugin.info()).catch(() => null));
+}
+
+// ─── 카카오 로그인(앱) ───
+
+/** 앱의 카카오 로그인을 쓸 수 있는가 — 브라우저·옛 앱이면 false(웹 카카오 로그인으로) */
+export async function nativeKakaoAvailable(): Promise<boolean> {
+  return !!(await shellInfo())?.kakao;
+}
+
+/**
+ * 앱 카카오 로그인 — 폰의 카카오톡으로 바로(없으면 카카오 계정 화면). 앱 안 웹 화면에서는 카카오 웹 로그인이 카카오톡으로
+ * 넘어갔다 돌아오지 못해 이메일·비밀번호만 보였다(2026-11-11 실기기). 결과(카카오 접근 토큰)는 서버 POST /auth/kakao/native 가
+ * 우리 카카오 앱에서 나온 것인지 확인한 뒤 로그인시킨다(AuthCallbackPage). 사용자가 취소하면 'cancelled'.
+ */
+export async function nativeKakaoLogin(): Promise<{ accessToken: string } | 'cancelled'> {
+  const { plugin } = await shell();
+  try {
+    return await plugin.kakaoLogin();
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === 'CANCELLED') return 'cancelled';
+    throw e;
+  }
 }
 
 // ─── 파일 저장(공유 창) ───

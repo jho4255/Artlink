@@ -1,4 +1,7 @@
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { startKakaoLogin } from '@/lib/kakaoLogin';
+import { isNativeApp, nativeKakaoAvailable, nativeKakaoLogin } from '@/lib/native';
 
 /**
  * 카카오 로그인 버튼 — 로그인 화면과, 다른 창에서 돌아와 맞춰 보지 못한 콜백 화면이 같이 쓴다.
@@ -6,10 +9,26 @@ import { startKakaoLogin } from '@/lib/kakaoLogin';
  * `onStart` 는 떠나기 직전에 — 회원가입 화면이 고른 역할을 적어 둔다(가입 정보 입력이 이어받는다, lib/signupRole.ts).
  */
 export default function KakaoLoginButton({ label = '카카오로 시작하기', onStart }: { label?: string; onStart?: () => void }) {
+  const navigate = useNavigate();
+  const go = async () => {
+    onStart?.();
+    // 안드로이드 앱이면 폰의 카카오톡으로 바로(lib/native.ts nativeKakaoLogin) — 그 뒤(가입 정보 입력·로그인 뒤 갈 곳)는 콜백 화면이 웹과 똑같이 맡는다.
+    // 브라우저·옛 앱이면 예전처럼 카카오 웹 로그인으로(⚠️ 그 길은 기다리지 않고 곧바로 — 사용자가 누른 순간이어야 한다)
+    if (isNativeApp() && (await nativeKakaoAvailable())) {
+      try {
+        const r = await nativeKakaoLogin();
+        if (r !== 'cancelled') navigate('/auth/kakao/callback', { state: { kakaoAccessToken: r.accessToken } });
+      } catch {
+        toast.error('카카오 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      }
+      return;
+    }
+    startKakaoLogin();
+  };
   return (
     <button
       type="button"
-      onClick={() => { onStart?.(); startKakaoLogin(); }}
+      onClick={() => { void go(); }}
       className="w-full h-12 flex items-center justify-center gap-2 rounded-lg bg-[#FEE500] text-[#191600] text-sm font-semibold hover:brightness-95 transition cursor-pointer"
       aria-label={label}
     >

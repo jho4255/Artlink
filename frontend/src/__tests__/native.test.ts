@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   readdir: vi.fn<(o: unknown) => Promise<{ files: { name: string }[] }>>(async () => ({ files: [] })),
   share: vi.fn<(o: unknown) => Promise<object>>(async () => ({})),
   info: vi.fn(async () => ({ versionName: '1.0', versionCode: 1, push: true })),
+  kakaoLogin: vi.fn<() => Promise<{ accessToken: string }>>(async () => ({ accessToken: 'kakao-token-abc' })),
   checkPermissions: vi.fn(async () => ({ receive: 'prompt' })),
   requestPermissions: vi.fn(async () => ({ receive: 'granted' })),
   register: vi.fn(async () => {}),
@@ -30,7 +31,7 @@ vi.mock('@capacitor/share', () => ({ Share: { share: m.share } }));
 // 진짜 Capacitor 플러그인처럼 **아무 속성이나 메서드로 답하는 Proxy** — 'then' 도 함수로 보인다(그대로 Promise 로 돌려주면 then 이 불린다)
 vi.mock('@capacitor/core', () => ({
   registerPlugin: () => new Proxy({}, {
-    get: (_t, prop) => (prop === 'info' ? m.info : () => Promise.reject(new Error(`"ArtLinkShell.${String(prop)}()" is not implemented on android`))),
+    get: (_t, prop) => (prop === 'info' ? m.info : prop === 'kakaoLogin' ? m.kakaoLogin : () => Promise.reject(new Error(`"ArtLinkShell.${String(prop)}()" is not implemented on android`))),
   }),
 }));
 vi.mock('@capacitor/push-notifications', () => ({
@@ -42,6 +43,7 @@ vi.mock('react-hot-toast', () => ({ default: { error: m.toastError, success: vi.
 import {
   isNativeApp, saveFile, shareLinkNative, handleBackButton, appPathFor, registerPush, forgetPushToken,
   openNotification, onPushReceived, safeFileName, cleanOldExports, SAVE_CHUNK_BYTES, EXPORT_KEEP_MS, PUSH_TOKEN_KEY, PUSH_ASKED_KEY,
+  nativeKakaoAvailable, nativeKakaoLogin,
   __resetNativeForTests,
 } from '@/lib/native';
 import { triggerDownload } from '@/lib/operationPdf';
@@ -206,6 +208,42 @@ describe('앱 안 — 링크·알림으로 열기', () => {
     onPushReceived({ type: 'CHAT_MESSAGE' });
     const keys = inv.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
     expect(keys).toEqual(['["notifications"]', '["unread-count"]', '["chat-unread"]', '["chats"]', '["chat"]']);   // 보고 있는 방도 곧바로(8초 폴링을 기다리지 않게)
+  });
+});
+
+describe('앱 안 — 카카오 로그인(카카오톡으로 바로, 2026-11-11)', () => {
+  it('★ 그 기능이 있는 앱이면 토큰을 받고, 취소하면 \'cancelled\'(조용히 멈춘다)', async () => {
+    asNative(true);
+    m.info.mockResolvedValueOnce({ versionName: '1', versionCode: 1, push: true, kakao: true } as never);
+    expect(await nativeKakaoAvailable()).toBe(true);
+    expect(await nativeKakaoLogin()).toEqual({ accessToken: 'kakao-token-abc' });
+    m.kakaoLogin.mockRejectedValueOnce(Object.assign(new Error('취소'), { code: 'CANCELLED' }));
+    expect(await nativeKakaoLogin()).toBe('cancelled');
+    m.kakaoLogin.mockRejectedValueOnce(Object.assign(new Error('망'), { code: 'FAILED' }));
+    await expect(nativeKakaoLogin()).rejects.toThrow('망');
+  });
+
+  it('옛 앱(kakao 없음)·브라우저면 쓸 수 없다 — 웹 카카오 로그인으로', async () => {
+    asNative(true);
+    m.info.mockResolvedValueOnce({ versionName: '1', versionCode: 1, push: true });
+    expect(await nativeKakaoAvailable()).toBe(false);
+    __resetNativeForTests();
+    asNative(false);
+    expect(await nativeKakaoAvailable()).toBe(false);
+  });
+
+  it('소스 — 버튼은 앱이면 앱 로그인 뒤 콜백 화면으로, 아니면 곧바로 웹 로그인 · 콜백은 앱 토큰을 /auth/kakao/native 로', () => {
+    const btn = read(join(SRC, 'components/shared/KakaoLoginButton.tsx'));
+    expect(btn).toMatch(/isNativeApp\(\) && \(await nativeKakaoAvailable\(\)\)/);
+    expect(btn).toContain("navigate('/auth/kakao/callback', { state: { kakaoAccessToken: r.accessToken } })");
+    expect(btn.indexOf('startKakaoLogin()')).toBeGreaterThan(btn.indexOf('nativeKakaoLogin()'));
+    const cb = read(join(SRC, 'pages/AuthCallbackPage.tsx'));
+    expect(cb).toContain('`/auth/${provider}/native`');
+    // 앱 토큰은 code·state 검사보다 먼저 본다(주소에 code 가 없다 — 없으면 로그인 화면으로 튕겼다)
+    expect(cb.indexOf('kakaoAccessToken')).toBeLessThan(cb.indexOf("searchParams.get('code')"));
+    const java = read(join(REPO, 'mobile/android/app/src/main/java/cc/artlink/app/ArtLinkShellPlugin.java'));
+    expect(java).toContain('ret.put("kakao", true)');
+    expect(java).toContain('isKakaoTalkLoginAvailable');
   });
 });
 

@@ -10,6 +10,11 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // 카카오 네이티브 앱 키 — 비밀이 아니다(앱에 실려 나가고, 카카오가 앱 서명 키 해시로 진짜 앱인지 본다).
+        // 매니페스트(카카오톡에서 돌아오는 주소 kakao<키>://oauth)와 코드(ArtLinkShellPlugin 의 KakaoSdk.init)가 같은 값을 쓴다
+        def kakaoNativeAppKey = "bafdd1b85974705294fc934ac9abc665"
+        manifestPlaceholders = [kakaoNativeAppKey: kakaoNativeAppKey]
+        resValue "string", "kakao_native_app_key", kakaoNativeAppKey
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -36,6 +41,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // 카카오 로그인(카카오톡으로 바로) — 판을 못박는다(바꾸면 KakaoLogin.kt 의 호출을 확인할 것)
+    implementation "com.kakao.sdk:v2-user:2.26.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

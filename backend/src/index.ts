@@ -132,7 +132,7 @@ if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true'
   // 그 조회들은 위의 전역 한도(300)로 센다.
   // 이메일 인증번호(받기·확인)·이메일 가입·비밀번호 재설정(2026-10-08)도 같은 한도로 센다 — 번호 맞히기·주소 조회를 IP 단위로 막는다
   const isSignInAttempt = (req: express.Request) =>
-    req.method === 'POST' && /^\/(login|signup|kakao|complete-registration|dev-login|email\/code|email\/verify|email-signup|password\/reset)$/.test(req.path);
+    req.method === 'POST' && /^\/(login|signup|kakao|kakao\/native|complete-registration|dev-login|email\/code|email\/verify|email-signup|password\/reset)$/.test(req.path);
   app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, skip: (req) => !isSignInAttempt(req) }));
   // 인증번호 메일 보내기는 IP 당 1시간 10번 — 메일 한 통마다 Gmail 하루 한도(약 500, 홍보 메일과 같은 계정)를 쓴다(lib/emailCode.ts DAILY_SEND_MAX 와 함께)
   app.use('/api/auth/email/code', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: clientKey, skip: (req) => req.method !== 'POST',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
@@ -15,6 +15,7 @@ import { roleLabel, VISITOR_ROLE_HINT } from '@/lib/utils';
 export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const login = useAuthStore((s) => s.login);
 
@@ -48,8 +49,9 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   };
 
   const oauthMutation = useMutation({
-    mutationFn: (body: { code: string; redirectUri: string }) =>
-      api.post(`/auth/${provider}`, body).then((r) => r.data),
+    // 웹: 카카오가 돌려준 인가 코드 · 앱: 앱이 카카오 SDK 로 받은 접근 토큰(KakaoLoginButton → 이 화면, 2026-11-11)
+    mutationFn: (body: { code: string; redirectUri: string } | { accessToken: string }) =>
+      api.post('accessToken' in body ? `/auth/${provider}/native` : `/auth/${provider}`, body).then((r) => r.data),
     onSuccess: (data) => {
       if (data.needsRegistration) {
         // 비회원 둘러보기 — 주소는 그대로라 '가입 정보 입력' 단계를 따로 남긴다(여기서 그만두는 사람이 가입 전환의 핵심)
@@ -82,6 +84,14 @@ export default function AuthCallbackPage({ provider }: { provider: 'kakao' }) {
   useEffect(() => {
     if (fired.current) return;
     fired.current = true;
+
+    // 앱 카카오 로그인 — 앱이 받은 토큰을 들고 왔다(주소에 code·state 가 없다). 같은 화면에서 이어 받는다
+    const nativeToken = (location.state as { kakaoAccessToken?: string } | null)?.kakaoAccessToken;
+    if (nativeToken) {
+      navigate(location.pathname, { replace: true, state: null });   // 새로고침·뒤로가기로 같은 토큰을 다시 보내지 않게
+      oauthMutation.mutate({ accessToken: nativeToken });
+      return;
+    }
 
     const code = searchParams.get('code');
     const state = searchParams.get('state');

@@ -21,6 +21,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // 카카오 SDK(앱 카카오 로그인 — 카카오톡으로 바로 로그인, 2026-11-11). 카카오가 Maven Central 이 아니라 자기 저장소에 올린다
+        maven { url 'https://devrepo.kakao.com/nexus/content/groups/public/' }
     }
 }
 

@@ -58,42 +58,74 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
       throw new AppError(`카카오 인증 실패: ${tokenData.error_description || tokenData.error}`, 401);
     }
 
-    const userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
-    const kakaoUser = await userRes.json() as any;
+    const kakaoUser = await fetchKakaoUser(tokenData.access_token);
+    res.json(await kakaoLoginResponse(kakaoUser));
+  } catch (error) { next(error); }
+});
 
-    // 사용자 정보 응답 검증: 오류 바디(레이트리밋/장애 등)면 id가 undefined → providerId "undefined"로 교차 로그인 방지
-    if (!userRes.ok || !kakaoUser?.id) {
-      console.error('[Kakao UserInfo Error]', userRes.status, kakaoUser);
-      throw new AppError('카카오 사용자 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.', 502);
-    }
+/** 카카오 접근 토큰 → 사용자 정보. 오류 바디(레이트리밋/장애 등)면 id 가 undefined → providerId "undefined" 로 교차 로그인되지 않게 막는다 */
+async function fetchKakaoUser(accessToken: string): Promise<any> {
+  const userRes = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` } });
+  const kakaoUser = await userRes.json().catch(() => null) as any;
+  if (!userRes.ok || !kakaoUser?.id) {
+    console.error('[Kakao UserInfo Error]', userRes.status, kakaoUser);
+    throw new AppError('카카오 사용자 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.', 502);
+  }
+  return kakaoUser;
+}
 
-    const kakaoId = String(kakaoUser.id);
-    const nickname = kakaoUser.kakao_account?.profile?.nickname || '';
-    const profileImage = kakaoUser.kakao_account?.profile?.profile_image_url || null;
-    const email = kakaoUser.kakao_account?.email || null;
+/** 웹(인가 코드)·앱(접근 토큰) 카카오 로그인이 같이 쓰는 끝 — 이미 가입했으면 로그인, 아니면 가입 정보 입력용 임시 토큰 */
+async function kakaoLoginResponse(kakaoUser: any) {
+  const kakaoId = String(kakaoUser.id);
+  const nickname = kakaoUser.kakao_account?.profile?.nickname || '';
+  const profileImage = kakaoUser.kakao_account?.profile?.profile_image_url || null;
+  const email = kakaoUser.kakao_account?.email || null;
 
-    const existingUser = await prisma.user.findFirst({
-      where: { provider: 'KAKAO', providerId: kakaoId, deletedAt: null },
-    });
+  const existingUser = await prisma.user.findFirst({
+    where: { provider: 'KAKAO', providerId: kakaoId, deletedAt: null },
+  });
 
-    if (existingUser) {
-      const token = generateToken(existingUser);
-      return res.json({ token, user: safeUser(existingUser) });
-    }
+  if (existingUser) {
+    const token = generateToken(existingUser);
+    return { token, user: safeUser(existingUser) };
+  }
 
-    const tempToken = jwt.sign(
-      { provider: 'KAKAO', providerId: kakaoId, name: nickname, email, avatar: profileImage },
-      JWT_SECRET,
-      { expiresIn: '10m' },
-    );
+  const tempToken = jwt.sign(
+    { provider: 'KAKAO', providerId: kakaoId, name: nickname, email, avatar: profileImage },
+    JWT_SECRET,
+    { expiresIn: '10m' },
+  );
 
-    res.json({
-      needsRegistration: true,
-      tempToken,
-      profile: { name: nickname, email, avatar: profileImage },
-    });
+  return {
+    needsRegistration: true,
+    tempToken,
+    profile: { name: nickname, email, avatar: profileImage },
+  };
+}
+
+/**
+ * 앱 카카오 로그인 (2026-11-11, CLAUDE.md 규칙 79) — 안드로이드 앱이 카카오 SDK 로 받은 **접근 토큰**을 넘긴다(폰의 카카오톡으로 바로).
+ * 앱 안 웹 화면(WebView)에서는 카카오 웹 로그인이 카카오톡으로 넘어갔다 돌아올 수 없어 이메일·비밀번호만 보였다.
+ *
+ * ⚠️⚠️ **우리 카카오 앱에서 나온 토큰인지 먼저 확인한다**(`access_token_info` 의 `app_id` = `KAKAO_APP_ID`). 안 보면 다른 앱(악성 앱 포함)이
+ *    자기 사용자에게서 받은 카카오 토큰을 들고 와 **그 사람의 아트링크 계정으로 로그인**할 수 있다(토큰 바꿔치기). 웹 로그인은 인가 코드를
+ *    우리 키로 바꾸므로 이 문제가 없다. `KAKAO_APP_ID` 가 없으면 이 길은 503 — 확인 없이 열지 않는다.
+ * 그다음은 웹과 같다(`kakaoLoginResponse`) — 이미 가입했으면 로그인, 아니면 가입 정보 입력.
+ */
+const kakaoNativeSchema = z.object({ accessToken: z.string().min(10).max(4000) });
+
+router.post('/kakao/native', validate(kakaoNativeSchema), async (req, res, next) => {
+  try {
+    const appId = Number(process.env.KAKAO_APP_ID);
+    if (!Number.isInteger(appId) || appId <= 0) throw new AppError('앱 카카오 로그인이 아직 설정되지 않았어요.', 503);
+    const accessToken = req.body.accessToken as string;
+    const infoRes = await fetch('https://kapi.kakao.com/v1/user/access_token_info', { headers: { Authorization: `Bearer ${accessToken}` } });
+    const info = await infoRes.json().catch(() => null) as any;
+    if (!infoRes.ok || !info?.id) throw new AppError('카카오 로그인이 만료됐어요. 다시 시도해 주세요.', 401);
+    if (Number(info.app_id) !== appId) throw new AppError('다른 앱에서 받은 카카오 로그인은 쓸 수 없어요.', 401);
+    const kakaoUser = await fetchKakaoUser(accessToken);
+    if (String(kakaoUser.id) !== String(info.id)) throw new AppError('카카오 로그인 정보가 맞지 않아요. 다시 시도해 주세요.', 401);
+    res.json(await kakaoLoginResponse(kakaoUser));
   } catch (error) { next(error); }
 });
 

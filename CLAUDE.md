@@ -2701,9 +2701,15 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       바꿔, 카카오 로그인의 KOE 안내(400)가 '아트링크에 연결하지 못했어요'로 덮였다. 우리 서버의 오류(배포 중 502 등)만 오류 화면으로 바꾼다.
     - ⚠️ **개발 앱(`emu.sh dev`)의 카카오 로그인은 KOE006** — 돌아올 주소가 `http://localhost:5173/auth/kakao/callback` 인데 카카오 앱에 등록돼 있지 않다(PC 브라우저 로컬도 같다).
       실서버 앱은 `https://artlink.cc/auth/kakao/callback`(등록됨)이라 해당 없다. 로컬에서 보려면 카카오 개발자 콘솔에 그 주소를 등록할 것.
+    - **앱 카카오 로그인 = 카카오 SDK**(2026-11-11 실기기) — 앱 안 웹 화면(WebView)에서는 카카오 웹 로그인이 카카오톡으로 넘어갔다 돌아올 수 없어 이메일·비밀번호만 보였다.
+      `[카카오로 …]` 버튼(`KakaoLoginButton`)이 앱이면 `ArtLinkShell.kakaoLogin()`(카카오톡 → 없거나 실패하면 카카오 계정 화면, `com.kakao.sdk:v2-user:2.26.0`) → 접근 토큰을
+      콜백 화면(`/auth/kakao/callback`, location.state)으로 넘기고 → `POST /api/auth/kakao/native` → 그 뒤는 웹과 같다(가입 정보 입력·로그인 뒤 갈 곳).
+      ⚠️⚠️ 서버는 **`access_token_info.app_id` = `KAKAO_APP_ID`** 를 먼저 본다 — 안 보면 다른 앱이 받은 카카오 토큰으로 남의 계정에 로그인된다(토큰 바꿔치기).
+      `KAKAO_APP_ID` 가 없으면 503. 옛 앱(`info().kakao` 없음)·브라우저는 예전 웹 로그인 그대로.
+      카카오 콘솔: 안드로이드 플랫폼(패키지 `cc.artlink.app` + 키 해시 — 디버그 서명 `HQ27Hdt4XP6/RjNyIT68LrfBE6Q=`, **Play 출시 땐 Play 앱 서명 키의 해시도 추가**). 네이티브 앱 키는 `app/build.gradle` 한 곳(비밀 아님).
     - 로컬에서 실서버 복제본으로 앱을 볼 땐 `.env` 를 바꾸지 말고 `DATABASE_URL=…/artlink_prod npm run dev` 로 띄울 것(E2E 가 `.env` 의 DB 를 지운다). 거기서는 개발자 로그인 버튼이
       **실제 가입자로 바꿔 들어갈 수 있다** — 점검 계정(`backend/scripts/seed-audit-chat.ts`, '점검' 작가 둘 + 대화방)을 쓸 것.
-    - 회귀: backend `push.test.ts`(18) · `chat-mute.test.ts`(3) · `asset-links.test.ts`(4) · frontend `native.test.ts`(29) · `pushBanner.test.ts`(7) · `popupHold.test.ts`(10) · `scrollToTarget.test.ts`(3). 에뮬레이터 실측 체크리스트는 `mobile/PLAN.md` §3 WP1·WP3, 결과는 §6.
+    - 회귀: backend `kakao-login.test.ts`(6) · `push.test.ts`(19) · `chat-mute.test.ts`(3) · `asset-links.test.ts`(4) · frontend `native.test.ts`(29) · `pushBanner.test.ts`(7) · `popupHold.test.ts`(10) · `scrollToTarget.test.ts`(3). 에뮬레이터 실측 체크리스트는 `mobile/PLAN.md` §3 WP1·WP3, 결과는 §6.
       개인정보처리방침에 '앱 알림 기기 토큰'(1항 수집 · 3항 보관)과 Firebase Cloud Messaging(4항 위탁)을 적었다 — **최종 수정일은 실제로 배포하는 날로 고칠 것**.
 
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
@@ -2773,7 +2779,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - ⚠️ **Node 버전 고정 필수** — `backend/package.json`의 `engines.node`는 **`24.x`(LTS)**. 예전엔 `">=20"`이라 Render가 매번 **최신 Node**를 골랐고, 2026-08-03 새로 나온 **26.6.0 설치 실패**로 배포가 죽었다(`Unable to install Node.js version 26.6.0`). 범위 지정 금지 — 새 Node가 나올 때마다 무작위로 배포가 깨진다. `.nvmrc`(24)도 함께 둔다.
 - ⚠️ **배포 전 검증은 `npm run build`로** — `tsc --noEmit`은 테스트 파일을 검사하지 않아 통과하지만, 실제 빌드는 `tsc -b && vite build`라 테스트까지 검사한다. 실제로 테스트의 타입 오류로 배포가 실패한 적 있다(2026-08-03).
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
-- **안드로이드 앱(규칙 79)** 환경 변수 — `FIREBASE_SERVICE_ACCOUNT`(Firebase 서비스 계정 JSON 또는 base64 · **저장소·문서에 적지 말 것**, 없으면 푸시 꺼짐) ·
+- **안드로이드 앱(규칙 79)** 환경 변수 — `KAKAO_APP_ID`(카카오 콘솔의 앱 ID 숫자 — 앱 카카오 로그인 토큰 확인, 없으면 그 길만 503) · `FIREBASE_SERVICE_ACCOUNT`(Firebase 서비스 계정 JSON 또는 base64 · **저장소·문서에 적지 말 것**, 없으면 푸시 꺼짐) ·
   `PUSH=off`(코드 배포 없이 푸시 끄기) · `ANDROID_CERT_SHA256`(App Links 지문, 쉼표 구분 — Play 앱 서명 키). 앱 자체는 스토어로 나가고 웹 배포와 따로다
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **정적 파일 캐시**(`backend/src/lib/staticCache.ts`, 2026-10-04): 해시 번들 `assets/` 만 1년 immutable · 앱 셸(index.html·sw.js…) no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).

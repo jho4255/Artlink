@@ -146,6 +146,6 @@ describe('붙이는 곳 — 소스 가드', () => {
     expect(src).not.toMatch(/startKakaoLogin\(/);   // 사용자 동작(버튼) 없이 부르지 않는다
     // 다른 탭으로 돌아왔으면 로그인 뒤 갈 곳을 되살린다 — 로그인 처리(교환)보다 먼저
     expect(src.indexOf('setPostLoginRedirect(check.returnTo)')).toBeGreaterThan(-1);
-    expect(src.indexOf('setPostLoginRedirect(check.returnTo)')).toBeLessThan(src.indexOf('oauthMutation.mutate('));
+    expect(src.indexOf('setPostLoginRedirect(check.returnTo)')).toBeLessThan(src.indexOf('oauthMutation.mutate({ code, redirectUri })'));   // 웹 로그인(코드 교환) — 앱 토큰 경로는 그 위에 따로 있다
   });
 });

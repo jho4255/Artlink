@@ -69,6 +69,17 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="artlink" />
+        <!-- 카카오 계정 화면으로 로그인한 뒤 돌아오는 주소 kakao<네이티브 앱 키>://oauth (카카오 SDK, 2026-11-11). 키는 app/build.gradle -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth" android:scheme="kakao${kakaoNativeAppKey}" />
+            </intent-filter>
+        </activity>
     </application>
 
     <!-- Permissions -->
