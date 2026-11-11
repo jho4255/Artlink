@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath, statePath } from '../lib/helpers';
 
 /**
  * ArtTalk (갠톡·단톡) — 2026-08-28 전면 개편분.
@@ -406,6 +406,69 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
     await expect.poll(async () => page.locator('.overflow-y-auto img').count(), { timeout: 20000 }).toBeGreaterThan(0);
     // 첨부만 보낸 메시지는 텍스트 말풍선을 만들지 않는다(빈 회색 상자 금지)
     expect(await countEmptyBubbles()).toBe(before);
+    await ctx.close();
+  });
+});
+
+test.describe('대화방 알림 끄기 · 휴대폰 화면 (2026-11-11)', () => {
+  const chatIdOf = (page: Page) => Number(new URL(page.url()).searchParams.get('chat'));
+  const myChatNotices = async (token: string, chatId: number) => {
+    const api = await pwRequest.newContext();
+    const r = await api.get(`${API}/notifications`, { headers: { Authorization: `Bearer ${token}` } });
+    const rows = (await r.json()) as Array<{ linkUrl: string | null; read: boolean }>;
+    await api.dispose();
+    return rows.filter((n) => n.linkUrl === `/messages?chat=${chatId}` && !n.read).length;
+  };
+  const sayAsArtist2 = async (chatId: number, content: string) => {
+    const api = await pwRequest.newContext();
+    const r = await api.post(`${API}/chats/${chatId}/messages`, { headers: { Authorization: `Bearer ${tokenFor('artist2')}` }, data: { content } });
+    expect(r.status()).toBe(201);
+    await api.dispose();
+  };
+
+  test('★ 종 버튼으로 끄면 그 방 새 메시지가 벨에 안 온다 · 다시 켜면 온다 · 목록에 꺼짐 표시', async ({ browser }) => {
+    const ids = userIds();
+    const { page, ctx } = await openAs(browser, 'artist');
+    await page.goto(`/portfolio/${ids.artist2}`);
+    await page.getByRole('button', { name: '메시지' }).click();
+    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    const chatId = chatIdOf(page);
+
+    await page.getByRole('button', { name: '이 대화방 알림 끄기' }).click();
+    await expect(page.getByRole('button', { name: '이 대화방 알림 켜기' })).toHaveAttribute('aria-pressed', 'true');
+    await page.goto('/mypage');   // 방을 떠난다(방을 열어 두면 읽음이 된다)
+    await sayAsArtist2(chatId, '조용히 와야 하는 말');
+    expect(await myChatNotices(tokenFor('artist'), chatId)).toBe(0);
+
+    await page.goto('/messages');
+    await expect(page.locator('ul').getByLabel('알림 꺼짐').first()).toBeVisible({ timeout: 10000 });
+
+    await page.goto(`/messages?chat=${chatId}`);
+    await page.getByRole('button', { name: '이 대화방 알림 켜기' }).click();
+    await expect(page.getByRole('button', { name: '이 대화방 알림 끄기' })).toHaveAttribute('aria-pressed', 'false');
+    await page.goto('/mypage');
+    await sayAsArtist2(chatId, '이제 알려야 하는 말');
+    await expect.poll(() => myChatNotices(tokenFor('artist'), chatId), { timeout: 8000 }).toBe(1);
+    await ctx.close();
+  });
+
+  test('★ 휴대폰 폭에서 대화 칸이 상자 안에 들어온다 — [보내기]가 잘리지 않고 빈 방 안내가 가운데(2026-11-11)', async ({ browser }) => {
+    const ids = userIds();
+    const ctx = await browser.newContext({ storageState: statePath('artist'), viewport: { width: 360, height: 760 } });
+    const page = await ctx.newPage();
+    await page.goto(`/portfolio/${ids.artist2}`);
+    await page.getByRole('button', { name: '메시지' }).click();
+    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+    const m = await page.evaluate(() => {
+      const box = document.querySelector('form')!.closest('.grid')!.getBoundingClientRect();
+      const send = [...document.querySelectorAll('form button')].find((b) => b.textContent?.includes('보내기'))!.getBoundingClientRect();
+      const form = document.querySelector('form')!.getBoundingClientRect();
+      return { boxL: box.left, boxR: box.right, sendR: send.right, formL: form.left, formR: form.right };
+    });
+    expect(m.sendR).toBeLessThanOrEqual(m.boxR);
+    expect(m.formL).toBeGreaterThanOrEqual(m.boxL - 1);
+    expect(m.formR).toBeLessThanOrEqual(m.boxR + 1);
     await ctx.close();
   });
 });

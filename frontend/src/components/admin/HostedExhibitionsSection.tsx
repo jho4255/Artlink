@@ -24,6 +24,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { scrollToTarget } from '@/lib/scrollToTarget';
 import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
 import CapacityPicker from '@/components/shared/CapacityPicker';
 import { HeroImageEdit } from '@/components/shared/EditableField';
@@ -310,7 +311,7 @@ export default function HostedExhibitionsSection() {
     const t = window.setTimeout(() => {
       deepLinkDone.current = true;
       if (searchParams.get('panel') === 'applicants') setManageAppsExId(exId);
-      document.getElementById(`hosted-ex-${exId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToTarget(document.getElementById(`hosted-ex-${exId}`));
     }, 150);
     return () => window.clearTimeout(t);
   }, [exhibitions, searchParams]);

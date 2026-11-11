@@ -127,6 +127,21 @@ describe('[저장하고 다음 작품]', () => {
     expect(nextUncaptionedId(images, 4)).toBe(5);
   });
 
+  it('★ 이번에 지나온 작품은 다시 띄우지 않는다 — 정보를 안 넣고 넘기면 세 작품이 끝없이 번갈아 떴다(2026-11-11 신고)', () => {
+    const three = [w(1), w(2), w(3)];   // 셋 다 정보 없음, [저장하고 다음 작품]만 누른다
+    const passed: number[] = [];
+    const seen: number[] = [];
+    let cur: number | null = nextUncaptionedId(three, null);
+    while (cur != null && seen.length < 10) {
+      seen.push(cur);
+      const next = nextUncaptionedId(three, cur, passed);
+      passed.push(cur);
+      cur = next;
+    }
+    expect(seen).toEqual([1, 2, 3]);   // 한 바퀴면 끝(예전: 1 2 3 1 2 3 …)
+    expect(nextUncaptionedId(three, 3, [1, 2])).toBeNull();   // 마지막 작품에서는 [저장]만
+  });
+
   it('끝에 닿으면 앞에서 남은 것으로 돌아온다', () => {
     expect(nextUncaptionedId(images, 5)).toBe(2);
     // 정보가 있는 작품에서 시작해도 그 뒤의 빈 작품부터

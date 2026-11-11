@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ChevronDown, ChevronUp, MessageCircle, Send, HelpCircle, Trash2, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { scrollToTarget } from '@/lib/scrollToTarget';
 import { useAuthStore } from '@/stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
@@ -348,7 +349,7 @@ function InquirySection() {
         setStatusFilter(null);   // '답변완료'를 보던 관리자에겐 새 문의가 목록에 없다
         setExpandedId(hit.id);
         setReplyText(hit.reply ?? '');
-        setTimeout(() => document.querySelector(`[data-inquiry="${hit.id}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
+        setTimeout(() => scrollToTarget(document.querySelector(`[data-inquiry="${hit.id}"]`)), 80);
       }
       setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('inquiry'); return next; }, { replace: true });
     })().catch(() => { /* 목록을 못 받았다 — 화면은 평소처럼 */ });

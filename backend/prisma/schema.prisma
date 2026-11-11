@@ -1027,6 +1027,9 @@ model ChatParticipant {
   // 이 시각 **이후**에 온 메시지가 안 읽음이다. 메시지마다 읽음 행을 쌓지 않는 이유는
   // 단톡 20명 × 메시지 수만큼 행이 늘기 때문 — 시각 하나로 같은 답을 낼 수 있다.
   lastReadAt DateTime?
+  // 이 방 알림 끄기(카카오톡 '알림 끄기' — 2026-11-11). 켜 두면 새 메시지가 벨 알림·앱 푸시로 오지 않는다.
+  // 대화 목록의 안 읽은 수는 그대로 센다(조용히 쌓일 뿐 사라지지 않는다).
+  muted      Boolean   @default(false)
   joinedAt   DateTime  @default(now())
 
   @@unique([chatId, userId])

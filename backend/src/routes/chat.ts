@@ -57,6 +57,8 @@ const directSchema = z.object({
   userId: z.number().int().positive(),
 });
 
+const muteSchema = z.object({ muted: z.boolean() });
+
 /** 안 읽은 메시지가 있는 방 수 (벨 배지) */
 router.get('/unread-count', async (req, res, next) => {
   try {
@@ -194,6 +196,23 @@ router.post('/:id/messages', validate(sendSchema), async (req, res, next) => {
 });
 
 /** 읽음 처리 (화면을 열어둔 채 새 메시지가 왔을 때) */
+/**
+ * 이 방 알림 끄기·켜기 — 참여자만(남의 방은 404). 상태를 적어 보낸다(토글이 아니라 — 두 번 눌러도 같은 답, 규칙 46).
+ * 끄면 그 뒤 새 메시지가 벨 알림·앱 푸시로 오지 않는다. 이미 와 있는 알림은 그대로 둔다.
+ */
+router.patch('/:id/mute', validate(muteSchema), async (req, res, next) => {
+  try {
+    const chatId = parseInt(req.params.id as string);
+    const me = req.user!.id;
+    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+      throw new AppError('대화를 찾을 수 없습니다.', 404);
+    }
+    const muted = req.body.muted as boolean;
+    await prisma.chatParticipant.update({ where: { chatId_userId: { chatId, userId: me } }, data: { muted } });
+    res.json({ muted });
+  } catch (e) { next(e); }
+});
+
 router.post('/:id/read', async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);

@@ -40,6 +40,8 @@ export interface ChatSummary {
   exhibitionId: number | null;
   lastMessageAt: Date;
   unread: number;
+  /** 내가 이 방 알림을 껐는가 */
+  muted: boolean;
   participants: { id: number; name: string; nickname: string | null; avatar: string | null; role: string }[];
   lastMessage: { content: string; senderId: number; createdAt: Date } | null;
 }
@@ -120,7 +122,8 @@ export async function sendDirectNotice(fromUserId: number, toUserId: number, tex
  * best-effort — 실패해도 메시지 전송은 이미 끝났다.
  */
 export async function notifyChatMessage(chatId: number, senderId: number, senderName: string, preview: string): Promise<void> {
-  const others = await prisma.chatParticipant.findMany({ where: { chatId, userId: { not: senderId } }, select: { userId: true } });
+  // 이 방 알림을 끈 사람(`muted`)은 뺀다 — 벨 알림을 만들지 않는다
+  const others = await prisma.chatParticipant.findMany({ where: { chatId, userId: { not: senderId }, muted: false }, select: { userId: true } });
   if (others.length === 0) return;
   const refKey = `chat:${chatId}`;
   const linkUrl = `/messages?chat=${chatId}`;
@@ -254,6 +257,7 @@ export async function listChats(userId: number): Promise<ChatSummary[]> {
       exhibitionId: c.exhibitionId,
       lastMessageAt: c.lastMessageAt,
       unread: unreadOf.get(c.id) ?? 0,
+      muted: c.participants.find(p => p.userId === userId)?.muted ?? false,
       participants: c.participants.map(p => p.user),
       lastMessage: last ? { content: preview, senderId: last.senderId, createdAt: last.createdAt } : null,
     };
@@ -361,6 +365,8 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
     title: chat.title,
     exhibition: chat.exhibition,
     participants: chat.participants.map(p => p.user),
+    /** 내가 이 방 알림을 껐는가 */
+    muted: chat.participants.find(p => p.userId === userId)?.muted ?? false,
     otherCount: others.length,
     messages: withRead,
     /** 더 앞(과거) 메시지가 남아 있는가 — `after` 폴링에서는 항상 false */

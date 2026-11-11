@@ -122,7 +122,7 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
       // 그때는 "올렸어요" 알림을 띄우지 않는다 — 창 머리말이 같은 말을 하고, 휴대폰에선 알림(위쪽)이 그 머리말을 덮는다
       if (activeRef.current && !metaOpenRef.current) {
         setAfterUpload(created.length);
-        onMeta(created[0]!);
+        openMeta(created[0]!);
       } else {
         toast.success(`작품 ${created.length}점을 올렸어요.`);
       }
@@ -189,6 +189,11 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
   });
 
   // ── 작품 정보 ──
+  // 이번에 [저장하고 다음 작품]으로 지나온 작품 — 다시 띄우지 않는다(lib/homepageEdit.ts nextUncaptionedId).
+  // 칸을 눌러·올린 직후·[정보 넣기]로 새로 열면 처음부터, 닫으면 비운다.
+  const [passed, setPassed] = useState<number[]>([]);
+  const openMeta = useCallback((id: number) => { setPassed([]); onMeta(id); }, [onMeta]);
+  const closeMeta = () => { setPassed([]); onMeta(null); };
   const saveMeta = useMutation({
     mutationFn: ({ imageId, draft }: { imageId: number; draft: ArtworkMetaDraft; next: boolean }) => {
       const price = draftPrice(draft);
@@ -197,10 +202,10 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
     },
     onSuccess: (_r, v) => {
       // 다음 작품은 **저장 전 목록**으로 정한다 — 방금 저장한 작품은 빼고 찾으므로 재조회를 기다릴 필요가 없다
-      const nextId = v.next ? nextUncaptionedId(images, v.imageId) : null;
+      const nextId = v.next ? nextUncaptionedId(images, v.imageId, passed) : null;
       refresh();
-      if (nextId != null) onMeta(nextId);
-      else { onMeta(null); toast.success('작품 정보를 저장했어요.'); }
+      if (nextId != null) { setPassed((p) => [...p, v.imageId]); onMeta(nextId); }
+      else { closeMeta(); toast.success('작품 정보를 저장했어요.'); }
     },
     onError: (err) => toast.error(errText(err, '작품 정보를 저장하지 못했습니다.')),
   });
@@ -230,7 +235,7 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
   const shownCount = images.filter((i) => i.showInExplore).length;
   const pendingAsk = justUploaded.filter((id) => images.some((i) => i.id === id && !i.showInExplore));
   const metaImage = images.find((i) => i.id === metaImageId) ?? null;
-  const openFirstNoInfo = () => { const id = nextUncaptionedId(images, null); if (id != null) onMeta(id); };
+  const openFirstNoInfo = () => { const id = nextUncaptionedId(images, null); if (id != null) openMeta(id); };
   const full = total >= PORTFOLIO_IMAGE_MAX;
   const pick = () => inputRef.current?.click();
   const uploadLabel = uploading ? `올리는 중 ${Math.min(uploading.done + 1, uploading.total)}/${uploading.total}` : '작품 사진 올리기';
@@ -362,7 +367,7 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
                     first={idx === 0}
                     last={idx === total - 1}
                     reordering={reordering}
-                    onMeta={onMeta}
+                    onMeta={openMeta}
                     onRemove={setRemoveId}
                     onLikers={setLikersId}
                     onMove={(delta) => applyOrder(moveId(ids, img.id, delta))}
@@ -393,12 +398,12 @@ function WorksSection({ images, metaImageId, onMeta, active, priceOnHomepage = f
           seriesOptions={seriesNames(images)}
           suggestions={{ medium: recentValues(images, 'medium', 3, metaImage.id), year: recentValues(images, 'year', 3, metaImage.id) }}
           remaining={uncaptionedCount(images.filter((i) => i.id !== metaImage.id))}
-          hasNext={nextUncaptionedId(images, metaImage.id) != null}
+          hasNext={nextUncaptionedId(images, metaImage.id, passed) != null}
           justUploaded={afterUpload ?? undefined}
           saving={saveMeta.isPending}
           priceOnHomepage={priceOnHomepage}
           onSave={(draft, next) => saveMeta.mutate({ imageId: metaImage.id, draft, next })}
-          onClose={() => onMeta(null)}
+          onClose={closeMeta}
         />
       )}
     </div>

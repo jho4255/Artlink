@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Users, MessageCircle, ArrowLeft, Paperclip, Image as ImageIcon, Film, FileText, Loader2, Download, X, UserPlus } from 'lucide-react';
+import { Send, Users, MessageCircle, ArrowLeft, Paperclip, Image as ImageIcon, Film, FileText, Loader2, Download, X, UserPlus, Bell, BellOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -39,6 +39,8 @@ interface ChatSummary {
   exhibitionId: number | null;
   lastMessageAt: string;
   unread: number;
+  /** 내가 이 방 알림을 껐는가(옛 서버 응답엔 없다) */
+  muted?: boolean;
   participants: ChatUser[];
   lastMessage: { content: string; senderId: number; createdAt: string } | null;
 }
@@ -55,6 +57,8 @@ interface ChatDetail {
   id: number; kind: 'DIRECT' | 'GROUP'; title: string | null;
   exhibition: { id: number; title: string } | null;
   participants: ChatUser[]; otherCount: number; messages: ChatMessage[];
+  /** 내가 이 방 알림을 껐는가 */
+  muted?: boolean;
   /** 더 앞(과거) 메시지가 남아 있는가 — 첫 로드·[이전 메시지]에서만 의미가 있다 */
   hasMore?: boolean;
   /** 참여자별 마지막 읽은 시각 — 캐시에 든 옛 메시지의 읽음 표시를 갱신하는 근거 */
@@ -253,6 +257,21 @@ export default function MessagesPage() {
     enabled: pickerOpen,
   });
 
+  /*
+    이 방 알림 끄기·켜기(카카오톡 '알림 끄기', 2026-11-11) — 끄면 새 메시지가 벨 알림·앱 푸시로 오지 않는다.
+    안 읽은 수는 그대로 센다. 상태를 적어 보낸다(PATCH {muted}) — 두 번 눌러도 같은 답.
+    폴링 응답(`after`)도 `muted` 를 싣고 오므로 캐시에 곧바로 써 둔다(다음 폴링까지 버튼이 되돌아가 보이지 않게).
+  */
+  const setMute = useMutation({
+    mutationFn: ({ id, muted }: { id: number; muted: boolean }) => api.patch(`/chats/${id}/mute`, { muted }).then(r => r.data as { muted: boolean }),
+    onSuccess: (data, v) => {
+      queryClient.setQueryData<ChatDetail & { mode: 'init' | 'poll' }>(['chat', v.id], (old) => (old ? { ...old, muted: data.muted } : old));
+      queryClient.setQueryData<ChatSummary[]>(['chats'], (old) => old?.map(c => (c.id === v.id ? { ...c, muted: data.muted } : c)));
+      toast.success(data.muted ? '이 대화방 알림을 껐어요.' : '이 대화방 알림을 켰어요.');
+    },
+    onError: (e: unknown) => toast.error((e as { response?: { data?: { error?: string } } }).response?.data?.error || '알림 설정을 바꾸지 못했습니다.'),
+  });
+
   // 이웃을 고르면 갠톡을 연다(이미 있으면 그 방으로 — 서버가 멱등 처리)
   const startDirect = useMutation({
     mutationFn: (userId: number) => api.post('/chats/direct', { userId }).then(r => r.data),
@@ -331,9 +350,11 @@ export default function MessagesPage() {
         Art<span className="text-accent">Talk</span>
       </h1>
 
-      <div className="grid gap-0 md:grid-cols-[300px_1fr] rounded-2xl border border-gray-200 overflow-hidden bg-white">
+      {/* ⚠️ 칸은 `minmax(0, …)` + 칸마다 `min-w-0`(규칙 27) — 기본(auto)이면 입력칸·버튼의 최소 폭만큼 대화 칸이 상자보다 넓어져
+          [보내기]가 오른쪽에서 잘리고 '첫 메시지를 보내보세요'가 오른쪽으로 치우쳤다(412px 폭: 칸 428 > 상자 364, 2026-11-11). */}
+      <div className="grid grid-cols-1 gap-0 md:grid-cols-[300px_minmax(0,1fr)] rounded-2xl border border-gray-200 overflow-hidden bg-white">
         {/* 목록 — 좁은 화면에서는 방을 고르면 숨긴다 */}
-        <div className={`border-gray-200 md:border-r ${openId ? 'hidden md:block' : ''}`}>
+        <div className={`min-w-0 border-gray-200 md:border-r ${openId ? 'hidden md:block' : ''}`}>
           {/* 이웃에게 바로 말 걸기 진입점 — 목록 위에 둔다(임의 검색이 아니라 서로 이웃만) */}
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
             <span className="text-xs font-medium text-gray-400">대화 목록</span>
@@ -366,9 +387,10 @@ export default function MessagesPage() {
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
                         {chatTitle(c, myId)}
                       </span>
-                      {/* 안 읽은 게 있으면 개수 배지 */}
+                      {c.muted && <BellOff size={12} className="shrink-0 text-gray-300" aria-label="알림 꺼짐" />}
+                      {/* 안 읽은 게 있으면 개수 배지 — 알림을 끈 방은 회색(조용히 쌓인다) */}
                       {c.unread > 0 && (
-                        <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${c.muted ? 'bg-gray-300' : 'bg-accent'}`}>
                           {c.unread > 99 ? '99+' : c.unread}
                         </span>
                       )}
@@ -385,7 +407,7 @@ export default function MessagesPage() {
         </div>
 
         {/* 대화 */}
-        <div className={`flex flex-col ${openId ? '' : 'hidden md:flex'}`}>
+        <div className={`min-w-0 flex flex-col ${openId ? '' : 'hidden md:flex'}`}>
           {chatError ? (
             // 없는 방·남의 방(404) — 모바일에선 목록이 숨겨져 있어 돌아갈 길이 없었다(2026-09-19)
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-sm text-gray-400">
@@ -411,14 +433,27 @@ export default function MessagesPage() {
                     {chat.exhibition && ' · 공모 단체 대화'}
                   </p>
                 </div>
-                {chat.exhibition && (
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                  {chat.exhibition && (
+                    <button
+                      onClick={() => navigate(`/exhibitions/${chat.exhibition!.id}`)}
+                      className="px-1.5 text-xs text-gray-400 hover:text-gray-900"
+                    >
+                      공모 보기
+                    </button>
+                  )}
                   <button
-                    onClick={() => navigate(`/exhibitions/${chat.exhibition!.id}`)}
-                    className="ml-auto shrink-0 text-xs text-gray-400 hover:text-gray-900"
+                    type="button"
+                    onClick={() => setMute.mutate({ id: chat.id, muted: !chat.muted })}
+                    disabled={setMute.isPending}
+                    aria-pressed={!!chat.muted}
+                    aria-label={chat.muted ? '이 대화방 알림 켜기' : '이 대화방 알림 끄기'}
+                    title={chat.muted ? '알림 꺼짐 — 눌러서 켜기' : '알림 켜짐 — 눌러서 끄기'}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
                   >
-                    공모 보기
+                    {chat.muted ? <BellOff size={17} /> : <Bell size={17} />}
                   </button>
-                )}
+                </div>
               </div>
 
               <div ref={scrollBoxRef} className="flex-1 overflow-y-auto px-4 py-4 max-h-[55vh] min-h-[280px]">

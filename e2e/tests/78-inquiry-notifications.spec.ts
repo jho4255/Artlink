@@ -129,7 +129,7 @@ test('B. 휴대폰 · 고객센터를 연 채로 — 옛 목록이 아니라 달
 test('C. 관리자가 답변완료 목록을 보던 중 — 새 문의 알림을 누르면 전체로 돌아가 연다', async ({ browser }) => {
   const b = await open(browser, 'admin');
   await b.page.goto('/support');
-  await b.page.getByRole('button', { name: '답변완료' }).click();
+  await b.page.getByRole('button', { name: '답변완료', exact: true }).click();   // exact — 답변 달린 문의 줄의 이름에도 '답변완료'가 들어 있다
 
   const subject = `E2E 필터 문의 ${STAMP}`;
   await ask(subject);

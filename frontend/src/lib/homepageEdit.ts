@@ -147,14 +147,16 @@ export function entryInfoImageId(images: Captionable[], work: number | null | un
 /**
  * [저장하고 다음 작품] 이 열 작품 — `afterId` **다음부터** 순서대로 찾고, 끝에 닿으면 처음으로 돌아온다.
  * 방금 저장한 작품(`afterId`)은 뺀다(저장 전 목록으로 계산하므로 아직 '정보 없음'으로 보인다).
+ * ⚠️ 이번에 이미 지나온 작품(`passed`)도 뺀다(2026-11-11 신고 "세 개가 계속 번갈아 뜬다") — 정보를 안 넣고 넘기면 그 작품은 여전히
+ *    '정보 없음'이라 한 바퀴 돌아 다시 걸렸다. 목록이 서버에서 새로 오기 전에 누르면 방금 채운 작품도 그렇게 보인다. 한 바퀴면 끝난다.
  * 더 없으면 null — 그때 창은 [저장]만 보여 준다.
  */
-export function nextUncaptionedId(images: Captionable[], afterId: number | null): number | null {
+export function nextUncaptionedId(images: Captionable[], afterId: number | null, passed: readonly number[] = []): number | null {
   if (images.length === 0) return null;
   const start = afterId == null ? -1 : images.findIndex((i) => i.id === afterId);
   for (let step = 1; step <= images.length; step++) {
     const img = images[(start + step + images.length) % images.length]!;
-    if (img.id !== afterId && !hasCaption(img)) return img.id;
+    if (img.id !== afterId && !passed.includes(img.id) && !hasCaption(img)) return img.id;
   }
   return null;
 }

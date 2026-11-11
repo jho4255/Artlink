@@ -189,6 +189,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     진실은 `image` 하나여야 한다.
 
 27. **`truncate` 는 min-content 를 줄이지 않는다** — `overflow:hidden` 은 flex 자동 최소치의 '바닥'만 없앨 뿐이다. min-content 로 트랙 폭이 정해지는 grid 안에서는 nowrap 텍스트가 폭을 그대로 밀어내므로, **grid 아이템마다 `min-w-0` 을 빠짐없이** 붙일 것. 하나만 빼먹어도 375px 에서 페이지 전체가 가로로 밀린다(실측 447px). 상태 배지처럼 짧은 칩은 `shrink-0 whitespace-nowrap` 이 없으면 '대 기 중' 으로 세로로 쪼개진다
+    ⚠️ **바깥 상자가 `overflow-hidden` 이면 밀려난 게 안 보이고 잘린다** (2026-11-11 ArtTalk) — 대화 격자가 `md:grid-cols-[300px_1fr]` 라 휴대폰에선 칸이 `auto` 였고,
+    입력칸·버튼의 최소 폭만큼 대화 칸이 상자보다 64px 넓어져 [보내기]가 잘리고 '첫 메시지를 보내보세요'가 오른쪽으로 치우쳤다(가로 스크롤은 안 생겨 눈치채기 어렵다).
+    격자는 `grid-cols-1` · `minmax(0,1fr)` + 칸마다 `min-w-0`. 화면 전수 점검 하니스: `scratchpad/layout-audit/walk.mjs`(상자에 잘린 내용·화면 밖 버튼·가로 밀림을
+    크롬 6폭 + 사파리 엔진으로 잰다 — 공개 화면은 실서버 복제본, 로그인 화면은 데모 DB. 고치기 전 ArtTalk 를 실제로 잡는 것 확인)
 
 ### 대화 — 갠톡(1:1)·단톡(공모방) (2026-08-28 전면 개편)
 - 예전 `Message`(제목+본문 쪽지)는 라우트마다 "작가는 갤러리에게만" 같은 **역할 규칙이 박혀 있어 작가끼리 대화가 불가능**했다.
@@ -247,6 +251,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ **서버비 고려한 용량 상한**은 multer 가 최종 판정(초과 시 400). 동영상은 이미지·파일보다 짧게(25MB). 프론트도 선검사해 헛된 업로드를 줄인다.
     - ⚠️ 첨부 주소는 `safeFileUrl` 로 검증해 저장한다 — `javascript:` 등 이상한 스킴 400. `attachmentType` 은 IMAGE/VIDEO/FILE 만.
     - 본문·첨부 **둘 다 없으면 400**. 첨부만 있으면 텍스트 말풍선을 그리지 않는다(빈 회색 상자 금지). 목록 미리보기는 `[사진]/[동영상]/[파일]`(`lib/chat.ts attachmentLabel`).
+- **방마다 알림 끄기**(`ChatParticipant.muted`, 마이그레이션 `20261111120000_chat_mute`, 2026-11-11 사용자 요청) — 카카오톡처럼. 대화방 머리의 종 버튼 → `PATCH /chats/:id/mute {muted}`(상태를 적어 보낸다 — 토글 아님).
+  끄면 `notifyChatMessage` 가 그 사람을 빼서 **벨 알림이 없다**. 안 읽은 수는 그대로 센다(목록 배지가 회색). 회귀 `chat-mute.test.ts`(3).
 - 회귀는 `backend/src/__tests__/chat.test.ts`(36개)와 `e2e/tests/29-chat.spec.ts`(14개, 실제 파일 업로드 포함)가 잡는다 — 특히 '남의 방 차단'·'작가↔작가 허용'·첨부.
 
 ### 초대 → 참여 (2026-08-28)
@@ -1985,6 +1991,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       머리말 "방금 올린 N점 — …", [나중에 하기]. 다른 묶음에서 글을 쓰는 중에 끝났으면 열지 않는다(`active`). 그때 "올렸어요" 알림은 띄우지 않는다(휴대폰에서 머리말을 덮었다).
     - **작품 정보 창**(`ArtworkMetaModal`): 칸 순서 = 홈페이지 캡션 순서(작품명 · 제작연도 · 재료 · 크기) → 아래 '선택'(시리즈·판매 상태·설명) ·
       "홈페이지에 이렇게 나옵니다"(`museumCaption`, 홈페이지와 같은 함수) · 전에 쓴 재료·연도 칩(`recentValues`) · **[저장하고 다음 작품]**(`nextUncaptionedId` — 저장 전 목록으로 정한다).
+      ⚠️ **이번에 지나온 작품은 다시 띄우지 않는다**(`passed`, 2026-11-11 신고 "세 개가 계속 번갈아 뜬다") — 정보를 안 넣고 넘기면 그 작품이 여전히 '정보 없음'이라 한 바퀴 돌아 다시 걸렸다. 한 바퀴면 끝난다.
       예전엔 저장하면 창이 닫혀 27점이면 27번 열고 닫았다.
       ⚠️⚠️ **Enter 는 저장이 아니라 '다음 칸'이다.** 제출 버튼(`type="submit"`)을 두면 브라우저가 Enter 로 폼을 낸다(아이폰 자판의 [이동] 키 포함) —
       작품명만 치고 Enter 를 누른 사람은 연도·재료·크기를 건너뛴 채 **사진이 다음 작품으로 바뀐 화면**을 본다. 버튼은 전부 `type="button"`,

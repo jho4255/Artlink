@@ -95,7 +95,8 @@ describe('작품 정보 — 이어서 넣는다', () => {
   it('★ [저장하고 다음 작품] 이 있고, 다음 작품은 저장 전 목록으로 정한다', () => {
     expect(modal).toContain('저장하고 다음 작품');
     expect(modal).toMatch(/onSave\(d, hasNext\)/);          // 주 버튼 = 다음 작품이 있으면 이어서
-    expect(works).toContain('nextUncaptionedId(images, v.imageId)');
+    expect(works).toContain('nextUncaptionedId(images, v.imageId, passed)');   // 이번에 지나온 작품은 빼고
+    expect(works).toContain('hasNext={nextUncaptionedId(images, metaImage.id, passed) != null}');
   });
 
   it('★ Enter 는 저장이 아니라 다음 칸 — 작품명만 치고 Enter 를 눌러도 다음 작품으로 넘어가지 않는다', () => {
@@ -117,7 +118,7 @@ describe('작품 정보 — 이어서 넣는다', () => {
 
   it('★ 다 올리면 방금 올린 첫 작품의 정보 창을 연다 — [작품] 묶음을 보고 있을 때만(2026-10-11)', () => {
     // 실서버: 올린 직후 '정보가 없어요' 줄이 보였는데도 작가노트부터 쓰고 저장한 뒤 다시 오지 않았다(초원 31점·박경연 6점)
-    expect(works).toMatch(/if \(activeRef\.current && !metaOpenRef\.current\) \{\s*setAfterUpload\(created\.length\);\s*onMeta\(created\[0\]!\);/);
+    expect(works).toMatch(/if \(activeRef\.current && !metaOpenRef\.current\) \{\s*setAfterUpload\(created\.length\);\s*openMeta\(created\[0\]!\);/);
     expect(strip(read('components/homepage-edit/HomepageEditor.tsx'))).toContain("active={section === 'works'}");
     // 자동으로 연 창은 왜 떴는지 한 줄 알리고 [나중에 하기] — 손으로 연 창은 예전처럼 [취소]
     expect(modal).toContain("justUploaded ? '나중에 하기' : '취소'");
