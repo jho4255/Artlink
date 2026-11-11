@@ -19,7 +19,7 @@ beforeEach(async () => {
     me: { status: 200, body: { id: 777, kakao_account: { email: 'kakao@user.test', profile: { nickname: '카카오사람', profile_image_url: null } } } },
     token: { status: 200, body: { access_token: 'web-access-token-123' } },
   };
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(input);
     const pick = url.includes('/v1/user/access_token_info') ? fake.info : url.includes('/v2/user/me') ? fake.me : url.includes('/oauth/token') ? fake.token : null;
     if (!pick) return realFetch(input, init);
