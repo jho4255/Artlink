@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>커뮤니티 목록 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+button{font-family:inherit;cursor:pointer}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.s{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.f{flex:none;height:44px;padding:0;border:0;background:none;font-size:15px;color:#6b7280;white-space:nowrap}
+.f.on{color:#111827;font-weight:600;text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1px}
+.row{display:flex;gap:14px;padding:18px 0;border-bottom:1px solid #f3f4f6;text-decoration:none;color:inherit}
+.tag{font-size:12px;font-weight:500;color:#6b7280}
+.tag.w{color:#c4302b}
+.t{display:block;margin-top:4px;font-size:16px;font-weight:500;line-height:1.45;color:#111827}
+.e{display:block;margin-top:4px;font-size:13px;line-height:1.6;color:#6b7280;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.m{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;margin-top:8px;font-size:12px;color:#6b7280}
+.m span{display:inline-flex;align-items:center;gap:3px}
+.th{flex:none;width:84px;height:84px;object-fit:cover;display:block}
+.tab{flex:1;min-width:0;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:#6b7280;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 1900px; box-sizing: border-box; display: flex; flex-direction: column; background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden">
+
+  <header style="flex: none; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #f3f4f6">
+    <a href="#" style="font-size: 22px; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+    <a href="#" style="display: inline-flex; align-items: center; height: 44px; font-size: 15px; font-weight: 500; text-decoration: none">로그인</a>
+  </header>
+
+  <main style="flex: 1; min-height: 0; padding: 28px 20px 0">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.15; font-weight: 500; color: #111827">Community</h1>
+    <p style="margin: 6px 0 0; font-size: 14px; color: #6b7280">작가와 갤러리가 나누는 작업 이야기</p>
+
+    <!-- 탭 — 옆으로 민다 -->
+    <div role="group" aria-label="탭" style="display: flex; gap: 22px; margin: 18px -20px 0; padding: 0 20px; border-bottom: 1px solid #e5e7eb; overflow: hidden">
+      <button type="button" class="f on" aria-pressed="true">전체</button>
+      <button type="button" class="f">자유</button>
+      <button type="button" class="f">질문</button>
+      <button type="button" class="f">작업일지</button>
+      <button type="button" class="f">꿀팁</button>
+      <button type="button" class="f">전시 후기</button>
+      <button type="button" class="f">전시 준비</button>
+    </div>
+
+    <!-- 필진의 새 글 — 옆으로 넘기는 카드 -->
+    <section aria-label="필진의 새 글" style="margin-top: 24px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #111827">필진의 새 글</h2>
+        <a href="#" style="font-size: 13px; color: #6b7280; text-decoration: underline; text-underline-offset: 4px">모두 보기</a>
+      </div>
+      <div style="display: flex; gap: 12px; margin: 0 -20px; padding: 0 20px; overflow: hidden">
+        <a href="#" style="flex: none; width: 260px; text-decoration: none; color: inherit">
+          <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+          <span class="tag w" style="display: block; margin-top: 10px">전시 준비</span>
+          <span class="t">전시 준비 일지 ① 작품을 고르는 일</span>
+          <span class="m"><span>윤서진 · 작가</span><span>5분</span></span>
+        </a>
+        <a href="#" style="flex: none; width: 260px; text-decoration: none; color: inherit">
+          <img src="/_blob/c0cd6dbfeed7a444123b81adb442cfb6" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+          <span class="tag w" style="display: block; margin-top: 10px">꿀팁</span>
+          <span class="t">캔버스 뒷면에 적어 두면 좋은 것들</span>
+          <span class="m"><span>한도윤 · 작가</span><span>4분</span></span>
+        </a>
+      </div>
+    </section>
+
+    <!-- 정렬 -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 28px; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #f3f4f6">
+      <div role="group" aria-label="정렬" style="display: flex; gap: 18px">
+        <button type="button" class="f on" aria-pressed="true">최신</button>
+        <button type="button" class="f">인기</button>
+      </div>
+      <div style="display: flex; gap: 18px">
+        <button type="button" class="f">내 글</button>
+        <button type="button" class="f">내 댓글</button>
+      </div>
+    </div>
+
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag" style="color: #c4302b; font-weight: 600">공지</span>
+        <span class="t">커뮤니티 글쓰기가 새로워졌어요</span>
+        <span class="m"><span>ArtLink</span><span>3일 전</span></span>
+      </span>
+    </a>
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag">질문</span>
+        <span class="t">100호 캔버스 운송, 다들 어떻게 하세요?</span>
+        <span class="e">다음 달 단체전에 100호 두 점을 보내야 하는데 용달을 불러야 할지, 미술품 운송을 써야 할지 모르겠어요.</span>
+        <span class="m"><span>익명</span><span>12분 전</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>2</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>5</span></span>
+      </span>
+    </a>
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag w">전시 준비 · 필진</span>
+        <span class="t">전시 준비 일지 ① 작품을 고르는 일</span>
+        <span class="e">삼 년 동안 그린 스무 점 가운데 여덟 점을 고르기까지. 기준은 하나였다.</span>
+        <span class="m"><span>윤서진 · 작가</span><span>2시간 전</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>24</span></span>
+      </span>
+      <img class="th" src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="">
+    </a>
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag">자유</span>
+        <span class="t">오늘 작업실 창밖</span>
+        <span class="e">첫눈이 왔어요. 난로 켜고 밑칠만 하다 갑니다.</span>
+        <span class="m"><span>서지안 · 작가</span><span>5시간 전</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>11</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>3</span></span>
+      </span>
+      <img class="th" src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="">
+    </a>
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag">질문</span>
+        <span class="t">공모 지원할 때 작가노트 길이</span>
+        <span class="e">보통 몇 자 정도로 쓰시나요? 500자 제한인 곳이 많던데 줄이는 게 어렵네요.</span>
+        <span class="m"><span>익명</span><span>어제</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>8</span></span>
+      </span>
+    </a>
+    <a class="row" href="#">
+      <span style="flex: 1; min-width: 0">
+        <span class="tag w">전시 후기 · 필진</span>
+        <span class="t">첫 아트페어에서 배운 다섯 가지</span>
+        <span class="e">부스에 서 있는 나흘 동안 가장 많이 받은 질문과, 준비하지 못한 대답.</span>
+        <span class="m"><span>서지안 · 작가</span><span>어제</span><span><svg class="s" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>19</span></span>
+      </span>
+      <img class="th" src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="">
+    </a>
+  </main>
+
+  <!-- 글쓰기 — 탭바 위에 떠 있는 단추 -->
+  <button type="button" style="position: absolute; right: 16px; bottom: 73px; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 20px; border: 0; border-radius: 24px; background: #111827; color: #fff; font-size: 15px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>글쓰기</button>
+
+  <nav aria-label="하단 메뉴" style="flex: none; display: flex; border-top: 1px solid #e5e7eb; background: #fff">
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="15.5" cy="10" r="1"/></svg>작가</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>갤러리</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>전시</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>모집공고</a>
+    <a class="tab" href="#" style="color: #111827; font-weight: 600"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>커뮤니티</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

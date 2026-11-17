@@ -65,9 +65,9 @@ max-w-7xl mx-auto px-6 md:px-12
 ### 적용된 타이틀
 | 페이지 | 타이틀 | 부제 |
 |--------|--------|------|
-| 갤러리 | Galleries | Find your next partner |
-| 전시 | Exhibitions | 지금 만날 수 있는 전시 |
-| 모집공고 | Open Call | 진행 중인 공모를 확인하세요 |
+| 갤러리 | Galleries | (없음 — 2026-11-15 개편, 제목 줄 오른쪽이 검색) |
+| 전시 | Exhibitions | (없음 — 2026-11-15 개편, CLAUDE.md 규칙 84 · 모집공고와 같은 틀) |
+| 모집공고 | Open Call | (없음 — 2026-11-15 개편, CLAUDE.md 규칙 83) |
 | 홈 GotM | Gallery of the Month | ArtLink 선정 이달의 갤러리 |
 
 ## 5. 필터
@@ -101,8 +101,8 @@ max-w-7xl mx-auto px-6 md:px-12
 | `text-[#c4302b]` · `text-red-500` 처럼 색을 클래스에 박기 | 토큰 클래스 `text-accent` / `bg-accent/10` / `border-accent/40`. 값은 `index.css` 의 `--color-accent` 한 곳. 가드: `__tests__/singleAccent.test.ts` |
 
 ### 이미지
-- 비율: `aspect-[4/3]` (갤러리, 공모) 또는 `aspect-[3/4]` (전시 포스터)
-- `object-cover`, 직각
+- 비율: `aspect-[4/3]` (갤러리) · `aspect-[210/297]` (공모·전시 포스터 — 2026-11-15, 목록 카드·상세·등록 미리보기가 같다)
+- 자르지 않는다 — `object-contain` + 같은 그림 흐림(`blurFill`), 직각(포스터·작품은 잘리면 안 된다, CLAUDE.md 18)
 - 호버: `group-hover:opacity-80 transition-opacity duration-300`
 
 ### 제목 호버
@@ -162,8 +162,6 @@ sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100
 
 아래 페이지는 아직 DESIGN.md 적용 안 됨:
 - GalleryDetailPage (갤러리 상세)
-- ExhibitionDetailPage (공모 상세)
-- ShowDetailPage (전시 상세)
 - BenefitsPage (혜택)
 - MyPage (마이페이지)
 - SupportPage (고객센터)

@@ -7,9 +7,11 @@ import { cn } from '@/lib/utils';
  * 둘 다 예전엔 칸이 한 덩어리로 이어져 어디까지가 한 묶음인지, 무엇이 필수인지가 안 보였다.
  * 번호 붙은 구역(1 진행 범위 · 2 공고 내용 …)으로 나누고, 칸마다 **그 칸이 무엇을 일으키는지**를 한 줄 적는다.
  */
-export function FormSection({ n, title, description, children, id }: {
+export function FormSection({ n, title, titleNote, description, children, id }: {
   n: number;
   title: string;
+  /** 제목 옆 작은 표시 — 갤러리 등록 '확인용 · 공개 안 함' */
+  titleNote?: ReactNode;
   description?: string;
   children: ReactNode;
   id?: string;
@@ -19,7 +21,7 @@ export function FormSection({ n, title, description, children, id }: {
       <div className="mb-4 flex items-baseline gap-3">
         <span className="w-4 shrink-0 text-sm font-semibold tabular-nums text-gray-300">{n}</span>
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-gray-950">{title}</h2>
+          <h2 className="text-base font-semibold text-gray-950">{title}{titleNote && <span className="ml-2 align-middle text-xs font-medium text-gray-600">{titleNote}</span>}</h2>
           {description && <p className="mt-0.5 text-sm text-gray-500">{description}</p>}
         </div>
       </div>

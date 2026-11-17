@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>글 화면 휴대폰 — 짧은 익명 글</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+button{font-family:inherit;cursor:pointer}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.p{margin:0 0 1em;font-size:16px;line-height:1.85;color:#1f2937}
+.act{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;height:46px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;font-weight:500}
+.tab{flex:1;min-width:0;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:#6b7280;text-decoration:none}
+.av{flex:none;width:32px;height:32px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#4b5563}
+</style>
+</helmet>
+<div style="width: 390px; height: 1300px; box-sizing: border-box; display: flex; flex-direction: column; background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden">
+
+  <header style="flex: none; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #f3f4f6">
+    <a href="#" style="font-size: 22px; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+    <a href="#" style="display: inline-flex; align-items: center; height: 44px; font-size: 15px; font-weight: 500; text-decoration: none">로그인</a>
+  </header>
+
+  <main style="flex: 1; min-height: 0; padding: 24px 20px 0">
+    <article>
+      <p style="margin: 0; font-size: 13px"><a href="#" style="color: #6b7280; text-decoration: none">커뮤니티</a><span style="margin: 0 6px; color: #6b7280">/</span><a href="#" style="font-weight: 500; text-decoration: none">질문</a></p>
+      <h1 style="margin: 10px 0 0; font-size: 22px; line-height: 1.4; font-weight: 600; color: #111827">100호 캔버스 운송, 다들 어떻게 하세요?</h1>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-bottom: 18px; border-bottom: 1px solid #e5e7eb">
+        <span class="av" aria-hidden="true">익</span>
+        <div style="min-width: 0">
+          <p style="margin: 0; font-size: 14px; font-weight: 500; color: #111827">익명</p>
+          <p style="margin: 1px 0 0; font-size: 12px; color: #6b7280">12분 전 · 조회 38</p>
+        </div>
+      </div>
+
+      <p class="p" style="margin-top: 22px">다음 달 단체전에 100호 두 점을 보내야 하는데 용달을 불러야 할지, 미술품 운송을 써야 할지 모르겠어요. 포장은 이 정도로 해 뒀습니다.</p>
+
+      <figure style="margin: 20px 0 0">
+        <img src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="포장한 캔버스" style="display: block; width: 100%; aspect-ratio: 0.804; object-fit: cover">
+      </figure>
+
+      <div style="display: flex; gap: 10px; margin-top: 28px; padding-top: 20px; border-top: 1px solid #e5e7eb">
+        <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>좋아요 2</button>
+        <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>공유</button>
+      </div>
+
+      <section aria-label="댓글" style="margin-top: 28px">
+        <h2 style="margin: 0 0 6px; font-size: 16px; font-weight: 600; color: #111827">댓글 2</h2>
+        <div style="display: flex; gap: 10px; padding: 14px 0; border-bottom: 1px solid #f3f4f6">
+          <span class="av" aria-hidden="true">한</span>
+          <div style="min-width: 0">
+            <p style="margin: 0; font-size: 13px"><span style="font-weight: 600; color: #111827">한도윤</span> <span style="color: #6b7280">· 작가 · 8분 전</span></p>
+            <p style="margin: 4px 0 0; font-size: 15px; line-height: 1.7; color: #374151">100호 두 점이면 미술품 운송 추천해요. 용달은 세워서 고정을 안 해 줘요.</p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 14px 0">
+          <span class="av" aria-hidden="true">익</span>
+          <div style="min-width: 0">
+            <p style="margin: 0; font-size: 13px"><span style="font-weight: 600; color: #111827">익명</span> <span style="font-size: 11px; font-weight: 600; color: #c4302b">글쓴이</span> <span style="color: #6b7280">· 3분 전</span></p>
+            <p style="margin: 4px 0 0; font-size: 15px; line-height: 1.7; color: #374151">감사합니다. 견적 받아 볼게요.</p>
+          </div>
+        </div>
+      </section>
+    </article>
+  </main>
+
+  <!-- 댓글 입력 — 탭바 위에 붙는다 -->
+  <div style="flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid #e5e7eb; background: #fff">
+    <label style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; color: #4b5563"><input type="checkbox" style="accent-color: #111827"> 익명</label>
+    <label style="flex: 1; min-width: 0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">댓글</span><input type="text" placeholder="댓글을 남겨 보세요" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; font-size: 15px"></label>
+    <button type="button" style="flex: none; height: 44px; padding: 0 16px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 14px; font-weight: 600">등록</button>
+  </div>
+
+  <nav aria-label="하단 메뉴" style="flex: none; display: flex; border-top: 1px solid #e5e7eb; background: #fff">
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="15.5" cy="10" r="1"/></svg>작가</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>갤러리</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>전시</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>모집공고</a>
+    <a class="tab" href="#" style="color: #111827; font-weight: 600"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>커뮤니티</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

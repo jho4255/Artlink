@@ -62,11 +62,12 @@ test.describe('공개 페이지', () => {
     await other.ctx.close();
   });
 
-  test('남의 페이지에는 [메시지]가 있다 (갠톡 길목)', async ({ browser }) => {
+  test('남의 페이지에는 [문의하기]가 있다 (갠톡 길목 — 2026-11-14 예전 [메시지])', async ({ browser }) => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist2');
     await page.goto(`/portfolio/${ids.artist}`);
-    await expect(page.getByRole('button', { name: '메시지' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('homepage-actions').getByRole('button', { name: '문의하기' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: '메시지' })).toHaveCount(0);
     await ctx.close();
   });
 });

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>읽는 화면 PC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font-family:inherit;cursor:pointer}
+.nav{font-size:16px;font-weight:500;color:#6b7280;text-decoration:none;padding:6px 0}
+.p{margin:0 0 1em;font-size:17px;line-height:1.9;color:#1f2937}
+.col{max-width:680px;margin:0 auto}
+.cap{margin-top:14px;text-align:center;font-size:13px;line-height:1.6;color:#6b7280}
+.act{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;font-weight:500}
+</style>
+</helmet>
+<div style="background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere">
+
+  <!-- 상단바 (지금 사이트 그대로) -->
+  <header style="border-bottom: 1px solid #f3f4f6">
+    <div style="max-width: 1280px; margin: 0 auto; min-height: 80px; box-sizing: border-box; padding: 12px 48px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 40px">
+      <a href="#" style="font-size: 24px; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+      <nav aria-label="주 메뉴" style="flex: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 32px">
+        <a class="nav" href="#">홈</a><a class="nav" href="#">작가</a><a class="nav" href="#">갤러리</a><a class="nav" href="#">전시</a><a class="nav" href="#">모집공고</a><a class="nav" href="#" style="color: #111827; border-bottom: 2px solid #111827">커뮤니티</a>
+      </nav>
+      <a class="nav" href="#" style="color: #111827">로그인</a>
+    </div>
+    <!-- 읽기 진행 줄 -->
+    <div aria-hidden="true" style="height: 2px; background: #f3f4f6"><div style="width: 34%; height: 100%; background: #111827"></div></div>
+  </header>
+
+  <main style="padding: 72px 48px 96px">
+    <article style="max-width: 1040px; margin: 0 auto">
+
+      <!-- 머리 -->
+      <div class="col">
+        <p style="margin: 0; font-size: 14px"><a href="#" style="color: #6b7280; text-decoration: none">커뮤니티</a><span style="margin: 0 8px; color: #6b7280">/</span><a href="#" style="font-weight: 500; color: #c4302b; text-decoration: none">전시 준비</a></p>
+        <h1 style="margin: 16px 0 0; font-size: 42px; line-height: 1.3; font-weight: 600; color: #111827; letter-spacing: -0.01em">전시 준비 일지 ① 작품을 고르는 일</h1>
+        <p style="margin: 14px 0 0; font-size: 20px; line-height: 1.6; color: #6b7280">스무 점 가운데 여덟 점만 벽에 걸기로 했다</p>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 32px; padding-bottom: 32px; border-bottom: 1px solid #e5e7eb">
+          <span aria-hidden="true" style="flex: none; width: 40px; height: 40px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #4b5563">윤</span>
+          <div style="min-width: 0">
+            <a href="#" style="font-size: 15px; font-weight: 500; text-decoration: none">윤서진</a>
+            <p style="margin: 2px 0 0; font-size: 13px; color: #6b7280">작가 · 2시간 전 · 5분 · 조회 312</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 본문 -->
+      <div class="col" style="margin-top: 40px">
+        <p class="p">개인전 날짜가 정해지고 가장 먼저 한 일은 작업실 바닥에 그림을 전부 늘어놓는 것이었다. 삼 년 동안 그린 스무 점. <strong style="font-weight: 600; color: #111827">벽은 여덟 점이면 찬다.</strong></p>
+        <p class="p">고르는 일은 그리는 일과 다른 근육을 쓴다. 그릴 때는 한 점만 보지만, 고를 때는 한 점도 따로 보면 안 된다.</p>
+      </div>
+
+      <figure style="margin: 44px 0">
+        <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="작업실 바닥에 늘어놓은 그림" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+        <figcaption class="cap">작업실 바닥에 늘어놓은 날. 〈조용한 오후〉가 가장 먼저 자리를 잡았다.</figcaption>
+      </figure>
+
+      <div class="col">
+        <h2 style="margin: 1.8em 0 0.6em; font-size: 22px; line-height: 1.45; font-weight: 600; color: #111827">고르는 기준은 하나만</h2>
+        <p class="p">처음에는 잘 그린 그림을 고르려 했다. 그러다 갤러리 디렉터가 한 말이 기준이 됐다. <span style="background: linear-gradient(transparent 58%, rgba(196,48,43,.16) 58%)">관람객은 그림을 한 점씩 보지 않고 벽을 본다.</span> 그 뒤로는 고르는 일이 훨씬 빨라졌다.</p>
+
+        <!-- 뽑은 인용 -->
+        <blockquote style="margin: 44px 0; padding: 28px 0; border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-size: 24px; line-height: 1.6; font-weight: 500; color: #111827; text-align: center">좋은 그림 여덟 점이 아니라,<br>여덟 점이 만드는 한 벽.</blockquote>
+      </div>
+
+      <!-- 모아 놓기 -->
+      <figure style="margin: 44px 0">
+        <div style="display: flex; gap: 8px">
+          <div style="flex: 1.25 1 0; min-width: 0; aspect-ratio: 1.25"><img src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="긴 여름" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 0.804 1 0; min-width: 0; aspect-ratio: 0.804"><img src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="푸른 벽" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 1 1 0; min-width: 0; aspect-ratio: 1"><img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="네모난 정원" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+        </div>
+        <figcaption class="cap">끝까지 고민한 세 점. 가운데 〈푸른 벽〉은 결국 빠졌다.</figcaption>
+      </figure>
+
+      <div class="col">
+        <p class="p">세 점을 나란히 놓고 일주일을 봤다. 색이 가장 강한 그림이 벽 전체를 끌고 가 버려서, 아끼던 그림을 내려놓았다.</p>
+
+        <!-- 팁 상자 -->
+        <aside style="margin: 36px 0; padding: 20px 24px; border: 1px solid #e5e7eb">
+          <p style="margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .08em; color: #111827">TIP</p>
+          <p style="margin: 0; font-size: 16px; line-height: 1.8; color: #374151">작품을 고를 때는 실제 벽 크기대로 바닥에 테이프를 붙여 보세요. 작품 사이 간격까지 눈으로 볼 수 있어요.</p>
+        </aside>
+
+        <p class="p">남은 여덟 점은 다음 달 이 벽에 걸린다.</p>
+
+        <!-- ArtLink 카드 (전시) -->
+        <a href="#" style="display: flex; flex-wrap: wrap; gap: 0; margin: 36px 0; border: 1px solid #e5e7eb; text-decoration: none; color: inherit">
+          <img src="/_blob/78a7524515a1dc188a0739748a663462" alt="" style="flex: 1 1 220px; min-width: 0; height: 150px; object-fit: cover; display: block">
+          <span style="flex: 2 1 280px; min-width: 0; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; justify-content: center; gap: 6px">
+            <span style="font-size: 12px; font-weight: 500; color: #c4302b">전시 · D-20</span>
+            <span style="font-size: 18px; font-weight: 500; line-height: 1.4; color: #111827">윤서진 개인전 《빛의 결》</span>
+            <span style="font-size: 13px; color: #6b7280">아트링크 갤러리 · 2026. 12. 03. – 12. 21.</span>
+            <span style="margin-top: 4px; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; color: #111827">전시 보기</span>
+          </span>
+        </a>
+
+        <!-- 좋아요 · 공유 -->
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 48px; padding-top: 28px; border-top: 1px solid #e5e7eb">
+          <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>좋아요 24</button>
+          <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>공유</button>
+        </div>
+
+        <!-- 글쓴이 카드 -->
+        <section aria-label="글쓴이" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 32px; padding: 24px; background: #f9fafb">
+          <span aria-hidden="true" style="flex: none; width: 56px; height: 56px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; color: #4b5563">윤</span>
+          <div style="flex: 1 1 220px; min-width: 0">
+            <p style="margin: 0; font-size: 16px; font-weight: 600; color: #111827">윤서진</p>
+            <p style="margin: 4px 0 0; font-size: 14px; line-height: 1.6; color: #6b7280">빛이 머무는 자리를 그립니다. 서울에서 작업해요.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <button type="button" style="height: 40px; padding: 0 16px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 14px; font-weight: 600">이웃 추가</button>
+            <a href="#" class="act" style="height: 40px; text-decoration: none">홈페이지</a>
+          </div>
+        </section>
+
+        <!-- 시리즈 앞뒤 글 -->
+        <nav aria-label="시리즈" style="margin-top: 32px; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb">
+          <p style="margin: 20px 0 0; font-size: 13px; color: #6b7280">연재 · 전시 준비 일지 (1/3)</p>
+          <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0 20px; text-decoration: none">
+            <span style="min-width: 0"><span style="display: block; font-size: 13px; color: #6b7280">다음 글</span><span style="display: block; margin-top: 4px; font-size: 17px; font-weight: 500; color: #111827">② 액자를 맞추는 일</span></span>
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </nav>
+
+        <!-- 댓글 -->
+        <section aria-label="댓글" style="margin-top: 48px">
+          <h2 style="margin: 0 0 20px; font-size: 18px; font-weight: 600; color: #111827">댓글 2</h2>
+          <div style="padding: 16px 0; border-top: 1px solid #f3f4f6">
+            <p style="margin: 0; font-size: 14px"><span style="font-weight: 600; color: #111827">서지안</span> <span style="font-size: 12px; color: #6b7280">· 2시간 전</span></p>
+            <p style="margin: 6px 0 0; font-size: 15px; line-height: 1.7; color: #374151">바닥에 테이프 붙여 보는 방법, 다음 전시 때 꼭 해 볼게요.</p>
+          </div>
+          <div style="padding: 16px 0; border-top: 1px solid #f3f4f6">
+            <p style="margin: 0; font-size: 14px"><span style="font-weight: 600; color: #111827">윤서진</span> <span style="font-size: 11px; font-weight: 600; color: #c4302b">글쓴이</span> <span style="font-size: 12px; color: #6b7280">· 1시간 전</span></p>
+            <p style="margin: 6px 0 0; font-size: 15px; line-height: 1.7; color: #374151">다음 편에 사진으로 자세히 올릴게요.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px">
+            <label style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; color: #4b5563"><input type="checkbox" style="accent-color: #111827"> 익명</label>
+            <label style="flex: 1 1 260px; min-width: 0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">댓글</span><input type="text" placeholder="댓글을 남겨 보세요" style="box-sizing: border-box; width: 100%; height: 46px; padding: 0 14px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; font-size: 15px"></label>
+            <button type="button" style="height: 46px; padding: 0 20px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 14px; font-weight: 600">등록</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 함께 읽을 글 -->
+      <section aria-label="함께 읽을 글" style="margin-top: 80px; padding-top: 40px; border-top: 1px solid #e5e7eb">
+        <h2 style="margin: 0 0 24px; font-size: 18px; font-weight: 600; color: #111827">이 탭의 다른 글</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 32px 24px">
+          <a href="#" style="min-width: 0; text-decoration: none; color: inherit">
+            <img src="/_blob/c0cd6dbfeed7a444123b81adb442cfb6" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+            <span style="display: block; margin-top: 12px; font-size: 12px; font-weight: 500; color: #c4302b">꿀팁</span>
+            <span style="display: block; margin-top: 6px; font-size: 17px; font-weight: 500; line-height: 1.4; color: #111827">캔버스 뒷면에 적어 두면 좋은 것들</span>
+            <span style="display: block; margin-top: 8px; font-size: 12px; color: #6b7280">한도윤 · 4분</span>
+          </a>
+          <a href="#" style="min-width: 0; text-decoration: none; color: inherit">
+            <img src="/_blob/78a7524515a1dc188a0739748a663462" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+            <span style="display: block; margin-top: 12px; font-size: 12px; font-weight: 500; color: #c4302b">전시 준비</span>
+            <span style="display: block; margin-top: 6px; font-size: 17px; font-weight: 500; line-height: 1.4; color: #111827">설치하는 날의 기록</span>
+            <span style="display: block; margin-top: 8px; font-size: 12px; color: #6b7280">아트링크 갤러리 · 6분</span>
+          </a>
+          <a href="#" style="min-width: 0; text-decoration: none; color: inherit">
+            <img src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+            <span style="display: block; margin-top: 12px; font-size: 12px; font-weight: 500; color: #c4302b">전시 후기</span>
+            <span style="display: block; margin-top: 6px; font-size: 17px; font-weight: 500; line-height: 1.4; color: #111827">첫 아트페어에서 배운 다섯 가지</span>
+            <span style="display: block; margin-top: 8px; font-size: 12px; color: #6b7280">서지안 · 7분</span>
+          </a>
+        </div>
+      </section>
+    </article>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":3500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

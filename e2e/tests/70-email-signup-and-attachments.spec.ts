@@ -293,12 +293,13 @@ test.describe('공모 첨부파일', () => {
     await typeRich(page, '공모 소개', '요강을 첨부합니다.');
     await page.getByTestId('attachment-input').setInputFiles([{ name: '공간 도면.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') }]);
     await expect(page.getByRole('list', { name: '붙인 파일' })).toContainText('공간 도면.png', { timeout: 20000 });
-    await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-
     const posted = page.waitForRequest((r) => r.url().endsWith('/api/exhibitions') && r.method() === 'POST');
-    await page.getByRole('button', { name: '등록 요청', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '공모 등록을 요청할까요?' });
-    await expect(dialog).toContainText('첨부파일 1개');
+    // 하단 줄 [등록 요청] → 확인 창이 첨부 개수를 말한다 → 약관 동의 → [등록 요청]
+    await page.locator('[data-submit-bar]').getByRole('button', { name: '등록 요청', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '등록을 요청할까요?' });
+    await expect(dialog).toContainText('첨부');
+    await expect(dialog).toContainText('1개');
+    await dialog.getByRole('checkbox').check();
     await dialog.getByRole('button', { name: '등록 요청', exact: true }).click();
     const body = (await posted).postDataJSON();
     expect(body.attachments).toHaveLength(1);

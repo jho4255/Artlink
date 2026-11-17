@@ -172,9 +172,9 @@ describe('홈페이지 항목 — 공개 작가 페이지로 나간다', () => {
  * ─────────────────────────────────────────────────────────────
  */
 describe('메뉴 구성 (2026-08-28 기준)', () => {
-  it('작가 메뉴는 프로필·홈페이지·포트폴리오·찜 목록·내 전시·ArtLook·ArtStory 순', () => {
+  it('작가 메뉴는 프로필·홈페이지·포트폴리오·찜 목록·내 전시·ArtLook 순', () => {
     expect(myPageTabs('ARTIST').map(t => t.id)).toEqual([
-      'profile', 'homepage', 'portfolio', 'favorites', 'applications', 'artlook', 'artstory',
+      'profile', 'homepage', 'portfolio', 'favorites', 'applications', 'artlook',
     ]);
   });
 
@@ -185,19 +185,18 @@ describe('메뉴 구성 (2026-08-28 기준)', () => {
     }
   });
 
-  it('갤러리 메뉴는 프로필·내 갤러리·내 공모·내 전시·관심 작품·ArtStory', () => {
+  it('갤러리 메뉴는 프로필·내 갤러리·내 공모·내 전시·관심 작품', () => {
     expect(myPageTabs('GALLERY').map(t => t.id)).toEqual([
-      'profile', 'my-galleries', 'my-exhibitions', 'my-shows', 'scraps', 'artstory',
+      'profile', 'my-galleries', 'my-exhibitions', 'my-shows', 'scraps',
     ]);
   });
 
-  it('★ ArtStory 는 세 역할 모두에게 있다 — 이웃·스토리는 역할 무관이다', () => {
-    // 작가에게만 두면 갤러리·운영은 이웃을 맺고 소식을 쓸 수는 있는데 **그 화면에 갈 길이 없다**.
-    // (사이드바 아래 링크가 그 역할을 하다가 비면서 실제로 끊겼다)
-    for (const role of ROLES) {
-      const artstory = myPageTabs(role).find(t => t.id === 'artstory');
-      expect(artstory, `${role} 에게 ArtStory 진입점이 없다`).toBeTruthy();
-      expect(tabHref(artstory!, 1)).toBe('/feed');
+  it('★ ArtStory 는 역할 메뉴에 없다 — 가운데 메뉴(누구나)로 옮겼다(2026-11-14)', () => {
+    // 전체공개 소식은 비회원도 본다(규칙 81). 같은 곳으로 가는 메뉴가 두 군데면 어느 쪽이 맞는지 헷갈린다.
+    for (const role of [...ROLES, 'VISITOR']) {
+      const tabs = myPageTabs(role);
+      expect(tabs.some(t => t.id === 'artstory'), `${role} 메뉴에 ArtStory 가 남았다`).toBe(false);
+      expect(tabs.some(t => t.linkTo?.(1) === '/feed'), `${role} 메뉴에 /feed 로 가는 항목이 남았다`).toBe(false);
     }
   });
 
@@ -210,15 +209,15 @@ describe('메뉴 구성 (2026-08-28 기준)', () => {
 });
 
 describe('브랜드 이름 규칙 (ArtLink 로고: 앞 검정 + 뒤 빨강)', () => {
-  it('★ 메뉴에서 색을 쓰는 항목은 ArtLook·ArtStory (브랜드 이름)', () => {
+  it('★ 메뉴에서 색을 쓰는 항목은 ArtLook 하나 (브랜드 이름)', () => {
     // 화면 이름(HomePage·PortFolio·MyPicks·ArtTalk)은 **화면 좌측 상단**에 찍는다.
     // 메뉴 라벨까지 전부 색을 넣으면 로고 규칙이 헐거워져 브랜드로 안 읽힌다.
-    // ArtLook(액자), ArtStory(소식)만 브랜드 이름이라 메뉴에서도 색을 쓴다.
+    // ArtLook(액자)만 브랜드 이름이라 메뉴에서도 색을 쓴다(ArtStory 는 2026-11-14 에 가운데 메뉴로 옮겼다).
     const branded = (['ARTIST', 'GALLERY', 'ADMIN'] as const)
       .flatMap(r => myPageTabs(r))
       .filter(t => t.brand)
       .map(t => t.id);
-    expect([...new Set(branded)]).toEqual(['artlook', 'artstory']);
+    expect([...new Set(branded)]).toEqual(['artlook']);
   });
 
   it('ArtLook 은 Art + Look 으로 쪼개지고 무엇인지 옆에 적는다', () => {

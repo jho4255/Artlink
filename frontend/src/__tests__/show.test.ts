@@ -39,12 +39,12 @@ describe('validateExhibitionDates', () => {
     })).toBeNull();
   });
 
-  it('공모 시작일 > 마감일 → 에러', () => {
+  it('접수 시작일 > 마감일 → 에러', () => {
     expect(validateExhibitionDates({
       deadlineStart: '2099-03-15',
       deadline: '2099-03-10',
       exhibitDate: '2099-03-30',
-    })).toBe('공모 시작일은 마감일 이전이어야 합니다.');
+    })).toBe('접수 시작일은 마감일 이전이어야 합니다.');
   });
 
   it('마감일 > 전시 시작일 → 에러', () => {
@@ -52,7 +52,7 @@ describe('validateExhibitionDates', () => {
       deadline: '2099-03-20',
       exhibitStartDate: '2099-03-15',
       exhibitDate: '2099-03-30',
-    })).toBe('공모 마감일은 전시 시작일 이전이어야 합니다.');
+    })).toBe('접수 마감일은 전시 시작일 이전이어야 합니다.');
   });
 
   it('전시 시작일 > 종료일 → 에러', () => {
@@ -67,7 +67,7 @@ describe('validateExhibitionDates', () => {
     expect(validateExhibitionDates({
       deadline: '2099-04-01',
       exhibitDate: '2099-03-30',
-    })).toBe('공모 마감일은 전시 종료일 이전이어야 합니다.');
+    })).toBe('접수 마감일은 전시 종료일 이전이어야 합니다.');
   });
 });
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, Eye, ArrowRight } from 'lucide-react';
 import api from '@/lib/axios';
 import { timeAgo, roleLabel } from '@/lib/utils';
+import { HomeTabHead, HomeTabAll } from './HomeTabHead';
 
 /**
  * 홈 좌측 — 커뮤니티 인기글.
@@ -19,7 +20,8 @@ interface PopularPost {
 }
 
 
-export default function PopularPosts() {
+/** @param bare 휴대폰 홈 탭 안(2026-11-14, `lib/homeTabs.ts`) — 제목은 탭이 대신하고 링크는 [전체 보기]. 글이 없어도 빈 칸 안내가 있어 늘 탭이 있다 */
+export default function PopularPosts({ bare = false }: { bare?: boolean } = {}) {
   const navigate = useNavigate();
   const { data = [], isLoading } = useQuery<PopularPost[]>({
     queryKey: ['community-popular'],
@@ -28,12 +30,16 @@ export default function PopularPosts() {
 
   return (
     <section>
-      <div className="mb-4 flex items-end justify-between">
-        <h2 className="text-lg font-serif text-gray-900">인기글</h2>
-        <Link to="/community" className="flex items-center gap-0.5 text-sm text-gray-500 hover:text-gray-900">
-          더보기 <ArrowRight size={13} />
-        </Link>
-      </div>
+      {bare ? (
+        <HomeTabHead><HomeTabAll to="/community" /></HomeTabHead>
+      ) : (
+        <div className="mb-4 flex items-end justify-between">
+          <h2 className="text-lg font-serif text-gray-900">인기글</h2>
+          <Link to="/community" className="flex items-center gap-0.5 text-sm text-gray-500 hover:text-gray-900">
+            더보기 <ArrowRight size={13} />
+          </Link>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />)}</div>

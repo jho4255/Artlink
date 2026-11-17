@@ -1,5 +1,5 @@
 /**
- * 갤러리 홈페이지 탭 (2026-09-27, 사용자 요청 "작가 홈페이지처럼") — 소개·모집 중·함께한 작가·지난 전시·리뷰.
+ * 갤러리 홈페이지 탭 (2026-09-27, 사용자 요청 "작가 홈페이지처럼") — 소개·모집 중·작가·지난 전시·소식·리뷰(소식은 2026-11-14).
  *
  * 작가 홈페이지 탭(`lib/homepageTabs.ts`, CLAUDE.md 56)과 **같은 규칙**이다.
  * - **비어 있는 탭은 만들지 않는다** — 눌렀는데 아무것도 없으면 고장처럼 보인다.
@@ -8,7 +8,7 @@
  * - 함께한 작가 수는 **방문자에게 보이는 수**다. 숨긴 작가만 남은 갤러리도 주인에겐 탭이 있어야 **다시 보이게** 할 수 있다
  *   (2026-09-27 신고 — 숨긴 뒤 되돌리는 자리를 못 찾았다).
  */
-export type GalleryTabId = 'about' | 'calls' | 'artists' | 'history' | 'reviews';
+export type GalleryTabId = 'about' | 'calls' | 'artists' | 'history' | 'news' | 'reviews';
 
 export interface GalleryTabDef {
   id: GalleryTabId;
@@ -19,8 +19,10 @@ export interface GalleryTabDef {
 export const GALLERY_TAB_LABELS: Record<GalleryTabId, string> = {
   about: '소개',
   calls: '모집 중',
-  artists: '함께한 작가',
+  // 머리 메뉴(PC)에 여섯 개가 한 줄에 들게 짧게(2026-11-14) — id·주소(`?tab=artists`)는 그대로
+  artists: '작가',
   history: '지난 전시',
+  news: '소식',
   reviews: '리뷰',
 };
 
@@ -32,6 +34,9 @@ export function galleryTabs(c: {
   /** 숨긴 작가 수 — 관리자(주인·Admin)에게만 의미가 있다 */
   hiddenArtistCount?: number;
   historyCount: number;
+  /** [소식] — 갤러리 주인 계정이 올린 ArtStory(서버가 보는 사람 기준으로 센 값, 2026-11-14 규칙 82) */
+  storyCount?: number;
+  highlightCount?: number;
   reviewCount: number;
   /** 주인 — 소개·지난 전시는 비어 있어도 채우러 들어갈 탭이 필요하다 */
   isOwner: boolean;
@@ -46,6 +51,8 @@ export function galleryTabs(c: {
     tabs.push({ id: 'artists', label: GALLERY_TAB_LABELS.artists, ...count(c.visibleArtistCount) });
   }
   if (c.historyCount > 0 || c.isOwner) tabs.push({ id: 'history', label: GALLERY_TAB_LABELS.history, ...count(c.historyCount) });
+  // 주인에겐 비어 있어도 — 채우러 들어가는 탭이다(소개·지난 전시와 같다)
+  if ((c.storyCount ?? 0) > 0 || (c.highlightCount ?? 0) > 0 || c.isOwner) tabs.push({ id: 'news', label: GALLERY_TAB_LABELS.news });
   tabs.push({ id: 'reviews', label: GALLERY_TAB_LABELS.reviews, ...count(c.reviewCount) });
   return tabs;
 }

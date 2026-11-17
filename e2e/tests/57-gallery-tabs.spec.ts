@@ -44,19 +44,19 @@ test('★ 탭을 누르면 내용과 주소가 바뀌고, 새로고침해도 그
   await expect(tablist).toBeVisible({ timeout: 15000 });
   // ⚠️ 한 번에 읽지 말고 기다리는 단언으로 — 갤러리에 핸들이 있으면 `/galleries/3` → `/@핸들` 로 갈아끼우며 다시 그려져,
   //    그 순간 목록을 읽으면 빈 배열이다(앞 스펙 53 이 핸들을 만든 뒤에만 드러났다)
-  await expect(tablist.getByRole('tab', { name: /^함께한 작가/ })).toBeVisible({ timeout: 15000 });
+  await expect(tablist.getByRole('tab', { name: /^작가/ })).toBeVisible({ timeout: 15000 });
   await expect(tablist.getByRole('tab', { name: /^리뷰/ }), '리뷰는 늘 있다(쓰러 오는 곳)').toBeVisible();
   // 방문자에겐 비어 있는 채우기 탭이 없다 — 첫 탭이 무엇이든 선택된 채로 열린다
   await expect(tablist.getByRole('tab', { selected: true })).toHaveCount(1);
 
-  await tablist.getByRole('tab', { name: /함께한 작가/ }).click();
+  await tablist.getByRole('tab', { name: /^작가/ }).click();
   await expect(page).toHaveURL(/[?&]tab=artists/);
   await expect(page.getByTestId('gallery-artists')).toContainText(artistName);
   // 한 탭에는 그 탭 것만 — 리뷰 작성 칸 같은 다른 탭 내용이 섞이지 않는다
   await expect(page.getByRole('tabpanel')).not.toContainText('리뷰 작성');
 
   await page.reload();
-  await expect(tablist.getByRole('tab', { name: /함께한 작가/ })).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+  await expect(tablist.getByRole('tab', { name: /^작가/ })).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
   await expect(page.getByTestId('gallery-artists')).toContainText(artistName);
 
   await tablist.getByRole('tab', { name: /리뷰/ }).click();

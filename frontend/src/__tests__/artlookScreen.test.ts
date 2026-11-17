@@ -164,11 +164,13 @@ describe('바깥(마이페이지) · 캐시', () => {
     expect(sec).toMatch(/editHref\('works', \{ info: true, work: msg\.id \}\)/);
   });
 
-  it('ArtStory 글쓰기 칸이 넘어온 사진을 한 번 받고 state 를 비운다', () => {
-    const feed = src('pages/FeedPage.tsx');
-    expect(feed).toMatch(/const incoming = readComposeImages\(location\.state\);/);
-    expect(feed).toMatch(/navigate\(`\$\{location\.pathname\}\$\{location\.search\}`, \{ replace: true, state: null \}\)/);
-    expect(feed).toMatch(/incoming\.filter\(\(u\) => !prev\.includes\(u\)\)/);   // StrictMode 두 번 실행에도 한 장
+  it('ArtStory 올리기 화면이 넘어온 사진을 한 번 받고 state 를 비운다 (2026-11-14 — 피드 글쓰기 칸 → /story/new)', () => {
+    const my = src('pages/MyPage.tsx');
+    expect(my).toMatch(/navigate\('\/story\/new', \{ state: \{ \[COMPOSE_STATE_KEY\]: \[data\.url\]/);
+    const page = src('pages/StoryComposePage.tsx');
+    // 처음 값을 정할 때 읽고(StrictMode 가 두 번 불러도 같은 답) effect 에서 state 를 비운다
+    expect(page).toMatch(/const artlook = readComposeImages\(location\.state\);/);
+    expect(page).toMatch(/navigate\(location\.pathname, \{ replace: true, state: \{ from: state\.from \} \}\)/);
   });
 
   it('주소에 빌드 ID — 1년 굳은 옛 사본(scene.js 9/4 판)을 건너뛴다', () => {

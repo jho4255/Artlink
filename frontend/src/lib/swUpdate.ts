@@ -50,3 +50,56 @@ export async function reloadIfStale(fetchLatest: () => Promise<string>, pageScri
   if (isLatestBuild(html, pageScriptSrcs())) return;
   reload();
 }
+
+/*
+ * ⚠️ 글을 쓰는 동안에는 새로고침을 미룬다 (2026-11-13, 커뮤니티 글쓰기).
+ * 배포가 끝나 새 워커가 넘겨받으면 옛 판 페이지는 새로고침되는데(위 reloadIfStale), 글쓰기 화면에서 그러면 서버에 아직 못 보낸
+ * 몇 초 분량이 날아간다(기기 보관이 살리긴 하지만 화면이 갑자기 깜빡인다). 글쓰기 화면이 떠 있는 동안 `holdReload()` 로 붙잡고,
+ * 화면을 떠날 때 놓으면 그때 새로고침한다. 화면은 `onReloadDeferred` 로 "새 버전이 나왔어요 [저장하고 새로고침]" 을 띄운다.
+ */
+let holds = 0;
+let pendingReload: (() => void) | null = null;
+const deferredListeners = new Set<() => void>();
+
+/** 붙잡는다 — 돌려받은 함수를 부르면 놓는다(여러 번 불러도 한 번만 놓는다) */
+export function holdReload(): () => void {
+  holds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holds = Math.max(0, holds - 1);
+    if (holds === 0 && pendingReload) {
+      const run = pendingReload;
+      pendingReload = null;
+      run();
+    }
+  };
+}
+
+/** 새로고침 — 붙잡혀 있으면 미루고 화면에 알린다 */
+export function reloadOrDefer(reload: () => void): void {
+  if (holds > 0) {
+    pendingReload = reload;
+    deferredListeners.forEach((fn) => { try { fn(); } catch { /* 화면 쪽 오류가 새로고침 판단을 막지 않게 */ } });
+    return;
+  }
+  reload();
+}
+
+/** 미뤄 둔 새로고침이 있나 */
+export function isReloadDeferred(): boolean {
+  return pendingReload !== null;
+}
+
+/** 미뤄 둔 새로고침을 지금 한다(글을 저장한 뒤 [새로고침]) */
+export function runDeferredReload(): void {
+  const run = pendingReload;
+  pendingReload = null;
+  run?.();
+}
+
+export function onReloadDeferred(fn: () => void): () => void {
+  deferredListeners.add(fn);
+  return () => { deferredListeners.delete(fn); };
+}

@@ -192,7 +192,21 @@ async function prioritizedShuffle(
  *      서버 로케일에 따라 목록이 달라진다. 순서는 항상 여기서 정한다.
  *   ⚠️ `?seed=` 는 **받되 무시한다**(2026-09-10~09-13 사이 랜덤이던 시절의 흔적). 400 으로 막으면
  *      그때 만들어진 링크·캐시가 죽는다 — 규칙 24 와 같은 이유다.
+ * ## `cover` — 휴대폰 이름 창의 작은 그림 (2026-11-15, 작가 탭 B안)
+ * 그 작가 홈페이지 첫 화면의 대표작과 **같은 규칙**: designConfig.heroImageId 가 그 작가 작품이면 그것, 아니면 순서(`order`)상 첫 작품.
+ * 홈페이지가 공개라 그 그림도 공개다. ⚠️ `avatar`(대개 카카오 프로필 사진)를 대신 쓰지 말 것 — 홈페이지도 작가가 켜야 보여 준다(규칙 77).
+ * 쿼리는 작가 수와 무관하게 셋 이하(N+1 금지 — 작가 탭을 열 때마다 도는 경로다).
  */
+/** designConfig(JSON 문자열)의 대표작 번호 — 화면 `lib/homepageTheme.ts` 의 판정과 같다(양의 정수만). 깨진 JSON 은 없음으로 */
+function heroIdOf(designConfig: string | null | undefined): number | null {
+  if (!designConfig) return null;
+  let o: unknown;
+  try { o = JSON.parse(designConfig); } catch { return null; }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const v = (o as Record<string, unknown>).heroImageId;
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null;
+}
+
 router.get('/artists', async (_req, res, next) => {
   try {
     // 작가별 작품 수를 한 번에 — 작가 수만큼 쿼리를 돌지 않는다(N+1). showInExplore 는 보지 않는다(위 ⚠️⚠️)
@@ -200,6 +214,7 @@ router.get('/artists', async (_req, res, next) => {
       by: ['portfolioId'],
       where: { portfolio: { user: { deletedAt: null } } },
       _count: { portfolioId: true },
+      _min: { order: true },
     });
     if (grouped.length === 0) return res.json([]);
 
@@ -207,10 +222,30 @@ router.get('/artists', async (_req, res, next) => {
       where: { id: { in: grouped.map((g) => g.portfolioId) } },
       select: {
         id: true,
+        designConfig: true,
         user: { select: { id: true, name: true, nickname: true, handle: true, avatar: true } },
       },
     });
     const countBy = new Map(grouped.map((g) => [g.portfolioId, g._count.portfolioId]));
+
+    // 대표작(위 `cover`) — ① 지정한 대표작 ② 없으면 순서상 첫 작품. 둘 다 한 번씩만 묻는다
+    const heroWanted = new Map<number, number>();
+    for (const pf of portfolios) { const h = heroIdOf(pf.designConfig); if (h) heroWanted.set(pf.id, h); }
+    const coverBy = new Map<number, string>();
+    if (heroWanted.size) {
+      const heroes = await prisma.portfolioImage.findMany({ where: { id: { in: [...heroWanted.values()] } }, select: { id: true, portfolioId: true, url: true } });
+      // 남의 작품 번호가 적혀 있으면(복사·삭제 뒤) 무시하고 첫 작품으로
+      for (const h of heroes) if (heroWanted.get(h.portfolioId) === h.id) coverBy.set(h.portfolioId, h.url);
+    }
+    const firstWanted = grouped.filter((g) => !coverBy.has(g.portfolioId) && g._min.order != null);
+    if (firstWanted.length) {
+      const firsts = await prisma.portfolioImage.findMany({
+        where: { OR: firstWanted.map((g) => ({ portfolioId: g.portfolioId, order: g._min.order! })) },
+        orderBy: { id: 'asc' },   // 순서가 같은 작품이 여럿이면 먼저 올린 것
+        select: { portfolioId: true, url: true },
+      });
+      for (const f of firsts) if (!coverBy.has(f.portfolioId)) coverBy.set(f.portfolioId, f.url);
+    }
 
     const artists = portfolios
       .filter((pf) => pf.user)
@@ -223,6 +258,7 @@ router.get('/artists', async (_req, res, next) => {
         // 화면에는 안 그린다(2026-09-10). 이 목록에 **왜** 들어왔는지를 말해 주는 값이라 남겨 둔다 —
         // 0 이면 애초에 걸러졌어야 하므로, 회귀 테스트가 이 값으로 필터를 검증한다.
         workCount: countBy.get(pf.id) ?? 0,
+        cover: coverBy.get(pf.id) ?? null,
       }));
 
     // 칸(초성) 순서 → 이름순. `initial` 을 함께 실어 화면이 묶을 수 있게 한다

@@ -259,24 +259,24 @@ export function validateExhibitionDates(dates: {
   if (!deadline) return null;
 
   const dl = new Date(deadline);
-  if (deadlineStart && new Date(deadlineStart) > dl) return '공모 시작일은 마감일 이전이어야 합니다.';
-  if (dday(deadline) < 0) return '공모 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.';
+  if (deadlineStart && new Date(deadlineStart) > dl) return '접수 시작일은 마감일 이전이어야 합니다.';
+  if (dday(deadline) < 0) return '접수 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.';
   if (!exhibitDate) return null;
 
   const ed = new Date(exhibitDate);
   if (exhibitStartDate) {
     const es = new Date(exhibitStartDate);
     if (es > ed) return '전시 시작일은 종료일 이전이어야 합니다.';
-    if (dl > es) return '공모 마감일은 전시 시작일 이전이어야 합니다.';
+    if (dl > es) return '접수 마감일은 전시 시작일 이전이어야 합니다.';
   } else if (dl > ed) {
-    return '공모 마감일은 전시 종료일 이전이어야 합니다.';
+    return '접수 마감일은 전시 종료일 이전이어야 합니다.';
   }
 
   // 출품 자료 제출 마감일: 지원도 안 끝났는데 자료를 받을 수 없고,
   // 전시가 시작된 뒤에 받으면 캡션·엽서를 만들 시간이 없다. 백엔드와 같은 규칙(경계 포함 금지).
   if (submissionDeadline) {
     const sd = new Date(submissionDeadline);
-    if (sd <= dl) return '출품 자료 제출 마감일은 공모 마감일보다 뒤여야 합니다.';
+    if (sd <= dl) return '출품 자료 제출 마감일은 접수 마감일보다 뒤여야 합니다.';
     if (sd >= new Date(exhibitStartDate || exhibitDate)) return '출품 자료 제출 마감일은 전시 시작일보다 앞이어야 합니다.';
   }
 
@@ -378,4 +378,10 @@ export const VISITOR_ROLE_HINT = '디렉터 · 관람객';
  */
 export function canFavorite(user?: { role?: string | null } | null): boolean {
   return !!user && user.role !== 'ADMIN';
+}
+
+/** 서버가 보낸 오류 문구(`{ error }`) — 없으면 fallback. onError 에서 `(e: any)` 대신 */
+export function apiErrorMessage(e: unknown, fallback: string): string {
+  const msg = (e as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+  return typeof msg === 'string' && msg ? msg : fallback;
 }

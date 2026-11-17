@@ -96,7 +96,7 @@ describe('validateExhibitionDates', () => {
       deadlineStart: '2099-03-20',
       deadline: '2099-03-15',
       exhibitDate: '2099-04-15',
-    })).toContain('공모 시작일');
+    })).toContain('접수 시작일');
   });
 
   it('마감 > 전시시작 → 에러', () => {
@@ -104,7 +104,7 @@ describe('validateExhibitionDates', () => {
       deadline: '2099-04-10',
       exhibitStartDate: '2099-04-01',
       exhibitDate: '2099-04-15',
-    })).toContain('공모 마감일');
+    })).toContain('접수 마감일');
   });
 
   it('전시시작 > 전시종료 → 에러', () => {
@@ -124,7 +124,7 @@ describe('validateExhibitionDates', () => {
 
   // 2026-10-03 점검 P2 — 공모만 진행(전시 일자 없음)이면 검사를 통째로 건너뛰던 구멍 · 지난 마감일
   it('공모만 진행(전시 일자 없음)이어도 공모 시작 > 마감은 잡는다', () => {
-    expect(validateExhibitionDates({ deadlineStart: '2099-03-20', deadline: '2099-03-15' })).toContain('공모 시작일');
+    expect(validateExhibitionDates({ deadlineStart: '2099-03-20', deadline: '2099-03-15' })).toContain('접수 시작일');
   });
 
   it('지난 마감일 → 에러 (KST 달력 기준, 오늘은 된다)', () => {
@@ -138,7 +138,7 @@ describe('validateExhibitionDates', () => {
   it('출품 자료 제출 마감일 — 공모 마감과 전시 시작 사이(경계 포함 금지)', () => {
     const base = { deadline: '2099-03-15', exhibitStartDate: '2099-04-01', exhibitDate: '2099-04-15' };
     expect(validateExhibitionDates({ ...base, submissionDeadline: '2099-03-20' })).toBeNull();
-    expect(validateExhibitionDates({ ...base, submissionDeadline: '2099-03-15' })).toContain('공모 마감일보다 뒤');
+    expect(validateExhibitionDates({ ...base, submissionDeadline: '2099-03-15' })).toContain('접수 마감일보다 뒤');
     expect(validateExhibitionDates({ ...base, submissionDeadline: '2099-04-01' })).toContain('전시 시작일보다 앞');
   });
 
@@ -146,6 +146,6 @@ describe('validateExhibitionDates', () => {
     expect(validateExhibitionDates({
       deadline: '2099-05-01',
       exhibitDate: '2099-04-15',
-    })).toContain('공모 마감일');
+    })).toContain('접수 마감일');
   });
 });

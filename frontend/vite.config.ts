@@ -66,7 +66,7 @@ export default defineConfig({
         // ArtLook(액자 사진 8장 5.5MB · 화면 코드)도 뺀다 — 예전엔 모든 방문자가 설치 때 미리 받았다(미리받기 8.2MB 의 67%, 2026-10-04).
         // [ArtLook] 탭을 여는 작가만 그때 받는다. 고정 이름 파일이라 서버가 no-cache 로 내준다(backend lib/staticCache.ts).
         // @capacitor 청크는 안드로이드 앱에서만 쓴다(2026-11-09, 규칙 79) — 앱도 처음 쓸 때 네트워크로 받는다
-        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', 'artlook/**', '**/capacitor-*.js'],
+        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', '**/PostEditor-*.js', '**/CropDialog-*.js', '**/tiptap-*.js', 'artlook/**', '**/capacitor-*.js'],
       },
       manifest: {
         name: 'ArtLink',
@@ -109,10 +109,15 @@ export default defineConfig({
         // 아래 globIgnores 로 브라우저 설치자에게 미리 받게 하지 않는다.
         // ⚠️ manualChunks 로 묶지 말 것 — Vite 의 미리받기 도우미(__vitePreload)까지 그 청크로 끌려가 메인 번들이 그걸 정적으로 import 해서
         //    모든 브라우저가 첫 화면에 capacitor 청크를 받았다(2026-11-09 빌드에서 확인). 이름만 바꾸면 청크 구성은 그대로다.
-        chunkFileNames: (chunk) =>
-          chunk.moduleIds.length > 0 && chunk.moduleIds.every((id) => id.includes('/node_modules/@capacitor/'))
-            ? 'assets/capacitor-[name]-[hash].js'
-            : 'assets/[name]-[hash].js',
+        // 편집기 엔진(@tiptap/core·ProseMirror)이 든 청크에는 'tiptap-' 을 붙인다 — 커뮤니티 글쓰기(PostEditor)와 서식 있는 소개(RichTextEditor)가
+        // 함께 써서 Rollup 이 'index-*.js' 라는 공용 청크로 떼어 냈고, 그 이름이 아래 globIgnores 에 안 걸려 **모든 PWA 설치자가 410KB 를 미리 받았다**
+        // (2026-11-13 빌드에서 확인 — 편집기를 하나만 쓰던 때는 RichTextEditor 청크 안에 있어서 빠져 있었다).
+        chunkFileNames: (chunk) => {
+          const ids = chunk.moduleIds;
+          if (ids.length > 0 && ids.every((id) => id.includes('/node_modules/@capacitor/'))) return 'assets/capacitor-[name]-[hash].js';
+          if (ids.some((id) => id.includes('/node_modules/@tiptap/core/'))) return 'assets/tiptap-[name]-[hash].js';
+          return 'assets/[name]-[hash].js';
+        },
         assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },

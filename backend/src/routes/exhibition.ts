@@ -24,6 +24,7 @@ import { startOfTodayKstAsUtc, endOfTodayKstAsUtc, isDeadlinePassedKst } from '.
 import { hasSubmissionContent } from '../lib/submission';
 import { isExhibitionClosed, isSettlementStarted } from '../lib/exhibitionLifecycle';
 import { sweepSettlementReminders } from '../lib/settlementReminder';
+import { openCallWhere } from '../lib/openCalls';
 import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import { canInviteArtist } from '../lib/inviteEligibility';
 import { countSelected, generateInviteCode, normalizeInviteCode, selectedCounts, withSeatLock } from '../lib/inviteCode';
@@ -132,7 +133,7 @@ function assertSubmissionDeadline(submissionDeadline: Date, deadline: Date, exhi
   if (Number.isNaN(submissionDeadline.getTime())) throw new AppError('출품 자료 제출 마감일이 올바르지 않습니다.', 400);
   const start = exhibitStart ?? exhibitEnd;
   if (submissionDeadline <= deadline) {
-    throw new AppError('출품 자료 제출 마감일은 공모 마감일보다 뒤여야 합니다.', 400);
+    throw new AppError('출품 자료 제출 마감일은 접수 마감일보다 뒤여야 합니다.', 400);
   }
   if (submissionDeadline >= start) {
     throw new AppError('출품 자료 제출 마감일은 전시 시작일보다 앞이어야 합니다.', 400);
@@ -148,12 +149,12 @@ function assertSubmissionDeadline(submissionDeadline: Date, deadline: Date, exhi
 function assertExhibitionDates(d: { deadlineStart?: string | null; deadline: string; exhibitStart: Date | null; exhibitEnd: Date | null }) {
   const dl = new Date(d.deadline);
   const ds = d.deadlineStart ? new Date(d.deadlineStart) : null;
-  if (ds && ds > dl) throw new AppError('공모 시작일은 마감일 이전이어야 합니다.', 400);
-  if (isDeadlinePassedKst(dl)) throw new AppError('공모 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.', 400);
+  if (ds && ds > dl) throw new AppError('접수 시작일은 마감일 이전이어야 합니다.', 400);
+  if (isDeadlinePassedKst(dl)) throw new AppError('접수 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.', 400);
   if (d.exhibitStart && d.exhibitEnd && d.exhibitStart > d.exhibitEnd) throw new AppError('전시 시작일은 종료일 이전이어야 합니다.', 400);
   const showStart = d.exhibitStart ?? d.exhibitEnd;
   if (showStart && dl > showStart) {
-    throw new AppError(d.exhibitStart ? '공모 마감일은 전시 시작일 이전이어야 합니다.' : '공모 마감일은 전시 종료일 이전이어야 합니다.', 400);
+    throw new AppError(d.exhibitStart ? '접수 마감일은 전시 시작일 이전이어야 합니다.' : '접수 마감일은 전시 종료일 이전이어야 합니다.', 400);
   }
 }
 
@@ -253,7 +254,6 @@ router.get('/', optionalAuth, async (req, res, next) => {
 
     // KST 달력 날짜 기준 경계로 마감/시작을 판정 (마감일 당일은 종일 노출, 시작일 당일부터 노출)
     const todayStartKst = startOfTodayKstAsUtc();
-    const todayEndKst = endOfTodayKstAsUtc();
     /**
      * scope — 'open'(기본, 모집 중) | 'closed'(마감된 공고)
      *
@@ -277,27 +277,22 @@ router.get('/', optionalAuth, async (req, res, next) => {
         { deadline: { lt: todayStartKst } },
       ];
     } else {
-      where.recruitmentClosed = false; // 모집마감/전시종료(종료 시 자동 마감) 공고는 목록에서 제외
-      where.deadline = { gte: todayStartKst };
-      where.OR = [
-        { deadlineStart: null },
-        { deadlineStart: { lte: todayEndKst } }
-      ];
+      // 모집 중 — 판정은 lib/openCalls.ts 한 곳(갤러리 목록 카드의 '모집 중' 과 같은 규칙, 2026-11-15).
+      // 모집마감/전시종료(종료 시 자동 마감) 공고는 빠지고, 시작일 조건은 AND 안에 들어 있다
+      Object.assign(where, openCallWhere());
     }
     if (region) where.region = region;
     if (req.query.type) where.type = req.query.type;
 
-    // 키워드 검색 (제목/소개) — 기존 deadlineStart OR과 충돌 방지 위해 AND로 결합
+    // 키워드 검색 (제목/소개) — 마감 scope 의 OR · 모집 중의 시작일 조건과 섞이지 않게 AND 로 결합
     const q = ((req.query.q as string) || '').trim();
     if (q) {
-      where.AND = [
-        { OR: where.OR },
-        { OR: [
-          { title: { contains: q, mode: 'insensitive' } },
-          { description: { contains: q, mode: 'insensitive' } },
-        ] },
-      ];
-      delete where.OR;
+      const byText = { OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ] };
+      if (where.OR) { where.AND = [{ OR: where.OR }, byText]; delete where.OR; }
+      else where.AND = [...(where.AND ?? []), byText];
     }
 
     const exhibitions = await prisma.exhibition.findMany({

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>편집 화면 PC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font-family:inherit;cursor:pointer}
+.tb{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#4b5563;font-size:14px;font-weight:600}
+.tb:hover{background:#f3f4f6;color:#111827}
+.tb.on{background:#111827;color:#fff}
+.sep{width:1px;height:20px;background:#e5e7eb;margin:0 6px;flex:none}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 720px; display: flex; flex-direction: column; background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere">
+
+  <!-- 위 줄 -->
+  <header style="flex: none; height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 24px; border-bottom: 1px solid #e5e7eb">
+    <button type="button" class="tb" style="gap: 6px; font-weight: 500; padding: 0 10px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg>나가기</button>
+    <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M20 6 9 17l-5-5"/></svg>저장됨 · 방금 전</span>
+    <span style="flex: 1"></span>
+    <span style="font-size: 13px; color: #6b7280">커뮤니티 글쓰기 · 1,240자 · 사진 4장</span>
+    <button type="button" class="tb" style="font-weight: 500; padding: 0 12px">미리보기</button>
+    <button type="button" style="height: 36px; padding: 0 20px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 14px; font-weight: 600">등록</button>
+  </header>
+
+  <!-- 도구 막대 -->
+  <div role="toolbar" aria-label="서식" style="flex: none; height: 48px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px; padding: 0 24px; border-bottom: 1px solid #e5e7eb">
+    <button type="button" class="tb" style="gap: 4px; font-weight: 500; padding: 0 10px" aria-label="문단 종류">본문<svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m6 9 6 6 6-6"/></svg></button>
+    <span class="sep"></span>
+    <button type="button" class="tb on" aria-label="굵게" aria-pressed="true">B</button>
+    <button type="button" class="tb" aria-label="기울임" style="font-style: italic">I</button>
+    <button type="button" class="tb" aria-label="밑줄" style="text-decoration: underline">U</button>
+    <button type="button" class="tb" aria-label="취소선" style="text-decoration: line-through">S</button>
+    <button type="button" class="tb" aria-label="형광펜"><span style="padding: 0 3px; background: linear-gradient(transparent 55%, rgba(196,48,43,.22) 55%)">가</span></button>
+    <button type="button" class="tb" aria-label="링크"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+    <span class="sep"></span>
+    <button type="button" class="tb" aria-label="글머리 목록"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+    <button type="button" class="tb" aria-label="번호 목록"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></button>
+    <button type="button" class="tb" aria-label="인용"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 6H3M21 12H8M21 18H8M3 12v6"/></svg></button>
+    <button type="button" class="tb" aria-label="가운데 맞춤"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 6H3M17 12H7M19 18H5"/></svg></button>
+    <button type="button" class="tb" aria-label="구분선"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+    <span class="sep"></span>
+    <button type="button" class="tb" style="gap: 6px; font-weight: 500"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>사진</button>
+    <button type="button" class="tb" style="gap: 6px; font-weight: 500"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>영상</button>
+    <button type="button" class="tb" style="gap: 6px; font-weight: 500"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 15h6"/></svg>카드</button>
+    <button type="button" class="tb" style="gap: 6px; font-weight: 500"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 22h4M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>팁 상자</button>
+    <span class="sep"></span>
+    <button type="button" class="tb" aria-label="실행 취소"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></button>
+    <button type="button" class="tb" aria-label="다시 실행" style="opacity: .35"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg></button>
+  </div>
+
+  <!-- 본문 (이 안에서만 스크롤) -->
+  <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 56px 48px 120px">
+    <div style="max-width: 1040px; margin: 0 auto">
+
+      <div style="max-width: 680px; margin: 0 auto">
+        <button type="button" style="display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font-size: 14px; font-weight: 500; color: #c4302b">전시 준비<svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m6 9 6 6 6-6"/></svg></button>
+        <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 20px; font-size: 14px; color: #4b5563"><input type="checkbox" style="accent-color: #111827"> 익명으로 쓰기</label>
+        <h1 style="margin: 14px 0 0; font-size: 38px; line-height: 1.3; font-weight: 600; color: #111827; letter-spacing: -0.01em">전시 준비 일지 ① 작품을 고르는 일</h1>
+        <p style="margin: 12px 0 0; font-size: 19px; line-height: 1.6; color: #6b7280">스무 점 가운데 여덟 점만 벽에 걸기로 했다</p>
+        <div style="height: 1px; margin: 32px 0; background: #e5e7eb"></div>
+        <p style="margin: 0 0 1em; font-size: 17px; line-height: 1.9">개인전 날짜가 정해지고 가장 먼저 한 일은 작업실 바닥에 그림을 전부 늘어놓는 것이었다. 삼 년 동안 그린 스무 점. <strong style="font-weight: 600; color: #111827">벽은 여덟 점이면 찬다.</strong></p>
+      </div>
+
+      <!-- 고른 사진 (넓게) + 사진 도구 -->
+      <div style="position: relative; margin: 44px 0 36px">
+        <div style="position: absolute; left: 50%; top: -52px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.06); white-space: nowrap">
+          <button type="button" class="tb" style="font-weight: 500">본문 폭</button>
+          <button type="button" class="tb on" style="font-weight: 500" aria-pressed="true">넓게</button>
+          <button type="button" class="tb" style="font-weight: 500">화면 폭</button>
+          <span class="sep"></span>
+          <button type="button" class="tb" style="gap: 6px; font-weight: 500"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg>자르기</button>
+          <button type="button" class="tb" style="font-weight: 500">대체 글</button>
+          <button type="button" class="tb" style="font-weight: 500">바꾸기</button>
+          <button type="button" class="tb" style="font-weight: 500">표지로</button>
+          <span class="sep"></span>
+          <button type="button" class="tb" aria-label="사진 삭제" style="color: #c4302b"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+        <button type="button" aria-label="끌어서 옮기기" style="position: absolute; left: -36px; top: 8px; width: 28px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #f3f4f6; color: #6b7280; cursor: grab"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg></button>
+        <figure style="margin: 0">
+          <div style="outline: 2px solid #111827; outline-offset: 3px">
+            <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="작업실 바닥에 늘어놓은 그림" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+          </div>
+          <figcaption style="margin-top: 14px; text-align: center; font-size: 13px; line-height: 1.6; color: #6b7280">작업실 바닥에 늘어놓은 날. 〈조용한 오후〉가 가장 먼저 자리를 잡았다.<span style="display: inline-block; width: 1px; height: 14px; margin-left: 1px; background: #111827; vertical-align: -2px"></span></figcaption>
+        </figure>
+      </div>
+
+      <div style="max-width: 680px; margin: 0 auto">
+        <h2 style="margin: 1.8em 0 0.6em; font-size: 22px; line-height: 1.45; font-weight: 600; color: #111827">고르는 기준은 하나만</h2>
+        <p style="margin: 0 0 1em; font-size: 17px; line-height: 1.9">처음에는 잘 그린 그림을 고르려 했다. 그러다 갤러리 디렉터가 한 말이 기준이 됐다. <span style="background: linear-gradient(transparent 58%, rgba(196,48,43,.16) 58%)">관람객은 그림을 한 점씩 보지 않고 벽을 본다.</span> 그 뒤로는 고르는 일이 훨씬 빨라졌다. 자세한 일정은 <a href="#" style="text-decoration: underline; text-underline-offset: 3px">모집공고</a>에 적어 두었다.</p>
+
+        <!-- 빈 줄 + 넣기 단추 -->
+        <div style="position: relative; height: 32px; margin: 0 0 1em; display: flex; align-items: center">
+          <button type="button" aria-label="블록 넣기" style="position: absolute; left: -44px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: 1px solid #d1d5db; border-radius: 50%; background: #fff; color: #4b5563"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 16px; height: 16px"><path d="M5 12h14M12 5v14"/></svg></button>
+          <span style="font-size: 17px; color: #9ca3af" aria-hidden="true">이어서 써 보세요</span>
+        </div>
+      </div>
+
+      <!-- 모아 놓기 (한 줄 — 높이가 같고 폭은 비율만큼) -->
+      <figure style="margin: 36px 0">
+        <div style="display: flex; gap: 8px">
+          <div style="flex: 1.25 1 0; min-width: 0; aspect-ratio: 1.25"><img src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="긴 여름" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 0.804 1 0; min-width: 0; aspect-ratio: 0.804"><img src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="푸른 벽" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 1 1 0; min-width: 0; aspect-ratio: 1"><img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="네모난 정원" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+        </div>
+        <figcaption style="margin-top: 14px; text-align: center; font-size: 13px; line-height: 1.6; color: #6b7280">끝까지 고민한 세 점. 가운데 〈푸른 벽〉은 결국 빠졌다.</figcaption>
+      </figure>
+
+      <div style="max-width: 680px; margin: 0 auto">
+        <p style="margin: 0 0 1em; font-size: 17px; line-height: 1.9">세 점을 나란히 놓고 일주일을 봤다. 색이 가장 강한 그림이 벽 전체를 끌고 가 버려서, 아끼던 그림을 내려놓았다.</p>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

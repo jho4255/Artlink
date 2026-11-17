@@ -1,4 +1,4 @@
-import { Home, Palette, Building2, Image, Megaphone, MessageSquare, type LucideIcon } from 'lucide-react';
+import { Home, Palette, Building2, Image, Megaphone, MessageSquare, GalleryVerticalEnd, type LucideIcon } from 'lucide-react';
 
 /**
  * 가운데 내비게이션 정의 — **한 곳**에서만 관리한다.
@@ -34,4 +34,7 @@ export const NAV_LINKS: NavLink[] = [
   { path: '/shows', label: '전시', icon: Image },
   { path: '/exhibitions', label: '모집공고', icon: Megaphone },
   { path: '/community', label: '커뮤니티', icon: MessageSquare },
+  // [ArtStory] — 2026-11-14 부터 전체공개 소식은 비회원도 본다(규칙 81). 예전엔 로그인 전용이라 마이페이지 메뉴에 있었는데,
+  // 누구나 보는 화면이 됐으니 가운데 메뉴로 올렸다(사용자 결정). 아이콘은 세로 카드 묶음 — 소식이 세로 카드로 보인다.
+  { path: '/feed', label: 'ArtStory', icon: GalleryVerticalEnd },
 ];

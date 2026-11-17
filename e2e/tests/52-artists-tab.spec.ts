@@ -209,3 +209,56 @@ test('작품이 있는 작가만 목록에 들어간다 (API) — \'작가 탭�
   }
   await api.dispose();
 });
+
+/**
+ * 휴대폰 — 초성 한 줄 + 이름 창 (2026-11-15, 사용자가 고른 B안).
+ * 예전엔 PC 의 왼쪽 목록(초성 15줄 + [모두 펼치기])이 작품 위에 그대로 쌓여 첫 작품이 968px 아래에서 시작했다.
+ * ⚠️ 기본 프로젝트가 휴대폰(Pixel 7)이다 — 화면 크기를 바꾸지 않는다.
+ */
+test.describe('휴대폰 — 초성 한 줄 + 이름 창 (B안)', () => {
+  test('★ 첫 화면에 작품이 보인다 · 초성 줄은 내려도 상단바 밑에 붙어 있다 · PC 목록·[모두 펼치기]는 없다', async ({ page }) => {
+    await page.goto('/artists');
+    await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+    const strip = page.getByTestId('artist-initials');
+    await expect(strip.getByRole('button').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('aside')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '모두 펼치기' })).toHaveCount(0);
+    const first = page.getByRole('button', { name: /작가의 작품 — 크게 보기$/ }).first();
+    await expect(first).toBeVisible({ timeout: 15000 });
+    const vh = page.viewportSize()!.height;
+    expect((await first.boundingBox())!.y, '첫 작품이 첫 화면 안에').toBeLessThan(vh * 0.5);
+    await page.mouse.wheel(0, 1500);
+    await expect.poll(async () => Math.round((await strip.boundingBox())!.y)).toBe(64);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  });
+
+  test('★ 초성을 누르면 아래에서 이름 창 — 다른 초성으로 바꾸고 · Esc 로 닫고 · 이름을 누르면 그 작가 홈페이지', async ({ page }) => {
+    await page.goto('/artists');
+    const strip = page.getByTestId('artist-initials');
+    // 색인 검증용 한글 작가(강민서 — ㄱ)가 심어져 있다
+    await strip.getByRole('button', { name: 'ㄱ — 작가 이름 보기' }).click();
+    const sheet = page.getByRole('dialog', { name: 'ㄱ 로 시작하는 작가' });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('link', { name: '강민서' })).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.overflow), '열려 있는 동안 뒤 페이지는 안 밀린다').toBe('hidden');
+    // 창 안의 초성 줄로 바꾼다
+    await sheet.getByRole('button', { name: 'ㅎ' }).click();
+    await expect(page.getByRole('dialog', { name: 'ㅎ 로 시작하는 작가' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('link', { name: '한서아' })).toBeVisible();
+    // Esc 로 닫으면 연 단추로 돌아가고 페이지 잠금이 풀린다
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
+    await expect(strip.getByRole('button', { name: 'ㄱ — 작가 이름 보기' })).toBeFocused();
+    // 바깥을 눌러도 닫힌다
+    await strip.getByRole('button', { name: 'ㄱ — 작가 이름 보기' }).click();
+    await page.getByRole('button', { name: '이름 창 닫기' }).click({ position: { x: 20, y: 20 } });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // 이름을 누르면 그 작가의 공개 홈페이지
+    await strip.getByRole('button', { name: 'ㄱ — 작가 이름 보기' }).click();
+    await page.getByRole('dialog').getByRole('link', { name: '강민서' }).click();
+    await page.waitForURL((u) => !u.pathname.startsWith('/artists'), { timeout: 15000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('강민서', { timeout: 15000 });
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
+  });
+});

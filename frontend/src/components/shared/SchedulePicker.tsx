@@ -18,7 +18,7 @@ import {
  *   휴대폰에서 칸들 아래에 열면 칸 다섯 개 밑이라 날짜가 하단 탭바에 가렸다(실측 iPhone 13). Skyscanner 도 휴대폰은 따로 띄운다.
  *   고르면 **다음 칸으로 넘어가고** 마지막이면 닫힌다.
  * - 지난 날과 앞 칸보다 이른 날은 흐리게, 누를 수 없다. 고른 날에는 무슨 날인지(시작·마감·제출…) 작게 적는다.
- * - 지원 기간·전시 기간은 띠로 칠하고, 끝 날을 고르는 중에는 마우스를 올린 날까지 미리 칠한다.
+ * - 접수 기간·전시 기간은 띠로 칠하고, 끝 날을 고르는 중에는 마우스를 올린 날까지 미리 칠한다.
  * - 바깥을 누르거나 Esc·[완료] 면 닫힌다.
  * ⚠️ 칸은 `<input type="date">` 가 아니라 버튼이다 — 손으로 칠 수는 없다(Skyscanner 도 그렇다). E2E 는 `pickSchedule`(e2e/lib/helpers.ts)로 고른다.
  */
@@ -31,6 +31,7 @@ export default function SchedulePicker({
   variant = 'form',
   required = true,
   floor: floorProp,
+  openFrom,
 }: {
   steps: ScheduleStep[];
   ranges?: ScheduleRange[];
@@ -43,13 +44,17 @@ export default function SchedulePicker({
   required?: boolean;
   /** 이보다 이른 날은 못 고른다 — 기본 오늘(KST) */
   floor?: Ymd;
+  /** 빈 칸을 열 때 보일 달 — 기본 floor. 전시 등록은 지난날도 고를 수 있지만(이미 하고 있는 전시) 달력은 이번 달부터 연다 */
+  openFrom?: Ymd;
 }) {
   const floor = floorProp ?? todayKst();
+  const today = todayKst();
+  const openAt = openFrom && openFrom > floor ? openFrom : floor;
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<number | null>(null);
-  const [view, setView] = useState<MonthRef>(() => monthOf(floor));
+  const [view, setView] = useState<MonthRef>(() => monthOf(openAt));
   const [hover, setHover] = useState<Ymd | null>(null);
   const [two, setTwo] = useState(false);
   // 휴대폰 = Tailwind sm(640px) 미만 — 그땐 칸 아래가 아니라 아래에서 올라오는 창으로
@@ -68,7 +73,8 @@ export default function SchedulePicker({
   const open = (i: number) => {
     setActive(i);
     setHover(null);
-    setView(openingMonth(steps, values, i, floor));
+    // 값이 있으면 그 달, 없으면 고를 수 있는 첫날(빈 칸은 openFrom 보다 앞으로 가지 않는다)
+    setView(toYmd(values[steps[i].key]) ? openingMonth(steps, values, i, floor) : monthOf(((m) => (m > openAt ? m : openAt))(stepMin(steps, values, i, floor))));
   };
   const close = () => { setActive(null); setHover(null); };
   // 창(휴대폰)은 그 자신이 aria-modal 이라 양보하면 안 닫힌다 — 칸 아래 패널일 때만 위에 뜬 창에 양보한다
@@ -278,7 +284,7 @@ export default function SchedulePicker({
                 <Month
                   key={`${m.y}-${m.m0}`}
                   month={m}
-                  floor={floor}
+                  today={today}
                   minYmd={minYmd}
                   activeKey={steps[active].key}
                   values={preview}
@@ -369,7 +375,7 @@ export default function SchedulePicker({
                 <Month
                   key={`${m.y}-${m.m0}`}
                   month={m}
-                  floor={floor}
+                  today={today}
                   minYmd={minYmd}
                   activeKey={steps[active].key}
                   values={preview}
@@ -399,9 +405,10 @@ export default function SchedulePicker({
   );
 }
 
-function Month({ month, floor, minYmd, activeKey, values, realValues, marks, ranges, hover, onHover, onPick }: {
+function Month({ month, today, minYmd, activeKey, values, realValues, marks, ranges, hover, onHover, onPick }: {
   month: MonthRef;
-  floor: Ymd;
+  /** 오늘(KST) — 표시만. 고를 수 있는지는 minYmd 가 정한다 */
+  today: Ymd;
   minYmd: Ymd;
   activeKey: string;
   /** 칠하기용(미리보기 포함) */
@@ -415,7 +422,6 @@ function Month({ month, floor, minYmd, activeKey, values, realValues, marks, ran
   onPick: (d: Ymd) => void;
 }) {
   const weeks = monthGrid(month.y, month.m0);
-  const today = floor;
   return (
     <div className="min-w-0">
       <p className="mb-2 flex h-9 items-center justify-center text-sm font-medium text-gray-900">{month.y}년 {month.m0 + 1}월</p>

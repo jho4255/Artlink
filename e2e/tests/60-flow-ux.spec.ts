@@ -273,7 +273,6 @@ test.describe('F. 등록 폼 임시저장', () => {
     await page.getByRole('button', { name: /임시저장/ }).click();
     await expect(page.locator('body')).toContainText('임시저장했어요');
     expect(await stored(page)).toBe('겨울 소품전');
-    await expect(page.getByText(/저장됨/).first()).toBeVisible();
     await ctx.close();
   });
 

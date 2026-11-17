@@ -5,7 +5,9 @@ import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { r2CanonicalBase, matchR2Base } from '../lib/r2Urls';
-import { makeThumb, thumbKey, thumbDiskPath, THUMB_SPECS } from '../lib/thumb';
+import { makeThumb, thumbKey, thumbDiskPath, THUMB_SPECS, POST_IMAGE_SPECS } from '../lib/thumb';
+import { dimsFromBuffer } from '../lib/imageDims';
+import prisma from '../lib/prisma';
 import { normalizeUploadImage } from '../lib/imageNormalize';
 import { attachmentDisposition, cleanAttachmentName } from '../lib/exhibitionAttachments';
 
@@ -165,6 +167,59 @@ async function writeDiskThumb(file: Express.Multer.File): Promise<void> {
   }
 }
 
+/**
+ * 커뮤니티 글 사진 (2026-11-13, 블로그형 편집기 전용).
+ * - 응답에 **치수**(width·height, EXIF 회전 반영) — 읽는 화면이 사진 자리를 먼저 잡는다(늦게 떠도 글이 밀리지 않는다).
+ * - 썸네일 t240·t800·**t1280** 을 **응답 전에** 차례로 만든다 — 올리자마자 미리보기·등록되는 글이라 "아직 없음(404)"을 줄인다.
+ *   한 장씩 차례로 만드는 이유: R2 모드는 원본이 메모리에 있고 sharp 가 세 번 돈다(서버 램 512MB, 동시 처리 3개 — uploadSlot).
+ *   썸네일이 실패해도 업로드는 성공이다(화면은 없으면 원본으로 되돌린다).
+ * - PostAsset 한 줄 — 파일 정리는 이 기록이 있는 사진만 한다(lib/postAssets.ts). ⚠️ 이 경로를 거치지 않은 사진은 글을 지워도 안 지운다.
+ */
+async function storePostImage(file: Express.Multer.File): Promise<{ url: string; buf: Buffer }> {
+  if (useR2) {
+    const img = await normalizeUploadImage(file.buffer, path.extname(file.originalname), file.mimetype);
+    const key = `artlink/${Date.now()}-${Math.round(Math.random() * 1e9)}${img.ext}`;
+    await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME!, Key: key, Body: img.buf, ContentType: img.mime }));
+    for (const spec of POST_IMAGE_SPECS) {
+      try {
+        const thumb = await makeThumb(img.buf, spec);
+        if (thumb) await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME!, Key: thumbKey(key, spec.dir), Body: thumb, ContentType: 'image/jpeg' }));
+      } catch (e) {
+        console.error(`[Upload] 글 사진 ${spec.dir} 실패(원본은 정상):`, key, (e as Error)?.message);
+      }
+    }
+    return { url: `${r2CanonicalBase()}/${key}`, buf: img.buf };
+  }
+  await normalizeDiskFile(file);
+  const fs = await import('fs/promises');
+  const uploadsDir = path.join(__dirname, '../../uploads');
+  const buf = await fs.readFile(path.join(uploadsDir, file.filename));
+  for (const spec of POST_IMAGE_SPECS) {
+    try {
+      const thumb = await makeThumb(buf, spec);
+      if (!thumb) continue;
+      const out = thumbDiskPath(uploadsDir, file.filename, spec.dir);
+      await fs.mkdir(path.dirname(out), { recursive: true });
+      await fs.writeFile(out, thumb);
+    } catch (e) {
+      console.error(`[Upload] 글 사진 ${spec.dir} 실패(원본은 정상):`, file.filename, (e as Error)?.message);
+    }
+  }
+  return { url: `/uploads/${file.filename}`, buf };
+}
+
+router.post('/post-image', authenticate, uploadSlot, upload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 필요합니다.' });
+    const { url, buf } = await storePostImage(req.file);
+    const dims = await dimsFromBuffer(buf);
+    await prisma.postAsset.create({ data: { url, userId: req.user!.id, width: dims?.width ?? null, height: dims?.height ?? null } });
+    res.json({ url, width: dims?.width ?? null, height: dims?.height ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 단일 이미지 업로드
 router.post('/image', authenticate, uploadSlot, upload.single('image'), async (req, res, next) => {
   try {
@@ -316,6 +371,21 @@ router.post('/video', authenticate, uploadSlot, videoUpload.single('video'), asy
       ? await uploadToR2(req.file, 'artlink/videos')
       : `/uploads/${req.file.filename}`;
     res.json({ url, originalName: req.file.originalname, size: req.file.size });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 커뮤니티 글 동영상(2026-11-13) — 대화 첨부와 같은 형식·상한(25MB, 서버비). 글쓰기로 올린 파일이라 사진처럼 기록을 남긴다(PostAsset —
+// 글을 지우거나 빼면 그 사람이 올린 것 중 아무 글·작업본도 안 쓰는 것만 지운다, lib/postAssets.ts). 치수는 화면이 재서 문서에 싣는다(서버는 영상을 열지 않는다).
+router.post('/post-video', authenticate, uploadSlot, videoUpload.single('video'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '동영상 파일이 필요합니다.' });
+    const url = useR2
+      ? await uploadToR2(req.file, 'artlink/videos')
+      : `/uploads/${req.file.filename}`;
+    await prisma.postAsset.create({ data: { url, userId: req.user!.id } });
+    res.json({ url, size: req.file.size });
   } catch (err) {
     next(err);
   }

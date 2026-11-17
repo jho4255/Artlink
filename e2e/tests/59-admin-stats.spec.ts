@@ -91,7 +91,8 @@ test('★ 관리자 [통계] — KPI·막대·표가 서버 숫자와 같고, �
   expect(n).toBeGreaterThan(0);
   await expect(bars.nth(n - 1)).toHaveAttribute('aria-label', new RegExp(`회원 ${t.members}명 · 비회원 ${t.guests}명 · 합계 ${t.total}명`));
   await bars.nth(n - 1).hover();
-  await expect(page.getByRole('status')).toContainText('합계');
+  // ⚠️ 화면에는 앱 알림 배너의 빈 role=status 자리(PushBanner, 규칙 79)가 늘 있다 — 막대 풍선만 집는다
+  await expect(page.getByRole('status').filter({ hasText: '합계' })).toBeVisible();
 
   // 표 — 맨 위가 오늘
   await page.getByText('표로 보기').click();

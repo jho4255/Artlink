@@ -10,7 +10,12 @@ import { splitIntoColumns } from '@/lib/careerColumns';
 import { aspectOf, columnGrid, columnWidth } from '@/lib/columnGrid';
 import { pickHeroImage, resolveHomepageTheme, themeCssVars } from '@/lib/homepageTheme';
 import { ensurePortfolioFonts, needsWebFont } from '@/lib/portfolioFonts';
-import { homepageTabs, resolveHomepageTab, tabParamFor, type HomepageTabDef, type HomepageTabId } from '@/lib/homepageTabs';
+import { homepageTabsFor, resolveHomepageTab, tabParamFor, type HomepageTabDef, type HomepageTabId } from '@/lib/homepageTabs';
+import { COVER_GRID, coverShape, type NowShowing } from '@/lib/homepageSite';
+import { HOMEPAGE_PANEL_MIN_H, liftToHomepageTabs } from '@/lib/siteMode';
+import { scrollToTarget } from '@/lib/scrollToTarget';
+import NowStrip from '@/components/homepage/NowStrip';
+import { LINK_ACTION } from '@/components/homepage/Actions';
 import { fileTypeLabel, portfolioFileKind } from '@/lib/portfolioFile';
 import Thumb from '@/components/shared/Thumb';
 import type { PortfolioImage, Career, CareerKey, SeriesInfo } from '@/types';
@@ -75,6 +80,8 @@ export interface HomepageViewData {
   designConfig?: unknown;
   /** 이름 위에 프로필 사진(`user.avatar`)을 둥글게 — 작가가 켰을 때만(2026-10-28). 사진이 없으면 켜져 있어도 안 그린다 */
   showAvatar?: boolean;
+  /** 첫 화면 '전시 중' 띠(2026-11-14, 규칙 82) — 서버가 정한다(작가가 [꾸미기]에서 끄면 null) */
+  nowShowing?: NowShowing | null;
 }
 
 interface Props {
@@ -105,24 +112,31 @@ interface Props {
   onTabChange?: (id: HomepageTabId, param: string | null) => void;
   /** 방명록 탭 — 공개 페이지만 넣는다(미리보기엔 방명록이 없다) */
   guestbook?: { count?: number; content: ReactNode } | null;
+  /** [소식] 탭(2026-11-14) — 공개 페이지만. 서버가 센 수로 탭을 그릴지 정하고, 내용은 페이지가 넣는다(`NewsTab`) */
+  news?: { storyCount?: number; highlightCount?: number; content: ReactNode } | null;
 }
 
-/** 탭 막대가 붙는 높이 = 상단바 높이(lg 미만 64 / 이상 80, Navbar 의 h-16 lg:h-20) */
-const stickyTopPx = () => (typeof window !== 'undefined' && window.innerWidth >= 1024 ? 80 : 64);
 
 /**
  * 탭 막대 — 글자 탭 + 밑줄. 강조색은 쓰지 않는다(글자색) — 빨강은 판매완료·D-day 처럼 '상태'에 아껴 둔다.
  * 좁은 화면에서 넘치면 가로로 밀어 본다(줄바꿈하면 막대 높이가 튄다).
  */
-function TabBar({ tabs, active, onSelect, sticky }: {
+function TabBar({ tabs, active, onSelect, sticky, trailing }: {
   tabs: HomepageTabDef[]; active: HomepageTabId | null; onSelect: (id: HomepageTabId) => void; sticky: boolean;
+  /** 탭 줄 오른쪽 — 문의하기 · 이웃 추가 · 공유 · QR(`TabActions`, 2026-11-15). 탭 줄과 함께 머리 밑에 붙어 따라온다 */
+  trailing?: ReactNode;
 }) {
+  // 공개 페이지는 사이트 머리(56 / lg 72 — lib/siteMode.ts SITE_HEADER_H) 바로 아래에 붙는다 — PC·휴대폰 모두 이 막대 하나(2026-11-15:
+  // PC 에서 탭을 머리 오른쪽에 두었더니 "잘 안 보인다"고 했다)
   return (
     <div
-      className={`${sticky ? 'sticky top-16 z-30 -mx-6 px-6 md:-mx-12 md:px-12 lg:top-20' : ''} border-b`}
+      className={`${sticky ? 'sticky top-14 z-30 -mx-6 px-6 md:-mx-12 md:px-12 lg:top-[72px]' : ''} border-b`}
       style={{ ...LINE, background: 'var(--hp-bg)' }}
     >
-      <div role="tablist" aria-label="홈페이지 메뉴" className="flex gap-6 overflow-x-auto [scrollbar-width:none] md:gap-8 [&::-webkit-scrollbar]:hidden">
+      {/* items-stretch — 오른쪽 버튼이 탭보다 커져도 탭 밑줄이 줄의 바닥선에 붙어 있게 */}
+      <div className="flex items-stretch gap-3">
+      {/* 오른쪽에 버튼이 붙으면 휴대폰에선 탭이 옆으로 넘친다 — 끝을 흐리게 해 밀면 더 있다는 걸 알린다(pr-6: 끝까지 밀면 마지막 탭은 흐려지지 않게) */}
+      <div role="tablist" aria-label="홈페이지 메뉴" className={`flex min-w-0 flex-1 gap-6 overflow-x-auto [scrollbar-width:none] md:gap-8 [&::-webkit-scrollbar]:hidden ${trailing ? 'pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_28px),transparent)]' : ''}`}>
         {tabs.map((t) => {
           const on = t.id === active;
           return (
@@ -143,6 +157,8 @@ function TabBar({ tabs, active, onSelect, sticky }: {
             </button>
           );
         })}
+      </div>
+      {trailing}
       </div>
     </div>
   );
@@ -216,28 +232,31 @@ function Caption({ img, size }: { img: PortfolioImage; size: 'hero' | 'grid' }) 
 }
 
 /**
- * 대표작 — 미술관 벽처럼 **작품 왼쪽, 라벨 오른쪽 아래**. 라벨에 적을 게 없으면(캡션 없음) 작품만 전폭.
- * 원본을 그대로 받는다(t800 은 이 크기에선 뭉개진다 — CLAUDE.md 21).
+ * 표지의 대표작 (2026-11-14, 규칙 82) — 예전엔 [작품] 탭 맨 위의 '미술관 벽' 배치였다. 이제 첫 화면 오른쪽(휴대폰은 위)에 선다.
+ * 원본을 그대로 받는다(t800 은 이 크기에선 뭉개진다 — 규칙 21). 자르지 않는다(규칙 18). 뒤에 판을 깔지 않는다 —
+ * 비율이 다른 만큼 판만 드러난다(규칙 45b 의 softPanel 교훈). 캡션은 그림 바로 아래 한두 줄(있을 때만).
  */
-function Hero({ img, artistName, onOpen, compact }: { img: PortfolioImage; artistName: string; onOpen?: (img: PortfolioImage) => void; compact: boolean }) {
-  const hasLabel = !!(museumCaption(img) || statusBadge(img) || priceLabel(img));
+function CoverArt({ img, artistName, onOpen, compact }: { img: PortfolioImage; artistName: string; onOpen?: (img: PortfolioImage) => void; compact: boolean }) {
+  const cap = museumCaption(img);
   const alt = hasTitle(img) ? artworkTitle(img) : `${artistName} 대표작`;
+  const line = [cap?.head, cap?.medium, cap?.size].filter(Boolean).join(' · ');
   const image = (
     <img
       src={img.url}
       alt={alt}
       loading="eager"
       decoding="async"
-      className="block h-auto w-auto max-w-full object-contain"
-      style={{ maxHeight: compact ? 320 : '76vh' }}
+      className={`mx-auto block h-auto w-auto max-w-full object-contain ${compact ? 'max-h-[260px]' : 'max-h-[46svh] md:max-h-[min(62vh,560px)]'}`}
     />
   );
   return (
-    <figure className={`grid gap-5 ${hasLabel ? 'md:grid-cols-[minmax(0,1fr)_220px] md:items-end md:gap-8' : ''}`}>
+    <figure className="min-w-0" data-testid="homepage-cover-art">
       {onOpen ? (
-        <button onClick={() => onOpen(img)} className="block min-w-0 cursor-zoom-in text-left">{image}</button>
-      ) : <div className="min-w-0">{image}</div>}
-      {hasLabel && <div className="md:pb-1"><Caption img={img} size="hero" /></div>}
+        <button type="button" onClick={() => onOpen(img)} className="block w-full cursor-zoom-in" aria-label={`${alt} 보기`}>{image}</button>
+      ) : image}
+      {line && (
+        <figcaption className="mx-auto mt-3 max-w-xl text-center text-[13px] leading-snug break-keep [overflow-wrap:anywhere] line-clamp-2" style={SUB}>{line}</figcaption>
+      )}
     </figure>
   );
 }
@@ -327,7 +346,7 @@ const ArtworkSection = memo(function ArtworkSection({ groups, artistName, onOpen
           // 시리즈 없는 묶음도 시리즈가 하나라도 있으면 머리말을 단다 — 안 그러면 앞 시리즈의 계속으로 읽힌다(lib/artwork.ts ungroupedLabel)
           const heading = g.name || ungroupedLabel(groups);
           return (
-            <div key={g.name || `__${gi}`}>
+            <div key={g.name || `__${gi}`} id={`hp-series-${gi}`} className="scroll-mt-[112px] lg:scroll-mt-[96px]">
               {heading && (
                 <div className="mb-5 max-w-3xl">
                   <p className="text-lg font-medium" style={{ fontFamily: 'var(--hp-title-font)', ...(g.name ? {} : SUB) }}>{heading}</p>
@@ -344,7 +363,7 @@ const ArtworkSection = memo(function ArtworkSection({ groups, artistName, onOpen
 }, (a, b) => a.signature === b.signature && a.compact === b.compact && a.onOpenImage === b.onOpenImage && a.artistName === b.artistName);
 
 export default function HomepageView({
-  data, onOpenImage, careerColumns = 3, emptyText, emptyAction, actions, ownerAction, compact = false, tab, onTabChange, guestbook,
+  data, onOpenImage, careerColumns = 3, emptyText, emptyAction, actions, ownerAction, compact = false, tab, onTabChange, guestbook, news,
 }: Props) {
   const { user, images, seriesInfo } = data;
   const artistName = displayName(user);
@@ -359,7 +378,6 @@ export default function HomepageView({
 
   const signature = artworkGridSignature(images, seriesInfo) + '|' + images.map((i) => `${i.width ?? ''}x${i.height ?? ''}`).join(',');
   const groups = useMemo(() => groupBySeries(images, seriesInfo), [images, seriesInfo]);
-  const total = images.length;
   const hero = pickHeroImage(images, theme.keys);
 
   const career = normalizeCareer(data.career);
@@ -369,11 +387,9 @@ export default function HomepageView({
   const ig = safeHttpUrl(user.instagramUrl);
   const isEmpty = !data.biography && !data.statement && careerEmpty && !fileUrl && images.length === 0;
 
-  const tabs = homepageTabs({
-    workCount: total,
-    hasNote: !!data.statement,
-    hasCv: !!data.biography || !careerEmpty,
-    hasFile: !!fileUrl,
+  // 탭 — 공개 페이지의 머리 메뉴(PC)와 **같은 함수**로 정한다(lib/homepageTabs.ts homepageTabsFor)
+  const tabs = homepageTabsFor(data, {
+    news: !compact && news ? { storyCount: news.storyCount, highlightCount: news.highlightCount } : null,
     guestbook: guestbook ? { count: guestbook.count } : null,
   });
   // 부모가 탭을 쥐면(공개 페이지 ?tab=) 그걸, 아니면 스스로(미리보기)
@@ -381,32 +397,53 @@ export default function HomepageView({
   const controlled = tab !== undefined;
   const active = resolveHomepageTab(controlled ? tab : ownTab, tabs);
 
-  /** 탭 막대 바로 위 표지 — 막대가 상단에 붙어 있을 때 탭을 바꾸면 새 내용의 첫머리로 올려 준다 */
-  const anchorRef = useRef<HTMLDivElement>(null);
+  /*
+    탭을 누르면 **그 탭 내용으로 내려간다** — 탭 줄이 사이트 머리 밑에 붙고 그 아래가 고른 탭(2026-11-15 사용자 지적, lib/siteMode.ts).
+    ⚠️ 새 내용을 그린 **뒤**에 옮긴다(useLayoutEffect) — 그리기 전에 옮기면 내용 높이가 바뀌며 브라우저가 몇 px 을 다시 옮긴다.
+    지금 탭을 또 눌러도 내려간다(표지를 보다가 [작품]을 누른 사람도 작품으로 가야 한다). 미리보기(compact)는 옮기지 않는다.
+  */
+  const liftPending = useRef(false);
   const select = (id: HomepageTabId) => {
-    const a = anchorRef.current;
-    if (a && !compact) {
-      const top = a.getBoundingClientRect().top;
-      const stick = stickyTopPx();
-      // 긴 작품 목록 한가운데서 [약력]을 누르면 약력의 중간(=빈 곳)에 떨어진다 — 막대가 붙어 있을 때만 끌어올린다
-      if (top < stick) window.scrollTo({ top: window.scrollY + top - stick });
-    }
+    if (!compact && id === active) { liftToHomepageTabs(); return; }
+    if (!compact) liftPending.current = true;
     if (controlled) onTabChange?.(id, tabParamFor(id, tabs));
     else setOwnTab(id);
   };
+  useLayoutEffect(() => {
+    if (!liftPending.current) return;
+    liftPending.current = false;
+    liftToHomepageTabs();
+  }, [active]);
 
   const prose = `whitespace-pre-wrap break-keep [overflow-wrap:anywhere] text-justify max-w-3xl leading-[1.9] ${compact ? 'text-[14px]' : 'text-[15px]'}`;
   const hasBio = !!data.biography;
+  // 시리즈가 둘 이상이면 [작품] 탭 맨 위에 시리즈 이름 줄 — 누르면 그 시리즈로 **내려간다**(격자를 거르지 않는다: 한 탭 안에 화면 상태가 둘이 되지 않게)
+  const namedSeries = groups.map((g, gi) => ({ name: g.name, gi })).filter((g) => !!g.name);
 
   const panel = (() => {
     switch (active) {
       case 'works':
         return (
-          <div className={`flex flex-col ${compact ? 'gap-10' : 'gap-14 md:gap-20'}`}>
-            {hero && <Hero img={hero} artistName={artistName} onOpen={onOpenImage} compact={compact} />}
+          <div className="flex flex-col">
+            {namedSeries.length >= 2 && (
+              <nav aria-label="시리즈" className="-mt-2 mb-8 flex flex-wrap gap-x-5 md:mb-10" data-testid="series-index">
+                {namedSeries.map((g) => (
+                  <button
+                    key={g.gi}
+                    type="button"
+                    onClick={() => scrollToTarget(document.getElementById(`hp-series-${g.gi}`))}
+                    className={LINK_ACTION}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+              </nav>
+            )}
             <ArtworkSection groups={groups} artistName={artistName} onOpenImage={onOpenImage} compact={compact} signature={signature} />
           </div>
         );
+      case 'news':
+        return news?.content ?? null;
       case 'note':
         // 문장마다 엔터를 친 글은 이어 붙인다(lib/prose.ts). 저장값은 안 건드린다.
         return <p className={prose}>{reflowProse(data.statement ?? '')}</p>;
@@ -457,53 +494,74 @@ export default function HomepageView({
     }
   })();
 
+  /*
+    ── 표지 (2026-11-14, 규칙 82) ──
+    첫 화면에 **대표작**이 선다 — 예전엔 PC 첫 화면 오른쪽 절반이 비고 대표작은 탭 아래(1280×720 에서 첫 화면 밖)에 있었다.
+    PC: 두 칸(글 | 대표작), 칸 비율은 대표작 모양(COVER_GRID). 휴대폰·편집 미리보기: 대표작 → 이름 → 소개 → 버튼 → 전시 중 띠.
+    작품이 없으면 이름 덩어리만.
+  */
+  const nameBlock = (
+    <div className="min-w-0">
+      {/* 프로필 사진(2026-10-28, 작가가 켰을 때만) — 이름 위 동그라미. 사진이 있으면 이름·소개를 한 단계 줄여 한 덩어리로 읽히게 한다.
+          ⚠️ 프로필 사진은 원형으로 자른다(object-cover) — 작품이 아니다(규칙 18 은 작품) */}
+      {withAvatar && (
+        <img
+          src={avatarSrc!}
+          alt={`${artistName} 프로필 사진`}
+          onError={() => setFailedAvatar(avatarSrc)}
+          className={`block rounded-full object-cover ${compact ? 'mb-4 h-16 w-16' : 'mb-5 h-20 w-20 md:mb-6 md:h-28 md:w-28'}`}
+          style={{ boxShadow: '0 0 0 1px var(--hp-line)' }}
+          data-testid="homepage-avatar"
+        />
+      )}
+      <h1
+        className={`break-keep [overflow-wrap:anywhere] leading-[1.05] tracking-[-0.02em] ${
+          withAvatar ? (compact ? 'text-2xl' : 'text-3xl md:text-5xl') : (compact ? 'text-3xl' : 'text-4xl md:text-6xl')
+        } ${theme.serif ? 'font-medium' : 'font-semibold'}`}
+        style={{ fontFamily: 'var(--hp-title-font)' }}
+      >
+        {artistName}
+      </h1>
+      {/* 한 줄 소개가 없으면 아무것도 쓰지 않는다 — 누구에게나 해당되는 문구로 자리를 채우지 않는다 */}
+      {data.tagline && (
+        <p
+          className={`break-keep [overflow-wrap:anywhere] ${withAvatar ? (compact ? 'mt-2 text-sm' : 'mt-2.5 text-[15px] md:text-base') : (compact ? 'mt-3 text-sm' : 'mt-3 text-base md:text-lg')}`}
+          style={SUB}
+        >
+          {data.tagline}
+        </p>
+      )}
+      {/* 인스타 — 버튼 줄이 아니라 이름 아래 작은 줄(페이지 색을 따른다 — 브랜드 핑크를 쓰면 강조색이 둘이 된다) */}
+      {ig && (
+        <a href={ig} target="_blank" rel="noreferrer" className={`${LINK_ACTION} ${compact ? '' : 'mt-1'}`}>
+          <Instagram size={14} aria-hidden /> {instagramHandle(user.instagramUrl) ?? 'Instagram'}
+        </a>
+      )}
+      {ownerAction && <div className="mt-4" data-testid="homepage-owner-action">{ownerAction}</div>}
+      {/* 버튼 묶음은 탭 줄 오른쪽에 선다(2026-11-15 — 내리면서도 보이게). 탭이 하나도 없을 때만 여기 */}
+      {actions && tabs.length === 0 && <div className={compact ? 'mt-5' : 'mt-6 md:mt-8'}>{actions}</div>}
+      {data.nowShowing && (
+        <div className={compact ? 'mt-5' : 'mt-6 md:mt-8'}>
+          <NowStrip now={data.nowShowing} asLink={!compact} />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={themeCssVars(theme)} className="min-w-0">
-      {/* ── 마스트헤드: 작가 이름이 이 페이지의 제목이다 ── */}
-      {/* 격자 두 칸 — 왼쪽 이름 덩어리 / 오른쪽 위 [수정](주인만) · 오른쪽 아래 액션 줄(PC). 휴대폰은 액션 줄이 이름 덩어리 아래 한 줄로.
-          [수정] 을 한 요소로만 그린다(화면마다 두 벌을 숨겨 두면 같은 링크가 둘이 된다) */}
-      <header className={`${compact ? 'pb-6' : 'pb-8 md:pb-12'} grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-5 md:gap-x-8 md:gap-y-3`}>
-        <div className="col-start-1 row-start-1 min-w-0 md:row-span-2 md:self-end">
-          {/* 프로필 사진(2026-10-28, 작가가 켰을 때만) — 이름 위 동그라미. 사진이 있으면 이름을 한 단계 줄여 사진·이름·소개가 한 덩어리로 읽히게 한다.
-              ⚠️ 프로필 사진은 원형으로 자른다(object-cover) — 작품이 아니다. 작품은 자르지 않는다(규칙 18) */}
-          {withAvatar && (
-            <img
-              src={avatarSrc!}
-              alt={`${artistName} 프로필 사진`}
-              onError={() => setFailedAvatar(avatarSrc)}
-              className={`block rounded-full object-cover ${compact ? 'mb-4 h-16 w-16' : 'mb-5 h-20 w-20 md:mb-6 md:h-28 md:w-28'}`}
-              style={{ boxShadow: '0 0 0 1px var(--hp-line)' }}
-              data-testid="homepage-avatar"
-            />
-          )}
-          <h1
-            className={`break-keep [overflow-wrap:anywhere] leading-[1.05] tracking-[-0.02em] ${
-              withAvatar ? (compact ? 'text-2xl' : 'text-3xl md:text-5xl') : (compact ? 'text-3xl' : 'text-4xl md:text-6xl')
-            } ${theme.serif ? 'font-medium' : 'font-semibold'}`}
-            style={{ fontFamily: 'var(--hp-title-font)' }}
-          >
-            {artistName}
-          </h1>
-          {/* 한 줄 소개가 없으면 아무것도 쓰지 않는다 — 누구에게나 해당되는 문구로 자리를 채우지 않는다 */}
-          {data.tagline && (
-            <p
-              className={`break-keep [overflow-wrap:anywhere] ${withAvatar ? (compact ? 'mt-2 text-sm' : 'mt-2.5 text-[15px] md:text-base') : (compact ? 'mt-3 text-sm' : 'mt-3 text-base md:text-lg')}`}
-              style={SUB}
-            >
-              {data.tagline}
-            </p>
-          )}
-        </div>
-        {ownerAction && <div className="col-start-2 row-start-1 self-start justify-self-end" data-testid="homepage-owner-action">{ownerAction}</div>}
-        <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm md:col-span-1 md:col-start-2 md:self-end md:justify-self-end">
-          {/* 인스타 — 브랜드 핑크 대신 페이지 색을 따른다(강조색이 둘이면 페이지가 시끄럽다) */}
-          {ig && (
-            <a href={ig} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-1.5 hover:underline underline-offset-4" style={SUB}>
-              <Instagram size={14} /> {instagramHandle(user.instagramUrl) ?? 'Instagram'}
-            </a>
-          )}
-          {actions}
-        </div>
+      <header
+        data-testid="homepage-cover"
+        className={hero
+          ? `grid gap-y-7 ${compact ? 'pb-8' : `pb-10 md:items-center md:gap-x-12 md:pb-14 lg:gap-x-16 ${COVER_GRID[coverShape(hero.width, hero.height)]}`}`
+          : (compact ? 'pb-6' : 'pb-8 md:pb-12')}
+      >
+        {hero && (
+          <div className={compact ? '' : 'md:order-2'}>
+            <CoverArt img={hero} artistName={artistName} onOpen={onOpenImage} compact={compact} />
+          </div>
+        )}
+        <div className={compact ? '' : 'md:order-1'}>{nameBlock}</div>
       </header>
 
       {isEmpty && (
@@ -515,14 +573,15 @@ export default function HomepageView({
 
       {tabs.length > 0 && (
         <>
-          {/* 탭 막대 자리 표지 — [방명록] 같은 바깥 버튼이 여기로 스크롤한다(scroll-mt = 상단바 높이) */}
-          <div ref={anchorRef} id="hp-tabs" className="scroll-mt-16 lg:scroll-mt-20" />
-          <TabBar tabs={tabs} active={active} onSelect={select} sticky={!compact} />
+          {/* 탭 막대 자리 표지 — 탭을 바꿀 때 여기로 끌어올린다(scroll-mt = 사이트 머리 높이) */}
+          <div id="hp-tabs" className="scroll-mt-14 lg:scroll-mt-[72px]" />
+          <TabBar tabs={tabs} active={active} onSelect={select} sticky={!compact} trailing={actions} />
+          {/* 최소 높이 — 짧은 탭이어도 탭 줄을 머리 밑에 붙일 수 있게(HOMEPAGE_PANEL_MIN_H). 미리보기는 늘이지 않는다 */}
           <div
             role="tabpanel"
             id={`hp-panel-${active}`}
             aria-labelledby={`hp-tab-${active}`}
-            className={compact ? 'pt-6' : 'pt-8 md:pt-12'}
+            className={compact ? 'pt-6' : `pt-8 md:pt-12 ${HOMEPAGE_PANEL_MIN_H}`}
           >
             {panel}
           </div>

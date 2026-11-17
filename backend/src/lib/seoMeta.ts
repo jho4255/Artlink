@@ -40,7 +40,7 @@ const CACHE_TTL_MS = 60_000;
 const CACHE_MAX = 500;
 const DB_TIMEOUT_MS = 1500;
 
-export type SeoKind = 'exhibition' | 'gallery' | 'show' | 'portfolio';
+export type SeoKind = 'exhibition' | 'gallery' | 'show' | 'portfolio' | 'post' | 'story';
 
 export interface SeoFields {
   title: string;
@@ -223,6 +223,45 @@ async function fetchSeoFields(kind: SeoKind, id: SeoId, work: number | null = nu
 
   if (kind === 'gallery') return galleryFields(id);
 
+  // 커뮤니티 글(2026-11-13) — 카톡·인스타로 공유되는 칼럼·후기. 공개 글이라 그대로 싣되, 익명 글은 이름을 싣지 않는다.
+  // 본문은 서버가 뽑아 둔 글(`body`)이라 문서 글도 태그가 없다. 표지는 첫 사진.
+  if (kind === 'post' && typeof id === 'number') {
+    const post = await prisma.post.findUnique({
+      where: { id },
+      select: {
+        title: true, body: true, excerpt: true, images: true, anonymous: true,
+        category: { select: { name: true } },
+        author: { select: { name: true, nickname: true, deletedAt: true } },
+      },
+    });
+    if (!post) return null;
+    const who = post.anonymous || post.author.deletedAt ? undefined : (post.author.nickname || post.author.name);
+    return {
+      title: `${post.title} | ArtLink 커뮤니티`,
+      // 문서 글은 리드(소제목·목록을 건너뛴 첫 문단들)가 미리보기에도 낫다 — 없으면 본문 앞부분
+      description: joinParts([who, post.category?.name, (post.excerpt || post.body).replace(/\s+/g, ' ')]),
+      image: post.images[0] || null,   // 표지는 따로 없다 — 첫 사진
+      path: `/community/${id}`,
+    };
+  }
+
+  // ArtStory 소식(2026-11-14) — `/feed?story=<id>` 공유 링크. **전체공개·안 내린 소식·탈퇴 안 한 사람**만 싣는다
+  // (이웃공개 소식은 누가 받을지 모르는 미리보기에 내용을 싣지 않는다). 사진은 첫 장, 글만 소식은 기본 사진.
+  if (kind === 'story' && typeof id === 'number') {
+    const st = await prisma.story.findFirst({
+      where: { id, visibility: 'PUBLIC', hiddenAt: null, author: { deletedAt: null } },
+      select: { caption: true, images: true, author: { select: { name: true, nickname: true } } },
+    });
+    if (!st) return null;
+    const who = displayName(st.author);
+    return {
+      title: `${who}님의 소식 | ArtStory - ArtLink`,
+      description: st.caption.replace(/\s+/g, ' ').trim() || `${who}님이 ArtStory에 올린 소식`,
+      image: st.images[0] || null,
+      path: `/feed?story=${id}`,
+    };
+  }
+
   if (kind === 'show' && typeof id === 'number') {
     const s = await prisma.show.findFirst({
       where: { id, status: 'APPROVED', gallery: { status: 'APPROVED' } },
@@ -358,8 +397,10 @@ export function createSeoHandler(kind: SeoKind, loadTemplate: () => string | nul
       if (process.env.SEO_META === 'off') return next();
       if ((req as unknown as Record<symbol, unknown>)[SEO_RATE_LIMITED]) return next();
 
-      // `/@:handle` 라우트는 handle 파라미터로 온다 — `@` 를 붙여 같은 파서를 태운다
-      const raw = req.params.id ?? req.params.userId ?? (req.params.handle !== undefined ? `@${req.params.handle}` : undefined);
+      // `/@:handle` 라우트는 handle 파라미터로, ArtStory 는 `/feed?story=<id>` 쿼리로 온다
+      const raw = kind === 'story'
+        ? req.query.story
+        : req.params.id ?? req.params.userId ?? (req.params.handle !== undefined ? `@${req.params.handle}` : undefined);
       const id = parseSeoId(raw);
       if (id === null) return next();
 

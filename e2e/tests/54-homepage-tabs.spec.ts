@@ -31,7 +31,9 @@ async function uploadFile(name: string, mimeType: string, buffer: Buffer): Promi
   return url;
 }
 
-const selectedTab = (page: Page) => page.locator('[role=tab][aria-selected=true]');
+/* ⚠️ `:visible` — 2026-11-14(규칙 82)부터 탭 목록이 둘이다: PC 는 사이트 머리 안, 휴대폰은 표지 아래 막대. 한쪽은 늘 CSS 로 숨어 있어
+   (접근성 트리에도 없다) 보이는 쪽만 센다. */
+const selectedTab = (page: Page) => page.locator('[role=tab][aria-selected=true]:visible');
 
 test.beforeAll(async () => {
   const api = await pwRequest.newContext();

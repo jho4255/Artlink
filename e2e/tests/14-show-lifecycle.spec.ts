@@ -34,10 +34,11 @@ test('전시 등록 → 승인 → /shows 노출', async ({ browser }) => {
   // 관리자 승인 → 공개 노출
   await api.patch(`${API}/approvals/show/${show.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await page.goto('/shows');
-  await expect(page.getByText(TITLE, { exact: false })).toBeVisible({ timeout: 10000 });
+  // 전시 찾기 개편(2026-11-15) — 제목은 카드의 제목 줄(h3). 포스터가 없으면 포스터 칸에도 제목 글자가 들어가 글자로 찾으면 둘이 된다
+  await expect(page.getByRole('heading', { name: TITLE })).toBeVisible({ timeout: 10000 });
 
   // 상세에서 작가 배열 파싱 확인
-  await page.getByText(TITLE, { exact: false }).first().click();
+  await page.getByRole('heading', { name: TITLE }).getByRole('link').click();
   await expect(page.getByText('김작가', { exact: false }).first()).toBeVisible({ timeout: 8000 });
 
   await api.dispose();

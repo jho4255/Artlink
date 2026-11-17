@@ -35,25 +35,30 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
 test('등록 폼 약관이 placeholder가 아닌 실제 약관 텍스트', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'gallery');
 
-  // 갤러리 등록 폼
+  /* 2026-11-15 부터 약관은 폼 끝 상자가 아니라 [등록 요청] 확인 창 안([약관 보기]로 펼친다, CLAUDE.md 규칙 84).
+     세 폼이 여는 파일이 실제 약관인지는 파일로 보고, 화면은 갤러리 등록에서 끝까지 눌러 본다(공모·전시는 83 이 확인 창을 거쳐 등록한다). */
+  for (const [file, head] of [['gallery-registration', '갤러리 등록 약관'], ['exhibition-application', '공모 등록 약관'], ['show-registration', '전시 등록 약관']]) {
+    const txt = await (await page.request.get(`/terms/${file}.txt`)).text();
+    expect(txt.trimStart().startsWith(`[${head}]`), file).toBe(true);
+    expect(txt).not.toContain('sample_약관');
+  }
+
+  // 갤러리 등록 폼 — 필수 칸을 채우고 [등록 요청] → 확인 창의 [약관 보기]
   await page.goto('/mypage');
   await openMyPageTab(page, '내 갤러리', 'gallery');
   await page.getByRole('button', { name: '갤러리 등록' }).click();
-  await expect(page.locator('body')).toContainText('갤러리 등록 약관', { timeout: 8000 });
-  await expect(page.locator('body')).not.toContainText('sample_약관');
-
-  // 공모 등록 폼
-  await page.goto('/mypage');
-  await openMyPageTab(page, '내 공모', 'gallery');
-  await page.getByRole('button', { name: '공모 등록' }).click();
-  await expect(page.locator('body')).toContainText('공모 등록 약관', { timeout: 8000 });
-
-  // 전시 등록 폼
-  await page.goto('/mypage');
-  await openMyPageTab(page, '내 전시', 'gallery');
-  await page.getByRole('button', { name: '전시 등록' }).click();
-  await expect(page.locator('body')).toContainText('전시 등록 약관', { timeout: 8000 });
-  await expect(page.locator('body')).not.toContainText('sample_약관');
-
+  await page.getByPlaceholder('갤러리명').fill('약관 확인용');
+  await page.getByPlaceholder('갤러리 한줄 소개').fill('소개');
+  await page.getByPlaceholder('주소', { exact: true }).fill('서울 종로구 삼일대로 445');
+  await page.getByPlaceholder('전화번호').fill('02-0000-0000');
+  await page.getByPlaceholder('대표자명').fill('홍길동');
+  await page.locator('[data-submit-bar]').getByRole('button', { name: '등록 요청', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: '등록을 요청할까요?' });
+  await sheet.getByRole('button', { name: /약관 보기/ }).click();
+  await expect(sheet).toContainText('갤러리 등록 약관', { timeout: 8000 });
+  await expect(sheet).not.toContainText('sample_약관');
+  await sheet.getByRole('button', { name: '고치기' }).click();
+  await page.evaluate(() => localStorage.removeItem('draft_gallery_form'));
   await ctx.close();
 });
+

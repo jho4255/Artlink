@@ -168,3 +168,50 @@ describe('GET /api/explore/artists', () => {
     expect(res.body[0].id).toBe(7);
   });
 });
+
+/**
+ * `cover` — 휴대폰 이름 창의 작은 그림(2026-11-15, 작가 탭 B안). 그 작가 홈페이지 첫 화면의 대표작과 같은 그림이어야 한다:
+ * 지정한 대표작(designConfig.heroImageId) → 없으면 순서상 첫 작품. 프로필 사진(avatar)으로 대신하지 않는다.
+ */
+describe('GET /api/explore/artists — cover(대표작)', () => {
+  const coverOf = async (id: number) => (await request.get('/api/explore/artists')).body.find((a: any) => a.id === id)?.cover;
+
+  it('대표작을 안 골랐으면 순서상 첫 작품 — \'홈페이지에만\' 작품이어도(홈페이지 첫 화면과 같다)', async () => {
+    await seedArtist({ id: 7, name: '강민서', publicWorks: 0, privateWorks: 2 });
+    expect(await coverOf(7)).toBe('/uploads/p7-0.jpg');
+  });
+
+  it('순서를 바꾸면 따라간다 — order 가 가장 작은 작품', async () => {
+    await seedArtist({ id: 7, name: '강민서', publicWorks: 3 });
+    const pf = await testPrisma.portfolio.findUniqueOrThrow({ where: { userId: 7 } });
+    await testPrisma.portfolioImage.updateMany({ where: { portfolioId: pf.id, url: '/uploads/a7-2.jpg' }, data: { order: -1 } });
+    expect(await coverOf(7)).toBe('/uploads/a7-2.jpg');
+  });
+
+  it('★ 대표작을 골랐으면 그 작품', async () => {
+    await seedArtist({ id: 7, name: '강민서', publicWorks: 3 });
+    const pf = await testPrisma.portfolio.findUniqueOrThrow({ where: { userId: 7 } });
+    const third = await testPrisma.portfolioImage.findFirstOrThrow({ where: { portfolioId: pf.id, url: '/uploads/a7-2.jpg' } });
+    await testPrisma.portfolio.update({ where: { id: pf.id }, data: { designConfig: JSON.stringify({ heroImageId: third.id }) } });
+    expect(await coverOf(7)).toBe('/uploads/a7-2.jpg');
+  });
+
+  it('★ 대표작 번호가 남의 작품·지운 작품이면 무시하고 첫 작품', async () => {
+    await seedArtist({ id: 7, name: '강민서', publicWorks: 2 });
+    await seedArtist({ id: 8, name: '나은결', publicWorks: 1 });
+    const mine = await testPrisma.portfolio.findUniqueOrThrow({ where: { userId: 7 } });
+    const other = await testPrisma.portfolioImage.findFirstOrThrow({ where: { url: '/uploads/a8-0.jpg' } });
+    await testPrisma.portfolio.update({ where: { id: mine.id }, data: { designConfig: JSON.stringify({ heroImageId: other.id }) } });
+    expect(await coverOf(7)).toBe('/uploads/a7-0.jpg');
+    await testPrisma.portfolio.update({ where: { id: mine.id }, data: { designConfig: JSON.stringify({ heroImageId: 999999 }) } });
+    expect(await coverOf(7)).toBe('/uploads/a7-0.jpg');
+    await testPrisma.portfolio.update({ where: { id: mine.id }, data: { designConfig: '{깨진' } });   // 깨진 JSON 도 500 이 아니다
+    expect(await coverOf(7)).toBe('/uploads/a7-0.jpg');
+  });
+
+  it('프로필 사진을 쓰지 않는다 — 카카오 프로필 사진은 작가가 켜야 홈페이지에 보인다(규칙 77)', async () => {
+    await seedArtist({ id: 7, name: '강민서', publicWorks: 1 });
+    await testPrisma.user.update({ where: { id: 7 }, data: { avatar: 'https://example.com/kakao-face.jpg' } });
+    expect(await coverOf(7)).toBe('/uploads/a7-0.jpg');
+  });
+});

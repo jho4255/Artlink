@@ -80,3 +80,182 @@ img[src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAA
   pointer-events: none;
 }
 .rich-text.ProseMirror hr.ProseMirror-selectednode { border-top-color: #111827; }
+
+/*
+  ── 커뮤니티 글 문서 (2026-11-13, 블로그형 편집기) ─────────────────────────────────────────────
+  편집기(ProseMirror 뿌리 `.post-body`)와 읽는 화면(components/post/PostBody)이 **같은 클래스**를 쓴다 — 쓰는 모양 = 보이는 모양.
+  · 글은 본문 폭(680px) 가운데, 사진은 크기별로 본문 폭 / 넓게(1040px) / 글 칸 끝까지(`size-full`).
+  · ⚠️ `size-full` 을 100vw 로 만들지 말 것 — 로그인하면 오른쪽 사이드바(224px)만큼 글 칸이 좁다. 글 칸 기준으로 넓힌다.
+    휴대폰에서만 좌우 여백(--post-gutter)만큼 바깥으로 나가 화면 끝까지 닿는다.
+  · 색은 흑백 + 포인트 빨강 하나(DESIGN.md). 형광펜은 글자 아래 절반만 옅게, 팁 상자는 테두리만.
+  · 무공백 한글 장문이 가로로 밀지 않게 `overflow-wrap:anywhere`(CLAUDE.md 30).
+*/
+.post-body {
+  --post-text: 680px;
+  --post-wide: 1040px;
+  --post-gutter: 20px;
+  font-size: 16px;
+  line-height: 1.85;
+  color: #1f2937;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .post-body { font-size: 17px; line-height: 1.9; --post-gutter: 0px; }
+}
+.post-body > * { max-width: var(--post-text); margin-left: auto; margin-right: auto; }
+.post-body > p { margin-top: 0; margin-bottom: 1em; min-height: 1em; }
+.post-body > h2, .post-body > h3 { color: #111827; font-weight: 600; letter-spacing: -0.005em; }
+.post-body > h2 { font-size: 1.3em; line-height: 1.45; margin-top: 1.8em; margin-bottom: 0.6em; }
+.post-body > h3 { font-size: 1.12em; line-height: 1.5; margin-top: 1.5em; margin-bottom: 0.5em; }
+.post-body > :first-child { margin-top: 0; }
+.post-body strong { font-weight: 600; color: #111827; }
+.post-body s { color: #6b7280; }
+.post-body mark { background: linear-gradient(transparent 58%, rgb(196 48 43 / 0.18) 58%); color: inherit; padding: 0 0.08em; }
+.post-body a { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; color: #111827; }
+.post-body a:hover { color: var(--color-accent); }
+.post-body ul, .post-body ol { padding-left: 1.4em; margin-top: 0; margin-bottom: 1em; }
+.post-body ul { list-style: disc; }
+.post-body ol { list-style: decimal; }
+.post-body li > p { margin: 0; }
+.post-body li + li { margin-top: 0.25em; }
+.post-body li > ul, .post-body li > ol { margin: 0.25em 0 0; }
+/* 투표 상자의 보기 목록은 글의 목록이 아니다 — 글 목록 들여쓰기·점·간격을 걷는다(안 걷으면 보기가 제목보다 안쪽으로 밀린다) */
+.post-body .post-poll-card ul { padding-left: 0; list-style: none; margin: 12px 0 0; }
+.post-body .post-poll-card li { margin: 0; }
+.post-body .post-poll-card li + li { margin-top: 8px; }
+.post-body blockquote { margin-top: 1.4em; margin-bottom: 1.4em; padding-left: 1em; border-left: 2px solid #d1d5db; color: #4b5563; }
+.post-body blockquote > p { margin: 0 0 0.6em; }
+.post-body blockquote > :last-child { margin-bottom: 0; }
+.post-body blockquote[data-variant="pull"] {
+  border-left: 0; border-top: 1px solid #111827; border-bottom: 1px solid #111827;
+  padding: 1.1em 0; margin-top: 2em; margin-bottom: 2em; text-align: center;
+  font-size: 1.3em; line-height: 1.6; font-weight: 500; color: #111827;
+}
+.post-body hr { border: 0; border-top: 1px solid #e5e7eb; margin-top: 2.2em; margin-bottom: 2.2em; }
+.post-body .post-callout { border: 1px solid #e5e7eb; padding: 1.1em 1.3em; margin-top: 1.6em; margin-bottom: 1.6em; color: #374151; position: relative; }
+.post-body .post-callout::before { content: 'TIP'; display: block; margin-bottom: 0.45em; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #111827; }
+.post-body .post-callout[data-callout="note"]::before { content: 'NOTE'; }
+.post-body .post-callout > p { margin: 0 0 0.6em; }
+.post-body .post-callout > :last-child { margin-bottom: 0; }
+
+/* 사진·모음·영상·동영상·투표 — 크기 */
+.post-body > .post-block.post-figure,
+.post-body > .post-block.post-gallery,
+.post-body > .post-block.post-youtube,
+.post-body > .post-block.post-video,
+.post-body > .post-block.post-poll { margin-top: 2.2em; margin-bottom: 2.2em; position: relative; }
+.post-body > .post-block.size-wide { max-width: var(--post-wide); }
+.post-body > .post-block.size-full { max-width: none; }
+@media (max-width: 767px) {
+  .post-body > .post-block.size-full {
+    margin-left: calc(-1 * var(--post-gutter));
+    margin-right: calc(-1 * var(--post-gutter));
+    width: calc(100% + 2 * var(--post-gutter));
+  }
+}
+.post-figure-frame { position: relative; width: 100%; background: #f9fafb; overflow: hidden; }
+.post-figure-frame img { object-fit: contain; }
+.post-body figcaption, .post-caption-edit { margin-top: 12px; text-align: center; font-size: 13px; line-height: 1.6; color: #6b7280; padding: 0 var(--post-gutter); }
+.post-zoom { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+
+/* 모음 — 정렬 줄(한 줄 높이 같게, 폭은 비율만큼) */
+.post-gallery-rows { display: flex; flex-direction: column; gap: 6px; }
+.post-gallery-row { display: flex; gap: 6px; }
+.post-gallery-cell { flex: 1 1 0%; min-width: 0; position: relative; overflow: hidden; background: #f3f4f6; }
+@media (min-width: 768px) {
+  .post-gallery-rows, .post-gallery-row { gap: 8px; }
+}
+/* 넘겨 보기 — **한 장씩**(2026-11-13 사용자: 옆에 다음 사진이 보이는 게 별로). 틀 비율은 모음 하나에 하나(PostGalleryLayout 이 정한다) —
+   장마다 높이가 바뀌면 넘길 때 글이 들썩인다. 사진은 자르지 않고 틀 안에 맞춘다(남는 자리는 옅은 회색) */
+.post-slide-wrap { position: relative; }
+.post-slide-track {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; outline: none;
+}
+.post-slide-track::-webkit-scrollbar { display: none; }
+/* 한 장씩 — 틀은 화면 높이의 75% 를 넘지 않는다(세로 사진 모음이 넓은 화면에서 한 화면을 넘겨 번호·점이 안 보이던 것). 남는 자리는 사진을 자르지 않고(contain) 회색으로 */
+.post-slide { flex: 0 0 100%; width: 100%; max-height: 75vh; scroll-snap-align: start; scroll-snap-stop: always; position: relative; overflow: hidden; background: #f3f4f6; }
+.post-slide img { object-fit: contain !important; }
+.post-slide-count {
+  position: absolute; right: 10px; top: 10px; padding: 2px 9px; border-radius: 9999px; font-size: 12px; font-weight: 500;
+  color: #fff; background: rgb(17 24 39 / 0.6); pointer-events: none; font-variant-numeric: tabular-nums;
+}
+.post-slide-dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
+.post-slide-dots span { width: 6px; height: 6px; border-radius: 9999px; background: #d1d5db; }
+.post-slide-dots span.on { background: #111827; }
+.post-slide-arrow {
+  position: absolute; top: calc(50% - 30px); width: 40px; height: 40px; display: none; align-items: center; justify-content: center;
+  border: 1px solid #e5e7eb; border-radius: 9999px; background: rgb(255 255 255 / 0.92); color: #111827;
+}
+.post-slide-arrow.left { left: 8px; }
+.post-slide-arrow.right { right: 8px; }
+.post-slide-arrow:disabled { opacity: 0; pointer-events: none; }
+@media (hover: hover) and (pointer: fine) {
+  .post-slide-wrap:hover .post-slide-arrow { display: flex; }
+}
+/* 동영상(파일) — 세로 영상은 화면 높이의 75% 안으로(폭을 줄여 가운데) */
+.post-video-frame { position: relative; margin: 0 auto; max-width: 100%; background: #111827; overflow: hidden; }
+.post-video-frame video { display: block; width: 100%; height: 100%; object-fit: contain; background: #111827; }
+.post-video-badge {
+  position: absolute; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9999px;
+  font-size: 12px; font-weight: 500; color: #fff; background: rgb(17 24 39 / 0.7); pointer-events: none;
+}
+/* 영상 */
+.post-youtube-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #111827; overflow: hidden; }
+.post-youtube-play {
+  position: absolute; left: 50%; top: 50%; width: 64px; height: 44px; margin: -22px 0 0 -32px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 12px; background: rgb(17 24 39 / 0.82); color: #fff; cursor: pointer;
+}
+
+/* ── 편집기 전용 ── */
+.post-body.ProseMirror { outline: none; min-height: 40vh; padding-bottom: 40vh; caret-color: #111827; }
+.post-body.ProseMirror p.is-editor-empty:first-child::before,
+.post-body.ProseMirror p.is-empty::before {
+  content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: #9ca3af;
+}
+.post-body.ProseMirror > .post-block { cursor: default; }
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode { outline: none; }
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-figure-frame,
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-gallery-rows,
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-slide-track,
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-youtube-frame,
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-video-frame,
+.post-body.ProseMirror > .post-block.ProseMirror-selectednode .post-poll-card { outline: 2px solid #111827; outline-offset: 3px; }
+.post-body.ProseMirror .post-callout.has-focus, .post-body.ProseMirror .post-callout:focus-within { border-color: #9ca3af; }
+.post-drag-handle {
+  position: absolute; left: -36px; top: 6px; width: 28px; height: 36px; display: none; align-items: center; justify-content: center;
+  color: #6b7280; background: #f3f4f6; border-radius: 6px; cursor: grab;
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 900px) {
+  .post-block:hover > .post-figure-inner > .post-drag-handle,
+  .post-block:hover > .post-gallery-inner > .post-drag-handle,
+  .post-block:hover > .post-youtube-inner > .post-drag-handle,
+  .post-block:hover > .post-video-inner > .post-drag-handle,
+  .post-block:hover > .post-poll-inner > .post-drag-handle,
+  .post-block.ProseMirror-selectednode .post-drag-handle { display: flex; }
+}
+.post-figure-inner, .post-gallery-inner, .post-youtube-inner, .post-video-inner, .post-poll-inner { position: relative; }
+.post-upload-bar {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; font-size: 12px; color: #374151; background: rgb(255 255 255 / 0.96); border: 1px solid #e5e7eb;
+}
+.post-upload-error {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 7px 8px 7px 10px; background: rgb(255 255 255 / 0.97); border: 1px solid rgb(196 48 43 / 0.4);
+}
+.post-mini-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; font-size: 12px; font-weight: 500; color: #374151;
+  background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+}
+.post-cell-remove {
+  position: absolute; right: 6px; top: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgb(17 24 39 / 0.78); border: 0; border-radius: 9999px;
+}
+
+/* ── ArtStory (2026-11-14, 규칙 81) ── 보기 화면의 진행 막대 한 칸이 차오르는 시간 = 그 칸을 보여 주는 시간.
+   멈춤은 animation-play-state, 다음 칸은 animationend 로 넘긴다(매 프레임 React 를 다시 그리지 않는다). */
+@keyframes storyFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* 홈 카드 줄 — 스크롤바를 숨긴다(줄 끝이 '여기가 끝'처럼 보이지 않게. PC 는 양옆 화살표로 넘긴다) */
+.story-rail { scrollbar-width: none; }
+.story-rail::-webkit-scrollbar { display: none; }

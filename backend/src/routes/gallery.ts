@@ -14,6 +14,12 @@ import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import { handleTaken, isHandleParam, normalizeHandle, validateHandle } from '../lib/handle';
 import { matchR2Base } from '../lib/r2Urls';
 import { richTextPlain, sanitizeRichText } from '../lib/richText';
+import { homepageNewsCounts } from '../lib/homepageNews';
+import { galleryNowShow, galleryNowShows } from '../lib/nowShowing';
+import { galleryOpenCalls } from '../lib/openCalls';
+
+/** 관람 시간 칸 글자 수 — 화면(`lib/homepageSite.ts GALLERY_OPEN_HOURS_MAX`)과 같은 값 */
+export const GALLERY_OPEN_HOURS_MAX = 80;
 
 const galleryCreateSchema = z.object({
   name: z.string().min(1, '갤러리 이름을 입력해주세요.'),
@@ -60,7 +66,8 @@ router.get('/', optionalAuth, async (req, res, next) => {
     }
 
     // 별점순은 없앴다(위 참고). 리뷰 **개수**순은 별점과 무관하므로 남긴다.
-    const orderBy: any = sortBy === 'reviewCount' ? { reviewCount: 'desc' } : { createdAt: 'desc' };
+    const byReviews = sortBy === 'reviewCount';
+    const orderBy: any = byReviews ? [{ reviewCount: 'desc' }, { createdAt: 'desc' }] : { createdAt: 'desc' };
 
     const galleries = await prisma.gallery.findMany({
       where,
@@ -68,21 +75,36 @@ router.get('/', optionalAuth, async (req, res, next) => {
       include: { images: { orderBy: { order: 'asc' }, take: 1 } }
     });
 
-    // 로그인 유저의 찜 여부 확인
+    /*
+      카드의 '모집 중'·'전시 중' 한 줄(2026-11-15, 갤러리 찾기 개편) — 작가가 갤러리를 고르는 이유는 리뷰·전화번호가 아니라
+      "지금 작가를 뽑는가 / 무슨 전시를 하는가"다. 갤러리 수와 무관하게 쿼리 둘(lib/openCalls.ts · lib/nowShowing.ts).
+    */
+    const ids = galleries.map((g) => g.id);
+    const [openCalls, nowShows] = await Promise.all([galleryOpenCalls(ids), galleryNowShows(ids)]);
+
+    /*
+      기본 순서 = **모집 중인 갤러리 먼저**, 그 안에서는 누적 조회수가 많은 순(2026-11-15 사용자 결정 — 기준은 화면에 적지 않는다).
+      모집하지 않는 갤러리도 조회수 순이다. 같으면 최근 등록 순(위 orderBy — 정렬이 안정적이라 그대로 남는다).
+      [리뷰순]을 고르면 종전처럼 리뷰 개수 순. 내 갤러리 목록(`owned`)은 순서를 바꾸지 않는다(마이페이지가 쓰는 등록 순).
+    */
+    const ordered = byReviews || owned === 'true' ? galleries : [...galleries].sort((a, b) =>
+      (Number(openCalls.has(b.id)) - Number(openCalls.has(a.id))) || (b.viewCount - a.viewCount));
+
+    let favSet = new Set<number | null>();
     if (req.user) {
       const favorites = await prisma.favorite.findMany({
-        where: {
-          userId: req.user.id,
-          galleryId: { in: galleries.map((g: any) => g.id) }
-        },
+        where: { userId: req.user.id, galleryId: { in: ids } },
         select: { galleryId: true }
       });
-      const favSet = new Set(favorites.map(f => f.galleryId));
-      const result = galleries.map((g: any) => maskInstagram({ ...g, isFavorited: favSet.has(g.id) }));
-      return res.json(result);
+      favSet = new Set(favorites.map(f => f.galleryId));
     }
 
-    res.json(galleries.map((g: any) => maskInstagram({ ...g, isFavorited: false })));
+    res.json(ordered.map((g: any) => maskInstagram({
+      ...g,
+      isFavorited: favSet.has(g.id),
+      openCall: openCalls.get(g.id) ?? null,
+      nowShow: nowShows.get(g.id) ?? null,
+    })));
   } catch (error) { next(error); }
 });
 
@@ -207,8 +229,16 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     // hiddenArtistIds 자체는 내부 설정이라 응답에서 뺀다(주인은 artists[].hidden 으로 본다)
     const { hiddenArtistIds: _hiddenIds, ...publicGallery } = gallery;
     void _hiddenIds;
+    // 홈페이지 개편(2026-11-14, 규칙 82) — [소식] 탭을 그릴지(갤러리 주인 계정의 ArtStory, 보는 사람 기준) · 첫 화면 '지금 전시'
+    const [news, nowShow] = await Promise.all([
+      homepageNewsCounts(req.user, gallery.ownerId),
+      galleryNowShow(gallery.id),
+    ]);
     // 공모는 정산·심사 내부 값을 빼고 싣는다(공개 응답 — 2026-10-03 점검 S4)
-    res.json(maskInstagram({ ...publicGallery, exhibitions: exhibitions.map((e) => maskExhibition(e)), reviews, isFavorited, artists }));
+    res.json(maskInstagram({
+      ...publicGallery, exhibitions: exhibitions.map((e) => maskExhibition(e)), reviews, isFavorited, artists,
+      storyCount: news.storyCount, highlightCount: news.highlightCount, nowShow,
+    }));
   } catch (error) { next(error); }
 });
 
@@ -464,6 +494,19 @@ router.patch('/:id/detail', authenticate, async (req, res, next) => {
     // 인스타그램 주소 — 갤러리 주인이 직접 입력/수정 (빈 값이면 제거)
     if (req.body.instagramUrl !== undefined) {
       data.instagramUrl = String(req.body.instagramUrl).trim() || null;
+    }
+    // 관람 시간(2026-11-14) — 자유 글 80자, 빈 값이면 지운다. 갤러리 페이지 방문 정보 맨 위에 그대로 나온다
+    if (req.body.openHours !== undefined) {
+      const v = req.body.openHours;
+      if (v !== null && typeof v !== 'string') throw new AppError('관람 시간 형식이 올바르지 않습니다.', 400);
+      const s = (v ?? '').replace(/\s+/g, ' ').trim();
+      if (s.length > GALLERY_OPEN_HOURS_MAX) throw new AppError(`관람 시간은 ${GALLERY_OPEN_HOURS_MAX}자까지 쓸 수 있습니다.`, 400);
+      data.openHours = s || null;
+    }
+    // 비회원 문의 받기(2026-11-14, 기본 꺼짐) — 켜면 로그인하지 않은 방문자가 이름·연락처를 남길 수 있다(HomepageInquiry)
+    if (req.body.guestInquiry !== undefined) {
+      if (typeof req.body.guestInquiry !== 'boolean') throw new AppError('문의 받기 설정이 올바르지 않습니다.', 400);
+      data.guestInquiry = req.body.guestInquiry;
     }
 
     const updated = await prisma.gallery.update({

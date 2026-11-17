@@ -106,7 +106,10 @@ ArtLink/
   **시각**으로 둔 이유 — 고정 글이 여럿일 때 순서가 있어야 한다(최근 고정이 위).
   마이그레이션 `20260904120000_add_community_tabs_and_notice`
 - **Follow** — 이웃(단방향 팔로우). `@@unique([followerId, followingId])`
-- **Story / StoryLike / StoryComment** — 스토리(작업 사진+짧은 글). visibility PUBLIC|NEIGHBORS(글마다), likeCount/commentCount 비정규화. ArtStory([소식]) 피드의 출처
+- **Story / StoryLike / StoryComment** — 스토리(작업 사진+짧은 글). visibility PUBLIC(기본, 2026-11-14 부터)|NEIGHBORS(글마다), likeCount/commentCount 비정규화.
+  `bg`(글만 소식 바탕색 이름) · `hiddenAt`/`hiddenReason`('ADMIN'|'REPORTS')/`reviewedAt`(내리기·되살리기). 전체공개 소식은 홈 ArtStory 줄의 출처(CLAUDE.md 81)
+- **StoryReport** — 소식 신고 `(storyId, reporterId)` unique · reason. 서로 다른 3명이면 소식이 저절로 내려간다(관리자가 되살린 뒤 신고만 센다)
+- **StoryMute** — 이 사람 소식 그만 보기 `(userId, mutedUserId)` unique. 내 화면(홈 줄·ArtStory)에서만 빠진다
 - **StoryHighlight** — 스토리를 주제별로 묶어 프로필에 영구 보존(인스타 하이라이트). `storyIds Int[]`(담은 순서) · `coverStoryId?` · `isPublic` · `order`.
   ⚠️ `storyIds` 는 **배열이라 FK 가 없다** — 스토리를 지워도 id 가 남으므로 읽을 때 실재하는 것만 센다.
   응답의 `coverImage`/`storyCount` 는 **서버 계산값**(DB 컬럼 아님)
@@ -136,7 +139,7 @@ ArtLink/
 | chat | /api/chats | ArtTalk — 갠톡(1:1)/단톡(공모방). 방 참여 여부로만 권한 판정. 첨부(사진/영상/파일, 우리 저장소만). `GET /:id` 는 **최근 150개**만 주고 `?after=<id>`(폴링, 새 것만)·`?before=<id>`(더 보기)·`?limit=` 지원 — 8초 폴링이 방 전체를 다시 받지 않게(2026-09-04) |
 | community | /api/community | 커뮤니티 글로벌 게시판(블라인드식). 글마다 실명/익명, 좋아요·댓글·조회수. `/popular`=홈 인기글. **Admin 전용**: `categories` CUD(탭) · `:id/pin`(고정) · `:id/notice`(공지) · `:id/category`(탭 이동). ⚠️ `/categories` 는 `/:id` 보다 **먼저** 선언해야 한다 — 뒤에 두면 `parseInt('categories')=NaN` 으로 404 |
 | follow | /api/follow | 이웃(단방향 팔로우). 추가 시 상대에게 알림(멱등). 상태 `GET /:userId`(following/팔로워수) |
-| stories | /api/stories | 스토리(ArtStory [소식]). `/feed`, `/user/:id`, 좋아요·댓글. 공개범위 글마다. **하이라이트**: `POST /highlights` · `GET /highlights/:userId`(목록, `coverImage` 포함) · `GET /highlights/:id/stories`(뷰어) · `PATCH·DELETE /highlights/:id` · `POST·DELETE /highlights/:id/stories/:storyId` |
+| stories | /api/stories | ArtStory 소식. `GET /public`(비회원 가능 — `?rail=1` 한 사람당 하나 · `?cursor=`) · `GET /feed?scope=neighbors` · `/user/:id` · 좋아요(알림 `STORY_LIKE` 한 줄)·댓글 · `PATCH /:id/visibility`(주인) · `POST /:id/report` · `PATCH /:id/hidden`(관리자) · `GET /reports`(관리자) · `GET·POST·DELETE /mutes[/:userId]` · 하루 10개. 공개범위 글마다. **하이라이트**: `POST /highlights` · `GET /highlights/:userId`(목록, `coverImage` 포함) · `GET /highlights/:id/stories`(뷰어) · `PATCH·DELETE /highlights/:id` · `POST·DELETE /highlights/:id/stories/:storyId` |
 | mentions | /api/mentions | @멘션 자동완성 — **부를 수 있는 사람만**(ArtLink=운영 + 서로 이웃). ⚠️ 전체 회원 검색이 아니다. 저장 검증과 **같은 함수**(`lib/mention.ts` `mentionTargets`)를 쓴다 |
 | guestbook | /api/guestbook | 방명록(작가 홈페이지). 공개, 비밀글(본문만 가림), 답글은 방 주인만(1단계) |
 | ad | /api/ads | 광고 배너. 공개 GET(활성만) / Admin CRUD. 사이드바 하단 슬롯 |
@@ -388,7 +391,7 @@ ArtLink/
 
 | 페이지 | 주요 기능 | 관련 코드 |
 |--------|----------|-----------|
-| HomePage | Hero 슬라이더 → ArtWorks → 인기글·진행중전시·마감임박공모·GotM (2026-09-05 배너를 맨 위로) | `components/home/*` |
+| HomePage | PC: Hero 슬라이더 → ArtStory 줄 → ArtWorks → 인기글·마감임박공모·진행중전시·GotM (2026-09-05 배너를 맨 위로). 휴대폰·앱(768px 미만): 배너 → 탭 [ArtWorks · ArtStory · 인기글 · 마감임박 공모] — 진행중전시·GotM 없음, 소식은 두 줄 (2026-11-14, `HomeTabs`·`lib/homeTabs.ts`) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
 | ArtistsPage | [작가] 탭 — 좌 작가 색인(누르면 `/portfolio/:id`) / 우 작품 격자(무한스크롤·좋아요순·기간). **둘러보기를 흡수** | `pages/ArtistsPage.tsx` |
@@ -2585,7 +2588,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - `frontend/src/lib/artlook.ts` — `portfolioArtLookWorks`(t800 썸네일·id·빈 제목은 비움) · `clearArtLookWorks`(로그아웃) · `readArtLookMessage`(iframe 말) ·
   `readComposeImages`/`COMPOSE_STATE_KEY`(글쓰기 칸 사진).
 - `frontend/src/pages/MyPage.tsx` `ArtLookSection` — `focused`+`fill`(프로필 카드·탭 줄 없음, 휴대폰 좌우 여백 없음) · `hooks/useFillHeight.ts`(상단바 아래~하단 탭바 위) ·
-  message 를 받아 편집 화면(`editHref('works', {info, work})`)·ArtStory(`/upload/image` → `/feed` state)로.
+  message 를 받아 편집 화면(`editHref('works', {info, work})`)·ArtStory(`/upload/image` → `/story/new` state, 2026-11-14 전엔 `/feed`)로.
 - `frontend/src/pages/FeedPage.tsx` `Composer` — `location.state.composeImages` 를 한 번 받아 사진을 싣고 state 를 비운다.
 - `frontend/src/lib/homepageEdit.ts` — `editHref` 의 `work`, `resolveEditEntry().work`, `entryInfoImageId`(그 작품의 정보 창).
 - `backend/src/lib/staticCache.ts`(신규) — dist 정적 파일 Cache-Control(해시 번들만 immutable · 앱 셸 no-store · 나머지 no-cache). `index.ts` 가 `cacheControl:false` + 이 함수.
@@ -2919,3 +2922,268 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
   (`lib/pushBanner.ts` 판정 + `PushBanner.tsx`, 그 화면을 보고 있으면 안 띄움) · 채널은 중요도 높음 + 진동 · **방마다 알림 끄기**(`ChatParticipant.muted`, `PATCH /chats/:id/mute`).
 - **알림 제목은 종류별**(`lib/push.ts PUSH_TITLES`) · **바깥 사이트의 HTTP 오류 페이지는 그대로**(`ArtLinkShellPlugin` 이 Capacitor WebViewClient 를 바꾼다 — 기본은 어느 사이트든 4xx·5xx 를
   오류 화면으로 바꿔 카카오 KOE 안내를 가렸다). 개발 앱의 카카오 로그인은 localhost 돌아올 주소가 미등록이라 KOE006(실서버 앱은 해당 없음).
+
+## 커뮤니티 블로그형 글쓰기 — 글 문서 · 탭이 곧 칼럼 · 자동 저장 (2026-11-13, CLAUDE.md 80)
+
+사용자 결정: 칼럼(작업일지·꿀팁·전시 후기·전시 준비)을 따로 만들지 않고 **커뮤니티 글쓰기 전체**를 블로그형 편집기로 · 칼럼은 **탭** · 커뮤니티 목록·글 화면도 다시. 기록 `scratchpad/column-editor/PLAN.md`.
+
+```
+ 글쓰기 /community/write · /:id/edit  (Layout 밖, 편집기 lazy)           서버 /api/community
+  PostEditor(TipTap) ─ 2초 쉬면 ─▶ PUT /drafts/:id {baseRev} ───────▶ PostDraft (rev 맞을 때만 · 아니면 409)
+   │  사진 ─▶ POST /api/upload/post-image ─▶ 파일 + t240·t800·t1280 + PostAsset(올린 사람·치수)
+   │  이 기기 보관(postBackup) · 로그인 풀림/새 배포에도 안 날아감
+   │  동영상 ─▶ POST /api/upload/post-video(25MB) ─▶ 파일 + PostAsset
+   └ [등록] ─▶ POST /community {title, doc, categoryId, anonymous, draftId}
+                 └ sanitizePostDoc(publish) ─▶ Post{doc, body(글), images, videos, poll, excerpt(리드)}   (목록 그림 = 첫 사진)
+                 └ 탭 규칙(communityAccess) · 필진 탭 실명 글이면 이웃에게 POST_NEW
+ 읽기 /community/:id ── GET /community/:id ─▶ PostBody(편집기 없이 React 요소: 사진·넘겨 보기·동영상·투표) · 작성자 카드 · 이 탭의 다른 글
+                         {comments(맨 위 + replies), profiles(실명 → 홈페이지·소개), poll(결과는 투표한 사람·글쓴이·관리자·마감 뒤)}
+      투표 ─▶ POST/DELETE /community/:id/poll ─▶ PostPollVote · 답글 ─▶ POST /:id/comments {replyTo} ─▶ COMMENT_REPLY(?comment=)
+ 목록 /community     ── GET /community?category&policy=writers&take&page ─▶ rowSelect(문서 JSON 안 읽음) · 페이지 번호(20개/쪽)
+```
+
+- **데이터**(마이그레이션 `20261113120000_community_editor` 하나 — 로컬 확인 중 둘이던 것을 합쳤다. 아직 배포 전)
+  - `Post` + `doc Json?`·`docVersion`·`excerpt`·`videos String[]`·`poll Json?` — `body`(글만)·`images`(사진 순서)는 서버가 문서에서 뽑아 채운다(멘션·검색·공유 미리보기·옛 화면). 표지 칸은 없다(첫 사진).
+  - `PostComment` + `parentId`(맨 위 댓글, Cascade) · `replyToId`(답글의 답글, SetNull) · `deletedAt`(답글이 남아 자리만 둔 것).
+  - `PostPollVote`(postId · userId · optionId unique) — 투표의 표. 보기 id 는 화면이 만든 무작위 값(글자를 고쳐도 표가 따라간다).
+  - `PostCategory` + `writePolicy all|writers|admin`(옛 `writeAdminOnly` 와 맞춘다) · `layout list|card` · `allowAnonymous` · `description`.
+  - `PostDraft`(authorId · postId? unique · categoryId? · anonymous · title · doc · images · videos · rev) — 새 글 작업본(30개)과 고치기 작업본(글당 하나). 고치는 작업본은 `pollLocked`(그 글 투표에 표가 있나)를 함께 준다.
+  - `PostAsset`(url unique · userId · width · height) — 글쓰기로 올린 사진의 주인과 치수. 정리의 근거.
+  - `CommunityWriter`(userId PK · addedById) — 필진.
+- **문서 규칙**(`lib/postDoc.ts` 서버 ↔ 화면 거울): 블록 `paragraph·heading(2·3)·bulletList·orderedList·blockquote(line=인용구·pull=강조 문장)·horizontalRule·figure·gallery·callout(tip·note)·youtube(붙여 넣기만)·video(파일, 10개)·poll(한 글에 하나, 보기 2~10)`,
+  서식 `bold·italic·underline·strike·highlight·link`, 사진 크기 `text·wide·full`, 모음 배치 `row·grid·slide`(12장), 한도(글자 3만 · 사진 100 · 블록 1,500 · JSON 60만 자).
+  등록은 엄격(400 이유 목록), 작업본은 느슨(버리고 저장). 사진 치수·큰 썸네일 여부는 `PostAsset` 이 이긴다(`applyAssetInfo`).
+- **화면**
+  - `components/post-editor/` — `PostEditor`(화면·저장·안내 띠) · `extensions`(figure·gallery·youtube·video·poll·callout·highlight·블록 속성) · `nodes/`(사진·모음·영상·동영상·투표 NodeView, 설명 칸) ·
+    `Toolbar`(PC 위 / 휴대폰 자판 위 — 사진·동영상·투표·인용구·강조 문장) · `formatState`(켜짐 상태 훅) · `PhotoTools`(크기·배치·자르기·설명·대체 글·바꾸기·더하기·풀기·투표 고치기·위아래·삭제) · `CropDialog`(따로 받는 청크) ·
+    `PollDialog`(질문·보기·복수·마감 — 표가 있으면 마감만) · `uploadStore`(사진·동영상 동시 2개·재시도·HEIC/크기 검사) · `imageOps` · `postBackup` · `EditorDialog`.
+  - `lib/postAutosave.ts` 자동 저장 상태 기계 · `lib/postLayout.ts`(정렬 줄·srcset) · `lib/swUpdate.ts holdReload`(쓰는 중 새 배포 새로고침 미루기) · `lib/axios.ts skipAuthLogout`.
+  - `components/post/` — `PostBody`·`PostImage`·`PostGalleryLayout`(넘겨 보기는 한 장씩, 틀은 화면 높이 75% 안)·`PostYoutube`(썸네일 facade)·`PostVideo`·`PostPoll`(정의만/누를 수 있는 것)·`ProfilePopover`(이름 → 홈페이지·이웃). 편집기와 같은 `.post-body` CSS.
+  - `pages/CommunityPage`(목록 — 페이지 번호 `components/shared/Pagination`·`lib/pagination`) · `CommunityPostPage`(글 화면 — 답글 한 단계·지운 자리·?comment=) · `CommunityWritePage`(편집기 lazy) · `components/community/PostListItems`·`TabManager`(탭 정책 + 필진).
+- **빌드**: 편집기 엔진(`@tiptap/core`)이 든 청크는 `tiptap-*.js` 로 이름 붙여 PWA 미리받기에서 뺀다(두 편집기가 나눠 쓰며 `index-*.js` 410KB 로 떨어졌었다). `PostEditor-*.js`·`CropDialog-*.js` 도 뺀다.
+- **확인 데이터**: `backend/scripts/seed-community-demo.ts`(가상 계정 `@community-demo.example.com` · 실제 API 로 올림 · 투표 2·동영상 1·넘겨 보기·답글·지운 자리 · `--clean`) + `scratchpad/community-editor/demo-media.mjs`(ArtLook 렌더 사진) · `demo-video.py`(7초 WebM, Playwright 의 ffmpeg).
+- **2차(2026-11-13 로컬 확인 뒤)**: 표지 고르기 없앰(첫 사진) · 넘겨 보기 한 장씩 · [동영상]은 파일(유튜브는 붙여 넣기만) · 인용구/강조 문장 · 투표 · 답글 한 단계(댓글 @멘션 없앰) · 이름 → 프로필 카드 · 목록 페이지 번호. 규칙은 CLAUDE.md 80 의 '2차'.
+- **알림**: 댓글 → 글쓴이 `POST_COMMENT` · 답글 → 받은 사람 `COMMENT_REPLY`(링크 `?comment=`) · 필진 탭 새 글 → 이웃 `POST_NEW` · **글 좋아요 → 글쓴이 `POST_LIKE`(2026-11-14, 글마다 24시간 한 줄로 합침 — `notifyPostLike`, 글마다 advisory lock `LOCK_NS.postLikeNotes`)**.
+- **검증**: backend `postDoc.test.ts` 35 · `community-editor.test.ts` 54 · frontend `postDoc`·`postAutosave`·`communityEditorScreens` 39·`communityRound2` 13 · e2e `79-community-editor` 8(+ `36`·`38`·`39` 새 화면으로) ·
+  하니스 `scratchpad/community-editor/{smoke,look,look-editor,look2,editor2}.js`(크롬·사파리 엔진, PC·휴대폰 — 사파리 엔진은 이 PC 에 미디어가 없어 동영상 단계만 건너뛴다). 진짜 휴대폰 자판(에뮬레이터·실기기)은 아직.
+
+## ArtStory 홈 공개 — 블라인드 스토리 방식 (2026-11-14, CLAUDE.md 81)
+
+### 왜
+그 전 ArtStory(`/feed`)는 '내가 이웃한 사람 + 나'의 소식만, 로그인해야 보였다. 실서버 9월 말 복제본: 소식 0건 · 이웃 관계 7건 · 하이라이트 0건 —
+이웃이 없으니 볼 게 없고 볼 사람이 없으니 아무도 올리지 않았다. 사용자 결정: 블라인드 스토리처럼 **이웃이 아니어도 모두의 소식을 홈에서**.
+작업·전시가 중심이되 일상도 괜찮다. 보기·올리기 모두 제품 수준으로, 사용자가 보는 화면엔 설명 문구를 두지 않는다.
+
+### 구성
+```
+홈 (HomePage)
+  배너 → StoryRail ─ GET /stories/public?rail=1 (한 사람당 1장, 12장)
+          │  카드(StoryCard 3:5, 사진 contain + 흐린 배경) · PC 화살표 · [소식 올리기] 칸(4장 미만)
+          ├─ 누르면 StoryViewer (lazy) ─ 진행 막대(CSS storyFill) · [이전]/[다음] · 밀기 · 좋아요 · 댓글(StoryComments)
+          │                              · 공유 · 이웃 · [홈페이지] · 더 보기(신고·그만 보기 / 내 것 / 관리자) · 끝 화면
+          └─ 머리 [+](아이콘) → 곧바로 /story/new (StoryComposePage, Layout 밖 — 한 페이지: 색 바탕 글 · [사진] · 사진 위 글 [Aa])
+       → ArtWorks …
+/feed (FeedPage, 비회원 가능 · 가운데 메뉴/하단 탭 [ArtStory]) 탭 [전체 · 이웃 · 내 소식] · 격자 · ?story=&comment= 딥링크 · 하이라이트 · 그만 본 사람
+사진 + 사진 위 글 = StoryPhoto (카드·보기 화면·올리기 화면이 같은 부품 — containBox 안 비율 좌표, 글자 크기는 사진 폭 비례)
+하이라이트 (HighlightViewer) = StoryViewer + 이름·관리 단추
+관리자 [신고 관리] 맨 위 StoryReportsSection (GET /stories/reports · PATCH /:id/hidden · DELETE)
+```
+
+### 규칙이 사는 곳
+- 서버 `backend/src/lib/storyRules.ts`(바탕색 이름 · 신고 사유 · 3명 · 하루 10개 · 줄 12장) ↔ 화면 `frontend/src/lib/story.ts`(거울 + 넘김 시간 · 본 소식 기억 · 줄 순서 · 손동작 · 다음 자리).
+- 쓰던 소식 `frontend/src/lib/storyDraft.ts`(계정별 · 7일 · 올라간 사진 주소 · 사진 위 글).
+- 사진 위 글 `Story.overlays` JSON `[{i,text,x,y,size,style}]` — 서버 `cleanOverlays`(사진을 거르면 번호를 다시 매긴다 · 80자 · 0.05~0.95 · 사진 하나에 하나), 화면 `overlayFontPx`·`containBox`·`clampOverlayPos`.
+- 작성자 홈페이지 주소 `backend/src/lib/authorProfiles.ts` — 커뮤니티와 같이 쓴다(그 전엔 community.ts 안에 있었다).
+- 잠금 `LOCK_NS.storyLikeNotes`(7109) · `storyDaily`(7110).
+
+### 사용자 지적으로 정한 것
+- 동그라미 줄(인스타식 — 이웃·팔로우한 사람의 소식처럼 보인다) → **세로 카드 줄**(블라인드 화면).
+- 휴대폰 올리기가 휑하다 → 빈 편집 화면을 없애고 **고르는 창 → 화면 가득 편집**.
+- PC 아래 스크롤바가 '끝'처럼 보인다 → **화살표로 넘기기** + 보기 창 양옆에 앞뒤 소식.
+- PC 에도 댓글·좋아요·공유 → 댓글은 보기 창 오른쪽 칸.
+- '누구나 올리고 모두가 봐요' 등 설명 문구 → 전부 뺐다(소스 가드).
+- (2차, 같은 날) 테두리 '올리기' 단추가 홈 칸들과 결이 안 맞다 → **테두리 없는 [+]** · 사진/글을 먼저 고르는 창 없이 **[+] → 곧바로 한 페이지**(인스타처럼) ·
+  **사진 위 글**(꾸밈·크기·끌어 옮기기) · ArtStory 는 누구나 보니 **가운데 메뉴**로(마이페이지 메뉴에서 뺐다) ·
+  인기글 옆 반쪽이 비어 있다(진행중인 전시 0건) → 홈 아래 칸을 **한 격자에 흘려 넣는다**(인기글 옆이 마감임박 공모 · 빈 칸은 자리를 안 차지 · 혼자 남은 칸은 두 칸 폭).
+
+### 검증
+- backend `story-public.test.ts`(22) · frontend `story.test.ts`(21) · `navLinks`·`myPageMenu`·`softKeyboard` · e2e `80-artstory-home.spec.ts`(6 — B 가 한 페이지 → 사진 위 글 → 끌기 → 카드·보기 화면 같은 자리) · `30`·`37`·`50`·`69` D · 홈·메뉴·팝업 116개.
+- 하니스 `scratchpad/artstory/look.js` — 크롬·사파리 엔진 × 휴대폰·PC 42·38 확인(+ 가운데 메뉴/하단 탭 · 홈 아래 칸 · 한 페이지 올리기 · 사진 위 글 끌기 · 카드·보기 화면의 글).
+  커뮤니티 하니스(`look2`·`editor2`)도 같은 날 크롬·사파리 × PC·휴대폰 122 확인.
+- **안드로이드 앱(에뮬레이터)** — ArtStory·커뮤니티를 손가락 탭·밀기·자판·안드로이드 사진/동영상 선택 창·공유 창·뒤로가기·푸시(앞: 배너 / 뒤: 알림 서랍 → 그 댓글)로 끝까지 눌러 봤다(CLAUDE.md 81).
+  거기서 고친 것: 자판이 떠 있으면 하단 탭바 감추기(`hooks/useSoftKeyboard.ts`) · 꾸밈·크기·바탕색 단추가 글 칸 포커스를 안 뺏기.
+- 확인용 데이터 `backend/scripts/seed-story-demo.ts`(가상 계정만 — 사진 위 글 넷 포함).
+- 아직: 실기기(아이폰 사파리 · 실제 안드로이드 폰).
+
+
+## 휴대폰·앱 홈 — 배너 아래를 탭으로 (2026-11-14, CLAUDE.md '홈 레이아웃')
+
+휴대폰 홈은 칸이 세로로 이어져 3,225px(화면 3.8장)이었다. 768px 미만(휴대폰·앱)에서만 배너 아래 칸들을 탭 한 줄로 바꿔 한 번에 한 칸만 보인다(1,300~1,400px). PC·태블릿은 그대로.
+
+- **흐름**: `pages/HomePage.tsx` 가 `useMediaQuery(HOME_TABS_MEDIA)` 로 하나만 그린다 — 휴대폰이면 `components/home/HomeTabs.tsx`, 아니면 지금 칸들(`home-widgets`).
+  두 벌을 CSS 로 감추면 ArtWorks 가 시드 둘로 두 번 받아 온다.
+- **탭**(`lib/homeTabs.ts`): ArtWorks · ArtStory · 인기글 · 마감임박 공모. 진행중인 전시·주목할 갤러리는 '일단' 뺐다(사용자 결정). 처음은 ArtWorks.
+  `visibleHomeTabs(empty)` — 늘 있는 칸은 비었다고 알려 오기 전까지, 빌 수 있는 칸(마감임박 공모)은 내용이 있다고 알려 온 뒤에만 탭이 생긴다.
+  ArtStory 칸은 `StoryRail rows={2}` — 카드 두 줄(CSS grid `grid-flow-col grid-rows-2`, 위→아래→다음 칸). 칸 폭은 화면 폭의 2.8칸(118~140px, 셋째 칸이 늘 조금 잘려 보이게), 비율 2:3. PC 는 3:5 한 줄(기본 `rows=1`).
+  마우스로 볼 때(좁은 PC 창)는 두 줄에도 양옆 화살표(`pointer-fine:grid`, 두 칸씩) — 손가락 화면엔 없다.
+  `resolveHomeTab(state.homeTab, tabs)` — 되살린 탭이 줄에 있으면 그 탭, 아니면 첫 탭.
+- **칸**: 네 칸을 모두 띄워 두고 `hidden` 으로 고른 칸만 보인다(다시 띄우면 작품이 바뀌고 소식 줄이 보던 자리를 잃는다). 각 칸 컴포넌트에 `bare`(제목 줄 대신 `HomeTabHead` — 오른쪽 단추만,
+  링크는 `HomeTabAll` [전체 보기])와 `onEmpty`(답이 오면 useLayoutEffect 로 비었는지 알림 — ArtWorks·StoryRail·ClosingSoonExhibitions)를 더했다. PC 경로는 두 값을 안 넘겨 예전 그대로다.
+- **고른 탭 기억**: 주소는 `/` 그대로, `navigate(같은 주소, { replace, state: { …, homeTab } })`. 뒤로 오면 그 기록의 state 로 되살아나고, 새로 열면 첫 탭.
+- **탭 줄**: `PageTabBar`(sticky, 상단바 아래 64px). 고른 탭이 줄 밖에 걸치면 가로로 밀어 보인다. 내린 채로 탭을 바꾸면 칸을 바꾼 뒤(useLayoutEffect) 줄이 붙는 자리로
+  스크롤 — 먼저 스크롤하면 크롬 scroll anchoring 이 5~6px 옮겼다. 칸 묶음 최소 높이 = 100svh − 상단바 − 탭 줄 − 하단 탭바(짧은 칸에서도 화면이 끌려 올라가지 않게).
+- 회귀: `frontend/src/__tests__/homeTabs.test.ts`(18) · e2e `81-home-tabs.spec.ts`(6 — 순서·한 칸만·[전체 보기]·소식 두 줄·sticky·뒤로·빈 칸·PC 그대로) · 26·31·36·80 은 칸을 `home-panel-<id>`·탭으로 찾게 고쳤다.
+
+## ArtStory [전체 보기] — 무작위 순서 · 최근 30일 (2026-11-14, CLAUDE.md 81)
+
+사용자 결정: "새로고침하면 안 본 스토리 걍 랜덤으로, 대신 너무 오래된 건 안 뜨게 · 이미 본 건 새로고침 시 후순위로".
+
+- 서버 `GET /api/stories/public` — 공개 목록(홈 줄·전체)은 최근 `STORY_PUBLIC_DAYS`(30)일 안만. `?seed=N&seen=1,2&offset=K` 면 `lib/storyOrder.ts shuffledStoryIds`:
+  하루 안 된 내 소식(최신순) → 안 본 남의 소식(`storyRank(seed, id)` 로 정렬 — 하나가 빠져도 나머지 순서 그대로) → 본 소식·하루 지난 내 소식(최신순). 후보는 최근 것부터 `STORY_SHUFFLE_MAX`(1000).
+  `nextCursor` = 다음 offset. 시드 없으면 예전처럼 최신순 + (시각, id) 커서.
+- 화면 `FeedPage` — [전체] 탭은 `{ seed, seen }` 을 열 때 한 번(`readSeenStories`) 찍어 쿼리 키(`['stories','public',seed]`)로 쓴다. 기록(location.key)마다 기억해 뒤로 오면 같은 순서,
+  [새로고침]·새로 들어오기·페이지 새로고침이면 새 순서(그사이 본 소식은 뒤로). 쪽을 이을 때 id 로 겹침을 거른다.
+- 회귀: `backend/src/__tests__/story-public.test.ts`(30일 · 무작위 · offset · 내 소식 맨 앞 · 빠져도 순서 그대로) · `src/lib/__tests__/storyOrder.test.ts` · 프론트 `story.test.ts` · e2e `81` G·H.
+
+## 작가·갤러리 홈페이지 — '내 사이트' 모드 · 버튼 한 벌 · [소식] 탭 · 작품 페이지 · 문의 (2026-11-14, CLAUDE.md 82)
+
+### 왜
+작가들은 공개 페이지(`/@핸들`)를 인스타·명함에 '내 홈페이지'로 걸어 둔다. 그런데 화면 위·아래에 아트링크 상단바·하단 탭바·회사 정보가 그대로 있어
+아트링크 안의 프로필로 읽혔고, [문의하기]·[이웃 추가]·[공유] 단추가 모양이 제각각이라 "튄다·일관성 없다"(사용자 지적).
+계획 `scratchpad/homepage-product/PLAN.md` · 목업 캔버스(비공개). 사용자 결정: 방문 통계는 뺀다 · 이미 올린 작가들이 있으니 **지금 [꾸미기]와 엮는다** · 갤러리 PC 화면도 같이 ·
+§9 확인 사항은 계획서 기본안대로(회원에게도 사이트 모드 · 비회원 문의는 켠 사람만 · 전시 중 띠 기본 켜짐 · 작은 Made with ArtLink · 작가노트 탭 이름 유지 · 빈 소식 탭은 주인에게도 없음).
+
+### 구성
+```
+Layout ─ isHomepagePath(path)? ─ 예: Navbar·하단 탭바·마이페이지 사이드바·회사 정보 푸터를 그리지 않는다
+                                └ 아니오: 예전 그대로
+PortfolioPage (/@핸들 · /portfolio/:id)
+  SiteHeader(이름 · ArtLink 글자 · 주인 [수정]) — 탭은 머리에 두지 않는다(2026-11-15)
+  HomepageView
+    표지: [이름·소개·인스타 · NowStrip] | 대표작(contain)   ← COVER_GRID(대표작 모양)
+    TabBar(PC·휴대폰 하나, 내리면 머리 밑에 붙는다 · 누르면 그 탭 내용으로 내려간다 · 오른쪽에 TabActions([문의하기] 강조 글자 · 이웃 추가 · 공유 · QR, 휴대폰은 [⋯])) · [작품](시리즈 이름 줄 → 정사각 칸 격자) [소식](NewsTab) [작가노트] [약력] [포트폴리오] [방명록]
+  SiteFooter(인스타 · [문의하기] · Made with ArtLink · 방침·약관)
+  ?work=<id> → WorkSheet(작품 페이지) ─ [크게 보기] → ArtworkViewer(검은 작품 창)   ※ 벽 그림 iframe 은 둘이 나눠 쓴다
+  [문의하기]·[작품 문의하기] → InquirySheet ─ 회원: POST /chats/direct + 메시지(작품 사진 첨부)
+                                            └ 비회원: 받기 켜짐이면 POST /homepage-inquiries, 아니면 로그인 안내
+GalleryDetailPage (/@핸들 · /galleries/:id) — 같은 SiteHeader/SiteFooter/ActionRow/InquirySheet/NewsTab, 테마는 SITE_THEME
+  표지: [지역·리뷰 수 · 이름 · 한 줄 소개 · 방문 정보(관람 시간·주소 [지도]·전화·메일·인스타) · 지금 전시] | 사진(4:3 contain) — 버튼 묶음은 탭 줄 오른쪽
+  탭: 소개 · 모집 중 · 작가 · 지난 전시 · 소식 · 리뷰
+마이페이지 [받은 문의](숨은 탭 received-inquiries) ← 알림 HOMEPAGE_INQUIRY
+```
+
+### 서버
+- `lib/homepageNews.ts` — `personStoryScope(viewer, targetId)` 하나를 `/stories/user/:id` 와 홈페이지 응답의 `storyCount`·`highlightCount` 가 같이 쓴다(탭이 있는데 비어 있거나, 없는데 소식이 있는 일이 없게).
+- `lib/nowShowing.ts` — `artistNowShowing`(선정 · 승인 · 공모만 진행 아님 · 끝나지 않음 · KST 오늘이 전시 기간 안이면 ongoing, 30일 안 시작이면 upcoming · 갤러리가 숨긴 작가면 뺀다) ·
+  `galleryNowShow`(승인된 Show 중 진행 중 → 없으면 60일 안 시작) · `showNowEnabled(designConfig)`.
+- `GET /portfolio/:userId` 가 `storyCount·highlightCount·nowShowing·guestInquiry` 를 더 싣는다(`nowShowing` 은 작가가 끈 경우 공개 응답에서 뺀다, 본인 `GET /portfolio` 엔 늘).
+  `PUT /portfolio` 는 `guestInquiry` 를 보냈을 때만 바꾼다. `GET /galleries/:id` 에 `storyCount·highlightCount·nowShow`, `PATCH /galleries/:id/detail` 에 `openHours`(80자)·`guestInquiry`.
+- `lib/homepageInquiry.ts` + `routes/homepageInquiry.ts`(`/api/homepage-inquiries`) — 비회원 문의. 한도 셋(IP 1시간 5 · 받는 사람 하루 30 · 전역), 숨은 칸, 링크 3개 상한, 연락처 모양,
+  동의 필수, 1년 보관, 탈퇴 시 삭제. 알림·푸시에는 이름·작품 이름까지만.
+- 마이그레이션 `20261114160000_homepage_product` — `Gallery.openHours`·`Gallery.guestInquiry`·`Portfolio.guestInquiry`·`HomepageInquiry`.
+
+### 화면
+- 판정: `lib/siteMode.ts`(어디가 홈페이지 · 머리 높이) · `lib/homepageSite.ts`(표지 비율 · 띠 글자·링크 · 지도/전화 · 문의 초안 · 서버와 같은 글자 수 · 주인 안내) ·
+  `lib/homepageTabs.ts`(`news` · `homepageTabsFor`) · `lib/galleryTabs.ts`(`news`, '작가') · `lib/homepageTheme.ts`(`showNow` 웹 전용 키 · `themeVarStyle`).
+- 부품: `components/homepage/` — `Actions`(버튼 한 벌) · `SiteHeader` · `SiteFooter` · `NewsTab` · `WorkSheet` · `InquirySheet` · `NowStrip` · `ReceivedInquiriesSection`.
+- 편집: [꾸미기] = 주소 · 첫 화면(대표작 · 프로필 사진 — [소개]에서 옮김 · 진행 중인 전시 띠) · 색과 글꼴 · 작품(가격) · 문의(비회원 문의 받기). 전부 아래 [저장] 한 번에.
+- `useWallView` 의 iframe 을 한 탭에 하나로(`acquireFrame`/`releaseFrame`) — 작품 페이지와 [크게 보기]가 같은 엔진을 쓴다.
+- 개인정보처리방침 1·2·3·4항(홈페이지 비회원 문의 — 항목·목적·1년·작가/갤러리에 제공), 최종 수정일 2026-11-14.
+
+### 검증
+- backend `homepage-product.test.ts`(19) · frontend `homepageSite.test.ts`·`homepageChrome.test.ts`(소스 가드 — 테마 색만, 버튼 한 벌, 레이아웃) · `galleryTabs`·`guestIntro`·`retiredApis`·`scheduleCalendar`·`wallView` 갱신.
+- e2e `82-homepage-product.spec.ts`(5 — 사이트 모드 · 작품 페이지 push/뒤로 · 회원 문의 → 대화 · 비회원 문의 받기 꺼짐/켜짐 → 받은 문의 · 갤러리 방문 정보·작가 탭) ·
+  `24`·`29`·`32`·`53`·`57`·`74`·`77` 을 새 화면으로.
+- 하니스 `scratchpad/homepage-product/shot.js`(PC·휴대폰·어두운 테마) · `flows.js`(크롬·WebKit 비회원 흐름) · `flows2.js`(회원·주인 — 가상 계정만, 만든 것을 지운다).
+- 실행 결과(2026-11-14): 백엔드 1,848 · 프론트 1,662 통과 · 빌드 통과 · 홈페이지에 닿는 E2E 33파일 284개 중 273 통과 → 실패 8개를 고친 뒤 그 10파일 81개 통과.
+  그 8개 가운데 결함은 하나 — 홈페이지에서 `<main>` 이 두 겹(Layout 의 main 안에 페이지 main). 사이트 모드에선 Layout 감싸개를 `div` 로 바꿨다.
+  나머지는 새 화면에 맞춘 스펙(`24` [정보 수정] · `54` 탭 목록이 둘이라 `:visible`)과 실행 순서 의존(`53` 핸들 2건 · `82` C)이다.
+
+### 2026-11-15 로컬 확인 뒤 고친 것 (사용자 지적 셋)
+- **탭이 오른쪽 위 머리에 있어 잘 안 보인다** → 머리에서 탭을 뺐다. 탭 줄은 PC·휴대폰 모두 표지 아래 하나(`HomepageView` TabBar · 갤러리 `PageTabBar site`), 내리면 머리 밑에 붙는다.
+- **탭을 눌러도 그 내용으로 화면이 안 간다** → `liftToHomepageTabs` 가 탭 줄을 지나 내려가 있을 때만 끌어올렸다. 지금은 늘 탭 줄을 머리 밑에 붙인다 —
+  새 내용을 그린 뒤(useLayoutEffect) · 지금 탭을 또 눌러도 · 짧은 탭도(내용 칸 최소 높이 `HOMEPAGE_PANEL_MIN_H`). 작가는 `active` 가, 갤러리는 `?tab=` 값이 바뀐 뒤.
+- **소식이 없어 [소식] 탭을 볼 수 없다** → 확인용 `backend/scripts/seed-homepage-news-demo.ts`(가상 작가 윤서진·가상 갤러리에 소식 10 · 하이라이트 2, 먼저 `seed-intro-sample.ts`).
+- **문의하기·이웃 추가·공유·QR 은 탭 줄 오른쪽으로 — 내리면서도 보이게 · 문의하기만 검은 상자로 '띡' 있는 게 어색하다** → `TabActions`
+  (`components/homepage/Actions.tsx`): 탭 줄과 함께 머리 밑에 붙는다. PC 는 한 줄로 다, 1024px 미만은 [문의하기] + [⋯](이웃 추가·공유·QR — 갤러리는 찜도).
+  [문의하기]는 다른 버튼과 같은 '아이콘 + 글자' 모양에 **테마 강조색 · 굵은 글자**(`INQUIRY_ACTION`). 채움 `PrimaryAction` 은 혼자 서는 자리(문의 창 [보내기] · 작품 페이지)만.
+  휴대폰에서 탭이 넘치면 탭 줄 끝을 흐리게(mask) 한다. 표지에는 버튼 줄이 없다(탭이 하나도 없을 때만 표지에).
+- 같은 날 [작가] 탭 휴대폰 B안(초성 한 줄 + 이름 창, `components/artists/InitialSheet.tsx`)과 `GET /explore/artists` 의 `cover`(홈페이지 대표작)를 더했다.
+- 실측(크롬·사파리 엔진): 홈페이지 탭 — 작가·갤러리 × 휴대폰·PC 에서 [소식]·짧은 탭·같은 탭·첫 탭 모두 탭 줄이 56/72px 에 붙는다 ·
+  작가 탭 — 5화면에서 첫 작품 196~221px(예전 968px) · 초성 줄 64px 고정 · 이름 창 열기·바꾸기·Esc·포커스 복귀·홈페이지 이동.
+
+## 모집공고 찾기 · 모집공고 상세 · 갤러리 찾기 개편 (2026-11-15, CLAUDE.md 83)
+
+### 왜
+광고로 온 비회원 대부분이 공모 상세 한 화면만 보고 나간다(규칙 64 통계). 고치기 전 실측(복제본·비회원): 모집공고 휴대폰 8,121px(카드 580px — 한 화면에 포스터 하나) ·
+PC 첫 화면에 제목·마감이 없음 · 지역 15곳 중 공고가 있는 곳 3곳 · 상세 PC 제목 955px(첫 화면 밖) · 긴 공고의 첨부파일 7,890px 아래 · 공유·다음 갈 곳 없음 ·
+갤러리 카드는 11곳 전부 '아직 리뷰 없음'에 전화번호, 모집·전시 신호 없음. 목업(비공개 캔버스) → 사용자 결정(상세 휴대폰 A안 · PC 에도 마감 묶음 · 건수 없음 · 갤러리는 모집 중 먼저 + 조회수 순).
+
+### 규칙이 사는 곳
+- 화면 판단 `frontend/src/lib/listings.ts` — `deadlineView` · `groupByDeadline` · `scheduleSteps` · `presentRegions`/`presentTypes` · `addressArea` · `shortDate`/`daysUntil`(KST).
+- 모집 중 판정 `backend/src/lib/openCalls.ts` — `openCallWhere`(모집공고 [모집 중]) · `galleryOpenCalls`(갤러리 카드, 쿼리 하나).
+- 지금 전시 `backend/src/lib/nowShowing.ts` — `galleryNowShows`(여러 갤러리 한 번에) · `galleryNowShow` 는 이걸 부른다(같은 규칙).
+- 공용 부품 `frontend/src/components/listing/ListControls.tsx` — `ListHeader`(제목 + 검색, 휴대폰은 돋보기) · `ChoiceButton`/`ChoiceGroup`(글자 단추, 고르면 밑줄) · `HeartButton`.
+- `SkeletonImage thumb` — 목록 칸은 썸네일(t240/t800), 없으면 원본(`Thumb` 와 같은 규칙).
+
+### 화면
+- 모집공고 찾기: 탭 [모집 중 | 마감] + [마감 임박순 | 최신 등록순] · 있는 지역·유형만 · 마감 임박순이면 '마감 임박 → N월 마감' 묶음.
+  PC 격자는 묶음마다 줄을 끊지 않고 카드 위 가는 선에 묶음 이름을 얹는다(줄 끝이 비지 않게). 휴대폰은 작은 포스터 + 글 줄 목록.
+- 모집공고 상세: PC 두 칸(포스터 | 내용), 휴대폰 A안(작은 포스터 옆 마감·제목). 일정 띠(접수 시작 → 접수 마감 → 출품 자료 제출 → 전시, 다음 단계만 진하게) ·
+  모집 내용 한 줄 표 · 첨부파일을 소개 글 위로 · 주최 갤러리 카드 · 다른 모집공고 3건 · [지원하기]는 따라오는 줄 하나.
+- 갤러리 찾기: 카드에 모집 중(마감 가까운 공모 · 외 N · D-n)·전시 중/예정 · 동네까지만 · 리뷰는 있을 때만 · 모집 중 먼저 → 조회수 순(기준은 안 적는다).
+- 갤러리 홈페이지 [모집 중] 탭도 같은 판정(`isOpenCall`) — 일찍 닫은 공모는 [지난 전시·아트페어]로, 시작 전 공모는 시작일까지 안 나온다(같은 날 사용자 지시).
+
+### 검증
+backend `gallery-list-summary.test.ts`(8) · frontend `listings.test.ts`(23) · 전체 backend 1861 · frontend 1692 · 빌드 · E2E 25개 파일 136개(`20`·`02` 를 새 화면에 맞춤) ·
+하니스 `scratchpad/opencall-mock/states.cjs`(작가·지원한 작가·갤러리 주인 × 휴대폰·PC × 크롬·WebKit, 복제본·가상 계정 전용) · 비회원 화면 크롬·WebKit 스크린샷.
+
+## 등록 화면 셋(공모 · 갤러리 · 전시) · 전시 찾기/상세 개편 (2026-11-15, CLAUDE.md 84)
+
+### 왜
+공개 화면(모집공고 찾기·상세, 갤러리 홈페이지)이 바뀌었는데 그 내용을 **만드는 화면**은 옛 모양이었다(복제본·가상 갤러리 계정 실측):
+공모 등록 휴대폰 3,344px · [등록 요청]이 맨 끝(3,009px) · 순서가 상세와 다르고 이름도 달랐다(폼 '공모 시작일' ↔ 상세 '접수 시작') · 어떻게 보일지 볼 방법이 없었다 ·
+갤러리 등록은 '실제 상세 페이지 모습'이라며 **바뀌기 전** 상세를 흉내 냈고 비공개 대표자명이 공개 칸 사이에 섞여 있었다 · 약관 상자에 체크하기 전엔 [등록 요청]이 이유 없이 회색 ·
+주소가 자유 글이라 카드의 '서울 종로구'가 안 나오는 갤러리가 있었다. 전시 찾기·상세도 옛 모양이었다(지역 15곳 늘어놓기 · 긴 날짜 줄 · 글로우 그림자 포스터).
+
+### 틀(세 화면 공통)
+```
+RegisterShell(max-w-6xl)
+ ├ 뒤로가기 · 제목
+ ├ [DraftNotice — 작성하던 것이 있으면]
+ ├ grid(xl: 입력 1fr | 미리보기 300px)
+ │   ├ *FormBody — 번호 구역(FormSection) · 칸(FormField) · data-field="<키>"
+ │   └ PreviewAside(xl 이상) — 상세 화면 하나
+ ├ StickySubmitBar — '남은 필수 N · 칸 이름'(→ jumpToField) · [임시저장] · [미리보기](xl 미만) · [등록 요청]
+ ├ PreviewSheet(xl 미만, [미리보기]) — 같은 상세 하나, 화면 가득
+ └ SubmitSheet(확인 창) — 요약 줄 · (약관 동의 + [약관 보기]) · [고치기] · [등록 요청]
+```
+- 남은 필수 판정은 화면마다 함수 하나(`exhibitionMissing`·`galleryMissing`·`showMissing`) — 하단 줄과 [등록 요청]이 같은 목록을 본다.
+- 미리보기는 **상세 화면 하나**(`exhibitionPreview`·`galleryPreview`·`showPreview` → `{ label, node }`)이고 공개 화면의 **부품 그대로**:
+  공고 상세 = `DeadlineText`·`ScheduleStrip`·`Fact` · 갤러리 홈페이지 = `GalleryVisitInfo` · 전시 상세 = `ShowPeriodLine`·`ScheduleStrip`·`Fact`.
+  찾기(목록) 카드 미리보기는 2026-11-15 로컬 확인 뒤 사용자 결정으로 뺐다(목록 카드의 `preview` 모드도 지웠다).
+
+### 파일
+- 공통 `components/form/` — `StickySubmitBar` · `SubmitSheet` · `PreviewPane`(`PreviewAside`·`PreviewSheet`) · `AddressField` · `lib/formJump.ts` · `lib/postcode.ts`
+- 공모 `components/exhibition-form/` — `ExhibitionFormBody`(갤러리 공모·아트링크 주최 공용) · `exhibitionForm.tsx`(남은 칸·날짜 순서·미리보기)
+- 갤러리 `components/gallery-form/` — `GalleryFormBody` · `galleryForm.tsx`(남은 칸·주소 한 줄·이메일·미리보기)
+- 전시 `components/show-form/` — `ShowFormBody`(참여 작가 찾기 포함) · `showForm.tsx`(남은 칸·관람 시간 순서·미리보기)
+- 전시 목록·상세 `components/listing/ShowCards.tsx` · `pages/ShowsPage.tsx` · `pages/ShowDetailPage.tsx` · 상세 공용 `components/exhibition/DetailBits.tsx`(`DetailPoster` 추가) · `lib/detailStyles.ts`
+- 판단 `lib/listings.ts` — `showView` · `groupShows` · `sortEnded` · `showSteps` · `openingHoursText` · `artistsLine` · `regionFromAddress` · `addressCheck`
+- 달력 `lib/scheduleCalendar.ts` — `exhibitionSchedule`(칸 이름 '접수') · `showSchedule` · `showScheduleFloor` / `SchedulePicker` 에 `openFrom`·실제 오늘 표시
+
+### 주소 검색
+카카오 우편번호(`t1.kakaocdn.net/.../postcode.v2.js`, 무료·키 없음)를 **누를 때** 받아 우리 창(`role="dialog"`) 안에 `embed` 한다 — 팝업(`.open`)은 안드로이드 앱 WebView·인앱 브라우저에서 막힌다.
+고르면 도로명 주소(지번을 골랐으면 지번) + `regionFromAddress` 로 지역 칸, 커서는 상세 주소로. 스크립트를 못 받으면 토스트 + 직접 입력(칸은 늘 직접 입력도 된다).
+저장은 지금처럼 문자열 하나(`주소 + ' ' + 상세 주소`) — 서버·기존 갤러리를 바꾸지 않는다.
+
+### 이미 등록된 갤러리
+`addressCheck(address, region)` — 'unknown'(시·도·구를 못 읽음) / 'mismatch'(주소의 지역 ≠ 지역 칸) / 'ok'(광주·세종·강원처럼 지역 칸에 없는 곳은 읽히면 ok).
+주인에게만 갤러리 홈페이지 방문 정보의 주소 아래 '주소 다시 넣기' → [정보 수정](같은 `AddressField`). 실서버 복제본: 실제 10곳 중 2곳.
+
+### 서버
+- 날짜 순서 오류 문구만 '공모 …' → '접수 …'(`routes/exhibition.ts`). 그 밖의 서버 변경 없음(전시 등록·갤러리 등록 API 그대로).
+
+### 검증
+frontend `registrationForms.test.ts`(21) · `listings.test.ts`(addressCheck 보완) · 소스 가드 이동(attachments·capacityMask·richText·scheduleCalendar) · `utils`·`submissionFlow`('접수') ·
+e2e `83-registration-and-shows.spec.ts`(5) + 07·15·24·25·51·60·67·70·77 · 하니스 `opencall/reg-flow.cjs`(주소 검색까지 눌러 본다 — 공개 예시 주소 '판교역로 166')·`show-shot.cjs` — 크롬·사파리 엔진.

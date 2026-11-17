@@ -35,6 +35,17 @@ export const THUMB_LIST: ThumbSpec = { dir: 't240', size: 240, quality: 72 };
 export const THUMB_GRID: ThumbSpec = { dir: 't800', size: 800, quality: 80 };
 /** 업로드 때 함께 만들 크기 전부 */
 export const THUMB_SPECS: ThumbSpec[] = [THUMB_LIST, THUMB_GRID];
+/**
+ * t1280 — **커뮤니티 글 사진 전용**(2026-11-13, `/api/upload/post-image`). 글 안의 사진은 본문 폭(680px)·넓게(1040px)로 그려
+ * 레티나 휴대폰에서 t800 은 모자라고 원본(2000px)은 너무 무겁다. 모든 업로드가 한 장 더 굽지 않도록 THUMB_SPECS 에는 넣지 않는다.
+ */
+export const THUMB_LARGE: ThumbSpec = { dir: 't1280', size: 1280, quality: 82 };
+/** 글 사진 업로드가 만드는 크기 */
+export const POST_IMAGE_SPECS: ThumbSpec[] = [THUMB_LIST, THUMB_GRID, THUMB_LARGE];
+/**
+ * 파일을 지울 때 함께 지울 썸네일 폴더 전부 — ⚠️ 새 크기를 만들면 여기에도 넣을 것(빠지면 원본을 지워도 그 크기만 고아로 남는다).
+ */
+export const ALL_THUMB_DIRS: string[] = [THUMB_LIST.dir, THUMB_GRID.dir, THUMB_LARGE.dir];
 
 // 기존 호출부 호환 (t240 을 가리킨다)
 export const THUMB_SIZE = THUMB_LIST.size;

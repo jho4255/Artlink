@@ -1,0 +1,31 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-15T04:40:00Z" },
+  "title": "모집공고·갤러리 찾기 개선안",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 2180, "title": "모집공고 찾기 — PC", "expand": "fill" },
+    "ListMobile.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 1840, "title": "모집공고 찾기 — 휴대폰" },
+    "DetailPC.dc.html": { "x": 0, "y": 2720, "w": 1440, "h": 2360, "title": "모집공고 상세 — PC", "expand": "fill" },
+    "DetailMobileA.dc.html": { "x": 1520, "y": 2720, "w": 390, "h": 2300, "title": "모집공고 상세 — 휴대폰 A안(포스터 작게)" },
+    "DetailMobileB.dc.html": { "x": 1990, "y": 2720, "w": 390, "h": 1180, "title": "모집공고 상세 — 휴대폰 B안(포스터 크게, 첫 화면만)" },
+    "GalleriesPC.dc.html": { "x": 0, "y": 5620, "w": 1440, "h": 1500, "title": "갤러리 찾기 — PC", "expand": "fill" },
+    "GalleriesMobile.dc.html": { "x": 1520, "y": 5620, "w": 390, "h": 1480, "title": "갤러리 찾기 — 휴대폰" }
+  },
+  "order": [
+    "Main.dc.html",
+    "ListMobile.dc.html",
+    "DetailPC.dc.html",
+    "DetailMobileA.dc.html",
+    "DetailMobileB.dc.html",
+    "GalleriesPC.dc.html",
+    "GalleriesMobile.dc.html"
+  ],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "1. 모집공고 찾기", "kind": "title1", "maxW": 1910 },
+    "t2": { "x": 0, "y": 2420, "text": "2. 모집공고 상세", "kind": "title1", "maxW": 2380 },
+    "t3": { "x": 0, "y": 5320, "text": "3. 갤러리 찾기", "kind": "title1", "maxW": 1910 }
+  },
+  "designSystems": []
+}

@@ -6,6 +6,8 @@ import Layout from '@/components/layout/Layout';
 import HomePage from '@/pages/HomePage';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import ErrorBoundary from '@/components/shared/ErrorBoundary';
+// 홈페이지('내 사이트' 모드)의 머리 — HandleRoute 가 로딩·없는 주소에서도 그린다(작아서 바로 싣는다)
+import SiteHeader from '@/components/homepage/SiteHeader';
 import { useVisitBeacon } from '@/lib/visitBeacon';
 import { useGuestActivity } from '@/lib/guestActivity';
 import { useNativeBridge } from '@/lib/native';
@@ -55,6 +57,7 @@ const CommunityPage = lazyWithReload(() => import('@/pages/CommunityPage'));
 const CommunityWritePage = lazyWithReload(() => import('@/pages/CommunityWritePage'));
 const CommunityPostPage = lazyWithReload(() => import('@/pages/CommunityPostPage'));
 const FeedPage = lazyWithReload(() => import('@/pages/FeedPage'));
+const StoryComposePage = lazyWithReload(() => import('@/pages/StoryComposePage'));
 const GalleryRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.GalleryRegisterPage })));
 const ExhibitionRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ExhibitionRegisterPage })));
 const ShowRegisterPage = lazyWithReload(() => import('@/pages/MyPage').then(m => ({ default: m.ShowRegisterPage })));
@@ -80,8 +83,9 @@ function HandleRoute() {
     staleTime: 5 * 60 * 1000,
   });
   if (!handle) return <NotFoundPage />;
-  if (isLoading) return <div className="mx-auto max-w-7xl px-6 py-10 md:px-12"><div className="h-64 animate-pulse bg-gray-100" /></div>;
-  if (isError || !data) return <NotFoundPage />;
+  // `/@…` 는 홈페이지 주소라 상단바가 없다('내 사이트' 모드, lib/siteMode.ts) — 주인을 알아내는 동안·못 찾았을 때도 머리를 같은 높이로
+  if (isLoading) return <div className="min-h-screen bg-white"><SiteHeader /><div className="mx-auto max-w-7xl px-6 py-10 md:px-12"><div className="h-64 animate-pulse bg-gray-100" /></div></div>;
+  if (isError || !data) return <><SiteHeader /><NotFoundPage /></>;
   return data.kind === 'gallery' ? <GalleryDetailPage galleryId={data.id} /> : <PortfolioPage artistId={data.id} />;
 }
 const AuthCallbackPage = lazyWithReload(() => import('@/pages/AuthCallbackPage'));
@@ -167,14 +171,44 @@ export default function App() {
         {/* 공개 FAQ 조회 가능 — 1:1 문의 탭은 SupportPage 내부에서 로그인 게이팅 */}
         {/* 커뮤니티 — 읽기는 공개, 글쓰기/댓글은 페이지 내부에서 로그인 게이팅 */}
         <Route path="/community" element={<CommunityPage />} />
-        <Route path="/community/write" element={<ProtectedRoute><CommunityWritePage /></ProtectedRoute>} />
         <Route path="/community/:id" element={<CommunityPostPage />} />
-        <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
+        {/* ArtStory(2026-11-14) — 전체공개 소식은 비회원도 본다. 이웃·내 소식 탭은 화면이 로그인일 때만 보인다 */}
+        <Route path="/feed" element={<FeedPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
+      {/* 커뮤니티 글쓰기 (2026-11-13) — **Layout 밖** 전용 화면. 상단바·하단 탭바·팝업이 없어야 휴대폰에서 자판 위 도구 막대와 글 쓸 자리가 남는다.
+          ⚠️ Layout 안으로 되돌리지 말 것(하단 탭바 fixed z-40 이 도구 막대와 싸우고, 소개·홈페이지 팝업이 글 위에 뜬다). */}
+      <Route path="/community/write" element={
+        <ProtectedRoute>
+          <ErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <CommunityWritePage />
+            </Suspense>
+          </ErrorBoundary>
+        </ProtectedRoute>
+      } />
+      <Route path="/community/:id/edit" element={
+        <ProtectedRoute>
+          <ErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <CommunityWritePage />
+            </Suspense>
+          </ErrorBoundary>
+        </ProtectedRoute>
+      } />
+      {/* 소식 올리기(ArtStory, 2026-11-14) — Layout 밖 전용 화면(커뮤니티 글쓰기와 같은 이유: 자판 위 자리·팝업 없음) */}
+      <Route path="/story/new" element={
+        <ProtectedRoute>
+          <ErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <StoryComposePage />
+            </Suspense>
+          </ErrorBoundary>
+        </ProtectedRoute>
+      } />
       {/* 인쇄 전용 (레이아웃 없음) */}
       <Route path="/exhibitions/:id/operation/print/:userId/:doc" element={
         <ProtectedRoute>

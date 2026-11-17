@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>홈 스토리 카드 — 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111827">
+  <header style="height: 56px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px; border-bottom: 1px solid #e5e7eb">
+    <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.02em"><span style="color: #111827">Art</span><span style="color: #c4302b">Link</span></div>
+    <div style="display: flex; align-items: center">
+      <button type="button" aria-label="메시지" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #374151; cursor: pointer">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
+      </button>
+      <button type="button" aria-label="알림" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #374151; cursor: pointer">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="position: absolute; top: 56px; bottom: 57px; left: 0; right: 0; overflow-y: auto">
+    <section aria-label="ArtStory" style="padding: 14px 16px 0">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.01em"><span style="color: #111827">Art</span><span style="color: #c4302b">Story</span></h2>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums">{{ cardPos }}</span>
+          <button type="button" onClick="{{ openMine }}" style="height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 4px; background: #111827; color: #ffffff; border: 0; border-radius: 8px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>내 소식
+          </button>
+        </div>
+      </div>
+      <div style="position: relative; height: 300px; background: #111827; overflow: hidden">
+        <sc-if value="{{ card.hasImg }}" hint-placeholder-val="{{ true }}">
+          <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center">
+            <img src="{{ card.img }}" alt="{{ card.alt }}" style="max-width: 100%; max-height: 100%; object-fit: contain; display: block">
+          </div>
+        </sc-if>
+        <sc-if value="{{ card.isText }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; background: {{ card.bg }}; display: flex; align-items: center; justify-content: center; padding: 28px; box-sizing: border-box">
+            <p style="margin: 0; color: #ffffff; font-size: 18px; line-height: 1.55; font-weight: 700; text-align: center; white-space: pre-line">{{ card.text }}</p>
+          </div>
+        </sc-if>
+        <div style="position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 3px; padding: 10px 10px 0; pointer-events: none">
+          <sc-for list="{{ cardSegs }}" as="seg" hint-placeholder-count="7">
+            <div style="flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.3); overflow: hidden">
+              <div style="height: 100%; background: #ffffff; width: {{ seg.w }}"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="position: absolute; left: 0; right: 0; bottom: 0; background: rgba(17,24,39,0.78); padding: 10px 14px 12px; pointer-events: none">
+          <div style="color: #ffffff; font-size: 13px; font-weight: 700">{{ card.name }} <span style="font-weight: 400; color: rgba(255,255,255,0.75)">· {{ card.meta }}</span></div>
+          <sc-if value="{{ card.hasImg }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top: 2px; color: rgba(255,255,255,0.9); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ card.text }}</div>
+          </sc-if>
+        </div>
+        <button type="button" onClick="{{ openCard }}" aria-label="{{ card.openLabel }}" style="position: absolute; inset: 0; background: transparent; border: 0; cursor: pointer"></button>
+      </div>
+    </section>
+
+    <div style="margin: 16px 16px 0; height: 119px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 13px">배너 — 지금 그대로</div>
+
+    <section aria-label="ArtWorks" style="padding: 26px 16px 0">
+      <h2 style="margin: 0 0 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em"><span style="color: #111827">Art</span><span style="color: #c4302b">Works</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <div style="aspect-ratio: 1 / 1; background: #f3f4f6; display: flex; align-items: center; justify-content: center"><img src="/_blob/dd2006aa51c440be4ab18fc05617abfe" alt="작품 — 조용한 오후" style="max-width: 100%; max-height: 100%; object-fit: contain"></div>
+        <div style="aspect-ratio: 1 / 1; background: #f3f4f6; display: flex; align-items: center; justify-content: center"><img src="/_blob/242a2926a35e2b57325c34b1ab58d447" alt="작품 — 새벽 창" style="max-width: 100%; max-height: 100%; object-fit: contain"></div>
+      </div>
+    </section>
+    <div style="height: 32px"></div>
+  </div>
+
+  <nav aria-label="하단 메뉴" style="position: absolute; left: 0; right: 0; bottom: 0; height: 57px; border-top: 1px solid #e5e7eb; background: #ffffff; display: flex">
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #111827; text-decoration: none; font-size: 10.5px; font-weight: 700">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>홈
+    </a>
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6b7280; text-decoration: none; font-size: 10.5px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>작가
+    </a>
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6b7280; text-decoration: none; font-size: 10.5px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-5-5L5 21"></path></svg>갤러리
+    </a>
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6b7280; text-decoration: none; font-size: 10.5px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>전시
+    </a>
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6b7280; text-decoration: none; font-size: 10.5px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>모집공고
+    </a>
+    <a href="#" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #6b7280; text-decoration: none; font-size: 10.5px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>커뮤니티
+    </a>
+  </nav>
+
+  <sc-if value="{{ hint }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position: absolute; left: 16px; right: 16px; bottom: 72px; background: #111827; color: #ffffff; font-size: 13px; line-height: 1.5; padding: 12px 14px; border-radius: 8px">글쓰기가 열려요. 올리면 이 카드의 맨 앞에 바로 떠요.</div>
+  </sc-if>
+
+  <sc-if value="{{ open }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-modal="true" aria-label="{{ cur.dialogLabel }}" style="position: absolute; inset: 0; z-index: 50; background: #0b0b0c; display: flex; flex-direction: column">
+      <div style="display: flex; gap: 4px; padding: 10px 10px 0">
+        <sc-for list="{{ segs }}" as="seg" hint-placeholder-count="2">
+          <div style="flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.3); overflow: hidden">
+            <div style="height: 100%; background: #ffffff; width: {{ seg.w }}"></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 4px 6px 12px">
+        <div style="width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%; background: #374151; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700">{{ cur.initial }}</div>
+        <div style="min-width: 0; flex: 1">
+          <div style="color: #ffffff; font-size: 14px; font-weight: 700">{{ cur.name }}</div>
+          <div style="color: rgba(255,255,255,0.72); font-size: 12px">{{ cur.meta }}</div>
+        </div>
+        <button type="button" onClick="{{ close }}" aria-label="닫기" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: #ffffff; cursor: pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center">
+        <sc-if value="{{ slide.hasImg }}" hint-placeholder-val="{{ true }}">
+          <img src="{{ slide.img }}" alt="{{ slide.alt }}" style="max-width: 100%; max-height: 100%; object-fit: contain; display: block">
+        </sc-if>
+        <sc-if value="{{ slide.isText }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; background: {{ slide.bg }}; display: flex; align-items: center; justify-content: center; padding: 32px; box-sizing: border-box">
+            <p style="margin: 0; color: #ffffff; font-size: 22px; line-height: 1.55; font-weight: 700; text-align: center; white-space: pre-line">{{ slide.text }}</p>
+          </div>
+        </sc-if>
+        <button type="button" aria-label="이전" onClick="{{ tapPrev }}" onPointerDown="{{ hold }}" onPointerUp="{{ release }}" onPointerLeave="{{ release }}" style="position: absolute; left: 0; top: 0; bottom: 0; width: 32%; background: transparent; border: 0; cursor: pointer"></button>
+        <button type="button" aria-label="다음" onClick="{{ tapNext }}" onPointerDown="{{ hold }}" onPointerUp="{{ release }}" onPointerLeave="{{ release }}" style="position: absolute; right: 0; top: 0; bottom: 0; width: 68%; background: transparent; border: 0; cursor: pointer"></button>
+        <sc-if value="{{ paused }}" hint-placeholder-val="{{ false }}">
+          <div aria-hidden="true" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; color: #ffffff; pointer-events: none">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+          </div>
+        </sc-if>
+      </div>
+      <sc-if value="{{ slide.hasImg }}" hint-placeholder-val="{{ true }}">
+        <p style="margin: 0; padding: 12px 16px 2px; color: #ffffff; font-size: 14px; line-height: 1.6">{{ slide.text }}</p>
+      </sc-if>
+      <div style="display: flex; align-items: center; gap: 2px; padding: 6px 10px 14px">
+        <button type="button" onClick="{{ toggleLike }}" aria-label="{{ likeLabel }}" aria-pressed="{{ liked }}" style="height: 44px; padding: 0 10px; display: flex; align-items: center; gap: 6px; background: none; border: 0; color: {{ likeColor }}; font-size: 14px; font-family: inherit; cursor: pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="{{ likeFill }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+          <span style="color: #ffffff">{{ likeCount }}</span>
+        </button>
+        <button type="button" aria-label="댓글" style="height: 44px; padding: 0 10px; display: flex; align-items: center; gap: 6px; background: none; border: 0; color: #ffffff; font-size: 14px; font-family: inherit; cursor: pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+          {{ cur.comments }}
+        </button>
+        <span style="flex: 1"></span>
+        <button type="button" style="height: 36px; padding: 0 14px; background: none; border: 1px solid rgba(255,255,255,0.45); border-radius: 8px; color: #ffffff; font-size: 13px; font-family: inherit; cursor: pointer">홈페이지</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  stories = [
+    { id: 'han', name: '한지우', role: '작가', ago: '12분 전', likes: 14, comments: 3, slides: [
+      { img: '/_blob/7f689f4af89c044126792414ac2b55cf', text: '북쪽 창 앞으로 이젤을 옮겼다. 오후 빛이 종이에 고르게 떨어진다.' },
+      { img: '/_blob/591680b29d0242251dc3fd4493f4e79e', text: '두 번째 겹칠이 마르기 직전.' },
+    ] },
+    { id: 'do', name: '도하린', role: '작가', ago: '40분 전', likes: 9, comments: 2, slides: [
+      { img: '/_blob/2a758e0ea2f77e12c55b75db9297f047', text: '세 번째 판을 찍었다. 빨강을 한 번 더 겹쳤다.' },
+      { img: '/_blob/1e424bb58e413acf63bd437955efa778', text: '칼자국이 남은 자리.' },
+    ] },
+    { id: 'gal', name: '갤러리 한켠', role: '갤러리', ago: '1시간 전', likes: 21, comments: 5, slides: [
+      { img: '/_blob/78d87e89e12a135ebd67703c25467cd7', text: '다음 주 단체전 설치 중이에요. 금요일에 문 엽니다.' },
+    ] },
+    { id: 'kim', name: '김민서', role: '작가', ago: '2시간 전', likes: 6, comments: 1, slides: [
+      { text: '내일 오픈 스튜디오 해요.\n오후 2시부터 6시까지,\n편하게 들러 주세요.', bg: '#3f4a5a' },
+    ] },
+    { id: 'oh', name: '오세린', role: '작가', ago: '3시간 전', likes: 8, comments: 0, slides: [
+      { img: '/_blob/71ec268cf77968697e52609a9e89714e', text: '주운 창틀에 맞춰 그린 작은 방.' },
+    ] },
+    { id: 'seo', name: '서도윤', role: '일반', ago: '5시간 전', likes: 4, comments: 2, slides: [
+      { img: '/_blob/bcec591c9dafe918f247eb3cb24eda3b', text: '오늘 본 전시. 조명이 그림마다 따로 떨어진다.' },
+    ] },
+    { id: 'jung', name: '정하은', role: '작가', ago: '어제', likes: 11, comments: 2, slides: [
+      { img: '/_blob/90130f04b1d9699b388dbe083513054e', text: '창밖 보고 바로 그린 작은 그림.' },
+    ] },
+  ];
+  state = { ci: 0, cprog: 0, open: false, pi: 0, si: 0, prog: 0, paused: false, liked: {}, hint: false };
+
+  componentDidMount() {
+    this.timer = setInterval(() => this.tick(), 50);
+  }
+  componentWillUnmount() {
+    clearInterval(this.timer);
+    clearTimeout(this.hintTimer);
+  }
+  tick() {
+    const st = this.state;
+    if (!st.open) {
+      const cprog = st.cprog + 50 / 4000;
+      if (cprog >= 1) this.setState({ ci: (st.ci + 1) % this.stories.length, cprog: 0 });
+      else this.setState({ cprog: cprog });
+      return;
+    }
+    if (st.paused) return;
+    const story = this.stories[st.pi];
+    const slide = story.slides[st.si];
+    const dur = slide && slide.img ? 5000 : 6500;
+    const prog = st.prog + 50 / dur;
+    if (prog >= 1) this.next();
+    else this.setState({ prog: prog });
+  }
+  openCard() {
+    this.setState({ open: true, pi: this.state.ci, si: 0, prog: 0, paused: false });
+  }
+  next() {
+    const st = this.state;
+    const story = this.stories[st.pi];
+    if (st.si < story.slides.length - 1) { this.setState({ si: st.si + 1, prog: 0 }); return; }
+    if (st.pi < this.stories.length - 1) this.setState({ pi: st.pi + 1, si: 0, prog: 0 });
+    else this.setState({ open: false, prog: 0, paused: false });
+  }
+  prev() {
+    const st = this.state;
+    if (st.si > 0) { this.setState({ si: st.si - 1, prog: 0 }); return; }
+    if (st.pi > 0) this.setState({ pi: st.pi - 1, si: 0, prog: 0 });
+    else this.setState({ prog: 0 });
+  }
+  close() {
+    // 닫으면 홈 카드는 방금 본 사람 다음부터 이어서 넘어간다
+    this.setState({ open: false, paused: false, prog: 0, ci: (this.state.pi + 1) % this.stories.length, cprog: 0 });
+  }
+  hold() {
+    this.downAt = Date.now();
+    this.setState({ paused: true });
+  }
+  release() {
+    if (this.downAt) { this.held = Date.now() - this.downAt > 280; this.downAt = 0; }
+    if (this.state.paused) this.setState({ paused: false });
+  }
+  tapPrev() {
+    if (this.held) { this.held = false; return; }
+    this.prev();
+  }
+  tapNext() {
+    if (this.held) { this.held = false; return; }
+    this.next();
+  }
+  toggleLike() {
+    const story = this.stories[this.state.pi];
+    const liked = Object.assign({}, this.state.liked);
+    liked[story.id] = !liked[story.id];
+    this.setState({ liked: liked });
+  }
+  showHint() {
+    this.setState({ hint: true });
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => this.setState({ hint: false }), 2600);
+  }
+  renderVals() {
+    const st = this.state;
+    const n = this.stories.length;
+    const c = this.stories[st.ci];
+    const cs = c.slides[0];
+    const cardSegs = this.stories.map((_, k) => ({ w: k < st.ci ? '100%' : (k === st.ci ? Math.min(100, st.cprog * 100).toFixed(1) + '%' : '0%') }));
+    const story = this.stories[st.pi];
+    const slide = story.slides[Math.min(st.si, story.slides.length - 1)];
+    const segs = story.slides.map((_, k) => ({ w: k < st.si ? '100%' : (k === st.si ? Math.min(100, st.prog * 100).toFixed(1) + '%' : '0%') }));
+    const liked = !!st.liked[story.id];
+    return {
+      cardPos: (st.ci + 1) + ' / ' + n,
+      cardSegs: cardSegs,
+      card: {
+        name: c.name,
+        meta: c.role + ' · ' + c.ago,
+        img: cs.img || '',
+        hasImg: !!cs.img,
+        isText: !cs.img,
+        text: cs.text,
+        bg: cs.bg || '#374151',
+        alt: c.name + '님이 올린 사진',
+        openLabel: c.name + '님의 소식 크게 보기',
+      },
+      openCard: () => this.openCard(),
+      open: st.open,
+      paused: st.paused,
+      hint: st.hint,
+      segs: segs,
+      cur: {
+        name: story.name,
+        initial: story.name.slice(0, 1),
+        meta: story.role + ' · ' + story.ago,
+        comments: story.comments,
+        dialogLabel: story.name + '님의 소식',
+      },
+      slide: {
+        img: slide.img || '',
+        hasImg: !!slide.img,
+        isText: !slide.img,
+        text: slide.text,
+        bg: slide.bg || '#374151',
+        alt: story.name + '님이 올린 사진',
+      },
+      liked: liked,
+      likeCount: story.likes + (liked ? 1 : 0),
+      likeColor: liked ? '#c4302b' : '#ffffff',
+      likeFill: liked ? '#c4302b' : 'none',
+      likeLabel: liked ? '좋아요 취소' : '좋아요',
+      openMine: () => this.showHint(),
+      close: () => this.close(),
+      tapPrev: () => this.tapPrev(),
+      tapNext: () => this.tapNext(),
+      hold: () => this.hold(),
+      release: () => this.release(),
+      toggleLike: () => this.toggleLike(),
+    };
+  }
+}
+</script>
+</body>
+</html>

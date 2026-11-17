@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, openMyPageTab } from '../lib/helpers';
+import { openAs, tokenFor, openMyPageTab, homepageAction } from '../lib/helpers';
 
 /**
  * 신뢰성: 찜을 여러 번 껐다 켰다 하며 화면 간(상세↔목록↔마이페이지) 일관성 검증.
@@ -37,15 +37,19 @@ test.beforeEach(async () => {
 
 test('찜 토글 3라운드 — 상세/목록/마이페이지 cross-cache 일관성', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
-  const heartOn = () => page.getByRole('button', { name: '찜 해제' });   // 찜된 상태
-  const heartOff = () => page.getByRole('button', { name: '찜하기' });   // 안 된 상태
+  /*
+    갤러리 홈페이지의 찜은 탭 줄 오른쪽 버튼 묶음의 [찜](aria-pressed) — 휴대폰은 [⋯] 안에 있다(2026-11-15, CLAUDE.md 규칙 82).
+    항목을 누르면 [⋯] 가 닫히므로 상태는 다시 열어서 본다(homepageAction 이 연다). 목록 카드의 하트는 '찜하기'/'찜 해제' 그대로(규칙 83).
+  */
+  const detailHeart = () => homepageAction(page, '찜');
+  const expectPressed = async (on: boolean) => expect(await detailHeart()).toHaveAttribute('aria-pressed', on ? 'true' : 'false');
 
   for (let round = 1; round <= 3; round++) {
     // 1) 상세에서 찜 ON
     await page.goto(`/galleries/${gid}`);
-    await expect(heartOff()).toBeVisible({ timeout: 10000 });
-    await heartOff().click();
-    await expect(heartOn()).toBeVisible(); // 상세 즉시 반영
+    await expectPressed(false);
+    await (await detailHeart()).click();
+    await expectPressed(true); // 상세 즉시 반영
 
     // 2) 목록에 즉시 반영 (찜된 카드 정확히 1개)
     await page.goto('/galleries');
@@ -58,9 +62,9 @@ test('찜 토글 3라운드 — 상세/목록/마이페이지 cross-cache 일관
 
     // 4) 상세에서 찜 OFF (찜 상태 유지 확인 후 해제)
     await page.goto(`/galleries/${gid}`);
-    await expect(heartOn()).toBeVisible();
-    await heartOn().click();
-    await expect(heartOff()).toBeVisible();
+    await expectPressed(true);
+    await (await detailHeart()).click();
+    await expectPressed(false);
 
     // 5) 목록에서 즉시 사라짐 (찜된 카드 0개)
     await page.goto('/galleries');
@@ -77,17 +81,20 @@ test('찜 토글 3라운드 — 상세/목록/마이페이지 cross-cache 일관
 
 test('찜 빠른 5연타 — UI와 서버 상태 일치(멱등성/경합)', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
+  // 연타는 [찜] 이 버튼 줄에 바로 있는 PC 폭에서 — 휴대폰은 [⋯] 안이라 누를 때마다 메뉴가 닫혀 '빠른 연타'가 안 된다(규칙 82)
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/galleries/${gid}`);
-  await expect(page.getByRole('button', { name: '찜하기' })).toBeVisible({ timeout: 10000 });
+  const heart = page.getByTestId('homepage-actions').getByRole('button', { name: '찜', exact: true });
+  await expect(heart).toHaveAttribute('aria-pressed', 'false', { timeout: 15000 });
 
   // 5번 빠르게 클릭 (홀수 → 최종 찜됨이 기대)
   for (let i = 0; i < 5; i++) {
-    await page.getByRole('button', { name: /찜/ }).click();
+    await heart.click();
     await page.waitForTimeout(120);
   }
   await page.waitForTimeout(1500); // 서버 반영 대기
 
-  const uiFavorited = await page.getByRole('button', { name: '찜 해제' }).count() === 1;
+  const uiFavorited = (await heart.getAttribute('aria-pressed')) === 'true';
 
   // 서버 진실값 확인
   const api = await pwRequest.newContext();

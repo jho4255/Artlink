@@ -18,35 +18,29 @@
  *   PATCH  /exhibitions/:id/managers    운영 갤러리 변경 (전체 교체)
  *   DELETE /exhibitions/:id             삭제 (주최자인 Admin만)
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { scrollToTarget } from '@/lib/scrollToTarget';
-import { regionLabels, exhibitionTypeLabels, getDday, validateExhibitionDates, capacityError, CAPACITY_MAX, REGION_CODES, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
-import CapacityPicker from '@/components/shared/CapacityPicker';
-import { HeroImageEdit } from '@/components/shared/EditableField';
-import LazyRichTextEditor from '@/components/shared/LazyRichTextEditor';
-import { richTextLength } from '@/lib/richText';
-import { CustomQuestionBuilder, sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
+import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
+import { sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
 import HostedContentEditModal from '@/components/admin/HostedContentEditModal';
-import ExhibitionScopePicker from '@/components/shared/ExhibitionScopePicker';
-import SchedulePicker from '@/components/shared/SchedulePicker';
-import ProgressSteps from '@/components/flow/ProgressSteps';
-import { FormSection, FormField } from '@/components/flow/FormParts';
-import { formInputCls } from '@/lib/formStyles';
 import { scheduleSummary } from '@/lib/scheduleSummary';
-import { exhibitionSchedule } from '@/lib/scheduleCalendar';
-import { AttachmentEditor } from '@/components/shared/ExhibitionAttachments';
-import { ATTACHMENT_TYPES_TEXT, type ExhibitionAttachment } from '@/lib/attachments';
+import { type ExhibitionAttachment } from '@/lib/attachments';
+import { ExhibitionFormBody } from '@/components/exhibition-form/ExhibitionFormBody';
+import { exhibitionMissing, exhibitionDateError, exhibitionPreview } from '@/components/exhibition-form/exhibitionForm';
+import { jumpToField } from '@/lib/formJump';
+import StickySubmitBar from '@/components/form/StickySubmitBar';
+import SubmitSheet from '@/components/form/SubmitSheet';
+import { PreviewAside, PreviewSheet } from '@/components/form/PreviewPane';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { CustomField } from '@/types';
-
-const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 
 interface PickedGallery { id: number; name: string; region?: string }
 
@@ -283,14 +277,12 @@ export default function HostedExhibitionsSection() {
   const clearError = (key: string) =>
     setFormErrors(prev => { const n = new Set(prev); n.delete(key); return n; });
 
-  const dateError = useMemo(() => validateExhibitionDates({
-    deadlineStart: form.deadlineStart || undefined,
-    deadline: form.deadline,
-    exhibitStartDate: form.recruitOnly ? undefined : (form.exhibitStartDate || undefined),
-    // 공모만 진행하면 자료제출 단계가 없다 — 남아 있는 입력값으로 순서 검사를 하면 안 된다
-    submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
-    exhibitDate: form.recruitOnly ? undefined : (form.exhibitDate || undefined),
-  }), [form.deadlineStart, form.deadline, form.exhibitStartDate, form.exhibitDate, form.submissionDeadline, form.recruitOnly]);
+  // 날짜 순서 · 남은 필수 칸 — 갤러리 공모 등록과 같은 함수(components/exhibition-form).
+  // ⚠️ 운영 갤러리는 필수가 아니다(2026-09-10) — 아트링크가 갤러리를 안 끼고 직접 열 수 있다
+  const dateError = exhibitionDateError(form);
+  const missingFields = exhibitionMissing(form, { needGallery: false });
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const wideForm = useMediaQuery('(min-width: 1280px)');
 
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
     queryKey: ['hosted-exhibitions'],
@@ -345,26 +337,20 @@ export default function HostedExhibitionsSection() {
     onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
   });
 
+  /** [등록] — 남은 필수 칸이 있으면 그 칸으로(하단 줄과 같은 목록), 다 채웠으면 확인 창 */
   const submit = () => {
     if (attachBusy) {
       toast.error('첨부파일을 올리는 중이에요. 다 올라간 뒤에 눌러 주세요.');
       return;
     }
-    const missing: string[] = [];
-    const errorFields = new Set<string>();
-    // ⚠️ 운영 갤러리는 **필수가 아니다**(2026-09-10) — 아트링크가 갤러리를 안 끼고 직접 열 수 있다
-    if (!form.title) { missing.push('제목'); errorFields.add('title'); }
-    if (!form.deadlineStart) { missing.push('공모 시작일'); errorFields.add('deadlineStart'); }
-    if (!form.deadline) { missing.push('공모 마감일'); errorFields.add('deadline'); }
-    // ⚠️ 공모만 진행하면 전시 자체가 없다 — 전시 일자를 요구하지 않는다(2026-09-19)
-    if (!form.recruitOnly && !form.exhibitStartDate) { missing.push('전시 시작일'); errorFields.add('exhibitStartDate'); }
-    if (!form.recruitOnly && !form.submissionDeadline) { missing.push('출품 자료 제출 마감일'); errorFields.add('submissionDeadline'); }
-    if (!form.recruitOnly && !form.exhibitDate) { missing.push('전시 종료일'); errorFields.add('exhibitDate'); }
-    if (richTextLength(form.description) === 0) { missing.push('소개'); errorFields.add('description'); }
-    if (!form.capacityMask && capacityError(form.capacity)) { missing.push(`모집 작가 수(1~${CAPACITY_MAX}명)`); errorFields.add('capacity'); }
-    setFormErrors(errorFields);
-    if (missing.length > 0) {
-      toast.error(`다음 항목을 입력해주세요: ${missing.join(', ')}`, { duration: 4000 });
+    if (missingFields.length > 0) {
+      setFormErrors(new Set(missingFields.map((m) => m.key)));
+      jumpToField(missingFields[0].key);
+      return;
+    }
+    if (dateError) {
+      toast.error(dateError);
+      jumpToField('deadlineStart');
       return;
     }
     const cleaned = sanitizeCustomFields(form.customFields);
@@ -372,15 +358,17 @@ export default function HostedExhibitionsSection() {
       toast.error('객관식 질문은 선택지를 2개 이상 입력해주세요.');
       return;
     }
-    setForm({ ...form, customFields: cleaned });
+    setForm(prev => ({ ...prev, customFields: cleaned }));
     setConfirmSubmit(true);
   };
 
   const summary = scheduleSummary(form);
-  // 아트링크 주최는 승인 단계가 없다 — 갤러리 폼의 순서에서 '관리자 승인'만 빠진다
-  const flowSteps = form.recruitOnly
-    ? ['등록', '지원 모집', '작가 선정']
-    : ['등록', '지원 모집', '작가 선정', '자료 출품', '전시', '정산'];
+  const host = {
+    adminHosted: true,
+    managers: managerGalleries.map(g => g.name),
+    gallery: managerGalleries[0] ? { id: managerGalleries[0].id, name: managerGalleries[0].name, region: managerGalleries[0].region } : null,
+  };
+  const previewOf = () => exhibitionPreview(form, host);
 
   const statusColors: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-700',
@@ -404,161 +392,80 @@ export default function HostedExhibitionsSection() {
       </div>
 
       {/*
-        주최 공모 등록 — 갤러리 공모 등록 폼(MyPage)과 **같은 틀**(2026-10-28 사용자 지적: "갤러리 유저 것은 딱 좋은데 admin 주최 공모 등록은 이렇게 안 돼 있다").
-        번호 붙은 구역 · 왼쪽 포스터(목록 카드 모양) · 칸 이름과 설명 · 일정 달력. 다른 점은 셋뿐 — 갤러리 선택 대신 운영 갤러리(선택, 여러 곳),
-        승인 없이 바로 게시, 약관 없음. 예전엔 '상세 페이지 미리보기 카드'에 칸을 얹은 모양이라 같은 일을 하는 두 폼이 딴판이었다.
+        주최 공모 등록 — 갤러리 공모 등록과 **같은 폼**(components/exhibition-form/ExhibitionFormBody, 2026-11-15).
+        다른 점은 셋뿐 — 갤러리 선택 대신 '운영 갤러리(선택, 여러 곳)' 구역 · 승인 없이 바로 게시 · 약관 없음.
       */}
       {showForm && (
-        <div className="mb-8 space-y-8">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-950">주최 공모 등록</h3>
-            <p className="mt-1 text-sm text-gray-500">관리자가 등록하므로 승인 절차 없이 바로 모집공고에 올라가요.</p>
-          </div>
-          <div className="rounded-xl bg-gray-50 px-4 py-3">
-            <p className="text-xs font-medium text-gray-500">공모는 이렇게 진행돼요</p>
-            <ProgressSteps variant="inline" steps={flowSteps} current={0} label="공모 진행 순서" className="mt-1.5" />
-          </div>
-
-          <FormSection n={1} title="진행 범위" description="어디까지 이 페이지에서 진행할지 골라 주세요. 등록한 뒤에는 바꿀 수 없어요.">
-            <ExhibitionScopePicker
-              bare
-              recruitOnly={form.recruitOnly}
-              onChange={(next) => {
-                setForm({ ...form, recruitOnly: next, ...(next ? { submissionDeadline: '', exhibitStartDate: '', exhibitDate: '' } : {}) });
-                ['submissionDeadline', 'exhibitStartDate', 'exhibitDate'].forEach(clearError);
-              }}
-            />
-          </FormSection>
-
-          <FormSection n={2} title="운영 갤러리 (선택)" description="지정한 갤러리는 이 공모를 자기 공모처럼 운영해요(지원자 관리 · 작가 초대 · 전시 확정 · 정산). 맨 앞 갤러리가 주관이 되어 목록 카드에 표시돼요.">
-            <GalleryPicker bare selected={managerGalleries} onChange={(next) => { setManagerGalleries(next); clearError('galleries'); }} error={formErrors.has('galleries')} />
-          </FormSection>
-
-          <FormSection n={3} title="공고 내용">
-            <div className="grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]">
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-gray-800">포스터</p>
-                {/* 목록 카드와 같은 모양(210:297) — 자르지 않고 남는 자리는 흐린 배경 */}
-                <HeroImageEdit fit="contain" value={form.imageUrl} onChange={(url) => setForm({ ...form, imageUrl: url })} onRemove={() => setForm({ ...form, imageUrl: '' })} className="aspect-[210/297] w-full max-w-[168px]" label="포스터" />
-              </div>
-              <div className="min-w-0 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="구분" htmlFor="hosted-type">
-                    <select id="hosted-type" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className={formInputCls()}>
-                      <option value="SOLO">개인전</option>
-                      <option value="GROUP">단체전</option>
-                      <option value="ART_FAIR">아트페어</option>
-                    </select>
-                  </FormField>
-                  <FormField label="지역" htmlFor="hosted-region">
-                    <select id="hosted-region" value={form.region} onChange={e => setForm({ ...form, region: e.target.value })} className={formInputCls()}>
-                      {regions.map(r => <option key={r} value={r}>{regionLabels[r]}</option>)}
-                    </select>
-                  </FormField>
-                </div>
-                <FormField label="공모 제목 *" error={formErrors.has('title')} htmlFor="hosted-title">
-                  <input id="hosted-title" data-form-error={formErrors.has('title') || undefined} value={form.title} onChange={e => { setForm({ ...form, title: e.target.value }); clearError('title'); }} placeholder="공모 제목" className={formInputCls(formErrors.has('title'))} />
-                </FormField>
-                {/* 정원 = 선정 인원(2026-09-27) · 0명·00명(2026-10-14) — 갤러리 등록 폼과 같은 칸 */}
-                <FormField label="모집 작가 수 *" error={formErrors.has('capacity')} htmlFor="hosted-capacity">
-                  <CapacityPicker
-                    inputId="hosted-capacity"
-                    error={formErrors.has('capacity')}
-                    value={{ capacity: form.capacity, capacityMask: form.capacityMask ?? null }}
-                    onChange={(v) => { setForm(prev => ({ ...prev, ...v })); clearError('capacity'); }}
-                  />
-                </FormField>
-              </div>
-            </div>
-            {/* 서식 있는 글(2026-10-03). 함수형 갱신 — 편집기가 처음 받은 콜백을 붙들 수 있다 */}
-            <FormField label="공모 소개 *" error={formErrors.has('description')} className="mt-5">
-              <div data-form-error={formErrors.has('description') || undefined} className={formErrors.has('description') ? 'rounded-lg ring-1 ring-accent' : 'rounded-lg'}>
-                <LazyRichTextEditor
-                  value={form.description}
-                  onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}
-                  placeholder="공모 소개"
-                  maxLength={20000}
-                  minHeight={200}
-                />
-              </div>
-            </FormField>
-            <FormField
-              label="첨부파일 (선택)"
-              className="mt-5"
-              hint={`첨부 가능 형식: ${ATTACHMENT_TYPES_TEXT}`}
-            >
-              <AttachmentEditor
-                value={form.attachments}
-                onChange={(update) => setForm(prev => ({ ...prev, attachments: update(prev.attachments) }))}
-                onBusyChange={setAttachBusy}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-950">주최 공모 등록</h3>
+          <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_300px] xl:gap-10">
+            <div className="min-w-0 max-w-[720px]">
+              <ExhibitionFormBody
+                form={form}
+                setForm={setForm}
+                errors={formErrors}
+                clearError={clearError}
+                onAttachBusy={setAttachBusy}
+                idPrefix="hosted"
+                extraSection={{
+                  title: '운영 갤러리 (선택)',
+                  node: (
+                    <GalleryPicker
+                      bare
+                      selected={managerGalleries}
+                      onChange={(next) => {
+                        // 처음 고른 갤러리의 지역으로 미리 채운다(갤러리 공모와 같다) — 바꿀 수 있다
+                        if (managerGalleries.length === 0 && next[0]?.region) setForm(prev => ({ ...prev, region: next[0].region! }));
+                        setManagerGalleries(next);
+                        clearError('galleries');
+                      }}
+                      error={formErrors.has('galleries')}
+                    />
+                  ),
+                }}
               />
-            </FormField>
-          </FormSection>
-
-          <FormSection n={4} title="일정">
-            {/* 달력 하나를 칸들이 나눠 쓴다(2026-10-28, 갤러리 공모 등록과 같은 부품 · lib/scheduleCalendar.ts).
-                ⚠️ 공모만 진행하면 전시·자료 제출 칸을 그리지 않는다(2026-09-19) */}
-            <SchedulePicker
-              {...exhibitionSchedule(!!form.recruitOnly, 'hosted')}
-              values={form}
-              errors={formErrors}
-              onChange={(patch) => { setForm(prev => ({ ...prev, ...patch })); Object.keys(patch).forEach(clearError); }}
-            />
-            {summary && <p className="mt-5 text-sm text-gray-700"><span className="text-gray-400">한눈에 · </span>{summary}</p>}
-            {dateError && (
-              <p className="mt-2 flex items-center gap-1 text-xs text-accent"><AlertTriangle size={12} aria-hidden /> {dateError}</p>
-            )}
-          </FormSection>
-
-          <FormSection n={5} title="추가 질문 (선택)">
-            <CustomQuestionBuilder
-              bare
-              fields={form.customFields}
-              onChange={(update) => setForm(prev => ({ ...prev, customFields: update(prev.customFields) }))}
-            />
-          </FormSection>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
-            <button
-              type="button"
-              disabled={createMutation.isPending || !!dateError}
-              onClick={submit}
-              className="min-h-[44px] rounded-lg bg-gray-900 px-5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {createMutation.isPending ? '등록 중...' : '등록'}
-            </button>
-            <button type="button" onClick={resetForm} className="min-h-[44px] px-3 text-sm text-gray-500 hover:text-gray-900">취소</button>
-            <p className="w-full text-xs text-gray-500">등록하면 바로 모집공고에 등록돼요.</p>
+            </div>
+            {wideForm && <PreviewAside preview={previewOf()} />}
           </div>
+          <StickySubmitBar
+            missing={missingFields}
+            onJump={jumpToField}
+            onPreview={wideForm ? undefined : () => setPreviewOpen(true)}
+            onCancel={resetForm}
+            submitLabel="등록"
+            onSubmit={submit}
+            pending={createMutation.isPending}
+          />
+          {previewOpen && !wideForm && <PreviewSheet preview={previewOf()} onClose={() => setPreviewOpen(false)} />}
         </div>
       )}
 
-      <ConfirmDialog
-        open={confirmSubmit}
-        title="주최 공모 등록"
-        message={[
-          '이 내용으로 등록하시겠습니까?',
-          '승인 절차 없이 바로 공고에 노출됩니다.',
-          managerGalleries.length > 0
-            ? `선택한 갤러리 ${managerGalleries.length}곳이 운영 권한을 갖습니다.`
-            : '운영 갤러리를 지정하지 않았습니다 — 아트링크(관리자)가 직접 운영합니다.',
-          form.recruitOnly
-            ? '진행 범위: 공모만 진행 (지원자 수락까지, 출품 자료·전시·정산 없음)'
-            : '진행 범위: 전시까지 진행',
-          ...(form.attachments.length ? [`첨부파일 ${form.attachments.length}개 — 공고 상세에서 누구나 내려받아요.`] : []),
-        ].join('\n')}
-        confirmText="등록"
-        onConfirm={() => {
-          setConfirmSubmit(false);
-          createMutation.mutate({
-            ...form,
-            ...capacityPayload({ capacity: form.capacity, capacityMask: form.capacityMask ?? null }),
-            customFields: sanitizeCustomFields(form.customFields),
-            galleryIds: managerGalleries.map(g => g.id),
-          });
-        }}
-        onCancel={() => setConfirmSubmit(false)}
-      />
+      {confirmSubmit && (
+        <SubmitSheet
+          title="주최 공모를 등록할까요?"
+          rows={[
+            ['공모', form.title],
+            ...(summary ? [['일정', summary] as [string, ReactNode]] : []),
+            ['모집', `${exhibitionTypeLabels[form.type] ?? form.type} · ${capacityText(form)} · ${regionLabels[form.region] ?? form.region}`],
+            ['운영', managerGalleries.length > 0 ? managerGalleries.map(g => g.name).join(', ') : '아트링크가 직접 운영'],
+            ['범위', form.recruitOnly ? '공모만 진행 — 지원자 선정까지' : '전시까지 진행'],
+            ...(form.attachments.length ? [['첨부', `${form.attachments.length}개`] as [string, ReactNode]] : []),
+          ]}
+          note="승인 절차 없이 바로 모집공고에 올라가요."
+          confirmLabel="등록"
+          pending={createMutation.isPending}
+          onConfirm={() => {
+            setConfirmSubmit(false);
+            createMutation.mutate({
+              ...form,
+              ...capacityPayload({ capacity: form.capacity, capacityMask: form.capacityMask ?? null }),
+              customFields: sanitizeCustomFields(form.customFields),
+              galleryIds: managerGalleries.map(g => g.id),
+            });
+          }}
+          onClose={() => setConfirmSubmit(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사진 여러 장 — 어떻게 놓을까</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font-family:inherit;cursor:pointer}
+.opt{display:flex;align-items:center;gap:16px;width:100%;min-height:92px;box-sizing:border-box;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;text-align:left;color:#111827}
+.opt.on{border:2px solid #111827;padding:11px 13px}
+.ph{background:#9ca3af;border-radius:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow: hidden">
+
+  <!-- 뒤에 깔린 편집 화면 -->
+  <div aria-hidden="true" style="padding: 76px 20px 0">
+    <div style="height: 26px; width: 78%; background: #e5e7eb; border-radius: 4px"></div>
+    <div style="height: 14px; width: 100%; margin-top: 28px; background: #f3f4f6; border-radius: 4px"></div>
+    <div style="height: 14px; width: 92%; margin-top: 12px; background: #f3f4f6; border-radius: 4px"></div>
+    <div style="height: 14px; width: 64%; margin-top: 12px; background: #f3f4f6; border-radius: 4px"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(17,24,39,.45)"></div>
+
+  <!-- 아래에서 올라오는 창 -->
+  <div role="dialog" aria-modal="true" aria-labelledby="ps-title" style="position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 20px 20px 28px; background: #fff; border-radius: 14px 14px 0 0">
+    <div aria-hidden="true" style="width: 36px; height: 4px; margin: 0 auto 18px; background: #d1d5db; border-radius: 2px"></div>
+    <h2 id="ps-title" style="margin: 0; font-size: 18px; font-weight: 600; color: #111827">사진 5장을 골랐어요</h2>
+    <p style="margin: 6px 0 18px; font-size: 14px; color: #6b7280">어떻게 놓을까요? 나중에 바꿀 수 있어요.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <button type="button" class="opt">
+        <span aria-hidden="true" style="flex: none; width: 84px; display: flex; flex-direction: column; gap: 4px">
+          <span class="ph" style="height: 24px"></span>
+          <span class="ph" style="height: 24px"></span>
+          <span class="ph" style="height: 14px; opacity: .5"></span>
+        </span>
+        <span style="min-width: 0">
+          <span style="display: block; font-size: 16px; font-weight: 600">한 장씩</span>
+          <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.5; color: #6b7280">사진마다 크게, 사이사이 글을 쓸 수 있어요</span>
+        </span>
+      </button>
+
+      <button type="button" class="opt on" aria-pressed="true">
+        <span aria-hidden="true" style="flex: none; width: 84px; display: flex; flex-direction: column; gap: 3px">
+          <span style="display: flex; gap: 3px; height: 32px"><span class="ph" style="flex: 1.25; background: #4b5563"></span><span class="ph" style="flex: .8; background: #4b5563"></span><span class="ph" style="flex: 1; background: #4b5563"></span></span>
+          <span style="display: flex; gap: 3px; height: 32px"><span class="ph" style="flex: 1.3; background: #4b5563"></span><span class="ph" style="flex: 1; background: #4b5563"></span></span>
+        </span>
+        <span style="min-width: 0">
+          <span style="display: block; font-size: 16px; font-weight: 600">모아 놓기</span>
+          <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.5; color: #6b7280">한 덩어리로 나란히. 사진은 자르지 않아요</span>
+        </span>
+      </button>
+
+      <button type="button" class="opt">
+        <span aria-hidden="true" style="flex: none; width: 84px">
+          <span style="display: flex; gap: 3px; height: 50px; overflow: hidden"><span class="ph" style="flex: none; width: 66px"></span><span class="ph" style="flex: none; width: 66px; opacity: .5"></span></span>
+          <span style="display: flex; justify-content: center; gap: 4px; margin-top: 6px"><span style="width: 5px; height: 5px; border-radius: 50%; background: #111827"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: #d1d5db"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: #d1d5db"></span></span>
+        </span>
+        <span style="min-width: 0">
+          <span style="display: block; font-size: 16px; font-weight: 600">넘겨 보기</span>
+          <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.5; color: #6b7280">한 장씩 옆으로 넘겨요. 과정 사진에 좋아요</span>
+        </span>
+      </button>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 20px">
+      <button type="button" style="flex: 1; height: 48px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 15px; font-weight: 500; color: #374151">취소</button>
+      <button type="button" style="flex: 2; height: 48px; border: 0; border-radius: 8px; background: #111827; font-size: 15px; font-weight: 600; color: #fff">사진 넣기</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

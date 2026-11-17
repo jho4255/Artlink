@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { queryClient } from '@/lib/queryClient';
-import { controllerChangeReloader, reloadIfStale } from '@/lib/swUpdate';
+import { controllerChangeReloader, reloadIfStale, reloadOrDefer } from '@/lib/swUpdate';
 import App from './App';
 import ScrollToTop from '@/components/layout/ScrollToTop';
 import AppToaster from '@/components/layout/AppToaster';
@@ -36,7 +36,8 @@ if ('serviceWorker' in navigator) {
       void reloadIfStale(
         () => fetch('/', { cache: 'no-store', credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))),
         () => Array.from(document.scripts, (sc) => sc.src),
-        () => window.location.reload(),
+        // 글을 쓰는 중이면(커뮤니티 글쓰기 화면) 화면을 떠날 때까지 미룬다 — lib/swUpdate.ts holdReload
+        () => reloadOrDefer(() => window.location.reload()),
       );
     }),
   );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
@@ -7,6 +7,7 @@ import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
+import { HomeTabHead } from './HomeTabHead';
 import type { ExploreImage } from '@/types';
 
 /**
@@ -37,13 +38,17 @@ interface HighlightResponse {
   basis: 'all' | 'random';
 }
 
-export default function ArtWorks() {
+/**
+ * @param bare 휴대폰 홈 탭 안(2026-11-14, `lib/homeTabs.ts`) — 제목은 탭이 대신하므로 [작품 새로고침]만 남긴다
+ * @param onEmpty 답이 오면 비었는지 알린다 — 비면 홈이 이 탭을 감춘다
+ */
+export default function ArtWorks({ bare = false, onEmpty }: { bare?: boolean; onEmpty?: (empty: boolean) => void } = {}) {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<ExploreImage | null>(null);
   // 홈에 들어올 때마다 새 시드 → 매번 다른 작품. [새로고침]은 시드만 갈아끼운다.
   const [seed, setSeed] = useState(newSeed);
 
-  const { data, isFetching } = useQuery<HighlightResponse>({
+  const { data, isFetching, isError } = useQuery<HighlightResponse>({
     queryKey: ['explore-highlight', seed],
     queryFn: () => api.get('/explore/highlight', { params: { limit: 8, seed } }).then((r) => r.data),
     // 새로고침 중에도 이전 작품을 그대로 두어 섹션이 사라졌다 나타나지 않게 한다
@@ -52,31 +57,44 @@ export default function ArtWorks() {
   });
 
   const images = data?.images ?? [];
+  // 답이 온 뒤에만 알린다(오는 중엔 모른다). 그리기 전에 알려야 뒤로 와서 되살린 탭이 한 프레임 다른 칸을 보이지 않는다
+  const known = data !== undefined || isError;
+  const empty = images.length === 0;
+  useLayoutEffect(() => {
+    if (known) onEmpty?.(empty);
+  }, [known, empty, onEmpty]);
   if (images.length === 0) return null;
+
+  /* 제목보다는 작지만 **읽히긴 해야 한다** — gray-300/400 으로 뒀더니 안 보인다는 얘기가 나왔다.
+     흰 배경에서 gray-300 은 대비 1.5:1 수준이라 사실상 배경이다. gray-500(≈4.6:1)이 하한선.
+     새로고침은 **우측 상단** — 무엇을 새로고침하는지 글로 밝힌다(아이콘만으론 안 읽힌다) */
+  const refresh = (
+    <button
+      onClick={() => setSeed(newSeed())}
+      title="다른 작품 보기 (랜덤 재정렬)"
+      className={`shrink-0 flex items-center gap-1.5 py-2 ${bare ? 'px-2 ' : ''}text-sm text-gray-500 hover:text-gray-900 transition-colors cursor-pointer`}
+    >
+      <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} />
+      작품 새로고침
+    </button>
+  );
 
   return (
     <section>
-      <div className="flex items-center justify-between gap-4 mb-8 md:mb-10">
-        {/* ArtLink 로고와 같은 색 규칙 — Art(검정) + Works(빨강).
-            크기는 **로고보다 확실히 작게** (20/24px vs 로고 30/36px). 회사 이름이 섹션 제목에
-            눌려 보이면 안 된다. 아래 Gallery of the Month 제목(24/30px)보다도 작지만,
-            여긴 바로 밑에 작품 그리드가 시선을 받으므로 제목이 조용해도 된다. */}
-        <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
-          Art<span className="text-accent">Works</span>
-        </h2>
-
-        {/* 제목보다는 작지만 **읽히긴 해야 한다** — gray-300/400 으로 뒀더니 안 보인다는 얘기가 나왔다.
-            흰 배경에서 gray-300 은 대비 1.5:1 수준이라 사실상 배경이다. gray-500(≈4.6:1)이 하한선. */}
-        {/* 새로고침은 **우측 상단** — 무엇을 새로고침하는지 글로 밝힌다(아이콘만으론 안 읽힌다) */}
-        <button
-          onClick={() => setSeed(newSeed())}
-          title="다른 작품 보기 (랜덤 재정렬)"
-          className="shrink-0 flex items-center gap-1.5 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
-        >
-          <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} />
-          작품 새로고침
-        </button>
-      </div>
+      {bare ? (
+        <HomeTabHead>{refresh}</HomeTabHead>
+      ) : (
+        <div className="flex items-center justify-between gap-4 mb-8 md:mb-10">
+          {/* ArtLink 로고와 같은 색 규칙 — Art(검정) + Works(빨강).
+              크기는 **로고보다 확실히 작게** (20/24px vs 로고 30/36px). 회사 이름이 섹션 제목에
+              눌려 보이면 안 된다. 아래 Gallery of the Month 제목(24/30px)보다도 작지만,
+              여긴 바로 밑에 작품 그리드가 시선을 받으므로 제목이 조용해도 된다. */}
+          <h2 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
+            Art<span className="text-accent">Works</span>
+          </h2>
+          {refresh}
+        </div>
+      )}
 
       {/* 모바일 2열 / 태블릿 3열 / PC 4열 */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">

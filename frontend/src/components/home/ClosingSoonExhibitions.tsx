@@ -1,9 +1,11 @@
+import { useLayoutEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
 import { getDday, regionLabels } from '@/lib/utils';
+import { HomeTabHead, HomeTabAll } from './HomeTabHead';
 import type { Exhibition } from '@/types';
 
 /**
@@ -13,22 +15,35 @@ import type { Exhibition } from '@/types';
  */
 const ddayLabel = (d: number) => (d === 0 ? 'D-day' : d > 0 ? `D-${d}` : '마감');
 
-export default function ClosingSoonExhibitions() {
+/**
+ * @param bare 휴대폰 홈 탭 안(2026-11-14, `lib/homeTabs.ts`) — 제목은 탭이 대신하고 링크는 [전체 보기]
+ * @param onEmpty 답이 오면 비었는지 알린다 — 모집 중인 공고가 없으면 홈이 이 탭을 감춘다
+ */
+export default function ClosingSoonExhibitions({ bare = false, onEmpty }: { bare?: boolean; onEmpty?: (empty: boolean) => void } = {}) {
   const navigate = useNavigate();
-  const { data = [] } = useQuery<Exhibition[]>({
+  const { data = [], isSuccess, isError } = useQuery<Exhibition[]>({
     queryKey: ['exhibitions', 'home-closing'],
     queryFn: () => api.get('/exhibitions?scope=open').then((r) => r.data),
   });
 
   const items = data.filter((e) => getDday(e.deadline) >= 0).slice(0, 4);
+  const known = isSuccess || isError;
+  const empty = items.length === 0;
+  useLayoutEffect(() => {
+    if (known) onEmpty?.(empty);
+  }, [known, empty, onEmpty]);
   if (items.length === 0) return null;
 
   return (
     <section>
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 className="text-lg font-serif text-gray-900">마감임박 공모</h2>
-        <Link to="/exhibitions" className="text-xs text-gray-500 hover:text-gray-900">전체 →</Link>
-      </div>
+      {bare ? (
+        <HomeTabHead><HomeTabAll to="/exhibitions" /></HomeTabHead>
+      ) : (
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-lg font-serif text-gray-900">마감임박 공모</h2>
+          <Link to="/exhibitions" className="text-xs text-gray-500 hover:text-gray-900">전체 →</Link>
+        </div>
+      )}
       <div className="space-y-3">
         {items.map((ex) => {
           const d = getDday(ex.deadline);

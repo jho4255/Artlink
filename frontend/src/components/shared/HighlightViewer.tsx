@@ -1,74 +1,51 @@
 /**
- * 하이라이트 뷰어 — **인스타그램 스토리처럼 한 장씩 넘겨 본다.**
+ * 하이라이트 뷰어 — **ArtStory 보기 화면(StoryViewer)을 그대로 쓴다** (2026-11-14, 규칙 81).
  *
- * 전체화면 · 위쪽에 칸 나뉜 진행바 · 좌우를 눌러 앞뒤로 · 5초마다 자동으로 다음.
- * 목록을 죽 늘어놓는 방식은 스토리가 아니라 게시판이라 안 쓴다.
- *
- * ⚠️ **한 칸(frame)은 스토리가 아니라 '사진 한 장'이다.** 소식 하나에 사진이 여러 장이면
- *    인스타처럼 장마다 칸을 나눈다 — 안 그러면 진행바 한 칸에 사진 세 장이 몰려
- *    "넘겨 본다"가 되지 않는다. 사진 없는 글은 글 자체가 한 칸이 된다.
- * ⚠️ 자동 넘김은 **누르고 있으면 멈춘다**(인스타와 같다). 긴 글이 5초에 넘어가면 못 읽는다.
- * ⚠️ `prefers-reduced-motion` 이면 자동 넘김을 끈다 — 움직임에 민감한 사람에게
- *    스스로 넘어가는 화면은 쫓기는 느낌을 준다.
+ * 그 전엔 따로 만든 뷰어였는데, 홈 ArtStory 보기 화면과 넘기는 법·모양이 같아야 하므로 하나로 합쳤다.
+ * 그래서 하이라이트에서도 좋아요·댓글·공유가 된다. 다른 점:
+ *  · 머리 첫 줄이 하이라이트 이름(그 아래 올린 사람 · 시각)
+ *  · 끝까지 보면 '다 봤어요' 화면 없이 닫힌다
+ *  · 주인에게는 머리에 관리 단추 — 이름 바꾸기·공개 전환·이 소식 빼기·삭제 (2026-09-19)
+ *    관리 확인창이 떠 있는 동안 넘김을 멈춘다(`holdExternal`).
+ * ⚠️ 한 칸 = 사진 한 장(소식 하나에 사진 세 장이면 칸 셋) — StoryViewer 가 그렇게 센다.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, ChevronLeft, ChevronRight, Lock, Pencil, Trash2, Eye, EyeOff, MinusCircle } from 'lucide-react';
+import { X, Lock, Pencil, Trash2, Eye, EyeOff, MinusCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { apiErrorMessage } from '@/lib/utils';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { timeAgo } from '@/lib/utils';
+import StoryViewer from '@/components/story/StoryViewer';
+import type { Story } from '@/lib/story';
 
-interface HighlightStory {
-  id: number; caption: string; images: string[]; createdAt: string;
-  author: { id: number; name: string; avatar: string | null };
-}
-interface HighlightDetail { id: number; name: string; isPublic: boolean; mine?: boolean; stories: HighlightStory[] }
-
-/** 진행바 한 칸 = 화면 하나 */
-interface Frame { key: string; story: HighlightStory; image: string | null }
-
-const FRAME_MS = 5000;
-
-const prefersReducedMotion = () =>
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+interface HighlightDetail { id: number; name: string; isPublic: boolean; mine?: boolean; stories: Story[] }
 
 export default function HighlightViewer({ highlightId, onClose }: { highlightId: number; onClose: () => void }) {
+  const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery<HighlightDetail>({
     queryKey: ['highlight', highlightId],
     queryFn: () => api.get(`/stories/highlights/${highlightId}/stories`).then((r) => r.data),
   });
 
-  const frames = useMemo<Frame[]>(() => (data?.stories ?? []).flatMap((s): Frame[] =>
-    s.images.length > 0
-      ? s.images.map((image, n) => ({ key: `${s.id}-${n}`, story: s, image }))
-      : [{ key: `${s.id}-t`, story: s, image: null }],
-  ), [data]);
-
-  const [i, setI] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const total = frames.length;
-
-  /* 주인 관리 — 이름 바꾸기·공개 전환·이 소식 빼기·삭제 (2026-09-19).
-     그 전엔 하이라이트가 **만들면 끝**이라(PATCH/DELETE 라우트는 있는데 화면이 안 불렀다) 이웃공개 소식을 공개
-     하이라이트에 잘못 담아도 되돌릴 방법이 없었다. 관리 중엔 자동 넘김을 멈춘다. */
-  const qc = useQueryClient();
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
+  const [curStory, setCurStory] = useState<Story | null>(null);
+  const [at, setAt] = useState(0);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['highlight', highlightId] }); qc.invalidateQueries({ queryKey: ['highlights'] }); };
   const patch = useMutation({
     mutationFn: (body: { name?: string; isPublic?: boolean }) => api.patch(`/stories/highlights/${highlightId}`, body),
     onSuccess: refresh,
-    onError: (e: any) => toast.error(e.response?.data?.error || '변경에 실패했습니다.'),
+    onError: (e) => toast.error(apiErrorMessage(e, '변경에 실패했습니다.')),
   });
   const removeStory = useMutation({
     mutationFn: (storyId: number) => api.delete(`/stories/highlights/${highlightId}/stories/${storyId}`),
-    onSuccess: () => { toast.success('하이라이트에서 뺐습니다.'); setI((v) => Math.max(0, v - 1)); refresh(); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '빼기에 실패했습니다.'),
+    onSuccess: () => { toast.success('하이라이트에서 뺐습니다.'); refresh(); },
+    onError: (e) => toast.error(apiErrorMessage(e, '빼기에 실패했습니다.')),
   });
   const remove = useMutation({
     mutationFn: () => api.delete(`/stories/highlights/${highlightId}`),
     onSuccess: () => { toast.success('하이라이트를 지웠습니다.'); qc.invalidateQueries({ queryKey: ['highlights'] }); onClose(); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '삭제에 실패했습니다.'),
+    onError: (e) => toast.error(apiErrorMessage(e, '삭제에 실패했습니다.')),
   });
   const rename = () => {
     const next = window.prompt('하이라이트 이름', data?.name ?? '');
@@ -77,162 +54,16 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
     if (!t || t.length > 50) { toast.error('이름은 1~50자입니다.'); return; }
     if (t !== data?.name) patch.mutate({ name: t });
   };
-  const managing = confirm !== null;
 
-  // ⚠️ 닫기를 `setI` 콜백 **안에서** 부르지 말 것 — 상태 갱신 함수는 순수해야 한다
-  //    (React 가 두 번 부를 수 있어 onClose 가 두 번 실행된다). 밖에서 판정한다.
-  const next = useCallback(() => {
-    if (i + 1 >= total) onClose(); else setI(i + 1);
-  }, [i, total, onClose]);
-  const prev = useCallback(() => setI((v) => Math.max(0, v - 1)), []);
-  const reduced = prefersReducedMotion();
-
-  // 자동 넘김. `i` 가 바뀔 때마다 타이머를 새로 잡는다(눌러서 넘겼으면 5초를 다시 준다).
-  useEffect(() => {
-    if (total === 0 || paused || reduced || managing) return;   // 확인창이 떠 있으면 넘기지 않는다
-    const t = setTimeout(next, FRAME_MS);
-    return () => clearTimeout(t);
-  }, [i, total, paused, reduced, managing, next]);
-
-  // 키보드 — 화살표로 넘기고 Esc 로 닫는다
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') next();
-      else if (e.key === 'ArrowLeft') prev();
-      else if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [next, prev, onClose]);
-
-  // 뒤 페이지가 같이 스크롤되지 않게
-  useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prevOverflow; };
-  }, []);
-
-  const cur = frames[i];
-
-  return (
-    // 뒤 화면에 같은 글이 그대로 있으므로(피드 카드) 이 창을 가리킬 수 있어야 한다 —
-    // 접근성에도 맞고 테스트가 범위를 잡는 데도 쓴다
-    <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="하이라이트">
-      {/* ── 진행바 ── */}
-      <div className="flex shrink-0 gap-1 px-3 pt-3">
-        {frames.map((f, n) => (
-          <div key={f.key} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
-            <div
-              className="h-full bg-white"
-              style={
-                n < i ? { width: '100%' }
-                  : n > i ? { width: 0 }
-                    : {
-                      width: '100%',
-                      transformOrigin: 'left',
-                      // 자동 넘김을 끈 경우엔 채워진 채로 둔다 — 빈 칸으로 남으면 멈춘 게 아니라 고장으로 보인다
-                      transform: reduced ? 'scaleX(1)' : 'scaleX(0)',
-                      animation: reduced ? undefined : `hlFill ${FRAME_MS}ms linear forwards`,
-                      animationPlayState: paused ? 'paused' : 'running',
-                    }
-              }
-            />
-          </div>
-        ))}
-      </div>
-      {/* 진행바가 왼쪽에서 차오르는 애니메이션. 스타일 파일을 따로 만들 만큼의 규칙이 아니라 여기 둔다. */}
-      <style>{`@keyframes hlFill { from { transform: scaleX(0) } to { transform: scaleX(1) } }`}</style>
-
-      {/* ── 머리말 ── */}
-      <div className="flex shrink-0 items-center gap-2.5 px-4 py-3">
-        {cur?.story.author.avatar
-          ? <img src={cur.story.author.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
-          : <span className="grid h-8 w-8 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white">
-              {(cur?.story.author.name ?? data?.name ?? '·').slice(0, 1)}
-            </span>}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-white">{data?.name ?? '하이라이트'}</p>
-          {cur && <p className="text-[11px] text-white/60">{cur.story.author.name} · {timeAgo(cur.story.createdAt)}</p>}
-        </div>
-        {data && !data.isPublic && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] text-white/80">
-            <Lock size={10} /> 비공개
-          </span>
-        )}
-        {data?.mine && (
-          <div className="flex shrink-0 items-center gap-0.5" onPointerDown={(e) => e.stopPropagation()}>
-            <button onClick={rename} aria-label="이름 바꾸기" title="이름 바꾸기" className="p-1.5 text-white/70 hover:text-white"><Pencil size={16} /></button>
-            <button onClick={() => patch.mutate({ isPublic: !data.isPublic })} aria-label={data.isPublic ? '비공개로' : '공개로'} title={data.isPublic ? '비공개로 바꾸기' : '공개로 바꾸기'} className="p-1.5 text-white/70 hover:text-white">
-              {data.isPublic ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-            {cur && <button onClick={() => setConfirm('remove')} aria-label="이 소식 빼기" title="이 소식을 하이라이트에서 빼기" className="p-1.5 text-white/70 hover:text-white"><MinusCircle size={16} /></button>}
-            <button onClick={() => setConfirm('delete')} aria-label="하이라이트 삭제" title="하이라이트 삭제" className="p-1.5 text-white/70 hover:text-accent"><Trash2 size={16} /></button>
-          </div>
-        )}
-        <button onClick={onClose} aria-label="닫기" className="shrink-0 p-1 text-white/70 hover:text-white">
-          <X size={22} />
-        </button>
-      </div>
-
-      {/* ── 내용 ── */}
-      <div
-        className="relative min-h-0 flex-1"
-        onPointerDown={() => setPaused(true)}
-        onPointerUp={() => setPaused(false)}
-        onPointerLeave={() => setPaused(false)}
-        onPointerCancel={() => setPaused(false)}   /* 스크롤 제스처가 포인터를 가져가면 up 이 안 온다 — 영원히 멈춘 채였다(2026-09-19) */
-      >
-        {isLoading && <div className="h-full w-full animate-pulse bg-white/5" />}
-        {isError && <p className="grid h-full place-items-center px-8 text-center text-sm text-white/70">하이라이트를 열 수 없습니다.</p>}
-        {data && total === 0 && (
-          <p className="grid h-full place-items-center px-8 text-center text-sm text-white/70">
-            아직 담은 소식이 없습니다.<br />
-            <span className="text-white/40">소식 오른쪽 아래 별을 눌러 담아보세요.</span>
-          </p>
-        )}
-
-        {cur && (
-          <div className="flex h-full flex-col items-center justify-center px-4">
-            {cur.image
-              // 작품일 수 있으니 **자르지 않는다** — contain (규칙 18)
-              ? <img src={cur.image} alt="" className="max-h-full max-w-full object-contain" />
-              : <p className="max-w-lg whitespace-pre-wrap text-center text-lg leading-relaxed text-white [overflow-wrap:anywhere]">
-                  {cur.story.caption}
-                </p>}
-          </div>
-        )}
-
-        {/* 좌우 탭 영역 — 인스타처럼 화면 절반씩. 버튼이 아니라 넓은 자리라 손이 쉽게 닿는다. */}
-        {total > 0 && (
-          <>
-            <button onClick={prev} aria-label="이전"
-              className="group absolute inset-y-0 left-0 w-1/3 cursor-default px-3 text-left disabled:opacity-0"
-              disabled={i === 0}>
-              <ChevronLeft size={28} className="text-white/0 transition group-hover:text-white/60" />
-            </button>
-            <button onClick={next} aria-label="다음"
-              className="group absolute inset-y-0 right-0 w-1/3 cursor-default px-3 text-right">
-              <ChevronRight size={28} className="ml-auto text-white/0 transition group-hover:text-white/60" />
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* ── 사진 아래 글 (사진이 있을 때만 — 없으면 위에서 이미 크게 보여줬다) ── */}
-      {cur?.image && cur.story.caption && (
-        <div className="shrink-0 bg-gradient-to-t from-black/90 to-transparent px-5 pb-6 pt-8">
-          <p className="mx-auto max-w-lg whitespace-pre-wrap text-center text-sm leading-relaxed text-white [overflow-wrap:anywhere]">
-            {cur.story.caption}
-          </p>
-        </div>
-      )}
+  const confirms = (
+    <>
       <ConfirmDialog
         open={confirm === 'remove'}
         title="이 소식 빼기"
         message="이 소식을 하이라이트에서 뺍니다. 소식 자체는 그대로 남습니다."
         confirmText="빼기"
         variant="danger"
-        onConfirm={() => { if (cur) removeStory.mutate(cur.story.id); setConfirm(null); }}
+        onConfirm={() => { if (curStory) removeStory.mutate(curStory.id); setConfirm(null); }}
         onCancel={() => setConfirm(null)}
       />
       <ConfirmDialog
@@ -244,6 +75,61 @@ export default function HighlightViewer({ highlightId, onClose }: { highlightId:
         onConfirm={() => { remove.mutate(); setConfirm(null); }}
         onCancel={() => setConfirm(null)}
       />
+    </>
+  );
+
+  // 받는 중·못 받음·빈 하이라이트 — 같은 검은 화면에 한 줄
+  if (isLoading || isError || !data || data.stories.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-black text-white" role="dialog" aria-modal="true" aria-label={data?.name ?? '하이라이트'}>
+        <div className="flex items-center gap-2 px-4 py-3">
+          <p className="min-w-0 flex-1 truncate text-sm font-bold">{data?.name ?? '하이라이트'}</p>
+          {data?.mine && (
+            <button type="button" onClick={() => setConfirm('delete')} aria-label="하이라이트 삭제" className="grid h-10 w-10 place-items-center text-white/80 hover:text-white"><Trash2 size={17} /></button>
+          )}
+          <button type="button" onClick={onClose} aria-label="닫기" className="grid h-11 w-11 place-items-center"><X size={24} /></button>
+        </div>
+        <div className="grid flex-1 place-items-center px-8 text-center text-sm text-white/80">
+          {isLoading ? <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
+            : isError ? '하이라이트를 열 수 없습니다.'
+              : '아직 담은 소식이 없어요.'}
+        </div>
+        {confirms}
+      </div>
+    );
+  }
+
+  const tools = (s: Story) => (
+    <div className="flex shrink-0 items-center" onPointerDown={(e) => e.stopPropagation()}>
+      {!data.isPublic && <span className="mr-1 inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px]"><Lock size={10} /> 비공개</span>}
+      {data.mine && (
+        <>
+          <button type="button" onClick={rename} aria-label="이름 바꾸기" title="이름 바꾸기" className="grid h-10 w-9 place-items-center text-white/80 hover:text-white"><Pencil size={16} /></button>
+          <button type="button" onClick={() => patch.mutate({ isPublic: !data.isPublic })} aria-label={data.isPublic ? '비공개로' : '공개로'} title={data.isPublic ? '비공개로 바꾸기' : '공개로 바꾸기'} className="grid h-10 w-9 place-items-center text-white/80 hover:text-white">
+            {data.isPublic ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+          <button type="button" onClick={() => { setCurStory(s); setConfirm('remove'); }} aria-label="이 소식 빼기" title="이 소식을 하이라이트에서 빼기" className="grid h-10 w-9 place-items-center text-white/80 hover:text-white"><MinusCircle size={16} /></button>
+          <button type="button" onClick={() => setConfirm('delete')} aria-label="하이라이트 삭제" title="하이라이트 삭제" className="grid h-10 w-9 place-items-center text-white/80 hover:text-accent"><Trash2 size={16} /></button>
+        </>
+      )}
     </div>
+  );
+
+  return (
+    <>
+      <StoryViewer
+        // 담은 소식이 바뀌면(빼기) 처음부터 다시 그리되, 보던 자리 근처에서
+        key={data.stories.map((s) => s.id).join(',')}
+        stories={data.stories}
+        startIndex={Math.min(at, data.stories.length - 1)}
+        title={data.name}
+        endScreen={false}
+        headerExtra={tools}
+        holdExternal={confirm !== null}
+        onIndexChange={(i, s) => { setAt(i); setCurStory(s); }}
+        onClose={() => onClose()}
+      />
+      {confirms}
+    </>
   );
 }

@@ -1,9 +1,9 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor } from '../lib/helpers';
+import { homepageAction, openAs, tokenFor } from '../lib/helpers';
 
 /**
  * 소셜 — 이웃(단방향 팔로우) + 스토리([소식] 피드) + 방명록 — Phase 2.
- *  · 이웃 추가 → 상대 소식이 내 [소식] 피드에 뜬다
+ *  · 이웃 추가 → 상대 소식이 ArtStory [이웃] 탭에 뜬다(2026-11-14 — [전체]는 이웃과 무관하게 모두의 소식)
  *  · 스토리 공개범위는 글마다(전체공개/이웃공개)
  *  · 방명록: 남기면 방 주인에게, 답글은 방 주인만
  */
@@ -22,24 +22,28 @@ test('★ 작가 홈페이지에서 이웃 추가 → 상대 스토리가 [소�
   // artist 가 artist2(=id 2) 홈페이지에서 [이웃 추가]
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/portfolio/2');
-  const followBtn = page.getByRole('button', { name: /이웃 추가/ });
-  await expect(followBtn).toBeVisible({ timeout: 15000 });
+  // 휴대폰은 탭 줄 오른쪽 [⋯] 안(2026-11-15) — 누르면 목록이 닫히고 알림 글로 알린다
+  const followBtn = await homepageAction(page, /이웃 추가/);
   await followBtn.click();
-  await expect(page.getByRole('button', { name: /^이웃$/ })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('이웃으로 추가했어요.')).toBeVisible({ timeout: 8000 });
+  await expect(await homepageAction(page, /^이웃$/)).toBeVisible({ timeout: 8000 });
 
-  // [소식] 피드로 가면 artist2 의 스토리가 보인다
-  await page.goto('/feed');
-  await expect(page.locator('body')).toContainText(cap, { timeout: 15000 });
+  // ArtStory [이웃] 탭에 artist2 의 소식이 보인다(2026-11-14 — 전체 탭은 이웃과 무관하게 모두의 소식)
+  await page.goto('/feed?tab=neighbors');
+  await expect(page.locator('[data-story-card]').filter({ hasText: cap })).toBeVisible({ timeout: 15000 });
   await ctx.close();
 });
 
-test('★ [소식] 에서 직접 스토리를 올리면 내 피드에 바로 뜬다', async ({ browser }) => {
+test('★ ArtStory 에서 [+] → 곧바로 올리기 화면 → 글을 써 올리면 [전체]에 바로 뜬다', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/feed');
   const cap = `내 소식 ${Date.now()}`;
-  await page.getByPlaceholder(/작업 소식을 남겨보세요/).fill(cap);
-  await page.getByRole('button', { name: '올리기' }).click();
-  await expect(page.locator('body')).toContainText(cap, { timeout: 12000 });
+  await page.getByRole('button', { name: '소식 올리기' }).first().click();
+  await page.waitForURL(/\/story\/new/);
+  await page.getByLabel('글', { exact: true }).fill(cap);
+  await page.getByRole('button', { name: '올리기', exact: true }).click();
+  await page.waitForURL(/\/feed/);
+  await expect(page.locator('[data-story-card]').filter({ hasText: cap })).toBeVisible({ timeout: 12000 });
   await ctx.close();
 });
 

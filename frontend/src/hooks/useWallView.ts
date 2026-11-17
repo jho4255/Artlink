@@ -29,6 +29,8 @@ import {
 const BOOT_TIMEOUT_MS = 25_000;
 /** 한 장 그리는 데 기다리는 시간(사진 받기는 따로 — imageFetch 가 정체 기준으로 끊는다) */
 const RENDER_TIMEOUT_MS = 20_000;
+/** 엔진(iframe)을 걷었다 — 기다리던 요청이 이 이유로 끊긴다. 나눠 쓰는 다른 화면이 걷었을 수 있어 실패로 치지 않는다(pump) */
+const FRAME_CLOSED = 'closed';
 /**
  * 한 장 끝나고 다음 장까지 쉬는 시간 — 방금 그린 그림이 먼저 화면에 오르고 손가락 입력이 끼어들 틈.
  * 쉬지 않으면 초안이 화면에 오르기도 전에 원본 합성이 스레드를 붙잡았다(헤드리스 실측 0.9초 — 초안이 원본과 함께 떴다).
@@ -112,7 +114,7 @@ class WallFrame {
   }
 
   render(blob: Blob, quality: WallQuality): Promise<{ blob: Blob; ratio: string }> {
-    if (this.phase === 'dead') return Promise.reject(new Error('closed'));
+    if (this.phase === 'dead') return Promise.reject(new Error(FRAME_CLOSED));
     const req = ++this.seq;
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -131,7 +133,7 @@ class WallFrame {
   }
 
   destroy(): void {
-    this.die(new Error('closed'));
+    this.die(new Error(FRAME_CLOSED));
   }
 
   private die(err: Error): void {
@@ -184,11 +186,41 @@ export interface WallView {
   warm: () => void;
 }
 
+/**
+ * 엔진(iframe)은 **한 탭에 하나** — 이 훅을 쓰는 화면이 둘 떠 있어도 나눠 쓴다(2026-11-14, 규칙 82).
+ * 작가 홈페이지의 작품 페이지(WorkSheet)와 그 위의 크게 보기(ArtworkViewer)가 둘 다 [벽에 걸어 보기]를 들고 있다 — 화면마다 iframe 을 띄우면
+ * 벽 사진(1.6MB)·액자 사진을 두 번 받고 GPU 메모리도 두 배다. 마지막으로 쓰던 화면이 닫히면 걷는다(예전과 같은 '닫으면 걷는다').
+ */
+let sharedFrame: WallFrame | null = null;
+let holders = 0;
+function acquireFrame(held: { current: boolean }): WallFrame {
+  if (!held.current) { holders += 1; held.current = true; }
+  if (!sharedFrame || sharedFrame.dead) sharedFrame = new WallFrame();
+  return sharedFrame;
+}
+function releaseFrame(held: { current: boolean }): void {
+  if (!held.current) return;
+  held.current = false;
+  holders = Math.max(0, holders - 1);
+  if (holders === 0) {
+    sharedFrame?.destroy();
+    sharedFrame = null;
+    sources.clear();   // 미리 받아 두고 못 쓴 사진도 놓는다
+  }
+}
+/** 이 엔진은 못 쓴다(안 되는 브라우저·WebGL 잃음) — 다음에 쓰는 쪽이 새로 띄운다 */
+function dropFrame(frame: WallFrame | null): void {
+  if (!frame) return;
+  frame.destroy();
+  if (sharedFrame === frame) sharedFrame = null;
+}
+
 export function useWallView({ urls, index, active }: { urls: string[]; index: number; active: boolean }): WallView {
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const [unsupported, setUnsupported] = useState(() => shared.unsupported);
   const liveRef = useRef({ urls, index, active });
-  const frameRef = useRef<WallFrame | null>(null);
+  /** 이 화면이 공유 엔진을 잡고 있는가 — 닫힐 때 놓는다 */
+  const heldRef = useRef(false);
   const busyRef = useRef(false);
   const genRef = useRef(0);
   const timerRef = useRef(0);
@@ -225,8 +257,7 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
     if (wait > 0) { later(wait); return; }
     busyRef.current = true;
     try {
-      let frame = frameRef.current;
-      if (!frame || frame.dead) frame = frameRef.current = new WallFrame();
+      const frame = acquireFrame(heldRef);
       // 사진 받기와 엔진 준비를 함께 — 둘 다 끝나야 그린다(위 머리말)
       const pending = source(url, job.quality);
       pending.finally(() => sources.delete(sourceKey(url, job.quality))).catch(() => {});
@@ -243,14 +274,15 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
       if (gen !== genRef.current) return;
       if (e instanceof Unsupported) {
         shared.unsupported = true;
-        frameRef.current?.destroy();
-        frameRef.current = null;
+        dropFrame(sharedFrame);
         setUnsupported(true);
       } else if (e instanceof Error && e.message === GL_LOST && shared.glRestarts < GL_RESTART_MAX) {
         // 엔진이 WebGL 을 잃었다(작품 없이 그림자만 남은 그림은 보내지 않았다) — 새 iframe 으로 다음 차례에 다시 그린다
         shared.glRestarts += 1;
-        frameRef.current?.destroy();
-        frameRef.current = null;
+        dropFrame(sharedFrame);
+      } else if (e instanceof Error && e.message === FRAME_CLOSED) {
+        // 엔진을 나눠 쓰는 다른 화면이 그 엔진을 걷었다(WebGL 을 잃어 새로 띄우는 중) — 이 작품이 실패한 게 아니다.
+        // 다음 차례에 새 엔진으로 다시 그린다(이 화면이 아직 잡고 있으니 holders 가 0 이 되어 걷힌 것은 아니다)
       } else if (forCurrent) {
         hardFailed.add(url);        // 초안이 있으면 그건 그대로 보인다 — 원본으로 다시 그리지 못했을 뿐
       } else {
@@ -275,9 +307,7 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
       if (genRef.current === gen) genRef.current += 1;
       busyRef.current = false;
       window.clearTimeout(timerRef.current);
-      frameRef.current?.destroy();
-      frameRef.current = null;
-      sources.clear();   // 미리 받아 두고 못 쓴 사진도 놓는다
+      releaseFrame(heldRef);   // 마지막으로 쓰던 화면이면 엔진을 걷고 미리 받은 사진도 놓는다
     };
   }, []);
 
@@ -292,14 +322,15 @@ export function useWallView({ urls, index, active }: { urls: string[]; index: nu
 
   const warm = useCallback(() => {
     if (shared.unsupported || !aliveRef.current) return;
-    if (!frameRef.current || frameRef.current.dead) {
-      const frame = frameRef.current = new WallFrame();
+    const fresh = !sharedFrame || sharedFrame.dead || !heldRef.current;
+    const frame = acquireFrame(heldRef);
+    if (fresh) {
       const gen = genRef.current;
       // 미리 띄운 엔진이 '이 브라우저는 안 된다'고 하면 누르기 전에 토글을 감춘다(그리던 중이면 pump 가 같은 일을 한다)
       frame.ready().catch((e) => {
         if (gen !== genRef.current || !(e instanceof Unsupported)) return;
         shared.unsupported = true;
-        if (frameRef.current === frame) frameRef.current = null;
+        dropFrame(frame);
         setUnsupported(true);
       });
     }

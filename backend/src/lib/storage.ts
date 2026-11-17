@@ -1,6 +1,6 @@
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { matchR2Base } from './r2Urls';
-import { THUMB_SPECS, thumbKey, thumbDiskPath } from './thumb';
+import { ALL_THUMB_DIRS, thumbKey, thumbDiskPath } from './thumb';
 import fs from 'fs';
 import path from 'path';
 
@@ -36,7 +36,7 @@ export async function deleteUploadedFile(url: string | null | undefined): Promis
       const key = url.slice(base.length + 1);
       if (!key) return;
       // 업로드가 t240·t800 을 함께 만들므로(lib/thumb.ts) 지울 때도 함께 — 안 지우면 원본당 고아 2개가 영구히 쌓인다(2026-09-19)
-      const keys = [key, ...THUMB_SPECS.map((spec) => thumbKey(key, spec.dir))];
+      const keys = [key, ...ALL_THUMB_DIRS.map((dir) => thumbKey(key, dir))];
       await Promise.all(keys.map((k) =>
         s3!.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME!, Key: k })).catch(() => { /* 썸네일이 없을 수 있다 */ }),
       ));
@@ -47,7 +47,7 @@ export async function deleteUploadedFile(url: string | null | undefined): Promis
       const safe = path.basename(url.slice('/uploads/'.length));
       if (!safe) return;
       const uploadsDir = path.join(__dirname, '../../uploads');
-      const paths = [path.join(uploadsDir, safe), ...THUMB_SPECS.map((spec) => thumbDiskPath(uploadsDir, safe, spec.dir))];
+      const paths = [path.join(uploadsDir, safe), ...ALL_THUMB_DIRS.map((dir) => thumbDiskPath(uploadsDir, safe, dir))];
       await Promise.all(paths.map((p) => fs.promises.unlink(p).catch(() => { /* 이미 없음 */ })));
     }
   } catch { /* best-effort: 정리 실패는 무시 */ }

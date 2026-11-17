@@ -1,614 +1,309 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ImagePlus, X, Loader2, Trash2, Globe, Users, Heart, MessageCircle, Send, Star, RefreshCw } from 'lucide-react';
+/**
+ * ArtStory (`/feed`, 2026-11-14 개편, CLAUDE.md 규칙 81) — 홈 카드 줄의 [전체 보기].
+ *
+ * 탭 [전체 · 이웃 · 내 소식]. **전체는 비회원도 본다**(전체공개 소식 — 블라인드 스토리 방식).
+ * 세로 카드 격자를 내리면 더 받고, 누르면 홈과 같은 보기 화면(StoryViewer)이 열려 저절로 넘어간다.
+ *  · 이웃 = 내가 이웃 추가한 사람들(이웃 공개 소식도 보인다)
+ *  · 내 소식 = 내 소식(내린 것·이웃 공개 표시) + 하이라이트 + 소식을 그만 본 사람
+ * 알림·공유 링크 `/feed?story=<id>[&comment=<id>]` 는 그 소식부터 보기 화면을 연다(댓글이면 댓글 창을 연 채로).
+ * ⚠️ 옛 '피드 카드 목록 + 위쪽 글쓰기 칸'은 없앴다 — 올리기는 머리 오른쪽 [+](곧바로 `/story/new`).
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { Plus, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import Thumb from '@/components/shared/Thumb';
+import { apiErrorMessage } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
+import PageTabBar from '@/components/shared/PageTabBar';
 import HighlightRail from '@/components/shared/HighlightRail';
 import HighlightViewer from '@/components/shared/HighlightViewer';
-import { useMention, MentionSuggest } from '@/components/shared/MentionSuggest';
-import { useAuthStore } from '@/stores/authStore';
-import { timeAgo, roleLabel } from '@/lib/utils';
+import StoryCard from '@/components/story/StoryCard';
+import StoryViewer from '@/components/story/StoryViewer';
+import { useStoryCompose } from '@/components/story/useStoryCompose';
 import type { StoryHighlight } from '@/types';
-import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
-import { readComposeImages } from '@/lib/artlook';
+import { newStorySeed, readSeenStories, type Story, type StoryAuthor, type StoryPage } from '@/lib/story';
+
+type Tab = 'all' | 'neighbors' | 'mine';
 
 /**
- * 소식 (Story Feed) — 커뮤니티(글로벌 게시판)와 **다른** 개인 피드.
- *   · 내가 이웃(팔로우)한 사람 + 나 의 스토리만 최신순으로 모인다.
- *   · 공개범위는 **글마다** — 전체공개 | 이웃공개. 이웃공개는 내 이웃에게만.
- *   · 상단 인라인 작성(작업 중 사진 + 짧은 글). 익명 없음 — 소식은 '누가' 가 핵심.
+ * [전체] 탭의 무작위 순서 (2026-11-14 사용자 결정 — "새로고침하면 안 본 스토리 랜덤 · 본 건 후순위 · 너무 오래된 건 안 뜨게").
+ * 시드와 '이 기기에서 본 소식'을 **열 때 한 번** 찍는다 — 서버가 하루 안 된 내 소식 → 안 본 소식(섞음) → 본 소식(최신순) 으로 놓는다.
+ *  - 보는 동안엔 순서가 그대로다(본 소식은 다음 [새로고침]·새로 들어올 때 뒤로 간다).
+ *  - 기록(location.key)마다 기억해 두어 **뒤로 오면 같은 순서**(보던 자리를 잃지 않게). 새로 들어오거나 페이지를 새로 불러오면 새 순서.
  */
-interface StoryAuthor { id: number; name: string; avatar: string | null; role: string }
-interface Story {
-  id: number; caption: string; images: string[]; visibility: 'PUBLIC' | 'NEIGHBORS';
-  createdAt: string; author: StoryAuthor; mine: boolean;
-  likeCount: number; commentCount: number; liked: boolean;
-}
-interface StoryComment { id: number; body: string; createdAt: string; author: StoryAuthor; mine: boolean }
-interface FeedPage { stories: Story[]; page: number; hasMore: boolean; followingCount: number }
+interface FeedOrder { seed: number; seen: string }
+const orderByVisit = new Map<string, FeedOrder>();
+const newOrder = (): FeedOrder => ({ seed: newStorySeed(), seen: [...readSeenStories()].join(',') });
 
-
-function Composer() {
-  const qc = useQueryClient();
-  const [caption, setCaption] = useState('');
-  const [images, setImages] = useState<string[]>([]);
-  const [visibility, setVisibility] = useState<'PUBLIC' | 'NEIGHBORS'>('NEIGHBORS');
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const mention = useMention(caption, (v) => setCaption(v.slice(0, 1000)));
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // ArtLook 의 [ArtStory에 올리기] 로 왔다 — 마이페이지가 이미지를 올려 두고 그 주소를 라우터 state 로 넘긴다(lib/artlook.ts).
-  // 사진을 실은 채로 글쓰기 칸을 열고, state 는 바로 비운다(새로고침·뒤로가기에 다시 붙지 않게).
-  // ⚠️ 개발 모드(StrictMode)는 이 effect 를 두 번 돌린다 — 같은 주소는 한 번만 붙인다(중복을 걸러서).
-  useEffect(() => {
-    const incoming = readComposeImages(location.state);
-    if (!incoming.length) return;
-    setImages((prev) => [...prev, ...incoming.filter((u) => !prev.includes(u))].slice(0, 10));
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-    window.setTimeout(() => {
-      boxRef.current?.scrollIntoView({ block: 'center' });
-      mention.ref.current?.focus({ preventScroll: true });
-    }, 60);
-    toast.success('ArtLook 이미지를 담았어요. 글을 쓰고 [올리기]를 눌러 주세요.', { id: 'artlook-compose' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key]);
-
-  const create = useMutation({
-    mutationFn: () => api.post('/stories', { caption: caption.trim(), images, visibility }).then((r) => r.data),
-    onSuccess: () => {
-      setCaption(''); setImages([]); setVisibility('NEIGHBORS');
-      // invalidate 는 펼쳐 둔 모든 쪽을 다시 받는다 — 새 글은 맨 위에 오므로 1쪽부터 다시 시작한다(피드 새로고침과 같은 규칙)
-      qc.resetQueries({ queryKey: ['story-feed'] });
-      toast.success('소식을 올렸어요.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '올리기에 실패했습니다.'),
+function useStoryList(tab: Tab, userId: number | undefined, enabled: boolean, order: FeedOrder) {
+  const url = tab === 'all' ? '/stories/public' : tab === 'neighbors' ? '/stories/feed' : `/stories/user/${userId}`;
+  return useInfiniteQuery<StoryPage, Error, InfiniteData<StoryPage>, readonly unknown[], number | null>({
+    queryKey: tab === 'mine' ? ['stories', 'user', userId] : tab === 'all' ? ['stories', 'public', order.seed] : ['stories', 'neighbors'],
+    queryFn: ({ pageParam }) => api.get(url, {
+      params: tab === 'all'
+        ? { seed: order.seed, ...(order.seen ? { seen: order.seen } : {}), offset: pageParam ?? 0 }
+        : { ...(tab === 'neighbors' ? { scope: 'neighbors' } : {}), ...(pageParam ? { cursor: pageParam } : {}) },
+    }).then((r) => r.data),
+    initialPageParam: null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled,
   });
-
-  const onPickImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    const room = 10 - images.length;
-    if (room <= 0) { toast.error('사진은 10장까지입니다.'); return; }
-    setUploading(true);
-    try {
-      const urls: string[] = [];
-      for (const file of files.slice(0, room)) {
-        if (file.size > 15 * 1024 * 1024) { toast.error('사진은 최대 15MB 까지입니다.'); continue; }
-        const form = new FormData();
-        form.append('image', file);
-        const { data } = await api.post('/upload/image', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-        urls.push(data.url);
-      }
-      setImages((prev) => [...prev, ...urls]);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || '사진 업로드 실패');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
-
-  const canSubmit = (!!caption.trim() || images.length > 0) && !create.isPending && !uploading;
-
-  return (
-    <div ref={boxRef} className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-      <div className="relative">
-        <textarea
-          ref={mention.ref as React.Ref<HTMLTextAreaElement>}
-          value={caption}
-          onChange={mention.onChange}
-          onBlur={mention.onBlur}
-          onKeyDown={mention.onKeyDown}
-          placeholder="작업 소식을 남겨보세요. @로 이웃이나 ArtLink를 부를 수 있습니다."
-          className="min-h-[72px] w-full resize-none text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-300 focus:outline-none [overflow-wrap:anywhere]"
-        />
-        <MentionSuggest {...mention.suggest} />
-      </div>
-
-      {images.length > 0 && (
-        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {images.map((url, i) => (
-            <div key={i} className="relative aspect-square overflow-hidden rounded-lg border border-gray-100">
-              <img src={url} alt="" className="h-full w-full object-cover" />
-              <button
-                onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                aria-label="사진 삭제"
-                className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
-        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onPickImages} />
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading || images.length >= 10}
-          aria-label="사진 첨부"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-        >
-          {uploading ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
-        </button>
-
-        {/* 공개범위 — 전체공개 / 이웃공개 */}
-        <button
-          onClick={() => setVisibility((v) => (v === 'PUBLIC' ? 'NEIGHBORS' : 'PUBLIC'))}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
-        >
-          {visibility === 'PUBLIC' ? <><Globe size={14} /> 전체공개</> : <><Users size={14} /> 이웃공개</>}
-        </button>
-
-        <button
-          onClick={() => create.mutate()}
-          disabled={!canSubmit}
-          className={`ml-auto rounded-full px-5 py-1.5 text-sm font-semibold ${canSubmit ? 'bg-gray-950 text-white hover:bg-gray-800' : 'bg-gray-100 text-gray-300'}`}
-        >
-          {create.isPending ? '올리는 중…' : '올리기'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** 사람 링크 — `/portfolio/:id` 는 작가만 열린다(갤러리·일반·운영은 404). 작가가 아니면 링크 없이 그린다(2026-09-19) */
-function PersonLink({ user, className, children }: { user: { id: number; role?: string }; className?: string; children: React.ReactNode }) {
-  if (user.role !== 'ARTIST') return <span className={className}>{children}</span>;
-  return <Link to={`/portfolio/${user.id}`} className={className}>{children}</Link>;
-}
-
-function StoryCard({ story, openComments = false }: { story: Story; openComments?: boolean }) {
-  const qc = useQueryClient();
-  const { isAuthenticated, user } = useAuthStore();
-  const isAdmin = user?.role === 'ADMIN';
-  const [showComments, setShowComments] = useState(openComments);
-  const [showLikers, setShowLikers] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const mention = useMention(commentText, setCommentText);
-  const a = story.author;
-
-  // 본인의 하이라이트 목록
-  const { data: myHighlights } = useQuery<StoryHighlight[]>({
-    queryKey: ['highlights', user?.id],
-    queryFn: () => api.get(`/stories/highlights/${user!.id}`).then((r) => r.data),
-    enabled: showHighlightPicker && !!user?.id,
-  });
-
-  // 스토리를 하이라이트에 추가
-  const addToHighlight = useMutation({
-    mutationFn: (highlightId: number) => api.post(`/stories/highlights/${highlightId}/stories/${story.id}`),
-    onSuccess: () => {
-      toast.success('하이라이트에 추가했어요.');
-      setShowHighlightPicker(false);
-      // ⚠️ 담고 나면 커버 사진이 생긴다 — invalidate 를 빼면 맨 위 동그라미가 이니셜 그대로다
-      qc.invalidateQueries({ queryKey: ['highlights'] });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '추가 실패'),
-  });
-
-  const { data: likers } = useQuery<StoryAuthor[]>({
-    queryKey: ['story-likers', story.id],
-    queryFn: () => api.get(`/stories/${story.id}/likers`).then((r) => r.data),
-    enabled: showLikers && story.likeCount > 0,
-  });
-
-  /**
-   * 이 소식이 들어 있는 캐시를 **전부** 고친다.
-   * ⚠️ 피드 캐시만 고치면 안 된다 — 알림으로 연 소식(`/feed?story=`)은 피드에 없을 수 있어
-   *    `['story', id]` 에만 산다. 그것만 빼먹으면 **좋아요를 눌러도 화면이 그대로**다.
-   */
-  const patchFeed = (fn: (s: Story) => Story) => {
-    qc.setQueryData<{ pages: FeedPage[]; pageParams: unknown[] }>(['story-feed'], (old) =>
-      old ? { ...old, pages: old.pages.map((p) => ({ ...p, stories: p.stories.map((s) => (s.id === story.id ? fn(s) : s)) })) } : old);
-    qc.setQueryData<Story>(['story', story.id], (old) => (old ? fn(old) : old));
-  };
-
-  const del = useMutation({
-    mutationFn: () => api.delete(`/stories/${story.id}`),
-    onSuccess: () => {
-      // 지운 글만 캐시에서 빼낸다 — invalidate 면 펼쳐 둔 쪽을 전부 다시 받는다(감사 S19)
-      qc.setQueryData<{ pages: FeedPage[]; pageParams: unknown[] }>(['story-feed'], (old) =>
-        old ? { ...old, pages: old.pages.map((p) => ({ ...p, stories: p.stories.filter((s) => s.id !== story.id) })) } : old);
-      qc.removeQueries({ queryKey: ['story', story.id] });   // 지운 글이 핀으로 남지 않게
-      toast.success('삭제했어요.');
-    },
-    onError: () => toast.error('삭제에 실패했습니다.'),
-  });
-
-  const like = useMutation({
-    mutationFn: () => api.post(`/stories/${story.id}/like`).then((r) => r.data),
-    onMutate: () => { patchFeed((s) => ({ ...s, liked: !s.liked, likeCount: s.likeCount + (s.liked ? -1 : 1) })); },
-    onError: () => { patchFeed((s) => ({ ...s, liked: !s.liked, likeCount: s.likeCount + (s.liked ? -1 : 1) })); toast.error('잠시 후 다시 시도해주세요.'); },
-    onSuccess: (d) => patchFeed((s) => ({ ...s, liked: d.liked, likeCount: d.likeCount })),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['story-likers', story.id] }),
-  });
-
-  const { data: comments } = useQuery<StoryComment[]>({
-    queryKey: ['story-comments', story.id],
-    queryFn: () => api.get(`/stories/${story.id}/comments`).then((r) => r.data),
-    enabled: showComments,
-  });
-
-  const addComment = useMutation({
-    mutationFn: () => api.post(`/stories/${story.id}/comments`, { body: commentText.trim() }).then((r) => r.data),
-    onSuccess: () => { setCommentText(''); qc.invalidateQueries({ queryKey: ['story-comments', story.id] }); patchFeed((s) => ({ ...s, commentCount: s.commentCount + 1 })); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '댓글 등록 실패'),
-  });
-
-  const delComment = useMutation({
-    mutationFn: (id: number) => api.delete(`/stories/${story.id}/comments/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['story-comments', story.id] }); patchFeed((s) => ({ ...s, commentCount: Math.max(0, s.commentCount - 1) })); },
-  });
-
-  const onLike = () => { if (!isAuthenticated) { toast.error('로그인이 필요합니다.'); return; } like.mutate(); };
-
-  return (
-    <article className="rounded-2xl border border-gray-100 bg-white p-4">
-      <div className="flex items-center gap-3">
-        <PersonLink user={a} className="shrink-0">
-          {a.avatar
-            ? <img src={a.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
-            : <div className="grid h-9 w-9 place-items-center rounded-full bg-gray-100 text-sm font-semibold text-gray-500">{a.name.slice(0, 1)}</div>}
-        </PersonLink>
-        <div className="min-w-0 flex-1">
-          <PersonLink user={a} className="text-sm font-semibold text-gray-900 hover:underline">
-            {a.name}{roleLabel(a.role) && <span className="ml-1 text-xs font-normal text-gray-400">· {roleLabel(a.role)}</span>}
-          </PersonLink>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span>{timeAgo(story.createdAt)}</span>
-            <span>·</span>
-            <span className="inline-flex items-center gap-0.5">
-              {story.visibility === 'PUBLIC' ? <><Globe size={11} /> 전체</> : <><Users size={11} /> 이웃</>}
-            </span>
-          </div>
-        </div>
-        {/* 서버는 작성자·Admin 둘 다 허용 — 화면이 mine 만 봐서 관리자가 못 지웠다(커뮤니티에서 겪은 그 사고, 2026-09-19). 확인창도 붙였다 — 사진까지 통째로 사라진다 */}
-        {(story.mine || isAdmin) && (
-          <ConfirmDeleteButton onConfirm={() => del.mutate()} disabled={del.isPending} title="소식 삭제" message="이 소식을 지웁니다. 사진과 댓글도 함께 사라지며 되돌릴 수 없습니다." className="text-gray-300 hover:text-accent">
-            <Trash2 size={16} />
-          </ConfirmDeleteButton>
-        )}
-      </div>
-
-      {story.caption && (
-        <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-gray-800 [overflow-wrap:anywhere]">{story.caption}</p>
-      )}
-
-      {story.images.length > 0 && (
-        <div className={`mt-3 grid gap-1.5 ${story.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-          {story.images.map((url, i) => (
-            <Thumb key={i} src={url} size="grid" alt="" loading="lazy"
-              className={`w-full rounded-lg border border-gray-100 object-cover ${story.images.length === 1 ? 'max-h-[70vh] object-contain' : 'aspect-square'}`} />
-          ))}
-        </div>
-      )}
-
-      {/* 좋아요 · 댓글 · 하이라이트 */}
-      <div className="mt-3 flex items-center gap-4 border-t border-gray-50 pt-2.5 text-sm">
-        <button onClick={onLike} className={`inline-flex items-center gap-1 ${story.liked ? 'text-accent' : 'text-gray-500 hover:text-gray-800'}`}>
-          <Heart size={16} className={story.liked ? 'fill-accent' : ''} /> {story.likeCount > 0 && story.likeCount}
-        </button>
-        <button onClick={() => setShowComments((v) => !v)} className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
-          <MessageCircle size={16} /> {story.commentCount > 0 && story.commentCount}
-        </button>
-        {story.likeCount > 0 && (
-          <button onClick={() => setShowLikers((v) => !v)} className="ml-auto text-xs text-gray-400 hover:text-gray-700">
-            좋아요 누른 사람
-          </button>
-        )}
-        {/* 하이라이트에 담기 — **오른쪽 끝의 아이콘 하나**.
-            좋아요·댓글과 나란히 글자로 두면 남들도 누르는 것처럼 보이는데, 이건 내 글에만 뜨는
-            정리용 도구라 성격이 다르다. 무엇인지는 title 로 알린다. */}
-        {story.mine && isAuthenticated && (
-          <button
-            onClick={() => setShowHighlightPicker((v) => !v)}
-            title="하이라이트에 담기"
-            aria-label="하이라이트에 담기"
-            className={`${story.likeCount > 0 ? '' : 'ml-auto'} text-gray-300 hover:text-amber-500`}
-          >
-            <Star size={16} className={showHighlightPicker ? 'fill-amber-400 text-amber-500' : ''} />
-          </button>
-        )}
-      </div>
-
-      {/* 하이라이트 선택 */}
-      {showHighlightPicker && (
-        <div className="mt-2 rounded-lg bg-gray-50 p-2.5">
-          {myHighlights && myHighlights.length > 0 ? (
-            <div className="space-y-1">
-              {myHighlights.map(h => (
-                <button key={h.id} onClick={() => addToHighlight.mutate(h.id)}
-                  className="block w-full text-left rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-200"
-                  disabled={addToHighlight.isPending}>
-                  {h.name}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400">하이라이트가 없습니다. 맨 위 [+ 추가]로 만들어보세요.</p>
-          )}
-        </div>
-      )}
-
-      {showLikers && story.likeCount > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 rounded-lg bg-gray-50 p-2.5">
-          {(likers ?? []).map((u) => (
-            <PersonLink key={u.id} user={u} className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
-              {u.avatar
-                ? <img src={u.avatar} alt="" className="h-5 w-5 rounded-full object-cover" />
-                : <span className="grid h-5 w-5 place-items-center rounded-full bg-gray-200 text-[9px] font-semibold text-gray-500">{u.name.slice(0, 1)}</span>}
-              {u.name}
-            </PersonLink>
-          ))}
-          {!likers && <span className="text-xs text-gray-400">불러오는 중…</span>}
-        </div>
-      )}
-
-      {showComments && (
-        <div className="mt-3 space-y-3 border-t border-gray-50 pt-3">
-          {(comments ?? []).map((c) => (
-            <div key={c.id} className="flex items-start gap-2 text-sm">
-              <PersonLink user={c.author} className="shrink-0">
-                {c.author.avatar
-                  ? <img src={c.author.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />
-                  : <div className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-500">{c.author.name.slice(0, 1)}</div>}
-              </PersonLink>
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-semibold text-gray-700">{c.author.name}</span>
-                <span className="ml-1.5 text-[11px] text-gray-300">{timeAgo(c.createdAt)}</span>
-                <p className="whitespace-pre-wrap text-[13px] leading-snug text-gray-800 [overflow-wrap:anywhere]">{c.body}</p>
-              </div>
-              {(c.mine || story.mine || isAdmin) && (
-                <ConfirmDeleteButton onConfirm={() => delComment.mutate(c.id)} aria-label="댓글 삭제" title="댓글 삭제" message="이 댓글을 지웁니다." className="text-gray-300 hover:text-accent"><X size={13} /></ConfirmDeleteButton>
-              )}
-            </div>
-          ))}
-          {isAuthenticated && (
-            <div className="relative flex items-center gap-2">
-              <input
-                ref={mention.ref as React.Ref<HTMLInputElement>}
-                value={commentText}
-                onChange={mention.onChange}
-                onBlur={mention.onBlur}
-                onKeyDown={(e) => { if (mention.onKeyDown(e)) return; if (e.key === 'Enter' && !e.nativeEvent.isComposing && !addComment.isPending && commentText.trim()) addComment.mutate(); }}   // 멘션 목록이 떠 있으면 Enter 는 선택. 한글 조합 중 Enter 가 두 번 잡혀 중복 등록됐다(2026-09-19)
-                placeholder="댓글 달기… (@로 이웃·ArtLink 부르기)"
-                className="min-w-0 flex-1 rounded-full border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-              />
-              <button onClick={() => commentText.trim() && addComment.mutate()} disabled={!commentText.trim() || addComment.isPending}
-                aria-label="댓글 등록" className="text-gray-500 hover:text-gray-900 disabled:text-gray-300"><Send size={16} /></button>
-              <MentionSuggest {...mention.suggest} />
-            </div>
-          )}
-        </div>
-      )}
-    </article>
-  );
 }
 
 export default function FeedPage() {
   const { isAuthenticated, user } = useAuthStore();
   const qc = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [showHighlightModal, setShowHighlightModal] = useState(false);
-  const [openHighlight, setOpenHighlight] = useState<number | null>(null);
-  const [highlightName, setHighlightName] = useState('');
-  const [highlightIsPublic, setHighlightIsPublic] = useState(true);
+  const [params, setParams] = useSearchParams();
+  const compose = useStoryCompose();
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['story-feed'],
-    queryFn: ({ pageParam = 1 }) => api.get('/stories/feed', { params: { page: pageParam } }).then((r) => r.data as FeedPage),
-    initialPageParam: 1,
-    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
-    enabled: isAuthenticated,
+  const rawTab = params.get('tab');
+  const tab: Tab = isAuthenticated && (rawTab === 'neighbors' || rawTab === 'mine') ? rawTab : 'all';
+  const setTab = (t: Tab) => {
+    const next = new URLSearchParams(params);
+    if (t === 'all') next.delete('tab'); else next.set('tab', t);
+    setParams(next, { replace: true });
+  };
+
+  const location = useLocation();
+  const [order, setOrder] = useState<FeedOrder>(() => orderByVisit.get(location.key) ?? newOrder());
+  useEffect(() => { orderByVisit.set(location.key, order); }, [location.key, order]);
+
+  const list = useStoryList(tab, user?.id, tab === 'all' || isAuthenticated, order);
+  // 무작위 순서는 쪽을 offset 으로 잇는다 — 그사이 소식이 새로 올라오면 앞 쪽 끝이 다음 쪽에 한 번 더 올 수 있어 id 로 거른다
+  const stories = useMemo(() => {
+    const ids = new Set<number>();
+    return (list.data?.pages.flatMap((p) => p.stories) ?? []).filter((s) => {
+      if (ids.has(s.id)) return false;
+      ids.add(s.id);
+      return true;
+    });
+  }, [list.data]);
+  const followingCount = list.data?.pages[0]?.followingCount;
+
+  // 내리면 더 받는다
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = list;
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasNextPage) return;
+    const io = new IntersectionObserver((es) => { if (es[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage(); }, { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // ── 보기 화면 ──
+  const [viewer, setViewer] = useState<{ stories: Story[]; start: number; comments: boolean; focus: number | null; fromLink: boolean } | null>(null);
+  const linkId = Number(params.get('story')) || null;
+  const linkComment = Number(params.get('comment')) || null;
+  const { data: linked, isError: linkGone } = useQuery<Story>({
+    queryKey: ['story', linkId],
+    queryFn: () => api.get(`/stories/${linkId}`).then((r) => r.data),
+    enabled: !!linkId,
+    retry: false,
   });
+  // 알림·공유 링크 — 그 소식부터 열고, 끝나면 지금 탭의 소식으로 이어 본다
+  const openedLink = useRef<number | null>(null);
+  useEffect(() => {
+    if (!linkId || !linked || openedLink.current === linkId) return;
+    const t = window.setTimeout(() => {
+      openedLink.current = linkId;
+      setViewer({ stories: [linked, ...stories.filter((s) => s.id !== linked.id)], start: 0, comments: !!linkComment, focus: linkComment, fromLink: true });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [linkId, linked, linkComment, stories]);
+  const dropLink = () => {
+    const next = new URLSearchParams(params);
+    next.delete('story'); next.delete('comment');
+    setParams(next, { replace: true });
+  };
+  useEffect(() => {
+    if (!linkGone || !linkId) return;
+    toast.error('지워졌거나 볼 수 없는 소식이에요.', { id: 'story-gone' });
+    const t = window.setTimeout(dropLink, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkGone, linkId]);
 
-  // 내 하이라이트 (내 화면이므로 비공개 것도 함께 온다 — 서버가 본인 여부로 판정)
+  const grid = useRef<HTMLDivElement>(null);
+  const closeViewer = (last: number, changed: boolean) => {
+    const v = viewer;
+    setViewer(null);
+    if (v?.fromLink) dropLink();
+    if (changed) qc.invalidateQueries({ queryKey: ['stories'] });
+    if (!v || v.fromLink) return;
+    const id = v.stories[last]?.id;
+    requestAnimationFrame(() => grid.current?.querySelector<HTMLElement>(`[data-story-card="${id}"]`)?.scrollIntoView({ block: 'nearest' }));
+  };
+
+  // ── 내 소식 탭: 하이라이트 · 그만 본 사람 ──
   const { data: myHighlights } = useQuery<StoryHighlight[]>({
     queryKey: ['highlights', user?.id],
-    queryFn: () => api.get(`/stories/highlights/${user!.id}`).then(r => r.data),
-    enabled: !!user?.id,
+    queryFn: () => api.get(`/stories/highlights/${user!.id}`).then((r) => r.data),
+    enabled: tab === 'mine' && !!user?.id,
   });
-
+  const [openHighlight, setOpenHighlight] = useState<number | null>(null);
+  const [newHighlight, setNewHighlight] = useState<{ name: string; isPublic: boolean } | null>(null);
   const createHighlight = useMutation({
-    mutationFn: (data: { name: string; isPublic: boolean }) =>
-      api.post('/stories/highlights', data).then(r => r.data),
-    onSuccess: () => {
-      setHighlightName('');
-      setShowHighlightModal(false);
-      qc.invalidateQueries({ queryKey: ['highlights'] });
-      toast.success('하이라이트가 생성되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '생성에 실패했습니다.'),
+    mutationFn: (d: { name: string; isPublic: boolean }) => api.post('/stories/highlights', d).then((r) => r.data),
+    onSuccess: () => { setNewHighlight(null); qc.invalidateQueries({ queryKey: ['highlights'] }); toast.success('하이라이트를 만들었어요.'); },
+    onError: (e) => toast.error(apiErrorMessage(e, '만들지 못했어요.')),
   });
-
-  // 알림(`/feed?story=123`)으로 들어오면 **그 소식을 맨 위에** 펼친다.
-  // ⚠️ 피드에 없는 글일 수 있다 — 나를 부른 사람을 내가 팔로우하지 않았거나, ArtLink 로 불린 글이면
-  //    운영자의 피드엔 아예 없다. 그래서 피드와 별개로 하나만 받아 온다.
-  const pinnedId = Number(searchParams.get('story')) || null;
-  const { data: pinned, isError: pinnedGone } = useQuery<Story>({
-    queryKey: ['story', pinnedId],
-    queryFn: () => api.get(`/stories/${pinnedId}`).then((r) => r.data),
-    enabled: !!pinnedId,
+  const { data: mutes } = useQuery<StoryAuthor[]>({
+    queryKey: ['story-mutes'],
+    queryFn: () => api.get('/stories/mutes').then((r) => r.data),
+    enabled: tab === 'mine' && isAuthenticated,
+  });
+  const unmute = useMutation({
+    mutationFn: (id: number) => api.delete(`/stories/mutes/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['story-mutes'] }); qc.invalidateQueries({ queryKey: ['stories'] }); },
   });
 
   const [refreshing, setRefreshing] = useState(false);
   /**
-   * 피드를 다시 받는다.
-   * ⚠️ `invalidateQueries` 를 쓰지 말 것 — 무한스크롤로 5쪽을 펼쳐 뒀으면 **5쪽을 전부 다시 받는다.**
-   *    새로고침의 목적은 새 소식을 맨 위에서 보는 것이므로 `resetQueries` 로 1쪽부터 다시 시작한다.
-   *    하이라이트도 함께(다른 기기에서 담았을 수 있다).
+   * [전체] 는 새 시드 + 지금까지 본 소식으로 순서를 다시 정한다(안 본 소식은 다시 섞이고 본 소식은 뒤로).
+   * 다른 탭은 ⚠️ invalidate 가 아니라 reset — 펼쳐 둔 쪽을 전부 다시 받지 않고 1쪽부터 다시 시작한다(새 소식은 맨 위).
    */
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        qc.resetQueries({ queryKey: ['story-feed'] }),
-        qc.invalidateQueries({ queryKey: ['highlights'] }),
-      ]);
+      if (tab === 'all') setOrder(newOrder());
+      else await qc.resetQueries({ queryKey: ['stories'] });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally { setRefreshing(false); }
   };
 
-  const stories = data?.pages.flatMap((p) => p.stories) ?? [];
-  const followingCount = data?.pages[0]?.followingCount ?? 0;
+  const tabs = isAuthenticated
+    ? [{ id: 'all' as Tab, label: '전체' }, { id: 'neighbors' as Tab, label: '이웃' }, { id: 'mine' as Tab, label: '내 소식' }]
+    : [{ id: 'all' as Tab, label: '전체' }];
 
-  if (!isAuthenticated) {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <p className="text-sm text-gray-500">소식은 로그인 후 볼 수 있습니다.</p>
-        <Link to="/login" className="mt-3 inline-block rounded-lg bg-gray-950 px-4 py-2 text-sm text-white">로그인</Link>
-      </div>
-    );
-  }
+  const empty = !list.isLoading && stories.length === 0;
 
-  // 바깥 컨테이너는 다른 페이지와 같은 max-w-7xl px-6 md:px-12 —
-  // 제목(ArtStory) 왼쪽 끝이 Navbar 의 ArtLink 로고와 정확히 맞게. 피드 본문만 좁게(max-w-2xl) 왼쪽 정렬.
   return (
     <div className="py-8 md:py-12">
-      {/* 제목(ArtStory) 왼쪽 끝은 Navbar 의 ArtLink 로고와 맞춘다(max-w-7xl 왼쪽 끝) */}
-      <div className="max-w-7xl mx-auto px-6 md:px-12 mb-6">
-        <h1 className="text-xl font-bold tracking-tight font-serif text-gray-900 md:text-2xl">
-          Art<span className="text-accent">Story</span>
-        </h1>
-      </div>
-
-      {/* 본문은 보는 화면 기준 가운데 정렬(max-w-2xl mx-auto) */}
-      <div className="max-w-2xl mx-auto px-6">
-        {/* 새로고침 — 소식은 남이 계속 올리는 화면이라 다시 받을 길이 있어야 한다.
-            ⚠️ 색을 gray-500 보다 옅게 두지 말 것(홈 ArtWorks 와 같은 규칙) — 안 보인다는 지적이 있었다. */}
-        <div className="mb-3 flex justify-end">
-          <button
-            onClick={refresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-            새로고침
+      <div className="mx-auto max-w-7xl px-6 md:px-12">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h1 className="font-serif text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
+            Art<span className="text-accent">Story</span>
+          </h1>
+          <button type="button" onClick={compose.start} aria-label="소식 올리기" title="소식 올리기"
+            className="-mr-2 grid h-10 w-10 place-items-center rounded-full text-gray-700 hover:bg-gray-100 hover:text-gray-900">
+            <Plus size={22} strokeWidth={2.2} />
           </button>
         </div>
 
-        {/* 하이라이트 앨범 — 공개 홈페이지와 같은 컴포넌트 */}
-        <div className="mb-6 border-b border-gray-100 pb-6">
-          <HighlightRail
-            highlights={myHighlights ?? []}
-            onCreate={() => setShowHighlightModal(true)}
-            onOpen={(h) => setOpenHighlight(h.id)}
-          />
+        <div className="relative">
+          <PageTabBar tabs={tabs} active={tab} onSelect={setTab} idPrefix="artstory" label="소식 범위" />
+          <button type="button" onClick={refresh} disabled={refreshing}
+            className="absolute right-0 top-0 z-30 hidden h-11 items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 sm:inline-flex lg:top-0">
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> 새로고침
+          </button>
         </div>
 
-        {openHighlight != null && (
-          <HighlightViewer highlightId={openHighlight} onClose={() => setOpenHighlight(null)} />
-        )}
+        <div id={`artstory-panel-${tab}`} role="tabpanel" aria-labelledby={`artstory-tab-${tab}`} className="pt-5">
+          {tab === 'mine' && (
+            <div className="mb-6 border-b border-gray-100 pb-6">
+              <HighlightRail highlights={myHighlights ?? []} onCreate={() => setNewHighlight({ name: '', isPublic: true })} onOpen={(h) => setOpenHighlight(h.id)} />
+            </div>
+          )}
 
-        {/* 새 하이라이트 생성 모달 */}
-        {showHighlightModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHighlightModal(false)}>
-            <div className="bg-white rounded-lg shadow-lg p-6 w-96 max-w-full mx-3" onClick={e => e.stopPropagation()}>
-              <h2 className="text-lg font-semibold mb-4">새 하이라이트</h2>
-              <input
-                type="text"
-                value={highlightName}
-                onChange={e => setHighlightName(e.target.value)}
-                placeholder="하이라이트 이름"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 mb-4"
-              />
-              <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={highlightIsPublic}
-                  onChange={e => setHighlightIsPublic(e.target.checked)}
-                  className="w-4 h-4"
+          {list.isLoading ? (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 md:gap-3 lg:grid-cols-5">
+              {Array.from({ length: 10 }, (_, i) => <div key={i} className="aspect-[3/5] animate-pulse rounded-md bg-gray-100" />)}
+            </div>
+          ) : empty ? (
+            <div className="rounded-lg border border-dashed border-gray-300 px-6 py-14 text-center">
+              {tab === 'neighbors' ? (
+                <>
+                  <p className="text-sm text-gray-600">{followingCount === 0 ? '이웃 추가한 사람이 없어요.' : '이웃이 올린 소식이 없어요.'}</p>
+                  <Link to="/artists" className="mt-3 inline-block text-sm font-bold text-gray-900 underline underline-offset-4">작가 둘러보기</Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600">{tab === 'mine' ? '아직 올린 소식이 없어요.' : '아직 올라온 소식이 없어요.'}</p>
+                  <button type="button" onClick={compose.start} className="mt-3 inline-flex h-10 items-center gap-1 rounded-lg bg-gray-900 px-4 text-sm font-bold text-white">
+                    <Plus size={15} strokeWidth={2.6} /> 소식 올리기
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div ref={grid} className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 md:gap-3 lg:grid-cols-5">
+              {stories.map((s, i) => (
+                <StoryCard
+                  key={s.id}
+                  story={s}
+                  className="aspect-[3/5] w-full"
+                  onOpen={() => setViewer({ stories, start: i, comments: false, focus: null, fromLink: false })}
+                  badge={tab === 'mine' && (s.hidden || s.visibility === 'NEIGHBORS') ? (
+                    <>
+                      {s.hidden && <span className="rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-bold text-white">내려간 소식</span>}
+                      {s.visibility === 'NEIGHBORS' && <span className="rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">이웃 공개</span>}
+                    </>
+                  ) : undefined}
                 />
-                <span className="text-sm text-gray-600">공개</span>
-              </label>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setShowHighlightModal(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={() => {
-                    if (highlightName.trim()) {
-                      createHighlight.mutate({ name: highlightName.trim(), isPublic: highlightIsPublic });
-                    } else {
-                      toast.error('하이라이트 이름을 입력하세요.');
-                    }
-                  }}
-                  disabled={!highlightName.trim() || createHighlight.isPending}
-                  className="px-4 py-2 text-sm bg-gray-950 text-white hover:bg-gray-900 disabled:opacity-50 rounded-lg"
-                >
-                  {createHighlight.isPending ? '생성 중...' : '생성'}
-                </button>
-              </div>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+          <div ref={sentinel} aria-hidden="true" className="h-px" />
+          {list.isFetchingNextPage && <div className="py-6 text-center text-sm text-gray-500">더 불러오는 중…</div>}
 
-        <Composer />
-
-        {/* 알림으로 들어온 소식 — 맨 위에 따로 세워 왜 왔는지 바로 보이게 한다 */}
-        {pinnedId && (
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between px-1">
-              <p className="text-xs font-medium text-gray-500">알림으로 연 소식</p>
-              <button
-                onClick={() => {
-                  // 들고 있는 객체를 고쳐 그대로 넘기지 말 것 — 다음 렌더가 옛 값을 읽을 수 있다
-                  const next = new URLSearchParams(searchParams);
-                  next.delete('story'); next.delete('comment');
-                  setSearchParams(next, { replace: true });
-                }}
-                className="text-xs text-gray-400 hover:text-gray-700"
-              >
-                피드 전체 보기
-              </button>
-            </div>
-            {pinned
-              ? <StoryCard story={pinned} openComments={!!searchParams.get('comment')} />
-              : pinnedGone
-                ? <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-500">
-                    지워졌거나 볼 수 없는 소식입니다.
-                  </div>
-                : <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-gray-100" />)}</div>
-        ) : stories.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 py-16 text-center">
-            <p className="text-sm text-gray-500">
-              {followingCount === 0
-                ? '관심 있는 작가를 이웃으로 추가하면 여기에 소식이 모입니다.'
-                : '아직 올라온 소식이 없습니다. 첫 소식을 남겨보세요.'}
-            </p>
-            <Link to="/artists" className="mt-3 inline-block text-sm font-medium text-accent hover:underline">작가 둘러보기 →</Link>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {stories.filter((s) => s.id !== pinned?.id).map((s) => <StoryCard key={s.id} story={s} />)}
-            {hasNextPage && (
-              <button
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                className="w-full rounded-lg border border-gray-200 py-2.5 text-sm text-gray-500 hover:bg-gray-50"
-              >
-                {isFetchingNextPage ? '불러오는 중…' : '더 보기'}
-              </button>
-            )}
-          </div>
-        )}
+          {tab === 'mine' && mutes && mutes.length > 0 && (
+            <section className="mt-12 border-t border-gray-100 pt-6" aria-labelledby="story-mutes">
+              <h2 id="story-mutes" className="mb-3 text-sm font-bold text-gray-900">소식을 그만 본 사람</h2>
+              <ul className="divide-y divide-gray-100">
+                {mutes.map((m) => (
+                  <li key={m.id} className="flex items-center gap-3 py-2.5">
+                    {m.avatar
+                      ? <img src={m.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      : <span className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">{m.name.slice(0, 1)}</span>}
+                    <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{m.name}</span>
+                    <button type="button" onClick={() => unmute.mutate(m.id)} disabled={unmute.isPending}
+                      className="h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-900 hover:bg-gray-50">다시 보기</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
       </div>
+
+      {viewer && (
+        <StoryViewer
+          stories={viewer.stories}
+          startIndex={viewer.start}
+          openComments={viewer.comments}
+          focusCommentId={viewer.focus}
+          onClose={closeViewer}
+          onCompose={compose.start}
+        />
+      )}
+      {openHighlight != null && <HighlightViewer highlightId={openHighlight} onClose={() => setOpenHighlight(null)} />}
+      {newHighlight && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3" role="dialog" aria-modal="true" aria-label="새 하이라이트"
+          onClick={() => setNewHighlight(null)} onKeyDown={(e) => { if (e.key === 'Escape') setNewHighlight(null); }}>
+          <form className="w-96 max-w-full rounded-lg bg-white p-6 shadow-lg" onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); const n = newHighlight.name.trim(); if (n) createHighlight.mutate({ name: n, isPublic: newHighlight.isPublic }); }}>
+            <h2 className="mb-4 text-lg font-semibold">새 하이라이트</h2>
+            <label htmlFor="highlight-name" className="sr-only">하이라이트 이름</label>
+            <input id="highlight-name" autoFocus value={newHighlight.name} maxLength={50} placeholder="하이라이트 이름"
+              onChange={(e) => setNewHighlight({ ...newHighlight, name: e.target.value })}
+              className="mb-4 h-11 w-full rounded-lg border border-gray-300 px-3 focus:outline-none focus:ring-1 focus:ring-gray-400" />
+            <label className="mb-4 flex cursor-pointer items-center gap-2">
+              <input type="checkbox" checked={newHighlight.isPublic} onChange={(e) => setNewHighlight({ ...newHighlight, isPublic: e.target.checked })} className="h-4 w-4" />
+              <span className="text-sm text-gray-700">공개</span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setNewHighlight(null)} className="h-10 rounded-lg px-4 text-sm text-gray-600 hover:bg-gray-100">취소</button>
+              <button type="submit" disabled={!newHighlight.name.trim() || createHighlight.isPending}
+                className="h-10 rounded-lg bg-gray-950 px-4 text-sm text-white hover:bg-gray-900 disabled:opacity-50">
+                {createHighlight.isPending ? '만드는 중…' : '만들기'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

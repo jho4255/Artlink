@@ -36,10 +36,15 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
   </div>
 );
 
-export default function HomepageStylePicker({ value, images, onChange }: {
+export default function HomepageStylePicker({ value, images, onChange, part = 'all' }: {
   value: HomepageThemeKeys;
   images: PortfolioImage[];
   onChange: (next: HomepageThemeKeys) => void;
+  /**
+   * 어느 부분을 그릴지(2026-11-14) — [꾸미기] 가 '첫 화면'(대표작) 과 '색과 글꼴' 구역으로 나뉘었다(규칙 82).
+   * `hero` = 대표작만 · `style` = 색·글꼴만 · `all` = 둘 다(예전 모양).
+   */
+  part?: 'all' | 'hero' | 'style';
 }) {
   const inkHex = TEXTS.find((t) => t.key === value.ink)?.hex;
   const okText = new Set(recommendedTextKeys(value.bg));
@@ -56,10 +61,10 @@ export default function HomepageStylePicker({ value, images, onChange }: {
   return (
     <div className="space-y-4">
       {/* 대표작이 먼저다 — 색·글꼴보다 홈페이지 얼굴을 더 많이 바꾼다(2026-10-02, 예전엔 스타일 상자 맨 아래 줄이었다) */}
-      {images.length > 1 && (
+      {part !== 'style' && images.length > 1 && (
         <div>
           <p className="mb-1.5 text-sm font-medium text-gray-800">대표작</p>
-          <p className="mb-2 text-xs leading-relaxed text-gray-500">홈페이지 [작품] 탭 맨 위에 크게 놓이는 작품입니다. 안 고르면 첫 작품이 놓입니다.</p>
+          <p className="mb-2 text-xs leading-relaxed text-gray-500">홈페이지 첫 화면에 크게 놓이는 작품입니다. 안 고르면 첫 작품이 놓입니다.</p>
           <div className="flex flex-wrap gap-1.5">
             {images.map((img, i) => {
               const active = value.heroImageId ? value.heroImageId === img.id : i === 0;
@@ -82,8 +87,11 @@ export default function HomepageStylePicker({ value, images, onChange }: {
         </div>
       )}
 
-      <div className="space-y-3 rounded-lg border border-gray-200 p-3">
-        <p className="text-sm font-medium text-gray-800">색과 글꼴 <span className="ml-1 text-xs font-normal text-gray-500">포트폴리오 PDF 에도 같은 색·글꼴이 쓰입니다</span></p>
+      {part !== 'hero' && <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+        {/* [꾸미기] 의 '색과 글꼴' 구역 안이면(part='style') 구역 제목이 이미 있다 — 같은 제목을 두 번 쓰지 않는다 */}
+        {part === 'style'
+          ? <p className="text-xs text-gray-500">포트폴리오 PDF 에도 같은 색·글꼴이 쓰입니다</p>
+          : <p className="text-sm font-medium text-gray-800">색과 글꼴 <span className="ml-1 text-xs font-normal text-gray-500">포트폴리오 PDF 에도 같은 색·글꼴이 쓰입니다</span></p>}
         <Row label="배경">
           {BACKGROUNDS.map((s) => <Swatch key={s.key} hex={s.hex} label={s.label} active={value.bg === s.key} onClick={() => setBg(s.key)} />)}
         </Row>
@@ -111,7 +119,7 @@ export default function HomepageStylePicker({ value, images, onChange }: {
         <p className="flex items-center gap-1.5 text-xs text-gray-500">
           <span aria-hidden className="h-2 w-2 rounded-full bg-green-500" /> 고른 배경에서 잘 읽히는 색입니다. 배경을 바꾸면 안 읽히는 글자색은 알아서 바뀝니다.
         </p>
-      </div>
+      </div>}
     </div>
   );
 }

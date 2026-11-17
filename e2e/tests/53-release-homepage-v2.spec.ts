@@ -1,7 +1,7 @@
 import { test, expect, request as pwRequest, type Browser, type Page } from '@playwright/test';
 import {
   openAs, tokenFor, userIds, settle, ownedGalleryId, ensurePublicArtworks, createExhibition, openHomepageEditor, editorSave,
-  openPortfolioMaker, openCustomize, customizePanel, makerBar,
+  openPortfolioMaker, openCustomize, customizePanel, makerBar, homepageAction,
 } from '../lib/helpers';
 
 /**
@@ -53,6 +53,9 @@ test.describe('주소 — /@핸들', () => {
     const api = await pwRequest.newContext();
     const r = await api.put(`${API}/auth/me/handle`, { headers: auth(tokenFor('artist')), data: { handle: HANDLE } });
     expect(r.ok(), `핸들 저장 ${r.status()}`).toBe(true);
+    /* 화면에 보이는 이름(닉네임 우선) — 'Artist 1' 로 박아 두면 앞선 스펙이 닉네임을 붙여 둔 전체 실행에서 실패했다(실행 순서 의존, 2026-11-14 고침) */
+    const me = (await (await api.get(`${API}/auth/me`, { headers: auth(tokenFor('artist')) })).json()).user as { name: string; nickname?: string | null };
+    const shownName = me.nickname || me.name;
     await api.dispose();
 
     const ids = userIds();
@@ -63,11 +66,14 @@ test.describe('주소 — /@핸들', () => {
     expect(new URL(page.url()).search).toContain('work=');
 
     await page.goto(`/@${HANDLE}`);
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Artist 1', { timeout: 15000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(shownName, { timeout: 15000 });
   });
 
   test('★ 작가와 갤러리는 이름공간 하나를 나눠 쓴다 — 작가가 쓴 주소를 갤러리가 못 가져간다 (409)', async () => {
     const api = await pwRequest.newContext();
+    // 작가가 그 주소를 쓰고 있게 — 앞 테스트에 기대면 그쪽이 실패해 워커가 새로 뜰 때 HANDLE 이 바뀌어 200 이 났다(같은 값이면 다시 저장해도 된다)
+    const mine = await api.put(`${API}/auth/me/handle`, { headers: auth(tokenFor('artist')), data: { handle: HANDLE } });
+    expect(mine.ok(), `작가 핸들 ${mine.status()}`).toBe(true);
     const gid = await ownedGalleryId(api);
     const r = await api.put(`${API}/galleries/${gid}/handle`, { headers: auth(tokenFor('gallery')), data: { handle: HANDLE } });
     expect(r.status()).toBe(409);
@@ -182,12 +188,15 @@ test.describe('작가 홈페이지 테마 — 직접 고른 뒤부터 적용', (
 });
 
 test.describe('작가 홈페이지 — 방문자', () => {
-  test('★ 비로그인에게도 이웃·메시지가 보이고, 누르면 로그인으로 간다', async ({ page }) => {
+  test('★ 비로그인에게도 이웃·문의하기가 보이고, 문의하기는 로그인으로 안내한다(받기를 안 켠 작가)', async ({ page }) => {
     await page.goto(`/portfolio/${userIds().artist}`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
-    const msg = page.getByRole('button', { name: '메시지' }).first();
-    await expect(msg).toBeVisible();
-    await msg.click();
+    await expect(await homepageAction(page, /이웃 추가/)).toBeVisible();   // 휴대폰은 [⋯] 안(2026-11-15)
+    await page.keyboard.press('Escape');
+    const ask = page.getByTestId('homepage-actions').getByRole('button', { name: '문의하기' });
+    await expect(ask).toBeVisible();
+    await ask.click();
+    await page.getByTestId('inquiry-sheet').getByRole('button', { name: '로그인' }).click();
     await page.waitForURL(/\/login/, { timeout: 10000 });
   });
 });

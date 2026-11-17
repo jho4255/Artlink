@@ -12,7 +12,7 @@ import {
   type EditEntry, type EditField, type EditFocus, type EditSectionId,
 } from '@/lib/homepageEdit';
 import {
-  DEFAULT_THEME_KEYS, WEB_THEME_FLAG, resolveHomepageTheme, themeKeysFrom, themeSavePatch, type HomepageThemeKeys,
+  DEFAULT_THEME_KEYS, WEB_THEME_FLAG, resolveHomepageTheme, showNowFrom, themeKeysFrom, themeSavePatch, type HomepageThemeKeys,
 } from '@/lib/homepageTheme';
 import { artistPath, artistUrl, normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import { normalizePdfDesign } from '@/lib/portfolioFormats';
@@ -58,7 +58,8 @@ import { EMPTY_CAREER } from '@/types';
 const signatureOf = (v: {
   biography: string; statement: string; tagline: string; career: Career;
   portfolioFileUrl: string | null; seriesNotes: Record<string, string>; design: HomepageThemeKeys; showPrice: boolean; showAvatar: boolean;
-}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design, v.showPrice, v.showAvatar]);
+  showNow: boolean; guestInquiry: boolean;
+}) => JSON.stringify([v.biography, v.statement, v.tagline, v.career, v.portfolioFileUrl, v.seriesNotes, v.design, v.showPrice, v.showAvatar, v.showNow, v.guestInquiry]);
 
 const errText = (err: unknown, fallback: string) =>
   (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
@@ -101,6 +102,10 @@ export default function HomepageEditor() {
   const [showPrice, setShowPrice] = useState(false);
   /** 홈페이지 이름 위 프로필 사진([소개], 2026-10-28) — 아래 [저장] 에 함께 실린다. 사진 자체는 올리는 즉시 바뀐다 */
   const [showAvatar, setShowAvatar] = useState(false);
+  /** 첫 화면 '전시 중' 띠([꾸미기] '첫 화면', 2026-11-14, 기본 켜짐) — designConfig.showNow(웹 전용 키). 아래 [저장] 에 함께 */
+  const [showNow, setShowNow] = useState(true);
+  /** 로그인하지 않은 방문자의 문의 받기([꾸미기] '문의', 2026-11-14, 기본 꺼짐) — 아래 [저장] 에 함께 */
+  const [guestInquiry, setGuestInquiry] = useState(false);
   const [handle, setHandle] = useState(user?.handle ?? '');
   const handleTouched = useRef(false);
   const [handleError, setHandleError] = useState<string | null>(null);
@@ -131,6 +136,8 @@ export default function HomepageEditor() {
       design: themeKeysFrom(portfolio.designConfig),
       showPrice: portfolio.showPrice === true,
       showAvatar: portfolio.showAvatar === true,
+      showNow: showNowFrom(portfolio.designConfig),
+      guestInquiry: portfolio.guestInquiry === true,
     };
     setBiography(init.biography);
     setStatement(init.statement);
@@ -142,6 +149,8 @@ export default function HomepageEditor() {
     setDesign(init.design);
     setShowPrice(init.showPrice);
     setShowAvatar(init.showAvatar);
+    setShowNow(init.showNow);
+    setGuestInquiry(init.guestInquiry);
     setSnapshot(signatureOf(init));
   }, [portfolio]);
 
@@ -211,7 +220,7 @@ export default function HomepageEditor() {
   // 비워 두면 '안 바꾼다' — 주소를 없애는 길은 없다(서버도 빈 값을 받지 않는다)
   const handleChanged = handleNorm !== '' && handleNorm !== (user?.handle ?? '');
   const dirty = snapshot !== null
-    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design, showPrice, showAvatar }) !== snapshot || handleChanged);
+    && (signatureOf({ biography, statement, tagline, career, portfolioFileUrl, seriesNotes, design, showPrice, showAvatar, showNow, guestInquiry }) !== snapshot || handleChanged);
   // 긴 글을 쓰다 다른 메뉴를 눌러도 통째로 사라지지 않게 — 갤러리·공모 폼과 같은 이탈 경고
   useUnsavedChanges(dirty);
 
@@ -235,7 +244,11 @@ export default function HomepageEditor() {
       //    `auto` 는 지금 PDF 가 쓰고 있는 값으로 못박는다: `bg`·`font` 가 새로 생겨도 '저장된 선택'으로 오판되지 않게.
       const prevDesign = portfolio?.designConfig && typeof portfolio.designConfig === 'object' ? (portfolio.designConfig as Record<string, unknown>) : {};
       const stylePatch = themeSavePatch(portfolio?.designConfig, design);
-      const designConfig = stylePatch ? { ...prevDesign, ...stylePatch, auto: normalizePdfDesign(prevDesign).auto } : undefined;
+      // '전시 중' 띠(웹 전용 키 showNow, 2026-11-14) — 바꿨을 때만 얹는다(안 건드렸으면 designConfig 를 보내지 않는 규칙 그대로)
+      const nowPatch = showNow !== showNowFrom(portfolio?.designConfig) ? { showNow } : null;
+      const designConfig = stylePatch || nowPatch
+        ? { ...prevDesign, ...(stylePatch ?? {}), ...(nowPatch ?? {}), auto: normalizePdfDesign(prevDesign).auto }
+        : undefined;
       await api.put('/portfolio', {
         biography: biography.trim(),
         career,
@@ -250,6 +263,7 @@ export default function HomepageEditor() {
         ...(designConfig ? { designConfig } : {}),
         showPrice,
         showAvatar,
+        guestInquiry,
       });
       return nextHandle;
     },
@@ -345,6 +359,8 @@ export default function HomepageEditor() {
     images: previewImages,
     designConfig: previewDesign,
     showAvatar,
+    // 저장 전 [꾸미기] 의 '전시 중' 띠를 따른다(서버는 본인 조회에 끈 설정과 무관하게 싣는다)
+    nowShowing: showNow ? portfolio.nowShowing ?? null : null,
   };
   const previewBg = resolveHomepageTheme(previewDesign).bg;
   const wide = careerColumnCount >= 3;   // lg(1024px) 이상 — 미리보기를 옆에 붙인다
@@ -408,15 +424,6 @@ export default function HomepageEditor() {
           </div>
           {section === 'intro' && (
             <IntroSection
-              photo={(
-                <ProfilePhotoField
-                  avatar={user.avatar}
-                  name={displayName(user)}
-                  show={showAvatar}
-                  onShow={setShowAvatar}
-                  onAvatar={(url) => updateUser({ avatar: url })}
-                />
-              )}
               tagline={tagline} onTagline={setTagline}
               statement={statement} onStatement={setStatement}
               series={foundSeries} seriesNotes={seriesNotes}
@@ -437,6 +444,18 @@ export default function HomepageEditor() {
               images={images}
               showPrice={showPrice} onShowPrice={setShowPrice} pricedCount={pricedCount}
               onField={onField}
+              // 프로필 사진은 이름 위 동그라미 — 첫 화면 구역에(2026-11-14, 예전엔 [소개] 맨 위)
+              photo={(
+                <ProfilePhotoField
+                  avatar={user.avatar}
+                  name={displayName(user)}
+                  show={showAvatar}
+                  onShow={setShowAvatar}
+                  onAvatar={(url) => updateUser({ avatar: url })}
+                />
+              )}
+              showNow={showNow} onShowNow={setShowNow} nowTitle={portfolio.nowShowing?.title ?? null}
+              guestInquiry={guestInquiry} onGuestInquiry={setGuestInquiry}
             />
           )}
         </div>

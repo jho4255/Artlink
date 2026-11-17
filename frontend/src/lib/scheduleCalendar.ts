@@ -22,7 +22,7 @@ export type ScheduleValues = Record<string, unknown>;
 export interface ScheduleStep {
   /** 폼 값의 키 — 'deadlineStart' 등 */
   key: string;
-  /** 칸 이름 — '공모 시작일' */
+  /** 칸 이름 — '접수 시작일' */
   label: string;
   /** 달력의 그 날 아래 작은 글자 — '시작'·'마감'·'제출'·'전시'·'종료' */
   mark: string;
@@ -36,7 +36,7 @@ export interface ScheduleStep {
   wide?: boolean;
 }
 
-/** 칠할 기간 — 지원 기간·전시 기간 */
+/** 칠할 기간 — 접수 기간·전시 기간 */
 export interface ScheduleRange { from: string; to: string; label: string }
 
 const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -207,10 +207,10 @@ export function openingMonth(steps: ScheduleStep[], values: ScheduleValues, i: n
  */
 export function exhibitionSchedule(recruitOnly: boolean, idPrefix = 'ex'): { steps: ScheduleStep[]; ranges: ScheduleRange[] } {
   const steps: ScheduleStep[] = [
-    { key: 'deadlineStart', label: '공모 시작일', mark: '시작', gap: 0, id: `${idPrefix}-start` },
-    { key: 'deadline', label: '공모 마감일', mark: '마감', gap: 0, id: `${idPrefix}-deadline` },
+    { key: 'deadlineStart', label: '접수 시작일', mark: '시작', gap: 0, id: `${idPrefix}-start` },
+    { key: 'deadline', label: '접수 마감일', mark: '마감', gap: 0, id: `${idPrefix}-deadline` },
   ];
-  const ranges: ScheduleRange[] = [{ from: 'deadlineStart', to: 'deadline', label: '지원 기간' }];
+  const ranges: ScheduleRange[] = [{ from: 'deadlineStart', to: 'deadline', label: '접수 기간' }];
   if (!recruitOnly) {
     steps.push(
       {
@@ -221,4 +221,25 @@ export function exhibitionSchedule(recruitOnly: boolean, idPrefix = 'ex'): { ste
     ranges.push({ from: 'exhibitStartDate', to: 'exhibitDate', label: '전시 기간' });
   }
   return { steps, ranges };
+}
+
+/**
+ * 전시(Show) 기간 칸 — 전시 등록(2026-11-15, 공모 일정과 같은 달력).
+ * ⚠️ 지난날도 고를 수 있다(이미 하고 있는 전시를 알리는 경우가 많다 — 소개 팝업도 '진행중인 전시를 홍보해보세요'). `showScheduleFloor` 를 floor 로 넘길 것.
+ */
+export function showSchedule(idPrefix = 'show'): { steps: ScheduleStep[]; ranges: ScheduleRange[] } {
+  return {
+    steps: [
+      { key: 'startDate', label: '전시 시작일', mark: '시작', gap: 0, id: `${idPrefix}-start` },
+      { key: 'endDate', label: '전시 종료일', mark: '종료', gap: 0, id: `${idPrefix}-end` },
+    ],
+    ranges: [{ from: 'startDate', to: 'endDate', label: '전시 기간' }],
+  };
+}
+
+/** 전시 등록 달력의 가장 이른 날 — 1년 전(서버는 날짜 순서만 본다) */
+export function showScheduleFloor(today: Ymd = todayKst()): Ymd {
+  const [y, m, d] = today.split('-').map(Number);
+  const t = new Date(Date.UTC(y - 1, m - 1, d));
+  return t.toISOString().slice(0, 10) as Ymd;
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
 
 /**
@@ -15,7 +16,7 @@ export interface PageTab<T extends string> {
   done?: boolean;
 }
 
-export default function PageTabBar<T extends string>({ tabs, active, onSelect, sticky = true, idPrefix, label }: {
+export default function PageTabBar<T extends string>({ tabs, active, onSelect, sticky = true, idPrefix, label, site = false, trailing }: {
   tabs: PageTab<T>[];
   active: T;
   onSelect: (id: T) => void;
@@ -23,10 +24,22 @@ export default function PageTabBar<T extends string>({ tabs, active, onSelect, s
   /** 탭·패널 id 접두 — aria-controls 로 짝을 맞춘다 */
   idPrefix: string;
   label: string;
+  /**
+   * 홈페이지('내 사이트' 모드, 2026-11-14 규칙 82) — ArtLink 상단바 대신 사이트 머리(56 / lg 72)가 있다. 그 바로 아래에 붙는다.
+   * PC 에서도 이 막대다 — 탭을 머리에 두었더니 "잘 안 보인다"고 했다(2026-11-15). 색은 `var(--hp-…)`.
+   */
+  site?: boolean;
+  /** 탭 줄 오른쪽 — 갤러리 홈페이지의 문의하기 · 이웃 추가 · 찜 · 공유(`TabActions`, 2026-11-15). 탭 줄과 함께 머리 밑에 붙어 따라온다 */
+  trailing?: ReactNode;
 }) {
+  const stickyCls = !sticky ? '' : site
+    ? 'sticky top-14 z-30 -mx-6 bg-[var(--hp-bg)] px-6 md:-mx-12 md:px-12 lg:top-[72px]'
+    : 'sticky top-16 z-30 -mx-6 bg-white px-6 md:-mx-12 md:px-12 lg:top-20';
   return (
-    <div className={`${sticky ? 'sticky top-16 z-30 -mx-6 bg-white px-6 md:-mx-12 md:px-12 lg:top-20' : ''} border-b border-gray-200`}>
-      <div role="tablist" aria-label={label} className="flex gap-6 overflow-x-auto [scrollbar-width:none] md:gap-8 [&::-webkit-scrollbar]:hidden">
+    <div className={`${stickyCls} border-b border-gray-200`}>
+      <div className="flex items-stretch gap-3">
+      {/* 오른쪽에 버튼이 붙으면(갤러리 홈페이지) 휴대폰에선 탭이 옆으로 넘친다 — 끝을 흐리게 해 밀면 더 있다는 걸 알린다 */}
+      <div role="tablist" aria-label={label} className={`flex min-w-0 flex-1 gap-6 overflow-x-auto [scrollbar-width:none] md:gap-8 [&::-webkit-scrollbar]:hidden ${trailing ? 'pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_28px),transparent)]' : ''}`}>
         {tabs.map((t) => {
           const on = t.id === active;
           return (
@@ -47,6 +60,8 @@ export default function PageTabBar<T extends string>({ tabs, active, onSelect, s
             </button>
           );
         })}
+      </div>
+      {trailing}
       </div>
     </div>
   );

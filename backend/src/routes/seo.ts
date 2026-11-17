@@ -86,7 +86,7 @@ router.get('/sitemap.xml', async (_req, res) => {
 
   try {
     const approved = { status: 'APPROVED' as const };
-    const [galleries, exhibitions, shows, portfolios] = await Promise.all([
+    const [galleries, exhibitions, shows, portfolios, posts] = await Promise.all([
       prisma.gallery.findMany({
         where: approved,
         select: { id: true, updatedAt: true },
@@ -111,12 +111,20 @@ router.get('/sitemap.xml', async (_req, res) => {
         orderBy: { updatedAt: 'desc' },
         take: MAX_URLS,
       }),
+      // 커뮤니티 필진 글(2026-11-13) — 정보글은 검색 유입의 원천이다. 잡담·익명 질문은 싣지 않는다
+      prisma.post.findMany({
+        where: { anonymous: false, category: { writePolicy: 'writers', active: true } },
+        select: { id: true, updatedAt: true },
+        orderBy: { updatedAt: 'desc' },
+        take: MAX_URLS,
+      }),
     ]);
 
     for (const g of galleries) entries.push({ loc: `${base}/galleries/${g.id}`, lastmod: g.updatedAt });
     for (const e of exhibitions) entries.push({ loc: `${base}/exhibitions/${e.id}`, lastmod: e.updatedAt });
     for (const s of shows) entries.push({ loc: `${base}/shows/${s.id}`, lastmod: s.updatedAt });
     for (const p of portfolios) entries.push({ loc: `${base}/portfolio/${p.userId}`, lastmod: p.updatedAt });
+    for (const p of posts) entries.push({ loc: `${base}/community/${p.id}`, lastmod: p.updatedAt });
   } catch (err) {
     degraded = true;
     logger.warn('SEO', `sitemap DB 조회 실패 — 정적 경로만 반환: ${(err as Error).message}`);

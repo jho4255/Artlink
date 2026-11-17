@@ -36,36 +36,47 @@ function watchHighlight(page: Page) {
   return seen;
 }
 
+/**
+ * 휴대폰 홈의 ArtWorks 칸 (2026-11-14) — 홈은 탭이고 ArtWorks 가 첫 탭이라 처음부터 열려 있다.
+ * 칸 제목은 탭이 대신하므로 제목(h2)으로 찾지 말고 이 칸으로 찾는다. PC 홈은 아래 'PC 홈' 묶음.
+ */
+const worksPanel = (page: Page) => page.getByTestId('home-panel-works');
+const DESKTOP = { width: 1280, height: 900 };
+
 test.describe('홈 구성', () => {
   /**
-   * 순서는 [배너] → [ArtWorks] → [나머지] 다 (2026-09-05 에 앞의 둘을 맞바꿨다).
+   * 휴대폰: [배너] → [탭 줄 — 첫 탭 ArtWorks] → ArtWorks 칸 (2026-11-14 탭으로).
    * ⚠️ 배너는 슬라이드가 하나도 없어도 스켈레톤으로 자리를 지키므로 **항상** 잴 수 있다.
    */
-  test('★ 맨 위가 배너, 그 아래가 ArtWorks', async ({ page }) => {
+  test('★ 맨 위가 배너, 그 아래 탭 줄 — 첫 탭 ArtWorks 가 열려 있다', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+    await expect(worksPanel(page).getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('tab').first()).toHaveText('ArtWorks');
+    await expect(page.getByRole('tab', { name: 'ArtWorks' })).toHaveAttribute('aria-selected', 'true');
 
     const order = await page.evaluate(() => {
-      const y = (sel: string) => {
-        const el = Array.from(document.querySelectorAll('h2')).find(h => h.textContent?.trim().startsWith(sel));
+      const top = (sel: string) => {
+        const el = document.querySelector(sel);
         return el ? el.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY;
       };
-      const hero = document.querySelector('[data-testid="home-hero"]');
-      return {
-        hero: hero ? hero.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY,
-        artworks: y('ArtWorks'),
-        gotm: y('Gallery of the Month'),
-      };
+      return { hero: top('[data-testid="home-hero"]'), tabs: top('[role="tablist"]'), works: top('[data-testid="home-panel-works"]') };
     });
-    expect(order.hero).toBeLessThan(order.artworks);
-    expect(order.artworks).toBeLessThan(order.gotm);
+    expect(order.hero).toBeLessThan(order.tabs);
+    expect(order.tabs).toBeLessThan(order.works);
   });
 
-  test('부제를 두지 않는다 (제목만)', async ({ page }) => {
+  test('PC: 맨 위가 배너, 그 아래가 ArtWorks — 부제를 두지 않는다 (제목만)', async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
     await page.goto('/');
     const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'ArtWorks' }) }).last();
     await expect(section).toBeVisible({ timeout: 15000 });
     await expect(section.locator('h2 + p')).toHaveCount(0);
+    const order = await page.evaluate(() => {
+      const hero = document.querySelector('[data-testid="home-hero"]')!;
+      const h = Array.from(document.querySelectorAll('h2')).find((e) => e.textContent?.trim().startsWith('ArtWorks'))!;
+      return { hero: hero.getBoundingClientRect().top, works: h.getBoundingClientRect().top };
+    });
+    expect(order.hero).toBeLessThan(order.works);
   });
 
   test('★ 퀵 내비게이션(QuickActionCards)이 사라졌다 — Navbar 와 중복이었다', async ({ page }) => {
@@ -82,8 +93,8 @@ test.describe('홈 구성', () => {
 test.describe('ArtWorks 컨트롤', () => {
   test('★ [작품 새로고침]은 우측 상단, [모두 모아보기]는 우측 하단', async ({ page }) => {
     await page.goto('/');
-    const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'ArtWorks' }) }).last();
-    await expect(section).toBeVisible({ timeout: 15000 });
+    const section = worksPanel(page);
+    await expect(section.getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
 
     const rBox = await section.getByRole('button', { name: '작품 새로고침' }).boundingBox();
     const aBox = await section.getByRole('button', { name: '모두 모아보기' }).boundingBox();
@@ -118,7 +129,7 @@ test.describe('ArtWorks 컨트롤', () => {
   test('★ [작품 새로고침]을 누르면 다른 작품이 온다', async ({ page }) => {
     const seen = watchHighlight(page);
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+    await expect(worksPanel(page).getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
     await settle(page, 1500);
 
     for (let i = 0; i < 6; i++) {
@@ -131,7 +142,8 @@ test.describe('ArtWorks 컨트롤', () => {
 
   test('★ 새로고침 중에도 섹션이 사라지지 않는다 (홈이 위로 튀지 않게)', async ({ page }) => {
     await page.goto('/');
-    const head = page.getByRole('heading', { name: 'ArtWorks' });
+    // 휴대폰 홈 칸엔 제목이 없다(탭이 대신) — 작품 격자가 계속 보이는지 본다
+    const head = worksPanel(page).locator('.grid').first();
     await expect(head).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: '작품 새로고침' }).click();
     // 재조회 중에도 계속 보여야 한다
@@ -147,8 +159,8 @@ test.describe('ArtWorks 컨트롤', () => {
     await page.getByRole('button', { name: '모두 모아보기' }).click();
     await page.waitForURL(/\/artists$/, { timeout: 10000 });
     await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 10000 });
-    // 합친 화면이 맞는지 — 작가 색인과 [좋아요순]이 함께 있어야 한다
-    await expect(page.locator('aside button[aria-expanded]').first()).toBeVisible({ timeout: 10000 });
+    // 합친 화면이 맞는지 — 작가 색인과 [좋아요순]이 함께 있어야 한다(휴대폰은 초성 한 줄 — 2026-11-15 B안, PC 는 왼쪽 목록)
+    await expect(page.getByTestId('artist-initials').getByRole('button').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: '좋아요순' })).toBeVisible({ timeout: 10000 });
   });
 
@@ -156,7 +168,7 @@ test.describe('ArtWorks 컨트롤', () => {
     const seen = watchHighlight(page);
     for (let i = 0; i < 4; i++) {
       await page.goto('/');
-      await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+      await expect(worksPanel(page).getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
       await settle(page, 1000);
     }
     expect(seen.length, '홈에 들어왔는데 하이라이트를 안 불렀다').toBeGreaterThanOrEqual(4);
@@ -223,7 +235,7 @@ test.describe('Navbar 와 비활성화된 메뉴', () => {
   test('★ /benefits 는 404 가 아니라 홈으로 (기존 링크·북마크가 죽지 않게)', async ({ page }) => {
     await page.goto('/benefits');
     await page.waitForURL(/localhost:5173\/$/, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: 'ArtWorks' })).toBeVisible({ timeout: 15000 });
+    await expect(worksPanel(page).getByRole('button', { name: '작품 새로고침' })).toBeVisible({ timeout: 15000 });
   });
 
   test('로그인 시 우측 그룹은 [대화][알림] · 이름(역할) 순이고 로그아웃은 없다', async ({ browser }) => {

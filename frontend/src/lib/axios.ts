@@ -1,6 +1,16 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * 401 이어도 로그아웃시키지 않는다(2026-11-13, 커뮤니티 글 자동 저장). 쓰는 도중 로그인이 풀리면 화면이 로그인으로 튕겨
+     * 쓰던 글을 볼 수 없게 되므로, 글쓰기 화면이 직접 "다시 로그인해 주세요"를 띄우고 글은 이 기기에 보관한다.
+     */
+    skipAuthLogout?: boolean;
+  }
+}
+
 // Axios 인스턴스 생성 - 추후 배포 시 baseURL 변경 용이
 const api = axios.create({
   baseURL: '/api',
@@ -26,7 +36,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     // 로그인 시도(/auth/*) 실패의 401은 기존 세션을 날리지 않도록 로그아웃 제외
-    if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/')) {
+    if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/') && !error.config?.skipAuthLogout) {
       useAuthStore.getState().logout();
     }
     // 네트워크/타임아웃/서버 에러 로깅 (개발 환경)

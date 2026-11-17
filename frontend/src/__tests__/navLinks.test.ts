@@ -17,8 +17,16 @@ import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
 const appSource = readFileSync(join(__dirname, '../App.tsx'), 'utf-8');
 
 describe('NAV_LINKS', () => {
-  it('★ 순서: 홈 · 작가 · 갤러리 · 전시 · 모집공고 · 커뮤니티', () => {
-    expect(NAV_LINKS.map((l) => l.label)).toEqual(['홈', '작가', '갤러리', '전시', '모집공고', '커뮤니티']);
+  it('★ 순서: 홈 · 작가 · 갤러리 · 전시 · 모집공고 · 커뮤니티 · ArtStory', () => {
+    expect(NAV_LINKS.map((l) => l.label)).toEqual(['홈', '작가', '갤러리', '전시', '모집공고', '커뮤니티', 'ArtStory']);
+  });
+
+  it('★ ArtStory 는 가운데 메뉴의 /feed — 전체공개 소식은 비회원도 본다(2026-11-14, 규칙 81)', () => {
+    expect(NAV_LINKS.find((l) => l.label === 'ArtStory')?.path).toBe('/feed');
+    // 비회원에게 열린 라우트여야 한다(ProtectedRoute 로 감싸면 눌렀다가 로그인 화면으로 튕긴다)
+    const route = appSource.match(/<Route path="\/feed"[^\n]*/)?.[0] ?? '';
+    expect(route, '/feed 라우트를 못 찾았다').not.toBe('');
+    expect(route).not.toContain('ProtectedRoute');
   });
 
   it('★ [작가] 는 홈과 갤러리 **사이**에 있다', () => {
@@ -56,10 +64,10 @@ describe('NAV_LINKS', () => {
 
   /**
    * ⚠️ 로그인해야 쓸 수 있는 페이지를 여기 두면 비로그인이 눌렀다가 튕긴다.
-   *    (마이페이지·소식이 그래서 우측 사이드바/햄버거 안에 있다)
+   *    (마이페이지·대화가 그래서 우측 사이드바/햄버거 안에 있다. 소식(/feed)은 2026-11-14 부터 비회원도 본다)
    */
   it('★ 로그인 전용 경로가 섞이지 않았다', () => {
-    const loginOnly = ['/mypage', '/feed', '/messages'];
+    const loginOnly = ['/mypage', '/messages', '/story/new'];
     for (const p of loginOnly) {
       expect(NAV_LINKS.some((l) => l.path.startsWith(p))).toBe(false);
     }

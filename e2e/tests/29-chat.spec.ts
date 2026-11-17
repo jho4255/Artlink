@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath, statePath } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath, statePath, inquireAndOpenChat, openEmptyDirectChat } from '../lib/helpers';
 
 /**
  * ArtTalk (갠톡·단톡) — 2026-08-28 전면 개편분.
@@ -50,13 +50,8 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
 
-    await page.goto(`/portfolio/${ids.artist2}`);
-    const btn = page.getByRole('button', { name: '메시지' });
-    await expect(btn).toBeVisible({ timeout: 10000 });
-    await btn.click();
-
-    // 방으로 이동한다 (?chat=N)
-    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 10000 });
+    // 작가 홈페이지 [문의하기](2026-11-14 — 예전 [메시지]) → 보내고 [대화 보기] 로 그 방(?chat=N)
+    await inquireAndOpenChat(page, `/portfolio/${ids.artist2}`);
     await expect(page.getByRole('heading', { name: 'ArtTalk' })).toBeVisible();
     await send(page, '안녕하세요, 작품 잘 봤습니다.');
 
@@ -66,9 +61,7 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
   test('★ 상대에게 안읽음 배지로 뜨고, 열면 사라진다', async ({ browser }) => {
     const ids = userIds();
     const a1 = await openAs(browser, 'artist');
-    await a1.page.goto(`/portfolio/${ids.artist2}`);
-    await a1.page.getByRole('button', { name: '메시지' }).click();
-    await a1.page.waitForURL(/\/messages\?chat=\d+/);
+    await inquireAndOpenChat(a1.page, `/portfolio/${ids.artist2}`, '안읽음 확인용 첫 글');
     await send(a1.page, '안읽음 확인용 메시지');
 
     const a2 = await openAs(browser, 'artist2');
@@ -91,9 +84,7 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
   test("★ 보낸 사람 화면에 '읽음' 이 뜬다 (상대가 열어야만)", async ({ browser }) => {
     const ids = userIds();
     const a1 = await openAs(browser, 'artist');
-    await a1.page.goto(`/portfolio/${ids.artist2}`);
-    await a1.page.getByRole('button', { name: '메시지' }).click();
-    await a1.page.waitForURL(/\/messages\?chat=\d+/);
+    await inquireAndOpenChat(a1.page, `/portfolio/${ids.artist2}`, '읽음 확인용 첫 글');
     const url = a1.page.url();
     await send(a1.page, '읽음 표시 확인');
 
@@ -126,9 +117,7 @@ test.describe('카카오톡식 묶음 — 이어 보낸 말은 이름·시각을
   test('★ 내가 세 줄 이어 보내면 시각은 마지막 줄에만 붙는다', async ({ browser }) => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
-    await page.goto(`/portfolio/${ids.artist2}`);
-    await page.getByRole('button', { name: '메시지' }).click();
-    await page.waitForURL(/\/messages\?chat=\d+/);
+    await openEmptyDirectChat(page, 'artist', ids.artist2);   // 빈 방 — 이어 보낸 세 줄만 센다
 
     await send(page, '첫 줄입니다');
     await send(page, '두 번째 줄');
@@ -260,9 +249,7 @@ test.describe('지속 대화 — 6턴 왕복', () => {
 
     // 갤러리가 작가 홈페이지에서 말을 건다 (갠톡 길목)
     const gallery = await openAs(browser, 'gallery');
-    await gallery.page.goto(`/portfolio/${ids.artist}`);
-    await gallery.page.getByRole('button', { name: '메시지' }).click();
-    await gallery.page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    await openEmptyDirectChat(gallery.page, 'gallery', ids.artist);   // 빈 방 — 여섯 턴의 개수를 정확히 센다
     const roomUrl = gallery.page.url();
     const chatId = Number(new URL(roomUrl).searchParams.get('chat'));
 
@@ -328,9 +315,7 @@ test.describe('지속 대화 — 6턴 왕복', () => {
 test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
   /** 작가↔작가2 갠톡을 열고 방 화면으로 이동 */
   async function openDirectRoom(page: Page, otherId: number) {
-    await page.goto(`/portfolio/${otherId}`);
-    await page.getByRole('button', { name: '메시지' }).click();
-    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    await openEmptyDirectChat(page, 'artist', otherId);
     await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
   }
 
@@ -429,9 +414,7 @@ test.describe('대화방 알림 끄기 · 휴대폰 화면 (2026-11-11)', () => 
   test('★ 종 버튼으로 끄면 그 방 새 메시지가 벨에 안 온다 · 다시 켜면 온다 · 목록에 꺼짐 표시', async ({ browser }) => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
-    await page.goto(`/portfolio/${ids.artist2}`);
-    await page.getByRole('button', { name: '메시지' }).click();
-    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    await openEmptyDirectChat(page, 'artist', ids.artist2);
     const chatId = chatIdOf(page);
 
     await page.getByRole('button', { name: '이 대화방 알림 끄기' }).click();
@@ -456,9 +439,7 @@ test.describe('대화방 알림 끄기 · 휴대폰 화면 (2026-11-11)', () => 
     const ids = userIds();
     const ctx = await browser.newContext({ storageState: statePath('artist'), viewport: { width: 360, height: 760 } });
     const page = await ctx.newPage();
-    await page.goto(`/portfolio/${ids.artist2}`);
-    await page.getByRole('button', { name: '메시지' }).click();
-    await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+    await openEmptyDirectChat(page, 'artist', ids.artist2);   // 빈 방 안내('첫 메시지를 보내보세요')를 재야 한다
     await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
     const m = await page.evaluate(() => {
       const box = document.querySelector('form')!.closest('.grid')!.getBoundingClientRect();

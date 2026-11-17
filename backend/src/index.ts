@@ -5,6 +5,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { clientIp } from './lib/clientIp';
+import { isDraftSaveRequest } from './lib/communityAccess';
 import helmet from 'helmet';
 
 dotenv.config();
@@ -45,6 +46,7 @@ import settingsRoutes from './routes/settings';
 import visitRoutes from './routes/visit';
 import guestActivityRoutes from './routes/guestActivity';
 import pushRoutes from './routes/push';
+import homepageInquiryRoutes from './routes/homepageInquiry';
 import seoRoutes from './routes/seo';
 import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
 import type { SeoKind } from './lib/seoMeta';
@@ -93,6 +95,10 @@ app.use((_req, res, next) => { res.setHeader('Content-Security-Policy', "frame-a
 
 // 미들웨어 설정
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+// 커뮤니티 글 문서(JSON, 2026-11-13)는 기본 한도(100KB)를 넘는다 — 사진 많은 긴 글의 자동 저장·등록이 413 으로 막힌다.
+// ⚠️ 전역 express.json() 보다 **앞**에 둘 것 — 뒤에 두면 전역 파서가 먼저 100KB 로 413 을 낸다(body-parser 는 읽은 본문을 다시 읽지 않는다).
+//    글 문서 자체의 상한(약 600KB)은 lib/postDoc.ts 가 본다.
+app.use('/api/community', express.json({ limit: '1mb' }));
 app.use(express.json());
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
@@ -113,6 +119,9 @@ const isPollingRequest = (req: express.Request) =>
 // 비회원 둘러보기 기록(2026-10-03) — 화면을 옮길 때마다 보내므로 전역 300 에서 빼 별도 한도로 센다(비회원의 화면 요청 몫을 먹지 않게).
 // 탭 하나는 많아야 5초에 한 번(15분 180회)이라 300 이면 같은 IP 의 탭 둘까지 넉넉하다. 넘치면 429 — 화면은 조용히 버린다(기록만 빠진다).
 const isGuestBeacon = (req: express.Request) => req.method === 'POST' && req.path === '/guest-activity';
+// 커뮤니티 글 자동 저장(2026-11-13) — 쓰는 동안 최소 8초 간격으로 저장해 20분이면 150번이다. 사진 수십 장·다른 화면 요청과 합치면
+// 전역 300 을 넘기고, 넘기면 **그 사람의 모든 API 가 429** 가 된다(쓰던 글 저장도). 별도 한도(15분 600)로 센다.
+const isDraftSave = (req: express.Request) => isDraftSaveRequest(req.method, req.path);
 /**
  * 로그인·가입 한도를 셀 때의 '한 사람' — Cloudflare 가 붙여 주는 실제 접속 주소(`CF-Connecting-IP`)를 먼저 본다(2026-10-08).
  * artlink.cc 는 Cloudflare 를 거쳐 Render(이것도 Cloudflare 엣지 — onrender.com 주소도 `server: cloudflare`)로 들어온다.
@@ -124,7 +133,8 @@ const isGuestBeacon = (req: express.Request) => req.method === 'POST' && req.pat
  */
 const clientKey = (req: express.Request) => ipKeyGenerator(clientIp(req));
 if (process.env.NODE_ENV !== 'test' && process.env.DISABLE_RATE_LIMIT !== 'true') {
-  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => isPollingRequest(req) || isGuestBeacon(req) }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => isPollingRequest(req) || isGuestBeacon(req) || isDraftSave(req) }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, skip: (req) => !isDraftSave(req) }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, skip: (req) => !isPollingRequest(req) }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, skip: (req) => !isGuestBeacon(req) }));
   // 로그인·가입 시도만 엄하게(15분 30회). 예전엔 `/api/auth` 전체였는데 마이페이지·PDF 만들기·홈페이지 편집이 열 때마다 `/auth/me` 를,
@@ -184,6 +194,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/visits', visitRoutes);   // 일간 방문 기록(2026-09-28, Admin [통계])
 app.use('/api/guest-activity', guestActivityRoutes);   // 비회원 둘러보기(2026-10-03, Admin [통계])
 app.use('/api/push', pushRoutes);   // 앱 기기 토큰(2026-11-09, 규칙 79)
+app.use('/api/homepage-inquiries', homepageInquiryRoutes);   // 홈페이지 비회원 문의(2026-11-14, 규칙 82)
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {
@@ -250,9 +261,13 @@ if (process.env.NODE_ENV === 'production') {
     ['/exhibitions/:id', 'exhibition'],
     ['/galleries/:id', 'gallery'],
     ['/shows/:id', 'show'],
+    // 커뮤니티 글(2026-11-13). `/community/write` 는 숫자가 아니라 parseSeoId 가 null → 기본 meta 로 흘려보낸다
+    ['/community/:id', 'post'],
     ['/portfolio/:id', 'portfolio'],
     // 작가 핸들 주소(2026-09-16). 프론트 라우트 `/@:handle` 과 짝.
     ['/@:handle', 'portfolio'],
+    // ArtStory 공유 링크(2026-11-14) — `/feed?story=<id>`. 쿼리가 없거나 숫자가 아니면 기본 meta 로 흘려보낸다
+    ['/feed', 'story'],
   ];
   for (const [route, kind] of SEO_ROUTES) {
     app.get(route, seoLimiter, createSeoHandler(kind, loadSeoTemplate));

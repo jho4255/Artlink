@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle, typeRich, pickSchedule } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, settle, typeRich, pickSchedule, submitRegistration } from '../lib/helpers';
 
 /**
  * 공모 두 가지 새 규칙 (2026-09-10)
@@ -37,12 +37,14 @@ test.describe('아트링크가 갤러리를 안 끼고 여는 공모', () => {
     await pickSchedule(page, '#hosted-start', [d.deadlineStart, d.deadline, d.submissionDeadline, d.exhibitStartDate, d.exhibitDate]);
     await typeRich(page, '공모 소개', '운영 갤러리 없이 여는 기획 공모입니다.');   // 서식 있는 글 편집기(2026-10-03)
 
-    await page.getByRole('button', { name: '등록', exact: true }).click();
-    // ⚠️ 등록은 ConfirmDialog 를 한 번 더 거친다 — 폼 버튼만 누르면 아무 요청도 안 나간다
-    await expect(page.getByText('이 내용으로 등록하시겠습니까?', { exact: false })).toBeVisible();
-    // 확인 모달이 '갤러리 0곳' 을 제대로 말해 주는가 (예전 문구는 "선택한 갤러리 0곳이 운영 권한을 갖습니다" 였다)
-    await expect(page.getByText('운영 갤러리를 지정하지 않았습니다', { exact: false })).toBeVisible();
-    await page.getByRole('button', { name: '등록', exact: true }).last().click();
+    // 하단 줄 [등록] → 확인 창(약관 없음 — 아트링크 주최는 승인 없이 바로 게시). 폼 단추만 누르면 아무 요청도 안 나간다
+    await page.locator('[data-submit-bar]').getByRole('button', { name: '등록', exact: true }).click();
+    const confirm = page.getByRole('dialog', { name: '주최 공모를 등록할까요?' });
+    await expect(confirm).toBeVisible();
+    // 확인 창이 '운영 갤러리 없음'을 제대로 말해 주는가 (예전 문구는 "선택한 갤러리 0곳이 운영 권한을 갖습니다" 였다)
+    await expect(confirm).toContainText('아트링크가 직접 운영');
+    await expect(confirm.getByRole('checkbox')).toHaveCount(0);
+    await confirm.getByRole('button', { name: '등록', exact: true }).click();
 
     const req = await posted;
     expect(req.postDataJSON().galleryIds).toEqual([]);
@@ -101,12 +103,8 @@ test.describe('공모만 진행하는 공고', () => {
     await page.locator('#ex-title').fill(title);
     await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline]);   // 공모만 진행 — 두 칸뿐(달력으로, 2026-10-28)
     await typeRich(page, '공모 소개', '지원자 선정까지만 진행합니다.');
-    await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-    await page.getByRole('button', { name: '등록 요청', exact: true }).click();
-    // 확인창(role=dialog) 안의 [등록 요청]
-    const dialog = page.getByRole('dialog', { name: '공모 등록을 요청할까요?' });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: '등록 요청', exact: true }).click();
+    // 하단 줄 [등록 요청] → 확인 창(약관 동의) → [등록 요청]
+    await submitRegistration(page);
 
     const req = await posted;
     const body = req.postDataJSON();

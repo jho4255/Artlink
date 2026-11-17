@@ -111,7 +111,7 @@ describe('공모 일정 칸 — 갤러리 등록·주최 공모 등록 공용', 
   it('공모만 진행이면 두 칸(시작·마감)뿐 — 자료 제출·전시 칸 자체가 없다', () => {
     const { steps, ranges } = exhibitionSchedule(true);
     expect(steps.map((s) => s.key)).toEqual(['deadlineStart', 'deadline']);
-    expect(ranges.map((r) => r.label)).toEqual(['지원 기간']);
+    expect(ranges.map((r) => r.label)).toEqual(['접수 기간']);
   });
   it('전시까지면 다섯 칸, 일어나는 순서대로 · 칸 id 는 예전 그대로(오류 스크롤·E2E)', () => {
     const { steps } = exhibitionSchedule(false);
@@ -122,7 +122,7 @@ describe('공모 일정 칸 — 갤러리 등록·주최 공모 등록 공용', 
   it('기간 칠하기 · 처음 보일 달', () => {
     const { steps, ranges } = exhibitionSchedule(false);
     const v = { deadlineStart: '2026-11-01', deadline: '2026-11-10' };
-    expect(rangeOf(ranges, v, '2026-11-05')?.label).toBe('지원 기간');
+    expect(rangeOf(ranges, v, '2026-11-05')?.label).toBe('접수 기간');
     expect(rangeOf(ranges, v, '2026-11-11')).toBeNull();
     expect(openingMonth(steps, v, 1, TODAY)).toEqual({ y: 2026, m0: 10 });
     expect(openingMonth(steps, {}, 0, TODAY)).toEqual({ y: 2026, m0: 9 });
@@ -131,19 +131,22 @@ describe('공모 일정 칸 — 갤러리 등록·주최 공모 등록 공용', 
 
 describe('소스 가드 — 공모 등록 폼은 날짜를 달력으로 고른다', () => {
   it('갤러리 공모 등록·아트링크 주최 공모 등록이 SchedulePicker + exhibitionSchedule 을 쓰고, 일정 칸에 <input type="date"> 가 없다', () => {
-    const my = src('pages/MyPage.tsx');
-    expect(my).toMatch(/<SchedulePicker[\s\S]{0,200}exhibitionSchedule\(!!form\.recruitOnly\)/);
-    for (const id of ['ex-start', 'ex-deadline', 'ex-submission', 'ex-show-start', 'ex-show-end']) {
-      expect(my, id).not.toMatch(new RegExp(`id="${id}"[^>]*type="date"`));
-    }
+    // 두 화면이 같은 공용 폼(2026-11-15) — 칸 id 접두만 다르다(갤러리 'ex' · 아트링크 주최 'hosted')
+    const body = src('components/exhibition-form/ExhibitionFormBody.tsx');
+    expect(body).toMatch(/<SchedulePicker[\s\S]{0,200}exhibitionSchedule\(!!form\.recruitOnly, idPrefix\)/);
+    expect(body).not.toContain('type="date"');
+    expect(src('pages/MyPage.tsx')).toMatch(/<ExhibitionFormBody[\s\S]{0,300}idPrefix="ex"/);
     const hosted = src('components/admin/HostedExhibitionsSection.tsx');
-    expect(hosted).toMatch(/<SchedulePicker[\s\S]{0,200}exhibitionSchedule\(!!form\.recruitOnly, 'hosted'\)/);
+    expect(hosted).toMatch(/<ExhibitionFormBody[\s\S]{0,300}idPrefix="hosted"/);
     expect(hosted).not.toContain('type="date"');
+    // 전시 등록도 같은 달력(지난날도 된다 — 이미 하고 있는 전시)
+    const show = src('components/show-form/ShowFormBody.tsx');
+    expect(show).toMatch(/<SchedulePicker[\s\S]{0,120}showSchedule\('show'\)[\s\S]{0,80}floor=\{showScheduleFloor\(\)\}/);
+    expect(show).not.toContain('type="date"');
   });
   it('고른 값은 함수형으로 합친다(편집기 콜백이 옛 form 을 붙들어도 다른 칸이 안 되돌아가게)', () => {
-    for (const p of ['pages/MyPage.tsx', 'components/admin/HostedExhibitionsSection.tsx']) {
-      expect(src(p), p).toMatch(/onChange=\{\(patch\) => \{ setForm\(prev => \(\{ \.\.\.prev, \.\.\.patch \}\)\)/);
-    }
+    expect(src('components/exhibition-form/ExhibitionFormBody.tsx')).toMatch(/onChange=\{\(patch\) => \{ setForm\(\(prev: ExFormValues\) => \(\{ \.\.\.prev, \.\.\.patch \}\)\)/);
+    expect(src('components/show-form/ShowFormBody.tsx')).toMatch(/onChange=\{\(patch\) => \{ setForm\(\(prev\) => \(\{ \.\.\.prev, \.\.\.patch \}\)\)/);
   });
   it('달력은 지난 날·앞 칸보다 이른 날을 disabled 로 그린다(흐리게)', () => {
     const picker = src('components/shared/SchedulePicker.tsx');
@@ -164,8 +167,8 @@ describe('소스 가드 — 홈페이지 프로필 사진(2026-10-28)', () => {
     expect(src('pages/PortfolioPage.tsx')).toMatch(/showAvatar: portfolio\.showAvatar === true/);
     const ed = src('components/homepage-edit/HomepageEditor.tsx');
     expect(ed).toMatch(/designConfig: previewDesign,\s*showAvatar,/);
-    expect(ed).toMatch(/showPrice,\s*showAvatar,\s*\}\);/);
-    expect(ed).toMatch(/v\.showPrice, v\.showAvatar\]/);   // 고쳤는지 판정(지문)에도
+    expect(ed).toMatch(/showPrice,\s*showAvatar,\s*guestInquiry,\s*\}\);/);
+    expect(ed).toMatch(/v\.showPrice, v\.showAvatar, v\.showNow, v\.guestInquiry\]/);   // 고쳤는지 판정(지문)에도
   });
   it('프로필 카드와 편집 화면이 같은 업로드 함수를 쓴다', () => {
     expect(src('pages/MyPage.tsx')).toContain('await uploadAvatar(rawFile)');
@@ -175,30 +178,38 @@ describe('소스 가드 — 홈페이지 프로필 사진(2026-10-28)', () => {
 
 describe('소스 가드 — 포스터는 등록 창에서도 자르지 않는다 · [수정] 은 머리말 오른쪽 위 (2026-10-28)', () => {
   it('공모 등록(갤러리·아트링크 주최)·전시 등록의 포스터 칸은 fit="contain"(목록 카드와 같은 모양), 공모는 목록 카드 비율 210:297', () => {
-    const my = src('pages/MyPage.tsx');
-    expect(my).toMatch(/<HeroImageEdit fit="contain" value=\{form\.imageUrl\}[\s\S]{0,300}aspect-\[210\/297\]/);
-    expect(my).toMatch(/<HeroImageEdit fit="contain" value=\{form\.posterImage\}/);
-    const hosted = src('components/admin/HostedExhibitionsSection.tsx');
-    expect(hosted).toMatch(/<HeroImageEdit\s+fit="contain"[\s\S]{0,300}aspect-\[210\/297\]/);
+    // 공모 포스터 — 공용 폼(갤러리·아트링크 주최) · 전시 포스터 — 전시 폼. 둘 다 목록 카드와 같은 210:297
+    expect(src('components/exhibition-form/ExhibitionFormBody.tsx')).toMatch(/<HeroImageEdit fit="contain" value=\{form\.imageUrl\}[\s\S]{0,300}aspect-\[210\/297\]/);
+    expect(src('components/show-form/ShowFormBody.tsx')).toMatch(/<HeroImageEdit fit="contain" value=\{form\.posterImage\}[\s\S]{0,300}aspect-\[210\/297\]/);
+    // 갤러리 대표 사진도 자르지 않는다(카드·홈페이지와 같은 4:3 contain)
+    expect(src('components/gallery-form/GalleryFormBody.tsx')).toMatch(/<HeroImageEdit fit="contain" value=\{form\.mainImage\}[\s\S]{0,200}aspect-\[4\/3\]/);
     const edit = src('components/shared/EditableField.tsx');
     expect(edit).toMatch(/fit === 'contain'[\s\S]{0,400}object-contain/);
   });
-  it('아트링크 주최 공모 등록도 갤러리 공모 등록과 같은 틀 — 번호 구역·포스터 왼쪽·칸 이름(FormField)·일정 달력(form 모양)', () => {
+  it('아트링크 주최 공모 등록도 갤러리 공모 등록과 같은 폼 — 공용 폼 + 운영 갤러리 구역(2026-11-15)', () => {
     const hosted = src('components/admin/HostedExhibitionsSection.tsx');
-    for (const t of ['진행 범위', '운영 갤러리 (선택)', '공고 내용', '일정', '추가 질문 (선택)']) {
-      expect(hosted, t).toMatch(new RegExp(`<FormSection n=\\{\\d\\} title="${t.replace(/[()]/g, '\\$&')}"`));
-    }
-    expect(hosted).toContain('grid gap-5 sm:grid-cols-[168px_minmax(0,1fr)]');
+    expect(hosted).toContain('<ExhibitionFormBody');
+    expect(hosted).toMatch(/extraSection=\{\{\s*title: '운영 갤러리 \(선택\)'/);
     expect(hosted).not.toContain('variant="compact"');   // 예전 '미리보기 카드' 모양의 작은 칸
     expect(hosted).not.toContain('<EditableText');
+    // 구역 순서 = 공고 상세 순서(규칙 83) — 공고 → (운영 갤러리) → 일정 → 모집 내용 → 첨부파일 → 공모 소개 → 추가 질문
+    const body = src('components/exhibition-form/ExhibitionFormBody.tsx');
+    const order = ['title="공고"', 'extraSection.title', 'title="일정"', 'title="모집 내용"', 'title="첨부파일 (선택)"', 'title="공모 소개 *"', 'title="추가 질문 (선택)"'].map((t) => body.indexOf(t));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // '공모는 이렇게 진행돼요' 띠는 없앴다(진행 범위 카드가 같은 말을 한다)
+    expect(hosted + body + src('pages/MyPage.tsx')).not.toContain('공모는 이렇게 진행돼요');
   });
-  it('[수정] 은 액션 줄이 아니라 ownerAction 으로 — HomepageView 가 오른쪽 위 칸에 한 번만 그린다', () => {
+  it('[수정] 은 액션 줄이 아니라 ownerAction 으로 — 사이트 머리 오른쪽에 한 번만(2026-11-14, 규칙 82)', () => {
     const page = src('pages/PortfolioPage.tsx');
     expect(page).toMatch(/const ownerAction = isOwner \?/);
     expect(page).toMatch(/ownerAction=\{ownerAction\}/);
     const actionsBlock = page.slice(page.indexOf('const actions = ('), page.indexOf('const ownerAction'));
     expect(actionsBlock).not.toContain('수정');
-    const view = src('components/shared/HomepageView.tsx');
-    expect(view).toMatch(/\{ownerAction && <div className="col-start-2 row-start-1 self-start justify-self-end"/);
+    // 공개 페이지는 머리(SiteHeader)에 넘긴다 — 본문(HomepageView)에는 넘기지 않는다(한 화면에 [수정]이 둘이 되지 않게)
+    const header = page.slice(page.indexOf('<SiteHeader\n        title='), page.indexOf('<main'));
+    expect(header).toContain('ownerAction={ownerAction}');
+    const viewBlock = page.slice(page.indexOf('<HomepageView'), page.indexOf('</main>'));
+    expect(viewBlock).not.toContain('ownerAction');
   });
 });

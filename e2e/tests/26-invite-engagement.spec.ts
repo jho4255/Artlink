@@ -77,8 +77,8 @@ test('A. 홈 ArtWorks — 작품 확대 → 좋아요 → 재오픈 시 하트 �
   const { page, ctx } = await openAs(browser, 'artist2');
   await page.goto('/');
 
-  // 섹션 노출 (제목 ArtWorks — 구 Favorites)
-  const section = page.getByRole('heading', { name: 'ArtWorks' });
+  // 섹션 노출 — 휴대폰 홈은 탭이라(2026-11-14) 첫 탭 ArtWorks 칸이 열려 있다(칸 제목은 탭이 대신한다)
+  const section = page.getByTestId('home-panel-works');
   await section.scrollIntoViewIfNeeded();
   await expect(section).toBeVisible({ timeout: 10000 });
 

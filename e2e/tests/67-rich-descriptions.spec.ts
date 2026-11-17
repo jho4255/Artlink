@@ -97,7 +97,7 @@ test('★ 전시 상세 [수정] — 굵게를 넣고 저장하면 방문자에�
   const { page, ctx } = await openAs(browser, 'gallery');
   await page.setViewportSize(DESKTOP);
   await page.goto(`/shows/${show.id}`);
-  const sec = section(page, '소개');
+  const sec = section(page, '전시 소개');   // 전시 상세 개편(2026-11-15) — 구역 이름이 '전시 소개'
   await expect(sec).toContainText('처음 소개', { timeout: 15000 });
   await sec.getByRole('button', { name: '수정' }).click();
   const editor = page.getByRole('textbox', { name: '전시 소개' });
@@ -115,7 +115,7 @@ test('★ 전시 상세 [수정] — 굵게를 넣고 저장하면 방문자에�
 
   const anon = await browser.newPage({ viewport: DESKTOP });
   await anon.goto(`/shows/${show.id}`);
-  await expect(section(anon, '소개').locator('strong', { hasText: '그림자' })).toBeVisible({ timeout: 15000 });
+  await expect(section(anon, '전시 소개').locator('strong', { hasText: '그림자' })).toBeVisible({ timeout: 15000 });
   await anon.close();
   await api.dispose();
 });

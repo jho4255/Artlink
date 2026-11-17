@@ -22,11 +22,11 @@ const ALL_TABLES = [
   'KanbanSubtask', 'KanbanComment', 'KanbanCard', 'KanbanBoard',
   'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
-  'StoryHighlight', 'PostCategory',
+  'StoryHighlight', 'StoryReport', 'StoryMute', 'PostCategory', 'PostDraft', 'PostAsset', 'PostPollVote',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioVersion', 'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
   'GalleryImage', 'GalleryArchive', 'Gallery', 'HeroSlide', 'Benefit', 'DailyVisit', 'PortfolioExport',
-  'GuestPageView', 'EmailCode', 'PushToken', 'User',   // GuestVisit 은 id 가 문자열이라 시퀀스가 없다(지우기는 아래 트랜잭션)
+  'GuestPageView', 'EmailCode', 'PushToken', 'HomepageInquiry', 'User',   // GuestVisit 은 id 가 문자열이라 시퀀스가 없다(지우기는 아래 트랜잭션)
 ];
 
 /**
@@ -62,8 +62,12 @@ export async function cleanDb() {
     await tx.chatParticipant.deleteMany();
     await tx.chat.deleteMany();
     await tx.postLike.deleteMany();
+    await tx.postPollVote.deleteMany();    // 투표 표(2026-11-13) — 글 cascade 로도 지워지지만 명시
     await tx.postComment.deleteMany();
+    await tx.postDraft.deleteMany();       // 글 작업본(2026-11-13) — 글·회원 cascade 로도 지워지지만 명시
     await tx.post.deleteMany();
+    await tx.postAsset.deleteMany();       // 글쓰기로 올린 사진 기록(2026-11-13)
+    await tx.communityWriter.deleteMany(); // 커뮤니티 필진(2026-11-13) — userId 가 키라 시퀀스 없음(ALL_TABLES 에 넣지 말 것)
     // ⚠️ 새 테이블을 만들면 **여기에 반드시 추가할 것.** 빠뜨리면 테스트 간에 데이터가 새고,
     //    증상이 엉뚱하게 나온다 — PostCategory 를 빠뜨렸을 때 '같은 이름 409' 때문에 뒤 테스트가
     //    id 없는 응답을 받아 400·빈 목록으로 실패했다(원인이 전혀 안 보였다).
@@ -102,7 +106,10 @@ export async function cleanDb() {
     await tx.portfolioExport.deleteMany();   // PDF 저장 기록(2026-10-03) — 같은 이유(SetNull)
     await tx.guestVisit.deleteMany();   // 비회원 둘러보기(2026-10-03) — 계정과 무관한 표라 명시 삭제(화면 기록은 cascade)
     await tx.emailCode.deleteMany();    // 이메일 인증번호(2026-10-08) — 계정과 무관한 표(FK 없음)
+    await tx.storyReport.deleteMany();  // 소식 신고·그만 보기(2026-11-14) — User 캐스케이드로도 지워지지만 명시(시퀀스는 위 목록)
+    await tx.storyMute.deleteMany();
     await tx.pushToken.deleteMany();    // 앱 기기 토큰(2026-11-09) — User 캐스케이드로도 지워지지만 명시(시퀀스는 위 목록)
+    await tx.homepageInquiry.deleteMany();   // 홈페이지 비회원 문의(2026-11-14) — User 캐스케이드로도 지워지지만 명시(시퀀스는 위 목록)
     await tx.user.deleteMany();
     await tx.appSetting.deleteMany(); // FK 없음 — 개발자 도구 토글이 테스트 간 누수되지 않도록 명시 삭제
     await tx.adBanner.deleteMany();    // FK 없음(User 캐스케이드 대상 아님) — 명시 삭제

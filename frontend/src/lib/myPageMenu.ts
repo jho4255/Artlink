@@ -37,17 +37,10 @@ export interface MyPageTab {
 
 export type MyPageRole = 'ARTIST' | 'GALLERY' | 'ADMIN' | string;
 
-/**
- * 소식 피드 — 이웃의 작업 사진과 소식. 마이페이지 탭이 아니라 별도 페이지지만 메뉴 일관성을 위해 여기 둔다.
- *
- * ⚠️ **세 역할 모두에게 준다.** 이웃(팔로우)·스토리는 설계상 **역할 무관**이고(작가↔갤러리도 맺는다)
- *    서버 `/stories/feed` 도 `authenticate` 하나뿐이다. 그런데 이 탭을 작가에게만 두면
- *    갤러리·운영은 이웃을 맺고 소식을 쓸 수는 있는데 **그 화면에 갈 길이 없다** —
- *    예전엔 사이드바 아래 링크(`MYPAGE_PRIMARY_LINKS`)가 그 역할을 했는데 그게 비면서 끊겼다.
+/*
+ * ArtStory(소식)는 2026-11-14 에 가운데 메뉴(`lib/navLinks.ts`)로 옮겼다 — 전체공개 소식은 비회원도 보는 화면이 됐다(규칙 81).
+ * ⚠️ 여기(역할 메뉴)에 다시 넣지 말 것 — 같은 곳으로 가는 메뉴가 두 군데가 된다(`myPageMenu.test.ts` 가 막는다).
  */
-const ARTSTORY_TAB: MyPageTab = {
-  id: 'artstory', label: 'ArtStory', brand: ['Art', 'Story'], note: '소식 공유', icon: Camera, linkTo: () => '/feed',
-};
 
 const ARTIST_TABS: MyPageTab[] = [
   { id: 'profile', label: '프로필', icon: Camera },
@@ -68,7 +61,6 @@ const ARTIST_TABS: MyPageTab[] = [
   // 예전엔 홈페이지 편집 화면 안 버튼이라 '수정'에 들어가야만 보였다 — 편집과 무관한 기능인데.
   // 이름이 ArtLink 와 비슷해 헷갈리므로 옆에 무엇인지 작게 적는다.
   { id: 'artlook', label: 'ArtLook', brand: ['Art', 'Look'], note: '액자 걸기', icon: Frame },
-  ARTSTORY_TAB,
 ];
 
 
@@ -77,7 +69,10 @@ const ARTIST_TABS: MyPageTab[] = [
  * `homepage-edit`: 공개 작가 페이지의 [수정](주인만)에서 온다.
  */
 const HIDDEN_TABS: Record<string, string[]> = {
-  ARTIST: ['homepage-edit'],
+  // received-inquiries: 홈페이지 비회원 문의(2026-11-14, 규칙 82) — 알림·[꾸미기]·갤러리 정보 수정의 링크로만 들어온다.
+  //   받기를 켠 작가·갤러리만 쓰는 곳이라 메뉴에 두지 않는다(대부분에게 늘 빈 메뉴가 된다)
+  ARTIST: ['homepage-edit', 'received-inquiries'],
+  GALLERY: ['received-inquiries'],
 };
 
 const GALLERY_TABS: MyPageTab[] = [
@@ -86,7 +81,6 @@ const GALLERY_TABS: MyPageTab[] = [
   { id: 'my-exhibitions', label: '내 공모', icon: FileText },
   { id: 'my-shows', label: '내 전시', icon: Ticket },
   { id: 'scraps', label: '관심 작품', icon: Bookmark },
-  ARTSTORY_TAB,
 ];
 
 const ADMIN_TABS: MyPageTab[] = [
@@ -104,7 +98,6 @@ const ADMIN_TABS: MyPageTab[] = [
   { id: 'oversight', label: '운영 조회', icon: ClipboardList },
   { id: 'todo', label: '할 일 보드', icon: ListChecks },
   { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
-  ARTSTORY_TAB,
 ];
 
 /**
@@ -114,7 +107,6 @@ const ADMIN_TABS: MyPageTab[] = [
 const VISITOR_TABS: MyPageTab[] = [
   { id: 'profile', label: '프로필', icon: Camera },
   { id: 'favorites', label: '찜 목록', icon: Heart },
-  ARTSTORY_TAB,
 ];
 
 export function myPageTabs(role?: MyPageRole | null): MyPageTab[] {
@@ -191,7 +183,7 @@ export interface FooterLink {
   to: string;
   /** ArtLink 로고처럼 앞 검정 · 뒤 빨강 (`['Art','Story']` → Art**Story**). 브랜드 항목만. */
   brand?: [string, string];
-  /** 이름 옆 작은 설명 (예: ArtStory → '소식 공유') */
+  /** 이름 옆 작은 설명 (예: '1:1 문의' 옆 안내) */
   note?: string;
   icon?: LucideIcon;
 }

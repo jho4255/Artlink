@@ -80,11 +80,14 @@ export function useMention(value: string, setValue: (v: string) => void) {
   };
 }
 
-/** 입력칸 바로 아래 뜨는 목록. 부모에 `relative` 가 있어야 한다. */
-export function MentionSuggest({ options, onPick, active = 0 }: { options?: MentionOption[]; onPick: (label: string) => void; active?: number }) {
+/**
+ * 입력칸 바로 아래 뜨는 목록. 부모에 `relative` 가 있어야 한다.
+ * `placement='above'` — 입력칸이 화면 아래에 붙어 있을 때(ArtStory 댓글·올리기, 2026-11-14). 아래로 열면 자판·화면 밖으로 나간다.
+ */
+export function MentionSuggest({ options, onPick, active = 0, placement = 'below' }: { options?: MentionOption[]; onPick: (label: string) => void; active?: number; placement?: 'below' | 'above' }) {
   if (!options || options.length === 0) return null;
   return (
-    <div role="listbox" className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+    <div role="listbox" className={`absolute left-0 right-0 z-20 max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg ${placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
       {options.map((o, i) => (
         <button
           key={`${o.id ?? 'artlink'}-${o.label}`}   /* 동명이인이면 label 만으로는 key 가 겹친다 */

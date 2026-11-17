@@ -185,7 +185,8 @@ test('전시 등록 폼: 갤러리 선택 시 위치(주소) 자동 입력', asy
   await page.goto('/mypage?tab=my-shows');
   await page.getByRole('button', { name: '전시 등록', exact: true }).click();
 
-  const locInput = page.locator('input[placeholder*="자동 입력"]');
+  // 장소 칸(2026-11-15 등록 화면 개편 — 갤러리를 고르면 그 주소로 채운다, 바깥 장소면 고친다)
+  const locInput = page.locator('#show-location');
   await expect(locInput).toBeVisible({ timeout: 10000 });
   await expect(locInput).toHaveValue(''); // 선택 전 비어있음
 

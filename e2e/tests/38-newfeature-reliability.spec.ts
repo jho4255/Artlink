@@ -305,20 +305,22 @@ test('★ 화면 — Admin 은 탭 관리·고정·삭제가 보이고, 작가�
   const admin = await openAs(browser, 'admin');
   await admin.page.goto('/community');
   await expect(admin.page.getByRole('button', { name: /탭 관리/ })).toBeVisible({ timeout: 15000 });
-  await expect(admin.page.getByRole('button', { name: tab.name, exact: true })).toBeVisible();
+  // 탭은 글자 단추(role=tab, 2026-11-13 커뮤니티 다시 그림)
+  await expect(admin.page.getByRole('tab', { name: tab.name, exact: true })).toBeVisible();
 
-  // 탭 관리 모달이 열리고 그 탭이 목록에 있다
+  // 탭 관리 창이 열리고 그 탭이 목록에 있다
   await admin.page.getByRole('button', { name: /탭 관리/ }).click();
-  await expect(admin.page.getByRole('heading', { name: '탭 관리' })).toBeVisible({ timeout: 8000 });
-  await expect(admin.page.locator('input[value="' + tab.name + '"]')).toBeVisible();
-  await admin.page.getByRole('button', { name: '닫기' }).click();
+  const dlg = admin.page.getByRole('dialog', { name: '탭 관리' });
+  await expect(dlg).toBeVisible({ timeout: 8000 });
+  await expect(dlg.getByRole('textbox', { name: `탭 이름 ${tab.name}` })).toHaveValue(tab.name);
+  await dlg.getByRole('button', { name: '닫기' }).click();
   await admin.ctx.close();
 
   // 작가에게는 [탭 관리] 가 없다 (탭 자체는 읽을 수 있다)
   // ⚠️ 탭 이름은 글 제목에도 들어가므로 `exact` 로 탭 칩만 집는다
   const artist = await openAs(browser, 'artist');
   await artist.page.goto('/community');
-  await expect(artist.page.getByRole('button', { name: tab.name, exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(artist.page.getByRole('tab', { name: tab.name, exact: true })).toBeVisible({ timeout: 15000 });
   await expect(artist.page.getByRole('button', { name: /탭 관리/ })).toHaveCount(0);
   await artist.ctx.close();
 

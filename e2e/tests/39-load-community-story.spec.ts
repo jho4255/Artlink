@@ -291,9 +291,10 @@ test('★ 화면 — 커뮤니티 목록에 글이 쌓여도 렌더가 깨지지
 
   // 정렬·필터를 연달아 바꿔도 크래시 없음
   for (let i = 0; i < 3; i++) {
-    await page.getByRole('button', { name: '인기' }).click();
+    // 정렬은 글자 단추(role=radio, 2026-11-13 커뮤니티 다시 그림)
+    await page.getByRole('radio', { name: '인기' }).click();
     await page.waitForTimeout(250);
-    await page.getByRole('button', { name: '최신' }).click();
+    await page.getByRole('radio', { name: '최신' }).click();
     await page.waitForTimeout(250);
   }
   expect(errors, `커뮤니티 목록에서 JS 에러: ${errors.join(' | ')}`).toHaveLength(0);

@@ -35,13 +35,13 @@ test('A. 공모 등록 일정 — 지난 날 흐림 · 다음 칸으로 · 앞 �
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
 
   await field(page, 'ex-start').click();
-  await expect(calendar(page, '공모 시작일')).toBeVisible();
+  await expect(calendar(page, '접수 시작일')).toBeVisible();
   await expect(page.locator('[role="grid"]')).toHaveCount(2);   // 넓은 칸 — 두 달
   if (await dayBtn(page, kstDay(-1)).count()) await expect(dayBtn(page, kstDay(-1))).toBeDisabled();
   await expect(dayBtn(page, kstDay(0))).toBeEnabled();
 
   await pick(page, kstDay(1));
-  await expect(calendar(page, '공모 마감일')).toBeVisible();            // 가는 날을 고르면 바로 오는 날
+  await expect(calendar(page, '접수 마감일')).toBeVisible();            // 가는 날을 고르면 바로 오는 날
   await expect(dayBtn(page, kstDay(0))).toBeDisabled();                 // 시작 전날은 못 고른다
   await expect(dayBtn(page, kstDay(1))).toBeEnabled();                  // 같은 날 마감은 된다
   await pick(page, kstDay(10));
@@ -54,12 +54,12 @@ test('A. 공모 등록 일정 — 지난 날 흐림 · 다음 칸으로 · 앞 �
 
   const shown = async () => page.locator('[data-schedule-field]').allInnerTexts();
   expect((await shown()).every((t) => /\d{4}\. \d+\. \d+ \(.\)/.test(t)), (await shown()).join(' | ')).toBe(true);
-  await expect(page.locator('p', { hasText: /^한눈에 · 지원 .+ · 자료 제출 ~.+ · 전시 / })).toBeVisible();
+  await expect(page.locator('p', { hasText: /^한눈에 · 접수 .+ · 자료 제출 ~.+ · 전시 / })).toBeVisible();
 
   // 시작을 자료 제출 뒤로 옮긴다 → 마감·자료 제출·전시 시작이 비워지고, 달력은 마감으로 넘어간다
   await field(page, 'ex-start').click();
   await pick(page, kstDay(25));
-  await expect(calendar(page, '공모 마감일')).toBeVisible();
+  await expect(calendar(page, '접수 마감일')).toBeVisible();
   const after = await shown();
   expect(after[0]).not.toContain('날짜 선택');
   expect(after.slice(1, 4).every((t) => t.includes('날짜 선택')), after.join(' | ')).toBe(true);
@@ -78,7 +78,7 @@ test('B. 휴대폰 — 아래에서 올라오는 창, 날짜가 탭바에 안 �
   await page.goto('/exhibitions/new');
   await field(page, 'ex-start').scrollIntoViewIfNeeded();
   await field(page, 'ex-start').click();
-  const sheet = page.getByRole('dialog', { name: '공모 시작일 달력' });
+  const sheet = page.getByRole('dialog', { name: '접수 시작일 달력' });
   await expect(sheet).toBeVisible();
   await expect(page.locator('[role="grid"]')).toHaveCount(1);   // 좁은 화면 — 한 달
   // 이 달의 마지막 날 버튼의 한가운데를 누르면 정말 그 버튼이 잡히는가(탭바가 아니라)
@@ -90,7 +90,7 @@ test('B. 휴대폰 — 아래에서 올라오는 창, 날짜가 탭바에 안 �
   });
   expect(hit).toEqual({ inView: true, hit: true });
   await pick(page, kstDay(2));
-  await expect(page.getByRole('dialog', { name: '공모 마감일 달력' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '접수 마감일 달력' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('[role="grid"]')).toHaveCount(0);
   await expect(field(page, 'ex-start')).toContainText(/\d{4}\. \d+\. \d+/);
@@ -132,10 +132,10 @@ test('C. 홈페이지 프로필 사진 — 기본 꺼짐 · 올리면 켜지고 
   await expect(publicAvatar()).toHaveCount(0);
 
   const { ctx, page } = await openFor(browser, a);
-  await page.goto('/mypage?tab=homepage-edit&section=intro');
+  await page.goto('/mypage?tab=homepage-edit&section=style');
   const toggle = page.getByTestId('show-avatar');
   await expect(toggle).not.toBeChecked({ timeout: 15000 });
-  // [소개] 에서 사진을 올리면 보이기가 켜지고, 미리보기에 바로 나온다
+  // [꾸미기] '첫 화면' 에서(2026-11-14 — 예전엔 [소개]) 사진을 올리면 보이기가 켜지고, 미리보기에 바로 나온다
   await page.getByTestId('homepage-avatar-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: solidPng(300, 300, [40, 90, 160]) });
   await expect(page.getByText('프로필 사진을 바꿨어요.')).toBeVisible({ timeout: 20000 });
   await expect(toggle).toBeChecked();
@@ -154,7 +154,7 @@ test('C. 홈페이지 프로필 사진 — 기본 꺼짐 · 올리면 켜지고 
   expect(av.width).toBeGreaterThanOrEqual(100);   // PC 112px
 
   // 끄고 저장하면 사라진다
-  await page.goto('/mypage?tab=homepage-edit&section=intro');
+  await page.goto('/mypage?tab=homepage-edit&section=style');
   await page.getByTestId('show-avatar').uncheck();
   await page.locator('[data-save-bar]').getByRole('button', { name: '저장', exact: true }).click();
   await page.waitForURL(new RegExp(`/(portfolio/${a.id}|@)`), { timeout: 15000 });

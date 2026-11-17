@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>저장 상태와 물음</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+svg.i{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font-family:inherit;cursor:pointer}
+.cap{margin:0 0 10px;font-size:12px;font-weight:600;color:#6b7280}
+.st{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#6b7280;background:#fff}
+.b1{height:38px;padding:0 16px;border:0;border-radius:6px;background:#111827;color:#fff;font-size:13px;font-weight:600}
+.b2{height:38px;padding:0 16px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:13px;font-weight:500}
+</style>
+</helmet>
+<div style="width: 880px; height: 900px; box-sizing: border-box; padding: 40px; display: flex; flex-direction: column; gap: 30px; background: #f9fafb; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere">
+
+  <!-- 위 줄의 저장 상태 -->
+  <section>
+    <p class="cap">위 줄의 저장 상태 — 늘 한 줄, 지금 어떤지만 말한다</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+      <span class="st"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>저장됨 · 방금 전</span>
+      <span class="st">저장 중…</span>
+      <span class="st" style="color: #c4302b; border-color: rgba(196,48,43,.4)">저장 못 함 — 다시 시도 중</span>
+      <span class="st" style="color: #374151">인터넷이 끊겼어요 · 이 기기에 보관 중</span>
+      <span class="st" style="color: #374151">사진 올리는 중 2/5</span>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+
+    <!-- 이 기기에 남은 글 -->
+    <section style="min-width: 0">
+      <p class="cap">다시 열었는데 서버에 못 보낸 글이 이 기기에 있을 때</p>
+      <div style="padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827">이 기기에 저장 못 한 글이 있어요</p>
+        <p style="margin: 6px 0 14px; font-size: 13px; line-height: 1.6; color: #6b7280">오늘 오후 3:42 에 쓰던 내용이에요. 서버에 있는 것보다 새 글이에요.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" class="b1">이어서 쓰기</button>
+          <button type="button" class="b2">서버에 있는 것으로</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 다른 곳에서 고침 -->
+    <section style="min-width: 0">
+      <p class="cap">다른 기기·탭에서 같은 글을 고쳤을 때</p>
+      <div style="padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827">다른 곳에서 고친 내용이 있어요</p>
+        <p style="margin: 6px 0 14px; font-size: 13px; line-height: 1.6; color: #6b7280">3분 전 다른 기기에서 저장했어요. 어느 쪽을 남길까요?</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" class="b1">그 내용 불러오기</button>
+          <button type="button" class="b2">지금 내용으로 덮어쓰기</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 로그인 만료 -->
+    <section style="min-width: 0">
+      <p class="cap">쓰는 중에 로그인이 풀렸을 때 — 화면을 내쫓지 않는다</p>
+      <div style="padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827">다시 로그인해 주세요</p>
+        <p style="margin: 6px 0 14px; font-size: 13px; line-height: 1.6; color: #6b7280">쓰던 글은 이 기기에 그대로 있어요. 로그인하면 이 화면으로 돌아와요.</p>
+        <button type="button" class="b1">로그인하기</button>
+      </div>
+    </section>
+
+    <!-- 새 버전 -->
+    <section style="min-width: 0">
+      <p class="cap">쓰는 중에 사이트가 새 버전으로 바뀌었을 때 — 저절로 새로고침하지 않는다</p>
+      <div style="padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827">새 버전이 나왔어요</p>
+        <p style="margin: 6px 0 14px; font-size: 13px; line-height: 1.6; color: #6b7280">글을 저장한 뒤에 새로고침할게요. 계속 쓰셔도 돼요.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" class="b1">저장하고 새로고침</button>
+          <button type="button" class="b2">나중에</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 사진 한 장의 상태 -->
+  <section>
+    <p class="cap">사진 한 장의 상태 — 올리는 중 · 실패 · 못 올리는 파일</p>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+      <div style="position: relative; min-width: 0">
+        <img src="/_blob/c0cd6dbfeed7a444123b81adb442cfb6" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; opacity: .45">
+        <div style="position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px">
+          <span style="font-size: 12px; color: #374151; white-space: nowrap">올리는 중 62%</span>
+          <span style="flex: 1; height: 3px; background: #e5e7eb; overflow: hidden"><span style="display: block; width: 62%; height: 100%; background: #111827"></span></span>
+        </div>
+      </div>
+      <div style="position: relative; min-width: 0">
+        <img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; opacity: .3">
+        <div style="position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; background: #fff; border: 1px solid rgba(196,48,43,.4); border-radius: 6px">
+          <span style="font-size: 12px; color: #c4302b">올리지 못했어요</span>
+          <button type="button" class="b2" style="height: 30px; padding: 0 10px; font-size: 12px">다시</button>
+        </div>
+      </div>
+      <div style="min-width: 0; aspect-ratio: 4 / 3; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 16px; background: #fff; border: 1px dashed #d1d5db">
+        <span style="font-size: 13px; font-weight: 600; color: #111827">HEIC 사진은 올릴 수 없어요</span>
+        <span style="font-size: 12px; line-height: 1.6; color: #6b7280">JPG 로 바꿔 올려 주세요. 나머지 4장은 올렸어요.</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

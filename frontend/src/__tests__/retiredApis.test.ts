@@ -65,8 +65,7 @@ describe('갠톡 진입점은 설계된 길목뿐이다', () => {
   */
   const ALLOWED = [
     'components/shared/ArtworkDetailModal.tsx', // 둘러보기 작품 모달
-    'pages/PortfolioPage.tsx',                  // 작가 홈페이지 [메시지]
-    'pages/GalleryDetailPage.tsx',              // 갤러리 상세 — 그 갤러리를 보고 있는 자리
+    'components/homepage/InquirySheet.tsx',     // 작가·갤러리 홈페이지 [문의하기] — 그 홈페이지를 보고 있는 자리(2026-11-14, 예전 [메시지])
     'pages/ExhibitionDetailPage.tsx',           // 공모 상세 — 그 공모를 보고 있는 자리
     'pages/MessagesPage.tsx',                   // 이웃에게 바로 말 걸기 — **서로 이웃**만(임의 검색 아님). 설계상 유일한 예외
   ];

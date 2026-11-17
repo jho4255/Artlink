@@ -149,6 +149,71 @@ describe('좋아요·인기글', () => {
   });
 });
 
+describe('★ 내 글 좋아요 알림 — 글마다 한 줄로 합친다(2026-11-14)', () => {
+  beforeEach(async () => { await cleanDb(); await seedUsers(); });
+  const like = (id: number, tok: string) => request.post(`/api/community/${id}/like`).set('Authorization', `Bearer ${tok}`);
+  const notes = (userId: number) => testPrisma.notification.findMany({ where: { userId, type: 'POST_LIKE' }, orderBy: { id: 'asc' } });
+
+  it('첫 좋아요 — 글쓴이에게 POST_LIKE 한 통(링크는 그 글) · 내 글에 내가 누른 건 알리지 않는다', async () => {
+    const { body: { id } } = await createPost(a1, { title: '좋아요 받을 글' });
+    await like(id, a1);
+    expect(await notes(1)).toHaveLength(0);
+    const r = await like(id, a2);
+    expect(r.body).toEqual({ liked: true, likeCount: 2 });
+    const n = await notes(1);
+    expect(n).toHaveLength(1);
+    expect(n[0]).toMatchObject({ linkUrl: `/community/${id}`, refKey: `post-like:${id}`, read: false });
+    expect(n[0].message).toMatch(/^.+님이 내 글을 좋아해요: 좋아요 받을 글$/);
+  });
+
+  it('★ 여러 사람이 눌러도 안 읽은 한 줄을 고쳐 쓴다 — "○○님 외 N명"', async () => {
+    const { body: { id } } = await createPost(a1);
+    for (const tok of [a2, gallery, admin]) await like(id, tok);
+    const n = await notes(1);
+    expect(n).toHaveLength(1);
+    expect(n[0].message).toMatch(/님 외 2명이 내 글을 좋아해요: 제목$/);
+  });
+
+  it('끄고 다시 켜도 두 통이 되지 않는다 · 끌 때는 알리지 않는다 · 읽은 뒤에 누르면 새 줄', async () => {
+    const { body: { id } } = await createPost(a1);
+    await like(id, a2);
+    await like(id, a2);
+    expect(await notes(1)).toHaveLength(1);
+    await like(id, a2);
+    expect(await notes(1)).toHaveLength(1);
+    await testPrisma.notification.updateMany({ where: { userId: 1 }, data: { read: true } });
+    await like(id, gallery);
+    const n = await notes(1);
+    expect(n).toHaveLength(2);
+    expect(n[1].read).toBe(false);
+  });
+
+  it('다른 글은 다른 줄 · 긴 제목은 30자에서 자른다', async () => {
+    const long = '가'.repeat(40);
+    const p1 = (await createPost(a1, { title: '하나' })).body.id;
+    const p2 = (await createPost(a1, { title: long })).body.id;
+    await like(p1, a2);
+    await like(p2, a2);
+    const n = await notes(1);
+    expect(n.map((x) => x.refKey)).toEqual([`post-like:${p1}`, `post-like:${p2}`]);
+    expect(n[1].message.endsWith(`${'가'.repeat(30)}…`)).toBe(true);
+  });
+
+  it('동시에 여러 번 눌러도(같은 사람) 알림이 한 통을 넘지 않는다', async () => {
+    const { body: { id } } = await createPost(a1);
+    await Promise.all(Array.from({ length: 6 }, () => like(id, a2)));
+    expect((await notes(1)).length).toBeLessThanOrEqual(1);
+  });
+
+  it('★ 여러 사람이 동시에 눌러도 한 줄 — 마지막 문구는 "외 2명"', async () => {
+    const { body: { id } } = await createPost(a1);
+    await Promise.all([a2, gallery, admin].map((tok) => like(id, tok)));
+    const n = await notes(1);
+    expect(n).toHaveLength(1);
+    expect(n[0].message).toMatch(/님 외 2명이 내 글을 좋아해요/);
+  });
+});
+
 describe('댓글', () => {
   beforeEach(async () => { await cleanDb(); await seedUsers(); });
 

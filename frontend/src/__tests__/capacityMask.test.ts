@@ -42,7 +42,8 @@ describe('규칙 — 서버와 같다', () => {
 describe('공고에 숫자를 그대로 찍지 않는다 — 0명 공고에 9명이 뜬다', () => {
   it('★ 목록·상세·갤러리 페이지·주최 공모·초대 코드가 capacityText 계열을 쓴다', () => {
     const files = [
-      'frontend/src/pages/ExhibitionsPage.tsx', 'frontend/src/pages/ExhibitionDetailPage.tsx', 'frontend/src/pages/GalleryDetailPage.tsx',
+      'frontend/src/components/listing/CallCards.tsx', 'frontend/src/pages/ExhibitionDetailPage.tsx', 'frontend/src/pages/GalleryDetailPage.tsx',
+      'frontend/src/components/exhibition-form/exhibitionForm.tsx',
       'frontend/src/pages/JoinExhibitionPage.tsx', 'frontend/src/components/admin/HostedExhibitionsSection.tsx',
       'frontend/src/components/shared/JoinCodePanel.tsx', 'frontend/src/pages/MyPage.tsx',
     ];
@@ -54,10 +55,15 @@ describe('공고에 숫자를 그대로 찍지 않는다 — 0명 공고에 9명
   });
 
   it('세 등록·변경 자리가 같은 고르는 칸(CapacityPicker)을 쓰고, 보낼 땐 capacityPayload 를 거친다', () => {
+    // 두 등록 화면은 공용 폼(2026-11-15)의 칸을 쓴다
+    for (const f of ['frontend/src/components/exhibition-form/ExhibitionFormBody.tsx', 'frontend/src/components/shared/ApplicantManager.tsx']) {
+      expect(read(f), f).toMatch(/<CapacityPicker/);
+    }
     for (const f of ['frontend/src/pages/MyPage.tsx', 'frontend/src/components/admin/HostedExhibitionsSection.tsx', 'frontend/src/components/shared/ApplicantManager.tsx']) {
-      const src = read(f);
-      expect(src, f).toMatch(/<CapacityPicker/);
-      expect(src, f).toMatch(/capacityPayload\(/);
+      expect(read(f), f).toMatch(/capacityPayload\(/);
+    }
+    for (const f of ['frontend/src/pages/MyPage.tsx', 'frontend/src/components/admin/HostedExhibitionsSection.tsx']) {
+      expect(read(f), f).toMatch(/<ExhibitionFormBody/);
     }
   });
 });

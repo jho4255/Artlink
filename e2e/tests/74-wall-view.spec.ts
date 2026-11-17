@@ -7,6 +7,7 @@ import { solidPng } from '../lib/helpers';
  * 미미오 작가 페이지의 [See More] 창(회색 벽 + 그림자)과 견줘 모자랐던 것을 채웠다 — 벽 그림은 ArtLook 엔진이 화면 밖 iframe
  * (`/artlook/index.html?view=1` + view.js)에서 그린다. 비회원(로그인 없이)으로 본다 — 작가 홈페이지의 주 방문자다.
  *
+ *  2026-11-14(규칙 82) — 작품을 누르면 먼저 **작품 페이지**(WorkSheet)가 열리고, 검은 작품 창은 거기서 [크게 보기]. 이 스펙은 검은 창을 본다.
  *  A. 작품을 누르면 작품 창 — 원본 사진 · 캡션 두 줄(작품명, 연도 / 재료 · 크기) · ?work= · [공유](그 작품 주소)
  *  B. [벽에 걸어 보기] → 차콜 벽에 오크 플로터·넓은 매트로 건 그림 · **작품 방향대로 비율**(세로 4:5 · 가로 5:4 · 정사각 1:1 — 가로 캔버스에 세로 작품을 걸면 잘렸다)
  *  C. 벽에서 넘기면 다음 작품도 벽 · 닫으면 iframe 을 걷는다 · 다시 열면 벽으로 바로(이 탭에서 기억) · 사진으로 돌리면 기억을 지운다
@@ -83,17 +84,21 @@ async function openGuest(browser: Browser, extra: BrowserContextOptions = {}, pr
   return { ctx, page, errors, requests };
 }
 const viewerOf = (page: Page) => page.getByRole('dialog', { name: /작품 보기/ });
+/** 작품 페이지(2026-11-14, 규칙 82) — 작품을 누르면 먼저 이게 열리고, 검은 작품 창은 여기서 [크게 보기] */
+const sheetOf = (page: Page) => page.getByTestId('work-sheet');
 async function openFirst(page: Page) {
-  await page.locator('figure button.cursor-zoom-in').first().click();   // 대표작 = 첫 작품
+  await page.getByTestId('homepage-cover-art').getByRole('button').click();   // 표지의 대표작 = 첫 작품
+  await expect(sheetOf(page)).toBeVisible();
+  await sheetOf(page).getByRole('button', { name: '크게 보기' }).click();
   await expect(viewerOf(page)).toBeVisible();
-  await expect(page.locator('[data-view="photo"]')).toBeVisible();
+  await expect(viewerOf(page).locator('[data-view="photo"]')).toBeVisible();
 }
 const wallToggle = (page: Page) => viewerOf(page).getByRole('group', { name: '보기 방식' }).getByRole('button', { name: '벽에 걸어 보기' });
 const photoToggle = (page: Page) => viewerOf(page).getByRole('group', { name: '보기 방식' }).getByRole('button', { name: '사진' });
 const workParam = (page: Page) => Number(new URL(page.url()).searchParams.get('work'));
 /** 지금 작품의 벽 그림 — 원본으로 다시 그린 것까지 기다린다 */
 async function wallFull(page: Page) {
-  const img = page.locator('[data-view="wall"][data-quality="full"]');
+  const img = viewerOf(page).locator('[data-view="wall"][data-quality="full"]');
   await expect(img).toBeVisible({ timeout: 40000 });
   return img;
 }
@@ -105,7 +110,7 @@ test('A. 작품을 누르면 작품 창 — 원본 사진 · 캡션 두 줄 · ?
   const v = viewerOf(page);
   expect(workParam(page)).toBe(works[0]!.id);
   // 사진은 원본(t800 아님) · 모서리를 깎지 않는다
-  const photo = page.locator('[data-view="photo"]');
+  const photo = v.locator('[data-view="photo"]');
   expect(await photo.getAttribute('src')).not.toMatch(/\/t800\//);
   expect(await photo.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
   // 캡션 두 줄 — 미술관 라벨
@@ -125,12 +130,16 @@ test('A. 작품을 누르면 작품 창 — 원본 사진 · 캡션 두 줄 · ?
   await v.getByRole('button', { name: '이 작품 공유' }).click();
   await expect(v.getByText('링크를 복사했어요')).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(new RegExp(`/portfolio/${artist.id}\\?work=${works[0]!.id}$`));
-  // 넘기면 주소가 따라가고, 닫으면 work 를 뗀다
+  // 넘기면 주소가 따라가고(아래 작품 페이지도 따라간다), 크게 보기를 닫으면 작품 페이지 · 그것도 닫으면 work 를 뗀다
   await v.getByRole('button', { name: '다음 작품' }).click();
   await expect.poll(() => workParam(page)).toBe(works[1]!.id);
   await expect(cap.locator('p').nth(0)).toHaveText('가로 작품, 2024');
   await v.getByRole('button', { name: '닫기' }).click();
   await expect(v).toHaveCount(0);
+  await expect(sheetOf(page).getByRole('heading', { level: 1 })).toHaveText('가로 작품');
+  expect(workParam(page)).toBe(works[1]!.id);
+  await sheetOf(page).getByRole('button', { name: '작품 목록으로' }).click();
+  await expect(sheetOf(page)).toHaveCount(0);
   expect(new URL(page.url()).searchParams.get('work')).toBeNull();
   expect(errors).toEqual([]);
   await ctx.close();
@@ -179,18 +188,23 @@ test('C. 벽에서 넘기면 다음도 벽 · 닫으면 iframe 을 걷는다 · 
   await wallFull(page);
   expect(await page.evaluate(() => sessionStorage.getItem('artlink-artwork-view'))).toBe('wall');
   await v.getByRole('button', { name: '다음 작품' }).click();
-  await expect(page.locator('[data-view="wall"]')).toBeVisible({ timeout: 40000 });
-  await expect(page.locator('[data-view="wall"]')).toHaveAttribute('alt', `${works[1]!.title} — 벽에 건 모습`);
+  await expect(v.locator('[data-view="wall"]')).toBeVisible({ timeout: 40000 });
+  await expect(v.locator('[data-view="wall"]')).toHaveAttribute('alt', `${works[1]!.title} — 벽에 건 모습`);
   await v.getByRole('button', { name: '닫기' }).click();
   await expect(v).toHaveCount(0);
+  // 엔진은 작품 페이지와 나눠 쓴다(2026-11-14) — 그것까지 닫아야 걷는다
+  await sheetOf(page).getByRole('button', { name: '작품 목록으로' }).click();
+  await expect(sheetOf(page)).toHaveCount(0);
   await expect(page.locator('iframe[data-wall-view]')).toHaveCount(0);
-  // 다시 열면 벽으로 — 그려 둔 그림이라 엔진을 다시 띄우지 않고 바로 뜬다
-  await page.locator('figure button.cursor-zoom-in').first().click();
-  await expect(page.locator('[data-view="wall"]')).toBeVisible({ timeout: 3000 });
-  await expect(wallToggle(page)).toHaveAttribute('aria-pressed', 'true');
+  // 다시 열면 작품 페이지가 벽으로 — 그려 둔 그림이라 엔진을 다시 띄우지 않고 바로 뜬다
+  await page.getByTestId('homepage-cover-art').getByRole('button').click();
+  const sheet = sheetOf(page);
+  await expect(sheet.locator('[data-view="wall"]')).toBeVisible({ timeout: 3000 });
+  const sheetToggle = (name: string) => sheet.getByRole('group', { name: '보기 방식' }).getByRole('button', { name });
+  await expect(sheetToggle('벽에 걸어 보기')).toHaveAttribute('aria-pressed', 'true');
   // 사진으로 돌리면 사진 · 기억을 지운다
-  await photoToggle(page).click();
-  await expect(page.locator('[data-view="photo"]')).toBeVisible();
+  await sheetToggle('사진').click();
+  await expect(sheet.locator('[data-view="photo"]')).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('artlink-artwork-view'))).toBeNull();
   expect(errors).toEqual([]);
   await ctx.close();
@@ -208,7 +222,7 @@ test('D. 작품 창을 열면 사진이 뜬 뒤 엔진을 미리 띄운다 · �
   await expect(page.locator('iframe[data-wall-view]')).toHaveCount(1, { timeout: 15000 });
   await expect.poll(() => requests.filter((u) => /\/walls\/wall21-charcoal\.jpg/.test(u)).length, { timeout: 30000 }).toBe(1);
   await expect.poll(() => requests.filter((u) => /frames\/photo\/oak-floater\.png/.test(u)).length, { timeout: 30000 }).toBe(1);
-  await expect(page.locator('[data-view="photo"]')).toBeVisible();
+  await expect(v.locator('[data-view="photo"]')).toBeVisible();
 
   await wallToggle(page).click();
   await wallFull(page);
@@ -261,10 +275,10 @@ test('E. 엔진이 안 되는 브라우저(WebGL2 없음) — 안내 한 줄 · 
   await wallToggle(page).click();
   await expect(v.getByText('이 브라우저에서는 벽에 걸어 볼 수 없어요')).toBeVisible({ timeout: 30000 });
   await expect(v.getByRole('group', { name: '보기 방식' })).toHaveCount(0);
-  await expect(page.locator('[data-view="photo"]')).toBeVisible();
+  await expect(v.locator('[data-view="photo"]')).toBeVisible();
   await expect(page.locator('iframe[data-wall-view]')).toHaveCount(0);
   await v.getByRole('button', { name: '다음 작품' }).click();
-  await expect(page.locator('[data-view="photo"]')).toBeVisible();
+  await expect(v.locator('[data-view="photo"]')).toBeVisible();
   await page.waitForTimeout(500);
   await expect(page.locator('iframe[data-wall-view]'), '넘겨도 엔진을 다시 띄우지 않는다').toHaveCount(0);
   expect(errors).toEqual([]);
@@ -278,7 +292,7 @@ test('F. 엔진 준비가 실패하면 [다시 시도] — 다시 하면 벽이 
   const v = viewerOf(page);
   await wallToggle(page).click();
   await expect(v.getByText('벽에 걸지 못했어요')).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('[data-view="wall-pending"]')).toBeVisible();   // 흐린 사진은 그대로
+  await expect(v.locator('[data-view="wall-pending"]')).toBeVisible();   // 흐린 사진은 그대로
   await expect(wallToggle(page), '안 되는 브라우저가 아니다 — 토글은 남는다').toBeVisible();
   await ctx.unroute(/\/artlook\/scenes\/scenes\.json/);
   await v.getByRole('button', { name: '다시 시도' }).click();
@@ -297,7 +311,7 @@ test('G. 빠르게 여러 번 넘겨도 지금 작품의 벽 그림이 뜬다', 
   const id = works[7 % works.length]!.id;
   await expect.poll(() => workParam(page)).toBe(id);
   const title = works.find((w) => w.id === id)!.title;
-  await expect(page.locator('[data-view="wall"]')).toHaveAttribute('alt', `${title} — 벽에 건 모습`, { timeout: 40000 });
+  await expect(v.locator('[data-view="wall"]')).toHaveAttribute('alt', `${title} — 벽에 건 모습`, { timeout: 40000 });
   await expect(page.getByTestId('artwork-caption').locator('p').nth(0)).toHaveText(`${title}, 2024`);
   expect(errors).toEqual([]);
   await ctx.close();

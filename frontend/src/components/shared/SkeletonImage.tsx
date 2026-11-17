@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { thumbUrl, type ThumbSize } from './Thumb';
 
 interface SkeletonImageProps {
   src?: string | null;
@@ -16,6 +17,11 @@ interface SkeletonImageProps {
   onClick?: (e: React.MouseEvent) => void;
   /** src가 없을 때 '이미지 없음' 플레이스홀더에 표시할 라벨(예: 갤러리명) */
   fallbackLabel?: string;
+  /**
+   * 썸네일로 그린다(2026-11-15, 모집공고·갤러리 목록) — `Thumb` 와 같은 규칙: 썸네일이 없으면(404) 원본으로 한 번 더.
+   * 목록 칸(92~380px)에 2000px 포스터 원본을 받던 것을 줄인다. 확대·상세의 큰 그림에는 넘기지 말 것(원본).
+   */
+  thumb?: ThumbSize;
 }
 
 /**
@@ -35,10 +41,14 @@ export default function SkeletonImage({
   draggable,
   onClick,
   fallbackLabel,
+  thumb,
 }: SkeletonImageProps) {
   const [loaded, setLoaded] = useState(false);
   // 로드 실패(404·URL 유실) 시 깨진 이미지 아이콘 대신 '이미지 없음' 플레이스홀더로 폴백
   const [errored, setErrored] = useState(false);
+
+  // 썸네일이 없어서(404) 원본으로 되돌렸는가
+  const [original, setOriginal] = useState(false);
 
   // 스와이퍼 등에서 src가 교체되면 스켈레톤/에러 상태 초기화 (렌더 중 상태 조정 패턴)
   const [prevSrc, setPrevSrc] = useState(src);
@@ -46,9 +56,16 @@ export default function SkeletonImage({
     setPrevSrc(src);
     setLoaded(false);
     setErrored(false);
+    setOriginal(false);
   }
 
   const hasImage = !!(src && src.trim()) && !errored;
+  const shown = hasImage && thumb && !original ? thumbUrl(src!, thumb) : src;
+  const onFail = () => {
+    if (shown !== src) { setOriginal(true); return; }   // 썸네일 없음 → 원본
+    setLoaded(true);
+    setErrored(true);
+  };
 
   return (
     <div className={cn('relative overflow-hidden bg-gray-100', className)} onClick={onClick}>
@@ -64,7 +81,7 @@ export default function SkeletonImage({
           {!loaded && <div className="absolute inset-0 animate-pulse bg-gray-200/70" />}
           {blurFill && (
             <img
-              src={src!}
+              src={shown!}
               alt=""
               aria-hidden
               draggable={false}
@@ -75,12 +92,12 @@ export default function SkeletonImage({
             />
           )}
           <img
-            src={src!}
+            src={shown!}
             alt={alt}
             loading={loading}
             draggable={draggable}
             onLoad={() => setLoaded(true)}
-            onError={() => { setLoaded(true); setErrored(true); }}
+            onError={onFail}
             className={cn(
               'relative w-full h-full transition-opacity duration-500',
               imgClassName,

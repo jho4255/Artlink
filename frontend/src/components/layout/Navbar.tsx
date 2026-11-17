@@ -133,13 +133,14 @@ export default function Navbar() {
           {/* 데스크탑 네비게이션 — 네비바 **전체 폭의 정중앙**.
               본문 컨테이너 안에서 flex 로 두면 로고와 우측 그룹의 폭 차이만큼 한쪽으로 쏠린다.
               (우측 그룹도 absolute 라 이 자리를 차지하지 않는다) */}
-          <div className="hidden lg:flex items-center gap-2 absolute left-1/2 -translate-x-1/2 top-0 h-20">
+          {/* ⚠️ 메뉴가 일곱이 되면서(ArtStory, 2026-11-14) 1024px 에서 로그인 시 오른쪽 묶음과 닿는다 — lg 에선 간격·여백을 한 단계 줄인다 */}
+          <div className="hidden lg:flex items-center gap-1 xl:gap-2 absolute left-1/2 -translate-x-1/2 top-0 h-20">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
                 className={cn(
-                  'px-4 py-2 text-base font-medium transition-all border-b-2',
+                  'px-3 xl:px-4 py-2 text-base font-medium transition-all border-b-2',
                   isNavActive(location.pathname, link.path)
                     ? 'text-gray-900 border-gray-900'
                     : 'text-gray-500 border-transparent hover:text-gray-900 hover:border-gray-300'

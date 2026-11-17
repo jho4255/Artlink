@@ -82,12 +82,13 @@ test.describe('갤러리 전화번호·주소 무승인 수정', () => {
   test('UI: 오너가 상세 페이지에서 전화번호·주소 인라인 수정', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.goto(`/galleries/${galleryId}`);
-    // 주소 줄의 [수정] 클릭
-    await page.getByRole('button', { name: '수정' }).first().click();
+    // 방문 정보 아래 [정보 수정] (2026-11-14 규칙 82 — 예전엔 주소 줄 끝의 [수정]이었다. 지금은 한 줄 소개 옆 연필도 이름이 '수정'이라 첫 '수정'을 집으면 안 된다)
+    await page.getByRole('button', { name: '정보 수정' }).click();
     const newPhone = '02-555-9999';
     const newAddr = '서울시 종로구 인사동 UI테스트';
     // 폼 입력 (placeholder로 식별)
-    await page.getByPlaceholder('갤러리 주소').fill(newAddr);
+    // 주소 칸은 [주소 검색] 옆 입력칸(2026-11-15, components/form/AddressField) — 직접 입력도 된다
+    await page.getByTestId('gallery-contact-form').getByPlaceholder('주소', { exact: true }).fill(newAddr);
     await page.getByPlaceholder('예: 02-739-1212').fill(newPhone);
     await page.getByRole('button', { name: '저장' }).click();
     await expect(page.locator('body')).toContainText('갤러리 정보가 수정되었습니다', { timeout: 8000 });

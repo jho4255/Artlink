@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab } from '../lib/helpers';
+import { openAs, openMyPageTab, submitRegistration } from '../lib/helpers';
 
 /**
  * 라이프사이클(UI 폼): 갤러리 등록 폼 작성 → 관리자 승인/거절 → 공개 노출 / 거절사유 전달.
@@ -15,11 +15,8 @@ async function registerGallery(page: any, name: string) {
   await page.getByPlaceholder('대표자명').fill('홍길동');
   await page.getByPlaceholder('전화번호').fill('02-1234-5678');
   await page.getByPlaceholder('갤러리 한줄 소개').fill('E2E 테스트용 갤러리입니다');
-  // 약관 동의 체크(제출 버튼 활성화 조건)
-  await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-  // 폼 제출 → 확인 다이얼로그 → 확인
-  await page.getByRole('button', { name: '등록 요청' }).first().click();
-  await page.getByRole('button', { name: '등록 요청' }).last().click();
+  // 하단 줄 [등록 요청] → 확인 창에서 약관 동의 → [등록 요청] (2026-11-15 — 약관은 확인 창 안)
+  await submitRegistration(page);
   await expect(page.locator('body')).toContainText('갤러리 등록 요청이 제출되었습니다', { timeout: 8000 });
 }
 
@@ -56,10 +53,11 @@ test('폼 검증: 필수 항목(갤러리명) 누락 시 등록 거절 + 안내'
   await gallery.page.getByPlaceholder('대표자명').fill('홍길동');
   await gallery.page.getByPlaceholder('전화번호').fill('02-0000-0000');
   await gallery.page.getByPlaceholder('갤러리 한줄 소개').fill('소개');
-  await gallery.page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-  await gallery.page.getByRole('button', { name: '등록 요청' }).first().click();
-  // 필수 누락 안내 + 확인 다이얼로그로 진행되지 않음
-  await expect(gallery.page.locator('body')).toContainText('다음 필수 항목을 입력해주세요', { timeout: 8000 });
+  await gallery.page.locator('[data-submit-bar]').getByRole('button', { name: '등록 요청', exact: true }).click();
+  // 필수 누락 — 하단 줄이 남은 칸을 말하고, 그 칸(갤러리 이름)으로 데려간다. 확인 창으로 넘어가지 않는다
+  await expect(gallery.page.locator('[data-submit-bar]')).toContainText('남은 필수 1 · 갤러리 이름');
+  await expect(gallery.page.getByPlaceholder('갤러리명')).toBeFocused();
+  await expect(gallery.page.getByRole('dialog')).toHaveCount(0);
   await expect(gallery.page.locator('body')).not.toContainText('갤러리 등록 요청이 제출되었습니다');
   await gallery.ctx.close();
 });

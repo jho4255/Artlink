@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>갤러리 찾기 PC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 100%; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+
+<header style="border-bottom: 1px solid #f3f4f6">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 48px; box-sizing: border-box; height: 80px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap">
+<a href="#" style="font-size: 30px; font-weight: 700; text-decoration: none; letter-spacing: -0.03em">Art<span style="color: #c4302b">Link</span></a>
+<nav aria-label="주 메뉴" style="display: flex; gap: 8px; font-size: 16px; font-weight: 500">
+<a href="#" style="padding: 10px 16px; text-decoration: none; color: #6b7280">홈</a>
+<a href="#" style="padding: 10px 16px; text-decoration: none; color: #6b7280">작가</a>
+<a href="#" aria-current="page" style="padding: 10px 16px; text-decoration: none; color: #111827; border-bottom: 2px solid #111827">갤러리</a>
+<a href="#" style="padding: 10px 16px; text-decoration: none; color: #6b7280">전시</a>
+<a href="Main.dc.html" style="padding: 10px 16px; text-decoration: none; color: #6b7280">모집공고</a>
+<a href="#" style="padding: 10px 16px; text-decoration: none; color: #6b7280">커뮤니티</a>
+<a href="#" style="padding: 10px 16px; text-decoration: none; color: #6b7280">ArtStory</a>
+</nav>
+<a href="#" style="padding: 9px 16px; background: #111827; color: #ffffff; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none">로그인</a>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 56px 48px 96px; box-sizing: border-box">
+
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap">
+<h1 style="margin: 0; font-size: 48px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em">Galleries</h1>
+<form role="search" style="display: flex; align-items: center; gap: 10px; width: 340px; max-width: 100%; height: 44px; border-bottom: 1px solid #111827; box-sizing: border-box">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="gq" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">갤러리 검색</label>
+<input id="gq" type="search" placeholder="갤러리 이름 · 동네 검색" style="flex: 1; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 15px; color: #111827; background: transparent">
+</form>
+</div>
+
+<div style="margin-top: 36px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; gap: 8px 32px; flex-wrap: wrap; font-size: 15px">
+<div role="group" aria-label="지역" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<button type="button" aria-pressed="true" style="min-height: 48px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: #111827; cursor: pointer; box-shadow: inset 0 -2px 0 #111827">전체 <span style="margin-left: 3px; font-size: 13px; font-weight: 400; color: #6b7280">9</span></button>
+<button type="button" style="min-height: 48px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">서울 <span style="font-size: 13px">6</span></button>
+<button type="button" style="min-height: 48px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">부산 <span style="font-size: 13px">1</span></button>
+<button type="button" style="min-height: 48px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">인천 <span style="font-size: 13px">1</span></button>
+<button type="button" style="min-height: 48px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">경남 <span style="font-size: 13px">1</span></button>
+</div>
+<div style="display: flex; align-items: center; gap: 24px; font-size: 14px">
+<label style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #374151; cursor: pointer"><input type="checkbox" style="width: 16px; height: 16px; margin: 0; accent-color: #111827">작가 모집 중인 곳만</label>
+<span aria-hidden="true" style="width: 1px; height: 14px; background: #d1d5db"></span>
+<div role="group" aria-label="정렬" style="display: flex; align-items: center; gap: 18px">
+<button type="button" aria-pressed="true" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: #111827; text-decoration: underline; text-underline-offset: 4px; cursor: pointer">모집 중 먼저</button>
+<button type="button" aria-pressed="false" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">리뷰 많은 순</button>
+</div>
+</div>
+</div>
+
+<div style="margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 48px 32px">
+<sc-for list="{{galleries}}" as="g" hint-placeholder-count="6">
+<article style="min-width: 0">
+<a href="#" aria-label="{{g.name}}" style="display: block; position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: {{g.wall}}; text-decoration: none">
+<sc-if value="{{g.photo}}" hint-placeholder-val="{{ false }}">
+<img src="{{g.img}}" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block">
+</sc-if>
+<sc-if value="{{g.hung}}" hint-placeholder-val="{{ true }}">
+<span style="position: absolute; left: 0; right: 0; bottom: 0; height: 16%; background: rgba(17,24,39,0.10)"></span>
+<img src="{{g.img}}" alt="" style="position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); max-width: 46%; max-height: 58%; display: block; box-shadow: 0 6px 14px rgba(17,24,39,0.22)">
+</sc-if>
+</a>
+<div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<h2 style="margin: 0; min-width: 0; font-size: 19px; font-weight: 500; line-height: 1.35"><a href="#" style="text-decoration: none">{{g.name}}</a></h2>
+<button type="button" aria-label="찜하기" style="width: 44px; height: 44px; margin: -12px -12px -12px 0; border: 0; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg>
+</button>
+</div>
+<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280">{{g.place}}</p>
+<p style="margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: #4b5563; word-break: keep-all">{{g.desc}}</p>
+<sc-if value="{{g.call}}" hint-placeholder-val="{{ true }}">
+<p style="margin: 12px 0 0; font-size: 13px; color: #374151; display: flex; gap: 8px; min-width: 0"><strong style="flex: none; font-weight: 600; color: #c4302b">모집 중</strong><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{g.call}}</span></p>
+</sc-if>
+<sc-if value="{{g.show}}" hint-placeholder-val="{{ true }}">
+<p style="margin: 6px 0 0; font-size: 13px; color: #374151; display: flex; gap: 8px; min-width: 0"><strong style="flex: none; font-weight: 600; color: #111827">전시 중</strong><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{g.show}}</span></p>
+</sc-if>
+</article>
+</sc-for>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+const g = (name, place, desc, call, show, wall, img, photo) => ({ name, place, desc, call, show, wall, img: '/_blob/' + img, photo: !!photo, hung: !photo });
+return { galleries: [
+g('갤러리 온결', '서울 종로구 · 리뷰 3개', '빛과 기억을 다루는 동시대 회화를 소개하는 갤러리', '연말 소품전 《선물》 외 1 · D-9', '한지우 개인전 《물이 지나간 자리》 · 12.6까지', '#e9e6e0', '30bac2f373d5539f9185d2c4a677bccf', true),
+g('스페이스 모루', '서울 마포구', '신진 작가의 첫 개인전을 여는 작은 전시 공간', '2027 신진 작가 개인전 공모 · D-1', '', '#eceae6', '7957497c1858b367ff8e66306196137b'),
+g('갤러리 해담', '부산 해운대구 · 리뷰 1개', '바다가 보이는 2층 전시장. 드로잉과 판화를 주로 다룹니다', '바다를 주제로 한 드로잉전 · D-3', '단체전 《수평선 아래》 · 12.5까지', '#dfe5e8', '9d500467a05f116f253e37cc957b0c63'),
+g('공간 여백', '서울 성동구', '사진과 회화가 한 벽에 걸리는 2인전을 꾸준히 엽니다', '《도시 산책》 2인전 공모 · D-21', '', '#e6e3dc', '8af93d13a3a1f2fcb44163ec95b1c801'),
+g('갤러리 서림', '경남 양산시', '숲 옆 한옥을 고친 전시장. 지역 작가와 함께합니다', '첫 개인전 지원 공모 · D-22', '', '#ebe7df', 'bd67b717bb50bfa46e11b66b66664861'),
+g('새벽 갤러리', '인천 연수구', '퇴근길에 들르는 저녁 전시. 밤 9시까지 엽니다', '', '《작은 방, 긴 오후》 · 11.21까지', '#e3e4e1', '473ef02ac0500cad4204efcedcef5cbf')
+] };
+}
+}
+</script>
+</body>
+</html>

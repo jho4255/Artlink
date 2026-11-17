@@ -1,0 +1,42 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-13T20:10:00+09:00" },
+  "title": "커뮤니티 글쓰기 · 화면 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 1560, "title": "글쓰기 · PC", "expand": "fill" },
+    "EditorMobile.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 844, "title": "글쓰기 · 휴대폰 (글 쓰는 중)" },
+    "EditorMobilePhoto.dc.html": { "x": 1990, "y": 0, "w": 390, "h": 844, "title": "글쓰기 · 휴대폰 (사진을 골랐을 때)" },
+    "PhotoSheet.dc.html": { "x": 2460, "y": 0, "w": 390, "h": 844, "title": "사진 여러 장 — 어떻게 놓을까" },
+    "Crop.dc.html": { "x": 2930, "y": 0, "w": 390, "h": 844, "title": "자르기 · 돌리기" },
+    "States.dc.html": { "x": 0, "y": 1980, "w": 880, "h": 900, "title": "저장 상태 · 물음" },
+    "Community.dc.html": { "x": 0, "y": 3300, "w": 1440, "h": 2100, "title": "커뮤니티 · 전체 탭 (PC)", "expand": "fill" },
+    "List.dc.html": { "x": 1520, "y": 3300, "w": 1440, "h": 1640, "title": "커뮤니티 · 필진 글 탭 (카드형)", "expand": "fill" },
+    "CommunityMobile.dc.html": { "x": 3040, "y": 3300, "w": 390, "h": 1900, "title": "커뮤니티 · 휴대폰" },
+    "Read.dc.html": { "x": 0, "y": 5820, "w": 1440, "h": 3500, "title": "글 화면 · PC (긴 글)", "expand": "fill" },
+    "ReadMobile.dc.html": { "x": 1520, "y": 5820, "w": 390, "h": 2700, "title": "글 화면 · 휴대폰 (긴 글)" },
+    "ShortPost.dc.html": { "x": 1990, "y": 5820, "w": 390, "h": 1300, "title": "글 화면 · 휴대폰 (짧은 익명 글)" }
+  },
+  "order": [
+    "Main.dc.html",
+    "EditorMobile.dc.html",
+    "EditorMobilePhoto.dc.html",
+    "PhotoSheet.dc.html",
+    "Crop.dc.html",
+    "States.dc.html",
+    "Community.dc.html",
+    "List.dc.html",
+    "CommunityMobile.dc.html",
+    "Read.dc.html",
+    "ReadMobile.dc.html",
+    "ShortPost.dc.html"
+  ],
+  "notes": {
+    "t-write": { "x": 0, "y": -300, "text": "1. 글쓰기", "kind": "title1", "maxW": 3320 },
+    "t-publish": { "x": 0, "y": 1680, "text": "2. 저장 상태 · 물음", "kind": "title1", "maxW": 880 },
+    "t-read": { "x": 0, "y": 3000, "text": "3. 커뮤니티 목록", "kind": "title1", "maxW": 3430 },
+    "t-post": { "x": 0, "y": 5520, "text": "4. 글 화면", "kind": "title1", "maxW": 2380 }
+  },
+  "designSystems": []
+}

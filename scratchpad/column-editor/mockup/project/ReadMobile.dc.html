@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>읽는 화면 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font-family:inherit;cursor:pointer}
+.p{margin:0 0 1em;font-size:16px;line-height:1.85;color:#1f2937}
+.cap{margin-top:10px;text-align:center;font-size:13px;line-height:1.6;color:#6b7280}
+.tab{flex:1;min-width:0;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:#6b7280;text-decoration:none}
+.act{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;height:46px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;font-weight:500}
+</style>
+</helmet>
+<div style="width: 390px; height: 2700px; box-sizing: border-box; display: flex; flex-direction: column; background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden">
+
+  <header style="flex: none">
+    <div style="height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #f3f4f6">
+      <a href="#" style="font-size: 22px; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+      <a href="#" style="display: inline-flex; align-items: center; height: 44px; font-size: 15px; font-weight: 500; text-decoration: none">로그인</a>
+    </div>
+    <div aria-hidden="true" style="height: 2px; background: #f3f4f6"><div style="width: 34%; height: 100%; background: #111827"></div></div>
+  </header>
+
+  <main style="flex: 1; min-height: 0; padding: 32px 20px 0">
+    <article>
+      <p style="margin: 0; font-size: 13px"><a href="#" style="color: #6b7280; text-decoration: none">커뮤니티</a><span style="margin: 0 6px; color: #6b7280">/</span><a href="#" style="font-weight: 500; color: #c4302b; text-decoration: none">전시 준비</a></p>
+      <h1 style="margin: 12px 0 0; font-size: 28px; line-height: 1.35; font-weight: 600; color: #111827">전시 준비 일지 ① 작품을 고르는 일</h1>
+      <p style="margin: 10px 0 0; font-size: 17px; line-height: 1.6; color: #6b7280">스무 점 가운데 여덟 점만 벽에 걸기로 했다</p>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 22px; padding-bottom: 22px; border-bottom: 1px solid #e5e7eb">
+        <span aria-hidden="true" style="flex: none; width: 36px; height: 36px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #4b5563">윤</span>
+        <div style="min-width: 0">
+          <a href="#" style="font-size: 14px; font-weight: 500; text-decoration: none">윤서진</a>
+          <p style="margin: 1px 0 0; font-size: 12px; color: #6b7280">2026. 11. 13. · 5분</p>
+        </div>
+      </div>
+
+      <p class="p" style="margin-top: 28px">개인전 날짜가 정해지고 가장 먼저 한 일은 작업실 바닥에 그림을 전부 늘어놓는 것이었다. 삼 년 동안 그린 스무 점. <strong style="font-weight: 600; color: #111827">벽은 여덟 점이면 찬다.</strong></p>
+
+      <!-- 화면 폭 사진: 좌우 여백 없이 -->
+      <figure style="margin: 28px -20px">
+        <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="작업실 바닥에 늘어놓은 그림" style="display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover">
+        <figcaption class="cap" style="padding: 0 20px">작업실 바닥에 늘어놓은 날. 〈조용한 오후〉가 가장 먼저 자리를 잡았다.</figcaption>
+      </figure>
+
+      <h2 style="margin: 1.6em 0 0.6em; font-size: 20px; line-height: 1.45; font-weight: 600; color: #111827">고르는 기준은 하나만</h2>
+      <p class="p">처음에는 잘 그린 그림을 고르려 했다. 그러다 갤러리 디렉터가 한 말이 기준이 됐다. <span style="background: linear-gradient(transparent 58%, rgba(196,48,43,.16) 58%)">관람객은 그림을 한 점씩 보지 않고 벽을 본다.</span></p>
+
+      <blockquote style="margin: 32px 0; padding: 22px 0; border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-size: 20px; line-height: 1.6; font-weight: 500; color: #111827; text-align: center">좋은 그림 여덟 점이 아니라,<br>여덟 점이 만드는 한 벽.</blockquote>
+
+      <!-- 모아 놓기: 휴대폰에서도 한 줄, 높이 같게 -->
+      <figure style="margin: 28px 0">
+        <div style="display: flex; gap: 4px">
+          <div style="flex: 1.25 1 0; min-width: 0; aspect-ratio: 1.25"><img src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="긴 여름" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 0.804 1 0; min-width: 0; aspect-ratio: 0.804"><img src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="푸른 벽" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+          <div style="flex: 1 1 0; min-width: 0; aspect-ratio: 1"><img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="네모난 정원" style="display: block; width: 100%; height: 100%; object-fit: cover"></div>
+        </div>
+        <figcaption class="cap">끝까지 고민한 세 점. 누르면 크게 보여요.</figcaption>
+      </figure>
+
+      <p class="p">세 점을 나란히 놓고 일주일을 봤다. 색이 가장 강한 그림이 벽 전체를 끌고 가 버려서, 아끼던 그림을 내려놓았다.</p>
+
+      <!-- 넘겨 보기 -->
+      <figure style="margin: 28px -20px">
+        <div style="display: flex; gap: 8px; padding: 0 20px; overflow: hidden">
+          <img src="/_blob/c0cd6dbfeed7a444123b81adb442cfb6" alt="붉은 언덕" style="flex: none; display: block; width: 310px; aspect-ratio: 4 / 3; object-fit: cover">
+          <img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="" style="flex: none; display: block; width: 310px; aspect-ratio: 4 / 3; object-fit: cover">
+        </div>
+        <div aria-hidden="true" style="display: flex; justify-content: center; gap: 6px; margin-top: 12px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #111827"></span><span style="width: 6px; height: 6px; border-radius: 50%; background: #d1d5db"></span><span style="width: 6px; height: 6px; border-radius: 50%; background: #d1d5db"></span><span style="width: 6px; height: 6px; border-radius: 50%; background: #d1d5db"></span></div>
+        <figcaption class="cap" style="padding: 0 20px">벽에 걸어 보기 전, 바닥에서 순서를 바꿔 본 과정 (1/4)</figcaption>
+      </figure>
+
+      <aside style="margin: 28px 0; padding: 16px 18px; border: 1px solid #e5e7eb">
+        <p style="margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em; color: #111827">TIP</p>
+        <p style="margin: 0; font-size: 15px; line-height: 1.8; color: #374151">작품을 고를 때는 실제 벽 크기대로 바닥에 테이프를 붙여 보세요.</p>
+      </aside>
+
+      <!-- ArtLink 카드 -->
+      <a href="#" style="display: block; margin: 28px 0; border: 1px solid #e5e7eb; text-decoration: none; color: inherit">
+        <img src="/_blob/78a7524515a1dc188a0739748a663462" alt="" style="display: block; width: 100%; height: 130px; object-fit: cover">
+        <span style="display: flex; flex-direction: column; gap: 5px; padding: 16px 18px">
+          <span style="font-size: 12px; font-weight: 500; color: #c4302b">전시 · D-20</span>
+          <span style="font-size: 17px; font-weight: 500; line-height: 1.4; color: #111827">윤서진 개인전 《빛의 결》</span>
+          <span style="font-size: 13px; color: #6b7280">아트링크 갤러리 · 2026. 12. 03. – 12. 21.</span>
+        </span>
+      </a>
+
+      <div style="display: flex; gap: 10px; margin-top: 36px; padding-top: 24px; border-top: 1px solid #e5e7eb">
+        <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>좋아요 24</button>
+        <button type="button" class="act"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>공유</button>
+      </div>
+
+      <section aria-label="글쓴이" style="margin-top: 24px; padding: 20px; background: #f9fafb">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span aria-hidden="true" style="flex: none; width: 48px; height: 48px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; color: #4b5563">윤</span>
+          <div style="min-width: 0">
+            <p style="margin: 0; font-size: 16px; font-weight: 600; color: #111827">윤서진</p>
+            <p style="margin: 3px 0 0; font-size: 13px; line-height: 1.5; color: #6b7280">빛이 머무는 자리를 그립니다.</p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 16px">
+          <button type="button" style="flex: 1; height: 44px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 14px; font-weight: 600">이웃 추가</button>
+          <a href="#" class="act" style="height: 44px; text-decoration: none">홈페이지</a>
+        </div>
+      </section>
+
+      <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; padding: 18px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; text-decoration: none">
+        <span style="min-width: 0"><span style="display: block; font-size: 12px; color: #6b7280">연재 · 다음 글 (2/3)</span><span style="display: block; margin-top: 4px; font-size: 16px; font-weight: 500; color: #111827">② 액자를 맞추는 일</span></span>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+
+      <h2 style="margin: 32px 0 0; font-size: 17px; font-weight: 600; color: #111827">댓글 2</h2>
+      <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.7; color: #6b7280">이어서 댓글 · 함께 읽을 글 (PC 화면과 같은 순서)</p>
+    </article>
+  </main>
+
+  <!-- 하단 탭바 (지금 사이트 그대로) -->
+  <nav aria-label="하단 메뉴" style="flex: none; display: flex; border-top: 1px solid #e5e7eb; background: #fff">
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="15.5" cy="10" r="1"/></svg>작가</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>갤러리</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>전시</a>
+    <a class="tab" href="#"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>모집공고</a>
+    <a class="tab" href="#" style="color: #111827; font-weight: 600"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>커뮤니티</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2700}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

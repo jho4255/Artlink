@@ -25,19 +25,30 @@
  * @see /src/types/index.ts - Gallery, Review, Exhibition 타입
  * @see /src/stores/authStore.ts - 인증 상태 및 유저 정보
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ChevronLeft, ChevronRight, MapPin, Phone, Trash2, Camera, X, Edit3, Instagram, Mail, Plus, Loader2 } from 'lucide-react';
+import { Heart, ChevronLeft, ChevronRight, MapPin, Phone, Trash2, Camera, X, Edit3, Instagram, Plus, Loader2, Share2, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { artistPath } from '@/lib/handle';
-import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
+import { artistPath, galleryPath } from '@/lib/handle';
+import { resolveHomepageTheme, themeCssVars, themeVarStyle } from '@/lib/homepageTheme';
+import { GALLERY_OPEN_HOURS_MAX, instagramHref, monthDayKst } from '@/lib/homepageSite';
+import { HOMEPAGE_PANEL_MIN_H, liftToHomepageTabs } from '@/lib/siteMode';
+import { shareLink } from '@/lib/shareLink';
+import SiteHeader from '@/components/homepage/SiteHeader';
+import SiteFooter from '@/components/homepage/SiteFooter';
+import NewsTab from '@/components/homepage/NewsTab';
+import InquirySheet from '@/components/homepage/InquirySheet';
+import { LinkAction, TabActions } from '@/components/homepage/Actions';
 import FollowButton from '@/components/shared/FollowButton';
 import Thumb from '@/components/shared/Thumb';
 import { useAuthStore } from '@/stores/authStore';
-import { getDday, regionLabels, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite, capacityText } from '@/lib/utils';
+import { getDday, regionLabels, REGION_CODES, exhibitionTypeLabels, displayName, compressImage, MAX_IMAGE_BYTES, canFavorite, capacityText } from '@/lib/utils';
+import AddressField from '@/components/form/AddressField';
+import { addressCheck, deadlineView, isOpenCall } from '@/lib/listings';
+import GalleryVisitInfo from '@/components/homepage/GalleryVisitInfo';
 import ImageUpload, { MultiImageUpload } from '@/components/shared/ImageUpload';
 import SquarePhotoGrid from '@/components/shared/SquarePhotoGrid';
 import PageTabBar from '@/components/shared/PageTabBar';
@@ -69,6 +80,9 @@ type GalleryDetail = Gallery & {
  * 비어 있는 탭은 방문자에게 만들지 않는다(주인에게만 채우라고 보인다). 예전엔 이 다섯이 한 페이지에 세로로 이어졌다.
  */
 
+/** 갤러리 홈페이지는 꾸미기(색·글꼴)가 없다 — 사이트 기본 톤의 변수만 얹어 머리·꼬리말·버튼이 작가 홈페이지와 같은 부품을 쓴다 */
+const SITE_THEME = resolveHomepageTheme(null);
+
 /** 홍보 사진을 한 번에 올릴 수 있는 장수 — 한 번에 너무 많이 고르면 업로드가 길어져 중간에 창을 닫기 쉽다 */
 const PROMO_BATCH_MAX = 20;
 
@@ -95,12 +109,19 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   // 연락처(전화번호·주소) 수정 상태 — 갤러리 오너가 승인 없이 즉시 수정
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [contactAddress, setContactAddress] = useState('');
+  /** 상세 주소(층·호수) — 주소 검색으로 고른 도로명 주소 뒤에 붙여 한 줄로 저장한다(components/form/AddressField) */
+  const [contactAddressDetail, setContactAddressDetail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactRegion, setContactRegion] = useState('SEOUL');
   const [contactInstagram, setContactInstagram] = useState('');
   // 홈페이지 주소(/@handle) — 연락처와 함께 저장한다(따로 버튼을 두면 저장한 줄 모른다)
   const [contactHandle, setContactHandle] = useState('');
   const [handleMsg, setHandleMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 관람 시간 · 비회원 문의 받기(2026-11-14) — 연락처와 함께 저장한다
+  const [contactOpenHours, setContactOpenHours] = useState('');
+  const [contactGuestInquiry, setContactGuestInquiry] = useState(false);
+  // [문의하기] 창(회원은 ArtTalk, 비회원은 갤러리가 켰으면 이름·연락처)
+  const [inquiryOpen, setInquiryOpen] = useState(false);
 
   // 홍보 사진 업로드 폼 상태 (전시 종료 후, 갤러리 오너 전용)
   const [promoExhibitionId, setPromoExhibitionId] = useState<number | null>(null);
@@ -123,6 +144,18 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
 
   /** 탭 막대 바로 위 표지 — 막대가 상단에 붙은 채 탭을 바꾸면 새 내용의 첫머리로 올려 준다(작가 홈페이지와 같다) */
   const tabAnchorRef = useRef<HTMLDivElement>(null);
+  /*
+    탭을 누르면 **그 탭 내용으로 내려간다** — 탭 줄이 사이트 머리 밑에 붙고 그 아래가 고른 탭(2026-11-15 사용자 지적, lib/siteMode.ts).
+    새 내용을 그린 뒤(useLayoutEffect)에 옮긴다. 탭은 주소(`?tab=`)에 있으므로 그 값이 바뀐 뒤다.
+    ⚠️ 이 훅은 로딩·없음 분기(early return) **위**에 있어야 한다(hooksBeforeReturn.test.ts).
+  */
+  const liftPending = useRef(false);
+  const rawTabParam = new URLSearchParams(location.search).get('tab');
+  useLayoutEffect(() => {
+    if (!liftPending.current) return;
+    liftPending.current = false;
+    liftToHomepageTabs('gallery-tabs');
+  }, [rawTabParam]);
 
   // 지난 활동 기록(아트링크 밖 전시·아트페어) 작성/수정 상태 — null 이면 폼이 닫힌 것
   const [archiveDraft, setArchiveDraft] = useState<ArchiveDraft | null>(null);
@@ -189,7 +222,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
       주소는 별도 라우트(`PUT /galleries/:id/handle`)라 순서대로 부른다. 주소가 409(중복)면 그 이유를 화면에 남기고
       **연락처 저장은 그대로 끝낸다** — 주소 하나 때문에 주소·전화번호 수정이 통째로 날아가면 안 된다.
     */
-    mutationFn: async (payload: { address: string; phone: string; region: string; instagramUrl: string; handle: string }) => {
+    mutationFn: async (payload: { address: string; phone: string; region: string; instagramUrl: string; handle: string; openHours: string; guestInquiry: boolean }) => {
       const { handle, ...detail } = payload;
       await api.patch(`/galleries/${id}/detail`, detail);
       const current = gallery?.handle ?? '';
@@ -314,15 +347,6 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   });
 
 
-  /* 갠톡 열기 — 이미 있으면 그 방으로 (서버가 판단).
-     ⚠️ 예전에는 여기서 옛 쪽지 API(`POST /messages`)를 불렀는데, 대화가 ArtTalk 으로 바뀐 뒤로는
-     그렇게 보낸 글을 **아무도 읽을 수 없었다**("전송되었습니다" 만 뜨고 어디에도 안 남는다). */
-  const openChat = useMutation({
-    mutationFn: (ownerId: number) => api.post('/chats/direct', { userId: ownerId }).then(r => r.data),
-    onSuccess: (data: { id: number }) => navigate(`/messages?chat=${data.id}`),
-    onError: (err: any) => toast.error(err.response?.data?.error || '대화를 열지 못했습니다.'),
-  });
-
   // 홍보 사진 삭제 (Gallery 오너 전용)
   const deletePromoPhotoMutation = useMutation({
     mutationFn: ({ exhibitionId, photoId }: { exhibitionId: number; photoId: number }) =>
@@ -390,21 +414,27 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   // 로딩 스켈레톤
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
-        <div className="h-64 bg-gray-100 animate-pulse mb-4" />
-        <div className="h-8 bg-gray-100 rounded w-1/3 animate-pulse mb-2" />
-        <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+      <div className="min-h-screen bg-white">
+        <SiteHeader />
+        <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
+          <div className="h-64 bg-gray-100 animate-pulse mb-4" />
+          <div className="h-8 bg-gray-100 rounded w-1/3 animate-pulse mb-2" />
+          <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse" />
+        </div>
       </div>
     );
   }
   if (!gallery) {
     return (
+      <div className="min-h-screen bg-white">
+      <SiteHeader />
       <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 py-20">
         <h1 className="text-xl font-semibold text-gray-900">갤러리를 찾을 수 없습니다</h1>
         <p className="mt-2 text-sm text-gray-500">삭제되었거나 존재하지 않는 갤러리입니다.</p>
         <button onClick={() => navigate('/galleries')} className="mt-8 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
           갤러리 목록으로
         </button>
+      </div>
       </div>
     );
   }
@@ -421,15 +451,18 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
   const isAdmin = user?.role === 'ADMIN';
   const isArtist = user?.role === 'ARTIST';
 
-  // 모집 중(D-day 남음)인 공모만 카드로. 지난 것은 아래 '지난 전시·아트페어'에.
-  const openCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.deadline) >= 0);
-  // 공모만 진행한 공고(exhibitDate null)는 마감일이 지나면 '지난' 것으로 — 전시 일자가 없다
-  // 모집이 끝난 공모 전부(전시 중 포함) — 예전엔 마감일은 지났는데 전시일은 안 지난 공모가 어느 섹션에도 없었다(2026-09-19)
-  const pastCalls = (gallery.exhibitions ?? []).filter(e => getDday(e.deadline) < 0);
+  /*
+    모집 중 = 모집공고 [모집 중] · 갤러리 목록 카드의 '모집 중' 과 **같은 규칙**(lib/listings.ts isOpenCall = 서버 openCallWhere, 2026-11-15).
+    예전엔 마감일만 봐서 갤러리가 일찍 닫은(수동 마감·전시 종료) 공모도 여기 'D-n' 으로 남았고, 시작 전 공모도 마감일 기준 D-day 를 달았다.
+    일찍 닫은 공모는 모집이 끝난 것이라 아래 '지난 전시·아트페어'로 간다. 시작 전 공모는 모집공고 목록처럼 시작일까지 나오지 않는다.
+  */
+  const openCalls = (gallery.exhibitions ?? []).filter((e) => isOpenCall(e));
+  // 모집이 끝난 공모 전부(전시 중 포함) — 예전엔 마감일은 지났는데 전시일은 안 지난 공모가 어느 섹션에도 없었다(2026-09-19).
+  // 공모만 진행한 공고(exhibitDate null)도 여기 — 전시 일자가 없다
+  const pastCalls = (gallery.exhibitions ?? []).filter((e) => deadlineView(e).state === 'closed');
   const isOngoingCall = (e: { exhibitDate: string | null }) => !!e.exhibitDate && getDday(e.exhibitDate) >= 0;
   const artists = gallery.artists ?? [];
   const archives = gallery.archives ?? [];
-  const requireLogin = () => { setPostLoginRedirect(location.pathname); toast('로그인이 필요합니다.'); navigate('/login'); };
 
   /*
     탭 (2026-09-27, 사용자 요청 "작가 홈페이지처럼") — 소개 · 모집 중 · 함께한 작가 · 지난 전시 · 리뷰.
@@ -445,18 +478,17 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
     visibleArtistCount: visibleArtists.length,
     hiddenArtistCount: hiddenArtists.length,
     historyCount: pastCalls.length + archives.length,
+    storyCount: gallery.storyCount ?? 0,
+    highlightCount: gallery.highlightCount ?? 0,
     reviewCount: gallery.reviews?.length ?? 0,
     isOwner,
     canManageArtists,
   });
   const activeTab = resolveGalleryTab(new URLSearchParams(location.search).get('tab'), tabs);
   const selectTab = (tab: GalleryTabId) => {
-    const a = tabAnchorRef.current;
-    if (a) {
-      const top = a.getBoundingClientRect().top;
-      const stick = window.innerWidth >= 1024 ? 80 : 64;   // 상단바 높이(Navbar h-16 / lg:h-20)
-      if (top < stick) window.scrollTo({ top: window.scrollY + top - stick });
-    }
+    // 지금 탭을 또 눌러도 그 내용으로 내려간다(표지를 보다가 [소개]를 누른 사람)
+    if (tab === activeTab) { liftToHomepageTabs('gallery-tabs'); return; }
+    liftPending.current = true;
     const next = new URLSearchParams(location.search);
     const param = galleryTabParam(tab, tabs);
     if (param) next.set('tab', param); else next.delete('tab');
@@ -519,59 +551,69 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
     return displayName(review.user);
   };
 
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto px-6 md:px-12 pb-12">
-      {/* === 사진 — 전폭. 둥근 모서리·글로우 그림자는 뺐다(DESIGN.md: 장식 없이 사진이 주인공) === */}
-      <div className="pt-6 md:pt-10">
-        <div className="overflow-hidden">
-          <GalleryImageCarousel
-            images={images}
-            galleryName={gallery.name}
-            imgIndex={imgIndex}
-            setImgIndex={setImgIndex}
-            onImageClick={(index) => { if (hasImage) setLightbox({ images, index }); }}
-            isFavorited={!!gallery.isFavorited}
-            showFavorite={canFavorite(user)}
-            onFavoriteClick={() => favMutation.mutate()}
-          />
-        </div>
-      </div>
-
-      {/* === 오너 전용: 이미지 관리 패널 === */}
-      {isOwner && (
-        <GalleryImageManager
-          galleryId={Number(id)}
-          galleryImages={gallery.images || []}
-          onImgIndexGuard={(maxIdx) => {
-            if (imgIndex > maxIdx) setImgIndex(Math.max(0, maxIdx));
-          }}
-        />
+  const homePath = galleryPath(gallery);
+  const pageUrl = `${window.location.origin}${homePath}`;
+  const share = async () => {
+    if ((await shareLink(`${gallery.name} — ArtLink`, pageUrl)) === 'copied') toast.success('링크를 복사했습니다.');
+  };
+  // [문의하기] — 주인과 운영 계정에는 없다(운영 계정으로 영업 대화 금지 — 예전 [메시지]와 같은 규칙)
+  const canInquire = !isOwner && !isAdmin;
+  /* 버튼 묶음 — 탭 줄 오른쪽(2026-11-15, 작가 홈페이지와 같은 TabActions). 예전 [메시지]는 [문의하기]로 합쳤다 */
+  const tabActions = (
+    <TabActions onInquiry={canInquire ? () => setInquiryOpen(true) : null}>
+      {!isOwner && <FollowButton userId={gallery.ownerId} variant="text" className="whitespace-nowrap text-[var(--hp-sub)] hover:text-[var(--hp-ink)]" />}
+      {canFavorite(user) && (
+        <LinkAction
+          icon={Heart}
+          iconClassName={gallery.isFavorited ? 'fill-accent text-accent' : ''}
+          aria-pressed={!!gallery.isFavorited}
+          onClick={() => favMutation.mutate()}
+        >
+          찜
+        </LinkAction>
       )}
+      <LinkAction icon={Share2} onClick={share}>공유</LinkAction>
+    </TabActions>
+  );
+  const nowShow = gallery.nowShow ?? null;
+  const openContactEdit = () => {
+    setContactAddress(gallery.address); setContactAddressDetail(''); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL');
+    setContactInstagram(gallery.instagramUrl || ''); setContactHandle(gallery.handle || ''); setHandleMsg(null);
+    setContactOpenHours(gallery.openHours || ''); setContactGuestInquiry(!!gallery.guestInquiry);
+    setIsEditingContact(true);
+  };
+  // 주소 점검 — 주소 검색(2026-11-15)이 생기기 전에 자유 글로 등록한 갤러리(lib/listings addressCheck)
+  const addrCheck = addressCheck(gallery.address, gallery.region);
+  const igUrl = instagramHref(gallery.instagramUrl);
 
-      <div className="py-8 md:py-12 space-y-14 md:space-y-20">
-        {/* === 마스트헤드 — 갤러리 이름이 이 페이지의 제목이다(작가 홈페이지와 같은 위계) === */}
-        <div>
-          {/* 이름 줄 — 오른쪽 끝에 [이웃 추가]·[메시지]를 **작게** 붙인다(2026-09-16 요청).
-              아래 따로 줄을 잡고 있던 것을 올렸다. 비로그인에게도 보여 주고 누르면 로그인 뒤 여기로 돌아온다. */}
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="min-w-0 text-4xl md:text-5xl font-semibold tracking-[-0.02em] leading-[1.05] break-keep">{gallery.name}</h1>
-            <div className="flex shrink-0 items-center gap-4 pt-2 text-sm">
-              {!isOwner && <FollowButton userId={gallery.ownerId} variant="text" className="text-gray-500 hover:text-gray-900" />}
-              {/* 갠톡은 '방에 있는가' 로만 권한을 판정한다 — 갤러리끼리도 열린다. Admin 만 뺀다(운영 계정으로 영업 대화 금지) */}
-              {!isOwner && user?.role !== 'ADMIN' && (
-                <button
-                  onClick={() => (isAuthenticated ? openChat.mutate(gallery.ownerId) : requireLogin())}
-                  disabled={openChat.isPending}
-                  className="inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 text-gray-500 underline-offset-4 hover:text-gray-900 hover:underline disabled:opacity-50"
-                >
-                  <Mail size={14} /> 메시지
-                </button>
-              )}
-              <ViewCountBadge count={gallery.viewCount} className="shrink-0" />
-            </div>
+  return (
+    <div style={themeCssVars(SITE_THEME)} className="flex min-h-screen flex-col">
+      {/* 사이트 머리(2026-11-14, 규칙 82) — ArtLink 상단바 대신 갤러리 이름. 탭은 표지 아래 탭 줄 하나(2026-11-15) */}
+      <SiteHeader title={gallery.name} titleTo={homePath} />
+    {/* 본문 — 이 페이지의 `<main>`(Layout 은 홈페이지에서 main 을 그리지 않는다, 규칙 82) */}
+    <motion.main initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl w-full mx-auto flex-1 px-6 md:px-12 pb-12">
+      {/*
+        === 표지 (2026-11-14, 규칙 82) ===
+        PC 두 칸 — 왼쪽 이름 · 한 줄 소개 · 버튼 줄 · 방문 정보 · 지금 전시 / 오른쪽 사진. 휴대폰은 사진 → 이름 → … 순.
+        예전엔 사진이 전폭으로 서고 그 아래 이름·연락처가 흩어져 있어, 언제 열고 어디 있는지·지금 무슨 전시를 하는지가 첫 화면에 없었다.
+        실제 갤러리 4곳 중 3곳이 사진 1장뿐이라, 그 상태에서도 첫 화면이 채워지는 것을 기준으로 잡았다(방문 정보가 왼쪽 칸을 채운다).
+      */}
+      <div className={`pt-6 md:pt-10 ${hasImage ? 'md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:items-start md:gap-x-12 lg:gap-x-16' : ''}`}>
+        {hasImage && (
+          <div className="min-w-0 md:order-2">
+            <GalleryImageCarousel
+              images={images}
+              galleryName={gallery.name}
+              imgIndex={imgIndex}
+              setImgIndex={setImgIndex}
+              onImageClick={(index) => { if (hasImage) setLightbox({ images, index }); }}
+            />
           </div>
-          {/* 지역 · 리뷰 개수 — 별점을 없앤 자리(2026-09-10) */}
-          <div className="mt-3 flex items-center gap-2 text-sm">
+        )}
+
+        <div className="min-w-0 pt-6 md:order-1 md:pt-0" data-testid="gallery-cover">
+          {/* 지역 · 리뷰 개수 — 별점을 없앤 자리(2026-09-10). 조회수는 주인·관리자만 */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">{regionLabels[gallery.region] ?? gallery.region}</span>
             <span className="text-gray-300">·</span>
             {gallery.reviewCount > 0 ? (
@@ -579,18 +621,90 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             ) : (
               <span className="text-gray-400">아직 리뷰 없음</span>
             )}
+            <ViewCountBadge count={gallery.viewCount} className="shrink-0" />
           </div>
+          <h1 className="mt-3 min-w-0 text-4xl md:text-5xl font-semibold tracking-[-0.02em] leading-[1.05] break-keep [overflow-wrap:anywhere]">{gallery.name}</h1>
+
+          {/* 한 줄 소개 — 주인은 그 자리에서 고친다 */}
+          {isEditingDesc ? (
+            <div className="mt-4 space-y-2">
+              <input
+                type="text"
+                value={descText}
+                onChange={e => setDescText(e.target.value)}
+                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                placeholder="한줄 소개를 입력해주세요"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (!descText.trim()) { toast.error('소개를 입력해주세요.'); return; }
+                    descMutation.mutate(descText);
+                  }}
+                  disabled={descMutation.isPending}
+                  className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                >
+                  저장
+                </button>
+                <button
+                  onClick={() => setIsEditingDesc(false)}
+                  className="px-4 py-1.5 text-sm text-gray-500"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 mt-4">
+              <p className="max-w-3xl text-base md:text-lg leading-relaxed text-gray-700 break-keep [overflow-wrap:anywhere]">{gallery.description}</p>
+              {isOwner && (
+                <button
+                  onClick={() => { setDescText(gallery.description || ''); setIsEditingDesc(true); }}
+                  className="flex-none text-gray-400 hover:text-gray-900 mt-1"
+                  title="한줄 소개 수정"
+                  aria-label="수정"
+                >
+                  <Edit3 size={13} />
+                </button>
+              )}
+            </div>
+          )}
+
           {isEditingContact ? (
-            /* 오너 전용: 전화번호·주소 즉시 수정 (승인 불필요) */
-            <div className="mt-2 space-y-2 max-w-md">
+            /* 오너 전용: 연락처·관람 시간·홈페이지 주소·비회원 문의 즉시 수정 (승인 불필요) */
+            <div className="mt-6 space-y-2 max-w-md" data-testid="gallery-contact-form">
               <label className="block">
-                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 주소</span>
+                <span className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12} /> 관람 시간 (선택)</span>
                 <input
-                  value={contactAddress}
-                  onChange={(e) => setContactAddress(e.target.value)}
+                  value={contactOpenHours}
+                  onChange={(e) => setContactOpenHours(e.target.value)}
+                  maxLength={GALLERY_OPEN_HOURS_MAX}
                   className="mt-1 w-full border rounded px-3 py-2 text-sm"
-                  placeholder="갤러리 주소"
+                  placeholder="예: 화–일 11:00–18:00 · 월 휴관"
                 />
+              </label>
+              {/* 주소 — [주소 검색](카카오 우편번호)으로 고르면 시·도·구가 정확해지고 지역 칸도 따라온다(2026-11-15). 직접 입력도 된다 */}
+              <div>
+                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 주소</span>
+                <div className="mt-1">
+                  <AddressField
+                    idPrefix="gallery-contact"
+                    base={contactAddress}
+                    detail={contactAddressDetail}
+                    onChange={({ base, detail }) => { setContactAddress(base); setContactAddressDetail(detail); }}
+                    onRegion={setContactRegion}
+                  />
+                </div>
+              </div>
+              <label className="block">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 지역</span>
+                <select
+                  value={contactRegion}
+                  onChange={(e) => setContactRegion(e.target.value)}
+                  className="mt-1 w-full border rounded px-3 py-2 text-sm bg-white"
+                >
+                  {REGION_CODES.map((r) => <option key={r} value={r}>{regionLabels[r]}</option>)}
+                </select>
               </label>
               <label className="block">
                 <span className="text-xs text-gray-500 flex items-center gap-1"><Phone size={12} /> 전화번호</span>
@@ -600,16 +714,6 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                   className="mt-1 w-full border rounded px-3 py-2 text-sm"
                   placeholder="예: 02-739-1212"
                 />
-              </label>
-              <label className="block">
-                <span className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12} /> 지역</span>
-                <select
-                  value={contactRegion}
-                  onChange={(e) => setContactRegion(e.target.value)}
-                  className="mt-1 w-full border rounded px-3 py-2 text-sm bg-white"
-                >
-                  {Object.keys(regionLabels).map((r) => <option key={r} value={r}>{regionLabels[r]}</option>)}
-                </select>
               </label>
               <label className="block">
                 <span className="text-xs text-gray-500 flex items-center gap-1"><Instagram size={12} /> 인스타그램 주소 (선택)</span>
@@ -639,11 +743,24 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                 <span className="mt-1 block text-[11px] text-gray-400">영문 소문자·숫자·마침표·밑줄, 3~30자. 비워 두면 `/galleries/{gallery.id}` 주소를 계속 씁니다.</span>
                 {handleMsg && <span className={`mt-1 block text-xs ${handleMsg.ok ? 'text-green-600' : 'text-accent'}`}>{handleMsg.text}</span>}
               </label>
+              {/* 비회원 문의(2026-11-14, 기본 꺼짐) — 켜면 로그인하지 않은 방문자도 [문의하기]로 이름·연락처를 남긴다. 받은 문의는 마이페이지 [받은 문의] */}
+              <label className="flex min-h-[44px] cursor-pointer items-start gap-2.5 py-1">
+                <input type="checkbox" checked={contactGuestInquiry} onChange={(e) => setContactGuestInquiry(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-gray-900" data-testid="gallery-guest-inquiry" />
+                <span className="min-w-0 text-sm text-gray-800 break-keep">
+                  로그인하지 않은 방문자의 문의도 받기
+                  <Link to="/mypage?tab=received-inquiries" className="ml-2 text-xs text-gray-500 underline underline-offset-2">받은 문의 보기</Link>
+                </span>
+              </label>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    if (!contactAddress.trim() || !contactPhone.trim()) { toast.error('주소와 전화번호를 입력해주세요.'); return; }
-                    contactMutation.mutate({ address: contactAddress.trim(), phone: contactPhone.trim(), region: contactRegion, instagramUrl: contactInstagram.trim(), handle: contactHandle.trim().replace(/^@+/, '').toLowerCase() });
+                    const fullAddress = [contactAddress.trim(), contactAddressDetail.trim()].filter(Boolean).join(' ');
+                    if (!fullAddress || !contactPhone.trim()) { toast.error('주소와 전화번호를 입력해주세요.'); return; }
+                    contactMutation.mutate({
+                      address: fullAddress, phone: contactPhone.trim(), region: contactRegion, instagramUrl: contactInstagram.trim(),
+                      handle: contactHandle.trim().replace(/^@+/, '').toLowerCase(),
+                      openHours: contactOpenHours.trim(), guestInquiry: contactGuestInquiry,
+                    });
                   }}
                   disabled={contactMutation.isPending}
                   className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-50"
@@ -652,93 +769,61 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
               </div>
             </div>
           ) : (
-            <>
-              <p className="text-gray-600 mt-2 flex items-center gap-1">
-                <MapPin size={14} className="flex-none" /> {gallery.address}
-                {isOwner && (
-                  <button
-                    onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setContactInstagram(gallery.instagramUrl || ''); setContactHandle(gallery.handle || ''); setHandleMsg(null); setIsEditingContact(true); }}
-                    className="ml-1 text-xs text-accent underline"
-                  >수정</button>
-                )}
-              </p>
-              {/* 모바일: tel: 링크로 다이얼러 연결, 데스크톱: 일반 텍스트 */}
-              <a href={`tel:${gallery.phone}`} className="text-gray-600 flex items-center gap-1 md:hidden active:text-gray-900">
-                <Phone size={14} /> <span className="underline">{gallery.phone}</span>
-              </a>
-              <p className="text-gray-600 hidden md:flex items-center gap-1"><Phone size={14} /> {gallery.phone}</p>
-              {gallery.email && (
-                <p className="text-gray-600 flex items-center gap-1 min-w-0"><Mail size={14} className="flex-none" /> <span className="break-all">{gallery.email}</span></p>
-              )}
-            </>
-          )}
-          {gallery.instagramUrl ? (
-            <a
-              href={gallery.instagramUrl.startsWith('http') ? gallery.instagramUrl : `https://instagram.com/${gallery.instagramUrl.replace('@', '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-500 hover:underline flex items-center gap-1 min-w-0"
-            >
-              <Instagram size={14} className="flex-none" /> <span className="break-all">{gallery.instagramUrl}</span>
-            </a>
-          ) : isOwner && !isEditingContact && (
-            <button
-              onClick={() => { setContactAddress(gallery.address); setContactPhone(gallery.phone); setContactRegion(gallery.region || 'SEOUL'); setContactInstagram(''); setContactHandle(gallery.handle || ''); setHandleMsg(null); setIsEditingContact(true); }}
-              className="text-gray-400 hover:text-gray-700 flex items-center gap-1 text-sm cursor-pointer"
-            >
-              <Instagram size={14} /> 인스타그램 주소 추가
-            </button>
-          )}
-          {/* 이웃·메시지는 이름 줄 오른쪽으로 올라갔다(2026-09-16) — 여기 다시 만들지 말 것 */}
-          {isEditingDesc ? (
-            <div className="mt-2 space-y-2">
-              <input
-                type="text"
-                value={descText}
-                onChange={e => setDescText(e.target.value)}
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-                placeholder="한줄 소개를 입력해주세요"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    if (!descText.trim()) { toast.error('소개를 입력해주세요.'); return; }
-                    descMutation.mutate(descText);
-                  }}
-                  disabled={descMutation.isPending}
-                  className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
-                >
-                  저장
-                </button>
-                <button
-                  onClick={() => setIsEditingDesc(false)}
-                  className="px-4 py-1.5 text-sm text-gray-500"
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2 mt-5">
-              <p className="max-w-3xl text-lg leading-relaxed text-gray-800 break-keep [overflow-wrap:anywhere]">{gallery.description}</p>
-              {isOwner && (
-                <button
-                  onClick={() => { setDescText(gallery.description || ''); setIsEditingDesc(true); }}
-                  className="flex-none text-gray-400 hover:text-gray-900 mt-0.5"
-                  title="한줄 소개 수정"
-                  aria-label="수정"
-                >
-                  <Edit3 size={13} />
+            /* 방문 정보 — 있는 것만(components/homepage/GalleryVisitInfo — 갤러리 등록 미리보기와 같은 부품).
+               주소가 자유 글이라 시·도·구를 못 읽거나 지역 칸과 다르면 주인에게만 '주소 다시 넣기'(2026-11-15, 주소 검색이 생기기 전에 등록한 갤러리) */
+            <GalleryVisitInfo
+              openHours={gallery.openHours}
+              address={gallery.address}
+              phone={gallery.phone}
+              email={gallery.email}
+              instagramUrl={gallery.instagramUrl}
+              addressNote={isOwner && addrCheck !== 'ok' && (
+                <button type="button" onClick={openContactEdit} className="mt-1 block min-h-[32px] text-left text-[13px] text-accent underline underline-offset-4" data-testid="gallery-address-fix">
+                  {addrCheck === 'mismatch' ? `주소와 지역(${regionLabels[gallery.region] ?? gallery.region})이 달라요 · 주소 다시 넣기` : '주소 검색으로 다시 넣기'}
                 </button>
               )}
-            </div>
+              owner={isOwner && (
+                <>
+                  <button onClick={openContactEdit} className="min-h-[32px] text-xs text-accent underline">정보 수정</button>
+                  {!gallery.instagramUrl && <button onClick={openContactEdit} className="min-h-[32px] text-xs text-gray-500 hover:text-gray-900">인스타그램 주소 추가</button>}
+                  {!gallery.openHours && <button onClick={openContactEdit} className="min-h-[32px] text-xs text-gray-500 hover:text-gray-900">관람 시간 추가</button>}
+                </>
+              )}
+            />
+          )}
+
+          {/* 지금 전시 — 승인된 전시(Show) 가운데 진행 중(없으면 60일 안에 시작하는 것). 포스터는 자르지 않는다 */}
+          {nowShow && (
+            <Link to={`/shows/${nowShow.id}`} className="mt-7 flex max-w-md gap-4 border border-gray-200 p-3.5 hover:border-gray-900" data-testid="gallery-now-show">
+              <span className="grid h-24 w-20 shrink-0 place-items-center bg-gray-50">
+                <Thumb src={nowShow.posterImage} size="list" alt="" className="max-h-full max-w-full object-contain" />
+              </span>
+              <span className="flex min-w-0 flex-col justify-center">
+                <span className="text-[12px] font-semibold text-accent">{nowShow.state === 'ongoing' ? '전시 중' : '전시 예정'}</span>
+                <span className="mt-1 text-[15px] font-semibold leading-snug break-keep [overflow-wrap:anywhere]">{nowShow.title}</span>
+                <span className="mt-1 text-[13px] text-gray-500">{monthDayKst(nowShow.startDate)} – {monthDayKst(nowShow.endDate)}</span>
+              </span>
+            </Link>
           )}
         </div>
+      </div>
 
-        {/* === 탭 (2026-09-27) — 마스트헤드 아래로 붙고, 상단바 아래에 걸린다. 탭 이름이 곧 섹션 머리라 안에서 머리말을 다시 달지 않는다 === */}
-        <div ref={tabAnchorRef}>
-        <PageTabBar tabs={tabs} active={activeTab} onSelect={selectTab} idPrefix="gallery" label="갤러리 메뉴" />
-        <div role="tabpanel" id={`gallery-panel-${activeTab}`} aria-labelledby={`gallery-tab-${activeTab}`} className="pt-8 md:pt-10">
+      {/* === 오너 전용: 이미지 관리 패널 === */}
+      {isOwner && (
+        <GalleryImageManager
+          galleryId={Number(id)}
+          galleryImages={gallery.images || []}
+          onImgIndexGuard={(maxIdx) => {
+            if (imgIndex > maxIdx) setImgIndex(Math.max(0, maxIdx));
+          }}
+        />
+      )}
+
+      <div className="pt-12 md:pt-16">
+        {/* === 탭 (2026-09-27) — 표지 아래, 내리면 사이트 머리 아래에 붙는다(PC·휴대폰 모두 이 막대 하나 — 2026-11-15). 탭 이름이 곧 섹션 머리 === */}
+        <div ref={tabAnchorRef} id="gallery-tabs">
+        <PageTabBar tabs={tabs} active={activeTab} onSelect={selectTab} idPrefix="gallery" label="갤러리 메뉴" site trailing={tabActions} />
+        <div role="tabpanel" id={`gallery-panel-${activeTab}`} aria-labelledby={`gallery-tab-${activeTab}`} className={`pt-8 md:pt-10 ${HOMEPAGE_PANEL_MIN_H}`}>
 
         {/* === 소개 — 비어 있으면 방문자에겐 탭이 없다("등록되지 않았습니다" 셋이 한 페이지에 있었다) === */}
         {activeTab === 'about' && (
@@ -805,7 +890,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
             */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-x-6">
               {openCalls.map(ex => {
-                const dday = getDday(ex.deadline);
+                const dv = deadlineView(ex);
                 return (
                   <article key={ex.id} className="group cursor-pointer" onClick={() => navigate(`/exhibitions/${ex.id}`)}>
                     <div className="flex aspect-[210/297] items-center justify-center overflow-hidden bg-gray-50">
@@ -830,7 +915,7 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <span className={`text-sm font-semibold ${dday <= 7 ? 'text-accent' : 'text-gray-500'}`}>D-{dday}</span>
+                        <span className={`whitespace-nowrap text-sm font-semibold ${dv.hot ? 'text-accent' : 'text-gray-500'}`}>{dv.badge}</span>
                         {/* 아트링크 주최 공모는 주최자(Admin)만 삭제할 수 있다 — 서버도 403.
                             운영 여부는 이 페이지의 갤러리 오너인지로 정해진다(공모 응답에 ownerId가 없다) */}
                         {canDelete({ ...ex, canOperate: isOwner }, user) && (
@@ -1014,6 +1099,9 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
         )}
 
         {/* === 리뷰 — 탭은 늘 있다(작가가 쓰러 오는 곳, 방명록과 같다) === */}
+        {/* === 소식 — 갤러리 주인 계정이 올린 ArtStory(2026-11-14, 규칙 82). 주인에겐 비어 있어도 탭이 있고 여기서 [소식 올리기] === */}
+        {activeTab === 'news' && <NewsTab userId={gallery.ownerId} isOwner={isOwner} />}
+
         {activeTab === 'reviews' && (
         <div>
 
@@ -1275,7 +1363,22 @@ export default function GalleryDetailPage({ galleryId }: { galleryId?: number } 
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </motion.main>
+      {/* 꼬리말 — 갤러리의 연락처 · Made with ArtLink(2026-11-14, 규칙 82) */}
+      <SiteFooter
+        name={gallery.name}
+        lines={[gallery.address, gallery.openHours || null, gallery.phone]}
+        instagramUrl={igUrl}
+        onInquiry={canInquire ? () => setInquiryOpen(true) : undefined}
+      />
+      {inquiryOpen && (
+        <InquirySheet
+          target={{ ownerId: gallery.ownerId, name: gallery.name, guestEnabled: gallery.guestInquiry === true, galleryId: gallery.id }}
+          themeVars={themeVarStyle(SITE_THEME)}
+          onClose={() => setInquiryOpen(false)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1288,14 +1391,14 @@ interface CarouselProps {
   imgIndex: number;
   setImgIndex: (i: number) => void;
   onImageClick: (index: number) => void;
-  isFavorited: boolean;
-  showFavorite: boolean;
-  onFavoriteClick: () => void;
 }
 
+/**
+ * 갤러리 사진 — 표지 오른쪽 칸(휴대폰은 맨 위), 4:3 틀 안에 **자르지 않고**(contain) 남는 자리는 같은 사진을 흐리게(2026-11-14).
+ * 예전엔 높이를 못박고 꽉 채워(cover) 포스터를 올린 갤러리의 사진 위아래가 잘렸다. 찜(하트)은 버튼 줄로 옮겼다.
+ */
 function GalleryImageCarousel({
   images, galleryName, imgIndex, setImgIndex, onImageClick,
-  isFavorited, showFavorite, onFavoriteClick,
 }: CarouselProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isScrolling = useRef(false);
@@ -1374,7 +1477,7 @@ function GalleryImageCarousel({
 
   return (
     <div
-      className="relative w-full h-72 md:h-[28rem] bg-gray-100 overflow-hidden"
+      className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden"
       onMouseEnter={() => { isHovered.current = true; }}
       onMouseLeave={() => { isHovered.current = false; }}
     >
@@ -1393,30 +1496,20 @@ function GalleryImageCarousel({
             style={{ willChange: 'transform' }}
             onClick={() => onImageClick(i)}
           >
-            {/* 프레임을 사진으로 꽉 채움(cover) — 여백 없이 사진만 노출 (모집공고와 동일) */}
+            {/* 자르지 않는다(contain) — 남는 자리는 같은 사진을 흐리게(blurFill) */}
             <SkeletonImage
               src={src}
               alt={`${galleryName} ${i + 1}`}
               fallbackLabel={galleryName}
               className="w-full h-full"
-              imgClassName="object-cover"
+              imgClassName="object-contain"
+              blurFill
               draggable={false}
               loading={i === 0 ? 'eager' : 'lazy'}
             />
           </div>
         ))}
       </div>
-
-      {/* 찜하기 버튼 */}
-      {showFavorite && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onFavoriteClick(); }}
-          className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur rounded-full shadow z-10"
-          aria-label={isFavorited ? '찜 해제' : '찜하기'}
-        >
-          <Heart size={22} className={isFavorited ? 'text-accent fill-accent' : 'text-gray-400'} />
-        </button>
-      )}
 
       {/* 좌우 화살표 */}
       {images.length > 1 && (

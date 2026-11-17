@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
+import { useSoftKeyboardOpen } from '@/hooks/useSoftKeyboard';
 
 /**
  * 모바일 전용 하단 고정 탭바 (catch 앱 방식).
@@ -13,13 +14,18 @@ import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
  *   이고 포털을 안 써서 DOM 상 이 바보다 앞에 온다. 같은 z-50 이면 뒤에 오는 이 바가 이기므로 공모 **지원 모달의
  *   [지원하기]·[취소]** 와 하이라이트 뷰어 하단 캡션을 탭바가 덮어 누를 수 없었다. 모달마다 z 를 올리는 대신
  *   화면 부속(navbar/tabbar)을 한 단계 아래에 둔다 — 모달은 z-50, 부속은 그 아래.
+ * · ⚠️ **자판이 떠 있는 동안은 감춘다**(2026-11-14 앱 점검). 안드로이드 앱(WebView)은 자판이 뜨면 화면이 줄어
+ *   이 바가 자판 바로 위로 따라 올라와, 댓글·답글을 쓰는 동안 글자 칸 자리를 먹었다(`hooks/useSoftKeyboard.ts`).
  */
 export default function BottomTabBar() {
   const { pathname } = useLocation();
+  const typing = useSoftKeyboardOpen();
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 lg:hidden border-t border-gray-100 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       aria-label="하단 내비게이션"
+      hidden={typing || undefined}
+      data-keyboard-hidden={typing ? '1' : undefined}
     >
       <div className="mx-auto flex max-w-lg">
         {NAV_LINKS.map(({ path, label, icon: Icon }) => {

@@ -144,3 +144,10 @@ scratchpad/wall-view/out/
 # 미미오 작가 페이지 캡처(타인 서비스 화면) — 비교용 참고, 커밋하지 않는다
 scratchpad/wall-view/ref/
 scratchpad/schedule-picker/out/
+
+# 커뮤니티 편집기 점검 산출물(스크린샷·데모 사진) — 커밋 금지
+scratchpad/community-editor/out/
+scratchpad/community-editor/media/
+# ArtStory 홈 공개 점검 산출물(스크린샷)·목업 그림 — 커밋 금지(2026-11-14)
+scratchpad/artstory/out/
+scratchpad/story-mock/img/

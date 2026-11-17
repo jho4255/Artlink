@@ -34,6 +34,12 @@
  * ⚠️ **칸마다 몇 명인지도, '가나다순' 이라는 안내도 그리지 않는다**(2026-09-13 요청) —
  *    펼치면 바로 보이는 것이라 적어 두면 잔소리이고, 좁은 왼쪽 칸에서 글자만 늘어난다.
  *
+ * ## 휴대폰·태블릿(1024px 미만)은 초성 한 줄 + 이름 창 (2026-11-15, 사용자가 고른 B안)
+ * 예전엔 PC 의 왼쪽 목록이 작품 **위에** 그대로 쌓여 첫 화면이 초성 15줄로 꽉 찼다(첫 작품 968px 아래).
+ * 지금은 [제목 · 작품 새로고침 · 좋아요순] 한 줄 → **초성 한 줄**(상단바 아래에 붙는다) → 작품. 초성을 누르면 아래에서
+ * 이름 창이 올라온다(`components/artists/InitialSheet.tsx`). PC 는 그대로다.
+ *   ⚠️ 두 배치를 CSS 로 둘 다 그려 놓고 감추지 말 것 — 같은 이름 링크가 두 벌이 된다. `useMediaQuery` 로 하나만.
+ *
  * ⚠️ 작가 이름을 눌러 **격자를 거르지 않는다** — 사용자가 원한 동작은 '그 작가에게 가는 것'이다.
  *    거르기까지 하면 눌렀을 때 무슨 일이 나는지 두 가지가 되어 예측이 안 된다.
  * ⚠️ 작품 격자는 홈과 **같은 규칙**(랜덤 + 같은 작가 연속 방지, [새로고침]은 시드만 교체)을 쓴다.
@@ -49,6 +55,8 @@ import { Heart, RefreshCw, ChevronDown } from 'lucide-react';
 import api from '@/lib/axios';
 import { displayName } from '@/lib/utils';
 import { groupByInitial, initiallyExpanded } from '@/lib/artistIndex';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { InitialSheet, InitialStrip } from '@/components/artists/InitialSheet';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
 import { artistPath } from '@/lib/handle';
@@ -64,6 +72,8 @@ interface ArtistEntry {
   initial: string;
   /** 공개 작품 수 — **화면에 그리지 않는다**(2026-09-10). 목록 필터의 근거라 응답에는 남아 있다. */
   workCount: number;
+  /** 홈페이지 첫 화면의 대표작 — 휴대폰 이름 창의 작은 그림(2026-11-15) */
+  cover?: string | null;
 }
 
 /** `GET /explore` 한 쪽. `total`·`limit` 으로 다음 쪽이 있는지 판정한다. */
@@ -95,6 +105,9 @@ export default function ArtistsPage() {
   const [seed, setSeed] = useState(newSeed);
   const [sort, setSort] = useState<SortMode>('random');
   const [period, setPeriod] = useState<Period>('all');
+  /** PC(lg↑)는 왼쪽 목록, 그 아래는 초성 한 줄 + 이름 창 — 하나만 그린다 */
+  const wide = useMediaQuery('(min-width: 1024px)');
+  const [sheetInitial, setSheetInitial] = useState<string | null>(null);
 
   const { data: artists = [], isLoading: artistsLoading } = useQuery<ArtistEntry[]>({
     queryKey: ['explore-artists'],
@@ -155,188 +168,226 @@ export default function ArtistsPage() {
     return () => io.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      {/* ⚠️ `min-w-0` 필수 — 안 붙이면 오른쪽 격자의 min-content 가 트랙을 밀어
-          좁은 화면에서 페이지 전체가 가로로 밀린다(CLAUDE.md 27번). */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)] lg:gap-12">
-        {/* ── 왼쪽: 작가 목록 ─────────────────────────────── */}
-        <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
-          <h1 className="font-serif text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
-            Art<span className="text-accent">Works</span>
-          </h1>
-          {/* ⚠️ 작가 수·'가나다순' 안내는 **두지 않는다**(2026-09-13 사용자 요청) — 목록을 보면 아는 것이라
-              적어 두면 잔소리다. 남기는 건 실제로 누를 것 하나뿐이다. */}
-          <div className="mt-2 flex h-8 items-center">
-            {groups.length > 1 && (
-              <button
-                onClick={toggleAll}
-                className="cursor-pointer py-2 text-xs text-gray-500 transition-colors hover:text-gray-900"
-              >
-                {allOpen ? '모두 접기' : '모두 펼치기'}
-              </button>
-            )}
-          </div>
+  /* 컨트롤 — [작품 새로고침] · [좋아요순]. 홈 ArtWorks 와 같은 글자 버튼 모양이라 두 화면에서 누른 느낌이 같다.
+     알약 모양 [랜덤]/[좋아요순] 으로 되돌리지 말 것(랜덤이 기본이라 '랜덤' 은 버튼일 이유가 없다).
+     PC 는 격자 위 오른쪽에 세로로, 휴대폰은 제목 줄 오른쪽에 나란히(누르는 높이 44px). */
+  const refreshButton = (
+    <button
+      onClick={() => { setSort('random'); setSeed(newSeed()); }}
+      title="다른 작품 보기 (랜덤 재정렬)"
+      className={`flex cursor-pointer items-center gap-1.5 text-gray-500 transition-colors hover:text-gray-900 ${wide ? 'py-1 text-sm' : 'min-h-[44px] text-[13px]'}`}
+    >
+      <RefreshCw size={wide ? 15 : 14} className={worksFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
+      작품 새로고침
+    </button>
+  );
+  const popularButton = (
+    <button
+      onClick={() => setSort(sort === 'popular' ? 'random' : 'popular')}
+      aria-pressed={sort === 'popular'}
+      className={`flex cursor-pointer items-center gap-1.5 transition-colors ${wide ? 'py-1 text-sm' : 'min-h-[44px] text-[13px]'} ${
+        sort === 'popular' ? 'font-medium text-gray-900' : 'text-gray-500 hover:text-gray-900'
+      }`}
+    >
+      <Heart size={wide ? 15 : 14} className={sort === 'popular' ? 'fill-accent text-accent' : ''} />
+      좋아요순
+    </button>
+  );
 
-          {artistsLoading ? (
-            <ul className="mt-5 space-y-2.5">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <li key={i} className="h-4 w-24 animate-pulse rounded bg-gray-100" />
-              ))}
-            </ul>
-          ) : artists.length === 0 ? (
-            <p className="mt-5 text-sm text-gray-400">아직 작품을 공개한 작가가 없습니다.</p>
-          ) : (
-            /* ㄱ·ㄴ·ㄷ… 칸마다 접었다 편다. 칸 순서·이름 순서는 **서버가 정한 그대로** 쓴다.
-               ⚠️ PC 에서 다 펼치면 세로로 길어질 수 있으므로 여기서 스크롤을 받는다 —
-                  `aside` 가 sticky 라 높이를 안 묶으면 아래쪽 칸이 화면 밖으로 나가 영영 안 보인다. */
-            <div className="mt-4 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
-              <ul className="space-y-1">
-                {groups.map((g) => {
-                  const open = expanded.has(g.initial);
-                  return (
-                    <li key={g.initial}>
-                      <button
-                        onClick={() => toggleOne(g.initial)}
-                        aria-expanded={open}
-                        aria-controls={`artists-${g.initial}`}
-                        className="flex w-full cursor-pointer items-center gap-2 border-b border-gray-100 py-2 text-left transition-colors hover:border-gray-300"
-                      >
-                        {/* ⚠️ `w-7` 로 못박지 말 것 — 한글 한 글자는 들어가도 `A–Z` 는 두 줄로 꺾인다.
-                            폭은 **한 글자 자리를 지키는 하한**이고, 넘치면 늘어나야 한다. */}
-                        <span className="min-w-7 shrink-0 whitespace-nowrap font-serif text-base font-bold text-gray-900">
-                          {g.initial}
-                        </span>
-                        <ChevronDown
-                          size={14}
-                          className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
-                        />
-                      </button>
+  /* 기간은 좋아요순일 때만 의미가 있다 */
+  const periodRow = sort === 'popular' && (
+    <div className="mb-5 flex flex-wrap items-center gap-1">
+      <span className="mr-1 text-xs text-gray-400">기간</span>
+      {PERIODS.map((p) => (
+        <button
+          key={p.key}
+          onClick={() => setPeriod(p.key)}
+          className={`cursor-pointer rounded-full px-2.5 py-1 text-xs transition-colors ${
+            period === p.key ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
 
-                      {/* 이름 — PC 는 한 줄에 하나, 모바일은 접히도록 흐른다(세로로 쌓으면 작품 격자가 한참 밀린다).
-                          ⚠️ `<Link>` 로 둘 것 — 새 탭·주소 복사·키보드 접근이 되어야 한다(버튼이면 다 막힌다). */}
-                      {open && (
-                        <ul
-                          id={`artists-${g.initial}`}
-                          className="flex flex-wrap gap-x-4 gap-y-0.5 py-1 pl-1 lg:block lg:space-y-0.5"
-                        >
-                          {g.artists.map((a) => (
-                            <li key={a.id} className="min-w-0">
-                              <Link
-                                to={artistPath(a)}
-                                className="flex min-h-[34px] items-center text-sm text-gray-600 hover:text-gray-900 hover:underline hover:underline-offset-4"
-                              >
-                                <span className="truncate">{a.name}</span>
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-        </aside>
-
-        {/* ── 오른쪽: 작품 격자 (둘러보기를 흡수 — 무한스크롤·좋아요순·기간) ───── */}
-        <section className="min-w-0">
-          {/* 컨트롤은 [작품 새로고침] 위, [좋아요순] 아래 — 홈 ArtWorks 와 같은 글자 버튼 모양이라
-              두 화면에서 누른 느낌이 같다. 알약 모양 [랜덤]/[좋아요순] 으로 되돌리지 말 것
-              (랜덤이 기본이라 '랜덤' 은 버튼일 이유가 없다). */}
-          <div className="mb-5 flex flex-col items-end">
-            <button
-              onClick={() => { setSort('random'); setSeed(newSeed()); }}
-              title="다른 작품 보기 (랜덤 재정렬)"
-              className="flex cursor-pointer items-center gap-1.5 py-1 text-sm text-gray-500 transition-colors hover:text-gray-900"
-            >
-              <RefreshCw size={15} className={worksFetching && !isFetchingNextPage ? 'animate-spin' : ''} />
-              작품 새로고침
-            </button>
-            <button
-              onClick={() => setSort(sort === 'popular' ? 'random' : 'popular')}
-              aria-pressed={sort === 'popular'}
-              className={`flex cursor-pointer items-center gap-1.5 py-1 text-sm transition-colors ${
-                sort === 'popular' ? 'font-medium text-gray-900' : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              <Heart size={15} className={sort === 'popular' ? 'fill-accent text-accent' : ''} />
-              좋아요순
-            </button>
-          </div>
-
-          {/* 기간은 좋아요순일 때만 의미가 있다 */}
-          {sort === 'popular' && (
-            <div className="mb-5 flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs text-gray-400">기간</span>
-              {PERIODS.map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => setPeriod(p.key)}
-                  className={`cursor-pointer rounded-full px-2.5 py-1 text-xs transition-colors ${
-                    period === p.key ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {worksLoading ? (
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-square animate-pulse bg-gray-100" />
-              ))}
-            </div>
-          ) : images.length === 0 ? (
-            <p className="py-16 text-center text-sm text-gray-400">공개된 작품이 아직 없습니다.</p>
-          ) : (
-            <>
-{/* ⚠️ 넓은 화면에서 4열로 갈 것 — 왼쪽 색인이 220px 을 먹어도 `xl` 이면 칸이 220px 이라
-                  합치기 전 둘러보기(4열)와 밀도가 같다. 3열로 두면 칸이 300px 이라 훑기 화면이 성겨진다. */}
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
-                {images.map((img) => (
-                  <button
-                    key={img.id}
-                    onClick={() => setSelected(img)}
-                    className="group relative aspect-square cursor-pointer overflow-hidden bg-gray-50"
-                    aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
-                  >
-                    <SkeletonImage
-                      src={img.url}
-                      className="absolute inset-0"
-                      imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"   /* 규칙 18 — 작품은 자르지 않는다(2026-09-19) */
-                      loading="lazy"
-                    />
-                    {/* 그라데이션에 pointer-events-none 필수 — 없으면 아래 버튼 클릭을 막는다(CLAUDE.md 8번) */}
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-2">
-                      <span className="truncate text-xs text-white/90">{displayName(img.artist)}</span>
-                      {img.likeCount > 0 && (
-                        <span className="flex shrink-0 items-center gap-1 text-xs text-white">
-                          <Heart size={11} className="fill-white" />
-                          {img.likeCount}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* 무한스크롤 sentinel — ⚠️ 격자 **밖**에 둘 것. 안에 두면 격자 칸 하나로 잡혀
-                  마지막 줄에 빈 칸이 생기고, 그 칸 높이(aspect-square)만큼 미리 당겨진다. */}
-              <div ref={sentinelRef} className="h-10" />
-              {isFetchingNextPage && (
-                <div className="flex justify-center py-6">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
-                </div>
+  const worksGrid = worksLoading ? (
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="aspect-square animate-pulse bg-gray-100" />
+      ))}
+    </div>
+  ) : images.length === 0 ? (
+    <p className="py-16 text-center text-sm text-gray-400">공개된 작품이 아직 없습니다.</p>
+  ) : (
+    <>
+      {/* ⚠️ 넓은 화면에서 4열로 갈 것 — 왼쪽 색인이 220px 을 먹어도 `xl` 이면 칸이 220px 이라
+          합치기 전 둘러보기(4열)와 밀도가 같다. 3열로 두면 칸이 300px 이라 훑기 화면이 성겨진다. */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
+        {images.map((img) => (
+          <button
+            key={img.id}
+            onClick={() => setSelected(img)}
+            className="group relative aspect-square cursor-pointer overflow-hidden bg-gray-50"
+            aria-label={`${displayName(img.artist)} 작가의 작품 — 크게 보기`}
+          >
+            <SkeletonImage
+              src={img.url}
+              className="absolute inset-0"
+              imgClassName="object-contain group-hover:opacity-80 transition-opacity duration-300"   /* 규칙 18 — 작품은 자르지 않는다(2026-09-19) */
+              loading="lazy"
+            />
+            {/* 그라데이션에 pointer-events-none 필수 — 없으면 아래 버튼 클릭을 막는다(CLAUDE.md 8번) */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-2">
+              <span className="truncate text-xs text-white/90">{displayName(img.artist)}</span>
+              {img.likeCount > 0 && (
+                <span className="flex shrink-0 items-center gap-1 text-xs text-white">
+                  <Heart size={11} className="fill-white" />
+                  {img.likeCount}
+                </span>
               )}
-            </>
-          )}
-        </section>
+            </div>
+          </button>
+        ))}
       </div>
+
+      {/* 무한스크롤 sentinel — ⚠️ 격자 **밖**에 둘 것. 안에 두면 격자 칸 하나로 잡혀
+          마지막 줄에 빈 칸이 생기고, 그 칸 높이(aspect-square)만큼 미리 당겨진다. */}
+      <div ref={sentinelRef} className="h-10" />
+      {isFetchingNextPage && (
+        <div className="flex justify-center py-6">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+        </div>
+      )}
+    </>
+  );
+
+  const title = (
+    <h1 className="font-serif text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
+      Art<span className="text-accent">Works</span>
+    </h1>
+  );
+
+  return (
+    <div className={`max-w-7xl mx-auto px-6 md:px-12 ${wide ? 'py-10 md:py-16' : 'pt-6 pb-10 md:pt-8'}`}>
+      {wide ? (
+        /* ⚠️ `min-w-0` 필수 — 안 붙이면 오른쪽 격자의 min-content 가 트랙을 밀어
+           좁은 화면에서 페이지 전체가 가로로 밀린다(CLAUDE.md 27번). */
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)] lg:gap-12">
+          {/* ── 왼쪽: 작가 목록 ─────────────────────────────── */}
+          <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+            {title}
+            {/* ⚠️ 작가 수·'가나다순' 안내는 **두지 않는다**(2026-09-13 사용자 요청) — 목록을 보면 아는 것이라
+                적어 두면 잔소리다. 남기는 건 실제로 누를 것 하나뿐이다. */}
+            <div className="mt-2 flex h-8 items-center">
+              {groups.length > 1 && (
+                <button
+                  onClick={toggleAll}
+                  className="cursor-pointer py-2 text-xs text-gray-500 transition-colors hover:text-gray-900"
+                >
+                  {allOpen ? '모두 접기' : '모두 펼치기'}
+                </button>
+              )}
+            </div>
+
+            {artistsLoading ? (
+              <ul className="mt-5 space-y-2.5">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <li key={i} className="h-4 w-24 animate-pulse rounded bg-gray-100" />
+                ))}
+              </ul>
+            ) : artists.length === 0 ? (
+              <p className="mt-5 text-sm text-gray-400">아직 작품을 공개한 작가가 없습니다.</p>
+            ) : (
+              /* ㄱ·ㄴ·ㄷ… 칸마다 접었다 편다. 칸 순서·이름 순서는 **서버가 정한 그대로** 쓴다.
+                 ⚠️ PC 에서 다 펼치면 세로로 길어질 수 있으므로 여기서 스크롤을 받는다 —
+                    `aside` 가 sticky 라 높이를 안 묶으면 아래쪽 칸이 화면 밖으로 나가 영영 안 보인다. */
+              <div className="mt-4 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
+                <ul className="space-y-1">
+                  {groups.map((g) => {
+                    const open = expanded.has(g.initial);
+                    return (
+                      <li key={g.initial}>
+                        <button
+                          onClick={() => toggleOne(g.initial)}
+                          aria-expanded={open}
+                          aria-controls={`artists-${g.initial}`}
+                          className="flex w-full cursor-pointer items-center gap-2 border-b border-gray-100 py-2 text-left transition-colors hover:border-gray-300"
+                        >
+                          {/* ⚠️ `w-7` 로 못박지 말 것 — 한글 한 글자는 들어가도 `A–Z` 는 두 줄로 꺾인다.
+                              폭은 **한 글자 자리를 지키는 하한**이고, 넘치면 늘어나야 한다. */}
+                          <span className="min-w-7 shrink-0 whitespace-nowrap font-serif text-base font-bold text-gray-900">
+                            {g.initial}
+                          </span>
+                          <ChevronDown
+                            size={14}
+                            className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+
+                        {/* 이름 — 한 줄에 하나. ⚠️ `<Link>` 로 둘 것 — 새 탭·주소 복사·키보드 접근이 되어야 한다(버튼이면 다 막힌다). */}
+                        {open && (
+                          <ul id={`artists-${g.initial}`} className="space-y-0.5 py-1 pl-1">
+                            {g.artists.map((a) => (
+                              <li key={a.id} className="min-w-0">
+                                <Link
+                                  to={artistPath(a)}
+                                  className="flex min-h-[34px] items-center text-sm text-gray-600 hover:text-gray-900 hover:underline hover:underline-offset-4"
+                                >
+                                  <span className="truncate">{a.name}</span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </aside>
+
+          {/* ── 오른쪽: 작품 격자 (둘러보기를 흡수 — 무한스크롤·좋아요순·기간) ───── */}
+          <section className="min-w-0">
+            <div className="mb-5 flex flex-col items-end">
+              {refreshButton}
+              {popularButton}
+            </div>
+            {periodRow}
+            {worksGrid}
+          </section>
+        </div>
+      ) : (
+        /* ── 휴대폰·태블릿: 제목 줄 → 초성 한 줄(붙는다) → 작품 (B안) ───── */
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 pb-1">
+            {title}
+            <div className="flex items-center gap-4">
+              {refreshButton}
+              {popularButton}
+            </div>
+          </div>
+          <InitialStrip groups={groups} loading={artistsLoading} onOpen={setSheetInitial} />
+          <section className="mt-3.5 min-w-0">
+            {periodRow}
+            {worksGrid}
+          </section>
+        </>
+      )}
+
+      <AnimatePresence>
+        {!wide && sheetInitial && (
+          <InitialSheet
+            groups={groups}
+            active={sheetInitial}
+            onSelect={setSheetInitial}
+            onClose={() => setSheetInitial(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selected && (

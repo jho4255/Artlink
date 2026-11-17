@@ -22,7 +22,9 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const COMPONENT_START = /^(export default |export )?(async )?function [A-Z]\w*\(|^(export )?const [A-Z]\w* = (\(|React\.memo|memo\(|forwardRef)/;
+// 제네릭 컴포넌트(`function SlideTrack<T extends Item>(`)도 새 컴포넌트의 시작으로 본다 — 예전엔 못 알아봐서
+// 앞 컴포넌트의 early return 과 뒤 컴포넌트의 훅을 한 함수로 엮어 오탐했다(2026-11-13 PostGalleryLayout)
+const COMPONENT_START = /^(export default |export )?(async )?function [A-Z]\w*(<.*?>)?\(|^(export )?const [A-Z]\w* = (\(|React\.memo|memo\(|forwardRef)/;
 const EARLY_RETURN = /^  if \(.*\) return\b/;
 const HOOK_CALL = /^  (?:(?:const|let) [^=]+= )?(?:use[A-Z]\w*)\(/;
 

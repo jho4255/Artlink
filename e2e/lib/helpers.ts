@@ -1,4 +1,4 @@
-import { Browser, BrowserContext, Page, expect } from '@playwright/test';
+import { Browser, BrowserContext, Locator, Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
@@ -590,10 +590,76 @@ export async function pickSchedule(page: Page, opener: string, dates: string[]) 
       const day = page.locator(`[data-schedule-day="${ymd}"]`).first();
       if (await day.isVisible().catch(() => false)) { await day.click(); break; }
       if (i > 36) throw new Error(`달력에서 ${ymd} 를 찾지 못했다`);
-      await page.getByRole('button', { name: '다음 달' }).click();
+      // 지난날(전시 등록 — 이미 하고 있는 전시, 2026-11-15)이면 앞 달로
+      const firstShown = await page.locator('[data-schedule-day]').first().getAttribute('data-schedule-day').catch(() => null);
+      await page.getByRole('button', { name: firstShown && ymd < firstShown ? '이전 달' : '다음 달' }).first().click();
     }
   }
   // 칸이 남아 있으면(공모만 진행이 아닌데 두 날짜만 고른 경우 등) 달력이 열려 있다 — 닫는다
   const done = page.getByRole('button', { name: '완료', exact: true });
   if (await done.isVisible().catch(() => false)) await done.click();
+}
+
+/**
+ * 등록 요청(2026-11-15 — 갤러리·공모·전시 등록 공통). 하단 고정 줄의 [등록 요청] → 확인 창(무엇이 올라가는지 + 약관 동의) → [등록 요청].
+ * 예전엔 폼 끝 약관 상자('위 약관에 동의합니다')에 먼저 체크했다 — 이제 약관은 확인 창 안에 있다.
+ * 아트링크 주최 공모는 약관이 없고 단추 이름이 '등록'(`label`). `agree: false` 면 체크하지 않고 눌러 본다(막히는지 볼 때).
+ */
+export async function submitRegistration(page: Page, opts: { label?: string; agree?: boolean } = {}) {
+  const label = opts.label ?? '등록 요청';
+  await page.locator('[data-submit-bar]').getByRole('button', { name: label, exact: true }).click();
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '고치기' }) });
+  await expect(dialog).toBeVisible();
+  if (opts.agree !== false) {
+    const box = dialog.getByRole('checkbox');
+    if (await box.count()) await box.check();
+  }
+  await dialog.getByRole('button', { name: label, exact: true }).click();
+  return dialog;
+}
+
+/**
+ * 작가·갤러리 홈페이지 탭 줄 오른쪽의 버튼(2026-11-15, CLAUDE.md 규칙 82) — PC 는 줄에 바로 있고, 휴대폰은 [문의하기] 말고는
+ * [⋯](더 보기) 목록 안에 있다. 목록이 닫혀 있으면 열고 그 단추를 돌려준다. ⚠️ 목록 안 단추를 누르면 목록은 닫힌다.
+ */
+export async function homepageAction(page: Page, name: string | RegExp): Promise<Locator> {
+  const row = page.getByTestId('homepage-actions');
+  await expect(row).toBeVisible({ timeout: 15000 });
+  const direct = row.getByRole('button', { name });
+  if (await direct.count() && await direct.first().isVisible()) return direct.first();
+  const more = row.getByRole('button', { name: '더 보기' });
+  if (await more.count()) {
+    if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
+    const item = page.getByTestId('homepage-actions-menu').getByRole('button', { name });
+    await expect(item.first()).toBeVisible();
+    return item.first();
+  }
+  return direct.first();
+}
+
+/**
+ * 작가·갤러리 홈페이지의 [문의하기] 로 ArtTalk 방을 연다(2026-11-14, CLAUDE.md 규칙 82 — 예전 [메시지] 버튼).
+ * 회원은 문의 창에 글을 써서 보내고 '메시지를 보냈어요' 의 [대화 보기] 로 그 방에 간다. 방에는 이 글이 첫 메시지로 남는다.
+ */
+export async function inquireAndOpenChat(page: Page, homepagePath: string, text = '안녕하세요, 작품 잘 봤습니다.') {
+  await page.goto(homepagePath);
+  await page.getByTestId('homepage-actions').getByRole('button', { name: '문의하기' }).click();
+  const sheet = page.getByTestId('inquiry-sheet');
+  await sheet.getByRole('textbox').fill(text);
+  await sheet.getByRole('button', { name: '보내기' }).click();
+  await sheet.getByRole('button', { name: '대화 보기' }).click();
+  await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+}
+
+/**
+ * **빈** ArtTalk 방 — 홈페이지 [문의하기]는 첫 글을 보내므로, 빈 방·메시지 개수가 중요한 확인은 서버 길목(`POST /chats/direct`)으로 직접 연다.
+ * 길목 자체는 홈페이지 문의 창과 같다(retiredApis.test.ts 가 화면 쪽 길목을 고정한다).
+ */
+export async function openEmptyDirectChat(page: Page, fromRole: Role, otherId: number): Promise<number> {
+  const r = await page.request.post('/api/chats/direct', { headers: authHeader(tokenFor(fromRole)), data: { userId: otherId } });
+  if (!r.ok()) throw new Error(`대화방을 못 열었다 ${r.status()}`);
+  const { id } = await r.json() as { id: number };
+  await page.goto(`/messages?chat=${id}`);
+  await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
+  return id;
 }

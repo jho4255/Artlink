@@ -35,8 +35,12 @@ export interface HomepageTheme {
 
 /** designConfig 안의 표식 — 작가가 웹 테마를 직접 골라 저장한 적이 있다 */
 export const WEB_THEME_FLAG = 'webTheme';
-/** PDF 제작 화면은 모르는 키. 그쪽이 designConfig 를 통째로 갈아끼울 때 **들고 가야** 한다(`keepWebOnlyKeys`) */
-const WEB_ONLY_KEYS = ['heroImageId', WEB_THEME_FLAG] as const;
+/**
+ * PDF 제작 화면은 모르는 키. 그쪽이 designConfig 를 통째로 갈아끼울 때 **들고 가야** 한다(`keepWebOnlyKeys`).
+ * `showNow` — 홈페이지 첫 화면의 '전시 중' 띠(2026-11-14, 규칙 82, 기본 켜짐 — 끈 경우만 false 가 저장된다).
+ * ⚠️ designConfig 에 웹 전용 키를 새로 만들면 여기에 넣을 것 — 빠뜨리면 PDF 에서 색 하나만 바꿔도 그 값이 조용히 사라진다.
+ */
+export const WEB_ONLY_KEYS = ['heroImageId', WEB_THEME_FLAG, 'showNow'] as const;
 const STYLE_KEYS = ['bg', 'ink', 'accent', 'font'] as const;
 
 export const DEFAULT_THEME_KEYS: HomepageThemeKeys = { bg: 'white', ink: 'black', accent: 'red', font: 'gothic', heroImageId: null };
@@ -116,6 +120,23 @@ export function resolveHomepageTheme(designConfig: unknown): HomepageTheme {
     isDefault,
     keys,
   };
+}
+
+/** '전시 중' 띠를 보이는가 — 작가가 [꾸미기]에서 끈 경우만 false(서버 `lib/nowShowing.ts showNowEnabled` 와 같은 규칙) */
+export function showNowFrom(designConfig: unknown): boolean {
+  const o = (designConfig && typeof designConfig === 'object' ? designConfig : {}) as Record<string, unknown>;
+  return o.showNow !== false;
+}
+
+/**
+ * CSS 변수만 — 페이지 밖으로 띄우는 창(포털: 문의 창·작품 페이지)이 같은 색을 쓰게. 배경·글자색·글꼴은 창이 스스로 정한다.
+ * ⚠️ 포털은 페이지 루트의 변수를 물려받지 못한다(body 아래에 붙는다) — 창마다 이걸 얹을 것.
+ */
+export function themeVarStyle(t: HomepageTheme): CSSProperties {
+  return {
+    '--hp-bg': t.bg, '--hp-ink': t.ink, '--hp-sub': t.sub, '--hp-line': t.line, '--hp-accent': t.accent,
+    '--hp-title-font': t.titleFont, '--hp-body-font': t.bodyFont,
+  } as CSSProperties;
 }
 
 /** 페이지 루트에 얹는 CSS 변수 — 안쪽 부품은 `var(--hp-…)` 만 본다 */

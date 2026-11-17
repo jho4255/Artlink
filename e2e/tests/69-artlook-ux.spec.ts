@@ -10,7 +10,7 @@ import { solidPng, noNudgeEntry } from '../lib/helpers';
  *  A. 첫 화면에 미리보기가 통째로 보이고 [이미지 저장]이 하단 탭바 위에서 눌린다(휴대폰·PC)
  *  B. 열 때 한두 번만 그리고, 고른 배경·액자 하나만 받고, 작품 목록은 원본을 받지 않는다
  *  C. 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다 · 두 손가락으로 커진다 · [−][+][원위치]
- *  D. 저장 → 파일 + "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 글쓰기 칸
+ *  D. 저장 → 파일 + "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 소식 올리기 화면(/story/new)
  *  E. 크기를 안 적은 작품 → [크기 입력하기] → 편집 화면에서 **그 작품**의 정보 창
  *  F. 작품 0점 → 데모 작품 + [작품 올리기] → 편집 화면
  *  G. 고른 액자·배경은 다음에 다시 열어도 그대로
@@ -183,7 +183,7 @@ test('C. ★ 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다
   await ctx.close();
 });
 
-test('D. ★ 저장하면 파일과 "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 글쓰기 칸', async ({ browser }) => {
+test('D. ★ 저장하면 파일과 "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 소식 올리기 화면', async ({ browser }) => {
   const { ctx, page, dialogs } = await openFor(browser, full);
   const frame = await openArtLook(page);
   await expect(frame.locator('#toStory')).toBeHidden();               // 저장하기 전엔 없다
@@ -193,16 +193,18 @@ test('D. ★ 저장하면 파일과 "저장했어요"(경고창 없음) → [Art
   expect(dialogs, '경고창이 떴다').toHaveLength(0);
   await expect(frame.locator('#toStory')).toBeVisible();
   await frame.locator('#toStory').click();
-  await page.waitForURL(/\/feed/, { timeout: 30000 });
-  const composer = page.locator('textarea').first();
-  await expect(composer).toBeVisible({ timeout: 15000 });
-  const box = page.locator('div').filter({ has: composer }).filter({ has: page.getByRole('button', { name: '올리기' }) }).last();
-  await expect(box.locator('img[src*="/uploads/"]')).toHaveCount(1, { timeout: 15000 });
-  await expect(composer).toBeFocused();
-  // 새로고침해도 다시 붙지 않는다(라우터 state 를 비웠다)
+  // 소식 올리기 화면(2026-11-14 — 피드 위 글쓰기 칸 대신 /story/new)이 사진을 실은 채로 열린다
+  await page.waitForURL(/\/story\/new/, { timeout: 30000 });
+  const strip = page.getByRole('list', { name: '올릴 사진' });
+  await expect(strip.locator('img[src*="/uploads/"]')).toHaveCount(1, { timeout: 15000 });
+  await expect(page.locator('#story-caption')).toBeVisible();
+  // 새로고침해도 두 장이 되지 않는다(라우터 state 는 비웠고, 쓰던 것으로 한 장만 되살아난다)
+  await page.waitForTimeout(700);
   await page.reload();
-  await expect(page.locator('textarea').first()).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('div').filter({ has: page.locator('textarea') }).filter({ has: page.getByRole('button', { name: '올리기' }) }).last().locator('img[src*="/uploads/"]')).toHaveCount(0);
+  await expect(page.getByRole('list', { name: '올릴 사진' }).locator('img[src*="/uploads/"]')).toHaveCount(1, { timeout: 15000 });
+  // 닫으면 버릴지 묻는다 — 버리면 쓰던 것도 지운다
+  await page.getByRole('button', { name: '닫기' }).click();
+  await page.getByRole('dialog', { name: '쓰던 소식을 버릴까요?' }).getByRole('button', { name: '버리기' }).click();
   await ctx.close();
 });
 

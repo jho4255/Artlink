@@ -106,6 +106,9 @@ test('A. 작가가 문의 → 관리자 벨에서 그 문의로 → 답변 → �
 
 test('B. 휴대폰 · 고객센터를 연 채로 — 옛 목록이 아니라 달린 답변이 보이고, 접어도 다시 열린다', async ({ browser }) => {
   const subject = `E2E 열어 둔 화면 ${STAMP}`;
+  // ⚠️ 읽은 알림은 안 읽은 알림 뒤로 간다 — 전체 실행에서 작가에게 안 읽은 알림이 99개 넘게 쌓이면, 한 번 누른(읽은) 답변 알림이
+  //    벨의 10줄 밖으로 밀려 아래의 '다시 누르기'를 못 한다(2026-11-13 전체 실행에서만 실패). 시작할 때 다 읽어 둔다
+  { const api = await pwRequest.newContext(); await api.patch(`${API}/notifications/read-all`, { headers: artist() }); await api.dispose(); }
   const id = await ask(subject);
   const a = await open(browser, 'artist', true);
   await a.page.goto('/support');

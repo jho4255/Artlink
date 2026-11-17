@@ -63,3 +63,41 @@ describe('reloadIfStale — 이미 최신 판이면 새로고침하지 않는다
     expect(sw).toMatch(/precacheAndRoute\(self\.__WB_MANIFEST \|\| \[\], \{ directoryIndex: null, cleanURLs: false \}\)/);
   });
 });
+
+// 글을 쓰는 동안 새로고침을 미룬다(2026-11-13, 커뮤니티 글쓰기) — 쓰던 몇 초가 날아가지 않게
+import { holdReload, reloadOrDefer, isReloadDeferred, runDeferredReload, onReloadDeferred } from '@/lib/swUpdate';
+describe('holdReload — 글쓰기 화면이 새로고침을 붙잡는다', () => {
+  it('붙잡혀 있으면 미루고 알리며, 놓으면 그때 한 번 새로고침한다', () => {
+    const reload = vi.fn();
+    const heard = vi.fn();
+    const off = onReloadDeferred(heard);
+    const release = holdReload();
+    reloadOrDefer(reload);
+    expect(reload).not.toHaveBeenCalled();
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(isReloadDeferred()).toBe(true);
+    release();
+    release();   // 두 번 놓아도 한 번
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(isReloadDeferred()).toBe(false);
+    off();
+  });
+
+  it('붙잡지 않았으면 바로 · [저장하고 새로고침] 은 미뤄 둔 것을 지금 한다', () => {
+    const now = vi.fn();
+    reloadOrDefer(now);
+    expect(now).toHaveBeenCalledTimes(1);
+    const later = vi.fn();
+    const release = holdReload();
+    reloadOrDefer(later);
+    runDeferredReload();
+    expect(later).toHaveBeenCalledTimes(1);
+    release();
+    expect(later).toHaveBeenCalledTimes(1);
+  });
+
+  it('main.tsx 가 새로고침을 reloadOrDefer 로 감싼다', () => {
+    const main = readFileSync(resolve(__dirname, '../main.tsx'), 'utf8');
+    expect(main).toMatch(/reloadOrDefer\(\(\) => window\.location\.reload\(\)\)/);
+  });
+});

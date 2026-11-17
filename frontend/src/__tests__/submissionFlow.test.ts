@@ -72,14 +72,14 @@ describe('scheduleSummary — 등록 폼 아래 한 줄', () => {
   });
   it('시간순으로 이어 붙인다', () => {
     expect(scheduleSummary({ deadlineStart: '2026-09-27', deadline: '2026-10-11', submissionDeadline: '2026-10-21', exhibitStartDate: '2026-11-01', exhibitDate: '2026-11-15' }))
-      .toBe('지원 9/27–10/11 · 자료 제출 ~10/21 · 전시 11/1–11/15');
+      .toBe('접수 9/27–10/11 · 자료 제출 ~10/21 · 전시 11/1–11/15');
   });
   it('채운 칸만 — 비면 빈 문자열', () => {
-    expect(scheduleSummary({ deadline: '2026-10-11' })).toBe('지원 ~10/11');
+    expect(scheduleSummary({ deadline: '2026-10-11' })).toBe('접수 ~10/11');
     expect(scheduleSummary({})).toBe('');
   });
   it('공모만 진행하면 자료 제출·전시는 안 적는다(값이 남아 있어도)', () => {
     expect(scheduleSummary({ recruitOnly: true, deadlineStart: '2026-09-27', deadline: '2026-10-11', exhibitStartDate: '2026-11-01' }))
-      .toBe('지원 9/27–10/11');
+      .toBe('접수 9/27–10/11');
   });
 });

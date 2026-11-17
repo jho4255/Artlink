@@ -23,6 +23,18 @@ export const LOCK_NS = {
   galleryDeleteRequests: 7104,
   /** 이메일 인증번호 — 1분에 한 번 · 1시간에 5번(lib/emailCode.ts). key = 주소의 해시(int32) */
   emailCodes: 7105,
+  /** 커뮤니티 글 작업본 30개 상한(2026-11-13) — key = userId */
+  postDrafts: 7106,
+  /** 커뮤니티 투표 — 한 사람의 표 바꿔 넣기(단일 선택이 두 표가 되지 않게, 2026-11-13) — key = userId */
+  pollVotes: 7107,
+  /** 커뮤니티 글 좋아요 알림 — 글마다 한 줄로 합치기('고쳐 쓸 줄이 없으면 만든다'가 겹쳐 두 줄이 되지 않게, 2026-11-14) — key = postId */
+  postLikeNotes: 7108,
+  /** ArtStory 소식 좋아요 알림 — 소식마다 한 줄로 합치기(2026-11-14, 글 좋아요와 같은 이유) — key = storyId */
+  storyLikeNotes: 7109,
+  /** ArtStory 하루(24시간) 10개 상한 — key = userId */
+  storyDaily: 7110,
+  /** 홈페이지 비회원 문의 — 받는 사람당 하루 30건 상한(2026-11-14) — key = 받는 사람 userId */
+  homepageInquiries: 7111,
 } as const;
 
 export async function withKeyLock<T>(ns: number, key: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

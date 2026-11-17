@@ -15,7 +15,9 @@ import { splitChatNotice } from './chat';
  *      같은 줄의 숫자만 올리는 갱신은 다시 울리지 않는다(좋아요마다 울리면 잔소리). 읽음 처리(read)는 message 가 없어 안 걸린다.
  * ⚠️ 알림 저장을 막지 않는다 — 보내기는 응답 뒤(setImmediate)에 하고 실패는 로그만 남긴다.
  * ⚠️ 꺼짐: FIREBASE_SERVICE_ACCOUNT 가 없거나 PUSH=off 면 아무것도 하지 않는다(토큰 조회도 안 한다). 테스트는 기본으로 꺼져 있다(setup-push.ts).
- * ⚠️ 트랜잭션 안에서 알림을 만들고 그 트랜잭션이 되돌려지면 푸시는 이미 나갔을 수 있다 — 지금은 그런 곳이 없다(tx.notification 0곳).
+ * ⚠️ 트랜잭션 안에서 알림을 만들고 그 트랜잭션이 되돌려지면 푸시는 이미 나갔을 수 있다 — 그런 곳은 한 곳뿐이다:
+ *    커뮤니티 글 좋아요 알림(`routes/community.ts notifyPostLike`, 글마다 한 줄로 합치려고 잠금 안에서 만든다). 거기서도 알림 만들기가 **잠금 안의 마지막 쿼리**라
+ *    되돌려질 일이 커밋 실패뿐이다. 새로 tx 안에서 알림을 만들 땐 같은 규칙(마지막 쿼리)을 지킬 것.
  */
 
 /** 앱의 알림 채널 — frontend lib/native.ts 가 같은 id 로 만든다(AndroidManifest 기본 채널도 같은 값) */
@@ -58,9 +60,18 @@ export const PUSH_TITLES: Record<string, string> = {
   ARTWORK_LIKE: '좋아요',
   NEIGHBOR_FOLLOW: '새 이웃',
   STORY_COMMENT: '새 댓글',
+  STORY_LIKE: '좋아요',               // 내 소식 좋아요 — 소식마다 한 줄로 합친다(처음 한 번만 울린다, 2026-11-14)
+  STORY_HIDDEN: '소식 내림',           // 운영이 내렸거나 신고가 쌓여 저절로 내려갔다
+  STORY_RESTORED: '소식',             // 운영이 다시 보이게 했다 — 본문이 '소식이 다시 보여요'
+  STORY_REPORTED: '소식 신고',         // 관리자에게 — 신고가 쌓여 저절로 내려간 소식을 확인해 달라
   POST_COMMENT: '새 댓글',
+  POST_LIKE: '좋아요',                // 내 글 좋아요 — 글마다 한 줄로 합친다(처음 한 번만 울린다, 2026-11-14)
+  COMMENT_REPLY: '답글',               // 커뮤니티 내 댓글에 달린 답글(2026-11-13 — 댓글 @멘션 대신)
+  POST_NEW: '새 글',                  // 이웃(내가 이웃 추가한 필진)의 필진 탭 글 — 본문이 '○○님이 새 글을 올렸어요: 제목'
+  COMMUNITY_WRITER: '커뮤니티 필진',
   MENTION: '멘션',
   GUESTBOOK_NEW: '방명록',
+  HOMEPAGE_INQUIRY: '홈페이지 문의',   // 로그인하지 않은 방문자가 홈페이지 [문의하기]로 남긴 글(2026-11-14) — 본문은 이름·작품 이름까지만
   GUESTBOOK_REPLY: '방명록 답글',
   MESSAGE_SANCTION: '운영 안내',
 };

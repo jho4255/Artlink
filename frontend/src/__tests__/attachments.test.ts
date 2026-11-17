@@ -67,9 +67,12 @@ describe('화면이 붙는 자리 — 되돌아가지 않게', () => {
   const detail = read('frontend/src/pages/ExhibitionDetailPage.tsx');
 
   it('갤러리 공고 등록·아트링크 주최 등록 둘 다 첨부 칸이 있고, 함수형으로 붙인다(여러 파일이 이어 붙도록)', () => {
+    // 칸은 두 화면이 같이 쓰는 공용 폼(2026-11-15) 하나에
+    const body = read('frontend/src/components/exhibition-form/ExhibitionFormBody.tsx');
+    expect(body).toMatch(/<AttachmentEditor[\s\S]{0,120}value=\{form\.attachments\}/);
+    expect(body).toMatch(/setForm\(\(prev: ExFormValues\) => \(\{ \.\.\.prev, attachments: update\(prev\.attachments/);
     for (const src of [myPage, hosted]) {
-      expect(src).toMatch(/<AttachmentEditor[\s\S]{0,120}value=\{form\.attachments\}/);
-      expect(src).toMatch(/setForm\(prev => \(\{ \.\.\.prev, attachments: update\(prev\.attachments/);
+      expect(src).toMatch(/<ExhibitionFormBody[\s\S]{0,400}onAttachBusy=\{setAttachBusy\}/);
       // 올리는 중에는 등록을 막는다 — 다 올라가기 전에 보내면 그 파일이 빠진다
       expect(src).toMatch(/if \(attachBusy\)/);
     }

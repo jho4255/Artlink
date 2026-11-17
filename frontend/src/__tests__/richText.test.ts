@@ -67,10 +67,9 @@ describe('소스 가드 — 공모·전시 소개는 서식 있는 글로 그리
     }
   });
   it('등록 폼의 소개 편집기는 함수형으로 갱신한다 — 편집기가 처음 콜백을 붙들면 다른 칸을 되돌린다', () => {
-    const my = read('pages/MyPage.tsx');
-    expect(my).toContain("onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}");
-    expect(my).toContain('onChange={(v) => setForm(prev => ({ ...prev, description: v }))} placeholder="전시 소개"');
-    expect(read('components/admin/HostedExhibitionsSection.tsx')).toContain("onChange={(v) => { setForm(prev => ({ ...prev, description: v })); clearError('description'); }}");
+    // 공모 등록(갤러리·아트링크 주최)은 공용 폼, 전시 등록은 전시 폼(2026-11-15)
+    expect(read('components/exhibition-form/ExhibitionFormBody.tsx')).toContain("onChange={(v) => { setForm((prev: ExFormValues) => ({ ...prev, description: v })); clearError('description'); }}");
+    expect(read('components/show-form/ShowFormBody.tsx')).toContain("onChange={(v) => { setForm((prev) => ({ ...prev, description: v })); clearError('description'); }} placeholder=\"전시 소개\"");
   });
   it('편집기는 바깥 값 변경(임시저장 복원·제출 뒤 비우기)을 따라간다', () => {
     const ed = read('components/shared/RichTextEditor.tsx');

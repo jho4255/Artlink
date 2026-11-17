@@ -1,323 +1,164 @@
 /**
- * GalleriesPage - 갤러리 찾기 페이지
+ * GalleriesPage — 갤러리 찾기 (`/galleries`, 2026-11-15 개편)
  *
- * 기능:
- *  - 갤러리 목록을 반응형 그리드로 표시
- *  - 지역 필터 (서울/경기북부/경기남부/대전/부산)
- *  - 리뷰순 정렬 토글
- *  - 각 갤러리 카드: 사진, 이름, 주소, 전화번호, 한줄소개, 찜하기, 리뷰 개수
- *  - 갤러리 클릭 시 상세 페이지(/galleries/:id) 이동
+ * 작가가 갤러리를 고르는 이유는 리뷰·전화번호가 아니라 "지금 작가를 뽑는가 / 무슨 전시를 하는가"다.
+ * 고치기 전(복제본): 11곳 전부 '아직 리뷰 없음' · 카드마다 전화번호 · 모집·전시 신호 없음 · [리뷰순]을 눌러도 순서가 그대로였다.
  *
- * ⚠️ **별점은 2026-09-10 에 없앴다** — 별점 필터(3점+/4점+)와 별점순 정렬도 함께 뺐다.
- *    점수를 화면에 안 보여주면서 그걸로 거르게 하면 **기준을 알 수 없는 필터**가 된다.
- *    서버도 `minRating`·`sortBy=rating` 을 무시한다.
+ *  · 카드: 사진 · 이름 · 동네(`addressArea`)·리뷰 수(있을 때만) · 한 줄 소개 · **모집 중**(마감 가까운 공모, 외 N) · **전시 중/예정**
+ *    — 둘 다 서버가 같이 내려준다(`GET /galleries` 의 openCall · nowShow, 모집 중 규칙은 모집공고 [모집 중] 과 같다)
+ *  · 순서(기본) = 모집 중인 갤러리 먼저, 그 안은 누적 조회수 순 — **기준은 화면에 적지 않는다**(사용자 결정). [리뷰순]은 그대로
+ *  · 지역은 갤러리가 있는 곳만(`presentRegions`), 건수는 그리지 않는다 · 지역은 화면에서 거른다(거르기 줄을 만들려면 거르기 전 목록이 필요)
+ *  · 휴대폰(768px 미만)은 줄 목록, 그 이상은 격자. 둥근 모서리·사진 색 그림자는 없앴다(DESIGN.md)
  *
- * API: GET /api/galleries?region=SEOUL&sortBy=reviewCount
+ * ⚠️ 별점은 2026-09-10 에 없앴다 — 별점 필터·정렬을 되살리지 말 것(서버도 `minRating` 을 무시한다).
+ * API: GET /api/galleries?q=&sortBy=reviewCount
  */
-import { useState, useEffect, useRef } from 'react';
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Heart, Phone, MapPin, X, Plus, Search, MessageSquare } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import api from '@/lib/axios';
-import { extractColor } from '@/lib/extractColor';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, canFavorite, REGION_CODES } from '@/lib/utils';
-import { galleryPath } from '@/lib/handle';
-import SkeletonImage from '@/components/shared/SkeletonImage';
+import { regionLabels, canFavorite } from '@/lib/utils';
+import { ChoiceButton, ListHeader } from '@/components/listing/ListControls';
+import { GalleryCard, GalleryRow } from '@/components/listing/GalleryCards';
+import { presentRegions } from '@/lib/listings';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Gallery } from '@/types';
-
-// 지역 필터 옵션
-const regions = REGION_CODES;   // 지역 목록은 lib/utils.ts 한 곳(서버 lib/regions.ts 와 같다)
 
 export default function GalleriesPage() {
   const queryClient = useQueryClient();
-  const { isAuthenticated, user } = useAuthStore();
+  const { user } = useAuthStore();
+  const wide = useMediaQuery('(min-width: 768px)');
 
-  // 필터 상태 — URL 쿼리스트링과 동기화(뒤로가기 시 필터 유지). 호출부는 기존 setter 시그니처 유지.
   const [searchParams, setSearchParams] = useSearchParams();
-  const setParam = (key: string, value: string | number | null) => {
-    setSearchParams(prev => {
+  const setParams = (patch: Record<string, string | null>) => {
+    setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (value === null || value === '') next.delete(key);
-      else next.set(key, String(value));
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      }
       return next;
     }, { replace: true });
   };
-  const selectedRegion = searchParams.get('region');
-  const setSelectedRegion = (v: string | null) => setParam('region', v);
-  const sortBy = searchParams.get('sortBy');
-  const setSortBy = (v: string | null) => setParam('sortBy', v);
-  const appliedSearch = searchParams.get('q') ?? '';
-  const setAppliedSearch = (v: string) => setParam('q', v);
-  const [search, setSearch] = useState(appliedSearch); // 입력 중인 검색어(로컬)
+  const region = searchParams.get('region');
+  const sortBy = searchParams.get('sortBy') === 'reviewCount' ? 'reviewCount' : null;
+  const q = searchParams.get('q') ?? '';
 
-  // 갤러리 목록 조회
-  const { data: galleries = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
-    queryKey: ['galleries', selectedRegion, sortBy, appliedSearch],
+  const queryKey = ['galleries', sortBy, q] as const;
+  const { data: all = [], isLoading, isError, refetch } = useQuery<Gallery[]>({
+    queryKey,
     queryFn: () => {
       const params = new URLSearchParams();
-      if (selectedRegion) params.set('region', selectedRegion);
       if (sortBy) params.set('sortBy', sortBy);
-      if (appliedSearch) params.set('q', appliedSearch);
-      return api.get(`/galleries?${params}`).then(r => r.data);
+      if (q) params.set('q', q);
+      return api.get(`/galleries?${params}`).then((r) => r.data);
     },
     staleTime: 0,
     refetchOnMount: 'always',
   });
 
-  // 찜하기 토글 - 낙관적 업데이트
-  const currentQueryKey = ['galleries', selectedRegion, sortBy, appliedSearch] as const;
+  // 찜 — 낙관적 갱신(CLAUDE.md Key Patterns)
   const favMutation = useMutation({
     mutationFn: (galleryId: number) => api.post('/favorites/toggle', { galleryId }),
     onMutate: async (galleryId: number) => {
-      await queryClient.cancelQueries({ queryKey: currentQueryKey });
-      const prevGalleries = queryClient.getQueryData<Gallery[]>([...currentQueryKey]);
-      if (prevGalleries) {
-        queryClient.setQueryData([...currentQueryKey],
-          prevGalleries.map(g => g.id === galleryId ? { ...g, isFavorited: !g.isFavorited } : g)
-        );
-      }
-      return { prevGalleries };
+      await queryClient.cancelQueries({ queryKey });
+      const prev = queryClient.getQueryData<Gallery[]>([...queryKey]);
+      if (prev) queryClient.setQueryData([...queryKey], prev.map((g) => (g.id === galleryId ? { ...g, isFavorited: !g.isFavorited } : g)));
+      return { prev };
     },
-    onError: (_err, _galleryId, context) => {
-      if (context?.prevGalleries) {
-        queryClient.setQueryData([...currentQueryKey], context.prevGalleries);
-      }
-    },
-    onSettled: (_data, _err, galleryId) => {
-      queryClient.invalidateQueries({ queryKey: currentQueryKey });
+    onError: (_e, _id, ctx) => { if (ctx?.prev) queryClient.setQueryData([...queryKey], ctx.prev); },
+    onSettled: (_d, _e, galleryId) => {
+      queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ['gallery', String(galleryId)] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
   });
 
-  // 현재 적용된 필터 목록
-  const activeFilters: { label: string; onRemove: () => void }[] = [];
-  if (selectedRegion) {
-    activeFilters.push({
-      label: regionLabels[selectedRegion] || selectedRegion,
-      onRemove: () => setSelectedRegion(null),
-    });
-  }
-  if (appliedSearch) {
-    activeFilters.push({
-      label: `"${appliedSearch}"`,
-      onRemove: () => { setSearch(''); setAppliedSearch(''); },
-    });
-  }
+  const regions = useMemo(() => presentRegions(all, region), [all, region]);
+  const shown = useMemo(() => (region ? all.filter((g) => g.region === region) : all), [all, region]);
+  const showFav = canFavorite(user);
+  const onFav = (id: number) => favMutation.mutate(id);
 
-  return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      {/* 헤더 */}
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-        <div>
-          <h1 className="text-4xl md:text-5xl font-serif text-gray-900">Galleries</h1>
-          <p className="text-base text-gray-400 mt-2">Find your next partner</p>
-        </div>
-        {user?.role === 'GALLERY' && (
-          <Link
-            to="/galleries/new"
-            className="flex-none inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/5 transition-colors whitespace-nowrap"
-          >
-            <Plus size={15} /> 갤러리 등록
-          </Link>
-        )}
-      </div>
-
-      {/* 검색 */}
-      <form onSubmit={(e) => { e.preventDefault(); setAppliedSearch(search.trim()); }} className="relative mb-5">
-        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="갤러리 이름·주소 검색"
-          className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-        />
-        {search && (
-          <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); }} aria-label="검색어 지우기"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
-            <X size={16} />
-          </button>
-        )}
-      </form>
-
-      {/* 필터 — 행 구분 */}
-      <div className="space-y-3 mb-4 text-base">
-        {/* 지역 */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="text-gray-700 text-sm font-medium w-10">지역</span>
-          {regions.map(r => (
-            <button
-              key={r}
-              onClick={() => setSelectedRegion(selectedRegion === r ? null : r)}
-              className={`cursor-pointer transition-colors ${
-                selectedRegion === r
-                  ? 'text-gray-900 underline underline-offset-4 decoration-1'
-                  : 'text-gray-400 hover:text-gray-900'
-              }`}
-            >
-              {regionLabels[r]}
-            </button>
-          ))}
-        </div>
-
-      </div>
-
-      {/* 적용된 필터 */}
-      {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-3 mb-8">
-          {activeFilters.map((f, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1.5 text-sm text-gray-600"
-            >
-              {f.label}
-              <button onClick={f.onRemove} className="text-gray-400 hover:text-gray-900 cursor-pointer">
-                <X size={14} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 구분선 */}
-      <div className="border-t border-gray-200 mb-6" />
-
-      {/* 정렬 — 우측 정렬 (패딩으로 터치 히트영역 확보, 시각 위치는 네거티브 마진으로 유지) */}
-      <div className="flex justify-end items-center gap-1 mb-8 text-sm">
-        <button
-          onClick={() => setSortBy(sortBy === 'reviewCount' ? null : 'reviewCount')}
-          className={`px-2.5 py-2.5 -my-2.5 -mr-2.5 cursor-pointer transition-colors ${
-            sortBy === 'reviewCount'
-              ? 'text-gray-900 underline underline-offset-4 decoration-1'
-              : 'text-gray-400 hover:text-gray-900'
-          }`}
-        >
-          리뷰순
-        </button>
-      </div>
-
-      {/* 갤러리 그리드 */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="h-64 bg-gray-100 animate-pulse" />
-          ))}
-        </div>
-      ) : isError ? (
-        <div className="text-center py-20">
-          <p className="text-lg text-gray-700">갤러리를 불러오지 못했습니다.</p>
-          <p className="mt-1 text-sm text-gray-400">잠시 후 다시 시도해주세요.</p>
-          <button onClick={() => refetch()} className="mt-6 px-6 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer">
-            다시 시도
-          </button>
-        </div>
-      ) : galleries.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-lg">조건에 맞는 갤러리가 없습니다.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {galleries.map((gallery) => (
-            <GlowCard
-              key={gallery.id}
-              imageSrc={gallery.images?.[0]?.url || gallery.mainImage || ''}
-              alt={`${gallery.name} 대표 이미지`}
-              fallbackLabel={gallery.name}
-              to={galleryPath(gallery)}
-            >
-
-              {/* 갤러리 정보 */}
-              <div className="mt-3">
-                <div className="flex justify-between items-start gap-2">
-                  <h3 className="min-w-0 text-xl font-medium text-gray-900 hover:underline underline-offset-2 decoration-1">
-                    {gallery.name}
-                  </h3>
-                  {canFavorite(user) && (
-                    <button
-                      onClick={(e) => {
-                        // Link(앵커) 내부 버튼: 기본 이동 차단 + 버블링 차단
-                        e.preventDefault();
-                        e.stopPropagation();
-                        favMutation.mutate(gallery.id);
-                      }}
-                      className="min-h-[44px] min-w-[44px] -m-2.5 flex items-center justify-center flex-none cursor-pointer"
-                      aria-label={gallery.isFavorited ? '찜 해제' : '찜하기'}
-                    >
-                      <Heart
-                        size={18}
-                        className={gallery.isFavorited ? 'text-accent fill-accent' : 'text-gray-300 hover:text-gray-500'}
-                      />
-                    </button>
-                  )}
-                </div>
-
-                {/* 리뷰 개수 — 별점을 없앤 자리(2026-09-10). 0건이면 '아직 리뷰 없음' */}
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  {gallery.reviewCount > 0 ? (
-                    <span className="flex items-center gap-1 text-sm text-gray-600">
-                      <MessageSquare size={14} /> 리뷰 {gallery.reviewCount}개
-                    </span>
-                  ) : (
-                    <span className="text-sm text-gray-400">아직 리뷰 없음</span>
-                  )}
-                </div>
-
-                {/* 주소, 전화번호 */}
-                <p className="text-base text-gray-400 mt-2 flex items-center gap-1.5">
-                  <MapPin size={14} /> {gallery.address}
-                </p>
-                <p className="text-base text-gray-400 flex items-center gap-1.5">
-                  <Phone size={14} /> {gallery.phone}
-                </p>
-                <p className="text-base text-gray-500 mt-1.5 line-clamp-2">{gallery.description}</p>
-              </div>
-            </GlowCard>
-          ))}
-        </div>
-      )}
+  const sortRow = (
+    <div role="group" aria-label="정렬" className="flex shrink-0 items-center gap-4 text-[13px] md:gap-5 md:text-sm">
+      <ChoiceButton on={!sortBy} onClick={() => setParams({ sortBy: null })}>모집 중 먼저</ChoiceButton>
+      <ChoiceButton on={sortBy === 'reviewCount'} onClick={() => setParams({ sortBy: 'reviewCount' })}>리뷰순</ChoiceButton>
     </div>
   );
-}
-
-// hover 시 이미지 dominant color glow 카드
-// 실제 <a>(Link)로 렌더 — 새 탭 열기·주소 복사·키보드 접근이 가능해짐 (div onClick 금지)
-function GlowCard({ imageSrc, alt, fallbackLabel, to, children }: { imageSrc: string; alt?: string; fallbackLabel?: string; to: string; children: React.ReactNode }) {
-  const [color, setColor] = useState<string | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const extracted = useRef(false);
-
-  const handleMouseEnter = () => {
-    setHovered(true);
-    if (!extracted.current && imageSrc) {
-      extracted.current = true;
-      extractColor(imageSrc).then(setColor);
-    }
-  };
+  const regionButtons = (
+    <>
+      <ChoiceButton on={!region} onClick={() => setParams({ region: null })}>전체</ChoiceButton>
+      {regions.map((r) => (
+        <ChoiceButton key={r} on={region === r} onClick={() => setParams({ region: region === r ? null : r })}>{regionLabels[r] ?? r}</ChoiceButton>
+      ))}
+    </>
+  );
 
   return (
-    <Link
-      to={to}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setHovered(false)}
-      className="group cursor-pointer block"
-    >
-      <div
-        className="rounded-lg overflow-hidden transition-shadow duration-500"
-        style={hovered && color ? { boxShadow: `0 6px 30px ${color}, 0 2px 8px ${color}` } : {}}
-      >
-        {/* 카드 크기는 4:3 고정, 이미지는 원본 비율 유지(contain) + 로딩 스켈레톤 */}
-        <SkeletonImage
-          src={imageSrc}
-          alt={alt || ''}
-          fallbackLabel={fallbackLabel}
-          className="aspect-[4/3]"
-          imgClassName="object-contain group-hover:opacity-90 transition-opacity duration-300"
-          loading="lazy"
-          blurFill
-        />
-      </div>
-      {children}
-    </Link>
+    <div className="mx-auto max-w-7xl px-6 pb-16 pt-7 md:px-12 md:pt-14">
+      <ListHeader
+        title="Galleries"
+        placeholder="갤러리 이름·주소 검색"
+        searchLabel="갤러리 검색"
+        applied={q}
+        onApply={(v) => setParams({ q: v })}
+        wide={wide}
+        action={user?.role === 'GALLERY' && (
+          <Link
+            to="/galleries/new"
+            className="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/40 px-3.5 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/5"
+          >
+            <Plus size={15} aria-hidden /> 갤러리 등록
+          </Link>
+        )}
+      />
+
+      {/* 지역(있는 곳만) · 정렬 — PC 는 한 줄, 휴대폰은 지역 줄(옆으로 민다) 아래 정렬 */}
+      {wide ? (
+        <div className="mt-9 flex flex-wrap items-center justify-between gap-x-8 border-b border-gray-200 text-[15px]">
+          <div role="group" aria-label="지역" className="flex flex-wrap items-center gap-x-5">{regionButtons}</div>
+          {sortRow}
+        </div>
+      ) : (
+        <>
+          <div role="group" aria-label="지역" className="-mx-6 mt-5 flex items-center gap-5 overflow-x-auto border-b border-gray-200 px-6 text-[15px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {regionButtons}
+            <span aria-hidden="true" className="w-2 shrink-0" />
+          </div>
+          <div className="flex justify-end">{sortRow}</div>
+        </>
+      )}
+
+      {isLoading ? (
+        <div className={wide ? 'mt-9 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-3' : 'mt-2 space-y-4'}>
+          {[1, 2, 3, 4, 5, 6].map((i) => <div key={i} className={wide ? 'aspect-[4/3] animate-pulse bg-gray-100' : 'h-[110px] animate-pulse bg-gray-100'} />)}
+        </div>
+      ) : isError ? (
+        <div className="py-20 text-center">
+          <p className="text-lg text-gray-700">갤러리를 불러오지 못했습니다.</p>
+          <p className="mt-1 text-sm text-gray-500">잠시 후 다시 시도해주세요.</p>
+          <button onClick={() => refetch()} className="mt-6 cursor-pointer rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white hover:bg-gray-700">다시 시도</button>
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="py-20 text-center text-gray-600">
+          <p className="text-lg">조건에 맞는 갤러리가 없어요.</p>
+          {(region || q) && (
+            <button type="button" onClick={() => setParams({ region: null, q: null })} className="mt-3 min-h-[44px] text-sm text-gray-900 underline underline-offset-4">
+              조건 지우기
+            </button>
+          )}
+        </div>
+      ) : wide ? (
+        <ul className="mt-9 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-3">
+          {shown.map((g) => <li key={g.id} className="min-w-0"><GalleryCard g={g} showFav={showFav} onFav={onFav} /></li>)}
+        </ul>
+      ) : (
+        <ul className="border-t border-gray-100">
+          {shown.map((g) => <GalleryRow key={g.id} g={g} showFav={showFav} onFav={onFav} />)}
+        </ul>
+      )}
+    </div>
   );
 }

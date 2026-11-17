@@ -1,5 +1,6 @@
 /**
- * 공모 등록 폼 아래 한 줄 일정 요약 — `지원 9/27–10/11 · 자료 제출 ~10/21 · 전시 11/1–11/15` (2026-09-29).
+ * 공모 등록 폼 아래 한 줄 일정 요약 — `접수 9/27–10/11 · 자료 제출 ~10/21 · 전시 11/1–11/15` (2026-09-29).
+ * 2026-11-15 부터 '지원' → '접수'(폼 칸 이름 '접수 시작일·접수 마감일' · 상세 일정 띠 '접수 시작·접수 마감'과 같은 말).
  *
  * 폼의 날짜 다섯 칸은 각각 따로 보여서 순서가 한눈에 안 들어왔다(예전엔 칸 순서마저 공모 → 전시 → 자료제출이었다).
  * 칸을 시간순으로 옮기고, 채운 만큼 이 한 줄이 이어지게 했다.
@@ -34,7 +35,7 @@ function range(a?: string | null, b?: string | null): string {
 export function scheduleSummary(s: ScheduleInput): string {
   const parts: string[] = [];
   const apply = range(s.deadlineStart, s.deadline);
-  if (apply) parts.push(`지원 ${apply}`);
+  if (apply) parts.push(`접수 ${apply}`);
   if (!s.recruitOnly) {
     const sub = md(s.submissionDeadline);
     if (sub) parts.push(`자료 제출 ~${sub}`);

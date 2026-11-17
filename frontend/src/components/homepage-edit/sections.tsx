@@ -101,8 +101,8 @@ export function ProfilePhotoField({ avatar, name, show, onShow, onAvatar }: {
 }
 
 export function IntroSection({ tagline, onTagline, statement, onStatement, series, seriesNotes, onSeriesNote, onField, photo }: {
-  /** 맨 위 프로필 사진 칸 — 이름·한 줄 소개와 같은 머리말에 나오므로 여기 둔다 */
-  photo: ReactNode;
+  /** 맨 위 칸(예전엔 프로필 사진) — 2026-11-14 부터 프로필 사진은 [꾸미기] 의 '첫 화면' 구역에 있다. 남겨 둔 자리 */
+  photo?: ReactNode;
   tagline: string; onTagline: (v: string) => void;
   statement: string; onStatement: (v: string) => void;
   /** 작품에 실제로 붙어 있는 시리즈 이름 */
@@ -221,7 +221,43 @@ export function FileSection({ value, onChange }: { value: string | null; onChang
   );
 }
 
-export function StyleSection({ handle, onHandle, currentHandle, handleSuggestion, handleError, design, onDesign, images, showPrice, onShowPrice, pricedCount, onField }: {
+/** [꾸미기] 안의 구역 머리 — 주소 · 첫 화면 · 색과 글꼴 · 작품 · 문의(2026-11-14, 규칙 82) */
+function StyleGroup({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
+  return (
+    <section className="space-y-4 border-t border-gray-200 pt-5 first:border-t-0 first:pt-0" data-testid={testId}>
+      <h3 className="text-[15px] font-semibold text-gray-950">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** 켜고 끄는 한 줄 — 제목 · 한 줄 설명 · (경고) */
+function Toggle({ checked, onChange, label, hint, warn, testId }: {
+  checked: boolean; onChange: (v: boolean) => void; label: string; hint?: ReactNode; warn?: ReactNode; testId?: string;
+}) {
+  return (
+    <label className="flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-gray-900" data-testid={testId} />
+      <span className="min-w-0">
+        <span className="block text-sm text-gray-900">{label}</span>
+        {hint && <span className="mt-0.5 block break-keep text-xs leading-relaxed text-gray-500">{hint}</span>}
+        {warn && <span className="mt-1 block break-keep text-xs text-accent">{warn}</span>}
+      </span>
+    </label>
+  );
+}
+
+/**
+ * [꾸미기] (2026-11-14 재구성, 규칙 82) — 홈페이지가 '내 사이트' 모양이 되면서 고를 것을 구역으로 묶었다:
+ *   주소 · **첫 화면**(대표작 · 프로필 사진 · 진행 중인 전시 띠) · 색과 글꼴 · 작품(가격) · **문의**(비회원 문의 받기).
+ * 틀(머리·표지·버튼·탭)은 모든 작가에게 저절로 바뀐다 — 여기서 고르는 건 내용·색·노출뿐이다. 새로 '보이게 되는 것'은 작가가 켠 것뿐
+ * (예외: 전시 중 띠는 기본 켜짐 — 갤러리 페이지 '함께한 작가'에 이미 공개된 관계다).
+ * 값은 전부 아래 [저장] 한 번에(규칙 60). 프로필 사진만 올리는 즉시 바뀐다(작품 사진처럼).
+ */
+export function StyleSection({
+  handle, onHandle, currentHandle, handleSuggestion, handleError, design, onDesign, images, showPrice, onShowPrice, pricedCount, onField,
+  photo, showNow, onShowNow, nowTitle, guestInquiry, onGuestInquiry,
+}: {
   handle: string; onHandle: (v: string) => void;
   currentHandle?: string | null;
   handleSuggestion?: string | null;
@@ -233,52 +269,77 @@ export function StyleSection({ handle, onHandle, currentHandle, handleSuggestion
   /** 가격을 적은 판매 가능한 작품 수 — 0 이면 켜도 보일 게 없다고 알린다 */
   pricedCount: number;
   onField: (f: EditField) => void;
+  /** 프로필 사진 칸(ProfilePhotoField) — 이름 위 동그라미라 '첫 화면' 구역에 둔다 */
+  photo: ReactNode;
+  /** 첫 화면 '전시 중' 띠(기본 켜짐) */
+  showNow: boolean; onShowNow: (v: boolean) => void;
+  /** 지금 띠에 걸릴 전시 이름 — 없으면 켜 두어도 아무것도 안 나온다고 알린다 */
+  nowTitle?: string | null;
+  /** 로그인하지 않은 방문자의 문의 받기(기본 꺼짐) */
+  guestInquiry: boolean; onGuestInquiry: (v: boolean) => void;
 }) {
   return (
     <div className="space-y-6">
-      <div onFocusCapture={() => onField('handle')}>
-        <label htmlFor={fieldId('handle')} className="mb-1.5 block text-sm font-medium text-gray-800">홈페이지 주소</label>
-        <p className="mb-2 break-keep text-xs leading-relaxed text-gray-500">
-          인스타 프로필·명함에 적을 주소입니다. 영문 소문자·숫자·마침표·밑줄, 3~30자. 인스타그램 아이디를 그대로 쓰면 기억하기 쉽습니다.
-        </p>
-        <HomepageAddressField
-          inputId={fieldId('handle')}
-          value={handle}
-          onChange={onHandle}
-          current={currentHandle}
-          suggestion={handleSuggestion}
-          error={handleError}
+      <StyleGroup title="주소" testId="style-address">
+        <div onFocusCapture={() => onField('handle')}>
+          <label htmlFor={fieldId('handle')} className="mb-1.5 block text-sm font-medium text-gray-800">홈페이지 주소</label>
+          <p className="mb-2 break-keep text-xs leading-relaxed text-gray-500">
+            인스타 프로필·명함에 적을 주소입니다. 영문 소문자·숫자·마침표·밑줄, 3~30자. 인스타그램 아이디를 그대로 쓰면 기억하기 쉽습니다.
+          </p>
+          <HomepageAddressField
+            inputId={fieldId('handle')}
+            value={handle}
+            onChange={onHandle}
+            current={currentHandle}
+            suggestion={handleSuggestion}
+            error={handleError}
+          />
+          <p className="mt-3 break-keep text-xs leading-relaxed text-gray-500">
+            홈페이지 맨 위에 나오는 이름(닉네임)과 인스타그램 주소는{' '}
+            <Link to="/mypage" className="text-gray-800 underline underline-offset-2">프로필</Link>에서 바꿉니다.
+          </p>
+        </div>
+      </StyleGroup>
+
+      <StyleGroup title="첫 화면" testId="style-cover">
+        <HomepageStylePicker value={design} images={images} onChange={onDesign} part="hero" />
+        {photo}
+        <Toggle
+          checked={showNow}
+          onChange={onShowNow}
+          label="진행 중인 전시를 첫 화면에 보이기"
+          hint="아트링크에서 선정된 전시가 열리는 동안(시작 30일 전부터) 이름 아래에 한 줄로 나옵니다."
+          testId="show-now"
         />
-        <p className="mt-3 break-keep text-xs leading-relaxed text-gray-500">
-          홈페이지 맨 위에 나오는 이름(닉네임)과 인스타그램 주소는{' '}
-          <Link to="/mypage" className="text-gray-800 underline underline-offset-2">프로필</Link>에서 바꿉니다.
-        </p>
-      </div>
+        {showNow && nowTitle && <p className="-mt-2 ml-8 break-keep text-xs text-gray-500">지금: {nowTitle}</p>}
+      </StyleGroup>
+
+      <StyleGroup title="색과 글꼴" testId="style-colors">
+        <HomepageStylePicker value={design} images={images} onChange={onDesign} part="style" />
+      </StyleGroup>
 
       {/* 작품 가격 — 작가가 원할 때만(2026-10-15). 포트폴리오 PDF 는 포트폴리오 만들기 [작품] 탭에서 따로 켠다 */}
-      <div>
-        <p className="mb-1.5 text-sm font-medium text-gray-800">작품 가격</p>
-        <label className="flex min-h-[44px] cursor-pointer items-start gap-3 py-1">
-          <input
-            type="checkbox"
-            checked={showPrice}
-            onChange={(e) => onShowPrice(e.target.checked)}
-            className="mt-0.5 h-5 w-5 shrink-0 accent-gray-900"
-            data-testid="show-price"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm text-gray-900">홈페이지에 작품 가격 보이기</span>
-            <span className="mt-0.5 block break-keep text-xs leading-relaxed text-gray-500">
-              가격을 적은 작품 아래에 ‘1,200,000원’ 처럼 나옵니다. 판매 완료·비매 작품은 빠져요. 가격은 [작품]에서 작품을 눌러 적고, 포트폴리오 PDF 는 따로 켭니다.
-            </span>
-            {showPrice && pricedCount === 0 && (
-              <span className="mt-1 block break-keep text-xs text-accent">아직 가격을 적은 작품이 없어요 — 켜 두어도 보이는 가격이 없습니다.</span>
-            )}
-          </span>
-        </label>
-      </div>
+      <StyleGroup title="작품" testId="style-works">
+        <Toggle
+          checked={showPrice}
+          onChange={onShowPrice}
+          label="홈페이지에 작품 가격 보이기"
+          hint="가격을 적은 작품 아래에 ‘1,200,000원’ 처럼 나옵니다. 판매 완료·비매 작품은 빠져요. 가격은 [작품]에서 작품을 눌러 적고, 포트폴리오 PDF 는 따로 켭니다."
+          warn={showPrice && pricedCount === 0 ? '아직 가격을 적은 작품이 없어요 — 켜 두어도 보이는 가격이 없습니다.' : undefined}
+          testId="show-price"
+        />
+      </StyleGroup>
 
-      <HomepageStylePicker value={design} images={images} onChange={onDesign} />
+      {/* 문의(2026-11-14) — 로그인한 회원의 문의는 늘 ArtTalk 으로 온다. 여기서 켜면 로그인하지 않은 방문자도 이름·연락처를 남긴다 */}
+      <StyleGroup title="문의" testId="style-inquiry">
+        <Toggle
+          checked={guestInquiry}
+          onChange={onGuestInquiry}
+          label="로그인하지 않은 방문자의 문의도 받기"
+          hint={<>회원의 문의는 늘 ArtTalk 으로 옵니다. 켜면 방문자가 이름·연락처를 남길 수 있고, 남긴 문의는 <Link to="/mypage?tab=received-inquiries" className="text-gray-800 underline underline-offset-2">받은 문의</Link>에 모입니다.</>}
+          testId="guest-inquiry"
+        />
+      </StyleGroup>
     </div>
   );
 }

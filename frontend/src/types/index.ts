@@ -69,6 +69,39 @@ export interface Gallery {
   /** 홈페이지 주소 `/@handle` — 작가와 같은 이름 공간 */
   handle?: string | null;
   isFavorited?: boolean;
+  /** 관람 시간 — 자유 글(2026-11-14) */
+  openHours?: string | null;
+  /** 비회원 문의를 받는가(기본 꺼짐, 2026-11-14) */
+  guestInquiry?: boolean;
+  /** [소식] 탭 — 갤러리 주인 계정의 ArtStory 수(보는 사람 기준, 서버가 센다) */
+  storyCount?: number;
+  highlightCount?: number;
+  /** 지금 전시 — 진행 중(또는 60일 안에 시작하는) 승인된 전시 하나 */
+  nowShow?: GalleryNowShow | null;
+  /**
+   * 갤러리 목록 카드의 '모집 중' — 마감이 가장 가까운 모집 중 공모 + 모집 중 공모 수(2026-11-15, `GET /galleries` 만 싣는다).
+   * 규칙은 모집공고 [모집 중] 과 같다(서버 lib/openCalls.ts)
+   */
+  openCall?: { id: number; title: string; deadline: string; count: number } | null;
+}
+
+/** 작가 홈페이지 첫 화면 '전시 중' 띠 — 서버 `lib/nowShowing.ts artistNowShowing` (2026-11-14) */
+export interface NowShowing {
+  state: 'ongoing' | 'upcoming';
+  exhibitionId: number;
+  title: string;
+  startDate: string | null;
+  endDate: string | null;
+  gallery: { id: number; name: string; handle: string | null } | null;
+}
+
+export interface GalleryNowShow {
+  state: 'ongoing' | 'upcoming';
+  id: number;
+  title: string;
+  posterImage: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface GalleryImage {
@@ -436,6 +469,10 @@ export interface Portfolio {
   showPrice?: boolean;
   /** 홈페이지 이름 위에 프로필 사진(User.avatar)을 보이는가(기본 꺼짐, 2026-10-28) */
   showAvatar?: boolean;
+  /** 비회원 문의를 받는가(기본 꺼짐, 2026-11-14) */
+  guestInquiry?: boolean;
+  /** 지금 하는(곧 할) 전시 — 편집 미리보기용이라 [꾸미기]에서 끈 것과 무관하게 온다(2026-11-14) */
+  nowShowing?: NowShowing | null;
   images: PortfolioImage[];
   /** PDF 버전(작품 선택·순서·디자인 묶음). 내 포트폴리오 조회에만 실린다 (2026-09-16) */
   versions?: PortfolioVersion[];
@@ -519,6 +556,13 @@ export interface PublicPortfolio {
   showAvatar?: boolean;
   images: PortfolioImage[];
   user: { id: number; name: string; nickname?: string | null; handle?: string | null; avatar?: string; instagramUrl?: string | null };
+  /** [소식] 탭을 그릴지 — 보는 사람 기준으로 서버가 센 값(2026-11-14, 규칙 82) */
+  storyCount?: number;
+  highlightCount?: number;
+  /** 첫 화면 '전시 중' 띠 — 작가가 끄면 null */
+  nowShowing?: NowShowing | null;
+  /** 비회원 문의를 받는가(기본 꺼짐) */
+  guestInquiry?: boolean;
 }
 
 export interface Show {

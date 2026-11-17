@@ -159,8 +159,8 @@ interface PageKind { label: string; ref?: { kind: RefKind; key: string } }
 
 /** 홈페이지 탭 이름(작가 `homepageTabs` · 갤러리 `galleryTabs` 의 `?tab=` 값) */
 const TAB_LABELS: Record<string, string> = {
-  note: '작가노트', cv: '약력', file: '포트폴리오', guestbook: '방명록',
-  calls: '모집 중', artists: '함께한 작가', history: '지난 전시', reviews: '리뷰',
+  note: '작가노트', cv: '약력', file: '포트폴리오', guestbook: '방명록', news: '소식',
+  calls: '모집 중', artists: '작가', history: '지난 전시', reviews: '리뷰',
 };
 
 /** `@주소` 는 작가일 수도 갤러리일 수도 있다 — 이름을 찾기 전의 자리 표시 */
@@ -186,6 +186,8 @@ export function guestPageKind(path: string): PageKind {
   if ((r = p.match(/^\/shows\/(\d+)$/))) return { label: '전시 상세', ref: { kind: 'show', key: r[1] } };
   if (p === '/community') return { label: '커뮤니티' };
   if ((r = p.match(/^\/community\/(\d+)$/))) return { label: '커뮤니티 글', ref: { kind: 'post', key: r[1] } };
+  if (p === '/feed') return { label: 'ArtStory' };   // 2026-11-14 — 전체공개 소식은 비회원도 본다(규칙 81)
+  if (p === '/story/new') return { label: '소식 올리기' };
   if (p === '/login') return { label: '로그인' };
   if (p === '/auth/kakao/callback') return { label: '카카오 로그인' };
   if (p === '/auth/register') return { label: '가입 정보 입력' };

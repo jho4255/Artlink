@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab, typeRich, pickSchedule, kstDay } from '../lib/helpers';
+import { openAs, openMyPageTab, typeRich, pickSchedule, kstDay, submitRegistration } from '../lib/helpers';
 
 /**
  * 공모 등록 풀 UI 폼: 갤러리선택 + 제목 + 4개 날짜 + 소개 + 약관동의 → 등록요청
@@ -33,12 +33,10 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
     kstDay(120),  // 전시 종료
   ]);
   // 한눈에 보는 일정 줄 — 칸을 채우면 아래에 요약이 뜬다
-  await expect(gallery.page.getByText(/지원 \d+\/\d+–\d+\/\d+ · 자료 제출 ~\d+\/\d+ · 전시/)).toBeVisible();
+  await expect(gallery.page.getByText(/접수 \d+\/\d+–\d+\/\d+ · 자료 제출 ~\d+\/\d+ · 전시/).first()).toBeVisible();
 
-  // 약관 동의 → 등록 요청 → 확인 다이얼로그
-  await gallery.page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-  await gallery.page.getByRole('button', { name: '등록 요청' }).first().click();
-  await gallery.page.getByRole('dialog').getByRole('button', { name: '등록 요청' }).click();
+  // 하단 줄 [등록 요청] → 확인 창에서 약관 동의 → [등록 요청] (2026-11-15 — 약관은 확인 창 안)
+  await submitRegistration(gallery.page);
   await expect(gallery.page.locator('body')).toContainText('공모 등록 요청이 제출되었습니다', { timeout: 8000 });
 
   // 관리자 승인

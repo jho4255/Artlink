@@ -21,6 +21,7 @@
 import { guestTrackingAllowed } from './guestActivity';
 import { kstDay } from './homepageNudge';
 import { setPostLoginRedirect, peekPostLoginRedirect } from './postLoginRedirect';
+import { isHomepagePath } from './siteMode';
 
 const SEEN_KEY = 'artlink-intro-guest-answered'; // sessionStorage(이 탭): 로그인하지 않은 사람이 답한 시각(ms)
 const MEMBER_DAY_KEY = 'artlink-intro-member-day'; // localStorage: { [userId]: 'YYYY-MM-DD' } 그날 답했다(또는 홈페이지 팝업에 양보했다)
@@ -47,7 +48,8 @@ export function introForced(search: string): boolean {
  *  `/@` 는 갤러리 홈페이지도 같은 이름공간이라 함께 빠진다(규칙 49). 방문자가 거기서 아트링크의 다른 화면으로 넘어가면 그때는 뜬다. */
 export function introAllowedAt(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/';
-  if (/^\/@[^/]+$/.test(p) || /^\/portfolio\/[^/]+$/.test(p)) return false;
+  // 홈페이지(작가 `/@`·`/portfolio/:id` · 갤러리 `/galleries/:id`) — 판정은 lib/siteMode.ts 한 곳(2026-11-14 부터 숫자 갤러리 주소도 빠진다)
+  if (isHomepagePath(p)) return false;
   if (/^\/(login|signup|password|auth|join|terms|privacy|mypage|messages|feed)(\/|$)/.test(p)) return false;
   if (/^\/(galleries|exhibitions|shows)\/new$/.test(p)) return false;
   if (/^\/exhibitions\/[^/]+\/(apply|operation)(\/|$)/.test(p)) return false;

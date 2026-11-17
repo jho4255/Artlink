@@ -6,7 +6,10 @@ import { openAs, tokenFor, realUploadPath } from '../lib/helpers';
  *  · 읽기는 공개, 글쓰기/댓글은 로그인
  *  · 글마다 실명/익명 선택 — 익명이면 신원이 가려진다
  *  · 홈 인기글 위젯이 좋아요 많은 글을 보여준다
+ * 2026-11-13 — 글쓰기가 블로그형 편집기가 됐다(제목 칸 #post-title · 본문 ProseMirror · 사진은 [사진 넣기]).
+ *   편집기 자체는 79-community-editor.spec.ts 가 본다.
  */
+const editorBody = (page: import('@playwright/test').Page) => page.locator('[data-post-editor] .ProseMirror');
 const API = 'http://localhost:4000/api';
 
 test('★ Navbar 에 [커뮤니티] 가 있고 목록으로 간다', async ({ page }) => {
@@ -26,19 +29,23 @@ test('★ 글쓰기는 전용 페이지로 이동한다 → 상세 → 좋아요
   await page.waitForURL(/\/community\/write/, { timeout: 15000 });
 
   const title = `E2E 커뮤니티 ${Date.now()}`;
-  await page.getByPlaceholder('제목을 입력해주세요.').fill(title);
-  await page.getByPlaceholder('내용을 입력해주세요.').fill('본문 내용입니다. 반갑습니다.');
-  await page.getByRole('button', { name: '등록' }).click();
+  await editorBody(page).waitFor({ timeout: 20000 });
+  await page.locator('#post-title').fill(title);
+  await editorBody(page).click();
+  await page.keyboard.type('본문 내용입니다. 반갑습니다.');
+  await page.getByRole('button', { name: '등록', exact: true }).click();
 
   // 상세로 이동
-  await page.waitForURL(/\/community\/\d+/, { timeout: 15000 });
+  await page.waitForURL(/\/community\/\d+$/, { timeout: 15000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await expect(page.locator('body')).toContainText('본문 내용입니다');
+  await expect(page.locator('[data-post-body]')).toContainText('본문 내용입니다');
 
   // 좋아요 토글 (0 → 1)
-  const likeBtn = page.getByRole('button', { name: /^\s*\d+\s*$/ }).first();
+  const likeBtn = page.getByRole('button', { name: /^좋아요/ });
+  await expect(likeBtn).toHaveText(/좋아요 0/);
   await likeBtn.click();
-  await expect(page.locator('body')).toContainText('1', { timeout: 8000 });
+  await expect(likeBtn).toHaveText(/좋아요 1/, { timeout: 8000 });
+  await expect(likeBtn).toHaveAttribute('aria-pressed', 'true');
 
   // 댓글
   await page.getByPlaceholder('댓글을 입력하세요').fill('첫 댓글이에요');
@@ -51,19 +58,23 @@ test('★ 사진 첨부해서 글쓰기 → 상세에 사진이 보인다', asyn
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/community/write');
   const title = `사진글 ${Date.now()}`;
-  await page.getByPlaceholder('제목을 입력해주세요.').fill(title);
-  await page.getByPlaceholder('내용을 입력해주세요.').fill('작업 중인 사진입니다');
+  await editorBody(page).waitFor({ timeout: 20000 });
+  await page.locator('#post-title').fill(title);
+  await editorBody(page).click();
+  await page.keyboard.type('작업 중인 사진입니다');
 
-  // 하단 [사진 첨부] → 실제 이미지 업로드
-  await page.setInputFiles('input[type="file"]', realUploadPath('image'));
-  // 미리보기 썸네일이 뜬 뒤 등록
-  await expect(page.locator('img').first()).toBeVisible({ timeout: 20000 });
-  await page.getByRole('button', { name: '등록' }).click();
+  // [사진 넣기] → 실제 이미지 업로드(한 장이면 묻지 않고 커서 자리에 들어간다)
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: '사진 넣기' }).first().click();
+  await (await chooser).setFiles(realUploadPath('image'));
+  await expect(page.locator('[data-post-editor] .post-figure-frame img')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('[data-post-editor]')).not.toContainText('올리는 중', { timeout: 30000 });
+  await page.getByRole('button', { name: '등록', exact: true }).click();
 
-  await page.waitForURL(/\/community\/\d+/, { timeout: 15000 });
+  await page.waitForURL(/\/community\/\d+$/, { timeout: 15000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  // 본문 아래 첨부 이미지
-  await expect(page.locator('img').first()).toBeVisible({ timeout: 10000 });
+  // 글 안 사진 — 글 중간(사진을 넣은 자리)에 그려진다
+  await expect(page.locator('[data-post-body] .post-figure-frame img')).toBeVisible({ timeout: 10000 });
   await ctx.close();
 });
 
@@ -126,10 +137,13 @@ test('★ 홈 인기글 위젯이 좋아요 많은 글을 보여준다', async (
 
   const { page, ctx } = await openAs(browser, 'artist');
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /인기글/ })).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('body')).toContainText(title, { timeout: 12000 });
+  // 휴대폰 홈은 탭이다(2026-11-14) — [인기글] 탭을 눌러 그 칸을 연다
+  await page.getByRole('tab', { name: '인기글' }).click();
+  const panel = page.getByTestId('home-panel-popular');
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  await expect(panel).toContainText(title, { timeout: 12000 });
   // 클릭하면 상세로
-  await page.getByText(title).first().click();
+  await panel.getByText(title).first().click();
   await page.waitForURL(new RegExp(`/community/${id}`), { timeout: 10000 });
   await ctx.close();
 });

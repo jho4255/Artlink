@@ -41,7 +41,7 @@ export default function FollowButton({ userId, className = '', iconOnly = false,
     },
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(['follow', userId], ctx.prev); toast.error('잠시 후 다시 시도해주세요.'); },
     onSuccess: (d, next) => { if (next) toast.success('이웃으로 추가했어요.'); qc.setQueryData(['follow', userId], (s: Status) => ({ ...s, ...d })); },
-    onSettled: () => { qc.invalidateQueries({ queryKey: ['follow', userId] }); qc.invalidateQueries({ queryKey: ['story-feed'] }); },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['follow', userId] }); qc.invalidateQueries({ queryKey: ['stories', 'neighbors'] }); },
   });
 
   if (data?.isMe) return null;

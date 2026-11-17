@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>저널 목록</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url(/_blob/a5e27b7076fe8e7685c78cdb4c8797b2) format("woff2");font-weight:100 900;font-display:swap}
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+button{font-family:inherit;cursor:pointer}
+.nav{font-size:16px;font-weight:500;color:#6b7280;text-decoration:none;padding:6px 0}
+.f{height:40px;padding:0;border:0;background:none;font-size:15px;color:#6b7280}
+.f.on{color:#111827;text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1px}
+.card{min-width:0;text-decoration:none;color:inherit;display:block}
+.card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover}
+.k{display:block;margin-top:14px;font-size:12px;font-weight:500;color:#c4302b}
+.t{display:block;margin-top:6px;font-size:20px;font-weight:500;line-height:1.4;color:#111827}
+.e{display:block;margin-top:8px;font-size:14px;line-height:1.65;color:#6b7280}
+.m{display:block;margin-top:12px;font-size:13px;color:#6b7280}
+</style>
+</helmet>
+<div style="background: #fff; color: #1f2937; font-family: Pretendard, system-ui, sans-serif; word-break: keep-all; overflow-wrap: anywhere">
+
+  <header style="border-bottom: 1px solid #f3f4f6">
+    <div style="max-width: 1280px; margin: 0 auto; min-height: 80px; box-sizing: border-box; padding: 12px 48px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 40px">
+      <a href="#" style="font-size: 24px; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+      <nav aria-label="주 메뉴" style="flex: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 32px">
+        <a class="nav" href="#">홈</a><a class="nav" href="#">작가</a><a class="nav" href="#">갤러리</a><a class="nav" href="#">전시</a><a class="nav" href="#">모집공고</a><a class="nav" href="#" style="color: #111827; border-bottom: 2px solid #111827">커뮤니티</a>
+      </nav>
+      <a class="nav" href="#" style="color: #111827">로그인</a>
+    </div>
+  </header>
+
+  <main style="max-width: 1280px; margin: 0 auto; box-sizing: border-box; padding: 56px 48px 96px">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+      <div>
+        <h1 style="margin: 0; font-size: 48px; line-height: 1.15; font-weight: 500; letter-spacing: -0.01em; color: #111827">Community</h1>
+        <p style="margin: 10px 0 0; font-size: 16px; color: #6b7280">작가와 갤러리가 나누는 작업 이야기</p>
+      </div>
+      <span style="font-size: 13px; color: #6b7280">이 탭은 초대받은 필진만 글을 써요</span>
+    </div>
+
+    <div role="group" aria-label="탭" style="display: flex; flex-wrap: wrap; gap: 0 26px; margin-top: 32px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb">
+      <button type="button" class="f">전체</button>
+      <button type="button" class="f">자유</button>
+      <button type="button" class="f">질문</button>
+      <button type="button" class="f">작업일지</button>
+      <button type="button" class="f">꿀팁</button>
+      <button type="button" class="f">전시 후기</button>
+      <button type="button" class="f on" aria-pressed="true">전시 준비</button>
+      <button type="button" class="f">공지</button>
+    </div>
+
+    <!-- 추천 글 (크게) -->
+    <a href="#" style="display: flex; flex-wrap: wrap; gap: 0 48px; margin-top: 40px; text-decoration: none; color: inherit">
+      <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="" style="flex: 3 1 420px; min-width: 0; display: block; aspect-ratio: 3 / 2; object-fit: cover">
+      <span style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 24px 0">
+        <span style="font-size: 13px; font-weight: 500; color: #c4302b">전시 준비 · 추천</span>
+        <span style="margin-top: 12px; font-size: 32px; font-weight: 600; line-height: 1.35; color: #111827">전시 준비 일지 ① 작품을 고르는 일</span>
+        <span style="margin-top: 14px; font-size: 16px; line-height: 1.75; color: #6b7280">삼 년 동안 그린 스무 점 가운데 여덟 점을 고르기까지. 기준은 하나였다.</span>
+        <span style="margin-top: 20px; font-size: 14px; color: #6b7280">윤서진 · 2026. 11. 13. · 5분</span>
+      </span>
+    </a>
+
+    <!-- 카드 격자 -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 56px 32px; margin-top: 64px; padding-top: 48px; border-top: 1px solid #e5e7eb">
+      <a class="card" href="#">
+        <img src="/_blob/c0cd6dbfeed7a444123b81adb442cfb6" alt="">
+        <span class="k">꿀팁</span>
+        <span class="t">캔버스 뒷면에 적어 두면 좋은 것들</span>
+        <span class="e">제목, 연도, 재료, 그리고 한 가지 더. 십 년 뒤의 나를 위한 메모.</span>
+        <span class="m">한도윤 · 4분</span>
+      </a>
+      <a class="card" href="#">
+        <img src="/_blob/78a7524515a1dc188a0739748a663462" alt="">
+        <span class="k">전시 준비</span>
+        <span class="t">설치하는 날의 기록</span>
+        <span class="e">못 하나를 박기 전에 정하는 것들. 눈높이, 간격, 조명 순서로.</span>
+        <span class="m">아트링크 갤러리 · 6분</span>
+      </a>
+      <a class="card" href="#">
+        <img src="/_blob/38323e2e7f6d5ff865caddb47b6875fc" alt="">
+        <span class="k">전시 후기</span>
+        <span class="t">첫 아트페어에서 배운 다섯 가지</span>
+        <span class="e">부스에 서 있는 나흘 동안 가장 많이 받은 질문과, 준비하지 못한 대답.</span>
+        <span class="m">서지안 · 7분</span>
+      </a>
+      <a class="card" href="#">
+        <img src="/_blob/90a30f0f2dc823ebb89c936703f446e4" alt="">
+        <span class="k">작업일지</span>
+        <span class="t">작업실 겨울 나기</span>
+        <span class="e">물감이 굳는 속도가 달라지는 계절. 난로 옆에서 바꾼 작업 순서.</span>
+        <span class="m">윤서진 · 3분</span>
+      </a>
+      <a class="card" href="#">
+        <img src="/_blob/4a304dc479f260b459874a6b2d4827bb" alt="">
+        <span class="k">꿀팁</span>
+        <span class="t">작품 사진, 휴대폰으로 제대로 찍는 법</span>
+        <span class="e">창가에서, 정면으로, 한 걸음 물러서서. 세 가지만 지켜도 달라진다.</span>
+        <span class="m">한도윤 · 5분</span>
+      </a>
+      <a class="card" href="#">
+        <img src="/_blob/fee07ee7d8e80c9300b526612aeaa989" alt="">
+        <span class="k">에세이</span>
+        <span class="t">그림이 팔린 날</span>
+        <span class="e">빈 벽을 보고 돌아온 저녁에 적어 둔 것.</span>
+        <span class="m">서지안 · 4분</span>
+      </a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

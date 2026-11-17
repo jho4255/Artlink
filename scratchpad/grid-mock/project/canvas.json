@@ -1,0 +1,28 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-17T03:00:00Z" },
+  "title": "작품 격자 정돈안",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 2140, "title": "지금 — 정사각 칸 · 그림은 가운데 · 바탕 없음" },
+    "TilePC.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 2140, "title": "A안 — 칸에 옅은 바탕(매트)" },
+    "AreaPC.dc.html": { "x": 2720, "y": 0, "w": 1280, "h": 2140, "title": "B안 — 눈에 보이는 크기 맞춤" },
+    "MasonryPC.dc.html": { "x": 4080, "y": 0, "w": 1280, "h": 2140, "title": "C안 — 열 쌓기" },
+    "CropPC.dc.html": { "x": 5440, "y": 0, "w": 1280, "h": 2140, "title": "D안 — 목록만 정사각으로 잘라 보이기" },
+    "NowMobile.dc.html": { "x": 0, "y": 2560, "w": 390, "h": 1500, "title": "지금" },
+    "TileMobile.dc.html": { "x": 470, "y": 2560, "w": 390, "h": 1500, "title": "A안 — 옅은 바탕" },
+    "AreaMobile.dc.html": { "x": 940, "y": 2560, "w": 390, "h": 1500, "title": "B안 — 크기 맞춤" },
+    "MasonryMobile.dc.html": { "x": 1410, "y": 2560, "w": 390, "h": 1500, "title": "C안 — 열 쌓기" },
+    "CropMobile.dc.html": { "x": 1880, "y": 2560, "w": 390, "h": 1500, "title": "D안 — 잘라 보이기" }
+  },
+  "order": [
+    "Main.dc.html", "TilePC.dc.html", "AreaPC.dc.html", "MasonryPC.dc.html", "CropPC.dc.html",
+    "NowMobile.dc.html", "TileMobile.dc.html", "AreaMobile.dc.html", "MasonryMobile.dc.html", "CropMobile.dc.html"
+  ],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "PC — 작가 홈페이지 [작품] 탭", "kind": "title1", "maxW": 6720 },
+    "t2": { "x": 0, "y": 2260, "text": "휴대폰", "kind": "title1", "maxW": 2270 }
+  },
+  "designSystems": []
+}

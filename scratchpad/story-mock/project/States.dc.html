@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ArtStory — 그 밖의 화면 다섯 장</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#c4302b}
+</style>
+</helmet>
+<div style="width: 2270px; height: 750px; box-sizing: border-box; padding: 40px; display: flex; gap: 60px; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111827">
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 12px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">1. 전체 보기</div>
+    </div>
+    <div style="width: 390px; height: 600px; position: relative; overflow: hidden; border: 1px solid #e5e7eb; box-sizing: border-box">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 0">
+        <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.02em"><span style="color: #111827">Art</span><span style="color: #c4302b">Story</span></div>
+        <a href="Compose.dc.html" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 5px; border: 1px solid #111827; border-radius: 8px; font-size: 13px; font-weight: 700; text-decoration: none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>올리기
+        </a>
+      </div>
+      <div role="tablist" aria-label="소식 범위" style="display: flex; gap: 20px; padding: 6px 16px 0; border-bottom: 1px solid #e5e7eb">
+        <button type="button" role="tab" aria-selected="true" style="height: 44px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font-size: 15px; font-weight: 700; color: #111827; font-family: inherit; cursor: pointer">전체</button>
+        <button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 15px; color: #4b5563; font-family: inherit; cursor: pointer">이웃</button>
+        <button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; font-size: 15px; color: #4b5563; font-family: inherit; cursor: pointer">내 소식</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px">
+        <sc-for list="{{ grid }}" as="c" hint-placeholder-count="4">
+          <div style="position: relative; aspect-ratio: 3 / 5; overflow: hidden; border-radius: 6px; background: {{ c.bg }}">
+            <sc-if value="{{ c.hasImg }}" hint-placeholder-val="{{ true }}">
+              <img src="{{ c.img }}" alt="" aria-hidden="true" style="position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(14px) brightness(0.5)">
+              <img src="{{ c.img }}" alt="{{ c.alt }}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain">
+            </sc-if>
+            <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ false }}">
+              <span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 44px 16px 18px; box-sizing: border-box; color: #ffffff; font-size: 15px; line-height: 1.55; font-weight: 700; text-align: center; white-space: pre-line">{{ c.text }}</span>
+            </sc-if>
+            <span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; height: 56px; background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0))"></span>
+            <span style="position: absolute; left: 9px; right: 9px; top: 9px; display: flex; align-items: center; gap: 6px">
+              <span style="flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,0.22); border: 1px solid rgba(255,255,255,0.75); box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 11px; font-weight: 700">{{ c.initial }}</span>
+              <span style="min-width: 0; flex: 1; color: #ffffff; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.6)">{{ c.name }}</span>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 12px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">2. 소식이 적을 때</div>
+    </div>
+    <div style="width: 390px; height: 600px; position: relative; overflow: hidden; border: 1px solid #e5e7eb; box-sizing: border-box">
+      <div style="height: 56px; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #e5e7eb; font-size: 22px; font-weight: 800; letter-spacing: -0.02em"><span style="color: #111827">Art</span><span style="color: #c4302b">Link</span></div>
+      <div style="height: 110px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 13px">배너 — 지금 그대로</div>
+      <div style="padding: 22px 16px 0">
+        <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 14px"><span style="color: #111827">Art</span><span style="color: #c4302b">Story</span></div>
+      </div>
+      <div style="display: flex; gap: 10px; padding: 0 16px; overflow: hidden">
+        <a href="Compose.dc.html" style="flex: 0 0 auto; width: 148px; height: 246px; box-sizing: border-box; border: 1px dashed #9ca3af; border-radius: 6px; background: #f9fafb; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-decoration: none; color: #111827">
+          <span style="width: 44px; height: 44px; border-radius: 50%; background: #111827; color: #ffffff; display: flex; align-items: center; justify-content: center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </span>
+          <span style="font-size: 14px; font-weight: 700">소식 올리기</span>
+        </a>
+        <sc-for list="{{ few }}" as="c" hint-placeholder-count="2">
+          <div style="flex: 0 0 auto; width: 148px; height: 246px; position: relative; overflow: hidden; border-radius: 6px; background: #111111">
+            <img src="{{ c.img }}" alt="" aria-hidden="true" style="position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(14px) brightness(0.5)">
+            <img src="{{ c.img }}" alt="{{ c.alt }}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain">
+            <span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; height: 54px; background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0))"></span>
+            <span style="position: absolute; left: 8px; right: 8px; top: 8px; display: flex; align-items: center; gap: 6px">
+              <span style="flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.22); border: 1px solid rgba(255,255,255,0.75); box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 11px; font-weight: 700">{{ c.initial }}</span>
+              <span style="min-width: 0; flex: 1; color: #ffffff; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.6)">{{ c.name }}</span>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 12px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">3. 비회원이 좋아요를 누르면</div>
+    </div>
+    <div style="width: 390px; height: 600px; position: relative; overflow: hidden; background: #0b0b0c">
+      <img src="/_blob/71ec268cf77968697e52609a9e89714e" alt="" aria-hidden="true" style="position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(30px) brightness(0.38)">
+      <img src="/_blob/71ec268cf77968697e52609a9e89714e" alt="오세린님이 올린 사진" style="position: absolute; left: 0; top: 60px; width: 100%; height: 330px; object-fit: contain">
+      <div style="position: absolute; left: 12px; top: 18px; display: flex; align-items: center; gap: 10px">
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.7); box-sizing: border-box; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700">오</div>
+        <div>
+          <div style="color: #ffffff; font-size: 14px; font-weight: 700">오세린</div>
+          <div style="color: rgba(255,255,255,0.8); font-size: 12px">작가 · 3시간 전</div>
+        </div>
+      </div>
+      <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35)"></div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #ffffff; border-radius: 14px 14px 0 0; padding: 22px 16px 18px">
+        <p style="margin: 0 0 16px; font-size: 17px; font-weight: 700">좋아요는 로그인하고 누를 수 있어요</p>
+        <button type="button" style="width: 100%; height: 50px; border: 0; border-radius: 8px; background: #fee500; color: #191919; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer">카카오로 로그인</button>
+        <button type="button" style="margin-top: 8px; width: 100%; height: 48px; border: 1px solid #d1d5db; border-radius: 8px; background: #ffffff; color: #111827; font-size: 15px; font-family: inherit; cursor: pointer">이메일로 로그인 · 회원가입</button>
+        <button type="button" style="margin-top: 4px; width: 100%; height: 44px; border: 0; background: none; color: #4b5563; font-size: 14px; font-family: inherit; cursor: pointer">계속 둘러보기</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 12px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">4. 더 보기 — 남의 소식</div>
+    </div>
+    <div style="width: 390px; height: 600px; position: relative; overflow: hidden; background: #0b0b0c">
+      <img src="/_blob/78d87e89e12a135ebd67703c25467cd7" alt="" aria-hidden="true" style="position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(30px) brightness(0.38)">
+      <img src="/_blob/78d87e89e12a135ebd67703c25467cd7" alt="갤러리 한켠이 올린 사진" style="position: absolute; left: 0; top: 70px; width: 100%; height: 220px; object-fit: contain">
+      <div style="position: absolute; left: 12px; top: 18px; display: flex; align-items: center; gap: 10px">
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.7); box-sizing: border-box; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700">갤</div>
+        <div>
+          <div style="color: #ffffff; font-size: 14px; font-weight: 700">갤러리 한켠</div>
+          <div style="color: rgba(255,255,255,0.8); font-size: 12px">갤러리 · 40분 전</div>
+        </div>
+      </div>
+      <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35)"></div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #ffffff; border-radius: 14px 14px 0 0; padding: 10px 0 12px">
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #111827; font-family: inherit; cursor: pointer">링크 복사</button>
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #111827; font-family: inherit; cursor: pointer">이 사람 소식 그만 보기</button>
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #c4302b; font-weight: 700; font-family: inherit; cursor: pointer">신고하기</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 12px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">5. 더 보기 — 내 소식</div>
+    </div>
+    <div style="width: 390px; height: 600px; position: relative; overflow: hidden; background: #0b0b0c">
+      <img src="/_blob/242a2926a35e2b57325c34b1ab58d447" alt="" aria-hidden="true" style="position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(30px) brightness(0.38)">
+      <img src="/_blob/242a2926a35e2b57325c34b1ab58d447" alt="윤서진님이 올린 사진" style="position: absolute; left: 0; top: 64px; width: 100%; height: 330px; object-fit: contain">
+      <div style="position: absolute; left: 12px; top: 18px; display: flex; align-items: center; gap: 10px">
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.7); box-sizing: border-box; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700">윤</div>
+        <div>
+          <div style="color: #ffffff; font-size: 14px; font-weight: 700">윤서진</div>
+          <div style="color: rgba(255,255,255,0.8); font-size: 12px">작가 · 어제</div>
+        </div>
+      </div>
+      <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35)"></div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #ffffff; border-radius: 14px 14px 0 0; padding: 10px 0 12px">
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #111827; font-family: inherit; cursor: pointer">링크 복사</button>
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #111827; font-family: inherit; cursor: pointer">이웃 공개로 바꾸기</button>
+        <button type="button" style="width: 100%; height: 52px; padding: 0 20px; border: 0; background: none; text-align: left; font-size: 15px; color: #c4302b; font-weight: 700; font-family: inherit; cursor: pointer">삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2270,"height":750}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const card = (name, img, text, bg) => ({
+      name: name,
+      initial: name.slice(0, 1),
+      img: img || '',
+      hasImg: !!img,
+      isText: !img,
+      text: text || '',
+      bg: img ? '#111111' : (bg || '#374151'),
+      alt: name + '님이 올린 사진',
+    });
+    return {
+      grid: [
+        card('한지우', '/_blob/7f689f4af89c044126792414ac2b55cf'),
+        card('갤러리 한켠', '/_blob/78d87e89e12a135ebd67703c25467cd7'),
+        card('김민서', '', '내일 오픈 스튜디오 해요.\n오후 2시부터 6시까지,\n편하게 들러 주세요.', '#3f4a5a'),
+        card('도하린', '/_blob/2a758e0ea2f77e12c55b75db9297f047'),
+      ],
+      few: [
+        card('한지우', '/_blob/7f689f4af89c044126792414ac2b55cf'),
+        card('오세린', '/_blob/71ec268cf77968697e52609a9e89714e'),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

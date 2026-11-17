@@ -11,7 +11,11 @@
  *   모르는 값·지금 없는 탭이 오면 첫 탭으로(404·빈 화면 금지 — 작가가 파일을 지운 뒤에도 옛 링크가 돈다).
  */
 
-export type HomepageTabId = 'works' | 'note' | 'cv' | 'file' | 'guestbook';
+import { isCareerEmpty } from './artwork';
+import { safeHttpUrl } from './utils';
+import type { Career } from '@/types';
+
+export type HomepageTabId = 'works' | 'news' | 'note' | 'cv' | 'file' | 'guestbook';
 
 export interface HomepageTabDef {
   id: HomepageTabId;
@@ -21,6 +25,7 @@ export interface HomepageTabDef {
 
 export const HOMEPAGE_TAB_LABELS: Record<HomepageTabId, string> = {
   works: '작품',
+  news: '소식',
   note: '작가노트',
   cv: '약력',
   file: '포트폴리오',
@@ -32,11 +37,17 @@ export function homepageTabs(c: {
   hasNote: boolean;
   hasCv: boolean;
   hasFile: boolean;
+  /**
+   * [소식] 탭(2026-11-14, 규칙 82) — 그 작가가 올린 ArtStory. 공개 페이지만 넣는다(편집 미리보기엔 없다 — 방명록과 같다).
+   * 서버가 보는 사람 기준으로 센 값(`storyCount`·`highlightCount`)으로 정한다 — 눌렀는데 비어 있는 탭을 만들지 않으려고.
+   */
+  news?: { storyCount?: number; highlightCount?: number } | null;
   /** 방명록 탭을 붙이는가 — 공개 페이지만(편집 미리보기엔 없다) */
   guestbook?: { count?: number } | null;
 }): HomepageTabDef[] {
   const tabs: HomepageTabDef[] = [];
   if (c.workCount > 0) tabs.push({ id: 'works', label: HOMEPAGE_TAB_LABELS.works, count: c.workCount });
+  if (c.news && ((c.news.storyCount ?? 0) > 0 || (c.news.highlightCount ?? 0) > 0)) tabs.push({ id: 'news', label: HOMEPAGE_TAB_LABELS.news });
   if (c.hasNote) tabs.push({ id: 'note', label: HOMEPAGE_TAB_LABELS.note });
   if (c.hasCv) tabs.push({ id: 'cv', label: HOMEPAGE_TAB_LABELS.cv });
   if (c.hasFile) tabs.push({ id: 'file', label: HOMEPAGE_TAB_LABELS.file });
@@ -45,6 +56,24 @@ export function homepageTabs(c: {
     tabs.push({ id: 'guestbook', label: HOMEPAGE_TAB_LABELS.guestbook, ...(n && n > 0 ? { count: n } : {}) });
   }
   return tabs;
+}
+
+/**
+ * 홈페이지 데이터 → 탭 — 공개 페이지(머리 메뉴·탭 막대)와 `HomepageView` 가 **같은 함수**로 정한다(2026-11-14).
+ * PC 에서는 탭이 사이트 머리(SiteHeader)에, 휴대폰에서는 표지 아래 막대에 선다 — 둘이 다른 목록을 그리면 안 된다.
+ */
+export function homepageTabsFor(
+  d: { images: unknown[]; statement?: string | null; biography?: string | null; career?: Career | null; portfolioFileUrl?: string | null },
+  extra: { news?: { storyCount?: number; highlightCount?: number } | null; guestbook?: { count?: number } | null } = {},
+): HomepageTabDef[] {
+  return homepageTabs({
+    workCount: d.images.length,
+    hasNote: !!d.statement,
+    hasCv: !!d.biography || !isCareerEmpty(d.career),
+    hasFile: !!safeHttpUrl(d.portfolioFileUrl),
+    news: extra.news ?? null,
+    guestbook: extra.guestbook ?? null,
+  });
 }
 
 /** 요청한 탭이 지금 있으면 그것, 아니면 첫 탭 */

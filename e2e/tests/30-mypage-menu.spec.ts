@@ -48,9 +48,31 @@ test.describe('lg↑ 전 페이지 우측 사이드바', () => {
     const cleaned = labels.map(t => t.replace(/\s+/g, ' ').trim());
     expect(cleaned).toEqual([
       '프로필', '홈페이지', '포트폴리오PDF 만들기', '찜 목록', '내 전시', 'ArtLook액자 걸기',
-      'ArtStory소식 공유', '1:1 문의',
+      '1:1 문의',
     ]);
     await ctx.close();
+  });
+
+  test('★ ArtStory 는 가운데 메뉴에 있다 — 사이드바에는 없다(2026-11-14, 비회원도 보는 화면)', async ({ browser }) => {
+    const { page, ctx } = await openAs(browser, 'artist');
+    await page.setViewportSize(DESKTOP);
+    await page.goto('/mypage');
+    await expect(page.locator('aside nav')).not.toContainText('ArtStory');
+    const top = page.getByRole('navigation').first().getByRole('link', { name: 'ArtStory', exact: true });
+    await expect(top).toBeVisible();
+    await top.click();
+    await page.waitForURL(/\/feed$/);
+    await ctx.close();
+    // 비회원 휴대폰 — 하단 탭바에 있고 눌러서 열린다
+    const g = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    const gp = await g.newPage();
+    await gp.goto('/');
+    const tab = gp.getByRole('navigation', { name: '하단 내비게이션' }).getByRole('link', { name: 'ArtStory' });
+    await expect(tab).toBeVisible();
+    await tab.click();
+    await gp.waitForURL(/\/feed$/);
+    await expect(gp.getByRole('heading', { name: 'ArtStory' })).toBeVisible();
+    await g.close();
   });
 
   test('★ 없앤 메뉴가 되살아나지 않았다 (받은 초대·좋아요한 작품·내 리뷰·고객센터)', async ({ browser }) => {

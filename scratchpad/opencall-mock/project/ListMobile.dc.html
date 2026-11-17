@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>모집공고 찾기 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 1840px; box-sizing: border-box; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; display: flex; flex-direction: column">
+
+<header style="height: 64px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 26px; font-weight: 700; text-decoration: none; letter-spacing: -0.03em">Art<span style="color: #c4302b">Link</span></a>
+<a href="#" style="padding: 9px 14px; background: #111827; color: #ffffff; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none">로그인</a>
+</header>
+
+<main style="flex: 1; padding: 28px 24px 32px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<h1 style="margin: 0; font-size: 34px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em">Open Call</h1>
+<button type="button" aria-label="공모 검색" style="width: 44px; height: 44px; margin-right: -10px; border: 0; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+</button>
+</div>
+
+<div style="margin-top: 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: stretch; justify-content: space-between; gap: 16px">
+<div role="tablist" aria-label="모집 상태" style="display: flex; gap: 24px">
+<button role="tab" aria-selected="true" type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 600; color: #111827; cursor: pointer; box-shadow: inset 0 -2px 0 #111827">모집 중 <span style="margin-left: 3px; font-size: 12px; font-weight: 400; color: #6b7280">8</span></button>
+<button role="tab" aria-selected="false" type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; font-size: 15px; color: #6b7280; cursor: pointer">마감 <span style="margin-left: 3px; font-size: 12px">27</span></button>
+</div>
+<button type="button" aria-label="정렬: 마감 임박순" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; color: #4b5563; display: flex; align-items: center; gap: 4px; cursor: pointer">마감 임박순
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+</div>
+
+<div role="group" aria-label="지역 · 유형" style="margin: 0 -24px; padding: 0 24px; display: flex; align-items: center; gap: 18px; overflow-x: auto; white-space: nowrap; font-size: 14px; border-bottom: 1px solid #f3f4f6">
+<button type="button" aria-pressed="true" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #111827; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; flex: none">전체</button>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">서울 <span style="font-size: 12px">5</span></button>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">부산 <span style="font-size: 12px">1</span></button>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">충북 <span style="font-size: 12px">1</span></button>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">경남 <span style="font-size: 12px">1</span></button>
+<span aria-hidden="true" style="width: 1px; height: 14px; background: #d1d5db; flex: none"></span>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">개인전 <span style="font-size: 12px">2</span></button>
+<button type="button" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer; flex: none">단체전 <span style="font-size: 12px">6</span></button>
+</div>
+
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<section>
+<h2 style="margin: 26px 0 4px; font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: baseline; gap: 6px">{{g.label}} <span style="font-size: 12px; font-weight: 400; color: #6b7280">{{g.count}}</span></h2>
+<sc-for list="{{g.items}}" as="item" hint-placeholder-count="3">
+<article style="display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #f3f4f6">
+<a href="DetailMobileA.dc.html" aria-label="{{item.title}}" style="flex: none; display: block; position: relative; width: 92px; height: 130px; overflow: hidden; background: {{item.bg}}; text-decoration: none">
+<span style="position: absolute; left: 8px; right: 8px; top: 9px; font-size: 13px; font-weight: 800; line-height: 1.15; letter-spacing: -0.03em; white-space: pre-line; color: {{item.fg}}">{{item.poster}}</span>
+<img src="{{item.img}}" alt="" style="position: absolute; left: 0; bottom: 0; width: 100%; height: 54%; object-fit: cover; display: block">
+</a>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<p style="margin: 0; font-size: 13px; color: #6b7280"><strong style="font-weight: 700; color: {{item.dcolor}}">{{item.dday}}</strong><span style="margin-left: 6px">{{item.until}}</span></p>
+<button type="button" aria-label="찜하기" style="width: 44px; height: 44px; margin: -13px -13px -13px 0; border: 0; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg>
+</button>
+</div>
+<h3 style="margin: 7px 0 0; font-size: 16px; font-weight: 500; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere"><a href="DetailMobileA.dc.html" style="text-decoration: none">{{item.title}}</a></h3>
+<p style="margin: auto 0 0; padding-top: 8px; font-size: 13px; color: #4b5563">{{item.host}}</p>
+<p style="margin: 3px 0 0; font-size: 12px; color: #6b7280">{{item.meta}}</p>
+</div>
+</article>
+</sc-for>
+</section>
+</sc-for>
+
+</main>
+
+<nav aria-label="하단 메뉴" style="height: 57px; border-top: 1px solid #e5e7eb; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: center; text-align: center; font-size: 10px; color: #6b7280">
+<a href="#" style="text-decoration: none; color: #6b7280">홈</a>
+<a href="#" style="text-decoration: none; color: #6b7280">작가</a>
+<a href="#" style="text-decoration: none; color: #6b7280">갤러리</a>
+<a href="#" style="text-decoration: none; color: #6b7280">전시</a>
+<a href="#" aria-current="page" style="text-decoration: none; color: #111827; font-weight: 600">모집공고</a>
+<a href="#" style="text-decoration: none; color: #6b7280">커뮤니티</a>
+<a href="#" style="text-decoration: none; color: #6b7280">ArtStory</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1840}}'>
+class Component extends DCLogic {
+renderVals() {
+const A = '#c4302b', K = '#111827';
+const it = (dday, hot, until, title, host, meta, poster, bg, fg, img) => ({ dday, dcolor: hot ? A : K, until, title, host, meta, poster, bg, fg, img: '/_blob/' + img });
+const week = [
+it('오늘 마감', true, '11.15(일)까지', '겨울 단체전 《작은 방들》 참여 작가 모집', '갤러리 온결', '단체전 · 서울 · 8명', '작은\n방들', '#1f2a44', '#ffffff', '86d4fa8cd3ff69ef3261633feff3cab8'),
+it('D-1', true, '11.16(월)까지', '2027 신진 작가 개인전 공모', '스페이스 모루', '개인전 · 서울 · 0명', '2027\n신진 작가', '#f1ede4', '#111827', '7957497c1858b367ff8e66306196137b'),
+it('D-3', true, '11.18(수)까지', '바다를 주제로 한 드로잉전 작가 모집', '갤러리 해담', '단체전 · 부산 · 10명', '수평선\n아래', '#0f5d73', '#ffffff', '3435a4a550964493354fe9f99ea51182'),
+it('D-7', true, '11.22(일)까지', '아트링크 기획 공모 《종이의 시간》', '아트링크 주최', '단체전 · 서울 · 00명', '종이의\n시간', '#e9e4d8', '#111827', 'ff78e3bc78af10a4e2d383b07d513dfb')
+];
+const nov = [
+it('D-9', false, '11.24(화)까지', '연말 소품전 《선물》 출품 작가 모집', '갤러리 온결', '단체전 · 서울 · 12명', '선물', '#7a1f1f', '#ffffff', 'f27490405953feabcacb8412c77953fb'),
+it('D-15', false, '11.30(월)까지', '2027 상반기 레지던시 입주 작가 모집', '아트링크 주최 · 참여 갤러리 2곳', '단체전 · 충북 · 00명', '입주 작가\n모집', '#dfe6ee', '#111827', 'e90ec5d2fb99384787a8488d25e666c3')
+];
+const later = [
+it('D-21', false, '12.6(일)까지', '《도시 산책》 사진 · 회화 2인전 공모', '공간 여백', '단체전 · 서울 · 2명', '도시\n산책', '#26302b', '#ffffff', '8af93d13a3a1f2fcb44163ec95b1c801'),
+it('D-22', false, '12.7(월)까지', '첫 개인전 지원 공모', '갤러리 서림', '개인전 · 경남 · 0명', '첫\n개인전', '#f4dccf', '#111827', 'bd67b717bb50bfa46e11b66b66664861')
+];
+return { groups: [
+{ label: '이번 주 마감', count: week.length, items: week },
+{ label: '11월 마감', count: nov.length, items: nov },
+{ label: '12월 이후', count: later.length, items: later }
+] };
+}
+}
+</script>
+</body>
+</html>

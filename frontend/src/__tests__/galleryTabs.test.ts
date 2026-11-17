@@ -17,8 +17,16 @@ describe('갤러리 홈페이지 탭', () => {
     expect(galleryTabs(base)[0].count).toBeUndefined();
   });
 
-  it('주인에겐 채울 자리(소개·지난 전시)가 비어 있어도 보인다', () => {
-    expect(ids(galleryTabs({ ...base, isOwner: true }))).toEqual(['about', 'history', 'reviews']);
+  it('주인에겐 채울 자리(소개·지난 전시·소식)가 비어 있어도 보인다', () => {
+    expect(ids(galleryTabs({ ...base, isOwner: true }))).toEqual(['about', 'history', 'news', 'reviews']);
+  });
+
+  it('[소식](2026-11-14) — 방문자에겐 보이는 소식이나 하이라이트가 있을 때만, 지난 전시 다음 · 리뷰 앞', () => {
+    expect(ids(galleryTabs({ ...base }))).not.toContain('news');
+    expect(ids(galleryTabs({ ...base, storyCount: 2, historyCount: 1 }))).toEqual(['history', 'news', 'reviews']);
+    expect(ids(galleryTabs({ ...base, highlightCount: 1 }))).toEqual(['news', 'reviews']);
+    // 머리 메뉴(PC)에 여섯 개가 한 줄에 들게 이름표를 짧게 — id·주소는 그대로
+    expect(galleryTabs({ ...base, visibleArtistCount: 1 }).find((t) => t.id === 'artists')?.label).toBe('작가');
   });
 
   it('숨긴 작가만 남으면 방문자에겐 탭이 없고, 관리자에겐 있다 — 다시 보이게 할 자리', () => {

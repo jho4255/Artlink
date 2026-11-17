@@ -11,6 +11,8 @@ import { matchR2Base } from '../lib/r2Urls';
 import { EXPORT_METHODS, recordExport, type ExportMethod } from '../lib/exportStats';
 import { LOCK_NS, withKeyLock } from '../lib/keyLock';
 import { OWNER_PRICE_INCLUDE, attachPublicPrices, parsePrice, setArtworkPrice, withPrice } from '../lib/artworkPrice';
+import { homepageNewsCounts } from '../lib/homepageNews';
+import { artistNowShowing, showNowEnabled } from '../lib/nowShowing';
 
 /** 포트폴리오 파일 — 비우면 null, 보낸 주소가 우리 저장소가 아니면 400(조용히 지우지 않는다 — 지우면 옛 파일까지 정리된다) */
 function ownFileUrlOrNull(raw: unknown): string | null {
@@ -159,9 +161,20 @@ router.get('/:userId', optionalAuth, async (req, res, next) => {
       include: { images: { orderBy: { order: 'asc' }, include: { _count: { select: { likes: true } } } } },
     });
 
+    // 홈페이지 [소식] 탭을 그릴지(보는 사람 기준 — 규칙은 lib/homepageNews.ts 한 곳) · 첫 화면 '전시 중' 띠(작가가 끄지 않았을 때)
+    const [news, nowShowing] = await Promise.all([
+      homepageNewsCounts(req.user, userId),
+      showNowEnabled(portfolio?.designConfig) ? artistNowShowing(userId) : Promise.resolve(null),
+    ]);
+
     // 포트폴리오가 없으면 빈 데이터 반환
     const { role, ...userInfo } = { ...user, handle };
     res.json({
+      storyCount: news.storyCount,
+      highlightCount: news.highlightCount,
+      nowShowing,
+      // 비회원 문의를 받는가(2026-11-14, 기본 꺼짐) — 꺼져 있으면 [문의하기]가 로그인으로 보낸다
+      guestInquiry: portfolio?.guestInquiry === true,
       id: portfolio?.id || 0,
       biography: portfolio?.biography || null,
       exhibitionHistory: portfolio?.exhibitionHistory || null,
@@ -199,6 +212,8 @@ router.get('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     }
     res.json({
       ...portfolio,
+      // 편집 화면 미리보기의 '전시 중' 띠 — [꾸미기] 에서 끄고 켜는 걸 저장 전에도 보여 주려고 **끈 설정과 무관하게** 싣는다
+      nowShowing: await artistNowShowing(req.user!.id),
       images: portfolio.images.map(withPrice),   // 본인에게는 가격을 늘 싣는다(PDF 를 본인 화면이 만든다)
       career: parseCareer(portfolio.career), seriesInfo: parseSeriesInfo(portfolio.seriesInfo), designConfig: parseDesignConfig(portfolio.designConfig),
       versions: portfolio.versions.map(serializeVersion),
@@ -299,11 +314,14 @@ router.put('/', authenticate, authorize('ARTIST'), async (req, res, next) => {
     if ('showPrice' in req.body && typeof req.body.showPrice !== 'boolean') throw new AppError('가격 표시 설정이 올바르지 않습니다.', 400);
     // showAvatar(이름 위 프로필 사진, 2026-10-28)도 보냈을 때만
     if ('showAvatar' in req.body && typeof req.body.showAvatar !== 'boolean') throw new AppError('프로필 사진 표시 설정이 올바르지 않습니다.', 400);
+    // guestInquiry(비회원 문의 받기, 2026-11-14)도 보냈을 때만 — 켜면 로그인 없이 이름·연락처를 남기는 칸이 홈페이지에 열린다
+    if ('guestInquiry' in req.body && typeof req.body.guestInquiry !== 'boolean') throw new AppError('문의 받기 설정이 올바르지 않습니다.', 400);
     const data = {
       ...base,
       ...('designConfig' in req.body ? { designConfig: sanitizeDesignConfig(req.body.designConfig) } : {}),
       ...('showPrice' in req.body ? { showPrice: req.body.showPrice as boolean } : {}),
       ...('showAvatar' in req.body ? { showAvatar: req.body.showAvatar as boolean } : {}),
+      ...('guestInquiry' in req.body ? { guestInquiry: req.body.guestInquiry as boolean } : {}),
     };
     // 포트폴리오 파일(PDF/HWP, 최대 20MB)을 바꾸거나 지우면 옛 파일을 스토리지에서 지운다 — 아바타·작품 사진은 지우는데 여기만 빠져 있었다(감사 M22)
     const before = await prisma.portfolio.findUnique({ where: { userId: req.user!.id }, select: { portfolioFileUrl: true } });

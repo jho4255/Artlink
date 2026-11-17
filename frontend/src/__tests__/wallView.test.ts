@@ -314,7 +314,12 @@ describe('화면 연결 — 작가 홈페이지', () => {
     expect(hook).toMatch(/position:fixed;left:-10000px/);
     expect(code(hook)).not.toMatch(/display:none/);
     expect(hook).toMatch(/this\.frame\.remove\(\);/);
-    expect(hook).toMatch(/frameRef\.current\?\.destroy\(\);/);
+    // 화면이 닫히면 놓고, 마지막으로 쓰던 화면이면 걷는다 — 작품 페이지와 크게 보기가 엔진 하나를 나눠 쓴다(2026-11-14)
+    expect(hook).toMatch(/releaseFrame\(heldRef\);/);
+    expect(hook).toMatch(/if \(holders === 0\) \{\s*sharedFrame\?\.destroy\(\);/);
+    // 나눠 쓰는 다른 화면이 엔진을 걷어(WebGL 잃음) 기다리던 그림이 끊겨도 '못 그린 작품'으로 치지 않는다 — 다음 차례에 새 엔진으로
+    expect(hook).toMatch(/e\.message === FRAME_CLOSED\) \{/);
+    expect(hook).toMatch(/new Error\(FRAME_CLOSED\)/);
   });
 
   it('★ 캡션은 작품 바로 아래 가운데(사진·벽 둘 다) — 구석에 두었더니 안 보인다고 했다 · 그 자리를 남기고 작품을 줄인다', () => {

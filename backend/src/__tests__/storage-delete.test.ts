@@ -41,14 +41,15 @@ describe('deleteUploadedFile — 두 도메인 모두 인식', () => {
   it('새 도메인 파일을 삭제한다', async () => {
     sent.length = 0;
     await deleteUploadedFile(`${NEW}/artlink/1784-new.jpg`);
-    // 원본 + 썸네일 2종(t240·t800)을 함께 지운다(2026-09-19) — 안 지우면 원본당 고아 2개가 영구히 남는다
-    expect(sent.map((c: any) => c.Key).sort()).toEqual(['artlink/1784-new.jpg', 'artlink/t240/1784-new.jpg', 'artlink/t800/1784-new.jpg']);
+    // 원본 + 썸네일을 함께 지운다(2026-09-19) — 안 지우면 원본당 고아가 영구히 남는다.
+    // 2026-11-13 부터 커뮤니티 글 사진의 큰 썸네일(t1280)도 — 없는 키를 지워도 R2 는 오류가 아니다
+    expect(sent.map((c: any) => c.Key).sort()).toEqual(['artlink/1784-new.jpg', 'artlink/t1280/1784-new.jpg', 'artlink/t240/1784-new.jpg', 'artlink/t800/1784-new.jpg']);
   });
 
   it('★ 옛 도메인 파일도 삭제한다 (안 그러면 고아 파일이 쌓인다)', async () => {
     sent.length = 0;
     await deleteUploadedFile(`${OLD}/artlink/1780-old.jpg`);
-    expect(sent.map((c: any) => c.Key).sort()).toEqual(['artlink/1780-old.jpg', 'artlink/t240/1780-old.jpg', 'artlink/t800/1780-old.jpg']);
+    expect(sent.map((c: any) => c.Key).sort()).toEqual(['artlink/1780-old.jpg', 'artlink/t1280/1780-old.jpg', 'artlink/t240/1780-old.jpg', 'artlink/t800/1780-old.jpg']);
   });
 
   it('폴더가 있는 키도 그대로 보존한다', async () => {

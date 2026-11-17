@@ -43,6 +43,7 @@ model User {
   applications          Application[]
   notifications         Notification[]
   pushTokens            PushToken[]
+  homepageInquiries     HomepageInquiry[]      @relation("homepageInquiryOwner")
   dailyVisits           DailyVisit[]
   portfolioExports      PortfolioExport[]
   inquiries             Inquiry[]
@@ -68,12 +69,19 @@ model User {
   posts                 Post[]                 @relation("postAuthor")
   postComments          PostComment[]          @relation("postCommentAuthor")
   postLikes             PostLike[]             @relation("postLiker")
+  postDrafts            PostDraft[]            @relation("postDraftAuthor")
+  postAssets            PostAsset[]            @relation("postAssets")
+  communityWriter       CommunityWriter?       @relation("communityWriter")
+  postPollVotes         PostPollVote[]         @relation("postPollVoter")
   following             Follow[]               @relation("follower") // 내가 이웃 추가한 사람들
   followers             Follow[]               @relation("following") // 나를 이웃 추가한 사람들
   stories               Story[]                @relation("storyAuthor")
   storyLikes            StoryLike[]            @relation("storyLiker")
   storyComments         StoryComment[]         @relation("storyCommentAuthor")
   storyHighlights       StoryHighlight[]       @relation("storyHighlights")
+  storyReports          StoryReport[]          @relation("storyReporter")
+  storyMutes            StoryMute[]            @relation("storyMuter") // 내가 그만 보기 한 사람
+  storyMutedBy          StoryMute[]            @relation("storyMuted") // 나를 그만 보기 한 사람
   guestbookReceived     GuestbookEntry[]       @relation("guestbookTarget") // 내 방명록에 달린 글
   guestbookWritten      GuestbookEntry[]       @relation("guestbookAuthor") // 내가 남긴 방명록 글
 
@@ -114,22 +122,63 @@ model Follow {
 }
 
 // ── 스토리 (작업 중 사진 + 짧은 글) ──
-// 별도 [소식] 피드에 뜬다. visibility 는 **글마다** — PUBLIC(전체공개) | NEIGHBORS(이웃공개).
+// visibility 는 **글마다** — PUBLIC(전체공개) | NEIGHBORS(이웃공개).
+// 2026-11-14 부터 전체공개 소식은 **홈 ArtStory 줄**에서 이웃이 아니어도 누구나 본다(블라인드 스토리 방식, CLAUDE.md 규칙 81).
+// 그래서 기본값이 PUBLIC 이다(그 전엔 NEIGHBORS). 이미 있는 소식의 값은 바꾸지 않았다.
 model Story {
   id           Int            @id @default(autoincrement())
   authorId     Int
   author       User           @relation("storyAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   caption      String         @default("")
   images       String[]       @default([])
-  visibility   String         @default("NEIGHBORS") // PUBLIC | NEIGHBORS
+  visibility   String         @default("PUBLIC") // PUBLIC | NEIGHBORS
+  /// 글만 있는 소식의 바탕색 이름(lib/storyRules.ts STORY_BG_KEYS 중 하나). 사진 소식·옛 소식은 null(화면이 첫 색을 쓴다)
+  bg           String?
+  /// 사진 위 글 (2026-11-14) — `[{ i: 사진 번호, text, x, y(사진 안 0~1 가운데 자리), size: s|m|l, style: plain|dark|light }]`, 사진 하나에 하나.
+  /// 사진 원본은 그대로 두고 글을 따로 얹는다(작품 사진에 글을 구워 넣지 않는다 — 원본 보존·선명한 글·화면 낭독기)
+  overlays     Json?
+  /// 운영이 내렸거나 신고가 쌓여 저절로 내려간 시각 — 주인·관리자 말고는 없는 소식으로 친다(404). 지우지는 않는다
+  hiddenAt     DateTime?
+  /// 'ADMIN' | 'REPORTS' — 누가 내렸나(주인에게 알릴 말이 다르다)
+  hiddenReason String?
+  /// 관리자가 되살린 시각 — 그 뒤에 들어온 신고만 다시 센다(되살린 소식이 옛 신고로 곧바로 다시 내려가지 않게)
+  reviewedAt   DateTime?
   likeCount    Int            @default(0) // 비정규화 카운트
   commentCount Int            @default(0)
   likes        StoryLike[]
   comments     StoryComment[]
+  reports      StoryReport[]
   createdAt    DateTime       @default(now())
 
   @@index([authorId, createdAt])
   @@index([createdAt])
+  @@index([visibility, createdAt])
+}
+
+/// 소식 신고 (2026-11-14) — 한 사람이 한 소식에 한 번. 서로 다른 3명이 신고하면 소식이 저절로 내려가고 관리자가 확인한다.
+model StoryReport {
+  id         Int      @id @default(autoincrement())
+  storyId    Int
+  story      Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  reporterId Int
+  reporter   User     @relation("storyReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason     String // SPAM | INAPPROPRIATE | ABUSE | COPYRIGHT | OTHER
+  createdAt  DateTime @default(now())
+
+  @@unique([storyId, reporterId])
+  @@index([createdAt])
+}
+
+/// 이 사람 소식 그만 보기 (2026-11-14) — 내 화면(홈 줄·ArtStory)에서만 빠진다. 상대는 모른다. 홈페이지에는 그대로 있다.
+model StoryMute {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation("storyMuter", fields: [userId], references: [id], onDelete: Cascade)
+  mutedUserId Int
+  mutedUser   User     @relation("storyMuted", fields: [mutedUserId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, mutedUserId])
 }
 
 model StoryLike {
@@ -195,19 +244,30 @@ model AdBanner {
 /// 커뮤니티 탭(말머리) — **Admin 만** 만들고 고친다.
 /// 탭을 지워도 글은 안 지운다(onDelete: SetNull → '미분류'로 내려온다).
 model PostCategory {
-  id             Int      @id @default(autoincrement())
-  name           String   @unique
+  id             Int         @id @default(autoincrement())
+  name           String      @unique
   /// 목록 쿼리(?category=)와 주소에 쓰는 키. 한글 이름과 별개로 안정적이어야 한다.
-  slug           String   @unique
+  slug           String      @unique
   /// 탭 순서 (작을수록 앞). 같으면 id 순
-  order          Int      @default(0)
+  order          Int         @default(0)
   /// 끄면 탭이 안 보인다 — 글은 그대로 남는다(삭제 대신 쓰는 안전한 숨기기)
-  active         Boolean  @default(true)
+  active         Boolean     @default(true)
   /// 켜면 **Admin 만 이 탭에 글을 쓸 수 있다**(공지 탭 등). 읽기는 그대로 공개.
   /// ⚠️ 탭 이름이 '공지'인지로 판단하지 않는다 — 이름을 '안내'로 바꾸는 순간 조용히 풀린다.
-  writeAdminOnly Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  /// 2026-11-13 부터 판정은 `writePolicy` 다. 이 칸은 `writePolicy === 'admin'` 과 **늘 같게** 맞춰 둔다
+  /// (배포 중 잠깐 도는 옛 서버·옛 화면이 이 칸을 읽는다 — 지우지 말 것).
+  writeAdminOnly Boolean     @default(false)
+  /// 누가 쓰나 (2026-11-13) — 'all'(로그인한 누구나) | 'writers'(필진 + 관리자) | 'admin'(관리자만). lib/communityAccess.ts
+  writePolicy    String      @default("all")
+  /// 목록 모양 — 'list'(제목 목록) | 'card'(표지 카드). 필진이 쓰는 긴 글 탭은 카드가 어울린다
+  layout         String      @default("list")
+  /// 익명 글 허용. 끄면 이 탭의 글은 늘 실명이다(필진 탭)
+  allowAnonymous Boolean     @default(true)
+  /// 탭 머리에 보이는 한 줄 소개(선택)
+  description    String?
+  createdAt      DateTime    @default(now())
   posts          Post[]
+  drafts         PostDraft[]
 
   @@index([order])
 }
@@ -225,9 +285,23 @@ model Post {
   /// 순서가 있어야 한다(최근에 고정한 것이 위). Admin 만 바꾼다
   pinnedAt     DateTime?
   title        String
+  /// 옛 글은 본문 그대로. **문서 글(`doc` 있음)이면 문서에서 뽑은 글만** 들어 있다(발췌·멘션·검색용, 서버가 만든다)
   body         String
-  // 첨부 사진 (우리 저장소 주소만). 순서 유지.
+  /// 사진 주소 (우리 저장소만). 옛 글은 첨부 순서, 문서 글은 **문서 속 순서** 그대로(서버가 뽑는다)
   images       String[]      @default([])
+  /// 글 문서 (2026-11-13, 블로그형 편집기) — TipTap(ProseMirror) JSON. null 이면 옛 글(본문 + 맨 아래 사진).
+  /// 서버가 `lib/postDoc.ts` 허용 목록으로 걸러 저장한다. 화면은 편집기 없이 이 JSON 을 그린다(components/post/PostBody).
+  doc          Json?
+  /// 문서 형식 판 — 나중에 형식이 바뀌면 이걸로 가른다
+  docVersion   Int           @default(1)
+  /// 동영상 주소(우리 저장소만) — 문서 속 순서(서버가 뽑는다). 사진과 나눠 둔다: `images[0]` 이 목록 표지라 동영상이 끼면 안 된다.
+  /// 파일 정리(lib/postAssets.ts)가 사진과 똑같이 이 목록을 보고 '아직 쓰는 파일'을 가린다
+  videos       String[]      @default([])
+  /// 투표(한 글에 하나, 2026-11-13) — `{ question, options:[{id,text}], multiple, endsAt }`. 문서의 `poll` 블록에서 서버가 뽑는다.
+  /// 표는 PostPollVote. ⚠️ 표가 생긴 뒤에는 질문·보기·복수 선택을 못 바꾼다(lib/postPoll.ts) — 고르고 나서 보기가 바뀌면 그 표는 거짓말이 된다
+  poll         Json?
+  /// 목록 요약(리드) — 문서 글의 맨 바깥 문단들(lib/postDoc.ts postDocLede). 등록·수정 때 만든다. null 이면 body 앞부분(옛 글)
+  excerpt      String?
   // 글마다 실명(닉네임+역할)/익명 선택 — true 면 응답에서 작성자 신원을 가린다
   anonymous    Boolean       @default(false)
   // 랭킹·목록을 매번 집계하지 않으려고 비정규화해서 들고 있는다
@@ -237,26 +311,103 @@ model Post {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  comments PostComment[]
-  likes    PostLike[]
+  comments  PostComment[]
+  likes     PostLike[]
+  draft     PostDraft?
+  pollVotes PostPollVote[]
 
   @@index([createdAt])
   @@index([likeCount])
   @@index([categoryId])
   @@index([pinnedAt])
+  @@index([authorId])
+}
+
+/// 커뮤니티 글 **작업본** (2026-11-13) — 쓰는 중인 새 글(postId 없음)과 고치는 중인 글(postId 있음).
+/// ⚠️ 공개 응답에 절대 싣지 않는다 — 그래서 Post 의 칸이 아니라 따로 둔다(쓰다 만 글이 `...post` 한 번에 새지 않게).
+/// 자동 저장은 `rev` 로 다른 기기·탭과의 충돌을 가른다(같은 rev 에서만 쓴다 — 아니면 409).
+model PostDraft {
+  id         Int           @id @default(autoincrement())
+  authorId   Int
+  author     User          @relation("postDraftAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  /// 고치는 중인 글. null 이면 아직 안 올린 새 글. 글 하나에 작업본 하나
+  postId     Int?          @unique
+  post       Post?         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  categoryId Int?
+  category   PostCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  anonymous  Boolean       @default(false)
+  title      String        @default("")
+  doc        Json
+  /// 문서 속 사진·동영상 주소(서버가 뽑는다) — 파일을 지워도 되는지 볼 때 쓴다
+  images     String[]      @default([])
+  videos     String[]      @default([])
+  /// 저장할 때마다 +1
+  rev        Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([authorId, updatedAt])
+}
+
+/// 글쓰기 화면에서 올린 사진 (2026-11-13) — 파일 정리(이 사람이 글에 올린 것만 지운다)와 사진 치수.
+/// ⚠️ 글 삭제 때 `images` 를 그대로 지우지 말 것 — API 로 남의 작품 사진 주소를 넣은 글을 지우면 **남의 파일**이 지워진다.
+///    여기 적힌 것(그 사람이 글쓰기로 올린 것)만, 다른 글·작업본이 안 쓸 때만 지운다.
+model PostAsset {
+  id        Int      @id @default(autoincrement())
+  url       String   @unique
+  userId    Int
+  user      User     @relation("postAssets", fields: [userId], references: [id], onDelete: Cascade)
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// 커뮤니티 필진 (2026-11-13) — `writePolicy: 'writers'` 탭에 글을 쓸 수 있는 회원. 관리자가 정한다(역할 무관).
+model CommunityWriter {
+  userId    Int      @id
+  user      User     @relation("communityWriter", fields: [userId], references: [id], onDelete: Cascade)
+  addedById Int?
+  createdAt DateTime @default(now())
 }
 
 model PostComment {
+  id        Int           @id @default(autoincrement())
+  postId    Int
+  post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User          @relation("postCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  anonymous Boolean       @default(false)
+  /// 대댓글(2026-11-13) — 한 단계만. 답글의 답글도 맨 위 댓글(parentId)에 붙고, 누구에게 단 답인지는 replyToId
+  parentId  Int?
+  parent    PostComment?  @relation("commentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   PostComment[] @relation("commentThread")
+  replyToId Int?
+  replyTo   PostComment?  @relation("commentReplyTo", fields: [replyToId], references: [id], onDelete: SetNull)
+  repliedBy PostComment[] @relation("commentReplyTo")
+  /// 답글이 달린 댓글을 지우면 자리만 남긴다("삭제된 댓글입니다") — 지우면 답글이 맥락 없이 남는다
+  deletedAt DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+}
+
+/// 투표 한 표 — 사람 × 보기. 단일 선택이면 한 사람에 한 줄(서버가 바꿔 넣는다). 누가 무엇을 골랐는지는 응답에 싣지 않는다(내 표만)
+model PostPollVote {
   id        Int      @id @default(autoincrement())
   postId    Int
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  authorId  Int
-  author    User     @relation("postCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  body      String
-  anonymous Boolean  @default(false)
+  userId    Int
+  user      User     @relation("postPollVoter", fields: [userId], references: [id], onDelete: Cascade)
+  optionId  String
   createdAt DateTime @default(now())
 
-  @@index([postId, createdAt])
+  @@unique([postId, userId, optionId])
+  @@index([postId, optionId])
 }
 
 model PostLike {
@@ -303,12 +454,18 @@ model Gallery {
   /// `/@x` 하나로 작가·갤러리를 다 가리키므로 양쪽에 같은 값이 있으면 안 된다(lib/handle.ts `handleTaken`).
   /// 갤러리는 상호가 한글이라 자동 생성을 하지 않는다 — 주인이 직접 정한다. 숫자 주소 `/galleries/:id` 는 계속 유효.
   handle                  String?   @unique
+  /// 관람 시간 — 자유 글 80자("화–일 11:00–18:00 · 월 휴관", 2026-11-14 홈페이지 개편). 갤러리 페이지 방문 정보 맨 위.
+  /// 자유 글이라 '지금 열려 있어요' 같은 판정은 하지 않는다(틀린 표시는 없는 것보다 나쁘다).
+  openHours               String?
+  /// 로그인하지 않은 방문자의 문의(이름·연락처·내용)를 받는가 — 기본 꺼짐. 켜야 갤러리 페이지 [문의하기]에 비회원 입력 칸이 열린다(HomepageInquiry)
+  guestInquiry            Boolean   @default(false)
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
   // Relations
   ownerId            Int
   owner              User                @relation(fields: [ownerId], references: [id])
+  homepageInquiries  HomepageInquiry[]
   images             GalleryImage[]
   archives           GalleryArchive[]
   exhibitions        Exhibition[]
@@ -549,6 +706,8 @@ model Portfolio {
   showPrice         Boolean            @default(false)
   /// 홈페이지 이름 위에 프로필 사진(User.avatar)을 보이는가(2026-10-28, 기본 꺼짐) — 카카오 가입이면 카카오 프로필 사진이 들어 있어 작가가 고를 때만 보인다
   showAvatar        Boolean            @default(false)
+  /// 로그인하지 않은 방문자의 문의(이름·연락처·내용)를 받는가(2026-11-14, 기본 꺼짐) — 켜야 홈페이지 [문의하기]에 비회원 입력 칸이 열린다(HomepageInquiry)
+  guestInquiry      Boolean            @default(false)
   userId            Int                @unique
   user              User               @relation(fields: [userId], references: [id])
   images            PortfolioImage[]
@@ -699,6 +858,31 @@ model Notification {
 }
 
 /// 안드로이드 앱(mobile/)의 푸시 알림 기기 토큰 (2026-11-09, CLAUDE.md 규칙 79).
+/// 홈페이지 문의 — **로그인하지 않은 방문자**가 작가·갤러리 홈페이지의 [문의하기]로 남긴 글 (2026-11-14, CLAUDE.md 규칙 82).
+/// 로그인한 회원의 문의는 ArtTalk(갠톡)으로 간다 — 여기는 비회원 전용이고, 받는 사람이 켰을 때만 열린다(Portfolio/Gallery.guestInquiry).
+/// ⚠️ 1:1 문의(고객센터, `Inquiry`)와 다른 것이다 — 코드·화면에서 '홈페이지 문의'로 부른다.
+/// 개인정보(이름·연락처)라 **1년 뒤 지운다**(lib/homepageInquiry.ts 의 pruneHomepageInquiries) · 받은 사람이 지우면 바로 지운다 · 받은 사람이 탈퇴하면 함께 지운다.
+model HomepageInquiry {
+  id        Int       @id @default(autoincrement())
+  /// 받는 사람(작가 본인 또는 갤러리 주인)
+  ownerId   Int
+  owner     User      @relation("homepageInquiryOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  /// 갤러리 페이지에서 온 문의면 그 갤러리(갤러리가 지워져도 문의는 받은 사람에게 남는다)
+  galleryId Int?
+  gallery   Gallery?  @relation(fields: [galleryId], references: [id], onDelete: SetNull)
+  /// 작품 페이지에서 온 문의면 그 작품 — FK 를 두지 않는다(작품을 지워도 문의는 남아야 한다). 이름은 보낸 때의 것을 따로 둔다
+  imageId   Int?
+  workTitle String?
+  name      String
+  contact   String
+  message   String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([ownerId, createdAt])
+  @@index([createdAt])
+}
+
 /// 벨 알림(Notification)이 생기면 그 사람의 기기들로 보낸다(lib/push.ts — Prisma 미들웨어 한 곳에서, 알림 만드는 34곳은 그대로).
 /// token 이 unique — 같은 기기에서 다른 사람이 로그인하면 줄의 userId 가 바뀐다(upsert). 로그아웃하면 지운다(토큰이 곧 자격 — 인증 없이).
 /// FCM 이 '등록 해제됨'이라고 답한 토큰은 보내면서 지운다.
