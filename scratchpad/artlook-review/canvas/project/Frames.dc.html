@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>액자 재질 늘리기 시안</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; min-height: 800px; box-sizing: border-box; padding: 56px; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; display: flex; flex-direction: column; gap: 48px">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 24px; font-weight: 700">{{g.title}}</h2>
+<div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{g.items}}" as="f" hint-placeholder-count="8">
+<figure style="margin: 0">
+<img src="{{f.piece}}" alt="{{f.alt}}" style="display: block; width: 100%; height: auto">
+<figcaption style="margin-top: 10px; display: flex; align-items: center; gap: 10px">
+<img src="{{f.corner}}" alt="" style="flex: none; display: block; width: 56px; height: 56px; border-radius: 4px">
+<span style="font-size: 14px; font-weight: 600; line-height: 1.3">{{f.name}}</span>
+</figcaption>
+</figure>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+const it = (name, piece, corner) => ({ name, alt: name + ' 액자 시안', piece: '/_blob/' + piece, corner: '/_blob/' + corner });
+return { groups: [
+{ title: '도장 색 — 블랙 · 화이트 액자 사진에서 색만 옮김', items: [
+it('네이비', '875d9b48be8cd600d740a68159f86849', 'c1c576607578ef0c3044444981cf9a77'),
+it('포레스트', 'f6429db7bee98723f2d58e3841107918', 'a8c764902ee2fea42ee9fd6e7877cf83'),
+it('버건디', '71979bf582227c4ab131d08676ef8902', '1e25743b43dfad2fc9b87e29c63c6ec0'),
+it('차콜', '2e94f087fb20a9e6e099b32b038ac680', 'a2c6af8038dd0c255c90fcdbbbb92c32'),
+it('세이지', 'f780756fffb640a4ea563737134b1737', 'c3e4a7a99b7f797ac53d4666b6256141'),
+it('더스트 블루', '47838314129ef8702eccb96082e6f991', '2ca50a5fd0f1a29db02c831dc9dcf256'),
+it('크림', 'e67196e371048faa161f659bd4e20438', '323deffb78325e9c4309c74309552f21'),
+it('블러시', 'adc299060cdc643c1eb2e8241da42918', 'bceb3c252be13a12fe3d9a758dda6ff4')
+] },
+{ title: '나무 색 — 오크 · 월넛 액자 사진에서 색만 옮김', items: [
+it('체리', '05f9ccd059287b042cb93104a96a56e5', '9d6b10914afc44e1a30ad292a755a1f8'),
+it('허니', '8f01832eb26cd069c36be51bb787ea55', '36eae3d2f2221ab6f88b2418070cdd53'),
+it('그레이 워시', '30ba57f9e7376a40a49fbc563f9e063b', '3f103c9c784a3306b1112db8a208dcaf'),
+it('에스프레소', '4af0e21b1978197b3046561a406d1266', '9e56f4a2d6c7dc78bff83e3043855362')
+] }
+] };
+}
+}
+</script>
+</body>
+</html>

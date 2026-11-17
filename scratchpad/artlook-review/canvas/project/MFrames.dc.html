@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ArtLook 개선 휴대폰 액자</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;letter-spacing:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 664px; box-sizing: border-box; overflow: hidden; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; display: flex; flex-direction: column">
+
+<header style="flex: none; height: 52px; padding: 0 8px 0 4px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f0f0">
+<div style="display: flex; align-items: center">
+<button type="button" aria-label="닫기" style="width: 44px; height: 44px; border: 0; background: none; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+<span style="font-size: 19px; font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Look</span></span>
+</div>
+<button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #111827; color: #ffffff; font-size: 15px; font-weight: 600">저장</button>
+</header>
+
+<div style="flex: none; width: 390px; height: 390px; background: #f1f0ec">
+<img src="{{pv}}" alt="액자에 건 작품 미리보기" style="display: block; width: 390px; height: 390px">
+</div>
+
+<div role="tablist" aria-label="꾸미기" style="flex: none; height: 44px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid #e5e7eb">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+<button type="button" role="tab" aria-selected="{{t.on}}" style="height: 44px; border: 0; background: none; font-size: 15px; font-weight: {{t.weight}}; color: {{t.color}}; box-shadow: {{t.bar}}">{{t.name}}</button>
+</sc-for>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 12px 0 0 16px; display: flex; flex-direction: column; gap: 8px">
+
+<sc-if value="{{isReco}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; gap: 10px; padding: 4px 0 0 4px">
+<sc-for list="{{presets}}" as="p" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{p.on}}" style="flex: none; width: 92px; padding: 0; border: 0; background: none; text-align: left">
+<img src="{{p.img}}" alt="" style="display: block; width: 92px; height: 92px; border-radius: 4px; box-shadow: {{p.ring}}">
+<span style="display: block; margin-top: 8px; font-size: 13px; font-weight: {{p.weight}}; white-space: nowrap">{{p.name}}</span>
+</button>
+</sc-for>
+</div>
+<p style="margin: 0; padding-left: 4px; font-size: 13px; color: #6b7280">오크 플로터 · 넓은 매트 · 차콜 벽 · 조명 35%</p>
+</sc-if>
+
+<sc-if value="{{isWorks}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; gap: 8px; padding: 4px 0 0 4px">
+<button type="button" aria-pressed="false" style="flex: none; width: 64px; height: 64px; padding: 0; border: 1px dashed #9ca3af; border-radius: 4px; background: #f9fafb; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; color: #374151">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.6"><rect x="3" y="6" width="8" height="12"></rect><rect x="13" y="4" width="8" height="7"></rect><rect x="13" y="13" width="5" height="5"></rect></svg>
+여러 점
+</button>
+<sc-for list="{{works}}" as="w" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{w.on}}" aria-label="{{w.name}}" style="flex: none; width: 64px; height: 64px; padding: 0; border: 0; background: none">
+<img src="{{w.img}}" alt="" style="display: block; width: 64px; height: 64px; border-radius: 4px; box-shadow: {{w.ring}}">
+</button>
+</sc-for>
+</div>
+<p style="margin: 2px 0 0; padding-left: 4px; font-size: 14px; font-weight: 600">새벽 창</p>
+<div style="display: flex; align-items: center; gap: 6px; padding-left: 4px">
+<span style="flex: none; width: 34px; font-size: 13px; color: #6b7280">크기</span>
+<sc-for list="{{sizes}}" as="s" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; height: 44px; padding: 0 11px; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}; white-space: nowrap">{{s.name}}</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isFrames}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 6px">
+<span style="flex: none; width: 34px; font-size: 13px; color: #6b7280">모양</span>
+<sc-for list="{{shapes}}" as="s" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; height: 44px; padding: 0 12px; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}; white-space: nowrap">{{s.name}}</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="flex: none; width: 32px; font-size: 13px; color: #6b7280">재질</span>
+<sc-for list="{{mats}}" as="m" hint-placeholder-count="7">
+<button type="button" aria-pressed="{{m.on}}" aria-label="{{m.name}}" style="flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: none">
+<img src="{{m.img}}" alt="" style="display: block; width: 44px; height: 44px; border-radius: 4px; box-shadow: {{m.ring}}">
+</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 6px">
+<span style="flex: none; width: 34px; font-size: 13px; color: #6b7280">매트</span>
+<sc-for list="{{matW}}" as="s" hint-placeholder-count="3">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; height: 44px; padding: 0 12px; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}; white-space: nowrap">{{s.name}}</button>
+</sc-for>
+<span style="flex: none; width: 6px"></span>
+<sc-for list="{{matC}}" as="c" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{c.on}}" aria-label="{{c.name}}" style="flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: none; display: flex; align-items: center; justify-content: center">
+<span style="display: block; width: 28px; height: 28px; border-radius: 50%; background: {{c.hex}}; border: 1px solid #d1d5db; box-shadow: {{c.ring}}"></span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isScenes}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 6px; padding-left: 4px">
+<sc-for list="{{sceneKinds}}" as="s" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; height: 44px; padding: 0 18px; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}">{{s.name}}</button>
+</sc-for>
+</div>
+<div style="display: flex; gap: 10px; padding: 4px 0 0 4px">
+<sc-for list="{{scenes}}" as="p" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{p.on}}" style="flex: none; width: 76px; padding: 0; border: 0; background: none; text-align: left">
+<img src="{{p.img}}" alt="" style="display: block; width: 76px; height: 76px; border-radius: 4px; box-shadow: {{p.ring}}">
+<span style="display: block; margin-top: 8px; font-size: 13px; font-weight: {{p.weight}}; white-space: nowrap">{{p.name}}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isFinish}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 6px">
+<span style="flex: none; width: 44px; font-size: 13px; color: #6b7280">비율</span>
+<sc-for list="{{ratios}}" as="s" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; width: 56px; height: 44px; padding: 0; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}">{{s.name}}</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 6px; height: 44px; padding-right: 16px">
+<label for="light" style="flex: none; width: 44px; font-size: 13px; color: #6b7280">조명</label>
+<input id="light" type="range" min="0" max="100" step="5" defaultValue="35" style="flex: 1; min-width: 0; height: 44px; margin: 0; accent-color: #111827">
+<output for="light" style="flex: none; width: 40px; text-align: right; font-size: 14px">35%</output>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; height: 44px; padding-right: 16px">
+<span id="capLabel" style="font-size: 14px">벽 캡션</span>
+<button type="button" role="switch" aria-checked="false" aria-labelledby="capLabel" style="position: relative; width: 52px; height: 44px; padding: 0; border: 0; background: none">
+<span style="position: absolute; left: 4px; top: 9px; width: 44px; height: 26px; border-radius: 13px; background: #d1d5db"></span>
+<span style="position: absolute; left: 7px; top: 12px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff"></span>
+</button>
+</div>
+</sc-if>
+
+</div>
+
+<sc-if value="{{sheet}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 0; top: 0; width: 390px; height: 664px; background: rgba(17, 24, 39, 0.5)"></div>
+<div role="dialog" aria-modal="true" aria-labelledby="saveTitle" style="position: absolute; left: 0; bottom: 0; width: 390px; box-sizing: border-box; padding: 20px 16px 28px; background: #ffffff; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h2 id="saveTitle" style="margin: 0; font-size: 17px; font-weight: 700">저장</h2>
+<button type="button" aria-label="닫기" style="width: 44px; height: 44px; margin: -10px -10px -10px 0; border: 0; background: none; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+<div style="display: flex; align-items: center; gap: 14px">
+<img src="{{pv}}" alt="저장할 이미지" style="flex: none; display: block; width: 104px; height: 104px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 15px; font-weight: 600">새벽 창</span>
+<span style="font-size: 13px; color: #6b7280">1568 × 1568px</span>
+</div>
+</div>
+<button type="button" style="height: 50px; border: 0; border-radius: 10px; background: #111827; color: #ffffff; font-size: 16px; font-weight: 600">이미지 저장</button>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="height: 48px; border: 1px solid #d1d5db; border-radius: 10px; background: #ffffff; font-size: 15px; font-weight: 500">ArtStory에 올리기</button>
+<button type="button" style="height: 48px; border: 1px solid #d1d5db; border-radius: 10px; background: #ffffff; font-size: 15px; font-weight: 500">공유</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":664}}'>
+class Component extends DCLogic {
+renderVals() {
+const TAB = 'frames', SHEET = false;
+const B = (id) => '/_blob/' + id;
+const RING = '0 0 0 2px #ffffff, 0 0 0 4px #111827';
+const chip = (name, on) => ({ name, on: !!on, border: on ? '2px solid #111827' : '1px solid #d1d5db', weight: on ? 600 : 400, color: on ? '#111827' : '#374151' });
+const card = (name, id, on) => ({ name, img: B(id), on: !!on, ring: on ? RING : 'none', weight: on ? 600 : 400 });
+const PV = { reco: '531df9e6b9e90fcc489ad6bc558b7d8f', works: 'a7962f4f2905bf2824e87ae111da6283', frames: '8d1ebf23a27742fee050c6e29f61f081', scenes: 'a7962f4f2905bf2824e87ae111da6283', finish: '531df9e6b9e90fcc489ad6bc558b7d8f' };
+const tabs = [['reco', '추천'], ['works', '작품'], ['frames', '액자'], ['scenes', '배경'], ['finish', '마무리']].map(([id, name]) => ({ name, on: id === TAB, weight: id === TAB ? 700 : 400, color: id === TAB ? '#111827' : '#6b7280', bar: id === TAB ? 'inset 0 -2px 0 #111827' : 'none' }));
+return {
+pv: B(PV[TAB]), tabs, sheet: SHEET,
+isReco: TAB === 'reco', isWorks: TAB === 'works', isFrames: TAB === 'frames', isScenes: TAB === 'scenes', isFinish: TAB === 'finish',
+presets: [card('차콜 조명', 'fb6959c9068abc0673125a3d37838bb8', true), card('화이트 큐브', 'cfb9cbf275cd82b7de812bebd5f00fb7'), card('따뜻한 거실', '0542ef96123f13730c4a7b8509af8ca7'), card('버건디 골드', '1baa8ffa3505fbd48d98ee1e678c7292'), card('흰 벽돌', '9678a1c803d64c71673ad64503a76537')],
+works: [card('새벽 창', '74ad44395e110531046efd720278e5db', true), card('긴 여름', 'cc9067669ccea266419325488ba5dfbc'), card('붉은 언덕', '09b413f8a94fc757c5f1fcb6ca179135'), card('조용한 오후', '20b42f55e35925f4e6bdf8b5fffae555'), card('물의 기억', 'b68263a78955ed751dc62d4e426d3dba')],
+sizes: [chip('10호'), chip('30호', true), chip('50호'), chip('100호'), chip('직접 입력')],
+shapes: [chip('몰딩', true), chip('넓은 몰딩'), chip('슬림'), chip('플로터'), chip('박스'), chip('원형'), chip('액자 없음')],
+mats: [card('오크', '25d25adae1eee7ab0ea203fe36428112', true), card('월넛', '8f365ae6ceeacc7154050d38832c7f3e'), card('메이플', '986c1668f97f66eea78434c42ef478ac'), card('블랙', 'dc5ef8c58453abe66b4d7c6b993b7abd'), card('화이트', 'ebdd117b18995c59b69ab70d6facf1bd'), card('실버', 'ca5501e70380ece2e8eba4343e9dc093'), card('골드', '770a93ff730166780c92f80f6fb0cf3c')],
+matW: [chip('없음'), chip('좁게', true), chip('넓게')],
+matC: [{ name: '미색', hex: '#f5f2ea', on: true, ring: RING }, { name: '흰색', hex: '#ffffff', on: false, ring: 'none' }, { name: '검정', hex: '#2b2b2b', on: false, ring: 'none' }],
+sceneKinds: [chip('공간', true), chip('벽')],
+scenes: [card('갤러리 리빙', '7dd39f5bce2e3eb2fb875a287828b236', true), card('갤러리 살롱', '93660fd040f16a2b1c78f1b43d7235a5'), card('화이트 큐브', '5b2789514563f2b2be02ede4c1d59cac'), card('컬렉터 홈', '7d8fc148e8b21f6b1ce164862d7e4b60'), card('호텔 라운지', 'c99973860b6ef32b3ecf3108f4127f5b')],
+ratios: [chip('1:1', true), chip('4:5'), chip('3:4'), chip('16:9'), chip('9:16')]
+};
+}
+}
+</script>
+</body>
+</html>

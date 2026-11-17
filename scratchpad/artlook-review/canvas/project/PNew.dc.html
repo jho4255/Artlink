@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ArtLook 개선 PC 액자 탭</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#4b5563}a:hover{color:#111827}
+button{font:inherit;color:inherit;letter-spacing:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; overflow: hidden; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; display: flex; flex-direction: column">
+
+<header style="flex: none; height: 80px; padding: 0 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f0f0">
+<a href="#" style="font-size: 34px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Link</span></a>
+<nav aria-label="주 메뉴" style="display: flex; gap: 40px; font-size: 16px">
+<a href="#" style="text-decoration: none">홈</a>
+<a href="#" style="text-decoration: none">작가</a>
+<a href="#" style="text-decoration: none">갤러리</a>
+<a href="#" style="text-decoration: none">전시</a>
+<a href="#" style="text-decoration: none">모집공고</a>
+<a href="#" style="text-decoration: none">커뮤니티</a>
+<a href="#" style="text-decoration: none">ArtStory</a>
+</nav>
+<span style="padding: 4px 8px; background: #f9fafb; border-radius: 4px; font-size: 12px; color: #4b5563">윤서진 (작가)</span>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex">
+
+<main style="flex: 1; min-width: 0; padding: 28px 32px 0; display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Look</span></h1>
+
+<div style="height: 716px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex">
+
+<div style="flex: 1; min-width: 0; background: #f1f0ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px">
+<img src="/_blob/8d1ebf23a27742fee050c6e29f61f081" alt="액자에 건 작품 미리보기" style="display: block; width: 620px; height: 620px">
+<div style="display: flex; align-items: center; gap: 8px">
+<button type="button" aria-label="작게" style="width: 44px; height: 44px; border: 1px solid #d1d5db; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"></path></svg></button>
+<button type="button" aria-label="크게" style="width: 44px; height: 44px; border: 1px solid #d1d5db; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button type="button" style="height: 44px; padding: 0 16px; border: 1px solid #d1d5db; border-radius: 22px; background: #ffffff; font-size: 14px">처음 자리로</button>
+<span style="margin-left: 12px; font-size: 14px; color: #4b5563">1568 × 1568px</span>
+</div>
+</div>
+
+<div style="flex: none; width: 420px; border-left: 1px solid #e5e7eb; background: #ffffff; display: flex; flex-direction: column">
+<div role="tablist" aria-label="꾸미기" style="flex: none; height: 48px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid #e5e7eb">
+<button type="button" role="tab" aria-selected="false" style="border: 0; background: none; font-size: 15px; color: #6b7280">추천</button>
+<button type="button" role="tab" aria-selected="false" style="border: 0; background: none; font-size: 15px; color: #6b7280">작품</button>
+<button type="button" role="tab" aria-selected="true" style="border: 0; background: none; font-size: 15px; font-weight: 700; box-shadow: inset 0 -2px 0 #111827">액자</button>
+<button type="button" role="tab" aria-selected="false" style="border: 0; background: none; font-size: 15px; color: #6b7280">배경</button>
+<button type="button" role="tab" aria-selected="false" style="border: 0; background: none; font-size: 15px; color: #6b7280">마무리</button>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 20px; display: flex; flex-direction: column; gap: 20px">
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 14px; font-weight: 600">모양</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 10px">
+<sc-for list="{{shapes}}" as="s" hint-placeholder-count="7">
+<button type="button" aria-pressed="{{s.on}}" style="padding: 0; border: 0; background: none; text-align: left">
+<img src="{{s.img}}" alt="" style="display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; box-shadow: {{s.ring}}">
+<span style="display: block; margin-top: 8px; font-size: 13px; font-weight: {{s.weight}}; white-space: nowrap">{{s.name}}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 14px; font-weight: 600">재질</h2>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{mats}}" as="m" hint-placeholder-count="7">
+<button type="button" aria-pressed="{{m.on}}" style="padding: 0; border: 0; background: none; text-align: center">
+<img src="{{m.img}}" alt="" style="display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; box-shadow: {{m.ring}}">
+<span style="display: block; margin-top: 8px; font-size: 12px; font-weight: {{m.weight}}; white-space: nowrap">{{m.name}}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 14px; font-weight: 600">매트</h2>
+<div style="display: flex; align-items: center; gap: 6px">
+<sc-for list="{{matW}}" as="s" hint-placeholder-count="3">
+<button type="button" aria-pressed="{{s.on}}" style="flex: none; height: 44px; padding: 0 16px; border: {{s.border}}; border-radius: 8px; background: #ffffff; font-size: 14px; font-weight: {{s.weight}}; color: {{s.color}}">{{s.name}}</button>
+</sc-for>
+<span style="flex: none; width: 10px"></span>
+<sc-for list="{{matC}}" as="c" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{c.on}}" aria-label="{{c.name}}" style="flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: none; display: flex; align-items: center; justify-content: center">
+<span style="display: block; width: 28px; height: 28px; border-radius: 50%; background: {{c.hex}}; border: 1px solid #d1d5db; box-shadow: {{c.ring}}"></span>
+</button>
+</sc-for>
+</div>
+</section>
+
+</div>
+
+<div style="flex: none; padding: 16px 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px">
+<button type="button" style="flex: 1; height: 48px; border: 0; border-radius: 10px; background: #111827; color: #ffffff; font-size: 15px; font-weight: 600">이미지 저장</button>
+<button type="button" style="flex: none; height: 48px; padding: 0 16px; border: 1px solid #d1d5db; border-radius: 10px; background: #ffffff; font-size: 15px; font-weight: 500">ArtStory에 올리기</button>
+</div>
+</div>
+
+</div>
+</main>
+
+<aside aria-label="마이페이지 메뉴" style="flex: none; width: 224px; box-sizing: border-box; padding: 40px 16px; border-left: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+<span style="padding: 0 12px 12px; font-size: 12px; letter-spacing: 0.12em; color: #6b7280">MY PAGE</span>
+<a href="#" style="padding: 12px; text-decoration: none">프로필</a>
+<a href="#" style="padding: 12px; text-decoration: none">홈페이지</a>
+<a href="#" style="padding: 12px; text-decoration: none">포트폴리오</a>
+<a href="#" style="padding: 12px; text-decoration: none">찜 목록</a>
+<a href="#" style="padding: 12px; text-decoration: none">내 전시</a>
+<a href="#" aria-current="page" style="padding: 12px; border-radius: 8px; background: #f3f4f6; font-weight: 700; text-decoration: none; color: #111827">Art<span style="color: #c4302b">Look</span></a>
+<a href="#" style="padding: 12px; text-decoration: none">1:1 문의</a>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const B = (id) => '/_blob/' + id;
+const RING = '0 0 0 2px #ffffff, 0 0 0 4px #111827';
+const chip = (name, on) => ({ name, on: !!on, border: on ? '2px solid #111827' : '1px solid #d1d5db', weight: on ? 600 : 400, color: on ? '#111827' : '#374151' });
+const card = (name, id, on) => ({ name, img: B(id), on: !!on, ring: on ? RING : 'none', weight: on ? 600 : 400 });
+return {
+shapes: [card('몰딩', '08c32b57bef7683983105434931ddbbb', true), card('넓은 몰딩', '416a48a912b223399afc102885bb896e'), card('슬림', '9fafde20453f3add43122c0d0a2cfa3f'), card('플로터', 'fdb7617c2a6322cb6eef885dba59f2d4'), card('박스', '8f1f6591dccd98b05aa311afbcdb190c'), card('원형', 'c4b99e828488d2b67c1cca0affbef72c'), card('액자 없음', '9fe9e902f31366b3b624919b357359ce')],
+mats: [card('오크', '25d25adae1eee7ab0ea203fe36428112', true), card('월넛', '8f365ae6ceeacc7154050d38832c7f3e'), card('메이플', '986c1668f97f66eea78434c42ef478ac'), card('블랙', 'dc5ef8c58453abe66b4d7c6b993b7abd'), card('화이트', 'ebdd117b18995c59b69ab70d6facf1bd'), card('실버', 'ca5501e70380ece2e8eba4343e9dc093'), card('골드', '770a93ff730166780c92f80f6fb0cf3c')],
+matW: [chip('없음'), chip('좁게', true), chip('넓게')],
+matC: [{ name: '미색', hex: '#f5f2ea', on: true, ring: RING }, { name: '흰색', hex: '#ffffff', on: false, ring: 'none' }, { name: '크림', hex: '#efe6d6', on: false, ring: 'none' }, { name: '회색', hex: '#e4e0d8', on: false, ring: 'none' }, { name: '검정', hex: '#2b2b2b', on: false, ring: 'none' }]
+};
+}
+}
+</script>
+</body>
+</html>

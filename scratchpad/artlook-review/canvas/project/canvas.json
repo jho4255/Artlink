@@ -1,0 +1,128 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-17T13:20:00Z"
+  },
+  "title": "ArtLook 리뷰와 개선안",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1520,
+      "title": "결과물 — 지금 걸리는 곳과 고친 모습(같은 엔진으로 뽑은 그림)"
+    },
+    "MNow.dc.html": {
+      "x": 0,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "지금"
+    },
+    "MReco.dc.html": {
+      "x": 470,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 추천"
+    },
+    "MWorks.dc.html": {
+      "x": 940,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 작품 · 크기"
+    },
+    "MFrames.dc.html": {
+      "x": 1410,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 액자(모양 · 재질 · 매트)"
+    },
+    "MScenes.dc.html": {
+      "x": 1880,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 배경"
+    },
+    "MFinish.dc.html": {
+      "x": 2350,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 마무리"
+    },
+    "MSave.dc.html": {
+      "x": 2820,
+      "y": 1940,
+      "w": 390,
+      "h": 664,
+      "title": "개선 — 저장"
+    },
+    "PNow.dc.html": {
+      "x": 0,
+      "y": 3024,
+      "w": 1440,
+      "h": 900,
+      "title": "지금"
+    },
+    "PNew.dc.html": {
+      "x": 1520,
+      "y": 3024,
+      "w": 1440,
+      "h": 900,
+      "title": "개선 — 액자 탭"
+    },
+    "Frames.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 800,
+      "title": "액자 재질 늘리기 시안 — 가진 사진에서 색만 옮긴 것(새 사진 없음)"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Frames.dc.html",
+    "MNow.dc.html",
+    "MReco.dc.html",
+    "MWorks.dc.html",
+    "MFrames.dc.html",
+    "MScenes.dc.html",
+    "MFinish.dc.html",
+    "MSave.dc.html",
+    "PNow.dc.html",
+    "PNew.dc.html"
+  ],
+  "notes": {
+    "t2": {
+      "x": 0,
+      "y": 1640,
+      "text": "휴대폰 화면 — 아이폰 13(390×664)",
+      "kind": "title1",
+      "maxW": 3210
+    },
+    "t3": {
+      "x": 0,
+      "y": 2724,
+      "text": "PC 화면 — 1440×900",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "t1": {
+      "x": 0,
+      "y": -300,
+      "text": "결과물(퀄리티)",
+      "kind": "title1",
+      "maxW": 2960
+    }
+  },
+  "designSystems": []
+}
