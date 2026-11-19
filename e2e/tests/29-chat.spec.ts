@@ -188,16 +188,42 @@ test.describe('단톡 (공모방) — 서버가 만든다', () => {
     await api.dispose();
   });
 
-  test('★ 수락된 작가와 갤러리 양쪽 목록에 같은 공모 단톡이 보인다', async ({ browser }) => {
-    for (const role of ['artist', 'gallery'] as const) {
-      const { page, ctx } = await openAs(browser, role);
-      await page.goto('/messages');
-      await expect(page.locator('body')).toContainText(exTitle, { timeout: 12000 });
-      await ctx.close();
-    }
+  /** 갤러리가 단톡을 연다(첫 말) — 아래 시험들이 앞 시험에 기대지 않게. 이미 말이 있으면 그대로 둔다.
+      (시험 하나가 실패하면 Playwright 가 새 워커에서 beforeAll 을 다시 돌려 **아직 안 열린 새 방**이 생긴다) */
+  async function galleryOpensRoom() {
+    const api = await pwRequest.newContext();
+    const h = { Authorization: `Bearer ${tokenFor('gallery')}` };
+    const rooms = await (await api.get(`${API}/chats`, { headers: h })).json();
+    const room = rooms.find((c: any) => c.exhibitionId === exId);
+    if (room && !room.lastMessage) await api.post(`${API}/chats/${room.id}/messages`, { headers: h, data: { content: '선정 축하드립니다.' } });
+    await api.dispose();
+  }
+
+  test('★ 단톡은 운영자가 연다 — 첫 메시지 전엔 갤러리에만 보이고, 갤러리가 첫 말을 보내면 작가 목록에도 뜬다(2026-11-19)', async ({ browser }) => {
+    // 작가: 수락됐지만 아직 목록에 없다(카카오톡 단체방처럼 — 운영자가 첫 말을 보내야 열린다)
+    const a = await openAs(browser, 'artist');
+    await a.page.goto('/messages');
+    await expect(a.page.getByTestId('chat-list')).toBeVisible({ timeout: 12000 });
+    await a.page.waitForTimeout(800);
+    await expect(a.page.getByTestId('chat-list')).not.toContainText(exTitle);
+
+    // 갤러리: 보인다 · 빈 방 안내가 '작가들에게 보인다'를 알린다 → 첫 말
+    const g = await openAs(browser, 'gallery');
+    await g.page.goto('/messages');
+    await openRoom(g.page, exTitle);
+    await expect(g.page.getByText('첫 메시지를 보내면 작가들에게 이 방이 보여요.')).toBeVisible();
+    await send(g.page, '선정 축하드립니다. 반입 일정 안내드릴게요.');
+    await g.ctx.close();
+
+    // 작가: 이제 목록에 그 말과 함께
+    await a.page.goto('/messages');
+    await expect(a.page.getByTestId('chat-list')).toContainText(exTitle, { timeout: 12000 });
+    await expect(a.page.getByTestId('chat-list')).toContainText('반입 일정 안내드릴게요');
+    await a.ctx.close();
   });
 
   test('★ 단톡에서는 남의 말에 이름이 붙는다 (누가 한 말인지 알아야 한다)', async ({ browser }) => {
+    await galleryOpensRoom();
     const g = await openAs(browser, 'gallery');
     await g.page.goto('/messages');
     await openRoom(g.page, exTitle);
@@ -212,12 +238,17 @@ test.describe('단톡 (공모방) — 서버가 만든다', () => {
     const theirs = list.find(b => b.text.includes('참여해주셔서'));
     expect(theirs, '갤러리가 보낸 말이 말풍선에 없다 (방이 안 열렸거나 전달 안 됨)').toBeTruthy();
     expect(theirs!.mine).toBe(false);
-    expect(theirs!.name, '단톡에서 남의 말인데 이름이 없다').toBeTruthy();
+    // 같은 사람이 같은 분에 이어 보낸 말은 묶어서 **첫 말풍선에만** 이름을 단다(카카오톡식) — 그 묶음의 첫 줄을 본다
+    const i = list.indexOf(theirs!);
+    let first = i;
+    while (first > 0 && !list[first - 1].mine && !list[first].name) first -= 1;
+    expect(list[first].name, '단톡에서 남의 말인데 이름이 없다').toBeTruthy();
 
     await a.ctx.close();
   });
 
   test('단톡 머리말에 참여자 수와 [공모 보기]가 있다', async ({ browser }) => {
+    await galleryOpensRoom();
     const { page, ctx } = await openAs(browser, 'artist');
     await page.goto('/messages');
     await openRoom(page, exTitle);
@@ -228,6 +259,7 @@ test.describe('단톡 (공모방) — 서버가 만든다', () => {
   });
 
   test('★ 참여하지 않은 작가에게는 그 방이 아예 없다 (목록에도, 주소로도)', async ({ browser }) => {
+    await galleryOpensRoom();
     // 방 id 를 알아내서 직접 두드려 본다
     const api = await pwRequest.newContext();
     const r = await api.get(`${API}/chats`, { headers: { Authorization: `Bearer ${tokenFor('artist')}` } });

@@ -80,13 +80,31 @@ const toPerson = (u: ParticipantUser): ChatPerson => ({
 export const isHiddenNow = (hiddenAt: Date | null | undefined, lastMessageAt: Date): boolean =>
   !!hiddenAt && lastMessageAt.getTime() <= hiddenAt.getTime();
 
-/** 그 사람이 이 방의 참여자인가 — 모든 읽기·쓰기의 유일한 권한 판정 */
+/** 그 사람이 이 방의 참여자인가 (열림 여부는 보지 않는다 — 방에 들어가도 되는가는 `canEnterChat`) */
 export async function isParticipant(chatId: number, userId: number): Promise<boolean> {
   const row = await prisma.chatParticipant.findUnique({
     where: { chatId_userId: { chatId, userId } },
     select: { id: true },
   });
   return !!row;
+}
+
+/**
+ * 아직 작가에게 안 열린 단톡인가 (2026-11-19 — 카카오톡 단체방처럼).
+ * 공모 단톡은 승인 때 저절로 생기고 수락된 작가가 들어가지만, **운영자의 첫 메시지 전에는 작가에게 보이지 않는다**
+ * (목록·주소 모두 — 남의 방과 같은 404). 단톡의 참여자는 운영자(갤러리 주인·운영 갤러리·관리자)와 수락된 작가뿐이고
+ * 작가는 운영자일 수 없으므로(지원은 작가만 한다) 역할로 가른다.
+ */
+export const groupClosedFor = (chat: { kind: string; openedAt: Date | null }, role: string | undefined): boolean =>
+  chat.kind === 'GROUP' && !chat.openedAt && role === 'ARTIST';
+
+/** 이 방에 들어가도 되는가 — 모든 읽기·쓰기의 권한 판정(참여자 + 작가에겐 열린 단톡만). 아니면 라우트가 404 */
+export async function canEnterChat(chatId: number, userId: number, role: string | undefined): Promise<boolean> {
+  const row = await prisma.chatParticipant.findUnique({
+    where: { chatId_userId: { chatId, userId } },
+    select: { chat: { select: { kind: true, openedAt: true } } },
+  });
+  return !!row && !groupClosedFor(row.chat, role);
 }
 
 /**
@@ -279,10 +297,15 @@ const unreadWhere = (
  *  · **숨긴 방** — 숨긴 뒤 새 메시지가 오면 다시 나온다(`isHiddenNow`).
  *  · **내가 차단한 사람과의 1:1 방** — 방과 대화는 그대로다(차단을 풀면 돌아온다).
  */
-export async function listChats(userId: number): Promise<ChatSummary[]> {
+export async function listChats(userId: number, role?: string): Promise<ChatSummary[]> {
   const [rows, blocked] = await Promise.all([
     prisma.chat.findMany({
-      where: { participants: { some: { userId } }, OR: [{ kind: 'GROUP' }, { messages: { some: {} } }] },
+      where: {
+        participants: { some: { userId } },
+        OR: [{ kind: 'GROUP' }, { messages: { some: {} } }],
+        // 작가에게는 운영자가 첫 말을 보낸(열린) 단톡만 — groupClosedFor 와 같은 규칙
+        ...(role === 'ARTIST' ? { NOT: { kind: 'GROUP', openedAt: null } } : {}),
+      },
       orderBy: { lastMessageAt: 'desc' },
       include: {
         participants: { include: participantSelect },
@@ -463,6 +486,8 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
     muted: me?.muted ?? false,
     /** 내 목록에서 숨긴 방인가(숨긴 뒤 새 메시지가 왔으면 false) */
     hidden: isHiddenNow(me?.hiddenAt, chat.lastMessageAt),
+    /** 작가에게 열린 방인가 — 단톡은 운영자의 첫 메시지 뒤에 열린다(갠톡은 늘 true). 운영자 화면이 빈 방 안내를 고른다 */
+    opened: chat.kind !== 'GROUP' || !!chat.openedAt,
     otherCount: others.length,
     messages: withRead,
     /** 더 앞(과거) 메시지가 남아 있는가 — `after` 폴링에서는 항상 false */

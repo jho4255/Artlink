@@ -1216,6 +1216,9 @@ model Chat {
   createdBy     User?             @relation("chatCreator", fields: [createdById], references: [id], onDelete: SetNull)
   // 목록 정렬용. 메시지를 넣을 때 함께 갱신한다(매번 집계하면 목록이 느려진다)
   lastMessageAt DateTime          @default(now())
+  // 단톡(공모방)이 작가에게 열린 시각 — 운영자(작가가 아닌 참여자)의 첫 메시지 때 적는다(2026-11-19, 카카오톡 단체방처럼).
+  // null 이면 작가의 목록·주소 접근에서 빠진다(운영자에겐 보인다). 갠톡은 쓰지 않는다(빈 1:1 방은 메시지 유무로 거른다)
+  openedAt      DateTime?
   participants  ChatParticipant[]
   messages      ChatMessage[]
   createdAt     DateTime          @default(now())

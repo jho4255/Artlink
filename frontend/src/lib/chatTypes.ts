@@ -75,6 +75,8 @@ export interface ChatRoomMeta {
   participants: ChatPerson[];
   muted: boolean;
   hidden: boolean;
+  /** 작가에게 열린 방인가 — 단톡은 운영자의 첫 메시지 뒤에 열린다(2026-11-19). 갠톡은 늘 true */
+  opened: boolean;
   counterpart: ChatCounterpart | null;
   operatorIds: number[];
   context: (ChatRef & { messageId: number }) | null;
@@ -93,6 +95,7 @@ export interface ChatDetailResponse {
   messages: ChatMessage[];
   muted?: boolean;
   hidden?: boolean;
+  opened?: boolean;
   hasMore?: boolean;
   readers?: { userId: number; lastReadAt: string | null }[];
   counterpart?: ChatCounterpart | null;

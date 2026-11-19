@@ -34,12 +34,13 @@ describe('빈 1:1 방은 목록에 없다 (B6)', () => {
     expect((await list(a2)).map((c) => c.id)).toEqual([id]);
   });
 
-  it('단톡은 메시지가 없어도 보인다(운영자가 쓸 곳)', async () => {
+  it('단톡은 메시지가 없어도 운영자에게는 보인다(첫 말을 보낼 곳) — 작가에게는 운영자가 연 뒤에(아래 「단톡은 운영자가 연다」)', async () => {
     const g = await seedGallery(3);
     const ex = await seedExhibition(g.id);
     await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
     const chatId = await ensureExhibitionChat(ex.id);
-    expect((await list(a1)).map((c) => c.id)).toEqual([chatId]);
+    expect((await list(owner)).map((c) => c.id)).toEqual([chatId]);
+    expect(await list(a1)).toEqual([]);
   });
 
   it('목록에 보낸 사람 이름(단톡 미리보기)·공모 포스터·탈퇴 여부가 실린다', async () => {
@@ -246,6 +247,7 @@ describe('방 머리 — 상대 홈페이지 · 단톡 운영자 (방을 열 때
     const ex = await seedExhibition(g.id);
     await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
     const chatId = (await ensureExhibitionChat(ex.id))!;
+    await send(owner, chatId, { content: '반가워요' });   // 운영자가 열어야 작가가 들어온다
     const room = await request.get(`/api/chats/${chatId}`).set(auth(a1));
     expect(room.body.operatorIds).toEqual([3]);
     expect(room.body.exhibition).toEqual({ id: ex.id, title: 'Test Exhibition', imageUrl: null });
@@ -335,6 +337,7 @@ describe('신고 (WP6 · 규칙 33)', () => {
     const ex = await seedExhibition(g.id);
     await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
     const chatId = (await ensureExhibitionChat(ex.id))!;
+    await send(owner, chatId, { content: '공지입니다' });
     expect((await report(a1, chatId, { reason: 'SPAM' })).status).toBe(400);
   });
 
@@ -350,5 +353,74 @@ describe('신고 (WP6 · 규칙 33)', () => {
     expect((await request.patch(`/api/chat-reports/${rid}`).set(auth(admin)).send({ status: 'DISMISSED', adminNote: '문제없음' })).status).toBe(200);
     expect((await request.get('/api/chat-reports?status=OPEN').set(auth(admin))).body).toHaveLength(0);
     expect((await request.patch('/api/chat-reports/99999').set(auth(admin)).send({ status: 'DONE' })).status).toBe(404);
+  });
+});
+
+describe('단톡은 운영자가 연다 — 첫 메시지 전엔 작가에게 안 보인다 (2026-11-19, 카카오톡 단체방처럼)', () => {
+  const setup = async () => {
+    const g = await seedGallery(3);
+    const ex = await seedExhibition(g.id);
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
+    return { ex, chatId: (await ensureExhibitionChat(ex.id))! };
+  };
+
+  it('★ 승인·수락으로 방이 생기고 작가가 들어가도 — 작가의 목록·주소·보내기·알림 끄기·신고·읽음 모두 없는 방(404)', async () => {
+    const { chatId } = await setup();
+    expect(await list(a1)).toEqual([]);
+    expect(await unread(a1)).toBe(0);
+    expect((await request.get(`/api/chats/${chatId}`).set(auth(a1))).status).toBe(404);
+    expect((await send(a1, chatId, { content: '먼저 말해 본다' })).status, '작가가 먼저 열 수는 없다').toBe(404);
+    expect((await request.patch(`/api/chats/${chatId}/mute`).set(auth(a1)).send({ muted: true })).status).toBe(404);
+    expect((await request.patch(`/api/chats/${chatId}/hidden`).set(auth(a1)).send({ hidden: true })).status).toBe(404);
+    expect((await request.post(`/api/chats/${chatId}/read`).set(auth(a1))).status).toBe(404);
+    expect((await request.post(`/api/chats/${chatId}/report`).set(auth(a1)).send({ reason: 'SPAM' })).status).toBe(404);
+    expect(await testPrisma.chatMessage.count({ where: { chatId } })).toBe(0);
+    // 운영자는 처음부터 — 아직 안 열렸다는 표시와 함께
+    const room = await request.get(`/api/chats/${chatId}`).set(auth(owner));
+    expect(room.status).toBe(200);
+    expect(room.body.opened).toBe(false);
+  });
+
+  it('★ 운영자의 첫 메시지로 열린다 — 작가 목록에 그 말과 함께 · 알림 한 줄 · 그 뒤로는 작가도 말한다', async () => {
+    const { chatId } = await setup();
+    expect((await send(owner, chatId, { content: '선정 축하드려요. 반입 일정 안내드릴게요.' })).status).toBe(201);
+    expect((await testPrisma.chat.findUniqueOrThrow({ where: { id: chatId } })).openedAt).not.toBeNull();
+    const room = (await list(a1)).find((c) => c.id === chatId);
+    expect(room?.lastMessage?.content).toBe('선정 축하드려요. 반입 일정 안내드릴게요.');
+    expect(room?.unread).toBe(1);
+    expect(await testPrisma.notification.count({ where: { userId: 1, type: 'CHAT_MESSAGE', refKey: `chat:${chatId}`, read: false } })).toBe(1);
+    const detail = await request.get(`/api/chats/${chatId}`).set(auth(a1));
+    expect(detail.status).toBe(200);
+    expect(detail.body.opened).toBe(true);
+    expect((await send(a1, chatId, { content: '감사합니다!' })).status).toBe(201);
+  });
+
+  it('열린 뒤에 수락된 작가는 들어오자마자 보인다(지난 말까지)', async () => {
+    const { ex, chatId } = await setup();
+    await send(owner, chatId, { content: '첫 공지' });
+    await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
+    await ensureExhibitionChat(ex.id);
+    expect((await list(a2)).map((c) => c.id)).toEqual([chatId]);
+    const detail = await request.get(`/api/chats/${chatId}`).set(auth(a2));
+    expect(detail.body.messages.map((m: any) => m.content)).toEqual(['첫 공지']);
+  });
+
+  it('아트링크 주최(운영 갤러리 없음)는 관리자가 연다 · 갠톡은 이 규칙과 무관(빈 방 규칙만)', async () => {
+    const ex = await testPrisma.exhibition.create({
+      data: {
+        title: '아트링크 주최', type: 'GROUP', hostType: 'ADMIN', galleryId: null, status: 'APPROVED', capacity: 5, region: 'SEOUL',
+        description: '갤러리 없는 공모', deadline: new Date(Date.now() + 30 * 864e5), exhibitDate: new Date(Date.now() + 60 * 864e5),
+      },
+    });
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', biography: 'b', artworkImages: '[]' } });
+    const chatId = (await ensureExhibitionChat(ex.id))!;
+    expect(await list(a1)).toEqual([]);
+    expect((await list(admin)).map((c) => c.id)).toEqual([chatId]);
+    expect((await send(admin, chatId, { content: '아트링크입니다' })).status).toBe(201);
+    expect((await list(a1)).map((c) => c.id)).toEqual([chatId]);
+
+    const { body: { id } } = await openDirect(a1, 2);
+    expect((await send(a1, id, { content: '안녕하세요' })).status).toBe(201);
+    expect((await request.get(`/api/chats/${id}`).set(auth(a2))).body.opened).toBe(true);
   });
 });

@@ -110,12 +110,21 @@ describe('② 지원을 수락하면 그 작가가 단톡에 들어온다 (exhib
     expect(await groupChatOf(exId)).toBeNull();
   });
 
-  it('★ 수락된 작가는 그 방에서 바로 말할 수 있다 (권한 = 참여 여부)', async () => {
+  it('★ 수락된 작가는 운영자가 방을 연 뒤(첫 메시지) 그 방에서 말할 수 있다 (2026-11-19 — 열기 전엔 없는 방)', async () => {
     await request.patch(`/api/exhibitions/${exId}/applications/${appId}`)
       .set('Authorization', `Bearer ${owner}`)
       .send({ status: 'ACCEPTED' });
     const chat = (await groupChatOf(exId))!;
 
+    const early = await request.post(`/api/chats/${chat.id}/messages`)
+      .set('Authorization', `Bearer ${artist1}`)
+      .send({ content: '먼저 말해 본다' });
+    expect(early.status, '운영자보다 먼저 열 수는 없다').toBe(404);
+
+    const open = await request.post(`/api/chats/${chat.id}/messages`)
+      .set('Authorization', `Bearer ${owner}`)
+      .send({ content: '선정 축하드려요!' });
+    expect(open.status).toBe(201);
     const send = await request.post(`/api/chats/${chat.id}/messages`)
       .set('Authorization', `Bearer ${artist1}`)
       .send({ content: '안녕하세요, 참여하게 되어 기쁩니다.' });
@@ -146,6 +155,12 @@ describe('③ 대화 목록에 그 방이 실제로 보인다', () => {
     await request.patch(`/api/exhibitions/${ex.id}/applications/${app.id}`)
       .set('Authorization', `Bearer ${owner}`)
       .send({ status: 'ACCEPTED' });
+
+    // 운영자가 첫 말을 보내기 전엔 작가 목록에 없다(카카오톡 단체방처럼 — 2026-11-19)
+    const before = await request.get('/api/chats').set('Authorization', `Bearer ${artist1}`);
+    expect(before.body).toHaveLength(0);
+    const chat = (await testPrisma.chat.findUnique({ where: { exhibitionId: ex.id } }))!;
+    await request.post(`/api/chats/${chat.id}/messages`).set('Authorization', `Bearer ${owner}`).send({ content: '반갑습니다' });
 
     const list = await request.get('/api/chats').set('Authorization', `Bearer ${artist1}`);
     expect(list.status).toBe(200);

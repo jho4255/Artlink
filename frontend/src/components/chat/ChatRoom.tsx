@@ -200,7 +200,7 @@ export default function ChatRoom({ chatId, myId, wide, onBack }: { chatId: numbe
           loadingOlder={room.loadingOlder}
           loaded={room.loaded}
           operatorIds={meta?.operatorIds ?? []}
-          emptyText="첫 메시지를 보내 보세요."
+          emptyText={meta?.kind === 'GROUP' && meta.opened === false ? '첫 메시지를 보내면 작가들에게 이 방이 보여요.' : '첫 메시지를 보내 보세요.'}
           onLoadOlder={room.loadOlder}
           onOpenImage={onOpenImage}
           onMenu={onMenu}

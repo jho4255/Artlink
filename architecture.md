@@ -3248,6 +3248,7 @@ e2e `83-registration-and-shows.spec.ts`(5) + 07·15·24·25·51·60·67·70·77 
 | 차단 `UserBlock` | `routes/block.ts`(`/api/blocks`) — 1:1 보내기·새 방 403(양쪽), 막은 사람의 목록·배지에서 그 방을 뺀다, 단톡은 그대로 |
 | 숨기기 `ChatParticipant.hiddenAt` | `PATCH /chats/:id/hidden` — 새 말이 오면 다시 보인다 |
 | 빈 1:1 방은 목록에서 뺀다 · 탈퇴 상대 · 방 정보(`counterpart`·`operatorIds`·`context`·`canSend`·`blockReason`) | `lib/chat.ts` `listChats`·`readChat`·`chatRoomMeta`·`directSendBlock` |
+| 단톡은 운영자가 연다 — `Chat.openedAt`(운영자의 첫 메시지), 그 전엔 작가에게 없는 방(목록·주소 404) | `lib/chat.ts` `groupClosedFor`·`canEnterChat` · 마이그레이션 `20261119180000_group_chat_opened_at`(말이 있던 단톡은 열린 것으로 채움) |
 | 알림 합치기 경쟁 — 받는 사람마다 `withKeyLock(chatNotes)` | `lib/chat.ts notifyChatMessage` |
 마이그레이션 `20261119120000_arttalk_renewal`(UserBlock · ChatReport · hiddenAt · ref). 1:1 초대 라우트·`lib/inviteEligibility.ts` 삭제(`ExhibitionInvite` 표는 남김).
 

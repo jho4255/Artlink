@@ -172,7 +172,8 @@ describe('벨 알림 → 기기 푸시 (Prisma 갈고리 한 곳)', () => {
     const a1 = authToken(1, 'ARTIST');
     const direct = await request.post('/api/chats/direct').set('Authorization', `Bearer ${a1}`).send({ userId: 2 });
     await request.post(`/api/chats/${direct.body.id}/messages`).set('Authorization', `Bearer ${a1}`).send({ content: '작품 잘 봤어요' });
-    const group = await testPrisma.chat.create({ data: { kind: 'GROUP', title: '2026 신진작가 공모', participants: { create: [{ userId: 1 }, { userId: 2 }] } } });
+    // 이미 열린 단톡(운영자가 첫 말을 보낸 방 — 2026-11-19 부터 그 전엔 작가가 못 들어간다)
+    const group = await testPrisma.chat.create({ data: { kind: 'GROUP', title: '2026 신진작가 공모', openedAt: new Date(), participants: { create: [{ userId: 1 }, { userId: 2 }] } } });
     await request.post(`/api/chats/${group.id}/messages`).set('Authorization', `Bearer ${a1}`).send({ content: '자료 제출 마감은 금요일입니다' });
     await pushIdle();
 

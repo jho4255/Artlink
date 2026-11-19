@@ -5,7 +5,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
-import { isParticipant, openDirectChat, listChats, readChat, unreadChatCount, notifyChatMessage, markChatNotificationsRead, messagePreview, directKeyOf, directSendBlock } from '../lib/chat';
+import { canEnterChat, openDirectChat, listChats, readChat, unreadChatCount, notifyChatMessage, markChatNotificationsRead, messagePreview, directKeyOf, directSendBlock } from '../lib/chat';
 import { safeFileUrl } from '../lib/safeUrl';
 import { matchR2Base } from '../lib/r2Urls';
 import { CHAT_REF_TYPES, resolveChatRef, readChatRef, type ChatRef } from '../lib/chatRef';
@@ -33,7 +33,7 @@ function ownAttachmentUrl(raw: unknown): string | null {
  * 대화 API (갠톡·단톡).
  *
  * ⚠️ **역할로 막지 않는다.** 작가끼리도, 갤러리끼리도 대화할 수 있다 —
- *    권한 판정은 오직 "이 방의 참여자인가"(`isParticipant`) 하나다.
+ *    권한 판정은 오직 "이 방에 들어가도 되는가"(`canEnterChat` — 참여자 + 작가에겐 운영자가 연 단톡만) 하나다.
  *    예전 쪽지는 라우트마다 역할 규칙이 박혀 있어 작가↔작가가 아예 불가능했다.
  *
  * ⚠️ 대신 **방을 여는 길목**이 좁다. `POST /direct` 는 상대 id 를 받지만,
@@ -85,7 +85,7 @@ router.get('/unread-count', async (req, res, next) => {
 /** 내 대화 목록 */
 router.get('/', async (req, res, next) => {
   try {
-    res.json(await listChats(req.user!.id));
+    res.json(await listChats(req.user!.id, req.user!.role));
   } catch (e) { next(e); }
 });
 
@@ -169,7 +169,7 @@ router.get('/:id', async (req, res, next) => {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
     // 404 로 답한다 — 403 은 "그 방이 있다"는 사실을 알려준다
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     const num = (v: unknown) => {
@@ -203,7 +203,7 @@ router.post('/:id/messages', validate(sendSchema), async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     const content = String(req.body.content ?? '').trim();
@@ -248,6 +248,10 @@ router.post('/:id/messages', validate(sendSchema), async (req, res, next) => {
       }),
       // 목록 정렬용 — 매번 집계하지 않기 위해 여기서 함께 갱신한다
       prisma.chat.update({ where: { id: chatId }, data: { lastMessageAt: new Date() } }),
+      // 단톡은 운영자(작가가 아닌 참여자)의 첫 메시지로 작가에게 열린다 — 이미 열렸으면 아무 일도 없다(조건부 updateMany)
+      ...(req.user!.role !== 'ARTIST'
+        ? [prisma.chat.updateMany({ where: { id: chatId, kind: 'GROUP', openedAt: null }, data: { openedAt: new Date() } })]
+        : []),
       // 보낸 사람은 당연히 읽은 것이다 (안 하면 자기 메시지가 안읽음으로 잡힌다)
       prisma.chatParticipant.update({
         where: { chatId_userId: { chatId, userId: me } },
@@ -278,7 +282,7 @@ router.patch('/:id/mute', validate(muteSchema), async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     const muted = req.body.muted as boolean;
@@ -296,7 +300,7 @@ router.patch('/:id/hidden', validate(hiddenSchema), async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     const hidden = req.body.hidden as boolean;
@@ -318,7 +322,7 @@ router.post('/:id/report', validate(reportSchema), async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     const report = await createChatReport({
@@ -335,7 +339,7 @@ router.post('/:id/read', async (req, res, next) => {
   try {
     const chatId = parseInt(req.params.id as string);
     const me = req.user!.id;
-    if (!Number.isFinite(chatId) || !(await isParticipant(chatId, me))) {
+    if (!Number.isFinite(chatId) || !(await canEnterChat(chatId, me, req.user!.role))) {
       throw new AppError('대화를 찾을 수 없습니다.', 404);
     }
     await prisma.chatParticipant.update({

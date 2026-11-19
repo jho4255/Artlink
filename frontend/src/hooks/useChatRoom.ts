@@ -46,6 +46,7 @@ function metaFrom(d: ChatDetailResponse, prev: ChatRoomMeta | null): ChatRoomMet
     participants: d.participants,
     muted: d.muted ?? prev?.muted ?? false,
     hidden: d.hidden ?? prev?.hidden ?? false,
+    opened: d.opened ?? prev?.opened ?? true,
     // 아래는 방을 열 때만 온다 — 폴링 응답엔 없으니 들고 있던 것을 쓴다
     counterpart: d.counterpart !== undefined ? d.counterpart : prev?.counterpart ?? null,
     operatorIds: d.operatorIds ?? prev?.operatorIds ?? [],
@@ -209,7 +210,7 @@ export function useChatRoom(chatId: number, myId: number) {
           });
           const sent = res.data;
           setMessages((prev) => applyReadState(mergeMessages(prev, [sent]), kindRef.current, readersRef.current ?? [], myId));
-          if (sent.ref) setMeta((m) => (m ? { ...m, context: { ...sent.ref!, messageId: sent.id } } : m));
+          setMeta((m) => (m ? { ...m, opened: true, ...(sent.ref ? { context: { ...sent.ref, messageId: sent.id } } : {}) } : m));
           /* ⚠️ 커서(마지막으로 받은 id)를 내가 보낸 말의 id 로 올리지 말 것 — 그 사이 상대가 보낸 말(id 가 더 작다)을
              다음 폴링 `?after=` 가 건너뛰어 **영영 안 보인다**(둘이 동시에 말할 때 흔하다). 커서는 폴링만 올린다 —
              다음 폴링이 내 말을 한 번 더 받아 와도 id 로 병합되니 겹치지 않는다. 회귀 `useChatRoom.test.ts`. */
