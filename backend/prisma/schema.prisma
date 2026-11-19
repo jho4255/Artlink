@@ -54,6 +54,10 @@ model User {
   chatParticipations    ChatParticipant[]
   chatMessages          ChatMessage[]          @relation("chatSender")
   chatsCreated          Chat[]                 @relation("chatCreator")
+  blocksMade            UserBlock[]            @relation("blocker") // 내가 차단한 사람(ArtTalk, 2026-11-19)
+  blocksReceived        UserBlock[]            @relation("blocked") // 나를 차단한 사람
+  chatReportsMade       ChatReport[]           @relation("chatReporter")
+  chatReportsReceived   ChatReport[]           @relation("chatReportTarget")
   exhibitionSubmissions ExhibitionSubmission[]
   submissionEdits       ExhibitionSubmission[] @relation("submissionEditor") // 갤러리/Admin 이 대신 입력해 준 작가 자료
   artworkSales          ArtworkSale[]          @relation("artworkSales")
@@ -1231,6 +1235,9 @@ model ChatParticipant {
   // 이 방 알림 끄기(카카오톡 '알림 끄기' — 2026-11-11). 켜 두면 새 메시지가 벨 알림·앱 푸시로 오지 않는다.
   // 대화 목록의 안 읽은 수는 그대로 센다(조용히 쌓일 뿐 사라지지 않는다).
   muted      Boolean   @default(false)
+  // 목록에서 숨김(2026-11-19, ArtTalk 개편). 숨긴 뒤 새 메시지가 오면(Chat.lastMessageAt > hiddenAt) 다시 나온다 — 쓰기 없이 비교로.
+  // 방도 대화도 지우지 않는다(상대에게는 아무 변화가 없다).
+  hiddenAt   DateTime?
   joinedAt   DateTime  @default(now())
 
   @@unique([chatId, userId])
@@ -1250,9 +1257,51 @@ model ChatMessage {
   attachmentType String? // IMAGE | VIDEO | FILE
   attachmentName String? // 원본 파일명 (FILE 다운로드 표시용)
   attachmentSize Int? // 바이트 (용량 표시용)
+  // 맥락 카드(2026-11-19) — 작품·공모·전시·갤러리 문의일 때 무엇에 대한 말인지. `{type,id,title,sub,image,link}`.
+  // ⚠️ **서버만 만든다**(lib/chatRef.ts) — 화면은 `{type,id}` 만 보내고, 서버가 그 대상이 있는지·공개인지 본 뒤 제목·그림·링크를 찍어 넣는다.
+  //    화면이 보낸 제목·링크를 그대로 저장하면 남의 이름·바깥 주소를 단 카드를 상대 화면에 밀어 넣을 수 있다.
+  ref            Json?
   createdAt      DateTime @default(now())
 
   @@index([chatId, createdAt])
+}
+
+/// ArtTalk 차단(2026-11-19) — 둘 사이의 갠톡 열기·보내기를 **양쪽 모두** 막는다(누가 막았는지는 알리지 않는다).
+/// 단체방(공모방)에는 걸지 않는다 — 운영 공지를 못 받게 되면 안 된다. 상태를 적어 보내는 API(규칙 46) — createMany skipDuplicates / deleteMany.
+model UserBlock {
+  id        Int      @id @default(autoincrement())
+  blockerId Int
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId Int
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+/// ArtTalk 신고(2026-11-19, 규칙 33 을 닫는다 — 옛 `MessageReport` 는 옛 쪽지만 받았다).
+/// 관리자는 방을 직접 열 수 없다(남의 방 404) — 신고할 때 찍어 둔 **사본(`snapshot`)** 만 본다(그 메시지와 앞뒤 몇 줄).
+/// `messageId` 0 = 메시지가 아니라 그 사람(갠톡 방) 신고. 같은 사람이 같은 것을 두 번 신고하지 못한다(unique → 409).
+/// chatId·messageId 에 FK 를 두지 않는다 — 공모가 지워져 방이 사라져도 신고 기록은 남아야 한다.
+model ChatReport {
+  id           Int       @id @default(autoincrement())
+  reporterId   Int
+  reporter     User      @relation("chatReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  chatId       Int
+  messageId    Int       @default(0)
+  targetUserId Int
+  target       User      @relation("chatReportTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  reason       String // SPAM | ABUSE | SCAM | ETC
+  detail       String?
+  snapshot     Json
+  status       String    @default("OPEN") // OPEN | DONE | DISMISSED
+  adminNote    String?
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+
+  @@unique([reporterId, chatId, messageId])
+  @@index([status, createdAt])
 }
 
 /// 갤러리가 직접 적는 **지난 활동 기록** (2026-09-16)

@@ -7,10 +7,11 @@ import { Heart, X, User, MessageCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { displayName, getDday } from '@/lib/utils';
+import { displayName } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import FollowButton from './FollowButton';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import InquirySheet from '@/components/homepage/InquirySheet';
+import { resolveHomepageTheme, themeVarStyle } from '@/lib/homepageTheme';
 import type { ExploreImage } from '@/types';
 
 /**
@@ -29,6 +30,9 @@ interface Props {
   onUpdate?: (img: ExploreImage) => void;
 }
 
+/** 문의 창의 색 — 사이트 기본 톤 */
+const SITE_THEME = resolveHomepageTheme(null);
+
 export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -41,15 +45,9 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
 
   const isOwner = user?.id === image.artist.id;
 
-  /* 갠톡 열기 — 이미 있으면 그 방으로, 없으면 만들어서 그 방으로 (서버가 판단) */
-  const openChat = useMutation({
-    mutationFn: () => api.post('/chats/direct', { userId: image.artist.id }).then(r => r.data),
-    onSuccess: (data: { id: number }) => {
-      onClose();
-      navigate(`/messages?chat=${data.id}`);
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '대화를 열지 못했습니다.'),
-  });
+  /* [메시지] — 문의 창(작품이 맥락 카드로 실린다, 2026-11-19). 예전엔 누르는 순간 빈 방을 만들고 ArtTalk 으로 옮겨 가,
+     아무것도 안 보내도 작가 목록에 빈 방이 생겼고 어느 작품 얘기인지도 없었다 */
+  const [asking, setAsking] = useState(false);
 
   const apply = (next: ExploreImage) => {
     setImage(next);
@@ -186,11 +184,10 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
               */}
               {isAuthenticated && !isOwner && (
                 <button
-                  onClick={() => openChat.mutate()}
-                  disabled={openChat.isPending}
-                  title={`${displayName(image.artist)} 님에게 메시지`}
-                  aria-label="메시지 보내기"
-                  className="cursor-pointer disabled:opacity-40"
+                  onClick={() => setAsking(true)}
+                  title={`${displayName(image.artist)} 님에게 작품 문의`}
+                  aria-label="작품 문의하기"
+                  className="cursor-pointer"
                 >
                   <MessageCircle size={20} className="text-gray-300 hover:text-gray-500" />
                 </button>
@@ -235,6 +232,14 @@ export default function ArtworkDetailModal({ image: initial, onClose, onUpdate }
           </AnimatePresence>
         </div>
       </motion.div>
+      {asking && (
+        <InquirySheet
+          target={{ ownerId: image.artist.id, name: displayName(image.artist), guestEnabled: false }}
+          work={{ id: image.id, title: null, url: image.url }}
+          themeVars={themeVarStyle(SITE_THEME)}
+          onClose={() => setAsking(false)}
+        />
+      )}
     </motion.div>,
     document.body
   );
@@ -311,116 +316,6 @@ export function ArtworkLikersModal({ imageId, onClose }: { imageId: number; onCl
             <LikerList likers={data?.likers} onNavigate={(id) => { onClose(); navigate(`/portfolio/${id}`); }} />
           )}
         </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ===== 공모 초대 모달 (갤러리 전용) =====
-interface InvitableExhibition {
-  id: number;
-  title: string;
-  deadline: string;
-  status: string;
-  recruitmentClosed?: boolean;
-  confirmed?: boolean;
-  ended?: boolean;
-}
-
-export function InviteModal({ artistId, artistName, onClose }: { artistId: number; artistName: string; onClose: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  // 다른 창들처럼 Esc 로 닫힌다 — 안드로이드 앱의 뒤로가기도 이 길로 온다(lib/native.ts)
-  useEscapeKey(onClose);
-
-  // 모집 중인 내 공모만 초대 대상 (마감/확정/종료 제외 — 서버도 같은 규칙으로 막는다)
-  const { data: exhibitions = [], isLoading } = useQuery<InvitableExhibition[]>({
-    queryKey: ['my-exhibitions'],
-    queryFn: () => api.get('/exhibitions/my-exhibitions').then(r => r.data),
-  });
-  const invitable = exhibitions.filter(
-    (e) => e.status === 'APPROVED' && !e.recruitmentClosed && !e.confirmed && !e.ended && getDday(e.deadline) >= 0
-  );
-
-  const inviteMutation = useMutation({
-    mutationFn: () =>
-      api.post(`/exhibitions/${selected}/invite`, { artistId, message: message.trim() || undefined }),
-    onSuccess: () => {
-      toast.success(`${artistName} 작가에게 초대를 보냈습니다.`);
-      onClose();
-    },
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      toast.error(msg || '초대에 실패했습니다.');
-    },
-  });
-
-  return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true" aria-label="전시 초대" onClick={onClose}>
-      <div className="bg-white w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-gray-900">공모에 초대</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-900 cursor-pointer" aria-label="닫기">
-            <X size={18} />
-          </button>
-        </div>
-
-        <p className="text-sm text-gray-500 mb-4">
-          <span className="font-medium text-gray-900">{artistName}</span> 작가에게 초대 알림을 보냅니다.
-        </p>
-
-        {isLoading ? (
-          <p className="text-sm text-gray-400 py-6 text-center">불러오는 중…</p>
-        ) : invitable.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">
-            초대할 수 있는 공모가 없습니다.<br />
-            <span className="text-xs">(승인 완료 · 모집 중인 공모만 가능)</span>
-          </p>
-        ) : (
-          <>
-            <label className="block text-xs text-gray-500 mb-1.5">공모 선택</label>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto mb-4">
-              {invitable.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => setSelected(e.id)}
-                  className={`w-full text-left px-3 py-2 text-sm border transition-colors cursor-pointer ${
-                    selected === e.id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="block truncate">{e.title}</span>
-                  <span className="block text-xs text-gray-400">D-{getDday(e.deadline)}</span>
-                </button>
-              ))}
-            </div>
-
-            <label className="block text-xs text-gray-500 mb-1.5">메시지 (선택, 300자)</label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value.slice(0, 300))}
-              rows={3}
-              placeholder="작품 잘 봤습니다. 함께하고 싶습니다."
-              className="w-full border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-900"
-            />
-
-            {/* 초대받은 작가는 지원서를 다시 쓰지 않는다 — 갤러리가 기대치를 알 수 있게 안내 */}
-            <p className="mt-3 text-xs text-gray-400">
-              초대한 작가는 <span className="text-gray-600">지원서 작성 없이 포트폴리오로 간편 지원</span>합니다.
-              지원이 들어오면 알림을 받고 수락/거절을 결정하시면 됩니다.
-              <br />
-              <span className="text-gray-400">초대는 하루 10명까지 보낼 수 있습니다.</span>
-            </p>
-
-            <button
-              onClick={() => inviteMutation.mutate()}
-              disabled={!selected || inviteMutation.isPending}
-              className="w-full mt-4 py-2.5 bg-gray-900 text-white text-sm disabled:bg-gray-300 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {inviteMutation.isPending ? '보내는 중…' : '초대 보내기'}
-            </button>
-          </>
-        )}
       </div>
     </div>,
     document.body

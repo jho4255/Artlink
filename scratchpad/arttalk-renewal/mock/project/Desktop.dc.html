@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ArtTalk PC 화면</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #ffffff; color: #111827; font-family: 'Noto Sans KR', system-ui, sans-serif">
+
+<header style="min-height: 80px; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; padding: 0 16px 0 48px; border-bottom: 1px solid #e5e7eb">
+<span style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Link</span></span>
+<nav aria-label="주 메뉴" style="display: flex; flex-wrap: wrap; gap: 4px 36px; font-size: 15px">
+<a href="#" style="text-decoration: none; color: #4b5563">홈</a>
+<a href="#" style="text-decoration: none; color: #4b5563">작가</a>
+<a href="#" style="text-decoration: none; color: #4b5563">갤러리</a>
+<a href="#" style="text-decoration: none; color: #4b5563">전시</a>
+<a href="#" style="text-decoration: none; color: #4b5563">모집공고</a>
+<a href="#" style="text-decoration: none; color: #4b5563">커뮤니티</a>
+<a href="#" style="text-decoration: none; color: #4b5563">ArtStory</a>
+</nav>
+<div style="display: flex; align-items: center; gap: 4px">
+<button type="button" aria-label="ArtTalk, 안 읽은 대화 3" style="position: relative; width: 44px; height: 44px; border: 0; background: none; color: #111827; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span style="position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: #c4302b; color: #ffffff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span>
+</button>
+<button type="button" aria-label="알림" style="width: 44px; height: 44px; border: 0; background: none; color: #4b5563; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+</button>
+<span style="font-size: 13px; color: #4b5563; padding: 0 12px">아트링크 갤러리 (갤러리)</span>
+</div>
+</header>
+
+<div style="flex: 1; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-wrap: wrap; align-items: stretch; min-height: 819px">
+
+<section aria-label="대화 목록" style="flex: 1 1 300px; max-width: 360px; min-width: 0; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 24px 12px 8px 24px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Talk</span></h1>
+<button type="button" aria-label="이웃에게 메시지" style="width: 44px; height: 44px; border: 0; background: none; color: #111827; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>
+</button>
+</div>
+<label style="display: flex; align-items: center; gap: 8px; margin: 0 24px 4px; padding: 0 12px; height: 40px; border: 1px solid #e5e7eb; border-radius: 8px">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">대화 찾기</span>
+<input type="search" placeholder="이름 · 공모 찾기" style="flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 14px; color: #111827">
+</label>
+<nav aria-label="대화 종류" style="display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid #e5e7eb">
+<button type="button" aria-pressed="true" style="height: 44px; border: 0; border-bottom: 2px solid #111827; background: none; padding: 0; font: inherit; font-size: 14px; font-weight: 500; color: #111827">전체</button>
+<button type="button" aria-pressed="false" style="height: 44px; border: 0; border-bottom: 2px solid transparent; background: none; padding: 0; font: inherit; font-size: 14px; color: #6b7280">안 읽음 <span style="color: #c4302b; font-weight: 500">3</span></button>
+<button type="button" aria-pressed="false" style="height: 44px; border: 0; border-bottom: 2px solid transparent; background: none; padding: 0; font: inherit; font-size: 14px; color: #6b7280">1:1</button>
+<button type="button" aria-pressed="false" style="height: 44px; border: 0; border-bottom: 2px solid transparent; background: none; padding: 0; font: inherit; font-size: 14px; color: #6b7280">공모 단체</button>
+</nav>
+
+<a href="#" aria-current="true" style="display: flex; align-items: center; gap: 12px; padding: 12px 24px; text-decoration: none; background: #f3f4f6">
+<span style="width: 44px; height: 44px; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #4b5563; flex: none">윤</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; align-items: baseline; gap: 6px">
+<span style="font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">윤서진</span>
+<span style="font-size: 12px; color: #4b5563; flex: none">작가</span>
+<span style="margin-left: auto; font-size: 12px; color: #4b5563; flex: none">오후 8:47</span>
+</span>
+<span style="font-size: 13px; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">나: 전시 일정 알려 주시면 방문하겠습니다.</span>
+</span>
+</a>
+
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 12px 24px; text-decoration: none; border-bottom: 1px solid #f3f4f6">
+<span style="width: 44px; height: 44px; border-radius: 8px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none"><img src="/_blob/575e178777fc495e50c95eb4d099b869" alt="" style="max-width: 100%; max-height: 100%; object-fit: contain"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; align-items: baseline; gap: 6px">
+<span style="font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">[예시] 2027 신진작가 공모</span>
+<span style="font-size: 12px; color: #6b7280; flex: none">단체 12</span>
+<span style="margin-left: auto; font-size: 12px; color: #6b7280; flex: none">오후 6:40</span>
+</span>
+<span style="display: flex; align-items: center; gap: 8px">
+<span style="flex: 1; min-width: 0; font-size: 13px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">김하람: 반입은 택배로도 가능할까요?</span>
+<span style="min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none">2</span>
+</span>
+</span>
+</a>
+
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 12px 24px; text-decoration: none; border-bottom: 1px solid #f3f4f6">
+<span style="width: 44px; height: 44px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #4b5563; flex: none">박</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; align-items: baseline; gap: 6px">
+<span style="font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">박서우</span>
+<span style="font-size: 12px; color: #6b7280; flex: none">작가</span>
+<span style="margin-left: auto; font-size: 12px; color: #6b7280; flex: none">오후 3:02</span>
+</span>
+<span style="display: flex; align-items: center; gap: 8px">
+<span style="flex: 1; min-width: 0; font-size: 13px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">포트폴리오 파일 보내드립니다.</span>
+<span style="min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none">1</span>
+</span>
+</span>
+</a>
+
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 12px 24px; text-decoration: none; border-bottom: 1px solid #f3f4f6">
+<span style="width: 44px; height: 44px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #4b5563; flex: none">김</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; align-items: baseline; gap: 6px">
+<span style="font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">김하람</span>
+<span style="font-size: 12px; color: #6b7280; flex: none">작가</span>
+<span style="margin-left: auto; font-size: 12px; color: #6b7280; flex: none">어제</span>
+</span>
+<span style="font-size: 13px; color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">나: 사진 2장</span>
+</span>
+</a>
+</section>
+
+<section aria-label="윤서진 님과의 대화" style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="height: 68px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 24px; border-bottom: 1px solid #e5e7eb">
+<span style="width: 40px; height: 40px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #4b5563; flex: none">윤</span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 16px; font-weight: 700">윤서진</span>
+<span style="font-size: 12px; color: #6b7280">작가 · <a href="#" style="color: #6b7280; text-underline-offset: 3px">홈페이지 보기</a></span>
+</div>
+<button type="button" aria-label="알림 끄기" style="width: 44px; height: 44px; border: 0; background: none; color: #4b5563; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+</button>
+<button type="button" aria-label="대화방 메뉴" style="width: 44px; height: 44px; border: 0; background: none; color: #4b5563; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+</button>
+</div>
+
+<a href="#" style="flex: none; display: flex; align-items: center; gap: 14px; padding: 10px 24px; border-bottom: 1px solid #e5e7eb; text-decoration: none">
+<span style="width: 48px; height: 48px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex: none"><img src="/_blob/8c5bbb8f0e3b53c0f3152ffa70e198e3" alt="" style="max-width: 100%; max-height: 100%; object-fit: contain"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 11px; color: #6b7280">작품 문의</span>
+<span style="font-size: 14px; font-weight: 500">푸른 벽, 2026 <span style="font-weight: 400; color: #6b7280">· 캔버스에 유채 · 91 × 73 cm</span></span>
+</span>
+<span style="font-size: 13px; text-decoration: underline; text-underline-offset: 4px; flex: none">작품 보기</span>
+</a>
+
+<div style="flex: 1; min-height: 360px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 20px 24px">
+
+<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px">
+<span style="flex: 1; height: 1px; background: #e5e7eb"></span>
+<span style="font-size: 12px; color: #6b7280">2026년 11월 19일 목요일</span>
+<span style="flex: 1; height: 1px; background: #e5e7eb"></span>
+</div>
+
+<div style="display: flex; justify-content: flex-end; align-items: flex-end; gap: 6px">
+<span style="font-size: 11px; color: #6b7280; text-align: right; line-height: 1.4; flex: none">읽음<br>오후 8:41</span>
+<div style="max-width: 440px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+<span style="width: 160px; height: 198px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; border-radius: 12px; overflow: hidden"><img src="/_blob/8c5bbb8f0e3b53c0f3152ffa70e198e3" alt="문의한 작품 사진" style="max-width: 100%; max-height: 100%; object-fit: contain"></span>
+<p style="margin: 0; padding: 9px 12px; border-radius: 14px; background: #111827; color: #ffffff; font-size: 15px; line-height: 1.5">안녕하세요. 이 작품 구매 문의드립니다. 100호 크기로도 작업 가능하신지요?</p>
+</div>
+</div>
+
+<div style="display: flex; align-items: flex-start; gap: 8px; margin-top: 10px">
+<span style="width: 32px; height: 32px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #4b5563; flex: none">윤</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 440px">
+<p style="margin: 0; padding: 9px 12px; border-radius: 14px; background: #f3f4f6; font-size: 15px; line-height: 1.5">안녕하세요, 문의 감사합니다.</p>
+<div style="display: flex; align-items: flex-end; gap: 6px">
+<p style="margin: 0; padding: 9px 12px; border-radius: 14px; background: #f3f4f6; font-size: 15px; line-height: 1.5">네, 100호까지 가능합니다. 실물은 12월 전시에서 보실 수 있어요.</p>
+<span style="font-size: 11px; color: #6b7280; flex: none">오후 8:46</span>
+</div>
+</div>
+</div>
+
+<div style="display: flex; justify-content: flex-end; align-items: flex-end; gap: 6px; margin-top: 10px">
+<span style="font-size: 11px; color: #6b7280; flex: none">오후 8:47</span>
+<p style="margin: 0; max-width: 440px; padding: 9px 12px; border-radius: 14px; background: #111827; color: #ffffff; font-size: 15px; line-height: 1.5">전시 일정 알려 주시면 방문하겠습니다.</p>
+</div>
+
+</div>
+
+<form style="flex: none; display: flex; align-items: flex-end; gap: 8px; padding: 12px 24px 20px; border-top: 1px solid #e5e7eb; margin: 0">
+<button type="button" aria-label="사진·동영상·파일 첨부" style="width: 44px; height: 44px; border: 0; background: none; color: #111827; display: flex; align-items: center; justify-content: center; padding: 0; flex: none">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>
+</button>
+<label style="flex: 1; min-width: 0; display: block">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">메시지</span>
+<textarea rows="2" placeholder="메시지" style="display: block; width: 100%; box-sizing: border-box; min-height: 64px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; background: #ffffff; color: #111827; font: inherit; font-size: 15px; line-height: 1.5; resize: none"></textarea>
+</label>
+<button type="submit" style="height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #111827; color: #ffffff; font: inherit; font-size: 14px; font-weight: 500; flex: none">보내기</button>
+</form>
+
+</section>
+</main>
+
+<aside aria-label="내 메뉴" style="flex: 1 1 200px; max-width: 224px; box-sizing: border-box; border-left: 1px solid #e5e7eb; padding: 40px 16px 24px; display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: #6b7280">MY PAGE</span>
+<a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; color: #4b5563">프로필</a>
+<a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; color: #4b5563">내 갤러리</a>
+<a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; color: #4b5563">내 공모</a>
+<a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; color: #4b5563">내 전시</a>
+<a href="#" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; color: #4b5563">관심 작품</a>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<a href="#" aria-current="page" style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; background: #f3f4f6; border-radius: 8px">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span style="font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Talk</span></span>
+<span style="margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span>
+</a>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px">
+<a href="#" style="height: 44px; padding: 0 8px; display: flex; align-items: center; font-size: 12px; color: #6b7280; text-decoration: none">1:1 문의</a>
+<button type="button" style="height: 44px; padding: 0 8px; border: 0; background: none; font: inherit; font-size: 12px; color: #6b7280">로그아웃</button>
+</div>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

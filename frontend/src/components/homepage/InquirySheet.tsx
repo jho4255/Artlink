@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import api from '@/lib/axios';
+import { chatsChanged } from '@/lib/chatCache';
 import { useAuthStore } from '@/stores/authStore';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
@@ -14,8 +16,11 @@ import { PrimaryAction } from './Actions';
 /**
  * 문의 창 (2026-11-14, CLAUDE.md 규칙 82) — 작가·갤러리 홈페이지의 [문의하기]와 작품 페이지의 [작품 문의하기]가 같이 쓴다.
  *
- *  · **로그인한 회원** — 지금 길 그대로 ArtTalk(갠톡): 내용 칸 하나 → 보내면 '보냈어요 [대화 보기]'. 작품 문의면 작품 사진을 붙여 보낸다
- *    (제목 없는 작품이 80% 라 글만으로는 어느 작품인지 모른다).
+ *  · **로그인한 회원** — ArtTalk(갠톡): 내용 칸 하나 → 보내면 '보냈어요 [대화 보기]'. 무엇에 대한 문의인지 **맥락 카드**(`ref`)를 함께 보낸다
+ *    — 작품(제목 없는 작품이 80% 라 글만으로는 어느 작품인지 모른다) · 공모 · 갤러리. 카드 내용은 서버가 만든다(backend lib/chatRef.ts).
+ *    (2026-11-19 — 그 전엔 작품 사진을 첨부로 붙였다. 받는 작가가 그 작품 페이지로 갈 수 없었다)
+ *    ⚠️ 보낸 뒤 `chatsChanged` — 안 하면 ArtTalk 목록이 5분 동안 옛 캐시라 "보냈는데 아무것도 없다"가 된다(2026-11-19 신고).
+ *    갠톡을 여는 길목은 이 창과 이웃 고르기 둘뿐이다(retiredApis.test.ts — 늘리지 말 것).
  *  · **비회원 · 주인이 비회원 문의를 켰을 때** — 이름 · 연락처 · 내용 + 개인정보 동의 → `POST /api/homepage-inquiries`.
  *  · **비회원 · 꺼져 있을 때(기본)** — 로그인하면 메시지로 문의할 수 있다고 알리고 로그인으로(돌아올 곳은 지금 화면).
  *
@@ -35,14 +40,19 @@ export interface InquiryTarget {
 
 export interface InquiryWork { id: number; title?: string | null; url: string }
 
-export default function InquirySheet({ target, work, themeVars, onClose }: {
+/** 작품 말고 무엇에 대한 문의인가 — 공모 상세의 [갤러리에 문의] 등. 회원이면 ArtTalk 에 맥락 카드로 실린다 */
+export interface InquiryContext { type: 'EXHIBITION' | 'SHOW' | 'GALLERY'; id: number; title: string; image?: string | null; label: string }
+
+export default function InquirySheet({ target, work, context, themeVars, onClose }: {
   target: InquiryTarget;
   work?: InquiryWork | null;
+  context?: InquiryContext | null;
   themeVars: CSSProperties;
   onClose: () => void;
 }) {
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const location = useLocation();
   const titleId = useId();
   const [busy, setBusy] = useState(false);
@@ -72,16 +82,20 @@ export default function InquirySheet({ target, work, themeVars, onClose }: {
     navigate(to);
   };
 
+  // 맥락 카드 — 작품 > 넘겨받은 맥락(공모·전시) > 갤러리 페이지면 그 갤러리
+  const ref = work ? { type: 'WORK' as const, id: work.id }
+    : context ? { type: context.type, id: context.id }
+      : target.galleryId ? { type: 'GALLERY' as const, id: target.galleryId } : null;
+
   const sendMember = async (e: FormEvent) => {
     e.preventDefault();
     const content = message.trim();
-    if (!content && !work) { setError('문의 내용을 적어 주세요.'); return; }
+    if (!content && !ref) { setError('문의 내용을 적어 주세요.'); return; }
     setBusy(true); setError(null);
     try {
       const chat = (await api.post<{ id: number }>('/chats/direct', { userId: target.ownerId })).data;
-      await api.post(`/chats/${chat.id}/messages`, work
-        ? { content, attachmentUrl: work.url, attachmentType: 'IMAGE', attachmentName: work.title?.trim() || '작품' }
-        : { content });
+      await api.post(`/chats/${chat.id}/messages`, { content: content || undefined, ...(ref ? { ref } : {}) });
+      chatsChanged(qc);
       setSentChat(chat.id);
     } catch (err) {
       setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || '보내지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -124,18 +138,27 @@ export default function InquirySheet({ target, work, themeVars, onClose }: {
         style={{ fontFamily: 'var(--hp-body-font)' }}
       >
         <div className="flex items-center justify-between">
-          <h2 id={titleId} className="text-[17px] font-semibold">{work ? '작품 문의' : '문의하기'}</h2>
+          <h2 id={titleId} className="text-[17px] font-semibold">{work ? '작품 문의' : context ? context.label : '문의하기'}</h2>
           <button type="button" onClick={onClose} disabled={busy} aria-label="닫기" className="-mr-2.5 grid h-11 w-11 place-items-center text-[var(--hp-sub)] hover:text-[var(--hp-ink)]">
             <X size={20} />
           </button>
         </div>
 
         {work && !done && (
-          <div className="mt-2 flex items-center gap-3 border border-[var(--hp-line)] p-2.5">
+          <div className="mt-2 flex items-center gap-3 border border-[var(--hp-line)] p-2.5" data-testid="inquiry-context">
             <span className="grid h-14 w-14 shrink-0 place-items-center"><img src={work.url} alt="" className="max-h-full max-w-full object-contain" /></span>
             <span className="min-w-0 text-[14px] break-keep [overflow-wrap:anywhere]">
               {work.title?.trim() || '제목 없는 작품'}
               <span className="block text-[12px] text-[var(--hp-sub)]">{target.name}</span>
+            </span>
+          </div>
+        )}
+        {!work && context && !done && (
+          <div className="mt-2 flex items-center gap-3 border border-[var(--hp-line)] p-2.5" data-testid="inquiry-context">
+            {context.image && <span className="grid h-14 w-14 shrink-0 place-items-center"><img src={context.image} alt="" className="max-h-full max-w-full object-contain" /></span>}
+            <span className="min-w-0 text-[14px] break-keep [overflow-wrap:anywhere]">
+              <span className="block text-[12px] text-[var(--hp-sub)]">{context.label}</span>
+              {context.title}
             </span>
           </div>
         )}

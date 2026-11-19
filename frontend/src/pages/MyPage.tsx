@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Heart, Building2, X, Plus, Check, XCircle,
+  Heart, Building2, Plus, Check, XCircle,
   Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle,
   ChevronUp, Megaphone, ClipboardList, MapPin, Phone, Mail, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
 } from 'lucide-react';
@@ -48,8 +47,7 @@ import RichText from '@/components/shared/RichText';
 import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
-import ArtworkDetailModal, { InviteModal } from '@/components/shared/ArtworkDetailModal';
-import InviteApplyModal from '@/components/shared/InviteApplyModal';
+import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
 import { stageArtLookWorks, portfolioArtLookWorks, readArtLookMessage, COMPOSE_STATE_KEY, ARTLOOK_EMBED_URL } from '@/lib/artlook';
 import { useArtLookBare } from '@/hooks/useArtLookBare';
 import { useFillHeight } from '@/hooks/useFillHeight';
@@ -59,6 +57,8 @@ import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
 import HostBadge from '@/components/shared/HostBadge';
 import StoryReportsSection from '@/components/admin/StoryReportsSection';
+import ChatReportsSection from '@/components/admin/ChatReportsSection';
+import BlockedUsersSection from '@/components/chat/BlockedUsersSection';
 import { AttachmentList } from '@/components/shared/ExhibitionAttachments';
 import { ExhibitionFormBody } from '@/components/exhibition-form/ExhibitionFormBody';
 import { exhibitionMissing, exhibitionDateError, exhibitionPreview } from '@/components/exhibition-form/exhibitionForm';
@@ -73,7 +73,7 @@ import { PreviewAside, PreviewSheet } from '@/components/form/PreviewPane';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import ReceivedInquiriesSection from '@/components/homepage/ReceivedInquiriesSection';
 import { normalizeAttachments, type ExhibitionAttachment } from '@/lib/attachments';
-import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage, ExhibitionInvite } from '@/types';
+import type { Favorite, Portfolio, Gallery, Exhibition, Show, ArtistEntry, CustomField, ExploreImage } from '@/types';
 
 
 /**
@@ -297,7 +297,7 @@ export default function MyPage() {
               예전엔 상자가 프로필·포트폴리오·ArtLook 세 탭 위에 붙어 있었다 — 로그인 팝업과 같은 말을 두 번 했고,
               PDF 를 만들러 온 [포트폴리오] 탭에서는 본 내용을 밀어냈다. 편집 화면은 제 완성도 줄을 갖는다(HomepageEditor). */}
           {user.role === 'ARTIST' && currentTab === 'profile' && <ArtistHomepageLine />}
-          {currentTab === 'profile' && <ProfileSection />}
+          {currentTab === 'profile' && <><ProfileSection /><BlockedUsersSection /></>}
           {/* 홈페이지 편집 — 메뉴에 없다. 공개 작가 페이지의 [수정](주인만)에서 들어온다 */}
           {currentTab === 'homepage-edit' && user.role === 'ARTIST' && <HomepageEditor />}
           {/* 포트폴리오 PDF 만들기 — 화면은 `components/portfolio-maker/`(2026-10-03 개편) */}
@@ -318,7 +318,7 @@ export default function MyPage() {
           {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
           {currentTab === 'ad-manage' && user.role === 'ADMIN' && <AdManageSection />}
           {/* 소식 신고(ArtStory, 2026-11-14) 가 위 — 저절로 내려간 소식을 확인해 달라는 알림이 여기로 온다 */}
-          {currentTab === 'report-manage' && user.role === 'ADMIN' && <><StoryReportsSection /><ReportManageSection /></>}
+          {currentTab === 'report-manage' && user.role === 'ADMIN' && <><ChatReportsSection /><StoryReportsSection /></>}
           {currentTab === 'user-manage' && user.role === 'ADMIN' && <UserManageSection />}
           {currentTab === 'oversight' && user.role === 'ADMIN' && <OversightSection />}
           {currentTab === 'todo' && user.role === 'ADMIN' && <KanbanSection />}
@@ -981,17 +981,17 @@ function LikedArtworks() {
 }
 
 
-// ========== Gallery: 관심 작품 (하트로 모은 작품 → 작가 초대) ==========
+// ========== Gallery: 관심 작품 (하트로 모은 작품) ==========
 /*
-  갤러리도 이제 **하트(좋아요)** 로 작품을 모은다(예전의 비공개 스크랩·메모 보드는 없앴다).
-  여기 모인 작품의 **작가에게 전시 초대를 보내는** 스카우팅 창구다.
+  갤러리도 **하트(좋아요)** 로 작품을 모은다(예전의 비공개 스크랩·메모 보드는 없앴다).
   ⚠️ 하트는 작가에게 보인다(스크랩과 달리 비공개가 아니다) — 관심을 숨길 이유가 없다는 판단.
   데이터는 작가 [찜 목록]의 '좋아요한 작품'과 같은 `/explore/my-likes` 를 쓴다.
+  ⚠️ 카드의 [전시 초대]는 2026-11-19 에 없앴다(1:1 공모 초대 기능째로 — 사용자 결정). [문의하기]도 두지 않는다(사용자 결정 —
+     작가 이름을 누르면 홈페이지로 가고, 거기서 문의한다). 카드는 작품 + 작가 이름뿐이다.
 */
 function ArtworkScrapsSection() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<ExploreImage | null>(null);
-  const [invite, setInvite] = useState<{ id: number; name: string } | null>(null);
 
   const { data, isLoading } = useQuery<{ images: ExploreImage[]; total: number }>({
     queryKey: ['my-likes'],
@@ -1015,11 +1015,7 @@ function ArtworkScrapsSection() {
 
   return (
     <div>
-      {/* 개수·'저장 사실 비공개' 문구 대신, 이 화면이 무엇을 위한 곳인지 안내한다 */}
-      <p className="text-sm text-gray-500 mb-4">
-        저장한 작품의 작가에게는 전시 초대를 보낼 수 있습니다.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {images.map(img => (
           <div key={img.id} className="relative border border-gray-200">
             {/* 이미지 클릭 → 원본 비율 확대 (작가 이동은 아래 이름 클릭) */}
@@ -1030,27 +1026,15 @@ function ArtworkScrapsSection() {
             >
               <Thumb src={img.url} size="grid" alt="" className="w-full h-full object-contain bg-gray-50 hover:opacity-80 transition-opacity" loading="lazy" />
             </button>
-            <div className="flex items-center justify-between gap-2 p-3">
-              <button
-                onClick={() => navigate(`/portfolio/${img.artist.id}`)}
-                className="min-w-0 truncate text-sm font-medium text-gray-900 hover:underline cursor-pointer"
-              >
-                {displayName(img.artist)}
-              </button>
-              <button
-                onClick={() => setInvite({ id: img.artist.id, name: displayName(img.artist) })}
-                className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800 cursor-pointer"
-              >
-                <Mail size={13} /> 전시 초대
-              </button>
-            </div>
+            <button
+              onClick={() => navigate(`/portfolio/${img.artist.id}`)}
+              className="block w-full min-h-[44px] truncate px-3 text-left text-sm font-medium text-gray-900 hover:underline cursor-pointer"
+            >
+              {displayName(img.artist)}
+            </button>
           </div>
         ))}
       </div>
-
-      {invite && (
-        <InviteModal artistId={invite.id} artistName={invite.name} onClose={() => setInvite(null)} />
-      )}
 
       <AnimatePresence>
         {selected && (
@@ -1058,103 +1042,6 @@ function ArtworkScrapsSection() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-// ========== Gallery: 공모에 작가 초대 (내 공모 → 지원자 관리 패널) ==========
-/*
-  '공모 고정 + 작가 선택' 초대. 작품 모달의 InviteModal(작가 고정 + 공모 선택)과 방향만 반대다.
-  초대 대상은 **관심 작품(하트)을 저장한 작가** — 아무나 검색해 부르는 게 아니라, 작품을 보고 담아둔 작가다.
-  모집 마감·정원 초과·중복 초대는 서버가 막고, 그 사유를 토스트로 보여준다.
-*/
-function ExhibitionInviteModal({ exhibitionId, exhibitionTitle, onClose }: { exhibitionId: number; exhibitionTitle: string; onClose: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-
-  const { data, isLoading } = useQuery<{ images: ExploreImage[] }>({
-    queryKey: ['my-likes'],
-    queryFn: () => api.get('/explore/my-likes', { params: { limit: 60 } }).then(r => r.data),
-  });
-
-  // 같은 작가의 작품이 여러 점이면 한 번만 (초대는 작가 단위다)
-  const artists = useMemo(() => {
-    const seen = new Map<number, { id: number; name: string; avatar?: string | null; url: string }>();
-    for (const img of data?.images ?? []) {
-      if (!seen.has(img.artist.id)) {
-        seen.set(img.artist.id, { id: img.artist.id, name: displayName(img.artist), avatar: img.artist.avatar, url: img.url });
-      }
-    }
-    return [...seen.values()];
-  }, [data]);
-
-  const inviteMutation = useMutation({
-    mutationFn: () => api.post(`/exhibitions/${exhibitionId}/invite`, { artistId: selected, message: message.trim() || undefined }),
-    onSuccess: () => {
-      toast.success('초대를 보냈습니다.');
-      onClose();
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '초대에 실패했습니다.'),
-  });
-
-  return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-medium text-gray-900">작가 초대</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-900 cursor-pointer" aria-label="닫기"><X size={18} /></button>
-        </div>
-        <p className="text-sm text-gray-500 mb-4 truncate">{exhibitionTitle}</p>
-
-        {isLoading ? (
-          <p className="text-sm text-gray-400 py-6 text-center">불러오는 중…</p>
-        ) : artists.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center leading-relaxed">
-            초대할 작가가 없습니다.<br />
-            <span className="text-xs">둘러보기에서 마음에 드는 작품에 <b>하트</b>를 누르면<br />그 작가를 여기로 초대할 수 있습니다.</span>
-          </p>
-        ) : (
-          <>
-            {/* 관심 작품(하트)을 저장한 작가만 초대 대상이라는 걸 명시 */}
-            <p className="mb-2 text-xs text-gray-500">관심 작품(하트)을 저장한 작가를 초대할 수 있습니다.</p>
-            <div className="space-y-1.5 max-h-52 overflow-y-auto mb-4">
-              {artists.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => setSelected(a.id)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-sm border transition-colors cursor-pointer ${
-                    selected === a.id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <Thumb src={a.url} size="list" alt="" className="h-9 w-9 rounded object-contain bg-gray-50 shrink-0" loading="lazy" />
-                  <span className="min-w-0 truncate text-left">{a.name}</span>
-                </button>
-              ))}
-            </div>
-
-            <label className="block text-xs text-gray-500 mb-1.5">메시지 (선택, 300자)</label>
-            <textarea
-              value={message}
-              onChange={e => setMessage(e.target.value.slice(0, 300))}
-              rows={3}
-              placeholder="작품 잘 봤습니다. 함께하고 싶습니다."
-              className="w-full border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-900"
-            />
-            <p className="mt-3 text-xs text-gray-400">
-              초대한 작가는 <span className="text-gray-600">지원서 없이 바로 참가</span>합니다. 정원·마감은 그대로 지켜집니다.
-            </p>
-
-            <button
-              onClick={() => inviteMutation.mutate()}
-              disabled={!selected || inviteMutation.isPending}
-              className="w-full mt-4 py-2.5 bg-gray-900 text-white text-sm disabled:bg-gray-300 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {inviteMutation.isPending ? '보내는 중…' : '초대 보내기'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -1175,54 +1062,16 @@ function ApplicationsSection() {
   const deepLinkExId = Number(searchParams.get('ex')) || null;
   const deepLinkDone = useRef(false);
 
-  // 받은 초대 — 예전 [받은 초대] 탭이 여기 첫 탭으로 들어왔다 (목록 API 는 그대로)
-  const { data: inviteData, isFetched: invitesFetched } = useQuery<{ invites: any[] }>({
-    queryKey: ['received-invites'],
-    queryFn: () => api.get('/exhibitions/invites/received').then(r => r.data),
-  });
-  const invites = (inviteData?.invites ?? []).filter((i: any) => !i.applied && !i.closed);
-
-  /* 초대 수락 = **지원 없이 바로 참가**. 갤러리가 이미 작품을 보고 부른 것이라
-     지원서를 다시 쓰게 하지 않는다(서버가 포트폴리오에서 채운다). 곧바로 '진행 중' 탭으로 옮겨간다. */
-  const acceptInvite = useMutation({
-    mutationFn: (id: number) => api.post(`/exhibitions/invites/${id}/accept`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
-      queryClient.invalidateQueries({ queryKey: ['my-applications'] });
-      queryClient.invalidateQueries({ queryKey: ['chats'] });
-      setStatusFilter('ONGOING');
-      toast.success('전시에 참여하게 되었습니다. 출품 자료를 준비해 주세요.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '참여 처리에 실패했습니다.'),
-  });
-  /* 거절은 확인을 거친다(2026-09-19) — 유니크 제약 때문에 **갤러리가 같은 작가를 다시 초대할 수 없어** 오터치가 영구 손실이다.
-     [참여하기] 바로 옆 버튼이라 더 그렇다. */
-  const [decliningInviteId, setDecliningInviteId] = useState<number | null>(null);
-  const declineInvite = useMutation({
-    mutationFn: (id: number) => api.patch(`/exhibitions/invites/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['received-invites'] });
-      toast.success('초대를 거절했습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
-  });
-
   const { data: apps = [], isLoading, isError, isFetched: appsFetched } = useQuery<any[]>({
     queryKey: ['my-applications'],
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
   });
 
-  // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다
+  // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다(목록이 온 뒤에)
   useEffect(() => {
-    /*
-      ⚠️ **두 목록이 다 온 뒤에** 정한다(2026-10-03 점검 P2). 초대 목록이 먼저 오면 '지원 0건' 으로 보고 [받은 초대]로 굳어서
-      같은 계정이 PC 에선 [진행 중], 휴대폰에선 [받은 초대]로 열렸다.
-      초대만 받은 작가(지원 0건)는 [받은 초대] 탭으로 — 예전엔 apps 만 봐서 초대 알림을 눌러 들어와도 "진행 중인 전시가 없습니다" 였다(2026-09-19)
-    */
-    if (statusFilter !== null || !appsFetched || !invitesFetched) return;
+    if (statusFilter !== null || !appsFetched) return;
     if (apps.length > 0) setStatusFilter(defaultBucket(apps));
-    else if (invites.length > 0) setStatusFilter('INVITED');
-  }, [apps, invites.length, statusFilter, appsFetched, invitesFetched]);
+  }, [apps, statusFilter, appsFetched]);
 
   /*
     저장 안 된 출품 자료·정산 입력을 지킨다(2026-10-03 점검 P1) — 카드를 닫거나 다른 카드를 열거나 탭을 바꾸면
@@ -1269,23 +1118,21 @@ function ApplicationsSection() {
     return <p className="py-8 text-center text-accent">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
 
-  // 초대 목록도 기다린다 — 먼저 그리면 탭이 [진행 중] → [받은 초대] 로 한 번 튄다
-  if (isLoading || !invitesFetched) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
+  if (isLoading) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
 
   // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
 
   const buckets = groupMyExhibitions(visibleApps);
-  const activeTab: MyExhibitionBucket = statusFilter ?? (visibleApps.length === 0 && invites.length > 0 ? 'INVITED' : defaultBucket(visibleApps));
+  const activeTab: MyExhibitionBucket = statusFilter ?? defaultBucket(visibleApps);
   const filteredApps = buckets[activeTab];
 
   const counts: Record<MyExhibitionBucket, number> = {
-    INVITED: invites.length,
     REVIEWING: buckets.REVIEWING.length,
     ONGOING: buckets.ONGOING.length,
     CLOSED: buckets.CLOSED.length,
   };
-  const empty = visibleApps.length === 0 && invites.length === 0;
+  const empty = visibleApps.length === 0;
 
   // 초대 코드 입력은 드물게 쓰는 입구라 한 줄로 접어 둔다 — 예전엔 목록 **맨 위** 큰 상자라 모든 작가가
   // "이걸 먼저 해야 하나?" 로 읽었다. 목록이 비어 있으면(코드를 받고 막 가입한 작가의 첫 화면) 펼쳐 둔다.
@@ -1324,7 +1171,7 @@ function ApplicationsSection() {
         <p className="mt-1 text-sm text-gray-500">지원한 공모와 참여하는 전시를 여기서 이어서 진행해요.</p>
       </div>
 
-      {/* 진행 상태 탭 — 받은 초대 / 심사 중 / 진행 중 / 종료 */}
+      {/* 진행 상태 탭 — 심사 중 / 진행 중 / 종료 */}
       <PageTabBar<MyExhibitionBucket>
         sticky={false}
         idPrefix="my-applications"
@@ -1340,62 +1187,7 @@ function ApplicationsSection() {
         tabs={MY_EXHIBITION_TABS.map(t => ({ id: t.key, label: t.label, count: counts[t.key] || undefined }))}
       />
 
-      <ConfirmDialog
-        open={decliningInviteId !== null}
-        title="초대 거절"
-        message="이 초대를 거절합니다. 거절하면 같은 공모에 다시 초대받을 수 없습니다."
-        confirmText="거절"
-        variant="danger"
-        onConfirm={() => { if (decliningInviteId !== null) declineInvite.mutate(decliningInviteId); setDecliningInviteId(null); }}
-        onCancel={() => setDecliningInviteId(null)}
-      />
-
-      {/* 받은 초대 — 카드 얼개는 아래 지원 카드와 같게 두되, 버튼만 [참여하기]/[거절] 이다 */}
-      {activeTab === 'INVITED' ? (
-        invites.length === 0 ? (
-          <p className="py-4 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY.INVITED}</p>
-        ) : invites.map((inv: any) => {
-          const ex = inv.exhibition ?? {};
-          const deadlineLabel = ddayText('마감', ex.deadline);
-          return (
-            <article key={inv.id} className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip variant="attention">초대</StatusChip>
-                    {deadlineLabel && <span className="text-xs font-medium tabular-nums text-gray-500">{deadlineLabel}</span>}
-                  </div>
-                  <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)}
-                    className="mt-3 block max-w-full truncate text-left text-xl font-semibold text-gray-950 hover:underline">
-                    {ex.title}
-                  </button>
-                  <p className="mt-1 text-sm text-gray-500">{ex.gallery?.name || '아트링크'}</p>
-                </div>
-              </div>
-
-              {/* 갤러리가 적어 보낸 말 — 초대에서 가장 중요한 내용이라 접지 않는다 */}
-              {inv.message && (
-                <p className="mt-4 whitespace-pre-wrap break-keep rounded-xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-700 [overflow-wrap:anywhere]">
-                  {inv.message}
-                </p>
-              )}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => acceptInvite.mutate(inv.id)} disabled={acceptInvite.isPending}
-                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
-                  <Check size={15} aria-hidden /> 참여하기
-                </button>
-                <button type="button" onClick={() => setDecliningInviteId(inv.id)} disabled={declineInvite.isPending}
-                  className="min-h-[44px] rounded-lg border border-gray-200 px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                  거절
-                </button>
-              </div>
-              <p className="mt-3 text-xs text-gray-500">
-                참여하면 지원서 없이 바로 참가자로 등록되고, 약력·작품은 홈페이지에서 가져와요.
-              </p>
-            </article>
-          );
-        })
-      ) : filteredApps.length === 0 ? (
+      {filteredApps.length === 0 ? (
         <p className="py-4 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY[activeTab]}</p>
       ) : (
         filteredApps.map((app: any) => {
@@ -1874,7 +1666,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   /** [운영] 탭에서 열고 스크롤할 구역 — 카드의 할 일 줄을 눌렀을 때 */
   const [opsFocus, setOpsFocus] = useState<{ target: TaskTarget; seq: number } | null>(null);
   // 작가 초대 대상 공모 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대한다
-  const [inviteEx, setInviteEx] = useState<{ id: number; title: string } | null>(null);
   // 추가 질문 수정 대상 공모 (게시 후 수정) — 지원자 탭 안에서 연다
   const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
   const deepLinkDone = useRef(false);
@@ -2149,15 +1940,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
         />
       )}
 
-      {/* 작가 초대 모달 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대 */}
-      {inviteEx && (
-        <ExhibitionInviteModal
-          exhibitionId={inviteEx.id}
-          exhibitionTitle={inviteEx.title}
-          onClose={() => setInviteEx(null)}
-        />
-      )}
-
 
       {/* 등록 확인 — 무엇이 올라가는지 + 공모 등록 약관 동의(components/form/SubmitSheet) */}
       {confirmAction === 'submit' && (
@@ -2272,7 +2054,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                   setOpsFocus({ target: task.target, seq: Date.now() });
                 };
                 // 작가 초대는 **모집 중에만** — 서버도 recruitmentClosed·confirmed·ended 를 막는다(눌러서 400 을 받는 버튼 금지)
-                const canInvite = isApproved && !item.recruitmentClosed && !item.confirmed && !item.ended;
                 // 정산이 끝난 공모는 기록을 남긴다 — 직접 삭제도 삭제 요청도 없다. 그 밖엔 버튼을 누르면 서버가 직접 삭제 / 요청 중 하나를 고른다
                 const deleteRequest = deleteRequestOf('exhibition', item.id);
                 const deletable = item.hostType !== 'ADMIN' && !item.settledAt && deleteRequest?.status !== 'PENDING';
@@ -2407,12 +2188,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
                               capacityEditable={item.hostType !== 'ADMIN'}
                               toolbar={(
                                 <>
-                                  {/* 관심 작품(하트)을 저장한 작가를 이 공모에 직접 초대 — 모집 중에만 */}
-                                  {canInvite && (
-                                    <button type="button" onClick={() => setInviteEx({ id: item.id, title: item.title })} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950">
-                                      <Mail size={13} aria-hidden /> 작가 초대
-                                    </button>
-                                  )}
                                   {/* 게시 후 추가 질문 수정 — 정산 완료 전까지 */}
                                   {!item.settledAt && (
                                     <button type="button" onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950">
@@ -3528,109 +3303,8 @@ function GotmManageSection() {
 }
 
 // ========== Admin: 신고 관리 ==========
-function ReportManageSection() {
-  const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [adminNote, setAdminNote] = useState('');
-
-  const { data: reports = [], isLoading } = useQuery<any[]>({
-    queryKey: ['admin-reports', statusFilter],
-    queryFn: () => {
-      const params = statusFilter ? `?status=${statusFilter}` : '';
-      return api.get(`/reports${params}`).then(r => r.data);
-    },
-  });
-
-  const actionMutation = useMutation({
-    mutationFn: ({ id, status, adminNote, deleteMessage }: { id: number; status: string; adminNote?: string; deleteMessage?: boolean }) =>
-      api.patch(`/reports/${id}`, { status, adminNote, deleteMessage }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-reports'] });
-      setExpandedId(null);
-      setAdminNote('');
-      toast.success('신고가 처리되었습니다.');
-    },
-    onError: () => toast.error('처리에 실패했습니다.'),
-  });
-
-  const statusLabels: Record<string, string> = { PENDING: '대기', DISMISSED: '반려', ACTIONED: '제재' };
-  const reasonLabels: Record<string, string> = { PROFANITY: '비속어', SPAM: '스팸', INAPPROPRIATE: '부적절', OTHER: '기타' };
-
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
-
-  return (
-    <div>
-      <div className="flex gap-3 mb-6">
-        {[
-          { label: '전체', value: null },
-          { label: '대기', value: 'PENDING' },
-          { label: '반려', value: 'DISMISSED' },
-          { label: '제재', value: 'ACTIONED' },
-        ].map(f => (
-          <button
-            key={f.label}
-            onClick={() => setStatusFilter(f.value)}
-            className={`text-sm cursor-pointer transition-colors ${
-              statusFilter === f.value
-                ? 'text-gray-900 underline underline-offset-4 decoration-1'
-                : 'text-gray-400 hover:text-gray-900'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {reports.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">신고 내역이 없습니다.</p>
-      ) : (
-        <div className="space-y-0">
-          {reports.map((r: any) => (
-            <div key={r.id} className="py-4 border-b border-gray-100">
-              <div className="flex justify-between items-start cursor-pointer" onClick={() => { setAdminNote(''); setExpandedId(expandedId === r.id ? null : r.id); }}>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${r.status === 'PENDING' ? 'text-accent' : r.status === 'ACTIONED' ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {statusLabels[r.status] || r.status}
-                    </span>
-                    <span className="text-xs text-gray-400">{reasonLabels[r.reason] || r.reason}</span>
-                  </div>
-                  <p className="text-sm text-gray-700 mt-1">{r.reporter?.name}이(가) {r.message?.sender?.name}의 메시지를 신고</p>
-                  {r.detail && <p className="text-xs text-gray-400 mt-0.5">{r.detail}</p>}
-                </div>
-                <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('ko')}</span>
-              </div>
-              {expandedId === r.id && (
-                <div className="mt-3 space-y-3 pl-4 border-l-2 border-gray-200">
-                  {r.message && (
-                    <div className="text-sm">
-                      <p className="text-xs text-gray-400">원본 메시지</p>
-                      <p className="text-gray-600 mt-1">제목: {r.message.subject}</p>
-                      <p className="text-gray-600">내용: {r.message.content}</p>
-                      <p className="text-xs text-gray-400 mt-1">{r.message.sender?.name} → {r.message.receiver?.name}</p>
-                    </div>
-                  )}
-                  {r.status === 'PENDING' && (
-                    <div className="space-y-2">
-                      <textarea value={adminNote} onChange={e => setAdminNote(e.target.value)} placeholder="관리자 메모 (선택)" className="w-full h-16 p-2 border border-gray-200 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-gray-400" />
-                      <div className="flex gap-2">
-                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'DISMISSED', adminNote })} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900">반려</button>
-                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote })} className="px-3 py-1.5 text-sm bg-gray-900 text-white">제재</button>
-                        <button onClick={() => actionMutation.mutate({ id: r.id, status: 'ACTIONED', adminNote, deleteMessage: true })} className="px-3 py-1.5 text-sm text-accent hover:underline">제재 + 삭제</button>
-                      </div>
-                    </div>
-                  )}
-                  {r.status !== 'PENDING' && r.adminNote && <p className="text-xs text-gray-400">관리자 메모: {r.adminNote}</p>}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// 옛 쪽지(Message) 신고 구역은 2026-11-19 에 화면에서 뗐다 — 대화는 ArtTalk 이고, 그 신고는 components/admin/ChatReportsSection.tsx.
+// (옛 `GET/PATCH /api/reports` 라우트와 표는 남아 있다 — retiredApis.test.ts 가 화면에서 다시 부르지 않게 막는다)
 
 // ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
 const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
@@ -3669,9 +3343,13 @@ function UserManageSection() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const me = useAuthStore((s) => s.user);
-  const [q, setQ] = useState('');
-  const [submitted, setSubmitted] = useState('');
-  const [activeRole, setActiveRole] = useState<(typeof ADMIN_USER_ROLE_TABS)[number]['role']>('GALLERY');
+  // 다른 화면에서 그 회원을 찾아 들어올 수 있게 — `?tab=user-manage&role=ARTIST&q=<이메일>`([신고 관리]의 ArtTalk 신고, 2026-11-19)
+  const [searchParams] = useSearchParams();
+  const linkedQ = (searchParams.get('q') ?? '').trim();
+  const linkedRole = ADMIN_USER_ROLE_TABS.find((t) => t.role === searchParams.get('role'))?.role;
+  const [q, setQ] = useState(linkedQ);
+  const [submitted, setSubmitted] = useState(linkedQ);
+  const [activeRole, setActiveRole] = useState<(typeof ADMIN_USER_ROLE_TABS)[number]['role']>(linkedRole ?? 'GALLERY');
 
   const { data: users = [], isLoading } = useQuery<any[]>({
     queryKey: ['admin-users', activeRole, submitted],

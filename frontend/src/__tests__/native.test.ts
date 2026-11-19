@@ -224,11 +224,17 @@ describe('앱 안 — 링크·알림으로 열기', () => {
     expect(m.apiPatch).toHaveBeenCalledWith('/notifications/42/read');
   });
 
-  it('앱을 보고 있을 때 온 알림은 벨 숫자·목록을 바로 고친다(대화면 대화 배지도)', () => {
+  it('앱을 보고 있을 때 온 알림은 벨 숫자·목록을 바로 고친다(대화면 대화 배지도 · 열린 방은 곧바로 받는다)', () => {
     const inv = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
-    onPushReceived({ type: 'CHAT_MESSAGE' });
+    const pokes: unknown[] = [];
+    const onPoke = (e: Event) => pokes.push((e as CustomEvent).detail);
+    window.addEventListener('artlink:chat-poke', onPoke);
+    onPushReceived({ type: 'CHAT_MESSAGE', linkUrl: '/messages?chat=42' });
+    window.removeEventListener('artlink:chat-poke', onPoke);
     const keys = inv.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
-    expect(keys).toEqual(['["notifications"]', '["unread-count"]', '["chat-unread"]', '["chats"]', '["chat"]']);   // 보고 있는 방도 곧바로(8초 폴링을 기다리지 않게)
+    expect(keys).toEqual(['["notifications"]', '["unread-count"]', '["chat-unread"]', '["chats"]']);
+    // 열려 있는 방은 쿼리 캐시가 아니라 제 상태로 이어 받는다 — 그 방에 '지금 받아라'를 알린다(4초 폴링을 기다리지 않게, 2026-11-19)
+    expect(pokes).toEqual([{ chatId: 42 }]);
   });
 });
 
@@ -349,12 +355,13 @@ describe('소스 가드 — 설계가 조용히 무너지지 않게', () => {
   });
 
   it('Esc 로 닫히는 창은 role="dialog" aria-modal 을 단다 — 앱의 뒤로가기가 그걸 보고 창만 닫는다(없으면 화면이 넘어간다)', () => {
-    for (const f of ['components/shared/ImageLightbox.tsx', 'components/shared/ArtworkDetailModal.tsx', 'components/shared/InviteApplyModal.tsx']) {
+    // ArtTalk 의 창(이웃 고르기·방 메뉴·신고·참여자)은 전부 ChatSheet 하나를 쓴다(2026-11-19 — 예전 이웃 고르기·사진 크게 보기는 role 이 없었다)
+    for (const f of ['components/shared/ImageLightbox.tsx', 'components/shared/ArtworkDetailModal.tsx', 'components/chat/ChatSheet.tsx']) {
       const src = read(join(SRC, f));
       expect(src, f).toMatch(/role="dialog"/);
       expect(src, f).toMatch(/aria-modal="true"/);
     }
-    expect(read(join(SRC, 'components/shared/ArtworkDetailModal.tsx'))).toMatch(/useEscapeKey\(onClose\)/);   // InviteModal
+    expect(read(join(SRC, 'components/chat/ChatSheet.tsx'))).toMatch(/useEscapeKey\(onClose\)/);
   });
 
   it('★ 화면에 <a download> 를 새로 만들지 않는다 — 앱에서는 아무 일도 안 일어난다(triggerDownload 를 쓸 것)', () => {

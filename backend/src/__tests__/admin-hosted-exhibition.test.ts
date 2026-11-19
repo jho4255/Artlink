@@ -139,16 +139,15 @@ describe('POST /api/exhibitions/hosted — 아트링크 주최 공모 등록', (
     expect(notes.map((n) => n.userId)).toContain(ADMIN);
   });
 
-  /* 2026-09-19 — 지원 경로만 고쳐져 있었고 초대 수락은 `ex.gallery?.ownerId` 한 명이라 갤러리 없는 공모에서 0건이었다 */
-  it('★ 갤러리 없는 공모의 초대 수락 알림도 Admin 에게 간다', async () => {
+  /* 2026-09-19 — 지원 경로만 고쳐져 있었고 초대 수락은 `ex.gallery?.ownerId` 한 명이라 갤러리 없는 공모에서 0건이었다.
+     1:1 초대는 2026-11-19 에 없앴다 — 지원서 없이 들어오는 남은 길(초대 코드)도 같은 규칙인지 본다 */
+  it('★ 갤러리 없는 공모의 초대 코드 참여 알림도 Admin 에게 간다', async () => {
     await testPrisma.notification.deleteMany();
-    // 초대 수락은 포트폴리오에서 작품을 가져오므로 사진이 한 장은 있어야 한다
-    const pf = await testPrisma.portfolio.create({ data: { userId: ARTIST, biography: 'b' } });
-    await testPrisma.portfolioImage.create({ data: { portfolioId: pf.id, url: '/uploads/inv.jpg', order: 0 } });
     const { body: created } = await createHosted([]);
-    const inv = await testPrisma.exhibitionInvite.create({ data: { exhibitionId: created.id, artistId: ARTIST, senderId: ADMIN, message: '함께해요' } });
-    const res = await request.post(`/api/exhibitions/invites/${inv.id}/accept`).set('Authorization', `Bearer ${artistToken}`).send({});
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const code = await request.post(`/api/exhibitions/${created.id}/join-code`).set('Authorization', `Bearer ${adminToken}`);
+    expect(code.status, JSON.stringify(code.body)).toBe(200);
+    const res = await request.post('/api/exhibitions/join').set('Authorization', `Bearer ${artistToken}`).send({ code: code.body.code });
+    expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
     const notes = await testPrisma.notification.findMany({ where: { type: 'NEW_APPLICANT' } });
     expect(notes.map((n) => n.userId)).toContain(ADMIN);
   });
@@ -257,12 +256,6 @@ describe('운영 갤러리 위임', () => {
     expect(res.body.description).toBe('수정된 소개');
   });
 
-  it('위임받은 갤러리가 작가를 초대할 수 있다', async () => {
-    const res = await request.post(`/api/exhibitions/${exId}/invite`)
-      .set('Authorization', `Bearer ${bToken}`).send({ artistId: 2 });
-    expect(res.status).toBe(201);
-  });
-
   it('상세 조회에 운영 갤러리 목록과 canOperate 가 내려온다', async () => {
     const res = await request.get(`/api/exhibitions/${exId}`).set('Authorization', `Bearer ${bToken}`);
     expect(res.status).toBe(200);
@@ -342,13 +335,6 @@ describe('Admin 도 지원자 관리·운영을 할 수 있다', () => {
     expect(res.status).toBe(200);
   });
 
-  it('작가 초대 · 초대 목록 조회', async () => {
-    expect((await request.post(`/api/exhibitions/${hostedId}/invite`)
-      .set('Authorization', `Bearer ${adminToken}`).send({ artistId: 2 })).status).toBe(201);
-    const res = await request.get(`/api/exhibitions/${hostedId}/invites`).set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status).toBe(200);
-    expect(res.body.artistIds).toContain(2);
-  });
 
   it('소개 · 추가 질문 수정', async () => {
     expect((await request.patch(`/api/exhibitions/${hostedId}/description`)

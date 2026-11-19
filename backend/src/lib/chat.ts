@@ -1,5 +1,9 @@
+import { Prisma } from '@prisma/client';
 import prisma from './prisma';
 import { exhibitionNotifyTargets } from './exhibitionAccess';
+import { withKeyLock, LOCK_NS } from './keyLock';
+import { CHAT_REF_LABELS, readChatRef, type ChatRef, type ChatRefType } from './chatRef';
+import { blockStateBetween, blockedIdsOf, type ChatBlockReason } from './chatSafety';
 
 /**
  * 대화(갠톡·단톡) 공용 로직.
@@ -33,22 +37,48 @@ export function attachmentLabel(type?: string | null): string {
   return '';
 }
 
+/** 목록 미리보기·알림 글 — 글이 있으면 글, 없으면 첨부 종류, 그것도 없으면 맥락 카드 종류('[작품 문의]') */
+export function messagePreview(m: { content?: string | null; attachmentType?: string | null; ref?: unknown }): string {
+  const text = (m.content ?? '').trim();
+  if (text) return text;
+  const att = attachmentLabel(m.attachmentType);
+  if (att) return att;
+  const ref = readChatRef(m.ref);
+  return ref ? CHAT_REF_LABELS[ref.type] : '';
+}
+
+/** 대화 참여자 — 화면에 내보내는 모양. 탈퇴한 사람은 이름이 이미 '탈퇴한 회원'으로 바뀌어 있고 `deleted` 가 true 다 */
+export interface ChatPerson { id: number; name: string; nickname: string | null; avatar: string | null; role: string; deleted: boolean }
+
 export interface ChatSummary {
   id: number;
   kind: 'DIRECT' | 'GROUP';
   title: string | null;
   exhibitionId: number | null;
+  /** 단톡의 얼굴 — 그 공모의 포스터(없으면 null) */
+  cover: string | null;
   lastMessageAt: Date;
   unread: number;
   /** 내가 이 방 알림을 껐는가 */
   muted: boolean;
-  participants: { id: number; name: string; nickname: string | null; avatar: string | null; role: string }[];
-  lastMessage: { content: string; senderId: number; createdAt: Date } | null;
+  participants: ChatPerson[];
+  /** senderName — 단톡 미리보기의 '보낸 사람: 글'(닉네임 우선) */
+  lastMessage: { content: string; senderId: number; senderName: string; createdAt: Date } | null;
 }
 
 const participantSelect = {
-  user: { select: { id: true, name: true, nickname: true, avatar: true, role: true } },
+  user: { select: { id: true, name: true, nickname: true, avatar: true, role: true, deletedAt: true, handle: true } },
 } as const;
+
+type ParticipantUser = { id: number; name: string; nickname: string | null; avatar: string | null; role: string; deletedAt: Date | null; handle?: string | null };
+/** DB 행 → 화면에 내보낼 참여자(탈퇴 시각·핸들은 내보내지 않는다) */
+const toPerson = (u: ParticipantUser): ChatPerson => ({
+  id: u.id, name: u.name, nickname: u.nickname, avatar: u.avatar, role: u.role, deleted: !!u.deletedAt,
+});
+
+/** 숨긴 방인가 — 숨긴 뒤 새 메시지가 왔으면(마지막 메시지가 숨긴 시각보다 뒤) 다시 보인다 */
+export const isHiddenNow = (hiddenAt: Date | null | undefined, lastMessageAt: Date): boolean =>
+  !!hiddenAt && lastMessageAt.getTime() <= hiddenAt.getTime();
 
 /** 그 사람이 이 방의 참여자인가 — 모든 읽기·쓰기의 유일한 권한 판정 */
 export async function isParticipant(chatId: number, userId: number): Promise<boolean> {
@@ -133,18 +163,28 @@ export function splitChatNotice(message: string): { sender: string; text: string
 
 export async function notifyChatMessage(chatId: number, senderId: number, senderName: string, preview: string): Promise<void> {
   // 이 방 알림을 끈 사람(`muted`)은 뺀다 — 벨 알림이 없으면 앱 푸시도 없다(lib/push.ts 가 벨 알림을 보고 보낸다)
-  const others = await prisma.chatParticipant.findMany({ where: { chatId, userId: { not: senderId }, muted: false }, select: { userId: true } });
+  // 탈퇴한 사람도 뺀다 — 단톡에 남아 있지만 받을 사람이 없다
+  const others = await prisma.chatParticipant.findMany({
+    where: { chatId, userId: { not: senderId }, muted: false, user: { deletedAt: null } },
+    select: { userId: true },
+  });
   if (others.length === 0) return;
   const refKey = `chat:${chatId}`;
   const linkUrl = `/messages?chat=${chatId}`;
   const message = chatNoticeMessage(senderName, preview);
   for (const { userId } of others) {
-    const existing = await prisma.notification.findFirst({ where: { userId, refKey, read: false }, select: { id: true } });
-    if (existing) {
-      await prisma.notification.update({ where: { id: existing.id }, data: { message, linkUrl, createdAt: new Date() } });
-    } else {
-      await prisma.notification.create({ data: { userId, type: 'CHAT_MESSAGE', message, linkUrl, refKey } });
-    }
+    // ⚠️ '고쳐 쓸 줄이 없으면 만든다'를 받는 사람마다 줄 세운다(2026-11-19) — 같은 방에 메시지 둘이 동시에 오면 둘 다 '없음'을 보고
+    //    같은 방 알림이 두 줄이 됐다(`refKey` 는 unique 가 아니다 — 글 좋아요 알림과 같은 구멍, 규칙 46).
+    //    알림 쓰기가 잠금 안의 **마지막 쿼리**다(lib/push.ts — 트랜잭션이 되돌려져도 푸시는 이미 나갔을 수 있다).
+    //    ⚠️ `update`(한 줄)를 `updateMany` 로 바꾸지 말 것 — 푸시 갈고리가 update 만 다시 울린다(REPUSH_TYPES).
+    await withKeyLock(LOCK_NS.chatNotes, userId, async (tx) => {
+      const existing = await tx.notification.findFirst({ where: { userId, refKey, read: false }, select: { id: true } });
+      if (existing) {
+        await tx.notification.update({ where: { id: existing.id }, data: { message, linkUrl, createdAt: new Date() } });
+      } else {
+        await tx.notification.create({ data: { userId, type: 'CHAT_MESSAGE', message, linkUrl, refKey } });
+      }
+    });
   }
 }
 
@@ -230,20 +270,42 @@ const unreadWhere = (
   })),
 });
 
-/** 내 대화 목록 — 마지막 메시지·안 읽은 수까지 한 번에 */
+/**
+ * 내 대화 목록 — 마지막 메시지·안 읽은 수까지 한 번에.
+ *
+ * 빠지는 방 셋(2026-11-19, ArtTalk 개편):
+ *  · **메시지가 없는 1:1 방** — [메시지]·이웃 고르기가 누르는 순간 방을 만들어서, 아무것도 안 보냈는데 상대 목록에 빈 방이 떴다
+ *    (실서버 갠톡 2개가 전부 이것이었다). 첫 메시지가 오가면 그때 양쪽 목록에 나온다. 단톡은 서버가 만들고 운영자가 쓸 곳이라 늘 보인다.
+ *  · **숨긴 방** — 숨긴 뒤 새 메시지가 오면 다시 나온다(`isHiddenNow`).
+ *  · **내가 차단한 사람과의 1:1 방** — 방과 대화는 그대로다(차단을 풀면 돌아온다).
+ */
 export async function listChats(userId: number): Promise<ChatSummary[]> {
-  const rows = await prisma.chat.findMany({
-    where: { participants: { some: { userId } } },
-    orderBy: { lastMessageAt: 'desc' },
-    include: {
-      participants: { include: participantSelect },
-      messages: { orderBy: { id: 'desc' }, take: 1 },   // readChat 과 같이 id — createdAt 은 동시 삽입에서 어긋난다
-    },
+  const [rows, blocked] = await Promise.all([
+    prisma.chat.findMany({
+      where: { participants: { some: { userId } }, OR: [{ kind: 'GROUP' }, { messages: { some: {} } }] },
+      orderBy: { lastMessageAt: 'desc' },
+      include: {
+        participants: { include: participantSelect },
+        messages: {
+          orderBy: { id: 'desc' }, take: 1,   // readChat 과 같이 id — createdAt 은 동시 삽입에서 어긋난다
+          include: { sender: { select: { name: true, nickname: true } } },
+        },
+        exhibition: { select: { imageUrl: true } },
+      },
+    }),
+    blockedIdsOf(userId),
+  ]);
+  const blockedSet = new Set(blocked);
+  const visible = rows.filter((c) => {
+    const mine = c.participants.find((p) => p.userId === userId);
+    if (isHiddenNow(mine?.hiddenAt, c.lastMessageAt)) return false;
+    if (c.kind === 'DIRECT' && c.participants.some((p) => p.userId !== userId && blockedSet.has(p.userId))) return false;
+    return true;
   });
-  if (rows.length === 0) return [];
+  if (visible.length === 0) return [];
 
   // 방마다 count 를 돌지 않고 한 번에 묶어 센다 (위 unreadWhere 참고)
-  const mine = rows.map(c => ({
+  const mine = visible.map(c => ({
     chatId: c.id,
     lastReadAt: c.participants.find(p => p.userId === userId)?.lastReadAt ?? null,
   }));
@@ -254,31 +316,42 @@ export async function listChats(userId: number): Promise<ChatSummary[]> {
   });
   const unreadOf = new Map(grouped.map(g => [g.chatId, g._count._all]));
 
-  return rows.map((c) => {
+  return visible.map((c) => {
     const last = c.messages[0] ?? null;
-    // 목록 미리보기: 본문이 없고 첨부만이면 종류 라벨을 보여준다("[사진]" 등)
-    const preview = last
-      ? (last.content?.trim() || attachmentLabel(last.attachmentType))
-      : '';
     return {
       id: c.id,
       kind: c.kind as 'DIRECT' | 'GROUP',
       title: c.title,
       exhibitionId: c.exhibitionId,
+      cover: c.kind === 'GROUP' ? c.exhibition?.imageUrl ?? null : null,
       lastMessageAt: c.lastMessageAt,
       unread: unreadOf.get(c.id) ?? 0,
       muted: c.participants.find(p => p.userId === userId)?.muted ?? false,
-      participants: c.participants.map(p => p.user),
-      lastMessage: last ? { content: preview, senderId: last.senderId, createdAt: last.createdAt } : null,
+      participants: c.participants.map(p => toPerson(p.user)),
+      // 목록 미리보기: 본문이 없고 첨부만이면 종류 라벨("[사진]"), 카드만이면 "[작품 문의]"
+      lastMessage: last
+        ? { content: messagePreview(last), senderId: last.senderId, senderName: last.sender.nickname || last.sender.name || '회원', createdAt: last.createdAt }
+        : null,
     };
   });
 }
 
 /** 안 읽은 메시지가 있는 방 개수 (벨 배지) */
 export async function unreadChatCount(userId: number): Promise<number> {
-  const parts = await prisma.chatParticipant.findMany({
-    where: { userId }, select: { chatId: true, lastReadAt: true },
-  });
+  const [all, blocked] = await Promise.all([
+    prisma.chatParticipant.findMany({ where: { userId }, select: { chatId: true, lastReadAt: true } }),
+    blockedIdsOf(userId),
+  ]);
+  // 내가 차단한 사람과의 1:1 방은 목록에 없다 — 배지에도 세지 않는다(안 그러면 열 수 없는 숫자가 남는다)
+  let parts = all;
+  if (blocked.length && all.length) {
+    const hidden = await prisma.chat.findMany({
+      where: { kind: 'DIRECT', participants: { some: { userId } }, AND: [{ participants: { some: { userId: { in: blocked } } } }] },
+      select: { id: true },
+    });
+    const skip = new Set(hidden.map((c) => c.id));
+    parts = all.filter((p) => !skip.has(p.chatId));
+  }
   if (parts.length === 0) return 0;
   // 개수가 아니라 **방의 수**라 groupBy 로 방만 뽑는다 (총 2쿼리)
   const grouped = await prisma.chatMessage.groupBy({
@@ -329,13 +402,20 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
     where: { id: chatId },
     include: {
       participants: { include: participantSelect },
-      exhibition: { select: { id: true, title: true } },
+      exhibition: {
+        select: {
+          id: true, title: true, imageUrl: true, hostType: true,
+          // 운영자 판정용(단톡의 '주최' 표시) — 응답에는 싣지 않는다
+          gallery: { select: { ownerId: true } },
+          managers: { select: { gallery: { select: { ownerId: true } } } },
+        },
+      },
     },
   });
   if (!chat) return null;
 
   const take = Math.min(Math.max(opts.limit ?? CHAT_PAGE_SIZE, 1), CHAT_MAX_TAKE);
-  const sender = { sender: { select: { id: true, name: true, nickname: true, avatar: true } } };
+  const sender = { sender: { select: { id: true, name: true, nickname: true, avatar: true, deletedAt: true } } };
 
   let messages;
   let hasMore = false;
@@ -356,7 +436,10 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
   }
 
   const others = chat.participants.filter(p => p.userId !== userId);
-  const withRead = messages.map((m) => {
+  const withRead = messages.map((raw) => {
+    // 탈퇴 시각은 내보내지 않는다 · 맥락 카드는 읽을 때 한 번 더 모양을 지킨다(이상한 값은 null)
+    const { sender: { deletedAt, ...senderRest }, ref, ...rest } = raw;
+    const m = { ...rest, sender: { ...senderRest, deleted: !!deletedAt }, ref: readChatRef(ref) };
     if (m.senderId !== userId) return { ...m, read: null, unreadBy: null };
     // 이 메시지를 아직 안 읽은 사람 (보낸 사람 본인은 제외)
     const notRead = chat.participants.filter(
@@ -369,14 +452,17 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
     };
   });
 
-  return {
+  const me = chat.participants.find(p => p.userId === userId);
+  const base = {
     id: chat.id,
     kind: chat.kind as 'DIRECT' | 'GROUP',
     title: chat.title,
-    exhibition: chat.exhibition,
-    participants: chat.participants.map(p => p.user),
+    exhibition: chat.exhibition ? { id: chat.exhibition.id, title: chat.exhibition.title, imageUrl: chat.exhibition.imageUrl } : null,
+    participants: chat.participants.map(p => toPerson(p.user)),
     /** 내가 이 방 알림을 껐는가 */
-    muted: chat.participants.find(p => p.userId === userId)?.muted ?? false,
+    muted: me?.muted ?? false,
+    /** 내 목록에서 숨긴 방인가(숨긴 뒤 새 메시지가 왔으면 false) */
+    hidden: isHiddenNow(me?.hiddenAt, chat.lastMessageAt),
     otherCount: others.length,
     messages: withRead,
     /** 더 앞(과거) 메시지가 남아 있는가 — `after` 폴링에서는 항상 false */
@@ -384,4 +470,87 @@ export async function readChat(chatId: number, userId: number, opts: ReadChatOpt
     /** 참여자별 마지막 읽은 시각 — 화면이 캐시에 든 옛 메시지의 읽음 표시를 갱신하는 근거 */
     readers: chat.participants.map(p => ({ userId: p.userId, lastReadAt: p.lastReadAt })),
   };
+  // 폴링(`after`)에는 방의 '머리' 정보를 다시 싣지 않는다 — 바뀌지 않는 것이고, 몇 초마다 묻기엔 쿼리가 늘어난다.
+  // 화면은 방을 열 때 받은 머리를 들고 있는다(새로 온 메시지의 맥락 카드는 메시지에 실려 온다).
+  if (opts.after != null) return base;
+  return { ...base, ...(await chatRoomMeta(chat, userId)) };
 }
+
+/** 1:1 상대 — 이름·역할·탈퇴 여부 + 그 사람 홈페이지 주소(작가 = 핸들·숫자 주소, 갤러리 = 승인된 첫 갤러리) */
+export interface ChatCounterpart extends ChatPerson {
+  homepage: string | null;
+  /** 갤러리 회원이면 그 갤러리 이름(계정 이름과 다를 수 있다) */
+  galleryName: string | null;
+}
+
+async function counterpartOf(u: ParticipantUser): Promise<ChatCounterpart> {
+  const person = toPerson(u);
+  if (u.deletedAt) return { ...person, homepage: null, galleryName: null };
+  if (u.role === 'ARTIST') return { ...person, homepage: u.handle ? `/@${u.handle}` : `/portfolio/${u.id}`, galleryName: null };
+  if (u.role === 'GALLERY') {
+    const g = await prisma.gallery.findFirst({
+      where: { ownerId: u.id, status: 'APPROVED' }, orderBy: { id: 'asc' }, select: { id: true, handle: true, name: true },
+    });
+    return { ...person, homepage: g ? (g.handle ? `/@${g.handle}` : `/galleries/${g.id}`) : null, galleryName: g?.name ?? null };
+  }
+  return { ...person, homepage: null, galleryName: null };
+}
+
+/**
+ * 방을 **열 때만** 싣는 것 — 1:1 상대(홈페이지 주소) · 단톡 운영자 · 맥락 카드 · 보낼 수 있는가.
+ * 쿼리가 몇 개 더 든다(상대 갤러리 · 차단 · 마지막 카드) — 그래서 폴링에서는 빼고 여기 모았다.
+ */
+async function chatRoomMeta(
+  chat: {
+    id: number; kind: string;
+    participants: { userId: number; user: ParticipantUser }[];
+    exhibition: { hostType: string; gallery: { ownerId: number } | null; managers: { gallery: { ownerId: number } | null }[] } | null;
+  },
+  userId: number,
+): Promise<{
+  counterpart: ChatCounterpart | null;
+  operatorIds: number[];
+  context: (ChatRef & { messageId: number }) | null;
+  canSend: boolean;
+  blockReason: ChatBlockReason | null;
+}> {
+  const lastRef = await prisma.chatMessage.findFirst({
+    where: { chatId: chat.id, ref: { not: Prisma.DbNull } },
+    orderBy: { id: 'desc' },
+    select: { id: true, ref: true },
+  });
+  const ref = lastRef ? readChatRef(lastRef.ref) : null;
+  const context = ref && lastRef ? { ...ref, messageId: lastRef.id } : null;
+
+  if (chat.kind === 'GROUP') {
+    // 단톡의 '주최' — 그 공모의 알림을 받는 사람(갤러리 주인·운영 갤러리, 갤러리 없는 아트링크 공모는 관리자, 규칙 22)
+    const operatorIds = chat.exhibition ? await exhibitionNotifyTargets(chat.exhibition as never) : [];
+    return { counterpart: null, operatorIds, context, canSend: true, blockReason: null };
+  }
+  const other = chat.participants.find((p) => p.userId !== userId)?.user;
+  if (!other) return { counterpart: null, operatorIds: [], context, canSend: false, blockReason: 'unavailable' };
+  const counterpart = await counterpartOf(other);
+  let blockReason: ChatBlockReason | null = null;
+  if (other.deletedAt) blockReason = 'deleted';
+  else {
+    const b = await blockStateBetween(userId, other.id);
+    blockReason = b.byMe ? 'blocked' : b.byThem ? 'unavailable' : null;
+  }
+  return { counterpart, operatorIds: [], context, canSend: !blockReason, blockReason };
+}
+
+/** 이 사람이 이 방(1:1)에 지금 보낼 수 없는 이유 — 보낼 수 있으면 null. 단톡은 늘 null(차단을 걸지 않는다) */
+export async function directSendBlock(chatId: number, userId: number): Promise<ChatBlockReason | null> {
+  const chat = await prisma.chat.findUnique({
+    where: { id: chatId },
+    select: { kind: true, participants: { where: { userId: { not: userId } }, select: { userId: true, user: { select: { deletedAt: true } } } } },
+  });
+  if (!chat || chat.kind !== 'DIRECT') return null;
+  const other = chat.participants[0];
+  if (!other) return 'unavailable';
+  if (other.user.deletedAt) return 'deleted';
+  const b = await blockStateBetween(userId, other.userId);
+  return b.byMe ? 'blocked' : b.byThem ? 'unavailable' : null;
+}
+
+export type { ChatRefType };

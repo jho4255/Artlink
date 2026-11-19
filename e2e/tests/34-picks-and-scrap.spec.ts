@@ -8,7 +8,7 @@ import { openAs, tokenFor, userIds, settle, ensurePublicArtworks, seedGalleryLik
  *  · '전체' 에서는 찜한 항목 아래에 좋아요한 작품을 이어 붙인다.
  *  · [내 리뷰] 탭은 없앴다 — 다만 **갤러리 상세의 수정·삭제는 그대로 열려 있어야 한다.**
  *  · 갤러리 [관심 작품]: 비공개 스크랩(북마크)을 없애고 **하트(좋아요)** 로 바꿨다(2026-08-28).
- *    하트로 담은 작품의 작가에게 그 자리에서 [전시 초대] 를 보낸다.
+ *    (2026-11-19: [관심 작품] 카드의 [전시 초대]는 기능째로 없앴다 — 작품과 작가 이름뿐이다.)
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1440, height: 900 };
@@ -112,10 +112,11 @@ test.describe('[내 리뷰] 탭은 없앴지만 리뷰 수정·삭제는 살아 
   });
 });
 
-test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => {
+test.describe('갤러리 관심 작품 (하트로 모은다)', () => {
   /*
-    2026-08-28 개편: 갤러리의 비공개 '스크랩(북마크)'을 없앴다.
-    이제 갤러리도 **하트(좋아요)** 로 작품을 모으고, 관심 작품 탭에서 그 작가에게 전시 초대를 보낸다.
+    2026-08-28 개편: 갤러리의 비공개 '스크랩(북마크)'을 없앴다. 갤러리도 **하트(좋아요)** 로 작품을 모은다.
+    2026-11-19: 1:1 공모 초대를 없앴고 [관심 작품] 카드에서 [전시 초대]·[문의하기]도 뺐다 — 작품과 작가 이름뿐,
+    문의는 작가 홈페이지에서(카드의 이름 → 홈페이지).
   */
   test('★ 작품 모달에 관심 작품 저장(북마크) 버튼이 없다 — 하트로 대체됐다', async ({ browser }) => {
     /* 실제 이미지 파일을 쓴 작품 하나를 만들어 그 src 로 특정한다.
@@ -146,17 +147,15 @@ test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => 
       return likeBtn.count().then(c => c > 0);
     }, { timeout: 20000 }).toBe(true);
 
-    // 모달이 열렸다 (하트가 마커) → 스크랩 버튼은 없고, 초대 버튼이 있다
+    // 모달이 열렸다 (하트가 마커) → 스크랩·초대 버튼은 없다. 남은 액션은 [이웃]·[작품 문의하기]·[하트]
     await expect(likeBtn).toBeVisible({ timeout: 8000 });
     await expect(page.getByRole('button', { name: /관심 작품 저장|관심 작품 해제/ })).toHaveCount(0);
-    // ⚠️ '바로 공모 초대' 버튼도 2026-08-29 에 **의도적으로 없앴다** — 초대는 공모 쪽에서만 한다.
-    //    남은 액션은 [이웃]·[메시지]·[하트] 셋뿐이다.
-    await expect(page.getByRole('button', { name: '내 공모에 초대' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /메시지/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /초대/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '작품 문의하기' })).toBeVisible();
     await ctx.close();
   });
 
-  test('★ 하트 누른 작품이 관심 작품 탭에 뜨고, 개수·비공개 문구 대신 초대 안내가 나온다', async ({ browser }) => {
+  test('★ 하트 누른 작품이 관심 작품 탭에 뜬다 — 카드엔 작품과 작가 이름뿐(초대·문의 버튼 없음)', async ({ browser }) => {
     const api = await pwRequest.newContext();
     await seedGalleryLike(api);   // 갤러리가 새 작품에 하트 (토글 취소 방지)
     await api.dispose();
@@ -164,27 +163,18 @@ test.describe('갤러리 관심 작품 (하트로 모으고 → 초대)', () => 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=scraps');
-    await expect(page.locator('main')).toContainText('전시 초대를 보낼 수 있습니다', { timeout: 15000 });
+    const main = page.locator('main');
+    await expect(main.getByRole('button', { name: '작품 크게 보기' }).first()).toBeVisible({ timeout: 15000 });
 
-    // 예전의 '저장 사실은 작가에게 보이지 않습니다'·'N점' 문구는 사라졌다
-    const body = await page.locator('main').innerText();
+    // 예전의 '저장 사실은 작가에게 보이지 않습니다'·'N점'·'전시 초대를 보낼 수 있습니다' 문구는 사라졌다
+    const body = await main.innerText();
     expect(body).not.toContain('보이지 않습니다');
+    expect(body).not.toContain('전시 초대');
+    await expect(main.getByRole('button', { name: /전시 초대|문의하기/ })).toHaveCount(0);
 
-    // 각 카드에 [전시 초대] 버튼
-    await expect(page.getByRole('button', { name: '전시 초대' }).first()).toBeVisible({ timeout: 10000 });
-    await ctx.close();
-  });
-
-  test('★ 관심 작품 탭에서 [전시 초대] → 초대 모달이 열린다', async ({ browser }) => {
-    const api = await pwRequest.newContext();
-    await seedGalleryLike(api);
-    await api.dispose();
-
-    const { page, ctx } = await openAs(browser, 'gallery');
-    await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=scraps');
-    await page.getByRole('button', { name: '전시 초대' }).first().click();
-    await expect(page.getByRole('heading', { name: '공모에 초대' })).toBeVisible({ timeout: 8000 });
+    // 작품을 누르면 크게 보기(모달)
+    await main.getByRole('button', { name: '작품 크게 보기' }).first().click();
+    await expect(page.getByRole('button', { name: /^좋아요( 취소)?$/ }).first()).toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
 });

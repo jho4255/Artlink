@@ -86,20 +86,17 @@ describe('defaultBucket — 처음 열었을 때 빈 화면이 되면 안 된다
 });
 
 describe('탭 정의', () => {
-  it('받은 초대 / 심사 중 / 진행 중 / 종료 네 개, 전체 탭은 없다', () => {
-    // '받은 초대'가 맨 앞 — 예전 [받은 초대] 메뉴 탭을 여기로 합쳤다(2026-08-28)
+  it('심사 중 / 진행 중 / 종료 세 개, 전체 탭은 없다 — 받은 초대 탭은 없앴다(2026-11-19)', () => {
+    // 1:1 공모 초대를 통째로 없앴다(사용자 결정, 실서버 사용 0건). 이미 선정된 작가는 초대 코드로 들어온다.
     // 갤러리 [내 공모]의 '진행 중 · 종료' 와 같은 말(2026-09-29)
-    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['받은 초대', '심사 중', '진행 중', '종료']);
+    expect(MY_EXHIBITION_TABS.map(t => t.label)).toEqual(['심사 중', '진행 중', '종료']);
   });
 
-  it('★ INVITED 는 지원 분류가 채우지 않는다 (초대는 Application 이 아니다)', () => {
-    // 목록이 다른 API(`/exhibitions/invites/received`)라 호출부가 따로 넣는다.
-    // 여기서 채우려 들면 초대가 '심사중'으로 잘못 들어간다.
+  it('분류는 세 칸뿐이다', () => {
     const g = groupMyExhibitions([
       { status: 'SUBMITTED' }, { status: 'ACCEPTED' }, { status: 'REJECTED' },
     ] as any);
-    expect(g.INVITED).toEqual([]);
-    expect(Object.keys(g)).toEqual(['INVITED', 'REVIEWING', 'ONGOING', 'CLOSED']);
+    expect(Object.keys(g)).toEqual(['REVIEWING', 'ONGOING', 'CLOSED']);
   });
 
   it('빈 안내 문구가 탭마다 있다', () => {

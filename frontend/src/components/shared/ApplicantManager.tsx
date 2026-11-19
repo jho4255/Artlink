@@ -333,8 +333,6 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
             const meta = [
               new Date(app.createdAt).toLocaleDateString('ko'),
               app.isFirstApplication ? '이 갤러리 첫 지원' : app.galleryApplicationOrder ? `이 갤러리 ${app.galleryApplicationOrder}번째 지원` : null,
-              // 내가 둘러보기에서 초대한 작가 — 지원서 없이 포트폴리오로 간편 지원한 건이라 구분해서 보여준다
-              app.invited ? '초대한 작가' : null,
               // 초대 코드로 들어온 작가 — 지원서 없이 곧바로 수락된 건이라 약력·작품이 비어 있을 수 있다
               app.joinedVia === 'CODE' ? '초대 코드로 참여' : null,
             ].filter(Boolean).join(' · ');

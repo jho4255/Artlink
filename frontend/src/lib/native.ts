@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/queryClient';
 import { resolveSiteLink } from '@/lib/siteLink';
 import { holdPopupsFor, notePopupHoldPath } from '@/lib/popupHold';
 import { pushBannerWanted, showPushBanner } from '@/lib/pushBanner';
+import { pokeChat } from '@/lib/chatCache';
 
 /**
  * 앱(안드로이드 껍데기 — 저장소 `mobile/`, Capacitor) 안에서만 다르게 하는 일 — **전부 여기 한 곳**(2026-11-09, CLAUDE.md 규칙 79).
@@ -298,7 +299,9 @@ export function onPushReceived(data: Record<string, unknown> | undefined, notice
   if (data?.type === 'CHAT_MESSAGE') {
     void queryClient.invalidateQueries({ queryKey: ['chat-unread'] });
     void queryClient.invalidateQueries({ queryKey: ['chats'] });
-    void queryClient.invalidateQueries({ queryKey: ['chat'] });
+    // 열려 있는 방은 폴링을 기다리지 않고 바로 받는다(components/chat — 방은 쿼리 캐시가 아니라 제 상태로 이어 받는다)
+    const m = /[?&]chat=(\d+)/.exec(typeof data.linkUrl === 'string' ? data.linkUrl : '');
+    pokeChat(m ? Number(m[1]) : null);
   }
   const here = { pathname: window.location.pathname, search: window.location.search };
   if (notice?.body && pushBannerWanted(data, here)) {

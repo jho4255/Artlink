@@ -1,622 +1,132 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Users, MessageCircle, ArrowLeft, Paperclip, Image as ImageIcon, Film, FileText, Loader2, Download, X, UserPlus, Bell, BellOff } from 'lucide-react';
-import { createPortal } from 'react-dom';
-import toast from 'react-hot-toast';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { displayName } from '@/lib/utils';
-// 표시 규칙(묶음·제목·시각)은 화면 밖에 두고 테스트로 지킨다 — lib/chatView.ts
-import {
-  chatTitle, groupFlags, showsSenderName, timeLabel,
-  mergeMessages, applyReadState, type ChatReader,
-} from '@/lib/chatView';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useFillHeight } from '@/hooks/useFillHeight';
+import { useScrollLock, useVisualViewport } from '@/hooks/useVisualViewport';
+import { CHAT_WIDE_MEDIA } from '@/hooks/useChatBare';
+import type { ChatSummary } from '@/lib/chatTypes';
+import ChatList from '@/components/chat/ChatList';
+import ChatRoom from '@/components/chat/ChatRoom';
+import NeighborPicker from '@/components/chat/NeighborPicker';
 
 /**
- * 대화 — 갠톡(1:1)과 단톡(공모방)을 한 화면에서 본다.
+ * ArtTalk — 갠톡(1:1)과 단톡(공모방) (2026-11-19 개편. 계획 `scratchpad/arttalk-renewal/PLAN.md`, 목업 ①②⑥).
  *
- * ## 예전 쪽지와 무엇이 다른가
- * 예전에는 제목+본문의 '쪽지'였고, 라우트에 "작가는 갤러리에게만" 같은 역할 규칙이 박혀 있어
- * 작가끼리는 대화 자체가 불가능했다. 지금은 **방에 들어가 있으면 대화할 수 있다** — 그게 전부다.
+ * 화면은 주소 하나로 정한다 — `/messages`(목록) · `/messages?chat=<id>`(그 방). 알림·푸시·운영 안내가 이 모양을 쓴다(바꾸지 말 것).
+ *  · 휴대폰·태블릿(1024px 미만): 목록 ↔ 방. 방은 **대화 전용 화면**(상단바·탭바 없음 — `hooks/useChatBare.ts`)이고 높이는 보이는 영역(자판 위)
+ *  · 넓은 화면: 상단바·오른쪽 메뉴 안에서 [목록 | 방] 두 칸이 화면 높이를 다 쓴다(회사 정보 푸터 없음)
+ * 두 배치를 CSS 로 둘 다 그려 감추지 않는다(useMediaQuery 로 하나만) — 방이 두 벌 떠서 두 번 폴링한다.
  *
- * ## 대신 방이 생기는 길목이 좁다
- *  · 갠톡 — 둘러보기 작품 모달 / 작가 홈페이지의 [메시지] 버튼 (그 사람을 보고 시작)
- *  · 단톡 — 공모가 승인되면 서버가 자동 생성. 갤러리와 수락 작가가 자동 참여자
- * 그래서 이 화면에는 임의 검색으로 아무나 찾아 말 거는 기능이 없다.
- * **딱 하나 예외** — 이미 **서로 이웃**인 사람에게는 목록 위 [이웃에게 메시지]로 바로 갠톡을 연다.
- *   (서로 이웃 = 양방향 팔로우. 임의 검색이 아니라 이미 맺어진 관계라 설계 전제를 깨지 않는다)
+ * ## 뒤로가기
+ * 목록에서 방을 열면 기록을 쌓고(`state.fromList`), 방의 [←] 는 그 기록을 되돌린다 — 예전엔 [←] 가 기록을 **쌓아서**
+ * 기기 뒤로가기를 누르면 방으로 되돌아갔다(목록 ↔ 방 고리). 알림으로 바로 들어온 방의 [←] 는 목록으로 바꿔 끼운다.
+ * 넓은 화면에서 방을 바꾸는 건 기록을 쌓지 않는다(뒤로가기가 방들을 거꾸로 훑지 않게).
  *
- * ## 읽음
- *  · 갠톡 : 내가 보낸 말 옆에 '읽음'
- *  · 단톡 : 내가 보낸 말 옆에 아직 안 읽은 사람 수 (카카오톡과 같은 방식)
+ * ## 방이 생기는 길목은 좁다(설계)
+ * 갠톡은 그 사람을 보고 여는 곳(작가·갤러리 홈페이지·작품의 [문의하기])과 **서로 이웃**뿐 — 임의 검색으로 아무나 찾는 '새 대화'는 없다.
+ * 단톡은 공모가 승인되면 서버가 만든다.
  */
-interface ChatUser { id: number; name: string; nickname?: string | null; avatar?: string | null; role?: string }
-interface ChatSummary {
-  id: number;
-  kind: 'DIRECT' | 'GROUP';
-  title: string | null;
-  exhibitionId: number | null;
-  lastMessageAt: string;
-  unread: number;
-  /** 내가 이 방 알림을 껐는가(옛 서버 응답엔 없다) */
-  muted?: boolean;
-  participants: ChatUser[];
-  lastMessage: { content: string; senderId: number; createdAt: string } | null;
-}
-type AttachmentType = 'IMAGE' | 'VIDEO' | 'FILE';
-interface ChatMessage {
-  id: number; senderId: number; content: string; createdAt: string;
-  sender: ChatUser; read: boolean | null; unreadBy: number | null;
-  attachmentUrl?: string | null;
-  attachmentType?: AttachmentType | null;
-  attachmentName?: string | null;
-  attachmentSize?: number | null;
-}
-interface ChatDetail {
-  id: number; kind: 'DIRECT' | 'GROUP'; title: string | null;
-  exhibition: { id: number; title: string } | null;
-  participants: ChatUser[]; otherCount: number; messages: ChatMessage[];
-  /** 내가 이 방 알림을 껐는가 */
-  muted?: boolean;
-  /** 더 앞(과거) 메시지가 남아 있는가 — 첫 로드·[이전 메시지]에서만 의미가 있다 */
-  hasMore?: boolean;
-  /** 참여자별 마지막 읽은 시각 — 캐시에 든 옛 메시지의 읽음 표시를 갱신하는 근거 */
-  readers?: ChatReader[];
-}
-
-/**
- * 방을 열 때 받는 메시지 수. 서버 `CHAT_PAGE_SIZE` 와 같은 값.
- * ⚠️ 폴링은 이 창을 다시 받지 않는다 — `?after=<마지막 id>` 로 **새 것만** 받는다.
- *    예전엔 8초마다 방을 통째로 다시 받아서, 방이 오래될수록 무거워졌다(5,000개 방 = 175KB/s).
- */
-const CHAT_PAGE = 150;
-
-/** 바이트 → 사람이 읽는 크기 */
-function formatBytes(n?: number | null): string {
-  if (!n || n <= 0) return '';
-  const mb = n / 1024 / 1024;
-  if (mb >= 1) return `${mb.toFixed(1)}MB`;
-  return `${Math.max(1, Math.round(n / 1024))}KB`;
-}
-
-/**
- * 대화 첨부 렌더 — 사진(클릭 확대) / 동영상(인라인 재생) / 파일(다운로드).
- * ⚠️ `<a download>` 은 크로스오리진(R2)에서 브라우저가 무시할 수 있어 새 탭으로도 열리게 target 을 함께 준다.
- */
-function ChatAttachment({ message, onOpenImage }: { message: ChatMessage; onOpenImage: (url: string) => void }) {
-  const url = message.attachmentUrl!;
-  if (message.attachmentType === 'IMAGE') {
-    return (
-      <button type="button" onClick={() => onOpenImage(url)} className="block overflow-hidden rounded-2xl border border-gray-100 cursor-pointer">
-        <img src={url} alt="" loading="lazy" className="max-h-64 max-w-full object-cover hover:opacity-90" />
-      </button>
-    );
-  }
-  if (message.attachmentType === 'VIDEO') {
-    return (
-      <video src={url} controls preload="metadata" className="max-h-64 max-w-full rounded-2xl border border-gray-100 bg-black" />
-    );
-  }
-  // FILE
-  const name = message.attachmentName || '첨부파일';
-  const size = formatBytes(message.attachmentSize);
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      download={name}
-      className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 hover:bg-gray-50"
-    >
-      <span className="grid h-9 w-9 place-items-center rounded-lg bg-gray-100 text-gray-500 shrink-0"><FileText size={18} /></span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-gray-900">{name}</span>
-        <span className="block text-xs text-gray-400">{size ? `${size} · ` : ''}다운로드</span>
-      </span>
-      <Download size={16} className="ml-auto shrink-0 text-gray-400" />
-    </a>
-  );
-}
-
 export default function MessagesPage() {
   const { user } = useAuthStore();
   const myId = user?.id ?? 0;
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const openId = Number(searchParams.get('chat')) || null;
-  const [draft, setDraft] = useState('');
-  const [attachOpen, setAttachOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  // 서로 이웃에게 바로 말 걸기 — '아무나 검색'이 아니라 이미 서로 이웃인 사람만. 설계상 유일한 진입점 확장.
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const wide = useMediaQuery(CHAT_WIDE_MEDIA);
+  const [neighbor, setNeighbor] = useState(false);
 
+  // ⚠️ staleTime 0 · 들어올 때마다 다시 — 전역 기본(5분)이면 다른 화면에서 보낸 대화가 5분 동안 목록에 없었다(2026-11-19 신고)
   const { data: chats = [], isLoading } = useQuery<ChatSummary[]>({
     queryKey: ['chats'],
-    queryFn: () => api.get('/chats').then(r => r.data),
-    refetchInterval: 15000,   // 폴링 — SSE 는 예전 쪽지 전용이라 걷어냈다
+    queryFn: () => api.get('/chats').then((r) => r.data),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    // 목록이 보일 때만 돈다(휴대폰에서 방을 보는 동안은 방이 4초마다 받는다)
+    refetchInterval: wide || !openId ? 10_000 : false,
   });
 
-  /*
-    ── 증분 폴링 ───────────────────────────────────────────────────
-    방을 열 때만 최근 150개를 받고, 이후 8초 폴링은 `?after=<마지막 id>` 로 **새 것만** 받는다.
-    조용한 방은 응답이 `[]` 라 **방에 몇 개가 쌓였든 폴링 비용이 같다**.
-    그래서 메시지는 쿼리 결과가 아니라 여기 누적 state 가 진실이다 — 폴링 응답만 그리면
-    새 말 몇 개만 남고 대화가 통째로 사라진다.
-  */
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const cursorRef = useRef<number | null>(null);          // 폴링 커서(마지막으로 받은 메시지 id)
-  const scrollBoxRef = useRef<HTMLDivElement>(null);
-
-  // 방을 바꾸면 누적분과 커서를 비운다 (안 비우면 남의 방 메시지가 섞인다)
-  // ⚠️⚠️ **캐시도 함께 버릴 것.** 커서는 ref 라 캐시 밖에 있는데, 방을 나갔다 5분 안에 다시
-  //   들어오면 TanStack 이 **직전 폴링 응답**(조용한 방이면 `messages: []`)을 그대로 내준다.
-  //   그러면 화면이 텅 빈 채로 "첫 메시지를 보내보세요" 가 뜨고, 커서까지 0 으로 잡혀
-  //   다음 폴링이 `?after=0` 을 보내 **가장 오래된 150개**를 받아 온다(그 방에 갇힌다).
-  useEffect(() => {
-    cursorRef.current = null;
-    setMessages([]);
-    setHasMore(false);
-    if (openId) queryClient.removeQueries({ queryKey: ['chat', openId] });
-  }, [openId, queryClient]);
-
-  const { data: chat, isError: chatError } = useQuery<ChatDetail & { mode: 'init' | 'poll' }>({
-    queryKey: ['chat', openId],
-    queryFn: async () => {
-      const after = cursorRef.current;
-      const params = after == null ? { limit: CHAT_PAGE } : { after };
-      const d: ChatDetail = await api.get(`/chats/${openId}`, { params }).then(r => r.data);
-      return { ...d, mode: after == null ? 'init' : 'poll' };
-    },
-    enabled: !!openId,
-    refetchInterval: 8000,
-  });
-
-  // 받은 것을 누적분에 합치고, 읽음 표시는 참여자 lastReadAt 으로 **전부** 다시 계산한다
-  // (폴링 응답에는 지난 메시지가 없어서, 상대가 옛 말을 읽어도 그대로면 '읽음'이 안 뜬다)
-  useEffect(() => {
-    if (!chat) return;
-    setMessages(prev => applyReadState(
-      mergeMessages(prev, chat.messages), chat.kind, chat.readers ?? [], myId,
-    ));
-    if (chat.mode === 'init') setHasMore(!!chat.hasMore);
-    // ⚠️ **빈 응답으로 커서를 0 으로 만들지 말 것.** `null`(=아직 초기 적재 전)과 `0` 은 뜻이
-    //   전혀 다르다 — 0 이 되면 다음 요청이 `?after=0` 이라 서버가 **맨 처음부터** 150개를 준다.
-    //   받은 게 없으면 커서는 그대로 둔다.
-    const maxId = chat.messages.reduce((a, m) => Math.max(a, m.id), 0);
-    if (maxId > 0) cursorRef.current = Math.max(cursorRef.current ?? 0, maxId);
-  }, [chat, myId]);
-
-  // 방을 안 골랐으면 첫 방을 연다 (넓은 화면에서 빈 오른쪽을 보여주지 않게)
-  useEffect(() => {
-    if (!openId && chats.length > 0 && window.innerWidth >= 768) {
-      setSearchParams({ chat: String(chats[0].id) }, { replace: true });
-    }
-  }, [chats, openId, setSearchParams]);
-
-  /** [이전 메시지] — 지금 들고 있는 가장 옛 메시지보다 앞을 받는다 */
-  const loadOlder = async () => {
-    const first = messages[0];
-    if (!openId || !first || loadingOlder) return;
-    setLoadingOlder(true);
-    // 위로 붙이면 보던 자리가 밀린다 — 늘어난 높이만큼 스크롤을 되돌려 제자리를 지킨다
-    const box = scrollBoxRef.current;
-    const before = box ? box.scrollHeight - box.scrollTop : 0;
-    try {
-      const d: ChatDetail = await api
-        .get(`/chats/${openId}`, { params: { before: first.id, limit: CHAT_PAGE } })
-        .then(r => r.data);
-      setMessages(prev => applyReadState(
-        mergeMessages(prev, d.messages), d.kind, d.readers ?? [], myId,
-      ));
-      setHasMore(!!d.hasMore);
-      requestAnimationFrame(() => { if (box) box.scrollTop = box.scrollHeight - before; });
-    } catch (e: any) {
-      toast.error(e.response?.data?.error || '이전 메시지를 불러오지 못했습니다.');
-    } finally {
-      setLoadingOlder(false);
-    }
-  };
-
-  // 새 말이 오면 아래로. ⚠️ 개수가 아니라 **마지막 id** 를 본다 —
-  //    개수로 보면 [이전 메시지]로 위를 채웠을 때도 맨 아래로 튕긴다.
-  const lastMsgId = messages[messages.length - 1]?.id;
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [lastMsgId, openId]);
-
-  const send = useMutation({
-    mutationFn: (payload: {
-      content?: string;
-      attachmentUrl?: string; attachmentType?: AttachmentType; attachmentName?: string; attachmentSize?: number;
-    }) => api.post<ChatMessage>(`/chats/${openId}/messages`, payload),
-    onSuccess: (res) => {
-      setDraft('');
-      // 201 응답(방금 만든 메시지)을 **바로** 누적분에 합친다 — 예전엔 버리고 invalidate 로 다시 받아
-      //   전송 1회에 요청 2회, 느린 망에서는 보낸 말이 몇 초 뒤에야 떴다(감사 S12).
-      //   `mergeMessages` 가 id 로 병합하므로 뒤이은 폴링과 겹쳐도 안전하고, 커서도 함께 올려 두면 폴링이 되받지 않는다.
-      const sent = res.data;
-      if (sent && typeof sent.id === 'number') {
-        setMessages(prev => applyReadState(
-          mergeMessages(prev, [sent]), chat?.kind ?? 'DIRECT', chat?.readers ?? [], myId,
-        ));
-        cursorRef.current = Math.max(cursorRef.current ?? 0, sent.id);
-      }
-      queryClient.invalidateQueries({ queryKey: ['chats'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-unread'] });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '보내지 못했습니다.'),
-  });
-
-  // 서로 이웃 목록 — 피커를 열 때만 부른다
-  const { data: mutuals = [], isLoading: mutualsLoading } = useQuery<ChatUser[]>({
-    queryKey: ['mutuals'],
-    queryFn: () => api.get('/follow/mutuals').then(r => r.data),
-    enabled: pickerOpen,
-  });
-
-  /*
-    이 방 알림 끄기·켜기(카카오톡 '알림 끄기', 2026-11-11) — 끄면 새 메시지가 벨 알림·앱 푸시로 오지 않는다.
-    안 읽은 수는 그대로 센다. 상태를 적어 보낸다(PATCH {muted}) — 두 번 눌러도 같은 답.
-    폴링 응답(`after`)도 `muted` 를 싣고 오므로 캐시에 곧바로 써 둔다(다음 폴링까지 버튼이 되돌아가 보이지 않게).
-  */
-  const setMute = useMutation({
-    mutationFn: ({ id, muted }: { id: number; muted: boolean }) => api.patch(`/chats/${id}/mute`, { muted }).then(r => r.data as { muted: boolean }),
-    onSuccess: (data, v) => {
-      queryClient.setQueryData<ChatDetail & { mode: 'init' | 'poll' }>(['chat', v.id], (old) => (old ? { ...old, muted: data.muted } : old));
-      queryClient.setQueryData<ChatSummary[]>(['chats'], (old) => old?.map(c => (c.id === v.id ? { ...c, muted: data.muted } : c)));
-      toast.success(data.muted ? '이 대화방 알림을 껐어요.' : '이 대화방 알림을 켰어요.');
-    },
-    onError: (e: unknown) => toast.error((e as { response?: { data?: { error?: string } } }).response?.data?.error || '알림 설정을 바꾸지 못했습니다.'),
-  });
-
-  // 이웃을 고르면 갠톡을 연다(이미 있으면 그 방으로 — 서버가 멱등 처리)
-  const startDirect = useMutation({
-    mutationFn: (userId: number) => api.post('/chats/direct', { userId }).then(r => r.data),
-    onSuccess: (data: { id: number }) => {
-      setPickerOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['chats'] });
-      setSearchParams({ chat: String(data.id) });
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '대화를 열지 못했습니다.'),
-  });
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || send.isPending) return;
-    send.mutate({ content: text });
-  };
-
-  /*
-    첨부 보내기 — 화면에서 먼저 업로드(`/api/upload/*`)한 뒤 그 url·메타로 메시지를 만든다.
-    ⚠️ 용량 상한은 **서버가 최종 판정**(multer). 여기서도 미리 잘라 헛된 업로드·서버비를 줄인다.
-      · 사진 15MB(/upload/image)  · 동영상 25MB(/upload/video)  · 파일 20MB(/upload/file, PDF/DOC/HWP/ZIP)
-  */
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachKind, setAttachKind] = useState<AttachmentType>('IMAGE');
-  const [uploading, setUploading] = useState(false);
-
-  const openPicker = (kind: AttachmentType) => {
-    setAttachKind(kind);
-    const input = fileInputRef.current;
-    if (!input) return;
-    input.accept = kind === 'IMAGE' ? 'image/*' : kind === 'VIDEO' ? 'video/*' : '.pdf,.doc,.docx,.hwp,.hwpx,.zip';
-    input.value = '';
-    input.click();
-  };
-
-  const ATTACH_LIMITS: Record<AttachmentType, { bytes: number; endpoint: string; field: string; label: string }> = {
-    IMAGE: { bytes: 15 * 1024 * 1024, endpoint: '/upload/image', field: 'image', label: '사진' },
-    VIDEO: { bytes: 25 * 1024 * 1024, endpoint: '/upload/video', field: 'video', label: '동영상' },
-    FILE: { bytes: 20 * 1024 * 1024, endpoint: '/upload/file', field: 'file', label: '파일' },
-  };
-
-  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !openId) return;
-    const spec = ATTACH_LIMITS[attachKind];
-    if (file.size > spec.bytes) {
-      toast.error(`${spec.label}은(는) 최대 ${Math.round(spec.bytes / 1024 / 1024)}MB 까지 보낼 수 있습니다.`);
+  const openRoom = (id: number) => navigate({ pathname: '/messages', search: `?chat=${id}` }, wide ? { replace: true } : { state: { fromList: true } });
+  // 방에서 나온 방(숨기기·넓은 화면의 [←] 대신) — 넓은 화면의 '첫 방 열기'가 방금 나온 방을 다시 열지 않게(목록이 다시 오기 전엔 아직 거기 있다)
+  const left = useRef<number | null>(null);
+  const back = () => {
+    if (wide) {
+      /* ⚠️ 넓은 화면은 방을 바꿀 때 기록을 쌓지 않으므로 navigate(-1) 이면 **ArtTalk 밖으로** 나간다(숨기기를 누르면 이전 화면이 떴다).
+         다음 방으로 바꿔 끼운다 */
+      left.current = openId;
+      const next = chats.find((c) => c.id !== openId);
+      navigate(next ? { pathname: '/messages', search: `?chat=${next.id}` } : '/messages', { replace: true });
       return;
     }
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append(spec.field, file);
-      const { data } = await api.post(spec.endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
-      // 입력 중이던 글은 첨부와 **함께** 보낸다 — 예전엔 첨부만 나가고 onSuccess 가 draft 를 비워 쓰던 글이 사라졌다(감사 S9)
-      send.mutate({
-        content: draft.trim() || undefined,
-        attachmentUrl: data.url,
-        attachmentType: attachKind,
-        attachmentName: attachKind === 'FILE' ? (data.originalName || file.name) : undefined,
-        attachmentSize: data.size ?? file.size,
-      });
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || '첨부를 보내지 못했습니다.');
-    } finally {
-      setUploading(false);
-    }
+    if ((location.state as { fromList?: boolean } | null)?.fromList) navigate(-1);
+    else navigate('/messages', { replace: true });
   };
 
-  const sorted = useMemo(() => chats, [chats]);
+  // 넓은 화면에서 방을 안 골랐으면 첫 방을 연다(빈 오른쪽을 보여 주지 않게)
+  useEffect(() => {
+    if (!wide || openId) return;
+    const first = chats.find((c) => c.id !== left.current);
+    if (first) navigate({ pathname: '/messages', search: `?chat=${first.id}` }, { replace: true });
+  }, [wide, openId, chats, navigate]);
 
-  return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
-      <h1 className="text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900 mb-6">
-        Art<span className="text-accent">Talk</span>
-      </h1>
+  const picker = neighbor && (
+    <NeighborPicker
+      onClose={() => setNeighbor(false)}
+      onOpened={(id) => { setNeighbor(false); openRoom(id); }}
+    />
+  );
 
-      {/* ⚠️ 칸은 `minmax(0, …)` + 칸마다 `min-w-0`(규칙 27) — 기본(auto)이면 입력칸·버튼의 최소 폭만큼 대화 칸이 상자보다 넓어져
-          [보내기]가 오른쪽에서 잘리고 '첫 메시지를 보내보세요'가 오른쪽으로 치우쳤다(412px 폭: 칸 428 > 상자 364, 2026-11-11). */}
-      <div className="grid grid-cols-1 gap-0 md:grid-cols-[300px_minmax(0,1fr)] rounded-2xl border border-gray-200 overflow-hidden bg-white">
-        {/* 목록 — 좁은 화면에서는 방을 고르면 숨긴다 */}
-        <div className={`min-w-0 border-gray-200 md:border-r ${openId ? 'hidden md:block' : ''}`}>
-          {/* 이웃에게 바로 말 걸기 진입점 — 목록 위에 둔다(임의 검색이 아니라 서로 이웃만) */}
-          <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
-            <span className="text-xs font-medium text-gray-400">대화 목록</span>
-            <button
-              onClick={() => setPickerOpen(true)}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
-            >
-              <UserPlus size={13} /> 이웃에게 메시지
-            </button>
-          </div>
-          {isLoading ? (
-            <div className="p-6 text-sm text-gray-400">불러오는 중…</div>
-          ) : sorted.length === 0 ? (
-            <div className="p-6 text-sm text-gray-400 leading-relaxed">
-              아직 대화가 없습니다.<br />
-              [작가] 탭에서 작품을 열어 [메시지]를 누르거나, 공모에 참여하면 단체 대화가 생깁니다.
-            </div>
-          ) : (
-            <ul className="max-h-[70vh] overflow-y-auto divide-y divide-gray-50">
-              {sorted.map(c => (
-                <li key={c.id}>
-                  <button
-                    onClick={() => setSearchParams({ chat: String(c.id) })}
-                    className={`w-full px-4 py-3 text-left transition-colors ${openId === c.id ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {c.kind === 'GROUP'
-                        ? <Users size={14} className="shrink-0 text-gray-400" />
-                        : <MessageCircle size={14} className="shrink-0 text-gray-400" />}
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
-                        {chatTitle(c, myId)}
-                      </span>
-                      {c.muted && <BellOff size={12} className="shrink-0 text-gray-300" aria-label="알림 꺼짐" />}
-                      {/* 안 읽은 게 있으면 개수 배지 — 알림을 끈 방은 회색(조용히 쌓인다) */}
-                      {c.unread > 0 && (
-                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${c.muted ? 'bg-gray-300' : 'bg-accent'}`}>
-                          {c.unread > 99 ? '99+' : c.unread}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-gray-500">
-                      {c.lastMessage?.content || '아직 대화가 없습니다.'}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-gray-300">{timeLabel(c.lastMessageAt)}</p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* 대화 */}
-        <div className={`min-w-0 flex flex-col ${openId ? '' : 'hidden md:flex'}`}>
-          {chatError ? (
-            // 없는 방·남의 방(404) — 모바일에선 목록이 숨겨져 있어 돌아갈 길이 없었다(2026-09-19)
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-sm text-gray-400">
-              <p>대화를 찾을 수 없습니다.</p>
-              <button onClick={() => navigate('/messages')} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50">
-                <ArrowLeft size={14} /> 대화 목록으로
-              </button>
-            </div>
-          ) : !chat ? (
-            <div className="flex flex-1 items-center justify-center p-10 text-sm text-gray-400">
-              대화를 선택하세요.
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-                <button onClick={() => setSearchParams({})} className="md:hidden text-gray-400" aria-label="목록으로">
-                  <ArrowLeft size={16} />
-                </button>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-gray-900">{chatTitle(chat, myId)}</p>
-                  <p className="text-[11px] text-gray-400">
-                    {chat.kind === 'GROUP' ? `참여자 ${chat.participants.length}명` : '1:1 대화'}
-                    {chat.exhibition && ' · 공모 단체 대화'}
-                  </p>
-                </div>
-                <div className="ml-auto flex shrink-0 items-center gap-1">
-                  {chat.exhibition && (
-                    <button
-                      onClick={() => navigate(`/exhibitions/${chat.exhibition!.id}`)}
-                      className="px-1.5 text-xs text-gray-400 hover:text-gray-900"
-                    >
-                      공모 보기
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setMute.mutate({ id: chat.id, muted: !chat.muted })}
-                    disabled={setMute.isPending}
-                    aria-pressed={!!chat.muted}
-                    aria-label={chat.muted ? '이 대화방 알림 켜기' : '이 대화방 알림 끄기'}
-                    title={chat.muted ? '알림 꺼짐 — 눌러서 켜기' : '알림 켜짐 — 눌러서 끄기'}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
-                  >
-                    {chat.muted ? <BellOff size={17} /> : <Bell size={17} />}
-                  </button>
-                </div>
-              </div>
-
-              <div ref={scrollBoxRef} className="flex-1 overflow-y-auto px-4 py-4 max-h-[55vh] min-h-[280px]">
-                {/* 방을 열면 최근 150개만 받는다 — 그 앞은 눌러서 더 받는다 */}
-                {hasMore && (
-                  <div className="mb-3 text-center">
-                    <button
-                      type="button"
-                      onClick={loadOlder}
-                      disabled={loadingOlder}
-                      className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {loadingOlder ? '불러오는 중…' : '이전 메시지 더 보기'}
-                    </button>
-                  </div>
-                )}
-                {messages.length === 0 && (
-                  <p className="py-10 text-center text-sm text-gray-400">첫 메시지를 보내보세요.</p>
-                )}
-                {messages.map((m, i) => {
-                  const mine = m.senderId === myId;
-                  /*
-                    카카오톡처럼 **이어 보낸 말은 묶는다.** (규칙은 lib/chatView.ts, 회귀는 chatView.test.ts)
-                    예전엔 메시지마다 이름과 시각이 다 붙어서, 한 사람이 세 줄을 쓰면
-                    이름 3번·시각 3번이 나와 정작 말이 안 읽혔다.
-                  */
-                  const { first, last } = groupFlags(messages, i);
-                  return (
-                    <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${first ? 'mt-3 first:mt-0' : 'mt-0.5'}`}>
-                      <div className={`max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
-                        {showsSenderName(chat.kind, mine, first) && (
-                          <span className="mb-0.5 text-[11px] text-gray-400">{displayName(m.sender)}</span>
-                        )}
-                        {/* 첨부(사진/동영상/파일) — 있으면 본문 위에 */}
-                        {m.attachmentUrl && m.attachmentType && (
-                          <ChatAttachment message={m} onOpenImage={setPreviewUrl} />
-                        )}
-                        {/* 본문 — 첨부만 있는 메시지는 빈 문자열이라 말풍선을 그리지 않는다 */}
-                        {m.content && (
-                          <div className={`rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-keep [overflow-wrap:anywhere] ${
-                            mine ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'
-                          } ${m.attachmentUrl ? 'mt-1' : ''}`}>
-                            {m.content}
-                          </div>
-                        )}
-                        {last && (
-                          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-300">
-                            {/* 갠톡 '읽음' / 단톡 안 읽은 사람 수 — 내 말에만 붙는다 */}
-                            {mine && chat.kind === 'DIRECT' && m.read && <b className="font-medium text-gray-400">읽음</b>}
-                            {mine && chat.kind === 'GROUP' && (m.unreadBy ?? 0) > 0 && (
-                              <b className="font-medium text-accent">{m.unreadBy}</b>
-                            )}
-                            {timeLabel(m.createdAt)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={bottomRef} />
-
-                {/* 사진 크게 보기 */}
-                {previewUrl && createPortal(
-                  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4" onClick={() => setPreviewUrl(null)}>
-                    <button aria-label="닫기" className="absolute right-4 top-4 text-white/80 hover:text-white"><X size={24} /></button>
-                    <img src={previewUrl} alt="" className="max-h-[92vh] max-w-full object-contain" onClick={e => e.stopPropagation()} />
-                  </div>,
-                  document.body,
-                )}
-              </div>
-
-              {/* 첨부 업로드용 숨은 input — 종류에 따라 accept 를 바꿔 연다 */}
-              <input ref={fileInputRef} type="file" className="hidden" onChange={onFilePicked} />
-
-              <form onSubmit={submit} className="flex items-center gap-1.5 border-t border-gray-100 p-3">
-                {/* 첨부 메뉴 — 사진·동영상·파일 */}
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setAttachOpen(v => !v)}
-                    disabled={uploading || send.isPending}
-                    aria-label="첨부"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
-                  >
-                    {uploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
-                  </button>
-                  {attachOpen && !uploading && (
-                    <div className="absolute bottom-11 left-0 z-10 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-                      {([
-                        ['IMAGE', '사진', <ImageIcon size={15} key="i" />],
-                        ['VIDEO', '동영상', <Film size={15} key="v" />],
-                        ['FILE', '파일', <FileText size={15} key="f" />],
-                      ] as const).map(([kind, label, icon]) => (
-                        <button
-                          key={kind}
-                          type="button"
-                          onClick={() => { setAttachOpen(false); openPicker(kind); }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                        >
-                          {icon} {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <input
-                  value={draft}
-                  onChange={e => setDraft(e.target.value.slice(0, 2000))}
-                  placeholder={uploading ? '첨부를 보내는 중…' : '메시지를 입력하세요'}
-                  disabled={uploading}
-                  className="flex-1 min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50"
-                />
-                <button
-                  type="submit"
-                  disabled={!draft.trim() || send.isPending || uploading}
-                  className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
-                >
-                  <Send size={14} /> 보내기
-                </button>
-              </form>
-            </>
-          )}
-        </div>
+  if (!wide) {
+    if (openId) return <MobileRoom key={openId} chatId={openId} myId={myId} onBack={back} />;
+    return (
+      <div className="min-h-[60vh] pb-4">
+        <ChatList chats={chats} loading={isLoading} myId={myId} role={user?.role} openId={null} wide={false} onOpen={openRoom} onNeighbor={() => setNeighbor(true)} />
+        {picker}
       </div>
+    );
+  }
+  return (
+    <>
+      <DesktopShell>
+        <div className="min-h-0 overflow-hidden border-r border-gray-200">
+          <ChatList chats={chats} loading={isLoading} myId={myId} role={user?.role} openId={openId} wide onOpen={openRoom} onNeighbor={() => setNeighbor(true)} />
+        </div>
+        <div className="min-h-0 min-w-0">
+          {openId
+            ? <ChatRoom key={openId} chatId={openId} myId={myId} wide onBack={back} />
+            : <div className="flex h-full items-center justify-center p-10 text-sm text-gray-600">{isLoading ? '' : '대화를 고르세요.'}</div>}
+        </div>
+      </DesktopShell>
+      {picker}
+    </>
+  );
+}
 
-      {/* 이웃에게 바로 말 걸기 — 서로 이웃인 사람만 나온다(임의 검색 아님) */}
-      {pickerOpen && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4" onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">이웃에게 메시지</h3>
-              <button onClick={() => setPickerOpen(false)} aria-label="닫기" className="text-gray-400 hover:text-gray-900"><X size={18} /></button>
-            </div>
-            <p className="mb-3 text-xs text-gray-400">서로 이웃인 사람에게 바로 말을 걸 수 있어요.</p>
-            {mutualsLoading ? (
-              <p className="py-6 text-center text-sm text-gray-400">불러오는 중…</p>
-            ) : mutuals.length === 0 ? (
-              <p className="py-6 text-center text-sm leading-relaxed text-gray-400">
-                서로 이웃인 사람이 아직 없습니다.<br />
-                <span className="text-xs">상대가 나를 이웃으로 추가하고, 나도 그 사람을 추가하면 여기에 나타납니다.</span>
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {mutuals.map(u => (
-                  <li key={u.id}>
-                    <button
-                      onClick={() => startDirect.mutate(u.id)}
-                      disabled={startDirect.isPending}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {u.avatar
-                        ? <img src={u.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
-                        : <span className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-gray-400"><Users size={14} /></span>}
-                      <span className="min-w-0 truncate text-sm text-gray-900">{displayName(u)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>,
-        document.body,
-      )}
+/** 넓은 화면 — 상단바 아래부터 화면 바닥까지 두 칸 */
+function DesktopShell({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const height = useFillHeight(ref, { min: 480, gap: 0 });
+  return (
+    <div ref={ref} style={height ? { height } : undefined} className="grid min-h-[480px] grid-cols-[340px_minmax(0,1fr)] [&>*]:min-w-0">
+      {children}
+    </div>
+  );
+}
+
+/** 휴대폰 대화 전용 화면 — 보이는 영역(자판 위)에 맞춰 화면을 다 쓴다. 뒤 페이지는 잠근다 */
+function MobileRoom({ chatId, myId, onBack }: { chatId: number; myId: number; onBack: () => void }) {
+  const vv = useVisualViewport();
+  useScrollLock();
+  return (
+    <div
+      className="fixed inset-x-0 top-0 z-40 flex flex-col bg-white"
+      style={{ height: vv.height, transform: vv.offsetTop ? `translateY(${vv.offsetTop}px)` : undefined, paddingTop: 'env(safe-area-inset-top)' }}
+    >
+      <ChatRoom chatId={chatId} myId={myId} wide={false} onBack={onBack} />
     </div>
   );
 }

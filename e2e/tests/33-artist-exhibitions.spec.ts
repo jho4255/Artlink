@@ -1,16 +1,14 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, settle, createExhibition, ensurePublicArtworks, seedGalleryLike } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, settle, createExhibition } from '../lib/helpers';
 
 /**
  * 작가 [내 전시] — 2026-08-27~28 개편분.
  *
- *  · [받은 초대] 메뉴 탭은 없앴다 → **[내 전시]의 첫 탭 '받은 초대'**.
- *  · 초대 [참여하기] = **지원 없이 바로 참가**(ACCEPTED). 정원·마감은 그대로 지킨다.
  *  · 수락된 전시는 카드 안에서 **운영 공지·제출 자료·정산 확인**까지 끝낸다(운영페이지 왕복 없음).
  *  · 카드 우측 상단은 [전시 관리] 하나 — [공모 상세] 버튼은 없앴다.
  *  · 일정 줄은 **항상** 그린다 (없다고 빼면 카드 높이가 제각각이 된다).
- *  · 2026-09-29: 탭이 밑줄 탭(`role="tab"`)이 되고 이름이 갤러리 [내 공모]와 같아졌다 —
- *    받은 초대 · 심사 중 · 진행 중 · 종료 (예전 '심사중·진행중·진행종료').
+ *  · 2026-09-29: 탭이 밑줄 탭(`role="tab"`)이 되고 이름이 갤러리 [내 공모]와 같아졌다 — 심사 중 · 진행 중 · 종료.
+ *  · 2026-11-19: 1:1 공모 초대를 통째로 없앴다 → '받은 초대' 탭도 없다. 이미 선정된 작가는 초대 **코드**로 들어온다(e2e 55).
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1440, height: 900 };
@@ -21,48 +19,32 @@ async function galleryId(api: any): Promise<number> {
   return (Array.isArray(gl) ? gl : gl.galleries).find((g: any) => g.status === 'APPROVED').id;
 }
 
-/**
- * 작가1 초대. ⚠️ 경로는 `/invite`(단수), 필드는 `artistId` 다 —
- * `/invites` 로 부르면 **404 가 나는데 테스트는 조용히 지나가** 초대가 없는 채로 화면을 보게 된다.
- * ⚠️ 하루 초대 상한(갤러리당 10명)이 있어 앞선 테스트가 다 써 버릴 수 있다 → 상태를 확인해 알려준다.
- */
-async function invite(api: any, exhibitionId: number, message?: string) {
-  // ⚠️ 2026-08-29 부터 **초대 관문**이 있다(`lib/inviteEligibility.ts`) — 갤러리는 하트를 저장했거나
-  //    서로 이웃인 작가만 초대할 수 있다. 안 눌러 두면 여기가 **403** 이고, 그러면 이 파일의
-  //    모든 테스트가 "탭이 없다"로 엉뚱하게 죽는다(원인이 증상과 안 닮았다).
-  await seedGalleryLike(api, 'artist');
-  const r = await api.post(`${API}/exhibitions/${exhibitionId}/invite`, {
-    headers: { Authorization: `Bearer ${tokenFor('gallery')}` },
-    data: { artistId: userIds().artist, ...(message ? { message } : {}) },
-  });
-  if (!r.ok()) throw new Error(`초대 실패 ${r.status()}: ${await r.text()}`);
-}
-
 async function makeExhibition(api: any, title: string, capacity = 5) {
   return createExhibition(api, { title, galleryId: await galleryId(api), capacity, type: 'GROUP', description: '내전시 E2E' });
 }
 
 /**
- * [내 전시] 화면은 **지원도 초대도 하나 없으면 탭 자체를 그리지 않는다**
+ * [내 전시] 화면은 **지원이 하나도 없으면 탭 자체를 그리지 않는다**
  * ("아직 지원하거나 참여한 전시가 없습니다"). 그래서 탭 구성을 보려면 먼저 데이터가 있어야 한다.
  * 이걸 안 깔아두면 "탭이 없다"는 실패가 나는데, 원인은 탭이 아니라 빈 목록이다.
  */
 test.beforeAll(async () => {
   const api = await pwRequest.newContext();
-  const id = await makeExhibition(api, `기본초대 ${Date.now()}`);
-  await invite(api, id, '기본 데이터');
+  const id = await makeExhibition(api, `기본지원 ${Date.now()}`);
+  const r = await applyToExhibition(api, id, tokenFor('artist'));
+  if (!r.ok()) throw new Error(`기본 지원 실패 ${r.status()}: ${await r.text()}`);
   await api.dispose();
 });
 
 const gotoMyExhibitions = async (page: Page) => {
   await page.goto('/mypage?tab=applications');
-  await expect(page.getByRole('tab', { name: /받은 초대/ })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('tab', { name: /^심사 중/ })).toBeVisible({ timeout: 15000 });
 };
 /** 탭 이름 뒤에 개수가 붙는다('진행 중3') — 이름만으로 찾는다 */
 const tab = (page: Page, name: string) => page.getByRole('tablist', { name: '내 전시 분류' }).getByRole('tab', { name: new RegExp(`^${name}`) });
 
 test.describe('탭 구성', () => {
-  test('★ 첫 탭이 [받은 초대] 다 (별도 메뉴 탭은 없앴다)', async ({ browser }) => {
+  test('★ 탭은 심사 중 · 진행 중 · 종료 — 받은 초대 탭은 없다(2026-11-19)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
@@ -70,77 +52,13 @@ test.describe('탭 구성', () => {
     /* 탭 이름 뒤에는 개수가 따로 붙는다(`<span>`) — 첫 글자 마디(이름)만 읽어 비교한다 */
     const tabs = await page.getByRole('tablist', { name: '내 전시 분류' }).getByRole('tab').evaluateAll(bs =>
       bs.map(b => (b.firstChild?.textContent ?? '').trim()));
-    expect(tabs).toEqual(['받은 초대', '심사 중', '진행 중', '종료']);
+    expect(tabs).toEqual(['심사 중', '진행 중', '종료']);
 
-    // 사이드바에는 없어야 한다
+    // 사이드바에도 없어야 한다
     await expect(page.locator('aside nav')).not.toContainText('받은 초대');
+    // 초대 코드 입력 줄은 남아 있다(이미 선정된 작가용)
+    await expect(page.locator('main')).toContainText('초대 코드', { timeout: 10000 });
     await ctx.close();
-  });
-});
-
-test.describe('초대 → 바로 참가', () => {
-  let exId: number;
-  let title: string;
-
-  test.beforeAll(async () => {
-    const api = await pwRequest.newContext();
-    title = `초대검증 ${Date.now()}`;
-    exId = await makeExhibition(api, title);
-    await invite(api, exId, '작품 잘 보았습니다. 함께해요.');
-    // ⚠️ 초대 수락(=바로 참가)은 작가 포트폴리오에 작품이 있어야 통과한다.
-    //    격리 실행 시 artist1 포트폴리오가 비어 있어 accept 가 조용히 400 이 났다(전체 실행에선 앞 스펙이 채워줬다).
-    await ensurePublicArtworks(api, tokenFor('artist'), 1);
-    await api.dispose();
-  });
-
-  test('★ [참여하기] 하나로 지원서 없이 참가자가 된다', async ({ browser }) => {
-    const { page, ctx } = await openAs(browser, 'artist');
-    await page.setViewportSize(DESKTOP);
-    await gotoMyExhibitions(page);
-    await tab(page, '받은 초대').click();
-    await expect(page.locator('body')).toContainText(title, { timeout: 12000 });
-
-    /* ⚠️ 초대가 여럿일 수 있다(다른 테스트가 남긴 것). `.first()` 로 아무거나 누르면 엉뚱한 초대를 수락한다.
-       **이 테스트의 공모 카드**를 제목으로 특정해 그 안의 [참여하기]를 누른다. */
-    const card = page.locator('article').filter({ hasText: title }).first();
-    await expect(card).toContainText('작품 잘 보았습니다');
-    await card.getByRole('button', { name: '참여하기' }).click();
-    await settle(page, 2000);
-
-    // 진행중 탭에 수락 상태로 들어와 있어야 한다
-    await tab(page, '진행 중').click();
-    await expect(page.locator('body')).toContainText(title, { timeout: 12000 });
-    await ctx.close();
-
-    // 서버 상태도 확인 — ACCEPTED 지원이 만들어졌다
-    const api = await pwRequest.newContext();
-    const r = await api.get(`${API}/exhibitions/${exId}/applications`, {
-      headers: { Authorization: `Bearer ${tokenFor('gallery')}` },
-    });
-    const apps = await r.json();
-    const mine = (Array.isArray(apps) ? apps : apps.applications).find((a: any) => a.userId === userIds().artist);
-    expect(mine.status).toBe('ACCEPTED');
-    await api.dispose();
-  });
-
-  test('★ 정원이 찼으면 초대가 있어도 못 들어간다', async ({ browser }) => {
-    const api = await pwRequest.newContext();
-    const t = `정원검증 ${Date.now()}`;
-    const id = await makeExhibition(api, t, 1);
-
-    // 정원 1을 artist2 가 채운다
-    const ap = await applyToExhibition(api, id, tokenFor('artist2'));
-    const appId = (await ap.json()).id;
-    await api.patch(`${API}/exhibitions/${id}/applications/${appId}`, {
-      headers: { Authorization: `Bearer ${tokenFor('gallery')}` }, data: { status: 'ACCEPTED' },
-    });
-    // 그 뒤 artist1 을 초대 → 서버가 막는다(정원이 찬 공모)
-    const inv = await api.post(`${API}/exhibitions/${id}/invite`, {
-      headers: { Authorization: `Bearer ${tokenFor('gallery')}` },
-      data: { artistId: userIds().artist },
-    });
-    expect([400, 409], `정원이 찼는데 초대가 통과했다 (${inv.status()})`).toContain(inv.status());
-    await api.dispose();
   });
 });
 

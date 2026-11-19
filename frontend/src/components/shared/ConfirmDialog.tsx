@@ -64,7 +64,7 @@ export default function ConfirmDialog({
   }, [open, onCancel]);
 
   /**
-   * 배경 스크롤 잠금 (ImageLightbox·InviteApplyModal 과 같은 방식).
+   * 배경 스크롤 잠금 (ImageLightbox 와 같은 방식).
    *
    * 없으면 모달이 떠 있는데도 뒤 페이지가 같이 움직인다. 데스크톱에선 거슬리는 정도지만
    * **모바일에서는 손가락이 모달 밖에 닿는 순간 뒤가 밀려서** 화면이 잘린 것처럼 보이고

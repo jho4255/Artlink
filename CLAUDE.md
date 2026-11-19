@@ -82,7 +82,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **3000+ tests** (2026-11-17): Backend 1861 (supertest, `artlink_test` DB 순차), Frontend 1743 (jsdom) · E2E 482(ArtLook 편집 화면 개편(규칙 85) `84` 7개를 더했다 — `84`·`69`·`75`·`41`·`30`·`74` 53개 통과(결함 둘을 잡아 고쳤다). 그 전 E2E 475(등록 화면 셋·전시 찾기/상세 개편(규칙 84) `83` 5개를 더했다 — 바뀐 화면에 닿는 34개 파일 175개 통과 · 1 건너뜀(07·14·15·23·24·25·51·60·67·70·77 을 새 화면으로). 그 전: 모집공고·갤러리 찾기 개편(규칙 83)은 새 스펙 없이 기존 스펙으로 본다 — 목록·상세·갤러리 화면에 닿는 25개 파일 136개 통과. `20` 은 휴대폰 돋보기에 맞췄고, `02` 는 갤러리 홈페이지의 찜이 버튼 묶음 [찜](aria-pressed · 휴대폰은 [⋯] 안, 규칙 82)으로 바뀐 걸 반영했다(규칙 82 때 돌린 묶음에 없어 놓쳤다). 그 전: 작가 탭 휴대폰 B안 `52` 2개를 더했다 — 이번 작업에서 바뀐 스펙 38개 파일 320개 중 317 통과 · 3 건너뜀 · 실패 0(탭 줄·버튼 묶음·작가 탭까지 반영). 그 전: 작가·갤러리 홈페이지 개편 `82` 5개를 더했다 — 홈페이지에 닿는 33개 파일 284개 중 273 통과, 실패 8개는 전부 고쳤다(`24`·`54`·`62` 는 새 화면에 맞춤 · `53` 핸들 주소 2개와 `82` C 는 실행 순서 의존을 없앴다 · `62` E 가 잡은 `<main>` 두 겹은 결함이라 코드를 고쳤다). 그 전: 휴대폰 홈 탭·[전체 보기] 무작위 `81` 8개를 더했다 — `81`·`80`·`37`·`50`·`00` 30개 통과, 그 전 판으로 `26`·`31`·`36`·`30`·`73`·`61` 포함 98개 통과. 그 전: ArtStory 2차 — 한 페이지 올리기·사진 위 글·가운데 메뉴 `30` 1개를 더했다: `80`·`37`·`50`·`69`·`30`·`31`·`00`·`73`·`61`·`36` 116개 통과. 그 전: ArtStory 홈 공개 `80` 6개 —
+- **3000+ tests** (2026-11-19): Backend 1858 (supertest, `artlink_test` DB 순차), Frontend 1780 (jsdom) · E2E 485(ArtTalk 개편(규칙 87) `85` 12개를 더했다 — 수정점 관련 스펙만 돌렸다: `85`·`29`·`04`·`30`·`40`·`12`·`55`·`82`·`17`·`66` 79개 중 78 통과(실패는 기준선 `12` FAQ 1개) · 그 전에 `26`·`33`·`34`·`35` 통과. 그 전 E2E 482(ArtLook 편집 화면 개편(규칙 85) `84` 7개를 더했다 — `84`·`69`·`75`·`41`·`30`·`74` 53개 통과(결함 둘을 잡아 고쳤다). 그 전 E2E 475(등록 화면 셋·전시 찾기/상세 개편(규칙 84) `83` 5개를 더했다 — 바뀐 화면에 닿는 34개 파일 175개 통과 · 1 건너뜀(07·14·15·23·24·25·51·60·67·70·77 을 새 화면으로). 그 전: 모집공고·갤러리 찾기 개편(규칙 83)은 새 스펙 없이 기존 스펙으로 본다 — 목록·상세·갤러리 화면에 닿는 25개 파일 136개 통과. `20` 은 휴대폰 돋보기에 맞췄고, `02` 는 갤러리 홈페이지의 찜이 버튼 묶음 [찜](aria-pressed · 휴대폰은 [⋯] 안, 규칙 82)으로 바뀐 걸 반영했다(규칙 82 때 돌린 묶음에 없어 놓쳤다). 그 전: 작가 탭 휴대폰 B안 `52` 2개를 더했다 — 이번 작업에서 바뀐 스펙 38개 파일 320개 중 317 통과 · 3 건너뜀 · 실패 0(탭 줄·버튼 묶음·작가 탭까지 반영). 그 전: 작가·갤러리 홈페이지 개편 `82` 5개를 더했다 — 홈페이지에 닿는 33개 파일 284개 중 273 통과, 실패 8개는 전부 고쳤다(`24`·`54`·`62` 는 새 화면에 맞춤 · `53` 핸들 주소 2개와 `82` C 는 실행 순서 의존을 없앴다 · `62` E 가 잡은 `<main>` 두 겹은 결함이라 코드를 고쳤다). 그 전: 휴대폰 홈 탭·[전체 보기] 무작위 `81` 8개를 더했다 — `81`·`80`·`37`·`50`·`00` 30개 통과, 그 전 판으로 `26`·`31`·`36`·`30`·`73`·`61` 포함 98개 통과. 그 전: ArtStory 2차 — 한 페이지 올리기·사진 위 글·가운데 메뉴 `30` 1개를 더했다: `80`·`37`·`50`·`69`·`30`·`31`·`00`·`73`·`61`·`36` 116개 통과. 그 전: ArtStory 홈 공개 `80` 6개 —
   `80`·`37`·`50`·`69` 와 홈·메뉴·팝업(`00`·`30`·`31`·`39`·`61`·`73`) 79개 통과. 그 전: 커뮤니티 2차 3개를 더했다 — `36`·`38`·`39`·`79` 41개 통과. 전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존 — 2026-11-14 고쳤다, 전체 실행 재확인 전) 뿐 — 2026-11-13 445개 중 435 통과 · 4 건너뜀 · 그 밖의 실패 3개는 아래 두 ⚠️ 와 `59` 위치자로 고쳤다. ⚠️ **전체 실행 전에 백엔드를 새로 띄울 것** — 조회수 '30분 안 같은 사람' 기억이 서버 메모리에 남아, DB 를 초기화해 글 번호가 같아지면 `36` 조회수가 0 으로 실패한다. ⚠️ 읽은 알림은 안 읽은 알림 뒤로 가므로(벨은 10줄) 알림을 다시 누르는 스펙은 시작할 때 `read-all` 할 것(`78` B — 전체 실행에선 작가 계정에 안 읽은 알림이 99개 넘게 쌓인다). ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
@@ -157,9 +157,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       운영자 목록이 비어서, 그대로 두면 새 지원자가 들어와도 **아무에게도 알림이 안 간다**. 그럴 때만 Admin 전원에게 보낸다.
       단톡방(`ensureExhibitionChat`)도 같은 함수를 쓴다 — 안 그러면 **작가들만 있는 방**이 되어 주최자가 공지도 못 한다.
       ⚠️ 2026-09-19 전수 감사에서 **세 곳이 빠져 있었다** — 정산 이의(`operation.ts respond`, 이의가 와도 몰라 정산이 영구 정지),
-      정산 재촉·D+20 자동종료 스윕(`lib/settlementReminder.ts`), 초대 수락(`exhibition.ts`, `ex.gallery?.ownerId` 한 명만).
+      정산 재촉·D+20 자동종료 스윕(`lib/settlementReminder.ts`), 초대 수락(`exhibition.ts`, `ex.gallery?.ownerId` 한 명만 — 1:1 초대는 2026-11-19 에 없앴다, 규칙 87).
       `operatorUserIds` 를 알림 대상으로 쓰는 코드가 남아 있으면 그게 다음 사고다 — `grep operatorUserIds` 로 훑을 것.
-      회귀는 `admin-hosted-exhibition.test.ts`(갤러리 없는 공모의 지원·초대 수락 알림이 Admin 에게).
+      회귀는 `admin-hosted-exhibition.test.ts`(갤러리 없는 공모의 지원·초대 코드 참여 알림이 Admin 에게).
     - ⚠️ 갤러리 단위 지원 통계(`galleryApplicationStats`)는 `galleryId` 가 null 이면 **빈 Map**. 전체 공모를 합산해
       메우려 하지 말 것 — 갤러리 단위가 아닌 숫자가 같은 라벨로 나간다
 23. **공개 상세 라우트는 `status !== 'APPROVED'` 를 먼저 막을 것** — 목록만 거르고 상세를 열어두면 목록에 없는 심사중·반려 항목이 **주소로 id 만 치면 비로그인에게 다 보인다**(2026-08-15 수정). 당사자·Admin 만 열고 **404**로 응답(403은 존재를 알려준다). 탈퇴(WITHDRAWN)는 Admin 전용 유지. 새 공개 상세를 만들면 `private-detail.test.ts` 에 케이스를 추가할 것
@@ -205,13 +205,14 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - 예전 `Message`(제목+본문 쪽지)는 라우트마다 "작가는 갤러리에게만" 같은 **역할 규칙이 박혀 있어 작가끼리 대화가 불가능**했다.
   새 구조(`Chat` / `ChatParticipant` / `ChatMessage`)는 **방에 들어가 있는가** 하나로만 권한을 판정한다.
 - ⚠️ **역할로 막지 말 것.** 대신 **방이 생기는 길목**을 좁힌다 — 임의 검색으로 아무에게나 말을 걸 수 없다.
-    - 갠톡: 둘러보기 작품 모달 · 작가·갤러리 홈페이지의 [문의하기](`components/homepage/InquirySheet`, 2026-11-14 — 예전 [메시지]) → `POST /chats/direct`
+    - 갠톡: **문의 창 하나**(`components/homepage/InquirySheet`) — 작가·갤러리 홈페이지 [문의하기] · 작품 페이지·[작가] 탭 작품 창 [작품 문의하기] · 공모 상세 [갤러리에 문의].
+      **보낼 때** `POST /chats/direct` 로 방을 열고 무엇에 대한 문의인지(맥락 카드 `ref`)를 함께 싣는다(2026-11-19, 규칙 87 — 예전엔 작품 창·공모 상세가 누르는 순간 빈 방을 만들었다)
     - 단톡: **공모 승인 시 서버가 자동 생성**(`lib/chat.ts` `ensureExhibitionChat`).
       갤러리 오너(+아트링크 주최면 운영 갤러리)와 **수락된 작가**가 자동 참여자. 작가 수락 때도 다시 부른다(멱등).
     - 화면에 임의 검색으로 아무나 찾는 '새 대화'는 **없다** — 만들면 이 설계가 무너진다.
       **딱 하나 예외(2026-08-29)**: 이미 **서로 이웃**(양방향 팔로우)인 사람에겐 메시지창 목록 위 [이웃에게 메시지]로 바로 갠톡을 연다
       (`GET /follow/mutuals` 로 교집합을 받아 고르면 `POST /chats/direct`). 임의 검색이 아니라 이미 맺어진 관계라 전제를 안 깬다.
-      ⚠️ `frontend/src/__tests__/retiredApis.test.ts` 의 `/chats/direct` 허용 목록에 `MessagesPage.tsx` 를 넣어 뒀다(빼면 실패).
+      ⚠️ `frontend/src/__tests__/retiredApis.test.ts` 의 `/chats/direct` 허용 목록은 **둘**이다 — `InquirySheet.tsx` · `components/chat/NeighborPicker.tsx`(2026-11-19).
       금지 문자열('새 대화'/'새 채팅'/'대화 상대 검색')은 여전히 쓰지 말 것 — 그 가드는 살아 있다.
 - ⚠️ 남의 방은 **404**로 답한다(403은 방의 존재를 알려준다). Admin 도 예외가 아니다.
 - ⚠️ 수락이 풀려도 **방에서 빼지 않는다** — 지난 대화를 읽을 수 있어야 하고, 말없이 사라지면 남은 사람이 영문을 모른다.
@@ -220,7 +221,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - 읽음은 참여자별 `lastReadAt` **하나**로 판정한다(메시지마다 읽음 행을 쌓으면 20명×메시지 수만큼 불어난다).
     - 갠톡 `read` : 상대의 lastReadAt 이 그 메시지보다 뒤면 읽음
     - 단톡 `unreadBy` : 보낸 사람을 뺀 참여자 중 아직 안 읽은 수
-- ⚠️⚠️ **방의 메시지를 전부 내려주지 말 것 — 화면이 그걸 8초마다 다시 받는다** (2026-09-04).
+- ⚠️⚠️ **방의 메시지를 전부 내려주지 말 것 — 화면이 그걸 몇 초마다 다시 받는다** (2026-09-04 · 지금은 방 4초 · 목록 10초, 규칙 87).
   `readChat` 에 `take` 가 없어서 방에 쌓인 걸 통째로 보냈는데, `MessagesPage` 가 `refetchInterval: 8000` 으로
   같은 응답을 계속 다시 받는다. 실측 **메시지당 287 bytes** 라 방이 오래될수록 무거워지는 구조였다 —
   233개 65KB(8.2KB/s) · 1,000개 280KB(35KB/s) · **5,000개 1.4MB(175KB/s, 1시간 616MB)**.
@@ -230,7 +231,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ 커서는 `createdAt` 이 아니라 **`id`** 로 잡을 것 — 동시에 들어온 메시지는 `createdAt` 이 같을 수 있어
       시각 커서로는 건너뛰거나 되받는다(정렬 자체는 화면 순서와 맞추려고 createdAt 을 쓴다).
     - ⚠️⚠️ **화면은 폴링 응답만 그리면 안 된다.** `after` 응답은 새 메시지 몇 개뿐이라, 그걸 그대로 렌더하면
-      대화가 통째로 사라진다. `MessagesPage` 는 누적 state 가 진실이고 모든 응답을 **id 로 병합**한다
+      대화가 통째로 사라진다. 방 화면(`hooks/useChatRoom.ts`, 2026-11-19 — 그 전엔 `MessagesPage`)은 누적 state 가 진실이고 모든 응답을 **id 로 병합**한다
       (`lib/chatView.ts` `mergeMessages` — 겹치면 **나중 것이 이긴다**. 읽음 표시가 갱신돼야 하므로
       '있으면 건너뛰기'가 아니라 덮어쓰기다). 대화에 삭제 라우트가 없어 병합만으로 안전하다.
     - ⚠️⚠️ **`after` 응답에는 지난 메시지가 없어서 '읽음' 표시가 안 바뀐다.** 상대가 옛 메시지를 읽어도
@@ -239,6 +240,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       **같아야 한다** — 어긋나면 화면과 서버가 다른 답을 낸다(회귀는 `chatView.test.ts`).
     - ⚠️ 맨 아래로 스크롤하는 조건을 **개수**로 두지 말 것 — [이전 메시지]로 위를 채웠을 때도 맨 아래로 튕긴다.
       **마지막 메시지 id** 를 본다. 위에 붙일 땐 늘어난 높이만큼 `scrollTop` 을 되돌려 보던 자리를 지킨다.
+      2026-11-19: 새 말이 와도 **맨 아래 근처(80px)에 있을 때만** 따라 내려간다 — 위로 올려 읽는 중이면 [새 메시지 N]을 띄운다(`components/chat/MessageList.tsx`). 내가 보낸 말은 늘 내려간다.
 - **새 메시지는 알림 벨에도 남는다** (`CHAT_MESSAGE`, 2026-09-19). 그 전엔 ArtTalk 에 알림이 아예 없어 유일한 신호가 30초 폴링
   배지였고, 며칠 뒤 접속한 작가의 벨은 비어 있었다("갤러리가 문의를 보냈는데 왜 몰랐지"). `lib/chat.ts notifyChatMessage` 가
   **방마다 미읽음 하나**로 합치고(`refKey: chat:<id>`, 작품 좋아요와 같은 방식), 방을 열면(`GET /:id`·`POST /:id/read`)
@@ -258,19 +260,22 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ **서버비 고려한 용량 상한**은 multer 가 최종 판정(초과 시 400). 동영상은 이미지·파일보다 짧게(25MB). 프론트도 선검사해 헛된 업로드를 줄인다.
     - ⚠️ 첨부 주소는 `safeFileUrl` 로 검증해 저장한다 — `javascript:` 등 이상한 스킴 400. `attachmentType` 은 IMAGE/VIDEO/FILE 만.
     - 본문·첨부 **둘 다 없으면 400**. 첨부만 있으면 텍스트 말풍선을 그리지 않는다(빈 회색 상자 금지). 목록 미리보기는 `[사진]/[동영상]/[파일]`(`lib/chat.ts attachmentLabel`).
-- **방마다 알림 끄기**(`ChatParticipant.muted`, 마이그레이션 `20261111120000_chat_mute`, 2026-11-11 사용자 요청) — 카카오톡처럼. 대화방 머리의 종 버튼 → `PATCH /chats/:id/mute {muted}`(상태를 적어 보낸다 — 토글 아님).
+- **방마다 알림 끄기**(`ChatParticipant.muted`, 마이그레이션 `20261111120000_chat_mute`, 2026-11-11 사용자 요청) — 카카오톡처럼. PC 는 대화방 머리의 종 버튼, 휴대폰은 방 메뉴[⋯] → `PATCH /chats/:id/mute {muted}`(상태를 적어 보낸다 — 토글 아님).
   끄면 `notifyChatMessage` 가 그 사람을 빼서 **벨 알림도 앱 푸시도 없다**. 안 읽은 수는 그대로 센다(목록 배지가 회색). 회귀 `chat-mute.test.ts`(3).
-- 회귀는 `backend/src/__tests__/chat.test.ts`(36개)와 `e2e/tests/29-chat.spec.ts`(14개, 실제 파일 업로드 포함)가 잡는다 — 특히 '남의 방 차단'·'작가↔작가 허용'·첨부.
+- 회귀는 `backend/src/__tests__/chat.test.ts`(39개)·`chat-renewal.test.ts`(25개)와 `e2e/tests/29-chat.spec.ts`(16개, 실제 파일 업로드 포함)·`85-arttalk.spec.ts`(12개)가 잡는다 — 특히 '남의 방 차단'·'작가↔작가 허용'·첨부. 2026-11-19 개편은 **규칙 87**.
 
-### 초대 → 참여 (2026-08-28)
-- [받은 초대] 메뉴 탭은 없앴다. **[내 전시]의 첫 탭 '초대받은 전시'** 로 합쳤다(초대도 내 전시의 한 단계다).
-- **수락 = 지원 없이 바로 참가** (`POST /exhibitions/invites/:id/accept`) — `status='ACCEPTED'` 지원이 만들어져
-  그대로 진행 프로세스(자료 제출 → 전시 → 정산)에 들어간다. 약력·작품은 포트폴리오에서 가져온다.
-  ⚠️ **정원·마감은 그대로 지킨다** — 초대가 있었다고 정원을 넘겨 받을 수는 없다. 정원은 **선정 인원**(수락된 수)이다(규칙 57).
-- ⚠️ **[거절]은 `ConfirmDialog` 를 거친다**(2026-09-19). 유니크 제약 때문에 거절하면 **갤러리가 같은 작가를 다시 초대할 수 없다** —
-  [참여하기] 바로 옆 버튼이라 오터치가 영구 손실이었다. 같은 이유로 **작품 사진 삭제**(`PortfolioImageGrid` 의 ×)도 확인을 거친다
-  (터치기기에선 × 가 항상 보이고 서버가 원본 파일까지 지운다). 되돌릴 수 없는 버튼에 확인 없이 `mutate` 를 바로 걸지 말 것.
-- `MyExhibitionBucket` 에 `INVITED` 가 있지만 `groupMyExhibitions` 는 **채우지 않는다**(목록 API 가 다르다).
+### 1:1 공모 초대는 없앴다 — 초대 **코드**만 남았다 (2026-11-19, 사용자 결정)
+- 갤러리가 하트를 누른 작가에게 공모 초대를 보내고, 작가가 [내 전시] '초대받은 전시' 탭에서 [참여하기]로 바로 선정되던 기능(2026-08-28~11-19)을 **통째로 없앴다**.
+  실서버 사용 0건 · 사용자: "그냥 전시초대기능자체를 없애버려. 코드로 들어오는건 남겨놓고".
+    - 서버 라우트(초대 보내기 `POST /:id/invite` · 공모별 초대 목록 · 받은 초대 · 수락·거절)가 없다 — 부르면 **404**. 공모 상세·지원자 목록 응답에 `invited` 가 없다.
+      `lib/inviteEligibility.ts`(초대 관문)도 지웠다. 화면의 `InviteModal`·`ExhibitionInviteModal`·`InviteApplyModal`·[간편 지원]·[작가 초대]·[내 전시]의 '받은 초대' 탭(`INVITED` 분류)·`ExhibitionInvite` 타입도 없다.
+    - ⚠️ **`ExhibitionInvite` 표는 지우지 않았다**(결정 D7) — 옛 기록. 코드에서 읽지도 쓰지도 않는다. 되살리려면 git(2026-11-19 이전)에서 가져올 것.
+    - **초대 코드**(규칙 57 — `/join/:code` · [지원자 관리]의 '이미 선정한 작가를 초대 코드로 데려오기' · [내 전시]의 '초대 코드가 있나요?')는 그대로다.
+    - 갤러리 [관심 작품] 카드는 **작품과 작가 이름뿐**이다 — [전시 초대]도 [문의하기]도 없다(사용자: "어짜피 홈페이지 들어가서 할 수 있으니까"). 이름을 누르면 그 작가 홈페이지.
+    - 회귀: backend `explore-engagement.test.ts`「1:1 공모 초대는 없다」 · frontend `retiredApis.test.ts`(화면이 `/invite`·`/invites` 를 부르지 않는다) · `myExhibitions.test.ts` · `arttalk.test.ts` ·
+      e2e `26` D·E · `33` · `34` · `35`.
+- ⚠️ **되돌릴 수 없는 버튼에 확인 없이 `mutate` 를 바로 걸지 말 것** — 예전 초대 [거절](유니크 제약 때문에 재초대 불가)에서 나온 규칙이다.
+  **작품 사진 삭제**(`PortfolioImageGrid` 의 ×)도 확인을 거친다(터치기기에선 × 가 항상 보이고 서버가 원본 파일까지 지운다).
 
 ### 커뮤니티 · 소셜 (2026-08-28~29)
 - **세 가지가 서로 다르다 — 헷갈리지 말 것.**
@@ -287,7 +292,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **글/스토리 사진은 우리 저장소 주소만** — `ownImageUrls`(community.ts·story.ts)가 `safeFileUrl` + (`/uploads/` | `matchR2Base`)로 외부 URL 을 거른다(주입 방지).
 - ArtStory 진입점은 **홈 맨 위 카드 줄**(휴대폰·앱은 홈의 [ArtStory] 탭 — 아래 '홈 레이아웃')과 **가운데 메뉴의 [ArtStory]**(PC 상단 · 휴대폰 하단 탭, `lib/navLinks.ts` — 2026-11-14, 규칙 81). `/feed` 는 비회원도 열린다. 마이페이지 메뉴에서는 뺐다(같은 곳으로 가는 메뉴가 둘이 되지 않게).
   ⚠️ 같은 자리의 **[1:1 문의]는 사이드바가 `hidden lg:block` 이라 모바일·비로그인에겐 길이 없었다**(2026-09-19). 지금은 `Layout` 푸터
-  (개인정보처리방침·이용약관 옆 [고객센터], 전 화면·비로그인 포함)와 모바일 햄버거(로그아웃 위 [1:1 문의])에도 있다.
+  (개인정보처리방침·이용약관 옆 [고객센터], 전 화면·비로그인 포함)와 모바일 햄버거에도 있다.
+  2026-11-19 부터 메뉴(PC 사이드바 · 휴대폰 [메뉴]) **맨 위가 [ArtTalk]**(말풍선 · 안 읽은 대화 수, `MYPAGE_TOP_LINKS`)이고 **[1:1 문의]는 맨 아래 [로그아웃]과 한 줄**이다(규칙 87).
 - **스토리에도 좋아요·댓글**(`StoryLike`/`StoryComment`, 비정규화 카운트). 댓글 달면 스토리 주인에게 `STORY_COMMENT` 알림(/feed). 댓글 삭제는 작성자·스토리 주인·Admin.
 - **소식 탭 이름은 ArtStory** (화면 제목은 로고 규칙: Art**Story**. 가운데 메뉴의 이름표는 다른 메뉴처럼 평범한 글자, 아이콘은 세로 카드 묶음 `GalleryVerticalEnd`).
 - **커뮤니티 탭·공지·고정 — 전부 Admin 전용** (2026-09-04, `PostCategory` + `Post.notice`/`pinnedAt`,
@@ -582,11 +588,10 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     해석 못 하는 `/messages?partner=` 였다. 지금은 `lib/chat.ts` 의 **`sendDirectNotice`** 로 작가별 **갠톡**에 넣고 링크는 `/messages?chat=<id>`
     (단톡이면 "누가 안 냈는지"가 전원에 노출된다). 서버에서 사용자에게 글을 보내는 새 경로를 만들면 반드시 `Chat`/`ChatMessage` 로.
     회귀는 `operation.test.ts` 가 `ChatMessage` 에 실제로 들어갔는지 본다.
-33. **⚠️ 메시지 신고가 화면에서 끊겨 있다** (2026-08-28 발견, 미해결) —
-    `routes/report.ts` 는 여전히 옛 `Message` 의 `messageId` 만 받는데 화면 대화는 `ChatMessage` 로 바뀌었고
-    **말풍선에 신고 버튼이 없다.** 즉 지금은 부적절한 메시지를 **신고할 방법이 없고**, Admin '신고 관리' 탭에는
-    새 신고가 들어올 경로가 없다. 되살리려면 ①`report.ts` 가 `ChatMessage` 를 받게 하고 ②말풍선에 신고 버튼·마스킹을 붙인 뒤
-    ③`e2e/tests/04-report-moderation.spec.ts` 의 `test.fixme` 를 되돌린다.
+33. **메시지 신고 — 2026-11-19 해결(규칙 87)** — 2026-08-28 대화 개편 뒤로 신고가 화면에서 끊겨 있었다(옛 `routes/report.ts` 는 옛 `Message` 만 받았고
+    말풍선에 신고 버튼이 없었다). 지금은 ArtTalk 신고(`POST /chats/:id/report` → `ChatReport`, 관리자 `GET/PATCH /chat-reports`)가 따로 있고,
+    옛 쪽지 신고 라우트·[신고 관리]의 옛 구역(`ReportManageSection`)은 화면에서 뗐다(라우트·표는 남아 있다 — 화면은 `/reports` 를 부르지 않는다, `retiredApis.test.ts`).
+    e2e `04-report-moderation.spec.ts` 가 말풍선 → 신고 → 관리자 처리까지 본다.
 34. **테스트 픽스처의 공모 등록은 `exhibitionDates()`/`createExhibition()` 으로만** (`e2e/lib/helpers.ts`) —
     2026-08-19 에 `submissionDeadline` 이 필수가 됐는데(지원마감 < 자료제출 < 전시시작 순서까지 검사) 픽스처들이 그걸 안 보내
     **공모 생성이 전부 400** 이 났고, 그 뒤의 지원·수락·운영·정산이 줄줄이 실패했다(2026-08-28: 30여 개).
@@ -1903,8 +1908,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 57. **정원 = 선정 인원 · 공모 초대 코드** (2026-09-27, 사용자 결정 셋)
     - ⚠️⚠️ **정원(`capacity`)은 '뽑을 수 있는 사람 수'다 — 지원을 막지 않는다.** 예전(KI-2, 2026-07)엔 거절 안 된 지원 수로 막아
       정원 5명이면 **선착순 5명만 지원서를 낼 수 있었다**(실제 테스트에서 6번째 작가가 "모집 인원이 마감되었습니다"). 사용자 결정으로 뒤집었다.
-      지금은 지원은 마감일까지 무제한이고, **수락된(ACCEPTED) 수**로 네 곳이 막는다 — 지원 상태 변경→수락(`PATCH /:id/applications/:appId`) ·
-      1:1 초대 보내기 · 초대 수락 · 초대 코드 참여. 판정은 `backend/src/lib/inviteCode.ts` 의 `countSelected`/`selectedCounts` **한 곳**.
+      지금은 지원은 마감일까지 무제한이고, **수락된(ACCEPTED) 수**로 두 곳이 막는다 — 지원 상태 변경→수락(`PATCH /:id/applications/:appId`) ·
+      초대 코드 참여(1:1 초대 보내기·수락은 2026-11-19 에 기능째로 없앴다, 규칙 87). 판정은 `backend/src/lib/inviteCode.ts` 의 `countSelected`/`selectedCounts` **한 곳**.
       ⚠️ 수락하는 쪽은 **`withSeatLock`**(Serializable + P2034 재시도 2회) 안에서 센다 — 일괄 수락은 화면이 한 건씩 동시에 보내서, 밖에서 세면
       정원을 넘긴다. 재시도가 없으면 진 쪽이 `errorHandler` 의 '데이터 처리 중 오류'(400)를 받는다(정원 안내가 아니라).
       화면: 갤러리 카드 `수락 N/정원` · 일괄 수락 실패 토스트에 서버 이유. (등록 폼 '모집 작가 수' 옆의 "지원은 제한 없이 받고…" 안내는 2026-10-28 사용자 요청으로 뺐다 — 규칙 77)
@@ -1927,7 +1932,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
         작품은 자료제출에서 낸다) · 이미 '접수'면 수락으로 올림 · 이미 수락이면 200 `alreadyJoined`(두 번 눌러도 에러 아님) ·
         ⚠️ **거절된 지원이 있으면 400** — 코드가 단톡방에 도므로 갤러리가 거절한 사람이 코드로 결정을 뒤집으면 안 된다 ·
         정원(선정 인원) 초과 400 · **모집 마감 뒤에도 전시 종료 전까지는 된다**(이미 선정된 작가용) · 약관은 참여 행위로 동의(약관 제8조 ④) ·
-        운영자 알림(`exhibitionNotifyTargets`, 규칙 22)·단톡 합류(`ensureExhibitionChat`)·남은 1:1 초대는 APPLIED.
+        운영자 알림(`exhibitionNotifyTargets`, 규칙 22)·단톡 합류(`ensureExhibitionChat`).
       - 형식 규칙은 백엔드 `lib/inviteCode.ts` ↔ 프론트 `lib/inviteCode.ts` 거울(프론트 테스트가 글자 집합을 소스로 대조).
     - **공모 상세 `myApplication`**: 지원한 작가에게 [지원하기] 대신 상태(지원 완료·선정·미선정)+[내 전시에서 보기]. 예전엔 지원 뒤에도 버튼이 그대로라
       지원서를 다 쓰고 나서야 "이미 지원한 공모입니다" 400 을 받았다. `?apply=1` 자동 열기도 막는다.
@@ -1947,7 +1952,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: `backend invite-code.test.ts`(20) · `known-issues-fixes.test.ts` KI-2 묶음(정원 = 선정 인원, 동시 수락) · `explore-engagement.test.ts`(초대·정원) ·
       `dev-settings-revert.test.ts`(되돌리면 선정 자리 복구) · `terms-consistency.test.ts`(3) · `frontend inviteCode.test.ts`(4) ·
       e2e `55-invite-code.spec.ts`(3) · `06`·`08` 스펙을 새 의미로(지원은 받고 수락이 정원까지, 동시 수락 6건 → 1건) ·
-      `17`(지원 뒤 [지원하기] 대신 '지원 완료') · `26` F3(지원은 자리를 안 차지, 수락으로 차면 초대 차단).
+      `17`(지원 뒤 [지원하기] 대신 '지원 완료') · `26` E(1:1 초대 API 404 · 초대 코드는 그대로).
 
 58. **Admin [통계] 탭 — 일간 방문자(회원/비회원)** (2026-09-28, 사용자 요청)
     - **세는 법**(`backend/src/lib/visitStats.ts` 한 곳): `DailyVisit` 한 줄 = **기기 × KST 날짜**(unique). 기기 id 는 브라우저가 만든 무작위 값
@@ -2375,7 +2380,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     국내 공고 관례 — 정확한 수를 밝히지 않고 한 자릿수('0명')·두 자릿수('00명')만 알린다. `Exhibition.capacityMask`(NULL = 숫자 · 'ONE' · 'TWO',
     마이그레이션 `20261014120000_exhibition_capacity_mask`). 규칙은 서버 `backend/src/lib/capacity.ts` ↔ 화면 `lib/utils.ts CAPACITY_MASKS` 거울(`capacityMask.test.ts` 가 대조).
     - ⚠️⚠️ **수락 한도는 여전히 `capacity` 하나다** — 0명이면 9, 00명이면 99 를 **함께 저장**한다(`resolveCapacity`, 표시가 이기고 보낸 숫자는 무시).
-      그래서 정원을 세는 네 곳(수락·초대·초대 수락·코드 참여, 규칙 57)은 그대로다. 두 칸을 따로 받지 말 것 — 0명인데 capacity 가 5 면 공고와 한도가 다른 말을 한다.
+      그래서 정원을 세는 곳(수락·코드 참여, 규칙 57)은 그대로다. 두 칸을 따로 받지 말 것 — 0명인데 capacity 가 5 면 공고와 한도가 다른 말을 한다.
       수정 요청(`edit-request`)도 같은 함수로 한 쌍을 맞춘다.
     - ⚠️ **공고에 인원을 적을 땐 `capacityText(ex)`** — `${ex.capacity}명` 이면 0명 공고에 '9명' 이 뜬다(목록·상세·갤러리 페이지·주최 공모·초대 코드 화면).
       운영자 화면의 '수락 3/5' 는 `capacityLimit`('최대 9'), 정원 안내는 `capacityWithLimit`('0명 — 최대 9명' — 서버 `seatsFullMessage` 와 같은 모양).
@@ -2740,7 +2745,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       그대로 보내면 이름이 길 때 정작 메시지가 잘렸다. 글 모양은 `lib/chat.ts chatNoticeMessage`/`splitChatNotice` 한 쌍 — 한쪽만 바꾸지 말 것.
     - **앱을 보고 있을 때 온 알림 = 위쪽 배너**(`lib/pushBanner.ts` + `components/shared/PushBanner.tsx`, Layout 에 한 번) — 안드로이드는 앱이 앞이면 서랍에 안 띄운다.
       그 화면(그 대화방·대화 목록)을 보고 있으면 조용히, 아니면 배너(누르면 그 화면, 4.5초). 시스템 알림으로 띄우는 `presentationOptions` 는 쓰지 않는다 — 보고 있는 방의 메시지에도 울린다.
-      대화 알림이 오면 열린 방도 곧바로 다시 받는다(`['chat']` invalidate — 8초 폴링을 기다리지 않게).
+      대화 알림이 오면 열린 방도 곧바로 다시 받는다(`pokeChat(chatId)` — 방은 쿼리 캐시가 아니라 `useChatRoom` 상태라 이벤트로 알린다, 2026-11-19).
     - 알림 채널(`artlink`)은 **중요도 높음(화면 위 팝업) + 진동**. ⚠️ 채널 설정은 한 번 만들어지면 앱이 못 바꾼다 — 출시 뒤에 바꾸려면 채널 id 를 새로 써야 한다(서버 `PUSH_CHANNEL_ID`·매니페스트·native.ts 세 곳).
     - **알림 제목은 종류별**(`lib/push.ts PUSH_TITLES` — '문의 답변' · 'ArtTalk' · '새 지원·참여' …, 2026-11-11 사용자 결정). 늘 'ArtLink' 면 알림 머리의 앱 이름과 겹쳤다.
       ⚠️ 새 알림 종류를 만들면 거기에도 넣을 것(빠지면 'ArtLink', `push.test.ts` 가 소스의 `type: '…'` 를 훑어 막는다). 본문과 같은 말이 겹치지 않게 고를 것.
@@ -3084,6 +3089,54 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - 회귀: backend `kakao-relay.test.ts`(9 — 기본은 카카오로 바로·비밀 안 보냄 · 중계 주소면 세 경로 모두 중계 + 비밀 · http 무시 · 못 닿으면 503 · 중계 404/502 → 503 ·
       Worker: 비밀 틀림·경로 밖 404 · 맞으면 그대로 넘김(머리 둘만) · 카카오 실패 502) · `kakao-login.test.ts`.
 
+87. **ArtTalk 개편 — 목록 캐시 버그 · 휴대폰 대화 전용 화면 · 맥락 카드 · 차단·신고·숨기기 · 메뉴 맨 위** (2026-11-19, 사용자 신고 + 결정. 계획 `scratchpad/arttalk-renewal/PLAN.md` ·
+    목업 https://claude.ai/artifact/5gk1T5nTDEXbKvb4tKQeY1). 기본값(D1~D11)은 계획서대로 — 폴링 유지(방 4초·목록 10초) · 신고·차단은 이번에 · 빈 1:1 방은 목록에서 뺀다 ·
+    얼굴은 이름 첫 글자 · 맥락 카드 · 메시지 삭제 없음 · `ExhibitionInvite` 표 유지 · 약관 그대로 · 하단 탭 그대로 · 비회원 문의 줄.
+    - ⚠️⚠️ **신고된 버그("갤러리 계정으로 작가 홈페이지에서 문의를 보냈는데 ArtTalk 에 아무것도 없다가 한참 뒤에 나타났다")의 원인은 캐시였다.**
+      문의 창·작품 창·공모 상세가 보낸 뒤 `['chats']` 를 무효화하지 않았고, 목록 쿼리는 전역 staleTime 5분이라 앱 안에서 ArtTalk 로 돌아오면 **옛 목록**이 그대로 떴다
+      (새로고침하면 멀쩡해서 재현이 어려웠다). 지금은 ① `/chats` 에 쓰는 화면은 전부 `lib/chatCache.ts chatsChanged(qc)` 를 부르고(`arttalk.test.ts` 가 소스로 강제)
+      ② 목록 쿼리는 `staleTime: 0 · refetchOnMount: 'always' · refetchOnWindowFocus` + 보이는 동안 10초 ③ 방을 열면 `chatRead(qc, id)` 가 목록의 그 방 안 읽음을 곧바로 0 으로 쓰고
+      배지·벨 숫자를 다시 받는다(예전엔 30초 폴링을 기다려 27초쯤 남았다). e2e `85` A 가 **앱 안에서만 옮겨 다니며**(새로 열면 캐시가 사라져 재현이 안 된다) 3초 안을 본다.
+    - **화면** — `pages/MessagesPage.tsx`(목록 쿼리·배치) + `components/chat/*` + `hooks/useChatRoom.ts`(방 하나: 처음 150개 → 4초 `?after=` → 받은 말은 id 로 병합) + `lib/chatView.ts`(KST 시각·목록 미리보기·찾기·주소 토막) +
+      `lib/chatCache.ts` + `lib/chatTypes.ts`. 1024px(`CHAT_WIDE_MEDIA`) 미만은 목록 화면과 **대화 전용 화면**(`useChatBare` — `Layout` 이 상단바·하단 탭바·사이드바를 그리지 않는다,
+      방은 `visualViewport` 높이 · 뒤 페이지 스크롤 잠금 · [←]는 목록에서 왔으면 `navigate(-1)` 아니면 `replace('/messages')` — 기록이 쌓이지 않는다). 그 이상은 두 칸
+      (`[340px_minmax(0,1fr)]`, 첫 방을 저절로 열고 방을 바꿔도 `replace`). `/messages` 에는 회사 푸터가 없다. ⚠️ 두 배치를 CSS 로 둘 다 그리지 말 것(소스 가드).
+      - 입력 칸은 여러 줄 textarea — 마우스 화면은 Enter 보내기·Shift+Enter 줄바꿈, 손가락 화면은 Enter 줄바꿈(보내기는 단추). ⚠️ 한글 조합 중(`isComposing`·229) Enter 는 건드리지 않는다 ·
+        글자 16px(iOS 확대 방지) · 2,000자 — 1,800자부터 숫자, 넘치면 [보내기]만 잠근다(말없이 자르지 않는다) · 방마다 쓰던 글은 이 탭에(sessionStorage, 로그아웃하면 지운다) ·
+        [+] 사진(여러 장)·동영상·파일 · 사진 붙여넣기.
+      - 보내는 말은 **줄을 세워** 하나씩(업로드 → 보내기) — 실패하면 그 자리에 [다시 보내기]/[지우기](글이 사라지지 않는다). 403·탈퇴(400)면 입력 줄 대신 이유 한 줄.
+      - 새 말은 **맨 아래 근처(80px)일 때만** 따라 내려간다 — 위로 올려 읽는 중이면 [새 메시지 N]. 날짜(KST)가 바뀌는 자리에 구분 줄 · 말풍선 시각은 늘 '오후 8:46'.
+      - 말풍선을 길게 누르면(마우스는 오른쪽 클릭·[⋯]) [복사] · [신고하기]. 말 속 http·https 주소는 눌린다 — **토막으로 그린다**(HTML 금지, `linkParts`).
+      - 방 메뉴[⋯] — 홈페이지 보기 · 공모 보기 · 참여자(단톡, 주최 표시) · 알림 끄기/켜기 · 목록에서 숨기기 · 신고하기 · 차단하기/풀기. 창은 전부 `ChatSheet`(`role="dialog"` · Esc — 앱 뒤로가기가 창만 닫는다).
+      - 목록 — [전체 · 안 읽음 · 1:1 · 공모 단체] · 찾기(휴대폰 돋보기, PC 늘 열림) · 미리보기 '나: …'/단톡 '보낸 사람: …' · 시각(오늘 시:분/어제/M.D/Y.M.D) ·
+        받은 비회원 문의가 있으면 맨 위 '비회원 문의' 줄(안 읽은 수 · → [받은 문의], 규칙 82) · 빈 목록엔 [작가 둘러보기]·[모집공고 보기]. 얼굴은 **이름 첫 글자**(카카오 프로필 사진을 쓰지 않는다), 단톡은 포스터.
+    - **맥락 카드(`ChatMessage.ref`)** — 화면은 `{type, id}` 만 보내고 **카드는 서버가 만든다**(`lib/chatRef.ts resolveChatRef` — 제목·한 줄·사진·링크).
+      WORK(방 참여자의 작품만 · 탈퇴 작가 제외 · '제목, 연도' + '재료 · 크기' · `/portfolio/:id?work=`) · EXHIBITION(승인된 공모 · '주최 · M.D 마감') · SHOW · GALLERY(승인된 갤러리 · 지역).
+      사진은 `ownFileUrl`, 읽을 때(`readChatRef`)는 사이트 안 주소만. 가장 최근 카드가 방 위에 고정된다(`chat-context`). SHOW 는 서버가 받지만 아직 여는 화면이 없다.
+      ⚠️ 클라이언트가 보낸 제목·사진을 믿지 말 것(남의 이름으로 가짜 카드를 만들 수 있다). 작품 사진을 첨부로 붙이던 옛 방식(받는 작가가 그 작품 페이지로 못 갔다)은 없앴다.
+    - **빈 1:1 방은 누구의 목록에도 없다**(D3) — `listChats` 가 `OR: [{kind:'GROUP'}, {messages: {some: {}}}]`. 첫 말을 보내면 양쪽에 뜬다. 주소로는 열린다.
+    - **숨기기**(`ChatParticipant.hiddenAt`, 마이그레이션 `20261119120000_arttalk_renewal`) — `PATCH /chats/:id/hidden {hidden}`. 숨기면 읽음 처리 · 그 뒤 새 말이 오면(`lastMessageAt > hiddenAt`) 다시 보인다 · [되돌리기].
+    - **차단**(`UserBlock`, `GET/POST /api/blocks` · `DELETE /api/blocks/:userId`) — 어느 쪽이 막았든 1:1 보내기·새 방 열기 **403**, 막힌 사람에겐 이유를 밝히지 않는다
+      ('메시지를 보낼 수 없는 상대예요.' — 막은 사람에겐 '차단한 상대예요 [차단 풀기]'). 막은 사람의 목록·배지에서 그 1:1 방이 빠진다. **단톡은 그대로**(공모 운영이 끊기면 안 된다).
+      차단하면 그 방 알림도 읽음 · 탈퇴하면 양쪽 차단 행을 지운다. 다시 찾아가는 곳은 [프로필] 탭 맨 아래 '차단한 사람'(`BlockedUsersSection`, 없으면 안 그린다).
+    - **신고**(`ChatReport`, `POST /chats/:id/report {messageId?, reason: SPAM|ABUSE|SCAM|ETC, detail?}` — 규칙 33 을 닫는다) — 서버가 **사본**을 찍는다(그 말 앞뒤 4줄씩, 사람 신고는 최근 10줄).
+      관리자는 남의 방을 못 연다(404 원칙) — 사본만 본다. 같은 사람이 같은 말을 두 번은 409 · 내 말 400 · 단톡의 사람(방) 신고 400(말을 골라서) · 남의 방 404.
+      관리자 전원에게 `CHAT_REPORT` 알림(→ `/mypage?tab=report-manage`, 푸시 제목 'ArtTalk 신고'). 관리자 화면 `components/admin/ChatReportsSection.tsx`([확인할 것/처리한 것] · 처리함 · 문제없음 · 되돌리기 · [사용자 관리에서 보기] → `?tab=user-manage&role=&q=<이메일>` 로 그 회원을 찾은 채, `GET/PATCH /api/chat-reports`).
+    - **보내기 한도**(`lib/chatSafety.ts`, 관리자 제외) — 말 30개/분(서버 메모리, 넘으면 429 '메시지를 너무 빨리 보내고 있어요') · **새 1:1 방 30개/24시간**(DB 로 센다 — `withKeyLock(directChats)` 안에서 **`tx` 만**:
+      잠금 안에서 전역 prisma 를 부르면 풀이 바닥나 동시 35개에 8개만 열렸다). `NODE_ENV=test`·`DISABLE_RATE_LIMIT=true` 면 꺼진다(테스트는 `setChatLimitsForTest`).
+    - 알림 합치기(`notifyChatMessage`)는 받는 사람마다 `withKeyLock(chatNotes)` 안에서 '있으면 고치고 없으면 만든다' — 동시에 온 말로 같은 방 알림이 두 줄 되던 것을 막는다. 탈퇴 회원은 뺀다.
+    - 방 정보(`GET /chats/:id` 의 폴링이 아닌 응답) — `counterpart`(홈페이지 주소 · 갤러리 주인이면 갤러리 이름) · `operatorIds`(단톡 '주최' 표시, `exhibitionNotifyTargets`) · `context` · `canSend` · `blockReason`.
+    - **메뉴 자리**(사용자 결정, PC·휴대폰 같다) — 맨 위 [ArtTalk](말풍선 · 안 읽은 대화 수, `MYPAGE_TOP_LINKS`) · 맨 아래 [1:1 문의 · 로그아웃] 한 줄.
+      ⚠️ **상단바의 대화 아이콘(종 옆 말풍선)은 없앴다**(같은 날 사용자 결정 — "ArtTalk 이 메뉴에 새로 생겼으니"). 새 메시지는 벨 알림(`CHAT_MESSAGE`)과 메뉴의 숫자가 알린다. 되살리지 말 것(`arttalk.test.ts`).
+    - 1:1 공모 초대는 같은 날 **통째로 없앴다**(「1:1 공모 초대는 없앴다」 절) · 갤러리 [관심 작품] 카드에서 [문의하기]도 뺐다(홈페이지에서 하면 된다).
+    - 앱(규칙 79) — 대화 푸시가 오면 `pokeChat(chatId)` 로 열린 방이 곧바로 받는다. 대화 화면에는 홈페이지 팝업이 뜨지 않는다(`nudgePlace` '/messages' 는 기다림).
+    - ⚠️ **폴링 커서는 폴링만 올린다** — 내가 보낸 말의 id 로 올리면 그 사이 상대가 보낸 말(id 가 더 작다)을 다음 `?after=` 가 건너뛴다(구현 중 찾아 고침).
+      빈 방은 첫 적재 뒤 커서를 0 으로(null 이면 폴링이 '첫 적재 전'으로 보고 계속 건너뛴다). 회귀 `useChatRoom.test.ts`(5 — 훅을 직접 돌린다).
+    - 개인정보처리방침 1·2·3항에 ArtTalk 신고(대화 사본)·차단 기록을 적고 1·4항의 '초대 수락'을 뺐다(최종 수정일 2026-11-19).
+    - 회귀: backend `chat-renewal.test.ts`(25 — 빈 방·탈퇴 상대·차단·숨기기·맥락 카드·방 정보·한도·알림 합치기·신고) · `chat.test.ts` · `push.test.ts` ·
+      frontend `arttalk.test.ts`(19 — 캐시 규칙·소스 가드·메뉴) · `chatView.test.ts`(KST·미리보기·찾기·주소) · `native.test.ts` · `retiredApis.test.ts` ·
+      e2e **`85-arttalk.spec.ts`(12)** · `29-chat`(새 화면) · `04-report-moderation`(신고 → 관리자 처리) · `30`(메뉴) · `40`(방 오가기·기록).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -3110,11 +3163,12 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 | `['hero-slides']` | HeroSlider, Admin | Admin Hero CRUD |
 | `['benefits']` | BenefitsPage, Admin | Admin Benefit CRUD |
 | `['favorites']` | MyPage 찜 목록(MyPicks), 찜 토글 전체 | 모든 찜 토글 |
-| `['chats']` | 대화 목록 | 메시지 전송, 초대 수락 |
-| `['chat', id]` | 대화 하나 | 메시지 전송 (8초 폴링) |
-| `['chat-unread']` | Navbar 대화 배지 | 30초 폴링, 메시지 전송 |
-| `['mutuals']` | 메시지창 [이웃에게 메시지] 피커 | (피커 열 때만 fetch) |
-| `['received-invites']` | 내 전시 '초대받은 전시' 탭 | 초대 수락/거절 |
+| `['chats']` | ArtTalk 목록(staleTime 0 · 들어올 때마다 · 보이는 동안 10초) | `chatsChanged(qc)`(`lib/chatCache.ts`) — 보내기·문의 창·이웃 고르기·숨기기·차단 · 방을 열면 `chatRead` 가 그 방 안 읽음만 0 |
+| (쿼리 아님) 대화 하나 | `hooks/useChatRoom.ts` 상태(4초 `?after=` 폴링) | 앱 푸시가 오면 `pokeChat(chatId)` 이벤트 |
+| `['chat-unread']` | Navbar·사이드바 ArtTalk 배지 | 30초 폴링, `chatsChanged`·`chatRead` |
+| `['mutuals']` | ArtTalk [이웃에게 메시지] 고르기(`NeighborPicker`) | (열 때만 fetch) |
+| `['blocks']` | 프로필 탭 '차단한 사람' | 차단·차단 풀기 |
+| `['chat-reports']` | 관리자 [신고 관리] ArtTalk 신고 | 처리함·문제없음·되돌리기 |
 | `['my-likes']` | MyPage 찜 목록의 '작품' | 좋아요 토글 |
 | `['portfolio']` | MyPage Artist | 포트폴리오 수정 |
 | `['my-applications']` | MyPage Artist | 지원 |
@@ -3229,7 +3283,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - [작가](2026-09-10)는 `/artists` — 좌 작가 목록 / 우 작품 격자. 위 「[작가] 탭」 절 참고.
     - 가운데 메뉴에는 **비로그인도 볼 수 있고, 다른 진입점이 없는 페이지만** 둔다.
       로그인해야 쓸 수 있는 마이페이지를 여기 두면 비로그인 사용자가 눌렀다가 로그인 화면으로 튕긴다.
-    - 로그인 시 우측: [쪽지][알림] · `이름 (역할)`. 비로그인 시 우측: [로그인] 하나뿐.
+    - 로그인 시 우측: [알림] · `이름 (역할)`(대화 아이콘은 2026-11-19 에 없앴다 — ArtTalk 은 메뉴 맨 위, 규칙 87). 비로그인 시 우측: [로그인] 하나뿐.
       **[로그아웃]은 우측 세로 사이드바 맨 아래**로 옮겼다(2026-08-28) — 제일 자주 보는 자리에 '나가기'가 있을 이유가 없다.
       그래서 우측 그룹의 마지막이 이름이고, **이름 오른쪽 끝이 사이드바 오른쪽 끝과 맞는다**(실측 1584=1584).
       ⚠️ lg 미만에는 사이드바가 없다 — 그쪽 로그아웃은 Navbar 햄버거 메뉴 안에 그대로 있다.
@@ -3532,17 +3586,13 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       - 이름이 `kanban` 인 것은 처음에 3열 칸반으로 만들었던 흔적(2026-08-21 당일 변경). **열 개념은 없다.**
     - **개발자 도구**: 마이페이지 '개발자 도구' 탭의 **[수락 상태 되돌리기 허용]** 전역 토글(`AppSetting` key-value, `GET/PUT /api/admin/dev-settings`). ON이면 **전체 갤러리**가 수락한 지원을 거절로 되돌릴 수 있음 — 되돌리면 해당 작가의 운영페이지 제출물·판매·정산 데이터 삭제 + 정원 슬롯 복구 (정산 완료 공모는 불가). 갤러리 UI는 `GET /api/settings/flags`로 토글 상태 확인.
 
-### 갤러리 스카우팅 — 하트로 모으고 초대 (2026-08-28 개편)
+### 갤러리 스카우팅 — 하트로 모은다 (2026-08-28 개편 · 2026-11-19 초대 폐지)
 - **갤러리의 비공개 스크랩(북마크)을 없앴다.** 갤러리도 이제 **하트(좋아요)** 로 작품을 모은다.
     - `ArtworkDetailModal` 에서 갤러리 전용 북마크 버튼 제거(`scrapMutation`·`isScrapped` 표시 삭제). 백엔드 `/explore/scraps`·`/explore/:id/scrap` 라우트와 `explore-engagement.test.ts` 는 **그대로 살려 둔다**(화면만 뗐다).
-    - ⚠️ **작품 모달에서 '바로 공모 초대'하던 버튼도 없앴다(2026-08-29).** 남은 액션은 [이웃(FollowButton iconOnly)]·[메시지]·[하트]. 초대는 **공모 쪽에서만** 한다.
+    - 작품 모달에 남은 액션은 [이웃(FollowButton iconOnly)]·[작품 문의하기](문의 창 — 맥락 카드가 붙는다, 규칙 87)·[하트].
     - ⚠️ **트레이드오프**: 스크랩은 비공개였지만 하트는 **작가에게 보인다**(포트폴리오의 '좋아요한 사람' 명단). "관심을 숨길 이유가 없다"는 판단이라 의도된 것. 회귀는 `e2e/26-invite-engagement.spec.ts` D.
-- **[관심 작품] 탭(`tab=scraps`, 라벨 유지)** = 하트 보드. `ArtworkScrapsSection` 이 `/explore/my-likes` 를 읽는다(작가 [찜 목록]의 '좋아요한 작품'과 같은 소스). 개수·'저장 사실 비공개' 문구 대신 **"저장한 작품의 작가에게는 전시 초대를 보낼 수 있습니다."** 안내 + 카드마다 [전시 초대] 버튼.
-- **⚠️ 초대 관문(2026-08-29, `lib/inviteEligibility.ts`)**: 갤러리는 **좋아요(하트)했거나 서로 이웃**인 작가만 초대할 수 있다.
-  아무나 검색해 부르지 못하게 하는 **서버 단일 관문**(`POST /exhibitions/:id/invite`, 아니면 **403**). 두 예외: ①Admin ②Admin 주최 공모(`hostType='ADMIN'`)의 위임 갤러리(관리자 큐레이션이라 자유 초대). 회귀는 `explore-engagement.test.ts`.
-- **초대 두 방향** — 둘 다 `POST /exhibitions/:id/invite {artistId}`(위 관문 적용):
-    - **작가 고정 + 공모 선택** = `InviteModal`(export, MyPage 받은 초대 경로에서 사용). 작품 모달의 '바로 초대' 버튼은 뗐다.
-    - **공모 고정 + 작가 선택** = `ExhibitionInviteModal`(MyPage) — 내 공모 [지원자 관리] 패널 안 [작가 초대]. 대상은 **하트를 저장한 작가**(`/explore/my-likes` 를 작가 단위로 dedupe). 모집 마감·정원·중복은 서버가 막고 모달이 사유를 띄운다.
+- **[관심 작품] 탭(`tab=scraps`, 라벨 유지)** = 하트 보드. `ArtworkScrapsSection` 이 `/explore/my-likes` 를 읽는다(작가 [찜 목록]의 '좋아요한 작품'과 같은 소스).
+  카드는 **작품과 작가 이름뿐**(2026-11-19) — [전시 초대]·[문의하기]·안내 문구 없음. 1:1 공모 초대 자체를 없앴다(위 「1:1 공모 초대는 없앴다」).
 - **⚠️ `like` 는 토글이라** 테스트에서 같은 이미지를 두 번 좋아요하면 취소된다. E2E 는 `seedGalleryLike`(`e2e/lib/helpers.ts`)로 **매번 새 작품**에 하트를 눌러 my-likes 를 확실히 채운다.
 - **내 공모 [상세 운영]은 페이지 이동이 아니라 카드 안 인라인 아코디언**(2026-08-28). `OperationPage` 의 본문을 `export function OperationBody({ id, embedded })` 로 분리하고, 기본 export 는 그걸 감싸는 얇은 래퍼다. 카드에서 `<OperationBody id embedded />` 로 임베드(머리말·최대폭 제거). ⚠️ **`/operation/new` 전용 라우트는 유지 필수** — 옛 알림 10곳이 그 주소를 가리킨다(`/operation` 는 별개의 옛 classic 페이지). 회귀 `e2e/35-gallery-exhibition-ops.spec.ts`.
 

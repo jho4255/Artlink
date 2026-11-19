@@ -15,7 +15,7 @@
  *
  * ⚠️ 약관 버전은 서버와 같아야 한다 — `backend/src/lib/terms.ts`, 검사는 `terms-consistency.test.ts`.
  * ⚠️ 이미 지원했거나 마감됐거나 작가가 아니면 상세로 되돌린다(서버도 400 으로 막는다) — 다 쓰고 나서 400 을 받게 하지 않는다.
- * 초대받은 작가의 '간편 지원'(`InviteApplyModal`)은 상세 페이지에 그대로 있다.
+ * (초대받은 작가의 '간편 지원' 창은 2026-11-19 에 1:1 공모 초대와 함께 없앴다.)
  */
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
@@ -356,7 +356,7 @@ export default function ApplyPage() {
                       </select>
                     ) : (
                       <>
-                        {/* 글자수 제한은 초대 모달(InviteApplyModal)과 같은 규칙 */}
+                        {/* 글자수 제한 */}
                         <textarea
                           value={answerText(answers, field.id)}
                           onChange={(e) => { setTouched(true); setAnswers((prev) => ({ ...prev, [field.id]: e.target.value })); }}

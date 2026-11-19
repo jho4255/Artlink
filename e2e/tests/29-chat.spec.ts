@@ -13,36 +13,50 @@ import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, 
  */
 const API = 'http://localhost:4000/api';
 
-/** 화면에 그려진 말풍선들을 순서대로 (이름/시각이 붙었는지 함께) */
+/** 화면에 그려진 말풍선들을 순서대로 (이름/시각이 붙었는지 함께) — 2026-11-19 개편 뒤의 모양(components/chat/MessageBubble) */
 async function bubbles(page: Page) {
   return page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('div.rounded-2xl.px-3.py-2'));
-    return rows.map((b) => {
-      const col = b.parentElement!;
-      const kids = Array.from(col.children);
-      const idx = kids.indexOf(b);
-      const nameEl = idx > 0 ? kids[idx - 1] : null;
-      const metaEl = kids[idx + 1] ?? null;
-      return {
-        text: (b.textContent || '').trim(),
-        mine: b.className.includes('bg-gray-900'),
-        name: nameEl ? (nameEl.textContent || '').trim() : null,
-        meta: metaEl ? (metaEl.textContent || '').trim() : null,
-      };
+    const rows = Array.from(document.querySelectorAll('[data-testid="chat-scroll"] [data-mid]'));
+    return rows.flatMap((row) => {
+      const text = row.querySelector('[data-testid="bubble-text"]');
+      if (!text) return [];
+      const name = row.querySelector('[data-testid="bubble-name"]');
+      const meta = row.querySelector('[data-testid="bubble-meta"]');
+      return [{
+        text: (text.textContent || '').trim(),
+        mine: row.className.includes('justify-end'),
+        name: name ? (name.textContent || '').trim() : null,
+        meta: meta ? (meta.textContent || '').trim() : null,
+      }];
     });
   });
+}
+
+/** 보내는 중인 말이 다 나갈 때까지 */
+async function sendsSettled(page: Page) {
+  await expect(page.locator('[data-pending]')).toHaveCount(0, { timeout: 20000 });
+}
+
+/**
+ * 방이 **다 열릴 때까지** — 입력 칸은 방을 받아 오기 전에도 그려진다(잠긴 채로).
+ * 잠금이 풀린 순간 = 첫 응답(메시지·방 정보)이 한 번에 들어온 순간이다(useChatRoom 이 같은 렌더에서 둘을 넣는다).
+ */
+async function roomReady(page: Page) {
+  await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeEnabled({ timeout: 15000 });
 }
 
 /** 목록에서 방을 골라 **대화가 실제로 열릴 때까지** 기다린다(좁은 화면에선 목록이 숨는다) */
 async function openRoom(page: Page, title: string) {
   await page.getByText(title).first().click();
-  await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+  await roomReady(page);
 }
 
 async function send(page: Page, text: string) {
+  await roomReady(page);
   await page.getByPlaceholder('메시지를 입력하세요').fill(text);
   await page.getByRole('button', { name: '보내기' }).click();
-  await expect(page.locator('body')).toContainText(text, { timeout: 8000 });
+  await expect(page.locator('[data-testid="chat-scroll"]')).toContainText(text, { timeout: 8000 });
+  await sendsSettled(page);
 }
 
 test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된다', () => {
@@ -52,7 +66,9 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
 
     // 작가 홈페이지 [문의하기](2026-11-14 — 예전 [메시지]) → 보내고 [대화 보기] 로 그 방(?chat=N)
     await inquireAndOpenChat(page, `/portfolio/${ids.artist2}`);
-    await expect(page.getByRole('heading', { name: 'ArtTalk' })).toBeVisible();
+    // 휴대폰은 대화 전용 화면 — 머리에 상대 이름(ArtTalk 제목은 목록에 있다)
+    await expect(page.getByTestId('chat-room')).toBeVisible();
+    await expect(page.getByTestId('chat-title')).toHaveText('Artist 2');
     await send(page, '안녕하세요, 작품 잘 봤습니다.');
 
     await ctx.close();
@@ -90,7 +106,7 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
 
     // 아직 상대가 안 열었다 → '읽음' 없음
     await a1.page.reload();
-    await expect(a1.page.locator('b', { hasText: /^읽음$/ })).toHaveCount(0);
+    await expect(a1.page.locator('[data-testid="bubble-meta"]', { hasText: '읽음' })).toHaveCount(0);
 
     const a2 = await openAs(browser, 'artist2');
     await a2.page.goto('/messages');
@@ -99,8 +115,8 @@ test.describe('갠톡 — 둘러보기·작가 홈페이지에서만 시작된�
 
     await a1.page.goto(url);
     /* ⚠️ '읽음' 을 화면 전체에서 찾으면 목록의 미리보기('읽음 표시 확인')에 먼저 걸린다.
-       읽음 표시는 말풍선 옆 <b> 다. */
-    await expect(a1.page.locator('b', { hasText: /^읽음$/ }).first()).toBeVisible({ timeout: 12000 });
+       읽음 표시는 말풍선 옆 시각 칸(bubble-meta) 안이다. */
+    await expect(a1.page.locator('[data-testid="bubble-meta"]', { hasText: '읽음' }).first()).toBeVisible({ timeout: 12000 });
 
     await a1.ctx.close(); await a2.ctx.close();
   });
@@ -205,8 +221,8 @@ test.describe('단톡 (공모방) — 서버가 만든다', () => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.goto('/messages');
     await openRoom(page, exTitle);
-    await expect(page.getByText(/참여자 \d+명/)).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: '공모 보기' }).click();
+    await expect(page.getByTestId('chat-room').getByRole('button', { name: /^참여자 \d+$/ })).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('chat-room').getByRole('link', { name: '공모 보기' }).click();
     await page.waitForURL(new RegExp(`/exhibitions/${exId}`), { timeout: 10000 });
     await ctx.close();
   });
@@ -272,7 +288,7 @@ test.describe('지속 대화 — 6턴 왕복', () => {
     for (const turn of turns) {
       const actor = turn.who === 'artist' ? artist : gallery;
       await actor.page.goto(`/messages?chat=${chatId}`);
-      await expect(actor.page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+      await roomReady(actor.page);
 
       /* 지금까지의 말이 전부 남아 있어야 한다.
          ⚠️ 같은 문구가 목록의 '마지막 메시지 미리보기'에도 찍히므로 **말풍선만** 본다
@@ -299,7 +315,7 @@ test.describe('지속 대화 — 6턴 왕복', () => {
     // 양쪽 화면 모두 여섯 줄이 순서대로
     for (const actor of [artist, gallery]) {
       await actor.page.goto(`/messages?chat=${chatId}`);
-      await expect(actor.page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+      await roomReady(actor.page);
       const texts = (await bubbles(actor.page)).map(b => b.text);
       const idx = seen.map(s => texts.findIndex(t => t.includes(s)));
       expect(idx.every(i => i >= 0), '여섯 줄 중 빠진 게 있다').toBe(true);
@@ -316,30 +332,31 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
   /** 작가↔작가2 갠톡을 열고 방 화면으로 이동 */
   async function openDirectRoom(page: Page, otherId: number) {
     await openEmptyDirectChat(page, 'artist', otherId);
-    await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+    await roomReady(page);
   }
 
   /** 첨부 메뉴에서 종류를 골라 실제 파일을 올린다 (native filechooser 처리) */
   async function attach(page: Page, kind: '사진' | '동영상' | '파일', filePath: string) {
-    await page.getByRole('button', { name: '첨부' }).click();
+    await page.getByRole('button', { name: '사진·동영상·파일 첨부' }).click();
     const [chooser] = await Promise.all([
       page.waitForEvent('filechooser'),
-      page.getByRole('button', { name: kind, exact: true }).click(),
+      page.getByRole('menuitem', { name: kind, exact: true }).click(),
     ]);
     await chooser.setFiles(filePath);
   }
+  const scrollImgs = (page: Page) => page.locator('[data-testid="chat-scroll"] [data-mid] img');
 
   test('★ 사진을 보내면 대화에 이미지가 뜨고, 목록 미리보기는 [사진]', async ({ browser }) => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
     await openDirectRoom(page, ids.artist2);
 
-    const before = await page.locator('.overflow-y-auto img').count();
+    const before = await scrollImgs(page).count();
     await attach(page, '사진', realUploadPath('image'));
 
-    // 업로드→전송 후 말풍선 영역에 이미지가 하나 늘어난다
-    await expect.poll(async () => page.locator('.overflow-y-auto img').count(), { timeout: 20000 })
-      .toBeGreaterThan(before);
+    // 업로드→전송 후 말풍선 영역에 이미지가 하나 늘어난다(보내는 중 미리보기가 아니라 보낸 메시지로)
+    await expect.poll(async () => scrollImgs(page).count(), { timeout: 20000 }).toBeGreaterThan(before);
+    await sendsSettled(page);
 
     // 목록으로 나가면 미리보기가 [사진]
     await page.goto('/messages');
@@ -354,11 +371,11 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
 
     await attach(page, '파일', realUploadPath('pdf'));
 
-    // 파일 첨부는 <a download> 로 렌더 — 다운로드 안내 + .pdf 파일명
-    const fileLink = page.locator('a[download]').last();
+    // 파일 첨부는 <a download> 로 렌더 — '받기' 안내 + .pdf 파일명
+    const fileLink = page.locator('[data-testid="chat-scroll"] a[download]').last();
     await expect(fileLink).toBeVisible({ timeout: 20000 });
     await expect(fileLink).toContainText('.pdf');
-    await expect(fileLink).toContainText('다운로드');
+    await expect(fileLink).toContainText('받기');
     await ctx.close();
   });
 
@@ -367,7 +384,8 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
     const a1 = await openAs(browser, 'artist');
     await openDirectRoom(a1.page, ids.artist2);
     await attach(a1.page, '사진', realUploadPath('image'));
-    await expect.poll(async () => a1.page.locator('.overflow-y-auto img').count(), { timeout: 20000 }).toBeGreaterThan(0);
+    await expect.poll(async () => scrollImgs(a1.page).count(), { timeout: 20000 }).toBeGreaterThan(0);
+    await sendsSettled(a1.page);
     await a1.ctx.close();
 
     const a2 = await openAs(browser, 'artist2');
@@ -375,7 +393,7 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
     // 갠톡 상대(artist) 방을 연다
     await a2.page.getByText('Artist 1').first().click().catch(() => {});
     await settle(a2.page, 800);
-    await expect(a2.page.locator('.overflow-y-auto img').first()).toBeVisible({ timeout: 15000 });
+    await expect(scrollImgs(a2.page).first()).toBeVisible({ timeout: 15000 });
     await a2.ctx.close();
   });
 
@@ -383,12 +401,13 @@ test.describe('첨부 — 사진·동영상·파일 (2026-08-28)', () => {
     const ids = userIds();
     const { page, ctx } = await openAs(browser, 'artist');
     await openDirectRoom(page, ids.artist2);
-    const countEmptyBubbles = () => page.locator('div.rounded-2xl.px-3.py-2').evaluateAll(
+    const countEmptyBubbles = () => page.locator('[data-testid="bubble-text"]').evaluateAll(
       els => els.filter(e => (e.textContent || '').trim() === '').length,
     );
     const before = await countEmptyBubbles();
     await attach(page, '사진', realUploadPath('image'));
-    await expect.poll(async () => page.locator('.overflow-y-auto img').count(), { timeout: 20000 }).toBeGreaterThan(0);
+    await expect.poll(async () => scrollImgs(page).count(), { timeout: 20000 }).toBeGreaterThan(0);
+    await sendsSettled(page);
     // 첨부만 보낸 메시지는 텍스트 말풍선을 만들지 않는다(빈 회색 상자 금지)
     expect(await countEmptyBubbles()).toBe(before);
     await ctx.close();
@@ -417,8 +436,12 @@ test.describe('대화방 알림 끄기 · 휴대폰 화면 (2026-11-11)', () => 
     await openEmptyDirectChat(page, 'artist', ids.artist2);
     const chatId = chatIdOf(page);
 
-    await page.getByRole('button', { name: '이 대화방 알림 끄기' }).click();
-    await expect(page.getByRole('button', { name: '이 대화방 알림 켜기' })).toHaveAttribute('aria-pressed', 'true');
+    // 휴대폰은 방 메뉴[⋯] 안에서(넓은 화면은 머리의 종 단추 — e2e 85)
+    await page.getByRole('button', { name: '대화방 메뉴' }).click();
+    await page.getByTestId('room-menu').getByRole('button', { name: '알림 끄기' }).click();
+    await page.getByRole('button', { name: '대화방 메뉴' }).click();
+    await expect(page.getByTestId('room-menu').getByRole('button', { name: '알림 켜기' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await page.goto('/mypage');   // 방을 떠난다(방을 열어 두면 읽음이 된다)
     await sayAsArtist2(chatId, '조용히 와야 하는 말');
     expect(await myChatNotices(tokenFor('artist'), chatId)).toBe(0);
@@ -427,29 +450,31 @@ test.describe('대화방 알림 끄기 · 휴대폰 화면 (2026-11-11)', () => 
     await expect(page.locator('ul').getByLabel('알림 꺼짐').first()).toBeVisible({ timeout: 10000 });
 
     await page.goto(`/messages?chat=${chatId}`);
-    await page.getByRole('button', { name: '이 대화방 알림 켜기' }).click();
-    await expect(page.getByRole('button', { name: '이 대화방 알림 끄기' })).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: '대화방 메뉴' }).click();
+    await page.getByTestId('room-menu').getByRole('button', { name: '알림 켜기' }).click();
     await page.goto('/mypage');
     await sayAsArtist2(chatId, '이제 알려야 하는 말');
     await expect.poll(() => myChatNotices(tokenFor('artist'), chatId), { timeout: 8000 }).toBe(1);
     await ctx.close();
   });
 
-  test('★ 휴대폰 폭에서 대화 칸이 상자 안에 들어온다 — [보내기]가 잘리지 않고 빈 방 안내가 가운데(2026-11-11)', async ({ browser }) => {
+  test('★ 휴대폰 폭에서 대화 화면이 화면 안에 들어온다 — [보내기]가 잘리지 않고 입력 줄이 맨 아래(2026-11-19 대화 전용 화면)', async ({ browser }) => {
     const ids = userIds();
     const ctx = await browser.newContext({ storageState: statePath('artist'), viewport: { width: 360, height: 760 } });
     const page = await ctx.newPage();
-    await openEmptyDirectChat(page, 'artist', ids.artist2);   // 빈 방 안내('첫 메시지를 보내보세요')를 재야 한다
-    await expect(page.getByPlaceholder('메시지를 입력하세요')).toBeVisible({ timeout: 15000 });
+    await openEmptyDirectChat(page, 'artist', ids.artist2);
+    await roomReady(page);
     const m = await page.evaluate(() => {
-      const box = document.querySelector('form')!.closest('.grid')!.getBoundingClientRect();
-      const send = [...document.querySelectorAll('form button')].find((b) => b.textContent?.includes('보내기'))!.getBoundingClientRect();
-      const form = document.querySelector('form')!.getBoundingClientRect();
-      return { boxL: box.left, boxR: box.right, sendR: send.right, formL: form.left, formR: form.right };
+      const send = document.querySelector('button[aria-label="보내기"]')!.getBoundingClientRect();
+      const form = document.querySelector('[data-testid="chat-room"] form')!.getBoundingClientRect();
+      const tabbar = document.querySelector('nav[aria-label="하단 내비게이션"]');
+      return { vw: innerWidth, vh: innerHeight, sendR: send.right, formL: form.left, formB: form.bottom, docW: document.documentElement.scrollWidth, tabbar: !!tabbar };
     });
-    expect(m.sendR).toBeLessThanOrEqual(m.boxR);
-    expect(m.formL).toBeGreaterThanOrEqual(m.boxL - 1);
-    expect(m.formR).toBeLessThanOrEqual(m.boxR + 1);
+    expect(m.sendR).toBeLessThanOrEqual(m.vw);
+    expect(m.formL).toBeGreaterThanOrEqual(0);
+    expect(m.docW, '가로로 밀렸다').toBeLessThanOrEqual(m.vw);
+    expect(m.formB, '입력 줄이 화면 아래에 붙어야 한다').toBeGreaterThan(m.vh - 80);
+    expect(m.tabbar, '대화 전용 화면에는 하단 탭바가 없다').toBe(false);
     await ctx.close();
   });
 });

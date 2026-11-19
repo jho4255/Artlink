@@ -1,12 +1,12 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Menu, X, Bell, Mail } from 'lucide-react';
+import { Menu, X, Bell, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
-import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, MYPAGE_TOP_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
 import { NAV_LINKS as navLinks, isNavActive } from '@/lib/navLinks';
 
 // 가운데 메뉴 정의는 lib/navLinks.ts 하나뿐 — 데스크톱 상단 중앙과 모바일 하단 탭바(BottomTabBar)가 공유한다.
@@ -45,7 +45,7 @@ export default function Navbar() {
     refetchInterval: 30000,
   });
 
-  // 안 읽은 대화 수 — Admin 도 단톡에 들어갈 수 있으므로 역할로 막지 않는다
+  // 안 읽은 대화 수 — 햄버거 메뉴 맨 위 ArtTalk 줄의 숫자. Admin 도 단톡에 들어갈 수 있으므로 역할로 막지 않는다
   const { data: unreadMsgCount = 0 } = useQuery<number>({
     queryKey: ['chat-unread'],
     queryFn: () => api.get('/chats/unread-count').then(r => r.data.count),
@@ -152,26 +152,12 @@ export default function Navbar() {
           </div>
 
           {/*
-            우측: 쪽지 + 알림 + 유저 정보.
+            우측: 알림 + 유저 정보. (ArtTalk 은 오른쪽 메뉴 맨 위 — 상단 말풍선 아이콘은 2026-11-19 에 없앴다. 새 메시지는 벨 알림에도 온다)
             **네비바 전체의 오른쪽 끝**에 붙인다 — `right-4`(16px)는 우측 사이드바 `nav` 의 `px-4` 와 같은 값이라
             [로그아웃] 오른쪽 끝이 사이드바 메뉴 항목의 오른쪽 끝과 정확히 맞는다.
             본문 컨테이너 안에 두면 사이드바 폭(224px)만큼 왼쪽으로 들어가 어긋난다.
           */}
           <div className="hidden lg:flex items-center gap-3 flex-none absolute right-4 top-0 h-20">
-            {isAuthenticated && (
-              <button
-                onClick={() => navigate('/messages')}
-                className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
-                aria-label="대화"
-              >
-                <Mail size={20} className="text-gray-600" />
-                {unreadMsgCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-accent text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
-                  </span>
-                )}
-              </button>
-            )}
             {isAuthenticated && (
               <div className="relative" ref={notifRef}>
                 <button
@@ -255,7 +241,7 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* 모바일: 로그인 / 쪽지 + 알림 + 햄버거 */}
+          {/* 모바일: 로그인 / 알림 + 햄버거(ArtTalk 은 햄버거 메뉴 맨 위 — 상단 말풍선 아이콘은 2026-11-19 에 없앴다) */}
           <div className="flex items-center gap-1 lg:hidden">
             {!isAuthenticated && (
               <button
@@ -263,20 +249,6 @@ export default function Navbar() {
                 className="px-3 min-h-[40px] mr-1 inline-flex items-center text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
               >
                 로그인
-              </button>
-            )}
-            {isAuthenticated && (
-              <button
-                onClick={() => navigate('/messages')}
-                className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-                aria-label="대화"
-              >
-                <Mail size={20} />
-                {unreadMsgCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-accent text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
-                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
-                  </span>
-                )}
               </button>
             )}
             {isAuthenticated && (
@@ -368,6 +340,30 @@ export default function Navbar() {
                 홈에서 바로 마이페이지 각 탭으로 갈 수 있다(artspoon 과 같은 방식).
                 별도 버튼을 하나 더 두지 않는다 — 우측 상단에 햄버거가 둘이면 뭐가 뭔지 알 수 없다.
               */}
+              {/* ArtTalk — 맨 위(2026-11-19 사용자 결정 — PC 오른쪽 메뉴와 같은 자리). 안 읽은 대화 수를 붙인다 */}
+              {isAuthenticated && MYPAGE_TOP_LINKS.map((link) => {
+                const Icon = link.icon ?? MessageCircle;
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setIsOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium rounded-lg text-gray-900 hover:bg-gray-50"
+                  >
+                    <Icon size={16} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {link.brand
+                        ? (<span className="font-bold tracking-tight font-serif">{link.brand[0]}<span className="text-accent">{link.brand[1]}</span></span>)
+                        : link.label}
+                    </span>
+                    {link.badge === 'chat' && unreadMsgCount > 0 && (
+                      <span className="shrink-0 min-w-[20px] rounded-full bg-accent px-1.5 text-center text-[11px] font-bold leading-5 text-white">
+                        {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
               {isAuthenticated && (
                 <>
                   {/* ArtStory(소식) 등 마이페이지 주요 링크 — 역할 무관 */}
@@ -429,20 +425,26 @@ export default function Navbar() {
                       </Link>
                     );
                   })}
-                  {/* 사이드바(lg↑)의 푸터 링크(1:1 문의)와 짝 — 없으면 모바일에서 고객센터로 가는 길이 없다(2026-09-19) */}
-                  <Link
-                    to="/support"
-                    onClick={() => setIsOpen(false)}
-                    className="block px-4 py-3 mt-1 text-sm text-gray-500 hover:text-gray-900 border-t border-gray-100"
-                  >
-                    1:1 문의
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="block w-full text-left px-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-900 border-t border-gray-100"
-                  >
-                    로그아웃
-                  </button>
+                  {/* 1:1 문의 · 로그아웃 — 맨 아래 한 줄(사이드바와 같은 모양, 2026-11-19).
+                      1:1 문의를 빼지 말 것 — 없으면 모바일에서 고객센터로 가는 길이 푸터뿐이다(2026-09-19) */}
+                  <div className="mt-1 flex items-center justify-between border-t border-gray-100">
+                    {MYPAGE_FOOTER_LINKS.map((l) => (
+                      <Link
+                        key={l.to}
+                        to={l.to}
+                        onClick={() => setIsOpen(false)}
+                        className="px-4 py-3 min-h-[44px] inline-flex items-center text-sm text-gray-500 hover:text-gray-900"
+                      >
+                        {l.label}
+                      </Link>
+                    ))}
+                    <button
+                      onClick={handleLogout}
+                      className="px-4 py-3 min-h-[44px] text-sm text-gray-500 hover:text-gray-900"
+                    >
+                      로그아웃
+                    </button>
+                  </div>
                 </>
               )}
             </div>

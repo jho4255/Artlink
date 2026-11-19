@@ -18,7 +18,7 @@ export function authToken(userId: number, role: string): string {
 }
 
 const ALL_TABLES = [
-  'ChatMessage', 'ChatParticipant', 'Chat',
+  'ChatMessage', 'ChatParticipant', 'Chat', 'ChatReport', 'UserBlock',
   'KanbanSubtask', 'KanbanComment', 'KanbanCard', 'KanbanBoard',
   'MessageReport', 'Message',
   'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
@@ -58,6 +58,8 @@ function assertTestDatabase() {
 export async function cleanDb() {
   assertTestDatabase();
   await testPrisma.$transaction(async (tx) => {
+    await tx.chatReport.deleteMany();     // ArtTalk 신고(2026-11-19) — 방에 FK 가 없어 방을 지워도 남는다(일부러)
+    await tx.userBlock.deleteMany();      // ArtTalk 차단(2026-11-19) — User 캐스케이드로도 지워지지만 명시
     await tx.chatMessage.deleteMany();
     await tx.chatParticipant.deleteMany();
     await tx.chat.deleteMany();

@@ -15,14 +15,6 @@ const artist1Tok = authToken(1, 'ARTIST');
 const artist2Tok = authToken(2, 'ARTIST');
 const galleryTok = authToken(3, 'GALLERY');
 
-/** 공모 지원 최소 본문 (약력 + 작품사진 1장 + 약관동의 필수) */
-const APPLY_BODY = {
-  biography: '테스트 약력',
-  artworkImages: ['/uploads/apply-1.jpg'],
-  termsAgreed: true,
-  termsVersion: ARTIST_APPLY_TERMS_VERSION,
-};
-
 /** artist1(userId=1)의 포트폴리오에 공개 이미지 n장 생성 */
 async function seedImages(userId = 1, count = 3, showInExplore = true) {
   const portfolio = await testPrisma.portfolio.upsert({
@@ -421,370 +413,41 @@ describe('갤러리 스크랩 (비공개 보드)', () => {
   });
 });
 
-describe('공모 초대 (갤러리 → 작가)', () => {
+/**
+ * 1:1 공모 초대는 2026-11-19 에 없앴다(사용자 결정 — 실서버에서 한 번도 쓰이지 않았다). 초대 **코드**는 그대로다(invite-code.test.ts).
+ * 옛 화면·북마크·알림이 옛 주소를 부르면 조용히 무언가 일어나지 않고 404 로 끝나야 한다.
+ */
+describe('1:1 공모 초대는 없다 (2026-11-19)', () => {
   let exhibitionId: number;
-
   beforeEach(async () => {
     await cleanDb();
     await seedUsers();
     const g = await seedGallery();
     const ex = await seedExhibition(g.id);
     exhibitionId = ex.id;
-    // 새 관문(lib/inviteEligibility): 갤러리는 '좋아요했거나 서로 이웃'인 작가만 초대 가능.
-    // 초대 '기전'을 검사하는 이 블록은 서로 이웃(양방향 팔로우)으로 자격을 충족시킨다.
-    await testPrisma.follow.createMany({
-      data: [
-        { followerId: 3, followingId: 1 }, { followerId: 1, followingId: 3 },
-        { followerId: 3, followingId: 2 }, { followerId: 2, followingId: 3 },
-      ],
-    });
+    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { status: 'APPROVED' } });
   });
 
-  const invite = (tok: string, body: object) =>
-    request.post(`/api/exhibitions/${exhibitionId}/invite`).set('Authorization', `Bearer ${tok}`).send(body);
-
-  /** 갤러리(3)와 작가(1)의 이웃 관계를 끊어 관문을 '미충족' 상태로 만든다 */
-  const unlinkGalleryArtist1 = () =>
-    testPrisma.follow.deleteMany({ where: { OR: [
-      { followerId: 3, followingId: 1 }, { followerId: 1, followingId: 3 },
-    ] } });
-
-  it('좋아요도 이웃도 아닌 작가는 초대할 수 없다(403)', async () => {
-    await unlinkGalleryArtist1();
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(403);
+  it('★ 보내기·초대 목록·받은 초대·수락·거절 주소가 모두 404', async () => {
+    const auth = (tok: string) => ({ Authorization: `Bearer ${tok}` });
+    expect((await request.post(`/api/exhibitions/${exhibitionId}/invite`).set(auth(galleryTok)).send({ artistId: 1 })).status).toBe(404);
+    expect((await request.get(`/api/exhibitions/${exhibitionId}/invites`).set(auth(galleryTok))).status).toBe(404);
+    expect((await request.get('/api/exhibitions/invites/received').set(auth(artist1Tok))).status).toBe(404);
+    expect((await request.post('/api/exhibitions/invites/1/accept').set(auth(artist1Tok)).send({})).status).toBe(404);
+    expect((await request.patch('/api/exhibitions/invites/1').set(auth(artist1Tok)).send({})).status).toBe(404);
+    expect(await testPrisma.exhibitionInvite.count()).toBe(0);
   });
 
-  it('작품에 좋아요를 눌렀으면 이웃이 아니어도 초대할 수 있다(201)', async () => {
-    await unlinkGalleryArtist1();
-    const imgs = await seedImages(1, 1);
-    await request.post(`/api/explore/${imgs[0].id}/like`).set('Authorization', `Bearer ${galleryTok}`);
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(201);
-  });
-
-  it('초대하면 작가에게 알림이 간다', async () => {
-    const r = await invite(galleryTok, { artistId: 1, message: '작품 잘 봤습니다' });
-    expect(r.status).toBe(201);
-    const noti = await testPrisma.notification.findFirst({ where: { userId: 1, type: 'EXHIBITION_INVITE' } });
-    expect(noti).toBeTruthy();
-    expect(noti!.linkUrl).toBe(`/exhibitions/${exhibitionId}`);
-  });
-
-  it('작가는 초대할 수 없다(403)', async () => {
-    const r = await invite(artist1Tok, { artistId: 2 });
-    expect(r.status).toBe(403);
-  });
-
-  it('남의 공모에는 초대할 수 없다(403)', async () => {
-    const other = await testPrisma.user.create({
-      data: { email: 'g2@test.com', name: 'Gallery 2', role: 'GALLERY' },
-    });
-    const r = await invite(authToken(other.id, 'GALLERY'), { artistId: 1 });
-    expect(r.status).toBe(403);
-  });
-
-  it('같은 작가를 두 번 초대할 수 없다(409)', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(409);
-  });
-
-  it('이미 지원한 작가는 초대할 수 없다(400)', async () => {
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send(APPLY_BODY);
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(400);
-  });
-
-  it('마감된 공모는 초대할 수 없다(400)', async () => {
-    await testPrisma.exhibition.update({
-      where: { id: exhibitionId },
-      data: { deadline: new Date(Date.now() - 3 * 86400000) },
-    });
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(400);
-  });
-
-  it('모집마감 처리된 공모는 초대할 수 없다(400)', async () => {
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { recruitmentClosed: true } });
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(400);
-  });
-
-  it('탈퇴한 작가는 초대할 수 없다(404)', async () => {
-    await testPrisma.user.update({ where: { id: 1 }, data: { deletedAt: new Date() } });
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(404);
-  });
-
-  it('갤러리 계정은 초대 대상이 될 수 없다(404)', async () => {
-    const r = await invite(galleryTok, { artistId: 3 });
-    expect(r.status).toBe(404);
-  });
-
-  it('작가는 받은 초대를 조회하고 숨길 수 있다', async () => {
-    await invite(galleryTok, { artistId: 1, message: '함께해요' });
-    const list = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(list.status).toBe(200);
-    expect(list.body.invites).toHaveLength(1);
-    expect(list.body.invites[0].message).toBe('함께해요');
-    expect(list.body.invites[0].applied).toBe(false);
-    expect(list.body.invites[0].exhibition.gallery.name).toBe('Test Gallery');
-
-    const hide = await request.patch(`/api/exhibitions/invites/${list.body.invites[0].id}`)
-      .set('Authorization', `Bearer ${artist1Tok}`).send({});
-    expect(hide.status).toBe(200);
-    const after = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(after.body.invites).toHaveLength(0);
-  });
-
-  it('남의 초대는 숨길 수 없다(404)', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const list = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    const r = await request.patch(`/api/exhibitions/invites/${list.body.invites[0].id}`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send({});
-    expect(r.status).toBe(404);
-  });
-
-  it('초대받은 작가가 지원하면 초대 상태가 APPLIED로 바뀐다', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send(APPLY_BODY);
-    const list = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(list.body.invites[0].status).toBe('APPLIED');
-    expect(list.body.invites[0].applied).toBe(true);
-  });
-
-  it('간편 지원 — 초대받은 작가는 지원서 없이 포트폴리오로 지원된다', async () => {
-    // 작가 포트폴리오에 약력 + 작품 2장
-    const portfolio = await testPrisma.portfolio.upsert({
-      where: { userId: 1 }, create: { userId: 1, biography: '회화 작업을 합니다' }, update: { biography: '회화 작업을 합니다' },
-    });
-    await testPrisma.portfolioImage.createMany({
-      data: [
-        { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0, showInExplore: true },
-        { portfolioId: portfolio.id, url: '/uploads/p2.jpg', order: 1, showInExplore: true },
-      ],
-    });
-    await invite(galleryTok, { artistId: 1 });
-
-    // 약력/작품 없이 약관 동의만으로 지원
-    const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-    expect(r.status).toBe(201);
-
-    const app = await testPrisma.application.findFirst({ where: { exhibitionId, userId: 1 } });
-    // 자동 수락이 아니라 평소대로 '접수' — 수락 여부는 갤러리가 결정한다
-    expect(app!.status).toBe('SUBMITTED');
-    expect(app!.biography).toBe('회화 작업을 합니다');
-    expect(JSON.parse(app!.artworkImages!)).toHaveLength(2);
-  });
-
-  it('간편 지원해도 약관 동의는 필수다', async () => {
-    const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
-    await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
-    });
-    await invite(galleryTok, { artistId: 1 });
-    const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send({ viaInvite: true });
-    expect(r.status).toBe(400);
-  });
-
-  it('포트폴리오에 작품이 없으면 간편 지원이 막힌다', async () => {
-    await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
-    await invite(galleryTok, { artistId: 1 });
-    const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
+  it('공모 상세에 invited 가 더는 실리지 않는다 · 옛 표에 초대가 남아 있어도 지원은 일반 검증을 탄다', async () => {
+    // 옛 데이터(표는 남겨 두었다) — 있어도 아무 길도 열리지 않아야 한다
+    await testPrisma.exhibitionInvite.create({ data: { exhibitionId, artistId: 1, senderId: 3, message: '옛 초대' } });
+    const detail = await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist1Tok}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body).not.toHaveProperty('invited');
+    // 예전 '간편 지원'(viaInvite) — 지금은 약력·작품이 없으면 그냥 400 이다
+    const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist1Tok}`)
       .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
     expect(r.status).toBe(400);
-    expect(r.body.error).toContain('포트폴리오');
-  });
-
-  it('초대받지 않았는데 viaInvite로 지원하면 일반 검증이 적용된다', async () => {
-    const r = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`)
-      .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-    expect(r.status).toBe(400);
-    expect(r.body.error).toContain('약력');
-  });
-
-  it('초대받은 작가가 지원하면 갤러리에 "초대한 작가가 지원" 알림이 간다', async () => {
-    const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
-    await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
-    });
-    await invite(galleryTok, { artistId: 1 });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-
-    const noti = await testPrisma.notification.findFirst({
-      where: { userId: 3, type: 'NEW_APPLICANT' }, orderBy: { id: 'desc' },
-    });
-    expect(noti!.message).toContain('초대한 작가');
-    // 작가에게 수락 알림은 가지 않는다(자동 수락 아님)
-    expect(await testPrisma.notification.count({ where: { userId: 1, type: 'APPLICATION_STATUS' } })).toBe(0);
-  });
-
-  it('공모 상세에 내 초대 여부(invited)가 내려온다 — 상세 페이지 간편 지원 버튼용', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const mine = await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist1Tok}`);
-    expect(mine.body.invited).toBe(true);
-    // 초대받지 않은 작가 / 비로그인은 false
-    const other = await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist2Tok}`);
-    expect(other.body.invited).toBe(false);
-    const anon = await request.get(`/api/exhibitions/${exhibitionId}`);
-    expect(anon.body.invited).toBe(false);
-  });
-
-  it('작가가 초대를 숨기면(DECLINED) 상세의 invited도 false가 된다', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const list = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    await request.patch(`/api/exhibitions/invites/${list.body.invites[0].id}`).set('Authorization', `Bearer ${artist1Tok}`).send({});
-    const r = await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist1Tok}`);
-    expect(r.body.invited).toBe(false);
-  });
-
-  it('지원자 목록에 초대 여부(invited)가 표시된다', async () => {
-    const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
-    await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
-    });
-    await invite(galleryTok, { artistId: 1 });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
-
-    const list = await request.get(`/api/exhibitions/${exhibitionId}/applications`).set('Authorization', `Bearer ${galleryTok}`);
-    expect(list.body.find((a: any) => a.userId === 1).invited).toBe(true);
-    expect(list.body.find((a: any) => a.userId === 2).invited).toBe(false);
-  });
-
-  it('하루 초대 상한(10명)을 넘기면 400', async () => {
-    // 같은 갤러리가 오늘 이미 10건을 보낸 상태로 만든다 (다른 공모여도 계정 기준으로 합산)
-    const others = [];
-    for (let i = 0; i < 10; i++) {
-      const u = await testPrisma.user.create({
-        data: { email: `bulk${i}@test.com`, name: `대상${i}`, role: 'ARTIST' },
-      });
-      others.push(u);
-      // 관문 충족(lib/inviteEligibility): 갤러리와 서로 이웃으로 만들어 초대 자격을 준다
-      await testPrisma.follow.createMany({ data: [
-        { followerId: 3, followingId: u.id }, { followerId: u.id, followingId: 3 },
-      ] });
-    }
-    const ex2 = await seedExhibition((await testPrisma.exhibition.findUnique({ where: { id: exhibitionId } }))!.galleryId!);
-    await testPrisma.exhibition.update({ where: { id: ex2.id }, data: { capacity: 50 } });
-    for (const u of others) {
-      const r = await request.post(`/api/exhibitions/${ex2.id}/invite`)
-        .set('Authorization', `Bearer ${galleryTok}`).send({ artistId: u.id });
-      expect(r.status).toBe(201);
-    }
-    // 11번째는 차단
-    const over = await invite(galleryTok, { artistId: 1 });
-    expect(over.status).toBe(400);
-    expect(over.body.error).toContain('하루에 최대 10명');
-  });
-
-  it('어제 보낸 초대는 오늘 상한에 포함되지 않는다', async () => {
-    const others = [];
-    for (let i = 0; i < 10; i++) {
-      others.push(await testPrisma.user.create({
-        data: { email: `old${i}@test.com`, name: `지난${i}`, role: 'ARTIST' },
-      }));
-    }
-    await testPrisma.exhibitionInvite.createMany({
-      data: others.map(u => ({
-        exhibitionId, artistId: u.id, senderId: 3,
-        createdAt: new Date(Date.now() - 2 * 86400000),
-      })),
-    });
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(201);
-  });
-
-  // 2026-09-27 — 정원은 '선정 인원'(수락된 수)이다. 지원만으로는 자리를 차지하지 않는다.
-  /** 작가2가 지원하고 갤러리가 수락해 자리 하나를 채운다 */
-  async function fillSeatWithArtist2() {
-    const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
-    const r = await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`)
-      .set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
-    expect(r.status).toBe(200);
-  }
-
-  it('선정 인원이 찬 공모에는 초대할 수 없다(400)', async () => {
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await fillSeatWithArtist2();
-    const r = await invite(galleryTok, { artistId: 1 });
-    expect(r.status).toBe(400);
-    expect(r.body.error).toContain('선정 인원');
-  });
-
-  it('지원만 들어온 건 자리를 차지하지 않는다 — 초대할 수 있고 초대도 목록에 남는다', async () => {
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(APPLY_BODY);
-    expect((await invite(galleryTok, { artistId: 1 })).status).toBe(201);
-    const r = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(r.body.invites).toHaveLength(1);
-    expect(r.body.invites[0].full).toBe(false);
-  });
-
-  it('선정 인원이 차면 받은 초대 목록에서 자동으로 사라진다', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const before = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(before.body.invites).toHaveLength(1);
-
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await fillSeatWithArtist2();
-
-    const after = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(after.body.invites).toHaveLength(0);
-    // DB에서 지운 게 아니라 목록에서만 감춘 것 (수락이 되돌려지면 다시 보여야 하므로)
-    expect(await testPrisma.exhibitionInvite.count({ where: { artistId: 1, status: 'SENT' } })).toBe(1);
-  });
-
-  it('이미 지원한 초대는 선정 인원이 차도 목록에 남는다(상태 확인 필요)', async () => {
-    const portfolio = await testPrisma.portfolio.upsert({ where: { userId: 1 }, create: { userId: 1 }, update: {} });
-    await testPrisma.portfolioImage.create({
-      data: { portfolioId: portfolio.id, url: '/uploads/p1.jpg', order: 0 },
-    });
-    await invite(galleryTok, { artistId: 1 });
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`)
-      .set('Authorization', `Bearer ${artist1Tok}`)
-      .send({ viaInvite: true, termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
-    await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`)
-      .set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
-
-    const r = await request.get('/api/exhibitions/invites/received').set('Authorization', `Bearer ${artist1Tok}`);
-    expect(r.body.invites).toHaveLength(1);
-    expect(r.body.invites[0].applied).toBe(true);
-    expect(r.body.invites[0].full).toBe(true);
-  });
-
-  it('선정 인원이 차면 공모 상세의 invited도 false가 된다(간편 지원 버튼 숨김)', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    expect((await request.get(`/api/exhibitions/${exhibitionId}`)
-      .set('Authorization', `Bearer ${artist1Tok}`)).body.invited).toBe(true);
-
-    await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { capacity: 1 } });
-    await fillSeatWithArtist2();
-
-    expect((await request.get(`/api/exhibitions/${exhibitionId}`)
-      .set('Authorization', `Bearer ${artist1Tok}`)).body.invited).toBe(false);
-  });
-
-  it('갤러리는 이미 초대한 작가 목록을 조회할 수 있다', async () => {
-    await invite(galleryTok, { artistId: 1 });
-    const r = await request.get(`/api/exhibitions/${exhibitionId}/invites`).set('Authorization', `Bearer ${galleryTok}`);
-    expect(r.body.artistIds).toEqual([1]);
+    expect(await testPrisma.application.count()).toBe(0);
   });
 });

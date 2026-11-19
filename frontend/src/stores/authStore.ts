@@ -4,6 +4,7 @@ import { queryClient } from '@/lib/queryClient';
 import { disarmHomepageNudge } from '@/lib/homepageNudge';
 import { clearArtLookForLogout } from '@/lib/artlook';
 import { forgetPushToken } from '@/lib/native';
+import { clearChatDrafts } from '@/lib/chatCache';
 
 interface User {
   id: number;
@@ -45,6 +46,7 @@ export const useAuthStore = create<AuthState>()(
         disarmHomepageNudge(); // 예약해 둔 '홈페이지 완성' 팝업은 그 계정의 것이다
         clearArtLookForLogout();   // ArtLook 으로 넘겨 둔 작품 목록·고른 크기도 — 같은 컴퓨터의 다음 사람에게 앞사람 작품이 뜬다
         forgetPushToken();     // 앱: 이 기기로 가던 알림을 끊는다(만료로 자동 로그아웃될 때도 — 토큰이 자격이라 인증 없이 지운다)
+        clearChatDrafts();     // ArtTalk 방마다 쓰던 글 — 같은 기기의 다음 사람에게 보이지 않게
         set({ token: null, user: null, isAuthenticated: false });
       },
       updateUser: (partial) => set((state) => ({

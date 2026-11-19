@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ArtTalk 대화방 메뉴</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #ffffff; color: #111827; font-family: 'Noto Sans KR', system-ui, sans-serif; overflow: hidden; position: relative">
+
+<header style="height: 56px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 4px; border-bottom: 1px solid #e5e7eb">
+<span style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex: none">
+<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+</span>
+<span style="width: 36px; height: 36px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: #4b5563; flex: none">윤</span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding-left: 6px">
+<span style="font-size: 15px; font-weight: 700">윤서진</span>
+<span style="font-size: 12px; color: #6b7280">작가 · 홈페이지 보기</span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px">
+<div style="display: flex; align-items: flex-start; gap: 8px">
+<span style="width: 30px; height: 30px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #4b5563; flex: none">윤</span>
+<p style="margin: 0; max-width: 250px; padding: 9px 12px; border-radius: 14px; background: #f3f4f6; font-size: 15px; line-height: 1.5">안녕하세요, 문의 감사합니다.</p>
+</div>
+<div style="display: flex; justify-content: flex-end; margin-top: 10px">
+<p style="margin: 0; max-width: 262px; padding: 9px 12px; border-radius: 14px; background: #111827; color: #ffffff; font-size: 15px; line-height: 1.5">전시 일정 알려 주시면 방문하겠습니다.</p>
+</div>
+</div>
+
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(17, 24, 39, 0.45)"></div>
+
+<div role="dialog" aria-modal="true" aria-label="대화방 메뉴" style="position: absolute; left: 0; right: 0; bottom: 0; background: #ffffff; border-radius: 16px 16px 0 0; padding: 8px 0 16px; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 6px 20px">
+<div style="display: flex; flex-direction: column; gap: 1px">
+<span style="font-size: 16px; font-weight: 700">윤서진</span>
+<span style="font-size: 12px; color: #6b7280">작가 · 1:1 대화</span>
+</div>
+<a href="Room.dc.html" aria-label="닫기" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</a>
+</div>
+
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #111827; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+홈페이지 보기
+</button>
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #111827; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"></path><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path><path d="m2 2 20 20"></path></svg>
+알림 끄기
+</button>
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #111827; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+대화 내용 찾기
+</button>
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #111827; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg>
+목록에서 숨기기
+</button>
+
+<div style="height: 1px; background: #e5e7eb; margin: 6px 20px"></div>
+
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #111827; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" x2="4" y1="22" y2="15"></line></svg>
+신고하기
+</button>
+<button type="button" style="height: 52px; border: 0; background: none; padding: 0 20px; display: flex; align-items: center; gap: 14px; font: inherit; font-size: 15px; color: #c4302b; text-align: left">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m4.9 4.9 14.2 14.2"></path></svg>
+차단하기
+</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

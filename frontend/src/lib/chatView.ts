@@ -133,3 +133,125 @@ export function timeLabel(iso: string, now: Date = new Date()): string {
     ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
     : d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
+
+/* ───────────────────────────── ArtTalk 개편(2026-11-19) — 날짜·시각·미리보기·찾기·링크 ─────────────────────────────
+ * 시각은 전부 **한국 시간(KST)** 으로 계산한다(규칙 14) — 브라우저 시간대에 맡기면 테스트·서버(UTC)와 날짜 경계가 어긋난다.
+ * Intl 을 쓰지 않고 +9시간으로 직접 계산한다(기기마다 'Asia/Seoul' 지원·표기가 달라 테스트가 흔들린다).
+ */
+const KST_MS = 9 * 3600_000;
+const kst = (iso: string | Date) => new Date(new Date(iso).getTime() + KST_MS);
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** KST 날짜 'YYYY-MM-DD' — 날짜 구분 줄의 기준 */
+export function dayKey(iso: string): string {
+  return kst(iso).toISOString().slice(0, 10);
+}
+
+/** 날짜 구분 줄 — '2026년 11월 19일 목요일' */
+export function dividerLabel(iso: string): string {
+  const d = kst(iso);
+  return `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${WEEKDAYS[d.getUTCDay()]}요일`;
+}
+
+/** i번째 말 위에 날짜 구분 줄을 그리는가 — 첫 말이거나 앞 말과 날짜(KST)가 다를 때 */
+export function showsDayDivider(messages: { createdAt: string }[], i: number): boolean {
+  return i === 0 || dayKey(messages[i - 1].createdAt) !== dayKey(messages[i].createdAt);
+}
+
+/** 말풍선 옆 시각 — 늘 '오후 8:46'(날짜는 구분 줄이 말한다). 예전 `timeLabel` 은 지난 말에 날짜만 찍고 시각을 버렸다 */
+export function bubbleTime(iso: string): string {
+  const d = kst(iso);
+  const h = d.getUTCHours();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h < 12 ? '오전' : '오후'} ${h12}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** 목록 시각 — 오늘 '오후 8:46' · 어제 '어제' · 올해 '11.17' · 그 전 '2025.11.17' */
+export function listTime(iso: string, now: Date = new Date()): string {
+  const day = dayKey(iso);
+  const today = dayKey(now.toISOString());
+  if (day === today) return bubbleTime(iso);
+  if (day === dayKey(new Date(now.getTime() - 86_400_000).toISOString())) return '어제';
+  const [y, m, dd] = day.split('-').map(Number);
+  return y === Number(today.slice(0, 4)) ? `${m}.${dd}` : `${y}.${m}.${dd}`;
+}
+
+/** 역할 꼬리표 — 대화 목록·머리. 운영 계정은 '아트링크'(관리자라는 말을 쓰지 않는다) */
+export function chatRoleTag(role?: string | null): string {
+  return role === 'ARTIST' ? '작가' : role === 'GALLERY' ? '갤러리' : role === 'VISITOR' ? '일반' : role === 'ADMIN' ? '아트링크' : '';
+}
+
+/** 1:1 방의 상대(없으면 null) */
+export function chatCounterpartOf<P extends { id: number }>(c: { kind: string; participants: P[] }, myId: number): P | null {
+  if (c.kind !== 'DIRECT') return null;
+  return c.participants.find((p) => p.id !== myId) ?? null;
+}
+
+/** 목록 미리보기 — 내가 보낸 건 '나: …', 단톡의 남의 말은 '보낸 사람: …' */
+export function listPreview(
+  c: { kind: string; lastMessage: { content: string; senderId: number; senderName?: string } | null },
+  myId: number,
+): string {
+  const m = c.lastMessage;
+  if (!m) return '';
+  const text = m.content.replace(/\s+/g, ' ').trim();
+  if (m.senderId === myId) return `나: ${text}`;
+  if (c.kind === 'GROUP' && m.senderName) return `${m.senderName}: ${text}`;
+  return text;
+}
+
+export type ChatListTab = 'all' | 'unread' | 'direct' | 'group';
+
+/** 목록 거르기 — 탭 + 찾기(방 이름·상대 이름, 대소문자 무시). 서버를 다시 부르지 않는다 */
+export function filterChats<C extends { kind: string; title: string | null; unread: number; participants: ChatViewUser[] }>(
+  chats: C[], tab: ChatListTab, q: string, myId: number,
+): C[] {
+  const needle = q.trim().toLowerCase();
+  return chats.filter((c) => {
+    if (tab === 'unread' && c.unread <= 0) return false;
+    if (tab === 'direct' && c.kind !== 'DIRECT') return false;
+    if (tab === 'group' && c.kind !== 'GROUP') return false;
+    if (!needle) return true;
+    return chatTitle(c, myId).toLowerCase().includes(needle);
+  });
+}
+
+/**
+ * 말 속 주소를 누를 수 있게 — 글을 토막 내 [글 | 주소] 로 돌려준다(화면이 React 요소로 그린다).
+ * ⚠️ HTML 로 넣지 말 것 — 남이 쓴 글이다. http·https 만 주소로 친다(javascript: 등은 그냥 글).
+ * 끝에 붙은 문장부호(마침표·쉼표·닫는 괄호 등)는 주소에서 뗀다 — '사이트는 https://a.com.' 의 마침표가 주소에 붙으면 404 다.
+ */
+export type TextPart = { kind: 'text'; value: string } | { kind: 'link'; value: string };
+export function linkParts(text: string): TextPart[] {
+  const out: TextPart[] = [];
+  const re = /https?:\/\/[^\s<>"']+/gi;
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    let url = m[0];
+    const trail = /[.,!?;:)\]}'"…。、]+$/.exec(url);
+    if (trail) {
+      // 주소 안에 여는 괄호가 있으면 닫는 괄호 하나는 주소의 일부다(위키 주소 등)
+      let cut = trail[0];
+      if (cut.startsWith(')') && url.slice(0, -cut.length).includes('(')) cut = cut.slice(1);
+      url = cut ? url.slice(0, -cut.length) : url;
+    }
+    const start = m.index ?? 0;
+    if (start > last) out.push({ kind: 'text', value: text.slice(last, start) });
+    out.push({ kind: 'link', value: url });
+    last = start + url.length;
+  }
+  if (last < text.length) out.push({ kind: 'text', value: text.slice(last) });
+  return out.length ? out : [{ kind: 'text', value: text }];
+}
+
+/** 맥락 카드 이름표 */
+export const CHAT_REF_LABEL: Record<string, string> = {
+  WORK: '작품 문의',
+  EXHIBITION: '공모 문의',
+  SHOW: '전시 문의',
+  GALLERY: '갤러리 문의',
+};
+
+/** 입력 칸 글자 수 — 1,800 부터 '1,812 / 2,000' 을 보여 주고, 넘으면 [보내기]를 잠근다(말없이 자르지 않는다) */
+export const CHAT_MAX_LEN = 2000;
+export const CHAT_COUNT_FROM = 1800;

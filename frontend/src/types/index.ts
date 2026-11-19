@@ -511,29 +511,6 @@ export interface ArtworkScrap {
   image: ExploreImage;
 }
 
-// 갤러리가 보낸 공모 초대 (작가가 받은 목록)
-export interface ExhibitionInvite {
-  id: number;
-  message: string | null;
-  status: 'SENT' | 'APPLIED' | 'DECLINED';
-  createdAt: string;
-  applied: boolean;
-  closed: boolean;
-  /** 정원이 찬 공모 — 지원하지 않은 초대는 서버가 목록에서 제외한다 */
-  full?: boolean;
-  exhibition: {
-    id: number;
-    title: string;
-    type: string;
-    region: string;
-    deadline: string;
-    imageUrl?: string | null;
-    /** 간편 지원 모달에서 갤러리가 물은 추가 질문만 받기 위해 함께 내려온다 */
-    customFields?: CustomField[] | null;
-    gallery: { id: number; name: string };
-  };
-}
-
 // 전시 참여 작가 (userId 있으면 ArtLink 유저 연동)
 export interface ArtistEntry {
   name: string;

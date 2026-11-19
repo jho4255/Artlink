@@ -3228,3 +3228,37 @@ RegisterShell(max-w-6xl)
 ### 검증
 frontend `registrationForms.test.ts`(21) · `listings.test.ts`(addressCheck 보완) · 소스 가드 이동(attachments·capacityMask·richText·scheduleCalendar) · `utils`·`submissionFlow`('접수') ·
 e2e `83-registration-and-shows.spec.ts`(5) + 07·15·24·25·51·60·67·70·77 · 하니스 `opencall/reg-flow.cjs`(주소 검색까지 눌러 본다 — 공개 예시 주소 '판교역로 166')·`show-shot.cjs` — 크롬·사파리 엔진.
+
+## ArtTalk 개편 (2026-11-19, CLAUDE.md 규칙 87)
+
+사용자 신고("갤러리 계정으로 작가 홈페이지에서 문의를 보냈는데 ArtTalk 에 아무것도 없다가 한참 뒤에 나타났다")에서 시작해 전수 점검 → 목업 → 계획
+(`scratchpad/arttalk-renewal/PLAN.md`, 목업 캔버스 https://claude.ai/artifact/5gk1T5nTDEXbKvb4tKQeY1) → 구현. 같은 날 1:1 공모 초대를 통째로 없앴다.
+
+### 신고된 버그 — 캐시
+보내는 쪽(문의 창·작품 창·공모 상세)이 `['chats']` 를 무효화하지 않았고 목록 쿼리는 전역 staleTime 5분 — 앱 안에서 ArtTalk 로 돌아오면 옛 목록이 그대로였다.
+지금은 `/chats` 에 쓰는 화면이 전부 `lib/chatCache.ts chatsChanged(qc)` 를 부르고(소스 가드), 목록은 `staleTime 0 · refetchOnMount 'always' · refetchOnWindowFocus` + 보이는 동안 10초.
+방을 열면 `chatRead(qc, id)` — 목록의 그 방 안 읽음 0 + 배지·벨 다시 받기.
+
+### 서버
+| 무엇 | 어디 |
+|---|---|
+| 맥락 카드 `ChatMessage.ref` (WORK·EXHIBITION·SHOW·GALLERY — 화면은 `{type,id}`, 카드는 서버가) | `lib/chatRef.ts` `resolveChatRef`·`readChatRef` |
+| 보내기 한도(30/분 메모리) · 새 1:1 방 30/24h(DB, `withKeyLock(directChats)` 안에서 `tx` 만) · 차단 판정 | `lib/chatSafety.ts` |
+| 신고 사본(앞뒤 4줄 / 사람 신고는 최근 10줄) · 관리자 알림 `CHAT_REPORT` | `lib/chatReport.ts` · `POST /chats/:id/report` · `routes/chatReport.ts`(`/api/chat-reports`, 관리자) |
+| 차단 `UserBlock` | `routes/block.ts`(`/api/blocks`) — 1:1 보내기·새 방 403(양쪽), 막은 사람의 목록·배지에서 그 방을 뺀다, 단톡은 그대로 |
+| 숨기기 `ChatParticipant.hiddenAt` | `PATCH /chats/:id/hidden` — 새 말이 오면 다시 보인다 |
+| 빈 1:1 방은 목록에서 뺀다 · 탈퇴 상대 · 방 정보(`counterpart`·`operatorIds`·`context`·`canSend`·`blockReason`) | `lib/chat.ts` `listChats`·`readChat`·`chatRoomMeta`·`directSendBlock` |
+| 알림 합치기 경쟁 — 받는 사람마다 `withKeyLock(chatNotes)` | `lib/chat.ts notifyChatMessage` |
+마이그레이션 `20261119120000_arttalk_renewal`(UserBlock · ChatReport · hiddenAt · ref). 1:1 초대 라우트·`lib/inviteEligibility.ts` 삭제(`ExhibitionInvite` 표는 남김).
+
+### 화면
+- `pages/MessagesPage.tsx` — 목록 쿼리 · 1024px 미만은 목록 / 대화 전용 화면(`hooks/useChatBare.ts` → `Layout` 이 틀을 빼고, 방은 `visualViewport` 높이 + 스크롤 잠금),
+  그 이상은 두 칸(`useFillHeight`). [←]는 목록에서 왔으면 `navigate(-1)`, 아니면 `replace`.
+- `hooks/useChatRoom.ts` — 방 하나의 상태(150개 → 4초 `?after=` 병합 · 보이기·포커스·푸시 `pokeChat` 이면 곧바로) · 보내는 말 줄 세우기 · 실패/다시 보내기 · 403 → 보낼 수 없음.
+- `components/chat/` — `ChatList` · `ChatRoom` · `MessageList`(따라 내려가기·[새 메시지 N]·날짜 줄) · `MessageBubble`(길게 누르기·주소 토막·첨부) · `Composer`(여러 줄·한글 조합·글자 수·쓰던 글)
+  · `RefCard` · `RoomSheets`(방 메뉴·말 메뉴·신고·참여자) · `ChatSheet`(창 하나) · `NeighborPicker` · `ChatAvatar`(이름 첫 글자 · 포스터) · `BlockedUsersSection`.
+- 관리자 `components/admin/ChatReportsSection.tsx` · 문의 창 `InquirySheet` 에 `context`(공모·갤러리 카드).
+- 메뉴 — `MYPAGE_TOP_LINKS`(ArtTalk 맨 위) · 1:1 문의는 로그아웃 줄(PC 사이드바·휴대폰 [메뉴] 같다).
+
+### 검증
+backend `chat-renewal.test.ts`(25) · frontend `arttalk.test.ts`(19) · `chatView.test.ts` · e2e `85-arttalk.spec.ts`(12) · `29`·`04`·`26`·`30`·`33`·`34`·`35`·`40`.

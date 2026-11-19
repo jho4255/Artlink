@@ -34,6 +34,8 @@ import reportRoutes from './routes/report';
 import adminRoutes from './routes/admin';
 import kanbanRoutes from './routes/kanban';
 import chatRoutes from './routes/chat';
+import chatReportRoutes from './routes/chatReport';
+import blockRoutes from './routes/block';
 import communityRoutes from './routes/community';
 import handleRoutes from './routes/handle';
 import followRoutes from './routes/follow';
@@ -181,6 +183,9 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/chats', chatRoutes);
+// ArtTalk 신고(관리자) · 차단(2026-11-19)
+app.use('/api/chat-reports', chatReportRoutes);
+app.use('/api/blocks', blockRoutes);
 app.use('/api/community', communityRoutes);
 // 주소 `/@handle` 이 작가인지 갤러리인지 (2026-09-16)
 app.use('/api/handles', handleRoutes);

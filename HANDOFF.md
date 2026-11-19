@@ -52,6 +52,10 @@ cd frontend && npm test    # 46 통과
 - ⚠️ 알려진 flaky 테스트 1건: `exhibition-extended.test.ts > 상세 조회 시 gallery 정보 포함` — 동시성 테스트 데이터 누수로 가끔 실패. 단독 재실행하면 통과(회귀 아님).
 
 ### 0-6. 최근 변경 이력 (이번 인계 직전 세션들, 최신순)
+- (2026-11-19) **ArtTalk 개편 · 1:1 공모 초대 폐지(미커밋)** — 신고된 버그(문의를 보낸 뒤 ArtTalk 목록에 한참 안 뜸)는 목록 캐시가 원인이었다(`chatsChanged`·staleTime 0).
+  휴대폰 대화 전용 화면 · PC 두 칸 · 여러 줄 입력 · 실패하면 [다시 보내기] · [새 메시지 N] · 맥락 카드(작품·공모) · 차단·신고·숨기기 · 빈 1:1 방은 목록에서 뺌 ·
+  메뉴 맨 위 ArtTalk · 1:1 문의는 로그아웃 줄. 1:1 공모 초대는 서버·화면 모두 없앴다(초대 코드는 그대로, `ExhibitionInvite` 표는 남김). 마이그레이션 `20261119120000_arttalk_renewal`.
+  상세 CLAUDE.md 규칙 87 · architecture.md 「ArtTalk 개편」 · 계획 `scratchpad/arttalk-renewal/PLAN.md`.
 - (2026-11-11 밤) **ArtTalk 잘림 수정 · 대화방 알림 끄기 · 카카오톡식 알림 · 작품 정보 [다음 작품] 맴돌기 수정 · 화면 전수 점검 하니스(미커밋)** — 로컬 DB 는 실서버 복제본(`artlink_prod`, 9월 말 판)으로
   다시 올렸다. 백엔드는 `DATABASE_URL=…/artlink_prod npm run dev`(`.env` 는 데모 그대로). 상세 `mobile/PLAN.md` §6.
 - (2026-11-11) **안드로이드 앱 — Firebase 연결, 실제 푸시 수신 확인(미커밋)** — 프로젝트 `artlink-56a2b`, 키 파일은 저장소 밖 `~/firebase/`, 로컬 `backend/.env` 에만 넣었다(Render 는 웹 배포 때).

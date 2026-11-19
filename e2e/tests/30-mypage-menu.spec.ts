@@ -45,8 +45,11 @@ test.describe('lg↑ 전 페이지 우측 사이드바', () => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage');
     const labels = await page.locator('aside nav a').allInnerTexts();
-    const cleaned = labels.map(t => t.replace(/\s+/g, ' ').trim());
+    // ArtTalk 옆에는 안 읽은 대화 수가 붙을 수 있다(다른 스펙이 남긴 대화) — 이름만 본다
+    const cleaned = labels.map(t => t.replace(/\s+/g, ' ').trim()).map(t => t.replace(/^ArtTalk.*$/, 'ArtTalk'));
+    // 2026-11-19: ArtTalk 이 맨 위(PC·휴대폰 같다), 1:1 문의는 맨 아래 로그아웃 줄로
     expect(cleaned).toEqual([
+      'ArtTalk',
       '프로필', '홈페이지', '포트폴리오PDF 만들기', '찜 목록', '내 전시', 'ArtLook액자 걸기',
       '1:1 문의',
     ]);
@@ -105,13 +108,18 @@ test.describe('lg↑ 전 페이지 우측 사이드바', () => {
     await expect(all, '한 화면에 로그아웃이 둘 이상 보인다').toHaveCount(1);
     await expect(page.locator('aside nav').getByRole('button', { name: '로그아웃' })).toBeVisible();
 
-    // 메뉴의 마지막 요소여야 한다
-    const isLast = await page.evaluate(() => {
+    // 메뉴의 마지막 줄이어야 한다 — [1:1 문의]와 같은 줄(광고 칸은 그 아래일 수 있다)
+    const row = await page.evaluate(() => {
       const nav = document.querySelector('aside nav')!;
       const btn = Array.from(nav.querySelectorAll('button')).find(b => b.textContent?.includes('로그아웃'))!;
-      return nav.lastElementChild!.contains(btn);
+      const row = btn.parentElement!;
+      // 메뉴 링크는 전부 이 줄보다 앞이다(광고 칸은 링크가 아니라 버튼이라 뒤에 와도 된다)
+      const before = Array.from(nav.querySelectorAll('a')).filter((a) => !row.contains(a))
+        .every((a) => row.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_PRECEDING);
+      return { last: before, withInquiry: row.textContent!.includes('1:1 문의') };
     });
-    expect(isLast).toBe(true);
+    expect(row.last, '로그아웃이 메뉴 맨 아래 줄이 아니다').toBe(true);
+    expect(row.withInquiry, '[1:1 문의]가 로그아웃과 같은 줄이 아니다').toBe(true);
     await ctx.close();
   });
 
@@ -141,7 +149,7 @@ test.describe('lg↓ Navbar [메뉴] 안', () => {
     await ctx.close();
   });
 
-  test('모바일 메뉴에 마이페이지 항목과 로그아웃이 있다', async ({ browser }) => {
+  test('모바일 메뉴에 마이페이지 항목과 로그아웃이 있다 — ArtTalk 이 맨 위, [1:1 문의]는 로그아웃 줄(2026-11-19)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(MOBILE);
     await page.goto('/');
@@ -150,6 +158,16 @@ test.describe('lg↓ Navbar [메뉴] 안', () => {
     const body = page.locator('body');
     await expect(body).toContainText('내 전시', { timeout: 5000 });
     await expect(body).toContainText('로그아웃');
+    // 메뉴 안 순서: ArtTalk → (My Page) → … → 1:1 문의 · 로그아웃
+    const order = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll('a, button')).filter((e) => (e as HTMLElement).offsetParent !== null);
+      const idx = (re: RegExp) => els.findIndex((e) => re.test((e.textContent || '').replace(/\s+/g, '')));
+      return { talk: idx(/^ArtTalk\d*\+?$/), mine: idx(/^내전시$/), inquiry: idx(/^1:1문의$/), logout: idx(/^로그아웃$/) };
+    });
+    expect(order.talk, 'ArtTalk 이 메뉴에 없다').toBeGreaterThanOrEqual(0);
+    expect(order.talk).toBeLessThan(order.mine);
+    expect(order.inquiry).toBeGreaterThan(order.mine);
+    expect(order.logout).toBeGreaterThan(order.inquiry);
     await ctx.close();
   });
 });

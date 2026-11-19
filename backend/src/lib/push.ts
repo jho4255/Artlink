@@ -40,6 +40,7 @@ export const PUSH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const PUSH_TITLES: Record<string, string> = {
   CHAT_MESSAGE: 'ArtTalk',            // 본문이 '…님의 새 메시지: …' 라 '새 메시지' 로 두면 같은 말이 겹친다 — 메시지 화면 이름으로
+  CHAT_REPORT: 'ArtTalk 신고',         // 관리자에게 — 본문이 'ArtTalk 신고가 들어왔어요: 사유'(2026-11-19)
   NEW_MESSAGE: '새 메시지',
   INQUIRY_NEW: '1:1 문의',             // 본문이 '새 1:1 문의가 등록되었습니다'
   INQUIRY_REPLY: '문의 답변',

@@ -140,6 +140,8 @@ export function nudgePlace(pathname: string, search: string): NudgePlace {
   if (pathname === '/login' || pathname.startsWith('/auth/')) return 'wait';
   if (pathname.startsWith('/join/')) return 'wait';
   if (/^\/exhibitions\/[^/]+\/apply\/?$/.test(pathname)) return 'wait';
+  // ArtTalk — 대화하는 중에 덮지 않는다(2026-11-19). 나가면 뜬다
+  if (pathname === '/messages') return 'wait';
   if (pathname === '/mypage' && new URLSearchParams(search).get('tab') === 'homepage-edit') return 'done';
   return 'show';
 }

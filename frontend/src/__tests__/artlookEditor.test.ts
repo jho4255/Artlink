@@ -47,8 +47,12 @@ describe('휴대폰 편집 전용 화면 — 상단바·하단 탭바 없이(102
 
   it('Layout 은 편집 화면에서 상단바·사이드바·푸터·하단 탭바를 그리지 않는다(아래 여백도)', () => {
     const lay = src('components/layout/Layout.tsx');
-    expect(lay).toMatch(/const bare = useArtLookBare\(\);\n\s*const chrome = !site && !bare;/);
-    for (const part of ['{chrome && <Navbar />}', '{chrome && <MyPageSideMenu />}', '{chrome && <footer', '{chrome && <BottomTabBar />}']) expect(lay, part).toContain(part);
+    // 2026-11-19 — ArtTalk 휴대폰 대화 전용 화면(useChatBare)도 같은 식으로 틀을 뺀다
+    expect(lay).toMatch(/const bare = useArtLookBare\(\);[\s\S]*const chrome = !site && !bare && !chatBare;/);
+    for (const part of ['{chrome && <Navbar />}', '{chrome && <MyPageSideMenu />}', '{chrome && <BottomTabBar />}']) expect(lay, part).toContain(part);
+    // 푸터는 틀이 있을 때만(그리고 ArtTalk 은 화면 높이를 다 써서 빼고)
+    expect(lay).toMatch(/const footer = chrome && pathname !== '\/messages';/);
+    expect(lay).toContain('{footer && <footer');
     expect(lay).toMatch(/\$\{chrome \? 'pb-\[calc\(3\.5rem\+1px\+env\(safe-area-inset-bottom\)\)\] lg:pb-0' : ''\}/);
   });
 

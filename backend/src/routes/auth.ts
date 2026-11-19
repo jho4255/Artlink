@@ -734,6 +734,9 @@ router.delete('/me', authenticate, validate(withdrawSchema), async (req, res, ne
       await tx.pushToken.deleteMany({ where: { userId } });
       // 받은 홈페이지 문의 — 남이 남긴 이름·연락처다. 받을 사람이 없어졌으니 남겨 둘 이유가 없다(2026-11-14, 규칙 82)
       await tx.homepageInquiry.deleteMany({ where: { ownerId: userId } });
+      // ArtTalk 차단(2026-11-19) — 양쪽 다. 탈퇴한 사람과는 어차피 대화할 수 없고(목록엔 '탈퇴한 회원'),
+      // 남겨 두면 상대의 '차단한 사람' 목록에 빈 이름만 남는다. 신고 기록(ChatReport)은 남긴다(운영 기록)
+      await tx.userBlock.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } });
       // 2) 개인정보 익명화 + 소프트 삭제 마킹
       await tx.user.update({
         where: { id: userId },

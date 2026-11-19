@@ -19,22 +19,19 @@
  */
 
 /**
- * 'INVITED' 는 지원(Application)이 아니라 **받은 초대**다.
- * 예전엔 [받은 초대] 라는 별도 메뉴 탭이었는데, 초대도 결국 내 전시의 한 단계(초대 → 참여 → 진행)라
- * 여기 첫 탭으로 합쳤다. 다른 버킷과 달리 `groupMyExhibitions` 가 채우지 않는다 — 목록이 다른 API 다.
+ * ⚠️ '받은 초대'(INVITED) 탭은 2026-11-19 에 없앴다 — 1:1 공모 초대 기능을 통째로 뗐다(사용자 결정, 실서버 사용 0건).
+ *    이미 선정된 작가가 들어오는 길은 초대 **코드**(아래 '초대 코드가 있나요?')다. 되살리지 말 것.
  */
-export type MyExhibitionBucket = 'INVITED' | 'REVIEWING' | 'ONGOING' | 'CLOSED';
+export type MyExhibitionBucket = 'REVIEWING' | 'ONGOING' | 'CLOSED';
 
 /** 탭 이름은 갤러리 [내 공모]의 '진행 중 · 종료' 와 같은 말을 쓴다(2026-09-29 — 예전엔 '진행중·진행종료') */
 export const MY_EXHIBITION_TABS: { key: MyExhibitionBucket; label: string }[] = [
-  { key: 'INVITED', label: '받은 초대' },
   { key: 'REVIEWING', label: '심사 중' },
   { key: 'ONGOING', label: '진행 중' },
   { key: 'CLOSED', label: '종료' },
 ];
 
 export const MY_EXHIBITION_EMPTY: Record<MyExhibitionBucket, string> = {
-  INVITED: '받은 초대가 없어요.',
   REVIEWING: '결과를 기다리는 지원이 없어요.',
   ONGOING: '진행 중인 전시가 없어요.',
   CLOSED: '정산까지 끝난 전시가 없어요.',
@@ -74,8 +71,7 @@ export function bucketOf(a: MyApplicationLike): MyExhibitionBucket {
 }
 
 export function groupMyExhibitions<T extends MyApplicationLike>(apps: T[]): Record<MyExhibitionBucket, T[]> {
-  // INVITED 는 지원이 아니라 초대라 여기서 채우지 않는다(호출부가 따로 넣는다)
-  const out: Record<MyExhibitionBucket, T[]> = { INVITED: [], REVIEWING: [], ONGOING: [], CLOSED: [] };
+  const out: Record<MyExhibitionBucket, T[]> = { REVIEWING: [], ONGOING: [], CLOSED: [] };
   for (const a of apps) out[bucketOf(a)].push(a);
   return out;
 }

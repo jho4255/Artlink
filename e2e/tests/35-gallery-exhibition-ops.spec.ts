@@ -1,12 +1,12 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, createExhibition, seedGalleryLike, settle, cardToggle } from '../lib/helpers';
+import { openAs, tokenFor, createExhibition, settle, cardToggle } from '../lib/helpers';
 
 /**
  * 갤러리 [내 공모] 카드 — 2026-08-28 개편분.
  *
  *  · [상세 운영]은 **페이지 이동이 아니라 카드 안에서 접었다폈다**(OperationBody 를 임베드).
  *  · [추가 질문] 수정은 카드 상단 버튼에서 빼고 **[지원자 관리] 패널 안**으로 옮겼다.
- *  · [작가 초대]: 관심 작품(하트)을 저장한 작가를 이 공모에 바로 초대 — 지원자 관리 패널 안.
+ *  · [작가 초대]는 2026-11-19 에 없앴다(1:1 공모 초대 폐지) — 패널 안에 남은 건 [추가 질문 수정]과 초대 **코드** 줄.
  *  · 2026-09-29: 두 버튼이 카드 아래 줄의 토글 [지원자 N] · [운영] 이 됐다(`aria-expanded`). 전용 운영 페이지의
  *    머리말은 '상세 운영' 이 아니라 **공모 제목**이다.
  */
@@ -83,58 +83,25 @@ test.describe('지원자 관리 패널 안의 도구들', () => {
     const api = await pwRequest.newContext();
     title = `패널도구검증 ${Date.now()}`;
     await createExhibition(api, { title, galleryId: await galleryId(api), description: '패널 도구 E2E' });
-    // 갤러리가 새 작품(작가 소유)에 하트 → 초대 후보 확보 (토글 취소 방지)
-    await seedGalleryLike(api);
     await api.dispose();
   });
 
-  test('★ [추가 질문]·[작가 초대]는 카드 상단이 아니라 지원자 관리 패널 안에 있다', async ({ browser }) => {
+  test('★ [추가 질문 수정]은 카드 상단이 아니라 지원자 관리 패널 안 · [작가 초대]는 어디에도 없다(2026-11-19)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=my-exhibitions');
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
     const card = cardFor(page, title);
-    // 접힌 상태: 상단에 [추가 질문]/[작가 초대] 버튼이 보이지 않는다
+    // 접힌 상태: 상단에 [추가 질문] 버튼이 보이지 않는다
     await expect(card.getByRole('button', { name: /추가 질문/ })).toHaveCount(0);
-    await expect(card.getByRole('button', { name: '작가 초대' })).toHaveCount(0);
 
-    // [지원자] 를 펼치면 안에서 나타난다
+    // [지원자] 를 펼치면 안에서 나타난다 — 초대 코드 줄도 그대로
     await cardToggle(card, 'applicants').click();
     await expect(card.getByRole('button', { name: /추가 질문 수정/ })).toBeVisible({ timeout: 10000 });
-    await expect(card.getByRole('button', { name: '작가 초대' })).toBeVisible();
-    await ctx.close();
-  });
-
-  test('★ [작가 초대] → 하트 누른 작가를 골라 초대한다', async ({ browser }) => {
-    const { page, ctx } = await openAs(browser, 'gallery');
-    await page.setViewportSize(DESKTOP);
-    await page.goto('/mypage?tab=my-exhibitions');
-    await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
-
-    const card = cardFor(page, title);
-    await cardToggle(card, 'applicants').click();
-    await card.getByRole('button', { name: '작가 초대' }).click();
-
-    await expect(page.getByRole('heading', { name: '작가 초대' })).toBeVisible({ timeout: 8000 });
-    // 관심 작품(하트)을 저장한 작가를 초대할 수 있다는 안내
-    await expect(page.locator('body')).toContainText('관심 작품(하트)을 저장한 작가');
-
-    // 첫 작가 선택 → 초대
-    await page.locator('.fixed button').filter({ has: page.locator('img') }).first().click();
-    await page.getByRole('button', { name: '초대 보내기' }).click();
-    await expect(page.locator('body')).toContainText('초대를 보냈습니다', { timeout: 10000 });
-
-    // 서버에 초대가 실제로 생겼는지
-    const api = await pwRequest.newContext();
-    const list = await (await api.get(`${API}/exhibitions?search=${encodeURIComponent(title)}`)).json();
-    const ex = (Array.isArray(list) ? list : list.exhibitions).find((e: any) => e.title === title);
-    const invites = await (await api.get(`${API}/exhibitions/invites/received`, {
-      headers: { Authorization: `Bearer ${tokenFor('artist')}` },
-    })).json();
-    expect((invites.invites ?? []).some((i: any) => i.exhibition.id === ex.id), '작가에게 초대가 도착했다').toBe(true);
-    expect(userIds().artist).toBeGreaterThan(0);
-    await api.dispose();
+    await expect(card).toContainText('초대 코드');
+    await expect(card.getByRole('button', { name: '작가 초대' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '작가 초대' })).toHaveCount(0);
     await ctx.close();
   });
 });

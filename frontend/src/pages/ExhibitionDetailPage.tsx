@@ -28,7 +28,8 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { getDday, regionLabels, REGION_CODES, exhibitionTypeLabels, compressImage, MAX_IMAGE_BYTES, canFavorite, cn, capacityText } from '@/lib/utils';
 import ImageLightbox from '@/components/shared/ImageLightbox';
-import InviteApplyModal from '@/components/shared/InviteApplyModal';
+import InquirySheet from '@/components/homepage/InquirySheet';
+import { resolveHomepageTheme, themeVarStyle } from '@/lib/homepageTheme';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { DeleteRequestDialog, DeleteRequestLine } from '@/components/shared/DeleteRequest';
 import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
@@ -78,7 +79,6 @@ type ExhibitionDetail = Exhibition & {
   } | null;
   promoPhotos?: PromoPhoto[];
   /** 이 공모에 초대받은 작가인지 (본인 기준) — 지원 버튼을 '간편 지원'으로 바꾼다 */
-  invited?: boolean;
   /**
    * 마감 판정에 필요. **마감일과 별개다** — 마감일이 남았는데 갤러리가 수동으로 모집을 닫거나
    * 전시를 종료한 경우가 있다. 이걸 안 보면 그런 공고에 지원 버튼이 그대로 뜬다.
@@ -91,6 +91,9 @@ type ExhibitionDetail = Exhibition & {
    */
   submissionDeadline?: string | null;
 };
+
+/** [갤러리에 문의] 창의 색 — 사이트 기본 톤(갤러리 홈페이지와 같은 값) */
+const SITE_THEME = resolveHomepageTheme(null);
 
 export default function ExhibitionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -107,8 +110,8 @@ export default function ExhibitionDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   // 이미지 확대 Lightbox 상태
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
-  // 초대받은 공모는 지원서 없이 포트폴리오로 지원(간편 지원). 초대 안 받은 작가는 지원서 페이지로.
-  const [showInviteApply, setShowInviteApply] = useState(false);
+  // [갤러리에 문의] — 문의 창(ArtTalk 맥락 카드: 이 공모). 예전엔 빈 방만 열어 어느 공모 얘기인지가 없었다(2026-11-19)
+  const [askOpen, setAskOpen] = useState(false);
   // 초대 코드 입력칸(접어 둔다) — 이미 선정된 작가용 보조 입구(2026-09-27)
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -130,7 +133,7 @@ export default function ExhibitionDetailPage() {
     setIsEditingDesc(false);
     setIsEditingTitle(false);
     setLightbox(null);
-    setShowInviteApply(false);
+    setAskOpen(false);
     setShowCodeInput(false);
   }
 
@@ -223,15 +226,6 @@ export default function ExhibitionDetailPage() {
     titleMutation.mutate(t);
   };
 
-  /* 갠톡 열기 — 이미 있으면 그 방으로 (서버가 판단).
-     ⚠️ 예전에는 여기서 옛 쪽지 API(`POST /messages`)를 불렀는데, 대화가 ArtTalk 으로 바뀐 뒤로는
-     그렇게 보낸 글을 **아무도 읽을 수 없었다**("전송되었습니다" 만 뜨고 어디에도 안 남는다). */
-  const openChat = useMutation({
-    mutationFn: (ownerId: number) => api.post('/chats/direct', { userId: ownerId }).then(r => r.data),
-    onSuccess: (data: { id: number }) => navigate(`/messages?chat=${data.id}`),
-    onError: (err: any) => toast.error(err.response?.data?.error || '대화를 열지 못했습니다.'),
-  });
-
   const handleDelete = async () => {
     try {
       const blocked = await checkDeletable('exhibition', Number(id));
@@ -309,20 +303,6 @@ export default function ExhibitionDetailPage() {
         // ⚠️ 주어를 '아트링크'로 둘 것 — 공모마다 갤러리가 받는 참여비가 있어, '모든 서비스 무료'만 쓰면 그 공모가 무료라고 읽힌다
         sub: <>작가 회원은 아트링크의 모든 서비스를 <b className="font-semibold text-accent">무료</b>로 이용해요</>,
       };
-    } else if (exhibition.invited) {
-      applyBar = {
-        note: '초대받은 공모예요. 지원서 없이 내 포트폴리오로 지원돼요.',
-        secondary: (
-          <button type="button" onClick={() => navigate(`/exhibitions/${id}/apply`)} className="min-h-[44px] text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900">
-            지원서 직접 쓰기
-          </button>
-        ),
-        primary: (
-          <button type="button" onClick={() => setShowInviteApply(true)} className={primaryCls}>
-            <Send size={15} aria-hidden /> 간편 지원
-          </button>
-        ),
-      };
     } else {
       // 안내 문구 없이 버튼만(2026-10-03 사용자 요청 — '홈페이지에 적은 약력·작품으로 지원서가 미리 채워져요' 삭제)
       applyBar = {
@@ -356,7 +336,7 @@ export default function ExhibitionDetailPage() {
   const openPoster = (index: number) => { if (heroImages.length) setLightbox({ images: heroImages, index }); };
 
   const askButton = canAsk && (
-    <button type="button" onClick={() => openChat.mutate(host!.ownerId!)} disabled={openChat.isPending} className={DETAIL_ACTION}>
+    <button type="button" onClick={() => setAskOpen(true)} className={DETAIL_ACTION}>
       <MessageCircle size={16} aria-hidden /> 갤러리에 문의
     </button>
   );
@@ -758,14 +738,13 @@ export default function ExhibitionDetailPage() {
         onClose={() => setDeleteBlocked(null)}
       />
 
-      {/* 초대 간편 지원 모달 */}
-      {showInviteApply && (
-        <InviteApplyModal
-          exhibitionId={exhibition.id}
-          exhibitionTitle={exhibition.title}
-          galleryName={exhibition.gallery?.name ?? '아트링크'}
-          customFields={exhibition.customFields}
-          onClose={() => setShowInviteApply(false)}
+      {/* 갤러리에 문의 — 회원은 ArtTalk(이 공모가 맥락 카드로 실린다) */}
+      {askOpen && host?.ownerId && (
+        <InquirySheet
+          target={{ ownerId: host.ownerId, name: host.name ?? '갤러리', guestEnabled: false }}
+          context={{ type: 'EXHIBITION', id: exhibition.id, title: exhibition.title, image: exhibition.imageUrl ?? null, label: '공모 문의' }}
+          themeVars={themeVarStyle(SITE_THEME)}
+          onClose={() => setAskOpen(false)}
         />
       )}
 

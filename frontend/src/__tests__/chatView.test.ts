@@ -14,6 +14,16 @@ import {
   timeLabel,
   mergeMessages,
   applyReadState,
+  dayKey,
+  dividerLabel,
+  showsDayDivider,
+  bubbleTime,
+  listTime,
+  listPreview,
+  filterChats,
+  linkParts,
+  chatRoleTag,
+  chatCounterpartOf,
 } from '@/lib/chatView';
 
 const msg = (senderId: number, createdAt: string) => ({ senderId, createdAt });
@@ -229,5 +239,93 @@ describe('applyReadState — 폴링에 없는 옛 메시지의 읽음 표시 되
     const readers = [{ userId: 1, lastReadAt: null }, { userId: 2, lastReadAt: null }];
     const got = applyReadState([mine], 'DIRECT', readers, 1);
     expect(got[0]).toBe(mine);
+  });
+});
+
+
+/* ───────── 2026-11-19 ArtTalk 개편 — 날짜·시각·미리보기·찾기·링크 ───────── */
+describe('날짜·시각은 한국 시간(KST) — 브라우저 시간대와 무관', () => {
+  it('★ dayKey — UTC 15:00 은 KST 다음 날 0시', () => {
+    expect(dayKey('2026-11-19T14:59:00Z')).toBe('2026-11-19');
+    expect(dayKey('2026-11-19T15:00:00Z')).toBe('2026-11-20');
+  });
+
+  it('날짜 구분 줄 — 요일까지', () => {
+    expect(dividerLabel('2026-11-19T03:00:00Z')).toBe('2026년 11월 19일 목요일');
+    expect(dividerLabel('2026-11-19T15:30:00Z')).toBe('2026년 11월 20일 금요일');
+  });
+
+  it('★ 말풍선 시각은 늘 시:분 — 예전 timeLabel 은 지난 말에 날짜만 찍고 시각을 버렸다', () => {
+    expect(bubbleTime('2026-11-19T11:46:00Z')).toBe('오후 8:46');
+    expect(bubbleTime('2026-11-18T23:05:00Z')).toBe('오전 8:05');
+    expect(bubbleTime('2026-11-19T03:00:00Z')).toBe('오후 12:00');
+    expect(bubbleTime('2026-11-19T15:00:00Z')).toBe('오전 12:00');
+  });
+
+  it('목록 시각 — 오늘 시:분 · 어제 · 올해 월.일 · 그 전 연.월.일', () => {
+    const now = new Date('2026-11-19T12:00:00Z');   // KST 11월 19일 21시
+    expect(listTime('2026-11-19T11:46:00Z', now)).toBe('오후 8:46');
+    expect(listTime('2026-11-18T10:00:00Z', now)).toBe('어제');
+    expect(listTime('2026-11-17T10:00:00Z', now)).toBe('11.17');
+    expect(listTime('2025-12-31T10:00:00Z', now)).toBe('2025.12.31');
+  });
+
+  it('날짜가 바뀌는 자리에만 구분 줄 — 첫 말에는 늘', () => {
+    const list = [{ createdAt: '2026-11-18T14:00:00Z' }, { createdAt: '2026-11-18T14:30:00Z' }, { createdAt: '2026-11-18T15:10:00Z' }];
+    expect(list.map((_, i) => showsDayDivider(list, i))).toEqual([true, false, true]);
+  });
+});
+
+describe('목록 미리보기·거르기', () => {
+  const me = 1;
+  const direct = { id: 10, kind: 'DIRECT', title: null, unread: 2, participants: [{ id: 1, name: '나' }, { id: 2, name: '윤서진', nickname: null }], lastMessage: { content: '네, 가능합니다', senderId: 2, senderName: '윤서진' } };
+  const group = { id: 11, kind: 'GROUP', title: '2027 신진작가 공모', unread: 0, participants: [{ id: 1, name: '나' }, { id: 3, name: '갤러리' }], lastMessage: { content: '반입 안내입니다', senderId: 3, senderName: '아트링크 갤러리' } };
+  const mine = { ...direct, id: 12, unread: 0, lastMessage: { content: '사진\n두 장', senderId: 1, senderName: '나' } };
+
+  it('★ 내가 보낸 건 「나:」 · 단톡의 남의 말은 「보낸 사람:」 · 1:1 의 상대 말은 그대로 · 줄바꿈은 한 칸', () => {
+    expect(listPreview(direct, me)).toBe('네, 가능합니다');
+    expect(listPreview(group, me)).toBe('아트링크 갤러리: 반입 안내입니다');
+    expect(listPreview(mine, me)).toBe('나: 사진 두 장');
+    expect(listPreview({ kind: 'DIRECT', lastMessage: null }, me)).toBe('');
+  });
+
+  it('탭 — 안 읽음 · 1:1 · 공모 단체 / 찾기는 방 이름·상대 이름(대소문자 무시)', () => {
+    const all = [direct, group, mine];
+    expect(filterChats(all, 'all', '', me).map((c) => c.id)).toEqual([10, 11, 12]);
+    expect(filterChats(all, 'unread', '', me).map((c) => c.id)).toEqual([10]);
+    expect(filterChats(all, 'direct', '', me).map((c) => c.id)).toEqual([10, 12]);
+    expect(filterChats(all, 'group', '', me).map((c) => c.id)).toEqual([11]);
+    expect(filterChats(all, 'all', '신진', me).map((c) => c.id)).toEqual([11]);
+    expect(filterChats(all, 'all', '서진', me).map((c) => c.id)).toEqual([10, 12]);
+    expect(filterChats(all, 'all', '없는 이름', me)).toEqual([]);
+  });
+
+  it('역할 꼬리표 — 운영 계정은 「아트링크」(관리자라는 말을 쓰지 않는다)', () => {
+    expect(['ARTIST', 'GALLERY', 'VISITOR', 'ADMIN', undefined].map((r) => chatRoleTag(r))).toEqual(['작가', '갤러리', '일반', '아트링크', '']);
+  });
+
+  it('1:1 상대 — 단톡이면 null', () => {
+    expect(chatCounterpartOf(direct, me)?.id).toBe(2);
+    expect(chatCounterpartOf(group, me)).toBeNull();
+  });
+});
+
+describe('★ 말 속 주소 — 눌리게 하되 HTML 로 넣지 않는다', () => {
+  it('글과 주소로 토막 낸다 · 끝의 문장부호는 주소에서 뗀다', () => {
+    expect(linkParts('사이트는 https://artlink.cc/exhibitions/3. 확인해 주세요')).toEqual([
+      { kind: 'text', value: '사이트는 ' },
+      { kind: 'link', value: 'https://artlink.cc/exhibitions/3' },
+      { kind: 'text', value: '. 확인해 주세요' },
+    ]);
+  });
+
+  it('괄호 안 주소 · 주소 안 괄호(위키) 둘 다', () => {
+    expect(linkParts('(https://a.com/x)').map((p) => p.value)).toEqual(['(', 'https://a.com/x', ')']);
+    expect(linkParts('https://ko.wikipedia.org/wiki/X_(y)').map((p) => p.value)).toEqual(['https://ko.wikipedia.org/wiki/X_(y)']);
+  });
+
+  it('http·https 만 — javascript: 등은 그냥 글이다', () => {
+    expect(linkParts('javascript:alert(1)')).toEqual([{ kind: 'text', value: 'javascript:alert(1)' }]);
+    expect(linkParts('그냥 글')).toEqual([{ kind: 'text', value: '그냥 글' }]);
   });
 });

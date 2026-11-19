@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>메뉴 자리 비교</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 900px; height: 900px; box-sizing: border-box; padding: 40px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; background: #ffffff; color: #111827; font-family: 'Noto Sans KR', system-ui, sans-serif">
+
+<section style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">지금</h2>
+<span style="font-size: 13px; color: #6b7280">PC 오른쪽 메뉴</span>
+</div>
+<div style="border: 1px solid #e5e7eb; padding: 24px 16px 16px; display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: #6b7280">MY PAGE</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">프로필</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 갤러리</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 공모</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 전시</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">관심 작품</span>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #4b5563">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+1:1 문의
+</span>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<span style="align-self: flex-end; height: 32px; padding: 0 12px; display: flex; align-items: center; font-size: 12px; color: #6b7280">로그아웃</span>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4b5563">ArtTalk 으로 가는 길은 상단의 편지 아이콘 하나뿐입니다.</p>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">바꾼 뒤</h2>
+<span style="font-size: 13px; color: #6b7280">PC 오른쪽 메뉴</span>
+</div>
+<div style="border: 1px solid #111827; padding: 24px 16px 8px; display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: #6b7280">MY PAGE</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">프로필</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 갤러리</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 공모</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">내 전시</span>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 14px; color: #4b5563">관심 작품</span>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<span style="height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; font-size: 14px">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span style="font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Talk</span></span>
+<span style="margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span>
+</span>
+<div style="height: 1px; background: #e5e7eb; margin: 8px 0"></div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px">
+<span style="height: 40px; padding: 0 8px; display: flex; align-items: center; font-size: 12px; color: #6b7280">1:1 문의</span>
+<span style="height: 40px; padding: 0 8px; display: flex; align-items: center; font-size: 12px; color: #6b7280">로그아웃</span>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4b5563">1:1 문의 자리에 같은 아이콘으로 ArtTalk 이 들어가고, 안 읽은 대화 수가 붙습니다. 1:1 문의는 로그아웃과 같은 줄로 내려갑니다. 상단 아이콘도 같은 말풍선으로 바꿉니다.</p>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">바꾼 뒤</h2>
+<span style="font-size: 13px; color: #6b7280">휴대폰 [메뉴]</span>
+</div>
+<div style="border: 1px solid #111827; padding: 12px 8px 4px; display: flex; flex-direction: column">
+<span style="height: 48px; padding: 0 12px; display: flex; align-items: center; gap: 12px; font-size: 15px; border-bottom: 1px solid #e5e7eb; margin-bottom: 6px">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+<span style="font-weight: 700; letter-spacing: -0.02em">Art<span style="color: #c4302b">Talk</span></span>
+<span style="margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span>
+</span>
+<span style="padding: 8px 12px 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.14em; color: #6b7280">MY PAGE</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; color: #4b5563">프로필</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; color: #4b5563">내 갤러리</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; color: #4b5563">내 공모</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; color: #4b5563">내 전시</span>
+<span style="height: 44px; padding: 0 12px; display: flex; align-items: center; font-size: 15px; color: #4b5563">관심 작품</span>
+<div style="height: 1px; background: #e5e7eb; margin: 6px 0 0"></div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px">
+<span style="height: 44px; padding: 0 8px; display: flex; align-items: center; font-size: 13px; color: #6b7280">1:1 문의</span>
+<span style="height: 44px; padding: 0 8px; display: flex; align-items: center; font-size: 13px; color: #6b7280">로그아웃</span>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #4b5563">휴대폰에는 오른쪽 메뉴가 없어 상단 말풍선 아이콘이 주 진입로이고, [메뉴] 맨 위에도 한 줄 둡니다.</p>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":900,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

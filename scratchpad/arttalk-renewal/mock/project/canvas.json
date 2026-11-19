@@ -1,0 +1,22 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-19T12:00:00Z" },
+  "title": "ArtTalk 개편 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "1 대화 목록", "is_interactive": true },
+    "Room.dc.html": { "x": 470, "y": 0, "w": 390, "h": 844, "title": "2 1:1 대화 · 작품 문의", "is_interactive": true },
+    "Group.dc.html": { "x": 940, "y": 0, "w": 390, "h": 844, "title": "3 공모 단체 대화", "is_interactive": true },
+    "RoomMenu.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 844, "title": "4 방 메뉴 · 신고 · 차단", "is_interactive": true },
+    "Likes.dc.html": { "x": 1880, "y": 0, "w": 390, "h": 844, "title": "5 갤러리 관심 작품 · 전시 초대 없음" },
+    "Desktop.dc.html": { "x": 0, "y": 1340, "w": 1440, "h": 900, "title": "6 PC · 대화 두 칸 + 오른쪽 메뉴", "expand": "fill" },
+    "Menu.dc.html": { "x": 1520, "y": 1340, "w": 900, "h": 900, "title": "7 메뉴 자리 · 지금과 바꾼 뒤" }
+  },
+  "order": ["Main.dc.html", "Room.dc.html", "Group.dc.html", "RoomMenu.dc.html", "Likes.dc.html", "Desktop.dc.html", "Menu.dc.html"],
+  "notes": {
+    "t-phone": { "x": 0, "y": -280, "text": "휴대폰 · 앱", "kind": "title1", "maxW": 2270 },
+    "t-pc": { "x": 0, "y": 1060, "text": "PC · 메뉴", "kind": "title1", "maxW": 2420 }
+  },
+  "designSystems": []
+}

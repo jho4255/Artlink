@@ -125,8 +125,8 @@ describe('벨 알림 → 기기 푸시 (Prisma 갈고리 한 곳)', () => {
     expect(pushTitle('CHAT_MESSAGE')).toBe('ArtTalk');
     expect(pushTitle('SOMETHING_NEW')).toBe('ArtLink');
     expect(pushTitle(null)).toBe('ArtLink');
-    // 소스에서 `type: '…'` 로 적힌 값을 모은다(공모 구분 SOLO·GROUP·ART_FAIR 는 알림이 아니다)
-    const NOT_NOTIFICATION = new Set(['SOLO', 'GROUP', 'ART_FAIR']);
+    // 소스에서 `type: '…'` 로 적힌 값을 모은다(공모 구분 SOLO·GROUP·ART_FAIR 와 ArtTalk 맥락 카드 종류(lib/chatRef.ts)는 알림이 아니다)
+    const NOT_NOTIFICATION = new Set(['SOLO', 'GROUP', 'ART_FAIR', 'WORK', 'EXHIBITION', 'SHOW', 'GALLERY']);
     const files: string[] = [];
     const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) { if (n !== '__tests__') walk(p); } else if (p.endsWith('.ts')) files.push(p); } };
     walk(join(__dirname, '..'));

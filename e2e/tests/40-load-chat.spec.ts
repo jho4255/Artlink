@@ -250,15 +250,22 @@ test('★ 화면 — 대화 목록·방 전환을 반복해도 깨지지 않는�
   await expect(page.locator('body')).not.toContainText('불러오는 중', { timeout: 20000 });
   console.log(`  [대화 화면] 목록 렌더까지 ${Date.now() - t0}ms`);
 
-  // 방을 여러 개 오간다 — 폴링(8초)과 겹쳐도 크래시가 없어야 한다
-  const rooms = page.locator('li, button').filter({ hasText: /안읽음|메시지|님/ });
-  const n = Math.min(await rooms.count(), 5);
+  /* 방을 여러 개 오간다 — 폴링(방 4초·목록 10초)과 겹쳐도 크래시가 없어야 한다.
+     휴대폰은 방이 화면 전체라(2026-11-19) [←]로 목록에 돌아와 다음 방을 연다 — 뒤로 쌓이지 않는지도 함께 본다. */
+  const rows = page.getByTestId('chat-list').locator('[data-chat-id]');
+  await expect(rows.first()).toBeVisible({ timeout: 15000 });
+  const n = Math.min(await rows.count(), 5);
   for (let round = 0; round < 2; round++) {
     for (let i = 0; i < n; i++) {
-      await rooms.nth(i).click({ timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(300);
+      await rows.nth(i).click({ timeout: 5000 });
+      await expect(page.getByTestId('chat-room')).toBeVisible({ timeout: 10000 });
+      await page.getByRole('button', { name: '대화 목록으로' }).click();
+      await expect(page.getByTestId('chat-list')).toBeVisible({ timeout: 10000 });
     }
   }
+  // 열고 닫기를 반복해도 기록이 쌓이지 않았다 — 한 번 뒤로 가면 /messages 를 떠난다
+  await page.goBack();
+  await expect(page).not.toHaveURL(/\/messages\?chat=/);
   await page.waitForTimeout(1200);
   expect(errors, `대화 화면 JS 에러: ${errors.join(' | ')}`).toHaveLength(0);
 
