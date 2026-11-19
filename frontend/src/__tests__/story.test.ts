@@ -204,14 +204,14 @@ describe('소스 가드', () => {
     expect(block.slice(0, block.indexOf('</section>'))).not.toMatch(/<div className="min-w-0">/);
   });
 
-  it('홈 — 배너 다음, ArtWorks 앞에 ArtStory 줄', () => {
+  it('홈(PC) — 배너 다음 ArtWorks, 그 아래 ArtStory 줄(2026-11-19 사용자 요청으로 맞바꿈)', () => {
     const home = src('pages/HomePage.tsx');
     const hero = home.indexOf('<HeroSlider />');
     const rail = home.indexOf('<StoryRail />');
     const works = home.indexOf('<ArtWorks />');
     expect(hero).toBeGreaterThan(-1);
-    expect(rail).toBeGreaterThan(hero);
-    expect(works).toBeGreaterThan(rail);
+    expect(works).toBeGreaterThan(hero);
+    expect(rail).toBeGreaterThan(works);
   });
 
   it('라우터 — /feed 는 비회원도 열리고, 올리기 화면은 Layout 밖', () => {

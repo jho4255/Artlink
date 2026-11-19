@@ -15,11 +15,11 @@ import { HOME_TABS_MEDIA } from '@/lib/homeTabs';
  * - **휴대폰·앱(768px 미만)**: 배너 → **탭 한 줄** [ArtWorks · ArtStory · 인기글 · 마감임박 공모] → 고른 칸 하나
  *   (`components/home/HomeTabs.tsx`, 규칙은 `lib/homeTabs.ts`). 칸이 세로로 이어져 3,225px(화면 3.8장)이던 것을 줄였다(사용자 결정).
  *   진행중인 전시·주목할 갤러리는 '일단' 탭에서 뺐다 — PC 에만 있다. ArtStory 칸은 카드 두 줄.
- * - **PC·태블릿**: 배너(풀블리드 색 띠) → ArtStory 카드 줄 → ArtWorks → 아래 칸들(2열로 흘러 채운다)
+ * - **PC·태블릿**: 배너(풀블리드 색 띠) → ArtWorks → ArtStory 카드 줄 → 아래 칸들(2열로 흘러 채운다)
  *     [인기글 · 마감임박 공모] → [진행중인 전시 · 주목할 갤러리]
  *
- * - 최상단은 **배너**(HeroSlider), 그 아래가 소식 줄, 그 아래가 작품(ArtWorks).
- *   ⚠️ 2026-08-27~09-04 는 반대 순서였다(작품이 위). 되돌릴 땐 두 블록만 맞바꾸면 된다.
+ * - 최상단은 **배너**(HeroSlider), 그 아래가 작품(ArtWorks), 그 아래가 소식 줄(2026-11-19 사용자 요청 — 11-14~18 은 소식 줄이 위였다).
+ *   ⚠️ 2026-08-27~09-04 는 작품이 배너보다도 위였다. 순서를 바꿀 땐 블록만 맞바꾸면 된다(휴대폰 탭 순서도 ArtWorks 가 먼저다).
  * - ⚠️⚠️ 아래 칸들은 **한 격자에 흘려 넣는다**(줄마다 짝을 못박지 않는다, 2026-11-14 사용자 지적).
  *   칸은 보여 줄 게 없으면 `null` 을 돌려주는데(진행중인 전시 0건 · 주목할 갤러리 0건 — 실서버가 그랬다),
  *   줄마다 [인기글 | 진행중인 전시] 로 묶어 두면 그 칸만 비어 **인기글 옆 반쪽이 통째로 빈다**.
@@ -43,15 +43,15 @@ export default function HomePage() {
         <HomeTabs />
       ) : (
         <>
-          {/* ArtStory — 이웃이 아니어도 모두의 소식(블라인드 스토리 방식, 2026-11-14 규칙 81). 누르면 화면 가득, 저절로 넘어간다 */}
-          <div className="max-w-7xl mx-auto px-6 md:px-12 pt-8 md:pt-12">
-            <StoryRail />
-          </div>
-
-          {/* ArtWorks — 작가들의 작품 */}
-          <section className="max-w-7xl mx-auto px-6 md:px-12 py-10 md:py-16">
+          {/* ArtWorks — 작가들의 작품. 배너 바로 아래(2026-11-19 사용자 요청 — 그 전엔 ArtStory 줄이 위였다) */}
+          <section className="max-w-7xl mx-auto px-6 md:px-12 pt-8 md:pt-12">
             <ArtWorks />
           </section>
+
+          {/* ArtStory — 이웃이 아니어도 모두의 소식(블라인드 스토리 방식, 2026-11-14 규칙 81). 누르면 화면 가득, 저절로 넘어간다 */}
+          <div className="max-w-7xl mx-auto px-6 md:px-12 pt-10 md:pt-16">
+            <StoryRail />
+          </div>
 
           {/* 아래 칸들 — 인기글 옆에 마감임박 공모. 빈 칸은 자리를 안 차지한다(위 주석). 칸마다 min-w-0(규칙 27) */}
           <section

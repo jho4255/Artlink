@@ -399,7 +399,7 @@ ArtLink/
 
 | 페이지 | 주요 기능 | 관련 코드 |
 |--------|----------|-----------|
-| HomePage | PC: Hero 슬라이더 → ArtStory 줄 → ArtWorks → 인기글·마감임박공모·진행중전시·GotM (2026-09-05 배너를 맨 위로). 휴대폰·앱(768px 미만): 배너 → 탭 [ArtWorks · ArtStory · 인기글 · 마감임박 공모] — 진행중전시·GotM 없음, 소식은 두 줄 (2026-11-14, `HomeTabs`·`lib/homeTabs.ts`) | `components/home/*` |
+| HomePage | PC: Hero 슬라이더 → ArtWorks → ArtStory 줄(2026-11-19 맞바꿈) → 인기글·마감임박공모·진행중전시·GotM (2026-09-05 배너를 맨 위로). 휴대폰·앱(768px 미만): 배너 → 탭 [ArtWorks · ArtStory · 인기글 · 마감임박 공모] — 진행중전시·GotM 없음, 소식은 두 줄 (2026-11-14, `HomeTabs`·`lib/homeTabs.ts`) | `components/home/*` |
 | GalleriesPage | 갤러리 목록, 지역/별점 필터, 정렬, 찜 | `pages/GalleriesPage.tsx` |
 | GalleryDetailPage | 이미지 슬라이더, 찜, 상세수정, 공모목록, 홍보사진, 리뷰 | `pages/GalleryDetailPage.tsx` |
 | ArtistsPage | [작가] 탭 — 좌 작가 색인(누르면 `/portfolio/:id`) / 우 작품 격자(무한스크롤·좋아요순·기간). **둘러보기를 흡수** | `pages/ArtistsPage.tsx` |
