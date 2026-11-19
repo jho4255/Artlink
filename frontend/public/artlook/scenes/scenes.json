@@ -25,7 +25,10 @@
   "",
   "⚠️ 장면 사진의 해상도가 곧 출력 해상도 상한이다(원본 이상으로 늘리지 않는다).",
   "   1080 이상이면 SNS 에 충분하고, 1600~2048 이면 넉넉하다.",
-  "maxLong: 조각의 긴 변이 화면에서 차지할 수 있는 최대 비율(기본 0.70). 방이 통째로 보이는 실내 사진은 0.49 — 같은 비율이라도 벽 한 면을 삼킨 크기로 보인다."
+  "maxLong: 조각의 긴 변이 화면에서 차지할 수 있는 최대 비율(기본 0.70). 방이 통째로 보이는 실내 사진은 0.49 — 같은 비율이라도 벽 한 면을 삼킨 크기로 보인다.",
+  "maxZoom: 자동 프레이밍이 카메라를 당길 수 있는 최대 배율(없으면 제한 없음). 실내 7장 = 1 — 방이 보여야 공간 배경이다(2026-11-18, 1.34배로 당기면 가구가 잘려 벽 한 면이 됐다). 사용자의 [+] 는 따로.",
+  "srcScale: 그 사진이 원본을 이만큼 **늘린** 파일이라는 표시(실내 7장 = 2, 2026-11-17). 엔진은 출력 크기를 비율별로 정하고(1:1 1568 · 9:16 1920)",
+  "          카메라 당김 한도를 '늘리기 전 원본'의 것으로 묶는다 — 저장본만 커지고 구도는 그대로다(index.html compose 의 keepZoom). 큰 원본이 생기면 파일을 바꾸고 이 값을 지울 것."
  ],
  "scenes": [
   {
@@ -33,6 +36,7 @@
    "name": "갤러리 살롱",
    "src": "walls/wall15-gallery-salon.jpg",
    "thumb": "walls/thumbs/wall15-gallery-salon.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -72,6 +76,7 @@
    "exposure": 1.0,
    "depth": 0.03,
    "wallCalm": 0.52,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -79,6 +84,7 @@
    "name": "부티크 갤러리",
    "src": "walls/wall16-boutique-gallery.jpg",
    "thumb": "walls/thumbs/wall16-boutique-gallery.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -118,6 +124,7 @@
    "exposure": 1.0,
    "depth": 0.03,
    "wallCalm": 0.26,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -125,6 +132,7 @@
    "name": "컬렉터 살롱",
    "src": "walls/wall17-collector-salon.jpg",
    "thumb": "walls/thumbs/wall17-collector-salon.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -164,6 +172,7 @@
    "exposure": 0.96,
    "depth": 0.03,
    "wallCalm": 0.2,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -171,6 +180,7 @@
    "name": "갤러리 리빙",
    "src": "walls/wall11-gallery-living.jpg",
    "thumb": "walls/thumbs/wall11-gallery-living.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -210,6 +220,7 @@
    "exposure": 1.0,
    "depth": 0.03,
    "wallCalm": 0.15,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -217,6 +228,7 @@
    "name": "화이트 큐브",
    "src": "walls/wall12-white-cube.jpg",
    "thumb": "walls/thumbs/wall12-white-cube.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -256,6 +268,7 @@
    "exposure": 1.0,
    "depth": 0.03,
    "wallCalm": 0.17,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -263,6 +276,7 @@
    "name": "컬렉터 홈",
    "src": "walls/wall14-collector-home.jpg",
    "thumb": "walls/thumbs/wall14-collector-home.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -302,6 +316,7 @@
    "exposure": 1.0,
    "depth": 0.03,
    "wallCalm": 0.38,
+   "maxZoom": 1,
    "group": "space"
   },
   {
@@ -309,6 +324,7 @@
    "name": "호텔 라운지",
    "src": "walls/wall13-hotel-lounge.jpg",
    "thumb": "walls/thumbs/wall13-hotel-lounge.jpg",
+   "srcScale": 2,
    "maxLong": 0.49,
    "frameless": true,
    "region": [
@@ -348,6 +364,7 @@
    "exposure": 0.98,
    "depth": 0.03,
    "wallCalm": 0.33,
+   "maxZoom": 1,
    "group": "space"
   },
   {

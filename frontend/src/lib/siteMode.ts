@@ -19,6 +19,18 @@ export function isHomepagePath(pathname: string): boolean {
 }
 
 /**
+ * ArtLook 편집 화면인가 — 마이페이지 [ArtLook] 탭(`/mypage?tab=artlook`). 2026-11-17(PLAN WP4, CLAUDE.md 규칙 85):
+ * 창 폭 1024px 미만에서는 이 화면을 **아트링크 상단바 · 하단 탭바 없이** 띄운다(ArtLook 이 제 머리에 [닫기]·[저장]을 둔다).
+ * 아이폰 13 에서 상단바 64 + 제목 줄 44 + 하단 탭바 56 이 미리보기를 234px 로 눌러 놓았다.
+ * ⚠️ 역할(작가)·폭은 부르는 쪽(`useArtLookBare`)이 본다 — 이 탭은 작가에게만 있다(다른 역할은 프로필로 떨어진다).
+ */
+export function isArtLookEditor(pathname: string, search: string): boolean {
+  const p = pathname.replace(/\/+$/, '') || '/';
+  if (p !== '/mypage') return false;
+  return new URLSearchParams(search).get('tab') === 'artlook';
+}
+
+/**
  * 사이트 머리 높이(px) — 휴대폰 56 · lg(1024px)↑ 72. 탭 막대의 sticky 자리 · 탭을 바꿀 때 끌어올리는 자리 ·
  * 시리즈로 내려갈 때의 여백이 전부 이 값을 본다. ⚠️ 클래스(`h-14 lg:h-[72px]`·`top-14`)와 숫자가 함께 바뀌어야 한다.
  */

@@ -1,19 +1,19 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Frame, type Page } from '@playwright/test';
-import { solidPng, noNudgeEntry } from '../lib/helpers';
+import { solidPng, noNudgeEntry, pickFrame, artlookSave } from '../lib/helpers';
 
 /**
  * ArtLook — FrameIt 비교 뒤 더한 것(2026-10-25, CLAUDE.md 규칙 75). **눌러서 무슨 일이 나는가**를 본다.
  *
  *  A. 원형 액자 — 고르면 원이 걸리고(네 귀는 벽) · [원 맞추기]로 크기를 바꾸면 그 작품에 기억된다
- *  B. 액자 탭이 종류별로 묶여 있고 묶음마다 무엇이 다른지 한 줄(몰딩·넓은 몰딩·슬림·플로터·박스·원형·기타) · 박스는 5종
+ *  B. 액자 탭은 모양 × 재질(2026-11-17) — 모양 일곱 · 모양마다 무엇이 다른지 한 줄 · 박스 5종 · 같은 재질 유지 · 색 옮긴 액자 4종
  *  C. 리넨 매트 — 색 줄 뒤쪽 천 칩을 고르면 엔진 마감이 리넨
- *  D. 박물관 색 벽 + [벽 캡션 붙이기] — 작품 옆 벽에 카드, 다시 열어도 켜져 있고 [벽 캡션 빼기]로 없어진다
+ *  D. 박물관 색 벽 — 네이비를 고르면 그 벽으로 그린다 · [마무리] 에 벽 캡션은 없다(2026-11-18 사용자 결정으로 뺐다)
  *  E. 여러 점 — [여러 점] → 두 점 더 → 칸 3개 · [배치 바꾸기] · [+] 로 커진다 · 저장 파일 이름 'N점' · 다시 누르면 한 점(크기 조절 초기화) (휴대폰·PC)
  *
  * ⚠️ 픽셀 품질은 하니스(세션 스크래치 frameit/ · scratchpad/vt)가 본다. 여기는 동작만.
  */
-declare const state: { frameIdx: number; matTexture?: string; group?: unknown[] | null; caption?: boolean; circle?: { r: number } | null; sceneIdx: number };
-declare const SCENES: { adj: { s: number } }[];
+declare const state: { frameIdx: number; matTexture?: string; group?: unknown[] | null; circle?: { r: number } | null; sceneIdx: number; draft?: boolean };
+declare const SCENES: { id: string; adj: { s: number } }[];
 declare const FRAMES: { id: string; kind: string }[];
 
 const API = 'http://localhost:4000/api';
@@ -86,13 +86,11 @@ const probe = (frame: Frame) => frame.evaluate(() => (window as any).__artlook);
 test('A. 원형 액자 — 원만 걸리고 네 귀는 벽 · [원 맞추기]로 맞춘 크기는 그 작품에 기억', async ({ browser }) => {
   const { ctx, page, errors } = await openFor(browser);
   const frame = await openArtLook(page);
-  await tab(frame, 'frames');
   const n = await renders(frame);
-  const chip = frame.locator('.chip.frame[data-id="round-gold"]');
-  await chip.scrollIntoViewIfNeeded(); await chip.click();
+  await pickFrame(frame, 'round-gold');
   await settled(frame, n);
   expect(await frame.evaluate(() => FRAMES[state.frameIdx].kind)).toBe('round');
-  await expect(frame.locator('#framesLine')).toContainText('사진 속 원에 테를 맞춰요');   // 고른 액자의 묶음 설명(휴대폰은 칩 아래 줄)
+  await expect(frame.locator('#framesLine')).toContainText('사진 속 원에 테를 맞춰요');   // 모양 설명(휴대폰은 고를 때 알림, 줄은 넓은 칸에서 보인다)
   const f = (await probe(frame)).front as { x: number; y: number; w: number; h: number };
   expect(Math.abs(f.w - f.h) / f.w, '원형 판은 정사각').toBeLessThan(0.02);
   // 판의 네 귀(원 바깥) = 벽 — 바로 바깥 벽과 거의 같은 색. 가운데는 작품
@@ -116,37 +114,40 @@ test('A. 원형 액자 — 원만 걸리고 네 귀는 벽 · [원 맞추기]로
   await ctx.close();
 });
 
-test('B. 액자는 종류별로 묶여 있다 · 박스 5종', async ({ browser }) => {
+test('B. 액자는 모양 × 재질 — 모양 일곱 · 모양 설명 · 박스 5종 · 같은 재질 유지 · 색 옮긴 액자', async ({ browser }) => {
   const { ctx, page, errors } = await openFor(browser, { desktop: true });
   const frame = await openArtLook(page);
   await tab(frame, 'frames');
-  const labels = await frame.locator('#frames > .group b').allTextContents();
-  expect(labels).toEqual(['몰딩', '넓은 몰딩', '슬림', '플로터', '박스', '원형', '기타']);
-  // 넓은 칸은 묶음 이름 옆에 설명이 보이고, 고른 액자 설명 줄은 감춘다(2026-10-26)
-  await expect(frame.locator('#frames > .group').filter({ hasText: '플로터' }).locator('.gdesc')).toBeVisible();
-  await expect(frame.locator('#frames > .group').filter({ hasText: '플로터' })).toContainText('틈을 두고 띄워 거는');
-  await expect(frame.locator('#framesLine')).toBeHidden();
-  // 숨긴 액자(사진으로 대신한 코드 액자)는 목록에 없다
-  for (const id of ['slim-oak', 'slim-walnut', 'slim-silver', 'slim-champagne', 'floater-silver']) await expect(frame.locator(`.chip.frame[data-id="${id}"]`)).toHaveCount(0);
-  // 박스 묶음 = 박스 5종(라벨 다음부터 다음 라벨 전까지)
-  const boxes = await frame.evaluate(() => { const out: string[] = []; let on = false;
-    for (const el of Array.from(document.querySelectorAll('#frames > *'))) {
-      if (el.classList.contains('group')) { on = el.querySelector('b')?.textContent === '박스'; continue; }
-      if (on) out.push((el as HTMLElement).dataset.id || '');
-    } return out; });
-  expect(boxes).toEqual(['box-oak', 'box-walnut', 'box-black', 'box-white', 'box-ivory']);
-  const n = await renders(frame);
-  await frame.locator('.chip.frame[data-id="box-black"]').click();
+  expect(await frame.locator('#shapes .chip .name').allTextContents()).toEqual(['몰딩', '넓은 몰딩', '슬림', '플로터', '박스', '원형', '액자 없음']);
+  // 재질 칩은 모서리 그림(frames/corners) — 넓은 칸은 모양 아래 줄에 그 모양의 설명
+  const mats = async () => frame.evaluate(() => Array.from(document.querySelectorAll('#frames > *')).map((el) => (el as HTMLElement).dataset.id || el.id));
+  expect(await mats()).toEqual(['oak', 'walnut', 'maple', 'teak', 'black', 'white', 'navy', 'forest', 'wine', 'silver', 'gold']);
+  await expect(frame.locator('#frames .chip[data-id="oak"] img')).toHaveAttribute('src', 'frames/corners/oak.webp');
+  await expect(frame.locator('#framesLine')).toBeVisible();
+  // 숨긴 액자(사진으로 대신한 코드 액자)는 어느 모양에도 없다
+  for (const id of ['slim-oak', 'slim-walnut', 'slim-silver', 'slim-champagne', 'floater-silver']) expect(await frame.evaluate((x) => (window as any).__artlookShapeOf(x), id)).toBeNull();
+  // 색 옮긴 액자(네이비) — 고르면 그 액자로 그리고, 다른 모양으로 옮기면 블랙으로(그 모양엔 네이비가 없다)
+  let n = await renders(frame);
+  await frame.locator('#frames .chip[data-id="navy"]').click();
   await settled(frame, n);
+  expect(await frame.evaluate(() => FRAMES[state.frameIdx].id)).toBe('navy');
+  n = await renders(frame);
+  await frame.locator('#shapes [data-shape="slim"]').click();
+  await settled(frame, n);
+  expect(await frame.evaluate(() => FRAMES[state.frameIdx].id)).toBe('slim-black');
+  await expect(frame.locator('#framesLine')).toContainText('테가 가늘어');
+  // 박스 = 5종 · 같은 재질 유지(블랙 → 블랙 박스)
+  n = await renders(frame);
+  await frame.locator('#shapes [data-shape="box"]').click();
+  await settled(frame, n);
+  expect(await mats()).toEqual(['box-oak', 'box-walnut', 'box-black', 'box-white', 'box-ivory']);
+  expect(await frame.evaluate(() => FRAMES[state.frameIdx].id)).toBe('box-black');
   await expect(frame.locator('#framesLine')).toContainText('상자형 입체 액자');
-  // [원 맞추기]는 원형 칩 바로 옆(줄 끝 버튼은 칩과 너무 멀었다 — 2026-10-26). 원형이 아닐 때 누르면 원형으로 바꾸고 창을 연다
-  const roundRow = await frame.evaluate(() => { const out: string[] = []; let on = false;
-    for (const el of Array.from(document.querySelectorAll('#frames > *'))) {
-      if (el.classList.contains('group')) { on = el.querySelector('b')?.textContent === '원형'; continue; }
-      if (on) out.push((el as HTMLElement).dataset.id || el.id);
-    } return out; });
-  expect(roundRow).toEqual(['round-black', 'round-gold', 'circleChip']);
-  await expect(frame.locator('#framesLine')).not.toContainText('원 맞추기');
+  // [원 맞추기]는 원형 재질 바로 옆(줄 끝 버튼은 칩과 너무 멀었다 — 2026-10-26). 원형이 아닐 때 누르면 원형으로 바꾸고 창을 연다
+  await frame.locator('#shapes [data-shape="round"]').click();
+  expect(await mats()).toEqual(['round-black', 'round-gold', 'circleChip']);
+  await frame.locator('#shapes [data-shape="molding"]').click();
+  await pickFrame(frame, 'round-black');
   await frame.locator('#circleChip').click();
   await expect(frame.locator('#circleSheet')).toBeVisible();
   expect(await frame.evaluate(() => FRAMES[state.frameIdx].kind)).toBe('round');
@@ -159,7 +160,7 @@ test('B. 액자는 종류별로 묶여 있다 · 박스 5종', async ({ browser 
 test('C. 리넨 매트 — 색 줄 뒤쪽 천 칩', async ({ browser }) => {
   const { ctx, page, errors } = await openFor(browser, { desktop: true });
   const frame = await openArtLook(page);
-  await tab(frame, 'mat');
+  await tab(frame, 'frames');   // 매트는 [액자] 탭 안(2026-11-17)
   await frame.getByRole('button', { name: '넓게' }).click();
   const sw = frame.locator('.sw[title="리넨 내추럴"]');
   await sw.scrollIntoViewIfNeeded();
@@ -172,31 +173,21 @@ test('C. 리넨 매트 — 색 줄 뒤쪽 천 칩', async ({ browser }) => {
   await ctx.close();
 });
 
-test('D. 박물관 색 벽 + 벽 캡션 — 붙고, 다시 열어도 켜져 있고, 뺄 수 있다', async ({ browser }) => {
+test('D. 박물관 색 벽 — 고르면 그 벽으로 그린다 · 벽 캡션은 없다', async ({ browser }) => {
   const { ctx, page, errors } = await openFor(browser, { desktop: true });
-  let frame = await openArtLook(page);
+  const frame = await openArtLook(page);
   await tab(frame, 'scenes');
   const navy = frame.locator('.chip.scene', { hasText: '네이비' });
   await navy.scrollIntoViewIfNeeded();
-  let n = await renders(frame);
+  const n = await renders(frame);
   await navy.click();
   await settled(frame, n);
-  n = await renders(frame);
-  await frame.getByRole('button', { name: '벽 캡션 붙이기' }).click();
-  await settled(frame, n);
-  const p = await probe(frame);
-  expect(p.label, '캡션 카드가 없다').toBeTruthy();
-  const front = p.front as { x: number; w: number };
-  expect(Math.min(...(p.label as number[][]).map((q) => q[0])), '카드는 작품 오른쪽').toBeGreaterThan(front.x + front.w);
-  // 다시 열어도 켜져 있다(이 브라우저에 기억)
-  frame = await openArtLook(page);
-  expect(await frame.evaluate(() => state.caption)).toBe(true);
-  expect((await probe(frame)).label).toBeTruthy();
-  await tab(frame, 'scenes');
-  n = await renders(frame);
-  await frame.getByRole('button', { name: '벽 캡션 빼기' }).click();
-  await settled(frame, n);
-  expect((await probe(frame)).label).toBeFalsy();
+  expect(await frame.evaluate(() => SCENES[state.sceneIdx].id)).toBe('navy');
+  expect((await probe(frame)).front, '작품이 걸리지 않았다').toBeTruthy();
+  // 벽 캡션은 2026-11-18 에 기능째로 뺐다 — [마무리] 에 스위치가 없다
+  await tab(frame, 'finish');
+  await expect(frame.getByRole('switch')).toHaveCount(0);
+  await expect(frame.getByText('벽 캡션')).toHaveCount(0);
   expect(errors).toEqual([]);
   await ctx.close();
 });
@@ -222,14 +213,28 @@ for (const desktop of [false, true]) {
     await expect(frame.locator('#worksLine')).toContainText('큰 그림 + 작은 그림');
     // [+] 를 누르면 묶음이 실제로 커진다(예전엔 벽 폭에 막혀 아무 일도 없고 확대값만 쌓였다)
     const w0 = ((await probe(frame)).piece as { w: number }).w;
-    for (let i = 0; i < 2; i++) { n = await renders(frame); await frame.locator('#zoomIn').click(); await settled(frame, n); }
+    if (desktop) {
+      for (let i = 0; i < 2; i++) { n = await renders(frame); await frame.locator('#zoomIn').click(); await settled(frame, n); }
+    } else {
+      // 손가락 화면엔 [+] 가 없다(2026-11-17) — 두 손가락으로 벌린다
+      await expect(frame.locator('#zoomIn')).toBeHidden();
+      const cdp = await ctx.newCDPSession(page);
+      const ifr = (await page.locator('iframe[title="ArtLook"]').boundingBox())!;
+      const c = await frame.evaluate(() => { const r = document.getElementById('preview')!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      const x0 = ifr.x + c.x, y0 = ifr.y + c.y;
+      n = await renders(frame);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0 - 20, y: y0, id: 1 }, { x: x0 + 20, y: y0, id: 2 }] });
+      for (let i = 1; i <= 8; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 - 20 - i * 6, y: y0, id: 1 }, { x: x0 + 20 + i * 6, y: y0, id: 2 }] }); await page.waitForTimeout(20); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await settled(frame, n);
+      await frame.waitForFunction(() => !state.draft && document.getElementById('busy')!.hidden, null, { timeout: 15000 });   // 손을 떼면 원래 배율로 한 번 더
+      await frame.waitForTimeout(600);
+    }
     const w1 = ((await probe(frame)).piece as { w: number }).w;
     expect(w1, `묶음 폭 ${w0} → ${w1}`).toBeGreaterThan(w0 * 1.15);
-    // 여러 점에선 캡션 단추가 없다
-    await tab(frame, 'scenes');
-    await expect(frame.getByRole('button', { name: /벽 캡션/ })).toHaveCount(0);
-    // 저장 — 파일 이름에 'N점'
-    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }).catch(() => null), frame.locator('#dl').click()]);
+    // 저장 — 파일 이름에 'N점'(휴대폰은 머리 [저장] 의 창 안)
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }).catch(() => null), artlookSave(frame)]);
+    if (!desktop) await frame.locator('body').press('Escape');
     if (dl) expect(dl.suggestedFilename()).toContain('3점');
     // 다시 누르면 한 점
     await tab(frame, 'works');

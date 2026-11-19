@@ -34,9 +34,6 @@ export interface ArtLookWork {
    * 없으면 높이 90cm(30호 정도)로 가정해 걸고, 화면이 그렇게 걸었다고 알린다.
    */
   sizeText?: string;
-  /** 제작연도·재료 — 벽 캡션 카드(미술관식 라벨)에 적는다. 없으면 그 줄만 빠진다 */
-  year?: string;
-  medium?: string;
   /** 포트폴리오 작품 id — [크기 입력하기] 가 그 작품의 정보 창을 연다 */
   id?: number;
   /**
@@ -47,6 +44,8 @@ export interface ArtLookWork {
 }
 
 export const ARTLOOK_STORAGE_KEY = 'artlook:works';
+/** ArtLook 안에서 크기를 적지 않은 작품에 고른 호수(작품 주소별, 2026-11-17 — public/artlook/ui.js 의 SIZE_KEY 와 같은 값) */
+export const ARTLOOK_SIZES_KEY = 'artlook:sizes';
 
 /** 정적 페이지라 index.html 을 명시한다 (개발 Vite·운영 Express 양쪽에서 SPA fallback 회피) */
 export const ARTLOOK_URL = '/artlook/index.html';
@@ -60,7 +59,7 @@ export const ARTLOOK_EMBED_URL = `${ARTLOOK_URL}?embed=1`;
  * ⚠️ 썸네일은 t800(`grid`)이다 — t240 은 옛 파일에 백필되지 않아 원본으로 떨어진다(Thumb.tsx THUMB_SIZES).
  */
 export function portfolioArtLookWorks(
-  images: Pick<PortfolioImage, 'id' | 'url' | 'title' | 'sizeText' | 'year' | 'medium'>[],
+  images: Pick<PortfolioImage, 'id' | 'url' | 'title' | 'sizeText'>[],
   artist: string,
 ): ArtLookWork[] {
   return images.filter((img) => !!img.url).map((img) => ({
@@ -71,8 +70,6 @@ export function portfolioArtLookWorks(
     artist,
     kind: 'portfolio' as const,
     sizeText: img.sizeText?.trim() || undefined,
-    year: img.year?.trim() || undefined,
-    medium: img.medium?.trim() || undefined,
   }));
 }
 
@@ -97,9 +94,18 @@ export function stageArtLookWorks(works: ArtLookWork[]): number {
   return valid.length;
 }
 
-/** 넘겨 둔 작품을 지운다 — 로그아웃 때도(같은 컴퓨터의 다음 사람이 ArtLook 주소를 열면 앞사람 작품이 떴다, 2026-10-04) */
+/** 넘겨 둔 작품 목록을 지운다(작품이 0점이 됐을 때 — 옛 작품이 남아 뜨지 않게) */
 export function clearArtLookWorks(): void {
   try { localStorage.removeItem(ARTLOOK_STORAGE_KEY); } catch { /* 저장이 막힌 환경 */ }
+}
+
+/**
+ * 로그아웃 — 넘겨 둔 작품과 **그 작품에 고른 크기**를 함께 지운다(같은 컴퓨터의 다음 사람에게 앞사람 작품이 떴다, 2026-10-04).
+ * ⚠️ 고른 크기는 여기서만 지운다 — `stageArtLookWorks([])` 는 마이페이지가 작품을 불러오는 동안에도 불려서, 거기서 지우면
+ *    [ArtLook] 탭을 열 때마다 고른 호수가 사라졌다(2026-11-17 e2e 84 D 가 잡았다).
+ */
+export function clearArtLookForLogout(): void {
+  try { localStorage.removeItem(ARTLOOK_STORAGE_KEY); localStorage.removeItem(ARTLOOK_SIZES_KEY); } catch { /* 저장이 막힌 환경 */ }
 }
 
 /**
@@ -119,6 +125,7 @@ export function openArtLook(works: ArtLookWork[]): number {
 export type ArtLookMessage =
   | { type: 'goto'; to: 'upload' }
   | { type: 'goto'; to: 'size'; id: number }
+  | { type: 'goto'; to: 'close' }
   | { type: 'story'; blob: Blob; name: string };
 
 /**
@@ -130,6 +137,8 @@ export function readArtLookMessage(data: unknown): ArtLookMessage | null {
   const d = data as Record<string, unknown>;
   if (d.type === 'artlook:goto') {
     if (d.to === 'upload') return { type: 'goto', to: 'upload' };
+    // 휴대폰 편집 전용 화면의 [닫기 ×](2026-11-17) — 바깥이 이전 화면으로 돌아간다
+    if (d.to === 'close') return { type: 'goto', to: 'close' };
     if (d.to === 'size' && Number.isInteger(d.id) && (d.id as number) > 0) return { type: 'goto', to: 'size', id: d.id as number };
     return null;
   }

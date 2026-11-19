@@ -440,8 +440,9 @@ describe('ArtLook 액자/매트/조명 (index.html 소스 가드)', () => {
   it('조명이 장면 경로에서 실제로 호출된다', () => {
     // ⚠️ 옛 조명이 죽어 있던 정확한 이유다. 장면이 유일한 배경이 된 뒤로도 호출부가
     //    폴백(기본 벽) 분기에만 있어서 화면에 아무 변화가 없었다.
+    // 장면 분기 안 — 폴백 분기('기본 벽') 앞까지에서 찾는다(글자 수로 자르면 분기가 길어질 때마다 깨진다)
     const scene = html.slice(html.indexOf("if(state.mode==='scene'){"));
-    expect(scene.slice(0, 6000)).toContain('applyStudioLight(');
+    expect(scene.slice(0, scene.indexOf('applyStudioLight(ctx,W,H,state.light,{x,y,fw,fh}'))).toContain('applyStudioLight(');
     // 합성 좌표(stageArt)로 넘겨야 한다 — 출력 좌표로 주면 SUPERSAMPLE 배만큼 빗나간다
     expect(html).toMatch(/applyStudioLight\(ctx,W,H,state\.light,stageArt/);
   });
@@ -473,8 +474,12 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
   it('그림자는 블러보다 오프셋이 크다 — 안 그러면 사방 균일한 헤일로다', () => {
     const m = js.match(/const LAYERS = \[([\s\S]*?)\]\];/);
     expect(m).toBeTruthy();
-    const rows = [...m![1].matchAll(/\[([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*'(\w+)'/g)]
-      .map((r) => ({ blur: +r[1], alpha: +r[2], k: +r[3], name: r[4] }));
+    // 2026-11-17(WP1) — 세기는 '기본값 × 배율'(cast 1.5배 · contact 1배, 비교 손잡이 ?cast=&contact=)
+    const gain = { cast: 1.5, contact: 1 } as Record<string, number>;
+    expect(js).toMatch(/const castGain = u\.castGain == null \? 1\.5 : u\.castGain;/);
+    expect(js).toMatch(/const contactGain = u\.contactGain == null \? 1 : u\.contactGain;/);
+    const rows = [...m![1].matchAll(/\[([\d.]+),\s*([\d.]+)(?:\s*\*\s*\w+)?,\s*([\d.]+),\s*'(\w+)'/g)]
+      .map((r) => ({ blur: +r[1], alpha: +r[2] * (gain[r[4]] ?? 1), k: +r[3], name: r[4] }));
     // ⚠️ 넓은 반그림자(penumbra)는 뺐다 — 방향을 줘도 회색 헤일로로 읽혔다.
     //    남은 건 접지 + 아주 옅은 투영 둘뿐이고, 투영이 접지보다 **약해야** 한다.
     expect(rows.length).toBe(2);
@@ -552,9 +557,7 @@ describe('ArtLook 물리 일관성 (CLAUDE.md 44b)', () => {
     expect(js).toMatch(/Math\.max\(\.\.\.xs0\) - Math\.min\(\.\.\.xs0\)/);
     // ⚠️ 넘칠 때 줄이는 건 gain 이 아니라 fillMax 다 — t 가 physMax 에 포화돼 있으면
     //    gain 을 줄여도 결과가 한 픽셀도 안 변한다(실측).
-    // 벽 캡션 카드를 붙이면 카드 몫(lab)은 그대로 두고 작품 몫만 줄인다 — 붙이지 않으면(lab 0) 예전 그대로 cap / long0
-    expect(js).toMatch(/const k = lab > 0 \? Math\.min\(cap \/ h0, Math\.max\(0\.05, \(cap - lab\) \/ w0\)\) : cap \/ long0;/);
-    expect(js).toMatch(/fillMax = s0\.place\.heightRatio \* k;/);
+    expect(js).toMatch(/fillMax = s0\.place\.heightRatio \* \(cap \/ long0\);/);
     expect(js).toMatch(/const hardMax = o\.fillMax != null/);
   });
 
@@ -758,7 +761,7 @@ describe('ArtLook 적응형 합성 (CLAUDE.md 44g)', () => {
 
   it('그림자 세기는 신뢰도로 깎지 않는다 — 방향은 신뢰도, 세기는 물리', () => {
     // 2026-09-01 에 시도했다가 되돌렸다(contact_drop 이 전 케이스에서 내려갔다)
-    expect(js).toMatch(/const LAYERS = \[\[0\.045, 0\.060, 2\.20, 'cast'\]/);
+    expect(js).toMatch(/const LAYERS = \[\[0\.045, 0\.060 \* castGain, 2\.20, 'cast'\]/);
     expect(js).not.toMatch(/0\.060 \* castConf/);
   });
 

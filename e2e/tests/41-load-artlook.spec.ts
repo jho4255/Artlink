@@ -40,8 +40,8 @@ async function canvasStats(page: Page) {
   });
 }
 
-/** 설정 탭 — 2026-10-04 개편부터 작품·액자·매트·배경·조명·비율이 탭으로 나뉘어 있다(규칙 65). 그 탭을 열어야 칩이 보인다 */
-async function tab(page: Page, id: 'works' | 'frames' | 'mat' | 'scenes' | 'light' | 'ratio') {
+/** 설정 탭 — 2026-11-17 부터 추천·작품·액자(+매트)·배경·마무리(비율·조명)(규칙 85). 그 탭을 열어야 칩이 보인다 */
+async function tab(page: Page, id: 'reco' | 'works' | 'frames' | 'scenes' | 'finish') {
   await page.locator(`#tab-${id}`).click();
 }
 
@@ -74,7 +74,8 @@ async function bootArtLook(page: Page) {
   });
 
   await page.goto(ARTLOOK);
-  // 작품이 없으면 데모 작품이 뜬다 — 실제 가입자 작품을 쓰지 않는다
+  // 작품이 없으면 데모 작품이 뜬다 — 실제 가입자 작품을 쓰지 않는다. 처음 여는 탭은 [추천](2026-11-17)
+  await tab(page, 'works');
   await expect(page.locator('#works img').first()).toBeVisible({ timeout: 30000 });
   await page.locator('#works img').first().click();
   await waitRender(page);
@@ -85,12 +86,11 @@ test('★ 장면 전 종류를 두 바퀴 돌아도 WebGL 컨텍스트가 하나
   test.setTimeout(300_000);
   const errors = await bootArtLook(page);
 
-  // 배경은 [배경] 탭 안에 [공간]·[벽] 두 무리로 이어져 있다(2026-10-04 — 예전 [벽]/[공간] 토글은 무리 이름이 됐다).
-  // 토글이 있던 시절의 코드도 그대로 돈다(groups 가 0 이면 한 번에 전부).
+  // 배경은 [배경] 탭 안 [공간]·[벽] 두 무리 — 좁은 칸은 고른 무리의 칩만 보인다(2026-11-17 #sceneKinds, 넓은 칸은 둘 다)
   await tab(page, 'scenes');
-  const groups = page.locator('#sceneGroup button');
+  const groups = page.locator('#sceneKinds button:visible');
   const gN = Math.max(await groups.count(), 1);
-  const chips = page.locator('#scenes .chip');
+  const chips = page.locator('#scenes .chip:visible');
   let n = 0;
   for (let g = 0; g < gN; g++) {
     if (await groups.count()) { await groups.nth(g).click(); await page.waitForTimeout(200); }
@@ -146,21 +146,31 @@ test('★ 액자·매트·조명을 반복해서 바꿔도 렌더가 살아 있�
   test.setTimeout(240_000);
   const errors = await bootArtLook(page);
 
-  const frames = page.locator('#frames .chip');
-  const fN = Math.min(await frames.count(), 18);
-  expect(fN, '액자 목록이 비었다').toBeGreaterThan(0);
+  // [액자] 탭은 모양 × 재질(2026-11-17) — 모양마다 앞 재질 셋까지 고른다(모양 일곱 × 셋 ≈ 액자 18종, 예전 '앞 18개'와 같은 양)
+  await tab(page, 'frames');
+  const shapeIds = await page.locator('#shapes [data-shape]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.shape!));
+  expect(shapeIds.length, '액자 모양 목록이 비었다').toBeGreaterThan(0);
+  const picks: [string, string][] = [];
+  for (const sh of shapeIds) {
+    await page.locator(`#shapes [data-shape="${sh}"]`).click();
+    const ids = await page.locator('#frames .chip[data-id]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id!));
+    for (const id of ids.slice(0, 3)) picks.push([sh, id]);
+  }
+  const fN = picks.length;
 
   const blanks: string[] = [];
   for (let round = 0; round < 2; round++) {
     for (let i = 0; i < fN; i++) {
-      await tab(page, 'frames');
-      await frames.nth(i).click();
+      const [sh, id] = picks[i];
+      const shape = page.locator(`#shapes [data-shape="${sh}"]`);
+      if ((await shape.getAttribute('aria-pressed')) !== 'true') await shape.click();
+      // 재질이 하나뿐인 모양(액자 없음)은 재질 줄을 감춘다 — 모양을 누르면 이미 그 액자다
+      if (await page.locator('#frames').isVisible()) await page.locator(`#frames .chip[data-id="${id}"]`).click();
       // 액자 사진·결 텍스처는 고를 때 받는다 — 그려질 때까지(불러오는 중 표시가 사라질 때까지)
       await page.waitForFunction(() => document.getElementById('busy')!.hidden, null, { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(220);
 
-      // 매트 없음/좁게/넓게 를 돌린다 — 매트 분기가 액자마다 다르게 타는 자리(캔버스 랩이면 비활성이라 건너뛴다)
-      await tab(page, 'mat');
+      // 매트 없음/좁게/넓게 를 돌린다 — 매트 분기가 액자마다 다르게 타는 자리(캔버스 랩이면 비활성이라 건너뛴다). 매트는 같은 [액자] 탭 안
       const matBtns = page.locator('#matSel button:not([disabled])');
       if (await matBtns.count()) {
         await matBtns.nth((i + round) % (await matBtns.count())).click().catch(() => {});
@@ -173,7 +183,7 @@ test('★ 액자·매트·조명을 반복해서 바꿔도 렌더가 살아 있�
 
   // 조명 슬라이더를 끝까지 밀어도 작품이 하얗게 날아가지 않아야 한다
   const before = await canvasStats(page);
-  await tab(page, 'light');
+  await tab(page, 'finish');
   await page.locator('#lightOp').fill('100');
   await page.waitForTimeout(900);
   const after = await canvasStats(page);
@@ -193,7 +203,8 @@ test('★ 작품을 바꿔가며 30번 렌더해도 메모리가 폭주하지 �
 
   const works = page.locator('#works img');
   const wN = await works.count();
-  const chips = page.locator('#scenes .chip');   // 숨은 탭이어도 센다(count 는 보이는지 안 따진다)
+  await tab(page, 'scenes');
+  const chips = page.locator('#scenes .chip:visible');   // 좁은 칸은 고른 무리([공간]/[벽])의 칩만 보인다
   const sN = await chips.count();
   expect(wN).toBeGreaterThan(0);
 
@@ -241,6 +252,8 @@ test('★ 마이페이지 [ArtLook] 탭을 10번 드나들어도 매번 정상 �
 
   await page.goto('/mypage?tab=artlook');
   const frame = page.frameLocator('iframe');
+  // 처음 여는 탭은 [추천](2026-11-17) — 작품 칩은 [작품] 탭에서 보인다(목록 썸네일은 lazy 라 그때 받는다)
+  await frame.locator('#tab-works').click({ timeout: 40000 });
   await expect(frame.locator('#works img, #worksEmpty').first()).toBeVisible({ timeout: 40000 });
 
   for (let i = 0; i < 10; i++) {
@@ -249,6 +262,7 @@ test('★ 마이페이지 [ArtLook] 탭을 10번 드나들어도 매번 정상 �
     await page.waitForTimeout(200);
     await page.goto('/mypage?tab=artlook');
     const f = page.frameLocator('iframe');
+    await f.locator('#tab-works').click({ timeout: 30000 });
     await expect(f.locator('#works img, #worksEmpty').first())
       .toBeVisible({ timeout: 30000 });
   }
@@ -257,6 +271,8 @@ test('★ 마이페이지 [ArtLook] 탭을 10번 드나들어도 매번 정상 �
   const f = page.frameLocator('iframe');
   const hasWorks = await f.locator('#works img').count();
   if (hasWorks > 0) {
+    // 목록 썸네일은 lazy — [작품] 탭을 연 뒤 적어도 하나가 다 받아질 때까지
+    await expect.poll(() => f.locator('#works img').evaluateAll((els) => els.filter((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0).length), { timeout: 20000 }).toBeGreaterThan(0);
     // ⚠️ 실제로 **로드된** 썸네일을 고른다 — 파일이 없는(404) 작품을 누르면 아무 일도 안 일어난다.
     //    그건 ArtLook 의 결함이 아니라 그 작품의 이미지가 없는 것이다.
     // ⚠️ 작품 목록은 **페이지네이션**된다(`#worksPager`) — 한 페이지만 보면 로드된 게 다음 장에

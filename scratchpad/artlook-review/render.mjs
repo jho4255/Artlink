@@ -1,12 +1,13 @@
 // ArtLook 결과물(저장되는 그림) 모아 보기 — 화면이 쓰는 것과 같은 compose 경로. 데모 그림만 쓴다.
 import pw from '/home/jho4255/ArtLink/e2e/node_modules/playwright/index.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
-const OUT = '/home/jho4255/ArtLink/scratchpad/artlook-review/q';
+const OUT = '/home/jho4255/ArtLink/scratchpad/artlook-review/' + (process.env.OUTQ || 'q');
 for (const d of ['frames', 'scenes', 'special']) mkdirSync(`${OUT}/${d}`, { recursive: true });
 const b = await pw.chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1100, height: 860 } });
 const errs = []; p.on('pageerror', (e) => errs.push(e.message));
-await p.goto('http://localhost:5173/artlook/index.html?preload=all', { waitUntil: 'networkidle' });
+// Q=cast=1&contact=1&aoclip=0 처럼 엔진의 비교 손잡이를 붙일 수 있다 · OUTQ=폴더 이름(기본 q)
+await p.goto('http://localhost:5173/artlook/index.html?preload=all' + (process.env.Q ? '&' + process.env.Q : ''), { waitUntil: 'networkidle' });
 await p.waitForTimeout(4500);
 await p.evaluate(() => {
   window.__load = (file) => new Promise((res, rej) => { const im = new Image(); im.onload = () => { state.img = capToCanvas(im); res(); }; im.onerror = rej; im.src = '/demo-art/' + file; });

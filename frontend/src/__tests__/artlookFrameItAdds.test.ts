@@ -1,6 +1,6 @@
 /**
  * ArtLook — FrameIt 비교 뒤 더한 것(2026-10-25, CLAUDE.md 규칙 75) — 원형 액자(작품의 원 맞추기) · 액자 종류별 묶음 · 박스·슬림·플로터 재질 채우기 ·
- * 매끈한 마감 정리 · 박물관 색 벽 · 벽 캡션 카드 · 리넨/스웨이드 매트 · 여러 점 걸기(크기 조절).
+ * 매끈한 마감 정리 · 박물관 색 벽 · 리넨/스웨이드 매트 · 여러 점 걸기(크기 조절).
  *
  * ArtLook 은 번들 밖 정적 페이지라 소스와 파일로 고정한다(artlookScreen.test.ts 와 같은 방식). 배치 계산(groupLayout)은
  * 순수 함수라 소스에서 떼어 실제로 돌린다. 픽셀은 jsdom 이 못 그린다 — 렌더는 e2e `75-artlook-frameit-adds` 와 하니스가 본다.
@@ -66,7 +66,8 @@ describe('원형 액자 — 사용자가 고른다(둥근 작품도 사진은 �
     expect(ui).toMatch(/if\(savedCircles\[w\.url\]\) return savedCircles\[w\.url\];/);
     expect(ui).toMatch(/applyCircles\(\);\n {2}compose\(\);/);
     // [원 맞추기]는 원형 칩 바로 옆 칩이다(줄 끝 버튼은 칩과 너무 멀었다 — 2026-10-26). 원형이 아니면 원형으로 바꾸고 연다
-    expect(ui).toMatch(/if\(ids\.some\(\(id\)=>\(FRAMES\.find\(\(f\)=>f\.id===id\)\|\|\{\}\)\.kind==='round'\)\) framesEl\.appendChild\(circleChip\(\)\);/);
+    // 2026-11-17 — 액자 탭이 '모양 × 재질'이 되어 [원형] 모양의 재질 줄 끝에 붙는다
+    expect(fnSource(ui, 'buildFrames')).toMatch(/if\(sh\.id==='round'\) framesEl\.appendChild\(circleChip\(\)\);/);
     expect(fnSource(ui, 'circleChip')).toMatch(/if\(\(FRAMES\[state\.frameIdx\]\|\|\{\}\)\.kind!=='round'\)\{ const i=FRAMES\.findIndex\(\(f\)=>f\.kind==='round'\); if\(i>=0\) selectFrame\(i\); \}\n {4}openCircleSheet\(\);/);
     expect(fnSource(ui, 'updateFrameLine')).not.toMatch(/원 맞추기/);
     expect(html).toMatch(/<div class="sheet" id="circleSheet" role="dialog" aria-modal="true"/);
@@ -88,8 +89,8 @@ describe('원형 액자 — 사용자가 고른다(둥근 작품도 사진은 �
     expect(html).toMatch(/const d=Math\.min\(cm\[0\],cm\[1\]\), S=framed\._roundArtPx\|\|Math\.min\(srcImg\.width,srcImg\.height\);/);   // 끄는 동안은 작은 판(srcImg) 기준
   });
 
-  it('원형 묶음 설명이 사진 속 원에 테를 맞춘다고 말한다(묶음 설명 — 아래 "액자 종류별 묶음")', () => {
-    expect(ui).toMatch(/\['원형','둥근 작품용, 사진 속 원에 테를 맞춰요',\['round-black','round-gold'\]\]/);
+  it('원형 모양 설명이 사진 속 원에 테를 맞춘다고 말한다(모양 설명 — 아래 "액자 모양 × 재질")', () => {
+    expect(ui).toMatch(/\{ id:'round', name:'원형', desc:'둥근 작품용, 사진 속 원에 테를 맞춰요', rep:'round-black',\n\s*items:\[\['round-black','블랙','black'\],\['round-gold','골드','gold'\]\] \}/);
   });
 });
 
@@ -115,26 +116,42 @@ describe('액자 종류별 묶음 · 재질 채우기 · 매끈한 마감 — �
     expect(html.split('\n').filter((l) => /^\s*\{ id:'box-/.test(l))).toHaveLength(5);
   });
 
-  it('화면은 종류별로 묶어 보인다 — 보이는 액자가 정확히 한 묶음에(빠진 건 기타로 · 숨긴 액자는 어디에도 없다)', () => {
-    const frames = ids.map((id) => ({ id, hidden: hiddenIds.includes(id) }));
-    const groups = new Function(`const FRAMES=${JSON.stringify(frames)}; ${ui.slice(ui.indexOf('const FRAME_GROUPS='), ui.indexOf('function buildFrames('))}; return frameGroups();`)() as [string, string, string[]][];
-    expect(groups.map((g) => g[0])).toEqual(['몰딩', '넓은 몰딩', '슬림', '플로터', '박스', '원형', '기타']);
-    const flat = groups.flatMap((g) => g[2]);
+  // 2026-11-17(PLAN WP5) — 묶음 한 줄 28칩이 '모양 × 재질'이 됐다. SNS 크기로 줄이면 블랙 5종·화이트 6종이 거의 같아 보였다.
+  type Shape = { id: string; name: string; desc: string; rep: string; items: [string, string, string][] };
+  const shapesOf = (frames: { id: string; hidden: boolean }[]) => new Function(`const FRAMES=${JSON.stringify(frames)}; ${ui.slice(ui.indexOf('const FRAME_SHAPES='), ui.indexOf('/** 그 액자(id)가 속한 모양'))}; return { shapes: frameShapes(), MAT_NEAR };`)() as { shapes: Shape[]; MAT_NEAR: Record<string, string[]> };
+  it('화면은 모양 × 재질 — 보이는 액자가 정확히 한 모양에 · 숨긴 액자는 어디에도 없다', () => {
+    const { shapes } = shapesOf(ids.map((id) => ({ id, hidden: hiddenIds.includes(id) })));
+    expect(shapes.map((g) => g.name)).toEqual(['몰딩', '넓은 몰딩', '슬림', '플로터', '박스', '원형', '액자 없음']);
+    const flat = shapes.flatMap((g) => g.items.map((it) => it[0]));
     expect(flat.sort()).toEqual([...visible].sort());
     expect(new Set(flat).size).toBe(flat.length);
+    // 모양 칩 그림은 그 모양의 대표 액자 — 그 모양에 있어야 한다
+    for (const g of shapes) expect(g.items.map((it) => it[0]), `${g.name} 대표`).toContain(g.rep);
   });
-  it('★ 묶음마다 무엇이 다른지 한 줄(2026-10-26 사용자) — 넓은 칸은 이름 옆, 좁은 칸은 칩 아래 줄에 고른 액자의 묶음 설명', () => {
-    const groups = [...ui.matchAll(/\['([^']+)','([^']+)',\[/g)].map((m) => [m[1], m[2]]);
-    expect(groups.length).toBe(7);
-    // 휴대폰은 칩 아래 한 줄 — 이름 포함 약 26자라 설명은 20자 안팎(플로터 설명이 잘렸다)
-    for (const [name, desc] of groups) expect(desc.length, `${name} 설명 '${desc}'`).toBeLessThanOrEqual(22);
-    expect(ui).toMatch(/const ds=document\.createElement\('span'\); ds\.className='gdesc'; ds\.textContent=' — '\+gdesc;/);
-    // 고른 액자 하나의 설명(예전 FRAME_NOTES)은 없앴다 — 줄에는 그 액자의 '묶음' 설명
+  it('모양을 바꾸면 같은 재질 · 없으면 가까운 재질(골드 → 샴페인 → 오크 · 메이플 → 오크 · 실버 → 화이트 …)', () => {
+    const { MAT_NEAR } = shapesOf(ids.map((id) => ({ id, hidden: hiddenIds.includes(id) })));
+    expect(MAT_NEAR.gold).toEqual(['champagne', 'oak']);
+    expect(MAT_NEAR.maple).toEqual(['oak']);
+    expect(MAT_NEAR.silver).toEqual(['white']);
+    expect(MAT_NEAR.ivory).toEqual(['white']);
+    const f = fnSource(ui, 'selectShape');
+    expect(f).toMatch(/const want=\[curMat, \.\.\.\(MAT_NEAR\[curMat\]\|\|\[\]\)\];/);
+    expect(f).toMatch(/if\(!pick\) pick=sh\.items\[0\];/);
+    // 코드로 액자를 바꿔도(기억 · 추천 조합) 모양 줄이 따라온다
+    expect(fnSource(ui, 'syncFrameControls')).toMatch(/if\(sh && sh\.id!==curShape\)\{ curShape=sh\.id; buildFrames\(\); \}/);
+  });
+  it('★ 모양마다 무엇이 다른지 한 줄(2026-10-26 사용자 — 묶음 설명을 모양 설명으로) — 넓은 칸은 모양 아래 줄, 좁은 칸은 고를 때 알림', () => {
+    const { shapes } = shapesOf(ids.map((id) => ({ id, hidden: hiddenIds.includes(id) })));
+    expect(shapes.length).toBe(7);
+    for (const g of shapes) expect(g.desc.length, `${g.name} 설명 '${g.desc}'`).toBeLessThanOrEqual(22);
+    // 고른 액자 하나의 설명(예전 FRAME_NOTES)은 없다 — 줄에는 그 모양의 설명
     expect(ui).not.toMatch(/FRAME_NOTES/);
-    expect(fnSource(ui, 'updateFrameLine')).toMatch(/const g=frameGroupOf\(f\.id\);/);
-    // 넓은 칸: 설명은 이름 옆, 설명 줄은 감춘다
-    expect(html).toMatch(/\.group \.gdesc\{display:none\}/);
-    expect(html).toMatch(/\.group \.gdesc\{display:inline;font-weight:400;color:var\(--sub\);font-size:12px\}\n {4}#framesLine\{display:none\}/);
+    expect(fnSource(ui, 'updateFrameLine')).toMatch(/t\.appendChild\(document\.createTextNode\(' — '\+sh\.desc\)\);/);
+    expect(fnSource(ui, 'selectShape')).toMatch(/if\(byUser && !isWide\(\)\) toast\(sh\.name\+' — '\+sh\.desc\);/);
+    // 좁은 칸은 설명 줄을 감추고(칩 칸 176px 에 세 줄 — 모양·재질·매트), 넓은 칸은 보인다
+    expect(html).toMatch(/\n {2}#framesLine\{display:none\}/);
+    expect(html).toMatch(/#pane-frames #framesLine\{display:flex\}/);
+    expect(html).not.toMatch(/\.gdesc/);
   });
   it('숨긴 액자 — 사진 액자로 대신한 코드 액자는 목록에서 빼고, 골라 둔 사람은 그 대신으로 연다', () => {
     expect(hiddenIds.sort()).toEqual(['floater-silver', 'slim-champagne', 'slim-oak', 'slim-silver', 'slim-walnut']);
@@ -262,7 +279,8 @@ describe('2차 사진 액자(2026-10-26) — 플로터 5 · 슬림 2 · 메이�
     });
   it('새 몰딩은 FRAMES 맨 뒤(앞 번호를 하니스가 쓴다) · 넓은 몰딩은 살을 굵게', () => {
     const all = [...html.matchAll(/\{ id:'([a-z-]+)', name:'/g)].map((m) => m[1]);
-    expect(all.slice(-4)).toEqual(['maple', 'silver', 'black-wide', 'white-wide']);
+    // 2026-11-17 — 그 뒤에 색 옮긴 액자 4종(같은 이유로 맨 뒤)
+    expect(all.slice(-8)).toEqual(['maple', 'silver', 'black-wide', 'white-wide', 'navy', 'forest', 'wine', 'teak']);
     expect(html).toMatch(/const FLOATER_RAIL=0\.04\d;/);
     expect(lineOf('white-wide')).toMatch(/rail:0\.08\d/);
   });
@@ -302,34 +320,18 @@ describe('끌 때 렉 — 끄는 동안만 작은 판·판 재사용·GL 한 번
   });
 });
 
-describe('벽 캡션 카드 — 미술관 라벨처럼 작품 오른쪽 벽에', () => {
-  it('기본은 꺼짐 · 켜면 기억(이 브라우저)', () => {
-    expect(html).toMatch(/caption:false,/);
-    expect(ui).toMatch(/state\.caption=prefs\.caption===true;/);
-    expect(ui).toMatch(/savePrefs\(\{ caption:state\.caption \}\)/);
+describe('벽 캡션 카드는 없앴다(2026-11-18 사용자 결정)', () => {
+  // 2026-10-25 에 넣고 11-18 에 크기·자리를 다시 짰는데, 같은 날 사용자가 기능째로 빼라고 했다. 되살리지 말 것
+  it('스위치·카드·엔진 배치·작품 연도/재료 넘기기가 다 없다', () => {
+    expect(html).not.toMatch(/capSwitch|captionCard|captionLines|caption:false|lastLabelPlaced|벽 캡션/);
+    expect(ui).not.toMatch(/capSwitch|captionState|updateCaptionSwitch|state\.caption|savePrefs\(\{ caption/);
+    expect(scene).not.toMatch(/placeWallLabel|LABEL_W_FRAC|labelQuad|u\.label/);
+    const lib = readFileSync(resolve(__dirname, '../lib/artlook.ts'), 'utf-8');
+    expect(lib).not.toMatch(/year: img\.year|medium: img\.medium/);
   });
-  it('적을 게 없으면(작가·작품명 둘 다 없음) 붙이지 않는다 — 빈 카드는 "정보를 안 적었다"로 읽힌다', () => {
-    const f = new Function(`${fnSource(html, 'captionLines')}; return captionLines;`)() as (w: unknown) => { text: string }[];
-    expect(f({})).toEqual([]);
-    expect(f({ medium: '캔버스에 유채', sizeText: '60 × 90 cm' })).toEqual([]);
-    expect(f({ artist: '김하늘', title: '강', year: '2024', medium: '캔버스에 유채', sizeText: '60 × 90 cm' }).map((l) => l.text))
-      .toEqual(['김하늘', '강, 2024', '캔버스에 유채', '60 × 90 cm']);
-  });
-  it('크기·간격은 벽의 실제 축척(regionCm) · 자리가 없으면 왼쪽, 그것도 없으면 붙이지 않는다', () => {
-    const f = fnSource(scene, 'placeWallLabel');
-    expect(f).toMatch(/const cw = label\.wCm \/ rw, ch = label\.hCm \/ rh/);
-    expect(f).toMatch(/for \(const x0 of \[right \+ gap, left - gap - cw\]\)/);
-    expect(f).toMatch(/if \(!q\) return null;/);
-    // 카드도 판과 같은 워프(벽 명암·톤·그레인)를 거친다
-    expect(f).toMatch(/warp\(label\.canvas, q, W, H, Object\.assign\(\{\}, lightOpts/);
-  });
-  it('카드를 붙일 때만 묶음이 가운데로 — 안 붙이면 배치가 예전과 같다(labelU 0)', () => {
-    expect(scene).toMatch(/const labelU = \(u\.label && u\.label\.canvas && scene\.region && scene\.regionCm && scene\.frameless\)/);
-    expect(scene).toMatch(/dx: \(a\.dx \|\| 0\) - labelU \/ 2/);
-  });
-  it('여러 점에서는 캡션이 없다(단추도 감춘다)', () => {
-    expect(html).toMatch(/label: \(state\.caption && !grp\) \? captionCard\(selectedWork\) : null/);
-    expect(ui).toMatch(/const canCaption=!multi && /);
+  it('작품 자리·크기는 그대로 — 예전 캡션 몫(labelU)도 없다', () => {
+    expect(scene).not.toMatch(/labelU/);
+    expect(scene).toMatch(/scale: a\.scale, dx: a\.dx, dy: a\.dy,/);
   });
 });
 

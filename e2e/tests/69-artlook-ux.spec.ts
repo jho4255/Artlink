@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type BrowserContextOptions, type Frame, type Page } from '@playwright/test';
-import { solidPng, noNudgeEntry } from '../lib/helpers';
+import { solidPng, noNudgeEntry, pickFrame, artlookSave, savedNote } from '../lib/helpers';
 
 /**
  * ArtLook(액자 걸기) 화면 개편 — 2026-10-04, CLAUDE.md 규칙 65. **눌러서 무슨 일이 나는가**를 본다.
@@ -7,10 +7,11 @@ import { solidPng, noNudgeEntry } from '../lib/helpers';
  * 고치기 전(2026-10-04 실측): 휴대폰 첫 화면에 미리보기 0px · 설정 1,611px 를 141px 틈으로 · 탭을 열면 41.5MB 를 받고
  * 32번 다시 그림 · 저장해도 표시 없음 · [완료]는 탭 안에서 경고창 · 끌면 화면이 같이 밀림.
  *
- *  A. 첫 화면에 미리보기가 통째로 보이고 [이미지 저장]이 하단 탭바 위에서 눌린다(휴대폰·PC)
+ *  A. 첫 화면에 미리보기가 통째로 보이고 저장 단추가 눌린다 — 휴대폰은 편집 전용 화면(상단바·탭바 없음, 머리 [저장] → 저장 창), PC 는 [이미지 저장]
+ *     (2026-11-17 규칙 85 — 1024px 미만 [ArtLook] 탭은 아트링크 틀 없이)
  *  B. 열 때 한두 번만 그리고, 고른 배경·액자 하나만 받고, 작품 목록은 원본을 받지 않는다
- *  C. 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다 · 두 손가락으로 커진다 · [−][+][원위치]
- *  D. 저장 → 파일 + "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 소식 올리기 화면(/story/new)
+ *  C. 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다 · 두 손가락으로 커진다 · [−][+] 없이 조절한 뒤에만 [처음 자리로]
+ *  D. 저장 → 파일 + "저장했어요"(경고창 없음) → [ArtStory에 올리기](저장 전부터 있다) → 사진이 실린 소식 올리기 화면(/story/new)
  *  E. 크기를 안 적은 작품 → [크기 입력하기] → 편집 화면에서 **그 작품**의 정보 창
  *  F. 작품 0점 → 데모 작품 + [작품 올리기] → 편집 화면
  *  G. 고른 액자·배경은 다음에 다시 열어도 그대로
@@ -102,7 +103,7 @@ const floorY = (page: Page) => page.evaluate(() => {
 });
 
 for (const desktop of [false, true]) {
-  test(`A. ★ 첫 화면에 미리보기가 통째로, [이미지 저장]이 탭바 위에서 눌린다 (${desktop ? 'PC' : '휴대폰'})`, async ({ browser }) => {
+  test(`A. ★ 첫 화면에 미리보기가 통째로, 저장 단추가 첫 화면에서 눌린다 (${desktop ? 'PC' : '휴대폰 — 편집 전용 화면'})`, async ({ browser }) => {
     const { ctx, page } = await openFor(browser, full, { desktop });
     const frame = await openArtLook(page);
     const floor = await floorY(page);
@@ -115,13 +116,30 @@ for (const desktop of [false, true]) {
     expect(cv.y, '미리보기가 위로 잘렸다').toBeGreaterThanOrEqual(0);
     expect(cv.y + cv.h, '미리보기가 첫 화면 밖으로 내려갔다').toBeLessThanOrEqual(floor);
     expect(Math.min(cv.w, cv.h), '미리보기가 너무 작다').toBeGreaterThan(desktop ? 400 : 250);
-    const dl = await outerRect(page, frame, '#dl');
-    expect(dl.y + dl.h, '[이미지 저장]이 첫 화면 밖').toBeLessThanOrEqual(floor);
+    if (!desktop) {
+      // 편집 전용 화면 — 아트링크 상단바·하단 탭바가 없고, ArtLook 머리에 [닫기 ×]·[저장]
+      await expect(page.locator('nav[aria-label="하단 내비게이션"]')).toHaveCount(0);
+      await expect(frame.getByRole('button', { name: '닫기' })).toBeVisible();
+      expect(Math.min(cv.w, cv.h), '편집 전용 화면인데 미리보기가 화면 폭을 다 쓰지 않는다').toBeGreaterThan(380);
+    }
+    // 저장 단추 — 휴대폰은 머리 [저장](누르면 창), PC 는 패널 아래 [이미지 저장]
+    const saveSel = desktop ? '#dl' : '#saveOpen';
+    const dl = await outerRect(page, frame, saveSel);
+    expect(dl.y + dl.h, '저장 단추가 첫 화면 밖').toBeLessThanOrEqual(floor);
     // 그 자리를 누르면 정말 저장 단추가 잡힌다(바깥에선 iframe, 안에선 단추)
-    const hit = await frame.evaluate(() => { const b = document.getElementById('dl')!.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t?.id; });
-    expect(hit).toBe('dl');
+    const hit = await frame.evaluate((sel) => { const b = document.querySelector(sel)!.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t?.id; }, saveSel);
+    expect(hit).toBe(saveSel.slice(1));
     const outerHit = await page.evaluate(([x, y]) => (document.elementFromPoint(x, y) as HTMLElement | null)?.tagName, [dl.x + dl.w / 2, dl.y + dl.h / 2]);
     expect(outerHit).toBe('IFRAME');
+    if (!desktop) {
+      await frame.locator('#saveOpen').click();
+      await expect(frame.locator('#saveBox')).toBeVisible();
+      const inner = await frame.evaluate(() => { const b = document.getElementById('dl')!.getBoundingClientRect(); return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.id; });
+      expect(inner, '저장 창의 [이미지 저장]이 눌리지 않는다').toBe('dl');
+      await expect(frame.locator('#toStory')).toBeVisible();
+      await frame.locator('body').press('Escape');
+      await expect(frame.locator('#saveBox')).toBeHidden();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), '가로로 밀린다').toBeLessThanOrEqual(0);
     await ctx.close();
   });
@@ -141,11 +159,14 @@ test('B. ★ 열 때 한두 번만 그리고, 고른 배경·액자만 받고, �
   // 작품 목록 칸은 썸네일 — 원본(/uploads/<파일>)은 미리보기에 쓰는 고른 작품 하나뿐
   const originals = requests.filter((u) => /\/uploads\/(?!t240\/|t800\/)[^/?]+\.(jpe?g|png|webp)/i.test(u));
   expect(originals.length, `작품 원본 ${originals.length}장: ${originals.join(' ')}`).toBeLessThanOrEqual(1);
-  expect(requests.filter((u) => u.includes('/uploads/t800/')).length, '목록 썸네일을 안 썼다').toBeGreaterThan(0);
+  // 처음 여는 탭은 [추천](2026-11-17) — 작품 목록 썸네일은 lazy 라 [작품] 탭을 열 때 받는다(열기만 하면 0장 — 더 가볍다)
+  await tab(frame, 'works');
+  await expect.poll(() => requests.filter((u) => u.includes('/uploads/t800/')).length, { message: '목록 썸네일을 안 썼다', timeout: 15000 }).toBeGreaterThan(0);
+  expect(requests.filter((u) => /\/uploads\/(?!t240\/|t800\/)[^/?]+\.(jpe?g|png|webp)/i.test(u)).length, '[작품] 탭을 열어도 목록은 원본을 받지 않는다').toBeLessThanOrEqual(1);
   await ctx.close();
 });
 
-test('C. ★ 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다 · 두 손가락으로 커진다 · [−][+][원위치]', async ({ browser }) => {
+test('C. ★ 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다 · 두 손가락으로 커진다 · 조절한 뒤에만 [처음 자리로]', async ({ browser }) => {
   const { ctx, page } = await openFor(browser, full);
   const frame = await openArtLook(page);
   const cdp = await ctx.newCDPSession(page);
@@ -176,20 +197,21 @@ test('C. ★ 휴대폰 — 끌면 작품이 움직이고 바깥은 안 밀린다
   expect(a2!.s, '두 손가락으로 벌렸는데 안 커졌다').toBeGreaterThan(a1!.s * 1.2);
   expect(await frame.evaluate(() => !!state.draft), '손을 뗐는데 초안(낮은 배율) 그림으로 남았다').toBe(false);
 
-  await frame.getByRole('button', { name: '작게' }).click();
-  expect((await adj())!.s).toBeLessThan(a2!.s);
+  // 손가락 화면엔 [−][+] 가 없다(두 손가락으로 된다) — 조절했으니 [처음 자리·크기로] 만 오른쪽 위에
+  await expect(frame.getByRole('button', { name: '작게' })).toBeHidden();
+  await expect(frame.getByRole('button', { name: '크게' })).toBeHidden();
   await frame.getByRole('button', { name: '처음 자리·크기로' }).click();
   expect(await adj()).toEqual({ dx: 0, dy: 0, s: 1 });
+  await expect(frame.locator('#zoom')).toBeHidden({ timeout: 10000 });   // 처음 자리면 단추도 없다
   await ctx.close();
 });
 
 test('D. ★ 저장하면 파일과 "저장했어요"(경고창 없음) → [ArtStory에 올리기] → 사진이 실린 소식 올리기 화면', async ({ browser }) => {
   const { ctx, page, dialogs } = await openFor(browser, full);
   const frame = await openArtLook(page);
-  await expect(frame.locator('#toStory')).toBeHidden();               // 저장하기 전엔 없다
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), frame.locator('#dl').click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), artlookSave(frame)]);
   expect(dl.suggestedFilename()).toMatch(/새벽 들판_.+_.+\.png$/);     // 작가_작품명_액자_배경 — 여러 장이 (1)(2) 로 겹치지 않게
-  await expect(frame.locator('#toast')).toContainText('저장했어요');
+  await expect(savedNote(frame)).toContainText('저장했어요');
   expect(dialogs, '경고창이 떴다').toHaveLength(0);
   await expect(frame.locator('#toStory')).toBeVisible();
   await frame.locator('#toStory').click();
@@ -213,7 +235,8 @@ test('E. ★ 크기를 안 적은 작품 → [크기 입력하기] → 편집 �
   const frame = await openArtLook(page);
   const idx = await frame.evaluate((id) => JSON.parse(localStorage.getItem('artlook:works')!).findIndex((w: any) => w.id === id), titledNoSize);
   expect(idx).toBeGreaterThanOrEqual(0);
-  // 작품 칩은 번호(data-i)로 고른다 — 줄 맨 앞에 [여러 점] 칩이 있어 순번이 작품 번호와 다르다(2026-10-25)
+  // 작품 칩은 번호(data-i)로 고른다 — 줄 맨 앞에 [여러 점] 칩이 있어 순번이 작품 번호와 다르다(2026-10-25). 처음 여는 탭은 [추천](2026-11-17)
+  await tab(frame, 'works');
   await frame.locator(`#works .chip.work[data-i="${idx}"]`).click();
   await expect(frame.locator('#worksLine')).toContainText('높이 90cm', { timeout: 30000 });
   await expect(frame.locator('#worksLine')).toContainText('여름 그늘');
@@ -231,6 +254,7 @@ test('F. 작품 0점 — 데모 작품으로 보여 주고 [작품 올리기] �
   const frame = await openArtLook(page);
   await expect(frame.locator('#worksEmpty')).toContainText('데모 작품');
   await expect(frame.locator('#works img')).toHaveCount(6);
+  await tab(frame, 'works');
   await frame.getByRole('button', { name: '작품 올리기' }).click();
   await expect(page).toHaveURL(/tab=homepage-edit&section=works/, { timeout: 15000 });
   await ctx.close();
@@ -239,8 +263,7 @@ test('F. 작품 0점 — 데모 작품으로 보여 주고 [작품 올리기] �
 test('G. 고른 액자·배경은 다음에 다시 열어도 그대로', async ({ browser }) => {
   const { ctx, page } = await openFor(browser, full, { desktop: true });
   let frame = await openArtLook(page);
-  await tab(frame, 'frames');
-  await frame.locator('#frames .chip[data-id="black"]').click();
+  await pickFrame(frame, 'black');
   await tab(frame, 'scenes');
   const second = frame.locator('#scenes .chip').nth(1);
   const sceneName = await second.getAttribute('title');

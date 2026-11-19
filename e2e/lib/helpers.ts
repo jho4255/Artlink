@@ -1,4 +1,4 @@
-import { Browser, BrowserContext, Locator, Page, expect } from '@playwright/test';
+import { Browser, BrowserContext, Frame, Locator, Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
@@ -663,3 +663,33 @@ export async function openEmptyDirectChat(page: Page, fromRole: Role, otherId: n
   await page.waitForURL(/\/messages\?chat=\d+/, { timeout: 15000 });
   return id;
 }
+
+
+/* ── ArtLook(액자 걸기) — 2026-11-17 편집 화면 개편(규칙 85) ──────────────────────────────────────────────── */
+/**
+ * 액자를 id 로 고른다 — [액자] 탭이 '모양 × 재질'이라 그 모양을 먼저 눌러야 재질 칩이 DOM 에 생긴다.
+ * 모양은 화면의 읽기 전용 훅(`__artlookShapeOf`)으로 찾는다. 이미 그 모양이면 모양은 다시 누르지 않는다.
+ */
+export async function pickFrame(f: Frame | Page, id: string) {
+  await f.locator('#tab-frames').click();
+  const shape = await f.evaluate((x) => (window as any).__artlookShapeOf(x) as string | null, id);
+  if (!shape) throw new Error(`액자 ${id} 가 화면 모양 목록에 없다(숨긴 액자?)`);
+  const sc = f.locator(`#shapes [data-shape="${shape}"]`);
+  if ((await sc.getAttribute('aria-pressed')) !== 'true') await sc.click();
+  // 재질이 하나뿐인 모양(액자 없음 = 캔버스)은 재질 줄을 감춘다 — 모양을 누르는 순간 이미 골라져 있다
+  if (await f.locator('#frames').isHidden()) return;
+  const chip = f.locator(`#frames .chip[data-id="${id}"]`);
+  await chip.scrollIntoViewIfNeeded();
+  await chip.click();
+}
+
+/**
+ * [이미지 저장]을 누른다 — 휴대폰 편집 전용 화면(마이페이지 · 1024px 미만)은 단추가 머리 [저장] 의 창 안에 있다.
+ * 창이 필요하면 먼저 연다. 저장 뒤 알림은 창이 떠 있으면 창 안(#saveStatus), 아니면 미리보기 위(#toast)에 나온다 — `savedNote` 로 본다.
+ */
+export async function artlookSave(f: Frame | Page) {
+  const open = f.locator('#saveOpen');
+  if (await open.isVisible()) { await open.click(); await expect(f.locator('#saveBox')).toBeVisible(); }
+  await f.locator('#dl').click();
+}
+export const savedNote = (f: Frame | Page) => f.locator('#saveStatus:visible, #toast:visible');

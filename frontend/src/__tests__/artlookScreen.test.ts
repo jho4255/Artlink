@@ -44,11 +44,17 @@ describe('고른 것만 받는다 — 탭을 열 때 41.5MB·32번 다시 그리
     expect(ui).toMatch(/window\.__artlookRenders=composed/);    // 하니스·E2E 가 몇 번 그렸나 본다
   });
 
-  it('칩은 미리 구운 작은 파일 — 모든 액자·배경에 파일이 있다(액자·장면을 더하면 build-artlook-thumbs.mjs)', () => {
+  it('칩은 미리 구운 작은 파일 — 보이는 액자마다 모서리 칩 · 추천 조합마다 칩 · 배경마다 썸네일(더하면 build-artlook-thumbs.mjs)', () => {
     const ids = [...html.matchAll(/\{ id:'([a-z-]+)', name:'/g)].map((m) => m[1]);
-    expect(ids.length).toBe(33);   // 2026-10-25 원형 2 · 흰 플로터 · 화이트 슬림 · 박스 4 추가(금테 3종은 넣었다가 뺐다) · 10-26 메이플·실버·넓은 블랙·넓은 화이트 (숨긴 액자도 칩은 둔다)
+    const hiddenIds = html.split('\n').filter((l) => /^\s*\{ id:'/.test(l) && /hidden:true/.test(l)).map((l) => l.match(/id:'([a-z-]+)'/)![1]);
+    expect(ids.length).toBe(37);   // 2026-11-17 색 옮긴 액자 4종(네이비·포레스트·와인·티크) — 아래 원래 주석의 33종에 더했다   // 2026-10-25 원형 2 · 흰 플로터 · 화이트 슬림 · 박스 4 추가(금테 3종은 넣었다가 뺐다) · 10-26 메이플·실버·넓은 블랙·넓은 화이트 (숨긴 액자도 칩은 둔다)
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(existsSync(resolve(PUB, 'frames/chips', `${id}.webp`)), `칩 ${id}`).toBe(true);
+    // 2026-11-17 — 칩 그림은 '액자 전체'가 아니라 '왼쪽 위 모서리 확대'(frames/corners). 숨긴 액자는 화면에 없어 굽지 않는다
+    for (const id of ids.filter((x) => !hiddenIds.includes(x))) expect(existsSync(resolve(PUB, 'frames/corners', `${id}.webp`)), `모서리 칩 ${id}`).toBe(true);
+    expect(existsSync(resolve(PUB, 'frames/chips')), '옛 액자 칩 폴더는 지웠다(쓰는 곳 없음)').toBe(false);
+    const presetIds = [...ui.slice(ui.indexOf('const PRESETS=['), ui.indexOf('];', ui.indexOf('const PRESETS=['))).matchAll(/\{ id:'([a-z-]+)'/g)].map((m) => m[1]);
+    expect(presetIds).toEqual(['charcoal', 'cube', 'living', 'plaster', 'burgundy', 'brick', 'home', 'canvas']);
+    for (const id of presetIds) expect(existsSync(resolve(PUB, 'presets', `${id}.webp`)), `추천 조합 칩 ${id}`).toBe(true);
     const scenes = JSON.parse(read('scenes/scenes.json')).scenes as { id: string; src: string; thumb?: string }[];
     for (const s of scenes) {
       expect(s.thumb, `${s.id} 의 thumb`).toBeTruthy();
@@ -60,7 +66,8 @@ describe('고른 것만 받는다 — 탭을 열 때 41.5MB·32번 다시 그리
       expect(existsSync(resolve(PUB, t)), `썸네일 ${t}`).toBe(true);
     }
     // 화면은 칩에 원본 벽 사진을 쓰지 않는다
-    expect(ui).toMatch(/im\.src='frames\/chips\/'\+f\.id\+'\.webp'/);
+    expect(ui).toMatch(/const cornerSrc=\(id\)=>'frames\/corners\/'\+id\+'\.webp';/);
+    expect(ui).toMatch(/im\.src='presets\/'\+p\.id\+'\.webp';/);
     expect(ui).toMatch(/s\.thumb \|\| thumbOf\(s\.src\)/);
   });
 
@@ -84,11 +91,15 @@ describe('화면 틀 — 한 구조, 두 배치', () => {
     }
   });
 
-  it('탭 여섯 — 작품 · 액자 · 매트 · 배경 · 조명 · 비율 (출력 비율 용도 설명은 두지 않는다)', () => {
+  it('탭 다섯 — 추천 · 작품 · 액자 · 배경 · 마무리 (2026-11-17 — 매트는 액자 탭, 조명·비율은 마무리 탭으로 · 벽 캡션은 11-18 에 없앴다)', () => {
     const tabs = [...html.matchAll(/role="tab" id="tab-([a-z]+)"[^>]*>([^<]+)</g)].map((m) => `${m[1]}:${m[2]}`);
-    expect(tabs).toEqual(['works:작품', 'frames:액자', 'mat:매트', 'scenes:배경', 'light:조명', 'ratio:비율']);
-    const ratio = html.slice(html.indexOf('id="pane-ratio"'), html.indexOf('</div>', html.indexOf('id="ratios"')));
-    expect(ratio).not.toMatch(/인스타|피드|스토리/);
+    expect(tabs).toEqual(['reco:추천', 'works:작품', 'frames:액자', 'scenes:배경', 'finish:마무리']);
+    // 출력 비율 용도 설명은 두지 않는다(사용자 결정)
+    const finish = html.slice(html.indexOf('id="pane-finish"'), html.indexOf('</section>', html.indexOf('id="pane-finish"')));
+    expect(finish).toContain('id="ratios"');
+    expect(finish).not.toMatch(/인스타|피드|스토리/);
+    // 처음 여는 탭은 추천 — 장면을 못 쓰면(WebGL2 없음) 추천 탭을 감추고 작품 탭부터
+    expect(ui).toMatch(/if\(SCENES_OK\) selectTab\('reco'\); else \{ hideReco\(\); selectTab\('works'\); \}/);
   });
 
   it('미리보기는 손가락으로 끌고 두 손가락으로 키운다 — 끌면 화면이 같이 밀리던 것', () => {
@@ -116,9 +127,12 @@ describe('화면 틀 — 한 구조, 두 배치', () => {
     }
   });
 
-  it('워터마크 빨강은 사이트 빨강 하나(#c4302b, 규칙 47)', () => {
-    expect(html).toContain("ctx.fillStyle='#c4302b';");
+  it('워터마크 빨강은 사이트 빨강 하나(#c4302b, 규칙 47) — 배경 위에서 안 읽히면 Art 와 같은 흑/백(2026-11-17 WP3)', () => {
+    expect(html).toContain("ctx.fillStyle = redOk ? '#c4302b' : (onLight ? '#1f1f1f' : '#ffffff');");
     expect(html).not.toMatch(/fillStyle='#dc3545'/);
+    // 밝기만 보면 베이지·트래버틴의 빨강까지 검정이 됐다 — 명암비 또는 (색 차이 + 최소 명암비)
+    expect(html).toMatch(/const WATERMARK_RED=\{ contrast:2\.5, dE:0\.15, minContrast:1\.2 \};/);
+    expect(html).toMatch(/function watermarkRedReadable\(ctx,lx,ly,lw,lh,W,H\)/);
   });
 });
 
@@ -144,8 +158,11 @@ describe('저장 뒤', () => {
     expect(ui).toMatch(/const what=many \? many\.length\+'점' : w\.title;/);
   });
 
-  it('[ArtStory에 올리기] 는 탭 안에서만, 판매작(갤러리가 연 새 탭)에는 없다', () => {
-    expect(ui).toMatch(/if\(EMBED && !IS_SOLD\) storyBtn\.hidden=false;/);
+  it('[ArtStory에 올리기] 는 탭 안에서만, 판매작(갤러리가 연 새 탭)에는 없다 — 저장하기 전부터 보인다(2026-11-17)', () => {
+    expect(ui).toMatch(/storyBtn\.hidden=!\(EMBED && !IS_SOLD\);/);
+    // 넘기는 동안엔 다시 그려도 단추가 살아나지 않는다(storyBusy)
+    expect(ui).toMatch(/function setSaveEnabled\(on\)\{\n\s*dlBtn\.disabled=!on; saveOpenBtn\.disabled=!on;\n\s*if\(!storyBusy\) storyBtn\.disabled=!on;\n\}/);
+    expect(ui).toMatch(/storyBusy=true; storyBtn\.disabled=true;/);
     expect(ui).toMatch(/type:'artlook:story', blob:b/);
   });
 });

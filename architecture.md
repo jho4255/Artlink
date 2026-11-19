@@ -2852,14 +2852,47 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 - **박물관 색 벽** — `frontend/scripts/recolor-wall.py` 로 네이비 ← wall21 차콜 · 버건디 ← wall24 테라코타 · 포레스트 그린 ← wall22 올리브(OKLab 편차를 목표 평균색에,
   결의 세기가 원본과 같게). `scenes.json` 에 각 원본 벽 값을 옮겨 3개 추가. (10-25 판은 wall26 상대 밝기 × 목표 색이라 결이 없었다.)
 - **벽 3종**(2026-10-26, GPT) — `wall30-red-brick`·`wall31-fieldstone`·`wall32-leaf-shadow`(×2 업스케일, 썸네일 `walls/thumbs/`). scenes.json 은 화이트 플라스터 항목 복사 + 잰 `lightDir`·`regionCm`·`wallCalm`.
-- **벽 캡션 카드** — `captionLines`/`captionCard`(index.html, 13cm 카드 캔버스, 2줄 넘는 제목은 …) → `composeScene` 의 `label` → `placeWallLabel`(영역 단위 좌표로 오른쪽/왼쪽, 같은 워프).
-  `labelU` 로 묶음 가운데 맞춤·화면 상한. 화면은 [배경] 탭 줄 `actionButton`, `prefs.caption`. 측정 훅 `__artlook.label`.
+- **벽 캡션 카드** — 2026-10-25 에 넣고 **2026-11-18 사용자 결정으로 없앴다**(스위치·`captionCard`·`placeWallLabel`·`ArtLookWork.year/medium` 전부 삭제).
 - **리넨·스웨이드 매트** — `linenTile`(굵기 편차 있는 평직, 실 단면 명암) · `suedeTile`(두 번 흐린 잡음 + 가로 결) · `matSurface` 가 고른다. 화면은 `MAT_COLORS` 의 세 번째 값.
 - **여러 점** — `groupLayout`(row·col·grid·big·stairs, cm) · `groupPiece`(판 + 실치수: 높이 = 적힌 세로, 폭 = 사진 비율) → `composeScene` 의 `group`(칸마다 `rect` 0~1 · 판 · 원형 여부).
   엔진은 `groupItems` 로 칸 quad 를 만들어 그림자(한 경로) · 워프(칸마다 `buildInsert`, 한 GL 화면에 `keep` 으로 이어 그리고 한 번 읽음) · cornerAO(칸마다). 화면은 `ui.js` 의 `multi`·`imgCache`·`syncGroup`·`cycleGroupLayout`, 측정 훅 `__artlook.items`.
 - **끄는 동안(초안)** — `draftOf`(작품 긴 변 1000px, WeakMap) · `framedFor`(판 캐시 8개, 키 = 작품·액자·매트·원·광원·해상도 추정 등) · 합성 배율 1. `scene.js warp` 는 판 bbox 만 scissor.
   손을 떼면 `buildFramedCore` 를 바로 부르는 원래 경로로 한 번 더 그린다(최종 그림은 바뀌지 않는다).
 - 검증: HEAD ↔ 지금 픽셀 비교(세션 스크래치 `frameit/regress/`) · 단위 `artlookFrameItAdds.test.ts` · e2e `75-artlook-frameit-adds.spec.ts` · `scratchpad/vt/leak.mjs` · `nomat.mjs`.
+
+### ArtLook 편집 화면 개편 (2026-11-17, CLAUDE.md 85)
+
+리뷰(퀄리티·UX) → 계획 `scratchpad/artlook-review/PLAN.md` → 구현. 진행·수치는 같은 폴더 `PROGRESS.md`.
+
+**결과물(엔진, `scene.js`·`index.html`)**
+- 그림자: 모서리 그늘을 액자 앞면 quad 로 클립(`cornerAOClip`) · 투영 1.5배(`castGain`), 접지는 그대로. URL `?cast=&contact=&aoclip=` 로 비교.
+- 실내 7장 2508px + `srcScale:2` → 저장본 1:1 1568² · 9:16 1080×1920. `compose()` 의 `keepZoom` 이 구도를 예전과 같게 묶는다.
+- 워터마크 'Link' 는 `watermarkRedReadable`(배경 평균 대비 명암비·OKLab ΔE)로 빨강/흑백을 고른다.
+- 색 옮긴 사진 액자: `PHOTO_TINTS`('<원본>@<이름>' → 원본 사진·목표 색·결 색 배율) → `registerPhotoTints`(frames.json 이 올 때 같은 메타로 열쇠 등록) →
+  `ensurePhotoFrame` 이 원본을 받아 `tintImage`(OKLab 평균 이동) → `gradeImage` → `measureAssetLight`. 파일은 늘지 않는다.
+
+**화면(`ui.js` · `index.html`)**
+- 탭 `reco · works · frames · scenes · finish`. 좁은 칸 칩 칸 176px(`--pane-h`).
+- 추천 조합 `PRESETS` → `applyPreset`(상태를 한꺼번에 바꾸고 `requestRender` 한 번) · 칩 그림 `presets/<id>.webp`.
+- 액자 `FRAME_SHAPES`(모양 → 재질 `[id, 이름, 재질 키]`) · `selectShape`(같은 재질 → `MAT_NEAR` → 첫 재질) · `syncFrameControls`(코드로 바꿔도 모양 줄이 따라온다) · 칩 그림 `frames/corners/<id>.webp`.
+- 크기 칩 `HOSU` · `workOf`(넘겨받은 작품의 사본에 `artlook:sizes` 의 크기를 얹는다) · `setWorkSize` · 직접 입력 창 `#sizeSheet`.
+- 배경 `#sceneKinds`(좁은 칸에서 고른 무리만) · 마무리 `#capSwitch`(`captionState` 가 못 붙이는 이유를 준다).
+- 편집 전용 화면: `.bare`(바깥 창이 1024px 미만인 iframe) → 머리 `#closeX`·`#saveOpen`, 저장 창 `#saveBox` 로 `#actions` 를 옮긴다(`placeActions`). 확대 단추 `placeZoom`.
+- 읽기 전용 훅: `window.__artlookRenders`(그린 횟수) · `__artlookPresets`(굽기) · `__artlookShapeOf(id)`(테스트·하니스).
+
+**바깥(React)**
+- `lib/siteMode.ts isArtLookEditor` · `hooks/useArtLookBare.ts`(`ARTLOOK_BARE_MEDIA`) → `Layout` 이 틀을 빼고 `MyPage` 가 여백·제목 줄을 뺀다.
+- `lib/artlook.ts` — 메시지 `artlook:goto {to:'close'}` · 로그아웃 때 `artlook:sizes` 도 지운다.
+
+**칩 굽기** `frontend/scripts/build-artlook-thumbs.mjs` — 모서리 칩(흰 플라스터 · 데모 그림 · 매트 5%, 조각 왼쪽 위 190px → 96px) · 추천 조합 칩(224px) · 배경 썸네일.
+
+**품질 관문(색 옮긴 액자)** `scratchpad/artlook-review/wp9.mjs`(액자별 렌더) · `wp9assets.mjs`(엔진이 그리는 액자 사진) · `wp9gate.py`(G1~G6) +
+`scratchpad/vt/sweep.mjs frames`·`sweepcheck.py` · `nomat.mjs`(`NOMAT_OUT`)·`nomat.py`(`NOMAT_DIR`) · `framelight.mjs` · 시트 `wp9sheet.cjs`.
+
+**2026-11-18 사용자 지적 셋 뒤** — ①공간(실내) 장면은 자동 프레이밍이 카메라를 당기지 않는다(`scenes.json maxZoom:1` → `scene.js composeScene`, 방 전체가 보이고 작품은 실제 크기로 작게).
+②벽 캡션 카드는 크기·자리를 다시 짰다가(화면 기준 크기·작품 오른쪽 아래) 같은 날 **기능째로 뺐다** ·
+③작품 자리·크기는 캡션 몫으로 흔들지 않는다(옛 `labelU` 삭제). 추천 칩 중 실내 셋(cube·living·home)을 다시 구웠다.
+측정 하니스 `scratchpad/artlook-review/fb/`(`measure.cjs` 배경별 작품 크기·당김 · `zoomsheet.cjs` 실내 당김 비교 · `capsheet.cjs` 는 캡션을 뺀 뒤로 쓰지 않는다).
 
 ### 아트링크 주최 공모의 제목·소개 고치기 (2026-10-26, CLAUDE.md 76)
 - `PATCH /exhibitions/:id/title`(`routes/exhibition.ts`, `authorize('ADMIN')` + `assertCanManageExhibition` + `hostType==='ADMIN'`) → 제목 저장 + `syncExhibitionChatTitle`(`lib/chat.ts`, 단톡방 이름).

@@ -100,7 +100,7 @@ def main():
         print(f'  {k:20s}{up:8.1f}{dn:9.1f}   {note}')
     print(f"  {'최댓값':20s}{gu:8.1f}{gd:9.1f}")
 
-    on = scan(HERE / 'nomat')
+    on = scan(HERE / __import__('os').environ.get('NOMAT_DIR', 'nomat'))   # NOMAT_DIR=nomat-wp9 처럼 다른 폴더도(2026-11-17)
     try:
         off = scan(HERE / 'nomat_off')
     except FileNotFoundError:

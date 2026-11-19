@@ -1,0 +1,87 @@
+
+## 크기 모름(30호 가정)
+{"id":"gallery-salon","name":"갤러리 살롱","group":"space","W":1568,"H":1568,"longPct":33,"areaPct":9.1,"zoom":1.34,"enlarged":1,"labW":78,"labH":31,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"boutique","name":"부티크 갤러리","group":"space","W":1568,"H":1568,"longPct":34.8,"areaPct":10.1,"zoom":1.34,"enlarged":1,"labW":80,"labH":32,"labelPlaced":true,"regionCm":[168,203],"maxLong":0.49}
+{"id":"collector-salon","name":"컬렉터 살롱","group":"space","W":1568,"H":1568,"longPct":32.7,"areaPct":8.9,"zoom":1.34,"enlarged":1,"labW":80,"labH":32,"labelPlaced":true,"regionCm":[150,177],"maxLong":0.49}
+{"id":"gallery-living","name":"갤러리 리빙","group":"space","W":1568,"H":1568,"longPct":33,"areaPct":9.1,"zoom":1.34,"enlarged":1,"labW":78,"labH":31,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"white-cube","name":"화이트 큐브","group":"space","W":1568,"H":1568,"longPct":36.4,"areaPct":11,"zoom":1.34,"enlarged":1,"labW":83,"labH":33,"labelPlaced":true,"regionCm":[180,214],"maxLong":0.49}
+{"id":"collector-home","name":"컬렉터 홈","group":"space","W":1568,"H":1568,"longPct":32.3,"areaPct":8.7,"zoom":1.34,"enlarged":1,"labW":82,"labH":33,"labelPlaced":true,"regionCm":[193,166],"maxLong":0.49}
+{"id":"hotel-lounge","name":"호텔 라운지","group":"space","W":1568,"H":1568,"longPct":30.6,"areaPct":7.8,"zoom":1.34,"enlarged":1,"labW":73,"labH":29,"labelPlaced":true,"regionCm":[225,187],"maxLong":0.49}
+{"id":"concrete","name":"콘크리트","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"travertine","name":"트래버틴","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"cream-stone","name":"크림 스톤","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-brick","name":"화이트 브릭","group":"wall","W":1625,"H":1625,"longPct":58.5,"areaPct":28.4,"zoom":1.84,"enlarged":1,"labW":162,"labH":64,"labelPlaced":true,"regionCm":[163,154]}
+{"id":"beige-plaster","name":"베이지 플라스터","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"warm-concrete","name":"웜 콘크리트","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"taupe-plaster","name":"토프 플라스터","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"sand","name":"샌드","group":"wall","W":1625,"H":1625,"longPct":60,"areaPct":29.9,"zoom":1.84,"enlarged":1,"labW":176,"labH":70,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"charcoal","name":"차콜","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"olive","name":"올리브","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"walnut-panel","name":"월넛 패널","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"terracotta","name":"테라코타","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"blue-grey","name":"블루 그레이","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-plaster","name":"화이트 플라스터","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"navy","name":"네이비","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"burgundy","name":"버건디","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"forest","name":"포레스트 그린","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"red-brick","name":"붉은 벽돌","group":"wall","W":1568,"H":1568,"longPct":55.2,"areaPct":25.3,"zoom":1.57,"enlarged":1,"labW":224,"labH":90,"labelPlaced":true,"regionCm":[97,91]}
+{"id":"fieldstone","name":"자연석","group":"wall","W":1568,"H":1568,"longPct":58.9,"areaPct":28.7,"zoom":1.73,"enlarged":1,"labW":196,"labH":78,"labelPlaced":true,"regionCm":[122,115]}
+{"id":"leaf-shadow","name":"잎 그림자","group":"wall","W":1568,"H":1568,"longPct":60,"areaPct":29.8,"zoom":1.84,"enlarged":1,"labW":170,"labH":68,"labelPlaced":true,"regionCm":[150,141]}
+
+## 10호
+{"id":"gallery-salon","name":"갤러리 살롱","group":"space","W":1568,"H":1568,"longPct":24.6,"areaPct":5,"zoom":1.34,"enlarged":1.0399104264603432,"labW":78,"labH":37,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"boutique","name":"부티크 갤러리","group":"space","W":1568,"H":1568,"longPct":24.9,"areaPct":5.2,"zoom":1.34,"enlarged":1.0234923496930117,"labW":80,"labH":38,"labelPlaced":true,"regionCm":[168,203],"maxLong":0.49}
+{"id":"collector-salon","name":"컬렉터 살롱","group":"space","W":1568,"H":1568,"longPct":24.9,"areaPct":5.1,"zoom":1.34,"enlarged":1.0249384684432439,"labW":80,"labH":38,"labelPlaced":true,"regionCm":[150,177],"maxLong":0.49}
+{"id":"gallery-living","name":"갤러리 리빙","group":"space","W":1568,"H":1568,"longPct":24.6,"areaPct":5,"zoom":1.34,"enlarged":1.0399104264603432,"labW":78,"labH":37,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"white-cube","name":"화이트 큐브","group":"space","W":1568,"H":1568,"longPct":25.3,"areaPct":5.3,"zoom":1.34,"enlarged":1.0074780787372388,"labW":83,"labH":39,"labelPlaced":true,"regionCm":[180,214],"maxLong":0.49}
+{"id":"collector-home","name":"컬렉터 홈","group":"space","W":1568,"H":1568,"longPct":25.2,"areaPct":5.3,"zoom":1.34,"enlarged":1.0117866722236948,"labW":82,"labH":39,"labelPlaced":true,"regionCm":[193,166],"maxLong":0.49}
+{"id":"hotel-lounge","name":"호텔 라운지","group":"space","W":1568,"H":1568,"longPct":23.9,"areaPct":4.7,"zoom":1.34,"enlarged":1.0791659543784502,"labW":73,"labH":34,"labelPlaced":true,"regionCm":[225,187],"maxLong":0.49}
+{"id":"concrete","name":"콘크리트","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"travertine","name":"트래버틴","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"cream-stone","name":"크림 스톤","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-brick","name":"화이트 브릭","group":"wall","W":1625,"H":1625,"longPct":47.4,"areaPct":18.6,"zoom":1.84,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[163,154]}
+{"id":"beige-plaster","name":"베이지 플라스터","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"warm-concrete","name":"웜 콘크리트","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"taupe-plaster","name":"토프 플라스터","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"sand","name":"샌드","group":"wall","W":1625,"H":1625,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":176,"labH":83,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"charcoal","name":"차콜","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"olive","name":"올리브","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"walnut-panel","name":"월넛 패널","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"terracotta","name":"테라코타","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"blue-grey","name":"블루 그레이","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-plaster","name":"화이트 플라스터","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"navy","name":"네이비","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"burgundy","name":"버건디","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"forest","name":"포레스트 그린","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"red-brick","name":"붉은 벽돌","group":"wall","W":1568,"H":1568,"longPct":54.1,"areaPct":24.2,"zoom":1.63,"enlarged":1,"labW":233,"labH":110,"labelPlaced":true,"regionCm":[97,91]}
+{"id":"fieldstone","name":"자연석","group":"wall","W":1568,"H":1568,"longPct":56.8,"areaPct":26.8,"zoom":1.84,"enlarged":1,"labW":209,"labH":98,"labelPlaced":true,"regionCm":[122,115]}
+{"id":"leaf-shadow","name":"잎 그림자","group":"wall","W":1568,"H":1568,"longPct":51,"areaPct":21.6,"zoom":1.84,"enlarged":1,"labW":170,"labH":80,"labelPlaced":true,"regionCm":[150,141]}
+
+## 100호
+{"id":"gallery-salon","name":"갤러리 살롱","group":"space","W":1568,"H":1568,"longPct":40.1,"areaPct":13.3,"zoom":1.34,"enlarged":1,"labW":78,"labH":37,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"boutique","name":"부티크 갤러리","group":"space","W":1568,"H":1568,"longPct":43.6,"areaPct":15.8,"zoom":1.34,"enlarged":1,"labW":80,"labH":38,"labelPlaced":true,"regionCm":[168,203],"maxLong":0.49}
+{"id":"collector-salon","name":"컬렉터 살롱","group":"space","W":1568,"H":1568,"longPct":38.5,"areaPct":12.3,"zoom":1.34,"enlarged":1,"labW":80,"labH":38,"labelPlaced":true,"regionCm":[150,177],"maxLong":0.49}
+{"id":"gallery-living","name":"갤러리 리빙","group":"space","W":1568,"H":1568,"longPct":40.1,"areaPct":13.3,"zoom":1.34,"enlarged":1,"labW":78,"labH":37,"labelPlaced":true,"regionCm":[155,191],"maxLong":0.49}
+{"id":"white-cube","name":"화이트 큐브","group":"space","W":1568,"H":1568,"longPct":47.1,"areaPct":18.4,"zoom":1.34,"enlarged":1,"labW":83,"labH":39,"labelPlaced":true,"regionCm":[180,214],"maxLong":0.49}
+{"id":"collector-home","name":"컬렉터 홈","group":"space","W":1568,"H":1568,"longPct":37.3,"areaPct":11.5,"zoom":1.34,"enlarged":1,"labW":82,"labH":39,"labelPlaced":true,"regionCm":[193,166],"maxLong":0.49}
+{"id":"hotel-lounge","name":"호텔 라운지","group":"space","W":1568,"H":1568,"longPct":36.8,"areaPct":11.2,"zoom":1.34,"enlarged":1,"labW":73,"labH":34,"labelPlaced":true,"regionCm":[225,187],"maxLong":0.49}
+{"id":"concrete","name":"콘크리트","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"travertine","name":"트래버틴","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"cream-stone","name":"크림 스톤","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-brick","name":"화이트 브릭","group":"wall","W":1625,"H":1625,"longPct":64.6,"areaPct":34.6,"zoom":1.8,"enlarged":1,"labW":158,"labH":74,"labelPlaced":true,"regionCm":[163,154]}
+{"id":"beige-plaster","name":"베이지 플라스터","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"warm-concrete","name":"웜 콘크리트","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"taupe-plaster","name":"토프 플라스터","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"sand","name":"샌드","group":"wall","W":1625,"H":1625,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":168,"labH":79,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"charcoal","name":"차콜","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"olive","name":"올리브","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"walnut-panel","name":"월넛 패널","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"terracotta","name":"테라코타","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"blue-grey","name":"블루 그레이","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"white-plaster","name":"화이트 플라스터","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"navy","name":"네이비","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"burgundy","name":"버건디","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"forest","name":"포레스트 그린","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}
+{"id":"red-brick","name":"붉은 벽돌","group":"wall","W":1568,"H":1568,"longPct":56.2,"areaPct":26.2,"zoom":1.52,"enlarged":1,"labW":217,"labH":102,"labelPlaced":true,"regionCm":[97,91]}
+{"id":"fieldstone","name":"자연석","group":"wall","W":1568,"H":1568,"longPct":60.2,"areaPct":30,"zoom":1.64,"enlarged":1,"labW":186,"labH":88,"labelPlaced":true,"regionCm":[122,115]}
+{"id":"leaf-shadow","name":"잎 그림자","group":"wall","W":1568,"H":1568,"longPct":63.4,"areaPct":33.3,"zoom":1.75,"enlarged":1,"labW":162,"labH":76,"labelPlaced":true,"regionCm":[150,141]}

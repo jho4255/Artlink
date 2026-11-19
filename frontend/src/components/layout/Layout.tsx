@@ -8,6 +8,7 @@ import HomepageNudge from '@/components/shared/HomepageNudge';
 import GuestIntro from '@/components/shared/GuestIntro';
 import PushBanner from '@/components/shared/PushBanner';
 import { isHomepagePath } from '@/lib/siteMode';
+import { useArtLookBare } from '@/hooks/useArtLookBare';
 
 // 공통 레이아웃 - 모든 페이지에 Navbar + Footer 표시
 export default function Layout() {
@@ -18,6 +19,10 @@ export default function Layout() {
     팝업(홈페이지 완성·소개·앱 알림 배너)은 그대로 — 소개 팝업은 원래 이 주소에서 안 뜬다(introAllowedAt).
   */
   const site = isHomepagePath(useLocation().pathname);
+  /* ArtLook 편집 전용 화면(2026-11-17, 규칙 85) — 휴대폰(1024px 미만)에서 [ArtLook] 탭은 상단바·하단 탭바·푸터 없이 화면 가득.
+     ArtLook 이 제 머리에 [닫기]·[저장]을 둔다. 팝업(홈페이지 완성·소개·앱 알림)은 그대로. */
+  const bare = useArtLookBare();
+  const chrome = !site && !bare;
   /* 홈페이지는 페이지가 제 `<main>`(머리·꼬리말 사이 본문)을 그린다 — 여기서도 main 이면 **두 겹**이 된다(main 은 한 문서에 하나,
      2026-11-14 E2E 62 가 잡았다). 그래서 사이트 모드에선 감싸개만 div 로 둔다. */
   const Shell = site ? 'div' : 'main';
@@ -38,8 +43,8 @@ export default function Layout() {
 
   return (
     // pb — 모바일 하단 고정 탭바(BottomTabBar) 높이만큼 비워 본문·푸터가 가리지 않게 (iOS safe-area 포함)
-    <div className={`min-h-screen bg-white flex flex-col ${site ? '' : 'pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] lg:pb-0'}`}>
-      {!site && <Navbar />}
+    <div className={`min-h-screen bg-white flex flex-col ${chrome ? 'pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] lg:pb-0' : ''}`}>
+      {chrome && <Navbar />}
       {/* 본문 + 우측 세로 메뉴(lg↑, 로그인 시에만).
           min-w-0 필수 — 없으면 안쪽 표·긴 제목의 min-content 가 폭을 밀어 메뉴를 화면 밖으로 낸다(CLAUDE.md 27번) */}
       <div className="flex-1 flex">
@@ -55,9 +60,9 @@ export default function Layout() {
             </Suspense>
           </ErrorBoundary>
         </Shell>
-        {!site && <MyPageSideMenu />}
+        {chrome && <MyPageSideMenu />}
       </div>
-      {!site && <footer className="border-t border-gray-100 bg-white">
+      {chrome && <footer className="border-t border-gray-100 bg-white">
         <div className="max-w-7xl mx-auto px-6 md:px-12 py-4">
           {companyInfo.length > 0 ? (
             <div className="space-y-0.5 text-[11px] text-gray-300 leading-relaxed">
@@ -78,7 +83,7 @@ export default function Layout() {
         </div>
       </footer>}
       {/* 모바일 전용 하단 탭바 — 상단 가운데 5메뉴를 아래로(catch 앱 방식). lg↑ 는 상단 네비 유지 */}
-      {!site && <BottomTabBar />}
+      {chrome && <BottomTabBar />}
       {/* 작가 로그인 뒤 '홈페이지에 빈 곳이 있어요' 팝업 — 어느 화면에 내려도 뜬다(lib/homepageNudge.ts) */}
       <HomepageNudge />
       {/* 비회원 소개 — 작가가 아트링크에서 하는 네 가지를 한 번 보여 준다(lib/guestIntro.ts). 어느 화면으로 들어와도 뜬다 */}

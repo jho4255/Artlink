@@ -26,10 +26,11 @@ const SCREENS = {
   pc1440: { viewport: { width: 1440, height: 900 }, min: 520 },
   pc1024: { viewport: { width: 1024, height: 768 }, min: 260 },
   ipad: { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, min: 380 },
-  pixel7: { viewport: { width: 412, height: 839 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true, min: 300 },
-  iphone13: { viewport: { width: 390, height: 664 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, min: 200 },
-  galaxy360: { viewport: { width: 360, height: 740 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, min: 250 },
-  se: { viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, min: 130 },
+  // 2026-11-17(PLAN WP4 · 규칙 85) — 1024px 미만은 편집 전용 화면(상단바·탭바 없음)이라 하한을 올렸다
+  pixel7: { viewport: { width: 412, height: 839 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true, min: 400 },
+  iphone13: { viewport: { width: 390, height: 664 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, min: 380 },
+  galaxy360: { viewport: { width: 360, height: 740 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, min: 340 },
+  se: { viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, min: 290 },
 };
 
 let fails = 0, passes = 0;
@@ -67,16 +68,22 @@ async function run(engineName, screenName, acc) {
   const floor = await page.evaluate(() => { const b = document.querySelector('nav[aria-label="하단 내비게이션"]'); return b && getComputedStyle(b).display !== 'none' ? b.getBoundingClientRect().top : innerHeight; });
   const ifr = await page.locator('iframe[title="ArtLook"]').boundingBox();
   const inner = (sel) => frame.locator(sel).evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
-  const cv = await inner('#preview'); const dl = await inner('#dl');
+  const bare = await frame.evaluate(() => document.documentElement.classList.contains('bare') && !matchMedia('(min-width: 860px)').matches);
+  const saveSel = bare ? '#saveOpen' : '#dl';
+  if ((s.viewport || {}).width < 1024) {
+    const chrome = await page.evaluate(() => ({ bar: !!document.querySelector('nav[aria-label="하단 내비게이션"]'), logo: !!document.querySelector('header a[href="/"]') }));
+    check(tag, '1024px 미만 — 상단바·하단 탭바 없음(편집 전용 화면)', !chrome.bar && !chrome.logo, JSON.stringify(chrome));
+  }
+  const cv = await inner('#preview'); const dl = await inner(saveSel);
   const o = (r) => ({ x: ifr.x + r.x, y: ifr.y + r.y, w: r.w, h: r.h });
   const ocv = o(cv), odl = o(dl);
   check(tag, 'iframe 이 하단 탭바 위에서 끝난다', ifr.y + ifr.height <= floor + 1, `bottom ${Math.round(ifr.y + ifr.height)} / 바닥 ${Math.round(floor)}`);
   check(tag, '미리보기가 첫 화면 안에 통째로', ocv.y >= 0 && ocv.y + ocv.h <= floor + 0.5, `y ${Math.round(ocv.y)}~${Math.round(ocv.y + ocv.h)}`);
   check(tag, `미리보기 짧은 변 ≥ ${min}px`, Math.min(ocv.w, ocv.h) >= min, `${Math.round(ocv.w)}×${Math.round(ocv.h)}`);
-  check(tag, '[이미지 저장]이 첫 화면 안', odl.y >= 0 && odl.y + odl.h <= floor + 0.5, `y ${Math.round(odl.y)}`);
-  const hit = await frame.evaluate(() => { const b = document.getElementById('dl').getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t && t.id; });
+  check(tag, `저장 단추(${saveSel})가 첫 화면 안`, odl.y >= 0 && odl.y + odl.h <= floor + 0.5, `y ${Math.round(odl.y)}`);
+  const hit = await frame.evaluate((sel) => { const b = document.querySelector(sel).getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t && t.id; }, saveSel);
   const ohit = await page.evaluate(([x, y]) => { const t = document.elementFromPoint(x, y); return t && t.tagName; }, [odl.x + odl.w / 2, odl.y + odl.h / 2]);
-  check(tag, '[이미지 저장] 자리를 누르면 저장 단추', hit === 'dl' && ohit === 'IFRAME', `${ohit}/${hit}`);
+  check(tag, '저장 단추 자리를 누르면 그 단추', hit === saveSel.slice(1) && ohit === 'IFRAME', `${ohit}/${hit}`);
   const ox = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   const ix = await frame.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   check(tag, '가로로 밀리지 않는다(바깥·안)', ox <= 0 && ix <= 0, `${ox}/${ix}`);
@@ -95,7 +102,7 @@ async function run(engineName, screenName, acc) {
   const allMB = reqs.reduce((t, r) => t + r.b, 0) / 1048576;
 
   // ③ 탭마다 — 내용이 칸 안에 있고, 누르는 곳 40px·글자 12px
-  const tabs = ['works', 'frames', 'mat', 'scenes', 'light', 'ratio'];
+  const tabs = ['reco', 'works', 'frames', 'scenes', 'finish'];   // 2026-11-17 — 매트는 액자 탭, 조명·비율·벽 캡션은 마무리 탭
   let small = [], tiny = [], clipped = [];
   for (const t of tabs) {
     await frame.locator(`#tab-${t}`).click();
@@ -103,7 +110,7 @@ async function run(engineName, screenName, acc) {
     const g = await frame.evaluate((t) => {
       const pane = document.getElementById('pane-' + t), pr = pane.getBoundingClientRect(), panes = document.getElementById('panes').getBoundingClientRect();
       const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
-      const clickable = [...pane.querySelectorAll('button, input, [role=tab]'), ...document.querySelectorAll('.tabs [role=tab], #dl, #toStory, #zoom button')].filter(vis);
+      const clickable = [...pane.querySelectorAll('button, input, [role=tab]'), ...document.querySelectorAll('.tabs [role=tab], #dl, #toStory, #zoom button, #saveOpen, #closeX')].filter(vis);
       const small = clickable.filter((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height) < 39.5; }).map((e) => (e.id || e.className || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + '×' + Math.round(e.getBoundingClientRect().height));
       const texts = [...pane.querySelectorAll('*')].filter(vis).filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
       const tiny = texts.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 11.99).map((e) => e.textContent.trim().slice(0, 10) + ' ' + getComputedStyle(e).fontSize);
@@ -139,8 +146,9 @@ async function run(engineName, screenName, acc) {
 
   // ⑤ 저장 — 내려받기(공유 창을 못 쓰는 환경). 경고창 없이 "저장했어요"
   if (engineName === 'chromium') {
+    if (bare) { await frame.locator('#saveOpen').click(); await page.waitForTimeout(300); }   // 편집 전용 화면 — 저장 창 안에서
     const [d] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }).catch(() => null), frame.locator('#dl').click()]);
-    const toast = await frame.locator('#toast').innerText().catch(() => '');
+    const toast = await frame.locator(bare ? '#saveStatus' : '#toast').innerText().catch(() => '');
     check(tag, '저장 — 파일 + "저장했어요"', !!d && /저장했어요/.test(toast), d ? d.suggestedFilename() : '내려받기 없음');
   }
   check(tag, '경고창 없음', dialogs.length === 0, dialogs.join(' | '));

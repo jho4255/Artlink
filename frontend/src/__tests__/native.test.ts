@@ -171,6 +171,27 @@ describe('앱 안 — 뒤로가기', () => {
     dlg.remove();
   });
 
+  it('★ 같은 출처 iframe 안의 창도 닫는다 — 휴대폰 ArtLook 저장 창(2026-11-17)', () => {
+    const f = document.createElement('iframe');
+    document.body.appendChild(f);
+    f.getClientRects = () => ({ length: 1 }) as unknown as DOMRectList;
+    const doc = f.contentDocument!;
+    const dlg = doc.createElement('div');
+    dlg.setAttribute('role', 'dialog');
+    dlg.getClientRects = () => ({ length: 1 }) as unknown as DOMRectList;
+    doc.body.appendChild(dlg);
+    const keys: string[] = [];
+    doc.addEventListener('keydown', (e) => keys.push(e.key));
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    expect(handleBackButton(true, vi.fn())).toBe('dialog');
+    expect(keys).toEqual(['Escape']);   // ArtLook 은 문서에서 Esc 를 듣는다
+    expect(back).not.toHaveBeenCalled();
+    // 창이 닫혀(그려지지 않으면) 다음 뒤로가기는 이전 화면
+    dlg.getClientRects = () => ({ length: 0 }) as unknown as DOMRectList;
+    expect(handleBackButton(true, vi.fn())).toBe('back');
+    f.remove();
+  });
+
   it('그려지지 않은 창(display:none 등)은 없는 것으로 친다 · 창이 없으면 이전 화면 · 첫 화면이면 앱을 내린다', () => {
     const hidden = document.createElement('div');
     hidden.setAttribute('aria-modal', 'true');

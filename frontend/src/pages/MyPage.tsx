@@ -51,6 +51,7 @@ import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 import ArtworkDetailModal, { InviteModal } from '@/components/shared/ArtworkDetailModal';
 import InviteApplyModal from '@/components/shared/InviteApplyModal';
 import { stageArtLookWorks, portfolioArtLookWorks, readArtLookMessage, COMPOSE_STATE_KEY, ARTLOOK_EMBED_URL } from '@/lib/artlook';
+import { useArtLookBare } from '@/hooks/useArtLookBare';
 import { useFillHeight } from '@/hooks/useFillHeight';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
 import KanbanSection from '@/components/admin/KanbanSection';
@@ -229,6 +230,10 @@ export default function MyPage() {
     return () => { el.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
   }, [user?.role]);
 
+  /** 휴대폰 편집 전용 화면(2026-11-17, 규칙 85) — 상단바·하단 탭바가 없으니 여백도 없이 iframe 이 화면을 다 쓴다.
+   *  ⚠️ 훅이라 아래 `if (!user) return null` **위에**(hooksBeforeReturn.test.ts — 로그아웃 순간 React #310) */
+  const bare = useArtLookBare();
+
   if (!user) return null;
 
   // 메뉴 정의는 lib/myPageMenu.ts 하나뿐 — 우측 사이드바(Layout)·Navbar 모바일 메뉴와 같은 것을 쓴다
@@ -247,7 +252,7 @@ export default function MyPage() {
   const fill = currentTab === 'artlook' && user.role === 'ARTIST';
 
   return (
-    <div className={cn('max-w-7xl mx-auto', fill ? 'px-0 sm:px-6 lg:px-8 sm:pt-6' : 'px-6 md:px-12', !fill && (focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16'))}>
+    <div className={cn('max-w-7xl mx-auto', bare ? 'px-0' : fill ? 'px-0 sm:px-6 lg:px-8 sm:pt-6' : 'px-6 md:px-12', !fill && (focused ? 'pt-6 md:pt-10' : 'py-10 md:py-16'))}>
       {/* 'My Page' 제목은 두지 않는다 — 우측 사이드바가 현재 위치를 알려주고,
           각 탭이 제 이름을 갖는다(예: 포트폴리오 탭의 PortFolio).
           로그아웃도 여기 없다 — Navbar 우측으로 일원화 */}
@@ -658,6 +663,7 @@ function ProfileSection() {
 function ArtLookSection() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const bare = useArtLookBare();
   const { data: portfolio, isLoading } = useQuery<Portfolio>({
     queryKey: ['portfolio'],
     queryFn: () => api.get('/portfolio').then(r => r.data),
@@ -666,7 +672,8 @@ function ArtLookSection() {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   // 아이폰 SE(568px)도 하단 탭바 위에서 끝나게 — 그보다 낮은 화면(가로로 눕힌 휴대폰)은 바깥 페이지가 스크롤된다
-  const height = useFillHeight(boxRef, { min: 340 });
+  // 편집 전용 화면(휴대폰)은 아래에 띄울 여백도 없다 — 화면 바닥까지
+  const height = useFillHeight(boxRef, { min: 340, gap: bare ? 0 : 24 });
 
   /*
     작품 목록을 **iframe 을 그리기 전에** localStorage 에 올려둔다 —
@@ -702,7 +709,12 @@ function ArtLookSection() {
       if (!win || e.source !== win || e.origin !== window.location.origin) return;
       const msg = readArtLookMessage(e.data);
       if (!msg) return;
-      if (msg.type === 'goto') navigate(msg.to === 'size' ? editHref('works', { info: true, work: msg.id }) : editHref('works'));
+      if (msg.type === 'goto' && msg.to === 'close') {
+        // [닫기 ×](휴대폰 편집 전용 화면) — 앱 안에서 온 길이 있으면 그리로(안드로이드 뒤로가기와 같은 곳), 없으면 마이페이지 첫 탭으로.
+        // ⚠️ location.key 로 가르지 말 것 — 마이페이지 탭은 기록을 바꿔 끼우므로(replace) 주소로 바로 열고 탭만 바꿔도 key 가 'default' 가 아니다.
+        //    그때 navigate(-1) 은 앱 밖(브라우저면 다른 사이트)으로 나간다(2026-11-18 에뮬레이터에서 잡았다). 상세 화면의 '뒤로'와 같은 판정을 쓴다.
+        if ((window.history.state?.idx ?? 0) > 0) navigate(-1); else navigate('/mypage', { replace: true });
+      } else if (msg.type === 'goto') navigate(msg.to === 'size' ? editHref('works', { info: true, work: msg.id }) : editHref('works'));
       else void toStory(msg.blob, msg.name);
     };
     window.addEventListener('message', onMessage);
@@ -711,8 +723,9 @@ function ArtLookSection() {
 
   return (
     <div>
-      {/* 제목 줄 — 화면 이름은 좌측 상단(로고 색 규칙). 휴대폰은 한 줄로 */}
-      <div className="flex min-w-0 items-baseline gap-2.5 px-4 py-2 sm:px-0 sm:pb-3 sm:pt-0">
+      {/* 제목 줄 — 화면 이름은 좌측 상단(로고 색 규칙). 휴대폰은 한 줄로.
+          편집 전용 화면(휴대폰)은 ArtLook 이 제 머리에 이름을 그린다 — 여기는 화면 낭독기용으로만 남긴다(지우지 않는다: 화면 이름 규칙 · e2e 30) */}
+      <div className={cn('flex min-w-0 items-baseline gap-2.5', bare ? 'sr-only' : 'px-4 py-2 sm:px-0 sm:pb-3 sm:pt-0')}>
         <h2 className="shrink-0 text-lg sm:text-xl md:text-2xl font-bold tracking-tight font-serif text-gray-900">
           Art<span className="text-accent">Look</span>
         </h2>
@@ -722,7 +735,7 @@ function ArtLookSection() {
       <div
         ref={boxRef}
         style={height ? { height } : undefined}
-        className="h-[70vh] overflow-hidden border-y border-gray-200 bg-white sm:rounded-lg sm:border"
+        className={cn('h-[70vh] overflow-hidden bg-white', bare ? '' : 'border-y border-gray-200 sm:rounded-lg sm:border')}
       >
         {isLoading ? (
           <div className="h-full animate-pulse bg-gray-100" />

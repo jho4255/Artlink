@@ -149,11 +149,25 @@ export async function shareLinkNative(title: string, url: string): Promise<boole
 
 // ─── 뒤로가기 ───
 
-/** 지금 화면 위에 떠 있는 창(맨 위의 것) — 그려지지 않은(display:none 등) 것은 뺀다 */
+/**
+ * 지금 화면 위에 떠 있는 창(맨 위의 것) — 그려지지 않은(display:none 등) 것은 뺀다.
+ * 바깥 문서에 없으면 **같은 출처 iframe 안**도 본다(2026-11-17 — 휴대폰 ArtLook 편집 전용 화면의 저장 창·크기 창은 iframe 안이라,
+ * 그대로 두면 앱 뒤로가기가 창을 닫는 대신 ArtLook 화면을 떠났다). 다른 출처 iframe 은 못 읽으니 건너뛴다.
+ */
 export function topOpenDialog(root: ParentNode = document): HTMLElement | null {
-  const open = Array.from(root.querySelectorAll<HTMLElement>('[role="dialog"], [aria-modal="true"]'))
+  const openIn = (scope: ParentNode) => Array.from(scope.querySelectorAll<HTMLElement>('[role="dialog"], [aria-modal="true"]'))
     .filter((el) => el.getClientRects().length > 0);
-  return open.length ? open[open.length - 1] : null;
+  const open = openIn(root);
+  if (open.length) return open[open.length - 1];
+  for (const f of Array.from(root.querySelectorAll<HTMLIFrameElement>('iframe')).reverse()) {
+    if (!f.getClientRects().length) continue;
+    let doc: Document | null = null;
+    try { doc = f.contentDocument; } catch { doc = null; }
+    if (!doc) continue;
+    const inner = openIn(doc);
+    if (inner.length) return inner[inner.length - 1];
+  }
+  return null;
 }
 
 /**
@@ -164,9 +178,12 @@ export function topOpenDialog(root: ParentNode = document): HTMLElement | null {
 export function handleBackButton(canGoBack: boolean, minimize: () => void): 'dialog' | 'back' | 'minimize' {
   const dialog = topOpenDialog();
   if (dialog) {
-    const active = document.activeElement;
-    const target = active instanceof HTMLElement && dialog.contains(active) ? active : dialog;
-    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+    // iframe 안의 창이면 그 문서의 포커스·그 창(window)의 KeyboardEvent 로 — 그 문서의 Esc 듣기가 받는다
+    const doc = dialog.ownerDocument;
+    const active = doc.activeElement;
+    const target = active && dialog.contains(active) ? active : dialog;
+    const KE = (doc.defaultView as (Window & typeof globalThis) | null)?.KeyboardEvent ?? KeyboardEvent;
+    target.dispatchEvent(new KE('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
     return 'dialog';
   }
   if (canGoBack) {

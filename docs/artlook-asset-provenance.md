@@ -104,6 +104,13 @@ ArtLook 사진 액자 — 출처
      원본은 `gptsamplecase/frame-*.png` 로 이름을 맞춰 넣었다(받은 이름 oak_floater.png 등).
      ⚠️ 받은 `champagin_thin.png` 는 사진이 미색이라 `white-thin` 으로 썼다.
 
+색 옮긴 액자 4종 — 파일 없음(2026-11-17, 자체 제작)
+  navy / forest / wine   ← `black.png` 에서 색만 옮김(엔진 `PHOTO_TINTS` — 'black@navy' 등)
+  teak                   ← `oak.png` 에서 색만 옮김(나뭇결 색 편차는 0.45배)
+     새 사진을 만들지 않았다. 엔진이 원본 사진을 받을 때 OKLab 으로 평균만 목표 색으로 옮기고 결·명암은 그대로 둔다
+     (박물관 색 벽 3종과 같은 원리). 그래서 출처는 원본 사진(위 black · oak)과 같다.
+     후보 14종 중 품질 관문(scratchpad/artlook-review/wp9gate.py · sweepcheck · nomat · framelight · 눈 확인)을 통과한 것만 남겼다.
+
 ⚠️ 얇은 3종을 담아 온 파일 이름이 `frameit_test_assets_updated.zip` 이었다
    (FrameIt 과 비교하려고 그렇게 부른 것이지 FrameIt 자산이 아니다).
    2026-09-02 감사에서 이름만 보고 오인한 적이 있다 — **이름이 아니라 이 기록을 볼 것.**

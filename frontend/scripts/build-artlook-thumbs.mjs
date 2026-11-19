@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * ArtLook 칩 그림 굽기 — 액자 칩(frames/chips/<id>.webp)과 배경 썸네일(walls/thumbs/<파일>.jpg) (2026-10-04)
+ * ArtLook 칩 그림 굽기 — 액자 모서리 칩(frames/corners/<id>.webp) · 추천 조합 칩(presets/<id>.webp) · 배경 썸네일(walls/thumbs/<파일>.jpg)
+ * (2026-10-04, 2026-11-17 PLAN WP5·WP6 — 액자 칩을 '액자 전체'에서 '왼쪽 위 모서리 확대'로 바꿨다)
  *
  *   node frontend/scripts/build-artlook-thumbs.mjs          # 없는 것만
  *   node frontend/scripts/build-artlook-thumbs.mjs --all    # 전부 다시
@@ -9,11 +10,13 @@
  * 미리보기를 다시 그렸다), 배경 칩은 **벽 사진 원본**(장당 1.4~2.8MB, 21장)을 46px 칸에 그대로 썼다. 그래서 탭을 열면 41.5MB 를
  * 받았다(실제 작가 30점 기준). 이제 칩은 이 스크립트가 **같은 엔진으로** 미리 구운 작은 파일이고, 큰 사진은 고를 때만 받는다.
  *
- * 하는 일: frontend/public 을 잠깐 띄우고(작은 정적 서버) ArtLook 을 `?preload=all` 로 연 뒤, 페이지 안의 엔진
- * (buildFramedCore · dummyArt)으로 칩을 그려 받아 적는다. 액자 칩은 예전 화면의 칩과 같은 설정(살 7.5% · 매트 6%, 캔버스 랩은 0)을
- * 2배 해상도로. 배경은 가운데 정사각형을 192px 로. 그리고 scenes.json 의 각 장면에 `thumb` 를 적는다(글자 위치만 끼워 넣어 형식은 그대로).
+ * 하는 일: frontend/public 을 잠깐 띄우고(작은 정적 서버) ArtLook 을 `?preload=all` 로 연 뒤, 페이지 안의 엔진(compose)으로 칩을 그려 받아 적는다.
+ *  · 액자 모서리 칩: 흰 플라스터 벽 · 데모 그림 dawn-window · 매트 5%(캔버스 랩 0)로 걸어 조각 왼쪽 위 모서리 190px(1568 출력 기준)을 96px 로.
+ *    재질 칩과 모양 칩(대표 액자의 것)이 같이 쓴다. 숨긴 액자(hidden)는 굽지 않는다.
+ *  · 추천 조합 칩: ui.js 의 PRESETS(window.__artlookPresets)를 그대로 그려 1:1 결과물 전체를 224px 로.
+ *  · 배경 썸네일: 가운데 정사각형을 192px 로. 그리고 scenes.json 의 각 장면에 `thumb` 를 적는다(글자 위치만 끼워 넣어 형식은 그대로).
  *
- * ⚠️ 액자를 더하거나 장면을 더하면 이걸 돌릴 것 — `frontend/src/__tests__/artlookScreen.test.ts` 가 파일이 다 있는지 본다.
+ * ⚠️ 액자·장면·추천 조합을 더하거나 그림자 같은 엔진 모양을 바꾸면 이걸 `--all` 로 돌릴 것 — `frontend/src/__tests__/artlookScreen.test.ts` 가 파일이 다 있는지 본다.
  * ⚠️ Playwright 는 e2e/node_modules 의 것을 쓴다(프론트에는 깔려 있지 않다).
  */
 import http from 'node:http';
@@ -56,25 +59,55 @@ await page.waitForFunction(() => {
   return photos && mats && scenes && walls;
 }, null, { timeout: 120000, polling: 250 });
 
-const result = await page.evaluate(() => {
-  const frames = FRAMES.map((f) => {
-    // 예전 화면의 칩과 같은 설정을 2배 해상도로(72×88 → 144×176). 칩은 '그 액자가 무엇인가'를 보여 주는 자리라
-    // 지금 고른 매트를 따르지 않는다 — 따르면 21개가 같은 모양이 되어 고를 단서가 사라진다.
-    // ⚠️ 칩 크기 그대로 그리지 말 것 — 매트 종이 결·나뭇결은 **실제 결과물 크기**(액자가 수백 px)에 맞춰 만든 것이라,
-    //    칩 크기에서 그리면 결이 줄지 않고 반짝이 무늬가 된다(처음 구운 판이 그랬다). 결과물 크기로 그린 뒤 두 번에 나눠 줄인다.
-    const framed = buildFramedCore(dummyArt(368, 464), f,
-      { frame: 0.075, matWidth: f.kind === 'canvas' ? 0 : 0.06, frameColor: '#46362a', matteColor: '#f2eee4', glass: false });
-    const half = document.createElement('canvas');
-    half.width = Math.round(framed.width / 2); half.height = Math.round(framed.height / 2);
-    const hx = half.getContext('2d'); hx.imageSmoothingQuality = 'high';
-    hx.drawImage(framed, 0, 0, half.width, half.height);
-    const cv = document.createElement('canvas'); cv.width = 144; cv.height = 176;
-    const x = cv.getContext('2d');
-    const s = Math.min(132 / half.width, 164 / half.height);
-    x.imageSmoothingQuality = 'high';
-    x.drawImage(half, (144 - half.width * s) / 2, (176 - half.height * s) / 2, half.width * s, half.height * s);
-    return { id: f.id, data: cv.toDataURL('image/webp', 0.9) };
-  });
+const result = await page.evaluate(async () => {
+  // 큰 그림을 반씩 줄여 N 폭으로 — 한 번에 줄이면 매트 결·나뭇결이 반짝이 무늬가 된다(아래 frames 주석과 같은 이유)
+  const shrink = (src, sx, sy, sw, sh, N) => {
+    let c = document.createElement('canvas'); c.width = sw; c.height = sh;
+    c.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+    while (c.width / 2 >= N) {
+      const d = document.createElement('canvas'); d.width = Math.round(c.width / 2); d.height = Math.round(c.height / 2);
+      const x = d.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, d.width, d.height); c = d;
+    }
+    const o = document.createElement('canvas'); o.width = N; o.height = Math.round(N * sh / sw);
+    const ox = o.getContext('2d'); ox.imageSmoothingQuality = 'high'; ox.drawImage(c, 0, 0, o.width, o.height);
+    return o;
+  };
+  const art = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(capToCanvas(im)); im.onerror = rej; im.src = '/demo-art/dawn-window.jpg'; });
+  /** 장면 합성 한 장 — 화면이 고르는 것과 같은 상태로(비율 1:1 · 조명 · 캡션 없음 · 자리 처음) */
+  const shot = (frameId, sceneId, mat, matColor, light) => {
+    state.img = art; selectedWork = null; state.mode = 'scene';
+    state.frameIdx = FRAMES.findIndex((f) => f.id === frameId);
+    state.sceneIdx = SCENES.findIndex((s) => s.id === sceneId);
+    state.matWidth = mat; state.matteColor = matColor || '#f5f2ea'; state.matTexture = 'paper';
+    state.light = light || 0; state.ratio = '1:1'; state.caption = false; state.group = null; state.circle = null; state.draft = false;
+    SCENES[state.sceneIdx].adj = { dx: 0, dy: 0, s: 1 };
+    const out = compose();
+    return { out, piece: window.__artlook && window.__artlook.piece };
+  };
+  // ── 액자 모서리 칩(재질 칩 · 모양 칩) — 흰 플라스터 벽에 걸어 **왼쪽 위 모서리를 크게**. 살 폭·깊이·결이 한눈에 갈린다.
+  //    조각 왼쪽 위에서 (−34, −34) · 190px 정사각(1568px 출력 기준, 다르면 비례)을 96px 로. 원형은 원의 왼쪽 위(225°) 둘레.
+  //    숨긴 액자(hidden)는 화면에 없으므로 굽지 않는다.
+  const corners = [];
+  for (const f of FRAMES.filter((x) => !x.hidden)) {
+    const { out, piece } = shot(f.id, 'white-plaster', f.kind === 'canvas' ? 0 : 0.05);
+    if (!piece) continue;
+    const k = out.width / 1568, S = Math.round(190 * k);
+    let x0 = piece.x - 34 * k, y0 = piece.y - 34 * k;
+    if (f.kind === 'round') {
+      const r = piece.w / 2, cx = piece.x + r, cy = piece.y + piece.h / 2;
+      x0 = cx - r * 0.7071 - 70 * k; y0 = cy - r * 0.7071 - 70 * k;
+    }
+    x0 = Math.max(0, Math.min(out.width - S, Math.round(x0))); y0 = Math.max(0, Math.min(out.height - S, Math.round(y0)));
+    corners.push({ id: f.id, data: shrink(out, x0, y0, S, S, 96).toDataURL('image/webp', 0.86) });
+  }
+  // ── 추천 조합 칩 — ui.js 의 PRESETS 표 그대로(window.__artlookPresets). 데모 그림 · 1:1 결과물 전체를 224px 로.
+  //    ⚠️ 화면에서 내 작품으로 그리지 않는다 — 배경 여덟 장과 액자 사진을 다 받게 된다(규칙 65 '고른 것만 받는다').
+  const presets = [];
+  for (const p of (window.__artlookPresets || [])) {
+    if (!FRAMES.some((f) => f.id === p.frame) || !SCENES.some((s) => s.id === p.scene)) continue;
+    const { out } = shot(p.frame, p.scene, p.mat, p.matColor, p.light);
+    presets.push({ id: p.id, data: shrink(out, 0, 0, out.width, out.height, 224).toDataURL('image/webp', 0.82) });
+  }
   const seen = new Set();
   const backs = [];
   for (const it of [...SCENES.map((s) => ({ src: s.src, img: s.img })), ...WALLS.map((w) => ({ src: w.src, img: w.img }))]) {
@@ -87,7 +120,7 @@ const result = await page.evaluate(() => {
     x.drawImage(im, (im.naturalWidth - side) / 2, (im.naturalHeight - side) / 2, side, side, 0, 0, N, N);
     backs.push({ src: it.src, data: cv.toDataURL('image/jpeg', 0.84) });
   }
-  return { frames, backs };
+  return { corners, presets, backs };
 });
 
 const write = (file, dataUrl) => {
@@ -97,7 +130,8 @@ const write = (file, dataUrl) => {
   return true;
 };
 let made = 0;
-for (const f of result.frames) if (write(path.join(ART, 'frames/chips', `${f.id}.webp`), f.data)) made++;
+for (const f of result.corners) if (write(path.join(ART, 'frames/corners', `${f.id}.webp`), f.data)) made++;
+for (const p of result.presets) if (write(path.join(ART, 'presets', `${p.id}.webp`), p.data)) made++;
 const thumbOf = (src) => { const i = src.lastIndexOf('/'); return `${src.slice(0, i)}/thumbs/${src.slice(i + 1)}`; };
 for (const b of result.backs) if (write(path.join(ART, thumbOf(b.src)), b.data)) made++;
 
@@ -111,6 +145,6 @@ if (added) fs.writeFileSync(scenesFile, txt);
 await browser.close();
 server.close();
 const kb = (dir) => fs.existsSync(dir) ? Math.round(fs.readdirSync(dir).reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0) / 1024) : 0;
-console.log(`칩 ${result.frames.length}개 · 배경 썸네일 ${result.backs.length}개 — 새로 쓴 파일 ${made}개, scenes.json thumb ${added}개 추가`);
-console.log(`frames/chips ${kb(path.join(ART, 'frames/chips'))}KB · walls/thumbs ${kb(path.join(ART, 'walls/thumbs'))}KB`);
+console.log(`모서리 칩 ${result.corners.length}개 · 추천 조합 칩 ${result.presets.length}개 · 배경 썸네일 ${result.backs.length}개 — 새로 쓴 파일 ${made}개, scenes.json thumb ${added}개 추가`);
+console.log(`frames/corners ${kb(path.join(ART, 'frames/corners'))}KB · presets ${kb(path.join(ART, 'presets'))}KB · walls/thumbs ${kb(path.join(ART, 'walls/thumbs'))}KB`);
 if (errors.length) { console.error('페이지 오류:', errors.join(' | ')); process.exitCode = 1; }

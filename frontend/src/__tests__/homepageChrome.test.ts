@@ -79,10 +79,13 @@ describe("'내 사이트' 모드 — 상단바 대신 주인의 머리·꼬리�
   it('Layout 은 홈페이지 주소에서 Navbar·하단 탭바·마이페이지 사이드바·회사 푸터를 그리지 않는다', () => {
     const l = code('components/layout/Layout.tsx');
     expect(l).toContain('const site = isHomepagePath(useLocation().pathname);');
-    expect(l).toContain('{!site && <Navbar />}');
-    expect(l).toContain('{!site && <BottomTabBar />}');
-    expect(l).toContain('{!site && <MyPageSideMenu />}');
-    expect(l).toMatch(/\{!site && <footer/);
+    // 2026-11-17 — ArtLook 휴대폰 편집 전용 화면(규칙 85)도 틀을 뺀다: chrome = 홈페이지 주소도, 편집 전용 화면도 아닐 때만
+    expect(l).toMatch(/const chrome = !site && !bare;/);
+    expect(l).toContain('{chrome && <Navbar />}');
+    expect(l).toContain('{chrome && <BottomTabBar />}');
+    expect(l).toContain('{chrome && <MyPageSideMenu />}');
+    expect(l).toMatch(/\{chrome && <footer/);
+    expect(l).not.toMatch(/\{!site && <(Navbar|BottomTabBar|MyPageSideMenu|footer)/);   // 한쪽 조건만 남은 자리가 없다
     // 팝업·알림 배너는 그대로
     for (const keep of ['<HomepageNudge />', '<GuestIntro />', '<PushBanner />']) expect(l).toContain(keep);
   });

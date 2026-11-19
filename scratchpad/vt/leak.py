@@ -22,7 +22,7 @@ from PIL import Image
 from scipy import ndimage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-D = os.path.join(HERE, 'leak')
+D = os.path.join(HERE, os.environ.get('LEAK_OUT', 'leak'))   # leak.mjs 와 같은 LEAK_OUT
 
 
 def lum(a):

@@ -4,7 +4,8 @@
 import pw from '/home/jho4255/ArtLink/e2e/node_modules/playwright/index.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 const { chromium } = pw;
-const OUT = '/home/jho4255/ArtLink/scratchpad/vt/leak';
+// LEAK_OUT=폴더 · LEAK_SCENES=id,id… 로 바꿔 잴 수 있다(2026-11-17 — 실내 배경 해상도를 바꿀 때 실내 7장 전/후를 따로 쟀다)
+const OUT = '/home/jho4255/ArtLink/scratchpad/vt/' + (process.env.LEAK_OUT || 'leak');
 mkdirSync(OUT, { recursive: true });
 
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -47,7 +48,7 @@ const shots = await p.evaluate(async (ids) => {
       srcWH: [SCENES[i].img.naturalWidth, SCENES[i].img.naturalHeight] });
   }
   return out;
-}, SCENES_UNDER_TEST);
+}, process.env.LEAK_SCENES ? process.env.LEAK_SCENES.split(',') : SCENES_UNDER_TEST);
 
 const meta = {};
 for (const s of shots) {
