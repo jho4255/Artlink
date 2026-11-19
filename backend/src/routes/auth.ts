@@ -6,6 +6,7 @@ import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
+import { kakaoFetch, KAKAO_UNREACHABLE } from '../lib/kakaoHttp';
 import { deleteUploadedFile } from '../lib/storage';
 import { safeFileUrl } from '../lib/safeUrl';
 import { handleTaken, normalizeHandle, validateHandle } from '../lib/handle';
@@ -42,7 +43,8 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
   try {
     const { code, redirectUri } = req.body;
 
-    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+    // 카카오(또는 중계 — lib/kakaoHttp.ts, 규칙 86)로 인가 코드를 토큰으로 바꾼다
+    const tokenRes = await kakaoFetch('auth', '/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -52,7 +54,12 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
         code,
       }),
     });
-    const tokenData = await tokenRes.json() as any;
+    const tokenData = await tokenRes.json().catch(() => null) as any;
+    // JSON 이 아니거나 5xx 면 카카오 앞(중계 설정 오류·중계가 카카오에 못 닿음)이나 카카오 서버 쪽 문제 — '로그인 실패'가 아니라 연결 문제로 알린다
+    if (!tokenData || tokenRes.status >= 500) {
+      console.error('[Kakao Token] 연결 문제', tokenRes.status);
+      throw new AppError(KAKAO_UNREACHABLE, 503);
+    }
     if (tokenData.error) {
       console.error('[Kakao Token Error]', tokenData);
       throw new AppError(`카카오 인증 실패: ${tokenData.error_description || tokenData.error}`, 401);
@@ -65,7 +72,7 @@ router.post('/kakao', validate(kakaoSchema), async (req, res, next) => {
 
 /** 카카오 접근 토큰 → 사용자 정보. 오류 바디(레이트리밋/장애 등)면 id 가 undefined → providerId "undefined" 로 교차 로그인되지 않게 막는다 */
 async function fetchKakaoUser(accessToken: string): Promise<any> {
-  const userRes = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` } });
+  const userRes = await kakaoFetch('api', '/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` } });
   const kakaoUser = await userRes.json().catch(() => null) as any;
   if (!userRes.ok || !kakaoUser?.id) {
     console.error('[Kakao UserInfo Error]', userRes.status, kakaoUser);
@@ -119,8 +126,13 @@ router.post('/kakao/native', validate(kakaoNativeSchema), async (req, res, next)
     const appId = Number(process.env.KAKAO_APP_ID);
     if (!Number.isInteger(appId) || appId <= 0) throw new AppError('앱 카카오 로그인이 아직 설정되지 않았어요.', 503);
     const accessToken = req.body.accessToken as string;
-    const infoRes = await fetch('https://kapi.kakao.com/v1/user/access_token_info', { headers: { Authorization: `Bearer ${accessToken}` } });
+    const infoRes = await kakaoFetch('api', '/v1/user/access_token_info', { headers: { Authorization: `Bearer ${accessToken}` } });
     const info = await infoRes.json().catch(() => null) as any;
+    if (!infoRes.ok && (!info || infoRes.status >= 500)) {
+      // JSON 이 아닌 실패 = 카카오 앞(중계)에서 막혔다 — 사용자 토큰 탓('만료')으로 알리지 않는다
+      console.error('[Kakao TokenInfo] 연결 문제', infoRes.status);
+      throw new AppError(KAKAO_UNREACHABLE, 503);
+    }
     if (!infoRes.ok || !info?.id) throw new AppError('카카오 로그인이 만료됐어요. 다시 시도해 주세요.', 401);
     if (Number(info.app_id) !== appId) throw new AppError('다른 앱에서 받은 카카오 로그인은 쓸 수 없어요.', 401);
     const kakaoUser = await fetchKakaoUser(accessToken);

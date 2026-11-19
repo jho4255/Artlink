@@ -368,6 +368,14 @@ ArtLink/
 - 차단 지점: `authenticate`/`optionalAuth`(deletedAt), 카카오/로컬 로그인, 갤러리·공모·전시 상세(WITHDRAWN→404, ADMIN 제외), 공모 지원(status!=APPROVED→400)
 - 프론트: MyPage 프로필 탭 하단 [회원 탈퇴] → `WithdrawModal`(영향 안내+동의+확인입력) → 성공 시 logout+/login
 
+### 카카오 API 호출 · 중계 (2026-11-19, CLAUDE.md 86)
+- 서버가 카카오를 부르는 곳은 셋 — 웹 로그인 토큰 교환(`POST kauth /oauth/token`) · 사용자 정보(`GET kapi /v2/user/me`) · 앱 토큰 확인(`GET kapi /v1/user/access_token_info`).
+  전부 `backend/src/lib/kakaoHttp.ts kakaoFetch('auth'|'api', path)` 를 지난다(8초 제한 · 못 닿으면 503 + `err.cause` 로그).
+- 주소는 환경 변수: `KAKAO_AUTH_URL`·`KAKAO_API_URL`(비우면 공식 주소 · https 만) + `KAKAO_RELAY_SECRET`(중계로 갈 때만 `X-Relay-Secret`).
+- 중계 = Cloudflare Worker `infra/cloudflare/kakao-relay.js` — 세 경로만 · 비밀이 맞을 때만(아니면 404) · content-type·authorization 만 넘김 · 저장 없음.
+  설치·확인·되돌리기는 `infra/cloudflare/README.md`.
+- 계기: 실서버(Render 싱가포르 · 나가는 IP 74.220.52.222)에서만 카카오 TCP 연결이 막혀 카카오 로그인·가입이 멈췄다(다른 곳에서는 정상). 코드 배포 없이 환경 변수로 돌리려고 만들었다.
+
 ## 프론트엔드 라우트
 
 | 경로 | 페이지 | 인증 |

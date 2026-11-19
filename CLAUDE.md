@@ -3067,6 +3067,23 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       `artlookScreen`·`artlookFrameItAdds`·`artlookScene`·`artlook`·`wallView` 갱신 · e2e **`84-artlook-editor.spec.ts`(7)** · `69`·`75`·`41` 을 새 화면으로(도우미 `pickFrame`·`artlookSave`·`savedNote`) ·
       하니스 `scratchpad/artlook-review/`(screens2·panegeo·sizes·wp9*·g1·cmp) · `scratchpad/artlook-ux/walk.js`(탭 다섯·새 하한·1024px 미만 틀 없음) · 엔진 화질은 vt(run·syncheck·physics·artpreserve·leak·nomat·sweepcheck).
 
+86. **카카오 API 는 `lib/kakaoHttp.ts` 하나로 부른다 — 막히면 Cloudflare 중계로 돌린다** (2026-11-19, 실서버 사고 · 사용자 결정)
+    실서버(Render 싱가포르, 나가는 IP 74.220.52.222)에서 `kauth.kakao.com`·`kapi.kakao.com` 으로의 TCP 연결이 통째로 막혀 **웹·앱 카카오 로그인·가입이 전부 멈췄다**
+    (로그 `POST /api/auth/kakao 500 10494ms` · `fetch failed`). 코드 변경 없음 · 카카오 장애도 아님 — 한국·싱가포르의 다른 망·해외 40곳(check-host)에서는 다 닿았고
+    같은 서버의 다른 외부 요청(R2)도 멀쩡했다. 그 IP 만 닿지 않았다(카카오 방화벽으로 추정 — 데브톡에 해제 요청).
+    - **세 경로**(토큰 교환 · 사용자 정보 · 앱 토큰 확인) 모두 `kakaoFetch('auth'|'api', path)` — 주소를 코드에 적지 말 것(백엔드에서 `grep kakao.com` 이 이 파일만 나와야 한다).
+    - 환경 변수만으로 중계로 돌린다(**코드 배포 없이**): `KAKAO_AUTH_URL`(기본 https://kauth.kakao.com) · `KAKAO_API_URL`(기본 https://kapi.kakao.com) ·
+      `KAKAO_RELAY_SECRET`. 중계는 `infra/cloudflare/kakao-relay.js`(Cloudflare Worker — 설치·확인·되돌리기는 같은 폴더 README).
+      ⚠️ https 가 아닌 주소는 무시하고 카카오로 바로 간다(인가 코드·토큰이 지나간다) · 비밀 머리는 **중계로 갈 때만** 보낸다.
+    - Worker 는 그 **세 경로만**, `X-Relay-Secret` = `RELAY_SECRET` 일 때만(아니면 404 — 비밀이 없으면 전부 404), 넘기는 머리는 content-type·authorization 둘뿐, 아무것도 저장하지 않는다.
+      ⚠️ 경로를 늘리면 아무 카카오 API 나 대신 불러 주는 열린 중계가 된다 — 새 카카오 API 를 쓰게 되면 Worker 의 `ROUTES` 와 이 규칙을 같이 고칠 것.
+    - 못 닿으면 **8초 뒤 503** "카카오에 연결하지 못했어요 …이메일로 로그인해 주세요" + 원인(`err.cause`) 로그 — 예전엔 undici 연결 대기 10초 뒤 '서버 내부 오류' 500 에 원인이 안 남았다.
+      중계가 404(비밀·주소 틀림)·5xx(중계가 카카오에 못 닿음)를 주면 그것도 503 이다 — '로그인 실패'·'만료'로 사용자 탓을 하지 않는다.
+    - 진단 순서(다음에 또 그러면): 실서버에 가짜 코드로 `POST /api/auth/kakao` → 8초 503 이면 연결 문제 → Render 셸 `curl -sv -m 15 -o /dev/null https://kauth.kakao.com/` ·
+      `curl -s https://api.ipify.org`(나가는 IP) → check-host.net 으로 다른 곳에서 닿는지 → 그 IP 만이면 중계를 켜고 카카오 데브톡에 해제 요청.
+    - 회귀: backend `kakao-relay.test.ts`(9 — 기본은 카카오로 바로·비밀 안 보냄 · 중계 주소면 세 경로 모두 중계 + 비밀 · http 무시 · 못 닿으면 503 · 중계 404/502 → 503 ·
+      Worker: 비밀 틀림·경로 밖 404 · 맞으면 그대로 넘김(머리 둘만) · 카카오 실패 502) · `kakao-login.test.ts`.
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -3147,6 +3164,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **모놀리스 배포**: Backend Express가 Frontend `dist/`도 서빙
 - **안드로이드 앱(규칙 79)** 환경 변수 — `KAKAO_APP_ID`(카카오 콘솔의 앱 ID 숫자 — 앱 카카오 로그인 토큰 확인, 없으면 그 길만 503) · `FIREBASE_SERVICE_ACCOUNT`(Firebase 서비스 계정 JSON 또는 base64 · **저장소·문서에 적지 말 것**, 없으면 푸시 꺼짐) ·
   `PUSH=off`(코드 배포 없이 푸시 끄기) · `ANDROID_CERT_SHA256`(App Links 지문, 쉼표 구분 — Play 앱 서명 키). 앱 자체는 스토어로 나가고 웹 배포와 따로다
+- **카카오 중계(규칙 86)** 환경 변수 — `KAKAO_AUTH_URL`·`KAKAO_API_URL`(비우면 카카오로 바로) · `KAKAO_RELAY_SECRET`(Worker `RELAY_SECRET` 과 같은 값 · **저장소·문서에 적지 말 것**). 설치는 `infra/cloudflare/README.md`
 - **이미지 업로드**: Cloudinary 환경변수 유무로 자동 전환 (있으면 Cloudinary, 없으면 디스크)
 - **정적 파일 캐시**(`backend/src/lib/staticCache.ts`, 2026-10-04): 해시 번들 `assets/` 만 1년 immutable · 앱 셸(index.html·sw.js…) no-store · **그 밖의 고정 이름 파일은 no-cache**(ETag 304).
   ⚠️ 예전엔 assets 가 아닌 것까지 1년 immutable 이라 ArtLook scene.js 가 Cloudflare 에 옛 판으로 30일 굳어 있었고, 푸터 회사 정보도 고쳐도 안 바뀌었다(규칙 65).
