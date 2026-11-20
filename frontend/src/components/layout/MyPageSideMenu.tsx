@@ -1,10 +1,9 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import api from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import { MessageCircle } from 'lucide-react';
-import { myPageTabs, tabHref, resolveTab, MYPAGE_FOOTER_LINKS, MYPAGE_PRIMARY_LINKS, MYPAGE_TOP_LINKS } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, MYPAGE_FOOTER_LINKS, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
 import AdSlot from '@/components/shared/AdSlot';
 
 /**
@@ -34,13 +33,6 @@ export default function MyPageSideMenu() {
   };
 
   const tabs = myPageTabs(user?.role);
-  // 안 읽은 대화 수 — 상단 말풍선(Navbar)과 같은 쿼리라 요청은 한 번이다
-  const { data: unreadChats = 0 } = useQuery<number>({
-    queryKey: ['chat-unread'],
-    queryFn: () => api.get('/chats/unread-count').then((r) => r.data.count),
-    enabled: isAuthenticated,
-    refetchInterval: 30000,
-  });
   if (!isAuthenticated || tabs.length === 0) return null;
 
   const onMyPage = location.pathname === '/mypage';
@@ -50,35 +42,8 @@ export default function MyPageSideMenu() {
     <aside className="hidden lg:block w-56 shrink-0 border-l border-gray-200">
       {/* 네비바 h-20(80px) + 16px. 네비바 높이를 바꾸면 여기도 맞출 것 */}
       <nav className="sticky top-24 px-4 py-6 space-y-1">
-        {/* ArtTalk — 맨 위(2026-11-19 사용자 결정, 휴대폰 [메뉴]도 같다). 안 읽은 대화 수를 붙인다 */}
-        {MYPAGE_TOP_LINKS.map(l => {
-          const Icon = l.icon ?? MessageCircle;
-          const active = location.pathname === l.to;
-          return (
-            <Link
-              key={l.to}
-              to={l.to}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors',
-                active ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900',
-              )}
-            >
-              <Icon size={16} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">
-                {l.brand
-                  ? <span className="font-bold tracking-tight font-serif">{l.brand[0]}<span className="text-accent">{l.brand[1]}</span></span>
-                  : l.label}
-              </span>
-              {l.badge === 'chat' && unreadChats > 0 && (
-                <span className="shrink-0 min-w-[20px] rounded-full bg-accent px-1.5 text-center text-[11px] font-bold leading-5 text-white" aria-label={`안 읽은 대화 ${unreadChats}`}>
-                  {unreadChats > 99 ? '99+' : unreadChats}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-        <p className="px-3 pb-2 pt-3 mt-1 border-t border-gray-100 text-[11px] font-medium tracking-widest text-gray-300 uppercase">
+        {/* ArtTalk 은 여기 없다 — 상단바 종 옆 말풍선 아이콘(2026-11-20 사용자 결정, Navbar) */}
+        <p className="px-3 pb-2 text-[11px] font-medium tracking-widest text-gray-300 uppercase">
           My Page
         </p>
         {tabs.map(tab => {
@@ -142,7 +107,7 @@ export default function MyPageSideMenu() {
           '나가기'가 놓여 있을 이유가 없다. 여기 두면 필요할 때만 눈에 들어온다.
           ⚠️ lg 미만에서는 이 사이드바가 렌더되지 않는다 — 그쪽 로그아웃은 Navbar 햄버거 메뉴에 있다.
         */}
-        {/* 1:1 문의 · 로그아웃 — 맨 아래 **한 줄**, 작고 조용하게(2026-11-19 — 1:1 문의가 있던 메뉴 한 줄 자리는 ArtTalk 이 맨 위로 가져갔다) */}
+        {/* 1:1 문의 · 로그아웃 — 맨 아래 **한 줄**, 작고 조용하게(2026-11-19 사용자 결정) */}
         <div className="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between">
           {MYPAGE_FOOTER_LINKS.map(l => (
             <Link

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { QueryClient } from '@tanstack/react-query';
 import { chatRead, chatsChanged, pokeChat, CHAT_POKE_EVENT, readChatDraft, writeChatDraft, clearChatDrafts } from '@/lib/chatCache';
 import { isChatRoomPath, CHAT_WIDE_MEDIA } from '@/hooks/useChatBare';
-import { MYPAGE_TOP_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
+import { MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
 
 const SRC = join(__dirname, '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
@@ -158,26 +158,33 @@ describe('화면 구조 — 소스 가드', () => {
   });
 });
 
-describe('메뉴 자리 — ArtTalk 맨 위 · 1:1 문의는 로그아웃 줄(2026-11-19 사용자 결정, PC·휴대폰 같다)', () => {
-  it('맨 위 링크는 ArtTalk(말풍선 · 안 읽은 대화 수) · 맨 아래 줄은 1:1 문의', () => {
-    expect(MYPAGE_TOP_LINKS.map((l) => [l.to, l.badge, l.brand?.join('')])).toEqual([['/messages', 'chat', 'ArtTalk']]);
+describe('ArtTalk 자리 — 상단바 종 옆 말풍선 · 1:1 문의는 로그아웃 줄(2026-11-20 사용자 결정, PC·휴대폰 같다)', () => {
+  it('메뉴 맨 아래 줄은 1:1 문의뿐 — ArtTalk 은 메뉴에 없다', () => {
     expect(MYPAGE_FOOTER_LINKS.map((l) => l.to)).toEqual(['/support']);
+    expect(code('lib/myPageMenu.ts')).not.toMatch(/MYPAGE_TOP_LINKS|'\/messages'/);
   });
 
-  it('PC 오른쪽 메뉴 — ArtTalk 이 MY PAGE 보다 위 · [1:1 문의]와 [로그아웃]이 한 줄', () => {
+  it('PC 오른쪽 메뉴 — ArtTalk 줄이 없고 [1:1 문의]와 [로그아웃]이 한 줄', () => {
     const side = code('components/layout/MyPageSideMenu.tsx');
-    expect(side.indexOf('MYPAGE_TOP_LINKS.map')).toBeLessThan(side.indexOf('My Page'));
+    expect(side).not.toMatch(/\/messages|chat-unread/);
     expect(side).toMatch(/MYPAGE_FOOTER_LINKS\.map[\s\S]{0,700}로그아웃/);
-    expect(side).toContain("queryKey: ['chat-unread']");
   });
 
-  it('휴대폰 [메뉴] — ArtTalk 맨 위 · 상단바에는 대화 아이콘이 없다(2026-11-19 사용자 결정 — 메뉴 맨 위에 생겼으니)', () => {
+  it('상단바 — 종 바로 앞에 말풍선(PC·휴대폰 두 벌) · 안 읽은 대화 수 · 햄버거 메뉴엔 ArtTalk 이 없다', () => {
     const nav = code('components/layout/Navbar.tsx');
-    expect(nav.indexOf('MYPAGE_TOP_LINKS.map')).toBeLessThan(nav.indexOf('My Page'));
-    expect(nav).not.toMatch(/\bMail\b/);
-    // 종 옆 말풍선(PC·휴대폰 두 벌)을 없앴다 — 새 메시지는 벨 알림(CHAT_MESSAGE)과 메뉴의 ArtTalk 숫자가 알린다
-    expect(nav).not.toMatch(/aria-label="ArtTalk"/);
-    expect(nav).not.toMatch(/navigate\('\/messages'\)/);
-    expect(nav).toMatch(/link\.badge === 'chat' && unreadMsgCount > 0/);
+    expect(nav).not.toMatch(/\bMail\b|MYPAGE_TOP_LINKS/);
+    const icons = [...nav.matchAll(/aria-label="ArtTalk"/g)].map((m) => m.index!);
+    expect(icons).toHaveLength(2);
+    const bells = [...nav.matchAll(/aria-label="알림"/g)].map((m) => m.index!);
+    // 두 벌 모두 그 자리의 종보다 앞(왼쪽)에 있다
+    expect(icons[0]).toBeLessThan(bells[0]);
+    expect(icons[1]).toBeLessThan(bells[1]);
+    expect(bells[0]).toBeLessThan(icons[1]);
+    expect(nav).toMatch(/to="\/messages"\s+aria-label="ArtTalk"/);
+    expect(nav).toContain("queryKey: ['chat-unread']");
+    expect(nav.match(/unreadMsgCount > 0 &&/g)).toHaveLength(2);
+    // 햄버거 메뉴(My Page 목록)에는 대화 줄이 없다
+    const menu = nav.slice(nav.indexOf('My Page'));
+    expect(menu).not.toMatch(/\/messages/);
   });
 });

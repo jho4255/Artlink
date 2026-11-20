@@ -3259,7 +3259,7 @@ e2e `83-registration-and-shows.spec.ts`(5) + 07·15·24·25·51·60·67·70·77 
 - `components/chat/` — `ChatList` · `ChatRoom` · `MessageList`(따라 내려가기·[새 메시지 N]·날짜 줄) · `MessageBubble`(길게 누르기·주소 토막·첨부) · `Composer`(여러 줄·한글 조합·글자 수·쓰던 글)
   · `RefCard` · `RoomSheets`(방 메뉴·말 메뉴·신고·참여자) · `ChatSheet`(창 하나) · `NeighborPicker` · `ChatAvatar`(이름 첫 글자 · 포스터) · `BlockedUsersSection`.
 - 관리자 `components/admin/ChatReportsSection.tsx` · 문의 창 `InquirySheet` 에 `context`(공모·갤러리 카드).
-- 메뉴 — `MYPAGE_TOP_LINKS`(ArtTalk 맨 위) · 1:1 문의는 로그아웃 줄(PC 사이드바·휴대폰 [메뉴] 같다).
+- 자리 — 상단바 **종 바로 왼쪽 말풍선**(`Navbar`, 안 읽은 대화 수, PC·휴대폰 같다 — 2026-11-19 하루는 메뉴 맨 위 줄이었다가 11-20 에 되돌림) · 1:1 문의는 메뉴 맨 아래 로그아웃 줄.
 
 ### 검증
 backend `chat-renewal.test.ts`(25) · frontend `arttalk.test.ts`(19) · `chatView.test.ts` · e2e `85-arttalk.spec.ts`(12) · `29`·`04`·`26`·`30`·`33`·`34`·`35`·`40`.

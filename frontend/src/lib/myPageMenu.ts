@@ -11,7 +11,7 @@
  */
 import {
   Camera, FileText, Heart, Star, Ticket, Building2, Bookmark, Home,
-  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone, BarChart3, MessageCircle,
+  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone, BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -186,23 +186,15 @@ export interface FooterLink {
   /** 이름 옆 작은 설명 (예: '1:1 문의' 옆 안내) */
   note?: string;
   icon?: LucideIcon;
-  /** 옆에 숫자 배지 — 'chat' = 안 읽은 대화 수(상단 말풍선과 같은 쿼리 `['chat-unread']`) */
-  badge?: 'chat';
 }
-/**
- * 메뉴 **맨 위**(역할 메뉴·'MY PAGE' 위) — ArtTalk(2026-11-19 사용자 결정: PC 오른쪽 메뉴·휴대폰 [메뉴] 둘 다 맨 위).
- * 앱으로도 내는 서비스라 대화는 매일 여는 곳인데, 그 전엔 상단의 편지 아이콘 하나뿐이었다. 상단 아이콘도 같은 말풍선이다.
- */
-export const MYPAGE_TOP_LINKS: FooterLink[] = [
-  { label: 'ArtTalk', to: '/messages', brand: ['Art', 'Talk'], icon: MessageCircle, badge: 'chat' },
-];
 /**
  * 역할 메뉴 **바로 아래, 구분선 위**에 붙는 링크 — 자주 쓰는 기능이라 footer(구분선 아래)와 분리한다.
  */
 export const MYPAGE_PRIMARY_LINKS: FooterLink[] = [];
 
 /**
- * 맨 아래 **로그아웃과 같은 줄**(작은 글자) — 자주 쓰지 않는 것(2026-11-19 — 그 전엔 이 자리가 메뉴 한 줄이었고, 그 자리에 ArtTalk 이 올라갔다).
+ * 맨 아래 **로그아웃과 같은 줄**(작은 글자) — 자주 쓰지 않는 것(2026-11-19 사용자 결정).
+ * ArtTalk 은 메뉴가 아니라 **상단바 종 옆 말풍선 아이콘**이다(2026-11-20 사용자 결정 — PC·휴대폰 같다, Navbar).
  * ⚠️ 로그인 사용자가 고객센터로 가는 길은 이것과 모든 화면 푸터의 [고객센터]다 — 빼지 말 것.
  */
 export const MYPAGE_FOOTER_LINKS: FooterLink[] = [

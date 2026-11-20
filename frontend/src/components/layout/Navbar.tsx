@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
-import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, MYPAGE_TOP_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
 import { NAV_LINKS as navLinks, isNavActive } from '@/lib/navLinks';
 
 // 가운데 메뉴 정의는 lib/navLinks.ts 하나뿐 — 데스크톱 상단 중앙과 모바일 하단 탭바(BottomTabBar)가 공유한다.
@@ -19,6 +19,8 @@ export default function Navbar() {
   const notifRef = useRef<HTMLDivElement>(null);
   const mobileBellRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+  // 대화 화면이면 종 옆 말풍선을 눌린 모양으로 — 휴대폰 대화방은 상단바 자체를 그리지 않는다(규칙 87)
+  const onMessages = location.pathname === '/messages';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, user, logout } = useAuthStore();
@@ -45,7 +47,7 @@ export default function Navbar() {
     refetchInterval: 30000,
   });
 
-  // 안 읽은 대화 수 — 햄버거 메뉴 맨 위 ArtTalk 줄의 숫자. Admin 도 단톡에 들어갈 수 있으므로 역할로 막지 않는다
+  // 안 읽은 대화 수 — 종 옆 ArtTalk 말풍선의 숫자. Admin 도 단톡에 들어갈 수 있으므로 역할로 막지 않는다
   const { data: unreadMsgCount = 0 } = useQuery<number>({
     queryKey: ['chat-unread'],
     queryFn: () => api.get('/chats/unread-count').then(r => r.data.count),
@@ -152,12 +154,27 @@ export default function Navbar() {
           </div>
 
           {/*
-            우측: 알림 + 유저 정보. (ArtTalk 은 오른쪽 메뉴 맨 위 — 상단 말풍선 아이콘은 2026-11-19 에 없앴다. 새 메시지는 벨 알림에도 온다)
+            우측: ArtTalk(말풍선) · 알림 + 유저 정보. ArtTalk 은 메뉴가 아니라 **종 옆 아이콘**이다(2026-11-20 사용자 결정 — PC·휴대폰 같다)
             **네비바 전체의 오른쪽 끝**에 붙인다 — `right-4`(16px)는 우측 사이드바 `nav` 의 `px-4` 와 같은 값이라
             [로그아웃] 오른쪽 끝이 사이드바 메뉴 항목의 오른쪽 끝과 정확히 맞는다.
             본문 컨테이너 안에 두면 사이드바 폭(224px)만큼 왼쪽으로 들어가 어긋난다.
           */}
           <div className="hidden lg:flex items-center gap-3 flex-none absolute right-4 top-0 h-20">
+            {isAuthenticated && (
+              <Link
+                to="/messages"
+                aria-label="ArtTalk"
+                aria-current={onMessages ? 'page' : undefined}
+                className={cn('relative p-2 hover:bg-gray-100 rounded-full transition-colors', onMessages && 'bg-gray-100')}
+              >
+                <MessageCircle size={20} className="text-gray-600" />
+                {unreadMsgCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-accent text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                  </span>
+                )}
+              </Link>
+            )}
             {isAuthenticated && (
               <div className="relative" ref={notifRef}>
                 <button
@@ -241,7 +258,7 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* 모바일: 로그인 / 알림 + 햄버거(ArtTalk 은 햄버거 메뉴 맨 위 — 상단 말풍선 아이콘은 2026-11-19 에 없앴다) */}
+          {/* 모바일: 로그인 / ArtTalk(말풍선) · 알림 · 햄버거 — PC 와 같은 순서 */}
           <div className="flex items-center gap-1 lg:hidden">
             {!isAuthenticated && (
               <button
@@ -250,6 +267,21 @@ export default function Navbar() {
               >
                 로그인
               </button>
+            )}
+            {isAuthenticated && (
+              <Link
+                to="/messages"
+                aria-label="ArtTalk"
+                aria-current={onMessages ? 'page' : undefined}
+                className={cn('relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100', onMessages && 'bg-gray-100 text-gray-900')}
+              >
+                <MessageCircle size={20} />
+                {unreadMsgCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] bg-accent text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                  </span>
+                )}
+              </Link>
             )}
             {isAuthenticated && (
               <button
@@ -340,30 +372,6 @@ export default function Navbar() {
                 홈에서 바로 마이페이지 각 탭으로 갈 수 있다(artspoon 과 같은 방식).
                 별도 버튼을 하나 더 두지 않는다 — 우측 상단에 햄버거가 둘이면 뭐가 뭔지 알 수 없다.
               */}
-              {/* ArtTalk — 맨 위(2026-11-19 사용자 결정 — PC 오른쪽 메뉴와 같은 자리). 안 읽은 대화 수를 붙인다 */}
-              {isAuthenticated && MYPAGE_TOP_LINKS.map((link) => {
-                const Icon = link.icon ?? MessageCircle;
-                return (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    onClick={() => setIsOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium rounded-lg text-gray-900 hover:bg-gray-50"
-                  >
-                    <Icon size={16} className="shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {link.brand
-                        ? (<span className="font-bold tracking-tight font-serif">{link.brand[0]}<span className="text-accent">{link.brand[1]}</span></span>)
-                        : link.label}
-                    </span>
-                    {link.badge === 'chat' && unreadMsgCount > 0 && (
-                      <span className="shrink-0 min-w-[20px] rounded-full bg-accent px-1.5 text-center text-[11px] font-bold leading-5 text-white">
-                        {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
               {isAuthenticated && (
                 <>
                   {/* ArtStory(소식) 등 마이페이지 주요 링크 — 역할 무관 */}
@@ -395,7 +403,7 @@ export default function Navbar() {
               )}
               {isAuthenticated && myTabs.length > 0 && (
                 <>
-                  <p className="px-4 pt-4 pb-1 mt-1 text-[11px] font-medium tracking-widest text-gray-300 uppercase border-t border-gray-100">
+                  <p className="px-4 pt-3 pb-1 text-[11px] font-medium tracking-widest text-gray-300 uppercase">
                     My Page
                   </p>
                   {myTabs.map(tab => {

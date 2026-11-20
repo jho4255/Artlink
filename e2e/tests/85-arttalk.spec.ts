@@ -56,10 +56,9 @@ async function say(api: APIRequestContext, from: string, chatId: number, content
   return r;
 }
 const rowOf = (page: Page, chatId: number) => page.getByTestId('chat-list').locator(`[data-chat-id="${chatId}"]`);
-/** 휴대폰 상단바의 [메뉴] → 맨 위 [ArtTalk] (상단 말풍선 아이콘은 2026-11-19 에 없앴다) */
-async function openArtTalkFromMenu(page: Page) {
-  await page.getByRole('button', { name: '메뉴 열기' }).click();
-  await page.getByRole('link', { name: /^ArtTalk/ }).filter({ visible: true }).first().click();
+/** 상단바 종 옆 말풍선 [ArtTalk] (2026-11-20 — 메뉴 맨 위에서 다시 종 옆으로 옮겼다, PC·휴대폰 같다) */
+async function openArtTalkFromTopBar(page: Page) {
+  await page.getByRole('link', { name: 'ArtTalk', exact: true }).filter({ visible: true }).click();
 }
 
 test('A ★ 문의를 보낸 뒤 ArtTalk 에 가면 그 말이 곧바로 목록 맨 위에 있다(목록을 먼저 봐 둔 상태에서도)', async ({ browser }) => {
@@ -84,7 +83,7 @@ test('A ★ 문의를 보낸 뒤 ArtTalk 에 가면 그 말이 곧바로 목록 
   await expect(sheet).toContainText('메시지를 보냈어요', { timeout: 10000 });
   await page.keyboard.press('Escape');
   await page.getByTestId('artlink-mark').click();            // 홈으로(앱 안에서)
-  await openArtTalkFromMenu(page);                           // [메뉴] 맨 위 ArtTalk
+  await openArtTalkFromTopBar(page);                         // 종 옆 말풍선
 
   // 곧바로(3초 안) — 예전엔 5분 동안 옛 목록이었다
   await expect(rowOf(page, room)).toContainText(`나: ${text}`, { timeout: 3000 });
