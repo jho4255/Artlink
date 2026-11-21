@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>새 공고 등록 일정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="min-height: 760px; box-sizing: border-box; padding: 40px 48px; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+<div style="max-width: 1180px; display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start">
+
+<section aria-label="일정" style="flex: 999 1 560px; min-width: 0; max-width: 720px">
+<p style="margin: 0; display: flex; align-items: baseline; gap: 12px"><span style="font-size: 13px; font-weight: 600; color: #9ca3af">3</span><span style="font-size: 18px; font-weight: 700">일정</span></p>
+<p style="margin: 14px 0 0; font-size: 13.5px; color: #4b5563">진행 범위 · <strong style="color: #111827">전시까지 진행</strong></p>
+
+<div style="margin-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ fields }}" as="f" hint-placeholder-count="6">
+<div style="padding: 12px 14px; border: 1px solid {{ f.border }}; border-radius: 10px; background: {{ f.bg }}">
+<p style="margin: 0; display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #6b7280"><span>{{ f.label }}</span><span style="font-weight: 600; color: #c4302b">{{ f.badge }}</span></p>
+<p style="margin: 4px 0 0; font-size: 15px; font-weight: 600">{{ f.value }}</p>
+</div>
+</sc-for>
+</div>
+<p style="margin: 14px 0 0; font-size: 13.5px; color: #374151">접수 11.9–11.23 · 선정 11.30 · 출품 자료 12.7 · 전시 12.21–1.4</p>
+</section>
+
+<aside aria-label="공고 상세 미리보기" style="flex: 1 1 300px; min-width: 0; max-width: 360px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px">
+<p style="margin: 0; font-size: 12px; letter-spacing: 0.06em; color: #9ca3af">미리보기 · 공고 상세 일정</p>
+<p style="margin: 10px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4">2027 봄 기획전 《새싹》 참여 작가 모집</p>
+<ol style="margin: 16px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px">
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+<li style="border-top: 2px solid {{ s.line }}; padding-top: 8px"><span style="display: block; font-size: 12px; color: #6b7280">{{ s.label }}</span><span style="display: block; margin-top: 2px; font-size: 14px; font-weight: {{ s.weight }}">{{ s.value }}</span></li>
+</sc-for>
+</ol>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+const F = (label, value, isNew) => ({ label, value, badge: isNew ? '새 칸' : '', border: isNew ? '#c4302b' : '#e5e7eb', bg: isNew ? '#fffafa' : '#ffffff' });
+const S = (label, value, isNew) => ({ label, value, line: isNew ? '#c4302b' : '#111827', weight: isNew ? 700 : 500 });
+return {
+fields: [
+F('접수 시작일', '11.9(월)'),
+F('접수 마감일', '11.23(월)'),
+F('선정 마감일', '11.30(월)', true),
+F('출품 자료 제출 마감일', '12.7(월)'),
+F('전시 시작일', '12.21(월)'),
+F('전시 종료일', '1.4(월)')
+],
+steps: [
+S('접수 시작', '11.9(월)'),
+S('접수 마감', '11.23(월)'),
+S('선정 마감', '11.30(월)', true),
+S('출품 자료 마감', '12.7(월)'),
+S('전시', '12.21 – 1.4')
+]
+};
+}
+}
+</script>
+</body>
+</html>

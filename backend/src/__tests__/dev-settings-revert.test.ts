@@ -10,7 +10,8 @@
  *                수락→접수는 여전히 차단, 정산 완료 공모는 차단.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { ALREADY_DECIDED } from '../lib/applicationWindow';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 const ownerTok = authToken(3, 'GALLERY');
@@ -141,6 +142,7 @@ describe('수락→거절 되돌리기 (토글 ON 시)', () => {
     const applyPayload = { biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
     const applied = await request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${artist2Tok}`).send(applyPayload);
     expect(applied.status).toBe(201);
+    await closeRecruitment(exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
     const acceptOther = () => request.patch(`/api/exhibitions/${exId}/applications/${applied.body.id}`)
       .set('Authorization', `Bearer ${ownerTok}`).send({ status: 'ACCEPTED' });
     expect((await acceptOther()).status).toBe(400);
@@ -159,12 +161,13 @@ describe('수락→거절 되돌리기 (토글 ON 시)', () => {
     expect(noti?.message).toContain('지원 결과가 나왔어요');
   });
 
-  it('거절→수락 재수락도 여전히 가능 (기존 규칙 유지)', async () => {
+  it('되돌린 지원은 다시 수락할 수 없다 — 결과가 난 지원은 바꾸지 않는다(2026-11-21, 규칙 90)', async () => {
     await setRevertFlag(true);
-    await patch('REJECTED');
+    await closeRecruitment(exId);
+    expect((await patch('REJECTED')).status).toBe(200);
     const r = await patch('ACCEPTED');
-    expect(r.status).toBe(200);
-    expect(r.body.status).toBe('ACCEPTED');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe(ALREADY_DECIDED);
   });
 
   it('작가 본인은 상태 변경 불가 (403)', async () => {

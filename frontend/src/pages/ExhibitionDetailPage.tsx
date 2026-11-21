@@ -46,7 +46,7 @@ import { isAdminHosted, canOperate, canManage, canDelete, canChangeRegion, canEd
 import { operatorWorkspace, galleryOperationHref } from '@/lib/operationLinks';
 import type { Exhibition, PromoPhoto, ExhibitionImage } from '@/types';
 import StatusChip from '@/components/flow/StatusChip';
-import { applicationStatusView } from '@/lib/flowLabels';
+import { applicationStatusView, artistPendingText } from '@/lib/flowLabels';
 import SkeletonImage from '@/components/shared/SkeletonImage';
 import { ArtLinkWordmark } from '@/components/shared/HostBadge';
 import { HeartButton } from '@/components/listing/ListControls';
@@ -483,7 +483,7 @@ export default function ExhibitionDetailPage() {
               const head = st === 'ACCEPTED' ? '선정되었어요' : st === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요' : '지원 완료';
               const sub = st === 'ACCEPTED'
                 ? (exhibition.recruitOnly ? '이 공모는 선정까지 진행해요.' : '내 전시에서 출품 자료 제출·전시·정산을 이어서 진행하세요.')
-                : st === 'REJECTED' ? '다음 공모에서 다시 만나요.' : '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.';
+                : st === 'REJECTED' ? '다음 공모에서 다시 만나요.' : artistPendingText(exhibition);
               return (
                 <div className="mt-6 rounded-lg border border-gray-200 px-4 py-4">
                   <div className="flex flex-wrap items-center gap-2">

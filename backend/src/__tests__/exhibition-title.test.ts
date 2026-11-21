@@ -19,7 +19,7 @@ const patchTitle = (id: number, token: string | null, title: unknown) => {
 
 async function hostedExhibition(galleryIds: number[] = []) {
   const res = await request.post('/api/exhibitions/hosted').set('Authorization', `Bearer ${ADMIN()}`).send({
-    title: '아트링크 공모', type: 'GROUP', deadline: future(10), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>처음 소개</p>', galleryIds,
+    title: '아트링크 공모', type: 'GROUP', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>처음 소개</p>', galleryIds,
   });
   expect(res.status).toBe(201);
   return res.body.id as number;

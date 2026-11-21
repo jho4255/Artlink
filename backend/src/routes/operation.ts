@@ -23,7 +23,8 @@ import { fingerprintsOf, settlementFingerprint, feeUnits, cardFeeAmount } from '
 import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
 import { parseSubmissionBody, readArtworkList, readCv, readNote } from '../lib/submissionSchema';
-import { isSubmissionComplete, notifySubmissionReceived, notifyExhibitionConfirmed, notifySettlementAllApproved, rejectPendingApplications } from '../lib/flowNotify';
+import { isSubmissionComplete, notifySubmissionReceived, notifyExhibitionConfirmed, notifySettlementAllApproved } from '../lib/flowNotify';
+import { closeOutPendingApplications, FINISH_AFTER_CLOSE, FINISH_HAS_DEADLINE, selectionStarted } from '../lib/applicationWindow';
 
 const router = Router();
 
@@ -51,6 +52,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
     select: {
       id: true, title: true, galleryId: true, hostType: true, recruitOnly: true,
       recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true, exhibitDate: true,
+      deadline: true, selectionDeadline: true,   // 선정을 시작했나(접수 마감일 경과) · 선정 마감일 — 규칙 90
       cardFeeRate: true,
       gallery: { select: { ownerId: true, name: true } },
       // 아트링크 주최 공모는 admin 이 지정한 운영 갤러리도 오너와 동일하게 운영한다
@@ -116,6 +118,9 @@ router.get('/:id/access', authenticate, async (req, res, next) => {
       recruitOnly: exhibition.recruitOnly,
       isOwner, isAdmin, isAcceptedArtist,
       recruitmentClosed: exhibition.recruitmentClosed,
+      // 수락은 접수가 끝난 뒤(모집 마감 또는 접수 마감일 경과) ~ 선정 마감일까지 — 화면 lib/applicationWindow.ts 가 같은 규칙으로 가른다
+      deadline: exhibition.deadline,
+      selectionDeadline: exhibition.selectionDeadline,
       confirmed: isConfirmed,        // 수동 확정 또는 전시 시작일 경과
       manualConfirmed: exhibition.confirmed,
       ended: exhibition.ended,
@@ -608,8 +613,8 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { recruitmentClosed, confirmed, ended } = req.body || {};
-    /** 모집을 마감하며 남은 검토 대기 지원을 미선정으로(2026-11-20 사용자 결정 D2 — 확인창의 체크, 기본 꺼짐) */
-    const rejectPending = req.body?.rejectPending === true;
+    // ⚠️ `rejectPending`(2026-11-20 D2 — 확인창의 '남은 N명을 미선정으로' 체크)은 더 받지 않는다 — 선정은 마감 뒤에 하고, 남은 검토 대기는
+    //    [선정 마치기]·전시 확정·종료 때 미선정이 된다(규칙 90). 배포 사이 옛 화면이 보내 와도 무시한다(막으면 마감 자체가 안 된다).
     const data: any = {};
 
     // 현재 상태 (단계 순서 강제: 모집마감 → 확정 → 전시종료)
@@ -619,11 +624,12 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
 
     // 순서 강제는 오너에게만 적용 — 관리자(Admin)는 단계와 무관하게 자유 수정 가능
     if (typeof recruitmentClosed === 'boolean') {
-      // 모집 재개(false)는 확정/종료가 걸려있으면 불가 — 뒷 단계부터 취소해야 함
-      if (!isAdmin && !recruitmentClosed && (exhibition.confirmed || curEnded)) {
-        throw new AppError('확정·전시종료를 먼저 취소한 뒤 모집을 재개할 수 있습니다.', 400);
-      }
-      data.recruitmentClosed = recruitmentClosed;
+      /*
+        ⚠️ **모집 마감은 되돌릴 수 없다**(2026-11-21 사용자 결정, 규칙 90) — 관리자도. 마감하면 작가의 지원서가 굳고 갤러리가
+        그걸 보고 수락·거절한다. 다시 열면 결정한 뒤에 지원서가 바뀌거나 새 지원이 들어온다 — 그걸 막으려고 결정을 마감 뒤로 옮겼다.
+      */
+      if (!recruitmentClosed && curRecruitmentClosed) throw new AppError('모집 마감은 되돌릴 수 없어요.', 400);
+      if (recruitmentClosed) data.recruitmentClosed = true;
     }
     // ⚠️ 라우트 전체를 막지 말 것 — **모집마감은 공모만 진행하는 공고에도 필요하다**.
     //    없는 건 그 뒤(확정·전시종료)뿐이라 거기만 막는다.
@@ -675,24 +681,27 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
       같은 트랜잭션에서 `updateMany(where: 아직 false)` 로 먼저 차지한 요청만 알린다 — 늦은 요청은 행 잠금을 기다렸다가
       0건을 받는다(규칙 46: 확인하고 바꾸지 말 것). 나머지 값은 예전처럼 한 번에 쓴다.
     */
-    const { updated, closedNow, confirmedNow } = await prisma.$transaction(async (tx) => {
+    const { updated, confirmedNow, rejectedCount } = await prisma.$transaction(async (tx) => {
       const claim = async (field: 'recruitmentClosed' | 'confirmed') =>
         data[field] === true
         && (await tx.exhibition.updateMany({ where: { id: exhibitionId, [field]: false }, data: { [field]: true } })).count === 1;
-      const closedNow = await claim('recruitmentClosed');
+      // 모집 마감을 차지하면 공모 행이 잠긴다 — 같은 때 들어온 지원·지원서 수정·취소(`lockOpenExhibition`)가 기다렸다가 '마감됨'을 본다
+      await claim('recruitmentClosed');
       const confirmedNow = await claim('confirmed');
+      /*
+        선정은 **모집 마감 뒤**에 한다(2026-11-21 사용자 결정, 규칙 90) — 그래서 마감하는 순간엔 아무도 미선정으로 바꾸지 않는다.
+        전시를 확정하거나 종료하면 선정이 끝난 것이다: 그때 남은 검토 대기는 미선정 — **알림 없이**. ([선정 마치기]가 더 일찍 같은 일을 한다)
+      */
+      const endedNow = data.ended === true && !curEnded;
+      const rejectedCount = confirmedNow || endedNow ? await closeOutPendingApplications(tx, exhibitionId) : 0;
       const updated = await tx.exhibition.update({
         where: { id: exhibitionId },
         data,
         select: { recruitmentClosed: true, confirmed: true, ended: true, exhibitStartDate: true },
       });
-      return { updated, closedNow, confirmedNow };
+      return { updated, confirmedNow, rejectedCount };
     });
     // 넘어간 순간을 상대에게(2026-11-20, lib/flowNotify.ts) — 실패해도 전환은 끝난 것이다
-    let rejectedCount = 0;
-    if (rejectPending && closedNow) {
-      try { rejectedCount = await rejectPendingApplications(exhibition); } catch { /* best-effort */ }
-    }
     // 전시 확정 = 작가 출품 자료가 잠긴다. 시작일이 지나 이미 저절로 확정된 뒤의 수동 확정은 새 소식이 아니다
     if (confirmedNow && !curConfirmed) {
       try { await notifyExhibitionConfirmed(exhibition); } catch { /* best-effort */ }
@@ -704,6 +713,25 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
       ended: updated.ended,
       rejectedCount,
     });
+  } catch (e) { next(e); }
+});
+
+/**
+ * [선정 마치기] — 남은 검토 대기를 미선정으로(2026-11-21, 규칙 90). **알림 없이 · 되돌릴 수 없다**.
+ * **선정 마감일이 없는 옛 공고만**(이미 올라간 공고는 그대로 둔다 — 사용자 결정): 그런 공고는 남은 사람이 미선정이 될 날이 없어서,
+ * 특히 공모만 진행하는 공고는 다음 단계도 없어 계속 '심사 중'으로 남는다. 화면은 [⋯] 메뉴에만 둔다.
+ * 새 공고는 선정 마감일이 그 일을 한다(lib/selectionDeadline.ts) — 여기로 오면 400.
+ */
+router.post('/:id/finish-selection', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
+    if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
+    if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
+    if (exhibition.selectionDeadline) throw new AppError(FINISH_HAS_DEADLINE, 400);
+    if (!selectionStarted(exhibition)) throw new AppError(FINISH_AFTER_CLOSE, 400);
+    const closedOut = await prisma.$transaction((tx) => closeOutPendingApplications(tx, exhibitionId));
+    res.json({ closedOut });
   } catch (e) { next(e); }
 });
 

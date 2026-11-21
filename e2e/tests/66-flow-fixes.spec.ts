@@ -1,8 +1,7 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import {
-  openAs, tokenFor, userIds, statePath, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks,
-  openApplicantManager, applicantRow, acceptApplicant, exhibitionCard, openArtistExhibition, solidPng,
-  openExhibitionWorkspace, openOperation, workspace, taskButton, applicantTool, closeApplicantSheet, openApproval } from '../lib/helpers';
+  openAs, tokenFor, userIds, statePath, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks, openApplicantManager, applicantRow, acceptApplicant, exhibitionCard, openArtistExhibition, solidPng, openExhibitionWorkspace, openOperation, workspace, taskButton, applicantTool, closeApplicantSheet, openApproval, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 공모 흐름 점검 후속 (2026-10-03, `scratchpad/flow-audit-2026-10-03.md`) — **눌러서 무슨 일이 나는가**를 본다.
@@ -28,8 +27,10 @@ async function apply(api: APIRequestContext, exId: number, role: 'artist' | 'art
   expect(r.status(), `${role} 지원 실패: ${await r.text()}`).toBe(201);
   return (await r.json()).id as number;
 }
+/** 지원 → 모집 마감 → 수락(수락·거절은 마감한 뒤에만 — 규칙 90). 마감하면 더 지원할 수 없으니 다른 지원은 먼저 받아 둘 것 */
 async function acceptVia(api: APIRequestContext, exId: number, role: 'artist' | 'artist2') {
   const appId = await apply(api, exId, role);
+  await closeRecruitment(api, exId);
   const p = await api.patch(`${API}/exhibitions/${exId}/applications/${appId}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
   expect(p.status(), await p.text()).toBe(200);
   return appId;
@@ -37,8 +38,8 @@ async function acceptVia(api: APIRequestContext, exId: number, role: 'artist' | 
 /** 작가 한 명이 작품 한 점을 낸 채로 전시가 끝난 공모 */
 async function endedWithSubmission(api: APIRequestContext, title: string, opts: { pendingArtist2?: boolean } = {}) {
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 5 });
+  const pending = opts.pendingArtist2 ? await apply(api, exId, 'artist2') : null;   // 마감하면 더 지원할 수 없다 — 먼저
   await acceptVia(api, exId, 'artist');
-  const pending = opts.pendingArtist2 ? await apply(api, exId, 'artist2') : null;
   const sub = await api.put(`${API}/operations/${exId}/me`, {
     headers: auth('artist'),
     data: { artworkList: [{ title: '작품A', size: '50x50', medium: 'oil', year: '2025', price: '1000000', image: '' }], cv: null, note: null },
@@ -310,18 +311,19 @@ test.describe('F. 삭제 요청', () => {
 });
 
 test.describe('G·H. 지원자 관리', () => {
-  test('★ G. 정원이 차면 할 일이 모집 마감 — [모집 인원 변경]으로 늘려 수락한다', async ({ browser }) => {
+  test('★ G. 마감 뒤 정원이 차면 할 일 줄이 그 사정을 말한다([선정 마치기] 버튼은 없다, 규칙 90) — [모집 인원 변경]으로 늘려 수락한다', async ({ browser }) => {
     const api = await pwRequest.newContext();
     const title = newTitle('정원');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 1 });
+    await apply(api, exId, 'artist2');   // 마감하면 더 지원할 수 없다 — 먼저
     await acceptVia(api, exId, 'artist');
-    await apply(api, exId, 'artist2');
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.goto('/mypage?tab=my-exhibitions');
     const row = exhibitionCard(page, title);
     // 예전엔 수락 1/1 인데도 '지원자 1명이 검토를 기다리고 있어요' — 눌러 보고 나서야 정원 안내를 받았다
-    await expect(row).toContainText('정원(1명)이 찼어요', { timeout: 15000 });
+    await expect(row).toContainText('정원(1명)이 찼어요 · 검토 대기 1명', { timeout: 15000 });
+    await expect(row.getByRole('button', { name: /선정 마치기/ })).toHaveCount(0);
     const card = await openApplicantManager(page, title);
     await expect(card.getByText('정원이 찼어요').first()).toBeVisible({ timeout: 10000 });
 
@@ -346,7 +348,8 @@ test.describe('G·H. 지원자 관리', () => {
     const { exId, pending } = await endedWithSubmission(api, title, { pendingArtist2: true });
     const r = await api.patch(`${API}/exhibitions/${exId}/applications/${pending}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
     expect(r.status()).toBe(400);
-    expect(await r.text()).toContain('전시가 종료된 공모는');
+    // 전시를 종료하며 선정이 끝나 그 지원은 이미 미선정이다 — 결과가 난 지원은 바꾸지 않는다(규칙 90)
+    expect(await r.text()).toMatch(/전시가 종료된 공모는|선정이 끝나 수락할 수 없어요/);
     await api.dispose();
 
     const { page, ctx } = await openAs(browser, 'gallery');
@@ -356,7 +359,8 @@ test.describe('G·H. 지원자 관리', () => {
     const row = applicantRow(card, 'Artist 2');
     await row.getByRole('button').first().click();
     const bar = page.locator('[data-decision-bar]').first();
-    await expect(bar).toContainText('결정하지 않은 채 전시가 끝났어요');
+    // 전시를 확정·종료하며 선정이 끝나 남은 검토 대기는 미선정이 됐다(2026-11-21, 규칙 90) — 잠긴 채 그 사실만 말한다
+    await expect(bar).toContainText('미선정 — 선정이 끝나 바꿀 수 없어요.');
     await expect(bar.getByRole('button', { name: '수락하기' })).toHaveCount(0);
     await closeApplicantSheet(page);
     await expect(card.getByText('이미 선정한 작가를 초대 코드로 데려오기')).toHaveCount(0);

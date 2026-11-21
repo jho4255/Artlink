@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertSelectionOrder } from '../lib/selectionDeadline';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { ensureExhibitionChat, syncExhibitionChatTitle } from '../lib/chat';
@@ -425,6 +426,10 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
         const target = await prisma.exhibition.findUnique({ where: { id: existingReq.targetId } });
         if (!target) throw new AppError('수정 대상 공모를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.', 404);
         const picked = pickAllowed(changes, EXHIBITION_EDIT_FIELDS);
+        // 선정 마감일이 있는 공고는 접수 마감이 그보다 앞이어야 한다(규칙 90) — 순서가 뒤집히면 수락할 수 있는 날이 사라진다
+        if (target.selectionDeadline && picked.deadline) {
+          assertSelectionOrder(target.selectionDeadline, new Date(picked.deadline), target.submissionDeadline);
+        }
         await prisma.exhibition.update({ where: { id: existingReq.targetId }, data: picked });
         if (typeof picked.title === 'string') await syncExhibitionChatTitle(existingReq.targetId, picked.title);
       }

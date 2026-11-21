@@ -32,6 +32,7 @@ describe('자료제출 마감일', () => {
   const createBody = (over: Record<string, unknown> = {}) => ({
     title: '테스트 공모', type: 'GROUP', region: 'SEOUL', capacity: 5, description: '설명', galleryId,
     deadline: ymd(days(10)),
+    selectionDeadline: ymd(days(15)),
     exhibitStartDate: ymd(days(30)),
     exhibitDate: ymd(days(40)),
     submissionDeadline: ymd(days(20)),

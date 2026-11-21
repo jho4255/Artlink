@@ -1,7 +1,6 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 import {
-  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks,
-  openApplicantManager, applicantRow, openGallerySubmissions, openArtistExhibition, openOperation, taskButton, workspace,
+  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks, openApplicantManager, applicantRow, openGallerySubmissions, openArtistExhibition, openOperation, taskButton, workspace, closeRecruitment,
 } from '../lib/helpers';
 
 /**
@@ -18,10 +17,12 @@ import {
 const API = 'http://localhost:4000/api';
 const auth = (role: Parameters<typeof tokenFor>[0]) => ({ Authorization: `Bearer ${tokenFor(role)}` });
 
+/** 지원 → 모집 마감 → 수락(수락·거절은 마감한 뒤에만 — 규칙 90). 마감하면 더 지원할 수 없으니 다른 지원은 먼저 받아 둘 것 */
 async function acceptVia(api: APIRequestContext, exId: number, role: 'artist' | 'artist2') {
   const r = await applyToExhibition(api, exId, tokenFor(role));
   expect(r.status(), `${role} 지원 실패: ${await r.text()}`).toBe(201);
   const appId = (await r.json()).id;
+  await closeRecruitment(api, exId);
   const p = await api.patch(`${API}/exhibitions/${exId}/applications/${appId}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
   expect(p.status()).toBe(200);
 }
@@ -38,8 +39,8 @@ test.describe('A. 지원자 관리 — 고를 수 있는 건 검토 대기뿐', 
     const api = await pwRequest.newContext();
     const title = newTitle('지원자');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 5 });
-    await acceptVia(api, exId, 'artist');                                       // 이미 수락
-    expect((await applyToExhibition(api, exId, tokenFor('artist2'))).status()).toBe(201); // 검토 대기
+    expect((await applyToExhibition(api, exId, tokenFor('artist2'))).status()).toBe(201); // 검토 대기(마감하면 더 지원할 수 없다 — 먼저)
+    await acceptVia(api, exId, 'artist');                                       // 마감하고 수락
 
     const { page, ctx } = await openAs(browser, 'gallery');
     const card = await openApplicantManager(page, title);

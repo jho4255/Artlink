@@ -1,7 +1,6 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 import {
-  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, crowdUsers, exhibitionDates,
-  exhibitionCard, workspace, workspaceTab, taskButton, openApplicantManager, applicantRow, openArtistExhibition, openOperation, artistTab,
+  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, crowdUsers, exhibitionDates, exhibitionCard, workspace, workspaceTab, taskButton, openApplicantManager, applicantRow, openArtistExhibition, openOperation, artistTab, closeRecruitment,
 } from '../lib/helpers';
 
 /**
@@ -22,9 +21,18 @@ async function applyAs(api: APIRequestContext, exId: number, token: string) {
   expect(r.status(), `지원 실패: ${await r.text()}`).toBe(201);
   return (await r.json()).id as number;
 }
+/** 수락·거절 — 모집을 먼저 마감한다(수락·거절은 마감한 뒤에만, 규칙 90). 마감하면 더 지원할 수 없으니 지원은 먼저 다 받을 것 */
 async function decide(api: APIRequestContext, exId: number, appId: number, status: 'ACCEPTED' | 'REJECTED', role: 'gallery' | 'admin' = 'gallery') {
+  await closeRecruitment(api, exId);
   const r = await api.patch(`${API}/exhibitions/${exId}/applications/${appId}`, { headers: auth(role), data: { status } });
   expect(r.status(), await r.text()).toBe(200);
+}
+/** 여러 작가를 지원시킨 뒤 마감하고 모두 수락한다 */
+async function acceptAll(api: APIRequestContext, exId: number, tokens: string[]) {
+  const ids: number[] = [];
+  for (const t of tokens) ids.push(await applyAs(api, exId, t));
+  for (const id of ids) await decide(api, exId, id, 'ACCEPTED');
+  return ids;
 }
 async function submitFull(api: APIRequestContext, exId: number, token: string, work: string, opts: { draft?: boolean } = {}) {
   const r = await api.put(`${API}/operations/${exId}/me`, {
@@ -120,44 +128,57 @@ test('★ JRN-01 전시까지 한 바퀴 — 갤러리(휴대폰) · 작가(PC) 
   // '새 지원자' 문구에는 공모 제목이 없다(갤러리 이름만 — 기존 문구, TESTCASES 관찰 O1) — 링크로 센다
   expect(await notesByLink(api, auth('gallery'), `/exhibitions/${exId}/operation/new?view=applicants`, 'NEW_APPLICANT')).toHaveLength(3);
 
-  // 2) 갤러리(휴대폰) 목록 → 할 일 → [지원자 심사]
+  // 2) 갤러리(휴대폰) 목록 — 모집 중엔 지원이 들어와도 할 일이 아니다(수락·거절은 마감 뒤에만 — 규칙 90)
   const g = await openAs(browser, 'gallery');
   const gErrors = collectErrors(g.page);
   await g.page.goto('/mypage?tab=my-exhibitions');
   const row = exhibitionCard(g.page, title);
-  await expect(row).toContainText('지원자 3명이 검토를 기다리고 있어요', { timeout: 15000 });
-  await row.getByRole('button', { name: /지원자 심사/ }).click();
-  await expect(workspaceTab(g.page, '지원자')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+  // 휴대폰 목록의 '기다리는 중' 줄은 할 일 문장 없이 보조 글만(설계) — 모집 중이고 [지원자 심사] 같은 할 일 버튼이 없다
+  await expect(row).toContainText('모집 중', { timeout: 15000 });
+  await expect(row.getByRole('button', { name: /지원자 심사/ })).toHaveCount(0);
+  await openOperation(g.page, exId);
+  await expect(barText(g.page)).toContainText('지원을 받고 있어요 · 지원 3명', { timeout: 15000 });
 
-  // 3) 한 장씩 — 작가1 수락, 작가2 거절, 셋째는 남긴다
+  // 3) [모집 마감] — 되돌릴 수 없다 · 이제 선정한다(아무도 미선정이 되지 않는다) · 선정 마감일이 지나면 미선정
+  await taskButton(g.page, '모집 마감').click();
+  const close = g.page.getByRole('dialog', { name: '모집을 마감할까요?' });
+  await expect(close.locator('[data-confirm-warning]')).toHaveText('모집 마감은 되돌릴 수 없어요.');
+  await expect(close).toContainText('이제 지원자 3명 가운데 수락할 작가를 고를 수 있어요.');
+  await expect(close).toContainText('이 지나면 수락하지 않은 지원자는 미선정이 돼요.');
+  await close.getByRole('button', { name: '모집 마감', exact: true }).click();
+  await expect(stripNow(g.page)).toContainText('전시 준비', { timeout: 10000 });
+  // 새 공고 — 선정 마감일까지 선정하라고(규칙 90)
+  await expect(barText(g.page)).toContainText(/까지 선정하세요 · 검토 대기 3명/, { timeout: 15000 });
+  await expect(barText(g.page)).toContainText('그날이 지나면 수락하지 않은 지원자는 미선정이 돼요');
+  await expect(workspaceTab(g.page, '지원자')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+  expect((await appsOf(api, exId)).every((x) => x.status === 'SUBMITTED')).toBe(true);
+
+  // 4) 한 장씩 — 버튼은 [수락하기]뿐(거절은 없다). 작가1·셋째 수락, 작가2 는 남긴다
   const manager = g.page.locator('[data-applicant-manager]');
   await applicantRow(manager, 'Artist 1').getByRole('button').first().click();
-  await g.page.getByRole('dialog', { name: 'Artist 1 지원서' }).locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).click();
+  const bar1 = g.page.getByRole('dialog', { name: 'Artist 1 지원서' }).locator('[data-decision-bar]');
+  await expect(bar1.getByRole('button', { name: '거절', exact: true })).toHaveCount(0);
+  await bar1.getByRole('button', { name: '수락하기', exact: true }).click();
   await g.page.getByRole('dialog', { name: /Artist 1 님을 수락할까요/ }).getByRole('button', { name: '수락하기', exact: true }).click();
   await expect.poll(async () => (await appsOf(api, exId)).find((x) => x.userId === ids.artist)?.status).toBe('ACCEPTED');
   if (await g.page.getByRole('dialog', { name: /지원서$/ }).count()) await g.page.keyboard.press('Escape');
-  await applicantRow(manager, 'Artist 2').getByRole('button').first().click();
-  await g.page.getByRole('dialog', { name: 'Artist 2 지원서' }).locator('[data-decision-bar]').getByRole('button', { name: '거절', exact: true }).click();
-  await g.page.getByRole('dialog', { name: /Artist 2 님의 지원을 거절할까요/ }).getByRole('button', { name: '거절', exact: true }).click();
-  await expect.poll(async () => (await appsOf(api, exId)).find((x) => x.userId === ids.artist2)?.status).toBe('REJECTED');
-  if (await g.page.getByRole('dialog', { name: /지원서$/ }).count()) await g.page.keyboard.press('Escape');
-
-  // 4) [모집 마감] — 검토 대기 1명 · 체크하지 않는다(기본) → 셋째는 그대로 심사 중
-  await taskButton(g.page, '모집 마감').click();
-  const close = g.page.getByRole('dialog', { name: '모집을 마감할까요?' });
-  await expect(close).toContainText('아직 검토하지 않은 지원자가 1명 있어요');
-  await expect(close.getByRole('checkbox', { name: '남은 1명을 미선정으로 처리' })).not.toBeChecked();
-  await close.getByRole('button', { name: '모집 마감', exact: true }).click();
-  await expect(stripNow(g.page)).toContainText('전시 준비', { timeout: 10000 });
-  expect((await appsOf(api, exId)).find((x) => x.userId === c!.id)?.status).toBe('SUBMITTED');
-
-  // 5) 마감 뒤에도 셋째를 수락할 수 있다 → 정원 2/2
-  await workspaceTab(g.page, '지원자').click();
   await applicantRow(manager, '무리0').getByRole('button').first().click();
   await g.page.getByRole('dialog', { name: '무리0 지원서' }).locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).click();
   await g.page.getByRole('dialog', { name: /무리0 님을 수락할까요/ }).getByRole('button', { name: '수락하기', exact: true }).click();
   await expect.poll(async () => (await appsOf(api, exId)).find((x) => x.userId === c!.id)?.status).toBe('ACCEPTED');
   if (await g.page.getByRole('dialog', { name: /지원서$/ }).count()) await g.page.keyboard.press('Escape');
+
+  // 5) 선정 마감일이 지나면 — 남은 검토 대기(작가2)는 알림 없이 미선정 · 더는 수락할 수 없다(되돌릴 수 없다)
+  await sql(`UPDATE "Exhibition" SET "selectionDeadline" = now() - interval '2 days' WHERE id = ${exId};`);
+  await g.page.reload();
+  await workspaceTab(g.page, '지원자').click();
+  await applicantRow(manager, 'Artist 2').getByRole('button').first().click();
+  const bar2 = g.page.getByRole('dialog', { name: 'Artist 2 지원서' }).locator('[data-decision-bar]');
+  await expect(bar2).toContainText('미선정 — 선정 마감일이 지나 바꿀 수 없어요.', { timeout: 15000 });
+  await expect(bar2.getByRole('button', { name: '수락하기', exact: true })).toHaveCount(0);
+  await g.page.keyboard.press('Escape');
+  await expect.poll(async () => (await appsOf(api, exId)).find((x) => x.userId === ids.artist2)?.status).toBe('REJECTED');
+  expect(await notesOf(api, auth('artist2'), title, 'APPLICATION_STATUS'), '선정 마감일이 지나 미선정이 되면 알리지 않는다').toHaveLength(0);
 
   // 6) 출품 자료 — 임시저장은 조용히 · 다 채운 순간 (1/2) · 둘째가 내면 같은 줄이 '모두 모였어요 (2/2)'
   await submitFull(api, exId, tokenFor('artist'), '작품A', { draft: true });
@@ -259,13 +280,14 @@ test('★ JRN-01 전시까지 한 바퀴 — 갤러리(휴대폰) · 작가(PC) 
 });
 
 // ─────────────────────────────────────────────────────────────
-test('★ JRN-02 공모만 진행 — 띠 두 칸 · 탭 둘 · 미선정 처리 · 출품·정산 없음', async ({ browser }) => {
+test('★ JRN-02 공모만 진행(선정 마감일이 없는 옛 공고) — 띠 두 칸 · 탭 둘 · 마감 뒤 선정 · [⋯]의 [선정 마치기]로 미선정 처리 · 출품·정산 없음', async ({ browser }) => {
   const api = await pwRequest.newContext();
   const title = newTitle('공모만');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3, extra: { recruitOnly: true } });
+  // 이미 올라간 옛 공고처럼 — 선정 마감일이 없다(그런 공고만 [선정 마치기]가 있다, 규칙 90)
+  await sql(`UPDATE "Exhibition" SET "selectionDeadline" = NULL WHERE id = ${exId};`);
   const app1 = await applyAs(api, exId, tokenFor('artist'));
   await applyAs(api, exId, tokenFor('artist2'));
-  await decide(api, exId, app1, 'ACCEPTED');
 
   const g = await openAs(browser, 'gallery');
   await openOperation(g.page, exId);
@@ -275,10 +297,22 @@ test('★ JRN-02 공모만 진행 — 띠 두 칸 · 탭 둘 · 미선정 처리
   await taskButton(g.page, '모집 마감').click();
   const dialog = g.page.getByRole('dialog', { name: '모집을 마감할까요?' });
   await expect(dialog).toContainText('출품 자료·전시·정산 단계가 없어요');
-  await dialog.getByRole('checkbox', { name: '남은 1명을 미선정으로 처리' }).check();
+  await expect(dialog).toContainText('이제 지원자 2명 가운데 수락할 작가를 고를 수 있어요.');
   await dialog.getByRole('button', { name: '모집 마감', exact: true }).click();
+  // 마감 뒤 결정을 기다리는 지원이 남았다 — '선정 중'(선정 칸이 지금)
   await expect(stripNow(g.page)).toContainText('선정', { timeout: 10000 });
-  await expect(barText(g.page)).toContainText('선정을 마쳤어요');
+  await expect(barText(g.page)).toContainText('지원자 2명이 검토를 기다리고 있어요', { timeout: 15000 });
+  await decide(api, exId, app1, 'ACCEPTED');
+  await g.page.reload();
+  // 할 일 줄에는 없고 [⋯] 메뉴에만
+  await expect(g.page.locator('[data-task-bar]').getByRole('button', { name: '선정 마치기' })).toHaveCount(0);
+  await workspace(g.page).getByRole('button', { name: '더 보기' }).first().click();
+  await g.page.getByRole('menuitem', { name: /선정 마치기/ }).click();
+  const finish = g.page.getByRole('dialog', { name: '선정을 마칠까요?' });
+  await expect(finish.locator('[data-confirm-warning]')).toHaveText('선정을 마치면 되돌릴 수 없어요.');
+  await expect(finish).toContainText('수락하지 않은 1명은 미선정이 돼요.');
+  await finish.getByRole('button', { name: '선정 마치기', exact: true }).click();
+  await expect(barText(g.page)).toContainText('선정을 마쳤어요', { timeout: 15000 });
   expect((await appsOf(api, exId)).map((x) => x.status).sort()).toEqual(['ACCEPTED', 'REJECTED']);
 
   const a = await openAs(browser, 'artist');
@@ -287,7 +321,7 @@ test('★ JRN-02 공모만 진행 — 띠 두 칸 · 탭 둘 · 미선정 처리
   expect((await api.put(`${API}/operations/${exId}/me`, { headers: auth('artist'), data: { artworkList: [], cv: null, note: null } })).status()).toBe(400);
   expect((await api.get(`${API}/operations/${exId}/settlement`, { headers: auth('gallery') })).status()).toBe(400);
   expect(await notesOf(api, auth('artist'), title, 'EXHIBITION_CONFIRMED')).toHaveLength(0);
-  expect(await notesOf(api, auth('artist2'), title, 'APPLICATION_STATUS')).toHaveLength(1);
+  expect(await notesOf(api, auth('artist2'), title, 'APPLICATION_STATUS'), '선정을 마칠 때 미선정은 알리지 않는다(규칙 90)').toHaveLength(0);
   await Promise.all([g.ctx.close(), a.ctx.close()]);
   await api.dispose();
 });
@@ -299,10 +333,11 @@ test('★ JRN-03 아트링크 주최 + 운영 갤러리 — 갤러리가 운영�
   const title = newTitle('주최위임');
   const exId = await hosted(api, title, [await ownedGalleryId(api)]);
   const app1 = await applyAs(api, exId, tokenFor('artist'));
+  expect((await lifecycle(api, exId, { recruitmentClosed: true })).status()).toBe(200);   // 선정은 마감한 뒤에(규칙 90)
 
   const g = await openAs(browser, 'gallery');
   await g.page.goto('/mypage?tab=my-exhibitions');
-  await expect(exhibitionCard(g.page, title)).toContainText('지원자 1명이 검토를 기다리고 있어요', { timeout: 15000 });
+  await expect(exhibitionCard(g.page, title)).toContainText(/까지 선정하세요 · 검토 대기 1명/, { timeout: 15000 });
   await exhibitionCard(g.page, title).getByRole('button', { name: /지원자 심사/ }).click();
   await applicantRow(g.page.locator('[data-applicant-manager]'), 'Artist 1').getByRole('button').first().click();
   await g.page.getByRole('dialog', { name: 'Artist 1 지원서' }).locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).click();
@@ -404,11 +439,12 @@ test('★ JRN-06 공모 셋을 동시에 굴리는 갤러리 — 지금 할 일 
   test.setTimeout(240_000);
   const api = await pwRequest.newContext();
   const gid = await ownedGalleryId(api);
-  // A 모집 중(검토 대기 1) · B 출품 자료 받는 중(1/2) · C 정산 이의
+  // A 마감 · 검토 대기 1 · B 출품 자료 받는 중(1/2) · C 정산 이의
   const tA = newTitle('셋A'); const exA = await createExhibition(api, { title: tA, galleryId: gid });
   await applyAs(api, exA, tokenFor('artist'));
+  await closeRecruitment(api, exA);   // 마감했고 선정할 차례(모집 중엔 지원이 와도 할 일이 아니다 — 규칙 90)
   const tB = newTitle('셋B'); const exB = await createExhibition(api, { title: tB, galleryId: gid });
-  for (const role of ['artist', 'artist2'] as const) await decide(api, exB, await applyAs(api, exB, tokenFor(role)), 'ACCEPTED');
+  await acceptAll(api, exB, [tokenFor('artist'), tokenFor('artist2')]);
   expect((await lifecycle(api, exB, { recruitmentClosed: true })).status()).toBe(200);
   await submitFull(api, exB, tokenFor('artist'), '작품B');
   const tC = newTitle('셋C'); const exC = await createExhibition(api, { title: tC, galleryId: gid });
@@ -422,7 +458,7 @@ test('★ JRN-06 공모 셋을 동시에 굴리는 갤러리 — 지금 할 일 
   const g = await openAs(browser, 'gallery');
   const errors = collectErrors(g.page);
   await g.page.goto('/mypage?tab=my-exhibitions');
-  for (const [t, text] of [[tA, '검토를 기다리고 있어요'], [tB, '출품 자료를 아직 내지 않은 작가가 1명'], [tC, '정산에 이의를 남겼어요']] as const) {
+  for (const [t, text] of [[tA, '까지 선정하세요 · 검토 대기'], [tB, '출품 자료를 아직 내지 않은 작가가 1명'], [tC, '정산에 이의를 남겼어요']] as const) {
     await expect(exhibitionCard(g.page, t), t).toContainText(text, { timeout: 15000 });
   }
   // A: 지원서 창을 열어 둔 채 목록으로 → B 를 열면 창이 없다
@@ -474,7 +510,8 @@ test('★ JRN-07 전시 셋에 걸친 작가 — 지금 할 일 둘 · 처리하
   await expect(exhibitionCard(a.page, tY)).toContainText('출품 자료를 제출해 주세요', { timeout: 15000 });
   await expect(exhibitionCard(a.page, tZ)).toContainText('정산 확인 요청이 왔어요');
   await a.page.getByRole('tab', { name: /심사 중/ }).click();
-  await expect(exhibitionCard(a.page, tX)).toContainText('갤러리가 검토하고 있어요');
+  // 심사 중 — 언제 결과가 나오는지(선정 마감일, 규칙 90). 미선정은 알림이 없어 '결과는 알림으로'라고 하지 않는다
+  await expect(exhibitionCard(a.page, tX)).toContainText(/까지 선정 결과가 나와요/);
 
   await submitFull(api, exY, tokenFor('artist'), '작품Y');
   await a.page.getByRole('tab', { name: /진행 중/ }).click();
@@ -493,12 +530,12 @@ test('★ JRN-07 전시 셋에 걸친 작가 — 지금 할 일 둘 · 처리하
 });
 
 // ─────────────────────────────────────────────────────────────
-test('★ JRN-08 실수하고 되돌리기 — 마감·확정·종료를 되돌리고 다시', async ({ browser }) => {
+test('★ JRN-08 실수하고 되돌리기 — 모집 마감은 되돌릴 수 없고(규칙 90), 확정·종료는 되돌리고 다시', async ({ browser }) => {
   test.setTimeout(180_000);
   const api = await pwRequest.newContext();
   const title = newTitle('되돌리기');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api) });
-  await decide(api, exId, await applyAs(api, exId, tokenFor('artist')), 'ACCEPTED');
+  const app = await applyAs(api, exId, tokenFor('artist'));
   const g = await openAs(browser, 'gallery');
   await openOperation(g.page, exId);
   const undo = async (label: RegExp) => {
@@ -513,11 +550,15 @@ test('★ JRN-08 실수하고 되돌리기 — 마감·확정·종료를 되돌�
   await g.page.getByRole('dialog', { name: '모집을 마감할까요?' }).getByRole('button', { name: '모집 마감', exact: true }).click();
   await expect(stripNow(g.page)).toContainText('전시 준비', { timeout: 10000 });
   expect(await inOpen()).toBe(false);
-  await undo(/'모집 마감' 되돌리기/);
-  await expect(stripNow(g.page)).toContainText('모집', { timeout: 10000 });
-  expect(await inOpen(), '되돌리면 모집공고에 다시 뜬다').toBe(true);
+  // 모집 마감은 되돌릴 수 없다 — [⋯]에 그 항목이 없고 서버도 400
+  await workspace(g.page).getByRole('button', { name: '더 보기' }).click();
+  await expect(g.page.getByRole('menuitem', { name: /모집 마감/ })).toHaveCount(0);
+  await g.page.keyboard.press('Escape');
+  expect((await lifecycle(api, exId, { recruitmentClosed: false })).status()).toBe(400);
+  expect(await inOpen(), '마감한 공고는 모집공고에 다시 뜨지 않는다').toBe(false);
+  await decide(api, exId, app, 'ACCEPTED');   // 선정은 마감한 뒤에(규칙 90)
 
-  expect((await lifecycle(api, exId, { recruitmentClosed: true, confirmed: true })).status()).toBe(200);
+  expect((await lifecycle(api, exId, { confirmed: true })).status()).toBe(200);
   await g.page.reload();
   await undo(/'전시 확정' 되돌리기/);
   await expect.poll(async () => (await api.put(`${API}/operations/${exId}/me`, {
@@ -542,7 +583,7 @@ test('★ JRN-09 늦게 합류하는 작가 — 다 모인 뒤 코드로 한 명
   const [c] = await crowdUsers(api, 2).then((xs) => [xs[1]]);
   const title = newTitle('늦은합류');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
-  for (const role of ['artist', 'artist2'] as const) await decide(api, exId, await applyAs(api, exId, tokenFor(role)), 'ACCEPTED');
+  await acceptAll(api, exId, [tokenFor('artist'), tokenFor('artist2')]);
   expect((await lifecycle(api, exId, { recruitmentClosed: true })).status()).toBe(200);
   for (const role of ['artist', 'artist2'] as const) await submitFull(api, exId, tokenFor(role), `작품${role}`);
   const made = await api.post(`${API}/exhibitions/${exId}/join-code`, { headers: auth('gallery') });
@@ -572,10 +613,8 @@ test('★ JRN-10 길어지는 정산 — 이의 두 번 · 금액 그대로 다�
   const ids = userIds();
   const title = newTitle('긴정산');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
-  for (const role of ['artist', 'artist2'] as const) {
-    await decide(api, exId, await applyAs(api, exId, tokenFor(role)), 'ACCEPTED');
-    await submitFull(api, exId, tokenFor(role), `작품${role}`);
-  }
+  await acceptAll(api, exId, [tokenFor('artist'), tokenFor('artist2')]);
+  for (const role of ['artist', 'artist2'] as const) await submitFull(api, exId, tokenFor(role), `작품${role}`);
   expect((await lifecycle(api, exId, { recruitmentClosed: true, confirmed: true, ended: true })).status()).toBe(200);
   await settleSales(api, exId, [{ uid: ids.artist, title: '작품artist', price: 1_000_000, method: 'CARD' }], [ids.artist, ids.artist2]);
   expect((await api.post(`${API}/operations/${exId}/settlement/request`, { headers: auth('gallery') })).status()).toBe(200);
@@ -617,7 +656,7 @@ test('JRN-11 나갔다 오는 사용자 — 새 창(저장소 비움)에서도 �
   const api = await pwRequest.newContext();
   const title = newTitle('다시옴');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
-  for (const role of ['artist', 'artist2'] as const) await decide(api, exId, await applyAs(api, exId, tokenFor(role)), 'ACCEPTED');
+  await acceptAll(api, exId, [tokenFor('artist'), tokenFor('artist2')]);
   expect((await lifecycle(api, exId, { recruitmentClosed: true })).status()).toBe(200);
   await submitFull(api, exId, tokenFor('artist'), '임시저장작품', { draft: true });
 

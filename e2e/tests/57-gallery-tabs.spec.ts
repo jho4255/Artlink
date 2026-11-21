@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, ownedGalleryId, createExhibition, applyToExhibition } from '../lib/helpers';
+import {
+  openAs, tokenFor, ownedGalleryId, createExhibition, applyToExhibition, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 갤러리 홈페이지 탭 + 함께한 작가 숨기기/되돌리기 (2026-09-27 사용자 신고)
@@ -25,6 +27,7 @@ test.beforeAll(async () => {
   const applied = await applyToExhibition(api, exId, tokenFor('artist2'));
   expect(applied.status()).toBe(201);
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: auth(tokenFor('gallery')) })).json();
+  await closeRecruitment(api, exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   const acc = await api.patch(`${API}/exhibitions/${exId}/applications/${apps[0].id}`, { headers: auth(tokenFor('gallery')), data: { status: 'ACCEPTED' } });
   expect(acc.status()).toBe(200);
 

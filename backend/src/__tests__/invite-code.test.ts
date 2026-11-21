@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 import { normalizeInviteCode, formatInviteCode, generateInviteCode, INVITE_CODE_ALPHABET } from '../lib/inviteCode';
 
@@ -154,7 +154,9 @@ describe('참여 POST /exhibitions/join', () => {
   it('⚠️ 거절된 작가는 코드로 결정을 뒤집을 수 없다', async () => {
     const code = (await makeCode()).body.code;
     const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist1Tok}`).send(APPLY_BODY);
-    await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`).set('Authorization', `Bearer ${galleryTok}`).send({ status: 'REJECTED' });
+    await closeRecruitment(exhibitionId);   // 코드는 마감 뒤에도 쓴다
+    // 선정이 끝나 미선정이 된 지원(거절 버튼은 없다, 규칙 90) — 코드로 그 결과를 뒤집지 못한다
+    await testPrisma.application.update({ where: { id: a.body.id }, data: { status: 'REJECTED', closedOutAt: new Date() } });
     const r = await join(artist1Tok, code);
     expect(r.status).toBe(400);
     expect(r.body.error).toContain('선정되지 않은');
@@ -201,6 +203,7 @@ describe('공모 상세의 myApplication', () => {
     expect((await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist1Tok}`)).body.myApplication).toEqual({ status: 'SUBMITTED' });
     expect((await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist2Tok}`)).body.myApplication).toBeNull();
     expect((await request.get(`/api/exhibitions/${exhibitionId}`)).body.myApplication).toBeNull();
+    await closeRecruitment(exhibitionId);
     await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`).set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
     expect((await request.get(`/api/exhibitions/${exhibitionId}`).set('Authorization', `Bearer ${artist1Tok}`)).body.myApplication).toEqual({ status: 'ACCEPTED' });
   });
@@ -210,6 +213,7 @@ describe('갤러리 운영 목록(my-operation-overview)', () => {
   it('공모만 진행이면 수락 작가가 있어도 다음 할 일이 작가 자료 수집이 아니다', async () => {
     await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { recruitOnly: true, submissionDeadline: null } });
     const a = await request.post(`/api/exhibitions/${exhibitionId}/apply`).set('Authorization', `Bearer ${artist1Tok}`).send(APPLY_BODY);
+    await closeRecruitment(exhibitionId);
     await request.patch(`/api/exhibitions/${exhibitionId}/applications/${a.body.id}`).set('Authorization', `Bearer ${galleryTok}`).send({ status: 'ACCEPTED' });
     const r = await request.get('/api/exhibitions/my-operation-overview').set('Authorization', `Bearer ${galleryTok}`);
     const item = r.body.find((x: any) => x.id === exhibitionId);

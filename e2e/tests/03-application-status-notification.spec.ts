@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, acceptApplicant, applicantRow, exhibitionDates, exhibitionCard } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, acceptApplicant, applicantRow, exhibitionDates, exhibitionCard, closeRecruitment } from '../lib/helpers';
 
 /**
  * 멀티유저 지속 상호작용: 작가 지원 → 갤러리가 상태를 단계별로 올림 → 작가에게 알림 누적 + 상태배지 갱신.
@@ -35,6 +35,7 @@ test.beforeAll(async () => {
 
   const r = await applyToExhibition(api, exId, aTok);
   expect(r.status(), `지원 실패 ${r.status()}`).toBe(201);
+  await closeRecruitment(api, exId);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
   await api.dispose();
 });
 

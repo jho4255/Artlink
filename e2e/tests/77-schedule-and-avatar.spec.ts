@@ -45,8 +45,11 @@ test('A. 공모 등록 일정 — 지난 날 흐림 · 다음 칸으로 · 앞 �
   await expect(dayBtn(page, kstDay(0))).toBeDisabled();                 // 시작 전날은 못 고른다
   await expect(dayBtn(page, kstDay(1))).toBeEnabled();                  // 같은 날 마감은 된다
   await pick(page, kstDay(10));
+  await expect(calendar(page, '선정 마감일')).toBeVisible();             // 선정 마감일(2026-11-21, 규칙 90)
+  await expect(dayBtn(page, kstDay(10))).toBeDisabled();                // 접수 마감 당일은 안 된다(다음 날부터)
+  await pick(page, kstDay(12));
   await expect(calendar(page, '출품 자료 제출 마감일')).toBeVisible();
-  await expect(dayBtn(page, kstDay(10))).toBeDisabled();                // 마감 당일은 안 된다(다음 날부터)
+  await expect(dayBtn(page, kstDay(12))).toBeDisabled();                // 선정 마감 당일은 안 된다(다음 날부터)
   await pick(page, kstDay(15));
   await pick(page, kstDay(20));
   await pick(page, kstDay(30));
@@ -54,16 +57,16 @@ test('A. 공모 등록 일정 — 지난 날 흐림 · 다음 칸으로 · 앞 �
 
   const shown = async () => page.locator('[data-schedule-field]').allInnerTexts();
   expect((await shown()).every((t) => /\d{4}\. \d+\. \d+ \(.\)/.test(t)), (await shown()).join(' | ')).toBe(true);
-  await expect(page.locator('p', { hasText: /^한눈에 · 접수 .+ · 자료 제출 ~.+ · 전시 / })).toBeVisible();
+  await expect(page.locator('p', { hasText: /^한눈에 · 접수 .+ · 선정 ~.+ · 자료 제출 ~.+ · 전시 / })).toBeVisible();
 
-  // 시작을 자료 제출 뒤로 옮긴다 → 마감·자료 제출·전시 시작이 비워지고, 달력은 마감으로 넘어간다
+  // 시작을 자료 제출 뒤로 옮긴다 → 마감·선정 마감·자료 제출·전시 시작이 비워지고, 달력은 마감으로 넘어간다
   await field(page, 'ex-start').click();
   await pick(page, kstDay(25));
   await expect(calendar(page, '접수 마감일')).toBeVisible();
   const after = await shown();
   expect(after[0]).not.toContain('날짜 선택');
-  expect(after.slice(1, 4).every((t) => t.includes('날짜 선택')), after.join(' | ')).toBe(true);
-  expect(after[4], '전시 종료(30일)는 여전히 순서에 맞아 남는다').not.toContain('날짜 선택');
+  expect(after.slice(1, 5).every((t) => t.includes('날짜 선택')), after.join(' | ')).toBe(true);
+  expect(after[5], '전시 종료(30일)는 여전히 순서에 맞아 남는다').not.toContain('날짜 선택');
 
   // 바깥을 누르면 닫힌다
   await page.mouse.click(8, 450);

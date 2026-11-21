@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityText, type CapacityMask, displayName, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
-import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, flowStrip, gallerySubText, artistSubText, artistWaitText, viewForTarget, WORKSPACE_VIEWS, type ArtistSnapshot, type ArtistView, type TaskActionId, type WorkspaceView } from '@/lib/flowLabels';
+import { stageOf, recruitmentOver, applicationStatusView, galleryNextTask, artistNextTask, flowStrip, gallerySubText, artistSubText, artistWaitText, viewForTarget, WORKSPACE_VIEWS, type ArtistSnapshot, type ArtistView, type TaskActionId, type WorkspaceView } from '@/lib/flowLabels';
 import ExhibitionRow, { RowGroupHead } from '@/components/flow/ExhibitionRow';
 import ExhibitionWorkspace from '@/components/workspace/ExhibitionWorkspace';
 import ArtistExhibitionWorkspace from '@/components/workspace/ArtistExhibitionWorkspace';
@@ -108,6 +108,8 @@ interface GalleryOperationOverview {
   exhibitDate?: string | null;
   /** 출품 자료 제출 마감일 — 목록 줄의 '출품 자료 마감 D-n' */
   submissionDeadline?: string | null;
+  /** 선정 마감일(새 공고, 규칙 90) — 지나면 수락하지 않은 지원은 미선정 */
+  selectionDeadline?: string | null;
   recruitmentClosed?: boolean;
   confirmed?: boolean;
   ended?: boolean;
@@ -1176,6 +1178,10 @@ function ApplicationsSection() {
       submissionDeadline: ex.submissionDeadline,
       exhibitStartDate: ex.exhibitStartDate,
       mySettlementStatus: app.mySettlementStatus,
+      // 심사 중 줄 — '○○까지 선정 결과가 나와요'(규칙 90)
+      recruitmentClosed: !!ex.recruitmentClosed,
+      deadline: ex.deadline,
+      selectionDeadline: ex.selectionDeadline ?? null,
     };
     const task = artistNextTask(snapshot);
     const todo = accepted && task?.tone === 'attention';
@@ -1522,7 +1528,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   useEffect(() => {
     if (initialViewMode) setExhibitionViewMode(initialViewMode);
   }, [initialViewMode]);
-  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, capacityMask: null as CapacityMask | null, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[], attachments: [] as ExhibitionAttachment[] };
+  const emptyExForm = { galleryId: 0, title: '', type: 'SOLO', deadlineStart: '', deadline: '', selectionDeadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '', recruitOnly: false, capacity: 1, capacityMask: null as CapacityMask | null, region: 'SEOUL', description: '', imageUrl: '', customFields: [] as CustomField[], attachments: [] as ExhibitionAttachment[] };
   const [form, setForm] = useState(emptyExForm);
   // 미리보기(좁은 화면 — 하단 줄의 [미리보기])
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1662,7 +1668,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     const pending = apps.submitted + apps.reviewed;
     const incomplete = Math.max(0, submissions.required - submissions.complete);
     const settlementStarted = item.counts.sales.total > 0 || !!item.settlementRequestedAt;
-    const stage = stageOf({ ...item, settlementStarted })!;
+    const stage = stageOf({ ...item, settlementStarted, pending })!;
     const approvals = { total: settlement.total, approved: settlement.approved, issue: settlement.issue };
     const task = galleryNextTask({
       status: item.status,
@@ -1673,6 +1679,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
       settled: !!item.settledAt,
       settlementRequested: !!item.settlementRequestedAt,
       deadline: item.deadline,
+      selectionDeadline: item.selectionDeadline ?? null,
       exhibitStartDate: item.exhibitStartDate,
       exhibitDate: item.exhibitDate,
       pending,
@@ -1694,7 +1701,10 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     const approved = item.status === 'APPROVED';
     const view = viewForTarget(task.target);
     // 급한 정도 — 그 단계의 기한(가까운 것부터). 기한이 없으면 뒤로
-    const due = !item.recruitmentClosed ? item.deadline : !item.ended ? (item.submissionDeadline ?? item.exhibitStartDate) : item.settlementRequestedAt ?? item.exhibitDate;
+    // 선정 중이면 선정 마감일이 가장 급하다(규칙 90)
+    const due = !recruitmentOver(item) ? item.deadline
+      : !item.ended && pending > 0 && item.selectionDeadline ? item.selectionDeadline
+        : !item.ended ? (item.submissionDeadline ?? item.exhibitStartDate) : item.settlementRequestedAt ?? item.exhibitDate;
     const urgency = due ? getDday(due) : Number.MAX_SAFE_INTEGER;
     const deleteRequest = deleteRequestOf('exhibition', item.id);
     return {
@@ -1707,7 +1717,7 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
           wide={wideList}
           poster={item.imageUrl}
           status={stage.label}
-          sub={<>{gallerySubText({ stageKey: stage.key, deadline: item.deadline, submissionDeadline: item.submissionDeadline, exhibitStartDate: item.exhibitStartDate, exhibitDate: item.exhibitDate, settledAt: item.settledAt, settlementRequestedAt: item.settlementRequestedAt, viewCount: approved ? item.viewCount : null })}<HostBadge exhibition={item} className="ml-2" /></>}
+          sub={<>{gallerySubText({ stageKey: stage.key, deadline: item.deadline, submissionDeadline: item.submissionDeadline, selectionDeadline: item.selectionDeadline, pending, exhibitStartDate: item.exhibitStartDate, exhibitDate: item.exhibitDate, settledAt: item.settledAt, settlementRequestedAt: item.settlementRequestedAt, viewCount: approved ? item.viewCount : null })}<HostBadge exhibition={item} className="ml-2" /></>}
           title={item.title}
           meta={`${item.gallery?.name || '아트링크'} · ${exhibitionTypeLabels[item.type] || item.type} · ${regionLabels[item.region] || item.region}`}
           strip={strip}

@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
+import { DECIDE_AFTER_CLOSE, FINISH_AFTER_CLOSE, FINISH_HAS_DEADLINE, NO_REJECT, SELECTION_FINISHED } from '../lib/applicationWindow';
 
 const ownerTok = authToken(3, 'GALLERY');
 const adminTok = authToken(4, 'ADMIN');
@@ -55,70 +56,152 @@ beforeEach(async () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-describe('LIF — 모집 마감 + 남은 검토 대기를 미선정으로(D2), 동시에', () => {
-  it('★ LIF-06 마감 요청 둘이 동시에 와도 작가마다 결과 알림 한 통 · 처리 수의 합 = 실제로 바뀐 수 (가설 S2)', async () => {
+describe('LIF — 모집 마감 · 선정 마치기(수락·거절은 마감 뒤에만, 규칙 90), 동시에', () => {
+  const APPLY_BODY = { biography: '약력입니다', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION };
+
+  it('★ LIF-06 마감 요청 둘이 동시에 — 둘 다 200 · 마감하는 순간엔 아무도 미선정이 되지 않는다(선정은 마감 뒤) · 알림 없음', async () => {
     await thirdArtist();
     for (let i = 0; i < REPEAT; i++) {
       const { exId } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED', 101: 'ACCEPTED' });
       const [r1, r2] = await Promise.all([
-        lifecycle(exId, { recruitmentClosed: true, rejectPending: true }),
-        lifecycle(exId, { recruitmentClosed: true, rejectPending: true }),
+        lifecycle(exId, { recruitmentClosed: true }),
+        lifecycle(exId, { recruitmentClosed: true }),
       ]);
       expect([r1.status, r2.status], `회차 ${i}`).toEqual([200, 200]);
-      expect((r1.body.rejectedCount ?? 0) + (r2.body.rejectedCount ?? 0), `회차 ${i} — 두 응답이 같은 사람을 겹쳐 세면 안 된다`).toBe(2);
-      for (const uid of [1, 2]) {
-        const notes = await notesFor(uid, 'APPLICATION_STATUS', exId);
-        expect(notes, `회차 ${i} · 작가 ${uid} — 결과 알림은 한 통`).toHaveLength(1);
-        expect(notes[0]!.message).toContain('지원 결과가 나왔어요');
-      }
-      expect(await notesFor(101, 'APPLICATION_STATUS', exId), '수락된 작가는 건드리지 않는다').toHaveLength(0);
+      expect((r1.body.rejectedCount ?? 0) + (r2.body.rejectedCount ?? 0), `회차 ${i}`).toBe(0);
+      for (const uid of [1, 2, 101]) expect(await notesFor(uid, 'APPLICATION_STATUS', exId), `회차 ${i} · 작가 ${uid}`).toHaveLength(0);
       const apps = await testPrisma.application.findMany({ where: { exhibitionId: exId }, orderBy: { userId: 'asc' } });
-      expect(apps.map(a => a.status)).toEqual(['REJECTED', 'REJECTED', 'ACCEPTED']);
+      expect(apps.map(a => a.status)).toEqual(['SUBMITTED', 'SUBMITTED', 'ACCEPTED']);
     }
   });
 
-  it('★ LIF-07 마감(D2)과 같은 지원의 수동 거절이 동시에 — 최종 미선정 · 결과 알림 한 통 (가설 S2)', async () => {
+  it('★ LIF-07 접수 중 수락은 400 — 마감과 수락이 동시에 오면 마감 뒤에 읽은 수락만 된다(선정 알림 한 통)', async () => {
     for (let i = 0; i < REPEAT; i++) {
-      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'ACCEPTED' });
-      await Promise.all([
-        lifecycle(exId, { recruitmentClosed: true, rejectPending: true }),
-        setStatus(exId, appIds[1]!, 'REJECTED'),
-      ]);
-      const app = await testPrisma.application.findUnique({ where: { id: appIds[1]! } });
-      expect(app?.status, `회차 ${i}`).toBe('REJECTED');
-      expect(await notesFor(1, 'APPLICATION_STATUS', exId), `회차 ${i} — 같은 미선정을 두 번 알리면 안 된다`).toHaveLength(1);
-    }
-  });
-
-  it('LIF-07b 마감(D2)과 같은 지원의 수동 수락이 동시에 — 마지막 알림이 최종 상태와 맞고, 같은 결과를 두 번 알리지 않는다', async () => {
-    for (let i = 0; i < REPEAT; i++) {
-      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED' });
-      await Promise.all([
-        lifecycle(exId, { recruitmentClosed: true, rejectPending: true }),
+      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED' });
+      const [close, decide] = await Promise.all([
+        lifecycle(exId, { recruitmentClosed: true }),
         setStatus(exId, appIds[1]!, 'ACCEPTED'),
       ]);
+      expect(close.status, `회차 ${i}`).toBe(200);
       const app = await testPrisma.application.findUnique({ where: { id: appIds[1]! } });
       const notes = await notesFor(1, 'APPLICATION_STATUS', exId);
-      // 거절 → 수락(허용된 전환)으로 두 번 바뀌었으면 두 통이 맞다. 같은 말이 두 번이면 안 된다
-      const msgs = notes.map(n => (n.message.includes('선정되었어요') ? 'ACCEPTED' : 'REJECTED'));
-      expect(new Set(msgs).size, `회차 ${i} — 같은 결과를 두 번 알렸다: ${msgs}`).toBe(msgs.length);
-      expect(msgs[msgs.length - 1], `회차 ${i} — 마지막 알림이 최종 상태(${app?.status})와 다르다`).toBe(app?.status);
+      if (decide.status === 200) { expect(app?.status, `회차 ${i}`).toBe('ACCEPTED'); expect(notes, `회차 ${i}`).toHaveLength(1); }
+      else {
+        expect(decide.status, `회차 ${i}`).toBe(400);
+        expect(decide.body.error).toBe(DECIDE_AFTER_CLOSE);
+        expect(app?.status, `회차 ${i}`).toBe('SUBMITTED');
+        expect(notes, `회차 ${i}`).toHaveLength(0);
+      }
     }
   });
 
-  it('LIF-09 rejectPending 은 진짜 true 일 때만 · 마감하는 순간에만 · 단독으로는 아무 일도 안 한다', async () => {
+  it('LIF-07b 접수 중 수락은 갤러리·관리자 모두 400 · 마감하면 된다 · 거절은 언제나 400(규칙 90)', async () => {
+    const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED' });
+    for (const tok of [ownerTok, adminTok]) {
+      const r = await setStatus(exId, appIds[1]!, 'ACCEPTED', tok);
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe(DECIDE_AFTER_CLOSE);
+    }
+    expect((await setStatus(exId, appIds[2]!, 'REJECTED')).body.error).toBe(NO_REJECT);
+    expect(await testPrisma.application.count({ where: { exhibitionId: exId, status: 'SUBMITTED' } })).toBe(2);
+    expect(await notesFor(1, 'APPLICATION_STATUS', exId)).toHaveLength(0);
+
+    expect((await lifecycle(exId, { recruitmentClosed: true })).status).toBe(200);
+    expect((await setStatus(exId, appIds[1]!, 'ACCEPTED')).status).toBe(200);
+    expect((await setStatus(exId, appIds[2]!, 'REJECTED')).status).toBe(400);
+    expect((await testPrisma.application.findUnique({ where: { id: appIds[2]! } }))?.status).toBe('SUBMITTED');
+    expect((await notesFor(1, 'APPLICATION_STATUS', exId)).map(n => n.message.includes('선정되었어요'))).toEqual([true]);
+  });
+
+  it('LIF-09 rejectPending 은 무시한다 · 마감은 아무도 미선정으로 바꾸지 않는다 · 전시 확정·종료가 남은 검토 대기를 미선정으로(알림 없음)', async () => {
     const one = await exhibitionWith({ 1: 'SUBMITTED' });
-    expect((await lifecycle(one.exId, { recruitmentClosed: true, rejectPending: 'true' })).body.rejectedCount).toBe(0);
+    expect((await lifecycle(one.exId, { recruitmentClosed: true, rejectPending: true })).body.rejectedCount).toBe(0);
     expect((await testPrisma.application.findUnique({ where: { id: one.appIds[1]! } }))?.status).toBe('SUBMITTED');
 
     const two = await exhibitionWith({ 1: 'SUBMITTED' });
     expect((await lifecycle(two.exId, { rejectPending: true })).status).toBe(200);
     expect((await testPrisma.application.findUnique({ where: { id: two.appIds[1]! } }))?.status).toBe('SUBMITTED');
 
-    // 이미 마감된 공모를 끝내며(ended) 같이 실어 보내도 검토 대기는 건드리지 않는다(마감하는 '순간'이 아니다)
-    const three = await exhibitionWith({ 1: 'SUBMITTED', 2: 'ACCEPTED' }, { recruitmentClosed: true, confirmed: true });
-    expect((await lifecycle(three.exId, { ended: true, rejectPending: true })).body.rejectedCount).toBe(0);
-    expect((await testPrisma.application.findUnique({ where: { id: three.appIds[1]! } }))?.status).toBe('SUBMITTED');
+    // 전시 확정 — 선정이 끝난 것이다
+    const three = await exhibitionWith({ 1: 'SUBMITTED', 2: 'ACCEPTED' }, { recruitmentClosed: true });
+    expect((await lifecycle(three.exId, { confirmed: true })).body.rejectedCount).toBe(1);
+    const a = await testPrisma.application.findUnique({ where: { id: three.appIds[1]! } });
+    expect(a?.status).toBe('REJECTED');
+    expect(a?.closedOutAt).not.toBeNull();
+    expect(await notesFor(1, 'APPLICATION_STATUS', three.exId)).toHaveLength(0);
+
+    // 시작일이 지나 저절로 확정된 뒤 [전시 종료] — 남아 있던 검토 대기도 그때
+    const four = await exhibitionWith({ 1: 'SUBMITTED', 2: 'ACCEPTED' }, { recruitmentClosed: true, confirmed: true });
+    expect((await lifecycle(four.exId, { ended: true })).body.rejectedCount).toBe(1);
+    expect((await testPrisma.application.findUnique({ where: { id: four.appIds[1]! } }))?.closedOutAt).not.toBeNull();
+  });
+
+  it('★ LIF-11 마감과 새 지원이 동시에 — 지원은 먼저 들어갔으면 검토 대기로 남고(마감 뒤 선정), 아니면 400', async () => {
+    for (let i = 0; i < REPEAT; i++) {
+      const { exId } = await exhibitionWith({ 1: 'SUBMITTED' });
+      const [close, apply] = await Promise.all([
+        lifecycle(exId, { recruitmentClosed: true }),
+        request.post(`/api/exhibitions/${exId}/apply`).set('Authorization', `Bearer ${a2}`).send(APPLY_BODY),
+      ]);
+      expect(close.status, `회차 ${i}`).toBe(200);
+      const mine = await testPrisma.application.findFirst({ where: { exhibitionId: exId, userId: 2 } });
+      if (apply.status === 201) expect(mine?.status, `회차 ${i}`).toBe('SUBMITTED');
+      else { expect(apply.status, `회차 ${i}`).toBe(400); expect(mine, `회차 ${i}`).toBeNull(); }
+    }
+  });
+
+  it('LIF-12 마감과 지원서 수정·취소가 동시에 — 마감 전에 잡았으면 반영, 아니면 400 · 마감 뒤엔 지원서가 바뀌지 않는다', async () => {
+    for (let i = 0; i < REPEAT; i++) {
+      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED' });
+      const [, edit, cancel] = await Promise.all([
+        lifecycle(exId, { recruitmentClosed: true }),
+        request.put(`/api/exhibitions/${exId}/my-application`).set('Authorization', `Bearer ${a1}`).send({ biography: '고친 약력', artworkImages: ['/uploads/b.jpg'] }),
+        request.delete(`/api/exhibitions/${exId}/my-application`).set('Authorization', `Bearer ${a2}`),
+      ]);
+      const a1app = await testPrisma.application.findUnique({ where: { id: appIds[1]! } });
+      expect(a1app?.status, `회차 ${i}`).toBe('SUBMITTED');
+      if (edit.status === 200) expect(a1app?.biography).toBe('고친 약력');
+      else expect(edit.status, `회차 ${i}`).toBe(400);
+      const a2app = await testPrisma.application.findUnique({ where: { id: appIds[2]! } });
+      if (cancel.status === 200) expect(a2app, `회차 ${i}`).toBeNull();
+      else { expect(cancel.status, `회차 ${i}`).toBe(400); expect(a2app?.status, `회차 ${i}`).toBe('SUBMITTED'); }
+      // 마감 뒤에 오는 수정·취소는 늘 400
+      expect((await request.put(`/api/exhibitions/${exId}/my-application`).set('Authorization', `Bearer ${a1}`).send({ biography: '또 고침', artworkImages: ['/uploads/b.jpg'] })).status).toBe(400);
+    }
+  });
+
+  it('★ LIF-13 [선정 마치기](선정 마감일 없는 옛 공고만) — 접수 중엔 400 · 남은 검토 대기만 미선정(알림 없음) · 동시에 둘이면 합이 실제 수 · 다시 눌러도 0 · 되돌릴 수 없다', async () => {
+    await thirdArtist();
+    const finish = (exId: number, tok = ownerTok) => request.post(`/api/operations/${exId}/finish-selection`).set('Authorization', `Bearer ${tok}`);
+    const open = await exhibitionWith({ 1: 'SUBMITTED' });
+    const early = await finish(open.exId);
+    expect(early.status).toBe(400);
+    expect(early.body.error).toBe(FINISH_AFTER_CLOSE);
+    expect((await finish(open.exId, a1)).status).toBe(403);
+    // 선정 마감일이 있는 새 공고는 그날이 지나면 끝난다 — 버튼으로 일찍 끝내지 않는다
+    const dated = await exhibitionWith({ 1: 'SUBMITTED' }, { recruitmentClosed: true, selectionDeadline: new Date(Date.now() + 5 * 86400000) });
+    const no = await finish(dated.exId);
+    expect(no.status).toBe(400);
+    expect(no.body.error).toBe(FINISH_HAS_DEADLINE);
+    expect((await testPrisma.application.findUnique({ where: { id: dated.appIds[1]! } }))?.status).toBe('SUBMITTED');
+
+    for (let i = 0; i < REPEAT; i++) {
+      const { exId } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED', 101: 'ACCEPTED' }, { recruitmentClosed: true });
+      const [r1, r2] = await Promise.all([finish(exId), finish(exId, adminTok)]);
+      expect([r1.status, r2.status], `회차 ${i}`).toEqual([200, 200]);
+      expect(r1.body.closedOut + r2.body.closedOut, `회차 ${i}`).toBe(2);
+      const apps = await testPrisma.application.findMany({ where: { exhibitionId: exId }, orderBy: { userId: 'asc' } });
+      expect(apps.map(a => a.status)).toEqual(['REJECTED', 'REJECTED', 'ACCEPTED']);
+      expect(apps.map(a => !!a.closedOutAt)).toEqual([true, true, false]);
+      for (const uid of [1, 2, 101]) expect(await notesFor(uid, 'APPLICATION_STATUS', exId), `회차 ${i} · 작가 ${uid}`).toHaveLength(0);
+      expect((await finish(exId)).body.closedOut).toBe(0);
+      // 선정을 마치면 되돌릴 수 없다 — 미선정이 된 지원은 다시 수락하지 않는다(2026-11-21 사용자 결정)
+      const back = await setStatus(exId, apps[0]!.id, 'ACCEPTED');
+      expect(back.status, `회차 ${i}`).toBe(400);
+      expect(back.body.error).toBe(SELECTION_FINISHED);
+      expect((await testPrisma.application.findUnique({ where: { id: apps[0]!.id } }))?.status).toBe('REJECTED');
+      expect(await notesFor(1, 'APPLICATION_STATUS', exId)).toHaveLength(0);
+    }
   });
 });
 
@@ -337,7 +420,7 @@ describe('APL·REV — 지원과 심사, 동시에', () => {
 
   it('★ REV-04 정원 마지막 자리에 두 사람을 동시에 수락 — 한 명만 · 선정 알림 한 통', async () => {
     for (let i = 0; i < REPEAT; i++) {
-      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED' }, { capacity: 1 });
+      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED' }, { capacity: 1, recruitmentClosed: true });
       const rs = await Promise.all([setStatus(exId, appIds[1]!, 'ACCEPTED'), setStatus(exId, appIds[2]!, 'ACCEPTED')]);
       expect(rs.map(r => r.status).sort(), `회차 ${i}`).toEqual([200, 400]);
       expect(await testPrisma.application.count({ where: { exhibitionId: exId, status: 'ACCEPTED' } })).toBe(1);
@@ -349,7 +432,7 @@ describe('APL·REV — 지원과 심사, 동시에', () => {
 
   it('REV-04b 같은 지원을 두 운영자가 동시에 수락·거절 — 최종 상태와 마지막 알림이 맞고 같은 결과를 두 번 알리지 않는다', async () => {
     for (let i = 0; i < REPEAT; i++) {
-      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED' });
+      const { exId, appIds } = await exhibitionWith({ 1: 'SUBMITTED' }, { recruitmentClosed: true });
       await Promise.all([setStatus(exId, appIds[1]!, 'ACCEPTED'), setStatus(exId, appIds[1]!, 'REJECTED', adminTok)]);
       const app = await testPrisma.application.findUnique({ where: { id: appIds[1]! } });
       const notes = await notesFor(1, 'APPLICATION_STATUS', exId);

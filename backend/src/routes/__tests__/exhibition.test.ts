@@ -52,6 +52,7 @@ describe('Exhibition Routes', () => {
       deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       exhibitDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
       submissionDeadline: new Date(Date.now() + 45 * 86400000).toISOString(),
+      selectionDeadline: new Date(Date.now() + 37 * 86400000).toISOString(),
       capacity: 10, region: 'SEOUL', description: '새 공모',
     });
     expect(res.status).toBe(201);

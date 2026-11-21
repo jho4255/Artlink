@@ -63,6 +63,7 @@ const emptyForm = {
   exhibitStartDate: '',
   exhibitDate: '',
   submissionDeadline: '',
+  selectionDeadline: '',
   recruitOnly: false,
   capacity: 1,
   /** 공고에 0명·00명으로만 적기(2026-10-14) — null = 숫자 그대로 */

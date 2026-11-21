@@ -128,9 +128,10 @@ async function speeds(p: ReturnType<typeof periodOf>) {
     prisma.show.findMany({ where: { reviewedAt: inP }, select: { createdAt: true, reviewedAt: true } }),
     prisma.approvalRequest.findMany({ where: { decidedAt: inP }, select: { createdAt: true, decidedAt: true } }),
     prisma.inquiry.findMany({ where: { repliedAt: inP }, select: { createdAt: true, repliedAt: true } }),
-    // 지원 → 결과: 결정된 지원의 마지막 변경 시각(결정 뒤엔 고치지 않는다). 초대 코드로 들어온 참여(즉시 수락)는 뺀다
+    // 지원 → 결과: 결정된 지원의 마지막 변경 시각(결정 뒤엔 고치지 않는다). 초대 코드로 들어온 참여(즉시 수락)는 뺀다.
+    // 모집 마감 때 저절로 미선정이 된 지원(closedOutAt, 규칙 90)도 뺀다 — 사람이 내린 결정이 아니다
     prisma.application.findMany({
-      where: { status: { in: ['ACCEPTED', 'REJECTED'] }, updatedAt: inP, OR: [{ joinedVia: null }, { joinedVia: { not: 'CODE' } }] },
+      where: { status: { in: ['ACCEPTED', 'REJECTED'] }, closedOutAt: null, updatedAt: inP, OR: [{ joinedVia: null }, { joinedVia: { not: 'CODE' } }] },
       select: { createdAt: true, updatedAt: true },
     }),
     prisma.chatReport.findMany({ where: { reviewedAt: inP }, select: { createdAt: true, reviewedAt: true } }),

@@ -1,7 +1,6 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 import {
-  openAs, tokenFor, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks,
-  exhibitionCard, workspace, applicantRow,
+  openAs, tokenFor, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks, exhibitionCard, workspace, applicantRow, closeRecruitment,
 } from '../lib/helpers';
 
 /**
@@ -130,7 +129,10 @@ test.describe('새로고침 · 연타', () => {
     await workspace(page).getByRole('button', { name: '더 보기' }).click();
     await expect(page.getByRole('menu')).toBeVisible();
     await sameScreen('메뉴');
-    // 일괄 선택
+    // 일괄 선택 — 수락·거절(일괄 포함)은 모집을 마감한 뒤에만 있다(규칙 90)
+    await closeRecruitment(api, exId);
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
     await page.locator('[data-applicant-manager]').first().getByRole('checkbox', { name: /Artist 1.*선택|선택.*Artist 1/ }).first().check();
     await sameScreen('일괄 선택');
     // 탭(공지)
@@ -147,7 +149,10 @@ test.describe('새로고침 · 연타', () => {
     const title = newTitle('미선정확인');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api) });
     const appId = await applyAs(api, exId, 'artist2');
-    expect((await setStatus(api, exId, appId, 'REJECTED')).status()).toBe(200);
+    await closeRecruitment(api, exId);
+    // 거절은 따로 없다(규칙 90) — 전시를 확정하면 선정이 끝나 남은 검토 대기(artist2)가 미선정이 된다(알림 없음)
+    expect((await api.patch(`http://localhost:4000/api/operations/${exId}/lifecycle`, { headers: { Authorization: `Bearer ${tokenFor('gallery')}` }, data: { confirmed: true } })).status()).toBe(200);
+    expect(appId).toBeTruthy();
     const { page, ctx } = await openAs(browser, 'artist2');
     const errors = collectErrors(page);
     let acks = 0;
@@ -177,15 +182,16 @@ test.describe('새로고침 · 연타', () => {
 });
 
 test.describe('단계', () => {
-  test('★ LIF-10 남은 대기를 미선정으로 마감한 뒤 "\'모집 마감\' 되돌리기" — 모집공고에 다시 뜨고 미선정은 그대로', async ({ browser }) => {
+  test('★ LIF-10 모집 마감은 되돌릴 수 없다(규칙 90) — [⋯]에 되돌리기가 없고 서버도 400 · 모집공고에 다시 뜨지 않는다 · 결정은 마감 뒤에', async ({ browser }) => {
     test.setTimeout(120_000);
     const api = await pwRequest.newContext();
     const title = newTitle('마감되돌리기');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
     const accepted = await applyAs(api, exId, 'artist');
-    expect((await setStatus(api, exId, accepted, 'ACCEPTED')).status()).toBe(200);
     const pending = await applyAs(api, exId, 'artist2');
-    expect((await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: auth('gallery'), data: { recruitmentClosed: true, rejectPending: true } })).status()).toBe(200);
+    expect((await setStatus(api, exId, accepted, 'ACCEPTED')).status(), '모집 중엔 수락할 수 없다').toBe(400);
+    expect((await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: auth('gallery'), data: { recruitmentClosed: true } })).status()).toBe(200);
+    expect((await setStatus(api, exId, accepted, 'ACCEPTED')).status()).toBe(200);
     const openIds = async () => ((await (await api.get(`${API}/exhibitions?scope=open`)).json()) as { id: number }[] | { exhibitions: { id: number }[] });
     const ids = (d: Awaited<ReturnType<typeof openIds>>) => (Array.isArray(d) ? d : d.exhibitions).map((e) => e.id);
     expect(ids(await openIds())).not.toContain(exId);
@@ -194,15 +200,18 @@ test.describe('단계', () => {
     await page.goto(`/mypage?tab=my-exhibitions&ex=${exId}`);
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
     await workspace(page).getByRole('button', { name: '더 보기' }).click();
-    await page.getByRole('menuitem', { name: /'모집 마감' 되돌리기/ }).click();
-    const dlg = page.getByRole('dialog');
-    await expect(dlg).toBeVisible();
-    await dlg.getByRole('button', { name: '되돌리기' }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
-    await expect.poll(async () => ids(await openIds()), { timeout: 10000 }).toContain(exId);
+    await expect(page.getByRole('menuitem').first()).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /모집 마감/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    for (const role of ['gallery', 'admin'] as const) {
+      const r = await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: auth(role), data: { recruitmentClosed: false } });
+      expect(r.status(), role).toBe(400);
+      expect((await r.json()).error).toBe('모집 마감은 되돌릴 수 없어요.');
+    }
+    expect(ids(await openIds())).not.toContain(exId);
     const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: auth('gallery') })).json();
     const list = (apps.applications ?? apps) as { id: number; status: string }[];
-    expect(list.find((a) => a.id === pending)?.status, '되돌려도 미선정은 그대로').toBe('REJECTED');
+    expect(list.find((a) => a.id === pending)?.status, '마감은 아무도 미선정으로 바꾸지 않는다 — 선정할 차례').toBe('SUBMITTED');
     expect(list.find((a) => a.id === accepted)?.status).toBe('ACCEPTED');
     await ctx.close();
     await api.dispose();
@@ -253,6 +262,7 @@ test.describe('로그인이 풀렸을 때 — 쓰던 입력이 남는다(REL-12)
   }
   const accept = async (api: APIRequestContext, exId: number, role: 'artist' | 'artist2') => {
     const appId = await applyAs(api, exId, role);
+    await closeRecruitment(api, exId);   // 수락은 마감한 뒤에(규칙 90)
     expect((await setStatus(api, exId, appId, 'ACCEPTED')).status()).toBe(200);
   };
 

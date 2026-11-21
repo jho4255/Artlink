@@ -38,6 +38,8 @@ export interface StallInput {
   settledAt: Date | null;
   settlementRequestedAt: Date | null;
   deadline: Date;
+  /** 선정 마감일(새 공고, 규칙 90) — 있으면 그날 저절로 정리되므로 '검토 대기가 남았다'를 멈춘 것으로 보지 않는다 */
+  selectionDeadline?: Date | null;
   exhibitDate: Date | null;
   pending: number;
   issues: number;
@@ -60,7 +62,7 @@ export function stallOf(ex: StallInput, now: Date = new Date()): Stall | null {
         : { kind: 'end', text: `전시 끝난 지 ${d}일 · [전시 종료] 전` };
     }
   }
-  if (ex.pending > 0 && !ex.ended) {
+  if (ex.pending > 0 && !ex.ended && !ex.selectionDeadline) {
     const d = daysSinceDate(ex.deadline, now);
     if (d >= STALL_RULES.reviewDays) return { kind: 'review', text: `마감 지나 ${d}일 · 검토 대기 ${ex.pending}명` };
   }
@@ -121,7 +123,7 @@ export async function exhibitionCounts(ids: number[]) {
 const ROW_SELECT = {
   id: true, title: true, type: true, region: true, status: true, imageUrl: true, hostType: true, galleryId: true,
   recruitOnly: true, recruitmentClosed: true, confirmed: true, ended: true, settledAt: true, settlementRequestedAt: true,
-  deadline: true, deadlineStart: true, exhibitStartDate: true, exhibitDate: true, submissionDeadline: true,
+  deadline: true, deadlineStart: true, exhibitStartDate: true, exhibitDate: true, submissionDeadline: true, selectionDeadline: true,
   capacity: true, capacityMask: true, viewCount: true, createdAt: true, reviewedAt: true,
   gallery: { select: { id: true, name: true, ownerId: true } },
   managers: { select: { gallery: { select: { id: true, name: true } } } },
@@ -157,7 +159,7 @@ export async function adminExhibitionRows(opts: { q?: string; ids?: number[] } =
 export async function stalledExhibitions(now: Date = new Date()) {
   const list = await prisma.exhibition.findMany({
     where: { status: 'APPROVED', settledAt: null },
-    select: { id: true, title: true, status: true, recruitOnly: true, ended: true, settledAt: true, settlementRequestedAt: true, deadline: true, exhibitDate: true },
+    select: { id: true, title: true, status: true, recruitOnly: true, ended: true, settledAt: true, settlementRequestedAt: true, deadline: true, selectionDeadline: true, exhibitDate: true },
   });
   const ids = list.map((e) => e.id);
   if (!ids.length) return [];
@@ -207,8 +209,12 @@ export async function todoCounts(now: Date = new Date()): Promise<TodoCounts> {
     pendingStoryReports(),
     prisma.inquiry.count({ where: { status: 'OPEN' } }),
     prisma.inquiry.findFirst({ where: { status: 'OPEN' }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
-    // 아트링크가 직접 운영하는 공모(운영 갤러리 없음)의 검토 대기 — 수락·거절은 관리자 몫이다
-    prisma.application.count({ where: { status: { in: ['SUBMITTED', 'REVIEWED'] }, exhibition: { hostType: 'ADMIN', galleryId: null, ended: false } } }),
+    // 아트링크가 직접 운영하는 공모(운영 갤러리 없음)의 검토 대기 — 수락은 관리자 몫이다.
+    // 접수가 끝난(모집 마감 또는 접수 마감일 경과) 공모만(2026-11-21, 규칙 90 — 접수 중엔 수락할 수 없다)
+    prisma.application.count({ where: { status: { in: ['SUBMITTED', 'REVIEWED'] }, exhibition: {
+      hostType: 'ADMIN', galleryId: null, ended: false,
+      OR: [{ recruitmentClosed: true }, { deadline: { lt: today } }],
+    } } }),
     prisma.exhibition.findMany({
       where: { hostType: 'ADMIN', status: 'APPROVED', recruitmentClosed: false, deadline: { gte: today, lte: soon } },
       select: { id: true, _count: { select: { applications: true } } },

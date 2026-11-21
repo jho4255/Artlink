@@ -185,7 +185,7 @@ export async function compressImage(file: File, maxDim = 2000, quality = 0.85): 
 // 백엔드는 마감/전시일을 UTC 자정(=KST 09:00)으로 저장하므로, KST 달력 날짜 단위로 맞춰야
 // 마감일 당일 오전 9시에 D-day가 어긋나거나 목록에서 사라지는 오프바이원을 막는다.
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-function kstDayNumber(date: string | Date): number {
+export function kstDayNumber(date: string | Date): number {
   const kst = new Date(new Date(date).getTime() + KST_OFFSET_MS);
   return Math.floor(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) / 86400000);
 }
@@ -254,13 +254,19 @@ export function validateExhibitionDates(dates: {
   exhibitDate?: string;
   /** 출품 자료 제출 마감일 — 공모 마감과 전시 시작 사이여야 한다 */
   submissionDeadline?: string;
+  /** 선정 마감일(규칙 90) — 접수 마감 < 이날 < 출품 자료 마감(KST 달력 날짜, 서버 lib/selectionDeadline.ts 와 같은 규칙) */
+  selectionDeadline?: string;
 }, dday: (d: string) => number = getDday): string | null {
-  const { deadlineStart, deadline, exhibitStartDate, exhibitDate, submissionDeadline } = dates;
+  const { deadlineStart, deadline, exhibitStartDate, exhibitDate, submissionDeadline, selectionDeadline } = dates;
   if (!deadline) return null;
 
   const dl = new Date(deadline);
   if (deadlineStart && new Date(deadlineStart) > dl) return '접수 시작일은 마감일 이전이어야 합니다.';
   if (dday(deadline) < 0) return '접수 마감일이 이미 지났어요. 오늘 이후로 정해 주세요.';
+  if (selectionDeadline) {
+    if (kstDayNumber(selectionDeadline) <= kstDayNumber(deadline)) return '선정 마감일은 접수 마감일보다 뒤여야 해요.';
+    if (submissionDeadline && kstDayNumber(selectionDeadline) >= kstDayNumber(submissionDeadline)) return '선정 마감일은 출품 자료 제출 마감일보다 앞이어야 해요.';
+  }
   if (!exhibitDate) return null;
 
   const ed = new Date(exhibitDate);

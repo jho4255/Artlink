@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, createExhibition, exhibitionCard, artistTab, openArtistTab } from '../lib/helpers';
+import {
+  openAs, tokenFor, applyToExhibition, createExhibition, exhibitionCard, artistTab, openArtistTab, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 작가 [내 전시] — 2026-08-27~28 개편분.
@@ -72,6 +74,7 @@ test.describe('수락된 전시 — 목록 줄 → 전시 화면에서 처리한
     cardExId = id;
     const ap = await applyToExhibition(api, id, tokenFor('artist'));
     const appId = (await ap.json()).id;
+    await closeRecruitment(api, id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
     await api.patch(`${API}/exhibitions/${id}/applications/${appId}`, {
       headers: { Authorization: `Bearer ${tokenFor('gallery')}` }, data: { status: 'ACCEPTED' },
     });

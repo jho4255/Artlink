@@ -25,7 +25,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { authStashKeys, hasAuthStash, stashKeys } from '@/lib/authStash';
 import { cn, getDday, regionLabels, exhibitionTypeLabels } from '@/lib/utils';
-import { stageOf, galleryNextTask, flowStrip, gallerySubText, workspaceDefaultView, type WorkspaceView, type TaskActionId, type TaskAction } from '@/lib/flowLabels';
+import { stageOf, recruitmentOver, galleryNextTask, flowStrip, gallerySubText, workspaceDefaultView, type WorkspaceView, type TaskActionId, type TaskAction } from '@/lib/flowLabels';
 import { operatorWorkspace } from '@/lib/operationLinks';
 import { hasContent, hasNoteContent } from '@/lib/submissionChecklist';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -135,7 +135,13 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     settlementStarted: !!access?.settlementStarted,
     closed,
     exhibitStartDate: detail?.exhibitStartDate ?? null,
+    // 접수 마감일이 지나면 [모집 마감]을 안 눌러도 선정이다(규칙 90)
+    deadline: detail?.deadline ?? access?.deadline ?? null,
+    // 공모만 진행하는 공고가 마감 뒤 '선정 중'인지 가른다(규칙 90)
+    pending,
   };
+  const selectionDeadline = access?.selectionDeadline ?? detail?.selectionDeadline ?? null;
+  const over = recruitmentOver(stageInput);
   const stage = stageOf(stageInput);
   const task = galleryNextTask({
     status: detail?.status ?? 'APPROVED',
@@ -146,6 +152,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     settled,
     settlementRequested: !!access?.settlementRequested,
     deadline: detail?.deadline,
+    selectionDeadline,
     exhibitStartDate: detail?.exhibitStartDate,
     exhibitDate: detail?.exhibitDate ?? access?.exhibitDate,
     pending,
@@ -160,6 +167,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     ...stageInput,
     deadline: detail?.deadline,
     submissionDeadline: detail?.submissionDeadline,
+    selectionDeadline,
     exhibitDate: detail?.exhibitDate ?? access?.exhibitDate,
     accepted, pending,
     capacity: detail?.capacity ?? null, capacityMask: detail?.capacityMask ?? null,
@@ -174,14 +182,15 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     incompleteArtists: incomplete,
     pendingApplicants: pending,
     onChanged: (kind) => {
-      if (kind === 'close') goView(recruitOnly ? 'applicants' : 'submissions');
+      // 마감하면 선정이 시작된다(규칙 90) — 지원자 탭으로
+      if (kind === 'close' || kind === 'finish') goView('applicants');
       else if (kind === 'confirm') goView('submissions');
       else if (kind === 'end') goView('settlement');
     },
   });
 
   // ── 탭 ──
-  const defaultView = workspaceDefaultView(stage?.key, recruitOnly);
+  const defaultView = workspaceDefaultView(stage?.key, recruitOnly, pending);
   const [view, setView] = useState<WorkspaceView | null>(initialView);
   /** 같은 주소로 다시 들어와 새로 받는 중 — 그동안은 옛 단계로 기본 탭을 정하지 않는다(아래 location.key) */
   const [refreshing, setRefreshing] = useState(false);
@@ -192,7 +201,12 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     if (!recruitOnly && authStashKeys(user?.id, stashKeys.submissionPrefix(id)).length) return 'submissions';
     return null;
   };
-  if (ready && approved && view === null && !refreshing) setView(stashView() ?? defaultView);
+  /*
+    전시 준비(마감 뒤)는 결정을 기다리는 지원이 있으면 [지원자], 없으면 [출품 자료]로 연다(규칙 90 — 선정이 먼저).
+    지원자 목록이 오기 전에 정하면 0명으로 보고 [출품 자료]를 연 채 굳는다 — 목록을 받은 뒤에(실패해도) 정한다.
+  */
+  const viewReady = ready && (stage?.key !== 'preparing' || applicantsFetched || applicantsFailed || !canManage);
+  if (viewReady && approved && view === null && !refreshing) setView(stashView() ?? defaultView);
   /*
     열 수 없는 탭을 고르지 않는다(2026-11-20 신뢰성 점검 WS-02). 전시가 끝나기 전 `view=settlement`(옛 알림·북마크)로 오면
     잠긴 정산 탭이 선택된 채 받지 않는 데이터를 기다려 '불러오는 중' 모양으로 영원히 남았다. 그럴 땐 단계 기본 탭.
@@ -244,6 +258,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   // ── 할 일 줄의 버튼 ──
   const runAct = (actId: TaskActionId) => {
     if (actId === 'close' || actId === 'confirm' || actId === 'end') lifecycle.ask(actId);
+    else if (actId === 'finish-selection') lifecycle.ask('finish');
     else if (actId === 'remind-submissions') setRemindOpen(true);
     else if (actId === 'complete-settlement') { goView('settlement'); ctl.openComplete(); }
     else if (actId === 'remind-settlement') ctl.openRemind();
@@ -257,11 +272,13 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   const countsFailed = applicantsFailed || submissionsFailed || (inSettlement && ctl.failed);
   const countsReady = !canManage || !approved || countsFailed
     || ((applicantsFetched || !canManage) && (recruitOnly || submissionsFetched) && (!inSettlement || ctl.ready));
-  const barText = countsFailed ? '목록을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.'
-    : !countsReady ? '' : inSettlement && ctl.task ? ctl.task.text : task.text;
+  const barText: ReactNode = countsFailed ? '목록을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.'
+    : !countsReady ? '' : inSettlement && ctl.task ? ctl.task.text
+      // 선정 중이면 아래 작은 한 줄 — '그날이 지나면 수락하지 않은 지원자는 미선정이 돼요'(규칙 90)
+      : task.note ? <>{task.text}<span className="mt-0.5 block text-[13.5px] font-normal text-gray-500">{task.note}</span></> : task.text;
   const barTone = inSettlement && ctl.task ? ctl.task.tone : task.tone;
   const actionButton = (a: TaskAction, kind: 'primary' | 'secondary') => (
-    <TaskButton key={a.id} kind={kind} onClick={() => runAct(a.id)} busy={lifecycle.busy && (a.id === 'close' || a.id === 'confirm' || a.id === 'end')}>{a.label}</TaskButton>
+    <TaskButton key={a.id} kind={kind} onClick={() => runAct(a.id)} busy={lifecycle.busy && (a.id === 'close' || a.id === 'finish-selection' || a.id === 'confirm' || a.id === 'end')}>{a.label}</TaskButton>
   );
   const buttons: ReactNode[] = [];
   if (countsReady && !countsFailed && canManage && approved && !(settled && !access?.isAdmin)) {
@@ -344,6 +361,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   const stageSub = gallerySubText({
     stageKey: stage?.key ?? null,
     deadline: detail.deadline, submissionDeadline: detail.submissionDeadline, exhibitStartDate: detail.exhibitStartDate, exhibitDate: detail.exhibitDate ?? access.exhibitDate,
+    selectionDeadline, pending,
     settledAt: access.settledAt ?? null, settlementRequestedAt: access.settlementRequestedAt ?? null,
     viewCount: approved ? detail.viewCount ?? null : null,
   });
@@ -351,8 +369,13 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   const menuItems: MenuItem[] = [
     ...(lifecycle.canBack ? [{ id: 'back', label: lifecycle.backLabel, hint: lifecycle.backBlocked ?? undefined, disabled: !!lifecycle.backBlocked, onSelect: lifecycle.askBack }] : []),
     // 기간 중 조기 종료 — 주 버튼이 아닐 때만 여기서
-    ...(approved && !recruitOnly && !access.ended && access.recruitmentClosed && task.primary?.id !== 'end' ? [{ id: 'end', label: '전시 종료', hint: '전시를 끝내고 정산을 시작해요', onSelect: () => lifecycle.ask('end') }] : []),
-    ...(approved && !recruitOnly && access.recruitmentClosed && !access.confirmed && task.primary?.id !== 'confirm' && task.secondary?.id !== 'confirm' ? [{ id: 'confirm', label: '전시 확정', onSelect: () => lifecycle.ask('confirm') }] : []),
+    /*
+      [선정 마치기] — **선정 마감일이 없는 옛 공고만**, 이 메뉴에만(2026-11-21 사용자 결정). 새 공고는 선정 마감일이 그 일을 한다.
+      옛 공고는 남은 사람이 미선정이 될 날이 없어서, 공모만 진행하면 다음 단계도 없어 계속 '심사 중'으로 남는다.
+    */
+    ...(approved && !selectionDeadline && over && pending > 0 && !access.ended && !settled ? [{ id: 'finish', label: '선정 마치기', hint: '수락하지 않은 지원자는 미선정이 돼요', onSelect: () => lifecycle.ask('finish') }] : []),
+    ...(approved && !recruitOnly && !access.ended && over && task.primary?.id !== 'end' ? [{ id: 'end', label: '전시 종료', hint: '전시를 끝내고 정산을 시작해요', onSelect: () => lifecycle.ask('end') }] : []),
+    ...(approved && !recruitOnly && over && !access.confirmed && task.primary?.id !== 'confirm' && task.secondary?.id !== 'confirm' ? [{ id: 'confirm', label: '전시 확정', onSelect: () => lifecycle.ask('confirm') }] : []),
     ...extraMenu,
     ...(deletable ? [{ id: 'delete', label: '공모 삭제', onSelect: askDelete }] : []),
   ];
@@ -427,7 +450,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
             {/* 관리자가 갤러리가 올린 공모를 볼 땐 조회만 — 수락·거절은 그 갤러리의 일이다(operationLinks 의 canDecide, 2026-10-02 규칙 61) */}
             {panel('applicants', workspace && !workspace.canDecide ? (
               <p className="border-y border-gray-200 py-6 text-sm leading-relaxed text-gray-600">
-                갤러리가 올린 공모예요. 수락·거절은 그 갤러리가 해요.{' '}
+                갤러리가 올린 공모예요. 선정(수락)은 그 갤러리가 해요.{' '}
                 <Link to={workspace.applicantsHref} className="font-medium text-gray-900 underline underline-offset-4">운영 조회에서 지원 현황 보기</Link>
               </p>
             ) : (
@@ -439,7 +462,12 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
                 capacityMask={detail.capacityMask ?? null}
                 recruitOnly={recruitOnly}
                 ended={!!access.ended || settled}
-                // 아트링크 주최 공모의 모집 인원은 아트링크(관리자)가 정한다 — 위임 갤러리는 못 고친다(서버 403)
+                // 수락은 접수가 끝난 뒤(모집 마감 또는 접수 마감일 경과) ~ 선정 마감일까지(규칙 90)
+                recruitmentClosed={!!access.recruitmentClosed}
+                deadline={detail.deadline}
+                selectionDeadline={selectionDeadline}
+                submissionDeadline={detail.submissionDeadline ?? null}
+                // 아트링크 주최 공모의 모집 인원·선정 마감일은 아트링크(관리자)가 정한다 — 위임 갤러리는 못 고친다(서버 403)
                 capacityEditable={detail.hostType !== 'ADMIN' || !!access.isAdmin}
                 onSelectionChange={setSelecting}
                 extraTools={!settled ? [{ label: '추가 질문 수정', onSelect: () => setQuestionsOpen(true) }] : undefined}

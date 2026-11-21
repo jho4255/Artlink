@@ -1,14 +1,15 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
 import {
-  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition,
-  exhibitionCard, workspace, workspaceTab, taskButton, openApplicantManager, applicantRow, openArtistExhibition, openOperation,
+  openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, exhibitionCard, workspace, workspaceTab, taskButton, openApplicantManager, applicantRow, openArtistExhibition, openOperation, closeRecruitment, acceptApplicant, closeApplicantSheet,
+  pickSchedule, kstDay,
 } from '../lib/helpers';
 
 /**
  * 공모 흐름 개편 (2026-11-20, CLAUDE.md 규칙 88) — **눌러서 무슨 일이 나는가**를 본다.
  *
  *  A. 목록의 할 일 버튼 → 그 공모 화면 + 확인창(도착해서 묻는다) → 확정하면 작가에게 '전시 확정' 알림 · 다 모이면 갤러리에 '출품 자료' 알림
- *  B. 모집 마감 확인창 — 검토 대기 N명 + '남은 N명을 미선정으로'(D2, 기본 꺼짐) → 그 작가에게 결과 알림
+ *  B. 모집 마감·선정 마감일(규칙 90) — 접수 중엔 읽기만 → 확인창(되돌릴 수 없어요 · 이제 선정) → [수락하기]만(거절 없음) → [선정 마감일 변경] →
+ *     선정 마감일이 지나면 남은 검토 대기 미선정(알림 없음) · 되돌릴 수 없다
  *  C. 지원자 심사 — 휴대폰은 한 장씩 창, 결정하면 다음 검토 대기로 넘어가고 없으면 닫힌다
  *  D. 정산 이의와 그 처리 — 작가 이의(창) → 갤러리 할 일 줄·작가 머리의 이의 글 → 고쳐 다시 요청 → 작가 확인 → '정산 확인' 알림 →
  *     [정산 완료] → [요약] 탭 · 작가에게 [갤러리 리뷰 쓰기](D6)
@@ -17,14 +18,23 @@ import {
 const API = 'http://localhost:4000/api';
 const auth = (role: Parameters<typeof tokenFor>[0]) => ({ Authorization: `Bearer ${tokenFor(role)}` });
 const newTitle = (what: string) => `E2E공모화면 ${what} ${Date.now()}`;
+/** 데모·테스트 DB 의 날짜를 옮긴다(선정 마감일을 지난 날로) — 접속정보는 DATABASE_URL 로만(38·56·88 스펙과 같은 규칙) */
+async function sql(query: string) {
+  const dbUrl = process.env.DATABASE_URL;
+  expect(dbUrl, 'DATABASE_URL 을 명시해 돌릴 것').toBeTruthy();
+  const { execFileSync } = await import('child_process');
+  execFileSync('psql', [dbUrl!, '-v', 'ON_ERROR_STOP=1'], { input: query, encoding: 'utf-8' });
+}
 
 async function apply(api: APIRequestContext, exId: number, role: 'artist' | 'artist2') {
   const r = await applyToExhibition(api, exId, tokenFor(role));
   expect(r.status(), `${role} 지원 실패: ${await r.text()}`).toBe(201);
   return (await r.json()).id as number;
 }
+/** 지원 → 모집 마감 → 수락(수락·거절은 마감한 뒤에만 — 규칙 90). 마감하면 더 지원할 수 없으니 다른 지원은 먼저 받아 둘 것 */
 async function acceptVia(api: APIRequestContext, exId: number, role: 'artist' | 'artist2') {
   const appId = await apply(api, exId, role);
+  await closeRecruitment(api, exId);
   const p = await api.patch(`${API}/exhibitions/${exId}/applications/${appId}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
   expect(p.status(), await p.text()).toBe(200);
 }
@@ -98,44 +108,102 @@ test.describe('A. 목록 → 공모 화면', () => {
   });
 });
 
-test.describe('B. 모집 마감 — 남은 검토 대기를 미선정으로(D2)', () => {
-  test('★ 확인창이 검토 대기 수를 말하고, 체크하면 그 지원은 미선정 + 작가에게 결과 알림', async ({ browser }) => {
+test.describe('B. 모집 마감 · 선정 마감일 — 되돌릴 수 없다 · [수락하기]만 · 선정 마감일이 지나면 남은 검토 대기는 미선정(알림 없음, 규칙 90)', () => {
+  test('★ 접수 중엔 읽기만 → [모집 마감] 확인창 → [수락하기]만 → [선정 마감일 변경] → 그날이 지나면 미선정 · 다시 수락할 수 없다', async ({ browser }) => {
+    test.setTimeout(150_000);
     const api = await pwRequest.newContext();
     const title = newTitle('마감');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
-    await acceptVia(api, exId, 'artist2');
-    await apply(api, exId, 'artist');   // 검토 대기
+    const app1 = await apply(api, exId, 'artist');
+    await apply(api, exId, 'artist2');
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await openOperation(page, exId);
-    await expect(page.locator('[data-task-bar]')).toContainText('지원자 1명이 검토를 기다리고 있어요', { timeout: 15000 });
+    // 접수 중 — 지원이 들어와도 지금 할 일이 아니다(기다리는 중), 결정 줄은 이유 한 줄뿐
+    await expect(page.locator('[data-task-bar]')).toContainText('지원을 받고 있어요 · 지원 2명', { timeout: 15000 });
+    await workspaceTab(page, '지원자').click();
+    const manager = page.locator('[data-applicant-manager]');
+    await expect(manager.locator('li input[type="checkbox"]'), '접수 중엔 일괄 선택도 없다').toHaveCount(0);
+    await applicantRow(manager, 'Artist 1').getByRole('button').first().click();
+    await expect(page.locator('[data-decision-bar]').first()).toContainText('접수가 끝난 뒤에 수락할 수 있어요.');
+    await expect(page.locator('[data-decision-bar]').first().getByRole('button', { name: '수락하기' })).toHaveCount(0);
+    await closeApplicantSheet(page);
+    const early = await api.patch(`${API}/exhibitions/${exId}/applications/${app1}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
+    expect(early.status()).toBe(400);
+
     await taskButton(page, '모집 마감').click();
     const dialog = page.getByRole('dialog', { name: '모집을 마감할까요?' });
-    await expect(dialog).toContainText('아직 검토하지 않은 지원자가 1명 있어요');
-    const rest = dialog.getByRole('checkbox', { name: '남은 1명을 미선정으로 처리' });
-    await expect(rest).not.toBeChecked();   // 기본 꺼짐
-    await rest.check();
+    await expect(dialog.locator('[data-confirm-warning]')).toHaveText('모집 마감은 되돌릴 수 없어요.');
+    await expect(dialog).toContainText('작가는 낸 지원서를 더 고치거나 취소할 수 없어요.');
+    await expect(dialog).toContainText('이제 지원자 2명 가운데 수락할 작가를 고를 수 있어요.');
+    await expect(dialog).toContainText('이 지나면 수락하지 않은 지원자는 미선정이 돼요.');
+    await expect(dialog.getByRole('checkbox'), '예전 D2 체크는 없다').toHaveCount(0);
+    await expect(dialog, '작가 알림 이야기는 갤러리에게 하지 않는다').not.toContainText('알림');
     await dialog.getByRole('button', { name: '모집 마감', exact: true }).click();
-    await expect(page.locator('body')).toContainText('1명을 미선정으로 처리했어요', { timeout: 10000 });
+    await expect(page.locator('body')).toContainText('모집을 마감했어요.', { timeout: 10000 });
+    expect(await statusOf(api, exId, userIds().artist)).toBe('SUBMITTED');
+    expect(await statusOf(api, exId, userIds().artist2)).toBe('SUBMITTED');
 
+    // [⋯] 더 보기에 '모집 마감' 되돌리기도, [선정 마치기]도 없다(새 공고는 선정 마감일이 그 일을 한다) — 서버도 400
+    await workspace(page).getByRole('button', { name: '더 보기' }).first().click();
+    await expect(page.getByRole('menuitem', { name: /모집 마감/ })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: /선정 마치기/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    const reopen = await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: auth('gallery'), data: { recruitmentClosed: false } });
+    expect(reopen.status()).toBe(400);
+    expect((await api.post(`${API}/operations/${exId}/finish-selection`, { headers: auth('gallery') })).status()).toBe(400);
+
+    // 이제 선정 — 선정 마감일까지. 버튼은 [수락하기]뿐(거절은 없다 — 서버도 400)
+    await expect(page.locator('[data-task-bar]')).toContainText(/까지 선정하세요 · 검토 대기 2명/, { timeout: 15000 });
+    await expect(page.locator('[data-task-bar]')).toContainText('그날이 지나면 수락하지 않은 지원자는 미선정이 돼요');
+    const noReject = await api.patch(`${API}/exhibitions/${exId}/applications/${app1}`, { headers: auth('gallery'), data: { status: 'REJECTED' } });
+    expect(noReject.status()).toBe(400);
+    await applicantRow(manager, 'Artist 1').getByRole('button').first().click();
+    await expect(page.locator('[data-decision-bar]').first().getByRole('button', { name: '거절', exact: true })).toHaveCount(0);
+    await closeApplicantSheet(page);
+    await acceptApplicant(page, manager, 'Artist 2');
+    await expect(page.locator('[data-task-bar]')).toContainText(/까지 선정하세요 · 검토 대기 1명/, { timeout: 15000 });
+
+    // [선정 마감일 변경] — 지나기 전까지 고친다(휴대폰은 [관리] 메뉴 안)
+    await manager.getByRole('button', { name: '관리' }).click();
+    await page.getByRole('menuitem', { name: '선정 마감일 변경' }).click();
+    const editor = page.locator('[data-selection-deadline-editor]');
+    await expect(editor).toBeVisible();
+    await pickSchedule(page, `#selection-deadline-${exId}`, [kstDay(37)]);
+    await editor.getByRole('button', { name: '저장', exact: true }).click();
+    await expect(page.locator('body')).toContainText('선정 마감일을', { timeout: 10000 });
+    const detail = await (await api.get(`${API}/exhibitions/${exId}`, { headers: auth('gallery') })).json();
+    expect(String(detail.selectionDeadline).slice(0, 10)).toBe(kstDay(37));
+
+    // 선정 마감일이 지나면 — 남은 검토 대기(Artist 1)는 알림 없이 미선정, 그 뒤로는 수락할 수 없다
+    await sql(`UPDATE "Exhibition" SET "selectionDeadline" = now() - interval '2 days' WHERE id = ${exId};`);
+    await page.reload();
+    await workspaceTab(page, '지원자').click();
+    const row = applicantRow(manager, 'Artist 1');
+    await expect(row).toContainText('미선정', { timeout: 15000 });
+    await row.getByRole('button').first().click();
+    await expect(page.locator('[data-closed-out]')).toContainText('까지 수락하지 않아 미선정이 됐어요.');
+    await expect(page.locator('[data-decision-bar]').first()).toContainText('미선정 — 선정 마감일이 지나 바꿀 수 없어요.');
+    await expect(page.locator('[data-decision-bar]').first().getByRole('button', { name: '수락하기' })).toHaveCount(0);
+    await closeApplicantSheet(page);
     expect(await statusOf(api, exId, userIds().artist)).toBe('REJECTED');
-    expect(await statusOf(api, exId, userIds().artist2)).toBe('ACCEPTED');
+    const again = await api.patch(`${API}/exhibitions/${exId}/applications/${app1}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
+    expect(again.status(), '선정이 끝나면 되돌릴 수 없다').toBe(400);
     const n = (await notes(api, 'artist')).find((x) => x.type === 'APPLICATION_STATUS' && x.message.includes(title));
-    expect(n?.message).toBe(`"${title}" 지원 결과가 나왔어요.`);
-    // 진행 띠가 전시 준비로
-    await expect(workspace(page).locator('ol[aria-label="진행 단계"] [aria-current="step"]')).toContainText('전시 준비');
+    expect(n, '미선정은 알리지 않는다(사용자 결정)').toBeUndefined();
     await api.dispose();
     await ctx.close();
   });
 });
 
 test.describe('C. 지원자 심사', () => {
-  test('★ 휴대폰은 한 장씩 — 수락하면 다음 검토 대기로 넘어가고, 마지막을 거절하면 창이 닫힌다', async ({ browser }) => {
+  test('★ 휴대폰은 한 장씩 — 수락하면 다음 검토 대기로 넘어가고, 마지막을 수락하면 창이 닫힌다(거절 버튼은 없다)', async ({ browser }) => {
     const api = await pwRequest.newContext();
     const title = newTitle('심사');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 5 });
     await apply(api, exId, 'artist');
     await apply(api, exId, 'artist2');
+    await closeRecruitment(api, exId);   // 심사는 모집을 마감한 뒤에(규칙 90)
 
     const { page, ctx } = await openAs(browser, 'gallery');
     const manager = await openApplicantManager(page, title);
@@ -149,15 +217,16 @@ test.describe('C. 지원자 심사', () => {
     // 다음 검토 대기(Artist 2)로 넘어간다 — 접고 → 찾고 → 다시 펼치지 않는다
     const sheet2 = page.getByRole('dialog', { name: 'Artist 2 지원서' });
     await expect(sheet2).toBeVisible({ timeout: 10000 });
-    await sheet2.locator('[data-decision-bar]').getByRole('button', { name: '거절', exact: true }).click();
-    await page.getByRole('dialog', { name: /Artist 2 님의 지원을 거절할까요/ }).getByRole('button', { name: '거절', exact: true }).click();
+    await expect(sheet2.locator('[data-decision-bar]').getByRole('button', { name: '거절', exact: true })).toHaveCount(0);
+    await sheet2.locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).click();
+    await page.getByRole('dialog', { name: /Artist 2 님을 수락할까요/ }).getByRole('button', { name: '수락하기', exact: true }).click();
     // 남은 검토 대기가 없으면 창이 닫힌다
     await expect(page.getByRole('dialog', { name: /지원서$/ })).toHaveCount(0, { timeout: 10000 });
     await expect(applicantRow(manager, 'Artist 1')).toContainText('수락됨');
-    await expect(applicantRow(manager, 'Artist 2')).toContainText('거절');
+    await expect(applicantRow(manager, 'Artist 2')).toContainText('수락됨');
 
     expect(await statusOf(api, exId, userIds().artist)).toBe('ACCEPTED');
-    expect(await statusOf(api, exId, userIds().artist2)).toBe('REJECTED');
+    expect(await statusOf(api, exId, userIds().artist2)).toBe('ACCEPTED');
     await api.dispose();
     await ctx.close();
   });

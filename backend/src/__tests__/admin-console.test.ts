@@ -68,9 +68,12 @@ describe('관리자 화면 API (2026-11-21)', () => {
       await testPrisma.approvalRequest.create({ data: { type: 'EXHIBITION_DELETE', targetId: 999, changes: '{"reason":"사정이 있어요","title":"x"}', requesterId: 3 } });
       await testPrisma.inquiry.create({ data: { subject: 'q', content: 'c', userId: 1 } });
       await testPrisma.inquiry.create({ data: { subject: 'q2', content: 'c', userId: 1, status: 'ANSWERED', reply: 'r', repliedAt: new Date() } });
-      // 아트링크가 직접 운영(갤러리 없음) · 2일 뒤 마감 · 검토 대기 1
+      // 아트링크가 직접 운영(갤러리 없음) · 2일 뒤 마감 · 모집 중이라 검토 대기 1은 아직 할 일이 아니다(수락·거절은 마감 뒤 — 규칙 90)
       const hosted = await testPrisma.exhibition.create({ data: { title: '주최', type: 'GROUP', deadline: dateIn(2), capacity: 3, region: 'SEOUL', description: 'd', status: 'APPROVED', hostType: 'ADMIN', recruitOnly: true } });
       await testPrisma.application.create({ data: { userId: 1, exhibitionId: hosted.id, status: 'SUBMITTED' } });
+      // 일찍 마감한 직접 운영 공모 · 검토 대기 1 — 이건 관리자가 정할 차례
+      const closedHosted = await testPrisma.exhibition.create({ data: { title: '주최 마감', type: 'GROUP', deadline: dateIn(1), capacity: 3, region: 'SEOUL', description: 'd', status: 'APPROVED', hostType: 'ADMIN', recruitOnly: true, recruitmentClosed: true } });
+      await testPrisma.application.create({ data: { userId: 2, exhibitionId: closedHosted.id, status: 'SUBMITTED' } });
       // 갤러리 공모 — 전시 끝나고 10일, 정산 요청 전 → 멈춤
       await testPrisma.exhibition.create({ data: { title: '끝난 전시', type: 'SOLO', deadline: dateIn(-60), exhibitDate: dateIn(-10), capacity: 3, region: 'SEOUL', description: 'd', status: 'APPROVED', galleryId: g.id, ended: true } });
 

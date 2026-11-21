@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, createExhibition } from '../lib/helpers';
+import {
+  openAs, tokenFor, applyToExhibition, createExhibition, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 리뷰 작성 UI: 수락된 지원이 있는 작가가 갤러리 상세에서 리뷰 작성 → 노출 + 갤러리 리뷰 개수 반영.
@@ -29,6 +31,7 @@ test.beforeAll(async () => {
   // 지원 수락
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
   const app = (apps.applications || apps)[0];
+  await closeRecruitment(api, exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${exId}/applications/${app.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'REVIEWED' } });
   await api.patch(`${API}/exhibitions/${exId}/applications/${app.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
   await api.dispose();

@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
+import {
+  openAs, tokenFor, applyToExhibition, exhibitionDates, closeRecruitment,
+} from '../lib/helpers';
 
 const API = 'http://localhost:4000/api';
 
@@ -26,6 +28,7 @@ test('정원(capacity)은 선정 인원 — 지원은 넘겨도 받고, 수락�
   expect(first.status()).toBe(201);
   expect(second.status(), '정원 1명이어도 두 번째 지원은 받는다').toBe(201);
 
+  await closeRecruitment(api, created.id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   const accept = (appId: number) => api.patch(`${API}/exhibitions/${created.id}/applications/${appId}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
   expect((await accept((await first.json()).id)).status()).toBe(200);
   const over = await accept((await second.json()).id);

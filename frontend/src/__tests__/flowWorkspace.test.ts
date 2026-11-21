@@ -24,12 +24,25 @@ const ddayFn = (d: string | Date) => Math.round((new Date(d).getTime() - Date.UT
 const base: StripInput = { status: 'APPROVED', recruitOnly: false };
 
 describe('flowStrip — 다섯 칸(갤러리)', () => {
-  it('모집 중: 첫 칸이 지금 · 수락/정원 · 대기 · 7일 안 마감은 빨강', () => {
-    const cells = flowStrip('gallery', { ...base, deadline: day(5), accepted: 2, pending: 3, capacity: 4, exhibitStartDate: day(30), exhibitDate: day(44) }, NOW);
+  it('모집 중: 첫 칸이 지금 · 받은 지원 수(아직 아무도 결정하지 않는다, 규칙 90) · 7일 안 마감은 빨강', () => {
+    const cells = flowStrip('gallery', { ...base, deadline: day(5), accepted: 0, pending: 3, capacity: 4, exhibitStartDate: day(30), exhibitDate: day(44) }, NOW);
     expect(cells.map(c => c.label)).toEqual(['모집', '전시 준비', '전시', '정산', '마무리']);
     expect(cells.map(c => c.state)).toEqual(['current', 'todo', 'todo', 'todo', 'todo']);
-    expect(cells[0]).toMatchObject({ value: '수락 2/4 · 대기 3', hot: true });
+    expect(cells[0]).toMatchObject({ value: '지원 3', hot: true });
     expect(cells[0]!.note).toContain('마감');
+    // 초대 코드로 들어온 수락이 있으면 함께
+    expect(flowStrip('gallery', { ...base, deadline: day(5), accepted: 2, pending: 3, capacity: 4 }, NOW)[0]!.value).toBe('수락 2/4 · 지원 3');
+    // 마감 뒤엔 수락/정원 · 대기
+    expect(flowStrip('gallery', { ...base, recruitmentClosed: true, accepted: 2, pending: 3, capacity: 4 }, NOW)[0]!.value).toBe('수락 2/4 · 대기 3');
+  });
+
+  it('★ 공모만 진행: 마감 뒤 결정을 기다리는 지원이 남았으면 \'선정 중\' — 선정 칸이 지금 · 다 정하면 선정 완료', () => {
+    const only = { ...base, recruitOnly: true, recruitmentClosed: true, accepted: 1, capacity: 3 };
+    const selecting = flowStrip('gallery', { ...only, pending: 2 }, NOW);
+    expect(selecting.map(c => c.state)).toEqual(['done', 'current']);
+    expect(selecting[1]).toMatchObject({ label: '선정', value: '수락 1/3 · 대기 2' });
+    const done = flowStrip('gallery', { ...only, pending: 0 }, NOW);
+    expect(done[1]).toMatchObject({ state: 'current', value: '선정 완료' });
   });
 
   it('마감이 8일 넘게 남았으면 빨강이 아니다', () => {
@@ -245,7 +258,7 @@ describe('화면 소스 가드 — 되돌리기 쉬운 것', () => {
     expect(ws).toMatch(/if \(seenKey !== location\.key\)/);
     expect(art).toMatch(/if \(seenKey !== location\.key\)/);
     // REL-13 숫자가 오기 전엔 할 일을 말하지 않는다 · REL-04 받지 못하면 이유를 말한다
-    expect(ws).toMatch(/const barText = countsFailed \?/);
+    expect(ws).toMatch(/const barText(: ReactNode)? = countsFailed \?/);
     expect(read('components/operation/SettlementSection.tsx')).toContain('정산 내역을 불러오지 못했어요');
     // WS-02 열 수 없는 탭은 고르지 않는다
     expect(ws).toMatch(/view && \(!access \|\| openable\(view\)\) \? view : defaultView/);

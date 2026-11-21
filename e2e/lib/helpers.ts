@@ -55,6 +55,16 @@ export function applyTermsVersion(): string {
 }
 
 /**
+ * 모집 마감(API) — **수락·거절은 마감한 뒤에만** 된다(2026-11-21, 규칙 90). 결정하는 스펙은 지원을 다 받은 뒤 이걸 먼저 부른다.
+ * 마감하면 새 지원·지원서 수정·취소가 막힌다(지원을 더 받을 스펙은 그 뒤에 부를 것). 이미 마감이면 아무 일도 없다(200).
+ * 관리자 토큰으로 보낸다 — 아트링크 주최·위임 공모도 막히지 않게(단계 전환 권한은 운영자·관리자).
+ */
+export async function closeRecruitment(api: import('@playwright/test').APIRequestContext, exId: number) {
+  const r = await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: { Authorization: `Bearer ${tokenFor('admin')}` }, data: { recruitmentClosed: true } });
+  expect(r.status(), await r.text()).toBe(200);
+}
+
+/**
  * 공모 지원 (고정 양식: 작가약력 필수 + 작품사진 1장 이상 필수 + 약관 동의 필수).
  * E2E 셋업용 — APIRequestContext와 작가 토큰으로 유효 지원 1건 생성.
  */
@@ -451,7 +461,8 @@ export function exhibitionDates(now = Date.now()) {
   return {
     deadlineStart: day(0),        // 접수 시작
     deadline: day(30),            // 지원 마감
-    submissionDeadline: day(40),  // 자료 제출 마감 (지원마감 < 여기 < 전시시작)
+    selectionDeadline: day(35),   // 선정 마감(2026-11-21, 규칙 90 — 새 공고 필수) — 지원마감 < 여기 < 자료 제출 마감
+    submissionDeadline: day(40),  // 자료 제출 마감 (선정마감 < 여기 < 전시시작)
     exhibitStartDate: day(50),    // 전시 시작
     exhibitDate: day(60),         // 전시 종료
   };

@@ -197,3 +197,11 @@ export async function seedExhibition(galleryId: number) {
     },
   });
 }
+
+/**
+ * 모집을 마감한다 — **수락·거절은 마감한 뒤에만** 된다(2026-11-21, 규칙 90). 결정하는 테스트는 지원을 다 받은 뒤 이걸 먼저 부른다.
+ * (마감하면 새 지원·지원서 수정·취소가 막히므로, 지원을 더 받을 테스트는 그 뒤에 부를 것)
+ */
+export async function closeRecruitment(exhibitionId: number) {
+  await testPrisma.exhibition.update({ where: { id: exhibitionId }, data: { recruitmentClosed: true } });
+}

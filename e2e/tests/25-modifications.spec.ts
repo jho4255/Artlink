@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, exhibitionDates, openHomepageEditor } from '../lib/helpers';
+import {
+  openAs, tokenFor, userIds, applyToExhibition, exhibitionDates, openHomepageEditor, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 2026-06-10 수정사항 검증 (항목 1·2·11·12·15·16·17 중심)
@@ -28,6 +30,7 @@ async function acceptArtist1(api: APIRequestContext, exId: number) {
   await applyToExhibition(api, exId, tokenFor('artist'));
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
   const app = (apps.applications || apps)[0];
+  await closeRecruitment(api, exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${exId}/applications/${app.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
 }
 

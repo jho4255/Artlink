@@ -21,8 +21,13 @@ interface ConfirmDialogProps {
    * "정말 하시겠습니까?" 대신 결과를 적어 준다 — 처음 쓰는 사람은 무엇을 묻는지부터 모른다.
    */
   details?: string[];
-  /** 줄 목록 아래에 붙는 것 — 모집 마감 확인창의 '남은 검토 대기를 미선정으로' 체크(2026-11-20) */
+  /** 줄 목록 아래에 붙는 것 */
   extra?: ReactNode;
+  /**
+   * 제목 바로 아래 강조 한 줄 — **되돌릴 수 없다**를 알린다(2026-11-21 사용자 결정: 모집 마감은 되돌릴 수 없고, 그걸 강조해서 알린다).
+   * 줄 목록에 섞으면 다른 줄처럼 읽혀 그냥 지나친다. 빨강(accent)은 이것 하나만 — 버튼은 평소 색 그대로다(누르는 게 잘못이 아니다).
+   */
+  warning?: ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: 'default' | 'danger';
@@ -36,6 +41,7 @@ export default function ConfirmDialog({
   message,
   details,
   extra,
+  warning,
   confirmText = '확인',
   cancelText = '취소',
   variant = 'default',
@@ -113,6 +119,12 @@ export default function ConfirmDialog({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id={titleId} className="text-lg font-bold mb-2">{title}</h3>
+            {warning && (
+              <p data-confirm-warning className="mb-3 flex items-start gap-2 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5 text-[14.5px] font-semibold leading-snug text-accent">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mt-[1px] shrink-0"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+                <span>{warning}</span>
+              </p>
+            )}
             {message && <p className={`text-sm text-gray-600 whitespace-pre-wrap ${details?.length ? 'mb-3' : 'mb-6'}`}>{message}</p>}
             {details && details.length > 0 && (
               <ul className="mb-6 space-y-2 text-sm leading-relaxed text-gray-600">

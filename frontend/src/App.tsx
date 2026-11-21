@@ -139,6 +139,8 @@ export default function App() {
         <Route path="/exhibitions/:id" element={<ExhibitionDetailPage />} />
         {/* 지원서(2026-09-29) — 예전엔 상세 위 모달이었다. 로그인 전이면 ProtectedRoute 가 로그인 뒤 여기로 돌려보낸다 */}
         <Route path="/exhibitions/:id/apply" element={<ProtectedRoute><ApplyPage /></ProtectedRoute>} />
+        {/* 낸 지원서 고치기(2026-11-21, 규칙 90) — 같은 화면을 낸 내용으로 채워 연다. 검토 대기 · 모집 중에만(아니면 내 전시로) */}
+        <Route path="/exhibitions/:id/apply/edit" element={<ProtectedRoute><ApplyPage key="edit" mode="edit" /></ProtectedRoute>} />
         {/* 초대 코드 참여(2026-09-27) — 비로그인도 공모를 먼저 본다. 참여는 페이지 안에서 로그인 게이팅 */}
         <Route path="/join/:code" element={<JoinExhibitionPage />} />
         <Route path="/exhibitions/:id/operation/new" element={

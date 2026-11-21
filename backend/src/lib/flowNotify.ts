@@ -113,31 +113,5 @@ export async function notifySettlementAllApproved(exhibition: FlowExhibition & {
   });
 }
 
-/**
- * ④ 모집 마감과 함께 **남은 검토 대기 지원을 미선정으로**(2026-11-20 사용자 결정 D2 — 확인창의 체크, 기본 꺼짐).
- * 미선정 알림 문구는 지원 상태 변경과 같다 — `"<공모명>" 지원 결과가 나왔어요.` 까지만(2026-10-03 사용자 지정).
- * 돌려준 수만큼 처리했다. 수락은 건드리지 않는다.
- */
-export async function rejectPendingApplications(exhibition: { id: number; title: string }): Promise<number> {
-  /*
-    **이 문장이 실제로 바꾼 행만** 돌려받아 그 사람에게만 알린다(RETURNING, 2026-11-20 신뢰성 점검 — TESTCASES S2).
-    예전엔 '대기였던 id 중 지금 거절인 것'을 다시 읽어 알렸다 — 그 사이 갤러리가 같은 지원을 손으로 거절했으면
-    그 사람에게 미선정 알림이 두 통 갔다. 상태 조건을 걸어 바꾸므로 그 사이 수락된 지원은 건드리지 않는다(규칙 46).
-  */
-  const changed = await prisma.$queryRaw<{ userId: number }[]>`
-    UPDATE "Application" SET "status" = 'REJECTED', "updatedAt" = NOW()
-    WHERE "exhibitionId" = ${exhibition.id} AND "status" IN ('SUBMITTED', 'REVIEWED')
-    RETURNING "userId"`;
-  if (changed.length === 0) return 0;
-  try {
-    await prisma.notification.createMany({
-      data: changed.map((a) => ({
-        userId: a.userId,
-        type: 'APPLICATION_STATUS',
-        message: `"${exhibition.title}" 지원 결과가 나왔어요.`,
-        linkUrl: artistExhibitionLink(exhibition.id),
-      })),
-    });
-  } catch { /* 알림은 덤 — 결과는 [내 전시] 카드가 말한다 */ }
-  return changed.length;
-}
+// ④ 모집 마감 때 남은 검토 대기를 미선정으로 — 2026-11-21 부터 **알림 없이 늘** 그렇게 된다(사용자 결정, 규칙 90).
+//    여기 있던 `rejectPendingApplications`(D2 — 확인창의 체크, 미선정 알림을 보냈다)는 `lib/applicationWindow.ts closeOutPendingApplications` 로 옮겼다.

@@ -135,4 +135,6 @@ export const stashKeys = {
   submission: (exhibitionId: number | string, artistId: number) => `submission:${exhibitionId}:${artistId}`,
   submissionPrefix: (exhibitionId: number | string) => `submission:${exhibitionId}:`,
   apply: (exhibitionId: number | string) => `apply:${exhibitionId}`,
+  /** 낸 지원서 고치기(2026-11-21, 규칙 90) — 새로 쓰던 지원서와 섞이지 않게 따로 */
+  applyEdit: (exhibitionId: number | string) => `apply-edit:${exhibitionId}`,
 };

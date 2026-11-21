@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>갤러리 알림 지원 취소</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 420px; height: 460px; box-sizing: border-box; padding: 20px; background: #f3f4f6; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; color: #111827">
+<div role="dialog" aria-label="알림" style="width: 380px; border-radius: 14px; background: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.12); overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #f3f4f6">
+<p style="margin: 0; font-size: 15px; font-weight: 600">알림</p>
+<button type="button" style="min-height: 36px; border: 0; background: none; font: inherit; font-size: 13px; color: #6b7280">모두 읽음</button>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ items }}" as="n" hint-placeholder-count="4">
+<li style="display: flex; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #f3f4f6; background: {{ n.bg }}">
+<span aria-hidden="true" style="flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: {{ n.dot }}"></span>
+<span style="min-width: 0"><span style="display: block; font-size: 14px; line-height: 1.5; color: #111827">{{ n.text }}</span><span style="display: block; margin-top: 4px; font-size: 12px; color: #9ca3af">{{ n.when }}</span></span>
+</li>
+</sc-for>
+</ul>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":460}}'>
+class Component extends DCLogic {
+renderVals() {
+const N = (text, when, unread) => ({ text, when, bg: unread ? '#fafafa' : '#ffffff', dot: unread ? '#c4302b' : 'transparent' });
+return {
+items: [
+N('"겨울 드로잉 클럽 참여 작가 모집"에서 김서윤님이 지원을 취소했어요.', '방금', true),
+N('"겨울 드로잉 클럽 참여 작가 모집"에 정민재님이 지원했어요.', '1일 전', false),
+N('"겨울 드로잉 클럽 참여 작가 모집"에 김서윤님이 지원했어요.', '2일 전', false),
+N('"가을 소품전 《작은 방》" 정산을 작가 모두 확인했어요.', '9.28', false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

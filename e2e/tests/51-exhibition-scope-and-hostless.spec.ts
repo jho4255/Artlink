@@ -34,7 +34,7 @@ test.describe('아트링크가 갤러리를 안 끼고 여는 공모', () => {
 
     await page.getByPlaceholder('공모 제목').fill(title);
     // 일정은 달력으로(2026-10-28) — 일어나는 순서대로 고른다
-    await pickSchedule(page, '#hosted-start', [d.deadlineStart, d.deadline, d.submissionDeadline, d.exhibitStartDate, d.exhibitDate]);
+    await pickSchedule(page, '#hosted-start', [d.deadlineStart, d.deadline, d.selectionDeadline, d.submissionDeadline, d.exhibitStartDate, d.exhibitDate]);
     await typeRich(page, '공모 소개', '운영 갤러리 없이 여는 기획 공모입니다.');   // 서식 있는 글 편집기(2026-10-03)
 
     // 하단 줄 [등록] → 확인 창(약관 없음 — 아트링크 주최는 승인 없이 바로 게시). 폼 단추만 누르면 아무 요청도 안 나간다
@@ -101,7 +101,7 @@ test.describe('공모만 진행하는 공고', () => {
     // 칸은 id 로 채운다 — 순서로 집으면 칸이 빠지거나 옮겨질 때마다 엉뚱한 칸에 들어간다(2026-09-29 순서 변경)
     await page.locator('#ex-gallery').selectOption({ index: 1 });
     await page.locator('#ex-title').fill(title);
-    await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline]);   // 공모만 진행 — 두 칸뿐(달력으로, 2026-10-28)
+    await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline, d.selectionDeadline]);   // 공모만 진행 — 세 칸(선정 마감까지, 규칙 90)
     await typeRich(page, '공모 소개', '지원자 선정까지만 진행합니다.');
     // 하단 줄 [등록 요청] → 확인 창(약관 동의) → [등록 요청]
     await submitRegistration(page);
@@ -111,6 +111,8 @@ test.describe('공모만 진행하는 공고', () => {
     expect(body.recruitOnly, '폼이 recruitOnly 를 안 보냈다').toBe(true);
     // 자료제출 마감일은 아예 안 보내거나 빈 값이어야 한다(없는 단계의 기한을 만들면 안 된다)
     expect(body.submissionDeadline || '').toBe('');
+    // 선정 마감일은 공모만 진행해도 보낸다(언제 결과가 나오는지는 있어야 한다)
+    expect(body.selectionDeadline).toBe(d.selectionDeadline);
     // 공모 소개는 서식 있는 글 편집기가 만든 HTML 로 간다(2026-10-03)
     expect(body.description).toBe('<p>지원자 선정까지만 진행합니다.</p>');
 

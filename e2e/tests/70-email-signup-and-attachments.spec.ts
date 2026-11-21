@@ -289,7 +289,7 @@ test.describe('공모 첨부파일', () => {
     await page.getByRole('button', { name: /공모만 진행/ }).click();
     await page.locator('#ex-gallery').selectOption({ index: 1 });
     await page.locator('#ex-title').fill(`E2E 첨부 등록 ${Date.now()}`);
-    await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline]);   // 일정은 달력으로(2026-10-28)
+    await pickSchedule(page, '#ex-start', [d.deadlineStart, d.deadline, d.selectionDeadline]);   // 일정은 달력으로(2026-10-28) · 선정 마감까지(규칙 90)
     await typeRich(page, '공모 소개', '요강을 첨부합니다.');
     await page.getByTestId('attachment-input').setInputFiles([{ name: '공간 도면.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') }]);
     await expect(page.getByRole('list', { name: '붙인 파일' })).toContainText('공간 도면.png', { timeout: 20000 });

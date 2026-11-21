@@ -104,8 +104,10 @@ describe('붙이는 곳 — 소스 가드', () => {
     expect(op).toContain('takeAuthStash<SubmissionStash>(myUserId, stashKey)');
     expect(op).toContain('authStashKeys(myUserId, prefix)');   // 대신 입력하던 작가를 펼친 채로
     const ap = read('pages/ApplyPage.tsx');
-    expect(ap).toContain('useStashOnAuthLoss(id ? stashKeys.apply(id)');
-    expect(ap).toContain('peekAuthStash<ApplyStash>(user?.id, stashKeys.apply(id))');
+    // 새 지원서와 낸 지원서 고치기(규칙 90)는 칸이 따로다 — 섞이면 고치던 내용이 새 지원서에 끼어든다
+    expect(ap).toContain('const stashKey = id ? (isEdit ? stashKeys.applyEdit(id) : stashKeys.apply(id)) : null;');
+    expect(ap).toContain('useStashOnAuthLoss(stashKey');
+    expect(ap.match(/peekAuthStash<ApplyStash>\(user\?\.id, stashKey\)/g)?.length).toBe(2);
     // 되살린 화면이 그 탭부터 열린다
     expect(read('components/workspace/ExhibitionWorkspace.tsx')).toContain('setView(stashView() ?? defaultView)');
     expect(read('components/workspace/ArtistExhibitionWorkspace.tsx')).toContain('hasAuthStash(user?.id, stashKeys.submission(id');

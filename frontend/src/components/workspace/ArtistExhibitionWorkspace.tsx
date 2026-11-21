@@ -9,11 +9,11 @@
  *
  * 예전엔 [내 전시] 카드 안에서 [전시 관리]를 눌러 구역 셋(공지 · 출품 자료 · 정산 확인)을 접었다 폈다 했다(옛 `ArtistOperationPanel`).
  * 판단은 그대로 옮겼다 — 지금 할 일이 있는 탭부터 연다(`artistDefaultView`) · 정산은 전시가 끝나야 열린다 · 공모만 진행이면 공지·지원서뿐.
- * 심사 중·미선정은 탭 없이 내가 낸 지원서만.
+ * 심사 중·미선정은 탭 없이 내가 낸 지원서만. 심사 중이고 모집이 열려 있으면 [지원서 수정]·[지원 취소](2026-11-21, 규칙 90 — lib/applicationWindow.ts).
  * ⚠️ 한 번 연 탭은 떼지 않고 숨긴다 — 출품 자료를 쓰다가 [공지]를 봐도 입력이 남는다.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -21,7 +21,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { hasAuthStash, stashKeys } from '@/lib/authStash';
 import { cn } from '@/lib/utils';
-import { stageOf, flowStrip, artistDefaultView, artistNextTask, artistSubText, applicationStatusView, type ArtistView, type ArtistSnapshot } from '@/lib/flowLabels';
+import { stageOf, flowStrip, artistDefaultView, artistNextTask, artistPendingText, artistSubText, applicationStatusView, type ArtistView, type ArtistSnapshot } from '@/lib/flowLabels';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { confirmDiscardUnsaved } from '@/hooks/useUnsavedChanges';
 import FlowStrip from '@/components/flow/FlowStrip';
@@ -30,6 +30,9 @@ import PageTabBar from '@/components/shared/PageTabBar';
 import Thumb from '@/components/shared/Thumb';
 import HostBadge from '@/components/shared/HostBadge';
 import ApplicationContent from '@/components/shared/ApplicationContent';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { canChangeApplication } from '@/lib/applicationWindow';
+import { shortDate } from '@/lib/listings';
 import { NoticesSection, MySubmissionSection, MyArtistSettlementSection } from '@/pages/OperationPage';
 import type { OperationAccess } from '@/types';
 
@@ -54,6 +57,8 @@ export default function ArtistExhibitionWorkspace({ exhibitionId, initialView = 
   const accepted = app?.status === 'ACCEPTED';
   const ex = app?.exhibition ?? {};
   const recruitOnly = !!ex.recruitOnly;
+  // 지원서를 고치거나 취소할 수 있나 — 검토 대기 · 모집이 열려 있을 때만(서버와 같은 규칙, lib/applicationWindow.ts)
+  const changeable = canChangeApplication(app, ex);
 
   // 잠금·종료는 운영 권한 응답이 정확하다(시작일 경과 자동 확정 — 서버 computeConfirmed). 목록 응답의 confirmed 는 수동 확정 값이다
   const { data: access } = useQuery<OperationAccess>({
@@ -82,6 +87,10 @@ export default function ArtistExhibitionWorkspace({ exhibitionId, initialView = 
     submissionDeadline: ex.submissionDeadline,
     exhibitStartDate: ex.exhibitStartDate,
     mySettlementStatus: app?.mySettlementStatus ?? null,
+    // 심사 중 안내 — '○○까지 선정 결과가 나와요'(규칙 90)
+    recruitmentClosed: !!(access?.recruitmentClosed ?? ex.recruitmentClosed),
+    deadline: ex.deadline,
+    selectionDeadline: ex.selectionDeadline ?? null,
   };
   // 단계 판단은 운영 권한 응답을 먼저 믿는다(시작일 경과 자동 확정 · 방금 바뀐 종료) — 목록 응답보다 새롭다
   const live = access ? { ...ex, confirmed: access.confirmed, ended: access.ended, recruitmentClosed: access.recruitmentClosed, settledAt: access.settledAt ?? ex.settledAt, settlementRequestedAt: access.settlementRequestedAt ?? ex.settlementRequestedAt } : ex;
@@ -152,8 +161,24 @@ export default function ArtistExhibitionWorkspace({ exhibitionId, initialView = 
   const acking = useRef(false);
   const ack = (appId: number) => { if (acking.current) return; acking.current = true; ackMutation.mutate(appId); };
 
+  /*
+    지원 취소(2026-11-21, 규칙 90) — 검토 대기 · 모집 중에만. 지우면 이 화면이 비므로 **먼저** 공고 상세로 옮기고(다시 지원할 수 있는 곳),
+    그 뒤에 목록을 다시 받는다 — 순서가 바뀌면 이 화면이 '찾지 못했어요'를 띄운 채 떠난다.
+  */
+  const navigate = useNavigate();
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const cancelMutation = useMutation({
+    mutationFn: () => api.delete(`/exhibitions/${exhibitionId}/my-application`),
+    onSuccess: () => {
+      navigate(`/exhibitions/${exhibitionId}`, { replace: true });
+      toast.success('지원을 취소했어요.');
+      for (const queryKey of [['my-applications'], ['exhibition', id], ['exhibitions']]) qc.invalidateQueries({ queryKey });
+    },
+    onError: (e: { response?: { data?: { error?: string } } }) => { toast.error(e.response?.data?.error || '취소하지 못했어요.'); qc.invalidateQueries({ queryKey: ['my-applications'] }); },
+  });
+
   // 알림으로 들어왔는데 지원이 없다(지원을 지웠거나 다른 계정) — 빈 화면 대신 돌아갈 길
-  const missing = !isLoading && !app;
+  const missing = !isLoading && !app && !cancelMutation.isSuccess;
   useEffect(() => { if (missing) toast.error('이 전시를 찾지 못했어요.'); }, [missing]);
 
   const back = (
@@ -202,19 +227,44 @@ export default function ArtistExhibitionWorkspace({ exhibitionId, initialView = 
       <FlowStrip cells={strip} variant={wide ? 'full' : 'bar'} className="mt-5" />
       {!wide && noteCell && <p className={cn('mt-2.5 text-sm font-semibold', noteCell.hot ? 'text-accent' : 'text-gray-700')}>{noteCell.key === 'prepare' ? `출품 자료 ${noteCell.note}` : noteCell.note}</p>}
 
-      {/* 심사 중 · 미선정 — 탭 없이 한 줄 + 내가 낸 지원서 */}
+      {/* 심사 중 · 미선정 — 탭 없이 한 줄 + 내가 낸 지원서. 심사 중이고 모집이 열려 있으면 고치기·취소(규칙 90) */}
       {!accepted && (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 py-3.5">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-x-5 gap-y-3 border-y border-gray-200 py-3.5">
           <p className="text-[15px] text-gray-700">
-            {app.status === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요.' : '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.'}
+            {app.status === 'REJECTED' ? '이번 공모에서는 선정되지 않았어요.' : artistPendingText(snapshot)}
           </p>
           {app.status === 'REJECTED' && (
             <button type="button" onClick={() => ack(app.id)} disabled={ackMutation.isPending} className="min-h-[44px] rounded-lg border border-gray-300 px-4 text-sm text-gray-900 hover:bg-gray-50 disabled:opacity-50">
               확인하고 목록에서 지우기
             </button>
           )}
+          {changeable && (
+            <div data-application-actions className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 sm:w-auto">
+              <span className="order-last w-full text-[13px] text-gray-500 sm:order-none sm:mr-2 sm:w-auto">접수 마감 {shortDate(ex.deadline)}까지</span>
+              <Link to={`/exhibitions/${exhibitionId}/apply/edit`} state={{ fromWorkspace: true }} className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-900 hover:bg-gray-50 sm:flex-none">
+                지원서 수정
+              </Link>
+              <button type="button" onClick={() => setCancelOpen(true)} disabled={cancelMutation.isPending} className="min-h-[44px] px-3 text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 disabled:opacity-50">
+                지원 취소
+              </button>
+            </div>
+          )}
         </div>
       )}
+      <ConfirmDialog
+        open={cancelOpen}
+        title="지원을 취소할까요?"
+        details={[
+          '갤러리 지원자 목록에서 빠지고, 낸 지원서는 지워져요.',
+          '갤러리에 지원을 취소했다는 알림이 가요.',
+          ...(ex.deadline ? [`${shortDate(ex.deadline)} 접수 마감 전이면 다시 지원할 수 있어요.`] : []),
+        ]}
+        cancelText="그대로 두기"
+        confirmText="지원 취소"
+        variant="danger"
+        onConfirm={() => { setCancelOpen(false); cancelMutation.mutate(); }}
+        onCancel={() => setCancelOpen(false)}
+      />
       {accepted && task && wide && (
         <p className={cn('mt-4 text-[15px]', task.tone === 'attention' ? 'font-medium text-gray-950' : 'text-gray-600')}>
           <span aria-hidden className={cn('mr-2 inline-block h-1.5 w-1.5 rounded-full align-middle', task.tone === 'attention' ? 'bg-accent' : 'bg-gray-400')} />
@@ -269,7 +319,10 @@ export default function ArtistExhibitionWorkspace({ exhibitionId, initialView = 
         </>
       ) : (
         <div className="pt-6">
-          <h2 className="mb-3 text-sm font-semibold text-gray-950">내가 낸 지원서</h2>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h2 className="text-sm font-semibold text-gray-950">내가 낸 지원서</h2>
+            <span className="text-[12.5px] tabular-nums text-gray-500">{shortDate(app.createdAt)} 제출{app.editedAt ? ` · ${shortDate(app.editedAt)} 수정` : ''}</span>
+          </div>
           <ApplicationContent app={app} customFields={ex.customFields} />
         </div>
       )}

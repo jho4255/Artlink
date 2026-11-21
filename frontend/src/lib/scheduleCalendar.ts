@@ -203,18 +203,21 @@ export function openingMonth(steps: ScheduleStep[], values: ScheduleValues, i: n
 /**
  * 공모 일정 칸 — 갤러리 공모 등록·아트링크 주최 공모 등록이 같이 쓴다(순서·간격·이름이 한 곳에).
  * 칸 아래 설명은 두지 않는다(2026-10-28 사용자 요청) — 고를 수 없는 날은 달력이 흐리게 막고, 순서가 틀리면 저장에서 알린다.
- * 공모만 진행(recruitOnly)이면 자료 제출·전시가 없다 — 칸 자체를 안 만든다(규칙: 비활성이 아니라 없앤다).
+ * 공모만 진행(recruitOnly)이면 자료 제출·전시가 없다 — 칸 자체를 안 만든다(규칙: 비활성이 아니라 없앤다). 선정 마감일은 어느 쪽이든 있다.
  */
 export function exhibitionSchedule(recruitOnly: boolean, idPrefix = 'ex'): { steps: ScheduleStep[]; ranges: ScheduleRange[] } {
   const steps: ScheduleStep[] = [
     { key: 'deadlineStart', label: '접수 시작일', mark: '시작', gap: 0, id: `${idPrefix}-start` },
     { key: 'deadline', label: '접수 마감일', mark: '마감', gap: 0, id: `${idPrefix}-deadline` },
+    // 선정 마감일(2026-11-21, 규칙 90) — 접수 마감 다음 날부터. 이날이 지나면 수락하지 않은 지원은 미선정(서버 lib/selectionDeadline.ts 와 같은 간격)
+    // 공모만 진행이면 짝이 없어 두 칸 너비, 전시까지면 출품 자료 마감과 한 줄
+    { key: 'selectionDeadline', label: '선정 마감일', mark: '선정', gap: 1, id: `${idPrefix}-selection`, wide: recruitOnly },
   ];
   const ranges: ScheduleRange[] = [{ from: 'deadlineStart', to: 'deadline', label: '접수 기간' }];
   if (!recruitOnly) {
     steps.push(
       {
-        key: 'submissionDeadline', label: '출품 자료 제출 마감일', mark: '제출', gap: 1, id: `${idPrefix}-submission`, wide: true },
+        key: 'submissionDeadline', label: '출품 자료 제출 마감일', mark: '제출', gap: 1, id: `${idPrefix}-submission` },
       { key: 'exhibitStartDate', label: '전시 시작일', mark: '전시', gap: 1, id: `${idPrefix}-show-start` },
       { key: 'exhibitDate', label: '전시 종료일', mark: '종료', gap: 0, id: `${idPrefix}-show-end` },
     );

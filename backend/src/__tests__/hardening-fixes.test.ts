@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 
 // 2026-07 하드닝 수정들에 대한 assertion 테스트
 // (탈퇴 필터 H7 · 동일상태 알림중복 M2 · 라이프사이클 M12/M6 · 승인 whitelist M13 · admin 페이지네이션 · 알림 TTL)
@@ -70,6 +70,7 @@ describe('하드닝 수정 검증', () => {
       const g = await seedGallery(3);
       const ex = await seedExhibition(g.id);
       const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'SUBMITTED' } });
+      await closeRecruitment(ex.id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
 
       await request.patch(`/api/exhibitions/${ex.id}/applications/${app.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });
       const c1 = await testPrisma.notification.count({ where: { userId: 1, type: 'APPLICATION_STATUS' } });

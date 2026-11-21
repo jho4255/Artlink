@@ -91,6 +91,7 @@ export function ExhibitionFormBody({ form, setForm, errors, clearError, hostFiel
           {/* 남은 칸 표시 — 달력 칸 버튼 id 로 데려간다(lib/formJump) */}
           <span hidden data-field="deadlineStart" data-field-focus={`#${idPrefix}-start`} />
           <span hidden data-field="deadline" data-field-focus={`#${idPrefix}-deadline`} />
+          <span hidden data-field="selectionDeadline" data-field-focus={`#${idPrefix}-selection`} />
           <span hidden data-field="submissionDeadline" data-field-focus={`#${idPrefix}-submission`} />
           <span hidden data-field="exhibitStartDate" data-field-focus={`#${idPrefix}-show-start`} />
           <span hidden data-field="exhibitDate" data-field-focus={`#${idPrefix}-show-end`} />

@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath, statePath, inquireAndOpenChat, openEmptyDirectChat } from '../lib/helpers';
+import {
+  openAs, tokenFor, userIds, applyToExhibition, settle, exhibitionDates, realUploadPath, statePath, inquireAndOpenChat, openEmptyDirectChat, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * ArtTalk (갠톡·단톡) — 2026-08-28 전면 개편분.
@@ -182,6 +184,7 @@ test.describe('단톡 (공모방) — 서버가 만든다', () => {
     // 작가1 지원 → 갤러리가 수락 (여기서 단톡에 합류한다)
     const apply = await applyToExhibition(api, exId, tokenFor('artist'));
     const appId = (await apply.json()).id;
+    await closeRecruitment(api, exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
     await api.patch(`${API}/exhibitions/${exId}/applications/${appId}`, {
       headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' },
     });

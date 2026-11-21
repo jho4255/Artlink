@@ -32,6 +32,7 @@ export default function SchedulePicker({
   required = true,
   floor: floorProp,
   openFrom,
+  ceiling,
 }: {
   steps: ScheduleStep[];
   ranges?: ScheduleRange[];
@@ -46,6 +47,8 @@ export default function SchedulePicker({
   floor?: Ymd;
   /** 빈 칸을 열 때 보일 달 — 기본 floor. 전시 등록은 지난날도 고를 수 있지만(이미 하고 있는 전시) 달력은 이번 달부터 연다 */
   openFrom?: Ymd;
+  /** 이보다 늦은 날은 못 고른다 — [선정 마감일 변경]이 출품 자료 마감 전날까지로 막는다(2026-11-21). 없으면 끝이 없다 */
+  ceiling?: Ymd;
 }) {
   const floor = floorProp ?? todayKst();
   const today = todayKst();
@@ -107,7 +110,7 @@ export default function SchedulePicker({
   }, [active, sheet]);
 
   const pick = (day: Ymd) => {
-    if (active === null || !canPick(steps, values, active, day, floor)) return;
+    if (active === null || !canPick(steps, values, active, day, floor) || (ceiling && day > ceiling)) return;
     const { patch, next } = applyPick(steps, values, active, day, floor);
     onChange(patch);
     setHover(null);
@@ -286,6 +289,7 @@ export default function SchedulePicker({
                   month={m}
                   today={today}
                   minYmd={minYmd}
+                  maxYmd={ceiling}
                   activeKey={steps[active].key}
                   values={preview}
                   realValues={values}
@@ -377,6 +381,7 @@ export default function SchedulePicker({
                   month={m}
                   today={today}
                   minYmd={minYmd}
+                  maxYmd={ceiling}
                   activeKey={steps[active].key}
                   values={preview}
                   realValues={values}
@@ -405,11 +410,13 @@ export default function SchedulePicker({
   );
 }
 
-function Month({ month, today, minYmd, activeKey, values, realValues, marks, ranges, hover, onHover, onPick }: {
+function Month({ month, today, minYmd, maxYmd, activeKey, values, realValues, marks, ranges, hover, onHover, onPick }: {
   month: MonthRef;
   /** 오늘(KST) — 표시만. 고를 수 있는지는 minYmd 가 정한다 */
   today: Ymd;
   minYmd: Ymd;
+  /** 이보다 늦은 날은 흐리게 — 없으면 끝이 없다 */
+  maxYmd?: Ymd;
   activeKey: string;
   /** 칠하기용(미리보기 포함) */
   values: ScheduleValues;
@@ -433,7 +440,7 @@ function Month({ month, today, minYmd, activeKey, values, realValues, marks, ran
           <div key={wi} role="row" className="grid grid-cols-7">
             {week.map((day, di) => {
               if (!day) return <span key={di} role="gridcell" aria-hidden className="h-11" />;
-              const disabled = day < minYmd;
+              const disabled = day < minYmd || (!!maxYmd && day > maxYmd);
               const chosen = marks.get(day);
               // 띠 — 이 날이 들어가는 기간
               let band: { start: boolean; end: boolean } | null = null;

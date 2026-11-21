@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, openGallerySubmissions, openArtistExhibition } from '../lib/helpers';
+import {
+  openAs, tokenFor, exhibitionDates, openGallerySubmissions, openArtistExhibition, closeRecruitment,
+} from '../lib/helpers';
 import { applyToExhibition } from '../lib/helpers';
 
 /**
@@ -37,6 +39,7 @@ async function setupExhibitionWithAcceptedArtist(api: APIRequestContext): Promis
   await applyToExhibition(api, ex.id, aTok);
   const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
   const app = (apps.applications || apps)[0];
+  await closeRecruitment(api, ex.id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${ex.id}/applications/${app.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
   return ex.id;
 }

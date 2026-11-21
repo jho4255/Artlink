@@ -54,27 +54,30 @@ async function main() {
   const base = { type: 'GROUP', region: 'SEOUL', description: '<p>관리자 화면 확인용 예시 공모예요.</p>', status: 'APPROVED', hostType: 'ADMIN', capacity: 5 } as const;
 
   // 1) 바깥 접수(첨부) · 많이 봄 · 지원 0 — 공모 성과의 '첨부 받음'
-  const first = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 2027 신진작가 공모전 《첫 장》`, type: 'SOLO', recruitOnly: true, capacityMask: 'ONE', capacity: 9, deadline: dateIn(12), viewCount: 1295, attachments: attach, createdAt: ago(9) } });
+  const first = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 2027 신진작가 공모전 《첫 장》`, type: 'SOLO', recruitOnly: true, capacityMask: 'ONE', capacity: 9, deadline: dateIn(12), selectionDeadline: dateIn(15), viewCount: 1295, attachments: attach, createdAt: ago(9) } });
   await prisma.exhibitionAttachmentHit.createMany({ data: [0, 1, 2, 3, 5, 8].map((d, i) => ({ exhibitionId: first.id, day: dateIn(-d), count: [6, 4, 9, 3, 2, 5][i] })) });
   // 2) 운영 갤러리 있음 · 2일 뒤 마감 · 검토 대기 2 · 수락 2
-  const second = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 겨울 드로잉 클럽 참여 작가 모집`, deadline: dateIn(2), deadlineStart: dateIn(-14), exhibitStartDate: dateIn(20), exhibitDate: dateIn(34), submissionDeadline: dateIn(10), capacity: 8, viewCount: 318, galleryId: gallery.id, managers: { create: [{ galleryId: gallery.id }] }, createdAt: ago(14) } });
+  const second = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 겨울 드로잉 클럽 참여 작가 모집`, deadline: dateIn(2), deadlineStart: dateIn(-14), selectionDeadline: dateIn(5), exhibitStartDate: dateIn(20), exhibitDate: dateIn(34), submissionDeadline: dateIn(10), capacity: 8, viewCount: 318, galleryId: gallery.id, managers: { create: [{ galleryId: gallery.id }] }, createdAt: ago(14) } });
+  // 지원서 본문도 채운다(2026-11-21) — 실제 지원은 약력·작품 사진이 반드시 있다. 비어 있으면 [지원서 수정](규칙 90)이 '작품 사진' 에서 멈춘다
+  const body = (bio: string, imgs: string[]) => ({ biography: bio, artworkImages: JSON.stringify(imgs.map((f) => `/demo-art/${f}.jpg`)) });
   await prisma.application.createMany({ data: [
-    { userId: artists[0].id, exhibitionId: second.id, status: 'SUBMITTED', createdAt: ago(1, 3) },
-    { userId: artists[1].id, exhibitionId: second.id, status: 'SUBMITTED', createdAt: ago(3) },
-    { userId: artists[2].id, exhibitionId: second.id, status: 'ACCEPTED', createdAt: ago(8), updatedAt: ago(6) },
-    { userId: artists[3].id, exhibitionId: second.id, status: 'ACCEPTED', createdAt: ago(9), updatedAt: ago(6) },
+    { userId: artists[0].id, exhibitionId: second.id, status: 'SUBMITTED', createdAt: ago(1, 3), ...body('일상의 장면을 오래 들여다보고 그 안에 남는 감정을 연필과 목탄으로 옮깁니다.', ['winter-garden', 'blue-wall', 'long-summer']) },
+    { userId: artists[1].id, exhibitionId: second.id, status: 'SUBMITTED', createdAt: ago(3), ...body('물과 빛의 기억을 수채로 그립니다.', ['water-memory', 'city-walk']) },
+    // 모집 중인 공모의 수락은 초대 코드로만 생긴다(수락·거절은 마감 뒤 — 규칙 90)
+    { userId: artists[2].id, exhibitionId: second.id, status: 'ACCEPTED', joinedVia: 'CODE', createdAt: ago(8), updatedAt: ago(6) },
+    { userId: artists[3].id, exhibitionId: second.id, status: 'ACCEPTED', joinedVia: 'CODE', createdAt: ago(9), updatedAt: ago(6) },
   ] });
   // 3) 직접 운영 · 검토 대기 1(관리자가 결정할 몫)
-  const third = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 아트페어 부스 참가 작가 모집`, type: 'ART_FAIR', recruitOnly: true, capacityMask: 'TWO', capacity: 99, deadline: dateIn(20), viewCount: 442, createdAt: ago(5) } });
-  await prisma.application.create({ data: { userId: artists[4].id, exhibitionId: third.id, status: 'SUBMITTED', createdAt: ago(0, 5) } });
+  const third = await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 아트페어 부스 참가 작가 모집`, type: 'ART_FAIR', recruitOnly: true, capacityMask: 'TWO', capacity: 99, deadline: dateIn(20), selectionDeadline: dateIn(23), viewCount: 442, createdAt: ago(5) } });
+  await prisma.application.create({ data: { userId: artists[4].id, exhibitionId: third.id, status: 'SUBMITTED', createdAt: ago(0, 5), ...body('아트페어에서 소품 연작을 소개하고 싶습니다.', ['square-garden']) } });
   // 4) 마감한 주최 공모
-  await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 봄 기획전 《움트는 것들》 참여 작가 공모`, recruitOnly: true, deadline: dateIn(-10), recruitmentClosed: true, viewCount: 1105, createdAt: ago(40) } });
+  await prisma.exhibition.create({ data: { ...base, title: `${PREFIX} 봄 기획전 《움트는 것들》 참여 작가 공모`, recruitOnly: true, deadline: dateIn(-10), selectionDeadline: dateIn(-5), recruitmentClosed: true, viewCount: 1105, createdAt: ago(40) } });
 
   // 승인 대기 갤러리 · 수정 요청 · 답하지 않은 문의
   await prisma.gallery.create({ data: { name: `${PREFIX} 스튜디오 물결`, address: '경기도 성남시 분당구 판교역로 1', phone: '031-000-0000', description: '판교의 작은 전시 공간', region: 'GYEONGGI_SOUTH', ownerName: '예시 대표', ownerId: (await prisma.user.findFirst({ where: { role: 'GALLERY' } }))!.id, status: 'PENDING', createdAt: ago(1, 2) } });
   const target = await prisma.exhibition.findFirst({ where: { title: { startsWith: '[단계 03]' } } });
   if (target) {
-    await prisma.approvalRequest.create({ data: { type: 'EXHIBITION_EDIT', targetId: target.id, requesterId: target.galleryId ? (await prisma.gallery.findUnique({ where: { id: target.galleryId } }))!.ownerId : 3, changes: JSON.stringify({ capacity: 8, deadline: dateIn(16).toISOString().slice(0, 10), title: `${PREFIX} ${target.title.replace(/^\[단계 03\] /, '')} (모집 연장)` }), createdAt: ago(0, 3) } });
+    await prisma.approvalRequest.create({ data: { type: 'EXHIBITION_EDIT', targetId: target.id, requesterId: target.galleryId ? (await prisma.gallery.findUnique({ where: { id: target.galleryId } }))!.ownerId : 3, changes: JSON.stringify({ capacity: 8, deadline: dateIn(11).toISOString().slice(0, 10), title: `${PREFIX} ${target.title.replace(/^\[단계 03\] /, '')} (모집 연장)` }), createdAt: ago(0, 3) } });
   }
   await prisma.inquiry.create({ data: { subject: `${PREFIX} 정산서는 어디서 받나요?`, content: '전시가 끝났는데 정산서 PDF 를 어디서 받는지 모르겠어요.', userId: artists[0].id, createdAt: ago(2, 4) } });
   console.log('만들었다 — 주최 공모 4 · 승인 대기 갤러리 1 · 공모 수정 요청 1 · 문의 1');

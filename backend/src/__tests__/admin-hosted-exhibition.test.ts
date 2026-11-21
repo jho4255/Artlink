@@ -7,8 +7,9 @@
  *      권한이 새면 안 된다 — 남의 공모 지원자(개인정보)가 통째로 열리는 사고가 된다.
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { NO_REJECT } from '../lib/applicationWindow';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
-import { request, authToken, cleanDb, seedUsers, testPrisma } from './helpers';
+import { request, authToken, cleanDb, seedUsers, testPrisma, closeRecruitment } from './helpers';
 
 const ADMIN = 4;
 const GALLERY_A_OWNER = 3;   // 주관 갤러리 오너
@@ -26,6 +27,7 @@ const basePayload = () => ({
   type: 'GROUP',
   deadlineStart: future(-1),
   deadline: future(20),
+  selectionDeadline: future(25),
   exhibitStartDate: future(40),
   exhibitDate: future(60),
   submissionDeadline: future(30),   // 공모 마감(20)과 전시 시작(40) 사이
@@ -225,6 +227,7 @@ describe('운영 갤러리 위임', () => {
   });
 
   it('위임받은 갤러리가 지원 상태를 바꿀 수 있다', async () => {
+    await closeRecruitment(exId);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
     const res = await request.patch(`/api/exhibitions/${exId}/applications/${appId}`)
       .set('Authorization', `Bearer ${bToken}`).send({ status: 'ACCEPTED' });
     expect(res.status).toBe(200);
@@ -323,15 +326,21 @@ describe('Admin 도 지원자 관리·운영을 할 수 있다', () => {
   });
 
   it('★ 지원을 수락할 수 있다 (원래 막혀 있던 것)', async () => {
+    await closeRecruitment(hostedId);
     const res = await request.patch(`/api/exhibitions/${hostedId}/applications/${hostedAppId}`)
       .set('Authorization', `Bearer ${adminToken}`).send({ status: 'ACCEPTED' });
     expect(res.status).toBe(200);
     expect((await testPrisma.application.findUnique({ where: { id: hostedAppId } }))!.status).toBe('ACCEPTED');
   });
 
-  it('갤러리가 등록한 공모의 지원도 거절할 수 있다', async () => {
-    const res = await request.patch(`/api/exhibitions/${galleryOwnedId}/applications/${ownedAppId}`)
+  it('갤러리가 등록한 공모의 지원도 수락할 수 있다 — 거절은 관리자도 따로 하지 않는다(규칙 90)', async () => {
+    await closeRecruitment(galleryOwnedId);
+    const no = await request.patch(`/api/exhibitions/${galleryOwnedId}/applications/${ownedAppId}`)
       .set('Authorization', `Bearer ${adminToken}`).send({ status: 'REJECTED' });
+    expect(no.status).toBe(400);
+    expect(no.body.error).toBe(NO_REJECT);
+    const res = await request.patch(`/api/exhibitions/${galleryOwnedId}/applications/${ownedAppId}`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ status: 'ACCEPTED' });
     expect(res.status).toBe(200);
   });
 

@@ -88,8 +88,10 @@ describe('소스 가드 — 화면에서 되돌리기 쉬운 한 줄', () => {
   it('지원서는 홈페이지와 같은 5항목을 그리고 보낸다(P2-7)', () => {
     const apply = read('pages/ApplyPage.tsx');
     expect(apply).toContain('categories={PORTFOLIO_CATEGORIES}');
-    expect(apply).toMatch(/education: clean\(/);
-    expect(apply).toMatch(/award: clean\(/);
+    // 보낼 경력은 cleanCareer 하나가 다섯 항목을 다 만든다(지원 · 고치기가 같이 쓴다, 2026-11-21)
+    expect(apply).toMatch(/education: cleanEntries\(c\.education\)/);
+    expect(apply).toMatch(/award: cleanEntries\(c\.award\)/);
+    expect(apply.match(/career: cleanCareer\(career\)/g)?.length).toBe(2);
   });
 
   it('공모 상세의 [지원하기]는 화면 아래 따라오는 줄 — 휴대폰은 하단 탭바 위', () => {
@@ -116,7 +118,9 @@ describe('소스 가드 — 화면에서 되돌리기 쉬운 한 줄', () => {
 
   it('전시가 끝나면 지원자 결정을 잠근다(관리자 제외) · 초대 코드 줄도 감춘다', () => {
     const am = read('components/shared/ApplicantManager.tsx');
-    expect(am).toMatch(/const decisionsLocked = ended && !isAdmin/);
+    expect(am).toMatch(/const endedLocked = ended && !isAdmin/);
+    // 모집 중에도 결정하지 않는다(규칙 90, 관리자도)
+    expect(am).toMatch(/const decisionsLocked = endedLocked \|\| beforeClose/);
     expect(am).toMatch(/!decisionsLocked && isPending\(app\.status\)/);
     expect(am).toMatch(/const joinCode = ended \|\| joinCodeState\?\.blocked \? null/);
   });

@@ -142,6 +142,11 @@ export interface Exhibition {
    * ([마감된 공고] 탭이 생기며 실제로 도달 가능해졌다)
    */
   recruitmentClosed?: boolean;
+  /**
+   * 선정 마감일(2026-11-21, 규칙 90) — 갤러리는 접수가 끝난 뒤 이날까지 수락하고, 지나면 수락하지 않은 지원은 알림 없이 미선정.
+   * **새로 올리는 공고부터** 있다 — 그 전 공고는 null(그런 공고는 [선정 마치기]·전시 확정·종료 때 선정이 끝난다).
+   */
+  selectionDeadline?: string | null;
   ended?: boolean;
   imageUrl?: string;
   images?: ExhibitionImage[];
@@ -396,6 +401,9 @@ export interface OperationAccess {
    */
   recruitOnly?: boolean;
   recruitmentClosed: boolean;
+  /** 접수 마감일 · 선정 마감일 — 수락은 접수가 끝난 뒤(마감 또는 접수 마감일 경과) ~ 선정 마감일까지(규칙 90) */
+  deadline?: string;
+  selectionDeadline?: string | null;
   confirmed: boolean;        // 수동 확정 또는 전시 시작일 경과
   manualConfirmed: boolean;  // 수동 확정 플래그
   ended: boolean;

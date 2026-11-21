@@ -11,6 +11,8 @@
 export interface ScheduleInput {
   deadlineStart?: string | null;
   deadline?: string | null;
+  /** 선정 마감일(규칙 90) — '선정 ~11/30' */
+  selectionDeadline?: string | null;
   submissionDeadline?: string | null;
   exhibitStartDate?: string | null;
   exhibitDate?: string | null;
@@ -36,6 +38,8 @@ export function scheduleSummary(s: ScheduleInput): string {
   const parts: string[] = [];
   const apply = range(s.deadlineStart, s.deadline);
   if (apply) parts.push(`접수 ${apply}`);
+  const sel = md(s.selectionDeadline);
+  if (sel) parts.push(`선정 ~${sel}`);
   if (!s.recruitOnly) {
     const sub = md(s.submissionDeadline);
     if (sub) parts.push(`자료 제출 ~${sub}`);

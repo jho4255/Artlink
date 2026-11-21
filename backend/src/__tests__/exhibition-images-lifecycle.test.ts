@@ -8,7 +8,8 @@
  *  - GET    /api/exhibitions/:id/applications      연락처(전화/이메일) 상태 무관 노출
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { ALREADY_DECIDED, DECIDE_AFTER_CLOSE, NO_REJECT, SELECTION_FINISHED, SELECTION_OVER } from '../lib/applicationWindow';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 
 const ownerTok = authToken(3, 'GALLERY');
 const adminTok = authToken(4, 'ADMIN');
@@ -148,8 +149,11 @@ describe('라이프사이클 순서 강제 (모집마감 → 확정 → 전시�
     expect(ended.body.ended).toBe(true);
   });
 
-  it('확정 상태에서 모집 재개 차단 → 400', async () => {
+  it('모집 마감은 되돌릴 수 없다 — 확정 전이든 뒤든 400 (2026-11-21, 규칙 90)', async () => {
     await lifecycle({ recruitmentClosed: true });
+    const before = await lifecycle({ recruitmentClosed: false });
+    expect(before.status).toBe(400);
+    expect(before.body.error).toBe('모집 마감은 되돌릴 수 없어요.');
     await lifecycle({ confirmed: true });
     const r = await lifecycle({ recruitmentClosed: false });
     expect(r.status).toBe(400);
@@ -230,7 +234,7 @@ describe('거절 확인 (acknowledge-rejection)', () => {
   });
 });
 
-describe('지원 상태 전이 규칙 (수락 최종 / 거절→수락만 / 검토중 폐지)', () => {
+describe('지원 상태 전이 규칙 (수락만 · 결과가 난 지원은 그대로 · 검토중 폐지, 규칙 90)', () => {
   let exId: number;
   let appId: number;
   beforeEach(async () => {
@@ -241,12 +245,20 @@ describe('지원 상태 전이 규칙 (수락 최종 / 거절→수락만 / 검�
     exId = ex.id;
     const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: exId, status: 'SUBMITTED', biography: '약력' } });
     appId = app.id;
+    await closeRecruitment(exId);   // 수락은 접수가 끝난 뒤에만(규칙 90)
   });
   const patch = (status: string) =>
     request.patch(`/api/exhibitions/${exId}/applications/${appId}`).set('Authorization', `Bearer ${ownerTok}`).send({ status });
+  const setApp = (data: Record<string, unknown>) => testPrisma.application.update({ where: { id: appId }, data });
 
   it('접수 → 수락 허용', async () => {
     expect((await patch('ACCEPTED')).status).toBe(200);
+  });
+  it('★ 접수 → 거절 400 — 거절은 따로 하지 않는다(안 뽑으면 선정이 끝날 때 미선정)', async () => {
+    const r = await patch('REJECTED');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe(NO_REJECT);
+    expect((await testPrisma.application.findUnique({ where: { id: appId } }))?.status).toBe('SUBMITTED');
   });
   it('수락 → 거절 차단 (400)', async () => {
     await patch('ACCEPTED');
@@ -258,24 +270,41 @@ describe('지원 상태 전이 규칙 (수락 최종 / 거절→수락만 / 검�
     await patch('ACCEPTED');
     expect((await patch('SUBMITTED')).status).toBe(400);
   });
-  it('거절 → 수락 허용', async () => {
-    await patch('REJECTED');
-    expect((await patch('ACCEPTED')).status).toBe(200);
-  });
-  it('거절 → 접수 차단 (400)', async () => {
-    await patch('REJECTED');
-    const r = await patch('SUBMITTED');
+  it('★ 미선정(선정이 끝나 바뀐 것)은 다시 수락할 수 없다', async () => {
+    await setApp({ status: 'REJECTED', closedOutAt: new Date() });
+    const r = await patch('ACCEPTED');
     expect(r.status).toBe(400);
-    expect(r.body.error).toContain('수락으로만');
+    expect(r.body.error).toBe(SELECTION_FINISHED);
+  });
+  it('옛 화면에서 직접 거절한 지원도 그대로 — 수락·접수 400', async () => {
+    await setApp({ status: 'REJECTED' });
+    for (const status of ['ACCEPTED', 'SUBMITTED']) {
+      const r = await patch(status);
+      expect(r.status).toBe(400);
+      expect(r.body.error).toBe(ALREADY_DECIDED);
+    }
   });
   it('검토중(REVIEWED)은 설정 불가 (400)', async () => {
     expect((await patch('REVIEWED')).status).toBe(400);
   });
-  it('거절→수락 시 거절확인(rejectionAckedAt) 해제', async () => {
-    await patch('REJECTED');
-    await testPrisma.application.update({ where: { id: appId }, data: { rejectionAckedAt: new Date() } });
-    await patch('ACCEPTED');
-    const updated = await testPrisma.application.findUnique({ where: { id: appId } });
-    expect(updated?.rejectionAckedAt).toBeNull();
+  it('★ 접수 중엔 수락 400 — 접수가 끝난 뒤에만(규칙 90)', async () => {
+    await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: false } });
+    const r = await patch('ACCEPTED');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe(DECIDE_AFTER_CLOSE);
+    expect((await testPrisma.application.findUnique({ where: { id: appId } }))?.status).toBe('SUBMITTED');
+  });
+  it('★ 접수 마감일이 지나면 [모집 마감]을 안 눌러도 수락한다', async () => {
+    await testPrisma.exhibition.update({ where: { id: exId }, data: { recruitmentClosed: false, deadline: new Date(Date.now() - 2 * 86400000) } });
+    expect((await patch('ACCEPTED')).status).toBe(200);
+  });
+  it('★ 선정 마감일 당일까지는 수락하고, 지나면 400', async () => {
+    await testPrisma.exhibition.update({ where: { id: exId }, data: { selectionDeadline: new Date() } });
+    expect((await patch('ACCEPTED')).status).toBe(200);
+    const other = await testPrisma.application.create({ data: { userId: 2, exhibitionId: exId, status: 'SUBMITTED', biography: '약력' } });
+    await testPrisma.exhibition.update({ where: { id: exId }, data: { selectionDeadline: new Date(Date.now() - 2 * 86400000) } });
+    const r = await request.patch(`/api/exhibitions/${exId}/applications/${other.id}`).set('Authorization', `Bearer ${ownerTok}`).send({ status: 'ACCEPTED' });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe(SELECTION_OVER);
   });
 });

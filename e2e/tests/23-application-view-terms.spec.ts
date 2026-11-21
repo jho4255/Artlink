@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, openApplicantManager, applicantRow, openMyPageTab, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, openApplicantManager, applicantRow, openMyPageTab, exhibitionDates, closeRecruitment } from '../lib/helpers';
 
 /**
  * 지원서(고정 양식) 갤러리 열람 + 등록 폼 약관(placeholder 아님) 검증.
@@ -18,13 +18,14 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
   })).json();
   await api.patch(`${API}/approvals/exhibition/${ex.id}`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { status: 'APPROVED' } });
   await applyToExhibition(api, ex.id, tokenFor('artist'), { biography: 'E2E_제출약력_표시확인' });
+  await closeRecruitment(api, ex.id);   // [수락하기]는 모집을 마감한 뒤에만(규칙 90)
   await api.dispose();
 
   const { page, ctx } = await openAs(browser, 'gallery');
   const card = await openApplicantManager(page, ex.title);
   const row = applicantRow(card, 'Artist 1');
   await expect(row).toBeVisible({ timeout: 10000 });
-  // 줄을 누르면 지원서가 열린다(넓은 화면은 오른쪽 칸, 휴대폰은 화면 가득 창 — 2026-11-20) → 작품 사진·약력… 그리고 [거절]·[수락하기]
+  // 줄을 누르면 지원서가 열린다(넓은 화면은 오른쪽 칸, 휴대폰은 화면 가득 창 — 2026-11-20) → 작품 사진·약력… 그리고 [수락하기](거절은 없다, 규칙 90)
   await row.getByRole('button').first().click();
   const detail = page.locator('[data-applicant-detail]').first();
   await expect(detail.getByText('작가 약력', { exact: true })).toBeVisible({ timeout: 8000 });

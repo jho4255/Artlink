@@ -179,8 +179,8 @@ export function addressArea(address: string | null | undefined, region: string):
 }
 
 export interface ScheduleStep {
-  /** 공모: start·deadline·submission·exhibit · 전시: show-start·show-end */
-  key: 'start' | 'deadline' | 'submission' | 'exhibit' | 'show-start' | 'show-end';
+  /** 공모: start·deadline·selection·submission·exhibit · 전시: show-start·show-end */
+  key: 'start' | 'deadline' | 'selection' | 'submission' | 'exhibit' | 'show-start' | 'show-end';
   label: string;
   /** `11.24(화)` · `12.1(화)까지` · `12.12(토) – 12.27(일)` */
   date: string;
@@ -193,6 +193,8 @@ export interface ScheduleStep {
 }
 
 export interface ScheduleLike extends DeadlineLike {
+  /** 선정 마감일(새 공고, 규칙 90) — 접수 마감과 출품 자료 사이에 '선정 마감' 단계 */
+  selectionDeadline?: string | null;
   submissionDeadline?: string | null;
   recruitOnly?: boolean;
   exhibitStartDate?: string | null;
@@ -200,7 +202,7 @@ export interface ScheduleLike extends DeadlineLike {
 }
 
 /**
- * 공모 상세의 일정 띠 — 접수 시작 → 접수 마감 → 출품 자료 제출 → 전시. 값이 없는 단계는 그리지 않는다(없는 기한을 지어내지 않는다).
+ * 공모 상세의 일정 띠 — 접수 시작 → 접수 마감 → 선정 마감(새 공고) → 출품 자료 제출 → 전시. 값이 없는 단계는 그리지 않는다(없는 기한을 지어내지 않는다).
  * '다음 단계'는 하나뿐이다 — 아직 끝나지 않은 첫 단계. 갤러리가 모집을 일찍 닫았으면(수동 마감·전시 종료) 접수 단계는 지난 것으로 친다.
  * ⚠️ `exhibitDate` 가 전시 **종료일**이다(시작은 `exhibitStartDate`) — 이름이 헷갈린다(schema 주석).
  * 공모만 진행하는 공고는 출품 자료·전시 단계가 없다(서버도 그 날짜를 받지 않는다).
@@ -211,6 +213,7 @@ export function scheduleSteps(ex: ScheduleLike, now: Date = new Date()): Schedul
   const raw: Raw[] = [];
   if (ex.deadlineStart) raw.push({ key: 'start', label: '접수 시작', date: shortDate(ex.deadlineStart), end: ex.deadlineStart });
   raw.push({ key: 'deadline', label: '접수 마감', date: shortDate(ex.deadline), end: ex.deadline });
+  if (ex.selectionDeadline) raw.push({ key: 'selection', label: '선정 마감', date: shortDate(ex.selectionDeadline), end: ex.selectionDeadline });
   if (!ex.recruitOnly && ex.submissionDeadline) {
     raw.push({ key: 'submission', label: '출품 자료 제출', date: `${shortDate(ex.submissionDeadline)}까지`, end: ex.submissionDeadline });
   }
@@ -239,7 +242,7 @@ export function scheduleSteps(ex: ScheduleLike, now: Date = new Date()): Schedul
     let hot = false;
     if (r.key === 'start') note = `${left}일 뒤`;
     else if (r.key === 'deadline') { note = left === 0 ? '오늘 마감' : `${left}일 남음`; hot = left <= HOT_DAYS; }
-    else if (r.key === 'submission') note = left === 0 ? '오늘까지' : `${left}일 남음`;
+    else if (r.key === 'submission' || r.key === 'selection') note = left === 0 ? '오늘까지' : `${left}일 남음`;
     else {
       const toStart = r.start ? daysUntil(r.start, now) : 0;
       note = toStart > 0 ? `${toStart}일 뒤 시작` : '진행 중';

@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition } from '../lib/helpers';
+import {
+  openAs, tokenFor, applyToExhibition, closeRecruitment, createExhibition, ownedGalleryId,
+} from '../lib/helpers';
 
 /**
  * Admin 운영 조회: 특정 공모 지원현황/수락·거절 여부, 작가 지원이력, 갤러리 게시물.
@@ -17,23 +19,22 @@ test.beforeAll(async () => {
   const gTok = tokenFor('gallery');
   const aTok = tokenFor('artist');
 
-  // 승인된 시드 공모 찾기
-  const myEx = await (await api.get(`${API}/exhibitions/my-exhibitions`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
-  const approved = (Array.isArray(myEx) ? myEx : myEx.exhibitions || []).find((e: any) => e.status === 'APPROVED');
-  if (!approved) throw new Error('승인된 시드 공모 없음');
-  exId = approved.id; exTitle = approved.title;
+  // 이 스펙의 공모를 만든다 — 예전엔 '첫 승인 공모'를 골라 실행 순서에 따라 접수 마감이 지난 시드 공모(지원 400)를 집기도 했다
+  exTitle = `E2E 운영조회 ${Date.now()}`;
+  exId = await createExhibition(api, { title: exTitle, galleryId: await ownedGalleryId(api), capacity: 3 });
 
   const detail = await (await api.get(`${API}/exhibitions/${exId}`)).json();
   galleryName = detail.gallery?.name;
 
-  // 작가 지원 (이미 지원돼 있어도 OK)
+  // 작가 지원
   const ar = await applyToExhibition(api, exId, aTok);
-  expect([200, 201, 400, 409].includes(ar.status()), `지원 실패 ${ar.status()}`).toBeTruthy();
+  expect(ar.status(), `지원 실패 ${ar.status()}`).toBe(201);
 
   // 갤러리가 지원자 목록 조회 → 수락 처리
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
   expect(apps.length).toBeGreaterThan(0);
   appUserId = apps[0].user.id;
+  await closeRecruitment(api, exId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${exId}/applications/${apps[0].id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
 
   await api.dispose();
@@ -82,7 +83,8 @@ test('admin UI: 운영 조회(공모·갤러리) · 사용자 관리의 회원 �
   const detail = page.getByTestId('ov-ex-detail');
   await expect(detail).toContainText(exTitle, { timeout: 10000 });
   await expect(detail).toContainText('수락됨');
-  await expect(detail).toContainText('첫 지원');   // 시드 작가는 이 갤러리 첫 지원
+  // 이 갤러리에 몇 번째 지원인지 — 앞 스펙이 같은 작가를 이 갤러리 공모에 먼저 지원시켰으면 '첫 지원'이 아니다(실행 순서에 기대지 않는다)
+  await expect(detail).toContainText(/첫 지원|이 갤러리 \d+번째/);
   await page.keyboard.press('Escape');
 
   // --- 갤러리: 게시물 ---

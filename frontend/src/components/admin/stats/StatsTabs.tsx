@@ -431,7 +431,7 @@ const FEATURE_ROWS: [string, string][] = [
   ['artworkLikes', '작품 좋아요'], ['follows', '이웃 추가'], ['favorites', '찜'], ['reviews', '갤러리 리뷰'], ['guestbook', '방명록'], ['pdf', '포트폴리오 PDF 저장'],
 ];
 const NOTE_LABEL: Record<string, string> = {
-  CHAT_MESSAGE: 'ArtTalk 새 메시지', APPLICATION_STATUS: '지원 결과', NEW_APPLICANT: '새 지원자', APPROVAL_RESULT: '승인 결과',
+  CHAT_MESSAGE: 'ArtTalk 새 메시지', APPLICATION_STATUS: '지원 결과', NEW_APPLICANT: '새 지원자', APPLICATION_CANCELED: '지원 취소', SELECTION_DEADLINE: '선정 마감', APPROVAL_RESULT: '승인 결과',
   INQUIRY_REPLY: '문의 답변', INQUIRY_NEW: '새 1:1 문의', ARTWORK_LIKE: '작품 좋아요', NEIGHBOR_FOLLOW: '이웃 추가', STORY_COMMENT: '소식 댓글',
   STORY_LIKE: '소식 좋아요', POST_LIKE: '글 좋아요', POST_COMMENT: '글 댓글', COMMENT_REPLY: '답글', MENTION: '멘션',
   SUBMISSION_RECEIVED: '출품 자료', EXHIBITION_CONFIRMED: '전시 확정', SETTLEMENT_ALL_APPROVED: '정산 확인', SETTLEMENT_ISSUE: '정산 이의',

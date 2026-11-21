@@ -176,6 +176,7 @@ describe('Exhibition visibility (GET /exhibitions)', () => {
         deadlineStart: todayMidnight(),
         exhibitDate: futureDate(60),
         submissionDeadline: futureDate(45),   // 공모 마감(30)과 전시(60) 사이
+        selectionDeadline: futureDate(37),    // 접수 마감(30)과 출품 자료 마감(45) 사이
         capacity: 10,
         region: 'SEOUL',
         description: 'approval test',

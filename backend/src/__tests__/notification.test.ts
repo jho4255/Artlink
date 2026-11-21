@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, cleanDb, seedUsers, authToken, testPrisma, seedGallery, seedExhibition } from './helpers';
+import { request, cleanDb, seedUsers, authToken, testPrisma, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 describe('Notification Routes', () => {
@@ -80,7 +80,8 @@ describe('Notification Routes', () => {
       .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
       .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
 
-    // Gallery 오너가 상태 변경
+    // Gallery 오너가 상태 변경 — 수락·거절은 모집을 마감한 뒤에만(규칙 90)
+    await closeRecruitment(exhibition.id);
     const app = await testPrisma.application.findFirst({ where: { userId: 1 } });
     await request.patch(`/api/exhibitions/${exhibition.id}/applications/${app!.id}`)
       .set('Authorization', `Bearer ${authToken(3, 'GALLERY')}`)

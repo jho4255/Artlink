@@ -8,7 +8,7 @@ import { shortDate } from '@/lib/adminFormat';
 export type StageGroup = 'all' | 'recruit' | 'prepare' | 'show' | 'settle' | 'wrap' | 'pending';
 
 export const GROUP_OF: Record<StageKey, StageGroup> = {
-  recruiting: 'recruit', selected: 'wrap',
+  recruiting: 'recruit', selecting: 'recruit', selected: 'wrap',
   preparing: 'prepare', confirmed: 'prepare', running: 'show',
   ended: 'settle', settling: 'settle', settled: 'wrap', closed: 'wrap',
   review: 'pending', rejected: 'pending',
@@ -34,7 +34,7 @@ export interface OvRow {
 }
 
 export function rowStage(r: OvRow) {
-  return stageOf({ ...r, settlementStarted: r.counts.sales > 0 || !!r.settlementRequestedAt })!;
+  return stageOf({ ...r, settlementStarted: r.counts.sales > 0 || !!r.settlementRequestedAt, pending: r.counts.apps.submitted })!;
 }
 
 /** 그 단계의 한 줄 사정 — 멈춘 사정이 있으면 그것 */

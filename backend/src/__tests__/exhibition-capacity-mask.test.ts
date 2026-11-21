@@ -52,7 +52,7 @@ describe('규칙 — lib/capacity.ts', () => {
 describe('등록 — 0명·00명으로 올린다', () => {
   it('★ 갤러리 공모: 0명이면 숫자 없이도 등록되고 9로 저장 · 숫자도 표시도 없으면 400 · 모르는 표시 400', async () => {
     const g = await seedGallery();
-    const base = { title: '0명 공모', type: 'SOLO', deadline: future(10), recruitOnly: true, region: 'SEOUL', description: '<p>x</p>', galleryId: g.id };
+    const base = { title: '0명 공모', type: 'SOLO', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, region: 'SEOUL', description: '<p>x</p>', galleryId: g.id };
     const post = (body: Record<string, unknown>) => request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, ...body });
 
     const one = await post({ capacityMask: 'ONE' });
@@ -72,7 +72,7 @@ describe('등록 — 0명·00명으로 올린다', () => {
 
   it('아트링크 주최 공모도 00명으로 · 공개 상세가 표시를 내려준다', async () => {
     const res = await request.post('/api/exhibitions/hosted').set('Authorization', `Bearer ${ADMIN()}`).send({
-      title: '00명 주최', type: 'GROUP', deadline: future(10), recruitOnly: true, region: 'JEJU', description: '<p>x</p>', capacityMask: 'TWO',
+      title: '00명 주최', type: 'GROUP', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, region: 'JEJU', description: '<p>x</p>', capacityMask: 'TWO',
     });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ capacity: 99, capacityMask: 'TWO' });
@@ -106,7 +106,8 @@ describe('[모집 인원 변경] — PATCH /exhibitions/:id/capacity', () => {
   it('★ 0명 공모는 9명까지 수락 — 10번째는 400 (문구에 0명 — 최대 9명)', async () => {
     const g = await seedGallery();
     const ex = await seedExhibition(g.id);
-    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { capacity: 9, capacityMask: 'ONE' } });
+    // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { capacity: 9, capacityMask: 'ONE', recruitmentClosed: true } });
     await acceptedArtists(ex.id, 9);
     const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id } });
     const r = await request.patch(`/api/exhibitions/${ex.id}/applications/${app.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });

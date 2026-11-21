@@ -43,7 +43,7 @@ describe('지역 목록 — 경북·경남·전북·전남 · 충북·충남·�
 
   it('★ 새 지역으로 공모를 올리고 목록 필터로 찾는다 · 모르는 지역은 400', async () => {
     const g = await seedGallery();
-    const base = { title: '경남 공모', type: 'SOLO', deadline: future(10), recruitOnly: true, capacity: 2, description: '<p>x</p>', galleryId: g.id };
+    const base = { title: '경남 공모', type: 'SOLO', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 2, description: '<p>x</p>', galleryId: g.id };
     const res = await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'GYEONGNAM' });
     expect(res.status).toBe(201);
     expect(res.body.region).toBe('GYEONGNAM');
@@ -58,7 +58,7 @@ describe('지역 목록 — 경북·경남·전북·전남 · 충북·충남·�
 
   it('★ 충북·충남·제주로 공모를 올리고 바꾸고 목록에서 거른다 (2026-10-14)', async () => {
     const g = await seedGallery();
-    const base = { title: '제주 공모', type: 'SOLO', deadline: future(10), recruitOnly: true, capacity: 2, description: '<p>x</p>', galleryId: g.id };
+    const base = { title: '제주 공모', type: 'SOLO', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 2, description: '<p>x</p>', galleryId: g.id };
     const res = await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'JEJU' });
     expect(res.status).toBe(201);
     await testPrisma.exhibition.update({ where: { id: res.body.id }, data: { status: 'APPROVED' } });
@@ -113,7 +113,7 @@ describe('올린 공모의 지역 바꾸기 — PATCH /exhibitions/:id/region', 
     expect((await patchRegion(ex.id, ADMIN(), 'GYEONGNAM')).status).toBe(200);
 
     const hostless = await request.post('/api/exhibitions/hosted').set('Authorization', `Bearer ${ADMIN()}`).send({
-      title: '갤러리 없는 공모', type: 'GROUP', deadline: future(10), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>x</p>', galleryIds: [],
+      title: '갤러리 없는 공모', type: 'GROUP', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>x</p>', galleryIds: [],
     });
     expect(hostless.status).toBe(201);
     expect((await patchRegion(hostless.body.id, ADMIN(), 'JEONBUK')).body.region).toBe('JEONBUK');
@@ -123,7 +123,7 @@ describe('올린 공모의 지역 바꾸기 — PATCH /exhibitions/:id/region', 
 describe('관리자 주최 공모의 추가 질문 — 고치고 지운 대로 주최 공모 목록에 남는다', () => {
   it('★ 질문을 고치고 하나를 지운 뒤, 전부 지운다 — 목록·상세가 같은 답', async () => {
     const created = await request.post('/api/exhibitions/hosted').set('Authorization', `Bearer ${ADMIN()}`).send({
-      title: '질문 공모', type: 'GROUP', deadline: future(10), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>x</p>', galleryIds: [],
+      title: '질문 공모', type: 'GROUP', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '<p>x</p>', galleryIds: [],
       customFields: [
         { id: 'q1', label: '질문A', type: 'textarea', required: false },
         { id: 'q2', label: '질문B', type: 'select', required: true, options: ['가', '나'], maxSelect: 1 },

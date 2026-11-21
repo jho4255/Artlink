@@ -378,6 +378,7 @@ describe('데이터 정합성 복합 시나리오', () => {
           deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
           exhibitDate: new Date(Date.now() + 60 * 86400000).toISOString(),
           submissionDeadline: new Date(Date.now() + 45 * 86400000).toISOString(),
+          selectionDeadline: new Date(Date.now() + 37 * 86400000).toISOString(),
           capacity: 5, region: 'SEOUL', description: '승인 테스트 공모',
         });
       expect(createExRes.status).toBe(201);

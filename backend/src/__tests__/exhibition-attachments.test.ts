@@ -22,7 +22,7 @@ const FILES = [
 ];
 
 const body = (galleryId: number, extra: Record<string, unknown> = {}) => ({
-  title: '첨부 공모', type: 'GROUP', deadline: future(10), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '소개', galleryId, ...extra,
+  title: '첨부 공모', type: 'GROUP', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 3, region: 'SEOUL', description: '소개', galleryId, ...extra,
 });
 
 beforeEach(async () => {

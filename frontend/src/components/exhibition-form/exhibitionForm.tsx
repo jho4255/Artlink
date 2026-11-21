@@ -21,6 +21,8 @@ export interface ExFormValues {
   type: string;
   deadlineStart: string;
   deadline: string;
+  /** 선정 마감일(규칙 90) — 진행 범위와 상관없이 필수 */
+  selectionDeadline: string;
   exhibitStartDate: string;
   exhibitDate: string;
   submissionDeadline: string;
@@ -45,6 +47,7 @@ export function exhibitionMissing(form: ExFormValues, opts: { needGallery: boole
   if (!form.title.trim()) m.push({ key: 'title', label: '공모 제목' });
   if (!form.deadlineStart) m.push({ key: 'deadlineStart', label: '접수 시작일' });
   if (!form.deadline) m.push({ key: 'deadline', label: '접수 마감일' });
+  if (!form.selectionDeadline) m.push({ key: 'selectionDeadline', label: '선정 마감일' });
   if (!form.recruitOnly) {
     if (!form.submissionDeadline) m.push({ key: 'submissionDeadline', label: '출품 자료 제출 마감일' });
     if (!form.exhibitStartDate) m.push({ key: 'exhibitStartDate', label: '전시 시작일' });
@@ -63,6 +66,7 @@ export function exhibitionDateError(form: ExFormValues): string | null {
     exhibitStartDate: form.recruitOnly ? undefined : (form.exhibitStartDate || undefined),
     exhibitDate: form.recruitOnly ? undefined : (form.exhibitDate || undefined),
     submissionDeadline: form.recruitOnly ? undefined : (form.submissionDeadline || undefined),
+    selectionDeadline: form.selectionDeadline || undefined,
   });
 }
 
@@ -99,6 +103,7 @@ export function exhibitionPreview(form: ExFormValues, host: { gallery?: { id: nu
   const steps = hasDeadline ? scheduleSteps({
     deadline: ex.deadline,
     deadlineStart: ex.deadlineStart,
+    selectionDeadline: ymdToIso(form.selectionDeadline) || null,
     submissionDeadline: ymdToIso(form.submissionDeadline) || null,
     exhibitStartDate: ymdToIso(form.exhibitStartDate) || null,
     exhibitDate: ymdToIso(form.exhibitDate) || null,

@@ -46,6 +46,8 @@ export const PUSH_TITLES: Record<string, string> = {
   INQUIRY_REPLY: '문의 답변',
   NEW_APPLICANT: '새 지원·참여',        // 초대 수락·초대 코드 참여도 이 종류로 온다 — '지원자'만은 틀린 말
   APPLICATION_STATUS: '지원 결과',
+  APPLICATION_CANCELED: '지원 취소',
+  SELECTION_DEADLINE: '선정 마감',      // 운영자에게 — 선정 마감 3일 전부터 당일까지 매일 한 번, 검토 대기가 남았을 때(2026-11-21, 규칙 90)   // 갤러리·운영자에게 — 작가가 검토 대기 중인 지원을 취소했다(2026-11-21, 규칙 90)
   EXHIBITION_INVITE: '전시 초대',
   APPROVAL_RESULT: '승인 결과',
   EXHIBITION_MANAGER_ASSIGNED: '공모 운영',

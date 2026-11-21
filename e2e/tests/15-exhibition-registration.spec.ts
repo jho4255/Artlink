@@ -28,12 +28,13 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
   await pickSchedule(gallery.page, '#ex-start', [
     kstDay(0),    // 공모 시작 = 오늘 (미래면 접수중 목록에 안 뜬다)
     kstDay(60),   // 공모 마감
-    kstDay(75),   // 작가 자료제출 마감 (마감 60 < 75 < 전시시작 90)
+    kstDay(65),   // 선정 마감 (2026-11-21, 규칙 90 — 마감 60 < 65 < 자료제출 75)
+    kstDay(75),   // 작가 자료제출 마감 (선정 65 < 75 < 전시시작 90)
     kstDay(90),   // 전시 시작
     kstDay(120),  // 전시 종료
   ]);
   // 한눈에 보는 일정 줄 — 칸을 채우면 아래에 요약이 뜬다
-  await expect(gallery.page.getByText(/접수 \d+\/\d+–\d+\/\d+ · 자료 제출 ~\d+\/\d+ · 전시/).first()).toBeVisible();
+  await expect(gallery.page.getByText(/접수 \d+\/\d+–\d+\/\d+ · 선정 ~\d+\/\d+ · 자료 제출 ~\d+\/\d+ · 전시/).first()).toBeVisible();
 
   // 하단 줄 [등록 요청] → 확인 창에서 약관 동의 → [등록 요청] (2026-11-15 — 약관은 확인 창 안)
   await submitRegistration(gallery.page);

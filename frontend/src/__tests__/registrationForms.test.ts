@@ -17,7 +17,7 @@ import { instagramHref } from '@/lib/homepageSite';
 const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf-8');
 
 const exForm = (patch: Partial<ExFormValues> = {}): ExFormValues => ({
-  title: '', type: 'SOLO', deadlineStart: '', deadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '',
+  title: '', type: 'SOLO', deadlineStart: '', deadline: '', selectionDeadline: '', exhibitStartDate: '', exhibitDate: '', submissionDeadline: '',
   recruitOnly: false, capacity: 1, capacityMask: null, region: 'SEOUL', description: '', imageUrl: '', customFields: [], attachments: [],
   galleryId: 0, ...patch,
 });
@@ -25,12 +25,19 @@ const exForm = (patch: Partial<ExFormValues> = {}): ExFormValues => ({
 describe('공모 등록 — 남은 필수 칸', () => {
   it('폼 순서대로, 칸 이름은 화면 이름 그대로(접수 시작일·접수 마감일)', () => {
     expect(exhibitionMissing(exForm(), { needGallery: true }).map((m) => m.label)).toEqual([
-      '갤러리', '공모 제목', '접수 시작일', '접수 마감일', '출품 자료 제출 마감일', '전시 시작일', '전시 종료일', '공모 소개',
+      '갤러리', '공모 제목', '접수 시작일', '접수 마감일', '선정 마감일', '출품 자료 제출 마감일', '전시 시작일', '전시 종료일', '공모 소개',
     ]);
   });
   it('공모만 진행이면 출품 자료·전시 칸을 묻지 않는다 · 아트링크 주최는 갤러리를 묻지 않는다', () => {
     const keys = exhibitionMissing(exForm({ recruitOnly: true }), { needGallery: false }).map((m) => m.key);
-    expect(keys).toEqual(['title', 'deadlineStart', 'deadline', 'description']);
+    expect(keys).toEqual(['title', 'deadlineStart', 'deadline', 'selectionDeadline', 'description']);
+  });
+  it('★ 선정 마감일 — 접수 마감 다음 날부터 · 출품 자료 마감 전날까지(서버와 같은 말, 규칙 90)', () => {
+    const base = { deadlineStart: '2099-03-01', deadline: '2099-03-10', submissionDeadline: '2099-03-20', exhibitStartDate: '2099-03-25', exhibitDate: '2099-04-10' };
+    expect(exhibitionDateError(exForm({ ...base, selectionDeadline: '2099-03-10' }))).toBe('선정 마감일은 접수 마감일보다 뒤여야 해요.');
+    expect(exhibitionDateError(exForm({ ...base, selectionDeadline: '2099-03-20' }))).toBe('선정 마감일은 출품 자료 제출 마감일보다 앞이어야 해요.');
+    expect(exhibitionDateError(exForm({ ...base, selectionDeadline: '2099-03-11' }))).toBeNull();
+    expect(exhibitionDateError(exForm({ ...base, recruitOnly: true, selectionDeadline: '2099-05-01' }))).toBeNull();
   });
   it('0명·00명이면 숫자 칸이 비어도 된다 · 서식 글은 태그만 있으면 빈 글', () => {
     expect(exhibitionMissing(exForm({ capacity: 0, capacityMask: 'ONE' }), { needGallery: false }).map((m) => m.key)).not.toContain('capacity');

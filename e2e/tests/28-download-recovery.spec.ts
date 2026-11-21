@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates, openGallerySubmissions, openOperation, applicantTool } from '../lib/helpers';
+import {
+  openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates, openGallerySubmissions, openOperation, applicantTool, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 다운로드 실패 회수 + 그동안 커버리지가 없던 PDF 경로 (2026-08-04)
@@ -45,13 +47,16 @@ async function seedExhibition(api: APIRequestContext, title: string) {
   return { exId: ex.id as number, title: fullTitle };
 }
 
-/** 승인 공모 + 작가 수락까지 */
-async function seedAccepted(api: APIRequestContext, title: string) {
+/** 승인 공모 + 작가 수락까지 — 지원을 다 받은 뒤 마감하고 수락한다(수락은 마감한 뒤에만, 규칙 90) */
+async function seedAccepted(api: APIRequestContext, title: string, roles: ('artist' | 'artist2')[] = ['artist']) {
   const { exId, title: fullTitle } = await seedExhibition(api, title);
-  await applyToExhibition(api, exId, tokenFor('artist'));
+  for (const role of roles) await applyToExhibition(api, exId, tokenFor(role));
+  await closeRecruitment(api, exId);
   const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
-  const mine = (apps.applications || apps).find((a: any) => a.userId === userIds().artist);
-  await api.patch(`${API}/exhibitions/${exId}/applications/${mine.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
+  for (const role of roles) {
+    const mine = (apps.applications || apps).find((a: any) => a.userId === userIds()[role]);
+    await api.patch(`${API}/exhibitions/${exId}/applications/${mine.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
+  }
   return { exId, title: fullTitle };
 }
 
@@ -214,13 +219,8 @@ test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원
   test.setTimeout(240_000);
   const api = await pwRequest.newContext();
   const urls = await realArtworkUrls(api, 4);
-  const { exId } = await seedAccepted(api, '작가폴더');
-
-  // 두 번째 작가도 지원 → 수락 (폴더가 실제로 갈라지는지 보려면 2명 이상이어야 한다)
-  await applyToExhibition(api, exId, tokenFor('artist2'));
-  const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: gAuth() })).json();
-  const second = (apps.applications || apps).find((a: any) => a.userId === userIds().artist2);
-  await api.patch(`${API}/exhibitions/${exId}/applications/${second.id}`, { headers: gAuth(), data: { status: 'ACCEPTED' } });
+  // 두 작가 모두 지원 → 수락 (폴더가 실제로 갈라지는지 보려면 2명 이상이어야 한다)
+  const { exId } = await seedAccepted(api, '작가폴더', ['artist', 'artist2']);
 
   await submitArtworks(api, exId, urls.slice(0, 2));                       // artist1: 2점
   await submitArtworksAs(api, exId, urls.slice(2, 4), tokenFor('artist2')); // artist2: 2점

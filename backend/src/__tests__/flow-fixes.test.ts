@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 import { safeFileUrl, ownFileUrl } from '../lib/safeUrl';
-import { request, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, testPrisma } from './helpers';
+import { request, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, testPrisma, closeRecruitment } from './helpers';
 
 const OWNER = () => authToken(3, 'GALLERY');
 const ADMIN = () => authToken(4, 'ADMIN');
@@ -71,7 +71,7 @@ describe('주소 검증 — 우리 저장소 주소만 (점검 S3)', () => {
   it('포스터·공모 사진·홍보 사진·작가 홈페이지 작품도 외부 주소는 400', async () => {
     const g = await seedGallery();
     const poster = await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({
-      title: 'x', type: 'SOLO', deadline: future(10), recruitOnly: true, capacity: 1, region: 'SEOUL', description: 'x', galleryId: g.id,
+      title: 'x', type: 'SOLO', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 1, region: 'SEOUL', description: 'x', galleryId: g.id,
       imageUrl: 'https://tracker.example/poster.png',
     });
     expect(poster.status).toBe(400);
@@ -330,7 +330,7 @@ describe('모집 인원 직접 수정 (2026-10-03 사용자 결정)', () => {
   it('정원이 찼을 때 수락하면 [모집 인원 변경]으로 늘리라고 안내한다', async () => {
     const g = await seedGallery();
     const ex = await seedExhibition(g.id);
-    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { capacity: 1 } });
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { capacity: 1, recruitmentClosed: true } });   // 수락은 마감 뒤에만(규칙 90)
     await accept(ex.id, 1);
     const app2 = await testPrisma.application.create({ data: { userId: 2, exhibitionId: ex.id, status: 'SUBMITTED' } });
     const r = await request.patch(`/api/exhibitions/${ex.id}/applications/${app2.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });
@@ -454,7 +454,7 @@ describe('글 길이 (점검 S10)', () => {
   });
   it('공모 등록 — 큰 정원·없는 지역은 500 이 아니라 400', async () => {
     const g = await seedGallery();
-    const base = { title: 'x', type: 'SOLO', deadline: future(10), recruitOnly: true, capacity: 1, region: 'SEOUL', description: 'x', galleryId: g.id };
+    const base = { title: 'x', type: 'SOLO', deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 1, region: 'SEOUL', description: 'x', galleryId: g.id };
     expect((await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, capacity: 99_999_999_999 })).status).toBe(400);
     expect((await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, region: 'MARS' })).status).toBe(400);
     expect((await request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base, title: 't'.repeat(101) })).status).toBe(400);
@@ -462,7 +462,7 @@ describe('글 길이 (점검 S10)', () => {
 });
 
 describe('공모 날짜 순서 — 서버도 본다 (점검 P2-14)', () => {
-  const base = (g: number) => ({ title: 'x', type: 'SOLO', capacity: 1, region: 'SEOUL', description: 'x', galleryId: g });
+  const base = (g: number) => ({ title: 'x', type: 'SOLO', capacity: 1, region: 'SEOUL', description: 'x', galleryId: g, selectionDeadline: future(12) });
   it('★ 공모만 진행이어도 시작일이 마감일보다 늦으면 400 · 지난 마감일 400', async () => {
     const g = await seedGallery();
     const post = (b: object) => request.post('/api/exhibitions').set('Authorization', `Bearer ${OWNER()}`).send({ ...base(g.id), ...b });
@@ -496,7 +496,8 @@ describe('전시 종료 뒤 지원 상태 변경 (2026-10-03 사용자 결정)',
   it('★ 갤러리는 400, 관리자는 된다', async () => {
     const g = await seedGallery();
     const ex = await seedExhibition(g.id);
-    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'REJECTED' } });
+    // 결정되지 않은 채 남은 지원(보통은 종료 때 미선정이 된다) — 결과가 난 지원은 관리자도 바꾸지 않는다(규칙 90)
+    const app = await testPrisma.application.create({ data: { userId: 1, exhibitionId: ex.id, status: 'SUBMITTED' } });
     await testPrisma.exhibition.update({ where: { id: ex.id }, data: { recruitmentClosed: true, confirmed: true, ended: true } });
     const r = await request.patch(`/api/exhibitions/${ex.id}/applications/${app.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });
     expect(r.status).toBe(400);
@@ -506,7 +507,7 @@ describe('전시 종료 뒤 지원 상태 변경 (2026-10-03 사용자 결정)',
 });
 
 describe('결과 알림 문구 — 작가 화면의 말(선정·미선정)과 같게', () => {
-  it('★ 선정(전시까지) · 선정(공모만) · 미선정은 "지원 결과가 나왔어요" 까지만', async () => {
+  it('★ 선정(전시까지) · 선정(공모만) — 미선정은 알림이 없다(거절이 없고, 선정이 끝날 때 조용히 미선정, 규칙 90)', async () => {
     const g = await seedGallery();
     const full = await seedExhibition(g.id);
     const only = await seedExhibition(g.id);
@@ -514,14 +515,15 @@ describe('결과 알림 문구 — 작가 화면의 말(선정·미선정)과 �
     const a1 = await testPrisma.application.create({ data: { userId: 1, exhibitionId: full.id, status: 'SUBMITTED' } });
     const a2 = await testPrisma.application.create({ data: { userId: 2, exhibitionId: only.id, status: 'SUBMITTED' } });
     const a3 = await testPrisma.application.create({ data: { userId: 2, exhibitionId: full.id, status: 'SUBMITTED' } });
+    await closeRecruitment(full.id);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
+    await closeRecruitment(only.id);
     await request.patch(`/api/exhibitions/${full.id}/applications/${a1.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });
     await request.patch(`/api/exhibitions/${only.id}/applications/${a2.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'ACCEPTED' });
-    await request.patch(`/api/exhibitions/${full.id}/applications/${a3.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'REJECTED' });
+    expect((await request.patch(`/api/exhibitions/${full.id}/applications/${a3.id}`).set('Authorization', `Bearer ${OWNER()}`).send({ status: 'REJECTED' })).status).toBe(400);
     const msgs = (await testPrisma.notification.findMany({ where: { type: 'APPLICATION_STATUS' }, orderBy: { id: 'asc' } })).map((n) => [n.userId, n.message, n.linkUrl]);
     expect(msgs).toEqual([
       [1, '"Test Exhibition"에 선정되었어요. [내 전시]에서 출품 자료를 제출해 주세요.', `/mypage?tab=applications&ex=${full.id}`],
       [2, '"Test Exhibition"에 선정되었어요.', `/mypage?tab=applications&ex=${only.id}`],
-      [2, '"Test Exhibition" 지원 결과가 나왔어요.', `/mypage?tab=applications&ex=${full.id}`],
     ]);
   });
 });

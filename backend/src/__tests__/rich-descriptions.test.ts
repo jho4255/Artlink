@@ -49,7 +49,7 @@ describe('richField — 저장 전 정리', () => {
 
 describe('공모 소개 — 저장하는 모든 길에서 거른다', () => {
   const body = (galleryId: number, description: string) => ({
-    title: '서식 공모', type: 'SOLO', deadlineStart: future(-1), deadline: future(10), recruitOnly: true, capacity: 2, region: 'SEOUL', description, galleryId,
+    title: '서식 공모', type: 'SOLO', deadlineStart: future(-1), deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 2, region: 'SEOUL', description, galleryId,
   });
 
   it('★ 갤러리 공모 등록 — 위험한 태그·속성·스킴은 버리고 서식은 남긴다', async () => {
@@ -72,7 +72,7 @@ describe('공모 소개 — 저장하는 모든 길에서 거른다', () => {
 
   it('★ 아트링크 주최 등록도 거른다', async () => {
     const res = await request.post('/api/exhibitions/hosted').set('Authorization', `Bearer ${ADMIN()}`).send({
-      title: '주최 서식', type: 'GROUP', deadlineStart: future(-1), deadline: future(10), recruitOnly: true, capacity: 3, region: 'SEOUL', description: EVIL, galleryIds: [],
+      title: '주최 서식', type: 'GROUP', deadlineStart: future(-1), deadline: future(10), selectionDeadline: future(12), recruitOnly: true, capacity: 3, region: 'SEOUL', description: EVIL, galleryIds: [],
     });
     expect(res.status).toBe(201);
     expectClean((await testPrisma.exhibition.findUnique({ where: { id: res.body.id } }))!.description);

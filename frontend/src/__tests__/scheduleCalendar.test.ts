@@ -55,12 +55,13 @@ describe('고를 수 있는 날 — 지난 날 · 앞 칸보다 이른 날은 �
     expect(canPick(steps, {}, 0, '2026-10-27', TODAY)).toBe(false);
     expect(canPick(steps, {}, 0, TODAY, TODAY)).toBe(true);
   });
-  it('마감은 시작과 같은 날도 되고 · 자료 제출은 마감 다음 날부터 · 전시 시작은 제출 다음 날부터 · 종료는 시작과 같은 날도', () => {
-    const v = { deadlineStart: '2026-11-01', deadline: '2026-11-10', submissionDeadline: '2026-11-15', exhibitStartDate: '2026-11-20' };
+  it('마감은 시작과 같은 날도 되고 · 선정은 마감 다음 날부터 · 자료 제출은 선정 다음 날부터 · 전시 시작은 제출 다음 날부터 · 종료는 시작과 같은 날도', () => {
+    const v = { deadlineStart: '2026-11-01', deadline: '2026-11-10', selectionDeadline: '2026-11-12', submissionDeadline: '2026-11-15', exhibitStartDate: '2026-11-20' };
     expect(stepMin(steps, v, 1, TODAY)).toBe('2026-11-01');
     expect(stepMin(steps, v, 2, TODAY)).toBe('2026-11-11');
-    expect(stepMin(steps, v, 3, TODAY)).toBe('2026-11-16');
-    expect(stepMin(steps, v, 4, TODAY)).toBe('2026-11-20');
+    expect(stepMin(steps, v, 3, TODAY)).toBe('2026-11-13');
+    expect(stepMin(steps, v, 4, TODAY)).toBe('2026-11-16');
+    expect(stepMin(steps, v, 5, TODAY)).toBe('2026-11-20');
   });
   it('가운데 칸이 비어 있으면 그 칸의 간격까지 더한다', () => {
     expect(stepMin(steps, { deadlineStart: '2026-11-01' }, 2, TODAY)).toBe('2026-11-02');
@@ -75,7 +76,7 @@ describe('고르면 — 다음 칸으로 · 순서가 깨진 뒤 칸은 비운�
   const { steps } = exhibitionSchedule(false);
   it('★ 다음 칸으로 넘어가고 마지막이면 닫는다(null)', () => {
     expect(applyPick(steps, {}, 0, '2026-11-01', TODAY).next).toBe(1);
-    expect(applyPick(steps, {}, 4, '2026-12-01', TODAY).next).toBeNull();
+    expect(applyPick(steps, {}, 5, '2026-12-01', TODAY).next).toBeNull();
   });
   it('★ 시작을 마감 뒤로 옮기면 마감이 비워진다(가는 날을 오는 날 뒤로 옮긴 것처럼) — 여전히 순서에 맞는 뒤 칸은 남는다', () => {
     const v = { deadlineStart: '2026-11-01', deadline: '2026-11-10', submissionDeadline: '2026-11-15', exhibitStartDate: '2026-11-20', exhibitDate: '2026-11-30' };
@@ -97,10 +98,13 @@ describe('고르면 — 다음 칸으로 · 순서가 깨진 뒤 칸은 비운�
     }
     expect(Object.values(v).every(Boolean)).toBe(true);
     const err = validateExhibitionDates(
-      { deadlineStart: v.deadlineStart, deadline: v.deadline, submissionDeadline: v.submissionDeadline, exhibitStartDate: v.exhibitStartDate, exhibitDate: v.exhibitDate },
+      { deadlineStart: v.deadlineStart, deadline: v.deadline, selectionDeadline: v.selectionDeadline, submissionDeadline: v.submissionDeadline, exhibitStartDate: v.exhibitStartDate, exhibitDate: v.exhibitDate },
       () => 0,
     );
     expect(err).toBeNull();
+    // 선정 마감일도 간격이 서버와 같다 — 접수 마감과 같은 날 · 출품 자료 마감과 같은 날은 거절
+    expect(validateExhibitionDates({ ...v, deadline: v.deadline, selectionDeadline: v.deadline }, () => 0)).not.toBeNull();
+    expect(validateExhibitionDates({ ...v, deadline: v.deadline, selectionDeadline: v.submissionDeadline }, () => 0)).not.toBeNull();
     // 하루씩 앞당기면(간격 1 인 칸) 서버가 거절한다 — 간격이 서버 규칙과 정확히 같다
     expect(validateExhibitionDates({ ...v, deadline: v.deadline, submissionDeadline: v.deadline }, () => 0)).not.toBeNull();
     expect(validateExhibitionDates({ ...v, deadline: v.deadline, exhibitStartDate: v.submissionDeadline }, () => 0)).not.toBeNull();
@@ -108,15 +112,18 @@ describe('고르면 — 다음 칸으로 · 순서가 깨진 뒤 칸은 비운�
 });
 
 describe('공모 일정 칸 — 갤러리 등록·주최 공모 등록 공용', () => {
-  it('공모만 진행이면 두 칸(시작·마감)뿐 — 자료 제출·전시 칸 자체가 없다', () => {
+  it('공모만 진행이면 세 칸(시작·마감·선정 마감) — 자료 제출·전시 칸 자체가 없다', () => {
     const { steps, ranges } = exhibitionSchedule(true);
-    expect(steps.map((s) => s.key)).toEqual(['deadlineStart', 'deadline']);
+    expect(steps.map((s) => s.key)).toEqual(['deadlineStart', 'deadline', 'selectionDeadline']);
+    expect(steps[2].wide).toBe(true);
     expect(ranges.map((r) => r.label)).toEqual(['접수 기간']);
   });
-  it('전시까지면 다섯 칸, 일어나는 순서대로 · 칸 id 는 예전 그대로(오류 스크롤·E2E)', () => {
+  it('전시까지면 여섯 칸, 일어나는 순서대로 · 칸 id 는 예전 그대로(오류 스크롤·E2E) + 선정 마감(ex-selection)', () => {
     const { steps } = exhibitionSchedule(false);
-    expect(steps.map((s) => s.key)).toEqual(['deadlineStart', 'deadline', 'submissionDeadline', 'exhibitStartDate', 'exhibitDate']);
-    expect(steps.map((s) => s.id)).toEqual(['ex-start', 'ex-deadline', 'ex-submission', 'ex-show-start', 'ex-show-end']);
+    expect(steps.map((s) => s.key)).toEqual(['deadlineStart', 'deadline', 'selectionDeadline', 'submissionDeadline', 'exhibitStartDate', 'exhibitDate']);
+    expect(steps.map((s) => s.id)).toEqual(['ex-start', 'ex-deadline', 'ex-selection', 'ex-submission', 'ex-show-start', 'ex-show-end']);
+    // 두 칸씩 세 줄 — 선정 마감 | 출품 자료 마감
+    expect(steps.some((s) => s.wide)).toBe(false);
     expect(exhibitionSchedule(false, 'hosted').steps[0].id).toBe('hosted-start');
   });
   it('기간 칠하기 · 처음 보일 달', () => {

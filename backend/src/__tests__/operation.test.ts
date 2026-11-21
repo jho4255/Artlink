@@ -381,10 +381,12 @@ describe('공모 운영 페이지 API', () => {
       expect((await request.post(`/api/operations/${exId}/settlement/complete`).set('Authorization', `Bearer ${ownerTok}`)).status).toBe(200);
       // 오너는 완료 후 잠금
       expect((await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${ownerTok}`).send({ sales: [], ratios: [] })).status).toBe(403);
-      expect((await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ recruitmentClosed: false })).status).toBe(403);
+      expect((await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ confirmed: true })).status).toBe(403);
       // 관리자는 완료 후에도 수정 가능
       expect((await request.put(`/api/operations/${exId}/settlement`).set('Authorization', `Bearer ${adminTok}`).send({ sales: [], ratios: [] })).status).toBe(200);
-      expect((await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${adminTok}`).send({ recruitmentClosed: false })).status).toBe(200);
+      expect((await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${adminTok}`).send({ confirmed: true })).status).toBe(200);
+      // 모집 마감만은 관리자도 되돌리지 못한다(2026-11-21, 규칙 90)
+      expect((await request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${adminTok}`).send({ recruitmentClosed: false })).status).toBe(400);
     });
 
     it('문제 제기는 코멘트 필수 → 400', async () => {

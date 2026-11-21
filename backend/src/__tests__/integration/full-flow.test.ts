@@ -57,6 +57,7 @@ describe('Full Flow Integration', () => {
         deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         exhibitDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         submissionDeadline: new Date(Date.now() + 45 * 86400000).toISOString(),
+        selectionDeadline: new Date(Date.now() + 37 * 86400000).toISOString(),
         capacity: 3, region: 'SEOUL', description: '통합 테스트 공모',
       });
     expect(createExhibition.status).toBe(201);

@@ -15,6 +15,7 @@
  */
 import { getDday, capacityWithLimit, capacityLimit } from '@/lib/utils';
 import { shortDate, daysUntil } from '@/lib/listings';
+import { SELECTION_REMIND_DAYS } from '@/lib/applicationWindow';
 
 export type ChipVariant = 'neutral' | 'attention' | 'done';
 
@@ -41,11 +42,20 @@ export interface StageInput {
   /** 서버가 계산한 종료(정산 완료 또는 전시 종료 20일 경과) — `lib/exhibitionLifecycle.ts` */
   closed?: boolean | null;
   exhibitStartDate?: string | null;
+  /** 접수 마감일 — 지나면 [모집 마감]을 안 눌렀어도 접수가 끝난 것이다(규칙 90: 그때부터 선정) */
+  deadline?: string | null;
+  /** 결정을 기다리는 지원 수(갤러리만 안다) — 공모만 진행하는 공고가 마감 뒤 '선정 중'인지 '선정 완료'인지 가른다 */
+  pending?: number | null;
+}
+
+/** 접수가 끝났나 — 모집 마감을 눌렀거나 접수 마감일이 지났다(서버 `selectionStarted` 와 같은 규칙, 규칙 90) */
+export function recruitmentOver(ex: { recruitmentClosed?: boolean | null; deadline?: string | null }, dday: DdayFn = getDday): boolean {
+  return !!ex.recruitmentClosed || (!!ex.deadline && dday(ex.deadline) < 0);
 }
 
 export type StageKey =
   | 'review' | 'rejected'
-  | 'recruiting' | 'selected'
+  | 'recruiting' | 'selecting' | 'selected'
   | 'preparing' | 'confirmed' | 'running'
   | 'ended' | 'settling' | 'settled' | 'closed';
 
@@ -55,7 +65,11 @@ export interface StageView { key: StageKey; label: string; variant: ChipVariant 
  * 지금 공모가 어느 단계인가 — 갤러리 카드·작가 카드·운영 화면이 **같은 이름**을 받는다.
  *
  *   모집 중 → 전시 준비 → 전시 확정 → 전시 중 → 전시 종료 → 정산 중 → 정산 완료
- *   (공모만 진행: 모집 중 → 선정 완료)
+ *   (공모만 진행: 모집 중 → 선정 중 → 선정 완료)
+ *
+ * 수락은 **접수가 끝난 뒤**에 한다(2026-11-21, 규칙 90 — 모집 마감 또는 접수 마감일 경과, `recruitmentOver`). 그래서 공모만 진행하는 공고는
+ * 그 뒤 결정을 기다리는 지원이 남아 있는 동안 '선정 중'이다(`pending` — 모르면 예전처럼 '선정 완료'). 전시까지 하는 공고는 그 기간이
+ * '전시 준비'와 겹친다(수락된 작가는 곧바로 출품 자료를 낸다).
  *
  * '모집 마감'·'전시 확정'·'전시 종료' 는 갤러리가 누르는 **동작**이고, 여기 이름은 그 뒤의 **기간**이다.
  * 그래서 모집을 마감한 뒤는 '전시 준비' — 갤러리에게도 수락된 작가에게도 그 기간이 맞는 말이다.
@@ -72,11 +86,13 @@ export function stageOf(ex: StageInput | null | undefined, dday: DdayFn = getDda
   if (ex.status === 'PENDING') return { key: 'review', label: '승인 대기', variant: 'neutral' };
   if (ex.status === 'REJECTED') return { key: 'rejected', label: '반려', variant: 'attention' };
 
+  const over = recruitmentOver(ex, dday);
   if (ex.recruitOnly) {
     if (ex.closed) return { key: 'closed', label: '종료', variant: 'done' };
-    return ex.recruitmentClosed
-      ? { key: 'selected', label: '선정 완료', variant: 'done' }
-      : { key: 'recruiting', label: '모집 중', variant: 'neutral' };
+    if (!over) return { key: 'recruiting', label: '모집 중', variant: 'neutral' };
+    return (ex.pending ?? 0) > 0
+      ? { key: 'selecting', label: '선정 중', variant: 'neutral' }
+      : { key: 'selected', label: '선정 완료', variant: 'done' };
   }
 
   if (ex.settledAt) return { key: 'settled', label: '정산 완료', variant: 'done' };
@@ -89,7 +105,7 @@ export function stageOf(ex: StageInput | null | undefined, dday: DdayFn = getDda
   const started = !!ex.exhibitStartDate && dday(ex.exhibitStartDate) <= 0;
   if (started) return { key: 'running', label: '전시 중', variant: 'neutral' };
   if (ex.confirmed) return { key: 'confirmed', label: '전시 확정', variant: 'neutral' };
-  if (ex.recruitmentClosed) return { key: 'preparing', label: '전시 준비', variant: 'neutral' };
+  if (over) return { key: 'preparing', label: '전시 준비', variant: 'neutral' };
   return { key: 'recruiting', label: '모집 중', variant: 'neutral' };
 }
 
@@ -139,7 +155,7 @@ export type TaskTarget = 'applicants' | 'stage' | 'submissions' | 'settlement' |
  * 공모 한 건 화면이 id 를 보고 실행한다: 단계 전환은 확인창, 안내 보내기는 메시지 창, 정산은 정산 탭의 상태(저장 안 된 입력·이의)를 보고.
  */
 export type TaskActionId =
-  | 'close' | 'confirm' | 'end'
+  | 'close' | 'finish-selection' | 'confirm' | 'end'
   | 'remind-submissions'
   | 'request-settlement' | 'resend-settlement' | 'save-settlement' | 'complete-settlement' | 'remind-settlement';
 export interface TaskAction { id: TaskActionId; label: string }
@@ -156,6 +172,8 @@ export interface NextTask {
   primary?: TaskAction;
   /** 같은 줄의 보조 버튼(테두리) */
   secondary?: TaskAction;
+  /** 문장 아래 작은 한 줄(공모 한 건 화면의 할 일 줄만) — '그날이 지나면 수락하지 않은 지원자는 미선정이 돼요' */
+  note?: string;
 }
 
 export interface GallerySnapshot {
@@ -167,6 +185,8 @@ export interface GallerySnapshot {
   settled: boolean;
   settlementRequested: boolean;
   deadline?: string | null;
+  /** 선정 마감일(새 공고, 규칙 90) — 이날까지 수락하고, 지나면 남은 검토 대기는 미선정. 옛 공고는 null */
+  selectionDeadline?: string | null;
   exhibitStartDate?: string | null;
   exhibitDate?: string | null;
   /** 결정을 기다리는 지원(접수) */
@@ -198,45 +218,60 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
   }
   if (s.settled) return { text: '정산까지 모두 끝났어요.', tone: 'done', target: 'summary', action: '요약 보기' };
 
-  const deadlinePassed = !!s.deadline && dday(s.deadline) < 0;
   const CLOSE: TaskAction = { id: 'close', label: '모집 마감' };
   /*
-    정원이 찼는데 모집 중 — 더는 수락할 수 없다(서버가 막는다). 검토 대기가 남아 있어도 '검토하세요' 를 띄우면
-    눌러 보고 나서야 정원 안내를 받는다(2026-10-03 점검 P2). 작가 화면·지원은 그대로 둔다(사용자 결정 — 갤러리에게만 알린다).
-    더 뽑으려면 [지원자] 의 [모집 인원 변경] 으로 늘린다.
+    정원(= 뽑을 수 있는 사람 수, 규칙 57)이 찼다. 접수 중엔 초대 코드로만 찰 수 있고, 접수가 끝나면 수락으로 찬다.
+    더는 수락할 수 없다(서버가 막는다) — 더 뽑으려면 [모집 인원 변경]으로 늘린다.
   */
   const full = !!s.capacity && s.capacity > 0 && s.accepted >= s.capacity;
-  const fullTask: NextTask = {
-    text: `정원(${capacityWithLimit(s)})이 찼어요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
-    tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE,
-  };
-  const pendingTask: NextTask = {
-    text: `지원자 ${s.pending}명이 검토를 기다리고 있어요`,
-    // 심사는 [지원자] 탭이 곧 작업이라 주 버튼이 없다 — 옆에 [모집 마감](선정을 마쳤을 때)
-    tone: 'attention', target: 'applicants', action: '지원자 심사', secondary: CLOSE,
-  };
   const left = s.deadline ? ddayText('마감', s.deadline, dday) : null;
 
-  if (s.recruitOnly) {
-    if (s.recruitmentClosed) return { text: '선정을 마쳤어요. 이 공고는 여기까지 진행합니다.', tone: 'done', target: 'applicants', action: '지원자 보기' };
-    if (full) return fullTask;
-    if (s.pending > 0) return pendingTask;
-    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 선정을 마쳤다면 모집을 마감하세요.', tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE };
-    return { text: `지원을 받고 있어요${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'applicants', action: '지원자 보기', secondary: CLOSE };
+  /*
+    접수 중 — **수락은 접수가 끝난 뒤에만**(2026-11-21 사용자 결정, 규칙 90). 작가가 지원서를 고치거나 취소할 수 있는 동안엔 결정하지 않는다.
+    그래서 지원이 들어와도 지금 할 일이 아니다(기다리는 중). 접수 마감일이 지나면 [모집 마감]을 안 눌러도 선정이 시작된다.
+  */
+  if (!recruitmentOver(s, dday)) {
+    if (full) {
+      return {
+        text: `정원(${capacityWithLimit(s)})이 찼어요${s.pending > 0 ? ` · 지원 ${s.pending}명` : ''}`,
+        tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE,
+      };
+    }
+    const applied = s.pending > 0 ? ` · 지원 ${s.pending}명` : '';
+    return { text: `지원을 받고 있어요${applied}${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'applicants', action: '지원자 보기', secondary: CLOSE };
   }
 
-  if (!s.recruitmentClosed) {
-    if (full) return fullTask;
-    if (s.pending > 0) return pendingTask;
-    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 모집을 마감하고 전시를 준비하세요.', tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE };
-    return { text: `지원을 받고 있어요${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'applicants', action: '지원자 보기', secondary: CLOSE };
+  /*
+    접수가 끝났다 — 선정. 결정을 기다리는 지원이 있으면 그게 먼저다(작가들이 결과를 기다린다). 버튼은 [지원자] 탭의 [수락하기]가 전부다 —
+    거절은 따로 없다(사용자 결정 "안 뽑으면 그게 거절"). 새 공고는 선정 마감일이 지나면 남은 사람이 미선정이 되고,
+    옛 공고(날짜 없음)는 [⋯] 의 [선정 마치기]·전시 확정·종료 때 그렇게 된다.
+  */
+  if (s.pending > 0 && !s.ended) {
+    const sel = s.selectionDeadline;
+    const note = sel ? '그날이 지나면 수락하지 않은 지원자는 미선정이 돼요' : undefined;
+    if (full) {
+      return {
+        text: `정원(${capacityWithLimit(s)})이 찼어요 · 검토 대기 ${s.pending}명`,
+        tone: 'attention', target: 'applicants', action: '지원자 보기',
+        ...(sel ? { note: `${shortDate(sel)}이 지나면 검토 대기는 미선정이 돼요` } : {}),
+      };
+    }
+    return {
+      text: sel ? `${shortDate(sel)}까지 선정하세요 · 검토 대기 ${s.pending}명` : `지원자 ${s.pending}명이 검토를 기다리고 있어요`,
+      // 심사는 [지원자] 탭이 곧 작업이라 주 버튼이 없다
+      tone: 'attention', target: 'applicants', action: '지원자 심사',
+      ...(note ? { note } : {}),
+    };
   }
+
+  if (s.recruitOnly) return { text: '선정을 마쳤어요. 이 공고는 여기까지 진행합니다.', tone: 'done', target: 'applicants', action: '지원자 보기' };
 
   if (!s.ended) {
     const started = !!s.exhibitStartDate && dday(s.exhibitStartDate) <= 0;
     // 작가 자료가 잠겼는가 — 갤러리의 수동 확정 또는 전시 시작일 경과(서버 computeConfirmed 와 같은 규칙)
     const locked = s.confirmed || started;
-    if (s.accepted === 0) return { text: '수락한 작가가 없어요. 지원자를 수락해 주세요.', tone: 'attention', target: 'applicants', action: '지원자 보기' };
+    // 검토 대기가 없는데 수락한 작가도 없다 — 더 수락할 사람이 없다(결과가 난 지원은 바꾸지 않는다, 규칙 90)
+    if (s.accepted === 0) return { text: '선정한 작가가 없어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
     if (s.exhibitDate && dday(s.exhibitDate) < 0) {
       return { text: '전시 기간이 끝났어요. 전시를 종료하고 정산을 시작하세요.', tone: 'attention', target: 'stage', action: '전시 종료', act: 'end', primary: { id: 'end', label: '전시 종료' } };
     }
@@ -290,6 +325,10 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
 export interface ArtistSnapshot {
   status: string;
   recruitOnly: boolean;
+  /** 접수가 끝났나 · 선정 마감일 — 심사 중 안내('○○까지 선정 결과가 나와요')에 쓴다(규칙 90) */
+  recruitmentClosed?: boolean | null;
+  deadline?: string | null;
+  selectionDeadline?: string | null;
   confirmed: boolean;
   ended: boolean;
   settled: boolean;
@@ -302,12 +341,22 @@ export interface ArtistSnapshot {
 }
 
 /**
+ * 심사 중인 작가에게 하는 한 줄 — 언제 결과가 나오는지. 미선정은 알림이 없으므로(규칙 90) '결과는 알림으로'라고 하지 않는다:
+ * 선정 마감일이 있으면 그 날짜, 없으면(옛 공고) '선정되면 알림으로'.
+ */
+export function artistPendingText(s: { recruitmentClosed?: boolean | null; deadline?: string | null; selectionDeadline?: string | null }, dday: DdayFn = getDday): string {
+  const when = s.selectionDeadline ? `${shortDate(s.selectionDeadline)}까지 선정 결과가 나와요.` : '선정되면 알림으로 알려 드려요.';
+  return recruitmentOver(s, dday) ? `모집이 마감되어 갤러리가 선정하고 있어요. ${when}` : `접수가 끝나면 갤러리가 선정해요. ${when}`;
+}
+
+/**
  * 작가가 지금 해야 할 일. **할 일이 있을 때만** 돌려준다(null = 기다리면 된다) — 작가 카드엔 이미 일정 줄이 있어
- * 할 일이 없는데 문장을 또 적으면 잔소리가 된다. 접수 상태만 예외로 '결과는 알림으로' 를 알려 준다.
+ * 할 일이 없는데 문장을 또 적으면 잔소리가 된다. 접수 상태만 예외로 언제 결과가 나오는지(선정 마감일) 알려 준다 —
+ * 미선정은 알림이 없어서 '결과는 알림으로' 라고 하지 않는다(규칙 90).
  */
 export function artistNextTask(s: ArtistSnapshot, dday: DdayFn = getDday): NextTask | null {
   if (s.status === 'REJECTED') return null;
-  if (s.status !== 'ACCEPTED') return { text: '갤러리가 검토하고 있어요. 결과는 알림으로 알려 드려요.', tone: 'neutral', target: null };
+  if (s.status !== 'ACCEPTED') return { text: artistPendingText(s, dday), tone: 'neutral', target: null };
   if (s.recruitOnly || s.settled) return null;
   if (s.settlementRequested) {
     // 이미 답한 작가에게 '확인을 요청했어요' 를 계속 띄우면 확인이 안 된 줄 안다(2026-10-03 점검 P2).
@@ -351,8 +400,9 @@ export interface StripCell {
 }
 
 export interface StripInput extends StageInput {
-  deadline?: string | null;
   submissionDeadline?: string | null;
+  /** 선정 마감일(새 공고) — 갤러리 화면의 모집 칸에 '선정 마감 11.30(월) · D-3'(3일 안이면 빨강) */
+  selectionDeadline?: string | null;
   /** 전시 **종료일**(시작은 exhibitStartDate — 이름이 헷갈린다, schema 주석) */
   exhibitDate?: string | null;
   /** 갤러리: 수락 · 검토 대기 · 정원 */
@@ -380,26 +430,40 @@ export function flowStrip(viewer: 'gallery' | 'artist', s: StripInput, now: Date
   const dd = (d: string) => daysUntil(d, now);
   const ddayFn: DdayFn = (d) => daysUntil(d, now);
   const stage = stageOf(s, ddayFn);
+  const over = recruitmentOver(s, ddayFn);
   const artistPending = viewer === 'artist' && s.applicationStatus !== 'ACCEPTED';
   const first = viewer === 'artist' ? '지원' : '모집';
   const recruitValue = (): string | undefined => {
     if (viewer === 'artist') return s.applicationStatus === 'ACCEPTED' ? '선정' : s.applicationStatus === 'REJECTED' ? '미선정' : '심사 중';
     if (s.accepted == null) return undefined;
     const cap = s.capacity ? `/${capacityLimit({ capacity: s.capacity, capacityMask: (s.capacityMask ?? null) as 'ONE' | 'TWO' | null })}` : '';
-    return `수락 ${s.accepted}${cap}${!s.recruitmentClosed && (s.pending ?? 0) > 0 ? ` · 대기 ${s.pending}` : ''}`;
+    const pending = s.pending ?? 0;
+    // 접수 중엔 아직 아무도 결정하지 않는다(규칙 90) — 받은 지원 수. 초대 코드로 들어온 수락이 있으면 그것도
+    if (!over) return s.accepted > 0 ? `수락 ${s.accepted}${cap} · 지원 ${pending}` : `지원 ${pending}`;
+    return `수락 ${s.accepted}${cap}${pending > 0 ? ` · 대기 ${pending}` : ''}`;
   };
   const recruitNote = (): { note?: string; hot?: boolean } => {
-    if (!s.deadline || s.recruitmentClosed) return {};
-    const left = dd(s.deadline);
-    return { note: `${shortDate(s.deadline)} 마감`, hot: left >= 0 && left <= 7 };
+    if (!over) {
+      if (!s.deadline) return {};
+      const left = dd(s.deadline);
+      return { note: `${shortDate(s.deadline)} 마감`, hot: left >= 0 && left <= 7 };
+    }
+    // 선정 중(갤러리) — 선정 마감일까지 며칠. 3일 안이면 빨강(그때부터 알림도 간다, 규칙 90)
+    if (viewer === 'gallery' && s.selectionDeadline && (s.pending ?? 0) > 0) {
+      const left = dd(s.selectionDeadline);
+      if (left >= 0) return { note: `선정 마감 ${shortDate(s.selectionDeadline)} · ${left === 0 ? '오늘' : `D-${left}`}`, hot: left <= SELECTION_REMIND_DAYS };
+    }
+    return {};
   };
 
   if (s.recruitOnly) {
     const doneAll = stage?.key === 'selected' || stage?.key === 'closed' || (viewer === 'artist' && s.applicationStatus === 'ACCEPTED');
+    // 마감했고 결정을 기다리는 지원이 남았다 — 선정 칸이 지금이다(규칙 90)
+    const selecting = stage?.key === 'selecting';
     const review = stage?.key === 'review' || stage?.key === 'rejected';
     return [
-      { key: 'recruit', label: first, state: review ? 'todo' : doneAll ? 'done' : 'current', value: recruitValue(), ...recruitNote() },
-      { key: 'select', label: '선정', state: doneAll ? 'current' : 'todo', value: doneAll ? '선정 완료' : undefined },
+      { key: 'recruit', label: first, state: review ? 'todo' : doneAll || selecting ? 'done' : 'current', value: selecting ? undefined : recruitValue(), ...(over ? {} : recruitNote()) },
+      { key: 'select', label: '선정', state: doneAll || selecting ? 'current' : 'todo', value: doneAll ? '선정 완료' : selecting ? recruitValue() : undefined, ...(selecting ? recruitNote() : {}) },
     ];
   }
 
@@ -461,7 +525,7 @@ export function flowStrip(viewer: 'gallery' | 'artist', s: StripInput, now: Date
   }
 
   return [
-    { key: 'recruit', label: first, state: stateOf(0), value: recruitValue(), ...(idx <= 0 ? recruitNote() : {}) },
+    { key: 'recruit', label: first, state: stateOf(0), value: recruitValue(), ...(idx <= 0 || (viewer === 'gallery' && over) ? recruitNote() : {}) },
     { key: 'prepare', label: '전시 준비', state: stateOf(1), value: prepValue, note: prepNote, hot: prepHot || undefined },
     { key: 'show', label: '전시', state: stateOf(2), value: showValue, note: showNote },
     { key: 'settle', label: '정산', state: stateOf(3), value: settleValue, note: settleNote, hot: settleHot || undefined },
@@ -480,9 +544,11 @@ export const WORKSPACE_VIEWS: WorkspaceView[] = ['summary', 'applicants', 'submi
 /**
  * 처음 열 탭 — 그 단계에서 일하는 곳. 모집 → 지원자 · 전시 준비~전시 → 출품 자료 · 정산 → 정산 · 마무리 → 요약.
  * 공모만 진행은 지원자(그 공고의 일은 거기서 끝난다).
+ * 마감 뒤 결정을 기다리는 지원이 남았으면(`pending`) 전시 준비여도 지원자 — 선정이 먼저다(규칙 90).
  */
-export function workspaceDefaultView(stage: StageKey | null | undefined, recruitOnly = false): WorkspaceView {
+export function workspaceDefaultView(stage: StageKey | null | undefined, recruitOnly = false, pending = 0): WorkspaceView {
   if (recruitOnly) return 'applicants';
+  if (stage === 'preparing' && pending > 0) return 'applicants';
   switch (stage) {
     case 'preparing': case 'confirmed': case 'running': return 'submissions';
     case 'ended': case 'settling': case 'closed': return 'settlement';
@@ -505,7 +571,7 @@ export function artistDefaultView(s: ArtistSnapshot): ArtistView {
 /** 작가 목록의 '기다리는 중' 줄 — 할 일이 없을 때 지금 무엇을 기다리는지 한 줄 */
 export function artistWaitText(s: ArtistSnapshot, dday: DdayFn = getDday): string {
   if (s.status === 'REJECTED') return '이번 공모에서는 선정되지 않았어요';
-  if (s.status !== 'ACCEPTED') return '갤러리가 검토하고 있어요';
+  if (s.status !== 'ACCEPTED') return s.selectionDeadline ? `${shortDate(s.selectionDeadline)}까지 선정 결과가 나와요` : '갤러리가 검토하고 있어요';
   if (s.recruitOnly) return '선정되었어요';
   if (s.settled) return '정산이 끝났어요';
   if (s.settlementRequested) return s.mySettlementStatus === 'ISSUE' ? '이의를 보냈어요' : '정산을 확인했어요 · 갤러리 마무리 대기';
@@ -524,6 +590,9 @@ export interface SubTextInput {
   stageKey?: StageKey | null;
   deadline?: string | null;
   submissionDeadline?: string | null;
+  /** 선정 마감일 · 검토 대기(갤러리) — 선정 중이면 '선정 마감 D-3' 이 먼저다(규칙 90) */
+  selectionDeadline?: string | null;
+  pending?: number | null;
   exhibitStartDate?: string | null;
   exhibitDate?: string | null;
   settledAt?: string | null;
@@ -540,11 +609,13 @@ export function gallerySubText(s: SubTextInput, dday: DdayFn = getDday): string 
       parts.push(ddayText('마감', s.deadline, dday));
       if (s.viewCount != null) parts.push(`조회 ${s.viewCount.toLocaleString('ko')}`);
       break;
-    case 'selected':
+    case 'selecting': case 'selected':
+      if ((s.pending ?? 0) > 0) parts.push(ddayText('선정 마감', s.selectionDeadline, dday));
       if (s.viewCount != null) parts.push(`조회 ${s.viewCount.toLocaleString('ko')}`);
       break;
     case 'preparing': case 'confirmed':
-      parts.push(ddayText('출품 자료 마감', s.submissionDeadline, dday) ?? ddayText('전시 시작', s.exhibitStartDate, dday));
+      parts.push(((s.pending ?? 0) > 0 && s.stageKey === 'preparing' ? ddayText('선정 마감', s.selectionDeadline, dday) : null)
+        ?? ddayText('출품 자료 마감', s.submissionDeadline, dday) ?? ddayText('전시 시작', s.exhibitStartDate, dday));
       break;
     case 'running':
       parts.push(s.exhibitDate ? `${shortDate(s.exhibitDate)}까지` : null);
@@ -581,7 +652,7 @@ export function artistSubText(s: SubTextInput & { applicationStatus: string; app
       }
       return s.exhibitDate ? shortDate(s.exhibitDate) : null;
     case 'settled': return s.settledAt ? shortDate(s.settledAt) : null;
-    case 'selected': return '선정';
+    case 'selecting': case 'selected': return '선정';
     default: return null;
   }
 }

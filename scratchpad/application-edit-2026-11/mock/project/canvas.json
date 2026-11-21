@@ -1,0 +1,37 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-21T08:40:00Z" },
+  "title": "지원서 수정·취소 · 마감 공고 정리 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 900, "title": "① 모집 마감 확인창 — PC (갤러리 공모 화면)", "expand": "fill" },
+    "ClosedApplicantsPC.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 900, "title": "① 마감된 공고의 지원자 탭 — PC (관리자 · 주최 공모)", "expand": "fill" },
+    "ClosedArtistMobile.dc.html": { "x": 2720, "y": 0, "w": 390, "h": 844, "title": "① 작가 [내 전시] 종료 탭 — 휴대폰" },
+    "PendingArtistPC.dc.html": { "x": 0, "y": 1420, "w": 1280, "h": 960, "title": "② 심사 중인 공고 — 작가 PC ([지원서 수정] · [지원 취소])", "expand": "fill" },
+    "EditApplyPC.dc.html": { "x": 1360, "y": 1420, "w": 1280, "h": 1040, "title": "② 지원서 수정 화면 — PC", "expand": "fill" },
+    "EditApplyMobile.dc.html": { "x": 2720, "y": 1420, "w": 390, "h": 844, "title": "② 지원서 수정 화면 — 휴대폰" },
+    "EditedGalleryPC.dc.html": { "x": 3190, "y": 1420, "w": 1280, "h": 900, "title": "② 갤러리 지원자 탭 — '수정됨' 표시", "expand": "fill" },
+    "CancelConfirmMobile.dc.html": { "x": 0, "y": 2900, "w": 390, "h": 844, "title": "③ 지원 취소 확인창 — 휴대폰" },
+    "CancelDoneMobile.dc.html": { "x": 470, "y": 2900, "w": 390, "h": 844, "title": "③ 취소한 뒤 — 공고 상세 휴대폰" },
+    "CancelBellPC.dc.html": { "x": 940, "y": 2900, "w": 420, "h": 460, "title": "③ 갤러리 알림 — 지원 취소" }
+  },
+  "order": [
+    "Main.dc.html",
+    "ClosedApplicantsPC.dc.html",
+    "ClosedArtistMobile.dc.html",
+    "PendingArtistPC.dc.html",
+    "EditApplyPC.dc.html",
+    "EditApplyMobile.dc.html",
+    "EditedGalleryPC.dc.html",
+    "CancelConfirmMobile.dc.html",
+    "CancelDoneMobile.dc.html",
+    "CancelBellPC.dc.html"
+  ],
+  "notes": {
+    "row1": { "x": 0, "y": -300, "text": "① 마감된 공고 — 남은 검토 대기는 미선정으로 (알림 없음)", "kind": "title1", "maxW": 3110 },
+    "row2": { "x": 0, "y": 1120, "text": "② 지원서 수정 — 검토 대기 · 접수 마감 전까지", "kind": "title1", "maxW": 4470 },
+    "row3": { "x": 0, "y": 2600, "text": "③ 지원 취소 — 검토 대기 · 접수 마감 전까지", "kind": "title1", "maxW": 1360 }
+  },
+  "designSystems": []
+}

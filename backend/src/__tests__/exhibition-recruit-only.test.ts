@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
-import { request, authToken, cleanDb, seedUsers, testPrisma } from './helpers';
+import { request, authToken, cleanDb, seedUsers, testPrisma, closeRecruitment } from './helpers';
 
 const GALLERY_OWNER = 3;
 const ADMIN = 4;
@@ -28,6 +28,7 @@ const basePayload = () => ({
   type: 'GROUP',
   deadlineStart: future(-1),
   deadline: future(20),
+  selectionDeadline: future(25),
   exhibitStartDate: future(40),
   exhibitDate: future(60),
   capacity: 5,
@@ -97,6 +98,7 @@ async function applyAndAccept(exhibitionId: number) {
       termsVersion: ARTIST_APPLY_TERMS_VERSION,
     });
   expect(applied.status).toBe(201);
+  await closeRecruitment(exhibitionId);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   const patched = await request.patch(`/api/exhibitions/${exhibitionId}/applications/${applied.body.id}`)
     .set('Authorization', `Bearer ${galleryToken}`)
     .send({ status: 'ACCEPTED' });

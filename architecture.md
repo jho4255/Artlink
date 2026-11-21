@@ -3276,7 +3276,7 @@ backend `chat-renewal.test.ts`(25) · frontend `arttalk.test.ts`(19) · `chatVie
   - 관리자는 옛 운영 주소(`/exhibitions/:id/operation/new`)에서 같은 화면을 단독으로(`standalone`). 갤러리·작가는 그 주소로 오면 마이페이지의 그 공모로 간다.
 - **판단은 `lib/flowLabels.ts`** — `stageOf` · `flowStrip`(다섯 칸, 공모만 진행 둘) · `galleryNextTask`/`artistNextTask`(할 일 문장 · 주 버튼 · 보조 버튼 · 데려갈 탭) ·
   `gallerySubText`/`artistSubText`(줄·머리의 한 줄) · `workspaceDefaultView`/`artistDefaultView`(처음 열 탭) · `viewForTarget`.
-- **단계 전환** `hooks/useLifecycle.tsx` — 확인창(`ConfirmDialog details`) + 모집 마감의 '남은 N명을 미선정으로 처리'(D2, 기본 꺼짐) → `rejectPending`.
+- **단계 전환** `hooks/useLifecycle.tsx` — 확인창(`ConfirmDialog details`). 모집 마감은 2026-11-21 부터 되돌릴 수 없고 남은 검토 대기는 늘 미선정(알림 없음) — 아래 「모집 마감 · 지원서 고치기·취소」(D2 체크는 없앴다).
 - **지원자 심사** `ApplicantManager` — 두 칸(≥1180px) / 한 장씩 창(그 아래) · 결정 줄 `data-decision-bar` · 결정 뒤 다음 검토 대기 · 도구 글자 버튼(≥640px) / [관리 ▾].
 - **출품 자료 취합** `AdminSubmissionsSection` — 작가 표(`data-submission-artist`) · [내려받기 ▾](`hooks/useSubmissionDownloads.ts` — 캡션 HWP · 도록 PDF · 작품 원본 ZIP · 출품 자료 PDF ZIP) · 아직 안 낸 작가에게 안내(`SubmissionRemindDialog`).
   작가 쪽 `MySubmissionSection` — 번호 붙은 구역(출품작 · 약력 · 작가노트) · 하단 줄 '남은 것 N · <첫 칸>' + [임시저장]·[갤러리에 제출].
@@ -3350,3 +3350,43 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
 **멈춘 공모**: 정산 이의 · 전시 끝나고 7~19일 정산 요청 전 · 접수 마감 지나 3일 넘게 검토 대기(20일 지나면 '종료'로 정리된 공모라 뺀다).
 
 **통계에서 일부러 뺀 것**: 비회원 → 가입 · 가입한 작가 → 지원 깔때기(사용자 결정) · 유입 경로(2026-10-03 결정 그대로 안 모음).
+
+## 모집 마감 · 수락만 · 선정 마감일 · 지원서 고치기·취소 (2026-11-21, CLAUDE.md 규칙 90)
+
+사용자: 마감된 공고에 '검토 대기'가 남을 필요가 없다(작가가 보면 미선정이면 된다, 알림은 필요 없다) → 모집 마감은 되돌릴 수 없게 · 강조해서 알리기 →
+수락·거절은 마감 후에만 → **"직접 거절은 없이 있는 사람들 중에서 수락만 — 안 뽑으면 그게 거절 · 선정 후엔 되돌릴 수 없게"** → **"[선정 마치기]보다 선정 마감일"** →
+"이미 올라간 공고는 그대로, 새 공고부터 · 선정 마감일은 고칠 수 있게 · 3일 전부터 공고 주인에게 알림". 목업 https://claude.ai/artifact/8Qku8cRnAxPjq9MQWZM92m.
+
+**두 시기**: 접수 중 = 작가가 지원서를 고치거나 취소(갤러리는 읽기만) / 접수가 끝나면(모집 마감 **또는** 접수 마감일 경과) = 갤러리가 **수락만**(작가는 못 바꾼다) ~ 선정 마감일.
+선정 마감일이 지나면 남은 검토 대기는 알림 없이 미선정 — 되돌릴 수 없다.
+
+| 무엇 | 어디 |
+|---|---|
+| 규칙 한 곳(열린 창 · 선정 시작/끝 · 행 잠금) | `backend/src/lib/applicationWindow.ts`(`selectionStarted`·`selectionDeadlinePassed`) ↔ `frontend/src/lib/applicationWindow.ts` |
+| 선정 마감일 — 순서 · 지나면 조용히 미선정 · 3일 전부터 알림 · 훑기 | `backend/src/lib/selectionDeadline.ts`(`assertSelectionOrder`·`closeOutExpiredSelections`·`sendSelectionReminders`·`sweepSelectionDeadlines`) |
+| 수락만(거절 400 `NO_REJECT` · 검토 대기만 · 접수 중 400 · 선정 마감일 뒤 400, 관리자도) | `routes/exhibition.ts PATCH /:id/applications/:appId` |
+| 등록 때 필수 · 순서 | `routes/exhibition.ts POST /` · `POST /hosted`(`withStageRules`) · 출품 자료 마감 변경 · 수정 요청 승인(`routes/approval.ts`) |
+| [선정 마감일 변경](지나기 전까지 · 주최자) | `routes/exhibition.ts PATCH /:id/selection-deadline` · 화면 `ApplicantManager SelectionDeadlineEditor`(`SchedulePicker ceiling`) |
+| 읽기 직전 정리(지원자 목록 · 작가 내 지원) · 1분 훑기(공개 목록 · 내 공모 · 운영 요약 · 공모 상세) | `routes/exhibition.ts` 각 GET |
+| 모집 마감(되돌리기 400 · 아무도 미선정으로 바꾸지 않는다) | `routes/operation.ts PATCH /:id/lifecycle` |
+| [선정 마치기] — 선정 마감일 없는 옛 공고만([⋯] 메뉴, 날짜 있으면 400 `FINISH_HAS_DEADLINE`) | `routes/operation.ts POST /:id/finish-selection` · 화면 `ExhibitionWorkspace menuItems` |
+| 전시 확정·종료가 선정을 끝낸다(남은 검토 대기 → `closedOutAt`) | `lifecycle` 의 `confirmedNow`·`endedNow` |
+| 지원 · 지원서 고치기 · 지원 취소(공모 행 `FOR SHARE`) | `routes/exhibition.ts POST /:id/apply` · `PUT/DELETE /:id/my-application` · `parseApplicationBody` |
+| 확인창 빨간 한 줄(모집 마감 · 선정 마치기) | `ConfirmDialog warning` · `useLifecycle CLOSE_WARNING` |
+| 할 일('M.D까지 선정하세요 · 검토 대기 N명' + `note`) · 단계(접수 마감일 경과 = 선정) · 띠 '선정 마감 · D-n' · 작가 '○○까지 선정 결과가 나와요' | `lib/flowLabels.ts galleryNextTask`·`recruitmentOver`·`flowStrip`·`artistPendingText` |
+| 등록 달력 칸 '선정 마감일' · 한눈에 줄 '선정 ~M/D' · 상세 일정 띠 '선정 마감' | `lib/scheduleCalendar.ts exhibitionSchedule` · `lib/scheduleSummary.ts` · `lib/listings.ts scheduleSteps` |
+| 갤러리 지원자 화면([수락하기]만 · '미선정' 줄은 까닭만 · 휴대폰 '선정 마감 D-n') | `components/shared/ApplicantManager.tsx` |
+| 작가 [지원서 수정]·[지원 취소] | `components/workspace/ArtistExhibitionWorkspace.tsx` |
+| 지원서 고치기 화면(`/exhibitions/:id/apply/edit`) | `pages/ApplyPage.tsx mode="edit"` |
+| 알림 — 지원 취소 · 선정 마감(3일 전부터) | `APPLICATION_CANCELED`('지원 취소') · `SELECTION_DEADLINE`('선정 마감') |
+| 배포 정리(선정이 이미 끝난 공모의 검토 대기 → 미선정) · 열 | `prisma/migrations/20261121160000_application_closeout_edit` · `20261121180000_selection_deadline` |
+
+- 마감은 `claim('recruitmentClosed')` 로 공모 행을 잠근다 — 같은 때 온 지원·고치기·취소가 `lockOpenExhibition` 에서 기다렸다가 '마감됨'을 본다(마감된 공모의 지원서가 바뀌거나 새로 생기지 않는다).
+  접수 마감일 경과로 넘어가는 쪽은 작가 쪽 판정(`applicationChangeBlock` — 마감일)과 갤러리 쪽 판정(`selectionStarted` — 마감일)이 같은 날짜를 보므로 겹치지 않는다.
+- 결정 라우트: 전이 규칙(결과가 난 지원은 그대로) → 거절 400 → 접수가 끝났나 → 선정 마감일이 지났나(개발자 도구의 '수락 되돌리기'만 예외).
+- 선정 마감일 정리·선정 마치기·확정·종료의 미선정 처리는 상태 조건 UPDATE(`status IN ('SUBMITTED','REVIEWED')`) 하나 — 동시에 둘이 와도 합이 실제 수다(LIF-13). 선정 마감일 정리는
+  `e.selectionDeadline < 오늘 KST 0시` 조인 UPDATE 하나(`closeOutExpiredSelections` — 공모·작가로 좁힐 수 있다).
+- 알림은 refKey 에 선정 마감일과 D-n 을 넣어 같은 날 두 번 가지 않는다(날짜를 늦추면 새 날짜 기준으로 다시 간다)(정산 재촉 `settlementReminder.ts` 와 같은 방식). 아직 접수 중이거나 검토 대기가 없으면 보내지 않는다.
+- 관리자 할 일의 직접 운영 공모 '검토 대기'는 접수가 끝난 공모만 센다(`todoCounts`) · '멈춘 공모'의 검토 대기는 선정 마감일 없는 옛 공고만(`stallOf`).
+  '지원 → 결과' 시간(`adminStats operationSpeed`)은 `closedOutAt` 행을 뺀다 — 사람이 내린 결정이 아니다.
+

@@ -1,0 +1,137 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "AfterFinishPC.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "title": "③ 선정 마감일이 지난 뒤 — 갤러리 PC (미선정은 되돌릴 수 없음)",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "Artboard-i4cd.dc.html": {
+      "h": 600,
+      "handmade": true,
+      "page": "page-gs4hdm",
+      "title": "Artboard 1",
+      "w": 800,
+      "x": 0,
+      "y": 0
+    },
+    "ArtistResultMobile.dc.html": {
+      "h": 844,
+      "title": "작가 — 선정 마감일이 지난 뒤 (미선정)",
+      "w": 390,
+      "x": 470,
+      "y": 2584
+    },
+    "ArtistWaitingMobile.dc.html": {
+      "h": 844,
+      "title": "작가 — 선정 기간 (심사 중)",
+      "w": 390,
+      "x": 0,
+      "y": 2584
+    },
+    "BellReminder.dc.html": {
+      "h": 520,
+      "title": "② 선정 마감 알림 — 3일 전부터 공고 주인에게",
+      "w": 420,
+      "x": 1310,
+      "y": 1320
+    },
+    "DeadlineEdit.dc.html": {
+      "h": 480,
+      "title": "② [선정 마감일 변경] — 지나기 전까지",
+      "w": 760,
+      "x": 470,
+      "y": 1320
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "title": "① 선정 기간 — 갤러리 PC ([수락하기]만 · 선정 마감 D-3)",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "RegisterSchedule.dc.html": {
+      "expand": "fill",
+      "h": 760,
+      "title": "새 공고 등록 — 일정에 '선정 마감일'",
+      "w": 1280,
+      "x": 940,
+      "y": 2584
+    },
+    "SelectSheetMobile.dc.html": {
+      "h": 844,
+      "title": "① 휴대폰 지원서 창 — [수락하기]만",
+      "w": 390,
+      "x": 0,
+      "y": 1320
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-21T11:20:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "row1": {
+      "kind": "title1",
+      "maxW": 2640,
+      "text": "선정 기간 — [거절] 없이 수락만 · 선정 마감일이 지나면 남은 사람은 미선정",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "row2": {
+      "kind": "title1",
+      "maxW": 1730,
+      "text": "휴대폰 지원서 창 · 선정 마감일 변경 · 알림",
+      "w": 240,
+      "x": 0,
+      "y": 1020
+    },
+    "row3": {
+      "kind": "title1",
+      "maxW": 2220,
+      "text": "작가 화면 · 새 공고 등록 일정",
+      "w": 240,
+      "x": 0,
+      "y": 2284
+    },
+    "rules": {
+      "size": 24,
+      "text": "이해한 규칙\n\n1. 새로 올리는 공고부터 — 등록 일정에 '선정 마감일'(접수 마감 다음 날 ~ 출품 자료 마감 전날). 공모만 진행이면 접수 시작 · 접수 마감 · 선정 마감일 세 칸.\n2. 이미 올라간 공고는 선정 마감일 없이 그대로 둔다.\n3. 모집 중 — 작가는 지원서를 고치거나 취소하고, 갤러리는 읽기만 한다.\n4. 모집 마감 뒤 ~ 선정 마감일 — 갤러리는 [수락하기]만 한다. [거절] · [선택 거절]은 없다.\n5. 수락은 누르는 순간 확정 — 작가에게 선정 알림이 가고 되돌릴 수 없다.\n6. 선정 마감일이 지나면 수락하지 않은 사람은 저절로 미선정(알림 없음). 그 뒤로는 수락할 수 없다.\n7. 선정 마감일은 지나기 전까지 [선정 마감일 변경]으로 고칠 수 있다.\n8. 선정 마감일 3일 전부터 매일 한 번 공고 주인에게 알림(D-3 · D-2 · D-1 · 당일). 누르면 그 공모의 [지원자]. 검토 대기가 없으면 보내지 않는다.\n9. 작가 '심사 중' 안내는 '11.30(월)까지 선정 결과가 나와요'.\n\n확인 부탁\nA. [모집 마감]을 안 눌러도 접수 마감일이 지나면 선정을 시작할 수 있다 — 안 그러면 마감을 안 누른 공고는 아무도 못 뽑고 전부 미선정이 된다.\nB. 이미 올라간 공고는 선정 마감일이 없어 남은 지원자를 미선정으로 만들 날이 없다 — 그런 공고에만 [⋯] 메뉴에 [선정 마치기]를 남긴다.",
+      "w": 600,
+      "x": 2720,
+      "y": 0
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "AfterFinishPC.dc.html",
+    "SelectSheetMobile.dc.html",
+    "DeadlineEdit.dc.html",
+    "BellReminder.dc.html",
+    "ArtistWaitingMobile.dc.html",
+    "ArtistResultMobile.dc.html",
+    "RegisterSchedule.dc.html",
+    "Artboard-i4cd.dc.html"
+  ],
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Page 1"
+    },
+    {
+      "id": "page-gs4hdm",
+      "name": "Page 2"
+    }
+  ],
+  "title": "선정 규칙 목업 — 거절 없이 뽑기만"
+}

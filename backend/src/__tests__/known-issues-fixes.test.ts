@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery } from './helpers';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, closeRecruitment } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
 
 /**
@@ -49,18 +49,20 @@ describe('Known issues 수정', () => {
     it('선정 인원이 찬 뒤 수락하면 400', async () => {
       const ex = await makeExhibition(1);
       const a1 = await apply(ex.id, 1); const a2 = await apply(ex.id, 2);
+      await closeRecruitment(ex.id);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
       expect((await setStatus(ex.id, a1.body.id, 'ACCEPTED')).status).toBe(200);
       const r = await setStatus(ex.id, a2.body.id, 'ACCEPTED');
       expect(r.status).toBe(400);
       expect(r.body.error).toContain('선정 인원(1명)');
-      // 거절로는 바꿀 수 있다 — 정원과 무관
-      expect((await setStatus(ex.id, a2.body.id, 'REJECTED')).status).toBe(200);
+      // 거절은 따로 없다(규칙 90) — 남은 지원은 선정이 끝날 때 미선정이 된다
+      expect((await setStatus(ex.id, a2.body.id, 'REJECTED')).status).toBe(400);
     });
 
-    it('거절된 지원은 선정 인원에 들어가지 않는다', async () => {
+    it('미선정(거절된) 지원은 선정 인원에 들어가지 않는다', async () => {
       const ex = await makeExhibition(1);
       const a1 = await apply(ex.id, 1); const a2 = await apply(ex.id, 2);
-      expect((await setStatus(ex.id, a1.body.id, 'REJECTED')).status).toBe(200);
+      await closeRecruitment(ex.id);
+      await testPrisma.application.update({ where: { id: a1.body.id }, data: { status: 'REJECTED' } });
       expect((await setStatus(ex.id, a2.body.id, 'ACCEPTED')).status).toBe(200);
     });
 
@@ -68,6 +70,7 @@ describe('Known issues 수정', () => {
       const ex = await makeExhibition(2);
       const ids: number[] = [];
       for (const artist of [1, 2, await extraArtist(2), await extraArtist(3), await extraArtist(4)]) ids.push((await apply(ex.id, artist)).body.id);
+      await closeRecruitment(ex.id);
       const results = await Promise.all(ids.map((id) => setStatus(ex.id, id, 'ACCEPTED')));
       expect(results.filter((r) => r.status === 200)).toHaveLength(2);
       for (const r of results.filter((x) => x.status !== 200)) expect(r.body.error).toContain('선정 인원');

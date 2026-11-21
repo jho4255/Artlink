@@ -13,7 +13,7 @@
  *   ③ 작가의 초대 수락              (routes/exhibition.ts — 중복이지만 다른 진입이라 함께 본다)
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
+import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition, closeRecruitment } from './helpers';
 
 const artist1 = authToken(1, 'ARTIST');
 const owner = authToken(3, 'GALLERY');
@@ -83,6 +83,7 @@ describe('② 지원을 수락하면 그 작가가 단톡에 들어온다 (exhib
       data: { userId: 1, exhibitionId: exId, status: 'PENDING' },
     });
     appId = app.id;
+    await closeRecruitment(exId);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
   });
 
   it('★ 수락하면 방이 생기고 작가와 오너가 함께 들어간다', async () => {
@@ -152,6 +153,7 @@ describe('③ 대화 목록에 그 방이 실제로 보인다', () => {
     const app = await testPrisma.application.create({
       data: { userId: 1, exhibitionId: ex.id, status: 'PENDING' },
     });
+    await closeRecruitment(ex.id);
     await request.patch(`/api/exhibitions/${ex.id}/applications/${app.id}`)
       .set('Authorization', `Bearer ${owner}`)
       .send({ status: 'ACCEPTED' });

@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitionDates, openGallerySubmissions } from '../lib/helpers';
+import {
+  openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, exhibitionDates, openGallerySubmissions, closeRecruitment,
+} from '../lib/helpers';
 import type { Page } from '@playwright/test';
 
 /**
@@ -52,6 +54,7 @@ async function seedOperation(api: APIRequestContext, artworkCount: number) {
   await applyToExhibition(api, ex.id, aTok);
   const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: auth(gTok) })).json();
   const mine = apps.find((a: any) => a.userId === userIds().artist);
+  await closeRecruitment(api, ex.id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${ex.id}/applications/${mine.id}`, {
     headers: auth(gTok), data: { status: 'ACCEPTED' },
   });

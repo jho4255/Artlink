@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { tokenFor, applyToExhibition, exhibitionDates } from '../lib/helpers';
+import {
+  tokenFor, applyToExhibition, exhibitionDates, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 동시성: 정원 1명 공모에서 여러 지원을 "동시에" 수락하면 정원을 넘겨 선정되는지(TOCTOU 경합).
@@ -39,7 +41,8 @@ test('정원 1명 공모에 지원 6건을 동시에 수락 → 선정은 정원
   console.log('동시 지원 결과 상태들:', results.map(r => r.status).join(','));
   expect(results.every(r => r.status === 201), '지원은 정원과 무관하게 받아야 함').toBe(true);
 
-  // 6건을 동시에 수락(일괄 수락과 같은 모양) → 정원 1 만 성공
+  // 6건을 동시에 수락(일괄 수락과 같은 모양) → 정원 1 만 성공. 수락은 모집을 마감한 뒤에만(규칙 90)
+  await closeRecruitment(api, ex.id);
   const accepts = await Promise.all(results.map(r =>
     api.patch(`${API}/exhibitions/${ex.id}/applications/${r.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } }).then(x => x.status())
   ));

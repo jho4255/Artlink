@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>선정 마감 알림</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 420px; height: 520px; box-sizing: border-box; padding: 20px; background: #f9fafb; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; color: #111827">
+<div role="region" aria-label="알림" style="border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08); overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f3f4f6">
+<p style="margin: 0; font-size: 15px; font-weight: 600">알림</p>
+<span style="font-size: 13px; color: #6b7280">모두 읽음</span>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ items }}" as="n" hint-placeholder-count="3">
+<li style="display: flex; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; background: {{ n.bg }}">
+<span aria-hidden="true" style="flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: {{ n.dot }}"></span>
+<span style="flex: 1; min-width: 0"><span style="display: block; font-size: 14px; line-height: 1.5; color: #111827">{{ n.text }}</span><span style="display: block; margin-top: 4px; font-size: 12px; color: #9ca3af">{{ n.when }}</span></span>
+</li>
+</sc-for>
+</ul>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":520}}'>
+class Component extends DCLogic {
+renderVals() {
+const N = (text, when, unread) => ({ text, when, bg: unread ? '#fffafa' : '#ffffff', dot: unread ? '#c4302b' : '#e5e7eb' });
+return {
+items: [
+N('"2027 봄 기획전 《새싹》" 선정 마감이 오늘이에요. 오늘이 지나면 검토 대기 2명은 미선정이 돼요.', '오늘', true),
+N('"2027 봄 기획전 《새싹》" 선정 마감까지 3일 남았어요 (11.30). 검토 대기 4명', '3일 전', false),
+N('"2027 봄 기획전 《새싹》"에 정민재님이 지원했어요.', '11.19', false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

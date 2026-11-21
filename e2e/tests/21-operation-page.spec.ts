@@ -1,5 +1,7 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, exhibitionDates, openArtistExhibition, artistTab, openArtistTab } from '../lib/helpers';
+import {
+  openAs, tokenFor, applyToExhibition, exhibitionDates, openArtistExhibition, artistTab, openArtistTab, closeRecruitment,
+} from '../lib/helpers';
 
 /**
  * 공모 운영 페이지: 접근권한 / 공지→수락작가 알림 / 작가 제출정보 저장 + 작가간 비공개.
@@ -21,6 +23,7 @@ async function setup(api: APIRequestContext) {
   await applyToExhibition(api, ex.id, aTok);
   const apps = await (await api.get(`${API}/exhibitions/${ex.id}/applications`, { headers: { Authorization: `Bearer ${gTok}` } })).json();
   const app = (apps.applications || apps)[0];
+  await closeRecruitment(api, ex.id);   // 수락은 모집을 마감한 뒤에만(규칙 90)
   await api.patch(`${API}/exhibitions/${ex.id}/applications/${app.id}`, { headers: { Authorization: `Bearer ${gTok}` }, data: { status: 'ACCEPTED' } });
   return ex.id;
 }
