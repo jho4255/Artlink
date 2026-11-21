@@ -39,6 +39,10 @@ export const LOCK_NS = {
   chatNotes: 7112,
   /** ArtTalk 새 1:1 방 하루 상한(2026-11-19) — key = 방을 여는 사람 userId */
   directChats: 7113,
+  /** 출품 자료 제출 알림 — 운영자에게 공모마다 한 줄로 합치기(2026-11-20) — key = exhibitionId */
+  submissionNotes: 7114,
+  /** '작가 모두 정산 확인' 알림 — 공모마다 한 번(동시에 둘이 마지막으로 확인해도 한 줄, 2026-11-20) — key = exhibitionId */
+  settlementAllNotes: 7115,
 } as const;
 
 export async function withKeyLock<T>(ns: number, key: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

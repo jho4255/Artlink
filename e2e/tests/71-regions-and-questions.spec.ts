@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
-import { openAs, tokenFor, statePath, ownedGalleryId, createExhibition, openApplicantManager, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, statePath, ownedGalleryId, createExhibition, openApplicantManager, exhibitionDates, applicantTool } from '../lib/helpers';
 
 /**
  * 지역 넷 추가 · 올린 공모의 지역 바꾸기 · 추가 질문 수정/삭제 (2026-10-08 사용자 요청) — **눌러서 무슨 일이 나는가**를 본다.
@@ -81,13 +81,14 @@ test.describe('추가 질문 수정·삭제', () => {
     const title = newTitle('갤러리');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), extra: { customFields: QUESTIONS } });
     const { ctx, page } = await openAs(browser, 'gallery');
+    // 2026-11-20: [내 공모] → 공모 화면 [지원자] 탭의 도구(휴대폰은 [관리 ▾] 메뉴 안)
     const card = await openApplicantManager(page, title);
-    await card.getByRole('button', { name: '추가 질문 수정' }).click();
+    await applicantTool(page, card, '추가 질문 수정');
     await editAndDelete(page);
-    await card.getByRole('button', { name: '추가 질문 수정' }).click();
+    await applicantTool(page, card, '추가 질문 수정');
     await expect.poll(() => labelsIn(page)).toEqual(['질문A-고침']);
     await deleteAll(page);
-    await card.getByRole('button', { name: '추가 질문 수정' }).click();
+    await applicantTool(page, card, '추가 질문 수정');
     await expect(questionModal(page).locator('input[placeholder="질문을 입력하세요"]')).toHaveCount(0);
     const detail = await (await api.get(`${API}/exhibitions/${exId}`, { headers: auth('gallery') })).json();
     expect(detail.customFields ?? []).toEqual([]);

@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, ownedGalleryId, createExhibition, cardToggle, openSection } from '../lib/helpers';
+import { openAs, tokenFor, ownedGalleryId, createExhibition, openApplicantManager, applicantRow, openSection } from '../lib/helpers';
 
 /**
  * 공모 초대 코드 (2026-09-27) — 이미 선정이 끝난 공모를 옮겨 올 때, 갤러리가 코드(링크)를 선정 작가들에게 돌리면
@@ -22,14 +22,13 @@ test('★ 갤러리가 코드를 만들고 → 작가가 링크로 참여하면 
   // 1) 갤러리 — [지원자] 목록 아래 접힌 줄을 펴서 만들기 (지원자 0명이어도 보여야 한다)
   const g = await openAs(browser, 'gallery');
   await g.page.setViewportSize({ width: 1440, height: 900 });
-  await g.page.goto('/mypage?tab=my-exhibitions');
-  const card = g.page.locator('article', { hasText: title });
-  await cardToggle(card, 'applicants').click();
+  // 2026-11-20: [내 공모] → 공모 한 건 화면 → [지원자] 탭(목록 아래 접힌 줄은 그대로)
+  const card = await openApplicantManager(g.page, title);
   await openSection(card, '이미 선정한 작가를 초대 코드로 데려오기');
   await card.getByRole('button', { name: '초대 코드 만들기' }).click();
   const codeText = (await card.getByTestId('join-code').innerText({ timeout: 10000 })).trim();
   expect(codeText).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-  await expect(card.getByText(/수락 0\/3명/)).toBeVisible();
+  await expect(card.getByText(/수락 0\/3/).first()).toBeVisible();
   // 접어도 코드가 켜져 있다는 게 줄에 남는다
   await expect(card.getByRole('button', { name: /초대 코드로 데려오기/ })).toContainText('코드 켜짐');
   const code = codeText.replace('-', '');
@@ -66,11 +65,10 @@ test('★ 갤러리가 코드를 만들고 → 작가가 링크로 참여하면 
   await api2.dispose();
   const g2 = await openAs(browser, 'gallery');
   await g2.page.setViewportSize({ width: 1440, height: 900 });
-  await g2.page.goto('/mypage?tab=my-exhibitions');
-  const card2 = g2.page.locator('article', { hasText: title });
-  await cardToggle(card2, 'applicants').click();
-  await expect(card2.getByText('초대 코드로 참여')).toBeVisible({ timeout: 10000 });
-  await expect(card2.getByText(/수락 1\/3명/)).toBeVisible();
+  const card2 = await openApplicantManager(g2.page, title);
+  // 줄의 보조 글에 '초대 코드' — 지원서(오른쪽 칸)에는 '초대 코드로 참여'
+  await expect(applicantRow(card2, 'Artist 2')).toContainText('초대 코드', { timeout: 10000 });
+  await expect(card2.getByText(/수락 1\/3/).first()).toBeVisible();
   await g2.ctx.close();
 });
 

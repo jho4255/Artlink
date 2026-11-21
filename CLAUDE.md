@@ -82,7 +82,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 ## Testing
 
-- **3000+ tests** (2026-11-19): Backend 1862 (supertest, `artlink_test` DB 순차), Frontend 1780 (jsdom) · E2E 487(2026-11-20 상단바 ArtTalk 말풍선 `30` 2개를 더했다 — `30`·`85` 31개 통과. 그 전 E2E 485(ArtTalk 개편(규칙 87) `85` 12개를 더했다 — 수정점 관련 스펙만 돌렸다: `85`·`29`·`04`·`30`·`40`·`12`·`55`·`82`·`17`·`66` 79개 중 78 통과(실패는 기준선 `12` FAQ 1개) · 그 전에 `26`·`33`·`34`·`35` 통과. 그 전 E2E 482(ArtLook 편집 화면 개편(규칙 85) `84` 7개를 더했다 — `84`·`69`·`75`·`41`·`30`·`74` 53개 통과(결함 둘을 잡아 고쳤다). 그 전 E2E 475(등록 화면 셋·전시 찾기/상세 개편(규칙 84) `83` 5개를 더했다 — 바뀐 화면에 닿는 34개 파일 175개 통과 · 1 건너뜀(07·14·15·23·24·25·51·60·67·70·77 을 새 화면으로). 그 전: 모집공고·갤러리 찾기 개편(규칙 83)은 새 스펙 없이 기존 스펙으로 본다 — 목록·상세·갤러리 화면에 닿는 25개 파일 136개 통과. `20` 은 휴대폰 돋보기에 맞췄고, `02` 는 갤러리 홈페이지의 찜이 버튼 묶음 [찜](aria-pressed · 휴대폰은 [⋯] 안, 규칙 82)으로 바뀐 걸 반영했다(규칙 82 때 돌린 묶음에 없어 놓쳤다). 그 전: 작가 탭 휴대폰 B안 `52` 2개를 더했다 — 이번 작업에서 바뀐 스펙 38개 파일 320개 중 317 통과 · 3 건너뜀 · 실패 0(탭 줄·버튼 묶음·작가 탭까지 반영). 그 전: 작가·갤러리 홈페이지 개편 `82` 5개를 더했다 — 홈페이지에 닿는 33개 파일 284개 중 273 통과, 실패 8개는 전부 고쳤다(`24`·`54`·`62` 는 새 화면에 맞춤 · `53` 핸들 주소 2개와 `82` C 는 실행 순서 의존을 없앴다 · `62` E 가 잡은 `<main>` 두 겹은 결함이라 코드를 고쳤다). 그 전: 휴대폰 홈 탭·[전체 보기] 무작위 `81` 8개를 더했다 — `81`·`80`·`37`·`50`·`00` 30개 통과, 그 전 판으로 `26`·`31`·`36`·`30`·`73`·`61` 포함 98개 통과. 그 전: ArtStory 2차 — 한 페이지 올리기·사진 위 글·가운데 메뉴 `30` 1개를 더했다: `80`·`37`·`50`·`69`·`30`·`31`·`00`·`73`·`61`·`36` 116개 통과. 그 전: ArtStory 홈 공개 `80` 6개 —
+- **3000+ tests** (2026-11-21): Backend 1900 (supertest, `artlink_test` DB 순차), Frontend 1822 (jsdom) · E2E 542(같은 날 로그인 만료 시 입력 되살리기 `90` 3개 · 흐름 밖 고정 줄 셋의 자판 `89` 1개를 더했다 — `62`·`63`·`64`·`66`·`79`·`83`·`85`·`87`~`90` 통과. 그 전 E2E 538(2026-11-21 공모 흐름 신뢰성 점검 `87`·`88`·`89`·`90` 47개를 더했다 — 바뀐 범위의 스펙만 다시 돌렸다(결과 `scratchpad/flow-review-2026-11/RESULTS.md`). 그 전 E2E 491(2026-11-20 공모 흐름 개편(규칙 88) `86` 4개를 더했다 — 바뀐 화면에 닿는 스펙만 돌렸다: `03`·`17`·`21`·`22`·`23`·`24`·`26`·`27`·`28`·`33`·`35`·`55`·`60`·`63`·`66`·`71`·`83`·`86` 전부 통과(휴대폰 [내려받기] 메뉴가 하단 고정 줄에 깔리는 결함을 잡아 고쳤다 — 같은 메뉴가 화면 왼쪽 밖으로 잘리는 것은 앱 점검에서 잡았다). 그 전 E2E 487(2026-11-20 상단바 ArtTalk 말풍선 `30` 2개를 더했다 — `30`·`85` 31개 통과. 그 전 E2E 485(ArtTalk 개편(규칙 87) `85` 12개를 더했다 — 수정점 관련 스펙만 돌렸다: `85`·`29`·`04`·`30`·`40`·`12`·`55`·`82`·`17`·`66` 79개 중 78 통과(실패는 기준선 `12` FAQ 1개) · 그 전에 `26`·`33`·`34`·`35` 통과. 그 전 E2E 482(ArtLook 편집 화면 개편(규칙 85) `84` 7개를 더했다 — `84`·`69`·`75`·`41`·`30`·`74` 53개 통과(결함 둘을 잡아 고쳤다). 그 전 E2E 475(등록 화면 셋·전시 찾기/상세 개편(규칙 84) `83` 5개를 더했다 — 바뀐 화면에 닿는 34개 파일 175개 통과 · 1 건너뜀(07·14·15·23·24·25·51·60·67·70·77 을 새 화면으로). 그 전: 모집공고·갤러리 찾기 개편(규칙 83)은 새 스펙 없이 기존 스펙으로 본다 — 목록·상세·갤러리 화면에 닿는 25개 파일 136개 통과. `20` 은 휴대폰 돋보기에 맞췄고, `02` 는 갤러리 홈페이지의 찜이 버튼 묶음 [찜](aria-pressed · 휴대폰은 [⋯] 안, 규칙 82)으로 바뀐 걸 반영했다(규칙 82 때 돌린 묶음에 없어 놓쳤다). 그 전: 작가 탭 휴대폰 B안 `52` 2개를 더했다 — 이번 작업에서 바뀐 스펙 38개 파일 320개 중 317 통과 · 3 건너뜀 · 실패 0(탭 줄·버튼 묶음·작가 탭까지 반영). 그 전: 작가·갤러리 홈페이지 개편 `82` 5개를 더했다 — 홈페이지에 닿는 33개 파일 284개 중 273 통과, 실패 8개는 전부 고쳤다(`24`·`54`·`62` 는 새 화면에 맞춤 · `53` 핸들 주소 2개와 `82` C 는 실행 순서 의존을 없앴다 · `62` E 가 잡은 `<main>` 두 겹은 결함이라 코드를 고쳤다). 그 전: 휴대폰 홈 탭·[전체 보기] 무작위 `81` 8개를 더했다 — `81`·`80`·`37`·`50`·`00` 30개 통과, 그 전 판으로 `26`·`31`·`36`·`30`·`73`·`61` 포함 98개 통과. 그 전: ArtStory 2차 — 한 페이지 올리기·사진 위 글·가운데 메뉴 `30` 1개를 더했다: `80`·`37`·`50`·`69`·`30`·`31`·`00`·`73`·`61`·`36` 116개 통과. 그 전: ArtStory 홈 공개 `80` 6개 —
   `80`·`37`·`50`·`69` 와 홈·메뉴·팝업(`00`·`30`·`31`·`39`·`61`·`73`) 79개 통과. 그 전: 커뮤니티 2차 3개를 더했다 — `36`·`38`·`39`·`79` 41개 통과. 전체 실행 기준선: 실패는 `12`(FAQ 복원 전 스펙) 1개·`53`(핸들 주소 2개, 실행 순서 의존 — 2026-11-14 고쳤다, 전체 실행 재확인 전) 뿐 — 2026-11-13 445개 중 435 통과 · 4 건너뜀 · 그 밖의 실패 3개는 아래 두 ⚠️ 와 `59` 위치자로 고쳤다. ⚠️ **전체 실행 전에 백엔드를 새로 띄울 것** — 조회수 '30분 안 같은 사람' 기억이 서버 메모리에 남아, DB 를 초기화해 글 번호가 같아지면 `36` 조회수가 0 으로 실패한다. ⚠️ 읽은 알림은 안 읽은 알림 뒤로 가므로(벨은 10줄) 알림을 다시 누르는 스펙은 시작할 때 `read-all` 할 것(`78` B — 전체 실행에선 작가 계정에 안 읽은 알림이 99개 넘게 쌓인다). ⚠️ E2E 의 `DATABASE_URL` 에 Prisma 전용 옵션(`?connection_limit=…`)을 붙이지 말 것 — `38`·`56` 이 그 주소로 `psql` 을 불러 'invalid URI query parameter' 로 실패한다. 그 밖에 `62` F(프로필 탭 주소 칸)가 가끔 흔들린다: 프로필 탭이 `/auth/me` 응답으로 입력 칸을 다시 채워, 응답이 늦으면 먼저 친 글자를 덮는 옛 경쟁 — 다시 돌리면 통과)
 - ⚠️ **훅은 `if (isLoading) return` 위에** — `__tests__/hooksBeforeReturn.test.ts` 가 소스를 훑어 막는다. 2026-09-19 배포에서 아래에 둔 훅 때문에
   작가 홈페이지 전체가 React #310 으로 죽었는데 jsdom 은 로딩 분기를 안 지나 못 잡았다. **배포 후 스모크는 데이터가 늦게 오는 화면을 포함할 것.**
@@ -507,7 +507,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
   운영 공지(`/notices`)와 접근정보(`/access`)도 그대로 열어 둔다(수락 작가에게 안내할 일이 있다).
 - ⚠️ **`recruitOnly` 일 때 `access.confirmed` 를 믿지 말 것.** 서버가 전시 시작일 경과로 **자동 true** 를 준다
   (`computeConfirmed`). 그대로 그리면 있지도 않은 '전시 확정' 이 화면에 뜬다 —
-  `StatusPanel`·`getOperationStage`·`exhibitionStage` 세 곳 모두 `recruitOnly` 를 먼저 본다.
+  진행 띠·할 일(`lib/flowLabels.ts flowStrip`·`galleryNextTask`·`artistNextTask`)과 공모 화면의 탭이 모두 `recruitOnly` 를 먼저 본다(2026-11-20, 규칙 88).
 - ⚠️ **뒷 단계 쿼리를 끄는 것도 잊지 말 것**(`OperationPage` 의 `enabled: … && !recruitOnly`). 화면만 감추고
   쿼리를 두면 서버가 400 을 주고 화면엔 이유 없는 에러만 남는다.
 - ⚠️ 자료제출 마감일은 **받지도 저장하지도 않는다**(항상 null). 보내와도 무시한다 — 없는 단계의 기한이
@@ -1982,6 +1982,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 
 59. **공모 흐름 화면(등록·지원·지원자 관리·출품 자료·운영·정산)의 규칙** (2026-09-29, 사용자 결정 — DESIGN.md 비참조, 이 흐름 화면만)
     처음 온 사람이 "그래서 뭘 누르지?" 에서 막히던 것을 고쳤다. 상세는 architecture.md 「공모 흐름 UX 개편」.
+    ⚠️ 2026-11-20 개편(**규칙 88**)으로 카드·구역 구성은 바뀌었다(줄 목록 + 공모 한 건 화면) — 아래의 말·부품·확인창·출품 자료 버튼 규칙은 그대로다.
     2026-10-03 점검 후속(삭제 요청 · 모집 인원 · 종료 뒤 잠금 · 따라오는 [지원하기] · 미저장 확인)은 **규칙 63**.
     - **말은 `frontend/src/lib/flowLabels.ts` 한 곳** — 단계 이름(`stageOf`), 지원 상태(갤러리: 검토 대기·수락됨·거절 / 작가: 심사 중·선정·미선정),
       카드의 '지금 할 일'(`galleryNextTask`·`artistNextTask`), `SUBMISSION_TERM='출품 자료'`. ⚠️ 화면에 단계·상태 문자열을 새로 적지 말 것 —
@@ -1999,7 +2000,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ **'지금 할 일' 버튼 이름을 그 구역의 진짜 버튼과 같게 짓지 말 것** — 할 일 버튼은 구역으로 데려갈 뿐이다. '정산 완료' 로 같았다가
       한 화면에 [정산 완료]가 둘(하나는 이동, 하나는 확정)이 됐다 → '정산 마무리하기'(E2E 60 이 잡았다). 단계 버튼도 '모집 마감' ↔ '모집 마감하기' 로 다르다.
     - **정산 문구는 확인 현황을 본다** — 작가가 모두 확인했으면 '확인하고 있어요' 가 아니라 '모두 확인했어요 → [정산 완료]', 단계도 정산 완료 차례(2026-09-29 지적).
-      `StatusPanel` 은 `settlement` prop(확인 수·전체·이의)을 받아야 이걸 가른다 — access 응답엔 없다.
+      `galleryNextTask` 는 정산 확인 현황(확인 수·전체·이의)을 받아야 이걸 가른다 — access 응답엔 없다(공모 화면은 정산 컨트롤러에서 넘긴다, 규칙 88).
     - **지원서는 전용 페이지** `/exhibitions/:id/apply`(`pages/ApplyPage.tsx`) — 옛 `?apply=1` 은 여기로 보낸다. 경력·파일 '없음' 체크를 되살리지 말 것(서버는 빈 경력을 받는다).
       ⚠️ 약관 버전 상수가 `ApplyPage.tsx`·`InviteApplyModal.tsx` 두 곳이다(`terms-consistency.test.ts` 가 둘 다 본다).
     - **등록 폼 임시저장(갤러리·공모·전시)은 `lib/formDraft.ts`** — 만료 없음, 저장된 초안이 있으면 폼 위 `DraftNotice`([이어서 쓰기]·[새로 쓰기]),
@@ -2008,8 +2009,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - ⚠️ grid 안 카드에 `min-w-0`(규칙 27) — [내 공모] 카드가 빠져 390px 화면이 408~472px 로 가로로 밀렸다(통계 칸 1fr 두 개가 글자 폭만큼).
     - 확인용 데이터: `cd backend && npx tsx scripts/seed-flow-stages.ts`(단계마다 공모 하나, gallery@artlink.com · Artist 1, 로컬 데모 DB 전용, `--clean`).
     - 회귀: 프론트 `flowLabels.test.ts`·`submissionFlow.test.ts`·`hooks/__tests__/useFormDraft.test.ts` · e2e `60-flow-ux.spec.ts`(A~F: 지원자 선택·단계 확인창·
-      한 번 제출·지원서 페이지·정산 0%/모두 확인·임시저장). E2E 헬퍼 `openApplicantManager`·`applicantRow`·`acceptApplicant`·`cardToggle`·`openSection`·
-      `openGallerySubmissions`·`openArtistExhibition`(`e2e/lib/helpers.ts`) — ⚠️ `filter({ has })` 안쪽 로케이터는 **페이지 기준**으로 만들 것(카드 기준이면 늘 빈다).
+      한 번 제출·지원서 페이지·정산 0%/모두 확인·임시저장). E2E 헬퍼 `openApplicantManager`·`applicantRow`·`acceptApplicant`·`openOperation`·`workspaceTab`·`taskButton`·
+      `openGallerySubmissions`·`openArtistExhibition`(`e2e/lib/helpers.ts`, 2026-11-20 공모 한 건 화면으로 — 규칙 88) — ⚠️ `filter({ has })` 안쪽 로케이터는 **페이지 기준**으로 만들 것(카드 기준이면 늘 빈다).
 
 60. **작가 홈페이지 편집 화면 — 묶음 다섯, 작품이 첫 화면** (2026-10-02, 사용자 결정 넷. `components/homepage-edit/` · `lib/homepageEdit.ts`)
     새 작가 계정으로 가입 직후부터 밟아 보니 첫 화면에 작품 올리기가 없었다(업로드 칸이 PC 2,518px · 모바일 2,747px 아래, 그 앞에 입력칸 8·버튼 33개.
@@ -2157,7 +2158,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       아트링크 주최는 관리자만 · 전시 종료 전까지 · 수락 수보다 적게는 400(`withSeatLock`). 정원이 차면 **갤러리 할 일만** "정원(N명)이 찼어요. 모집을 마감하세요"(작가 화면·지원은 그대로).
       날짜 변경은 여전히 1:1 문의다(지원자가 그 날짜를 보고 지원했다).
     - **전시 종료 뒤** — 갤러리는 지원 상태를 못 바꾼다(400, 관리자 예외 · 개발자 도구 '수락 되돌리기' 는 그대로) · 판매나 정산 확인 요청이 있으면 **종료를 되돌릴 수 없다**
-      (`StatusPanel` 은 [이전 단계로] 대신 이유 한 줄). 화면은 `ApplicantManager ended` 로 체크박스·버튼·초대 코드 줄을 감춘다.
+      (공모 화면 [⋯] 의 "'전시 종료' 되돌리기" 가 잠기고 이유가 붙는다 — 규칙 88). 화면은 `ApplicantManager ended` 로 체크박스·버튼·초대 코드 줄을 감춘다.
     - ⚠️⚠️ **출품 자료는 `lib/submissionSchema.ts` 를 통과한다** — 쓸 때 `parseSubmissionBody`(틀리면 400), 읽을 때 `readArtworkList`·`readCv`·`readNote`(틀린 모양은 건너뛰고 **던지지 않는다** —
       예전엔 직접 호출로 넣은 이상한 값 하나에 갤러리 출품 자료 목록·캡션이 500).
       **키 순서를 바꾸거나 빈 키를 채우지 말 것** — 화면의 '저장 안 된 변경' 판정이 보낸 값과 받은 값의 `JSON.stringify` 비교라, 서버가 순서를 바꾸면 저장 직후에도 늘 '미저장' 이 뜬다.
@@ -2719,6 +2720,9 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       - **링크 공유** — WebView 에는 `navigator.share` 가 없다 → `shareLinkNative`(작가 홈페이지 [공유] · 작품 창 [공유]).
       - **뒤로가기** — 떠 있는 창(`[role="dialog"]`·`[aria-modal="true"]`, 그려진 것)이 있으면 그 창에 **Esc 만** 보낸다 · 없으면 이전 화면 · 첫 화면이면 앱을 내린다(종료 아님).
         ⚠️ 새 창을 만들면 `role="dialog" aria-modal="true"` 와 Esc 닫기를 달 것 — 안 달면 앱 뒤로가기가 창 대신 화면을 넘긴다(사진 크게 보기·작품 보기·초대 창에 이번에 달았다).
+        창이 아닌 떠 있는 것(메뉴)은 **Esc 로 닫히는 것만 `data-back-closes`** 를 단다(`MenuButton`, 2026-11-21 — 메뉴를 연 채 뒤로 키가 화면을 떠났다). `role="menu"` 를 통째로 넣지 말 것 —
+        Esc 를 안 듣는 메뉴가 열려 있으면 뒤로 키가 아무 일도 안 하게 된다. 지금은 `role="menu"` 가 **전부** Esc 로 닫히고 표시를 단다(MenuButton · 커뮤니티 글쓰기 [⋯]·[+]·문단 종류 ·
+        ArtTalk [+] 첨부 — 2026-11-21) — `native.test.ts` 가 소스의 모든 `role="menu"` 를 훑어 막는다. 새 메뉴는 `useEscapeKey` + `data-back-closes`.
       - **ArtLook**(번들 밖 `ui.js`)은 브리지의 `nativePromise` 로 같은 Filesystem·Share 를 부른다. ⚠️⚠️ **플러그인은 최상위 창(main frame)에서 부른 것만 받는다** — iframe 의 자기 브리지로 부르면
         "Plugin execution is allowed in Main Frame only" 로 버려지고 Promise 가 영영 안 끝난다(브리지는 iframe 에도 심기므로 '있다'만 보고 쓰면 눌러도 아무 일이 없다) → `window.top.Capacitor`.
       - ⚠️⚠️ **플러그인 객체(Proxy)를 Promise 로 그대로 돌려주지 말 것** — 아무 속성에나 메서드로 답해 `then` 이 있는 것처럼 보이고, Promise 가 그걸 불러 네이티브에 `then()` 을 보낸다
@@ -3147,6 +3151,90 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       e2e **`85-arttalk.spec.ts`(12)** · `29-chat`(새 화면 · 단톡은 운영자가 연다) · `04-report-moderation`(신고 → 관리자 처리) · `30`(메뉴) · `40`(방 오가기·기록).
       단톡 열기 회귀: backend `chat-renewal.test.ts`「단톡은 운영자가 연다」(4) · `chat-wiring.test.ts`.
 
+88. **공모 흐름 개편 — 줄 목록 · 공모 한 건 화면 · 진행 띠 · 주 버튼 한 자리 · 넘어감 알림** (2026-11-20, 사용자 결정: 계획서 기본값 D1~D6 · 정산 '팔림' → **'판매'** ·
+    정산 이의와 그 처리를 목업과 같게. 계획 `scratchpad/flow-review-2026-11/PLAN.md` · 진행 `PROGRESS.md` · 목업 https://claude.ai/artifact/4ajWRCuxACvWZ5WUKqFc7m)
+    고치기 전: 카드 아코디언 안에 구역·탭이 겹겹이 있어 '지금 누를 것'의 자리가 단계마다 달랐고(모집 중엔 지원자 줄 맨 아래, 정산 끝엔 카드를 열고 약 1,000px 아래),
+    같은 말을 카드·[운영] 탭·구역 안내에서 세 번 했으며, 작가 카드에는 단계 표시가 없었다. 단계가 넘어가도 상대에게 알림이 없는 곳이 셋이었다.
+    - **목록은 줄, 일은 공모 한 건 화면**(D1) — 갤러리 [내 공모]·작가 [내 전시]는 `components/flow/ExhibitionRow.tsx` 줄('지금 할 일' → '기다리는 중' 묶음).
+      줄 = 포스터 · 상태 + 한 줄(`gallerySubText`/`artistSubText` — 마감 D-n·조회수·확인 요청일) · 제목 · **진행 띠** · 지금 할 일 + 버튼.
+      누르면 마이페이지 안에서 그 공모 화면 — 갤러리 `?tab=my-exhibitions&ex=<id>`(`components/workspace/ExhibitionWorkspace.tsx`) ·
+      작가 `?tab=applications&ex=<id>`(`ArtistExhibitionWorkspace.tsx`). 목록 탭에는 프로필 카드가 없다(D4, `MyPage` 의 `listTab`).
+      ⚠️ 줄에서 열면 push + `state.fromList` — [← 내 공모]·[← 내 전시]는 fromList 고 미저장이 없을 때만 `navigate(-1)`, 아니면 `replace` 로 목록
+      (뒤로 가면 `useUnsavedChanges` 의 가드 기록이 한 번 더 물어 확인창이 두 번 떴다). 목록 스크롤은 `lib/listScroll.ts` 가 되살린다.
+      줄의 할 일 버튼은 그 화면으로 **데려가서** 확인창을 연다(`state.act` — 도착해서 묻는다, 목록에서 바로 단계를 바꾸지 않는다).
+    - **탭** — 갤러리 [지원자 · 출품 자료 · 정산 · 공지](정산이 끝나면 맨 앞 [요약]), [정산]은 전시 종료 전 잠김('전시를 종료하면 열려요').
+      작가 [출품 자료 · 정산 · 공지 · 내 지원서](공모만 진행이면 공지·내 지원서). 탭은 화면 상태다 — `view=` 는 들어올 때만 읽고, 들른 탭은 숨겨 두고 떼지 않는다(쓰던 입력 보존).
+      처음 열 탭은 단계로 정한다(`workspaceDefaultView`·`artistDefaultView`). 운영 알림 링크의 `view=`(`operationLink(id, view)`)가 그 탭으로 연다.
+    - **주 버튼은 한 자리** — PC 는 진행 띠 아래 할 일 줄(`components/flow/TaskBar.tsx`, `data-task-bar`), 휴대폰은 하단 탭바 위 고정 줄
+      (`data-workspace-bar`, `sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30`). 문구·버튼은 `lib/flowLabels.ts galleryNextTask`/`artistNextTask` 하나.
+      드문 동작(공고 보기·되돌리기·전시 종료·공모 삭제)은 머리의 [⋯] '더 보기'(`MenuButton iconOnly`) — 막힌 항목은 잠기고 이유가 붙는다('판매·정산을 시작해서').
+    - **진행 띠**(`components/flow/FlowStrip.tsx` · `flowStrip()`) 다섯 칸 모집/지원 · 전시 준비 · 전시 · 정산 · 마무리(공모만 진행은 둘). 칸 이름은 **기간**이지 누르는 동작이 아니다.
+      지금 칸 `aria-current="step"`. 옛 4칸 스텝퍼(`StatusPanel` — 칸 이름이 동작이라 '전시 확정'에 동그라미가 쳐진 채 아래 글은 '지금 · 전시 준비')는 지웠다.
+    - **단계 전환은 `hooks/useLifecycle.tsx`** — 확인창 문구는 옛 그대로(규칙 59). **모집 마감 때 검토 대기가 남았으면**(D2) 확인창이 'N명' 을 말하고
+      '남은 N명을 미선정으로 처리' 체크(기본 꺼짐) → `PATCH /operations/:id/lifecycle {recruitmentClosed:true, rejectPending:true}` 가 그 지원을 REJECTED + 작가에게 결과 알림
+      (`lib/flowNotify.ts rejectPendingApplications`, 응답 `rejectedCount`). 안 고르면 예전처럼 검토 대기로 남는다(전시가 끝나면 잠긴다, 규칙 63).
+    - **지원자 심사**(`components/shared/ApplicantManager.tsx`) — 1180px 이상 두 칸(목록 | 지원서 + 결정 줄), 그 아래는 **한 장씩 창**(`role="dialog"` '<이름> 지원서' ·
+      `data-decision-bar` = 정원 한 줄 + [거절 1 | 수락하기 2]). 결정하면 **다음 검토 대기**로 넘어가고 없으면 닫힌다(접고 → 찾고 → 펼치지 않는다).
+      도구(모집 인원 변경 · 추가 질문 수정 · 지원서 전체 받기 · 초대 코드)는 640px 이상 글자 버튼, 그 아래 [관리 ▾]. 일괄 선택은 검토 대기 줄에만(규칙 59), 고르는 동안 하단 고정 줄은 숨는다.
+    - **넘어감 알림 3종**(D3, `backend/src/lib/flowNotify.ts`) — `SUBMISSION_RECEIVED`(갤러리 · 작가가 출품 자료를 냈을 때 '○○님이 냈어요 (2/5)' →
+      다 모이면 '모두 모였어요 (5/5). 전시를 확정하세요.' · **공모마다 안 읽은 한 줄로 고쳐 쓴다**(`withKeyLock(LOCK_NS.submissionNotes)`, `REPUSH_TYPES`)) ·
+      `EXHIBITION_CONFIRMED`(수락 작가 → `artistExhibitionLink`) · `SETTLEMENT_ALL_APPROVED`(갤러리 · 작가 전원 확인, 3일 자동 확인 포함). 푸시 제목 '출품 자료'·'전시 확정'·'정산 확인'.
+      `SETTLEMENT_ISSUE` 문구는 `"<공모>" 정산에 ○○님이 이의를 남겼어요: <글>`(링크 `view=settlement`).
+    - **정산** — 표는 `components/operation/SettlementSection.tsx`, 상태·변이·주 버튼은 `settlementController.tsx useSettlementController` — 공모 화면이 들고 할 일 줄과 표에 같이 준다
+      (규칙 26 의 지문·재확인·자동 확인 그대로). 열 이름 **'판매'**(체크 '<작품> 판매' · 칸 '<작품> 판매가'). 이의 처리 한 줄기:
+      작가 [이의 제기] → 창(`SettlementIssueDialog` — 다시 보낼 땐 지난 글이 채워져 있다) → 갤러리 할 일 줄 '○○ 님(외 N명)이 정산에 이의를 남겼어요' + 그 작가 머리의 이의 글(`data-settle-issue`)
+      → 금액을 고치면 주 버튼이 '저장하고 ○○ 님에게 다시 요청' → 작가 [정산 확인] → '모두 확인했어요' → [정산 완료].
+      작가 정산 탭은 **내 정산액이 맨 위**(`data-my-settlement`), 답하는 줄 `data-settle-bar`([이의 제기]·[정산 확인]), 확인하면 줄이 사라지고 '확인했어요'.
+    - **요약 탭**(`components/workspace/WorkspaceSummary.tsx`, 정산 완료 뒤 첫 탭) — 참여 작가·출품작·판매·판매 합계·작가 지급 · 판매작 홍보 이미지·지난 전시 보기·새 공모 등록 · 기록 내려받기.
+      작가에겐 정산 완료 뒤 [갤러리 리뷰 쓰기](D6, `/galleries/:id?tab=reviews`).
+    - **지원서 약관은 [지원하기] 확인 창 안**(D5, `SubmitSheet` — 등록 화면 셋과 같은 부품, 규칙 84) · 약관 판본은 그대로 · 맨 위 회색 안내 상자는 없앴다(채웠으면 [홈페이지 내용으로 다시 채우기] 한 줄).
+    - **옛 운영 주소 `/exhibitions/:id/operation/new` 는 살아 있다**(나간 알림이 들고 있다) — 갤러리 → [내 공모]의 그 공모(`view=` 유지) · 작가 → [내 전시]의 그 전시 ·
+      관리자 → 같은 공모 화면을 단독으로(돌아갈 곳은 `operatorWorkspace().listHref` — 규칙 61). 갤러리가 올린 공모를 관리자가 보면 [지원자] 탭은 조회 안내뿐(수락·거절은 그 갤러리).
+      지운 것: `StatusPanel` · `ArtistOperationPanel` · 옛 클래식 운영 페이지(`OperationClassicPage`, 라우트 없음).
+    - ⚠️ **하단 고정 줄(z-30)이 있는 화면의 떠 있는 메뉴는 그 위(`MenuButton` z-[35])이고, 아래가 막히면 위로 · 화면 밖으로 나가면 반대쪽 끝에 맞춘다**
+      (그려 본 뒤 `getBoundingClientRect`·`elementFromPoint` 로 재서 `data-up`·`data-flip-x` 를 단다). 둘 다 실제로 났다 — 휴대폰에서 [내려받기]의 [작품 원본] 이 고정 줄에 깔려 안 눌렸고(E2E,
+      같은 z-30 이라 DOM 뒤의 줄이 이겼다), 왼쪽에 놓인 [내려받기]의 메뉴가 오른쪽 끝 맞춤이라 화면 왼쪽 밖으로 잘렸다(앱 — 항목 가운데는 화면 안이라 누르는 검사로는 안 잡혔다).
+    - ⚠️ 목록·공모 화면의 쿼리(내 공모 요약·내 지원·운영 접근·지원자)는 `staleTime: 0 · refetchOnMount: 'always'` — 알림을 눌러 왔는데 옛 단계가 보이면 안 된다(앱 점검에서 잡았다).
+      작가 화면은 내 지원 응답에 운영 접근(`confirmed`·`ended`·`settledAt`…)을 덧씌워 단계를 정한다.
+    - **신뢰성 점검(2026-11-21, TC 190 — 결과 `scratchpad/flow-review-2026-11/RESULTS.md`)에서 정한 것 — 되돌리지 말 것**:
+      - ⚠️⚠️ **단계가 '바뀌는 순간'은 한 요청만 차지한다** — 모집 마감·전시 확정·정산 확인 요청·정산 완료는 트랜잭션 안의 조건부 갱신
+        (`updateMany({ where: { …: false/null } })` 의 `count === 1`)으로 판정하고, 이긴 요청만 알린다. 그냥 `update` 면 동시에 두 번 누를 때 알림이 두 통이었다(S2·S3·S13).
+        정산 요청은 늦은 쪽이 400 '이미 정산 확인을 요청했습니다.'(예전 409 '이미 사용 중인 값입니다.' — S14), 완료는 400 '이미 정산이 완료되었습니다.'.
+      - D2 미선정 처리는 `UPDATE … RETURNING`(`lib/flowNotify.ts rejectPendingApplications`) — **이 문장이 바꾼 행에만** 결과 알림. 지원 상태 수동 변경은 '읽은 상태 그대로일 때만'
+        (`changeIfUnchanged`) — 그사이 다른 곳에서 같은 결정을 했으면 알림 없이 같은 답, 다른 결정이면 409 '방금 다른 곳에서 이 지원의 상태가 바뀌었어요. 새로고침해 주세요.'.
+        정산 확인 알림(`SETTLEMENT_ALL_APPROVED`)은 확인으로 **바뀐 순간**에만(이미 확인한 작가가 또 눌러도 안 간다 — S10). 출품 자료 알림은 문구가 같으면 고쳐 쓰지 않는다(다시 울리지 않게 — S9).
+      - ⚠️ **연타 방지는 state 가 아니라 ref** — `ConfirmDialog`(닫히는 동안 남는 옛 버튼도 같은 값을 본다) · 작가 [정산 확인]·[이의 보내기] · 미선정 [확인](보내는 중 잠금) ·
+        할 일 버튼(`TaskButton`)·목록 줄 버튼(`ExhibitionRow`)은 0.4초. `isPending`·`disabled` 는 한 박자 늦게 켜져 두 번 톡 치면 요청이 두 번 갔다(S12 · ART-03).
+      - 공모 화면은 **같은 주소로 다시 들어오면(그 공모의 알림 — location.key) 다시 받고 탭을 다시 정한다**(S5) · 한 번 쓴 `act` 는 기록에서 지운다(새로고침에 확인창이 다시 뜨지 않게 — S4) ·
+        숫자(지원자·출품 자료·정산)가 다 오기 전엔 할 일을 말하지 않고(`countsReady`), 못 받으면 이유를 말한다(`countsFailed` · 정산 표 '불러오지 못했어요 [다시 시도]') ·
+        열 수 없는 탭(`view=settlement` 인데 전시 전)이면 단계 기본 탭.
+      - ⚠️⚠️ **공모 화면은 공모 번호로 새로 시작한다(`key`)** — MyPage 두 곳과 관리자 단독 화면(`OperationPage`) 모두. 단독 화면만 없어서, 관리자가 공모 A 를 보다 벨의 공모 B 알림을 누르면
+        **A 에서 쓰던 저장 안 한 정산 입력이 B 화면에 남았다**(그대로 저장하면 A 의 값이 B 에 — e2e 89 WS-09).
+      - 사람이 고친 정산 입력은 다시 받은 서버 값으로 덮지 않는다(`edited` + 미저장 — 망 재연결이 판매가를 덮었다, S7). 정산 변이·작가 응답이 실패하면 다시 받는다(옛 할 일이 남지 않게).
+      - ⚠️ **벨·앱 안 알림 배너는 옮기기 전에 '저장 안 한 입력'을 묻는다**(`confirmLeaveUnsaved`, `hooks/useUnsavedChanges.ts`) — 이탈 가드는 링크·뒤로가기·새로고침만 보고 `navigate()` 는 못 봐서,
+        정산 금액을 쓰다 벨 알림을 누르면 말없이 사라졌다(e2e 89 REL-20). `navigate()` 로 페이지를 옮기는 새 길을 만들면 이걸 먼저 부를 것.
+      - 자판이 뜨면(앱) 공모 흐름의 고정 줄 다섯(공모 화면 · 출품 자료 · 작가 정산 · 지원서 · 지원자 일괄)은 탭바 자리로 내려온다(`tabbar-hidden:bottom-0` — 위 '하단 고정 탭바').
+        같은 날 사용자 결정으로 흐름 밖 셋(등록 화면 셋의 `StickySubmitBar` · 홈페이지 편집 저장 바 · 포트폴리오 만들기 `MakerBar`)도. 공고 상세 [지원하기] 줄만 뺐다(그 화면엔 글 칸이 없다).
+        `flowWorkspace.test.ts` 가 소스 전체에서 탭바 위 고정 줄(`bottom-[calc(3.5rem+1px+…)]`)을 찾아 막는다 — 새 줄을 만들면 `tabbar-hidden:bottom-0` 을 함께 달 것.
+      - ⚠️⚠️ **로그인이 풀려도 쓰던 입력은 남는다**(2026-11-21 사용자 결정 "남겨", `lib/authStash.ts`). 로그인(7일)이 끝나면 **아무 요청이나**(30초마다 도는 알림 숫자도) 401 을 받는 순간
+        로그아웃되는데, 다시 로그인해 같은 화면으로 와도 쓰던 정산·출품 자료·지원서가 사라져 있었다. 지금은 입력 화면이 '저장 안 된 것'을 내주는 함수를 등록하고(`useStashOnAuthLoss`)
+        인터셉터가 로그아웃 **직전**에 그걸 이 기기(localStorage, 계정 번호별 · 3일)에 적는다(`stashBeforeAuthLoss` → `logout({ expired: true })`). 다시 로그인해 그 화면이 뜨면 **처음 받은 서버 값 위에**
+        얹고(저장은 사람이 — 저장 안 된 변경으로 보인다) 지운다 · 알림 글 '…되살렸어요'. 공모 화면은 그 탭부터 연다(정산 · 출품 자료, 갤러리 대신 입력은 그 작가를 펼친 채로).
+        사람이 [로그아웃]을 누르면 전부 지운다(`logout()` — expired 가 아니면 `clearAuthStashes`). ⚠️ 입력 칸이 긴 화면을 새로 만들면 여기에 붙일 것.
+        ⚠️ 되살린 값은 **그 data 객체에만** 얹는다(`restore` ref) — 개발 모드(StrictMode)가 effect 를 다시 돌려도 같은 값이면 다시 얹고, 그 뒤 새로 받은 값에는 얹지 않는다.
+      - ⚠️⚠️ **`useUnsavedChanges` 의 가드 항목 걷기는 microtask 로 미룬다**(같은 날) — 입력이 남은 채 로그인이 풀리면 ProtectedRoute 의 `<Navigate to="/login" replace>` 보다
+        이 정리(`history.back()`)가 먼저 돌아, /login 으로 바뀐 기록을 그 back() 이 되감았다 → **로그아웃된 채 빈 마이페이지**에 멈췄다(이 개편 전부터). 이동이 끝난 뒤 지금 기록이 가드 항목일 때만 걷는다.
+      - 새 지원자 알림(`NEW_APPLICANT`)은 **공모 제목으로 시작**하고(`"<공모>"에 ○○님이 지원했어요.` · 초대 코드 참여도) **그 공모 화면의 [지원자] 탭**으로 간다(`operationLink(id, 'applicants')` —
+        예전엔 '"<갤러리>" 갤러리의 공모에 새로운 지원자…' + 공개 공고 상세라, 공모가 여럿인 갤러리는 어느 공모인지 몰랐다).
+    - 확인용 데이터: `cd backend && npx tsx scripts/seed-gallery-artists.ts && npx tsx scripts/seed-flow-stages.ts`(데모 DB 전용, `--clean`) · 앱 푸시 `bash scratchpad/flow-review-2026-11/pushkit.sh`(데모 DB 전용).
+    - 회귀: backend `flow-transitions.test.ts`(17 — 알림 3종·한 줄 합치기·남은 검토 대기 미선정·이의 문구) · frontend `flowWorkspace.test.ts`(28) · `flowLabels`·`flowFixes`·`operationLinks` 갱신 ·
+      e2e **`86-flow-workspace.spec.ts`(4 — 할 일 버튼 → 확인창 → 확정 알림 · 휴대폰 하단 줄 hit-test · D2 · 한 장씩 심사 · 이의 → 다시 요청 → 확인 → 정산 완료 → 요약 · 리뷰 쓰기)** ·
+      03·17·21·22·23·24·27·28·33·35·55·60·63·66·71 을 새 화면으로(도우미 `openExhibitionWorkspace`·`openOperation`·`workspace`·`workspaceTab`·`taskButton`·`openApplicantManager`·
+      `acceptApplicant`·`closeApplicantSheet`·`applicantTool`·`openArtistExhibition`·`artistTab`) · 하니스 `scratchpad/flow-review-2026-11/walk.cjs`(크롬·`ENGINE=webkit` × PC·휴대폰, 가로 넘침·하단 줄 hit-test).
+      신뢰성(2026-11-21): backend **`flow-reliability.test.ts`(20 — 동시성은 6회 반복)** · frontend `flowWorkspace.test.ts`(35)·`native.test.ts` · e2e **`87-flow-reliability`(19) · `88-flow-journeys`(11 — 실유저 여정) ·
+      `89-flow-edges`(12) · `90-flow-p1`(9 — 로그인 만료 3 포함)** · frontend `authStash.test.ts`(7) · backend `notification.test.ts`「새 지원자 알림은 공모 제목으로」 ·
+      하니스 `walk-widths.cjs`(8폭 × 단계 13, 크롬·사파리 엔진 302씩) · TC 목록 `TESTCASES.md`(190).
+
 ### 커뮤니티 (1단계, 2026-08-28) — 홈 개편 + 글로벌 게시판
 - **홈 구성**: 배너(HeroSlider) → ArtWorks → **[좌 인기글(커뮤니티) / 우 GOTM 레일]**.
     - 배너는 **화면 전체 폭의 색 띠**(슬라이드 dominant color) 위에 컨텐츠를 `max-w-7xl` 가운데로. 그라데이션·글로우 제거 — "좌우는 배경색이 자동 확장".
@@ -3312,6 +3400,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       2026-11-14 부터 메뉴가 **일곱**이다([ArtStory] 를 끝에 더했다, 규칙 81) — 1024px 상단은 간격·여백을 한 단계 줄였다(`gap-1 xl:gap-2` · `px-3 xl:px-4`, 로그인 시 오른쪽 묶음과 닿지 않게).
       ⚠️ **자판이 떠 있는 동안 하단 탭바를 감춘다**(`hooks/useSoftKeyboard.ts`, 2026-11-14 앱 점검) — 안드로이드 앱(WebView)은 자판이 뜨면 화면이 줄어 탭바가 자판 바로 위로 따라 올라와
       댓글·답글 칸 자리를 먹었다(브라우저는 자판이 탭바를 덮어 티가 안 났다). 판정: 글자 칸에 있고 보이는 높이가 평소(글자 칸 밖에서 본 가장 큰 높이)의 80% 아래. 회귀 `softKeyboard.test.ts`.
+      감춘 동안 `<html data-tabbar-hidden>` 을 달고(BottomTabBar), 탭바 위에 붙던 고정 줄은 `tabbar-hidden:bottom-0`(index.css 의 변형)으로 바닥(= 자판 바로 위)에 내린다 —
+      안 내리면 앱에서 자판과 줄 사이 57px 틈으로 본문이 비치고 쓰던 칸이 줄 뒤에 반쯤 가렸다(2026-11-21). 탭바 위 고정 줄은 공고 상세 [지원하기] 줄(글 칸 없음)만 빼고 전부 달았다 — 새 줄을 만들면 함께 달 것.
 - **홈 구성 (2026-09-05 현재)**: `Hero 슬라이더` → `ArtWorks` → 나머지. 이 순서다.
     - **최상단은 배너다.** 2026-08-27~09-04 사이에는 작품(ArtWorks)이 맨 위였고, 2026-09-05 사용자 요청으로 되돌렸다.
       (그 이전, 2026-08-27 개편 전에도 배너가 맨 위였다 — 즉 한 바퀴 돌아 원래대로다.)
@@ -3528,17 +3618,11 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       '전체'에서는 찜한 항목 아래에 좋아요한 작품을 이어 붙인다(카드 모양이 달라 격자는 따로 둔다).
     - ⏹ **'내 리뷰' 탭은 삭제**(2026-08-27). 리뷰 **수정·삭제는 갤러리 상세에서 작성자 본인에게 그대로 열려 있다** —
       없어진 것은 '내 리뷰를 한곳에 모아 보는 목록' 뿐이다. 되살리려면 git 에서 `MyReviewsSection` 을 가져오면 된다.
-    - **[내 전시]에서 전시 운영까지 끝낸다**(2026-08-27) — 수락된 전시 카드를 펼치면
-      **운영 공지 · 제출 자료 · 정산 확인** 세 블록이 카드 안에 들어온다(`components/operation/ArtistOperationPanel.tsx`).
-      작가가 운영페이지에서 하던 일이 이 셋뿐이라 왕복할 이유가 없었다.
-        - 세 블록은 운영페이지가 export 하는 **같은 컴포넌트**다. 복제하면 갤러리의 '대신 입력'(proxyFor)과 갈라진다.
-        - **지금 할 일만 자동으로 펼친다**(자료 미제출 → 제출 자료 / 정산 요청 대기 → 정산). 전부 펼치면 카드가 수천 px 이 된다.
-        - **할 일이 맨 위**다. 지원서(수십 줄)를 먼저 두면 정작 해야 할 게 아래로 밀려서, 지원서는 접어 둔다.
-        - 작가가 `/exhibitions/:id/operation/new` 로 오면 **마이페이지로 되돌려 보낸다**(라우트는 살려둘 것 — 아래 참고).
-    - **일정 줄은 항상 그린다** — 남은 일정이 없다고 줄째로 빼면 카드 높이가 제각각이 된다
-      (실측 130px vs 188px, 목록에서 한 카드만 작아 보였다). 없으면 전시 기간을 대신 적는다.
-    - 카드는 **갤러리 [내 공모 운영]과 같은 얼개**다 — 좌 220px 이미지(D-day) / 우 배지·제목·버튼, 그 아래 일정,
-      펼치면 작업 영역. 역할만 다르지 하는 일이 같으니 화면도 같아야 배우는 게 한 번으로 끝난다.
+    - **[내 전시]에서 전시 운영까지 끝낸다** — 2026-11-20 부터 **줄 목록 + 전시 화면**(규칙 88): 줄을 누르면 마이페이지 안에서 그 전시 화면
+      (`components/workspace/ArtistExhibitionWorkspace.tsx`, 탭 [출품 자료 · 정산 · 공지 · 내 지원서])이 열린다. 출품 자료·정산·공지는 운영 화면과 **같은 컴포넌트**
+      (`OperationPage` 가 export) — 복제하면 갤러리의 '대신 입력'(proxyFor)과 갈라진다. 처음 열 탭은 지금 할 일(`artistDefaultView`).
+        - 작가가 `/exhibitions/:id/operation/new` 로 오면 **마이페이지의 그 전시로 되돌려 보낸다**(라우트는 살려둘 것 — 아래 참고).
+        - (2026-08-27~11-19 의 카드 아코디언 · `ArtistOperationPanel` · 늘 그리던 일정 줄은 없앴다.)
     - 🧪 **단계별 확인용 테스트 데이터**: `backend/scripts/seed-artist-stages.ts`
       (심사중·거절·수락/자료미제출·자료제출완료·확정·전시종료·정산요청·정산완료 8단계).
       제목이 전부 `[TEST]` 로 시작하고 `--clean` 으로 남김없이 지운다. **로컬 전용**(NODE_ENV=production 이면 중단).
@@ -3604,7 +3688,8 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
 - **[관심 작품] 탭(`tab=scraps`, 라벨 유지)** = 하트 보드. `ArtworkScrapsSection` 이 `/explore/my-likes` 를 읽는다(작가 [찜 목록]의 '좋아요한 작품'과 같은 소스).
   카드는 **작품과 작가 이름뿐**(2026-11-19) — [전시 초대]·[문의하기]·안내 문구 없음. 1:1 공모 초대 자체를 없앴다(위 「1:1 공모 초대는 없앴다」).
 - **⚠️ `like` 는 토글이라** 테스트에서 같은 이미지를 두 번 좋아요하면 취소된다. E2E 는 `seedGalleryLike`(`e2e/lib/helpers.ts`)로 **매번 새 작품**에 하트를 눌러 my-likes 를 확실히 채운다.
-- **내 공모 [상세 운영]은 페이지 이동이 아니라 카드 안 인라인 아코디언**(2026-08-28). `OperationPage` 의 본문을 `export function OperationBody({ id, embedded })` 로 분리하고, 기본 export 는 그걸 감싸는 얇은 래퍼다. 카드에서 `<OperationBody id embedded />` 로 임베드(머리말·최대폭 제거). ⚠️ **`/operation/new` 전용 라우트는 유지 필수** — 옛 알림 10곳이 그 주소를 가리킨다(`/operation` 는 별개의 옛 classic 페이지). 회귀 `e2e/35-gallery-exhibition-ops.spec.ts`.
+- **내 공모는 줄 목록 + 공모 한 건 화면**(2026-11-20, 규칙 88 — 그 전 2026-08-28~11-19 는 카드 안 인라인 아코디언 `OperationBody`). 줄을 누르면 `?tab=my-exhibitions&ex=<id>`.
+  ⚠️ **`/operation/new` 전용 라우트는 유지 필수** — 옛 알림이 그 주소를 가리킨다(갤러리는 그 공모 화면으로, 관리자는 같은 화면을 단독으로). 회귀 `e2e/35-gallery-exhibition-ops.spec.ts`.
 
 ### 3. 서비스 화면별 세부 동작
 - **갤러리 찾기**: ⚠️ 2026-11-15 개편 — 지금 모양은 **규칙 83**(카드에 모집 중·전시 중, 모집 중 먼저 → 조회수 순, 있는 지역만, 휴대폰 줄 목록). 아래는 그 전 기록이다.

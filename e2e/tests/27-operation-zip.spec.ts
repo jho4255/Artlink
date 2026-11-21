@@ -104,7 +104,7 @@ test('전체 제출물 PDF(ZIP) — 이미지 선수집 진행률 후 완료', a
   await openGallerySubmissions(page, exId);
 
   const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
-  await pickDownload(page, /전체 출품 자료 PDF/);
+  await pickDownload(page, /출품 자료 PDF/);
   await expect(page.locator('body')).toContainText(/불러오는 중|만드는 중|ZIP 다운로드/, { timeout: 60_000 });
 
   const dl = await downloadPromise;
@@ -213,7 +213,7 @@ test('★ 전체 PDF(ZIP) — 이미지를 못 받으면 누락 사실과 작품
 
   const { page, ctx } = await openAs(browser, 'gallery');
   await openGallerySubmissions(page, exId);
-  await pickDownload(page, /전체 출품 자료 PDF/);
+  await pickDownload(page, /출품 자료 PDF/);
 
   await expect(page.locator('body'), '누락 개수 안내').toContainText('이미지 1개 누락', { timeout: 120_000 });
   await expect(page.locator('body'), '누락된 작품명 안내').toContainText('PDF누락작품', { timeout: 15_000 });

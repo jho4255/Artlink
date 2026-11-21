@@ -11,9 +11,13 @@ import { Check } from 'lucide-react';
 export interface PageTab<T extends string> {
   id: T;
   label: string;
-  count?: number;
+  /** 탭 옆 작은 숫자 — '6' · 공모 한 건 화면의 '1/4'(2026-11-20) */
+  count?: number | string;
   /** 다 채운 탭에 ✓ (출품 자료 편집기의 출품리스트·약력·작가노트, 2026-09-29) */
   done?: boolean;
+  /** 아직 열 수 없는 탭(정산은 전시 종료 뒤, 2026-11-20) — 회색, 누르면 아무 일도 없다. 이유는 `hint`(title) */
+  disabled?: boolean;
+  hint?: string;
 }
 
 export default function PageTabBar<T extends string>({ tabs, active, onSelect, sticky = true, idPrefix, label, site = false, trailing }: {
@@ -50,11 +54,13 @@ export default function PageTabBar<T extends string>({ tabs, active, onSelect, s
               id={`${idPrefix}-tab-${t.id}`}
               aria-selected={on}
               aria-controls={`${idPrefix}-panel-${t.id}`}
-              onClick={() => onSelect(t.id)}
-              className={`relative min-h-[44px] shrink-0 cursor-pointer whitespace-nowrap py-3 text-[14px] md:text-[15px] ${on ? 'font-semibold text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+              aria-disabled={t.disabled || undefined}
+              title={t.disabled ? t.hint : undefined}
+              onClick={() => { if (!t.disabled) onSelect(t.id); }}
+              className={`relative min-h-[44px] shrink-0 whitespace-nowrap py-3 text-[14px] md:text-[15px] ${t.disabled ? 'cursor-default text-gray-300' : on ? 'cursor-pointer font-semibold text-gray-900' : 'cursor-pointer text-gray-500 hover:text-gray-900'}`}
             >
               {t.label}
-              {typeof t.count === 'number' && <span className="ml-1.5 text-[12px] font-normal tabular-nums text-gray-400">{t.count}</span>}
+              {(typeof t.count === 'number' || (typeof t.count === 'string' && t.count)) && <span className="ml-1.5 text-[12px] font-normal tabular-nums text-gray-400">{t.count}</span>}
               {t.done && <Check size={13} strokeWidth={2.5} aria-label="채움" className="ml-1 inline-block -translate-y-px text-gray-400" />}
               {on && <span aria-hidden className="absolute inset-x-0 -bottom-px h-[2px] bg-gray-900" />}
             </button>

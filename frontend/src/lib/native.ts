@@ -154,9 +154,12 @@ export async function shareLinkNative(title: string, url: string): Promise<boole
  * 지금 화면 위에 떠 있는 창(맨 위의 것) — 그려지지 않은(display:none 등) 것은 뺀다.
  * 바깥 문서에 없으면 **같은 출처 iframe 안**도 본다(2026-11-17 — 휴대폰 ArtLook 편집 전용 화면의 저장 창·크기 창은 iframe 안이라,
  * 그대로 두면 앱 뒤로가기가 창을 닫는 대신 ArtLook 화면을 떠났다). 다른 출처 iframe 은 못 읽으니 건너뛴다.
+ * 창이 아닌 떠 있는 것(메뉴)은 **Esc 로 닫힌다고 밝힌 것만**(`data-back-closes` — `components/flow/MenuButton.tsx`, 2026-11-21) —
+ * 메뉴를 연 채 뒤로 키를 누르면 메뉴만 닫히지 않고 화면을 떠났다. `role="menu"` 를 통째로 넣지 말 것: Esc 를 안 듣는 메뉴가
+ * 열려 있으면 뒤로 키가 아무 일도 안 하게 된다.
  */
 export function topOpenDialog(root: ParentNode = document): HTMLElement | null {
-  const openIn = (scope: ParentNode) => Array.from(scope.querySelectorAll<HTMLElement>('[role="dialog"], [aria-modal="true"]'))
+  const openIn = (scope: ParentNode) => Array.from(scope.querySelectorAll<HTMLElement>('[role="dialog"], [aria-modal="true"], [data-back-closes]'))
     .filter((el) => el.getClientRects().length > 0);
   const open = openIn(root);
   if (open.length) return open[open.length - 1];

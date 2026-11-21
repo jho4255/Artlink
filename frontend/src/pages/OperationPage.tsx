@@ -3,7 +3,8 @@
  *
  * 접근: 갤러리 오너 / Admin / 수락(ACCEPTED)된 작가
  *  - 운영 공지: 모두 열람, 오너·Admin 작성/수정/삭제
- *  - 수락 작가: 본인 출품 자료(출품작·약력·작가노트) 작성·수정 — 마이페이지 [내 전시] 카드 안에서(`ArtistOperationPanel`)
+ *  - 수락 작가: 본인 출품 자료(출품작·약력·작가노트) 작성·수정 — 마이페이지 [내 전시]의 전시 화면에서(`ArtistExhibitionWorkspace`, 2026-11-20)
+ *  - 이 주소(/operation/new)는 옛 알림용 — 갤러리·작가는 마이페이지의 그 공모로 보내고, 관리자에게만 공모 화면을 단독으로 그린다(CLAUDE.md 규칙 88)
  *  - 오너·Admin: 전 작가 출품 자료 열람 + 문서별 PDF (타 작가끼리는 비공개)
  *
  * ── 2026-09-29 개편 (공모 프로세스 UX) ─────────────────────────
@@ -17,36 +18,35 @@
  *
  * API: /api/operations/:id/(access|notices|me|submissions|submissions/:userId|lifecycle|settlement…)
  */
-import { useState, useEffect, useRef, useId } from 'react';
-import { Link, Navigate, useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useId, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
+import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Edit3, FileDown, ChevronDown, Loader2, Upload, ImageOff, User, Star, Check, RotateCw } from 'lucide-react';
+import { Plus, Trash2, Edit3, FileDown, Loader2, Upload, ImageOff, Star, Check, RotateCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { composeSize, splitSize } from '@/lib/artwork';
 import Thumb from '@/components/shared/Thumb';
-import { nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice, getDday, cn } from '@/lib/utils';
+import { nameWithNickname, compressImage, MAX_IMAGE_BYTES, formatPhoneNumber, koreanWon, formatArtworkPrice, cn } from '@/lib/utils';
 import { STATE_UI, computeSaveState, isBlankArtwork, repOrdinal, type SaveState } from '@/lib/saveState';
-import { artworkMissing, hasContent, hasNoteContent, serverStatus, submissionChecklist, CV_SECTIONS } from '@/lib/submissionChecklist';
-import { galleryNextTask, stageOf, SUBMISSION_TERM, type TaskTarget } from '@/lib/flowLabels';
+import { artworkMissing, hasContent, hasNoteContent, serverStatus, submissionChecklist, submissionState, CV_SECTIONS } from '@/lib/submissionChecklist';
+import { SUBMISSION_TERM } from '@/lib/flowLabels';
 import { operatorWorkspace } from '@/lib/operationLinks';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
-import StatusPanel from '@/components/operation/StatusPanel';
-import { useBoothCatalogue, CATALOGUE_LABEL } from '@/components/operation/BoothKitBar';
+import { authStashKeys, stashKeys, takeAuthStash, useStashOnAuthLoss } from '@/lib/authStash';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useSubmissionDownloads } from '@/hooks/useSubmissionDownloads';
 import DmComposeModal from '@/components/operation/DmComposeModal';
-// 정산 섹션은 클래식 뷰와 **한 벌을 공유**한다 (돈 계산이 두 벌로 갈라지면 한쪽만 조용히 틀어진다)
-import SettlementSection from '@/components/operation/SettlementSection';
-import StatusChip from '@/components/flow/StatusChip';
 import Notice from '@/components/flow/Notice';
-import Disclosure from '@/components/flow/Disclosure';
 import MenuButton from '@/components/flow/MenuButton';
 import PageTabBar from '@/components/shared/PageTabBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 
 import type {
-  OperationAccess, ExhibitionNotice, OperationSubmission,
+  ExhibitionNotice, OperationSubmission,
   ArtworkItem, ArtistCv, CvEntry, ArtistNote, SettlementArtist,
 } from '@/types';
 import { EMPTY_CV, EMPTY_NOTE } from '@/types';
@@ -79,309 +79,37 @@ const josa = (word: string, a: string, b: string) => {
   return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0 ? a : b;
 };
 
-/** 공모 상세(`GET /exhibitions/:id`) 중 운영 화면이 쓰는 값 — access 응답엔 날짜·정원이 없다 */
-interface ExhibitionDates {
-  deadline?: string | null;
-  submissionDeadline?: string | null;
-  exhibitStartDate?: string | null;
-  exhibitDate?: string | null;
-  capacity?: number | null;
-  capacityMask?: string | null;
-}
-
 /**
- * 갤러리 운영 화면의 본문.
+ * `/exhibitions/:id/operation/new` — 옛 알림·공모 상세 버튼이 가리키는 운영 주소(라우트 유지 필수 — 이미 나간 알림이 들고 있다).
  *
- * 두 곳에서 같은 코드를 쓴다:
- *  · `/exhibitions/:id/operation/new` 전용 페이지(기본 export) — 알림 링크가 이 주소를 가리킨다(라우트 유지 필수)
- *  · 마이페이지 [내 공모] 카드의 [운영] 탭 — `embedded` 로 바깥 껍데기(머리말·최대폭·할 일 안내)를 벗긴다
- *    (카드에 이미 제목·단계·할 일 줄이 있어 겹친다)
- *
- * `focus` 가 바뀌면 그 구역을 열고 스크롤한다 — 카드의 '다음 할 일' 을 누르면 거기로 데려간다.
+ * 2026-11-20 개편(규칙 88): 운영 화면 본문은 **공모 한 건 화면**(`components/workspace/ExhibitionWorkspace`) 하나다.
+ *  - 갤러리 → 마이페이지 [내 공모]의 그 공모 화면으로(`?tab=my-exhibitions&ex=<id>` — 일하는 곳이 한 곳이게, `view=` 는 그대로)
+ *  - 관리자 → 여기서 그 화면을 그린다(관리자에겐 [내 공모]가 없다 — 돌아갈 곳은 `operatorWorkspace` 가 정한다)
+ *  - 작가 → [내 전시]의 그 전시(작가는 운영 화면에 오지 않는다)
+ * 워크스페이스는 늦게 불러온다 — 그쪽이 이 파일의 구역들을 가져다 쓰므로(정적으로 서로 부르면 순환이 된다).
  */
-export function OperationBody({ id: idProp, embedded = false, focus = null }: {
-  id?: string;
-  embedded?: boolean;
-  focus?: { target: TaskTarget; seq: number } | null;
-} = {}) {
-  const params = useParams<{ id: string }>();
-  const id = idProp ?? params.id;
-  const navigate = useNavigate();
-  const { user } = useAuthStore();
+const ExhibitionWorkspace = lazy(() => import('@/components/workspace/ExhibitionWorkspace'));
 
-  const { data: access, isLoading, error } = useQuery<OperationAccess>({
-    queryKey: ['operation-access', id],
-    queryFn: () => api.get(`/operations/${id}/access`).then(r => r.data),
-    enabled: !!id,
-    retry: false,
-  });
-
-  const canManage = !!access && (access.isOwner || access.isAdmin);
-  /**
-   * 공모만 진행하는 공고 — 자료제출·전시·정산 단계가 없다.
-   * ⚠️ 화면에서 감추는 것만으로 끝내지 말 것. 아래 쿼리들도 **끄지 않으면** 서버가 400 을 주고
-   *    (`lib/exhibitionStage.ts`) 화면엔 이유 없는 에러만 남는다.
-   */
-  const recruitOnly = !!access?.recruitOnly;
-
-  const { data: submissionSummary = [] } = useQuery<{ user: any; submission: OperationSubmission }[]>({
-    queryKey: ['operation-submissions', id],
-    queryFn: () => api.get(`/operations/${id}/submissions`).then(r => r.data),
-    enabled: !!id && canManage && !recruitOnly,
-    staleTime: 0,
-  });
-
-  const { data: settlementSummary } = useQuery<{
-    settled?: boolean;
-    settlementRequested?: boolean;
-    allApproved?: boolean;
-    artists: (SettlementArtist & { approval?: { status: string; comment?: string | null } | null })[];
-  }>({
-    queryKey: ['operation-settlement', id],
-    queryFn: () => api.get(`/operations/${id}/settlement`).then(r => r.data),
-    enabled: !!id && canManage && !!access?.ended && !recruitOnly,
-    staleTime: 0,
-  });
-
-  // 운영 공지 개수 — 구역 머리의 요약용. NoticesSection 과 같은 쿼리 키라 한 번만 받는다
-  const { data: notices = [] } = useQuery<ExhibitionNotice[]>({
-    queryKey: ['operation-notices', id],
-    queryFn: () => api.get(`/operations/${id}/notices`).then(r => r.data),
-    enabled: !!id && canManage,
-  });
-
-  // 날짜·정원 — 공모 상세와 같은 쿼리 키(상세 페이지와 캐시를 나눠 쓴다)
-  const { data: dates } = useQuery<ExhibitionDates>({
-    queryKey: ['exhibition', id],
-    queryFn: () => api.get(`/exhibitions/${id}`).then(r => r.data),
-    enabled: !!id && canManage,
-    staleTime: 60_000,
-  });
-
-  // 전용 페이지에서만 — '지원자 N명 검토 대기' 를 말하려면 지원자 수가 필요하다(카드 안에선 카드가 이미 말한다)
-  const { data: applicants = [] } = useQuery<{ status: string }[]>({
-    queryKey: ['exhibition-applicants', Number(id)],
-    queryFn: () => api.get(`/exhibitions/${id}/applications`).then(r => r.data),
-    enabled: !!id && canManage && !embedded,
-  });
-
-  /** 펼친 구역. null = 아직 access 가 없어 기본값을 못 정했다 */
-  const [openSections, setOpenSections] = useState<Record<string, boolean> | null>(null);
-  if (access && openSections === null) {
-    // 지금 단계에서 볼 구역 하나만 펼쳐 시작한다 — 전부 펼치면 카드 하나가 수천 px 이 된다
-    setOpenSections({
-      notices: !!access.recruitOnly,
-      submissions: !access.recruitOnly && !access.ended && access.recruitmentClosed,
-      settlement: !access.recruitOnly && !!access.ended,
-    });
-  }
-  const setSection = (key: string, open: boolean) => setOpenSections(prev => ({ ...(prev ?? {}), [key]: open }));
-
-  /*
-    [전시 종료하기] 를 누른 직후 — '지금' 문장은 "아래 정산에서…" 라고 하는데 정산 구역이 접힌 채였다(2026-10-03 점검 P3).
-    종료로 **바뀐 순간**에만 펼치고 그 자리로 데려간다(처음부터 종료된 공모는 위 기본값이 이미 펼친다).
-    StrictMode 가 effect 를 두 번 돌려도 두 번째는 prev === 지금 이라 아무 일도 안 한다.
-  */
-  const prevEnded = useRef<boolean | null>(null);
-  useEffect(() => {
-    if (!access) return;
-    if (prevEnded.current === false && access.ended && !access.recruitOnly) {
-      setOpenSections(prev => ({ ...(prev ?? {}), settlement: true }));
-      window.setTimeout(() => document.getElementById(`op-${id}-settlement`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-    }
-    prevEnded.current = access.ended;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access?.ended]);
-
-  // 카드의 '다음 할 일' → 그 구역을 열고 거기로 스크롤
-  useEffect(() => {
-    if (!focus?.target || !access) return;
-    if (focus.target !== 'stage' && focus.target !== 'applicants') setOpenSections(prev => ({ ...(prev ?? {}), [focus.target as string]: true }));
-    const t = window.setTimeout(() => document.getElementById(`op-${id}-${focus.target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.seq, !!access]);
-
-  if (isLoading) return <div className="mx-auto max-w-3xl px-6 py-10"><div className="h-40 animate-pulse rounded-xl bg-gray-100" /></div>;
-  if (error || !access) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-20 text-center text-gray-400">
-        <p>운영 화면에 들어갈 수 없습니다.</p>
-        <button onClick={() => navigate(`/exhibitions/${id}`)} className="mt-4 text-sm text-gray-600 underline hover:text-gray-900">공모 상세로 이동</button>
-      </div>
-    );
-  }
-
-  /*
-    작가는 이 페이지에 오지 않는다 — 마이페이지 [내 전시] 카드 안에서 공지·출품 자료·정산을 다 처리한다
-    (`components/operation/ArtistOperationPanel.tsx`, 여기서 export 하는 세 섹션을 그대로 쓴다).
-
-    ⚠️ **라우트를 지우지 말고 되돌려 보낼 것.** 이미 발송된 알림이 이 주소를 가리키고 있어서
-       (수락·자료제출 안내·정산 확인 요청·리마인더) 404 로 두면 그 알림들이 전부 죽는다.
-  */
-  if (!canManage) {
-    return <Navigate to="/mypage?tab=applications" replace />;
-  }
-
-  const isComplete = (s: OperationSubmission) => submissionMissingParts(s).length === 0;
-  const completeArtists = submissionSummary.filter(({ submission }) => isComplete(submission)).length;
-  const incompleteArtists = Math.max(0, submissionSummary.length - completeArtists);
-  const approvals = settlementSummary?.artists ?? [];
-  const approved = approvals.filter(a => a.approval?.status === 'APPROVED').length;
-  const issues = approvals.filter(a => a.approval?.status === 'ISSUE').length;
-  // 판매 입력 건수 — 할 일 문장이 '판매된 작품을 입력하고…' / '판매 내역을 확인하고…' 를 가른다(예전엔 0 으로 박혀 있었다)
-  const soldCount = approvals.reduce((n, a) => n + a.works.filter(w => w.sold).length, 0);
-
-  const stage = stageOf({ ...access, status: 'APPROVED', exhibitStartDate: dates?.exhibitStartDate ?? null, settledAt: access.settledAt ?? (access.settled ? 'y' : null) });
-  const task = galleryNextTask({
-    status: 'APPROVED',
-    recruitOnly,
-    recruitmentClosed: access.recruitmentClosed,
-    confirmed: access.confirmed,
-    ended: access.ended,
-    settled: !!access.settled,
-    settlementRequested: !!access.settlementRequested,
-    deadline: dates?.deadline,
-    exhibitStartDate: dates?.exhibitStartDate,
-    exhibitDate: dates?.exhibitDate ?? access.exhibitDate,
-    pending: applicants.filter(a => a.status === 'SUBMITTED' || a.status === 'REVIEWED').length,
-    // 공모만 진행이면 출품 자료 목록을 받지 않는다 — 수락 수는 지원자 목록에서 센다
-    accepted: applicants.length ? applicants.filter(a => a.status === 'ACCEPTED').length : submissionSummary.length,
-    capacity: dates?.capacity ?? null,
-    capacityMask: dates?.capacityMask ?? null,
-    submissionsIncomplete: incompleteArtists,
-    sales: soldCount,
-    approvals: { total: approvals.length, approved, issue: issues },
-  });
-  /*
-    이 화면에서 '목록으로'·'지원자 보기' 가 가는 곳 — **보는 사람의 역할에 따라 다르다**(lib/operationLinks.ts).
-    예전엔 전부 갤러리의 [내 공모] 주소였는데, 관리자에겐 그 탭이 없어 프로필(닉네임 입력 칸)로 떨어졌다(2026-10-02).
-  */
-  const workspace = operatorWorkspace(user?.role, access.hostType, id);
-  const goTask = () => {
-    if (task.target === 'applicants') { navigate(workspace?.applicantsHref ?? `/exhibitions/${id}`); return; }
-    if (task.target && task.target !== 'stage') setSection(task.target, true);
-    window.setTimeout(() => document.getElementById(`op-${id}-${task.target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-  };
-
-  const settlementMeta = access.settled
-    ? '정산 완료'
-    : access.settlementRequested
-      ? (approvals.length > 0 && approved >= approvals.length
-        ? '작가 모두 확인 · 정산 완료 전'
-        : `작가 확인 ${approved}/${approvals.length}`)   // 이의는 옆의 빨간 표시(hint)가 말한다 — 두 번 적지 않는다
-      : '판매 입력 전';
-
-  // ⚠️ `<main>` 은 Layout 이 이미 하나 갖고 있다 — 전용 페이지도 Layout 안이라 여기서 또 만들면 문서에 main 이 둘이 된다(2026-10-03 점검)
-  const Body = 'div' as const;
-  return (
-    <div className={embedded ? '' : 'bg-white'}>
-      <Body className={embedded ? 'w-full' : 'mx-auto w-full max-w-3xl px-6 py-8 md:px-12 md:py-12'} data-operation-body>
-        {!embedded && (
-          <header className="mb-8">
-            <Link to={workspace?.listHref ?? `/exhibitions/${id}`} className="inline-flex min-h-[40px] items-center gap-1 text-sm text-gray-500 hover:text-gray-900">
-              <ArrowLeft size={15} aria-hidden /> {workspace?.label ?? '공고'}
-            </Link>
-            <p className="mt-2 text-sm text-gray-500">공모 운영 · {access.galleryName}</p>
-            <h1 className="mt-1 break-keep text-2xl font-semibold leading-tight text-gray-950 md:text-3xl">{access.title}</h1>
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-              {stage && <StatusChip variant={stage.variant}>{stage.label}</StatusChip>}
-              {workspace && <Link to={workspace.applicantsHref} className="text-gray-600 underline-offset-4 hover:text-gray-950 hover:underline">지원자 보기</Link>}
-              <Link to={`/exhibitions/${id}`} className="text-gray-600 underline-offset-4 hover:text-gray-950 hover:underline">공고 보기</Link>
-            </div>
-          </header>
-        )}
-
-        {/* 지금 할 일 — 전용 페이지에서만(카드 안에선 카드의 할 일 줄이 같은 말을 한다) */}
-        {!embedded && (
-          <Notice
-            tone={task.tone === 'attention' ? 'attention' : 'neutral'}
-            className="mb-8"
-            action={task.target && task.action ? (
-              <button type="button" onClick={goTask} className="min-h-[40px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">{task.action}</button>
-            ) : undefined}
-          >
-            <span className={task.tone === 'attention' ? 'font-medium text-gray-900' : ''}>{task.text}</span>
-          </Notice>
-        )}
-
-        <div id={`op-${id}-stage`} className="scroll-mt-24">
-          <StatusPanel
-            exhibitionId={id!}
-            access={access}
-            incompleteArtists={incompleteArtists}
-            exhibitStartDate={dates?.exhibitStartDate ?? null}
-            settlement={settlementSummary ? { approved, total: approvals.length, issues } : null}
-          />
-        </div>
-
-        {recruitOnly && (
-          <Notice className="mt-6">
-            공모만 진행하는 공고예요 — 지원자 수락까지만 진행하고, 출품 자료·전시·정산 단계는 없어요.
-            {embedded
-              ? ' 지원자 확인과 수락은 위 [지원자] 탭에서 하세요.'
-              : workspace?.canDecide
-                ? ` 지원자 확인과 수락은 [${workspace.label} › ${workspace.label === '내 공모' ? '지원자' : '지원자 관리'}]에서 하세요.`
-                : ' 지원 현황은 [운영 조회]에서 볼 수 있어요(수락·거절은 운영 갤러리가 합니다).'}
-          </Notice>
-        )}
-
-        {/* 구역 — 지금 단계에서 볼 것 하나만 펼쳐 시작한다 */}
-        <div className="mt-8 divide-y divide-gray-100 border-t border-gray-100">
-          <Disclosure
-            id={`op-${id}-notices`}
-            title="운영 공지"
-            meta={notices.length ? `${notices.length}건` : '없음'}
-            open={!!openSections?.notices}
-            onOpenChange={(o) => setSection('notices', o)}
-          >
-            <NoticesSection exhibitionId={id!} canManage />
-          </Disclosure>
-
-          {!recruitOnly && (
-            <Disclosure
-              id={`op-${id}-submissions`}
-              title={SUBMISSION_TERM}
-              meta={submissionSummary.length ? `제출 완료 ${completeArtists}/${submissionSummary.length}` : '수락한 작가 없음'}
-              hint={!access.ended && incompleteArtists > 0 && access.recruitmentClosed ? `미제출 ${incompleteArtists}명` : undefined}
-              open={!!openSections?.submissions}
-              onOpenChange={(o) => setSection('submissions', o)}
-            >
-              <AdminSubmissionsSection
-                exhibitionId={id!}
-                exhibitionTitle={access.title}
-                myUserId={user!.id}
-                confirmed={access.confirmed}
-                ended={access.ended}
-                isAdmin={access.isAdmin}
-              />
-            </Disclosure>
-          )}
-
-          {!recruitOnly && (access.ended ? (
-            <Disclosure
-              id={`op-${id}-settlement`}
-              title="정산"
-              meta={settlementMeta}
-              hint={issues > 0 && !access.settled ? `이의 ${issues}건` : undefined}
-              open={!!openSections?.settlement}
-              onOpenChange={(o) => setSection('settlement', o)}
-            >
-              <SettlementSection exhibitionId={id!} isAdmin={access.isAdmin} className="" />
-            </Disclosure>
-          ) : (
-            // 정산은 전시가 끝나야 열린다 — 자리는 미리 보여 준다(처음 쓰는 갤러리가 끝까지 무엇이 있는지 알게)
-            <Disclosure id={`op-${id}-settlement`} title="정산" meta="전시를 종료하면 열려요" disabled />
-          ))}
-        </div>
-      </Body>
-    </div>
-  );
-}
-
-/** `/exhibitions/:id/operation/new` 전용 페이지 — 본문은 OperationBody 가 그린다(마이페이지 카드와 공유) */
 export default function OperationPage() {
-  return <OperationBody />;
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuthStore();
+  const [search] = useSearchParams();
+  const view = search.get('view');
+  const viewQ = view ? `&view=${encodeURIComponent(view)}` : '';
+  if (!id || !user) return null;
+  if (user.role === 'GALLERY') {
+    // 갤러리의 일터 — lib/operationLinks.ts 가 정한다(역할 전용 탭 주소를 손으로 적지 않는다)
+    const workspace = operatorWorkspace(user.role, null, id);
+    return <Navigate to={`${workspace?.listHref ?? `/exhibitions/${id}`}${viewQ}`} replace />;
+  }
+  if (user.role !== 'ADMIN') return <Navigate to={`/mypage?tab=applications&ex=${encodeURIComponent(id)}`} replace />;
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-5xl px-6 py-10"><div className="h-40 animate-pulse rounded-xl bg-gray-100" /></div>}>
+      {/* key — 관리자가 공모 A 를 보다 벨의 공모 B 알림을 누르면 같은 화면이 재사용돼, A 에서 쓰던 저장 안 한 정산 입력이
+          B 화면에 남았다(2026-11-21 e2e 89 WS-09). 공모가 바뀌면 화면을 새로 시작한다(MyPage 두 곳과 같다) */}
+      <ExhibitionWorkspace key={id} exhibitionId={Number(id)} standalone />
+    </Suspense>
+  );
 }
 
 
@@ -422,9 +150,8 @@ export function NoticesSection({ exhibitionId, canManage }: { exhibitionId: stri
   return (
     <div className="space-y-4">
       {canManage && !showForm && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-gray-500">수락한 작가 모두에게 보이는 안내예요.</p>
-          <button onClick={() => { reset(); setShowForm(true); }} className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50">
+        <div className="flex justify-end pt-1">
+          <button onClick={() => { reset(); setShowForm(true); }} className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-300 px-3.5 text-sm font-medium text-gray-900 hover:bg-gray-50">
             <Plus size={14} aria-hidden /> 공지 쓰기
           </button>
         </div>
@@ -444,7 +171,7 @@ export function NoticesSection({ exhibitionId, canManage }: { exhibitionId: stri
       {isLoading ? (
         <div className="h-16 animate-pulse rounded-lg bg-gray-100" />
       ) : notices.length === 0 ? (
-        <p className="text-sm text-gray-400">{canManage ? '아직 올린 공지가 없어요. 설치·반입 일정처럼 작가 모두에게 알릴 일이 있으면 공지를 쓰세요.' : '갤러리가 올린 공지가 없어요.'}</p>
+        <p className="py-6 text-sm text-gray-500">{canManage ? '아직 올린 공지가 없어요.' : '갤러리가 올린 공지가 없어요.'}</p>
       ) : (
         <ul className="divide-y divide-gray-100 border-y border-gray-100">
           {notices.map(n => (
@@ -514,6 +241,9 @@ function lockedReason(ended?: boolean, manualConfirmed?: boolean): { title: stri
  *  - [갤러리에 제출]  작품마다 캡션 칸(작품명·크기·재료·연도·가격)과 대표작을 확인한 뒤 전부 공개한다.
  *                    약력·작가노트가 비어 있으면 막지 않고 "출품작만 먼저 보낼까요?" 를 묻는다.
  */
+/** 로그인이 풀릴 때 남겨 두는 출품 자료 입력(lib/authStash) */
+type SubmissionStash = { artworkList: ArtworkItem[]; cv: ArtistCv; note: ArtistNote; repIndex: number | null };
+
 export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, manualConfirmed, proxyFor, submissionDeadline }: {
   exhibitionId: string;
   myUserId: number;
@@ -550,20 +280,37 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
   const [validated, setValidated] = useState(false);
   const [askPartial, setAskPartial] = useState<string[] | null>(null);
   const [cvLoaded, setCvLoaded] = useState(false);
+  /** 로그인이 풀리기 전에 쓰던 입력(lib/authStash) — 처음 받은 값(data 객체)에만 얹는다. 같은 값으로 effect 가 다시 돌면(StrictMode) 다시 얹는다 */
+  const restore = useRef<{ data: OperationSubmission; stash: SubmissionStash | null } | null>(null);
+  const stashKey = stashKeys.submission(exhibitionId, targetUserId);
   const idPrefix = useId();
+  /** 그 구역으로 내려간다(2026-11-20 — 예전엔 탭 셋이라 탭을 바꿨다. 지금은 한 흐름의 번호 구역 1·2·3) */
+  const goSection = (key: SubmissionTab) => {
+    window.setTimeout(() => document.getElementById(`${idPrefix}-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+  };
 
   useEffect(() => {
     if (data) {
-      setArtworkList(data.artworkList || []);
-      setCv(data.cv || EMPTY_CV);
-      setNote(data.note || EMPTY_NOTE);
-      setRepIndex(data.representativeIndex ?? null);
+      /*
+        로그인이 풀리기 전에 쓰던 입력이 이 기기에 남아 있으면 그걸로 채운다(2026-11-21 O6, lib/authStash) — 기준선(saved*)은 서버 값이라
+        저장 안 된 변경으로 보이고, 저장은 사람이 누른다. 잠긴 화면(확정 뒤 작가 본인)에서는 버린다.
+      */
+      if (!restore.current) {
+        const taken = takeAuthStash<SubmissionStash>(myUserId, stashKey);
+        restore.current = { data, stash: taken && !confirmed ? taken : null };
+      }
+      const stash = restore.current.data === data ? restore.current.stash : null;
+      if (stash) toast(`로그인이 풀리기 전에 쓰던 ${SUBMISSION_TERM}를 되살렸어요. 저장해야 반영돼요.`, { id: `auth-stash-${stashKey}`, duration: 6000 });
+      setArtworkList(stash?.artworkList ?? (data.artworkList || []));
+      setCv(stash?.cv ?? (data.cv || EMPTY_CV));
+      setNote(stash?.note ?? (data.note || EMPTY_NOTE));
+      setRepIndex(stash ? stash.repIndex : (data.representativeIndex ?? null));
       setSavedList(data.artworkList || []);
       setSavedNote(data.note || EMPTY_NOTE);
       setSavedCv(data.cv || EMPTY_CV);
       setSavedRepIndex(data.representativeIndex ?? null);
     }
-  }, [data]);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps -- 되살리기(myUserId·stashKey·confirmed)는 처음 받은 값에서 한 번만 본다
 
   // 대표작 인덱스가 출품작 범위를 벗어나면 해제
   useEffect(() => {
@@ -616,7 +363,14 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
       }
       toast.success(v.msg);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || '저장하지 못했습니다.'),
+    onError: (e: any) => {
+      toast.error(e.response?.data?.error || '저장하지 못했습니다.');
+      // 막힌 이유가 단계(확정·종료)면 화면을 그 단계로 다시 그린다 — 그대로 두면 고칠 수 있는 옛 화면에서 계속 403 을 받는다(2026-11-20 S5).
+      // 쓰던 내용은 지우지 않는다(이 폼의 상태는 그대로 — 잠긴 화면은 위 단계 정보로 바뀐다)
+      if (e.response?.status === 403) {
+        for (const k of [['operation-access', exhibitionId], ['my-applications'], ['operation-submissions', exhibitionId]]) qc.invalidateQueries({ queryKey: k });
+      }
+    },
   });
 
   // 서버에 보낼 목록 — 갓 추가해 비어 있는 칸은 제외한다(빈 작품이 쌓이면 갤러리 카운트가 어긋난다).
@@ -639,6 +393,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
     || repOrdinal(artworkList, repIndex, filledList.length) !== (savedRepIndex ?? null);
   // 저장 전 이탈 경고 (닫기·새로고침·뒤로가기·앱 내 링크)
   useUnsavedChanges(anyDirty, UNSAVED_MESSAGE);
+  // 로그인이 풀리면 이 입력을 이 기기에 남긴다 — 다시 로그인해 이 화면이 뜨면 위에서 되살린다(lib/authStash)
+  useStashOnAuthLoss(confirmed ? null : stashKey, (): SubmissionStash | null => (anyDirty ? { artworkList, cv, note, repIndex } : null));
 
   const checklist = submissionChecklist({ artworkList, repIndex, cv, note });
   const server = serverStatus({ artworkList: savedList, cv: savedCv, note: savedNote });
@@ -670,7 +426,6 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
 
     if (filledList.length === 0 || missingByArt.length || repMissing) {
       setValidated(true);
-      setTab('artwork');
       if (filledList.length === 0) toast.error('출품작을 1점 이상 넣어 주세요.');
       else if (missingByArt.length) toast.error('빨간 칸을 채워 주세요 — 캡션에 들어가는 내용이라 비워 둘 수 없어요.', { duration: 5000 });
       else toast.error('대표작을 골라 주세요 — 작품 카드의 [☆ 대표작]을 누르면 됩니다.', { duration: 5000 });
@@ -683,7 +438,7 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
     }
     if (badSection >= 0) {
       setValidated(true);
-      setTab('note');
+      goSection('note');
       toast.error(`작품별 설명 ${badSection + 1}: 어느 작품의 설명인지 골라 주세요.`);
       return;
     }
@@ -775,23 +530,18 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
     );
   }
 
-  const doneCount = checklist.filter(c => c.done).length;
-  const dday = submissionDeadline ? getDday(submissionDeadline) : null;
-  const deadlineText = submissionDeadline
-    ? `마감 ${longDate(submissionDeadline)}${dday != null && dday >= 0 ? ` (${dday === 0 ? 'D-DAY' : `D-${dday}`})` : ' (지남)'}`
-    : null;
   // 임시저장해 둔 작품 — 서버엔 있지만 갤러리엔 안 보인다. 있으면 '제출 완료' 로 잠그면 안 된다(낼 길이 없어진다)
   const draftCount = filledList.filter(a => a.draft).length;
   const settledView = server.complete && !anyDirty && draftCount === 0;
   const statusText = proxyFor
     ? '작가에게 받은 내용을 대신 입력해요. 저장하면 작가에게 알림이 가고 작가 화면에도 그대로 보여요.'
     : draftCount > 0 && !anyDirty
-      ? `임시저장한 작품 ${draftCount}점은 아직 갤러리에 안 보여요. 다 채웠으면 제출해 주세요.`
+      ? `임시저장한 작품 ${draftCount}점은 아직 갤러리에 안 보여요.`
       : server.complete
         ? (settledView ? '갤러리에 제출했어요. 고칠 게 있으면 고친 뒤 다시 제출하세요.' : '고친 내용은 [변경 내용 제출]을 눌러야 갤러리에 보여요.')
         : server.any
-          ? '일부만 갤러리에 보냈어요. 남은 항목을 채워 제출해 주세요.'
-          : '아직 갤러리에 보내지 않았어요. 네 가지를 채워 [갤러리에 제출]을 누르세요.';
+          ? '일부만 갤러리에 보냈어요.'
+          : null;
   const primaryLabel = saveMutation.isPending
     ? '저장 중…'
     : proxyFor ? '저장' : settledView ? '제출 완료' : server.complete ? '변경 내용 제출' : '갤러리에 제출';
@@ -799,128 +549,110 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
   const emptyNames = (askPartial ?? []).join('·');
   const titled = artworkList.filter(a => !isBlankArtwork(a) && a.title?.trim());
   const repTitle = repChosen ? (artworkList[repIndex!]!.title?.trim() || `작품 ${repIndex! + 1}`) : null;
+  // 남은 것 — 하단 줄이 '남은 것 N · 칸 이름'(누르면 그 구역으로). 작품이 한 점이면 그게 대표작이다(제출 때 저절로 고른다)
+  const remaining = checklist.filter(c => !c.done && !(c.key === 'representative' && filledList.length === 1));
+  const sectionDone = { artwork: checklist[0]!.done && (checklist[1]!.done || filledList.length === 1), cv: checklist[2]!.done, note: checklist[3]!.done };
+  const sectionHead = (n: number, key: SubmissionTab, title: string, doneText: string, print: SubmissionTab) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <h3 className="text-base font-semibold text-gray-950"><span className="mr-2.5 font-medium text-gray-400">{n}</span>{title}</h3>
+      <div className="flex items-center gap-3">
+        <span className={cn('text-[13px]', sectionDone[key] ? 'text-gray-500' : validated ? 'font-semibold text-accent' : 'text-gray-500')}>{sectionDone[key] ? `${doneText} ✓` : '아직 없음'}</span>
+        <button type="button" onClick={() => openPrint(print)} className="inline-flex min-h-[40px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} aria-hidden /> PDF</button>
+      </div>
+    </div>
+  );
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-6" data-my-submission>
       {proxyFor && <h3 className="text-base font-semibold text-gray-950">{proxyFor.name}님 {SUBMISSION_TERM} 대신 입력</h3>}
       {!proxyFor && data?.proxyEdited && (
         <Notice title="갤러리가 대신 입력한 자료예요">내용이 맞는지 확인해 주세요. 직접 고쳐 제출하면 이 안내는 사라져요.</Notice>
       )}
-
-      {/* 상태 + 채울 것 네 가지 */}
-      <div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {!proxyFor && settledView && <StatusChip variant="done">제출 완료</StatusChip>}
-          {anyDirty && <StatusChip variant="attention">저장 안 된 변경</StatusChip>}
-          <p className="min-w-0 text-sm text-gray-600">{statusText}</p>
-        </div>
-        <ul className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1" aria-label="채울 것">
-          {checklist.map(it => (
-            <li key={it.key}>
-              <button type="button" onClick={() => setTab(it.tab)} className="inline-flex min-h-[36px] items-center gap-1.5 text-sm">
-                <span aria-hidden className={cn('grid h-[18px] w-[18px] place-items-center rounded-full', it.done ? 'bg-gray-900 text-white' : 'border border-gray-300 bg-white')}>
-                  {it.done && <Check size={11} strokeWidth={3} />}
-                </span>
-                <span className={it.done ? 'text-gray-900' : 'text-gray-500'}>{it.label}</span>
-                <span className="sr-only">{it.done ? '채움' : '비어 있음'}</span>
-              </button>
-            </li>
-          ))}
-          <li className="text-xs tabular-nums text-gray-400">
-            {doneCount}/{checklist.length}{deadlineText ? ` · ${deadlineText}` : ''}
-          </li>
-        </ul>
-      </div>
-
-      <PageTabBar
-        sticky={false}
-        idPrefix={`${idPrefix}-sub`}
-        label={SUBMISSION_TERM}
-        active={tab}
-        onSelect={setTab}
-        tabs={[
-          { id: 'artwork', label: '출품작', count: filledList.length, done: checklist[0]!.done && checklist[1]!.done },
-          { id: 'cv', label: '약력', done: checklist[2]!.done },
-          { id: 'note', label: '작가노트', done: checklist[3]!.done },
-        ]}
-      />
-
-      <div role="tabpanel" id={`${idPrefix}-sub-panel-${tab}`} aria-labelledby={`${idPrefix}-sub-tab-${tab}`}>
-        {tab === 'artwork' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-              <p id={`${idPrefix}-rep`} className={cn('flex min-w-0 items-center gap-1.5 text-sm', repErrorLive ? 'text-accent' : 'text-gray-500')}>
-                <Star size={14} aria-hidden className={cn('shrink-0', repChosen ? 'fill-gray-900 text-gray-900' : '')} />
-                {repTitle
-                  ? <span className="min-w-0 truncate">대표작 <b className="font-medium text-gray-900">{repTitle}</b> · 엽서·홍보물·도록 첫 장에 들어가요</span>
-                  : <span>대표작 1점을 골라 주세요 — 엽서·홍보물·도록 첫 장에 들어가요</span>}
-              </p>
-              <button type="button" onClick={() => openPrint('artwork')} className="inline-flex min-h-[32px] shrink-0 items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} aria-hidden /> PDF 미리보기</button>
-            </div>
-            <ArtworkListEditor
-              value={artworkList}
-              onChange={setArtworkList}
-              onRemoved={handleArtworkRemoved}
-              stateOf={artworkState}
-              repIndex={repIndex}
-              onRepChange={setRepIndex}
-              errors={liveErrors}
-              idPrefix={idPrefix}
-            />
-          </div>
-        )}
-        {tab === 'cv' && (
-          <div className="space-y-4">
-            {!hasContent(cv) ? (
-              <Notice action={<button type="button" onClick={loadFromPortfolio} className="min-h-[40px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">홈페이지에서 불러오기</button>}>
-                {proxyFor ? '작가의 홈페이지(포트폴리오)에 적힌 이름·경력을 불러와 채울 수 있어요.' : '홈페이지(포트폴리오)에 적은 이름·연락처·경력을 불러와 채울 수 있어요.'}
-              </Notice>
-            ) : (
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <button type="button" onClick={loadFromPortfolio} className="inline-flex min-h-[32px] items-center gap-1 text-xs text-gray-500 underline-offset-4 hover:text-gray-900 hover:underline">
-                  <RotateCw size={12} aria-hidden /> 비어 있는 칸을 홈페이지에서 채우기
-                </button>
-                <button type="button" onClick={() => openPrint('cv')} className="inline-flex min-h-[32px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} aria-hidden /> PDF 미리보기</button>
-              </div>
-            )}
-            {cvLoaded && <p className="text-xs text-gray-500">홈페이지 내용으로 채웠어요 — 확인하고 고쳐 주세요.</p>}
-            <CvEditor value={cv} onChange={setCv} />
-          </div>
-        )}
-        {tab === 'note' && (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <button type="button" onClick={() => openPrint('note')} className="inline-flex min-h-[32px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900"><FileDown size={13} aria-hidden /> PDF 미리보기</button>
-            </div>
-            <NoteEditor value={note} onChange={setNote} artworkList={titled} errorAt={noteErrorAt} />
-          </div>
-        )}
-      </div>
-
-      {/* 저장 줄 — 화면 아래에 붙어 따라온다(작품이 많으면 위까지 올라가지 않게). 휴대폰에선 하단 탭바 위에 */}
-      <div className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-white/95 px-1 py-3 backdrop-blur lg:bottom-0">
-        {/* 좁은 화면에선 감춘다 — 두 줄로 꺾여 줄이 높아지고 버튼이 아래로 밀렸다(2026-10-03 점검 P3). 같은 안내가 위 상태 줄에 있다 */}
-        <p className="mr-auto hidden min-w-0 text-xs text-gray-500 sm:block">
-          {proxyFor ? '작가 본인이 나중에 직접 고칠 수 있어요.' : '다 못 채웠으면 임시저장해 두세요. 다른 작가는 내 자료를 볼 수 없어요.'}
+      {(statusText || anyDirty) && (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+          {anyDirty && <span className="font-semibold text-accent">저장 안 된 변경</span>}
+          {statusText && <span className="min-w-0">{statusText}</span>}
         </p>
-        <button
-          type="button"
-          onClick={saveDraft}
-          disabled={saveMutation.isPending || !anyDirty}
-          title="다 채우지 않아도 지금까지 쓴 내용을 보관합니다. 임시저장한 작품은 갤러리에 보이지 않아요."
-          className="min-h-[44px] rounded-lg border border-gray-200 bg-white px-4 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-        >
-          임시저장
-        </button>
-        <button
-          type="button"
-          onClick={() => submit(false)}
-          disabled={primaryDisabled}
-          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
-        >
-          {!proxyFor && settledView && <Check size={15} aria-hidden />}
-          {primaryLabel}
-        </button>
+      )}
+
+      {/* 1 출품작 — 대표작은 작품 칸의 [☆ 대표작] */}
+      <div id={`${idPrefix}-sec-artwork`} className="scroll-mt-24 space-y-4">
+        {sectionHead(1, 'artwork', '출품작', `${filledList.length}점`, 'artwork')}
+        <p id={`${idPrefix}-rep`} className={cn('flex min-w-0 items-center gap-1.5 text-sm', repErrorLive ? 'text-accent' : 'text-gray-500')}>
+          <Star size={14} aria-hidden className={cn('shrink-0', repChosen ? 'fill-gray-900 text-gray-900' : '')} />
+          {repTitle
+            ? <span className="min-w-0 truncate">대표작 <b className="font-medium text-gray-900">{repTitle}</b> · 엽서·홍보물·도록 첫 장에 들어가요</span>
+            : <span>대표작 1점을 골라 주세요 — 엽서·홍보물·도록 첫 장에 들어가요</span>}
+        </p>
+        <ArtworkListEditor
+          value={artworkList}
+          onChange={setArtworkList}
+          onRemoved={handleArtworkRemoved}
+          stateOf={artworkState}
+          repIndex={repIndex}
+          onRepChange={setRepIndex}
+          errors={liveErrors}
+          idPrefix={idPrefix}
+        />
+      </div>
+
+      {/* 2 약력 */}
+      <div id={`${idPrefix}-sec-cv`} className="scroll-mt-24 space-y-4 border-t border-gray-200 pt-6">
+        {sectionHead(2, 'cv', '약력', '채움', 'cv')}
+        {!hasContent(cv) ? (
+          <Notice action={<button type="button" onClick={loadFromPortfolio} className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">홈페이지에서 불러오기</button>}>
+            {proxyFor ? '작가 홈페이지(포트폴리오)의 이름·경력으로 채울 수 있어요.' : '홈페이지(포트폴리오)에 적은 이름·연락처·경력으로 채울 수 있어요.'}
+          </Notice>
+        ) : (
+          <button type="button" onClick={loadFromPortfolio} className="inline-flex min-h-[40px] items-center gap-1 text-xs text-gray-500 underline-offset-4 hover:text-gray-900 hover:underline">
+            <RotateCw size={12} aria-hidden /> 비어 있는 칸을 홈페이지에서 채우기
+          </button>
+        )}
+        {cvLoaded && <p className="text-xs text-gray-500">홈페이지 내용으로 채웠어요 — 확인하고 고쳐 주세요.</p>}
+        <CvEditor value={cv} onChange={setCv} />
+      </div>
+
+      {/* 3 작가노트 */}
+      <div id={`${idPrefix}-sec-note`} className="scroll-mt-24 space-y-4 border-t border-gray-200 pt-6">
+        {sectionHead(3, 'note', '작가노트', '채움', 'note')}
+        <NoteEditor value={note} onChange={setNote} artworkList={titled} errorAt={noteErrorAt} />
+      </div>
+
+      {/* 저장 줄 — 화면 아래에 붙어 따라온다. 휴대폰에선 하단 탭바 위(등록 화면의 StickySubmitBar 와 같은 자리·같은 모양)
+          왼쪽 '남은 것 N · 칸 이름' 을 누르면 그 구역으로. 버튼은 [임시저장]·[갤러리에 제출] 둘뿐(규칙 59) */}
+      <div data-submission-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-1 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur lg:bottom-0">
+        <div className="min-w-0 flex-1 text-[13px] text-gray-600 sm:text-sm">
+          {settledView && !proxyFor ? (
+            <span className="text-gray-700">✓ 갤러리에 제출했어요</span>
+          ) : remaining.length > 0 ? (
+            // 가장 먼저 채울 것 하나만(목업 — 여럿을 늘어놓으면 휴대폰에서 세 줄로 꺾였다). 마감은 위 진행 띠 아래 줄이 말한다
+            <button type="button" onClick={() => goSection(remaining[0]!.tab)} className="min-h-[44px] text-left">
+              남은 것 {remaining.length} · <span className="underline underline-offset-4">{remaining[0]!.label}</span>
+            </button>
+          ) : (
+            <span className="text-gray-700">다 채웠어요</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={saveDraft}
+            disabled={saveMutation.isPending || !anyDirty}
+            title="다 채우지 않아도 지금까지 쓴 내용을 보관합니다. 임시저장한 작품은 갤러리에 보이지 않아요."
+            className="min-h-[46px] rounded-lg border border-gray-300 bg-white px-4 text-[15px] text-gray-800 hover:bg-gray-50 disabled:opacity-40"
+          >
+            임시저장
+          </button>
+          <button
+            type="button"
+            onClick={() => submit(false)}
+            disabled={primaryDisabled}
+            className="inline-flex min-h-[46px] items-center gap-1.5 rounded-lg bg-gray-900 px-5 text-[15px] font-semibold text-white hover:bg-gray-800 disabled:opacity-40"
+          >
+            {!proxyFor && settledView && <Check size={15} aria-hidden />}
+            {primaryLabel}
+          </button>
+        </div>
       </div>
 
       <ConfirmDialog
@@ -929,19 +661,70 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
         details={[
           '지금 채운 출품작만 먼저 갤러리에 보냅니다.',
           `${emptyNames}${josa(emptyNames, '은', '는')} 나중에 채워 다시 제출하면 돼요.`,
-          ...(submissionDeadline ? [`자료 제출 마감은 ${longDate(submissionDeadline)}이에요.`] : []),
+          ...(submissionDeadline ? [`출품 자료 제출 마감은 ${longDate(submissionDeadline)}이에요.`] : []),
         ]}
         cancelText="계속 작성"
         confirmText="출품작만 먼저 제출"
         onConfirm={() => { setAskPartial(null); submit(true); }}
-        onCancel={() => { setAskPartial(null); setTab(!hasContent(cv) ? 'cv' : 'note'); }}
+        onCancel={() => { setAskPartial(null); goSection(!hasContent(cv) ? 'cv' : 'note'); }}
       />
     </section>
   );
 }
 
 // ============ 갤러리/Admin: 전 작가 출품 자료 ============
-function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, confirmed, ended, isAdmin }: {
+const SUBMISSION_STATE_LABEL = { complete: '제출 완료', partial: '작성 중', none: '시작 전' } as const;
+
+/**
+ * 출품 자료 안내 메시지 창 — 아직 다 내지 않은 작가에게 1:1 메시지(ArtTalk). 공모 한 건 화면 할 일 줄의 [N명에게 안내 보내기]가 연다.
+ * (예전엔 출품 자료 구역 안의 버튼이었다 — 2026-11-20 부터 주 버튼은 할 일 줄 하나다)
+ */
+export function SubmissionRemindDialog({ exhibitionId, exhibitionTitle, rows, onClose }: {
+  exhibitionId: string;
+  exhibitionTitle: string;
+  rows: { user: any; submission: OperationSubmission }[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const incomplete = rows.filter(({ submission }) => submissionMissingParts(submission).length > 0);
+  const mutation = useMutation({
+    mutationFn: (payload: { subject: string; content: string }) => api.post(`/operations/${exhibitionId}/submission-reminders`, payload),
+    onSuccess: (res) => { toast.success(`출품 자료 안내를 ${res.data.sentCount}명에게 보냈어요.`); onClose(); qc.invalidateQueries({ queryKey: ['chats'] }); },
+    onError: (e: any) => toast.error(e.response?.data?.error || '안내를 보내지 못했습니다.'),
+  });
+  return (
+    <DmComposeModal
+      open
+      title="출품 자료 제출 안내"
+      description="아직 다 내지 않은 작가에게 1:1 메시지로 보내요. 문구는 고쳐서 보낼 수 있어요."
+      recipients={incomplete.map(({ user, submission }) => ({ id: user.id, name: nameWithNickname(user), note: submissionMissingParts(submission).join(' · ') }))}
+      defaultSubject={`[${exhibitionTitle}] 출품 자료 제출 안내`}
+      defaultContent={[
+        `안녕하세요. ${exhibitionTitle} 운영팀입니다.`,
+        '',
+        '전시 준비를 위해 아직 내지 않은 출품 자료를 확인해 주세요.',
+        '마이페이지 [내 전시]에서 비어 있는 항목을 채워 [갤러리에 제출]을 눌러 주시면 됩니다.',
+        '',
+        `바로가기: ${window.location.origin}/mypage?tab=applications&ex=${exhibitionId}`,
+      ].join('\n')}
+      sending={mutation.isPending}
+      sendLabel={(n) => `${n}명에게 보내기`}
+      onSend={(v) => mutation.mutate(v)}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * 갤러리/Admin — 작가별 출품 자료 취합 (2026-11-20 개편, 규칙 88).
+ * 예전엔 작가마다 카드 한 장('출품작 2점 · 약력 — · 작가노트 —' 글자)이라 무엇이 빠졌는지 읽어야 했고, 취합의 결과물
+ * (캡션 · 도록 · 원본 · 출품 자료 PDF)은 [내려받기] 메뉴 안에 숨어 있었다.
+ *  - 위 한 줄: '제출 완료 n · 작성 중 n · 시작 전 n · 출품작 n점' | 내려받기 넷을 글자 링크로(휴대폰은 메뉴)
+ *  - 표: 대표작 그림 · 작가 · 출품작 · 대표작 · 약력 · 작가노트 · 제출 — 빈 칸은 '—', 미제출은 빨강
+ *  - 줄을 펼치면 작품 목록 + 약력 보기 · 작가노트 보기 · 대신 입력 · 이 작가 자료 받기
+ * 안내 메시지·전시 확정은 할 일 줄(공모 한 건 화면)이 한다.
+ */
+export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, confirmed, ended, isAdmin }: {
   exhibitionId: string;
   exhibitionTitle: string;
   myUserId: number;
@@ -949,7 +732,7 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, conf
   ended?: boolean;
   isAdmin?: boolean;
 }) {
-  const qc = useQueryClient();
+  const wide = useMediaQuery('(min-width: 768px)');
   const { data = [], isLoading, refetch, isFetching } = useQuery<{ user: any; submission: OperationSubmission }[]>({
     queryKey: ['operation-submissions', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/submissions`).then(r => r.data),
@@ -957,283 +740,192 @@ function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserId, conf
     refetchOnMount: 'always',
   });
   const [openId, setOpenId] = useState<number | null>(null);
+  /** 펼친 작가의 아래 칸 — 작품(기본) · 약력 · 작가노트 */
   const [detailTab, setDetailTab] = useState<SubmissionTab>('artwork');
-  const [busy, setBusy] = useState<string | null>(null);
-  // 진행률은 토스트가 아니라 **버튼에 직접** 표시한다. 토스트는 사라질 수 있어 "몇 장째" 가 깜빡인다는 신고가 있었다(2026-08).
-  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
-  // 자동 회수까지 하고도 못 받은 항목 — 사라지는 토스트 대신 배너로 남겨 [다시 받기]로 잇는다
-  const [missing, setMissing] = useState<{ items: string[]; what: string; retry: () => void } | null>(null);
+  const dl = useSubmissionDownloads(exhibitionId, exhibitionTitle, data);
+  const { downloads, busyLabel, missing, totalArtworks, downloadArtistImages } = dl;
   /** 지금 대신 입력 중인 작가 (null = 보기 모드). 자료를 못 올리는 작가를 갤러리가 도와주는 경로 */
   const [proxyEditId, setProxyEditId] = useState<number | null>(null);
   // 한 번 열었던 대신입력 폼은 접어도 언마운트하지 않는다 — 입력 중인 내용이 통째로 사라졌다(2026-09-19)
   const [proxyOpened, setProxyOpened] = useState<Set<number>>(() => new Set());
-  const [remindOpen, setRemindOpen] = useState(false);
-  const catalogue = useBoothCatalogue(exhibitionId, data);
   // 잠금 기준은 확정이 아니라 **전시종료**다. 확정 잠금은 *작가가* 인쇄 기준을 몰래 바꾸는 걸
   // 막는 장치라, 캡션·엽서를 만드는 갤러리까지 막으면 정작 도와줘야 할 때 못 돕는다.
   // 종료 후는 판매 기록이 출품목록 '위치'에 묶여 있어 반드시 막는다(Admin 만 예외).
   const canProxyEdit = !ended || !!isAdmin;
+  /*
+    로그인이 풀리기 전에 어느 작가 자료를 대신 입력하던 중이었으면(이 기기에 남아 있으면) 그 작가를 펼치고 대신 입력을 연 채로 —
+    거기서 편집기가 되살린다(2026-11-21 O6, lib/authStash). 처음 목록을 받았을 때 한 번만(렌더 중 상태 맞추기)
+  */
+  const [stashChecked, setStashChecked] = useState(false);
+  if (!stashChecked && !isLoading) {
+    setStashChecked(true);
+    const prefix = stashKeys.submissionPrefix(exhibitionId);
+    const target = canProxyEdit
+      ? authStashKeys(myUserId, prefix).map((k) => Number(k.slice(prefix.length))).find((uid) => data.some((r) => r.user.id === uid))
+      : undefined;
+    if (target != null) {
+      setOpenId(target);
+      setProxyOpened((prev) => new Set(prev).add(target));
+      setProxyEditId(target);
+    }
+  }
 
-  const reminderMutation = useMutation({
-    mutationFn: (payload: { subject: string; content: string }) => api.post(`/operations/${exhibitionId}/submission-reminders`, payload),
-    onSuccess: (res) => { toast.success(`자료 제출 안내를 ${res.data.sentCount}명에게 보냈습니다.`); setRemindOpen(false); qc.invalidateQueries({ queryKey: ['chats'] }); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '자료 제출 안내를 보내지 못했습니다.'),
-  });
-
-  const totalArtworks = data.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0);
-  const incompleteRows = data.filter(({ submission }) => submissionMissingParts(submission).length > 0);
-  const completeCount = data.length - incompleteRows.length;
+  const states = data.map(({ submission }) => submissionState(submission));
+  const count = (k: 'complete' | 'partial' | 'none') => states.filter(s => s === k).length;
 
   const openPrint = (userId: number, doc: SubmissionTab) => {
     window.open(`/exhibitions/${exhibitionId}/operation/print/${userId}/${doc}`, '_blank');
   };
 
-  const downloadAllZip = async () => {
-    if (data.length === 0) { toast.error('수락된 작가가 없습니다.'); return; }
-    setBusy('zip'); setMissing(null);
-    const t = toast.loading('전체 출품 자료 PDF를 만드는 중입니다…');
-    try {
-      const { downloadAllSubmissionsZip } = await import('@/lib/operationPdf');
-      const { missing: lost } = await downloadAllSubmissionsZip(exhibitionTitle, data, (done, total, phase) => {
-        setProgress({ done, total, label: phase === 'images' ? '이미지' : phase === 'retry' ? '재시도' : 'PDF' });
-      });
-      if (lost.length > 0) {
-        // 이미지가 빠진 채로 PDF가 나갔다는 걸 반드시 알린다(예전엔 조용히 넘어갔다). 배너로도 남겨 다시 받을 수 있게.
-        toast.success(`ZIP 다운로드를 시작합니다. (이미지 ${lost.length}개 누락)`, { id: t });
-        setMissing({ items: lost, what: 'PDF에 들어갈 작품 이미지', retry: downloadAllZip });
-      } else {
-        toast.success('ZIP 다운로드를 시작합니다.', { id: t });
-      }
-    } catch {
-      toast.error('PDF 생성에 실패했습니다.', { id: t });
-    } finally { setBusy(null); setProgress(null); }
-  };
-
-  // 캡션 HWP (한글 파일) — 서버에서 원본 양식 채워 생성, 작가명 미표기
-  const downloadCaptions = async () => {
-    if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
-    setBusy('caption');
-    const t = toast.loading('캡션(한글 파일)을 만드는 중입니다…');
-    try {
-      const res = await api.get(`/operations/${exhibitionId}/caption.hwp`, { responseType: 'blob' });
-      let fname = `${exhibitionTitle}_작품캡션.hwp`;
-      const cd: string = res.headers['content-disposition'] || '';
-      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
-      if (m) { try { fname = decodeURIComponent(m[1]!); } catch { /* keep default */ } }
-      const { triggerDownload } = await import('@/lib/operationPdf'); // 앱에서는 공유 창으로(lib/native.ts)
-      triggerDownload(res.data, fname);
-      toast.success('캡션 한글 파일 다운로드를 시작합니다.', { id: t });
-    } catch (e: any) {
-      toast.error(e?.response?.status === 400 ? '등록된 출품작이 없습니다.' : '캡션 생성에 실패했습니다.', { id: t });
-    } finally { setBusy(null); }
-  };
-
-  // 작품 원본 이미지 일괄 다운로드 (jpg ZIP) — rows 를 주면 그 작가만
-  const downloadImages = async (rows = data, zipName?: string) => {
-    if (rows.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0) === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
-    setBusy('images'); setMissing(null);
-    const t = toast.loading('작품 원본 이미지를 모으는 중입니다…');
-    try {
-      const { downloadAllArtworkImagesZip } = await import('@/lib/operationPdf');
-      const { ok, fail, failed } = await downloadAllArtworkImagesZip(
-        exhibitionTitle, rows, zipName,
-        (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : '이미지' }),
-      );
-      if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
-      else if (fail > 0) {
-        // 실패한 작품을 조용히 빠뜨리지 않고 명시한다 (+ 사라지지 않는 배너로 다시 받기 제공)
-        toast.success(`원본 ${ok}개 ZIP 다운로드 시작 (실패 ${fail}개)`, { id: t });
-        setMissing({ items: failed, what: '작품 원본', retry: () => downloadImages(rows, zipName) });
-      } else toast.success(`원본 ${ok}개 ZIP 다운로드 시작`, { id: t });
-    } catch { toast.error('이미지 ZIP 생성에 실패했습니다.', { id: t }); }
-    finally { setBusy(null); setProgress(null); }
-  };
-
-  const downloadArtistImages = async (row: { user: any; submission: OperationSubmission }) => {
-    const { safeName } = await import('@/lib/operationPdf');
-    await downloadImages([row], `${safeName(exhibitionTitle)}_${safeName(nameWithNickname(row.user))}_작품원본.zip`);
-  };
-
-  // 진행률은 토스트가 아니라 [내려받기] 버튼 라벨에 — 토스트는 사라져 "멈춘 줄" 안다(2026-08). 사진 모으기는 '장' 단위
-  const busyLabel = busy === 'catalogue'
-    ? catalogue.progress
-    : busy === 'images'
-      ? (progress ? `${progress.label} ${progress.done}/${progress.total}장` : '모으는 중…')
-      : busy ? (progress ? `${progress.label} ${progress.done}/${progress.total}` : '만드는 중…') : catalogue.busy ? catalogue.progress : null;
-
   if (isLoading) return <div className="h-20 animate-pulse rounded-xl bg-gray-100" />;
   if (data.length === 0) {
-    return <p className="text-sm text-gray-400">아직 수락한 작가가 없어요. [지원자]에서 지원자를 수락하면 여기에 작가별 {SUBMISSION_TERM}가 모여요.</p>;
+    return <p className="py-8 text-sm text-gray-500">아직 수락한 작가가 없어요. [지원자]에서 수락하면 작가별 {SUBMISSION_TERM}가 여기 모여요.</p>;
   }
 
+  const cols = 'grid grid-cols-[56px_minmax(0,1fr)_64px_64px_64px_72px_120px_84px] items-center gap-x-4';
+  const mark = (on: boolean) => (on ? <span>✓<span className="sr-only">있음</span></span> : <span className="text-gray-400">—<span className="sr-only">없음</span></span>);
+
   return (
-    <div className="space-y-4">
-      {/* 요약 + 도구 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-1" data-submissions>
+      {/* 위 한 줄 — 현황 | 내려받기 */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3">
         <p className="text-sm text-gray-600">
-          제출 완료 <b className="font-semibold text-gray-950">{completeCount}명</b>
-          {incompleteRows.length > 0 && <> · 미제출 <b className="font-semibold text-gray-950">{incompleteRows.length}명</b></>}
-          <span className="text-gray-400"> · 출품작 {totalArtworks}점</span>
+          <b className="font-semibold text-gray-950">제출 완료 {count('complete')}</b>
+          {count('partial') > 0 && <> · 작성 중 {count('partial')}</>}
+          {count('none') > 0 && <> · 시작 전 {count('none')}</>}
+          <span className="text-gray-500"> · 출품작 {totalArtworks}점</span>
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {incompleteRows.length > 0 && !ended && (
-            <button type="button" onClick={() => setRemindOpen(true)} className="min-h-[36px] rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-700 hover:bg-gray-50">
-              미제출 {incompleteRows.length}명에게 안내
-            </button>
-          )}
-          {totalArtworks > 0 && (
-            <MenuButton
-              label="내려받기"
-              icon={<FileDown size={13} aria-hidden />}
-              busyLabel={busyLabel}
-              items={[
-                { label: '작품 캡션 (한글 .hwp)', hint: '전시장에 붙이는 캡션 — 작가명 없이', onSelect: downloadCaptions },
-                { label: '작품 원본 (ZIP)', hint: '작가별 폴더의 원본 이미지', onSelect: () => downloadImages() },
-                { label: '전체 출품 자료 PDF (ZIP)', hint: '작가마다 출품리스트·약력·작가노트', onSelect: downloadAllZip },
-                { label: CATALOGUE_LABEL, hint: '표지 · 전시 소개 · 작가별 대표작·작품·약력', onSelect: () => { setBusy('catalogue'); catalogue.run().finally(() => setBusy(null)); } },
-              ]}
-            />
-          )}
-          <button type="button" onClick={() => refetch()} disabled={isFetching} aria-label="새로고침" title="새로고침" className="grid h-9 w-9 place-items-center rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px]">
+          {totalArtworks > 0 && (wide && !busyLabel ? (
+            <>
+              <span className="text-gray-500">내려받기</span>
+              {downloads.map(d => (
+                <button key={d.key} type="button" onClick={d.onSelect} title={d.hint} className="min-h-[40px] text-gray-700 underline-offset-4 hover:text-gray-950 hover:underline">{d.label}</button>
+              ))}
+            </>
+          ) : (
+            <MenuButton label="내려받기" icon={<FileDown size={13} aria-hidden />} busyLabel={busyLabel} items={downloads.map(d => ({ label: d.label, hint: d.hint, onSelect: d.onSelect }))} />
+          ))}
+          <button type="button" onClick={() => refetch()} disabled={isFetching} aria-label="새로고침" title="새로고침" className="grid h-10 w-10 place-items-center rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40">
             <RotateCw size={14} className={isFetching ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {missing && (
-        <MissingImagesBanner
-          items={missing.items}
-          what={missing.what}
-          busy={!!busy}
-          onRetry={missing.retry}
-          onDismiss={() => setMissing(null)}
-        />
+        <MissingImagesBanner items={missing.items} what={missing.what} busy={dl.busy} onRetry={missing.retry} onDismiss={dl.clearMissing} />
       )}
 
-      <ul className="space-y-2">
-        {data.map((row) => {
+      <div role="table" aria-label={`작가별 ${SUBMISSION_TERM}`} className="border-t-2 border-gray-900">
+        {wide && (
+          <div role="row" className={cn(cols, 'min-h-[40px] border-b border-gray-200 text-[12.5px] text-gray-500')}>
+            <span role="columnheader" />
+            <span role="columnheader">작가</span>
+            <span role="columnheader">출품작</span>
+            <span role="columnheader">대표작</span>
+            <span role="columnheader">약력</span>
+            <span role="columnheader">작가노트</span>
+            <span role="columnheader">제출</span>
+            <span role="columnheader" />
+          </div>
+        )}
+        {data.map((row, i) => {
           const { user, submission } = row;
           const isOpen = openId === user.id;
           const artCount = submission.artworkList?.length || 0;
+          const repIdx = submission.representativeIndex ?? (artCount === 1 ? 0 : null);
+          const rep = repIdx != null ? submission.artworkList?.[repIdx] : submission.artworkList?.[0];
+          const hasRep = repIdx != null && !!submission.artworkList?.[repIdx];
           const hasCv = hasContent(submission.cv);
           const hasNote = hasNoteContent(submission.note);
-          const complete = artCount > 0 && hasCv && hasNote;
+          const state = states[i]!;
           const name = nameWithNickname(user);
+          const toggle = () => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); if (isOpen) setProxyEditId(null); };
+          const repImg = rep?.image
+            ? <Thumb src={rep.image} alt="" className="h-14 w-14 shrink-0 bg-white object-contain" />
+            : <span className="grid h-14 w-14 shrink-0 place-items-center bg-gray-50"><ImageOff size={15} className="text-gray-300" aria-hidden /></span>;
+          const stateText = (
+            <span className={cn('text-[13.5px]', state === 'complete' ? 'text-gray-600' : 'font-semibold text-accent')}>
+              {state === 'complete' && '✓ '}{SUBMISSION_STATE_LABEL[state]}
+            </span>
+          );
           return (
-            <li key={user.id} className="rounded-xl border border-gray-200">
-              <button
-                type="button"
-                onClick={() => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); }}
-                aria-expanded={isOpen}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left hover:bg-gray-50"
-              >
-                {user.avatar
-                  ? <img src={user.avatar} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
-                  : <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-100"><User size={14} className="text-gray-400" aria-hidden /></span>}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-gray-900" title={name}>{name}</span>
-                  <span className="block text-xs tabular-nums text-gray-500">
-                    출품작 {artCount}점 · 약력 {hasCv ? '✓' : '—'} · 작가노트 {hasNote ? '✓' : '—'}
+            <div key={user.id} role="rowgroup" data-submission-artist={user.id} className="border-b border-gray-200">
+              {wide ? (
+                <div role="row" className={cn(cols, 'min-h-[76px] py-2.5')}>
+                  {repImg}
+                  <span role="cell" className="min-w-0">
+                    <span className="block truncate text-[15px] font-semibold text-gray-950" title={name}>{name}</span>
+                    {(submission as any).proxyEdited && <span className="block text-[12.5px] text-gray-500">대신 입력함</span>}
                   </span>
-                </span>
-                {(submission as any).proxyEdited && <StatusChip className="hidden sm:inline-flex">대신 입력함</StatusChip>}
-                <StatusChip variant={complete ? 'done' : 'neutral'}>{complete ? '제출 완료' : '미제출'}</StatusChip>
-                <ChevronDown size={16} aria-hidden className={cn('shrink-0 text-gray-400 transition-transform', isOpen && 'rotate-180')} />
-              </button>
+                  <span role="cell" className="text-[14.5px] tabular-nums text-gray-800">{artCount > 0 ? `${artCount}점` : <span className="text-gray-400">—</span>}</span>
+                  <span role="cell" className="text-[14.5px] text-gray-800">{mark(hasRep)}</span>
+                  <span role="cell" className="text-[14.5px] text-gray-800">{mark(hasCv)}</span>
+                  <span role="cell" className="text-[14.5px] text-gray-800">{mark(hasNote)}</span>
+                  <span role="cell">{stateText}</span>
+                  <button type="button" onClick={toggle} aria-expanded={isOpen} className="justify-self-end min-h-[44px] text-[13.5px] font-medium text-gray-900 underline underline-offset-4">
+                    {isOpen ? '접기' : '펼치기'}<span className="sr-only"> {name}</span>
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={toggle} aria-expanded={isOpen} className="flex w-full min-h-[76px] items-center gap-3 py-2.5 text-left">
+                  {repImg}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold text-gray-950">{name}</span>
+                    <span className="block truncate text-[12.5px] text-gray-500">
+                      출품작 {artCount} · 대표작 {hasRep ? '✓' : '—'} · 약력 {hasCv ? '✓' : '—'} · 작가노트 {hasNote ? '✓' : '—'}
+                    </span>
+                  </span>
+                  {stateText}
+                </button>
+              )}
 
               {isOpen && (
-                <div className="space-y-4 border-t border-gray-100 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="min-w-0 break-all text-sm font-semibold text-gray-900">{name}</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canProxyEdit && (
-                        <button
-                          type="button"
-                          onClick={() => { setProxyOpened((prev) => new Set(prev).add(user.id)); setProxyEditId(proxyEditId === user.id ? null : user.id); }}
-                          className={cn('inline-flex min-h-[36px] items-center gap-1 rounded-lg border px-3 text-xs font-medium', proxyEditId === user.id ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50')}
-                        >
-                          <Edit3 size={12} aria-hidden /> {proxyEditId === user.id ? '대신 입력 닫기' : '대신 입력'}
-                        </button>
-                      )}
-                      <MenuButton
-                        label="내려받기"
-                        icon={<FileDown size={13} aria-hidden />}
-                        items={[
-                          { label: '출품리스트 PDF', onSelect: () => openPrint(user.id, 'artwork') },
-                          { label: '약력 PDF', onSelect: () => openPrint(user.id, 'cv') },
-                          { label: '작가노트 PDF', onSelect: () => openPrint(user.id, 'note') },
-                          { label: '작품 원본 (ZIP)', disabled: artCount === 0, onSelect: () => downloadArtistImages(row) },
-                        ]}
-                      />
-                    </div>
-                  </div>
-
-                  {/*
-                    대신 입력 — 작가 본인이 쓰는 편집기를 그대로 띄운다(검증·임시저장 규칙이 갈라지면 안 된다).
-                    자료를 직접 올리기 어려워하는 작가를 갤러리가 도와주는 경로다.
-                  */}
+                <div className={cn('space-y-3 pb-5', wide && 'pl-[72px]')}>
+                  {/* 대신 입력 — 작가 본인이 쓰는 편집기를 그대로 띄운다(검증·임시저장 규칙이 갈라지면 안 된다) */}
                   {proxyOpened.has(user.id) && (
-                    <div className={proxyEditId === user.id ? 'rounded-xl border border-gray-200 p-4' : 'hidden'}>
+                    <div className={proxyEditId === user.id ? 'border-t border-gray-100 pt-4' : 'hidden'}>
                       {/* 확정 후에도 열어두되, 인쇄물이 이미 나갔을 수 있다는 건 반드시 알린다 */}
                       {confirmed && (
-                        <Notice className="mb-4">
-                          <b className="font-medium text-gray-900">확정 이후예요.</b> 캡션·도록을 이미 만들었다면 고친 뒤 인쇄물도 다시 확인해 주세요.
-                        </Notice>
+                        <Notice className="mb-4"><b className="font-medium text-gray-900">확정 이후예요.</b> 캡션·도록을 이미 만들었다면 고친 뒤 인쇄물도 다시 확인해 주세요.</Notice>
                       )}
-                      <MySubmissionSection
-                        exhibitionId={exhibitionId}
-                        myUserId={myUserId}
-                        confirmed={false}
-                        proxyFor={{ id: user.id, name }}
-                      />
+                      <MySubmissionSection exhibitionId={exhibitionId} myUserId={myUserId} confirmed={false} proxyFor={{ id: user.id, name }} />
                     </div>
                   )}
-
                   {proxyEditId !== user.id && (
                     <>
-                      <PageTabBar
-                        sticky={false}
-                        idPrefix={`sub-${exhibitionId}-${user.id}`}
-                        label={`${name} ${SUBMISSION_TERM}`}
-                        active={detailTab}
-                        onSelect={setDetailTab}
-                        tabs={[
-                          { id: 'artwork', label: '출품작', count: artCount },
-                          { id: 'cv', label: '약력', done: hasCv },
-                          { id: 'note', label: '작가노트', done: hasNote },
-                        ]}
-                      />
                       <SubmissionReadonly submission={submission} activeTab={detailTab} />
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-gray-100 pt-2 text-[13.5px]">
+                        {detailTab !== 'artwork' && <button type="button" onClick={() => setDetailTab('artwork')} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">출품작 보기</button>}
+                        {detailTab !== 'cv' && <button type="button" onClick={() => setDetailTab('cv')} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">약력 보기</button>}
+                        {detailTab !== 'note' && <button type="button" onClick={() => setDetailTab('note')} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">작가노트 보기</button>}
+                        {canProxyEdit && (
+                          <button type="button" onClick={() => { setProxyOpened((prev) => new Set(prev).add(user.id)); setProxyEditId(user.id); }} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">
+                            대신 입력
+                          </button>
+                        )}
+                        <MenuButton
+                          label="이 작가 자료 받기"
+                          icon={<FileDown size={13} aria-hidden />}
+                          items={[
+                            { label: '출품리스트 PDF', onSelect: () => openPrint(user.id, 'artwork') },
+                            { label: '약력 PDF', onSelect: () => openPrint(user.id, 'cv') },
+                            { label: '작가노트 PDF', onSelect: () => openPrint(user.id, 'note') },
+                            { label: '작품 원본 (ZIP)', disabled: artCount === 0, onSelect: () => downloadArtistImages(row) },
+                          ]}
+                        />
+                      </div>
                     </>
+                  )}
+                  {proxyEditId === user.id && (
+                    <button type="button" onClick={() => setProxyEditId(null)} className="min-h-[44px] text-[13.5px] text-gray-700 underline underline-offset-4 hover:text-gray-950">대신 입력 닫기</button>
                   )}
                 </div>
               )}
-            </li>
+            </div>
           );
         })}
-      </ul>
-
-      {remindOpen && (
-        <DmComposeModal
-          open={remindOpen}
-          title="출품 자료 제출 안내"
-          description="아직 다 내지 않은 작가에게 1:1 메시지로 보내요. 문구는 고쳐서 보낼 수 있어요."
-          recipients={incompleteRows.map(({ user, submission }) => ({ id: user.id, name: nameWithNickname(user), note: submissionMissingParts(submission).join(' · ') }))}
-          defaultSubject={`[${exhibitionTitle}] 출품 자료 제출 안내`}
-          defaultContent={[
-            `안녕하세요. ${exhibitionTitle} 운영팀입니다.`,
-            '',
-            '전시 준비를 위해 아직 내지 않은 출품 자료를 확인해 주세요.',
-            '마이페이지 [내 전시]에서 비어 있는 항목을 채워 [갤러리에 제출]을 눌러 주시면 됩니다.',
-            '',
-            `바로가기: ${window.location.origin}/mypage?tab=applications&ex=${exhibitionId}`,
-          ].join('\n')}
-          sending={reminderMutation.isPending}
-          sendLabel={(n) => `${n}명에게 보내기`}
-          onSend={(v) => reminderMutation.mutate(v)}
-          onClose={() => setRemindOpen(false)}
-        />
-      )}
+      </div>
     </div>
   );
 }
@@ -1251,8 +943,8 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
           {artworkList.map((a, i) => (
             <li key={i} className="flex items-center gap-3 py-2.5">
               {a.image
-                ? <Thumb src={a.image} alt="" className="h-12 w-12 shrink-0 rounded bg-gray-50 object-contain" />
-                : <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-gray-100"><ImageOff size={14} className="text-gray-300" aria-hidden /></div>}
+                ? <Thumb src={a.image} alt="" className="h-16 w-16 shrink-0 bg-white object-contain" />
+                : <div className="grid h-16 w-16 shrink-0 place-items-center bg-gray-50"><ImageOff size={14} className="text-gray-300" aria-hidden /></div>}
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5">
                   <span className="min-w-0 truncate font-medium text-gray-900" title={a.title || undefined}>{a.title || '(제목 없음)'}</span>
@@ -1309,10 +1001,17 @@ function SubmissionReadonly({ submission, activeTab = 'artwork' }: { submission:
   );
 }
 
-// ============ 작가 본인 정산 내역 (전시종료 후) — 확인 요청 시 수락/문제제기 ============
+// ============ 작가 본인 정산 확인 (전시 종료 후) — 확인 / 이의 ============
+/**
+ * 작가 본인 정산 확인 (2026-11-20 개편, 규칙 88).
+ * 맨 위에 **내 정산액**을 가장 크게 · 기한(답이 없으면 자동 확인) · 판매된 작품 · 계산 · [내 정산서 PDF].
+ * 하단 고정 줄 [이의 제기] [정산 확인] — 예전엔 '갤러리가 정산 확인을 요청했어요' 가 할 일 줄과 안내 상자에 두 번 적혔고,
+ * 내 정산액이 합계 줄의 셋째 칸에 판매 합계와 같은 크기로 있었다.
+ * 이의는 창에서 쓴다 — 무엇이 다른지 적어 보내면 갤러리 정산 표의 내 머리에 그대로 뜨고, 갤러리가 고쳐 다시 요청하면 알림이 온다.
+ */
 export function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; autoApproveDays?: number; cardFeeRate?: number }>({
+  const { data, isLoading } = useQuery<{ exhibitionTitle: string; ended: boolean; requested?: boolean; settled?: boolean; settledAt?: string | null; artist: SettlementArtist | null; myApproval?: { status: string; comment?: string | null; autoApproved?: boolean } | null; fingerprint?: string; autoApproveAt?: string | null; cardFeeRate?: number }>({
     queryKey: ['operation-my-settlement', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/my-settlement`).then(r => r.data),
     staleTime: 0,
@@ -1321,7 +1020,6 @@ export function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: stri
   const [downloading, setDownloading] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
   const [comment, setComment] = useState('');
-  const commentRef = useRef<HTMLTextAreaElement>(null);
 
   const respondMutation = useMutation({
     // fingerprint: 지금 화면에 그린 금액의 지문. 갤러리가 검토 중에 금액을 고칠 수 있으므로
@@ -1329,27 +1027,47 @@ export function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: stri
     mutationFn: (body: { approve: boolean; comment?: string }) =>
       api.post(`/operations/${exhibitionId}/settlement/respond`, { ...body, fingerprint: data?.fingerprint }),
     onSuccess: (_d, vars) => {
-      toast.success(vars.approve ? '정산을 확인(수락)했습니다.' : '문제를 갤러리에 전달했습니다.');
+      toast.success(vars.approve ? '정산을 확인했어요.' : '이의를 갤러리에 보냈어요.');
       setIssueOpen(false); setComment('');
       qc.invalidateQueries({ queryKey: ['operation-my-settlement', exhibitionId] });
       qc.invalidateQueries({ queryKey: ['my-applications'] });
     },
     onError: (e: any) => {
       toast.error(e.response?.data?.error || '처리에 실패했습니다.');
-      // 금액이 바뀌어 거절된 경우 — 최신 내역을 바로 다시 그려준다
-      if (e.response?.status === 409) qc.invalidateQueries({ queryKey: ['operation-my-settlement', exhibitionId] });
+      // 최신 내역·단계를 바로 다시 그린다 — 금액이 바뀐 409 뿐 아니라 그 사이 정산이 끝났거나(400) 요청이 취소된 경우도
+      // 옛 화면(답하는 줄)이 남아 있으면 같은 실패를 되풀이한다(2026-11-20 신뢰성 점검 REL-06). 이의 창에 쓴 글은 그대로 둔다
+      for (const k of [['operation-my-settlement', exhibitionId], ['my-applications'], ['operation-access', exhibitionId]]) qc.invalidateQueries({ queryKey: k });
     },
+    onSettled: () => { responding.current = false; },
   });
+  /*
+    연타 한 번은 한 번으로(2026-11-20 S12) — '처리 중' 은 요청이 시작된 다음 렌더에야 그려져서, 그 사이 두 번째 클릭이
+    같은 응답을 또 보냈다(E2E 87 이 요청 수로 잡았다). 결과가 올 때까지 다음 응답을 받지 않는다
+  */
+  const responding = useRef(false);
+  const respond = (body: { approve: boolean; comment?: string }) => {
+    if (responding.current) return;
+    responding.current = true;
+    respondMutation.mutate(body);
+  };
 
   if (isLoading) return <div className="h-24 animate-pulse rounded-xl bg-gray-100" />;
   const requested = !!data?.requested, settled = !!data?.settled;
   // 확인 요청/완료 전에는 작가에게 내역 비공개
   if ((!requested && !settled) || !data?.artist) {
-    return <Notice>갤러리가 판매 내역을 정리해 확인을 요청하면 여기에 내 정산 내역이 보여요.</Notice>;
+    return <p className="py-8 text-sm text-gray-500">갤러리가 판매 내역을 정리해 확인을 요청하면 여기에 내 정산 내역이 보여요.</p>;
   }
   const a = data.artist;
   const sold = a.works.filter(w => w.sold);
   const myStatus = data.myApproval?.status;
+  const open = requested && !settled;
+  const answered = myStatus === 'APPROVED' || myStatus === 'ISSUE';
+
+  // 이의를 다시 보낼 땐 지난번 글을 채워 둔다 — 고쳐서 보내는 경우가 대부분이다
+  const openIssue = () => {
+    if (!comment.trim() && myStatus === 'ISSUE' && data?.myApproval?.comment) setComment(data.myApproval.comment);
+    setIssueOpen(true);
+  };
 
   const downloadMine = async () => {
     setDownloading(true);
@@ -1361,105 +1079,135 @@ export function MyArtistSettlementSection({ exhibitionId }: { exhibitionId: stri
     } catch { toast.error('PDF 생성 실패'); } finally { setDownloading(false); }
   };
 
-  const waiting = requested && !settled && myStatus !== 'APPROVED' && myStatus !== 'ISSUE';
   return (
-    <section className="space-y-4">
-      {/* 상태 한 줄 — 지금 내가 할 일이 있는가 */}
-      {settled ? (
-        <Notice title="정산이 완료되었어요">갤러리가 정산을 마감했어요. 아래 내역이 최종이에요.</Notice>
-      ) : myStatus === 'APPROVED' ? (
-        <Notice title="✓ 정산 내역을 확인했어요">
-          {data.myApproval?.autoApproved
-            ? '기한 안에 응답이 없어 자동으로 수락 처리되었어요. 문제가 있으면 갤러리에 문의해 주세요.'
-            : '갤러리가 정산을 완료하기를 기다리고 있어요.'}
-        </Notice>
-      ) : myStatus === 'ISSUE' ? (
-        <Notice tone="attention" title="문제를 갤러리에 전달했어요">
-          “{data.myApproval?.comment}” — 갤러리가 고쳐서 다시 요청하면 새 내역으로 다시 확인할 수 있어요.
-        </Notice>
-      ) : (
-        <Notice tone="attention" title="갤러리가 정산 확인을 요청했어요">
-          아래 내역을 보고 맞으면 [정산 확인]을, 틀리면 [문제 제기]를 눌러 주세요.
-          {/* 침묵이 동의로 바뀌는 규칙이라, 기한은 반드시 눈에 보여야 한다 */}
-          {data.autoApproveAt && <> <b className="font-medium text-gray-900">{longDate(data.autoApproveAt)}까지</b> 응답이 없으면 자동으로 수락돼요.</>}
-        </Notice>
-      )}
+    <section className="space-y-6" data-my-settlement>
+      {/* 맨 위 — 내 정산액. 상태 한 줄은 그 아래 */}
+      <div>
+        <p className="text-[13.5px] text-gray-500">{settled ? '정산 완료 · 내 정산액' : '내 정산액'}</p>
+        <p className="mt-1 text-[34px] font-bold leading-tight tracking-tight text-gray-950 tabular-nums">
+          {a.artistAmount.toLocaleString('ko')}<span className="ml-1 text-xl font-semibold">원</span>
+        </p>
+        <p className="mt-2.5 text-sm text-gray-600" data-settle-status>
+          {settled
+            ? `정산이 끝났어요${data.settledAt ? ` · ${longDate(data.settledAt)}` : ''}. 아래 내역이 최종이에요.`
+            : myStatus === 'APPROVED'
+              ? (data.myApproval?.autoApproved ? '✓ 기한 안에 답이 없어 자동으로 확인됐어요. 다르면 갤러리에 문의해 주세요.' : '✓ 확인했어요. 갤러리가 정산을 마무리하면 알려 드려요.')
+              : myStatus === 'ISSUE'
+                ? '이의를 보냈어요. 갤러리가 고쳐 다시 요청하면 알려 드려요.'
+                // 침묵이 동의로 바뀌는 규칙이라, 기한은 반드시 눈에 보여야 한다
+                : data.autoApproveAt
+                  ? <><b className="font-semibold text-accent">{longDate(data.autoApproveAt)}</b>까지 답이 없으면 자동으로 확인돼요.</>
+                  : '갤러리가 정산 확인을 요청했어요.'}
+        </p>
+        {myStatus === 'ISSUE' && data.myApproval?.comment && open && (
+          <blockquote className="mt-3 break-keep text-[15px] leading-relaxed text-gray-950 [overflow-wrap:anywhere]">“{data.myApproval.comment}”</blockquote>
+        )}
+      </div>
 
-      <div className="rounded-xl border border-gray-200">
+      <div>
+        <h3 className="border-b-2 border-gray-900 pb-2.5 text-[13.5px] font-semibold text-gray-950">판매된 작품 {sold.length}점</h3>
         {sold.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-gray-400">판매된 작품이 없어요.</p>
+          <p className="border-b border-gray-200 py-4 text-sm text-gray-500">판매된 작품이 없어요.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 px-4">
+          <ul>
             {sold.map((w, i) => (
-              <li key={i} className="flex items-center gap-3 py-3 text-sm">
-                {w.image ? <Thumb src={w.image} alt="" className="h-12 w-12 shrink-0 rounded bg-gray-50 object-contain" /> : <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-gray-100"><ImageOff size={14} className="text-gray-300" aria-hidden /></div>}
-                <span className="min-w-0 flex-1 truncate text-gray-900">{w.title || '(제목 없음)'}</span>
-                <span className="shrink-0 tabular-nums text-gray-700">{w.soldPrice.toLocaleString('ko')}원</span>
+              <li key={i} className="flex min-h-[84px] items-center gap-3.5 border-b border-gray-100 text-[15px]">
+                {w.image ? <Thumb src={w.image} alt="" className="h-[60px] w-[60px] shrink-0 bg-white object-contain" /> : <span className="grid h-[60px] w-[60px] shrink-0 place-items-center bg-gray-50"><ImageOff size={14} className="text-gray-300" aria-hidden /></span>}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-gray-950">{w.title || '(제목 없음)'}</span>
+                  <span className="block text-[13px] text-gray-500">{w.paymentMethod === 'CASH' ? '현금' : '카드'}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-gray-900">{w.soldPrice.toLocaleString('ko')}원</span>
               </li>
             ))}
           </ul>
         )}
-        <dl className="flex flex-wrap gap-x-6 gap-y-1 border-t border-gray-100 px-4 py-3 text-sm">
-          <div className="flex gap-1.5"><dt className="text-gray-500">판매 합계</dt><dd className="font-medium tabular-nums text-gray-900">{a.total.toLocaleString('ko')}원</dd></div>
-          {/* 수수료를 뗐으면 반드시 보여준다 — 작가가 수락 여부를 판단하는 근거고,
-              안 보이면 "판매 합계 × 비율" 과 안 맞아 계산이 틀린 것처럼 읽힌다 */}
+        <dl className="text-sm">
+          <div className="flex justify-between border-b border-gray-100 py-3"><dt className="text-gray-600">판매 합계</dt><dd className="tabular-nums text-gray-900">{a.total.toLocaleString('ko')}원</dd></div>
+          {/* 수수료를 뗐으면 반드시 보여준다 — 작가가 수락 여부를 판단하는 근거다 */}
           {(a.cardFee ?? 0) > 0 && (
             <>
-              <div className="flex gap-1.5"><dt className="text-gray-500">카드 수수료{data.cardFeeRate ? ` (${data.cardFeeRate}%)` : ''}</dt><dd className="font-medium tabular-nums text-gray-900">-{(a.cardFee ?? 0).toLocaleString('ko')}원</dd></div>
-              <div className="flex gap-1.5"><dt className="text-gray-500">정산 대상</dt><dd className="font-medium tabular-nums text-gray-900">{(a.settleBase ?? 0).toLocaleString('ko')}원</dd></div>
+              <div className="flex justify-between border-b border-gray-100 py-3"><dt className="text-gray-600">카드 수수료{data.cardFeeRate ? ` (${data.cardFeeRate}%)` : ''}</dt><dd className="tabular-nums text-gray-900">-{(a.cardFee ?? 0).toLocaleString('ko')}원</dd></div>
+              <div className="flex justify-between border-b border-gray-100 py-3"><dt className="text-gray-600">정산 대상</dt><dd className="tabular-nums text-gray-900">{(a.settleBase ?? 0).toLocaleString('ko')}원</dd></div>
             </>
           )}
-          <div className="flex gap-1.5"><dt className="text-gray-500">비율</dt><dd className="font-medium text-gray-900">갤러리 {a.galleryRatio}% : 작가 {a.artistRatio}%</dd></div>
-          <div className="flex gap-1.5"><dt className="text-gray-900">내 정산액</dt><dd className="font-semibold tabular-nums text-gray-950">{a.artistAmount.toLocaleString('ko')}원</dd></div>
+          <div className="flex justify-between border-b border-gray-100 py-3"><dt className="text-gray-600">비율</dt><dd className="text-gray-900">갤러리 {a.galleryRatio}% : 작가 {a.artistRatio}%</dd></div>
+          <div className="flex justify-between border-b border-gray-200 py-3"><dt className="font-semibold text-gray-950">내 정산액</dt><dd className="font-bold tabular-nums text-gray-950">{a.artistAmount.toLocaleString('ko')}원</dd></div>
         </dl>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {requested && !settled && (
-          <>
-            <button
-              type="button"
-              onClick={() => respondMutation.mutate({ approve: true })}
-              disabled={respondMutation.isPending || myStatus === 'APPROVED'}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
-            >
-              {myStatus === 'APPROVED' ? <><Check size={15} aria-hidden /> 확인함</> : '정산 확인(수락)'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIssueOpen(v => !v); window.setTimeout(() => commentRef.current?.focus(), 30); }}
-              className={cn('min-h-[44px] rounded-lg border px-4 text-sm', waiting ? 'border-gray-300 text-gray-800 hover:bg-gray-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}
-            >
-              문제 제기
-            </button>
-          </>
-        )}
-        <button type="button" onClick={downloadMine} disabled={downloading} className="ml-auto inline-flex min-h-[36px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50">
-          {downloading ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <FileDown size={13} aria-hidden />} 내 정산서 PDF
+        <button type="button" onClick={downloadMine} disabled={downloading} className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-sm text-gray-700 underline-offset-4 hover:text-gray-950 hover:underline disabled:opacity-50">
+          {downloading ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <FileDown size={14} aria-hidden />} 내 정산서 PDF
         </button>
       </div>
 
-      {issueOpen && requested && !settled && (
-        <div className="space-y-2">
-          <textarea
-            ref={commentRef}
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            rows={3}
-            placeholder="어떤 점이 틀렸는지 적어 주세요 (예: 판매가·정산 비율이 다릅니다)"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-          />
+      {/* 답하는 줄 — 아직 답하지 않았거나 이의를 낸 동안. 휴대폰은 하단 탭바 위 */}
+      {open && myStatus !== 'APPROVED' && (
+        <div data-settle-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-1 grid grid-cols-[auto_minmax(0,1fr)] gap-2.5 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur sm:flex sm:justify-end lg:bottom-0">
+          {/* 보조 버튼은 글자 폭만큼(한 줄) — 1:2 칸이면 '이의 다시 보내기' 가 두 줄로 꺾였다(앱 확인) */}
+          <button type="button" onClick={openIssue} className="min-h-[50px] whitespace-nowrap rounded-lg border border-gray-300 bg-white px-5 text-[15px] text-gray-900 hover:bg-gray-50">
+            {myStatus === 'ISSUE' ? '이의 다시 보내기' : '이의 제기'}
+          </button>
           <button
             type="button"
-            onClick={() => comment.trim() ? respondMutation.mutate({ approve: false, comment: comment.trim() }) : toast.error('문제 내용을 입력해주세요.')}
+            onClick={() => respond({ approve: true })}
             disabled={respondMutation.isPending}
-            className="min-h-[40px] rounded-lg bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            className="min-h-[50px] rounded-lg bg-gray-900 px-6 text-[15px] font-semibold text-white hover:bg-gray-800 disabled:opacity-40"
           >
-            갤러리에 전달
+            정산 확인
           </button>
         </div>
       )}
+      {open && answered && myStatus === 'APPROVED' && (
+        <button type="button" onClick={openIssue} className="min-h-[44px] text-[13.5px] text-gray-600 underline underline-offset-4 hover:text-gray-950">금액이 다르면 이의 제기</button>
+      )}
+
+      {issueOpen && (
+        <SettlementIssueDialog
+          busy={respondMutation.isPending}
+          value={comment}
+          onChange={setComment}
+          onSend={() => (comment.trim() ? respond({ approve: false, comment: comment.trim() }) : toast.error('무엇이 다른지 적어 주세요.'))}
+          onClose={() => setIssueOpen(false)}
+        />
+      )}
     </section>
+  );
+}
+
+/** 이의 쓰기 창 — 휴대폰은 아래에서 올라오고 PC 는 가운데(등록 화면의 확인 창과 같은 모양). `role="dialog"`(앱 뒤로가기가 Esc 를 보낸다, 규칙 79) */
+function SettlementIssueDialog({ value, onChange, onSend, onClose, busy }: { value: string; onChange: (v: string) => void; onSend: () => void; onClose: () => void; busy: boolean }) {
+  useEscapeKey(onClose);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { const t = window.setTimeout(() => ref.current?.focus(), 30); return () => window.clearTimeout(t); }, []);
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settle-issue-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full rounded-t-[14px] bg-white px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-6 sm:max-w-md sm:rounded-lg sm:pb-6"
+      >
+        <h2 id="settle-issue-title" className="text-lg font-semibold text-gray-950">어떤 점이 다른가요?</h2>
+        <label htmlFor="settle-issue-text" className="sr-only">이의 내용</label>
+        <textarea
+          id="settle-issue-text"
+          ref={ref}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={1000}
+          rows={4}
+          placeholder="예: '수평선' 판매가가 다릅니다. 150만 원에 팔렸어요."
+          className="mt-4 w-full resize-none rounded-lg border border-gray-300 px-3.5 py-3 text-base leading-relaxed focus:border-gray-500 focus:outline-none"
+        />
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={onClose} className="min-h-[50px] rounded-lg border border-gray-300 px-5 text-[15px] text-gray-700 hover:bg-gray-50">취소</button>
+          <button type="button" onClick={onSend} disabled={busy} className="min-h-[50px] flex-1 rounded-lg bg-gray-900 text-[16px] font-semibold text-white hover:bg-gray-800 disabled:opacity-50">
+            {busy ? '보내는 중…' : '이의 보내기'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

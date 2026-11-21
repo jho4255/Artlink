@@ -92,3 +92,15 @@ export function serverStatus(saved: { artworkList?: ArtworkItem[] | null; cv?: A
   const note = hasContent(saved.note);
   return { artworks, cv, note, complete: artworks && cv && note, any: artworks || cv || note };
 }
+
+/**
+ * 한 작가의 출품 자료 상태 — 제출 완료(셋 다) · 작성 중(일부) · 시작 전(없음). 갤러리 출품 자료 표의 '제출' 칸(2026-11-20).
+ * 갤러리 화면은 임시저장 작품을 못 본다(서버가 거른다) — 그래서 작품 목록이 있으면 낸 것이다.
+ */
+export function submissionState(s: { artworkList?: unknown[] | null; cv?: unknown; note?: ArtistNote | null }): 'complete' | 'partial' | 'none' {
+  const art = (s.artworkList?.length || 0) > 0;
+  const cv = hasContent(s.cv);
+  const note = hasNoteContent(s.note);
+  if (art && cv && note) return 'complete';
+  return art || cv || note ? 'partial' : 'none';
+}

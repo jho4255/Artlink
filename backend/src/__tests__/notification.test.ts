@@ -105,6 +105,20 @@ describe('Notification Routes', () => {
     expect(notifs.length).toBeGreaterThanOrEqual(1);
   });
 
+  // 2026-11-21 — 예전 문구는 '"<갤러리>" 갤러리의 공모에 새로운 지원자(…)가 있습니다.' 라 공모가 여럿이면 어느 공모인지 몰랐고,
+  // 링크는 공개 공고 상세였다. 이제 공모 제목을 앞에 두고 그 공모 화면의 [지원자] 탭으로 보낸다.
+  it('★ 새 지원자 알림은 공모 제목으로 시작하고 [지원자] 탭으로 간다', async () => {
+    const gallery = await seedGallery();
+    const exhibition = await seedExhibition(gallery.id);
+    await request.post(`/api/exhibitions/${exhibition.id}/apply`)
+      .set('Authorization', `Bearer ${authToken(1, 'ARTIST')}`)
+      .send({ biography: '약력', artworkImages: ['/uploads/a.jpg'], termsAgreed: true, termsVersion: ARTIST_APPLY_TERMS_VERSION });
+    const note = await testPrisma.notification.findFirst({ where: { userId: 3, type: 'NEW_APPLICANT' } });
+    expect(note?.message).toMatch(new RegExp(`^"${exhibition.title}"에 .+님이 지원했어요\\.$`));
+    expect(note?.message).not.toContain('갤러리의 공모');
+    expect(note?.linkUrl).toBe(`/exhibitions/${exhibition.id}/operation/new?view=applicants`);
+  });
+
   it('갤러리 승인 시 오너에게 알림 생성', async () => {
     // PENDING 갤러리 생성
     const gallery = await testPrisma.gallery.create({

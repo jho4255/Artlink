@@ -36,7 +36,7 @@ export default function MakerBar({ customizing, onCustomize, onTab, onPickWorks,
   const secondary = 'inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50 sm:px-4';
   const icon = 'hidden min-[380px]:inline';
   return (
-    <div data-maker-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 -mx-6 mt-8 border-t border-gray-200 bg-white/95 px-6 py-2 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0 lg:py-3">
+    <div data-maker-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-6 mt-8 border-t border-gray-200 bg-white/95 px-6 py-2 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0 lg:py-3">
       {/* 좁은 화면에는 저장 상태 글자가 없다(한 줄을 지키려고) — 다만 **실패**는 알려야 한다. 그때만 바 위에 한 줄이 더 생긴다 */}
       {saveState === 'error' && (
         <p role="alert" className="mb-2 flex items-center justify-between gap-2 text-xs text-accent sm:hidden">

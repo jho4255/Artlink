@@ -9,13 +9,20 @@ import { useEscapeKey } from '@/hooks/useEscapeKey';
  * 약관은 [약관 보기]로 펼쳐 읽는다. 동의 없이 누르면 그 줄을 빨갛게 — 창은 그대로.
  * 휴대폰은 아래에서 올라오고, PC 는 가운데. `role="dialog"`(소개 팝업이 위로 뜨지 않고 앱 뒤로가기가 Esc 를 보낸다, 규칙 79).
  */
-export default function SubmitSheet({ title, rows, note, terms, confirmLabel, pending, onConfirm, onClose }: {
+export default function SubmitSheet({ title, subtitle, rows, note, terms, confirmLabel, cancelLabel = '고치기', nagText = '약관에 동의해야 등록을 요청할 수 있어요.', keyWidth = 'w-14', pending, onConfirm, onClose }: {
   title: string;
+  /** 제목 아래 한 줄 — 지원서는 '공모명 · 갤러리'(2026-11-20) */
+  subtitle?: ReactNode;
   rows: [string, ReactNode][];
   note?: ReactNode;
   /** 약관 — 없으면(아트링크 주최) 동의 줄을 그리지 않는다 */
   terms?: { url: string; label: string };
   confirmLabel: string;
+  cancelLabel?: string;
+  /** 동의 없이 눌렀을 때 — 지원서는 '…지원할 수 있어요' */
+  nagText?: string;
+  /** 줄 이름 칸 폭 — 이름이 길면('포트폴리오 파일') 넓힌다 */
+  keyWidth?: string;
   pending?: boolean;
   onConfirm: () => void;
   onClose: () => void;
@@ -49,10 +56,11 @@ export default function SubmitSheet({ title, rows, note, terms, confirmLabel, pe
         className="max-h-[92svh] w-full overflow-y-auto rounded-t-[14px] bg-white px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-6 sm:max-w-md sm:rounded-lg sm:pb-6"
       >
         <h2 id="submit-sheet-title" className="text-lg font-semibold text-gray-900">{title}</h2>
+        {subtitle && <p className="mt-1 text-[13.5px] text-gray-500 break-keep [overflow-wrap:anywhere]">{subtitle}</p>}
         <dl className="mt-4 text-sm">
           {rows.map(([k, v], i) => (
             <div key={i} className={cn('flex gap-3 border-t border-gray-100 py-2.5', i === rows.length - 1 && 'border-b')}>
-              <dt className="w-14 shrink-0 text-gray-500">{k}</dt>
+              <dt className={cn(keyWidth, 'shrink-0 text-gray-500')}>{k}</dt>
               <dd className="min-w-0 flex-1 text-gray-900 break-keep [overflow-wrap:anywhere]">{v}</dd>
             </div>
           ))}
@@ -81,9 +89,9 @@ export default function SubmitSheet({ title, rows, note, terms, confirmLabel, pe
             )}
           </div>
         )}
-        {nag && !agreed && <p className="mt-1.5 text-xs text-accent">약관에 동의해야 등록을 요청할 수 있어요.</p>}
+        {nag && !agreed && <p className="mt-1.5 text-xs text-accent">{nagText}</p>}
         <div className="mt-5 flex gap-2">
-          <button type="button" onClick={onClose} className="min-h-[50px] rounded-lg border border-gray-300 px-5 text-[15px] text-gray-700 hover:bg-gray-50">고치기</button>
+          <button type="button" onClick={onClose} className="min-h-[50px] rounded-lg border border-gray-300 px-5 text-[15px] text-gray-700 hover:bg-gray-50">{cancelLabel}</button>
           <button
             type="button"
             onClick={confirm}

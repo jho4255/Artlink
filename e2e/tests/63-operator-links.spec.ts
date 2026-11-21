@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, cardToggle, settle } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, openOperation, workspace, workspaceTab, exhibitionCard } from '../lib/helpers';
 
 /**
  * 운영 화면의 [지원자 보기]·[← 목록] 은 **보는 사람의 역할에 맞는 곳**으로 간다 (2026-10-02)
@@ -9,9 +9,9 @@ import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, ca
  * **프로필(닉네임 입력 칸)** 이 떴다. 주소가 문자열이라 타입도 단위 테스트도 못 잡았고, 빈 화면이 아니라 멀쩡한
  * 프로필이 떠서 눈에도 안 띄었다. 그래서 여기서는 **눌러서 어디에 도착하는지**를 본다.
  *
- *   갤러리             → [내 공모] 의 그 카드, [지원자] 탭이 열린 채
- *   관리자 · 갤러리 주최  → [운영 조회] 의 그 공모 지원 현황
- *   관리자 · 아트링크 주최 → [주최 공모] 의 그 카드, 지원자 관리가 열린 채
+ *   갤러리             → [내 공모] 의 그 공모 화면(2026-11-20 — 카드 → 공모 한 건 화면)
+ *   관리자 · 갤러리 주최  → 운영 주소에서 공모 화면, [← 운영 조회] · [지원자] 탭은 조회 안내(수락·거절은 그 갤러리의 일)
+ *   관리자 · 아트링크 주최 → 운영 주소에서 공모 화면(지원자를 바로 다룬다), [← 주최 공모] 는 그 카드
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1280, height: 800 };
@@ -39,7 +39,7 @@ test.beforeAll(async () => {
 });
 
 test.describe('관리자', () => {
-  test('★ 운영 조회 → [운영 페이지] → [지원자 보기] → 운영 조회의 그 공모 지원 현황 (프로필이 아니다)', async ({ browser }) => {
+  test('★ 운영 조회 → [운영 페이지] → 공모 화면의 [← 운영 조회] → 운영 조회의 그 공모 지원 현황 (프로필이 아니다)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'admin');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=oversight');
@@ -47,12 +47,12 @@ test.describe('관리자', () => {
     await page.getByRole('button', { name: /운영 페이지/ }).click();
     await page.waitForURL(new RegExp(`/exhibitions/${galleryEx}/operation/new`));
 
-    // 뒤로가기 글자도 관리자의 일터 이름이다 — 관리자에겐 [내 공모] 가 없다
-    const back = page.locator('main header a').first();
-    await expect(back).toHaveText(/운영 조회/, { timeout: 15000 });
-    await expect(page.locator('main header')).not.toContainText('내 공모');
+    // 2026-11-20: 운영 주소는 공모 한 건 화면 — 돌아가는 글자는 관리자의 일터 이름이다(관리자에겐 [내 공모] 가 없다)
+    const back = workspace(page).getByRole('link', { name: '운영 조회', exact: true });
+    await expect(back).toBeVisible({ timeout: 15000 });
+    await expect(workspace(page).getByRole('button', { name: '내 공모' })).toHaveCount(0);
 
-    await page.getByRole('link', { name: '지원자 보기' }).click();
+    await back.click();
     await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=oversight&ex=${galleryEx}$`));
     const detail = page.getByTestId('ov-ex-detail');
     await expect(detail).toContainText(`${TITLE_G} — 지원 현황`, { timeout: 15000 });
@@ -61,42 +61,31 @@ test.describe('관리자', () => {
     await ctx.close();
   });
 
-  test('★ [← 운영 조회] 와 할 일 상자의 [지원자 보기] 도 같은 곳으로 간다', async ({ browser }) => {
+  test('★ 갤러리 주최 공모의 [지원자] 탭은 조회 안내 — 운영 조회로 간다(수락·거절은 그 갤러리의 일)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'admin');
     await page.setViewportSize(DESKTOP);
-    for (const click of [
-      () => page.locator('main header a').first().click(),
-      () => page.locator('main').getByRole('button', { name: '지원자 보기' }).click(),
-    ]) {
-      await page.goto(`/exhibitions/${galleryEx}/operation/new`);
-      await expect(page.getByText('진행 단계').first()).toBeVisible({ timeout: 15000 });
-      await click();
-      await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=oversight&ex=${galleryEx}$`));
-      await expect(page.getByTestId('ov-ex-detail')).toContainText(TITLE_G, { timeout: 15000 });
-      await expect(nickname(page)).toHaveCount(0);
-    }
+    await openOperation(page, galleryEx, '지원자');
+    await expect(page.locator('[data-applicant-manager]')).toHaveCount(0);
+    await workspace(page).getByRole('link', { name: '운영 조회에서 지원 현황 보기' }).click();
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=oversight&ex=${galleryEx}$`));
+    await expect(page.getByTestId('ov-ex-detail')).toContainText(TITLE_G, { timeout: 15000 });
+    await expect(nickname(page)).toHaveCount(0);
     await ctx.close();
   });
 
-  test('★ 아트링크 주최 공모 → [지원자 보기] → [주최 공모] 의 그 카드, 지원자 관리가 열려 있다', async ({ browser }) => {
+  test('★ 아트링크 주최 공모 — 공모 화면에서 바로 지원자를 다루고, [← 주최 공모] 는 그 카드로', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'admin');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/exhibitions/${hostedEx}/operation/new`);
-    await expect(page.locator('main header a').first()).toHaveText(/주최 공모/, { timeout: 15000 });
-    await page.getByRole('link', { name: '지원자 보기' }).click();
-    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=hosted-exhibitions&ex=${hostedEx}&panel=applicants$`));
+    await openOperation(page, hostedEx, '지원자');
+    // 주최자인 관리자는 여기서 수락·거절한다
+    await expect(page.locator('[data-applicant-manager]').getByText(/수락 \d+\/\d+/).first()).toBeVisible({ timeout: 15000 });
 
+    await workspace(page).getByRole('link', { name: '주최 공모', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=hosted-exhibitions&ex=${hostedEx}$`));
     const card = page.locator(`#hosted-ex-${hostedEx}`);
     await expect(card).toContainText(TITLE_H, { timeout: 15000 });
-    await expect(card.getByRole('button', { name: '지원자 관리 닫기' })).toBeVisible();   // 열려 있다
-    await expect(card.getByText(/수락 \d+\/\d+/).first()).toBeVisible();                   // ApplicantManager 가 그려졌다
     await expect(card).toBeInViewport();
     await expect(nickname(page)).toHaveCount(0);
-
-    // 닫으면 닫힌 채로 있다 — 목록을 다시 받아도 딥링크가 또 열지 않는다
-    await card.getByRole('button', { name: '지원자 관리 닫기' }).click();
-    await settle(page, 1200);
-    await expect(card.getByRole('button', { name: '지원자 관리', exact: true })).toBeVisible();
     await ctx.close();
   });
 
@@ -115,47 +104,37 @@ test.describe('관리자', () => {
 test.describe('갤러리 — 원래 되던 길이 그대로 된다', () => {
   for (const vp of [DESKTOP, null] as const) {
     const where = vp ? 'PC' : '모바일';
-    test(`★ 운영 화면 [지원자 보기] → [내 공모] 의 그 카드, [지원자] 탭 (${where})`, async ({ browser }) => {
+    test(`★ 운영 주소(새 지원자 알림) → [내 공모] 의 그 공모 화면 → [← 내 공모] 로 목록 (${where})`, async ({ browser }) => {
       const { page, ctx } = await openAs(browser, 'gallery');
       if (vp) await page.setViewportSize(vp);
-      await page.goto(`/exhibitions/${galleryEx}/operation/new`);   // 새 지원자 알림이 보내는 주소
-      await expect(page.locator('main header a').first()).toHaveText(/내 공모/, { timeout: 15000 });
-      await page.getByRole('link', { name: '지원자 보기' }).click();
-      await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${galleryEx}&panel=applicants$`));
-
-      const card = page.locator(`#ex-card-${galleryEx}`);
-      await expect(card).toContainText(TITLE_G, { timeout: 15000 });
-      await expect(cardToggle(card, 'applicants')).toHaveAttribute('aria-expanded', 'true');
-      await expect(cardToggle(card, 'operation')).toHaveAttribute('aria-expanded', 'false');
-      await expect(card).toBeInViewport();
+      await page.goto(`/exhibitions/${galleryEx}/operation/new`);
+      await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${galleryEx}$`), { timeout: 15000 });
+      await expect(page.getByRole('heading', { level: 1, name: TITLE_G })).toBeVisible({ timeout: 15000 });
       await expect(nickname(page)).toHaveCount(0);
+      await workspace(page).getByRole('button', { name: '내 공모', exact: true }).click();
+      await expect(page).toHaveURL(/\/mypage\?tab=my-exhibitions$/);
+      await expect(exhibitionCard(page, TITLE_G)).toBeVisible({ timeout: 15000 });
       await ctx.close();
     });
   }
 
-  test('[← 내 공모] 는 그 카드의 [운영] 탭을, 공모 상세 [지원자 보기] 는 [지원자] 탭을 연다', async ({ browser }) => {
+  test('공모 상세 [지원자 보기] 는 그 공모 화면의 [지원자] 탭을 연다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
-    await page.goto(`/exhibitions/${galleryEx}/operation/new`);
-    await page.locator('main header a').first().click();
-    const card = page.locator(`#ex-card-${galleryEx}`);
-    await expect(cardToggle(card, 'operation')).toHaveAttribute('aria-expanded', 'true', { timeout: 15000 });
-
     await page.goto(`/exhibitions/${galleryEx}`);
     await page.locator('main').getByRole('button', { name: '지원자 보기' }).click();
-    await expect(cardToggle(page.locator(`#ex-card-${galleryEx}`), 'applicants')).toHaveAttribute('aria-expanded', 'true', { timeout: 15000 });
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${galleryEx}&panel=applicants$`));
+    await expect(workspaceTab(page, '지원자')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
     await ctx.close();
   });
 
-  test('★ 위임받은 아트링크 주최 공모도 [내 공모] 의 그 카드로 간다', async ({ browser }) => {
+  test('★ 위임받은 아트링크 주최 공모도 [내 공모] 의 그 공모 화면으로 간다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto(`/exhibitions/${hostedEx}/operation/new`);
-    await expect(page.locator('main header a').first()).toHaveText(/내 공모/, { timeout: 15000 });
-    await page.getByRole('link', { name: '지원자 보기' }).click();
-    const card = page.locator(`#ex-card-${hostedEx}`);
-    await expect(card).toContainText(TITLE_H, { timeout: 15000 });
-    await expect(cardToggle(card, 'applicants')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${hostedEx}$`), { timeout: 15000 });
+    await expect(page.getByRole('heading', { level: 1, name: TITLE_H })).toBeVisible({ timeout: 15000 });
+    await expect(workspace(page).getByRole('button', { name: '내 공모', exact: true })).toBeVisible();
     await expect(nickname(page)).toHaveCount(0);
     await ctx.close();
   });

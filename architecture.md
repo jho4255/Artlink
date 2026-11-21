@@ -2301,6 +2301,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 
 
 ## 공모 흐름 UX 개편 — 등록 · 지원 · 지원자 관리 · 출품 자료 · 정산 (2026-09-29)
+> ⚠️ 2026-11-20 개편(맨 아래 「공모 흐름 개편 2」, CLAUDE.md 규칙 88)으로 카드·`OperationBody`·`StatusPanel`·`ArtistOperationPanel` 은 없어졌다. 아래는 그 전 기록 — 말(`flowLabels`)·부품·확인창 규칙은 그대로다.
 로컬에서 5단계(공모 등록 → 지원 → 지원자 관리 → 출품 자료 → 정산)를 데스크톱·모바일로 끝까지 밟아 보고 "처음 온 사람이 다음에 뭘 눌러야 하는지 모른다"를
 핵심 문제로 잡았다. **백엔드 API·스키마 변경 없음**(화면만). 사용자 결정: DESIGN.md 는 참고하지 않고 이 흐름 화면만, 지원서는 전용 페이지.
 - **디자인 언어**(흐름 화면 공통, `components/flow/`): `StatusChip`(neutral·attention·done 셋) · `Notice`(neutral·attention 둘) · `ProgressSteps`(단색, nodes/inline) ·
@@ -3263,3 +3264,66 @@ e2e `83-registration-and-shows.spec.ts`(5) + 07·15·24·25·51·60·67·70·77 
 
 ### 검증
 backend `chat-renewal.test.ts`(25) · frontend `arttalk.test.ts`(19) · `chatView.test.ts` · e2e `85-arttalk.spec.ts`(12) · `29`·`04`·`26`·`30`·`33`·`34`·`35`·`40`.
+
+## 공모 흐름 개편 2 — 줄 목록 · 공모 한 건 화면 · 진행 띠 · 넘어감 알림 (2026-11-20, CLAUDE.md 규칙 88)
+검토(7단계 × 단계 사이) → 목업 12장 → 계획서(`scratchpad/flow-review-2026-11/PLAN.md`) → 사용자 지시 "기본값(D1~D6)으로 구현 · 정산 '팔림' → '판매' · 이의 처리도 목업과 같게".
+**스키마 변경 없음.** 서버는 알림 3종과 모집 마감 옵션 하나만 더했다.
+
+- **화면 구조**
+  - 갤러리 [내 공모] · 작가 [내 전시] = 줄 목록(`components/flow/ExhibitionRow.tsx`, '지금 할 일' → '기다리는 중'). 줄 = 포스터 · 상태 + 한 줄 · 제목 · 진행 띠(`FlowStrip variant="row"`, 휴대폰 `bar`) · 할 일 + 버튼.
+  - 공모 한 건 화면 — 갤러리 `components/workspace/ExhibitionWorkspace.tsx`(`?tab=my-exhibitions&ex=`) · 작가 `ArtistExhibitionWorkspace.tsx`(`?tab=applications&ex=`).
+    머리(포스터·상태·제목·[공고 보기]·[⋯]) → 진행 띠(full) → 할 일 줄(PC `TaskBar`) → 탭(`PageTabBar`) → 탭 내용 → 휴대폰 하단 고정 줄(`data-workspace-bar`).
+  - 관리자는 옛 운영 주소(`/exhibitions/:id/operation/new`)에서 같은 화면을 단독으로(`standalone`). 갤러리·작가는 그 주소로 오면 마이페이지의 그 공모로 간다.
+- **판단은 `lib/flowLabels.ts`** — `stageOf` · `flowStrip`(다섯 칸, 공모만 진행 둘) · `galleryNextTask`/`artistNextTask`(할 일 문장 · 주 버튼 · 보조 버튼 · 데려갈 탭) ·
+  `gallerySubText`/`artistSubText`(줄·머리의 한 줄) · `workspaceDefaultView`/`artistDefaultView`(처음 열 탭) · `viewForTarget`.
+- **단계 전환** `hooks/useLifecycle.tsx` — 확인창(`ConfirmDialog details`) + 모집 마감의 '남은 N명을 미선정으로 처리'(D2, 기본 꺼짐) → `rejectPending`.
+- **지원자 심사** `ApplicantManager` — 두 칸(≥1180px) / 한 장씩 창(그 아래) · 결정 줄 `data-decision-bar` · 결정 뒤 다음 검토 대기 · 도구 글자 버튼(≥640px) / [관리 ▾].
+- **출품 자료 취합** `AdminSubmissionsSection` — 작가 표(`data-submission-artist`) · [내려받기 ▾](`hooks/useSubmissionDownloads.ts` — 캡션 HWP · 도록 PDF · 작품 원본 ZIP · 출품 자료 PDF ZIP) · 아직 안 낸 작가에게 안내(`SubmissionRemindDialog`).
+  작가 쪽 `MySubmissionSection` — 번호 붙은 구역(출품작 · 약력 · 작가노트) · 하단 줄 '남은 것 N · <첫 칸>' + [임시저장]·[갤러리에 제출].
+- **정산** `SettlementSection`(표) + `settlementController.tsx`(상태·변이·주 버튼, 규칙 26 그대로) · 열 이름 '판매' · 이의 한 줄기
+  (작가 `SettlementIssueDialog` → 갤러리 할 일 줄 + 작가 머리의 이의 글 → '저장하고 ○○ 님에게 다시 요청' → 작가 확인 → [정산 완료] → [요약]).
+- **요약** `WorkspaceSummary` — 숫자 다섯 · 다음 할 일(판매작 홍보 이미지 · 지난 전시 · 새 공모) · 기록 내려받기 · 참여 작가 표. 작가는 [갤러리 리뷰 쓰기](D6).
+- **지원서** `ApplyPage` — 약관은 [지원하기] 확인 창(`SubmitSheet`) 안(D5), 위 회색 안내 상자 삭제.
+- **서버**(`backend/src/lib/flowNotify.ts`, `routes/operation.ts`) — `SUBMISSION_RECEIVED`(공모마다 한 줄 · `withKeyLock(submissionNotes)` · REPUSH) ·
+  `EXHIBITION_CONFIRMED` · `SETTLEMENT_ALL_APPROVED`(`withKeyLock(settlementAllNotes)`, 자동 확인 포함) · `PATCH lifecycle {rejectPending}` → `rejectedCount` ·
+  `operationLink(id, view)` 의 `view` 가 공모 화면의 탭을 연다. 푸시 제목은 `lib/push.ts PUSH_TITLES`.
+- **결함(검증 중 잡아 고친 것)** — ① 알림을 눌러 왔는데 옛 단계(목록·공모 화면 쿼리 staleTime) → `staleTime: 0 · refetchOnMount: 'always'` ② '강윤서 외 1명 님이'(어순) ③ 이의 다시 보내기에 지난 글 없음 ④ 정산 완료 뒤 [요약]으로 안 넘어감
+  ⑤ 미저장 입력이 있을 때 [← 내 공모]가 확인창을 두 번 띄움(뒤로 가기 + 가드 기록) → replace ⑥ 휴대폰 [내려받기] 메뉴 아래 항목이 하단 고정 줄(z-30)에 깔림 → 메뉴 z-[35] + 막히면 위로
+  ⑦ 같은 메뉴가 오른쪽 끝 맞춤이라 화면 왼쪽 밖으로 잘림(앱) → 화면 밖이면 반대쪽 끝 맞춤(`data-flip-x`).
+- **검증** — backend 1879 · frontend 1808 · e2e 관련 18개 파일(새 `86` 포함) 전부 통과 · 하니스 `scratchpad/flow-review-2026-11/walk.cjs`(크롬 + WebKit × PC 1280 · 휴대폰 390 — 가로 넘침 0, 하단 줄 hit-test, [내려받기] 메뉴 전부 눌림) ·
+  안드로이드 에뮬레이터 앱(데모 DB · `pushkit.sh`): 알림 3종 + 이의 알림이 실제로 오고, 눌러서 그 탭으로 들어가는지 · 창이 자판 위에 · 뒤로가기가 창만 닫는지.
+
+## 공모 흐름 신뢰성 점검 (2026-11-21, CLAUDE.md 규칙 88 「신뢰성 점검」)
+
+개편(규칙 88) 직후 실유저 시나리오 TC 190개(`scratchpad/flow-review-2026-11/TESTCASES.md`)를 세우고 돌렸다. 결과·근거는 같은 폴더 `RESULTS.md`.
+P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 재현됐고, 진행 중 목록에 없던 결함 9개를 더 찾았다.
+
+- **서버 — '바뀌는 순간'을 한 요청이 차지한다.** 모집 마감·전시 확정(`PATCH /operations/:id/lifecycle`)·정산 확인 요청·정산 완료가 트랜잭션 안의
+  조건부 `updateMany`(아직 false/null 일 때만) 결과 `count === 1` 로 이긴 요청을 가리고, 그 요청만 알린다. 동시 두 번이면 예전엔 알림이 두 통이거나(마감·확정·완료)
+  409 '이미 사용 중인 값입니다.'(정산 요청)였다. D2 미선정은 `UPDATE … RETURNING`(그 문장이 바꾼 행만 알림), 지원 상태 수동 변경은
+  `updateMany({ where: { id, status: 읽은 상태 } })`(`changeIfUnchanged` — 다른 결정이 먼저면 409, 같은 결정이면 알림 없이 같은 답).
+  '모두 확인' 알림은 확인으로 바뀐 순간에만, 출품 자료 알림은 문구가 같으면 고쳐 쓰지 않는다.
+- **화면 — 연타는 ref 로.** `ConfirmDialog` 는 닫히는 애니메이션 동안 옛 버튼이 남아 옛 클로저로 한 번 더 불렸다(state 잠금은 그 버튼에 안 보인다).
+  작가 응답·미선정 확인은 '보내는 중' ref, 할 일 버튼·목록 줄 버튼은 0.4초.
+- **화면 — 같은 주소 재진입 · 받기 전/실패 · 열 수 없는 탭.** 공모 화면은 `location.key` 가 바뀌면(그 공모의 알림을 다시 누름) 관련 쿼리를 무효화하고 탭을 다시 정한다
+  (렌더 중 상태 맞추기 + effect 의 invalidate). 할 일 줄은 숫자가 다 온 뒤에(`countsReady`), 못 받으면 이유(`countsFailed`). 한 번 쓴 `act` 는 `history.replaceState` 로 지운다.
+- **화면 — 공모마다 새로 시작.** MyPage 의 두 화면은 원래 `key={공모 번호}` 였고 관리자 단독 화면(`OperationPage`)만 없어서, 벨로 다른 공모에 가면
+  저장 안 한 정산 입력이 따라왔다(`useSettlementController` 가 '사람이 고친 값은 서버 값으로 덮지 않는다'를 지키므로 그대로 남았다). `key={id}`.
+- **이탈 가드의 빈틈 — `navigate()`.** `useUnsavedChanges` 는 링크 클릭(캡처)·뒤로가기(가드 기록)·새로고침(beforeunload)만 막는다. 벨 알림·앱 안 알림 배너는
+  버튼에서 `navigate()` 를 불러 그대로 빠져나갔다 → `confirmLeaveUnsaved()`(그 입력의 '이 페이지를 벗어나면…' 문구)를 먼저 부른다.
+- **앱(WebView)** — 자판이 뜨면 레이아웃이 줄고 탭바는 감춰지는데(규칙 79 앞 '하단 고정 탭바') 탭바 위에 붙던 고정 줄은 57px 떠 있었다 → BottomTabBar 가 `<html data-tabbar-hidden>` 을 달고
+  공모 흐름 고정 줄 다섯이 `tabbar-hidden:bottom-0`(index.css `@custom-variant tabbar-hidden (html[data-tabbar-hidden] &)` — 클래스 하나보다 세서 순서와 관계없이 이긴다).
+  앱 뒤로 키는 `[data-back-closes]` 도 '떠 있는 창'으로 본다(MenuButton 메뉴 — Esc 로 닫힌다).
+- **검증** — backend 1899(신뢰성 20 — 동시성은 6회 반복) · frontend 1814 · e2e `87`(19)·`88`(11)·`89`(11)·`90`(6) + 바뀐 범위 회귀 ·
+  하니스 `walk-widths.cjs`(8폭 × 단계 13 × 갤러리·작가, 크롬·사파리 엔진 302씩 실패 0) · 에뮬레이터 앱(자판 5곳 · 뒤로 키 · 내려받기 4종 · 푸시 3상태 · 합쳐 울림).
+- **사용자 결정 뒤 고친 것(같은 날)**
+  - **로그인이 풀려도 쓰던 입력이 남는다 — `frontend/src/lib/authStash.ts`.** 입력 화면이 `useStashOnAuthLoss(key, () => 저장 안 된 것 | null)` 로 함수를 등록하고,
+    axios 인터셉터가 401 로 로그아웃하기 **직전** `stashBeforeAuthLoss(userId)` 가 그것들을 localStorage(`artlink-auth-stash:<계정>:<열쇠>`, 3일)에 적는다. 로그아웃은
+    `logout({ expired: true })` — 이때만 남기고, 사람이 누른 [로그아웃]은 `clearAuthStashes()`. 붙인 곳: 정산(`settlementController` — 처음 받은 서버 값에 작가·작품 번호로 맞춰 얹는다) ·
+    출품 자료(`MySubmissionSection` — 작가 본인과 갤러리 대신 입력, 열쇠 `submission:<공모>:<작가>`) · 지원서(`ApplyPage` — 렌더 중이라 `peekAuthStash` 로 보고 effect 에서 지운다).
+    공모 화면은 남은 것이 있으면 그 탭부터 열고, 대신 입력은 그 작가를 펼친 채로. 되살린 값은 기준선(서버 값)과 달라 '저장 안 된 변경'으로 보이고 저장은 사람이 누른다.
+  - **`useUnsavedChanges` 정리의 `history.back()` 을 microtask 로 미뤘다.** 입력이 남은 채 로그인이 풀리면 페이지가 내려가며 그 정리가 ProtectedRoute 의
+    `<Navigate to="/login" replace>` 효과보다 먼저 돌았고, 그 back() 이 /login 으로 바뀐 기록을 되감아 **로그아웃된 채 빈 화면**에 멈췄다(개편 전부터). 이동이 끝난 뒤 지금 기록이 가드 항목일 때만 걷는다.
+  - '새 지원자'·초대 코드 참여 알림은 공모 제목으로 시작하고 그 공모 화면 [지원자] 탭으로 간다(`operationLink(id, 'applicants')`).
+  - 커뮤니티 글쓰기 메뉴 셋과 ArtTalk [+] 첨부 메뉴가 Esc·앱 뒤로 키로 닫힌다 — 이제 소스의 모든 `role="menu"` 가 `data-back-closes` + Esc(`native.test.ts` 가 훑는다).
+  - 흐름 밖 고정 줄 셋(등록 화면 셋 `StickySubmitBar` · 홈페이지 편집 저장 바 · 포트폴리오 만들기 `MakerBar`)도 자판이 뜨면 바닥으로(`tabbar-hidden:bottom-0`). 공고 상세 [지원하기] 줄만 그대로(글 칸이 없다).

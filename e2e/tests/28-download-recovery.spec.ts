@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates, openGallerySubmissions, openSection } from '../lib/helpers';
+import { openAs, tokenFor, userIds, applyToExhibition, ownedGalleryId, openApplicantManager, exhibitionDates, openGallerySubmissions, openOperation, applicantTool } from '../lib/helpers';
 
 /**
  * 다운로드 실패 회수 + 그동안 커버리지가 없던 PDF 경로 (2026-08-04)
@@ -241,7 +241,7 @@ test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원
 
   // ② 전체 제출물 PDF ZIP — 작가마다 3문서
   const pdfDl = page.waitForEvent('download', { timeout: 150_000 });
-  await pickDownload(page, /전체 출품 자료 PDF/);
+  await pickDownload(page, /출품 자료 PDF/);
   const pdfNames = await zipEntries((await (await pdfDl).path())!);
   const pdfFolders = new Set(pdfNames.map((n) => n.split('/')[0]));
   expect(pdfFolders.size, `작가 2명 → 폴더 2개. 실제: ${JSON.stringify(pdfNames)}`).toBe(2);
@@ -281,9 +281,8 @@ test('정산서 PDF — 이미지를 선수집해 백엔드 중계 없이 내려
   const proxied: string[] = [];
   page.on('request', (r) => { if (r.url().includes('/api/upload/image-proxy')) proxied.push(r.url()); });
 
-  await page.goto(`/exhibitions/${exId}/operation/new`);
-  await openSection(page, '정산');
-  // 구역 머리의 [정산서 ▾] 메뉴(작가 줄마다 있는 것과 이름이 같다 — 첫 번째가 구역 것)
+  await openOperation(page, exId, '정산');
+  // 정산 위 줄의 [정산서 받기 ▾] 메뉴(작가 줄마다 있는 [정산서 ▾] 보다 앞에 있다 — 첫 번째가 위 줄 것)
   const menu = page.getByRole('button', { name: '정산서' }).first();
   await expect(menu).toBeVisible({ timeout: 30_000 });
 
@@ -313,12 +312,10 @@ test('지원서 전체 ZIP — 작품 사진을 선수집하고 실제 파일이
   let proxyHits = 0;
   page.on('request', (r) => { if (r.url().includes('/api/upload/image-proxy')) proxyHits += 1; });
 
-  await openApplicantManager(page, title);
-  const zipBtn = page.getByRole('button', { name: /지원서 전체 받기/ }).first();
-  await expect(zipBtn).toBeVisible({ timeout: 30_000 });
-
+  // 지원서 전체 받기 — 넓은 화면은 글자 단추, 휴대폰은 [관리 ▾] 메뉴 안(2026-11-20)
+  const manager = await openApplicantManager(page, title);
   const dlPromise = page.waitForEvent('download', { timeout: 150_000 });
-  await zipBtn.click();
+  await applicantTool(page, manager, /지원서 전체 받기/);
   const dl = await dlPromise;
 
   expect(dl.suggestedFilename()).toMatch(/지원서\.zip$/);
@@ -341,12 +338,9 @@ test('★ 지원서 사진을 못 받으면 배너로 알리고 다시 받게 �
   });
 
   const { page, ctx } = await openAs(browser, 'gallery');
-  await openApplicantManager(page, title);
-  const zipBtn = page.getByRole('button', { name: /지원서 전체 받기/ }).first();
-  await expect(zipBtn).toBeVisible({ timeout: 30_000 });
-
+  const manager = await openApplicantManager(page, title);
   const dlPromise = page.waitForEvent('download', { timeout: 150_000 });
-  await zipBtn.click();
+  await applicantTool(page, manager, /지원서 전체 받기/);
   const dl = await dlPromise;
 
   const banner = page.getByText(/지원서에 들어갈 작품 사진 1건을 받지 못했습니다/);

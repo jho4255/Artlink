@@ -175,7 +175,8 @@ test.describe('엽서 대표작(representativeIndex)', () => {
     // 갤러리: 출품 자료에서 작가 줄을 펼치면 대표작 표시가 작품A 에 붙어 있다
     const gallery = await openAs(browser, 'gallery');
     await openGallerySubmissions(gallery.page, exId);
-    await gallery.page.getByRole('button', { name: /출품작 2점/ }).first().click();
+    // 작가 줄을 펼친다(2026-11-20 — 표의 줄. 휴대폰은 줄 전체가 단추, 넓은 화면은 [펼치기])
+    await gallery.page.locator('[data-submission-artist]').filter({ hasText: 'Artist 1' }).first().locator('button[aria-expanded]').first().click();
     // 열람뷰의 작품 줄은 제목 칸에 title 속성이 있다 — 그 줄에만 '대표작' 표시가 붙는다
     // 작가 줄(li)이 작품 줄(li)을 품고 있어 둘 다 걸린다 — 가장 안쪽(마지막) 것이 작품 줄
     await expect(gallery.page.locator('li:has(span[title="작품A"])').last()).toContainText('대표작', { timeout: 8000 });
@@ -192,8 +193,8 @@ test.describe('운영 페이지 갤러리 다운로드', () => {
     await page.getByRole('button', { name: '내려받기' }).first().click();
     await expect(page.getByRole('menuitem', { name: /작품 캡션/ })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('menuitem', { name: /작품 원본/ })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: /전체 출품 자료 PDF/ })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: /단체전 도록/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /출품 자료 PDF/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /도록 PDF/ })).toBeVisible();
 
     // 캡션 한글파일(.hwp) 서버 생성 → 다운로드
     const [download] = await Promise.all([

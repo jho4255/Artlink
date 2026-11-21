@@ -1,18 +1,19 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Heart, Building2, Plus, Check, XCircle,
-  Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle,
-  ChevronUp, Megaphone, ClipboardList, MapPin, Phone, Mail, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
+  Heart, Building2, Plus, Check, XCircle, Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Megaphone, ClipboardList, MapPin, Phone, Mail, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityLimit, capacityWithLimit, capacityText, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
-import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, ddayText, type TaskTarget } from '@/lib/flowLabels';
-import TaskLine from '@/components/flow/TaskLine';
+import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityWithLimit, capacityText, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
+import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, flowStrip, gallerySubText, artistSubText, artistWaitText, viewForTarget, WORKSPACE_VIEWS, type ArtistSnapshot, type ArtistView, type TaskActionId, type WorkspaceView } from '@/lib/flowLabels';
+import ExhibitionRow, { RowGroupHead } from '@/components/flow/ExhibitionRow';
+import ExhibitionWorkspace from '@/components/workspace/ExhibitionWorkspace';
+import ArtistExhibitionWorkspace from '@/components/workspace/ArtistExhibitionWorkspace';
+import { rememberListScroll, takeListScroll } from '@/lib/listScroll';
 import { scheduleSummary } from '@/lib/scheduleSummary';
 import { uploadAvatar } from '@/lib/avatarUpload';
 import StatusChip from '@/components/flow/StatusChip';
@@ -23,14 +24,12 @@ import PageTabBar from '@/components/shared/PageTabBar';
 import { FormField } from '@/components/flow/FormParts';
 import { formInputCls } from '@/lib/formStyles';
 import ImageUpload from '@/components/shared/ImageUpload';
-import { groupMyExhibitions, defaultBucket, isRejected, nextSchedule, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
+import { groupMyExhibitions, defaultBucket, isRejected, bucketOf, MY_EXHIBITION_TABS, MY_EXHIBITION_EMPTY, type MyExhibitionBucket } from '@/lib/myExhibitions';
 import PortfolioMaker from '@/components/portfolio-maker/PortfolioMaker';
 import HomepageEditor from '@/components/homepage-edit/HomepageEditor';
 import HomepageAddressField from '@/components/shared/HomepageAddressField';
 import ArtistHomepageLine from '@/components/shared/ArtistHomepageLine';
 import { normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
-import ArtistOperationPanel from '@/components/operation/ArtistOperationPanel';
-import { OperationBody } from '@/pages/OperationPage';
 import Thumb from '@/components/shared/Thumb';
 import { myPageTabs, resolveTab, aliasTab, tabHref } from '@/lib/myPageMenu';
 import { editHref } from '@/lib/homepageEdit';
@@ -38,15 +37,15 @@ import HeroToneField, { useHeroAutoTones, type HeroToneChoice } from '@/componen
 import { TONE_CLASS } from '@/lib/heroTone';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
 import ApplicationContent from '@/components/shared/ApplicationContent';
-import ApplicantManager from '@/components/shared/ApplicantManager';
-import CustomQuestionsEditModal, { sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
+import { sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { useFormDraft } from '@/hooks/useFormDraft';
-import { useUnsavedChanges, confirmDiscardUnsaved } from '@/hooks/useUnsavedChanges';
+import { useUnsavedChanges, hasUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { DeleteRequestDialog, DeleteRequestLine } from '@/components/shared/DeleteRequest';
 import RichText from '@/components/shared/RichText';
 import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
+import DeleteConfirmModal from '@/components/shared/DeleteConfirmModal';
 import ArtworkDetailModal from '@/components/shared/ArtworkDetailModal';
 import { stageArtLookWorks, portfolioArtLookWorks, readArtLookMessage, COMPOSE_STATE_KEY, ARTLOOK_EMBED_URL } from '@/lib/artlook';
 import { useArtLookBare } from '@/hooks/useArtLookBare';
@@ -106,6 +105,8 @@ interface GalleryOperationOverview {
   deadline?: string | null;
   exhibitStartDate?: string | null;
   exhibitDate?: string | null;
+  /** 출품 자료 제출 마감일 — 목록 줄의 '출품 자료 마감 D-n' */
+  submissionDeadline?: string | null;
   recruitmentClosed?: boolean;
   confirmed?: boolean;
   ended?: boolean;
@@ -125,18 +126,6 @@ interface GalleryOperationOverview {
     settlement: { total: number; pending: number; approved: number; issue: number };
   };
 }
-
-const operationDate = (value?: string | null) => {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString('ko', { month: 'short', day: 'numeric' });
-};
-
-const operationRange = (start?: string | null, end?: string | null) => {
-  if (!start && !end) return '-';
-  if (!start) return operationDate(end);
-  if (!end) return operationDate(start);
-  return `${operationDate(start)} - ${operationDate(end)}`;
-};
 
 const makeFallbackOperationOverview = (ex: any): GalleryOperationOverview => ({
   id: ex.id,
@@ -243,11 +232,18 @@ export default function MyPage() {
   // 사이드바도 같은 resolveTab 을 써야 강조와 내용이 어긋나지 않는다.
   const currentTab = resolveTab(user.role, activeTab);
   /**
+   * 공모 한 건 화면(2026-11-20, 규칙 88) — [내 공모]·[내 전시] 에서 공모를 열면(`?ex=`) 본문 전체가 그 화면이다.
+   * 프로필 카드·휴대폰 가로 탭 줄을 그리지 않는다(홈페이지 편집과 같은 '한 가지 일' 화면).
+   * 두 목록 화면도 프로필 카드를 그리지 않는다(D4) — 목록 위 240px 가 '지금 할 일' 을 첫 화면 밖으로 밀었다.
+   */
+  const listTab = (currentTab === 'my-exhibitions' && user.role === 'GALLERY') || (currentTab === 'applications' && user.role === 'ARTIST');
+  const workspaceOpen = listTab && !!searchParams.get('ex');
+  /**
    * 한 가지 일에 집중하는 화면인가 — 작가의 홈페이지 편집 · 포트폴리오 PDF 만들기(2026-10-03).
    * 둘 다 **아래에 붙는 바**가 있고 첫 화면에 결과물이 보여야 하는 화면이다. 프로필 카드(240px)·가로 탭바를 위에 두면
    * 포트폴리오 화면의 미리보기가 첫 화면 밖으로 밀렸다(PC y894 · 휴대폰 y1375).
    */
-  const focused = (currentTab === 'homepage-edit' || currentTab === 'portfolio' || currentTab === 'artlook') && user.role === 'ARTIST';
+  const focused = ((currentTab === 'homepage-edit' || currentTab === 'portfolio' || currentTab === 'artlook') && user.role === 'ARTIST') || workspaceOpen;
   /** 화면을 끝까지 채우는 도구 — ArtLook(2026-10-04). 휴대폰은 좌우 여백도 없이 가장자리까지(미리보기를 한 치라도 더) */
   const fill = currentTab === 'artlook' && user.role === 'ARTIST';
 
@@ -260,7 +256,7 @@ export default function MyPage() {
         홈페이지 편집 화면은 **그 일만 하는 화면**이다(2026-10-02) — 프로필 카드(240px)와 가로 탭바를 그 위에 두면
         가입 직후 도착한 작가의 첫 화면이 작품 올리기가 아니라 내 이메일이 된다. 다른 메뉴는 상단 [메뉴]·우측 사이드바로 간다.
       */}
-      {!focused && <ProfileCard />}
+      {!focused && !listTab && <ProfileCard />}
 
       {/*
         메뉴는 **lg(1024px) 이상에서만 우측 세로 사이드바**, 그 아래는 기존 가로 탭바.
@@ -1045,67 +1041,55 @@ function ArtworkScrapsSection() {
   );
 }
 
-/** 참고용 내용을 접어두는 상자 — ArtistOperationPanel 의 블록과 같은 모양으로 맞춘다 */
 // ========== Artist: 내 전시 (지원 → 선정 → 출품 자료 → 전시 → 정산) ==========
 // 분류 규칙은 lib/myExhibitions.ts, 단계·상태 이름과 할 일은 lib/flowLabels.ts
+// 2026-11-20(규칙 88): 카드 → 줄. 전시를 누르면 본문 전체가 그 전시 화면(`components/workspace/ArtistExhibitionWorkspace`)이다.
 function ApplicationsSection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const wide = useMediaQuery('(min-width: 1024px)');
   // null = 아직 자동 선택 전. 데이터가 온 뒤 '내용이 있는 첫 탭'으로 한 번만 정한다
-  // (전체 탭을 없앴으므로 기본값을 고정하면 가진 게 있는데도 빈 화면이 될 수 있다)
   const [statusFilter, setStatusFilter] = useState<MyExhibitionBucket | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  /** 카드의 할 일 줄을 눌렀을 때 펼칠 구역(출품 자료·정산) */
-  const [focus, setFocus] = useState<{ appId: number; target: TaskTarget; seq: number } | null>(null);
-  // 알림에서 온 전시(`?ex=`) — 한 번만 열고 그 뒤엔 사용자가 접었다 폈다 하도록 둔다
-  const deepLinkExId = Number(searchParams.get('ex')) || null;
-  const deepLinkDone = useRef(false);
+  /** 열린 전시 — 주소 `?ex=<공모 id>`(알림·초대 코드·공모 상세가 이 주소로 보낸다) */
+  const exId = Number(searchParams.get('ex')) || null;
+  const navState = (location.state ?? {}) as { fromList?: boolean; view?: string };
 
   const { data: apps = [], isLoading, isError, isFetched: appsFetched } = useQuery<any[]>({
     queryKey: ['my-applications'],
     queryFn: () => api.get('/exhibitions/my-applications').then(r => r.data),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
-  // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다(목록이 온 뒤에)
-  useEffect(() => {
-    if (statusFilter !== null || !appsFetched) return;
-    if (apps.length > 0) setStatusFilter(defaultBucket(apps));
-  }, [apps, statusFilter, appsFetched]);
+  // 사용자가 고른 탭은 refetch 가 되돌리면 안 된다 — 그래서 한 번만 정한다(목록이 온 뒤에, 렌더 중 상태 맞추기)
+  if (statusFilter === null && appsFetched && apps.length > 0) setStatusFilter(defaultBucket(apps));
 
-  /*
-    저장 안 된 출품 자료·정산 입력을 지킨다(2026-10-03 점검 P1) — 카드를 닫거나 다른 카드를 열거나 탭을 바꾸면
-    펼친 카드의 입력 칸이 통째로 사라지는데, 이탈 경고(`useUnsavedChanges`)는 **페이지를 떠날 때만** 묻는다.
-    그래서 화면 안에서 떼어 내는 동작은 먼저 `confirmDiscardUnsaved()` 를 거친다(같은 확인창 문구).
-  */
-  const toggleCard = (appId: number) => {
-    if (expandedId !== null && !confirmDiscardUnsaved()) return;
-    setExpandedId(expandedId === appId ? null : appId);
+  // 알림으로 바로 들어왔으면 돌아갈 목록 탭을 그 전시가 있는 탭으로(렌더 중 상태 맞추기 — 한 번만)
+  const [placedFor, setPlacedFor] = useState<number | null>(null);
+  if (exId && apps.length > 0 && placedFor !== exId) {
+    setPlacedFor(exId);
+    const target = apps.find((a: any) => a.exhibitionId === exId);
+    if (target) setStatusFilter(bucketOf(target));
+  }
+
+  const openExhibition = (exhibitionId: number, view?: string | null) => {
+    rememberListScroll('applications');
+    navigate(`/mypage?tab=applications&ex=${exhibitionId}`, { state: { fromList: true, view: view ?? undefined } });
   };
-  const openCardFor = (appId: number, target: TaskTarget) => {
-    if (expandedId !== null && expandedId !== appId && !confirmDiscardUnsaved()) return;
-    setExpandedId(appId);
-    setFocus({ appId, target, seq: Date.now() });
+  // 목록에서 왔으면 뒤로(앱 뒤로가기와 같다), 바로 들어왔으면 목록으로 갈아 끼운다 — 기록이 쌓이지 않게
+  // ⚠️ 저장 안 된 입력을 버리고 닫을 땐 갈아 끼운다 — 그 화면이 쌓아 둔 가드 항목(useUnsavedChanges)을 뒤로 지나가면 한 번 더 묻는다
+  const closeExhibition = () => {
+    if (navState.fromList && !hasUnsavedChanges()) navigate(-1);
+    else navigate('/mypage?tab=applications', { replace: true });
   };
-
-  /*
-    알림을 눌러 들어오면(`?ex=<id>`) **그 전시를 펼친 채로** 보여준다.
-    목록에서 다시 찾아 누르게 하면 알림으로 보낸 의미가 없다.
-
-    ⚠️ 그 전시가 들어 있는 **탭까지 함께 바꿔야** 한다 — 기본 탭이 다르면 카드가 아예 안 보인다.
-    ⚠️ 딱 한 번만(`deepLinkDone`) — refetch 때마다 걸리면 사용자가 접어도 다시 열린다.
-  */
-  useEffect(() => {
-    if (!deepLinkExId || deepLinkDone.current || apps.length === 0) return;
-    const target = apps.find((a: any) => a.exhibitionId === deepLinkExId);
-    if (!target) return;
-    deepLinkDone.current = true;
-    const buckets = groupMyExhibitions(apps);
-    const bucket = (Object.keys(buckets) as MyExhibitionBucket[]).find(k => buckets[k].some((a: any) => a.id === target.id));
-    if (bucket) setStatusFilter(bucket);
-    setExpandedId(target.id);
-    window.setTimeout(() => document.getElementById(`app-card-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-  }, [apps, deepLinkExId]);
+  useLayoutEffect(() => {
+    if (exId) return;
+    const y = takeListScroll('applications');
+    // 즉시 — html 의 scroll-behavior: smooth 를 그대로 타면 목록 맨 위에서 보던 자리까지 1.5초를 굴러 내려갔다(2026-11-20 LST-07, 공모 92개 실측)
+    if (y != null) window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+  }, [exId]);
 
   // 거절 확인 — '확인'을 눌러야 목록에서 제거 (그전까지는 '심사 중' 탭에 남는다)
   const ackRejectionMutation = useMutation({
@@ -1113,20 +1097,29 @@ function ApplicationsSection() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['my-applications'] }); },
     onError: (e: any) => toast.error(e.response?.data?.error || '처리에 실패했습니다.'),
   });
+  // 보내는 중인 지원은 다시 보내지 않는다 — 줄이 목록에서 빠지기 전(다시 받는 동안) 또 누르면 요청이 또 갔다(e2e 90 ART-03)
+  const acking = useRef(new Set<number>());
+  const ackRejection = (appId: number) => {
+    if (acking.current.has(appId)) return;
+    acking.current.add(appId);
+    ackRejectionMutation.mutate(appId, { onSettled: () => { acking.current.delete(appId); } });
+  };
+
+  if (exId) {
+    const v = navState.view as ArtistView | undefined;
+    return <ArtistExhibitionWorkspace key={exId} exhibitionId={exId} initialView={v ?? null} onClose={closeExhibition} />;
+  }
 
   if (isError) {
     return <p className="py-8 text-center text-accent">내 전시 목록을 불러오는 중 오류가 발생했습니다.</p>;
   }
-
   if (isLoading) return <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />;
 
   // 거절을 '확인'한 지원만 숨김 (확인 전 거절은 목록에 표시 → 확인 버튼 노출)
   const visibleApps = apps.filter((a: any) => !(isRejected(a) && a.rejectionAckedAt));
-
   const buckets = groupMyExhibitions(visibleApps);
   const activeTab: MyExhibitionBucket = statusFilter ?? defaultBucket(visibleApps);
   const filteredApps = buckets[activeTab];
-
   const counts: Record<MyExhibitionBucket, number> = {
     REVIEWING: buckets.REVIEWING.length,
     ONGOING: buckets.ONGOING.length,
@@ -1134,8 +1127,7 @@ function ApplicationsSection() {
   };
   const empty = visibleApps.length === 0;
 
-  // 초대 코드 입력은 드물게 쓰는 입구라 한 줄로 접어 둔다 — 예전엔 목록 **맨 위** 큰 상자라 모든 작가가
-  // "이걸 먼저 해야 하나?" 로 읽었다. 목록이 비어 있으면(코드를 받고 막 가입한 작가의 첫 화면) 펼쳐 둔다.
+  // 초대 코드 입력은 드물게 쓰는 입구라 한 줄로 접어 둔다. 목록이 비어 있으면(코드를 받고 막 가입한 작가의 첫 화면) 펼쳐 둔다.
   const joinCode = (
     <Disclosure variant="link" title="초대 코드가 있나요?" defaultOpen={empty}>
       <div className="max-w-md pb-1">
@@ -1148,14 +1140,10 @@ function ApplicationsSection() {
   if (empty) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
-          <p className="mt-1 text-sm text-gray-500">지원한 공모와 참여하는 전시를 여기서 이어서 진행해요.</p>
-        </div>
-        <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-12 text-center">
+        <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
+        <div className="border-y border-gray-200 py-12 text-center">
           <p className="text-sm text-gray-600">아직 지원하거나 참여한 전시가 없어요.</p>
-          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-gray-400">모집공고에서 지원하면, 선정 결과부터 출품 자료 제출·정산 확인까지 여기서 이어서 할 수 있어요.</p>
-          <button type="button" onClick={() => navigate('/exhibitions')} className="mt-5 inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-900 hover:bg-gray-50">
+          <button type="button" onClick={() => navigate('/exhibitions')} className="mt-5 inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-900 hover:bg-gray-50">
             모집공고 보기 <ArrowRight size={14} aria-hidden />
           </button>
         </div>
@@ -1164,215 +1152,100 @@ function ApplicationsSection() {
     );
   }
 
+  const rowOf = (app: any) => {
+    const ex = app.exhibition ?? {};
+    const accepted = app.status === 'ACCEPTED';
+    const stage = accepted ? stageOf(ex) : null;
+    const snapshot: ArtistSnapshot = {
+      status: app.status,
+      recruitOnly: !!ex.recruitOnly,
+      confirmed: !!ex.confirmed,
+      ended: !!ex.ended,
+      settled: !!ex.settledAt,
+      settlementRequested: !!ex.settlementRequestedAt,
+      submissionComplete: !!app.submissionComplete,
+      submissionDeadline: ex.submissionDeadline,
+      exhibitStartDate: ex.exhibitStartDate,
+      mySettlementStatus: app.mySettlementStatus,
+    };
+    const task = artistNextTask(snapshot);
+    const todo = accepted && task?.tone === 'attention';
+    const rejected = app.status === 'REJECTED';
+    return {
+      todo,
+      node: (
+        <ExhibitionRow
+          key={app.id}
+          id={`app-card-${app.id}`}
+          wide={wide}
+          poster={ex.imageUrl}
+          status={accepted ? (stage?.label ?? '선정') : applicationStatusView(app.status, 'artist').label}
+          sub={artistSubText({
+            stageKey: stage?.key ?? null, applicationStatus: app.status, appliedAt: app.createdAt,
+            submissionComplete: !!app.submissionComplete, mySettlementStatus: app.mySettlementStatus,
+            deadline: ex.deadline, submissionDeadline: ex.submissionDeadline, exhibitStartDate: ex.exhibitStartDate, exhibitDate: ex.exhibitDate,
+            settledAt: ex.settledAt, settlementRequestedAt: ex.settlementRequestedAt,
+          })}
+          title={ex.title}
+          meta={ex.gallery?.name || '아트링크'}
+          strip={flowStrip('artist', { ...ex, applicationStatus: app.status, submissionComplete: !!app.submissionComplete, mySettlementStatus: app.mySettlementStatus })}
+          task={todo ? task : { text: rejected ? '이번 공모에서는 선정되지 않았어요' : artistWaitText(snapshot), tone: 'neutral' }}
+          actionLabel={todo ? task?.action : rejected ? '확인' : !accepted ? '지원서 보기' : undefined}
+          onOpen={() => openExhibition(app.exhibitionId)}
+          onAction={todo
+            ? () => openExhibition(app.exhibitionId, task?.target === 'settlement' || task?.target === 'submissions' ? task.target : null)
+            : rejected ? () => ackRejection(app.id)
+              : !accepted ? () => openExhibition(app.exhibitionId) : undefined}
+        />
+      ),
+    };
+  };
+  const rows = filteredApps.map(rowOf);
+  const todoRows = activeTab === 'ONGOING' ? rows.filter(r => r.todo) : [];
+  const restRows = activeTab === 'ONGOING' ? rows.filter(r => !r.todo) : rows;
+
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
-        <p className="mt-1 text-sm text-gray-500">지원한 공모와 참여하는 전시를 여기서 이어서 진행해요.</p>
-      </div>
+    <div>
+      <h2 className="text-2xl font-semibold text-gray-950">내 전시</h2>
 
       {/* 진행 상태 탭 — 심사 중 / 진행 중 / 종료 */}
-      <PageTabBar<MyExhibitionBucket>
-        sticky={false}
-        idPrefix="my-applications"
-        label="내 전시 분류"
-        active={activeTab}
-        onSelect={(t) => {
-          if (t === activeTab) return;
-          // 펼친 카드가 이 탭에 있으면 탭을 바꾸는 순간 입력이 사라진다
-          if (expandedId !== null && !confirmDiscardUnsaved()) return;
-          setExpandedId(null);
-          setStatusFilter(t);
-        }}
-        tabs={MY_EXHIBITION_TABS.map(t => ({ id: t.key, label: t.label, count: counts[t.key] || undefined }))}
-      />
+      <div className="mt-3">
+        <PageTabBar<MyExhibitionBucket>
+          sticky={false}
+          idPrefix="my-applications"
+          label="내 전시 분류"
+          active={activeTab}
+          onSelect={(t) => setStatusFilter(t)}
+          tabs={MY_EXHIBITION_TABS.map(t => ({ id: t.key, label: t.label, count: counts[t.key] || undefined }))}
+        />
+      </div>
 
       {filteredApps.length === 0 ? (
-        <p className="py-4 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY[activeTab]}</p>
+        <p className="py-8 text-center text-sm text-gray-400">{MY_EXHIBITION_EMPTY[activeTab]}</p>
       ) : (
-        filteredApps.map((app: any) => {
-          const isExpanded = expandedId === app.id;
-          const ex = app.exhibition ?? {};
-          const accepted = app.status === 'ACCEPTED';
-          const stage = accepted ? stageOf(ex) : null;
-          const statusView = !accepted ? applicationStatusView(app.status, 'artist') : null;
-          const rows = activeTab === 'ONGOING' ? nextSchedule(ex, !!app.submissionComplete, getDday) : [];
-          const task = artistNextTask({
-            status: app.status,
-            recruitOnly: !!ex.recruitOnly,
-            confirmed: !!ex.confirmed,
-            ended: !!ex.ended,
-            settled: !!ex.settledAt,
-            settlementRequested: !!ex.settlementRequestedAt,
-            submissionComplete: !!app.submissionComplete,
-            submissionDeadline: ex.submissionDeadline,
-            exhibitStartDate: ex.exhibitStartDate,
-            mySettlementStatus: app.mySettlementStatus,
-          });
-          const taskTarget = task?.target ?? null;
-          const goTask = taskTarget && accepted
-            ? () => openCardFor(app.id, taskTarget)
-            : undefined;
-
-          /* 갤러리 [내 공모] 카드와 **같은 얼개**다 — 칩·제목·버튼, 할 일 줄, 일정, 펼치면 작업 영역. */
-          return (
-            <article key={app.id} id={`app-card-${app.id}`} className="min-w-0 scroll-mt-24 rounded-2xl border border-gray-200 bg-white">
-              {/* min-w-0 필수 — 없으면 제목 min-content 가 컬럼을 밀어 truncate 가 무력해진다 */}
-              <div className="min-w-0 p-5 md:p-6">
-                {/* 버튼은 **어느 폭에서든 카드 우측 상단**. 제목은 min-w-0 + truncate 로 줄어든다. */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {stage && <StatusChip variant={stage.variant}>{stage.label}</StatusChip>}
-                      {statusView && <StatusChip variant={statusView.variant}>{statusView.label}</StatusChip>}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { if (confirmDiscardUnsaved()) navigate(`/exhibitions/${app.exhibitionId}`); }}
-                      className="mt-1.5 flex min-h-[44px] max-w-full items-center text-left text-xl font-semibold text-gray-950 hover:underline"
-                    >
-                      <span className="truncate">{ex.title}</span>
-                    </button>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {ex.gallery?.name || '아트링크'} · 지원일 {new Date(app.createdAt).toLocaleDateString('ko')}
-                    </p>
-                  </div>
-
-                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                    {accepted ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleCard(app.id)}
-                        aria-expanded={isExpanded}
-                        className="inline-flex min-h-[44px] items-center gap-1 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
-                      >
-                        {isExpanded ? <>닫기 <ChevronUp size={14} aria-hidden /></> : <><ClipboardList size={14} aria-hidden /> 전시 관리</>}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => toggleCard(app.id)}
-                        aria-expanded={isExpanded}
-                        className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        <Eye size={14} aria-hidden /> {isExpanded ? '닫기' : '지원서 보기'}
-                      </button>
-                    )}
-                    {/* 미선정: '확인'을 눌러야 목록에서 사라진다 */}
-                    {app.status === 'REJECTED' && (
-                      <button
-                        type="button"
-                        onClick={() => ackRejectionMutation.mutate(app.id)}
-                        disabled={ackRejectionMutation.isPending}
-                        className="min-h-[40px] rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        확인
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* 지금 할 일 — 할 일이 있을 때만(작가 카드엔 일정 줄이 있어 없는 할 일을 또 적으면 잔소리다) */}
-                {task && <TaskLine task={task} onClick={goTask} />}
-
-                {app.status === 'REJECTED' && (
-                  <p className="mt-4 text-sm text-gray-600">이번 공모에서는 선정되지 않았어요. [확인]을 누르면 목록에서 사라져요.</p>
-                )}
-
-                {/*
-                  일정 줄은 진행 중 탭에서 **항상** 그린다 — 남은 일정이 없을 때 줄째로 빼면 카드 높이가 제각각이 된다.
-                  남은 일정이 없으면 대신 전시 기간을 적는다. 마감이 지났어도 줄을 지우지 않는다(늦었어도 내야 하는 일).
-                */}
-                {(activeTab === 'ONGOING' || rows.length > 0) && (
-                  <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-100 pt-3">
-                    {rows.length > 0 ? rows.map((r, i) => (
-                      <span key={i} className={cn('inline-flex items-center gap-1 whitespace-nowrap text-xs', r.tone === 'urgent' ? 'font-medium text-accent' : r.tone === 'done' ? 'text-gray-500' : 'text-gray-600')}>
-                        {r.tone === 'urgent' && <AlertTriangle size={11} className="shrink-0" aria-hidden />}
-                        {r.tone === 'done' && <Check size={11} className="shrink-0" aria-hidden />}
-                        {r.label}
-                        {r.dday && <b className="tabular-nums">{r.dday}</b>}
-                        <span className="tabular-nums text-gray-400">({r.date})</span>
-                      </span>
-                    )) : (
-                      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-gray-500">
-                        <Calendar size={11} className="shrink-0 text-gray-400" aria-hidden />
-                        전시 기간
-                        <span className="tabular-nums text-gray-400">
-                          ({[ex.exhibitStartDate, ex.exhibitDate].filter(Boolean).map((v: string) => new Date(v).toLocaleDateString('ko', { month: 'numeric', day: 'numeric' })).join(' ~ ') || '미정'})
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {isExpanded && (
-                <div className="border-t border-gray-100 px-5 md:px-6">
-                  {/* 할 일이 맨 위 — 지원서(수십 줄)를 먼저 두면 정작 해야 할 게 아래로 밀린다 */}
-                  <div className="divide-y divide-gray-100">
-                    {accepted && (
-                      <ArtistOperationPanel
-                        exhibitionId={app.exhibitionId}
-                        exhibition={ex}
-                        submissionComplete={app.submissionComplete}
-                        mySettlementStatus={app.mySettlementStatus ?? null}
-                        focus={focus && focus.appId === app.id ? { target: focus.target, seq: focus.seq } : null}
-                      />
-                    )}
-                    {accepted ? (
-                      <Disclosure title="내가 낸 지원서">
-                        <ApplicationContent app={app} customFields={ex.customFields} />
-                      </Disclosure>
-                    ) : (
-                      <div className="py-5">
-                        <p className="mb-3 text-sm font-semibold text-gray-950">내가 낸 지원서</p>
-                        <ApplicationContent app={app} customFields={ex.customFields} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </article>
-          );
-        })
+        <>
+          {todoRows.length > 0 && (
+            <>
+              <RowGroupHead label="지금 할 일" count={todoRows.length} first />
+              <ul>{todoRows.map(r => r.node)}</ul>
+            </>
+          )}
+          {restRows.length > 0 && (
+            <>
+              {activeTab === 'ONGOING' && <RowGroupHead label="기다리는 중" count={restRows.length} first={todoRows.length === 0} />}
+              <ul className={cn(activeTab !== 'ONGOING' && 'mt-2')}>{restRows.map(r => r.node)}</ul>
+            </>
+          )}
+        </>
       )}
 
-      <div className="border-t border-gray-100 pt-3">{joinCode}</div>
+      <div className="mt-3">{joinCode}</div>
     </div>
   );
 }
 
 // ========== Gallery: 내 갤러리 ==========
 // 삭제 이중확인 모달 — "삭제"를 입력해야 진행 (갤러리/공모/전시 공용)
-function DeleteConfirmModal({ open, name, description, onConfirm, onCancel, pending }: { open: boolean; name: string; description: string; onConfirm: () => void; onCancel: () => void; pending?: boolean }) {
-  const [text, setText] = useState('');
-  useEffect(() => { if (open) setText(''); }, [open]);
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onCancel}>
-      <div className="bg-white rounded-xl max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-semibold text-gray-900">삭제 확인</h3>
-        <p className="text-sm text-gray-600 mt-2"><b>{name}</b> {description}</p>
-        <p className="text-sm text-gray-700 mt-3">계속하려면 아래에 <b className="text-accent">삭제</b> 를 입력하세요.</p>
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="삭제"
-          autoFocus
-          className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-        <div className="flex gap-2 justify-end mt-4">
-          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-500">취소</button>
-          <button
-            onClick={onConfirm}
-            disabled={text.trim() !== '삭제' || pending}
-            className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-          >삭제</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {}) {
   const navigate = useNavigate();
@@ -1626,8 +1499,10 @@ function MyGalleriesSection({ createOnly = false }: { createOnly?: boolean } = {
 // ========== Gallery: 내 공모 ==========
 function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initialViewMode?: ExhibitionViewMode; createOnly?: boolean } = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const wideList = useMediaQuery('(min-width: 1024px)');
   const [showForm, setShowForm] = useState(false);
   // 전용 등록 화면(/exhibitions/new)에서는 폼만 연 채로 시작한다.
   useEffect(() => { if (createOnly) setShowForm(true); }, [createOnly]);
@@ -1648,27 +1523,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   const [confirmAction, setConfirmAction] = useState<'submit' | 'cancel' | null>(null);
   // 미입력 필드 하이라이트 상태
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
-  /** 카드에서 펼친 곳 — 한 번에 한 카드의 한 탭만(두 탭을 동시에 펴면 카드 하나가 화면 몇 장이 된다) */
-  const [openPanel, setOpenPanelRaw] = useState<{ id: number; tab: 'applicants' | 'operation' } | null>(null);
-  /**
-   * 그 카드에서 한 번 연 탭 — [지원자]↔[운영] 을 오가도 **떼지 않고 숨기기만** 한다(2026-10-03 점검 P1-2).
-   * 예전엔 탭을 바꾸면 패널이 통째로 떼어져, 정산 판매가를 적다가 [지원자]를 한 번 눌렀다 오면 입력이 경고 없이 사라졌다.
-   * 카드를 접거나 다른 카드를 열 때는 떼어 내므로 그때는 저장 안 된 입력이 있는지 먼저 묻는다(`confirmDiscardUnsaved`).
-   */
-  const [visitedTabs, setVisitedTabs] = useState<('applicants' | 'operation')[]>([]);
-  const setOpenPanel = (next: { id: number; tab: 'applicants' | 'operation' } | null): boolean => {
-    const sameCard = !!next && !!openPanel && next.id === openPanel.id;
-    if (!sameCard && openPanel && !confirmDiscardUnsaved()) return false;
-    setOpenPanelRaw(next);
-    setVisitedTabs(prev => (!next ? [] : sameCard ? (prev.includes(next.tab) ? prev : [...prev, next.tab]) : [next.tab]));
-    return true;
-  };
-  /** [운영] 탭에서 열고 스크롤할 구역 — 카드의 할 일 줄을 눌렀을 때 */
-  const [opsFocus, setOpsFocus] = useState<{ target: TaskTarget; seq: number } | null>(null);
-  // 작가 초대 대상 공모 — 관심 작품(하트)을 저장한 작가를 이 공모에 초대한다
-  // 추가 질문 수정 대상 공모 (게시 후 수정) — 지원자 탭 안에서 연다
-  const [editQuestionsEx, setEditQuestionsEx] = useState<{ id: number; title: string } | null>(null);
-  const deepLinkDone = useRef(false);
 
   // 임시저장 훅
   const { pending: draftPending, savedAt: draftSavedAt, resume: resumeDraft, discard: discardDraft, save: saveDraft, clear: clearDraft, autoSave } = useFormDraft<typeof emptyExForm>('draft_exhibition_form');
@@ -1719,9 +1573,12 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     queryFn: () => api.get('/exhibitions/my-exhibitions').then(r => r.data),
   });
 
+  // 목록은 들어올 때마다 새로 — 다른 사람(작가)이 한 일(자료 제출·정산 확인)로 '지금 할 일' 이 바뀐다
   const { data: operationOverview = [], isLoading: operationOverviewLoading } = useQuery<GalleryOperationOverview[]>({
     queryKey: ['my-operation-overview'],
     queryFn: () => api.get('/exhibitions/my-operation-overview').then(r => r.data),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const createMutation = useMutation({
@@ -1739,37 +1596,10 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
 
-  // 공모 삭제
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/exhibitions/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-exhibitions'] });
-      queryClient.invalidateQueries({ queryKey: ['my-operation-overview'] });
-      queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
-      toast.success('공모가 삭제되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
-  });
-
-  // 공모 삭제 이중확인 ("삭제" 입력)
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  // 직접 지울 수 없는 공모 — 관리자에게 삭제 요청(수락한 작가 · 판매·정산 기록이 있으면, 서버 lib/deletion.ts)
-  const [requestTarget, setRequestTarget] = useState<{ id: number; name: string; reason: string } | null>(null);
   const deleteRequestOf = useMyDeleteRequests();
-  const askDelete = async (item: any) => {
-    try {
-      const blocked = await checkDeletable('exhibition', item.id);
-      if (blocked) setRequestTarget({ id: item.id, name: item.title, reason: blocked });
-      else setDeleteTarget(item);
-    } catch (e: any) {
-      toast.error(e.response?.data?.error || '삭제할 수 있는지 확인하지 못했어요.');
-    }
-  };
-
   const overviewItems = operationOverview.length > 0
     ? operationOverview
     : exhibitions.map(makeFallbackOperationOverview);
-  const customFieldsByExId = useMemo(() => new Map(exhibitions.map((ex: any) => [ex.id, ex.customFields ?? null])), [exhibitions]);
 
   // 종료 판정은 서버가 한다(`lib/exhibitionLifecycle.ts`) — 정산 완료 **또는**
   // 전시 종료 20일 경과(단, 정산을 시작했으면 진행 중 유지).
@@ -1784,24 +1614,107 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
   const shownExhibitions = exhibitionViewMode === 'closed' ? closedExhibitions : activeExhibitions;
 
   /*
-    다른 화면에서 한 카드를 가리켜 들어오면(`?ex=<id>&panel=applicants|operation`) 그 카드를 펼쳐 보여 준다.
-    공모 상세의 [지원자 보기]·운영 화면의 [내 공모]·[지원자 보기] 가 이 주소를 쓴다.
-    ⚠️ 딱 한 번만(`deepLinkDone`) — refetch 때마다 걸리면 사용자가 접어도 다시 열린다.
+    공모 한 건 화면(2026-11-20, 규칙 88) — 주소 `?ex=<id>` 가 곧 열림이다. 공모 상세의 [지원자 보기]·운영 주소·알림이 이 주소로 보낸다.
+    옛 `&panel=applicants` 는 지원자 탭으로, `&panel=operation` 은 단계 기본 탭으로 연다. 안쪽 탭은 들어올 때 한 번만 읽는다(`view=`).
   */
-  useEffect(() => {
-    const exId = Number(searchParams.get('ex')) || null;
-    if (!exId || deepLinkDone.current || overviewItems.length === 0) return;
-    const item = overviewItems.find((x) => x.id === exId);
-    if (!item) return;
-    deepLinkDone.current = true;
-    if (isClosedItem(item)) setExhibitionViewMode('closed');
-    if (item.status === 'APPROVED') setOpenPanel({ id: exId, tab: searchParams.get('panel') === 'applicants' ? 'applicants' : 'operation' });
-    window.setTimeout(() => document.getElementById(`ex-card-${exId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-  }, [overviewItems, searchParams]);
+  const workspaceId = Number(searchParams.get('ex')) || null;
+  const navState = (location.state ?? {}) as { fromList?: boolean; view?: string; act?: TaskActionId };
+  const viewParam = searchParams.get('view') ?? navState.view ?? (searchParams.get('panel') === 'applicants' ? 'applicants' : null);
+  const workspaceView = viewParam && (WORKSPACE_VIEWS as string[]).includes(viewParam) ? viewParam as WorkspaceView : null;
+  const openExhibition = (id: number, opts: { view?: WorkspaceView | null; act?: TaskActionId } = {}) => {
+    rememberListScroll('my-exhibitions');
+    navigate(`/mypage?tab=my-exhibitions&ex=${id}`, { state: { fromList: true, view: opts.view ?? undefined, act: opts.act } });
+  };
+  // 목록에서 왔으면 뒤로(앱 뒤로가기와 같다), 바로 들어왔으면 목록으로 갈아 끼운다 — 기록이 쌓이지 않게
+  // ⚠️ 저장 안 된 입력을 버리고 닫을 땐 갈아 끼운다 — 그 화면이 쌓아 둔 가드 항목(useUnsavedChanges)을 뒤로 지나가면 한 번 더 묻는다
+  const closeExhibition = () => {
+    if (navState.fromList && !hasUnsavedChanges()) navigate(-1);
+    else navigate('/mypage?tab=my-exhibitions', { replace: true });
+  };
+  // 알림으로 바로 들어온 종료된 공모 — 돌아갈 목록은 [종료] 탭(렌더 중 상태 맞추기, 한 번만)
+  const [placedFor, setPlacedFor] = useState<number | null>(null);
+  if (workspaceId && overviewItems.length > 0 && placedFor !== workspaceId) {
+    setPlacedFor(workspaceId);
+    const item = overviewItems.find((x) => x.id === workspaceId);
+    if (item) setExhibitionViewMode(isClosedItem(item) ? 'closed' : 'active');
+  }
+  useLayoutEffect(() => {
+    if (workspaceId) return;
+    const y = takeListScroll('my-exhibitions');
+    // 즉시 — html 의 scroll-behavior: smooth 를 그대로 타면 목록 맨 위에서 보던 자리까지 1.5초를 굴러 내려갔다(2026-11-20 LST-07, 공모 92개 실측)
+    if (y != null) window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+  }, [workspaceId]);
 
-  const switchExhibitionView = (mode: ExhibitionViewMode) => {
-    if (!setOpenPanel(null)) return;   // 필터를 바꾸면 열려 있던 탭은 닫는다 — 저장 안 된 입력이 있으면 먼저 묻는다
-    setExhibitionViewMode(mode);
+  /** 목록 한 줄 — 상태 · 보조 · 제목 · 진행 띠 · 지금 할 일 + 주 버튼(누르면 그 공모 화면으로, 확인이 필요한 일은 도착해서 묻는다) */
+  const rowOf = (item: GalleryOperationOverview) => {
+    const apps = item.counts.applications;
+    const submissions = item.counts.submissions;
+    const settlement = item.counts.settlement;
+    const pending = apps.submitted + apps.reviewed;
+    const incomplete = Math.max(0, submissions.required - submissions.complete);
+    const settlementStarted = item.counts.sales.total > 0 || !!item.settlementRequestedAt;
+    const stage = stageOf({ ...item, settlementStarted })!;
+    const approvals = { total: settlement.total, approved: settlement.approved, issue: settlement.issue };
+    const task = galleryNextTask({
+      status: item.status,
+      recruitOnly: !!item.recruitOnly,
+      recruitmentClosed: !!item.recruitmentClosed,
+      confirmed: !!item.confirmed,
+      ended: !!item.ended,
+      settled: !!item.settledAt,
+      settlementRequested: !!item.settlementRequestedAt,
+      deadline: item.deadline,
+      exhibitStartDate: item.exhibitStartDate,
+      exhibitDate: item.exhibitDate,
+      pending,
+      accepted: apps.accepted,
+      capacity: item.capacity ?? null,
+      capacityMask: item.capacityMask ?? null,
+      submissionsIncomplete: incomplete,
+      sales: item.counts.sales.total,
+      approvals,
+    });
+    const strip = flowStrip('gallery', {
+      ...item, settlementStarted,
+      accepted: apps.accepted, pending,
+      capacity: item.capacity ?? null, capacityMask: item.capacityMask ?? null,
+      submissionsComplete: submissions.complete, submissionsRequired: submissions.required,
+      sales: item.counts.sales.total, approvals,
+    });
+    const todo = task.tone === 'attention';
+    const approved = item.status === 'APPROVED';
+    const view = viewForTarget(task.target);
+    // 급한 정도 — 그 단계의 기한(가까운 것부터). 기한이 없으면 뒤로
+    const due = !item.recruitmentClosed ? item.deadline : !item.ended ? (item.submissionDeadline ?? item.exhibitStartDate) : item.settlementRequestedAt ?? item.exhibitDate;
+    const urgency = due ? getDday(due) : Number.MAX_SAFE_INTEGER;
+    const deleteRequest = deleteRequestOf('exhibition', item.id);
+    return {
+      todo,
+      urgency,
+      node: (
+        <ExhibitionRow
+          key={item.id}
+          id={`ex-card-${item.id}`}
+          wide={wideList}
+          poster={item.imageUrl}
+          status={stage.label}
+          sub={<>{gallerySubText({ stageKey: stage.key, deadline: item.deadline, submissionDeadline: item.submissionDeadline, exhibitStartDate: item.exhibitStartDate, exhibitDate: item.exhibitDate, settledAt: item.settledAt, settlementRequestedAt: item.settlementRequestedAt, viewCount: approved ? item.viewCount : null })}<HostBadge exhibition={item} className="ml-2" /></>}
+          title={item.title}
+          meta={`${item.gallery?.name || '아트링크'} · ${exhibitionTypeLabels[item.type] || item.type} · ${regionLabels[item.region] || item.region}`}
+          strip={strip}
+          task={task}
+          actionLabel={todo ? (task.primary?.label ?? task.action ?? (item.status === 'REJECTED' ? '사유 보기' : undefined)) : undefined}
+          mobileActionLabel={task.action ?? (item.status === 'REJECTED' ? '사유 보기' : undefined)}
+          onOpen={() => openExhibition(item.id)}
+          onAction={() => openExhibition(item.id, { view, act: task.act })}
+        >
+          {item.status === 'REJECTED' && item.rejectReason && (
+            <p className="mt-1.5 line-clamp-2 break-keep text-[13px] text-gray-600 [overflow-wrap:anywhere]"><b className="font-semibold text-accent">반려 사유</b> · {item.rejectReason}</p>
+          )}
+          <DeleteRequestLine request={deleteRequest} kind="exhibition" />
+        </ExhibitionRow>
+      ),
+    };
   };
 
   const clearError = (key: string) => setFormErrors(prev => { if (!prev.has(key)) return prev; const n = new Set(prev); n.delete(key); return n; });
@@ -1930,17 +1843,6 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
         </div>
       ))}
 
-      {/* 추가 질문 수정 모달 (게시 후) */}
-      {editQuestionsEx && (
-        <CustomQuestionsEditModal
-          exhibitionId={editQuestionsEx.id}
-          exhibitionTitle={editQuestionsEx.title}
-          initialFields={customFieldsByExId.get(editQuestionsEx.id) as CustomField[] | null | undefined}
-          onClose={() => setEditQuestionsEx(null)}
-        />
-      )}
-
-
       {/* 등록 확인 — 무엇이 올라가는지 + 공모 등록 약관 동의(components/form/SubmitSheet) */}
       {confirmAction === 'submit' && (
         <SubmitSheet
@@ -1969,273 +1871,87 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
         onCancel={() => setConfirmAction(null)}
       />
 
-      {!showForm && (
-        <div className="space-y-5">
-          {/* 머리 — 이 탭이 무엇을 하는 곳인지 한 줄 */}
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0">
-              <h2 className="text-2xl font-semibold text-gray-950">내 공모</h2>
-              <p className="mt-1 text-sm text-gray-500">공고를 올리고, 지원자를 뽑고, 전시와 정산까지 여기서 이어서 진행해요.</p>
-            </div>
-            <button onClick={() => navigate('/exhibitions/new')} className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-accent/40 px-4 text-sm font-medium text-accent transition-colors hover:bg-accent/5">
+      {!showForm && workspaceId && (
+        <ExhibitionWorkspace
+          key={workspaceId}
+          exhibitionId={workspaceId}
+          initialView={workspaceView}
+          initialAct={navState.act ?? null}
+          onClose={closeExhibition}
+        />
+      )}
+
+      {!showForm && !workspaceId && (
+        <div>
+          {/* 머리 — 제목 · [공모 등록](테두리). 설명 한 줄은 없앴다(2026-11-20 — 줄마다 지금 할 일이 적혀 있다) */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-2xl font-semibold text-gray-950">내 공모</h2>
+            <button onClick={() => navigate('/exhibitions/new')} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-900 hover:bg-gray-50">
               <Plus size={14} aria-hidden /> 공모 등록
             </button>
           </div>
 
-          <PageTabBar<ExhibitionViewMode>
-            sticky={false}
-            idPrefix="my-exhibitions"
-            label="공모 목록"
-            active={exhibitionViewMode}
-            onSelect={switchExhibitionView}
-            tabs={[
-              { id: 'active', label: '진행 중', count: activeExhibitions.length },
-              { id: 'closed', label: '종료', count: closedExhibitions.length },
-            ]}
-          />
+          <div className="mt-3">
+            <PageTabBar<ExhibitionViewMode>
+              sticky={false}
+              idPrefix="my-exhibitions"
+              label="공모 목록"
+              active={exhibitionViewMode}
+              onSelect={setExhibitionViewMode}
+              tabs={[
+                { id: 'active', label: '진행 중', count: activeExhibitions.length },
+                { id: 'closed', label: '종료', count: closedExhibitions.length },
+              ]}
+            />
+          </div>
 
           {operationOverviewLoading ? (
-            <div className="grid gap-4">
-              {[0, 1].map(i => <div key={i} className="h-56 animate-pulse rounded-2xl bg-gray-100" />)}
+            <div className="mt-6 grid gap-4">
+              {[0, 1].map(i => <div key={i} className="h-40 animate-pulse bg-gray-100" />)}
             </div>
           ) : shownExhibitions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-14 text-center">
+            <div className="mt-6 border-y border-gray-200 py-12 text-center">
               {exhibitionViewMode === 'closed' ? (
                 <p className="text-sm text-gray-500">아직 정산까지 끝난 공모가 없어요.</p>
               ) : (
                 <>
                   <p className="text-sm text-gray-500">{exhibitionsError ? '공모 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' : closedExhibitions.length > 0 ? '진행 중인 공모가 없어요.' : '아직 올린 공모가 없어요.'}</p>
-                  {!exhibitionsError && closedExhibitions.length === 0 && (
-                    <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-gray-400">공모를 등록하면 관리자 승인 뒤 모집공고에 올라가고, 지원자 선정·출품 자료·전시·정산까지 이 탭에서 이어서 진행해요.</p>
-                  )}
-                  <button onClick={() => navigate('/exhibitions/new')} className="mt-5 inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-accent/40 px-4 text-sm font-medium text-accent hover:bg-accent/5">
+                  <button onClick={() => navigate('/exhibitions/new')} className="mt-5 inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-900 hover:bg-gray-50">
                     <Plus size={14} aria-hidden /> 공모 등록
                   </button>
                 </>
               )}
             </div>
-          ) : (
-            <div className="grid gap-4">
-              {shownExhibitions.map((item) => {
-                const apps = item.counts.applications;
-                const submissions = item.counts.submissions;
-                const settlement = item.counts.settlement;
-                const pending = apps.submitted + apps.reviewed;
-                const incomplete = Math.max(0, submissions.required - submissions.complete);
-                const isApproved = item.status === 'APPROVED';
-                const archived = !!item.settledAt || isClosedItem(item);
-                const stage = stageOf({ ...item, settlementStarted: item.counts.sales.total > 0 || !!item.settlementRequestedAt })!;
-                const deadlineLabel = isApproved && !item.recruitmentClosed ? ddayText('마감', item.deadline) : null;
-                const task = galleryNextTask({
-                  status: item.status,
-                  recruitOnly: !!item.recruitOnly,
-                  recruitmentClosed: !!item.recruitmentClosed,
-                  confirmed: !!item.confirmed,
-                  ended: !!item.ended,
-                  settled: !!item.settledAt,
-                  settlementRequested: !!item.settlementRequestedAt,
-                  deadline: item.deadline,
-                  exhibitStartDate: item.exhibitStartDate,
-                  exhibitDate: item.exhibitDate,
-                  pending,
-                  accepted: apps.accepted,
-                  capacity: item.capacity ?? null,
-                  capacityMask: item.capacityMask ?? null,
-                  submissionsIncomplete: incomplete,
-                  sales: item.counts.sales.total,
-                  approvals: { total: settlement.total, approved: settlement.approved, issue: settlement.issue },
-                });
-                const panel = openPanel?.id === item.id ? openPanel.tab : null;
-                const openTab = (tab: 'applicants' | 'operation') => setOpenPanel({ id: item.id, tab });
-                const goTask = () => {
-                  if (!task.target) return;
-                  if (task.target === 'applicants') { openTab('applicants'); return; }
-                  openTab('operation');
-                  setOpsFocus({ target: task.target, seq: Date.now() });
-                };
-                // 작가 초대는 **모집 중에만** — 서버도 recruitmentClosed·confirmed·ended 를 막는다(눌러서 400 을 받는 버튼 금지)
-                // 정산이 끝난 공모는 기록을 남긴다 — 직접 삭제도 삭제 요청도 없다. 그 밖엔 버튼을 누르면 서버가 직접 삭제 / 요청 중 하나를 고른다
-                const deleteRequest = deleteRequestOf('exhibition', item.id);
-                const deletable = item.hostType !== 'ADMIN' && !item.settledAt && deleteRequest?.status !== 'PENDING';
-                return (
-                  // ⚠️ min-w-0 필수(규칙 27) — 이 카드는 grid 아이템이라, 없으면 안쪽 통계 칸(1fr 두 칸)이 글자 폭만큼 카드를 밀어
-                  //    390px 화면에서 페이지가 가로로 408~472px 까지 밀렸다(2026-09-29 실측).
-                  <article key={item.id} id={`ex-card-${item.id}`} className="min-w-0 scroll-mt-24 rounded-2xl border border-gray-200 bg-white">
-                    <div className="p-5 md:p-6">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StatusChip variant={stage.variant}>{stage.label}</StatusChip>
-                            {deadlineLabel && <span className="text-xs font-medium tabular-nums text-gray-500">{deadlineLabel}</span>}
-                            {/* 공모 상세 조회수 — 내가 올린 공모만(서버가 값을 싣는다). 우리 갤러리·관리자의 조회는 세지 않는다 */}
-                            {isApproved && item.viewCount != null && (
-                              <span className="inline-flex items-center gap-1 text-xs tabular-nums text-gray-500" title="공모 상세 페이지 조회수 · 우리 갤러리에만 보여요">
-                                <Eye size={12} aria-hidden /> 조회 {item.viewCount.toLocaleString('ko')}
-                              </span>
-                            )}
-                            {settlement.issue > 0 && !item.settledAt && <StatusChip variant="attention">정산 이의 {settlement.issue}</StatusChip>}
-                            {/* 아트링크가 주최하고 우리 갤러리는 운영만 맡은 공모 — 카드의 갤러리명이 주관 갤러리라 구분이 필요하다 */}
-                            <HostBadge exhibition={item} />
-                          </div>
-                          {/* 누르는 곳 44px(점검 P3 — 28px 였다). 저장 안 된 정산·출품 자료 입력이 있으면 먼저 묻는다 */}
-                          <button
-                            type="button"
-                            onClick={() => { if (confirmDiscardUnsaved()) navigate(`/exhibitions/${item.id}`); }}
-                            className="mt-1.5 flex min-h-[44px] max-w-full items-center text-left text-xl font-semibold text-gray-950 hover:underline"
-                          >
-                            <span className="truncate">{item.title}</span>
-                          </button>
-                          <p className="mt-1 text-sm text-gray-500">
-                            {item.gallery?.name || '아트링크'} · {exhibitionTypeLabels[item.type] || item.type} · {regionLabels[item.region] || item.region}
-                          </p>
-                        </div>
-                        {/* 삭제는 카드 **우측 상단 모서리**에 따로 둔다 — 다른 버튼 옆에 있으면 잘못 눌러 공모가 지워질 수 있다.
-                            아트링크 주최 공모(위임 운영)·정산 완료 건은 지울 수 없다(서버도 403/400). */}
-                        {deletable && !archived && (
-                          <button
-                            type="button"
-                            onClick={() => askDelete(item)}
-                            className="-mr-2 -mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-gray-300 hover:bg-accent/5 hover:text-accent"
-                            title="공모 삭제"
-                            aria-label="공모 삭제"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* 지금 할 일 — 처음 쓰는 갤러리가 "그래서 뭘 누르지?" 에서 막히던 자리 */}
-                      <TaskLine task={task} onClick={isApproved && task.target ? goTask : undefined} />
-                      <DeleteRequestLine request={deleteRequest} kind="exhibition" />
-
-                      {item.status === 'REJECTED' && item.rejectReason && (
-                        <Notice tone="attention" title="반려 사유" className="mt-3">{item.rejectReason}</Notice>
-                      )}
-
-                      {/* 공모만 진행하면 출품 자료·판매/정산 단계가 없다 — 칸을 그리지 않는다(2026-09-27) */}
-                      <dl className={cn('mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-gray-100 pt-4', !item.recruitOnly && 'md:grid-cols-4')}>
-                        <div className="min-w-0">
-                          <dt className="text-xs text-gray-500">지원자</dt>
-                          <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{apps.total}명</dd>
-                          {/* 정원 = 선정 인원 — 수락이 몇 자리 남았는지 여기서 보인다 */}
-                          <dd className="text-xs tabular-nums text-gray-500">수락 {apps.accepted}{item.capacity ? `/${capacityLimit(item)}` : ''} · 검토 대기 {pending}</dd>
-                        </div>
-                        {!item.recruitOnly && (
-                          <div className="min-w-0">
-                            <dt className="text-xs text-gray-500">출품 자료</dt>
-                            <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{submissions.required > 0 ? `${submissions.complete}/${submissions.required}` : '—'}</dd>
-                            <dd className="text-xs text-gray-500">{submissions.required === 0 ? '수락한 작가가 생기면 모여요' : incomplete > 0 ? `${incomplete}명 미제출` : '모두 제출'}</dd>
-                          </div>
-                        )}
-                        {!item.recruitOnly && (
-                          <div className="min-w-0">
-                            <dt className="text-xs text-gray-500">판매·정산</dt>
-                            <dd className="mt-1 text-lg font-semibold tabular-nums text-gray-950">{item.ended ? `${item.counts.sales.total}건` : '—'}</dd>
-                            <dd className="text-xs tabular-nums text-gray-500">
-                              {!item.ended ? '전시가 끝나면 열려요' : item.settledAt ? '정산 완료' : item.settlementRequestedAt ? `작가 확인 ${settlement.approved}/${settlement.total}` : '정산 전'}
-                            </dd>
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <dt className="text-xs text-gray-500">일정</dt>
-                          <dd className="mt-1 text-sm font-medium text-gray-950">공모 {operationRange(item.deadlineStart, item.deadline)}</dd>
-                          {!item.recruitOnly && <dd className="text-xs text-gray-500">전시 {operationRange(item.exhibitStartDate, item.exhibitDate)}</dd>}
-                        </div>
-                      </dl>
-                    </div>
-
-                    {/* 카드 안 탭 — [지원자] / [운영]. 한 번에 하나만 펼친다(예전 두 버튼은 이유 없이 서로를 닫았다) */}
-                    {isApproved && (
-                      <>
-                        <div className="flex items-center gap-6 border-t border-gray-100 px-5 md:px-6">
-                          {(['applicants', 'operation'] as const).map(tab => {
-                            const on = panel === tab;
-                            return (
-                              <button
-                                key={tab}
-                                type="button"
-                                aria-expanded={on}
-                                aria-controls={`ex-${item.id}-${tab}`}
-                                onClick={() => setOpenPanel(on ? null : { id: item.id, tab })}
-                                className={cn('relative min-h-[48px] min-w-[44px] whitespace-nowrap text-sm', on ? 'font-semibold text-gray-950' : 'text-gray-500 hover:text-gray-900')}
-                              >
-                                {tab === 'applicants'
-                                  ? <>지원자 <span className="ml-0.5 text-xs font-normal tabular-nums text-gray-400">{apps.total}</span></>
-                                  : '운영'}
-                                {on && <span aria-hidden className="absolute inset-x-0 bottom-0 h-[2px] bg-gray-900" />}
-                              </button>
-                            );
-                          })}
-                          {panel && (
-                            <button type="button" onClick={() => setOpenPanel(null)} className="ml-auto inline-flex min-h-[40px] items-center gap-1 text-xs text-gray-500 hover:text-gray-900">
-                              접기 <ChevronUp size={14} aria-hidden />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* 한 번 연 탭은 숨기기만 한다(위 visitedTabs) — 입력 중이던 정산·출품 자료가 탭을 오가도 남게 */}
-                        {openPanel?.id === item.id && visitedTabs.includes('applicants') && (
-                          <div id={`ex-${item.id}-applicants`} hidden={panel !== 'applicants'} className="border-t border-gray-100 p-5 md:p-6">
-                            <ApplicantManager
-                              exhibitionId={item.id}
-                              exhibitionTitle={item.title}
-                              customFields={customFieldsByExId.get(item.id) as CustomField[] | null | undefined}
-                              capacity={item.capacity ?? null}
-                              capacityMask={item.capacityMask ?? null}
-                              recruitOnly={!!item.recruitOnly}
-                              ended={!!item.ended || !!item.settledAt}
-                              // 아트링크 주최 공모의 모집 인원은 아트링크(관리자)가 정한다 — 위임 갤러리는 못 고친다(서버 403)
-                              capacityEditable={item.hostType !== 'ADMIN'}
-                              toolbar={(
-                                <>
-                                  {/* 게시 후 추가 질문 수정 — 정산 완료 전까지 */}
-                                  {!item.settledAt && (
-                                    <button type="button" onClick={() => setEditQuestionsEx({ id: item.id, title: item.title })} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-950">
-                                      <Edit3 size={13} aria-hidden /> 추가 질문 수정
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            />
-                          </div>
-                        )}
-
-                        {/* 운영 — 페이지 이동 없이 카드 안에서(진행 단계 · 공지 · 출품 자료 · 정산). 운영 화면 코드를 그대로 임베드 */}
-                        {openPanel?.id === item.id && visitedTabs.includes('operation') && (
-                          <div id={`ex-${item.id}-operation`} hidden={panel !== 'operation'} className="border-t border-gray-100 p-5 md:p-6">
-                            <OperationBody id={String(item.id)} embedded focus={opsFocus} />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          )}
+          ) : exhibitionViewMode === 'closed' ? (
+            <ul className="mt-2">{shownExhibitions.map(item => rowOf(item).node)}</ul>
+          ) : (() => {
+            const rows = shownExhibitions.map(rowOf);
+            // 지금 할 일 — 급한 순(관련 기한이 가까운 것부터) · 기다리는 중 — 최근 순(서버 순서)
+            const todo = rows.filter(r => r.todo).sort((a, b) => a.urgency - b.urgency);
+            const waiting = rows.filter(r => !r.todo);
+            return (
+              <>
+                {todo.length > 0 && (
+                  <>
+                    <RowGroupHead label="지금 할 일" count={todo.length} first />
+                    <ul>{todo.map(r => r.node)}</ul>
+                  </>
+                )}
+                {waiting.length > 0 && (
+                  <>
+                    <RowGroupHead label="기다리는 중" count={waiting.length} first={todo.length === 0} />
+                    <ul>{waiting.map(r => r.node)}</ul>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
-
-
-      <DeleteConfirmModal
-        open={!!deleteTarget}
-        name={deleteTarget?.title ?? ''}
-        description="공모를 삭제하면 지원 내역도 함께 삭제되며 되돌릴 수 없습니다. 지원한 작가에게 삭제 알림이 가요."
-        pending={deleteMutation.isPending}
-        onConfirm={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <DeleteRequestDialog
-        open={!!requestTarget}
-        kind="exhibition"
-        targetId={requestTarget?.id ?? 0}
-        name={requestTarget?.name ?? ''}
-        blockedReason={requestTarget?.reason ?? ''}
-        onClose={() => setRequestTarget(null)}
-      />
     </div>
   );
 }
+
 
 // ========== Gallery: 내 전시(Show) 관리 ==========
 function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {

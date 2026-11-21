@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toggleCallout, toggleCenter, togglePullQuote } from './extensions';
 import { useFormatState } from './formatState';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 /**
  * 글쓰기 도구 막대 — 넓은 화면은 위(머리 아래), 휴대폰은 **자판 바로 위**(PostEditor 가 보이는 영역에 맞춘다).
@@ -46,6 +47,7 @@ const Sep = () => <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-
 function BlockTypeMenu({ editor, s }: { editor: Editor; s: ReturnType<typeof useFormatState> }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  useEscapeKey(() => setOpen(false), { enabled: open });
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -73,7 +75,7 @@ function BlockTypeMenu({ editor, s }: { editor: Editor; s: ReturnType<typeof use
         {current}<ChevronDown size={14} />
       </button>
       {open && (
-        <div role="menu" className="absolute left-0 top-10 z-20 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
+        <div role="menu" data-back-closes className="absolute left-0 top-10 z-20 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
           {([['p', '본문', 'text-[15px]'], ['h2', '제목', 'text-[17px] font-semibold'], ['h3', '소제목', 'text-[15px] font-semibold']] as const).map(([k, name, cls]) => (
             <button key={k} type="button" role="menuitemradio" aria-checked={current === name}
               onMouseDown={(e) => e.preventDefault()} onClick={() => pick(k)}

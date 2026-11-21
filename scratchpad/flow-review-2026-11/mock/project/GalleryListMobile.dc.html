@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>갤러리 내 공모 목록 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; display: flex; flex-direction: column">
+
+<header style="height: 64px; flex: none; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 26px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none">Art<span style="color: #c4302b">Link</span></a>
+<button type="button" aria-label="메뉴" style="width: 44px; height: 44px; margin-right: -10px; border: 0; background: none; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
+</header>
+
+<nav aria-label="마이페이지" style="flex: none; display: flex; gap: 22px; padding: 0 24px; border-bottom: 1px solid #e5e7eb; font-size: 14.5px; color: #4b5563; white-space: nowrap; overflow: hidden">
+<span style="padding: 14px 0">프로필</span><span style="padding: 14px 0">내 갤러리</span><span style="padding: 14px 0; border-bottom: 2px solid #111827; font-weight: 600; color: #111827">내 공모</span><span style="padding: 14px 0">내 전시</span><span style="padding: 14px 0">관심 작품</span>
+</nav>
+
+<main style="flex: 1; min-height: 0; overflow: hidden; padding: 22px 24px 0">
+
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">내 공모</h1>
+<a href="#" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+공모 등록</a>
+</div>
+
+<div role="tablist" aria-label="공모 목록" style="margin-top: 10px; display: flex; gap: 24px; border-bottom: 1px solid #e5e7eb">
+<button type="button" role="tab" aria-selected="true" style="min-height: 46px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font: inherit; font-size: 15px; font-weight: 600; color: #111827; cursor: pointer">진행 중 <span style="font-weight: 400; color: #6b7280">7</span></button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 46px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 15px; color: #4b5563; cursor: pointer">종료 <span style="color: #6b7280">3</span></button>
+</div>
+
+<h2 style="margin: 26px 0 0; padding-bottom: 9px; border-bottom: 2px solid #111827; font-size: 13.5px; font-weight: 600">지금 할 일 <span style="font-weight: 400; color: #6b7280">5</span></h2>
+<ul style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ todo }}" as="r" hint-placeholder-count="4">
+<li style="padding: 18px 0 0; border-bottom: 1px solid #e5e7eb">
+<a href="ReviewMobile.dc.html" style="display: flex; gap: 14px; text-decoration: none">
+<span style="flex: none; width: 56px; height: 79px; background: #f3f4f6"><img src="{{ r.img }}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block"></span>
+<span style="min-width: 0; flex: 1">
+<span style="display: block; font-size: 12.5px; color: #4b5563"><strong style="font-weight: 700; color: #111827">{{ r.status }}</strong><span style="margin-left: 7px">{{ r.sub }}</span></span>
+<span style="display: block; margin-top: 5px; font-size: 16.5px; font-weight: 600; line-height: 1.38; letter-spacing: -0.02em; word-break: keep-all">{{ r.title }}</span>
+</span>
+</a>
+<ol aria-label="진행 단계" style="margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 5px">
+<sc-for list="{{ r.strip }}" as="c" hint-placeholder-count="5">
+<li style="min-width: 0">
+<sc-if value="{{ c.done }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; border-top: 2px solid #111827; padding-top: 6px; font-size: 11.5px; color: #6b7280">{{ c.label }}</p></sc-if>
+<sc-if value="{{ c.cur }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; border-top: 2px solid #111827; padding-top: 6px; font-size: 11.5px; font-weight: 700; color: #111827">{{ c.label }}</p></sc-if>
+<sc-if value="{{ c.todo }}" hint-placeholder-val="{{ true }}"><p style="margin: 0; border-top: 2px solid #e5e7eb; padding-top: 6px; font-size: 11.5px; color: #6b7280">{{ c.label }}</p></sc-if>
+</li>
+</sc-for>
+</ol>
+<a href="ReviewMobile.dc.html" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 50px; border-top: 1px solid #f3f4f6; text-decoration: none">
+<span style="min-width: 0; font-size: 14px; font-weight: 500; word-break: keep-all"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span>{{ r.task }}</span>
+<span style="flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700">{{ r.btn }}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span>
+</a>
+</li>
+</sc-for>
+</ul>
+
+<h2 style="margin: 30px 0 0; padding-bottom: 9px; border-bottom: 2px solid #111827; font-size: 13.5px; font-weight: 600">기다리는 중 <span style="font-weight: 400; color: #6b7280">2</span></h2>
+<ul style="margin: 0; padding: 0; list-style: none">
+<li style="padding: 18px 0; border-bottom: 1px solid #e5e7eb">
+<a href="#" style="display: flex; gap: 14px; text-decoration: none">
+<span style="flex: none; width: 56px; height: 79px; background: #f3f4f6"><img src="/_blob/6376d2b715bae559102a60a0cebc6484" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block"></span>
+<span style="min-width: 0; flex: 1">
+<span style="display: block; font-size: 12.5px; color: #4b5563"><strong style="font-weight: 700; color: #111827">전시 중</strong><span style="margin-left: 7px">11.30(월)까지</span></span>
+<span style="display: block; margin-top: 5px; font-size: 16.5px; font-weight: 600; line-height: 1.38; letter-spacing: -0.02em">판화 3인전 《찍다》</span>
+</span>
+</a>
+<ol aria-label="진행 단계" style="margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 5px">
+<li style="border-top: 2px solid #111827; padding-top: 6px; font-size: 11.5px; color: #6b7280">모집</li>
+<li style="border-top: 2px solid #111827; padding-top: 6px; font-size: 11.5px; color: #6b7280">전시 준비</li>
+<li style="border-top: 2px solid #111827; padding-top: 6px; font-size: 11.5px; font-weight: 700">전시</li>
+<li style="border-top: 2px solid #e5e7eb; padding-top: 6px; font-size: 11.5px; color: #6b7280">정산</li>
+<li style="border-top: 2px solid #e5e7eb; padding-top: 6px; font-size: 11.5px; color: #6b7280">마무리</li>
+</ol>
+</li>
+</ul>
+
+</main>
+
+<nav aria-label="하단 내비게이션" style="flex: none; height: 56px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: center; border-top: 1px solid #e5e7eb; background: #ffffff; font-size: 10.5px; color: #4b5563; text-align: center">
+<span>홈</span><span>작가</span><span>갤러리</span><span>전시</span><span>모집공고</span><span>커뮤니티</span><span>ArtStory</span>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+const S = (label, st) => ({ label, done: st === 'd', cur: st === 'c', todo: st === 't' });
+const strip = (n) => ['모집', '전시 준비', '전시', '정산', '마무리'].map((l, i) => S(l, i < n ? 'd' : i === n ? 'c' : 't'));
+return {
+todo: [
+{ img: '/_blob/d4d7545877f05c90de9e9515f625f50e', status: '모집 중', sub: '마감 D-9 · 수락 2/4', title: '연말 소품전 《선물》 출품 작가 모집', task: '지원자 3명 검토 대기', btn: '심사하기', strip: strip(0) },
+{ img: '/_blob/3521d61256e9797c4469fe04b02721df', status: '전시 준비', sub: '출품 자료 1/4 · 마감 D-6', title: '신진작가 4인전 《겹》', task: '미제출 작가 3명', btn: '안내 보내기', strip: strip(1) },
+{ img: '/_blob/a75ba5cbd7fe4ada24f50e40a7b864fc', status: '전시 준비', sub: '출품 자료 3/3 · 시작 D-10', title: '드로잉 페어 2026 참여 작가 모집', task: '출품 자료가 모두 모였어요', btn: '전시 확정', strip: strip(1) },
+{ img: '/_blob/f4659b41d4637c96d363811500bbc9e6', status: '정산', sub: '작가 확인 1/3', title: '가을 정기전 《결》', task: '정산 이의 1건', btn: '이의 보기', strip: strip(3) }
+]
+};
+}
+}
+</script>
+</body>
+</html>

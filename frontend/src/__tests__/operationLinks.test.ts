@@ -89,7 +89,8 @@ describe('★ 여러 역할이 들어오는 화면에 역할 전용 탭 주소�
   // 운영자(갤러리·위임 갤러리·관리자)가 함께 쓰는 화면들
   const shared = [
     'pages/OperationPage.tsx',
-    'pages/OperationClassicPage.tsx',
+    'components/workspace/ExhibitionWorkspace.tsx',
+    'components/workspace/WorkspaceSummary.tsx',
     'pages/OperationPrintPage.tsx',
     'pages/ExhibitionDetailPage.tsx',
     'components/shared/ApplicantManager.tsx',
@@ -105,9 +106,13 @@ describe('★ 여러 역할이 들어오는 화면에 역할 전용 탭 주소�
   });
 
   it('운영 화면은 operatorWorkspace 로 갈 곳을 정한다', () => {
+    // 2026-11-20: 운영 주소는 갤러리를 [내 공모]의 그 공모 화면으로 보내고(OperationPage), 관리자에겐 공모 한 건 화면을 그린다 —
+    // 그 화면의 [← 목록]은 역할의 일터로(ExhibitionWorkspace)
     const op = strip(readFileSync(join(SRC, 'pages/OperationPage.tsx'), 'utf-8'));
-    expect(op).toContain('operatorWorkspace(user?.role, access.hostType, id)');
-    expect(op).toMatch(/workspace\??\.applicantsHref/);
+    expect(op).toMatch(/operatorWorkspace\(user\.role, null, id\)/);
     expect(op).toMatch(/workspace\??\.listHref/);
+    const ws = strip(readFileSync(join(SRC, 'components/workspace/ExhibitionWorkspace.tsx'), 'utf-8'));
+    expect(ws).toContain('operatorWorkspace(user?.role, access.hostType, id)');
+    expect(ws).toMatch(/workspace\??\.listHref/);
   });
 });

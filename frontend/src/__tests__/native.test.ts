@@ -192,6 +192,55 @@ describe('앱 안 — 뒤로가기', () => {
     f.remove();
   });
 
+  it('★ 뒤로 키로 닫히는 메뉴(data-back-closes — 공모 화면의 [⋯]·[내려받기]·[관리 ▾])도 먼저 닫는다 · 표시 없는 메뉴는 예전대로(2026-11-21)', () => {
+    // 메뉴를 연 채 뒤로 키를 누르면 메뉴만 닫히지 않고 화면을 떠났다(에뮬레이터 DEV-04)
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('data-back-closes', '');
+    menu.getClientRects = () => ({ length: 1 }) as unknown as DOMRectList;
+    document.body.appendChild(menu);
+    const keys: string[] = [];
+    const onKey = (e: KeyboardEvent) => keys.push(e.key);
+    document.addEventListener('keydown', onKey);   // MenuButton 은 문서에서 Esc 를 듣는다
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    expect(handleBackButton(true, vi.fn())).toBe('dialog');
+    expect(keys).toEqual(['Escape']);
+    expect(back).not.toHaveBeenCalled();
+    // Esc 를 듣는지 모르는 메뉴(글쓰기 도구 등)는 건드리지 않는다 — 막히면 뒤로 키가 아무 일도 안 한다
+    menu.removeAttribute('data-back-closes');
+    expect(handleBackButton(true, vi.fn())).toBe('back');
+    document.removeEventListener('keydown', onKey);
+    menu.remove();
+    expect(readFileSync(join(SRC, 'components/flow/MenuButton.tsx'), 'utf-8')).toMatch(/role="menu"\s+data-back-closes/);
+  });
+
+  // 2026-11-21 — 커뮤니티 글쓰기의 메뉴 셋과 ArtTalk [+] 첨부 메뉴에도 달았다. 이제 role="menu" 는 전부 뒤로 키로 닫힌다:
+  // 새 메뉴를 만들면 Esc 로 닫고 data-back-closes 를 달 것(Esc 를 안 듣는 메뉴에 표시만 달면 뒤로 키가 아무 일도 안 한다)
+  it('★ role="menu" 는 전부 data-back-closes 를 달고 Esc 로 닫힌다(글쓰기·ArtTalk 첨부 포함)', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) { if (name !== '__tests__') walk(p); }
+        else if (p.endsWith('.tsx')) files.push(p);
+      }
+    };
+    walk(SRC);
+    const menus: string[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, 'utf-8');
+      const tags = [...src.matchAll(/<div[^>]*role="menu"[^>]*>/g)].map((m) => m[0]);
+      if (!tags.length) continue;
+      const rel = f.slice(SRC.length + 1);
+      menus.push(rel);
+      for (const t of tags) expect(t, `${rel} 의 메뉴에 data-back-closes 가 없다`).toContain('data-back-closes');
+      expect(src, `${rel} 의 메뉴가 Esc 를 듣지 않는다`).toMatch(/useEscapeKey\(|'Escape'/);
+    }
+    for (const want of ['components/flow/MenuButton.tsx', 'components/post-editor/PostEditor.tsx', 'components/post-editor/Toolbar.tsx', 'components/chat/Composer.tsx']) {
+      expect(menus).toContain(want);
+    }
+  });
+
   it('그려지지 않은 창(display:none 등)은 없는 것으로 친다 · 창이 없으면 이전 화면 · 첫 화면이면 앱을 내린다', () => {
     const hidden = document.createElement('div');
     hidden.setAttribute('aria-modal', 'true');

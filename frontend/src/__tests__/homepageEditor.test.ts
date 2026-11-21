@@ -145,7 +145,7 @@ describe('옛 편집 화면이 되살아나지 않았다', () => {
   });
 
   it('★ 편집 화면에서는 프로필 카드·가로 탭바를 그리지 않는다 — 첫 화면이 작품 올리기여야 한다', () => {
-    expect(myPage).toContain('{!focused && <ProfileCard />}');
+    expect(myPage).toMatch(/\{!focused( && !listTab)? && <ProfileCard \/>\}/);
     expect(myPage).toContain("focused && 'hidden'");
   });
 

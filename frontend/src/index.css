@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/*
+  자판 때문에 하단 탭바를 감춘 동안(`<html data-tabbar-hidden>`, BottomTabBar 가 단다) — 탭바 위에 붙던 고정 줄은
+  `tabbar-hidden:bottom-0` 으로 바닥(= 자판 바로 위)에 내린다. 안 내리면 앱(WebView)에서 자판과 줄 사이 57px 틈으로
+  본문이 비쳐 보였다(2026-11-21 에뮬레이터 · e2e 89 DEV-03). 선택자가 클래스 하나보다 세서 순서와 관계없이 이긴다.
+*/
+@custom-variant tabbar-hidden (html[data-tabbar-hidden] &);
+
 /* 커스텀 CSS 변수 */
 @theme {
   --color-primary: #1A1A1A;

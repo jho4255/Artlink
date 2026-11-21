@@ -34,6 +34,18 @@ export function hasUnsavedChanges(): boolean {
   return active.size > 0;
 }
 
+/**
+ * 다른 페이지로 옮겨도 되는가 — **링크(a)가 아닌 이동**(벨 알림·앱 알림 배너의 navigate())은 위 세 경로가 못 봐서
+ * 부르는 쪽이 먼저 묻는다(2026-11-21 e2e 89 REL-20 — 정산 금액을 쓰다 벨 알림을 누르면 말없이 사라졌다).
+ * 저장 안 된 입력이 없으면 바로 true. 문구는 그 입력의 '이 페이지를 벗어나면…' 그대로.
+ */
+export function confirmLeaveUnsaved(): boolean {
+  const first = active.values().next().value as { message: string } | undefined;
+  if (!first) return true;
+  // eslint-disable-next-line no-alert
+  return window.confirm(first.message);
+}
+
 /** 버려도 되는가 — 저장 안 된 입력이 없으면 바로 true, 있으면 묻는다(문구는 그 입력의 것) */
 export function confirmDiscardUnsaved(): boolean {
   const first = active.values().next().value as { message: string } | undefined;
@@ -96,8 +108,17 @@ export function useUnsavedChanges(isDirty: boolean, message: string = DEFAULT_ME
       document.removeEventListener('click', onClick, true);
       // 저장 등으로 dirty가 풀렸을 때: 우리가 쌓은 가드 항목이 그대로면 걷어낸다
       // (안 걷으면 뒤로가기를 두 번 눌러야 나가진다). 이탈 중이면 이미 소비된 상태.
-      if (!leaving && (window.history.state as Record<string, unknown> | null)?.[GUARD]) {
-        window.history.back();
+      /*
+        ⚠️ 이 판단은 **같은 렌더의 효과가 다 돈 뒤에**(microtask) 한다(2026-11-21). 화면이 통째로 내려가며 다른 곳으로 옮겨질 때 —
+        로그인이 풀려 ProtectedRoute 가 <Navigate to="/login" replace> 를 그리면 — 이 정리가 그 이동보다 **먼저** 돈다.
+        그 자리에서 back() 을 부르면, 곧이어 /login 으로 바뀐 기록을 그 back() 이 되감아 쓰던 화면 주소로 돌아가고,
+        로그아웃된 채 빈 화면에 멈췄다(공모 흐름 점검 REL-12 — 쓰던 정산·출품 자료·지원서가 있을 때만). 이동이 끝난 뒤엔
+        지금 기록이 가드 항목이 아니므로 걷지 않는다.
+      */
+      if (!leaving) {
+        queueMicrotask(() => {
+          if ((window.history.state as Record<string, unknown> | null)?.[GUARD]) window.history.back();
+        });
       }
     };
   }, [isDirty, message]);

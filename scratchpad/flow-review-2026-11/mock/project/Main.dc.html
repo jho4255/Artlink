@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>갤러리 내 공모 목록 PC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="min-height: 1500px; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+
+<header style="height: 72px; padding: 0 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 30px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none">Art<span style="color: #c4302b">Link</span></a>
+<nav aria-label="주 메뉴" style="display: flex; gap: 36px; font-size: 15px; color: #4b5563"><span>홈</span><span>작가</span><span>갤러리</span><span>전시</span><span>모집공고</span><span>커뮤니티</span><span>ArtStory</span></nav>
+<span style="font-size: 13px; color: #4b5563">갤러리 온결 (갤러리)</span>
+</header>
+
+<div style="display: flex; align-items: flex-start">
+<main style="flex: 1; min-width: 0; padding: 40px 48px 80px; max-width: 1056px; box-sizing: border-box">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em">내 공모</h1>
+<a href="#" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+공모 등록</a>
+</div>
+
+<div role="tablist" aria-label="공모 목록" style="margin-top: 20px; display: flex; gap: 28px; border-bottom: 1px solid #e5e7eb">
+<button type="button" role="tab" aria-selected="true" style="min-height: 48px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font: inherit; font-size: 15px; font-weight: 600; color: #111827; cursor: pointer">진행 중 <span style="font-weight: 400; color: #6b7280">7</span></button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 48px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 15px; color: #4b5563; cursor: pointer">종료 <span style="color: #6b7280">3</span></button>
+</div>
+
+<h2 style="margin: 36px 0 0; padding-bottom: 10px; border-bottom: 2px solid #111827; font-size: 14px; font-weight: 600">지금 할 일 <span style="font-weight: 400; color: #6b7280">5</span></h2>
+<ul style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ todo }}" as="r" hint-placeholder-count="5">
+<li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 232px; gap: 24px; padding: 24px 0; border-bottom: 1px solid #e5e7eb">
+<a href="ReviewPC.dc.html" aria-label="공모 열기" style="display: block; width: 84px; height: 119px; background: #f3f4f6"><img src="{{ r.img }}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block"></a>
+<div style="min-width: 0">
+<p style="margin: 0; font-size: 13px; color: #4b5563"><strong style="font-weight: 700; color: #111827">{{ r.status }}</strong><span style="margin-left: 8px">{{ r.sub }}</span></p>
+<h3 style="margin: 6px 0 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.35"><a href="ReviewPC.dc.html" style="text-decoration: none">{{ r.title }}</a></h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280">{{ r.meta }}</p>
+<ol aria-label="진행 단계" style="margin: 16px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 8px">
+<sc-for list="{{ r.strip }}" as="c" hint-placeholder-count="5">
+<li style="min-width: 0">
+<sc-if value="{{ c.done }}" hint-placeholder-val="{{ false }}"><div style="border-top: 2px solid #111827; padding-top: 7px"><p style="margin: 0; font-size: 12px; color: #6b7280">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; color: #6b7280">{{ c.value }}</p></div></sc-if>
+<sc-if value="{{ c.cur }}" hint-placeholder-val="{{ false }}"><div style="border-top: 2px solid #111827; padding-top: 7px"><p style="margin: 0; font-size: 12px; font-weight: 700; color: #111827">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; font-weight: 500; color: #111827">{{ c.value }}</p></div></sc-if>
+<sc-if value="{{ c.todo }}" hint-placeholder-val="{{ true }}"><div style="border-top: 2px solid #e5e7eb; padding-top: 7px"><p style="margin: 0; font-size: 12px; color: #6b7280">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; color: #6b7280">{{ c.value }}</p></div></sc-if>
+</li>
+</sc-for>
+</ol>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 12px; text-align: right">
+<p style="margin: 2px 0 0; font-size: 14px; font-weight: 500; line-height: 1.5; word-break: keep-all"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span>{{ r.task }}</p>
+<a href="ReviewPC.dc.html" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; background: #111827; color: #ffffff; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none">{{ r.btn }}</a>
+</div>
+</li>
+</sc-for>
+</ul>
+
+<h2 style="margin: 44px 0 0; padding-bottom: 10px; border-bottom: 2px solid #111827; font-size: 14px; font-weight: 600">기다리는 중 <span style="font-weight: 400; color: #6b7280">2</span></h2>
+<ul style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ waiting }}" as="r" hint-placeholder-count="2">
+<li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 232px; gap: 24px; padding: 24px 0; border-bottom: 1px solid #e5e7eb">
+<a href="#" aria-label="공모 열기" style="display: block; width: 84px; height: 119px; background: #f3f4f6"><img src="{{ r.img }}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block"></a>
+<div style="min-width: 0">
+<p style="margin: 0; font-size: 13px; color: #4b5563"><strong style="font-weight: 700; color: #111827">{{ r.status }}</strong><span style="margin-left: 8px">{{ r.sub }}</span></p>
+<h3 style="margin: 6px 0 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.35"><a href="#" style="text-decoration: none">{{ r.title }}</a></h3>
+<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280">{{ r.meta }}</p>
+<ol aria-label="진행 단계" style="margin: 16px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 8px">
+<sc-for list="{{ r.strip }}" as="c" hint-placeholder-count="5">
+<li style="min-width: 0">
+<sc-if value="{{ c.done }}" hint-placeholder-val="{{ false }}"><div style="border-top: 2px solid #111827; padding-top: 7px"><p style="margin: 0; font-size: 12px; color: #6b7280">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; color: #6b7280">{{ c.value }}</p></div></sc-if>
+<sc-if value="{{ c.cur }}" hint-placeholder-val="{{ false }}"><div style="border-top: 2px solid #111827; padding-top: 7px"><p style="margin: 0; font-size: 12px; font-weight: 700; color: #111827">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; font-weight: 500; color: #111827">{{ c.value }}</p></div></sc-if>
+<sc-if value="{{ c.todo }}" hint-placeholder-val="{{ true }}"><div style="border-top: 2px solid #e5e7eb; padding-top: 7px"><p style="margin: 0; font-size: 12px; color: #6b7280">{{ c.label }}</p><p style="margin: 2px 0 0; font-size: 12.5px; color: #6b7280">{{ c.value }}</p></div></sc-if>
+</li>
+</sc-for>
+</ol>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; text-align: right">
+<p style="margin: 2px 0 0; font-size: 14px; color: #4b5563; line-height: 1.5; word-break: keep-all">{{ r.task }}</p>
+</div>
+</li>
+</sc-for>
+</ul>
+
+</main>
+
+<aside aria-label="마이페이지 메뉴" style="width: 224px; flex: none; box-sizing: border-box; min-height: 1428px; padding: 44px 16px; border-left: 1px solid #f3f4f6; font-size: 14px; color: #4b5563">
+<p style="margin: 0 12px 14px; font-size: 11px; letter-spacing: 0.12em; color: #6b7280">MY PAGE</p>
+<p style="margin: 0; padding: 11px 12px">프로필</p>
+<p style="margin: 0; padding: 11px 12px">내 갤러리</p>
+<p style="margin: 0; padding: 11px 12px; background: #f3f4f6; border-radius: 8px; font-weight: 600; color: #111827">내 공모</p>
+<p style="margin: 0; padding: 11px 12px">내 전시</p>
+<p style="margin: 0; padding: 11px 12px">관심 작품</p>
+</aside>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+const S = (label, value, st) => ({ label, value, done: st === 'd', cur: st === 'c', todo: st === 't' });
+const B = { red: '/_blob/d4d7545877f05c90de9e9515f625f50e', blue: '/_blob/3521d61256e9797c4469fe04b02721df', city: '/_blob/6376d2b715bae559102a60a0cebc6484', dawn: '/_blob/a75ba5cbd7fe4ada24f50e40a7b864fc', room: '/_blob/7bab21af7bf6fa97e939a7e6f0237fc2', water: '/_blob/f4659b41d4637c96d363811500bbc9e6', winter: '/_blob/0c5431cba6e71bcaad175e81f71b410a' };
+return {
+todo: [
+{ img: B.red, status: '모집 중', sub: '마감 D-9 · 조회 124', title: '연말 소품전 《선물》 출품 작가 모집', meta: '갤러리 온결 · 단체전 · 서울', task: '지원자 3명이 검토를 기다리고 있어요', btn: '지원자 심사', strip: [S('모집', '수락 2/4 · 대기 3', 'c'), S('전시 준비', '출품 자료 0/2', 't'), S('전시', '12.20 – 1.3', 't'), S('정산', '', 't'), S('마무리', '', 't')] },
+{ img: B.blue, status: '전시 준비', sub: '출품 자료 마감 D-6', title: '신진작가 4인전 《겹》', meta: '갤러리 온결 · 단체전 · 서울', task: '출품 자료를 아직 내지 않은 작가 3명', btn: '3명에게 안내 보내기', strip: [S('모집', '수락 4/5', 'd'), S('전시 준비', '출품 자료 1/4', 'c'), S('전시', '12.8 – 12.22', 't'), S('정산', '', 't'), S('마무리', '', 't')] },
+{ img: B.dawn, status: '전시 준비', sub: '전시 시작 D-10', title: '드로잉 페어 2026 참여 작가 모집', meta: '갤러리 온결 · 아트페어 · 서울', task: '출품 자료가 모두 모였어요', btn: '전시 확정', strip: [S('모집', '수락 3/5', 'd'), S('전시 준비', '출품 자료 3/3', 'c'), S('전시', '11.30 – 12.14', 't'), S('정산', '', 't'), S('마무리', '', 't')] },
+{ img: B.water, status: '정산', sub: '확인 요청 11.17', title: '가을 정기전 《결》', meta: '갤러리 온결 · 단체전 · 서울', task: '강윤서 님이 정산에 이의를 남겼어요', btn: '이의 보기', strip: [S('모집', '수락 3/5', 'd'), S('전시 준비', '출품 자료 3/3', 'd'), S('전시', '10.23 – 11.12', 'd'), S('정산', '확인 1/3 · 이의 1', 'c'), S('마무리', '', 't')] },
+{ img: B.room, status: '정산', sub: '확인 요청 11.10', title: '여름 소장전 《한낮》', meta: '갤러리 온결 · 단체전 · 서울', task: '작가 2명이 모두 확인했어요', btn: '정산 완료', strip: [S('모집', '수락 2/5', 'd'), S('전시 준비', '출품 자료 2/2', 'd'), S('전시', '10.13 – 11.5', 'd'), S('정산', '확인 2/2', 'c'), S('마무리', '', 't')] }
+],
+waiting: [
+{ img: B.city, status: '전시 중', sub: '11.30(월)까지', title: '판화 3인전 《찍다》', meta: '갤러리 온결 · 단체전 · 서울', task: '전시가 끝나면 정산이 열려요', strip: [S('모집', '수락 2/5', 'd'), S('전시 준비', '출품 자료 2/2', 'd'), S('전시', '11.17 – 11.30', 'c'), S('정산', '', 't'), S('마무리', '', 't')] },
+{ img: B.winter, status: '승인 대기', sub: '11.20 등록 요청', title: '봄 기획전 《움》 작가 공모', meta: '갤러리 온결 · 단체전 · 서울', task: '관리자 승인을 기다리고 있어요', strip: [S('모집', '11.21 – 12.11', 't'), S('전시 준비', '', 't'), S('전시', '12.30 – 1.14', 't'), S('정산', '', 't'), S('마무리', '', 't')] }
+]
+};
+}
+}
+</script>
+</body>
+</html>

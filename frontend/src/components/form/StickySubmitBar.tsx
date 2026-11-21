@@ -23,7 +23,7 @@ export default function StickySubmitBar({ missing, onJump, savedAt, onSaveDraft,
 }) {
   const first = missing[0];
   return (
-    <div data-submit-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 mt-10 border-t border-gray-200 bg-white/95 backdrop-blur lg:bottom-0">
+    <div data-submit-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 mt-10 border-t border-gray-200 bg-white/95 backdrop-blur lg:bottom-0">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
         <div className="order-1 flex min-w-0 flex-1 items-center justify-between gap-3 text-[13px] text-gray-500 sm:justify-start sm:text-sm">
           <p className="min-w-0">

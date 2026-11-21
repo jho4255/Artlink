@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { NAV_LINKS, isNavActive } from '@/lib/navLinks';
@@ -16,10 +17,17 @@ import { useSoftKeyboardOpen } from '@/hooks/useSoftKeyboard';
  *   화면 부속(navbar/tabbar)을 한 단계 아래에 둔다 — 모달은 z-50, 부속은 그 아래.
  * · ⚠️ **자판이 떠 있는 동안은 감춘다**(2026-11-14 앱 점검). 안드로이드 앱(WebView)은 자판이 뜨면 화면이 줄어
  *   이 바가 자판 바로 위로 따라 올라와, 댓글·답글을 쓰는 동안 글자 칸 자리를 먹었다(`hooks/useSoftKeyboard.ts`).
+ *   감춘 동안 `<html data-tabbar-hidden>` 을 단다 — 이 바 위에 붙는 고정 줄은 `tabbar-hidden:bottom-0` 으로 내려온다.
  */
 export default function BottomTabBar() {
   const { pathname } = useLocation();
   const typing = useSoftKeyboardOpen();
+  // 감춘 동안은 그 위에 붙던 고정 줄이 바닥으로 내려오게 알린다(`tabbar-hidden:` 변형, index.css — 2026-11-21)
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute('data-tabbar-hidden', typing);
+    return () => root.removeAttribute('data-tabbar-hidden');
+  }, [typing]);
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 lg:hidden border-t border-gray-100 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"

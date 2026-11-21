@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, exhibitionDates, openArtistExhibition, openSection, sectionToggle } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, exhibitionDates, openArtistExhibition, artistTab, openArtistTab } from '../lib/helpers';
 
 /**
  * 공모 운영 페이지: 접근권한 / 공지→수락작가 알림 / 작가 제출정보 저장 + 작가간 비공개.
@@ -70,13 +70,13 @@ test('작가 제출정보 저장 + 작가간 비공개', async () => {
   await api.dispose();
 });
 
-test('UI: 수락 작가는 [내 전시] 카드 안에서 운영 공지·출품 자료를 본다', async ({ browser }) => {
+test('UI: 수락 작가는 [내 전시]의 전시 화면에서 공지·출품 자료를 본다', async ({ browser }) => {
   /* 2026-09-19 부터 작가는 운영 페이지로 가지 않는다(옛 주소는 마이페이지로 돌려보낸다).
-     알림이 쓰는 딥링크(`?tab=applications&ex=`)로 들어오면 그 전시 카드가 펼쳐져 있다. */
+     알림이 쓰는 딥링크(`?tab=applications&ex=`)로 들어오면 그 전시 화면이 열린다(2026-11-20 — 카드 → 전시 화면, 구역 → 탭). */
   const { page, ctx } = await openAs(browser, 'artist');
   const card = await openArtistExhibition(page, exId);
-  await expect(sectionToggle(card, '출품 자료')).toBeVisible({ timeout: 8000 });
-  await openSection(card, '운영 공지');
+  await expect(artistTab(page, '출품 자료')).toBeVisible({ timeout: 8000 });
+  await openArtistTab(page, '공지');
   await expect(card.getByText('E2E 공지', { exact: false }).first()).toBeVisible({ timeout: 8000 });
   await ctx.close();
 });

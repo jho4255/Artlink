@@ -6,18 +6,19 @@
  * [포트폴리오 불러오기]는 작은 외곽선 버튼이라 잘 안 보였고, 모달엔 어떤 공모인지도 적혀 있지 않았다.
  *
  * 지금은:
- *  - 전용 페이지 — 맨 위에 공모명·갤러리·마감을 적고, 번호 붙은 구역(약력 · 경력 · 작품 사진 · 포트폴리오 파일 · 추가 질문 · 약관)
+ *  - 전용 페이지 — 맨 위에 공모명·갤러리·마감을 적고, 번호 붙은 구역(약력 · 경력 · 작품 사진 · 포트폴리오 파일 · 추가 질문)
  *  - **열리면 홈페이지(포트폴리오) 내용으로 채운다** — 대부분의 작가는 고칠 것만 고치고 낸다
  *  - '없음' 체크 없음 — 비워 두면 없는 것이다(서버는 원래 빈 경력·파일을 받는다)
- *  - 필수는 약력 · 작품 사진 1장 · 필수 추가 질문 · 약관뿐. [지원하기]를 누르면 비어 있는 칸을 빨갛게 표시하고
+ *  - 필수는 약력 · 작품 사진 1장 · 필수 추가 질문뿐. [지원하기]를 누르면 비어 있는 칸을 빨갛게 표시하고
  *    그리로 데려간다(예전엔 약관 동의 전까지 버튼이 이유 없이 회색이었다).
+ *  - 약관은 **[지원하기] 확인 창 안**에서 받는다(2026-11-20, D5 — 등록 화면 셋과 같은 `SubmitSheet`). 창은 낸 것을 한 번 더 보여 준다.
  *    ⚠️ 하단 줄에 '남은 것 · …'/'다 채웠어요' 를 적지 않는다(2026-10-03 사용자 요청 — 버튼 하나만)
  *
  * ⚠️ 약관 버전은 서버와 같아야 한다 — `backend/src/lib/terms.ts`, 검사는 `terms-consistency.test.ts`.
  * ⚠️ 이미 지원했거나 마감됐거나 작가가 아니면 상세로 되돌린다(서버도 400 으로 막는다) — 다 쓰고 나서 400 을 받게 하지 않는다.
  * (초대받은 작가의 '간편 지원' 창은 2026-11-19 에 1:1 공모 초대와 함께 없앴다.)
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, RotateCw } from 'lucide-react';
@@ -28,10 +29,12 @@ import { getDday, cn } from '@/lib/utils';
 import { isCareerEmpty, normalizeCareer } from '@/lib/artwork';
 import { ddayText } from '@/lib/flowLabels';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import { dropAuthStash, peekAuthStash, stashKeys, useStashOnAuthLoss } from '@/lib/authStash';
 import CareerEditor, { PORTFOLIO_CATEGORIES } from '@/components/shared/CareerEditor';
 import PortfolioFileInput from '@/components/shared/PortfolioFileInput';
 import { MultiImageUpload } from '@/components/shared/ImageUpload';
-import Notice from '@/components/flow/Notice';
+import SubmitSheet from '@/components/form/SubmitSheet';
+import Thumb from '@/components/shared/Thumb';
 import { FormSection } from '@/components/flow/FormParts';
 import type { Career, CustomAnswer, CustomField, Exhibition } from '@/types';
 import { EMPTY_CAREER } from '@/types';
@@ -62,6 +65,9 @@ function buildCustomAnswers(fields: CustomField[] | null | undefined, values: An
     .filter((a) => (Array.isArray(a.value) ? a.value.length > 0 : a.value));
 }
 
+/** 로그인이 풀릴 때 남겨 두는 지원서(lib/authStash) */
+type ApplyStash = { biography: string; career: Career; images: string[]; file: string | null; answers: AnswerDraft };
+
 export default function ApplyPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -77,8 +83,8 @@ export default function ApplyPage() {
     retry: (count, err: any) => (err?.response?.status ?? 500) >= 500 && count < 2,
   });
 
-  const [terms, setTerms] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  /** [지원하기] 확인 창 — 낸 것 요약 + 약관 동의(2026-11-20, D5 — 예전엔 폼 맨 끝 6번 구역이 약관이었다) */
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [biography, setBiography] = useState('');
   const [career, setCareer] = useState<Career>(EMPTY_CAREER);
   const [images, setImages] = useState<string[]>([]);
@@ -90,14 +96,6 @@ export default function ApplyPage() {
   const [touched, setTouched] = useState(false);
   /** [지원하기]를 한 번 눌러 본 뒤로 빈 칸을 빨갛게(칸을 채우는 대로 사라진다) */
   const [validated, setValidated] = useState(false);
-
-  // 지원 약관 텍스트
-  useEffect(() => {
-    fetch('/terms/artist_apply_real.txt')
-      .then(r => { if (!r.ok || r.headers.get('content-type')?.includes('text/html')) throw new Error('not text'); return r.text(); })
-      .then(t => { if (!t.trimStart().startsWith('<!') && !t.trimStart().startsWith('<html')) setTerms(t); })
-      .catch(() => setTerms('이 공모에 지원하시겠습니까? 지원서가 갤러리에 전송됩니다.'));
-  }, []);
 
   // 홈페이지(포트폴리오) — 마이페이지와 같은 쿼리 키라 방금 고친 내용이 그대로 온다. 없으면(404) 빈 지원서로 시작한다
   const { data: portfolio, isError: portfolioMissing, refetch: refetchPortfolio } = useQuery<any>({
@@ -117,10 +115,33 @@ export default function ApplyPage() {
     setFile(data?.portfolioFileUrl || null);
     return !!(data?.biography?.trim() || imgs.length || !isCareerEmpty(c) || data?.portfolioFileUrl);
   };
+  /** 로그인이 풀리기 전에 쓰던 지원서가 이 기기에 남아 있으면 되살렸는가 — 그러면 아래 effect 가 지우고 알린다(lib/authStash) */
+  const [restored, setRestored] = useState(false);
   // 처음 한 번만 — 렌더 중 상태 맞추기(effect 안 setState 대신). 그 뒤로는 작가가 고친 것을 덮지 않는다
   if (prefill === 'loading' && (portfolio || portfolioMissing)) {
-    setPrefill(portfolio && fillFrom(portfolio) ? 'filled' : 'empty');
+    /*
+      로그인이 풀리기 전에 쓰던 지원서가 이 기기에 남아 있으면 홈페이지 내용 대신 그걸로 채운다(2026-11-21 O6).
+      렌더 중이라 들여다보기만 하고(개발 모드는 렌더를 두 번 한다) 지우는 건 아래 effect 에서.
+    */
+    const stash = id ? peekAuthStash<ApplyStash>(user?.id, stashKeys.apply(id)) : null;
+    if (stash) {
+      setBiography(stash.biography);
+      setCareer(normalizeCareer(stash.career));
+      setImages(stash.images.slice(0, MAX_IMAGES));
+      setFile(stash.file);
+      setAnswers(stash.answers ?? {});
+      setTouched(true);
+      setRestored(true);
+      setPrefill('filled');
+    } else {
+      setPrefill(portfolio && fillFrom(portfolio) ? 'filled' : 'empty');
+    }
   }
+  useEffect(() => {
+    if (!restored || !id) return;
+    dropAuthStash(user?.id, stashKeys.apply(id));
+    toast('로그인이 풀리기 전에 쓰던 지원서를 되살렸어요.', { id: `auth-stash-apply-${id}`, duration: 6000 });
+  }, [restored, id, user?.id]);
   /** [다시 불러오기] */
   const reloadPortfolio = async () => {
     const r = await refetchPortfolio();
@@ -146,6 +167,8 @@ export default function ApplyPage() {
 
   // 쓰다가 떠나면 경고 — 지원서는 길다
   useUnsavedChanges(touched);
+  // 로그인이 풀리면 쓰던 지원서를 이 기기에 남긴다 — 다시 로그인해 이 화면이 뜨면 위에서 되살린다(lib/authStash)
+  useStashOnAuthLoss(id ? stashKeys.apply(id) : null, (): ApplyStash | null => (touched ? { biography, career, images, file, answers } : null));
 
   const applyMutation = useMutation({
     mutationFn: (payload: { biography: string; career: Career; artworkImages: string[]; portfolioFileUrl: string | null; customAnswers?: CustomAnswer[]; termsAgreed: boolean; termsVersion: string }) =>
@@ -190,7 +213,6 @@ export default function ApplyPage() {
     ...(!biography.trim() ? [{ key: 'bio', label: '작가 약력' }] : []),
     ...(images.length === 0 ? [{ key: 'images', label: '작품 사진' }] : []),
     ...missingRequired.map((f) => ({ key: `q-${f.id}`, label: `추가 질문 “${f.label}”` })),
-    ...(!agreed ? [{ key: 'terms', label: '약관 동의' }] : []),
   ];
   const bad = (key: string) => validated && missing.some((m) => m.key === key);
   const edit = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setTouched(true); };
@@ -203,7 +225,10 @@ export default function ApplyPage() {
       document.getElementById(`apply-${first.startsWith('q-') ? 'questions' : first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-    const clean = (list: Career['solo']) => list.filter((e) => e.year.trim() || e.content.trim());
+    setConfirmOpen(true);
+  };
+  const clean = (list: Career['solo']) => list.filter((e) => e.year.trim() || e.content.trim());
+  const send = () => {
     applyMutation.mutate({
       biography: biography.trim(),
       // 비어 있는 경력은 '없음' — 예전처럼 따로 체크하게 하지 않는다
@@ -241,24 +266,12 @@ export default function ApplyPage() {
         </p>
       </header>
 
-      {/* 홈페이지로 채웠는지 — 채웠으면 무엇을 해야 하는지(고쳐서 낸다)만 말한다 */}
-      <div className="mt-6">
-        {prefill === 'loading' ? (
-          <div className="h-12 animate-pulse rounded-xl bg-gray-50" />
-        ) : prefill === 'filled' ? (
-          <Notice action={(
-            <button type="button" onClick={reloadPortfolio} className="inline-flex min-h-[40px] items-center gap-1 text-sm text-gray-600 underline-offset-4 hover:text-gray-900 hover:underline">
-              <RotateCw size={13} aria-hidden /> 다시 불러오기
-            </button>
-          )}>
-            홈페이지(포트폴리오)에 적은 약력·경력·작품으로 채웠어요. 이 공모에 맞게 고쳐서 지원하세요.
-          </Notice>
-        ) : (
-          <Notice>
-            홈페이지에 아직 적은 내용이 없어요 — 여기서 바로 써도 돼요. 홈페이지를 채워 두면 다음 지원부터는 자동으로 채워져요.
-          </Notice>
-        )}
-      </div>
+      {/* 홈페이지로 채웠으면 다시 불러오는 글자 링크 하나 — 안내 상자는 없앴다(2026-11-20, 칸이 이미 채워져 보인다) */}
+      {prefill === 'filled' && (
+        <button type="button" onClick={reloadPortfolio} className="mt-3 inline-flex min-h-[40px] items-center gap-1 text-[13px] text-gray-600 underline-offset-4 hover:text-gray-900 hover:underline">
+          <RotateCw size={13} aria-hidden /> 홈페이지 내용으로 다시 채우기
+        </button>
+      )}
 
       <div className="mt-8 space-y-8">
         <FormSection n={1} id="apply-bio" title="작가 약력 *">
@@ -377,20 +390,11 @@ export default function ApplyPage() {
           </FormSection>
         )}
 
-        <FormSection n={fields.length > 0 ? 6 : 5} id="apply-terms" title="약관 *">
-          <div className={cn('overflow-hidden rounded-xl border', bad('terms') ? 'border-accent' : 'border-gray-200')}>
-            <div className="max-h-44 overflow-y-auto whitespace-pre-wrap bg-white p-3 text-xs leading-relaxed text-gray-600">{terms || '약관 로딩 중...'}</div>
-            <label className="flex min-h-[48px] cursor-pointer items-center gap-2 border-t border-gray-200 bg-gray-50 px-3 text-sm">
-              <input type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); setTouched(true); }} className="h-4 w-4 rounded" />
-              위 약관에 동의합니다
-            </label>
-          </div>
-        </FormSection>
       </div>
 
       {/* 제출 줄 — 화면 아래에 붙어 따라온다. 휴대폰에선 하단 탭바 위에, 버튼이 줄을 채운다(공모 상세의 지원 줄과 같은 모양).
           빈 칸 안내는 [지원하기]를 누를 때 한다(토스트 + 빨간 칸 + 그 칸으로 이동) — 줄에 '남은 것' 을 적지 않는다(2026-10-03 사용자 요청) */}
-      <div className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 -mx-6 mt-10 border-t border-gray-100 bg-white/95 px-6 py-3 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0">
+      <div className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-6 mt-10 border-t border-gray-100 bg-white/95 px-6 py-3 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0">
         <div className="flex items-center justify-end">
           <button
             type="button"
@@ -402,6 +406,43 @@ export default function ApplyPage() {
           </button>
         </div>
       </div>
+
+      {confirmOpen && (
+        <SubmitSheet
+          title="지원서를 보낼까요?"
+          subtitle={`${exhibition.title} · ${hostName}`}
+          keyWidth="w-24"
+          rows={[
+            ['작가 약력', '입력함'],
+            ['경력', careerSummary(career) || '없음'],
+            ['작품 사진', (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {images.slice(0, 4).map((u) => <Thumb key={u} src={u} alt="" className="h-9 w-9 bg-white object-contain" />)}
+                <span className="ml-1">{images.length}장</span>
+              </span>
+            )],
+            ['포트폴리오 파일', file ? (decodeURIComponent(file.split('/').pop() ?? '') || '있음') : '없음'],
+            ...(fields.length > 0 ? [['추가 질문', `${fields.length - missingRequired.length}개 답함`] as [string, ReactNode]] : []),
+          ]}
+          terms={{ url: '/terms/artist_apply_real.txt', label: '작가 지원 약관' }}
+          nagText="약관에 동의해야 지원할 수 있어요."
+          cancelLabel="취소"
+          confirmLabel="지원하기"
+          pending={applyMutation.isPending}
+          onConfirm={() => { setConfirmOpen(false); send(); }}
+          onClose={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
   );
+}
+
+/** 확인 창의 경력 한 줄 — '개인전 1 · 단체전 2'(비어 있는 항목은 빼고) */
+function careerSummary(c: Career): string {
+  const parts: [string, unknown[] | undefined][] = [['학력', c.education], ['개인전', c.solo], ['단체전', c.group], ['아트페어', c.artFair], ['수상', c.award]];
+  return parts
+    .map(([k, list]) => [k, (list ?? []).filter((e) => { const r = e as { year?: unknown; content?: unknown } | null; return String(r?.year ?? '').trim() || String(r?.content ?? '').trim(); }).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${k} ${n}`)
+    .join(' · ');
 }

@@ -28,8 +28,10 @@ describe('공모 조회수 — 올린 갤러리에게만', () => {
     expect(s).toMatch(/if \(!isAdmin && !owner\) return null/);
   });
 
-  it('[내 공모] 카드는 값이 있을 때만 조회수를 그린다(위임받은 아트링크 공모는 null)', () => {
-    expect(src('pages/MyPage.tsx')).toMatch(/isApproved && item\.viewCount != null &&/);
+  it('[내 공모] 줄은 값이 있을 때만 조회수를 그린다(위임받은 아트링크 공모는 null)', () => {
+    // 2026-11-20: 목록 줄의 보조 글(gallerySubText)이 그린다 — 승인된 공모 + 값이 있을 때만
+    expect(src('pages/MyPage.tsx')).toMatch(/viewCount: approved \? item\.viewCount : null/);
+    expect(src('lib/flowLabels.ts')).toMatch(/if \(s\.viewCount != null\) parts\.push/);
   });
 
   it('서버 — 공개 응답에서 조회수를 빼는 목록에 viewCount 가 있다', () => {

@@ -1,12 +1,11 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, applyToExhibition, settle, createExhibition } from '../lib/helpers';
+import { openAs, tokenFor, applyToExhibition, createExhibition, exhibitionCard, artistTab, openArtistTab } from '../lib/helpers';
 
 /**
  * 작가 [내 전시] — 2026-08-27~28 개편분.
  *
- *  · 수락된 전시는 카드 안에서 **운영 공지·제출 자료·정산 확인**까지 끝낸다(운영페이지 왕복 없음).
- *  · 카드 우측 상단은 [전시 관리] 하나 — [공모 상세] 버튼은 없앴다.
- *  · 일정 줄은 **항상** 그린다 (없다고 빼면 카드 높이가 제각각이 된다).
+ *  · 2026-11-20(규칙 88): 카드 → **줄 목록 + 전시 화면**. 줄을 누르면 마이페이지 안에서 그 전시 화면(탭: 출품 자료 · 정산 · 공지 · 내 지원서)이 열린다.
+ *    줄에는 진행 띠와 지금 할 일(+ 그 탭으로 데려가는 버튼). 운영 주소로 오면 그 전시 화면으로 되돌려 보낸다.
  *  · 2026-09-29: 탭이 밑줄 탭(`role="tab"`)이 되고 이름이 갤러리 [내 공모]와 같아졌다 — 심사 중 · 진행 중 · 종료.
  *  · 2026-11-19: 1:1 공모 초대를 통째로 없앴다 → '받은 초대' 탭도 없다. 이미 선정된 작가는 초대 **코드**로 들어온다(e2e 55).
  */
@@ -62,7 +61,7 @@ test.describe('탭 구성', () => {
   });
 });
 
-test.describe('수락된 전시 카드 — 운영페이지 안 들어가고 처리한다', () => {
+test.describe('수락된 전시 — 목록 줄 → 전시 화면에서 처리한다(2026-11-20)', () => {
   let title: string;
   let cardExId: number;
 
@@ -83,75 +82,51 @@ test.describe('수락된 전시 카드 — 운영페이지 안 들어가고 처�
     await api.dispose();
   });
 
-  test('★ 카드 우측 상단은 [전시 관리] 하나 — [공모 상세] 버튼은 없다', async ({ browser }) => {
+  test('★ 줄에는 진행 띠와 지금 할 일 — 누르면 마이페이지 안에서 전시 화면이 열린다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
     await tab(page, '진행 중').click();
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
-    const card = page.locator('article').filter({ hasText: title }).first();
-    await expect(card.getByRole('button', { name: '전시 관리' })).toBeVisible();
-    await expect(card.getByRole('button', { name: '공모 상세' })).toHaveCount(0);
+    const row = exhibitionCard(page, title);
+    await expect(row.locator('ol[aria-label="진행 단계"] > li')).toHaveCount(5);
+    await expect(row).toContainText('출품 자료를 제출해 주세요');
+    // 할 일 버튼 → 그 전시 화면의 [출품 자료] 탭
+    await row.getByRole('button', { name: '제출하기' }).click();
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=applications&ex=${cardExId}`));
+    await expect(artistTab(page, '출품 자료')).toHaveAttribute('aria-selected', 'true', { timeout: 15000 });
+    // 정산은 전시가 끝나야 열린다(잠긴 탭)
+    await expect(artistTab(page, '정산')).toHaveAttribute('aria-disabled', 'true');
     await ctx.close();
   });
 
-  test('★ 펼치면 운영 공지·제출 자료·정산이 카드 안에 들어온다', async ({ browser }) => {
+  test('★ 공지·내 지원서는 탭 — 공지를 누르면 갤러리가 올린 글이 보이고, [← 내 전시]로 보던 탭에 돌아온다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.setViewportSize(DESKTOP);
     await gotoMyExhibitions(page);
     await tab(page, '진행 중').click();
-    await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
+    await exhibitionCard(page, title).getByRole('button', { name: title }).first().click();
+    const ws = page.locator(`[data-artist-workspace="${cardExId}"]`);
+    await expect(ws).toBeVisible({ timeout: 15000 });
 
-    const card = page.locator('article').filter({ hasText: title }).first();
-    await card.getByRole('button', { name: '전시 관리' }).click();
-    await settle(page, 1200);
+    await openArtistTab(page, '공지');
+    await expect(ws).toContainText('설치 안내', { timeout: 10000 });
+    await openArtistTab(page, '내 지원서');
+    await expect(ws).toContainText('작가 약력');
 
-    const text = await card.innerText();
-    /* 공지·제출 자료는 항상. **정산은 전시가 끝나야 블록 자체가 생긴다**
-       (`ArtistOperationPanel`: 끝나기 전엔 그리지 않는다) — 진행중 카드에서 찾으면 안 된다. */
-    for (const need of ['공지', '제출']) {
-      expect(text, `카드 안에 '${need}' 블록이 없다 — 운영페이지로 왕복하게 된다`).toContain(need);
-    }
-    /* 갤러리가 올린 공지가 실제로 읽힌다.
-       ⚠️ [운영 공지] 블록은 **접힌 채로 시작**한다(할 일만 자동으로 펼친다) — 눌러서 펴야 내용이 보인다. */
-    await card.getByRole('button', { name: /운영 공지/ }).click();
-    await settle(page, 800);
-    expect(await card.innerText(), '공지를 폈는데 내용이 없다').toContain('설치 안내');
-
-    // 카드를 다시 누르면 작업 영역이 통째로 접힌다
-    await card.getByRole('button', { name: '닫기' }).click();
-    await settle(page, 600);
-    expect(await card.innerText()).not.toContain('설치 안내');
+    await ws.getByRole('button', { name: '내 전시', exact: true }).click();
+    await expect(page).toHaveURL(/\/mypage\?tab=applications$/);
+    await expect(tab(page, '진행 중')).toHaveAttribute('aria-selected', 'true');
+    await expect(exhibitionCard(page, title)).toBeVisible();
     await ctx.close();
   });
 
-  test('★ 작가가 운영페이지 주소로 오면 마이페이지로 되돌려 보낸다', async ({ browser }) => {
+  test('★ 작가가 운영페이지 주소로 오면 마이페이지의 그 전시로 되돌려 보낸다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'artist');
     await page.goto(`/exhibitions/${cardExId}/operation/new`);
-    await page.waitForURL(/\/mypage/, { timeout: 15000 });
-    await ctx.close();
-  });
-
-  test('★ 카드 높이가 제각각이지 않다 (일정 줄을 항상 그린다)', async ({ browser }) => {
-    const { page, ctx } = await openAs(browser, 'artist');
-    await page.setViewportSize(DESKTOP);
-    await gotoMyExhibitions(page);
-    await tab(page, '진행 중').click();
-    await settle(page, 1500);
-
-    /* '지금 할 일' 줄(`data-task-line`)은 **할 일이 있는 카드에만** 있다 — 그건 들쭉날쭉이 아니라 정보라서 빼고 잰다.
-       여기서 잡으려는 건 일정 줄처럼 **데이터가 없다고 빠지는** 줄이다. */
-    const heights = await page.locator('article').evaluateAll(els =>
-      els.map(e => {
-        const t = e.querySelector('[data-task-line]') as HTMLElement | null;
-        const th = t ? t.getBoundingClientRect().height + parseFloat(getComputedStyle(t).marginTop) : 0;
-        return Math.round(e.getBoundingClientRect().height - th);
-      }).filter(h => h > 50));
-    if (heights.length >= 2) {
-      const spread = Math.max(...heights) - Math.min(...heights);
-      expect(spread, `카드 높이가 ${heights.join('/')} 로 벌어졌다 — 일정 줄이 빠진 카드가 있다`).toBeLessThan(60);
-    }
+    await page.waitForURL(new RegExp(`/mypage\\?tab=applications&ex=${cardExId}`), { timeout: 15000 });
+    await expect(page.locator(`[data-artist-workspace="${cardExId}"]`)).toBeVisible({ timeout: 15000 });
     await ctx.close();
   });
 });

@@ -146,7 +146,7 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
     const ended = { recruitmentClosed: true, confirmed: true, ended: true, accepted: 3 };
     expect(task(ended)).toMatchObject({ target: 'settlement', tone: 'attention' });
     expect(task({ ...ended, settlementRequested: true, approvals: { total: 3, approved: 1, issue: 1 } }).text).toContain('이의');
-    expect(task({ ...ended, settlementRequested: true, approvals: { total: 3, approved: 3, issue: 0 } })).toMatchObject({ action: '정산 마무리하기', tone: 'attention' });
+    expect(task({ ...ended, settlementRequested: true, approvals: { total: 3, approved: 3, issue: 0 } })).toMatchObject({ action: '정산 완료', act: 'complete-settlement', tone: 'attention' });
     expect(task({ ...ended, settlementRequested: true, approvals: { total: 3, approved: 1, issue: 0 } })).toMatchObject({ tone: 'neutral' });
   });
 

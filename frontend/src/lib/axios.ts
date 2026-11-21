@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import { stashBeforeAuthLoss } from '@/lib/authStash';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -37,7 +38,9 @@ api.interceptors.response.use(
   (error) => {
     // 로그인 시도(/auth/*) 실패의 401은 기존 세션을 날리지 않도록 로그아웃 제외
     if (error.response?.status === 401 && !error.config?.url?.startsWith('/auth/') && !error.config?.skipAuthLogout) {
-      useAuthStore.getState().logout();
+      // 로그인이 풀렸다 — 내보내기 전에 화면들의 저장 안 된 입력을 이 기기에 남긴다(다시 로그인하면 그 화면이 되살린다, lib/authStash)
+      stashBeforeAuthLoss(useAuthStore.getState().user?.id);
+      useAuthStore.getState().logout({ expired: true });
     }
     // 네트워크/타임아웃/서버 에러 로깅 (개발 환경)
     if (!error.response) {

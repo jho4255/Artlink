@@ -14,6 +14,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
 import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import { useGoBack } from '@/hooks/useGoBack';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useFinePointer } from '@/components/shared/sortableHooks';
 import { useVisualViewport, useScrollLock } from '@/hooks/useVisualViewport';
 import { holdReload, onReloadDeferred, runDeferredReload, isReloadDeferred } from '@/lib/swUpdate';
@@ -204,6 +205,8 @@ function EditorCore({ initial, tabs, isAdmin, onSwitchDraft, onDraftCreated }: {
   const [typing, setTyping] = useState(false);
   const [chars, setChars] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  // 메뉴는 Esc 로 닫힌다 — 앱 뒤로 키도 `data-back-closes` 를 보고 Esc 를 보낸다(2026-11-21, 그 전엔 메뉴가 열린 채 글쓰기 화면을 떠났다)
+  useEscapeKey(() => setMenuOpen(false), { enabled: menuOpen });
   // 알림 띠
   const [conflict, setConflict] = useState<{ rev: number } | null>(null);
   const [authLost, setAuthLost] = useState(false);
@@ -609,7 +612,7 @@ function EditorCore({ initial, tabs, isAdmin, onSwitchDraft, onDraftCreated }: {
     if (p) writeBackup(keyRef.current, { ...p, savedAt: Date.now() });
     const here = postId ? `/community/${postId}/edit` : draftIdRef.current ? `/community/write?draft=${draftIdRef.current}` : '/community/write';
     setPostLoginRedirect(here);
-    useAuthStore.getState().logout();
+    useAuthStore.getState().logout({ expired: true });   // 로그인이 풀려 다시 들어가는 길 — 다른 화면이 남긴 입력도 지우지 않는다
     navigate('/login');
   };
 
@@ -795,7 +798,7 @@ function EditorCore({ initial, tabs, isAdmin, onSwitchDraft, onDraftCreated }: {
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-              <div role="menu" className="absolute right-0 top-12 z-20 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
+              <div role="menu" data-back-closes className="absolute right-0 top-12 z-20 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
                 <button type="button" role="menuitem" className="block w-full px-4 py-2.5 text-left text-[14px] text-gray-800 hover:bg-gray-50" onClick={() => { setMenuOpen(false); void controller.current?.flush().then((ok) => (ok ? toast.success('저장했어요.') : toast.error('아직 저장하지 못했어요. 이 기기에 보관해 두었어요.'))); }}>지금 저장</button>
                 <button type="button" role="menuitem" className="block w-full px-4 py-2.5 text-left text-[14px] text-accent hover:bg-gray-50" onClick={() => { setMenuOpen(false); setDialog({ kind: 'discard' }); }}>{postId ? '고친 것 버리기' : '쓰던 글 버리기'}</button>
               </div>
@@ -1100,6 +1103,7 @@ function TextBubble({ editor, onLink }: { editor: Editor; onLink: () => void }) 
 
 function PlusMenu({ editor, onPhoto, onVideo, onPoll }: { editor: Editor; onPhoto: () => void; onVideo: () => void; onPoll: () => void }) {
   const [open, setOpen] = useState(false);
+  useEscapeKey(() => setOpen(false), { enabled: open });
   const item = (label: string, icon: React.ReactNode, run: () => void) => (
     <button type="button" role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => { setOpen(false); run(); }}
       className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[14px] text-gray-800 hover:bg-gray-50">{icon}{label}</button>
@@ -1111,7 +1115,7 @@ function PlusMenu({ editor, onPhoto, onVideo, onPoll }: { editor: Editor; onPhot
         <Plus size={16} />
       </button>
       {open && (
-        <div role="menu" className="absolute left-10 top-0 z-30 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
+        <div role="menu" data-back-closes className="absolute left-10 top-0 z-30 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-[0_6px_20px_rgba(0,0,0,0.08)]">
           {item('사진', <ImagePlus size={16} />, onPhoto)}
           {item('동영상', <Video size={16} />, onVideo)}
           {item('투표', <ListChecks size={16} />, onPoll)}

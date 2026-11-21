@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-20T09:20:00Z" },
+  "title": "공모 흐름 개선 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 1500, "title": "갤러리 [내 공모] 목록 — PC", "expand": "fill" },
+    "GalleryListMobile.dc.html": { "x": 1360, "y": 0, "w": 390, "h": 1500, "title": "갤러리 [내 공모] 목록 — 휴대폰" },
+    "ArtistListMobile.dc.html": { "x": 1830, "y": 0, "w": 390, "h": 1500, "title": "작가 [내 전시] 목록 — 휴대폰" },
+    "ReviewPC.dc.html": { "x": 0, "y": 1920, "w": 1280, "h": 1560, "title": "② 지원자 심사 — PC (공모 한 건 화면 · 지원자)", "expand": "fill" },
+    "ReviewMobile.dc.html": { "x": 1360, "y": 1920, "w": 390, "h": 1380, "title": "② 지원자 심사 — 휴대폰 (지원서 한 장)" },
+    "ApplyMobile.dc.html": { "x": 1830, "y": 1920, "w": 390, "h": 844, "title": "① 지원 — 휴대폰 ([지원하기] 확인 창)" },
+    "SubmissionsPC.dc.html": { "x": 0, "y": 3900, "w": 1280, "h": 1320, "title": "④ 출품 자료 취합 — PC (갤러리)", "expand": "fill" },
+    "ArtistSubmitMobile.dc.html": { "x": 1360, "y": 3900, "w": 390, "h": 1700, "title": "③ 출품 자료 제출 — 휴대폰 (작가)" },
+    "SettlementPC.dc.html": { "x": 0, "y": 6020, "w": 1280, "h": 1480, "title": "⑤ 정산 요청 — PC (갤러리 · 확인 받는 중)", "expand": "fill" },
+    "SettlementMobile.dc.html": { "x": 1360, "y": 6020, "w": 390, "h": 1480, "title": "⑤ 판매 입력 — 휴대폰 (갤러리)" },
+    "ArtistSettleMobile.dc.html": { "x": 1830, "y": 6020, "w": 390, "h": 1280, "title": "⑥ 정산 확인 — 휴대폰 (작가)" },
+    "WrapUpPC.dc.html": { "x": 0, "y": 7920, "w": 1280, "h": 900, "title": "⑦ 마무리 — PC (정산 완료 뒤)", "expand": "fill" }
+  },
+  "order": [
+    "Main.dc.html",
+    "GalleryListMobile.dc.html",
+    "ArtistListMobile.dc.html",
+    "ReviewPC.dc.html",
+    "ReviewMobile.dc.html",
+    "ApplyMobile.dc.html",
+    "SubmissionsPC.dc.html",
+    "ArtistSubmitMobile.dc.html",
+    "SettlementPC.dc.html",
+    "SettlementMobile.dc.html",
+    "ArtistSettleMobile.dc.html",
+    "WrapUpPC.dc.html"
+  ],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "목록 — 내 공모 · 내 전시", "kind": "title1", "maxW": 2220 },
+    "t2": { "x": 0, "y": 1620, "text": "① 지원 → ② 지원자 심사", "kind": "title1", "maxW": 2220 },
+    "t3": { "x": 0, "y": 3600, "text": "③ 출품 자료 제출 → ④ 취합", "kind": "title1", "maxW": 1750 },
+    "t4": { "x": 0, "y": 5720, "text": "⑤ 정산 요청 → ⑥ 정산 확인", "kind": "title1", "maxW": 2220 },
+    "t5": { "x": 0, "y": 7620, "text": "⑦ 마무리", "kind": "title1", "maxW": 1280 }
+  },
+  "designSystems": []
+}

@@ -1,0 +1,7 @@
+# 화면 캡처·로그 — 복제본(실서버 데이터) 화면이 섞일 수 있어 커밋하지 않는다
+out/
+out-impl/
+out-widths/
+logs/
+mock/assets/
+*.log

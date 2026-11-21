@@ -5,7 +5,7 @@ import { openAs, tokenFor, openMyPageTab, exhibitionDates } from '../lib/helpers
  * 지원서(고정 양식): 작가약력(필수) + 경력 + 작품사진(1장 이상 필수) + 포트폴리오 파일 + 약관.
  *
  * 2026-09-29 부터 **모달이 아니라 전용 페이지**(`/exhibitions/:id/apply`)다.
- *  - 열면 홈페이지(포트폴리오) 내용으로 미리 채운다(비었으면 그렇다고 말한다)
+ *  - 열면 홈페이지(포트폴리오) 내용으로 미리 채운다(안내 상자는 없다 — 2026-11-20)
  *  - 경력·파일 '없음' 체크는 없앴다 — 비워 두면 그대로 '없음'으로 간다
  *  - [지원하기]는 늘 눌린다. 빠진 게 있으면 **무엇이 남았는지** 말하고 그 칸으로 데려간다
  */
@@ -34,8 +34,9 @@ test('지원서 페이지: 남은 것 안내 → 정상 제출 → 지원 내역
   await page.getByRole('button', { name: '지원하기' }).first().click();
   await page.waitForURL(new RegExp(`/exhibitions/${ex.id}/apply$`), { timeout: 10000 });
   await expect(page.getByRole('heading', { level: 1, name: ex.title })).toBeVisible({ timeout: 10000 });
-  // 홈페이지로 채웠는지 한 줄로 알려 준다 (채웠든 비었든)
-  await expect(page.getByText(/홈페이지\(포트폴리오\)에 적은|홈페이지에 아직 적은 내용이 없어요/)).toBeVisible({ timeout: 10000 });
+  // 맨 위 회색 안내 상자는 없앴다(2026-11-20, 설명 문구) — 홈페이지로 채웠으면 [홈페이지 내용으로 다시 채우기] 한 줄만 있다
+  await expect(page.getByPlaceholder('작가 소개·약력을 입력하세요.')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(/홈페이지\(포트폴리오\)에 적은|홈페이지에 아직 적은 내용이 없어요/)).toHaveCount(0);
 
   // 1) 약력을 비우고 누르면 → 무엇이 남았는지 말하고 제출하지 않는다
   const bio = page.getByPlaceholder('작가 소개·약력을 입력하세요.');
@@ -58,10 +59,15 @@ test('지원서 페이지: 남은 것 안내 → 정상 제출 → 지원 내역
   // 4) '없음' 체크는 없다 — 비워 둔 경력·파일은 그대로 '없음'으로 간다(예전엔 네 번을 눌러야 제출됐다)
   await expect(page.getByText('없음', { exact: true })).toHaveCount(0);
 
-  // 5) 약관 동의 → 제출. 하단 줄에는 버튼만 있다 — '남은 것 · …'/'다 채웠어요' 문구는 2026-10-03 사용자 요청으로 없앴다
-  await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
+  // 5) [지원하기] → 확인 창(낸 것 요약 + 약관 동의, 2026-11-20 D5) → 동의하고 [지원하기].
+  //    하단 줄에는 버튼만 있다 — '남은 것 · …'/'다 채웠어요' 문구는 2026-10-03 사용자 요청으로 없앴다
   await expect(page.getByText(/남은 것 ·|다 채웠어요/)).toHaveCount(0);
-  await page.getByRole('button', { name: '지원하기' }).click();
+  await expect(page.getByText('위 약관에 동의합니다')).toHaveCount(0);
+  await page.getByRole('button', { name: '지원하기', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: '지원서를 보낼까요?' });
+  await expect(sheet).toContainText('작가 약력');
+  await sheet.getByRole('checkbox', { name: /작가 지원 약관에 동의합니다/ }).check();
+  await sheet.getByRole('button', { name: '지원하기', exact: true }).click();
 
   // 공모 상세로 돌아와 [지원하기] 대신 상태가 보인다 — 지원서를 다 쓰고 나서야 "이미 지원한 공모" 400 을 받지 않게
   await page.waitForURL(new RegExp(`/exhibitions/${ex.id}$`), { timeout: 10000 });

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { dismissPushBanner, getPushBanner, subscribePushBanner } from '@/lib/pushBanner';
 import { openNotification } from '@/lib/native';
+import { confirmLeaveUnsaved } from '@/hooks/useUnsavedChanges';
 
 /** 배너가 떠 있는 시간 — 카카오톡 인앱 배너처럼 잠깐 */
 export const PUSH_BANNER_MS = 4500;
@@ -37,7 +38,7 @@ export default function PushBanner() {
           >
             <button
               type="button"
-              onClick={() => { dismissPushBanner(item.key); void openNotification(item.data); }}
+              onClick={() => { if (!confirmLeaveUnsaved()) return; dismissPushBanner(item.key); void openNotification(item.data); }}
               className="min-w-0 flex-1 px-4 py-3 text-left"
             >
               <p className="text-xs font-semibold text-gray-900">{item.title}</p>

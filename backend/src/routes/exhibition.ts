@@ -889,8 +889,8 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
           data: receivers.map((uid) => ({
             userId: uid,
             type: 'NEW_APPLICANT',
-            message: `"${ex.title}"에 ${me?.nickname || me?.name || '작가'}님이 초대 코드로 참여했습니다.`,
-            linkUrl: operationLink(ex.id),
+            message: `"${ex.title}"에 ${me?.nickname || me?.name || '작가'}님이 초대 코드로 참여했어요.`,
+            linkUrl: operationLink(ex.id, 'applicants'),
           })),
         });
       }
@@ -1267,10 +1267,10 @@ router.post('/:id/apply', authenticate, authorize('ARTIST'), async (req, res, ne
           data: receivers.map((uid) => ({
             userId: uid,
             type: 'NEW_APPLICANT',
-            message: (target as any).hostType === 'ADMIN'
-                ? `아트링크 주최 "${exhibitionData.title}" 공모에 새로운 지원자(${req.user!.name})가 있습니다.`
-                : `"${(target as any).gallery?.name ?? '갤러리'}" 갤러리의 공모에 새로운 지원자(${req.user!.name})가 있습니다.`,
-            linkUrl: `/exhibitions/${exhibitionId}`,
+            // 공모 제목을 앞에 둔다(2026-11-21) — 예전엔 '"○○" 갤러리의 공모에 …' 라 공모가 여럿인 갤러리는 알림만으로 어느 공모인지 몰랐다.
+            // 링크도 공개 공고가 아니라 그 공모 화면의 [지원자] 탭(예전엔 공고 상세라 지원자를 보려면 한 번 더 옮겨야 했다)
+            message: `"${exhibitionData.title}"에 ${req.user!.name}님이 지원했어요.`,
+            linkUrl: operationLink(exhibitionId, 'applicants'),
           })),
         });
       }
@@ -1555,6 +1555,19 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
       throw new AppError('전시가 종료된 공모는 지원 상태를 바꿀 수 없어요.', 400);
     }
 
+    /*
+      **읽은 상태 그대로일 때만** 바꾼다(2026-11-20 신뢰성 점검 — TESTCASES S2·S6). 위에서 읽은 뒤 다른 운영자나 모집 마감의
+      '남은 검토 대기를 미선정으로'가 먼저 바꿨으면, 예전엔 그 위에 또 써서 작가에게 같은 결과 알림이 두 통 가거나
+      먼저 난 결정을 말없이 뒤집었다. 같은 결정이 이미 났으면 UNCHANGED(같은 답, 알림 없음), 다른 결정이면 409.
+    */
+    const UNCHANGED = Symbol('unchanged');
+    const changeIfUnchanged = async (db: Pick<typeof prisma, 'application'>, data: { status: string; rejectionAckedAt?: null }) => {
+      const res = await db.application.updateMany({ where: { id: appId, status: application.status }, data });
+      if (res.count === 1) return db.application.findUniqueOrThrow({ where: { id: appId } });
+      const now = await db.application.findUnique({ where: { id: appId }, select: { status: true } });
+      if (now?.status === status) return UNCHANGED;
+      throw new AppError('방금 다른 곳에서 이 지원의 상태가 바뀌었어요. 새로고침해 주세요.', 409);
+    };
     let updated;
     if (acceptedRevert) {
       // 수락→거절 되돌리기: 해당 작가의 운영페이지 제출물·판매기록·정산 데이터를 함께 삭제해
@@ -1586,14 +1599,15 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
             : '더 뽑으려면 [모집 인원 변경]으로 늘려 주세요.';
           throw new AppError(`${seatsFullMessage(exhibition.capacity, exhibition.capacityMask)} ${how}`, 400);
         }
-        return tx.application.update({ where: { id: appId }, data: { status, rejectionAckedAt: null } });
+        return changeIfUnchanged(tx, { status, rejectionAckedAt: null });
       });
     } else {
-      updated = await prisma.application.update({
-        where: { id: appId },
-        // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
-        data: { status, ...(status !== 'REJECTED' ? { rejectionAckedAt: null } : {}) },
-      });
+      // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
+      updated = await changeIfUnchanged(prisma, { status, ...(status !== 'REJECTED' ? { rejectionAckedAt: null } : {}) });
+    }
+    // 그 사이 같은 결정이 먼저 났다(다른 탭·다른 운영자·모집 마감의 미선정 처리) — 같은 답만 주고 또 알리지 않는다
+    if (updated === UNCHANGED) {
+      return res.json(await prisma.application.findUnique({ where: { id: appId } }));
     }
 
     // 지원 상태 변경 → Artist에게 알림 (2026-10-03 문구 — 작가 화면의 말 '선정·미선정' 과 같게, `lib/flowLabels.ts`)

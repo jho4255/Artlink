@@ -1,11 +1,12 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 import {
   openAs, tokenFor, userIds, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks,
-  openApplicantManager, applicantRow, openGallerySubmissions, openArtistExhibition, openSection, sectionToggle,
+  openApplicantManager, applicantRow, openGallerySubmissions, openArtistExhibition, openOperation, taskButton, workspace,
 } from '../lib/helpers';
 
 /**
  * 공모 흐름 UX 개편 (2026-09-29) — **눌러서 무엇이 바뀌는가**를 본다(보이는지만 보면 50번 스펙처럼 속는다).
+ * 2026-11-20(규칙 88): 카드 → 공모 한 건 화면. 단계 버튼은 할 일 줄(휴대폰은 하단 고정 줄) 하나, 출품 자료는 번호 구역 셋, 정산 표 열 '판매'.
  *
  *  A. 지원자 관리 — 고를 수 있는 건 '검토 대기' 뿐(수락 탭에 체크박스·일괄 버튼 없음), 일괄 수락은 고른 만큼만
  *  B. 단계 전환 — 확인창을 거치고, [취소]면 서버가 그대로
@@ -75,25 +76,25 @@ test.describe('A. 지원자 관리 — 고를 수 있는 건 검토 대기뿐', 
 });
 
 test.describe('B. 단계 전환은 확인창을 거친다', () => {
-  test('★ [모집 마감하기] → 확인창 → 취소하면 그대로, 확인하면 마감', async ({ browser }) => {
+  test('★ 할 일 줄의 [모집 마감] → 확인창 → 취소하면 그대로, 확인하면 마감 · 진행 띠가 전시 준비로', async ({ browser }) => {
     const api = await pwRequest.newContext();
     const exId = await createExhibition(api, { title: newTitle('단계'), galleryId: await ownedGalleryId(api) });
     const closed = async () => (await (await api.get(`${API}/operations/${exId}/access`, { headers: auth('gallery') })).json()).recruitmentClosed;
 
     const { page, ctx } = await openAs(browser, 'gallery');
-    await page.goto(`/exhibitions/${exId}/operation/new`);
-    await page.getByRole('button', { name: /모집 마감하기/ }).click();
+    await openOperation(page, exId);   // 옛 알림 주소 → [내 공모]의 그 공모 화면
+    await taskButton(page, '모집 마감').click();
     const dialog = page.getByRole('dialog', { name: '모집을 마감할까요?' });
     await expect(dialog).toContainText('더 이상 지원을 받지 않아요');
     await dialog.getByRole('button', { name: '취소' }).click();
     await expect(dialog).toHaveCount(0);
     expect(await closed(), '취소했는데 마감됐다').toBe(false);
 
-    await page.getByRole('button', { name: /모집 마감하기/ }).click();
+    await taskButton(page, '모집 마감').click();
     await page.getByRole('dialog').getByRole('button', { name: '모집 마감', exact: true }).click();
     await expect.poll(closed, { timeout: 10000 }).toBe(true);
-    // 다음 단계 버튼으로 바뀐다
-    await expect(page.getByRole('button', { name: /전시 확정하기/ })).toBeVisible({ timeout: 10000 });
+    // 진행 띠의 지금 칸이 '전시 준비' 로 넘어간다
+    await expect(workspace(page).locator('ol[aria-label="진행 단계"] [aria-current="step"]')).toContainText('전시 준비', { timeout: 10000 });
     await api.dispose();
     await ctx.close();
   });
@@ -127,17 +128,15 @@ test.describe('C. 작가 출품 자료 — 제출은 한 번', () => {
     await rep2.click();
     await expect(rep2).toHaveAttribute('aria-pressed', 'true');
 
-    // 약력·작가노트
-    await card.getByRole('tab', { name: /^약력/ }).click();
+    // 약력·작가노트 — 2026-11-20 부터 안쪽 탭이 아니라 한 흐름의 번호 구역(2 약력 · 3 작가노트)
     await card.getByPlaceholder('예: 홍길동').fill('아티스트 일');
-    await card.getByRole('tab', { name: /^작가노트/ }).click();
     await card.getByPlaceholder('작품 세계 전반에 대한 이야기를 자유롭게 작성하세요.').fill('E2E 작가노트 — 빛과 벽.');
 
     // 버튼 한 번. 비어 있는 게 없으니 되묻지도 않는다
     await card.getByRole('button', { name: '갤러리에 제출' }).click();
     await expect(page.locator('body')).toContainText('갤러리에 제출했어요', { timeout: 10000 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(sectionToggle(card, '출품 자료')).toContainText('제출 완료', { timeout: 10000 });
+    await expect(card.locator('[data-submission-bar]')).toContainText('갤러리에 제출했어요', { timeout: 10000 });
     await ctx.close();
 
     // 서버 — 두 점 다 공개(draft 아님) · 대표작 1
@@ -151,9 +150,9 @@ test.describe('C. 작가 출품 자료 — 제출은 한 번', () => {
     // 갤러리 — 제출 완료 칩 + 대표작 표시가 둘째에
     const g = await openAs(browser, 'gallery');
     await openGallerySubmissions(g.page, exId);
-    const row = g.page.getByRole('button', { name: /출품작 2점/ }).first();
+    const row = g.page.locator('[data-submission-artist]').filter({ hasText: 'Artist 1' }).first();
     await expect(row).toContainText('제출 완료');
-    await row.click();
+    await row.locator('button[aria-expanded]').first().click();
     // 작가 줄(li)이 작품 줄(li)을 품고 있다 — 가장 안쪽(마지막) 것이 작품 줄
     await expect(g.page.locator('li:has(span[title="둘째 작품"])').last()).toContainText('대표작');
     await expect(g.page.locator('li:has(span[title="첫 작품"])').last()).not.toContainText('대표작');
@@ -162,7 +161,7 @@ test.describe('C. 작가 출품 자료 — 제출은 한 번', () => {
 });
 
 test.describe('D. 지원서 페이지', () => {
-  test('★ 홈페이지로 미리 채워지고 약관만 동의하면 바로 낸다', async ({ browser }) => {
+  test('★ 홈페이지로 미리 채워지고, [지원하기] 확인 창에서 약관에 동의하면 낸다', async ({ browser }) => {
     const api = await pwRequest.newContext();
     await ensurePublicArtworks(api, tokenFor('artist'), 2);
     const title = newTitle('지원서');
@@ -173,14 +172,22 @@ test.describe('D. 지원서 페이지', () => {
     await page.goto(`/exhibitions/${exId}`);
     await page.getByRole('button', { name: '지원하기' }).first().click();
     await page.waitForURL(new RegExp(`/exhibitions/${exId}/apply$`));
-    await expect(page.getByText(/홈페이지\(포트폴리오\)에 적은/)).toBeVisible({ timeout: 10000 });
+    // 안내 상자 대신 [홈페이지 내용으로 다시 채우기] 글자 단추 하나(2026-11-20)
+    await expect(page.getByRole('button', { name: '홈페이지 내용으로 다시 채우기' })).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#apply-images img').first()).toBeVisible();
 
     // 약력이 비어 있을 수도 있다(홈페이지에 약력이 없으면) — 그땐 채운다
     const bio = page.getByPlaceholder('작가 소개·약력을 입력하세요.');
     if (!(await bio.inputValue()).trim()) await bio.fill('E2E 약력');
-    await page.locator('label', { hasText: '위 약관에 동의합니다' }).getByRole('checkbox').check();
-    await page.getByRole('button', { name: '지원하기' }).click();
+    // 약관은 폼 끝이 아니라 [지원하기] 확인 창 안(D5) — 동의 없이 누르면 그 줄이 빨개지고 창은 그대로
+    await expect(page.getByText('위 약관에 동의합니다')).toHaveCount(0);
+    await page.getByRole('button', { name: '지원하기', exact: true }).click();
+    const sheet = page.getByRole('dialog', { name: '지원서를 보낼까요?' });
+    await expect(sheet).toContainText('작품 사진');
+    await sheet.getByRole('button', { name: '지원하기', exact: true }).click();
+    await expect(sheet).toContainText('약관에 동의해야 지원할 수 있어요');
+    await sheet.getByRole('checkbox', { name: /작가 지원 약관에 동의합니다/ }).check();
+    await sheet.getByRole('button', { name: '지원하기', exact: true }).click();
     await page.waitForURL(new RegExp(`/exhibitions/${exId}$`), { timeout: 10000 });
     await expect(page.getByText('지원 완료', { exact: true })).toBeVisible({ timeout: 10000 });
     await ctx.close();
@@ -200,37 +207,34 @@ test.describe('E. 정산', () => {
     const requested = async () => !!(await (await api.get(`${API}/operations/${exId}/settlement`, { headers: auth('gallery') })).json()).settlementRequested;
 
     const g = await openAs(browser, 'gallery');
-    await g.page.goto(`/exhibitions/${exId}/operation/new`);
-    await openSection(g.page, '정산');
-    await g.page.getByLabel('팔린 작품 판매됨').check();
-    await g.page.getByLabel('판매가').fill('1000000');
+    await openOperation(g.page, exId, '정산');
+    await g.page.getByLabel('팔린 작품 판매', { exact: true }).check();
+    await g.page.getByLabel('팔린 작품 판매가', { exact: true }).fill('1000000');
 
-    // 갤러리 몫 0% 그대로 요청 → 되묻는다. [비율 고치기]면 요청되지 않는다
-    await g.page.getByRole('button', { name: '작가에게 확인 요청' }).click();
+    // 갤러리 몫 0% 그대로 요청 → 되묻는다. [비율 고치기]면 요청되지 않는다 — 주 버튼은 할 일 줄(휴대폰은 하단 줄) 하나
+    await taskButton(g.page, /작가 1명에게 확인 요청/).click();
     const ask = g.page.getByRole('dialog');
     await expect(ask).toContainText('0%');
     await ask.getByRole('button', { name: '비율 고치기' }).click();
     expect(await requested(), '비율 고치기를 눌렀는데 요청됐다').toBe(false);
 
-    await g.page.getByLabel('갤러리 비율(%)').fill('30');
-    await g.page.getByRole('button', { name: '작가에게 확인 요청' }).click();
+    await g.page.locator('#settle-ratio').fill('30');
+    await taskButton(g.page, /작가 1명에게 확인 요청/).click();
     await expect.poll(requested, { timeout: 10000 }).toBe(true);
-    await expect(g.page.getByText(/작가들이 금액을 확인하고 있어요/)).toBeVisible({ timeout: 10000 });
+    await expect(g.page.locator('[data-task-bar]')).toContainText('작가의 정산 확인을 기다리고 있어요', { timeout: 10000 });
 
-    // 작가 — [내 전시] 카드 안에서 확인
+    // 작가 — 전시 화면의 [정산] 탭에서 [정산 확인]('(수락)' 은 뺐다)
     const a = await openAs(browser, 'artist');
     const card = await openArtistExhibition(a.page, exId);
-    await card.getByRole('button', { name: '정산 확인(수락)' }).click();
-    await expect(a.page.locator('body')).toContainText('정산을 확인(수락)했습니다', { timeout: 10000 });
+    await card.locator('[data-settle-bar]').getByRole('button', { name: '정산 확인', exact: true }).click();
+    await expect(a.page.locator('body')).toContainText('정산을 확인했어요', { timeout: 10000 });
+    await expect(card.locator('[data-settle-status]')).toContainText('확인했어요');
     await a.ctx.close();
 
-    // 갤러리 — '확인하고 있어요' 가 아니라 '모두 확인했어요', 주 버튼은 [정산 완료]
+    // 갤러리 — 모두 확인 → 할 일 줄이 '모두 정산을 확인했어요' + 주 버튼 [정산 완료](이름 하나 — '정산 마무리하기' 폐기)
     await g.page.reload();
-    await openSection(g.page, '정산');
-    await expect(g.page.getByText(/모두 금액을 확인했어요/).first()).toBeVisible({ timeout: 10000 });
-    await expect(g.page.getByText(/작가들이 금액을 확인하고 있어요/)).toHaveCount(0);
-    await expect(g.page.getByText('지금 · 정산 확인 완료').or(g.page.getByText('정산 확인 완료')).first()).toBeVisible();
-    await expect(g.page.getByRole('button', { name: '정산 완료', exact: true })).toBeVisible();
+    await expect(g.page.locator('[data-task-bar]')).toContainText('모두 정산을 확인했어요', { timeout: 10000 });
+    await expect(taskButton(g.page, '정산 완료')).toBeVisible();
     await api.dispose();
     await g.ctx.close();
   });

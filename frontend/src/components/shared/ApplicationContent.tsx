@@ -27,6 +27,8 @@ interface Props {
   customFields?: CustomField[] | null;
   /** 작품 사진 클릭 시 라이트박스 오픈 */
   onImageClick?: (images: string[], index: number) => void;
+  /** 작품 사진을 따로(맨 위에 크게) 그렸으면 여기서는 빼기 — 갤러리 지원자 심사(2026-11-20, 심사의 근거가 작품이라 먼저 본다) */
+  hidePhotos?: boolean;
 }
 
 /**
@@ -43,7 +45,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function ApplicationContent({ app, customFields, onImageClick }: Props) {
+export default function ApplicationContent({ app, customFields, onImageClick, hidePhotos = false }: Props) {
   const career = normalizeCareer(app.career);
   const images = app.artworkImages ?? [];
   const careerEmpty = isCareerEmpty(app.career);
@@ -89,7 +91,7 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
       </Field>
 
       {/* 작품 사진 */}
-      <Field label={`작품 사진 ${images.length}장`}>
+      {!hidePhotos && <Field label={`작품 사진 ${images.length}장`}>
         {images.length === 0 ? (
           <p className="text-gray-400">없음</p>
         ) : (
@@ -102,7 +104,7 @@ export default function ApplicationContent({ app, customFields, onImageClick }: 
             ))}
           </div>
         )}
-      </Field>
+      </Field>}
 
       {/* 포트폴리오 파일 */}
       <Field label="포트폴리오 파일">

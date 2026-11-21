@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, acceptApplicant, applicantRow, exhibitionDates } from '../lib/helpers';
+import { openAs, userIds, tokenFor, settle, applyToExhibition, openApplicantManager, acceptApplicant, applicantRow, exhibitionDates, exhibitionCard } from '../lib/helpers';
 
 /**
  * 멀티유저 지속 상호작용: 작가 지원 → 갤러리가 상태를 단계별로 올림 → 작가에게 알림 누적 + 상태배지 갱신.
@@ -62,7 +62,7 @@ test('지원 상태 단계별 변경 → 작가 알림 누적 + 상태배지 갱
   // 작가: [내 전시] '진행 중' 탭에 들어오고, 첫 할 일은 출품 자료 제출이다
   await artist.page.goto('/mypage?tab=applications');
   await artist.page.getByRole('tab', { name: /^진행 중/ }).click();
-  const artistCard = artist.page.locator('article').filter({ hasText: exTitle }).first();
+  const artistCard = exhibitionCard(artist.page, exTitle);   // 2026-11-20 카드 → 줄
   await expect(artistCard).toBeVisible({ timeout: 10000 });
   await expect(artistCard).toContainText('출품 자료를 제출해 주세요');
 

@@ -4,6 +4,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CHAT_COUNT_FROM, CHAT_MAX_LEN } from '@/lib/chatView';
 import { readChatDraft, writeChatDraft } from '@/lib/chatCache';
 import type { AttachmentType } from '@/lib/chatTypes';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 /**
  * 입력 줄 (2026-11-19 개편 — 목업 ②).
@@ -23,6 +24,8 @@ export default function Composer({ chatId, onSend, onFiles, disabled = false }: 
   const fine = useMediaQuery('(pointer: fine)');
   const [text, setText] = useState(() => readChatDraft(chatId));
   const [menu, setMenu] = useState(false);
+  // [+] 첨부 메뉴는 Esc 로 닫힌다 — 앱 뒤로 키도 `data-back-closes` 를 보고 Esc 를 보낸다(그 전엔 메뉴가 열린 채 방을 떠났다)
+  useEscapeKey(() => setMenu(false), { enabled: menu });
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const kindRef = useRef<AttachmentType>('IMAGE');
@@ -72,7 +75,7 @@ export default function Composer({ chatId, onSend, onFiles, disabled = false }: 
         }}
       />
       {menu && (
-        <div className="absolute bottom-full left-2 z-10 mb-1 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg" role="menu" aria-label="첨부">
+        <div className="absolute bottom-full left-2 z-10 mb-1 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg" role="menu" aria-label="첨부" data-back-closes>
           {([
             ['IMAGE', '사진', <ImageIcon size={16} key="i" aria-hidden />],
             ['VIDEO', '동영상', <Film size={16} key="v" aria-hidden />],

@@ -1,14 +1,13 @@
-import { test, expect, request as pwRequest, type Page } from '@playwright/test';
-import { openAs, tokenFor, createExhibition, settle, cardToggle } from '../lib/helpers';
+import { test, expect, request as pwRequest } from '@playwright/test';
+import { openAs, tokenFor, createExhibition, exhibitionCard, workspace, workspaceTab, openWorkspaceTab } from '../lib/helpers';
 
 /**
- * 갤러리 [내 공모] 카드 — 2026-08-28 개편분.
+ * 갤러리 [내 공모] — 2026-11-20 개편(규칙 88): 카드 → **줄 목록 + 공모 한 건 화면**.
  *
- *  · [상세 운영]은 **페이지 이동이 아니라 카드 안에서 접었다폈다**(OperationBody 를 임베드).
- *  · [추가 질문] 수정은 카드 상단 버튼에서 빼고 **[지원자 관리] 패널 안**으로 옮겼다.
- *  · [작가 초대]는 2026-11-19 에 없앴다(1:1 공모 초대 폐지) — 패널 안에 남은 건 [추가 질문 수정]과 초대 **코드** 줄.
- *  · 2026-09-29: 두 버튼이 카드 아래 줄의 토글 [지원자 N] · [운영] 이 됐다(`aria-expanded`). 전용 운영 페이지의
- *    머리말은 '상세 운영' 이 아니라 **공모 제목**이다.
+ *  · 줄을 누르면 마이페이지 안에서 그 공모 화면이 열린다(주소 `?tab=my-exhibitions&ex=<id>` — 운영 주소로 나가지 않는다).
+ *    [← 내 공모]·뒤로가기로 목록에 돌아온다.
+ *  · 옛 운영 주소(`/exhibitions/:id/operation/new`)는 살아 있다 — 이미 나간 알림이 들고 있다. 갤러리는 그 공모 화면으로 간다.
+ *  · [추가 질문 수정]은 목록에 없고 공모 화면 [지원자] 탭의 도구 줄에 있다. [작가 초대]는 2026-11-19 에 없앴다 — 초대 **코드** 줄은 그대로.
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1440, height: 900 };
@@ -19,64 +18,72 @@ async function galleryId(api: any): Promise<number> {
   return (Array.isArray(gl) ? gl : gl.galleries).find((g: any) => g.status === 'APPROVED').id;
 }
 
-/** 내 공모 목록에서 제목으로 카드를 특정 */
-const cardFor = (page: Page, title: string) =>
-  page.locator('article').filter({ hasText: title }).first();
-
-test.describe('상세 운영 인라인', () => {
+test.describe('공모 한 건 화면', () => {
   let title: string;
+  let exId: number;
 
   test.beforeAll(async () => {
     const api = await pwRequest.newContext();
     title = `상세운영검증 ${Date.now()}`;
-    await createExhibition(api, { title, galleryId: await galleryId(api), description: '상세 운영 E2E' });
+    exId = await createExhibition(api, { title, galleryId: await galleryId(api), description: '상세 운영 E2E' });
     await api.dispose();
   });
 
-  test('★ [운영]은 페이지 이동 없이 카드 안에서 펼쳐진다', async ({ browser }) => {
+  test('★ 줄을 누르면 마이페이지 안에서 공모 화면이 열리고 [← 내 공모]·뒤로가기로 돌아온다', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=my-exhibitions');
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
-    const card = cardFor(page, title);
-    const toggle = cardToggle(card, 'operation');
-    await toggle.click();
+    const row = exhibitionCard(page, title);
+    // 줄에는 진행 띠가 있다(다섯 칸)
+    await expect(row.locator('ol[aria-label="진행 단계"] > li')).toHaveCount(5);
+    await row.getByRole('button', { name: title }).first().click();
 
-    // 주소는 그대로 마이페이지 (operation 페이지로 안 나간다)
-    await expect(page).toHaveURL(/\/mypage/);
-    // 카드 안에 운영 화면 내용(진행 단계·운영 공지)이 들어온다
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(card).toContainText('진행 단계', { timeout: 15000 });
-    await expect(card).toContainText('운영 공지');
+    // 주소는 마이페이지 그대로 + ex — 운영 주소로 나가지 않는다
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${exId}`));
+    await expect(workspace(page)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
+    // 모집 중이라 처음 열리는 탭은 [지원자] · 전시가 끝나기 전엔 [정산] 이 잠겨 있다
+    await expect(workspaceTab(page, '지원자')).toHaveAttribute('aria-selected', 'true');
+    await expect(workspaceTab(page, '정산')).toHaveAttribute('aria-disabled', 'true');
+    // 공모 화면에서는 프로필 카드를 그리지 않는다
+    await expect(page.getByRole('button', { name: '프로필 사진 변경' })).toHaveCount(0);
 
-    // 다시 누르면 접힌다
-    await toggle.click();
-    await settle(page, 500);
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(card).not.toContainText('운영 공지');
+    // [← 내 공모] → 목록
+    await page.getByRole('button', { name: '내 공모', exact: true }).first().click();
+    await expect(page).toHaveURL(/\/mypage\?tab=my-exhibitions$/);
+    await expect(exhibitionCard(page, title)).toBeVisible();
+
+    // 다시 열고 브라우저 뒤로가기 → 목록
+    await exhibitionCard(page, title).getByRole('button', { name: title }).first().click();
+    await expect(workspace(page)).toBeVisible({ timeout: 15000 });
+    await page.goBack();
+    await expect(page).toHaveURL(/\/mypage\?tab=my-exhibitions$/);
+    await expect(workspace(page)).toHaveCount(0);
     await ctx.close();
   });
 
-  test('★ 운영 페이지 라우트는 그대로 살아 있다 (옛 알림 링크 보존)', async ({ browser }) => {
-    /* 카드가 인라인이 됐어도 전용 페이지는 여전히 동작해야 한다.
-       옛 알림이 가리키는 주소는 `/operation/new`(OperationPage) — 카드 임베드와 같은 OperationBody 를 쓴다.
-       (`/operation` 는 옛 classic 페이지로 별개다) */
-    const api = await pwRequest.newContext();
-    const list = await (await api.get(`${API}/exhibitions?search=${encodeURIComponent(title)}`)).json();
-    const ex = (Array.isArray(list) ? list : list.exhibitions).find((e: any) => e.title === title);
-    await api.dispose();
-
+  test('★ 옛 운영 주소는 살아 있다 — 갤러리는 [내 공모]의 그 공모 화면으로', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
-    await page.goto(`/exhibitions/${ex.id}/operation/new`);
-    // 머리말은 공모 제목, 그 아래에 카드와 같은 진행 단계
+    await page.goto(`/exhibitions/${exId}/operation/new?view=notices`);
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=my-exhibitions&ex=${exId}`), { timeout: 15000 });
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('진행 단계').first()).toBeVisible();
+    // 알림이 실어 온 탭(view=)으로 연다
+    await expect(workspaceTab(page, '공지')).toHaveAttribute('aria-selected', 'true');
+    await ctx.close();
+  });
+
+  test('★ 관리자는 운영 주소에서 같은 공모 화면을 본다(돌아갈 곳은 [운영 조회])', async ({ browser }) => {
+    const { page, ctx } = await openAs(browser, 'admin');
+    await page.goto(`/exhibitions/${exId}/operation/new`);
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
+    await expect(workspace(page).getByRole('link', { name: '운영 조회', exact: true })).toBeVisible();
     await ctx.close();
   });
 });
 
-test.describe('지원자 관리 패널 안의 도구들', () => {
+test.describe('[지원자] 탭의 도구', () => {
   let title: string;
 
   test.beforeAll(async () => {
@@ -86,22 +93,26 @@ test.describe('지원자 관리 패널 안의 도구들', () => {
     await api.dispose();
   });
 
-  test('★ [추가 질문 수정]은 카드 상단이 아니라 지원자 관리 패널 안 · [작가 초대]는 어디에도 없다(2026-11-19)', async ({ browser }) => {
+  test('★ [추가 질문 수정]은 목록이 아니라 [지원자] 탭 도구 줄 · [작가 초대]는 어디에도 없다(2026-11-19)', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=my-exhibitions');
     await expect(page.locator('body')).toContainText(title, { timeout: 15000 });
 
-    const card = cardFor(page, title);
-    // 접힌 상태: 상단에 [추가 질문] 버튼이 보이지 않는다
-    await expect(card.getByRole('button', { name: /추가 질문/ })).toHaveCount(0);
+    const row = exhibitionCard(page, title);
+    await expect(row.getByRole('button', { name: /추가 질문/ })).toHaveCount(0);
 
-    // [지원자] 를 펼치면 안에서 나타난다 — 초대 코드 줄도 그대로
-    await cardToggle(card, 'applicants').click();
-    await expect(card.getByRole('button', { name: /추가 질문 수정/ })).toBeVisible({ timeout: 10000 });
-    await expect(card).toContainText('초대 코드');
-    await expect(card.getByRole('button', { name: '작가 초대' })).toHaveCount(0);
+    await row.getByRole('button', { name: title }).first().click();
+    await openWorkspaceTab(page, '지원자');
+    const manager = page.locator('[data-applicant-manager]');
+    await expect(manager.getByRole('button', { name: /추가 질문 수정/ })).toBeVisible({ timeout: 10000 });
+    await expect(manager).toContainText('초대 코드');
+    await expect(manager.getByRole('button', { name: '작가 초대' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '작가 초대' })).toHaveCount(0);
+
+    // 누르면 추가 질문 창이 열린다
+    await manager.getByRole('button', { name: /추가 질문 수정/ }).click();
+    await expect(page.getByRole('dialog')).toContainText('추가 질문', { timeout: 10000 });
     await ctx.close();
   });
 });

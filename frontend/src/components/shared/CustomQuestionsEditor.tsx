@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import type { CustomField } from '@/types';
 
 // 추가 질문(커스텀 필드) 편집기 — 공모 등록 폼과 게시 후 수정 모달에서 공유.
@@ -191,6 +192,7 @@ export default function CustomQuestionsEditModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  useEscapeKey(onClose);
   const [fields, setFields] = useState<CustomField[]>(() =>
     (initialFields ?? []).map((f) => ({ ...f, options: f.options ? [...f.options] : f.options }))
   );
@@ -211,6 +213,8 @@ export default function CustomQuestionsEditModal({
         : old;
       queryClient.setQueriesData({ queryKey: ['hosted-exhibitions'] }, patchList);
       queryClient.setQueriesData({ queryKey: ['my-exhibitions'] }, patchList);
+      // 공모 한 건 화면(2026-11-20)은 공모 상세 캐시에서 질문을 읽는다 — 거기도 곧바로
+      queryClient.setQueryData<Record<string, unknown> | undefined>(['exhibition', String(exhibitionId)], (old) => (old ? { ...old, customFields: saved } : old));
       queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibition', String(exhibitionId)] });
       queryClient.invalidateQueries({ queryKey: ['exhibition', exhibitionId] });
@@ -231,10 +235,11 @@ export default function CustomQuestionsEditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      {/* role=dialog + Esc — 앱 뒤로가기가 Esc 를 보내 이 창만 닫는다(규칙 79). 2026-11-20 공모 한 건 화면에서 열리며 달았다 */}
+      <div role="dialog" aria-modal="true" aria-labelledby="custom-questions-title" className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-medium text-gray-900">추가 질문 수정</h3>
+            <h3 id="custom-questions-title" className="text-lg font-medium text-gray-900">추가 질문 수정</h3>
             {exhibitionTitle && <p className="text-sm text-gray-400 truncate">{exhibitionTitle}</p>}
           </div>
           <button onClick={onClose} aria-label="닫기" className="shrink-0 -mr-2 -mt-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-gray-400 hover:text-gray-700"><X size={18} /></button>

@@ -23,7 +23,7 @@ import { splitChatNotice } from './chat';
 /** 앱의 알림 채널 — frontend lib/native.ts 가 같은 id 로 만든다(AndroidManifest 기본 채널도 같은 값) */
 export const PUSH_CHANNEL_ID = 'artlink';
 /** 같은 줄을 고쳐 쓰는(update) 알림 중 '새 소식'인 것만 다시 울린다 */
-export const REPUSH_TYPES = new Set(['CHAT_MESSAGE', 'SUBMISSION_PROXY_EDIT']);
+export const REPUSH_TYPES = new Set(['CHAT_MESSAGE', 'SUBMISSION_PROXY_EDIT', 'SUBMISSION_RECEIVED']);
 /** 이 토큰은 더는 쓸 수 없다(앱 삭제·토큰 갱신) — 지운다. ⚠️ invalid-argument 는 넣지 말 것: 우리 메시지가 틀려도 그 코드가 와서 모든 토큰을 지운다 */
 const DEAD_TOKEN_CODES = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 const BODY_MAX = 180;
@@ -53,6 +53,9 @@ export const PUSH_TITLES: Record<string, string> = {
   OPERATION_NOTICE: '운영 공지',
   SUBMISSION_REMINDER: '출품 자료 안내',
   SUBMISSION_PROXY_EDIT: '출품 자료',
+  SUBMISSION_RECEIVED: '출품 자료',       // 갤러리에게 — 작가가 출품 자료를 다 채워 냈다(공모마다 한 줄, 새로 낼 때마다 다시 울린다, 2026-11-20)
+  EXHIBITION_CONFIRMED: '전시 확정',      // 작가에게 — 갤러리가 전시를 확정해 출품 자료가 잠겼다
+  SETTLEMENT_ALL_APPROVED: '정산 확인',   // 갤러리에게 — 작가가 모두 정산을 확인했다 → [정산 완료]
   SETTLEMENT_CONFIRM_REQUEST: '정산 확인 요청',
   SETTLEMENT_ISSUE: '정산 이의',
   SETTLEMENT_SHARED: '정산',

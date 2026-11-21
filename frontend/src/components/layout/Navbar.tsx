@@ -8,6 +8,7 @@ import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
 import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
 import { NAV_LINKS as navLinks, isNavActive } from '@/lib/navLinks';
+import { confirmLeaveUnsaved } from '@/hooks/useUnsavedChanges';
 
 // 가운데 메뉴 정의는 lib/navLinks.ts 하나뿐 — 데스크톱 상단 중앙과 모바일 하단 탭바(BottomTabBar)가 공유한다.
 // 모바일에서는 이 5개(홈/갤러리/전시/모집공고/커뮤니티)가 **하단 고정 탭바**로 내려갔다(catch 앱 방식).
@@ -104,6 +105,8 @@ export default function Navbar() {
   }, [notifOpen]);
 
   const handleNotifClick = (notif: any) => {
+    // 저장 안 한 입력이 있으면 옮기기 전에 묻는다 — 이탈 가드는 링크만 보고 navigate() 는 못 본다(2026-11-21)
+    if (notif.linkUrl && !confirmLeaveUnsaved()) return;
     if (!notif.read) readMutation.mutate(notif.id);
     if (notif.linkUrl) navigate(notif.linkUrl);
     setNotifOpen(false);

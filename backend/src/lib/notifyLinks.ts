@@ -24,8 +24,14 @@ export const artistExhibitionLink = (exhibitionId: number | string): string =>
   `${ARTIST_EXHIBITION_LINK}&ex=${exhibitionId}`;
 
 /** 갤러리·Admin(운영자)에게 보내는 알림 — 운영페이지 */
-export const operationLink = (exhibitionId: number | string): string =>
-  `/exhibitions/${exhibitionId}/operation/new`;
+export const operationLink = (exhibitionId: number | string, view?: OperationView): string =>
+  `/exhibitions/${exhibitionId}/operation/new${view ? `?view=${view}` : ''}`;
+
+/**
+ * 운영자 화면에서 처음 열 탭(2026-11-20, 공모 한 건 화면) — 지원자 · 출품 자료 · 정산 · 공지.
+ * 화면(`frontend/src/lib/flowLabels.ts WORKSPACE_VIEWS`)이 같은 이름을 읽는다. 없으면 그 공모의 지금 단계 탭.
+ */
+export type OperationView = 'applicants' | 'submissions' | 'settlement' | 'notices';
 
 /**
  * 1:1 문의 알림 — 고객센터에서 **그 문의를 펼쳐 둔 채로** 연다(관리자·작성자 같은 주소).

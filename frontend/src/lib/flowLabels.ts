@@ -13,7 +13,8 @@
  *
  * ⚠️ 순수 함수만 둔다(`lib/settlement.ts` 와 같은 이유 — 화면 파일에 두면 fast-refresh 가 입력값을 날린다).
  */
-import { getDday, capacityWithLimit } from '@/lib/utils';
+import { getDday, capacityWithLimit, capacityLimit } from '@/lib/utils';
+import { shortDate, daysUntil } from '@/lib/listings';
 
 export type ChipVariant = 'neutral' | 'attention' | 'done';
 
@@ -127,15 +128,34 @@ export function ddayText(prefix: string, date: string | null | undefined, dday: 
    다음 할 일 — 카드 한 줄 + 운영 화면 안내가 같은 문장을 쓴다
    ───────────────────────────────────────────────────────────── */
 
-/** 할 일이 가리키는 곳 — 갤러리 카드의 [지원자] 탭 / [운영] 탭의 단계·출품 자료·정산 구역 */
-export type TaskTarget = 'applicants' | 'stage' | 'submissions' | 'settlement' | null;
+/**
+ * 할 일이 가리키는 곳 — 공모 한 건 화면의 탭(지원자 · 출품 자료 · 정산 · 공지 · 요약) 또는 단계 전환('stage').
+ * 'stage' 면 그 단계에서 보는 탭이 열린다(`workspaceDefaultView`) — 버튼은 화면 위 할 일 줄에 있다.
+ */
+export type TaskTarget = 'applicants' | 'stage' | 'submissions' | 'settlement' | 'notices' | 'summary' | null;
+
+/**
+ * 할 일 줄의 **진짜 버튼**(2026-11-20 개편 — 예전엔 할 일 줄이 그 구역으로 '데려가기'만 했다).
+ * 공모 한 건 화면이 id 를 보고 실행한다: 단계 전환은 확인창, 안내 보내기는 메시지 창, 정산은 정산 탭의 상태(저장 안 된 입력·이의)를 보고.
+ */
+export type TaskActionId =
+  | 'close' | 'confirm' | 'end'
+  | 'remind-submissions'
+  | 'request-settlement' | 'resend-settlement' | 'save-settlement' | 'complete-settlement' | 'remind-settlement';
+export interface TaskAction { id: TaskActionId; label: string }
 
 export interface NextTask {
   text: string;
   tone: ChipVariant;
   target: TaskTarget;
-  /** 줄 끝 바로가기 이름(없으면 화살표만) */
+  /** 목록 줄의 버튼 이름 — 누르면 그 공모 한 건 화면의 `target` 탭으로 간다(`act` 가 있으면 도착해서 바로 연다) */
   action?: string;
+  /** 목록에서 버튼을 눌러 왔을 때 도착해서 바로 실행할 것(확인창·메시지 창을 연다 — 실행은 그 창에서 사람이 한다) */
+  act?: TaskActionId;
+  /** 공모 한 건 화면 할 일 줄의 주 버튼(검정 하나) */
+  primary?: TaskAction;
+  /** 같은 줄의 보조 버튼(테두리) */
+  secondary?: TaskAction;
 }
 
 export interface GallerySnapshot {
@@ -174,12 +194,12 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
     return { text: '관리자 승인을 기다리고 있어요. 승인되면 모집공고에 올라가고 알림으로 알려 드려요.', tone: 'neutral', target: null };
   }
   if (s.status === 'REJECTED') {
-    return { text: '등록이 반려되었어요. 아래 사유를 확인하고 새로 등록해 주세요.', tone: 'attention', target: null };
+    return { text: '등록이 반려되었어요. 사유를 확인하고 새로 등록해 주세요.', tone: 'attention', target: null };
   }
-  if (s.settled) return { text: '정산까지 모두 끝났어요.', tone: 'done', target: 'settlement', action: '정산 내역' };
+  if (s.settled) return { text: '정산까지 모두 끝났어요.', tone: 'done', target: 'summary', action: '요약 보기' };
 
   const deadlinePassed = !!s.deadline && dday(s.deadline) < 0;
-  const pendingText = `지원자 ${s.pending}명이 검토를 기다리고 있어요`;
+  const CLOSE: TaskAction = { id: 'close', label: '모집 마감' };
   /*
     정원이 찼는데 모집 중 — 더는 수락할 수 없다(서버가 막는다). 검토 대기가 남아 있어도 '검토하세요' 를 띄우면
     눌러 보고 나서야 정원 안내를 받는다(2026-10-03 점검 P2). 작가 화면·지원은 그대로 둔다(사용자 결정 — 갤러리에게만 알린다).
@@ -187,52 +207,84 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
   */
   const full = !!s.capacity && s.capacity > 0 && s.accepted >= s.capacity;
   const fullTask: NextTask = {
-    text: `정원(${capacityWithLimit(s)})이 찼어요. 모집을 마감하세요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
-    tone: 'attention', target: 'stage', action: '모집 마감',
+    text: `정원(${capacityWithLimit(s)})이 찼어요${s.pending > 0 ? ` · 검토 대기 ${s.pending}명` : ''}`,
+    tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE,
   };
+  const pendingTask: NextTask = {
+    text: `지원자 ${s.pending}명이 검토를 기다리고 있어요`,
+    // 심사는 [지원자] 탭이 곧 작업이라 주 버튼이 없다 — 옆에 [모집 마감](선정을 마쳤을 때)
+    tone: 'attention', target: 'applicants', action: '지원자 심사', secondary: CLOSE,
+  };
+  const left = s.deadline ? ddayText('마감', s.deadline, dday) : null;
 
   if (s.recruitOnly) {
     if (s.recruitmentClosed) return { text: '선정을 마쳤어요. 이 공고는 여기까지 진행합니다.', tone: 'done', target: 'applicants', action: '지원자 보기' };
     if (full) return fullTask;
-    if (s.pending > 0) return { text: pendingText, tone: 'attention', target: 'applicants', action: '지원자 보기' };
-    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 선정을 마쳤다면 모집을 마감하세요.', tone: 'attention', target: 'stage', action: '모집 마감' };
-    return { text: '지원을 받고 있어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
+    if (s.pending > 0) return pendingTask;
+    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 선정을 마쳤다면 모집을 마감하세요.', tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE };
+    return { text: `지원을 받고 있어요${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'applicants', action: '지원자 보기', secondary: CLOSE };
   }
 
   if (!s.recruitmentClosed) {
     if (full) return fullTask;
-    if (s.pending > 0) return { text: pendingText, tone: 'attention', target: 'applicants', action: '지원자 보기' };
-    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 모집을 마감하고 전시를 준비하세요.', tone: 'attention', target: 'stage', action: '모집 마감' };
-    return { text: '지원을 받고 있어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
+    if (s.pending > 0) return pendingTask;
+    if (deadlinePassed) return { text: '모집 기간이 끝났어요. 모집을 마감하고 전시를 준비하세요.', tone: 'attention', target: 'stage', action: '모집 마감', act: 'close', primary: CLOSE };
+    return { text: `지원을 받고 있어요${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'applicants', action: '지원자 보기', secondary: CLOSE };
   }
 
   if (!s.ended) {
+    const started = !!s.exhibitStartDate && dday(s.exhibitStartDate) <= 0;
+    // 작가 자료가 잠겼는가 — 갤러리의 수동 확정 또는 전시 시작일 경과(서버 computeConfirmed 와 같은 규칙)
+    const locked = s.confirmed || started;
     if (s.accepted === 0) return { text: '수락한 작가가 없어요. 지원자를 수락해 주세요.', tone: 'attention', target: 'applicants', action: '지원자 보기' };
     if (s.exhibitDate && dday(s.exhibitDate) < 0) {
-      return { text: '전시 기간이 끝났어요. 전시를 종료하고 정산을 시작하세요.', tone: 'attention', target: 'stage', action: '전시 종료' };
+      return { text: '전시 기간이 끝났어요. 전시를 종료하고 정산을 시작하세요.', tone: 'attention', target: 'stage', action: '전시 종료', act: 'end', primary: { id: 'end', label: '전시 종료' } };
+    }
+    if (s.submissionsIncomplete > 0 && !locked) {
+      return {
+        text: `${SUBMISSION_TERM}를 아직 내지 않은 작가가 ${s.submissionsIncomplete}명 있어요`,
+        tone: 'attention', target: 'submissions', action: '안내 보내기', act: 'remind-submissions',
+        primary: { id: 'remind-submissions', label: `${s.submissionsIncomplete}명에게 안내 보내기` },
+        secondary: { id: 'confirm', label: '전시 확정' },
+      };
     }
     if (s.submissionsIncomplete > 0) {
-      return { text: `${SUBMISSION_TERM}를 아직 다 내지 않은 작가가 ${s.submissionsIncomplete}명 있어요`, tone: 'attention', target: 'submissions', action: '확인하기' };
+      // 잠긴 뒤 — 작가는 더 못 낸다. 갤러리가 [대신 입력]으로 채운다(출품 자료 탭의 작가 줄)
+      return { text: `${SUBMISSION_TERM}가 비어 있는 작가가 ${s.submissionsIncomplete}명 있어요`, tone: 'attention', target: 'submissions', action: '확인하기' };
     }
-    const started = !!s.exhibitStartDate && dday(s.exhibitStartDate) <= 0;
-    if (started) return { text: '전시 중이에요. 전시가 끝나면 전시를 종료하고 정산을 시작하세요.', tone: 'neutral', target: 'stage' };
-    if (!s.confirmed) return { text: `${SUBMISSION_TERM}가 모두 모였어요. 전시를 확정하세요.`, tone: 'attention', target: 'stage', action: '전시 확정' };
-    const left = s.exhibitStartDate ? ddayText('시작', s.exhibitStartDate, dday) : null;
-    return { text: `전시를 준비하고 있어요${left ? ` · ${left}` : ''}`, tone: 'neutral', target: 'stage' };
+    if (started) {
+      const until = s.exhibitDate ? ` · ${shortDate(s.exhibitDate)}까지` : '';
+      return { text: `전시 중이에요${until}`, tone: 'neutral', target: 'submissions', action: '출품 자료 보기' };
+    }
+    if (!s.confirmed) return { text: `${SUBMISSION_TERM}가 모두 모였어요. 전시를 확정하세요.`, tone: 'attention', target: 'stage', action: '전시 확정', act: 'confirm', primary: { id: 'confirm', label: '전시 확정' } };
+    const toStart = s.exhibitStartDate ? ddayText('시작', s.exhibitStartDate, dday) : null;
+    return { text: `전시를 준비하고 있어요${toStart ? ` · ${toStart}` : ''}`, tone: 'neutral', target: 'submissions', action: '출품 자료 보기' };
   }
 
   if (!s.settlementRequested) {
     return {
       text: s.sales > 0 ? '판매 내역을 확인하고 작가에게 정산 확인을 요청하세요.' : '판매된 작품을 입력하고 작가에게 정산 확인을 요청하세요.',
       tone: 'attention', target: 'settlement', action: '정산하기',
+      primary: { id: 'request-settlement', label: s.accepted > 0 ? `작가 ${s.accepted}명에게 확인 요청` : '작가에게 확인 요청' },
     };
   }
-  if (s.approvals.issue > 0) return { text: `작가 ${s.approvals.issue}명이 정산에 이의를 남겼어요`, tone: 'attention', target: 'settlement', action: '확인하기' };
-  if (s.approvals.total > 0 && s.approvals.approved >= s.approvals.total) {
-    // 버튼 이름을 '정산 완료' 로 두지 말 것 — 이 버튼은 정산 구역으로 데려갈 뿐인데, 그 구역의 진짜 [정산 완료]와 이름이 같아진다(2026-09-29)
-    return { text: '작가 모두 정산을 확인했어요. 정산을 완료하세요.', tone: 'attention', target: 'settlement', action: '정산 마무리하기' };
+  if (s.approvals.issue > 0) {
+    // 실제 버튼(저장하고 ○○ 님에게 다시 요청)은 정산 탭이 이름을 알고 정한다 — 여기선 목록 줄의 말
+    return { text: `작가 ${s.approvals.issue}명이 정산에 이의를 남겼어요`, tone: 'attention', target: 'settlement', action: '이의 보기' };
   }
-  return { text: `작가의 정산 확인을 기다리고 있어요 · ${s.approvals.approved}/${s.approvals.total}명`, tone: 'neutral', target: 'settlement' };
+  if (s.approvals.total > 0 && s.approvals.approved >= s.approvals.total) {
+    return {
+      text: `작가 ${s.approvals.total}명이 모두 정산을 확인했어요.`,
+      tone: 'attention', target: 'settlement', action: '정산 완료', act: 'complete-settlement',
+      primary: { id: 'complete-settlement', label: '정산 완료' },
+    };
+  }
+  const unanswered = Math.max(0, s.approvals.total - s.approvals.approved - s.approvals.issue);
+  return {
+    text: `작가의 정산 확인을 기다리고 있어요 · ${s.approvals.approved}/${s.approvals.total}명`,
+    tone: 'neutral', target: 'settlement', action: '정산 보기',
+    ...(unanswered > 0 ? { secondary: { id: 'remind-settlement' as const, label: `미응답 ${unanswered}명에게 다시 알리기` } } : {}),
+  };
 }
 
 export interface ArtistSnapshot {
@@ -261,8 +313,8 @@ export function artistNextTask(s: ArtistSnapshot, dday: DdayFn = getDday): NextT
     // 이미 답한 작가에게 '확인을 요청했어요' 를 계속 띄우면 확인이 안 된 줄 안다(2026-10-03 점검 P2).
     // 갤러리가 금액을 고치면 서버가 그 작가만 PENDING 으로 되돌리므로(규칙 26) 그때 다시 빨갛게 뜬다.
     if (s.mySettlementStatus === 'APPROVED') return null;
-    if (s.mySettlementStatus === 'ISSUE') return { text: '이의를 전달했어요. 갤러리의 수정을 기다리고 있어요', tone: 'neutral', target: 'settlement' };
-    return { text: '갤러리가 정산 확인을 요청했어요', tone: 'attention', target: 'settlement', action: '확인하기' };
+    if (s.mySettlementStatus === 'ISSUE') return { text: '이의를 보냈어요. 갤러리가 확인하고 있어요', tone: 'neutral', target: 'settlement', action: '정산 보기' };
+    return { text: '정산 확인 요청이 왔어요', tone: 'attention', target: 'settlement', action: '확인하기' };
   }
   if (s.ended) return null;
   if (!s.submissionComplete) {
@@ -272,4 +324,269 @@ export function artistNextTask(s: ArtistSnapshot, dday: DdayFn = getDday): NextT
     return { text: `${SUBMISSION_TERM}를 제출해 주세요${left ? ` · ${left}` : ''}`, tone: 'attention', target: 'submissions', action: '제출하기' };
   }
   return null;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   진행 띠 — 갤러리·작가가 같은 다섯 칸을 본다 (2026-11-20 개편, 규칙 88)
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * 칸은 **기간**이다(`stageOf` 와 같은 말) — 모집(작가는 '지원') · 전시 준비 · 전시 · 정산 · 마무리.
+ * 모집 마감·전시 확정·전시 종료·정산 완료는 칸 사이를 넘기는 **버튼 이름**으로만 쓴다
+ * (예전 운영 화면의 4칸은 버튼 이름이라, 동그라미는 '전시 확정'인데 아래 글은 '지금 · 전시 준비'였다).
+ * 공모만 진행하는 공고는 두 칸: 모집 · 선정.
+ * 사용자가 말하는 일곱 단계 — ①지원 ②심사 = 모집 · ③제출 ④취합 = 전시 준비 · ⑤요청 ⑥확인 = 정산 · ⑦끝 = 마무리.
+ */
+export type StripKey = 'recruit' | 'prepare' | 'show' | 'settle' | 'wrap' | 'select';
+export interface StripCell {
+  key: StripKey;
+  label: string;
+  state: 'done' | 'current' | 'todo';
+  /** 그 칸의 숫자·상태 — '수락 2/4 · 대기 3' · '출품 자료 1/4' · '작가 확인 1/3' */
+  value?: string;
+  /** 날짜·기한 — '11.29(일) 마감' · '12.6(일)까지 · D-6' */
+  note?: string;
+  /** 지금 빨강으로 말할 것(7일 안 마감 · 이의 · 지난 기한) — 글자만 강조색 */
+  hot?: boolean;
+}
+
+export interface StripInput extends StageInput {
+  deadline?: string | null;
+  submissionDeadline?: string | null;
+  /** 전시 **종료일**(시작은 exhibitStartDate — 이름이 헷갈린다, schema 주석) */
+  exhibitDate?: string | null;
+  /** 갤러리: 수락 · 검토 대기 · 정원 */
+  accepted?: number;
+  pending?: number;
+  capacity?: number | null;
+  capacityMask?: string | null;
+  /** 갤러리: 출품 자료 다 낸 작가 / 수락한 작가 */
+  submissionsComplete?: number;
+  submissionsRequired?: number;
+  /** 갤러리: 판매 · 정산 확인 */
+  sales?: number;
+  approvals?: { total: number; approved: number; issue: number };
+  /** 작가: 내 지원 상태 · 내 출품 자료 · 내 정산 답 */
+  applicationStatus?: string | null;
+  submissionComplete?: boolean;
+  mySettlementStatus?: string | null;
+}
+
+const STRIP_INDEX: Partial<Record<StageKey, number>> = {
+  recruiting: 0, preparing: 1, confirmed: 1, running: 2, ended: 3, settling: 3, closed: 3, settled: 4,
+};
+
+export function flowStrip(viewer: 'gallery' | 'artist', s: StripInput, now: Date = new Date()): StripCell[] {
+  const dd = (d: string) => daysUntil(d, now);
+  const ddayFn: DdayFn = (d) => daysUntil(d, now);
+  const stage = stageOf(s, ddayFn);
+  const artistPending = viewer === 'artist' && s.applicationStatus !== 'ACCEPTED';
+  const first = viewer === 'artist' ? '지원' : '모집';
+  const recruitValue = (): string | undefined => {
+    if (viewer === 'artist') return s.applicationStatus === 'ACCEPTED' ? '선정' : s.applicationStatus === 'REJECTED' ? '미선정' : '심사 중';
+    if (s.accepted == null) return undefined;
+    const cap = s.capacity ? `/${capacityLimit({ capacity: s.capacity, capacityMask: (s.capacityMask ?? null) as 'ONE' | 'TWO' | null })}` : '';
+    return `수락 ${s.accepted}${cap}${!s.recruitmentClosed && (s.pending ?? 0) > 0 ? ` · 대기 ${s.pending}` : ''}`;
+  };
+  const recruitNote = (): { note?: string; hot?: boolean } => {
+    if (!s.deadline || s.recruitmentClosed) return {};
+    const left = dd(s.deadline);
+    return { note: `${shortDate(s.deadline)} 마감`, hot: left >= 0 && left <= 7 };
+  };
+
+  if (s.recruitOnly) {
+    const doneAll = stage?.key === 'selected' || stage?.key === 'closed' || (viewer === 'artist' && s.applicationStatus === 'ACCEPTED');
+    const review = stage?.key === 'review' || stage?.key === 'rejected';
+    return [
+      { key: 'recruit', label: first, state: review ? 'todo' : doneAll ? 'done' : 'current', value: recruitValue(), ...recruitNote() },
+      { key: 'select', label: '선정', state: doneAll ? 'current' : 'todo', value: doneAll ? '선정 완료' : undefined },
+    ];
+  }
+
+  // 지금 칸 — 승인 전·반려면 -1(전부 앞으로 할 일). 작가는 선정되기 전까지 '지원' 칸에 있다
+  let idx = stage ? (STRIP_INDEX[stage.key] ?? -1) : -1;
+  if (artistPending) idx = stage && (stage.key === 'review' || stage.key === 'rejected') ? -1 : 0;
+  const stateOf = (i: number): StripCell['state'] => (i < idx ? 'done' : i === idx ? 'current' : 'todo');
+
+  // 전시 준비 — 출품 자료
+  let prepValue: string | undefined;
+  let prepNote: string | undefined;
+  let prepHot = false;
+  if (viewer === 'gallery') {
+    if ((s.submissionsRequired ?? 0) > 0) prepValue = `출품 자료 ${s.submissionsComplete ?? 0}/${s.submissionsRequired}`;
+    if (s.submissionDeadline) {
+      const left = dd(s.submissionDeadline);
+      const missing = (s.submissionsRequired ?? 0) > (s.submissionsComplete ?? 0);
+      prepNote = `${shortDate(s.submissionDeadline)}까지${idx === 1 && left >= 0 ? ` · D-${left === 0 ? 'DAY' : left}` : ''}`;
+      prepHot = idx === 1 && missing && left <= 3;
+    }
+  } else if (!artistPending) {
+    prepValue = s.submissionComplete ? '제출 완료' : '출품 자료';
+    if (s.submissionDeadline && !s.submissionComplete) {
+      const left = dd(s.submissionDeadline);
+      prepNote = left < 0 ? `${shortDate(s.submissionDeadline)} 마감 지남` : `${shortDate(s.submissionDeadline)}까지 · D-${left === 0 ? 'DAY' : left}`;
+      prepHot = idx <= 1 && left <= 3;
+    }
+  }
+
+  // 전시 — 기간
+  const showValue = s.exhibitDate
+    ? (s.exhibitStartDate ? `${shortDate(s.exhibitStartDate).replace(/\(.\)/, '')} – ${shortDate(s.exhibitDate).replace(/\(.\)/, '')}` : `${shortDate(s.exhibitDate)}까지`)
+    : undefined;
+  let showNote: string | undefined;
+  if (s.exhibitStartDate && idx < 2) {
+    const toStart = dd(s.exhibitStartDate);
+    if (toStart > 0 && idx >= 1) showNote = `시작 D-${toStart}`;
+  }
+  if (idx === 2 && s.exhibitDate) showNote = `${shortDate(s.exhibitDate)}까지`;
+
+  // 정산
+  let settleValue: string | undefined;
+  let settleNote: string | undefined;
+  let settleHot = false;
+  if (viewer === 'gallery') {
+    const ap = s.approvals;
+    if (s.settledAt) settleValue = ap && ap.total ? `작가 확인 ${ap.total}/${ap.total}` : '정산 완료';
+    else if (s.settlementRequestedAt) {
+      settleValue = ap ? `작가 확인 ${ap.approved}/${ap.total}` : '확인 요청 중';
+      if (ap && ap.issue > 0) { settleNote = `이의 ${ap.issue}건`; settleHot = true; }
+    } else if (idx === 3) settleValue = (s.sales ?? 0) > 0 ? `판매 ${s.sales}점` : '판매 입력 전';
+  } else if (!artistPending) {
+    if (s.settledAt) settleValue = '정산 완료';
+    else if (s.settlementRequestedAt) {
+      if (s.mySettlementStatus === 'APPROVED') settleValue = '확인함';
+      else if (s.mySettlementStatus === 'ISSUE') settleValue = '이의 보냄';
+      else { settleValue = '확인 요청'; settleHot = true; }
+    }
+  }
+
+  return [
+    { key: 'recruit', label: first, state: stateOf(0), value: recruitValue(), ...(idx <= 0 ? recruitNote() : {}) },
+    { key: 'prepare', label: '전시 준비', state: stateOf(1), value: prepValue, note: prepNote, hot: prepHot || undefined },
+    { key: 'show', label: '전시', state: stateOf(2), value: showValue, note: showNote },
+    { key: 'settle', label: '정산', state: stateOf(3), value: settleValue, note: settleNote, hot: settleHot || undefined },
+    { key: 'wrap', label: '마무리', state: stateOf(4), value: s.settledAt ? shortDate(s.settledAt) : undefined },
+  ];
+}
+
+/* ─────────────────────────────────────────────────────────────
+   공모 한 건 화면의 탭
+   ───────────────────────────────────────────────────────────── */
+
+/** 운영자(갤러리·관리자)의 탭 — 주소 `view=` 와 알림 링크(서버 `lib/notifyLinks.ts OperationView`)가 같은 이름을 쓴다 */
+export type WorkspaceView = 'summary' | 'applicants' | 'submissions' | 'settlement' | 'notices';
+export const WORKSPACE_VIEWS: WorkspaceView[] = ['summary', 'applicants', 'submissions', 'settlement', 'notices'];
+
+/**
+ * 처음 열 탭 — 그 단계에서 일하는 곳. 모집 → 지원자 · 전시 준비~전시 → 출품 자료 · 정산 → 정산 · 마무리 → 요약.
+ * 공모만 진행은 지원자(그 공고의 일은 거기서 끝난다).
+ */
+export function workspaceDefaultView(stage: StageKey | null | undefined, recruitOnly = false): WorkspaceView {
+  if (recruitOnly) return 'applicants';
+  switch (stage) {
+    case 'preparing': case 'confirmed': case 'running': return 'submissions';
+    case 'ended': case 'settling': case 'closed': return 'settlement';
+    case 'settled': return 'summary';
+    default: return 'applicants';
+  }
+}
+
+/** 작가 전시 화면의 탭 */
+export type ArtistView = 'submissions' | 'settlement' | 'notices' | 'application';
+
+/** 작가가 처음 볼 탭 — 할 일이 있으면 그 탭, 없으면 그 단계의 탭 */
+export function artistDefaultView(s: ArtistSnapshot): ArtistView {
+  if (s.status !== 'ACCEPTED') return 'application';
+  if (s.recruitOnly) return 'notices';
+  if (s.settlementRequested || s.settled) return 'settlement';
+  return 'submissions';
+}
+
+/** 작가 목록의 '기다리는 중' 줄 — 할 일이 없을 때 지금 무엇을 기다리는지 한 줄 */
+export function artistWaitText(s: ArtistSnapshot, dday: DdayFn = getDday): string {
+  if (s.status === 'REJECTED') return '이번 공모에서는 선정되지 않았어요';
+  if (s.status !== 'ACCEPTED') return '갤러리가 검토하고 있어요';
+  if (s.recruitOnly) return '선정되었어요';
+  if (s.settled) return '정산이 끝났어요';
+  if (s.settlementRequested) return s.mySettlementStatus === 'ISSUE' ? '이의를 보냈어요' : '정산을 확인했어요 · 갤러리 마무리 대기';
+  if (s.ended) return '전시가 끝났어요 · 정산을 기다리고 있어요';
+  const started = !!s.exhibitStartDate && dday(s.exhibitStartDate) <= 0;
+  if (started) return '전시 중이에요';
+  const toStart = s.exhibitStartDate ? ddayText('시작', s.exhibitStartDate, dday) : null;
+  return `출품 자료 제출 완료${toStart ? ` · ${toStart}` : ''}`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   목록 줄·공모 한 건 화면 머리의 보조 글 — 굵은 단계 이름 옆 (2026-11-20)
+   ───────────────────────────────────────────────────────────── */
+
+export interface SubTextInput {
+  stageKey?: StageKey | null;
+  deadline?: string | null;
+  submissionDeadline?: string | null;
+  exhibitStartDate?: string | null;
+  exhibitDate?: string | null;
+  settledAt?: string | null;
+  settlementRequestedAt?: string | null;
+  /** 갤러리만 — 공모를 올린 갤러리에게만 서버가 싣는다(규칙 63) */
+  viewCount?: number | null;
+}
+
+/** 갤러리 — '마감 D-9 · 조회 124' · '출품 자료 마감 D-6' · '11.30(월)까지' · '확인 요청 11.18(수)' */
+export function gallerySubText(s: SubTextInput, dday: DdayFn = getDday): string | null {
+  const parts: (string | null)[] = [];
+  switch (s.stageKey) {
+    case 'recruiting':
+      parts.push(ddayText('마감', s.deadline, dday));
+      if (s.viewCount != null) parts.push(`조회 ${s.viewCount.toLocaleString('ko')}`);
+      break;
+    case 'selected':
+      if (s.viewCount != null) parts.push(`조회 ${s.viewCount.toLocaleString('ko')}`);
+      break;
+    case 'preparing': case 'confirmed':
+      parts.push(ddayText('출품 자료 마감', s.submissionDeadline, dday) ?? ddayText('전시 시작', s.exhibitStartDate, dday));
+      break;
+    case 'running':
+      parts.push(s.exhibitDate ? `${shortDate(s.exhibitDate)}까지` : null);
+      break;
+    case 'ended': case 'settling': case 'closed':
+      // 상태 이름이 이미 '전시 종료'라 날짜만(예전 '전시 종료 11.18(수) 전시 종료' 가 겹쳤다)
+      parts.push(s.settlementRequestedAt ? `확인 요청 ${shortDate(s.settlementRequestedAt)}` : s.exhibitDate ? shortDate(s.exhibitDate) : null);
+      break;
+    case 'settled':
+      parts.push(s.settledAt ? shortDate(s.settledAt) : null);
+      break;
+    default:
+      break;
+  }
+  const text = parts.filter(Boolean).join(' · ');
+  return text || null;
+}
+
+/** 작가 — '출품 자료 마감 D-6' · '출품 자료 제출 완료 · 시작 D-10' · '11.30(월)까지' · '확인함 · 갤러리 마무리 대기' */
+export function artistSubText(s: SubTextInput & { applicationStatus: string; appliedAt?: string | null; submissionComplete?: boolean; mySettlementStatus?: string | null }, dday: DdayFn = getDday): string | null {
+  if (s.applicationStatus !== 'ACCEPTED') return s.appliedAt ? `${shortDate(s.appliedAt)} 지원` : null;
+  switch (s.stageKey) {
+    case 'recruiting': case 'preparing': case 'confirmed': {
+      if (!s.submissionComplete) return ddayText('출품 자료 마감', s.submissionDeadline, dday) ?? (s.submissionDeadline ? `출품 자료 마감 ${shortDate(s.submissionDeadline)}` : null);
+      const toStart = ddayText('시작', s.exhibitStartDate, dday);
+      return `출품 자료 제출 완료${toStart ? ` · ${toStart}` : ''}`;
+    }
+    case 'running': return s.exhibitDate ? `${shortDate(s.exhibitDate)}까지` : null;
+    case 'ended': case 'settling': case 'closed':
+      if (s.settlementRequestedAt) {
+        if (s.mySettlementStatus === 'APPROVED') return '확인함 · 갤러리 마무리 대기';
+        if (s.mySettlementStatus === 'ISSUE') return '이의를 보냄';
+        return '정산 확인 요청';
+      }
+      return s.exhibitDate ? shortDate(s.exhibitDate) : null;
+    case 'settled': return s.settledAt ? shortDate(s.settledAt) : null;
+    case 'selected': return '선정';
+    default: return null;
+  }
+}
+
+/** 목록 버튼으로 들어갈 탭 — 할 일의 target 을 탭 이름으로('stage'·null 은 단계 기본 탭) */
+export function viewForTarget(target: TaskTarget): WorkspaceView | null {
+  return target === 'applicants' || target === 'submissions' || target === 'settlement' || target === 'notices' || target === 'summary' ? target : null;
 }

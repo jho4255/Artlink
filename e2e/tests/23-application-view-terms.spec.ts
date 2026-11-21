@@ -24,11 +24,12 @@ test('갤러리 지원자 관리에서 작가 제출 지원서(약력) 표시', 
   const card = await openApplicantManager(page, ex.title);
   const row = applicantRow(card, 'Artist 1');
   await expect(row).toBeVisible({ timeout: 10000 });
-  // 줄을 누르면 펼쳐진다 → 지원서(작가 약력·경력·작품 사진…)와 그 아래 [수락하기]·[거절]
-  await row.locator('button[aria-expanded]').first().click();
-  await expect(row.getByText('작가 약력', { exact: true })).toBeVisible({ timeout: 8000 });
-  await expect(row.getByText('E2E_제출약력_표시확인', { exact: false })).toBeVisible({ timeout: 8000 });
-  await expect(row.getByRole('button', { name: '수락하기', exact: true })).toBeVisible();
+  // 줄을 누르면 지원서가 열린다(넓은 화면은 오른쪽 칸, 휴대폰은 화면 가득 창 — 2026-11-20) → 작품 사진·약력… 그리고 [거절]·[수락하기]
+  await row.getByRole('button').first().click();
+  const detail = page.locator('[data-applicant-detail]').first();
+  await expect(detail.getByText('작가 약력', { exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(detail.getByText('E2E_제출약력_표시확인', { exact: false })).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).first()).toBeVisible();
   await ctx.close();
 });
 

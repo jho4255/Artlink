@@ -17,12 +17,13 @@ import { toManWon } from '../lib/format';
 import { sendDirectNotice } from '../lib/chat';
 import { baseUrl } from '../lib/seoMeta';
 import { hasSubmissionContent } from '../lib/submission';
-import { canOperateExhibition, operatorUserIds, exhibitionNotifyTargets } from '../lib/exhibitionAccess';
+import { canOperateExhibition, operatorUserIds, exhibitionNotifyTargets, type OperatorShape } from '../lib/exhibitionAccess';
 import { assertFullExhibition } from '../lib/exhibitionStage';
 import { fingerprintsOf, settlementFingerprint, feeUnits, cardFeeAmount } from '../lib/settlementFingerprint';
 import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
 import { parseSubmissionBody, readArtworkList, readCv, readNote } from '../lib/submissionSchema';
+import { isSubmissionComplete, notifySubmissionReceived, notifyExhibitionConfirmed, notifySettlementAllApproved, rejectPendingApplications } from '../lib/flowNotify';
 
 const router = Router();
 
@@ -321,17 +322,25 @@ function submissionDataFrom(body: any) {
 router.put('/:id/me', authenticate, async (req, res, next) => {
   try {
     const exhibitionId = idOf(req.params.id);
-    const { isAcceptedArtist, isConfirmed } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
+    const { isAcceptedArtist, isConfirmed, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isAcceptedArtist) throw new AppError('수락된 작가만 작성할 수 있습니다.', 403);
     if (isConfirmed) throw new AppError('전시 정보가 확정되어 더 이상 수정할 수 없습니다.', 403);
     await assertNoSalesFor(exhibitionId, req.user!.id);
     // 본인이 직접 저장 → 대신 입력 표시가 있었다면 여기서 사라진다
     const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
+    const before = await prisma.exhibitionSubmission.findUnique({
+      where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
+      select: { artworkList: true, cv: true, note: true },
+    });
     const sub = await prisma.exhibitionSubmission.upsert({
       where: { exhibitionId_userId: { exhibitionId, userId: req.user!.id } },
       update: data,
       create: { exhibitionId, userId: req.user!.id, ...data },
     });
+    // 다 채워 낸 **순간**에만 운영자에게(2026-11-20, lib/flowNotify.ts) — 임시저장·이미 낸 뒤 고친 저장은 알리지 않는다
+    if (!isSubmissionComplete(before) && isSubmissionComplete(sub)) {
+      try { await notifySubmissionReceived(exhibition, req.user!.id); } catch { /* 알림은 덤 */ }
+    }
     // 저장 응답에도 표시를 담는다 — 작품 단위 저장(partial)은 화면이 refetch 를 안 하므로,
     // 빼면 작가가 직접 고쳤는데도 '갤러리가 대신 입력함' 안내가 남아 있는다.
     res.json(withProxyFlag(parseSubmission(sub), req.user!.id));
@@ -599,6 +608,8 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
     const { recruitmentClosed, confirmed, ended } = req.body || {};
+    /** 모집을 마감하며 남은 검토 대기 지원을 미선정으로(2026-11-20 사용자 결정 D2 — 확인창의 체크, 기본 꺼짐) */
+    const rejectPending = req.body?.rejectPending === true;
     const data: any = {};
 
     // 현재 상태 (단계 순서 강제: 모집마감 → 확정 → 전시종료)
@@ -658,16 +669,40 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
       }
       data.ended = ended;
     }
-    const updated = await prisma.exhibition.update({
-      where: { id: exhibitionId },
-      data,
-      select: { recruitmentClosed: true, confirmed: true, ended: true, exhibitStartDate: true },
+    /*
+      넘어간 '순간'은 한 요청만 갖는다(2026-11-20 신뢰성 점검 — TESTCASES S2·S3). 두 탭·두 운영자가 [모집 마감]·[전시 확정]을
+      동시에 누르면 둘 다 '아직 안 넘어감'을 읽고 둘 다 알림을 보냈다(작가에게 확정 알림 두 통 · 미선정 알림 두 통).
+      같은 트랜잭션에서 `updateMany(where: 아직 false)` 로 먼저 차지한 요청만 알린다 — 늦은 요청은 행 잠금을 기다렸다가
+      0건을 받는다(규칙 46: 확인하고 바꾸지 말 것). 나머지 값은 예전처럼 한 번에 쓴다.
+    */
+    const { updated, closedNow, confirmedNow } = await prisma.$transaction(async (tx) => {
+      const claim = async (field: 'recruitmentClosed' | 'confirmed') =>
+        data[field] === true
+        && (await tx.exhibition.updateMany({ where: { id: exhibitionId, [field]: false }, data: { [field]: true } })).count === 1;
+      const closedNow = await claim('recruitmentClosed');
+      const confirmedNow = await claim('confirmed');
+      const updated = await tx.exhibition.update({
+        where: { id: exhibitionId },
+        data,
+        select: { recruitmentClosed: true, confirmed: true, ended: true, exhibitStartDate: true },
+      });
+      return { updated, closedNow, confirmedNow };
     });
+    // 넘어간 순간을 상대에게(2026-11-20, lib/flowNotify.ts) — 실패해도 전환은 끝난 것이다
+    let rejectedCount = 0;
+    if (rejectPending && closedNow) {
+      try { rejectedCount = await rejectPendingApplications(exhibition); } catch { /* best-effort */ }
+    }
+    // 전시 확정 = 작가 출품 자료가 잠긴다. 시작일이 지나 이미 저절로 확정된 뒤의 수동 확정은 새 소식이 아니다
+    if (confirmedNow && !curConfirmed) {
+      try { await notifyExhibitionConfirmed(exhibition); } catch { /* best-effort */ }
+    }
     res.json({
       recruitmentClosed: updated.recruitmentClosed,
       manualConfirmed: updated.confirmed,
       confirmed: computeConfirmed(updated),
       ended: updated.ended,
+      rejectedCount,
     });
   } catch (e) { next(e); }
 });
@@ -684,7 +719,7 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
  *
  * best-effort — 여기서 실패해도 조회·완료 자체는 진행돼야 한다.
  */
-async function autoApproveOverdue(exhibition: { id: number; title: string; settlementRequestedAt: Date | null; settledAt: Date | null; cardFeeRate?: number }): Promise<number> {
+async function autoApproveOverdue(exhibition: { id: number; title: string; settlementRequestedAt: Date | null; settledAt: Date | null; cardFeeRate?: number } & OperatorShape): Promise<number> {
   if (!exhibition.settlementRequestedAt || exhibition.settledAt) return 0;
   const exhibitionId = exhibition.id;
   try {
@@ -720,6 +755,8 @@ async function autoApproveOverdue(exhibition: { id: number; title: string; settl
         linkUrl: artistExhibitionLink(exhibitionId),
       })),
     });
+    // 이 자동 수락으로 모두 확인이 됐으면 운영자에게 — [정산 완료]를 누를 차례다(2026-11-20)
+    try { await notifySettlementAllApproved(exhibition); } catch { /* best-effort */ }
     return due.length;
   } catch {
     return 0;   // 자동 처리 실패가 조회·완료를 막으면 안 된다
@@ -1035,11 +1072,12 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
       throw new AppError(`작가 확인 이후 정산 내용이 바뀐 작가가 ${staleCount}명 있습니다. [정산 확인 요청]을 다시 보내주세요.`, 400);
     }
 
-    const updated = await prisma.exhibition.update({
-      where: { id: exhibitionId },
-      data: { settledAt: new Date() },
-      select: { settledAt: true },
-    });
+    // 완료한 '순간'은 한 요청만 갖는다(2026-11-20 신뢰성 점검 — TESTCASES S13). 위의 확인은 읽기라 [정산 완료]를 두 탭에서
+    // 동시에 누르면 둘 다 200 이 나고 작가에게 '정산 내역이 공개되었습니다' 가 두 통 갔다. 비어 있을 때만 차지한다
+    const settledAt = new Date();
+    const claimed = await prisma.exhibition.updateMany({ where: { id: exhibitionId, settledAt: null }, data: { settledAt } });
+    if (claimed.count === 0) throw new AppError('이미 정산이 완료되었습니다.', 400);
+    const updated = { settledAt };
 
     // 수락 작가에게 정산 공개 알림 (best-effort)
     try {
@@ -1097,16 +1135,24 @@ router.post('/:id/settlement/request', authenticate, async (req, res, next) => {
       else askIds.push(uid);
     }
 
-    await prisma.$transaction([
+    /*
+      요청한 '순간'은 한 요청만 갖는다(2026-11-20 신뢰성 점검 — TESTCASES S14). 위의 '이미 요청했다' 확인은 읽기라,
+      [작가 N명에게 확인 요청]을 두 탭에서 동시에 누르면 둘 다 통과해 하나가 '이미 사용 중인 값입니다.'(409)로 떨어지거나
+      순서에 따라 둘 다 성공해 작가에게 요청 알림이 두 번 갔다. 같은 트랜잭션에서 비어 있을 때만 차지하고, 못 차지하면 같은 문구로 400.
+    */
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.exhibition.updateMany({
+        where: { id: exhibitionId, settlementRequestedAt: null, settledAt: null },
+        data: { settlementRequestedAt: new Date() },
+      });
+      if (claimed.count === 0) throw new AppError('이미 정산 확인을 요청했습니다.', 400);
       // 더 이상 수락 상태가 아닌 작가(거절로 되돌림 등)의 행 정리
-      ...(acceptedIds.length > 0
-        ? [prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { notIn: acceptedIds } } })]
-        : [prisma.settlementApproval.deleteMany({ where: { exhibitionId } })]),
+      if (acceptedIds.length > 0) await tx.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { notIn: acceptedIds } } });
+      else await tx.settlementApproval.deleteMany({ where: { exhibitionId } });
       // 다시 확인 받을 작가만 초기화 후 PENDING 재생성 (수락 유지 대상은 건드리지 않는다)
-      prisma.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { in: askIds } } }),
-      prisma.settlementApproval.createMany({ data: askIds.map((uid) => ({ exhibitionId, artistUserId: uid, status: 'PENDING', askedAt: new Date() })) }),
-      prisma.exhibition.update({ where: { id: exhibitionId }, data: { settlementRequestedAt: new Date() } }),
-    ]);
+      await tx.settlementApproval.deleteMany({ where: { exhibitionId, artistUserId: { in: askIds } } });
+      await tx.settlementApproval.createMany({ data: askIds.map((uid) => ({ exhibitionId, artistUserId: uid, status: 'PENDING', askedAt: new Date() })) });
+    });
 
     // 알림은 **다시 물어야 하는 작가에게만** — 수락이 유지된 작가에게 보내면 이미 끝낸 일을 또 하라는 소리가 된다
     try {
@@ -1282,11 +1328,21 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
       throw new AppError('정산 내역이 방금 수정되었습니다. 새로고침해서 바뀐 금액을 확인해주세요.', 409);
     }
 
+    const prev = await prisma.settlementApproval.findUnique({
+      where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
+      select: { status: true },
+    });
     await prisma.settlementApproval.upsert({
       where: { exhibitionId_artistUserId: { exhibitionId, artistUserId: userId } },
       update: { status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot, autoApprovedAt: null },
       create: { exhibitionId, artistUserId: userId, status: approve ? 'APPROVED' : 'ISSUE', comment: approve ? null : comment, snapshot },
     });
+
+    // 마지막 작가가 확인했으면 운영자에게 — [정산 완료]를 누를 차례다(2026-11-20, lib/flowNotify.ts).
+    // ⚠️ **확인으로 바뀐 순간에만** — 이미 확인한 작가가 또 보내면(옛 화면·연타) 갤러리가 읽은 '모두 확인' 이 다시 생겼다(TESTCASES S10)
+    if (approve && prev?.status !== 'APPROVED') {
+      try { await notifySettlementAllApproved(exhibition); } catch { /* best-effort */ }
+    }
 
     // 문제 제기 시 갤러리 오너에게 알림 (best-effort)
     if (!approve) {
@@ -1300,9 +1356,10 @@ router.post('/:id/settlement/respond', authenticate, async (req, res, next) => {
           data: (await exhibitionNotifyTargets(exhibition)).map((uid) => ({
             userId: uid,
             type: 'SETTLEMENT_ISSUE',
-            message: `"${exhibition.title}" 정산에 ${who}님이 문제를 제기했습니다: ${comment.slice(0, 80)}`,
+            // '이의'로 부른다(2026-11-20 — 갤러리 화면의 '이의 1건'·작가 화면의 [이의 제기]와 같은 말)
+            message: `"${exhibition.title}" 정산에 ${who}님이 이의를 남겼어요: ${comment.slice(0, 80)}`,
             // ⚠️ 받는 사람이 **갤러리 오너·운영자**다 — 작가 링크로 바꾸지 말 것
-            linkUrl: operationLink(exhibitionId),
+            linkUrl: operationLink(exhibitionId, 'settlement'),
           })),
         });
       } catch { /* 알림 실패해도 응답은 정상 */ }

@@ -8,7 +8,7 @@
  *
  * @see Phase 4 - 폼 UX 개선
  */
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,6 +21,8 @@ interface ConfirmDialogProps {
    * "정말 하시겠습니까?" 대신 결과를 적어 준다 — 처음 쓰는 사람은 무엇을 묻는지부터 모른다.
    */
   details?: string[];
+  /** 줄 목록 아래에 붙는 것 — 모집 마감 확인창의 '남은 검토 대기를 미선정으로' 체크(2026-11-20) */
+  extra?: ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: 'default' | 'danger';
@@ -33,6 +35,7 @@ export default function ConfirmDialog({
   title,
   message,
   details,
+  extra,
   confirmText = '확인',
   cancelText = '취소',
   variant = 'default',
@@ -43,12 +46,19 @@ export default function ConfirmDialog({
   const titleId = useId();
   // 확인 버튼 더블클릭 시 중복 제출 방지 — 다이얼로그가 열릴 때마다 리셋
   const [busy, setBusy] = useState(false);
+  /*
+    ⚠️ 판정은 state 가 아니라 ref 로(2026-11-20 신뢰성 점검 — TESTCASES S12). 닫히는 동안(AnimatePresence exit) 화면에 남는 건
+    **닫히기 직전 렌더의 버튼**이라 그 onClick 은 busy=false 인 옛 handleConfirm·옛 onConfirm 을 쥐고 있다 — 두 번째 클릭이
+    그대로 통과해 수락·마감 요청이 두 번 나갔다(E2E 87 이 요청 수로 잡았다). ref 는 옛 함수도 같은 값을 본다.
+  */
+  const fired = useRef(false);
   useEffect(() => {
-    if (open) setBusy(false);
+    if (open) { setBusy(false); fired.current = false; }
   }, [open]);
 
   const handleConfirm = () => {
-    if (busy) return; // 이미 처리 중이면 무시 (exit 애니메이션 동안 재클릭 방지)
+    if (fired.current) return; // 이미 처리 중이면 무시 (exit 애니메이션 동안 재클릭 방지)
+    fired.current = true;
     setBusy(true);
     onConfirm();
   };
@@ -114,6 +124,7 @@ export default function ConfirmDialog({
                 ))}
               </ul>
             )}
+            {extra && <div className="-mt-2 mb-5">{extra}</div>}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={onCancel}

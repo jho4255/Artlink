@@ -69,12 +69,20 @@ describe('소스 가드 — 화면에서 되돌리기 쉬운 한 줄', () => {
   });
 
   it('정산 입력에도 이탈 경고 — 판매가를 적다 카드를 접으면 경고 없이 사라졌다(P1-2)', () => {
-    expect(read('components/operation/SettlementSection.tsx')).toMatch(/useUnsavedChanges\(dirty && !locked/);
+    // 2026-11-20: 상태·동작은 컨트롤러 파일로 옮겼다(그리기는 SettlementSection) — 경고는 컨트롤러가 건다
+    expect(read('components/operation/settlementController.tsx')).toMatch(/useUnsavedChanges\((enabled && )?dirty && !locked/);
   });
 
-  it('화면 안에서 입력을 떼어 내는 동작은 먼저 묻는다 — 갤러리 카드·작가 카드·탭', () => {
+  it('화면 안에서 입력을 떼어 내는 동작은 먼저 묻는다 — 공모 한 건 화면을 닫을 때(2026-11-20 카드 → 한 건 화면)', () => {
+    // 카드 접기·다른 카드·카드 탭이 없어졌다 — 입력이 떨어져 나가는 길은 한 건 화면의 [← 목록] 하나다. 안쪽 탭은 떼지 않고 숨긴다.
+    for (const f of ['components/workspace/ExhibitionWorkspace.tsx', 'components/workspace/ArtistExhibitionWorkspace.tsx']) {
+      const src = read(f);
+      expect(src, f).toMatch(/if \(confirmDiscardUnsaved\(\)\) onClose/);
+      expect(src, f).toMatch(/hidden=\{current !== v\}/);
+    }
+    // 저장 안 된 입력을 버리고 닫으면 뒤로가기 대신 갈아 끼운다 — 가드 항목(useUnsavedChanges)을 지나며 한 번 더 묻지 않게
     const my = read('pages/MyPage.tsx');
-    expect((my.match(/confirmDiscardUnsaved\(\)/g) ?? []).length).toBeGreaterThanOrEqual(6);
+    expect((my.match(/navState\.fromList && !hasUnsavedChanges\(\)/g) ?? []).length).toBe(2);
   });
 
   it('지원서는 홈페이지와 같은 5항목을 그리고 보낸다(P2-7)', () => {
@@ -114,8 +122,8 @@ describe('소스 가드 — 화면에서 되돌리기 쉬운 한 줄', () => {
   });
 
   it('운영 화면 본문은 <main> 을 만들지 않는다 — Layout 이 이미 하나 갖고 있다', () => {
-    const op = read('pages/OperationPage.tsx');
-    expect(op).not.toMatch(/'main' \| 'div'/);
-    expect(op).toMatch(/const Body = 'div' as const;/);
+    for (const f of ['pages/OperationPage.tsx', 'components/workspace/ExhibitionWorkspace.tsx', 'components/workspace/ArtistExhibitionWorkspace.tsx']) {
+      expect(read(f), f).not.toMatch(/<main\b/);
+    }
   });
 });

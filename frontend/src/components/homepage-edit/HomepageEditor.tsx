@@ -483,7 +483,7 @@ export default function HomepageEditor() {
         고친 것도 없고 작품도 없으면 바를 그리지 않는다 — 저장할 것도 미리 볼 것도 없다.
       */}
       {(dirty || images.length > 0) && (
-        <div data-save-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-30 -mx-6 mt-10 border-t border-gray-200 bg-white/95 px-6 py-3 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0">
+        <div data-save-bar className="sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-6 mt-10 border-t border-gray-200 bg-white/95 px-6 py-3 backdrop-blur md:-mx-12 md:px-12 lg:bottom-0">
           <div className="flex items-center justify-end gap-2">
             <p className={cn('mr-auto hidden min-w-0 break-keep text-xs sm:block', dirty ? 'font-medium text-accent' : 'text-gray-500')}>
               {dirty ? '저장하지 않은 변경이 있어요.' : '사진·작품 정보는 올리는 즉시 저장됩니다.'}
