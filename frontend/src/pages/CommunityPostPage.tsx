@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Heart, Megaphone, MessageCircle, Pencil, Pin, PinOff, Share2, Trash2, User, X } from 'lucide-react';
+import { FolderInput, Heart, Megaphone, MessageCircle, Pencil, Pin, PinOff, Share2, Trash2, User, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import Thumb from '@/components/shared/Thumb';
@@ -11,6 +11,7 @@ import ImageLightbox from '@/components/shared/ImageLightbox';
 import FollowButton from '@/components/shared/FollowButton';
 import PostBody, { type PostBodyImage } from '@/components/post/PostBody';
 import ProfilePopover, { type ProfileTarget } from '@/components/post/ProfilePopover';
+import MoveTabDialog from '@/components/post/MoveTabDialog';
 import { scrollToTarget } from '@/lib/scrollToTarget';
 import type { PollView } from '@/lib/postPoll';
 import { useAuthStore } from '@/stores/authStore';
@@ -25,7 +26,7 @@ import { legacyToPostDoc, type PostDoc } from '@/lib/postDoc';
  * - 본문은 문서(`doc`)를 편집기 없이 그린다(components/post/PostBody). 옛 글은 같은 문서로 바꿔 같은 화면이 그린다 — 화면이 둘이 아니다.
  * - 고치기는 글쓰기 화면(`/community/:id/edit`)에서 — 예전의 제목·내용만 고치던 창은 없앴다(사진을 못 고쳤다).
  * - 익명 글은 작성자 카드·홈페이지 링크를 그리지 않는다(서버가 신원을 통째로 가려 보낸다 — 화면에서 가리지 않는다).
- * - 관리자: 공지·고정·삭제. 작성자: 고치기·삭제. ⚠️ 화면에서 감추는 건 권한이 아니다 — 서버가 다시 막는다.
+ * - 관리자: 공지·고정·탭 옮기기·삭제. 작성자: 고치기·탭 옮기기·삭제(탭 옮기기는 2026-11-21 — 글쓴이는 쓸 수 있는 탭으로만). ⚠️ 화면에서 감추는 건 권한이 아니다 — 서버가 다시 막는다.
  * - 댓글(2026-11-13): 답글은 맨 위 댓글 아래 **한 단계**(답글의 답글은 '○○님에게'). @멘션은 없다 — 답글이 그 일을 한다.
  *   답글이 달린 댓글을 지우면 '삭제된 댓글입니다' 자리만 남는다. 알림(`?comment=`)으로 오면 그 댓글로 내려간다.
  * - 이름·사진을 누르면 프로필 카드(홈페이지 · 이웃 추가) — 실명인 사람만(서버 `profiles`).
@@ -106,6 +107,7 @@ export default function CommunityPostPage() {
   const [flash, setFlash] = useState<number | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ images: PostBodyImage[]; index: number } | null>(null);
   const [justPublished, setJustPublished] = useState(() => !!(location.state as { justPublished?: boolean } | null)?.justPublished);
   const isAdmin = user?.role === 'ADMIN';
@@ -302,6 +304,10 @@ export default function CommunityPostPage() {
                 <Link to={`/community/${post.id}/edit`} aria-label="고치기" title="고치기" className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-800"><Pencil size={17} /></Link>
               )}
               {(a.mine || isAdmin) && (
+                <button type="button" onClick={() => setMoveOpen(true)} aria-label="탭 옮기기" title="탭 옮기기" aria-haspopup="dialog"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-800"><FolderInput size={17} /></button>
+              )}
+              {(a.mine || isAdmin) && (
                 <button type="button" onClick={() => setDeleteOpen(true)} aria-label="삭제" title={a.mine ? '삭제' : '글 삭제 (관리자)'}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-accent"><Trash2 size={17} /></button>
               )}
@@ -462,6 +468,9 @@ export default function CommunityPostPage() {
       </article>
 
       {profile && <ProfilePopover key={profile.target.id} target={profile.target} anchor={profile.el} onClose={closeProfile} />}
+      {moveOpen && (
+        <MoveTabDialog post={{ id: post.id, categoryId: post.category?.id ?? null, anonymous: a.anonymous }} isAdmin={isAdmin} onClose={() => setMoveOpen(false)} />
+      )}
 
       <ConfirmDialog
         open={deleteOpen}

@@ -754,21 +754,45 @@ router.patch('/:id/notice', authenticate, authorize('ADMIN'), async (req, res, n
   } catch (e) { next(e); }
 });
 
-// ── 글 탭 옮기기 (Admin) ──
-router.patch('/:id/category', authenticate, authorize('ADMIN'), async (req, res, next) => {
+// ── 글 탭 옮기기 (관리자 · 글쓴이) — 2026-11-21 글쓴이도 ──
+// 관리자는 어느 탭으로든(숨긴 탭·관리자 전용 탭 포함), 글쓴이는 **그 탭에 새로 쓸 수 있을 때만**(글쓰기와 같은 `writeBlockReason` — 403).
+// ⚠️ 익명 글은 익명을 받지 않는 탭으로 못 옮긴다(400) — 관리자도. 익명은 운영도 벗길 수 없고, 탭 규칙을 어긴 글이 그 탭에 남으면 안 된다.
+//    글쓴이는 글을 고쳐 익명을 끈 뒤 옮기면 된다. 미분류(null)로는 누구나 옮긴다.
+// 옮겨도 이웃 알림(POST_NEW)은 보내지 않는다 — 새 글이 아니다(고쳐 올림과 같은 규칙).
+router.patch('/:id/category', authenticate, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const post = await prisma.post.findUnique({ where: { id }, select: { id: true } });
+    if (!Number.isFinite(id)) throw new AppError('글을 찾을 수 없습니다.', 404);
+    const me = req.user!;
+    const isAdmin = me.role === 'ADMIN';
+    const post = await prisma.post.findUnique({ where: { id }, select: { id: true, authorId: true, anonymous: true, categoryId: true } });
     if (!post) throw new AppError('글을 찾을 수 없습니다.', 404);
+    if (!isAdmin && post.authorId !== me.id) throw new AppError('탭을 옮길 권한이 없습니다.', 403);
+
     const raw = req.body?.categoryId;
-    let categoryId: number | null = null;
+    if (raw !== null && typeof raw !== 'number') throw new AppError('옮길 탭을 골라 주세요.', 400);
+    let tab: { id: number; name: string; slug: string; active: boolean; writePolicy: string; allowAnonymous: boolean } | null = null;
     if (typeof raw === 'number') {
-      const c = await prisma.postCategory.findUnique({ where: { id: raw }, select: { id: true } });
-      if (!c) throw new AppError('탭을 찾을 수 없습니다.', 404);
-      categoryId = c.id;
+      tab = await prisma.postCategory.findUnique({
+        where: { id: raw },
+        select: { id: true, name: true, slug: true, active: true, writePolicy: true, allowAnonymous: true },
+      });
+      if (!tab) throw new AppError('탭을 찾을 수 없습니다.', 404);
     }
-    const updated = await prisma.post.update({ where: { id }, data: { categoryId }, include: { category: true } });
-    res.json({ category: updated.category ? { id: updated.category.id, name: updated.category.name, slug: updated.category.slug } : null });
+    if (tab && tab.id !== post.categoryId) {
+      if (!isAdmin) {
+        const reason = writeBlockReason(tab, { id: me.id, role: me.role }, await isCommunityWriter(prisma, me.id));
+        if (reason) throw new AppError(reason, 403);
+      }
+      if (post.anonymous && !tab.allowAnonymous) {
+        throw new AppError(isAdmin
+          ? `‘${tab.name}’ 탭은 익명 글을 받지 않아요.`
+          : `‘${tab.name}’ 탭은 익명 글을 받지 않아요. 글을 고쳐 익명을 끈 뒤 옮겨 주세요.`, 400);
+      }
+    }
+    const categoryId = tab?.id ?? null;
+    if (categoryId !== post.categoryId) await prisma.post.update({ where: { id }, data: { categoryId } });
+    res.json({ category: tab ? { id: tab.id, name: tab.name, slug: tab.slug } : null });
   } catch (e) { next(e); }
 });
 

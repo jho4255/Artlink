@@ -193,6 +193,24 @@ describe('2026-11-13 로컬 확인 뒤 고친 것', () => {
   });
 });
 
+describe('2026-11-21 — 목록 머리', () => {
+  it('★ 제목 아래 설명 문구가 없다(사용자 결정 — 머리는 Community 와 [글쓰기]뿐)', () => {
+    const src = read('pages/CommunityPage.tsx');
+    expect(src).not.toContain('나누는 작업 이야기');
+  });
+  it('★ 글쓴이·관리자는 글 화면에서 [탭 옮기기] — 창은 role="dialog"·aria-modal(앱 뒤로가기·Esc 가 창만 닫는다)', () => {
+    const page = read('pages/CommunityPostPage.tsx');
+    expect(page).toContain("import MoveTabDialog from '@/components/post/MoveTabDialog'");
+    expect(page).toMatch(/\(a\.mine \|\| isAdmin\) && \(\s*<button[^>]*onClick=\{\(\) => setMoveOpen\(true\)\}/);
+    const dlg = read('components/post/MoveTabDialog.tsx');
+    expect(dlg).toContain('role="dialog" aria-modal="true"');
+    expect(dlg).toContain('useEscapeKey');
+    expect(dlg).toContain('/category`');
+    // 읽는 화면 부품이라 편집기를 끌어오지 않는다
+    expect(dlg).not.toMatch(/post-editor|@tiptap/);
+  });
+});
+
 describe('탭 관리', () => {
   it('탭마다 누가 쓰나·목록 모양·익명·소개를 고르고, 필진을 관리한다', () => {
     const tm = read('components/community/TabManager.tsx');

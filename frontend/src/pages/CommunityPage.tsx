@@ -152,11 +152,8 @@ export default function CommunityPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 pb-28 pt-10 md:px-12 md:pb-20 md:pt-14">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-4xl text-gray-900 md:text-5xl">Community</h1>
-          <p className="mt-2 text-base text-gray-500">작가와 갤러리가 나누는 작업 이야기</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-serif text-4xl text-gray-900 md:text-5xl">Community</h1>
         <button type="button" onClick={goWrite} className="hidden h-11 items-center gap-2 rounded-lg bg-gray-900 px-5 text-[15px] font-semibold text-white hover:bg-gray-800 lg:inline-flex">
           <PenLine size={16} />글쓰기
         </button>

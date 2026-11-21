@@ -392,12 +392,71 @@ describe('공지 · 고정 — Admin 만', () => {
     expect(r.body.posts[0].title).toBe('내 최신 글');
   });
 
-  it('탭 옮기기도 Admin 만', async () => {
-    const { body: tab } = await request.post('/api/community/categories').set('Authorization', `Bearer ${admin}`).send({ name: '자유' });
-    const { body: post } = await createPost(a1);
-    expect((await request.patch(`/api/community/${post.id}/category`).set('Authorization', `Bearer ${a1}`).send({ categoryId: tab.id })).status).toBe(403);
-    const ok = await request.patch(`/api/community/${post.id}/category`).set('Authorization', `Bearer ${admin}`).send({ categoryId: tab.id });
-    expect(ok.body.category.name).toBe('자유');
+  // 2026-11-21 — 글쓴이도 옮긴다(관리자 · 글쓴이). 남은 못 옮긴다.
+  describe('탭 옮기기 — 관리자 · 글쓴이', () => {
+    const mkTab = async (body: Record<string, unknown>) =>
+      (await request.post('/api/community/categories').set('Authorization', `Bearer ${admin}`).send(body)).body as { id: number };
+    const move = (tok: string, postId: number, categoryId: number | null) =>
+      request.patch(`/api/community/${postId}/category`).set('Authorization', `Bearer ${tok}`).send({ categoryId });
+    const catOf = async (postId: number) => (await testPrisma.post.findUnique({ where: { id: postId }, select: { categoryId: true } }))!.categoryId;
+
+    it('글쓴이는 내 글을 옮기고, 남의 글은 403', async () => {
+      const tab = await mkTab({ name: '자유' });
+      const { body: post } = await createPost(a1);
+      expect((await move(a2, post.id, tab.id)).status).toBe(403);
+      expect(await catOf(post.id)).toBeNull();
+      const ok = await move(a1, post.id, tab.id);
+      expect(ok.status).toBe(200);
+      expect(ok.body.category.name).toBe('자유');
+      expect(await catOf(post.id)).toBe(tab.id);
+      // 탭 없음으로 되돌리기
+      expect((await move(a1, post.id, null)).body.category).toBeNull();
+      expect(await catOf(post.id)).toBeNull();
+    });
+
+    it('관리자는 남의 글도 — 관리자 전용 탭·숨긴 탭까지', async () => {
+      const locked = await mkTab({ name: '공지', writePolicy: 'admin' });
+      const hidden = await mkTab({ name: '준비 중' });
+      await request.patch(`/api/community/categories/${hidden.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+      const { body: post } = await createPost(a1);
+      expect((await move(admin, post.id, locked.id)).status).toBe(200);
+      expect((await move(admin, post.id, hidden.id)).status).toBe(200);
+      expect(await catOf(post.id)).toBe(hidden.id);
+    });
+
+    it('글쓴이는 새로 쓸 수 없는 탭(관리자 전용·필진·숨김)으로 못 옮긴다 — 글쓰기와 같은 규칙', async () => {
+      const locked = await mkTab({ name: '공지', writePolicy: 'admin' });
+      const writers = await mkTab({ name: '칼럼', writePolicy: 'writers' });
+      const hidden = await mkTab({ name: '준비 중' });
+      await request.patch(`/api/community/categories/${hidden.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+      const { body: post } = await createPost(a1);
+      for (const t of [locked, writers, hidden]) expect((await move(a1, post.id, t.id)).status).toBe(403);
+      expect(await catOf(post.id)).toBeNull();
+      // 필진이 되면 칼럼으로 옮긴다
+      await testPrisma.communityWriter.create({ data: { userId: 1 } });
+      expect((await move(a1, post.id, writers.id)).status).toBe(200);
+    });
+
+    it('⚠️ 익명 글은 익명을 받지 않는 탭으로 못 옮긴다 — 관리자도(익명을 벗기지 않는다)', async () => {
+      const named = await mkTab({ name: '실명 탭', allowAnonymous: false });
+      const free = await mkTab({ name: '자유' });
+      const { body: post } = await createPost(a1, { anonymous: true });
+      const byAuthor = await move(a1, post.id, named.id);
+      expect(byAuthor.status).toBe(400);
+      expect(byAuthor.body.error).toContain('익명을 끈 뒤');
+      expect((await move(admin, post.id, named.id)).status).toBe(400);
+      expect(await catOf(post.id)).toBeNull();
+      expect((await move(a1, post.id, free.id)).status).toBe(200);
+      const after = await testPrisma.post.findUnique({ where: { id: post.id }, select: { anonymous: true } });
+      expect(after!.anonymous).toBe(true);
+    });
+
+    it('없는 탭 404 · 잘못된 값 400 · 로그인 없이 401', async () => {
+      const { body: post } = await createPost(a1);
+      expect((await move(a1, post.id, 99999)).status).toBe(404);
+      expect((await request.patch(`/api/community/${post.id}/category`).set('Authorization', `Bearer ${a1}`).send({ categoryId: '1' })).status).toBe(400);
+      expect((await request.patch(`/api/community/${post.id}/category`).send({ categoryId: null })).status).toBe(401);
+    });
   });
 });
 
