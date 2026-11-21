@@ -386,7 +386,10 @@ describe('필진 · 이웃 알림', () => {
     expect((await getSeoFields('post', h.body.id))!.description).not.toContain('소제목');
     const anon = await createDocPost(a2, { anonymous: true, title: '익명 질문' });
     clearSeoCache();
-    expect((await getSeoFields('post', anon.body.id))!.description.startsWith('첫 문단')).toBe(true);
+    // 탭을 안 골랐으니 기본 탭(자유게시판) — 익명이라 이름은 없다
+    const anonDesc = (await getSeoFields('post', anon.body.id))!.description;
+    expect(anonDesc.startsWith('자유게시판 · 첫 문단')).toBe(true);
+    expect(anonDesc).not.toContain('Artist');
   });
 });
 

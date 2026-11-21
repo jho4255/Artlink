@@ -302,8 +302,14 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
     - **탭(말머리)은 Admin 이 만든다** — 이름·순서·숨김·삭제. 목록은 `?category=<slug>` 로 거른다.
       ⚠️ **`/categories` 라우트를 `/:id` 보다 먼저 선언할 것** — 뒤에 두면 `parseInt('categories')=NaN`
       으로 404 가 나고 에러 메시지가 엉뚱해 원인을 못 찾는다.
-    - ⚠️ **탭을 지워도 글은 안 지운다** (`onDelete: SetNull` → 미분류). 삭제 응답이 몇 개가 내려왔는지
-      (`movedToUncategorized`) 돌려주고 화면이 미리 경고한다. 되돌릴 수 없으므로 **숨기기(active:false)를 먼저 권한다.**
+    - ⚠️ **탭을 지워도 글은 안 지운다** — 그 탭의 글(과 쓰던 글)은 **기본 탭(자유게시판)** 으로 옮긴다(2026-11-21 — 그 전엔 `SetNull` 로 '미분류'였다).
+      응답이 몇 개가 어디로 갔는지(`moved`·`movedTo`) 돌려주고 화면이 미리 경고한다. 되돌릴 수 없으므로 **숨기기(active:false)를 먼저 권한다.**
+    - ⚠️⚠️ **'탭 없음'(미분류)은 없다**(2026-11-21 사용자 결정 — "탭 없음은 할 수 없게 하고 그런 건 자유게시판으로"). 기본 탭은 `PostCategory.isDefault`
+      (마이그레이션 `20261121200000_community_default_tab` 이 '자유게시판'을 표시하고 — 없으면 만들고 — 탭 없던 글·쓰던 글을 옮겼다). 판정은
+      `lib/communityAccess.ts ensureDefaultTab`(없으면 만든다 · 같은 이름이 있으면 그걸 표시) 하나 — **이름으로 찾지 말 것**(관리자가 이름을 바꿀 수 있다).
+      글쓰기에서 탭을 안 골랐거나 없는 탭 id 면 기본 탭(`resolveWritableTab`) · 글쓰기 화면은 처음에 ?tab= → 기본 탭 → 쓸 수 있는 첫 탭을 고르고 '탭 없음' 칸이 없다 ·
+      [탭 옮기기]에 '탭 없음' 줄이 없고 서버도 `categoryId:null` 400 · 기본 탭은 **지우기·숨기기 400**(탭 관리 화면은 그 버튼 대신 '기본') · 이름은 바꾼다 ·
+      목록의 옛 `?category=none` 은 빈 목록. 탭 응답에 `isDefault`. ⚠️ `Post.categoryId` 칼럼은 여전히 nullable 이다(옛 행·FK) — 새로 null 을 만들지 말 것.
     - ⚠️ **`slug` 는 이름을 바꿔도 안 바꾼다** — 주소·북마크가 죽는다. 한글만인 이름은 `tab-N` 로 떨어진다.
     - **공지(`notice`)와 고정(`pinnedAt`)은 다른 것이다.** 공지는 글의 성격(배지), 고정은 위치.
       남의 글도 고정할 수 있다. ⚠️ `pinned` 를 Boolean 이 아니라 **시각**으로 둔 이유: 고정 글이 여럿일 때
@@ -2819,7 +2825,7 @@ pkill -f 'ArtLink/backend/node_modules/.bin/tsx watch'; pkill -f 'ArtLink/fronte
       ⚠️ **이 PC 의 sudo 없는 WebKit 은 미디어 백엔드(GStreamer)가 없다** — `<video>` 가 든 페이지가 열리다 멈춘다(`canPlayType` 이 빈 값). 우리 코드가 아니다 — 하니스는 WebKit 에서 동영상 단계를 건너뛴다. 동영상은 크롬·실기기로 볼 것.
     - **글 탭 옮기기 — 관리자 · 글쓴이**(2026-11-21 사용자 결정, `PATCH /community/:id/category` · 글 화면 머리의 [탭 옮기기] → `components/post/MoveTabDialog.tsx`).
       실서버 글 3개가 탭 없이 남아 있었다 — 예전 글쓰기 화면의 탭 칸이 '탭 없음'으로 시작해서다(10-01·10-22·11-11·11-15 실서버 덤프 모두 null — 배포가 지운 게 아니다).
-      관리자는 어느 탭으로든(숨긴·관리자 전용 포함) · 글쓴이는 **지금 새로 쓸 수 있는 탭**으로만(글쓰기와 같은 `writeBlockReason`, 403) · '탭 없음'으로는 누구나 ·
+      관리자는 어느 탭으로든(숨긴·관리자 전용 포함) · 글쓴이는 **지금 새로 쓸 수 있는 탭**으로만(글쓰기와 같은 `writeBlockReason`, 403) · '탭 없음'으로는 못 옮긴다(같은 날 없앴다 — 기본 탭은 자유게시판) ·
       ⚠️ **익명 글은 익명을 받지 않는 탭으로 못 옮긴다 — 관리자도**(400, 익명을 벗기지 않는다 — 글쓴이는 고쳐서 익명을 끈 뒤 옮긴다) · 옮겨도 이웃 알림(`POST_NEW`)은 없다.
       창은 못 고르는 탭도 이유와 함께 남긴다(사라지면 '왜 없지'가 된다). 같은 날 Community 머리의 설명 문구('작가와 갤러리가 나누는 작업 이야기')를 뺐다.
       회귀 backend `community.test.ts`「탭 옮기기 — 관리자 · 글쓴이」(5) · frontend `communityEditorScreens.test.ts`「2026-11-21 — 목록 머리」.

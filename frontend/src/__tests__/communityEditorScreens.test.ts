@@ -217,3 +217,27 @@ describe('탭 관리', () => {
     for (const s of ['writePolicy', 'layout', 'allowAnonymous', 'description', '/community/writers']) expect(tm).toContain(s);
   });
 });
+
+describe('\'탭 없음\'은 없다 — 안 고른 글은 기본 탭(자유게시판) (2026-11-21 사용자 결정)', () => {
+  const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf-8');
+  it('글쓰기 탭 칸에 \'탭 없음\' 이 없고, 처음엔 ?tab= → 기본 탭 → 쓸 수 있는 첫 탭을 고른다', () => {
+    const ed = read('components/post-editor/PostEditor.tsx');
+    expect(ed).not.toContain('<option value="">');
+    expect(ed).toContain("tabs.find((x) => x.isDefault && x.canWrite)");
+  });
+  it('[탭 옮기기]에 \'탭 없음\' 줄이 없다 · 탭 관리는 기본 탭을 지우거나 숨기지 못하게 하고 \'미분류\' 라고 말하지 않는다', () => {
+    expect(read('components/post/MoveTabDialog.tsx')).not.toContain("row('none'");
+    const tm = read('components/community/TabManager.tsx');
+    expect(tm).not.toContain('미분류');
+    expect(tm).toContain('onDelete={t.isDefault ? undefined : () => setConfirmDel(t)}');
+    expect(tm).toContain('{t.isDefault ? (');
+  });
+  it('서버 — 안 고른 글은 기본 탭(ensureDefaultTab) · 탭 없음으로 옮기기 400 · 기본 탭 삭제·숨기기 400', () => {
+    const acc = fs.readFileSync(path.join(__dirname, '../../../backend/src/lib/communityAccess.ts'), 'utf-8');
+    expect(acc).toContain('const tab = picked ?? await ensureDefaultTab(db);');
+    const route = fs.readFileSync(path.join(__dirname, '../../../backend/src/routes/community.ts'), 'utf-8');
+    expect(route).toContain("if (typeof raw !== 'number') throw new AppError('옮길 탭을 골라 주세요.', 400);");
+    expect(route).toContain("if (c.isDefault) throw new AppError(`‘${c.name}’은 기본 탭이라 지울 수 없어요.`, 400);");
+    expect(route).not.toContain('movedToUncategorized');
+  });
+});

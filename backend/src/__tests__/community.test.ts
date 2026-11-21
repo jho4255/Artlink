@@ -309,25 +309,70 @@ describe('탭 — Admin 만 만들고 고친다', () => {
     expect(asAdmin.body[0].active).toBe(false);
   });
 
-  it('⚠️ 탭을 지워도 **글은 안 지운다** — 미분류로 내려온다', async () => {
+  it('⚠️ 탭을 지워도 **글은 안 지운다** — 기본 탭(자유게시판)으로 옮긴다(\'탭 없음\'은 없다, 2026-11-21)', async () => {
     const { body: tab } = await mkTab(admin, '자유');
     const { body: post } = await createPost(a1, { categoryId: tab.id });
     const del = await request.delete(`/api/community/categories/${tab.id}`).set('Authorization', `Bearer ${admin}`);
     expect(del.status).toBe(200);
-    expect(del.body.movedToUncategorized).toBe(1);
+    expect(del.body.moved).toBe(1);
+    expect(del.body.movedTo.name).toBe('자유게시판');
     const row = await testPrisma.post.findUnique({ where: { id: post.id } });
     expect(row).not.toBeNull();               // 글은 살아 있다
-    expect(row!.categoryId).toBeNull();       // 미분류로 내려왔다
+    expect(row!.categoryId).toBe(del.body.movedTo.id);
+  });
+
+  it('★ \'탭 없음\'은 없다 — 탭을 안 고른 글은 기본 탭(자유게시판), 없으면 만든다 · 옛 화면의 null 고치기도 기본 탭으로', async () => {
+    const { body: post } = await createPost(a1, { title: '탭 안 고름' });
+    const free = await testPrisma.postCategory.findFirstOrThrow({ where: { isDefault: true } });
+    expect(free.name).toBe('자유게시판');
+    expect((await testPrisma.post.findUniqueOrThrow({ where: { id: post.id } })).categoryId).toBe(free.id);
+    // 없는 탭 id 도 기본 탭
+    const { body: p2 } = await createPost(a1, { categoryId: 999999 });
+    expect((await testPrisma.post.findUniqueOrThrow({ where: { id: p2.id } })).categoryId).toBe(free.id);
+    // 다른 탭의 글을 옛 화면이 categoryId:null 로 고치면 기본 탭으로(탭 없음으로 내려가지 않는다)
+    const { body: tab } = await mkTab(admin, '건의');
+    const { body: p3 } = await createPost(a1, { categoryId: tab.id });
+    const edit = await request.patch(`/api/community/${p3.id}`).set('Authorization', `Bearer ${a1}`).send({ title: '고침', body: '본문을 고쳤다', categoryId: null });
+    expect(edit.status).toBe(200);
+    expect((await testPrisma.post.findUniqueOrThrow({ where: { id: p3.id } })).categoryId).toBe(free.id);
+    // 기본 탭은 하나뿐이다
+    expect(await testPrisma.postCategory.count({ where: { isDefault: true } })).toBe(1);
+  });
+
+  it('★ 이미 \'자유게시판\' 탭이 있으면 그걸 기본 탭으로 쓴다(새로 만들지 않는다)', async () => {
+    const { body: tab } = await mkTab(admin, '자유게시판');
+    const { body: post } = await createPost(a1);
+    expect((await testPrisma.post.findUniqueOrThrow({ where: { id: post.id } })).categoryId).toBe(tab.id);
+    expect(await testPrisma.postCategory.count({ where: { name: '자유게시판' } })).toBe(1);
+  });
+
+  it('★ 기본 탭은 지우거나 숨길 수 없다(400) · 이름은 바꾼다 · 탭 목록에 isDefault', async () => {
+    await createPost(a1);
+    const free = await testPrisma.postCategory.findFirstOrThrow({ where: { isDefault: true } });
+    const del = await request.delete(`/api/community/categories/${free.id}`).set('Authorization', `Bearer ${admin}`);
+    expect(del.status).toBe(400);
+    expect(del.body.error).toContain('기본 탭');
+    const hide = await request.patch(`/api/community/categories/${free.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
+    expect(hide.status).toBe(400);
+    const rename = await request.patch(`/api/community/categories/${free.id}`).set('Authorization', `Bearer ${admin}`).send({ name: '자유 게시판' });
+    expect(rename.status).toBe(200);
+    const list = (await request.get('/api/community/categories')).body as any[];
+    expect(list.find((c) => c.id === free.id)).toMatchObject({ name: '자유 게시판', isDefault: true, active: true });
+    // 이름을 바꿔도 기본 탭은 그대로 — 안 고른 글이 그리로 간다(새 '자유게시판'을 만들지 않는다)
+    const { body: post } = await createPost(a1);
+    expect((await testPrisma.post.findUniqueOrThrow({ where: { id: post.id } })).categoryId).toBe(free.id);
   });
 
   it('탭으로 목록을 거른다 (?category=slug), 지워진 탭 slug 는 빈 목록', async () => {
     const { body: tab } = await mkTab(admin, '자유');
     await createPost(a1, { categoryId: tab.id, title: '탭글' });
-    await createPost(a1, { title: '미분류글' });
+    await createPost(a1, { title: '탭 안 고른 글' });
     const inTab = await request.get(`/api/community?category=${tab.slug}`);
     expect(inTab.body.posts.map((p: any) => p.title)).toEqual(['탭글']);
-    const none = await request.get('/api/community?category=none');
-    expect(none.body.posts.map((p: any) => p.title)).toEqual(['미분류글']);
+    // '탭 없음'(옛 ?category=none)은 없다 — 안 고른 글은 기본 탭에 있다
+    expect((await request.get('/api/community?category=none')).body.posts).toHaveLength(0);
+    const free = await testPrisma.postCategory.findFirstOrThrow({ where: { isDefault: true } });
+    expect((await request.get(`/api/community?category=${free.slug}`)).body.posts.map((p: any) => p.title)).toEqual(['탭 안 고른 글']);
     // ⚠️ 없는 탭이면 전체가 쏟아지면 안 된다(옛 링크로 들어와도)
     expect((await request.get('/api/community?category=zzz-없는탭')).body.posts).toHaveLength(0);
   });
@@ -399,19 +444,24 @@ describe('공지 · 고정 — Admin 만', () => {
     const move = (tok: string, postId: number, categoryId: number | null) =>
       request.patch(`/api/community/${postId}/category`).set('Authorization', `Bearer ${tok}`).send({ categoryId });
     const catOf = async (postId: number) => (await testPrisma.post.findUnique({ where: { id: postId }, select: { categoryId: true } }))!.categoryId;
+    /** 탭을 안 고른 글이 가는 기본 탭(자유게시판) */
+    const freeId = async () => (await testPrisma.postCategory.findFirstOrThrow({ where: { isDefault: true } })).id;
 
     it('글쓴이는 내 글을 옮기고, 남의 글은 403', async () => {
       const tab = await mkTab({ name: '자유' });
       const { body: post } = await createPost(a1);
       expect((await move(a2, post.id, tab.id)).status).toBe(403);
-      expect(await catOf(post.id)).toBeNull();
+      expect(await catOf(post.id)).toBe(await freeId());
       const ok = await move(a1, post.id, tab.id);
       expect(ok.status).toBe(200);
       expect(ok.body.category.name).toBe('자유');
       expect(await catOf(post.id)).toBe(tab.id);
-      // 탭 없음으로 되돌리기
-      expect((await move(a1, post.id, null)).body.category).toBeNull();
-      expect(await catOf(post.id)).toBeNull();
+      // '탭 없음'으로는 못 옮긴다 — 그런 건 없다(2026-11-21)
+      const none = await move(a1, post.id, null);
+      expect(none.status).toBe(400);
+      expect(await catOf(post.id)).toBe(tab.id);
+      // 기본 탭(자유게시판)으로는 옮긴다
+      expect((await move(a1, post.id, await freeId())).body.category.name).toBe('자유게시판');
     });
 
     it('관리자는 남의 글도 — 관리자 전용 탭·숨긴 탭까지', async () => {
@@ -431,7 +481,7 @@ describe('공지 · 고정 — Admin 만', () => {
       await request.patch(`/api/community/categories/${hidden.id}`).set('Authorization', `Bearer ${admin}`).send({ active: false });
       const { body: post } = await createPost(a1);
       for (const t of [locked, writers, hidden]) expect((await move(a1, post.id, t.id)).status).toBe(403);
-      expect(await catOf(post.id)).toBeNull();
+      expect(await catOf(post.id)).toBe(await freeId());
       // 필진이 되면 칼럼으로 옮긴다
       await testPrisma.communityWriter.create({ data: { userId: 1 } });
       expect((await move(a1, post.id, writers.id)).status).toBe(200);
@@ -445,7 +495,7 @@ describe('공지 · 고정 — Admin 만', () => {
       expect(byAuthor.status).toBe(400);
       expect(byAuthor.body.error).toContain('익명을 끈 뒤');
       expect((await move(admin, post.id, named.id)).status).toBe(400);
-      expect(await catOf(post.id)).toBeNull();
+      expect(await catOf(post.id)).toBe(await freeId());
       expect((await move(a1, post.id, free.id)).status).toBe(200);
       const after = await testPrisma.post.findUnique({ where: { id: post.id }, select: { anonymous: true } });
       expect(after!.anonymous).toBe(true);

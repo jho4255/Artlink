@@ -16,7 +16,7 @@ import type { CommunityTab } from '@/components/community/TabManager';
  */
 export interface MoveTabTarget { id: number; categoryId: number | null; anonymous: boolean }
 
-type Choice = number | null;
+type Choice = number | null;   // null = 지금 탭이 없는 옛 글(고를 수는 없다 — '탭 없음'은 없다, 2026-11-21)
 
 function blockReason(t: CommunityTab, post: MoveTabTarget, isAdmin: boolean): string | null {
   if (t.id === post.categoryId) return null;
@@ -48,7 +48,7 @@ export default function MoveTabDialog({ post, isAdmin, onClose }: { post: MoveTa
       qc.invalidateQueries({ queryKey: ['community'] });
       qc.invalidateQueries({ queryKey: ['community-tabs'] });
       qc.invalidateQueries({ queryKey: ['community-popular'] });
-      toast.success(data.category ? `‘${data.category.name}’ 탭으로 옮겼어요.` : '탭 없음으로 옮겼어요.');
+      toast.success(`‘${data.category?.name ?? ''}’ 탭으로 옮겼어요.`);
       onClose();
     },
     onError: (e) => { busy.current = false; toast.error(apiErrorMessage(e, '탭을 옮기지 못했어요.')); },
@@ -64,7 +64,7 @@ export default function MoveTabDialog({ post, isAdmin, onClose }: { post: MoveTa
     return () => { body.style.overflow = prev; };
   }, []);
 
-  const changed = choice !== post.categoryId;
+  const changed = choice != null && choice !== post.categoryId;
   const submit = () => {
     if (!changed || busy.current) return;
     busy.current = true;   // ⚠️ state 가 아니라 ref — 두 번 톡 치면 요청이 두 번 갔다(규칙 88 의 연타 방지)
@@ -103,7 +103,6 @@ export default function MoveTabDialog({ post, isAdmin, onClose }: { post: MoveTa
             <p className="px-3 py-6 text-[14px] text-gray-600">탭을 불러오지 못했어요. <button type="button" onClick={() => void refetch()} className="underline underline-offset-4">다시 시도</button></p>
           ) : (
             <ul aria-label="옮길 탭" className="py-1">
-              {row('none', null, '탭 없음', null)}
               {visible.map((t) => row(String(t.id), t.id, t.name, blockReason(t, post, isAdmin), t.active ? undefined : '(숨김)'))}
             </ul>
           )}

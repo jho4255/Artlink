@@ -269,6 +269,9 @@ model PostCategory {
   allowAnonymous Boolean     @default(true)
   /// 탭 머리에 보이는 한 줄 소개(선택)
   description    String?
+  /// 기본 탭(자유게시판, 2026-11-21 사용자 결정 — "탭 없음은 없애고 그런 건 자유게시판으로") — 탭을 안 고른 글·지운 탭의 글이 여기로 간다.
+  /// 지우거나 숨길 수 없다. 이름은 바꿀 수 있다(그래서 이름이 아니라 이 칸으로 찾는다). lib/communityAccess.ts ensureDefaultTab
+  isDefault      Boolean     @default(false)
   createdAt      DateTime    @default(now())
   posts          Post[]
   drafts         PostDraft[]

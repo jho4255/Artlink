@@ -49,7 +49,7 @@ import { roleLabel } from '@/lib/utils';
  */
 
 interface Tab {
-  id: number; name: string; slug: string; active: boolean; canWrite?: boolean; writePolicy?: string; allowAnonymous?: boolean; layout?: string;
+  id: number; name: string; slug: string; active: boolean; canWrite?: boolean; writePolicy?: string; allowAnonymous?: boolean; layout?: string; isDefault?: boolean;
 }
 interface DraftDto {
   id: number; postId: number | null; title: string; doc: PostDoc; categoryId: number | null; anonymous: boolean;
@@ -120,12 +120,17 @@ export default function PostEditorScreen({ postId }: { postId: number | null }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, target, attempt]);
 
-  // 새 글 — 탭 페이지에서 왔으면(?tab=) 그 탭을 골라 둔다(쓸 수 있을 때만)
+  /*
+    탭은 늘 하나 고른다 — '탭 없음'은 없다(2026-11-21 사용자 결정 "그런 건 자유게시판으로"). 아직 안 골랐으면:
+    탭 페이지에서 왔으면(?tab=) 그 탭(쓸 수 있을 때) → 기본 탭(자유게시판) → 쓸 수 있는 첫 탭.
+    서버도 안 고른 글을 기본 탭에 둔다(resolveWritableTab).
+  */
   const ready = useMemo(() => {
     if (!initial || !tabs) return null;
-    if (!initial.draftId && !initial.postId && initial.categoryId == null && tabSlug.current) {
-      const t = tabs.find((x) => x.slug === tabSlug.current && x.canWrite);
-      if (t) return { ...initial, categoryId: t.id, anonymous: false };
+    if (initial.categoryId == null) {
+      const fromPage = !initial.draftId && !initial.postId && tabSlug.current ? tabs.find((x) => x.slug === tabSlug.current && x.canWrite) : undefined;
+      const t = fromPage ?? tabs.find((x) => x.isDefault && x.canWrite) ?? tabs.find((x) => x.canWrite);
+      if (t) return { ...initial, categoryId: t.id, anonymous: fromPage ? false : initial.anonymous && t.allowAnonymous !== false };
     }
     return initial;
   }, [initial, tabs]);
@@ -832,14 +837,13 @@ function EditorCore({ initial, tabs, isAdmin, onSwitchDraft, onDraftCreated }: {
                 <select
                   value={categoryId ?? ''}
                   onChange={(e) => {
-                    const id = e.target.value === '' ? null : Number(e.target.value);
+                    const id = Number(e.target.value);
                     setCategoryId(id);
                     const t = tabs.find((x) => x.id === id);
                     if (t && t.allowAnonymous === false && anonymous) { setAnonymous(false); toast(`‘${t.name}’ 탭은 실명으로 써요.`); }
                   }}
                   className="h-9 appearance-none rounded-md bg-transparent pr-6 text-[14px] font-medium text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
                 >
-                  <option value="">탭 없음</option>
                   {writable.map((t) => <option key={t.id} value={t.id}>{t.name}{t.writePolicy === 'writers' ? ' (필진)' : t.writePolicy === 'admin' ? ' (관리자)' : ''}</option>)}
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-1 text-accent" />

@@ -10,9 +10,10 @@ import { useEscapeKey } from '@/hooks/useEscapeKey';
 /**
  * 커뮤니티 **탭 관리** — Admin 전용.
  *
- * ⚠️ 탭을 지워도 **글은 안 지운다** — `categoryId` 가 null 이 되어 '미분류'로 내려온다.
- *    그래서 삭제 확인에 "글 N개가 미분류로 이동" 을 반드시 보여 준다. 안 보여 주면
+ * ⚠️ 탭을 지워도 **글은 안 지운다** — 그 탭의 글은 **기본 탭(자유게시판)** 으로 옮겨진다('탭 없음'은 없다, 2026-11-21).
+ *    그래서 삭제 확인에 "글 N개가 자유게시판으로" 를 반드시 보여 준다. 안 보여 주면
  *    관리자는 글까지 지워지는 줄 알고 못 지우거나, 반대로 글이 사라진 줄 알고 놀란다.
+ * ⚠️ 기본 탭은 **지우기·숨기기 버튼이 없다**(서버도 400) — 탭을 안 고른 글이 가는 곳이다. 이름은 바꿀 수 있다.
  * ⚠️ **끄기(비활성)를 먼저 권한다.** 탭만 감추고 글은 그 탭에 그대로 있어서 되돌릴 수 있다.
  *    삭제는 되돌릴 수 없다(어느 글이 어느 탭이었는지 복구 못 한다).
  *
@@ -29,6 +30,8 @@ export interface CommunityTab {
   description?: string | null;
   /** 지금 보는 사람이 이 탭에 쓸 수 있나(서버가 판정) */
   canWrite?: boolean;
+  /** 기본 탭(자유게시판) — 탭을 안 고른 글·지운 탭의 글이 간다. 지우거나 숨길 수 없다 */
+  isDefault?: boolean;
   postCount: number;
 }
 
@@ -38,6 +41,8 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [confirmDel, setConfirmDel] = useState<CommunityTab | null>(null);
+  // 기본 탭 이름(관리자가 바꿀 수 있다) — 지운 탭의 글이 가는 곳
+  const defaultName = tabs.find((t) => t.isDefault)?.name ?? '자유게시판';
   const [openId, setOpenId] = useState<number | null>(null);
   const [view, setView] = useState<'tabs' | 'writers'>('tabs');
   useEscapeKey(onClose);
@@ -60,9 +65,10 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
   const remove = useMutation({
     mutationFn: (id: number) => api.delete(`/community/categories/${id}`),
     onSuccess: (r) => {
-      const moved = r.data?.movedToUncategorized ?? 0;
+      const moved = r.data?.moved ?? 0;
+      const to = r.data?.movedTo?.name ?? '자유게시판';
       refresh(); setConfirmDel(null);
-      toast.success(moved > 0 ? `탭을 지웠습니다. 글 ${moved}개는 미분류로 옮겼습니다.` : '탭을 지웠습니다.');
+      toast.success(moved > 0 ? `탭을 지웠습니다. 글 ${moved}개는 ‘${to}’으로 옮겼습니다.` : '탭을 지웠습니다.');
     },
     onError: (e) => fail(e, '삭제 실패'),
   });
@@ -128,17 +134,22 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
                         <TabNameInput key={`${t.id}:${t.name}`} tab={t} onCommit={(v) => patch.mutateAsync({ id: t.id, name: v })} />
                         <span className="shrink-0 text-[12px] text-gray-500">{POLICY_LABEL[policy]}{t.layout === 'card' ? ' · 카드' : ''}</span>
                         <span className="w-6 shrink-0 text-right text-xs tabular-nums text-gray-400" title="글 수">{t.postCount}</span>
-                        <button type="button" onClick={() => patch.mutate({ id: t.id, active: !t.active })}
-                          title={t.active ? '탭 숨기기 (글은 그대로)' : '탭 다시 보이기'} aria-label={t.active ? `${t.name} 숨기기` : `${t.name} 다시 보이기`}
-                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-800">
-                          {t.active ? <Eye size={15} /> : <EyeOff size={15} />}
-                        </button>
+                        {t.isDefault ? (
+                          // 기본 탭 — 숨기지 못한다(탭을 안 고른 글이 가는 곳). 버튼 대신 표시
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[11px] font-medium text-gray-500" title="기본 탭 — 탭을 안 고른 글이 여기로 가요">기본</span>
+                        ) : (
+                          <button type="button" onClick={() => patch.mutate({ id: t.id, active: !t.active })}
+                            title={t.active ? '탭 숨기기 (글은 그대로)' : '탭 다시 보이기'} aria-label={t.active ? `${t.name} 숨기기` : `${t.name} 다시 보이기`}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-800">
+                            {t.active ? <Eye size={15} /> : <EyeOff size={15} />}
+                          </button>
+                        )}
                         <button type="button" onClick={() => setOpenId(open ? null : t.id)} aria-expanded={open} aria-label={`${t.name} 설정`}
                           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100">
                           <ChevronDown size={16} className={open ? 'rotate-180' : ''} />
                         </button>
                       </div>
-                      {open && <TabSettings key={`${t.id}:${t.description ?? ''}`} tab={t} onPatch={(body) => patch.mutate({ id: t.id, ...body })} onDelete={() => setConfirmDel(t)} />}
+                      {open && <TabSettings key={`${t.id}:${t.description ?? ''}`} tab={t} onPatch={(body) => patch.mutate({ id: t.id, ...body })} onDelete={t.isDefault ? undefined : () => setConfirmDel(t)} />}
                     </li>
                   );
                 })}
@@ -147,7 +158,7 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
 
             <p className="mt-3 text-[12px] leading-relaxed text-gray-500">
               이름을 고쳐도 기존 링크는 살아 있습니다. 탭을 <b className="text-gray-700">숨기면</b> 글은 그 탭에 그대로 남고,
-              <b className="text-gray-700"> 지우면</b> 글이 ‘미분류’로 내려옵니다(글 자체는 안 지워집니다).
+              <b className="text-gray-700"> 지우면</b> 글이 ‘{defaultName}’으로 옮겨집니다(글 자체는 안 지워집니다). ‘{defaultName}’은 기본 탭이라 지우거나 숨길 수 없습니다.
               칼럼 탭은 <b className="text-gray-700">필진만 · 카드 · 익명 끔</b>으로 만들고 [필진]에서 쓸 사람을 정하세요.
             </p>
 
@@ -155,7 +166,7 @@ export default function TabManager({ tabs, onClose }: { tabs: CommunityTab[]; on
               <div className="mt-4 border border-accent/30 p-3">
                 <p className="text-sm text-gray-800">
                   <b>{confirmDel.name}</b> 탭을 지울까요?
-                  {confirmDel.postCount > 0 && <> 글 <b>{confirmDel.postCount}개</b>가 ‘미분류’로 옮겨집니다.</>}
+                  {confirmDel.postCount > 0 && <> 글 <b>{confirmDel.postCount}개</b>가 ‘{defaultName}’으로 옮겨집니다.</>}
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button type="button" onClick={() => remove.mutate(confirmDel.id)} disabled={remove.isPending}
@@ -186,7 +197,7 @@ function Choice<T extends string>({ label, value, options, onChange }: { label: 
   );
 }
 
-function TabSettings({ tab, onPatch, onDelete }: { tab: CommunityTab; onPatch: (b: Partial<CommunityTab>) => void; onDelete: () => void }) {
+function TabSettings({ tab, onPatch, onDelete }: { tab: CommunityTab; onPatch: (b: Partial<CommunityTab>) => void; onDelete?: () => void }) {
   // 서버 값이 바뀌면 부모가 key 로 이 칸을 새로 만든다(effect 로 덮어쓰지 않는다)
   const [desc, setDesc] = useState(tab.description ?? '');
   const policy = (tab.writePolicy ?? (tab.writeAdminOnly ? 'admin' : 'all')) as 'all' | 'writers' | 'admin';
@@ -205,7 +216,7 @@ function TabSettings({ tab, onPatch, onDelete }: { tab: CommunityTab; onPatch: (
         />
       </label>
       <div className="flex justify-end">
-        <button type="button" onClick={onDelete} className="inline-flex h-8 items-center gap-1 text-[13px] text-gray-500 hover:text-accent"><Trash2 size={13} />탭 지우기</button>
+        {onDelete && <button type="button" onClick={onDelete} className="inline-flex h-8 items-center gap-1 text-[13px] text-gray-500 hover:text-accent"><Trash2 size={13} />탭 지우기</button>}
       </div>
     </div>
   );

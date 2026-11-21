@@ -35,7 +35,7 @@ import {
   type PostDoc,
 } from '../lib/postDoc';
 import {
-  asTabLayout, asWritePolicy, isCommunityWriter, resolveAnonymous, resolveWritableTab, writeBlockReason, WRITE_POLICIES, TAB_LAYOUTS,
+  asTabLayout, asWritePolicy, isCommunityWriter, resolveAnonymous, resolveWritableTab, writeBlockReason, WRITE_POLICIES, TAB_LAYOUTS, ensureDefaultTab,
   type TabRule,
 } from '../lib/communityAccess';
 import { cleanupPostImages, prunePostAssets } from '../lib/postAssets';
@@ -121,7 +121,7 @@ function serializeAuthor(anonymous: boolean, author: AuthorRow, viewerId?: numbe
 
 type CategoryRow = {
   id: number; name: string; slug: string; order: number; active: boolean;
-  writePolicy: string; layout: string; allowAnonymous: boolean; description: string | null;
+  writePolicy: string; layout: string; allowAnonymous: boolean; description: string | null; isDefault?: boolean;
 };
 /** 탭 응답 — `writeAdminOnly` 는 옛 화면(배포 중 캐시된 번들)을 위해 함께 싣는다 */
 function serializeTab(c: CategoryRow, extra: { postCount?: number; canWrite?: boolean } = {}) {
@@ -130,6 +130,8 @@ function serializeTab(c: CategoryRow, extra: { postCount?: number; canWrite?: bo
     id: c.id, name: c.name, slug: c.slug, order: c.order, active: c.active,
     writeAdminOnly: writePolicy === 'admin', writePolicy, layout: asTabLayout(c.layout),
     allowAnonymous: c.allowAnonymous, description: c.description,
+    // 기본 탭(자유게시판) — 글쓰기 화면이 처음에 고르고, 관리 화면은 지우기·숨기기를 감춘다
+    isDefault: !!c.isDefault,
     ...extra,
   };
 }
@@ -254,10 +256,9 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (mine === 'posts') where = viewerId ? { authorId: viewerId } : { id: -1 };
     else if (mine === 'comments') where = viewerId ? { comments: { some: { authorId: viewerId, deletedAt: null } } } : { id: -1 };
 
-    // 탭 필터 — slug 로 받는다(이름을 바꿔도 링크가 안 죽게). 'none' 은 미분류.
+    // 탭 필터 — slug 로 받는다(이름을 바꿔도 링크가 안 죽게). '탭 없음'(옛 'none')은 없다 — 그런 slug 는 빈 목록
     const cat = String(req.query.category ?? '').trim();
-    if (cat === 'none') where.categoryId = null;
-    else if (cat) {
+    if (cat) {
       const c = await prisma.postCategory.findUnique({ where: { slug: cat }, select: { id: true } });
       // 없는 탭이면 빈 목록 — 지워진 탭 링크로 들어와도 전체가 쏟아지지 않게
       where.categoryId = c ? c.id : -1;
@@ -371,8 +372,10 @@ router.post('/categories', authenticate, authorize('ADMIN'), validate(categorySc
 router.patch('/categories/:id', authenticate, authorize('ADMIN'), validate(categoryPatchSchema), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const cur = await prisma.postCategory.findUnique({ where: { id }, select: { id: true } });
+    const cur = await prisma.postCategory.findUnique({ where: { id }, select: { id: true, isDefault: true, name: true } });
     if (!cur) throw new AppError('탭을 찾을 수 없습니다.', 404);
+    // 기본 탭(자유게시판)은 숨기지 못한다 — 탭을 안 고른 글이 가는 곳이라 숨기면 그 글들이 갈 곳이 닫힌다
+    if (cur.isDefault && req.body.active === false) throw new AppError(`‘${cur.name}’은 기본 탭이라 숨길 수 없어요.`, 400);
     const data: Record<string, unknown> = {};
     if (typeof req.body.name === 'string') {
       const name = req.body.name.trim();
@@ -392,15 +395,22 @@ router.patch('/categories/:id', authenticate, authorize('ADMIN'), validate(categ
   } catch (e) { next(e); }
 });
 
-// 탭 삭제 (Admin) — ⚠️ **글은 지우지 않는다.** categoryId 가 null 이 되어 '미분류'로 내려온다.
-//    몇 개가 내려오는지 응답으로 돌려준다(화면이 미리 경고할 수 있게).
+// 탭 삭제 (Admin) — ⚠️ **글은 지우지 않는다.** 그 탭의 글(과 쓰던 글)은 **기본 탭(자유게시판)** 으로 옮긴다 — '탭 없음'은 없다(2026-11-21).
+//    몇 개가 어디로 갔는지 응답으로 돌려준다(화면이 미리 경고하고 결과를 말한다). 기본 탭 자신은 지울 수 없다(400).
 router.delete('/categories/:id', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
-    const c = await prisma.postCategory.findUnique({ where: { id }, include: { _count: { select: { posts: true } } } });
+    const c = await prisma.postCategory.findUnique({ where: { id }, select: { id: true, name: true, isDefault: true } });
     if (!c) throw new AppError('탭을 찾을 수 없습니다.', 404);
-    await prisma.postCategory.delete({ where: { id } });   // FK 가 SetNull
-    res.json({ ok: true, movedToUncategorized: c._count.posts });
+    if (c.isDefault) throw new AppError(`‘${c.name}’은 기본 탭이라 지울 수 없어요.`, 400);
+    const { moved, to } = await prisma.$transaction(async (tx) => {
+      const to = await ensureDefaultTab(tx);
+      const m = await tx.post.updateMany({ where: { categoryId: id }, data: { categoryId: to.id } });
+      await tx.postDraft.updateMany({ where: { categoryId: id }, data: { categoryId: to.id } });
+      await tx.postCategory.delete({ where: { id } });
+      return { moved: m.count, to };
+    });
+    res.json({ ok: true, moved, movedTo: { id: to.id, name: to.name } });
   } catch (e) { next(e); }
 });
 
@@ -663,7 +673,7 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
     const notice = isAdmin && !!req.body.notice;
     const pinnedAt = isAdmin && !!req.body.pinned ? new Date() : null;
 
-    // 탭 — 없는 탭 id 는 미분류(화면이 옛 탭을 들고 있을 수 있다). 못 쓰는 탭은 403(조용히 미분류로 내리지 않는다)
+    // 탭 — 안 골랐거나 없는 탭 id 면 기본 탭(자유게시판, '탭 없음'은 없다). 못 쓰는 탭은 403(조용히 다른 탭으로 내리지 않는다)
     const tab = await resolveWritableTab(prisma, req.body.categoryId, { id: me.id, role: me.role });
     // 공지는 익명일 수 없다(조용히 실명) · 익명을 막은 탭에 익명이면 400(말없이 실명으로 바꾸면 이름이 드러난다)
     const anon = resolveAnonymous(tab, notice, !!req.body.anonymous);
@@ -682,7 +692,7 @@ router.post('/', authenticate, validate(createSchema), async (req, res, next) =>
         authorId: me.id, title: req.body.title.trim(), body: content.body, anonymous: anon, images: content.images, videos: content.videos,
         ...(content.doc ? { doc: content.doc as object, docVersion: POST_DOC_VERSION } : {}),
         ...(content.poll ? { poll: content.poll as unknown as Prisma.InputJsonValue } : {}),
-        excerpt: content.excerpt, categoryId: tab?.id ?? null, notice, pinnedAt,
+        excerpt: content.excerpt, categoryId: tab.id, notice, pinnedAt,
       },
       include: { author: authorSelect },
     });
@@ -757,7 +767,7 @@ router.patch('/:id/notice', authenticate, authorize('ADMIN'), async (req, res, n
 // ── 글 탭 옮기기 (관리자 · 글쓴이) — 2026-11-21 글쓴이도 ──
 // 관리자는 어느 탭으로든(숨긴 탭·관리자 전용 탭 포함), 글쓴이는 **그 탭에 새로 쓸 수 있을 때만**(글쓰기와 같은 `writeBlockReason` — 403).
 // ⚠️ 익명 글은 익명을 받지 않는 탭으로 못 옮긴다(400) — 관리자도. 익명은 운영도 벗길 수 없고, 탭 규칙을 어긴 글이 그 탭에 남으면 안 된다.
-//    글쓴이는 글을 고쳐 익명을 끈 뒤 옮기면 된다. 미분류(null)로는 누구나 옮긴다.
+//    글쓴이는 글을 고쳐 익명을 끈 뒤 옮기면 된다. '탭 없음'(null)으로는 못 옮긴다 — 그런 건 없다(2026-11-21, 기본 탭은 자유게시판).
 // 옮겨도 이웃 알림(POST_NEW)은 보내지 않는다 — 새 글이 아니다(고쳐 올림과 같은 규칙).
 router.patch('/:id/category', authenticate, async (req, res, next) => {
   try {
@@ -770,16 +780,13 @@ router.patch('/:id/category', authenticate, async (req, res, next) => {
     if (!isAdmin && post.authorId !== me.id) throw new AppError('탭을 옮길 권한이 없습니다.', 403);
 
     const raw = req.body?.categoryId;
-    if (raw !== null && typeof raw !== 'number') throw new AppError('옮길 탭을 골라 주세요.', 400);
-    let tab: { id: number; name: string; slug: string; active: boolean; writePolicy: string; allowAnonymous: boolean } | null = null;
-    if (typeof raw === 'number') {
-      tab = await prisma.postCategory.findUnique({
-        where: { id: raw },
-        select: { id: true, name: true, slug: true, active: true, writePolicy: true, allowAnonymous: true },
-      });
-      if (!tab) throw new AppError('탭을 찾을 수 없습니다.', 404);
-    }
-    if (tab && tab.id !== post.categoryId) {
+    if (typeof raw !== 'number') throw new AppError('옮길 탭을 골라 주세요.', 400);
+    const tab = await prisma.postCategory.findUnique({
+      where: { id: raw },
+      select: { id: true, name: true, slug: true, active: true, writePolicy: true, allowAnonymous: true },
+    });
+    if (!tab) throw new AppError('탭을 찾을 수 없습니다.', 404);
+    if (tab.id !== post.categoryId) {
       if (!isAdmin) {
         const reason = writeBlockReason(tab, { id: me.id, role: me.role }, await isCommunityWriter(prisma, me.id));
         if (reason) throw new AppError(reason, 403);
@@ -790,9 +797,8 @@ router.patch('/:id/category', authenticate, async (req, res, next) => {
           : `‘${tab.name}’ 탭은 익명 글을 받지 않아요. 글을 고쳐 익명을 끈 뒤 옮겨 주세요.`, 400);
       }
     }
-    const categoryId = tab?.id ?? null;
-    if (categoryId !== post.categoryId) await prisma.post.update({ where: { id }, data: { categoryId } });
-    res.json({ category: tab ? { id: tab.id, name: tab.name, slug: tab.slug } : null });
+    if (tab.id !== post.categoryId) await prisma.post.update({ where: { id }, data: { categoryId: tab.id } });
+    res.json({ category: { id: tab.id, name: tab.name, slug: tab.slug } });
   } catch (e) { next(e); }
 });
 

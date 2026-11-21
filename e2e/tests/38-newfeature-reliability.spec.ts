@@ -107,7 +107,7 @@ test('★ 같은 이름 탭을 10개 동시에 만들면 정확히 1개만 생�
   await api.dispose();
 });
 
-test('★ 탭을 지워도 글은 안 지워진다 — 미분류로 내려오고 개수가 정확하다', async () => {
+test('★ 탭을 지워도 글은 안 지워진다 — 기본 탭(자유게시판)으로 옮겨지고 개수가 정확하다(\'탭 없음\'은 없다)', async () => {
   const api = await pwRequest.newContext();
   const tab = await makeTab(api, `삭제대상${Date.now()}`);
 
@@ -119,13 +119,15 @@ test('★ 탭을 지워도 글은 안 지워진다 — 미분류로 내려오고
 
   const del = await api.delete(`${API}/community/categories/${tab.id}`, { headers: A() });
   expect(del.ok()).toBeTruthy();
-  expect((await del.json()).movedToUncategorized).toBe(5);
+  const res = await del.json();
+  expect(res.moved).toBe(5);
+  expect(res.movedTo.name).toBeTruthy();
 
-  // 글은 살아 있고 category 만 null 이 됐다
+  // 글은 살아 있고 기본 탭(자유게시판)으로 옮겨졌다
   for (const id of ids) {
     const d = await (await api.get(`${API}/community/${id}`)).json();
     expect(d.id).toBe(id);
-    expect(d.category).toBeNull();
+    expect(d.category?.id).toBe(res.movedTo.id);
   }
   // 지워진 slug 로 들어오면 전체가 쏟아지지 않고 빈 목록
   const gone = await (await api.get(`${API}/community?category=${tab.slug}`)).json();
