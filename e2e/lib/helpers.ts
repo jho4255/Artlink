@@ -379,8 +379,8 @@ const TAB_ID_BY_ROLE: Record<string, Record<string, string>> = {
     '내 전시': 'my-shows', '관심 작품': 'scraps',
   },
   admin: {
-    '프로필': 'profile', '승인 관리': 'approvals', '주최 공모': 'hosted-exhibitions',
-    '히어로 관리': 'hero-manage', '혜택 관리': 'benefit-manage', '이달의 갤러리': 'gotm-manage',
+    '프로필': 'profile', '통계': 'stats', '승인 관리': 'approvals', '주최 공모': 'hosted-exhibitions',
+    '히어로 관리': 'hero-manage', '이달의 갤러리': 'gotm-manage',
     '신고 관리': 'report-manage', '사용자 관리': 'user-manage', '운영 조회': 'oversight',
     '할 일 보드': 'todo', '개발자 도구': 'dev-tools',
   },
@@ -390,7 +390,37 @@ export async function openMyPageTab(page: Page, label: string, role: Role = 'art
   const map = TAB_ID_BY_ROLE[role === 'artist2' ? 'artist' : role];
   const id = map?.[label];
   if (!id) throw new Error(`알 수 없는 마이페이지 탭: ${role} / ${label} (lib/helpers.ts TAB_ID_BY_ROLE 에 추가하세요)`);
-  await page.goto(id === 'profile' ? '/mypage' : `/mypage?tab=${id}`);
+  // 그 역할의 첫 화면은 쿼리가 없다 — 관리자는 [통계](2026-11-21), 그 밖은 [프로필]
+  const first = role === 'admin' ? 'stats' : 'profile';
+  await page.goto(id === first ? '/mypage' : `/mypage?tab=${id}`);
+}
+
+/**
+ * 관리자 [승인 관리](2026-11-21 개편, 규칙 89) — 기다리는 요청 목록에서 그 줄을 눌러 한 건을 연다.
+ * 넓은 화면은 옆 칸, 좁은 화면(E2E 기본 Pixel 7)은 창이다. 결정 단추([승인]·[거절]·[삭제 승인])는 페이지에 하나뿐이라 page 로 찾는다.
+ * 돌려주는 것은 한 건의 내용(`[data-approval-detail]`).
+ */
+export async function openApproval(page: Page, text: string) {
+  await page.goto('/mypage?tab=approvals');
+  const item = page.getByRole('list', { name: '기다리는 요청' }).getByRole('button').filter({ hasText: text }).first();
+  await expect(item).toBeVisible({ timeout: 15000 });
+  await item.click();
+  const detail = page.locator('[data-approval-detail]').filter({ hasText: text }).last();
+  await expect(detail).toBeVisible({ timeout: 10000 });
+  return detail;
+}
+
+/** 관리자 [주최 공모] 줄 목록(2026-11-21) — 그 공모의 줄 */
+export function hostedRow(page: Page, title: string) {
+  return page.locator('[data-hosted-row]').filter({ hasText: title }).first();
+}
+
+/** 관리자 [주최 공모] 줄 끝 [⋯] → 항목(제목·소개 수정 · 추가 질문 수정 · 운영 갤러리 변경 · 공모 삭제) */
+export async function hostedMenu(page: Page, title: string, item: string) {
+  const row = hostedRow(page, title);
+  await expect(row).toBeVisible({ timeout: 15000 });
+  await row.getByRole('button', { name: `${title} 더 보기` }).click();
+  await page.getByRole('menuitem', { name: item }).click();
 }
 
 /**

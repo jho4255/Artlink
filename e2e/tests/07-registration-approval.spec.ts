@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab, submitRegistration } from '../lib/helpers';
+import { openAs, openMyPageTab, submitRegistration, openApproval } from '../lib/helpers';
 
 /**
  * 라이프사이클(UI 폼): 갤러리 등록 폼 작성 → 관리자 승인/거절 → 공개 노출 / 거절사유 전달.
@@ -28,12 +28,9 @@ test('갤러리 등록(폼) → 관리자 승인(UI) → 공개 목록 노출', 
   await registerGallery(gallery.page, NAME);
 
   // 관리자: 승인 대기에서 해당 카드 승인
-  await admin.page.goto('/mypage');
-  await openMyPageTab(admin.page, '승인 관리', 'admin');
-  const card = admin.page.locator('div.border').filter({ hasText: NAME }).first();
-  await expect(card).toBeVisible({ timeout: 8000 });
-  await card.getByRole('button', { name: '승인' }).click();
-  await expect(admin.page.locator('body')).toContainText('승인되었습니다', { timeout: 8000 });
+  await openApproval(admin.page, NAME);
+  await admin.page.getByRole('button', { name: '승인', exact: true }).click();
+  await expect(admin.page.locator('body')).toContainText('승인했어요', { timeout: 8000 });
 
   // 공개 갤러리 목록에 노출
   await gallery.page.goto('/galleries');
@@ -71,14 +68,13 @@ test('갤러리 등록 → 관리자 거절(사유) → 갤러리 화면에 거�
   await registerGallery(gallery.page, NAME);
 
   // 관리자: 거절 + 사유
-  await admin.page.goto('/mypage');
-  await openMyPageTab(admin.page, '승인 관리', 'admin');
-  const card = admin.page.locator('div.border').filter({ hasText: NAME }).first();
-  await expect(card).toBeVisible({ timeout: 8000 });
-  await card.getByRole('button', { name: '거절' }).click();
-  await card.getByPlaceholder('거절 사유를 입력하세요 (필수)').fill(REASON);
-  await card.getByRole('button', { name: '거절 확인' }).click();
-  await expect(admin.page.locator('body')).toContainText('거절되었습니다', { timeout: 8000 });
+  await openApproval(admin.page, NAME);
+  await admin.page.getByRole('button', { name: '거절', exact: true }).click();
+  // 사유는 필수 — 비어 있으면 [거절하고 알리기]가 잠겨 있다
+  await expect(admin.page.getByRole('button', { name: '거절하고 알리기' })).toBeDisabled();
+  await admin.page.getByLabel('요청한 사람에게 보이는 글').fill(REASON);
+  await admin.page.getByRole('button', { name: '거절하고 알리기' }).click();
+  await expect(admin.page.locator('body')).toContainText('거절하고 알렸어요', { timeout: 8000 });
 
   // 갤러리: 내 갤러리에서 거절 사유 확인
   await gallery.page.goto('/mypage');

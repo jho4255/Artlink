@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>운영 조회 PC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="min-height: 1160px; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+
+<header style="height: 72px; padding: 0 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 30px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none">Art<span style="color: #c4302b">Link</span></a>
+<nav aria-label="주 메뉴" style="display: flex; gap: 36px; font-size: 15px; color: #4b5563"><span>홈</span><span>작가</span><span>갤러리</span><span>전시</span><span>모집공고</span><span>커뮤니티</span><span>ArtStory</span></nav>
+<span style="font-size: 13px; color: #4b5563">Admin (운영)</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start">
+<main style="flex: 999 1 560px; min-width: 0; padding: 28px 48px 40px; box-sizing: border-box">
+
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em">운영 조회</h1>
+
+<div style="margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; border-bottom: 1px solid #e5e7eb">
+<div role="tablist" aria-label="조회 대상" style="display: flex; gap: 28px; font-size: 15px">
+<button type="button" role="tab" aria-selected="true" style="min-height: 46px; margin-bottom: -1px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font: inherit; font-weight: 600; color: #111827; cursor: pointer">공모 39</button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">갤러리 11</button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">전시 2</button>
+</div>
+<label style="display: flex; align-items: center; gap: 8px; width: 240px; min-height: 36px; padding: 0 10px; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input type="search" aria-label="공모·갤러리 이름으로 찾기" placeholder="공모·갤러리 이름으로 찾기" style="flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13.5px; color: #111827"></label>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 20px; min-height: 56px; font-size: 13.5px">
+<div role="radiogroup" aria-label="단계" style="display: flex; flex-wrap: wrap; gap: 4px 16px">
+<button type="button" role="radio" aria-checked="true" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: #111827; text-decoration: underline; text-underline-offset: 6px; cursor: pointer">전체 39</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #4b5563; cursor: pointer">모집 중 9</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #4b5563; cursor: pointer">전시 준비 4</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #4b5563; cursor: pointer">전시 0</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #4b5563; cursor: pointer">정산 4</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #4b5563; cursor: pointer">마무리 22</button>
+</div>
+<div role="radiogroup" aria-label="주최" style="display: flex; gap: 16px">
+<button type="button" role="radio" aria-checked="true" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: #111827; cursor: pointer">모든 주최</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">갤러리 13</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 40px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">아트링크 26</button>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; align-items: start">
+
+<div role="table" aria-label="공모 전체" style="min-width: 0; border-top: 1px solid #111827">
+<div role="row" style="display: grid; grid-template-columns: minmax(0, 1fr) 196px 64px; gap: 14px; align-items: center; min-height: 40px; border-bottom: 1px solid #e5e7eb; font-size: 12.5px; color: #6b7280">
+<span role="columnheader">공모</span>
+<span role="columnheader">단계</span>
+<span role="columnheader" style="text-align: right">지원 · 수락</span>
+</div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="9">
+<div role="row" aria-selected="{{ r.selected }}" style="display: grid; grid-template-columns: minmax(0, 1fr) 196px 64px; gap: 14px; align-items: center; height: 64px; margin: 0 -12px; padding: 0 12px; border-bottom: 1px solid #f3f4f6; background: {{ r.bg }}">
+<span role="cell" style="min-width: 0">
+<a href="#" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; font-weight: 600; text-decoration: none">{{ r.title }}</a>
+<span style="display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: #6b7280">{{ r.host }}</span>
+</span>
+<span role="cell" style="min-width: 0">
+<span style="display: block; font-size: 13.5px; font-weight: 600">{{ r.stage }}</span>
+<span style="display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: {{ r.noteWeight }}; color: {{ r.noteColor }}"><sc-if value="{{ r.flag }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span></sc-if>{{ r.note }}</span>
+</span>
+<span role="cell" style="text-align: right; font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums"><strong style="font-weight: 600">{{ r.apps }}</strong><span style="color: #6b7280"> · {{ r.accepted }}</span></span>
+</div>
+</sc-for>
+<p style="margin: 0; display: flex; align-items: center; justify-content: space-between; min-height: 56px; font-size: 13px; color: #4b5563"><span style="font-variant-numeric: tabular-nums">9 / 39건</span><button type="button" style="min-height: 40px; padding: 0 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #ffffff; font: inherit; font-size: 13.5px; color: #111827; cursor: pointer">더 보기</button></p>
+</div>
+
+<aside aria-label="공모 한 건" style="border: 1px solid #e5e7eb; border-radius: 10px">
+<div style="padding: 20px 20px 14px">
+<p style="margin: 0; font-size: 12.5px; color: #4b5563"><strong style="font-weight: 700; color: #111827">전시 준비</strong><span style="margin-left: 8px">갤러리 소묘 · 단체전 · 서울</span></p>
+<h2 style="margin: 5px 0 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.4">2인전 《마주 보기》 작가 공모</h2>
+<p style="margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 0 16px; font-size: 13.5px">
+<a href="#" style="display: inline-flex; align-items: center; min-height: 40px; text-underline-offset: 4px">공모 화면 열기</a>
+<a href="#" style="display: inline-flex; align-items: center; min-height: 40px; text-underline-offset: 4px">공고 보기</a>
+<a href="#" style="display: inline-flex; align-items: center; min-height: 40px; text-underline-offset: 4px">갤러리 보기</a>
+</p>
+<ol aria-label="진행 단계" style="margin: 8px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 6px">
+<li style="border-top: 2px solid #111827; padding-top: 7px; font-size: 12.5px; color: #4b5563">모집</li>
+<li aria-current="step" style="border-top: 2px solid #111827; padding-top: 7px; font-size: 12.5px; font-weight: 700">전시 준비</li>
+<li style="border-top: 2px solid #e5e7eb; padding-top: 7px; font-size: 12.5px; color: #6b7280">전시</li>
+<li style="border-top: 2px solid #e5e7eb; padding-top: 7px; font-size: 12.5px; color: #6b7280">정산</li>
+<li style="border-top: 2px solid #e5e7eb; padding-top: 7px; font-size: 12.5px; color: #6b7280">마무리</li>
+</ol>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #f3f4f6; border-bottom: 1px solid #f3f4f6">
+<div style="padding: 12px 0 12px 20px"><p style="margin: 0; font-size: 12.5px; color: #6b7280">지원</p><p style="margin: 3px 0 0; font-size: 17px; font-weight: 600">19</p></div>
+<div style="padding: 12px 0 12px 12px"><p style="margin: 0; font-size: 12.5px; color: #6b7280">수락</p><p style="margin: 3px 0 0; font-size: 17px; font-weight: 600">2<span style="font-size: 12.5px; font-weight: 400; color: #6b7280"> / 2명</span></p></div>
+<div style="padding: 12px 0 12px 12px"><p style="margin: 0; font-size: 12.5px; color: #6b7280">출품 자료</p><p style="margin: 3px 0 0; font-size: 17px; font-weight: 600">1<span style="font-size: 12.5px; font-weight: 400; color: #6b7280"> / 2</span></p></div>
+<div style="padding: 12px 12px 12px 12px"><p style="margin: 0; font-size: 12.5px; color: #6b7280">조회</p><p style="margin: 3px 0 0; font-size: 17px; font-weight: 600">137</p></div>
+</div>
+
+<div style="padding: 14px 20px 4px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<h3 style="margin: 0; font-size: 13px; font-weight: 600; color: #4b5563">지원자</h3>
+<p role="radiogroup" aria-label="지원 상태" style="margin: 0; display: flex; gap: 12px; font-size: 13px"><span role="radio" aria-checked="true" style="font-weight: 600; text-decoration: underline; text-underline-offset: 5px">전체 19</span><span role="radio" aria-checked="false" style="color: #4b5563">수락 2</span><span role="radio" aria-checked="false" style="color: #4b5563">거절 17</span></p>
+</div>
+<ul style="margin: 6px 0 0; padding: 0; list-style: none">
+<sc-for list="{{ apps }}" as="a" hint-placeholder-count="6">
+<li style="display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; border-bottom: 1px solid #f3f4f6">
+<span style="min-width: 0">
+<a href="UsersPC.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">{{ a.name }}</a><span style="margin-left: 8px; font-size: 12.5px; color: #4b5563">{{ a.nth }}</span>
+<span style="display: block; margin-top: 1px; font-size: 12.5px; color: #6b7280; font-variant-numeric: tabular-nums">{{ a.sub }}</span>
+</span>
+<span style="flex: none; font-size: 12.5px; font-weight: {{ a.weight }}; color: {{ a.color }}">{{ a.status }}</span>
+</li>
+</sc-for>
+</ul>
+<a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13.5px; color: #374151; text-underline-offset: 4px">19명 모두 보기</a>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 20px 10px; border-top: 1px solid #f3f4f6">
+<span style="font-size: 12.5px; color: #6b7280">등록 2026.10.24 · 승인 10.24</span>
+<button type="button" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; font-size: 13.5px; color: #c4302b; cursor: pointer">공모 삭제</button>
+</div>
+</aside>
+
+</div>
+
+</main>
+
+<aside aria-label="관리자 메뉴" style="flex: 1 1 232px; max-width: 264px; box-sizing: border-box; padding: 20px 16px 32px; border-left: 1px solid #f3f4f6; min-height: 1088px">
+<sc-for list="{{ menu }}" as="m" hint-placeholder-count="14">
+<sc-if value="{{ m.head }}" hint-placeholder-val="{{ false }}"><p style="margin: 18px 12px 6px; font-size: 12px; font-weight: 600; color: #6b7280">{{ m.label }}</p></sc-if>
+<sc-if value="{{ m.item }}" hint-placeholder-val="{{ true }}"><a href="{{ m.href }}" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 8px; background: {{ m.bg }}; font-size: 14px; font-weight: {{ m.fw }}; color: {{ m.color }}; text-decoration: none">{{ m.label }}<sc-if value="{{ m.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: #c4302b; font-size: 12px; font-weight: 600; color: #ffffff">{{ m.badge }}</span></sc-if></a></sc-if>
+</sc-for>
+<p style="margin: 20px 12px 0; padding-top: 14px; border-top: 1px solid #f3f4f6; display: flex; justify-content: space-between; font-size: 12.5px; color: #6b7280"><span>프로필</span><span>로그아웃</span></p>
+</aside>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+renderVals() {
+const ACTIVE = '운영 조회';
+const H = (label) => ({ head: true, item: false, label });
+const I = (label, href, badge) => ({ head: false, item: true, label, href: href || '#', badge: badge || '', hasBadge: !!badge, bg: label === ACTIVE ? '#f3f4f6' : 'transparent', fw: label === ACTIVE ? 600 : 400, color: label === ACTIVE ? '#111827' : '#374151' });
+const R = (title, host, stage, note, apps, accepted, flag, sel) => ({ title, host, stage, note, apps, accepted, flag: !!flag, noteColor: flag ? '#c4302b' : '#6b7280', noteWeight: flag ? 600 : 400, selected: sel ? 'true' : 'false', bg: sel ? '#f3f4f6' : 'transparent' });
+const A = (name, nth, sub, st) => ({ name, nth, sub, status: st === 'a' ? '수락됨' : '거절', color: st === 'a' ? '#111827' : '#6b7280', weight: st === 'a' ? 600 : 400 });
+return {
+menu: [
+H('운영'), I('통계', 'Main.dc.html'), I('승인 관리', 'ApprovalsPC.dc.html', '3'), I('신고 관리', '#', '1'), I('1:1 문의', '#', '2'),
+H('공모'), I('주최 공모', 'HostedPC.dc.html'), I('운영 조회', 'OversightPC.dc.html'),
+H('회원'), I('사용자 관리', 'UsersPC.dc.html'),
+H('화면 관리'), I('히어로 관리'), I('이달의 갤러리'), I('광고 관리'),
+H('도구'), I('할 일 보드'), I('개발자 도구')
+],
+rows: [
+R('가을 단체전 《겹》 참여 작가 모집', '갤러리 온결', '정산', '전시 종료 18일째 · 정산 요청 전', 12, 6, true),
+R('3인전 《느린 빛》 작가 공모', '스튜디오 물결', '정산', '작가 확인 3/4 · 이의 1건', 9, 4, true),
+R('연말 소품전 《선물》 출품 작가 모집', '갤러리 온결', '모집 중 · D-9', '검토 대기 3명', 8, 2),
+R('겨울 드로잉 클럽 참여 작가 모집', '아트링크 주최 · 갤러리 온결 외 1곳', '모집 중 · D-14', '검토 대기 2명', 4, 2),
+R('2인전 《마주 보기》 작가 공모', '갤러리 소묘', '전시 준비', '출품 자료 1/2 · 12.6(일)까지', 19, 2, false, true),
+R('2027 신진작가 공모전 《첫 장》', '아트링크 주최 · 공모만 진행', '모집 중 · D-12', '12.3(목)까지', 0, 0),
+R('청년 작가 레지던시 입주 작가 모집', '스튜디오 물결 · 공모만 진행', '모집 중 · D-20', '12.11(금)까지', 1, 0),
+R('여름 기획전 《물의 기억》 작가 공모', '갤러리 소묘', '마무리', '정산 완료 9.30', 9, 4),
+R('봄 기획전 《움트는 것들》 참여 작가 공모', '아트링크 주최 · 공모만 진행', '마무리', '11.10 마감', 0, 0)
+],
+apps: [
+A('배소민', '이 갤러리 2번째 지원', '11.2 결정 · 10.28 지원', 'a'),
+A('강윤서', '첫 지원', '11.2 결정 · 10.27 지원', 'a'),
+A('최민석', '첫 지원', '11.2 결정 · 10.30 지원', 'r'),
+A('서진우', '이 갤러리 3번째 지원', '11.2 결정 · 10.26 지원', 'r'),
+A('임세아', '첫 지원', '11.2 결정 · 10.25 지원', 'r')
+]
+};
+}
+}
+</script>
+</body>
+</html>

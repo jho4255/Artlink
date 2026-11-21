@@ -11,7 +11,7 @@
  */
 import {
   Camera, FileText, Heart, Star, Ticket, Building2, Bookmark, Home,
-  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone, BarChart3,
+  Check, Eye, AlertTriangle, Search, ClipboardList, ListChecks, Wrench, Frame, Megaphone, BarChart3, MessageSquare,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -33,7 +33,17 @@ export interface MyPageTab {
   brand?: [string, string];
   /** 이름만으로 뭔지 모를 때 옆에 작게 붙이는 설명 (예: ArtLook → '액자 걸기') */
   note?: string;
+  /**
+   * 묶음 이름 — 관리자 메뉴(2026-11-21)만 쓴다. 이 값이 앞 항목과 다르면 그 위에 작은 머리말(운영 · 공모 · 회원 …)을 단다.
+   * 13개가 한 줄로 늘어서 무엇이 어디 있는지 안 보였다.
+   */
+  group?: string;
+  /** 옆에 붙일 처리할 일 수 — `hooks/useAdminTodo.ts` 의 값 이름(관리자만) */
+  badge?: AdminBadgeKey;
 }
+
+/** 메뉴 배지에 쓰는 처리할 일 — 서버 `GET /admin/todo-counts` 의 같은 이름 */
+export type AdminBadgeKey = 'approvals' | 'reports' | 'inquiries';
 
 export type MyPageRole = 'ARTIST' | 'GALLERY' | 'ADMIN' | string;
 
@@ -73,6 +83,8 @@ const HIDDEN_TABS: Record<string, string[]> = {
   //   받기를 켠 작가·갤러리만 쓰는 곳이라 메뉴에 두지 않는다(대부분에게 늘 빈 메뉴가 된다)
   ARTIST: ['homepage-edit', 'received-inquiries'],
   GALLERY: ['received-inquiries'],
+  // 관리자의 프로필은 메뉴 맨 아래 줄(로그아웃 옆)에서 들어온다 — 첫 화면은 [통계](2026-11-21)
+  ADMIN: ['profile'],
 };
 
 const GALLERY_TABS: MyPageTab[] = [
@@ -83,21 +95,25 @@ const GALLERY_TABS: MyPageTab[] = [
   { id: 'scraps', label: '관심 작품', icon: Bookmark },
 ];
 
+/**
+ * 관리자 메뉴(2026-11-21 개편, 규칙 89) — 묶음 다섯. 처리할 일이 있는 메뉴엔 배지.
+ * [통계]가 첫 화면이다(관리자가 `/mypage` 로 들어오면 여기) · [프로필]은 메뉴 맨 아래 줄로 내려갔다(`footerLinksFor`).
+ * [혜택 관리]는 없앴다(2026-11-21 — 기능째로).
+ * [1:1 문의]는 관리자에겐 메뉴 항목이다(다른 역할은 맨 아래 작은 글자) — 답할 문의 수가 배지로 붙는다.
+ */
 const ADMIN_TABS: MyPageTab[] = [
-  { id: 'profile', label: '프로필', icon: Camera },
-  // 통계(2026-09-28) — 일간 방문자(회원/비회원)부터. 한눈에 보는 곳이라 위쪽에 둔다. 새 지표는 이 탭 안에 섹션으로 더한다
-  { id: 'stats', label: '통계', icon: BarChart3 },
-  { id: 'approvals', label: '승인 관리', icon: Check },
-  { id: 'hosted-exhibitions', label: '주최 공모', icon: FileText },
-  { id: 'hero-manage', label: '히어로 관리', icon: Eye },
-  { id: 'benefit-manage', label: '혜택 관리', icon: FileText },
-  { id: 'gotm-manage', label: '이달의 갤러리', icon: Star },
-  { id: 'ad-manage', label: '광고 관리', icon: Megaphone },
-  { id: 'report-manage', label: '신고 관리', icon: AlertTriangle },
-  { id: 'user-manage', label: '사용자 관리', icon: Search },
-  { id: 'oversight', label: '운영 조회', icon: ClipboardList },
-  { id: 'todo', label: '할 일 보드', icon: ListChecks },
-  { id: 'dev-tools', label: '개발자 도구', icon: Wrench },
+  { id: 'stats', label: '통계', icon: BarChart3, group: '운영' },
+  { id: 'approvals', label: '승인 관리', icon: Check, group: '운영', badge: 'approvals' },
+  { id: 'report-manage', label: '신고 관리', icon: AlertTriangle, group: '운영', badge: 'reports' },
+  { id: 'support', label: '1:1 문의', icon: MessageSquare, group: '운영', badge: 'inquiries', linkTo: () => '/support' },
+  { id: 'hosted-exhibitions', label: '주최 공모', icon: FileText, group: '공모' },
+  { id: 'oversight', label: '운영 조회', icon: ClipboardList, group: '공모' },
+  { id: 'user-manage', label: '사용자 관리', icon: Search, group: '회원' },
+  { id: 'hero-manage', label: '히어로 관리', icon: Eye, group: '화면 관리' },
+  { id: 'gotm-manage', label: '이달의 갤러리', icon: Star, group: '화면 관리' },
+  { id: 'ad-manage', label: '광고 관리', icon: Megaphone, group: '화면 관리' },
+  { id: 'todo', label: '할 일 보드', icon: ListChecks, group: '도구' },
+  { id: 'dev-tools', label: '개발자 도구', icon: Wrench, group: '도구' },
 ];
 
 /**
@@ -153,21 +169,30 @@ export function resolveTab(role: MyPageRole | null | undefined, tab?: string | n
   if (isMyPageTab(role, tab)) return tab as string;
   const alias = aliasTab(role, tab);
   if (alias) return alias;
+  return defaultTabFor(role);
+}
+
+/**
+ * `/mypage`(쿼리 없음)가 여는 탭 — 대개 [프로필], **관리자는 [통계]**(2026-11-21: 관리자 첫 화면이 닉네임 칸이었다).
+ * MyPage 의 '쿼리가 없을 때 되돌리기'(규칙 28)와 주소 만들기가 같은 값을 써야 한다.
+ */
+export function defaultTabFor(role: MyPageRole | null | undefined): string {
+  if (role === 'ADMIN') return 'stats';
   return myPageTabs(role).find(t => !t.linkTo)?.id ?? 'profile';
 }
 
-/** 마이페이지 탭 주소. 프로필은 기본 탭이라 쿼리를 붙이지 않는다(주소가 깔끔하고 딥링크도 같다). */
-export const myPageHref = (tabId: string): string =>
-  tabId === 'profile' ? '/mypage' : `/mypage?tab=${tabId}`;
+/** 마이페이지 탭 주소. 그 역할의 기본 탭은 쿼리를 붙이지 않는다(주소가 깔끔하고 딥링크도 같다). */
+export const myPageHref = (tabId: string, role?: MyPageRole | null): string =>
+  tabId === defaultTabFor(role) ? '/mypage' : `/mypage?tab=${tabId}`;
 
 /**
  * 메뉴 항목이 실제로 가리키는 주소.
  * `linkTo` 가 있으면 바깥 페이지로(홈페이지 → 공개 작가 페이지), 없으면 마이페이지 탭으로.
  * userId 를 모르면(비로그인 등) 바깥 링크를 만들 수 없으므로 마이페이지로 떨어뜨린다.
  */
-export function tabHref(tab: MyPageTab, userId?: number | null): string {
+export function tabHref(tab: MyPageTab, userId?: number | null, role?: MyPageRole | null): string {
   if (tab.linkTo) return userId != null ? tab.linkTo(userId) : '/mypage';
-  return myPageHref(tab.id);
+  return myPageHref(tab.id, role);
 }
 
 /** 공개 작가 페이지의 [수정] 이 가는 곳 — 홈페이지 편집 화면 */
@@ -200,6 +225,12 @@ export const MYPAGE_PRIMARY_LINKS: FooterLink[] = [];
 export const MYPAGE_FOOTER_LINKS: FooterLink[] = [
   { label: '1:1 문의', to: '/support' },
 ];
+
+/** 맨 아래 줄 — 관리자는 [1:1 문의]가 메뉴에 있으니 그 자리에 [프로필](2026-11-21) */
+export function footerLinksFor(role?: MyPageRole | null): FooterLink[] {
+  if (role === 'ADMIN') return [{ label: '프로필', to: '/mypage?tab=profile' }];
+  return MYPAGE_FOOTER_LINKS;
+}
 
 /** 메뉴 항목의 표시 이름 조각 — 브랜드 이름이면 [앞, 뒤]로, 아니면 [라벨, ''] */
 export function tabNameParts(tab: MyPageTab): [string, string] {

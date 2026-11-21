@@ -293,7 +293,7 @@ test('★ JRN-02 공모만 진행 — 띠 두 칸 · 탭 둘 · 미선정 처리
 });
 
 // ─────────────────────────────────────────────────────────────
-test('★ JRN-03 아트링크 주최 + 운영 갤러리 — 갤러리가 운영하고 관리자는 같은 화면을 단독으로 본다', async ({ browser }) => {
+test('★ JRN-03 아트링크 주최 + 운영 갤러리 — 갤러리가 운영하고 관리자는 [주최 공모]에서 같은 화면을 본다', async ({ browser }) => {
   test.setTimeout(180_000);
   const api = await pwRequest.newContext();
   const title = newTitle('주최위임');
@@ -319,8 +319,10 @@ test('★ JRN-03 아트링크 주최 + 운영 갤러리 — 갤러리가 운영�
 
   const adm = await openAs(browser, 'admin');
   await adm.page.goto(`/exhibitions/${exId}/operation/new`);
-  await expect(adm.page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 15000 });
-  await expect(workspace(adm.page).getByRole('link', { name: '주최 공모', exact: true })).toBeVisible();
+  // 2026-11-21(규칙 89): 관리자의 아트링크 주최 공모는 마이페이지 [주최 공모]의 그 공모 화면에서 연다(같은 화면 · 메뉴·배지가 있는 자리)
+  await expect(adm.page).toHaveURL(new RegExp(`/mypage\\?tab=hosted-exhibitions&ex=${exId}$`), { timeout: 15000 });
+  await expect(adm.page.getByRole('heading', { name: title })).toBeVisible({ timeout: 15000 });
+  await expect(workspace(adm.page).getByRole('button', { name: '주최 공모', exact: true })).toBeVisible();
   await expect(stripNow(adm.page)).toContainText('전시 준비');
   await Promise.all([g.ctx.close(), adm.ctx.close()]);
   await api.dispose();

@@ -7,6 +7,7 @@ import prisma from '../lib/prisma';
 import { ensureExhibitionChat, syncExhibitionChatTitle } from '../lib/chat';
 import { artistExhibitionLink, operationLink } from '../lib/notifyLinks';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth';
+import { exhibitionCounts, recordAttachmentHit } from '../lib/adminConsole';
 import { AppError } from '../middleware/errorHandler';
 import { validate } from '../middleware/validate';
 import { galleryApplicationStats } from '../lib/applicationStats';
@@ -650,6 +651,16 @@ async function notifyManagerAssigned(exhibitionId: number, title: string, ownerI
   } catch { /* 알림 실패해도 등록은 정상 */ }
 }
 
+/**
+ * 첨부파일을 받았다(2026-11-21, 관리자 통계 '첨부 받음') — 공고 상세의 첨부 링크를 누를 때 화면이 보낸다.
+ * 로그인 없이도 된다(비회원도 받는다) · 관리자·그 공모 운영자는 세지 않는다 · 늘 204(실패해도 받는 걸 막지 않는다).
+ */
+router.post('/:id/attachment-hit', optionalAuth, async (req, res) => {
+  const id = parseInt(req.params.id as string);
+  if (Number.isFinite(id)) await recordAttachmentHit(id, req.user);
+  res.status(204).end();
+});
+
 // 아트링크 주최 공모 목록 (Admin 전용) — /:id 보다 먼저 등록해야 'hosted'가 id로 잡히지 않는다
 router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
@@ -662,13 +673,25 @@ router.get('/hosted', authenticate, authorize('ADMIN'), async (req, res, next) =
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(exhibitions.map((e: any) => ({
-      ...e,
-      customFields: parseCustomFields(e.customFields),
-      managers: undefined,
-      managerGalleries: e.managers.map((m: any) => m.gallery),
-      applicationCount: e._count.applications,
-    })));
+    // 줄 목록(2026-11-21) — 검토 대기 · 수락 · 찜 · 첨부 받음까지(lib/adminConsole.ts 의 같은 셈)
+    const counts = await exhibitionCounts(exhibitions.map((e) => e.id));
+    res.json(exhibitions.map((e: any) => {
+      const c = counts.get(e.id)!;
+      return {
+        ...e,
+        customFields: parseCustomFields(e.customFields),
+        managers: undefined,
+        managerGalleries: e.managers.map((m: any) => m.gallery),
+        applicationCount: e._count.applications,
+        pendingCount: c.apps.submitted,
+        acceptedCount: c.apps.accepted,
+        favoriteCount: c.favorites,
+        attachmentDownloads: c.attachmentDownloads,
+        submissions: c.submissions,
+        saleCount: c.sales,
+        approvals: c.approvals,
+      };
+    }));
   } catch (error) { next(error); }
 });
 

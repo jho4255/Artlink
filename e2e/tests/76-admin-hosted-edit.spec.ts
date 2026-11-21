@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
-import { openAs, tokenFor, statePath, ownedGalleryId, createExhibition, exhibitionDates } from '../lib/helpers';
+import { openAs, tokenFor, statePath, ownedGalleryId, createExhibition, exhibitionDates, hostedMenu, hostedRow } from '../lib/helpers';
 
 /**
  * 아트링크 주최 공모의 제목·소개 고치기 (2026-10-26 사용자 요청 — "admin 주최공모는 admin 이 공모 제목이나 내용 수정 가능하게").
@@ -35,8 +35,8 @@ test('A. [주최 공모] [제목·소개 수정] — 카드·공고 상세에 �
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/mypage?tab=hosted-exhibitions');
-    const card = page.locator('article').filter({ hasText: title });
-    await card.getByRole('button', { name: '제목·소개 수정' }).click();
+    // 2026-11-21: 줄 목록 — [제목·소개 수정]은 줄 끝 [⋯] 안
+    await hostedMenu(page, title, '제목·소개 수정');
     const modal = editModal(page);
     await expect(modal).toBeVisible();
     const titleBox = modal.getByRole('textbox', { name: /공모 제목/ });
@@ -54,10 +54,10 @@ test('A. [주최 공모] [제목·소개 수정] — 카드·공고 상세에 �
     await expect(ask).toBeVisible();
     await ask.getByRole('button', { name: '버리고 닫기' }).click();
     await expect(modal).toBeHidden();
-    await expect(card.locator('h4')).toHaveText(title);
+    await expect(hostedRow(page, title).locator('[data-hosted-title]')).toHaveText(title);
 
     // 제목·소개를 고쳐 저장 → 카드에 바로(새로고침 없이) · 서버도 같은 답
-    await card.getByRole('button', { name: '제목·소개 수정' }).click();
+    await hostedMenu(page, title, '제목·소개 수정');
     await titleBox.fill(changed);
     const editor = modal.getByRole('textbox', { name: '공모 소개' });
     await expect(editor).toBeVisible({ timeout: 15000 });
@@ -66,15 +66,14 @@ test('A. [주최 공모] [제목·소개 수정] — 카드·공고 상세에 �
     await page.keyboard.type('바뀐 소개 문장');
     await modal.getByRole('button', { name: '저장', exact: true }).click();
     await expect(modal).toBeHidden();
-    const changedCard = page.locator('article').filter({ hasText: changed });
-    await expect(changedCard.locator('h4')).toHaveText(changed);
+    await expect(hostedRow(page, changed).locator('[data-hosted-title]')).toHaveText(changed);
     const saved = await (await api.get(`${API}/exhibitions/${exId}`)).json();
     expect(saved.title).toBe(changed);
     expect(saved.description).toContain('바뀐 소개 문장');
     expect(saved.description).not.toContain('처음 소개');
 
     // 다시 열면 고친 값 · 그대로 [저장] 이면 아무것도 안 보내고 닫힌다
-    await changedCard.getByRole('button', { name: '제목·소개 수정' }).click();
+    await hostedMenu(page, changed, '제목·소개 수정');
     await expect(titleBox).toHaveValue(changed);
     let sent = 0;
     page.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes(`/exhibitions/${exId}/`)) sent++; });

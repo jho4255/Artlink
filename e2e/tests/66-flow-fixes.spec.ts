@@ -2,8 +2,7 @@ import { test, expect, request as pwRequest, type APIRequestContext, type Browse
 import {
   openAs, tokenFor, userIds, statePath, ownedGalleryId, createExhibition, applyToExhibition, ensurePublicArtworks,
   openApplicantManager, applicantRow, acceptApplicant, exhibitionCard, openArtistExhibition, solidPng,
-  openExhibitionWorkspace, openOperation, workspace, taskButton, applicantTool, closeApplicantSheet,
-} from '../lib/helpers';
+  openExhibitionWorkspace, openOperation, workspace, taskButton, applicantTool, closeApplicantSheet, openApproval } from '../lib/helpers';
 
 /**
  * 공모 흐름 점검 후속 (2026-10-03, `scratchpad/flow-audit-2026-10-03.md`) — **눌러서 무슨 일이 나는가**를 본다.
@@ -294,11 +293,10 @@ test.describe('F. 삭제 요청', () => {
     await g.ctx.close();
 
     const a = await openAs(browser, 'admin');
-    await a.page.goto('/mypage?tab=approvals');
-    const item = a.page.locator('div.rounded-xl').filter({ has: a.page.getByRole('heading', { level: 4, name: title }) }).last();
+    const item = await openApproval(a.page, title);
     await expect(item).toContainText('공모 삭제 요청', { timeout: 15000 });
     await expect(item).toContainText('전시가 취소되어');
-    await item.getByRole('button', { name: '삭제 승인' }).click();
+    await a.page.getByRole('button', { name: '삭제 승인', exact: true }).click();
     const confirm = a.page.getByRole('dialog', { name: '공모를 삭제할까요?' });
     await confirm.getByRole('button', { name: '삭제 승인' }).click();
     await expect.poll(async () => (await api.get(`${API}/exhibitions/${exId}`, { headers: auth('admin') })).status(), { timeout: 10000 }).toBe(404);

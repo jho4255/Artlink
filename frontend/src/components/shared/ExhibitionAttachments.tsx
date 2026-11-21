@@ -37,7 +37,12 @@ function meta(a: ExhibitionAttachment) {
  *    그래서 서버가 R2 에 올릴 때 원래 이름을 Content-Disposition 으로 함께 적는다(backend `attachmentDisposition`).
  *    새 탭(target)은 그 헤더가 없는 옛 파일·PDF 가 이 페이지를 덮지 않게.
  */
-export function AttachmentList({ items, className }: { items: ExhibitionAttachment[]; className?: string }) {
+export function AttachmentList({ items, className, onDownload }: {
+  items: ExhibitionAttachment[];
+  className?: string;
+  /** 눌렀을 때(공고 상세 — 관리자 통계 '첨부 받음'을 센다, 2026-11-21). 실패해도 내려받기를 막지 않는다 */
+  onDownload?: (a: ExhibitionAttachment) => void;
+}) {
   if (items.length === 0) return null;
   return (
     <ul className={cn('divide-y divide-gray-100 border-y border-gray-200', className)} aria-label="첨부파일">
@@ -48,6 +53,7 @@ export function AttachmentList({ items, className }: { items: ExhibitionAttachme
             download={a.name}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={onDownload ? () => onDownload(a) : undefined}
             className="flex min-h-[56px] items-center gap-3 px-1 py-2.5 transition-colors hover:bg-gray-50"
           >
             <AttachmentIcon name={a.name} />

@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { bubbleTime, dividerLabel, chatRoleTag } from '@/lib/chatView';
 import { CHAT_REPORT_REASONS } from '@/lib/chatTypes';
+import { ADMIN_TODO_KEY } from '@/hooks/useAdminTodo';
 
 interface Line { id: number; senderId: number; senderName: string; content: string; attachmentType: string | null; attachmentName: string | null; createdAt: string; target: boolean }
 interface ReportItem {
@@ -35,6 +36,7 @@ export default function ChatReportsSection() {
     mutationFn: ({ id, status }: { id: number; status: 'DONE' | 'DISMISSED' | 'OPEN' }) => api.patch(`/chat-reports/${id}`, { status }),
     onSuccess: (_d, v) => {
       void qc.invalidateQueries({ queryKey: ['chat-reports'] });
+      void qc.invalidateQueries({ queryKey: ADMIN_TODO_KEY });   // 메뉴 [신고 관리] 배지(규칙 89)
       toast.success(v.status === 'OPEN' ? '확인할 것으로 되돌렸어요.' : v.status === 'DONE' ? '처리함으로 남겼어요.' : '문제없음으로 남겼어요.');
     },
     onError: () => toast.error('처리하지 못했어요.'),

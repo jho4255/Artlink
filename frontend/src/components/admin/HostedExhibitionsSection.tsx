@@ -12,23 +12,34 @@
  * 그래서 선택한 갤러리 중 **첫 번째가 주관 갤러리**가 되고, 화면에는 "아트링크 주최" 배지를 함께 보여준다.
  * (자세한 배경: `backend/src/lib/exhibitionAccess.ts` 주석)
  *
+ * ## 화면(2026-11-21 개편, 규칙 89)
+ *   줄 목록 → 줄을 누르면 갤러리 [내 공모]와 같은 **공모 한 건 화면**(ExhibitionWorkspace) · 등록은 전용 화면(`&new=1`).
+ *   예전 큰 카드(포스터를 잘라 그리고 버튼 7개가 늘 펼쳐져 있던)는 없앴다 — 드문 동작은 줄 끝 [⋯].
+ *
  * ## 관련 API
- *   GET    /exhibitions/hosted          목록
+ *   GET    /exhibitions/hosted          목록(검토 대기 · 수락 · 첨부 받음 포함)
  *   POST   /exhibitions/hosted          등록 (galleryIds[0] = 주관)
  *   PATCH  /exhibitions/:id/managers    운영 갤러리 변경 (전체 교체)
  *   DELETE /exhibitions/:id             삭제 (주최자인 Admin만)
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, X, Search, Trash2, Building2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, X, Search, AlertTriangle, ArrowLeft, MoreHorizontal, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { scrollToTarget } from '@/lib/scrollToTarget';
-import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
+import { rememberListScroll, takeListScroll } from '@/lib/listScroll';
+import { normalizeAttachments } from '@/lib/attachments';
+import { WORKSPACE_VIEWS, type WorkspaceView } from '@/lib/flowLabels';
+import { hasUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import ExhibitionWorkspace from '@/components/workspace/ExhibitionWorkspace';
+import MenuButton, { type MenuItem } from '@/components/flow/MenuButton';
+import PageTabBar from '@/components/shared/PageTabBar';
+import { AdminHead, ChoiceLinks, Dot, EmptyLine, SearchBox, Th } from '@/components/admin/AdminUi';
+import { shortDate } from '@/lib/adminFormat';
+import { cn, regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityText, type CapacityMask } from '@/lib/utils';
 import { sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import ApplicantManager from '@/components/shared/ApplicantManager';
 import CustomQuestionsEditModal from '@/components/shared/CustomQuestionsEditor';
 import HostedContentEditModal from '@/components/admin/HostedContentEditModal';
 import { scheduleSummary } from '@/lib/scheduleSummary';
@@ -254,11 +265,46 @@ function ManagerEditModal({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// 주최 공모 — 줄 목록 · 공모 한 건 화면 · 등록 화면 (2026-11-21 개편, 규칙 89)
+//   주소 `?tab=hosted-exhibitions`            줄 목록 [모집 중 · 마감 · 전체] · 정렬 · 찾기
+//        `?tab=hosted-exhibitions&ex=<id>`   공모 한 건 화면(갤러리 [내 공모]와 같은 ExhibitionWorkspace)
+//        `?tab=hosted-exhibitions&new=1`     등록 화면(목록 위에 폼을 펼치지 않는다)
+//   옛 `&panel=applicants`(운영 화면의 [지원자 보기]·옛 알림)는 지원자 탭으로 연다.
+// ─────────────────────────────────────────────────────────────────
+type HostedTab = 'open' | 'closed' | 'all';
+type HostedSort = 'deadline' | 'views' | 'recent';
+
+const isOpenCall = (ex: any) => ex.status === 'APPROVED' && !ex.recruitmentClosed && !ex.ended && ex.deadline && getDday(ex.deadline) >= 0;
+
+function ddayCell(ex: any): { main: string; sub: string; hot: boolean } {
+  if (!isOpenCall(ex)) return { main: '마감', sub: ex.deadline ? shortDate(ex.deadline) : '', hot: false };
+  const d = getDday(ex.deadline);
+  return { main: d === 0 ? '오늘 마감' : `D-${d}`, sub: `${shortDate(ex.deadline)}까지`, hot: d <= 7 };
+}
+function opsText(ex: any): string {
+  const m = ex.managerGalleries ?? [];
+  return m.length === 0 ? '아트링크 직접 운영' : `${m[0].name}${m.length > 1 ? ` 외 ${m.length - 1}곳` : ''}`;
+}
+function metaText(ex: any): string {
+  return [exhibitionTypeLabels[ex.type] ?? ex.type, regionLabels[ex.region] ?? ex.region, capacityText(ex), ex.recruitOnly ? '공모만 진행' : null].filter(Boolean).join(' · ');
+}
+
 export default function HostedExhibitionsSection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [searchParams] = useSearchParams();
+  const tableWide = useMediaQuery('(min-width: 900px)');
+  const creating = searchParams.get('new') === '1';
+  const workspaceId = Number(searchParams.get('ex')) || null;
+  const navState = (location.state ?? {}) as { fromList?: boolean; view?: string };
+  const viewParam = searchParams.get('view') ?? navState.view ?? (searchParams.get('panel') === 'applicants' ? 'applicants' : null);
+  const workspaceView = viewParam && (WORKSPACE_VIEWS as string[]).includes(viewParam) ? viewParam as WorkspaceView : null;
+
+  const [tab, setTab] = useState<HostedTab>('open');
+  const [sort, setSort] = useState<HostedSort>('deadline');
+  const [q, setQ] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [managerGalleries, setManagerGalleries] = useState<PickedGallery[]>([]);
   const [formErrors, setFormErrors] = useState<Set<string>>(new Set());
@@ -267,9 +313,6 @@ export default function HostedExhibitionsSection() {
   const [attachBusy, setAttachBusy] = useState(false);
   const [editManagersFor, setEditManagersFor] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  // 지원자 관리 — 갤러리 마이페이지와 같은 인라인 <ApplicantManager /> 를 그대로 쓴다(창 이동 없음).
-  // Admin 도 수락/거절을 해야 해서 백엔드 라우트가 GALLERY+ADMIN 으로 열려 있다.
-  const [manageAppsExId, setManageAppsExId] = useState<number | null>(null);
   // 추가 질문 수정 — 갤러리 마이페이지와 같은 공용 모달. 주최자가 자기 공고 질문을 못 고치면 안 된다.
   const [editQuestionsEx, setEditQuestionsEx] = useState<any>(null);
   const [editContentEx, setEditContentEx] = useState<{ id: number; title: string; description?: string | null } | null>(null);
@@ -284,36 +327,34 @@ export default function HostedExhibitionsSection() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const wideForm = useMediaQuery('(min-width: 1280px)');
 
+  // 목록은 들어올 때마다 새로 — 공모 화면에서 수락·마감하고 돌아오면 숫자가 바뀌어 있어야 한다
   const { data: exhibitions = [], isLoading } = useQuery<any[]>({
     queryKey: ['hosted-exhibitions'],
     queryFn: () => api.get('/exhibitions/hosted').then(r => r.data).catch(() => []),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
-  /*
-    운영 화면의 [← 주최 공모]·[지원자 보기] 가 `?ex=<id>&panel=applicants` 로 이 카드를 가리켜 들어온다(lib/operationLinks.ts, 2026-10-02).
-    그 전엔 관리자도 갤러리의 [내 공모] 주소로 보내져 프로필이 떴다. 딱 한 번만 — refetch 때마다 걸리면 닫아도 다시 열린다.
-  */
-  const [searchParams] = useSearchParams();
-  const deepLinkDone = useRef(false);
-  useEffect(() => {
-    const exId = Number(searchParams.get('ex')) || null;
-    if (!exId || deepLinkDone.current || !exhibitions.some((e: any) => e.id === exId)) return;
-    // ⚠️ '했다' 표시는 타이머 안에서 세운다 — 먼저 세우면 개발 모드(StrictMode)의 두 번째 effect 가 그냥 나가서
-    //    목록이 캐시에 있을 때(주최 공모 → 운영 페이지 → 돌아옴) 카드로 내려가지 않는다.
-    const t = window.setTimeout(() => {
-      deepLinkDone.current = true;
-      if (searchParams.get('panel') === 'applicants') setManageAppsExId(exId);
-      scrollToTarget(document.getElementById(`hosted-ex-${exId}`));
-    }, 150);
-    return () => window.clearTimeout(t);
-  }, [exhibitions, searchParams]);
-
+  const listHref = '/mypage?tab=hosted-exhibitions';
   const resetForm = () => {
     setForm(emptyForm);
     setManagerGalleries([]);
     setFormErrors(new Set());
-    setShowForm(false);
+    if (creating) navigate(listHref, { replace: true });
   };
+  const openExhibition = (id: number, view?: WorkspaceView) => {
+    rememberListScroll('hosted-exhibitions');
+    navigate(`${listHref}&ex=${id}`, { state: { fromList: true, view } });
+  };
+  const closeExhibition = () => {
+    if (navState.fromList && !hasUnsavedChanges()) navigate(-1);
+    else navigate(listHref, { replace: true });
+  };
+  useLayoutEffect(() => {
+    if (workspaceId || creating) return;
+    const y = takeListScroll('hosted-exhibitions');
+    if (y != null) window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+  }, [workspaceId, creating]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/exhibitions/hosted', data),
@@ -321,7 +362,7 @@ export default function HostedExhibitionsSection() {
       queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
       resetForm();
-      toast.success('주최 공모가 등록되었습니다. 승인 없이 바로 게시됩니다.');
+      toast.success('주최 공모를 등록했어요. 바로 모집공고에 올라가요.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '등록 실패'),
   });
@@ -331,8 +372,10 @@ export default function HostedExhibitionsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hosted-exhibitions'] });
       queryClient.invalidateQueries({ queryKey: ['exhibitions'] });
+      queryClient.invalidateQueries({ queryKey: ['ov-exhibitions'] });
       setDeleteTarget(null);
-      toast.success('삭제되었습니다.');
+      toast.success('삭제했어요.');
+      if (workspaceId) navigate(listHref, { replace: true });
     },
     onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
   });
@@ -370,76 +413,31 @@ export default function HostedExhibitionsSection() {
   };
   const previewOf = () => exhibitionPreview(form, host);
 
-  const statusColors: Record<string, string> = {
-    PENDING: 'bg-yellow-100 text-yellow-700',
-    APPROVED: 'bg-green-100 text-green-700',
-    REJECTED: 'bg-accent/10 text-accent',
-  };
+  const menuFor = (ex: any): MenuItem[] => [
+    { id: 'detail', label: '공고 보기', onSelect: () => navigate(`/exhibitions/${ex.id}`) },
+    { id: 'content', label: '제목·소개 수정', onSelect: () => setEditContentEx(ex) },
+    { id: 'questions', label: '추가 질문 수정', onSelect: () => setEditQuestionsEx(ex) },
+    { id: 'managers', label: '운영 갤러리 변경', onSelect: () => setEditManagersFor(ex) },
+    { id: 'delete', label: '공모 삭제', onSelect: () => setDeleteTarget(ex) },
+  ];
 
-  return (
-    <div>
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm text-gray-500">아트링크가 주최하고, 지정한 갤러리들이 실제 운영을 맡습니다.</p>
-          <p className="text-xs text-gray-400">관리자가 등록하므로 승인 절차 없이 바로 공고에 노출됩니다.</p>
-        </div>
-        <button
-          onClick={() => (showForm ? resetForm() : setShowForm(true))}
-          className="flex items-center gap-1 self-start rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white"
-        >
-          <Plus size={14} /> 주최 공모 등록
-        </button>
-      </div>
+  const openCount = exhibitions.filter(isOpenCall).length;
+  const shown = exhibitions
+    .filter((ex) => (tab === 'all' ? true : tab === 'open' ? isOpenCall(ex) : !isOpenCall(ex)))
+    .filter((ex) => !q || String(ex.title).toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => {
+      if (sort === 'views') return (b.viewCount ?? 0) - (a.viewCount ?? 0);
+      if (sort === 'recent') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      // 마감 가까운 순 — 모집 중은 남은 날 적은 것부터, 마감은 최근에 마감한 것부터
+      const ao = isOpenCall(a), bo = isOpenCall(b);
+      if (ao !== bo) return ao ? -1 : 1;
+      const da = new Date(a.deadline).getTime(), db = new Date(b.deadline).getTime();
+      return ao ? da - db : db - da;
+    });
+  const workspaceEx = workspaceId ? exhibitions.find((e) => e.id === workspaceId) : null;
 
-      {/*
-        주최 공모 등록 — 갤러리 공모 등록과 **같은 폼**(components/exhibition-form/ExhibitionFormBody, 2026-11-15).
-        다른 점은 셋뿐 — 갤러리 선택 대신 '운영 갤러리(선택, 여러 곳)' 구역 · 승인 없이 바로 게시 · 약관 없음.
-      */}
-      {showForm && (
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-950">주최 공모 등록</h3>
-          <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_300px] xl:gap-10">
-            <div className="min-w-0 max-w-[720px]">
-              <ExhibitionFormBody
-                form={form}
-                setForm={setForm}
-                errors={formErrors}
-                clearError={clearError}
-                onAttachBusy={setAttachBusy}
-                idPrefix="hosted"
-                extraSection={{
-                  title: '운영 갤러리 (선택)',
-                  node: (
-                    <GalleryPicker
-                      bare
-                      selected={managerGalleries}
-                      onChange={(next) => {
-                        // 처음 고른 갤러리의 지역으로 미리 채운다(갤러리 공모와 같다) — 바꿀 수 있다
-                        if (managerGalleries.length === 0 && next[0]?.region) setForm(prev => ({ ...prev, region: next[0].region! }));
-                        setManagerGalleries(next);
-                        clearError('galleries');
-                      }}
-                      error={formErrors.has('galleries')}
-                    />
-                  ),
-                }}
-              />
-            </div>
-            {wideForm && <PreviewAside preview={previewOf()} />}
-          </div>
-          <StickySubmitBar
-            missing={missingFields}
-            onJump={jumpToField}
-            onPreview={wideForm ? undefined : () => setPreviewOpen(true)}
-            onCancel={resetForm}
-            submitLabel="등록"
-            onSubmit={submit}
-            pending={createMutation.isPending}
-          />
-          {previewOpen && !wideForm && <PreviewSheet preview={previewOf()} onClose={() => setPreviewOpen(false)} />}
-        </div>
-      )}
-
+  const modals = (
+    <>
       {confirmSubmit && (
         <SubmitSheet
           title="주최 공모를 등록할까요?"
@@ -466,21 +464,20 @@ export default function HostedExhibitionsSection() {
           onClose={() => setConfirmSubmit(false)}
         />
       )}
-
       <ConfirmDialog
         open={!!deleteTarget}
-        title="주최 공모 삭제"
-        message={`"${deleteTarget?.title}" 공모를 삭제합니다.\n지원 내역·작가 제출자료가 함께 삭제되며 되돌릴 수 없습니다.`}
+        title="주최 공모를 지울까요?"
+        details={[
+          `「${deleteTarget?.title ?? ''}」을 지워요.`,
+          `지원 ${deleteTarget?.applicationCount ?? 0}건 · 수락한 작가 ${deleteTarget?.acceptedCount ?? 0}명의 기록과 출품 자료가 함께 사라져요.`,
+          '되돌릴 수 없어요.',
+        ]}
         confirmText="삭제"
         variant="danger"
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
       />
-
-      {editManagersFor && (
-        <ManagerEditModal exhibition={editManagersFor} onClose={() => setEditManagersFor(null)} />
-      )}
-
+      {editManagersFor && <ManagerEditModal exhibition={editManagersFor} onClose={() => setEditManagersFor(null)} />}
       {editContentEx && <HostedContentEditModal exhibition={editContentEx} onClose={() => setEditContentEx(null)} />}
       {editQuestionsEx && (
         <CustomQuestionsEditModal
@@ -490,104 +487,182 @@ export default function HostedExhibitionsSection() {
           onClose={() => setEditQuestionsEx(null)}
         />
       )}
+    </>
+  );
 
-      {/* 목록 */}
-      {isLoading ? (
-        <div className="grid gap-3">{[0, 1].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-gray-100" />)}</div>
-      ) : exhibitions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 py-14 text-center">
-          <p className="text-sm text-gray-400">아직 아트링크가 주최한 공모가 없습니다.</p>
+  // ── 등록 화면 ──
+  if (creating) {
+    return (
+      <div>
+        <button type="button" onClick={() => navigate(listHref)} className="-ml-1 inline-flex min-h-[44px] items-center gap-1.5 px-1 text-sm text-gray-600 hover:text-gray-950">
+          <ArrowLeft size={16} aria-hidden /> 주최 공모
+        </button>
+        <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-gray-950">주최 공모 등록</h2>
+        {/*
+          갤러리 공모 등록과 **같은 폼**(components/exhibition-form/ExhibitionFormBody, 2026-11-15).
+          다른 점은 셋뿐 — 갤러리 선택 대신 '운영 갤러리(선택, 여러 곳)' 구역 · 승인 없이 바로 게시 · 약관 없음.
+        */}
+        <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_300px] xl:gap-10">
+          <div className="min-w-0 max-w-[720px]">
+            <ExhibitionFormBody
+              form={form}
+              setForm={setForm}
+              errors={formErrors}
+              clearError={clearError}
+              onAttachBusy={setAttachBusy}
+              idPrefix="hosted"
+              extraSection={{
+                title: '운영 갤러리 (선택)',
+                node: (
+                  <GalleryPicker
+                    bare
+                    selected={managerGalleries}
+                    onChange={(next) => {
+                      // 처음 고른 갤러리의 지역으로 미리 채운다(갤러리 공모와 같다) — 바꿀 수 있다
+                      if (managerGalleries.length === 0 && next[0]?.region) setForm(prev => ({ ...prev, region: next[0].region! }));
+                      setManagerGalleries(next);
+                      clearError('galleries');
+                    }}
+                    error={formErrors.has('galleries')}
+                  />
+                ),
+              }}
+            />
+          </div>
+          {wideForm && <PreviewAside preview={previewOf()} />}
         </div>
-      ) : (
-        <div className="grid gap-3">
-          {exhibitions.map((ex: any) => {
-            const dday = ex.deadline ? getDday(ex.deadline) : null;
+        <StickySubmitBar
+          missing={missingFields}
+          onJump={jumpToField}
+          onPreview={wideForm ? undefined : () => setPreviewOpen(true)}
+          onCancel={resetForm}
+          submitLabel="등록"
+          onSubmit={submit}
+          pending={createMutation.isPending}
+        />
+        {previewOpen && !wideForm && <PreviewSheet preview={previewOf()} onClose={() => setPreviewOpen(false)} />}
+        {modals}
+      </div>
+    );
+  }
+
+  // ── 공모 한 건 화면 ──
+  if (workspaceId) {
+    return (
+      <>
+        <ExhibitionWorkspace
+          key={workspaceId}
+          exhibitionId={workspaceId}
+          initialView={workspaceView}
+          onClose={closeExhibition}
+          backLabel="주최 공모"
+          extraMenu={workspaceEx ? menuFor(workspaceEx).filter((m) => m.id !== 'detail' && m.id !== 'delete') : []}
+        />
+        {modals}
+      </>
+    );
+  }
+
+  // ── 줄 목록 ──
+  return (
+    <div>
+      <AdminHead title="주최 공모">
+        <button type="button" onClick={() => navigate(`${listHref}&new=1`)}
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-gray-900 px-[18px] text-sm font-semibold text-white hover:bg-gray-800">
+          <Plus size={16} aria-hidden /> 주최 공모 등록
+        </button>
+      </AdminHead>
+
+      <div className="mt-3">
+        <PageTabBar<HostedTab>
+          sticky={false}
+          idPrefix="hosted"
+          label="공모 범위"
+          active={tab}
+          onSelect={setTab}
+          tabs={[
+            { id: 'open', label: '모집 중', count: openCount },
+            { id: 'closed', label: '마감', count: exhibitions.length - openCount },
+            { id: 'all', label: '전체', count: exhibitions.length },
+          ]}
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 py-2">
+        <ChoiceLinks<HostedSort> label="정렬" value={sort} onChange={setSort} options={[
+          { id: 'deadline', label: '마감 가까운 순' }, { id: 'views', label: '조회 많은 순' }, { id: 'recent', label: '최근 등록 순' },
+        ]} />
+        <SearchBox label="공모 제목 찾기" value={q} onChange={setQ} className="w-full sm:w-[240px]" />
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-2">{[0, 1, 2].map(i => <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />)}</div>
+      ) : exhibitions.length === 0 ? (
+        <EmptyLine>아직 아트링크가 주최한 공모가 없어요.</EmptyLine>
+      ) : shown.length === 0 ? (
+        <EmptyLine>{q ? '찾는 공모가 없어요.' : tab === 'open' ? '모집 중인 주최 공모가 없어요.' : '마감한 주최 공모가 없어요.'}</EmptyLine>
+      ) : tableWide ? (
+        <div role="table" aria-label="주최 공모" className="border-t border-gray-900">
+          <div role="row" className="grid grid-cols-[minmax(0,1fr)_128px_150px_56px_120px_64px_44px] items-center gap-3.5 border-b border-gray-200 py-2.5">
+            <Th>공모</Th><Th>마감</Th><Th>운영</Th><Th className="text-right">조회</Th><Th>지원</Th><Th>수락</Th><Th />
+          </div>
+          {shown.map((ex: any) => {
+            const dd = ddayCell(ex);
+            const hasAttach = normalizeAttachments(ex.attachments).length > 0;
             return (
-              <article key={ex.id} id={`hosted-ex-${ex.id}`} className="scroll-mt-24 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                <div className="grid gap-0 sm:grid-cols-[160px_1fr]">
-                  <button type="button" onClick={() => navigate(`/exhibitions/${ex.id}`)} className="relative min-h-[120px] bg-gray-100 text-left">
-                    {ex.imageUrl ? (
-                      <img src={ex.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-gray-300"><Building2 size={28} /></div>
-                    )}
-                    <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                      D{dday !== null ? (dday >= 0 ? `-${dday}` : `+${Math.abs(dday)}`) : '-'}
-                    </span>
-                  </button>
-
-                  <div className="min-w-0 p-4">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${statusColors[ex.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {ex.status === 'APPROVED' ? '게시 중' : ex.status}
-                      </span>
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">{exhibitionTypeLabels[ex.type] ?? ex.type}</span>
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">{regionLabels[ex.region] ?? ex.region}</span>
-                      <span className="flex items-center gap-1 text-[11px] text-gray-500"><Users size={11} /> 지원 {ex.applicationCount ?? 0}명 / 모집 {capacityText(ex)}</span>
-                    </div>
-
-                    <h4 className="mt-1.5 truncate text-lg font-medium text-gray-900">{ex.title}</h4>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] text-gray-400">운영</span>
-                      {(ex.managerGalleries ?? []).length === 0 && (
-                        <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[11px] text-white">아트링크 직접 운영</span>
-                      )}
-                      {(ex.managerGalleries ?? []).map((g: any, i: number) => (
-                        <span key={g.id} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 0 ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                          {g.name}{i === 0 ? ' (주관)' : ''}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setManageAppsExId(manageAppsExId === ex.id ? null : ex.id)}
-                        className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white"
-                      >
-                        {manageAppsExId === ex.id ? '지원자 관리 닫기' : '지원자 관리'}
-                      </button>
-                      <button onClick={() => setEditContentEx(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-                        제목·소개 수정
-                      </button>
-                      <button onClick={() => setEditQuestionsEx(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-                        추가 질문
-                      </button>
-                      <button onClick={() => setEditManagersFor(ex)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-                        운영 갤러리 변경
-                      </button>
-                      <button onClick={() => navigate(`/exhibitions/${ex.id}`)} className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-                        <ExternalLink size={12} /> 공고 보기
-                      </button>
-                      <button onClick={() => navigate(`/exhibitions/${ex.id}/operation/new`)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
-                        운영 페이지
-                      </button>
-                      <button onClick={() => setDeleteTarget(ex)} className="flex items-center gap-1 rounded-lg border border-accent/30 px-3 py-1.5 text-xs text-accent hover:bg-accent/5">
-                        <Trash2 size={12} /> 삭제
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {manageAppsExId === ex.id && (
-                  <div className="border-t border-gray-100 p-4">
-                    <ApplicantManager
-                      exhibitionId={ex.id}
-                      exhibitionTitle={ex.title}
-                      customFields={ex.customFields}
-                      capacity={ex.capacity}
-                      capacityMask={ex.capacityMask ?? null}
-                      recruitOnly={!!ex.recruitOnly}
-                      ended={!!ex.ended || !!ex.settledAt}
-                      capacityEditable
-                    />
-                  </div>
-                )}
-              </article>
+              <div role="row" key={ex.id} id={`hosted-ex-${ex.id}`} data-hosted-row={ex.id}
+                className="relative -mx-3 grid grid-cols-[minmax(0,1fr)_128px_150px_56px_120px_64px_44px] items-center gap-3.5 border-b border-gray-100 px-3 py-2 hover:bg-gray-50">
+                <span role="cell" className="flex min-w-0 items-center gap-3">
+                  <span className="h-12 w-[34px] shrink-0 bg-gray-100">{ex.imageUrl && <img src={ex.imageUrl} alt="" loading="lazy" className="h-12 w-[34px] object-contain" />}</span>
+                  <span className="min-w-0">
+                    <button type="button" onClick={() => openExhibition(ex.id, ex.pendingCount > 0 ? 'applicants' : undefined)}
+                      data-hosted-title className="block max-w-full truncate text-left text-[14.5px] font-semibold text-gray-950 after:absolute after:inset-0 after:content-['']">{ex.title}</button>
+                    <span className="block truncate text-[12.5px] text-gray-500">{metaText(ex)}</span>
+                  </span>
+                </span>
+                <span role="cell" className="whitespace-nowrap text-[13.5px] tabular-nums">
+                  <strong className={cn('font-semibold', dd.hot ? 'text-accent' : 'text-gray-950')}>{dd.main}</strong>
+                  <span className="ml-1.5 text-gray-500">{dd.sub}</span>
+                </span>
+                <span role="cell" className="truncate text-[13.5px] text-gray-700">{opsText(ex)}</span>
+                <span role="cell" className="text-right text-[13.5px] tabular-nums">{(ex.viewCount ?? 0).toLocaleString('ko-KR')}</span>
+                <span role="cell" className="min-w-0 text-[13.5px] tabular-nums">
+                  <strong className="font-semibold">{ex.applicationCount ?? 0}</strong>
+                  {ex.pendingCount > 0 && <span className="ml-2 font-semibold text-accent"><Dot className="mr-1" />검토 대기 {ex.pendingCount}</span>}
+                  {hasAttach && <span className="block text-[12px] text-gray-500">첨부 받음 {ex.attachmentDownloads ?? 0}</span>}
+                </span>
+                <span role="cell" className="whitespace-nowrap text-[13.5px] tabular-nums text-gray-700">{ex.acceptedCount ? `${ex.acceptedCount}${ex.capacityMask ? '' : ` / ${ex.capacity}`}` : '—'}</span>
+                <span role="cell" className="relative z-10"><MenuButton label={`${ex.title} 더 보기`} iconOnly icon={<MoreHorizontal size={18} aria-hidden />} items={menuFor(ex)} /></span>
+              </div>
             );
           })}
         </div>
+      ) : (
+        <ul className="border-t border-gray-900" aria-label="주최 공모">
+          {shown.map((ex: any) => {
+            const dd = ddayCell(ex);
+            return (
+              <li key={ex.id} id={`hosted-ex-${ex.id}`} data-hosted-row={ex.id} className="flex items-start gap-1 border-b border-gray-100">
+                <button type="button" onClick={() => openExhibition(ex.id, ex.pendingCount > 0 ? 'applicants' : undefined)} className="flex min-w-0 flex-1 gap-3 py-3 text-left">
+                  <span className="h-[62px] w-11 shrink-0 bg-gray-100">{ex.imageUrl && <img src={ex.imageUrl} alt="" loading="lazy" className="h-[62px] w-11 object-contain" />}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] tabular-nums text-gray-600">
+                      <strong className={cn('font-bold', dd.hot ? 'text-accent' : 'text-gray-950')}>{dd.main}</strong>
+                      <span className="ml-1.5">{dd.sub} · {opsText(ex)}</span>
+                    </span>
+                    <span data-hosted-title className="mt-0.5 block truncate text-[15px] font-semibold text-gray-950">{ex.title}</span>
+                    <span className="mt-0.5 block text-[12.5px] tabular-nums text-gray-600">
+                      {regionLabels[ex.region] ?? ex.region} · 조회 {(ex.viewCount ?? 0).toLocaleString('ko-KR')} · 지원 {ex.applicationCount ?? 0}
+                      {ex.pendingCount > 0 && <span className="ml-2 font-semibold text-accent"><Dot className="mr-1" />검토 대기 {ex.pendingCount}</span>}
+                    </span>
+                  </span>
+                </button>
+                <span className="pt-2"><MenuButton label={`${ex.title} 더 보기`} iconOnly icon={<MoreHorizontal size={18} aria-hidden />} items={menuFor(ex)} /></span>
+              </li>
+            );
+          })}
+        </ul>
       )}
+      {modals}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * operations-extended.test.ts
- * 누락된 테스트 보완: HeroSlide CRUD, Benefit CRUD, Approval 통합 큐,
+ * 누락된 테스트 보완: HeroSlide CRUD, (폐지된) Benefit, Approval 통합 큐,
  * Show 엣지케이스 (찜 cascade 삭제, 이미지 순서, 복합 필터)
  *
  * 구조: 단일 top-level describe, cleanDb+seedUsers는 1회만 호출
@@ -108,70 +108,12 @@ describe('Operations Extended', () => {
     });
   });
 
-  // ===== Benefit CRUD =====
-  describe('Benefit API', () => {
-    beforeEach(async () => {
-      await testPrisma.benefit.deleteMany();
-    });
-
-    it('Admin이 혜택 생성', async () => {
+  // ===== 혜택(Benefit) — 2026-11-21 기능째로 없앴다 =====
+  describe('Benefit API (폐지)', () => {
+    it('/api/benefits 는 없다 — 404', async () => {
       const token = authToken(4, 'ADMIN');
-      const res = await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: '새 혜택', description: '혜택 상세', imageUrl: 'https://example.com/b.jpg', linkUrl: 'https://link.com' });
-      expect(res.status).toBe(201);
-      expect(res.body.title).toBe('새 혜택');
-      expect(res.body.linkUrl).toBe('https://link.com');
-    });
-
-    it('공개 목록 조회 — 비로그인도 가능', async () => {
-      // 선행 데이터
-      const token = authToken(4, 'ADMIN');
-      await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: '혜택1', description: '설명' });
-
-      const res = await request.get('/api/benefits');
-      expect(res.status).toBe(200);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it('비Admin은 혜택 생성 불가 403', async () => {
-      const token = authToken(3, 'GALLERY');
-      const res = await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: 'Fail', description: 'no' });
-      expect(res.status).toBe(403);
-    });
-
-    it('비로그인은 혜택 생성 불가 401', async () => {
-      const res = await request.post('/api/benefits')
-        .send({ title: 'Fail', description: 'no' });
-      expect(res.status).toBe(401);
-    });
-
-    it('Admin이 혜택 수정', async () => {
-      const token = authToken(4, 'ADMIN');
-      const createRes = await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: 'OldBenefit', description: '구 설명' });
-      const res = await request.patch(`/api/benefits/${createRes.body.id}`).set('Authorization', `Bearer ${token}`)
-        .send({ title: 'Updated Benefit', description: '신 설명' });
-      expect(res.status).toBe(200);
-      expect(res.body.title).toBe('Updated Benefit');
-    });
-
-    it('Admin이 혜택 삭제', async () => {
-      const token = authToken(4, 'ADMIN');
-      const createRes = await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: 'ToDelBenefit', description: '삭제용' });
-      const res = await request.delete(`/api/benefits/${createRes.body.id}`).set('Authorization', `Bearer ${token}`);
-      expect(res.status).toBe(200);
-    });
-
-    it('Artist는 혜택 삭제 불가 403', async () => {
-      const token = authToken(4, 'ADMIN');
-      const createRes = await request.post('/api/benefits').set('Authorization', `Bearer ${token}`)
-        .send({ title: 'NoDelBenefit', description: '삭제 불가' });
-      const artistToken = authToken(2, 'ARTIST');
-      const res = await request.delete(`/api/benefits/${createRes.body.id}`).set('Authorization', `Bearer ${artistToken}`);
-      expect(res.status).toBe(403);
+      expect((await request.get('/api/benefits')).status).toBe(404);
+      expect((await request.post('/api/benefits').set('Authorization', `Bearer ${token}`).send({ title: 'x', description: 'y' })).status).toBe(404);
     });
   });
 

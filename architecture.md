@@ -3327,3 +3327,26 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
   - '새 지원자'·초대 코드 참여 알림은 공모 제목으로 시작하고 그 공모 화면 [지원자] 탭으로 간다(`operationLink(id, 'applicants')`).
   - 커뮤니티 글쓰기 메뉴 셋과 ArtTalk [+] 첨부 메뉴가 Esc·앱 뒤로 키로 닫힌다 — 이제 소스의 모든 `role="menu"` 가 `data-back-closes` + Esc(`native.test.ts` 가 훑는다).
   - 흐름 밖 고정 줄 셋(등록 화면 셋 `StickySubmitBar` · 홈페이지 편집 저장 바 · 포트폴리오 만들기 `MakerBar`)도 자판이 뜨면 바닥으로(`tabbar-hidden:bottom-0`). 공고 상세 [지원하기] 줄만 그대로(글 칸이 없다).
+
+## 관리자 화면 개편 (2026-11-21, CLAUDE.md 규칙 89)
+
+관리자 마이페이지의 통계 · 승인 관리 · 주최 공모 · 사용자 관리 · 운영 조회를 다시 짰다. 혜택 관리는 없앴다(`Benefit` 표만 남김).
+
+| 화면 | 파일 | API |
+|---|---|---|
+| 메뉴 묶음·배지 | `lib/myPageMenu.ts`(group · badge · defaultTabFor · footerLinksFor) · `hooks/useAdminTodo.ts` · `components/layout/MenuBadge.tsx` | `GET /admin/todo-counts` |
+| 통계 | `components/admin/AdminStatsSection.tsx`(기간 + 탭 · 방문 탭) · `stats/StatsTabs.tsx` · `stats/StatParts.tsx` · `stats/VisitorChart.tsx` | `GET /admin/stats/{summary,members,calls,galleries,usage}` (+ 원래 visitors · guests · portfolio-exports) |
+| 승인 관리 | `components/admin/ApprovalsSection.tsx` | `GET /approvals`(place · current · targetFacts 추가) · `GET /approvals/history` |
+| 주최 공모 | `components/admin/HostedExhibitionsSection.tsx`(줄 목록 · `&ex=` 공모 화면 · `&new=1` 등록) | `GET /exhibitions/hosted`(pendingCount · acceptedCount · attachmentDownloads …) |
+| 사용자 관리 | `components/admin/UserManageSection.tsx` | `GET /admin/users?paged=1` · `GET /admin/users/:id/summary` |
+| 운영 조회 | `components/admin/OversightSection.tsx` · `lib/adminOversight.ts` | `GET /admin/exhibitions`(adminExhibitionRows) · `/admin/exhibitions/:id/applications`(+row) · `/admin/galleries` · `/admin/shows` |
+| 공용 | `components/admin/AdminUi.tsx` · `lib/adminFormat.ts` | — |
+
+서버 집계는 `lib/adminConsole.ts`(todoCounts · stallOf · stalledExhibitions · exhibitionCounts · adminExhibitionRows · recordAttachmentHit)와 `lib/adminStats.ts`(탭별 · 1분 저장).
+
+**DB**(마이그레이션 `20261121120000_admin_console`): `Gallery/Exhibition/Show.reviewedAt` · `ApprovalRequest.decidedAt`(결정 시각 — 처리한 요청 · 운영 속도) ·
+`ExhibitionAttachmentHit`(공모 × KST 날짜 × 수, `POST /exhibitions/:id/attachment-hit` — 공고 상세의 첨부를 누를 때, 관리자·운영자 제외).
+
+**멈춘 공모**: 정산 이의 · 전시 끝나고 7~19일 정산 요청 전 · 접수 마감 지나 3일 넘게 검토 대기(20일 지나면 '종료'로 정리된 공모라 뺀다).
+
+**통계에서 일부러 뺀 것**: 비회원 → 가입 · 가입한 작가 → 지원 깔때기(사용자 결정) · 유입 경로(2026-10-03 결정 그대로 안 모음).

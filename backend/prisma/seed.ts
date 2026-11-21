@@ -328,28 +328,7 @@ async function main() {
     create: { galleryId: gallery2.id, expiresAt: new Date('2026-03-31') },
   });
 
-  // ━━━ 혜택 (비즈니스 키: title) ━━━
-  await upsertByKey(
-    prisma.benefit,
-    { title: '신규 가입 아티스트 전시 수수료 50% 할인' },
-    {},
-    {
-      title: '신규 가입 아티스트 전시 수수료 50% 할인',
-      description: '2026년 상반기 신규 가입 아티스트에게 첫 전시 참여 시 수수료를 50% 할인해 드립니다.',
-      imageUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800',
-    },
-  );
-
-  await upsertByKey(
-    prisma.benefit,
-    { title: '갤러리 파트너십 프로그램' },
-    {},
-    {
-      title: '갤러리 파트너십 프로그램',
-      description: 'ArtLink 파트너 갤러리가 되시면 홍보 지원과 함께 우선 매칭 서비스를 제공합니다.',
-      imageUrl: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=800',
-    },
-  );
+  // 혜택(Benefit)은 2026-11-21 에 기능째로 없앴다 — 표는 남아 있지만 더는 채우지 않는다
 
   // ━━━ 리뷰 (비즈니스 키: userId + galleryId) ━━━
   await upsertByKey(

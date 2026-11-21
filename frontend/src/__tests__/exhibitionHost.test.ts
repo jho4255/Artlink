@@ -109,7 +109,7 @@ describe('canEditTitle — 제목을 바로 고치는 것은 아트링크 주최
     expect(detail).toMatch(/canEditTitle\(exhibition, user\) && \(/);
     expect(detail).toMatch(/api\.patch\(`\/exhibitions\/\$\{id\}\/title`/);
     const hosted = src('components/admin/HostedExhibitionsSection.tsx');
-    expect(hosted).toMatch(/onClick=\{\(\) => setEditContentEx\(ex\)\}[\s\S]{0,160}제목·소개 수정/);
+    expect(hosted).toMatch(/label: '제목·소개 수정', onSelect: \(\) => setEditContentEx\(ex\)/);   // 줄 끝 [⋯](2026-11-21 줄 목록)
     const modal = src('components/admin/HostedContentEditModal.tsx');
     // 바뀐 것만 보낸다 · 고친 게 있으면 닫기 전에 묻는다 · 여는 목록 캐시에 곧바로 써 넣는다
     expect(modal).toMatch(/if \(titleChanged\) out\.title =/);

@@ -167,7 +167,7 @@ describe('ArtTalk 자리 — 상단바 종 옆 말풍선 · 1:1 문의는 로그
   it('PC 오른쪽 메뉴 — ArtTalk 줄이 없고 [1:1 문의]와 [로그아웃]이 한 줄', () => {
     const side = code('components/layout/MyPageSideMenu.tsx');
     expect(side).not.toMatch(/\/messages|chat-unread/);
-    expect(side).toMatch(/MYPAGE_FOOTER_LINKS\.map[\s\S]{0,700}로그아웃/);
+    expect(side).toMatch(/(MYPAGE_FOOTER_LINKS|footerLinksFor\([^)]*\))\.map[\s\S]{0,700}로그아웃/);   // 관리자는 그 자리가 [프로필](2026-11-21)
   });
 
   it('상단바 — 종 바로 앞에 말풍선(PC·휴대폰 두 벌) · 안 읽은 대화 수 · 햄버거 메뉴엔 ArtTalk 이 없다', () => {

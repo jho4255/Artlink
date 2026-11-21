@@ -1,0 +1,31 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-21T06:10:00Z" },
+  "title": "ArtLink 관리자 화면 개편 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 2120, "title": "① 통계 — PC (요약 탭)", "expand": "fill" },
+    "StatsMobile.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 2120, "title": "① 통계 — 휴대폰" },
+    "ApprovalsPC.dc.html": { "x": 0, "y": 2240, "w": 1440, "h": 1260, "title": "② 승인 관리 — PC (대기 목록 | 한 건 보고 결정)", "expand": "fill" },
+    "ApprovalsMobile.dc.html": { "x": 1520, "y": 2240, "w": 390, "h": 1260, "title": "② 승인 관리 — 휴대폰 (한 건씩)" },
+    "HostedPC.dc.html": { "x": 0, "y": 3620, "w": 1440, "h": 1120, "title": "③ 주최 공모 — PC (줄 목록)", "expand": "fill" },
+    "HostedMobile.dc.html": { "x": 1520, "y": 3620, "w": 390, "h": 1120, "title": "③ 주최 공모 — 휴대폰" },
+    "UsersPC.dc.html": { "x": 0, "y": 4860, "w": 1440, "h": 1200, "title": "④ 사용자 관리 — PC (표 | 회원 한 명)", "expand": "fill" },
+    "UsersMobile.dc.html": { "x": 1520, "y": 4860, "w": 390, "h": 1200, "title": "④ 사용자 관리 — 휴대폰" },
+    "OversightPC.dc.html": { "x": 0, "y": 6180, "w": 1440, "h": 1160, "title": "⑤ 운영 조회 — PC (공모 전체 | 지원 현황)", "expand": "fill" }
+  },
+  "order": [
+    "Main.dc.html",
+    "StatsMobile.dc.html",
+    "ApprovalsPC.dc.html",
+    "ApprovalsMobile.dc.html",
+    "HostedPC.dc.html",
+    "HostedMobile.dc.html",
+    "UsersPC.dc.html",
+    "UsersMobile.dc.html",
+    "OversightPC.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

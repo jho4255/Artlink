@@ -786,13 +786,14 @@ test.describe('I. 관리자 통계', () => {
     const ctx = await browser.newContext({ storageState: statePath('admin'), viewport: DESKTOP, hasTouch: false, isMobile: false });
     const page = await ctx.newPage();
     await page.goto('/mypage?tab=stats');
+    await page.getByRole('tab', { name: /^기능 사용/ }).click();   // 2026-11-21: [통계]는 탭 — PDF 저장은 [기능 사용]
     await expect(page.getByRole('heading', { name: '포트폴리오 PDF 저장' })).toBeVisible({ timeout: 15000 });
     const kpis = page.getByTestId('export-kpis');
     await expect(kpis).toContainText('지금까지');
     await expect(kpis).toContainText(`${after.totals.saves}회`);
     await expect(kpis).toContainText(`저장한 작가 ${after.totals.artists}명`);
     // 기간 버튼은 하나뿐이다(방문자·저장 두 섹션이 함께 따른다)
-    await expect(page.getByRole('button', { name: '7일' })).toHaveCount(1);
+    await expect(page.getByRole('radio', { name: '7일' })).toHaveCount(1);
     await page.getByText('표로 보기').last().click();
     await expect(page.getByTestId('export-table').locator('tbody tr').first()).toContainText(String(after.rows.at(-1).total));
     await ctx.close();

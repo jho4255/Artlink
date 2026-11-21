@@ -21,7 +21,7 @@ const router = Router();
 const DISALLOW = ['/mypage', '/messages', '/login', '/auth', '/api', '/operations'];
 
 /** 공개 정적 페이지 */
-const STATIC_PATHS = ['/', '/galleries', '/exhibitions', '/shows', '/explore', '/benefits', '/terms', '/privacy'];
+const STATIC_PATHS = ['/', '/galleries', '/exhibitions', '/shows', '/explore', '/terms', '/privacy'];
 
 const SITEMAP_TTL_MS = 10 * 60 * 1000;
 const SITEMAP_FALLBACK_TTL_MS = 60 * 1000;

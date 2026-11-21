@@ -3,7 +3,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 import { MessageCircle } from 'lucide-react';
-import { myPageTabs, tabHref, resolveTab, MYPAGE_FOOTER_LINKS, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, footerLinksFor, MYPAGE_PRIMARY_LINKS } from '@/lib/myPageMenu';
+import { useAdminTodo, badgeCount } from '@/hooks/useAdminTodo';
+import MenuBadge from '@/components/layout/MenuBadge';
 import AdSlot from '@/components/shared/AdSlot';
 
 /**
@@ -33,6 +35,8 @@ export default function MyPageSideMenu() {
   };
 
   const tabs = myPageTabs(user?.role);
+  // 관리자 메뉴 배지(2026-11-21) — 훅이라 아래 return 위에
+  const { data: todo } = useAdminTodo();
   if (!isAuthenticated || tabs.length === 0) return null;
 
   const onMyPage = location.pathname === '/mypage';
@@ -46,16 +50,21 @@ export default function MyPageSideMenu() {
         <p className="px-3 pb-2 text-[11px] font-medium tracking-widest text-gray-300 uppercase">
           My Page
         </p>
-        {tabs.map(tab => {
+        {tabs.map((tab, i) => {
           const Icon = tab.icon;
           // [홈페이지]처럼 바깥으로 나가는 항목은 그 페이지에 있을 때 강조한다
           const active = tab.linkTo
             ? location.pathname === tab.linkTo(user!.id)
             : onMyPage && currentTab === tab.id;
-          return (
+          const badge = badgeCount(todo, tab.badge);
+          // 묶음 머리말(관리자 메뉴, 2026-11-21) — 앞 항목과 묶음이 바뀌는 자리에
+          const head = tab.group && tab.group !== tabs[i - 1]?.group
+            ? <p key={`g-${tab.group}`} className="px-3 pt-4 pb-1 text-xs font-semibold text-gray-500 first:pt-0">{tab.group}</p>
+            : null;
+          return [head, (
             <Link
               key={tab.id}
-              to={tabHref(tab, user?.id)}
+              to={tabHref(tab, user?.id, user?.role)}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors',
@@ -72,8 +81,9 @@ export default function MyPageSideMenu() {
                   : <span>{tab.label}</span>}
                 {tab.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{tab.note}</span>}
               </span>
+              {badge != null && <MenuBadge count={badge} className="ml-auto" />}
             </Link>
-          );
+          )];
         })}
 
         {/* ArtStory(소식) 등 자주 쓰는 링크 — 역할 메뉴 바로 아래, **구분선 위**(문의/로그아웃 묶음보다 위) */}
@@ -109,11 +119,11 @@ export default function MyPageSideMenu() {
         */}
         {/* 1:1 문의 · 로그아웃 — 맨 아래 **한 줄**, 작고 조용하게(2026-11-19 사용자 결정) */}
         <div className="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between">
-          {MYPAGE_FOOTER_LINKS.map(l => (
+          {footerLinksFor(user?.role).map(l => (
             <Link
               key={l.to}
               to={l.to}
-              aria-current={location.pathname === l.to ? 'page' : undefined}
+              aria-current={location.pathname + location.search === l.to || location.pathname === l.to ? 'page' : undefined}
               className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors"
             >
               {l.label}

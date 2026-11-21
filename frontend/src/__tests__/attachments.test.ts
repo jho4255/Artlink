@@ -89,7 +89,13 @@ describe('화면이 붙는 자리 — 되돌아가지 않게', () => {
     expect(section).not.toMatch(/aria-label=\{?['"`][^'"`]*수정/);
   });
 
-  it('관리자 승인 화면에서 첨부를 먼저 열어 본다', () => {
-    expect(myPage).toMatch(/<AttachmentList items=\{normalizeAttachments\(item\.attachments\)\} \/>/);
+  it('관리자 승인 화면에서 첨부를 먼저 열어 본다(2026-11-21 부터 components/admin/ApprovalsSection)', () => {
+    const approvals = read('frontend/src/components/admin/ApprovalsSection.tsx');
+    expect(approvals).toMatch(/const attachments = normalizeAttachments\(r\.attachments\)/);
+    expect(approvals).toMatch(/<AttachmentList key="a" items=\{attachments\} \/>/);
+  });
+
+  it('공고 상세에서 첨부를 누르면 받은 수를 센다(관리자 통계 \'첨부 받음\', 2026-11-21) — 실패해도 조용히', () => {
+    expect(detail).toMatch(/<AttachmentList items=\{items\} onDownload=\{\(\) => \{ api\.post\(`\/exhibitions\/\$\{exhibitionId\}\/attachment-hit`\)\.catch\(\(\) => \{\}\); \}\} \/>/);
   });
 });

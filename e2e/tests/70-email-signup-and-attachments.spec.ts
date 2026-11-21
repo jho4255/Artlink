@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
-import { openAs, tokenFor, ownedGalleryId, createExhibition, exhibitionDates, typeRich, settle, pickSchedule } from '../lib/helpers';
+import { openAs, tokenFor, ownedGalleryId, createExhibition, exhibitionDates, typeRich, settle, pickSchedule, openApproval } from '../lib/helpers';
 
 /**
  * 이메일 가입(아티스트·갤러리·일반) · 이메일 로그인 · 비밀번호 찾기 · 약관은 끝까지 읽어야 체크 · 공모 첨부파일 (2026-10-08 사용자 결정)
@@ -345,12 +345,13 @@ test.describe('공모 첨부파일', () => {
     expect(g2.status()).toBe(201);
 
     const { page, ctx } = await openAs(browser, 'admin');
-    await page.goto('/mypage?tab=approvals');
-    const galleryCard = page.locator('div.rounded-xl', { hasText: (await g2.json()).name }).first();
-    await expect(galleryCard).toContainText(`가입 계정: 이투이 · ${email}`, { timeout: 15000 });
+    // 2026-11-21: 승인 관리는 목록 → 한 건(휴대폰은 창). 가입 계정은 '가입 계정' 구역에
+    const galleryCard = await openApproval(page, (await g2.json()).name);
+    await expect(galleryCard).toContainText('이투이', { timeout: 15000 });
+    await expect(galleryCard).toContainText(email);
     await expect(galleryCard).toContainText('이메일 인증됨');
     await expect(galleryCard).toContainText('(가입 계정과 같음)');
-    const exCard = page.locator('div.rounded-xl', { hasText: 'E2E 승인전 첨부' }).first();
+    const exCard = await openApproval(page, 'E2E 승인전 첨부');
     await expect(exCard.getByRole('list', { name: '첨부파일' })).toContainText('모집 요강.pdf');
     await ctx.close();
     await api.dispose();

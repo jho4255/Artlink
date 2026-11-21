@@ -1,5 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
-import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, openOperation, workspace, workspaceTab, exhibitionCard } from '../lib/helpers';
+import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, openOperation, workspace, workspaceTab, exhibitionCard, hostedRow } from '../lib/helpers';
 
 /**
  * 운영 화면의 [지원자 보기]·[← 목록] 은 **보는 사람의 역할에 맞는 곳**으로 간다 (2026-10-02)
@@ -11,7 +11,7 @@ import { openAs, tokenFor, exhibitionDates, createExhibition, ownedGalleryId, op
  *
  *   갤러리             → [내 공모] 의 그 공모 화면(2026-11-20 — 카드 → 공모 한 건 화면)
  *   관리자 · 갤러리 주최  → 운영 주소에서 공모 화면, [← 운영 조회] · [지원자] 탭은 조회 안내(수락·거절은 그 갤러리의 일)
- *   관리자 · 아트링크 주최 → 운영 주소에서 공모 화면(지원자를 바로 다룬다), [← 주최 공모] 는 그 카드
+ *   관리자 · 아트링크 주최 → 운영 주소는 [주최 공모]의 그 공모 화면으로(지원자를 바로 다룬다), [← 주최 공모] 는 줄 목록(2026-11-21)
  */
 const API = 'http://localhost:4000/api';
 const DESKTOP = { width: 1280, height: 800 };
@@ -44,7 +44,7 @@ test.describe('관리자', () => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/mypage?tab=oversight');
     await page.getByRole('button', { name: new RegExp(TITLE_G) }).click();
-    await page.getByRole('button', { name: /운영 페이지/ }).click();
+    await page.getByTestId('ov-ex-detail').getByRole('link', { name: '공모 화면 열기' }).click();
     await page.waitForURL(new RegExp(`/exhibitions/${galleryEx}/operation/new`));
 
     // 2026-11-20: 운영 주소는 공모 한 건 화면 — 돌아가는 글자는 관리자의 일터 이름이다(관리자에겐 [내 공모] 가 없다)
@@ -55,7 +55,8 @@ test.describe('관리자', () => {
     await back.click();
     await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=oversight&ex=${galleryEx}$`));
     const detail = page.getByTestId('ov-ex-detail');
-    await expect(detail).toContainText(`${TITLE_G} — 지원 현황`, { timeout: 15000 });
+    await expect(detail).toContainText(TITLE_G, { timeout: 15000 });
+    await expect(detail).toContainText('지원자');
     await expect(detail).toBeInViewport();
     await expect(nickname(page), '프로필로 떨어졌다 — 관리자에게 없는 탭 주소로 보냈다').toHaveCount(0);
     await ctx.close();
@@ -73,18 +74,19 @@ test.describe('관리자', () => {
     await ctx.close();
   });
 
-  test('★ 아트링크 주최 공모 — 공모 화면에서 바로 지원자를 다루고, [← 주최 공모] 는 그 카드로', async ({ browser }) => {
+  test('★ 아트링크 주최 공모 — 운영 주소는 [주최 공모]의 그 공모 화면으로, 거기서 지원자를 다루고 [← 주최 공모]는 줄 목록', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'admin');
     await page.setViewportSize(DESKTOP);
-    await openOperation(page, hostedEx, '지원자');
+    // 2026-11-21(규칙 89): 갤러리가 [내 공모]로 가듯, 관리자의 아트링크 주최 공모는 마이페이지 [주최 공모]가 일터다
+    await page.goto(`/exhibitions/${hostedEx}/operation/new?view=applicants`);
+    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=hosted-exhibitions&ex=${hostedEx}&view=applicants$`), { timeout: 15000 });
     // 주최자인 관리자는 여기서 수락·거절한다
     await expect(page.locator('[data-applicant-manager]').getByText(/수락 \d+\/\d+/).first()).toBeVisible({ timeout: 15000 });
 
-    await workspace(page).getByRole('link', { name: '주최 공모', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/mypage\\?tab=hosted-exhibitions&ex=${hostedEx}$`));
-    const card = page.locator(`#hosted-ex-${hostedEx}`);
-    await expect(card).toContainText(TITLE_H, { timeout: 15000 });
-    await expect(card).toBeInViewport();
+    await workspace(page).getByRole('button', { name: '주최 공모', exact: true }).click();
+    await expect(page).toHaveURL(/\/mypage\?tab=hosted-exhibitions$/);
+    await page.getByRole('tab', { name: /^전체/ }).click();
+    await expect(hostedRow(page, TITLE_H)).toBeVisible({ timeout: 15000 });
     await expect(nickname(page)).toHaveCount(0);
     await ctx.close();
   });

@@ -22,7 +22,6 @@ import reviewRoutes from './routes/review';
 import favoriteRoutes from './routes/favorite';
 import portfolioRoutes from './routes/portfolio';
 import approvalRoutes from './routes/approval';
-import benefitRoutes from './routes/benefit';
 import galleryOfMonthRoutes from './routes/galleryOfMonth';
 import uploadRoutes from './routes/upload';
 import showRoutes from './routes/show';
@@ -171,7 +170,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/approvals', approvalRoutes);
-app.use('/api/benefits', benefitRoutes);
+// /api/benefits 는 2026-11-21 에 없앴다(혜택 기능 폐지 — Benefit 표만 남김)
 app.use('/api/gallery-of-month', galleryOfMonthRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/shows', showRoutes);

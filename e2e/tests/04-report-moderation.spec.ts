@@ -81,7 +81,7 @@ test('★ 말풍선 [신고하기] → 관리자 [신고 관리]에서 그 대�
   // 신고당한 회원 → [사용자 관리]에서 그 회원을 찾은 채로(역할 탭·검색어가 채워져 있다)
   await doneItem.getByRole('link', { name: '사용자 관리에서 보기' }).click();
   await expect(ad.page).toHaveURL(/tab=user-manage/);
-  await expect(ad.page.getByPlaceholder('이메일 또는 이름으로 검색')).not.toHaveValue('');
+  await expect(ad.page.getByRole('searchbox', { name: '이름·이메일·@주소로 찾기' })).not.toHaveValue('');
   await expect(ad.page.locator('main')).toContainText('Artist 2', { timeout: 10000 });
 
   // 작가는 관리자 목록을 못 본다

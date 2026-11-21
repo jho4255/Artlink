@@ -6,7 +6,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { cn, roleLabel } from '@/lib/utils';
 import api from '@/lib/axios';
-import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, MYPAGE_FOOTER_LINKS } from '@/lib/myPageMenu';
+import { myPageTabs, tabHref, resolveTab, MYPAGE_PRIMARY_LINKS, footerLinksFor } from '@/lib/myPageMenu';
+import { useAdminTodo, badgeCount } from '@/hooks/useAdminTodo';
+import MenuBadge from '@/components/layout/MenuBadge';
 import { NAV_LINKS as navLinks, isNavActive } from '@/lib/navLinks';
 import { confirmLeaveUnsaved } from '@/hooks/useUnsavedChanges';
 
@@ -30,6 +32,9 @@ export default function Navbar() {
   // lg 미만 [메뉴] 안에 들어갈 마이페이지 목록 — 사이드바와 같은 정의(lib/myPageMenu.ts)
   const myTabs = myPageTabs(user?.role);
   const myCurrentTab = resolveTab(user?.role, searchParams.get('tab'));
+  // 관리자 처리할 일 수 — 휴대폰 [메뉴] 단추의 점 · 메뉴 안 배지(2026-11-21)
+  const { data: adminTodo } = useAdminTodo();
+  const adminTodoTotal = adminTodo ? adminTodo.approvals + adminTodo.reports + adminTodo.inquiries : 0;
 
   const handleLogout = () => {
     // 로그아웃 시 모든 캐시 제거 (다음 유저 로그인 시 stale 데이터 방지)
@@ -306,10 +311,12 @@ export default function Navbar() {
             {isAuthenticated && (
               <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-                aria-label={isOpen ? '메뉴 닫기' : '메뉴 열기'}
+                className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label={isOpen ? '메뉴 닫기' : adminTodoTotal > 0 ? `메뉴 열기 · 처리할 일 ${adminTodoTotal}건` : '메뉴 열기'}
               >
                 {isOpen ? <X size={24} /> : <Menu size={24} />}
+                {/* 관리자에게 처리할 일이 있으면 점 하나(2026-11-21) — 수는 메뉴 안 배지가 말한다 */}
+                {!isOpen && adminTodoTotal > 0 && <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />}
               </button>
             )}
           </div>
@@ -409,16 +416,20 @@ export default function Navbar() {
                   <p className="px-4 pt-3 pb-1 text-[11px] font-medium tracking-widest text-gray-300 uppercase">
                     My Page
                   </p>
-                  {myTabs.map(tab => {
+                  {myTabs.map((tab, i) => {
                     const Icon = tab.icon;
                     // [홈페이지]처럼 바깥으로 나가는 항목은 그 페이지에 있을 때 강조
                     const active = tab.linkTo
                       ? location.pathname === tab.linkTo(user!.id)
                       : location.pathname === '/mypage' && myCurrentTab === tab.id;
-                    return (
+                    const badge = badgeCount(adminTodo, tab.badge);
+                    const head = tab.group && tab.group !== myTabs[i - 1]?.group
+                      ? <p key={`g-${tab.group}`} className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500">{tab.group}</p>
+                      : null;
+                    return [head, (
                       <Link
                         key={tab.id}
-                        to={tabHref(tab, user?.id)}
+                        to={tabHref(tab, user?.id, user?.role)}
                         onClick={() => setIsOpen(false)}
                         aria-current={active ? 'page' : undefined}
                         className={cn(
@@ -433,13 +444,14 @@ export default function Navbar() {
                   : <span>{tab.label}</span>}
                           {tab.note && <span className="ml-1.5 text-[11px] text-gray-400 font-normal">{tab.note}</span>}
                         </span>
+                        {badge != null && <MenuBadge count={badge} className="ml-auto" />}
                       </Link>
-                    );
+                    )];
                   })}
                   {/* 1:1 문의 · 로그아웃 — 맨 아래 한 줄(사이드바와 같은 모양, 2026-11-19).
                       1:1 문의를 빼지 말 것 — 없으면 모바일에서 고객센터로 가는 길이 푸터뿐이다(2026-09-19) */}
                   <div className="mt-1 flex items-center justify-between border-t border-gray-100">
-                    {MYPAGE_FOOTER_LINKS.map((l) => (
+                    {footerLinksFor(user?.role).map((l) => (
                       <Link
                         key={l.to}
                         to={l.to}

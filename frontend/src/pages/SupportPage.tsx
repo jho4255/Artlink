@@ -11,6 +11,7 @@ import { setPostLoginRedirect } from '@/lib/postLoginRedirect';
 import WithdrawModal from '@/components/shared/WithdrawModal';
 import type { Inquiry } from '@/types';
 import { roleLabel } from '@/lib/utils';
+import { ADMIN_TODO_KEY } from '@/hooks/useAdminTodo';
 
 interface Faq {
   id: number;
@@ -50,11 +51,24 @@ export default function SupportPage() {
         없었고, 1:1 문의가 전부 사람 손으로 왔다. FAQ 가 0건이면 방문자에게는 그 섹션을 그리지 않는다(빈 안내 금지).
       */}
       <h1 className="mb-8 text-3xl font-semibold tracking-tight text-gray-900">고객센터</h1>
-      <FaqSection />
-      <section className="mt-12">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">1:1 문의</h2>
-        <InquirySection />
-      </section>
+      {/* 관리자는 답할 문의가 먼저다 — 메뉴의 [1:1 문의 N] 배지를 누르고 왔다(2026-11-21). 그 밖에는 FAQ 가 먼저 */}
+      {user?.role === 'ADMIN' ? (
+        <>
+          <section>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">1:1 문의</h2>
+            <InquirySection />
+          </section>
+          <div className="mt-12"><FaqSection /></div>
+        </>
+      ) : (
+        <>
+          <FaqSection />
+          <section className="mt-12">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">1:1 문의</h2>
+            <InquirySection />
+          </section>
+        </>
+      )}
 
       {/*
         회원 탈퇴 — 프로필을 고치러 들어간 사람 눈앞에 빨간 [회원 탈퇴]가 늘 놓여 있는 게 맞지 않아
@@ -374,6 +388,7 @@ function InquirySection() {
     retry: false,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inquiries'] });
+      queryClient.invalidateQueries({ queryKey: ADMIN_TODO_KEY });   // 메뉴 [1:1 문의] 배지(규칙 89)
       setReplyText('');
       toast.success('답변이 등록되었습니다.');
     },

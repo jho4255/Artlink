@@ -17,7 +17,7 @@
  * ⚠️ 단계 전환(모집 마감 · 전시 확정 · 전시 종료)은 `hooks/useLifecycle` 의 확인창을 거친다(규칙 59).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MoreHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -51,7 +51,7 @@ import type { CustomField, Exhibition, OperationAccess, OperationSubmission } fr
 
 type Detail = Exhibition & { rejectReason?: string | null; submissionDeadline?: string | null; settledAt?: string | null; confirmed?: boolean };
 
-export default function ExhibitionWorkspace({ exhibitionId, standalone = false, initialView = null, initialAct = null, onClose }: {
+export default function ExhibitionWorkspace({ exhibitionId, standalone = false, initialView = null, initialAct = null, onClose, backLabel = '내 공모', extraMenu = [] }: {
   exhibitionId: number;
   /** 관리자 운영 주소(`/exhibitions/:id/operation/new`)에서 — 돌아갈 곳은 operatorWorkspace 가 정한다 */
   standalone?: boolean;
@@ -61,6 +61,10 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   initialAct?: TaskActionId | null;
   /** 갤러리 [내 공모] 안 — [← 내 공모] */
   onClose?: () => void;
+  /** 마이페이지 안 돌아가기 글자 — 관리자 [주최 공모]는 '주최 공모'(2026-11-21) */
+  backLabel?: string;
+  /** [⋯] 에 더할 것 — 관리자 [주최 공모]의 제목·소개 수정 · 운영 갤러리 변경 */
+  extraMenu?: MenuItem[];
 }) {
   const id = String(exhibitionId);
   const qc = useQueryClient();
@@ -326,9 +330,15 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   }
 
   const workspace = operatorWorkspace(user?.role, access.hostType, id);
+  // 관리자 · 아트링크 주최 공모는 마이페이지 [주최 공모]의 그 공모 화면이 일터다(2026-11-21, 규칙 89) — 갤러리가 [내 공모]로 가는 것과 같다.
+  // 운영 주소(알림·공고 상세)로 와도 메뉴·배지가 있는 그 자리에서 열고, [← 주최 공모]는 줄 목록으로 간다.
+  if (standalone && user?.role === 'ADMIN' && access.hostType === 'ADMIN' && workspace) {
+    const v = new URLSearchParams(location.search).get('view');
+    return <Navigate to={`${workspace.listHref}${v ? `&view=${encodeURIComponent(v)}` : ''}`} state={location.state} replace />;
+  }
   const back = standalone
     ? (workspace ? <Link to={workspace.listHref} className="-ml-1 inline-flex min-h-[44px] items-center gap-1.5 px-1 text-sm text-gray-600 hover:text-gray-950"><ArrowLeft size={16} aria-hidden /> {workspace.label}</Link> : null)
-    : <button type="button" onClick={() => { if (confirmDiscardUnsaved()) onClose?.(); }} className="-ml-1 inline-flex min-h-[44px] items-center gap-1.5 px-1 text-sm text-gray-600 hover:text-gray-950"><ArrowLeft size={16} aria-hidden /> 내 공모</button>;
+    : <button type="button" onClick={() => { if (confirmDiscardUnsaved()) onClose?.(); }} className="-ml-1 inline-flex min-h-[44px] items-center gap-1.5 px-1 text-sm text-gray-600 hover:text-gray-950"><ArrowLeft size={16} aria-hidden /> {backLabel}</button>;
 
   // 목록 줄과 같은 보조 글(gallerySubText) — 조회수는 올린 갤러리·관리자에게만 서버가 싣는다(규칙 63)
   const stageSub = gallerySubText({
@@ -343,6 +353,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     // 기간 중 조기 종료 — 주 버튼이 아닐 때만 여기서
     ...(approved && !recruitOnly && !access.ended && access.recruitmentClosed && task.primary?.id !== 'end' ? [{ id: 'end', label: '전시 종료', hint: '전시를 끝내고 정산을 시작해요', onSelect: () => lifecycle.ask('end') }] : []),
     ...(approved && !recruitOnly && access.recruitmentClosed && !access.confirmed && task.primary?.id !== 'confirm' && task.secondary?.id !== 'confirm' ? [{ id: 'confirm', label: '전시 확정', onSelect: () => lifecycle.ask('confirm') }] : []),
+    ...extraMenu,
     ...(deletable ? [{ id: 'delete', label: '공모 삭제', onSelect: askDelete }] : []),
   ];
 

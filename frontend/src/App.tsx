@@ -40,10 +40,8 @@ const ApplyPage = lazyWithReload(() => import('@/pages/ApplyPage'));
 const ShowsPage = lazyWithReload(() => import('@/pages/ShowsPage'));
 const ShowDetailPage = lazyWithReload(() => import('@/pages/ShowDetailPage'));
 const PortfolioPage = lazyWithReload(() => import('@/pages/PortfolioPage'));
-// 혜택 페이지는 당분간 비활성화 — 아래 /benefits 라우트가 홈으로 보낸다.
-// 다시 켤 땐 이 import 와 라우트, Navbar navLinks, QuickActionCards 카드를 되살리면 된다.
-// (Admin 마이페이지의 '혜택 관리' 탭과 백엔드 /api/benefits 는 그대로 살아 있다)
-// const BenefitsPage = lazyWithReload(() => import('@/pages/BenefitsPage'));
+// 혜택 기능은 2026-11-21 에 없앴다 — /benefits 는 옛 링크·북마크가 죽지 않게 홈으로 보낸다.
+// 화면·관리 탭·API 를 지웠다(DB 의 Benefit 표만 남는다). 되살리려면 git(2026-11-21 이전)에서 가져올 것.
 const MyPage = lazyWithReload(() => import('@/pages/MyPage'));
 const LoginPage = lazyWithReload(() => import('@/pages/LoginPage'));
 // 회원가입(역할을 고르고 카카오/이메일) · 이메일 가입 · 비밀번호 찾기 (2026-10-08) — 인증번호 메일로 이메일을 확인한다

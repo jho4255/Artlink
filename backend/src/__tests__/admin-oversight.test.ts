@@ -69,7 +69,7 @@ describe('Admin 운영 조회 API', () => {
       const ex = res.body.find((e: any) => e.id === exhibitionId);
       expect(ex).toBeTruthy();
       expect(ex.gallery.name).toBe('Test Gallery');
-      expect(ex._count.applications).toBe(2);
+      expect(ex.counts.apps.total).toBe(2);   // 2026-11-21: 단계·숫자를 한 묶음(counts)으로 — lib/adminConsole.ts
     });
 
     /**

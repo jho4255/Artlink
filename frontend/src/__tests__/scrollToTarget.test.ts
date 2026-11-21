@@ -42,8 +42,6 @@ describe('scrollToTarget', () => {
     const support = read('pages/SupportPage.tsx');
     expect(support).toMatch(/scrollToTarget\(document\.querySelector\(`\[data-inquiry=/);
     expect(support).not.toMatch(/data-inquiry=[^\n]*scrollIntoView/);
-    const hosted = read('components/admin/HostedExhibitionsSection.tsx');
-    expect(hosted).toMatch(/scrollToTarget\(document\.getElementById\(`hosted-ex-/);
-    expect(hosted).not.toMatch(/hosted-ex-\$\{exId\}`\)\?\.scrollIntoView/);
+    // 관리자 [주최 공모]의 카드로 내려가던 딥링크는 없어졌다 — 2026-11-21 부터 `?ex=` 가 공모 한 건 화면을 연다
   });
 });

@@ -64,13 +64,128 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
       ...(isDeleteType(request.type) ? { target: await deleteTargetSummary(request.type, request.targetId) } : {}),
     })));
 
+    // 등록한 곳(2026-11-21) — 갤러리 상태 · 지난 공모·반려 수 · 가입 계정 인증·최근 접속. 승인 판단의 근거를 한 화면에
+    const galleryIds = [...new Set([
+      ...pendingExhibitions.map((e) => e.galleryId),
+      ...pendingShows.map((x) => x.galleryId),
+      ...requests.filter((r) => r.type === 'GALLERY_EDIT' || r.type === 'GALLERY_DELETE').map((r) => r.targetId),
+    ].filter((x): x is number => typeof x === 'number'))];
+    const places = await placeSummaries(galleryIds);
+    const ownerIds = pendingGalleries.map((g) => g.ownerId);
+    const [ownerSeen, ownerGalleries] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: ownerIds } }, select: { id: true, lastSeenAt: true, createdAt: true } }),
+      prisma.gallery.groupBy({ by: ['ownerId'], where: { ownerId: { in: ownerIds } }, _count: { _all: true } }),
+    ]);
+    const seenBy = new Map(ownerSeen.map((u) => [u.id, u]));
+    const galleriesBy = new Map(ownerGalleries.map((g) => [g.ownerId, g._count._all]));
+    // 수정 요청은 지금 값과 맞대 보여 준다 — 바꾸려는 칸만
+    const editRequests = await Promise.all(pendingRequests.map(async (r: any) => {
+      if (r.type !== 'GALLERY_EDIT' && r.type !== 'EXHIBITION_EDIT') return r;
+      const changes = parseChanges(r.changes) as Record<string, unknown>;
+      const keys = Object.keys(changes);
+      if (r.type === 'GALLERY_EDIT') {
+        const g = await prisma.gallery.findUnique({ where: { id: r.targetId } });
+        return { ...r, targetName: g?.name ?? null, current: g ? pick(g, keys) : null, place: places.get(r.targetId) ?? null };
+      }
+      const ex = await prisma.exhibition.findUnique({
+        where: { id: r.targetId },
+        include: { _count: { select: { applications: true } } },
+      });
+      const accepted = ex ? await prisma.application.count({ where: { exhibitionId: ex.id, status: 'ACCEPTED' } }) : 0;
+      return {
+        ...r,
+        targetName: ex?.title ?? null,
+        current: ex ? pick(ex, keys) : null,
+        targetFacts: ex ? { applications: ex._count.applications, accepted, deadline: ex.deadline, status: ex.status, recruitmentClosed: ex.recruitmentClosed } : null,
+        place: ex?.galleryId ? places.get(ex.galleryId) ?? null : null,
+      };
+    }));
+
     res.json({
-      pendingGalleries,
+      pendingGalleries: pendingGalleries.map((g) => ({
+        ...g,
+        owner: g.owner ? { ...g.owner, lastSeenAt: seenBy.get(g.ownerId)?.lastSeenAt ?? null, joinedAt: seenBy.get(g.ownerId)?.createdAt ?? null } : g.owner,
+        ownerGalleryCount: galleriesBy.get(g.ownerId) ?? 1,
+      })),
       // 첨부파일은 승인 전에 관리자가 열어 볼 수 있게 — 이상한 줄은 건너뛰고 늘 배열로
-      pendingExhibitions: pendingExhibitions.map((e) => ({ ...e, attachments: readAttachments(e.attachments) })),
-      pendingShows,
-      pendingRequests,
+      pendingExhibitions: pendingExhibitions.map((e) => ({ ...e, attachments: readAttachments(e.attachments), place: e.galleryId ? places.get(e.galleryId) ?? null : null })),
+      pendingShows: pendingShows.map((x) => ({ ...x, place: places.get(x.galleryId) ?? null })),
+      pendingRequests: editRequests,
     });
+  } catch (error) { next(error); }
+});
+
+/** 값 몇 칸만 — 날짜는 그대로(JSON 이 ISO 로 바꾼다) */
+function pick(obj: Record<string, any>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of keys) out[k] = obj[k] ?? null;
+  return out;
+}
+
+/** 갤러리마다 '등록한 곳' 요약 — 상태 · 등록일 · 지난 공모(반려·정산 완료) · 주인 계정 */
+async function placeSummaries(galleryIds: number[]) {
+  const out = new Map<number, unknown>();
+  if (!galleryIds.length) return out;
+  const [galleries, exByStatus, settled] = await Promise.all([
+    prisma.gallery.findMany({
+      where: { id: { in: galleryIds } },
+      select: {
+        id: true, name: true, status: true, createdAt: true, handle: true, region: true,
+        owner: { select: { id: true, name: true, email: true, provider: true, emailVerifiedAt: true, lastSeenAt: true } },
+      },
+    }),
+    prisma.exhibition.groupBy({ by: ['galleryId', 'status'], where: { galleryId: { in: galleryIds } }, _count: { _all: true } }),
+    prisma.exhibition.groupBy({ by: ['galleryId'], where: { galleryId: { in: galleryIds }, settledAt: { not: null } }, _count: { _all: true } }),
+  ]);
+  for (const g of galleries) {
+    const mine = exByStatus.filter((x) => x.galleryId === g.id);
+    out.set(g.id, {
+      ...g,
+      exhibitions: mine.reduce((n, x) => n + x._count._all, 0),
+      approvedExhibitions: mine.filter((x) => x.status === 'APPROVED').reduce((n, x) => n + x._count._all, 0),
+      rejectedExhibitions: mine.filter((x) => x.status === 'REJECTED').reduce((n, x) => n + x._count._all, 0),
+      settledExhibitions: settled.find((x) => x.galleryId === g.id)?._count._all ?? 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * 처리한 요청 (Admin, 2026-11-21) — 갤러리·공모·전시 승인/거절 + 수정·삭제 요청, 최근 처리한 순.
+ * 갤러리·공모·전시의 처리 시각은 `reviewedAt`(그 전 것은 승인 알림 시각으로 채웠다 — 없는 건 빠진다).
+ * GET /api/approvals/history?limit=60
+ */
+router.get('/history', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit ?? '60'), 10) || 60));
+    const [galleries, exhibitions, shows, requests] = await Promise.all([
+      prisma.gallery.findMany({ where: { reviewedAt: { not: null }, status: { not: 'PENDING' } }, select: { id: true, name: true, status: true, rejectReason: true, createdAt: true, reviewedAt: true, owner: { select: { name: true } } }, orderBy: { reviewedAt: 'desc' }, take: limit }),
+      prisma.exhibition.findMany({ where: { reviewedAt: { not: null }, status: { not: 'PENDING' } }, select: { id: true, title: true, status: true, rejectReason: true, createdAt: true, reviewedAt: true, imageUrl: true, gallery: { select: { name: true } } }, orderBy: { reviewedAt: 'desc' }, take: limit }),
+      prisma.show.findMany({ where: { reviewedAt: { not: null }, status: { not: 'PENDING' } }, select: { id: true, title: true, status: true, rejectReason: true, createdAt: true, reviewedAt: true, posterImage: true, gallery: { select: { name: true } } }, orderBy: { reviewedAt: 'desc' }, take: limit }),
+      prisma.approvalRequest.findMany({ where: { status: { not: 'PENDING' } }, orderBy: [{ decidedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }], take: limit }),
+    ]);
+    const requesterIds = [...new Set(requests.map((r) => r.requesterId))];
+    const requesters = requesterIds.length ? await prisma.user.findMany({ where: { id: { in: requesterIds } }, select: { id: true, name: true } }) : [];
+    const nameOf = new Map(requesters.map((u) => [u.id, u.name]));
+    const items = [
+      ...galleries.map((g) => ({ kind: 'gallery', id: g.id, targetId: g.id, title: g.name, by: g.owner?.name ?? null, status: g.status, rejectReason: g.rejectReason, requestedAt: g.createdAt, decidedAt: g.reviewedAt, image: null as string | null })),
+      ...exhibitions.map((e) => ({ kind: 'exhibition', id: e.id, targetId: e.id, title: e.title, by: e.gallery?.name ?? null, status: e.status, rejectReason: e.rejectReason, requestedAt: e.createdAt, decidedAt: e.reviewedAt, image: e.imageUrl })),
+      ...shows.map((x) => ({ kind: 'show', id: x.id, targetId: x.id, title: x.title, by: x.gallery?.name ?? null, status: x.status, rejectReason: x.rejectReason, requestedAt: x.createdAt, decidedAt: x.reviewedAt, image: x.posterImage })),
+      ...requests.map((r) => ({
+        kind: isDeleteType(r.type) ? 'delete-request' : 'edit-request',
+        type: r.type,
+        id: r.id,
+        targetId: r.targetId,
+        title: String(parseChanges(r.changes).title ?? '') || null,
+        by: nameOf.get(r.requesterId) ?? null,
+        status: r.status,
+        rejectReason: r.rejectReason,
+        requestedAt: r.createdAt,
+        decidedAt: r.decidedAt ?? r.updatedAt,
+        image: null as string | null,
+      })),
+    ].sort((a, b) => new Date(b.decidedAt as Date).getTime() - new Date(a.decidedAt as Date).getTime()).slice(0, limit);
+    res.json(items);
   } catch (error) { next(error); }
 });
 
@@ -92,7 +207,7 @@ router.patch('/gallery/:id', authenticate, authorize('ADMIN'), async (req, res, 
     const gallery = await prisma.gallery.update({
       where: { id },
       // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
-      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason }
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason, reviewedAt: new Date() }
     });
 
     // 승인/거절 → Gallery 오너에게 알림
@@ -130,7 +245,7 @@ router.patch('/exhibition/:id', authenticate, authorize('ADMIN'), async (req, re
     const exhibition = await prisma.exhibition.update({
       where: { id },
       // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
-      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason },
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason, reviewedAt: new Date() },
       include: { gallery: { select: { ownerId: true, name: true } } },
     });
 
@@ -179,7 +294,7 @@ router.patch('/show/:id', authenticate, authorize('ADMIN'), async (req, res, nex
     const show = await prisma.show.update({
       where: { id },
       // 재승인 시 이전 거절 사유를 남기지 않도록 APPROVED면 rejectReason 초기화
-      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason },
+      data: { status, rejectReason: status === 'APPROVED' ? null : rejectReason, reviewedAt: new Date() },
       include: { gallery: { select: { ownerId: true, name: true } } },
     });
 
@@ -318,7 +433,7 @@ router.patch('/edit-request/:id', authenticate, authorize('ADMIN'), async (req, 
     // 대상 변경이 성공한 뒤에야 요청 상태를 갱신
     const request = await prisma.approvalRequest.update({
       where: { id: reqId },
-      data: { status, rejectReason }
+      data: { status, rejectReason, decidedAt: new Date() }
     });
 
     res.json(request);
@@ -471,7 +586,7 @@ router.patch('/delete-request/:id', authenticate, authorize('ADMIN'), validate(d
     }
     const updated = await prisma.approvalRequest.update({
       where: { id },
-      data: { status, rejectReason: status === 'REJECTED' ? rejectReason : null },
+      data: { status, rejectReason: status === 'REJECTED' ? rejectReason : null, decidedAt: new Date() },
     });
     try {
       await prisma.notification.create({

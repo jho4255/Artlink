@@ -2,12 +2,15 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate, authorize } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-import { isExhibitionClosed } from '../lib/exhibitionLifecycle';
 import { galleryApplicationStats } from '../lib/applicationStats';
 import { getSettingBool, setSettingBool, ALLOW_ACCEPTED_REVERT } from '../lib/appSettings';
 import { dailyVisitorStats, memberVisitSummary, visitedTodayWhere } from '../lib/visitStats';
 import { dailyExportStats } from '../lib/exportStats';
 import { guestStats } from '../lib/guestActivity';
+import { todoCounts, adminExhibitionRows } from '../lib/adminConsole';
+import { clampDays, statsSummary, statsMembers, statsCalls, statsGalleries, statsUsage } from '../lib/adminStats';
+import { filledCount, hasCaption, hasCareer, MIN_WORKS } from '../lib/artistCompleteness';
+import { kstDay } from '../lib/visitStats';
 
 const router = Router();
 
@@ -26,8 +29,8 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
     if (role && !VALID_ROLES.includes(role)) throw new AppError('유효하지 않은 역할입니다.', 400);
     const visited = ((req.query.visited as string) || '').trim();
     if (visited && visited !== 'today') throw new AppError('visited 는 today 만 됩니다.', 400);
-    // 페이지네이션: 1-based page 쿼리 → skip 적용. page 미지정 시 1페이지처럼 동작(하위호환).
-    // 프론트가 순수 배열을 기대하므로 응답 형태는 배열 유지, page만 존중.
+    // 표 모드(2026-11-21 [사용자 관리] 개편) — paged=1 이면 { rows, total, counts } 로 준다. 옛 배열 응답은 다른 화면(필진 찾기 등)이 쓴다
+    if (req.query.paged === '1') return res.json(await pagedUsers(req.query as Record<string, string>, q, role, visited));
     const PAGE_SIZE = 100;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
     const where: any = visited === 'today' ? visitedTodayWhere() : {};
@@ -53,6 +56,181 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
     });
     const visits = await memberVisitSummary(users.map((u) => u.id));
     res.json(users.map((u) => ({ ...u, ...(visits.get(u.id) ?? { visitDays7: 0, visitedToday: false, todayFirstAt: null }) })));
+  } catch (error) { next(error); }
+});
+
+export const USERS_PAGE_SIZE = 50;
+const USER_FILTERS = ['noWorks', 'neverApplied', 'newThisWeek'] as const;
+const USER_SORTS = ['recent', 'lastSeen', 'name'] as const;
+
+/**
+ * [사용자 관리] 표 — 역할 탭 · 찾기(이름·이메일·닉네임·@주소) · 걸러 보기 · 정렬 · 50명씩.
+ * 줄마다 최근 7일 방문한 날(칸 일곱) · 작품 수 · 지원(전체·수락·검토 대기) · 가진 갤러리.
+ */
+async function pagedUsers(query: Record<string, string>, q: string, role: string, visited: string) {
+  const filter = (USER_FILTERS as readonly string[]).includes(query.filter) ? query.filter : '';
+  const sort = (USER_SORTS as readonly string[]).includes(query.sort) ? query.sort : 'recent';
+  const page = Math.max(1, parseInt(query.page || '1', 10) || 1);
+  const now = new Date();
+  const search: any = q ? {
+    OR: [
+      { email: { contains: q, mode: 'insensitive' } },
+      { name: { contains: q, mode: 'insensitive' } },
+      { nickname: { contains: q, mode: 'insensitive' } },
+      { handle: { contains: q.replace(/^@/, '').toLowerCase() } },
+    ],
+  } : {};
+  const scope: any = visited === 'today' ? { ...visitedTodayWhere(now), ...search } : { ...(role ? { role } : {}), ...search };
+  const filterWhere: Record<string, any> = {
+    noWorks: { role: 'ARTIST', OR: [{ portfolio: null }, { portfolio: { images: { none: {} } } }] },
+    neverApplied: { role: 'ARTIST', applications: { none: {} } },
+    newThisWeek: { createdAt: { gte: new Date(now.getTime() - 7 * 86400000) } },
+  };
+  const where = filter ? { AND: [scope, filterWhere[filter]] } : scope;
+  const orderBy: any = visited === 'today' || sort === 'lastSeen'
+    ? [{ lastSeenAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+    : sort === 'name' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: 'desc' }, { id: 'desc' }];
+
+  const [total, rows, roleCounts, today, filterCounts] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where, orderBy, skip: (page - 1) * USERS_PAGE_SIZE, take: USERS_PAGE_SIZE,
+      select: {
+        id: true, email: true, name: true, nickname: true, handle: true, role: true, provider: true, createdAt: true, lastSeenAt: true, deletedAt: true,
+        galleries: { select: { id: true, name: true, status: true }, orderBy: { createdAt: 'desc' } },
+        portfolio: { select: { _count: { select: { images: true } } } },
+      },
+    }),
+    prisma.user.groupBy({ by: ['role'], where: search, _count: { _all: true } }),
+    prisma.user.count({ where: { ...visitedTodayWhere(now), ...search } }),
+    Promise.all(USER_FILTERS.map((f) => prisma.user.count({ where: { AND: [scope, filterWhere[f]] } }))),
+  ]);
+  const ids = rows.map((u) => u.id);
+  const [apps, visits] = await Promise.all([
+    prisma.application.groupBy({ by: ['userId', 'status'], where: { userId: { in: ids } }, _count: { _all: true } }),
+    prisma.dailyVisit.findMany({ where: { userId: { in: ids }, day: { gte: new Date(kstDay(now).getTime() - 6 * 86400000) } }, select: { userId: true, day: true, createdAt: true } }),
+  ]);
+  const todayKey = kstDay(now).getTime();
+  const appBy = new Map<number, { total: number; accepted: number; pending: number; rejected: number }>();
+  for (const a of apps) {
+    const r = appBy.get(a.userId) ?? { total: 0, accepted: 0, pending: 0, rejected: 0 };
+    r.total += a._count._all;
+    if (a.status === 'ACCEPTED') r.accepted += a._count._all;
+    else if (a.status === 'REJECTED') r.rejected += a._count._all;
+    else r.pending += a._count._all;
+    appBy.set(a.userId, r);
+  }
+  const days = new Map<number, boolean[]>();
+  const firstToday = new Map<number, Date>();
+  for (const v of visits) {
+    if (v.userId == null) continue;
+    const arr = days.get(v.userId) ?? Array(7).fill(false);
+    const idx = 6 - Math.round((todayKey - v.day.getTime()) / 86400000);
+    if (idx >= 0 && idx < 7) arr[idx] = true;
+    days.set(v.userId, arr);
+    if (idx === 6 && (!firstToday.get(v.userId) || v.createdAt < firstToday.get(v.userId)!)) firstToday.set(v.userId, v.createdAt);
+  }
+  return {
+    page, pageSize: USERS_PAGE_SIZE, total,
+    counts: {
+      ALL: roleCounts.reduce((n, r) => n + r._count._all, 0),
+      ...Object.fromEntries(roleCounts.map((r) => [r.role, r._count._all])),
+      TODAY: today,
+    },
+    filterCounts: Object.fromEntries(USER_FILTERS.map((f, i) => [f, filterCounts[i]])),
+    rows: rows.map((u) => {
+      const d = days.get(u.id) ?? Array(7).fill(false);
+      return {
+        ...u,
+        portfolio: undefined,
+        works: u.portfolio?._count.images ?? 0,
+        applications: appBy.get(u.id) ?? { total: 0, accepted: 0, pending: 0, rejected: 0 },
+        visitDays: d,
+        visitDays7: d.filter(Boolean).length,
+        todayFirstAt: firstToday.get(u.id) ?? null,
+      };
+    }),
+  };
+}
+
+/**
+ * 회원 한 명 (ADMIN 전용, 2026-11-21) — [사용자 관리]의 옆 칸 / 휴대폰 창.
+ * 접속·방문 · (작가) 홈페이지 채운 정도 · 활동 · 지원 이력 · (갤러리) 가진 갤러리와 게시물 수.
+ * 옛 [운영 조회 > 작가 지원이력] 이 여기로 들어왔다.
+ */
+router.get('/users/:id/summary', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (!Number.isFinite(id)) throw new AppError('사용자를 찾을 수 없습니다.', 404);
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, email: true, name: true, nickname: true, handle: true, role: true, provider: true, avatar: true,
+        createdAt: true, lastSeenAt: true, deletedAt: true, emailVerifiedAt: true,
+        portfolio: {
+          select: {
+            statement: true, biography: true, career: true,
+            images: { select: { title: true, medium: true, sizeText: true, year: true, showInExplore: true } },
+          },
+        },
+        galleries: {
+          select: { id: true, name: true, status: true, handle: true, createdAt: true, viewCount: true, _count: { select: { exhibitions: true, shows: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!user) throw new AppError('사용자를 찾을 수 없습니다.', 404);
+    const now = new Date();
+    const today = kstDay(now).getTime();
+    const [visitRows, likes, following, followers, stories, posts, exports, favorites, applications] = await Promise.all([
+      prisma.dailyVisit.findMany({ where: { userId: id, day: { gte: new Date(today - 29 * 86400000) } }, select: { day: true } }),
+      prisma.portfolioImageLike.count({ where: { userId: id } }),
+      prisma.follow.count({ where: { followerId: id } }),
+      prisma.follow.count({ where: { followingId: id } }),
+      prisma.story.count({ where: { authorId: id } }),
+      prisma.post.count({ where: { authorId: id } }),
+      prisma.portfolioExport.count({ where: { userId: id } }),
+      prisma.favorite.count({ where: { userId: id } }),
+      prisma.application.findMany({
+        where: { userId: id },
+        select: {
+          id: true, status: true, createdAt: true, updatedAt: true, joinedVia: true,
+          exhibition: { select: { id: true, title: true, hostType: true, gallery: { select: { id: true, name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    const daySet = new Set(visitRows.map((v) => v.day.getTime()));
+    const days7 = [...daySet].filter((t) => t >= today - 6 * 86400000).length;
+    const p = user.portfolio;
+    const images = p?.images ?? [];
+    const homepage = user.role === 'ARTIST' ? {
+      works: images.length,
+      captioned: images.filter(hasCaption).length,
+      inExplore: images.filter((i) => i.showInExplore).length,
+      hasStatement: !!String(p?.statement ?? '').trim(),
+      hasBio: !!String(p?.biography ?? '').trim() || hasCareer(p?.career),
+      filled: p ? filledCount({ statement: p.statement, biography: p.biography, career: p.career, images }) : 0,
+      minWorks: MIN_WORKS,
+    } : null;
+    const counts = { total: applications.length, ACCEPTED: 0, REJECTED: 0, SUBMITTED: 0 } as Record<string, number>;
+    for (const a of applications) {
+      const k = a.status === 'ACCEPTED' || a.status === 'REJECTED' ? a.status : 'SUBMITTED';
+      counts[k] += 1;
+    }
+    res.json({
+      user: { ...user, portfolio: undefined },
+      visits: { days7, days30: daySet.size },
+      homepage,
+      activity: { likes, following, followers, stories, posts, exports, favorites },
+      applications: applications.map((a) => ({
+        id: a.id, status: a.status, appliedAt: a.createdAt, decidedAt: a.status === 'SUBMITTED' || a.status === 'REVIEWED' ? null : a.updatedAt,
+        joinedVia: a.joinedVia,
+        exhibition: a.exhibition ? { id: a.exhibition.id, title: a.exhibition.title, hostType: a.exhibition.hostType } : null,
+        gallery: a.exhibition?.gallery ?? null,
+      })),
+      applicationCounts: counts,
+    });
   } catch (error) { next(error); }
 });
 
@@ -95,34 +273,13 @@ function countByStatus(apps: { status: string }[]) {
 }
 
 /**
- * 전체 공모 목록 (ADMIN 전용) — 제목 검색/갤러리 필터, 지원자 수 포함
- * GET /api/admin/exhibitions?q=&galleryId=
+ * 전체 공모 목록 (ADMIN 전용) — [운영 조회]의 공모 표(2026-11-21: 단계 재료 · 숫자 · 멈춘 사정)
+ * GET /api/admin/exhibitions?q=
  */
 router.get('/exhibitions', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const q = ((req.query.q as string) || '').trim();
-    const galleryId = req.query.galleryId ? parseInt(req.query.galleryId as string) : undefined;
-    const where: any = {};
-    if (q) where.title = { contains: q, mode: 'insensitive' };
-    if (galleryId) where.galleryId = galleryId;
-
-    const exhibitions = await prisma.exhibition.findMany({
-      where,
-      select: {
-        id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
-        // 운영 조회에서 진행중/종료를 나누기 위한 값. 갤러리 마이페이지와 **같은 기준**을 써야
-        // 두 화면이 같은 공모를 다르게 분류하지 않는다 (lib/exhibitionLifecycle.ts)
-        ended: true, settledAt: true, settlementRequestedAt: true, exhibitDate: true,
-        gallery: { select: { id: true, name: true } },
-        _count: { select: { applications: true, sales: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    res.json(exhibitions.map((e) => ({
-      ...e,
-      closed: isExhibitionClosed({ ...e, saleCount: e._count.sales }),
-    })));
+    res.json(await adminExhibitionRows({ q }));
   } catch (error) { next(error); }
 });
 
@@ -166,7 +323,8 @@ router.get('/exhibitions/:id/applications', authenticate, authorize('ADMIN'), as
       ...(stats.get(app.id) ?? { galleryApplicationCount: 1, galleryApplicationOrder: 1, isFirstApplication: true }),
     }));
 
-    res.json({ exhibition, counts: countByStatus(applications), applications: parsed });
+    const [row] = await adminExhibitionRows({ ids: [exhibitionId] });
+    res.json({ exhibition, row: row ?? null, counts: countByStatus(applications), applications: parsed });
   } catch (error) { next(error); }
 });
 
@@ -221,9 +379,9 @@ router.get('/galleries', authenticate, authorize('ADMIN'), async (req, res, next
     const galleries = await prisma.gallery.findMany({
       where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
       select: {
-        id: true, name: true, region: true, status: true, ownerName: true, createdAt: true,
-        owner: { select: { id: true, name: true, email: true } },
-        _count: { select: { exhibitions: true, shows: true } },
+        id: true, name: true, region: true, status: true, ownerName: true, createdAt: true, handle: true, viewCount: true, mainImage: true, address: true,
+        owner: { select: { id: true, name: true, email: true, lastSeenAt: true, emailVerifiedAt: true, provider: true } },
+        _count: { select: { exhibitions: true, shows: true, reviews: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * PAGE_SIZE,
@@ -242,7 +400,8 @@ router.get('/galleries/:id/posts', authenticate, authorize('ADMIN'), async (req,
     const galleryId = parseInt(req.params.id as string);
     const gallery = await prisma.gallery.findUnique({
       where: { id: galleryId },
-      select: { id: true, name: true, ownerName: true },
+      select: { id: true, name: true, ownerName: true, status: true, region: true, address: true, handle: true, viewCount: true, createdAt: true, mainImage: true,
+        owner: { select: { id: true, name: true, email: true, lastSeenAt: true } } },
     });
     if (!gallery) throw new AppError('갤러리를 찾을 수 없습니다.', 404);
 
@@ -250,20 +409,71 @@ router.get('/galleries/:id/posts', authenticate, authorize('ADMIN'), async (req,
       prisma.exhibition.findMany({
         where: { galleryId },
         select: {
-          id: true, title: true, type: true, status: true, deadline: true, createdAt: true,
+          id: true, title: true, type: true, status: true, deadline: true, createdAt: true, hostType: true, viewCount: true,
           _count: { select: { applications: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.show.findMany({
         where: { galleryId },
-        select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true },
+        select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true, viewCount: true },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
 
     res.json({ gallery, exhibitions, shows });
   } catch (error) { next(error); }
+});
+
+/**
+ * 전체 전시 목록 (ADMIN 전용, 2026-11-21) — [운영 조회]의 전시 탭. 상태 무관
+ * GET /api/admin/shows?q=
+ */
+router.get('/shows', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const q = ((req.query.q as string) || '').trim();
+    const shows = await prisma.show.findMany({
+      where: q ? { title: { contains: q, mode: 'insensitive' } } : undefined,
+      select: {
+        id: true, title: true, status: true, region: true, startDate: true, endDate: true, posterImage: true, viewCount: true, createdAt: true, reviewedAt: true,
+        gallery: { select: { id: true, name: true } },
+        _count: { select: { favorites: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+    res.json(shows);
+  } catch (error) { next(error); }
+});
+
+/**
+ * 처리할 일 수 (ADMIN 전용, 2026-11-21) — 메뉴 배지 · 통계 [요약] '지금 처리할 일'.
+ * GET /api/admin/todo-counts
+ */
+router.get('/todo-counts', authenticate, authorize('ADMIN'), async (_req, res, next) => {
+  try {
+    res.json(await todoCounts());
+  } catch (error) { next(error); }
+});
+
+/**
+ * [통계] 탭(2026-11-21 개편) — 요약 · 회원 · 공모·지원 · 갤러리·전시 · 기능 사용. ?days=1~180(기본 30)
+ * 같은 기간은 1분 저장한다(lib/adminStats.ts).
+ */
+router.get('/stats/summary', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try { res.json(await statsSummary(clampDays(req.query.days))); } catch (error) { next(error); }
+});
+router.get('/stats/members', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try { res.json(await statsMembers(clampDays(req.query.days))); } catch (error) { next(error); }
+});
+router.get('/stats/calls', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try { res.json(await statsCalls(clampDays(req.query.days))); } catch (error) { next(error); }
+});
+router.get('/stats/galleries', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try { res.json(await statsGalleries(clampDays(req.query.days))); } catch (error) { next(error); }
+});
+router.get('/stats/usage', authenticate, authorize('ADMIN'), async (req, res, next) => {
+  try { res.json(await statsUsage(clampDays(req.query.days))); } catch (error) { next(error); }
 });
 
 /**

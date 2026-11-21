@@ -76,17 +76,20 @@ test('★ 관리자 [통계] — KPI·막대·표가 서버 숫자와 같고, �
   const { page, ctx } = await openAs(browser, 'admin');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/mypage?tab=stats');
-  await expect(page.getByRole('heading', { name: '일간 방문자' })).toBeVisible({ timeout: 15000 });
+  // 2026-11-21: [통계]는 탭이다 — 일간 방문자의 KPI·표는 [방문] 탭(요약에도 같은 막대가 있어 그 탭 안으로 좁힌다)
+  await page.getByRole('tab', { name: /^방문/ }).click();
+  const panel = page.locator('#stats-panel-visits');
+  await expect(panel.getByRole('heading', { name: '일간 방문자' })).toBeVisible({ timeout: 15000 });
 
   const t = await today();
-  const kpis = page.getByTestId('visitor-kpis');
+  const kpis = panel.getByTestId('visitor-kpis');
   await expect(kpis).toContainText('오늘 (지금까지)');
   await expect(kpis.locator('> div').first()).toContainText(`${t.total}명`);
   await expect(kpis.locator('> div').first()).toContainText(`회원 ${t.members}`);
   await expect(kpis.locator('> div').first()).toContainText(`비회원 ${t.guests}`);
 
   // 막대 — 마지막이 오늘, 올리면 그날 숫자
-  const bars = page.getByTestId('visitor-bars').locator('button');
+  const bars = panel.getByTestId('visitor-bars').locator('button');
   const n = await bars.count();
   expect(n).toBeGreaterThan(0);
   await expect(bars.nth(n - 1)).toHaveAttribute('aria-label', new RegExp(`회원 ${t.members}명 · 비회원 ${t.guests}명 · 합계 ${t.total}명`));
@@ -95,13 +98,13 @@ test('★ 관리자 [통계] — KPI·막대·표가 서버 숫자와 같고, �
   await expect(page.getByRole('status').filter({ hasText: '합계' })).toBeVisible();
 
   // 표 — 맨 위가 오늘
-  await page.getByText('표로 보기').click();
-  const firstRow = page.getByTestId('visitor-table').locator('tbody tr').first();
+  await panel.getByText('표로 보기').click();
+  const firstRow = panel.getByTestId('visitor-table').locator('tbody tr').first();
   await expect(firstRow).toContainText(t.date);
   await expect(firstRow.locator('td').last()).toHaveText(String(t.total));
 
   // 기간 7일 — 막대가 7개를 넘지 않는다(집계 시작 전 날은 빠진다)
-  await page.getByRole('button', { name: '7일' }).click();
+  await page.getByRole('radio', { name: '7일' }).click();
   await expect.poll(async () => bars.count()).toBeLessThanOrEqual(7);
   await ctx.close();
 });

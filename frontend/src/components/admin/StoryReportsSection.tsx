@@ -15,6 +15,7 @@ import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
 import StoryCard from '@/components/story/StoryCard';
 import StoryViewer from '@/components/story/StoryViewer';
 import { STORY_REPORT_LABELS, type Story, type StoryReportReason } from '@/lib/story';
+import { ADMIN_TODO_KEY } from '@/hooks/useAdminTodo';
 
 interface ReportItem {
   id: number; caption: string; images: string[]; bg: string | null; visibility: 'PUBLIC' | 'NEIGHBORS'; createdAt: string;
@@ -39,12 +40,12 @@ export default function StoryReportsSection() {
   });
   const decide = useMutation({
     mutationFn: ({ id, hidden }: { id: number; hidden: boolean }) => api.patch(`/stories/${id}/hidden`, { hidden }),
-    onSuccess: (_d, v) => { qc.invalidateQueries({ queryKey: ['story-reports'] }); qc.invalidateQueries({ queryKey: ['stories'] }); toast.success(v.hidden ? '내렸어요.' : '다시 보이게 했어요.'); },
+    onSuccess: (_d, v) => { qc.invalidateQueries({ queryKey: ['story-reports'] }); qc.invalidateQueries({ queryKey: ADMIN_TODO_KEY }); qc.invalidateQueries({ queryKey: ['stories'] }); toast.success(v.hidden ? '내렸어요.' : '다시 보이게 했어요.'); },
     onError: () => toast.error('처리하지 못했어요.'),
   });
   const del = useMutation({
     mutationFn: (id: number) => api.delete(`/stories/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['story-reports'] }); qc.invalidateQueries({ queryKey: ['stories'] }); toast.success('삭제했어요.'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['story-reports'] }); qc.invalidateQueries({ queryKey: ADMIN_TODO_KEY }); qc.invalidateQueries({ queryKey: ['stories'] }); toast.success('삭제했어요.'); },
     onError: () => toast.error('삭제하지 못했어요.'),
   });
 

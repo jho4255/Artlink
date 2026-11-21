@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>관리자 통계 휴대폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 390px; height: 2120px; box-sizing: border-box; display: flex; flex-direction: column; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+
+<header style="flex: none; height: 56px; padding: 0 8px 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 24px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none">Art<span style="color: #c4302b">Link</span></a>
+<span style="display: flex; align-items: center">
+<button type="button" aria-label="ArtTalk" style="width: 44px; height: 44px; border: 0; background: none; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg></button>
+<button type="button" aria-label="알림" style="width: 44px; height: 44px; border: 0; background: none; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg></button>
+<button type="button" aria-label="메뉴 · 처리할 일 6건" style="position: relative; width: 44px; height: 44px; border: 0; background: none; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg><span aria-hidden="true" style="position: absolute; top: 8px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #c4302b"></span></button>
+</span>
+</header>
+
+<main style="flex: 1; min-height: 0; padding: 0 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 56px">
+<h1 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em">통계</h1>
+<div role="radiogroup" aria-label="기간" style="display: flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden">
+<button type="button" role="radio" aria-checked="false" style="min-height: 36px; padding: 0 11px; border: 0; background: #ffffff; font: inherit; font-size: 13px; color: #4b5563; cursor: pointer">7일</button>
+<button type="button" role="radio" aria-checked="true" style="min-height: 36px; padding: 0 11px; border: 0; background: #111827; font: inherit; font-size: 13px; font-weight: 600; color: #ffffff; cursor: pointer">30일</button>
+<button type="button" role="radio" aria-checked="false" style="min-height: 36px; padding: 0 11px; border: 0; background: #ffffff; font: inherit; font-size: 13px; color: #4b5563; cursor: pointer">90일</button>
+</div>
+</div>
+
+<div role="tablist" aria-label="통계 구역" style="margin: 0 -20px; padding: 0 20px; display: flex; gap: 22px; border-bottom: 1px solid #e5e7eb; font-size: 14.5px; white-space: nowrap; overflow: hidden">
+<button type="button" role="tab" aria-selected="true" style="flex: none; min-height: 46px; margin-bottom: -1px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font: inherit; font-weight: 600; color: #111827; cursor: pointer">요약</button>
+<button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">방문</button>
+<button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">회원</button>
+<button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">공모·지원</button>
+<button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">갤러리·전시</button>
+<button type="button" role="tab" aria-selected="false" style="flex: none; min-height: 46px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280; cursor: pointer">기능 사용</button>
+</div>
+
+<section aria-label="지금 처리할 일" style="margin-top: 20px">
+<h2 style="margin: 0 0 8px; font-size: 15px; font-weight: 600">지금 처리할 일</h2>
+<div style="border-top: 1px solid #111827">
+<sc-for list="{{ todos }}" as="t" hint-placeholder-count="5">
+<a href="{{ t.href }}" style="display: flex; align-items: center; gap: 10px; min-height: 52px; border-bottom: 1px solid #f3f4f6; text-decoration: none">
+<span style="flex: 1; min-width: 0">
+<span style="display: block; font-size: 14.5px; font-weight: 500"><sc-if value="{{ t.hot }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span></sc-if>{{ t.label }}</span>
+<span style="display: block; font-size: 12.5px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ t.note }}</span>
+</span>
+<span style="flex: none; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums">{{ t.n }}<span style="margin-left: 2px; font-size: 13px; font-weight: 500; color: #4b5563">{{ t.unit }}</span></span>
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M9 6l6 6-6 6"></path></svg>
+</a>
+</sc-for>
+</div>
+</section>
+
+<section aria-label="최근 30일" style="margin-top: 26px">
+<h2 style="margin: 0 0 10px; font-size: 15px; font-weight: 600">최근 30일 <span style="margin-left: 6px; font-size: 12.5px; font-weight: 400; color: #6b7280">앞선 30일과 견줌</span></h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+<div style="padding: 12px; background: #f9fafb; border-radius: 10px">
+<p style="margin: 0; font-size: 12.5px; color: #4b5563">{{ k.label }}</p>
+<p style="margin: 4px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums">{{ k.n }}<span style="margin-left: 2px; font-size: 13px; font-weight: 500; color: #4b5563">{{ k.unit }}</span></p>
+<p style="margin: 2px 0 0; font-size: 12px; color: #4b5563; font-variant-numeric: tabular-nums">{{ k.delta }}</p>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section aria-label="일간 방문자" style="margin-top: 26px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">일간 방문자</h2>
+<p style="margin: 0; display: flex; gap: 12px; font-size: 12px; color: #4b5563"><span><span aria-hidden="true" style="display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; background: #2a78d6"></span>회원</span><span><span aria-hidden="true" style="display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; background: #eb6834"></span>비회원</span></p>
+</div>
+<div role="img" aria-label="최근 30일 일간 방문자 막대 그래프. 11월 11일 445명이 가장 많다." style="position: relative; height: 150px; margin-top: 16px; border-bottom: 1px solid #9ca3af">
+<span style="position: absolute; left: 0; top: -8px; font-size: 12px; color: #6b7280">500</span>
+<span style="position: absolute; left: 0; top: 67px; font-size: 12px; color: #6b7280">250</span>
+<div aria-hidden="true" style="position: absolute; left: 30px; right: 0; top: 0; border-top: 1px dashed #e5e7eb"></div>
+<div aria-hidden="true" style="position: absolute; left: 30px; right: 0; top: 75px; border-top: 1px dashed #e5e7eb"></div>
+<div style="position: absolute; left: 30px; right: 0; top: 0; bottom: 0; display: flex; align-items: flex-end; gap: 2px">
+<sc-for list="{{ days }}" as="d" hint-placeholder-count="30">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 100%">
+<div style="height: {{ d.gh }}px; background: #eb6834; border-radius: 2px 2px 0 0"></div>
+<div style="height: {{ d.mh }}px; background: #2a78d6"></div>
+</div>
+</sc-for>
+</div>
+</div>
+<p aria-hidden="true" style="margin: 5px 0 0 30px; display: flex; justify-content: space-between; font-size: 12px; color: #6b7280"><span>10.22</span><span>11.1</span><span>11.11</span><span>11.20</span></p>
+<p style="margin: 8px 0 0; font-size: 13px; color: #374151">가장 많은 날 <strong style="font-weight: 600">11.11(수) 445명</strong></p>
+</section>
+
+<section aria-label="비회원이 가입하기까지" style="margin-top: 26px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">비회원이 가입하기까지</h2>
+<p style="margin: 3px 0 8px; font-size: 12.5px; color: #6b7280">비회원 방문 7,140건</p>
+<ol style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ guestFunnel }}" as="f" hint-placeholder-count="4">
+<li style="display: grid; grid-template-columns: 108px minmax(0, 1fr) 46px 44px; align-items: center; gap: 8px; min-height: 42px; border-top: 1px solid #f3f4f6">
+<span style="font-size: 13px; color: #374151">{{ f.label }}</span>
+<span style="display: block; height: 14px; background: #f3f4f6; border-radius: 3px"><span style="display: block; width: {{ f.w }}%; height: 14px; background: #1f2937; border-radius: 3px"></span></span>
+<span style="text-align: right; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums">{{ f.n }}</span>
+<span style="text-align: right; font-size: 12.5px; color: {{ f.color }}; font-weight: {{ f.weight }}; font-variant-numeric: tabular-nums">{{ f.rate }}</span>
+</li>
+</sc-for>
+</ol>
+</section>
+
+<section aria-label="가입한 작가가 지원하기까지" style="margin-top: 26px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">가입한 작가가 지원하기까지</h2>
+<p style="margin: 3px 0 8px; font-size: 12.5px; color: #6b7280">최근 8주에 가입한 작가 91명</p>
+<ol style="margin: 0; padding: 0; list-style: none">
+<sc-for list="{{ artistFunnel }}" as="f" hint-placeholder-count="5">
+<li style="display: grid; grid-template-columns: 108px minmax(0, 1fr) 46px 44px; align-items: center; gap: 8px; min-height: 42px; border-top: 1px solid #f3f4f6">
+<span style="font-size: 13px; color: #374151">{{ f.label }}</span>
+<span style="display: block; height: 14px; background: #f3f4f6; border-radius: 3px"><span style="display: block; width: {{ f.w }}%; height: 14px; background: #1f2937; border-radius: 3px"></span></span>
+<span style="text-align: right; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums">{{ f.n }}</span>
+<span style="text-align: right; font-size: 12.5px; color: {{ f.color }}; font-weight: {{ f.weight }}; font-variant-numeric: tabular-nums">{{ f.rate }}</span>
+</li>
+</sc-for>
+</ol>
+</section>
+
+<section aria-label="공모 성과" style="margin-top: 26px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">공모 성과</h2>
+<a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #374151; text-underline-offset: 4px">모두 보기</a>
+</div>
+<div style="border-top: 1px solid #111827">
+<sc-for list="{{ calls }}" as="c" hint-placeholder-count="2">
+<a href="#" style="display: block; padding: 12px 0; border-bottom: 1px solid #f3f4f6; text-decoration: none">
+<span style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; font-weight: 500">{{ c.title }}</span>
+<span style="display: block; margin-top: 3px; font-size: 12.5px; color: #4b5563; font-variant-numeric: tabular-nums">{{ c.line }}</span>
+<sc-if value="{{ c.flag }}" hint-placeholder-val="{{ false }}"><span style="display: block; margin-top: 3px; font-size: 12.5px; font-weight: 600; color: #c4302b"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span>많이 보는데 지원이 없어요</span></sc-if>
+</a>
+</sc-for>
+</div>
+</section>
+
+</main>
+
+<nav aria-label="하단 메뉴" style="flex: none; height: 60px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: center; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280; text-align: center">
+<span>홈</span><span>작가</span><span>갤러리</span><span>전시</span><span>모집공고</span><span>커뮤니티</span><span>ArtStory</span>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2120}}'>
+class Component extends DCLogic {
+renderVals() {
+const guests = [152,168,171,190,143,128,176,201,188,214,232,198,160,149,205,220,211,213,265,281,440,396,414,235,262,248,231,270,255,243];
+const members = [3,4,2,5,6,3,2,4,5,7,6,4,3,2,5,6,1,3,8,5,5,4,5,7,4,6,5,7,6,5];
+const days = guests.map((g, i) => ({ gh: Math.round(g / 500 * 150), mh: Math.max(2, Math.round(members[i] / 500 * 150)) }));
+const F = (label, n, w, rate, worst) => ({ label, n, w, rate, color: worst ? '#c4302b' : '#6b7280', weight: worst ? 600 : 400 });
+return {
+todos: [
+{ label: '승인 대기', n: 3, unit: '건', note: '갤러리 1 · 공모 1 · 수정 요청 1', hot: true, href: 'ApprovalsMobile.dc.html' },
+{ label: '신고', n: 1, unit: '건', note: 'ArtTalk 1', hot: true, href: '#' },
+{ label: '1:1 문의', n: 2, unit: '건', note: '가장 오래된 문의 2일 전', hot: true, href: '#' },
+{ label: '검토 대기 지원', n: 2, unit: '명', note: '아트링크가 직접 운영하는 공모', hot: true, href: 'HostedMobile.dc.html' },
+{ label: '3일 안에 마감', n: 2, unit: '건', note: '그중 지원 0건인 공모 1', hot: false, href: 'HostedMobile.dc.html' }
+],
+kpis: [
+{ label: '방문자 · 하루 평균', n: '243', unit: '명', delta: '▲ 23% · 앞선 198명' },
+{ label: '신규 가입', n: '58', unit: '명', delta: '▲ 32% · 작가 51 · 갤러리 7' },
+{ label: '공모 지원', n: '6', unit: '건', delta: '▲ 2건 · 앞선 4건' },
+{ label: '모집 중 공모', n: '9', unit: '건', delta: '새로 11건' },
+{ label: '다시 온 회원', n: '31', unit: '명', delta: '회원 197명 중 16%' },
+{ label: '승인 → 결정', n: '5', unit: '시간', delta: '중간값 · 12건' }
+],
+days,
+guestFunnel: [
+F('비회원 방문', '7,140', 100, ''),
+F('모집공고를 봄', '4,620', 65, '65%'),
+F('로그인·가입 화면', '438', 6, '9%', true),
+F('가입 완료', '58', 1, '13%')
+],
+artistFunnel: [
+F('가입', '91', 100, ''),
+F('작품 1점 이상', '34', 37, '37%', true),
+F('작품 3점 이상', '25', 27, '74%'),
+F('공모 지원', '9', 10, '36%'),
+F('선정', '5', 5, '56%')
+],
+calls: [
+{ title: '2027 신진작가 공모전 《첫 장》', line: '모집 중 D-12 · 조회 1,295 · 지원 0 · 찜 14', flag: true },
+{ title: '연말 소품전 《선물》 출품 작가 모집', line: '모집 중 D-9 · 조회 1,210 · 지원 8 · 찜 21', flag: false }
+]
+};
+}
+}
+</script>
+</body>
+</html>

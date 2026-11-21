@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAs, openMyPageTab, typeRich, pickSchedule, kstDay, submitRegistration } from '../lib/helpers';
+import { openAs, openMyPageTab, typeRich, pickSchedule, kstDay, submitRegistration, openApproval } from '../lib/helpers';
 
 /**
  * 공모 등록 풀 UI 폼: 갤러리선택 + 제목 + 4개 날짜 + 소개 + 약관동의 → 등록요청
@@ -40,12 +40,9 @@ test('공모 등록(4날짜 폼) → 관리자 승인 → 모집공고 노출', 
   await expect(gallery.page.locator('body')).toContainText('공모 등록 요청이 제출되었습니다', { timeout: 8000 });
 
   // 관리자 승인
-  await admin.page.goto('/mypage');
-  await openMyPageTab(admin.page, '승인 관리', 'admin');
-  const card = admin.page.locator('div.border').filter({ hasText: TITLE }).first();
-  await expect(card).toBeVisible({ timeout: 8000 });
-  await card.getByRole('button', { name: '승인' }).click();
-  await expect(admin.page.locator('body')).toContainText('승인되었습니다', { timeout: 8000 });
+  await openApproval(admin.page, TITLE);
+  await admin.page.getByRole('button', { name: '승인', exact: true }).click();
+  await expect(admin.page.locator('body')).toContainText('승인했어요', { timeout: 8000 });
 
   // 작가: 모집공고에 노출
   const artist = await openAs(browser, 'artist');

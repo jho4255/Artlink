@@ -1158,7 +1158,8 @@ function AttachmentsSection({ exhibitionId, items, canEdit }: { exhibitionId: st
           </div>
         </div>
       ) : items.length ? (
-        <AttachmentList items={items} />
+        // 받은 수를 센다(관리자 통계 '첨부 받음', 2026-11-21) — 주인·관리자는 서버가 뺀다 · 실패해도 조용히
+        <AttachmentList items={items} onDownload={() => { api.post(`/exhibitions/${exhibitionId}/attachment-hit`).catch(() => {}); }} />
       ) : (
         <p className="text-sm text-gray-500">모집 요강·지원서 양식 같은 파일을 붙이면 누구나 내려받을 수 있어요.</p>
       )}

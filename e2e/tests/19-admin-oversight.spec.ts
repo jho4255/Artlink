@@ -72,38 +72,32 @@ test('admin 전용 API: 공모 지원현황 / 작가 이력 / 갤러리 게시�
   await api.dispose();
 });
 
-test('admin UI: 운영 조회 탭에서 지원현황·작가이력·갤러리 게시물 확인', async ({ browser }) => {
+test('admin UI: 운영 조회(공모·갤러리) · 사용자 관리의 회원 한 명에 지원 이력 (2026-11-21 개편)', async ({ browser }) => {
   const { page, ctx } = await openAs(browser, 'admin');
-  await page.goto('/mypage');
+  await page.goto('/mypage?tab=oversight');
 
-  // 운영 조회 탭
-  await page.getByRole('button', { name: '운영 조회' }).click();
+  // --- 공모: 찾고 → 줄을 눌러 한 건(휴대폰은 창) ---
+  await page.getByRole('searchbox', { name: '공모 제목으로 찾기' }).fill(exTitle);
+  await page.getByRole('button', { name: exTitle }).first().click();
+  const detail = page.getByTestId('ov-ex-detail');
+  await expect(detail).toContainText(exTitle, { timeout: 10000 });
+  await expect(detail).toContainText('수락됨');
+  await expect(detail).toContainText('첫 지원');   // 시드 작가는 이 갤러리 첫 지원
+  await page.keyboard.press('Escape');
 
-  // --- 공모 지원현황 (기본 서브탭) ---
-  await expect(page.getByText(exTitle, { exact: false }).first()).toBeVisible({ timeout: 10000 });
-  await page.getByText(exTitle, { exact: false }).first().click();
-  // 지원자 + 수락 배지
-  await expect(page.getByText('지원 현황', { exact: false })).toBeVisible({ timeout: 8000 });
-  await expect(page.getByText('수락', { exact: false }).first()).toBeVisible({ timeout: 8000 });
-  // 첫 지원 하이라이팅 배지 (시드 작가는 이 갤러리 첫 지원)
-  await expect(page.getByText('첫 지원', { exact: false }).first()).toBeVisible({ timeout: 8000 });
+  // --- 갤러리: 게시물 ---
+  await page.getByRole('tab', { name: '갤러리', exact: true }).click();
+  await page.getByRole('searchbox', { name: '갤러리 이름으로 찾기' }).fill(galleryName);
+  await page.getByRole('button', { name: galleryName }).first().click();
+  await expect(page.getByTestId('ov-gallery-detail')).toContainText(exTitle, { timeout: 10000 });
+  await page.keyboard.press('Escape');
 
-  // --- 작가 지원이력 ---
-  await page.getByRole('button', { name: '작가 지원이력' }).click();
-  await page.getByPlaceholder('작가 이름/이메일 검색').fill('Artist 1');
-  await page.getByRole('button', { name: '검색' }).click();
-  await expect(page.getByText('Artist 1', { exact: false }).first()).toBeVisible({ timeout: 8000 });
-  await page.getByText('Artist 1', { exact: false }).first().click();
-  await expect(page.getByText('지원 이력', { exact: false })).toBeVisible({ timeout: 8000 });
-  await expect(page.getByText(exTitle, { exact: false }).first()).toBeVisible({ timeout: 8000 });
-
-  // --- 갤러리 게시물 ---
-  await page.getByRole('button', { name: '갤러리 게시물' }).click();
-  await page.getByRole('button', { name: '검색' }).click(); // 전체 목록
-  await expect(page.getByText(galleryName, { exact: false }).first()).toBeVisible({ timeout: 8000 });
-  await page.getByText(galleryName, { exact: false }).first().click();
-  await expect(page.getByText('게시물', { exact: false }).first()).toBeVisible({ timeout: 8000 });
-  await expect(page.getByText(exTitle, { exact: false }).first()).toBeVisible({ timeout: 8000 });
+  // --- 작가 지원 이력은 [사용자 관리]의 회원 한 명으로 옮겼다 ---
+  await page.goto('/mypage?tab=user-manage&role=ARTIST&q=Artist%201');
+  await page.getByRole('button', { name: /^Artist 1/ }).first().click();
+  const user = page.getByTestId('admin-user-detail');
+  await expect(user).toContainText('지원 이력', { timeout: 10000 });
+  await expect(user).toContainText(exTitle);
 
   await ctx.close();
 });

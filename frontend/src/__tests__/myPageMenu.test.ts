@@ -8,13 +8,28 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { myPageTabs, myPageHref, resolveTab, tabHref, hiddenTabs, HOMEPAGE_EDIT_HREF, MYPAGE_FOOTER_LINKS, MYPAGE_PRIMARY_LINKS, tabNameParts } from '@/lib/myPageMenu';
+import { myPageTabs, myPageHref, resolveTab, tabHref, hiddenTabs, HOMEPAGE_EDIT_HREF, MYPAGE_FOOTER_LINKS, MYPAGE_PRIMARY_LINKS, tabNameParts, defaultTabFor, footerLinksFor, isMyPageTab } from '@/lib/myPageMenu';
 
 const ROLES = ['ARTIST', 'GALLERY', 'ADMIN'] as const;
 
 describe('myPageTabs — 역할별 메뉴', () => {
-  it.each(ROLES)('%s 는 프로필로 시작한다 (기본 탭)', (role) => {
+  it.each(['ARTIST', 'GALLERY'] as const)('%s 는 프로필로 시작한다 (기본 탭)', (role) => {
     expect(myPageTabs(role)[0].id).toBe('profile');
+    expect(defaultTabFor(role)).toBe('profile');
+  });
+
+  it('★ 관리자는 [통계]로 시작한다 — 프로필은 맨 아래 줄(2026-11-21: 관리자 첫 화면이 닉네임 칸이었다)', () => {
+    expect(myPageTabs('ADMIN')[0].id).toBe('stats');
+    expect(defaultTabFor('ADMIN')).toBe('stats');
+    expect(myPageTabs('ADMIN').some(t => t.id === 'profile')).toBe(false);
+    expect(isMyPageTab('ADMIN', 'profile')).toBe(true);   // 숨은 탭 — 맨 아래 줄에서 들어온다
+    expect(footerLinksFor('ADMIN').map(l => l.to)).toEqual(['/mypage?tab=profile']);
+    expect(footerLinksFor('ARTIST')).toBe(MYPAGE_FOOTER_LINKS);
+    // 기본 탭은 쿼리를 붙이지 않는다 — 관리자의 프로필은 붙는다
+    expect(myPageHref('stats', 'ADMIN')).toBe('/mypage');
+    expect(myPageHref('profile', 'ADMIN')).toBe('/mypage?tab=profile');
+    expect(myPageHref('profile', 'ARTIST')).toBe('/mypage');
+    expect(resolveTab('ADMIN', null)).toBe('stats');
   });
 
   it.each(ROLES)('%s 메뉴에 id 중복이 없다', (role) => {
@@ -159,7 +174,7 @@ describe('홈페이지 항목 — 공개 작가 페이지로 나간다', () => {
     expect(HOMEPAGE_EDIT_HREF).toBe('/mypage?tab=homepage-edit');
     // 작가만 — 갤러리/Admin 이 그 주소로 들어오면 프로필로
     expect(resolveTab('GALLERY', 'homepage-edit')).toBe('profile');
-    expect(resolveTab('ADMIN', 'homepage-edit')).toBe('profile');
+    expect(resolveTab('ADMIN', 'homepage-edit')).toBe('stats');   // 관리자의 첫 화면
   });
 });
 
@@ -198,6 +213,20 @@ describe('메뉴 구성 (2026-08-28 기준)', () => {
       expect(tabs.some(t => t.id === 'artstory'), `${role} 메뉴에 ArtStory 가 남았다`).toBe(false);
       expect(tabs.some(t => t.linkTo?.(1) === '/feed'), `${role} 메뉴에 /feed 로 가는 항목이 남았다`).toBe(false);
     }
+  });
+
+  it('★ 관리자 메뉴는 묶음 다섯 — 운영 · 공모 · 회원 · 화면 관리 · 도구 · 처리할 일 배지(2026-11-21)', () => {
+    const tabs = myPageTabs('ADMIN');
+    expect([...new Set(tabs.map(t => t.group))]).toEqual(['운영', '공모', '회원', '화면 관리', '도구']);
+    // 같은 묶음은 이어져 있어야 머리말이 한 번만 붙는다
+    const order = tabs.map(t => t.group);
+    expect(order.filter((g, i) => g !== order[i - 1]).length).toBe(5);
+    expect(Object.fromEntries(tabs.filter(t => t.badge).map(t => [t.id, t.badge]))).toEqual({ approvals: 'approvals', 'report-manage': 'reports', support: 'inquiries' });
+    // [1:1 문의]는 관리자에겐 메뉴 항목(고객센터로) · 혜택 관리는 없다
+    expect(tabs.find(t => t.id === 'support')!.linkTo!(4)).toBe('/support');
+    expect(tabs.some(t => t.id === 'benefit-manage')).toBe(false);
+    // 다른 역할 메뉴에는 묶음이 없다
+    expect(myPageTabs('ARTIST').some(t => t.group)).toBe(false);
   });
 
   it('Admin 메뉴에 운영 도구가 모두 있다', () => {

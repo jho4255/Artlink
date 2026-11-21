@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import {
-  Heart, Building2, Plus, Check, XCircle, Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Megaphone, ClipboardList, MapPin, Phone, Mail, FileArchive, ExternalLink, Wrench, Inbox, ListChecks, ArrowLeft, ArrowRight,
+  Heart, Plus, Camera, Eye, Search, Calendar, Edit3, Trash2, Instagram, Save, AlertTriangle, Phone, Mail, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/stores/authStore';
-import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityWithLimit, capacityText, type CapacityMask, getShowStatus, showStatusLabels, displayName, nameWithNickname, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
+import { regionLabels, exhibitionTypeLabels, getDday, capacityPayload, capacityText, type CapacityMask, displayName, formatPhoneNumber, roleLabel, cn } from '@/lib/utils';
 import { stageOf, applicationStatusView, galleryNextTask, artistNextTask, flowStrip, gallerySubText, artistSubText, artistWaitText, viewForTarget, WORKSPACE_VIEWS, type ArtistSnapshot, type ArtistView, type TaskActionId, type WorkspaceView } from '@/lib/flowLabels';
 import ExhibitionRow, { RowGroupHead } from '@/components/flow/ExhibitionRow';
 import ExhibitionWorkspace from '@/components/workspace/ExhibitionWorkspace';
@@ -16,7 +16,6 @@ import ArtistExhibitionWorkspace from '@/components/workspace/ArtistExhibitionWo
 import { rememberListScroll, takeListScroll } from '@/lib/listScroll';
 import { scheduleSummary } from '@/lib/scheduleSummary';
 import { uploadAvatar } from '@/lib/avatarUpload';
-import StatusChip from '@/components/flow/StatusChip';
 import Notice from '@/components/flow/Notice';
 import DraftNotice from '@/components/flow/DraftNotice';
 import Disclosure from '@/components/flow/Disclosure';
@@ -31,17 +30,17 @@ import HomepageAddressField from '@/components/shared/HomepageAddressField';
 import ArtistHomepageLine from '@/components/shared/ArtistHomepageLine';
 import { normalizeHandle, suggestHandle, validateHandle } from '@/lib/handle';
 import Thumb from '@/components/shared/Thumb';
-import { myPageTabs, resolveTab, aliasTab, tabHref } from '@/lib/myPageMenu';
+import { myPageTabs, resolveTab, aliasTab, tabHref, defaultTabFor } from '@/lib/myPageMenu';
+import { useAdminTodo, badgeCount } from '@/hooks/useAdminTodo';
+import MenuBadge from '@/components/layout/MenuBadge';
 import { editHref } from '@/lib/homepageEdit';
 import HeroToneField, { useHeroAutoTones, type HeroToneChoice } from '@/components/admin/HeroToneField';
 import { TONE_CLASS } from '@/lib/heroTone';
 import JoinCodeInput from '@/components/shared/JoinCodeInput';
-import ApplicationContent from '@/components/shared/ApplicationContent';
 import { sanitizeCustomFields } from '@/components/shared/CustomQuestionsEditor';
 import { useFormDraft } from '@/hooks/useFormDraft';
 import { useUnsavedChanges, hasUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { DeleteRequestDialog, DeleteRequestLine } from '@/components/shared/DeleteRequest';
-import RichText from '@/components/shared/RichText';
 import { checkDeletable, useMyDeleteRequests } from '@/hooks/useDeleteRequests';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ConfirmDeleteButton from '@/components/shared/ConfirmDeleteButton';
@@ -51,6 +50,9 @@ import { stageArtLookWorks, portfolioArtLookWorks, readArtLookMessage, COMPOSE_S
 import { useArtLookBare } from '@/hooks/useArtLookBare';
 import { useFillHeight } from '@/hooks/useFillHeight';
 import HostedExhibitionsSection from '@/components/admin/HostedExhibitionsSection';
+import ApprovalsSection from '@/components/admin/ApprovalsSection';
+import UserManageSection from '@/components/admin/UserManageSection';
+import OversightSection from '@/components/admin/OversightSection';
 import KanbanSection from '@/components/admin/KanbanSection';
 import AdminStatsSection from '@/components/admin/AdminStatsSection';
 import AdManageSection from '@/components/admin/AdManageSection';
@@ -58,7 +60,6 @@ import HostBadge from '@/components/shared/HostBadge';
 import StoryReportsSection from '@/components/admin/StoryReportsSection';
 import ChatReportsSection from '@/components/admin/ChatReportsSection';
 import BlockedUsersSection from '@/components/chat/BlockedUsersSection';
-import { AttachmentList } from '@/components/shared/ExhibitionAttachments';
 import { ExhibitionFormBody } from '@/components/exhibition-form/ExhibitionFormBody';
 import { exhibitionMissing, exhibitionDateError, exhibitionPreview } from '@/components/exhibition-form/exhibitionForm';
 import { jumpToField } from '@/lib/formJump';
@@ -170,7 +171,8 @@ export default function MyPage() {
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab');
-    return tab === 'my-exhibitions-classic' ? 'my-exhibitions' : (tab || 'profile');
+    // 쿼리가 없으면 그 역할의 첫 화면 — 대개 프로필, 관리자는 [통계](2026-11-21)
+    return tab === 'my-exhibitions-classic' ? 'my-exhibitions' : (tab || defaultTabFor(useAuthStore.getState().user?.role));
   });
 
   // 다른 페이지에서 ?tab=... 로 진입 시(이미 /mypage에 있을 때 포함) 해당 탭으로 전환
@@ -195,14 +197,14 @@ export default function MyPage() {
       누르면 주소만 바뀌고 화면은 이전 탭에 머물렀다(갤러리 계정에서 프로필↔내 갤러리 왕복 시 신고, 2026-08-28).
       프로필은 기본 탭이라 쿼리를 안 붙이므로(myPageHref) 이 경로가 매번 걸린다.
     */
-    const t = rawTab ?? 'profile';
+    const t = rawTab ?? defaultTabFor(user?.role);
     if (t !== activeTab) setActiveTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const selectTab = (id: string) => {
     setActiveTab(id);
-    setSearchParams(id === 'profile' ? {} : { tab: id }, { replace: true });
+    setSearchParams(id === defaultTabFor(user?.role) ? {} : { tab: id }, { replace: true });
   };
 
   // 모바일에서 탭이 화면을 넘어갈 때(Admin 8개 등) 우측 페이드로 "더 있음"을 알림
@@ -222,6 +224,8 @@ export default function MyPage() {
   /** 휴대폰 편집 전용 화면(2026-11-17, 규칙 85) — 상단바·하단 탭바가 없으니 여백도 없이 iframe 이 화면을 다 쓴다.
    *  ⚠️ 훅이라 아래 `if (!user) return null` **위에**(hooksBeforeReturn.test.ts — 로그아웃 순간 React #310) */
   const bare = useArtLookBare();
+  // 관리자 메뉴 배지(가로 탭 줄, 2026-11-21) — 훅이라 아래 return 위에
+  const { data: adminTodo } = useAdminTodo();
 
   if (!user) return null;
 
@@ -237,7 +241,11 @@ export default function MyPage() {
    * 두 목록 화면도 프로필 카드를 그리지 않는다(D4) — 목록 위 240px 가 '지금 할 일' 을 첫 화면 밖으로 밀었다.
    */
   const listTab = (currentTab === 'my-exhibitions' && user.role === 'GALLERY') || (currentTab === 'applications' && user.role === 'ARTIST');
-  const workspaceOpen = listTab && !!searchParams.get('ex');
+  // 관리자 [주최 공모]의 공모 한 건 화면·등록 화면도 그 일만 하는 화면이다(2026-11-21)
+  const hostedFocus = currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && (!!searchParams.get('ex') || searchParams.get('new') === '1');
+  const workspaceOpen = (listTab && !!searchParams.get('ex')) || hostedFocus;
+  /** 관리자 화면에는 프로필 카드를 두지 않는다(2026-11-21) — 첫 화면의 45%를 먹었다. [프로필] 탭에서만 */
+  const adminWork = user.role === 'ADMIN' && currentTab !== 'profile';
   /**
    * 한 가지 일에 집중하는 화면인가 — 작가의 홈페이지 편집 · 포트폴리오 PDF 만들기(2026-10-03).
    * 둘 다 **아래에 붙는 바**가 있고 첫 화면에 결과물이 보여야 하는 화면이다. 프로필 카드(240px)·가로 탭바를 위에 두면
@@ -256,7 +264,7 @@ export default function MyPage() {
         홈페이지 편집 화면은 **그 일만 하는 화면**이다(2026-10-02) — 프로필 카드(240px)와 가로 탭바를 그 위에 두면
         가입 직후 도착한 작가의 첫 화면이 작품 올리기가 아니라 내 이메일이 된다. 다른 메뉴는 상단 [메뉴]·우측 사이드바로 간다.
       */}
-      {!focused && !listTab && <ProfileCard />}
+      {!focused && !listTab && !adminWork && <ProfileCard />}
 
       {/*
         메뉴는 **lg(1024px) 이상에서만 우측 세로 사이드바**, 그 아래는 기존 가로 탭바.
@@ -273,10 +281,12 @@ export default function MyPage() {
             const name = tab.brand
               ? <span className="font-bold tracking-tight font-serif">{tab.brand[0]}<span className="text-accent">{tab.brand[1]}</span></span>
               : tab.label;
+            const badge = badgeCount(adminTodo, tab.badge);
+            const label = badge != null ? <span className="inline-flex items-center gap-1.5">{name}<MenuBadge count={badge} /></span> : name;
             return tab.linkTo ? (
-              <Link key={tab.id} to={tabHref(tab, user.id)} className={cls}>{name}</Link>
+              <Link key={tab.id} to={tabHref(tab, user.id, user.role)} className={cls}>{label}</Link>
             ) : (
-              <button key={tab.id} onClick={() => selectTab(tab.id)} className={cls}>{name}</button>
+              <button key={tab.id} onClick={() => selectTab(tab.id)} className={cls}>{label}</button>
             );
           })}
         </div>
@@ -310,7 +320,6 @@ export default function MyPage() {
           {currentTab === 'approvals' && user.role === 'ADMIN' && <ApprovalsSection />}
           {currentTab === 'hosted-exhibitions' && user.role === 'ADMIN' && <HostedExhibitionsSection />}
           {currentTab === 'hero-manage' && user.role === 'ADMIN' && <HeroManageSection />}
-          {currentTab === 'benefit-manage' && user.role === 'ADMIN' && <BenefitManageSection />}
           {currentTab === 'gotm-manage' && user.role === 'ADMIN' && <GotmManageSection />}
           {currentTab === 'ad-manage' && user.role === 'ADMIN' && <AdManageSection />}
           {/* 소식 신고(ArtStory, 2026-11-14) 가 위 — 저절로 내려간 소식을 확인해 달라는 알림이 여기로 온다 */}
@@ -2239,391 +2248,6 @@ function MyShowsSection({ createOnly = false }: { createOnly?: boolean } = {}) {
 }
 
 // ========== Admin: 승인 관리 ==========
-function approvalRequestTypeLabel(type?: string) {
-  if (type === 'GALLERY_EDIT') return '갤러리 수정';
-  if (type === 'EXHIBITION_EDIT') return '공모 수정';
-  return type || '수정 요청';
-}
-
-function parseApprovalChanges(changes: unknown): Record<string, unknown> {
-  if (!changes) return {};
-  if (typeof changes === 'object') return changes as Record<string, unknown>;
-  try {
-    const parsed = JSON.parse(String(changes));
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function formatApprovalChangeValue(value: unknown) {
-  if (value === null || value === undefined) return '-';
-  if (value instanceof Date) return value.toLocaleString('ko');
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-
-function ApprovalsSection() {
-  const queryClient = useQueryClient();
-  // 모든 useState/useQuery/useMutation 훅은 조건부 return 전에 선언 (React 훅 규칙)
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectingId, setRejectingId] = useState<{ type: string; id: number } | null>(null);
-  const [adminTab, setAdminTab] = useState<'pending' | 'manage'>('pending');
-  // 삭제 요청 승인 확인 — 무엇이 사라지는지 적은 창을 거친다(되돌릴 수 없다)
-  const [approvingDelete, setApprovingDelete] = useState<any>(null);
-
-  const { data, isLoading } = useQuery<{ pendingGalleries: any[]; pendingExhibitions: any[]; pendingShows: any[]; pendingRequests: any[] }>({
-    queryKey: ['approvals'],
-    queryFn: () => api.get('/approvals').then(r => r.data),
-    staleTime: 0, // 승인 큐는 항상 최신 데이터 사용
-    refetchOnMount: 'always', // 탭 전환 시에도 반드시 refetch
-  });
-
-  // 승인된 갤러리/공모 조회 (Admin 삭제용)
-  const { data: allGalleries = [] } = useQuery<any[]>({
-    queryKey: ['admin-all-galleries'],
-    queryFn: () => api.get('/galleries').then(r => r.data),
-  });
-
-  const { data: allExhibitions = [] } = useQuery<any[]>({
-    queryKey: ['admin-all-exhibitions'],
-    queryFn: () => api.get('/exhibitions').then(r => r.data),
-  });
-
-  const { data: allShows = [] } = useQuery<any[]>({
-    queryKey: ['admin-all-shows'],
-    queryFn: () => api.get('/shows').then(r => r.data),
-  });
-
-  const invalidateAllRelated = () => {
-    // refetchType: 'all' → 비활성(언마운트) 쿼리도 stale 마킹하여 다음 마운트 시 즉시 refetch
-    const opts = { refetchType: 'all' as const };
-    queryClient.invalidateQueries({ queryKey: ['approvals'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['my-galleries'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['galleries'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['my-exhibitions'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['exhibitions'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['admin-all-galleries'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['admin-all-exhibitions'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['my-shows'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['shows'], ...opts });
-    queryClient.invalidateQueries({ queryKey: ['admin-all-shows'], ...opts });
-  };
-
-  const approveMutation = useMutation({
-    mutationFn: ({ type, id }: { type: string; id: number }) =>
-      api.patch(`/approvals/${type}/${id}`, { status: 'APPROVED' }),
-    onSuccess: (res: any, v) => {
-      invalidateAllRelated();
-      if (v.type === 'delete-request') {
-        queryClient.invalidateQueries({ queryKey: ['my-operation-overview'], refetchType: 'all' });
-        toast.success(res?.data?.alreadyGone ? '이미 지워진 대상이라 요청만 정리했습니다.' : '삭제 요청을 승인해 삭제했습니다. 요청한 갤러리와 참여 작가에게 알림이 갑니다.');
-      } else toast.success('승인되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '승인에 실패했습니다.'),
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: ({ type, id, reason }: { type: string; id: number; reason: string }) =>
-      api.patch(`/approvals/${type}/${id}`, { status: 'REJECTED', rejectReason: reason }),
-    onSuccess: () => {
-      invalidateAllRelated();
-      setRejectingId(null);
-      setRejectReason('');
-      toast.success('거절되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '거절에 실패했습니다.'),
-  });
-
-  // Admin: 갤러리 삭제
-  const deleteGalleryMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/galleries/${id}`),
-    onSuccess: () => {
-      invalidateAllRelated();
-      toast.success('갤러리가 삭제되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
-  });
-
-  // Admin: 공모 삭제
-  const deleteExhibitionMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/exhibitions/${id}`),
-    onSuccess: () => {
-      invalidateAllRelated();
-      toast.success('공모가 삭제되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
-  });
-
-  // Admin: 전시 삭제
-  const deleteShowMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/shows/${id}`),
-    onSuccess: () => {
-      invalidateAllRelated();
-      toast.success('전시가 삭제되었습니다.');
-    },
-    onError: (err: any) => toast.error(err.response?.data?.error || '삭제 실패'),
-  });
-
-  // 로딩 상태 (모든 훅 선언 후에 조건부 return)
-  if (isLoading) return <div className="h-32 bg-gray-100 animate-pulse" />;
-
-  const allPending = [
-    ...(data?.pendingGalleries?.map(g => ({ ...g, _type: 'gallery' })) || []),
-    ...(data?.pendingExhibitions?.map(e => ({ ...e, _type: 'exhibition' })) || []),
-    ...(data?.pendingShows?.map(s => ({ ...s, _type: 'show' })) || []),
-    // 삭제 요청(2026-10-03)은 같은 표(ApprovalRequest)에 들어오지만 처리하는 길이 다르다 — `/approvals/delete-request/:id`
-    ...(data?.pendingRequests?.map(r => ({ ...r, _type: r.type === 'EXHIBITION_DELETE' || r.type === 'GALLERY_DELETE' ? 'delete-request' : 'edit-request' })) || []),
-  ];
-  const deleteRequestDetails = (item: any): string[] => {
-    const t = item?.target;
-    if (!t || t.gone) return ['이미 지워진 대상이에요. 요청만 정리합니다.'];
-    const lines = item.type === 'EXHIBITION_DELETE'
-      ? [`공모 「${t.name}」${t.galleryName ? ` (${t.galleryName})` : ''}을 지웁니다.`]
-      : [`갤러리 「${t.name}」와 그 갤러리의 공모 ${t.exhibitions}건을 지웁니다.`];
-    lines.push(`수락한 작가 ${t.accepted}명 · 출품 자료 ${t.submissions}건 · 판매 ${t.sales}건${t.settled ? ` · 정산 완료 ${typeof t.settled === 'number' ? `${t.settled}건` : ''}` : t.settlementRequested ? ' · 정산 확인 진행 중' : ''}이 함께 사라져요.`);
-    lines.push('참여 작가와 요청한 갤러리에게 알림이 가요. 되돌릴 수 없어요.');
-    return lines;
-  };
-
-  return (
-    <div>
-      {/* Admin 서브탭 */}
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setAdminTab('pending')} className={`px-3 py-1.5 text-sm rounded-full ${adminTab === 'pending' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
-          승인 대기 ({allPending.length})
-        </button>
-        <button onClick={() => setAdminTab('manage')} className={`px-3 py-1.5 text-sm rounded-full ${adminTab === 'manage' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
-          등록 관리
-        </button>
-      </div>
-
-      {/* 등록 관리 탭 - 승인된 갤러리/공모 삭제 */}
-      {adminTab === 'manage' && (
-        <div className="space-y-6">
-          <div>
-            <h4 className="font-medium text-sm mb-2 text-gray-700">등록된 갤러리 ({allGalleries.length})</h4>
-            {allGalleries.length === 0 ? (
-              <p className="text-gray-400 text-center py-4 text-sm">등록된 갤러리가 없습니다.</p>
-            ) : (
-              <div className="space-y-2">
-                {allGalleries.map((g: any) => (
-                  <div key={g.id} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">{g.name}</p>
-                      <p className="text-xs text-gray-500">{g.address} · {regionLabels[g.region]}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`"${g.name}" 갤러리를 삭제하시겠습니까? 관련 공모, 리뷰 등 모든 데이터가 삭제됩니다.`)) {
-                          deleteGalleryMutation.mutate(g.id);
-                        }
-                      }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
-                      aria-label="삭제"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <h4 className="font-medium text-sm mb-2 text-gray-700">진행중인 공모 ({allExhibitions.length})</h4>
-            {allExhibitions.length === 0 ? (
-              <p className="text-gray-400 text-center py-4 text-sm">진행중인 공모가 없습니다.</p>
-            ) : (
-              <div className="space-y-2">
-                {allExhibitions.map((ex: any) => (
-                  <div key={ex.id} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">{ex.title}</p>
-                      <p className="text-xs text-gray-500">{ex.gallery?.name} · {exhibitionTypeLabels[ex.type]}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`"${ex.title}" 공모를 삭제하시겠습니까?`)) {
-                          deleteExhibitionMutation.mutate(ex.id);
-                        }
-                      }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
-                      aria-label="삭제"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <h4 className="font-medium text-sm mb-2 text-gray-700">등록된 전시 ({allShows.length})</h4>
-            {allShows.length === 0 ? (
-              <p className="text-gray-400 text-center py-4 text-sm">등록된 전시가 없습니다.</p>
-            ) : (
-              <div className="space-y-2">
-                {allShows.map((s: any) => (
-                  <div key={s.id} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">{s.title}</p>
-                      <p className="text-xs text-gray-500">{s.gallery?.name} · {regionLabels[s.region]}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`"${s.title}" 전시를 삭제하시겠습니까?`)) {
-                          deleteShowMutation.mutate(s.id);
-                        }
-                      }}
-                      className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"
-                      aria-label="삭제"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {adminTab === 'pending' && <>
-      <h3 className="font-semibold mb-4">승인 대기 목록 ({allPending.length})</h3>
-      {allPending.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">대기중인 승인 요청이 없습니다.</p>
-      ) : (
-        <div className="space-y-3">
-          {allPending.map(item => (
-            <div key={`${item._type}-${item.id}`} className="p-4 border border-gray-100 rounded-xl">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                {item._type === 'gallery' ? '갤러리' : item._type === 'exhibition' ? '공모' : item._type === 'show' ? '전시'
-                  : item._type === 'delete-request' ? (item.type === 'EXHIBITION_DELETE' ? '공모 삭제 요청' : '갤러리 삭제 요청') : '수정 요청'}
-              </span>
-              <h4 className="font-medium mt-1">{item.name || item.title || item.target?.name || String(parseApprovalChanges(item.changes).title ?? '') || `#${item.targetId}`}</h4>
-              {item._type === 'gallery' && (
-                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
-                  {/* 가입 계정 — 이메일로 가입한 갤러리는 인증번호로 확인한 주소다(2026-10-08). 이 주소가 그 갤러리 메일인지 보고 승인한다.
-                      카카오 가입은 가입 화면에서 직접 적은 주소라 확인되지 않았다 */}
-                  {item.owner && (
-                    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 break-all">
-                      <span>가입 계정: {item.owner.name} · {item.owner.email}</span>
-                      {item.owner.emailVerifiedAt
-                        ? <StatusChip variant="done">이메일 인증됨</StatusChip>
-                        : <StatusChip>{item.owner.provider === 'KAKAO' ? '카카오 가입 · 이메일 미확인' : '이메일 미확인'}</StatusChip>}
-                    </p>
-                  )}
-                  <p>주소: {item.address}</p>
-                  <p>전화: {item.phone} · 대표: {item.ownerName}</p>
-                  <p>지역: {regionLabels[item.region]}</p>
-                  {item.instagramUrl && <p className="break-all">인스타: {item.instagramUrl}</p>}
-                  {item.email && (
-                    <p className="break-all">
-                      갤러리 이메일: {item.email}
-                      {item.owner?.email && item.owner.email.toLowerCase() === String(item.email).trim().toLowerCase() && <span className="text-gray-400"> (가입 계정과 같음)</span>}
-                    </p>
-                  )}
-                  {item.mainImage && <img src={item.mainImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
-                </div>
-              )}
-              {item._type === 'exhibition' && (
-                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
-                  <p>갤러리: {item.gallery?.name} ({regionLabels[item.gallery?.region] || item.region})</p>
-                  <p>유형: {exhibitionTypeLabels[item.type]} · 모집 {capacityWithLimit(item)} · 지역: {regionLabels[item.region]}</p>
-                  <p>공모 기간: {item.deadlineStart ? new Date(item.deadlineStart).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.deadline).toLocaleDateString('ko')}</p>
-                  <p>전시 기간: {item.exhibitStartDate ? new Date(item.exhibitStartDate).toLocaleDateString('ko') + ' ~ ' : ''}{new Date(item.exhibitDate).toLocaleDateString('ko')}</p>
-                  {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
-                  {/* 첨부파일(2026-10-08) — 승인하면 누구나 내려받으므로 먼저 열어 본다 */}
-                  {normalizeAttachments(item.attachments).length > 0 && (
-                    <div className="pt-2">
-                      <p className="mb-1 text-xs text-gray-400">첨부파일 {normalizeAttachments(item.attachments).length}개</p>
-                      <AttachmentList items={normalizeAttachments(item.attachments)} />
-                    </div>
-                  )}
-                </div>
-              )}
-              {item._type === 'show' && (
-                <div className="text-sm text-gray-500 space-y-0.5 mt-1">
-                  <p>갤러리: {item.gallery?.name} ({regionLabels[item.gallery?.region] || item.region})</p>
-                  <p>전시 기간: {new Date(item.startDate).toLocaleDateString('ko')} ~ {new Date(item.endDate).toLocaleDateString('ko')}</p>
-                  <p>관람: {item.openingHours} · 입장료: {item.admissionFee}</p>
-                  <p>위치: {item.location} · 지역: {regionLabels[item.region]}</p>
-                  {item.posterImage && <img src={item.posterImage} alt="" className="w-full h-32 object-cover rounded-lg mt-2" />}
-                </div>
-              )}
-              {item._type === 'delete-request' && (
-                <div className="mt-1 space-y-1 text-sm text-gray-500">
-                  <p>요청자: {item.requester?.name || `User #${item.requesterId}`}{item.requester?.email ? ` (${item.requester.email})` : ''} · {new Date(item.createdAt).toLocaleString('ko')}</p>
-                  <p className="whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-2 text-gray-700">사유: {String(parseApprovalChanges(item.changes).reason ?? '') || '—'}</p>
-                  {item.target?.gone ? (
-                    <p className="text-xs text-gray-500">이미 지워진 대상이에요 — [삭제 승인]을 누르면 요청만 정리해요.</p>
-                  ) : (
-                    <p className="text-xs text-gray-600">
-                      지우면 함께 사라지는 것 · 수락한 작가 {item.target?.accepted ?? 0}명 · 출품 자료 {item.target?.submissions ?? 0}건 · 판매 {item.target?.sales ?? 0}건
-                      {item.type === 'GALLERY_DELETE' ? ` · 공모 ${item.target?.exhibitions ?? 0}건` : ''}
-                    </p>
-                  )}
-                </div>
-              )}
-              {item._type === 'edit-request' && (
-                <div className="text-sm text-gray-500 space-y-1 mt-1">
-                  <p>유형: {approvalRequestTypeLabel(item.type)} · 대상 ID: {item.targetId}</p>
-                  <p>요청자: {item.requester?.name || `User #${item.requesterId}`}{item.requester?.email ? ` (${item.requester.email})` : ''}</p>
-                  <p>요청일: {new Date(item.createdAt).toLocaleString('ko')}</p>
-                  <div className="mt-2 rounded-lg bg-gray-50 p-2">
-                    <p className="text-xs font-medium text-gray-600 mb-1">변경 요청 내용</p>
-                    {Object.entries(parseApprovalChanges(item.changes)).length === 0 ? (
-                      <p className="text-xs text-gray-400">표시할 변경 내용이 없습니다.</p>
-                    ) : (
-                      <dl className="space-y-1">
-                        {/* minmax(0,1fr) + break-all 필수 — 값에 긴 URL(mainImage 등)이 오면
-                            1fr(=minmax(auto,1fr))의 auto 최소폭이 URL 전체 폭으로 잡혀 탭이 가로로 밀림 */}
-                        {Object.entries(parseApprovalChanges(item.changes)).map(([key, value]) => (
-                          <div key={key} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2 text-xs">
-                            <dt className="text-gray-400">{key}</dt>
-                            <dd className="text-gray-700 break-all">{formatApprovalChangeValue(value)}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                  </div>
-                </div>
-              )}
-              {/* 공모·전시 소개는 서식 있는 글일 수 있다(2026-10-03) — 걸러서 그린다. 옛 평범한 글은 줄바꿈 그대로 */}
-              {item.description && <RichText value={item.description} className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded" />}
-
-              {rejectingId?.type === item._type && rejectingId?.id === item.id ? (
-                <div className="mt-3 space-y-2">
-                  <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="거절 사유를 입력하세요 (필수)" className="w-full h-20 p-2 border border-gray-200 rounded-lg text-sm resize-none" />
-                  <div className="flex gap-2">
-                    <button onClick={() => rejectMutation.mutate({ type: item._type, id: item.id, reason: rejectReason })} disabled={!rejectReason.trim() || approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-accent text-white text-sm rounded-lg disabled:opacity-50">거절 확인</button>
-                    <button onClick={() => setRejectingId(null)} className="px-3 py-1.5 text-sm text-gray-500">취소</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => (item._type === 'delete-request' ? setApprovingDelete(item) : approveMutation.mutate({ type: item._type, id: item.id }))} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><Check size={14} /> {item._type === 'delete-request' ? '삭제 승인' : '승인'}</button>
-                  <button onClick={() => { setRejectReason(''); setRejectingId({ type: item._type, id: item.id }); }} disabled={approveMutation.isPending || rejectMutation.isPending} className="px-3 py-1.5 bg-accent/5 text-accent text-sm rounded-lg flex items-center gap-1 disabled:opacity-50"><XCircle size={14} /> 거절</button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      </>}
-      <ConfirmDialog
-        open={!!approvingDelete}
-        title={approvingDelete?.type === 'GALLERY_DELETE' ? '갤러리를 삭제할까요?' : '공모를 삭제할까요?'}
-        details={deleteRequestDetails(approvingDelete)}
-        confirmText="삭제 승인"
-        variant="danger"
-        onConfirm={() => { const it = approvingDelete; setApprovingDelete(null); if (it) approveMutation.mutate({ type: 'delete-request', id: it.id }); }}
-        onCancel={() => setApprovingDelete(null)}
-      />
-    </div>
-  );
-}
-
 // ========== Admin: 히어로 슬라이드 관리 ==========
 function HeroManageSection() {
   const queryClient = useQueryClient();
@@ -2772,124 +2396,6 @@ function HeroManageSection() {
   );
 }
 
-// ========== Admin: 혜택 관리 ==========
-function BenefitManageSection() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', linkUrl: '' });
-  const [preview, setPreview] = useState(false);
-
-  const { data: benefits = [] } = useQuery<any[]>({
-    queryKey: ['benefits'],
-    queryFn: () => api.get('/benefits').then(r => r.data),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () => api.post('/benefits', form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['benefits'] });
-      resetForm();
-      toast.success('혜택이 등록되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 등록에 실패했습니다.'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: () => api.patch(`/benefits/${editingId}`, form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['benefits'] });
-      resetForm();
-      toast.success('혜택이 수정되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 수정에 실패했습니다.'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/benefits/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['benefits'] });
-      toast.success('혜택이 삭제되었습니다.');
-    },
-    onError: (e: any) => toast.error(e.response?.data?.error || '혜택 삭제에 실패했습니다.'),
-  });
-
-  const resetForm = () => {
-    setShowForm(false);
-    setEditingId(null);
-    setForm({ title: '', description: '', imageUrl: '', linkUrl: '' });
-    setPreview(false);
-  };
-
-  const startEdit = (b: any) => {
-    setForm({ title: b.title, description: b.description, imageUrl: b.imageUrl || '', linkUrl: b.linkUrl || '' });
-    setEditingId(b.id);
-    setShowForm(true);
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold">혜택 목록 ({benefits.length}개)</h3>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center gap-1 text-sm px-3 py-1.5 bg-gray-900 text-white rounded-lg">
-          <Plus size={14} /> 새 혜택
-        </button>
-      </div>
-
-      {showForm && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-xl space-y-3">
-          <h4 className="font-medium text-sm">{editingId ? '혜택 수정' : '새 혜택 등록'}</h4>
-          <input placeholder="제목 *" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
-          <textarea placeholder="설명 *" value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm h-20 resize-none" />
-          <input placeholder="링크 URL (선택)" value={form.linkUrl} onChange={e => setForm({...form, linkUrl: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded-lg text-sm" />
-          <ImageUpload value={form.imageUrl} onChange={(url) => setForm({...form, imageUrl: url})} onRemove={() => setForm({...form, imageUrl: ''})} placeholder="혜택 이미지 업로드" />
-
-          <button onClick={() => setPreview(!preview)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-900">
-            <Eye size={14} /> {preview ? '미리보기 닫기' : '미리보기'}
-          </button>
-          {preview && (
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              {form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-32 object-cover" />}
-              <div className="p-3">
-                <p className="font-semibold text-sm">{form.title || '제목'}</p>
-                <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap break-words">{form.description || '설명'}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (!form.title || !form.description) { toast.error('제목과 설명은 필수입니다.'); return; }
-                editingId ? updateMutation.mutate() : createMutation.mutate();
-              }}
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
-            >{editingId ? '수정' : '등록'}</button>
-            <button onClick={resetForm} className="px-4 py-2 text-sm text-gray-500">취소</button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {benefits.map((b: any) => (
-          <div key={b.id} className="flex gap-3 p-3 border border-gray-100 rounded-xl items-center">
-            {b.imageUrl && <img src={b.imageUrl} alt="" className="w-20 h-14 object-cover rounded-lg flex-none" />}
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm">{b.title}</p>
-              <p className="text-xs text-gray-500 truncate">{b.description}</p>
-            </div>
-            <div className="flex gap-1 flex-none">
-              <button onClick={() => startEdit(b)} className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-gray-900" aria-label="수정"><Edit3 size={14} /></button>
-              <ConfirmDeleteButton onConfirm={() => deleteMutation.mutate(b.id)} title="혜택 삭제" message="이 혜택을 지웁니다. 되돌릴 수 없습니다." className="min-h-[44px] min-w-[44px] -m-2 shrink-0 flex items-center justify-center text-gray-400 hover:text-accent"><Trash2 size={14} /></ConfirmDeleteButton>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ========== Admin: 이달의 갤러리 관리 ==========
 function GotmManageSection() {
   const queryClient = useQueryClient();
@@ -3022,231 +2528,6 @@ function GotmManageSection() {
 // 옛 쪽지(Message) 신고 구역은 2026-11-19 에 화면에서 뗐다 — 대화는 ArtTalk 이고, 그 신고는 components/admin/ChatReportsSection.tsx.
 // (옛 `GET/PATCH /api/reports` 라우트와 표는 남아 있다 — retiredApis.test.ts 가 화면에서 다시 부르지 않게 막는다)
 
-// ========== Admin: 사용자 관리 (검색 + 역할 변경) ==========
-const ADMIN_USER_GALLERY_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절', WITHDRAWN: '탈퇴' };
-// ⚠️ 역할이 늘면 여기와 아래 <select> 옵션에 함께 넣을 것 — VISITOR('일반', 2026-09-16)가 빠져 있어 관리자가 일반 회원을
-//    검색조차 못 했다(2026-09-19 수정). 라벨은 `roleLabel()` 하나를 쓴다(규칙 52).
-// 마지막 탭 '오늘 방문'(2026-10-25) — 역할과 무관하게 오늘(KST) 들어온 회원. Admin 은 뺀다([통계] 탭의 '오늘 회원' 수와 같은 사람들).
-const ADMIN_USER_ROLE_TABS = [
-  { role: 'GALLERY', label: '갤러리 유저' },
-  { role: 'ARTIST', label: '아티스트 유저' },
-  { role: 'VISITOR', label: '일반 유저' },
-  { role: 'ADMIN', label: 'admin 유저' },
-  { role: 'TODAY', label: '오늘 방문' },
-] as const;
-const adminUserDate = (value?: string | null) => {
-  if (!value) return '기록 없음';
-  return new Date(value).toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-};
-const adminUserTime = (value?: string | null) =>
-  value ? new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
-const adminUserDateTime = (value?: string | null) => {
-  if (!value) return '기록 없음';
-  return new Date(value).toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-function UserManageSection() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const me = useAuthStore((s) => s.user);
-  // 다른 화면에서 그 회원을 찾아 들어올 수 있게 — `?tab=user-manage&role=ARTIST&q=<이메일>`([신고 관리]의 ArtTalk 신고, 2026-11-19)
-  const [searchParams] = useSearchParams();
-  const linkedQ = (searchParams.get('q') ?? '').trim();
-  const linkedRole = ADMIN_USER_ROLE_TABS.find((t) => t.role === searchParams.get('role'))?.role;
-  const [q, setQ] = useState(linkedQ);
-  const [submitted, setSubmitted] = useState(linkedQ);
-  const [activeRole, setActiveRole] = useState<(typeof ADMIN_USER_ROLE_TABS)[number]['role']>(linkedRole ?? 'GALLERY');
-
-  const { data: users = [], isLoading } = useQuery<any[]>({
-    queryKey: ['admin-users', activeRole, submitted],
-    queryFn: () => {
-      const params = new URLSearchParams(activeRole === 'TODAY' ? { visited: 'today' } : { role: activeRole });
-      if (submitted) params.set('q', submitted);
-      return api.get(`/admin/users?${params.toString()}`).then(r => r.data);
-    },
-    staleTime: 0,
-  });
-  // 탭 이름 옆 숫자 — [통계] 탭과 같은 집계(오늘 회원 수)
-  const { data: todayMembers } = useQuery<number>({
-    queryKey: ['admin-today-members'],
-    queryFn: () => api.get('/admin/stats/visitors?days=1').then((r) => r.data?.rows?.[0]?.members ?? 0),
-    staleTime: 60_000,
-  });
-
-  const roleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: number; role: string }) => api.patch(`/admin/users/${id}/role`, { role }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('역할이 변경되었습니다.'); },
-    onError: (e: any) => toast.error(e.response?.data?.error || '역할 변경에 실패했습니다.'),
-  });
-
-  return (
-    <div>
-      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); }} className="flex gap-2 mb-4">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이메일 또는 이름으로 검색"
-          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
-        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
-      </form>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        {ADMIN_USER_ROLE_TABS.map((tab) => {
-          const selected = activeRole === tab.role;
-          return (
-            <button
-              key={tab.role}
-              type="button"
-              onClick={() => setActiveRole(tab.role)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                selected
-                  ? 'border-gray-900 bg-gray-900 text-white'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <span>{tab.label}</span>
-              {tab.role === 'TODAY' && todayMembers != null && (
-                <span className={`tabular-nums text-xs ${selected ? 'text-white/70' : 'text-gray-400'}`}>{todayMembers}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {isLoading ? (
-        <div className="h-20 bg-gray-100 animate-pulse rounded-lg" />
-      ) : users.length === 0 ? (
-        <p className="text-gray-400 text-center py-8 text-sm">{activeRole === 'TODAY' && !submitted ? '오늘 들어온 회원이 아직 없어요.' : '검색 결과가 없습니다.'}</p>
-      ) : (
-        <div className="space-y-2">
-          {users.map((u) => {
-            const isMe = me?.id === u.id;
-            const isArtist = u.role === 'ARTIST';
-            const isGallery = u.role === 'GALLERY';
-            const ownedGalleries = Array.isArray(u.galleries) ? u.galleries : [];
-            return (
-              <div key={u.id} className="flex flex-col gap-2 p-3 border border-gray-100 rounded-lg sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <div className="min-w-0">
-                  <button
-                    type="button"
-                    disabled={!isArtist && !(isGallery && ownedGalleries.length === 1)}
-                    onClick={() => {
-                      if (isArtist) navigate(`/portfolio/${u.id}`);
-                      if (isGallery && ownedGalleries.length === 1) navigate(`/galleries/${ownedGalleries[0].id}`);
-                    }}
-                    className={`block max-w-full truncate text-left text-sm font-medium ${isArtist || (isGallery && ownedGalleries.length === 1) ? 'text-gray-900 hover:underline' : 'text-gray-900 cursor-default'}`}
-                    title={isArtist ? '작가 포트폴리오 보기' : isGallery && ownedGalleries.length === 1 ? '갤러리 보기' : undefined}
-                  >
-                    {u.name}{isMe && <span className="text-xs text-gray-400"> (나)</span>}
-                  </button>
-                  <p className="text-xs text-gray-500 truncate">
-                    {u.email}
-                    {isGallery && <span> · 갤러리 {ownedGalleries.length}개</span>}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-400">
-                    가입일 {adminUserDate(u.createdAt)} · 최근 접속 {adminUserDateTime(u.lastSeenAt)}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    <span className={u.visitDays7 > 0 ? 'text-gray-700' : undefined}>최근 7일 중 {u.visitDays7 ?? 0}일 방문</span>
-                    {activeRole === 'TODAY' && u.todayFirstAt && <> · 오늘 처음 {adminUserTime(u.todayFirstAt)}</>}
-                  </p>
-                </div>
-                <div className="flex flex-none flex-wrap items-center gap-2">
-                  <span className="hidden sm:inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">
-                    {roleLabel(u.role) || u.role}
-                  </span>
-                  {isArtist && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/portfolio/${u.id}`)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    >
-                      <ExternalLink size={13} /> 포트폴리오
-                    </button>
-                  )}
-                  {isGallery && ownedGalleries.length === 1 && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/galleries/${ownedGalleries[0].id}`)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    >
-                      <Building2 size={13} /> 갤러리
-                    </button>
-                  )}
-                  {isGallery && ownedGalleries.length > 1 && (
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) navigate(`/galleries/${e.target.value}`);
-                      }}
-                      className="max-w-44 rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400"
-                      title="소유 갤러리 선택"
-                    >
-                      <option value="">갤러리 선택</option>
-                      {ownedGalleries.map((g: any) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name} · {ADMIN_USER_GALLERY_STATUS_LABELS[g.status] || g.status}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <select
-                    value={u.role}
-                    disabled={isMe || u.role === 'ADMIN' || roleMutation.isPending}
-                    onChange={(e) => roleMutation.mutate({ id: u.id, role: e.target.value })}
-                    title={isMe ? '본인 역할은 변경할 수 없습니다' : u.role === 'ADMIN' ? '관리자 계정은 강등/변경할 수 없습니다' : '역할 변경'}
-                    className="text-sm px-2 py-1.5 border border-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="ARTIST">아티스트</option>
-                    <option value="GALLERY">갤러리</option>
-                    <option value="VISITOR">일반</option>
-                    <option value="ADMIN">관리자</option>
-                  </select>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <p className="text-xs text-gray-400 mt-4">
-        ※ 본인 및 다른 관리자 계정은 안전을 위해 강등/변경할 수 없습니다. 최근 접속은 이 기능 배포 후 인증된 요청이 들어온 시점부터 기록됩니다.
-        방문은 하루 단위로 셉니다(같은 날 여러 번 들어와도 1일) — 2026년 9월 28일부터 기록됐습니다. '오늘 방문'에는 관리자 계정이 빠집니다.
-      </p>
-    </div>
-  );
-}
-
-// ========== Admin: 운영 조회 (지원현황/작가이력/갤러리 게시물) ==========
-const OV_STATUS_COLORS: Record<string, string> = { SUBMITTED: 'bg-gray-100 text-gray-600', ACCEPTED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
-const OV_STATUS_LABELS: Record<string, string> = { SUBMITTED: '접수', REVIEWED: '접수', ACCEPTED: '수락', REJECTED: '거절' };
-const POST_STATUS_COLORS: Record<string, string> = { PENDING: 'bg-yellow-100 text-yellow-700', APPROVED: 'bg-green-100 text-green-600', REJECTED: 'bg-accent/10 text-accent' };
-const POST_STATUS_LABELS: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인', REJECTED: '거절' };
-const ovDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('ko') : '-');
-
-function OvBadge({ status, kind = 'app' }: { status: string; kind?: 'app' | 'post' }) {
-  const colors = kind === 'post' ? POST_STATUS_COLORS : OV_STATUS_COLORS;
-  const labels = kind === 'post' ? POST_STATUS_LABELS : OV_STATUS_LABELS;
-  return <span className={`px-2 py-0.5 text-xs rounded-full flex-none ${colors[status] || 'bg-gray-100 text-gray-600'}`}>{labels[status] || status}</span>;
-}
-
-function OvCounts({ counts }: { counts: Record<string, number> }) {
-  return (
-    <div className="flex gap-1.5 flex-wrap text-xs">
-      {[['ALL', '전체'], ['SUBMITTED', '접수'], ['ACCEPTED', '수락'], ['REJECTED', '거절']].map(([k, l]) => (
-        <span key={k} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{l} {counts[k] ?? 0}</span>
-      ))}
-    </div>
-  );
-}
-
 // ========== 개발자 도구 (Admin) — 런타임 전역 플래그 토글 ==========
 function DevToolsSection() {
   const queryClient = useQueryClient();
@@ -3307,353 +2588,6 @@ function DevToolsSection() {
           {isLoading ? '상태 확인 중...' : on ? '● 현재 활성화됨 — 전체 갤러리에 적용 중' : '○ 현재 비활성화됨 (기본값)'}
         </p>
       </div>
-    </div>
-  );
-}
-
-function OversightSection() {
-  const [view, setView] = useState<'exhibition' | 'artist' | 'gallery'>('exhibition');
-  const tabs = [{ k: 'exhibition', l: '공모 지원현황' }, { k: 'artist', l: '작가 지원이력' }, { k: 'gallery', l: '갤러리 게시물' }] as const;
-  return (
-    <div>
-      <div className="flex gap-1.5 mb-5 flex-wrap">
-        {tabs.map(t => (
-          <button key={t.k} onClick={() => setView(t.k)}
-            className={`px-3 py-1.5 text-sm rounded-full transition-colors ${view === t.k ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {t.l}
-          </button>
-        ))}
-      </div>
-      {view === 'exhibition' && <OvExhibitions />}
-      {view === 'artist' && <OvArtists />}
-      {view === 'gallery' && <OvGalleries />}
-    </div>
-  );
-}
-
-// --- 공모 지원현황 ---
-function OvExhibitions() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [q, setQ] = useState('');
-  const [submitted, setSubmitted] = useState('');
-  /*
-    `?ex=<id>` 로 들어오면 그 공모를 고른 채로 연다(2026-10-02) — 운영 화면의 [← 운영 조회]·[지원자 보기] 가 이 주소를 쓴다
-    (lib/operationLinks.ts). 관리자가 갤러리 주최 공모의 지원자를 보는 곳은 여기다(조회 전용).
-    처음 한 번만 읽는다(초깃값) — 그 뒤로는 관리자가 누른 대로 따른다.
-  */
-  const linkedExId = useRef(Number(searchParams.get('ex')) || null).current;
-  const [selId, setSelId] = useState<number | null>(linkedExId);
-  const [expanded, setExpanded] = useState<number | null>(null);
-  // 진행/종료 필터 — 갤러리 마이페이지(내 공모)와 **같은 기준**을 쓴다.
-  // 판정은 서버(`lib/exhibitionLifecycle.ts`)가 내려주는 `closed`: 정산 완료 또는
-  // 전시 종료 20일 경과(정산을 시작했으면 진행중 유지).
-  // 전시종료는 아직 정산이 남아 할 일이 있으므로 진행중에 둔다. 기준이 갈리면 두 화면의 숫자가 달라진다.
-  const [scope, setScope] = useState<'active' | 'closed'>('active');
-
-  const { data: exhibitions = [], isLoading } = useQuery<any[]>({
-    queryKey: ['ov-exhibitions', submitted],
-    queryFn: () => api.get(`/admin/exhibitions${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
-    staleTime: 0,
-  });
-  const { data: detail } = useQuery<any>({
-    queryKey: ['ov-ex-apps', selId],
-    queryFn: () => api.get(`/admin/exhibitions/${selId}/applications`).then(r => r.data),
-    enabled: !!selId,
-  });
-
-
-  // 검색 결과 안에서 나눈다 — 검색어를 지운 채 탭만 바꾸면 전체가 다시 갈린다
-  const isClosedEx = (ex: any) => ex.closed ?? !!ex.settledAt;
-  // 가리켜 들어온 공모가 '종료' 쪽이면 그 목록으로 바꿔 준다(안 그러면 고른 줄이 목록에 없다). 한 번만.
-  const scopeSynced = useRef(false);
-  useEffect(() => {
-    if (!linkedExId || scopeSynced.current || exhibitions.length === 0) return;
-    scopeSynced.current = true;
-    const hit = exhibitions.find((ex: any) => ex.id === linkedExId);
-    if (hit && isClosedEx(hit)) setScope('closed');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exhibitions, linkedExId]);
-  // 지원 현황은 목록(최대 100줄) 아래에 있다 — 가리켜 들어왔으면 거기로 내려 준다. 한 번만.
-  // ⚠️ '했다' 표시는 **실제로 내린 뒤에**(타이머 안에서) 세운다. 먼저 세우면 개발 모드(StrictMode)가 effect 를 두 번 돌릴 때
-  //    첫 번째가 표시만 남긴 채 타이머를 치우고, 두 번째는 표시를 보고 그냥 나간다 — 캐시가 따뜻할 때(운영 조회 → 운영 페이지 → 돌아옴)만 안 내려간다.
-  const detailRef = useRef<HTMLDivElement>(null);
-  const detailScrolled = useRef(false);
-  useEffect(() => {
-    // 목록까지 받은 뒤에 내린다 — 지원 현황이 먼저 오면, 뒤늦게 그려지는 목록(최대 100줄)이 그걸 다시 화면 밖으로 밀어낸다
-    if (!linkedExId || detailScrolled.current || !detail || isLoading || selId !== linkedExId) return;
-    const t = window.setTimeout(() => {
-      if (!detailRef.current) return;
-      detailScrolled.current = true;
-      detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 150);
-    return () => window.clearTimeout(t);
-  }, [detail, selId, linkedExId, isLoading]);
-  const activeList = exhibitions.filter((ex) => !isClosedEx(ex));
-  const closedList = exhibitions
-    .filter(isClosedEx)
-    .sort((a: any, b: any) => new Date(b.settledAt ?? b.exhibitDate ?? 0).getTime() - new Date(a.settledAt ?? a.exhibitDate ?? 0).getTime());
-  const shown = scope === 'closed' ? closedList : activeList;
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="공모 제목 검색 (비우면 전체)"
-          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
-        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
-      </form>
-
-      <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-        {([['active', '진행중인 공모', activeList.length], ['closed', '종료된 공모', closedList.length]] as const).map(([k, label, n]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => { setScope(k); setSelId(null); setExpanded(null); }}
-            className={`rounded-md px-3 py-1.5 text-sm transition ${scope === k ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            {label} {n > 0 && <span className="text-gray-400">{n}</span>}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : shown.length === 0 ? (
-        <p className="text-gray-500 text-center py-6 text-sm">
-          {scope === 'closed' ? '정산까지 끝난 공모가 없습니다.' : exhibitions.length > 0 ? '진행중인 공모가 없습니다.' : '공모가 없습니다.'}
-        </p>
-      ) : (
-        <div className="space-y-1.5">
-          {shown.map((ex) => (
-            <button key={ex.id} onClick={() => { setSelId(ex.id); setExpanded(null); }}
-              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === ex.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{ex.title}</p>
-                <p className="text-xs text-gray-500 truncate">{ex.gallery?.name} · 마감 {ovDate(ex.deadline)}</p>
-              </div>
-              <div className="flex items-center gap-2 flex-none">
-                {ex.settledAt
-                  ? <span className="shrink-0 whitespace-nowrap text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">정산 완료</span>
-                  : ex.ended && <span className="shrink-0 whitespace-nowrap text-[11px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">정산 단계</span>}
-                <OvBadge status={ex.status} kind="post" />
-                <span className="text-xs text-gray-500">지원 {ex._count?.applications ?? 0}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selId && detail && (
-        <div ref={detailRef} data-testid="ov-ex-detail" className="scroll-mt-24 border-t border-gray-200 pt-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-900">{detail.exhibition.title} — 지원 현황</p>
-            <button
-              onClick={() => navigate(`/exhibitions/${selId}/operation/new`)}
-              className="text-xs text-gray-900 font-medium hover:underline flex items-center gap-1 shrink-0"
-            >
-              <ClipboardList size={12} /> 운영 페이지
-            </button>
-          </div>
-          <OvCounts counts={detail.counts} />
-          {detail.applications.length === 0 ? (
-            <p className="text-gray-400 text-center py-4 text-sm">지원자가 없습니다.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {detail.applications.map((app: any) => {
-                const isOpen = expanded === app.id;
-                return (
-                  <div key={app.id} className={`border rounded-lg ${app.isFirstApplication ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
-                    <button onClick={() => setExpanded(isOpen ? null : app.id)} className="w-full text-left p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900 truncate">{nameWithNickname(app.user)}</p>
-                          {app.isFirstApplication ? (
-                            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap flex-none">★ 첫 지원</span>
-                          ) : (
-                            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap flex-none">이 갤러리 {app.galleryApplicationOrder}번째</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 truncate">{app.user.email} · 지원 {ovDate(app.appliedAt)}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-none">
-                        <OvBadge status={app.status} />
-                        {(app.status === 'ACCEPTED' || app.status === 'REJECTED') && (
-                          <span className="text-xs text-gray-400">{ovDate(app.decidedAt)} 결정</span>
-                        )}
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="px-3 pb-3 border-t border-gray-50 pt-2">
-                        <ApplicationContent app={app} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- 작가 지원이력 ---
-function OvArtists() {
-  const [q, setQ] = useState('');
-  const [submitted, setSubmitted] = useState('');
-  const [selId, setSelId] = useState<number | null>(null);
-
-  const { data: users = [], isLoading } = useQuery<any[]>({
-    queryKey: ['ov-users', submitted],
-    queryFn: () => api.get(`/admin/users${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
-    staleTime: 0,
-  });
-  const { data: detail } = useQuery<any>({
-    queryKey: ['ov-user-apps', selId],
-    queryFn: () => api.get(`/admin/users/${selId}/applications`).then(r => r.data),
-    enabled: !!selId,
-  });
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="작가 이름/이메일 검색"
-          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
-        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
-      </form>
-
-      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : users.length === 0 ? (
-        <p className="text-gray-400 text-center py-6 text-sm">검색 결과가 없습니다.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {users.filter((u) => u.role === 'ARTIST').map((u) => (
-            <button key={u.id} onClick={() => setSelId(u.id)}
-              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === u.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{u.name}</p>
-                <p className="text-xs text-gray-500 truncate">{u.email}</p>
-              </div>
-              <span className="text-xs text-gray-400 flex-none">작가</span>
-            </button>
-          ))}
-          {users.filter((u) => u.role === 'ARTIST').length === 0 && (
-            <p className="text-gray-400 text-center py-6 text-sm">작가(ARTIST) 계정이 없습니다.</p>
-          )}
-        </div>
-      )}
-
-      {selId && detail && (
-        <div className="border-t border-gray-200 pt-4 space-y-3">
-          <p className="text-sm font-semibold text-gray-900">{nameWithNickname(detail.user)} — 지원 이력</p>
-          <OvCounts counts={detail.counts} />
-          {detail.applications.length === 0 ? (
-            <p className="text-gray-400 text-center py-4 text-sm">지원 이력이 없습니다.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {detail.applications.map((a: any) => (
-                <div key={a.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{a.exhibition?.title || '(삭제된 공모)'}</p>
-                    <p className="text-xs text-gray-500 truncate">{a.gallery?.name} · 지원 {ovDate(a.appliedAt)}</p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-none">
-                    <OvBadge status={a.status} />
-                    {(a.status === 'ACCEPTED' || a.status === 'REJECTED') && (
-                      <span className="text-xs text-gray-400">{ovDate(a.decidedAt)}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- 갤러리 게시물(공모+전시) ---
-function OvGalleries() {
-  const [q, setQ] = useState('');
-  const [submitted, setSubmitted] = useState('');
-  const [selId, setSelId] = useState<number | null>(null);
-
-  const { data: galleries = [], isLoading } = useQuery<any[]>({
-    queryKey: ['ov-galleries', submitted],
-    queryFn: () => api.get(`/admin/galleries${submitted ? `?q=${encodeURIComponent(submitted)}` : ''}`).then(r => r.data),
-    staleTime: 0,
-  });
-  const { data: detail } = useQuery<any>({
-    queryKey: ['ov-gallery-posts', selId],
-    queryFn: () => api.get(`/admin/galleries/${selId}/posts`).then(r => r.data),
-    enabled: !!selId,
-  });
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={(e) => { e.preventDefault(); setSubmitted(q.trim()); setSelId(null); }} className="flex gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="갤러리 이름 검색 (비우면 전체)"
-          className="min-w-0 flex-1 p-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
-        <button type="submit" className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">검색</button>
-      </form>
-
-      {isLoading ? <div className="h-16 bg-gray-100 animate-pulse rounded-lg" /> : galleries.length === 0 ? (
-        <p className="text-gray-400 text-center py-6 text-sm">갤러리가 없습니다.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {galleries.map((g) => (
-            <button key={g.id} onClick={() => setSelId(g.id)}
-              className={`w-full text-left p-3 border rounded-lg flex items-center justify-between gap-2 transition-colors ${selId === g.id ? 'border-gray-900 bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{g.name}</p>
-                <p className="text-xs text-gray-500 truncate">{g.owner?.name} · 공모 {g._count?.exhibitions ?? 0} · 전시 {g._count?.shows ?? 0}</p>
-              </div>
-              <OvBadge status={g.status} kind="post" />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selId && detail && (
-        <div className="border-t border-gray-200 pt-4 space-y-4">
-          <p className="text-sm font-semibold text-gray-900">{detail.gallery.name} — 게시물</p>
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-1.5">공모 ({detail.exhibitions.length})</p>
-            {detail.exhibitions.length === 0 ? (
-              <p className="text-gray-400 text-xs py-2">등록한 공모가 없습니다.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {detail.exhibitions.map((ex: any) => (
-                  <div key={ex.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{ex.title}</p>
-                      <p className="text-xs text-gray-500 truncate">마감 {ovDate(ex.deadline)} · 지원 {ex._count?.applications ?? 0} · 등록 {ovDate(ex.createdAt)}</p>
-                    </div>
-                    <OvBadge status={ex.status} kind="post" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-1.5">전시 ({detail.shows.length})</p>
-            {detail.shows.length === 0 ? (
-              <p className="text-gray-400 text-xs py-2">등록한 전시가 없습니다.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {detail.shows.map((s: any) => (
-                  <div key={s.id} className="p-3 border border-gray-100 rounded-lg flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{s.title}</p>
-                      <p className="text-xs text-gray-500 truncate">{ovDate(s.startDate)} ~ {ovDate(s.endDate)} · 등록 {ovDate(s.createdAt)}</p>
-                    </div>
-                    <OvBadge status={s.status} kind="post" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

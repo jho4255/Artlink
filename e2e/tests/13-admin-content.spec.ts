@@ -19,19 +19,4 @@ test('히어로 슬라이드 생성 → 홈 노출', async ({ browser }) => {
   await ctx.close();
 });
 
-/**
- * 혜택 페이지는 당분간 비활성화 — /benefits 가 홈으로 리다이렉트된다(App.tsx).
- * 백엔드 API 와 Admin '혜택 관리' 탭은 살아 있으므로, 페이지를 되살리면 skip 만 풀면 된다.
- */
-test.skip('혜택 생성 → 혜택 페이지 노출', async ({ browser }) => {
-  const api = await pwRequest.newContext();
-  const adminTok = tokenFor('admin');
-  const TITLE = 'E2E 혜택 ' + Date.now();
-  await api.post(`${API}/benefits`, { headers: { Authorization: `Bearer ${adminTok}` }, data: { title: TITLE, description: 'E2E 혜택 설명' } });
-  await api.dispose();
-
-  const { page, ctx } = await openAs(browser, 'artist');
-  await page.goto('/benefits');
-  await expect(page.getByText(TITLE, { exact: false })).toBeVisible({ timeout: 10000 });
-  await ctx.close();
-});
+// 혜택 생성 → 혜택 페이지 노출 테스트는 지웠다 — 혜택 기능을 2026-11-21 에 없앴다(/benefits 는 홈으로, 31 이 본다)
