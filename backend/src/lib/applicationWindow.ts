@@ -32,7 +32,6 @@ export const ALREADY_DECIDED = '이미 결과가 나온 지원이에요.';
 /** 거절 버튼은 없다 — 옛 화면이 보내 와도 막는다 */
 export const NO_REJECT = '거절은 따로 하지 않아요. 수락하지 않은 지원자는 선정이 끝나면 미선정이 돼요.';
 export const FINISH_AFTER_CLOSE = '접수가 끝난 뒤에 선정을 마칠 수 있어요.';
-export const FINISH_HAS_DEADLINE = '선정 마감일이 있는 공고는 그날이 지나면 선정이 끝나요.';
 
 type WindowExhibition = { status: string; recruitmentClosed: boolean; ended: boolean; deadline: Date | string };
 type SelectionExhibition = { recruitmentClosed: boolean; deadline: Date | string; selectionDeadline?: Date | string | null };
@@ -74,4 +73,23 @@ export async function closeOutPendingApplications(tx: Prisma.TransactionClient, 
   return tx.$executeRaw`
     UPDATE "Application" SET "status" = 'REJECTED', "closedOutAt" = NOW(), "updatedAt" = NOW()
     WHERE "exhibitionId" = ${exhibitionId} AND "status" IN ('SUBMITTED', 'REVIEWED')`;
+}
+
+/**
+ * **정원을 다 뽑으면 선정이 끝난다**(2026-11-21 사용자 결정 — "정원 다 뽑으면 자동으로 선정 마치기"). 선정 기간(접수가 끝난 뒤)에
+ * 수락 수가 정원에 닿아 있으면 남은 검토 대기를 미선정으로(알림 없음 · 되돌릴 수 없다). 바꾼 수를 돌려준다.
+ * 갤러리 수락 · 초대 코드 참여 · 모집 인원 변경 · 모집 마감이 **같은 트랜잭션(자리 잠금) 안에서** 부른다 — 화면은 마지막 자리를
+ * 수락할 때·인원을 줄일 때·마감할 때 확인창에서 미리 말한다. 접수 마감일이 지나 선정이 저절로 시작된 공모는
+ * `closeOutExpiredSelections`(lib/selectionDeadline.ts)가 읽을 때 같은 규칙으로 정리한다.
+ * ⚠️ 접수 중에는 아무것도 안 한다 — 초대 코드로 정원이 차도 작가는 아직 지원서를 고치거나 취소할 수 있다. 선정이 시작될 때 끝난다.
+ */
+export async function closeOutIfFull(
+  tx: Prisma.TransactionClient,
+  ex: { id: number; capacity: number; recruitmentClosed: boolean; deadline: Date | string },
+  now: Date = new Date(),
+): Promise<number> {
+  if (!selectionStarted(ex, now)) return 0;
+  const accepted = await tx.application.count({ where: { exhibitionId: ex.id, status: 'ACCEPTED' } });
+  if (accepted < ex.capacity) return 0;
+  return closeOutPendingApplications(tx, ex.id);
 }

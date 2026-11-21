@@ -245,3 +245,120 @@ describe('다른 날짜를 바꿀 때도 순서를 지킨다', () => {
     expect(approve.body.error).toBe('선정 마감일은 접수 마감일보다 뒤여야 해요.');
   });
 });
+
+/**
+ * 정원을 다 뽑으면 선정이 끝난다 (2026-11-21 사용자 결정 — "정원 다 뽑으면 자동으로 선정 마치기").
+ * 선정 기간(접수가 끝난 뒤)에 수락 수가 정원에 닿으면 남은 검토 대기는 **알림 없이** 미선정(`closedOutAt`) — 되돌릴 수 없다.
+ * 갤러리 수락 · 초대 코드 참여 · 모집 인원 변경 · 모집 마감이 그 자리에서, 접수 마감일이 지나 저절로 선정이 시작된 공모는 읽을 때 정리한다.
+ */
+describe('정원을 다 뽑으면 선정이 끝난다', () => {
+  const accept = (exId: number, appId: number, tok = ownerTok) =>
+    request.patch(`/api/exhibitions/${exId}/applications/${appId}`).set('Authorization', `Bearer ${tok}`).send({ status: 'ACCEPTED' });
+  const statusOf = async (exId: number, userId: number) => testPrisma.application.findFirstOrThrow({ where: { exhibitionId: exId, userId } });
+  const extraArtists = async (ids: number[]) => {
+    for (const id of ids) await testPrisma.user.upsert({ where: { id }, create: { id, email: `artist${id}@test.com`, name: `Artist ${id}`, role: 'ARTIST' }, update: {} });
+  };
+  const statusNotes = (userId: number) => testPrisma.notification.count({ where: { userId, type: 'APPLICATION_STATUS' } });
+
+  it('★ 마지막 자리를 수락하면 남은 검토 대기는 그 자리에서 미선정 — 알림 없음 · 응답에 그 수 · 다시 수락할 수 없다(새 공고·옛 공고)', async () => {
+    await extraArtists([101]);
+    for (const sel of [5, null]) {
+      const { exId, ids } = await selecting(5, { 1: 'SUBMITTED', 2: 'SUBMITTED', 101: 'SUBMITTED' }, { capacity: 2, selectionDeadline: sel == null ? null : at(sel) });
+      const first = await accept(exId, ids[1]!);
+      expect(first.status).toBe(200);
+      expect(first.body.closedOut, '아직 한 자리가 남았다').toBe(0);
+      expect((await statusOf(exId, 2)).status).toBe('SUBMITTED');
+      const last = await accept(exId, ids[2]!);
+      expect(last.status).toBe(200);
+      expect(last.body.closedOut, `선정 마감일 ${sel}`).toBe(1);
+      const left = await statusOf(exId, 101);
+      expect(left.status).toBe('REJECTED');
+      expect(left.closedOutAt).not.toBeNull();
+      // 미선정에는 알림이 없다(선정된 두 명만 받는다)
+      expect(await testPrisma.notification.count({ where: { userId: 101, type: 'APPLICATION_STATUS', message: { contains: 'Test Exhibition' } } })).toBe(0);
+      const again = await accept(exId, ids[101]!);
+      expect(again.status).toBe(400);
+      expect(again.body.error).toBe(SELECTION_FINISHED);
+    }
+  });
+
+  it('★ 동시에 수락해도 정원을 넘지 않는다 — 남은 2자리에 4건이면 수락 2 · 나머지 미선정 · 500 없음', async () => {
+    await extraArtists([101, 102]);
+    for (let round = 0; round < 3; round++) {
+      const { exId, ids } = await selecting(5, { 1: 'SUBMITTED', 2: 'SUBMITTED', 101: 'SUBMITTED', 102: 'SUBMITTED' }, { capacity: 2 });
+      const res = await Promise.all([1, 2, 101, 102].map((u) => accept(exId, ids[u]!)));
+      expect(res.every((r) => r.status === 200 || r.status === 400), `회차 ${round}: ${res.map((r) => r.status)}`).toBe(true);
+      expect(res.filter((r) => r.status === 200)).toHaveLength(2);
+      const apps = await testPrisma.application.findMany({ where: { exhibitionId: exId } });
+      expect(apps.filter((a) => a.status === 'ACCEPTED')).toHaveLength(2);
+      expect(apps.filter((a) => a.status === 'REJECTED' && a.closedOutAt)).toHaveLength(2);
+    }
+  });
+
+  it('★ 초대 코드 — 접수 중엔 정원이 차도 그대로 · 선정 기간이면 끝', async () => {
+    await extraArtists([101]);
+    const a101 = authToken(101, 'ARTIST');
+    const join = (code: string, tok: string) => request.post('/api/exhibitions/join').set('Authorization', `Bearer ${tok}`).send({ code });
+    // 접수 중 — 코드로 정원(1)이 차도 검토 대기는 그대로(작가가 아직 지원서를 고치거나 취소할 수 있다)
+    const open = await seedExhibition(galleryId);
+    await testPrisma.exhibition.update({ where: { id: open.id }, data: { capacity: 1 } });
+    await testPrisma.application.create({ data: { userId: 1, exhibitionId: open.id, status: 'SUBMITTED' } });
+    await testPrisma.exhibitionJoinCode.create({ data: { exhibitionId: open.id, code: 'ABCD2345' } });
+    expect([200, 201]).toContain((await join('ABCD2345', a101)).status);
+    expect((await statusOf(open.id, 1)).status).toBe('SUBMITTED');
+    // 선정 기간 — 코드로 마지막 자리가 차면 남은 검토 대기는 미선정
+    const { exId } = await selecting(5, { 1: 'SUBMITTED', 2: 'ACCEPTED' }, { capacity: 2 });
+    await testPrisma.exhibitionJoinCode.create({ data: { exhibitionId: exId, code: 'EFGH6789' } });
+    expect([200, 201]).toContain((await join('EFGH6789', a101)).status);
+    const left = await statusOf(exId, 1);
+    expect(left.status).toBe('REJECTED');
+    expect(left.closedOutAt).not.toBeNull();
+  });
+
+  it('★ 모집 인원을 수락한 수만큼으로 줄이면 끝 — 접수 중엔 그대로', async () => {
+    const change = (exId: number, capacity: number) => request.patch(`/api/exhibitions/${exId}/capacity`).set('Authorization', `Bearer ${ownerTok}`).send({ capacity });
+    const { exId } = await selecting(5, { 1: 'ACCEPTED', 2: 'SUBMITTED' }, { capacity: 3 });
+    const r = await change(exId, 1);
+    expect(r.status).toBe(200);
+    expect(r.body.closedOut).toBe(1);
+    expect((await statusOf(exId, 2)).status).toBe('REJECTED');
+    // 접수 중
+    const open = await seedExhibition(galleryId);
+    await testPrisma.application.createMany({ data: [{ userId: 1, exhibitionId: open.id, status: 'ACCEPTED' }, { userId: 2, exhibitionId: open.id, status: 'SUBMITTED' }] });
+    const r2 = await change(open.id, 1);
+    expect(r2.status).toBe(200);
+    expect(r2.body.closedOut).toBe(0);
+    expect((await statusOf(open.id, 2)).status).toBe('SUBMITTED');
+  });
+
+  it('★ 모집 마감 때 이미 정원이 차 있으면(초대 코드) 마감과 함께 끝 — 아니면 그대로', async () => {
+    const close = (exId: number) => request.patch(`/api/operations/${exId}/lifecycle`).set('Authorization', `Bearer ${ownerTok}`).send({ recruitmentClosed: true });
+    const full = await seedExhibition(galleryId);
+    await testPrisma.exhibition.update({ where: { id: full.id }, data: { capacity: 1 } });
+    await testPrisma.application.createMany({ data: [{ userId: 1, exhibitionId: full.id, status: 'ACCEPTED', joinedVia: 'CODE' }, { userId: 2, exhibitionId: full.id, status: 'SUBMITTED' }] });
+    const r = await close(full.id);
+    expect(r.status).toBe(200);
+    expect(r.body.rejectedCount).toBe(1);
+    expect((await statusOf(full.id, 2)).status).toBe('REJECTED');
+    const room = await seedExhibition(galleryId);
+    await testPrisma.application.createMany({ data: [{ userId: 1, exhibitionId: room.id, status: 'ACCEPTED', joinedVia: 'CODE' }, { userId: 2, exhibitionId: room.id, status: 'SUBMITTED' }] });
+    const r2 = await close(room.id);
+    expect(r2.body.rejectedCount).toBe(0);
+    expect((await statusOf(room.id, 2)).status).toBe('SUBMITTED');
+  });
+
+  it('★ 접수 마감일이 지나 저절로 선정이 시작됐는데 정원이 이미 차 있으면 — 지원자 목록·훑기가 정리한다', async () => {
+    const ex = await seedExhibition(galleryId);
+    await testPrisma.exhibition.update({ where: { id: ex.id }, data: { capacity: 1, deadline: at(-1) } });
+    await testPrisma.application.createMany({ data: [{ userId: 1, exhibitionId: ex.id, status: 'ACCEPTED', joinedVia: 'CODE' }, { userId: 2, exhibitionId: ex.id, status: 'SUBMITTED' }] });
+    expect(await closeOutExpiredSelections({ exhibitionIds: [ex.id] })).toBe(1);
+    expect((await statusOf(ex.id, 2)).status).toBe('REJECTED');
+    // 아직 접수 중이면 정원이 차 있어도 그대로
+    const open = await seedExhibition(galleryId);
+    await testPrisma.exhibition.update({ where: { id: open.id }, data: { capacity: 1 } });
+    await testPrisma.application.createMany({ data: [{ userId: 1, exhibitionId: open.id, status: 'ACCEPTED', joinedVia: 'CODE' }, { userId: 2, exhibitionId: open.id, status: 'SUBMITTED' }] });
+    await sweepSelectionDeadlines();
+    expect((await statusOf(open.id, 2)).status).toBe('SUBMITTED');
+    expect(await statusNotes(2)).toBe(0);
+  });
+});

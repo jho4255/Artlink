@@ -68,7 +68,11 @@ export function assertSelectionOrder(selection: Date, deadline: Date, submission
 }
 
 /**
- * 선정 마감일이 지난 공모의 남은 검토 대기 → 미선정(`closedOutAt`). **알림 없음**. 바꾼 수를 돌려준다.
+ * 선정이 끝난 공모의 남은 검토 대기 → 미선정(`closedOutAt`). **알림 없음**. 바꾼 수를 돌려준다. 끝났다 = 둘 중 하나:
+ *  ① 선정 마감일이 지났다
+ *  ② 선정 기간(모집 마감 또는 접수 마감일 경과)인데 정원이 다 찼다 — "정원 다 뽑으면 자동으로 선정 마치기"(2026-11-21 사용자 결정).
+ *     수락·코드 참여·인원 변경·모집 마감은 그 트랜잭션에서 바로 정리한다(`closeOutIfFull`). 여기는 접수 마감일이 지나
+ *     선정이 **저절로** 시작된 공모(초대 코드로 이미 정원이 찬 채)를 잡는다 — 그때는 아무도 누르지 않으니까.
  * 거르기: `exhibitionIds`(지원자 목록 — 그 공모만) · `userId`(작가의 내 지원 목록 — 그 작가 것만) · 없으면 전체(훑기).
  * `closeOutPendingApplications`(선정 마치기·전시 확정·종료)와 같은 표시를 남긴다 — 화면은 둘을 가르지 않는다('미선정').
  */
@@ -80,12 +84,22 @@ export async function closeOutExpiredSelections(
   const cutoff = startOfTodayKstAsUtc(now);
   const byExhibition = opts.exhibitionIds ? Prisma.sql`AND e."id" IN (${Prisma.join(opts.exhibitionIds)})` : Prisma.empty;
   const byUser = opts.userId != null ? Prisma.sql`AND a."userId" = ${opts.userId}` : Prisma.empty;
-  return prisma.$executeRaw`
+  const expired = await prisma.$executeRaw`
     UPDATE "Application" a SET "status" = 'REJECTED', "closedOutAt" = NOW(), "updatedAt" = NOW()
     FROM "Exhibition" e
     WHERE a."exhibitionId" = e."id" AND a."status" IN ('SUBMITTED', 'REVIEWED')
       AND e."selectionDeadline" IS NOT NULL AND e."selectionDeadline" < ${cutoff}
       ${byExhibition} ${byUser}`;
+  // 접수 마감일 비교는 `isDeadlinePassedKst` 와 같다(deadline < 오늘 KST 0시)
+  const full = await prisma.$executeRaw`
+    UPDATE "Application" a SET "status" = 'REJECTED', "closedOutAt" = NOW(), "updatedAt" = NOW()
+    FROM "Exhibition" e
+    WHERE a."exhibitionId" = e."id" AND a."status" IN ('SUBMITTED', 'REVIEWED')
+      AND (e."recruitmentClosed" = true OR e."deadline" < ${cutoff})
+      AND e."capacity" > 0
+      AND (SELECT COUNT(*) FROM "Application" x WHERE x."exhibitionId" = e."id" AND x."status" = 'ACCEPTED') >= e."capacity"
+      ${byExhibition} ${byUser}`;
+  return expired + full;
 }
 
 /** 선정 마감 알림 글 — 오늘이면 '오늘이 지나면 미선정', 아니면 며칠 남았는지 */

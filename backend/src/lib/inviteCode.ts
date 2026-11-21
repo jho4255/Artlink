@@ -1,4 +1,5 @@
 import { randomInt } from 'crypto';
+import { LOCK_NS } from './keyLock';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 /**
@@ -65,16 +66,37 @@ export async function selectedCounts(db: Db, exhibitionIds: number[]): Promise<M
 // 자리가 찼을 때의 문구는 lib/capacity.ts `seatsFullMessage` — 0명·00명 공고면 한도를 함께 밝힌다(2026-10-14)
 
 /**
- * 자리(정원)를 지키는 Serializable 트랜잭션 — 동시에 부딪혀 Postgres 가 한쪽을 되돌리면(P2034) 두 번까지 다시 시도한다.
- * 안 그러면 마지막 자리를 두고 둘이 동시에 수락할 때 진 쪽이 '데이터 처리 중 오류'(errorHandler 의 400)를 받는다 —
- * 다시 세면 '정원이 찼다'는 제대로 된 안내가 나간다.
+ * 동시에 부딪혀 Postgres 가 한쪽을 되돌린 것인가 — 다시 하면 되는 실패.
+ *  · P2034 — Prisma 가 직렬화 충돌·교착을 이 코드로 준다
+ *  · P2010 + 40001(직렬화 실패) / 40P01(교착) — **raw 쿼리**(`$executeRaw`)에서 나면 Prisma 가 감싸지 않고 이렇게 준다
  */
-export async function withSeatLock<T>(db: PrismaClient, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+function isRetryableConflict(e: any): boolean {
+  if (e?.code === 'P2034') return true;
+  if (e?.code !== 'P2010') return false;
+  const pg = String(e?.meta?.code ?? '');
+  return pg === '40001' || pg === '40P01' || /Code: `(40001|40P01)`/.test(String(e?.message ?? ''));
+}
+
+/**
+ * 자리(정원)를 지킨다 — **공모마다 줄을 세운다**(트랜잭션 advisory lock, `LOCK_NS.exhibitionSeats`). 수락 · 초대 코드 참여 · 모집 인원 변경이
+ * 이걸 지나므로 같은 공모의 '세고 나서 바꾸기'가 겹치지 않는다(규칙 46). 잠근 뒤의 읽기는 Read Committed 라 앞사람이 끝낸 것까지 본다.
+ * ⚠️ 2026-11-21 까지는 Serializable(부딪히면 되돌리고 두 번 다시)이었다. 정원을 다 채운 수락이 남은 검토 대기를 한 번에 미선정으로 바꾸게 되면서
+ *    (closeOutIfFull) 동시에 들어온 다른 수락과 같은 줄을 건드려 **교착**이 났고(동시 수락 5건 테스트), 재시도도 바닥났다. 줄을 세우면 부딪힐 일이 없다.
+ * 그래도 잠금 밖의 쓰기(선정 마치기 · 모집 마감 · 읽을 때의 정리)와 교착이 날 수 있어, 그런 실패는 조금 쉬었다가 다시 한다(최대 5번 더).
+ * ⚠️ 잠근 뒤의 읽기·쓰기는 **반드시 `tx` 로**.
+ */
+export async function withSeatLock<T>(db: PrismaClient, exhibitionId: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await db.$transaction(fn, { isolationLevel: 'Serializable' });
+      return await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_NS.exhibitionSeats}::int, ${exhibitionId}::int)`;
+        return fn(tx);
+      }, { maxWait: 10_000, timeout: 15_000 });
     } catch (e: any) {
-      if (e?.code === 'P2034' && attempt < 2) continue;
+      if (isRetryableConflict(e) && attempt < 5) {
+        await new Promise((r) => setTimeout(r, 10 + Math.random() * 30 * (attempt + 1)));
+        continue;
+      }
       throw e;
     }
   }

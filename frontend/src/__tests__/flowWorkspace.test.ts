@@ -217,7 +217,8 @@ describe('화면 소스 가드 — 되돌리기 쉬운 것', () => {
   it('지원자 심사: 넓은 화면은 두 칸, 좁은 화면은 한 장씩 창(role=dialog) · 결정하면 다음 검토 대기로', () => {
     expect(am).toMatch(/useMediaQuery\('\(min-width: 1180px\)'\)/);
     expect(am).toMatch(/function ApplicantSheet[\s\S]*role="dialog" aria-modal="true"/);
-    expect(am).toMatch(/const next = nextPendingAfter\(v\.appId\)/);
+    // 정원이 다 차 선정이 끝났으면(서버 closedOut) 넘어갈 사람이 없다 — 그 밖엔 다음 검토 대기로
+    expect(am).toMatch(/const next = closedOut > 0 \? null : nextPendingAfter\(v\.appId\)/);
   });
 
   it('지원서: 약관은 [지원하기] 확인 창 안(D5) — 폼 끝 약관 구역·\'위 약관에 동의합니다\' 없음', () => {

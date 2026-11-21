@@ -24,7 +24,7 @@ import { STALE_AFTER_DAYS } from '../lib/exhibitionLifecycle';
 import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib/settlementDeadline';
 import { parseSubmissionBody, readArtworkList, readCv, readNote } from '../lib/submissionSchema';
 import { isSubmissionComplete, notifySubmissionReceived, notifyExhibitionConfirmed, notifySettlementAllApproved } from '../lib/flowNotify';
-import { closeOutPendingApplications, FINISH_AFTER_CLOSE, FINISH_HAS_DEADLINE, selectionStarted } from '../lib/applicationWindow';
+import { closeOutIfFull, closeOutPendingApplications, FINISH_AFTER_CLOSE, selectionStarted } from '../lib/applicationWindow';
 
 const router = Router();
 
@@ -53,6 +53,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
       id: true, title: true, galleryId: true, hostType: true, recruitOnly: true,
       recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true, exhibitDate: true,
       deadline: true, selectionDeadline: true,   // 선정을 시작했나(접수 마감일 경과) · 선정 마감일 — 규칙 90
+      capacity: true,                            // 모집 마감 때 정원이 이미 다 차 있으면 선정이 끝난다(closeOutIfFull)
       cardFeeRate: true,
       gallery: { select: { ownerId: true, name: true } },
       // 아트링크 주최 공모는 admin 이 지정한 운영 갤러리도 오너와 동일하게 운영한다
@@ -686,14 +687,16 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
         data[field] === true
         && (await tx.exhibition.updateMany({ where: { id: exhibitionId, [field]: false }, data: { [field]: true } })).count === 1;
       // 모집 마감을 차지하면 공모 행이 잠긴다 — 같은 때 들어온 지원·지원서 수정·취소(`lockOpenExhibition`)가 기다렸다가 '마감됨'을 본다
-      await claim('recruitmentClosed');
+      const closedNow = await claim('recruitmentClosed');
       const confirmedNow = await claim('confirmed');
       /*
         선정은 **모집 마감 뒤**에 한다(2026-11-21 사용자 결정, 규칙 90) — 그래서 마감하는 순간엔 아무도 미선정으로 바꾸지 않는다.
         전시를 확정하거나 종료하면 선정이 끝난 것이다: 그때 남은 검토 대기는 미선정 — **알림 없이**. ([선정 마치기]가 더 일찍 같은 일을 한다)
       */
       const endedNow = data.ended === true && !curEnded;
-      const rejectedCount = confirmedNow || endedNow ? await closeOutPendingApplications(tx, exhibitionId) : 0;
+      // 마감하는 순간 정원이 이미 다 차 있으면(초대 코드) 고를 자리가 없다 — 선정도 함께 끝난다(closeOutIfFull, 확인창이 미리 말한다)
+      const rejectedCount = confirmedNow || endedNow ? await closeOutPendingApplications(tx, exhibitionId)
+        : closedNow ? await closeOutIfFull(tx, { ...exhibition, recruitmentClosed: true }) : 0;
       const updated = await tx.exhibition.update({
         where: { id: exhibitionId },
         data,
@@ -718,9 +721,8 @@ router.patch('/:id/lifecycle', authenticate, async (req, res, next) => {
 
 /**
  * [선정 마치기] — 남은 검토 대기를 미선정으로(2026-11-21, 규칙 90). **알림 없이 · 되돌릴 수 없다**.
- * **선정 마감일이 없는 옛 공고만**(이미 올라간 공고는 그대로 둔다 — 사용자 결정): 그런 공고는 남은 사람이 미선정이 될 날이 없어서,
- * 특히 공모만 진행하는 공고는 다음 단계도 없어 계속 '심사 중'으로 남는다. 화면은 [⋯] 메뉴에만 둔다.
- * 새 공고는 선정 마감일이 그 일을 한다(lib/selectionDeadline.ts) — 여기로 오면 400.
+ * **모든 공고**(사용자 결정 — "마감일 전에 끝내거나 · 더 적게 뽑고 끝내거나 · 아무도 안 뽑을 때 필요하다"). 선정 마감일이 있는 새 공고는
+ * 그날을 기다리지 않고 지금 끝낸다. 접수가 끝난 뒤에만. 화면은 할 일 줄(휴대폰은 아래 고정 줄)과 [내 공모] 목록 줄 — [⋯] 메뉴엔 없다.
  */
 router.post('/:id/finish-selection', authenticate, async (req, res, next) => {
   try {
@@ -728,7 +730,6 @@ router.post('/:id/finish-selection', authenticate, async (req, res, next) => {
     const { isOwner, isAdmin, exhibition } = await getAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (exhibition.settledAt && !isAdmin) throw new AppError('정산이 완료되어 운영 페이지를 수정할 수 없습니다.', 403);
-    if (exhibition.selectionDeadline) throw new AppError(FINISH_HAS_DEADLINE, 400);
     if (!selectionStarted(exhibition)) throw new AppError(FINISH_AFTER_CLOSE, 400);
     const closedOut = await prisma.$transaction((tx) => closeOutPendingApplications(tx, exhibitionId));
     res.json({ closedOut });

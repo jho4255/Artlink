@@ -213,13 +213,17 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
   const updateStatus = useMutation({
     mutationFn: ({ appId, status }: { appId: number; status: string }) =>
       api.patch(`/exhibitions/${exhibitionId}/applications/${appId}`, { status }),
-    onSuccess: (_d, v) => {
+    onSuccess: (res, v) => {
       invalidate();
+      // 이 수락으로 정원이 다 찼다 — 서버가 선정을 끝내고 남은 검토 대기를 미선정으로 바꿨다(closeOutIfFull, 규칙 90)
+      const closedOut: number = res?.data?.closedOut ?? 0;
       // REJECTED 는 개발자 도구의 '수락 되돌리기'뿐이다(거절 버튼은 없다, 규칙 90)
-      toast.success(v.status === 'ACCEPTED' ? '수락했습니다. 작가에게 알림이 갑니다.' : v.status === 'REJECTED' ? '수락을 되돌렸어요.' : '상태를 바꿨습니다.');
-      // 수락했으면 다음 검토 대기로 — 예전엔 접고 → 스크롤 → 다음을 펼쳐야 했다(2026-11-20)
+      toast.success(v.status === 'ACCEPTED'
+        ? (closedOut > 0 ? `수락했어요. 정원이 다 차서 선정이 끝났어요 — 검토 대기 ${closedOut}명은 미선정이 됐어요.` : '수락했습니다. 작가에게 알림이 갑니다.')
+        : v.status === 'REJECTED' ? '수락을 되돌렸어요.' : '상태를 바꿨습니다.', { duration: closedOut > 0 ? 6000 : undefined });
+      // 수락했으면 다음 검토 대기로 — 예전엔 접고 → 스크롤 → 다음을 펼쳐야 했다(2026-11-20). 선정이 끝났으면 넘어갈 사람이 없다
       if (v.status === 'ACCEPTED') {
-        const next = nextPendingAfter(v.appId);
+        const next = closedOut > 0 ? null : nextPendingAfter(v.appId);
         if (next != null) setFocusId(next);
         else if (!twoPane) setSheetOpen(false);
       }
@@ -247,7 +251,10 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
       const fail = results.length - ok;
       // 실패 이유도 같이 — 일괄 수락이 선정 인원(정원)에 걸리면 '몇 건 실패'만으로는 왜인지 모른다(2026-09-27)
       const reason = (results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined)?.reason?.response?.data?.error;
-      if (fail === 0) toast.success(`${ok}명을 수락했습니다.`);
+      // 마지막 자리까지 채웠으면 서버가 선정을 끝냈다 — 미선정이 된 수(closeOutIfFull)
+      const closedOut = results.reduce((n, r) => n + (r.status === 'fulfilled' ? (r.value?.data?.closedOut ?? 0) : 0), 0);
+      if (fail === 0 && closedOut > 0) toast.success(`${ok}명을 수락했어요. 정원이 다 차서 선정이 끝났어요 — 검토 대기 ${closedOut}명은 미선정이 됐어요.`, { duration: 6000 });
+      else if (fail === 0) toast.success(`${ok}명을 수락했습니다.`);
       else toast.error(`${ok}건 처리, ${fail}건 실패${reason ? ` — ${reason}` : ''}`, { duration: 6000 });
       setSelectedIds(new Set());
     } finally { setBatchPending(false); }
@@ -375,7 +382,7 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
         <SelectionDeadlineEditor exhibitionId={exhibitionId} selectionDeadline={selectionDeadline!} deadline={deadline} submissionDeadline={submissionDeadline} onDone={() => setEditingSelection(false)} />
       )}
       {canEditCapacity && editingCapacity && (
-        <CapacityEditor exhibitionId={exhibitionId} capacity={capacity ?? null} capacityMask={capacityMask} accepted={accepted} onDone={() => setEditingCapacity(false)} />
+        <CapacityEditor exhibitionId={exhibitionId} capacity={capacity ?? null} capacityMask={capacityMask} accepted={accepted} pending={counts.SUBMITTED} selecting={!beforeClose && !selectionOver} onDone={() => setEditingCapacity(false)} />
       )}
     </>
   );
@@ -547,12 +554,28 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
     );
   };
 
+  /*
+    남은 자리보다 많이 골랐으면 확인창을 열지 않는다(2026-11-21) — 동시에 보내면 어느 쪽이 먼저 수락될지 정할 수 없고,
+    마지막 자리가 차는 순간 나머지는 미선정이 된다(정원을 다 뽑으면 선정이 끝난다, 규칙 90).
+  */
+  const askBatchAccept = () => {
+    if (left != null && selectedCount > left) {
+      toast.error(left > 0 ? `남은 자리는 ${left}명이에요. ${left}명 이하로 골라 주세요.` : '정원이 찼어요. 더 뽑으려면 모집 인원을 늘려 주세요.');
+      return;
+    }
+    setAcceptTarget({ type: 'batch' });
+  };
+  // 이 수락으로 정원이 다 차나 — 그러면 선정이 끝나고 나머지 검토 대기는 미선정이 된다(확인창이 먼저 말한다)
+  const acceptingCount = acceptTarget?.type === 'batch' ? selectedCount : 1;
+  const fillsSeats = left != null && left > 0 && acceptingCount >= left;
+  const leftoverOnFill = Math.max(0, counts.SUBMITTED - acceptingCount);
+
   const bulkBar = selectedCount > 0 ? (
     <div data-bulk-bar className={cn('flex items-center justify-between gap-2 border-t border-gray-200 bg-white/95 py-3 backdrop-blur', twoPane ? 'sticky bottom-0 z-10 px-3' : 'sticky bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] tabbar-hidden:bottom-0 z-30 -mx-1 px-1 lg:bottom-0')}>
       <span className="text-sm font-semibold text-gray-950">{selectedCount}명 선택</span>
       <span className="flex items-center gap-2">
         <button type="button" onClick={() => setSelectedIds(new Set())} className="min-h-[44px] px-2 text-sm text-gray-500 hover:text-gray-900">해제</button>
-        <button type="button" onClick={() => setAcceptTarget({ type: 'batch' })} disabled={batchPending} className="min-h-[44px] rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-40">
+        <button type="button" onClick={askBatchAccept} disabled={batchPending} className="min-h-[44px] rounded-lg bg-gray-900 px-4 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-40">
           {batchPending ? '처리 중…' : '선택 수락'}
         </button>
       </span>
@@ -630,12 +653,15 @@ export default function ApplicantManager({ exhibitionId, exhibitionTitle, custom
       <ConfirmDialog
         open={acceptTarget !== null}
         title={acceptTarget?.type === 'single' ? `${acceptTarget.name} 님을 수락할까요?` : `${selectedCount}명을 수락할까요?`}
+        // 마지막 자리 — 정원이 다 차면 선정이 끝난다(서버 closeOutIfFull). 남는 사람이 있을 때만 말한다
+        warning={fillsSeats && leftoverOnFill > 0 ? '정원이 다 차서 선정이 끝나요.' : undefined}
         details={[
           '수락하면 되돌릴 수 없어요.',
           recruitOnly
             ? '작가에게 선정 알림이 가요. 공모만 진행하는 공고라 여기서 절차가 끝나요.'
             : '작가에게 선정 알림이 가고, 작가는 출품 자료를 내기 시작해요.',
-          ...(capacity != null ? [`정원 ${capacityWithLimit({ capacity, capacityMask })} 중 지금 ${accepted}명이 수락되어 있어요.`] : []),
+          ...(capacity != null ? [`정원 ${capacityWithLimit({ capacity, capacityMask })} 중 지금 ${accepted}명이 수락되어 있어요.${fillsSeats ? (acceptingCount === 1 ? ' 마지막 자리예요.' : ' 남은 자리를 모두 채워요.') : ''}`] : []),
+          ...(fillsSeats && leftoverOnFill > 0 ? [`남은 검토 대기 ${leftoverOnFill}명은 미선정이 돼요.`] : []),
         ]}
         confirmText="수락하기"
         onConfirm={() => {
@@ -719,8 +745,13 @@ function ApplicantSheet({ title, nav, footer, onClose, blocked, children }: {
  * 요청할 화면이 없었다. 날짜는 여전히 1:1 문의다(지원자가 이미 그 날짜를 보고 지원했다).
  * 서버 `PATCH /exhibitions/:id/capacity` 가 권한·하한(수락한 수)·상한(1000)을 다시 본다 — 화면 검사는 헛걸음을 줄일 뿐이다.
  */
-function CapacityEditor({ exhibitionId, capacity, capacityMask, accepted, onDone }: { exhibitionId: number; capacity: number | null; capacityMask: CapacityMask | null; accepted: number; onDone: () => void }) {
+function CapacityEditor({ exhibitionId, capacity, capacityMask, accepted, pending, selecting, onDone }: {
+  exhibitionId: number; capacity: number | null; capacityMask: CapacityMask | null; accepted: number;
+  /** 검토 대기 수 · 선정 기간인가 — 수락한 수만큼으로 줄이면 정원이 차 선정이 끝난다(서버 closeOutIfFull, 규칙 90) */
+  pending: number; selecting: boolean; onDone: () => void;
+}) {
   const queryClient = useQueryClient();
+  const [confirmFill, setConfirmFill] = useState(false);
   // 0명·00명도 고른다(2026-10-14) — 그때 capacity 는 한도(9·99)라 숫자로 바꾸면 그 수가 처음 값으로 남는다
   const [value, setValue] = useState<CapacityValue>({ capacity: capacity ?? 0, capacityMask });
   const min = Math.max(1, accepted);
@@ -729,20 +760,28 @@ function CapacityEditor({ exhibitionId, capacity, capacityMask, accepted, onDone
   const unchanged = sent.capacity === capacity && sent.capacityMask === capacityMask;
   const save = useMutation({
     mutationFn: () => api.patch(`/exhibitions/${exhibitionId}/capacity`, sent),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const closedOut: number = res?.data?.closedOut ?? 0;
       // 정원을 읽는 곳 — 카드 숫자·할 일 줄(내 공모·주최 공모), 운영 화면(공모 상세 캐시), 초대 코드 상자, 공개 목록
       for (const queryKey of [
         ['exhibition-applicants', exhibitionId], ['my-exhibitions'], ['my-operation-overview'], ['hosted-exhibitions'],
         ['join-code', exhibitionId], ['exhibition', String(exhibitionId)], ['exhibition', exhibitionId], ['exhibitions'],
       ]) queryClient.invalidateQueries({ queryKey });
-      toast.success(sent.capacityMask
+      const base = sent.capacityMask
         ? `모집 인원을 '${capacityText(sent)}'(최대 ${sent.capacity}명)으로 바꿨어요.`
-        : `모집 인원을 ${sent.capacity}명으로 바꿨어요.`);
+        : `모집 인원을 ${sent.capacity}명으로 바꿨어요.`;
+      toast.success(closedOut > 0 ? `${base} 정원이 다 차서 선정이 끝났어요 — 검토 대기 ${closedOut}명은 미선정이 됐어요.` : base, { duration: closedOut > 0 ? 6000 : undefined });
       onDone();
     },
     onError: (e: any) => toast.error(e.response?.data?.error || '모집 인원을 바꾸지 못했어요.'),
   });
-  const submit = (e: FormEvent) => { e.preventDefault(); if (!invalid && !unchanged && !save.isPending) save.mutate(); };
+  // 선정 기간에 수락한 수만큼으로 줄이면 정원이 다 찬다 — 남은 검토 대기가 미선정이 되므로 저장 전에 묻는다
+  const fills = selecting && pending > 0 && sent.capacity <= accepted;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (invalid || unchanged || save.isPending) return;
+    if (fills) setConfirmFill(true); else save.mutate();
+  };
   const showError = invalid && value.capacityMask == null && value.capacity !== 0;
   return (
     <form onSubmit={submit} className="rounded-xl border border-gray-200 p-4" data-capacity-editor>
@@ -759,6 +798,15 @@ function CapacityEditor({ exhibitionId, capacity, capacityMask, accepted, onDone
       <p className={cn('mt-2 text-xs', showError ? 'text-accent' : 'text-gray-500')}>
         {accepted > 0 ? `이미 수락한 ${accepted}명보다 적게는 줄일 수 없어요. ` : ''}지원은 그대로 받고, 이 인원까지 수락할 수 있어요(최대 {CAPACITY_MAX}명).
       </p>
+      <ConfirmDialog
+        open={confirmFill}
+        title={`모집 인원을 ${capacityText(sent)}으로 바꿀까요?`}
+        warning="정원이 다 차서 선정이 끝나요."
+        details={[`이미 ${accepted}명을 수락했어요.`, `남은 검토 대기 ${pending}명은 미선정이 돼요.`, '그 뒤로는 더 수락할 수 없어요.']}
+        confirmText="바꾸고 선정 마치기"
+        onConfirm={() => { setConfirmFill(false); save.mutate(); }}
+        onCancel={() => setConfirmFill(false)}
+      />
     </form>
   );
 }

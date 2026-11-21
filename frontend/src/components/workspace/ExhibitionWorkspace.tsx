@@ -181,6 +181,8 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     exhibitStartDate: detail?.exhibitStartDate ?? null,
     incompleteArtists: incomplete,
     pendingApplicants: pending,
+    acceptedApplicants: accepted,
+    capacity: detail?.capacity ?? null,
     onChanged: (kind) => {
       // 마감하면 선정이 시작된다(규칙 90) — 지원자 탭으로
       if (kind === 'close' || kind === 'finish') goView('applicants');
@@ -369,11 +371,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   const menuItems: MenuItem[] = [
     ...(lifecycle.canBack ? [{ id: 'back', label: lifecycle.backLabel, hint: lifecycle.backBlocked ?? undefined, disabled: !!lifecycle.backBlocked, onSelect: lifecycle.askBack }] : []),
     // 기간 중 조기 종료 — 주 버튼이 아닐 때만 여기서
-    /*
-      [선정 마치기] — **선정 마감일이 없는 옛 공고만**, 이 메뉴에만(2026-11-21 사용자 결정). 새 공고는 선정 마감일이 그 일을 한다.
-      옛 공고는 남은 사람이 미선정이 될 날이 없어서, 공모만 진행하면 다음 단계도 없어 계속 '심사 중'으로 남는다.
-    */
-    ...(approved && !selectionDeadline && over && pending > 0 && !access.ended && !settled ? [{ id: 'finish', label: '선정 마치기', hint: '수락하지 않은 지원자는 미선정이 돼요', onSelect: () => lifecycle.ask('finish') }] : []),
+    // ⚠️ [선정 마치기]는 여기 없다 — 할 일 줄의 버튼이다(모든 공고, 2026-11-21 사용자 결정 "점 세 개 안에 있으면 있는지도 모른다")
     ...(approved && !recruitOnly && !access.ended && over && task.primary?.id !== 'end' ? [{ id: 'end', label: '전시 종료', hint: '전시를 끝내고 정산을 시작해요', onSelect: () => lifecycle.ask('end') }] : []),
     ...(approved && !recruitOnly && over && !access.confirmed && task.primary?.id !== 'confirm' && task.secondary?.id !== 'confirm' ? [{ id: 'confirm', label: '전시 확정', onSelect: () => lifecycle.ask('confirm') }] : []),
     ...extraMenu,

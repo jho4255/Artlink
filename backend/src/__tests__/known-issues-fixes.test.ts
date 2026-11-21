@@ -46,16 +46,19 @@ describe('Known issues 수정', () => {
       expect((await apply(ex.id, extra)).status).toBe(201);
     });
 
-    it('선정 인원이 찬 뒤 수락하면 400', async () => {
+    it('선정 인원이 차면 선정이 끝난다 — 남은 지원은 그 자리에서 미선정 · 수락하면 400(규칙 90)', async () => {
       const ex = await makeExhibition(1);
       const a1 = await apply(ex.id, 1); const a2 = await apply(ex.id, 2);
       await closeRecruitment(ex.id);   // 수락·거절은 모집을 마감한 뒤에만(규칙 90)
-      expect((await setStatus(ex.id, a1.body.id, 'ACCEPTED')).status).toBe(200);
+      const first = await setStatus(ex.id, a1.body.id, 'ACCEPTED');
+      expect(first.status).toBe(200);
+      expect(first.body.closedOut).toBe(1);
+      const left = await testPrisma.application.findUniqueOrThrow({ where: { id: a2.body.id } });
+      expect(left.status).toBe('REJECTED');
+      expect(left.closedOutAt).not.toBeNull();
       const r = await setStatus(ex.id, a2.body.id, 'ACCEPTED');
       expect(r.status).toBe(400);
-      expect(r.body.error).toContain('선정 인원(1명)');
-      // 거절은 따로 없다(규칙 90) — 남은 지원은 선정이 끝날 때 미선정이 된다
-      expect((await setStatus(ex.id, a2.body.id, 'REJECTED')).status).toBe(400);
+      expect(r.body.error).toBe('선정이 끝나 수락할 수 없어요.');
     });
 
     it('미선정(거절된) 지원은 선정 인원에 들어가지 않는다', async () => {
@@ -73,8 +76,10 @@ describe('Known issues 수정', () => {
       await closeRecruitment(ex.id);
       const results = await Promise.all(ids.map((id) => setStatus(ex.id, id, 'ACCEPTED')));
       expect(results.filter((r) => r.status === 200)).toHaveLength(2);
-      for (const r of results.filter((x) => x.status !== 200)) expect(r.body.error).toContain('선정 인원');
+      // 늦은 쪽은 정원 400 — 정원이 차는 순간 남은 지원이 미선정이 되므로(규칙 90) 그 뒤에 읽은 요청은 '선정이 끝나'
+      for (const r of results.filter((x) => x.status !== 200)) expect(r.body.error).toMatch(/선정 인원|선정이 끝나 수락할 수 없어요/);
       expect(await testPrisma.application.count({ where: { exhibitionId: ex.id, status: 'ACCEPTED' } })).toBe(2);
+      expect(await testPrisma.application.count({ where: { exhibitionId: ex.id, status: 'REJECTED', closedOutAt: { not: null } } })).toBe(3);
     });
   });
 

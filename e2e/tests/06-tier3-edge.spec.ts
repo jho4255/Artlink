@@ -33,7 +33,8 @@ test('정원(capacity)은 선정 인원 — 지원은 넘겨도 받고, 수락�
   expect((await accept((await first.json()).id)).status()).toBe(200);
   const over = await accept((await second.json()).id);
   expect(over.status(), '정원(1명)을 넘는 수락은 막혀야 함').toBe(400);
-  expect((await over.json()).error).toContain('선정 인원');
+  // 정원이 차는 순간 남은 지원은 미선정이 된다(정원을 다 뽑으면 선정이 끝난다, 규칙 90) — 그 뒤 수락은 '선정이 끝나'
+  expect((await over.json()).error).toMatch(/선정 인원|선정이 끝나 수락할 수 없어요/);
   await api.dispose();
 });
 

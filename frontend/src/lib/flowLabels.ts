@@ -242,25 +242,27 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
   }
 
   /*
-    접수가 끝났다 — 선정. 결정을 기다리는 지원이 있으면 그게 먼저다(작가들이 결과를 기다린다). 버튼은 [지원자] 탭의 [수락하기]가 전부다 —
-    거절은 따로 없다(사용자 결정 "안 뽑으면 그게 거절"). 새 공고는 선정 마감일이 지나면 남은 사람이 미선정이 되고,
-    옛 공고(날짜 없음)는 [⋯] 의 [선정 마치기]·전시 확정·종료 때 그렇게 된다.
+    접수가 끝났다 — 선정. 결정을 기다리는 지원이 있으면 그게 먼저다(작가들이 결과를 기다린다). 고르는 건 [지원자] 탭의 [수락하기] —
+    거절은 따로 없다(사용자 결정 "안 뽑으면 그게 거절"). 다 골랐으면 **할 일 줄의 [선정 마치기]**(모든 공고, 2026-11-21 사용자 결정 —
+    "마감일 전에 끝내거나 · 더 적게 뽑고 끝내거나 · 아무도 안 뽑을 때"). 목록 줄도 같은 버튼(눌러 오면 도착해서 확인창). [⋯] 메뉴엔 없다.
+    안 누르면 새 공고는 선정 마감일이 지날 때, 옛 공고(날짜 없음)는 전시 확정·종료 때 끝난다. 정원을 다 뽑으면 서버가 그 자리에서 끝낸다.
   */
   if (s.pending > 0 && !s.ended) {
     const sel = s.selectionDeadline;
-    const note = sel ? '그날이 지나면 수락하지 않은 지원자는 미선정이 돼요' : undefined;
+    const FINISH: TaskAction = { id: 'finish-selection', label: '선정 마치기' };
+    const finish = { action: FINISH.label, act: FINISH.id, primary: FINISH } as const;
     if (full) {
+      // 정원이 찼는데 검토 대기가 남았다 — 서버는 정원이 차면 선정을 끝내므로 잠깐(다시 받기 전) 또는 접수 중 코드로 찬 채 마감일이 지난 사이뿐이다
       return {
         text: `정원(${capacityWithLimit(s)})이 찼어요 · 검토 대기 ${s.pending}명`,
-        tone: 'attention', target: 'applicants', action: '지원자 보기',
+        tone: 'attention', target: 'applicants', ...finish,
         ...(sel ? { note: `${shortDate(sel)}이 지나면 검토 대기는 미선정이 돼요` } : {}),
       };
     }
     return {
       text: sel ? `${shortDate(sel)}까지 선정하세요 · 검토 대기 ${s.pending}명` : `지원자 ${s.pending}명이 검토를 기다리고 있어요`,
-      // 심사는 [지원자] 탭이 곧 작업이라 주 버튼이 없다
-      tone: 'attention', target: 'applicants', action: '지원자 심사',
-      ...(note ? { note } : {}),
+      tone: 'attention', target: 'applicants', ...finish,
+      ...(sel ? { note: '그날이 지나면 수락하지 않은 지원자는 미선정이 돼요' } : {}),
     };
   }
 

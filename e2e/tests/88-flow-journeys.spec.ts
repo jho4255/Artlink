@@ -135,7 +135,7 @@ test('★ JRN-01 전시까지 한 바퀴 — 갤러리(휴대폰) · 작가(PC) 
   const row = exhibitionCard(g.page, title);
   // 휴대폰 목록의 '기다리는 중' 줄은 할 일 문장 없이 보조 글만(설계) — 모집 중이고 [지원자 심사] 같은 할 일 버튼이 없다
   await expect(row).toContainText('모집 중', { timeout: 15000 });
-  await expect(row.getByRole('button', { name: /지원자 심사/ })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: /지원자 심사|선정 마치기/ })).toHaveCount(0);
   await openOperation(g.page, exId);
   await expect(barText(g.page)).toContainText('지원을 받고 있어요 · 지원 3명', { timeout: 15000 });
 
@@ -280,11 +280,11 @@ test('★ JRN-01 전시까지 한 바퀴 — 갤러리(휴대폰) · 작가(PC) 
 });
 
 // ─────────────────────────────────────────────────────────────
-test('★ JRN-02 공모만 진행(선정 마감일이 없는 옛 공고) — 띠 두 칸 · 탭 둘 · 마감 뒤 선정 · [⋯]의 [선정 마치기]로 미선정 처리 · 출품·정산 없음', async ({ browser }) => {
+test('★ JRN-02 공모만 진행(선정 마감일이 없는 옛 공고) — 띠 두 칸 · 탭 둘 · 마감 뒤 선정 · 할 일 줄의 [선정 마치기]로 미선정 처리 · 출품·정산 없음', async ({ browser }) => {
   const api = await pwRequest.newContext();
   const title = newTitle('공모만');
   const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3, extra: { recruitOnly: true } });
-  // 이미 올라간 옛 공고처럼 — 선정 마감일이 없다(그런 공고만 [선정 마치기]가 있다, 규칙 90)
+  // 이미 올라간 옛 공고처럼 — 선정 마감일이 없다(남은 사람이 저절로 미선정이 될 날이 없어 [선정 마치기]가 끝낸다, 규칙 90)
   await sql(`UPDATE "Exhibition" SET "selectionDeadline" = NULL WHERE id = ${exId};`);
   const app1 = await applyAs(api, exId, tokenFor('artist'));
   await applyAs(api, exId, tokenFor('artist2'));
@@ -304,12 +304,14 @@ test('★ JRN-02 공모만 진행(선정 마감일이 없는 옛 공고) — 띠
   await expect(barText(g.page)).toContainText('지원자 2명이 검토를 기다리고 있어요', { timeout: 15000 });
   await decide(api, exId, app1, 'ACCEPTED');
   await g.page.reload();
-  // 할 일 줄에는 없고 [⋯] 메뉴에만
-  await expect(g.page.locator('[data-task-bar]').getByRole('button', { name: '선정 마치기' })).toHaveCount(0);
+  // 할 일 줄의 버튼(모든 공고, 2026-11-21 사용자 결정 — [⋯] 메뉴엔 없다)
   await workspace(g.page).getByRole('button', { name: '더 보기' }).first().click();
-  await g.page.getByRole('menuitem', { name: /선정 마치기/ }).click();
+  await expect(g.page.getByRole('menuitem', { name: /선정 마치기/ })).toHaveCount(0);
+  await g.page.keyboard.press('Escape');
+  await taskButton(g.page, '선정 마치기').click();
   const finish = g.page.getByRole('dialog', { name: '선정을 마칠까요?' });
   await expect(finish.locator('[data-confirm-warning]')).toHaveText('선정을 마치면 되돌릴 수 없어요.');
+  await expect(finish).toContainText('수락한 1명으로 선정을 마쳐요.');
   await expect(finish).toContainText('수락하지 않은 1명은 미선정이 돼요.');
   await finish.getByRole('button', { name: '선정 마치기', exact: true }).click();
   await expect(barText(g.page)).toContainText('선정을 마쳤어요', { timeout: 15000 });
@@ -338,7 +340,9 @@ test('★ JRN-03 아트링크 주최 + 운영 갤러리 — 갤러리가 운영�
   const g = await openAs(browser, 'gallery');
   await g.page.goto('/mypage?tab=my-exhibitions');
   await expect(exhibitionCard(g.page, title)).toContainText(/까지 선정하세요 · 검토 대기 1명/, { timeout: 15000 });
-  await exhibitionCard(g.page, title).getByRole('button', { name: /지원자 심사/ }).click();
+  // 줄의 할 일 버튼은 [선정 마치기](규칙 90) — 심사하러는 줄을 눌러 들어간다(선정 중이면 [지원자] 탭부터)
+  await expect(exhibitionCard(g.page, title).getByRole('button', { name: '선정 마치기' })).toBeVisible();
+  await exhibitionCard(g.page, title).getByRole('button', { name: title }).first().click();
   await applicantRow(g.page.locator('[data-applicant-manager]'), 'Artist 1').getByRole('button').first().click();
   await g.page.getByRole('dialog', { name: 'Artist 1 지원서' }).locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).click();
   await g.page.getByRole('dialog', { name: /Artist 1 님을 수락할까요/ }).getByRole('button', { name: '수락하기', exact: true }).click();
@@ -462,7 +466,7 @@ test('★ JRN-06 공모 셋을 동시에 굴리는 갤러리 — 지금 할 일 
     await expect(exhibitionCard(g.page, t), t).toContainText(text, { timeout: 15000 });
   }
   // A: 지원서 창을 열어 둔 채 목록으로 → B 를 열면 창이 없다
-  await exhibitionCard(g.page, tA).getByRole('button', { name: /지원자 심사/ }).click();
+  await exhibitionCard(g.page, tA).getByRole('button', { name: tA }).first().click();
   await applicantRow(g.page.locator('[data-applicant-manager]'), 'Artist 1').getByRole('button').first().click();
   await expect(g.page.getByRole('dialog', { name: 'Artist 1 지원서' })).toBeVisible();
   await g.page.keyboard.press('Escape');

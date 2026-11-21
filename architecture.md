@@ -2231,7 +2231,7 @@ jsdom 테스트는 로딩 분기를 거의 안 지나 못 잡았고, 배포 후 
 ## 정원 = 선정 인원 · 공모 초대 코드 (2026-09-27)
 사용자 결정 셋: ① 지원은 제한 없이 받고 정원은 선정(수락) 인원 ② 이미 선정이 끝난 공모를 옮겨 올 수 있게 **공모당 초대 코드 하나**(작가가 넣으면 곧바로 수락)
 ③ 공모는 그대로 공개(코드 전용 비공개 모드 없음). 같은 날 테스트에서 찾은 화면 문제 다섯(아래)도 함께 고쳤다.
-- **정원** — `backend/src/lib/inviteCode.ts` `countSelected`/`selectedCounts`(ACCEPTED 수), `withSeatLock`(Serializable + P2034 재시도).
+- **정원** — `backend/src/lib/inviteCode.ts` `countSelected`/`selectedCounts`(ACCEPTED 수), `withSeatLock`(공모마다 줄 세우는 advisory lock · 교착이면 다시 — 2026-11-21 전엔 Serializable).
   지원(`POST /:id/apply`)은 정원 검사를 없애고 중복만 DB unique(P2002 → '이미 지원한 공모입니다')로 막는다. 막는 곳 넷: 수락 상태 변경 · 1:1 초대 · 초대 수락 · 코드 참여.
 - **초대 코드** — 모델 `ExhibitionJoinCode { exhibitionId @id, code @unique, createdAt }`(Exhibition 컬럼 아님 — 공개 응답 유출 방지), `Application.joinedVia`(null·INVITE·CODE).
   마이그레이션 `20260927120000_exhibition_invite_code`. API: 운영자 `GET/POST/DELETE /exhibitions/:id/join-code`, 공개 `GET /exhibitions/join/:code`(미리보기, optionalAuth),
@@ -3369,7 +3369,8 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
 | [선정 마감일 변경](지나기 전까지 · 주최자) | `routes/exhibition.ts PATCH /:id/selection-deadline` · 화면 `ApplicantManager SelectionDeadlineEditor`(`SchedulePicker ceiling`) |
 | 읽기 직전 정리(지원자 목록 · 작가 내 지원) · 1분 훑기(공개 목록 · 내 공모 · 운영 요약 · 공모 상세) | `routes/exhibition.ts` 각 GET |
 | 모집 마감(되돌리기 400 · 아무도 미선정으로 바꾸지 않는다) | `routes/operation.ts PATCH /:id/lifecycle` |
-| [선정 마치기] — 선정 마감일 없는 옛 공고만([⋯] 메뉴, 날짜 있으면 400 `FINISH_HAS_DEADLINE`) | `routes/operation.ts POST /:id/finish-selection` · 화면 `ExhibitionWorkspace menuItems` |
+| [선정 마치기] — 모든 공고 · 할 일 줄 버튼(휴대폰 아래 고정 줄 · 목록 줄, `act: 'finish-selection'`) · 아무도 안 뽑았으면 빨간 [아무도 뽑지 않고 마치기] | `routes/operation.ts POST /:id/finish-selection` · `lib/flowLabels.ts galleryNextTask` · `hooks/useLifecycle.tsx` 'finish' |
+| 정원을 다 뽑으면 선정이 끝난다(남은 검토 대기 → 미선정, 알림 없음) | `lib/applicationWindow.ts closeOutIfFull` — 수락 · 초대 코드 참여 · 모집 인원 변경 · 모집 마감 / 저절로 시작된 선정은 `closeOutExpiredSelections` |
 | 전시 확정·종료가 선정을 끝낸다(남은 검토 대기 → `closedOutAt`) | `lifecycle` 의 `confirmedNow`·`endedNow` |
 | 지원 · 지원서 고치기 · 지원 취소(공모 행 `FOR SHARE`) | `routes/exhibition.ts POST /:id/apply` · `PUT/DELETE /:id/my-application` · `parseApplicationBody` |
 | 확인창 빨간 한 줄(모집 마감 · 선정 마치기) | `ConfirmDialog warning` · `useLifecycle CLOSE_WARNING` |
@@ -3387,6 +3388,9 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
 - 선정 마감일 정리·선정 마치기·확정·종료의 미선정 처리는 상태 조건 UPDATE(`status IN ('SUBMITTED','REVIEWED')`) 하나 — 동시에 둘이 와도 합이 실제 수다(LIF-13). 선정 마감일 정리는
   `e.selectionDeadline < 오늘 KST 0시` 조인 UPDATE 하나(`closeOutExpiredSelections` — 공모·작가로 좁힐 수 있다).
 - 알림은 refKey 에 선정 마감일과 D-n 을 넣어 같은 날 두 번 가지 않는다(날짜를 늦추면 새 날짜 기준으로 다시 간다)(정산 재촉 `settlementReminder.ts` 와 같은 방식). 아직 접수 중이거나 검토 대기가 없으면 보내지 않는다.
+- 정원을 다 뽑아 끝나는 길은 자리 잠금(`withSeatLock` — 공모마다 줄을 세운다) 안에서 수락과 같은 트랜잭션이다 — 남은 2자리에 4건이 동시에 와도 수락 2 · 나머지 미선정(늦은 쪽은 정원 400 또는 '선정이 끝나').
+  Serializable 이던 때는 그 정리 UPDATE 가 다른 수락이 잡은 줄과 엇갈려 교착이 났다(동시 수락 5건 테스트가 잡았다).
+  화면은 그 전에 말한다: 마지막 자리 수락 확인창 · [선택 수락]은 남은 자리보다 많이 고르면 열지 않는다 · 인원을 수락 수만큼으로 줄이면 확인창 · 모집 마감 때 이미 찼으면 그 줄.
 - 관리자 할 일의 직접 운영 공모 '검토 대기'는 접수가 끝난 공모만 센다(`todoCounts`) · '멈춘 공모'의 검토 대기는 선정 마감일 없는 옛 공고만(`stallOf`).
   '지원 → 결과' 시간(`adminStats operationSpeed`)은 `closedOutAt` 행을 뺀다 — 사람이 내린 결정이 아니다.
 

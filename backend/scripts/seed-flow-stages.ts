@@ -190,7 +190,7 @@ const STAGES: Stage[] = [
   },
   {
     // 선정 기간(2026-11-21, 규칙 90) — 접수가 끝났고 선정 마감일이 이틀 남았다. 버튼은 [수락하기]뿐, 할 일 줄이 그날까지 선정하라고, 띠가 'D-2'(빨강)
-    n: 14, label: '모집 마감 · 선정 중(선정 마감 D-2)', note: '검토 대기 2명 · 수락 1명. 선정 마감일이 지나면 수락하지 않은 지원자는 알림 없이 미선정이 된다. [선정 마감일 변경]으로 늦출 수 있다.',
+    n: 14, label: '모집 마감 · 선정 중(선정 마감 D-2)', note: '검토 대기 2명 · 수락 1명(정원 3). 할 일 줄의 [선정 마치기]로 지금 끝낼 수 있고, 한 명 더 수락하면 정원이 차 선정이 끝난다. 안 하면 선정 마감일이 지날 때 남은 사람은 알림 없이 미선정. [선정 마감일 변경]으로 늦출 수 있다.',
     capacity: 3, notice: true, dates: { start: -16, deadline: -3, selection: 2, submission: 9, showStart: 20, showEnd: 34 }, flags: { recruitmentClosed: true },
     people: [
       { who: 'artist1@artlink.com', status: 'SUBMITTED' },

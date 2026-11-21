@@ -311,32 +311,48 @@ test.describe('F. 삭제 요청', () => {
 });
 
 test.describe('G·H. 지원자 관리', () => {
-  test('★ G. 마감 뒤 정원이 차면 할 일 줄이 그 사정을 말한다([선정 마치기] 버튼은 없다, 규칙 90) — [모집 인원 변경]으로 늘려 수락한다', async ({ browser }) => {
+  test('★ G. 마지막 자리를 수락하면 정원이 다 차 선정이 끝난다 — 확인창이 미리 말하고 남은 검토 대기는 미선정 · 인원을 늘려도 되살리지 않는다(규칙 90)', async ({ browser }) => {
     const api = await pwRequest.newContext();
     const title = newTitle('정원');
     const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 1 });
-    await apply(api, exId, 'artist2');   // 마감하면 더 지원할 수 없다 — 먼저
-    await acceptVia(api, exId, 'artist');
+    await apply(api, exId, 'artist');
+    const pending2 = await apply(api, exId, 'artist2');
+    await closeRecruitment(api, exId);
 
     const { page, ctx } = await openAs(browser, 'gallery');
     await page.goto('/mypage?tab=my-exhibitions');
+    // 선정 중 — 할 일은 [선정 마치기](모든 공고, 규칙 90)
     const row = exhibitionCard(page, title);
-    // 예전엔 수락 1/1 인데도 '지원자 1명이 검토를 기다리고 있어요' — 눌러 보고 나서야 정원 안내를 받았다
-    await expect(row).toContainText('정원(1명)이 찼어요 · 검토 대기 1명', { timeout: 15000 });
-    await expect(row.getByRole('button', { name: /선정 마치기/ })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: '선정 마치기' })).toBeVisible({ timeout: 15000 });
     const card = await openApplicantManager(page, title);
-    await expect(card.getByText('정원이 찼어요').first()).toBeVisible({ timeout: 10000 });
 
+    // 마지막 자리 — 확인창이 먼저 말한다
+    const r1 = applicantRow(card, 'Artist 1');
+    await r1.getByRole('button').first().click();
+    await page.locator('[data-decision-bar]').getByRole('button', { name: '수락하기', exact: true }).first().click();
+    const ask = page.getByRole('dialog', { name: /수락할까요/ });
+    await expect(ask.locator('[data-confirm-warning]')).toHaveText('정원이 다 차서 선정이 끝나요.');
+    await expect(ask).toContainText('남은 검토 대기 1명은 미선정이 돼요.');
+    await expect(ask).toContainText('마지막 자리예요.');
+    await ask.getByRole('button', { name: '수락하기', exact: true }).click();
+    await expect(page.locator('body')).toContainText('정원이 다 차서 선정이 끝났어요 — 검토 대기 1명은 미선정이 됐어요.', { timeout: 10000 });
+    await closeApplicantSheet(page);
+    await expect(applicantRow(card, 'Artist 2')).toContainText('미선정', { timeout: 10000 });
+    const apps = await (await api.get(`${API}/exhibitions/${exId}/applications`, { headers: auth('gallery') })).json();
+    expect((apps.applications ?? apps).find((a: any) => a.id === pending2)?.status).toBe('REJECTED');
+
+    // 인원을 늘려도 미선정은 되돌리지 않는다(더 필요하면 초대 코드)
     await applicantTool(page, card, '모집 인원 변경');
     const editor = card.locator('[data-capacity-editor]');
     await editor.locator('input').fill('2');
     await editor.getByRole('button', { name: '저장' }).click();
     await expect(page.locator('body')).toContainText('모집 인원을 2명으로 바꿨어요', { timeout: 10000 });
     await expect(card.getByText(/수락 1\/2/).first()).toBeVisible({ timeout: 10000 });
-    await acceptApplicant(page, card, 'Artist 2');
+    await expect(applicantRow(card, 'Artist 2')).toContainText('미선정');
+    const again = await api.patch(`${API}/exhibitions/${exId}/applications/${pending2}`, { headers: auth('gallery'), data: { status: 'ACCEPTED' } });
+    expect(again.status()).toBe(400);
 
     // 수락한 수보다 적게·0 은 서버가 막는다
-    expect((await api.patch(`${API}/exhibitions/${exId}/capacity`, { headers: auth('gallery'), data: { capacity: 1 } })).status()).toBe(400);
     expect((await api.patch(`${API}/exhibitions/${exId}/capacity`, { headers: auth('gallery'), data: { capacity: 0 } })).status()).toBe(400);
     await api.dispose();
     await ctx.close();

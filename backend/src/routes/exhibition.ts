@@ -30,7 +30,7 @@ import { deleteUploadedFile, deleteUploadedFiles } from '../lib/storage';
 import { countSelected, generateInviteCode, normalizeInviteCode, withSeatLock } from '../lib/inviteCode';
 import {
   applicationChangeBlock, lockOpenExhibition, CLOSED_MESSAGE, DECIDED_MESSAGE, PENDING_STATUSES, DECIDE_AFTER_CLOSE,
-  SELECTION_OVER, SELECTION_FINISHED, ALREADY_DECIDED, NO_REJECT, selectionStarted, selectionDeadlinePassed,
+  SELECTION_OVER, SELECTION_FINISHED, ALREADY_DECIDED, NO_REJECT, selectionStarted, selectionDeadlinePassed, closeOutIfFull,
 } from '../lib/applicationWindow';
 import {
   assertSelectionOrder, closeOutExpiredSelections, parseSelectionDeadline, sweepSelectionDeadlines,
@@ -851,6 +851,7 @@ const JOIN_EXHIBITION_SELECT = {
   id: true, title: true, imageUrl: true, type: true, region: true, capacity: true, capacityMask: true, status: true,
   deadlineStart: true, deadline: true, submissionDeadline: true, exhibitStartDate: true, exhibitDate: true,
   recruitOnly: true, ended: true, settledAt: true, hostType: true,
+  recruitmentClosed: true,   // 선정 기간에 코드로 정원이 다 차면 선정이 끝난다(closeOutIfFull)
   gallery: { select: { id: true, name: true, ownerId: true } },
   managers: { select: { galleryId: true, gallery: { select: { ownerId: true } } } },
 } as const;
@@ -924,9 +925,11 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
 
     let created = false;
     if (existing) {
-      await withSeatLock(prisma, async (tx) => {
+      await withSeatLock(prisma, ex.id, async (tx) => {
         if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(seatsFullMessage(ex.capacity, ex.capacityMask), 400);
         await tx.application.update({ where: { id: existing.id }, data: { status: 'ACCEPTED', joinedVia: 'CODE', rejectionAckedAt: null } });
+        // 선정 기간에 코드로 정원이 다 차면 선정이 끝난다(규칙 90) — 접수 중이면 아무것도 안 한다(선정이 시작될 때 끝난다)
+        await closeOutIfFull(tx, ex);
       });
     } else {
       const portfolio = await prisma.portfolio.findUnique({
@@ -935,7 +938,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
       });
       const images = (portfolio?.images ?? []).map((i) => ownFileUrl(i.url)).filter((u): u is string => !!u);
       try {
-        await withSeatLock(prisma, async (tx) => {
+        await withSeatLock(prisma, ex.id, async (tx) => {
           if (await countSelected(tx, ex.id) >= ex.capacity) throw new AppError(seatsFullMessage(ex.capacity, ex.capacityMask), 400);
           await tx.application.create({
             data: {
@@ -952,6 +955,7 @@ router.post('/join', authenticate, authorize('ARTIST'), async (req, res, next) =
               termsTextHash: ARTIST_APPLY_TERMS_HASH,
             },
           });
+          await closeOutIfFull(tx, ex);
         });
         created = true;
       } catch (e: any) {
@@ -1499,14 +1503,17 @@ router.patch('/:id/capacity', authenticate, authorize('GALLERY', 'ADMIN'), valid
     }
     if (exhibition.ended || exhibition.settledAt) throw new AppError('전시가 끝난 공모는 모집 인원을 바꿀 수 없어요.', 400);
     const next = resolveCapacity(req.body.capacity, req.body.capacityMask);
-    const updated = await withSeatLock(prisma, async (tx) => {
+    const updated = await withSeatLock(prisma, exhibitionId, async (tx) => {
       const selected = await countSelected(tx, exhibitionId);
       if (next.capacity < selected) {
         throw new AppError(next.capacityMask
           ? `이미 ${selected}명을 수락해서 '${next.capacityMask === 'ONE' ? '0명' : '00명'}'(최대 ${next.capacity}명)으로 바꿀 수 없어요.`
           : `이미 ${selected}명을 수락해서 그보다 적게 줄일 수 없어요.`, 400);
       }
-      return tx.exhibition.update({ where: { id: exhibitionId }, data: next, select: { id: true, capacity: true, capacityMask: true } });
+      const row = await tx.exhibition.update({ where: { id: exhibitionId }, data: next, select: { id: true, capacity: true, capacityMask: true } });
+      // 선정 기간에 수락한 수만큼으로 줄이면 정원이 다 찬다 — 선정이 끝난다(closeOutIfFull, 화면이 저장 전에 확인창으로 말한다)
+      const closedOut = await closeOutIfFull(tx, { ...exhibition, capacity: next.capacity });
+      return { ...row, closedOut };
     });
     res.json(updated);
   } catch (error) { next(error); }
@@ -1755,6 +1762,8 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
       throw new AppError('방금 다른 곳에서 이 지원의 상태가 바뀌었어요. 새로고침해 주세요.', 409);
     };
     let updated;
+    /** 이 수락으로 정원이 다 차 미선정이 된 검토 대기 수(closeOutIfFull) — 화면이 알림 글에 쓴다 */
+    let closedOut = 0;
     if (acceptedRevert) {
       // 수락→거절 되돌리기: 해당 작가의 운영페이지 제출물·판매기록·정산 데이터를 함께 삭제해
       // 정원/제출현황/정산이 수락 이전으로 정상화되도록 한다. (지원 이력 자체는 거절 상태로 유지 → 정원 슬롯은 자동 복구)
@@ -1777,7 +1786,7 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
     } else if (status === 'ACCEPTED') {
       // 정원 = 선정 인원(2026-09-27). 지원은 무제한이라 **여기서** 막아야 한다 — 세고 나서 바꾸는 사이에 다른 수락이
       // 끼어들지 않게 한 트랜잭션에서(일괄 수락은 화면이 한 건씩 보내므로 동시에 여러 개가 들어온다)
-      updated = await withSeatLock(prisma, async (tx) => {
+      updated = await withSeatLock(prisma, exhibitionId, async (tx) => {
         if (await countSelected(tx, exhibitionId, appId) >= exhibition.capacity) {
           // 모집 인원은 갤러리가 직접 늘린다(2026-10-03 사용자 결정) — 아트링크 주최 공모는 관리자만 바꿀 수 있다
           const how = exhibition.hostType === 'ADMIN' && req.user!.role !== 'ADMIN'
@@ -1785,7 +1794,11 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
             : '더 뽑으려면 [모집 인원 변경]으로 늘려 주세요.';
           throw new AppError(`${seatsFullMessage(exhibition.capacity, exhibition.capacityMask)} ${how}`, 400);
         }
-        return changeIfUnchanged(tx, { status, rejectionAckedAt: null, closedOutAt: null });
+        const r = await changeIfUnchanged(tx, { status, rejectionAckedAt: null, closedOutAt: null });
+        // 정원을 다 뽑으면 선정이 끝난다(2026-11-21 사용자 결정) — 남은 검토 대기는 같은 트랜잭션에서 미선정(알림 없음).
+        // 화면은 마지막 자리를 수락할 때 확인창에서 미리 말한다. 동시에 들어온 일괄 수락은 자리 잠금이 줄 세운다(늦은 쪽은 정원 400)
+        if (r !== UNCHANGED) closedOut = await closeOutIfFull(tx, exhibition);
+        return r;
       });
     } else {
       // 상태가 더 이상 거절이 아니면 거절확인 플래그 해제
@@ -1822,7 +1835,7 @@ router.patch('/:id/applications/:appId', authenticate, authorize('GALLERY', 'ADM
       try { await ensureExhibitionChat(exhibitionId); } catch { /* best-effort */ }
     }
 
-    res.json(updated);
+    res.json({ ...updated, closedOut });
   } catch (error) { next(error); }
 });
 

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { request, testPrisma, authToken, cleanDb, seedUsers, seedGallery, seedExhibition } from './helpers';
 import { ARTIST_APPLY_TERMS_VERSION } from '../lib/terms';
-import { DECIDE_AFTER_CLOSE, FINISH_AFTER_CLOSE, FINISH_HAS_DEADLINE, NO_REJECT, SELECTION_FINISHED } from '../lib/applicationWindow';
+import { DECIDE_AFTER_CLOSE, FINISH_AFTER_CLOSE, NO_REJECT, SELECTION_FINISHED } from '../lib/applicationWindow';
 
 const ownerTok = authToken(3, 'GALLERY');
 const adminTok = authToken(4, 'ADMIN');
@@ -170,7 +170,7 @@ describe('LIF — 모집 마감 · 선정 마치기(수락·거절은 마감 뒤
     }
   });
 
-  it('★ LIF-13 [선정 마치기](선정 마감일 없는 옛 공고만) — 접수 중엔 400 · 남은 검토 대기만 미선정(알림 없음) · 동시에 둘이면 합이 실제 수 · 다시 눌러도 0 · 되돌릴 수 없다', async () => {
+  it('★ LIF-13 [선정 마치기](모든 공고) — 접수 중엔 400 · 선정 마감일 전에도 끝낸다 · 남은 검토 대기만 미선정(알림 없음) · 동시에 둘이면 합이 실제 수 · 다시 눌러도 0 · 되돌릴 수 없다', async () => {
     await thirdArtist();
     const finish = (exId: number, tok = ownerTok) => request.post(`/api/operations/${exId}/finish-selection`).set('Authorization', `Bearer ${tok}`);
     const open = await exhibitionWith({ 1: 'SUBMITTED' });
@@ -178,12 +178,14 @@ describe('LIF — 모집 마감 · 선정 마치기(수락·거절은 마감 뒤
     expect(early.status).toBe(400);
     expect(early.body.error).toBe(FINISH_AFTER_CLOSE);
     expect((await finish(open.exId, a1)).status).toBe(403);
-    // 선정 마감일이 있는 새 공고는 그날이 지나면 끝난다 — 버튼으로 일찍 끝내지 않는다
+    // 선정 마감일이 있는 새 공고도 그날을 기다리지 않고 지금 끝낸다(2026-11-21 사용자 결정 — 일찍 · 적게 뽑고 · 아무도 안 뽑고)
     const dated = await exhibitionWith({ 1: 'SUBMITTED' }, { recruitmentClosed: true, selectionDeadline: new Date(Date.now() + 5 * 86400000) });
-    const no = await finish(dated.exId);
-    expect(no.status).toBe(400);
-    expect(no.body.error).toBe(FINISH_HAS_DEADLINE);
-    expect((await testPrisma.application.findUnique({ where: { id: dated.appIds[1]! } }))?.status).toBe('SUBMITTED');
+    const yes = await finish(dated.exId);
+    expect(yes.status).toBe(200);
+    expect(yes.body.closedOut).toBe(1);
+    const datedApp = await testPrisma.application.findUnique({ where: { id: dated.appIds[1]! } });
+    expect(datedApp?.status).toBe('REJECTED');
+    expect(datedApp?.closedOutAt).not.toBeNull();
 
     for (let i = 0; i < REPEAT; i++) {
       const { exId } = await exhibitionWith({ 1: 'SUBMITTED', 2: 'SUBMITTED', 101: 'ACCEPTED' }, { recruitmentClosed: true });

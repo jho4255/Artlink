@@ -10,6 +10,7 @@ import {
  *  A. 목록의 할 일 버튼 → 그 공모 화면 + 확인창(도착해서 묻는다) → 확정하면 작가에게 '전시 확정' 알림 · 다 모이면 갤러리에 '출품 자료' 알림
  *  B. 모집 마감·선정 마감일(규칙 90) — 접수 중엔 읽기만 → 확인창(되돌릴 수 없어요 · 이제 선정) → [수락하기]만(거절 없음) → [선정 마감일 변경] →
  *     선정 마감일이 지나면 남은 검토 대기 미선정(알림 없음) · 되돌릴 수 없다
+ *  B2. [선정 마치기] — 목록 줄에서 눌러 오면 도착해서 묻는다 · 아무도 안 뽑았으면 빨간 [아무도 뽑지 않고 마치기] · [⋯] 메뉴엔 없다
  *  C. 지원자 심사 — 휴대폰은 한 장씩 창, 결정하면 다음 검토 대기로 넘어가고 없으면 닫힌다
  *  D. 정산 이의와 그 처리 — 작가 이의(창) → 갤러리 할 일 줄·작가 머리의 이의 글 → 고쳐 다시 요청 → 작가 확인 → '정산 확인' 알림 →
  *     [정산 완료] → [요약] 탭 · 작가에게 [갤러리 리뷰 쓰기](D6)
@@ -144,18 +145,20 @@ test.describe('B. 모집 마감 · 선정 마감일 — 되돌릴 수 없다 · 
     expect(await statusOf(api, exId, userIds().artist)).toBe('SUBMITTED');
     expect(await statusOf(api, exId, userIds().artist2)).toBe('SUBMITTED');
 
-    // [⋯] 더 보기에 '모집 마감' 되돌리기도, [선정 마치기]도 없다(새 공고는 선정 마감일이 그 일을 한다) — 서버도 400
+    // [⋯] 더 보기에 '모집 마감' 되돌리기도, [선정 마치기]도 없다 — 되돌리기는 서버도 400 · [선정 마치기]는 할 일 줄의 버튼이다(규칙 90)
     await workspace(page).getByRole('button', { name: '더 보기' }).first().click();
     await expect(page.getByRole('menuitem', { name: /모집 마감/ })).toHaveCount(0);
     await expect(page.getByRole('menuitem', { name: /선정 마치기/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
     const reopen = await api.patch(`${API}/operations/${exId}/lifecycle`, { headers: auth('gallery'), data: { recruitmentClosed: false } });
     expect(reopen.status()).toBe(400);
-    expect((await api.post(`${API}/operations/${exId}/finish-selection`, { headers: auth('gallery') })).status()).toBe(400);
 
     // 이제 선정 — 선정 마감일까지. 버튼은 [수락하기]뿐(거절은 없다 — 서버도 400)
     await expect(page.locator('[data-task-bar]')).toContainText(/까지 선정하세요 · 검토 대기 2명/, { timeout: 15000 });
     await expect(page.locator('[data-task-bar]')).toContainText('그날이 지나면 수락하지 않은 지원자는 미선정이 돼요');
+    // 다 골랐으면 그날을 기다리지 않고 끝낼 수 있다 — 할 일 줄의 [선정 마치기](선정 마감일이 있어도, 2026-11-21 사용자 결정)
+    // (휴대폰은 할 일 줄 대신 아래 고정 줄에 버튼이 있다 — taskButton 이 둘 다 본다)
+    await expect(taskButton(page, '선정 마치기')).toBeVisible();
     const noReject = await api.patch(`${API}/exhibitions/${exId}/applications/${app1}`, { headers: auth('gallery'), data: { status: 'REJECTED' } });
     expect(noReject.status()).toBe(400);
     await applicantRow(manager, 'Artist 1').getByRole('button').first().click();
@@ -191,6 +194,44 @@ test.describe('B. 모집 마감 · 선정 마감일 — 되돌릴 수 없다 · 
     expect(again.status(), '선정이 끝나면 되돌릴 수 없다').toBe(400);
     const n = (await notes(api, 'artist')).find((x) => x.type === 'APPLICATION_STATUS' && x.message.includes(title));
     expect(n, '미선정은 알리지 않는다(사용자 결정)').toBeUndefined();
+    await api.dispose();
+    await ctx.close();
+  });
+});
+
+test.describe('B2. [선정 마치기] — 할 일 줄 · 목록 줄(규칙 90)', () => {
+  test('★ 아무도 안 뽑았으면 빨간 [아무도 뽑지 않고 마치기] — 목록 줄에서 눌러 오면 도착해서 묻는다 · 끝내면 남은 지원자는 미선정(알림 없음)', async ({ browser }) => {
+    const api = await pwRequest.newContext();
+    const title = newTitle('마치기');
+    const exId = await createExhibition(api, { title, galleryId: await ownedGalleryId(api), capacity: 3 });
+    await apply(api, exId, 'artist');
+    await apply(api, exId, 'artist2');
+    await closeRecruitment(api, exId);
+
+    const { page, ctx } = await openAs(browser, 'gallery');
+    await page.goto('/mypage?tab=my-exhibitions');
+    const row = exhibitionCard(page, title);
+    await expect(row).toContainText(/까지 선정하세요 · 검토 대기 2명/, { timeout: 15000 });
+    // 목록 줄의 [선정 마치기] — 그 공모 화면으로 가서 확인창을 연다(도착해서 묻는다)
+    await row.getByRole('button', { name: '선정 마치기' }).click();
+    const dialog = page.getByRole('dialog', { name: '선정을 마칠까요?' });
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(workspace(page)).toBeVisible();
+    await expect(dialog.locator('[data-confirm-warning]')).toContainText('아직 아무도 수락하지 않았어요.');
+    await expect(dialog).toContainText('지원자 2명이 모두 미선정이 돼요.');
+    await expect(dialog).toContainText(/선정 마감일\(.+\)을 기다리지 않고 지금 끝내요\./);
+    await dialog.getByRole('button', { name: '아무도 뽑지 않고 마치기' }).click();
+    await expect(page.locator('body')).toContainText('선정을 마쳤어요. 검토 대기 2명은 미선정이 됐어요.', { timeout: 10000 });
+    expect(await statusOf(api, exId, userIds().artist)).toBe('REJECTED');
+    expect(await statusOf(api, exId, userIds().artist2)).toBe('REJECTED');
+    // 미선정에는 알림이 없다
+    for (const role of ['artist', 'artist2'] as const) {
+      expect((await notes(api, role)).filter((n) => n.type === 'APPLICATION_STATUS' && n.message.includes(title))).toHaveLength(0);
+    }
+    // [⋯] 메뉴에는 없다 — 할 일 줄의 버튼이다
+    await workspace(page).getByRole('button', { name: '더 보기' }).first().click();
+    await expect(page.getByRole('menuitem', { name: /선정 마치기/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await api.dispose();
     await ctx.close();
   });

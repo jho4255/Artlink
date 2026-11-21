@@ -40,7 +40,7 @@ describe('모집 마감 확인창 — 되돌릴 수 없다를 강조 · 알림 �
   it('★ 맨 위 빨간 한 줄(ConfirmDialog warning) — "모집 마감은 되돌릴 수 없어요."', () => {
     expect(lc).toContain("export const CLOSE_WARNING = '모집 마감은 되돌릴 수 없어요.';");
     expect(lc).toMatch(/kind, body: \{ recruitmentClosed: true \}, title: '모집을 마감할까요\?', confirmText: '모집 마감',\s+warning: CLOSE_WARNING,/);
-    expect(lc).toContain('warning={pending?.warning}');
+    expect(lc).toContain('warning={view.warning ?? pending?.warning}');
     const cd = read('components/shared/ConfirmDialog.tsx');
     expect(cd).toContain('data-confirm-warning');
   });
@@ -63,15 +63,43 @@ describe('모집 마감 확인창 — 되돌릴 수 없다를 강조 · 알림 �
     const be = readBackend('routes/operation.ts');
     expect(be).toContain("if (!recruitmentClosed && curRecruitmentClosed) throw new AppError('모집 마감은 되돌릴 수 없어요.', 400);");
   });
-  it('★ [선정 마치기] — 선정 마감일이 없는 옛 공고만, [⋯] 메뉴에만 · 되돌릴 수 없다를 빨간 줄로(2026-11-21 사용자 결정)', () => {
+  it('★ [선정 마치기] — 모든 공고 · 할 일 줄에(⋯ 메뉴엔 없다) · 되돌릴 수 없다를 빨간 줄로 · 아무도 안 뽑았으면 빨간 버튼(2026-11-21 사용자 결정)', () => {
     expect(lc).toContain('api.post(`/operations/${exhibitionId}/finish-selection`)');
     expect(lc).toMatch(/title: '선정을 마칠까요\?', confirmText: '선정 마치기',\s+warning: '선정을 마치면 되돌릴 수 없어요.',/);
-    expect(lc).toContain('if (!over || selectionDeadline) return;');
+    // 선정 마감일이 있어도 연다 — 접수가 끝났는지만 본다
+    expect(lc).toContain("if (kind === 'finish') {");
+    expect(lc).not.toContain('if (!over || selectionDeadline) return;');
+    expect(lc).toContain('`수락한 ${a}명으로 선정을 마쳐요.`');
+    expect(lc).toContain('`지원자 ${n}명이 모두 미선정이 돼요.`');
+    expect(lc).toContain('`선정 마감일(${md(selectionDeadline!)})을 기다리지 않고 지금 끝내요.`');
+    expect(lc).toContain("confirmText: '아무도 뽑지 않고 마치기',");
+    expect(lc).toContain("variant: 'danger',");
     expect(lc).not.toContain('다시 수락할 수 있어요');
+    // [⋯] 메뉴에는 없다 — 할 일 줄(휴대폰 아래 고정 줄)과 목록 줄의 버튼이다
     const ws = read('components/workspace/ExhibitionWorkspace.tsx');
-    expect(ws).toContain("...(approved && !selectionDeadline && over && pending > 0 && !access.ended && !settled ? [{ id: 'finish', label: '선정 마치기'");
-    // 할 일 줄은 [선정 마치기]를 내지 않는다(flowLabels 가 finish-selection 을 돌려주지 않는다)
-    expect(read('lib/flowLabels.ts')).not.toMatch(/id: 'finish-selection'/);
+    expect(ws).not.toContain("{ id: 'finish', label: '선정 마치기'");
+    expect(ws).toContain("else if (actId === 'finish-selection') lifecycle.ask('finish');");
+    expect(read('lib/flowLabels.ts')).toContain("const FINISH: TaskAction = { id: 'finish-selection', label: '선정 마치기' };");
+    // 서버도 모든 공고 — 선정 마감일이 있다고 막지 않는다
+    const be = readBackend('routes/operation.ts');
+    expect(be).not.toContain('FINISH_HAS_DEADLINE');
+  });
+  it('★ 정원을 다 뽑으면 선정이 끝난다 — 서버 한 함수(closeOutIfFull) · 화면이 미리 말한다(2026-11-21 사용자 결정)', () => {
+    const win = readBackend('lib/applicationWindow.ts');
+    expect(win).toContain('export async function closeOutIfFull(');
+    const route = readBackend('routes/exhibition.ts');
+    // 갤러리 수락 · 초대 코드 참여(두 갈래) · 모집 인원 변경
+    expect(route.match(/closeOutIfFull\(tx, /g)?.length).toBe(4);
+    expect(readBackend('routes/operation.ts')).toContain('closedNow ? await closeOutIfFull(tx, { ...exhibition, recruitmentClosed: true }) : 0;');
+    // 접수 마감일이 지나 저절로 선정이 시작된 공모는 읽을 때 정리한다
+    expect(readBackend('lib/selectionDeadline.ts')).toContain('(SELECT COUNT(*) FROM "Application" x WHERE x."exhibitionId" = e."id" AND x."status" = \'ACCEPTED\') >= e."capacity"');
+    // 화면 — 마지막 자리 수락 · 인원을 줄일 때 · 모집 마감 때 미리 말한다
+    const am = read('components/shared/ApplicantManager.tsx');
+    expect(am).toContain("warning={fillsSeats && leftoverOnFill > 0 ? '정원이 다 차서 선정이 끝나요.' : undefined}");
+    expect(am).toContain('`남은 검토 대기 ${leftoverOnFill}명은 미선정이 돼요.`');
+    expect(am).toContain('confirmText="바꾸고 선정 마치기"');
+    expect(am).toContain('`남은 자리는 ${left}명이에요. ${left}명 이하로 골라 주세요.`');
+    expect(lc).toContain('`정원이 이미 다 차 있어 검토 대기 ${n}명은 미선정이 돼요.`');
   });
 });
 

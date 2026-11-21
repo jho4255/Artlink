@@ -107,7 +107,8 @@ test.describe('S1·S4 — 목록 버튼으로 들어와 여는 확인창', () =>
     await row.getByRole('button', { name: /모집 마감/ }).click();
     const dialog = page.getByRole('dialog', { name: '모집을 마감할까요?' });
     await expect(dialog).toBeVisible({ timeout: 15000 });
-    await expect(dialog).toContainText('이제 지원자 1명 가운데 수락할 작가를 고를 수 있어요.', { timeout: 6000 });
+    // 초대 코드로 정원이 이미 다 찼다 — 마감하면 선정도 함께 끝난다(규칙 90, closeOutIfFull). 늦게 온 지원자 수를 그 줄이 말한다
+    await expect(dialog).toContainText('정원이 이미 다 차 있어 검토 대기 1명은 미선정이 돼요.', { timeout: 6000 });
     await expect(dialog.locator('[data-confirm-warning]')).toHaveText('모집 마감은 되돌릴 수 없어요.');
     expect(errors).toEqual([]);
     await api.dispose();

@@ -136,9 +136,10 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
     expect(task({})).toMatchObject({ tone: 'neutral', target: 'applicants' });
   });
 
-  it('★ 접수가 끝나면: 검토 대기가 있으면 선정이 할 일(빨강) · 버튼은 [지원자]의 [수락하기]뿐 — [선정 마치기]는 할 일 줄에 없다(규칙 90)', () => {
+  it('★ 접수가 끝나면: 검토 대기가 있으면 선정이 할 일(빨강) · 할 일 줄의 주 버튼은 [선정 마치기](모든 공고, 2026-11-21) · 목록 줄도 같은 버튼', () => {
     const t = task({ recruitmentClosed: true, pending: 4, accepted: 0 });
-    expect(t).toMatchObject({ tone: 'attention', target: 'applicants', action: '지원자 심사' });
+    expect(t).toMatchObject({ tone: 'attention', target: 'applicants', action: '선정 마치기', act: 'finish-selection' });
+    expect(t.primary).toEqual({ id: 'finish-selection', label: '선정 마치기' });
     expect(t.text).toBe('지원자 4명이 검토를 기다리고 있어요');
     expect(t.secondary).toBeUndefined();
     expect(t.note).toBeUndefined();
@@ -147,6 +148,8 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
     const dated = task({ recruitmentClosed: true, pending: 4, accepted: 1, selectionDeadline: '2026-06-03' });
     expect(dated.text).toBe('6.3(수)까지 선정하세요 · 검토 대기 4명');
     expect(dated.note).toBe('그날이 지나면 수락하지 않은 지원자는 미선정이 돼요');
+    // 선정 마감일이 있어도 [선정 마치기] — 그날을 기다리지 않고 일찍 · 적게 뽑고 · 아무도 안 뽑고 끝낸다(사용자 결정)
+    expect(dated.primary?.id).toBe('finish-selection');
     // 출품 자료보다 선정이 먼저(작가들이 결과를 기다린다)
     expect(task({ recruitmentClosed: true, pending: 2, accepted: 3, submissionsIncomplete: 3 }).target).toBe('applicants');
     // 공모만 진행도 같다 — 다 정하면 끝
@@ -155,7 +158,7 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
   });
 
   it('★ 접수 마감일이 지났으면 [모집 마감]을 안 눌러도 선정이다(규칙 90)', () => {
-    expect(task({ deadline: past, pending: 2 })).toMatchObject({ tone: 'attention', target: 'applicants', action: '지원자 심사' });
+    expect(task({ deadline: past, pending: 2 })).toMatchObject({ tone: 'attention', target: 'applicants', action: '선정 마치기', act: 'finish-selection' });
     expect(task({ deadline: past, pending: 0, accepted: 0 }).act).toBeUndefined();
   });
 
@@ -195,10 +198,10 @@ describe('galleryNextTask — 갤러리가 지금 할 일 하나', () => {
     expect(task({ recruitOnly: true, capacity: 1, accepted: 1, pending: 1 })).toMatchObject({ target: 'stage', action: '모집 마감' });
     // 정원을 모르면(null) 건너뛴다 — 모집 중이면 기다리는 중
     expect(task({ accepted: 2, pending: 1 })).toMatchObject({ target: 'applicants', tone: 'neutral' });
-    // 접수가 끝나고 정원이 찼는데 검토 대기가 남았다 — 더는 수락할 수 없다(모집 인원을 늘리거나, 선정이 끝나면 미선정)
+    // 접수가 끝나고 정원이 찼는데 검토 대기가 남았다 — 서버는 정원이 차면 선정을 끝낸다(closeOutIfFull). 다시 받기 전 잠깐이라도 [선정 마치기]
     const full = task({ capacity: 2, accepted: 2, pending: 3, recruitmentClosed: true });
     expect(full).toMatchObject({ tone: 'attention', target: 'applicants' });
-    expect(full.primary).toBeUndefined();
+    expect(full.primary?.id).toBe('finish-selection');
     expect(full.text).toBe('정원(2명)이 찼어요 · 검토 대기 3명');
     expect(task({ capacity: 2, accepted: 2, pending: 3, recruitmentClosed: true, selectionDeadline: '2026-06-03' }).note).toBe('6.3(수)이 지나면 검토 대기는 미선정이 돼요');
     // 검토 대기가 없으면 정원 문구가 아니다
