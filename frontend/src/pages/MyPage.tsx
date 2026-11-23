@@ -124,7 +124,7 @@ interface GalleryOperationOverview {
   nextAction: { label: string; description: string; route: string };
   counts: {
     applications: { total: number; submitted: number; reviewed: number; accepted: number; rejected: number };
-    submissions: { required: number; submitted: number; complete: number };
+    submissions: { required: number; submitted: number; complete: number; guests?: number; guestIncomplete?: number };
     sales: { total: number };
     settlement: { total: number; pending: number; approved: number; issue: number };
   };
@@ -1666,7 +1666,9 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
     const submissions = item.counts.submissions;
     const settlement = item.counts.settlement;
     const pending = apps.submitted + apps.reviewed;
-    const incomplete = Math.max(0, submissions.required - submissions.complete);
+    // 비회원 작가(규칙 91) — 필요 수엔 들지만 안내는 회원만 받는다. 회원의 빈 자료 = 전체 빈 자료 − 비회원의 빈 자료
+    const guestIncomplete = submissions.guestIncomplete ?? 0;
+    const incomplete = Math.max(0, submissions.required - submissions.complete - guestIncomplete);
     const settlementStarted = item.counts.sales.total > 0 || !!item.settlementRequestedAt;
     const stage = stageOf({ ...item, settlementStarted, pending })!;
     const approvals = { total: settlement.total, approved: settlement.approved, issue: settlement.issue };
@@ -1687,6 +1689,8 @@ function MyExhibitionsSection({ initialViewMode, createOnly = false }: { initial
       capacity: item.capacity ?? null,
       capacityMask: item.capacityMask ?? null,
       submissionsIncomplete: incomplete,
+      guests: submissions.guests ?? 0,
+      guestIncomplete,
       sales: item.counts.sales.total,
       approvals,
     });

@@ -70,7 +70,8 @@ export function median(xs: number[]): number | null {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-const notAdmin = { role: { not: 'ADMIN' } } as const;
+// 비회원 작가 계정(role 'GUEST', 규칙 91)은 회원이 아니다 — 가입·회원 수에 넣지 않는다
+const notAdmin = { role: { notIn: ['ADMIN', 'GUEST'] as string[] } };
 const between = (from: Date, to: Date) => ({ gte: from, lt: to });
 
 // ───────────────────────────────── 요약 ─────────────────────────────────
@@ -241,7 +242,7 @@ export async function statsMembers(days: number, now: Date = new Date()) {
     const first = startOf(weeks[0]);
     const [users, roleTotals, deleted, deletedPeriod, visits, since] = await Promise.all([
       prisma.user.findMany({ where: { ...notAdmin, createdAt: { gte: first } }, select: { id: true, createdAt: true, role: true, provider: true } }),
-      prisma.user.groupBy({ by: ['role'], where: { deletedAt: null }, _count: { _all: true } }),
+      prisma.user.groupBy({ by: ['role'], where: { deletedAt: null, role: { not: 'GUEST' } }, _count: { _all: true } }),
       prisma.user.count({ where: { deletedAt: { not: null } } }),
       prisma.user.count({ where: { deletedAt: between(p.from, p.to) } }),
       prisma.$queryRaw<{ userId: number; day: Date }[]>`

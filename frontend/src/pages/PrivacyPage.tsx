@@ -3,7 +3,7 @@ export default function PrivacyPage() {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-base text-gray-400 mt-2">Legal</p>
       <h1 className="text-4xl font-serif text-gray-900 mb-2">개인정보처리방침</h1>
-      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 11월 19일</p>
+      <p className="text-sm text-gray-400 mb-10">최종 수정일: 2026년 11월 23일</p>
 
       <PrivacyBody />
     </div>
@@ -33,6 +33,7 @@ export function PrivacyBody({ compact = false }: { compact?: boolean }) {
           <li>로그인하지 않고 작가·갤러리 홈페이지로 문의하는 경우(그 회원이 문의 받기를 켠 경우에만): 이름, 연락처(이메일 또는 전화번호), 문의 내용 — 문의 창에서 동의를 받습니다</li>
           <li>ArtTalk(대화)에서 신고하는 경우: 신고한 메시지와 그 앞뒤 대화 일부(보낸 사람·내용·첨부 이름·시각), 신고 사유와 자세한 내용 — 운영자의 확인에만 씁니다</li>
           <li>ArtTalk(대화)에서 상대를 차단한 경우: 차단한 상대와 차단한 시각</li>
+          <li>공모 운영자가 가입하지 않은 작가를 ‘비회원 작가’로 넣는 경우: 운영자가 그 작가에게서 받아 적는 이름과 출품 자료(작품 정보·작품 사진·약력·연락처·작가노트), 판매·정산 기록 — 로그인할 수 있는 계정이 아니며 그 공모의 운영에만 씁니다</li>
         </ul>
       </section>
 
@@ -59,6 +60,7 @@ export function PrivacyBody({ compact = false }: { compact?: boolean }) {
           <li>앱 알림 기기 토큰: 로그아웃·회원 탈퇴 시, 또는 알림 서비스가 그 기기에 더는 보낼 수 없다고 알린 때 삭제합니다.</li>
           <li>ArtTalk 신고 기록(신고 때 남긴 대화 사본 포함): 신고를 처리하고 같은 일이 되풀이되는지 확인하는 데 필요한 기간 동안 보관한 뒤 파기합니다.</li>
           <li>ArtTalk 차단 기록: 차단을 풀거나 회원 탈퇴 시 삭제합니다.</li>
+          <li>비회원 작가 정보: 운영자가 그 작가를 빼거나 그 공모를 지우면 함께 삭제합니다. 판매·정산 기록이 있으면 공모 기록과 함께 보관됩니다.</li>
           <li>관계 법령(전자상거래법 등)에 따라 보존이 필요한 경우 해당 기간 동안 보관 후 파기합니다.</li>
         </ul>
       </section>

@@ -436,7 +436,9 @@ export interface SettlementWork {
 }
 // 정산: 작가별
 export interface SettlementArtist {
-  user: { id: number; name: string; nickname?: string | null; email?: string };
+  user: { id: number; name: string; nickname?: string | null; email?: string | null; guest?: boolean };
+  /** 비회원 작가(규칙 91) — 갤러리가 직접 넣은 사람. 판매·비율은 같고 정산 확인 요청이 없다 */
+  guest?: boolean;
   galleryRatio: number;
   artistRatio: number;
   works: SettlementWork[];

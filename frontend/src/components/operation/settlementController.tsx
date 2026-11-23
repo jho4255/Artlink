@@ -144,10 +144,13 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
   // 고치면 서버가 그 작가만 다시 확인 대상으로 돌리고 그 사람에게만 알림을 보낸다.
   const locked = settled && !isAdmin;
   const approvalOf = (uid: number): Approval => data?.artists.find(x => x.user.id === uid)?.approval ?? null;
+  /** 정산을 확인하는 사람 — 회원 작가만(비회원 작가는 확인 요청을 받을 수 없다, 규칙 91) */
+  const memberRows = (data?.artists ?? []).filter(x => !x.guest);
+  const guestRows = (data?.artists ?? []).filter(x => !!x.guest);
   /** 확인 요청 중이 아니어도 남아 있는 수락 기록 — 재요청 시 그대로 유지된다 */
-  const approvedCount = data?.artists.filter(x => x.approval?.status === 'APPROVED').length ?? 0;
-  const unanswered = data?.artists.filter(x => (x.approval?.status || 'PENDING') === 'PENDING') ?? [];
-  const issueArtists = (data?.artists ?? []).filter(x => x.approval?.status === 'ISSUE')
+  const approvedCount = memberRows.filter(x => x.approval?.status === 'APPROVED').length;
+  const unanswered = memberRows.filter(x => (x.approval?.status || 'PENDING') === 'PENDING');
+  const issueArtists = memberRows.filter(x => x.approval?.status === 'ISSUE')
     .map(x => ({ id: x.user.id, name: nameWithNickname(x.user), comment: x.approval?.comment ?? '' }));
 
   const invalidate = () => {
@@ -235,6 +238,7 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
     edited.current = false;
     let next: EditArtist[] = data.artists.map(a => ({
       user: a.user,
+      guest: !!a.guest,
       galleryRatio: a.galleryRatio,
       works: a.works.map(w => ({ index: w.index, title: w.title, image: w.image, size: w.size, medium: w.medium, year: w.year, listPrice: w.listPrice, sold: w.sold, soldPrice: w.soldPrice, paymentMethod: (w.paymentMethod || 'CARD') as 'CARD' | 'CASH' })),
     }));
@@ -384,7 +388,9 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
   const grand = buildSettlement().grand;
   // ArtLook 홍보용: 판매 체크 + 이미지가 있는 작품들
   const soldWorks: ArtLookWork[] = artists.flatMap(a => a.works.filter(w => w.sold && w.image).map(w => ({ url: w.image as string, thumb: thumbUrl(w.image as string, 'grid'), title: w.title || '', artist: nameWithNickname(a.user), exhibition: exTitle, kind: 'sold' as const })));
-  const artistCount = data?.artists.length ?? 0;
+  // 확인 요청·확인 수는 회원 작가만 센다(규칙 91) — 비회원만 있으면 확인 요청 없이 [정산 완료]
+  const artistCount = memberRows.length;
+  const guestOnly = artistCount === 0 && guestRows.length > 0;
 
   // ── 할 일 줄(정산 단계) — 상황별 문장 하나 · 주 버튼 하나 · 보조 하나 ──
   // '강윤서 님' · '강윤서 님 외 1명' — 뒤에 '이 …남겼어요' · '에게 다시 요청' 이 붙는다(예전 '강윤서 외 1명 님이' 는 어색했다)
@@ -397,6 +403,14 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
     if (settled) {
       task = { text: '정산까지 모두 끝났어요.', tone: 'done' };
       if (!locked && dirty) primary = { label: '변경 저장', onClick: save, busy: saveMutation.isPending };
+    } else if (!requested && guestOnly) {
+      // 비회원 작가만 — 확인해 줄 사람이 없다. 판매를 넣고 바로 마친다(서버도 요청 없이 받는다)
+      task = dirty
+        ? { text: '저장하지 않은 정산 입력이 있어요', tone: 'attention' }
+        : { text: grand.soldCount > 0 ? `판매 ${grand.soldCount}점을 입력했어요. 정산을 마무리하세요.` : '판매된 작품을 입력하고 정산을 마무리하세요.', tone: 'attention' };
+      primary = dirty
+        ? { label: '변경 저장', onClick: save, busy: saveMutation.isPending }
+        : { label: '정산 완료', onClick: openComplete, busy: completeMutation.isPending };
     } else if (!requested) {
       task = dirty
         ? { text: '저장하지 않은 정산 입력이 있어요', tone: 'attention' }
@@ -424,9 +438,14 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
         open={confirmOpen}
         title="정산을 완료할까요?"
         details={[
-          '모든 참여 작가가 정산을 확인했어요.',
+          // 비회원 작가(규칙 91)는 확인 요청 없이 끝난다 — 확인창이 한 줄로 말한다
+          ...(guestRows.length === 0 ? ['모든 참여 작가가 정산을 확인했어요.']
+            : artistCount > 0 ? [`회원 작가 ${artistCount}명이 모두 정산을 확인했어요.`] : []),
+          ...(guestRows.length > 0
+            ? [`비회원 작가 ${guestRows.length}명(${guestRows.slice(0, 3).map(x => nameWithNickname(x.user)).join(', ')}${guestRows.length > 3 ? ' 외' : ''})은 확인 요청 없이 끝나요.`]
+            : []),
           '완료하면 정산 내역을 더 이상 고칠 수 없어요.',
-          '정산 내역이 참여 작가에게 최종 공유되며, 되돌릴 수 없어요.',
+          guestRows.length > 0 && artistCount === 0 ? '되돌릴 수 없어요.' : '정산 내역이 참여 작가에게 최종 공유되며, 되돌릴 수 없어요.',
         ]}
         confirmText="정산 완료"
         onConfirm={() => { setConfirmOpen(false); completeMutation.mutate(); }}

@@ -493,14 +493,14 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
     const exhibitionIds = exhibitions.map(e => e.id);
     if (exhibitionIds.length === 0) return res.json([]);
 
-    const [applications, submissions, sales, approvals] = await Promise.all([
+    const [applications, submissions, sales, approvals, guestLinks] = await Promise.all([
       prisma.application.findMany({
         where: { exhibitionId: { in: exhibitionIds } },
-        select: { exhibitionId: true, status: true }
+        select: { exhibitionId: true, status: true, userId: true }
       }),
       prisma.exhibitionSubmission.findMany({
         where: { exhibitionId: { in: exhibitionIds } },
-        select: { exhibitionId: true, artworkList: true, cv: true, note: true }
+        select: { exhibitionId: true, userId: true, artworkList: true, cv: true, note: true }
       }),
       prisma.artworkSale.findMany({
         where: { exhibitionId: { in: exhibitionIds } },
@@ -509,11 +509,26 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
       prisma.settlementApproval.findMany({
         where: { exhibitionId: { in: exhibitionIds } },
         select: { exhibitionId: true, status: true }
+      }),
+      // 비회원 작가(규칙 91) — 지원이 아니라 지원 수·정원엔 안 들고, 출품 자료 칸(완료/필요)에만 든다
+      prisma.exhibitionGuestArtist.findMany({
+        where: { exhibitionId: { in: exhibitionIds } },
+        select: { exhibitionId: true, userId: true }
       })
     ]);
 
     const appCounts = new Map<number, Record<string, number>>();
-    const submissionCounts = new Map<number, { submitted: number; complete: number }>();
+    const submissionCounts = new Map<number, { submitted: number; complete: number; guestComplete: number }>();
+    // 출품 자료를 셀 사람 — 수락된 작가 + 비회원 작가. 그 밖(수락이 풀린 작가)의 옛 자료는 세지 않는다
+    const participants = new Set<string>();
+    const guestKeys = new Set<string>();
+    const guestCounts = new Map<number, number>();
+    for (const app of applications) if (app.status === 'ACCEPTED') participants.add(`${app.exhibitionId}:${app.userId}`);
+    for (const g of guestLinks) {
+      participants.add(`${g.exhibitionId}:${g.userId}`);
+      guestKeys.add(`${g.exhibitionId}:${g.userId}`);
+      guestCounts.set(g.exhibitionId, (guestCounts.get(g.exhibitionId) ?? 0) + 1);
+    }
     const saleCounts = new Map<number, number>();
     const approvalCounts = new Map<number, Record<string, number>>();
 
@@ -525,7 +540,9 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
     }
 
     for (const sub of submissions) {
-      const row = submissionCounts.get(sub.exhibitionId) ?? { submitted: 0, complete: 0 };
+      const key = `${sub.exhibitionId}:${sub.userId}`;
+      if (!participants.has(key)) continue;
+      const row = submissionCounts.get(sub.exhibitionId) ?? { submitted: 0, complete: 0, guestComplete: 0 };
       const artworks = safeJson<any[]>(sub.artworkList, []);
       // 임시저장(draft) 작품은 갤러리에 비공개 — 제출 카운트에서도 제외해야
       // 목록(빈)과 대시보드('제출 완료')가 서로 다른 말을 하지 않는다
@@ -533,7 +550,10 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
       const hasCv = hasSubmissionContent(safeJson(sub.cv, null));
       const hasNote = hasSubmissionContent(safeJson(sub.note, null));
       if (hasArtwork || hasCv || hasNote) row.submitted += 1;
-      if (hasArtwork && hasCv && hasNote) row.complete += 1;
+      if (hasArtwork && hasCv && hasNote) {
+        row.complete += 1;
+        if (guestKeys.has(key)) row.guestComplete += 1;
+      }
       submissionCounts.set(sub.exhibitionId, row);
     }
 
@@ -598,7 +618,8 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
 
     res.json(exhibitions.map((exhibition: any) => {
       const apps = appCounts.get(exhibition.id) ?? { total: 0, submitted: 0, reviewed: 0, accepted: 0, rejected: 0 };
-      const subs = submissionCounts.get(exhibition.id) ?? { submitted: 0, complete: 0 };
+      const subs = submissionCounts.get(exhibition.id) ?? { submitted: 0, complete: 0, guestComplete: 0 };
+      const guests = guestCounts.get(exhibition.id) ?? 0;
       const saleCount = saleCounts.get(exhibition.id) ?? 0;
       const settlement = approvalCounts.get(exhibition.id) ?? { total: 0, pending: 0, approved: 0, issue: 0 };
       return {
@@ -632,13 +653,16 @@ router.get('/my-operation-overview', authenticate, authorize('GALLERY'), async (
         // 상세 조회수 — 내가 올린 공모만(운영만 위임받은 아트링크 주최 공모는 없음, lib/viewCount.ts)
         viewCount: canSeeExhibitionViews(exhibition, req.user) ? exhibition.viewCount : null,
         stage: getStage(exhibition),
-        nextAction: getNextAction(exhibition, apps.accepted ?? 0, subs.complete, saleCount, settlement),
+        nextAction: getNextAction(exhibition, (apps.accepted ?? 0) + guests, subs.complete, saleCount, settlement),
         counts: {
           applications: apps,
           submissions: {
-            required: apps.accepted ?? 0,
+            // 비회원 작가도 출품 자료가 있어야 한다(갤러리가 채운다). `guests`·`guestIncomplete` 로 안내 대상(회원)과 가른다
+            required: (apps.accepted ?? 0) + guests,
             submitted: subs.submitted,
-            complete: subs.complete
+            complete: subs.complete,
+            guests,
+            guestIncomplete: Math.max(0, guests - subs.guestComplete)
           },
           sales: { total: saleCount },
           settlement

@@ -16,6 +16,7 @@ import { withKeyLock, LOCK_NS } from './keyLock';
 import { exhibitionNotifyTargets, type OperatorShape } from './exhibitionAccess';
 import { artistExhibitionLink, operationLink } from './notifyLinks';
 import { hasSubmissionContent } from './submission';
+import { participantsOf } from './guestArtists';
 
 function safeJson<T>(raw: string | null | undefined, fb: T): T {
   if (!raw) return fb;
@@ -40,11 +41,12 @@ type FlowExhibition = OperatorShape & { id: number; title: string };
 export async function notifySubmissionReceived(exhibition: FlowExhibition, artistUserId: number): Promise<void> {
   const targets = await exhibitionNotifyTargets(exhibition);
   if (targets.length === 0) return;
-  const [artist, accepted] = await Promise.all([
+  // 모일 사람 = 참여 작가 — 수락된 작가 + 비회원 작가(규칙 91, 갤러리가 채운다). 화면의 '출품 자료 2/3' 과 같은 수
+  const [artist, people] = await Promise.all([
     prisma.user.findUnique({ where: { id: artistUserId }, select: { name: true, nickname: true } }),
-    prisma.application.findMany({ where: { exhibitionId: exhibition.id, status: 'ACCEPTED' }, select: { userId: true } }),
+    participantsOf(prisma, exhibition.id),
   ]);
-  const acceptedIds = accepted.map((a) => a.userId);
+  const acceptedIds = people.all;
   const subs = acceptedIds.length
     ? await prisma.exhibitionSubmission.findMany({ where: { exhibitionId: exhibition.id, userId: { in: acceptedIds } }, select: { artworkList: true, cv: true, note: true } })
     : [];

@@ -80,7 +80,7 @@ router.post('/:userId', authenticate, validate(writeSchema), async (req, res, ne
     const me = req.user!.id;
     const target = parseInt(req.params.userId as string);
     if (!Number.isFinite(target)) throw new AppError('대상을 찾을 수 없습니다.', 404);
-    const targetUser = await prisma.user.findFirst({ where: { id: target, deletedAt: null }, select: { id: true } });
+    const targetUser = await prisma.user.findFirst({ where: { id: target, deletedAt: null, role: { not: 'GUEST' } }, select: { id: true } });   // 비회원 작가(규칙 91)엔 방명록이 없다
     if (!targetUser) throw new AppError('대상을 찾을 수 없습니다.', 404);
 
     const { body } = req.body;

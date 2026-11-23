@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>휴대폰 출품 자료 — 비회원 작가</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #ffffff; color: #111827; font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em">
+
+<header style="height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f3f4f6">
+<a href="#" style="font-size: 24px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none">Art<span style="color: #c4302b">Link</span></a>
+<span style="display: flex; gap: 4px"><button type="button" aria-label="ArtTalk" style="width: 40px; height: 40px; border: 0; background: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg></button><button type="button" aria-label="알림" style="width: 40px; height: 40px; border: 0; background: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg></button><button type="button" aria-label="메뉴" style="width: 40px; height: 40px; border: 0; background: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button></span>
+</header>
+
+<div style="padding: 8px 16px 0">
+<a href="#" style="display: inline-flex; align-items: center; gap: 4px; min-height: 40px; font-size: 13.5px; color: #4b5563; text-decoration: none">← 내 공모</a>
+<p style="margin: 0; font-size: 12.5px; color: #4b5563"><strong style="color: #111827">전시 준비</strong> · 출품 자료 마감 D-6</p>
+<h1 style="margin: 2px 0 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em">2027 봄 기획전 《새싹》 참여 작가 모집</h1>
+
+<div role="tablist" aria-label="공모 운영" style="margin-top: 12px; display: flex; gap: 22px; border-bottom: 1px solid #e5e7eb; font-size: 14.5px">
+<button type="button" role="tab" aria-selected="false" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280">지원자 5</button>
+<button type="button" role="tab" aria-selected="true" style="min-height: 44px; margin-bottom: -1px; padding: 0; border: 0; border-bottom: 2px solid #111827; background: none; font: inherit; font-weight: 600">출품 자료 2/3</button>
+<button type="button" role="tab" aria-selected="false" aria-disabled="true" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: #d1d5db">정산</button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: #6b7280">공지</button>
+</div>
+
+<div style="padding: 10px 0; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #4b5563">
+<span><strong style="color: #111827">제출 완료 2</strong> · 작성 중 1</span>
+<span>내려받기 ▾</span>
+</div>
+
+<div style="border-top: 2px solid #111827">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+<button type="button" style="display: flex; width: 100%; align-items: center; gap: 12px; min-height: 76px; padding: 10px 0; border: 0; border-bottom: 1px solid #e5e7eb; background: none; font: inherit; text-align: left">
+<span style="flex: none; width: 52px; height: 52px; background: {{ r.thumb }}"></span>
+<span style="flex: 1; min-width: 0">
+<span style="display: flex; align-items: center; gap: 6px"><span style="font-size: 15px; font-weight: 600">{{ r.name }}</span><sc-if value="{{ r.guest }}" hint-placeholder-val="{{ false }}"><span style="padding: 0 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 11.5px; color: #4b5563">비회원</span></sc-if></span>
+<span style="display: block; margin-top: 2px; font-size: 12px; color: #6b7280">{{ r.sub }}</span>
+</span>
+<span style="font-size: 13px; font-weight: {{ r.stateWeight }}; color: {{ r.stateColor }}">{{ r.state }}</span>
+</button>
+</sc-for>
+</div>
+
+<button type="button" style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>비회원 작가 추가</button>
+</div>
+
+<div style="position: absolute; left: 0; right: 0; bottom: 57px; padding: 10px 16px; border-top: 1px solid #e5e7eb; background: #ffffff; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<span style="font-size: 13.5px; font-weight: 600"><span aria-hidden="true" style="display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #c4302b; vertical-align: middle"></span>안 낸 작가 1명</span>
+<button type="button" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: #111827; color: #ffffff; font: inherit; font-size: 14px; font-weight: 600">1명에게 안내 보내기</button>
+</div>
+
+<nav aria-label="하단 메뉴" style="position: absolute; left: 0; right: 0; bottom: 0; height: 56px; border-top: 1px solid #e5e7eb; background: #ffffff; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: center; font-size: 10.5px; color: #6b7280; text-align: center">
+<span>홈</span><span>작가</span><span>갤러리</span><span>전시</span><span>모집</span><span>커뮤니티</span><span>스토리</span>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const R = (name, sub, state, opts) => ({
+name, sub, state,
+guest: !!(opts && opts.guest),
+thumb: opts && opts.guest ? '#e7e2da' : '#e5e7eb',
+stateColor: opts && opts.attention ? '#c4302b' : '#4b5563',
+stateWeight: opts && opts.attention ? 600 : 400
+});
+return {
+rows: [
+R('김서윤', '출품작 4 · 대표작 ✓ · 약력 ✓ · 작가노트 ✓', '✓ 제출 완료'),
+R('박도현', '출품작 2 · 대표작 — · 약력 ✓ · 작가노트 —', '작성 중', { attention: true }),
+R('한지우', '갤러리가 입력 · 출품작 5 · 약력 ✓', '✓ 입력함', { guest: true })
+]
+};
+}
+}
+</script>
+</body>
+</html>

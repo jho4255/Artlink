@@ -25,6 +25,7 @@ import { AUTO_APPROVE_DAYS, autoApproveDeadline, isAutoApproveDue } from '../lib
 import { parseSubmissionBody, readArtworkList, readCv, readNote } from '../lib/submissionSchema';
 import { isSubmissionComplete, notifySubmissionReceived, notifyExhibitionConfirmed, notifySettlementAllApproved } from '../lib/flowNotify';
 import { closeOutIfFull, closeOutPendingApplications, FINISH_AFTER_CLOSE, selectionStarted } from '../lib/applicationWindow';
+import { cleanGuestName, createGuestArtist, deleteGuestUsers, isGuestOf, maskGuestUser, participantsOf, participantUsersOf } from '../lib/guestArtists';
 
 const router = Router();
 
@@ -50,7 +51,7 @@ async function getAccess(exhibitionId: number, userId: number, role: string) {
   const exhibition = await prisma.exhibition.findUnique({
     where: { id: exhibitionId },
     select: {
-      id: true, title: true, galleryId: true, hostType: true, recruitOnly: true,
+      id: true, title: true, status: true, galleryId: true, hostType: true, recruitOnly: true,
       recruitmentClosed: true, confirmed: true, ended: true, settlementRequestedAt: true, settledAt: true, exhibitStartDate: true, exhibitDate: true,
       deadline: true, selectionDeadline: true,   // 선정을 시작했나(접수 마감일 경과) · 선정 마감일 — 규칙 90
       capacity: true,                            // 모집 마감 때 정원이 이미 다 차 있으면 선정이 끝난다(closeOutIfFull)
@@ -360,18 +361,15 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
     const { isOwner, isAdmin } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
-    // 수락된 작가 목록
-    const accepted = await prisma.application.findMany({
-      where: { exhibitionId, status: 'ACCEPTED' },
-      include: { user: { select: { id: true, name: true, nickname: true, handle: true, email: true, avatar: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
+    // 참여 작가 — 수락된 작가 + 비회원 작가(규칙 91, `guest: true` — 갤러리가 직접 넣는 사람)
+    const people = await participantUsersOf(prisma, exhibitionId, { id: true, name: true, nickname: true, handle: true, email: true, avatar: true });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
     const subByUser = new Map(subs.map((s) => [s.userId, s]));
 
-    const result = accepted.map((a) => ({
-      user: a.user,
-      submission: withProxyFlag(publicSubmission(subByUser.get(a.userId)), a.userId) ?? EMPTY_SUB,
+    const result = people.map((p) => ({
+      user: p.user,
+      guest: p.guest,
+      submission: withProxyFlag(publicSubmission(subByUser.get(p.userId)), p.userId) ?? EMPTY_SUB,
     }));
     res.json(result);
   } catch (e) { next(e); }
@@ -451,17 +449,19 @@ router.get('/:id/submissions/:userId', authenticate, async (req, res, next) => {
     const isSelf = req.user!.id === targetUserId;
     if (!isOwner && !isAdmin && !isSelf) throw new AppError('권한이 없습니다.', 403);
 
-    // 대상이 실제 수락 작가인지 확인
+    // 대상이 실제 참여 작가인지 확인 — 수락된 작가 또는 이 공모의 비회원 작가(규칙 91)
     const app = await prisma.application.findUnique({
       where: { userId_exhibitionId: { userId: targetUserId, exhibitionId } },
       select: { status: true },
     });
-    if (!app || app.status !== 'ACCEPTED') throw new AppError('해당 공모의 수락 작가가 아닙니다.', 404);
+    const guest = !(app?.status === 'ACCEPTED') && (isOwner || isAdmin) && await isGuestOf(prisma, exhibitionId, targetUserId);
+    if (app?.status !== 'ACCEPTED' && !guest) throw new AppError('해당 공모의 수락 작가가 아닙니다.', 404);
 
-    const user = await prisma.user.findUnique({
+    const found = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, name: true, nickname: true, email: true },
     });
+    const user = found ? maskGuestUser(found, guest) : found;
     const sub = await prisma.exhibitionSubmission.findUnique({
       where: { exhibitionId_userId: { exhibitionId, userId: targetUserId } },
     });
@@ -504,12 +504,15 @@ async function assertNoSalesFor(exhibitionId: number, artistUserId: number) {
   if (sold > 0) throw new AppError('이 작가의 판매 기록이 있어 출품 목록을 고칠 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
 }
 
-async function assertProxyTarget(exhibitionId: number, targetUserId: number) {
+/** 대신 입력할 수 있는 사람 — 이 공모의 수락된 작가 또는 비회원 작가(규칙 91). 비회원이면 true */
+async function assertProxyTarget(exhibitionId: number, targetUserId: number): Promise<boolean> {
   const app = await prisma.application.findUnique({
     where: { userId_exhibitionId: { userId: targetUserId, exhibitionId } },
     select: { status: true },
   });
-  if (!app || app.status !== 'ACCEPTED') throw new AppError('해당 공모의 수락 작가가 아닙니다.', 404);
+  if (app?.status === 'ACCEPTED') return false;
+  if (await isGuestOf(prisma, exhibitionId, targetUserId)) return true;
+  throw new AppError('해당 공모의 수락 작가가 아닙니다.', 404);
 }
 
 router.get('/:id/submissions/:userId/edit', authenticate, async (req, res, next) => {
@@ -535,7 +538,7 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     // 종료 후에는 판매 기록이 출품목록 위치에 묶여 있어 고치면 정산이 엉뚱한 작품을 가리킨다
     if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 제출 자료를 수정할 수 없습니다. 판매·정산 기록이 출품 목록 순서에 묶여 있습니다.', 403);
-    await assertProxyTarget(exhibitionId, targetUserId);
+    const guest = await assertProxyTarget(exhibitionId, targetUserId);
     if (!isAdmin) await assertNoSalesFor(exhibitionId, targetUserId);
 
     const data = { ...submissionDataFrom(req.body), updatedById: req.user!.id };
@@ -547,7 +550,8 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
 
     // 작가에게 알린다. 대신 입력은 작품 단위로 여러 번 저장하게 되므로,
     // 안 읽은 같은 알림이 있으면 새로 쌓지 않고 갱신한다(explore.ts 의 좋아요 알림과 같은 방식).
-    if (targetUserId !== req.user!.id) {
+    // 비회원 작가는 받을 사람이 없다(로그인할 수 없는 계정 — 규칙 91)
+    if (targetUserId !== req.user!.id && !guest) {
       try {
         const editor = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true, nickname: true } });
         const who = isAdmin && !isOwner ? '관리자' : (exhibition.gallery?.name || editor?.nickname || editor?.name || '갤러리');
@@ -571,6 +575,62 @@ router.put('/:id/submissions/:userId', authenticate, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ── 비회원 작가 (2026-11-23, 규칙 91) — 가입하지 않은 작가를 운영자가 넣고, 출품 자료·판매·정산을 대신 채운다 ──
+//
+// 지켜야 하는 것:
+//  · 지원이 아니다 — 지원자 목록·정원·단톡방·갤러리 [작가] 탭에 안 들어간다(`lib/guestArtists.ts`).
+//  · 공모만 진행하는 공고엔 없다(getStageAccess — 출품 자료·정산이 없다).
+//  · 전시 종료 뒤엔 넣지도 빼지도 않는다(대신 입력과 같은 잠금 — 판매가 출품 목록 '위치'에 묶인다). 관리자는 예외.
+//  · 판매 기록이 있으면 빼지 않는다(관리자도) — 돈 기록이 같이 사라진다.
+
+/** 비회원 작가를 다룰 수 있는가 — 운영자·관리자, 승인된 공모, 정산 완료 전 */
+async function guestAccess(exhibitionId: number, user: { id: number; role: string }) {
+  const access = await getStageAccess(exhibitionId, user.id, user.role);
+  if (!access.isOwner && !access.isAdmin) throw new AppError('권한이 없습니다.', 403);
+  if (access.exhibition.status !== 'APPROVED') throw new AppError('승인된 공모에서만 비회원 작가를 넣을 수 있어요.', 400);
+  if (access.exhibition.settledAt) throw new AppError('정산이 끝난 공모는 바꿀 수 없어요.', 403);
+  return access;
+}
+
+router.post('/:id/guest-artists', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const { exhibition, isAdmin } = await guestAccess(exhibitionId, req.user!);
+    if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 비회원 작가를 넣을 수 없어요.', 400);
+    const user = await createGuestArtist(exhibitionId, req.body?.name, req.user!.id);
+    res.status(201).json({ user, guest: true });
+  } catch (e) { next(e); }
+});
+
+router.patch('/:id/guest-artists/:userId', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const userId = idOf(req.params.userId);
+    await guestAccess(exhibitionId, req.user!);
+    if (!(await isGuestOf(prisma, exhibitionId, userId))) throw new AppError('이 공모의 비회원 작가가 아닙니다.', 404);
+    const name = cleanGuestName(req.body?.name);
+    const user = await prisma.user.update({ where: { id: userId }, data: { name }, select: { id: true, name: true, nickname: true } });
+    res.json({ user: { ...user, email: null, guest: true }, guest: true });
+  } catch (e) { next(e); }
+});
+
+router.delete('/:id/guest-artists/:userId', authenticate, async (req, res, next) => {
+  try {
+    const exhibitionId = idOf(req.params.id);
+    const userId = idOf(req.params.userId);
+    const { exhibition, isAdmin } = await guestAccess(exhibitionId, req.user!);
+    if (!(await isGuestOf(prisma, exhibitionId, userId))) throw new AppError('이 공모의 비회원 작가가 아닙니다.', 404);
+    if (exhibition.ended && !isAdmin) throw new AppError('전시가 종료되어 뺄 수 없어요.', 400);
+    await prisma.$transaction(async (tx) => {
+      // 판매가 있으면 빼지 않는다 — 같은 트랜잭션에서 세고 지운다(그 사이 판매 저장과 엇갈리지 않게 판매 행부터 본다)
+      const sold = await tx.artworkSale.count({ where: { exhibitionId, artistUserId: userId } });
+      if (sold > 0) throw new AppError('이 작가의 판매 기록이 있어 뺄 수 없어요.', 400);
+      await deleteGuestUsers(tx, [userId]);
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // ── 캡션 HWP 다운로드 (오너/Admin) — 전체 출품작을 한글 양식으로 ──
 router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
   try {
@@ -578,16 +638,13 @@ router.get('/:id/caption.hwp', authenticate, async (req, res, next) => {
     const { isOwner, isAdmin, exhibition } = await getStageAccess(exhibitionId, req.user!.id, req.user!.role);
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
 
-    const accepted = await prisma.application.findMany({
-      where: { exhibitionId, status: 'ACCEPTED' },
-      orderBy: { createdAt: 'asc' },
-      select: { userId: true },
-    });
+    // 참여 작가 순서대로 — 수락된 작가 다음에 비회원 작가(규칙 91)
+    const { all: artistIds } = await participantsOf(prisma, exhibitionId);
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
     const byUser = new Map(subs.map((s) => [s.userId, publishedArtworks(s)]));
     const works: any[] = [];
-    for (const a of accepted) {
-      for (const w of (byUser.get(a.userId) || [])) {
+    for (const uid of artistIds) {
+      for (const w of (byUser.get(uid) || [])) {
         works.push({ title: w.title ?? '', size: w.size ?? '', medium: w.medium ?? '', year: w.year ?? '', price: toManWon(w.price) });
       }
     }
@@ -869,14 +926,11 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
     // 스케줄러 대신 화면을 열 때 훑는다 (알림 TTL 정리와 같은 방식)
     await autoApproveOverdue(exhibition);
 
-    const accepted = await prisma.application.findMany({
-      where: { exhibitionId, status: 'ACCEPTED' },
-      include: { user: { select: { id: true, name: true, nickname: true, email: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
+    // 참여 작가 — 수락된 작가 + 비회원 작가(규칙 91). 비회원은 판매·비율은 같고 **확인 요청이 없다**(`user.guest`)
+    const people = await participantUsersOf(prisma, exhibitionId, { id: true, name: true, nickname: true, email: true });
     const subs = await prisma.exhibitionSubmission.findMany({ where: { exhibitionId } });
     const subByUser = new Map(subs.map(s => [s.userId, publishedArtworks(s)]));
-    const rows = accepted.map(a => ({ user: a.user, artworkList: subByUser.get(a.userId) || [] }));
+    const rows = people.map(p => ({ user: p.user, artworkList: subByUser.get(p.userId) || [] }));
 
     const sales = await prisma.artworkSale.findMany({ where: { exhibitionId } });
     const settlements = await prisma.artistSettlement.findMany({ where: { exhibitionId } });
@@ -890,8 +944,10 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
     }]));
 
     const computed = computeSettlement(rows, sales, settlements, exhibition.cardFeeRate);
-    const artists = computed.artists.map(a => ({ ...a, approval: apprMap.get(a.user.id) || null }));
-    const allApproved = artists.length > 0 && artists.every(a => a.approval?.status === 'APPROVED');
+    const artists = computed.artists.map(a => ({ ...a, guest: !!a.user.guest, approval: a.user.guest ? null : apprMap.get(a.user.id) || null }));
+    // 확인은 회원 작가만 한다 — 비회원만 있는 공모는 확인할 사람이 없으니 '모두 확인'으로 본다(규칙 91)
+    const members = artists.filter(a => !a.guest);
+    const allApproved = artists.length > 0 && members.every(a => a.approval?.status === 'APPROVED');
 
     res.json({
       exhibitionTitle: exhibition.title,
@@ -975,13 +1031,9 @@ router.put('/:id/settlement', authenticate, async (req, res, next) => {
       ? Number(exhibition.cardFeeRate) || 0
       : feeUnits(cardFeeRate) / 100;
 
-    // 정산 대상은 이 공모의 '수락된 작가'로 한정 — 임의 artistUserId 주입으로 인한
+    // 정산 대상은 이 공모의 '참여 작가'(수락된 작가 + 비회원 작가, 규칙 91)로 한정 — 임의 artistUserId 주입으로 인한
     // 고아/오귀속 재무 레코드 생성 차단 (데이터 정합성)
-    const acceptedArtists = await prisma.application.findMany({
-      where: { exhibitionId, status: 'ACCEPTED' },
-      select: { userId: true },
-    });
-    const acceptedIds = acceptedArtists.map((a) => a.userId);
+    const { all: acceptedIds } = await participantsOf(prisma, exhibitionId);
     const acceptedSet = new Set(acceptedIds);
 
     const saleData = saleRows
@@ -1076,13 +1128,14 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     if (!isOwner && !isAdmin) throw new AppError('권한이 없습니다.', 403);
     if (!exhibition.ended) throw new AppError('전시 종료 후에 정산을 완료할 수 있습니다.', 400);
     if (exhibition.settledAt) throw new AppError('이미 정산이 완료되었습니다.', 400);
-    if (!exhibition.settlementRequestedAt) throw new AppError('먼저 [정산 확인 요청]을 보내 작가 확인을 받아야 합니다.', 400);
+    // 전원 수락 게이트: 수락 작가 모두 APPROVED여야 완료 가능 — **회원만**(비회원 작가는 확인 요청을 받을 수 없다, 규칙 91)
+    const acceptedArtists = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
+    // 확인할 회원 작가가 없으면(비회원 작가만 있는 공모) 확인 요청 없이 바로 마친다
+    if (!exhibition.settlementRequestedAt && acceptedArtists.length > 0) throw new AppError('먼저 [정산 확인 요청]을 보내 작가 확인을 받아야 합니다.', 400);
 
     // 게이트를 보기 전에 기한 지난 무응답을 먼저 정리한다 (화면을 안 거치고 눌러도 반영되게)
     await autoApproveOverdue(exhibition);
 
-    // 전원 수락 게이트: 수락 작가 모두 APPROVED여야 완료 가능
-    const acceptedArtists = await prisma.application.findMany({ where: { exhibitionId, status: 'ACCEPTED' }, select: { userId: true } });
     const apprs = await prisma.settlementApproval.findMany({ where: { exhibitionId }, select: { artistUserId: true, status: true, snapshot: true } });
     const okSet = new Set(apprs.filter((a) => a.status === 'APPROVED').map((a) => a.artistUserId));
     if (acceptedArtists.some((a) => !okSet.has(a.userId))) {
@@ -1104,7 +1157,11 @@ router.post('/:id/settlement/complete', authenticate, async (req, res, next) => 
     // 완료한 '순간'은 한 요청만 갖는다(2026-11-20 신뢰성 점검 — TESTCASES S13). 위의 확인은 읽기라 [정산 완료]를 두 탭에서
     // 동시에 누르면 둘 다 200 이 나고 작가에게 '정산 내역이 공개되었습니다' 가 두 통 갔다. 비어 있을 때만 차지한다
     const settledAt = new Date();
-    const claimed = await prisma.exhibition.updateMany({ where: { id: exhibitionId, settledAt: null }, data: { settledAt } });
+    const claimed = await prisma.exhibition.updateMany({
+      where: { id: exhibitionId, settledAt: null },
+      // 확인 요청 없이 마친 공모(비회원 작가만)도 '요청함'을 같이 적어 둔다 — 단계·목록이 요청 시각을 본다
+      data: exhibition.settlementRequestedAt ? { settledAt } : { settledAt, settlementRequestedAt: settledAt },
+    });
     if (claimed.count === 0) throw new AppError('이미 정산이 완료되었습니다.', 400);
     const updated = { settledAt };
 

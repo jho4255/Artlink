@@ -45,6 +45,8 @@ export const LOCK_NS = {
   settlementAllNotes: 7115,
   /** 정원(선정 인원) — 수락 · 초대 코드 참여 · 모집 인원 변경을 공모마다 차례로(lib/inviteCode.ts withSeatLock, 2026-11-21) — key = exhibitionId */
   exhibitionSeats: 7116,
+  /** 비회원 작가 — 공모마다 200명 상한(2026-11-23, lib/guestArtists.ts) — key = exhibitionId */
+  guestArtists: 7117,
 } as const;
 
 export async function withKeyLock<T>(ns: number, key: number, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

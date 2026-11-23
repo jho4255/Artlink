@@ -25,6 +25,7 @@ import { won, artistTotals } from '@/lib/settlement';
 import { shortDate } from '@/lib/listings';
 import MenuButton from '@/components/flow/MenuButton';
 import { listPriceText, type Approval, type SettlementController } from '@/components/operation/settlementController';
+import GuestChip from '@/components/operation/GuestChip';
 
 /* ─────────────────────────────────────────────────────────────
    그리기 — 위 한 줄(비율·수수료·정산서) · 작가별 표 · 합계
@@ -143,14 +144,16 @@ export default function SettlementSection({ ctl, wide, isAdmin }: { ctl: Settlem
             const appr = ctl.approvalOf(a.user.id);
             const name = nameWithNickname(a.user);
             const issue = appr?.status === 'ISSUE';
-            const canReask = requested && !settled && !locked && (appr?.status === 'PENDING' || issue);
+            // 비회원 작가(규칙 91) — 확인 요청을 받을 수 없다. 머리엔 '확인 요청 없음'
+            const guest = !!a.guest;
+            const canReask = !guest && requested && !settled && !locked && (appr?.status === 'PENDING' || issue);
             return (
               <div key={a.user.id} role="rowgroup" data-settle-artist={a.user.id} className="border-b border-gray-200 pb-2">
                 {/* 작가 머리 — 이름 | 상태 · 다시 요청 · 정산서 */}
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pt-4 pb-2">
-                  <h3 className="min-w-0 truncate text-base font-semibold text-gray-950">{name}</h3>
+                  <h3 className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-950"><span className="truncate">{name}</span>{guest && <GuestChip />}</h3>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <ApprovalText approval={appr} />
+                    {guest ? <span className="text-[13.5px] text-gray-500">확인 요청 없음</span> : <ApprovalText approval={appr} />}
                     {canReask && (
                       <button type="button" onClick={() => ctl.reask([a.user.id])} disabled={ctl.reasking} className="min-h-[40px] text-[13px] text-gray-700 underline underline-offset-4 hover:text-gray-950 disabled:opacity-50">
                         {issue ? (ctl.dirty ? '저장하고 다시 요청' : '금액 그대로 다시 요청') : '다시 요청'}

@@ -88,6 +88,8 @@ model User {
   storyMutedBy          StoryMute[]            @relation("storyMuted") // 나를 그만 보기 한 사람
   guestbookReceived     GuestbookEntry[]       @relation("guestbookTarget") // 내 방명록에 달린 글
   guestbookWritten      GuestbookEntry[]       @relation("guestbookAuthor") // 내가 남긴 방명록 글
+  guestArtistOf         ExhibitionGuestArtist? @relation("guestArtist") // 비회원 작가 계정이면 그 공모(규칙 91)
+  guestArtistsAdded     ExhibitionGuestArtist[] @relation("guestArtistAdder")
 
   @@unique([provider, providerId])
 }
@@ -582,6 +584,7 @@ model Exhibition {
   invites             ExhibitionInvite[]
   chat                Chat?
   joinCode            ExhibitionJoinCode?
+  guestArtists        ExhibitionGuestArtist[]
 
   @@index([galleryId])
   @@index([status, deadline])
@@ -1368,6 +1371,25 @@ model ExhibitionJoinCode {
   exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   code         String     @unique
   createdAt    DateTime   @default(now())
+}
+
+/// 비회원 작가 (2026-11-23, 규칙 91) — 아트링크에 가입하지 않은 작가를 공모 운영자가 직접 넣는다.
+/// 작가 한 명 = **로그인할 수 없는 계정**(`User.role='GUEST'`, 비밀번호·카카오 없음, 주소는 `@guest.artlink.invalid`) 하나.
+/// 출품 자료·판매·정산이 전부 회원 번호에 묶여 있어 그 길을 그대로 쓰려고 계정을 만든다.
+/// ⚠️ 지원(Application)이 아니다 — 그래서 지원자 목록·정원·단톡방·갤러리 [작가] 탭에 저절로 안 들어간다.
+///    참여 작가가 필요한 곳(출품 자료·캡션·도록·판매·정산)은 `lib/guestArtists.ts participantsOf` 로 합친다.
+/// 한 계정은 한 공모에만 묶인다(userId unique). 공모를 지우면 계정도 지운다(`deleteExhibitionWithNotice`).
+model ExhibitionGuestArtist {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  userId       Int        @unique
+  user         User       @relation("guestArtist", fields: [userId], references: [id], onDelete: Cascade)
+  createdById  Int?
+  createdBy    User?      @relation("guestArtistAdder", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+
+  @@index([exhibitionId])
 }
 
 /// 일간 방문 기록 (2026-09-28, Admin [통계] 탭) — **기기 × KST 날짜** 하나에 한 줄.

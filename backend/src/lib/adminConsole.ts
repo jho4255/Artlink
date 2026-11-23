@@ -74,6 +74,8 @@ export async function exhibitionCounts(ids: number[]) {
   const empty = () => ({
     apps: { total: 0, submitted: 0, accepted: 0, rejected: 0 },
     submissions: { started: 0, complete: 0 },
+    /** 비회원 작가 수(규칙 91) — 지원이 아니라 apps 에는 없다. 출품 자료 칸의 '필요' 에만 더한다 */
+    guests: 0,
     sales: 0,
     approvals: { total: 0, approved: 0, issue: 0 },
     favorites: 0,
@@ -82,13 +84,14 @@ export async function exhibitionCounts(ids: number[]) {
   const out = new Map<number, ReturnType<typeof empty>>();
   for (const id of ids) out.set(id, empty());
   if (!ids.length) return out;
-  const [apps, subs, sales, approvals, favs, hits] = await Promise.all([
+  const [apps, subs, sales, approvals, favs, hits, guests] = await Promise.all([
     prisma.application.groupBy({ by: ['exhibitionId', 'status'], where: { exhibitionId: { in: ids } }, _count: { _all: true } }),
     prisma.exhibitionSubmission.findMany({ where: { exhibitionId: { in: ids } }, select: { exhibitionId: true, artworkList: true, cv: true, note: true } }),
     prisma.artworkSale.groupBy({ by: ['exhibitionId'], where: { exhibitionId: { in: ids } }, _count: { _all: true } }),
     prisma.settlementApproval.groupBy({ by: ['exhibitionId', 'status'], where: { exhibitionId: { in: ids } }, _count: { _all: true } }),
     prisma.favorite.groupBy({ by: ['exhibitionId'], where: { exhibitionId: { in: ids } }, _count: { _all: true } }),
     prisma.exhibitionAttachmentHit.groupBy({ by: ['exhibitionId'], where: { exhibitionId: { in: ids } }, _sum: { count: true } }),
+    prisma.exhibitionGuestArtist.groupBy({ by: ['exhibitionId'], where: { exhibitionId: { in: ids } }, _count: { _all: true } }),
   ]);
   for (const a of apps) {
     const row = out.get(a.exhibitionId)!;
@@ -117,6 +120,7 @@ export async function exhibitionCounts(ids: number[]) {
   }
   for (const f of favs) if (f.exhibitionId != null && out.has(f.exhibitionId)) out.get(f.exhibitionId)!.favorites = f._count._all;
   for (const h of hits) out.get(h.exhibitionId)!.attachmentDownloads = h._sum.count ?? 0;
+  for (const g of guests) out.get(g.exhibitionId)!.guests = g._count._all;
   return out;
 }
 

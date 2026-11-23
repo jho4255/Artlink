@@ -21,7 +21,7 @@ const ALL_TABLES = [
   'ChatMessage', 'ChatParticipant', 'Chat', 'ChatReport', 'UserBlock',
   'KanbanSubtask', 'KanbanComment', 'KanbanCard', 'KanbanBoard',
   'MessageReport', 'Message',
-  'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ArtworkScrap',
+  'Faq', 'Inquiry', 'Notification', 'ExhibitionInvite', 'ExhibitionGuestArtist', 'ArtworkScrap',
   'StoryHighlight', 'StoryReport', 'StoryMute', 'PostCategory', 'PostDraft', 'PostAsset', 'PostPollVote',
   'Application', 'ApprovalRequest', 'Favorite', 'Review', 'PromoPhoto', 'ExhibitionManager',
   'PortfolioVersion', 'PortfolioImage', 'Portfolio', 'GalleryOfMonth', 'ShowImage', 'Show', 'Exhibition',
@@ -85,6 +85,7 @@ export async function cleanDb() {
     await tx.notification.deleteMany();
     await tx.exhibitionInvite.deleteMany();
     await tx.exhibitionJoinCode.deleteMany();
+    await tx.exhibitionGuestArtist.deleteMany();   // 비회원 작가(2026-11-23, 규칙 91) — 공모·계정 cascade 로도 지워지지만 명시
     await tx.artworkScrap.deleteMany();
     await tx.application.deleteMany();
     await tx.approvalRequest.deleteMany();

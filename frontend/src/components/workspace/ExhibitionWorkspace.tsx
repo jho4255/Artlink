@@ -96,7 +96,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     staleTime: 0,
     refetchOnMount: 'always',
   });
-  const { data: submissions = [], isFetched: submissionsFetched, isError: submissionsFailed } = useQuery<{ user: any; submission: OperationSubmission }[]>({
+  const { data: submissions = [], isFetched: submissionsFetched, isError: submissionsFailed } = useQuery<{ user: any; guest?: boolean; submission: OperationSubmission }[]>({
     queryKey: ['operation-submissions', id],
     queryFn: () => api.get(`/operations/${id}/submissions`).then(r => r.data),
     enabled: canManage && approved && !recruitOnly,
@@ -112,9 +112,14 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
   // ── 숫자 ──
   const pending = applicants.filter(a => a.status === 'SUBMITTED' || a.status === 'REVIEWED').length;
   const accepted = applicants.filter(a => a.status === 'ACCEPTED').length;
-  const completeSubs = submissions.filter(({ submission }) => (submission.artworkList?.length || 0) > 0 && hasContent(submission.cv) && hasNoteContent(submission.note)).length;
-  const incomplete = Math.max(0, submissions.length - completeSubs);
-  const settleArtists = ctl.data?.artists ?? [];
+  const isComplete = ({ submission }: { submission: OperationSubmission }) => (submission.artworkList?.length || 0) > 0 && hasContent(submission.cv) && hasNoteContent(submission.note);
+  const completeSubs = submissions.filter(isComplete).length;
+  // 비회원 작가(규칙 91) — 출품 자료 칸(2/3)엔 들지만 안내는 회원만 받는다, 정산 확인도 회원만
+  const memberSubs = submissions.filter(r => !r.guest);
+  const guestSubs = submissions.filter(r => !!r.guest);
+  const incomplete = memberSubs.filter(r => !isComplete(r)).length;
+  const guestIncomplete = guestSubs.filter(r => !isComplete(r)).length;
+  const settleArtists = (ctl.data?.artists ?? []).filter(a => !a.guest);
   const approvals = {
     total: settleArtists.length,
     approved: settleArtists.filter(a => a.approval?.status === 'APPROVED').length,
@@ -156,10 +161,12 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     exhibitStartDate: detail?.exhibitStartDate,
     exhibitDate: detail?.exhibitDate ?? access?.exhibitDate,
     pending,
-    accepted: applicants.length ? accepted : submissions.length,
+    accepted: applicants.length ? accepted : memberSubs.length,
     capacity: detail?.capacity ?? null,
     capacityMask: detail?.capacityMask ?? null,
     submissionsIncomplete: incomplete,
+    guests: guestSubs.length,
+    guestIncomplete,
     sales: ctl.grand.soldCount,
     approvals,
   });
@@ -179,7 +186,7 @@ export default function ExhibitionWorkspace({ exhibitionId, standalone = false, 
     exhibitionId: id,
     access,
     exhibitStartDate: detail?.exhibitStartDate ?? null,
-    incompleteArtists: incomplete,
+    incompleteArtists: incomplete + guestIncomplete,
     pendingApplicants: pending,
     acceptedApplicants: accepted,
     capacity: detail?.capacity ?? null,

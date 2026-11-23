@@ -389,7 +389,7 @@ export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLa
         <td style="border:1px solid #ddd;padding:8px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
         <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
       </tr>`).join('');
-  return `<div style="${BASE}">${header(exTitle, docLabel, artist, a.user.email)}
+  return `<div style="${BASE}">${header(exTitle, docLabel, artist, a.user.email ?? undefined)}
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
       <thead><tr data-pdf-keep-next style="background:#f5f5f5">
         <th style="border:1px solid #ddd;padding:8px">이미지</th>

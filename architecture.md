@@ -3394,3 +3394,27 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
 - 관리자 할 일의 직접 운영 공모 '검토 대기'는 접수가 끝난 공모만 센다(`todoCounts`) · '멈춘 공모'의 검토 대기는 선정 마감일 없는 옛 공고만(`stallOf`).
   '지원 → 결과' 시간(`adminStats operationSpeed`)은 `closedOutAt` 행을 뺀다 — 사람이 내린 결정이 아니다.
 
+
+## 비회원 작가 (2026-11-23, CLAUDE.md 규칙 91)
+
+사용자 요청: "공모 주최자가 직접 자료 입력(참가자 없어도) — 가끔 사이트 가입 안 한 사람 것도 추가하고 싶다". 결정: 정원에 안 센다 · 작가 탭에 안 나온다 ·
+사용자 관리에 안 넣는다 · 나중에 가입해도 이어 주지 않는다 · 연락처는 약력 칸에만 · 한 명씩. 목업 https://claude.ai/artifact/6ijvmJkTP8wYgYxCjoYoz5.
+
+**데이터** — 작가 한 명 = 로그인할 수 없는 계정(`User.role='GUEST'`, 비밀번호·카카오 없음, `.invalid` 주소) + `ExhibitionGuestArtist`(공모 ↔ 계정, userId unique).
+출품 자료(`ExhibitionSubmission`)·판매(`ArtworkSale`)·정산 비율(`ArtistSettlement`)이 회원 번호를 쓰므로 그대로 그 계정 번호를 쓴다.
+지원(`Application`)을 만들지 않는다 — 지원자 목록·정원·단톡방·갤러리 [작가]·공고 지원 수·알림은 Application 기준이라 저절로 빠진다.
+
+```
+참여 작가(participantsOf) = 수락된 Application(지원 순) + ExhibitionGuestArtist(추가한 순)
+  ├─ 들어가는 곳: 출품 자료 목록·대신 입력·한 사람 자료(PDF)·캡션 HWP·도록·정산 표·판매 저장 대상·[내 공모] 출품 자료 칸·출품 자료 알림 (n/m)·관리자 운영 조회 필요 수
+  └─ 회원만: 출품 자료 안내·정산 확인 요청/재요청/미응답 알림/3일 자동 확인·완료 조건·확정/공지/정산 공개 알림
+```
+
+**서버** — `lib/guestArtists.ts`(규칙 한 곳) · `routes/operation.ts` `POST/PATCH/DELETE /operations/:id/guest-artists[/:userId]` ·
+비회원만 있는 공모는 `POST /settlement/complete` 를 확인 요청 없이 받는다(요청 시각을 함께 적는다) · 공모·갤러리를 지우면 그 계정도 지운다(`lib/deletion.ts`) ·
+사용자 목록(관리자 사용자 관리·회원 통계·멘션·개발자 로그인)과 이웃·대화·방명록에서 `role: GUEST` 를 뺀다.
+
+**화면** — [출품 자료] 맨 아래 [비회원 작가 추가](`GuestArtistDialog`) → 그 작가 입력 칸이 열린다 · '비회원'(`GuestChip`) · '갤러리가 입력' · '입력함' ·
+[이름 바꾸기]·[이 작가 빼기] · 정산 표 '확인 요청 없음' · 요약 탭 홈페이지 링크 없음 · 할 일 줄은 회원만 안내(`flowLabels galleryNextTask` 의 `guests`·`guestIncomplete`).
+
+**검증** — backend `guest-artists.test.ts`(22) · frontend `guestArtists.test.ts` · e2e `92-guest-artists.spec.ts`(3).

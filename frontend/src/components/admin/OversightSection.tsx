@@ -183,7 +183,7 @@ function ExhibitionDetail({ row, onClose, showClose }: { row: OvRow; onClose: ()
   const strip = flowStrip('gallery', {
     ...row, settlementStarted: c.sales > 0 || !!row.settlementRequestedAt,
     accepted: c.apps.accepted, pending: c.apps.submitted, capacity: row.capacity, capacityMask: row.capacityMask,
-    submissionsComplete: c.submissions.complete, submissionsRequired: c.apps.accepted, sales: c.sales, approvals: c.approvals,
+    submissionsComplete: c.submissions.complete, submissionsRequired: c.apps.accepted + (c.guests ?? 0), sales: c.sales, approvals: c.approvals,
   });
   const apps: any[] = (data?.applications ?? []).filter((a: any) => appFilter === 'ALL' || (appFilter === 'SUBMITTED' ? a.status !== 'ACCEPTED' && a.status !== 'REJECTED' : a.status === appFilter));
   const appsShown = showAll ? apps : apps.slice(0, 8);

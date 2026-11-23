@@ -24,6 +24,7 @@ import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
 import type { SettlementController } from '@/components/operation/settlementController';
 import type { CustomField, Exhibition, OperationSubmission } from '@/types';
 import { FileDown } from 'lucide-react';
+import GuestChip from '@/components/operation/GuestChip';
 
 export default function WorkspaceSummary({ exhibitionId, detail, ctl, submissions, galleryId }: {
   exhibitionId: number;
@@ -136,7 +137,10 @@ export default function WorkspaceSummary({ exhibitionId, detail, ctl, submission
                       <span className="text-gray-600">출품 {a.works.length}점</span>
                       <span className="text-gray-600">판매 {sold}점</span>
                       <span className="tabular-nums text-gray-900">지급 {won(t.artistAmount)}</span>
-                      <Link to={`/portfolio/${a.user.id}`} className="justify-self-end text-[13.5px] text-gray-700 underline-offset-4 hover:text-gray-950 hover:underline">작가 홈페이지</Link>
+                      {/* 비회원 작가(규칙 91)는 홈페이지가 없다 */}
+                      {a.guest
+                        ? <span className="justify-self-end"><GuestChip /></span>
+                        : <Link to={`/portfolio/${a.user.id}`} className="justify-self-end text-[13.5px] text-gray-700 underline-offset-4 hover:text-gray-950 hover:underline">작가 홈페이지</Link>}
                     </>
                   ) : (
                     <>
@@ -144,7 +148,9 @@ export default function WorkspaceSummary({ exhibitionId, detail, ctl, submission
                         <span className="block truncate font-semibold text-gray-950">{name}</span>
                         <span className="block text-[13px] text-gray-600">출품 {a.works.length}점 · 판매 {sold}점 · 지급 {won(t.artistAmount)}</span>
                       </span>
-                      <Link to={`/portfolio/${a.user.id}`} className="shrink-0 text-[13px] text-gray-700 underline underline-offset-4">홈페이지</Link>
+                      {a.guest
+                        ? <GuestChip />
+                        : <Link to={`/portfolio/${a.user.id}`} className="shrink-0 text-[13px] text-gray-700 underline underline-offset-4">홈페이지</Link>}
                     </>
                   )}
                 </li>

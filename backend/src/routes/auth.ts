@@ -573,6 +573,7 @@ router.get('/dev-users', async (req, res, next) => {
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
+        role: { not: 'GUEST' },   // 비회원 작가 계정(규칙 91)은 로그인할 수 없다
         // ⚠️ 새 역할을 만들면 여기에도 넣을 것 — 빠지면 그 역할만 필터가 조용히 무시돼
         //    "같은 역할의 실제 계정으로 대체"가 엉뚱한 사람을 고른다(2026-09-16 VISITOR 추가).
         ...(role === 'ARTIST' || role === 'GALLERY' || role === 'ADMIN' || role === 'VISITOR' ? { role } : {}),

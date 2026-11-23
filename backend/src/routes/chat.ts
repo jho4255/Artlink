@@ -101,7 +101,8 @@ router.post('/direct', validate(directSchema), async (req, res, next) => {
 
     // 탈퇴한 회원과는 새로 시작할 수 없다 (이미 있는 방은 그대로 읽힌다)
     const target = await prisma.user.findFirst({ where: { id: other, deletedAt: null }, select: { id: true, role: true } });
-    if (!target) throw new AppError('대화할 수 없는 상대입니다.', 404);
+    // 비회원 작가 계정(규칙 91)은 대화할 수 없다 — 로그인하지 않으니 읽을 사람이 없다(관리자도)
+    if (!target || target.role === 'GUEST') throw new AppError('대화할 수 없는 상대입니다.', 404);
     // ⚠️ 서버 관문(2026-09-19) — 그 전엔 인증만 되면 임의 id 에 갠톡을 열 수 있어 "아무나 말 걸 수 없다"는 설계가 화면 노출에만 기대고 있었다.
     //    화면의 진입점은 작가·갤러리 페이지(=공개된 사람)와 서로 이웃뿐이다. 일반(VISITOR)·운영 계정에는 이미 방이 있거나 서로 이웃일 때만.
     const publicRole = target.role === 'ARTIST' || target.role === 'GALLERY';

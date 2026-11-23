@@ -16,6 +16,7 @@
 import prisma from './prisma';
 import { deleteUploadedFiles } from './storage';
 import { ARTIST_EXHIBITION_LINK } from './notifyLinks';
+import { deleteGuestUsers, guestIdsOfExhibitions } from './guestArtists';
 
 export interface ExhibitionDeleteFacts {
   accepted: number;
@@ -94,9 +95,11 @@ async function notifyDeleted(byExhibition: Map<number, number[]>, titles: Map<nu
 export async function deleteExhibitionWithNotice(exhibitionId: number): Promise<void> {
   const ex = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { id: true, title: true } });
   if (!ex) return;
-  const [artists, files] = await Promise.all([involvedArtistIds([ex.id]), exhibitionFileUrls([ex.id])]);
+  const [artists, files, guests] = await Promise.all([involvedArtistIds([ex.id]), exhibitionFileUrls([ex.id]), guestIdsOfExhibitions(prisma, [ex.id])]);
   // cascade 로 Application·PromoPhoto·Favorite·제출 자료·판매·정산 행이 함께 지워진다(schema onDelete: Cascade)
   await prisma.exhibition.delete({ where: { id: ex.id } });
+  // 그 공모에만 묶인 비회원 작가 계정도 지운다(규칙 91) — 연결 행은 공모를 따라 지워졌고 계정만 남는다
+  await deleteGuestUsers(prisma, guests);
   await notifyDeleted(artists, new Map([[ex.id, ex.title]]));
   void deleteUploadedFiles(files);
 }
@@ -107,12 +110,14 @@ export async function deleteGalleryWithNotice(galleryId: number): Promise<void> 
   if (!gallery) return;
   const exhibitions = await prisma.exhibition.findMany({ where: { galleryId }, select: { id: true, title: true } });
   const exIds = exhibitions.map((e) => e.id);
-  const [artists, exFiles, galleryImages] = await Promise.all([
+  const [artists, exFiles, galleryImages, guests] = await Promise.all([
     involvedArtistIds(exIds),
     exhibitionFileUrls(exIds),
     prisma.galleryImage.findMany({ where: { galleryId }, select: { url: true } }),
+    guestIdsOfExhibitions(prisma, exIds),
   ]);
   await prisma.gallery.delete({ where: { id: galleryId } });
+  await deleteGuestUsers(prisma, guests);
   await notifyDeleted(artists, new Map(exhibitions.map((e) => [e.id, e.title])));
   void deleteUploadedFiles([...galleryImages.map((i) => i.url), gallery.mainImage, ...exFiles]);
 }

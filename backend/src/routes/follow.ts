@@ -23,7 +23,8 @@ router.post('/:userId', authenticate, async (req, res, next) => {
     if (!Number.isFinite(target)) throw new AppError('대상을 찾을 수 없습니다.', 404);
     if (target === me) throw new AppError('자기 자신은 이웃할 수 없습니다.', 400);
 
-    const user = await prisma.user.findFirst({ where: { id: target, deletedAt: null }, select: { id: true } });
+    // 비회원 작가 계정(규칙 91)은 이웃할 수 없다 — 로그인하지 않는 사람이다
+    const user = await prisma.user.findFirst({ where: { id: target, deletedAt: null, role: { not: 'GUEST' } }, select: { id: true } });
     if (!user) throw new AppError('대상을 찾을 수 없습니다.', 404);
 
     // ⚠️ 확인하고 만들면(check-then-act) 동시에 두 번 눌렀을 때 둘 다 "없음"을 보고 들어가

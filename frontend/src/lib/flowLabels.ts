@@ -197,8 +197,12 @@ export interface GallerySnapshot {
   capacity?: number | null;
   /** 공고에 0명·00명으로 적었으면 — 정원 문구에 '0명 — 최대 9명' 으로 */
   capacityMask?: string | null;
-  /** 수락했지만 출품 자료(작품·약력·노트)가 다 차지 않은 작가 */
+  /** 수락했지만 출품 자료(작품·약력·노트)가 다 차지 않은 작가 — **회원만**(안내를 받을 수 있는 사람) */
   submissionsIncomplete: number;
+  /** 비회원 작가 수(규칙 91) — 지원이 아니라 `accepted`·정원에 안 든다. 갤러리가 직접 넣는다 */
+  guests?: number;
+  /** 비회원 작가 중 출품 자료가 다 차지 않은 사람 — 안내가 아니라 갤러리가 채울 일 */
+  guestIncomplete?: number;
   sales: number;
   approvals: { total: number; approved: number; issue: number };
 }
@@ -273,7 +277,7 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
     // 작가 자료가 잠겼는가 — 갤러리의 수동 확정 또는 전시 시작일 경과(서버 computeConfirmed 와 같은 규칙)
     const locked = s.confirmed || started;
     // 검토 대기가 없는데 수락한 작가도 없다 — 더 수락할 사람이 없다(결과가 난 지원은 바꾸지 않는다, 규칙 90)
-    if (s.accepted === 0) return { text: '선정한 작가가 없어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
+    if (s.accepted + (s.guests ?? 0) === 0) return { text: '선정한 작가가 없어요.', tone: 'neutral', target: 'applicants', action: '지원자 보기' };
     if (s.exhibitDate && dday(s.exhibitDate) < 0) {
       return { text: '전시 기간이 끝났어요. 전시를 종료하고 정산을 시작하세요.', tone: 'attention', target: 'stage', action: '전시 종료', act: 'end', primary: { id: 'end', label: '전시 종료' } };
     }
@@ -285,9 +289,18 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
         secondary: { id: 'confirm', label: '전시 확정' },
       };
     }
-    if (s.submissionsIncomplete > 0) {
+    // 비회원 작가(규칙 91)의 빈 자료 — 안내할 사람이 없다, 갤러리가 [출품 자료]에서 채운다
+    if ((s.guestIncomplete ?? 0) > 0 && !locked) {
+      return {
+        text: `비회원 작가 ${s.guestIncomplete}명의 ${SUBMISSION_TERM}가 비어 있어요`,
+        tone: 'attention', target: 'submissions', action: '자료 입력',
+        secondary: { id: 'confirm', label: '전시 확정' },
+      };
+    }
+    const emptyAfterLock = s.submissionsIncomplete + (s.guestIncomplete ?? 0);
+    if (emptyAfterLock > 0) {
       // 잠긴 뒤 — 작가는 더 못 낸다. 갤러리가 [대신 입력]으로 채운다(출품 자료 탭의 작가 줄)
-      return { text: `${SUBMISSION_TERM}가 비어 있는 작가가 ${s.submissionsIncomplete}명 있어요`, tone: 'attention', target: 'submissions', action: '확인하기' };
+      return { text: `${SUBMISSION_TERM}가 비어 있는 작가가 ${emptyAfterLock}명 있어요`, tone: 'attention', target: 'submissions', action: '확인하기' };
     }
     if (started) {
       const until = s.exhibitDate ? ` · ${shortDate(s.exhibitDate)}까지` : '';
@@ -298,6 +311,14 @@ export function galleryNextTask(s: GallerySnapshot, dday: DdayFn = getDday): Nex
     return { text: `전시를 준비하고 있어요${toStart ? ` · ${toStart}` : ''}`, tone: 'neutral', target: 'submissions', action: '출품 자료 보기' };
   }
 
+  // 비회원 작가만(규칙 91) — 확인해 줄 회원이 없다. 판매를 넣고 바로 마친다(서버도 요청 없이 받는다)
+  if (!s.settlementRequested && s.accepted === 0 && (s.guests ?? 0) > 0) {
+    return {
+      text: s.sales > 0 ? '판매 내역을 확인하고 정산을 마무리하세요.' : '판매된 작품을 입력하고 정산을 마무리하세요.',
+      tone: 'attention', target: 'settlement', action: '정산하기',
+      primary: { id: 'complete-settlement', label: '정산 완료' },
+    };
+  }
   if (!s.settlementRequested) {
     return {
       text: s.sales > 0 ? '판매 내역을 확인하고 작가에게 정산 확인을 요청하세요.' : '판매된 작품을 입력하고 작가에게 정산 확인을 요청하세요.',

@@ -11,6 +11,7 @@ import { todoCounts, adminExhibitionRows } from '../lib/adminConsole';
 import { clampDays, statsSummary, statsMembers, statsCalls, statsGalleries, statsUsage } from '../lib/adminStats';
 import { filledCount, hasCaption, hasCareer, MIN_WORKS } from '../lib/artistCompleteness';
 import { kstDay } from '../lib/visitStats';
+import { NOT_GUEST } from '../lib/guestArtists';
 
 const router = Router();
 
@@ -33,8 +34,9 @@ router.get('/users', authenticate, authorize('ADMIN'), async (req, res, next) =>
     if (req.query.paged === '1') return res.json(await pagedUsers(req.query as Record<string, string>, q, role, visited));
     const PAGE_SIZE = 100;
     const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
-    const where: any = visited === 'today' ? visitedTodayWhere() : {};
-    if (role) where.role = role;
+    // 비회원 작가 계정(규칙 91)은 사용자 관리에 넣지 않는다(사용자 결정 — 로그인할 수 없는 계정이다)
+    const where: any = visited === 'today' ? visitedTodayWhere() : { ...NOT_GUEST };   // 오늘 방문엔 저절로 없다(로그인하지 않는다)
+    if (role) where.role = role;   // 역할은 위에서 정해진 값만 받는다(GUEST 는 400)
     if (q) {
       where.OR = [
         { email: { contains: q, mode: 'insensitive' } },
@@ -80,7 +82,8 @@ async function pagedUsers(query: Record<string, string>, q: string, role: string
       { handle: { contains: q.replace(/^@/, '').toLowerCase() } },
     ],
   } : {};
-  const scope: any = visited === 'today' ? { ...visitedTodayWhere(now), ...search } : { ...(role ? { role } : {}), ...search };
+  // 비회원 작가 계정(규칙 91)은 어느 탭·찾기·걸러 보기에도 안 나온다 — role 키를 덮어쓰지 않게 AND 로 묶는다
+  const scope: any = { AND: [NOT_GUEST, visited === 'today' ? { ...visitedTodayWhere(now), ...search } : { ...(role ? { role } : {}), ...search }] };
   const filterWhere: Record<string, any> = {
     noWorks: { role: 'ARTIST', OR: [{ portfolio: null }, { portfolio: { images: { none: {} } } }] },
     neverApplied: { role: 'ARTIST', applications: { none: {} } },
@@ -101,7 +104,7 @@ async function pagedUsers(query: Record<string, string>, q: string, role: string
         portfolio: { select: { _count: { select: { images: true } } } },
       },
     }),
-    prisma.user.groupBy({ by: ['role'], where: search, _count: { _all: true } }),
+    prisma.user.groupBy({ by: ['role'], where: { AND: [NOT_GUEST, search] }, _count: { _all: true } }),
     prisma.user.count({ where: { ...visitedTodayWhere(now), ...search } }),
     Promise.all(USER_FILTERS.map((f) => prisma.user.count({ where: { AND: [scope, filterWhere[f]] } }))),
   ]);

@@ -83,7 +83,7 @@ export async function mentionTargets(prisma: any, meId: number): Promise<Mention
       where: {
         deletedAt: null,
         id: reachable ? { in: reachable } : { not: meId },
-        ...(canCallEveryone ? { role: { not: 'ADMIN' } } : {}),   // 운영끼리는 ArtLink 로 통한다
+        ...(canCallEveryone ? { role: { notIn: ['ADMIN', 'GUEST'] } } : {}),   // 운영끼리는 ArtLink 로 통한다 · 비회원 작가(규칙 91)는 부를 수 없다
       },
       select: { id: true, name: true, nickname: true, avatar: true, role: true },
       orderBy: { name: 'asc' },

@@ -44,6 +44,9 @@ import MenuButton from '@/components/flow/MenuButton';
 import PageTabBar from '@/components/shared/PageTabBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import MissingImagesBanner from '@/components/shared/MissingImagesBanner';
+import GuestArtistDialog from '@/components/operation/GuestArtistDialog';
+import GuestChip from '@/components/operation/GuestChip';
+import { GUEST_SUBMISSION_STATE_LABEL } from '@/lib/guestArtists';
 
 import type {
   ExhibitionNotice, OperationSubmission,
@@ -250,7 +253,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
   confirmed: boolean;
   ended?: boolean;
   manualConfirmed?: boolean;
-  proxyFor?: { id: number; name: string };
+  /** 갤러리/Admin 이 대신 쓰는 작가. `guest` = 비회원 작가(규칙 91) — 알림·홈페이지가 없다, 갤러리가 직접 채우는 사람 */
+  proxyFor?: { id: number; name: string; guest?: boolean };
   /** 자료 제출 마감일 — 상태 줄에 함께 적는다 */
   submissionDeadline?: string | null;
 }) {
@@ -454,7 +458,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
       list,
       rep: repOrdinal(artworkList, rep, list.length),
       full: true,
-      msg: proxyFor ? `${proxyFor.name}님의 출품 자료를 저장했어요. 작가에게 알림이 갑니다.` : '갤러리에 제출했어요.',
+      msg: proxyFor?.guest ? `${proxyFor.name} 출품 자료를 저장했어요.`
+        : proxyFor ? `${proxyFor.name}님의 출품 자료를 저장했어요. 작가에게 알림이 갑니다.` : '갤러리에 제출했어요.',
     });
   };
 
@@ -533,7 +538,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
   // 임시저장해 둔 작품 — 서버엔 있지만 갤러리엔 안 보인다. 있으면 '제출 완료' 로 잠그면 안 된다(낼 길이 없어진다)
   const draftCount = filledList.filter(a => a.draft).length;
   const settledView = server.complete && !anyDirty && draftCount === 0;
-  const statusText = proxyFor
+  const statusText = proxyFor?.guest ? null
+    : proxyFor
     ? '작가에게 받은 내용을 대신 입력해요. 저장하면 작가에게 알림이 가고 작가 화면에도 그대로 보여요.'
     : draftCount > 0 && !anyDirty
       ? `임시저장한 작품 ${draftCount}점은 아직 갤러리에 안 보여요.`
@@ -564,7 +570,7 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
 
   return (
     <section className="space-y-6" data-my-submission>
-      {proxyFor && <h3 className="text-base font-semibold text-gray-950">{proxyFor.name}님 {SUBMISSION_TERM} 대신 입력</h3>}
+      {proxyFor && <h3 className="text-base font-semibold text-gray-950">{proxyFor.guest ? `${proxyFor.name} ${SUBMISSION_TERM}` : `${proxyFor.name}님 ${SUBMISSION_TERM} 대신 입력`}</h3>}
       {!proxyFor && data?.proxyEdited && (
         <Notice title="갤러리가 대신 입력한 자료예요">내용이 맞는지 확인해 주세요. 직접 고쳐 제출하면 이 안내는 사라져요.</Notice>
       )}
@@ -599,7 +605,8 @@ export function MySubmissionSection({ exhibitionId, myUserId, confirmed, ended, 
       {/* 2 약력 */}
       <div id={`${idPrefix}-sec-cv`} className="scroll-mt-24 space-y-4 border-t border-gray-200 pt-6">
         {sectionHead(2, 'cv', '약력', '채움', 'cv')}
-        {!hasContent(cv) ? (
+        {/* 비회원 작가는 홈페이지가 없다 — 불러올 곳이 없으니 칸을 그리지 않는다(규칙 91) */}
+        {proxyFor?.guest ? null : !hasContent(cv) ? (
           <Notice action={<button type="button" onClick={loadFromPortfolio} className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-50">홈페이지에서 불러오기</button>}>
             {proxyFor ? '작가 홈페이지(포트폴리오)의 이름·경력으로 채울 수 있어요.' : '홈페이지(포트폴리오)에 적은 이름·연락처·경력으로 채울 수 있어요.'}
           </Notice>
@@ -682,11 +689,12 @@ const SUBMISSION_STATE_LABEL = { complete: '제출 완료', partial: '작성 중
 export function SubmissionRemindDialog({ exhibitionId, exhibitionTitle, rows, onClose }: {
   exhibitionId: string;
   exhibitionTitle: string;
-  rows: { user: any; submission: OperationSubmission }[];
+  rows: { user: any; guest?: boolean; submission: OperationSubmission }[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const incomplete = rows.filter(({ submission }) => submissionMissingParts(submission).length > 0);
+  // 비회원 작가(규칙 91)는 받을 수 없다 — 서버도 회원에게만 보낸다
+  const incomplete = rows.filter(({ guest, submission }) => !guest && submissionMissingParts(submission).length > 0);
   const mutation = useMutation({
     mutationFn: (payload: { subject: string; content: string }) => api.post(`/operations/${exhibitionId}/submission-reminders`, payload),
     onSuccess: (res) => { toast.success(`출품 자료 안내를 ${res.data.sentCount}명에게 보냈어요.`); onClose(); qc.invalidateQueries({ queryKey: ['chats'] }); },
@@ -733,7 +741,9 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
   isAdmin?: boolean;
 }) {
   const wide = useMediaQuery('(min-width: 768px)');
-  const { data = [], isLoading, refetch, isFetching } = useQuery<{ user: any; submission: OperationSubmission }[]>({
+  const qc = useQueryClient();
+  // `guest` = 비회원 작가(규칙 91) — 갤러리가 이름만 넣고 자료를 직접 채운 사람. 회원 다음 순서로 온다
+  const { data = [], isLoading, refetch, isFetching } = useQuery<{ user: any; guest?: boolean; submission: OperationSubmission }[]>({
     queryKey: ['operation-submissions', exhibitionId],
     queryFn: () => api.get(`/operations/${exhibitionId}/submissions`).then(r => r.data),
     staleTime: 0,
@@ -752,6 +762,47 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
   // 막는 장치라, 캡션·엽서를 만드는 갤러리까지 막으면 정작 도와줘야 할 때 못 돕는다.
   // 종료 후는 판매 기록이 출품목록 '위치'에 묶여 있어 반드시 막는다(Admin 만 예외).
   const canProxyEdit = !ended || !!isAdmin;
+  /** 비회원 작가를 넣고 빼는 것도 같은 잠금(전시 종료 뒤엔 관리자만) — 판매가 출품 목록 '위치'에 묶인다 */
+  const canManageGuests = canProxyEdit;
+  const [guestDialog, setGuestDialog] = useState<{ mode: 'add' } | { mode: 'rename'; id: number; name: string } | null>(null);
+  const [removeGuest, setRemoveGuest] = useState<{ id: number; name: string } | null>(null);
+  const refreshGuests = () => {
+    for (const queryKey of [['operation-submissions', exhibitionId], ['operation-settlement', exhibitionId], ['my-operation-overview']]) qc.invalidateQueries({ queryKey });
+  };
+  const openProxy = (uid: number) => {
+    setOpenId(uid);
+    setDetailTab('artwork');
+    setProxyOpened((prev) => new Set(prev).add(uid));
+    setProxyEditId(uid);
+  };
+  const errText = (e: unknown, fb: string) => (e as { response?: { data?: { error?: string } } })?.response?.data?.error || fb;
+  const addGuestMutation = useMutation({
+    mutationFn: (name: string) => api.post(`/operations/${exhibitionId}/guest-artists`, { name }).then(r => r.data),
+    onSuccess: async (res: { user: { id: number } }) => {
+      setGuestDialog(null);
+      await qc.invalidateQueries({ queryKey: ['operation-submissions', exhibitionId] });
+      refreshGuests();
+      // 넣자마자 그 작가의 입력 칸을 연다 — 넣은 이유가 자료를 채우려는 것이다
+      openProxy(res.user.id);
+      window.setTimeout(() => document.querySelector(`[data-submission-artist="${res.user.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    },
+    onError: (e) => toast.error(errText(e, '추가하지 못했어요.')),
+  });
+  const renameGuestMutation = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) => api.patch(`/operations/${exhibitionId}/guest-artists/${id}`, { name }),
+    onSuccess: () => { setGuestDialog(null); refreshGuests(); toast.success('이름을 바꿨어요.'); },
+    onError: (e) => toast.error(errText(e, '이름을 바꾸지 못했어요.')),
+  });
+  const removeGuestMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/operations/${exhibitionId}/guest-artists/${id}`),
+    onSuccess: (_r, id) => {
+      setRemoveGuest(null);
+      if (openId === id) { setOpenId(null); setProxyEditId(null); }
+      refreshGuests();
+      toast.success('뺐어요.');
+    },
+    onError: (e) => { setRemoveGuest(null); toast.error(errText(e, '빼지 못했어요.')); },
+  });
   /*
     로그인이 풀리기 전에 어느 작가 자료를 대신 입력하던 중이었으면(이 기기에 남아 있으면) 그 작가를 펼치고 대신 입력을 연 채로 —
     거기서 편집기가 되살린다(2026-11-21 O6, lib/authStash). 처음 목록을 받았을 때 한 번만(렌더 중 상태 맞추기)
@@ -777,9 +828,44 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
     window.open(`/exhibitions/${exhibitionId}/operation/print/${userId}/${doc}`, '_blank');
   };
 
+  const guestDialogs = (
+    <>
+      {guestDialog && (
+        <GuestArtistDialog
+          mode={guestDialog.mode}
+          initialName={guestDialog.mode === 'rename' ? guestDialog.name : ''}
+          busy={addGuestMutation.isPending || renameGuestMutation.isPending}
+          onClose={() => setGuestDialog(null)}
+          onSubmit={(name) => (guestDialog.mode === 'add' ? addGuestMutation.mutate(name) : renameGuestMutation.mutate({ id: guestDialog.id, name }))}
+        />
+      )}
+      <ConfirmDialog
+        open={!!removeGuest}
+        title={`${removeGuest?.name ?? ''} 작가를 뺄까요?`}
+        details={['넣어 둔 출품 자료도 함께 지워져요.', '판매 기록이 있으면 뺄 수 없어요.']}
+        confirmText="빼기"
+        variant="danger"
+        onConfirm={() => removeGuest && removeGuestMutation.mutate(removeGuest.id)}
+        onCancel={() => setRemoveGuest(null)}
+      />
+    </>
+  );
+  const addGuestButton = canManageGuests && (
+    <button type="button" data-add-guest onClick={() => setGuestDialog({ mode: 'add' })} className="inline-flex min-h-[44px] items-center gap-1.5 text-[14px] font-medium text-gray-950 hover:underline hover:underline-offset-4">
+      <Plus size={16} aria-hidden /> 비회원 작가 추가
+    </button>
+  );
+
   if (isLoading) return <div className="h-20 animate-pulse rounded-xl bg-gray-100" />;
   if (data.length === 0) {
-    return <p className="py-8 text-sm text-gray-500">아직 수락한 작가가 없어요. [지원자]에서 수락하면 작가별 {SUBMISSION_TERM}가 여기 모여요.</p>;
+    return (
+      <div className="space-y-3 py-8" data-submissions-empty>
+        <p className="text-[15px] font-semibold text-gray-950">아직 참여 작가가 없어요</p>
+        <p className="text-sm leading-relaxed text-gray-500">[지원자]에서 수락한 작가가 여기 모여요.{canManageGuests && <><br />가입하지 않은 작가는 직접 추가할 수 있어요.</>}</p>
+        {addGuestButton && <div className="pt-1">{addGuestButton}</div>}
+        {guestDialogs}
+      </div>
+    );
   }
 
   const cols = 'grid grid-cols-[56px_minmax(0,1fr)_64px_64px_64px_72px_120px_84px] items-center gap-x-4';
@@ -831,6 +917,7 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
         )}
         {data.map((row, i) => {
           const { user, submission } = row;
+          const guest = !!row.guest;
           const isOpen = openId === user.id;
           const artCount = submission.artworkList?.length || 0;
           const repIdx = submission.representativeIndex ?? (artCount === 1 ? 0 : null);
@@ -840,13 +927,17 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
           const hasNote = hasNoteContent(submission.note);
           const state = states[i]!;
           const name = nameWithNickname(user);
-          const toggle = () => { setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); if (isOpen) setProxyEditId(null); };
+          // 비회원 작가는 펼치면 바로 입력 칸 — 볼 사람이 아니라 채울 사람이다(규칙 91)
+          const toggle = () => {
+            if (!isOpen && guest && canProxyEdit) { openProxy(user.id); return; }
+            setOpenId(isOpen ? null : user.id); setDetailTab('artwork'); if (isOpen) setProxyEditId(null);
+          };
           const repImg = rep?.image
             ? <Thumb src={rep.image} alt="" className="h-14 w-14 shrink-0 bg-white object-contain" />
             : <span className="grid h-14 w-14 shrink-0 place-items-center bg-gray-50"><ImageOff size={15} className="text-gray-300" aria-hidden /></span>;
           const stateText = (
             <span className={cn('text-[13.5px]', state === 'complete' ? 'text-gray-600' : 'font-semibold text-accent')}>
-              {state === 'complete' && '✓ '}{SUBMISSION_STATE_LABEL[state]}
+              {state === 'complete' && '✓ '}{(guest ? GUEST_SUBMISSION_STATE_LABEL : SUBMISSION_STATE_LABEL)[state]}
             </span>
           );
           return (
@@ -855,8 +946,13 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
                 <div role="row" className={cn(cols, 'min-h-[76px] py-2.5')}>
                   {repImg}
                   <span role="cell" className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold text-gray-950" title={name}>{name}</span>
-                    {(submission as any).proxyEdited && <span className="block text-[12.5px] text-gray-500">대신 입력함</span>}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[15px] font-semibold text-gray-950" title={name}>{name}</span>
+                      {guest && <GuestChip />}
+                    </span>
+                    {guest
+                      ? <span className="block text-[12.5px] text-gray-500">갤러리가 입력</span>
+                      : (submission as any).proxyEdited && <span className="block text-[12.5px] text-gray-500">대신 입력함</span>}
                   </span>
                   <span role="cell" className="text-[14.5px] tabular-nums text-gray-800">{artCount > 0 ? `${artCount}점` : <span className="text-gray-400">—</span>}</span>
                   <span role="cell" className="text-[14.5px] text-gray-800">{mark(hasRep)}</span>
@@ -871,9 +967,12 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
                 <button type="button" onClick={toggle} aria-expanded={isOpen} className="flex w-full min-h-[76px] items-center gap-3 py-2.5 text-left">
                   {repImg}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold text-gray-950">{name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[15px] font-semibold text-gray-950">{name}</span>
+                      {guest && <GuestChip />}
+                    </span>
                     <span className="block truncate text-[12.5px] text-gray-500">
-                      출품작 {artCount} · 대표작 {hasRep ? '✓' : '—'} · 약력 {hasCv ? '✓' : '—'} · 작가노트 {hasNote ? '✓' : '—'}
+                      {guest && '갤러리가 입력 · '}출품작 {artCount} · 대표작 {hasRep ? '✓' : '—'} · 약력 {hasCv ? '✓' : '—'} · 작가노트 {hasNote ? '✓' : '—'}
                     </span>
                   </span>
                   {stateText}
@@ -889,7 +988,7 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
                       {confirmed && (
                         <Notice className="mb-4"><b className="font-medium text-gray-900">확정 이후예요.</b> 캡션·도록을 이미 만들었다면 고친 뒤 인쇄물도 다시 확인해 주세요.</Notice>
                       )}
-                      <MySubmissionSection exhibitionId={exhibitionId} myUserId={myUserId} confirmed={false} proxyFor={{ id: user.id, name }} />
+                      <MySubmissionSection exhibitionId={exhibitionId} myUserId={myUserId} confirmed={false} proxyFor={{ id: user.id, name, guest }} />
                     </div>
                   )}
                   {proxyEditId !== user.id && (
@@ -901,7 +1000,7 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
                         {detailTab !== 'note' && <button type="button" onClick={() => setDetailTab('note')} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">작가노트 보기</button>}
                         {canProxyEdit && (
                           <button type="button" onClick={() => { setProxyOpened((prev) => new Set(prev).add(user.id)); setProxyEditId(user.id); }} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">
-                            대신 입력
+                            {guest ? '자료 입력' : '대신 입력'}
                           </button>
                         )}
                         <MenuButton
@@ -918,7 +1017,14 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
                     </>
                   )}
                   {proxyEditId === user.id && (
-                    <button type="button" onClick={() => setProxyEditId(null)} className="min-h-[44px] text-[13.5px] text-gray-700 underline underline-offset-4 hover:text-gray-950">대신 입력 닫기</button>
+                    <button type="button" onClick={() => setProxyEditId(null)} className="min-h-[44px] text-[13.5px] text-gray-700 underline underline-offset-4 hover:text-gray-950">{guest ? '입력 닫기' : '대신 입력 닫기'}</button>
+                  )}
+                  {/* 비회원 작가 — 이름 바꾸기 · 빼기(판매 기록이 생기면 서버가 막는다) */}
+                  {guest && canManageGuests && (
+                    <div className="flex flex-wrap items-center gap-x-5 text-[13.5px]" data-guest-actions>
+                      <button type="button" onClick={() => setGuestDialog({ mode: 'rename', id: user.id, name: user.name })} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">이름 바꾸기</button>
+                      <button type="button" onClick={() => setRemoveGuest({ id: user.id, name: user.name })} className="min-h-[44px] text-gray-700 underline underline-offset-4 hover:text-gray-950">이 작가 빼기</button>
+                    </div>
                   )}
                 </div>
               )}
@@ -926,6 +1032,8 @@ export function AdminSubmissionsSection({ exhibitionId, exhibitionTitle, myUserI
           );
         })}
       </div>
+      {addGuestButton && <div className="pt-1">{addGuestButton}</div>}
+      {guestDialogs}
     </div>
   );
 }

@@ -13,7 +13,9 @@ export type EditWork = {
   listPrice: string; sold: boolean; soldPrice: number; paymentMethod: 'CARD' | 'CASH';
 };
 export type EditArtist = {
-  user: { id: number; name: string; nickname?: string | null; email?: string };
+  user: { id: number; name: string; nickname?: string | null; email?: string | null };
+  /** 비회원 작가(규칙 91) — 확인 요청이 없다 */
+  guest?: boolean;
   galleryRatio: number;
   works: EditWork[];
 };

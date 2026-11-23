@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>정산 완료 확인창 — 비회원 포함</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#111827}a:hover{color:#111827}
+</style>
+</helmet>
+<div style="width: 760px; height: 480px; box-sizing: border-box; display: grid; place-items: center; background: rgba(17, 24, 39, 0.45); font-family: Inter, 'Noto Sans KR', system-ui, sans-serif; letter-spacing: -0.01em; color: #111827">
+<div role="dialog" aria-label="정산을 완료할까요?" style="width: 400px; box-sizing: border-box; padding: 24px; border-radius: 16px; background: #ffffff; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18)">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">정산을 완료할까요?</h2>
+<ul style="margin: 14px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.7; color: #374151">
+<li>회원 작가 2명이 모두 정산을 확인했어요.</li>
+<li>비회원 작가 1명(한지우)은 확인 요청 없이 끝나요.</li>
+<li>완료하면 정산 내역을 더 이상 고칠 수 없어요.</li>
+<li>정산 내역이 참여 작가에게 최종 공유되며, 되돌릴 수 없어요.</li>
+</ul>
+<div style="margin-top: 22px; display: flex; justify-content: flex-end; gap: 8px">
+<button type="button" style="min-height: 44px; padding: 0 16px; border: 0; background: none; font: inherit; font-size: 14px; color: #4b5563">취소</button>
+<button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #111827; color: #ffffff; font: inherit; font-size: 14px; font-weight: 600">정산 완료</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":480}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

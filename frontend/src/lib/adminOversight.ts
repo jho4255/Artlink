@@ -25,6 +25,8 @@ export interface OvRow {
   counts: {
     apps: { total: number; submitted: number; accepted: number; rejected: number };
     submissions: { started: number; complete: number };
+    /** 비회원 작가 수(규칙 91) — 지원이 아니라 apps 에 없다 */
+    guests?: number;
     sales: number;
     approvals: { total: number; approved: number; issue: number };
     favorites: number;
