@@ -16,6 +16,29 @@ export const IMG_PX: Record<ImgClass, number> = { thumb: 240, mid: 720 };
  */
 export type ImgFn = (url: string | null | undefined, cls: ImgClass) => string | null;
 
+/** 그림 주소 → 크기(px, 심는 그림 기준 — 비율만 쓴다). 모르면 null */
+export type DimsFn = (url: string) => { w: number; h: number } | null;
+
+/** 글자 폭(pt) — 글자, 크기, 굵게. render.ts 가 문서 글꼴(Pretendard)로 잰다 */
+export type Measure = (text: string, size: number, bold?: boolean) => number;
+
+/**
+ * 문서를 그리기 전에 **배치만** 해 본다(render.ts layoutProbe — pdfmake 가 배치를 마치면 그리기 전에 멈춘다).
+ * @returns 쪽 수 · `id` 를 준 표시 조각의 위쪽 위치(pt, 쪽 맨 위에서) — 못 찾으면 null
+ */
+export type LayoutProbe = (doc: import('pdfmake/interfaces').TDocumentDefinitions, id?: string) => Promise<{ pages: number; top: number | null }>;
+
+/**
+ * 빌더에 넘기는 도구 — 처음(그림 적기) 돌 때는 img 만 있고, 진짜로 만들 때 나머지가 붙는다.
+ * 배치에 기대는 문서(지원서·출품 자료)는 probe 로 한 번 미리 배치해 보고 다시 짠다(applicationDoc·submissionDoc 의 compose*).
+ */
+export interface DocTools {
+  img: ImgFn;
+  measure?: Measure;
+  dims?: DimsFn;
+  probe?: LayoutProbe;
+}
+
 /** 문서 머리에 찍는 공모 정보 — `loadDocContext` 가 공개 상세에서 채운다 */
 export interface DocContext {
   exTitle: string;

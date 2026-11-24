@@ -3435,6 +3435,7 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
   │ 출품 자료 PDF(ZIP)  ──┼── lib/operationPdf.ts ───────────┴───────────────────────────────────────┘
   │ 작품 원본(ZIP)      ──┘    │  빌더(순수): galleryDocs/{workList,submissionDoc,settlementDoc,applicationDoc}.ts
   │                            │  표기·번호: galleryDocs/format.ts  · 글자 조각: galleryDocs/text.ts · 엑셀: galleryDocs/xlsx.ts
+  │                            │  약력 두 단(쪽마다 왼→오): galleryDocs/cvFlow.ts · 지원서·출품 자료는 compose*(미리 배치 → 다시 짜기, render.ts layoutProbe·loadMeasure)
   │                            └─ import('./galleryDocs/render') — 누를 때만: pdfmake(청크 pdfmake-*, PWA 제외) · Pretendard OTF(assets/fonts)
   │                                  · 그림 미리 받기(imageFetch) → 칸 크기로 줄여 JPEG(240/720px)
   │                                  · 한자·이모지 → GET /api/fonts/fallback(서버가 구글 글꼴 text= 의 TTF 를 대신 받음)

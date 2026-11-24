@@ -2,9 +2,13 @@
  * 지원서 PDF (2026-11-24 글자 PDF 로 다시 짬, 규칙 92).
  *  - 갤러리 추가 질문: 지금 질문 순서대로, 다중 선택은 쉼표로, 지운 질문의 답은 '삭제된 질문'으로 남긴다(옛 문서와 같은 규칙)
  *  - 예전 PDF 는 경력에 학력·수상이 빠졌고, 작품 사진을 정사각으로 찌그러뜨렸다(규칙 18)
+ *  - 2026-11-25 빈 단 정리: 사진 옆 배치('side')는 한 쪽에 다 들어갈 때만. 넘치면 사진(본문 폭) → 약력 → 경력 두 단(cvFlow).
+ *    예전엔 사진이 1쪽에서 끝나도 2쪽부터 글이 반 폭에 갇혔다. 사진은 세로로 긴 것부터.
  */
 import { describe, it, expect } from 'vitest';
-import { APP_CAREER_SECTIONS, applicationAnswers, buildApplicationDoc, type ApplicantLike } from '@/lib/galleryDocs/applicationDoc';
+import { APP_CAREER_SECTIONS, applicationAnswers, buildApplicationDoc, composeApplicationDoc, type ApplicantLike } from '@/lib/galleryDocs/applicationDoc';
+import { CV_MARKER } from '@/lib/galleryDocs/cvFlow';
+import type { LayoutProbe } from '@/lib/galleryDocs/types';
 import type { CustomField } from '@/types';
 import { docText, fakeImg, imagesOf, nodesOf } from './docTestUtils';
 
@@ -87,10 +91,74 @@ describe('지원서 PDF — 지원자', () => {
   });
 
   it('★ 작품 사진은 비율 그대로(fit) — 폭·높이를 함께 주지 않는다 · 못 받은 사진은 글자로', () => {
-    const imgs = imagesOf(doc);
-    expect(imgs.map((n) => n.image)).toEqual(['/uploads/1.jpg', '/uploads/3.jpg', '/uploads/2.jpg'].map((u) => `data:image/jpeg;mid;${u}`));
-    expect(imgs.every((n) => Array.isArray(n.fit) && !(n.width !== undefined && n.height !== undefined))).toBe(true);
-    const noImg = docText(buildApplicationDoc('공모', app, null, () => null, { origin }));
-    expect(noImg.match(/사진을 받지 못했어요/g)).toHaveLength(3);
+    for (const mode of ['stack', 'side'] as const) {
+      const imgs = imagesOf(buildApplicationDoc('겹과 결', app, customFields, fakeImg, { origin, mode }));
+      expect(imgs).toHaveLength(3);
+      expect(imgs.every((n) => Array.isArray(n.fit) && !(n.width !== undefined && n.height !== undefined)), mode).toBe(true);
+      const noImg = docText(buildApplicationDoc('공모', app, null, () => null, { origin, mode }));
+      expect(noImg.match(/사진을 받지 못했어요/g), mode).toHaveLength(3);
+    }
+  });
+});
+
+describe('지원서 PDF — 배치(2026-11-25 빈 단 정리)', () => {
+  // 1.jpg 가로(0.75) · 2.jpg 세로(1.4) · 3.jpg 정사각 · 크기 모르는 사진은 맨 뒤
+  const dims = (u: string) => ({ '/uploads/1.jpg': { w: 400, h: 300 }, '/uploads/2.jpg': { w: 500, h: 700 }, '/uploads/3.jpg': { w: 600, h: 600 } } as Record<string, { w: number; h: number }>)[u] ?? null;
+  const order = (d: ReturnType<typeof buildApplicationDoc>) => imagesOf(d).map((n) => String(n.image).split(';').pop());
+
+  it('사진은 세로로 긴 것부터 — 크기를 모르면 원래 순서', () => {
+    expect(order(buildApplicationDoc('공모', app, null, fakeImg, { origin, dims }))).toEqual(['/uploads/2.jpg', '/uploads/3.jpg', '/uploads/1.jpg']);
+    expect(order(buildApplicationDoc('공모', app, null, fakeImg, { origin }))).toEqual(['/uploads/1.jpg', '/uploads/2.jpg', '/uploads/3.jpg']);
+    const partial = { ...app, artworkImages: ['/uploads/x.jpg', '/uploads/1.jpg', '/uploads/2.jpg'] };
+    expect(order(buildApplicationDoc('공모', partial, null, fakeImg, { origin, dims }))).toEqual(['/uploads/2.jpg', '/uploads/1.jpg', '/uploads/x.jpg']);
+  });
+
+  it("'stack' — 사진은 본문 폭 한 줄 4장(줄은 쪽에서 갈라지지 않는다) → 약력 → 경력은 두 단(표시 조각 뒤)", () => {
+    const many = { ...app, artworkImages: Array.from({ length: 6 }, (_, k) => `/uploads/${k}.jpg`) };
+    const doc = buildApplicationDoc('공모', many, null, fakeImg, { origin });
+    const content = doc.content as unknown as Record<string, unknown>[];
+    const photoRows = content.filter((n) => Array.isArray(n.columns) && n.unbreakable === true);
+    expect(photoRows.map((r) => (r.columns as unknown[]).length)).toEqual([4, 4]);    // 6장 → 4 + 2(빈 칸 2)
+    expect(imagesOf(doc)).toHaveLength(6);
+    const at = (pred: (n: Record<string, unknown>) => boolean) => content.findIndex(pred);
+    const marker = at((n) => n.id === CV_MARKER);
+    expect(marker).toBeGreaterThan(at((n) => n.text === '약력'));
+    expect(content.slice(marker + 1).some((n) => Array.isArray(n.columns) && (n.columns as unknown[]).length === 2)).toBe(true);
+  });
+
+  it("'side' — 왼쪽 약력·경력 / 오른쪽 사진 두 줄(예전 배치, 한 쪽에 들어갈 때만 쓴다)", () => {
+    const doc = buildApplicationDoc('공모', app, null, fakeImg, { origin, mode: 'side', dims });
+    const content = doc.content as unknown as Record<string, unknown>[];
+    expect(content.some((n) => n.id === CV_MARKER)).toBe(false);
+    const two = content.find((n) => Array.isArray(n.columns) && (n.columns as { width?: unknown }[])[1]?.width === 236);
+    expect(two).toBeTruthy();
+  });
+
+  it('compose — 사진 옆 배치가 한 쪽이면 그대로, 넘치면 새 배치를 경력 시작 쪽 남은 높이로 다시 짠다', async () => {
+    /** 표시 조각 뒤의 경력 두 단 묶음들 */
+    const cvColsOf = (d: ReturnType<typeof buildApplicationDoc>) => {
+      const c = d.content as unknown as Record<string, unknown>[];
+      return c.slice(c.findIndex((n) => n.id === CV_MARKER) + 1).filter((n) => Array.isArray(n.columns));
+    };
+    const calls: (string | undefined)[] = [];
+    const probe = (pages: number, top: number | null): LayoutProbe => async (_d, id) => { calls.push(id); return { pages, top }; };
+    const one = await composeApplicationDoc('공모', app, null, { img: fakeImg, probe: probe(1, null) }, origin);
+    expect((one.content as unknown as Record<string, unknown>[]).some((n) => n.id === CV_MARKER)).toBe(false);
+    expect(calls).toEqual([undefined]);
+
+    calls.length = 0;
+    const long = await composeApplicationDoc('공모', app, null, { img: fakeImg, probe: probe(3, 600) }, origin);
+    expect(calls).toEqual([undefined, CV_MARKER]);
+    expect((long.content as unknown as Record<string, unknown>[]).some((n) => n.id === CV_MARKER)).toBe(true);
+    // 시작 쪽 남은 높이 = 841.89 − 46 − (600 + 1.19) ≈ 194.7 — 경력(33 + 줄)이 들어가므로 다음 쪽으로 미루지 않는다
+    expect(cvColsOf(long)[0]!.pageBreak).toBeUndefined();
+
+    // 시작 쪽에 자리가 없으면(남은 높이 < 머리 + 한 줄) 경력은 다음 쪽 맨 위에서
+    const full = await composeApplicationDoc('공모', app, null, { img: fakeImg, probe: probe(3, 760) }, origin);
+    expect(cvColsOf(full)[0]!.pageBreak).toBe('before');
+
+    // 미리 배치가 없으면(그림 적기 단계) 새 배치를 대강으로
+    const rough = await composeApplicationDoc('공모', app, null, { img: fakeImg }, origin);
+    expect((rough.content as unknown as Record<string, unknown>[]).some((n) => n.id === CV_MARKER)).toBe(true);
   });
 });

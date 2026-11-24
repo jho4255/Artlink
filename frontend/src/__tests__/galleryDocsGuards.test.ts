@@ -21,7 +21,7 @@ describe('갤러리 문서는 글자가 살아 있는 PDF', () => {
     // 그리는 쪽(pdfmake·글꼴)은 누를 때 받는다 — 운영 화면 청크에 정적으로 묶지 않는다
     expect(src).toContain("import('./galleryDocs/render')");
     expect(src).not.toMatch(/from '\.\/galleryDocs\/render'/);
-    for (const f of ['workList', 'submissionDoc', 'settlementDoc', 'applicationDoc']) {
+    for (const f of ['workList', 'submissionDoc', 'settlementDoc', 'applicationDoc', 'cvFlow']) {
       expect(read(`src/lib/galleryDocs/${f}.ts`), f).not.toMatch(imports);
       expect(read(`src/lib/galleryDocs/${f}.ts`), f).not.toMatch(/\bdocument\./);   // 빌더는 순수 함수(브라우저 일은 render.ts)
     }

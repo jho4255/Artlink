@@ -105,6 +105,43 @@ export function txt(s: unknown, style: Record<string, unknown> = {}, opts: { max
   return { text: runs(s, { bold: style.bold === true, maxWord: opts.maxWord }) as never, ...style } as Content;
 }
 
+/** 묶을 마지막 어절의 최대 글자 수 — 길면 둘을 묶은 덩어리가 너무 길어진다 */
+const LAST_WORD_MAX = 8;
+
+/**
+ * 문단(과 문단 안 줄바꿈) 끝 두 어절을 한 조각으로 (2026-11-25).
+ * 어절 단위로만 끊으니 문단 마지막 줄에 '시작한다.' 한 어절만 남는 일이 잦았다(강윤서 출품 자료 98줄). 마지막 두 어절을 한 조각(noWrap)으로
+ * 합치면 마지막 어절이 줄에 안 들어갈 때 앞 어절도 함께 다음 줄로 간다. ⚠️ noNewLine 으로 묶지 말 것 — 자리가 없어도 같은 줄에
+ * 억지로 붙여 오른쪽 여백을 넘는다. 대체 글꼴(한자·이모지) 조각이나 여러 조각짜리 낱말은 건드리지 않는다.
+ */
+export function keepLastTwo<T extends Content>(c: T): T {
+  const node = c as unknown as { text?: unknown };
+  if (!Array.isArray(node.text)) return c;
+  const rs = node.text as Run[];
+  const glue = (start: number, end: number) => {
+    const last = end - 1;
+    if (last - start < 2) return; // 세 어절 미만이면 그대로
+    const a = rs[last - 1];
+    const b = rs[last];
+    const before = rs[last - 2];
+    if (!a || !b || a.font || b.font) return;
+    if (!/\s$/u.test(a.text) || /\s/u.test(b.text.trimEnd())) return; // a = '쉬기 ', b = '시작한다.'
+    if (before && !/\s$/u.test(before.text)) return;
+    if (Array.from(b.text.trim()).length > LAST_WORD_MAX) return;
+    const merged: Run = { ...a, text: a.text + b.text, noWrap: true };
+    delete merged.noNewLine;
+    rs.splice(last - 1, 2, merged);
+  };
+  let end = rs.length;
+  for (let k = rs.length - 1; k >= -1; k--) {
+    if (k === -1 || rs[k]!.text === '\n') {
+      glue(k + 1, end);
+      end = k;
+    }
+  }
+  return c;
+}
+
 /**
  * 문단 나누기 — 작가가 친 그대로 지킨다. 빈 줄이 문단 사이, 한 줄 바꿈은 문단 안 줄바꿈.
  * (포트폴리오 PDF 는 줄을 잇는 규칙이 있지만(규칙 45b) 갤러리가 받는 출품 자료는 작가가 낸 원문 그대로가 맞다)

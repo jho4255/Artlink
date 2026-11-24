@@ -13,6 +13,7 @@ import { buildWorkListDoc, workGroups, workListImages, workListSheet } from '@/l
 import { numberWorks } from '@/lib/galleryDocs/format';
 import type { DocContext, SubmissionRowLike } from '@/lib/galleryDocs/types';
 import { docText, fakeImg, imagesOf, nodesOf, textOf } from './docTestUtils';
+import { CV_MARKER } from '@/lib/galleryDocs/cvFlow';
 
 const ctx: DocContext = { exTitle: '겹과 결', issuer: '갤러리 온', period: '2027. 3. 20 – 4. 6', issued: '2027. 4. 9.', contact: '02-123-4567' };
 
@@ -71,8 +72,40 @@ describe('출품 자료 PDF — 작가마다 한 파일', () => {
     expect(text).toContain('작품별 설명');
     expect(text).toContain('Acrylic on canvas · 72.7 × 60.6 cm');   // 표기 정리는 문서에서만
     expect(text).toContain('옛 데이터');
-    const sectionImgs = imagesOf(doc).filter((n) => Array.isArray(n.fit) && (n.fit as number[])[0] === 112);
+    // 작품별 설명 사진 칸 180pt(예전 112pt) — 크기를 모르면 정사각 칸에 비율대로
+    const sectionImgs = imagesOf(doc).filter((n) => Array.isArray(n.fit) && (n.fit as number[])[0] === 180);
     expect(sectionImgs.map((n) => n.image)).toEqual(['data:image/jpeg;mid;/uploads/a.jpg']);
+  });
+
+  it('작품별 설명 — 사진 옆을 채우고 넘치는 글은 사진 아래 본문 폭으로(사진 칸 자리가 쪽마다 비지 않게)', () => {
+    const long = Array.from({ length: 30 }, (_, k) => `이 문장은 작품을 설명하는 ${k + 1}번째 문장입니다.`).join(' ');
+    const r: SubmissionRowLike = { ...rowA, submission: { ...rowA.submission, note: { statement: '', sections: [{ title: '푸른 밤', body: long }] } } };
+    const d = buildSubmissionDoc(ctx.exTitle, r, numberOf, fakeImg, { dims: () => ({ w: 800, h: 600 }) });
+    const sec = (d.content as unknown as Record<string, unknown>[]).find((n) => textOf(n).includes('작품별 설명'))!;
+    const [glued, ...below] = sec.stack as Record<string, unknown>[];
+    expect(glued!.unbreakable).toBe(true);                     // 머리·사진·사진 옆 글은 한 덩어리
+    expect(below.length).toBeGreaterThan(0);                    // 넘친 글은 아래로
+    const img = imagesOf(d).find((n) => (n.fit as number[])[0] !== 50 && n.image === 'data:image/jpeg;mid;/uploads/a.jpg' && (n.fit as number[])[1] !== 126)!;
+    expect(img.fit).toEqual([180, 135]);                        // 가로 사진은 180 × 135 칸
+    // 글은 빠짐없이 — 사진 옆 + 아래를 이으면 원문
+    const joined = textOf(sec).replace(/\s+/g, ' ');
+    expect(joined).toContain('1번째 문장입니다.');
+    expect(joined).toContain('30번째 문장입니다.');
+    expect(joined.match(/번째 문장입니다\./g)).toHaveLength(30);
+  });
+
+  it('약력 두 단 — 시작 쪽 남은 높이를 재서 다시 짠다(compose) · 작가노트는 본문 폭', async () => {
+    const { composeSubmissionDoc } = await import('@/lib/galleryDocs/submissionDoc');
+    const ids: (string | undefined)[] = [];
+    const d = await composeSubmissionDoc(ctx.exTitle, rowA, numberOf, { img: fakeImg, probe: async (_x, id) => { ids.push(id); return { pages: 3, top: 300 }; } });
+    expect(ids).toEqual([CV_MARKER]);
+    expect(docText(d)).toContain('작가노트');
+    // 작가노트 머리는 위에 한 줄 — 예전 왼쪽 112pt 이름표 칸(쪽마다 비었다)을 두지 않는다
+    expect(nodesOf(d.content).some((n) => Array.isArray(n.columns) && (n.columns as { width?: unknown; text?: unknown }[])[0]?.text === '작가노트')).toBe(false);
+    // 약력이 없으면 잴 것이 없다
+    ids.length = 0;
+    await composeSubmissionDoc(ctx.exTitle, rowB, numberOf, { img: fakeImg, probe: async (_x, id) => { ids.push(id); return { pages: 1, top: 0 }; } });
+    expect(ids).toEqual([]);
   });
 
   it('출품 작품 표 — 전시 전체 번호 · 가격 표기 · 사진 없는 작품은 빈 칸', () => {

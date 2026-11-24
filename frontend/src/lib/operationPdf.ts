@@ -15,10 +15,10 @@ import type { CustomField, OperationSubmission } from '@/types';
 import { isNativeApp, saveFile } from '@/lib/native';
 import { numberWorks, padNo } from './galleryDocs/format';
 import { buildWorkListDoc, workListSheet } from './galleryDocs/workList';
-import { buildSubmissionDoc } from './galleryDocs/submissionDoc';
-import { buildApplicationDoc, type ApplicantLike } from './galleryDocs/applicationDoc';
+import { composeSubmissionDoc } from './galleryDocs/submissionDoc';
+import { composeApplicationDoc, type ApplicantLike } from './galleryDocs/applicationDoc';
 import { buildArtistSettlementDoc, buildSettlementDoc, type DocSettlement, type DocSettlementArtist, type PayMethod } from './galleryDocs/settlementDoc';
-import type { DocContext, ImgFn } from './galleryDocs/types';
+import type { DocContext, DocTools } from './galleryDocs/types';
 
 export type { ApplicantLike };
 
@@ -92,17 +92,25 @@ type Progress = (done: number, total: number, phase: 'images' | 'retry' | 'pdf')
 /** 문서 모듈(무겁다 — pdfmake·글꼴)은 누를 때 받는다 */
 const docs = () => import('./galleryDocs/render');
 
+type DocDef = import('pdfmake/interfaces').TDocumentDefinitions;
+/** 문서 하나 — 바로 만든 정의, 또는 미리 배치해 보고 짜는 일(지원서·출품 자료 compose*) */
+type DocJob = DocDef | (() => Promise<DocDef>);
+const runJob = (j: DocJob) => (typeof j === 'function' ? j() : Promise.resolve(j));
+
 /**
- * 빌더 하나 또는 여럿을 '그림 적기 → 그림 준비 → 대체 글꼴 → 만들기' 로 돌린다.
+ * 빌더 하나 또는 여럿을 '그림 적기 → 그림 준비 → 대체 글꼴 → 짜기 → 만들기' 로 돌린다.
+ * 미리 배치하는 문서(DocJob 이 함수 — 지원서·출품 자료)는 **나란히** 짠다 — 미리 배치(layoutProbe)가 부른 것들을 모아
+ * 한 번에 배치하므로 서른 명이어도 한두 번이다(pdfmake 는 한 번 부를 때마다 글꼴을 다시 읽는다). 그리기는 하나씩.
  * @returns 만든 PDF 들과 받지 못한 그림 주소
  */
-async function makeDocs(build: (img: ImgFn) => import('pdfmake/interfaces').TDocumentDefinitions[], onProgress?: Progress): Promise<{ blobs: Blob[]; failed: string[] }> {
+async function makeDocs(build: (t: DocTools) => DocJob[], onProgress?: Progress): Promise<{ blobs: Blob[]; failed: string[] }> {
   const r = await docs();
   const rec = r.imageRecorder();
-  build(rec.img);
-  const [pm, prepared] = await Promise.all([r.loadPdfMake(), r.prepareImages(rec.wanted, onProgress)]);
-  const list = build(prepared.img);
-  await r.prepareFallbackFonts(pm, list);
+  const drafts = await Promise.all(build({ img: rec.img }).map(runJob));
+  const [pm, prepared, measure] = await Promise.all([r.loadPdfMake(), r.prepareImages(rec.wanted, onProgress), r.loadMeasure()]);
+  // 대체 글꼴은 그림 적기 때의 문서로 모은다 — 배치를 바꿔도 글자는 같다
+  await r.prepareFallbackFonts(pm, drafts);
+  const list = await Promise.all(build({ img: prepared.img, dims: prepared.dims, measure, probe: r.layoutProbe(pm) }).map(runJob));
   const blobs: Blob[] = [];
   for (let i = 0; i < list.length; i++) {
     blobs.push(await r.renderDoc(pm, list[i]!));
@@ -201,7 +209,7 @@ export async function downloadAllArtworkImagesZip(
 export async function downloadWorkListPdf(exhibitionId: string | number, exTitle: string, rows: SubmissionRow[], onProgress?: Progress): Promise<{ missing: string[] }> {
   const r = await docs();
   const ctx: DocContext = await r.loadDocContext(exhibitionId, exTitle);
-  const { blobs, failed } = await makeDocs((img) => [buildWorkListDoc(ctx, rows, img)], onProgress);
+  const { blobs, failed } = await makeDocs(({ img }) => [buildWorkListDoc(ctx, rows, img)], onProgress);
   triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || exTitle)}_작품리스트.pdf`);
   return { missing: missingNames(rows, failed) };
 }
@@ -227,7 +235,7 @@ export async function downloadAllSubmissionsZip(
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
   const { numberOf } = numberWorks(rows);
-  const { blobs, failed } = await makeDocs((img) => rows.map((row) => buildSubmissionDoc(exTitle, row, numberOf, img)), onProgress);
+  const { blobs, failed } = await makeDocs((t) => rows.map((row) => () => composeSubmissionDoc(exTitle, row, numberOf, t)), onProgress);
 
   // 파일 이름은 작가 이름(동명이인은 (2) — 폴더 이름과 같은 규칙). 폴더 밖으로 꺼내 메일로 보내도 누구 것인지 보이게
   const names = artistFolderNames(rows.map((r) => r.user));
@@ -263,7 +271,7 @@ export async function downloadArtistSettlementPdf(
 ): Promise<{ missing: string[] }> {
   const r = await docs();
   const ctx = await r.loadDocContext(opts?.exhibitionId, exTitle);
-  const { blobs, failed } = await makeDocs((img) => [buildArtistSettlementDoc(ctx, artist, method, { forArtist: opts?.forArtist, cardFeeRate: opts?.cardFeeRate }, img)],
+  const { blobs, failed } = await makeDocs(({ img }) => [buildArtistSettlementDoc(ctx, artist, method, { forArtist: opts?.forArtist, cardFeeRate: opts?.cardFeeRate }, img)],
     (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
   const label = method ? `${methodWord(method)}정산서` : '정산서';
   triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || exTitle)}_${safeName(nameWithNickname(artist.user))}_${label}.pdf`);
@@ -278,7 +286,7 @@ export async function downloadOverallSettlementPdf(
 ): Promise<{ missing: string[] }> {
   const r = await docs();
   const ctx = await r.loadDocContext(opts?.exhibitionId, s.exhibitionTitle);
-  const { blobs, failed } = await makeDocs((img) => [buildSettlementDoc(ctx, s, method, img)], (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
+  const { blobs, failed } = await makeDocs(({ img }) => [buildSettlementDoc(ctx, s, method, img)], (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
   const label = method ? `${methodWord(method)}정산서` : '전체정산서';
   triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || s.exhibitionTitle)}_${label}.pdf`);
   return { missing: settlementMissing(s.artists, failed) };
@@ -292,7 +300,7 @@ export async function downloadApplicationPdf(
   exTitle: string, app: ApplicantLike, customFields?: CustomField[] | null,
   onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
 ): Promise<{ missing: number }> {
-  const { blobs, failed } = await makeDocs((img) => [buildApplicationDoc(exTitle, app, customFields, img, { origin: window.location.origin })],
+  const { blobs, failed } = await makeDocs((t) => [() => composeApplicationDoc(exTitle, app, customFields, t, window.location.origin)],
     (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
   triggerDownload(blobs[0]!, `${safeName(exTitle)}_${safeName(nameWithNickname(app.user))}_지원서.pdf`);
   const bad = new Set(failed);
@@ -309,7 +317,7 @@ export async function downloadAllApplicationsZip(
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
-  const { blobs, failed } = await makeDocs((img) => apps.map((app) => buildApplicationDoc(exTitle, app, customFields, img, { origin: window.location.origin })), onProgress);
+  const { blobs, failed } = await makeDocs((t) => apps.map((app) => () => composeApplicationDoc(exTitle, app, customFields, t, window.location.origin)), onProgress);
   const bad = new Set(failed);
   const missing = apps
     .filter((app) => applicationImages(app).some((u) => bad.has(u)))
