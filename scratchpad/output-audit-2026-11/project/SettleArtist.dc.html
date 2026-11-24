@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>작가 정산서</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; box-sizing: border-box; padding: 48px 56px 0; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+<div>
+<div style="font-size: 13px; color: #555555">2027 봄 기획전 《겹과 결》</div>
+<h1 style="margin: 4px 0 0; font-size: 28px; line-height: 1.2; font-weight: 700">정산서</h1>
+</div>
+<div style="text-align: right; font-size: 12.5px; line-height: 1.6; color: #555555">
+<div style="color: #111111; font-weight: 500">아트링크 갤러리</div>
+<div>전시 2027. 3. 20 – 4. 6</div>
+<div>발행 2027. 4. 12.</div>
+</div>
+</div>
+
+<div style="margin-top: 22px; border-top: 2px solid #111111; border-bottom: 1px solid #cfcfcf; padding: 14px 0 16px; display: flex; justify-content: space-between; align-items: baseline; gap: 24px">
+<div style="font-size: 20px; font-weight: 700">배소민 <span style="font-size: 14px; font-weight: 400; color: #555555">작가님</span></div>
+<div style="font-size: 12.5px; color: #555555">판매 4점 · 정산 비율 갤러리 40 : 작가 60</div>
+</div>
+
+<h2 style="margin: 26px 0 8px; font-size: 14px; font-weight: 700">판매 작품</h2>
+<div style="display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px 110px; column-gap: 14px; padding-bottom: 6px; border-bottom: 1px solid #111111; font-size: 12px; color: #555555">
+<span></span><span>작품</span><span>결제</span><span style="text-align: right">판매가</span>
+</div>
+<sc-for list="{{ works }}" as="w" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px 110px; column-gap: 14px; align-items: center; min-height: 76px; border-bottom: 1px solid #e6e6e6; font-size: 13.5px; line-height: 1.45">
+<span style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center"><img src="{{ w.img }}" alt="" style="max-width: 60px; max-height: 60px; display: block"></span>
+<span style="min-width: 0"><span style="font-weight: 500">{{ w.title }}</span><br><span style="font-size: 12.5px; color: #555555">{{ w.meta }}</span></span>
+<span style="color: #333333">{{ w.pay }}</span>
+<span style="text-align: right; font-variant-numeric: tabular-nums">{{ w.price }}</span>
+</div>
+</sc-for>
+
+<div style="margin-top: 28px; display: flex; justify-content: flex-end">
+<div style="width: 400px; font-size: 13.5px; font-variant-numeric: tabular-nums">
+<div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #e6e6e6"><span>판매 합계</span><span>2,100,000원</span></div>
+<div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #e6e6e6"><span>카드 수수료 <span style="font-size: 12.5px; color: #555555">카드 판매 1,500,000원 × 3.3%</span></span><span>−49,500원</span></div>
+<div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #e6e6e6"><span>정산 대상</span><span>2,050,500원</span></div>
+<div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #111111"><span>갤러리 <span style="font-size: 12.5px; color: #555555">40%</span></span><span>−820,200원</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 0"><span style="font-weight: 700">작가 지급액 <span style="font-size: 12.5px; font-weight: 400; color: #555555">60%</span></span><span style="font-size: 24px; font-weight: 700">1,230,300원</span></div>
+</div>
+</div>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 76px; border-top: 1px solid #cfcfcf; padding-top: 12px; font-size: 12.5px; line-height: 1.7; color: #555555">
+<div>2027. 4. 10. 작가가 이 금액을 확인했습니다.</div>
+<div>아트링크 갤러리 · 02-000-0000 · 서울 영등포구</div>
+</div>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>정산서 · 배소민 · 2027 봄 기획전 《겹과 결》</span>
+<span style="font-variant-numeric: tabular-nums">1 / 1</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+const W = (img, title, meta, pay, price) => ({ img, title, meta, pay, price });
+return {
+works: [
+W('/_blob/5178dc848b2499d71f5ea989a6757400', '긴 여름', 'Acrylic on canvas · 33.4 × 24.2 cm · 2026', '현금', '200,000원'),
+W('/_blob/7d3435cfe0850fb5c30ded7815ae72c0', '오래된 문 #8', '장지에 채색, 혼합재료 · 31.8 × 40.9 cm · 2023', '카드', '700,000원'),
+W('/_blob/754d1bd213dab0ca7af4e5093e770b7b', '겨울 정원', 'Mixed media on unbleached cotton fabric · 31.8 × 40.9 cm · 2026', '카드', '800,000원'),
+W('/_blob/e0b60772a328a07c241273d890f601df', 'The Weight of Soft Things', 'Oil on canvas · 116.8 × 91.0 cm · 2026', '현금', '400,000원'),
+],
+};
+}
+}
+</script>
+</body>
+</html>

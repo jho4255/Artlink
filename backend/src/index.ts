@@ -48,6 +48,7 @@ import visitRoutes from './routes/visit';
 import guestActivityRoutes from './routes/guestActivity';
 import pushRoutes from './routes/push';
 import homepageInquiryRoutes from './routes/homepageInquiry';
+import fontRoutes from './routes/fonts';
 import seoRoutes from './routes/seo';
 import { createSeoHandler, createTemplateLoader, SEO_RATE_LIMITED } from './lib/seoMeta';
 import type { SeoKind } from './lib/seoMeta';
@@ -199,6 +200,7 @@ app.use('/api/visits', visitRoutes);   // 일간 방문 기록(2026-09-28, Admin
 app.use('/api/guest-activity', guestActivityRoutes);   // 비회원 둘러보기(2026-10-03, Admin [통계])
 app.use('/api/push', pushRoutes);   // 앱 기기 토큰(2026-11-09, 규칙 79)
 app.use('/api/homepage-inquiries', homepageInquiryRoutes);   // 홈페이지 비회원 문의(2026-11-14, 규칙 82)
+app.use('/api/fonts', fontRoutes);   // PDF 문서의 한자·이모지 대체 글꼴(2026-11-24, 규칙 92)
 
 // 헬스 체크 (DB 연결 상태 포함)
 app.get('/api/health', async (_req, res) => {

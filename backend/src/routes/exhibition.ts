@@ -1678,7 +1678,8 @@ router.get('/:id/applications', authenticate, authorize('GALLERY', 'ADMIN'), asy
       include: {
         user: {
           select: {
-            id: true, name: true, nickname: true, email: true, phone: true, avatar: true,
+            // handle — 지원서 PDF 의 홈페이지 링크(2026-11-24, 규칙 92)
+            id: true, name: true, nickname: true, email: true, phone: true, avatar: true, handle: true,
             portfolio: {
               include: { images: { orderBy: { order: 'asc' }, take: 10 } }
             }

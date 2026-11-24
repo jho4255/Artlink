@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>지금 결과물</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 2400px; height: 1240px; box-sizing: border-box; padding: 40px; background: #f4f4f2; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px">
+<sc-for list="{{ tiles }}" as="t" hint-placeholder-count="6">
+<div style="background: #ffffff; border: 1px solid #d9d9d6; display: flex; flex-direction: column">
+<div style="padding: 18px 22px 14px; display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid #e4e4e1">
+<span style="font-size: 22px; font-weight: 700">{{ t.name }}</span>
+<span style="font-size: 15px; color: #555555">{{ t.file }}</span>
+</div>
+<div style="height: 330px; background: #e8e8e6; display: flex; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box">
+<img src="{{ t.img }}" alt="{{ t.alt }}" style="max-width: 100%; max-height: 100%; display: block">
+</div>
+<ul style="margin: 0; padding: 16px 22px 18px 42px; font-size: 17px; line-height: 1.6; color: #222222">
+<sc-for list="{{ t.points }}" as="p" hint-placeholder-count="3">
+<li>{{ p }}</li>
+</sc-for>
+</ul>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2400,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+tiles: [
+{ name: '출품리스트', file: '작가마다 PDF 1개', img: '/_blob/78ad0cb6b4fdc2acb908c16b545e8fd0', alt: '출품리스트 PDF 두 쪽',
+  points: ['2쪽부터 표 머리 · 작가 이름 · 쪽 번호가 없다', '작품 사진이 88px — 칸의 절반은 비어 있다', '쪽 전체가 사진 한 장이라 글자를 복사 · 검색할 수 없다(모든 PDF 공통)'] },
+{ name: '작가약력', file: '작가마다 PDF 1개', img: '/_blob/146deeda61f87b3b90c471cc20d7d996', alt: '작가약력 PDF의 쪽 경계 확대',
+  points: ['쪽이 넘어가는 자리에서 글자 줄이 반으로 잘린다(위: 1쪽 끝 · 아래: 2쪽 처음)', '실제 약력의 10%가 한 쪽을 넘는다', '한 줄로만 흘러 종이 오른쪽 절반이 빈다'] },
+{ name: '작가노트', file: '작가마다 PDF 1개', img: '/_blob/dad552b298bfd3054c70d50b11ead158', alt: '작가노트 PDF 두 쪽',
+  points: ['한 줄에 90자 — 읽기 어렵다', '작품 제목에 노란 형광펜', "'작품별 상세설명' 제목만 1쪽 맨 아래에 남는다"] },
+{ name: '정산서', file: '전체 · 현금 · 카드 · 작가별', img: '/_blob/cf9640021ac7afd21a81b8275c51a7de', alt: '현금 정산서 두 쪽',
+  points: ['판매가 없는 작가도 빈 표를 한 칸씩 차지한다(현금 정산서는 절반이 빈 표)', '작가별 합계를 한눈에 보는 표가 없다 — 합계는 맨 끝', '발행일 · 전시 기간 · 작가 확인 기록이 없다'] },
+{ name: '지원서', file: '지원자마다 PDF 1개', img: '/_blob/2e6e4c7ce30ec63089b7022e2a50f775', alt: '지원서 PDF 두 쪽',
+  points: ['작품 사진을 정사각으로 찌그러뜨린다(원본 비율 0.76 → 1)', '학력 · 수상이 빠진다 — 지원자는 적었는데 문서에 없다', '포트폴리오 파일이 눌리지 않는 주소 글자'] },
+{ name: '도록', file: 'A5 PDF 1개', img: '/_blob/d640997ec9aa94ad95191d1ce192ad60', alt: '도록 다섯 쪽',
+  points: ['작가 10명에 105쪽 · 거의 빈 쪽이 17쪽', '여러 점을 놓은 쪽에서 캡션이 잘리고 재료 · 크기가 없다', '만드는 데 88초 · 19.6MB · 쪽수가 4의 배수가 아니다'] },
+],
+};
+}
+}
+</script>
+</body>
+</html>

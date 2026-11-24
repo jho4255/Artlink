@@ -2012,7 +2012,8 @@ operatorUserIds(ex)                알림 발송 대상 전부
 - ⚠️ 처음엔 **엽서·가격표·QR 캡션·도록** 네 가지였는데 앞의 셋을 지웠다(2026-09-16 사용자 결정) — 작품 캡션(.hwp)이 이미 하는 일이라서.
   HWP 에 QR 을 넣는 건 불가(바이트 교체 방식이라 글자만 바꿀 수 있고, 새 스트림을 끼우면 한글이 파일을 거부한다).
 - UI: `components/operation/BoothKitBar.tsx`(운영 페이지 `AdminSubmissionsSection` 안, 수락 작가가 있을 때만). 라이브러리는 동적 import.
-- 엔진 확장(`lib/portfolioFormats.ts`): `PageKey 'a5-portrait'`(720×1018px, 148×210mm), `buildPortfolioPages` 옵션 `folioStart`·`skipContact`·`runningHead`.
+- 엔진 확장(`lib/portfolioFormats.ts`): `PageKey 'a5-portrait'`(720×1018px, 148×210mm). ~~`buildPortfolioPages` 옵션 `folioStart`·`skipContact`·`runningHead`~~ —
+  2026-11-24 도록을 전용 조판으로 옮기며 지웠다(아래 「갤러리 결과물」).
 - 백엔드: `GET /operations/:id/submissions` 의 user 에 `handle` 추가(QR 주소용).
 
 ## 포트폴리오 PDF v3 — 지면 체계 · 벡터 PDF · 세로×가로 · 버전 (2026-09-16)
@@ -3278,7 +3279,7 @@ backend `chat-renewal.test.ts`(25) · frontend `arttalk.test.ts`(19) · `chatVie
   `gallerySubText`/`artistSubText`(줄·머리의 한 줄) · `workspaceDefaultView`/`artistDefaultView`(처음 열 탭) · `viewForTarget`.
 - **단계 전환** `hooks/useLifecycle.tsx` — 확인창(`ConfirmDialog details`). 모집 마감은 2026-11-21 부터 되돌릴 수 없고 남은 검토 대기는 늘 미선정(알림 없음) — 아래 「모집 마감 · 지원서 고치기·취소」(D2 체크는 없앴다).
 - **지원자 심사** `ApplicantManager` — 두 칸(≥1180px) / 한 장씩 창(그 아래) · 결정 줄 `data-decision-bar` · 결정 뒤 다음 검토 대기 · 도구 글자 버튼(≥640px) / [관리 ▾].
-- **출품 자료 취합** `AdminSubmissionsSection` — 작가 표(`data-submission-artist`) · [내려받기 ▾](`hooks/useSubmissionDownloads.ts` — 캡션 HWP · 도록 PDF · 작품 원본 ZIP · 출품 자료 PDF ZIP) · 아직 안 낸 작가에게 안내(`SubmissionRemindDialog`).
+- **출품 자료 취합** `AdminSubmissionsSection` — 작가 표(`data-submission-artist`) · [내려받기 ▾](`hooks/useSubmissionDownloads.ts` — 캡션 HWP · 작품 리스트 PDF·엑셀(2026-11-24) · 출품 자료 PDF ZIP · 작품 원본 ZIP · 도록 PDF, 규칙 92) · 아직 안 낸 작가에게 안내(`SubmissionRemindDialog`).
   작가 쪽 `MySubmissionSection` — 번호 붙은 구역(출품작 · 약력 · 작가노트) · 하단 줄 '남은 것 N · <첫 칸>' + [임시저장]·[갤러리에 제출].
 - **정산** `SettlementSection`(표) + `settlementController.tsx`(상태·변이·주 버튼, 규칙 26 그대로) · 열 이름 '판매' · 이의 한 줄기
   (작가 `SettlementIssueDialog` → 갤러리 할 일 줄 + 작가 머리의 이의 글 → '저장하고 ○○ 님에게 다시 요청' → 작가 확인 → [정산 완료] → [요약]).
@@ -3418,3 +3419,45 @@ P0 40/40 · P1 64/100 · P2 6/49. 의심 지점 S1~S14 중 12개가 실제로 �
 [이름 바꾸기]·[이 작가 빼기] · 정산 표 '확인 요청 없음' · 요약 탭 홈페이지 링크 없음 · 할 일 줄은 회원만 안내(`flowLabels galleryNextTask` 의 `guests`·`guestIncomplete`).
 
 **검증** — backend `guest-artists.test.ts`(22) · frontend `guestArtists.test.ts` · e2e `92-guest-artists.spec.ts`(3).
+
+## 갤러리 결과물 — 글자 PDF · 작품 리스트 · 정산서·지원서 · 도록 펼침면 (2026-11-24, CLAUDE.md 규칙 92 · 53)
+
+사용자: "갤러리가 쓰는 자동화 기능의 결과물(캡션·작가노트 PDF 등) 퀄리티 점검 → 목업" → "캡션은 그대로 유지하고 나머지는 너 말대로 진행해".
+목업 https://claude.ai/artifact/Btx9WUtbhETceu3D4CZ9gp · 하니스 `scratchpad/output-audit-2026-11/README.md`.
+
+**왜** — 운영 문서가 전부 html2canvas 로 쪽을 그림으로 찍은 PDF 였다(글자 복사·검색 불가 · A4 높이로 잘라 붙여 쪽 경계에서 글자 줄이 반으로 잘림 · 출품 자료 ZIP 23.8초 11.5MB).
+출품 자료는 작가마다 세 파일, 지원서는 사진이 찌그러지고 학력·수상이 빠졌고, 정산서는 빈 표가 많았고, 도록은 포트폴리오 엔진을 이어 붙여 105쪽(빈 쪽 17)이었다.
+
+```
+[내려받기 ▾] (hooks/useSubmissionDownloads.ts)          [정산서 ▾] (settlementController)      [지원서 전체 받기] (ApplicantManager)
+  │ 작품 캡션(HWP)  — 서버, 예전 그대로(사용자 결정)
+  │ 작품 리스트(PDF·엑셀) ─┐                                 │                                       │
+  │ 출품 자료 PDF(ZIP)  ──┼── lib/operationPdf.ts ───────────┴───────────────────────────────────────┘
+  │ 작품 원본(ZIP)      ──┘    │  빌더(순수): galleryDocs/{workList,submissionDoc,settlementDoc,applicationDoc}.ts
+  │                            │  표기·번호: galleryDocs/format.ts  · 글자 조각: galleryDocs/text.ts · 엑셀: galleryDocs/xlsx.ts
+  │                            └─ import('./galleryDocs/render') — 누를 때만: pdfmake(청크 pdfmake-*, PWA 제외) · Pretendard OTF(assets/fonts)
+  │                                  · 그림 미리 받기(imageFetch) → 칸 크기로 줄여 JPEG(240/720px)
+  │                                  · 한자·이모지 → GET /api/fonts/fallback(서버가 구글 글꼴 text= 의 TTF 를 대신 받음)
+  └ 도록 PDF — lib/boothKit.ts(전용 조판, html2canvas 그림 PDF 그대로)
+```
+
+**두 번 도는 빌더** — 빌더는 그림 함수(`ImgFn`)를 받는 순수 함수다. 처음엔 `imageRecorder` 로 돌려 '어떤 그림을 어느 크기로'를 적고,
+`prepareImages` 가 받아 줄인 뒤(못 받은 건 빈 칸 + 알림) 진짜로 돈다. 같은 입력이면 같은 문서라 두 번 돌아도 어긋나지 않는다.
+
+**글꼴** — Pretendard OTF 보통·굵게(WOFF2 금지 — fontkit 이 빈칸으로 심는다). 없는 글자는 `glyphCoverage.ts` 범위 표로 가려 `FbCjk`/`FbEmoji` 조각으로 나누고,
+`prepareFallbackFonts` 가 문서에 쓰인 그 글자만 서버에 물어 가상 파일로 등록한다(머리말·꼬리말 함수의 글자까지). 서버(`lib/fallbackFont.ts`)는
+`User-Agent: Mozilla/5.0` 으로 구글에 물어 TTF 를 받는다(브라우저 UA 면 WOFF2) — gstatic 주소만 따라가고, 글자 600자·글꼴 4MB 상한, 메모리 200개.
+
+**번호·표기** — `numberWorks`(참여 작가 순 × 출품 목록 순)가 작품 리스트·출품 자료 표·원본 ZIP 파일 이름(`padNo`)에 같은 번호를 준다.
+재료·크기·가격·날짜 정리는 문서에 찍을 때만(저장값·화면·캡션은 그대로).
+
+**서버가 더 내려주는 것** — 정산 응답 `approval.respondedAt` / `my-settlement` 의 `myApproval.respondedAt`(확인한 날 — 확인한 행은 뒤에 안 바뀌어 `updatedAt`, 자동이면 `autoApprovedAt`) ·
+지원자 목록 user 의 `handle`(지원서의 홈페이지 링크). 스키마 변경 없음.
+
+**도록** — `planCatalogue(artists, measure)`(순수, 잣대 주입) → 표지·소개·차례 → 작가마다 `planArtist`(짝수 쪽 — 다음 작가가 왼쪽에서 시작) → 4의 배수 → 뒷표지.
+작품 쪽 나누기는 동적 계획법(`partition` — 넓이 로그 합 최대, 그림 하한 150px·42,000px²), 작가노트는 실제로 재서(`domMeasure`) 넘치면 잇고 조금 넘치면 한 단계 작게,
+재기 전에 쓰이는 글자까지 웹 글꼴을 받는다(`loadCatalogueFonts`). 데모 10명 64점: 105쪽 → 64쪽(빈 쪽 0).
+
+**검증** — frontend `galleryDocsText`·`operationPdfDocs`·`settlementPdf`·`applicationPdf`·`boothKit`·`galleryDocsGuards`(+ 도우미 `docTestUtils.ts`) ·
+backend `gallery-docs.test.ts` · e2e `24`·`27`·`28` · 하니스로 실제 내려받기(크롬): 출품 자료 ZIP 2.3~3.1초 2.9MB · 작품 리스트 0.4~1.2초 · 정산서 0.3~0.9초 · 한자·이모지 글꼴이 실제로 심겼는지(Noto Sans KR·Noto Emoji 부분 글꼴).
+

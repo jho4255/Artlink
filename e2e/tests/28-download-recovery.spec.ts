@@ -215,7 +215,7 @@ test('★ 끝내 못 받으면 배너로 남고, [다시 받기]로 완전한 ZI
 // 작가별 폴더 (전체 다운로드가 평평하게 쏟아지지 않게)
 // ─────────────────────────────────────────────────────────────
 
-test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원본 + 전체 PDF)', async ({ browser }) => {
+test('★ 작가가 여럿이면 작품 원본은 작가별 폴더로, 출품 자료는 작가마다 한 파일로 나뉜다', async ({ browser }) => {
   test.setTimeout(240_000);
   const api = await pwRequest.newContext();
   const urls = await realArtworkUrls(api, 4);
@@ -239,17 +239,13 @@ test('★ 작가가 여럿이면 ZIP이 작가별 폴더로 나뉜다 (작품원
     expect(imgNames.filter((n) => n.startsWith(`${f}/`)), '각 폴더에 2점씩').toHaveLength(2);
   }
 
-  // ② 전체 제출물 PDF ZIP — 작가마다 3문서
+  // ② 출품 자료 PDF ZIP — 작가마다 한 파일(약력·작가노트·출품 작품, 2026-11-24 — 예전엔 작가 폴더에 세 파일)
   const pdfDl = page.waitForEvent('download', { timeout: 150_000 });
   await pickDownload(page, /출품 자료 PDF/);
   const pdfNames = await zipEntries((await (await pdfDl).path())!);
-  const pdfFolders = new Set(pdfNames.map((n) => n.split('/')[0]));
-  expect(pdfFolders.size, `작가 2명 → 폴더 2개. 실제: ${JSON.stringify(pdfNames)}`).toBe(2);
-  for (const f of pdfFolders) {
-    const inFolder = pdfNames.filter((n) => n.startsWith(`${f}/`));
-    expect(inFolder, '출품리스트·작가약력·작가노트 3개').toHaveLength(3);
-    expect(inFolder.every((n) => n.endsWith('.pdf'))).toBe(true);
-  }
+  expect(pdfNames, `작가 2명 → 파일 2개. 실제: ${JSON.stringify(pdfNames)}`).toHaveLength(2);
+  expect(pdfNames.every((n) => !n.includes('/') && n.endsWith('_출품자료.pdf'))).toBe(true);
+  expect(new Set(pdfNames).size, '작가마다 다른 이름').toBe(2);
 
   await api.dispose();
   await ctx.close();

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>전체 정산서</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; box-sizing: border-box; padding: 48px 56px 0; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+<div>
+<div style="font-size: 13px; color: #555555">2027 봄 기획전 《겹과 결》</div>
+<h1 style="margin: 4px 0 0; font-size: 28px; line-height: 1.2; font-weight: 700">정산서 <span style="font-size: 15px; font-weight: 500; color: #555555">전체</span></h1>
+</div>
+<div style="text-align: right; font-size: 12.5px; line-height: 1.6; color: #555555">
+<div style="color: #111111; font-weight: 500">아트링크 갤러리</div>
+<div>전시 2027. 3. 20 – 4. 6</div>
+<div>발행 2027. 4. 12.</div>
+</div>
+</div>
+
+<div style="margin-top: 22px; border-top: 2px solid #111111; border-bottom: 1px solid #cfcfcf; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 10px 0 12px">
+<div><div style="font-size: 12px; color: #555555">판매</div><div style="font-size: 17px; font-weight: 700">14점</div></div>
+<div><div style="font-size: 12px; color: #555555">판매 합계</div><div style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums">5,560,000원</div></div>
+<div><div style="font-size: 12px; color: #555555">갤러리</div><div style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums">2,260,141원</div></div>
+<div><div style="font-size: 12px; color: #555555">작가 지급</div><div style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums">3,162,249원</div></div>
+</div>
+<div style="margin-top: 8px; font-size: 12.5px; color: #555555; font-variant-numeric: tabular-nums">카드 판매 4,170,000원 · 현금 판매 1,390,000원 · 카드 수수료 3.3% −137,610원</div>
+
+<h2 style="margin: 26px 0 8px; font-size: 14px; font-weight: 700">작가별 정산</h2>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 36px 88px 76px 52px 84px 92px 74px; column-gap: 8px; padding-bottom: 6px; border-bottom: 1px solid #111111; font-size: 12px; color: #555555; text-align: right">
+<span style="text-align: left">작가</span><span>판매</span><span>판매 합계</span><span>카드 수수료</span><span>비율</span><span>갤러리</span><span>작가 지급</span><span>작가 확인</span>
+</div>
+<sc-for list="{{ artists }}" as="a" hint-placeholder-count="7">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 36px 88px 76px 52px 84px 92px 74px; column-gap: 8px; align-items: center; min-height: 36px; border-bottom: 1px solid #e6e6e6; font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums">
+<span style="text-align: left; font-weight: 500">{{ a.name }}</span><span>{{ a.n }}</span><span>{{ a.total }}</span><span style="color: #555555">{{ a.fee }}</span><span style="color: #555555">{{ a.ratio }}</span><span>{{ a.gallery }}</span><span style="font-weight: 700">{{ a.artist }}</span><span style="color: #555555">{{ a.ok }}</span>
+</div>
+</sc-for>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 36px 88px 76px 52px 84px 92px 74px; column-gap: 8px; align-items: center; min-height: 40px; border-top: 1px solid #111111; margin-top: -1px; font-size: 12.5px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums">
+<span style="text-align: left">합계</span><span>14</span><span>5,560,000</span><span>−137,610</span><span></span><span>2,260,141</span><span>3,162,249</span><span></span>
+</div>
+<div style="margin-top: 6px; font-size: 12.5px; color: #555555">판매 없음 3명 — 한도경 · 한지우(비회원) · 윤서해(비회원)</div>
+
+<h2 style="margin: 30px 0 8px; font-size: 14px; font-weight: 700">판매 내역</h2>
+<div style="display: grid; grid-template-columns: 76px 44px minmax(0, 1fr) 44px 96px; column-gap: 10px; padding-bottom: 6px; border-bottom: 1px solid #111111; font-size: 12px; color: #555555">
+<span>작가</span><span></span><span>작품</span><span>결제</span><span style="text-align: right">판매가</span>
+</div>
+<sc-for list="{{ sales }}" as="s" hint-placeholder-count="7">
+<div style="display: grid; grid-template-columns: 76px 44px minmax(0, 1fr) 44px 96px; column-gap: 10px; align-items: center; min-height: 46px; border-bottom: 1px solid #e6e6e6; font-size: 12.5px; line-height: 1.4">
+<span style="font-weight: 500">{{ s.artist }}</span>
+<span style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center"><img src="{{ s.img }}" alt="" style="max-width: 36px; max-height: 36px; display: block"></span>
+<span style="min-width: 0"><span style="font-weight: 500">{{ s.title }}</span><br><span style="font-size: 12px; color: #555555">{{ s.meta }}</span></span>
+<span style="color: #333333">{{ s.pay }}</span>
+<span style="text-align: right; font-variant-numeric: tabular-nums">{{ s.price }}</span>
+</div>
+</sc-for>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>정산서(전체) · 2027 봄 기획전 《겹과 결》</span>
+<span style="font-variant-numeric: tabular-nums">1 / 2</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+const A = (name, n, total, fee, ratio, gallery, artist, ok) => ({ name, n, total, fee, ratio, gallery, artist, ok });
+const B = {
+summer: '/_blob/6c6591e8de5ba22b22a958d87b7b9b03', water: '/_blob/ece8f311b52fe75385855e99efeaade8', hill: '/_blob/5f81a41331ae9bd2bab193a51fb8fdea',
+dawn: '/_blob/8bb3371a59db4eeff19b33f6133fcd88', city: '/_blob/5178dc848b2499d71f5ea989a6757400', winter: '/_blob/7d3435cfe0850fb5c30ded7815ae72c0', alley: '/_blob/754d1bd213dab0ca7af4e5093e770b7b',
+};
+const S = (artist, img, title, meta, pay, price) => ({ artist, img: B[img], title, meta, pay, price });
+return {
+artists: [
+A('강윤서', 1, '250,000', '−8,250', '40 : 60', '96,700', '145,050', '4. 9.'),
+A('노해원', 2, '850,000', '−11,550', '50 : 50', '419,225', '419,225', '4. 9.'),
+A('문지호', 1, '150,000', '−4,950', '30 : 70', '43,515', '101,535', '4. 10.'),
+A('배소민', 4, '2,100,000', '−49,500', '40 : 60', '820,200', '1,230,300', '4. 10.'),
+A('서진우', 2, '1,050,000', '−34,650', '50 : 50', '507,675', '507,675', '자동 4. 12.'),
+A('오하린', 2, '820,000', '−23,100', '30 : 70', '239,070', '557,830', '4. 11.'),
+A('임세아', 2, '340,000', '−5,610', '40 : 60', '133,756', '200,634', '4. 9.'),
+],
+sales: [
+S('강윤서', 'summer', '잊힌 골목', 'Acrylic on canvas · 33.4 × 24.2 cm · 2026', '카드', '250,000원'),
+S('노해원', 'water', '오래된 문 #1', 'Mixed media on unbleached cotton fabric · 24.2 × 24.2 cm · 2026', '현금', '500,000원'),
+S('', 'hill', 'Layers of Silence II', 'Oil on canvas · 33.4 × 24.2 cm · 2026', '카드', '350,000원'),
+S('문지호', 'dawn', '새벽의 창', 'Oil on canvas · 33.4 × 24.2 cm · 2026', '카드', '150,000원'),
+S('배소민', 'city', '긴 여름', 'Acrylic on canvas · 33.4 × 24.2 cm · 2026', '현금', '200,000원'),
+S('', 'winter', '오래된 문 #8', '장지에 채색, 혼합재료 · 31.8 × 40.9 cm · 2023', '카드', '700,000원'),
+S('', 'alley', '겨울 정원', 'Mixed media on unbleached cotton fabric · 31.8 × 40.9 cm · 2026', '카드', '800,000원'),
+],
+};
+}
+}
+</script>
+</body>
+</html>

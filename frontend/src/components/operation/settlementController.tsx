@@ -42,6 +42,8 @@ export type Approval = {
   autoApproveAt?: string | null;
   /** 사람이 누른 수락이 아니라 무응답 자동 처리인가 */
   autoApproved?: boolean;
+  /** 확인(또는 이의)한 시각 — 정산서에 찍는다 */
+  respondedAt?: string | null;
 } | null;
 type SettlementData = Omit<Settlement, 'artists'> & {
   settled?: boolean; settledAt?: string | null; settlementRequested?: boolean; allApproved?: boolean;
@@ -354,20 +356,25 @@ export function useSettlementController(exhibitionId: string, { isAdmin = false,
     };
   };
 
+  // 정산서 PDF 에는 작가 확인 기록(언제 확인했나 · 비회원)을 함께 싣는다(2026-11-24, 규칙 92)
+  const docSettlement = () => {
+    const s = buildSettlement();
+    return { ...s, artists: s.artists.map((a, i) => ({ ...a, guest: artists[i]?.guest, approval: approvalOf(a.user.id) })) };
+  };
   const downloadOverall = async (method?: 'CARD' | 'CASH') => {
     setZipping(true);
     try {
       const { downloadOverallSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadOverallSettlementPdf(buildSettlement(), method);
+      const { missing } = await downloadOverallSettlementPdf(docSettlement(), method, undefined, { exhibitionId });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };
   const downloadArtist = async (ai: number, method?: 'CARD' | 'CASH') => {
     setZipping(true);
     try {
-      const s = buildSettlement();
+      const s = docSettlement();
       const { downloadArtistSettlementPdf } = await import('@/lib/operationPdf');
-      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai]!, method, undefined, { cardFeeRate: feeNum });
+      const { missing } = await downloadArtistSettlementPdf(s.exhibitionTitle, s.artists[ai]!, method, undefined, { cardFeeRate: feeNum, exhibitionId });
       if (missing.length > 0) toast.error(`작품 이미지 ${missing.length}건이 빠졌습니다: ${missing.slice(0, 3).join(', ')}`, { duration: 8000 });
     } catch { toast.error('PDF 생성 실패'); } finally { setZipping(false); }
   };

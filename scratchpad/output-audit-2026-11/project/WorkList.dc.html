@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>작품 리스트</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; box-sizing: border-box; padding: 48px 56px 0; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+<div>
+<div style="font-size: 13px; color: #555555">2027 봄 기획전 《겹과 결》</div>
+<h1 style="margin: 4px 0 0; font-size: 28px; line-height: 1.2; font-weight: 700">작품 리스트</h1>
+</div>
+<div style="text-align: right; font-size: 12.5px; line-height: 1.6; color: #555555">
+<div style="color: #111111; font-weight: 500">아트링크 갤러리</div>
+<div>전시 2027. 3. 20 – 4. 6</div>
+<div>발행 2027. 4. 12.</div>
+</div>
+</div>
+
+<div style="margin-top: 22px; border-top: 2px solid #111111; border-bottom: 1px solid #cfcfcf; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 10px 0 12px">
+<div><div style="font-size: 12px; color: #555555">작가</div><div style="font-size: 17px; font-weight: 700">10명</div></div>
+<div><div style="font-size: 12px; color: #555555">작품</div><div style="font-size: 17px; font-weight: 700">90점</div></div>
+<div><div style="font-size: 12px; color: #555555">가격 합계</div><div style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums">46,270,000원</div></div>
+<div><div style="font-size: 12px; color: #555555">비매</div><div style="font-size: 17px; font-weight: 700">1점</div></div>
+</div>
+
+<div style="margin-top: 18px; display: grid; grid-template-columns: 34px 52px minmax(0, 1fr) 168px 104px 44px 92px; column-gap: 10px; padding: 0 0 6px; border-bottom: 1px solid #111111; font-size: 12px; color: #555555">
+<span>번호</span><span></span><span>작품명</span><span>재료</span><span>크기</span><span>연도</span><span style="text-align: right">가격</span>
+</div>
+
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+<div>
+<div style="display: flex; align-items: baseline; justify-content: space-between; padding: 14px 0 7px; border-bottom: 1px solid #cfcfcf">
+<span style="font-size: 14px; font-weight: 700">{{ g.artist }}</span>
+<span style="font-size: 12.5px; color: #555555; font-variant-numeric: tabular-nums">{{ g.meta }}</span>
+</div>
+<sc-for list="{{ g.works }}" as="w" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 34px 52px minmax(0, 1fr) 168px 104px 44px 92px; column-gap: 10px; align-items: center; min-height: 48px; border-bottom: 1px solid #e6e6e6; font-size: 13px; line-height: 1.4">
+<span style="color: #555555; font-variant-numeric: tabular-nums">{{ w.no }}</span>
+<span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center"><img src="{{ w.img }}" alt="" style="max-width: 40px; max-height: 40px; display: block"></span>
+<span style="font-weight: 500; min-width: 0; overflow-wrap: anywhere">{{ w.title }}</span>
+<span style="color: #333333; min-width: 0; overflow-wrap: anywhere">{{ w.medium }}</span>
+<span style="color: #333333; font-variant-numeric: tabular-nums">{{ w.size }}</span>
+<span style="color: #333333; font-variant-numeric: tabular-nums">{{ w.year }}</span>
+<span style="text-align: right; font-variant-numeric: tabular-nums">{{ w.price }}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>작품 리스트 · 2027 봄 기획전 《겹과 결》</span>
+<span style="font-variant-numeric: tabular-nums">1 / 6</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+const B = {
+wall: '/_blob/82cee5196ac8f0c4ec33493a428a52fe', city: '/_blob/5178dc848b2499d71f5ea989a6757400', dawn: '/_blob/8bb3371a59db4eeff19b33f6133fcd88',
+alley: '/_blob/754d1bd213dab0ca7af4e5093e770b7b', horizon: '/_blob/e0b60772a328a07c241273d890f601df', summer: '/_blob/6c6591e8de5ba22b22a958d87b7b9b03',
+afternoon: '/_blob/95dd74ac9a2a7a4d2e4a9973fd188d06', hill: '/_blob/5f81a41331ae9bd2bab193a51fb8fdea', room: '/_blob/72810a6f9fd63a0e7b0c893790402475',
+garden: '/_blob/bafb295908e7e717b0440b373db5321c', water: '/_blob/ece8f311b52fe75385855e99efeaade8', winter: '/_blob/7d3435cfe0850fb5c30ded7815ae72c0',
+};
+const W = (no, img, title, medium, size, year, price) => ({ no, img: B[img], title, medium, size, year, price });
+return {
+groups: [
+{ artist: '강윤서', meta: '8점 · 5,090,000원', works: [
+W(1, 'garden', '네모난 정원 #1', '캔버스에 유채', '72.7 × 60.6 cm', '2026', '120,000원'),
+W(2, 'hill', 'Layers of Silence II', '장지에 혼합재료', '40.9 × 31.8 cm', '2026', '1,800,000원'),
+W(3, 'dawn', 'A Room of Light', 'Acrylic on canvas', '40.9 × 31.8 cm', '2026', '170,000원'),
+W(4, 'afternoon', 'Fold #12', 'Acrylic on canvas', '30 × 30 cm', '2026', '500,000원'),
+W(5, 'horizon', '푸른 벽', 'Acrylic on canvas', '116.8 × 91.0 cm', '2026', '450,000원'),
+W(6, 'city', '머무는 빛', '장지에 혼합재료', '20 × 20 cm', '2026', '800,000원'),
+W(7, 'winter', '결 #7', '캔버스에 유채', '20 × 20 cm', '2026', '1,000,000원'),
+W(8, 'summer', '잊힌 골목', 'Acrylic on canvas', '33.4 × 24.2 cm', '2026', '250,000원'),
+] },
+{ artist: '노해원', meta: '12점 · 7,950,000원 · 비매 1점', works: [
+W(9, 'water', '오래된 문 #1', 'Mixed media on unbleached cotton fabric', '24.2 × 24.2 cm', '2026', '500,000원'),
+W(10, 'wall', '아무도 없는 오후 네 시의 거실에 남아 있던 빛과 그 빛을 기억하는 방법에 대하여', 'Oil on canvas', '33.4 × 24.2 cm', '2026', '비매'),
+W(11, 'room', '사이', '캔버스에 유채', '30 × 30 cm', '2026', '350,000원'),
+W(12, 'alley', '흐르는 것들', '종이에 과슈', '116.8 × 91.0 cm', '2026', '3,500,000원'),
+W(13, 'hill', '결 #5', 'Acrylic on canvas', '30 × 30 cm', '2023', '500,000원'),
+] },
+],
+};
+}
+}
+</script>
+</body>
+</html>

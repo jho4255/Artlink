@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>지원서</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@500;600&display=swap">
+<style>
+body{margin:0}
+a{color:#111111}a:hover{color:#555555}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; box-sizing: border-box; padding: 34px 56px 0; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #767676; padding-bottom: 10px; border-bottom: 1px solid #cfcfcf">
+<span>2027 봄 기획전 《겹과 결》</span>
+<span>지원서</span>
+</div>
+
+<div style="margin-top: 26px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+<div>
+<h1 style="margin: 0; font-family: 'Noto Serif KR', serif; font-size: 36px; line-height: 1.15; font-weight: 600; letter-spacing: 0.04em">배소민</h1>
+<div style="margin-top: 12px; font-size: 13px; line-height: 1.7; color: #555555">
+<div>010-0000-1333 · somin.bae@example.com</div>
+<div><a href="https://artlink.cc/@somin.bae">artlink.cc/@somin.bae</a> · <a href="https://artlink.cc/">포트폴리오 파일(PDF)</a></div>
+</div>
+</div>
+<div style="text-align: right; font-size: 12.5px; line-height: 1.6; color: #555555">
+<div>지원 2027. 1. 24.</div>
+<div>작품 사진 8점</div>
+</div>
+</div>
+
+<div style="margin-top: 22px; border-top: 2px solid #111111; padding-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr) 316px; column-gap: 40px; align-items: start">
+<div>
+<h2 style="margin: 0 0 8px; font-size: 13px; font-weight: 700">약력</h2>
+<p style="margin: 0; font-size: 13px; line-height: 1.75; text-align: justify; color: #1a1a1a">배소민은 장지와 캔버스를 오가며 겹겹이 쌓이는 색의 깊이를 다룬다. 마르고 덮고 긁어내는 일을 되풀이해 화면에 시간의 층을 남기고, 그 층 사이로 비치는 처음의 색을 작업의 중심에 둔다. 2018년부터 서울과 부산을 오가며 작업하고 있다.</p>
+<sc-for list="{{ career }}" as="s" hint-placeholder-count="5">
+<section>
+<h2 style="margin: 16px 0 5px; padding-bottom: 5px; border-bottom: 1px solid #cfcfcf; font-size: 13px; font-weight: 700">{{ s.label }}</h2>
+<sc-for list="{{ s.items }}" as="e" hint-placeholder-count="3">
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); font-size: 12.5px; line-height: 1.7">
+<span style="color: #555555; font-variant-numeric: tabular-nums">{{ e.y }}</span>
+<span style="overflow-wrap: anywhere">{{ e.t }}</span>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</div>
+
+<div>
+<h2 style="margin: 0 0 10px; font-size: 13px; font-weight: 700">작품 사진</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<img src="/_blob/82cee5196ac8f0c4ec33493a428a52fe" alt="작품 사진 1" style="width: 150px; display: block">
+<img src="/_blob/95dd74ac9a2a7a4d2e4a9973fd188d06" alt="작품 사진 3" style="width: 150px; display: block">
+<img src="/_blob/bafb295908e7e717b0440b373db5321c" alt="작품 사진 5" style="width: 150px; display: block">
+<img src="/_blob/5178dc848b2499d71f5ea989a6757400" alt="작품 사진 7" style="width: 150px; display: block">
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<img src="/_blob/5f81a41331ae9bd2bab193a51fb8fdea" alt="작품 사진 2" style="width: 150px; display: block">
+<img src="/_blob/ece8f311b52fe75385855e99efeaade8" alt="작품 사진 4" style="width: 150px; display: block">
+<img src="/_blob/e0b60772a328a07c241273d890f601df" alt="작품 사진 6" style="width: 150px; display: block">
+<img src="/_blob/7d3435cfe0850fb5c30ded7815ae72c0" alt="작품 사진 8" style="width: 150px; display: block">
+</div>
+</div>
+</div>
+</div>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 78px">
+<h2 style="margin: 0 0 4px; padding-bottom: 6px; border-bottom: 1px solid #111111; font-size: 13px; font-weight: 700">추가 질문</h2>
+<div style="display: grid; grid-template-columns: 250px minmax(0, 1fr); column-gap: 20px; padding: 7px 0; border-bottom: 1px solid #e6e6e6; font-size: 13px; line-height: 1.55">
+<span style="color: #555555">작품 운송·설치가 가능한 일정을 적어주세요</span><span>주말 오전에 직접 가져가겠습니다. 대형 작품 두 점은 화물로 따로 보냅니다.</span>
+</div>
+<div style="display: grid; grid-template-columns: 250px minmax(0, 1fr); column-gap: 20px; padding: 7px 0; border-bottom: 1px solid #e6e6e6; font-size: 13px; line-height: 1.55">
+<span style="color: #555555">희망 전시 공간</span><span>2층 소전시실</span>
+</div>
+<div style="display: grid; grid-template-columns: 250px minmax(0, 1fr); column-gap: 20px; padding: 7px 0; border-bottom: 1px solid #e6e6e6; font-size: 13px; line-height: 1.55">
+<span style="color: #555555">함께 판매하고 싶은 것</span><span>엽서, 에디션 판화</span>
+</div>
+</div>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>지원서 · 배소민</span>
+<span style="font-variant-numeric: tabular-nums">1 / 1</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+const sec = (label, rows) => {
+let prev = '';
+return { label, items: rows.map(([y, t]) => { const show = y === prev ? '' : y; prev = y; return { y: show, t }; }) };
+};
+return {
+career: [
+sec('학력', [['2018', '예술대학 회화과 졸업']]),
+sec('개인전', [['2026', '「남겨진 자리」, 갤러리 사이, 제주'], ['2025', '「흐르는 것들」, 갤러리 온, 부산'], ['2024', '「붉은 언덕」, 아트스페이스 봄, 부산']]),
+sec('단체전', [['2026', '「겨울 정원과 새벽의 창」, 아트스페이스 봄, 서울'], ['2026', '「오래된 문」, 갤러리 온, 서울'], ['2025', '「작은 방과 긴 여름」, 갤러리 사이, 광주'], ['2024', '「푸른 벽과 수평선」, 갤러리 사이, 대전']]),
+sec('아트페어', [['2026', '서울 아트페어, 서울'], ['2025', '인천 국제아트쇼, 인천']]),
+sec('수상 및 선정', [['2026', '레지던시 입주작가 선정, 문화공간 숨'], ['2024', '청년미술대전 입선']]),
+],
+};
+}
+}
+</script>
+</body>
+</html>

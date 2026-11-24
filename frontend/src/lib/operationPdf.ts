@@ -1,24 +1,31 @@
 /**
- * 운영 페이지 — 작가 제출물 PDF/ZIP 일괄 생성 (클라이언트 사이드)
+ * 운영 화면의 내려받기 — 출품 자료 · 작품 리스트 · 작품 원본 · 정산서 · 지원서 (클라이언트에서 만든다).
  *
- * 각 작가 × {출품리스트, 작가약력, 작가노트}를 HTML로 렌더 → html2canvas → jsPDF(A4) → JSZip.
- * 파일명: [공모명]_[작가명]_[문서종류].pdf, ZIP: [공모명]_전체제출물.zip
- * 무거운 라이브러리는 동적 import로 메인 번들에서 분리.
+ * 2026-11-24 (규칙 92): PDF 는 전부 **글자가 글자로 남는 문서**(pdfmake + Pretendard)로 바뀌었다 — 만드는 곳은 `lib/galleryDocs/`.
+ * 예전엔 화면을 html2canvas 로 찍어 A4 높이로 잘라 붙여서 글자를 복사·검색할 수 없었고, 쪽 경계에서 글자 줄이 반으로 잘렸으며,
+ * 2쪽부터는 표 머리·작가 이름·쪽 번호가 없었다. 함수 이름과 돌려주는 값은 그대로다(화면은 바뀌지 않았다).
+ *  - 출품 자료: 작가마다 PDF 하나(약력 · 작가노트 · 출품 작품) — 예전 세 개(출품리스트·작가약력·작가노트)를 합쳤다
+ *  - 작품 리스트: 전시 전체를 한 표로(PDF · 엑셀) — 새로 생겼다
+ *  - 작품 원본(ZIP): 파일 이름 앞에 작품 리스트와 같은 번호
+ * 한글 캡션(.hwp)은 사용자 결정으로 예전 그대로다(서버 `lib/captionHwp.ts`).
  */
-import { displayName, nameWithNickname, formatArtworkPrice } from '@/lib/utils';
-import { cardFeeOf } from '@/lib/settlement';
-import { fetchImage, imageSrc, prefetchImages, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
-import type { OperationSubmission, ArtistCv, CvEntry, Settlement, SettlementArtist, Career, CustomField, CustomAnswer } from '@/types';
-import { CV_SECTIONS } from './submissionChecklist';
+import { nameWithNickname } from '@/lib/utils';
+import { fetchImage, imageSrc, recoverFailed, mapLimit, IMAGE_CONCURRENCY } from './imageFetch';
+import type { CustomField, OperationSubmission } from '@/types';
 import { isNativeApp, saveFile } from '@/lib/native';
+import { numberWorks, padNo } from './galleryDocs/format';
+import { buildWorkListDoc, workListSheet } from './galleryDocs/workList';
+import { buildSubmissionDoc } from './galleryDocs/submissionDoc';
+import { buildApplicationDoc, type ApplicantLike } from './galleryDocs/applicationDoc';
+import { buildArtistSettlementDoc, buildSettlementDoc, type DocSettlement, type DocSettlementArtist, type PayMethod } from './galleryDocs/settlementDoc';
+import type { DocContext, ImgFn } from './galleryDocs/types';
 
-const won = (n: number) => `${(n || 0).toLocaleString('ko')}원`;
+export type { ApplicantLike };
 
-
-export function esc(s: any): string {
+export function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 }
-// PDF/ZIP이 쓰는 이미지 주소.
+// HTML 로 그리는 문서(포트폴리오·도록)가 쓰는 이미지 주소.
 // 미리 받아둔 게 있으면 blob: URL(동일출처 → taint 없음, 재요청 없음), 없으면 동일출처 프록시로 폴백.
 // 실제 획득 로직(R2 직접 → 프록시 폴백 → 재시도)·캐시·병렬은 lib/imageFetch.ts 참고.
 export function proxied(url: string): string {
@@ -64,399 +71,8 @@ export function missingNote(exTitle: string, what: string, items: string[]): str
   ].join('\n');
 }
 
-export const BASE = `font-family:'Pretendard Variable',Pretendard,system-ui,sans-serif;color:#111;font-size:13px;line-height:1.6;`;
-// 표 셀 — 가로·세로 가운데 정렬 (열마다 따로 주면 행별로 어긋나 보인다)
-const TD = `border:1px solid #ddd;padding:8px;text-align:center;vertical-align:middle`;
-const TH = `${TD};font-weight:600;font-size:12px`;
-
 /**
- * 작품 사진 — 크기는 통일하되 비율은 유지한다.
- * 고정 크기 박스 + 이미지 max-*(100%) 조합. `object-fit`을 쓰지 않는 이유:
- * ZIP PDF는 html2canvas로 그리는데 html2canvas가 object-fit을 재현하지 못해
- * 이미지를 박스에 꽉 늘려 그린다(= 작품이 찌그러진다). max-*는 실제 레이아웃
- * 크기를 바꾸므로 html2canvas도 그대로 따라 그린다.
- */
-const imgBox = (url: string, size: number) => `
-  <div style="width:${size}px;height:${size}px;line-height:${size}px;font-size:0;text-align:center;flex-shrink:0">
-    <img src="${esc(proxied(url))}" crossorigin="anonymous" style="max-width:${size}px;max-height:${size}px;vertical-align:middle"/>
-  </div>`;
-const header = (exTitle: string, docLabel: string, artist: string, email?: string) => `
-  <div style="margin-bottom:20px">
-    <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
-    <h1 style="font-size:22px;font-weight:700;margin:4px 0">${esc(docLabel)}</h1>
-    <p style="font-size:13px;color:#444;margin:0">${esc(artist)}${email ? ` · ${esc(email)}` : ''}</p>
-  </div>`;
-
-// export: ZIP PDF의 표·이미지 규칙을 테스트로 고정하기 위해 (operationPdfDocs.test.ts)
-export function artworkHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
-  const list = sub.artworkList || [];
-  const rows = list.length === 0
-    ? `<tr><td colspan="7" style="border:1px solid #ddd;padding:16px;text-align:center;color:#999">등록된 출품작이 없습니다.</td></tr>`
-    : list.map((a, i) => `
-      <tr data-pdf-atomic>
-        <td style="${TD}">${i + 1}</td>
-        <td style="${TD}"><div style="display:flex;justify-content:center">${a.image ? imgBox(a.image, 88) : '<span style="color:#bbb;font-size:11px">-</span>'}</div></td>
-        <td style="${TD};word-break:break-word">${esc(a.title)}</td>
-        <td style="${TD};white-space:nowrap">${esc(a.size)}</td>
-        <td style="${TD};word-break:break-word">${esc(a.medium)}</td>
-        <td style="${TD}">${esc(a.year)}</td>
-        <td style="${TD};white-space:nowrap">${esc(formatArtworkPrice(a.price))}</td>
-      </tr>`).join('');
-  // table-layout:fixed + colgroup — 내용 길이와 무관하게 열 너비를 고정해 행마다 칸이 어긋나지 않게 한다
-  return `<div style="${BASE}">${header(exTitle, '출품리스트', artist, email)}
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <colgroup>
-        <col style="width:34px"/><col style="width:104px"/><col/><col style="width:112px"/><col style="width:118px"/><col style="width:52px"/><col style="width:96px"/>
-      </colgroup>
-      <thead><tr data-pdf-keep-next style="background:#f5f5f5">
-        <th style="${TH}">No</th>
-        <th style="${TH}">Image</th>
-        <th style="${TH}">Title</th>
-        <th style="${TH}">Size</th>
-        <th style="${TH}">Medium</th>
-        <th style="${TH}">Year</th>
-        <th style="${TH}">Price</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>`;
-}
-
-function cvHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
-  const cv = sub.cv;
-  if (!cv) return `<div style="${BASE}">${header(exTitle, '작가약력', artist, email)}<p style="color:#999">등록된 약력이 없습니다.</p></div>`;
-  const section = (label: string, items: CvEntry[]) => items.length === 0 ? '' : `
-    <div style="margin-bottom:16px">
-      <h2 data-pdf-keep-next style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 6px">${esc(label)}</h2>
-      ${items.map(e => `<p style="margin:2px 0">${esc(e.year)} ${esc(e.content)}</p>`).join('')}
-    </div>`;
-  return `<div style="${BASE}">${header(exTitle, '작가약력', artist, email)}
-    <div style="margin-bottom:20px">
-      <p style="font-size:16px;font-weight:700;margin:0">${esc(cv.nameKo) || esc(artist)}</p>
-      ${cv.tel ? `<p style="margin:2px 0">Tel  ${esc(cv.tel)}</p>` : ''}
-      ${cv.email ? `<p style="margin:2px 0">email  ${esc(cv.email)}</p>` : ''}
-    </div>
-    ${CV_SECTIONS.map(({ key, label }) => section(label, cv[key] ?? [])).join('')}
-  </div>`;
-}
-
-export function noteHtml(sub: OperationSubmission, exTitle: string, artist: string, email?: string): string {
-  const note = sub.note;
-  if (!note || (!note.statement && !(note.sections?.length))) return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}<p style="color:#999">등록된 작가노트가 없습니다.</p></div>`;
-  const list = sub.artworkList || [];
-  // 헤더에 이미 '작가노트'와 작가명이 있으므로 중복 제목은 두지 않는다.
-  // 상세설명은 출품작에 붙는 글 — 해당 작품 사진을 함께 싣는다 (max-*로만 제한해 비율 유지)
-  return `<div style="${BASE}">${header(exTitle, '작가노트', artist, email)}
-    ${note.statement ? `<p style="white-space:pre-wrap;margin:0 0 24px">${esc(note.statement)}</p>` : ''}
-    ${note.sections?.length ? `<h2 data-pdf-keep-next style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 10px">작품별 상세설명</h2>` : ''}
-    ${(note.sections || []).map(s => {
-      const art = list.find(a => a.title?.trim() === s.title?.trim());
-      const meta = art ? [art.size, art.medium, art.year].filter(Boolean).join(' · ') : '';
-      return `
-      <div data-pdf-atomic style="margin-bottom:18px;display:flex;gap:12px;align-items:flex-start">
-        ${art?.image ? imgBox(art.image, 130) : ''}
-        <div style="min-width:0;flex:1">
-          ${s.title ? `<h3 style="font-size:15px;font-weight:700;background:#fdf3c4;display:inline-block;padding:2px 6px;margin:0 0 8px">${esc(s.title)}</h3>` : ''}
-          ${meta ? `<p style="color:#666;font-size:12px;margin:0 0 6px">${esc(meta)}</p>` : ''}
-          <p style="white-space:pre-wrap;margin:0">${esc(s.body)}</p>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
-// 호스트 내부 이미지 로드 대기
-function waitImages(host: HTMLElement): Promise<void> {
-  const imgs = Array.from(host.querySelectorAll('img'));
-  if (imgs.length === 0) return Promise.resolve();
-  return new Promise(resolve => {
-    let done = 0;
-    const check = () => { done += 1; if (done >= imgs.length) resolve(); };
-    imgs.forEach(im => {
-      if (im.complete) check();
-      else { im.addEventListener('load', check); im.addEventListener('error', check); }
-    });
-    setTimeout(resolve, 8000); // 안전장치
-  });
-}
-
-/**
- * 페이지 컷 위치(CSS px) 계산 — 순수 함수라 단위 테스트 가능.
- * - 각 페이지 높이 ≤ pageHcss (내용 유실 없음)
- * - 컷 지점을 가로지르는 원자 블록(atomic)이 있으면 그 블록 top으로 컷을 당겨 블록을 통째로 다음 페이지로.
- *   (블록이 페이지보다 크거나 페이지 시작 지점부터 걸쳐 있으면 불가피하게 분할)
- * - blockTop 바로 위에 여백(직전 블록 bottom과의 간격)이 있으면, 렌더링 라운딩으로 인한 얇은 잘림(sliver)을
- *   막기 위해 컷을 그 여백 안쪽으로 최대 `guardPx`만큼 올린다(여백이 없는 표 행 등은 그대로 경계에서 컷).
- * - forcedBreaks: 반드시 새 페이지에서 시작해야 하는 위치(CSS px). 해당 지점에서 무조건 페이지를 끊는다
- *   (내용이 한 페이지에 다 들어가더라도). 예: 포트폴리오 '작품' 섹션을 경력 다음 페이지부터 시작.
- * 반환: [0, cut1, cut2, ..., totalCss] — 인접 쌍이 한 페이지 구간.
- */
-export function computePageCuts(
-  atomics: { top: number; bottom: number }[],
-  totalCss: number,
-  pageHcss: number,
-  guardPx = 0,
-  forcedBreaks: number[] = [],
-): number[] {
-  const forced = forcedBreaks.filter((b) => b > 0.5 && b < totalCss - 0.5).sort((a, b) => a - b);
-  const cuts: number[] = [0];
-  let start = 0;
-  let iter = 0;
-  while (iter++ < 4000) {
-    let limit = start + pageHcss;
-    // 이번 페이지 범위 안에 강제 나눔이 있으면 거기서 끊는다(한 페이지에 다 들어가도 강제로 다음 페이지).
-    // 이미 guard만큼 당겨 페이지가 강제 나눔 바로 위에서 시작했다면(= start가 그 지점 근처) 소진된 것으로 보고 건너뛴다.
-    const nextForced = forced.find((b) => b > start + guardPx + 1);
-    const forcedHere = nextForced !== undefined && nextForced <= limit;
-    if (forcedHere) limit = nextForced!;
-    // 남은 내용이 이번 페이지에 다 들어가고 더 강제 나눔도 없으면 종료.
-    if (limit >= totalCss - 0.5) break;
-    let cut = limit;
-    if (!forcedHere) {
-      // 자연 분할: 컷을 가로지르는 원자 블록이 있으면 그 블록 top으로 당김(블록 통째로 다음 페이지).
-      const straddleTops = atomics
-        .filter((b) => b.top > start && b.top < cut && b.bottom > cut)
-        .map((b) => b.top);
-      if (straddleTops.length) cut = Math.min(...straddleTops);
-    }
-    // guard(강제/자연 공통): 컷이 원자 블록 top(=이미지 상단)에 정확히 맞으면 렌더링 라운딩으로 윗줄이
-    // 이전 페이지에 얇게 남는다. 컷 위 여백(직전 블록 bottom과의 간격) 안쪽으로 최대 guardPx만큼 당겨 방지.
-    {
-      const aboveBottom = atomics.reduce((m, b) => (b.bottom <= cut && b.bottom > m ? b.bottom : m), start);
-      const gap = cut - aboveBottom;
-      const g = gap > 1 ? Math.min(guardPx, gap - 1) : 0; // 여백이 있을 때만, 여백 안쪽으로만
-      cut = cut - g;
-    }
-    if (cut <= start) break; // 진행 보장(무한루프 방지)
-    cuts.push(cut);
-    start = cut;
-  }
-  cuts.push(totalCss);
-  return cuts;
-}
-
-// HTML → A4 PDF Blob
-// - 페이지가 넘어갈 때 이미지/표행/카드 등 "자르면 안 되는" 블록(data-pdf-atomic)이 경계에서 잘리지 않도록,
-//   297mm 고정 간격이 아니라 블록 경계에 맞춰 페이지를 분할한다.
-// - data-pdf-keep-next: 섹션 제목 등 "다음 내용과 함께 넘어가야 하는" 요소 — 아래 일부(56px)까지 원자 범위로
-//   취급해 제목만 페이지 맨 아래 남는 고아(orphan)를 방지.
-// - 4면 여백(MARGIN)을 PDF 배치 단계에서 "모든 페이지"에 일괄 적용 → 2페이지 이후에도 상/하단 여백 유지.
-export async function htmlToPdfBlob(html: string, opts?: { pageNumbers?: boolean }): Promise<Blob> {
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import('jspdf'), import('html2canvas')]);
-  const host = document.createElement('div');
-  // 여백은 PDF 배치에서 4면 일괄 적용하므로 host에는 패딩을 주지 않는다(콘텐츠 폭만 지정).
-  host.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff;z-index:-1;';
-  host.innerHTML = html;
-  document.body.appendChild(host);
-  try {
-    await waitImages(host);
-
-    // 원자 블록(이미지 행·첨부사진·카드 등)의 세로 범위(host 기준 CSS px) 수집.
-    const hostTop = host.getBoundingClientRect().top;
-    const rectOf = (el: HTMLElement, padBottom = 0) => {
-      const r = el.getBoundingClientRect();
-      return { top: r.top - hostTop, bottom: r.bottom - hostTop + padBottom };
-    };
-    const atomics = [
-      ...(Array.from(host.querySelectorAll('[data-pdf-atomic]')) as HTMLElement[]).map((el) => rectOf(el)),
-      // 제목류: 아래 56px까지 묶어 "제목+내용 첫 줄"이 함께 다음 페이지로
-      ...(Array.from(host.querySelectorAll('[data-pdf-keep-next]')) as HTMLElement[]).map((el) => rectOf(el, 56)),
-    ].filter((b) => b.bottom > b.top);
-
-    // 반드시 새 페이지에서 시작할 위치(요소 top) — 예: 포트폴리오 '작품' 섹션
-    const forcedBreaks = (Array.from(host.querySelectorAll('[data-pdf-break-before]')) as HTMLElement[])
-      .map((el) => el.getBoundingClientRect().top - hostTop);
-
-    const canvas = await html2canvas(host, { scale: 2, useCORS: true, backgroundColor: '#fff' });
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageW = 210, pageH = 297;
-    // 4면 여백(mm). 페이지 번호를 찍을 땐 하단 여백을 조금 더 확보.
-    const marginX = 14, marginTop = 14, marginBottom = opts?.pageNumbers ? 16 : 14;
-    const contentWmm = pageW - marginX * 2;             // 본문 폭(mm)
-    const contentHmm = pageH - marginTop - marginBottom; // 본문 높이(mm)
-    const hostW = host.offsetWidth;                      // CSS px (콘텐츠 폭 = contentWmm에 대응)
-    const ratio = canvas.width / hostW;                  // canvas px per CSS px
-    const totalCss = canvas.height / ratio;              // 전체 문서 높이(CSS px)
-    const pageHcss = hostW * contentHmm / contentWmm;    // 한 페이지 본문에 담기는 높이(CSS px)
-
-    // 페이지 경계 계산 (순수 함수) — 각 페이지 ≤ pageHcss, 원자 블록은 통째로 다음 페이지로.
-    // guard 6px: 위에 여백이 있는 블록(이미지 그리드·카드)은 여백 안쪽으로 컷을 올려 얇은 잘림 방지.
-    const cuts = computePageCuts(atomics, totalCss, pageHcss, 6, forcedBreaks);
-
-    // 컷 위치를 정수 캔버스 행으로 변환 → 페이지끼리 정확히 맞닿게 타일링(갭/겹침 없음).
-    const rows = cuts.map((c) => Math.round(c * ratio));
-    const slice = document.createElement('canvas');
-    const sctx = slice.getContext('2d');
-    let pageNo = 0;
-    for (let i = 0; i < rows.length - 1; i++) {
-      const sy = rows[i], sh = rows[i + 1] - sy;
-      if (sh <= 0) continue;
-      slice.width = canvas.width;
-      slice.height = sh;
-      if (sctx) {
-        sctx.fillStyle = '#fff';
-        sctx.fillRect(0, 0, slice.width, slice.height);
-        sctx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
-      }
-      const imgHmm = (sh / ratio) * contentWmm / hostW; // mm (≤ contentHmm)
-      if (pageNo > 0) pdf.addPage();
-      pageNo += 1;
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', marginX, marginTop, contentWmm, imgHmm);
-    }
-    // 페이지 번호(하단 중앙) — 여러 장일 때만
-    if (opts?.pageNumbers) {
-      const total = pdf.getNumberOfPages();
-      if (total > 1) {
-        for (let p = 1; p <= total; p++) {
-          pdf.setPage(p);
-          pdf.setFontSize(9);
-          pdf.setTextColor(160);
-          pdf.text(`${p} / ${total}`, pageW / 2, pageH - 6, { align: 'center' });
-        }
-      }
-    }
-    return pdf.output('blob');
-  } finally {
-    document.body.removeChild(host);
-  }
-}
-
-// ── 정산서 ──
-/**
- * 결제수단(카드/현금)으로 필터해 합계를 재계산한 정산 객체.
- *
- * 카드 수수료는 **카드 정산서에만** 따라간다 — 현금 정산서에서 카드 수수료를 빼면
- * 두 장을 더했을 때 수수료가 두 번 빠진다.
- */
-function filterArtistByMethod(a: SettlementArtist, method: 'CARD' | 'CASH', cardFeeRate = 0): SettlementArtist {
-  const works = a.works.filter(w => w.sold && (w.paymentMethod || 'CARD') === method);
-  const total = works.reduce((s, w) => s + (w.soldPrice || 0), 0);
-  const cardFee = method === 'CARD' ? cardFeeOf(works.map(w => ({ ...w, sold: true })), cardFeeRate) : 0;
-  const settleBase = total - cardFee;
-  const galleryAmount = Math.round(settleBase * a.galleryRatio / 100);
-  return {
-    ...a, works, total,
-    cardTotal: method === 'CARD' ? total : 0,
-    cashTotal: method === 'CASH' ? total : 0,
-    cardFee, settleBase,
-    galleryAmount, artistAmount: settleBase - galleryAmount,
-  };
-}
-function filterSettlementByMethod(s: Settlement, method: 'CARD' | 'CASH'): Settlement {
-  const artists = s.artists.map(a => filterArtistByMethod(a, method, s.cardFeeRate ?? 0));
-  return {
-    ...s,
-    artists,
-    grand: {
-      total: artists.reduce((sum, a) => sum + a.total, 0),
-      cardFee: artists.reduce((sum, a) => sum + (a.cardFee ?? 0), 0),
-      settleBase: artists.reduce((sum, a) => sum + (a.settleBase ?? a.total), 0),
-      galleryAmount: artists.reduce((sum, a) => sum + a.galleryAmount, 0),
-      artistAmount: artists.reduce((sum, a) => sum + a.artistAmount, 0),
-      soldCount: artists.reduce((sum, a) => sum + a.works.length, 0),
-    },
-  };
-}
-const methodLabel = (m?: 'CARD' | 'CASH') => m === 'CASH' ? '현금' : m === 'CARD' ? '카드' : '';
-
-/**
- * 정산서 합계표에 넣을 '카드 수수료 / 정산 대상' 두 줄.
- * 수수료가 0이면 아무것도 넣지 않는다 — 예전 정산서와 서식이 같아야 한다.
- */
-function feeRows(cardFee?: number, settleBase?: number, cardFeeRate?: number): string {
-  if (!cardFee || cardFee <= 0) return '';
-  const rate = cardFeeRate ? ` (${cardFeeRate}%)` : '';
-  return `<tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">카드 수수료${rate}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">-${won(cardFee)}</td></tr>
-        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 대상 금액</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(settleBase ?? 0)}</td></tr>`;
-}
-
-/**
- * 작가 1명짜리 정산서.
- *
- * `hideGalleryAmount` — 작가가 내려받는 [내 정산서]에서 **갤러리 몫 금액 줄을 뺀다**.
- * 화면(`MyArtistSettlementSection`)은 원래부터 판매합계·비율·내 정산액만 보여주는데
- * PDF 만 갤러리 금액을 찍고 있어 서로 어긋나 있었다. 갤러리가 받는 같은 이름의 PDF 는 그대로다.
- *
- * ⚠️ 정보를 감추는 장치가 아니다 — 판매합계와 비율이 남으니 갤러리 몫은 뺄셈으로 나온다.
- *    '작가에게 주는 문서에는 갤러리 숫자를 적지 않는다'는 서식 규칙일 뿐이다.
- */
-export function artistSettlementHtml(exTitle: string, a: SettlementArtist, docLabel = '정산서', hideGalleryAmount = false, cardFeeRate = 0): string {
-  const artist = displayName(a.user);
-  const sold = a.works.filter(w => w.sold);
-  const rows = sold.length === 0
-    ? `<tr><td colspan="3" style="border:1px solid #ddd;padding:10px;text-align:center;color:#999">판매된 작품이 없습니다.</td></tr>`
-    : sold.map(w => `<tr data-pdf-atomic>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center;width:90px">${w.image ? `<img src="${esc(proxied(w.image))}" crossorigin="anonymous" style="width:70px;height:70px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
-        <td style="border:1px solid #ddd;padding:8px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:right">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
-      </tr>`).join('');
-  return `<div style="${BASE}">${header(exTitle, docLabel, artist, a.user.email ?? undefined)}
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-      <thead><tr data-pdf-keep-next style="background:#f5f5f5">
-        <th style="border:1px solid #ddd;padding:8px">이미지</th>
-        <th style="border:1px solid #ddd;padding:8px;text-align:left">판매 작품</th>
-        <th style="border:1px solid #ddd;padding:8px;text-align:right;width:130px">판매가</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <table style="width:100%;border-collapse:collapse">
-      <tbody>
-        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:160px">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.total)}</td></tr>
-        ${feeRows(a.cardFee, a.settleBase, cardFeeRate)}
-        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">정산 비율 (갤러리 : 작가)</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${a.galleryRatio}% : ${a.artistRatio}%</td></tr>
-        ${hideGalleryAmount ? '' : `<tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(a.galleryAmount)}</td></tr>`}
-        <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 정산 (지급액)</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(a.artistAmount)}</td></tr>
-      </tbody>
-    </table></div>`;
-}
-
-// 작가 1명의 판매작 내역 표 (이미지+제목+판매가) + 소계
-function artistBlock(a: SettlementArtist): string {
-  const sold = a.works.filter(w => w.sold);
-  const rows = sold.length === 0
-    ? `<tr><td colspan="3" style="border:1px solid #eee;padding:8px;text-align:center;color:#999">판매된 작품 없음</td></tr>`
-    : sold.map(w => `<tr data-pdf-atomic>
-        <td style="border:1px solid #eee;padding:6px;text-align:center;width:80px">${w.image ? `<img src="${esc(proxied(w.image))}" crossorigin="anonymous" style="width:60px;height:60px;object-fit:cover"/>` : '<span style="color:#bbb;font-size:11px">-</span>'}</td>
-        <td style="border:1px solid #eee;padding:6px">${esc(w.title || '(제목 없음)')}${[w.size, w.medium, w.year].filter(Boolean).length ? `<br/><span style="color:#888;font-size:11px">${esc([w.size, w.medium, w.year].filter(Boolean).join(' · '))}</span>` : ''}</td>
-        <td style="border:1px solid #eee;padding:6px;text-align:right;width:120px">${won(w.soldPrice)}<br/><span style="font-size:10px;color:#999">${w.paymentMethod === 'CASH' ? '현금' : '카드'}</span></td>
-      </tr>`).join('');
-  return `<div style="margin-bottom:22px">
-    <h2 data-pdf-keep-next style="font-size:15px;font-weight:700;margin:0 0 6px">${esc(displayName(a.user))} <span style="font-weight:400;color:#888;font-size:12px">(갤러리 ${a.galleryRatio}% : 작가 ${a.artistRatio}%)</span></h2>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr data-pdf-keep-next style="background:#f7f7f7">
-        <th style="border:1px solid #eee;padding:6px">이미지</th>
-        <th style="border:1px solid #eee;padding:6px;text-align:left">판매 작품</th>
-        <th style="border:1px solid #eee;padding:6px;text-align:right">판매가</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div style="text-align:right;margin-top:4px;font-size:12px;color:#444">
-      판매 합계 <b>${won(a.total)}</b>${(a.cardFee ?? 0) > 0 ? ` &nbsp;·&nbsp; 카드 수수료 <b>-${won(a.cardFee ?? 0)}</b>` : ''} &nbsp;·&nbsp; 갤러리 <b>${won(a.galleryAmount)}</b> &nbsp;·&nbsp; 작가 <b>${won(a.artistAmount)}</b>
-    </div>
-  </div>`;
-}
-
-export function overallSettlementHtml(s: Settlement, docLabel = '전체 정산서'): string {
-  const blocks = s.artists.length === 0
-    ? `<p style="color:#999">수락된 작가가 없습니다.</p>`
-    : s.artists.map(artistBlock).join('');
-  return `<div style="${BASE}">${header(s.exhibitionTitle, docLabel, '', '')}
-    ${blocks}
-    <div style="border-top:2px solid #333;padding-top:10px;margin-top:6px">
-      <h2 style="font-size:15px;font-weight:700;margin:0 0 6px">전체 합계</h2>
-      <table style="width:100%;border-collapse:collapse">
-        <tbody>
-          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;width:180px">판매 작품 수</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${s.grand.soldCount}점</td></tr>
-          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">판매 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.total)}</td></tr>
-          ${feeRows(s.grand.cardFee, s.grand.settleBase, s.cardFeeRate)}
-          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa">갤러리 정산 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${won(s.grand.galleryAmount)}</td></tr>
-          <tr><td style="border:1px solid #ddd;padding:8px;background:#fafafa;font-weight:700">작가 지급 합계</td><td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:700">${won(s.grand.artistAmount)}</td></tr>
-        </tbody>
-      </table>
-    </div></div>`;
-}
-
-/**
- * 만든 파일을 내려받는다 — 이 앱의 **모든 파일 내려받기가 여기로 모인다**(PDF·ZIP·PPTX·한글 캡션).
+ * 만든 파일을 내려받는다 — 이 앱의 **모든 파일 내려받기가 여기로 모인다**(PDF·ZIP·PPTX·한글 캡션·엑셀).
  * 앱(안드로이드 WebView)은 `<a download>` 를 무시하므로 공유 창으로 넘긴다(lib/native.ts saveFile). 새 내려받기도 이걸 쓸 것.
  */
 export function triggerDownload(blob: Blob, filename: string) {
@@ -469,110 +85,48 @@ export function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * PDF 하나를 만들기 전 이미지를 **먼저 병렬로 모아 둔다**.
- *
- * 안 하면 `<img src>`가 전부 프록시(백엔드 중계)를 타고, `htmlToPdfBlob`의 이미지 대기가
- * 장마다 붙어 "안 끝나는" 상태가 된다 — 일괄 ZIP에서 실제로 겪은 그 문제다(2026-08).
- * 선수집해두면 `imageSrc`가 blob: URL을 돌려주므로 렌더 중 네트워크가 0이 된다.
- * 실패분은 자동 회수까지 거치고, 그래도 못 받으면 **이름 목록으로 돌려준다**(조용히 빈 칸 금지).
- */
-async function prefetchForPdf(
-  urls: (string | null | undefined)[],
-  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
-): Promise<Set<string>> {
-  const list = urls.filter((u): u is string => !!u);
-  if (list.length === 0) return new Set();
-  let failed = await prefetchImages(list, (d, t) => onProgress?.(d, t, 'images'));
-  if (failed.length > 0) failed = await recoverFailed(failed, (d, t) => onProgress?.(d, t, 'retry'));
-  return new Set(failed);
-}
+export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string | null; handle?: string | null }; guest?: boolean; submission: OperationSubmission; }
 
-/** 정산서에 실리는 판매작 이미지 주소 */
-const settlementImages = (a: SettlementArtist) => a.works.filter(w => w.sold).map(w => w.image);
+type Progress = (done: number, total: number, phase: 'images' | 'retry' | 'pdf') => void;
+
+/** 문서 모듈(무겁다 — pdfmake·글꼴)은 누를 때 받는다 */
+const docs = () => import('./galleryDocs/render');
 
 /**
- * 작가별 정산서 PDF (method 지정 시 현금/카드 정산서)
- *
- * @param opts.forArtist 작가 본인이 [내 정산서]로 받는 경우. 갤러리 몫 금액 줄을 뺀다.
- *   갤러리가 같은 함수로 받는 작가별 정산서는 기본값(false)이라 예전 그대로다.
+ * 빌더 하나 또는 여럿을 '그림 적기 → 그림 준비 → 대체 글꼴 → 만들기' 로 돌린다.
+ * @returns 만든 PDF 들과 받지 못한 그림 주소
  */
-export async function downloadArtistSettlementPdf(
-  exTitle: string, artist: SettlementArtist, method?: 'CARD' | 'CASH',
-  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
-  opts?: { forArtist?: boolean; cardFeeRate?: number },
-): Promise<{ missing: string[] }> {
-  const feeRate = opts?.cardFeeRate ?? 0;
-  const target = method ? filterArtistByMethod(artist, method, feeRate) : artist;
-  const docLabel = method ? `${methodLabel(method)} 정산서` : '정산서';
-  const failed = await prefetchForPdf(settlementImages(target), onProgress);
-  const blob = await htmlToPdfBlob(artistSettlementHtml(exTitle, target, docLabel, !!opts?.forArtist, feeRate));
-  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(artist.user))}_${docLabel.replace(/\s/g, '')}.pdf`);
-  return { missing: target.works.filter(w => w.sold && w.image && failed.has(w.image)).map(w => w.title || '무제') };
-}
-
-/** 전체 정산서 PDF (method 지정 시 현금/카드 정산서) */
-export async function downloadOverallSettlementPdf(
-  s: Settlement, method?: 'CARD' | 'CASH',
-  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
-): Promise<{ missing: string[] }> {
-  const target = method ? filterSettlementByMethod(s, method) : s;
-  const docLabel = method ? `${methodLabel(method)} 정산서` : '전체 정산서';
-  const failed = await prefetchForPdf(target.artists.flatMap(settlementImages), onProgress);
-  const blob = await htmlToPdfBlob(overallSettlementHtml(target, docLabel));
-  triggerDownload(blob, `${safeName(s.exhibitionTitle)}_${docLabel.replace(/\s/g, '')}.pdf`);
-  return {
-    missing: target.artists.flatMap(a =>
-      a.works.filter(w => w.sold && w.image && failed.has(w.image))
-        .map(w => `${displayName(a.user)} · ${w.title || '무제'}`)),
-  };
-}
-
-export interface SubmissionRow { user: { id: number; name: string; nickname?: string | null; email?: string }; submission: OperationSubmission; }
-
-// ── 캡션 시트 (작품 네임택) ──
-// hwp 양식: 한 칸 = 한 작품, [제목 / 크기 / 재료 / 제작년도 + 가격]. 작가명 미표기.
-function captionCell(a: { title?: string; size?: string; medium?: string; year?: string; price?: string }): string {
-  const yearPrice = `<div style="display:flex;justify-content:space-between;margin-top:2px">
-      <span>${esc(a.year)}</span><span>${esc(a.price)}</span></div>`;
-  return `<div data-pdf-atomic style="border:1px solid #333;box-sizing:border-box;width:330px;min-height:96px;padding:14px 16px;margin:0 8px 12px 0;page-break-inside:avoid">
-    <p style="font-weight:700;font-size:15px;margin:0 0 8px">${esc(a.title) || '<span style="color:#bbb">(제목 없음)</span>'}</p>
-    <p style="margin:1px 0;font-size:12px;color:#333">${esc(a.size)}</p>
-    <p style="margin:1px 0;font-size:12px;color:#333">${esc(a.medium)}</p>
-    <div style="font-size:12px;color:#333">${yearPrice}</div>
-  </div>`;
-}
-
-/** 전체 출품작 캡션 시트 PDF (작가명 미표기, 한 칸 = 한 작품) */
-export async function downloadCaptionSheetPdf(exTitle: string, rows: SubmissionRow[]): Promise<void> {
-  const works: { title?: string; size?: string; medium?: string; year?: string; price?: string }[] = [];
-  for (const { submission } of rows) {
-    for (const a of (submission.artworkList || [])) works.push(a);
+async function makeDocs(build: (img: ImgFn) => import('pdfmake/interfaces').TDocumentDefinitions[], onProgress?: Progress): Promise<{ blobs: Blob[]; failed: string[] }> {
+  const r = await docs();
+  const rec = r.imageRecorder();
+  build(rec.img);
+  const [pm, prepared] = await Promise.all([r.loadPdfMake(), r.prepareImages(rec.wanted, onProgress)]);
+  const list = build(prepared.img);
+  await r.prepareFallbackFonts(pm, list);
+  const blobs: Blob[] = [];
+  for (let i = 0; i < list.length; i++) {
+    blobs.push(await r.renderDoc(pm, list[i]!));
+    onProgress?.(i + 1, list.length, 'pdf');
   }
-  const cells = works.length === 0
-    ? `<p style="color:#999">등록된 출품작이 없습니다.</p>`
-    : works.map(captionCell).join('');
-  const html = `<div style="${BASE}">
-    <div style="margin-bottom:16px">
-      <p style="font-size:12px;color:#888;margin:0">${esc(exTitle)}</p>
-      <h1 style="font-size:20px;font-weight:700;margin:4px 0">작품 캡션 (${works.length})</h1>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;align-items:flex-start">${cells}</div>
-  </div>`;
-  const blob = await htmlToPdfBlob(html);
-  triggerDownload(blob, `${safeName(exTitle)}_작품캡션.pdf`);
+  return { blobs, failed: prepared.failed };
 }
 
-// ── 작품 원본 이미지 일괄 다운로드 (jpg 통일) ──
-// 이미지 URL → 캔버스 → jpeg Blob (png/webp 등도 jpg로 변환). CORS 불가 시 null.
+/** 그림 주소 → '작가 · 작품명' (누락 안내용) */
+function missingNames(rows: SubmissionRow[], failed: string[]): string[] {
+  const bad = new Set(failed);
+  return rows.flatMap(({ user, submission }) =>
+    (submission.artworkList || []).filter((a) => a.image && bad.has(a.image)).map((a) => `${nameWithNickname(user)} · ${a.title || '무제'}`));
+}
+
+// ── 작품 원본 이미지 일괄 다운로드 ──
 /** 출품작 **원본 이미지**를 그대로 ZIP으로 묶어 다운로드 (rows에 1명만 넘기면 개별 작가용).
  *
- *  - 예전엔 캔버스로 JPEG(0.95) **재인코딩**해서 화질이 떨어지고 EXIF가 날아갔다. 이제 받은 바이트를
- *    그대로 넣어 진짜 원본이고, 디코딩/인코딩이 없어 훨씬 빠르며 모바일 메모리 문제도 없다.
- *  - 순차 → **동시 5개 병렬**. 실패분은 배치가 끝난 뒤 자동 회수(`recoverFailed`)를 거치고,
+ *  - 받은 바이트를 그대로 넣는다(재인코딩 없음 — 화질·EXIF 그대로).
+ *  - **동시 5개 병렬**. 실패분은 배치가 끝난 뒤 자동 회수(`recoverFailed`)를 거치고,
  *    그래도 남으면 목록으로 돌려주고 ZIP 안에 누락 메모까지 넣는다(조용히 빠지지 않게).
  *  구조: **작가명 폴더** 안에 파일 (작가가 여럿일 때 평평하게 쏟아지지 않게)
- *  파일명: 작가명_작품제목_작품크기_재료_제작년도_가격.{원본확장자} (동일명은 _2,_3 부여)
+ *  파일명: 번호_작가명_작품제목_작품크기_재료_제작년도_가격.{원본확장자} (동일명은 _2,_3 부여)
+ *    - 번호는 **작품 리스트·출품 자료와 같은 번호**(전시 전체, 2026-11-24) — 그래서 한 작가만 받을 때도 전체 목록(`numberingRows`)으로 센다
  *    - 폴더에 작가명이 있어도 파일명에 그대로 둔다. 파일을 폴더 밖으로 꺼내 인쇄소·디자이너에게
  *      넘기는 일이 잦은데, 그때 이름이 없으면 어느 작가 작품인지 알 수 없다.
  *  zipName 미지정 시 "{공모명}_작품원본.zip" */
@@ -581,9 +135,11 @@ export async function downloadAllArtworkImagesZip(
   rows: SubmissionRow[],
   zipName?: string,
   onProgress?: (done: number, total: number, phase?: 'collect' | 'retry') => void,
+  numberingRows: SubmissionRow[] = rows,
 ): Promise<{ ok: number; fail: number; failed: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
+  const { numberOf, total } = numberWorks(numberingRows);
 
   // 작가별 폴더 (동명이인은 자동 분리)
   const folders = artistFolderNames(rows.map((r) => r.user));
@@ -591,14 +147,14 @@ export async function downloadAllArtworkImagesZip(
   // 작업 목록 평탄화 (작가 경계와 무관하게 전부 병렬로 돌린다 — 폴더는 담을 때만 쓴다)
   const jobs = rows.flatMap(({ user, submission }) =>
     (submission.artworkList || [])
-      .filter((a) => !!a.image)
-      .map((a) => ({ artist: nameWithNickname(user), folder: folders.get(user.id)!, a })),
+      .map((a, i) => ({ artist: nameWithNickname(user), folder: folders.get(user.id)!, a, no: numberOf(user.id, i) }))
+      .filter((j) => !!j.a.image),
   );
 
   const results = await mapLimit(
     jobs,
     IMAGE_CONCURRENCY,
-    async ({ artist, folder, a }) => ({ artist, folder, a, img: await fetchImage(a.image as string) }),
+    async (j) => ({ ...j, img: await fetchImage(j.a.image as string) }),
     (d, t) => onProgress?.(d, t, 'collect'),
   );
 
@@ -614,12 +170,12 @@ export async function downloadAllArtworkImagesZip(
   const usedByFolder = new Map<string, Set<string>>();
   let ok = 0;
   const failed: string[] = [];
-  for (const { artist, folder, a, img } of results) {
+  for (const { artist, folder, a, img, no } of results) {
     if (!img) { failed.push(`${artist} · ${a.title || '무제'}`); continue; }
     const parts = [artist, a.title, a.size, a.medium, a.year, a.price]
       .map(p => safeName(String(p ?? '')).replace(/\s+/g, ' ').trim())
       .filter(Boolean);
-    const base = parts.join('_') || '작품';
+    const base = [no ? padNo(no, total) : '', parts.join('_') || '작품'].filter(Boolean).join('_');
     const used = usedByFolder.get(folder) || new Set<string>();
     usedByFolder.set(folder, used);
     let name = `${base}.${img.ext}`;
@@ -640,206 +196,136 @@ export async function downloadAllArtworkImagesZip(
   return { ok, fail: failed.length, failed };
 }
 
-/** 전 작가 × 3문서 PDF를 ZIP으로 묶어 다운로드. **작가명 폴더**로 나눠 담는다.
- *
- *  PDF 렌더(html2canvas)는 DOM을 써야 해서 병렬화할 수 없다. 대신 **이미지를 먼저 병렬로 모두 받아
- *  blob: URL로 캐시**해두면, 이후 각 PDF의 <img>는 네트워크를 타지 않고 즉시 로드된다.
- *  (예전엔 작가마다 같은 이미지를 프록시로 다시 받아 `waitImages`가 최대 8초씩 대기했다.)
- *  진행률은 이미지 수집(0~50%)과 PDF 렌더(50~100%)를 합쳐 보고한다. */
+// ── 작품 리스트 ──
+/** 작품 리스트 PDF — 전시 전체 출품작을 한 표로(작품 원본 파일 이름과 같은 번호) */
+export async function downloadWorkListPdf(exhibitionId: string | number, exTitle: string, rows: SubmissionRow[], onProgress?: Progress): Promise<{ missing: string[] }> {
+  const r = await docs();
+  const ctx: DocContext = await r.loadDocContext(exhibitionId, exTitle);
+  const { blobs, failed } = await makeDocs((img) => [buildWorkListDoc(ctx, rows, img)], onProgress);
+  triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || exTitle)}_작품리스트.pdf`);
+  return { missing: missingNames(rows, failed) };
+}
+
+/** 작품 리스트 엑셀(.xlsx) — 같은 표, 가격은 숫자 칸 */
+export async function downloadWorkListXlsx(exTitle: string, rows: SubmissionRow[]): Promise<void> {
+  const { buildXlsx } = await import('./galleryDocs/xlsx');
+  const sheet = workListSheet(rows);
+  const blob = await buildXlsx('작품 리스트', sheet.head, sheet.rows, sheet.widths);
+  triggerDownload(blob, `${safeName(exTitle)}_작품리스트.xlsx`);
+}
+
+// ── 출품 자료 ──
+/** 작가마다 출품 자료 PDF 하나(약력 · 작가노트 · 출품 작품)를 ZIP 으로.
+ *  그림은 먼저 전부 병렬로 받아 칸 크기에 맞춰 줄여 둔다(그 뒤 PDF 는 네트워크 없이 만든다).
+ *  진행률은 그림 모으기(이미지) → 재시도 → PDF 순서로 알린다. */
 export async function downloadAllSubmissionsZip(
   exTitle: string,
   rows: SubmissionRow[],
-  onProgress?: (done: number, total: number, phase: 'images' | 'pdf' | 'retry') => void,
+  onProgress?: Progress,
 ): Promise<{ missing: string[] }> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
+  const { numberOf } = numberWorks(rows);
+  const { blobs, failed } = await makeDocs((img) => rows.map((row) => buildSubmissionDoc(exTitle, row, numberOf, img)), onProgress);
 
-  // 1) 이 ZIP에 들어갈 모든 작품 이미지를 병렬 선수집 → 이후 PDF는 캐시(blob:)만 사용
-  const urls = rows.flatMap(({ submission }) =>
-    (submission.artworkList || []).map((a) => a.image).filter((u): u is string => !!u),
-  );
-  let failedUrls = await prefetchImages(urls, (d, t) => onProgress?.(d, t, 'images'));
-  // 실패분 자동 회수 — 이미지가 빠지면 PDF에 빈 칸이 남으므로 PDF를 만들기 **전에** 최대한 되찾는다
-  if (failedUrls.length > 0) {
-    failedUrls = await recoverFailed(failedUrls, (d, t) => onProgress?.(d, t, 'retry'));
-  }
-  // 그래도 못 받은 이미지는 PDF에 빈 칸으로 나간다 → 어떤 작품인지 이름으로 돌려줘 사용자가 알 수 있게 한다
-  const failedSet = new Set(failedUrls);
-  const missing = rows.flatMap(({ user, submission }) =>
-    (submission.artworkList || [])
-      .filter((a) => a.image && failedSet.has(a.image))
-      .map((a) => `${nameWithNickname(user)} · ${a.title || '무제'}`),
-  );
+  // 파일 이름은 작가 이름(동명이인은 (2) — 폴더 이름과 같은 규칙). 폴더 밖으로 꺼내 메일로 보내도 누구 것인지 보이게
+  const names = artistFolderNames(rows.map((r) => r.user));
+  rows.forEach((row, i) => zip.file(`${exSafe}_${names.get(row.user.id)}_출품자료.pdf`, blobs[i]!));
 
-  // 2) PDF 렌더 (DOM 사용이라 순차) — 작가별 폴더에 담는다(동명이인은 자동 분리)
-  const folders = artistFolderNames(rows.map((r) => r.user));
-  const docs = rows.flatMap(({ user, submission }) => {
-    const artist = displayName(user);
-    const aSafe = safeName(artist);
-    const email = user.email;
-    const dir = folders.get(user.id)!;
-    // 폴더에 작가명이 있어도 파일명은 그대로 둔다 — PDF는 폴더 밖으로 꺼내 메일로 보내는 일이 잦다
-    return [
-      { name: `${dir}/${exSafe}_${aSafe}_출품리스트.pdf`, html: () => artworkHtml(submission, exTitle, artist, email) },
-      { name: `${dir}/${exSafe}_${aSafe}_작가약력.pdf`, html: () => cvHtml(submission, exTitle, artist, email) },
-      { name: `${dir}/${exSafe}_${aSafe}_작가노트.pdf`, html: () => noteHtml(submission, exTitle, artist, email) },
-    ];
-  });
-  for (let i = 0; i < docs.length; i++) {
-    zip.file(docs[i].name, await htmlToPdfBlob(docs[i].html()));
-    onProgress?.(i + 1, docs.length, 'pdf');
-  }
-
-  // 이미지가 빈 채로 나간 PDF가 있으면 ZIP이 스스로 증언하게 한다
+  // 그림이 빈 채로 나간 PDF가 있으면 ZIP이 스스로 증언하게 한다
+  const missing = missingNames(rows, failed);
   if (missing.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, 'PDF에 들어갈 작품 이미지', missing));
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  triggerDownload(blob, `${exSafe}_전체제출물.zip`);
+  triggerDownload(blob, `${exSafe}_출품자료.zip`);
   return { missing };
 }
 
-// ── 지원서 (지원자 관리 페이지) ──
-// 닉네임/전화/이메일 + 작가약력 + 경력 + 작품사진 + 포트폴리오 파일을 한 PDF로.
-export interface ApplicantLike {
-  user: { id?: number; name: string; nickname?: string | null; email?: string | null; phone?: string | null };
-  biography?: string | null;
-  career?: Career | null;
-  artworkImages?: string[] | null;
-  portfolioFileUrl?: string | null;
-  customAnswers?: CustomAnswer[] | null;
-  status?: string;
-  createdAt?: string;
+// ── 정산서 ──
+const methodWord = (m?: PayMethod) => (m === 'CASH' ? '현금' : m === 'CARD' ? '카드' : '');
+
+/** 정산서에 실리는 판매작 그림이 못 받은 경우 → '작가 · 작품명' */
+function settlementMissing(artists: DocSettlementArtist[], failed: string[]): string[] {
+  const bad = new Set(failed);
+  return artists.flatMap((a) => a.works.filter((w) => w.sold && w.image && bad.has(w.image)).map((w) => `${nameWithNickname(a.user)} · ${w.title || '무제'}`));
 }
 
-// 표시용 — 포트폴리오에서 넘어온 학력·수상도 지원서 PDF에 함께 싣는다(빈 항목은 자동으로 빠진다)
-const APP_CAREER_SECTIONS: { key: keyof Career; label: string }[] = [
-  { key: 'education', label: '학력' },
-  { key: 'solo', label: '개인전' },
-  { key: 'group', label: '단체전' },
-  { key: 'artFair', label: '아트페어' },
-  { key: 'award', label: '수상 및 선정' },
-];
-
-// export: 지원서 PDF의 HTML 빌더 (순수 함수) — 단위 테스트/미리보기용
-export function applicationHtml(exTitle: string, app: ApplicantLike, customFields?: CustomField[] | null): string {
-  const artist = displayName(app.user as any);
-  const career: Career = { artFair: app.career?.artFair ?? [], solo: app.career?.solo ?? [], group: app.career?.group ?? [] };
-  const careerEmpty = career.artFair.length === 0 && career.solo.length === 0 && career.group.length === 0;
-  const images = (app.artworkImages || []).filter(Boolean);
-  const appliedAt = app.createdAt ? new Date(app.createdAt).toLocaleDateString('ko') : '';
-
-  // 갤러리 추가 질문(커스텀 필드) 답변 — 화면(ApplicationContent)과 동일 로직:
-  // 필드 라벨+답변(다중선택은 콤마 조인), 질문 삭제/재생성으로 현재 필드에 없는 답변은 "삭제된 질문"으로 보존.
-  // customAnswers는 (구) 하위호환 컬럼이라 배열이 아닌 레거시 데이터가 있을 수 있어 방어적으로 배열만 사용.
-  const safeAnswers = Array.isArray(app.customAnswers) ? app.customAnswers : [];
-  const answerMap = new Map(safeAnswers.map(a => [a.fieldId, a.value] as const));
-  const fmtAnswer = (v?: string | string[]) => (Array.isArray(v) ? v.filter(Boolean).join(', ') : (v ?? ''));
-  const currentFieldIds = new Set((customFields ?? []).map(f => f.id));
-  const orphanAnswers = safeAnswers.filter(a => !currentFieldIds.has(a.fieldId));
-  // 질문 카드 하나 = 원자 블록 (페이지 경계에서 카드가 반으로 잘리지 않게)
-  const qaRow = (label: string, value: string, muted = false) => `
-    <div data-pdf-atomic style="border:1px solid #eee;border-radius:6px;padding:8px 10px;margin-bottom:6px">
-      <p style="font-size:12px;font-weight:700;color:${muted ? '#999' : '#555'};margin:0 0 2px">${esc(label)}</p>
-      <p style="white-space:pre-wrap;word-break:break-word;margin:0">${esc(value) || '<span style="color:#999">-</span>'}</p>
-    </div>`;
-  const customHtml = ((customFields?.length ?? 0) > 0 || orphanAnswers.length > 0)
-    ? `<div style="margin-bottom:18px">
-        <h2 data-pdf-keep-next style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 8px">갤러리 추가 질문</h2>
-        ${(customFields ?? []).map(f => qaRow(f.label, fmtAnswer(answerMap.get(f.id)))).join('')}
-        ${orphanAnswers.map(a => qaRow('삭제된 질문', fmtAnswer(a.value), true)).join('')}
-      </div>`
-    : '';
-
-  const contactRows = `
-    <table data-pdf-atomic style="width:100%;border-collapse:collapse;margin-bottom:20px">
-      <tbody>
-        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;width:90px;font-weight:700">닉네임</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.nickname || app.user.name)}</td></tr>
-        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">전화번호</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.phone || '-')}</td></tr>
-        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">이메일</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(app.user.email || '-')}</td></tr>
-        <tr><td style="border:1px solid #ddd;padding:8px 10px;background:#f7f7f7;font-weight:700">지원일</td><td style="border:1px solid #ddd;padding:8px 10px">${esc(appliedAt)}</td></tr>
-      </tbody>
-    </table>`;
-
-  const careerHtml = careerEmpty
-    ? `<p style="color:#999;margin:0 0 16px">등록된 경력이 없습니다.</p>`
-    : APP_CAREER_SECTIONS.map(({ key, label }) => (career[key] ?? []).length === 0 ? '' : `
-        <div data-pdf-atomic style="margin-bottom:12px">
-          <h3 style="font-size:13px;font-weight:700;color:#1a1a2e;margin:0 0 4px">${esc(label)}</h3>
-          ${(career[key] ?? []).map(e => `<p style="margin:2px 0">${esc([e.year, e.content].filter(Boolean).join(' '))}</p>`).join('')}
-        </div>`).join('');
-
-  const imagesHtml = images.length === 0
-    ? `<p style="color:#999;margin:0">첨부된 작품 사진이 없습니다.</p>`
-    : `<div style="display:flex;flex-wrap:wrap;gap:8px">${images.map(u => `<img data-pdf-atomic src="${esc(proxied(u))}" crossorigin="anonymous" style="width:170px;height:170px;object-fit:cover;border:1px solid #eee"/>`).join('')}</div>`;
-
-  return `<div style="${BASE}">
-    ${header(exTitle, '지원서', artist)}
-    ${contactRows}
-    <div style="margin-bottom:18px">
-      <h2 data-pdf-keep-next style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">작가 약력</h2>
-      <p style="white-space:pre-wrap;margin:0">${esc(app.biography) || '<span style="color:#999">등록된 약력이 없습니다.</span>'}</p>
-    </div>
-    <div style="margin-bottom:18px">
-      <h2 data-pdf-keep-next style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">경력</h2>
-      ${careerHtml}
-    </div>
-    <div style="margin-bottom:18px">
-      <h2 data-pdf-keep-next style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 8px">작품 사진 (${images.length})</h2>
-      ${imagesHtml}
-    </div>
-    ${app.portfolioFileUrl ? `<div data-pdf-atomic style="margin-bottom:18px"><h2 style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 6px">포트폴리오 파일</h2><p style="margin:0;word-break:break-all;color:#444">${esc(app.portfolioFileUrl)}</p></div>` : ''}
-    ${customHtml}
-  </div>`;
+/**
+ * 작가 한 사람의 정산서(method 를 주면 현금/카드 정산서).
+ * @param opts.forArtist 작가 본인이 [내 정산서]로 받는 경우 — 갤러리 몫 금액 줄을 뺀다
+ * @param opts.exhibitionId 발행처·전시 기간을 머리에 찍으려고(없으면 제목만)
+ */
+export async function downloadArtistSettlementPdf(
+  exTitle: string, artist: DocSettlementArtist, method?: PayMethod,
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+  opts?: { forArtist?: boolean; cardFeeRate?: number; exhibitionId?: string | number },
+): Promise<{ missing: string[] }> {
+  const r = await docs();
+  const ctx = await r.loadDocContext(opts?.exhibitionId, exTitle);
+  const { blobs, failed } = await makeDocs((img) => [buildArtistSettlementDoc(ctx, artist, method, { forArtist: opts?.forArtist, cardFeeRate: opts?.cardFeeRate }, img)],
+    (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
+  const label = method ? `${methodWord(method)}정산서` : '정산서';
+  triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || exTitle)}_${safeName(nameWithNickname(artist.user))}_${label}.pdf`);
+  return { missing: settlementMissing([artist], failed) };
 }
 
-/** 지원서에 실리는 작품 사진 주소 (지원자 1명 최대 30장) */
-const applicationImages = (app: ApplicantLike) => app.artworkImages || [];
+/** 전체 정산서(method 를 주면 현금/카드 정산서) */
+export async function downloadOverallSettlementPdf(
+  s: DocSettlement, method?: PayMethod,
+  onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
+  opts?: { exhibitionId?: string | number },
+): Promise<{ missing: string[] }> {
+  const r = await docs();
+  const ctx = await r.loadDocContext(opts?.exhibitionId, s.exhibitionTitle);
+  const { blobs, failed } = await makeDocs((img) => [buildSettlementDoc(ctx, s, method, img)], (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
+  const label = method ? `${methodWord(method)}정산서` : '전체정산서';
+  triggerDownload(blobs[0]!, `${safeName(ctx.exTitle || s.exhibitionTitle)}_${label}.pdf`);
+  return { missing: settlementMissing(s.artists, failed) };
+}
+
+// ── 지원서 ──
+const applicationImages = (app: ApplicantLike) => (app.artworkImages || []).filter(Boolean);
 
 /** 지원자 1명의 지원서 PDF — 파일명: 공모명_작가명_지원서.pdf */
 export async function downloadApplicationPdf(
   exTitle: string, app: ApplicantLike, customFields?: CustomField[] | null,
   onProgress?: (done: number, total: number, phase: 'images' | 'retry') => void,
 ): Promise<{ missing: number }> {
-  const failed = await prefetchForPdf(applicationImages(app), onProgress);
-  const blob = await htmlToPdfBlob(applicationHtml(exTitle, app, customFields));
-  triggerDownload(blob, `${safeName(exTitle)}_${safeName(displayName(app.user as any))}_지원서.pdf`);
-  return { missing: applicationImages(app).filter((u) => failed.has(u)).length };
+  const { blobs, failed } = await makeDocs((img) => [buildApplicationDoc(exTitle, app, customFields, img, { origin: window.location.origin })],
+    (d, t, p) => { if (p !== 'pdf') onProgress?.(d, t, p); });
+  triggerDownload(blobs[0]!, `${safeName(exTitle)}_${safeName(nameWithNickname(app.user))}_지원서.pdf`);
+  const bad = new Set(failed);
+  return { missing: applicationImages(app).filter((u) => bad.has(u)).length };
 }
 
-/** 전체 지원자 지원서 PDF를 ZIP으로 묶어 다운로드 — 파일명: 공모명_지원서.zip
- *
- *  지원자마다 작품 사진이 최대 30장이라 여기가 이미지 규모가 가장 크다.
- *  PDF 렌더는 DOM을 써서 순차일 수밖에 없으므로, **이미지는 먼저 전부 병렬로 받아둔다.** */
+/** 전체 지원자 지원서 PDF를 ZIP으로 — 파일명: 공모명_지원서.zip
+ *  지원자마다 작품 사진이 최대 30장이라 그림 규모가 가장 크다 — 먼저 전부 받아 줄여 둔다. */
 export async function downloadAllApplicationsZip(
   exTitle: string, apps: ApplicantLike[], customFields?: CustomField[] | null,
-  onProgress?: (done: number, total: number, phase: 'images' | 'retry' | 'pdf') => void,
+  onProgress?: Progress,
 ): Promise<{ count: number; missing: string[] }> {
+  if (apps.length === 0) return { count: 0, missing: [] };
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const exSafe = safeName(exTitle);
-  const used = new Set<string>();
-  let count = 0;
-
-  const failed = await prefetchForPdf(apps.flatMap(applicationImages), onProgress);
+  const { blobs, failed } = await makeDocs((img) => apps.map((app) => buildApplicationDoc(exTitle, app, customFields, img, { origin: window.location.origin })), onProgress);
+  const bad = new Set(failed);
   const missing = apps
-    .filter((app) => applicationImages(app).some((u) => failed.has(u)))
-    .map((app) => `${displayName(app.user as any)} · 사진 ${applicationImages(app).filter((u) => failed.has(u)).length}장`);
+    .filter((app) => applicationImages(app).some((u) => bad.has(u)))
+    .map((app) => `${nameWithNickname(app.user)} · 사진 ${applicationImages(app).filter((u) => bad.has(u)).length}장`);
 
-  for (const app of apps) {
-    const aSafe = safeName(displayName(app.user as any));
+  const used = new Set<string>();
+  apps.forEach((app, i) => {
+    const aSafe = safeName(nameWithNickname(app.user));
     let name = `${exSafe}_${aSafe}_지원서.pdf`;
     let n = 2;
     while (used.has(name)) { name = `${exSafe}_${aSafe}_${n}_지원서.pdf`; n += 1; }
     used.add(name);
-    zip.file(name, await htmlToPdfBlob(applicationHtml(exTitle, app, customFields)));
-    count += 1;
-    onProgress?.(count, apps.length, 'pdf');
-  }
-  if (count > 0) {
-    if (missing.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, '지원서에 들어갈 작품 사진', missing));
-    const blob = await zip.generateAsync({ type: 'blob' });
-    triggerDownload(blob, `${exSafe}_지원서.zip`);
-  }
-  return { count, missing };
+    zip.file(name, blobs[i]!);
+  });
+  if (missing.length > 0) zip.file(MISSING_NOTE_NAME, missingNote(exTitle, '지원서에 들어갈 작품 사진', missing));
+  const blob = await zip.generateAsync({ type: 'blob' });
+  triggerDownload(blob, `${exSafe}_지원서.zip`);
+  return { count: apps.length, missing };
 }

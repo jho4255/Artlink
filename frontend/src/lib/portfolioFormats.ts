@@ -764,8 +764,8 @@ const CAP_TITLE_LINE = 27;   // 제목 한 줄 (명조 26 + 1)
 const CAP_META_LINE = 22;    // 보조 한 줄 (17 + 위 여백 5)
 const CAP_DESC_TOP = 8;      // 설명 블록 위 여백
 
-/** 러닝 머리말 기본 문구. 포트폴리오는 'PORTFOLIO', 갤러리 도록은 buildPortfolioPages 의 `runningHead` 로 바꾼다(2026-09-16) */
-let runningHeadDefault = 'PORTFOLIO';
+/** 러닝 머리말 기본 문구 (갤러리 도록이 'CATALOGUE' 로 바꿔 쓰던 시절이 있었다 — 2026-11-24 도록은 전용 조판으로 옮겼다, 규칙 53) */
+const runningHeadDefault = 'PORTFOLIO';
 
 function page(theme: PortfolioTheme, data: PortfolioBookData, inner: string, chrome: Chrome = {}): string {
   const { w, h } = theme.page;
@@ -2476,16 +2476,9 @@ export function buildPortfolioPages(
     forPdf?: boolean; design?: unknown;
     /** 화면 미리보기용 — 사진을 800px 썸네일로 싣는다(없으면 화면이 원본으로 되돌린다). 배치는 PDF 와 같다. `forPdf` 가 우선 */
     preview?: boolean;
-    /** 쪽번호 시작값(기본 1). 갤러리 도록이 작가 여럿의 장을 이어 붙일 때 번호를 잇는다(2026-09-16) */
-    folioStart?: number;
-    /** 연락처 장을 만들지 않는다 — 도록에서는 작가마다 연락처 장이 붙으면 안 된다 */
-    skipContact?: boolean;
-    /** 러닝 머리말 문구(기본 'PORTFOLIO'). 도록은 'CATALOGUE' */
-    runningHead?: string;
   },
 ): PortfolioPage[] {
   imgMode = opts?.forPdf ? 'pdf' : opts?.preview ? 'preview' : 'display';
-  runningHeadDefault = opts?.runningHead ?? 'PORTFOLIO';
   // 디자인(색·판형·밀도·설명)을 입힌 파생 테마 — 아래 빌더 전부 이 theme + design 을 쓴다
   const design = normalizePdfDesign(opts?.design ?? null);
   captionStyle = design.captionStyle;
@@ -2534,7 +2527,7 @@ export function buildPortfolioPages(
   }
 
   // 작품 목록 — 작품 장들이 확정된 뒤라 쪽번호를 알 수 있다(표지가 1쪽).
-  const start = opts?.folioStart ?? 1;
+  const start = 1;
   if (design.worksIndex) {
     const pageOf = new Map<number, number>();
     pages.forEach((pg, i) => (pg.workIds ?? []).forEach((id) => { if (!pageOf.has(id)) pageOf.set(id, i + start); }));
@@ -2543,7 +2536,7 @@ export function buildPortfolioPages(
 
   if (design.cvPosition === 'after') pages.push(...cvBlock);
 
-  if (!opts?.skipContact && hasContactPage(data, design)) pages.push({ label: '연락처', html: contactHtml(theme, data, design), kind: 'contact' });
+  if (hasContactPage(data, design)) pages.push({ label: '연락처', html: contactHtml(theme, data, design), kind: 'contact' });
   // 쪽번호를 여기서 채운다 — 장을 만드는 곳이 여럿이라 각자 세게 하면 반드시 어긋난다.
   return pages.map((pg, i) => ({ ...pg, html: pg.html.split(FOLIO).join(String(i + start)) }));
 }

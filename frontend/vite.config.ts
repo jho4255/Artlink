@@ -66,7 +66,8 @@ export default defineConfig({
         // ArtLook(액자 사진 8장 5.5MB · 화면 코드)도 뺀다 — 예전엔 모든 방문자가 설치 때 미리 받았다(미리받기 8.2MB 의 67%, 2026-10-04).
         // [ArtLook] 탭을 여는 작가만 그때 받는다. 고정 이름 파일이라 서버가 no-cache 로 내준다(backend lib/staticCache.ts).
         // @capacitor 청크는 안드로이드 앱에서만 쓴다(2026-11-09, 규칙 79) — 앱도 처음 쓸 때 네트워크로 받는다
-        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', '**/PostEditor-*.js', '**/CropDialog-*.js', '**/tiptap-*.js', 'artlook/**', '**/capacitor-*.js'],
+        // pdfmake(갤러리 결과물 PDF, 2026-11-24 규칙 92)도 문서를 만드는 사람만 그때 받는다 — Pretendard OTF 는 위 패턴(.otf)에 애초에 안 걸린다
+        globIgnores: ['**/pdf-*.js', '**/RichTextEditor-*.js', '**/PostEditor-*.js', '**/CropDialog-*.js', '**/tiptap-*.js', 'artlook/**', '**/capacitor-*.js', '**/pdfmake-*.js'],
       },
       manifest: {
         name: 'ArtLink',
@@ -116,6 +117,8 @@ export default defineConfig({
           const ids = chunk.moduleIds;
           if (ids.length > 0 && ids.every((id) => id.includes('/node_modules/@capacitor/'))) return 'assets/capacitor-[name]-[hash].js';
           if (ids.some((id) => id.includes('/node_modules/@tiptap/core/'))) return 'assets/tiptap-[name]-[hash].js';
+          // pdfmake(약 0.9MB) — 이름을 박아 위 globIgnores 로 미리받기에서 뺀다
+          if (ids.some((id) => id.includes('/node_modules/pdfmake/'))) return 'assets/pdfmake-[name]-[hash].js';
           return 'assets/[name]-[hash].js';
         },
         assetFileNames: 'assets/[name]-[hash][extname]',

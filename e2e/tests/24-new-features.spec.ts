@@ -190,13 +190,15 @@ test.describe('엽서 대표작(representativeIndex)', () => {
 
 // ─────────────────────────── 3) 운영 다운로드 버튼 ───────────────────────────
 test.describe('운영 페이지 갤러리 다운로드', () => {
-  test('UI: [내려받기] 메뉴에 캡션(한글) / 작품 원본(ZIP) / 전체 PDF / 도록 + 캡션 HWP 다운로드', async ({ browser }) => {
+  test('UI: [내려받기] 메뉴에 캡션(한글) / 작품 리스트(PDF·엑셀) / 출품 자료 PDF / 작품 원본(ZIP) / 도록 + 캡션 HWP 다운로드', async ({ browser }) => {
     const { page, ctx } = await openAs(browser, 'gallery');
     await openGallerySubmissions(page, exId);
     await page.getByRole('button', { name: '내려받기' }).first().click();
     await expect(page.getByRole('menuitem', { name: /작품 캡션/ })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('menuitem', { name: /작품 원본/ })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: /출품 자료 PDF/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /작품 리스트\(PDF\)/ })).toBeVisible();     // 2026-11-24(규칙 92)
+    await expect(page.getByRole('menuitem', { name: /작품 리스트\(엑셀\)/ })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: /도록 PDF/ })).toBeVisible();
 
     // 캡션 한글파일(.hwp) 서버 생성 → 다운로드

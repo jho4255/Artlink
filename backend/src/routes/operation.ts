@@ -941,6 +941,9 @@ router.get('/:id/settlement', authenticate, async (req, res, next) => {
       // 갤러리 화면에 "8/20까지 무응답이면 자동 수락" 을 작가별로 보여주기 위한 값
       autoApproveAt: a.status === 'PENDING' && a.askedAt ? autoApproveDeadline(a.askedAt) : null,
       autoApproved: !!a.autoApprovedAt,
+      // 작가가 확인(또는 이의)한 시각 — 정산서에 '4. 9. 작가 확인'으로 찍는다(2026-11-24, 규칙 92).
+      // 확인한 행은 다시 고쳐지지 않는다(금액이 바뀌면 PENDING 으로 되돌아가 새로 답한다) — 그래서 updatedAt 이 곧 답한 때다
+      respondedAt: a.status === 'PENDING' ? null : (a.autoApprovedAt ?? a.updatedAt),
     }]));
 
     const computed = computeSettlement(rows, sales, settlements, exhibition.cardFeeRate);
@@ -994,7 +997,7 @@ router.get('/:id/my-settlement', authenticate, async (req, res, next) => {
       exhibitionTitle: exhibition.title, ended: exhibition.ended,
       requested, settled, settledAt: exhibition.settledAt,
       artist: artists[0],
-      myApproval: appr ? { status: appr.status, comment: appr.comment, autoApproved: !!appr.autoApprovedAt } : null,
+      myApproval: appr ? { status: appr.status, comment: appr.comment, autoApproved: !!appr.autoApprovedAt, respondedAt: appr.status === 'PENDING' ? null : (appr.autoApprovedAt ?? appr.updatedAt) } : null,
       // 이 날짜까지 응답이 없으면 자동 수락된다 — 화면에 반드시 보여줘야 하는 값
       autoApproveAt: appr?.status === 'PENDING' && appr.askedAt ? autoApproveDeadline(appr.askedAt) : null,
       autoApproveDays: AUTO_APPROVE_DAYS,

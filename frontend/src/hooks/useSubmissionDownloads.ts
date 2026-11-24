@@ -8,8 +8,9 @@ import type { OperationSubmission } from '@/types';
 type Row = { user: any; submission: OperationSubmission };
 
 /**
- * 출품 자료 내려받기 넷 — 작품 캡션(HWP) · 도록 PDF · 작품 원본(ZIP) · 출품 자료 PDF(ZIP).
+ * 출품 자료 내려받기 — 작품 캡션(HWP) · 작품 리스트(PDF·엑셀) · 출품 자료 PDF(ZIP) · 작품 원본(ZIP) · 도록 PDF.
  * 출품 자료 탭(`AdminSubmissionsSection`)과 마무리 요약 탭(`WorkspaceSummary` 의 '기록 내려받기')이 같이 쓴다(2026-11-20, 규칙 88).
+ * 2026-11-24(규칙 92): 작품 리스트가 새로 생겼고, PDF 는 글자가 살아 있는 문서다(lib/galleryDocs). 작품 번호는 리스트·출품 자료·원본 파일 이름이 같다.
  *
  *  - 진행률은 토스트가 아니라 **버튼 라벨**(`busyLabel`)에 — 토스트는 사라져 "멈춘 줄" 안다(2026-08)
  *  - 끝까지 못 받은 사진은 사라지는 토스트 대신 `missing` 으로 남겨 배너의 [다시 받기]로 잇는다
@@ -42,7 +43,34 @@ export function useSubmissionDownloads(exhibitionId: string, exhibitionTitle: st
     } finally { setBusy(null); setProgress(null); }
   };
 
-  // 캡션 HWP (한글 파일) — 서버에서 원본 양식 채워 생성, 작가명 미표기
+  // 작품 리스트 — 전시 전체를 한 표로(PDF). 엑셀은 그림이 없어 금방 끝난다
+  const downloadWorkList = async () => {
+    if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
+    setBusy('worklist'); setMissing(null);
+    const t = toast.loading('작품 리스트를 만드는 중입니다…');
+    try {
+      const { downloadWorkListPdf } = await import('@/lib/operationPdf');
+      const { missing: lost } = await downloadWorkListPdf(exhibitionId, exhibitionTitle, data, (done, total, phase) => {
+        setProgress({ done, total, label: phase === 'images' ? '이미지' : phase === 'retry' ? '재시도' : 'PDF' });
+      });
+      if (lost.length > 0) {
+        toast.success(`작품 리스트 다운로드를 시작합니다. (이미지 ${lost.length}개 누락)`, { id: t });
+        setMissing({ items: lost, what: '작품 리스트에 들어갈 작품 이미지', retry: downloadWorkList });
+      } else toast.success('작품 리스트 다운로드를 시작합니다.', { id: t });
+    } catch {
+      toast.error('작품 리스트를 만들지 못했습니다.', { id: t });
+    } finally { setBusy(null); setProgress(null); }
+  };
+  const downloadWorkListSheet = async () => {
+    if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
+    setBusy('worklist-xlsx');
+    try {
+      const { downloadWorkListXlsx } = await import('@/lib/operationPdf');
+      await downloadWorkListXlsx(exhibitionTitle, data);
+    } catch { toast.error('엑셀 파일을 만들지 못했습니다.'); } finally { setBusy(null); }
+  };
+
+  // 캡션 HWP (한글 파일) — 서버에서 원본 양식 채워 생성, 작가명 미표기 (2026-11-24 사용자 결정: 예전 양식 그대로)
   const downloadCaptions = async () => {
     if (totalArtworks === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
     setBusy('caption');
@@ -61,7 +89,7 @@ export function useSubmissionDownloads(exhibitionId: string, exhibitionTitle: st
     } finally { setBusy(null); }
   };
 
-  // 작품 원본 이미지 일괄 다운로드 (jpg ZIP) — rows 를 주면 그 작가만
+  // 작품 원본 이미지 일괄 다운로드 (원본 ZIP) — rows 를 주면 그 작가만. 파일 이름 번호는 늘 전시 전체 번호(data)로 센다
   const downloadImages = async (rows: Row[] = data, zipName?: string) => {
     if (rows.reduce((s, d) => s + (d.submission.artworkList?.length || 0), 0) === 0) { toast.error('등록된 출품작이 없습니다.'); return; }
     setBusy('images'); setMissing(null);
@@ -71,6 +99,7 @@ export function useSubmissionDownloads(exhibitionId: string, exhibitionTitle: st
       const { ok, fail, failed } = await downloadAllArtworkImagesZip(
         exhibitionTitle, rows, zipName,
         (done, total, phase) => setProgress({ done, total, label: phase === 'retry' ? '재시도' : '이미지' }),
+        data,
       );
       if (ok === 0) toast.error('다운로드 가능한 작품 이미지가 없습니다.', { id: t });
       else if (fail > 0) {
@@ -97,9 +126,11 @@ export function useSubmissionDownloads(exhibitionId: string, exhibitionTitle: st
 
   const downloads = [
     { key: 'caption', label: '작품 캡션(HWP)', hint: '전시장에 붙이는 캡션 — 작가명 없이', onSelect: downloadCaptions },
+    { key: 'worklist', label: '작품 리스트(PDF)', hint: '전시 전체 출품작을 한 표로', onSelect: downloadWorkList },
+    { key: 'worklist-xlsx', label: '작품 리스트(엑셀)', hint: '같은 표를 엑셀 파일로', onSelect: downloadWorkListSheet },
+    { key: 'zip', label: '출품 자료 PDF(ZIP)', hint: '작가마다 약력·작가노트·출품 작품을 한 파일로', onSelect: downloadAllZip },
+    { key: 'images', label: '작품 원본(ZIP)', hint: '작가별 폴더의 원본 이미지 — 작품 리스트와 같은 번호', onSelect: () => downloadImages() },
     { key: 'catalogue', label: '도록 PDF', hint: CATALOGUE_LABEL, onSelect: runCatalogue },
-    { key: 'images', label: '작품 원본(ZIP)', hint: '작가별 폴더의 원본 이미지', onSelect: () => downloadImages() },
-    { key: 'zip', label: '출품 자료 PDF(ZIP)', hint: '작가마다 출품리스트·약력·작가노트', onSelect: downloadAllZip },
   ];
 
   return { downloads, busy: !!busy, busyLabel, missing, clearMissing: () => setMissing(null), totalArtworks, downloadArtistImages };

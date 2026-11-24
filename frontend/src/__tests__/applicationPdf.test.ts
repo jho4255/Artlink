@@ -1,6 +1,12 @@
+/**
+ * 지원서 PDF (2026-11-24 글자 PDF 로 다시 짬, 규칙 92).
+ *  - 갤러리 추가 질문: 지금 질문 순서대로, 다중 선택은 쉼표로, 지운 질문의 답은 '삭제된 질문'으로 남긴다(옛 문서와 같은 규칙)
+ *  - 예전 PDF 는 경력에 학력·수상이 빠졌고, 작품 사진을 정사각으로 찌그러뜨렸다(규칙 18)
+ */
 import { describe, it, expect } from 'vitest';
-import { applicationHtml } from '../lib/operationPdf';
-import type { CustomField } from '../types';
+import { APP_CAREER_SECTIONS, applicationAnswers, buildApplicationDoc, type ApplicantLike } from '@/lib/galleryDocs/applicationDoc';
+import type { CustomField } from '@/types';
+import { docText, fakeImg, imagesOf, nodesOf } from './docTestUtils';
 
 const customFields: CustomField[] = [
   { id: 'q1', label: '작업 분야', type: 'select', required: true, maxSelect: 1, options: ['회화', '조각'] },
@@ -8,62 +14,83 @@ const customFields: CustomField[] = [
   { id: 'q3', label: '지원 동기', type: 'text', required: true, maxLength: 100 },
 ];
 
-const app = {
-  user: { name: 'Artist 1', email: 'a@b.com', phone: '010-0000-0000' },
-  biography: '작가 약력입니다.',
+const app: ApplicantLike = {
+  user: { name: '강윤서', nickname: 'yunseo', email: 'a@b.com', phone: '010-0000-0000', handle: 'yunseo.kang' },
+  biography: '작가 약력입니다.\n\n둘째 문단.',
+  career: {
+    education: [{ year: '2018', content: '예술대학 회화과 졸업' }],
+    solo: [{ year: '2026', content: '개인전 「사이」' }],
+    group: [], artFair: [],
+    award: [{ year: '2026', content: '신진작가상' }],
+  },
+  artworkImages: ['/uploads/1.jpg', '/uploads/2.jpg', '/uploads/3.jpg'],
+  portfolioFileUrl: '/uploads/files/pf.pdf',
+  createdAt: '2026-09-24T16:00:00.000Z',
   customAnswers: [
     { fieldId: 'q1', value: '회화' },
-    { fieldId: 'q2', value: ['월', '수', '금'] }, // 다중선택
+    { fieldId: 'q2', value: ['월', '수', '금'] },
     { fieldId: 'q3', value: '지원 동기 텍스트' },
-    { fieldId: 'removed', value: '삭제된 질문의 답변' }, // orphan
+    { fieldId: 'removed', value: '삭제된 질문의 답변' },
   ],
 };
+const origin = 'https://artlink.cc';
 
-describe('지원서 PDF - 갤러리 추가 질문', () => {
-  it('커스텀 질문 라벨과 답변(단일/다중/텍스트/orphan)이 HTML에 모두 포함된다', () => {
-    const html = applicationHtml('테스트 공모', app as any, customFields);
-    expect(html).toContain('갤러리 추가 질문');
-    expect(html).toContain('작업 분야');
-    expect(html).toContain('회화');
-    expect(html).toContain('참여 가능 요일');
-    expect(html).toContain('월, 수, 금'); // 다중선택은 콤마로 조인
-    expect(html).toContain('지원 동기');
-    expect(html).toContain('지원 동기 텍스트');
-    // 현재 필드에 없는 답변은 "삭제된 질문"으로 보존
-    expect(html).toContain('삭제된 질문');
-    expect(html).toContain('삭제된 질문의 답변');
+describe('지원서 PDF — 갤러리 추가 질문', () => {
+  it('질문 순서대로 · 다중 선택은 쉼표 · 지운 질문의 답은 보존', () => {
+    expect(applicationAnswers(app, customFields)).toEqual([
+      { label: '작업 분야', value: '회화' },
+      { label: '참여 가능 요일', value: '월, 수, 금' },
+      { label: '지원 동기', value: '지원 동기 텍스트' },
+      { label: '삭제된 질문', value: '삭제된 질문의 답변', removed: true },
+    ]);
+    const text = docText(buildApplicationDoc('테스트 공모', app, customFields, fakeImg, { origin }));
+    for (const s of ['추가 질문', '작업 분야', '회화', '월, 수, 금', '지원 동기 텍스트', '삭제된 질문', '삭제된 질문의 답변']) expect(text, s).toContain(s);
   });
 
-  it('답변이 없는 필수 질문은 - 로 표시된다', () => {
-    const html = applicationHtml('테스트 공모', { user: { name: 'x' }, customAnswers: [] } as any, customFields);
-    expect(html).toContain('작업 분야');
-    expect(html).toContain('갤러리 추가 질문');
+  it('답이 없는 질문은 — 로 · 질문도 답도 없으면 그 구역이 없다', () => {
+    const empty: ApplicantLike = { user: { name: 'x' }, customAnswers: [] };
+    expect(applicationAnswers(empty, customFields).map((q) => q.value)).toEqual(['', '', '']);
+    expect(docText(buildApplicationDoc('공모', empty, customFields, fakeImg, { origin }))).toContain('—');
+    expect(docText(buildApplicationDoc('공모', { user: { name: 'x' }, biography: '' }, null, fakeImg, { origin }))).not.toContain('추가 질문');
   });
 
-  it('customFields가 없고 답변도 없으면 추가 질문 섹션이 렌더되지 않는다', () => {
-    const html = applicationHtml('테스트 공모', { user: { name: 'x' }, biography: '' } as any);
-    expect(html).not.toContain('갤러리 추가 질문');
+  it('기존·옛 데이터 — 답이 null 이거나 배열이 아니어도 문서가 만들어진다', () => {
+    expect(() => buildApplicationDoc('공모', { user: { name: 'x' }, customAnswers: null }, customFields, fakeImg, { origin })).not.toThrow();
+    const legacy = { user: { name: 'x' }, customAnswers: { q1: '회화' } } as unknown as ApplicantLike;
+    expect(applicationAnswers(legacy, customFields).every((q) => q.value === '')).toBe(true);
+    expect(applicationAnswers(app, null).map((q) => q.label)).toEqual(['삭제된 질문', '삭제된 질문', '삭제된 질문', '삭제된 질문']);
+  });
+});
+
+describe('지원서 PDF — 지원자', () => {
+  const doc = buildApplicationDoc('겹과 결', app, customFields, fakeImg, { origin });
+  const text = docText(doc);
+
+  it('경력 다섯 갈래 전부(학력·수상 포함) — 빈 갈래만 빠진다', () => {
+    expect(APP_CAREER_SECTIONS.map((s) => s.label)).toEqual(['학력', '개인전', '단체전', '아트페어', '수상 및 선정']);
+    for (const s of ['학력', '예술대학 회화과 졸업', '개인전', '수상 및 선정', '신진작가상']) expect(text, s).toContain(s);
+    expect(text).not.toContain('단체전');
   });
 
-  // ── 기존/레거시 데이터 호환 (실서버 배포 대비) ──
-  it('기존 지원서: customAnswers=null 이어도 오류 없이 렌더된다', () => {
-    const html = applicationHtml('테스트 공모', { user: { name: 'x' }, biography: '약력', customAnswers: null } as any, customFields);
-    // 질문 정의는 있으나 답변이 없으므로 각 질문이 -로 표시
-    expect(html).toContain('갤러리 추가 질문');
-    expect(html).toContain('작업 분야');
+  it('이름(닉네임) · 연락처 · 지원일 · 약력 문단', () => {
+    for (const s of ['강윤서', 'yunseo', '010-0000-0000 · a@b.com', '지원 2026. 9. 25.', '작품 사진 3점', '작가 약력입니다.', '둘째 문단.', '지원서 · 강윤서']) {
+      expect(text, s).toContain(s);
+    }
   });
 
-  it('질문이 삭제된 공모(customFields 없음)라도 기존 답변은 "삭제된 질문"으로 보존된다', () => {
-    const html = applicationHtml('테스트 공모', app as any, null);
-    expect(html).toContain('삭제된 질문');
-    expect(html).toContain('회화'); // 기존 답변 유지
+  it('홈페이지 · 포트폴리오 파일은 눌리는 링크(사이트 주소로)', () => {
+    const links = nodesOf(doc.content).filter((n) => typeof n.link === 'string').map((n) => [n.text, n.link]);
+    expect(links).toEqual([
+      ['artlink.cc/@yunseo.kang', 'https://artlink.cc/@yunseo.kang'],
+      ['포트폴리오 파일(PDF)', 'https://artlink.cc/uploads/files/pf.pdf'],
+    ]);
   });
 
-  it('레거시 비배열 customAnswers(객체 등)도 크래시 없이 안전하게 처리된다', () => {
-    const legacy = { user: { name: 'x' }, biography: '약력', customAnswers: { q1: '회화' } };
-    expect(() => applicationHtml('테스트 공모', legacy as any, customFields)).not.toThrow();
-    const html = applicationHtml('테스트 공모', legacy as any, customFields);
-    // 배열이 아니므로 답변은 무시(빈 값 -)되고, 최소한 예외 없이 문서가 생성됨
-    expect(html).toContain('지원서');
+  it('★ 작품 사진은 비율 그대로(fit) — 폭·높이를 함께 주지 않는다 · 못 받은 사진은 글자로', () => {
+    const imgs = imagesOf(doc);
+    expect(imgs.map((n) => n.image)).toEqual(['/uploads/1.jpg', '/uploads/3.jpg', '/uploads/2.jpg'].map((u) => `data:image/jpeg;mid;${u}`));
+    expect(imgs.every((n) => Array.isArray(n.fit) && !(n.width !== undefined && n.height !== undefined))).toBe(true);
+    const noImg = docText(buildApplicationDoc('공모', app, null, () => null, { origin }));
+    expect(noImg.match(/사진을 받지 못했어요/g)).toHaveLength(3);
   });
 });

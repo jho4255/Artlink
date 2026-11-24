@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>작품 캡션</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="position: absolute; left: 57px; top: 34px; width: 680px; height: 1040px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #c4c4c4; border-left: 1px solid #c4c4c4; box-sizing: border-box">
+<sc-for list="{{ labels }}" as="c" hint-placeholder-count="10">
+<div style="height: 208px; box-sizing: border-box; border-right: 1px solid #c4c4c4; border-bottom: 1px solid #c4c4c4; padding: 22px 24px 16px; display: flex; flex-direction: column">
+<sc-if value="{{ showArtist }}" hint-placeholder-val="{{ true }}">
+<div style="font-size: 13px; font-weight: 500; letter-spacing: 0.02em; margin-bottom: 8px">{{ c.artist }}</div>
+</sc-if>
+<div style="font-size: 17px; line-height: 1.35; font-weight: 700; word-break: keep-all; overflow-wrap: anywhere">{{ c.title }}<span style="font-weight: 400">, {{ c.year }}</span></div>
+<div style="margin-top: 8px; font-size: 13px; line-height: 1.5; color: #333333">{{ c.medium }}</div>
+<div style="font-size: 13px; line-height: 1.5; color: #333333">{{ c.size }}</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+<span style="font-size: 12px; color: #767676; font-variant-numeric: tabular-nums"><sc-if value="{{ showNo }}" hint-placeholder-val="{{ true }}">No. {{ c.no }}</sc-if></span>
+<span style="font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums"><sc-if value="{{ showPrice }}" hint-placeholder-val="{{ true }}">{{ c.price }}</sc-if></span>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div aria-hidden="true" style="position: absolute; left: 57px; top: 14px; width: 1px; height: 12px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 397px; top: 14px; width: 1px; height: 12px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 736px; top: 14px; width: 1px; height: 12px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 57px; top: 1082px; width: 1px; height: 12px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 397px; top: 1082px; width: 1px; height: 12px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 736px; top: 1082px; width: 1px; height: 12px; background: #111111"></div>
+
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 34px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 242px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 450px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 658px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 866px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 37px; top: 1073px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 34px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 242px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 450px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 658px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 866px; width: 12px; height: 1px; background: #111111"></div>
+<div aria-hidden="true" style="position: absolute; left: 745px; top: 1073px; width: 12px; height: 1px; background: #111111"></div>
+
+<div style="position: absolute; left: 77px; right: 77px; top: 1096px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>작품 캡션 · 90 × 55 mm · 2027 봄 기획전 《겹과 결》</span>
+<span style="font-variant-numeric: tabular-nums">1 / 9</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"showArtist":{"editor":"boolean","default":true,"section":"캡션에 넣을 것"},"showNo":{"editor":"boolean","default":true,"section":"캡션에 넣을 것"},"showPrice":{"editor":"boolean","default":true,"section":"캡션에 넣을 것"},"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+const L = (no, artist, title, year, medium, size, price) => ({ no, artist, title, year, medium, size, price });
+return {
+showArtist: this.props.showArtist ?? true,
+showNo: this.props.showNo ?? true,
+showPrice: this.props.showPrice ?? true,
+labels: [
+L(1, '강윤서', '네모난 정원 #1', '2026', '캔버스에 유채', '72.7 × 60.6 cm', '120,000원'),
+L(2, '강윤서', 'Layers of Silence II', '2026', '장지에 혼합재료', '40.9 × 31.8 cm', '1,800,000원'),
+L(3, '강윤서', 'A Room of Light', '2026', 'Acrylic on canvas', '40.9 × 31.8 cm', '170,000원'),
+L(4, '강윤서', 'Fold #12', '2026', 'Acrylic on canvas', '30 × 30 cm', '500,000원'),
+L(5, '강윤서', '푸른 벽', '2026', 'Acrylic on canvas', '116.8 × 91.0 cm', '450,000원'),
+L(6, '강윤서', '머무는 빛', '2026', '장지에 혼합재료', '20 × 20 cm', '800,000원'),
+L(7, '강윤서', '결 #7', '2026', '캔버스에 유채', '20 × 20 cm', '1,000,000원'),
+L(8, '강윤서', '잊힌 골목', '2026', 'Acrylic on canvas', '33.4 × 24.2 cm', '250,000원'),
+L(9, '노해원', '오래된 문 #1', '2026', 'Mixed media on unbleached cotton fabric', '24.2 × 24.2 cm', '500,000원'),
+L(10, '노해원', '아무도 없는 오후 네 시의 거실에 남아 있던 빛과 그 빛을 기억하는 방법에 대하여', '2026', 'Oil on canvas', '33.4 × 24.2 cm', '비매'),
+],
+};
+}
+}
+</script>
+</body>
+</html>

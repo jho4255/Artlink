@@ -24,6 +24,18 @@ async function pickDownload(page: Page, item: RegExp) {
 const API = 'http://localhost:4000/api';
 const auth = (tok: string) => ({ Authorization: `Bearer ${tok}` });
 
+/** ZIP 안의 파일 목록(디렉터리 제외) · 한 파일의 내용 */
+async function zipEntries(zipPath: string): Promise<string[]> {
+  const { execFileSync } = await import('child_process');
+  return execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' }).trim().split('\n').filter((n) => n && !n.endsWith('/'));
+}
+async function zipFile(zipPath: string, name: string): Promise<Buffer> {
+  const { execFileSync } = await import('child_process');
+  return execFileSync('unzip', ['-p', zipPath, name], { maxBuffer: 64 * 1024 * 1024 });
+}
+/** 글자가 살아 있는 PDF 인가 — 쪽 그림이 아니라 글꼴(Pretendard)을 심었다(2026-11-24, 규칙 92) */
+const isTextPdf = (buf: Buffer) => buf.subarray(0, 5).toString('latin1') === '%PDF-' && buf.includes(Buffer.from('Pretendard'));
+
 /** 실서비스 탐색 피드에서 실제 R2 이미지 URL을 가져온다 */
 async function realArtworkUrls(api: APIRequestContext, n: number): Promise<string[]> {
   const r = await api.get('https://artlink.cc/api/explore?limit=40');
@@ -92,6 +104,9 @@ test('작품 원본(ZIP) — 진행률 표시 후 실제 파일이 내려온다'
   expect(dl.suggestedFilename()).toMatch(/작품원본\.zip$/);
   const path = await dl.path();
   expect(path, 'ZIP 파일 저장됨').toBeTruthy();
+  // 파일 이름 앞에 전시 전체 작품 번호 — 작품 리스트와 같은 번호(2026-11-24)
+  const names = await zipEntries(path!);
+  expect(names.map((n) => n.split('/')[1]!.slice(0, 3)).sort(), JSON.stringify(names)).toEqual(urls.map((_, i) => `${String(i + 1).padStart(2, '0')}_`));
 
   await expect(page.locator('body')).toContainText(`원본 ${urls.length}개 ZIP 다운로드 시작`, { timeout: 30_000 });
 
@@ -111,8 +126,40 @@ test('전체 제출물 PDF(ZIP) — 이미지 선수집 진행률 후 완료', a
   await expect(page.locator('body')).toContainText(/불러오는 중|만드는 중|ZIP 다운로드/, { timeout: 60_000 });
 
   const dl = await downloadPromise;
-  expect(dl.suggestedFilename()).toMatch(/전체제출물\.zip$/);
-  expect(await dl.path(), 'ZIP 파일 저장됨').toBeTruthy();
+  expect(dl.suggestedFilename()).toMatch(/_출품자료\.zip$/);
+  // 작가마다 한 파일(약력·작가노트·출품 작품) — 예전엔 작가 폴더에 세 파일이었다
+  const names = await zipEntries((await dl.path())!);
+  expect(names, JSON.stringify(names)).toHaveLength(1);
+  expect(names[0]).toMatch(/_출품자료\.pdf$/);
+  expect(isTextPdf(await zipFile((await dl.path())!, names[0]!)), '글자가 살아 있는 PDF').toBe(true);
+
+  await api.dispose();
+  await ctx.close();
+});
+
+test('작품 리스트 — PDF(글자) 와 엑셀(가격은 숫자 칸)이 내려온다', async ({ browser }) => {
+  const api = await pwRequest.newContext();
+  const { exId } = await seedOperation(api, 3);
+
+  const { page, ctx } = await openAs(browser, 'gallery');
+  await openGallerySubmissions(page, exId);
+
+  const pdfP = page.waitForEvent('download', { timeout: 90_000 });
+  await pickDownload(page, /작품 리스트\(PDF\)/);
+  const pdf = await pdfP;
+  expect(pdf.suggestedFilename()).toMatch(/_작품리스트\.pdf$/);
+  const { readFileSync } = await import('fs');
+  expect(isTextPdf(readFileSync((await pdf.path())!)), '글자가 살아 있는 PDF').toBe(true);
+  await expect(page.locator('body')).toContainText('작품 리스트 다운로드를 시작합니다', { timeout: 30_000 });
+
+  const xlsxP = page.waitForEvent('download', { timeout: 30_000 });
+  await pickDownload(page, /작품 리스트\(엑셀\)/);
+  const xlsx = await xlsxP;
+  expect(xlsx.suggestedFilename()).toMatch(/_작품리스트\.xlsx$/);
+  const sheet = (await zipFile((await xlsx.path())!, 'xl/worksheets/sheet1.xml')).toString('utf-8');
+  expect(sheet).toContain('작품1');
+  expect(sheet).toContain('<v>1000000</v>');          // '1,000,000' 이 숫자 칸으로
+  expect(sheet).toContain('Oil on canvas');
 
   await api.dispose();
   await ctx.close();

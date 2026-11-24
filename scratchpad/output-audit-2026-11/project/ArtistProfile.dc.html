@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>작가 자료 — 약력</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 794px; height: 1123px; box-sizing: border-box; padding: 34px 56px 0; background: #ffffff; font-family: 'Noto Sans KR', system-ui, sans-serif; color: #111111; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #767676; padding-bottom: 10px; border-bottom: 1px solid #cfcfcf">
+<span>2027 봄 기획전 《겹과 결》</span>
+<span>작가 자료</span>
+</div>
+
+<div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; gap: 32px">
+<div>
+<h1 style="margin: 0; font-family: 'Noto Serif KR', serif; font-size: 40px; line-height: 1.15; font-weight: 600; letter-spacing: 0.04em">노해원</h1>
+<div style="margin-top: 14px; font-size: 13px; line-height: 1.7; color: #555555">
+<div>010-0000-1111 · haewon.noh@example.com</div>
+<div>출품 12점 · 2027. 3. 2. 제출</div>
+</div>
+</div>
+<figure style="margin: 0; width: 230px; text-align: right">
+<div style="height: 168px; display: flex; align-items: flex-end; justify-content: flex-end">
+<img src="/_blob/5f81a41331ae9bd2bab193a51fb8fdea" alt="대표작 Layers of Silence II" style="max-width: 230px; max-height: 168px; display: block">
+</div>
+<figcaption style="margin-top: 8px; font-size: 12px; line-height: 1.5; color: #555555">대표작 · Layers of Silence II, 2026</figcaption>
+</figure>
+</div>
+
+<div style="margin-top: 28px; border-top: 2px solid #111111; padding-top: 2px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px">
+<div>
+<sc-for list="{{ left }}" as="s" hint-placeholder-count="3">
+<section>
+<h2 style="margin: 18px 0 6px; padding-bottom: 6px; border-bottom: 1px solid #cfcfcf; font-size: 13px; font-weight: 700">{{ s.label }}</h2>
+<sc-for list="{{ s.items }}" as="e" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); font-size: 12.5px; line-height: 1.7">
+<span style="color: #555555; font-variant-numeric: tabular-nums">{{ e.y }}</span>
+<span style="overflow-wrap: anywhere">{{ e.t }}</span>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</div>
+<div>
+<sc-for list="{{ right }}" as="s" hint-placeholder-count="1">
+<section>
+<h2 style="margin: 18px 0 6px; padding-bottom: 6px; border-bottom: 1px solid #cfcfcf; font-size: 13px; font-weight: 700">{{ s.label }}</h2>
+<sc-for list="{{ s.items }}" as="e" hint-placeholder-count="12">
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); font-size: 12.5px; line-height: 1.7">
+<span style="color: #555555; font-variant-numeric: tabular-nums">{{ e.y }}</span>
+<span style="overflow-wrap: anywhere">{{ e.t }}</span>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</div>
+</div>
+
+<div style="position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #767676">
+<span>노해원 · 작가 자료</span>
+<span style="font-variant-numeric: tabular-nums">1 / 4</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+renderVals() {
+// 같은 해가 이어지면 연도는 처음 한 번만 적는다
+const sec = (label, rows) => {
+let prev = '';
+return { label, items: rows.map(([y, t]) => { const show = y === prev ? '' : y; prev = y; return { y: show, t }; }) };
+};
+return {
+left: [
+sec('개인전', [
+['2026', '「머무는 빛」, 갤러리 온, 서울'],
+['2025', '「겹」, 스페이스 결, 부산'],
+['2024', '「오래된 문」, 아트스페이스 봄, 대전'],
+['2022', '「사이」, 문화공간 숨, 광주'],
+['2021', '「긴 여름」, 갤러리 사이, 서울'],
+]),
+sec('아트페어', [
+['2026', '서울 아트페어, 서울'],
+['2026', '부산 국제아트쇼, 부산'],
+['2025', '대구 호텔아트페어, 대구'],
+['2025', '인천 아트페어, 인천'],
+['2024', '서울 국제아트쇼, 서울'],
+['2023', '부산 아트페어, 부산'],
+]),
+sec('수상 및 선정', [
+['2026', '신진작가상, 갤러리 온'],
+['2024', '청년미술대전 입선'],
+['2023', '레지던시 입주작가 선정, 문화공간 숨'],
+]),
+],
+right: [
+sec('단체전', [
+['2026', '「겨울 정원과 새벽의 창」, 아트스페이스 봄, 서울'],
+['2026', '「흐르는 것들」, 스페이스 결, 부산'],
+['2026', '「조용한 오후와 작은 방」, 갤러리 온, 서울'],
+['2025', '「잊힌 골목과 긴 여름」, 문화공간 숨, 제주'],
+['2025', '「붉은 언덕」, 갤러리 사이, 광주'],
+['2025', '「물의 기억과 오래된 문」, 갤러리 온, 부산'],
+['2024', '「푸른 벽과 수평선」, 갤러리 사이, 대전'],
+['2024', '「네모난 정원」, 스페이스 결, 서울'],
+['2024', '「새벽의 창과 숨」, 아트스페이스 봄, 광주'],
+['2023', '「오래된 문과 잊힌 골목」, 스페이스 결, 대전'],
+['2023', '「사이와 흐르는 것들」, 스페이스 결, 제주'],
+['2023', '「긴 여름과 긴 여름」, 스페이스 결, 광주'],
+['2022', '「도시 산책과 물의 기억」, 갤러리 온, 대전'],
+['2022', '「수평선」, 갤러리 온, 광주'],
+['2021', '「작은 방과 오래된 문」, 갤러리 사이, 광주'],
+['2021', '「흐르는 것들과 사이」, 문화공간 숨, 제주'],
+['2020', '「도시 산책」, 문화공간 숨, 서울'],
+['2020', '「머무는 빛과 남겨진 자리」, 스페이스 결, 광주'],
+]),
+],
+};
+}
+}
+</script>
+</body>
+</html>
